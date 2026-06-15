@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AGWPE &mdash; Graywolf Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a href="index.html" class="site-logo">
+      <img src="img/graywolf-logo.svg" alt="" />
+      <span>graywolf <span class="handbook-label">handbook</span></span>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" aria-label="Toggle theme">[ dark ]</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav>
+      <div class="sidebar-section">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="installation.html">Installation</a>
+      <a href="callsign.html">Station Callsign</a>
+      <div class="sidebar-section">Radio</div>
+      <a href="audio.html">Audio Devices</a>
+      <a href="channels.html">Radio Channels</a>
+      <a href="ptt.html">Push-to-Talk</a>
+      <div class="sidebar-section">APRS</div>
+      <a href="beacons.html">Beacons</a>
+      <a href="digipeater.html">Digipeater</a>
+      <a href="igate.html">iGate</a>
+      <a href="messaging.html">Messaging</a>
+      <a href="actions.html">Actions</a>
+      <a href="remote-actions.html">Remote Actions</a>
+      <a href="actions-handler-safety.html">Actions: Handler Safety</a>
+      <a href="actions-handler-safety-shell.html">&nbsp;&nbsp;&#8627; Shell handlers</a>
+      <a href="actions-handler-safety-powershell.html">&nbsp;&nbsp;&#8627; PowerShell handlers</a>
+      <a href="actions-handler-safety-webhooks.html">&nbsp;&nbsp;&#8627; Webhook handlers</a>
+      <a href="livemap.html">Live Map</a>
+      <div class="sidebar-section">Packet</div>
+      <a href="ax25-terminal.html">AX.25 Terminal</a>
+      <div class="sidebar-section">Interfaces</div>
+      <a href="kiss.html">KISS TNC</a>
+      <a href="remote-kiss-tnc.html">Remote KISS TNC</a>
+      <a href="agwpe.html">AGWPE</a>
+      <a href="gps.html">GPS</a>
+      <div class="sidebar-section">Operations</div>
+      <a href="history-database.html">Position Log</a>
+      <a href="logs.html">Logs</a>
+      <a href="monitoring.html">Monitoring</a>
+      <a href="simulation.html">Simulation</a>
+      <a href="maps.html">Maps</a>
+      <a href="preferences.html">Preferences</a>
+      <a href="architecture.html">Architecture</a>
+      <div class="sidebar-section">Reference</div>
+      <a href="configurations.html">Known-Working Configs</a>
+      <a href="api.html">REST API Reference</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>AGWPE</h1>
+    <p class="subtitle">AGW Packet Engine protocol interface for legacy software</p>
+
+    <p>
+      The AGWPE (AGW Packet Engine) interface provides compatibility with
+      Windows packet radio software that speaks the AGW protocol. This is
+      a single-instance TCP server that supports multiple simultaneous
+      clients and up to four radio ports.
+    </p>
+
+    <div class="screenshot">
+      <img src="img/agwpe.png" alt="AGW Interface page showing listen address and callsign configuration" />
+      <div class="caption">AGWPE interface configuration with listen address and per-port callsigns</div>
+    </div>
+
+    <h2>Settings</h2>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>enabled</code></td>
+              <td><code>false</code></td>
+              <td>Enable the AGWPE listener</td>
+            </tr>
+            <tr>
+              <td><code>listen_addr</code></td>
+              <td><code>0.0.0.0:8000</code></td>
+              <td>TCP listen address</td>
+            </tr>
+            <tr>
+              <td><code>callsigns</code></td>
+              <td>&mdash;</td>
+              <td>Comma-separated callsigns, one per AGW port (max 4)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2>Port Mapping</h2>
+
+    <p>
+      AGWPE supports up to four radio ports (numbered 0&ndash;3). Each port
+      is mapped to a callsign specified in the <code>callsigns</code> field.
+      The order determines the port number:
+    </p>
+
+<pre><code>callsigns: "N0CALL,N0CALL-5,N0CALL-10"
+# Port 0 → N0CALL
+# Port 1 → N0CALL-5
+# Port 2 → N0CALL-10</code></pre>
+
+    <h2>Supported Frame Types</h2>
+
+    <p>
+      Graywolf implements the AGWPE protocol subset needed for packet radio
+      operations:
+    </p>
+
+    <ul>
+      <li><strong>Monitor frames</strong> &mdash; receive decoded AX.25 packets</li>
+      <li><strong>Unproto frames</strong> &mdash; transmit UI (unnumbered information) packets</li>
+      <li><strong>Raw frames</strong> &mdash; send and receive raw AX.25 data</li>
+    </ul>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          Port 8000 is the conventional AGWPE port. Most AGWPE-compatible
+          software will default to this port.
+        </p>
+      </div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="remote-kiss-tnc.html">
+        <span class="label">Previous</span>
+        Remote KISS TNC
+      </a>
+      <a href="gps.html" class="next">
+        <span class="label">Next</span>
+        GPS
+      </a>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  graywolf &middot; modern APRS station
+</footer>
+
+<script src="handbook.js"></script>
+</body>
+</html>

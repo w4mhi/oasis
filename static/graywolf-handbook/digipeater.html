@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Digipeater &mdash; Graywolf Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a href="index.html" class="site-logo">
+      <img src="img/graywolf-logo.svg" alt="" />
+      <span>graywolf <span class="handbook-label">handbook</span></span>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" aria-label="Toggle theme">[ dark ]</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav>
+      <div class="sidebar-section">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="installation.html">Installation</a>
+      <a href="callsign.html">Station Callsign</a>
+      <div class="sidebar-section">Radio</div>
+      <a href="audio.html">Audio Devices</a>
+      <a href="channels.html">Radio Channels</a>
+      <a href="ptt.html">Push-to-Talk</a>
+      <div class="sidebar-section">APRS</div>
+      <a href="beacons.html">Beacons</a>
+      <a href="digipeater.html">Digipeater</a>
+      <a href="igate.html">iGate</a>
+      <a href="messaging.html">Messaging</a>
+      <a href="actions.html">Actions</a>
+      <a href="remote-actions.html">Remote Actions</a>
+      <a href="actions-handler-safety.html">Actions: Handler Safety</a>
+      <a href="actions-handler-safety-shell.html">&nbsp;&nbsp;&#8627; Shell handlers</a>
+      <a href="actions-handler-safety-powershell.html">&nbsp;&nbsp;&#8627; PowerShell handlers</a>
+      <a href="actions-handler-safety-webhooks.html">&nbsp;&nbsp;&#8627; Webhook handlers</a>
+      <a href="livemap.html">Live Map</a>
+      <div class="sidebar-section">Packet</div>
+      <a href="ax25-terminal.html">AX.25 Terminal</a>
+      <div class="sidebar-section">Interfaces</div>
+      <a href="kiss.html">KISS TNC</a>
+      <a href="remote-kiss-tnc.html">Remote KISS TNC</a>
+      <a href="agwpe.html">AGWPE</a>
+      <a href="gps.html">GPS</a>
+      <div class="sidebar-section">Operations</div>
+      <a href="history-database.html">Position Log</a>
+      <a href="logs.html">Logs</a>
+      <a href="monitoring.html">Monitoring</a>
+      <a href="simulation.html">Simulation</a>
+      <a href="maps.html">Maps</a>
+      <a href="preferences.html">Preferences</a>
+      <a href="architecture.html">Architecture</a>
+      <div class="sidebar-section">Reference</div>
+      <a href="configurations.html">Known-Working Configs</a>
+      <a href="api.html">REST API Reference</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>Digipeater</h1>
+    <p class="subtitle">Repeat APRS packets to extend network coverage</p>
+
+    <p>
+      A digipeater (digital repeater) receives APRS packets and
+      retransmits them to extend their range across the network. Graywolf&rsquo;s
+      digipeater supports WIDEn-N, TRACEn-N, and exact callsign matching
+      with priority-ordered rules and duplicate suppression.
+    </p>
+
+    <div class="screenshot">
+      <img src="img/digipeater.png" alt="Digipeater page showing settings, callsign, dedupe window, and a fill-in digi rule" />
+      <div class="caption">Digipeater configuration with a fill-in digi rule for the VHF APRS channel</div>
+    </div>
+
+    <h2>Global Settings</h2>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>enabled</code></td>
+              <td><code>false</code></td>
+              <td>Master switch for the digipeater</td>
+            </tr>
+            <tr>
+              <td><code>my_call</code></td>
+              <td>&mdash;</td>
+              <td>Your callsign (used for preemptive digi and TRACE insertion)</td>
+            </tr>
+            <tr>
+              <td><code>dedupe_window_seconds</code></td>
+              <td><code>30</code></td>
+              <td>Duplicate suppression window. Packets seen within this window are not repeated.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2>Digipeater Rules</h2>
+
+    <p>
+      Rules define what packets to repeat and how. Each rule matches an
+      alias in the packet&rsquo;s digipeater path and specifies an action.
+      Rules are evaluated in <code>priority</code> order (lower number = higher
+      priority). The first matching rule wins.
+    </p>
+
+    <h3>Adding a rule</h3>
+
+    <p>
+      Click <strong>+ Add Rule</strong> and pick a <strong>Rule type</strong>
+      first:
+    </p>
+
+    <ul>
+      <li><strong>Repeat on same channel.</strong> The default WIDEn-N
+        digipeater behaviour &mdash; packets heard on a channel are
+        retransmitted on that same channel.</li>
+      <li><strong>Bridge to another channel.</strong> Forward matching
+        frames to a different channel. Useful for crossbanding (VHF
+        &rarr; UHF) or for piping RF onto a KISS-TNC channel and out to
+        another graywolf, a LoRa modem, or downstream software.</li>
+    </ul>
+
+    <p>
+      Then pick a <strong>Preset</strong> &mdash; the preset fills in the
+      rule&rsquo;s alias, max-hops, and action so you don&rsquo;t have to
+      think about it:
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <tr>
+            <td><strong>Fill-in digi (home / urban)</strong></td>
+            <td>Responds only to <code>WIDE1-1</code>. Plugs local coverage gaps without extending range. Safe default for home stations and low sites.</td>
+          </tr>
+          <tr>
+            <td><strong>Wide-area digi (mountain top)</strong></td>
+            <td>Handles <code>WIDE1-1</code> and <code>WIDE2-2</code>. Use only at a true high site where you actually carry the network &mdash; running this from a low site clutters the air without adding coverage.</td>
+          </tr>
+          <tr>
+            <td><strong>Custom</strong></td>
+            <td>Drop down into the raw alias / type / max-hops fields. For unusual setups (TRACEn-N, exact-callsign preemptive rules, cross-channel bridges that need bespoke behaviour).</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <p>
+      Each rule shows the channel it applies to. Delete a channel and any
+      rules that pointed at it are flagged as <em>Deleted</em> so you can
+      tidy them up &mdash; the rule won&rsquo;t fire until you re-point it
+      at a real channel.
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>from_channel</code></td>
+              <td>Input radio channel to match</td>
+            </tr>
+            <tr>
+              <td><code>to_channel</code></td>
+              <td>Output radio channel for retransmission</td>
+            </tr>
+            <tr>
+              <td><code>alias</code></td>
+              <td>Path element to match (e.g., <code>WIDE</code>, <code>TRACE</code>, or a callsign)</td>
+            </tr>
+            <tr>
+              <td><code>alias_type</code></td>
+              <td><code>widen</code>, <code>trace</code>, or <code>exact</code></td>
+            </tr>
+            <tr>
+              <td><code>max_hops</code></td>
+              <td>Maximum N value accepted (default: 2). Packets with higher N are ignored.</td>
+            </tr>
+            <tr>
+              <td><code>action</code></td>
+              <td><code>repeat</code> or <code>drop</code></td>
+            </tr>
+            <tr>
+              <td><code>priority</code></td>
+              <td>Evaluation order (lower = evaluated first)</td>
+            </tr>
+            <tr>
+              <td><code>enabled</code></td>
+              <td>Rule active/inactive</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2>Alias Types</h2>
+
+    <h3>WIDEn-N</h3>
+
+    <p>
+      The standard APRS digipeater alias. When a packet arrives with
+      <code>WIDE2-2</code> in its path, graywolf decrements the SSID to
+      <code>WIDE2-1</code> and marks the hop as consumed. When the count
+      reaches zero, the alias is fully consumed.
+    </p>
+
+    <p>
+      Use <code>max_hops: 2</code> to limit network congestion &mdash; packets
+      requesting more than 2 hops will be ignored.
+    </p>
+
+    <h3>TRACEn-N</h3>
+
+    <p>
+      Like WIDEn-N, but inserts your callsign into the path as the packet
+      is repeated. This lets the originating station see which digipeaters
+      handled their packet. Useful for network debugging but uses more
+      bytes in the path.
+    </p>
+
+    <h3>Exact Callsign</h3>
+
+    <p>
+      Matches packets that explicitly address your station by callsign in
+      the digipeater path. This is &ldquo;preemptive&rdquo; digipeating &mdash;
+      if someone sends a packet via <code>N0CALL</code>, your station will
+      repeat it regardless of WIDEn-N rules.
+    </p>
+
+    <h2>Example Configuration</h2>
+
+    <p>A typical fill-in digipeater that handles WIDE1-1 only:</p>
+
+    <div class="box">
+      <div class="box-header">Fill-In Digipeater</div>
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Rule</th><th>Alias</th><th>Type</th><th>Max Hops</th><th>Priority</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Preemptive</td>
+              <td><code>N0CALL</code></td>
+              <td><code>exact</code></td>
+              <td>&mdash;</td>
+              <td>1</td>
+            </tr>
+            <tr>
+              <td>Fill-in</td>
+              <td><code>WIDE</code></td>
+              <td><code>widen</code></td>
+              <td>1</td>
+              <td>10</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p>A wide-area digipeater that handles WIDE1-1 and WIDE2-2:</p>
+
+    <div class="box">
+      <div class="box-header">Wide-Area Digipeater</div>
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Rule</th><th>Alias</th><th>Type</th><th>Max Hops</th><th>Priority</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Preemptive</td>
+              <td><code>N0CALL</code></td>
+              <td><code>exact</code></td>
+              <td>&mdash;</td>
+              <td>1</td>
+            </tr>
+            <tr>
+              <td>WIDE</td>
+              <td><code>WIDE</code></td>
+              <td><code>widen</code></td>
+              <td>2</td>
+              <td>10</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2>Cross-Channel Digipeating</h2>
+
+    <p>
+      Rules can route packets between channels. For example, receive on
+      channel 1 (VHF) and retransmit on channel 2 (UHF) by setting
+      <code>from_channel: 1</code> and <code>to_channel: 2</code>.
+    </p>
+
+    <h2>Duplicate Suppression</h2>
+
+    <p>
+      The digipeater maintains a sliding window of recently-seen packets.
+      If a packet with the same source, destination, and info field arrives
+      within the <code>dedupe_window_seconds</code> window, it is silently
+      dropped. This prevents packet storms in multi-digipeater environments.
+    </p>
+
+    <nav class="page-nav">
+      <a href="beacons.html">
+        <span class="label">Previous</span>
+        Beacons
+      </a>
+      <a href="igate.html" class="next">
+        <span class="label">Next</span>
+        iGate
+      </a>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  graywolf &middot; modern APRS station
+</footer>
+
+<script src="handbook.js"></script>
+</body>
+</html>

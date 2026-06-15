@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Q-Codes</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+.key { color: var(--accent); font-weight: 700; white-space: nowrap; }
+.def { color: var(--text); font-size: var(--fs-base); }
+.note { color: var(--text-dim); font-size: var(--fs-small); margin-top: 2px; line-height: 1.4; }
+.tag { display: inline-block; font-size: var(--fs-micro); padding: 1px 6px; border-radius: 3px;
+  margin-left: 4px; vertical-align: middle; border: 1px solid; }
+.tag-emcomm { color: #ffb454; border-color: #ffb45444; background: #3a2a0044; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <a class="home-link" href="/">🏠 HOME</a>
+  <h1>Q-Codes</h1>
+  <p>Standard operating codes used on amateur and HF radio</p>
+</header>
+
+<div class="sec">
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Code</th><th>Meaning (statement)</th><th>Meaning (question)</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="key">QRM</td><td class="def">I am being interfered with</td><td class="def">Are you being interfered with?</td><td class="note">Man-made interference — other stations, noise from equipment</td></tr>
+        <tr><td class="key">QRN</td><td class="def">I am troubled by static</td><td class="def">Are you troubled by static?</td><td class="note">Natural interference — lightning, atmospheric noise</td></tr>
+        <tr><td class="key">QRO</td><td class="def">Increase transmitter power</td><td class="def">Shall I increase power?</td><td class="note">Opposite of QRP</td></tr>
+        <tr><td class="key">QRP</td><td class="def">Decrease transmitter power</td><td class="def">Shall I decrease power?</td><td class="note">Commonly used to mean low-power operation (&lt;5W)</td></tr>
+        <tr><td class="key">QRS</td><td class="def">Send more slowly</td><td class="def">Shall I send more slowly?</td><td class="note">Primarily CW; sometimes used on digital modes</td></tr>
+        <tr><td class="key">QRT</td><td class="def">I am closing down</td><td class="def">Shall I stop sending?</td><td class="note">Station going off the air</td></tr>
+        <tr><td class="key">QRU</td><td class="def">I have nothing for you</td><td class="def">Have you anything for me?</td><td class="note">Common on traffic nets — no traffic to pass</td></tr>
+        <tr><td class="key">QRV</td><td class="def">I am ready</td><td class="def">Are you ready?</td><td class="note"><span class="tag tag-emcomm">EmComm</span> Used to confirm readiness to receive traffic</td></tr>
+        <tr><td class="key">QRX</td><td class="def">I will call you again at… hrs</td><td class="def">When will you call me again?</td><td class="note">Standby / wait</td></tr>
+        <tr><td class="key">QRZ</td><td class="def">You are being called by…</td><td class="def">Who is calling me?</td><td class="note">Common at end of CQ or after unclear callsign</td></tr>
+        <tr><td class="key">QSB</td><td class="def">Your signals are fading</td><td class="def">Are my signals fading?</td><td class="note">Signal strength variation — multipath or ionospheric</td></tr>
+        <tr><td class="key">QSL</td><td class="def">I acknowledge receipt</td><td class="def">Can you acknowledge receipt?</td><td class="note"><span class="tag tag-emcomm">EmComm</span> Confirm message received and understood</td></tr>
+        <tr><td class="key">QSO</td><td class="def">I can communicate with…</td><td class="def">Can you communicate with…?</td><td class="note">A two-way contact or conversation</td></tr>
+        <tr><td class="key">QSP</td><td class="def">I will relay to…</td><td class="def">Will you relay to…?</td><td class="note"><span class="tag tag-emcomm">EmComm</span> Traffic relay through a third station</td></tr>
+        <tr><td class="key">QST</td><td class="def">General call to all stations</td><td class="def">—</td><td class="note">Bulletin or announcement intended for all</td></tr>
+        <tr><td class="key">QSY</td><td class="def">Change to frequency…</td><td class="def">Shall I change frequency?</td><td class="note">Move to another frequency — specify in kHz or MHz</td></tr>
+        <tr><td class="key">QTC</td><td class="def">I have… messages for you</td><td class="def">How many messages do you have?</td><td class="note"><span class="tag tag-emcomm">EmComm</span> Used on traffic nets to indicate message count</td></tr>
+        <tr><td class="key">QTH</td><td class="def">My location is…</td><td class="def">What is your location?</td><td class="note">Give city, grid square, or address as appropriate</td></tr>
+        <tr><td class="key">QTR</td><td class="def">The exact time is…</td><td class="def">What is the exact time?</td><td class="note">Always give time in UTC (Zulu) during activations</td></tr>
+        <tr><td class="key">QTX</td><td class="def">I will keep my station open</td><td class="def">Will you keep your station open?</td><td class="note"><span class="tag tag-emcomm">EmComm</span> Station remains available for further traffic</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,39 @@
+{
+  "band": "17m",
+  "name": "17 Meters",
+  "range": [18.068, 18.168],
+  "unit": "MHz",
+  "license": "General+",
+  "allocation": "Primary",
+  "notes": [
+    "General+: full band — no Technician privileges",
+    "No channelized repeaters; contest-free by gentlemen's agreement"
+  ],
+  "rows": [
+    {
+      "range": [18.068, 18.168],
+      "segments": [
+        {
+          "start": 18.068, "end": 18.1,
+          "position": "bottom", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 18.068–18.100 MHz."
+        },
+        {
+          "start": 18.1, "end": 18.11,
+          "position": "top", "type": "digital", "color": "#f4a261",
+          "label": "Digital / Data",
+          "detail": "RTTY 18.100–18.105. Packet 18.105–18.110 MHz."
+        },
+        {
+          "start": 18.11, "end": 18.168,
+          "position": "bottom", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Phone/SSB 18.110–18.168 MHz."
+        }
+      ],
+      "callouts": [],
+      "ticks": [18.068, 18.1, 18.11, 18.168]
+    }
+  ]
+}

@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Winlink → YAAC .pos Converter</title>
+<link rel="stylesheet" href="/map-assets/maplibre-gl.css">
+<link rel="stylesheet" href="../css/common.css">
+<style>
+body {
+    margin: 0; padding: 24px;
+    background: var(--bg); color: var(--text);
+    line-height: 1.5;
+  }
+  h1 { font-size: var(--fs-title); margin: 0 0 4px; }
+  .sub { color: var(--text-dim); font-size: var(--fs-subtitle); margin: 0 0 20px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; margin-bottom: 16px;
+  }
+  label { font-weight: 600; font-size: var(--fs-subtitle); display: block; margin-bottom: 8px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+  fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin: 0; }
+  legend { padding: 0 6px; font-weight: 600; font-size: var(--fs-base); color: var(--text-dim); }
+  .radio-row { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-base); }
+  .radio-row label { font-weight: 400; margin: 0; display: flex; gap: 8px; align-items: center; cursor: pointer; }
+  .field input {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; font-family: var(--mono); width: 120px;
+  }
+  .field small { color: var(--text-dim); font-size: var(--fs-label); }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+  button {
+    background: var(--accent); color: #fff; border: none;
+    border-radius: 8px; padding: 11px 20px; font-size: var(--fs-subtitle); font-weight: 600;
+    cursor: pointer; transition: background 0.15s;
+  }
+  button:hover { background: var(--accent); }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  button.secondary:hover { background: var(--bg); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .status { font-size: var(--fs-base); color: var(--text-dim); }
+  .status.ok { color: var(--accent); }
+  .status.err { color: #e07a7a; }
+  pre.preview {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; font-family: var(--mono); font-size: var(--fs-label);
+    overflow-x: auto; white-space: pre; margin: 0; max-height: 320px; overflow-y: auto;
+  }
+  .count { font-size: var(--fs-base); color: var(--text-dim); margin-bottom: 8px; }
+  .warn { color: #d9b65a; }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); font-size: 0.82em; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .tab {
+    background: transparent; border: 1px solid transparent; border-bottom: none;
+    color: var(--text-dim); padding: 10px 18px; font-size: var(--fs-subtitle); font-weight: 600;
+    cursor: pointer; border-radius: 8px 8px 0 0; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active {
+    color: var(--text); background: var(--panel);
+    border-color: var(--border); border-bottom-color: var(--panel);
+  }
+  .tabview { display: none; }
+  .tabview.active { display: block; }
+
+  /* Map */
+  #mapWrap { position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  #map { display: block; width: 100%; height: auto; touch-action: none; cursor: grab; }
+  #map.dragging { cursor: grabbing; }
+  .map-state { fill: #2b313c; stroke: #4a5260; stroke-width: 0.6; vector-effect: non-scaling-stroke; }
+  .map-city-dot { fill: #6b7686; }
+  .map-city-label { fill: #8a93a3; font-family: system-ui, sans-serif; font-size: 9px; pointer-events: none; }
+  .map-station { stroke: #11151c; stroke-width: 1; vector-effect: non-scaling-stroke; cursor: pointer; }
+  .map-station.green { fill: var(--accent); }
+  .map-station.other { fill: #d98a3a; }
+  .map-station-label { fill: var(--text); font-family: var(--mono); font-size: 9px; pointer-events: none; paint-order: stroke; stroke: #11151c; stroke-width: 2.5px; stroke-linejoin: round; }
+  .map-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .map-toolbar .spacer { flex: 1; }
+  .map-btn { background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 12px; font-size: var(--fs-base); cursor: pointer; }
+  .map-btn:hover { background: var(--panel); }
+  .map-legend { display: flex; gap: 16px; align-items: center; font-size: var(--fs-base); color: var(--text-dim); margin-top: 10px; flex-wrap: wrap; }
+  .map-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .map-empty { padding: 60px 20px; text-align: center; color: var(--text-dim); font-size: var(--fs-subtitle); }
+  .map-source-note { font-size: var(--fs-label); color: var(--text-dim); margin-top: 8px; }
+  .toggle-row { display: flex; gap: 14px; align-items: center; font-size: var(--fs-base); color: var(--text-dim); }
+  .toggle-row label { font-weight: 400; display: flex; gap: 6px; align-items: center; cursor: pointer; margin: 0; }
+
+  /* Tile map tab */
+  #tilemapContainer { width: 100%; height: 500px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+  .tilemap-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .tilemap-toolbar .spacer { flex: 1; }
+  #tilemapStatus { font-size: var(--fs-base); color: var(--text-dim); }
+  #tilemapStatus.ok { color: var(--accent); }
+  .maplibregl-popup-content { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-family: var(--mono); font-size: var(--fs-base); padding: 8px 10px; }
+  .maplibregl-popup-tip { border-top-color: var(--panel) !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Winlink → YAAC <code>.pos</code> Converter</h1>
+  <p class="sub">Paste a "Winlink 2000 Nearby Mobile Users" report below, choose your options, and download a <code>.pos</code> file ready to import into YAAC. Runs entirely in your browser — no internet required.</p>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="convert">Convert</button>
+    <button class="tab" data-tab="map">Show Map</button>
+    <button class="tab" data-tab="tilemap">Tile Map</button>
+  </div>
+
+  <div class="tabview active" id="view-convert">
+  <div class="panel">
+    <label for="input">1. Paste Winlink report</label>
+    <textarea id="input" placeholder="Paste the full Winlink nearby-users report here, including the CALL / Dist / POSITION header line..."></textarea>
+  </div>
+
+  <div class="panel">
+    <label>2. Options</label>
+    <div class="controls">
+      <fieldset>
+        <legend>APRS symbol</legend>
+        <div class="radio-row">
+          <label><input type="radio" name="sym" value="anygreen" checked> Green circle if "green" appears anywhere, else X</label>
+          <label><input type="radio" name="sym" value="startsgreen"> Green circle if comment starts with "green", else X</label>
+          <label><input type="radio" name="sym" value="alwaysgreen"> Always green circle</label>
+          <label><input type="radio" name="sym" value="alwaysx"> Always X</label>
+        </div>
+      </fieldset>
+      <div class="field">
+        <label for="filename">Output filename</label>
+        <input type="text" id="filename" value="winlink" style="width:160px">
+        <small>.pos is added automatically</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="btn-row">
+      <button id="convert">Convert &amp; Preview</button>
+      <button id="download" class="secondary" disabled>Download .pos</button>
+      <button id="copy" class="secondary" disabled>Copy to clipboard</button>
+      <span id="status" class="status"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="count" id="count"></div>
+    <pre class="preview" id="preview">(preview will appear here)</pre>
+  </div>
+  </div><!-- /view-convert -->
+
+  <div class="tabview" id="view-map">
+    <div class="panel">
+      <div class="map-toolbar">
+        <span class="status" id="mapStatus">No stations yet — paste a report on the Convert tab.</span>
+        <span class="spacer"></span>
+        <div class="toggle-row">
+          <label><input type="checkbox" id="tgCities" checked> Cities</label>
+          <label><input type="checkbox" id="tgLabels" checked> Callsigns</label>
+        </div>
+        <button class="map-btn" id="zoomIn">+</button>
+        <button class="map-btn" id="zoomOut">−</button>
+        <button class="map-btn" id="zoomReset">Reset</button>
+      </div>
+      <div id="mapWrap">
+        <div class="map-empty" id="mapEmpty">Convert a report, then come back to see the stations plotted across the US.</div>
+        <svg id="map" viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" style="display:none"></svg>
+      </div>
+      <div class="map-legend">
+        <span><span class="dot" style="background:var(--accent)"></span>Green status</span>
+        <span><span class="dot" style="background:#d98a3a"></span>Other</span>
+        <span style="margin-left:auto" id="mapCount"></span>
+      </div>
+      <div class="map-source-note" id="mapSource"></div>
+    </div>
+  </div><!-- /view-map -->
+
+  <div class="tabview" id="view-tilemap">
+    <div class="panel">
+      <div class="tilemap-toolbar">
+        <span id="tilemapStatus">No stations yet — paste a report on the Convert tab.</span>
+        <span class="spacer"></span>
+        <button class="map-btn" id="tilemapFit">Fit WA</button>
+      </div>
+      <div id="tilemapContainer"></div>
+      <div class="map-legend">
+        <span><span class="dot" style="background:var(--accent)"></span>Green status</span>
+        <span><span class="dot" style="background:#d98a3a"></span>Other</span>
+        <span style="margin-left:auto" id="tilemapCount"></span>
+      </div>
+    </div>
+  </div><!-- /view-tilemap -->
+
+  <footer>Object format: <code>;NAME&nbsp;&nbsp;&nbsp;&nbsp;*DDHHMMh&lt;lat&gt;\&lt;lon&gt;W&lt;comment&gt;</code> — green circle = alternate table <code>\W</code></footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- APRS symbols ----
+  // Green circle: alternate symbol table "\" + code "W"
+  // Default: primary table "/" + code "x" (X)
+  const SYM_GREEN = { table: "\\", code: "W" };
+  const SYM_X     = { table: "/",  code: "x" };
+
+  // Parse a single Winlink position token like "35-54.70N" -> "3554.70N"
+  // and "086-21.20W" -> "08621.20W". Returns null if it doesn't match.
+  function fmtLat(tok) {
+    // DD-MM.mmN/S
+    const m = tok.match(/^(\d{1,2})-(\d{1,2}\.\d{1,2})([NS])$/);
+    if (!m) return null;
+    const deg = m[1].padStart(2, "0");
+    let min = m[2];
+    // minutes: ensure two integer digits and two decimals -> e.g. 5.20 -> 05.20
+    const parts = min.split(".");
+    const minInt = parts[0].padStart(2, "0");
+    const minDec = (parts[1] || "").padEnd(2, "0").slice(0, 2);
+    return deg + minInt + "." + minDec + m[3];
+  }
+
+  function fmtLon(tok) {
+    // DDD-MM.mmE/W
+    const m = tok.match(/^(\d{1,3})-(\d{1,2}\.\d{1,2})([EW])$/);
+    if (!m) return null;
+    const deg = m[1].padStart(3, "0");
+    let min = m[2];
+    const parts = min.split(".");
+    const minInt = parts[0].padStart(2, "0");
+    const minDec = (parts[1] || "").padEnd(2, "0").slice(0, 2);
+    return deg + minInt + "." + minDec + m[3];
+  }
+
+  // Decimal-degree versions for plotting on the map
+  function decLat(tok) {
+    const m = tok.match(/^(\d{1,2})-(\d{1,2}\.\d{1,2})([NS])$/);
+    if (!m) return null;
+    let v = parseInt(m[1], 10) + parseFloat(m[2]) / 60;
+    if (m[3] === "S") v = -v;
+    return v;
+  }
+  function decLon(tok) {
+    const m = tok.match(/^(\d{1,3})-(\d{1,2}\.\d{1,2})([EW])$/);
+    if (!m) return null;
+    let v = parseInt(m[1], 10) + parseFloat(m[2]) / 60;
+    if (m[3] === "W") v = -v;
+    return v;
+  }
+
+  // Object name field is fixed 9 chars, space-padded
+  function padName(call) {
+    if (call.length > 9) call = call.slice(0, 9);
+    return call.padEnd(9, " ");
+  }
+
+  // Build DDHHMMh timestamp from "2026/05/22 15:01"
+  function fmtTime(dateStr, timeStr) {
+    const dm = dateStr.match(/^\d{4}\/(\d{2})\/(\d{2})$/);
+    const tm = timeStr.match(/^(\d{2}):(\d{2})$/);
+    if (!dm || !tm) return null;
+    const dd = dm[2];          // day of month
+    const hh = tm[1];
+    const mm = tm[2];
+    return dd + hh + mm + "h";  // DDHHMMh, local-hours indicator as used in working sample
+  }
+
+  function pickSymbol(comment, mode) {
+    const c = (comment || "").trim().toLowerCase();
+    switch (mode) {
+      case "alwaysgreen": return SYM_GREEN;
+      case "alwaysx":     return SYM_X;
+      case "startsgreen": return c.startsWith("green") ? SYM_GREEN : SYM_X;
+      case "anygreen":
+      default:            return c.includes("green") ? SYM_GREEN : SYM_X;
+    }
+  }
+
+  // Sanitize comment for a single-line APRS object (strip CR/LF)
+  function cleanComment(s) {
+    return (s || "").replace(/[\r\n]+/g, " ").trim();
+  }
+
+  // Core parser. Returns { packets: [], rows: [], skipped: [] }
+  function parse(text, symMode) {
+    const lines = text.split(/\r?\n/);
+    const packets = [];
+    const rows = [];
+    const skipped = [];
+
+    // A record is identified by finding a token sequence:
+    //   CALL ... <lat token> <lon token> <YYYY/MM/DD> <HH:MM> [comment...]
+    // We scan token-by-token because the source may be space-collapsed onto
+    // one giant line (as in pasted reports) or already line-separated.
+    const tokens = lines.join(" ").split(/\s+/).filter(Boolean);
+
+    const latRe = /^\d{1,2}-\d{1,2}\.\d{1,2}[NS]$/;
+    const lonRe = /^\d{1,3}-\d{1,2}\.\d{1,2}[EW]$/;
+    const dateRe = /^\d{4}\/\d{2}\/\d{2}$/;
+    const timeRe = /^\d{2}:\d{2}$/;
+    const callRe = /^[A-Z0-9]{1,3}[0-9][A-Z0-9]*(-\d{1,2})?$/i;
+
+    for (let i = 0; i < tokens.length; i++) {
+      if (latRe.test(tokens[i]) && lonRe.test(tokens[i + 1] || "") &&
+          dateRe.test(tokens[i + 2] || "") && timeRe.test(tokens[i + 3] || "")) {
+
+        // The record structure preceding the lat token is fixed:
+        //   CALL  DIST  @  BEARING  <lat> <lon> <date> <time>
+        // so BEARING = i-1, "@" = i-2, DIST = i-3, CALL = i-4.
+        // We validate that shape and only fall back to a backward scan if the
+        // "@" separator isn't where we expect (some exports omit it).
+        let call = null;
+        const bearing = tokens[i - 1] || "";
+        const at = tokens[i - 2] || "";
+        const dist = tokens[i - 3] || "";
+        if (/^\d{1,3}$/.test(bearing) && at === "@" && /^\d+(\.\d+)?$/.test(dist) &&
+            callRe.test(tokens[i - 4] || "") && /[0-9]/.test(tokens[i - 4] || "")) {
+          call = tokens[i - 4];
+        } else {
+          // Fallback: nearest preceding callsign-shaped token that is NOT a bare
+          // 1-3 digit number (which would be a bearing) and not the distance.
+          for (let j = i - 1; j >= 0 && j >= i - 6; j--) {
+            const t = tokens[j];
+            if (t === "@") continue;
+            if (/^\d{1,3}$/.test(t)) continue;          // bearing
+            if (/^\d+(\.\d+)?$/.test(t)) continue;       // distance
+            if (callRe.test(t) && /[0-9]/.test(t)) { call = t; break; }
+          }
+        }
+        if (!call) { skipped.push(tokens.slice(Math.max(0, i - 3), i + 4).join(" ")); continue; }
+
+        const lat = fmtLat(tokens[i]);
+        const lon = fmtLon(tokens[i + 1]);
+        const ts = fmtTime(tokens[i + 2], tokens[i + 3]);
+        if (!lat || !lon || !ts) { skipped.push(call + " (bad position/time)"); continue; }
+
+        // Comment = everything after time up to the next record's callsign.
+        // Find where the next record starts (next lat token), then back off
+        // its callsign + dist + bearing (up to 3 tokens) — but simplest robust
+        // approach: comment runs until the token that begins the next record's
+        // call/dist/bearing/lat sequence. We detect the next lat token and trim
+        // back the trailing call/dist/bearing that belong to it.
+        let k = i + 4;
+        const commentToks = [];
+        while (k < tokens.length) {
+          // does a new record start at k? (lat at some k2 with the 3 following matching)
+          if (latRe.test(tokens[k]) && lonRe.test(tokens[k + 1] || "") &&
+              dateRe.test(tokens[k + 2] || "") && timeRe.test(tokens[k + 3] || "")) {
+            break;
+          }
+          commentToks.push(tokens[k]);
+          k++;
+        }
+        // If we stopped because a new record begins at index k, the last few
+        // commentToks actually belong to the next record (its CALL, dist, @, bearing).
+        // Trim trailing tokens that match: bearing(int), "@"? , dist(float), call.
+        // Pattern at tail: [CALL] [DIST] [@] [BEARING]
+        if (k < tokens.length) {
+          // remove up to 4 trailing tokens if they fit the call/dist/@/bearing shape
+          // bearing is integer, dist is float, @ literal, call matches callRe
+          let removable = 0;
+          const n = commentToks.length;
+          // bearing
+          if (n - 1 - removable >= 0 && /^\d{1,3}$/.test(commentToks[n - 1 - removable])) {
+            // could be bearing; check for @ before it
+            let bIdx = n - 1 - removable;
+            let atIdx = bIdx - 1;
+            if (atIdx >= 0 && commentToks[atIdx] === "@") {
+              let distIdx = atIdx - 1;
+              if (distIdx >= 0 && /^\d+(\.\d+)?$/.test(commentToks[distIdx])) {
+                let callIdx = distIdx - 1;
+                if (callIdx >= 0 && callRe.test(commentToks[callIdx]) && /[0-9]/.test(commentToks[callIdx])) {
+                  removable = n - callIdx; // remove call..bearing
+                }
+              }
+            }
+          }
+          if (removable > 0) commentToks.splice(commentToks.length - removable, removable);
+        }
+        const comment = cleanComment(commentToks.join(" "));
+
+        const sym = pickSymbol(comment, symMode);
+        const name = padName(call.toUpperCase());
+        // ;NAME(9)*DDHHMMh<lat>T<lon>C<comment>
+        const packet = ";" + name + "*" + ts + lat + sym.table + lon + sym.code + comment;
+        packets.push(packet);
+        rows.push({
+          call: call.toUpperCase(), lat, lon, ts,
+          sym: sym.table + sym.code,
+          isGreen: sym.table === "\\" && sym.code === "W",
+          dlat: decLat(tokens[i]), dlon: decLon(tokens[i + 1]),
+          comment
+        });
+
+        // advance i to just before the next record (k-1) so loop's i++ lands on it
+        i = k - 1;
+      }
+    }
+    return { packets, rows, skipped };
+  }
+
+  // ================= MAP MODULE =================
+  // Offline fallback: schematic CONUS outline + boundary lines (Option A).
+  // If a real ./us-states.geojson is present, it's loaded at runtime (Option B).
+  const FALLBACK_GEO = {"type":"FeatureCollection","features":[{"type":"Feature","properties":{"kind":"nation"},"geometry":{"type":"Polygon","coordinates":[[[-124.7,48.4],[-123.0,48.2],[-122.8,49.0],[-117.0,49.0],[-104.0,49.0],[-95.2,49.0],[-95.2,49.4],[-94.8,49.0],[-89.5,48.0],[-88.4,48.3],[-84.5,46.5],[-83.0,46.0],[-82.5,45.3],[-83.1,42.3],[-79.0,42.8],[-78.9,43.3],[-76.5,43.6],[-73.3,45.0],[-71.5,45.0],[-69.2,47.4],[-67.8,47.1],[-67.0,44.8],[-70.7,43.1],[-70.8,42.3],[-71.0,41.5],[-72.0,41.2],[-73.9,40.5],[-74.2,40.5],[-74.0,39.5],[-75.0,38.8],[-75.9,37.1],[-76.0,37.9],[-76.3,38.3],[-77.0,38.4],[-76.0,37.0],[-75.5,35.2],[-76.5,34.6],[-78.0,33.9],[-79.2,33.2],[-80.9,32.0],[-81.4,30.7],[-80.0,26.8],[-80.1,25.2],[-81.1,25.2],[-81.7,25.9],[-82.8,27.8],[-82.6,28.9],[-84.0,30.1],[-85.3,29.7],[-87.5,30.3],[-88.9,30.4],[-89.2,29.3],[-90.0,29.2],[-91.3,29.3],[-93.8,29.7],[-95.0,28.8],[-96.5,28.4],[-97.1,27.8],[-97.4,26.0],[-97.1,25.9],[-99.1,26.4],[-100.0,28.2],[-101.4,29.8],[-102.3,29.9],[-103.0,28.9],[-104.5,29.6],[-104.9,30.6],[-106.5,31.8],[-108.2,31.8],[-111.1,31.3],[-114.8,32.5],[-117.1,32.5],[-118.4,33.7],[-120.5,34.5],[-122.4,37.2],[-124.0,40.4],[-124.4,43.3],[-124.1,46.3],[-124.7,48.4]]]}},{"type":"Feature","properties":{"kind":"borders"},"geometry":{"type":"MultiLineString","coordinates":[[[-117.0,49.0],[-117.0,42.0]],[[-120.0,42.0],[-120.0,39.0]],[[-114.0,42.0],[-114.0,37.0]],[[-114.05,37.0],[-109.05,37.0]],[[-109.05,41.0],[-109.05,31.3]],[[-111.05,45.0],[-111.05,41.0]],[[-104.05,49.0],[-104.05,41.0]],[[-104.05,41.0],[-102.05,41.0]],[[-102.05,41.0],[-102.05,37.0]],[[-109.05,37.0],[-103.0,37.0]],[[-103.0,37.0],[-103.0,32.0]],[[-117.0,42.0],[-111.05,42.0]],[[-114.0,37.0],[-109.05,37.0]],[[-104.05,41.0],[-95.3,40.0]],[[-104.05,43.0],[-96.5,43.0]],[[-104.05,45.94],[-96.5,45.94]],[[-96.5,49.0],[-96.5,43.0]],[[-96.5,43.0],[-95.8,40.6]],[[-95.8,40.6],[-94.6,40.6]],[[-91.4,43.5],[-91.2,40.4]],[[-90.6,42.5],[-87.8,42.5]],[[-87.5,41.7],[-84.8,41.7]],[[-100.0,36.5],[-94.5,36.5]],[[-94.5,36.5],[-94.5,33.6]],[[-94.0,33.0],[-91.2,33.0]],[[-85.0,35.0],[-81.0,35.0]],[[-88.2,35.0],[-88.2,30.2]],[[-85.0,35.0],[-85.0,31.0]],[[-83.1,35.0],[-82.0,35.2]]]}}]};
+
+  // Major cities (name, lon, lat) — minimal reference set
+  const CITIES = [
+    ["Seattle",-122.33,47.61],["Portland",-122.68,45.52],["San Francisco",-122.42,37.77],
+    ["Los Angeles",-118.24,34.05],["San Diego",-117.16,32.72],["Las Vegas",-115.14,36.17],
+    ["Phoenix",-112.07,33.45],["Salt Lake City",-111.89,40.76],["Denver",-104.99,39.74],
+    ["Albuquerque",-106.65,35.08],["El Paso",-106.49,31.76],["Dallas",-96.80,32.78],
+    ["Houston",-95.37,29.76],["San Antonio",-98.49,29.42],["Oklahoma City",-97.52,35.47],
+    ["Kansas City",-94.58,39.10],["Minneapolis",-93.27,44.98],["Omaha",-95.94,41.26],
+    ["Chicago",-87.63,41.88],["St. Louis",-90.20,38.63],["Memphis",-90.05,35.15],
+    ["New Orleans",-90.07,29.95],["Nashville",-86.78,36.16],["Indianapolis",-86.16,39.77],
+    ["Detroit",-83.05,42.33],["Atlanta",-84.39,33.75],["Miami",-80.19,25.76],
+    ["Tampa",-82.46,27.95],["Jacksonville",-81.66,30.33],["Charlotte",-80.84,35.23],
+    ["Columbus",-82.99,39.96],["Cleveland",-81.69,41.50],["Pittsburgh",-79.996,40.44],
+    ["Washington DC",-77.04,38.91],["Philadelphia",-75.16,39.95],["New York",-74.01,40.71],
+    ["Boston",-71.06,42.36],["Richmond",-77.44,37.54],["Birmingham",-86.80,33.52]
+  ];
+
+  // Albers Equal-Area Conic (CONUS)
+  function albers(lon, lat) {
+    const phi1 = 29.5 * Math.PI/180, phi2 = 45.5 * Math.PI/180;
+    const lon0 = -96 * Math.PI/180, lat0 = 37.5 * Math.PI/180;
+    const phi = lat * Math.PI/180, lam = lon * Math.PI/180;
+    const n = 0.5 * (Math.sin(phi1) + Math.sin(phi2));
+    const C = Math.cos(phi1)*Math.cos(phi1) + 2*n*Math.sin(phi1);
+    const rho0 = Math.sqrt(C - 2*n*Math.sin(lat0)) / n;
+    const rho = Math.sqrt(C - 2*n*Math.sin(phi)) / n;
+    const theta = n * (lam - lon0);
+    return [rho * Math.sin(theta), rho0 - rho * Math.cos(theta)];
+  }
+
+  // Fixed fit derived from CONUS bounds -> 960x600 viewBox
+  const MAPW = 960, MAPH = 600, MAPPAD = 24;
+  const _fit = (function () {
+    const corners = [[-125,49.5],[-66,49.5],[-125,24],[-66,24],[-95,49.5],[-95,24]];
+    let X=[],Y=[];
+    corners.forEach(([lo,la]) => { const p=albers(lo,la); X.push(p[0]); Y.push(p[1]); });
+    const minX=Math.min(...X), maxX=Math.max(...X), minY=Math.min(...Y), maxY=Math.max(...Y);
+    const s = Math.min((MAPW-2*MAPPAD)/(maxX-minX), (MAPH-2*MAPPAD)/(maxY-minY));
+    const cx = MAPPAD + (MAPW-2*MAPPAD - (maxX-minX)*s)/2;
+    return { minX, maxY, s, offx: cx };
+  })();
+  function project(lon, lat) {
+    const [x, y] = albers(lon, lat);
+    return [_fit.offx + (x - _fit.minX) * _fit.s, MAPPAD + (_fit.maxY - y) * _fit.s];
+  }
+
+  function ringToPath(ring) {
+    return ring.map((c, i) => {
+      const [px, py] = project(c[0], c[1]);
+      return (i === 0 ? "M" : "L") + px.toFixed(1) + "," + py.toFixed(1);
+    }).join(" ") + " Z";
+  }
+  function lineToPath(line) {
+    return line.map((c, i) => {
+      const [px, py] = project(c[0], c[1]);
+      return (i === 0 ? "M" : "L") + px.toFixed(1) + "," + py.toFixed(1);
+    }).join(" ");
+  }
+
+  let geoData = FALLBACK_GEO;
+  let geoSourceLabel = "built-in simplified outline";
+  let lastRows = [];
+  let mapView = { scale: 1, tx: 0, ty: 0 };
+
+  // Try to load accurate borders from a sibling file (Option B). Works offline
+  // once the file is staged next to this HTML.
+  function tryLoadGeoJSON() {
+    fetch("./us-states.geojson")
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(j => {
+        if (j && j.type === "FeatureCollection" && j.features && j.features.length) {
+          geoData = normalizeGeo(j);
+          geoSourceLabel = "us-states.geojson (accurate borders)";
+          renderBaseMap();
+          if (lastRows.length) renderStations(lastRows);
+          updateSourceNote();
+        }
+      })
+      .catch(() => { /* stay on fallback silently */ });
+  }
+  // Accept either a states polygon collection or our fallback shape
+  function normalizeGeo(j) { return j; }
+
+  function buildPath(d, cls) {
+    return '<path class="' + cls + '" d="' + d + '"/>';
+  }
+
+  // Non-CONUS areas the CONUS Albers projection can't place correctly.
+  // Census/Natural Earth files key on name (name/NAME) or FIPS (STATE/STATEFP).
+  const NON_CONUS_NAMES = new Set([
+    "alaska", "hawaii", "puerto rico", "guam", "american samoa",
+    "united states virgin islands", "u.s. virgin islands", "virgin islands",
+    "commonwealth of the northern mariana islands", "northern mariana islands"
+  ]);
+  const NON_CONUS_FIPS = new Set(["02", "15", "72", "66", "60", "78", "69", "2", "15"]);
+  function isCONUS(feature) {
+    const p = feature.properties || {};
+    const nm = (p.name || p.NAME || p.NAME10 || p.state || "").toString().trim().toLowerCase();
+    if (nm && NON_CONUS_NAMES.has(nm)) return false;
+    const fips = (p.STATE || p.STATEFP || p.STATEFP10 || p.fips || "").toString().trim();
+    if (fips && NON_CONUS_FIPS.has(fips)) return false;
+    return true;
+  }
+
+  function renderBaseMap() {
+    const svg = document.getElementById("map");
+    let parts = ['<g id="mapBase">'];
+    geoData.features.forEach(f => {
+      const g = f.geometry;
+      if (!g) return;
+      if (!isCONUS(f)) return;   // skip AK/HI/territories (projection invalid there)
+      if (g.type === "Polygon") {
+        g.coordinates.forEach(ring => parts.push(buildPath(ringToPath(ring), "map-state")));
+      } else if (g.type === "MultiPolygon") {
+        g.coordinates.forEach(poly => poly.forEach(ring => parts.push(buildPath(ringToPath(ring), "map-state"))));
+      } else if (g.type === "LineString") {
+        parts.push('<path class="map-state" style="fill:none" d="' + lineToPath(g.coordinates) + '"/>');
+      } else if (g.type === "MultiLineString") {
+        g.coordinates.forEach(line => parts.push('<path class="map-state" style="fill:none" d="' + lineToPath(line) + '"/>'));
+      }
+    });
+    parts.push('</g>');
+
+    // cities layer
+    parts.push('<g id="mapCities">');
+    CITIES.forEach(([name, lon, lat]) => {
+      const [px, py] = project(lon, lat);
+      parts.push('<circle class="map-city-dot" cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) + '" r="2"/>');
+      parts.push('<text class="map-city-label" x="' + (px + 4).toFixed(1) + '" y="' + (py + 3).toFixed(1) + '">' + name + '</text>');
+    });
+    parts.push('</g>');
+
+    parts.push('<g id="mapStations"></g>');
+    svg.innerHTML = parts.join("");
+    applyTransform();
+    applyToggles();
+  }
+
+  function esc(s) { return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+  function renderStations(rows) {
+    lastRows = rows;
+    const g = document.getElementById("mapStations");
+    if (!g) return;
+    // jitter identical coordinates slightly so overlapping stations are visible
+    const seen = {};
+    let parts = [];
+    rows.forEach(r => {
+      if (r.dlat == null || r.dlon == null) return;
+      let [px, py] = project(r.dlon, r.dlat);
+      const key = px.toFixed(1) + "," + py.toFixed(1);
+      const n = seen[key] || 0; seen[key] = n + 1;
+      if (n > 0) { const a = n * 1.8; px += Math.cos(a) * (3 + n); py += Math.sin(a) * (3 + n); }
+      const cls = r.isGreen ? "map-station green" : "map-station other";
+      const title = r.call + (r.comment ? " — " + r.comment : "");
+      parts.push('<circle class="' + cls + '" cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) +
+                 '" r="4"><title>' + esc(title) + '</title></circle>');
+      parts.push('<text class="map-station-label" x="' + (px + 5).toFixed(1) + '" y="' + (py - 5).toFixed(1) + '">' + esc(r.call) + '</text>');
+    });
+    g.innerHTML = parts.join("");
+    applyToggles();
+    document.getElementById("mapCount").textContent = rows.length + " station" + (rows.length === 1 ? "" : "s") + " plotted";
+  }
+
+  function applyTransform() {
+    const base = document.getElementById("mapBase");
+    const cities = document.getElementById("mapCities");
+    const st = document.getElementById("mapStations");
+    const t = "translate(" + mapView.tx + "," + mapView.ty + ") scale(" + mapView.scale + ")";
+    [base, cities, st].forEach(el => { if (el) el.setAttribute("transform", t); });
+  }
+  function applyToggles() {
+    const cities = document.getElementById("mapCities");
+    const showCities = document.getElementById("tgCities").checked;
+    if (cities) cities.style.display = showCities ? "" : "none";
+    const showLabels = document.getElementById("tgLabels").checked;
+    document.querySelectorAll(".map-station-label").forEach(el => el.style.display = showLabels ? "" : "none");
+  }
+  function updateSourceNote() {
+    document.getElementById("mapSource").textContent =
+      "Map source: " + geoSourceLabel + ". Drop a us-states.geojson next to this file for accurate state borders.";
+  }
+
+  function showMap(rows) {
+    document.getElementById("mapEmpty").style.display = rows && rows.length ? "none" : "";
+    document.getElementById("map").style.display = rows && rows.length ? "block" : "none";
+    document.getElementById("mapStatus").textContent = rows && rows.length
+      ? rows.length + " station" + (rows.length === 1 ? "" : "s") + " from the latest conversion."
+      : "No stations yet — paste a report on the Convert tab.";
+    if (rows && rows.length) {
+      renderBaseMap();
+      renderStations(rows);
+    }
+    updateSourceNote();
+  }
+
+  // ================= END MAP MODULE =================
+
+  // ---- UI wiring ----
+  const $ = (id) => document.getElementById(id);
+  let lastOutput = "";
+  let lastParsedRows = [];
+
+  function getMode() {
+    const r = document.querySelector('input[name="sym"]:checked');
+    return r ? r.value : "anygreen";
+  }
+
+  function setStatus(msg, cls) {
+    const s = $("status");
+    s.textContent = msg;
+    s.className = "status" + (cls ? " " + cls : "");
+  }
+
+  function run() {
+    const text = $("input").value;
+    if (!text.trim()) { setStatus("Paste a report first.", "err"); return; }
+    const { packets, rows, skipped } = parse(text, getMode());
+
+    if (packets.length === 0) {
+      setStatus("No stations found — check the pasted format.", "err");
+      $("preview").textContent = "(nothing parsed)";
+      $("count").textContent = "";
+      $("download").disabled = true;
+      $("copy").disabled = true;
+      lastOutput = "";
+      return;
+    }
+
+    lastOutput = packets.join("\r\n") + "\r\n";
+    $("preview").textContent = packets.join("\n");
+
+    const greenCount = rows.filter(r => r.sym === "\\W").length;
+    let countMsg = packets.length + " station" + (packets.length === 1 ? "" : "s") +
+                   " parsed — " + greenCount + " green circle, " + (packets.length - greenCount) + " X.";
+    if (skipped.length) countMsg += "  ⚠ " + skipped.length + " line(s) skipped.";
+    $("count").innerHTML = skipped.length
+      ? countMsg.replace(/⚠.*/, '<span class="warn">⚠ ' + skipped.length + ' line(s) skipped.</span>')
+      : countMsg;
+
+    $("download").disabled = false;
+    $("copy").disabled = false;
+    setStatus("Ready.", "ok");
+
+    // Feed the map (re-renders if the Map tab is showing; otherwise cached)
+    lastParsedRows = rows;
+    if (document.getElementById("view-map").classList.contains("active")) showMap(rows);
+    if (window._updateTileMapRows) window._updateTileMapRows(rows);
+  }
+
+  function download() {
+    if (!lastOutput) return;
+    let fn = ($("filename").value || "winlink").trim().replace(/\.pos$/i, "");
+    if (!fn) fn = "winlink";
+    const blob = new Blob([lastOutput], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = fn + ".pos";
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setStatus("Downloaded " + fn + ".pos", "ok");
+  }
+
+  async function copy() {
+    if (!lastOutput) return;
+    try {
+      await navigator.clipboard.writeText(lastOutput);
+      setStatus("Copied to clipboard.", "ok");
+    } catch (e) {
+      // Fallback for offline / insecure-context browsers
+      const ta = document.createElement("textarea");
+      ta.value = lastOutput; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); setStatus("Copied to clipboard.", "ok"); }
+      catch (e2) { setStatus("Copy failed — select the preview manually.", "err"); }
+      document.body.removeChild(ta);
+    }
+  }
+
+  $("convert").addEventListener("click", run);
+  $("download").addEventListener("click", download);
+  $("copy").addEventListener("click", copy);
+  // Re-run automatically when the symbol mode changes, if there's already input
+  document.querySelectorAll('input[name="sym"]').forEach(el =>
+    el.addEventListener("change", () => { if (lastOutput || $("input").value.trim()) run(); }));
+
+  // ---- Tab switching ----
+  document.querySelectorAll(".tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".tabview").forEach(v => v.classList.remove("active"));
+      tab.classList.add("active");
+      const which = tab.getAttribute("data-tab");
+      document.getElementById("view-" + which).classList.add("active");
+      if (which === "map") showMap(lastParsedRows);
+      if (which === "tilemap" && window._showTileMap) window._showTileMap(lastParsedRows);
+    });
+  });
+
+  // ---- Map controls: zoom & pan ----
+  function clampScale(s) { return Math.max(1, Math.min(8, s)); }
+  function zoomBy(factor) {
+    const ns = clampScale(mapView.scale * factor);
+    // keep center roughly stable
+    const cx = MAPW / 2, cy = MAPH / 2;
+    mapView.tx = cx - (cx - mapView.tx) * (ns / mapView.scale);
+    mapView.ty = cy - (cy - mapView.ty) * (ns / mapView.scale);
+    mapView.scale = ns;
+    applyTransform();
+  }
+  $("zoomIn").addEventListener("click", () => zoomBy(1.4));
+  $("zoomOut").addEventListener("click", () => zoomBy(1 / 1.4));
+  $("zoomReset").addEventListener("click", () => { mapView = { scale: 1, tx: 0, ty: 0 }; applyTransform(); });
+  $("tgCities").addEventListener("change", applyToggles);
+  $("tgLabels").addEventListener("change", applyToggles);
+
+  (function () {
+    const svg = $("map");
+    let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    function pt(e) {
+      const r = svg.getBoundingClientRect();
+      const t = e.touches ? e.touches[0] : e;
+      return { x: (t.clientX - r.left) / r.width * MAPW, y: (t.clientY - r.top) / r.height * MAPH };
+    }
+    function start(e) { dragging = true; svg.classList.add("dragging"); const p = pt(e); sx = p.x; sy = p.y; ox = mapView.tx; oy = mapView.ty; }
+    function move(e) {
+      if (!dragging) return;
+      const p = pt(e);
+      mapView.tx = ox + (p.x - sx);
+      mapView.ty = oy + (p.y - sy);
+      applyTransform();
+      if (e.cancelable) e.preventDefault();
+    }
+    function end() { dragging = false; svg.classList.remove("dragging"); }
+    svg.addEventListener("mousedown", start);
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", end);
+    svg.addEventListener("touchstart", start, { passive: true });
+    svg.addEventListener("touchmove", move, { passive: false });
+    svg.addEventListener("touchend", end);
+    svg.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const p = pt(e);
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const ns = clampScale(mapView.scale * factor);
+      mapView.tx = p.x - (p.x - mapView.tx) * (ns / mapView.scale);
+      mapView.ty = p.y - (p.y - mapView.ty) * (ns / mapView.scale);
+      mapView.scale = ns;
+      applyTransform();
+    }, { passive: false });
+  })();
+
+  // Attempt to upgrade to accurate borders if the sibling file exists (offline-safe)
+  tryLoadGeoJSON();
+  updateSourceNote();
+})();
+</script>
+
+<script src="/map-assets/maplibre-gl.js"></script>
+<script src="/map-assets/pmtiles.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ---- Tile Map (MapLibre + PMTiles) ----
+  const WA_BOUNDS = [[-124.8, 45.5], [-116.9, 49.0]]; // Washington state [SW, NE]
+  const HOST = location.hostname;
+
+  let tileMap = null;          // MapLibre map instance (lazy-init)
+  let stationMarkers = [];     // current markers on the tile map
+
+  // PMTiles protocol — registered once before any map is created
+  const _ptProtocol = new pmtiles.Protocol();
+  maplibregl.addProtocol('pmtiles', _ptProtocol.tile.bind(_ptProtocol));
+
+  const TILE_FILE   = 'washington.pmtiles';
+  const tilesUrl    = location.origin + '/maps/' + TILE_FILE;
+  const GLYPHS_URL  = location.origin + '/map-assets/fonts/{fontstack}/{range}.pbf';
+
+  // Dark street map style using OASIS PMTiles (BBBike/ogr2ogr/tippecanoe layers)
+  const MAP_STYLE = {
+    version: 8,
+    glyphs: GLYPHS_URL,
+    sources: {
+      osm: { type: "vector", url: "pmtiles://" + tilesUrl }
+    },
+    layers: [
+      { id: "background", type: "background", paint: { "background-color": "#1a1f2e" } },
+      // Water bodies (multipolygons)
+      { id: "water", type: "fill", source: "osm", "source-layer": "multipolygons",
+        filter: ["any", ["==", ["get", "natural"], "water"], ["==", ["get", "waterway"], "riverbank"]],
+        paint: { "fill-color": "#1a3a5c" } },
+      // Parks & nature (multipolygons)
+      { id: "park", type: "fill", source: "osm", "source-layer": "multipolygons",
+        filter: ["any",
+          ["in", ["get", "leisure"], ["literal", ["park","nature_reserve","garden"]]],
+          ["in", ["get", "landuse"],  ["literal", ["forest","grass","meadow","village_green"]]]
+        ],
+        paint: { "fill-color": "#1e3020", "fill-opacity": 0.7 } },
+      // General landuse (multipolygons)
+      { id: "landuse", type: "fill", source: "osm", "source-layer": "multipolygons",
+        filter: ["has", "landuse"],
+        paint: { "fill-color": "#1c2230", "fill-opacity": 0.6 } },
+      // Buildings (multipolygons, zoom 13+)
+      { id: "building", type: "fill", source: "osm", "source-layer": "multipolygons",
+        minzoom: 13,
+        filter: ["has", "building"],
+        paint: { "fill-color": "#252c3a", "fill-outline-color": "#2e3848" } },
+      // Waterways (lines)
+      { id: "waterway", type: "line", source: "osm", "source-layer": "lines",
+        filter: ["has", "waterway"],
+        paint: { "line-color": "#1a3a5c", "line-width": 1 } },
+      // Roads (lines by OSM highway value)
+      { id: "road-motorway", type: "line", source: "osm", "source-layer": "lines",
+        filter: ["in", ["get", "highway"], ["literal", ["motorway","motorway_link"]]],
+        paint: { "line-color": "#00d98b", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 1.5, 10, 4, 14, 8] } },
+      { id: "road-trunk", type: "line", source: "osm", "source-layer": "lines",
+        filter: ["in", ["get", "highway"], ["literal", ["trunk","trunk_link"]]],
+        paint: { "line-color": "#0a7a52", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 1, 10, 3, 14, 6] } },
+      { id: "road-primary", type: "line", source: "osm", "source-layer": "lines",
+        filter: ["in", ["get", "highway"], ["literal", ["primary","primary_link"]]],
+        paint: { "line-color": "#2a3a50", "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1, 12, 3, 14, 5] } },
+      { id: "road-secondary", type: "line", source: "osm", "source-layer": "lines",
+        filter: ["in", ["get", "highway"], ["literal", ["secondary","tertiary","secondary_link","tertiary_link"]]],
+        paint: { "line-color": "#222a38", "line-width": ["interpolate", ["linear"], ["zoom"], 10, 0.5, 14, 3] } },
+      { id: "road-minor", type: "line", source: "osm", "source-layer": "lines",
+        filter: ["in", ["get", "highway"], ["literal", ["residential","unclassified","service","track"]]],
+        paint: { "line-color": "#1c2330", "line-width": ["interpolate", ["linear"], ["zoom"], 12, 0.3, 14, 1.5] } },
+      // Admin boundaries (lines)
+      { id: "boundary-state", type: "line", source: "osm", "source-layer": "lines",
+        filter: ["all", ["==", ["get", "boundary"], "administrative"], ["==", ["get", "admin_level"], "4"]],
+        paint: { "line-color": "#4a5568", "line-width": 1.2, "line-dasharray": [4, 3] } },
+      { id: "boundary-county", type: "line", source: "osm", "source-layer": "lines",
+        filter: ["all", ["==", ["get", "boundary"], "administrative"], ["==", ["get", "admin_level"], "6"]],
+        minzoom: 8,
+        paint: { "line-color": "#2a3441", "line-width": 0.6 } },
+      // Place labels (points)
+      { id: "label-place-city", type: "symbol", source: "osm", "source-layer": "points",
+        filter: ["in", ["get", "place"], ["literal", ["city", "town"]]],
+        layout: { "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]],
+          "text-font": ["Open Sans Regular"], "text-size": 12, "text-anchor": "left", "text-offset": [0.5, 0] },
+        paint: { "text-color": "#d7e0ea", "text-halo-color": "#0d1117", "text-halo-width": 1.5 } },
+      { id: "label-place-village", type: "symbol", source: "osm", "source-layer": "points",
+        filter: ["in", ["get", "place"], ["literal", ["village", "suburb", "hamlet"]]],
+        minzoom: 10,
+        layout: { "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]],
+          "text-font": ["Open Sans Regular"], "text-size": 10, "text-anchor": "left", "text-offset": [0.5, 0] },
+        paint: { "text-color": "#8b97a6", "text-halo-color": "#0d1117", "text-halo-width": 1.5 } }
+    ]
+  };
+
+  function initTileMap() {
+    if (tileMap) return;
+    tileMap = new maplibregl.Map({
+      container: "tilemapContainer",
+      style: MAP_STYLE,
+      bounds: WA_BOUNDS,
+      fitBoundsOptions: { padding: 30 },
+      attributionControl: false
+    });
+    tileMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+  }
+
+  function clearStationMarkers() {
+    stationMarkers.forEach(m => m.remove());
+    stationMarkers = [];
+  }
+
+  function plotStations(rows) {
+    clearStationMarkers();
+    if (!rows || !rows.length) return;
+
+    rows.forEach(r => {
+      if (r.dlat == null || r.dlon == null) return;
+      const color = r.isGreen ? "#00d98b" : "#d98a3a";
+
+      // Custom dot marker element
+      const el = document.createElement("div");
+      el.style.cssText = [
+        "width:12px", "height:12px", "border-radius:50%",
+        "background:" + color, "border:2px solid #11151c",
+        "cursor:pointer", "box-shadow:0 0 4px " + color + "88"
+      ].join(";");
+
+      const popup = new maplibregl.Popup({ offset: 10, closeButton: false })
+        .setHTML("<strong>" + r.call + "</strong>" + (r.comment ? "<br>" + r.comment : ""));
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([r.dlon, r.dlat])
+        .setPopup(popup)
+        .addTo(tileMap);
+
+      stationMarkers.push(marker);
+    });
+
+    const countEl = document.getElementById("tilemapCount");
+    if (countEl) countEl.textContent = rows.length + " station" + (rows.length === 1 ? "" : "s") + " plotted";
+
+    const statusEl = document.getElementById("tilemapStatus");
+    if (statusEl) {
+      statusEl.textContent = rows.length + " station" + (rows.length === 1 ? "" : "s") + " from the latest conversion.";
+      statusEl.className = "ok";
+    }
+  }
+
+  function showTileMap(rows) {
+    initTileMap();
+    // MapLibre needs the container to be visible before resize/plot
+    if (tileMap) {
+      tileMap.resize();
+      plotStations(rows || []);
+    }
+  }
+
+  // Expose to main script via window so the tab-switch handler can call it
+  window._showTileMap = showTileMap;
+  window._updateTileMapRows = function (rows) {
+    // Called after a conversion if the tilemap tab is active
+    if (document.getElementById("view-tilemap").classList.contains("active")) {
+      plotStations(rows);
+    }
+  };
+
+  document.getElementById("tilemapFit").addEventListener("click", function () {
+    if (tileMap) tileMap.fitBounds(WA_BOUNDS, { padding: 30, duration: 600 });
+  });
+})();
+</script>
+</body>
+</html>

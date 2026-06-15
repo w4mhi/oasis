@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>APRS Station Map</title>
+<link rel="stylesheet" href="/map-assets/maplibre-gl.css">
+<link rel="stylesheet" href="../css/common.css">
+<style>
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);}
+
+#topbar{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  background:var(--panel);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:.75rem;padding:.45rem .9rem;height:44px;
+}
+#topbar h1{font-size:var(--fs-base);letter-spacing:.08em;color:var(--accent);text-transform:uppercase;white-space:nowrap;}
+#statusDot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);flex-shrink:0;}
+#statusDot.ok{background:var(--accent);}
+#statusDot.err{background:var(--red);}
+#statusMsg{font-size:var(--fs-small);color:var(--text-dim);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#stationCount{font-size:var(--fs-small);color:var(--amber);white-space:nowrap;}
+#refreshBtn{
+  background:transparent;border:1px solid var(--border);color:var(--text-dim);
+  font-family:var(--mono);font-size:var(--fs-small);padding:3px 10px;border-radius:4px;cursor:pointer;
+  white-space:nowrap;
+}
+#refreshBtn:hover{color:var(--accent);border-color:var(--accent-dim);}
+#filterSel{
+  background:var(--bg);border:1px solid var(--border);color:var(--text);
+  font-family:var(--mono);font-size:var(--fs-small);padding:3px 8px;border-radius:4px;cursor:pointer;
+}
+#filterSel:focus{outline:none;border-color:var(--accent-dim);}
+
+#map{position:fixed;top:44px;left:0;right:0;bottom:0;}
+
+/* Popup */
+.maplibregl-popup-content{
+  background:var(--panel);color:var(--text);border:1px solid var(--border);
+  border-radius:7px;font-family:var(--mono);font-size:var(--fs-label);padding:9px 12px;
+  min-width:160px;max-width:240px;
+}
+.maplibregl-popup-tip{border-top-color:var(--panel)!important;}
+.maplibregl-ctrl-group{background:var(--panel)!important;border:1px solid var(--border)!important;}
+.maplibregl-ctrl-group button{background:var(--panel)!important;}
+.pop-call{font-size:var(--fs-subtitle);font-weight:700;color:var(--accent);margin-bottom:4px;}
+.pop-row{display:flex;gap:.4rem;margin-top:2px;font-size:var(--fs-small);}
+.pop-lbl{color:var(--text-dim);min-width:52px;}
+.pop-val{color:var(--text);}
+.pop-comment{margin-top:5px;padding-top:5px;border-top:1px solid var(--border);font-size:var(--fs-small);color:var(--text-dim);word-break:break-word;}
+
+/* APRS symbol marker — canvas IS the marker element */
+.aprs-marker{
+  width:24px;height:24px;cursor:pointer;
+  display:block;
+  image-rendering:pixelated;
+}
+/* Callsign label above marker */
+.call-label{
+  font-family:var(--mono);font-size:10px;font-weight:700;
+  color:#e8f0f8;
+  text-shadow:0 0 3px #0d1117,0 0 3px #0d1117,-1px -1px 0 #0d1117,1px -1px 0 #0d1117,-1px 1px 0 #0d1117,1px 1px 0 #0d1117;
+  white-space:nowrap;pointer-events:none;line-height:1;
+}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>APRS Map</h1>
+  <div id="statusDot"></div>
+  <span id="statusMsg">Connecting…</span>
+  <span id="stationCount"></span>
+  <span id="countdown"></span>
+  <select id="filterSel" onchange="applyFilter()">
+    <option value="15">Last 15 min</option>
+    <option value="30">Last 30 min</option>
+    <option value="60">Last 60 min</option>
+    <option value="1440">Last 24 hrs</option>
+    <option value="0" selected>All</option>
+  </select>
+  <button id="refreshBtn" onclick="fetchStations()">↺ Refresh</button>
+</div>
+
+<div id="map"></div>
+
+<script src="/map-assets/maplibre-gl.js"></script>
+<script src="/map-assets/pmtiles.js"></script>
+<script>
+'use strict';
+
+const HOST = location.hostname;
+
+// Ports default to well-known values; overridden by /server-ports.json on load.
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085 };
+
+async function loadConfig() {
+  try {
+    const r = await fetch('/server-ports.json', { cache: 'no-store' });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.ok && d.ports) Object.assign(PORTS, d.ports);
+    }
+  } catch (_) { /* use defaults */ }
+}
+
+// ── Sprite sheets (primary and alternate tables) ────────────────────────────
+const SPRITE_CELL = 24;
+const SPRITE_COLS = 16;
+const ALT_TABLE = String.fromCharCode(92); // backslash
+
+const spriteImgs = {};
+spriteImgs['/']        = new Image();
+spriteImgs[ALT_TABLE]  = new Image();
+spriteImgs['/'].src        = '/map-assets/aprs-symbols-24-0.png';
+spriteImgs[ALT_TABLE].src  = '/map-assets/aprs-symbols-24-1.png';
+
+// Get pixel offset in sprite for a symbol code char
+function symOffset(code) {
+  const idx = code.charCodeAt(0) - 33;
+  if (idx < 0 || idx > 95) return [0, 0];
+  const col = idx % SPRITE_COLS;
+  const row = Math.floor(idx / SPRITE_COLS);
+  return [col * SPRITE_CELL, row * SPRITE_CELL];
+}
+
+// Is this an overlay table char (not '/' and not backslash)?
+function isOverlay(table) {
+  return table !== '/' && table !== ALT_TABLE;
+}
+
+// Build a canvas element as the marker — stable anchor point, no wrapper div
+function makeMarkerEl(symTable, symCode) {
+  const canvas = document.createElement('canvas');
+  canvas.width  = SPRITE_CELL;
+  canvas.height = SPRITE_CELL;
+  canvas.className = 'aprs-marker';
+  canvas.style.width  = SPRITE_CELL + 'px';
+  canvas.style.height = SPRITE_CELL + 'px';
+
+  // Pick the right sprite: alternate table for backslash, primary for '/' and overlays
+  // Overlays use the alternate sprite sheet at the same symbol position
+  const sprite = (isOverlay(symTable) || symTable === ALT_TABLE)
+    ? spriteImgs[ALT_TABLE]
+    : spriteImgs['/'];
+
+  function draw() {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, SPRITE_CELL, SPRITE_CELL);
+    const [sx, sy] = symOffset(symCode);
+    ctx.drawImage(sprite, sx, sy, SPRITE_CELL, SPRITE_CELL, 0, 0, SPRITE_CELL, SPRITE_CELL);
+    // Draw overlay letter directly into the canvas bottom-right corner
+    if (isOverlay(symTable)) {
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(15, 15, 9, 9);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(symTable, 19.5, 19.5);
+    }
+  }
+
+  if (sprite.complete && sprite.naturalWidth > 0) {
+    draw();
+  } else {
+    sprite.addEventListener('load', draw, { once: true });
+  }
+
+  return canvas;
+}
+
+// ── Map setup ────────────────────────────────────────────────────────────────
+// PMTiles protocol — must be registered before the map is created
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+
+const TILE_FILE = 'washington.pmtiles';
+const tilesUrl  = location.origin + '/maps/' + TILE_FILE;
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    glyphs: location.origin + '/map-assets/fonts/{fontstack}/{range}.pbf',
+    sources: {
+      osm: { type: 'vector', url: 'pmtiles://' + tilesUrl }
+    },
+    layers: [
+      { id: 'background', type: 'background', paint: { 'background-color': '#1a1f2e' } },
+      // Water bodies (multipolygons)
+      { id: 'water', type: 'fill', source: 'osm', 'source-layer': 'multipolygons',
+        filter: ['any', ['==', ['get', 'natural'], 'water'], ['==', ['get', 'waterway'], 'riverbank']],
+        paint: { 'fill-color': '#1a3a5c' } },
+      // Parks & nature (multipolygons)
+      { id: 'park', type: 'fill', source: 'osm', 'source-layer': 'multipolygons',
+        filter: ['any',
+          ['in', ['get', 'leisure'], ['literal', ['park','nature_reserve','garden']]],
+          ['in', ['get', 'landuse'],  ['literal', ['forest','grass','meadow','village_green']]]
+        ],
+        paint: { 'fill-color': '#1e3020', 'fill-opacity': 0.7 } },
+      // General landuse (multipolygons)
+      { id: 'landuse', type: 'fill', source: 'osm', 'source-layer': 'multipolygons',
+        filter: ['has', 'landuse'],
+        paint: { 'fill-color': '#1c2230', 'fill-opacity': 0.6 } },
+      // Buildings (multipolygons, zoom 13+)
+      { id: 'building', type: 'fill', source: 'osm', 'source-layer': 'multipolygons',
+        minzoom: 13, filter: ['has', 'building'],
+        paint: { 'fill-color': '#252c3a', 'fill-outline-color': '#2e3848' } },
+      // Waterways (lines)
+      { id: 'waterway', type: 'line', source: 'osm', 'source-layer': 'lines',
+        filter: ['has', 'waterway'],
+        paint: { 'line-color': '#1a3a5c', 'line-width': 1 } },
+      // Roads (lines, by OSM highway value)
+      { id: 'road-motorway', type: 'line', source: 'osm', 'source-layer': 'lines',
+        filter: ['in', ['get', 'highway'], ['literal', ['motorway','motorway_link']]],
+        paint: { 'line-color': '#00d98b', 'line-width': ['interpolate',['linear'],['zoom'],6,1.5,10,4,14,8] } },
+      { id: 'road-trunk', type: 'line', source: 'osm', 'source-layer': 'lines',
+        filter: ['in', ['get', 'highway'], ['literal', ['trunk','trunk_link']]],
+        paint: { 'line-color': '#0a7a52', 'line-width': ['interpolate',['linear'],['zoom'],6,1,10,3,14,6] } },
+      { id: 'road-primary', type: 'line', source: 'osm', 'source-layer': 'lines',
+        filter: ['in', ['get', 'highway'], ['literal', ['primary','primary_link']]],
+        paint: { 'line-color': '#2a3a50', 'line-width': ['interpolate',['linear'],['zoom'],8,1,12,3,14,5] } },
+      { id: 'road-secondary', type: 'line', source: 'osm', 'source-layer': 'lines',
+        filter: ['in', ['get', 'highway'], ['literal', ['secondary','tertiary','secondary_link','tertiary_link']]],
+        paint: { 'line-color': '#222a38', 'line-width': ['interpolate',['linear'],['zoom'],10,0.5,14,3] } },
+      // Admin boundaries (lines)
+      { id: 'boundary-state', type: 'line', source: 'osm', 'source-layer': 'lines',
+        filter: ['all', ['==', ['get', 'boundary'], 'administrative'], ['==', ['get', 'admin_level'], '4']],
+        paint: { 'line-color': '#4a5568', 'line-width': 1.2, 'line-dasharray': [4,3] } },
+      { id: 'boundary-county', type: 'line', source: 'osm', 'source-layer': 'lines',
+        filter: ['all', ['==', ['get', 'boundary'], 'administrative'], ['==', ['get', 'admin_level'], '6']],
+        minzoom: 8, paint: { 'line-color': '#2a3441', 'line-width': 0.6 } },
+      // Place labels (points)
+      { id: 'label-place', type: 'symbol', source: 'osm', 'source-layer': 'points',
+        filter: ['in', ['get', 'place'], ['literal', ['city','town']]],
+        layout: { 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
+          'text-font': ['Open Sans Regular'],
+          'text-size': 11, 'text-anchor': 'left', 'text-offset': [0.5,0] },
+        paint: { 'text-color': '#d7e0ea', 'text-halo-color': '#0d1117', 'text-halo-width': 1.5 } },
+      { id: 'label-village', type: 'symbol', source: 'osm', 'source-layer': 'points',
+        filter: ['in', ['get', 'place'], ['literal', ['village','suburb','hamlet']]],
+        minzoom: 10,
+        layout: { 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
+          'text-font': ['Open Sans Regular'],
+          'text-size': 9, 'text-anchor': 'left', 'text-offset': [0.5,0] },
+        paint: { 'text-color': '#8b97a6', 'text-halo-color': '#0d1117', 'text-halo-width': 1.5 } }
+    ]
+  },
+  center: [-122.1, 47.6],
+  zoom: 9,
+  attributionControl: false
+});
+
+map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
+
+// ── Station markers ──────────────────────────────────────────────────────────
+let markers = [];
+let openPopup = null;
+
+function clearMarkers() {
+  markers.forEach(m => m.remove());
+  markers = [];
+}
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toUTCString().replace(/.*?, /, '').replace(/:(\d\d) GMT/, ' UTC');
+}
+
+function fmtCourse(deg) {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg / 22.5) % 16] + ' (' + deg + '°)';
+}
+
+function buildPopup(s) {
+  let html = '<div class="pop-call">' + s.callsign + (s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : '') + '</div>';
+  html += '<div class="pop-row"><span class="pop-lbl">Last heard</span><span class="pop-val">' + fmtTime(s.last_heard) + '</span></div>';
+  if (s.speed_mph > 0) {
+    html += '<div class="pop-row"><span class="pop-lbl">Speed</span><span class="pop-val">' + s.speed_mph + ' mph</span></div>';
+    if (s.course !== null) {
+      html += '<div class="pop-row"><span class="pop-lbl">Course</span><span class="pop-val">' + fmtCourse(s.course) + '</span></div>';
+    }
+  }
+  if (s.alt_m && s.alt_m > 0) {
+    html += '<div class="pop-row"><span class="pop-lbl">Alt</span><span class="pop-val">' + Math.round(s.alt_m * 3.28084) + ' ft</span></div>';
+  }
+  html += '<div class="pop-row"><span class="pop-lbl">Via</span><span class="pop-val">' + (s.via || 'direct') + '</span></div>';
+  if (s.comment) {
+    html += '<div class="pop-comment">' + s.comment.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+  }
+  return html;
+}
+
+function plotStations(stations) {
+  clearMarkers();
+  stations.forEach(s => {
+    if (s.lat == null || s.lon == null) return;
+
+    const el = makeMarkerEl(s.sym_table, s.sym_code);
+
+    const popup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '260px' })
+      .setHTML(buildPopup(s));
+
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([s.lon, s.lat])
+      .setPopup(popup)
+      .addTo(map);
+
+    markers.push(marker);
+
+    // Callsign label — separate marker offset above the icon
+    const labelEl = document.createElement('div');
+    labelEl.className = 'call-label';
+    labelEl.textContent = s.callsign;
+    const labelMarker = new maplibregl.Marker({ element: labelEl, anchor: 'bottom', offset: [0, -12] })
+      .setLngLat([s.lon, s.lat])
+      .addTo(map);
+    markers.push(labelMarker);
+  });
+}
+
+// ── Data fetching ────────────────────────────────────────────────────────────
+const API_URL = () => 'http://' + HOST + ':' + PORTS.aprs_api + '/api/aprs/stations';
+const REFRESH_SEC = 15;
+let countdown = REFRESH_SEC;
+let timer = null;
+let allStations = []; // full unfiltered station list
+
+function applyFilter() {
+  const minutes = parseInt(document.getElementById('filterSel').value);
+  let filtered = allStations;
+  if (minutes > 0) {
+    const cutoff = Date.now() - minutes * 60 * 1000;
+    filtered = allStations.filter(s => {
+      if (!s.last_heard) return false;
+      return new Date(s.last_heard).getTime() >= cutoff;
+    });
+  }
+  plotStations(filtered);
+  const total = allStations.length;
+  const shown = filtered.length;
+  document.getElementById('stationCount').textContent =
+    shown + ' of ' + total + ' station' + (total !== 1 ? 's' : '');
+}
+
+function setStatus(state, msg) {
+  const dot = document.getElementById('statusDot');
+  dot.className = state; // 'ok', 'err', or ''
+  document.getElementById('statusMsg').textContent = msg;
+}
+
+function updateCountdown() {
+  document.getElementById('countdown').textContent = 'next: ' + countdown + 's';
+}
+
+function startCountdown() {
+  clearInterval(timer);
+  countdown = REFRESH_SEC;
+  updateCountdown();
+  timer = setInterval(() => {
+    countdown--;
+    updateCountdown();
+    if (countdown <= 0) fetchStations();
+  }, 1000);
+}
+
+async function fetchStations() {
+  setStatus('', 'Fetching…');
+  try {
+    const res = await fetch(API_URL(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'API error');
+    allStations = data.stations;
+    applyFilter();
+    setStatus('ok', 'Updated ' + new Date().toLocaleTimeString());
+  } catch (e) {
+    setStatus('err', 'Error: ' + e.message);
+  }
+  startCountdown();
+}
+
+// Start after config + map both load
+loadConfig().then(() => { map.on('load', () => fetchStations()); });
+</script>
+</body>
+</html>

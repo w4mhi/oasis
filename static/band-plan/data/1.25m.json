@@ -1,0 +1,66 @@
+{
+  "band": "1.25m",
+  "name": "1.25 Meters",
+  "range": [222, 225],
+  "unit": "MHz",
+  "license": "Tech+",
+  "allocation": "Primary",
+  "notes": [
+    "222.1 MHz: SSB/CW national calling frequency",
+    "223.5 MHz: FM national simplex calling frequency"
+  ],
+  "rows": [
+    {
+      "range": [222.0, 225.0],
+      "segments": [
+        {
+          "start": 222.0, "end": 222.25,
+          "position": "bottom",
+          "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "Weak-signal modes: EME (222.0–222.025), propagation beacons (222.05–222.06), SSB/CW calling 222.1 MHz, weak-signal CW/SSB to 222.15. Local coordinator option 222.15–222.25 (weak signal, ACSB, repeater inputs, control)."
+        },
+        {
+          "start": 222.25, "end": 223.38,
+          "position": "top",
+          "type": "fm-rpt", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "FM repeater inputs only, 222.25–223.38 MHz."
+        },
+        {
+          "start": 223.38, "end": 223.52,
+          "position": "bottom",
+          "type": "fm-simp", "color": "#c77dff",
+          "label": "FM Simplex",
+          "detail": "FM simplex channels, 223.38–223.52 MHz. National FM simplex calling: 223.5 MHz."
+        },
+        {
+          "start": 223.52, "end": 223.64,
+          "position": "top",
+          "type": "dig", "color": "#f4a261",
+          "label": "Digital / Data",
+          "detail": "Digital and packet operations, 223.52–223.64 MHz."
+        },
+        {
+          "start": 223.64, "end": 223.85,
+          "position": "bottom",
+          "type": "dig", "color": "#8b6914",
+          "label": "Links / Control / Local",
+          "detail": "223.64–223.70: links and control. 223.71–223.85: local coordinator's option (FM simplex, packet, repeater outputs)."
+        },
+        {
+          "start": 223.85, "end": 225.0,
+          "position": "top",
+          "type": "fm-rpt", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "FM repeater outputs only, 223.85–224.98 MHz."
+        }
+      ],
+      "callouts": [
+        { "freq": 222.1, "label": "222.1", "sublabel": "SSB/CW Calling", "type": "calling", "side": "below" },
+        { "freq": 223.5, "label": "223.5", "sublabel": "FM Calling",     "type": "calling", "side": "below" }
+      ],
+      "ticks": [222.0, 222.25, 223.38, 223.52, 223.64, 223.85, 225.0]
+    }
+  ]
+}

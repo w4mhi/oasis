@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YAESU FTM-500DR Repeater</title>
+<link rel="stylesheet" href="../css/common.css">
+<style>
+.wrap { max-width: 1280px; }
+.tbl-wrap table { table-layout: fixed; width: 100%; min-width: 500px; }
+td, th { white-space: normal; vertical-align: top; word-break: break-word; }
+th { background: var(--panel-2); }
+td.op {
+  color: var(--amber);
+  font-size: var(--fs-base);
+  width: 18%;
+}
+tr.row-sep td {
+  padding: 0;
+  height: 2px;
+  background: var(--border);
+  border: none;
+}
+.note-block {
+  border: 1px solid var(--amber-dim);
+  border-left: 3px solid var(--amber);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: var(--fs-base);
+  line-height: 1.65;
+  padding: .75rem 1rem;
+  margin-top: .75rem;
+  word-break: break-word;
+}
+.note-block::before {
+  content: "Example ";
+  color: var(--amber);
+  font-weight: 700;
+  font-size: var(--fs-small);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  display: block;
+  margin-bottom: .35rem;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">🏠 HOME</a>
+    <h1>YAESU FTM-500DR Repeater</h1>
+    <p>Repeater how-to</p>
+  </header>
+
+  <div class="sec">
+    <div class="tbl-wrap">
+      <table>
+
+<tbody>
+<tr><td class="op">POWER</td><td>8</td><td>Repeater RX (Receives) on SUBCHANNEL and Tx (transmits) on MAIN</td></tr>
+<tr><td class="op">RPT ARS</td><td>25</td><td>Choose the Rx on Suchannel, Tx on the Main. No RPT ARS, choose SQL TYPE and SQL FREQUENCY</td></tr>
+<tr><td class="op">RPT SHIFT</td><td>26</td><td>Activate Repeater: DX (upper button) + FUNC Dial + Power. Deactivate same way.</td></tr>
+<tr><td class="op">SQL TYPE</td><td>45</td><td></td></tr>
+<tr><td class="op">TONE SQL FREQUENCY</td><td>46</td><td>To display the battery power during operations: GM (upper button) + FUNC Dial + Power. Doesn&#x27;t work in X-Band Repeater mode.</td></tr>
+</tbody>
+</table>
+    </div>
+  </div>
+  
+
+  <footer style="margin-top:1.5rem;font-size:var(--fs-small);color:var(--text-dim)">
+    Source: <code style="color:var(--amber-dim)">yaesu-ftm-500dr.csv</code>
+  </footer>
+
+</div>
+</body>
+</html>

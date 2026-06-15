@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>iGate &mdash; Graywolf Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a href="index.html" class="site-logo">
+      <img src="img/graywolf-logo.svg" alt="" />
+      <span>graywolf <span class="handbook-label">handbook</span></span>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" aria-label="Toggle theme">[ dark ]</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav>
+      <div class="sidebar-section">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="installation.html">Installation</a>
+      <a href="callsign.html">Station Callsign</a>
+      <div class="sidebar-section">Radio</div>
+      <a href="audio.html">Audio Devices</a>
+      <a href="channels.html">Radio Channels</a>
+      <a href="ptt.html">Push-to-Talk</a>
+      <div class="sidebar-section">APRS</div>
+      <a href="beacons.html">Beacons</a>
+      <a href="digipeater.html">Digipeater</a>
+      <a href="igate.html">iGate</a>
+      <a href="messaging.html">Messaging</a>
+      <a href="actions.html">Actions</a>
+      <a href="remote-actions.html">Remote Actions</a>
+      <a href="actions-handler-safety.html">Actions: Handler Safety</a>
+      <a href="actions-handler-safety-shell.html">&nbsp;&nbsp;&#8627; Shell handlers</a>
+      <a href="actions-handler-safety-powershell.html">&nbsp;&nbsp;&#8627; PowerShell handlers</a>
+      <a href="actions-handler-safety-webhooks.html">&nbsp;&nbsp;&#8627; Webhook handlers</a>
+      <a href="livemap.html">Live Map</a>
+      <div class="sidebar-section">Packet</div>
+      <a href="ax25-terminal.html">AX.25 Terminal</a>
+      <div class="sidebar-section">Interfaces</div>
+      <a href="kiss.html">KISS TNC</a>
+      <a href="remote-kiss-tnc.html">Remote KISS TNC</a>
+      <a href="agwpe.html">AGWPE</a>
+      <a href="gps.html">GPS</a>
+      <div class="sidebar-section">Operations</div>
+      <a href="history-database.html">Position Log</a>
+      <a href="logs.html">Logs</a>
+      <a href="monitoring.html">Monitoring</a>
+      <a href="simulation.html">Simulation</a>
+      <a href="maps.html">Maps</a>
+      <a href="preferences.html">Preferences</a>
+      <a href="architecture.html">Architecture</a>
+      <div class="sidebar-section">Reference</div>
+      <a href="configurations.html">Known-Working Configs</a>
+      <a href="api.html">REST API Reference</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>iGate</h1>
+    <p class="subtitle">Bridge RF packets to and from the APRS Internet System</p>
+
+    <p>
+      An iGate (Internet Gateway) connects your local RF APRS network to
+      the worldwide APRS-IS (APRS Internet System). Graywolf supports
+      bidirectional gating &mdash; forwarding packets from RF to the internet
+      and from the internet back to RF.
+    </p>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          <strong>Running APRS-IS only (no radio)?</strong> You don't need a
+          radio channel to send and receive APRS Messages. Set your station
+          callsign, enable the iGate, and skip the Channels page. On the
+          Preferences page, set <em>Messages &rarr; Send path</em> to
+          <em>APRS-IS only</em> if you want graywolf to skip the RF-first
+          attempt.
+        </p>
+      </div>
+    </div>
+
+    <h2>RF &rarr; APRS-IS (Connection)</h2>
+
+    <div class="screenshot">
+      <img src="img/igate-rf-to-is.png" alt="iGate RF to APRS-IS tab showing server, port, callsign, and passcode settings" />
+      <div class="caption">Connection settings for the APRS-IS network</div>
+    </div>
+
+    <p>
+      The first tab configures the APRS-IS connection used for both directions.
+      When enabled, graywolf connects to an APRS-IS server and gates eligible
+      RF-heard traffic up to the internet.
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Enable iGate</td>
+              <td>Off</td>
+              <td>Master switch for the iGate</td>
+            </tr>
+            <tr>
+              <td>APRS-IS Server</td>
+              <td><code>rotate.aprs2.net</code></td>
+              <td>APRS-IS server hostname</td>
+            </tr>
+            <tr>
+              <td>Port</td>
+              <td><code>14580</code></td>
+              <td>APRS-IS server port</td>
+            </tr>
+            <tr>
+              <td>Callsign</td>
+              <td>&mdash;</td>
+              <td>Login callsign (e.g., <code>N0CALL-5</code>)</td>
+            </tr>
+            <tr>
+              <td>Passcode</td>
+              <td>&mdash;</td>
+              <td>Computed automatically from your station callsign. Set the callsign on the Callsign page; graywolf derives the passcode at startup. A station callsign of <code>N0CALL</code> (the unset sentinel) yields the read-only passcode <code>-1</code>, which disables APRS-IS transmits.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          graywolf computes the APRS-IS passcode from your station callsign at
+          startup; you do not enter it manually. To run a receive-only station
+          that listens to APRS-IS without contributing, leave the station
+          callsign as <code>N0CALL</code> or disable the iGate entirely.
+        </p>
+      </div>
+    </div>
+
+    <h2>APRS-IS &rarr; RF</h2>
+
+    <div class="screenshot">
+      <img src="img/igate-is-to-rf.png" alt="iGate APRS-IS to RF tab showing server filter and gating rules" />
+      <div class="caption">Server filter and IS&rarr;RF gating rules configured for a single station</div>
+    </div>
+
+    <p>
+      The second tab controls what you receive from APRS-IS and what gets
+      gated to RF. There are two layers of filtering:
+    </p>
+
+    <ul>
+      <li><strong>Server filter</strong> &mdash; a coarse, network-level filter
+        sent to the APRS-IS server at login. It controls what traffic the server
+        forwards to you, reducing bandwidth. Uses
+        <a href="http://www.aprs-is.net/javAPRSFilter.aspx">APRS-IS filter syntax</a>
+        (e.g., <code>r/35.0/-106.0/100</code> for a 100&nbsp;km radius,
+        <code>b/NW5W-12</code> for a single station). If left empty, no packets
+        are received from APRS-IS.</li>
+      <li><strong>IS&rarr;RF gating rules</strong> &mdash; fine-grained, local rules
+        that decide which received packets are actually transmitted on RF.
+        If no rules are defined, nothing is gated.</li>
+    </ul>
+
+    <p>
+      Both layers are needed because APRS-IS filter syntax cannot express
+      everything the gating rules can. For example, there is no server-side
+      filter for &ldquo;messages addressed to a specific callsign&rdquo; &mdash;
+      you would need to pull all messages (<code>t/m</code>) and filter locally
+      with a Message Dest rule.
+    </p>
+
+    <h3>Spec-Mandated IS&rarr;RF Policy</h3>
+
+    <p>
+      Before your gating rules are consulted, every packet arriving from
+      APRS-IS passes through a spec-mandated policy gate. The gate has
+      two branches depending on packet type:
+    </p>
+
+    <ul>
+      <li><strong>Directed messages</strong> &mdash; forwarded only when
+        the addressee has been heard directly on RF (no digipeater
+        repeat) within the last 30 minutes. This is the APRS iGate
+        specification: remote-origin messages only reach RF when
+        there&rsquo;s a realistic chance the local recipient will hear
+        them. Bulletins (<code>BLN*</code>) and NWS broadcasts are
+        never gated.</li>
+      <li><strong>Non-message traffic</strong> (positions, weather,
+        telemetry, status) &mdash; forwarded only when the packet&rsquo;s
+        source shares your iGate&rsquo;s base callsign <em>but is not
+        your iGate&rsquo;s exact callsign</em>. So an iGate running as
+        <code>N0CALL-10</code> can echo <code>N0CALL-7</code> (e.g. a
+        family tracker or internet-fed weather station) onto local RF,
+        but packets from strangers and self-echoes from
+        <code>N0CALL-10</code> itself are dropped.</li>
+    </ul>
+
+    <p>
+      Packets that fail the policy gate never reach your gating rules.
+      Packets that pass still have to be allowed by a gating rule to
+      actually transmit &mdash; the gating rules are the narrower layer.
+      Every packet that does transmit is wrapped in APRS third-party
+      format so other iGates and applications can see it originated on
+      the internet side (this prevents re-gating loops).
+    </p>
+
+    <p>
+      Loop prevention applies to both branches: if your callsign
+      already appears in the packet&rsquo;s RF path, the packet has
+      already transited your station and will not be re-transmitted.
+    </p>
+
+    <h3>APRS-IS Server Filter</h3>
+
+    <p>
+      The <strong>APRS-IS Server Filter</strong> field is the filter string sent
+      to the APRS-IS server at login. If left empty, no packets are received.
+      Separate clauses with spaces.
+    </p>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          You don&rsquo;t need to add <code>g/</code> clauses for your
+          tactical chats &mdash; graywolf appends one automatically for
+          every enabled tactical callsign so APRS-IS forwards traffic
+          addressed to those tacticals. Manage tacticals from the
+          <a href="messaging.html">Messages</a> page.
+        </p>
+      </div>
+    </div>
+
+    <h3>IS &rarr; RF Gating Rules</h3>
+
+    <p>
+      Rules are evaluated in Priority order (lower = first).
+      The first matching rule decides whether the packet is allowed or denied.
+      If no rule matches, the packet is denied.
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Type</td>
+              <td>Match type: Callsign, Prefix, Message Dest, or Object</td>
+            </tr>
+            <tr>
+              <td>Pattern</td>
+              <td>Value to match against (e.g., <code>NW5W-12</code>, <code>W5</code>)</td>
+            </tr>
+            <tr>
+              <td>Action</td>
+              <td>Allow or Deny</td>
+            </tr>
+            <tr>
+              <td>Priority</td>
+              <td>Evaluation order (lower = evaluated first)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout danger" id="rf-transmit-warning">
+      <span class="callout-icon">&#9888;</span>
+      <div class="callout-body">
+        <p>
+          <strong>IS&rarr;RF gating transmits on the air.</strong> Only enable
+          this if you have a valid amateur radio license, proper PTT and
+          channel configuration, and understand the impact on your local
+          APRS channel. A misconfigured IS&rarr;RF gate can flood a busy
+          frequency. Always test new rules in
+          <a href="#simulation-mode">simulation mode</a> before going live,
+          and pair narrow gating rules with a tight
+          <strong>APRS-IS Server Filter</strong> so the server never even
+          sends you the traffic you don&rsquo;t want to gate.
+        </p>
+      </div>
+    </div>
+
+    <h4>Rule Types</h4>
+
+    <p>
+      Each rule matches on one of four fields. The semantics differ by type
+      &mdash; pay particular attention to where SSIDs are compared literally
+      vs. stripped, and where the trailing <code>*</code> wildcard is
+      supported.
+    </p>
+
+    <h4>Callsign</h4>
+
+    <p>
+      Exact, case-insensitive match on the <strong>full source callsign
+      including SSID</strong>. Pattern <code>NW5W-7</code> matches only the
+      source <code>NW5W-7</code> &mdash; not <code>NW5W</code>,
+      <code>NW5W-1</code>, or any other SSID.
+    </p>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          <code>*</code> is <strong>not</strong> a wildcard character for
+          Callsign rules. Save will be rejected if your pattern contains
+          <code>*</code>. Use a <strong>Prefix</strong> rule instead when you
+          want to match every SSID of a base callsign.
+        </p>
+      </div>
+    </div>
+
+    <h4>Prefix</h4>
+
+    <p>
+      Case-insensitive prefix match on the source&rsquo;s <strong>base
+      callsign with its SSID stripped</strong>. Pattern <code>W5</code>
+      matches source callsigns <code>W5AA</code>, <code>W5AA-9</code>,
+      <code>W5AA-15</code>, and so on. Pattern <code>NW5W</code> matches
+      <code>NW5W</code> and every SSID of <code>NW5W</code>.
+    </p>
+
+    <div class="callout danger">
+      <span class="callout-icon">&#9888;</span>
+      <div class="callout-body">
+        <p>
+          <strong>Broad prefixes flood your local RF channel.</strong> Short
+          prefixes like <code>K</code>, <code>W</code>, <code>K5</code>, or
+          <code>KE</code> match tens of thousands of stations worldwide, and
+          an Allow rule on such a prefix will gate every one of them that
+          reaches your APRS-IS server filter. This can saturate your local
+          APRS frequency within seconds. See the
+          <a href="#rf-transmit-warning">on-air transmission warning above</a>.
+        </p>
+        <p>To stay safe:</p>
+        <ul>
+          <li>Use the <strong>most specific prefix possible</strong> &mdash;
+            prefer the full base callsign (<code>NW5W</code>) over a short
+            prefix (<code>NW</code>).</li>
+          <li>Pair every Prefix rule with a tight <strong>APRS-IS Server
+            Filter</strong> (for example <code>b/NW5W*</code> or
+            <code>g/NW5W*</code>) so APRS-IS doesn&rsquo;t send you the
+            firehose in the first place.</li>
+          <li>Test the rule in <a href="#simulation-mode">simulation mode</a>
+            and watch the log before enabling RF output.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          <strong>Common gotcha:</strong> putting an SSID into a Prefix
+          pattern &mdash; for example <code>NW5W-7</code> &mdash; silently
+          <strong>never matches anything</strong>. The source callsign has
+          its SSID stripped before comparison, so <code>NW5W-7</code> in a
+          Prefix pattern compares against a source like <code>NW5W</code>
+          and fails on the <code>-7</code>. Use a <strong>Callsign</strong>
+          rule for exact SSID matching, or drop the SSID from your Prefix
+          pattern.
+        </p>
+        <p>
+          <code>*</code> is <strong>not</strong> a wildcard character for
+          Prefix rules &mdash; the entire Prefix type is already a prefix
+          match. Save will be rejected if your pattern contains
+          <code>*</code>.
+        </p>
+      </div>
+    </div>
+
+    <h4>Message Dest</h4>
+
+    <p>
+      Case-insensitive match on the <strong>addressee of a message
+      packet</strong> (the station a message is directed to). Plain
+      patterns like <code>NW5W-7</code> are an exact match. A pattern
+      ending in <code>*</code> is a <strong>trailing wildcard</strong>: the
+      <code>*</code> matches any suffix of the addressee.
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Pattern</th><th>Matches</th><th>Does not match</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>NW5W-7</code></td>
+              <td><code>NW5W-7</code></td>
+              <td><code>NW5W</code>, <code>NW5W-1</code></td>
+            </tr>
+            <tr>
+              <td><code>NW5W-*</code></td>
+              <td><code>NW5W-1</code>, <code>NW5W-7</code>, <code>NW5W-15</code></td>
+              <td><code>NW5W</code> (no SSID), <code>X1ABC-7</code></td>
+            </tr>
+            <tr>
+              <td><code>NW5W*</code></td>
+              <td><code>NW5W</code>, <code>NW5W-7</code>, <code>NW5WX</code></td>
+              <td><code>X1ABC</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout danger">
+      <span class="callout-icon">&#9888;</span>
+      <div class="callout-body">
+        <p>
+          <strong>Broad wildcards flood your local RF channel.</strong> A
+          pattern like <code>B*</code> would match every bulletin
+          (<code>BLN1</code>, <code>BLNA</code>&hellip;) that reaches your
+          APRS-IS server filter &mdash; potentially hundreds of packets per
+          minute. Keep the static prefix as long and specific as possible,
+          and pair the rule with a narrow <strong>APRS-IS Server
+          Filter</strong>. See the
+          <a href="#rf-transmit-warning">on-air transmission warning above</a>.
+        </p>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          Bare <code>*</code> patterns, empty patterns, and patterns that
+          trim to just a <code>*</code> are rejected at save as a flooding
+          guard. <code>*</code> is supported only as a <em>trailing</em>
+          character &mdash; <code>*NW5W</code> or <code>NW*W</code> are
+          also rejected.
+        </p>
+      </div>
+    </div>
+
+    <h4>Object</h4>
+
+    <p>
+      Case-insensitive match on the <strong>name of an APRS object or
+      item</strong>. Plain patterns like <code>WX-001</code> are an exact
+      match. A pattern ending in <code>*</code> is a trailing wildcard, so
+      <code>WX-*</code> matches every object name starting with
+      <code>WX-</code>.
+    </p>
+
+    <div class="callout warn">
+      <span class="callout-icon">&#9888;</span>
+      <div class="callout-body">
+        <p>
+          <strong>Broad object patterns may catch unrelated objects.</strong>
+          APRS object names are not reserved, so a pattern like
+          <code>W*</code> will match any object whose name happens to
+          start with <code>W</code> &mdash; including weather, repeater,
+          and arbitrary user-created objects from other regions. Prefer
+          the longest specific prefix that still covers the objects you
+          actually want to gate, and see the
+          <a href="#rf-transmit-warning">on-air transmission warning above</a>.
+        </p>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          Bare <code>*</code> patterns, empty patterns, and <code>*</code>
+          anywhere other than the final character are rejected at save,
+          identical to Message Dest.
+        </p>
+      </div>
+    </div>
+
+    <h3>Example: Gate a Single Station</h3>
+
+    <p>
+      To gate only packets from <code>NW5W-12</code> to RF, set the
+      APRS-IS Server Filter to <code>b/NW5W-12</code> (so APRS-IS only
+      sends you that station&rsquo;s packets) and add a gating rule to
+      allow them through:
+    </p>
+
+<pre><code>APRS-IS Server Filter: b/NW5W-12
+
+Type:     Callsign
+Pattern:  NW5W-12
+Action:   Allow
+Priority: 100</code></pre>
+
+    <h3>Example: Gate All Messages To Your Callsign</h3>
+
+    <p>
+      To gate every message addressed to any SSID of <code>NW5W</code>
+      (for example <code>NW5W</code>, <code>NW5W-1</code>, &hellip;,
+      <code>NW5W-15</code>), use a Message Dest rule with the new trailing
+      wildcard and pair it with a server filter narrowed to the same base
+      callsign:
+    </p>
+
+<pre><code>APRS-IS Server Filter: g/NW5W*
+
+Type:     Message Dest
+Pattern:  NW5W-*
+Action:   Allow
+Priority: 100</code></pre>
+
+    <p>
+      This pair is safe because <strong>both layers narrow to a single
+      base callsign</strong>. The APRS-IS Server Filter
+      (<code>g/NW5W*</code>) tells the server to forward only messages
+      whose addressee starts with <code>NW5W</code>, so the firehose
+      never reaches graywolf. The gating rule then gates those messages
+      to RF. Neither layer alone would be safe: without the server
+      filter, graywolf would still receive (and evaluate) every message
+      on APRS-IS; without the gating rule, graywolf would receive those
+      messages but never transmit them.
+    </p>
+
+    <h2 id="simulation-mode">Simulation Mode</h2>
+
+    <p>
+      Simulation mode lets you test your iGate configuration without actually
+      connecting to APRS-IS or transmitting. Packets that would be gated are
+      logged instead. Toggle it via <code>POST /api/igate/simulation</code>
+      or the web UI.
+    </p>
+
+    <div class="callout tip">
+      <span class="callout-icon">&#10003;</span>
+      <div class="callout-body">
+        <p>
+          Use simulation mode when first setting up your iGate to verify
+          that filters are working as expected before going live.
+        </p>
+      </div>
+    </div>
+
+    <h2>Automatic Behaviors</h2>
+
+    <p>The iGate automatically handles several edge cases:</p>
+
+    <ul>
+      <li><strong>Third-party suppression</strong> &mdash; packets that
+        originated from APRS-IS (third-party format) or carry a
+        <code>TCPIP</code>/<code>TCPXX</code>/<code>NOGATE</code>/<code>RFONLY</code>
+        path marker are not gated RF&rarr;IS</li>
+      <li><strong>Local-message suppression</strong> &mdash; messages
+        you originated on RF are not re-gated to APRS-IS if a
+        digipeater repeats them back to you</li>
+      <li><strong>No client-side RF&rarr;IS deduplication</strong> &mdash;
+        graywolf does not drop &ldquo;duplicate&rdquo; RF packets
+        before sending to APRS-IS. The APRS-IS network does
+        content-aware dedup server-side and benefits from seeing
+        duplicates for path analysis, per aprsc&rsquo;s
+        <a href="https://github.com/hessu/aprsc/blob/main/doc/IGATE-HINTS.md">IGATE-HINTS</a>.</li>
+      <li><strong>Third-party wrapping</strong> &mdash; every IS&rarr;RF
+        frame is wrapped in APRS third-party format (APRS101 &sect;20)
+        with an empty digipeater path, so other iGates can see the
+        packet originated on the internet side</li>
+      <li><strong>Reconnection</strong> &mdash; the APRS-IS connection
+        is automatically re-established if it drops, with DNS
+        re-resolved on every attempt so hostnames like
+        <code>rotate.aprs2.net</code> load-balance correctly</li>
+    </ul>
+
+    <nav class="page-nav">
+      <a href="digipeater.html">
+        <span class="label">Previous</span>
+        Digipeater
+      </a>
+      <a href="messaging.html" class="next">
+        <span class="label">Next</span>
+        Messaging
+      </a>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  graywolf &middot; modern APRS station
+</footer>
+
+<script src="handbook.js"></script>
+</body>
+</html>

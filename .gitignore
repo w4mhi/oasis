@@ -1,0 +1,22 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# FCC flat-file data — large files downloaded at setup time, not tracked
+fcc-offline-database/data/EN.dat
+fcc-offline-database/data/HD.dat
+fcc-offline-database/data/EN.idx
+# GeoNames source data — downloaded by build_zip_table.py, not tracked
+fcc-offline-database/US.txt
+fcc-offline-database/US.zip
+
+# Scratch / temporary files
+temp/
+
+# USB bundle output — built by scripts/build-usb.py
+usb-dist/

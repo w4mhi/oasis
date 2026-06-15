@@ -1,0 +1,38 @@
+{
+  "band": "12m",
+  "name": "12 Meters",
+  "range": [24.89, 24.99],
+  "unit": "MHz",
+  "license": "General+",
+  "allocation": "Primary",
+  "notes": [
+    "General+: full band — no Technician privileges"
+  ],
+  "rows": [
+    {
+      "range": [24.89, 24.99],
+      "segments": [
+        {
+          "start": 24.89, "end": 24.92,
+          "position": "bottom", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 24.890–24.920 MHz."
+        },
+        {
+          "start": 24.92, "end": 24.93,
+          "position": "top", "type": "digital", "color": "#f4a261",
+          "label": "Digital / Data",
+          "detail": "RTTY 24.920–24.925. Packet 24.925–24.930 MHz."
+        },
+        {
+          "start": 24.93, "end": 24.99,
+          "position": "bottom", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Phone/SSB 24.930–24.990 MHz."
+        }
+      ],
+      "callouts": [],
+      "ticks": [24.89, 24.92, 24.93, 24.99]
+    }
+  ]
+}

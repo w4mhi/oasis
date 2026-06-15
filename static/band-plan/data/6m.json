@@ -1,0 +1,86 @@
+{
+  "band": "6m",
+  "name": "6 Meters",
+  "range": [50, 54],
+  "unit": "MHz",
+  "license": "Tech+",
+  "allocation": "Primary",
+  "notes": [
+    "50.125 MHz: national SSB calling frequency",
+    "52.525 MHz: primary FM simplex calling frequency"
+  ],
+  "rows": [
+    {
+      "range": [50.0, 52.0],
+      "segments": [
+        {
+          "start": 50.0, "end": 50.1,
+          "position": "bottom", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW and beacons 50.0–50.1 MHz. Beacon subband 50.060–50.080 MHz."
+        },
+        {
+          "start": 50.1, "end": 50.6,
+          "position": "top", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "SSB and CW 50.1–50.3. DX window 50.10–50.125. SSB calling 50.125. All modes 50.3–50.6."
+        },
+        {
+          "start": 50.6, "end": 51.0,
+          "position": "bottom", "type": "digital", "color": "#f4a261",
+          "label": "Digital / Data",
+          "detail": "Non-voice communications 50.6–50.8. Digital/packet calling 50.62. Radio remote control 50.8–51.0 (20 kHz channels)."
+        },
+        {
+          "start": 51.0, "end": 51.62,
+          "position": "top", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Pacific DX window 51.0–51.1 (SSB). Repeater inputs 51.12–51.48 (19 channels). Digital repeater inputs 51.12–51.18. FM simplex 51.5–51.6 (6 channels)."
+        },
+        {
+          "start": 51.62, "end": 52.0,
+          "position": "bottom", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater outputs 51.62–51.98 MHz (19 channels). Digital repeater outputs 51.62–51.68."
+        }
+      ],
+      "callouts": [
+        { "freq": 50.125, "label": "50.125", "sublabel": "SSB Calling", "type": "calling", "side": "below" }
+      ],
+      "ticks": [50.0, 50.1, 50.6, 51.0, 51.62, 52.0]
+    },
+    {
+      "range": [52.0, 54.0],
+      "segments": [
+        {
+          "start": 52.0, "end": 52.5,
+          "position": "bottom", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater inputs 52.0–52.48 MHz (23 channels). FM simplex 52.02, 52.04. Test pair input 52.2."
+        },
+        {
+          "start": 52.5, "end": 53.0,
+          "position": "top", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater outputs 52.5–52.98 MHz (23 channels). Primary FM simplex 52.525. Secondary FM simplex 52.54. Test pair output 52.7."
+        },
+        {
+          "start": 53.0, "end": 53.5,
+          "position": "bottom", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater inputs 53.0–53.48 MHz (19 channels). Remote base FM simplex 53.0. Simplex 53.02. Radio remote control 53.1, 53.2, 53.3, 53.4."
+        },
+        {
+          "start": 53.5, "end": 54.0,
+          "position": "top", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater outputs 53.5–53.98 MHz (19 channels). Radio remote control 53.5, 53.6, 53.7, 53.8. Simplex 53.52, 53.9."
+        }
+      ],
+      "callouts": [
+        { "freq": 52.525, "label": "52.525", "sublabel": "FM Calling", "type": "calling", "side": "below" }
+      ],
+      "ticks": [52.0, 52.5, 53.0, 53.5, 54.0]
+    }
+  ]
+}

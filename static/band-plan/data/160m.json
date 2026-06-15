@@ -1,0 +1,36 @@
+{
+  "band": "160m",
+  "name": "160 Meters",
+  "range": [1.8, 2.0],
+  "unit": "MHz",
+  "license": "General+",
+  "allocation": "Secondary",
+  "notes": [
+    "Secondary allocation — shared with fixed services",
+    "1.810 MHz: CW QRP calling",
+    "1.910 MHz: SSB QRP calling"
+  ],
+  "rows": [
+    {
+      "range": [1.8, 2.0],
+      "segments": [
+        {
+          "start": 1.8, "end": 1.843,
+          "position": "bottom", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 1.800–2.000 MHz (full band). Digital modes 1.800–1.810. CW QRP 1.810 MHz."
+        },
+        {
+          "start": 1.843, "end": 2.0,
+          "position": "top", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "SSB, SSTV and other wideband modes 1.843–2.000 MHz. SSB QRP 1.910. Experimental 1.995–2.000. Beacons 1.999–2.000."
+        }
+      ],
+      "callouts": [
+        { "freq": 1.91, "label": "1.910", "sublabel": "SSB QRP", "type": "calling", "side": "below" }
+      ],
+      "ticks": [1.8, 1.843, 1.91, 2.0]
+    }
+  ]
+}

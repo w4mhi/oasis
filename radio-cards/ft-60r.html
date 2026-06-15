@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FT-60R</title>
+<link rel="stylesheet" href="../css/common.css">
+<style>
+.wrap { max-width: 1280px; }
+.op    { color: var(--amber); font-size: var(--fs-base); white-space: nowrap;
+         width: 220px; vertical-align: top; padding-top: 7px; }
+.steps { color: var(--text); font-size: var(--fs-base); vertical-align: top;
+         white-space: pre-wrap; line-height: 1.55; }
+tr.row-section td {
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  padding: 6px 8px 5px;
+  border-bottom: 1px solid var(--border);
+}
+tr.empty-steps .op { color: var(--text-dim); }
+.na { color: var(--border); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">🏠 HOME</a>
+    <h1>FT-60R</h1>
+    <p>Radio reference card</p>
+  </header>
+
+  <div class="sec">
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Operation</th><th>Steps</th></tr></thead>
+        <tbody>
+        <tr class="row-section"><td colspan="2">Settings</td></tr>
+        <tr><td class="op">Menu</td><td class="steps">[F/W]+[0(SET)]</td></tr>
+        <tr><td class="op">SQL Level</td><td class="steps">DIAL BASE</td></tr>
+        <tr><td class="op">Power Level</td><td class="steps">[F/W]+[3(TX PO)]--&gt;DIAL--&gt;PTT(exit)</td></tr>
+        <tr><td class="op">APO (Auto Power Off)</td><td class="steps">[F/W]+[0(SET)]--&gt;(Menu: 1)=&gt;[F/W]=&gt;DIAL(select time)--&gt;PTT(exit)</td></tr>
+        <tr><td class="op">Band Selection</td><td class="steps">Select VFO [V/M]--&gt;[BAND] . . .</td></tr>
+        <tr><td class="op">Scan</td><td class="steps">Select VFO [V/M] [^(MHz)] or [ (MHz)] [long press]--&gt;PTT(exit)</td></tr>
+        <tr><td class="op">Dual Watch</td><td class="steps">Select VFO [V/M]--&gt;[F/W]--&gt;[V/M(PRI)] to enable
+[F/W]--&gt;[V/M(PRI)] to disable
+Select Memory [V/M]--&gt;[F/W]--&gt;[V/M(PRI)] to enable
+[F/W]--&gt;[V/M(PRI)] to disable</td></tr>
+        <tr><td class="op">V/M</td><td class="steps">[V/M]</td></tr>
+        <tr><td class="op">Display Freq/Name</td><td class="steps">Select Memory [V/M]--&gt;[BAND]</td></tr>
+        <tr><td class="op">Channel Step</td><td class="steps">[F/W]+[0(SET)]--&gt;(Menu: 49)--&gt;DIAL(select step frequency)--&gt;PTT(exit)</td></tr>
+        <tr><td class="op">Repeater ARS (auto)</td><td class="steps">[F/W]+[0(SET)]--&gt;(Menu: 4)</td></tr>
+        <tr><td class="op">Repeater Shift (+/-)</td><td class="steps">[F/W]+[4(RPT)]--&gt;DIAL--&gt;PTT(exit)</td></tr>
+        <tr><td class="op">Repeater ToneFrq</td><td class="steps">[F/W]+[2(CODE)]--&gt;DIAL--&gt;PTT(exit)</td></tr>
+        <tr><td class="op">Repeater Sql Type (TN/SQL)</td><td class="steps">[F/W]+[1(SQ TYP)]--&gt;DIAL--&gt;PTT(exit)</td></tr>
+        <tr><td class="op">Repeater Reverse Freq</td><td class="steps">[F/W]+[0(SET)]--&gt;(Menu: 36)--&gt;[F/W]--&gt;DIAL((REV)--&gt;Exit[PTT]
+[HM/RV]</td></tr>
+        <tr><td class="op">Repeater Shift Freq (offset)</td><td class="steps">[F/W]+[2(CODE)]--&gt;DIAL(SHIFT)--&gt;[F/W]--&gt;DIAL--&gt;PTT(exit)</td></tr>
+        <tr><td class="op">Home Channel</td><td class="steps">[F/W]+[0(SET)]--&gt;(Menu: 36)--&gt;[F/W]--&gt;DIAL((HOME)--&gt;PTT(exit)</td></tr>
+        <tr><td class="op">Home Freq (change on a custom freq)</td><td class="steps">[F/W]+[HS/RV(EMG)]</td></tr>
+        <tr><td class="op">Total Time</td><td class="steps">[F/W]+[0(SET)]--&gt;(Menu: 51)--&gt;DIAL(select total time)--&gt;PTT(exit)</td></tr>
+        <tr><td class="op">Weather Alert</td><td class="steps">[F/W]+[0(SET)]--&gt;(Menu: 56)--&gt;DIAL(ALT.ON)--&gt;PTT(exit)</td></tr>
+        <tr><td class="op">Time Setting</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">Time Zone</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">APRS GPS</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">APRS Modem</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">APRS Beacon Tx</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">APRS Beacon Interval</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">APRS Beacon Type</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">APRS Callsign</td><td class="steps">TBD</td></tr>
+        <tr class="row-section"><td colspan="2">Extra</td></tr>
+        <tr><td class="op">Scope</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">X-Band Repeater</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">PMG (Primary Memory Group)</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">Grid Menu/List Menu</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">Reset Memory</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">Reset Settings</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">Reset Factory Default</td><td class="steps">TBD</td></tr>
+        <tr class="row-section"><td colspan="2">Overview</td></tr>
+        <tr class="empty-steps"><td class="op">Memories</td><td class="steps"><span class="na">—</span></td></tr>
+        <tr><td class="op">Band Operation</td><td class="steps">144/430 MHZ</td></tr>
+        <tr><td class="op">Dual Capability</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">AM/FM</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">Speaker</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">Bluetooth</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">GPS/APRS</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">Battery</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">RX Amp</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">TX Amp</td><td class="steps">TBD</td></tr>
+        <tr><td class="op">TX Power</td><td class="steps">TBD</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

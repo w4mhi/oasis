@@ -1,0 +1,16 @@
+# OASIS — Python dependencies
+# Single source of truth. Installed by: python3 scripts/setup-server.py
+#
+# All other imports across the project are Python stdlib — no additional
+# packages required.
+#
+# System tools (ogr2ogr, tippecanoe) are in requirements-system.txt.
+
+# Web framework — server/app.py, graywolf-api/graywolf_api.py
+Flask>=3.0
+
+# Production WSGI server — replaces Flask dev server on the Pi
+gunicorn>=21.0
+
+# System stats (CPU, RAM, disk, uptime) — graywolf-api/graywolf_api.py
+psutil>=5.9

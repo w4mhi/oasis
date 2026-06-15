@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solar / Propagation Data</title>
+<link rel="stylesheet" href="../css/common.css">
+<style>
+/* Import panel */
+.import-panel{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:1rem 1.25rem;margin-bottom:.9rem;}
+.import-row{display:flex;gap:.5rem;align-items:flex-start;margin-top:.5rem;}
+textarea:focus{outline:none;border-color:var(--accent);}
+#xmlInput{min-height:16rem;resize:vertical;}
+.import-status{font-size:var(--fs-small);margin-top:.4rem;min-height:1rem;}
+.import-status.ok{color:var(--accent);}
+.import-status.err{color:var(--red);}
+
+/* Stat cards */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.6rem;margin-bottom:.9rem;}
+.stat{border:1px solid var(--border);border-radius:8px;background:var(--panel);padding:.7rem .9rem;position:relative;}
+.stat-label{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.1em;color:var(--text-dim);margin-bottom:.2rem;}
+.stat-val{font-size:var(--fs-title);font-weight:700;color:var(--accent);}
+.stat-val.warn{color:var(--amber);}
+.stat-val.bad{color:var(--red);}
+.stat-sub{font-size:var(--fs-small);color:var(--text-dim);margin-top:.15rem;line-height:1.3;}
+.stat-tip{font-size:var(--fs-micro);color:var(--text-dim);margin-top:.3rem;padding-top:.3rem;border-top:1px solid var(--panel-2);line-height:1.3;}
+
+/* Band condition matrix */
+.band-panel{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:1rem 1.25rem;margin-bottom:.9rem;}
+.band-table .band-name{color:var(--text);font-weight:600;}
+.cond{display:inline-block;padding:2px 10px;border-radius:4px;font-size:var(--fs-label);font-weight:700;letter-spacing:.05em;}
+.cond-good{background:#0a3a20;color:#00d98b;border:1px solid #00d98b44;}
+.cond-fair{background:#3a2a00;color:#ffb454;border:1px solid #ffb45444;}
+.cond-poor{background:#3a0a0a;color:#ff6b6b;border:1px solid #ff6b6b44;}
+.cond-unknown{background:var(--panel-2);color:var(--text-dim);border:1px solid var(--border);}
+
+/* VHF conditions */
+.vhf-panel{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:1rem 1.25rem;margin-bottom:.9rem;}
+.vhf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.5rem;}
+.vhf-item{background:var(--panel-2);border:1px solid var(--border);border-radius:6px;padding:.5rem .75rem;}
+.vhf-name{font-size:var(--fs-small);color:var(--text-dim);margin-bottom:.2rem;}
+.vhf-val{font-size:var(--fs-base);font-weight:600;}
+.vhf-open{color:var(--accent);}
+.vhf-closed{color:var(--text-dim);}
+.vhf-partial{color:var(--amber);}
+
+/* Updated timestamp */
+.updated-bar{display:flex;align-items:center;gap:.5rem;margin-bottom:.9rem;
+  padding:.5rem .9rem;border-radius:7px;background:var(--panel);border:1px solid var(--border);}
+.updated-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;}
+.updated-text{font-size:var(--fs-label);color:var(--text-dim);}
+.updated-text span{color:var(--accent);}
+
+.no-data{border:1px solid var(--border);border-radius:10px;background:var(--panel);
+  padding:2rem;text-align:center;color:var(--text-dim);font-size:var(--fs-base);margin-bottom:.9rem;}
+
+/* Stale data warning */
+.stale-warn{
+  border:1px solid var(--amber);border-radius:10px;background:#1f1800;
+  padding:.85rem 1.1rem;margin-bottom:.9rem;
+  display:flex;align-items:flex-start;gap:.75rem;
+}
+.stale-warn-icon{font-size:var(--fs-title);flex-shrink:0;line-height:1.3;}
+.stale-warn-body{flex:1;}
+.stale-warn-title{font-size:var(--fs-base);font-weight:700;color:var(--amber);margin-bottom:.2rem;}
+.stale-warn-msg{font-size:var(--fs-label);color:#c8a050;line-height:1.5;}
+.stale-dismiss{background:transparent;border:1px solid var(--amber);color:var(--amber);
+  font-family:var(--mono);font-size:var(--fs-small);padding:3px 10px;border-radius:4px;
+  cursor:pointer;flex-shrink:0;margin-top:.1rem;}
+.stale-dismiss:hover{background:var(--amber);color:#000;}
+
+/* History panel */
+.hist-panel{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:1rem 1.25rem;margin-bottom:.9rem;}
+.hist-list{display:flex;flex-direction:column;gap:.3rem;margin-top:.5rem;}
+.hist-date{font-size:var(--fs-label);color:var(--text);flex:1;}
+.hist-sfi{font-size:var(--fs-label);color:var(--accent);}
+.hist-k{font-size:var(--fs-label);color:var(--text-dim);}
+.hist-viewing{border:1px solid var(--amber);border-radius:8px;background:#1f1800;padding:.6rem 1rem;margin-bottom:.9rem;font-size:var(--fs-label);color:var(--amber);display:flex;align-items:center;gap:.75rem;}
+.hist-viewing button{background:transparent;border:1px solid var(--amber);color:var(--amber);font-family:var(--mono);font-size:var(--fs-small);padding:2px 10px;border-radius:4px;cursor:pointer;}
+.hist-viewing button:hover{background:var(--amber);color:#000;}
+
+@media print{
+  body{background:#fff;color:#000;}
+  .import-panel{display:none!important;}
+  .band-panel,.vhf-panel,.stat,.updated-bar{border-color:#ccc;background:#fff;}
+  .stat-val{color:#000;}
+  .cond-good{background:#e6f5ec;color:#1a7a3a;border-color:#aaddbb;}
+  .cond-fair{background:#fff8e6;color:#7a5a00;border-color:#ddcc77;}
+  .cond-poor{background:#fce8e8;color:#8a2020;border-color:#ddaaaa;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <a class="home-link" href="/">🏠 HOME</a>
+  <h1>Solar / Propagation Data</h1>
+  <p>Paste HAMQSL XML solar data (received via Winlink or other means) to update band conditions. Data is saved locally and shared with the Grid Calculator.</p>
+</header>
+
+<!-- How to get data -->
+<div style="border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:1rem 1.25rem;margin-bottom:.9rem;">
+  <div class="sec-label">How to Get Solar Data via Winlink</div>
+  <ol style="font-size:var(--fs-label);color:var(--text-dim);line-height:2;padding-left:1.2rem;">
+    <li>Send a Winlink message to <strong style="color:var(--accent)">query@saildocs.com</strong></li>
+    <li>Leave the subject line <strong style="color:var(--text)">blank</strong></li>
+    <li>Put <strong style="color:var(--text)">only</strong> the following in the message body: <code style="color:var(--accent);background:var(--panel-2);padding:1px 6px;border-radius:3px;">http://hamqsl.com/solarrss.php</code></li>
+    <li>Send the message, then wait a couple of minutes</li>
+    <li>Make a second Winlink connection — the reply will be waiting with the XML attached</li>
+    <li>Save the attachment to a known location, then use the <strong style="color:var(--text)">Load File</strong> button below — or open the attachment, copy the full XML, and paste it into the text area</li>
+  </ol>
+</div>
+
+<!-- Import -->
+<div class="import-panel">
+  <div class="sec-label">Import Solar Data</div>
+
+  <!-- Method 1: file -->
+  <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.7rem;flex-wrap:wrap;">
+    <span style="font-size:var(--fs-label);color:var(--text-dim);">Option 1 — load the saved attachment directly:</span>
+    <button class="sbtn primary" onclick="document.getElementById('fileInput').click()">📂 Load File</button>
+    <input type="file" id="fileInput" accept=".xml,.txt,.rss,text/xml,application/xml,text/plain" style="display:none" onchange="importFile(this)">
+  </div>
+
+  <!-- Divider -->
+  <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.7rem;">
+    <div style="flex:1;height:1px;background:var(--border)"></div>
+    <span style="font-size:var(--fs-micro);color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em;">or</span>
+    <div style="flex:1;height:1px;background:var(--border)"></div>
+  </div>
+
+  <!-- Method 2: paste -->
+  <p style="font-size:var(--fs-label);color:var(--text-dim);margin-bottom:.5rem;">Option 2 — paste the full XML contents below:</p>
+  <textarea id="xmlInput" placeholder="<?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?>
+<solar>
+  <solardata>
+    <source>Space Weather Center</source>
+    <updated>13 Jun 2026 1200 UTC</updated>
+    <solarflux>140</solarflux>
+    <aindex>8</aindex>
+    <kindex>2</kindex>
+    <xray>B2.1</xray>
+    <sunspots>95</sunspots>
+    <solarwind>412</solarwind>
+    <magneticfield>4.2</magneticfield>
+    <geomagfield>Quiet</geomagfield>
+    <signalnoise>S2</signalnoise>
+    <calculatedconditions>
+      <band name=&quot;80m-40m&quot; time=&quot;day&quot;>Good</band>
+      ...
+    </calculatedconditions>
+  </solardata>
+</solar>"></textarea>
+  <div class="import-row">
+    <button class="sbtn primary" onclick="importXML()">Parse &amp; Save</button>
+    <button class="sbtn danger" onclick="clearData()">Clear Data</button>
+  </div>
+  <div class="import-status" id="importStatus"></div>
+</div>
+
+<!-- Stale data warning (shown by JS if data > 24h old) -->
+<div id="staleWarn" style="display:none"></div>
+
+<!-- History panel (shown when 2+ reports exist) -->
+<div id="historyPanel"></div>
+
+<!-- Historical-view banner (shown when viewing a non-current record) -->
+<div id="histViewingBar" style="display:none"></div>
+
+<!-- Dashboard -->
+<div id="dashboard"></div>
+
+</div>
+<script>
+'use strict';
+
+const SOLAR_KEY   = 'solar-data';    // legacy key — migrated on first load
+const HISTORY_KEY = 'solar-history'; // array of up to 5 records, newest first
+const MAX_HISTORY = 5;
+
+// ── History helpers ───────────────────────────────────────────────────────────
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return [];
+}
+
+function saveWithHistory(data) {
+  let hist = loadHistory();
+  // Avoid duplicating the same bulletin
+  if (!hist.length || hist[0].updated !== data.updated) {
+    hist.unshift(data);
+    if (hist.length > MAX_HISTORY) hist = hist.slice(0, MAX_HISTORY);
+  } else {
+    hist[0] = data; // refresh savedAt timestamp
+  }
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(hist));
+  return hist;
+}
+
+function renderHistory(hist) {
+  const el = document.getElementById('historyPanel');
+  if (!hist || hist.length <= 1) { el.innerHTML = ''; return; }
+  let html = '<div class="hist-panel"><div class="sec-label">Previous Reports</div><div class="hist-list">';
+  hist.slice(1).forEach((d, i) => {
+    const idx = i + 1;
+    html += `<button class="sbtn" style="display:flex;gap:1rem;align-items:center;width:100%;text-align:left;" onclick="loadHistoryEntry(${idx})">
+      <span class="hist-date">${d.updated || new Date(d.savedAt).toUTCString()}</span>
+      <span class="hist-sfi">SFI ${d.solarflux || '—'}</span>
+      <span class="hist-k">K=${d.kindex || '—'}</span>
+    </button>`;
+  });
+  html += '</div></div>';
+  el.innerHTML = html;
+}
+
+function loadHistoryEntry(idx) {
+  const hist = loadHistory();
+  const d = hist[idx];
+  if (!d) return;
+  // Show viewing-historical banner
+  const bar = document.getElementById('histViewingBar');
+  bar.style.display = 'flex';
+  bar.innerHTML = `<div class="hist-viewing">⏱ Viewing historical report: <strong>${d.updated}</strong> (SFI ${d.solarflux}, K=${d.kindex}) <button onclick="loadCurrentReport()">Back to current</button></div>`;
+  renderDashboard(d, true);
+}
+
+function loadCurrentReport() {
+  document.getElementById('histViewingBar').style.display = 'none';
+  const hist = loadHistory();
+  renderDashboard(hist[0] || null);
+}
+
+// ── XML parser ────────────────────────────────────────────────────────────────
+function parseHAMQSL(xmlStr) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlStr, 'application/xml');
+
+  // Check for parse error
+  if (doc.querySelector('parsererror')) throw new Error('Invalid XML');
+
+  function txt(tag) {
+    const el = doc.querySelector(tag);
+    return el ? el.textContent.trim() : '';
+  }
+
+  // Band conditions
+  const bands = {};
+  doc.querySelectorAll('calculatedconditions band').forEach(el => {
+    const name = el.getAttribute('name');
+    const time = el.getAttribute('time');
+    if (!bands[name]) bands[name] = {};
+    bands[name][time] = el.textContent.trim();
+  });
+
+  // VHF conditions
+  const vhf = [];
+  doc.querySelectorAll('calculatedvhfconditions phenomenon').forEach(el => {
+    vhf.push({
+      name:     el.getAttribute('name'),
+      location: el.getAttribute('location'),
+      value:    el.textContent.trim(),
+    });
+  });
+
+  return {
+    source:       txt('source'),
+    updated:      txt('updated'),
+    solarflux:    txt('solarflux'),
+    aindex:       txt('aindex'),
+    kindex:       txt('kindex'),
+    xray:         txt('xray'),
+    sunspots:     txt('sunspots'),
+    solarwind:    txt('solarwind'),
+    magneticfield:txt('magneticfield'),
+    geomagfield:  txt('geomagfield'),
+    signalnoise:  txt('signalnoise'),
+    protonflux:   txt('protonflux'),
+    aurora:       txt('aurora'),
+    bands,
+    vhf,
+    savedAt: new Date().toISOString(),
+  };
+}
+
+// ── Import from file ──────────────────────────────────────────────────────────
+function importFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('importStatus');
+  statusEl.className = 'import-status';
+  statusEl.textContent = 'Reading ' + file.name + '…';
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = parseHAMQSL(e.target.result);
+      const hist = saveWithHistory(data);
+      statusEl.className = 'import-status ok';
+      statusEl.textContent = 'Loaded ' + file.name + ' — Updated: ' + data.updated;
+      input.value = ''; // reset so same file can be reloaded
+      document.getElementById('histViewingBar').style.display = 'none';
+      renderDashboard(data);
+      renderHistory(hist);
+    } catch(err) {
+      statusEl.className = 'import-status err';
+      statusEl.textContent = 'Parse error: ' + err.message;
+    }
+  };
+  reader.onerror = function() {
+    statusEl.className = 'import-status err';
+    statusEl.textContent = 'Could not read file.';
+  };
+  reader.readAsText(file);
+}
+
+function importXML() {
+  const xml = document.getElementById('xmlInput').value.trim();
+  const statusEl = document.getElementById('importStatus');
+  if (!xml) { statusEl.className = 'import-status err'; statusEl.textContent = 'Paste XML first.'; return; }
+
+  try {
+    const data = parseHAMQSL(xml);
+    const hist = saveWithHistory(data);
+    statusEl.className = 'import-status ok';
+    statusEl.textContent = 'Parsed and saved. Updated: ' + data.updated;
+    document.getElementById('xmlInput').value = '';
+    document.getElementById('histViewingBar').style.display = 'none';
+    renderDashboard(data);
+    renderHistory(hist);
+  } catch(e) {
+    statusEl.className = 'import-status err';
+    statusEl.textContent = 'Parse error: ' + e.message;
+  }
+}
+
+function clearData() {
+  localStorage.removeItem(HISTORY_KEY);
+  localStorage.removeItem(SOLAR_KEY);
+  document.getElementById('importStatus').className = 'import-status ok';
+  document.getElementById('importStatus').textContent = 'Data cleared.';
+  document.getElementById('histViewingBar').style.display = 'none';
+  document.getElementById('historyPanel').innerHTML = '';
+  renderDashboard(null);
+}
+
+// ── Condition badge ───────────────────────────────────────────────────────────
+function condBadge(val) {
+  if (!val) return '<span class="cond cond-unknown">—</span>';
+  const v = val.toLowerCase();
+  if (v === 'good')      return `<span class="cond cond-good">Good</span>`;
+  if (v === 'fair')      return `<span class="cond cond-fair">Fair</span>`;
+  if (v === 'poor')      return `<span class="cond cond-poor">Poor</span>`;
+  return `<span class="cond cond-unknown">${val}</span>`;
+}
+
+// ── Stat interpretation ───────────────────────────────────────────────────────
+function sfiClass(v) {
+  const n = parseFloat(v);
+  if (n >= 150) return '';
+  if (n >= 100) return '';
+  return 'warn';
+}
+function sfiTip(v) {
+  const n = parseFloat(v);
+  if (n >= 200) return 'Excellent — bands 10m–15m likely open';
+  if (n >= 150) return 'High — good HF conditions expected';
+  if (n >= 120) return 'Elevated — favorable for most HF bands';
+  if (n >= 100) return 'Moderate — fair HF conditions';
+  if (n >= 80)  return 'Low — 20m+ bands may be marginal';
+  return 'Very low — upper bands likely closed';
+}
+function kClass(v) {
+  const n = parseFloat(v);
+  if (n >= 5) return 'bad';
+  if (n >= 3) return 'warn';
+  return '';
+}
+function kTip(v) {
+  const n = parseFloat(v);
+  if (n >= 5) return 'Storm — severe HF degradation possible';
+  if (n >= 4) return 'Active — HF propagation disturbed';
+  if (n >= 3) return 'Unsettled — some HF absorption likely';
+  if (n >= 2) return 'Quiet to unsettled';
+  return 'Quiet — favorable conditions';
+}
+function aClass(v) {
+  const n = parseFloat(v);
+  if (n >= 50) return 'bad';
+  if (n >= 20) return 'warn';
+  return '';
+}
+function xrayClass(v) {
+  if (!v) return '';
+  if (v.startsWith('X')) return 'bad';
+  if (v.startsWith('M')) return 'warn';
+  return '';
+}
+function xrayTip(v) {
+  if (!v) return '';
+  if (v.startsWith('X')) return 'Major flare — radio blackout possible';
+  if (v.startsWith('M')) return 'Moderate flare — HF degradation possible';
+  if (v.startsWith('C')) return 'Minor flare — minimal impact';
+  return 'Background / no significant flare';
+}
+
+// ── VHF formatting ────────────────────────────────────────────────────────────
+function vhfClass(val) {
+  if (!val) return 'vhf-closed';
+  const v = val.toLowerCase();
+  if (v.includes('closed')) return 'vhf-closed';
+  if (v.includes('es') || v.includes('aurora') || v.includes('muf') || v.includes('open')) return 'vhf-open';
+  return 'vhf-partial';
+}
+
+function vhfLabel(name, loc) {
+  const names = {
+    'vhf-aurora': 'VHF Aurora',
+    'E-Skip':     'E-Skip',
+  };
+  const locs = {
+    'northern_hemi': 'N. Hemisphere',
+    'europe':        'Europe',
+    'north_america': 'N. America',
+    'europe_6m':     'Europe 50 MHz',
+    'europe_4m':     'Europe 70 MHz',
+  };
+  return (names[name] || name) + ' — ' + (locs[loc] || loc);
+}
+
+// ── Stale data warning ────────────────────────────────────────────────────────
+function checkStale(data) {
+  const warn = document.getElementById('staleWarn');
+  if (!data || !data.savedAt) { warn.style.display = 'none'; return; }
+
+  const ageMs  = Date.now() - new Date(data.savedAt).getTime();
+  const ageHrs = ageMs / 3600000;
+
+  if (ageHrs < 24) { warn.style.display = 'none'; return; }
+
+  const ageTxt = ageHrs >= 48
+    ? Math.floor(ageHrs / 24) + ' days'
+    : Math.round(ageHrs) + ' hours';
+
+  warn.style.display = 'flex';
+  warn.innerHTML = `
+    <div class="stale-warn">
+      <div class="stale-warn-icon">⚠</div>
+      <div class="stale-warn-body">
+        <div class="stale-warn-title">Solar data is ${ageTxt} old</div>
+        <div class="stale-warn-msg">
+          Space weather changes daily. Band conditions shown below may no longer reflect current propagation.
+          Request a fresh update via Winlink (query@saildocs.com) and import the new XML above.
+        </div>
+      </div>
+      <button class="stale-dismiss" onclick="document.getElementById('staleWarn').style.display='none'">Dismiss</button>
+    </div>`;
+}
+
+// ── Render dashboard ──────────────────────────────────────────────────────────
+function renderDashboard(data) {
+  checkStale(data);
+  const div = document.getElementById('dashboard');
+  if (!data) {
+    div.innerHTML = '<div class="no-data">No solar data loaded. Paste HAMQSL XML above to get started.<br><span style="font-size:var(--fs-label);margin-top:.3rem;display:block">Request solar data via Winlink: send a blank message to WXBOT with subject <strong>SOLAR</strong></span></div>';
+    return;
+  }
+
+  let html = '';
+
+  // Updated bar
+  html += `<div class="updated-bar">
+    <div class="updated-dot"></div>
+    <div class="updated-text">Solar data updated: <span>${data.updated}</span> · Source: ${data.source} · Saved: ${new Date(data.savedAt).toLocaleString()}</div>
+  </div>`;
+
+  // Stat cards
+  html += '<div class="sec-label">Space Weather</div><div class="stat-grid">';
+
+  const sfi = parseFloat(data.solarflux);
+  html += `<div class="stat">
+    <div class="stat-label">Solar Flux (SFI)</div>
+    <div class="stat-val ${sfiClass(data.solarflux)}">${data.solarflux || '—'}</div>
+    <div class="stat-tip">${sfiTip(data.solarflux)}</div>
+  </div>`;
+
+  html += `<div class="stat">
+    <div class="stat-label">K-Index</div>
+    <div class="stat-val ${kClass(data.kindex)}">${data.kindex || '—'}</div>
+    <div class="stat-sub">${data.geomagfield || ''}</div>
+    <div class="stat-tip">${kTip(data.kindex)}</div>
+  </div>`;
+
+  html += `<div class="stat">
+    <div class="stat-label">A-Index</div>
+    <div class="stat-val ${aClass(data.aindex)}">${data.aindex || '—'}</div>
+    <div class="stat-tip">${parseFloat(data.aindex) >= 20 ? 'Disturbed — HF absorption likely' : parseFloat(data.aindex) >= 10 ? 'Slightly disturbed' : 'Quiet'}</div>
+  </div>`;
+
+  html += `<div class="stat">
+    <div class="stat-label">Sunspots</div>
+    <div class="stat-val">${data.sunspots || '—'}</div>
+    <div class="stat-tip">${parseFloat(data.sunspots) >= 100 ? 'High activity — good for upper HF' : parseFloat(data.sunspots) >= 50 ? 'Moderate activity' : 'Low activity'}</div>
+  </div>`;
+
+  html += `<div class="stat">
+    <div class="stat-label">X-Ray</div>
+    <div class="stat-val ${xrayClass(data.xray)}">${data.xray || '—'}</div>
+    <div class="stat-tip">${xrayTip(data.xray)}</div>
+  </div>`;
+
+  html += `<div class="stat">
+    <div class="stat-label">Solar Wind</div>
+    <div class="stat-val ${parseFloat(data.solarwind) > 500 ? 'warn' : ''}">${data.solarwind ? parseFloat(data.solarwind).toFixed(0) + ' km/s' : '—'}</div>
+    <div class="stat-tip">${parseFloat(data.solarwind) > 600 ? 'High — geomagnetic effects possible' : parseFloat(data.solarwind) > 450 ? 'Elevated' : 'Normal'}</div>
+  </div>`;
+
+  html += `<div class="stat">
+    <div class="stat-label">Mag Field</div>
+    <div class="stat-val ${parseFloat(data.magneticfield) > 10 ? 'warn' : ''}">${data.magneticfield ? parseFloat(data.magneticfield).toFixed(1) + ' nT' : '—'}</div>
+    <div class="stat-tip">${parseFloat(data.magneticfield) > 10 ? 'Elevated Bz — watch for geomag storm' : 'Normal'}</div>
+  </div>`;
+
+  html += `<div class="stat">
+    <div class="stat-label">Signal Noise</div>
+    <div class="stat-val">${data.signalnoise || '—'}</div>
+    <div class="stat-tip">HF atmospheric noise floor</div>
+  </div>`;
+
+  html += '</div>'; // /stat-grid
+
+  // Band conditions matrix
+  const BAND_ORDER = ['80m-40m','30m-20m','17m-15m','12m-10m'];
+  const BAND_LABELS = { '80m-40m':'80m / 40m', '30m-20m':'30m / 20m', '17m-15m':'17m / 15m', '12m-10m':'12m / 10m' };
+
+  html += `<div class="band-panel">
+    <div class="sec-label">HF Band Conditions</div>
+    <table class="band-table">
+      <thead><tr><th>Band</th><th>Day</th><th>Night</th></tr></thead>
+      <tbody>`;
+
+  BAND_ORDER.forEach(b => {
+    const conds = data.bands[b] || {};
+    html += `<tr>
+      <td class="band-name">${BAND_LABELS[b] || b}</td>
+      <td>${condBadge(conds.day)}</td>
+      <td>${condBadge(conds.night)}</td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+
+  // VHF conditions
+  if (data.vhf && data.vhf.length) {
+    html += `<div class="vhf-panel">
+      <div class="sec-label">VHF Conditions</div>
+      <div class="vhf-grid">`;
+    data.vhf.forEach(v => {
+      html += `<div class="vhf-item">
+        <div class="vhf-name">${vhfLabel(v.name, v.location)}</div>
+        <div class="vhf-val ${vhfClass(v.value)}">${v.value}</div>
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  div.innerHTML = html;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+// Load saved data on page load and expose it globally for grid-calc
+(function init() {
+  let hist = loadHistory();
+  // Migrate old single-record format
+  if (!hist.length) {
+    try {
+      const old = localStorage.getItem(SOLAR_KEY);
+      if (old) {
+        const d = JSON.parse(old);
+        hist = [d];
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(hist));
+        localStorage.removeItem(SOLAR_KEY);
+      }
+    } catch(e) {}
+  }
+  renderDashboard(hist[0] || null);
+  renderHistory(hist);
+})();
+</script>
+</body>
+</html>

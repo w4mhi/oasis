@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICS 205 — Radio Communications Plan</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+body{font-size:var(--fs-subtitle);}
+@media(max-width:700px){.g2,.g3,.g4,.g5{grid-template-columns:1fr 1fr;}}
+
+.fld input[type="date"]{color-scheme:dark;}
+
+/* Channel table */
+td input{
+  background:transparent;border:1px solid transparent;color:var(--text);
+  font-family:var(--mono);font-size:var(--fs-base);padding:2px 4px;border-radius:3px;width:100%;
+}
+td input:hover{border-color:var(--border);}
+td select:hover{border-color:var(--border);}
+td select:focus{outline:none;background:var(--bg);border-color:var(--accent-dim);}
+td select option{background:var(--panel);}
+.fn-custom{margin-top:2px;}
+.tone-locked{opacity:.65;cursor:not-allowed;}
+.th-lock{display:none;font-size:var(--fs-micro);color:var(--amber);line-height:1;margin-bottom:2px;letter-spacing:.04em;}
+.th-lock.visible{display:block;}
+th#th-rxfreq.locked,th#th-rxtone.locked,th#th-txfreq.locked,th#th-txtone.locked{color:var(--amber)!important;}
+.plan-loaded{color:var(--amber)!important;}
+tr.row-overflow{background:rgba(255,107,107,.05);}
+tr.row-overflow td input{color:var(--text-dim);}
+
+/* Column widths */
+.cn{width:24px;text-align:center;color:var(--text-dim);font-size:var(--fs-small);white-space:nowrap;user-select:none;}
+.c-zone{width:52px;}
+.c-ch{width:38px;}
+.c-func{width:90px;}
+.c-name{width:160px;}
+.c-assign{width:110px;}
+.c-freq{width:100px;}
+.c-tone{width:72px;}
+.c-mode{width:110px;}
+.c-rem{min-width:90px;}
+.cd{width:24px;text-align:center;}
+
+.overflow-note{display:none;font-size:var(--fs-small);color:var(--accent);margin-top:.4rem;padding:.3rem .6rem;
+  border:1px solid var(--red);border-radius:4px;background:rgba(255,107,107,.07);}
+.overflow-note.visible{display:block;}
+.save-ts{font-size:var(--fs-micro);color:var(--text-dim);opacity:.6;margin-top:.25rem;}
+
+
+@media print{
+  @page{size:letter landscape;margin:.45in;}
+  body{background:#fff;color:#000;font-size:7.5pt;padding:0;}
+  .wrap{max-width:100%;}
+  .actions,.add-btn,.del-btn,.inst,.lib-status,.overflow-note,.toast{display:none!important;}
+  .sec{border:1px solid #999;border-radius:0;background:#fff;padding:.2rem .4rem;margin-bottom:.2rem;page-break-inside:avoid;}
+  .form-title{color:#000;font-size:9pt;}
+  .sec-lbl{color:#444;font-size:6pt;margin-bottom:.2rem;}
+  .fld label{color:#444;font-size:6pt;}
+  .fld input,.fld textarea{background:#fff;color:#000;border:none;border-bottom:1px solid #aaa;border-radius:0;padding:1px 0;font-size:7.5pt;}
+  table{font-size:6.5pt;width:100%;table-layout:fixed;}
+  th{color:#444;font-size:5.5pt;padding:2px 3px;border-bottom:1px solid #999;}
+  td{padding:1px 2px;border-bottom:1px solid #ddd;}
+  td input{font-size:6.5pt;border:none;border-bottom:1px solid #ddd;border-radius:0;padding:1px 2px;background:#fff;color:#000;}
+  .cn{width:.18in;}.c-zone{width:.4in;}.c-ch{width:.28in;}.c-func{width:.68in;}
+  .c-name{width:1.3in;}.c-assign{width:.85in;}.c-freq{width:.78in;}
+  .c-tone{width:.55in;}.c-mode{width:.7in;}.c-rem{width:.9in;}.cd{display:none;}
+  tr.row-overflow{display:none;}
+  .fld textarea{overflow:hidden;resize:none;min-height:0;max-height:.6in;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">🏠 HOME</a>
+    <h1>ICS-205</h1>
+    <p>Incident Radio Communications Plan</p>
+  </header>
+
+  <div class="actions">
+    <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 205 PDF and download a timestamped copy">⬇ Save PDF</button>
+    <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (landscape letter)">Print</button>
+    <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
+    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 205 CSV file to restore form data">Import CSV</button>
+    <button class="sbtn" onclick="loadChirpPrompt()" title="Load a CHIRP radio programming CSV file — channel names become a dropdown and frequencies/tones are auto-filled and locked">📡 Load Frequency Plan</button>
+    <button class="sbtn danger" onclick="clearAll()" title="Clear all form data, unload any frequency plan, and reset to a blank form">Clear</button>
+  </div>
+  <div class="save-ts" id="save-ts"></div>
+
+  <div class="lib-status" id="lib-status"></div>
+
+  <!-- Blocks 1–3 -->
+  <div class="sec">
+    <div class="form-title">ICS 205 — Incident Radio Communications Plan</div>
+    <div class="fg g2" style="margin-bottom:.65rem;">
+      <div class="fld"><label>1. Incident Name</label><input type="text" id="f-inc" placeholder="Enter incident name" oninput="persist()"></div>
+      <div class="fg g2">
+        <div class="fld"><label>2. Date Prepared</label><input type="date" id="f-dp" oninput="persist()"></div>
+        <div class="fld"><label>2. Time Prepared</label><input type="text" id="f-tp" placeholder="0000" oninput="persist()"></div>
+      </div>
+    </div>
+    <span class="sec-lbl">3. Operational Period</span>
+    <div class="fg g4">
+      <div class="fld"><label>Date From</label><input type="date" id="f-df" oninput="persist()"></div>
+      <div class="fld"><label>Date To</label><input type="date" id="f-dt" oninput="persist()"></div>
+      <div class="fld"><label>Time From</label><input type="text" id="f-tf" placeholder="0000" oninput="persist()"></div>
+      <div class="fld"><label>Time To</label><input type="text" id="f-tt" placeholder="2359" oninput="persist()"></div>
+    </div>
+  </div>
+
+  <!-- Block 4: Radio Channel Table -->
+  <div class="sec">
+    <span class="sec-lbl">4. Basic Radio Channel Use</span>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="cn"></th>
+            <th class="c-zone">Zone / Grp</th>
+            <th class="c-ch">Ch #</th>
+            <th class="c-func">Function</th>
+            <th class="c-name">Channel Name / Talkgroup</th>
+            <th class="c-assign">Assignment</th>
+            <th class="c-freq" id="th-rxfreq"><div class="th-lock" id="th-rxfreq-lock">🔒 locked</div>RX Freq (N/W)</th>
+            <th class="c-tone" id="th-rxtone"><div class="th-lock" id="th-rxtone-lock">🔒 locked</div>RX Tone/NAC</th>
+            <th class="c-freq" id="th-txfreq"><div class="th-lock" id="th-txfreq-lock">🔒 locked</div>TX Freq (N/W)</th>
+            <th class="c-tone" id="th-txtone"><div class="th-lock" id="th-txtone-lock">🔒 locked</div>TX Tone/NAC</th>
+            <th class="c-mode">Mode</th>
+            <th class="c-rem">Remarks</th>
+            <th class="cd"></th>
+          </tr>
+        </thead>
+        <tbody id="ch-body"></tbody>
+      </table>
+    </div>
+    <button class="add-btn" onclick="addCh()">+ Add Channel</button>
+    <div class="overflow-note" id="overflow-note">
+      ℹ Rows 9+ will be written to additional PDF pages (one page per 8 channels). All rows appear in Print and CSV.
+    </div>
+  </div>
+
+  <!-- Block 5: Special Instructions -->
+  <div class="sec">
+    <span class="sec-lbl">5. Special Instructions</span>
+    <div class="fld">
+      <textarea id="f-special" rows="3" placeholder="Enter special instructions (e.g. cross-band repeaters, PL tones, securevoice, emergency comms needs)…" oninput="ar(this);persist()"></textarea>
+    </div>
+  </div>
+
+  <!-- Block 6: Prepared By -->
+  <div class="sec">
+    <span class="sec-lbl">6. Prepared By (Communications Unit Leader)</span>
+    <div class="fg g4">
+      <div class="fld"><label>Name</label><input type="text" id="f-pn" placeholder="First Last" oninput="persist()"></div>
+      <div class="fld"><label>Signature</label><input type="text" id="f-ps" placeholder="— (digital sig not supported)" oninput="persist()"></div>
+      <div class="fld"><label>IAP Page #</label><input type="text" id="f-pg" placeholder="—" oninput="persist()"></div>
+      <div class="fld"><label>Date / Time</label><input type="text" id="f-pd" placeholder="MM/DD/YYYY HHmm" oninput="persist()"></div>
+    </div>
+  </div>
+
+  <!-- Instructions -->
+  <div class="inst">
+    <button class="inst-tog" onclick="toggleInst()">
+      <span>ICS 205 Field Instructions</span><span id="i-arrow">▼</span>
+    </button>
+    <div class="inst-body" id="i-body">
+      <table class="inst-tbl">
+        <thead><tr><th>Block</th><th>Field</th><th>Instructions</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Incident Name</td><td>Enter the name assigned to the incident.</td></tr>
+          <tr><td>2</td><td>Date/Time Prepared</td><td>Enter date prepared (month/day/year) and time prepared (24-hour clock).</td></tr>
+          <tr><td>3</td><td>Operational Period</td><td>Enter the start date (month/day/year) and time (24-hour clock) and end date and time for the operational period to which the form applies.</td></tr>
+          <tr><td>4</td><td>Zone / Grp</td><td>Enter zone/group designator at the Communications Unit Leader's discretion.</td></tr>
+          <tr><td>4</td><td>Ch #</td><td>Channel number for incident radios programmed or cloned for this plan, or a reference line number.</td></tr>
+          <tr><td>4</td><td>Function</td><td>Enter the net function: Command, Tactical, Ground-to-Air, Air-to-Air, Support, or Dispatch.</td></tr>
+          <tr><td>4</td><td>Channel Name / Talkgroup</td><td>Nomenclature or commonly used name for the channel or talkgroup (e.g. National Interoperability Channels per DHS FOG).</td></tr>
+          <tr><td>4</td><td>Assignment</td><td>The ICS Branch/Division/Group/Section to which this channel/talkgroup is assigned.</td></tr>
+          <tr><td>4</td><td>RX Freq (N/W)</td><td>Receive frequency: xxx.xxxx followed by N (narrowband) or W (wideband). For trunked systems, enter the system name across all frequency/tone fields.</td></tr>
+          <tr><td>4</td><td>RX Tone/NAC</td><td>Receive CTCSS subaudible tone or Network Access Code (NAC) for the receive frequency.</td></tr>
+          <tr><td>4</td><td>TX Freq (N/W)</td><td>Transmit frequency: xxx.xxxx followed by N (narrowband) or W (wideband).</td></tr>
+          <tr><td>4</td><td>TX Tone/NAC</td><td>Transmit CTCSS subaudible tone or Network Access Code (NAC) for the transmit frequency.</td></tr>
+          <tr><td>4</td><td>Mode</td><td>A = Analog, D = Digital, M = Mixed mode.</td></tr>
+          <tr><td>4</td><td>Remarks</td><td>Repeater locations, patched channels/talkgroups using links or gateways, etc.</td></tr>
+          <tr><td>5</td><td>Special Instructions</td><td>Cross-band repeaters, securevoice, encoders, PL tones, or other emergency comms needs. Include any special instructions for an incident within an incident.</td></tr>
+          <tr><td>6</td><td>Prepared By</td><td>Name and signature of the Communications Unit Leader. IAP page number and date/time prepared (24-hour clock).</td></tr>
+        </tbody>
+      </table>
+      <p class="inst-note">
+        <strong style="color:var(--text)">Purpose:</strong> Provides all radio frequency or trunked radio talkgroup assignments for each operational period. Normally placed on the Assignment List (ICS 204).<br><br>
+        <strong style="color:var(--text)">Distribution:</strong> Attached to ICS 202 (Incident Objectives) and given to all IAP recipients. All completed originals go to the Documentation Unit.<br><br>
+        <strong style="color:var(--text)">PDF limit:</strong> The official FEMA ICS 205 form has 8 channel rows on page 1. This tool supports unlimited rows for planning purposes; only the first 8 are written to the PDF.
+      </p>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<div class="toast" id="toast"></div>
+
+<!-- Hidden CSV import input -->
+<input type="file" id="csv-import-input" accept=".csv" style="display:none" onchange="importCSV(event)">
+<!-- Hidden CHIRP import input -->
+<input type="file" id="chirp-import-input" accept=".csv" style="display:none" onchange="loadChirp(event)">
+
+<!-- Load template and pdf-lib (must exist in same folder / dependencies/) -->
+<script src="./ics205-template.js"></script>
+<script src="../dependencies/pdf-lib.min.js"></script>
+
+<script>
+// ─── Constants ──────────────────────────────────────────────────────────────
+const STORE = 'ics-205-v2';
+const PDF_ROWS_PER_PAGE = 8;  // FEMA template has 8 channel rows per page
+const PDF_MAX_ROWS = PDF_ROWS_PER_PAGE; // alias kept for overflow-note display
+let chSeq = 0;
+let chirpPlan = null; // null = no plan loaded; array = CHIRP channels
+
+const HF = ['f-inc','f-dp','f-tp','f-df','f-dt','f-tf','f-tt','f-special','f-pn','f-ps','f-pg','f-pd'];
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  HF.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', persist);
+  });
+  checkLibStatus();
+  load();
+  // Pre-fill date fields with today and time with now if not restored from storage
+  const _now = new Date();
+  const today = _now.toISOString().slice(0, 10);
+  ['f-dp','f-df','f-dt'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.value) el.value = today;
+  });
+  const tpEl = document.getElementById('f-tp');
+  if (tpEl) {
+    tpEl.value = String(_now.getHours()).padStart(2,'0') + String(_now.getMinutes()).padStart(2,'0');
+  }
+  const pdEl = document.getElementById('f-pd');
+  if (pdEl && !pdEl.value.includes('/')) {
+    const mo = String(_now.getMonth()+1).padStart(2,'0');
+    const dy = String(_now.getDate()).padStart(2,'0');
+    const hh = String(_now.getHours()).padStart(2,'0');
+    const mm = String(_now.getMinutes()).padStart(2,'0');
+    pdEl.value = `${mo}/${dy}/${_now.getFullYear()} ${hh}${mm}`;
+  }
+  if (!document.querySelector('#ch-body tr')) {
+    for (let i = 0; i < 8; i++) addCh();
+  }
+});
+
+// ─── Library status ─────────────────────────────────────────────────────────
+function checkLibStatus() {
+  const div = document.getElementById('lib-status');
+  const hasPDFLib = typeof window.PDFLib !== 'undefined';
+  const hasTemplate = typeof ICS205_PDF_B64 !== 'undefined';
+
+  let html = '';
+  html += `<span class="${hasTemplate ? 'lib-ok' : 'lib-err'}">${hasTemplate ? '✓' : '✗'} PDF template ${hasTemplate ? 'loaded' : 'missing — check ics205-template.js'}</span>`;
+  html += `<span class="${hasPDFLib ? 'lib-ok' : 'lib-warn'}">${hasPDFLib ? '✓' : '⚠'} pdf-lib ${hasPDFLib ? 'loaded' : 'not found — run install.bat or install.sh'}</span>`;
+  if (hasPDFLib && hasTemplate) {
+    html += '<span style="color:var(--text-dim)">— ready to save PDF</span>';
+  }
+  div.innerHTML = html;
+}
+
+// ─── Function field helpers ────────────────────────────────────────────────
+const FUNC_OPTS = ['Command','Tactical','Ground-to-Air','Air-to-Air','Support','Dispatch'];
+
+function makeFuncCell(val) {
+  const isCustom = val !== '' && !FUNC_OPTS.includes(val);
+  const selVal = isCustom ? 'Custom' : val;
+  const opts = ['', ...FUNC_OPTS].map(o => {
+    const label = o === '' ? '-' : o;
+    return `<option value="${o}"${selVal === o ? ' selected' : ''}>${label}</option>`;
+  }).join('') +
+    `<option value="Custom"${selVal === 'Custom' ? ' selected' : ''}>Custom…</option>`;
+  const customDisplay = isCustom ? '' : 'display:none';
+  return `<select data-field="func-sel" oninput="fnSel(this);persist()">${opts}</select>` +
+    `<input type="text" data-field="func-custom" class="fn-custom" placeholder="Enter function…" value="${xv(isCustom ? val : '')}" oninput="persist()" style="${customDisplay}">`;
+}
+
+function fnSel(sel) {
+  const inp = sel.nextElementSibling;
+  if (inp) { inp.style.display = sel.value === 'Custom' ? '' : 'none'; }
+}
+
+// ─── Assignment field helpers ──────────────────────────────────────────────
+const ASSIGN_OPTS = ['Branch','Division','Group','Section','Command','Air Ops','Logistics','Operations','Planning'];
+
+function makeAssignCell(val) {
+  const isCustom = val !== '' && !ASSIGN_OPTS.includes(val);
+  const selVal = isCustom ? 'Custom' : val;
+  const opts = ['', ...ASSIGN_OPTS].map(o => {
+    const label = o === '' ? '—' : o;
+    return `<option value="${o}"${selVal === o ? ' selected' : ''}>${label}</option>`;
+  }).join('') +
+    `<option value="Custom"${selVal === 'Custom' ? ' selected' : ''}>Custom…</option>`;
+  const customDisplay = isCustom ? '' : 'display:none';
+  return `<select data-field="assign-sel" oninput="assignSel(this);persist()">${opts}</select>` +
+    `<input type="text" data-field="assign-custom" class="fn-custom" placeholder="Enter assignment…" value="${xv(isCustom ? val : '')}" oninput="persist()" style="${customDisplay}">`;
+}
+
+function assignSel(sel) {
+  const inp = sel.nextElementSibling;
+  if (inp) { inp.style.display = sel.value === 'Custom' ? '' : 'none'; }
+}
+
+// ─── Mode field helpers ────────────────────────────────────────────────────
+const MODE_OPTS = [{v:'A',l:'A — Analog'},{v:'D',l:'D — Digital'},{v:'M',l:'M — Mixed'}];
+
+function makeModeCell(val) {
+  const isCustom = val !== '' && !MODE_OPTS.map(o => o.v).includes(val);
+  const selVal = isCustom ? 'Custom' : val;
+  const opts = [{v:'',l:'—'}, ...MODE_OPTS].map(o => {
+    return `<option value="${o.v}"${selVal === o.v ? ' selected' : ''}>${o.l}</option>`;
+  }).join('') +
+    `<option value="Custom"${selVal === 'Custom' ? ' selected' : ''}>Custom…</option>`;
+  const customDisplay = isCustom ? '' : 'display:none';
+  return `<select data-field="mode-sel" oninput="modeSel(this);persist()">${opts}</select>` +
+    `<input type="text" data-field="mode-custom" class="fn-custom" placeholder="Enter mode…" value="${xv(isCustom ? val : '')}" oninput="persist()" style="${customDisplay}">`;
+}
+
+function modeSel(sel) {
+  const inp = sel.nextElementSibling;
+  if (inp) { inp.style.display = sel.value === 'Custom' ? '' : 'none'; }
+}
+
+// ─── CHIRP Frequency Plan ────────────────────────────────────────────────────
+function loadChirpPrompt() {
+  document.getElementById('chirp-import-input').value = '';
+  document.getElementById('chirp-import-input').click();
+}
+
+function loadChirp(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const plan = parseChirpCSV(e.target.result);
+      if (!plan) return;
+      chirpPlan = plan;
+      // Update column header
+      const th = document.querySelector('th.c-name');
+      if (th) th.classList.add('plan-loaded');
+      // Rebuild name cell on every existing row
+      document.querySelectorAll('#ch-body tr').forEach(tr => {
+        const nameEl = tr.querySelector('[data-field="name"]');
+        const cur = nameEl ? nameEl.value : '';
+        const td = tr.querySelector('td.c-name');
+        if (td) {
+          td.innerHTML = makeNameCell(cur);
+          // Auto-apply if name already matches a plan entry
+          if (cur) {
+            const idx = chirpPlan.findIndex(ch => ch.name === cur);
+            if (idx >= 0) {
+              const sel = td.querySelector('[data-field="name-sel"]');
+              if (sel) { sel.value = idx; applyChirpChannel(sel); }
+            }
+          }
+        }
+      });
+      showToast(`✓ Frequency plan loaded — ${plan.length} channels`, 'ok', 4000);
+    } catch(err) {
+      showToast('Failed to load plan: ' + err.message, 'err', 5000);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function parseChirpCSV(text) {
+  // Strip UTF-8 BOM if present (some CHIRP versions emit \uFEFF at start)
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) { showToast('Empty file', 'err', 4000); return null; }
+  const hdr = parseCSVLine(lines[0]).map(h => h.trim());
+  const required = ['Location','Name','Frequency','Duplex','Offset','Tone','rToneFreq','cToneFreq','Mode'];
+  const missing = required.filter(r => !hdr.includes(r));
+  if (missing.length) {
+    showToast('Not a CHIRP file — missing columns: ' + missing.join(', '), 'err', 6000);
+    return null;
+  }
+  const idx = {};
+  hdr.forEach((h, i) => idx[h] = i);
+  const channels = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCSVLine(lines[i]);
+    const name = (cols[idx['Name']] || '').trim();
+    if (!name) continue;
+    channels.push({
+      location:  (cols[idx['Location']] || '').trim(),
+      name,
+      frequency: (cols[idx['Frequency']] || '').trim(),
+      duplex:    (cols[idx['Duplex']]    || '').trim(),
+      offset:    (cols[idx['Offset']]    || '0').trim(),
+      tone:      (cols[idx['Tone']]      || '').trim(),
+      rToneFreq: (cols[idx['rToneFreq']] || '').trim(),
+      cToneFreq: (cols[idx['cToneFreq']] || '').trim(),
+      chirpMode: (cols[idx['Mode']]      || '').trim(),
+      comment:   (cols[idx['Comment']]   || '').trim()
+    });
+  }
+  return channels;
+}
+
+function chirpTxFreq(frequency, duplex, offset) {
+  const f = parseFloat(frequency) || 0;
+  const o = parseFloat(offset) || 0;
+  if (duplex === '+') return (f + o).toFixed(4);
+  if (duplex === '-') return (f - o).toFixed(4);
+  return f.toFixed(4);
+}
+
+function chirpFmtFreq(mhz, chirpMode) {
+  const bw = chirpMode === 'NFM' ? 'N' : 'W';
+  return parseFloat(mhz).toFixed(4) + ' ' + bw;
+}
+
+function makeNameCell(val) {
+  if (!chirpPlan) {
+    return `<input type="text" data-field="name" value="${xv(val)}" oninput="persist()">`;
+  }
+  const matchIdx = chirpPlan.findIndex(ch => ch.name === val);
+  const opts = [
+    `<option value="">pick channel</option>`,
+    ...chirpPlan.map((ch, i) =>
+      `<option value="${i}"${i === matchIdx ? ' selected' : ''}>${x(ch.name)}</option>`
+    )
+  ].join('');
+  return `<select data-field="name-sel" onchange="applyChirpChannel(this);persist()">${opts}</select>` +
+    `<input type="hidden" data-field="name" value="${xv(val)}">` ;
+}
+
+function applyChirpChannel(sel) {
+  const idx = parseInt(sel.value);
+  if (isNaN(idx) || idx < 0 || idx >= chirpPlan.length) return;
+  const ch = chirpPlan[idx];
+  const tr = sel.closest('tr');
+  const set = (field, val) => { const el = tr.querySelector(`[data-field="${field}"]`); if (el) el.value = val; };
+
+  // Update hidden name input
+  set('name', ch.name);
+
+  // CH # = CHIRP location number
+  set('ch', ch.location);
+  const rxFreq = chirpFmtFreq(ch.frequency, ch.chirpMode);
+  const txFreqRaw = chirpTxFreq(ch.frequency, ch.duplex, ch.offset);
+  const txFreq = chirpFmtFreq(txFreqRaw, ch.chirpMode);
+
+  const lockField = (field, val) => {
+    const el = tr.querySelector(`[data-field="${field}"]`);
+    if (!el) return;
+    el.value = val;
+    el.disabled = true;
+    el.classList.add('tone-locked');
+  };
+  lockField('rxfreq', rxFreq);
+  lockField('txfreq', txFreq);
+
+  // Tones — lock
+  const lockTone = lockField;
+  lockTone('rxtone', ch.cToneFreq);
+  lockTone('txtone', ch.rToneFreq);
+
+  // Show column header lock badges (once, first time any channel is applied)
+  ['rxfreq','rxtone','txfreq','txtone'].forEach(f => {
+    const badge = document.getElementById('th-' + f + '-lock');
+    if (badge) badge.classList.add('visible');
+    const th = document.getElementById('th-' + f);
+    if (th) th.classList.add('locked');
+  });
+
+  // Mode
+  const modeMap = {FM:'A', NFM:'A', DV:'D', 'D-STAR':'D', DMR:'D', P25:'D', DSTAR:'D'};
+  const modeVal = modeMap[ch.chirpMode] || 'A';
+  const modeSel = tr.querySelector('[data-field="mode-sel"]');
+  if (modeSel) {
+    modeSel.value = modeVal;
+    const modeCustom = modeSel.nextElementSibling;
+    if (modeCustom) modeCustom.style.display = 'none';
+  }
+
+  // Remarks (editable)
+  set('remarks', ch.comment);
+}
+
+// ─── Channel row management ──────────────────────────────────────────────────
+function makeCh(d) {
+  chSeq++;
+  const n = chSeq;
+  const tr = document.createElement('tr');
+  tr.id = 'ch' + n;
+  if (n > PDF_MAX_ROWS) tr.classList.add('row-overflow');
+
+  tr.innerHTML =
+    `<td class="cn">${n}</td>` +
+    `<td class="c-zone"><input type="text" data-field="zone" value="${xv(d.zone||'')}" oninput="persist()"></td>` +
+    `<td class="c-ch"><input type="text" data-field="ch" value="${xv(d.ch||'')}" oninput="persist()"></td>` +
+    `<td class="c-func">${makeFuncCell(d.func||'')}</td>` +
+    `<td class="c-name">${makeNameCell(d.name||'')}</td>` +
+    `<td class="c-assign">${makeAssignCell(d.assignment||'')}</td>` +
+    `<td class="c-freq"><input type="text" data-field="rxfreq" placeholder="xxx.xxxx N/W" value="${xv(d.rxfreq||'')}" oninput="persist()"></td>` +
+    `<td class="c-tone"><input type="text" data-field="rxtone" value="${xv(d.rxtone||'')}" oninput="persist()"></td>` +
+    `<td class="c-freq"><input type="text" data-field="txfreq" placeholder="xxx.xxxx N/W" value="${xv(d.txfreq||'')}" oninput="persist()"></td>` +
+    `<td class="c-tone"><input type="text" data-field="txtone" value="${xv(d.txtone||'')}" oninput="persist()"></td>` +
+    `<td class="c-mode">${makeModeCell(d.mode||'')}</td>` +
+    `<td class="c-rem"><input type="text" data-field="remarks" value="${xv(d.remarks||'')}" oninput="persist()"></td>` +
+    `<td class="cd"><button class="del-btn" onclick="delRow('ch${n}')">✕</button></td>`;
+
+  document.getElementById('ch-body').appendChild(tr);
+  // If CHIRP plan is loaded and name matches, auto-apply
+  if (chirpPlan && d.name) {
+    const matchIdx = chirpPlan.findIndex(ch => ch.name === d.name);
+    if (matchIdx >= 0) {
+      const sel = tr.querySelector('[data-field="name-sel"]');
+      if (sel) { sel.value = matchIdx; applyChirpChannel(sel); }
+    }
+  }
+  updateOverflowNote();
+}
+
+function addCh() { makeCh({}); persist(); }
+
+function delRow(id) {
+  const t = document.getElementById(id);
+  if (t) t.remove();
+  updateOverflowNote();
+  persist();
+}
+
+function updateOverflowNote() {
+  const count = document.querySelectorAll('#ch-body tr').length;
+  const note = document.getElementById('overflow-note');
+  note.classList.toggle('visible', count > PDF_MAX_ROWS);
+}
+
+function getCh() {
+  return [...document.querySelectorAll('#ch-body tr')].map(tr => {
+    function fv(f) { return tr.querySelector(`[data-field="${f}"]`)?.value || ''; }
+    const funcSel   = fv('func-sel');
+    const assignSel  = fv('assign-sel');
+    const modeSel    = fv('mode-sel');
+    return {
+      zone:       fv('zone'),
+      ch:         fv('ch'),
+      func:       funcSel  === 'Custom' ? fv('func-custom')   : funcSel,
+      name:       fv('name'),
+      assignment: assignSel === 'Custom' ? fv('assign-custom') : assignSel,
+      rxfreq:     fv('rxfreq'),
+      rxtone:     fv('rxtone'),
+      txfreq:     fv('txfreq'),
+      txtone:     fv('txtone'),
+      mode:       modeSel  === 'Custom' ? fv('mode-custom')   : modeSel,
+      remarks:    fv('remarks')
+    };
+  });
+}
+
+// ─── Persistence (localStorage) ─────────────────────────────────────────────
+function persist() {
+  const d = {};
+  HF.forEach(id => { const el = document.getElementById(id); if (el) d[id] = el.value; });
+  d.channels = getCh();
+  try {
+    localStorage.setItem(STORE, JSON.stringify(d));
+    const ts = document.getElementById('save-ts');
+    if (ts) ts.textContent = 'Auto-saved ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    if (e.name === 'QuotaExceededError') showToast('⚠ Local storage full — export your data now!', 'err', 8000);
+  }
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE);
+    // Also try old key from Jason's version
+    const rawOld = !raw ? localStorage.getItem('ics-205') : null;
+    const src = raw || rawOld;
+    if (!src) return;
+    const d = JSON.parse(src);
+    HF.forEach(id => {
+      const el = document.getElementById(id);
+      if (el && d[id] !== undefined) el.value = d[id];
+    });
+    const ta = document.getElementById('f-special');
+    if (ta) ar(ta);
+    if (d.channels && d.channels.length) d.channels.forEach(c => makeCh(c));
+  } catch(e) {}
+}
+
+// ─── PDF Save ────────────────────────────────────────────────────────────────
+async function savePDF() {
+  if (typeof window.PDFLib === 'undefined') {
+    showToast('pdf-lib not loaded. Run install.bat (Windows) or install.sh (Linux/Mac) first, then reload.', 'err', 6000);
+    return;
+  }
+  if (typeof ICS205_PDF_B64 === 'undefined') {
+    showToast('PDF template not found. Ensure ics205-template.js is in the same folder as this HTML file.', 'err', 6000);
+    return;
+  }
+
+  try {
+    const channels = getCh();
+    const totalPages = Math.max(1, Math.ceil(channels.length / PDF_ROWS_PER_PAGE));
+
+    // Helper: load a fresh copy of the template and fill one page's worth of rows.
+    // pageIdx is 0-based; rows are channels[pageIdx*8 .. pageIdx*8+7].
+    async function buildPage(pageIdx) {
+      const pdfBytes = Uint8Array.from(atob(ICS205_PDF_B64), c => c.charCodeAt(0));
+      const doc = await PDFLib.PDFDocument.load(pdfBytes);
+      const form = doc.getForm();
+
+      function set(fieldName, value) {
+        try {
+          form.getTextField(fieldName).setText(value || '');
+        } catch(e) {
+          console.warn('ICS-205 PDF: field not found:', fieldName);
+        }
+      }
+
+      // Header fields on every page
+      set('ICS 205 1. Incident Name',                     gv('f-inc'));
+      set('ICS 205 2. Date Prepared',                     fmtDate('f-dp'));
+      set('ICS 205 2. Time Prepared',                     gv('f-tp'));
+      set('ICS 205 3. Operational Period Date From:',     fmtDate('f-df'));
+      set('ICS 205 3. Operational Period Date To:',       fmtDate('f-dt'));
+      set('ICS 205 3. Operational Period Time From:',     gv('f-tf'));
+      set('ICS 205 3. Operational Period Time To:',       gv('f-tt'));
+
+      // Channel rows for this page (template slots 1–8)
+      const base = pageIdx * PDF_ROWS_PER_PAGE;
+      for (let slot = 0; slot < PDF_ROWS_PER_PAGE; slot++) {
+        const ch = channels[base + slot];
+        const n = slot + 1; // template field index (1-based)
+        if (ch) {
+          set(`ICS 205 4. Zone Grp. ${n}`,                                    ch.zone);
+          set(`ICS 205 4. Ch # ${n}`,                                         ch.ch);
+          set(`ICS 205 4. Function ${n}`,                                     ch.func);
+          set(`ICS 205 4. Channel Name/Trunked Radio System Talkgroup ${n}`,  ch.name);
+          set(`ICS 205 4. Assignment ${n}`,                                   ch.assignment);
+          set(`ICS 205 4. RX Freq N or W ${n}`,                               ch.rxfreq);
+          set(`ICS 205 4. RX Tone/NAC ${n}`,                                  ch.rxtone);
+          set(`ICS 205 4. TX Freq N or W ${n}`,                               ch.txfreq);
+          set(`ICS 205 4. TX N or W ${n}`,                                    ch.txtone);
+          set(`ICS 205 4. Mode (A, D, or M) ${n}`,                            ch.mode);
+          set(`ICS 205 4. Remarks ${n}`,                                      ch.remarks);
+        }
+      }
+
+      // Footer fields: page number annotation + prepared-by on every page
+      const pageLabel = totalPages > 1 ? `${gv('f-pg')} (p.${pageIdx+1}/${totalPages})` : gv('f-pg');
+      set('ICS 205 5. Special Instructions',  gv('f-special'));
+      set('ICS 205 6. Prepared by',           gv('f-pn'));
+      set('ICS 205 6. Date/Time',             gv('f-pd'));
+      set('ICS 205 IAP Page',                 pageLabel);
+
+      // Flatten form fields so pdf-lib can copy the page cleanly
+      form.flatten();
+      return doc;
+    }
+
+    // Build page 1 as the base document
+    const pdfDoc = await buildPage(0);
+
+    // Append additional pages if needed
+    for (let p = 1; p < totalPages; p++) {
+      const pageDoc = await buildPage(p);
+      const [copiedPage] = await pdfDoc.copyPages(pageDoc, [0]);
+      pdfDoc.addPage(copiedPage);
+    }
+
+    // Generate filename: ICS-205-YYYYMMDD-HHMM.pdf
+    const now = new Date();
+    const ts = [
+      String(now.getFullYear()),
+      String(now.getMonth()+1).padStart(2,'0'),
+      String(now.getDate()).padStart(2,'0'),
+      '-',
+      String(now.getHours()).padStart(2,'0'),
+      String(now.getMinutes()).padStart(2,'0')
+    ].join('');
+    const filename = `ICS-205-${ts}.pdf`;
+
+    // Download
+    const filledBytes = await pdfDoc.save();
+    const blob = new Blob([filledBytes], { type: 'application/pdf' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+
+    const pageNote = totalPages > 1 ? ` — ${totalPages} pages` : '';
+    showToast(`✓ Saved: ${filename}${pageNote}`, 'ok', 4000);
+
+  } catch(err) {
+    console.error('savePDF error:', err);
+    showToast('PDF save failed: ' + err.message, 'err', 7000);
+  }
+}
+
+// ─── CSV Export ──────────────────────────────────────────────────────────────
+function exportCSV() {
+  const hdr = ['Zone/Grp','Ch #','Function','Channel Name/Talkgroup','Assignment',
+    'RX Freq (N/W)','RX Tone/NAC','TX Freq (N/W)','TX Tone/NAC','Mode','Remarks'];
+  const rows = [
+    '# ICS 205 — Incident Radio Communications Plan',
+    '# Exported: ' + new Date().toISOString(),
+    '',
+    '# HEADER',
+    ['Incident Name', gv('f-inc')].map(cc).join(','),
+    ['Date Prepared', fmtDate('f-dp')].map(cc).join(','),
+    ['Time Prepared', gv('f-tp')].map(cc).join(','),
+    ['Op Period Date From', fmtDate('f-df')].map(cc).join(','),
+    ['Op Period Date To', fmtDate('f-dt')].map(cc).join(','),
+    ['Op Period Time From', gv('f-tf')].map(cc).join(','),
+    ['Op Period Time To', gv('f-tt')].map(cc).join(','),
+    '',
+    '# BASIC RADIO CHANNEL USE',
+    hdr.map(cc).join(','),
+    ...getCh().map(c => [c.zone,c.ch,c.func,c.name,c.assignment,c.rxfreq,c.rxtone,c.txfreq,c.txtone,c.mode,c.remarks].map(cc).join(',')),
+    '',
+    '# SPECIAL INSTRUCTIONS',
+    cc(gv('f-special')),
+    '',
+    '# PREPARED BY',
+    ['Name', gv('f-pn')].map(cc).join(','),
+    ['Signature', gv('f-ps')].map(cc).join(','),
+    ['IAP Page', gv('f-pg')].map(cc).join(','),
+    ['Date/Time', gv('f-pd')].map(cc).join(','),
+  ];
+  const blob = new Blob([rows.join('\r\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ics205-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ─── CSV Import ──────────────────────────────────────────────────────────────
+function importCSVPrompt() {
+  document.getElementById('csv-import-input').value = '';
+  document.getElementById('csv-import-input').click();
+}
+
+function importCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const lines = e.target.result.split(/\r?\n/);
+      let mode = '';
+      const channelRows = [];
+      let hdrSkipped = false;
+
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) {
+          if (line === '# HEADER') mode = 'header';
+          else if (line === '# BASIC RADIO CHANNEL USE') mode = 'channels';
+          else if (line === '# SPECIAL INSTRUCTIONS') mode = 'special';
+          else if (line === '# PREPARED BY') mode = 'prepby';
+          continue;
+        }
+        const cols = parseCSVLine(line);
+        if (mode === 'header') {
+          const key = cols[0], val = cols[1] || '';
+          if (key === 'Incident Name') setField('f-inc', val);
+          else if (key === 'Date Prepared') setField('f-dp', val);
+          else if (key === 'Time Prepared') setField('f-tp', val);
+          else if (key === 'Op Period Date From') setField('f-df', val);
+          else if (key === 'Op Period Date To') setField('f-dt', val);
+          else if (key === 'Op Period Time From') setField('f-tf', val);
+          else if (key === 'Op Period Time To') setField('f-tt', val);
+        } else if (mode === 'channels') {
+          if (!hdrSkipped) { hdrSkipped = true; continue; } // skip header row
+          channelRows.push({
+            zone: cols[0]||'', ch: cols[1]||'', func: cols[2]||'',
+            name: cols[3]||'', assignment: cols[4]||'',
+            rxfreq: cols[5]||'', rxtone: cols[6]||'',
+            txfreq: cols[7]||'', txtone: cols[8]||'',
+            mode: cols[9]||'', remarks: cols[10]||''
+          });
+        } else if (mode === 'special') {
+          setField('f-special', cols[0] || line);
+          const ta = document.getElementById('f-special');
+          if (ta) ar(ta);
+        } else if (mode === 'prepby') {
+          const key = cols[0], val = cols[1] || '';
+          if (key === 'Name') setField('f-pn', val);
+          else if (key === 'Signature') setField('f-ps', val);
+          else if (key === 'IAP Page') setField('f-pg', val);
+          else if (key === 'Date/Time') setField('f-pd', val);
+        }
+      }
+
+      // Rebuild channel table
+      document.getElementById('ch-body').innerHTML = '';
+      chSeq = 0;
+      channelRows.forEach(r => makeCh(r));
+      if (!channelRows.length) for (let i = 0; i < 8; i++) addCh();
+
+      persist();
+      showToast('✓ CSV imported successfully', 'ok', 3000);
+    } catch(err) {
+      showToast('Import failed: ' + err.message, 'err', 5000);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function parseCSVLine(line) {
+  const cols = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (c === ',' && !inQ) { cols.push(cur); cur = ''; }
+    else cur += c;
+  }
+  cols.push(cur);
+  return cols;
+}
+
+function setField(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.value = val;
+}
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
+function clearAll() {
+  if (!confirm('Clear all ICS 205 data?')) return;
+  HF.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('ch-body').innerHTML = '';
+  chSeq = 0;
+  chirpPlan = null;
+  // Reset column header lock badges and colours
+  ['rxfreq','rxtone','txfreq','txtone'].forEach(f => {
+    const badge = document.getElementById('th-' + f + '-lock');
+    if (badge) badge.classList.remove('visible');
+    const th = document.getElementById('th-' + f);
+    if (th) th.classList.remove('locked');
+  });
+  const nameTh = document.querySelector('th.c-name');
+  if (nameTh) nameTh.classList.remove('plan-loaded');
+  try { localStorage.removeItem(STORE); } catch(e) {}
+  for (let i = 0; i < 8; i++) addCh();
+  updateOverflowNote();
+}
+
+function toggleInst() {
+  const b = document.getElementById('i-body');
+  const open = b.classList.toggle('open');
+  document.getElementById('i-arrow').textContent = open ? '▲' : '▼';
+}
+
+function showToast(msg, type, duration = 3500) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = 'toast'; }, duration);
+}
+
+function ar(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+function fmtDate(id) { const v = gv(id); if (!v) return ''; const [y,m,d] = v.split('-'); return (m && d) ? `${m}/${d}/${y}` : v; }
+function x(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function xv(s) { return x(s).replace(/"/g,'&quot;'); }
+function cc(v) { const s = String(v ?? ''); return /[,"\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; }
+function gv(id) { return document.getElementById(id)?.value || ''; }
+</script>
+</body>
+</html>

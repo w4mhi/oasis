@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ITU Call Sign Prefixes</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+.search-row { display:flex; gap:.5rem; margin-top:.4rem; align-items:center; }
+.search-row input { flex:1; max-width:320px; }
+#match-count { font-size:var(--fs-small); color:var(--text-dim); margin-left:.25rem; }
+
+.region-label {
+  font-size:var(--fs-micro); text-transform:uppercase; letter-spacing:.12em;
+  color:var(--amber); display:block; margin:1rem 0 .35rem;
+}
+
+.tbl-wrap table { width:100%; }
+.tbl-wrap th { white-space:nowrap; }
+
+.key   { color:var(--accent); font-weight:700; white-space:nowrap; font-size:var(--fs-subtitle); }
+.cname { color:var(--text);   font-size:var(--fs-base); }
+.note  { color:var(--text-dim); font-size:var(--fs-small); }
+.org   { color:var(--blue);   font-size:var(--fs-small); font-style:italic; }
+
+tr.hidden { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <a class="home-link" href="/">🏠 HOME</a>
+  <h1>ITU Call Sign Prefixes</h1>
+  <p>International Telecommunication Union — allocation of international call sign series · Source: ARRL / ITU Article 19</p>
+</header>
+
+<div class="sec">
+  <span class="sec-lbl">Search</span>
+  <div class="search-row">
+    <input type="search" id="q" placeholder="prefix, country or region…" autocomplete="off">
+    <span id="match-count"></span>
+  </div>
+</div>
+
+<div class="sec">
+  <span class="sec-lbl">Prefixes</span>
+
+  <span class="region-label">Africa</span>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Series</th><th>Country / Entity</th></tr></thead>
+      <tbody>
+        <tr><td class="key">5AA–5AZ</td><td class="cname">Libya</td></tr>
+        <tr><td class="key">5BA–5BZ</td><td class="cname">Cyprus</td></tr>
+        <tr><td class="key">5CA–5GZ</td><td class="cname">Morocco</td></tr>
+        <tr><td class="key">5HA–5IZ</td><td class="cname">Tanzania</td></tr>
+        <tr><td class="key">5NA–5OZ</td><td class="cname">Nigeria</td></tr>
+        <tr><td class="key">5PA–5QZ</td><td class="cname">Denmark (incl. territories)</td></tr>
+        <tr><td class="key">5RA–5SZ</td><td class="cname">Madagascar</td></tr>
+        <tr><td class="key">5TA–5TZ</td><td class="cname">Mauritania</td></tr>
+        <tr><td class="key">5UA–5UZ</td><td class="cname">Niger</td></tr>
+        <tr><td class="key">5VA–5VZ</td><td class="cname">Togo</td></tr>
+        <tr><td class="key">5WA–5WZ</td><td class="cname">Samoa</td></tr>
+        <tr><td class="key">5XA–5XZ</td><td class="cname">Uganda</td></tr>
+        <tr><td class="key">5YA–5ZZ</td><td class="cname">Kenya</td></tr>
+        <tr><td class="key">6AA–6BZ</td><td class="cname">Egypt</td></tr>
+        <tr><td class="key">6CA–6CZ</td><td class="cname">Syria</td></tr>
+        <tr><td class="key">6TA–6UZ</td><td class="cname">Sudan</td></tr>
+        <tr><td class="key">6VA–6WZ</td><td class="cname">Senegal</td></tr>
+        <tr><td class="key">6XA–6XZ</td><td class="cname">Madagascar</td></tr>
+        <tr><td class="key">6ZA–6ZZ</td><td class="cname">Liberia</td></tr>
+        <tr><td class="key">7OA–7OZ</td><td class="cname">Yemen</td></tr>
+        <tr><td class="key">7PA–7PZ</td><td class="cname">Lesotho</td></tr>
+        <tr><td class="key">7QA–7QZ</td><td class="cname">Malawi</td></tr>
+        <tr><td class="key">7RA–7RZ</td><td class="cname">Algeria</td></tr>
+        <tr><td class="key">7TA–7YZ</td><td class="cname">Algeria</td></tr>
+        <tr><td class="key">9AA–9AZ</td><td class="cname">Croatia</td></tr>
+        <tr><td class="key">9EA–9FZ</td><td class="cname">Ethiopia</td></tr>
+        <tr><td class="key">9GA–9GZ</td><td class="cname">Ghana</td></tr>
+        <tr><td class="key">9HA–9HZ</td><td class="cname">Malta</td></tr>
+        <tr><td class="key">9IA–9JZ</td><td class="cname">Zambia</td></tr>
+        <tr><td class="key">9LA–9LZ</td><td class="cname">Sierra Leone</td></tr>
+        <tr><td class="key">9OA–9TZ</td><td class="cname">Democratic Republic of Congo</td></tr>
+        <tr><td class="key">9UA–9UZ</td><td class="cname">Burundi</td></tr>
+        <tr><td class="key">9XA–9XZ</td><td class="cname">Rwanda</td></tr>
+        <tr><td class="key">A2A–A2Z</td><td class="cname">Botswana</td></tr>
+        <tr><td class="key">A5A–A5Z</td><td class="cname">Bhutan</td></tr>
+        <tr><td class="key">A8A–A8Z</td><td class="cname">Liberia</td></tr>
+        <tr><td class="key">C5A–C5Z</td><td class="cname">Gambia</td></tr>
+        <tr><td class="key">C8A–C9Z</td><td class="cname">Mozambique</td></tr>
+        <tr><td class="key">D2A–D3Z</td><td class="cname">Angola</td></tr>
+        <tr><td class="key">D4A–D4Z</td><td class="cname">Cape Verde</td></tr>
+        <tr><td class="key">D5A–D5Z</td><td class="cname">Liberia</td></tr>
+        <tr><td class="key">D6A–D6Z</td><td class="cname">Comoros</td></tr>
+        <tr><td class="key">ELA–ELZ</td><td class="cname">Liberia</td></tr>
+        <tr><td class="key">ETA–ETZ</td><td class="cname">Ethiopia</td></tr>
+        <tr><td class="key">J2A–J2Z</td><td class="cname">Djibouti</td></tr>
+        <tr><td class="key">S2A–S3Z</td><td class="cname">Bangladesh</td></tr>
+        <tr><td class="key">S7A–S7Z</td><td class="cname">Seychelles</td></tr>
+        <tr><td class="key">S8A–S8Z</td><td class="cname">South Africa</td></tr>
+        <tr><td class="key">S9A–S9Z</td><td class="cname">São Tomé and Príncipe</td></tr>
+        <tr><td class="key">SSA–SSM</td><td class="cname">Egypt</td></tr>
+        <tr><td class="key">SSN–STZ</td><td class="cname">Sudan</td></tr>
+        <tr><td class="key">SUA–SUZ</td><td class="cname">Egypt</td></tr>
+        <tr><td class="key">T5A–T5Z</td><td class="cname">Somalia</td></tr>
+        <tr><td class="key">TJA–TJZ</td><td class="cname">Cameroon</td></tr>
+        <tr><td class="key">TLA–TLZ</td><td class="cname">Central African Republic</td></tr>
+        <tr><td class="key">TNA–TNZ</td><td class="cname">Republic of Congo</td></tr>
+        <tr><td class="key">TRA–TRZ</td><td class="cname">Gabon</td></tr>
+        <tr><td class="key">TSA–TSZ</td><td class="cname">Tunisia</td></tr>
+        <tr><td class="key">TTA–TTZ</td><td class="cname">Chad</td></tr>
+        <tr><td class="key">TUA–TUZ</td><td class="cname">Côte d'Ivoire</td></tr>
+        <tr><td class="key">TYA–TYZ</td><td class="cname">Benin</td></tr>
+        <tr><td class="key">TZA–TZZ</td><td class="cname">Mali</td></tr>
+        <tr><td class="key">V5A–V5Z</td><td class="cname">Namibia</td></tr>
+        <tr><td class="key">XTA–XTZ</td><td class="cname">Burkina Faso</td></tr>
+        <tr><td class="key">Z2A–Z2Z</td><td class="cname">Zimbabwe</td></tr>
+        <tr><td class="key">Z8A–Z8Z</td><td class="cname">South Sudan</td></tr>
+        <tr><td class="key">ZRA–ZUZ</td><td class="cname">South Africa</td></tr>
+        <tr><td class="key">3DA–3DM</td><td class="cname">Eswatini (Swaziland)</td></tr>
+        <tr><td class="key">3DN–3DZ</td><td class="cname">Fiji</td></tr>
+        <tr><td class="key">3VA–3VZ</td><td class="cname">Tunisia</td></tr>
+        <tr><td class="key">3XA–3XZ</td><td class="cname">Guinea</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <span class="region-label">Asia &amp; Middle East</span>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Series</th><th>Country / Entity</th></tr></thead>
+      <tbody>
+        <tr><td class="key">4JA–4KZ</td><td class="cname">Azerbaijan</td></tr>
+        <tr><td class="key">4LA–4LZ</td><td class="cname">Georgia</td></tr>
+        <tr><td class="key">4PA–4SZ</td><td class="cname">Sri Lanka</td></tr>
+        <tr><td class="key">4XA–4XZ</td><td class="cname">Israel</td></tr>
+        <tr><td class="key">4ZA–4ZZ</td><td class="cname">Israel</td></tr>
+        <tr><td class="key">9BA–9DZ</td><td class="cname">Iran</td></tr>
+        <tr><td class="key">9KA–9KZ</td><td class="cname">Kuwait</td></tr>
+        <tr><td class="key">9MA–9MZ</td><td class="cname">Malaysia</td></tr>
+        <tr><td class="key">9NA–9NZ</td><td class="cname">Nepal</td></tr>
+        <tr><td class="key">9VA–9VZ</td><td class="cname">Singapore</td></tr>
+        <tr><td class="key">9WA–9WZ</td><td class="cname">Malaysia</td></tr>
+        <tr><td class="key">A3A–A3Z</td><td class="cname">Tonga</td></tr>
+        <tr><td class="key">A4A–A4Z</td><td class="cname">Oman</td></tr>
+        <tr><td class="key">A6A–A6Z</td><td class="cname">United Arab Emirates</td></tr>
+        <tr><td class="key">A7A–A7Z</td><td class="cname">Qatar</td></tr>
+        <tr><td class="key">A9A–A9Z</td><td class="cname">Bahrain</td></tr>
+        <tr><td class="key">APA–ASZ</td><td class="cname">Pakistan</td></tr>
+        <tr><td class="key">ATA–AWZ</td><td class="cname">India</td></tr>
+        <tr><td class="key">BAA–BZZ</td><td class="cname">China (People's Republic)</td></tr>
+        <tr><td class="key">DS A–DTZ</td><td class="cname">South Korea</td></tr>
+        <tr><td class="key">DUA–DZZ</td><td class="cname">Philippines</td></tr>
+        <tr><td class="key">D7A–D9Z</td><td class="cname">South Korea</td></tr>
+        <tr><td class="key">E2A–E2Z</td><td class="cname">Thailand</td></tr>
+        <tr><td class="key">E3A–E3Z</td><td class="cname">Eritrea</td></tr>
+        <tr><td class="key">EKA–EKZ</td><td class="cname">Armenia</td></tr>
+        <tr><td class="key">EPA–EQZ</td><td class="cname">Iran</td></tr>
+        <tr><td class="key">EXA–EXZ</td><td class="cname">Kyrgyzstan</td></tr>
+        <tr><td class="key">EYA–EYZ</td><td class="cname">Tajikistan</td></tr>
+        <tr><td class="key">EZA–EZZ</td><td class="cname">Turkmenistan</td></tr>
+        <tr><td class="key">HMA–HMZ</td><td class="cname">North Korea</td></tr>
+        <tr><td class="key">HNA–HNZ</td><td class="cname">Iraq</td></tr>
+        <tr><td class="key">HSA–HSZ</td><td class="cname">Thailand</td></tr>
+        <tr><td class="key">HZA–HZZ</td><td class="cname">Saudi Arabia</td></tr>
+        <tr><td class="key">JAA–JSZ</td><td class="cname">Japan</td></tr>
+        <tr><td class="key">JTA–JVZ</td><td class="cname">Mongolia</td></tr>
+        <tr><td class="key">JYA–JYZ</td><td class="cname">Jordan</td></tr>
+        <tr><td class="key">JZA–JZZ</td><td class="cname">Indonesia</td></tr>
+        <tr><td class="key">7JA–7NZ</td><td class="cname">Japan</td></tr>
+        <tr><td class="key">7ZA–7ZZ</td><td class="cname">Saudi Arabia</td></tr>
+        <tr><td class="key">8AA–8IZ</td><td class="cname">Indonesia</td></tr>
+        <tr><td class="key">8JA–8NZ</td><td class="cname">Japan</td></tr>
+        <tr><td class="key">8QA–8QZ</td><td class="cname">Maldives</td></tr>
+        <tr><td class="key">8TA–8YZ</td><td class="cname">India</td></tr>
+        <tr><td class="key">8ZA–8ZZ</td><td class="cname">Saudi Arabia</td></tr>
+        <tr><td class="key">ODA–ODZ</td><td class="cname">Lebanon</td></tr>
+        <tr><td class="key">P5A–P9Z</td><td class="cname">North Korea</td></tr>
+        <tr><td class="key">PKA–POZ</td><td class="cname">Indonesia</td></tr>
+        <tr><td class="key">S6A–S6Z</td><td class="cname">Singapore</td></tr>
+        <tr><td class="key">T6A–T6Z</td><td class="cname">Afghanistan</td></tr>
+        <tr><td class="key">T8A–T8Z</td><td class="cname">Palau</td></tr>
+        <tr><td class="key">TAA–TCZ</td><td class="cname">Turkey</td></tr>
+        <tr><td class="key">UJA–UMZ</td><td class="cname">Uzbekistan</td></tr>
+        <tr><td class="key">UNA–UQZ</td><td class="cname">Kazakhstan</td></tr>
+        <tr><td class="key">VRA–VRZ</td><td class="cname">China — Hong Kong</td></tr>
+        <tr><td class="key">VTA–VWZ</td><td class="cname">India</td></tr>
+        <tr><td class="key">XSA–XSZ</td><td class="cname">China (People's Republic)</td></tr>
+        <tr><td class="key">XUA–XUZ</td><td class="cname">Cambodia</td></tr>
+        <tr><td class="key">XVA–XVZ</td><td class="cname">Vietnam</td></tr>
+        <tr><td class="key">XWA–XWZ</td><td class="cname">Laos</td></tr>
+        <tr><td class="key">XXA–XXZ</td><td class="cname">China — Macao</td></tr>
+        <tr><td class="key">XYA–XZZ</td><td class="cname">Myanmar</td></tr>
+        <tr><td class="key">YAA–YAZ</td><td class="cname">Afghanistan</td></tr>
+        <tr><td class="key">YBA–YHZ</td><td class="cname">Indonesia</td></tr>
+        <tr><td class="key">YIA–YIZ</td><td class="cname">Iraq</td></tr>
+        <tr><td class="key">YKA–YKZ</td><td class="cname">Syria</td></tr>
+        <tr><td class="key">YMA–YMZ</td><td class="cname">Turkey</td></tr>
+        <tr><td class="key">3HA–3UZ</td><td class="cname">China (People's Republic)</td></tr>
+        <tr><td class="key">3WA–3WZ</td><td class="cname">Vietnam</td></tr>
+        <tr><td class="key">4DA–4IZ</td><td class="cname">Philippines</td></tr>
+        <tr><td class="key">6KA–6NZ</td><td class="cname">South Korea</td></tr>
+        <tr><td class="key">6PA–6SZ</td><td class="cname">Pakistan</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <span class="region-label">Europe</span>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Series</th><th>Country / Entity</th></tr></thead>
+      <tbody>
+        <tr><td class="key">4OA–4OZ</td><td class="cname">Montenegro</td></tr>
+        <tr><td class="key">C3A–C3Z</td><td class="cname">Andorra</td></tr>
+        <tr><td class="key">C4A–C4Z</td><td class="cname">Cyprus</td></tr>
+        <tr><td class="key">DAA–DRZ</td><td class="cname">Germany</td></tr>
+        <tr><td class="key">E7A–E7Z</td><td class="cname">Bosnia and Herzegovina</td></tr>
+        <tr><td class="key">EAA–EHZ</td><td class="cname">Spain</td></tr>
+        <tr><td class="key">EIA–EJZ</td><td class="cname">Ireland</td></tr>
+        <tr><td class="key">EMA–EOZ</td><td class="cname">Ukraine</td></tr>
+        <tr><td class="key">ERA–ERZ</td><td class="cname">Moldova</td></tr>
+        <tr><td class="key">ESA–ESZ</td><td class="cname">Estonia</td></tr>
+        <tr><td class="key">EUA–EWZ</td><td class="cname">Belarus</td></tr>
+        <tr><td class="key">FAA–FZZ</td><td class="cname">France</td></tr>
+        <tr><td class="key">GAA–GZZ</td><td class="cname">United Kingdom</td></tr>
+        <tr><td class="key">HAA–HAZ</td><td class="cname">Hungary</td></tr>
+        <tr><td class="key">HBA–HBZ</td><td class="cname">Switzerland</td></tr>
+        <tr><td class="key">HEA–HEZ</td><td class="cname">Switzerland</td></tr>
+        <tr><td class="key">HFA–HFZ</td><td class="cname">Poland</td></tr>
+        <tr><td class="key">HGA–HGZ</td><td class="cname">Hungary</td></tr>
+        <tr><td class="key">HVA–HVZ</td><td class="cname">Vatican City</td></tr>
+        <tr><td class="key">H2A–H2Z</td><td class="cname">Cyprus</td></tr>
+        <tr><td class="key">IAA–IZZ</td><td class="cname">Italy</td></tr>
+        <tr><td class="key">J4A–J4Z</td><td class="cname">Greece</td></tr>
+        <tr><td class="key">JWA–JXZ</td><td class="cname">Norway</td></tr>
+        <tr><td class="key">LXA–LXZ</td><td class="cname">Luxembourg</td></tr>
+        <tr><td class="key">LYA–LYZ</td><td class="cname">Lithuania</td></tr>
+        <tr><td class="key">LZA–LZZ</td><td class="cname">Bulgaria</td></tr>
+        <tr><td class="key">MAA–MZZ</td><td class="cname">United Kingdom</td></tr>
+        <tr><td class="key">OEA–OEZ</td><td class="cname">Austria</td></tr>
+        <tr><td class="key">OFA–OJZ</td><td class="cname">Finland</td></tr>
+        <tr><td class="key">OKA–OLZ</td><td class="cname">Czech Republic</td></tr>
+        <tr><td class="key">OMA–OMZ</td><td class="cname">Slovakia</td></tr>
+        <tr><td class="key">ONA–OTZ</td><td class="cname">Belgium</td></tr>
+        <tr><td class="key">OUA–OZZ</td><td class="cname">Denmark</td></tr>
+        <tr><td class="key">PAA–PIZ</td><td class="cname">Netherlands</td></tr>
+        <tr><td class="key">RAA–RZZ</td><td class="cname">Russia</td></tr>
+        <tr><td class="key">SAA–SMZ</td><td class="cname">Sweden</td></tr>
+        <tr><td class="key">SNA–SRZ</td><td class="cname">Poland</td></tr>
+        <tr><td class="key">S5A–S5Z</td><td class="cname">Slovenia</td></tr>
+        <tr><td class="key">SVA–SZZ</td><td class="cname">Greece</td></tr>
+        <tr><td class="key">T7A–T7Z</td><td class="cname">San Marino</td></tr>
+        <tr><td class="key">UAA–UIZ</td><td class="cname">Russia</td></tr>
+        <tr><td class="key">URA–UZZ</td><td class="cname">Ukraine</td></tr>
+        <tr><td class="key">VPA–VQZ</td><td class="cname">United Kingdom (territories)</td></tr>
+        <tr><td class="key">VSA–VSZ</td><td class="cname">United Kingdom (territories)</td></tr>
+        <tr><td class="key">Y2A–Y9Z</td><td class="cname">Germany</td></tr>
+        <tr><td class="key">YLA–YLZ</td><td class="cname">Latvia</td></tr>
+        <tr><td class="key">YOA–YRZ</td><td class="cname">Romania</td></tr>
+        <tr><td class="key">YTA–YUZ</td><td class="cname">Serbia</td></tr>
+        <tr><td class="key">Z3A–Z3Z</td><td class="cname">North Macedonia</td></tr>
+        <tr><td class="key">Z6A–Z6Z</td><td class="cname">Kosovo</td></tr>
+        <tr><td class="key">ZAA–ZAZ</td><td class="cname">Albania</td></tr>
+        <tr><td class="key">ZBA–ZJZ</td><td class="cname">United Kingdom (territories)</td></tr>
+        <tr><td class="key">ZNA–ZOZ</td><td class="cname">United Kingdom (territories)</td></tr>
+        <tr><td class="key">ZQA–ZQZ</td><td class="cname">United Kingdom (territories)</td></tr>
+        <tr><td class="key">2AA–2ZZ</td><td class="cname">United Kingdom</td></tr>
+        <tr><td class="key">3AA–3AZ</td><td class="cname">Monaco</td></tr>
+        <tr><td class="key">3ZA–3ZZ</td><td class="cname">Poland</td></tr>
+        <tr><td class="key">7SA–7SZ</td><td class="cname">Sweden</td></tr>
+        <tr><td class="key">8SA–8SZ</td><td class="cname">Sweden</td></tr>
+        <tr><td class="key">9AA–9AZ</td><td class="cname">Croatia</td></tr>
+        <tr><td class="key">HWA–HYZ</td><td class="cname">France (territories)</td></tr>
+        <tr><td class="key">THA–THZ</td><td class="cname">France</td></tr>
+        <tr><td class="key">TKA–TKZ</td><td class="cname">France</td></tr>
+        <tr><td class="key">TMA–TMZ</td><td class="cname">France</td></tr>
+        <tr><td class="key">TOA–TQZ</td><td class="cname">France</td></tr>
+        <tr><td class="key">TVA–TXZ</td><td class="cname">France</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <span class="region-label">North America &amp; Caribbean</span>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Series</th><th>Country / Entity</th></tr></thead>
+      <tbody>
+        <tr><td class="key">AAA–ALZ</td><td class="cname">United States of America</td></tr>
+        <tr><td class="key">CFA–CKZ</td><td class="cname">Canada</td></tr>
+        <tr><td class="key">CLA–CMZ</td><td class="cname">Cuba</td></tr>
+        <tr><td class="key">COA–COZ</td><td class="cname">Cuba</td></tr>
+        <tr><td class="key">C6A–C6Z</td><td class="cname">Bahamas</td></tr>
+        <tr><td class="key">CYA–CZZ</td><td class="cname">Canada</td></tr>
+        <tr><td class="key">HHA–HHZ</td><td class="cname">Haiti</td></tr>
+        <tr><td class="key">HIA–HIZ</td><td class="cname">Dominican Republic</td></tr>
+        <tr><td class="key">HOA–HPZ</td><td class="cname">Panama</td></tr>
+        <tr><td class="key">H3A–H3Z</td><td class="cname">Panama</td></tr>
+        <tr><td class="key">H8A–H9Z</td><td class="cname">Panama</td></tr>
+        <tr><td class="key">J3A–J3Z</td><td class="cname">Grenada</td></tr>
+        <tr><td class="key">J6A–J6Z</td><td class="cname">Saint Lucia</td></tr>
+        <tr><td class="key">J7A–J7Z</td><td class="cname">Dominica</td></tr>
+        <tr><td class="key">J8A–J8Z</td><td class="cname">Saint Vincent and the Grenadines</td></tr>
+        <tr><td class="key">KAA–KZZ</td><td class="cname">United States of America</td></tr>
+        <tr><td class="key">NAA–NZZ</td><td class="cname">United States of America</td></tr>
+        <tr><td class="key">PJA–PJZ</td><td class="cname">Netherlands — Caribbean</td></tr>
+        <tr><td class="key">T4A–T4Z</td><td class="cname">Cuba</td></tr>
+        <tr><td class="key">TDA–TDZ</td><td class="cname">Guatemala</td></tr>
+        <tr><td class="key">TEA–TEZ</td><td class="cname">Costa Rica</td></tr>
+        <tr><td class="key">TGA–TGZ</td><td class="cname">Guatemala</td></tr>
+        <tr><td class="key">TIA–TIZ</td><td class="cname">Costa Rica</td></tr>
+        <tr><td class="key">V2A–V2Z</td><td class="cname">Antigua and Barbuda</td></tr>
+        <tr><td class="key">V4A–V4Z</td><td class="cname">Saint Kitts and Nevis</td></tr>
+        <tr><td class="key">VAA–VGZ</td><td class="cname">Canada</td></tr>
+        <tr><td class="key">VOA–VOZ</td><td class="cname">Canada</td></tr>
+        <tr><td class="key">VXA–VYZ</td><td class="cname">Canada</td></tr>
+        <tr><td class="key">WAA–WZZ</td><td class="cname">United States of America</td></tr>
+        <tr><td class="key">XAA–XIZ</td><td class="cname">Mexico</td></tr>
+        <tr><td class="key">XJA–XOZ</td><td class="cname">Canada</td></tr>
+        <tr><td class="key">4AA–4CZ</td><td class="cname">Mexico</td></tr>
+        <tr><td class="key">4VA–4VZ</td><td class="cname">Haiti</td></tr>
+        <tr><td class="key">4WA–4WZ</td><td class="cname">Timor-Leste</td></tr>
+        <tr><td class="key">6DA–6JZ</td><td class="cname">Mexico</td></tr>
+        <tr><td class="key">6YA–6YZ</td><td class="cname">Jamaica</td></tr>
+        <tr><td class="key">8PA–8PZ</td><td class="cname">Barbados</td></tr>
+        <tr><td class="key">8RA–8RZ</td><td class="cname">Guyana</td></tr>
+        <tr><td class="key">9YA–9ZZ</td><td class="cname">Trinidad and Tobago</td></tr>
+        <tr><td class="key">HQA–HRZ</td><td class="cname">Honduras</td></tr>
+        <tr><td class="key">HTA–HTZ</td><td class="cname">Nicaragua</td></tr>
+        <tr><td class="key">HUA–HUZ</td><td class="cname">El Salvador</td></tr>
+        <tr><td class="key">YNA–YNZ</td><td class="cname">Nicaragua</td></tr>
+        <tr><td class="key">YSA–YSZ</td><td class="cname">El Salvador</td></tr>
+        <tr><td class="key">3EA–3FZ</td><td class="cname">Panama</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <span class="region-label">South America</span>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Series</th><th>Country / Entity</th></tr></thead>
+      <tbody>
+        <tr><td class="key">AMA–AOZ</td><td class="cname">Spain</td></tr>
+        <tr><td class="key">AYA–AZZ</td><td class="cname">Argentina</td></tr>
+        <tr><td class="key">CAA–CEZ</td><td class="cname">Chile</td></tr>
+        <tr><td class="key">CNA–CNZ</td><td class="cname">Morocco</td></tr>
+        <tr><td class="key">CPA–CPZ</td><td class="cname">Bolivia</td></tr>
+        <tr><td class="key">CQA–CUZ</td><td class="cname">Portugal</td></tr>
+        <tr><td class="key">CVA–CXZ</td><td class="cname">Uruguay</td></tr>
+        <tr><td class="key">HCA–HDZ</td><td class="cname">Ecuador</td></tr>
+        <tr><td class="key">HJA–HKZ</td><td class="cname">Colombia</td></tr>
+        <tr><td class="key">LOA–LWZ</td><td class="cname">Argentina</td></tr>
+        <tr><td class="key">L2A–L9Z</td><td class="cname">Argentina</td></tr>
+        <tr><td class="key">OAA–OCZ</td><td class="cname">Peru</td></tr>
+        <tr><td class="key">PPA–PYZ</td><td class="cname">Brazil</td></tr>
+        <tr><td class="key">PZA–PZZ</td><td class="cname">Suriname</td></tr>
+        <tr><td class="key">V3A–V3Z</td><td class="cname">Belize</td></tr>
+        <tr><td class="key">XQA–XRZ</td><td class="cname">Chile</td></tr>
+        <tr><td class="key">YVA–YYZ</td><td class="cname">Venezuela</td></tr>
+        <tr><td class="key">ZPA–ZPZ</td><td class="cname">Paraguay</td></tr>
+        <tr><td class="key">ZVA–ZZZ</td><td class="cname">Brazil</td></tr>
+        <tr><td class="key">3GA–3GZ</td><td class="cname">Chile</td></tr>
+        <tr><td class="key">4MA–4MZ</td><td class="cname">Venezuela</td></tr>
+        <tr><td class="key">4TA–4TZ</td><td class="cname">Peru</td></tr>
+        <tr><td class="key">5JA–5KZ</td><td class="cname">Colombia</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <span class="region-label">Oceania &amp; Pacific</span>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Series</th><th>Country / Entity</th></tr></thead>
+      <tbody>
+        <tr><td class="key">AXA–AXZ</td><td class="cname">Australia</td></tr>
+        <tr><td class="key">C2A–C2Z</td><td class="cname">Nauru</td></tr>
+        <tr><td class="key">E5A–E5Z</td><td class="cname">New Zealand — Cook Islands</td></tr>
+        <tr><td class="key">E6A–E6Z</td><td class="cname">New Zealand — Niue</td></tr>
+        <tr><td class="key">H4A–H4Z</td><td class="cname">Solomon Islands</td></tr>
+        <tr><td class="key">P2A–P2Z</td><td class="cname">Papua New Guinea</td></tr>
+        <tr><td class="key">P4A–P4Z</td><td class="cname">Netherlands — Aruba</td></tr>
+        <tr><td class="key">T2A–T2Z</td><td class="cname">Tuvalu</td></tr>
+        <tr><td class="key">T3A–T3Z</td><td class="cname">Kiribati</td></tr>
+        <tr><td class="key">V6A–V6Z</td><td class="cname">Micronesia</td></tr>
+        <tr><td class="key">V7A–V7Z</td><td class="cname">Marshall Islands</td></tr>
+        <tr><td class="key">V8A–V8Z</td><td class="cname">Brunei</td></tr>
+        <tr><td class="key">VHA–VNZ</td><td class="cname">Australia</td></tr>
+        <tr><td class="key">VZA–VZZ</td><td class="cname">Australia</td></tr>
+        <tr><td class="key">YJA–YJZ</td><td class="cname">Vanuatu</td></tr>
+        <tr><td class="key">ZKA–ZMZ</td><td class="cname">New Zealand</td></tr>
+        <tr><td class="key">3BA–3BZ</td><td class="cname">Mauritius</td></tr>
+        <tr><td class="key">3CA–3CZ</td><td class="cname">Equatorial Guinea</td></tr>
+        <tr><td class="key">3YA–3YZ</td><td class="cname">Norway (Bouvet/Peter I)</td></tr>
+        <tr><td class="key">5PA–5QZ</td><td class="cname">Denmark (Faroe/Greenland)</td></tr>
+        <tr><td class="key">8OA–8OZ</td><td class="cname">Botswana</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <span class="region-label">International Organizations</span>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Series</th><th>Organization</th></tr></thead>
+      <tbody>
+        <tr><td class="key">4UA–4UZ</td><td class="org">United Nations</td></tr>
+        <tr><td class="key">4YA–4YZ</td><td class="org">International Civil Aviation Organization (ICAO)</td></tr>
+        <tr><td class="key">C7A–C7Z</td><td class="org">World Meteorological Organization (WMO)</td></tr>
+        <tr><td class="key">E4A–E4Z</td><td class="org">Palestinian Authority</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div><!-- /sec -->
+
+</div><!-- /wrap -->
+
+<script>
+const q = document.getElementById('q');
+const mc = document.getElementById('match-count');
+
+q.addEventListener('input', function() {
+  const term = this.value.trim().toLowerCase();
+  let total = 0, shown = 0;
+  document.querySelectorAll('.tbl-wrap tbody tr').forEach(tr => {
+    total++;
+    if (!term || tr.textContent.toLowerCase().includes(term)) {
+      tr.classList.remove('hidden');
+      shown++;
+    } else {
+      tr.classList.add('hidden');
+    }
+  });
+  mc.textContent = term ? `${shown} of ${total} entries` : '';
+});
+</script>
+
+</body>
+</html>

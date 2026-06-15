@@ -1,0 +1,110 @@
+{
+  "band": "2m",
+  "name": "2 Meters",
+  "range": [144, 148],
+  "unit": "MHz",
+  "license": "Tech+",
+  "allocation": "Primary",
+  "notes": [
+    "144.200 MHz: national SSB/CW calling frequency",
+    "146.52 MHz: national FM simplex calling frequency"
+  ],
+  "rows": [
+    {
+      "range": [144.0, 146.0],
+      "segments": [
+        {
+          "start": 144.0, "end": 144.3,
+          "position": "bottom", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "EME 144.00–144.05. General CW/weak signal 144.05–144.10. EME and weak-signal SSB 144.10–144.20. SSB calling 144.200. General SSB 144.200–144.275. Propagation beacons 144.275–144.300 MHz."
+        },
+        {
+          "start": 144.3, "end": 144.5,
+          "position": "top", "type": "satellite", "color": "#06d6a0",
+          "label": "Satellite",
+          "detail": "New OSCAR subband 144.30–144.50 MHz."
+        },
+        {
+          "start": 144.5, "end": 144.6,
+          "position": "bottom", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Linear translator inputs 144.50–144.60 MHz."
+        },
+        {
+          "start": 144.6, "end": 144.9,
+          "position": "top", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "FM repeater inputs 144.60–144.90 MHz."
+        },
+        {
+          "start": 144.9, "end": 145.1,
+          "position": "bottom", "type": "fm-simplex", "color": "#c77dff",
+          "label": "FM Simplex",
+          "detail": "Weak signal and FM simplex 144.90–145.10. 145.01, 03, 05, 07, 09 widely used for packet."
+        },
+        {
+          "start": 145.1, "end": 145.2,
+          "position": "top", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Linear translator outputs 145.10–145.20 MHz."
+        },
+        {
+          "start": 145.2, "end": 145.5,
+          "position": "bottom", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "FM repeater outputs 145.20–145.50 MHz."
+        },
+        {
+          "start": 145.5, "end": 146.0,
+          "position": "top", "type": "mixed", "color": "#a8b5c8",
+          "label": "Mixed / Control",
+          "detail": "Miscellaneous and experimental modes 145.50–145.80. OSCAR satellite subband 145.80–146.00 MHz."
+        }
+      ],
+      "callouts": [
+        { "freq": 144.2, "label": "144.200", "sublabel": "SSB/CW Calling", "type": "calling", "side": "below" }
+      ],
+      "ticks": [144.0, 144.3, 144.5, 144.6, 144.9, 145.1, 145.2, 145.5, 146.0]
+    },
+    {
+      "range": [146.0, 148.0],
+      "segments": [
+        {
+          "start": 146.0, "end": 146.4,
+          "position": "bottom", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater inputs 146.01–146.37 MHz."
+        },
+        {
+          "start": 146.4, "end": 146.6,
+          "position": "top", "type": "fm-simplex", "color": "#c77dff",
+          "label": "FM Simplex",
+          "detail": "FM simplex 146.40–146.58 MHz. 146.52: national simplex calling frequency."
+        },
+        {
+          "start": 146.6, "end": 147.4,
+          "position": "bottom", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater outputs 146.61–146.97 and 147.00–147.39 MHz."
+        },
+        {
+          "start": 147.4, "end": 147.6,
+          "position": "top", "type": "fm-simplex", "color": "#c77dff",
+          "label": "FM Simplex",
+          "detail": "FM simplex 147.42–147.57 MHz."
+        },
+        {
+          "start": 147.6, "end": 148.0,
+          "position": "bottom", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater inputs 147.60–147.99 MHz."
+        }
+      ],
+      "callouts": [
+        { "freq": 146.52, "label": "146.52", "sublabel": "FM Calling", "type": "calling", "side": "below" }
+      ],
+      "ticks": [146.0, 146.4, 146.6, 147.4, 147.6, 148.0]
+    }
+  ]
+}

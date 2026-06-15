@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Remote Actions &mdash; Graywolf Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a href="index.html" class="site-logo">
+      <img src="img/graywolf-logo.svg" alt="" />
+      <span>graywolf <span class="handbook-label">handbook</span></span>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" aria-label="Toggle theme">[ dark ]</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav>
+      <div class="sidebar-section">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="installation.html">Installation</a>
+      <a href="callsign.html">Station Callsign</a>
+      <div class="sidebar-section">Radio</div>
+      <a href="audio.html">Audio Devices</a>
+      <a href="channels.html">Radio Channels</a>
+      <a href="ptt.html">Push-to-Talk</a>
+      <div class="sidebar-section">APRS</div>
+      <a href="beacons.html">Beacons</a>
+      <a href="digipeater.html">Digipeater</a>
+      <a href="igate.html">iGate</a>
+      <a href="messaging.html">Messaging</a>
+      <a href="actions.html">Actions</a>
+      <a href="remote-actions.html">Remote Actions</a>
+      <a href="livemap.html">Live Map</a>
+      <div class="sidebar-section">Packet</div>
+      <a href="ax25-terminal.html">AX.25 Terminal</a>
+      <div class="sidebar-section">Interfaces</div>
+      <a href="kiss.html">KISS TNC</a>
+      <a href="remote-kiss-tnc.html">Remote KISS TNC</a>
+      <a href="agwpe.html">AGWPE</a>
+      <a href="gps.html">GPS</a>
+      <div class="sidebar-section">Operations</div>
+      <a href="history-database.html">Position Log</a>
+      <a href="logs.html">Logs</a>
+      <a href="monitoring.html">Monitoring</a>
+      <a href="simulation.html">Simulation</a>
+      <a href="maps.html">Maps</a>
+      <a href="preferences.html">Preferences</a>
+      <a href="architecture.html">Architecture</a>
+      <div class="sidebar-section">Reference</div>
+      <a href="configurations.html">Known-Working Configs</a>
+      <a href="api.html">REST API Reference</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>Remote Actions</h1>
+    <p class="subtitle">Send <code>@@&lt;otp&gt;#&lt;action&gt;</code> commands at another station from inside Messages</p>
+
+    <p>
+      A <strong>Remote Action</strong> is the outbound side of the same
+      grammar described on the <a href="actions.html">Actions</a> page.
+      Where Actions defines what your station will <em>run</em> when an
+      <code>@@</code>-prefixed message arrives, Remote Actions lets you
+      <em>send</em> those messages at someone else&rsquo;s station from
+      inside Messages &mdash; either by tapping a saved macro tile or by
+      typing a one-off command.
+    </p>
+
+    <p>
+      Both sides have to be set up. The receiving station must already
+      have a matching Action defined; this page covers the sender side
+      and walks through the credential copy-paste between the two.
+    </p>
+
+    <h2>Two sides, one secret</h2>
+
+    <p>
+      OTP-protected Actions use a shared <strong>Secret Key</strong> &mdash;
+      the standard RFC 4648 base32 string a TOTP authenticator app
+      consumes. The receiving station generates that Secret Key when
+      the operator creates the credential on its Actions page; the
+      sending station stores the same Secret Key in the Remote Actions
+      drawer. From then on, both sides compute the same six-digit code
+      from the wall clock and the receiver accepts it.
+    </p>
+
+    <p>
+      There is no key exchange protocol &mdash; operators copy and paste
+      the Secret Key over a side channel they trust (signal, email,
+      voice over the air, paper handoff). Treat it like an SSH key.
+    </p>
+
+    <p class="note">
+      <strong>Same string, two sides.</strong> The value labelled
+      <em>Secret Key</em> in the receiver&rsquo;s reveal panel and the
+      value labelled <em>Secret Key</em> in the sender&rsquo;s
+      <em>New Secret</em> dialog are the same string. If you mistype
+      one character, every fire returns <code>bad_otp</code>.
+    </p>
+
+    <h2>Setting up the credential &mdash; receiver side</h2>
+
+    <p>
+      On the <em>receiving</em> station (the one whose action you want
+      to fire):
+    </p>
+
+    <ol>
+      <li>
+        Open <strong>Actions</strong> in the sidebar.
+      </li>
+      <li>
+        In the <strong>OTP Credentials</strong> table, click
+        <strong>+ New Credential</strong>.
+      </li>
+      <li>
+        Name the credential after the operator who will be allowed to
+        fire it (e.g. <code>NW5W</code>) and submit.
+      </li>
+      <li>
+        The reveal panel appears. <strong>Copy the Secret Key</strong>
+        from the right side &mdash; the long base32 string, not the
+        QR code. The page warns that this is the only time the value
+        is shown.
+      </li>
+      <li>
+        Bind the credential to the Action whose name the sender will
+        type &mdash; e.g. <code>unlock</code> &mdash; via that Action&rsquo;s
+        <em>OTP credential</em> field with <em>Require OTP</em> on.
+      </li>
+    </ol>
+
+    <p>
+      Send the Secret Key to the sender over a trusted channel.
+    </p>
+
+    <h2>Setting up the credential &mdash; sender side</h2>
+
+    <p>
+      On the <em>sending</em> station (the one this page is on):
+    </p>
+
+    <ol>
+      <li>
+        Open <strong>Messages</strong> in the sidebar.
+      </li>
+      <li>
+        Open a DM thread to the receiving callsign. (Tactical,
+        multi-recipient threads do not show the zap icon &mdash; an
+        OTP-protected fire to many callsigns at once would be an
+        operational footgun.)
+      </li>
+      <li>
+        Click the zap icon (<span class="kbd">&#9889;</span>) in the
+        thread header to open the <strong>Remote Actions</strong>
+        drawer. The drawer anchors right on desktop and slides up
+        from the bottom on mobile.
+      </li>
+      <li>
+        Click <strong>Manage One-Time Passwords...</strong> (under the OTP
+        picker, or via the top-level Messages overflow menu).
+      </li>
+      <li>
+        Click <strong>+ New Secret</strong>. Give it a name that
+        identifies the remote station &mdash; e.g.
+        <code>NW5W OTP</code>.
+      </li>
+      <li>
+        Paste the <strong>Secret Key</strong> you copied from the
+        receiver into the Secret Key field. Whitespace is tolerated;
+        case does not matter.
+      </li>
+      <li>
+        Save.
+      </li>
+    </ol>
+
+    <p>
+      The new secret now appears in the OTP picker on every macro you
+      create against any thread.
+    </p>
+
+    <h2>Creating macros</h2>
+
+    <p>
+      A <strong>macro</strong> is a saved tile that fires a specific
+      action against a specific remote station with a specific argument
+      list. Macros are scoped per thread &mdash; the macros you create
+      while the drawer is open against <code>NW5W-9</code> only show
+      up on threads to <code>NW5W-9</code>.
+    </p>
+
+    <ol>
+      <li>
+        Open the drawer on the target thread.
+      </li>
+      <li>
+        Click <strong>Edit macros</strong> at the bottom of the
+        drawer.
+      </li>
+      <li>
+        Click <strong>+ Add new macro</strong>. Fill in:
+        <ul>
+          <li><strong>Label</strong> &mdash; what the tile says (e.g. <code>unlock front</code>).</li>
+          <li><strong>Action</strong> &mdash; the action name as defined on the receiver (e.g. <code>unlock</code>).</li>
+          <li><strong>Args</strong> &mdash; space-separated <code>k=v</code> pairs, or empty.</li>
+          <li><strong>OTP Secret</strong> &mdash; pick the credential you saved above, or leave blank for <em>manual OTP</em> (you&rsquo;ll be prompted to type a code at fire time, useful for actions on receivers where the operator types the code from a phone authenticator).</li>
+        </ul>
+      </li>
+      <li>
+        Save. The tile appears in fire mode and is reorderable by
+        drag.
+      </li>
+    </ol>
+
+    <p>
+      Deleting a credential demotes its bound macros to manual-OTP
+      rather than deleting them, so you can rotate a Secret Key without
+      losing the macro layout.
+    </p>
+
+    <h2>Firing</h2>
+
+    <p>
+      Two ways to send a Remote Action:
+    </p>
+
+    <ul>
+      <li>
+        <strong>Tap a tile.</strong> The frontend asks the backend for
+        a fresh six-digit OTP from the bound credential, assembles
+        <code>@@&lt;digits&gt;#&lt;action&gt; [args]</code>, and posts
+        it through the same send path as a hand-typed line in the
+        thread. The outbound bubble looks identical to a normal
+        message because it <em>is</em> a normal message &mdash; only
+        the body differs.
+      </li>
+      <li>
+        <strong>Free-form sender.</strong> The drawer&rsquo;s text
+        field at the bottom lets you type an action name + args
+        without saving a macro. Pick an OTP secret (or <em>manual
+        OTP</em>), type the line, send.
+      </li>
+    </ul>
+
+    <p>
+      The SEND button greys out when the assembled wire string would
+      exceed the APRS frame budget (67 characters by default; 200 if
+      you have <em>Allow long APRS messages</em> enabled in
+      Preferences). Shorten args to enable the button.
+    </p>
+
+    <p>
+      A short cooldown countdown sits on each tile right after a fire
+      &mdash; the receiver&rsquo;s replay ring will reject the same OTP
+      twice in the same 30-second TOTP step, and the cooldown is the
+      UI&rsquo;s polite reminder of that.
+    </p>
+
+    <h2>Reading replies</h2>
+
+    <p>
+      Inbound text from the same callsign within 60 seconds of an
+      outbound fire that begins with one of these status keywords gets
+      a zap-tagged badge in the bubble footer:
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <p>
+          <code>ok</code> &middot; <code>error:</code> &middot;
+          <code>bad_otp</code> &middot; <code>bad_arg</code> &middot;
+          <code>denied</code> &middot; <code>unknown</code> &middot;
+          <code>disabled</code> &middot; <code>busy</code> &middot;
+          <code>rate_limited</code> &middot; <code>timeout</code>
+          &middot; <code>no_credential</code>
+        </p>
+      </div>
+    </div>
+
+    <p>
+      Inbound text within the same 60-second window that does
+      <em>not</em> begin with a status keyword stays a normal chat
+      bubble. The trade-off is intentional: a free-form remark from
+      the peer that happens to start with <code>ok</code> will be
+      mis-badged, but unrelated chat will not be. False negatives are
+      preferred over false positives.
+    </p>
+
+    <h2>Troubleshooting</h2>
+
+    <ul>
+      <li>
+        <strong><code>bad_otp</code> reply.</strong> The two stations&rsquo;
+        clocks differ by more than one TOTP step (30 s). Sync NTP on
+        both. If you just rotated the Secret Key on the receiver,
+        update the matching secret in the sender&rsquo;s credentials
+        modal &mdash; one mistyped character produces this every time.
+      </li>
+      <li>
+        <strong><code>denied</code>.</strong> The receiver&rsquo;s
+        Action has a sender allowlist that excludes your callsign. The
+        operator on the receiver side has to add you.
+      </li>
+      <li>
+        <strong><code>unknown</code>.</strong> The action name is
+        misspelled, the Action has been deleted on the receiver, or
+        the Action is disabled. Check the macro label vs. the Action
+        name on the receiver.
+      </li>
+      <li>
+        <strong><code>bad_otp</code> on rapid re-fire.</strong> The
+        receiver rejects the same OTP twice within its 30-second
+        window (replay protection). Wait for the tile&rsquo;s cooldown
+        countdown to clear and try again. Distinguishable from a
+        mistyped Secret Key in that it only happens on the second of
+        two fast clicks; a mistyped key fails every time.
+      </li>
+      <li>
+        <strong>SEND disabled with a tooltip.</strong> The assembled
+        line exceeds the APRS frame budget. Shorten args or enable
+        <em>Allow long APRS messages</em> on the
+        <a href="preferences.html">Preferences</a> page (200-char
+        frames, only safe when both stations support it).
+      </li>
+      <li>
+        <strong>No zap icon on a thread.</strong> Tactical (multi-
+        recipient) threads omit the icon by design. Open or create a
+        DM to that callsign instead.
+      </li>
+      <li>
+        <strong>Reply has no zap badge.</strong> Either the inbound
+        arrived more than 60 s after the fire, or its first word is
+        not in the status-prefix allowlist. Both are normal.
+      </li>
+    </ul>
+
+    <h2>Related</h2>
+
+    <ul>
+      <li><a href="actions.html">Actions</a> &mdash; the inbound side: defining actions, OTP credentials, sender allowlists, and reply formats on the receiving station.</li>
+      <li><a href="messaging.html">Messaging</a> &mdash; how DM and tactical threads work; long-message mode; preferences.</li>
+    </ul>
+
+    <nav class="page-nav">
+      <a href="actions.html">
+        <span class="label">Previous</span>
+        Actions
+      </a>
+      <a href="livemap.html" class="next">
+        <span class="label">Next</span>
+        Live Map
+      </a>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  graywolf &middot; modern APRS station
+</footer>
+
+<script src="handbook.js"></script>
+</body>
+</html>

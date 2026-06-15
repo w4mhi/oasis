@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Known-Working Configurations &mdash; Graywolf Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a href="index.html" class="site-logo">
+      <img src="img/graywolf-logo.svg" alt="" />
+      <span>graywolf <span class="handbook-label">handbook</span></span>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" aria-label="Toggle theme">[ dark ]</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav>
+      <div class="sidebar-section">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="installation.html">Installation</a>
+      <a href="callsign.html">Station Callsign</a>
+      <div class="sidebar-section">Radio</div>
+      <a href="audio.html">Audio Devices</a>
+      <a href="channels.html">Radio Channels</a>
+      <a href="ptt.html">Push-to-Talk</a>
+      <div class="sidebar-section">APRS</div>
+      <a href="beacons.html">Beacons</a>
+      <a href="digipeater.html">Digipeater</a>
+      <a href="igate.html">iGate</a>
+      <a href="messaging.html">Messaging</a>
+      <a href="actions.html">Actions</a>
+      <a href="remote-actions.html">Remote Actions</a>
+      <a href="actions-handler-safety.html">Actions: Handler Safety</a>
+      <a href="actions-handler-safety-shell.html">&nbsp;&nbsp;&#8627; Shell handlers</a>
+      <a href="actions-handler-safety-powershell.html">&nbsp;&nbsp;&#8627; PowerShell handlers</a>
+      <a href="actions-handler-safety-webhooks.html">&nbsp;&nbsp;&#8627; Webhook handlers</a>
+      <a href="livemap.html">Live Map</a>
+      <div class="sidebar-section">Packet</div>
+      <a href="ax25-terminal.html">AX.25 Terminal</a>
+      <div class="sidebar-section">Interfaces</div>
+      <a href="kiss.html">KISS TNC</a>
+      <a href="remote-kiss-tnc.html">Remote KISS TNC</a>
+      <a href="agwpe.html">AGWPE</a>
+      <a href="gps.html">GPS</a>
+      <div class="sidebar-section">Operations</div>
+      <a href="history-database.html">Position Log</a>
+      <a href="logs.html">Logs</a>
+      <a href="monitoring.html">Monitoring</a>
+      <a href="simulation.html">Simulation</a>
+      <a href="maps.html">Maps</a>
+      <a href="preferences.html">Preferences</a>
+      <a href="architecture.html">Architecture</a>
+      <div class="sidebar-section">Reference</div>
+      <a href="configurations.html">Known-Working Configs</a>
+      <a href="api.html">REST API Reference</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>Known-Working Configurations</h1>
+    <p class="subtitle">Hardware and software setups tested and confirmed working by the community</p>
+
+    <p>
+      Getting audio devices, PTT, and GPS working together can be the hardest
+      part of setting up any packet radio station. This page collects
+      configurations that real operators have tested and confirmed working.
+      If your hardware is listed here, you can use these settings as a
+      starting point and save yourself time.
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <p>
+          <strong>Don&rsquo;t see your setup?</strong> If you get graywolf
+          working with hardware not listed here, please
+          <a href="https://github.com/chrissnell/graywolf/pulls">submit a
+          pull request</a> adding your configuration. Every new entry helps
+          the next operator.
+        </p>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+
+    <div class="config-card" id="digirig-mobile">
+      <div class="config-card-header">Digirig Mobile + Raspberry Pi 5 &mdash; Raspbian</div>
+      <div class="config-card-body">
+        <div class="config-section">
+          <div class="config-section-label">System</div>
+          <table>
+            <tbody>
+              <tr><td><strong>OS</strong></td><td>Raspbian (Debian)</td></tr>
+              <tr><td><strong>Hardware</strong></td><td>Raspberry Pi 5</td></tr>
+              <tr><td><strong>Audio Device</strong></td><td>Digirig Mobile</td></tr>
+              <tr><td><strong>GPS</strong></td><td>u-blox USB</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="config-section">
+          <div class="config-section-label">Audio Devices</div>
+          <table>
+            <thead>
+              <tr><th>Direction</th><th>Path</th><th>Channels</th><th>Sample Rate</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Input</td>
+                <td><code>hw:CARD=Device,DEV=0</code></td>
+                <td>Mono</td>
+                <td>48000 Hz</td>
+              </tr>
+              <tr>
+                <td>Output</td>
+                <td><code>hw:CARD=Device,DEV=0</code></td>
+                <td>Mono</td>
+                <td>48000 Hz</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="config-section">
+          <div class="config-section-label">Push-to-Talk</div>
+          <table>
+            <tbody>
+              <tr><td><strong>Method</strong></td><td>Serial RTS</td></tr>
+              <tr><td><strong>Device Path</strong></td><td><code>/dev/ttyUSB0</code></td></tr>
+              <tr><td><strong>Invert Polarity</strong></td><td>Disabled</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="config-section">
+          <div class="config-section-label">GPS</div>
+          <table>
+            <tbody>
+              <tr><td><strong>Source</strong></td><td>Serial Port</td></tr>
+              <tr><td><strong>Serial Port</strong></td><td><code>/dev/ttyACM0</code></td></tr>
+              <tr><td><strong>Baud Rate</strong></td><td>9600</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+
+    <div class="config-card" id="th-d75-rpi4">
+      <div class="config-card-header">Kenwood TH-D75 + Raspberry Pi 4 Model B &mdash; Raspbian</div>
+      <div class="config-card-body">
+        <div class="config-section">
+          <div class="config-section-label">System</div>
+          <table>
+            <tbody>
+              <tr><td><strong>OS</strong></td><td>Raspbian (Debian) 13 - trixie</td></tr>
+              <tr><td><strong>Hardware</strong></td><td>Raspberry Pi 4 Model B, 8GB RAM</td></tr>
+              <tr><td><strong>TNC</strong></td><td>Kenwood TH-D75 (built-in KISS TNC over USB)</td></tr>
+              <tr><td><strong>GPS</strong></td><td>VK-162 (u-blox 7)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="config-section">
+          <div class="config-section-label">KISS Interface</div>
+          <table>
+            <tbody>
+              <tr><td><strong>Mode</strong></td><td>TNC</td></tr>
+              <tr><td><strong>Type</strong></td><td>Serial</td></tr>
+              <tr><td><strong>Serial Device</strong></td><td><code>/dev/ttyACM1</code></td></tr>
+              <tr><td><strong>Baud Rate</strong></td><td>9600</td></tr>
+            </tbody>
+          </table>
+          <p>
+            9600 baud is the speed that graywolf talks
+            to the TH-D75. See below for settings on the radio.
+          </p>
+        </div>
+
+        <div class="config-section">
+          <div class="config-section-label">GPS</div>
+          <table>
+            <tbody>
+              <tr><td><strong>Source</strong></td><td>GPSD</td></tr>
+              <tr><td><strong>Host</strong></td><td>localhost</td></tr>
+              <tr><td><strong>Port</strong></td><td>2947</td></tr>
+            </tbody>
+          </table>
+          <p>GPSD reads from <code>/dev/ttyACM0</code>. Configure in
+          <code>/etc/default/gpsd</code>.</p>
+        </div>
+
+        <div class="config-section">
+          <div class="config-section-label">TH-D75 Radio Setup</div>
+          <table>
+            <thead>
+              <tr><th>Menu</th><th>Name</th><th>Value</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>505</td><td>Data Speed</td><td>1200 bps</td></tr>
+              <tr><td>506</td><td>Data Band</td><td>B Band</td></tr>
+              <tr><td>920</td><td>Battery Saver</td><td>Off</td></tr>
+              <tr><td>980</td><td>USB Function</td><td>COM+AF/IF Output</td></tr>
+              <tr><td>983</td><td>KISS</td><td>USB</td></tr>
+            </tbody>
+          </table>
+            <p>
+              Data Speed is the rate the radio transmits symbols via RF, not the baud rate
+              it speaks over USB to the Raspberry Pi.
+            </p>
+          <ol class="steps">
+            <li>Configure menu settings as above.</li>
+            <li>Tune Band B to 144.390 MHz.</li>
+            <li>Press <strong>[F]</strong> &rarr; <strong>[APRS]</strong>. Band B
+              should show <strong>KISS 12</strong>; if it shows
+              <strong>APRS</strong>, press <strong>[F]</strong> &rarr;
+              <strong>[APRS]</strong> again.</li>
+            <li>Connect the TH-D75 to the Raspberry Pi via USB cable.</li>
+          </ol>
+        </div>
+
+      </div>
+
+
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- Add new configurations above this line.                      -->
+    <!-- Copy the Digirig Mobile section as a template and fill in    -->
+    <!-- your own values. Group by device, then by OS/hardware.       -->
+    <!-- ============================================================ -->
+
+    <nav class="page-nav">
+      <a href="architecture.html">
+        <span class="label">Previous</span>
+        Architecture
+      </a>
+      <span></span>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  graywolf &middot; modern APRS station
+</footer>
+
+<script src="handbook.js"></script>
+</body>
+</html>

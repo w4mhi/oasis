@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GPS &mdash; Graywolf Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a href="index.html" class="site-logo">
+      <img src="img/graywolf-logo.svg" alt="" />
+      <span>graywolf <span class="handbook-label">handbook</span></span>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" aria-label="Toggle theme">[ dark ]</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav>
+      <div class="sidebar-section">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="installation.html">Installation</a>
+      <a href="callsign.html">Station Callsign</a>
+      <div class="sidebar-section">Radio</div>
+      <a href="audio.html">Audio Devices</a>
+      <a href="channels.html">Radio Channels</a>
+      <a href="ptt.html">Push-to-Talk</a>
+      <div class="sidebar-section">APRS</div>
+      <a href="beacons.html">Beacons</a>
+      <a href="digipeater.html">Digipeater</a>
+      <a href="igate.html">iGate</a>
+      <a href="messaging.html">Messaging</a>
+      <a href="actions.html">Actions</a>
+      <a href="remote-actions.html">Remote Actions</a>
+      <a href="actions-handler-safety.html">Actions: Handler Safety</a>
+      <a href="actions-handler-safety-shell.html">&nbsp;&nbsp;&#8627; Shell handlers</a>
+      <a href="actions-handler-safety-powershell.html">&nbsp;&nbsp;&#8627; PowerShell handlers</a>
+      <a href="actions-handler-safety-webhooks.html">&nbsp;&nbsp;&#8627; Webhook handlers</a>
+      <a href="livemap.html">Live Map</a>
+      <div class="sidebar-section">Packet</div>
+      <a href="ax25-terminal.html">AX.25 Terminal</a>
+      <div class="sidebar-section">Interfaces</div>
+      <a href="kiss.html">KISS TNC</a>
+      <a href="remote-kiss-tnc.html">Remote KISS TNC</a>
+      <a href="agwpe.html">AGWPE</a>
+      <a href="gps.html">GPS</a>
+      <div class="sidebar-section">Operations</div>
+      <a href="history-database.html">Position Log</a>
+      <a href="logs.html">Logs</a>
+      <a href="monitoring.html">Monitoring</a>
+      <a href="simulation.html">Simulation</a>
+      <a href="maps.html">Maps</a>
+      <a href="preferences.html">Preferences</a>
+      <a href="architecture.html">Architecture</a>
+      <div class="sidebar-section">Reference</div>
+      <a href="configurations.html">Known-Working Configs</a>
+      <a href="api.html">REST API Reference</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>GPS</h1>
+    <p class="subtitle">Configure GPS receivers for position-driven beacons</p>
+
+    <p>
+      A GPS receiver provides live position data for
+      <a href="beacons.html">tracker beacons</a> and SmartBeacon rate
+      adaptation. Graywolf supports two GPS source types: direct serial
+      NMEA and the gpsd daemon.
+    </p>
+
+    <div class="screenshot">
+      <img src="img/gps.png" alt="GPS page showing serial port configuration with device path and baud rate" />
+      <div class="caption">GPS configuration using a serial NMEA receiver</div>
+    </div>
+
+    <h2>Detect Devices</h2>
+
+    <p>
+      Click <strong>Detect Devices</strong> to scan attached serial ports.
+      Recognised GPS receivers (u-blox modules, common USB-serial GPS
+      pucks) get flagged so you can configure them with one click. Use
+      <strong>+ Configure GPS</strong> if you&rsquo;d rather enter device,
+      baud, or gpsd host yourself.
+    </p>
+
+    <h2>Settings</h2>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>enabled</code></td>
+              <td><code>false</code></td>
+              <td>Enable GPS receiver</td>
+            </tr>
+            <tr>
+              <td><code>source_type</code></td>
+              <td><code>none</code></td>
+              <td><code>none</code>, <code>serial</code>, or <code>gpsd</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2>Serial NMEA</h2>
+
+    <p>
+      Connect a GPS receiver directly via serial port. Graywolf reads NMEA
+      0183 sentences and extracts position, speed, and course data.
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>device</code></td>
+              <td>&mdash;</td>
+              <td>Serial device path (e.g., <code>/dev/ttyUSB0</code>, <code>/dev/ttyACM0</code>)</td>
+            </tr>
+            <tr>
+              <td><code>baud_rate</code></td>
+              <td><code>4800</code></td>
+              <td>Serial baud rate (most GPS modules use 4800 or 9600)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          The graywolf user needs permission to access the serial device.
+          The systemd service includes the <code>dialout</code> group for
+          this purpose. For manual runs, add your user to the group:
+          <code>sudo usermod -aG dialout $USER</code>
+        </p>
+      </div>
+    </div>
+
+    <h2>gpsd</h2>
+
+    <p>
+      <a href="https://gpsd.io/">gpsd</a> is a GPS service daemon that
+      manages GPS hardware and provides a clean TCP interface. Use this
+      when gpsd is already running on your system or when you need to
+      share a GPS receiver between multiple programs.
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>gpsd_host</code></td>
+              <td><code>localhost</code></td>
+              <td>gpsd server hostname</td>
+            </tr>
+            <tr>
+              <td><code>gpsd_port</code></td>
+              <td><code>2947</code></td>
+              <td>gpsd server port</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout tip">
+      <span class="callout-icon">&#10003;</span>
+      <div class="callout-body">
+        <p>
+          gpsd is the recommended approach for Raspberry Pi setups. It
+          handles device hotplug, PPS timing, and allows multiple clients
+          to share one GPS receiver. Install it with
+          <code>sudo apt install gpsd</code>.
+        </p>
+      </div>
+    </div>
+
+    <h2>Position Cache</h2>
+
+    <p>
+      GPS positions are cached in memory and made available to beacons and
+      the REST API. When a beacon has <code>use_gps: true</code>, it pulls
+      the latest cached position at transmission time. If no GPS fix is
+      available, the beacon falls back to its configured static coordinates.
+    </p>
+
+    <h2>Hot Reload</h2>
+
+    <p>
+      GPS configuration changes take effect immediately without restarting
+      graywolf. When you update GPS settings through the web UI or API, the
+      GPS receiver is stopped and restarted with the new configuration.
+    </p>
+
+    <nav class="page-nav">
+      <a href="agwpe.html">
+        <span class="label">Previous</span>
+        AGWPE
+      </a>
+      <a href="history-database.html" class="next">
+        <span class="label">Next</span>
+        Position Log
+      </a>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  graywolf &middot; modern APRS station
+</footer>
+
+<script src="handbook.js"></script>
+</body>
+</html>

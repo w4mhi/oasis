@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antenna Calculator</title>
+<link rel="stylesheet" href="../css/common.css">
+<style>
+.freq-row{display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-end;}
+.freq-row .field{margin-bottom:0;}
+.field input[type=number],.field input[type=text],.field select{
+  font-size:var(--fs-subtitle);padding:6px 10px;border-radius:5px;
+  box-sizing:border-box;height:38px;
+}
+.field input[type=number],.field input[type=text]{width:160px;}
+.field select{min-width:100px;}
+
+.band-row{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.6rem;}
+.band-btn{
+  background:transparent;border:1px solid var(--border);color:var(--text-dim);
+  font-family:var(--mono);font-size:var(--fs-small);padding:4px 10px;border-radius:4px;cursor:pointer;
+  transition:all .12s;
+}
+.band-btn:hover{border-color:var(--accent-dim);color:var(--text);}
+.band-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
+
+.options-row{display:flex;flex-wrap:wrap;gap:1.2rem;margin-top:.8rem;align-items:flex-end;}
+.toggle-group{display:flex;gap:0;}
+.toggle-group button{
+  background:transparent;border:1px solid var(--border);color:var(--text-dim);
+  font-family:var(--mono);font-size:var(--fs-label);padding:5px 13px;cursor:pointer;
+}
+.toggle-group button:first-child{border-radius:5px 0 0 5px;}
+.toggle-group button:last-child{border-radius:0 5px 5px 0;border-left:none;}
+.toggle-group button.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
+.toggle-group button:not(.active):hover{color:var(--text);}
+
+.vf-field{display:flex;flex-direction:column;gap:3px;}
+.vf-field label{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.1em;color:var(--text-dim);}
+.vf-row{display:flex;gap:.3rem;align-items:center;}
+.vf-row input[type=range]{accent-color:var(--accent);width:110px;}
+.vf-val{font-size:var(--fs-base);color:var(--accent);width:36px;}
+
+/* Results grid */
+.results{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.7rem;margin-bottom:.9rem;}
+.card{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:1rem 1.1rem;}
+.card-title{font-size:var(--fs-small);text-transform:uppercase;letter-spacing:.1em;color:var(--amber);margin-bottom:.6rem;}
+.card-freq{font-size:var(--fs-small);color:var(--text-dim);margin-bottom:.7rem;}
+.dim-row{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--panel-2);}
+.dim-row:last-child{border-bottom:none;}
+.dim-label{font-size:var(--fs-label);color:var(--text-dim);flex:1;}
+.dim-val{font-size:var(--fs-subtitle);color:var(--text);font-weight:600;text-align:right;}
+.dim-val2{font-size:var(--fs-small);color:var(--text-dim);text-align:right;margin-left:.5rem;min-width:70px;}
+.note{font-size:var(--fs-small);color:var(--text-dim);margin-top:.55rem;line-height:1.4;border-top:1px solid var(--panel-2);padding-top:.5rem;}
+.note .hl{color:var(--accent);}
+
+footer span{color:var(--text-dim);}
+
+@media print{
+  body{background:#fff;color:#000;}
+  header,footer{border-color:#ccc;background:#fff;}
+  header p,.sec-label,.card-title,.card-freq,.dim-label,.dim-val2,.note{color:#555;}
+  .dim-val{color:#000;}
+  .card{border-color:#ccc;background:#fff;}
+  .actions,.input-panel,.band-row,.options-row{display:none!important;}
+}
+</style>
+</head>
+<body>
+<div id="toast" class="toast"></div>
+<div class="wrap">
+
+<header>
+  <a class="home-link" href="/">🏠 HOME</a>
+  <h1>Antenna Calculator</h1>
+  <p>Enter a frequency to calculate cut lengths for common amateur antenna designs.</p>
+</header>
+
+<div class="actions">
+  <button class="sbtn" onclick="window.print()" title="Print the calculated antenna dimensions using your browser's print dialog">Print</button>
+</div>
+
+<div class="input-panel">
+  <div class="sec-label">Frequency</div>
+  <div class="freq-row">
+    <div class="field">
+      <label for="freq">Frequency</label>
+      <input type="number" id="freq" min="0.1" max="1300" step="any" placeholder="14.225">
+    </div>
+    <div class="field">
+      <label for="funit">Unit</label>
+      <select id="funit">
+        <option value="MHz" selected>MHz</option>
+        <option value="kHz">kHz</option>
+        <option value="GHz">GHz</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="band-row" id="bandBtns"></div>
+
+  <div class="options-row">
+    <div class="field">
+      <label>Output units</label>
+      <div class="toggle-group">
+        <button id="uFt" class="active" onclick="setUnit('ft')">Feet</button>
+        <button id="uM"  onclick="setUnit('m')">Meters</button>
+        <button id="uBoth" onclick="setUnit('both')">Both</button>
+      </div>
+    </div>
+    <div class="vf-field">
+      <label>Velocity factor (wire/element) <span id="vfPct" style="color:var(--accent)">95%</span></label>
+      <div class="vf-row">
+        <input type="range" id="vf" min="0.60" max="1.00" step="0.01" value="0.95">
+        <span style="font-size:var(--fs-small);color:var(--text-dim)">(1.00 = free space)</span>
+      </div>
+    </div>
+    <div class="vf-field">
+      <label>Velocity factor (coax stub) <span id="vfcPct" style="color:var(--accent)">66%</span></label>
+      <div class="vf-row">
+        <input type="range" id="vfc" min="0.50" max="0.90" step="0.01" value="0.66">
+        <span style="font-size:var(--fs-small);color:var(--text-dim)">(RG-8X≈0.82, RG-58≈0.66)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="results"></div>
+
+<footer>
+  All dimensions are theoretical starting points — trim and tune with an antenna analyzer or SWR meter.<br>
+  Dipole/vertical constant 468/f (ft) accounts for end effect (≈95% VF). Free-space half-wave = 492/f.
+</footer>
+
+</div>
+<script>
+'use strict';
+
+// ── Band presets (MHz) ────────────────────────────────────────────────────────
+const BANDS = [
+  {label:'160m', f:1.900},
+  {label:'80m',  f:3.750},
+  {label:'60m ch1', f:5.358},  // ch1 = 5.358 MHz; 60m band spans 5.330–5.405 MHz
+  {label:'40m',  f:7.200},
+  {label:'30m',  f:10.125},
+  {label:'20m',  f:14.225},
+  {label:'17m',  f:18.118},
+  {label:'15m',  f:21.300},
+  {label:'12m',  f:24.940},
+  {label:'10m',  f:28.500},
+  {label:'6m',   f:52.525},
+  {label:'2m',   f:146.520},
+  {label:'1.25m',f:223.500},
+  {label:'70cm', f:446.000},
+];
+
+// Build band buttons
+const bandWrap = document.getElementById('bandBtns');
+BANDS.forEach(b => {
+  const btn = document.createElement('button');
+  btn.className = 'band-btn';
+  btn.textContent = b.label;
+  btn.addEventListener('click', () => {
+    document.getElementById('freq').value = b.f;
+    document.getElementById('funit').value = 'MHz';
+    document.querySelectorAll('.band-btn').forEach(x => x.classList.remove('active'));
+    btn.classList.add('active');
+    calculate();
+  });
+  bandWrap.appendChild(btn);
+});
+
+// ── Unit state ────────────────────────────────────────────────────────────────
+let unitMode = 'ft'; // 'ft' | 'm' | 'both'
+function setUnit(u) {
+  unitMode = u;
+  document.getElementById('uFt').classList.toggle('active', u === 'ft');
+  document.getElementById('uM').classList.toggle('active', u === 'm');
+  document.getElementById('uBoth').classList.toggle('active', u === 'both');
+  calculate();
+}
+
+// ── VF displays ───────────────────────────────────────────────────────────────
+document.getElementById('vf').addEventListener('input', function(){
+  document.getElementById('vfPct').textContent = Math.round(this.value*100)+'%';
+  calculate();
+});
+document.getElementById('vfc').addEventListener('input', function(){
+  document.getElementById('vfcPct').textContent = Math.round(this.value*100)+'%';
+  calculate();
+});
+
+// ── Formatting helpers ────────────────────────────────────────────────────────
+function fmtFt(totalFeet) {
+  const ft = Math.floor(totalFeet);
+  const inches = Math.round((totalFeet - ft) * 12);
+  if (inches === 12) return (ft+1) + "' 0\"";
+  return ft + "' " + inches + '"';
+}
+function fmtM(totalFeet) {
+  return (totalFeet * 0.3048).toFixed(3) + ' m';
+}
+function fmtVal(totalFeet) {
+  if (unitMode === 'ft')   return { primary: fmtFt(totalFeet), secondary: '' };
+  if (unitMode === 'm')    return { primary: fmtM(totalFeet),  secondary: '' };
+  return { primary: fmtFt(totalFeet), secondary: fmtM(totalFeet) };
+}
+
+function dimRow(label, feet) {
+  const {primary, secondary} = fmtVal(feet);
+  return `<div class="dim-row">
+    <span class="dim-label">${label}</span>
+    <span class="dim-val">${primary}</span>
+    ${secondary ? '<span class="dim-val2">'+secondary+'</span>' : '<span class="dim-val2"></span>'}
+  </div>`;
+}
+
+// ── Antenna formulas (all lengths in feet) ────────────────────────────────────
+// f = frequency in MHz, vf = wire velocity factor, vfc = coax velocity factor
+function antennas(f, vf, vfc) {
+  const c = 984.0;          // speed of light in ft/µs (≈ MHz·ft)
+  const hw = (c * vf) / (2 * f);   // half-wave in free space * vf
+  const qw = hw / 2;                // quarter-wave
+
+  // Slim Jim gap: 0.25" at 300 MHz reference, scales linearly with wavelength.
+  // → ≈0.51" at 146 MHz, ≈0.34" at 222 MHz, ≈0.17" at 446 MHz.
+  const SLIM_JIM_GAP_IN = 0.25; // reference gap in inches at 300 MHz
+  const slimJimGapFt = (SLIM_JIM_GAP_IN / 12) * (300 / f);
+
+  return [
+
+    // ── Half-wave dipole ─────────────────────────────────────────────────────
+    {
+      title: 'Half-Wave Dipole',
+      dims: [
+        ['Total length', hw],
+        ['Each leg', hw / 2],
+      ],
+      note: 'Center-fed. Each leg = λ/4. Resonant feedpoint impedance ≈ 73 Ω — close match to 50 or 75 Ω coax. Orient horizontally for NVIS, inverted-V for compromise.'
+    },
+
+    // ── Quarter-wave vertical ────────────────────────────────────────────────
+    {
+      title: 'Quarter-Wave Vertical',
+      dims: [
+        ['Radiator', qw],
+        ['Radial (×4 min)', qw],
+      ],
+      note: 'Resonant feedpoint ≈ 35 Ω. Use 4+ λ/4 radials on the ground or elevated to bring impedance toward 50 Ω. Add a 1:1 choke balun at feedpoint.'
+    },
+
+    // ── 5/8-wave vertical ────────────────────────────────────────────────────
+    {
+      title: '5⁄8-Wave Vertical',
+      dims: [
+        ['Radiator (5/8λ)', hw * 1.25],
+        ['Matching coil needed', null],
+        ['Radial (×4 min)', qw],
+      ],
+      note: '5/8λ has lower radiation angle than λ/4 — useful for VHF/UHF mobile and DX work. Feedpoint impedance ≈ 50 Ω after series-L matching coil at base. Coil inductance varies by frequency.'
+    },
+
+    // ── End-Fed Half-Wave (EFHW) ─────────────────────────────────────────────
+    {
+      title: 'End-Fed Half-Wave (EFHW)',
+      dims: [
+        ['Radiator', hw],
+      ],
+      note: 'Fed at one end via a 49:1 (or 64:1) UNUN transformer. High impedance at feedpoint (2000–5000 Ω). Works on fundamental and harmonics — one wire for multiple bands. Keep feedline perpendicular to wire.'
+    },
+
+    // ── Full-wave loop ───────────────────────────────────────────────────────
+    {
+      title: 'Full-Wave Loop',
+      dims: [
+        ['Total perimeter', hw * 2],
+        ['Square side (÷4)', hw * 2 / 4],
+        ['Triangle side (÷3)', hw * 2 / 3],
+      ],
+      note: 'Fed at a corner for vertical polarization (low-angle DX), fed at midpoint of a side for horizontal polarization (NVIS). Feedpoint impedance ≈ 100 Ω — use a 2:1 balun for 50 Ω coax.'
+    },
+
+    // ── J-pole ───────────────────────────────────────────────────────────────
+    {
+      title: 'J-Pole',
+      dims: [
+        ['Radiator (3/4λ)', hw * 1.5],
+        ['Matching stub (1/4λ)', qw],
+        ['Stub gap (approx)', 2/12],   // ~2 inches expressed in feet
+      ],
+      note: 'No ground plane needed. Tune feed tap point up/down the stub for minimum SWR. Copper pipe construction common for VHF. Velocity factor applies to the conductor material.'
+    },
+
+    // ── Slim Jim ─────────────────────────────────────────────────────────────
+    {
+      title: 'Slim Jim',
+      dims: [
+        ['Total wire (5/4λ)', hw * 2.5],
+        ['Long element (3/4λ)', hw * 1.5],
+        ['Short element (1/2λ)', hw],
+        ['Gap (approx)', slimJimGapFt],
+      ],
+      note: 'J-pole variant with slightly lower radiation angle and gain. Wire construction — roll it up for portable ops. Feed tap ≈ 1/4 from bottom of short element; trim for SWR.'
+    },
+
+    // ── λ/4 Coax stub / choke ────────────────────────────────────────────────
+    {
+      title: 'λ/4 Coax Stub / Choke',
+      dims: [
+        ['λ/4 stub length', (c * vfc) / (4 * f)],
+        ['λ/2 choke length', (c * vfc) / (2 * f)],
+      ],
+      note: '<span class="hl">λ/4 stub (shorted end):</span> presents high impedance at the target frequency — use as a harmonic trap or band-stop filter in-line. <span class="hl">λ/2 choke loop:</span> coil of coax at feedpoint to block common-mode RF. Adjust VF with the coax slider (RG-58≈0.66, RG-8X≈0.82, LMR-400≈0.85).'
+    },
+
+    // ── Moxon rectangle ─────────────────────────────────────────────────────
+    {
+      title: 'Moxon Rectangle (approx.)',
+      dims: [
+        ['Element A (driven, total)', hw * 0.737],
+        ['Element B (reflector, total)', hw * 0.782],
+        ['Width (A + gap + B tails)', hw * 0.48],
+        ['Height (gap)', hw * 0.049],
+      ],
+      note: 'Compact 2-element beam ≈ 5.4 dBd gain, excellent F/B ratio (~30 dB). Horizontal footprint ≈ 70% of a dipole. Wire or tubing. <span class="hl">Approximation</span> — proportional formula from K4SWL with fixed VF; Moxon dimensions are highly frequency-sensitive. Fine-tune with NanoVNA or antenna modeling software.'
+    },
+
+  ];
+}
+
+// ── Main calculate function ───────────────────────────────────────────────────
+function calculate() {
+  const raw = parseFloat(document.getElementById('freq').value);
+  const unit = document.getElementById('funit').value;
+  const vf  = parseFloat(document.getElementById('vf').value);
+  const vfc = parseFloat(document.getElementById('vfc').value);
+  const out = document.getElementById('results');
+
+  if (!raw || raw <= 0) {
+    out.innerHTML = '<div class="empty">Enter a frequency above, or tap a band button.</div>';
+    return;
+  }
+
+  // Convert to MHz
+  let f = raw;
+  if (unit === 'kHz') f = raw / 1000;
+  if (unit === 'GHz') f = raw * 1000;
+
+  if (f < 0.1 || f > 1300) {
+    showToast('Frequency out of range (0.1 MHz – 1300 MHz).', 'err');
+    return;
+  }
+
+  const list = antennas(f, vf, vfc);
+  const fDisp = f < 1 ? (f*1000).toFixed(1)+' kHz' : f >= 1000 ? (f/1000).toFixed(4)+' GHz' : f.toFixed(4)+' MHz';
+
+  let html = '<div class="results">';
+  list.forEach(ant => {
+    html += `<div class="card">
+      <div class="card-title">${ant.title}</div>
+      <div class="card-freq">${fDisp}</div>`;
+    ant.dims.forEach(([label, feet]) => {
+      if (feet === null) {
+        html += `<div class="dim-row"><span class="dim-label">${label}</span><span class="dim-val" style="color:var(--text-dim)">see note</span><span class="dim-val2"></span></div>`;
+      } else {
+        html += dimRow(label, feet);
+      }
+    });
+    html += `<div class="note">${ant.note}</div></div>`;
+  });
+  html += '</div>';
+  out.innerHTML = html;
+}
+
+// ── Wire up inputs ────────────────────────────────────────────────────────────
+document.getElementById('freq').addEventListener('input', () => {
+  document.querySelectorAll('.band-btn').forEach(b => b.classList.remove('active'));
+  calculate();
+});
+document.getElementById('funit').addEventListener('change', calculate);
+
+// Initial state
+calculate();
+</script>
+
+<script>
+function showToast(msg, type, duration) {
+  duration = duration || 3500;
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function() { t.className = 'toast'; }, duration);
+}
+</script>
+</body>
+</html>

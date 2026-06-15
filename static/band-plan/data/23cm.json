@@ -1,0 +1,92 @@
+{
+  "band": "23cm",
+  "name": "23 Centimeters",
+  "range": [1240, 1300],
+  "unit": "MHz",
+  "license": "Tech+",
+  "allocation": "Secondary",
+  "notes": [
+    "1296.1 MHz: national CW/SSB calling frequency",
+    "1294.5 MHz: national FM simplex calling frequency",
+    "May be limited near FAA radar sites"
+  ],
+  "rows": [
+    {
+      "range": [1240, 1270],
+      "segments": [
+        {
+          "start": 1240, "end": 1252,
+          "position": "bottom", "type": "atv", "color": "#ffd60a",
+          "label": "ATV / Broadband",
+          "detail": "ATV Channel #1 1240–1246 MHz. FM/digital point-to-point links 1246–1248 (paired with 1258–1260). Digital 1248–1252 MHz."
+        },
+        {
+          "start": 1252, "end": 1260,
+          "position": "top", "type": "atv", "color": "#ffd60a",
+          "label": "ATV / Broadband",
+          "detail": "ATV Channel #2 1252–1258 MHz. FM/digital links 1258–1260 (paired with 1246–1248). Regional option: 1240–1260 FM ATV."
+        },
+        {
+          "start": 1260, "end": 1270,
+          "position": "bottom", "type": "satellite", "color": "#06d6a0",
+          "label": "Satellite",
+          "detail": "Satellite uplinks, experimental, simplex ATV 1260–1270 MHz."
+        }
+      ],
+      "callouts": [],
+      "ticks": [1240, 1246, 1252, 1260, 1270]
+    },
+    {
+      "range": [1270, 1300],
+      "segments": [
+        {
+          "start": 1270, "end": 1276,
+          "position": "bottom", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater inputs 1270–1276 MHz (25 kHz spacing, paired with 1282–1288). Regional option 1270–1274 paired with 1290–1294."
+        },
+        {
+          "start": 1276, "end": 1282,
+          "position": "top", "type": "atv", "color": "#ffd60a",
+          "label": "ATV / Broadband",
+          "detail": "ATV Channel #3 1276–1282 MHz."
+        },
+        {
+          "start": 1282, "end": 1288,
+          "position": "bottom", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater outputs 1282–1288 MHz (25 kHz spacing, paired with 1270–1276)."
+        },
+        {
+          "start": 1288, "end": 1294,
+          "position": "top", "type": "atv", "color": "#ffd60a",
+          "label": "ATV / Broadband",
+          "detail": "Broadband experimental, simplex ATV 1288–1294 MHz. Regional option repeater outputs 1290–1294 (paired with 1270–1274)."
+        },
+        {
+          "start": 1294, "end": 1295,
+          "position": "bottom", "type": "fm-simplex", "color": "#c77dff",
+          "label": "FM Simplex",
+          "detail": "FM simplex 1294–1295 MHz. National calling frequency 1294.500 MHz."
+        },
+        {
+          "start": 1295, "end": 1297,
+          "position": "top", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "Narrow band segment. Experimental 1295–1295.8. EME 1295.8–1296.08. CW/SSB calling 1296.1. Weak signal 1296.08–1296.2. Beacons 1296.2–1296.4. General narrow band 1296.4–1297."
+        },
+        {
+          "start": 1297, "end": 1300,
+          "position": "bottom", "type": "digital", "color": "#f4a261",
+          "label": "Digital / Data",
+          "detail": "Digital modes 1297–1300 MHz."
+        }
+      ],
+      "callouts": [
+        { "freq": 1294.5, "label": "1294.5", "sublabel": "FM Calling",     "type": "calling", "side": "below" },
+        { "freq": 1296.1, "label": "1296.1", "sublabel": "CW/SSB Calling", "type": "calling", "side": "below" }
+      ],
+      "ticks": [1270, 1276, 1282, 1288, 1294, 1295, 1297, 1300]
+    }
+  ]
+}

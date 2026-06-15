@@ -1,0 +1,54 @@
+{
+  "band": "80m",
+  "name": "80/75 Meters",
+  "range": [3.5, 4.0],
+  "unit": "MHz",
+  "license": "General+",
+  "allocation": "Primary",
+  "notes": [
+    "General: CW 3.525–3.600, SSB 3.800–4.000 MHz",
+    "Extra/Advanced: CW 3.500–3.600, SSB 3.600–4.000 MHz",
+    "3.885 MHz: AM calling frequency"
+  ],
+  "rows": [
+    {
+      "range": [3.5, 4.0],
+      "segments": [
+        {
+          "start": 3.5, "end": 3.525,
+          "position": "bottom", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 3.500–3.525 MHz. Extra/Advanced only."
+        },
+        {
+          "start": 3.525, "end": 3.6,
+          "position": "top", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 3.525–3.600. General+ from 3.525. RTTY/Data 3.570–3.600. RTTY DX 3.590 MHz."
+        },
+        {
+          "start": 3.6, "end": 3.7,
+          "position": "bottom", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Phone/SSB 3.600–3.700 MHz. Extra/Advanced only. DX window 3.790–3.800."
+        },
+        {
+          "start": 3.7, "end": 3.8,
+          "position": "top", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Phone/SSB 3.700–3.800 MHz. Advanced only below 3.800. DX window 3.790–3.800."
+        },
+        {
+          "start": 3.8, "end": 4.0,
+          "position": "bottom", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Phone/SSB 3.800–4.000 MHz. General+ from 3.800. SSTV 3.845. AM calling 3.885."
+        }
+      ],
+      "callouts": [
+        { "freq": 3.885, "label": "3.885", "sublabel": "AM Calling", "type": "calling", "side": "below" }
+      ],
+      "ticks": [3.5, 3.525, 3.6, 3.7, 3.8, 4.0]
+    }
+  ]
+}

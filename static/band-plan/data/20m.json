@@ -1,0 +1,49 @@
+{
+  "band": "20m",
+  "name": "20 Meters",
+  "range": [14.0, 14.35],
+  "unit": "MHz",
+  "license": "General+",
+  "allocation": "Primary",
+  "notes": [
+    "General: CW 14.025–14.150, SSB 14.225–14.350 MHz",
+    "Extra/Advanced: full band",
+    "Most popular DX band"
+  ],
+  "rows": [
+    {
+      "range": [14.0, 14.35],
+      "segments": [
+        {
+          "start": 14.0, "end": 14.025,
+          "position": "bottom", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 14.000–14.025 MHz. Extra/Advanced only."
+        },
+        {
+          "start": 14.025, "end": 14.112,
+          "position": "top", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 14.025–14.070. RTTY 14.070–14.095. Packet 14.095–14.0995. NCDXF beacons 14.100. Packet 14.1005–14.112 MHz. General+ from 14.025."
+        },
+        {
+          "start": 14.112, "end": 14.225,
+          "position": "bottom", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Phone/SSB 14.112–14.225 MHz. Extra/Advanced only below 14.225."
+        },
+        {
+          "start": 14.225, "end": 14.35,
+          "position": "top", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Phone/SSB 14.225–14.350 MHz. General+ from 14.225. SSTV 14.230. AM calling 14.286."
+        }
+      ],
+      "callouts": [
+        { "freq": 14.1,   "label": "14.100", "sublabel": "NCDXF Beacons", "type": "note",    "side": "below" },
+        { "freq": 14.225, "label": "14.225", "sublabel": "General SSB",    "type": "calling", "side": "below" }
+      ],
+      "ticks": [14.0, 14.025, 14.112, 14.225, 14.35]
+    }
+  ]
+}

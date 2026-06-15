@@ -1,0 +1,54 @@
+{
+  "band": "40m",
+  "name": "40 Meters",
+  "range": [7.0, 7.3],
+  "unit": "MHz",
+  "license": "General+",
+  "allocation": "Primary",
+  "notes": [
+    "General: CW 7.025–7.125, SSB 7.175–7.300 MHz",
+    "Extra/Advanced: full band",
+    "Technician: CW only 7.025–7.125 MHz"
+  ],
+  "rows": [
+    {
+      "range": [7.0, 7.3],
+      "segments": [
+        {
+          "start": 7.0, "end": 7.025,
+          "position": "bottom", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 7.000–7.025 MHz. Extra/Advanced only."
+        },
+        {
+          "start": 7.025, "end": 7.08,
+          "position": "top", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 7.025–7.080 MHz. General/Technician+ from 7.025."
+        },
+        {
+          "start": 7.08, "end": 7.125,
+          "position": "bottom", "type": "digital", "color": "#f4a261",
+          "label": "Digital / Data",
+          "detail": "RTTY/Data DX 7.040. RTTY/Data 7.080–7.125 MHz."
+        },
+        {
+          "start": 7.125, "end": 7.175,
+          "position": "top", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Phone/SSB 7.125–7.175 MHz. Extra/Advanced only below 7.175."
+        },
+        {
+          "start": 7.175, "end": 7.3,
+          "position": "bottom", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Phone/SSB 7.175–7.300 MHz. General+ from 7.175. SSTV 7.171. AM calling 7.290."
+        }
+      ],
+      "callouts": [
+        { "freq": 7.29, "label": "7.290", "sublabel": "AM Calling", "type": "calling", "side": "below" }
+      ],
+      "ticks": [7.0, 7.025, 7.08, 7.125, 7.175, 7.3]
+    }
+  ]
+}

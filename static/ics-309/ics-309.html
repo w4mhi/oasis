@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICS 309 — Communications Log</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+body{font-size:var(--fs-subtitle);}
+.wrap{max-width:1280px;}
+@media(max-width:600px){.g2,.g3,.g4{grid-template-columns:1fr 1fr;}}
+
+/* Log table */
+tr:last-child td input{
+  background:transparent;border:1px solid transparent;color:var(--text);
+  font-family:var(--mono);font-size:var(--fs-base);padding:2px 4px;border-radius:3px;width:100%;
+}
+td input:hover{border-color:var(--border);}
+/* Column widths */
+.c-time{width:72px;}
+.c-msg{}
+.c-cs{width:105px;}
+.c-mn{width:52px;}
+.cd{width:24px;text-align:center;}
+
+
+@media print{
+  @page{size:letter portrait;margin:.45in;}
+  body{background:#fff;color:#000;font-size:8pt;padding:0;}
+  .wrap{max-width:100%;}
+  .actions,.add-btn,.del-btn,.inst{display:none!important;}
+  .sec{border:1px solid #999;border-radius:0;background:#fff;padding:.25rem .4rem;margin-bottom:.25rem;page-break-inside:avoid;}
+  .form-title{color:#000;font-size:10pt;}
+  .sec-lbl{color:#444;font-size:6pt;margin-bottom:.15rem;}
+  .fld label{color:#444;font-size:6pt;}
+  .fld input{background:#fff;color:#000;border:none;border-bottom:1px solid #aaa;border-radius:0;padding:1px 0;font-size:8pt;}
+  table{font-size:7.5pt;}
+  th{color:#444;font-size:6pt;padding:2px 4px;border-bottom:1px solid #999;}
+  td{padding:1px 2px;border-bottom:1px solid #ddd;}
+  td input{font-size:7.5pt;border:none;border-bottom:1px solid #ddd;border-radius:0;padding:1px 2px;background:#fff;color:#000;}
+  .cd{display:none;}
+  #sec-log{page-break-inside:auto;}
+  .print-page-break{display:block;page-break-before:always;height:0;}
+  .print-repeat-hdr th{font-size:6pt;color:#444;padding:2px 4px;border-bottom:1px solid #999;}
+}
+.save-ts{font-size:var(--fs-micro);color:var(--text-dim);opacity:.6;margin-top:.25rem;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">🏠 HOME</a>
+    <h1>ICS-309</h1>
+    <p>Communications Log</p>
+  </header>
+
+  <div class="actions">
+    <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 309 PDF and download a timestamped copy">⬇ Save PDF</button>
+    <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
+    <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
+    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 309 CSV file to restore form data">Import CSV</button>
+    <button class="sbtn danger" onclick="clearAll()" title="Clear all form data and reset to a blank form">Clear</button>
+  </div>
+  <div class="save-ts" id="save-ts"></div>
+
+  <div class="lib-status" id="lib-status"></div>
+
+  <!-- Blocks 1–2: Incident + Op Period -->
+  <div class="sec">
+    <div class="form-title">ICS 309 — Communications Log</div>
+    <div class="fg" style="margin-bottom:.6rem;">
+      <div class="fld"><label>1. Incident Name</label>
+        <input type="text" id="f-inc" placeholder="Enter incident name">
+      </div>
+    </div>
+    <span class="sec-lbl">2. Operational Period</span>
+    <div class="fg g4">
+      <div class="fld"><label>Date From</label>
+        <input type="date" id="f-df">
+      </div>
+      <div class="fld"><label>Date To</label>
+        <input type="date" id="f-dt">
+      </div>
+      <div class="fld"><label>Time From</label>
+        <input type="text" id="f-tf" placeholder="HHmmL">
+      </div>
+      <div class="fld"><label>Time To</label>
+        <input type="text" id="f-tt" placeholder="HHmmL">
+      </div>
+    </div>
+  </div>
+
+  <!-- Blocks 3–5: Net, Operator, Signature -->
+  <div class="sec">
+    <div class="fg g5">
+      <div class="fld"><label>3. Radio Net Name</label>
+        <input type="text" id="f-net" placeholder="Net name or designator">
+      </div>
+      <div class="fld"><label>4. Operator Name</label>
+        <input type="text" id="f-op-name" placeholder="First Last">
+      </div>
+      <div class="fld"><label>4. Operator Call Sign</label>
+        <input type="text" id="f-op-call" placeholder="X1ABC" autocorrect="off" autocapitalize="characters">
+      </div>
+      <div class="fld"><label>5. Signature</label>
+        <input type="text" id="f-op-sig" placeholder="—">
+      </div>
+      <div class="fld"><label>&nbsp;</label></div>
+    </div>
+  </div>
+
+  <!-- Communications Log Table -->
+  <div class="sec" id="sec-log">
+    <span class="sec-lbl">Communications Log</span>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="c-time">Time</th>
+            <th class="c-msg">Message</th>
+            <th class="c-cs">From — Call Sign / ID</th>
+            <th class="c-mn">From Msg #</th>
+            <th class="c-cs">To — Call Sign / ID</th>
+            <th class="c-mn">To Msg #</th>
+            <th class="cd"></th>
+          </tr>
+        </thead>
+        <tbody id="log-body"></tbody>
+      </table>
+    </div>
+    <button class="add-btn" onclick="addRow()">+ Add Entry</button>
+  </div>
+
+  <!-- Blocks 6–7: Prepared By -->
+  <div class="sec">
+    <span class="sec-lbl">6 &amp; 7. Prepared By</span>
+    <div class="fg g3">
+      <div class="fld"><label>6. Name</label>
+        <input type="text" id="f-prep-name" placeholder="First Last">
+      </div>
+      <div class="fld"><label>6. Position</label>
+        <input type="text" id="f-prep-pos" placeholder="ICS Position">
+      </div>
+      <div class="fld"><label>7. Date &amp; Time Prepared</label>
+        <input type="text" id="f-prep-dt" placeholder="YYYYMMDD HHmmL" onclick="autoDate(this,'datetime')">
+      </div>
+    </div>
+  </div>
+
+  <!-- Instructions -->
+  <div class="inst">
+    <button class="inst-tog" onclick="toggleInst()">
+      <span>ICS 309 Field Instructions</span><span id="i-arrow">▼</span>
+    </button>
+    <div class="inst-body" id="i-body">
+      <table class="inst-tbl">
+        <thead><tr><th>Block</th><th>Title</th><th>Instructions</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Incident Name</td><td>Enter the name assigned to the incident.</td></tr>
+          <tr><td>2</td><td>Operational Period</td><td>Enter the start and end date (month/day/year) and time (24-hour clock) for the operational period to which the form applies.</td></tr>
+          <tr><td>3</td><td>Radio Net Name</td><td>Enter the name or designator of the radio net being logged.</td></tr>
+          <tr><td>4</td><td>Radio Operator</td><td>Enter the name and call sign of the radio operator maintaining this log.</td></tr>
+          <tr><td>5</td><td>Signature</td><td>Signature of the radio operator.</td></tr>
+          <tr><td>Log</td><td>Time</td><td>Enter the time (24-hour clock) of the message or activity being logged.</td></tr>
+          <tr><td>Log</td><td>Message</td><td>Enter the content of the message or a brief description of the activity.</td></tr>
+          <tr><td>Log</td><td>From — Call Sign / ID</td><td>Enter the call sign or identifier of the station originating the message.</td></tr>
+          <tr><td>Log</td><td>From Msg #</td><td>Enter the message number assigned by the originating station, if applicable.</td></tr>
+          <tr><td>Log</td><td>To — Call Sign / ID</td><td>Enter the call sign or identifier of the receiving station.</td></tr>
+          <tr><td>Log</td><td>To Msg #</td><td>Enter the message number assigned by the receiving station, if applicable.</td></tr>
+          <tr><td>6</td><td>Prepared By</td><td>Enter the name and ICS position of the person preparing the form.</td></tr>
+          <tr><td>7</td><td>Date &amp; Time Prepared</td><td>Enter date (month/day/year) and time prepared (24-hour clock).</td></tr>
+        </tbody>
+      </table>
+      <p class="inst-note">
+        <strong style="color:var(--text)">Purpose:</strong> Records all radio communications activity for a given net and operational period. Provides a complete record for the Documentation Unit and supports after-action review.<br><br>
+        <strong style="color:var(--text)">Distribution:</strong> Completed ICS 309s are submitted to the Communications Unit Leader and forwarded to the Documentation Unit. Operators should retain a copy.
+      </p>
+    </div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+<!-- Hidden CSV import input -->
+<input type="file" id="csv-import-input" accept=".csv" style="display:none" onchange="importCSV(event)">
+
+<!-- Load template and pdf-lib -->
+<script src="./ics309-template.js"></script>
+<script src="../dependencies/pdf-lib.min.js"></script>
+<script>
+const STORE='ics-309';
+const PDF_MAX_ROWS=29;
+let rSeq=0;
+const HF=['f-inc','f-df','f-dt','f-tf','f-tt','f-net',
+          'f-op-name','f-op-call','f-op-sig',
+          'f-prep-name','f-prep-pos','f-prep-dt'];
+
+window.addEventListener('DOMContentLoaded', () => {
+  HF.forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.addEventListener('input',persist);
+  });
+  checkLibStatus();
+  load();
+  // Pre-fill dates and time on first load
+  const _now = new Date();
+  const today = _now.toISOString().slice(0,10);
+  ['f-df','f-dt'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el && !el.value) el.value=today;
+  });
+  const tfEl=document.getElementById('f-tf');
+  if(tfEl && !tfEl.value) tfEl.value=String(_now.getHours()).padStart(2,'0')+String(_now.getMinutes()).padStart(2,'0')+'L';
+  if(!document.querySelector('#log-body tr')){for(let i=0;i<10;i++)addRow();}
+});
+
+function checkLibStatus(){
+  const div=document.getElementById('lib-status');
+  if(!div) return;
+  const hasPDFLib=typeof window.PDFLib!=='undefined';
+  const hasTemplate=typeof ICS309_PDF_B64!=='undefined';
+  let html='';
+  html+=`<span class="${hasTemplate?'lib-ok':'lib-err'}">${hasTemplate?'✓':'✗'} PDF template ${hasTemplate?'loaded':'missing — run convert-template.sh first'}</span>`;
+  html+=`<span class="${hasPDFLib?'lib-ok':'lib-warn'}">${hasPDFLib?'✓':'⚠'} pdf-lib ${hasPDFLib?'loaded':'not found — run install.sh first'}</span>`;
+  if(hasPDFLib && hasTemplate) html+='<span style="color:var(--text-dim)">— ready to save PDF</span>';
+  div.innerHTML=html;
+}
+
+function fmtDate(id){
+  const v=gv(id); if(!v) return '';
+  // If value is YYYY-MM-DD (date picker), convert to MM/DD/YYYY
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v)){
+    const [yr,mo,dy]=v.split('-'); return `${mo}/${dy}/${yr}`;
+  }
+  return v;
+}
+function fmtTime(d){
+  return String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'L';
+}
+function autoDate(el,type){
+  if(el.value)return;
+  const now=new Date();
+  if(type==='date') el.value=fmtDate(now);
+  else if(type==='time') el.value=fmtTime(now);
+  else el.value=fmtDate(now)+' '+fmtTime(now);
+  persist();
+}
+
+function autoTimeForRow(msgEl){
+  const tr=msgEl.closest('tr');
+  if(!tr) return;
+  const timeEl=tr.querySelector('td.c-time input');
+  if(timeEl && !timeEl.value){
+    timeEl.value=fmtTime(new Date());
+    persist();
+  }
+}
+
+function makeRow(d){
+  rSeq++;
+  const n=rSeq;
+  const tr=document.createElement('tr');
+  tr.id='r'+n;
+  tr.innerHTML=
+    `<td class="c-time"><input type="text" placeholder="HHmmL" value="${xv(d.time||'')}" onclick="autoDate(this,'time')" oninput="persist()"></td>`+
+    `<td class="c-msg"><input type="text" placeholder="Message content" value="${xv(d.msg||'')}" onclick="autoTimeForRow(this)" oninput="persist()"></td>`+
+    `<td class="c-cs"><input type="text" placeholder="Call sign / ID" autocorrect="off" autocapitalize="characters" value="${xv(d.fcs||'')}" oninput="persist()"></td>`+
+    `<td class="c-mn"><input type="text" placeholder="Msg #" value="${xv(d.fmn||'')}" oninput="persist()"></td>`+
+    `<td class="c-cs"><input type="text" placeholder="Call sign / ID" autocorrect="off" autocapitalize="characters" value="${xv(d.tcs||'')}" oninput="persist()"></td>`+
+    `<td class="c-mn"><input type="text" placeholder="Msg #" value="${xv(d.tmn||'')}" oninput="persist()"></td>`+
+    `<td class="cd"><button class="del-btn" onclick="delRow('r${n}')">✕</button></td>`;
+  document.getElementById('log-body').appendChild(tr);
+}
+
+function addRow(){makeRow({});persist();}
+function delRow(id){const t=document.getElementById(id);if(t)t.remove();persist();}
+
+function getRows(){
+  return [...document.querySelectorAll('#log-body tr')].map(tr=>{
+    const i=tr.querySelectorAll('input');
+    return{time:i[0]?.value||'',msg:i[1]?.value||'',
+           fcs:i[2]?.value||'',fmn:i[3]?.value||'',
+           tcs:i[4]?.value||'',tmn:i[5]?.value||''};
+  });
+}
+
+function persist(){
+  const d={};
+  HF.forEach(id=>{const el=document.getElementById(id);if(el)d[id]=el.value;});
+  d.rows=getRows();
+  try{
+    localStorage.setItem(STORE,JSON.stringify(d));
+    const ts=document.getElementById('save-ts');
+    if(ts) ts.textContent='Auto-saved '+new Date().toLocaleTimeString();
+  }catch(e){
+    if(e.name==='QuotaExceededError') showToast('⚠ Local storage full — export your data now!','err',8000);
+  }
+}
+
+function load(){
+  try{
+    const raw=localStorage.getItem(STORE);if(!raw)return;
+    const d=JSON.parse(raw);
+    HF.forEach(id=>{const el=document.getElementById(id);if(el&&d[id]!==undefined)el.value=d[id];});
+    if(d.rows&&d.rows.length)d.rows.forEach(r=>makeRow(r));
+  }catch(e){}
+}
+
+function clearAll(){
+  if(!confirm('Clear all ICS 309 data?'))return;
+  HF.forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('log-body').innerHTML='';
+  rSeq=0;
+  try{localStorage.removeItem(STORE);}catch(e){}
+  for(let i=0;i<10;i++)addRow();
+}
+
+function x(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function xv(s){return x(s).replace(/"/g,'&quot;');}
+function cc(v){const s=String(v??'');return/[,"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function gv(id){return document.getElementById(id)?.value||'';}
+
+// ─── CSV Import ───────────────────────────────────────────────────────────────
+function importCSVPrompt(){
+  document.getElementById('csv-import-input').value='';
+  document.getElementById('csv-import-input').click();
+}
+
+function importCSV(event){
+  const file=event.target.files[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const lines=e.target.result.split(/\r?\n/);
+      let mode='';
+      const logRows=[];
+      let hdrSkipped=false;
+      for(const raw of lines){
+        const line=raw.trim();
+        if(!line||line.startsWith('#')){
+          if(line==='# HEADER') mode='header';
+          else if(line==='# COMMUNICATIONS LOG') mode='log';
+          else if(line==='# PREPARED BY') mode='prepby';
+          continue;
+        }
+        const cols=parseCSVLine(line);
+        if(mode==='header'){
+          const key=cols[0],val=cols[1]||'';
+          if(key==='Incident Name') setField('f-inc',val);
+          else if(key==='Op Period Date From') setField('f-df',val);
+          else if(key==='Op Period Date To') setField('f-dt',val);
+          else if(key==='Op Period Time From') setField('f-tf',val);
+          else if(key==='Op Period Time To') setField('f-tt',val);
+          else if(key==='Radio Net') setField('f-net',val);
+          else if(key==='Operator Name') setField('f-op-name',val);
+          else if(key==='Operator Call Sign') setField('f-op-call',val);
+        } else if(mode==='log'){
+          if(!hdrSkipped){hdrSkipped=true;continue;}
+          logRows.push({time:cols[0]||'',msg:cols[1]||'',fcs:cols[2]||'',fmn:cols[3]||'',tcs:cols[4]||'',tmn:cols[5]||''});
+        } else if(mode==='prepby'){
+          const key=cols[0],val=cols[1]||'';
+          if(key==='Name') setField('f-prep-name',val);
+          else if(key==='Position') setField('f-prep-pos',val);
+          else if(key==='Date/Time') setField('f-prep-dt',val);
+        }
+      }
+      document.getElementById('log-body').innerHTML='';
+      rSeq=0;
+      logRows.forEach(r=>makeRow(r));
+      if(!logRows.length) for(let i=0;i<10;i++)addRow();
+      persist();
+      showToast('\u2713 CSV imported successfully','ok',3000);
+    }catch(err){
+      showToast('Import failed: '+err.message,'err',5000);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function parseCSVLine(line){
+  const cols=[];let cur='',inQ=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+    else if(c===','&&!inQ){cols.push(cur);cur='';}
+    else cur+=c;
+  }
+  cols.push(cur);return cols;
+}
+
+function setField(id,val){
+  const el=document.getElementById(id);if(el) el.value=val;
+}
+
+function exportCSV(){
+  const rows=[
+    '# ICS 309 — Communications Log',
+    '# Exported: '+new Date().toISOString(),
+    '',
+    '# HEADER',
+    ['Incident Name',gv('f-inc')].map(cc).join(','),
+    ['Op Period Date From',gv('f-df')].map(cc).join(','),
+    ['Op Period Date To',gv('f-dt')].map(cc).join(','),
+    ['Op Period Time From',gv('f-tf')].map(cc).join(','),
+    ['Op Period Time To',gv('f-tt')].map(cc).join(','),
+    ['Radio Net',gv('f-net')].map(cc).join(','),
+    ['Operator Name',gv('f-op-name')].map(cc).join(','),
+    ['Operator Call Sign',gv('f-op-call')].map(cc).join(','),
+    '',
+    '# COMMUNICATIONS LOG',
+    ['Time','Message','From Call Sign/ID','From Msg #','To Call Sign/ID','To Msg #'].map(cc).join(','),
+    ...getRows().map(r=>[r.time,r.msg,r.fcs,r.fmn,r.tcs,r.tmn].map(cc).join(',')),
+    '',
+    '# PREPARED BY',
+    ['Name',gv('f-prep-name')].map(cc).join(','),
+    ['Position',gv('f-prep-pos')].map(cc).join(','),
+    ['Date/Time',gv('f-prep-dt')].map(cc).join(','),
+  ];
+  const blob=new Blob([rows.join('\r\n')],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='ics309-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+}
+
+function toggleInst(){
+  const b=document.getElementById('i-body');
+  const open=b.classList.toggle('open');
+  document.getElementById('i-arrow').textContent=open?'▲':'▼';
+}
+
+// ─── PDF Save ────────────────────────────────────────────────────
+async function savePDF(){
+  if(typeof window.PDFLib==='undefined'){
+    showToast('pdf-lib not loaded. Run install.sh (Mac/Linux) or install.bat (Windows) first, then reload.','err',6000);
+    return;
+  }
+  if(typeof ICS309_PDF_B64==='undefined'){
+    showToast('PDF template not found. Run convert-template.sh first.','err',6000);
+    return;
+  }
+  try{
+    const pdfBytes=Uint8Array.from(atob(ICS309_PDF_B64),c=>c.charCodeAt(0));
+    const pdfDoc=await PDFLib.PDFDocument.load(pdfBytes);
+    const form=pdfDoc.getForm();
+    function set(name,val){
+      try{form.getTextField(name).setText(val||'');}
+      catch(e){console.warn('ICS-309 PDF: field not found:',name);}
+    }
+    // Header
+    set('1 INCIDENT NAME AND ACTIVATION NUMBER', gv('f-inc'));
+    // Op Period — Text107-110 are the 4 header date/time fields
+    set('Text107', fmtDate('f-df'));
+    set('Text108', gv('f-tf'));
+    set('Text109', fmtDate('f-dt'));
+    set('Text110', gv('f-tt'));
+    set('jmckinnon', fmtDate('f-df'));   // overlapping field at same position
+    set('3 RADIO NET NAME for NCOs OR POSITION TACTICAL CALL', gv('f-net'));
+    set('4 RADIO OPERATOR Name Call Sign',
+        [gv('f-op-name'), gv('f-op-call')].filter(Boolean).join(' / '));
+    set('6 PREPARED BY Name Call Sign',
+        [gv('f-prep-name'), gv('f-prep-pos')].filter(Boolean).join(' / '));
+    set('Text7', gv('f-prep-dt'));
+    // Log rows
+    const rows=getRows();
+    const rowCount=Math.min(rows.length, PDF_MAX_ROWS);
+    for(let i=0;i<rowCount;i++){
+      const r=rows[i]; const n=i+1;
+      set(`Time 2400Row${n}`,   r.time);
+      set(`MessageRow${n}`,     r.msg);
+      set(`Call SignIDRow${n}`,  r.fcs);
+      set(`Msg Row${n}`,         r.fmn);
+      set(`Call SignIDRow${n}_2`,r.tcs);
+      set(`Msg Row${n}_2`,       r.tmn);
+    }
+    // Download
+    const now=new Date();
+    const ts=String(now.getFullYear())+
+      String(now.getMonth()+1).padStart(2,'0')+
+      String(now.getDate()).padStart(2,'0')+'-'+
+      String(now.getHours()).padStart(2,'0')+
+      String(now.getMinutes()).padStart(2,'0');
+    const filename=`ICS-309-${ts}.pdf`;
+    const filledBytes=await pdfDoc.save();
+    const blob=new Blob([filledBytes],{type:'application/pdf'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    const skipped=rows.length>PDF_MAX_ROWS?` (${rows.length-PDF_MAX_ROWS} row(s) beyond PDF limit not included)`:'';
+    showToast(`✓ Saved: ${filename}${skipped}`,'ok',4000);
+  }catch(err){
+    console.error('savePDF error:',err);
+    showToast('PDF save failed: '+err.message,'err',7000);
+  }
+}
+
+const ROWS_PER_PAGE = 29;
+let _printNodes = null;
+
+window.addEventListener('beforeprint', () => {
+  const tbody = document.getElementById('log-body');
+  const allRows = [...tbody.querySelectorAll('tr')];
+  if (allRows.length <= ROWS_PER_PAGE) return; // fits on one page, nothing to do
+
+  // Save original tbody HTML to restore after print
+  _printNodes = tbody.innerHTML;
+
+  // Build the thead HTML to repeat on each page
+  const theadRow = tbody.closest('table').querySelector('thead tr');
+  const thHTML = [...theadRow.querySelectorAll('th')]
+    .map(th => `<th class="${th.className}">${th.innerHTML}</th>`).join('');
+
+  // Split rows into chunks and rebuild tbody with page breaks + repeated headers
+  let html = '';
+  for (let i = 0; i < allRows.length; i += ROWS_PER_PAGE) {
+    if (i > 0) {
+      // page break row + repeated header row
+      html += `<tr class="print-page-break"><td colspan="7"></td></tr>`;
+      html += `<tr class="print-repeat-hdr">${thHTML}</tr>`;
+    }
+    const chunk = allRows.slice(i, i + ROWS_PER_PAGE);
+    chunk.forEach(tr => { html += tr.outerHTML; });
+  }
+  tbody.innerHTML = html;
+});
+
+window.addEventListener('afterprint', () => {
+  if (_printNodes === null) return;
+  document.getElementById('log-body').innerHTML = _printNodes;
+  _printNodes = null;
+});
+  let t=document.getElementById('toast');
+  if(!t){t=document.createElement('div');t.id='toast';t.className='toast';document.body.appendChild(t);}
+  t.textContent=msg;
+  t.className='toast show '+(type||'');
+  clearTimeout(t._timer);
+  t._timer=setTimeout(()=>{t.className='toast';},duration);
+}
+</script>
+</body>
+</html>

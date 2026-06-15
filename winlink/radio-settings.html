@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Winlink Radio Settings</title>
+<link rel="stylesheet" href="../css/common.css">
+<style>
+.wrap { max-width: 1280px; }
+.tbl-wrap table { table-layout: fixed; width: 100%; }
+td, th { white-space: normal; vertical-align: top; word-break: break-word; }
+td.radio { color: var(--amber); font-weight: 700; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">🏠 HOME</a>
+    <h1>Winlink Radio Settings</h1>
+    <p>Hardware, cable, and software configuration per radio</p>
+  </header>
+
+  <div class="sec">
+    <div class="tbl-wrap">
+      <table>
+        <colgroup>
+<col style="width:9%">
+<col style="width:8%">
+<col style="width:8%">
+<col style="width:8%">
+<col style="width:8%">
+<col style="width:15%">
+<col style="width:18%">
+<col>
+        </colgroup>
+        <thead><tr><th>Radio</th><th>HW</th><th>USB</th><th>Data Port Cable</th><th>ACC Port</th><th>Winlink Settings</th><th>SoundModem</th><th>Notes</th></tr></thead>
+        <tbody>
+<tr><td class="radio">FT-817</td><td>Digirig</td><td>N/A</td><td>To Audio Digirig</td><td>N/A</td><td>KISS/ACKMODE/TCP</td><td>Devices-&gt;PTT COMx (COM by Digirig)</td><td>Menu #40: 1200, #07: Rear Antenna, #26: RTTY (Exit) / When operate, push &quot;Mode&quot; until right cormner shows PKT.</td></tr>
+<tr><td class="radio">FT-500DR</td><td>Digirig</td><td>N/A</td><td>To Audio Digirig</td><td>N/A</td><td>KISS/ACKMODE/TCP</td><td>Devices-&gt;PTT COMx (COM by Digirig)</td><td>APRS needs to be OFF, the sub channel should be setup to the Winlink frequency.</td></tr>
+<tr><td class="radio">IC-705</td><td>N/A</td><td>USB-&gt;PC</td><td>N/A</td><td>N/A</td><td>KISS/ACKMODE/TCP</td><td>Devics-&gt;PTT CAT-&gt; CI-V COM (COM by IC-705, address A4h)</td><td>Radio on FM-D</td></tr>
+<tr><td class="radio">ID-51</td><td>MobilinkD</td><td>N/A</td><td>To Audio MobilinkD</td><td>N/A</td><td>KISS/NORMAL/COM8</td><td>N/A</td><td>Channel: B, Radio Volume: Max, SQL: 7</td></tr>
+<tr><td class="radio">TH-D75</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>KISS/NORMAL/COM6</td><td>N/A</td><td>Channel: A (see settings), Bluetooth: On, Press [F] and [5] until KISS 12 appears on right corner, SQL: 7</td></tr>
+</tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

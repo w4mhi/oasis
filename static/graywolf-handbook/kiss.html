@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KISS TNC &mdash; Graywolf Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a href="index.html" class="site-logo">
+      <img src="img/graywolf-logo.svg" alt="" />
+      <span>graywolf <span class="handbook-label">handbook</span></span>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" aria-label="Toggle theme">[ dark ]</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav>
+      <div class="sidebar-section">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="installation.html">Installation</a>
+      <a href="callsign.html">Station Callsign</a>
+      <div class="sidebar-section">Radio</div>
+      <a href="audio.html">Audio Devices</a>
+      <a href="channels.html">Radio Channels</a>
+      <a href="ptt.html">Push-to-Talk</a>
+      <div class="sidebar-section">APRS</div>
+      <a href="beacons.html">Beacons</a>
+      <a href="digipeater.html">Digipeater</a>
+      <a href="igate.html">iGate</a>
+      <a href="messaging.html">Messaging</a>
+      <a href="actions.html">Actions</a>
+      <a href="remote-actions.html">Remote Actions</a>
+      <a href="actions-handler-safety.html">Actions: Handler Safety</a>
+      <a href="actions-handler-safety-shell.html">&nbsp;&nbsp;&#8627; Shell handlers</a>
+      <a href="actions-handler-safety-powershell.html">&nbsp;&nbsp;&#8627; PowerShell handlers</a>
+      <a href="actions-handler-safety-webhooks.html">&nbsp;&nbsp;&#8627; Webhook handlers</a>
+      <a href="livemap.html">Live Map</a>
+      <div class="sidebar-section">Packet</div>
+      <a href="ax25-terminal.html">AX.25 Terminal</a>
+      <div class="sidebar-section">Interfaces</div>
+      <a href="kiss.html">KISS TNC</a>
+      <a href="remote-kiss-tnc.html">Remote KISS TNC</a>
+      <a href="kiss-serial.html">KISS over Serial</a>
+      <a href="kiss-usb-serial.html">KISS over USB Serial</a>
+      <a href="kiss-bluetooth.html">KISS over Bluetooth</a>
+      <a href="agwpe.html">AGWPE</a>
+      <a href="gps.html">GPS</a>
+      <div class="sidebar-section">Operations</div>
+      <a href="history-database.html">Position Log</a>
+      <a href="logs.html">Logs</a>
+      <a href="monitoring.html">Monitoring</a>
+      <a href="simulation.html">Simulation</a>
+      <a href="maps.html">Maps</a>
+      <a href="preferences.html">Preferences</a>
+      <a href="architecture.html">Architecture</a>
+      <div class="sidebar-section">Reference</div>
+      <a href="configurations.html">Known-Working Configs</a>
+      <a href="api.html">REST API Reference</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>KISS TNC</h1>
+    <p class="subtitle">Expose graywolf as a KISS terminal node controller</p>
+
+    <p>
+      The KISS (Keep It Simple, Stupid) interface lets third-party packet
+      software &mdash; such as Xastir, YAAC, pinpoint, or aprx &mdash; use
+      graywolf as their TNC. Graywolf supports multiple simultaneous KISS
+      interfaces over TCP, serial, or Bluetooth.
+    </p>
+
+    <div class="screenshot">
+      <img src="img/kiss.png" alt="KISS Interfaces page showing a TCP KISS interface on port 8071" />
+      <div class="caption">A TCP KISS interface configured on port 8071</div>
+    </div>
+
+    <h2>Interface Types</h2>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Type</th><th>Description</th><th>Use Case</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>TCP (server)</strong></td>
+              <td>Graywolf listens on a TCP port; clients dial in</td>
+              <td>Most APRS software (Xastir, YAAC, pinpoint, aprx, etc.)</td>
+            </tr>
+            <tr>
+              <td><strong>TCP Client</strong></td>
+              <td>Graywolf dials <em>out</em> to a remote KISS server and reconnects automatically</td>
+              <td>Bridging to a remote TNC, a LoRa modem, or another graywolf. See <a href="remote-kiss-tnc.html">Remote KISS TNC</a>.</td>
+            </tr>
+            <tr>
+              <td><strong>Serial</strong></td>
+              <td>Graywolf opens a serial port and speaks KISS directly with a hardware TNC or radio</td>
+              <td>Radios with built-in KISS serial (TH-D75, TH-D74), Mobilinkd, Kantronics KPC-3+. See <a href="kiss-serial.html">KISS over Serial</a>.</td>
+            </tr>
+            <tr>
+              <td><strong>USB Serial</strong></td>
+              <td>Graywolf opens a USB serial connection to a hardware TNC or radio plugged into the tablet over USB. Android tablet build only.</td>
+              <td>Kenwood TH-D74/D75, Digirig, Mobilinkd, CP210x and CH34x cables. See <a href="kiss-usb-serial.html">KISS over USB Serial</a>.</td>
+            </tr>
+            <tr>
+              <td><strong>Bluetooth</strong></td>
+              <td>Graywolf opens an RFCOMM (Bluetooth serial) connection to a paired hardware TNC. Android tablet build only.</td>
+              <td>Mobilinkd TNCs, Kenwood TH-D74/D75 in Bluetooth mode, other Bluetooth-SPP TNCs. See <a href="kiss-bluetooth.html">KISS over Bluetooth</a>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2>Mode</h2>
+
+    <p>
+      Each KISS interface runs in one of two modes. The Mode column on the
+      KISS Interfaces page shows you which.
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <tr>
+            <td><strong>Modem</strong></td>
+            <td>The KISS interface rides on top of a modem-backed
+            <a href="channels.html">channel</a>. Frames you send through
+            KISS get modulated and transmitted on RF; frames heard on the
+            air get handed back to the KISS client.</td>
+          </tr>
+          <tr>
+            <td><strong>TNC</strong></td>
+            <td>The interface <em>is</em> the radio link &mdash; KISS frames
+            are forwarded to and from an external TNC, a LoRa modem, or
+            another graywolf over TCP Client. The channel itself is
+            KISS-TNC-only (no software modem).</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <h2>Interface Settings</h2>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>name</code></td>
+              <td>&mdash;</td>
+              <td>Display name for this interface</td>
+            </tr>
+            <tr>
+              <td><code>type</code></td>
+              <td>&mdash;</td>
+              <td><code>tcp</code>, <code>serial</code>, or <code>bluetooth</code></td>
+            </tr>
+            <tr>
+              <td><code>listen_addr</code></td>
+              <td>&mdash;</td>
+              <td>Listen address for TCP (e.g., <code>0.0.0.0:6700</code>)</td>
+            </tr>
+            <tr>
+              <td><code>device</code></td>
+              <td>&mdash;</td>
+              <td>Device path for serial/Bluetooth</td>
+            </tr>
+            <tr>
+              <td><code>baud_rate</code></td>
+              <td><code>9600</code></td>
+              <td>Baud rate for serial interfaces</td>
+            </tr>
+            <tr>
+              <td><code>channel</code></td>
+              <td><code>1</code></td>
+              <td>Default radio channel for this interface</td>
+            </tr>
+            <tr>
+              <td><code>broadcast</code></td>
+              <td><code>true</code></td>
+              <td>Fan out received packets to all connected clients</td>
+            </tr>
+            <tr>
+              <td><code>enabled</code></td>
+              <td><code>true</code></td>
+              <td>Interface active/inactive</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2>TCP Setup</h2>
+
+    <p>
+      A TCP KISS interface is the most common setup. Configure it to listen
+      on a port and point your APRS software at <code>host:port</code>
+      with KISS protocol selected.
+    </p>
+
+    <div class="callout tip">
+      <span class="callout-icon">&#10003;</span>
+      <div class="callout-body">
+        <p>
+          Port 6700 is the conventional KISS-over-TCP port used by most
+          APRS software. If your APRS application asks for a &ldquo;KISS TNC
+          host&rdquo;, point it at graywolf&rsquo;s IP and this port.
+        </p>
+      </div>
+    </div>
+
+    <h2>Multi-Port KISS</h2>
+
+    <p>
+      The KISS protocol supports multiple &ldquo;ports&rdquo; (0&ndash;15) within
+      a single connection. Each KISS port maps to a graywolf radio channel.
+      Clients can send and receive on different channels through one TCP
+      connection.
+    </p>
+
+    <h2>RX Broadcast</h2>
+
+    <p>
+      When <code>broadcast</code> is enabled, all packets received on the
+      interface&rsquo;s channel are forwarded to every connected KISS client.
+      Disable this if you want a write-only interface where clients can
+      transmit but don&rsquo;t receive.
+    </p>
+
+    <nav class="page-nav">
+      <a href="livemap.html">
+        <span class="label">Previous</span>
+        Live Map
+      </a>
+      <a href="remote-kiss-tnc.html" class="next">
+        <span class="label">Next</span>
+        Remote KISS TNC
+      </a>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  graywolf &middot; modern APRS station
+</footer>
+
+<script src="handbook.js"></script>
+</body>
+</html>

@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Push-to-Talk &mdash; Graywolf Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a href="index.html" class="site-logo">
+      <img src="img/graywolf-logo.svg" alt="" />
+      <span>graywolf <span class="handbook-label">handbook</span></span>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" aria-label="Toggle theme">[ dark ]</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav>
+      <div class="sidebar-section">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="installation.html">Installation</a>
+      <a href="callsign.html">Station Callsign</a>
+      <div class="sidebar-section">Radio</div>
+      <a href="audio.html">Audio Devices</a>
+      <a href="channels.html">Radio Channels</a>
+      <a href="ptt.html">Push-to-Talk</a>
+      <div class="sidebar-section">APRS</div>
+      <a href="beacons.html">Beacons</a>
+      <a href="digipeater.html">Digipeater</a>
+      <a href="igate.html">iGate</a>
+      <a href="messaging.html">Messaging</a>
+      <a href="actions.html">Actions</a>
+      <a href="remote-actions.html">Remote Actions</a>
+      <a href="actions-handler-safety.html">Actions: Handler Safety</a>
+      <a href="actions-handler-safety-shell.html">&nbsp;&nbsp;&#8627; Shell handlers</a>
+      <a href="actions-handler-safety-powershell.html">&nbsp;&nbsp;&#8627; PowerShell handlers</a>
+      <a href="actions-handler-safety-webhooks.html">&nbsp;&nbsp;&#8627; Webhook handlers</a>
+      <a href="livemap.html">Live Map</a>
+      <div class="sidebar-section">Packet</div>
+      <a href="ax25-terminal.html">AX.25 Terminal</a>
+      <div class="sidebar-section">Interfaces</div>
+      <a href="kiss.html">KISS TNC</a>
+      <a href="remote-kiss-tnc.html">Remote KISS TNC</a>
+      <a href="agwpe.html">AGWPE</a>
+      <a href="gps.html">GPS</a>
+      <div class="sidebar-section">Operations</div>
+      <a href="history-database.html">Position Log</a>
+      <a href="logs.html">Logs</a>
+      <a href="monitoring.html">Monitoring</a>
+      <a href="simulation.html">Simulation</a>
+      <a href="maps.html">Maps</a>
+      <a href="preferences.html">Preferences</a>
+      <a href="architecture.html">Architecture</a>
+      <div class="sidebar-section">Reference</div>
+      <a href="configurations.html">Known-Working Configs</a>
+      <a href="api.html">REST API Reference</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>Push-to-Talk</h1>
+    <p class="subtitle">Control radio keying and channel access</p>
+
+    <p>
+      Push-to-talk (PTT) configuration tells graywolf how to key your radio
+      for transmission. Each <a href="channels.html">radio channel</a> has
+      its own PTT configuration. If a channel has no output device or PTT
+      method set to <code>none</code>, it operates in receive-only mode.
+    </p>
+
+    <div class="screenshot">
+      <img src="img/ptt.png" alt="PTT Configuration page showing a Serial RTS PTT on /dev/cu.usbserial" />
+      <div class="caption">PTT configuration showing a serial RTS setup for the VHF APRS channel</div>
+    </div>
+
+    <h2>Detect Devices</h2>
+
+    <p>
+      Click <strong>Detect Devices</strong> at the top of the page and
+      graywolf scans your hardware: USB audio adapters with CM108 PTT,
+      <code>/dev/gpiochip*</code> nodes on Linux, USB-serial ports, and so
+      on. Two lists come back:
+    </p>
+
+    <ul>
+      <li><strong>Recommended for PTT</strong> &mdash; the best match for
+        your hardware (e.g. an AIOC or Digirig adapter showing as
+        <em>cm108</em> on <code>/dev/hidraw1</code>). Click it to pre-fill
+        the form.</li>
+      <li><strong>Other Detected Devices</strong> &mdash; everything else
+        worth showing, with type and path. Pick one only if you know it&rsquo;s
+        right for your adapter. Some entries carry hints &mdash; for example,
+        an AIOC&rsquo;s serial port is annotated <em>Use /dev/hidraw1 for PTT
+        on this adapter; this serial port is for data</em> &mdash; so you
+        don&rsquo;t accidentally pick the wrong one.</li>
+    </ul>
+
+    <p>
+      Detection is the fastest way to set up PTT correctly. Use Add PTT
+      manually if your hardware doesn&rsquo;t enumerate the way you
+      expected.
+    </p>
+
+    <h2>PTT Methods</h2>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Method</th><th>Description</th><th>Typical Hardware</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>none</code></td>
+              <td>No PTT control (receive only)</td>
+              <td>&mdash;</td>
+            </tr>
+            <tr>
+              <td><code>serial_rts</code></td>
+              <td>Assert RTS pin on a serial port</td>
+              <td>USB-to-serial adapter, Digirig</td>
+            </tr>
+            <tr>
+              <td><code>serial_dtr</code></td>
+              <td>Assert DTR pin on a serial port</td>
+              <td>USB-to-serial adapter</td>
+            </tr>
+            <tr>
+              <td><code>gpio</code></td>
+              <td>Linux GPIO pin via gpiochip character device</td>
+              <td>Raspberry Pi GPIO header</td>
+            </tr>
+            <tr>
+              <td><code>cm108</code></td>
+              <td>USB HID GPIO on CM108/CM119 audio codec</td>
+              <td>USB sound cards with built-in PTT</td>
+            </tr>
+            <tr>
+              <td><code>rigctld</code></td>
+              <td>Hamlib rigctld over TCP (CAT control)</td>
+              <td>Any rig supported by hamlib</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2>PTT Settings</h2>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>method</code></td>
+              <td><code>none</code></td>
+              <td>PTT control method (see table above)</td>
+            </tr>
+            <tr>
+              <td><code>device</code></td>
+              <td>&mdash;</td>
+              <td>Serial device path (e.g., <code>/dev/ttyUSB0</code>), CM108 hidraw node, or gpiochip device (e.g., <code>/dev/gpiochip0</code>)</td>
+            </tr>
+            <tr>
+              <td><code>gpio_line</code></td>
+              <td><code>0</code></td>
+              <td>GPIO line offset on the selected gpiochip for the <code>gpio</code> method. 0-indexed, matches the kernel&rsquo;s line numbering shown by <code>gpioinfo</code>.</td>
+            </tr>
+            <tr>
+              <td><code>gpio_pin</code></td>
+              <td><code>3</code></td>
+              <td>CM108 HID GPIO pin number for the <code>cm108</code> method. 1-indexed (1&ndash;4 on CM108/CM108B, 1&ndash;8 on CM119). Not used by the <code>gpio</code> method.</td>
+            </tr>
+            <tr>
+              <td><code>invert</code></td>
+              <td><code>false</code></td>
+              <td>Reverse PTT polarity (for backwards-wired rigs)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2>Serial PTT</h2>
+
+    <p>
+      Serial RTS or DTR is the most common PTT method. The modem asserts
+      the chosen pin when transmitting and de-asserts it when done. Most
+      USB sound card interfaces (Digirig, SignaLink USB) use this approach.
+    </p>
+
+<pre><code># Find your serial device
+ls /dev/ttyUSB* /dev/ttyACM*</code></pre>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          The graywolf user must have permission to access the serial device.
+          Adding the user to the <code>dialout</code> group (Linux) handles
+          this. The systemd service file includes this group by default.
+        </p>
+      </div>
+    </div>
+
+    <h2>GPIO PTT (Raspberry Pi)</h2>
+
+    <p>
+      GPIO PTT is <strong>Linux-only</strong>. It targets single-board
+      computers with exposed GPIO headers &mdash; Raspberry Pi, BeagleBone,
+      and similar &mdash; where you can wire a GPIO line directly to your
+      radio&rsquo;s PTT input. On non-Linux hosts the <code>gpio</code>
+      method is hidden from the method dropdown and the backend returns
+      <code>gpio ptt is only supported on Linux</code> if forced via API.
+    </p>
+
+    <p>
+      Graywolf uses the chardev v2 API (<code>/dev/gpiochipN</code>). The
+      legacy sysfs interface (<code>/sys/class/gpio</code>) is deprecated
+      and not supported.
+    </p>
+
+    <p>
+      In the PTT dialog, select <code>gpio</code>, then pick the gpiochip
+      device from the auto-detected list (typically <code>/dev/gpiochip0</code>
+      on a Pi). The UI then calls
+      <code>/api/ptt/gpio-lines</code> and populates a line selector with
+      the lines reported by the chip. Each entry shows the offset and the
+      kernel&rsquo;s line name (for example, <code>Line 14 &mdash; TXD1</code>).
+      Lines already claimed by another kernel driver &mdash; SPI, I2C,
+      UART, and so on &mdash; are annotated <code>[in use: &lt;consumer&gt;]</code>
+      in the label and are rejected by the form before submit with a message
+      like <code>Line 2 is claimed by i2c-bcm2835. Pick another line.</code>
+    </p>
+
+    <p>
+      When GPIO PTT is active, the consumer label <code>graywolf-ptt</code>
+      shows up in <code>gpioinfo</code> output so you can confirm which
+      process is holding the line. Graywolf drives the line low before
+      releasing it, so the PTT input is left inactive when graywolf stops
+      or the channel is reconfigured.
+    </p>
+
+    <p>
+      If you run graywolf on a Linux host where no gpiochip devices are
+      available &mdash; for example, inside a container without a bind mount
+      for <code>/dev/gpiochip*</code>, or as a user without read/write
+      access &mdash; the GPIO method stays visible in the dropdown but the
+      line selector reports <code>No GPIO chips detected. Check that you
+      have access to /dev/gpiochip* (typically the &lsquo;gpio&rsquo; group
+      on Raspberry Pi OS).</code>
+    </p>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          <strong>Linux permissions:</strong> the graywolf user must have
+          read/write access to <code>/dev/gpiochipN</code> &mdash; typically
+          the <code>gpio</code> group on Raspberry Pi OS, or
+          <code>plugdev</code> on other distros. If a line open fails with
+          <code>permission denied</code>, add the user to the appropriate
+          group and re-login (or reboot):
+        </p>
+<pre><code>sudo usermod -aG gpio $USER</code></pre>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <span class="callout-icon">&#9888;</span>
+      <div class="callout-body">
+        <p>
+          GPIO pins output 3.3V. If your radio requires a different voltage
+          or current, use a transistor or optocoupler circuit to interface
+          the GPIO pin with your radio&rsquo;s PTT line.
+        </p>
+      </div>
+    </div>
+
+    <h2>CM108 PTT (USB HID GPIO)</h2>
+
+    <p>
+      CM108-family USB audio codecs (C-Media CM108, CM108AH, CM108B, CM109,
+      CM119) expose a HID interface alongside audio that can toggle GPIO pins
+      for PTT. This is the method used by Digirig, AIOC, and many homebrew
+      adapters that combine a USB sound card with PTT on a single device.
+    </p>
+
+    <p>
+      Select the <code>cm108</code> method and choose the detected hidraw
+      device. The GPIO pin selector is annotated for you: pin 3 (the
+      default) is the most common, pin 2 is unavailable on CM108AH/B, and
+      pins 5&ndash;8 only exist on CM109/CM119.
+    </p>
+
+    <div class="box">
+      <div class="box-header">Supported Devices</div>
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Device</th><th>VID:PID</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>CM108 / CM108AH / CM108B</td><td><code>0d8c:*</code></td><td>Generic C-Media, Digirig</td></tr>
+            <tr><td>CM109 / CM119 / CM119A</td><td><code>0d8c:*</code></td><td>Extended GPIO (1&ndash;8)</td></tr>
+            <tr><td>AIOC (All-In-One-Cable)</td><td><code>1209:7388</code></td><td>STM32-based CM108 emulation</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          <strong>Linux permissions:</strong> The <code>/dev/hidraw*</code>
+          devices are typically root-only. Graywolf ships a udev rule
+          (<code>99-graywolf-cm108.rules</code>) that grants access to the
+          <code>plugdev</code> group for CM108-compatible devices. The systemd
+          service includes this group by default. If you installed manually,
+          add your user to the <code>plugdev</code> group and reload udev
+          rules:
+        </p>
+<pre><code>sudo usermod -aG plugdev $USER
+sudo udevadm control --reload-rules
+sudo udevadm trigger</code></pre>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          <strong>USB audio latency:</strong> USB sound cards add audio latency
+          (typically 5&ndash;20&thinsp;ms). If the beginning of your transmissions
+          is clipped, increase TX Delay to compensate.
+        </p>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          <strong>macOS:</strong> CM108 HID GPIO PTT is supported on macOS
+          via the IOKit HID interface. Device enumeration and GPIO control
+          work the same as on Linux and Windows. Unlike Linux, there is no
+          automatic audio&ndash;HID correlation&thinsp;&mdash;&thinsp;select
+          the correct device from the list manually.
+        </p>
+      </div>
+    </div>
+
+    <h2>CSMA Channel Access</h2>
+
+    <p>
+      CSMA (Carrier Sense Multiple Access) prevents graywolf from
+      transmitting while another station is on the air. The TX governor
+      checks the DCD (Data Carrier Detect) state before keying.
+    </p>
+
+    <div class="box">
+      <div class="box-header">CSMA Parameters</div>
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>slot_time_ms</code></td>
+              <td><code>10</code></td>
+              <td>Time slot duration for p-persistence algorithm</td>
+            </tr>
+            <tr>
+              <td><code>persist</code></td>
+              <td><code>63</code></td>
+              <td>Persistence value (0&ndash;255). Higher = more aggressive</td>
+            </tr>
+            <tr>
+              <td><code>dwait_ms</code></td>
+              <td><code>0</code></td>
+              <td>Dwell/backoff time after DCD clears</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p>
+      The p-persistence algorithm works as follows: when the channel is
+      clear (DCD inactive), graywolf generates a random number 0&ndash;255.
+      If it&rsquo;s less than <code>persist</code>, it transmits immediately.
+      Otherwise, it waits one <code>slot_time_ms</code> and tries again.
+    </p>
+
+    <h2>TX Rate Limiting</h2>
+
+    <p>
+      The TX governor enforces per-channel rate limits to prevent excessive
+      transmissions. Configure these through the TX timing API:
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <tr>
+            <td><code>rate_1min</code></td>
+            <td>Maximum packets per minute (0 = unlimited)</td>
+          </tr>
+          <tr>
+            <td><code>rate_5min</code></td>
+            <td>Maximum packets per 5 minutes (0 = unlimited)</td>
+          </tr>
+          <tr>
+            <td><code>full_dup</code></td>
+            <td>Skip CSMA entirely (for full-duplex setups)</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="channels.html">
+        <span class="label">Previous</span>
+        Radio Channels
+      </a>
+      <a href="beacons.html" class="next">
+        <span class="label">Next</span>
+        Beacons
+      </a>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  graywolf &middot; modern APRS station
+</footer>
+
+<script src="handbook.js"></script>
+</body>
+</html>

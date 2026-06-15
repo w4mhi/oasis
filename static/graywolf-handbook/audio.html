@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Audio Devices &mdash; Graywolf Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a href="index.html" class="site-logo">
+      <img src="img/graywolf-logo.svg" alt="" />
+      <span>graywolf <span class="handbook-label">handbook</span></span>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" aria-label="Toggle theme">[ dark ]</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav>
+      <div class="sidebar-section">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="installation.html">Installation</a>
+      <a href="callsign.html">Station Callsign</a>
+      <div class="sidebar-section">Radio</div>
+      <a href="audio.html">Audio Devices</a>
+      <a href="channels.html">Radio Channels</a>
+      <a href="ptt.html">Push-to-Talk</a>
+      <div class="sidebar-section">APRS</div>
+      <a href="beacons.html">Beacons</a>
+      <a href="digipeater.html">Digipeater</a>
+      <a href="igate.html">iGate</a>
+      <a href="messaging.html">Messaging</a>
+      <a href="actions.html">Actions</a>
+      <a href="remote-actions.html">Remote Actions</a>
+      <a href="actions-handler-safety.html">Actions: Handler Safety</a>
+      <a href="actions-handler-safety-shell.html">&nbsp;&nbsp;&#8627; Shell handlers</a>
+      <a href="actions-handler-safety-powershell.html">&nbsp;&nbsp;&#8627; PowerShell handlers</a>
+      <a href="actions-handler-safety-webhooks.html">&nbsp;&nbsp;&#8627; Webhook handlers</a>
+      <a href="livemap.html">Live Map</a>
+      <div class="sidebar-section">Packet</div>
+      <a href="ax25-terminal.html">AX.25 Terminal</a>
+      <div class="sidebar-section">Interfaces</div>
+      <a href="kiss.html">KISS TNC</a>
+      <a href="remote-kiss-tnc.html">Remote KISS TNC</a>
+      <a href="agwpe.html">AGWPE</a>
+      <a href="gps.html">GPS</a>
+      <div class="sidebar-section">Operations</div>
+      <a href="history-database.html">Position Log</a>
+      <a href="logs.html">Logs</a>
+      <a href="monitoring.html">Monitoring</a>
+      <a href="simulation.html">Simulation</a>
+      <a href="maps.html">Maps</a>
+      <a href="preferences.html">Preferences</a>
+      <a href="architecture.html">Architecture</a>
+      <div class="sidebar-section">Reference</div>
+      <a href="configurations.html">Known-Working Configs</a>
+      <a href="api.html">REST API Reference</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>Audio Devices</h1>
+    <p class="subtitle">Configure audio input and output sources for the modem</p>
+
+    <p>
+      Audio devices are the physical (or virtual) sound interfaces that
+      graywolf&rsquo;s Rust modem uses to receive and transmit audio.
+      Each <a href="channels.html">radio channel</a> is bound to an audio
+      device for input and optionally one for output.
+    </p>
+
+    <div class="screenshot">
+      <img src="img/audio-devices.png" alt="Audio Devices page showing configured input and output devices with gain sliders" />
+      <div class="caption">Audio device cards show direction, path, sample rate, level meters, and gain controls</div>
+    </div>
+
+    <h2>Detect Devices</h2>
+
+    <p>
+      Click <strong>Detect Devices</strong> at the top of the page to scan
+      attached sound cards and pre-fill an entry. Adapters that graywolf
+      recognises as a known APRS interface (Digirig, AIOC, SignaLink, and
+      so on) are flagged as <em>Recommended</em> so you can pick them with
+      one click. You can still use <strong>+ Add Device</strong> to enter a
+      device manually.
+    </p>
+
+    <p>
+      Across the top of the page graywolf tells you whether
+      <strong>Receive</strong> and <strong>Transmit</strong> are ready.
+      A green light on Transmit means there&rsquo;s an output device
+      configured &mdash; you also need <a href="ptt.html">PTT</a> set up
+      before the rig actually keys, and the page reminds you of that
+      right there.
+    </p>
+
+    <h2>Source Types</h2>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Type</th><th>Description</th><th>Use Case</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>soundcard</code></td>
+              <td>System audio device via CPAL (ALSA on Linux, CoreAudio on macOS)</td>
+              <td>Normal operation with a radio</td>
+            </tr>
+            <tr>
+              <td><code>flac</code></td>
+              <td>FLAC audio file playback</td>
+              <td>Offline testing and benchmarking</td>
+            </tr>
+            <tr>
+              <td><code>stdin</code></td>
+              <td>Raw signed 16-bit little-endian PCM from standard input</td>
+              <td>Piping audio from another process</td>
+            </tr>
+            <tr>
+              <td><code>sdr_udp</code></td>
+              <td>UDP listener for SDR audio streams</td>
+              <td>Software-defined radio input</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2>Device Settings</h2>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>name</code></td>
+              <td>&mdash;</td>
+              <td>Human-readable label shown in the UI</td>
+            </tr>
+            <tr>
+              <td><code>direction</code></td>
+              <td>&mdash;</td>
+              <td><code>input</code> or <code>output</code></td>
+            </tr>
+            <tr>
+              <td><code>source_type</code></td>
+              <td>&mdash;</td>
+              <td>One of: <code>soundcard</code>, <code>flac</code>, <code>stdin</code>, <code>sdr_udp</code></td>
+            </tr>
+            <tr>
+              <td><code>source_path</code></td>
+              <td>&mdash;</td>
+              <td>Device name (for soundcard) or file path (for flac)</td>
+            </tr>
+            <tr>
+              <td><code>sample_rate</code></td>
+              <td><code>48000</code></td>
+              <td>Sample rate in Hz</td>
+            </tr>
+            <tr>
+              <td><code>channels</code></td>
+              <td><code>1</code></td>
+              <td>Always mono. If the device only supports stereo,
+                  Graywolf opens it in stereo and extracts a single channel
+                  automatically.</td>
+            </tr>
+            <tr>
+              <td><code>format</code></td>
+              <td><code>s16le</code></td>
+              <td>Sample format (signed 16-bit little-endian)</td>
+            </tr>
+            <tr>
+              <td><code>gain_db</code></td>
+              <td><code>0</code></td>
+              <td>Software gain in dB (&minus;60 to +12, 0 = unity)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2>Soundcard Setup</h2>
+
+    <p>
+      For a typical setup with a USB sound card connected to a radio, create
+      an input device and (if transmitting) an output device. The
+      <code>source_path</code> should match the ALSA device name as shown by
+      <code>arecord -l</code> or <code>aplay -l</code>.
+    </p>
+
+    <div class="callout tip">
+      <span class="callout-icon">&#10003;</span>
+      <div class="callout-body">
+        <p>
+          Use a dedicated USB sound card rather than your computer&rsquo;s
+          built-in audio. Devices like the Digirig, SignaLink, or a simple
+          USB dongle provide clean audio isolation between your radio and
+          computer.
+        </p>
+      </div>
+    </div>
+
+    <h2>Channel Selection</h2>
+
+    <p>
+      Audio devices are always configured as mono. If your sound card only
+      supports stereo, Graywolf automatically opens it in stereo and
+      extracts a single channel. You can select which channel to use via
+      the <code>input_channel</code> setting on the radio channel
+      (<code>0</code> = left, <code>1</code> = right). This lets you
+      monitor two radios on a single stereo sound card by assigning each
+      radio channel to a different stereo channel.
+    </p>
+
+    <h2>Test Tone</h2>
+
+    <p>
+      Each output device has a <strong>Test Tone</strong> button on its
+      card. Press it to send a short test tone out the radio &mdash; useful
+      for verifying that PTT keys, deviation is in spec, and audio reaches
+      the air. Watch the LEVEL meter on the card while it plays.
+    </p>
+
+    <div class="callout warn">
+      <span class="callout-icon">&#9888;</span>
+      <div class="callout-body">
+        <p>
+          The LEVEL meter and the Test Tone button only come alive once
+          the device is wired into a <a href="channels.html">channel</a>.
+          Adding an audio device on this page just makes it available
+          &mdash; until a channel is using it for input or output, the
+          modem isn&rsquo;t opening it and there&rsquo;s no audio to meter
+          or push a tone through. Set up the channel first, then come
+          back here to set levels.
+        </p>
+      </div>
+    </div>
+
+    <h2>Software Gain</h2>
+
+    <p>
+      The <code>gain_db</code> setting applies digital gain to the audio
+      stream before it reaches the demodulator. Use this to compensate for
+      sound cards with very low or very high output levels. Positive values
+      amplify the signal; negative values attenuate it.
+    </p>
+
+    <div class="callout warn">
+      <span class="callout-icon">&#9888;</span>
+      <div class="callout-body">
+        <p>
+          Excessive gain can cause clipping, which degrades decode
+          performance. Adjust levels so the audio peaks shown in the
+          dashboard are comfortably below 1.0.
+        </p>
+      </div>
+    </div>
+
+    <h2>Windows: only hearing carrier when transmitting?</h2>
+
+    <p>
+      A common Windows-specific failure mode looks like this: PTT keys
+      the radio, but the receiving station hears only an unmodulated
+      carrier &mdash; no AFSK "brap" tones. The radio is being keyed
+      correctly; the problem is that no audio is reaching the radio's
+      mic input.
+    </p>
+
+    <p>
+      In almost every reported case the cause is one of three
+      Windows-side volume settings being muted or set to zero, even
+      though the device itself is enabled and selected as Graywolf's
+      output:
+    </p>
+
+    <ol>
+      <li>
+        <strong>Per-application volume.</strong> Right-click the speaker
+        icon in the system tray and choose <em>Open Volume mixer</em>
+        (or <em>Settings &rarr; System &rarr; Sound &rarr; Volume
+        mixer</em>). Find the Graywolf entry under the output device
+        you assigned to the channel and confirm it is not muted and
+        not at zero. Windows remembers per-app volume independently
+        of device volume, and it can silently sit at 0%.
+      </li>
+      <li>
+        <strong>Device master volume.</strong> In the same Sound panel,
+        click the output device itself and verify its master volume
+        is up and not muted.
+      </li>
+      <li>
+        <strong>Sound control panel "Levels" tab.</strong> Open the
+        legacy Sound control panel (<code>mmsys.cpl</code>),
+        right-click the output device, choose <em>Properties &rarr;
+        Levels</em>, and confirm the slider is up and the speaker
+        icon next to it is not crossed out.
+      </li>
+    </ol>
+
+    <p>
+      Also worth checking: if you're using a SignaLink USB or any
+      external interface with a hardware <em>TX</em> potentiometer,
+      that pot must be turned up &mdash; rotated fully closed it
+      produces the same "carrier only" symptom. Start with it at the
+      12 o'clock position and adjust from the <strong>Test
+      Tone</strong> button on this page.
+    </p>
+
+    <div class="callout tip">
+      <span class="callout-icon">&#10003;</span>
+      <div class="callout-body">
+        <p>
+          Quick way to confirm whether the problem is on the Windows
+          side or the radio/cable side: in the Sound control panel,
+          open the input device tab, right-click your radio's RX sound
+          card, choose <em>Properties &rarr; Listen</em>, tick
+          <em>Listen to this device</em>, and route it to your laptop
+          speakers. Now press the Test Tone button on this page. If
+          you hear the tone from your laptop speakers, the audio is
+          reaching the sound card &mdash; the issue is between the
+          sound card and the radio (cable, jack, or radio menu). If
+          you hear nothing, the issue is one of the three settings
+          above.
+        </p>
+      </div>
+    </div>
+
+    <h2>Hot Reconfiguration</h2>
+
+    <p>
+      Audio devices can be reconfigured without restarting graywolf. After
+      changing device settings in the web UI, use the
+      <strong>Reconfigure</strong> button (or <code>POST
+      /api/audio-devices/{id}/reconfigure</code>) to apply changes
+      immediately. The modem will briefly pause audio processing during
+      reconfiguration.
+    </p>
+
+    <nav class="page-nav">
+      <a href="callsign.html">
+        <span class="label">Previous</span>
+        Station Callsign
+      </a>
+      <a href="channels.html" class="next">
+        <span class="label">Next</span>
+        Radio Channels
+      </a>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  graywolf &middot; modern APRS station
+</footer>
+
+<script src="handbook.js"></script>
+</body>
+</html>

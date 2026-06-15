@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Band Plan</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+.wrap { max-width: 1400px; }
+
+/* ── search row ─────────────────────────────────────────── */
+.search-row { display:flex; gap:.5rem; margin-top:.4rem; align-items:center; flex-wrap:wrap; }
+.search-row input[type=number] { width:130px; }
+.search-row select { width:80px; }
+.sr-box { display:none; padding:.15rem .6rem; font-size:var(--fs-label); line-height:1.5; white-space:nowrap; }
+.sr-box.on { display:inline-flex; align-items:center; gap:.35rem; }
+.sr-hit  { color:var(--accent); }
+.sr-miss { color:var(--amber); }
+.sr-swatch { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; }
+
+/* ── legend ─────────────────────────────────────────────── */
+.legend { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px,1fr)); gap:.4rem .75rem; margin-top:.4rem; }
+.legend-item { display:flex; align-items:center; gap:.5rem; font-size:var(--fs-label); color:var(--text-dim); }
+.legend-swatch { width:14px; height:14px; border-radius:2px; flex-shrink:0; }
+
+/* ── band row ────────────────────────────────────────────── */
+.band-row { display:flex; align-items:stretch; gap:0; padding:.4rem 0; }
+
+.band-lbl {
+  flex-shrink:0; width:110px;
+  display:flex; flex-direction:column; justify-content:center; align-items:flex-end;
+  padding-right:.65rem;
+  border-right:2px solid var(--border);
+  margin-right:.65rem;
+}
+.band-num  { font-size:var(--fs-title); line-height:1; color:var(--amber); font-weight:700; }
+.band-unit { font-size:var(--fs-subtitle); color:var(--text-dim); letter-spacing:.08em; text-transform:uppercase; }
+.band-mhz  { font-size:var(--fs-small); color:var(--text-dim); margin-top:3px; white-space:nowrap; }
+.band-body { flex:1; min-width:0; display:flex; flex-direction:column; }
+
+/* callouts */
+.callouts-above { position:relative; height:34px; }
+.callouts-below { position:relative; height:58px; }
+.callout-marker {
+  position:absolute; transform:translateX(-50%);
+  display:flex; align-items:center; pointer-events:none;
+}
+.callouts-above .callout-marker { bottom:0; flex-direction:column-reverse; }
+.callouts-below .callout-marker { top:22px; flex-direction:column; }
+.callout-line  { width:1px; height:8px; background:var(--text-dim); opacity:.5; flex-shrink:0; }
+.callout-label { text-align:center; line-height:1.25; }
+.callout-freq  { display:block; font-size:var(--fs-label); font-weight:700; white-space:nowrap; color:var(--text); }
+.callout-sub   { display:block; font-size:var(--fs-small); color:var(--text-dim); white-space:nowrap; }
+.callout-marker.type-calling .callout-freq { color:var(--accent); }
+.callout-marker.type-sstv    .callout-freq { color:var(--amber); }
+.callout-marker.type-note    .callout-freq { color:var(--text-dim); }
+
+/* bar */
+.bar { display:flex; height:44px; border-radius:3px; overflow:hidden; cursor:default; width:100%; }
+.seg {
+  height:100%; display:flex; align-items:center; justify-content:center;
+  overflow:hidden; cursor:pointer; transition:filter .12s;
+}
+.seg:hover { filter:brightness(1.15); }
+.seg-label {
+  font-size:var(--fs-subtitle); font-weight:700; color:#fff;
+  text-shadow:0 1px 3px rgba(0,0,0,.55);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  padding:0 5px; pointer-events:none;
+  letter-spacing:.08em; text-transform:uppercase;
+}
+
+/* tick markers */
+.tick-marker {
+  position:absolute; transform:translateX(-50%);
+  display:flex; align-items:center; pointer-events:none;
+}
+.tick-freq { font-size:var(--fs-small); color:var(--text-dim); white-space:nowrap; user-select:none; line-height:1; }
+.callouts-above .tick-marker { bottom:0; flex-direction:column; }
+.callouts-above .tick-marker::after  { content:''; width:1px; height:5px; background:var(--text-dim); opacity:.4; margin-top:3px; }
+.callouts-below .tick-marker { top:0; flex-direction:column; }
+.callouts-below .tick-marker::before { content:''; width:1px; height:5px; background:var(--text-dim); opacity:.4; margin-bottom:3px; }
+
+/* right notes */
+.band-notes {
+  flex-shrink:0; width:100px;
+  display:flex; flex-direction:column; justify-content:center; align-items:flex-start;
+  padding-left:.6rem; margin-left:.6rem;
+  border-left:1px solid var(--border);
+  font-size:var(--fs-label); color:var(--text-dim); line-height:1.55; gap:.2rem;
+}
+.lic-badge {
+  font-size:var(--fs-small); padding:1px 5px; border-radius:3px;
+  background:var(--panel-2); border:1px solid var(--border);
+  color:var(--text-dim); white-space:nowrap;
+}
+.alloc-2nd { font-size:var(--fs-small); color:var(--amber); letter-spacing:.04em; text-transform:uppercase; }
+
+/* tooltip */
+.seg-tip {
+  position:fixed; z-index:200; display:none;
+  background:var(--panel); border:1px solid var(--border); border-radius:6px;
+  padding:.55rem .85rem; max-width:270px; pointer-events:none;
+  box-shadow:0 6px 20px rgba(0,0,0,.55);
+}
+.seg-tip.on { display:block; }
+.tip-lbl    { font-size:var(--fs-subtitle); font-weight:700; color:var(--text); margin-bottom:.2rem; }
+.tip-range  { font-size:var(--fs-label); color:var(--amber); margin-bottom:.3rem; }
+.tip-detail { font-size:var(--fs-label); color:var(--text-dim); line-height:1.5; }
+
+@media print { .seg-tip, .home-link { display:none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">🏠 HOME</a>
+    <h1 id="pg-title">Band Plan</h1>
+    <p id="pg-sub">U.S.A. FCC allocations — offline reference · hover segments for details</p>
+  </header>
+
+  <div class="sec">
+    <span class="sec-lbl">Frequency Lookup</span>
+    <div class="search-row">
+      <input type="number" id="fi" placeholder="e.g. 146.52" step="any" min="0">
+      <select id="fu">
+        <option value="MHz">MHz</option>
+        <option value="kHz">kHz</option>
+        <option value="GHz">GHz</option>
+      </select>
+      <button class="sbtn primary" onclick="doLookup()">Find</button>
+      <span class="sr-box" id="sr"></span>
+    </div>
+  </div>
+
+  <div class="sec">
+    <span class="sec-lbl">Legend</span>
+    <div class="legend" id="leg"></div>
+  </div>
+
+  <div class="sec">
+    <span class="sec-lbl">Band</span>
+    <div id="band-container"></div>
+  </div>
+
+</div>
+
+<div class="seg-tip" id="tip"></div>
+
+<script>'use strict';
+
+const MODES = {
+  'cw':           { color: '#e63946', label: 'CW / Weak Signal' },
+  'ssb':          { color: '#4895ef', label: 'SSB / Phone' },
+  'am':           { color: '#ff9f1c', label: 'AM / Phone' },
+  'digital':      { color: '#f4a261', label: 'Digital / Data' },
+  'beacon':       { color: '#2ec4b6', label: 'Beacons' },
+  'fm-simplex':   { color: '#c77dff', label: 'FM Simplex' },
+  'fm-repeater':  { color: '#7b2d8b', label: 'FM Repeater' },
+  'atv':          { color: '#ffd60a', label: 'ATV / Broadband' },
+  'satellite':    { color: '#06d6a0', label: 'Satellite' },
+  'mixed':        { color: '#a8b5c8', label: 'Mixed / Control' },
+  'no-priv':      { color: '#1e2a38', label: 'No Privileges' },
+};
+
+let band = null;
+const tip = document.getElementById('tip');
+let tipSeg = null;
+
+/* ── init ────────────────────────────────────────────────── */
+async function init() {
+  const params = new URLSearchParams(window.location.search);
+  const name = params.get('band');
+  if (!name) { showError('No band specified. Add ?band=2m to the URL.'); return; }
+
+  try {
+    const r = await fetch(`data/${encodeURIComponent(name)}.json`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    band = await r.json();
+  } catch (e) {
+    showError(`Could not load ${name}.json — ${e.message}`);
+    return;
+  }
+
+  document.title = `${band.name} Band Plan`;
+  document.getElementById('pg-title').textContent = `${band.name} — Band Plan`;
+  document.getElementById('pg-sub').textContent =
+    `${band.range[0]}–${band.range[1]} ${band.unit} · ${band.license} · ${band.allocation} allocation`;
+
+  document.getElementById('band-container').appendChild(buildBandRow(band));
+  buildLegend();
+}
+
+function showError(msg) {
+  document.getElementById('band-container').innerHTML =
+    `<p style="color:var(--red);font-size:var(--fs-base)">${eh(msg)}</p>`;
+}
+
+/* ── legend ─────────────────────────────────────────────── */
+function buildLegend() {
+  const seen = new Map();
+  const rows = band.rows || [band];
+  rows.forEach(r => r.segments.forEach(s => {
+    const m = MODES[s.type] || { color: '#888', label: s.type };
+    const color = s.color || m.color;
+    const label = m.label !== s.type ? m.label : (s.label || s.type);
+    if (!seen.has(label)) seen.set(label, { color, label });
+  }));
+  document.getElementById('leg').innerHTML = [...seen.values()]
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .map(e => `<div class="legend-item">
+      <div class="legend-swatch" style="background:${e.color}"></div>
+      <span>${eh(e.label)}</span>
+    </div>`).join('');
+}
+
+/* ── build band row ──────────────────────────────────────── */
+function buildBandRow(b) {
+  const rows = b.rows || [b];
+  const bm   = b.band.match(/^(\d+(?:\.\d+)?)(cm|m|km)$/i);
+  const bNum  = bm ? bm[1] : b.band;
+  const bUnit = bm ? bm[2] : '';
+
+  const bodyRows = rows.map(row => buildBarRow(row, b.unit)).join('');
+
+  const div = document.createElement('div');
+  div.className = 'band-row';
+  div.innerHTML = `
+    <div class="band-lbl">
+      <span class="band-num">${eh(bNum)}</span>
+      <span class="band-unit">${eh(bUnit)}</span>
+      <span class="band-mhz">${b.range[0]}–${b.range[1]}&nbsp;${eh(b.unit)}</span>
+    </div>
+    <div class="band-body">${bodyRows}</div>
+    <div class="band-notes">
+      <span class="lic-badge">${eh(b.license || '')}</span>
+      ${b.allocation === 'Secondary' ? '<span class="alloc-2nd">Secondary</span>' : ''}
+      ${(b.notes || []).map(n => `<span>${eh(n)}</span>`).join('')}
+    </div>`;
+  return div;
+}
+
+/* ── build one bar sub-row ───────────────────────────────── */
+function buildBarRow(row, unit) {
+  const [lo, hi] = row.range;
+  const span = hi - lo;
+  const pct  = f => ((f - lo) / span * 100).toFixed(3) + '%';
+
+  const above = [], below = [];
+  (row.callouts || []).forEach(c => (c.side === 'below' ? below : above).push(c));
+
+  const segs = row.segments.map(s => {
+    const w = (s.end - s.start) / span * 100;
+    const m = MODES[s.type] || { color: '#888' };
+    const color = s.color || m.color;
+    const showLabel = w > 7;
+    return `<div class="seg"
+      style="width:${w.toFixed(3)}%;background:${color}"
+      data-type="${s.type}" data-color="${color}" data-start="${s.start}" data-end="${s.end}"
+      data-label="${ea(s.label)}" data-detail="${ea(s.detail || '')}"
+      data-unit="${ea(unit)}"
+      onmouseenter="tipShow(event,this)" onmouseleave="tipHide()"
+    >${showLabel ? `<span class="seg-label">${eh(s.type.replace(/-/g,' '))}</span>` : ''}</div>`;
+  }).join('');
+
+  function markers(list) {
+    return list.map(c =>
+      `<div class="callout-marker type-${c.type || 'note'}" style="left:${pct(c.freq)}">
+        <div class="callout-line"></div>
+        <div class="callout-label">
+          <span class="callout-freq">${eh(String(c.label ?? c.freq))}</span>
+          ${c.sublabel ? `<span class="callout-sub">${eh(c.sublabel)}</span>` : ''}
+        </div>
+      </div>`
+    ).join('');
+  }
+
+  const posMap = {};
+  row.segments.forEach(s => {
+    const below = s.position === 'below' || s.position === 'bottom';
+    posMap[s.start] = below ? 't-odd' : 't-even';
+  });
+  const lastSeg = row.segments[row.segments.length - 1];
+  if (lastSeg) {
+    const lb = lastSeg.position === 'below' || lastSeg.position === 'bottom';
+    posMap[lastSeg.end] = lb ? 't-even' : 't-odd';
+  }
+
+  const ticksAbove = [], ticksBelow = [];
+  (row.ticks || [lo, hi]).forEach((f, i) => {
+    const cls = posMap[f] ?? (i % 2 === 0 ? 't-even' : 't-odd');
+    (cls === 't-even' ? ticksAbove : ticksBelow).push(f);
+  });
+
+  function tickMarkers(list) {
+    return list.map(f =>
+      `<div class="tick-marker" style="left:${pct(f)}"><span class="tick-freq">${f}</span></div>`
+    ).join('');
+  }
+
+  return `
+    <div class="callouts-above">${markers(above)}${tickMarkers(ticksAbove)}</div>
+    <div class="bar">${segs}</div>
+    <div class="callouts-below">${markers(below)}${tickMarkers(ticksBelow)}</div>`;
+}
+
+/* ── tooltip ─────────────────────────────────────────────── */
+function tipShow(e, el) {
+  tipSeg = el;
+  tip.innerHTML = `
+    <div class="tip-lbl">${eh(el.dataset.label)}</div>
+    <div class="tip-range">${eh(el.dataset.start)}–${eh(el.dataset.end)} ${eh(el.dataset.unit)}</div>
+    ${el.dataset.detail ? `<div class="tip-detail">${eh(el.dataset.detail)}</div>` : ''}`;
+  tip.classList.add('on');
+  moveTip(e);
+  el.addEventListener('mousemove', moveTip, { passive: true });
+}
+function moveTip(e) {
+  tip.style.left = Math.min(e.clientX + 16, window.innerWidth  - 290) + 'px';
+  tip.style.top  = Math.min(e.clientY + 14, window.innerHeight - 130) + 'px';
+}
+function tipHide() {
+  if (tipSeg) tipSeg.removeEventListener('mousemove', moveTip);
+  tipSeg = null;
+  tip.classList.remove('on');
+}
+
+/* ── frequency lookup ────────────────────────────────────── */
+function doLookup() {
+  let val = parseFloat(document.getElementById('fi').value);
+  const unit = document.getElementById('fu').value;
+  const sr = document.getElementById('sr');
+  if (isNaN(val) || !band) { sr.className = 'sr-box'; return; }
+  if (unit === 'kHz') val /= 1000;
+  if (unit === 'GHz') val *= 1000;
+
+  if (val < band.range[0] || val > band.range[1]) {
+    sr.innerHTML = `<span class="sr-miss">${val} MHz is outside the ${band.name} band</span>`;
+    sr.className = 'sr-box on';
+    return;
+  }
+
+  const rows = band.rows || [band];
+  for (const row of rows) {
+    const co = (row.callouts || []).find(c => Math.abs(c.freq - val) < 0.011);
+    if (co) {
+      sr.innerHTML = `<span class="sr-hit">✓ ${val} MHz</span><span style="color:var(--text-dim)">—</span><strong>${eh(co.sublabel || co.label)}</strong>`;
+      sr.className = 'sr-box on';
+      return;
+    }
+  }
+  for (const row of rows) {
+    const seg = row.segments.find(s => val >= s.start && val <= s.end);
+    if (seg) {
+      const m = MODES[seg.type] || { color: '#888' };
+      const color = seg.color || m.color;
+      sr.innerHTML =
+        `<span class="sr-hit">✓ ${val} MHz</span>` +
+        `<span class="sr-swatch" style="background:${color}"></span>` +
+        `<strong style="color:${color}">${eh(seg.label)}</strong>` +
+        `<span style="color:var(--text-dim)">${seg.start}–${seg.end} ${eh(band.unit)}</span>`;
+      sr.className = 'sr-box on';
+      return;
+    }
+  }
+  sr.innerHTML = `<span class="sr-miss">Not found in ${band.name}</span>`;
+  sr.className = 'sr-box on';
+}
+
+document.getElementById('fi').addEventListener('keydown', e => { if (e.key === 'Enter') doLookup(); });
+
+function eh(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function ea(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+
+init();
+</script>
+</body>
+</html>

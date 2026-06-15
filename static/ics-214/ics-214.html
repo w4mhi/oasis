@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICS 214 — Activity Log</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+body{font-size:var(--fs-subtitle);}
+.wrap{max-width:1280px;}
+@media(max-width:580px){.g2,.g3,.g4{grid-template-columns:1fr 1fr;}}
+@media(max-width:380px){.g2,.g3,.g4{grid-template-columns:1fr;}}
+td input,td textarea{background:transparent;border:1px solid transparent;color:var(--text);font-family:var(--mono);font-size:var(--fs-base);padding:3px 5px;border-radius:3px;width:100%;resize:none;}
+td input:hover,td textarea:hover{border-color:var(--border);}
+td input:focus,td textarea:focus{outline:none;background:var(--bg);border-color:var(--accent-dim);}
+td textarea{overflow:hidden;}
+.cn{width:28px;text-align:center;color:var(--text-dim);font-size:var(--fs-small);padding-top:7px;user-select:none;}
+.cd{width:24px;text-align:center;}
+.cdt{width:165px;}
+
+.fld input[type="date"]{color-scheme:dark;}
+
+@media print{
+  body{background:#fff;color:#000;font-size:9pt;padding:.25in;}
+  .wrap{max-width:100%;}
+  .actions,.add-btn,.del-btn,.inst{display:none!important;}
+  .sec{border:1px solid #aaa;border-radius:0;background:#fff;margin-bottom:.35in;page-break-inside:avoid;}
+  .form-title{color:#000;font-size:11pt;}
+  .sec-lbl{color:#555;}
+  .fld label{color:#555;}
+  .fld input,.fld textarea{background:#fff;color:#000;border:none;border-bottom:1px solid #aaa;border-radius:0;padding:2px 0;}
+  td input,td textarea{background:#fff;color:#000;border:none;border-bottom:1px solid #ccc;border-radius:0;}
+  th{color:#555;border-bottom:1px solid #999;}
+  td{border-bottom:1px solid #e0e0e0;}
+  .cn{color:#555;}
+  #sec-act{page-break-before:auto;}
+}
+.save-ts{font-size:var(--fs-micro);color:var(--text-dim);opacity:.6;margin-top:.25rem;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">🏠 HOME</a>
+    <h1>ICS-214</h1>
+    <p>Activity Log</p>
+  </header>
+
+  <div class="actions">
+    <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 214 PDF and download a timestamped copy">⬇ Save PDF</button>
+    <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
+    <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
+    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 214 CSV file to restore form data">Import CSV</button>
+    <button class="sbtn danger" onclick="clearAll()" title="Clear all form data and reset to a blank form">Clear</button>
+  </div>
+  <div class="save-ts" id="save-ts"></div>
+  <div class="lib-status" id="lib-status"></div>
+
+  <!-- Blocks 1–5 -->
+  <div class="sec">
+    <div class="form-title">ICS 214 — Activity Log</div>
+    <div class="fg" style="margin-bottom:.7rem;">
+      <div class="fld"><label>1. Incident Name</label><input type="text" id="f-inc" placeholder="Enter incident name"></div>
+    </div>
+    <span class="sec-lbl">2. Operational Period</span>
+    <div class="fg g4" style="margin-bottom:.8rem;">
+      <div class="fld"><label>Date From</label><input type="date" id="f-df"></div>
+      <div class="fld"><label>Date To</label><input type="date" id="f-dt"></div>
+      <div class="fld"><label>Time From</label><input type="text" id="f-tf" placeholder="HHmmL"></div>
+      <div class="fld"><label>Time To</label><input type="text" id="f-tt" placeholder="HHmmL"></div>
+    </div>
+    <div class="fg g3">
+      <div class="fld"><label>3. Name / Unit</label><input type="text" id="f-name" placeholder="Unit or resource designator"></div>
+      <div class="fld"><label>4. ICS Position</label><input type="text" id="f-pos" placeholder="e.g. Safety Officer"></div>
+      <div class="fld"><label>5. Home Agency (and Unit)</label><input type="text" id="f-agency" placeholder="Home agency"></div>
+    </div>
+  </div>
+
+  <!-- Block 6: Resources -->
+  <div class="sec">
+    <span class="sec-lbl">6. Resources Assigned</span>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th class="cn"></th><th>Name</th><th>ICS Position</th><th>Home Agency (and Unit)</th><th class="cd"></th></tr></thead>
+        <tbody id="res-body"></tbody>
+      </table>
+    </div>
+    <button class="add-btn" onclick="addRes()">+ Add Resource</button>
+  </div>
+
+  <!-- Block 7: Activity Log -->
+  <div class="sec" id="sec-act">
+    <span class="sec-lbl">7. Activity Log</span>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th class="cn"></th><th class="cdt">Date / Time</th><th>Notable Activities</th><th class="cd"></th></tr></thead>
+        <tbody id="act-body"></tbody>
+      </table>
+    </div>
+    <button class="add-btn" onclick="addAct()">+ Add Entry</button>
+  </div>
+
+  <!-- Block 8: Prepared By -->
+  <div class="sec">
+    <span class="sec-lbl">8. Prepared By</span>
+    <div class="fg g4">
+      <div class="fld"><label>Name</label><input type="text" id="f-pn" placeholder="First Last"></div>
+      <div class="fld"><label>Position / Title</label><input type="text" id="f-pp" placeholder="e.g. Net Control"></div>
+      <div class="fld"><label>Signature</label><input type="text" id="f-ps" placeholder="—"></div>
+      <div class="fld"><label>Date / Time</label><input type="text" id="f-pd" placeholder="YYYYMMDD HHmmL"></div>
+    </div>
+  </div>
+
+  <!-- Instructions -->
+  <div class="inst">
+    <button class="inst-tog" onclick="toggleInst()">
+      <span>ICS 214 Field Instructions</span><span id="i-arrow">▼</span>
+    </button>
+    <div class="inst-body" id="i-body">
+      <table class="inst-tbl">
+        <thead><tr><th>Block</th><th>Title</th><th>Instructions</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Incident Name</td><td>Enter the name assigned to the incident.</td></tr>
+          <tr><td>2</td><td>Operational Period</td><td>Enter the start date (month/day/year) and time (24-hour clock) and end date and time for the operational period. Example: Date 11/14/2012, Time 0700.</td></tr>
+          <tr><td>3</td><td>Name</td><td>Enter the title of the organizational unit or resource designator (e.g., Facilities Unit, Safety Officer, Strike Team).</td></tr>
+          <tr><td>4</td><td>ICS Position</td><td>Enter the name and ICS position of the individual in charge of the unit.</td></tr>
+          <tr><td>5</td><td>Home Agency (and Unit)</td><td>Enter the home agency of the individual completing the ICS 214. Enter a unit designator if utilized by the jurisdiction or discipline.</td></tr>
+          <tr><td>6</td><td>Resources Assigned</td><td>Enter name, ICS position, and home agency/unit for each assigned resource. For individuals, use at least first initial and last name. Cell phone number may be added optionally.</td></tr>
+          <tr><td>7</td><td>Activity Log</td><td>Enter the time (24-hour clock) and briefly describe individual notable activities. Note the date if the operational period covers more than one day. Activities may include task assignments, completions, injuries, difficulties encountered, etc.</td></tr>
+          <tr><td>8</td><td>Prepared By</td><td>Enter the name, ICS position/title, and signature of the person preparing the form. Enter date (month/day/year) and time prepared (24-hour clock).</td></tr>
+        </tbody>
+      </table>
+      <p class="inst-note">
+        <strong style="color:var(--text)">Purpose:</strong> Records details of notable activities at any ICS level, including single resources, equipment, Task Forces, etc. Provides basic incident activity documentation and a reference for after-action reports.<br><br>
+        <strong style="color:var(--text)">Distribution:</strong> Completed ICS 214s are submitted to supervisors, who forward to the Documentation Unit. All completed originals must be given to the Documentation Unit. Individuals should retain a copy for their own records.<br><br>
+        <strong style="color:var(--text)">Notes:</strong> The ICS 214 can be printed as a two-sided form. Use additional copies as continuation sheets as needed.
+      </p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+</div>
+<script src="./ics214-template.js"></script>
+<script src="../dependencies/pdf-lib.min.js"></script>
+<script>
+const STORE = 'ics-214';
+const PDF_MAX_RES = 8;
+const PDF_MAX_ACT = 60;
+let rSeq=0, aSeq=0;
+const HF = ['f-inc','f-df','f-dt','f-tf','f-tt','f-name','f-pos','f-agency','f-pn','f-pp','f-ps','f-pd'];
+
+function fmtDatePicker(id){
+  const v=document.getElementById(id)?.value||'';
+  if(!v) return '';
+  const [y,m,d]=v.split('-');
+  return m+'/'+d+'/'+y;
+}
+function fmtDateISO(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function fmtTime(d){
+  return String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'L';
+}
+function ar(el){ el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
+
+function makeRes(d){
+  rSeq++;
+  const n=rSeq;
+  const tr=document.createElement('tr');
+  tr.id='r'+n;
+  tr.innerHTML=
+    `<td class="cn">${n}</td>`+
+    `<td><input type="text" placeholder="First Last" value="${xv(d.name||'')}" oninput="persist()"></td>`+
+    `<td><input type="text" placeholder="ICS Position" value="${xv(d.pos||'')}" oninput="persist()"></td>`+
+    `<td><input type="text" placeholder="Home Agency (and Unit)" value="${xv(d.agency||'')}" oninput="persist()"></td>`+
+    `<td class="cd"><button class="del-btn" onclick="delRow('r${n}')">✕</button></td>`;
+  document.getElementById('res-body').appendChild(tr);
+}
+
+function makeAct(d){
+  aSeq++;
+  const n=aSeq;
+  const tr=document.createElement('tr');
+  tr.id='a'+n;
+  tr.innerHTML=
+    `<td class="cn">${n}</td>`+
+    `<td class="cdt"><input type="text" placeholder="YYYYMMDD HHmmL" value="${xv(d.dt||'')}" oninput="persist()"></td>`+
+    `<td><textarea placeholder="Describe notable activity..." rows="2" oninput="ar(this);persist()">${x(d.act||'')}</textarea></td>`+
+    `<td class="cd"><button class="del-btn" onclick="delRow('a${n}')">✕</button></td>`;
+  document.getElementById('act-body').appendChild(tr);
+  tr.querySelectorAll('textarea').forEach(ar);
+}
+
+function addRes(){ makeRes({}); persist(); }
+function addAct(){ makeAct({}); persist(); }
+function delRow(id){ const t=document.getElementById(id); if(t) t.remove(); persist(); }
+
+function getRes(){
+  return [...document.querySelectorAll('#res-body tr')].map(tr=>{
+    const i=tr.querySelectorAll('input');
+    return {name:i[0]?.value||'',pos:i[1]?.value||'',agency:i[2]?.value||''};
+  });
+}
+
+function getAct(){
+  return [...document.querySelectorAll('#act-body tr')].map(tr=>({
+    dt: tr.querySelector('input')?.value||'',
+    act: tr.querySelector('textarea')?.value||''
+  }));
+}
+
+function persist(){
+  const d={};
+  HF.forEach(id=>d[id]=document.getElementById(id).value);
+  d.res=getRes(); d.act=getAct();
+  try{
+    localStorage.setItem(STORE,JSON.stringify(d));
+    const ts=document.getElementById('save-ts');
+    if(ts) ts.textContent='Auto-saved '+new Date().toLocaleTimeString();
+  }catch(e){
+    if(e.name==='QuotaExceededError') showToast('⚠ Local storage full — export your data now!',4000);
+  }
+}
+
+function load(){
+  try{
+    const raw=localStorage.getItem(STORE); if(!raw) return false;
+    const d=JSON.parse(raw);
+    HF.forEach(id=>{if(d[id]!==undefined) document.getElementById(id).value=d[id];});
+    if(d.res&&d.res.length) d.res.forEach(r=>makeRes(r));
+    if(d.act&&d.act.length) d.act.forEach(a=>makeAct(a));
+    return true;
+  }catch(e){return false;}
+}
+
+function clearAll(){
+  if(!confirm('Clear all ICS 214 data?')) return;
+  HF.forEach(id=>document.getElementById(id).value='');
+  document.getElementById('res-body').innerHTML='';
+  document.getElementById('act-body').innerHTML='';
+  rSeq=0; aSeq=0;
+  try{localStorage.removeItem(STORE);}catch(e){}
+  addRes(); addRes(); addRes();
+  addAct(); addAct(); addAct();
+}
+
+function x(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function xv(s){return x(s).replace(/"/g,'&quot;');}
+function cc(v){const s=String(v??'');return/[,"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function gv(id){return document.getElementById(id)?.value||'';}
+
+function exportCSV(){
+  const rows=[
+    '# ICS 214 — Activity Log',
+    '# Exported: '+new Date().toISOString(),
+    '',
+    '# HEADER',
+    ['Incident Name',gv('f-inc')].map(cc).join(','),
+    ['Op Period Date From',fmtDatePicker('f-df')||gv('f-df')].map(cc).join(','),
+    ['Op Period Date To',fmtDatePicker('f-dt')||gv('f-dt')].map(cc).join(','),
+    ['Op Period Time From',gv('f-tf')].map(cc).join(','),
+    ['Op Period Time To',gv('f-tt')].map(cc).join(','),
+    ['Name / Unit',gv('f-name')].map(cc).join(','),
+    ['ICS Position',gv('f-pos')].map(cc).join(','),
+    ['Home Agency',gv('f-agency')].map(cc).join(','),
+    '',
+    '# RESOURCES ASSIGNED',
+    ['Name','ICS Position','Home Agency (and Unit)'].map(cc).join(','),
+    ...getRes().map(r=>[r.name,r.pos,r.agency].map(cc).join(',')),
+    '',
+    '# ACTIVITY LOG',
+    ['Date/Time','Notable Activities'].map(cc).join(','),
+    ...getAct().map(a=>[a.dt,a.act].map(cc).join(',')),
+    '',
+    '# PREPARED BY',
+    ['Name',gv('f-pn')].map(cc).join(','),
+    ['Position/Title',gv('f-pp')].map(cc).join(','),
+    ['Signature',gv('f-ps')].map(cc).join(','),
+    ['Date/Time',gv('f-pd')].map(cc).join(','),
+  ];
+  const blob=new Blob([rows.join('\r\n')],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='ics214-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+}
+
+function importCSVPrompt(){
+  document.getElementById('csv-import-input').click();
+}
+
+function importCSV(file){
+  if(!confirm('Import CSV? This will replace the current form data.')) return;
+  const reader=new FileReader();
+  reader.onerror=()=>showToast('Could not read file',3000);
+  reader.onload=function(e){
+    try{
+      const lines=e.target.result.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+      function parseLine(line){
+        const fields=[];let cur='',inQ=false;
+        for(let i=0;i<line.length;i++){
+          const c=line[i];
+          if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+          else if(c===','&&!inQ){fields.push(cur);cur='';}
+          else cur+=c;
+        }
+        fields.push(cur);
+        return fields;
+      }
+      let section='';
+      const hdr={},res=[],act=[],prep={};
+      const HEADER_MAP={
+        'incident name':'f-inc',
+        'op period date from':'f-df',
+        'op period date to':'f-dt',
+        'op period time from':'f-tf',
+        'op period time to':'f-tt',
+        'name / unit':'f-name',
+        'ics position':'f-pos',
+        'home agency':'f-agency',
+      };
+      const PREP_MAP={
+        'name':'f-pn','position/title':'f-pp','signature':'f-ps','date/time':'f-pd',
+      };
+      let skipNext=false;
+      lines.forEach(line=>{
+        const trimmed=line.trim();
+        if(!trimmed||trimmed.startsWith('#')){
+          if(trimmed==='# HEADER') section='header';
+          else if(trimmed==='# RESOURCES ASSIGNED'){section='res';skipNext=true;}
+          else if(trimmed==='# ACTIVITY LOG'){section='act';skipNext=true;}
+          else if(trimmed==='# PREPARED BY') section='prep';
+          return;
+        }
+        if(skipNext){skipNext=false;return;}
+        const fields=parseLine(trimmed);
+        const key=(fields[0]||'').trim().toLowerCase();
+        const val=(fields[1]||'').trim();
+        if(section==='header'){const id=HEADER_MAP[key];if(id)hdr[id]=val;}
+        else if(section==='res'){if(fields.length>=3)res.push({name:fields[0].trim(),pos:fields[1].trim(),agency:fields[2].trim()});}
+        else if(section==='act'){if(fields.length>=2)act.push({dt:fields[0].trim(),act:fields[1].trim()});}
+        else if(section==='prep'){const id=PREP_MAP[key];if(id)prep[id]=val;}
+      });
+      HF.forEach(id=>document.getElementById(id).value='');
+      document.getElementById('res-body').innerHTML='';
+      document.getElementById('act-body').innerHTML='';
+      rSeq=0;aSeq=0;
+      Object.assign(hdr,prep);
+      HF.forEach(id=>{
+        if(hdr[id]===undefined)return;
+        const el=document.getElementById(id);
+        if(el.type==='date'){
+          const m=hdr[id].match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+          el.value=m?m[3]+'-'+m[1].padStart(2,'0')+'-'+m[2].padStart(2,'0'):hdr[id];
+        }else el.value=hdr[id];
+      });
+      res.forEach(r=>makeRes(r));
+      act.forEach(a=>makeAct(a));
+      if(!document.querySelector('#res-body tr')){addRes();addRes();addRes();}
+      if(!document.querySelector('#act-body tr')){addAct();addAct();addAct();}
+      persist();
+      showToast(`Imported: ${res.length} resource${res.length!==1?'s':''}, ${act.length} activit${act.length!==1?'ies':'y'}`);
+    }catch(err){
+      showToast('Import failed: '+err.message,4000);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function showToast(msg,ms=2800){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),ms);
+}
+
+function checkLibStatus(){
+  const div=document.getElementById('lib-status');
+  if(!div) return;
+  const hasPDFLib=typeof window.PDFLib!=='undefined';
+  const hasTemplate=typeof ICS214_PDF_B64!=='undefined';
+  let html='';
+  html+=`<span class="${hasTemplate?'lib-ok':'lib-err'}">${hasTemplate?'✓':'✗'} PDF template ${hasTemplate?'loaded':'missing — run convert-template.sh first'}</span>`;
+  html+=`<span class="${hasPDFLib?'lib-ok':'lib-warn'}">${hasPDFLib?'✓':'⚠'} pdf-lib ${hasPDFLib?'loaded':'not found — run install.sh first'}</span>`;
+  if(hasPDFLib&&hasTemplate) html+='<span style="color:var(--text-dim)">— ready to save PDF</span>';
+  div.innerHTML=html;
+}
+
+async function savePDF(){
+  if(typeof window.PDFLib==='undefined'||typeof ICS214_PDF_B64==='undefined'){
+    showToast('PDF library or template not loaded'); return;
+  }
+  try{
+    const raw=Uint8Array.from(atob(ICS214_PDF_B64),c=>c.charCodeAt(0));
+    const pdfDoc=await window.PDFLib.PDFDocument.load(raw,{ignoreEncryption:true});
+    const form=pdfDoc.getForm();
+    function sf(name,val){try{form.getTextField(name).setText(val||'');}catch(e){}}
+    sf('ICS 214 1. Incident Name', gv('f-inc'));
+    sf('ICS 214 2. Operational Period Date From:', fmtDatePicker('f-df'));
+    sf('ICS 214 2. Operational Period Date To:',   fmtDatePicker('f-dt'));
+    sf('ICS 214 2. Operational Period TIme From:', gv('f-tf'));
+    sf('ICS 214 2. Operational Period Time To:',   gv('f-tt'));
+    sf('ICS  214 3. Name',      gv('f-name'));
+    sf('ICS 214 4. ICS Position', gv('f-pos'));
+    sf('ICS 214 5. Home Agency',  gv('f-agency'));
+    const res=getRes();
+    for(let i=0;i<PDF_MAX_RES;i++){
+      const r=res[i]||{};
+      sf(`ICS 214 6. Resources Assigned - Name ${i+1}`,        r.name||'');
+      sf(`ICS 214 6. Resources Assigned - ICS Position ${i+1}`,r.pos||'');
+      sf(`ICS 214 6. Resources Assigned - Home Agency ${i+1}`, r.agency||'');
+    }
+    const act=getAct();
+    for(let i=0;i<PDF_MAX_ACT;i++){
+      const a=act[i]||{};
+      sf(`ICS 214 7. Activity Log - Date/Time ${i+1}`,          a.dt||'');
+      sf(`ICS 214 7. Activity Log - Notable Activities ${i+1}`, a.act||'');
+    }
+    sf('ICS 214 8. Prepared by Name',    gv('f-pn'));
+    sf('ICS 214 8. Position/Title',       gv('f-pp'));
+    sf('ICS 214 8. Signature',            gv('f-ps'));
+    sf('ICS 214 8. Date/Time',            gv('f-pd'));
+    sf('ICS 214 8. Prepary by Name Page 2', gv('f-pn'));
+    sf('ICS 214 8. Position/Title Page 2',  gv('f-pp'));
+    sf('ICS 214 8. Signature Page 2',       gv('f-ps'));
+    sf('ICS 214 8. Date/Time Page 2',       gv('f-pd'));
+    form.flatten();
+    const bytes=await pdfDoc.save();
+    const blob=new Blob([bytes],{type:'application/pdf'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='ics214-'+new Date().toISOString().slice(0,10)+'.pdf';
+    a.click();
+    showToast('PDF saved');
+  }catch(err){
+    console.error(err);
+    showToast('PDF error: '+err.message,4000);
+  }
+}
+
+function toggleInst(){
+  const b=document.getElementById('i-body');
+  const open=b.classList.toggle('open');
+  document.getElementById('i-arrow').textContent=open?'▲':'▼';
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  HF.forEach(id=>document.getElementById(id).addEventListener('input',persist));
+  document.getElementById('csv-import-input').addEventListener('change',e=>{
+    if(e.target.files[0]) importCSV(e.target.files[0]);
+    e.target.value='';
+  });
+  const restored=load();
+  if(!restored){
+    const now=new Date();
+    document.getElementById('f-df').value=fmtDateISO(now);
+    document.getElementById('f-tf').value=fmtTime(now);
+  }
+  if(!document.querySelector('#res-body tr')){addRes();addRes();addRes();}
+  if(!document.querySelector('#act-body tr')){addAct();addAct();addAct();}
+  checkLibStatus();
+});
+</script>
+
+</body>
+</html>

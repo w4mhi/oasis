@@ -1,0 +1,117 @@
+{
+  "band": "33cm",
+  "name": "33 Centimeters",
+  "range": [902, 928],
+  "unit": "MHz",
+  "license": "Tech+",
+  "allocation": "Secondary",
+  "notes": [
+    "Secondary allocation — shared with ISM / Part 15 devices",
+    "Locally coordinated plans take precedence over national plan"
+  ],
+  "rows": [
+    {
+      "range": [902.0, 903.4],
+      "segments": [
+        {
+          "start": 902.0,   "end": 902.075,
+          "position": "bottom",
+          "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Dual use: FM repeater inputs (25 MHz split, paired with 927.000–927.075) or CW/SSB weak signal. 12.5 kHz channel spacing."
+        },
+        {
+          "start": 902.075, "end": 902.125,
+          "position": "top",
+          "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW and SSB weak-signal operations."
+        },
+        {
+          "start": 902.125, "end": 903.0,
+          "position": "bottom",
+          "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "FM repeater inputs, 25 MHz split paired with outputs at 927.125–928.0 MHz. 12.5 kHz channel spacing."
+        },
+        {
+          "start": 903.0,   "end": 903.4,
+          "position": "top",
+          "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "Beacons and weak-signal CW/SSB. 903.1 MHz is the regional SSB/CW calling frequency."
+        }
+      ],
+      "callouts": [
+        { "freq": 902.1, "label": "902.1", "sublabel": "CW/SSB Calling (regional)", "type": "calling", "side": "below" },
+        { "freq": 903.1, "label": "903.1", "sublabel": "CW/SSB Calling (regional)", "type": "calling", "side": "below" }
+      ],
+      "ticks": [902.0, 902.075, 902.125, 903.0, 903.4]
+    },
+    {
+      "range": [903.4, 921.0],
+      "segments": [
+        {
+          "start": 903.4, "end": 909.0,
+          "position": "bottom",
+          "type": "mixed", "color": "#a8b5c8",
+          "label": "Mixed / Control",
+          "detail": "Mixed-mode operations including control links. Regional coordination applies."
+        },
+        {
+          "start": 909.0, "end": 915.0,
+          "position": "top",
+          "type": "atv", "color": "#ffd60a",
+          "label": "Broadband / ATV / SS",
+          "detail": "Broadband multimedia: ATV, DATV, spread spectrum. 915 MHz is an ISM band — expect Part 15 device interference."
+        },
+        {
+          "start": 915.0, "end": 921.0,
+          "position": "bottom",
+          "type": "atv", "color": "#ffd60a",
+          "label": "Broadband / ATV / SS",
+          "detail": "Broadband multimedia: ATV, DATV, spread spectrum. Regional frequency coordination applies."
+        }
+      ],
+      "callouts": [],
+      "ticks": [903.4, 909.0, 915.0, 921.0]
+    },
+    {
+      "range": [921.0, 928.0],
+      "segments": [
+        {
+          "start": 921.0,   "end": 927.0,
+          "position": "bottom",
+          "type": "atv", "color": "#ffd60a",
+          "label": "Broadband / ATV / SS",
+          "detail": "Broadband multimedia: ATV, DATV, spread spectrum. Regional FM repeater pairings may apply."
+        },
+        {
+          "start": 927.0,   "end": 927.075,
+          "position": "top",
+          "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "FM repeater outputs, 25 MHz split paired with inputs at 902.000–902.075 MHz. 12.5 kHz channel spacing."
+        },
+        {
+          "start": 927.075, "end": 927.125,
+          "position": "bottom",
+          "type": "fm-simplex", "color": "#c77dff",
+          "label": "FM Simplex",
+          "detail": "FM simplex. 927.5 MHz is the national FM simplex calling frequency (or regionally selected alternative)."
+        },
+        {
+          "start": 927.125, "end": 928.0,
+          "position": "top",
+          "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "FM repeater outputs, 25 MHz split paired with inputs at 902.125–903.0 MHz. 12.5 kHz channel spacing. Additional FM simplex may be designated regionally."
+        }
+      ],
+      "callouts": [
+        { "freq": 927.5, "label": "927.5", "sublabel": "FM Calling (regional)", "type": "calling", "side": "below" }
+      ],
+      "ticks": [921.0, 927.0, 927.075, 927.125, 928.0]
+    }
+  ]
+}

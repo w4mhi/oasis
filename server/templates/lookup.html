@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FCC Amateur Radio Lookup</title>
+<link rel="stylesheet" href="/css/common.css">
+<style>
+.search-row {
+  display: flex;
+  gap: .5rem;
+  margin-top: .4rem;
+}
+.search-row input[type="text"] {
+  flex: 1;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+/* result card */
+.result-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+  animation: fadein .2s ease;
+  margin-top: .75rem;
+}
+@keyframes fadein { from { opacity: 0; transform: translateY(4px) } to { opacity: 1 } }
+.result-call {
+  font-size: var(--fs-title);
+  letter-spacing: .12em;
+  color: var(--amber);
+  padding: .75rem 1.25rem .65rem;
+  border-bottom: 1px solid var(--border);
+}
+.result-rows { padding: .2rem 1.25rem .5rem; }
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .48rem 0;
+  border-bottom: 1px solid var(--panel-2);
+}
+.result-row:last-child { border-bottom: none; }
+.result-key {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: .15em;
+  color: var(--text-dim);
+  white-space: nowrap;
+  padding-top: 2px;
+}
+.result-val { color: var(--text); font-size: var(--fs-subtitle); }
+.result-val.grid { color: var(--accent); }
+.result-val.empty { color: var(--text-dim); font-style: italic; font-size: var(--fs-base); }
+
+.msg {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  text-align: center;
+  font-size: var(--fs-base);
+  letter-spacing: .05em;
+  animation: fadein .2s ease;
+  margin-top: .75rem;
+}
+.msg.notfound { color: var(--amber); border-color: var(--amber-dim); }
+.msg.error    { color: var(--red);   border-color: var(--red); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">🏠 HOME</a>
+    <h1>FCC Amateur Radio Lookup</h1>
+    <p>Exact call-sign or prefix search (e.g. <code style="color:var(--amber-dim)">W4*</code>) &middot; offline &middot; no internet required</p>
+  </header>
+
+  <div class="sec">
+    <span class="sec-lbl">Enter Call Sign</span>
+    <div class="search-row">
+      <input id="cs" type="text" autocomplete="off" autocapitalize="characters"
+             spellcheck="false" placeholder="e.g. X1ABC or W4*" maxlength="12"
+             inputmode="text">
+      <button id="go" class="sbtn primary" type="button">Look Up</button>
+    </div>
+  </div>
+
+  <div id="readout" aria-live="polite"></div>
+
+  <footer style="margin-top:2rem;font-size:var(--fs-small);color:var(--text-dim);text-align:center">
+    Data: FCC ULS public access file (<code style="color:var(--amber-dim)">EN.dat</code>) &middot;
+    Grid square derived from ZIP centroid
+  </footer>
+</div>
+
+<script>
+  var input  = document.getElementById('cs');
+  var button = document.getElementById('go');
+  var out    = document.getElementById('readout');
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function valOrEmpty(v) {
+    if (v && String(v).trim() !== '') return '<span class="result-val">' + esc(v) + '</span>';
+    return '<span class="result-val empty">not listed</span>';
+  }
+
+  function showResult(r) {
+    var gridHtml = r.grid
+      ? '<span class="result-val grid">' + esc(r.grid) + '</span>'
+      : '<span class="result-val empty">unavailable for ZIP</span>';
+    out.innerHTML =
+      '<div class="result-card">' +
+        '<div class="result-call">' + esc(r.callsign) + '</div>' +
+        '<div class="result-rows">' +
+          '<div class="result-row"><span class="result-key">Name</span>'        + valOrEmpty(r.name)  + '</div>' +
+          '<div class="result-row"><span class="result-key">City</span>'        + valOrEmpty(r.city)  + '</div>' +
+          '<div class="result-row"><span class="result-key">State</span>'       + valOrEmpty(r.state) + '</div>' +
+          '<div class="result-row"><span class="result-key">Grid Square</span>' + gridHtml            + '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function showMessage(text, cls) {
+    out.innerHTML = '<div class="msg ' + cls + '">' + esc(text) + '</div>';
+  }
+
+  function showResults(results, query) {
+    if (!results.length) {
+      showMessage('No licenses found matching prefix ' + esc(query) + '.', 'notfound');
+      return;
+    }
+    var rows = results.map(function(r) {
+      var gridHtml = r.grid
+        ? '<span class="result-val grid">' + esc(r.grid) + '</span>'
+        : '<span class="result-val empty">—</span>';
+      return '<div class="result-card">' +
+        '<div class="result-call">' + esc(r.callsign) + '</div>' +
+        '<div class="result-rows">' +
+          '<div class="result-row"><span class="result-key">Name</span>'  + valOrEmpty(r.name)  + '</div>' +
+          '<div class="result-row"><span class="result-key">City</span>'  + valOrEmpty(r.city)  + '</div>' +
+          '<div class="result-row"><span class="result-key">State</span>' + valOrEmpty(r.state) + '</div>' +
+          '<div class="result-row"><span class="result-key">Grid</span>'  + gridHtml            + '</div>' +
+        '</div></div>';
+    }).join('');
+    var note = results.length === 50
+      ? '<p style="font-size:var(--fs-small);color:var(--text-dim);margin:.5rem 0 0">Showing first 50 results for <strong>' + esc(query) + '*</strong></p>'
+      : '<p style="font-size:var(--fs-small);color:var(--text-dim);margin:.5rem 0 0">' + results.length + ' result' + (results.length > 1 ? 's' : '') + ' for <strong>' + esc(query) + '*</strong></p>';
+    out.innerHTML = note + rows;
+  }
+
+  function doLookup() {
+    var cs = input.value.trim().toUpperCase();
+    if (!cs) { showMessage('Enter a call sign to search.', 'notfound'); return; }
+    button.disabled = true;
+    showMessage('Searching local database\u2026', 'notfound');
+    fetch('/api/lookup?callsign=' + encodeURIComponent(cs))
+      .then(function(resp) { return resp.json().then(function(d) { return {status: resp.status, d: d}; }); })
+      .then(function(o) {
+        var d = o.d;
+        if (!d.ok) { showMessage(d.error || 'Lookup failed.', 'error'); return; }
+        if (d.prefix) { showResults(d.results, d.query); input.value = ''; input.focus(); return; }
+        if (!d.found) { showMessage('No license found for ' + cs + '.', 'notfound'); input.value = ''; input.focus(); return; }
+        showResult(d.result);
+        input.value = '';
+        input.focus();
+      })
+      .catch(function() { showMessage('Could not reach the local server.', 'error'); })
+      .finally(function() { button.disabled = false; });
+  }
+
+  button.addEventListener('click', doLookup);
+  input.addEventListener('keydown', function(e) { if (e.key === 'Enter') doLookup(); });
+  input.focus();
+</script>
+</body>
+</html>

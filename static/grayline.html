@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gray Line Calculator</title>
+<link rel="stylesheet" href="../css/common.css">
+<style>
+/* Input panel */
+.input-row{display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;}
+input[type=text],input.filled{border-color:var(--accent-dim);}
+input.error{border-color:var(--red);}
+
+.calc-btn{
+  background:var(--accent-dim);border:1px solid var(--accent-dim);color:var(--accent);
+  font-family:var(--mono);font-size:var(--fs-base);padding:7px 18px;border-radius:5px;cursor:pointer;
+}
+.calc-btn:hover{background:var(--accent);color:#000;}
+
+.today-btn{
+  background:transparent;border:1px solid var(--border);color:var(--text-dim);
+  font-family:var(--mono);font-size:var(--fs-label);padding:7px 12px;border-radius:5px;cursor:pointer;
+}
+.today-btn:hover{border-color:var(--accent-dim);color:var(--accent);}
+
+.preset-row{display:flex;gap:.4rem;align-items:center;margin-top:.6rem;flex-wrap:wrap;}
+.preset-btn{
+  background:transparent;border:1px solid var(--border);color:var(--text-dim);
+  font-family:var(--mono);font-size:var(--fs-small);padding:4px 10px;border-radius:4px;cursor:pointer;
+}
+.preset-btn:hover{border-color:var(--accent-dim);color:var(--accent);}
+.preset-saved{font-size:var(--fs-small);color:var(--accent);display:none;}
+.field-hint{font-size:var(--fs-small);color:var(--text-dim);margin-top:2px;}
+
+/* Results */
+.results{margin-bottom:.9rem;}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:.6rem;margin-bottom:.9rem;}
+.stat{border:1px solid var(--border);border-radius:8px;background:var(--panel);padding:.7rem .9rem;}
+.stat-label{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.1em;color:var(--text-dim);margin-bottom:.2rem;}
+.stat-val{font-size:var(--fs-title);font-weight:700;color:var(--accent);}
+.stat-val.amber{color:var(--amber);}
+.stat-sub{font-size:var(--fs-small);color:var(--text-dim);margin-top:.1rem;}
+
+/* Timeline */
+.timeline-panel{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:1rem 1.25rem;margin-bottom:.9rem;}
+.timeline-wrap{position:relative;margin:.5rem 0 .3rem;}
+canvas#timeline{width:100%;border-radius:5px;display:block;}
+.tl-labels{display:flex;justify-content:space-between;font-size:var(--fs-micro);color:var(--text-dim);margin-top:.3rem;}
+
+/* Windows table */
+.windows-panel{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:1rem 1.25rem;margin-bottom:.9rem;}
+tr:last-child .win-time{color:var(--accent);font-weight:700;white-space:nowrap;}
+.win-dur{color:var(--amber);}
+.win-bands{color:var(--text);}
+.win-note{color:var(--text-dim);font-size:var(--fs-small);}
+
+/* Propagation panel */
+.prop-panel{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:1rem 1.25rem;margin-bottom:.9rem;}
+.prop-item{padding:.5rem 0;border-bottom:1px solid var(--panel-2);}
+.prop-item:last-child{border-bottom:none;}
+.prop-title{font-size:var(--fs-base);font-weight:700;color:var(--text);margin-bottom:.2rem;}
+.prop-body{font-size:var(--fs-label);color:var(--text-dim);line-height:1.6;}
+.prop-body .hl{color:var(--accent);}
+.prop-body .hl-amber{color:var(--amber);}
+
+/* UTC note */
+.utc-note{font-size:var(--fs-small);color:var(--text-dim);margin-top:.4rem;}
+
+@media print{
+  body{background:#fff;color:#000;}
+  .input-panel{display:none!important;}
+  .stat,.timeline-panel,.windows-panel,.prop-panel{border-color:#ccc;background:#fff;}
+  .stat-val{color:#000;}
+  .win-time{color:#007a50;}
+  .win-dur{color:#7a5a00;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <a class="home-link" href="/">🏠 HOME</a>
+  <h1>Gray Line Calculator</h1>
+  <p>Enter your Maidenhead grid square and a date to compute sunrise, sunset, gray line passage times, and optimal DX propagation windows. All times in UTC.</p>
+</header>
+
+<div class="input-panel">
+  <div class="sec-label">Location &amp; Date</div>
+  <div class="input-row">
+    <div class="field">
+      <label for="gridIn">Grid Square</label>
+      <input type="text" id="gridIn" placeholder="EM65tu" maxlength="6" oninput="onGridInput()">
+      <div class="field-hint">4 or 6 character Maidenhead</div>
+    </div>
+    <div class="field">
+      <label for="dateIn">Date</label>
+      <input type="date" id="dateIn">
+    </div>
+    <button class="today-btn" onclick="setToday()">Today</button>
+    <button class="calc-btn" onclick="calculate()">Calculate</button>
+  </div>
+  <div class="preset-row">
+    <button class="preset-btn" onclick="savePreset()">Save as my location</button>
+    <button class="preset-btn" onclick="loadPreset()">Load my location</button>
+    <span class="preset-saved" id="presetSaved">Saved ✓</span>
+  </div>
+</div>
+
+<div id="output"><div class="empty">Enter a grid square and date above to calculate.</div></div>
+
+</div>
+<script>
+'use strict';
+
+const PRESET_KEY = 'grayline-preset';
+
+// ── Maidenhead → lat/lon ──────────────────────────────────────────────────────
+function gridToLatLon(grid) {
+  if (!grid || grid.length < 4) return null;
+  const g = grid.toUpperCase();
+  const A = g.charCodeAt(0) - 65;
+  const B = g.charCodeAt(1) - 65;
+  const C = parseInt(g[2], 10);
+  const D = parseInt(g[3], 10);
+  if (isNaN(C) || isNaN(D) || A < 0 || A > 17 || B < 0 || B > 17) return null;
+  let lon = A * 20 - 180 + C * 2;
+  let lat = B * 10 - 90 + D;
+  if (g.length >= 6) {
+    const E = g.charCodeAt(4) - 65;
+    const F = g.charCodeAt(5) - 65;
+    if (E >= 0 && E < 24 && F >= 0 && F < 24) {
+      lon += E * (5/60) + (2.5/60);
+      lat += F * (2.5/60) + (1.25/60);
+    } else { lon += 1.0; lat += 0.5; }
+  } else { lon += 1.0; lat += 0.5; }
+  return { lat, lon };
+}
+
+// ── Solar calculations (NOAA algorithm) ──────────────────────────────────────
+// Returns sunrise and sunset in fractional UTC hours for given lat/lon/date
+function sunTimes(lat, lon, year, month, day) {
+  // Julian day
+  const JD = julianDay(year, month, day);
+
+  function sunTimeForZenith(zenith, rising) {
+    // Day of year
+    const N = JD - julianDay(year, 1, 1) + 1;
+    // Approx time
+    const lngHour = lon / 15;
+    const t = rising
+      ? N + (6 - lngHour) / 24
+      : N + (18 - lngHour) / 24;
+
+    // Mean anomaly
+    const M = (0.9856 * t) - 3.289;
+    // Sun's true longitude
+    let L = M + (1.916 * sind(M)) + (0.020 * sind(2 * M)) + 282.634;
+    L = ((L % 360) + 360) % 360;
+    // Right ascension
+    let RA = atand(0.91764 * tand(L));
+    RA = ((RA % 360) + 360) % 360;
+    const Lquadrant  = Math.floor(L  / 90) * 90;
+    const RAquadrant = Math.floor(RA / 90) * 90;
+    RA = RA + (Lquadrant - RAquadrant);
+    RA = RA / 15;
+    // Declination
+    const sinDec = 0.39782 * sind(L);
+    const cosDec = cosd(asind(sinDec));
+    // Local hour angle
+    const cosH = (cosd(zenith) - (sinDec * sind(lat))) / (cosDec * cosd(lat));
+    if (cosH >  1) return null; // never rises
+    if (cosH < -1) return null; // never sets
+    let H = rising ? 360 - acosd(cosH) : acosd(cosH);
+    H = H / 15;
+    // Local mean time
+    const T = H + RA - (0.06571 * t) - 6.622;
+    // UTC
+    let UT = T - lngHour;
+    UT = ((UT % 24) + 24) % 24;
+    return UT;
+  }
+
+  const sunrise = sunTimeForZenith(90.833, true);
+  const sunset  = sunTimeForZenith(90.833, false);
+  // Civil twilight (6° below horizon) — gray line edges
+  const civilDawn = sunTimeForZenith(96, true);
+  const civilDusk = sunTimeForZenith(96, false);
+  // Nautical twilight (12°) — gray line center / deeper darkness boundary
+  const nautDawn = sunTimeForZenith(102, true);
+  const nautDusk = sunTimeForZenith(102, false);
+
+  return { sunrise, sunset, civilDawn, civilDusk, nautDawn, nautDusk };
+}
+
+function julianDay(y, m, d) {
+  if (m <= 2) { y -= 1; m += 12; }
+  const A = Math.floor(y / 100);
+  const B = 2 - A + Math.floor(A / 4);
+  return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + d + B - 1524.5;
+}
+
+// Trig helpers in degrees
+function sind(d)  { return Math.sin(d  * Math.PI / 180); }
+function cosd(d)  { return Math.cos(d  * Math.PI / 180); }
+function tand(d)  { return Math.tan(d  * Math.PI / 180); }
+function atand(x) { return Math.atan(x) * 180 / Math.PI; }
+function acosd(x) { return Math.acos(x) * 180 / Math.PI; }
+function asind(x) { return Math.asin(x) * 180 / Math.PI; }
+
+// ── Formatting helpers ────────────────────────────────────────────────────────
+function fmtUTC(fractHours) {
+  if (fractHours == null) return '—';
+  const h = Math.floor(fractHours);
+  const m = Math.round((fractHours - h) * 60);
+  const hh = h % 24;
+  return String(hh).padStart(2, '0') + ':' + String(m === 60 ? 0 : m).padStart(2, '0') + ' UTC';
+}
+
+function fmtDur(hours) {
+  if (hours == null || hours < 0) return '—';
+  const totalMin = Math.round(hours * 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return m + ' min';
+  return h + 'h ' + (m > 0 ? m + 'm' : '');
+}
+
+// ── Season determination ──────────────────────────────────────────────────────
+function getSeason(lat, month) {
+  const northern = lat >= 0;
+  if (northern) {
+    if (month >= 3 && month <= 5)  return 'spring';
+    if (month >= 6 && month <= 8)  return 'summer';
+    if (month >= 9 && month <= 11) return 'autumn';
+    return 'winter';
+  } else {
+    if (month >= 3 && month <= 5)  return 'autumn';
+    if (month >= 6 && month <= 8)  return 'winter';
+    if (month >= 9 && month <= 11) return 'spring';
+    return 'summer';
+  }
+}
+
+// ── Day length and daylight fraction ─────────────────────────────────────────
+function daylightHours(sunrise, sunset) {
+  if (sunrise == null || sunset == null) return null;
+  let d = sunset - sunrise;
+  if (d < 0) d += 24;
+  return d;
+}
+
+// ── Gray line width ───────────────────────────────────────────────────────────
+// Gray line is the band between civil twilight and sunrise/sunset
+// Width in minutes at this latitude
+function grayLineWidth(sunrise, civilDawn) {
+  if (sunrise == null || civilDawn == null) return null;
+  let w = (sunrise - civilDawn) * 60;
+  if (w < 0) w += 24 * 60;
+  return w; // minutes
+}
+
+// ── Propagation guidance ──────────────────────────────────────────────────────
+function propGuidance(lat, season, times, daylightH) {
+  const items = [];
+  const isNorthern = lat >= 0;
+
+  // Dawn gray line window
+  if (times.civilDawn != null && times.sunrise != null) {
+    const dur = grayLineWidth(times.sunrise, times.civilDawn);
+    items.push({
+      title: `Dawn Gray Line — ${fmtUTC(times.civilDawn)} to ${fmtUTC(times.sunrise)}`,
+      body: `The <span class="hl">dawn gray line</span> lasts approximately <span class="hl-amber">${fmtDur(dur/60)}</span> at your latitude.
+      This is typically the <strong>best DX window of the day</strong> — the ionosphere transitions from nighttime to daytime, producing exceptionally low noise and enhanced long-path propagation.
+      <br>Best bands during dawn gray line: <span class="hl">160m, 80m, 40m</span> for medium-haul; <span class="hl">20m, 17m</span> opening for long-path DX.
+      Stations to your west are still in darkness while you are in twilight — long paths toward Europe and Africa are often enhanced.`
+    });
+  }
+
+  // Dusk gray line window
+  if (times.civilDusk != null && times.sunset != null) {
+    const dur = grayLineWidth(times.civilDusk, times.sunset);
+    items.push({
+      title: `Dusk Gray Line — ${fmtUTC(times.sunset)} to ${fmtUTC(times.civilDusk)}`,
+      body: `The <span class="hl">dusk gray line</span> lasts approximately <span class="hl-amber">${fmtDur(dur/60)}</span> at your latitude.
+      A second DX enhancement window — stations to your east are still in daylight while you enter darkness.
+      <br>Best bands during dusk gray line: <span class="hl">40m, 30m, 20m</span> opening as F2 layer thickens; <span class="hl">80m</span> improving rapidly after sunset.
+      Long-path toward the Pacific and Asia often enhanced at dusk from mid-latitudes.`
+    });
+  }
+
+  // Daytime HF
+  if (daylightH != null) {
+    const shortDay = daylightH < 10;
+    const longDay  = daylightH > 14;
+    items.push({
+      title: `Daytime HF — ${fmtUTC(times.sunrise)} to ${fmtUTC(times.sunset)} (${fmtDur(daylightH)})`,
+      body: `During daylight hours D-layer absorption suppresses <span class="hl-amber">160m and 80m</span> for most paths beyond 300 km.
+      <span class="hl">40m and 30m</span> remain useful for NVIS and regional paths.
+      <span class="hl">20m, 17m, 15m</span> are the primary daytime DX bands — peak F2 propagation typically occurs 2–4 hours after local solar noon.
+      ${longDay ? '<br><span class="hl-amber">Long day</span> — elevated D-layer absorption likely; upper HF (17m–10m) may outperform 20m.' : ''}
+      ${shortDay ? '<br><span class="hl-amber">Short day</span> — reduced D-layer absorption; 40m may remain usable for longer paths into the morning.' : ''}`
+    });
+  }
+
+  // Nighttime HF
+  if (times.sunset != null && times.sunrise != null) {
+    items.push({
+      title: `Nighttime HF — ${fmtUTC(times.civilDusk)} to ${fmtUTC(times.nautDawn)}`,
+      body: `D-layer dissipates after dusk — <span class="hl">160m and 80m</span> open up significantly for regional and DX paths.
+      <span class="hl">40m</span> extends range dramatically at night; <span class="hl">60m and 30m</span> reliable for NVIS and medium-haul.
+      <span class="hl">20m</span> may remain open on long paths through the night but typically fades 1–2 hours after local sunset.
+      <br>Nighttime noise (QRN) often increases on lower HF bands — check A/K indices on the solar page.`
+    });
+  }
+
+  // Seasonal note
+  const seasonNotes = {
+    spring: `<span class="hl">Spring</span> — transitional season with variable conditions. E-layer sporadic (Es) begins increasing toward summer. F2 propagation generally good. Gray line geometry is shifting — dawn and dusk times changing approximately 2–3 minutes per day.`,
+    summer: `<span class="hl">Summer</span> — long days mean strong D-layer absorption; 160m/80m less useful during the day. Sporadic-E (Es) season peaks — watch 6m, 10m, and 12m for openings. High atmospheric noise on lower HF. Shorter nights reduce low-band DX windows.`,
+    autumn: `<span class="hl">Autumn</span> — improving HF conditions as days shorten and D-layer absorption decreases. F2 propagation strengthens. 80m and 40m DX windows expanding. One of the best seasons for mid-latitude HF DX work.`,
+    winter: `<span class="hl">Winter</span> — low D-layer absorption; 160m and 80m excel for DX during the long nights. Short days mean reduced daytime upper-HF propagation. Gray line windows are longer at mid-latitudes. Geomagnetic storms more impactful on polar paths.`,
+  };
+  items.push({
+    title: `Seasonal Context — ${season.charAt(0).toUpperCase() + season.slice(1)}`,
+    body: seasonNotes[season] || ''
+  });
+
+  return items;
+}
+
+// ── Timeline canvas ───────────────────────────────────────────────────────────
+function drawTimeline(canvas, times) {
+  const W = canvas.width;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  function xOf(h) { return (((h % 24) + 24) % 24) / 24 * W; }
+
+  // Night background
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, W, H);
+
+  // Daytime
+  if (times.sunrise != null && times.sunset != null) {
+    const x1 = xOf(times.sunrise);
+    const x2 = xOf(times.sunset);
+    ctx.fillStyle = '#1a2a3a';
+    if (x2 > x1) {
+      ctx.fillRect(x1, 0, x2 - x1, H);
+    } else {
+      ctx.fillRect(0, 0, x2, H);
+      ctx.fillRect(x1, 0, W - x1, H);
+    }
+  }
+
+  // Civil twilight zones (gray line)
+  const glColor = 'rgba(255,180,84,0.18)';
+  function drawZone(a, b) {
+    if (a == null || b == null) return;
+    const x1 = xOf(a), x2 = xOf(b);
+    ctx.fillStyle = glColor;
+    if (x2 >= x1) ctx.fillRect(x1, 0, x2 - x1, H);
+    else { ctx.fillRect(0, 0, x2, H); ctx.fillRect(x1, 0, W - x1, H); }
+  }
+  drawZone(times.nautDawn,  times.civilDawn);
+  drawZone(times.civilDusk, times.nautDusk);
+  drawZone(times.civilDawn, times.sunrise);
+  drawZone(times.sunset,    times.civilDusk);
+
+  // Hour grid lines
+  ctx.strokeStyle = '#2a3441';
+  ctx.lineWidth = 1;
+  for (let h = 0; h < 24; h += 2) {
+    const x = xOf(h);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+
+  // Key time markers
+  const markers = [
+    { t: times.nautDawn,  color: '#4a5a6a', label: 'NTL Dawn' },
+    { t: times.civilDawn, color: '#ffb454', label: 'Civil Dawn' },
+    { t: times.sunrise,   color: '#00d98b', label: 'Sunrise' },
+    { t: times.sunset,    color: '#00d98b', label: 'Sunset' },
+    { t: times.civilDusk, color: '#ffb454', label: 'Civil Dusk' },
+    { t: times.nautDusk,  color: '#4a5a6a', label: 'NTL Dusk' },
+  ];
+
+  markers.forEach(m => {
+    if (m.t == null) return;
+    const x = xOf(m.t);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H);
+    ctx.strokeStyle = m.color; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = m.color;
+    ctx.font = '9px monospace';
+    ctx.textAlign = x > W - 50 ? 'right' : 'left';
+    ctx.fillText(m.label, x + (x > W - 50 ? -3 : 3), 10);
+  });
+
+  // Current UTC time indicator
+  const now = new Date();
+  const nowH = now.getUTCHours() + now.getUTCMinutes() / 60;
+  const nx = xOf(nowH);
+  ctx.beginPath(); ctx.moveTo(nx, 0); ctx.lineTo(nx, H);
+  ctx.strokeStyle = '#ffffff44'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#ffffff88';
+  ctx.font = 'bold 9px monospace';
+  ctx.textAlign = nx > W - 40 ? 'right' : 'left';
+  ctx.fillText('NOW', nx + (nx > W - 40 ? -3 : 3), H - 4);
+}
+
+// ── Main calculate ────────────────────────────────────────────────────────────
+function calculate() {
+  const gridVal = document.getElementById('gridIn').value.trim().toUpperCase();
+  const dateVal = document.getElementById('dateIn').value;
+  const out     = document.getElementById('output');
+
+  if (!gridVal || gridVal.length < 4) {
+    out.innerHTML = '<div class="empty" style="color:var(--red)">Enter at least a 4-character grid square.</div>';
+    return;
+  }
+  if (!dateVal) {
+    out.innerHTML = '<div class="empty" style="color:var(--red)">Select a date.</div>';
+    return;
+  }
+
+  const ll = gridToLatLon(gridVal);
+  if (!ll) {
+    out.innerHTML = '<div class="empty" style="color:var(--red)">Invalid grid square.</div>';
+    return;
+  }
+
+  const [year, month, day] = dateVal.split('-').map(Number);
+  const times   = sunTimes(ll.lat, ll.lon, year, month, day);
+  const daylightH = daylightHours(times.sunrise, times.sunset);
+  const season  = getSeason(ll.lat, month);
+  const dawnGL  = grayLineWidth(times.sunrise, times.civilDawn);
+  const duskGL  = grayLineWidth(times.civilDusk, times.sunset);
+  const propItems = propGuidance(ll.lat, season, times, daylightH);
+
+  let html = '<div class="results">';
+
+  // Stat cards
+  html += '<div class="sec-label">Key Times — UTC</div><div class="stat-grid">';
+  const stats = [
+    { label: 'Civil Dawn',  val: fmtUTC(times.civilDawn),  sub: 'Gray line begins' },
+    { label: 'Sunrise',     val: fmtUTC(times.sunrise),    sub: 'Gray line ends' },
+    { label: 'Sunset',      val: fmtUTC(times.sunset),     sub: 'Gray line begins' },
+    { label: 'Civil Dusk',  val: fmtUTC(times.civilDusk),  sub: 'Gray line ends' },
+    { label: 'Daylight',    val: daylightH != null ? fmtDur(daylightH) : '—', sub: season.charAt(0).toUpperCase()+season.slice(1), amber: false },
+    { label: 'Dawn GL Width', val: dawnGL != null ? fmtDur(dawnGL/60) : '—', sub: 'Civil twilight window', amber: true },
+    { label: 'Dusk GL Width', val: duskGL != null ? fmtDur(duskGL/60) : '—', sub: 'Civil twilight window', amber: true },
+    { label: 'Grid / Lat',  val: gridVal, sub: ll.lat.toFixed(3) + '° ' + (ll.lat >= 0 ? 'N' : 'S') },
+  ];
+  stats.forEach(s => {
+    html += `<div class="stat">
+      <div class="stat-label">${s.label}</div>
+      <div class="stat-val${s.amber ? ' amber' : ''}">${s.val}</div>
+      <div class="stat-sub">${s.sub}</div>
+    </div>`;
+  });
+  html += '</div>'; // /stat-grid
+
+  // Timeline
+  html += `<div class="timeline-panel">
+    <div class="sec-label">24-Hour Timeline (UTC)</div>
+    <div class="timeline-wrap">
+      <canvas id="timeline" height="60"></canvas>
+    </div>
+    <div class="tl-labels">
+      <span>00:00</span><span>03:00</span><span>06:00</span><span>09:00</span>
+      <span>12:00</span><span>15:00</span><span>18:00</span><span>21:00</span><span>24:00</span>
+    </div>
+    <div class="utc-note">▐ Dark = night &nbsp; ▐ Light blue = day &nbsp; <span style="color:var(--amber)">▐ Amber = gray line / twilight</span> &nbsp; <span style="color:#fff8">▐ White dashed = now (UTC)</span></div>
+  </div>`;
+
+  // Windows table
+  html += `<div class="windows-panel">
+    <div class="sec-label">Propagation Windows</div>
+    <table>
+      <thead><tr><th>Window</th><th>Start (UTC)</th><th>End (UTC)</th><th>Duration</th><th>Best Bands</th></tr></thead>
+      <tbody>`;
+
+  const windows = [
+    { name: 'Nautical Dawn',   start: times.nautDawn,  end: times.civilDawn, bands: '160m, 80m' },
+    { name: 'Dawn Gray Line',  start: times.civilDawn, end: times.sunrise,   bands: '80m, 40m, 20m' },
+    { name: 'Morning HF',      start: times.sunrise,   end: null,            bands: '40m, 20m, 17m', note: 'F2 building' },
+    { name: 'Afternoon HF',    start: null,             end: times.sunset,    bands: '20m, 17m, 15m', note: 'Peak F2' },
+    { name: 'Dusk Gray Line',  start: times.sunset,    end: times.civilDusk, bands: '40m, 20m, 80m' },
+    { name: 'Nautical Dusk',   start: times.civilDusk, end: times.nautDusk,  bands: '80m, 40m, 30m' },
+    { name: 'Night HF',        start: times.nautDusk,  end: times.nautDawn,  bands: '160m, 80m, 40m', note: 'Low noise' },
+  ];
+
+  // Solar noon (midpoint of daylight)
+  if (times.sunrise != null && times.sunset != null) {
+    let noon = (times.sunrise + times.sunset) / 2;
+    const mornEnd = noon - 2;
+    const aftStart = noon - 2;
+    windows[2].end   = { val: noon, label: fmtUTC(noon) };
+    windows[3].start = { val: noon, label: fmtUTC(noon) };
+  }
+
+  windows.forEach(w => {
+    const s = w.start && w.start.label ? w.start.label : fmtUTC(w.start);
+    const e = w.end   && w.end.label   ? w.end.label   : fmtUTC(w.end);
+    const sV = w.start && w.start.val  ? w.start.val   : w.start;
+    const eV = w.end   && w.end.val    ? w.end.val     : w.end;
+    let dur = '—';
+    if (sV != null && eV != null) {
+      let d = eV - sV;
+      if (d < 0) d += 24;
+      dur = fmtDur(d);
+    }
+    html += `<tr>
+      <td><span class="win-time">${w.name}</span>${w.note ? '<br><span class="win-note">'+w.note+'</span>' : ''}</td>
+      <td>${s}</td><td>${e}</td>
+      <td class="win-dur">${dur}</td>
+      <td class="win-bands">${w.bands}</td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+
+  // Propagation guidance
+  html += `<div class="prop-panel"><div class="sec-label">Propagation Guidance</div>`;
+  propItems.forEach(p => {
+    html += `<div class="prop-item">
+      <div class="prop-title">${p.title}</div>
+      <div class="prop-body">${p.body}</div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  html += '</div>'; // /results
+  out.innerHTML = html;
+
+  // Draw timeline after DOM update
+  requestAnimationFrame(() => {
+    const canvas = document.getElementById('timeline');
+    if (canvas) {
+      canvas.width = canvas.offsetWidth || 800;
+      drawTimeline(canvas, times);
+    }
+  });
+}
+
+// ── Input handlers ────────────────────────────────────────────────────────────
+function onGridInput() {
+  const el = document.getElementById('gridIn');
+  el.value = el.value.toUpperCase();
+  el.classList.remove('filled', 'error');
+  if (el.value.length >= 4) {
+    const ll = gridToLatLon(el.value);
+    el.classList.add(ll ? 'filled' : 'error');
+  }
+}
+
+document.getElementById('gridIn').addEventListener('keydown', e => {
+  if (e.key === 'Enter') calculate();
+});
+document.getElementById('dateIn').addEventListener('change', () => {
+  if (document.getElementById('gridIn').value.length >= 4) calculate();
+});
+
+function setToday() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  document.getElementById('dateIn').value = `${y}-${m}-${d}`;
+  if (document.getElementById('gridIn').value.length >= 4) calculate();
+}
+
+// ── Preset ────────────────────────────────────────────────────────────────────
+function savePreset() {
+  const grid = document.getElementById('gridIn').value.trim().toUpperCase();
+  if (!grid || grid.length < 4) return;
+  localStorage.setItem(PRESET_KEY, grid);
+  const el = document.getElementById('presetSaved');
+  el.style.display = 'inline';
+  setTimeout(() => el.style.display = 'none', 2000);
+}
+
+function loadPreset() {
+  const grid = localStorage.getItem(PRESET_KEY);
+  if (!grid) return;
+  const el = document.getElementById('gridIn');
+  el.value = grid;
+  el.classList.add('filled');
+  if (document.getElementById('dateIn').value) calculate();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+setToday();
+loadPreset();
+</script>
+</body>
+</html>

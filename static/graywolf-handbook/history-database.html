@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Position Log &mdash; Graywolf Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a href="index.html" class="site-logo">
+      <img src="img/graywolf-logo.svg" alt="" />
+      <span>graywolf <span class="handbook-label">handbook</span></span>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" aria-label="Toggle theme">[ dark ]</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav>
+      <div class="sidebar-section">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="installation.html">Installation</a>
+      <a href="callsign.html">Station Callsign</a>
+      <div class="sidebar-section">Radio</div>
+      <a href="audio.html">Audio Devices</a>
+      <a href="channels.html">Radio Channels</a>
+      <a href="ptt.html">Push-to-Talk</a>
+      <div class="sidebar-section">APRS</div>
+      <a href="beacons.html">Beacons</a>
+      <a href="digipeater.html">Digipeater</a>
+      <a href="igate.html">iGate</a>
+      <a href="messaging.html">Messaging</a>
+      <a href="actions.html">Actions</a>
+      <a href="remote-actions.html">Remote Actions</a>
+      <a href="actions-handler-safety.html">Actions: Handler Safety</a>
+      <a href="actions-handler-safety-shell.html">&nbsp;&nbsp;&#8627; Shell handlers</a>
+      <a href="actions-handler-safety-powershell.html">&nbsp;&nbsp;&#8627; PowerShell handlers</a>
+      <a href="actions-handler-safety-webhooks.html">&nbsp;&nbsp;&#8627; Webhook handlers</a>
+      <a href="livemap.html">Live Map</a>
+      <div class="sidebar-section">Packet</div>
+      <a href="ax25-terminal.html">AX.25 Terminal</a>
+      <div class="sidebar-section">Interfaces</div>
+      <a href="kiss.html">KISS TNC</a>
+      <a href="remote-kiss-tnc.html">Remote KISS TNC</a>
+      <a href="agwpe.html">AGWPE</a>
+      <a href="gps.html">GPS</a>
+      <div class="sidebar-section">Operations</div>
+      <a href="history-database.html">Position Log</a>
+      <a href="logs.html">Logs</a>
+      <a href="monitoring.html">Monitoring</a>
+      <a href="simulation.html">Simulation</a>
+      <a href="maps.html">Maps</a>
+      <a href="preferences.html">Preferences</a>
+      <a href="architecture.html">Architecture</a>
+      <div class="sidebar-section">Reference</div>
+      <a href="configurations.html">Known-Working Configs</a>
+      <a href="api.html">REST API Reference</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>Position Log</h1>
+    <p class="subtitle">Persistent station position history across restarts</p>
+
+    <p>
+      By default, graywolf keeps station positions in memory only &mdash;
+      a restart clears the live map. The position log feature writes station
+      data to a separate SQLite database so the map is populated immediately
+      after a restart. Positions are retained for 30&nbsp;days and
+      automatically pruned.
+    </p>
+
+    <h2>Enabling the Position Log</h2>
+
+    <p>
+      Open <strong>Settings &rarr; Position Log</strong> in the web UI and
+      toggle <em>Enable persistent position log</em>. The database path is
+      shown read-only; it is set by the service manager via the
+      <code>-history-db</code> flag (see below). The change takes effect
+      immediately &mdash; no restart required.
+    </p>
+
+    <p>
+      The database file is created automatically if it does not exist.
+      This is important for RAM&nbsp;disk setups where the file disappears
+      on every reboot.
+    </p>
+
+    <div class="callout warning">
+      <span class="callout-icon">&#9888;</span>
+      <div class="callout-body">
+        <p>
+          <strong>The position log is disabled by default.</strong> If your
+          system runs from an SD card (common on Raspberry&nbsp;Pi), do not
+          enable it with the default path. See the section below for safe
+          setup instructions.
+        </p>
+      </div>
+    </div>
+
+    <h2>Raspberry Pi &amp; SD Card Considerations</h2>
+
+    <p>
+      SD cards have a limited number of write cycles. The position log
+      writes to SQLite every time a new station packet is decoded &mdash;
+      typically a few times per minute on a 1200&nbsp;baud channel, but
+      potentially more on busy frequencies or when connected to APRS-IS.
+      Over weeks and months, this can shorten the life of an SD card.
+    </p>
+
+    <h3>Use a RAM disk</h3>
+
+    <p>
+      The simplest solution is to store the history database on a
+      <strong>tmpfs</strong> (RAM&nbsp;disk). On systemd-based systems
+      (including Raspberry Pi&nbsp;OS) <code>/run</code> is always a tmpfs,
+      and systemd can manage a per-service subdirectory for you with
+      correct ownership and lifecycle. Point graywolf at
+      <code>/run/graywolf/history.db</code>.
+    </p>
+
+    <p>
+      Note that the packaged systemd unit has <code>PrivateTmp=yes</code>,
+      which gives the service a namespaced <code>/tmp</code> that is
+      <em>wiped on every service restart</em>. For that reason
+      <code>/tmp</code> is <strong>not</strong> a good choice for the
+      history database &mdash; use <code>/run/graywolf/</code> instead.
+    </p>
+
+    <h3>Configure the database path</h3>
+
+    <p>
+      The path is passed to graywolf via the <code>-history-db</code>
+      command-line flag. When running under systemd, add a drop-in:
+    </p>
+
+    <pre><code>sudo systemctl edit graywolf</code></pre>
+
+    <p>This opens an override file. Add:</p>
+
+    <pre><code>[Service]
+ExecStart=
+ExecStart=/usr/bin/graywolf -config /var/lib/graywolf/graywolf.db -history-db /run/graywolf/history.db -tile-cache-dir /var/lib/graywolf/tiles -modem /usr/bin/graywolf-modem -http 0.0.0.0:8080
+RuntimeDirectory=graywolf
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes</code></pre>
+
+    <p>
+      <code>RuntimeDirectory=graywolf</code> creates
+      <code>/run/graywolf/</code> owned by the <code>graywolf</code> user.
+      <code>RuntimeDirectoryPreserve=yes</code> keeps its contents across
+      <code>systemctl restart</code> so the database survives service
+      restarts (it is still cleared on reboot &mdash; see below).
+    </p>
+
+    <p>The empty <code>ExecStart=</code> line is required to clear the
+      inherited ExecStart before replacing it.</p>
+
+    <p>Then reload and restart:</p>
+
+    <pre><code>sudo systemctl daemon-reload
+sudo systemctl restart graywolf</code></pre>
+
+    <h3>What happens on reboot?</h3>
+
+    <p>
+      With a RAM&nbsp;disk, the history database is lost on every reboot.
+      This is expected and harmless &mdash; graywolf recreates the database
+      automatically on startup. The map simply starts empty and fills in
+      as stations are heard. On an active frequency the map is typically
+      well-populated within a few minutes.
+    </p>
+
+    <nav class="page-nav">
+      <a href="livemap.html">
+        <span class="label">Previous</span>
+        Live Map
+      </a>
+      <a href="logs.html" class="next">
+        <span class="label">Next</span>
+        Logs
+      </a>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  graywolf &middot; modern APRS station
+</footer>
+
+<script src="handbook.js"></script>
+</body>
+</html>

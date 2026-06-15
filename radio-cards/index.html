@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OASIS - Radio Cards</title>
+<link rel="stylesheet" href="../css/common.css">
+<style>
+.group-label {
+  font-size: var(--fs-small);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--amber);
+  margin: 1.3rem .2rem .6rem;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: .7rem;
+}
+@media (min-width: 560px) { .grid { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr 1fr; } }
+
+a.card {
+  display: block;
+  text-decoration: none;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cardaccent, var(--accent));
+  border-radius: 9px;
+  background: var(--panel);
+  padding: .9rem 1rem;
+  transition: background .15s, transform .1s;
+}
+a.card:hover { background: var(--panel-2); transform: translateX(2px); }
+.card-model {
+  font-size: var(--fs-subtitle);
+  font-weight: 700;
+  color: var(--cardaccent, var(--accent));
+  letter-spacing: .03em;
+}
+.card-type {
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+  margin-top: .3rem;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">🏠 HOME</a>
+    <h1>Radio Cards</h1>
+    <p>Quick-reference cards for field use — operations, menus, and memory programming.</p>
+  </header>
+
+  <div class="group-label">Yaesu</div>
+  <div class="grid">
+    <a class="card" href="ft-2dr.html" style="--cardaccent:#00d98b">
+      <div class="card-model">FT-2DR</div>
+      <div class="card-type">HT · C4FM / FM · Dual Band · APRS</div>
+    </a>
+    <a class="card" href="ft-5dr.html" style="--cardaccent:#00d98b">
+      <div class="card-model">FT-5DR</div>
+      <div class="card-type">HT · C4FM / FM · Dual Band · APRS · True Dual RX</div>
+    </a>
+    <a class="card" href="ft-60r.html" style="--cardaccent:#00d98b">
+      <div class="card-model">FT-60R</div>
+      <div class="card-type">HT · FM · Dual Band · Triband RX</div>
+    </a>
+    <a class="card" href="ft-817nd.html" style="--cardaccent:#00d98b">
+      <div class="card-model">FT-817ND</div>
+      <div class="card-type">Portable · HF/VHF/UHF · All-Mode · 5W</div>
+    </a>
+    <a class="card" href="ft-857d.html" style="--cardaccent:#00d98b">
+      <div class="card-model">FT-857D</div>
+      <div class="card-type">Mobile · HF/VHF/UHF · All-Mode · 100W</div>
+    </a>
+    <a class="card" href="ft-8800r-8900r.html" style="--cardaccent:#00d98b">
+      <div class="card-model">FT-8800R / 8900R</div>
+      <div class="card-type">Mobile · FM · Dual/Quad Band</div>
+    </a>
+    <a class="card" href="ftm-500dr.html" style="--cardaccent:#00d98b">
+      <div class="card-model">FTM-500DR</div>
+      <div class="card-type">Mobile · C4FM / FM · Dual Band · 50W · APRS</div>
+    </a>
+    <a class="card" href="vx-6r.html" style="--cardaccent:#00d98b">
+      <div class="card-model">VX-6R</div>
+      <div class="card-type">HT · FM · Triband · Submersible</div>
+    </a>
+  </div>
+
+  <div class="group-label">Icom</div>
+  <div class="grid">
+    <a class="card" href="ic-705.html" style="--cardaccent:#4db8ff">
+      <div class="card-model">IC-705</div>
+      <div class="card-type">Portable · HF/VHF/UHF · All-Mode · 10W · SDR</div>
+    </a>
+    <a class="card" href="id-51.html" style="--cardaccent:#4db8ff">
+      <div class="card-model">ID-51A</div>
+      <div class="card-type">HT · D-STAR / FM · Dual Band · GPS</div>
+    </a>
+  </div>
+
+  <div class="group-label">Kenwood</div>
+  <div class="grid">
+    <a class="card" href="th-d-75.html" style="--cardaccent:#ffb454">
+      <div class="card-model">TH-D75</div>
+      <div class="card-type">HT · APRS · D-STAR · FM · Triband</div>
+    </a>
+    <a class="card" href="tm-d-710.html" style="--cardaccent:#ffb454">
+      <div class="card-model">TM-D710</div>
+      <div class="card-type">Mobile · FM · Dual Band · APRS TNC</div>
+    </a>
+    <a class="card" href="tm-v71a.html" style="--cardaccent:#ffb454">
+      <div class="card-model">TM-V71A</div>
+      <div class="card-type">Mobile · FM · Dual Band · Cross-Band Repeater</div>
+    </a>
+  </div>
+
+  <footer style="text-align:center;color:var(--text-dim);font-size:var(--fs-small);margin-top:1.8rem;padding-bottom:1rem;">
+    Offline reference &middot; no network required
+  </footer>
+
+</div>
+</body>
+</html>

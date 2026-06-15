@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Messaging &mdash; Graywolf Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a href="index.html" class="site-logo">
+      <img src="img/graywolf-logo.svg" alt="" />
+      <span>graywolf <span class="handbook-label">handbook</span></span>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" aria-label="Toggle theme">[ dark ]</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav>
+      <div class="sidebar-section">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="installation.html">Installation</a>
+      <a href="callsign.html">Station Callsign</a>
+      <div class="sidebar-section">Radio</div>
+      <a href="audio.html">Audio Devices</a>
+      <a href="channels.html">Radio Channels</a>
+      <a href="ptt.html">Push-to-Talk</a>
+      <div class="sidebar-section">APRS</div>
+      <a href="beacons.html">Beacons</a>
+      <a href="digipeater.html">Digipeater</a>
+      <a href="igate.html">iGate</a>
+      <a href="messaging.html">Messaging</a>
+      <a href="actions.html">Actions</a>
+      <a href="remote-actions.html">Remote Actions</a>
+      <a href="actions-handler-safety.html">Actions: Handler Safety</a>
+      <a href="actions-handler-safety-shell.html">&nbsp;&nbsp;&#8627; Shell handlers</a>
+      <a href="actions-handler-safety-powershell.html">&nbsp;&nbsp;&#8627; PowerShell handlers</a>
+      <a href="actions-handler-safety-webhooks.html">&nbsp;&nbsp;&#8627; Webhook handlers</a>
+      <a href="livemap.html">Live Map</a>
+      <div class="sidebar-section">Packet</div>
+      <a href="ax25-terminal.html">AX.25 Terminal</a>
+      <div class="sidebar-section">Interfaces</div>
+      <a href="kiss.html">KISS TNC</a>
+      <a href="remote-kiss-tnc.html">Remote KISS TNC</a>
+      <a href="agwpe.html">AGWPE</a>
+      <a href="gps.html">GPS</a>
+      <div class="sidebar-section">Operations</div>
+      <a href="history-database.html">Position Log</a>
+      <a href="logs.html">Logs</a>
+      <a href="monitoring.html">Monitoring</a>
+      <a href="simulation.html">Simulation</a>
+      <a href="maps.html">Maps</a>
+      <a href="preferences.html">Preferences</a>
+      <a href="architecture.html">Architecture</a>
+      <div class="sidebar-section">Reference</div>
+      <a href="configurations.html">Known-Working Configs</a>
+      <a href="api.html">REST API Reference</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>Messaging</h1>
+    <p class="subtitle">SMS-style APRS messaging with DMs, tactical broadcasts, and invites</p>
+
+    <p>
+      Graywolf&rsquo;s messaging screen is a chat client that speaks APRS.
+      Every outbound message is transmitted as an APRS11 text packet over
+      RF (with an APRS-IS fallback when the peer is internet-only), and
+      every APRS text frame graywolf hears &mdash; whether it came in over
+      the air or arrived through APRS-IS &mdash; is shown as a message in
+      the matching conversation. Messages longer than the 67-byte APRS cap
+      are split into numbered segments and reassembled on receive.
+    </p>
+
+    <div class="callout info">
+      <span class="callout-icon">&#9432;</span>
+      <div class="callout-body">
+        <p>
+          <strong>APRS-IS only operation.</strong> You can run a Messages-only
+          station with no radio channel: set your station callsign, enable
+          the iGate, and leave the Channels page empty. Outbound messages
+          ride APRS-IS via the default <em>Try RF first, fall back to
+          APRS-IS</em> policy, or set Preferences &rarr; Messages &rarr;
+          Send path to <em>APRS-IS only</em> to skip the RF-first attempt.
+          DM acks delivered over APRS-IS terminate as
+          <code>awaiting_ack</code> until the peer replies.
+        </p>
+      </div>
+    </div>
+
+    <p>
+      The conversation list is always sectioned: <strong>Tactical</strong>
+      chats first, then <strong>Direct Messages</strong>. A
+      <strong>Manage Tactical Chats</strong> button at the top of the
+      list takes you to your tactical subscriptions. Inside any tactical
+      thread, the header carries a <strong>Leave Chat</strong> button:
+      clicking it stops your station from monitoring the tactical, drops
+      it from the inbox, and updates your APRS-IS subscription so you no
+      longer receive its traffic. The message history is preserved
+      server-side as a read-only archive, so rejoining later picks back up
+      where you left off.
+    </p>
+
+    <div class="screenshot">
+      <img src="img/messages-tactical.png" alt="Tactical chat showing participant callsigns at the top and color-coded sender labels on each message" />
+      <div class="caption">A tactical net in progress. Every monitoring station sees each message; sender callsigns are color-coded.</div>
+    </div>
+
+    <h2>Two kinds of threads</h2>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Kind</th><th>Addressing</th><th>ACK behavior</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Direct (DM)</strong></td>
+              <td>One peer callsign</td>
+              <td>APRS11 auto-ACK and reply-ack, retransmitting until acknowledged or the retry budget runs out</td>
+            </tr>
+            <tr>
+              <td><strong>Tactical broadcast</strong></td>
+              <td>A tactical label (e.g. <code>NW5WOPS</code>, <code>SLCARES</code>)</td>
+              <td>No ACKs &mdash; tactical traffic is one-to-many. Each message is marked simply as transmitted.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2>Direct messages</h2>
+
+    <p>
+      A DM is a normal APRS text packet addressed to a single callsign
+      (optionally with SSID). Graywolf handles acknowledgments, retries,
+      and reply-ack matching automatically. Each outbound message shows
+      whether it&rsquo;s still waiting for an acknowledgment, was
+      acknowledged, timed out, or was rejected.
+    </p>
+
+    <div class="screenshot">
+      <img src="img/messages-dm.png" alt="A direct-message conversation with W1ABC-9: outbound messages on the right, inbound on the left, with delivery status on each" />
+      <div class="caption">A 1:1 DM. Your messages appear on the right; delivery status sits under each one.</div>
+    </div>
+
+    <p>
+      The default retry behavior is 4 transmissions total per DM (1
+      initial plus 3 retries) at 30-second spacing with &plusmn;10%
+      jitter &mdash; aligned with Xastir / UI-View32 / APRSdroid norms so
+      graywolf isn&rsquo;t noticeably more chatty than other stations
+      sharing 144.39. Operators who need to tune this can do so via the
+      <a href="api.html">REST API</a>
+      (<code>GET/PUT /api/messages/preferences</code>).
+    </p>
+
+    <h2>Tactical callsigns</h2>
+
+    <p>
+      A tactical callsign is a short label operators agree on ahead of an
+      event. Every station that subscribes to the label sees messages
+      addressed to it, and every subscribed station can post as the
+      group. Membership is maintained on each operator&rsquo;s own
+      machine &mdash; nothing tracks it centrally. Graywolf figures out
+      who has been participating by looking at recent traffic on the
+      tactical.
+    </p>
+
+    <div class="callout danger">
+      <span class="callout-icon">&#9888;</span>
+      <div class="callout-body">
+        <p>
+          <strong>Pick a unique label.</strong> Tactical traffic goes out
+          over RF and reaches APRS-IS, so it&rsquo;s visible to every
+          APRS operator in the world. Generic names like <code>NET</code>,
+          <code>EOC</code>, or <code>TAC</code> collide with every other
+          net on the planet using the same convention. Prefix the label
+          with something identifying &mdash; your club callsign, a
+          location code, an event abbreviation &mdash; so remote stations
+          don&rsquo;t accidentally join your net or see stray traffic
+          they think is theirs. Good examples: <code>NW5WOPS</code>,
+          <code>SLCARES</code>, <code>FD2026NE</code>,
+          <code>UTSKYWRN</code>. Bad examples: <code>NET</code>,
+          <code>TAC</code>, <code>EOC</code>.
+        </p>
+      </div>
+    </div>
+
+    <p>
+      Manage your own subscriptions under <em>Messages &rarr; Manage
+      tactical callsigns &rarr;</em> (bottom of the conversation list).
+      Each entry has a callsign, an optional friendly alias that only you
+      see (&ldquo;Main Ops Net,&rdquo; &ldquo;Club repeater coord&rdquo;),
+      and an enable toggle. Monitoring a tactical means its traffic is
+      recorded, shown in the sidebar, and included in unread counts;
+      disabling it hides the thread without forgetting the history.
+    </p>
+
+    <p>
+      Inside a tactical thread, sender callsigns are shown as color-coded
+      labels above each message so a fast-moving net is still readable at
+      a glance. The list of participants at the top is populated from
+      recently observed senders.
+    </p>
+
+    <h2>Inviting stations to a tactical chat</h2>
+
+    <p>
+      A tactical chat works by convention: if you don&rsquo;t know the
+      label exists, you can&rsquo;t subscribe. The <strong>Invite
+      Users</strong> button in a tactical thread header gives you a way to
+      nudge a remote station to subscribe without coordinating by voice
+      first.
+    </p>
+
+    <div class="screenshot">
+      <img src="img/messages-invite-modal.png" alt="Invite to NET dialog with a Recipients field, autocomplete suggesting W1ABC-9, and a Send button" />
+      <div class="caption">The invite dialog. Paste a roster or add callsigns one at a time; graywolf sends one DM per recipient, paced by the normal RF transmit scheduler.</div>
+    </div>
+
+    <p>
+      Clicking <strong>Invite Users</strong> opens a dialog where you add
+      one or more recipients:
+    </p>
+
+    <ul>
+      <li>Type a callsign and pick it from the suggestions that appear</li>
+      <li>Or paste a comma- or whitespace-separated roster &mdash; valid
+        callsigns are added, invalid tokens stay in the input with a
+        <code>N added &middot; M invalid</code> hint</li>
+      <li>Remove a recipient with <code>&times;</code>, or delete the last
+        one with Backspace on an empty input</li>
+    </ul>
+
+    <p>
+      <strong>Cmd/Ctrl+Enter</strong> sends; plain Enter just focuses the
+      Send button so an accidental keystroke doesn&rsquo;t fire off a
+      batch of transmissions. Each recipient shows its own progress
+      &mdash; waiting to send, sent, or failed with a retry option &mdash;
+      updating live as graywolf works through the queue.
+    </p>
+
+    <h3>Wire format</h3>
+
+    <p>
+      An invite is a plain APRS11 DM with a strict body:
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <pre><code>!GW1 INVITE &lt;TACTICAL&gt;</code></pre>
+      </div>
+    </div>
+
+    <p>
+      <code>!GW1</code> is a version sigil reserved for graywolf protocol
+      extensions; the anchored regex
+      <code>^!GW1 INVITE ([A-Z0-9-]{1,9})$</code> keeps casual messages
+      like &ldquo;Invite Bob to the net&rdquo; from ever matching. A valid
+      tactical label is 1&ndash;9 characters of
+      <code>[A-Z0-9-]</code>. The full wire body fits in 12&ndash;21 bytes,
+      well under the 67-byte APRS cap.
+    </p>
+
+    <p>
+      The invitee&rsquo;s graywolf installation classifies the inbound
+      packet and shows an <strong>Accept</strong> button on the message
+      instead of raw text. Clicking <strong>Accept</strong> subscribes the
+      station to the tactical locally and changes the message to
+      <code>&#10003; Joined &middot; Open NW5WOPS &rarr;</code>. The
+      first accept in a session takes you directly into the newly joined
+      thread.
+      Ignoring an invite is local-only &mdash; there is no server-side
+      &ldquo;declined&rdquo; state, and the invite persists as a normal DM
+      row.
+    </p>
+
+    <p>
+      Stations running other APRS software see the literal
+      <code>!GW1 INVITE NW5WOPS</code> string and can join manually by
+      adding the tactical callsign to their client however their client
+      supports it.
+    </p>
+
+    <h2>Message transmission settings</h2>
+
+    <p>
+      Defaults are tuned to match mainstream APRS clients, and most
+      operators never need to change them:
+    </p>
+
+    <div class="box">
+      <div class="box-body">
+        <table>
+          <thead>
+            <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Retry attempts</td>
+              <td>4</td>
+              <td>Total transmissions on RF per DM (1 initial plus 3 retries). Set to 1 to disable retry.</td>
+            </tr>
+            <tr>
+              <td>Retry spacing</td>
+              <td>30 seconds</td>
+              <td>Time between retries. A single value means constant spacing; a list of values defines a ladder.</td>
+            </tr>
+            <tr>
+              <td>APRS-IS fallback</td>
+              <td>on</td>
+              <td>Fall back to APRS-IS when the peer is marked internet-only or RF retries are exhausted.</td>
+            </tr>
+            <tr>
+              <td>Outbound channel</td>
+              <td>&mdash;</td>
+              <td>Radio channel used for outbound messages.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p>
+      These values live in the <code>message_preferences</code> record
+      and can be read or changed via the
+      <a href="api.html">REST API</a> (<code>GET/PUT
+      /api/messages/preferences</code>). A dedicated settings page is
+      not shipped today.
+    </p>
+
+    <h2>Long messages</h2>
+
+    <p>
+      The APRS spec caps a message body at 67 bytes. Graywolf enforces
+      that limit by default. If you know your contacts are running clients
+      that accept longer messages, flip <strong>Allow long APRS
+      messages</strong> on the <a href="preferences.html">Preferences</a>
+      page &mdash; that lets you send up to 200 characters in one message.
+      Stations on stricter clients may truncate or drop anything past 67
+      bytes, so leave it off unless you&rsquo;ve confirmed it works on
+      both ends.
+    </p>
+
+    <h2>Firing remote Actions from a thread</h2>
+
+    <p>
+      DM threads show a zap icon (<span class="kbd">&#9889;</span>) in
+      the thread header. Tapping it opens the
+      <a href="remote-actions.html">Remote Actions</a> drawer: a
+      side-panel for firing operator-curated
+      <code>@@&lt;otp&gt;#&lt;action&gt;</code> macros at the remote
+      station whose callsign owns the thread. Inbound replies that
+      arrive within 60 seconds of an outbound fire and start with a
+      status keyword (<code>ok</code>, <code>error</code>,
+      <code>bad_otp</code>, ...) get a small zap badge in the bubble
+      footer so you can correlate the reply with what you sent. The
+      icon is omitted on tactical (multi-recipient) threads, where an
+      OTP-protected fire to many callsigns at once would be a footgun.
+    </p>
+
+    <h2>Edge cases</h2>
+
+    <ul>
+      <li>
+        <strong>Split messages.</strong> DMs over 67 bytes are split
+        into numbered segments (<code>{1/2}</code>, <code>{2/2}</code>)
+        and reassembled on receive. The received message shows the
+        joined text.
+      </li>
+      <li>
+        <strong>Duplicate inbound.</strong> Packets arriving twice within
+        the dedup window (same sender, same msgid, same text hash) persist
+        once. This applies to invites too.
+      </li>
+      <li>
+        <strong>Self-addressed DM.</strong> Graywolf refuses to send a
+        DM to your own callsign. The invite dialog also rejects your own
+        callsign when you add it as a recipient.
+      </li>
+      <li>
+        <strong>Invite to an already-enabled tactical.</strong> Accept
+        is safe to press more than once. If you&rsquo;re already
+        subscribed, graywolf says so (&ldquo;Already a member&rdquo;)
+        instead of showing the usual join notification.
+      </li>
+    </ul>
+
+    <nav class="page-nav">
+      <a href="igate.html">
+        <span class="label">Previous</span>
+        iGate
+      </a>
+      <a href="livemap.html" class="next">
+        <span class="label">Next</span>
+        Live Map
+      </a>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  graywolf &middot; modern APRS station
+</footer>
+
+<script src="handbook.js"></script>
+</body>
+</html>

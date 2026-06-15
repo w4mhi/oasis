@@ -1,0 +1,93 @@
+{
+  "band": "70cm",
+  "name": "70 Centimeters",
+  "range": [420, 450],
+  "unit": "MHz",
+  "license": "Tech+",
+  "allocation": "Secondary",
+  "notes": [
+    "432.1 MHz: national weak-signal calling frequency",
+    "446.0 MHz: national FM simplex calling frequency",
+    "Secondary to Federal radiolocation"
+  ],
+  "rows": [
+    {
+      "range": [420.0, 440.0],
+      "segments": [
+        {
+          "start": 420.0, "end": 432.0,
+          "position": "bottom", "type": "atv", "color": "#ffd60a",
+          "label": "ATV / Broadband",
+          "detail": "ATV repeater or simplex 420–426 MHz (421.25 MHz video carrier, control links, experimental). ATV simplex 426–432 MHz (427.250 MHz video carrier)."
+        },
+        {
+          "start": 432.0, "end": 432.1,
+          "position": "top", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "EME 432.00–432.07 MHz. Weak-signal CW 432.07–432.10. 432.1: national 70cm calling frequency."
+        },
+        {
+          "start": 432.1, "end": 433.0,
+          "position": "bottom", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "Mixed-mode and weak-signal work 432.10–433.00 MHz. Propagation beacons 432.30–432.40."
+        },
+        {
+          "start": 433.0, "end": 435.0,
+          "position": "top", "type": "mixed", "color": "#a8b5c8",
+          "label": "Mixed / Control",
+          "detail": "Auxiliary/repeater links 433.00–435.00 MHz."
+        },
+        {
+          "start": 435.0, "end": 438.0,
+          "position": "bottom", "type": "satellite", "color": "#06d6a0",
+          "label": "Satellite",
+          "detail": "Satellite only (internationally) 435.00–438.00 MHz."
+        },
+        {
+          "start": 438.0, "end": 440.0,
+          "position": "top", "type": "atv", "color": "#ffd60a",
+          "label": "ATV / Broadband",
+          "detail": "ATV repeater inputs 438–444 MHz (439.250 MHz video carrier) and repeater links."
+        }
+      ],
+      "callouts": [
+        { "freq": 432.1, "label": "432.1", "sublabel": "CW/SSB Calling", "type": "calling", "side": "below" }
+      ],
+      "ticks": [420.0, 426.0, 432.0, 432.1, 433.0, 435.0, 438.0, 440.0]
+    },
+    {
+      "range": [440.0, 450.0],
+      "segments": [
+        {
+          "start": 440.0, "end": 442.0,
+          "position": "bottom", "type": "atv", "color": "#ffd60a",
+          "label": "ATV / Broadband",
+          "detail": "ATV repeater inputs 438–444 MHz (439.250 MHz video carrier)."
+        },
+        {
+          "start": 442.0, "end": 445.0,
+          "position": "top", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater inputs and outputs (local option) 442.00–445.00 MHz."
+        },
+        {
+          "start": 445.0, "end": 447.0,
+          "position": "bottom", "type": "mixed", "color": "#a8b5c8",
+          "label": "Mixed / Control",
+          "detail": "Shared by auxiliary/control links, repeaters, and simplex (local option) 445–447 MHz. 446.0: national FM simplex calling."
+        },
+        {
+          "start": 447.0, "end": 450.0,
+          "position": "top", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater inputs and outputs (local option) 447.00–450.00 MHz."
+        }
+      ],
+      "callouts": [
+        { "freq": 446.0, "label": "446.0", "sublabel": "FM Calling", "type": "calling", "side": "below" }
+      ],
+      "ticks": [440.0, 442.0, 445.0, 447.0, 450.0]
+    }
+  ]
+}

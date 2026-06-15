@@ -1,0 +1,421 @@
+/* ============================================================
+   EmComm Tools – shared design system
+   Reference: ICS form pages (dark mono, amber labels, green accent)
+   ============================================================ */
+
+/* ─── Variables ─────────────────────────────────────────── */
+:root {
+  --bg:         #0d1117;
+  --panel:      #161b22;
+  --panel-2:    #1c2330;
+  --border:     #2a3441;
+  --accent:     #00d98b;
+  --accent-dim: #0a7a52;
+  --amber:      #ffb454;
+  --amber-dim:  #c98a2e;
+  --red:        #ff6b6b;
+  --green:      #3fb950;
+  --blue:       #58a6ff;
+  --text:       #d7e0ea;
+  --text-dim:   #8b97a6;
+  --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+
+  /* ─── Type scale ─────────────────────────────────────── */
+  --fs-title:    1.2rem;   /* header h1  — page title */
+  --fs-subtitle: 0.9rem;   /* header p   — subtitle / description */
+  --fs-base:     0.85rem;  /* body, td   — primary reading text */
+  --fs-label:    0.75rem;  /* th, .sec-label, field labels — uppercase caps */
+  --fs-small:    0.7rem;   /* buttons, meta, footnotes */
+  --fs-micro:    0.65rem;  /* form field labels, badge text */
+}
+
+/* ─── Reset ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ─── Base ──────────────────────────────────────────────── */
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  padding: 1rem;
+}
+.wrap { max-width: 1280px; margin: 0 auto; }
+
+/* ─── Header panel ──────────────────────────────────────── */
+header {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 1rem 1.25rem;
+  margin-bottom: .9rem;
+}
+header h1 {
+  font-size: var(--fs-title);
+  letter-spacing: .08em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: .15rem;
+}
+header p {
+  font-size: var(--fs-subtitle);
+  color: var(--text-dim);
+  position: relative;
+}
+/* CREDITS trigger label */
+header p::after {
+  content: 'CREDITS';
+  float: right;
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  opacity: .5;
+  margin-left: 1rem;
+  cursor: default;
+  border-bottom: 1px dotted var(--text-dim);
+}
+/* tooltip bubble — hidden by default */
+header p::before {
+  content: 'Based on ACK Off-Grid Ham Radio Server\A by Jason KM4ACK (Tennessee).\A Original concept & architecture: KM4ACK.\A Extended for Pacific NW: W4MHI.';
+  white-space: pre-wrap;
+  position: absolute;
+  bottom: unset;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .5rem .75rem;
+  font-size: var(--fs-micro);
+  color: var(--text);
+  line-height: 1.7;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s ease;
+  max-width: 300px;
+}
+header p:hover::before {
+  opacity: 1;
+}
+header::after { content: ''; display: table; clear: both; }
+@media print { header p::after, header p::before { display: none; } }
+
+/* ─── Credits tooltip (footer use) ─────────────────────────── */
+.credits-link {
+  position: relative;
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  opacity: .5;
+  cursor: default;
+  border-bottom: 1px dotted var(--text-dim);
+}
+.credits-link::before {
+  content: 'Based on ACK Off-Grid Ham Radio Server\A by Jason KM4ACK (Tennessee).\A Original concept & architecture: KM4ACK.\A Extended for Pacific NW: W4MHI.';
+  white-space: pre-wrap;
+  position: absolute;
+  bottom: unset;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .5rem .75rem;
+  font-size: var(--fs-micro);
+  color: var(--text);
+  line-height: 1.7;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s ease;
+  max-width: 300px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.credits-link:hover::before {
+  opacity: 1;
+}
+
+/* ─── Header HOME link ──────────────────────────────────── */
+.home-link {
+  float: right;
+  margin-left: 1rem;
+  font-size: var(--fs-subtitle);
+  letter-spacing: .1em;
+  color: var(--blue);
+  text-decoration: none;
+  text-transform: uppercase;
+  line-height: 1.6;
+}
+.home-link:hover { color: var(--accent); }
+@media print { .home-link { display: none; } }
+
+/* ─── Section / panel block ─────────────────────────────── */
+.sec {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 1rem 1.25rem;
+  margin-bottom: .75rem;
+}
+.input-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 1rem 1.25rem;
+  margin-bottom: .9rem;
+}
+
+/* ─── Labels ────────────────────────────────────────────── */
+.sec-label, .sec-lbl {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--amber);
+  margin-bottom: .6rem;
+  display: block;
+}
+.form-title {
+  font-size: var(--fs-title);
+  letter-spacing: .08em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: .85rem;
+}
+
+/* ─── ICS grid utilities ─────────────────────────────────── */
+.fg { display: grid; gap: .5rem; }
+.g2 { grid-template-columns: 1fr 1fr; }
+.g3 { grid-template-columns: 1fr 1fr 1fr; }
+.g4 { grid-template-columns: repeat(4, 1fr); }
+.g5 { grid-template-columns: repeat(5, 1fr); }
+
+/* ─── Form fields ───────────────────────────────────────── */
+.field, .fld {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: .5rem;
+}
+.field:last-child, .fld:last-child { margin-bottom: 0; }
+.field label, .fld label {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--text-dim);
+}
+
+/* ─── Inputs ────────────────────────────────────────────── */
+input[type=text],
+input[type=number],
+input[type=date],
+textarea,
+select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-base);
+  padding: 5px 9px;
+  border-radius: 5px;
+  width: 100%;
+}
+input[type=text]:focus,
+input[type=number]:focus,
+input[type=date]:focus,
+textarea:focus,
+select:focus { outline: none; border-color: var(--accent); }
+input[type=date] { color-scheme: dark; }
+textarea { resize: vertical; }
+select { cursor: pointer; }
+input.filled, input.has-val { border-color: var(--accent-dim); }
+input.error { border-color: var(--red); }
+
+/* ─── Tables ─────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; }
+th {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  padding: 5px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--panel-2);
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--panel-2); }
+.tbl-wrap { overflow-x: auto; }
+
+/* ─── Buttons ────────────────────────────────────────────── */
+.sbtn {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: var(--fs-small);
+  padding: 4px 14px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.sbtn:hover { color: var(--text); border-color: var(--text-dim); }
+.sbtn.primary { color: var(--accent); border-color: var(--accent-dim); }
+.sbtn.primary:hover { background: var(--accent-dim); color: #fff; }
+.sbtn.danger:hover { color: var(--red); border-color: var(--red); }
+
+.add-btn {
+  background: transparent;
+  color: var(--accent-dim);
+  border: 1px dashed var(--accent-dim);
+  font-family: var(--mono);
+  font-size: var(--fs-small);
+  padding: 3px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: .5rem;
+}
+.add-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+.del-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: .8rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.del-btn:hover { color: var(--red); }
+
+/* ─── Actions row ─────────────────────────────────────────── */
+.actions {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin-bottom: .75rem;
+  align-items: center;
+}
+
+/* ─── Status / library indicators ────────────────────────── */
+.lib-status {
+  font-size: .68rem;
+  color: var(--text-dim);
+  display: flex;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin-bottom: .6rem;
+  align-items: center;
+}
+.lib-status span { display: flex; align-items: center; gap: .3rem; }
+.lib-ok   { color: var(--green); }
+.lib-warn { color: var(--amber); }
+.lib-err  { color: var(--red);   }
+
+/* ─── Toast notification ──────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .8rem;
+  padding: .6rem 1rem;
+  border-radius: 6px;
+  max-width: 320px;
+  opacity: 0;
+  transition: opacity .25s;
+  pointer-events: none;
+  z-index: 999;
+}
+.toast.show { opacity: 1; }
+.toast.ok  { border-color: var(--green); color: var(--green); }
+.toast.err { border-color: var(--red);   color: var(--red);   }
+
+/* ─── Instructions panel ──────────────────────────────────── */
+.inst {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: .75rem;
+}
+.inst-tog {
+  width: 100%;
+  background: var(--panel);
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: .65rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  padding: .55rem 1.25rem;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.inst-tog:hover { color: var(--text); }
+.inst-body {
+  display: none;
+  background: var(--panel);
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--border);
+}
+.inst-body.open { display: block; }
+.inst-tbl { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.inst-tbl th {
+  font-size: .58rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--amber);
+  border-bottom: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.inst-tbl td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--panel-2);
+  vertical-align: top;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+.inst-tbl td:first-child { color: var(--accent); white-space: nowrap; font-size: .75rem; }
+.inst-tbl td:nth-child(2) { white-space: nowrap; color: var(--text); }
+.inst-tbl tr:last-child td { border-bottom: none; }
+.inst-note { font-size: .72rem; color: var(--text-dim); margin-top: .75rem; line-height: 1.6; }
+
+/* ─── Divider ─────────────────────────────────────────────── */
+.divider { border: none; border-top: 1px solid var(--border); margin: .85rem 0; }
+
+/* ─── Empty state ─────────────────────────────────────────── */
+.empty {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: .85rem;
+  margin-bottom: .9rem;
+}
+
+/* ─── Footer ──────────────────────────────────────────────── */
+footer {
+  color: var(--text-dim);
+  font-size: .7rem;
+  margin-top: .5rem;
+  text-align: center;
+  line-height: 1.6;
+}

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OASIS - Band Plan</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+.group-label {
+  font-size: var(--fs-small);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--amber);
+  margin: 1.3rem .2rem .6rem;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: .7rem;
+}
+@media (min-width: 480px) { .grid { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 860px) { .grid { grid-template-columns: 1fr 1fr 1fr 1fr; } }
+
+a.card {
+  display: block;
+  text-decoration: none;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cardaccent, var(--accent));
+  border-radius: 9px;
+  background: var(--panel);
+  padding: .75rem 1rem;
+  transition: background .15s, transform .1s;
+}
+a.card:hover { background: var(--panel-2); transform: translateX(2px); }
+.card-band {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: var(--cardaccent, var(--accent));
+  letter-spacing: .04em;
+}
+.card-range {
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+  margin-top: .25rem;
+}
+.card-note {
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+  margin-top: .2rem;
+  opacity: .75;
+}
+
+.all-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  margin-bottom: 1rem;
+  font-size: var(--fs-small);
+  color: var(--accent);
+  text-decoration: none;
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+  padding: .3rem .75rem;
+}
+.all-link:hover { background: var(--panel-2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">🏠 HOME</a>
+    <h1>OASIS — Amateur Band Plan</h1>
+    <p>U.S.A. FCC allocations — offline reference. Tap any band for segment detail.</p>
+  </header>
+
+  <a class="all-link" href="all-bands.html">⊞ View all bands on one page</a>
+
+  <div class="group-label">Microwave / SHF</div>
+  <div class="grid">
+    <a class="card" href="band.html?band=23cm" style="--cardaccent:#c77dff">
+      <div class="card-band">23 cm</div>
+      <div class="card-range">1240 – 1300 MHz</div>
+      <div class="card-note">All-mode · ATV · EME</div>
+    </a>
+    <a class="card" href="band.html?band=33cm" style="--cardaccent:#c77dff">
+      <div class="card-band">33 cm</div>
+      <div class="card-range">902 – 928 MHz</div>
+      <div class="card-note">All-mode · Secondary allocation</div>
+    </a>
+  </div>
+
+  <div class="group-label">UHF</div>
+  <div class="grid">
+    <a class="card" href="band.html?band=70cm" style="--cardaccent:#4db8ff">
+      <div class="card-band">70 cm</div>
+      <div class="card-range">420 – 450 MHz</div>
+      <div class="card-note">FM · Repeaters · Satellites · ATV</div>
+    </a>
+    <a class="card" href="band.html?band=1.25m" style="--cardaccent:#4db8ff">
+      <div class="card-band">1.25 m</div>
+      <div class="card-range">222 – 225 MHz</div>
+      <div class="card-note">FM · CW/SSB · Secondary</div>
+    </a>
+  </div>
+
+  <div class="group-label">VHF</div>
+  <div class="grid">
+    <a class="card" href="band.html?band=2m" style="--cardaccent:#00d98b">
+      <div class="card-band">2 m</div>
+      <div class="card-range">144 – 148 MHz</div>
+      <div class="card-note">FM · Repeaters · SSB · APRS 144.390</div>
+    </a>
+    <a class="card" href="band.html?band=6m" style="--cardaccent:#00d98b">
+      <div class="card-band">6 m</div>
+      <div class="card-range">50 – 54 MHz</div>
+      <div class="card-note">Magic Band · CW/SSB · FM</div>
+    </a>
+  </div>
+
+  <div class="group-label">HF</div>
+  <div class="grid">
+    <a class="card" href="band.html?band=10m" style="--cardaccent:#ffb454">
+      <div class="card-band">10 m</div>
+      <div class="card-range">28 – 29.7 MHz</div>
+      <div class="card-note">SSB · CW · FM · All licenses</div>
+    </a>
+    <a class="card" href="band.html?band=12m" style="--cardaccent:#ffb454">
+      <div class="card-band">12 m</div>
+      <div class="card-range">24.890 – 24.990 MHz</div>
+      <div class="card-note">SSB · CW · General+</div>
+    </a>
+    <a class="card" href="band.html?band=15m" style="--cardaccent:#ffb454">
+      <div class="card-band">15 m</div>
+      <div class="card-range">21 – 21.450 MHz</div>
+      <div class="card-note">SSB · CW · Digital · General+</div>
+    </a>
+    <a class="card" href="band.html?band=17m" style="--cardaccent:#ffb454">
+      <div class="card-band">17 m</div>
+      <div class="card-range">18.068 – 18.168 MHz</div>
+      <div class="card-note">SSB · CW · Digital · General+</div>
+    </a>
+    <a class="card" href="band.html?band=20m" style="--cardaccent:#ffb454">
+      <div class="card-band">20 m</div>
+      <div class="card-range">14 – 14.350 MHz</div>
+      <div class="card-note">DX workhorse · SSB · CW · General+</div>
+    </a>
+    <a class="card" href="band.html?band=30m" style="--cardaccent:#ffb454">
+      <div class="card-band">30 m</div>
+      <div class="card-range">10.100 – 10.150 MHz</div>
+      <div class="card-note">CW · Digital only · General+</div>
+    </a>
+    <a class="card" href="band.html?band=40m" style="--cardaccent:#ffb454">
+      <div class="card-band">40 m</div>
+      <div class="card-range">7 – 7.300 MHz</div>
+      <div class="card-note">EmComm workhorse · SSB · CW · General+</div>
+    </a>
+    <a class="card" href="band.html?band=80m" style="--cardaccent:#ffb454">
+      <div class="card-band">80 m</div>
+      <div class="card-range">3.5 – 4.0 MHz</div>
+      <div class="card-note">Local/regional · SSB · CW · General+</div>
+    </a>
+    <a class="card" href="band.html?band=160m" style="--cardaccent:#ffb454">
+      <div class="card-band">160 m</div>
+      <div class="card-range">1.8 – 2.0 MHz</div>
+      <div class="card-note">Topband · CW · SSB · General+</div>
+    </a>
+  </div>
+
+  <footer style="text-align:center;color:var(--text-dim);font-size:var(--fs-small);margin-top:1.8rem;padding-bottom:1rem;">
+    Offline reference &middot; no network required
+  </footer>
+
+</div>
+</body>
+</html>

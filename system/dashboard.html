@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Server Dashboard</title>
+<link rel="stylesheet" href="../css/common.css">
+<style>
+#lastUpdate{font-size:var(--fs-small);color:var(--text-dim);}
+#refreshBtn{background:transparent;border:1px solid var(--border);color:var(--text-dim);
+  font-family:var(--mono);font-size:var(--fs-small);padding:3px 10px;border-radius:4px;cursor:pointer;}
+#refreshBtn:hover{color:var(--accent);border-color:var(--accent-dim);}
+
+/* Services grid */
+.svc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.6rem;margin-bottom:.9rem;}
+.svc-card{border:1px solid var(--border);border-radius:9px;background:var(--panel);
+  padding:.75rem 1rem;display:flex;flex-direction:column;gap:.3rem;}
+.svc-top{display:flex;align-items:center;gap:.5rem;}
+.svc-dot{width:9px;height:9px;border-radius:50%;background:var(--text-dim);flex-shrink:0;transition:background .3s;}
+.svc-dot.up{background:var(--accent);}
+.svc-dot.down{background:var(--red);}
+.svc-dot.warn{background:var(--amber);}
+.svc-name{font-size:var(--fs-base);font-weight:700;color:var(--text);}
+.svc-detail{font-size:var(--fs-small);color:var(--text-dim);padding-left:1.3rem;min-height:.9rem;}
+.svc-link{font-size:var(--fs-small);color:var(--accent-dim);padding-left:1.3rem;text-decoration:none;}
+.svc-link:hover{color:var(--accent);}
+
+/* System stats */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:.6rem;margin-bottom:.9rem;}
+.stat-card{border:1px solid var(--border);border-radius:9px;background:var(--panel);padding:.75rem 1rem;}
+.stat-label{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.1em;color:var(--text-dim);margin-bottom:.3rem;}
+.stat-val{font-size:var(--fs-title);font-weight:700;color:var(--accent);}
+.stat-val.warn{color:var(--amber);}
+.stat-val.bad{color:var(--red);}
+.stat-sub{font-size:var(--fs-small);color:var(--text-dim);margin-top:.15rem;}
+
+/* Bar */
+.bar-wrap{margin-top:.4rem;}
+.bar-track{background:var(--panel-2);border-radius:3px;height:5px;overflow:hidden;}
+.bar-fill{height:5px;border-radius:3px;transition:width .4s;}
+
+/* APRS stations table */
+.aprs-panel{border:1px solid var(--border);border-radius:9px;background:var(--panel);
+  padding:.75rem 1rem;margin-bottom:.9rem;}
+tr:last-child .age-ok{color:var(--accent);}
+.age-warn{color:var(--amber);}
+.age-old{color:var(--red);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <a class="home-link" href="/">🏠 HOME</a>
+  <h1>OASIS — Server Status</h1>
+  <p>Real-time health and status of all server routes.</p>
+  <span id="lastUpdate"></span>
+  <button id="refreshBtn" onclick="refresh()">↺ Refresh</button>
+</header>
+
+<!-- Services -->
+<div class="sec-label">Services</div>
+<div class="svc-grid" id="svcGrid"></div>
+
+<!-- System -->
+<div class="sec-label">System</div>
+<div class="stat-grid" id="statGrid"></div>
+
+<!-- APRS -->
+<div class="aprs-panel">
+  <div class="sec-label" style="margin-bottom:.5rem">APRS Stations <span id="aprsCount" style="color:var(--text-dim);font-size:var(--fs-small);text-transform:none;letter-spacing:0"></span></div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Callsign</th><th>Last Heard</th><th>Age</th><th>Speed</th><th>Via</th><th>Comment</th></tr></thead>
+    <tbody id="aprsTbody"><tr><td colspan="6" style="color:var(--text-dim)">Loading…</td></tr></tbody>
+  </table></div>
+</div>
+
+<footer id="countdown"></footer>
+
+</div>
+<script>
+'use strict';
+
+const HOST = location.hostname;
+const REFRESH_SEC = 30;
+
+// ── Service-discovery ────────────────────────────────────────────────────────
+// Ports default to well-known values; /server-ports.json overrides them
+// if the server is running on non-standard ports.
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085 };
+
+async function loadConfig() {
+  try {
+    const r = await fetch('/server-ports.json', { cache: 'no-store' });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.ok && d.ports) Object.assign(PORTS, d.ports);
+    }
+  } catch (_) { /* use defaults */ }
+}
+
+let countdownVal = REFRESH_SEC;
+let countdownTimer = null;
+
+// ── Service definitions ───────────────────────────────────────────────────────
+const SERVICES = [
+  {
+    id: 'flask',
+    name: 'Flask',
+    get port() { return PORTS.flask; },
+    check: async () => {
+      const r = await fetch(`/api/config`, { cache: 'no-store' });
+      return r.ok ? { up: true, detail: `Port ${PORTS.flask}` } : { up: false, detail: `HTTP ${r.status}` };
+    }
+  },
+  {
+    id: 'graywolf',
+    name: 'Graywolf APRS',
+    get port() { return PORTS.graywolf; },
+    check: async () => {
+      // Any HTTP response means the service is up — Graywolf may return
+      // non-200 for cross-origin requests but is still reachable
+      try {
+        const r = await fetch(`http://${HOST}:${PORTS.graywolf}/`, { cache: 'no-store', mode: 'no-cors' });
+        return { up: true, detail: `Port ${PORTS.graywolf}` };
+      } catch (e) {
+        throw e;
+      }
+    }
+  },
+  {
+    id: 'kiwix',
+    name: 'Kiwix',
+    get port() { return PORTS.kiwix; },
+    check: async () => {
+      await fetch(`http://${HOST}:${PORTS.kiwix}/`, { cache: 'no-store', mode: 'no-cors' });
+      return { up: true, detail: `Port ${PORTS.kiwix}` };
+    }
+  },
+  {
+    id: 'fcc',
+    name: 'FCC Database',
+    get port() { return PORTS.flask; },
+    check: async () => {
+      const r = await fetch(`http://${HOST}:${PORTS.flask}/health`, { cache: 'no-store' });
+      if (!r.ok) return { up: false, detail: `HTTP ${r.status}` };
+      const d = await r.json();
+      return {
+        up: true,
+        detail: d.zip_entries ? `${d.zip_entries.toLocaleString()} ZIP entries` : `Port ${PORTS.flask}`
+      };
+    }
+  },
+  {
+    id: 'maps',
+    name: 'Offline Maps',
+    get port() { return PORTS.flask; },
+    check: async () => {
+      const r = await fetch(`/api/browse?path=maps`, { cache: 'no-store' });
+      if (!r.ok) return { up: false, detail: `HTTP ${r.status}` };
+      const d = await r.json();
+      const tiles = (d.entries || []).filter(e => e.name.endsWith('.pmtiles'));
+      return tiles.length > 0
+        ? { up: true,  detail: `${tiles.length} PMTiles file${tiles.length > 1 ? 's' : ''}` }
+        : { up: false, detail: 'No .pmtiles files found' };
+    }
+  },
+  {
+    id: 'aprsapi',
+    name: 'APRS History API',
+    get port() { return PORTS.aprs_api; },
+    check: async () => {
+      const r = await fetch(`http://${HOST}:${PORTS.aprs_api}/health`, { cache: 'no-store' });
+      if (!r.ok) return { up: false, detail: `HTTP ${r.status}` };
+      const d = await r.json();
+      return {
+        up: true,
+        detail: d.db_exists ? 'DB found' : 'DB missing',
+        warn: !d.db_exists
+      };
+    }
+  },
+];
+
+// ── Render services ───────────────────────────────────────────────────────────
+function buildServiceCards() {
+  const grid = document.getElementById('svcGrid');
+  grid.innerHTML = '';
+  SERVICES.forEach(svc => {
+    const card = document.createElement('div');
+    card.className = 'svc-card';
+    card.id = 'svc-' + svc.id;
+    card.innerHTML = `
+      <div class="svc-top">
+        <div class="svc-dot" id="dot-${svc.id}"></div>
+        <span class="svc-name">${svc.name}</span>
+      </div>
+      <div class="svc-detail" id="detail-${svc.id}">Checking…</div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+async function checkService(svc) {
+  const dot    = document.getElementById('dot-' + svc.id);
+  const detail = document.getElementById('detail-' + svc.id);
+  try {
+    const result = await Promise.race([
+      svc.check(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
+    ]);
+    dot.className    = 'svc-dot ' + (result.up ? (result.warn ? 'warn' : 'up') : 'down');
+    detail.textContent = result.detail || '';
+  } catch (e) {
+    dot.className    = 'svc-dot down';
+    detail.textContent = e.message === 'timeout' ? 'No response' : 'Unreachable';
+  }
+}
+
+// ── System stats ──────────────────────────────────────────────────────────────
+function barColor(pct) {
+  if (pct >= 90) return 'var(--red)';
+  if (pct >= 70) return 'var(--amber)';
+  return 'var(--accent)';
+}
+
+function valClass(pct) {
+  if (pct >= 90) return 'bad';
+  if (pct >= 70) return 'warn';
+  return '';
+}
+
+function fmtUptime(sec) {
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function renderStats(d) {
+  const grid = document.getElementById('statGrid');
+
+  const stats = [
+    {
+      label: 'CPU',
+      val: d.cpu_pct != null ? d.cpu_pct.toFixed(1) + '%' : '—',
+      sub: d.cpu_temp_c != null ? `${d.cpu_temp_c} °C` : '',
+      pct: d.cpu_pct
+    },
+    {
+      label: 'RAM',
+      val: d.ram ? d.ram.pct.toFixed(1) + '%' : '—',
+      sub: d.ram ? `${d.ram.used_mb} / ${d.ram.total_mb} MB` : '',
+      pct: d.ram ? d.ram.pct : null
+    },
+    {
+      label: 'Disk (SSD)',
+      val: d.disk && !d.disk.error ? d.disk.pct.toFixed(1) + '%' : '—',
+      sub: d.disk && !d.disk.error ? `${d.disk.used_gb} / ${d.disk.total_gb} GB` : (d.disk && d.disk.error) || '',
+      pct: d.disk && !d.disk.error ? d.disk.pct : null
+    },
+    {
+      label: 'Uptime',
+      val: d.uptime_sec != null ? fmtUptime(d.uptime_sec) : '—',
+      sub: '',
+      pct: null
+    },
+    {
+      label: 'FCC DB Updated',
+      val: d.fcc_db_date || '—',
+      sub: '',
+      pct: null
+    },
+  ];
+
+  grid.innerHTML = stats.map(s => `
+    <div class="stat-card">
+      <div class="stat-label">${s.label}</div>
+      <div class="stat-val ${s.pct != null ? valClass(s.pct) : ''}">${s.val}</div>
+      ${s.sub ? `<div class="stat-sub">${s.sub}</div>` : ''}
+      ${s.pct != null ? `
+        <div class="bar-wrap">
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${Math.min(s.pct,100).toFixed(1)}%;background:${barColor(s.pct)}"></div>
+          </div>
+        </div>` : ''}
+    </div>
+  `).join('');
+}
+
+async function fetchSystem() {
+  try {
+    const r = await fetch(`http://${HOST}:${PORTS.aprs_api}/api/system`, { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (d.ok) renderStats(d);
+  } catch (e) {
+    document.getElementById('statGrid').innerHTML =
+      `<div class="stat-card"><div class="stat-label">System</div><div class="stat-val bad">Unavailable</div><div class="stat-sub">${e.message}</div></div>`;
+  }
+}
+
+// ── APRS stations ─────────────────────────────────────────────────────────────
+function fmtAge(iso) {
+  if (!iso) return { text: '—', cls: '' };
+  const sec = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (sec < 0)  return { text: 'just now', cls: 'age-ok' };
+  if (sec < 3600) {
+    const m = Math.floor(sec / 60);
+    return { text: m + 'm ago', cls: m < 30 ? 'age-ok' : 'age-warn' };
+  }
+  const h = Math.floor(sec / 3600);
+  return { text: h + 'h ago', cls: h < 6 ? 'age-warn' : 'age-old' };
+}
+
+function fmtLastHeard(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toISOString().replace('T', ' ').slice(0, 16) + 'Z';
+}
+
+async function fetchAPRS() {
+  const tbody = document.getElementById('aprsTbody');
+  try {
+    const r = await fetch(`http://${HOST}:${PORTS.aprs_api}/api/aprs/stations`, { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'API error');
+
+    document.getElementById('aprsCount').textContent =
+      `— ${d.count} station${d.count !== 1 ? 's' : ''}`;
+
+    if (!d.stations.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-dim)">No stations in history DB.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = d.stations.map(s => {
+      const age = fmtAge(s.last_heard);
+      const speed = s.speed_mph > 0 ? s.speed_mph + ' mph' : '';
+      const course = s.course != null && s.speed_mph > 0
+        ? ' ' + ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(s.course/22.5)%16]
+        : '';
+      return `<tr>
+        <td style="color:var(--accent);font-weight:700">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-micro)">[obj]</span>' : ''}</td>
+        <td>${fmtLastHeard(s.last_heard)}</td>
+        <td class="${age.cls}">${age.text}</td>
+        <td>${speed}${course}</td>
+        <td style="color:var(--text-dim)">${s.via || ''}</td>
+        <td style="color:var(--text-dim);max-width:200px;overflow:hidden;text-overflow:ellipsis">${s.comment || ''}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="6" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+  }
+}
+
+// ── Countdown ─────────────────────────────────────────────────────────────────
+function startCountdown() {
+  clearInterval(countdownTimer);
+  countdownVal = REFRESH_SEC;
+  countdownTimer = setInterval(() => {
+    countdownVal--;
+    document.getElementById('countdown').textContent = `Auto-refresh in ${countdownVal}s`;
+    if (countdownVal <= 0) refresh();
+  }, 1000);
+}
+
+// ── Main refresh ──────────────────────────────────────────────────────────────
+async function refresh() {
+  document.getElementById('lastUpdate').textContent =
+    'Updated ' + new Date().toLocaleTimeString();
+
+  // Services — all in parallel
+  await Promise.allSettled(SERVICES.map(checkService));
+
+  // System + APRS in parallel
+  await Promise.allSettled([fetchSystem(), fetchAPRS()]);
+
+  startCountdown();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadConfig().then(() => {
+  buildServiceCards();
+  refresh();
+});
+</script>
+</body>
+</html>

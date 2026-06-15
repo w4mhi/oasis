@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICS Plain Language Guidelines</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+.key-secondary { color: var(--amber); font-size: var(--fs-base); }
+.def  { color: var(--text); font-size: var(--fs-base); }
+.note { color: var(--text-dim); font-size: var(--fs-small); margin-top: 2px; line-height: 1.4; }
+.info-block {
+  padding: .75rem 1rem;
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+  line-height: 1.7;
+  border-bottom: 1px solid var(--panel-2);
+}
+.info-block strong { color: var(--text); }
+.info-foot {
+  padding: .6rem 1rem .75rem;
+  font-size: var(--fs-small);
+  color: var(--text-dim);
+  line-height: 1.6;
+  border-top: 1px solid var(--panel-2);
+}
+.info-foot strong { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <a class="home-link" href="/">🏠 HOME</a>
+  <h1>ICS Plain Language Guidelines</h1>
+  <p>FEMA / NIMS interoperability standards for radio communication during activations</p>
+</header>
+
+<div class="sec">
+  <div class="info-block">
+    FEMA and NIMS require <strong>plain language</strong> during activations — avoid agency-specific codes that other
+    responders may not know. Q-codes are acceptable within amateur radio nets. The goal is interoperability:
+    anyone listening should understand what is being said.
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Instead of</th><th>Say</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="key-secondary">10-4</td><td class="def">Acknowledged / Copy</td><td class="note">10-codes vary by jurisdiction — not universally understood</td></tr>
+        <tr><td class="key-secondary">Signal 100 / Code 3</td><td class="def">Emergency traffic / Priority message</td><td class="note">Codes differ between agencies and regions</td></tr>
+        <tr><td class="key-secondary">Go to channel 3</td><td class="def">Go to [frequency in MHz]</td><td class="note">Channel numbers differ by radio model — use frequency</td></tr>
+        <tr><td class="key-secondary">ETA 1500</td><td class="def">Arrival at 1500 local / 2000 Zulu</td><td class="note">Always clarify local vs UTC during multi-agency ops</td></tr>
+        <tr><td class="key-secondary">Standby</td><td class="def">Standby — wait one / wait [time]</td><td class="note">Give an expected wait time when possible</td></tr>
+        <tr><td class="key-secondary">Negative contact</td><td class="def">Unable to reach [station] on [frequency]</td><td class="note">Be specific — say what was tried</td></tr>
+        <tr><td class="key-secondary">Out of service</td><td class="def">[Station] is off the air / not monitoring</td><td class="note">Plain language avoids confusion with equipment failure</td></tr>
+        <tr><td class="key-secondary">Break break break</td><td class="def">Emergency — all stations standby</td><td class="note">Three breaks = emergency interruption; stand by immediately</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="info-foot">
+    <strong>Always identify:</strong> Give your callsign at the beginning and end of each transmission, and at least every 10 minutes during a net — FCC requirement.<br>
+    <strong>Message priority order:</strong> Emergency &rarr; Priority &rarr; Welfare &rarr; Routine
+  </div>
+</div>
+
+</div>
+</body>
+</html>

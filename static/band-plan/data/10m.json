@@ -1,0 +1,85 @@
+{
+  "band": "10m",
+  "name": "10 Meters",
+  "range": [28.0, 29.7],
+  "unit": "MHz",
+  "license": "Tech+",
+  "allocation": "Primary",
+  "notes": [
+    "Technician: CW/data 28.0–28.3, phone/image 28.3–28.5 MHz",
+    "General+: full band",
+    "29.6 MHz: FM simplex calling"
+  ],
+  "rows": [
+    {
+      "range": [28.0, 29.3],
+      "segments": [
+        {
+          "start": 28.0, "end": 28.07,
+          "position": "bottom", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 28.000–28.070 MHz."
+        },
+        {
+          "start": 28.07, "end": 28.2,
+          "position": "top", "type": "digital", "color": "#f4a261",
+          "label": "Digital / Data",
+          "detail": "RTTY 28.070–28.150. CW 28.150–28.190 MHz."
+        },
+        {
+          "start": 28.2, "end": 28.3,
+          "position": "bottom", "type": "beacon", "color": "#2ec4b6",
+          "label": "Beacons",
+          "detail": "Propagation beacons 28.200–28.300 MHz."
+        },
+        {
+          "start": 28.3, "end": 29.0,
+          "position": "top", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Phone 28.300–29.300 MHz. SSTV 28.680. Technician phone/image 28.3–28.5."
+        },
+        {
+          "start": 29.0, "end": 29.3,
+          "position": "bottom", "type": "am", "color": "#ff9f1c",
+          "label": "AM / Phone",
+          "detail": "AM operations 29.000–29.200 MHz."
+        }
+      ],
+      "callouts": [],
+      "ticks": [28.0, 28.07, 28.2, 28.3, 29.0, 29.3]
+    },
+    {
+      "range": [29.3, 29.7],
+      "segments": [
+        {
+          "start": 29.3, "end": 29.52,
+          "position": "bottom", "type": "satellite", "color": "#06d6a0",
+          "label": "Satellite",
+          "detail": "Satellite uplinks or downlinks 29.300–29.510 MHz."
+        },
+        {
+          "start": 29.52, "end": 29.6,
+          "position": "top", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater inputs 29.520–29.590 MHz."
+        },
+        {
+          "start": 29.6, "end": 29.61,
+          "position": "bottom", "type": "fm-simplex", "color": "#c77dff",
+          "label": "FM Simplex",
+          "detail": "FM simplex 29.600 MHz."
+        },
+        {
+          "start": 29.61, "end": 29.7,
+          "position": "top", "type": "fm-repeater", "color": "#7b2d8b",
+          "label": "FM Repeater",
+          "detail": "Repeater outputs 29.610–29.700 MHz."
+        }
+      ],
+      "callouts": [
+        { "freq": 29.6, "label": "29.6", "sublabel": "FM Simplex", "type": "calling", "side": "below" }
+      ],
+      "ticks": [29.3, 29.52, 29.6, 29.61, 29.7]
+    }
+  ]
+}

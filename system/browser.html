@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browse</title>
+<link rel="stylesheet" href="../css/common.css">
+<style>
+.breadcrumb {
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+  margin-bottom: .9rem;
+  word-break: break-all;
+}
+.breadcrumb a { color: var(--blue); text-decoration: none; }
+.breadcrumb a:hover { text-decoration: underline; }
+.breadcrumb span { color: var(--text-dim); margin: 0 .25rem; }
+
+.entry-list { list-style: none; padding: 0; margin: 0; }
+.entry-list li {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .4rem .6rem;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-base);
+}
+.entry-list li:last-child { border-bottom: none; }
+.entry-list li:hover { background: var(--panel); border-radius: 5px; }
+
+.entry-icon { font-size: var(--fs-subtitle); flex-shrink: 0; width: 1.2rem; text-align: center; }
+.entry-name { flex: 1; }
+.entry-name a { color: var(--text); text-decoration: none; }
+.entry-name a:hover { color: var(--accent); }
+.entry-dir a { color: var(--blue); }
+.entry-meta { font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; }
+
+#status { font-size: var(--fs-base); color: var(--text-dim); padding: .5rem 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <a class="home-link" href="/">🏠 HOME</a>
+  <h1 id="page-title">Browse</h1>
+  <p id="page-sub"></p>
+</header>
+
+<div class="sec">
+  <div class="breadcrumb" id="breadcrumb"></div>
+  <div id="status">Loading…</div>
+  <ul class="entry-list" id="entry-list"></ul>
+</div>
+
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const rootPath = (params.get('path') || '').replace(/\/$/, '');
+let currentPath = params.get('browse') || rootPath;
+
+function fmtSize(bytes) {
+  if (bytes == null) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function fmtDate(ts) {
+  return new Date(ts * 1000).toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
+}
+
+function buildBreadcrumb(path) {
+  const bc = document.getElementById('breadcrumb');
+  const parts = path ? path.split('/').filter(Boolean) : [];
+  let html = `<a href="browser.html?path=${encodeURIComponent(rootPath)}&browse=${encodeURIComponent(rootPath)}">📁 ${rootPath || '/'}</a>`;
+  let built = rootPath;
+  parts.slice(rootPath.split('/').filter(Boolean).length).forEach((p, i) => {
+    built += '/' + p;
+    html += `<span>›</span><a href="browser.html?path=${encodeURIComponent(rootPath)}&browse=${encodeURIComponent(built)}">${p}</a>`;
+  });
+  bc.innerHTML = html;
+}
+
+function load(path) {
+  currentPath = path;
+  history.replaceState(null, '', `browser.html?path=${encodeURIComponent(rootPath)}&browse=${encodeURIComponent(path)}`);
+
+  const title = rootPath.split('/').filter(Boolean).pop() || rootPath;
+  document.getElementById('page-title').textContent = title;
+  document.getElementById('page-sub').textContent = path;
+  document.title = 'Browse — ' + title;
+
+  buildBreadcrumb(path);
+  document.getElementById('status').textContent = 'Loading…';
+  document.getElementById('entry-list').innerHTML = '';
+
+  fetch(`/api/browse?path=${encodeURIComponent(path)}`)
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('status').textContent = '';
+      if (!data.ok) { document.getElementById('status').textContent = data.error; return; }
+
+      const list = document.getElementById('entry-list');
+
+      // Up one level (if not already at root)
+      if (path !== rootPath) {
+        const parent = path.substring(0, path.lastIndexOf('/')) || rootPath;
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="entry-icon">⬆️</span><span class="entry-name"><a href="#" data-nav="${parent}">.. (up)</a></span>`;
+        list.appendChild(li);
+      }
+
+      if (!data.entries.length && path === rootPath) {
+        const li = document.createElement('li');
+        li.innerHTML = '<span style="color:var(--text-dim)">Empty folder</span>';
+        list.appendChild(li);
+      }
+
+      data.entries.forEach(e => {
+        const li = document.createElement('li');
+        const isDir = e.type === 'dir';
+        const entryPath = path + '/' + e.name;
+
+        if (isDir) {
+          li.className = 'entry-dir';
+          li.innerHTML = `
+            <span class="entry-icon">📁</span>
+            <span class="entry-name"><a href="#" data-nav="${entryPath}">${e.name}/</a></span>
+            <span class="entry-meta"></span>`;
+        } else {
+          const href = '/' + entryPath;
+          li.innerHTML = `
+            <span class="entry-icon">${fileIcon(e.name)}</span>
+            <span class="entry-name"><a href="${href}" target="_blank" rel="noopener">${e.name}</a></span>
+            <span class="entry-meta">${fmtSize(e.size)} · ${fmtDate(e.modified)}</span>`;
+        }
+        list.appendChild(li);
+      });
+
+      list.querySelectorAll('[data-nav]').forEach(a => {
+        a.addEventListener('click', ev => { ev.preventDefault(); load(a.dataset.nav); });
+      });
+    })
+    .catch(() => { document.getElementById('status').textContent = 'Failed to load directory.'; });
+}
+
+function fileIcon(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const map = { pdf:'📄', png:'🖼️', jpg:'🖼️', jpeg:'🖼️', gif:'🖼️', svg:'🖼️',
+                mp3:'🎵', wav:'🎵', ogg:'🎵',
+                mp4:'🎬', avi:'🎬', mkv:'🎬',
+                zip:'🗜️', gz:'🗜️', tar:'🗜️',
+                html:'🌐', htm:'🌐',
+                txt:'📝', md:'📝', csv:'📊', json:'📊', xml:'📊' };
+  return map[ext] || '📎';
+}
+
+load(currentPath);
+</script>
+</body>
+</html>

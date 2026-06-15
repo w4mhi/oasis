@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OASIS - Radio Quick Reference</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+/* Search */
+.search-wrap{margin-bottom:.9rem;position:relative;}
+.search-wrap input{
+  background:var(--panel);border:1px solid var(--border);color:var(--text);
+  font-family:var(--mono);font-size:var(--fs-subtitle);padding:8px 12px 8px 36px;
+  border-radius:8px;width:100%;
+}
+.search-wrap .search-wrap input::placeholder{color:var(--text-dim);}
+.search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-dim);font-size:var(--fs-base);pointer-events:none;}
+.search-clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:var(--fs-base);display:none;}
+.search-clear:hover{color:var(--text);}
+
+/* Accordion section */
+.section{border:1px solid var(--border);border-radius:10px;background:var(--panel);margin-bottom:.7rem;overflow:hidden;}
+.section-hdr{
+  display:flex;align-items:center;gap:.75rem;padding:.85rem 1.1rem;
+  cursor:pointer;user-select:none;
+}
+.section-hdr:hover{background:var(--panel-2);}
+.section-icon{font-size:var(--fs-subtitle);flex-shrink:0;}
+.section-title{flex:1;font-size:var(--fs-subtitle);font-weight:700;color:var(--text);letter-spacing:.04em;}
+.section-sub{font-size:var(--fs-small);color:var(--text-dim);}
+.section-count{font-size:var(--fs-small);color:var(--text-dim);background:var(--panel-2);
+  border:1px solid var(--border);border-radius:3px;padding:1px 7px;}
+.chevron{color:var(--text-dim);font-size:var(--fs-small);transition:transform .2s;flex-shrink:0;}
+.section.open .chevron{transform:rotate(180deg);}
+.section-body{display:none;border-top:1px solid var(--border);}
+.section.open .section-body{display:block;}
+
+/* Table */
+tr:last-child .key{color:var(--accent);font-weight:700;white-space:nowrap;}
+.key-secondary{color:var(--amber);font-size:var(--fs-base);}
+.def{color:var(--text);font-size:var(--fs-base);}
+.note{color:var(--text-dim);font-size:var(--fs-small);margin-top:2px;line-height:1.4;}
+.tag{display:inline-block;font-size:var(--fs-micro);padding:1px 6px;border-radius:3px;
+  margin-left:4px;vertical-align:middle;border:1px solid;}
+.tag-emcomm{color:#ffb454;border-color:#ffb45444;background:#3a2a0044;}
+.tag-caution{color:#ff6b6b;border-color:#ff6b6b44;background:#3a0a0a44;}
+
+/* RST table specifics */
+.rst-num{color:var(--accent);font-size:var(--fs-title);font-weight:700;text-align:center;}
+.rst-label{color:var(--amber);font-size:var(--fs-label);font-weight:600;}
+
+/* Search highlight */
+.hl{background:#0a3a20;color:var(--accent);border-radius:2px;padding:0 1px;}
+
+/* No results */
+.no-results{padding:1.5rem;text-align:center;color:var(--text-dim);font-size:var(--fs-base);display:none;}
+
+/* Expand/collapse all */
+.ctrl-row{display:flex;gap:.5rem;margin-bottom:.7rem;}
+.ctrl-btn{background:transparent;border:1px solid var(--border);color:var(--text-dim);
+  font-family:var(--mono);font-size:var(--fs-small);padding:4px 12px;border-radius:5px;cursor:pointer;}
+.ctrl-btn:hover{border-color:var(--accent-dim);color:var(--accent);}
+
+@media print{
+  body{background:#fff;color:#000;}
+  .search-wrap,.ctrl-row{display:none!important;}
+  .section{border-color:#ccc;background:#fff;break-inside:avoid;}
+  .section-body{display:block!important;}
+  .section-hdr{background:#fff;}
+  th{background:#f0f0f0;color:#555;}
+  td{border-color:#ddd;}
+  .key{color:#007a50;}
+  .key-secondary{color:#7a5a00;}
+  .def{color:#000;}
+  .note{color:#555;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Radio Quick Reference</h1>
+  <p>Phonetic alphabet, Q-codes, pro-words, and RST signal reporting. Tap any section to expand. Use the search bar to find any term.</p>
+</header>
+
+<div class="ctrl-row">
+  <button class="ctrl-btn" onclick="expandAll()">Expand All</button>
+  <button class="ctrl-btn" onclick="collapseAll()">Collapse All</button>
+</div>
+
+<div class="search-wrap">
+  <span class="search-icon">🔍</span>
+  <input type="text" id="searchBox" placeholder="Search any term, code, or meaning…" oninput="onSearch(this.value)">
+  <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
+</div>
+
+<div id="sections">
+
+<!-- ── Phonetic Alphabet ─────────────────────────────────────────────────── -->
+<div class="section" id="sec-phonetic">
+  <div class="section-hdr" onclick="toggle('sec-phonetic')">
+    <span class="section-icon">🔤</span>
+    <span class="section-title">NATO Phonetic Alphabet</span>
+    <span class="section-count">26</span>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <table>
+      <thead><tr><th>Letter</th><th>Word</th><th>Pronunciation</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="key">A</td><td class="def">Alfa</td><td class="key-secondary">AL-fah</td><td class="note">Spelled without 'ph' to avoid confusion across languages</td></tr>
+        <tr><td class="key">B</td><td class="def">Bravo</td><td class="key-secondary">BRAH-voh</td><td></td></tr>
+        <tr><td class="key">C</td><td class="def">Charlie</td><td class="key-secondary">CHAR-lee</td><td></td></tr>
+        <tr><td class="key">D</td><td class="def">Delta</td><td class="key-secondary">DELL-tah</td><td></td></tr>
+        <tr><td class="key">E</td><td class="def">Echo</td><td class="key-secondary">EKK-oh</td><td></td></tr>
+        <tr><td class="key">F</td><td class="def">Foxtrot</td><td class="key-secondary">FOKS-trot</td><td></td></tr>
+        <tr><td class="key">G</td><td class="def">Golf</td><td class="key-secondary">GOLF</td><td></td></tr>
+        <tr><td class="key">H</td><td class="def">Hotel</td><td class="key-secondary">HOH-tel</td><td></td></tr>
+        <tr><td class="key">I</td><td class="def">India</td><td class="key-secondary">IN-dee-ah</td><td></td></tr>
+        <tr><td class="key">J</td><td class="def">Juliett</td><td class="key-secondary">JEW-lee-ett</td><td>Two t's — avoid confusion with French "Juliet"</td></tr>
+        <tr><td class="key">K</td><td class="def">Kilo</td><td class="key-secondary">KEY-loh</td><td></td></tr>
+        <tr><td class="key">L</td><td class="def">Lima</td><td class="key-secondary">LEE-mah</td><td>Not LY-mah (the fruit)</td></tr>
+        <tr><td class="key">M</td><td class="def">Mike</td><td class="key-secondary">MIKE</td><td></td></tr>
+        <tr><td class="key">N</td><td class="def">November</td><td class="key-secondary">no-VEM-ber</td><td></td></tr>
+        <tr><td class="key">O</td><td class="def">Oscar</td><td class="key-secondary">OSS-car</td><td></td></tr>
+        <tr><td class="key">P</td><td class="def">Papa</td><td class="key-secondary">pah-PAH</td><td></td></tr>
+        <tr><td class="key">Q</td><td class="def">Quebec</td><td class="key-secondary">keh-BECK</td><td></td></tr>
+        <tr><td class="key">R</td><td class="def">Romeo</td><td class="key-secondary">ROW-me-oh</td><td></td></tr>
+        <tr><td class="key">S</td><td class="def">Sierra</td><td class="key-secondary">see-AIR-ah</td><td></td></tr>
+        <tr><td class="key">T</td><td class="def">Tango</td><td class="key-secondary">TANG-go</td><td></td></tr>
+        <tr><td class="key">U</td><td class="def">Uniform</td><td class="key-secondary">YOU-nee-form</td><td></td></tr>
+        <tr><td class="key">V</td><td class="def">Victor</td><td class="key-secondary">VIK-tah</td><td></td></tr>
+        <tr><td class="key">W</td><td class="def">Whiskey</td><td class="key-secondary">WISS-key</td><td></td></tr>
+        <tr><td class="key">X</td><td class="def">X-ray</td><td class="key-secondary">ECKS-ray</td><td></td></tr>
+        <tr><td class="key">Y</td><td class="def">Yankee</td><td class="key-secondary">YANG-key</td><td></td></tr>
+        <tr><td class="key">Z</td><td class="def">Zulu</td><td class="key-secondary">ZOO-loo</td><td>Also used to denote UTC time</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Q-Codes ────────────────────────────────────────────────────────────── -->
+<div class="section" id="sec-qcodes">
+  <div class="section-hdr" onclick="toggle('sec-qcodes')">
+    <span class="section-icon">📡</span>
+    <span class="section-title">Q-Codes</span>
+    <span class="section-count">20</span>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <table>
+      <thead><tr><th>Code</th><th>Meaning (statement)</th><th>Meaning (question)</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="key">QRM</td><td class="def">I am being interfered with</td><td class="def">Are you being interfered with?</td><td class="note">Man-made interference — other stations, noise from equipment</td></tr>
+        <tr><td class="key">QRN</td><td class="def">I am troubled by static</td><td class="def">Are you troubled by static?</td><td class="note">Natural interference — lightning, atmospheric noise</td></tr>
+        <tr><td class="key">QRO</td><td class="def">Increase transmitter power</td><td class="def">Shall I increase power?</td><td class="note">Opposite of QRP</td></tr>
+        <tr><td class="key">QRP</td><td class="def">Decrease transmitter power</td><td class="def">Shall I decrease power?</td><td class="note">Commonly used to mean low-power operation (&lt;5W)</td></tr>
+        <tr><td class="key">QRS</td><td class="def">Send more slowly</td><td class="def">Shall I send more slowly?</td><td class="note">Primarily CW; sometimes used on digital modes</td></tr>
+        <tr><td class="key">QRT</td><td class="def">I am closing down</td><td class="def">Shall I stop sending?</td><td class="note">Station going off the air</td></tr>
+        <tr><td class="key">QRU</td><td class="def">I have nothing for you</td><td class="def">Have you anything for me?</td><td class="note">Common on traffic nets — no traffic to pass</td></tr>
+        <tr><td class="key">QRV</td><td class="def">I am ready</td><td class="def">Are you ready?</td><td class="note"><span class="tag tag-emcomm">EmComm</span> Used to confirm readiness to receive traffic</td></tr>
+        <tr><td class="key">QRX</td><td class="def">I will call you again at… hrs</td><td class="def">When will you call me again?</td><td class="note">Standby / wait</td></tr>
+        <tr><td class="key">QRZ</td><td class="def">You are being called by…</td><td class="def">Who is calling me?</td><td class="note">Common at end of CQ or after unclear callsign</td></tr>
+        <tr><td class="key">QSB</td><td class="def">Your signals are fading</td><td class="def">Are my signals fading?</td><td class="note">Signal strength variation — multipath or ionospheric</td></tr>
+        <tr><td class="key">QSL</td><td class="def">I acknowledge receipt</td><td class="def">Can you acknowledge receipt?</td><td class="note"><span class="tag tag-emcomm">EmComm</span> Confirm message received and understood</td></tr>
+        <tr><td class="key">QSO</td><td class="def">I can communicate with…</td><td class="def">Can you communicate with…?</td><td class="note">A two-way contact or conversation</td></tr>
+        <tr><td class="key">QSP</td><td class="def">I will relay to…</td><td class="def">Will you relay to…?</td><td class="note"><span class="tag tag-emcomm">EmComm</span> Traffic relay through a third station</td></tr>
+        <tr><td class="key">QST</td><td class="def">General call to all stations</td><td class="def">—</td><td class="note">Bulletin or announcement intended for all</td></tr>
+        <tr><td class="key">QSY</td><td class="def">Change to frequency…</td><td class="def">Shall I change frequency?</td><td class="note">Move to another frequency — specify in kHz or MHz</td></tr>
+        <tr><td class="key">QTC</td><td class="def">I have… messages for you</td><td class="def">How many messages do you have?</td><td class="note"><span class="tag tag-emcomm">EmComm</span> Used on traffic nets to indicate message count</td></tr>
+        <tr><td class="key">QTH</td><td class="def">My location is…</td><td class="def">What is your location?</td><td class="note">Give city, grid square, or address as appropriate</td></tr>
+        <tr><td class="key">QTR</td><td class="def">The exact time is…</td><td class="def">What is the exact time?</td><td class="note">Always give time in UTC (Zulu) during activations</td></tr>
+        <tr><td class="key">QTX</td><td class="def">I will keep my station open</td><td class="def">Will you keep your station open?</td><td class="note"><span class="tag tag-emcomm">EmComm</span> Station remains available for further traffic</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Pro-words ───────────────────────────────────────────────────────────── -->
+<div class="section" id="sec-prowords">
+  <div class="section-hdr" onclick="toggle('sec-prowords')">
+    <span class="section-icon">🗣</span>
+    <span class="section-title">Procedure Words (Pro-words)</span>
+    <span class="section-count">16</span>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <table>
+      <thead><tr><th>Pro-word</th><th>Meaning</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="key">AFFIRMATIVE</td><td class="def">Yes / that is correct</td><td class="note"><span class="tag tag-caution">not "Roger"</span> Use when confirming a fact, not just acknowledging receipt</td></tr>
+        <tr><td class="key">ALL AFTER</td><td class="def">The portion of the message after the word I have specified</td><td class="note">Used when asking for a repeat of part of a message</td></tr>
+        <tr><td class="key">ALL BEFORE</td><td class="def">The portion of the message before the word I have specified</td><td class="note">Used when asking for a repeat of part of a message</td></tr>
+        <tr><td class="key">BREAK</td><td class="def">I am separating the text from other portions of the message</td><td class="note"><span class="tag tag-emcomm">EmComm</span> Pause between header and body of a formal message</td></tr>
+        <tr><td class="key">CORRECT</td><td class="def">You are correct / what you have transmitted is correct</td><td class="note">Confirms accuracy of information, not just receipt</td></tr>
+        <tr><td class="key">DISREGARD</td><td class="def">Ignore my last transmission</td><td class="note">Not "Cancel" — used when an error was made</td></tr>
+        <tr><td class="key">GO AHEAD</td><td class="def">Proceed with your transmission</td><td class="note">Permission to transmit; response to a station calling you</td></tr>
+        <tr><td class="key">I SAY AGAIN</td><td class="def">I am repeating my last transmission</td><td class="note">Preferred over "I repeat" — "repeat" is an artillery term</td></tr>
+        <tr><td class="key">NEGATIVE</td><td class="def">No / that is not correct / I cannot / I do not</td><td class="note">Use instead of "no" for clarity over noisy channels</td></tr>
+        <tr><td class="key">OUT</td><td class="def">This exchange is ended; no reply expected</td><td class="note"><span class="tag tag-caution">never "Over and Out"</span> Over = reply expected; Out = conversation ended</td></tr>
+        <tr><td class="key">OVER</td><td class="def">My transmission is ended; your reply is expected</td><td class="note">Pass the channel to the other station</td></tr>
+        <tr><td class="key">READ BACK</td><td class="def">Repeat this entire transmission back to me exactly as received</td><td class="note"><span class="tag tag-emcomm">EmComm</span> Used to verify critical information</td></tr>
+        <tr><td class="key">ROGER</td><td class="def">I have received and understood your last transmission</td><td class="note"><span class="tag tag-caution">not "yes"</span> Does not mean agreement — only receipt and understanding</td></tr>
+        <tr><td class="key">SAY AGAIN</td><td class="def">Repeat your last transmission</td><td class="note">Preferred over "repeat" for the reason above</td></tr>
+        <tr><td class="key">STANDBY</td><td class="def">I must pause for a few seconds; do not call me</td><td class="note">If longer than a few seconds, give an estimated return time</td></tr>
+        <tr><td class="key">WILCO</td><td class="def">I have received your message, understand it, and will comply</td><td class="note">Implies both Roger and intent to act — do not say "Roger Wilco"</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── RST ────────────────────────────────────────────────────────────────── -->
+<div class="section" id="sec-rst">
+  <div class="section-hdr" onclick="toggle('sec-rst')">
+    <span class="section-icon">📶</span>
+    <span class="section-title">RST Signal Reporting</span>
+    <span class="section-count">R1–5 · S1–9 · T1–9</span>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <div style="padding:.75rem 1rem .25rem;font-size:var(--fs-label);color:var(--text-dim);line-height:1.6;">
+      RST = <strong style="color:var(--text)">Readability</strong> + <strong style="color:var(--text)">Signal Strength</strong> + <strong style="color:var(--text)">Tone</strong> (CW/digital only).
+      Voice reports use RS only (e.g. "59"). A "5-9" report means perfectly readable, extremely strong signal.
+      Give honest reports — an inflated "59" is useless. On digital modes, report what you actually see in the waterfall.
+    </div>
+    <table>
+      <thead><tr><th style="width:60px">Value</th><th>Readability (R)</th><th>Signal Strength (S)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="rst-num">1</td>
+          <td><div class="rst-label">Unreadable</div><div class="note">Cannot copy any part of transmission</div></td>
+          <td><div class="rst-label">Faint — barely perceptible</div><div class="note">Signal barely detectable above noise</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">2</td>
+          <td><div class="rst-label">Barely readable</div><div class="note">Occasional words distinguishable</div></td>
+          <td><div class="rst-label">Very weak</div><div class="note">Weak signal, difficult copy</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">3</td>
+          <td><div class="rst-label">Readable with difficulty</div><div class="note">Significant effort required, copy uncertain</div></td>
+          <td><div class="rst-label">Weak</div><div class="note">Weak signal but copyable</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">4</td>
+          <td><div class="rst-label">Readable with slight difficulty</div><div class="note">Some words missed, overall meaning clear</div></td>
+          <td><div class="rst-label">Fair</div><div class="note">Fair signal, moderate strength</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">5</td>
+          <td><div class="rst-label">Perfectly readable</div><div class="note">No difficulty copying every word</div></td>
+          <td><div class="rst-label">Fairly good</div><div class="note">Fairly good signal strength</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">6</td>
+          <td><div class="rst-label">—</div><td></td></td>
+          <td><div class="rst-label">Good</div><div class="note">Good signal strength</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">7</td>
+          <td><div class="rst-label">—</div><td></td></td>
+          <td><div class="rst-label">Moderately strong</div><div class="note">Strong, above average signal</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">8</td>
+          <td><div class="rst-label">—</div><td></td></td>
+          <td><div class="rst-label">Strong</div><div class="note">Strong signal, solid copy</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">9</td>
+          <td><div class="rst-label">—</div><td></td></td>
+          <td><div class="rst-label">Extremely strong</div><div class="note">S9 = maximum on most meter scales (~50µV at antenna)</div></td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="padding:.5rem 1rem .75rem;font-size:var(--fs-small);color:var(--text-dim);line-height:1.6;border-top:1px solid var(--panel-2);">
+      <strong style="color:var(--text)">S9+</strong> reports (S9+10dB, S9+20dB, etc.) indicate signals above S9 — common on busy HF bands.
+      <br><strong style="color:var(--text)">Typical voice exchange:</strong> "You are 5 by 7" or "59 here" — Readability first, then Strength.
+      <br><strong style="color:var(--text)">EmComm note:</strong> For formal message traffic, a signal report is not required but helps the receiving operator assess path quality.
+    </div>
+  </div>
+</div>
+
+<!-- ── ICS Plain Language ─────────────────────────────────────────────────── -->
+<div class="section" id="sec-ics">
+  <div class="section-hdr" onclick="toggle('sec-ics')">
+    <span class="section-icon">🚨</span>
+    <span class="section-title">ICS Plain Language Guidelines</span>
+    <span class="section-count">EmComm</span>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <div style="padding:.75rem 1rem;font-size:var(--fs-label);color:var(--text-dim);line-height:1.7;border-bottom:1px solid var(--panel-2);">
+      FEMA and NIMS require <strong style="color:var(--text)">plain language</strong> during activations — avoid agency-specific codes that other responders may not know.
+      Q-codes are acceptable within amateur radio nets. The goal is interoperability: anyone listening should understand what is being said.
+    </div>
+    <table>
+      <thead><tr><th>Instead of</th><th>Say</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="key-secondary">10-4</td><td class="def">Acknowledged / Copy</td><td class="note">10-codes vary by jurisdiction — not universally understood</td></tr>
+        <tr><td class="key-secondary">Signal 100 / Code 3</td><td class="def">Emergency traffic / Priority message</td><td class="note">Codes differ between agencies and regions</td></tr>
+        <tr><td class="key-secondary">Go to channel 3</td><td class="def">Go to [frequency in MHz]</td><td class="note">Channel numbers differ by radio model — use frequency</td></tr>
+        <tr><td class="key-secondary">ETA 1500</td><td class="def">Arrival at 1500 local / 2000 Zulu</td><td class="note">Always clarify local vs UTC during multi-agency ops</td></tr>
+        <tr><td class="key-secondary">Standby</td><td class="def">Standby — wait one / wait [time]</td><td class="note">Give an expected wait time when possible</td></tr>
+        <tr><td class="key-secondary">Negative contact</td><td class="def">Unable to reach [station] on [frequency]</td><td class="note">Be specific — say what was tried</td></tr>
+        <tr><td class="key-secondary">Out of service</td><td class="def">[Station] is off the air / not monitoring</td><td class="note">Plain language avoids confusion with equipment failure</td></tr>
+        <tr><td class="key-secondary">Break break break</td><td class="def">Emergency — all stations standby</td><td class="note">Three breaks = emergency interruption; stand by immediately</td></tr>
+      </tbody>
+    </table>
+    <div style="padding:.6rem 1rem .75rem;font-size:var(--fs-small);color:var(--text-dim);line-height:1.6;border-top:1px solid var(--panel-2);">
+      <strong style="color:var(--text)">Always identify:</strong> Give your callsign at the beginning and end of each transmission, and at least every 10 minutes during a net — FCC requirement.
+      <br><strong style="color:var(--text)">Message priority order:</strong> Emergency → Priority → Welfare → Routine
+    </div>
+  </div>
+</div>
+
+</div><!-- /sections -->
+<div class="no-results" id="noResults">No matching terms found.</div>
+
+</div>
+<script>
+'use strict';
+
+// ── Accordion ─────────────────────────────────────────────────────────────────
+function toggle(id) {
+  const sec = document.getElementById(id);
+  sec.classList.toggle('open');
+}
+function expandAll() {
+  document.querySelectorAll('.section').forEach(s => s.classList.add('open'));
+}
+function collapseAll() {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('open'));
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+function onSearch(val) {
+  const q = val.trim().toLowerCase();
+  const clearBtn = document.getElementById('searchClear');
+  clearBtn.style.display = q ? 'block' : 'none';
+
+  if (!q) {
+    // Restore all rows, remove highlights, collapse sections
+    document.querySelectorAll('tr[data-original]').forEach(tr => {
+      tr.innerHTML = tr.getAttribute('data-original');
+      tr.removeAttribute('data-original');
+      tr.style.display = '';
+    });
+    document.querySelectorAll('tbody tr').forEach(tr => tr.style.display = '');
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('open'));
+    document.querySelectorAll('.section-body').forEach(b => b.style.display = '');
+    document.getElementById('noResults').style.display = 'none';
+    return;
+  }
+
+  let anyMatch = false;
+
+  document.querySelectorAll('.section').forEach(sec => {
+    const rows = sec.querySelectorAll('tbody tr');
+    let secMatch = false;
+
+    rows.forEach(tr => {
+      const text = tr.textContent.toLowerCase();
+      if (text.includes(q)) {
+        tr.style.display = '';
+        secMatch = true;
+        anyMatch = true;
+        // Highlight
+        if (!tr.getAttribute('data-original')) {
+          tr.setAttribute('data-original', tr.innerHTML);
+        }
+        tr.innerHTML = highlight(tr.getAttribute('data-original'), q);
+      } else {
+        // Restore if previously highlighted
+        if (tr.getAttribute('data-original')) {
+          tr.innerHTML = tr.getAttribute('data-original');
+          tr.removeAttribute('data-original');
+        }
+        tr.style.display = 'none';
+      }
+    });
+
+    // Also check section header text
+    const hdrText = sec.querySelector('.section-title').textContent.toLowerCase();
+    if (hdrText.includes(q)) secMatch = true;
+
+    if (secMatch) {
+      sec.classList.add('open');
+      sec.querySelector('.section-body').style.display = '';
+    } else {
+      sec.classList.remove('open');
+      sec.querySelector('.section-body').style.display = '';
+    }
+  });
+
+  document.getElementById('noResults').style.display = anyMatch ? 'none' : 'block';
+}
+
+function highlight(html, q) {
+  // Only highlight text nodes — don't touch tag attributes
+  const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('(' + esc + ')', 'gi');
+  // Replace only outside of HTML tags
+  return html.replace(/(<[^>]+>)|([^<]+)/g, (m, tag, text) => {
+    if (tag) return tag;
+    return text.replace(re, '<span class="hl">$1</span>');
+  });
+}
+
+function clearSearch() {
+  const box = document.getElementById('searchBox');
+  box.value = '';
+  onSearch('');
+  box.focus();
+}
+
+// Enter key focuses search
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+    e.preventDefault();
+    document.getElementById('searchBox').focus();
+  }
+});
+</script>
+</body>
+</html>

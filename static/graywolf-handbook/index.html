@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OASIS - GrayWolf Handbook</title>
+<style>
+:root {
+  --fs-title:    1.2rem;
+  --fs-subtitle: 0.9rem;
+  --fs-base:     0.85rem;
+  --fs-label:    0.75rem;
+  --fs-small:    0.7rem;
+  --fs-micro:    0.65rem;
+}
+
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel-2: #1c2330; --border: #2a3441;
+    --accent: #00d98b; --accent-dim: #0a7a52; --amber: #ffb454;
+    --text: #d7e0ea; --text-dim: #8b97a6;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--mono);
+    max-width: 860px; margin: 0 auto; padding: 2rem 1rem;
+  }
+  h1 {
+    font-size: var(--fs-title); letter-spacing: 0.08em; color: var(--accent);
+    text-transform: uppercase; border-bottom: 1px solid var(--border);
+    padding-bottom: 0.6rem; margin-bottom: 1.4rem;
+  }
+  h2 {
+    font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--amber); margin: 1.4rem 0 0.5rem;
+  }
+  ul {
+    list-style: none; padding: 0;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel); overflow: hidden;
+  }
+  li { border-bottom: 1px solid var(--border); }
+  li:last-child { border-bottom: none; }
+  a {
+    text-decoration: none; color: var(--text);
+    display: block; padding: 0.45rem 1rem;
+  }
+  a:hover { background: var(--panel-2); color: var(--accent); }
+  .back a { color: var(--accent-dim); font-size: var(--fs-base); }
+  .back a::before { content: "\2190  "; }
+  .dir  a::before { content: "\1F4C1  "; }
+  .file a::before { content: "\1F4C4  "; }
+  footer { margin-top: 2rem; font-size: var(--fs-small); color: var(--text-dim); }
+</style>
+</head>
+<body>
+<h1>GrayWolf Handbook</h1>
+<ul>
+  <li class="back"><a href="../">Back to main index</a></li>
+</ul>
+<h2>Folders</h2>
+<ul>
+  <li class="dir"><a href="fonts/">fonts/</a></li>
+  <li class="dir"><a href="img/">img/</a></li>
+  <li class="dir"><a href="vendor/">vendor/</a></li>
+</ul>
+<h2>Files</h2>
+<ul>
+  <li class="file"><a href="actions-handler-safety.html">actions-handler-safety.html</a></li>
+  <li class="file"><a href="actions-handler-safety-powershell.html">actions-handler-safety-powershell.html</a></li>
+  <li class="file"><a href="actions-handler-safety-shell.html">actions-handler-safety-shell.html</a></li>
+  <li class="file"><a href="actions-handler-safety-webhooks.html">actions-handler-safety-webhooks.html</a></li>
+  <li class="file"><a href="actions.html">actions.html</a></li>
+  <li class="file"><a href="agwpe.html">agwpe.html</a></li>
+  <li class="file"><a href="api.html">api.html</a></li>
+  <li class="file"><a href="architecture.html">architecture.html</a></li>
+  <li class="file"><a href="audio.html">audio.html</a></li>
+  <li class="file"><a href="ax25-terminal.html">ax25-terminal.html</a></li>
+  <li class="file"><a href="beacons.html">beacons.html</a></li>
+  <li class="file"><a href="callsign.html">callsign.html</a></li>
+  <li class="file"><a href="channels.html">channels.html</a></li>
+  <li class="file"><a href="configurations.html">configurations.html</a></li>
+  <li class="file"><a href="digipeater.html">digipeater.html</a></li>
+  <li class="file"><a href="gps.html">gps.html</a></li>
+  <li class="file"><a href="handbook.css">handbook.css</a></li>
+  <li class="file"><a href="handbook.js">handbook.js</a></li>
+  <li class="file"><a href="history-database.html">history-database.html</a></li>
+  <li class="file"><a href="igate.html">igate.html</a></li>
+  <li class="file"><a href="installation.html">installation.html</a></li>
+  <li class="file"><a href="kiss-bluetooth.html">kiss-bluetooth.html</a></li>
+  <li class="file"><a href="kiss.html">kiss.html</a></li>
+  <li class="file"><a href="kiss-serial.html">kiss-serial.html</a></li>
+  <li class="file"><a href="kiss-usb-serial.html">kiss-usb-serial.html</a></li>
+  <li class="file"><a href="livemap.html">livemap.html</a></li>
+  <li class="file"><a href="logs.html">logs.html</a></li>
+  <li class="file"><a href="maps.html">maps.html</a></li>
+  <li class="file"><a href="messaging.html">messaging.html</a></li>
+  <li class="file"><a href="monitoring.html">monitoring.html</a></li>
+  <li class="file"><a href="openapi.json">openapi.json</a></li>
+  <li class="file"><a href="openapi.yaml">openapi.yaml</a></li>
+  <li class="file"><a href="preferences.html">preferences.html</a></li>
+  <li class="file"><a href="privacy.html">privacy.html</a></li>
+  <li class="file"><a href="ptt.html">ptt.html</a></li>
+  <li class="file"><a href="remote-actions.html">remote-actions.html</a></li>
+  <li class="file"><a href="remote-kiss-tnc.html">remote-kiss-tnc.html</a></li>
+  <li class="file"><a href="simulation.html">simulation.html</a></li>
+</ul>
+<footer>ACK Off Grid Server</footer>
+</body>
+</html>

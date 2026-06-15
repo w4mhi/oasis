@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICS 213 — General Message</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+.g-subj{grid-template-columns:2fr 1fr 1fr;}
+@media(max-width:560px){.g2,.g3,.g4,.g-subj{grid-template-columns:1fr 1fr;}}
+@media(max-width:360px){.g2,.g3,.g4,.g-subj{grid-template-columns:1fr;}}
+
+.fld textarea{min-height:120px;}
+.fld textarea.reply-area{min-height:100px;}
+
+.fld input[type="date"]{color-scheme:dark;}
+
+
+@media print{
+  @page{size:letter portrait;margin:.5in;}
+  body{background:#fff;color:#000;font-size:9pt;padding:0;}
+  .wrap{max-width:100%;}
+  .actions,.inst{display:none!important;}
+  .sec{border:1px solid #999;border-radius:0;background:#fff;padding:.3rem .5rem;margin-bottom:.3rem;}
+  .form-title{color:#000;font-size:11pt;}
+  .sec-lbl{color:#555;}
+  .fld label{color:#555;}
+  .fld input,.fld textarea{background:#fff;color:#000;border:none;border-bottom:1px solid #aaa;border-radius:0;padding:1px 0;}
+  .fld textarea{overflow:hidden;resize:none;min-height:0;}
+  }
+.save-ts{font-size:var(--fs-micro);color:var(--text-dim);opacity:.6;margin-top:.25rem;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">🏠 HOME</a>
+    <h1>ICS-213</h1>
+    <p>General Message</p>
+  </header>
+
+  <div class="actions">
+    <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 213 PDF and download a timestamped copy">⬇ Save PDF</button>
+    <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
+    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 213 CSV file to restore form data">Import CSV</button>
+    <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
+    <button class="sbtn danger" onclick="clearAll()" title="Clear all form data and reset to a blank form">Clear</button>
+  </div>
+  <div class="save-ts" id="save-ts"></div>
+
+  <div class="lib-status" id="lib-status"></div>
+  <input type="file" id="csv-import-input" accept=".csv,text/csv" style="display:none">
+
+  <!-- Blocks 1–6: Header -->
+  <div class="sec">
+    <div class="form-title">ICS 213 — General Message</div>
+
+    <div class="fg" style="margin-bottom:.6rem;">
+      <div class="fld"><label>1. Incident Name (Optional)</label>
+        <input type="text" id="f-inc" placeholder="Enter incident name if applicable">
+      </div>
+    </div>
+
+    <div class="fg g2" style="margin-bottom:.6rem;">
+      <div class="fld"><label>2. To (Name and Position)</label>
+        <input type="text" id="f-to" placeholder="First Last, ICS Position">
+      </div>
+      <div class="fld"><label>3. From (Name and Position)</label>
+        <input type="text" id="f-from" placeholder="First Last, ICS Position">
+      </div>
+    </div>
+
+    <div class="fg g-subj">
+      <div class="fld"><label>4. Subject</label>
+        <input type="text" id="f-subj" placeholder="Enter subject">
+      </div>
+      <div class="fld"><label>5. Date</label>
+        <input type="date" id="f-date">
+      </div>
+      <div class="fld"><label>6. Time</label>
+        <input type="text" id="f-time" placeholder="HHmmL">
+      </div>
+    </div>
+  </div>
+
+  <!-- Block 7: Message -->
+  <div class="sec">
+    <span class="sec-lbl">7. Message</span>
+    <div class="fld">
+      <textarea id="f-msg" placeholder="Enter message content. Be as concise as possible." oninput="ar(this);persist()"></textarea>
+    </div>
+  </div>
+
+  <!-- Block 8: Approved By -->
+  <div class="sec">
+    <span class="sec-lbl">8. Approved By</span>
+    <div class="fg g3">
+      <div class="fld"><label>Name</label>
+        <input type="text" id="f-appr-name" placeholder="First Last">
+      </div>
+      <div class="fld"><label>Signature</label>
+        <input type="text" id="f-appr-sig" placeholder="—">
+      </div>
+      <div class="fld"><label>Position / Title</label>
+        <input type="text" id="f-appr-pos" placeholder="ICS Position">
+      </div>
+    </div>
+  </div>
+
+  <!-- Block 9: Reply -->
+  <div class="sec">
+    <span class="sec-lbl">9. Reply</span>
+    <div class="fld">
+      <textarea id="f-reply" class="reply-area" placeholder="Recipient enters reply here." oninput="ar(this);persist()"></textarea>
+    </div>
+  </div>
+
+  <!-- Block 10: Replied By -->
+  <div class="sec">
+    <span class="sec-lbl">10. Replied By</span>
+    <div class="fg g4">
+      <div class="fld"><label>Name</label>
+        <input type="text" id="f-rep-name" placeholder="First Last">
+      </div>
+      <div class="fld"><label>Position / Title</label>
+        <input type="text" id="f-rep-pos" placeholder="ICS Position">
+      </div>
+      <div class="fld"><label>Signature</label>
+        <input type="text" id="f-rep-sig" placeholder="—">
+      </div>
+      <div class="fld"><label>Date / Time</label>
+        <input type="text" id="f-rep-dt" placeholder="YYYYMMDD HHmmL">
+      </div>
+    </div>
+    <hr class="divider">
+    <div class="fg g2">
+      <div class="fld"><label>ICS 213 Form Date / Time</label>
+        <input type="text" id="f-form-dt" placeholder="YYYYMMDD HHmmL">
+      </div>
+    </div>
+  </div>
+
+  <!-- Instructions -->
+  <div class="inst">
+    <button class="inst-tog" onclick="toggleInst()">
+      <span>ICS 213 Field Instructions</span><span id="i-arrow">▼</span>
+    </button>
+    <div class="inst-body" id="i-body">
+      <table class="inst-tbl">
+        <thead><tr><th>Block</th><th>Title</th><th>Instructions</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Incident Name</td><td>Optional. Enter the name assigned to the incident.</td></tr>
+          <tr><td>2</td><td>To</td><td>Enter the name and position the message is intended for. Use at least first initial and last name. For Unified Command, include agency names.</td></tr>
+          <tr><td>3</td><td>From</td><td>Enter the name and position of the individual sending the message. Use at least first initial and last name. For Unified Command, include agency names.</td></tr>
+          <tr><td>4</td><td>Subject</td><td>Enter the subject of the message.</td></tr>
+          <tr><td>5</td><td>Date</td><td>Enter the date (month/day/year) of the message.</td></tr>
+          <tr><td>6</td><td>Time</td><td>Enter the time (24-hour clock) of the message.</td></tr>
+          <tr><td>7</td><td>Message</td><td>Enter the content of the message. Be as concise as possible.</td></tr>
+          <tr><td>8</td><td>Approved By</td><td>Enter the name, signature, and ICS position/title of the person approving the message.</td></tr>
+          <tr><td>9</td><td>Reply</td><td>The intended recipient enters a reply to the message and returns it to the originator.</td></tr>
+          <tr><td>10</td><td>Replied By</td><td>Enter the name, ICS position/title, and signature of the person replying. Enter date (month/day/year) and time prepared (24-hour clock).</td></tr>
+        </tbody>
+      </table>
+      <p class="inst-note">
+        <strong style="color:var(--text)">Purpose:</strong> Used to record incoming messages that cannot be orally transmitted, and to transmit messages (resource orders, incident name changes, ICS coordination) via radio or telephone. Used for any message requiring hard-copy delivery.<br><br>
+        <strong style="color:var(--text)">Notes:</strong> Traditionally a three-part carbon form — sender completes the message and sends parts 2 and 3 to the recipient; recipient completes the reply and returns part 3 to the sender. A copy must be sent to the Documentation Unit.
+      </p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+<script src="./ics213-template.js"></script>
+<script src="../dependencies/pdf-lib.min.js"></script>
+<script>
+const STORE='ics-213';
+const HF=['f-inc','f-to','f-from','f-subj','f-date','f-time','f-msg',
+          'f-appr-name','f-appr-sig','f-appr-pos',
+          'f-reply','f-rep-name','f-rep-pos','f-rep-sig','f-rep-dt','f-form-dt'];
+
+function ar(el){el.style.height='auto';el.style.height=el.scrollHeight+'px';}
+
+function fmtDatePicker(id){
+  const v=document.getElementById(id)?.value||'';
+  if(!v)return '';
+  const [y,m,d]=v.split('-');
+  return m+'/'+d+'/'+y;
+}
+function fmtTimeNow(d){
+  return String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'L';
+}
+function fmtDateISO(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+function persist(){
+  const d={};
+  HF.forEach(id=>{const el=document.getElementById(id);if(el)d[id]=el.value;});
+  try{
+    localStorage.setItem(STORE,JSON.stringify(d));
+    const ts=document.getElementById('save-ts');
+    if(ts) ts.textContent='Auto-saved '+new Date().toLocaleTimeString();
+  }catch(e){
+    if(e.name==='QuotaExceededError') showToast('⚠ Local storage full — export your data now!',3000);
+  }
+}
+
+function load(){
+  try{
+    const raw=localStorage.getItem(STORE);if(!raw)return false;
+    const d=JSON.parse(raw);
+    HF.forEach(id=>{
+      const el=document.getElementById(id);
+      if(el&&d[id]!==undefined){
+        el.value=d[id];
+        if(el.tagName==='TEXTAREA')ar(el);
+      }
+    });
+    return true;
+  }catch(e){return false;}
+}
+
+function clearAll(){
+  if(!confirm('Clear all ICS 213 data?'))return;
+  HF.forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  try{localStorage.removeItem(STORE);}catch(e){}
+}
+
+function cc(v){const s=String(v??'');return/[,"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function gv(id){return document.getElementById(id)?.value||'';}
+
+function exportCSV(){
+  const rows=[
+    '# ICS 213 — General Message',
+    '# Exported: '+new Date().toISOString(),
+    '',
+    ['Field','Value'].join(','),
+    ['Incident Name',gv('f-inc')].map(cc).join(','),
+    ['To',gv('f-to')].map(cc).join(','),
+    ['From',gv('f-from')].map(cc).join(','),
+    ['Subject',gv('f-subj')].map(cc).join(','),
+    ['Date',fmtDatePicker('f-date')||gv('f-date')].map(cc).join(','),
+    ['Time',gv('f-time')].map(cc).join(','),
+    '',
+    ['Message',gv('f-msg')].map(cc).join(','),
+    '',
+    '# APPROVED BY',
+    ['Name',gv('f-appr-name')].map(cc).join(','),
+    ['Signature',gv('f-appr-sig')].map(cc).join(','),
+    ['Position/Title',gv('f-appr-pos')].map(cc).join(','),
+    '',
+    ['Reply',gv('f-reply')].map(cc).join(','),
+    '',
+    '# REPLIED BY',
+    ['Name',gv('f-rep-name')].map(cc).join(','),
+    ['Position/Title',gv('f-rep-pos')].map(cc).join(','),
+    ['Signature',gv('f-rep-sig')].map(cc).join(','),
+    ['Date/Time',gv('f-rep-dt')].map(cc).join(','),
+    ['Form Date/Time',gv('f-form-dt')].map(cc).join(','),
+  ];
+  const blob=new Blob([rows.join('\r\n')],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='ics213-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+}
+
+function toggleInst(){
+  const b=document.getElementById('i-body');
+  const open=b.classList.toggle('open');
+  document.getElementById('i-arrow').textContent=open?'▲':'▼';
+}
+
+function showToast(msg,ms=2800){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),ms);
+}
+
+function checkLibStatus(){
+  const div=document.getElementById('lib-status');
+  if(!div) return;
+  const hasPdf=typeof window.PDFLib!=='undefined';
+  const hasTpl=typeof ICS213_PDF_B64!=='undefined';
+  let html='';
+  html+=`<span class="${hasTpl?'lib-ok':'lib-err'}">${hasTpl?'✓':'✗'} PDF template ${hasTpl?'loaded':'missing — run convert-template.sh first'}</span>`;
+  html+=`<span class="${hasPdf?'lib-ok':'lib-warn'}">${hasPdf?'✓':'⚠'} pdf-lib ${hasPdf?'loaded':'not found — run install.sh first'}</span>`;
+  if(hasPdf&&hasTpl) html+='<span style="color:var(--text-dim)">— ready to save PDF</span>';
+  div.innerHTML=html;
+}
+
+async function savePDF(){
+  if(typeof window.PDFLib==='undefined'||typeof ICS213_PDF_B64==='undefined'){
+    showToast('PDF library or template not loaded'); return;
+  }
+  try{
+    const raw=Uint8Array.from(atob(ICS213_PDF_B64),c=>c.charCodeAt(0));
+    const pdfDoc=await window.PDFLib.PDFDocument.load(raw,{ignoreEncryption:true});
+    const form=pdfDoc.getForm();
+    function sf(name,val){
+      try{const f=form.getTextField(name);f.setText(val||'');}catch(e){}
+    }
+    sf('ICS 213 1. Incident Name', gv('f-inc'));
+    sf('ICS 213 2. To', gv('f-to'));
+    sf('ICS 213 3. From', gv('f-from'));
+    sf('ICS 213 4. Subject', gv('f-subj'));
+    sf('ICS 213 5. Date', fmtDatePicker('f-date'));
+    sf('ICS 213 6. Time', gv('f-time'));
+    sf('ICS 213 7. Message', gv('f-msg'));
+    sf('ICS 213 8. Approved by Name', gv('f-appr-name'));
+    sf('ICS 213 8. Approved by Signature', gv('f-appr-sig'));
+    sf('ICS 213 8. Position/Title', gv('f-appr-pos'));
+    sf('ICS 213 9. Reply', gv('f-reply'));
+    sf('ICS 213 10. Replied by Name', gv('f-rep-name'));
+    sf('ICS 213 10. Position/Title', gv('f-rep-pos'));
+    sf('ICS 213 10. Replied by Signature', gv('f-rep-sig'));
+    sf('ICS 213 10. Date/Time', gv('f-rep-dt'));
+    form.flatten();
+    const bytes=await pdfDoc.save();
+    const blob=new Blob([bytes],{type:'application/pdf'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='ics213-'+new Date().toISOString().slice(0,10)+'.pdf';
+    a.click();
+    showToast('PDF saved');
+  }catch(err){
+    console.error(err);
+    showToast('PDF error: '+err.message);
+  }
+}
+
+function importCSVPrompt(){
+  document.getElementById('csv-import-input').click();
+}
+
+function importCSV(file){
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const lines=e.target.result.split(/\r?\n/);
+    const map={
+      'Incident Name':'f-inc','To':'f-to','From':'f-from','Subject':'f-subj',
+      'Date':'f-date','Time':'f-time','Message':'f-msg',
+      'Name':'f-appr-name','Signature':'f-appr-sig','Position/Title':'f-appr-pos',
+      'Reply':'f-reply',
+    };
+    // Track section for disambiguating repeated keys
+    let section='';
+    for(const line of lines){
+      if(line.startsWith('#')){
+        if(line.includes('APPROVED'))section='appr';
+        else if(line.includes('REPLIED'))section='rep';
+        continue;
+      }
+      const parts=parseCSVLine(line);
+      if(parts.length<2)continue;
+      const key=parts[0],val=parts.slice(1).join(',');
+      if(section==='rep'){
+        if(key==='Name')setField('f-rep-name',val);
+        else if(key==='Position/Title')setField('f-rep-pos',val);
+        else if(key==='Signature')setField('f-rep-sig',val);
+        else if(key==='Date/Time')setField('f-rep-dt',val);
+        else if(key==='Form Date/Time')setField('f-form-dt',val);
+      } else if(section==='appr'){
+        if(key==='Name')setField('f-appr-name',val);
+        else if(key==='Signature')setField('f-appr-sig',val);
+        else if(key==='Position/Title')setField('f-appr-pos',val);
+      } else {
+        if(map[key])setField(map[key],val);
+      }
+    }
+    persist();
+    showToast('CSV imported');
+  };
+  reader.readAsText(file);
+}
+
+function parseCSVLine(line){
+  const res=[];let cur='',inQ=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+    else if(c===','&&!inQ){res.push(cur);cur='';}
+    else cur+=c;
+  }
+  res.push(cur);
+  return res;
+}
+
+function setField(id,val){
+  const el=document.getElementById(id);if(!el)return;
+  if(el.type==='date'){
+    // Accept MM/DD/YYYY → YYYY-MM-DD
+    const m=val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if(m)el.value=m[3]+'-'+m[1].padStart(2,'0')+'-'+m[2].padStart(2,'0');
+    else el.value=val;
+  } else {
+    el.value=val;
+  }
+  if(el.tagName==='TEXTAREA')ar(el);
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  HF.forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.addEventListener('input',persist);
+  });
+  document.getElementById('csv-import-input').addEventListener('change',e=>{
+    if(e.target.files[0])importCSV(e.target.files[0]);
+    e.target.value='';
+  });
+  const restored=load();
+  if(!restored){
+    const now=new Date();
+    const dateEl=document.getElementById('f-date');
+    if(dateEl&&!dateEl.value)dateEl.value=fmtDateISO(now);
+    const timeEl=document.getElementById('f-time');
+    if(timeEl&&!timeEl.value)timeEl.value=fmtTimeNow(now);
+  }
+  checkLibStatus();
+});
+</script>
+</body>
+</html>

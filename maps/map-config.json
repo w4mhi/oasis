@@ -1,0 +1,4 @@
+{
+  "washington.pmtiles": { "center": [-122.1021, 47.6062], "zoom": 11 },
+  "issaquah.pmtiles":   { "center": [-122.0321, 47.5301], "zoom": 13 }
+}

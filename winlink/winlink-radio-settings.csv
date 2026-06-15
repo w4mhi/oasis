@@ -1,0 +1,6 @@
+﻿Radio,HW,USB,Data Port Cable,ACC Port,Winlink Settings,SoundModem,Notes
+FT-817,Digirig,N/A,To Audio Digirig,N/A,KISS/ACKMODE/TCP,Devices->PTT COMx (COM by Digirig),"Menu #40: 1200, #07: Rear Antenna, #26: RTTY (Exit) / When operate, push ""Mode"" until right cormner shows PKT."
+FT-500DR,Digirig,N/A,To Audio Digirig,N/A,KISS/ACKMODE/TCP,Devices->PTT COMx (COM by Digirig),"APRS needs to be OFF, the sub channel should be setup to the Winlink frequency."
+IC-705,N/A,USB->PC,N/A,N/A,KISS/ACKMODE/TCP,"Devics->PTT CAT-> CI-V COM (COM by IC-705, address A4h)",Radio on FM-D
+ID-51,MobilinkD,N/A,To Audio MobilinkD,N/A,KISS/NORMAL/COM8,N/A,"Channel: B, Radio Volume: Max, SQL: 7"
+TH-D75,N/A,N/A,N/A,N/A,KISS/NORMAL/COM6,N/A,"Channel: A (see settings), Bluetooth: On, Press [F] and [5] until KISS 12 appears on right corner, SQL: 7"

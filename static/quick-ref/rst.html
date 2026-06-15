@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RST Signal Reporting</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+.rst-num   { color: var(--accent); font-size: var(--fs-title); font-weight: 700; text-align: center; }
+.rst-label { color: var(--amber); font-size: var(--fs-label); font-weight: 600; }
+.note      { color: var(--text-dim); font-size: var(--fs-small); margin-top: 2px; line-height: 1.4; }
+.info-block {
+  padding: .75rem 1rem;
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+  line-height: 1.7;
+  border-bottom: 1px solid var(--panel-2);
+}
+.info-block strong { color: var(--text); }
+.info-foot {
+  padding: .5rem 1rem .75rem;
+  font-size: var(--fs-small);
+  color: var(--text-dim);
+  line-height: 1.6;
+  border-top: 1px solid var(--panel-2);
+}
+.info-foot strong { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <a class="home-link" href="/">🏠 HOME</a>
+  <h1>RST Signal Reporting</h1>
+  <p>Readability · Signal Strength · Tone (CW/digital)</p>
+</header>
+
+<div class="sec">
+  <div class="info-block">
+    RST = <strong>Readability</strong> + <strong>Signal Strength</strong> + <strong>Tone</strong> (CW/digital only).
+    Voice reports use RS only (e.g. "59"). A "5-9" report means perfectly readable, extremely strong signal.
+    Give honest reports — an inflated "59" is useless. On digital modes, report what you actually see in the waterfall.
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th style="width:60px">Value</th><th>Readability (R)</th><th>Signal Strength (S)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="rst-num">1</td>
+          <td><div class="rst-label">Unreadable</div><div class="note">Cannot copy any part of transmission</div></td>
+          <td><div class="rst-label">Faint — barely perceptible</div><div class="note">Signal barely detectable above noise</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">2</td>
+          <td><div class="rst-label">Barely readable</div><div class="note">Occasional words distinguishable</div></td>
+          <td><div class="rst-label">Very weak</div><div class="note">Weak signal, difficult copy</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">3</td>
+          <td><div class="rst-label">Readable with difficulty</div><div class="note">Significant effort required, copy uncertain</div></td>
+          <td><div class="rst-label">Weak</div><div class="note">Weak signal but copyable</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">4</td>
+          <td><div class="rst-label">Readable with slight difficulty</div><div class="note">Some words missed, overall meaning clear</div></td>
+          <td><div class="rst-label">Fair</div><div class="note">Fair signal, moderate strength</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">5</td>
+          <td><div class="rst-label">Perfectly readable</div><div class="note">No difficulty copying every word</div></td>
+          <td><div class="rst-label">Fairly good</div><div class="note">Fairly good signal strength</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">6</td>
+          <td><div class="rst-label">—</div></td>
+          <td><div class="rst-label">Good</div><div class="note">Good signal strength</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">7</td>
+          <td><div class="rst-label">—</div></td>
+          <td><div class="rst-label">Moderately strong</div><div class="note">Strong, above average signal</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">8</td>
+          <td><div class="rst-label">—</div></td>
+          <td><div class="rst-label">Strong</div><div class="note">Strong signal, solid copy</div></td>
+        </tr>
+        <tr>
+          <td class="rst-num">9</td>
+          <td><div class="rst-label">—</div></td>
+          <td><div class="rst-label">Extremely strong</div><div class="note">S9 = maximum on most meter scales (~50µV at antenna)</div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="info-foot">
+    <strong>S9+</strong> reports (S9+10dB, S9+20dB, etc.) indicate signals above S9 — common on busy HF bands.<br>
+    <strong>Typical voice exchange:</strong> "You are 5 by 7" or "59 here" — Readability first, then Strength.<br>
+    <strong>EmComm note:</strong> For formal message traffic, a signal report is not required but helps the receiving operator assess path quality.
+  </div>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,34 @@
+{
+  "band": "30m",
+  "name": "30 Meters",
+  "range": [10.1, 10.15],
+  "unit": "MHz",
+  "license": "General+",
+  "allocation": "Secondary",
+  "notes": [
+    "CW and data only — no phone or image",
+    "Maximum 200W PEP output",
+    "Secondary allocation — must not interfere with fixed services"
+  ],
+  "rows": [
+    {
+      "range": [10.1, 10.15],
+      "segments": [
+        {
+          "start": 10.1, "end": 10.13,
+          "position": "bottom", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 10.100–10.130 MHz."
+        },
+        {
+          "start": 10.13, "end": 10.15,
+          "position": "top", "type": "digital", "color": "#f4a261",
+          "label": "Digital / Data",
+          "detail": "RTTY 10.130–10.140. Packet 10.140–10.150 MHz."
+        }
+      ],
+      "callouts": [],
+      "ticks": [10.1, 10.13, 10.15]
+    }
+  ]
+}

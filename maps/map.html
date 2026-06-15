@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Emergency Maps — Offline</title>
+  <link rel="stylesheet" href="/map-assets/maplibre-gl.css">
+  <script src="/map-assets/maplibre-gl.js"></script>
+  <script src="/map-assets/pmtiles.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0d1a;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      width: 100vw; height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top bar */
+    #topbar {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 5px 14px;
+      background: #080810;
+      border-bottom: 1px solid #ff6b0033;
+      font-size: 0.85rem;
+      z-index: 10;
+      flex-shrink: 0;
+    }
+    #topbar .label   { color: #ff6b00; font-weight: bold; letter-spacing: 1.5px; font-size: 0.9rem; }
+    #coords          { color: #7ecfff; min-width: 300px; }
+    #zoom-level      { color: #888; }
+    #status          { color: #ffb300; }
+    #status.ok       { color: #4caf50; }
+    #status.error    { color: #ff5252; }
+
+    #topbar .home-link {
+      margin-left: auto;
+      color: #58a6ff;
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: bold;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    #topbar .home-link:hover { color: #00d98b; }
+
+    #map-sel {
+      background: #0d0d1a;
+      color: #e0e0e0;
+      border: 1px solid #ff6b0055;
+      border-radius: 3px;
+      padding: 2px 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    #map-sel:focus { outline: none; border-color: #ff6b00; }
+
+    /* Map */
+    #map { flex: 1; width: 100%; }
+
+    /* Layer panel */
+    #layer-panel {
+      position: absolute;
+      top: 44px; right: 10px;
+      background: rgba(8, 8, 16, 0.93);
+      border: 1px solid #1e2a4a;
+      border-radius: 3px;
+      padding: 10px 13px;
+      z-index: 10;
+      font-size: 0.85rem;
+      min-width: 145px;
+    }
+    #layer-panel h3 {
+      color: #4caf50; font-size: 0.75rem;
+      letter-spacing: 1.5px; margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+    .layer-toggle {
+      display: flex; align-items: center;
+      gap: 8px; margin-bottom: 5px;
+      cursor: pointer; user-select: none;
+    }
+    .layer-toggle input { accent-color: #4caf50; cursor: pointer; }
+    .layer-toggle span  { color: #ccc; }
+
+    /* Diagnostics */
+    #diagnostics {
+      position: absolute;
+      bottom: 28px; left: 10px;
+      background: rgba(8,8,16,0.88);
+      border: 1px solid #1e2a4a;
+      border-radius: 3px;
+      padding: 6px 10px;
+      font-size: 0.75rem; color: #666;
+      z-index: 10; max-width: 400px;
+      line-height: 1.6;
+    }
+    #diagnostics .val { color: #4caf50; }
+
+    /* Popup */
+    .maplibregl-popup-content {
+      background: #0d0d1a;
+      color: #e0e0e0;
+      border: 1px solid #2a3a5a;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      padding: 8px 10px;
+      max-width: 260px;
+    }
+    .maplibregl-popup-tip { border-top-color: #2a3a5a; }
+    .popup-row td:first-child { color: #7ecfff; padding-right: 10px; white-space: nowrap; }
+    .popup-row td:last-child  { color: #e0e0e0; }
+  </style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="label">⚠ OFFLINE MAPS</span>
+  <select id="map-sel" title="Switch map"></select>
+  <span id="coords">Move mouse over map…</span>
+  <span id="zoom-level">Zoom: —</span>
+  <span id="status">Loading…</span>
+  <a href="/" class="home-link">⌂ HOME</a>
+</div>
+
+<div id="map"></div>
+
+<div id="layer-panel">
+  <h3>Layers</h3>
+  <label class="layer-toggle"><input type="checkbox" data-group="roads"     checked> <span>Roads</span></label>
+  <label class="layer-toggle"><input type="checkbox" data-group="waterways" checked> <span>Waterways</span></label>
+  <label class="layer-toggle"><input type="checkbox" data-group="water"     checked> <span>Water bodies</span></label>
+  <label class="layer-toggle"><input type="checkbox" data-group="buildings" checked> <span>Buildings</span></label>
+  <label class="layer-toggle"><input type="checkbox" data-group="parks"     checked> <span>Parks / Nature</span></label>
+  <label class="layer-toggle"><input type="checkbox" data-group="landuse"   checked> <span>Land use</span></label>
+  <label class="layer-toggle"><input type="checkbox" data-group="pois"      checked> <span>POIs / Places</span></label>
+</div>
+
+<div id="diagnostics">
+  PMTiles layers detected: <span id="layer-names" class="val">inspecting…</span><br>
+  Click any feature to see its OSM properties.
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+// Priority: URL params > PMTiles metadata center > PMTiles metadata bounds > neutral fallback
+const _params      = new URLSearchParams(window.location.search);
+let   PMTILES_FILE = _params.get('file') || 'washington.pmtiles';
+const _pc          = _params.get('center');   // ?center=lon,lat
+const _pz          = _params.get('zoom');     // ?zoom=12
+const URL_CENTER   = _pc ? _pc.split(',').map(Number) : null;
+const URL_ZOOM     = _pz ? Number(_pz) : null;
+
+// ── Load map-config.json (center + zoom per file) ───────────────────────────
+let MAP_CONFIG = {};
+(async () => {
+  try {
+    const res = await fetch(`${window.location.origin}/maps/map-config.json`);
+    MAP_CONFIG = await res.json();
+  } catch(e) { /* config is optional */ }
+})();
+
+// ── Populate map file dropdown ────────────────────────────────────────────────
+(async () => {
+  const sel = document.getElementById('map-sel');
+  try {
+    const res  = await fetch('/api/browse?path=maps');
+    const data = await res.json();
+    const files = (data.entries || []).filter(e => e.name.endsWith('.pmtiles')).map(e => e.name);
+    files.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f;
+      opt.textContent = f.replace('.pmtiles', '');
+      if (f === PMTILES_FILE) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  } catch(e) {
+    const opt = document.createElement('option');
+    opt.value = PMTILES_FILE;
+    opt.textContent = PMTILES_FILE.replace('.pmtiles', '');
+    sel.appendChild(opt);
+  }
+  sel.addEventListener('change', () => switchMap(sel.value));
+})();
+
+// ── PMTiles protocol ─────────────────────────────────────────────────────────
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+
+const origin    = window.location.origin;
+const tilesUrl  = `pmtiles://${origin}/maps/${PMTILES_FILE}`;
+const httpUrl   = `${origin}/maps/${PMTILES_FILE}`;
+
+// ── Diagnostics ───────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    const p      = new pmtiles.PMTiles(httpUrl);
+    const meta   = await p.getMetadata();
+    const layers = (meta.vector_layers || []).map(l => l.id).join(', ');
+    document.getElementById('layer-names').textContent = layers || '(none found)';
+    console.log('[PMTiles] Metadata:', JSON.stringify(meta, null, 2));
+  } catch (e) {
+    document.getElementById('layer-names').textContent = 'error — see console';
+    console.error('[PMTiles] Metadata fetch failed:', e);
+  }
+})();
+
+// ── Helpers: OSM property filters ────────────────────────────────────────────
+// ogr2ogr exports null GPKG fields as null in GeoJSON.
+// Filter: property exists AND is not null AND is not empty string.
+function hasVal(field) {
+  return ['all',
+    ['has', field],
+    ['!=', ['get', field], null],
+    ['!=', ['get', field], '']
+  ];
+}
+
+// ── Map style ─────────────────────────────────────────────────────────────────
+// Source-layer names come from tippecanoe input filenames:
+//   lines.geojson        → source-layer "lines"
+//   multipolygons.geojson → source-layer "multipolygons"
+//   points.geojson       → source-layer "points"
+//
+// Within each source-layer, features are differentiated by OSM property values.
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    glyphs: `${origin}/map-assets/fonts/{fontstack}/{range}.pbf`,
+    sources: {
+      map: { type: 'vector', url: tilesUrl }
+    },
+    layers: [
+
+      // ── Background ────────────────────────────────────────────────────────
+      { id: 'background', type: 'background',
+        paint: { 'background-color': '#111827' } },
+
+      // ── Land use (from multipolygons, landuse field) ───────────────────────
+      { id: 'landuse-fill', type: 'fill',
+        source: 'map', 'source-layer': 'multipolygons',
+        filter: hasVal('landuse'),
+        paint: {
+          'fill-color': ['match', ['get', 'landuse'],
+            ['park', 'grass', 'meadow', 'village_green'], '#14311a',
+            ['forest', 'wood'],                           '#0d2010',
+            'residential',                                '#161b2e',
+            ['commercial', 'retail'],                     '#1a1535',
+            ['industrial', 'railway'],                    '#1c1c1c',
+            ['farmland', 'farmyard', 'orchard'],          '#1a2010',
+            ['cemetery', 'grave_yard'],                   '#1a2220',
+            '#161822'
+          ],
+          'fill-opacity': 0.9
+        }
+      },
+
+      // ── Natural areas (from multipolygons, natural field, not water) ───────
+      { id: 'natural-fill', type: 'fill',
+        source: 'map', 'source-layer': 'multipolygons',
+        filter: ['all', hasVal('natural'), ['!=', ['get', 'natural'], 'water']],
+        paint: {
+          'fill-color': ['match', ['get', 'natural'],
+            ['wood', 'tree_row'],    '#0d2010',
+            ['scrub', 'heath'],      '#122810',
+            ['wetland', 'mud'],      '#0d2020',
+            ['sand', 'beach'],       '#2a2510',
+            ['bare_rock', 'scree'],  '#222222',
+            '#12181a'
+          ],
+          'fill-opacity': 0.85
+        }
+      },
+
+      // ── Parks / leisure (from multipolygons, leisure field) ───────────────
+      { id: 'parks-fill', type: 'fill',
+        source: 'map', 'source-layer': 'multipolygons',
+        filter: hasVal('leisure'),
+        paint: {
+          'fill-color': ['match', ['get', 'leisure'],
+            ['park', 'garden', 'nature_reserve', 'playground'], '#14311a',
+            ['pitch', 'track', 'golf_course'],                  '#112d18',
+            ['stadium', 'sports_centre'],                       '#1a1a35',
+            '#14311a'
+          ],
+          'fill-opacity': 0.8
+        }
+      },
+
+      // ── Water bodies (from multipolygons, natural=water OR waterway field) ─
+      { id: 'water-poly-fill', type: 'fill',
+        source: 'map', 'source-layer': 'multipolygons',
+        filter: ['any',
+          ['==', ['get', 'natural'], 'water'],
+          hasVal('waterway')
+        ],
+        paint: { 'fill-color': '#0d2d50', 'fill-opacity': 0.95 }
+      },
+
+      // ── Buildings (from multipolygons, building field) ────────────────────
+      { id: 'buildings-fill', type: 'fill',
+        source: 'map', 'source-layer': 'multipolygons',
+        filter: hasVal('building'),
+        paint: {
+          'fill-color': '#1e2540',
+          'fill-outline-color': '#2e3d66',
+          'fill-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 15, 0.9]
+        }
+      },
+
+      // ── Waterways as lines (from lines layer, waterway field) ─────────────
+      { id: 'waterways-line', type: 'line',
+        source: 'map', 'source-layer': 'lines',
+        filter: hasVal('waterway'),
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#1565c0',
+          'line-width': ['interpolate', ['linear'], ['zoom'],
+            8,  ['match', ['get', 'waterway'], ['river', 'canal'], 2, 1],
+            14, ['match', ['get', 'waterway'], ['river', 'canal'], 6, 2]
+          ],
+          'line-opacity': 0.9
+        }
+      },
+
+      // ── Roads — casing / outline (from lines layer, highway field) ────────
+      { id: 'roads-casing', type: 'line',
+        source: 'map', 'source-layer': 'lines',
+        filter: hasVal('highway'),
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#000000',
+          'line-opacity': 0.7,
+          'line-width': ['interpolate', ['linear'], ['zoom'],
+            8, ['match', ['get', 'highway'],
+              ['motorway', 'trunk'], 5,
+              ['primary'],           3,
+              ['secondary'],         2,
+              1],
+            16, ['match', ['get', 'highway'],
+              ['motorway', 'trunk'], 20,
+              ['primary'],           14,
+              ['secondary'],         10,
+              ['tertiary'],          7,
+              4]
+          ]
+        }
+      },
+
+      // ── Roads — fill (from lines layer, highway field) ────────────────────
+      { id: 'roads-fill', type: 'line',
+        source: 'map', 'source-layer': 'lines',
+        filter: hasVal('highway'),
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': ['match', ['get', 'highway'],
+            ['motorway', 'trunk'],              '#ff6b00',
+            ['primary'],                        '#e8960a',
+            ['secondary'],                      '#c9b40a',
+            ['tertiary'],                       '#888899',
+            ['residential', 'living_street'],   '#4a4a68',
+            ['service'],                        '#303048',
+            ['unclassified'],                   '#555566',
+            ['path', 'footway', 'steps'],       '#4a3820',
+            ['cycleway'],                       '#1a4a30',
+            ['track'],                          '#3a3020',
+            '#303048'
+          ],
+          'line-width': ['interpolate', ['linear'], ['zoom'],
+            8,  ['match', ['get', 'highway'],
+              ['motorway', 'trunk'], 4,
+              ['primary'],           2.5,
+              ['secondary'],         1.5,
+              0.5],
+            16, ['match', ['get', 'highway'],
+              ['motorway', 'trunk'], 18,
+              ['primary'],           12,
+              ['secondary'],         8,
+              ['tertiary'],          5,
+              3]
+          ]
+        }
+      },
+
+      // ── POIs / Places (from points layer) ────────────────────────────────
+      { id: 'pois-circle', type: 'circle',
+        source: 'map', 'source-layer': 'points',
+        filter: ['any', hasVal('place'), hasVal('name')],
+        minzoom: 13,
+        paint: {
+          'circle-color': ['match', ['get', 'place'],
+            ['city', 'town'], '#ff6b00',
+            ['village', 'suburb', 'neighbourhood'], '#ffb300',
+            '#4a90d9'
+          ],
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2, 17, 5],
+          'circle-stroke-color': '#000',
+          'circle-stroke-width': 1,
+          'circle-opacity': 0.85
+        }
+      },
+
+      // Road names - curves along the road geometry
+      { id: 'road-labels', type: 'symbol',
+        source: 'map', 'source-layer': 'lines',
+        filter: ['all', hasVal('highway'), hasVal('name')],
+        minzoom: 13,
+        layout: {
+          'symbol-placement': 'line',
+          'symbol-spacing': 250,
+          'text-field': ['get', 'name'],
+          'text-font': ['Open Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 13, 10, 17, 13],
+          'text-max-angle': 30,
+          'text-padding': 5,
+          'text-max-width': 10,
+          'text-allow-overlap': false
+        },
+        paint: {
+          'text-color': '#e8e8ff',
+          'text-halo-color': '#080810',
+          'text-halo-width': 1.5
+        }
+      },
+
+      // Place names - cities, towns, neighborhoods
+      { id: 'place-labels', type: 'symbol',
+        source: 'map', 'source-layer': 'points',
+        filter: ['all', hasVal('name'), hasVal('place')],
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Open Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            6,  ['match', ['get', 'place'], ['city'], 14, ['town'], 11, 0],
+            10, ['match', ['get', 'place'], ['city'], 18, ['town'], 14, ['village','suburb'], 12, 10],
+            14, ['match', ['get', 'place'], ['city'], 22, ['town'], 18, ['village','suburb'], 14, 12]
+          ],
+          'text-anchor': 'center',
+          'text-padding': 6,
+          'text-max-width': 8,
+          'text-allow-overlap': false
+        },
+        paint: {
+          'text-color': ['match', ['get', 'place'],
+            ['city'],                     '#ffffff',
+            ['town'],                     '#eeeeee',
+            ['village', 'suburb'],        '#ccccdd',
+            ['neighbourhood', 'quarter'], '#aaaacc',
+            '#999999'
+          ],
+          'text-halo-color': '#080810',
+          'text-halo-width': 2
+        }
+      }
+
+    ]
+  },
+  center: URL_CENTER || [0, 30],  // URL param > metadata > neutral fallback
+  zoom:   URL_ZOOM   || 12,
+  maxZoom: 19,
+  minZoom: 4
+});
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 120 }), 'bottom-left');
+
+// ── Coordinate display ────────────────────────────────────────────────────────
+map.on('mousemove', (e) => {
+  document.getElementById('coords').textContent =
+    `Lat ${e.lngLat.lat.toFixed(6)}   Lon ${e.lngLat.lng.toFixed(6)}`;
+  document.getElementById('zoom-level').textContent =
+    `Zoom: ${map.getZoom().toFixed(1)}`;
+});
+
+// ── Switch map file ──────────────────────────────────────────────────────────
+async function switchMap(filename) {
+  PMTILES_FILE = filename;
+  const newHttpUrl  = `${origin}/maps/${filename}`;
+  const newTilesUrl = `pmtiles://${origin}/maps/${filename}`;
+
+  // Fetch header before swapping so we have bounds ready
+  let header = null;
+  try {
+    header = await new pmtiles.PMTiles(newHttpUrl).getHeader();
+  } catch(e) { /* best-effort */ }
+
+  // Swap source, then fit once the map is idle (avoids setUrl resetting the camera)
+  map.getSource('map').setUrl(newTilesUrl);
+
+  const fitAfterIdle = () => {
+    const cfg = MAP_CONFIG[filename];
+    if (cfg && cfg.center && cfg.zoom) {
+      map.flyTo({ center: cfg.center, zoom: cfg.zoom, duration: 600 });
+      return;
+    }
+    if (!header) return;
+    if (header.minLon != null && header.minLat != null) {
+      map.fitBounds(
+        [[header.minLon, header.minLat], [header.maxLon, header.maxLat]],
+        { padding: 40, duration: 600 }
+      );
+    } else if (header.centerLon != null) {
+      map.flyTo({ center: [header.centerLon, header.centerLat], zoom: header.centerZoom || 12, duration: 600 });
+    }
+  };
+
+  map.once('idle', fitAfterIdle);
+}
+
+// ── Status ────────────────────────────────────────────────────────────────────
+map.on('load', async () => {
+  const s = document.getElementById('status');
+  s.textContent = '● OFFLINE OK';
+  s.className = 'ok';
+
+  // If URL gave explicit position, keep it — no auto-fit
+  if (URL_CENTER && URL_ZOOM) return;
+
+  // Priority 1: map-config.json (center + zoom per file)
+  const cfg = MAP_CONFIG[PMTILES_FILE];
+  if (cfg && cfg.center && cfg.zoom) {
+    map.flyTo({ center: cfg.center, zoom: cfg.zoom, duration: 800 });
+    return;
+  }
+
+  // Priority 2: PMTiles header bounds / center
+  try {
+    const p      = new pmtiles.PMTiles(httpUrl);
+    const header = await p.getHeader();
+
+    if (header.minLon != null && header.minLat != null) {
+      map.fitBounds(
+        [[header.minLon, header.minLat], [header.maxLon, header.maxLat]],
+        { padding: 40, duration: 800 }
+      );
+      return;
+    }
+
+    if (header.centerLon != null && header.centerLat != null) {
+      map.flyTo({ center: [header.centerLon, header.centerLat], zoom: header.centerZoom || 12, duration: 800 });
+    }
+    // Priority 4: neutral world view (already set in map constructor)
+  } catch(e) { /* auto-position is best-effort */ }
+});
+map.on('error', (e) => {
+  const s = document.getElementById('status');
+  s.textContent = '✗ ERROR — see console';
+  s.className = 'error';
+  console.error('[MapLibre error]', e);
+});
+
+// ── Click → OSM property popup ────────────────────────────────────────────────
+const CLICKABLE_LAYERS = ['roads-fill', 'waterways-line', 'buildings-fill',
+                          'water-poly-fill', 'parks-fill', 'landuse-fill', 'pois-circle'];
+
+map.on('click', (e) => {
+  const features = map.queryRenderedFeatures(e.point, { layers: CLICKABLE_LAYERS });
+  if (!features.length) return;
+
+  const f     = features[0];
+  const props = f.properties;
+
+  // Only show non-null, non-empty properties
+  const rows = Object.entries(props)
+    .filter(([, v]) => v !== null && v !== '' && v !== 'null')
+    .map(([k, v]) => `<tr class="popup-row"><td>${k}</td><td>${v}</td></tr>`)
+    .join('');
+
+  if (!rows) return;
+
+  new maplibregl.Popup({ closeButton: true, maxWidth: '280px' })
+    .setLngLat(e.lngLat)
+    .setHTML(`<table style="border-collapse:collapse;width:100%">${rows}</table>`)
+    .addTo(map);
+});
+
+// Pointer cursor on roads and POIs
+['roads-fill', 'pois-circle'].forEach(id => {
+  map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer');
+  map.on('mouseleave', id, () => map.getCanvas().style.cursor = '');
+});
+
+// ── Layer toggles ─────────────────────────────────────────────────────────────
+const LAYER_GROUPS = {
+  roads:     ['roads-casing', 'roads-fill', 'road-labels'],
+  waterways: ['waterways-line'],
+  water:     ['water-poly-fill'],
+  buildings: ['buildings-fill'],
+  parks:     ['parks-fill', 'natural-fill'],
+  landuse:   ['landuse-fill'],
+  pois:      ['pois-circle', 'place-labels'],
+};
+
+document.querySelectorAll('.layer-toggle input').forEach(cb => {
+  cb.addEventListener('change', () => {
+    const vis = cb.checked ? 'visible' : 'none';
+    LAYER_GROUPS[cb.dataset.group].forEach(id => {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+    });
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+{
+  "band": "15m",
+  "name": "15 Meters",
+  "range": [21.0, 21.45],
+  "unit": "MHz",
+  "license": "General+",
+  "allocation": "Primary",
+  "notes": [
+    "General: CW 21.025–21.200, SSB 21.275–21.450 MHz",
+    "Extra/Advanced: full band"
+  ],
+  "rows": [
+    {
+      "range": [21.0, 21.45],
+      "segments": [
+        {
+          "start": 21.0, "end": 21.025,
+          "position": "bottom", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 21.000–21.025 MHz. Extra/Advanced only."
+        },
+        {
+          "start": 21.025, "end": 21.15,
+          "position": "top", "type": "cw", "color": "#e63946",
+          "label": "CW / Weak Signal",
+          "detail": "CW 21.025–21.150 MHz. General+ from 21.025. RTTY/Data 21.070–21.110."
+        },
+        {
+          "start": 21.15, "end": 21.275,
+          "position": "bottom", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Phone/SSB 21.150–21.450 MHz. Extra/Advanced only 21.150–21.275."
+        },
+        {
+          "start": 21.275, "end": 21.45,
+          "position": "top", "type": "ssb", "color": "#4895ef",
+          "label": "SSB / Phone",
+          "detail": "Phone/SSB 21.275–21.450 MHz. General+ from 21.275. SSTV 21.340 MHz."
+        }
+      ],
+      "callouts": [
+        { "freq": 21.34, "label": "21.340", "sublabel": "SSTV", "type": "sstv", "side": "below" }
+      ],
+      "ticks": [21.0, 21.025, 21.15, 21.275, 21.45]
+    }
+  ]
+}
