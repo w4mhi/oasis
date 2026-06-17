@@ -6,11 +6,23 @@
 #
 # System tools (ogr2ogr, tippecanoe) are in requirements-system.txt.
 
-# Web framework — server/app.py, graywolf-api/graywolf_api.py
-Flask>=3.0
+# Versions are pinned to exactly what is vendored in server/wheels/ so the
+# offline resolver and the documented set can never drift apart. Bump these
+# together with the wheels (see scripts/vendor-wheels.py).
 
-# Production WSGI server — replaces Flask dev server on the Pi
-gunicorn>=21.0
+# Web framework — server/app.py, graywolf-api/graywolf_api.py
+Flask==3.1.3
+
+# Compiled transitive dep of Jinja2/Flask — vendored per platform/python.
+MarkupSafe==3.0.3
+
+# Production WSGI server — replaces Flask dev server on the Pi.
+# Both 23.0.0 and 26.0.0 are vendored: pip selects 23.0.0 on Python 3.9
+# (Pi OS Bullseye — 26.x requires >=3.10) and 26.0.0 on 3.10+ automatically
+# via each release's Requires-Python. A range (not env markers) is used because
+# `pip download --python-version` evaluates markers against the host, not the
+# target interpreter. (gunicorn is POSIX-only and is skipped on Windows.)
+gunicorn>=23.0.0,<27
 
 # System stats (CPU, RAM, disk, uptime) — graywolf-api/graywolf_api.py
-psutil>=5.9
+psutil==7.2.2

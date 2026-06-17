@@ -1,0 +1,55 @@
+name: offline-install
+
+# Guards the project's core promise: the server installs with NO internet on
+# every supported {platform, python}. If a wheel is missing from server/wheels/
+# (as the Raspberry Pi aarch64 build once was), this fails instead of shipping.
+
+on:
+  push:
+    paths:
+      - "server/wheels/**"
+      - "scripts/requirements.txt"
+      - "scripts/vendor-wheels.py"
+      - "scripts/setup-server.py"
+      - ".github/workflows/offline-install.yml"
+  pull_request:
+    paths:
+      - "server/wheels/**"
+      - "scripts/requirements.txt"
+      - "scripts/vendor-wheels.py"
+      - "scripts/setup-server.py"
+  workflow_dispatch:
+
+jobs:
+  # Resolve every target in the support matrix against the committed wheels,
+  # with no network access. This is the source-of-truth check.
+  matrix-resolves-offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify offline wheel set (all platforms × pythons)
+        run: python3 scripts/vendor-wheels.py --check
+
+  # Prove the real installer produces a working server, fully offline, on a
+  # representative sample of the matrix.
+  setup-server-offline:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install server from bundled wheels only (--offline)
+        run: python3 scripts/setup-server.py --offline
+      - name: Import the app with no network
+        run: |
+          python3 -c "import sys, os; sys.path.insert(0, 'server'); import lookup"
+        shell: bash

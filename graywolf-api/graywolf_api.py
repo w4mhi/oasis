@@ -14,13 +14,15 @@ import os
 import sqlite3
 import time
 
-import psutil
-
 from flask import Flask, jsonify
+
+# psutil is imported lazily inside /api/system so that a missing psutil only
+# degrades the system-stats endpoint — the APRS station data must still serve.
 
 app = Flask(__name__)
 
-DB_PATH = "/var/lib/graywolf/graywolf-history.db"
+# DB path is overridable for testing off-Pi (e.g. APRS_DB_PATH=./test.db).
+DB_PATH = os.environ.get("APRS_DB_PATH", "/var/lib/graywolf/graywolf-history.db")
 
 
 @app.after_request
@@ -122,6 +124,11 @@ def api_stations():
 
 @app.route("/api/system")
 def api_system():
+    try:
+        import psutil
+    except ImportError:
+        return jsonify({"ok": False, "error": "psutil not installed"}), 503
+
     # Disk — auto-detect: SSD → eMMC → system root
     disk_info = None
     for mount, label in [("/mnt/ssd", "SSD"), ("/mnt/emmc", "eMMC"),

@@ -31,7 +31,9 @@ FCC_INDEX  = os.path.join(REPO_ROOT, "fcc-offline-database", "data", "EN.idx")
 
 # Packages bundled in server/wheels/ (installed offline).
 OFFLINE_PKGS = ["flask", "gunicorn"]
-# Packages that require PyPI (not vendored).
+# psutil is vendored for Linux aarch64 (Raspberry Pi). On other platforms
+# (macOS, Windows, Linux x86_64) the wheel may not be bundled, so install_psutil()
+# tries the local wheels first and falls back to PyPI only when needed.
 ONLINE_PKGS  = ["psutil"]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -152,25 +154,45 @@ def install_offline():
         _ok(pkg)
 
 
-# ── Step 4: Install from PyPI (online) ─────────────────────────────────────────
-def install_online():
-    _step(4, "Installing psutil from PyPI (requires internet)")
-    _info("psutil is not vendored — downloading ~2 MB from PyPI.")
+# ── Step 4: Install psutil (bundled wheel first, PyPI fallback) ────────────────
+def install_psutil(allow_online=True):
+    _step(4, "Installing psutil")
 
     pip = _venv_bin("pip")
-    result = subprocess.run(
-        [pip, "install", "--quiet"] + ONLINE_PKGS,
-        capture_output=True, text=True
+
+    # Try the bundled wheels first — fully offline. The Raspberry Pi aarch64
+    # wheel is vendored in server/wheels/, so the Pi never needs the internet.
+    offline = subprocess.run(
+        [pip, "install", "--quiet",
+         "--no-index", "--find-links", WHEELS_DIR] + ONLINE_PKGS,
+        capture_output=True, text=True,
     )
-    if result.returncode != 0:
-        _warn("PyPI install failed. If this Pi has no internet, copy")
+    if offline.returncode == 0:
+        for pkg in ONLINE_PKGS:
+            _ok(f"{pkg} (from bundled wheel — offline)")
+        return True
+
+    # No matching wheel for this platform (e.g. macOS / Windows / Linux x86_64).
+    if not allow_online:
+        _warn("No bundled psutil wheel for this platform and --offline was set.")
+        _warn("The APRS / system-stats API will be unavailable until psutil is")
+        _warn("installed. Add a matching wheel to server/wheels/ and re-run.")
+        return False
+
+    _info("No bundled wheel for this platform — downloading ~2 MB from PyPI.")
+    online = subprocess.run(
+        [pip, "install", "--quiet"] + ONLINE_PKGS,
+        capture_output=True, text=True,
+    )
+    if online.returncode != 0:
+        _warn("PyPI install failed. If this machine has no internet, copy")
         _warn("a psutil wheel for your architecture into server/wheels/ and")
-        _warn("re-run with --offline.")
-        _info(result.stderr.strip())
+        _warn("re-run.")
+        _info(online.stderr.strip())
         return False
 
     for pkg in ONLINE_PKGS:
-        _ok(pkg)
+        _ok(f"{pkg} (from PyPI)")
     return True
 
 
@@ -182,7 +204,9 @@ def main():
     parser.add_argument(
         "--offline",
         action="store_true",
-        help="Install from bundled wheels only; skip PyPI (psutil will be missing).",
+        help="Install from bundled wheels only; never touch PyPI. psutil is "
+             "vendored for the Raspberry Pi (aarch64) but may be absent on other "
+             "platforms, where it will then be skipped.",
     )
     parser.add_argument(
         "--check",
@@ -210,8 +234,7 @@ def main():
                 check_python()
                 create_venv()
                 install_offline()
-                if not args.offline:
-                    install_online()
+                install_psutil(allow_online=not args.offline)
                 _ok("Server environment ready.")
                 print()
             else:
@@ -239,12 +262,7 @@ def main():
     check_python()
     create_venv()
     install_offline()
-
-    if not args.offline:
-        install_online()
-    else:
-        _warn("--offline: skipping psutil. The APRS stats API will not work")
-        _warn("until psutil is installed. See server/wheels/ README for details.")
+    install_psutil(allow_online=not args.offline)
 
     python = _venv_bin("python")
     print()

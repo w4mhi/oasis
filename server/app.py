@@ -203,10 +203,13 @@ def api_browse():
     Path traversal outside SUITE_ROOT is rejected with 403.
     """
     rel = (request.args.get("path") or "").strip().lstrip("/")
+    root   = os.path.realpath(SUITE_ROOT)
     target = os.path.realpath(os.path.join(SUITE_ROOT, rel))
 
-    # Security: reject anything that escapes the suite root.
-    if not target.startswith(os.path.realpath(SUITE_ROOT)):
+    # Security: reject anything that escapes the suite root. commonpath avoids
+    # the prefix-match pitfall where a sibling dir (e.g. "oasis-emcomm-evil")
+    # would pass a naive startswith() check.
+    if target != root and os.path.commonpath([root, target]) != root:
         return jsonify({"ok": False, "error": "Forbidden"}), 403
 
     if not os.path.isdir(target):

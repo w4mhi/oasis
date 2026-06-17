@@ -18,9 +18,15 @@ What this builds:
   ├── start.bat             ← Windows launcher
   └── start.sh              ← Linux launcher (bootstraps venv on first run)
 
-Windows: uses the bundled Python — no installation needed.
-Linux:   creates a venv under _runtime/linux/ on first run (requires system
-         Python 3, which ships with every major Linux distro).
+Windows:      uses the bundled embedded Python — nothing to install, runs offline.
+Linux/macOS:  first run creates a venv from the bundled wheels (--no-index, no
+              internet) using system Python 3, which ships with every major
+              Linux distro and with macOS.
+
+The build itself only needs internet to download the Windows embedded-Python
+runtime from python.org; all Python packages come from the vendored
+server/wheels/ set (see scripts/vendor-wheels.py). Use --skip-windows for a
+fully offline build that targets Linux/macOS only.
 
 GrayWolf, Kiwix, APRS stats, and tile server will show as DOWN on the
 dashboard — they require the Pi services. Everything else works offline.
@@ -33,7 +39,6 @@ Usage:
 
 import argparse
 import io
-import json
 import os
 import shutil
 import stat
@@ -49,7 +54,6 @@ PYTHON_EMBED_URL = (
     f"https://www.python.org/ftp/python/{PYTHON_VERSION}/"
     f"python-{PYTHON_VERSION}-embed-amd64.zip"
 )
-GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
 
 # Files/dirs to exclude from the USB bundle
 EXCLUDE = {
@@ -143,51 +147,50 @@ def copy_project(dest):
 
 
 # ── Step 2 helpers ────────────────────────────────────────────────────────────
-def _install_packages_cross_platform(win_dir, wheels_src):
+def _install_packages_into_embedded(win_dir, wheels_src):
     """
-    On non-Windows hosts we cannot execute python.exe (Windows PE binary).
-    Extract wheels directly into the embedded Python's site-packages instead.
-    Pure-Python wheels and win_amd64 cp312 wheels are both safe to extract.
-    psutil (not vendored) is fetched as a Windows wheel from PyPI.
-    """
-    import json as _json
+    Populate the embedded Python's site-packages by extracting the vendored
+    wheels directly — no pip, no get-pip, no PyPI. This works identically on
+    any build host (you never execute the Windows python.exe) and keeps the
+    build fully offline.
 
+    The embedded Python is CPython 3.12 / win_amd64, so we extract pure-Python
+    wheels (none-any) plus any win_amd64 wheel compatible with it: cp312, the
+    stable ABI (abi3), or tagless. psutil ships as cp3x-abi3-win_amd64, which
+    is now vendored in server/wheels/, so nothing is fetched from the network.
+    """
     site_packages = os.path.join(win_dir, "Lib", "site-packages")
     os.makedirs(site_packages, exist_ok=True)
 
-    installed = []
-    if os.path.isdir(wheels_src):
-        for fname in sorted(os.listdir(wheels_src)):
-            if not fname.endswith(".whl"):
-                continue
-            lower = fname.lower()
-            # Accept pure-Python wheels OR Windows-amd64 cp312 wheels
-            if "none-any" in lower or ("win_amd64" in lower and "cp312" in lower):
-                with zipfile.ZipFile(os.path.join(wheels_src, fname)) as zf:
-                    zf.extractall(site_packages)
-                installed.append(fname)
-    _ok(f"Extracted {len(installed)} vendored wheel(s) into embedded Python")
+    if not os.path.isdir(wheels_src):
+        _fail(f"Wheels directory not found: {wheels_src}")
 
-    # psutil is not vendored — fetch the Windows wheel from PyPI
-    _info("Fetching psutil Windows wheel from PyPI ...")
-    try:
-        with urllib.request.urlopen("https://pypi.org/pypi/psutil/json", timeout=20) as r:
-            meta = _json.loads(r.read())
-        wheel_url = wheel_fname = None
-        for u in meta.get("urls", []):
-            fn = u["filename"]
-            if "win_amd64" in fn and ("cp312" in fn or "abi3" in fn or "none" in fn):
-                wheel_url, wheel_fname = u["url"], fn
-                break
-        if wheel_url:
-            data = _download(wheel_url, wheel_fname)
-            with zipfile.ZipFile(data) as zf:
-                zf.extractall(site_packages)
-            _ok(f"psutil installed ({wheel_fname})")
-        else:
-            _warn("No psutil wheel found for win_amd64 — APRS stats will not work on USB")
-    except Exception as exc:
-        _warn(f"psutil download failed ({exc}) — APRS stats will not work on USB")
+    installed = []
+    saw_markupsafe = saw_psutil = False
+    for fname in sorted(os.listdir(wheels_src)):
+        if not fname.endswith(".whl"):
+            continue
+        lower = fname.lower()
+        is_pure = "none-any" in lower
+        is_win  = "win_amd64" in lower and (
+            "cp312" in lower or "abi3" in lower or "-none-" in lower
+        )
+        if not (is_pure or is_win):
+            continue
+        with zipfile.ZipFile(os.path.join(wheels_src, fname)) as zf:
+            zf.extractall(site_packages)
+        installed.append(fname)
+        if lower.startswith("markupsafe") and "win_amd64" in lower:
+            saw_markupsafe = True
+        if lower.startswith("psutil") and "win_amd64" in lower:
+            saw_psutil = True
+
+    _ok(f"Extracted {len(installed)} vendored wheel(s) into embedded Python (offline)")
+    if not saw_markupsafe:
+        _warn("No MarkupSafe win_amd64 wheel found — Flask will fail to import on Windows.")
+        _warn("Run scripts/vendor-wheels.py to refill server/wheels/.")
+    if not saw_psutil:
+        _warn("No psutil win_amd64 wheel found — APRS/system stats will not work on USB.")
 
 
 # ── Step 2: Windows — embedded Python ─────────────────────────────────────────
@@ -221,34 +224,9 @@ def setup_windows(dest, skip):
                 f.write(line.replace("#import site", "import site"))
         _ok(f"Patched {os.path.basename(pth_file)} (enabled import site)")
 
-    if sys.platform == "win32":
-        # Running on Windows: can execute python.exe directly
-        _info("Bootstrapping pip ...")
-        pip_data = _download(GET_PIP_URL, "get-pip.py")
-        get_pip = os.path.join(win_dir, "get-pip.py")
-        with open(get_pip, "wb") as f:
-            f.write(pip_data.read())
-
-        python_exe = os.path.join(win_dir, "python.exe")
-        ret = os.system(f'"{python_exe}" "{get_pip}" --no-warn-script-location -q')
-        if ret != 0:
-            _fail("pip bootstrap failed")
-        _ok("pip installed")
-
-        _info("Installing Flask + psutil ...")
-        ret = os.system(
-            f'"{python_exe}" -m pip install flask psutil '
-            f'--no-warn-script-location -q'
-        )
-        if ret != 0:
-            _fail("pip install failed")
-        _ok("Flask + psutil installed into embedded Python")
-        os.remove(get_pip)
-    else:
-        # Cross-compiling from macOS/Linux: python.exe is a Windows PE binary
-        # and cannot be executed on this host.  Extract wheels directly instead.
-        _info("Cross-platform build — extracting wheels directly (skipping pip)")
-        _install_packages_cross_platform(win_dir, os.path.join(REPO_ROOT, "server", "wheels"))
+    # Populate the embedded Python from the vendored wheels — offline, and the
+    # same code path on every build host (Windows/macOS/Linux). No pip needed.
+    _install_packages_into_embedded(win_dir, os.path.join(REPO_ROOT, "server", "wheels"))
 
 
 # ── Step 3: Write launchers ────────────────────────────────────────────────────
@@ -268,7 +246,9 @@ def write_launchers(dest):
         )
     _ok("start.bat")
 
-    # Linux
+    # Linux / macOS — first run bootstraps a venv from the bundled wheels only
+    # (--no-index), so it works with no internet. Uses system python3, which
+    # ships with every major Linux distro and macOS.
     sh = os.path.join(dest, "start.sh")
     with open(sh, "w", newline="\n") as f:
         f.write(
@@ -276,6 +256,7 @@ def write_launchers(dest):
             "set -e\n"
             'DIR="$(cd "$(dirname "$0")" && pwd)"\n'
             'VENV="$DIR/_runtime/linux/.venv"\n'
+            'WHEELS="$DIR/server/wheels"\n'
             "cd \"$DIR\"\n"
             "\n"
             "if ! command -v python3 &>/dev/null; then\n"
@@ -284,9 +265,9 @@ def write_launchers(dest):
             "fi\n"
             "\n"
             'if [ ! -d "$VENV" ]; then\n'
-            '  echo "First run — setting up Python environment (one-time) ..."\n'
+            '  echo "First run — setting up Python environment from bundled wheels (offline) ..."\n'
             '  python3 -m venv "$VENV"\n'
-            '  "$VENV/bin/pip" install flask psutil --quiet\n'
+            '  "$VENV/bin/pip" install --quiet --no-index --find-links "$WHEELS" flask gunicorn psutil\n'
             '  echo "Done."\n'
             "fi\n"
             "\n"
