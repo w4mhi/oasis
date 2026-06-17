@@ -196,6 +196,50 @@ def install_psutil(allow_online=True):
     return True
 
 
+# ── Step 5: Install system emoji + mono fonts (Linux / Raspberry Pi only) ──────
+def install_system_fonts():
+    _step(5, "System fonts (Raspberry Pi / Linux)")
+
+    if not _cmd_exists("apt-get"):
+        _warn("apt-get not found — install fonts manually:")
+        _warn("  sudo apt-get install -y fonts-noto-color-emoji fonts-noto-mono")
+        return
+
+    packages = ["fonts-noto-color-emoji", "fonts-noto-mono"]
+    missing = [p for p in packages if not _apt_installed(p)]
+
+    if not missing:
+        for p in packages:
+            _ok(f"{p} already installed")
+        return
+
+    _info(f"Installing: {', '.join(missing)}")
+    result = subprocess.run(
+        ["sudo", "apt-get", "install", "-y"] + missing,
+        capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        for p in missing:
+            _ok(p)
+    else:
+        _warn("apt-get failed — try manually:")
+        _warn(f"  sudo apt-get install -y {' '.join(missing)}")
+        _info(result.stderr.strip()[:200])
+
+
+def _cmd_exists(name):
+    import shutil
+    return shutil.which(name) is not None
+
+
+def _apt_installed(pkg):
+    r = subprocess.run(
+        ["dpkg-query", "-W", "-f=${Status}", pkg],
+        capture_output=True, text=True,
+    )
+    return "install ok installed" in r.stdout
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(
@@ -263,6 +307,8 @@ def main():
     create_venv()
     install_offline()
     install_psutil(allow_online=not args.offline)
+    if sys.platform == "linux":
+        install_system_fonts()
 
     python = _venv_bin("python")
     print()

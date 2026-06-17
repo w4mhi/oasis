@@ -94,7 +94,7 @@ _check "Python" "1" "$PY_VER"
 # psutil (optional)
 "$VENV_PYTHON" -c "import psutil" 2>/dev/null \
     && _check "psutil" "1" \
-    || _warn_check "psutil" "(APRS stats unavailable)"
+    || _warn_check "psutil" "(APRS stats unavailable → run: python3 scripts/setup-server.py)"
 
 # FCC index
 FCC_INDEX="$SCRIPT_DIR/fcc-offline-database/data/EN.idx"
@@ -103,6 +103,15 @@ if [[ -f "$FCC_INDEX" ]]; then
     _check "FCC index" "1" "${FCC_KB} KB"
 else
     _check "FCC index" "0" "→ run: python3 scripts/setup-fcc-database.py"
+fi
+
+# System fonts (Linux only — needed for emoji/mono rendering in Chromium)
+if [[ "$(uname)" == "Linux" ]]; then
+    if dpkg-query -W -f='${Status}' fonts-noto-color-emoji 2>/dev/null | grep -q "install ok installed"; then
+        _check "System fonts" "1" "fonts-noto-color-emoji"
+    else
+        _warn_check "System fonts" "(emoji may not render → run: python3 scripts/setup-server.py)"
+    fi
 fi
 
 echo "  ────────────────────────────────────────"
