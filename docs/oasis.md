@@ -1,10 +1,13 @@
 # OASIS — Brand Reference
 
-## Name
+## **Off-grid Amateur Station Information Suite**
 
-**OASIS** —  in the title and a short description in subtitle
+### Name
 
-## Tagline
+**OASIS** in the title; the full name — *Off-grid Amateur Station Information
+Suite* — as the subtitle.
+
+### Tagline
 
 > *Comms when the network's gone dark.*
 
@@ -38,12 +41,21 @@ The accent green (`#00d98b`) is the primary brand color — used for headings,
 active indicators, and interactive elements. It reads as "alive / operational",
 which is exactly right for an emergency communications dashboard.
 
+`common.css` also defines secondary surface and status tokens — `--panel-2`
+(`#1c2330`), `--amber-dim` (`#c98a2e`), `--red` (`#ff6b6b`), `--green`
+(`#3fb950`), `--blue` (`#58a6ff`) — for nested panels and status indicators.
+The palette above is the core brand set; these are functional accents.
+
 ## Typography
 
-Monospace throughout (`ui-monospace`, SF Mono, Cascadia Mono, Roboto Mono,
-Menlo, Consolas). The mono font reinforces the terminal / field-station
+Monospace throughout (`--mono`: `ui-monospace`, SF Mono, Cascadia Mono, Roboto
+Mono, Menlo, Consolas). The mono font reinforces the terminal / field-station
 aesthetic and ensures consistent rendering of callsigns, frequencies, and
 grid squares.
+
+For icons, a bundled **NotoEmoji** font (`static/dependencies/fonts/`, loaded
+via `@font-face` as the `--emoji` fallback) renders emoji on a headless Pi or
+minimal Linux that has no system emoji font — staying true to offline-first.
 
 ## Voice
 
@@ -59,9 +71,9 @@ grid squares.
 | Display name   | OASIS                  |
 | Full name      | Off-grid Amateur Station Information Suite |
 | GitHub repo    | `oasis-emcomm`         |
-| PyPI package   | `oasis-emcomm`         |
+| PyPI package   | `oasis-emcomm` *(reserved — runs from source, not published)* |
 | Domain (avail) | `oasis-ham.com`        |
 
 ## Concept credit
 
-KM4ACK (original EmCommTools concept) / W4MHI (OASIS extension)
+KM4ACK (original *ACK Off-Grid Ham Radio Server* concept) / W4MHI (OASIS extension)

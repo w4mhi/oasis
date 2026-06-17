@@ -28,8 +28,9 @@ runtime from python.org; all Python packages come from the vendored
 server/wheels/ set (see scripts/vendor-wheels.py). Use --skip-windows for a
 fully offline build that targets Linux/macOS only.
 
-GrayWolf, Kiwix, APRS stats, and tile server will show as DOWN on the
-dashboard — they require the Pi services. Everything else works offline.
+Maps, forms, FCC lookup, calculators, and the reference library all work from
+the bundle. Only the Pi-only companion services — GrayWolf, Kiwix, and the APRS
+history API — show as DOWN on the dashboard, since they run on the Pi.
 
 Usage:
   python3 scripts/build-usb.py
@@ -295,7 +296,8 @@ def summary(dest):
     _info("Linux   : chmod +x start.sh && ./start.sh  (first run bootstraps venv)")
     _info("Browser : http://localhost:8083")
     print()
-    _warn("GrayWolf, Kiwix, APRS and tile server show DOWN — Pi services only.")
+    _info("Maps, forms, FCC lookup, calculators and reference all work offline.")
+    _warn("GrayWolf, Kiwix and the APRS API show DOWN — those are Pi-only services.")
     print()
 
 

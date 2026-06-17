@@ -7,13 +7,26 @@ __pycache__/
 # macOS
 .DS_Store
 
-# FCC flat-file data — large files downloaded at setup time, not tracked
-fcc-offline-database/data/EN.dat
-fcc-offline-database/data/HD.dat
-fcc-offline-database/data/EN.idx
-# GeoNames source data — downloaded by build_zip_table.py, not tracked
-fcc-offline-database/US.txt
+# ── Large data — never checked in, to keep the repo footprint small ────────────
+
+# Offline map tiles — built by scripts/build-map.py (or copied in).
+*.pmtiles
+
+# PDF radio manuals — large and license-encumbered; distributed separately.
+# Drop your own PDFs into radio-manuals/ on the target machine. The whole
+# folder is excluded (PDFs and any other binaries) except this README.
+radio-manuals/*
+!radio-manuals/README.md
+
+# FCC flat-file data (EN.dat/HD.dat/EN.idx) + GeoNames source (US.txt) —
+# downloaded/built by scripts/setup-fcc-database.py. zipcodes.csv stays tracked.
+fcc-offline-database/**/*.dat
+fcc-offline-database/**/*.idx
+fcc-offline-database/**/*.txt
 fcc-offline-database/US.zip
+
+# Wikipedia ZIM files — downloaded by scripts/download-wikipedia.py.
+*.zim
 
 # Scratch / temporary files
 temp/

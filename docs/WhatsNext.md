@@ -201,10 +201,13 @@ These are by design or accepted tradeoffs, documented here for transparency.
   contains ZIP codes, not GPS coordinates. Grid squares are computed from ZIP
   centroids and may be several miles from the operator's actual location.
 
-- **GrayWolf, Kiwix, and the tile server are external binaries.** OASIS links
-  to them but does not manage their installation beyond the provided scripts.
-  They show as DOWN on the dashboard when not running.
+- **GrayWolf and Kiwix are external services.** OASIS links to them but does
+  not manage their installation beyond the provided scripts, and they show as
+  DOWN on the dashboard when not running. (The map tile server is **not**
+  external — it is part of the OASIS Flask app and works wherever OASIS runs,
+  including the USB bundle.)
 
-- **USB bundle is Windows x64 + Linux only.** The embedded Python bundled by
-  `scripts/build-usb.py` targets Windows AMD64. macOS is not included in the
-  USB bundle (OASIS runs natively on macOS via the standard setup).
+- **USB bundle runs on Windows, Linux, and macOS.** Windows uses the embedded
+  Python bundled by `scripts/build-usb.py` (AMD64); Linux and macOS bootstrap
+  from the vendored wheels using system `python3` on first run. Only the
+  Windows embedded runtime is AMD64-specific.
