@@ -32,12 +32,23 @@ echo ""
 echo "  Using: $($PYTHON --version)"
 
 # ── Create virtualenv if not present ─────────────────────────────────────────
-if [[ ! -d "$VENV_DIR" ]]; then
+if [[ ! -x "$VENV_DIR/bin/python" ]] && [[ ! -x "$VENV_DIR/bin/python3" ]]; then
     echo "  Creating virtual environment..."
+    rm -rf "$VENV_DIR"
     "$PYTHON" -m venv "$VENV_DIR"
 fi
 
-VENV_PYTHON="$VENV_DIR/bin/python"
+# Prefer 'python' symlink, fall back to 'python3'
+if [[ -x "$VENV_DIR/bin/python" ]]; then
+    VENV_PYTHON="$VENV_DIR/bin/python"
+elif [[ -x "$VENV_DIR/bin/python3" ]]; then
+    VENV_PYTHON="$VENV_DIR/bin/python3"
+else
+    echo ""
+    echo "  ERROR: Virtual environment is broken. Delete '$VENV_DIR' and re-run."
+    echo ""
+    exit 1
+fi
 VENV_PIP="$VENV_DIR/bin/pip"
 
 # ── Install Flask from bundled wheels (offline, idempotent) ───────────────────

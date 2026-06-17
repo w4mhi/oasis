@@ -393,7 +393,7 @@ body {
     <div class="nav-sec">
       <div class="nav-sec-title">APRS</div>
       <ul class="nav-links">    
-        <li><a href="#" class="ext" onclick="go(PORTS.graywolf);return false;">GrayWolf <span class="nav-meta">APRS :8080</span></a></li>
+        <li><a href="#" class="ext" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.graywolf}/`,'_blank');return false;">GrayWolf <span class="nav-meta">APRS :8080</span></a></li>
         <li><a href="static/graywolf-handbook/index.html">GrayWolf Handbook <span class="nav-meta">docs</span></a></li>
         <li><a href="aprs/map.html">APRS Map <span class="nav-meta">docs</span></a></li>
       </ul>
@@ -465,7 +465,7 @@ body {
         <li><a href="repeater-guide/index.html">Repeater Guide <span class="nav-meta">CHIRP how-to</span></a></li>
         <li><a href="radio-cards/index.html">Radio Cards <span class="nav-meta">CHIRP how-to</span></a></li>
         <li><a href="static/cheatsheets/index.html">Radio Cheatsheets <span class="nav-meta">CHIRP how-to</span></a></li>
-        <li><a href="#" class="ext" onclick="go(PORTS.kiwix);return false;">Wikipedia <span class="nav-meta">Kiwix :8081</span></a></li>
+        <li><a href="#" class="ext" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-meta">Kiwix :8081</span></a></li>
       </ul>
     </div>
 
