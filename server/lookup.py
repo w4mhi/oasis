@@ -388,7 +388,7 @@ def lookup(callsign, zip_table=None, en_path=EN_DAT_PATH, index_path=INDEX_PATH)
 
     if not os.path.exists(index_path):
         raise FileNotFoundError(
-            "Index not built yet. Run:  python3 build_index.py"
+            "Index not built yet. Run:  python3 scripts/setup-fcc-database.py"
         )
 
     offset = _find_offset(callsign, index_path)
@@ -423,7 +423,7 @@ def lookup_prefix(prefix, zip_table=None, limit=MAX_PREFIX_RESULTS,
 
     if not os.path.exists(index_path):
         raise FileNotFoundError(
-            "Index not built yet. Run:  python3 build_index.py"
+            "Index not built yet. Run:  python3 scripts/setup-fcc-database.py"
         )
 
     clean = prefix.strip().upper().rstrip("*")

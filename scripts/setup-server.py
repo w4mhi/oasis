@@ -27,6 +27,7 @@ REPO_ROOT  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VENV_DIR   = os.path.join(REPO_ROOT, ".venv")
 WHEELS_DIR = os.path.join(REPO_ROOT, "server", "wheels")
 REQ_FILE   = os.path.join(REPO_ROOT, "scripts", "requirements.txt")
+FCC_INDEX  = os.path.join(REPO_ROOT, "fcc-offline-database", "data", "EN.idx")
 
 # Packages bundled in server/wheels/ (installed offline).
 OFFLINE_PKGS = ["flask", "gunicorn"]
@@ -54,6 +55,57 @@ def _run(cmd, **kwargs):
     if result.returncode != 0:
         _fail(f"Command failed: {' '.join(str(c) for c in cmd)}")
     return result
+
+
+def _pkg_ok(pkg):
+    """Return True if pkg is importable inside the venv."""
+    r = subprocess.run(
+        [_venv_bin("python"), "-c", f"import {pkg}"],
+        capture_output=True,
+    )
+    return r.returncode == 0
+
+
+# ── Pre-flight check ───────────────────────────────────────────────────────────
+def check_status():
+    """
+    Print status of all OASIS components.
+    Returns (server_ok, fcc_ok) booleans.
+    """
+    print()
+    print("  OASIS — Pre-flight Check")
+    _hr()
+
+    server_ok = True
+
+    # venv
+    if not os.path.isdir(VENV_DIR):
+        print("  ✗  .venv          missing       → python3 scripts/setup-server.py")
+        server_ok = False
+    else:
+        for pkg in OFFLINE_PKGS:
+            if _pkg_ok(pkg):
+                _ok(f"{pkg:<14} installed")
+            else:
+                print(f"  ✗  {pkg:<14} not installed  → python3 scripts/setup-server.py")
+                server_ok = False
+        # psutil is optional — warn but don't block
+        if _pkg_ok("psutil"):
+            _ok(f"{'psutil':<14} installed")
+        else:
+            _warn(f"{'psutil':<14} not installed  (APRS stats unavailable)")
+
+    # FCC index
+    if os.path.exists(FCC_INDEX):
+        kb = os.path.getsize(FCC_INDEX) // 1024
+        _ok(f"{'FCC index':<14} {kb:,} KB")
+        fcc_ok = True
+    else:
+        print("  ✗  FCC index      missing       → python3 scripts/setup-fcc-database.py")
+        fcc_ok = False
+
+    print()
+    return server_ok, fcc_ok
 
 
 # ── Step 1: Check Python version ───────────────────────────────────────────────
@@ -132,7 +184,53 @@ def main():
         action="store_true",
         help="Install from bundled wheels only; skip PyPI (psutil will be missing).",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check whether all components are ready; prompt to fix missing ones.",
+    )
     args = parser.parse_args()
+
+    if args.check:
+        server_ok, fcc_ok = check_status()
+
+        if server_ok and fcc_ok:
+            _ok("All components ready — run start.sh to launch OASIS.")
+            print()
+            return
+
+        # Prompt for each missing component
+        if not server_ok:
+            try:
+                ans = input("  Server environment not ready. Run setup now? [y/N] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                ans = ""
+            if ans == "y":
+                _hr()
+                check_python()
+                create_venv()
+                install_offline()
+                if not args.offline:
+                    install_online()
+                _ok("Server environment ready.")
+                print()
+            else:
+                _warn("Skipped. Run:  python3 scripts/setup-server.py")
+                print()
+
+        if not fcc_ok:
+            try:
+                ans = input("  FCC callsign index not built. Run setup now? [y/N] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                ans = ""
+            if ans == "y":
+                fcc_script = os.path.join(REPO_ROOT, "scripts", "setup-fcc-database.py")
+                subprocess.run([sys.executable, fcc_script], check=False)
+            else:
+                _warn("Skipped. Callsign lookups will return 'not found'.")
+                _warn("Run:  python3 scripts/setup-fcc-database.py")
+                print()
+        return
 
     print()
     print("  OASIS — Server Setup")

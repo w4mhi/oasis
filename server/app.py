@@ -2,7 +2,7 @@
 """
 app.py
 ------
-Off-grid Flask web server for the EmComm Tools suite.
+Off-grid Flask web server for OASIS - Off-grid Amateur Station Information Suite.
 
 Serves the main index.html and all suite static files at the root.
 The FCC amateur-radio call-sign lookup is available at /lookup.
@@ -21,6 +21,7 @@ import os
 import re
 import socket
 import threading
+import time
 import webbrowser
 
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response
@@ -247,6 +248,34 @@ def health():
     })
 
 
+@app.route("/api/server-info")
+def server_info():
+    """Report which WSGI server is running (gunicorn vs Flask dev server)."""
+    import sys
+    from importlib.metadata import version as pkg_version, PackageNotFoundError
+
+    def get_ver(pkg):
+        try:
+            return pkg_version(pkg)
+        except PackageNotFoundError:
+            return "unknown"
+
+    if "gunicorn" in sys.modules:
+        wsgi = "gunicorn"
+        wsgi_version = get_ver("gunicorn")
+    else:
+        wsgi = "werkzeug"
+        wsgi_version = get_ver("werkzeug")
+
+    return jsonify({
+        "ok":            True,
+        "wsgi":          wsgi,
+        "wsgi_version":  wsgi_version,
+        "flask_version": get_ver("flask"),
+        "port":          PORT,
+    })
+
+
 @app.route("/api/config")
 def api_config():
     """Return runtime configuration (port, feature flags) so HTML pages need
@@ -272,6 +301,102 @@ def server_ports():
     return api_config()
 
 
+@app.route("/api/system")
+def api_system():
+    """System resource stats (CPU, RAM, disk, temp, load, uptime).
+    Gracefully degrades on platforms where some metrics are unavailable."""
+    try:
+        import psutil
+    except ImportError:
+        return jsonify({"ok": False, "error": "psutil not installed"}), 503
+
+    # Disk — auto-detect: SSD → eMMC → system root
+    disk_info = None
+    for mount, label in [("/mnt/ssd", "SSD"), ("/mnt/emmc", "eMMC"),
+                         ("/", "System"), ("C:\\", "System")]:
+        try:
+            d = psutil.disk_usage(mount)
+            disk_info = {
+                "label":    label,
+                "total_gb": round(d.total / 1e9, 1),
+                "used_gb":  round(d.used  / 1e9, 1),
+                "free_gb":  round(d.free  / 1e9, 1),
+                "pct":      d.percent,
+            }
+            break
+        except Exception:
+            continue
+    if disk_info is None:
+        disk_info = {"error": "unavailable"}
+
+    # CPU
+    cpu_pct   = psutil.cpu_percent(interval=1)
+    cpu_count = psutil.cpu_count(logical=True) or 1
+
+    # RAM
+    ram = psutil.virtual_memory()
+    ram_info = {
+        "total_mb": round(ram.total     / 1e6, 1),
+        "used_mb":  round(ram.used      / 1e6, 1),
+        "free_mb":  round(ram.available / 1e6, 1),
+        "pct":      ram.percent,
+    }
+
+    # Load average (Linux/macOS only)
+    load_info = None
+    try:
+        load1, _, _ = psutil.getloadavg()
+        load_info = {
+            "avg1":  round(load1, 2),
+            "cores": cpu_count,
+            "pct":   round((load1 / cpu_count) * 100, 1),
+        }
+    except AttributeError:
+        pass
+
+    # Boot time / uptime
+    boot_ts    = psutil.boot_time()
+    uptime_sec = int(time.time() - boot_ts)
+    boot_str   = time.strftime("%a %b %d %H:%M", time.localtime(boot_ts))
+
+    # CPU temperature (Pi-specific; absent on macOS/Windows)
+    temp = None
+    try:
+        temps = psutil.sensors_temperatures()
+        for key in ("cpu_thermal", "cpu-thermal", "soc_thermal", "coretemp"):
+            if key in temps and temps[key]:
+                temp = round(temps[key][0].current, 1)
+                break
+    except Exception:
+        pass
+
+    # FCC DB last modified
+    fcc_db_mtime = None
+    fcc_db_candidates = [
+        os.path.join(SUITE_ROOT, "fcc-offline-database", "data", "EN.dat"),
+        "/mnt/ssd/Documents/reference/fcc-offline-database/data/EN.dat",
+    ]
+    for path in fcc_db_candidates:
+        try:
+            fcc_db_mtime = time.strftime("%Y-%m-%d", time.localtime(os.path.getmtime(path)))
+            break
+        except Exception:
+            continue
+
+    return jsonify({
+        "ok":          True,
+        "cpu_pct":     cpu_pct,
+        "cpu_count":   cpu_count,
+        "cpu_temp_c":  temp,
+        "ram":         ram_info,
+        "disk":        disk_info,
+        "load":        load_info,
+        "uptime_sec":  uptime_sec,
+        "boot_str":    boot_str,
+        "fcc_db_date": fcc_db_mtime,
+    })
+
+
 PORT = 8083
 
 def find_free_port(start=8083, end=8093):
@@ -286,7 +411,7 @@ def find_free_port(start=8083, end=8093):
     raise RuntimeError(f"No free port found between {start} and {end}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="EmComm Tools Flask server")
+    parser = argparse.ArgumentParser(description="OASIS Flask server")
     parser.add_argument(
         "--no-browser",
         action="store_true",
@@ -296,7 +421,7 @@ if __name__ == "__main__":
 
     PORT = find_free_port()
     url = f"http://localhost:{PORT}/"
-    print(f"\n  EmComm Tools — {url}\n")
+    print(f"\n  OASIS — {url}\n")
     if not args.no_browser:
         # Open the browser shortly after the server starts.
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()

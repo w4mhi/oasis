@@ -1,7 +1,14 @@
 /* ============================================================
-   EmComm Tools – shared design system
+   OASIS - Off-grid Amateur Station Information Suite – shared design system
    Reference: ICS form pages (dark mono, amber labels, green accent)
    ============================================================ */
+
+/* ─── Emoji font (offline fallback for Pi/minimal Linux) ─── */
+@font-face {
+  font-family: 'NotoEmoji';
+  src: url('../static/dependencies/fonts/NotoEmoji-Regular.ttf') format('truetype');
+  font-display: swap;
+}
 
 /* ─── Variables ─────────────────────────────────────────── */
 :root {
@@ -19,6 +26,7 @@
   --text:       #d7e0ea;
   --text-dim:   #8b97a6;
   --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --emoji: 'NotoEmoji','Noto Color Emoji','Apple Color Emoji','Segoe UI Emoji','Twemoji Mozilla',sans-serif;
 
   /* ─── Type scale ─────────────────────────────────────── */
   --fs-title:    1.2rem;   /* header h1  — page title */
@@ -36,7 +44,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--mono);
+  font-family: var(--mono), var(--emoji);
   font-size: var(--fs-base);
   line-height: 1.5;
   padding: 1rem;

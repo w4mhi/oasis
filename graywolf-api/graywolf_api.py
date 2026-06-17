@@ -122,38 +122,60 @@ def api_stations():
 
 @app.route("/api/system")
 def api_system():
-    # Disk — report the SSD mount
-    try:
-        disk = psutil.disk_usage("/mnt/ssd")
-        disk_info = {
-            "total_gb": round(disk.total / 1e9, 1),
-            "used_gb":  round(disk.used  / 1e9, 1),
-            "free_gb":  round(disk.free  / 1e9, 1),
-            "pct":      disk.percent,
-        }
-    except Exception as e:
-        disk_info = {"error": str(e)}
+    # Disk — auto-detect: SSD → eMMC → system root
+    disk_info = None
+    for mount, label in [("/mnt/ssd", "SSD"), ("/mnt/emmc", "eMMC"),
+                         ("/", "System"), ("C:\\", "System")]:
+        try:
+            disk = psutil.disk_usage(mount)
+            disk_info = {
+                "label":    label,
+                "total_gb": round(disk.total / 1e9, 1),
+                "used_gb":  round(disk.used  / 1e9, 1),
+                "free_gb":  round(disk.free  / 1e9, 1),
+                "pct":      disk.percent,
+            }
+            break
+        except Exception:
+            continue
+    if disk_info is None:
+        disk_info = {"error": "unavailable"}
 
     # CPU — 1-second blocking sample
-    cpu_pct = psutil.cpu_percent(interval=1)
+    cpu_pct   = psutil.cpu_percent(interval=1)
+    cpu_count = psutil.cpu_count(logical=True) or 1
 
     # RAM
     ram = psutil.virtual_memory()
     ram_info = {
-        "total_mb": round(ram.total  / 1e6, 1),
-        "used_mb":  round(ram.used   / 1e6, 1),
+        "total_mb": round(ram.total     / 1e6, 1),
+        "used_mb":  round(ram.used      / 1e6, 1),
         "free_mb":  round(ram.available / 1e6, 1),
         "pct":      ram.percent,
     }
 
-    # Uptime
-    uptime_sec = int(time.time() - psutil.boot_time())
+    # Load average (Linux/macOS only — AttributeError on Windows)
+    load_info = None
+    try:
+        load1, _, _ = psutil.getloadavg()
+        load_info = {
+            "avg1":  round(load1, 2),
+            "cores": cpu_count,
+            "pct":   round((load1 / cpu_count) * 100, 1),
+        }
+    except AttributeError:
+        pass
 
-    # CPU temperature (Pi-specific)
+    # Boot time / uptime
+    boot_ts    = psutil.boot_time()
+    uptime_sec = int(time.time() - boot_ts)
+    boot_str   = time.strftime("%a %b %d %H:%M", time.localtime(boot_ts))
+
+    # CPU temperature (Pi-specific; gracefully absent on macOS/Windows)
     temp = None
     try:
         temps = psutil.sensors_temperatures()
-        for key in ("cpu_thermal", "cpu-thermal", "soc_thermal"):
+        for key in ("cpu_thermal", "cpu-thermal", "soc_thermal", "coretemp"):
             if key in temps and temps[key]:
                 temp = round(temps[key][0].current, 1)
                 break
@@ -170,12 +192,15 @@ def api_system():
         pass
 
     return jsonify({
-        "ok":        True,
-        "disk":      disk_info,
-        "cpu_pct":   cpu_pct,
-        "ram":       ram_info,
-        "uptime_sec": uptime_sec,
-        "cpu_temp_c": temp,
+        "ok":          True,
+        "cpu_pct":     cpu_pct,
+        "cpu_count":   cpu_count,
+        "cpu_temp_c":  temp,
+        "ram":         ram_info,
+        "disk":        disk_info,
+        "load":        load_info,
+        "uptime_sec":  uptime_sec,
+        "boot_str":    boot_str,
         "fcc_db_date": fcc_db_mtime,
     })
 

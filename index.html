@@ -77,6 +77,7 @@ body {
 }
 .svc-card.up   { border-color: var(--accent-dim); }
 .svc-card.down { border-color: #7a1010; }
+.svc-card.warn { border-color: var(--amber-dim); }
 .svc-dot {
   width: 8px;
   height: 8px;
@@ -87,8 +88,9 @@ body {
 }
 .svc-dot.up   { background: var(--accent); }
 .svc-dot.down { background: var(--red); }
+.svc-dot.warn { background: var(--amber); }
 .svc-name { font-size: var(--fs-small); font-weight: 700; color: var(--text); }
-.svc-port { font-size: var(--fs-micro); color: var(--text-dim); }
+.svc-sub  { font-size: var(--fs-micro); color: var(--text-dim); }
 .svc-badge {
   margin-left: auto;
   font-size: var(--fs-micro);
@@ -98,6 +100,7 @@ body {
 }
 .svc-badge.up   { color: var(--accent); }
 .svc-badge.down { color: var(--red); }
+.svc-badge.warn { color: var(--amber); }
 
 /* ── Stats bar ───────────────────────────────────────────────────────── */
 .stats-bar {
@@ -288,35 +291,38 @@ body {
 <div class="svc-strip">
   <div class="svc-card" id="card-flask">
     <div class="svc-dot" id="dot-flask"></div>
-    <div>
-      <div class="svc-name">Flask</div>
-      <div class="svc-port">:8083</div>
-    </div>
-    <span class="svc-badge" id="st-flask">—</span>
+    <div><div class="svc-name">Flask</div><div class="svc-sub" id="sub-flask">—</div></div>
+    <span class="svc-badge" id="badge-flask">—</span>
+  </div>
+  <div class="svc-card" id="card-wsgi">
+    <div class="svc-dot" id="dot-wsgi"></div>
+    <div><div class="svc-name">Web Server</div><div class="svc-sub" id="sub-wsgi">—</div></div>
+    <span class="svc-badge" id="badge-wsgi">—</span>
   </div>
   <div class="svc-card" id="card-gw">
     <div class="svc-dot" id="dot-gw"></div>
-    <div>
-      <div class="svc-name">GrayWolf</div>
-      <div class="svc-port">:8080</div>
-    </div>
-    <span class="svc-badge" id="st-gw">—</span>
+    <div><div class="svc-name">GrayWolf</div><div class="svc-sub" id="sub-gw">—</div></div>
+    <span class="svc-badge" id="badge-gw">—</span>
   </div>
   <div class="svc-card" id="card-kiwix">
     <div class="svc-dot" id="dot-kiwix"></div>
-    <div>
-      <div class="svc-name">Kiwix</div>
-      <div class="svc-port">:8081</div>
-    </div>
-    <span class="svc-badge" id="st-kiwix">—</span>
+    <div><div class="svc-name">Kiwix</div><div class="svc-sub" id="sub-kiwix">—</div></div>
+    <span class="svc-badge" id="badge-kiwix">—</span>
   </div>
-  <div class="svc-card" id="card-api">
-    <div class="svc-dot" id="dot-api"></div>
-    <div>
-      <div class="svc-name">Stats API</div>
-      <div class="svc-port">:8085</div>
-    </div>
-    <span class="svc-badge" id="st-api">—</span>
+  <div class="svc-card" id="card-aprs">
+    <div class="svc-dot" id="dot-aprs"></div>
+    <div><div class="svc-name">APRS Stats API</div><div class="svc-sub" id="sub-aprs">—</div></div>
+    <span class="svc-badge" id="badge-aprs">—</span>
+  </div>
+  <div class="svc-card" id="card-fcc">
+    <div class="svc-dot" id="dot-fcc"></div>
+    <div><div class="svc-name">FCC Database</div><div class="svc-sub" id="sub-fcc">—</div></div>
+    <span class="svc-badge" id="badge-fcc">—</span>
+  </div>
+  <div class="svc-card" id="card-maps">
+    <div class="svc-dot" id="dot-maps"></div>
+    <div><div class="svc-name">Offline Maps</div><div class="svc-sub" id="sub-maps">—</div></div>
+    <span class="svc-badge" id="badge-maps">—</span>
   </div>
 </div>
 
@@ -501,34 +507,106 @@ tickClock();
 setInterval(tickClock, 1000);
 document.getElementById('footer-ts').textContent = new Date().toLocaleString();
 
-// ── Service ping ──────────────────────────────────────────────────────────────
-const SVCS = [
-  { key: 'flask',  get port() { return PORTS.flask;    }, path: '/api/browse?path=.' },
-  { key: 'gw',     get port() { return PORTS.graywolf; }, path: '/' },
-  { key: 'kiwix',  get port() { return PORTS.kiwix;    }, path: '/' },
-  { key: 'api',    get port() { return PORTS.aprs_api; }, path: '/api/system' },
+// ── Service checks ────────────────────────────────────────────────────────────
+const HOST = location.hostname;
+
+const SERVICES = [
+  {
+    id: 'flask', name: 'Flask',
+    check: async () => {
+      const r = await fetch('/api/server-info', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: `HTTP ${r.status}` };
+      const d = await r.json();
+      return { up: true, badge: 'UP', sub: `v${d.flask_version} :${d.port}` };
+    }
+  },
+  {
+    id: 'wsgi', name: 'Web Server',
+    check: async () => {
+      const r = await fetch('/api/server-info', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: `HTTP ${r.status}` };
+      const d = await r.json();
+      const g = d.wsgi === 'gunicorn';
+      return { up: true, warn: !g,
+        badge: g ? 'gunicorn' : 'werkzeug (dev)',
+        sub: `v${d.wsgi_version} :${d.port}` };
+    }
+  },
+  {
+    id: 'gw', name: 'GrayWolf',
+    check: async () => {
+      await fetch(`http://${HOST}:${PORTS.graywolf}/`, { cache: 'no-store', mode: 'no-cors' });
+      return { up: true, badge: 'UP', sub: `:${PORTS.graywolf}` };
+    }
+  },
+  {
+    id: 'kiwix', name: 'Kiwix',
+    check: async () => {
+      await fetch(`http://${HOST}:${PORTS.kiwix}/`, { cache: 'no-store', mode: 'no-cors' });
+      return { up: true, badge: 'UP', sub: `:${PORTS.kiwix}` };
+    }
+  },
+  {
+    id: 'aprs', name: 'APRS Stats API',
+    check: async () => {
+      const r = await fetch(`http://${HOST}:${PORTS.aprs_api}/health`, { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: `:${PORTS.aprs_api}` };
+      const d = await r.json();
+      return { up: true, warn: !d.db_exists, badge: 'UP',
+        sub: d.db_exists ? `DB found :${PORTS.aprs_api}` : `no DB :${PORTS.aprs_api}` };
+    }
+  },
+  {
+    id: 'fcc', name: 'FCC Database',
+    check: async () => {
+      const r = await fetch('/health', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'server error' };
+      const d = await r.json();
+      return { up: true, warn: !d.index_present,
+        badge: d.index_present ? 'UP' : 'WARN',
+        sub: d.index_present ? `${(d.zip_entries||0).toLocaleString()} ZIP` : 'index not built' };
+    }
+  },
+  {
+    id: 'maps', name: 'Offline Maps',
+    check: async () => {
+      const r = await fetch('/api/browse?path=maps', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'browse error' };
+      const d = await r.json();
+      const n = (d.entries||[]).filter(e => e.name.endsWith('.pmtiles')).length;
+      return { up: true, warn: n === 0,
+        badge: n > 0 ? 'UP' : 'WARN',
+        sub: n > 0 ? `${n} PMTiles` : 'no tiles' };
+    }
+  },
 ];
 
-async function ping(s) {
-  const dot  = document.getElementById(`dot-${s.key}`);
-  const st   = document.getElementById(`st-${s.key}`);
-  const card = document.getElementById(`card-${s.key}`);
+async function checkService(svc) {
+  const dot   = document.getElementById('dot-'   + svc.id);
+  const badge = document.getElementById('badge-' + svc.id);
+  const sub   = document.getElementById('sub-'   + svc.id);
+  const card  = document.getElementById('card-'  + svc.id);
   try {
-    await fetch(`${location.protocol}//${location.hostname}:${s.port}${s.path}`,
-      { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(3000) });
-    dot.className  = 'svc-dot up';
-    st.className   = 'svc-badge up';
-    card.className = 'svc-card up';
-    st.textContent = 'UP';
-  } catch {
-    dot.className  = 'svc-dot down';
-    st.className   = 'svc-badge down';
-    card.className = 'svc-card down';
-    st.textContent = 'DOWN';
+    const result = await Promise.race([
+      svc.check(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
+    ]);
+    const state = result.up ? (result.warn ? 'warn' : 'up') : 'down';
+    dot.className   = 'svc-dot '   + state;
+    badge.className = 'svc-badge ' + state;
+    card.className  = 'svc-card '  + state;
+    badge.textContent = result.badge || (result.up ? 'UP' : 'DOWN');
+    if (sub) sub.textContent = result.sub || '';
+  } catch (e) {
+    dot.className   = 'svc-dot down';
+    badge.className = 'svc-badge down';
+    card.className  = 'svc-card down';
+    badge.textContent = e.message === 'timeout' ? 'TIMEOUT' : 'DOWN';
+    if (sub) sub.textContent = '';
   }
 }
 
-function pingAll() { SVCS.forEach(ping); }
+function pingAll() { SERVICES.forEach(svc => checkService(svc)); }
 
 // ── System stats ──────────────────────────────────────────────────────────────
 function setBar(id, pct) {

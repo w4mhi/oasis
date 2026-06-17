@@ -1,5 +1,5 @@
 @echo off
-:: EmComm Tools — Windows launcher
+:: OASIS - Off-grid Amateur Station Information Suite — Windows launcher
 :: Double-click this file from the USB drive to start.
 
 setlocal enabledelayedexpansion
@@ -11,7 +11,7 @@ set "WHEELS_DIR=%SERVER_DIR%\wheels"
 set "VENV_DIR=%SCRIPT_DIR%.venv"
 
 echo.
-echo   EmComm Tools — Starting...
+echo   OASIS — Starting...
 echo.
 
 :: ── Find Python 3.9+ ─────────────────────────────────────────────────────────
