@@ -18,6 +18,7 @@ Usage:
   python3 scripts/download-wikipedia.py --edition mini
   python3 scripts/download-wikipedia.py --edition nopic --zim-dir /mnt/ssd/zim
   python3 scripts/download-wikipedia.py --list       # show all editions
+  python3 scripts/download-wikipedia.py --url https://download.kiwix.org/zim/wikipedia/...zim
 
 ZIM files are sourced from https://download.kiwix.org/zim/wikipedia/
 """
@@ -299,7 +300,7 @@ def main():
         "--zim-dir",
         default=DEFAULT_ZIM_DIR,
         metavar="PATH",
-        help=f"Directory to store ZIM files (default: {DEFAULT_ZIM_DIR}).",
+        help="Directory to store ZIM files (default: ~/zim).",
     )
     parser.add_argument(
         "--list",

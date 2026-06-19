@@ -18,12 +18,9 @@ __pycache__/
 radio-manuals/*
 !radio-manuals/README.md
 
-# FCC flat-file data (EN.dat/HD.dat/EN.idx) + GeoNames source (US.txt) —
-# downloaded/built by scripts/setup-fcc-database.py. zipcodes.csv stays tracked.
-fcc-offline-database/**/*.dat
-fcc-offline-database/**/*.idx
-fcc-offline-database/**/*.txt
-fcc-offline-database/US.zip
+# FCC offline database — directory is created locally by setup-fcc-database.py
+# and populated in oasis-dist/ by create-offline-dist.py. Nothing is checked in.
+fcc-offline-database/
 
 # Wikipedia ZIM files — downloaded by scripts/download-wikipedia.py.
 *.zim
@@ -31,5 +28,13 @@ fcc-offline-database/US.zip
 # Scratch / temporary files
 temp/
 
-# USB bundle output — built by scripts/build-usb.py
-usb-dist/
+# USB bundle output — built by scripts/create-offline-dist.py
+oasis-dist/
+
+# Python wheels — downloaded by scripts/create-offline-dist.py.
+# Never checked in; populated at bundle-build time.
+server/wheels/*.whl
+
+# Offline binary packages — downloaded by scripts/create-offline-dist.py.
+# Entire tree is excluded; scripts install from oasis-dist/ or the internet.
+offline-packages/

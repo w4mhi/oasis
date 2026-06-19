@@ -78,6 +78,8 @@ body {
 .svc-card.up   { border-color: var(--accent-dim); }
 .svc-card.down { border-color: #7a1010; }
 .svc-card.warn { border-color: var(--amber-dim); }
+a.svc-card { text-decoration: none; color: inherit; cursor: pointer; }
+a.svc-card:hover { border-color: var(--accent); }
 .svc-dot {
   width: 8px;
   height: 8px;
@@ -105,7 +107,7 @@ body {
 /* ── Stats bar ───────────────────────────────────────────────────────── */
 .stats-bar {
   display: flex;
-  gap: 1.4rem;
+  gap: 0;
   align-items: center;
   padding: .38rem 1.25rem;
   background: var(--panel);
@@ -118,9 +120,15 @@ body {
   align-items: center;
   gap: .38rem;
   font-size: var(--fs-micro);
+  padding: 0 .9rem;
 }
+.stat-item:first-child { padding-left: 0; }
+.stat-item:not(:first-child) { border-left: 1px solid var(--border); }
 .stat-lbl { color: var(--text-dim); text-transform: uppercase; letter-spacing: .09em; }
 .stat-val { color: var(--text); font-weight: 700; min-width: 2ch; }
+.stat-val.ok   { color: var(--accent); }
+.stat-val.warn { color: var(--amber); }
+.stat-val.bad  { color: var(--red); }
 .mini-bar { width: 44px; background: var(--panel-2); border-radius: 2px; height: 4px; }
 .mini-fill {
   height: 4px;
@@ -192,6 +200,12 @@ body {
   background: var(--panel);
   border-color: var(--accent);
   color: var(--accent);
+}
+.ql-btn.disabled {
+  opacity: .4;
+  pointer-events: none;
+  border-color: var(--border);
+  cursor: not-allowed;
 }
 .ql-icon { font-size: .95rem; line-height: 1; }
 .ql-lbl {
@@ -324,6 +338,12 @@ body {
     <div><div class="svc-name">Offline Maps</div><div class="svc-sub" id="sub-maps">—</div></div>
     <span class="svc-badge" id="badge-maps">—</span>
   </div>
+  <a class="svc-card" id="card-webssh" href="#" rel="noopener"
+     onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.webssh}/`,'_blank');return false;">
+    <div class="svc-dot" id="dot-webssh"></div>
+    <div><div class="svc-name">Web SSH</div><div class="svc-sub" id="sub-webssh">—</div></div>
+    <span class="svc-badge" id="badge-webssh">—</span>
+  </a>
 </div>
 
 <!-- ── SYSTEM STATS BAR ──────────────────────────────────────────────────── -->
@@ -332,6 +352,10 @@ body {
     <span class="stat-lbl">CPU</span>
     <span class="stat-val" id="s-cpu">—</span>
     <div class="mini-bar"><div class="mini-fill" id="b-cpu"></div></div>
+  </div>
+  <div class="stat-item">
+    <span class="stat-lbl">Temp</span>
+    <span class="stat-val" id="s-temp">—</span>
   </div>
   <div class="stat-item">
     <span class="stat-lbl">RAM</span>
@@ -344,12 +368,16 @@ body {
     <div class="mini-bar"><div class="mini-fill" id="b-disk"></div></div>
   </div>
   <div class="stat-item">
+    <span class="stat-lbl">Load</span>
+    <span class="stat-val" id="s-load">—</span>
+  </div>
+  <div class="stat-item">
     <span class="stat-lbl">Uptime</span>
     <span class="stat-val" id="s-uptime">—</span>
   </div>
   <div class="stat-item">
-    <span class="stat-lbl">FCC DB</span>
-    <span class="stat-val" id="s-fcc">—</span>
+    <span class="stat-lbl">Audio</span>
+    <span class="stat-val" id="s-audio">—</span>
   </div>
 </div>
 
@@ -376,7 +404,7 @@ body {
         <span class="ql-icon">📋</span>
         <span class="ql-lbl">Net<br>Logger</span>
       </a>
-      <a class="ql-btn" href="/lookup">
+      <a class="ql-btn" id="ql-fcc" href="/lookup">
         <span class="ql-icon">🔍</span>
         <span class="ql-lbl">FCC<br>Lookup</span>
       </a>
@@ -384,8 +412,9 @@ body {
 
     <div class="nav-sec">
       <div class="nav-sec-title">System</div>
-      <ul class="nav-links">    
+      <ul class="nav-links">
         <li><a href="system/dashboard.html" class="ext">Server Dashboard <span class="nav-meta">health</span></a></li>
+        <li><a href="#" class="ext" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.webssh}/`,'_blank');return false;">SSH Terminal <span class="nav-meta">ttyd :7681</span></a></li>
         <li><a href="static/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
       </ul>
     </div>
@@ -481,7 +510,7 @@ body {
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
-const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085 };
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681 };
 
 async function loadConfig() {
   try {
@@ -560,8 +589,9 @@ const SERVICES = [
     id: 'fcc', name: 'FCC Database',
     check: async () => {
       const r = await fetch('/health', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'server error' };
+      if (!r.ok) { setFccLookup(false); return { up: false, sub: 'server error' }; }
       const d = await r.json();
+      setFccLookup(d.index_present);   // disable FCC Lookup button if no index
       return { up: true, warn: !d.index_present,
         badge: d.index_present ? 'UP' : 'WARN',
         sub: d.index_present ? `${(d.zip_entries||0).toLocaleString()} ZIP` : 'index not built' };
@@ -577,6 +607,13 @@ const SERVICES = [
       return { up: true, warn: n === 0,
         badge: n > 0 ? 'UP' : 'WARN',
         sub: n > 0 ? `${n} PMTiles` : 'no tiles' };
+    }
+  },
+  {
+    id: 'webssh', name: 'SSH Terminal',
+    check: async () => {
+      await fetch(`http://${HOST}:${PORTS.webssh}/`, { cache: 'no-store', mode: 'no-cors' });
+      return { up: true, badge: 'UP', sub: `:${PORTS.webssh}` };
     }
   },
 ];
@@ -608,40 +645,103 @@ async function checkService(svc) {
 
 function pingAll() { SERVICES.forEach(svc => checkService(svc)); }
 
+// Enable/disable the FCC Lookup quick-launch button based on index presence.
+function setFccLookup(enabled) {
+  const btn = document.getElementById('ql-fcc');
+  if (!btn) return;
+  btn.classList.toggle('disabled', !enabled);
+  if (enabled) {
+    btn.removeAttribute('aria-disabled');
+    btn.title = '';
+  } else {
+    btn.setAttribute('aria-disabled', 'true');
+    btn.title = 'FCC index not built — run scripts/setup-fcc-database.py';
+  }
+}
+
 // ── System stats ──────────────────────────────────────────────────────────────
-function setBar(id, pct) {
+// Colour a value green / yellow / red against amber & red thresholds.
+function valClass(pct, amber, red) {
+  if (pct == null)  return 'stat-val';
+  if (pct >= red)   return 'stat-val bad';
+  if (pct >= amber) return 'stat-val warn';
+  return 'stat-val ok';
+}
+function setStat(id, text, pct, amber, red) {
   const el = document.getElementById(id);
-  el.style.width = `${pct}%`;
-  el.className = `mini-fill${pct > 90 ? ' bad' : pct > 75 ? ' warn' : ''}`;
+  el.textContent = text;
+  el.className   = valClass(pct, amber, red);
+}
+function setBar(id, pct, amber = 70, red = 90) {
+  const el = document.getElementById(id);
+  el.style.width = `${Math.min(pct, 100)}%`;
+  el.className   = `mini-fill${pct >= red ? ' bad' : pct >= amber ? ' warn' : ''}`;
+}
+function fmtUptime(sec) {
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
 async function fetchStats() {
   try {
-    const r = await fetch(
-      `${location.protocol}//${location.hostname}:${PORTS.aprs_api}/api/system`,
-      { cache: 'no-store', signal: AbortSignal.timeout(4000) }
-    );
+    // Same-origin Flask endpoint (matches the dashboard) — no dependency on
+    // the separate :8085 APRS API being up.
+    const r = await fetch('/api/system', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
     if (!r.ok) return;
     const d = await r.json();
 
-    if (d.cpu_percent != null) {
-      const pct = Math.round(d.cpu_percent);
-      document.getElementById('s-cpu').textContent = `${pct}%`;
-      setBar('b-cpu', pct);
+    // CPU %
+    if (d.cpu_pct != null) {
+      setStat('s-cpu', `${Math.round(d.cpu_pct)}%`, d.cpu_pct, 70, 90);
+      setBar('b-cpu', d.cpu_pct, 70, 90);
     }
-    if (d.ram_used_mb != null && d.ram_total_mb != null) {
-      const pct = Math.round(d.ram_used_mb / d.ram_total_mb * 100);
-      document.getElementById('s-ram').textContent =
-        `${Math.round(d.ram_used_mb)} / ${Math.round(d.ram_total_mb)} MB`;
-      setBar('b-ram', pct);
+    // Temperature (°C) — absent on Mac/Windows
+    setStat('s-temp', d.cpu_temp_c != null ? `${d.cpu_temp_c} °C` : 'n/a',
+            d.cpu_temp_c, 65, 80);
+    // RAM %
+    if (d.ram && d.ram.pct != null) {
+      setStat('s-ram', `${Math.round(d.ram.pct)}%`, d.ram.pct, 70, 90);
+      setBar('b-ram', d.ram.pct, 70, 90);
     }
-    if (d.disk_free_gb != null && d.disk_total_gb != null) {
-      const usedPct = Math.round((1 - d.disk_free_gb / d.disk_total_gb) * 100);
-      document.getElementById('s-disk').textContent = `${d.disk_free_gb.toFixed(1)} GB free`;
-      setBar('b-disk', usedPct);
+    // Disk usage %
+    if (d.disk && !d.disk.error && d.disk.pct != null) {
+      setStat('s-disk', `${Math.round(d.disk.pct)}%`, d.disk.pct, 70, 90);
+      setBar('b-disk', d.disk.pct, 70, 90);
     }
-    if (d.uptime)         document.getElementById('s-uptime').textContent = d.uptime;
-    if (d.fcc_db_updated) document.getElementById('s-fcc').textContent    = d.fcc_db_updated;
+    // Load (1-min avg) — coloured by load-vs-cores %, absent on Windows
+    if (d.load && d.load.avg1 != null) {
+      setStat('s-load', d.load.avg1.toFixed(2), d.load.pct, 75, 100);
+    } else {
+      setStat('s-load', 'n/a', null);
+    }
+    // Uptime — informational, no threshold colour
+    if (d.uptime_sec != null) {
+      const el = document.getElementById('s-uptime');
+      el.textContent = fmtUptime(d.uptime_sec);
+      el.className   = 'stat-val';
+    }
+  } catch (_) {}
+}
+
+// ── Audio devices (sound cards) ───────────────────────────────────────────────
+// Compact count in the stats bar; full list lives on the dashboard. Green when
+// a USB card can both capture & play (i.e. GrayWolf-ready), red when none exist.
+async function fetchAudio() {
+  const el = document.getElementById('s-audio');
+  try {
+    const r = await fetch('/api/audio', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.supported) { el.textContent = 'n/a'; el.className = 'stat-val'; el.title = 'ALSA / Linux only'; return; }
+    const n = d.cards.length;
+    el.textContent = n ? `${n} card${n !== 1 ? 's' : ''}` : String(n);
+    const ready = d.cards.some(c => c.usb && c.capture && c.playback);
+    el.className = 'stat-val' + (ready ? ' ok' : (n ? '' : ' bad'));
+    el.title = n
+      ? d.cards.map(c => `${c.name}  ${c.alsa}  [${c.capture ? 'RX' : '--'}/${c.playback ? 'TX' : '--'}]${c.usb ? ' USB' : ''}`).join('\n')
+      : 'no sound cards detected';
   } catch (_) {}
 }
 
@@ -674,9 +774,11 @@ async function fetchAPRS() {
 loadConfig().then(() => {
   pingAll();
   fetchStats();
+  fetchAudio();
   fetchAPRS();
   setInterval(pingAll,    30_000);
   setInterval(fetchStats, 30_000);
+  setInterval(fetchAudio, 30_000);
   setInterval(fetchAPRS,  15_000);
 });
 </script>

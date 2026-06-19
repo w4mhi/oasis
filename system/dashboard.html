@@ -19,6 +19,8 @@
 .svc-card.up{border-color:var(--accent-dim);}
 .svc-card.down{border-color:#7a1010;}
 .svc-card.warn{border-color:var(--amber-dim);}
+a.svc-card{text-decoration:none;color:inherit;cursor:pointer;}
+a.svc-card:hover{border-color:var(--accent);}
 .svc-dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);flex-shrink:0;transition:background .3s;}
 .svc-dot.up{background:var(--accent);}
 .svc-dot.down{background:var(--red);}
@@ -40,12 +42,22 @@
 .sec-body.expanded{max-height:600px;opacity:1;}
 
 /* System stats */
-.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:.6rem;margin-bottom:.9rem;}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.6rem;margin-bottom:.9rem;}
 .stat-card{border:1px solid var(--border);border-radius:9px;background:var(--panel);padding:.75rem 1rem;}
 .stat-label{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.1em;color:var(--text-dim);margin-bottom:.3rem;}
 .stat-val{font-size:var(--fs-title);font-weight:700;color:var(--accent);}
 .stat-val.warn{color:var(--amber);}
 .stat-val.bad{color:var(--red);}
+.stat-val.plain{color:var(--text);}
+
+/* Audio devices */
+.aud-list{display:flex;flex-direction:column;gap:.45rem;}
+.aud-row{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;}
+.aud-name{font-weight:700;color:var(--text);}
+.aud-name.usb{color:var(--amber);}
+.aud-addr{font-family:monospace;font-size:var(--fs-small);color:var(--text-dim);}
+.aud-tag{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.05em;border:1px solid var(--border);border-radius:4px;padding:.02rem .35rem;color:var(--text-dim);}
+.aud-tag.on{color:var(--accent);border-color:var(--accent-dim);}
 .stat-sub{font-size:var(--fs-small);color:var(--text-dim);margin-top:.15rem;}
 
 /* Bar */
@@ -90,6 +102,12 @@ tr:last-child .age-ok{color:var(--accent);}
   <div class="stat-grid" id="statGrid"></div>
 </div>
 
+<!-- Audio devices -->
+<div class="aprs-panel">
+  <div class="sec-label" style="margin-bottom:.5rem">Audio Devices <span id="audMeta" style="color:var(--text-dim);font-size:var(--fs-small);text-transform:none;letter-spacing:0"></span></div>
+  <div class="aud-list" id="audList"><div style="color:var(--text-dim)">Loading…</div></div>
+</div>
+
 <!-- APRS -->
 <div class="aprs-panel">
   <div class="sec-label" style="margin-bottom:.5rem">APRS Stations <span id="aprsCount" style="color:var(--text-dim);font-size:var(--fs-small);text-transform:none;letter-spacing:0"></span></div>
@@ -111,7 +129,7 @@ const REFRESH_SEC = 30;
 // ── Service-discovery ────────────────────────────────────────────────────────
 // Ports default to well-known values; /server-ports.json overrides them
 // if the server is running on non-standard ports.
-const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085 };
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681 };
 
 async function loadConfig() {
   try {
@@ -196,6 +214,14 @@ const SERVICES = [
         sub: n > 0 ? `${n} PMTiles` : 'no tiles' };
     }
   },
+  {
+    id: 'webssh', name: 'Web SSH',
+    openPort: () => PORTS.webssh,          // card opens this port in a new window
+    check: async () => {
+      await fetch(`http://${HOST}:${PORTS.webssh}/`, { cache: 'no-store', mode: 'no-cors' });
+      return { up: true, badge: 'UP', sub: `:${PORTS.webssh}` };
+    }
+  },
 ];
 
 // ── Render services ───────────────────────────────────────────────────────────
@@ -203,9 +229,17 @@ function buildServiceCards() {
   const grid = document.getElementById('svcGrid');
   grid.innerHTML = '';
   SERVICES.forEach(svc => {
-    const card = document.createElement('div');
+    const card = document.createElement(svc.openPort ? 'a' : 'div');
     card.className = 'svc-card';
     card.id = 'card-' + svc.id;
+    if (svc.openPort) {
+      card.href = '#';
+      card.rel  = 'noopener';
+      card.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.open(`${location.protocol}//${HOST}:${svc.openPort()}/`, '_blank');
+      });
+    }
     card.innerHTML = `
       <div class="svc-dot" id="dot-${svc.id}"></div>
       <div><div class="svc-name">${svc.name}</div><div class="svc-sub" id="sub-${svc.id}">—</div></div>
@@ -310,7 +344,7 @@ function renderStats(d) {
       label: d.disk && d.disk.label ? `Disk (${d.disk.label})` : 'Disk',
       val:   d.disk && !d.disk.error ? d.disk.pct.toFixed(1) + '%' : '—',
       sub:   d.disk && !d.disk.error
-               ? `${d.disk.used_gb} / ${d.disk.total_gb} GB · ${d.disk.free_gb} free`
+               ? `${d.disk.total_gb} GB · ${d.disk.free_gb} free`
                : (d.disk && d.disk.error) || '',
       pct:   d.disk && !d.disk.error ? d.disk.pct : null, amber: 70, red: 90
     },
@@ -326,18 +360,12 @@ function renderStats(d) {
       sub:   d.boot_str ? `booted ${d.boot_str}` : '',
       pct:   null
     },
-    {
-      label: 'FCC DB',
-      val:   d.fcc_db_date || '—',
-      sub:   d.fcc_db_date ? 'last updated' : 'path not found',
-      pct:   null
-    },
   ];
 
   grid.innerHTML = stats.map(s => `
     <div class="stat-card">
       <div class="stat-label">${s.label}</div>
-      <div class="stat-val ${s.pct != null ? valClass(s.pct, s.amber, s.red) : ''}">${s.val}</div>
+      <div class="stat-val ${s.pct != null ? valClass(s.pct, s.amber, s.red) : 'plain'}">${s.val}</div>
       ${s.sub ? `<div class="stat-sub">${s.sub}</div>` : ''}
       ${s.pct != null ? `
         <div class="bar-wrap">
@@ -417,6 +445,39 @@ async function fetchAPRS() {
   }
 }
 
+// ── Audio devices ─────────────────────────────────────────────────────────────
+async function fetchAudio() {
+  const list = document.getElementById('audList');
+  const meta = document.getElementById('audMeta');
+  try {
+    const r = await fetch('/api/audio', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (!d.supported) {
+      meta.textContent = '(ALSA / Linux only)';
+      list.innerHTML = '<div style="color:var(--text-dim)">Not available on this platform.</div>';
+      return;
+    }
+    if (!d.cards.length) {
+      meta.textContent = '';
+      list.innerHTML = '<div style="color:var(--text-dim)">No sound cards detected.</div>';
+      return;
+    }
+    meta.textContent = `— ${d.cards.length} card${d.cards.length !== 1 ? 's' : ''}`;
+    list.innerHTML = d.cards.map(c => `
+      <div class="aud-row">
+        <span class="aud-name ${c.usb ? 'usb' : ''}">${c.name}</span>
+        <span class="aud-addr">${c.alsa}</span>
+        <span class="aud-tag ${c.capture  ? 'on' : ''}" title="Capture / receive">RX</span>
+        <span class="aud-tag ${c.playback ? 'on' : ''}" title="Playback / transmit">TX</span>
+        ${c.usb ? '<span class="aud-tag on">USB</span>' : ''}
+      </div>`).join('');
+  } catch (e) {
+    meta.textContent = '';
+    list.innerHTML = `<div style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
 // ── Countdown ─────────────────────────────────────────────────────────────────
 function startCountdown() {
   clearInterval(countdownTimer);
@@ -436,8 +497,8 @@ async function refresh() {
   // Services — all in parallel
   await Promise.allSettled(SERVICES.map(checkService));
 
-  // System + APRS in parallel
-  await Promise.allSettled([fetchSystem(), fetchAPRS()]);
+  // System + Audio + APRS in parallel
+  await Promise.allSettled([fetchSystem(), fetchAudio(), fetchAPRS()]);
 
   startCountdown();
 }

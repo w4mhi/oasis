@@ -12,10 +12,6 @@ items are removed, not crossed out.
   `/health` endpoints that OASIS pings directly, replacing the current
   `no-cors` fetch that cannot distinguish a healthy service from a broken one.
 
-- **System stats independent of port 8085.** CPU, RAM, disk, and uptime will
-  be available from the always-running Flask server on port 8083, so the
-  dashboard System section works even when the APRS history API is not running.
-
 - **Non-blocking CPU sampling in the APRS API.** `graywolf_api.py` currently
   waits 1 second per request to read CPU usage. A background sampler will run
   every 5 seconds and cache the result so API calls return immediately.
@@ -208,6 +204,6 @@ These are by design or accepted tradeoffs, documented here for transparency.
   including the USB bundle.)
 
 - **USB bundle runs on Windows, Linux, and macOS.** Windows uses the embedded
-  Python bundled by `scripts/build-usb.py` (AMD64); Linux and macOS bootstrap
+  Python bundled by `scripts/create-offline-dist.py` (AMD64); Linux and macOS bootstrap
   from the vendored wheels using system `python3` on first run. Only the
   Windows embedded runtime is AMD64-specific.

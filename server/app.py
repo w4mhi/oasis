@@ -292,6 +292,7 @@ def api_config():
             "graywolf": 8080,
             "kiwix": 8081,
             "aprs_api": 8085,
+            "webssh": 7681,
         },
     }
     return jsonify(payload)
@@ -398,6 +399,64 @@ def api_system():
         "boot_str":    boot_str,
         "fcc_db_date": fcc_db_mtime,
     })
+
+
+@app.route("/api/audio")
+def api_audio():
+    """List ALSA sound cards (for choosing a GrayWolf audio device).
+
+    Reads /proc/asound — no extra Python deps. Linux/ALSA only; returns
+    supported=False on macOS/Windows so the UI can show 'n/a'.
+    Each card reports capture (RX) / playback (TX) capability and the ALSA
+    address (hw:N,0) to plug straight into GrayWolf's config.
+    """
+    import re
+    import sys
+
+    # Audio enumeration is Linux/ALSA only (reads /proc/asound). Windows and
+    # macOS have no procfs sound nodes, so report unsupported rather than
+    # erroring — the cross-platform bundle keeps working and the UI shows "n/a".
+    if not sys.platform.startswith("linux") or not os.path.exists("/proc/asound/cards"):
+        return jsonify({"ok": True, "supported": False, "cards": []})
+
+    try:
+        with open("/proc/asound/cards") as fh:
+            text = fh.read()
+    except OSError as exc:
+        return jsonify({"ok": False, "supported": True, "error": str(exc)}), 503
+
+    def pcm_kinds(n):
+        """Return (capture, playback) by inspecting /proc/asound/cardN/pcm*."""
+        cap = play = False
+        try:
+            for entry in os.listdir(f"/proc/asound/card{n}"):
+                if re.match(r"pcm\d+c$", entry):
+                    cap = True
+                elif re.match(r"pcm\d+p$", entry):
+                    play = True
+        except OSError:
+            pass
+        return cap, play
+
+    cards = []
+    # Line format: " N [id   ]: driver - full name"
+    for m in re.finditer(r'^\s*(\d+)\s*\[([^\]]+)\]\s*:\s*(\S+)\s*-\s*(.+?)\s*$',
+                         text, re.M):
+        idx, cid, driver, name = m.groups()
+        n = int(idx)
+        cap, play = pcm_kinds(n)
+        cards.append({
+            "index":    n,
+            "id":       cid.strip(),
+            "name":     name.strip(),
+            "driver":   driver.strip(),
+            "capture":  cap,
+            "playback": play,
+            "usb":      "usb" in (driver + name).lower(),
+            "alsa":     f"hw:{n},0",
+        })
+
+    return jsonify({"ok": True, "supported": True, "cards": cards})
 
 
 PORT = 8083
