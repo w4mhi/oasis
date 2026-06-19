@@ -54,6 +54,10 @@
 .result-val { color: var(--text); font-size: var(--fs-subtitle); }
 .result-val.grid { color: var(--accent); }
 .result-val.empty { color: var(--text-dim); font-style: italic; font-size: var(--fs-base); }
+.grid-note {
+  font-size: var(--fs-small); color: var(--text-dim); font-style: italic;
+  padding: .15rem 0 .25rem;
+}
 
 .msg {
   border: 1px dashed var(--border);
@@ -115,6 +119,9 @@
     var gridHtml = r.grid
       ? '<span class="result-val grid">' + esc(r.grid) + '</span>'
       : '<span class="result-val empty">unavailable for ZIP</span>';
+    var gridNote = r.grid
+      ? '<div class="grid-note">Derived from ZIP ' + esc(r.zip || '') + ' centroid — may be several miles from actual QTH</div>'
+      : '';
     out.innerHTML =
       '<div class="result-card">' +
         '<div class="result-call">' + esc(r.callsign) + '</div>' +
@@ -123,6 +130,7 @@
           '<div class="result-row"><span class="result-key">City</span>'        + valOrEmpty(r.city)  + '</div>' +
           '<div class="result-row"><span class="result-key">State</span>'       + valOrEmpty(r.state) + '</div>' +
           '<div class="result-row"><span class="result-key">Grid Square</span>' + gridHtml            + '</div>' +
+          gridNote +
         '</div>' +
       '</div>';
   }

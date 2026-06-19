@@ -264,7 +264,7 @@ def install_dependencies(online):
         _fail(
             "server/wheels/ is empty and no internet is reachable.\n"
             "       Options:\n"
-            "         (a) Copy oasis-dist/server/wheels/ here, or\n"
+            "         (a) Copy oasis-offline/server/wheels/ here, or\n"
             "         (b) Connect to the internet and re-run."
         )
 
@@ -402,7 +402,7 @@ def main():
         _fail(
             "server/wheels/ is empty and no internet is reachable.\n"
             "       Options:\n"
-            "         (a) Copy oasis-dist/server/wheels/ to server/wheels/, or\n"
+            "         (a) Copy oasis-offline/server/wheels/ to server/wheels/, or\n"
             "         (b) Connect to the internet and re-run."
         )
 

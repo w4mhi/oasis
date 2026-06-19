@@ -99,6 +99,19 @@ tr.row-section td {{
 }}
 tr.empty-steps .op {{ color: var(--text-dim); }}
 .na {{ color: var(--border); }}
+@media print {{
+  body {{ background: #fff; color: #000; }}
+  header {{ background: #fff !important; border-color: #ccc !important; }}
+  header h1, header p {{ color: #000 !important; }}
+  .actions {{ display: none !important; }}
+  .tbl-wrap {{ overflow: visible; }}
+  table {{ width: 100%; border-collapse: collapse; }}
+  th, td {{ border: 1px solid #ccc !important; }}
+  tr.row-section td {{ background: #eee !important; color: #444 !important; }}
+  .op {{ color: #555 !important; }}
+  .steps {{ color: #000 !important; }}
+  .na {{ color: #aaa !important; }}
+}}
 </style>
 </head>
 <body>
@@ -109,6 +122,13 @@ tr.empty-steps .op {{ color: var(--text-dim); }}
     <h1>{html.escape(radio)}</h1>
     <p>Radio reference card</p>
   </header>
+
+  <div class="actions">
+    <button class="sbtn" onclick="window.print()" title="Print this reference card">🖨 Print</button>
+    <button class="sbtn" onclick="document.getElementById('csvImport').click()" title="Import a two-column CSV (Operation, Steps) to replace the table">Import CSV</button>
+    <input type="file" id="csvImport" accept=".csv,text/csv,text/plain" style="display:none" onchange="importCSV(this)">
+    <button class="sbtn" onclick="savePage()" title="Download this card as a standalone HTML file">Save</button>
+  </div>
 
   <div class="sec">
     <div class="tbl-wrap">
@@ -122,6 +142,81 @@ tr.empty-steps .op {{ color: var(--text-dim); }}
   </div>
 
 </div>
+<script>
+'use strict';
+
+// ── Minimal CSV parser (handles double-quoted fields with embedded commas) ──
+function parseCSV(text) {{
+  const rows = [];
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  for (const line of lines) {{
+    if (!line.trim()) continue;
+    const fields = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {{
+      const c = line[i];
+      if (inQ) {{
+        if (c === '"' && line[i+1] === '"') {{ cur += '"'; i++; }}
+        else if (c === '"') {{ inQ = false; }}
+        else {{ cur += c; }}
+      }} else {{
+        if (c === '"') {{ inQ = true; }}
+        else if (c === ',') {{ fields.push(cur); cur = ''; }}
+        else {{ cur += c; }}
+      }}
+    }}
+    fields.push(cur);
+    rows.push(fields);
+  }}
+  return rows;
+}}
+
+// ── Import CSV ───────────────────────────────────────────────────────────────
+function importCSV(input) {{
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {{
+    const rows = parseCSV(e.target.result);
+    if (rows.length < 2) {{ alert('CSV appears empty or has only a header row.'); return; }}
+    const tbody = document.querySelector('tbody');
+    tbody.innerHTML = '';
+    // rows[0] is header (Operation, Steps) — skip it
+    rows.slice(1).forEach(r => {{
+      const op    = (r[0] || '').trim();
+      const steps = (r[1] || '').trim();
+      if (!op && !steps) return;
+      // Section divider: op present, steps absent
+      if (op && !steps) {{
+        const tr = document.createElement('tr');
+        tr.className = 'row-section';
+        tr.innerHTML = '<td colspan="2">' + op + '</td>';
+        tbody.appendChild(tr);
+        return;
+      }}
+      const tr = document.createElement('tr');
+      if (!steps) tr.className = 'empty-steps';
+      tr.innerHTML =
+        '<td class="op">'    + op    + '</td>' +
+        '<td class="steps">' + (steps || '<span class="na">\u2014</span>') + '</td>';
+      tbody.appendChild(tr);
+    }});
+    input.value = '';
+  }};
+  reader.readAsText(file);
+}}
+
+// ── Save page ────────────────────────────────────────────────────────────────
+function savePage() {{
+  const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+  const blob = new Blob([html], {{ type: 'text/html' }});
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = document.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}}
+</script>
 </body>
 </html>
 """

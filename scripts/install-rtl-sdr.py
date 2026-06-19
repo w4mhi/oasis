@@ -10,12 +10,16 @@ What this does:
   2. Installs: rtl-sdr, librtlsdr2 (or librtlsdr0), libusb-1.0-0
      from offline-packages/rtl-sdr/ if bundled packages are present,
      otherwise falls back to apt (internet required)
-  3. Blacklists the dvb_usb_rtl28xxu kernel module that conflicts with RTL-SDR
-  4. Verifies the install with rtl_test --help
+  3. Installs the feed tools socat + tcpdump (same offline-first / apt logic) —
+     socat carries the SDR audio into GrayWolf; tcpdump verifies it. Pi OS ships
+     with neither. Used by enable-rtl-sdr.py.
+  4. Blacklists the dvb_usb_rtl28xxu kernel module that conflicts with RTL-SDR
+  5. Verifies the install with rtl_test --help
 
 After install, plug in your RTL-SDR dongle and run:
   rtl_test -t            # verify device is found
   rtl_fm -f 144.390M ... # receive APRS/FM audio
+  python3 scripts/enable-rtl-sdr.py   # wire the dongle into GrayWolf (RX-only)
 
 Supported hardware: RTL2832U-based USB dongles (RTL-SDR Blog V3/V4, Nooelec, etc.)
 
@@ -33,6 +37,7 @@ Requires: Linux, apt/dpkg, sudo. Internet optional if bundled packages present.
 import argparse
 import os
 import platform
+import shutil
 import subprocess
 import sys
 
@@ -126,10 +131,20 @@ REQUIRED_DEBS = {
     "librtlsdr":    ["librtlsdr0_", "librtlsdr2_"],
 }
 
+# Feed tools for the RTL-SDR → GrayWolf sdr_udp path (see enable-rtl-sdr.py and
+# docs/sdr-to-graywolf.md). socat carries the audio; tcpdump verifies it. Their
+# not-always-present shared-lib deps are bundled so the offline install resolves.
+FEED_DEBS = {
+    "socat":      ["socat_"],
+    "tcpdump":    ["tcpdump_"],
+    "libwrap0":   ["libwrap0_"],
+    "libpcap0.8": ["libpcap0.8_"],
+}
 
-def find_local_debs(deb_arch):
+
+def find_local_debs(deb_arch, required=REQUIRED_DEBS):
     """
-    Scan offline-packages/rtl-sdr/ for the required .debs matching deb_arch.
+    Scan offline-packages/rtl-sdr/ for the *required* .debs matching deb_arch.
     Returns (deb_paths, missing) where missing names the required packages not
     found. macOS AppleDouble sidecars (._*) are ignored.
     """
@@ -138,16 +153,16 @@ def find_local_debs(deb_arch):
         for fname in sorted(os.listdir(OFFLINE_DIR)):
             if fname.startswith("._") or not fname.endswith(f"_{deb_arch}.deb"):
                 continue
-            for key, prefixes in REQUIRED_DEBS.items():
+            for key, prefixes in required.items():
                 if key not in found and any(fname.startswith(p) for p in prefixes):
                     found[key] = os.path.join(OFFLINE_DIR, fname)
 
-    missing = [k for k in REQUIRED_DEBS if k not in found]
+    missing = [k for k in required if k not in found]
     return list(found.values()), missing
 
 
 # ── Step 4: Install RTL-SDR (best-effort) ─────────────────────────────────────
-def install_offline(deb_paths):
+def install_offline(deb_paths, label="RTL-SDR"):
     """Install bundled .debs, but never downgrade an already-newer package.
 
     For each .deb we compare its version to what's installed and only install
@@ -163,7 +178,7 @@ def install_offline(deb_paths):
             to_install.append(p)
 
     if not to_install:
-        _ok("All RTL-SDR packages already current — nothing to install.")
+        _ok(f"All {label} packages already current — nothing to install.")
         return True
 
     _info("Installing:")
@@ -196,7 +211,7 @@ def _report_incomplete(deb_paths, missing):
     if deb_paths:
         _info("Present: " + ", ".join(os.path.basename(p) for p in deb_paths))
     _warn("Missing: " + ", ".join(missing))
-    _info("Re-fetch with: python3 scripts/create-offline-dist.py")
+    _info("Re-fetch with: python3 scripts/create-oasis-offline.py")
 
 
 def install_rtl_sdr(deb_paths, missing):
@@ -222,14 +237,65 @@ def install_rtl_sdr(deb_paths, missing):
         _fail(
             "RTL-SDR tools could not be installed from offline packages or apt.\n"
             "       Check the errors above. If packages are missing, rebuild the bundle:\n"
-            "         python3 scripts/create-offline-dist.py"
+            "         python3 scripts/create-oasis-offline.py"
         )
     return installed
 
 
-# ── Step 5: Blacklist the conflicting DVB kernel module ──────────────────────
+# ── Step 5: Feed tools (socat, tcpdump) ──────────────────────────────────────
+def install_feed_online(missing):
+    """apt-install the missing feed tools (deps resolved online). Returns bool."""
+    _info("Installing feed tools via apt (internet) ...")
+    _run(["sudo", "apt", "update", "-qq"], check=False)
+    if _run(["sudo", "apt", "install", "-y", *missing], check=False).returncode == 0:
+        _ok("Feed tools installed via apt")
+        return True
+    _warn("apt could not install the feed tools.")
+    return False
+
+
+def install_feed_tools(deb_arch):
+    """Install socat + tcpdump for the GrayWolf feed: bundled .debs first, then
+    apt. Best-effort — logs and continues; socat is what the feed actually needs.
+    """
+    _step(5, "Installing feed tools (socat, tcpdump)")
+
+    have = {p: shutil.which(p) is not None for p in ("socat", "tcpdump")}
+    if all(have.values()):
+        _ok("socat and tcpdump already installed.")
+        return
+    missing = [p for p, ok in have.items() if not ok]
+    _info("Missing: " + ", ".join(missing))
+
+    feed_paths, feed_missing = find_local_debs(deb_arch, FEED_DEBS)
+    installed = False
+    if feed_paths and not feed_missing:
+        _info("Bundled feed packages found — installing offline.")
+        installed = install_offline(feed_paths, label="feed-tool")
+        if not installed:
+            _warn("Offline feed install failed — falling back to apt.")
+    elif feed_paths or feed_missing:
+        _report_incomplete(feed_paths, feed_missing)
+
+    if not installed:
+        installed = install_feed_online(missing)
+
+    if not installed:
+        _warn("Could not install socat/tcpdump. The RTL-SDR → GrayWolf audio "
+              "feed needs socat. Install manually:")
+        _warn("  sudo apt install -y socat tcpdump")
+        return
+
+    still = [p for p in ("socat", "tcpdump") if shutil.which(p) is None]
+    if still:
+        _warn("Still missing after install: " + ", ".join(still))
+    else:
+        _ok("Feed tools ready — socat (feed) + tcpdump (verification).")
+
+
+# ── Step 6: Blacklist the conflicting DVB kernel module ──────────────────────
 def blacklist_dvb():
-    _step(5, "Blacklisting DVB kernel module")
+    _step(6, "Blacklisting DVB kernel module")
     _info(f"Writing {BLACKLIST_FILE}")
 
     try:
@@ -258,9 +324,9 @@ def blacklist_dvb():
     _info("Reboot for the blacklist to take full effect on next plug-in.")
 
 
-# ── Step 6: Verify install ─────────────────────────────────────────────────────
+# ── Step 7: Verify install ─────────────────────────────────────────────────────
 def verify():
-    _step(6, "Verifying install")
+    _step(7, "Verifying install")
     result = subprocess.run(
         ["rtl_test", "--help"], capture_output=True, text=True
     )
@@ -311,13 +377,15 @@ def main():
 
     install_rtl_sdr(deb_paths, missing)
 
+    install_feed_tools(deb_arch)
     blacklist_dvb()
     verify()
 
     _hr()
     print("\n  RTL-SDR install complete.")
     _info("Plug in your dongle and run:  rtl_test -t")
-    _info("For APRS receive:  rtl_fm -f 144.390M -M fm -s 200k -r 48k - | aplay -r 48k -f S16_LE -t raw -c 1")
+    _info("For APRS receive:  rtl_fm -f 144.390M -M fm -s 48000 - | aplay -r 48000 -f S16_LE -t raw -c 1")
+    _info("Wire it into GrayWolf:  python3 scripts/enable-rtl-sdr.py")
     print()
 
 

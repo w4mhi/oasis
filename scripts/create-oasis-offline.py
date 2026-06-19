@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-create-offline-dist.py
-----------------------
+create-oasis-offline.py
+-----------------------
 Download every offline asset and build the OASIS offline distribution in one shot.
-Always outputs to oasis-dist/ in the repo root (existing bundle is wiped).
+Always outputs to oasis-offline/ in the repo root (existing bundle is wiped).
 
   Default (no flags)
     Runs incrementally: existing assets at the current version are reused;
     only missing or outdated files are downloaded. Copies the repo source tree,
-    writes the launchers and Windows Python runtime into oasis-dist/.
-    Copy oasis-dist/ to a USB drive — it runs on Windows and Linux with no
+    writes the launchers and Windows Python runtime into oasis-offline/.
+    Copy oasis-offline/ to a USB drive — it runs on Windows and Linux with no
     Python pre-installed and no internet access.
 
   --rebuild
-    Wipe oasis-dist/ and perform a full clean rebuild from scratch.
+    Wipe oasis-offline/ and perform a full clean rebuild from scratch.
 
   --check
-    Verify that all offline assets are present in an existing oasis-dist/
+    Verify that all offline assets are present in an existing oasis-offline/
     and that the wheel set satisfies every supported platform/Python target.
     No changes are made. Use in CI or before shipping a bundle.
 
@@ -24,19 +24,31 @@ Always outputs to oasis-dist/ in the repo root (existing bundle is wiped).
     Skip downloading the embedded Windows Python runtime.
     start.bat will not work, but the build is fully offline.
 
+  --update
+    Update offline packages only in an existing distribution directory.
+    By default targets the current working directory. Use --dir to point at
+    a specific path (e.g. a mounted USB drive). Only the download phases run —
+    source files, launchers, and the Windows runtime are not touched.
+
+  --dir DIR
+    Only valid with --update. Directory to update. Defaults to the current
+    working directory when --update is used without --dir.
+
 Download phases (run automatically unless --check):
-  Phase 1 — Python wheels       oasis-dist/server/wheels/
-  Phase 2 — GrayWolf .deb       oasis-dist/offline-packages/graywolf/
-  Phase 3 — Kiwix binaries      oasis-dist/offline-packages/kiwix/
-  Phase 4 — FCC database        oasis-dist/fcc-offline-database/data/
-  Phase 5 — RTL-SDR .deb        oasis-dist/offline-packages/rtl-sdr/
-  Phase 6 — webssh ttyd binary  oasis-dist/offline-packages/webssh/
+  Phase 1 — Python wheels       oasis-offline/server/wheels/
+  Phase 2 — GrayWolf .deb       oasis-offline/offline-packages/graywolf/
+  Phase 3 — Kiwix binaries      oasis-offline/offline-packages/kiwix/
+  Phase 4 — FCC database        oasis-offline/fcc-offline-database/data/
+  Phase 5 — RTL-SDR .deb        oasis-offline/offline-packages/rtl-sdr/
+  Phase 6 — webssh ttyd binary  oasis-offline/offline-packages/webssh/
 
 Usage:
-  python3 scripts/create-offline-dist.py                    # incremental build
-  python3 scripts/create-offline-dist.py --rebuild          # wipe + full rebuild
-  python3 scripts/create-offline-dist.py --check            # verify bundle (CI)
-  python3 scripts/create-offline-dist.py --skip-windows     # build, no Win runtime
+  python3 scripts/create-oasis-offline.py                    # incremental build
+  python3 scripts/create-oasis-offline.py --rebuild          # wipe + full rebuild
+  python3 scripts/create-oasis-offline.py --check            # verify bundle (CI)
+  python3 scripts/create-oasis-offline.py --skip-windows     # build, no Win runtime
+  python3 scripts/create-oasis-offline.py --update           # update packages in cwd
+  python3 scripts/create-oasis-offline.py --update --dir /mnt/usb  # update on USB drive
 """
 
 import argparse
@@ -62,12 +74,12 @@ from common.oasis_lib import (
     kiwix_latest_version, kiwix_download_tarball,
     rtl_sdr_download_debs,
     ttyd_download,
-    KIWIX_BASE, RTL_SDR_PACKAGES, DEBIAN_SUITE, TTYD_VERSION,
+    KIWIX_BASE, RTL_SDR_PACKAGES, FEED_PACKAGES, DEBIAN_SUITE, TTYD_VERSION,
 )
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT_DIR   = os.path.join(REPO_ROOT, "oasis-dist")
+OUT_DIR   = os.path.join(REPO_ROOT, "oasis-offline")
 REQ_FILE  = os.path.join(REPO_ROOT, "scripts", "requirements.txt")
 
 # ── Windows embedded Python ────────────────────────────────────────────────────
@@ -80,7 +92,7 @@ PYTHON_EMBED_URL = (
 # ── Bundle copy exclusions ─────────────────────────────────────────────────────
 # Directories excluded from the source copy (matched by basename).
 EXCLUDE_DIRS = {".git", ".venv", "__pycache__", "temp", ".DS_Store",
-                "offline-packages", "oasis-dist", "fcc-offline-database"}
+                "offline-packages", "oasis-offline", "fcc-offline-database"}
 # Directories excluded by path relative to REPO_ROOT (forward slashes).
 # server/wheels/ is populated by the wheels download phase, not copied from repo.
 EXCLUDE_RELPATHS = {"server/wheels"}
@@ -291,20 +303,26 @@ _RTL_SDR_TARGETS = [
 
 
 def phase_rtl_sdr(rtl_sdr_dir, update=False):
-    """Phase 5: Download RTL-SDR Debian packages for arm64, armhf, amd64."""
+    """Phase 5: Download RTL-SDR + feed-tool Debian packages for arm64, armhf, amd64."""
     _section("Phase 5 — RTL-SDR Debian packages")
+    packages = RTL_SDR_PACKAGES + FEED_PACKAGES
     _info(f"Suite   : Debian {DEBIAN_SUITE}")
-    _info(f"Packages: {', '.join(RTL_SDR_PACKAGES)}")
+    _info(f"Packages: {', '.join(packages)}")
     _info("Targets : arm64 (Pi 64-bit), armhf (Pi 32-bit), amd64")
+    # rtl-sdr is the RX driver; socat carries the GrayWolf feed; tcpdump verifies
+    # it. Both tool sets land in the same offline dir for install-rtl-sdr.py.
     for deb_arch, desc in _RTL_SDR_TARGETS:
         _info(f"  ─── {desc}")
         if os.path.isdir(rtl_sdr_dir):
-            existing = [f for f in os.listdir(rtl_sdr_dir)
-                        if f.startswith("rtl-sdr_") and f.endswith(f"_{deb_arch}.deb")]
-            if existing:
-                _cp(f"rtl-sdr {deb_arch}: {existing[0]}  (up to date)")
+            have = os.listdir(rtl_sdr_dir)
+            def _present(prefix):
+                return any(f.startswith(prefix) and f.endswith(f"_{deb_arch}.deb")
+                           for f in have)
+            # Up to date only if both the driver and the feed tools are bundled.
+            if _present("rtl-sdr_") and _present("socat_") and _present("tcpdump_"):
+                _cp(f"rtl-sdr + feed tools {deb_arch}: present  (up to date)")
                 continue
-        rtl_sdr_download_debs(rtl_sdr_dir, deb_arch)
+        rtl_sdr_download_debs(rtl_sdr_dir, deb_arch, packages=packages)
 # ── Phase 6: webssh (ttyd) static binaries ────────────────────────────────────
 _WEBSSH_TARGETS = [
     ("aarch64", "Raspberry Pi (64-bit)"),
@@ -408,8 +426,11 @@ def build_copy(dest):
         _warn("GrayWolf .deb missing — Pi users will need internet to install GrayWolf.")
     if not any(f.endswith(".tar.gz") for f in (os.listdir(kw_dir) if os.path.isdir(kw_dir) else [])):
         _warn("Kiwix binary missing — Pi users will need internet to install Kiwix.")
-    if not any(f.endswith(".deb") for f in (os.listdir(rs_dir) if os.path.isdir(rs_dir) else [])):
+    rs_debs = [f for f in (os.listdir(rs_dir) if os.path.isdir(rs_dir) else []) if f.endswith(".deb")]
+    if not any(f.startswith("rtl-sdr_") for f in rs_debs):
         _warn("RTL-SDR .deb packages missing — Pi users will need internet to install RTL-SDR.")
+    if not any(f.startswith("socat_") for f in rs_debs):
+        _warn("socat/tcpdump .deb packages missing — Pi users will need internet to enable the RTL-SDR feed.")
     if not any(f.startswith("ttyd.") for f in (os.listdir(ws_dir) if os.path.isdir(ws_dir) else [])):
         _warn("webssh (ttyd) static binaries missing — Pi users will need internet to install webssh.")
     if not os.path.exists(os.path.join(dest, "fcc-offline-database", "data", "EN.idx")):
@@ -545,7 +566,7 @@ def build_summary(dest):
     _ok(f"Location : {dest}")
     _ok(f"Size     : {total / 1_048_576:.0f} MB")
     print()
-    _info("Next step: copy oasis-dist/ to your USB drive")
+    _info("Next step: copy oasis-offline/ to your USB drive")
     _info("")
     _info("Windows : double-click start.bat")
     _info("Linux   : chmod +x start.sh && ./start.sh  (first run bootstraps venv)")
@@ -559,13 +580,13 @@ def build_summary(dest):
 
 # ── Commands ───────────────────────────────────────────────────────────────────
 def cmd_check():
-    """Verify all offline assets in an existing oasis-dist/. Hard-fails on missing wheels."""
-    print("\n  OASIS — create-offline-dist  [--check]")
+    """Verify all offline assets in an existing oasis-offline/. Hard-fails on missing wheels."""
+    print("\n  OASIS — create-oasis-offline  [--check]")
     _hr()
 
     wheels_dir = os.path.join(OUT_DIR, "server", "wheels")
     if not os.path.isdir(wheels_dir):
-        _warn(f"oasis-dist/ not found or empty at {OUT_DIR}")
+        _warn(f"oasis-offline/ not found or empty at {OUT_DIR}")
         _warn("Run without --check to build the bundle first.")
         sys.exit(1)
 
@@ -622,18 +643,18 @@ def cmd_check():
 
 
 def cmd_build(skip_windows, rebuild=False):
-    """Download all offline assets directly into oasis-dist/, then build the bundle."""
-    print("\n  OASIS — create-offline-dist")
+    """Download all offline assets directly into oasis-offline/, then build the bundle."""
+    print("\n  OASIS — create-oasis-offline")
     _hr()
     _info(f"Output : {OUT_DIR}")
     _info(f"Mode   : {'clean rebuild (wiping existing)' if rebuild else 'incremental (reusing existing assets)'}")
 
     if rebuild and os.path.exists(OUT_DIR):
-        _info("Removing existing oasis-dist/ ...")
+        _info("Removing existing oasis-offline/ ...")
         shutil.rmtree(OUT_DIR)
     os.makedirs(OUT_DIR, exist_ok=True)
 
-    # Download phases — each writes directly into its oasis-dist/ subdirectory.
+    # Download phases — each writes directly into its oasis-offline/ subdirectory.
     # update=True means "skip files already at current version" (always on by default).
     phase_wheels(os.path.join(OUT_DIR, "server", "wheels"))
     phase_graywolf(os.path.join(OUT_DIR, "offline-packages", "graywolf"), update=True)
@@ -650,6 +671,35 @@ def cmd_build(skip_windows, rebuild=False):
     build_summary(OUT_DIR)
 
 
+# ── Update command ────────────────────────────────────────────────────────────
+def cmd_update(target_dir):
+    """Update offline packages in-place in an existing distribution directory.
+    Runs all download phases; does not copy source files, launchers, or the
+    Windows runtime.
+    """
+    print("\n  OASIS — create-oasis-offline  [--update]")
+    _hr()
+    _info(f"Target : {target_dir}")
+    _info("Mode   : update offline packages only (source files and launchers unchanged)")
+
+    if not os.path.isdir(target_dir):
+        _fail(
+            f"Directory not found: {target_dir}\n"
+            "     Run without --update to build a new distribution first."
+        )
+
+    phase_wheels(os.path.join(target_dir, "server", "wheels"))
+    phase_graywolf(os.path.join(target_dir, "offline-packages", "graywolf"), update=True)
+    phase_kiwix(os.path.join(target_dir, "offline-packages", "kiwix"), update=True)
+    phase_fcc(os.path.join(target_dir, "fcc-offline-database", "data"))
+    phase_rtl_sdr(os.path.join(target_dir, "offline-packages", "rtl-sdr"), update=True)
+    phase_webssh(os.path.join(target_dir, "offline-packages", "webssh"), update=True)
+
+    _section("Update complete")
+    _ok(f"Offline packages updated in: {target_dir}")
+    print()
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser(
@@ -657,20 +707,23 @@ def main():
             "Download all offline assets and build the OASIS offline distribution.\n\n"
             "By default runs incrementally: existing assets are reused, only missing\n"
             "or outdated files are downloaded.  Use --rebuild for a clean slate.\n"
-            "--check verifies an existing oasis-dist/ without rebuilding (CI mode)."
+            "--check verifies an existing oasis-offline/ without rebuilding (CI mode).\n"
+            "--update refreshes offline packages in an existing distribution directory."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python3 scripts/create-offline-dist.py                 # incremental build\n"
-            "  python3 scripts/create-offline-dist.py --rebuild       # wipe + full rebuild\n"
-            "  python3 scripts/create-offline-dist.py --check         # verify bundle (CI)\n"
-            "  python3 scripts/create-offline-dist.py --skip-windows  # skip Windows Python\n"
+            "  python3 scripts/create-oasis-offline.py                        # incremental build\n"
+            "  python3 scripts/create-oasis-offline.py --rebuild              # wipe + full rebuild\n"
+            "  python3 scripts/create-oasis-offline.py --check               # verify bundle (CI)\n"
+            "  python3 scripts/create-oasis-offline.py --skip-windows        # skip Windows Python\n"
+            "  python3 scripts/create-oasis-offline.py --update              # update packages in cwd\n"
+            "  python3 scripts/create-oasis-offline.py --update --dir /mnt/usb  # update on USB drive\n"
         ),
     )
     ap.add_argument(
         "--check", action="store_true",
-        help="Verify offline assets in oasis-dist/ and report findings. No changes (CI mode).",
+        help="Verify offline assets in oasis-offline/ and report findings. No changes (CI mode).",
     )
     ap.add_argument(
         "--skip-windows", action="store_true",
@@ -679,14 +732,32 @@ def main():
     ap.add_argument(
         "--rebuild", action="store_true",
         help=(
-            "Wipe oasis-dist/ and do a full clean rebuild. "
+            "Wipe oasis-offline/ and do a full clean rebuild. "
             "By default the script runs incrementally, reusing assets that are already "
             "at the current version and only downloading what is missing or outdated."
         ),
     )
+    ap.add_argument(
+        "--update", action="store_true",
+        help=(
+            "Update offline packages in an existing distribution directory. "
+            "Targets the current working directory by default; use --dir to specify a path. "
+            "Source files, launchers, and the Windows runtime are not touched."
+        ),
+    )
+    ap.add_argument(
+        "--dir", metavar="DIR",
+        help="Directory to update. Only valid with --update. Defaults to the current working directory.",
+    )
     args = ap.parse_args()
 
-    if args.check:
+    if args.dir and not args.update:
+        ap.error("--dir is only valid with --update")
+
+    if args.update:
+        target = os.path.abspath(args.dir) if args.dir else os.getcwd()
+        cmd_update(target)
+    elif args.check:
         cmd_check()
     else:
         cmd_build(args.skip_windows, rebuild=args.rebuild)

@@ -107,8 +107,12 @@ def install_deb(deb_path):
 # ── Step 4: Enable service ─────────────────────────────────────────────────────
 def enable_service():
     _step(4, "Enabling and starting GrayWolf service")
-    _run(["sudo", "systemctl", "enable", "--now", SERVICE])
-    _ok(f"systemctl enable --now {SERVICE}")
+    _run(["sudo", "systemctl", "daemon-reload"])
+    _ok("systemctl daemon-reload")
+    _run(["sudo", "systemctl", "enable", SERVICE])
+    _ok(f"systemctl enable {SERVICE}")
+    _run(["sudo", "systemctl", "restart", SERVICE])
+    _ok(f"systemctl restart {SERVICE}")
     result = _run(
         ["sudo", "systemctl", "is-active", SERVICE],
         check=False, capture_output=True, text=True,
@@ -145,14 +149,20 @@ def main():
     deb_arch  = check_platform()
     local_deb = graywolf_find_local(OFFLINE_DIR, deb_arch)
 
-    if local_deb:
-        _info(f"Using offline package: {os.path.basename(local_deb)}")
-        install_deb(local_deb)
-    else:
-        _info("No offline package found -- downloading from GitHub ...")
-        _warn("Run 'python3 scripts/create-offline-dist.py' to build a bundle with all packages.")
-        with tempfile.TemporaryDirectory() as tmp:
-            url, filename = resolve_release(args.version, deb_arch)
+    # Always resolve the target release from GitHub first so that an outdated
+    # offline package does not silently prevent an upgrade.
+    with tempfile.TemporaryDirectory() as tmp:
+        url, filename = resolve_release(args.version, deb_arch)
+
+        if local_deb and os.path.basename(local_deb) == filename:
+            _info(f"Using offline package: {filename} (up to date)")
+            install_deb(local_deb)
+        else:
+            if local_deb:
+                _info(f"Offline package {os.path.basename(local_deb)} is outdated — downloading {filename} ...")
+            else:
+                _info("No offline package found -- downloading from GitHub ...")
+                _warn("Run 'python3 scripts/create-oasis-offline.py' to build a bundle with all packages.")
             deb_path = graywolf_download_deb(url, filename, tmp)
             install_deb(deb_path)
 

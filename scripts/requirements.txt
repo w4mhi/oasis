@@ -8,7 +8,7 @@
 
 # Versions are pinned to exactly what is vendored in server/wheels/ so the
 # offline resolver and the documented set can never drift apart. Bump these
-# together with the wheels (see scripts/create-offline-dist.py).
+# together with the wheels (see scripts/create-oasis-offline.py).
 
 # Web framework — server/app.py, graywolf-api/graywolf_api.py
 Flask==3.1.3

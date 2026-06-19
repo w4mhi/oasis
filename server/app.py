@@ -251,6 +251,42 @@ def health():
     })
 
 
+@app.route("/api/health/probe")
+def api_health_probe():
+    """Proxy health check for external services.
+    Accepts ?service=graywolf|kiwix|webssh&port=N.
+    Makes a real server-side HTTP GET so the browser receives an actual
+    200/non-200 distinction rather than an opaque no-cors response."""
+    import urllib.request
+    import urllib.error
+
+    service = request.args.get("service", "")
+    try:
+        port = int(request.args.get("port", "0"))
+    except ValueError:
+        return jsonify({"ok": False, "error": "invalid port"}), 400
+
+    ALLOWED = {"graywolf", "kiwix", "webssh", "aprs_api"}
+    if service not in ALLOWED:
+        return jsonify({"ok": False, "error": "unknown service"}), 400
+    if not (1 <= port <= 65535):
+        return jsonify({"ok": False, "error": "port out of range"}), 400
+
+    url = f"http://127.0.0.1:{port}/"
+    try:
+        req = urllib.request.Request(url, method="GET")
+        req.add_header("User-Agent", "OASIS-HealthProbe/1.0")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            status = resp.status
+        return jsonify({"ok": True, "service": service, "port": port, "status": status})
+    except urllib.error.HTTPError as e:
+        # Service replied with an HTTP error — it IS running, just returning
+        # an error code (e.g. 404 on / is still "up" for our purposes).
+        return jsonify({"ok": True, "service": service, "port": port, "status": e.code})
+    except Exception as e:
+        return jsonify({"ok": False, "service": service, "port": port, "error": str(e)})
+
+
 @app.route("/api/server-info")
 def server_info():
     """Report which WSGI server is running (gunicorn vs Flask dev server)."""

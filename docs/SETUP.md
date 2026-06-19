@@ -81,7 +81,7 @@ python3 scripts/setup-server.py --check   # report what's installed / missing
 
 Flask, gunicorn, MarkupSafe, and psutil are all vendored in `server/wheels/` as pre-built wheels for Python 3.9–3.14 on Linux (aarch64 + x86-64), macOS (Apple Silicon + Intel), and Windows — so no internet is required. On the rare platform/Python combo without a vendored wheel, `setup-server.py` falls back to PyPI automatically.
 
-The wheel set is kept current by running `scripts/create-offline-dist.py` (incremental — checks PyPI for newer compatible packages, downloads them to a temp directory, and atomically swaps in the fresh set only if something changed). Run `--check` to confirm every platform resolves offline without downloading anything.
+The wheel set is kept current by running `scripts/create-oasis-offline.py` (incremental — checks PyPI for newer compatible packages, downloads them to a temp directory, and atomically swaps in the fresh set only if something changed). Run `--check` to confirm every platform resolves offline without downloading anything.
 
 **To run the server:**
 
@@ -327,7 +327,7 @@ python3 scripts/install-graywolf.py --version 0.13.16
 python3 scripts/install-graywolf.py --help
 ```
 
-The script automatically picks the install source: if the bundled `.deb` is present in `offline-packages/graywolf/` (put there by `create-offline-dist.py`) it is used without any network access; otherwise the matching `.deb` is downloaded from GitHub releases. After install, open `http://<pi-ip>:8080` to configure GrayWolf.
+The script automatically picks the install source: if the bundled `.deb` is present in `offline-packages/graywolf/` (put there by `create-oasis-offline.py`) it is used without any network access; otherwise the matching `.deb` is downloaded from GitHub releases. After install, open `http://<pi-ip>:8080` to configure GrayWolf.
 
 ### 1. Station Callsign
 
@@ -491,7 +491,7 @@ python3 scripts/install-kiwix.py --zim-dir /mnt/ssd/zim
 python3 scripts/install-kiwix.py --help
 ```
 
-The script automatically picks the install source: if the bundled package is present in `offline-packages/kiwix/` (put there by `create-offline-dist.py`) it is used without any network access; otherwise the package is downloaded from kiwix.org.
+The script automatically picks the install source: if the bundled package is present in `offline-packages/kiwix/` (put there by `create-oasis-offline.py`) it is used without any network access; otherwise the package is downloaded from kiwix.org.
 
 **Download Wikipedia content:**
 
@@ -522,7 +522,7 @@ python3 scripts/install-rtl-sdr.py                # auto: bundled .debs if prese
 python3 scripts/install-rtl-sdr.py --help
 ```
 
-The script automatically picks the install source: if the bundled `.deb` packages are present in `offline-packages/rtl-sdr/` (put there by `create-offline-dist.py`) they are installed without any network access; otherwise `rtl-sdr` is installed via `apt`. Install is version-aware — each bundled `.deb` is only installed if it's absent or newer than what's on the system, so a stale bundle can't downgrade a package.
+The script automatically picks the install source: if the bundled `.deb` packages are present in `offline-packages/rtl-sdr/` (put there by `create-oasis-offline.py`) they are installed without any network access; otherwise `rtl-sdr` is installed via `apt`. Install is version-aware — each bundled `.deb` is only installed if it's absent or newer than what's on the system, so a stale bundle can't downgrade a package.
 
 Packages installed: `rtl-sdr`, the librtlsdr runtime (`librtlsdr0` on Bullseye/**Bookworm**, `librtlsdr2` on Trixie/sid — the script accepts either), and `libusb-1.0-0`.
 
@@ -530,10 +530,26 @@ Packages installed: `rtl-sdr`, the librtlsdr runtime (`librtlsdr0` on Bullseye/*
 
 ```bash
 rtl_test -t                                       # enumerate and test the dongle
-rtl_fm -f 144.390M -M fm -s 200k -r 48k - | aplay -r 48k -f S16_LE -t raw -c 1  # receive 2m APRS audio
+rtl_fm -f 144.390M -M fm -s 48000 - | aplay -r 48000 -f S16_LE -t raw -c 1   # receive 2m APRS audio
 ```
 
 > **Note:** a reboot may be required for the kernel module blacklist to take full effect.
+> Use `-s 48000` directly (set the output rate) — this `rtl_fm` build ignores `-r`.
+
+**Enable the dongle as a GrayWolf receive-only APRS feed:**
+
+```bash
+python3 scripts/enable-rtl-sdr.py                 # test SDR, install the feed service, print GrayWolf steps
+python3 scripts/enable-rtl-sdr.py --check         # test the SDR only, no system changes
+python3 scripts/enable-rtl-sdr.py --freq 144.800M --gain 28 --ppm 12
+python3 scripts/enable-rtl-sdr.py --help
+```
+
+This tests the dongle (measures live audio at the APRS frequency), installs and
+enables `aprs-sdr-feed.service` (`rtl_fm … | socat -u -b 1920 - UDP-SENDTO:127.0.0.1:7355`),
+inspects GrayWolf's journal, and prints the browser steps to add the `sdr_udp`
+device and AFSK/RX channel. Receive-only — an RTL-SDR cannot transmit. Full
+writeup and troubleshooting: [`sdr-to-graywolf.md`](sdr-to-graywolf.md).
 
 ---
 
@@ -552,7 +568,7 @@ python3 scripts/install-webssh.py --basic-auth admin:s3cret
 python3 scripts/install-webssh.py --help
 ```
 
-**Install source.** `ttyd` is **not in the Debian/Raspberry Pi OS stable repos**, so this installs the upstream **prebuilt static binary** to `/usr/local/bin/ttyd` (a single self-contained file — no `libwebsockets`/`libuv` dependencies). If the matching binary is bundled at `offline-packages/webssh/ttyd.<arch>` (put there by `create-offline-dist.py`) it is used offline; otherwise it is downloaded from GitHub releases. Install is version-aware: an already-installed newer ttyd is kept, never downgraded.
+**Install source.** `ttyd` is **not in the Debian/Raspberry Pi OS stable repos**, so this installs the upstream **prebuilt static binary** to `/usr/local/bin/ttyd` (a single self-contained file — no `libwebsockets`/`libuv` dependencies). If the matching binary is bundled at `offline-packages/webssh/ttyd.<arch>` (put there by `create-oasis-offline.py`) it is used offline; otherwise it is downloaded from GitHub releases. Install is version-aware: an already-installed newer ttyd is kept, never downgraded.
 
 **Authentication — ssh to localhost.** The page prompts for a username and hands off to `ssh <user>@localhost`, so users authenticate with their **normal Pi username + password** (PAM, via `sshd`). This requires **sshd to be running** (`sudo systemctl enable --now ssh`); the installer adds `Wants=ssh.service` to the unit and warns if it's down. The optional `--basic-auth` gate adds an extra HTTP credential prompt in front.
 
@@ -601,14 +617,14 @@ curl -L -o static/dependencies/pdf-lib.min.js https://unpkg.com/pdf-lib@1.17.1/d
 
 ## USB / Portable bundle
 
-`scripts/create-offline-dist.py` updates all offline packages and packages OASIS into a self-contained folder that runs on Windows and Linux with no Python pre-installed. Can be built from macOS, Linux, or Windows.
+`scripts/create-oasis-offline.py` updates all offline packages and packages OASIS into a self-contained folder that runs on Windows and Linux with no Python pre-installed. Can be built from macOS, Linux, or Windows.
 
 ```bash
-python3 scripts/create-offline-dist.py                           # incremental build (reuse existing assets)
-python3 scripts/create-offline-dist.py --rebuild                 # wipe oasis-dist/ and full clean rebuild
-python3 scripts/create-offline-dist.py --skip-windows            # skip Windows Python download
-python3 scripts/create-offline-dist.py --check                   # verify offline assets (CI)
-python3 scripts/create-offline-dist.py --help
+python3 scripts/create-oasis-offline.py                           # incremental build (reuse existing assets)
+python3 scripts/create-oasis-offline.py --rebuild                 # wipe oasis-offline/ and full clean rebuild
+python3 scripts/create-oasis-offline.py --skip-windows            # skip Windows Python download
+python3 scripts/create-oasis-offline.py --check                   # verify offline assets (CI)
+python3 scripts/create-oasis-offline.py --help
 ```
 
 Package update phases (smart: only downloads what changed):
@@ -622,12 +638,12 @@ Package update phases (smart: only downloads what changed):
 | 5 | RTL-SDR `.deb` packages (arm64, armhf, amd64) | `offline-packages/rtl-sdr/` |
 | 6 | webssh — ttyd static binaries (`ttyd.aarch64`, `ttyd.armhf`, `ttyd.arm`, `ttyd.x86_64`) | `offline-packages/webssh/` |
 
-**Tip:** Run `scripts/create-offline-dist.py` regularly to keep packages current — it only downloads what changed. Use `--rebuild` when you need a guaranteed clean slate.
+**Tip:** Run `scripts/create-oasis-offline.py` regularly to keep packages current — it only downloads what changed. Use `--rebuild` when you need a guaranteed clean slate.
 
 **What it builds:**
 
 ```
-oasis-dist/
+oasis-offline/
 ├── _runtime/
 │   └── windows/       ← embedded Python 3.12 + Flask + psutil (~30 MB)
 ├── server/
@@ -652,6 +668,6 @@ The dashboard, ICS forms, FCC lookup, **offline maps**, calculators, and the ref
 | Wikipedia ZIM | `python3 scripts/download-wikipedia.py --edition <edition>` | Monthly snapshots |
 | GrayWolf | `python3 scripts/install-graywolf.py` | Check GitHub releases |
 | kiwix-serve | `python3 scripts/install-kiwix.py --version <new>` | Check download.kiwix.org |
-| RTL-SDR packages | `python3 scripts/create-offline-dist.py` | Run anytime — only downloads if a newer version is in Debian Bookworm |
-| webssh (ttyd) packages | `python3 scripts/create-offline-dist.py` | Run anytime — only downloads if a newer version is in Debian Bookworm |
-| Offline wheel set *(maintainers)* | `python3 scripts/create-offline-dist.py` | Run anytime — updates only if newer packages are available |
+| RTL-SDR packages | `python3 scripts/create-oasis-offline.py` | Run anytime — only downloads if a newer version is in Debian Bookworm |
+| webssh (ttyd) packages | `python3 scripts/create-oasis-offline.py` | Run anytime — only downloads if a newer version is in Debian Bookworm |
+| Offline wheel set *(maintainers)* | `python3 scripts/create-oasis-offline.py` | Run anytime — updates only if newer packages are available |

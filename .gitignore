@@ -19,7 +19,7 @@ radio-manuals/*
 !radio-manuals/README.md
 
 # FCC offline database — directory is created locally by setup-fcc-database.py
-# and populated in oasis-dist/ by create-offline-dist.py. Nothing is checked in.
+# and populated in oasis-offline/ by create-oasis-offline.py. Nothing is checked in.
 fcc-offline-database/
 
 # Wikipedia ZIM files — downloaded by scripts/download-wikipedia.py.
@@ -28,13 +28,13 @@ fcc-offline-database/
 # Scratch / temporary files
 temp/
 
-# USB bundle output — built by scripts/create-offline-dist.py
-oasis-dist/
+# USB bundle output — built by scripts/create-oasis-offline.py
+oasis-offline/
 
-# Python wheels — downloaded by scripts/create-offline-dist.py.
+# Python wheels — downloaded by scripts/create-oasis-offline.py.
 # Never checked in; populated at bundle-build time.
 server/wheels/*.whl
 
-# Offline binary packages — downloaded by scripts/create-offline-dist.py.
-# Entire tree is excluded; scripts install from oasis-dist/ or the internet.
+# Offline binary packages — downloaded by scripts/create-oasis-offline.py.
+# Entire tree is excluded; scripts install from oasis-offline/ or the internet.
 offline-packages/

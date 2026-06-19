@@ -415,16 +415,33 @@ function editRow(seq){
   document.getElementById('ec-'+seq).focus();
 }
 
-function saveRow(seq){
+async function saveRow(seq){
   const e=rows.find(r=>r.seq===seq);
+  const oldCall = e.call;
+  const newCall = document.getElementById('ec-'+seq).value.trim().toUpperCase();
   e.utc   = document.getElementById('eu-'+seq).value.trim();
-  e.call  = document.getElementById('ec-'+seq).value.trim().toUpperCase();
+  e.call  = newCall;
   e.name  = document.getElementById('en-'+seq).value.trim();
   e.city  = document.getElementById('eci-'+seq).value.trim();
   e.state = document.getElementById('es-'+seq).value.trim();
   e.grid  = document.getElementById('eg-'+seq).value.trim();
   e.traffic = document.getElementById('et-'+seq).checked;
   e.notes = document.getElementById('eo-'+seq).value.trim();
+  // Re-fetch FCC data if the callsign was changed
+  if (newCall && newCall !== oldCall) {
+    try {
+      const res = await fetch('/api/lookup?callsign=' + encodeURIComponent(newCall));
+      const d = await res.json();
+      if (d.ok && d.found) {
+        e.name  = d.result.name  || e.name;
+        e.city  = d.result.city  || e.city;
+        e.state = d.result.state || e.state;
+        e.grid  = d.result.grid  || e.grid;
+        e.lat   = d.result.lat   != null ? d.result.lat : e.lat;
+        e.lon   = d.result.lon   != null ? d.result.lon : e.lon;
+      }
+    } catch(_) {}
+  }
   renderRow(e); persist();
   rebuildTable();
   if (window.updateNetMap) window.updateNetMap(rows);

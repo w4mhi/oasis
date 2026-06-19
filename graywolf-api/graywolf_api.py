@@ -12,6 +12,7 @@ DB:   /var/lib/graywolf/graywolf-history.db
 import json
 import os
 import sqlite3
+import threading
 import time
 
 from flask import Flask, jsonify
@@ -20,6 +21,32 @@ from flask import Flask, jsonify
 # degrades the system-stats endpoint — the APRS station data must still serve.
 
 app = Flask(__name__)
+
+# ── Background CPU sampler ────────────────────────────────────────────────────
+# psutil.cpu_percent(interval=N) blocks for N seconds. A daemon thread
+# refreshes the cached value every 5 s so /api/system returns immediately.
+_cpu_pct_cache       = 0.0
+_cpu_sampler_started = False
+_cpu_sampler_lock    = threading.Lock()
+
+
+def _start_cpu_sampler():
+    global _cpu_sampler_started
+    with _cpu_sampler_lock:
+        if _cpu_sampler_started:
+            return
+        _cpu_sampler_started = True
+
+    def _sample():
+        global _cpu_pct_cache
+        import psutil
+        psutil.cpu_percent()          # prime the counter (non-blocking first call)
+        while True:
+            time.sleep(5)
+            _cpu_pct_cache = psutil.cpu_percent()
+
+    threading.Thread(target=_sample, daemon=True, name="cpu-sampler").start()
+
 
 # DB path is overridable for testing off-Pi (e.g. APRS_DB_PATH=./test.db).
 DB_PATH = os.environ.get("APRS_DB_PATH", "/var/lib/graywolf/graywolf-history.db")
@@ -148,8 +175,9 @@ def api_system():
     if disk_info is None:
         disk_info = {"error": "unavailable"}
 
-    # CPU — 1-second blocking sample
-    cpu_pct   = psutil.cpu_percent(interval=1)
+    # CPU — read from background sampler cache (non-blocking).
+    _start_cpu_sampler()
+    cpu_pct   = _cpu_pct_cache
     cpu_count = psutil.cpu_count(logical=True) or 1
 
     # RAM

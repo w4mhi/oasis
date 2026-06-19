@@ -84,7 +84,7 @@ def get_tarball(version, kiwix_arch):
         with open(local, "rb") as fh:
             return fh.read()
     _info("No offline package found -- downloading from kiwix.org ...")
-    _warn("Run 'python3 scripts/create-offline-dist.py' to build a bundle with all packages.")
+    _warn("Run 'python3 scripts/create-oasis-offline.py' to build a bundle with all packages.")
     tarball_path = kiwix_download_tarball(
         os.path.join(REPO_ROOT, "offline-packages", "kiwix"),
         version, kiwix_arch,

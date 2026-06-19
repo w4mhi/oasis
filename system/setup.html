@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OASIS Setup</title>
+<link rel="stylesheet" href="../css/common.css">
+<style>
+.check-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: .9rem; }
+
+.check-item {
+  display: flex; align-items: flex-start; gap: .85rem;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); padding: .7rem 1rem;
+  transition: border-color .25s;
+}
+.check-item.ok    { border-color: var(--accent-dim); }
+.check-item.fail  { border-color: #7a1010; }
+.check-item.warn  { border-color: var(--amber-dim); }
+.check-item.check { border-color: var(--border); }
+
+.check-icon { font-size: 1.2rem; line-height: 1.4; flex-shrink: 0; width: 1.4rem; text-align: center; }
+.check-body { flex: 1; }
+.check-name { font-size: var(--fs-base); font-weight: 700; color: var(--text); margin-bottom: .15rem; }
+.check-desc { font-size: var(--fs-label); color: var(--text-dim); line-height: 1.5; }
+.check-desc code { color: var(--accent); background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: var(--fs-small); }
+.check-badge {
+  flex-shrink: 0; font-size: var(--fs-micro); font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em;
+  padding: 2px 9px; border-radius: 4px; margin-top: 3px;
+  background: var(--panel-2); color: var(--text-dim);
+}
+.check-badge.ok   { background: #0a3a20; color: var(--accent); }
+.check-badge.fail { background: #3a0a0a; color: var(--red); }
+.check-badge.warn { background: #3a2a00; color: var(--amber); }
+
+.recheck-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+  font-family: var(--mono); font-size: var(--fs-small); padding: 3px 10px;
+  border-radius: 4px; cursor: pointer; margin-left: .5rem;
+}
+.recheck-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+
+.all-ok {
+  border: 1px solid var(--accent-dim); border-radius: 10px;
+  background: #0a2016; padding: 1.1rem 1.4rem; text-align: center;
+  margin-bottom: .9rem; display: none;
+}
+.all-ok-title { font-size: var(--fs-subtitle); color: var(--accent); font-weight: 700; margin-bottom: .3rem; }
+.all-ok-sub   { font-size: var(--fs-label); color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <a class="home-link" href="/">🏠 HOME</a>
+  <h1>OASIS Setup Checklist</h1>
+  <p>Checks each component and shows what still needs to be configured.
+     <button class="recheck-btn" id="recheckAll" style="margin-left:.5rem">↻ Re-check all</button>
+  </p>
+</header>
+
+<div id="allOk" class="all-ok">
+  <div class="all-ok-title">✓ All components ready</div>
+  <div class="all-ok-sub">OASIS is fully configured. Open the <a href="/" style="color:var(--accent)">dashboard</a> to get started.</div>
+</div>
+
+<div class="sec-label">Core</div>
+<div class="check-list" id="list-core"></div>
+
+<div class="sec-label">Optional Services</div>
+<div class="check-list" id="list-optional"></div>
+
+</div>
+<script>
+'use strict';
+
+const HOST  = location.hostname;
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681 };
+
+// ── Check definitions ──────────────────────────────────────────────────────────
+const CHECKS_CORE = [
+  {
+    id: 'server',
+    name: 'OASIS Server',
+    run: async () => ({ ok: true, badge: 'RUNNING', detail: `Serving on port ${PORTS.flask}` }),
+  },
+  {
+    id: 'fcc',
+    name: 'FCC Callsign Database',
+    run: async () => {
+      try {
+        const r = await fetch('/api/lookup?callsign=W7', { cache: 'no-store' });
+        const d = await r.json();
+        if (!d.ok && d.error && d.error.toLowerCase().includes('index')) {
+          return { ok: false, badge: 'NOT BUILT',
+            detail: 'Index not found. Run: <code>python3 scripts/setup-fcc-database.py</code>' };
+        }
+        return { ok: true, badge: 'READY', detail: 'Callsign index is built and responding.' };
+      } catch (e) {
+        return { ok: false, badge: 'ERROR', detail: 'Could not reach the lookup API: ' + e.message };
+      }
+    },
+  },
+  {
+    id: 'maps',
+    name: 'Map Tiles (PMTiles)',
+    run: async () => {
+      try {
+        const r = await fetch('/maps/map-config.json', { cache: 'no-store' });
+        if (!r.ok) return { ok: false, badge: 'MISSING',
+          detail: 'map-config.json not found. Run the build-map script to generate tiles.' };
+        const cfg = await r.json();
+        const region = (cfg.regions && cfg.regions[0] && cfg.regions[0].name) || 'unknown';
+        return { ok: true, badge: 'READY', detail: `Loaded. Active region: <strong>${region}</strong>` };
+      } catch (e) {
+        return { ok: false, badge: 'ERROR', detail: 'Could not load map config.' };
+      }
+    },
+  },
+];
+
+const CHECKS_OPTIONAL = [
+  {
+    id: 'graywolf',
+    name: 'GrayWolf APRS',
+    run: async () => {
+      try {
+        const r = await fetch(`/api/health/probe?service=graywolf&port=${PORTS.graywolf}`, { cache: 'no-store' });
+        const d = await r.json();
+        if (d.ok) return { ok: true, badge: 'UP', detail: `Listening on port ${PORTS.graywolf}. Open <a href="http://${HOST}:${PORTS.graywolf}" target="_blank" rel="noopener" style="color:var(--accent)">:${PORTS.graywolf}</a> to configure.` };
+        return { ok: 'warn', badge: 'DOWN',
+          detail: `Not running. Install with: <code>python3 scripts/install-graywolf.py</code>` };
+      } catch {
+        return { ok: 'warn', badge: 'DOWN',
+          detail: `Not running. Install with: <code>python3 scripts/install-graywolf.py</code>` };
+      }
+    },
+  },
+  {
+    id: 'aprs_api',
+    name: 'APRS Station API',
+    run: async () => {
+      try {
+        const r = await fetch(`http://${HOST}:${PORTS.aprs_api}/api/aprs/stations`, { cache: 'no-store' });
+        const d = await r.json();
+        if (d.ok) return { ok: true, badge: 'UP', detail: `${d.count} station(s) in GrayWolf database.` };
+        return { ok: 'warn', badge: 'WARN', detail: d.error || 'API running but returned an error.' };
+      } catch {
+        return { ok: 'warn', badge: 'DOWN',
+          detail: `Not running. Start with: <code>python3 graywolf-api/graywolf_api.py</code>` };
+      }
+    },
+  },
+  {
+    id: 'kiwix',
+    name: 'Kiwix (Offline Wikipedia)',
+    run: async () => {
+      try {
+        const r = await fetch(`/api/health/probe?service=kiwix&port=${PORTS.kiwix}`, { cache: 'no-store' });
+        const d = await r.json();
+        if (d.ok) return { ok: true, badge: 'UP', detail: `Listening on port ${PORTS.kiwix}. Open <a href="http://${HOST}:${PORTS.kiwix}" target="_blank" rel="noopener" style="color:var(--accent)">:${PORTS.kiwix}</a> to browse content.` };
+        return { ok: 'warn', badge: 'DOWN',
+          detail: `Not running. Install with: <code>python3 scripts/install-kiwix.py</code>` };
+      } catch {
+        return { ok: 'warn', badge: 'DOWN',
+          detail: `Not running. Install with: <code>python3 scripts/install-kiwix.py</code>` };
+      }
+    },
+  },
+  {
+    id: 'webssh',
+    name: 'Web SSH (ttyd)',
+    run: async () => {
+      try {
+        const r = await fetch(`/api/health/probe?service=webssh&port=${PORTS.webssh}`, { cache: 'no-store' });
+        const d = await r.json();
+        if (d.ok) return { ok: true, badge: 'UP', detail: `Terminal available on port ${PORTS.webssh}.` };
+        return { ok: 'warn', badge: 'DOWN',
+          detail: `Not running. Install with: <code>python3 scripts/install-webssh.py</code>` };
+      } catch {
+        return { ok: 'warn', badge: 'DOWN',
+          detail: `Not running. Install with: <code>python3 scripts/install-webssh.py</code>` };
+      }
+    },
+  },
+];
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function icon(state) {
+  if (state === true   || state === 'ok')   return '✓';
+  if (state === false  || state === 'fail')  return '✗';
+  if (state === 'warn')                      return '⚠';
+  return '…';
+}
+function cssState(state) {
+  if (state === true   || state === 'ok')   return 'ok';
+  if (state === false  || state === 'fail')  return 'fail';
+  if (state === 'warn')                      return 'warn';
+  return 'check';
+}
+
+function renderItem(container, check, result) {
+  let el = document.getElementById('check-' + check.id);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'check-' + check.id;
+    container.appendChild(el);
+  }
+  const state = (result && result.ok === true) ? 'ok'
+    : (result && result.ok === 'warn') ? 'warn'
+    : (result && result.ok === false)  ? 'fail'
+    : 'check';
+  el.className = 'check-item ' + state;
+  el.innerHTML = `
+    <div class="check-icon">${result ? icon(result.ok) : '…'}</div>
+    <div class="check-body">
+      <div class="check-name">${check.name}</div>
+      <div class="check-desc">${result ? result.detail : 'Checking…'}</div>
+    </div>
+    <div class="check-badge ${state}">${result ? result.badge : '…'}</div>`;
+}
+
+async function runChecks(checks, containerId) {
+  const container = document.getElementById(containerId);
+  // render placeholders
+  checks.forEach(c => renderItem(container, c, null));
+  // run in parallel
+  const results = await Promise.allSettled(checks.map(c => c.run()));
+  results.forEach((r, i) => {
+    const result = r.status === 'fulfilled' ? r.value : { ok: false, badge: 'ERROR', detail: String(r.reason) };
+    renderItem(container, checks[i], result);
+  });
+  return results.map((r, i) => ({
+    check: checks[i],
+    result: r.status === 'fulfilled' ? r.value : { ok: false }
+  }));
+}
+
+async function runAll() {
+  document.getElementById('allOk').style.display = 'none';
+  document.getElementById('list-core').innerHTML = '';
+  document.getElementById('list-optional').innerHTML = '';
+
+  const [coreRes, optRes] = await Promise.all([
+    runChecks(CHECKS_CORE, 'list-core'),
+    runChecks(CHECKS_OPTIONAL, 'list-optional'),
+  ]);
+
+  const coreAllOk = coreRes.every(r => r.result.ok === true);
+  if (coreAllOk) {
+    document.getElementById('allOk').style.display = 'block';
+  }
+}
+
+document.getElementById('recheckAll').addEventListener('click', runAll);
+runAll();
+</script>
+</body>
+</html>

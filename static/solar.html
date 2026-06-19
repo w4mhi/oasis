@@ -532,8 +532,17 @@ function renderDashboard(data) {
   html += '</div>'; // /stat-grid
 
   // Band conditions matrix
-  const BAND_ORDER = ['80m-40m','30m-20m','17m-15m','12m-10m'];
-  const BAND_LABELS = { '80m-40m':'80m / 40m', '30m-20m':'30m / 20m', '17m-15m':'17m / 15m', '12m-10m':'12m / 10m' };
+  const BAND_ORDER  = ['80m-40m','60m','30m-20m','17m-15m','12m-10m'];
+  const BAND_LABELS = {
+    '80m-40m': '80m / 40m',
+    '60m':     '60m (5 MHz)',
+    '30m-20m': '30m / 20m',
+    '17m-15m': '17m / 15m',
+    '12m-10m': '12m / 10m',
+  };
+  const BAND_NOTES  = {
+    '60m': 'EmComm interoperability channel',
+  };
 
   html += `<div class="band-panel">
     <div class="sec-label">HF Band Conditions</div>
@@ -543,16 +552,44 @@ function renderDashboard(data) {
 
   BAND_ORDER.forEach(b => {
     const conds = data.bands[b] || {};
+    const note  = BAND_NOTES[b] ? `<div style="font-size:var(--fs-micro);color:var(--text-dim);margin-top:1px">${BAND_NOTES[b]}</div>` : '';
+    const noData = !conds.day && !conds.night;
     html += `<tr>
-      <td class="band-name">${BAND_LABELS[b] || b}</td>
-      <td>${condBadge(conds.day)}</td>
-      <td>${condBadge(conds.night)}</td>
+      <td class="band-name">${BAND_LABELS[b] || b}${note}</td>
+      <td>${noData ? '<span style="color:var(--text-dim);font-size:var(--fs-small)">not reported</span>' : condBadge(conds.day)}</td>
+      <td>${noData ? '' : condBadge(conds.night)}</td>
     </tr>`;
   });
 
   html += `</tbody></table></div>`;
 
-  // VHF conditions
+  // KP / geomagnetic conditions interpretation
+  const kv = parseInt(data.kindex, 10);
+  if (!isNaN(kv)) {
+    const kpRows = [
+      { k:'0–1', g:'G0', cls:'good',    label:'Quiet',           hf:'No impact on HF. All bands normal.', aurora:'No aurora.' },
+      { k:'2–3', g:'G0', cls:'good',    label:'Unsettled',       hf:'Minimal HF impact. Slight degradation on polar paths possible.', aurora:'Aurora at very high latitudes only.' },
+      { k:'4',   g:'G0', cls:'fair',    label:'Active',          hf:'HF degradation on polar paths. Mid-latitude paths generally unaffected.', aurora:'Aurora visible at latitudes above ~65°.' },
+      { k:'5',   g:'G1', cls:'fair',    label:'Minor Storm',     hf:'HF disruption on high-latitude paths. Power grid fluctuations possible.', aurora:'Aurora visible at latitudes above ~60°.' },
+      { k:'6',   g:'G2', cls:'poor',    label:'Moderate Storm',  hf:'HF blackouts on polar paths. Satellite navigation errors. Some power grid alarms.', aurora:'Aurora visible at latitudes above ~55°.' },
+      { k:'7–9', g:'G3–G5', cls:'poor', label:'Major Storm',  hf:'Widespread HF blackouts. GPS unreliable. Possible power outages.', aurora:'Aurora visible at mid-latitudes.' },
+    ];
+    const row = kpRows.find(r => {
+      const parts = r.k.split('–').map(Number);
+      return parts.length === 2 ? kv >= parts[0] && kv <= parts[1] : kv === parts[0];
+    }) || kpRows[kpRows.length - 1];
+    html += `<div class="band-panel">
+      <div class="sec-label">Geomagnetic Conditions (K=${data.kindex})</div>
+      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.6rem;flex-wrap:wrap">
+        <span class="cond cond-${row.cls}" style="font-size:var(--fs-base);">K=${data.kindex} &mdash; ${row.label}</span>
+        <span style="font-size:var(--fs-small);color:var(--text-dim)">NOAA ${row.g}</span>
+      </div>
+      <div style="display:grid;gap:.4rem">
+        <div style="font-size:var(--fs-label);color:var(--text-dim)"><strong style="color:var(--text)">HF impact:</strong> ${row.hf}</div>
+        <div style="font-size:var(--fs-label);color:var(--text-dim)"><strong style="color:var(--text)">Aurora:</strong> ${row.aurora}</div>
+      </div>
+    </div>`;
+  }
   if (data.vhf && data.vhf.length) {
     html += `<div class="vhf-panel">
       <div class="sec-label">VHF Conditions</div>

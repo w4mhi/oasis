@@ -170,14 +170,18 @@ const SERVICES = [
   {
     id: 'gw', name: 'GrayWolf',
     check: async () => {
-      await fetch(`http://${HOST}:${PORTS.graywolf}/`, { cache: 'no-store', mode: 'no-cors' });
+      const r = await fetch(`/api/health/probe?service=graywolf&port=${PORTS.graywolf}`, { cache: 'no-store' });
+      const d = await r.json();
+      if (!d.ok) return { up: false, sub: `:${PORTS.graywolf}` };
       return { up: true, badge: 'UP', sub: `:${PORTS.graywolf}` };
     }
   },
   {
     id: 'kiwix', name: 'Kiwix',
     check: async () => {
-      await fetch(`http://${HOST}:${PORTS.kiwix}/`, { cache: 'no-store', mode: 'no-cors' });
+      const r = await fetch(`/api/health/probe?service=kiwix&port=${PORTS.kiwix}`, { cache: 'no-store' });
+      const d = await r.json();
+      if (!d.ok) return { up: false, sub: `:${PORTS.kiwix}` };
       return { up: true, badge: 'UP', sub: `:${PORTS.kiwix}` };
     }
   },
@@ -218,7 +222,9 @@ const SERVICES = [
     id: 'webssh', name: 'Web SSH',
     openPort: () => PORTS.webssh,          // card opens this port in a new window
     check: async () => {
-      await fetch(`http://${HOST}:${PORTS.webssh}/`, { cache: 'no-store', mode: 'no-cors' });
+      const r = await fetch(`/api/health/probe?service=webssh&port=${PORTS.webssh}`, { cache: 'no-store' });
+      const d = await r.json();
+      if (!d.ok) return { up: false, sub: `:${PORTS.webssh}` };
       return { up: true, badge: 'UP', sub: `:${PORTS.webssh}` };
     }
   },

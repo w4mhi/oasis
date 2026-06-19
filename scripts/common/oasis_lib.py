@@ -42,7 +42,7 @@ def _hr():
 
 
 def _section(title):
-    """Wide section header used by create-offline-dist."""
+    """Wide section header used by create-oasis-offline."""
     print()
     print(f"  {title}")
     print("─" * 64)
@@ -249,7 +249,7 @@ def _fcc_extract(source, data_dir):
 def fcc_download_zip(dest_path):
     """
     Download l_amat.zip and stream it directly to *dest_path*.
-    Used by create-offline-dist.py to bundle the raw zip for offline installs.
+    Used by create-oasis-offline.py to bundle the raw zip for offline installs.
     """
     _info(f"Source: {FCC_URL}")
     _info("Downloading FCC amateur radio license data (~160 MB) ...")
@@ -327,7 +327,7 @@ def fcc_build_index(data_dir, server_dir):
     """
     Build EN.idx from EN.dat + HD.dat in *data_dir*.
     Imports server/lookup.py from *server_dir* and passes explicit file paths,
-    so any data_dir works (including oasis-dist/).
+    so any data_dir works (including oasis-offline/).
     """
     en_path    = os.path.join(data_dir, "EN.dat")
     index_path = os.path.join(data_dir, "EN.idx")
@@ -535,6 +535,13 @@ def kiwix_download_tarball(dest_dir, version, kiwix_arch):
 DEBIAN_BASE      = "https://deb.debian.org/debian"
 DEBIAN_SUITE     = "bookworm"
 RTL_SDR_PACKAGES = ["rtl-sdr", "librtlsdr0", "libusb-1.0-0"]
+
+# Tools the RTL-SDR → GrayWolf APRS feed needs but Raspberry Pi OS does not ship:
+# socat carries the demodulated audio to GrayWolf's sdr_udp socket; tcpdump is
+# used to verify the feed. libwrap0 / libpcap0.8 are their not-always-present
+# shared-lib deps (libc6 / libssl3 are base-system, always installed). Bundled so
+# install-rtl-sdr.py can install them fully offline.
+FEED_PACKAGES = ["socat", "tcpdump", "libwrap0", "libpcap0.8"]
 
 
 def rtl_sdr_find_local(offline_dir, deb_arch):

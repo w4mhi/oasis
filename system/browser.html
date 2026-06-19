@@ -36,6 +36,20 @@
 .entry-meta { font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; }
 
 #status { font-size: var(--fs-base); color: var(--text-dim); padding: .5rem 0; }
+
+.filter-row { display: flex; gap: .5rem; margin-bottom: .75rem; }
+.filter-row input {
+  flex: 1; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 5px; color: var(--text); font-family: var(--mono);
+  font-size: var(--fs-base); padding: .35rem .6rem;
+}
+.filter-row input:focus { outline: none; border-color: var(--accent-dim); }
+.filter-clear {
+  background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+  font-family: var(--mono); font-size: var(--fs-label); padding: .35rem .65rem;
+  border-radius: 5px; cursor: pointer; display: none;
+}
+.filter-clear:hover { color: var(--accent); border-color: var(--accent-dim); }
 </style>
 </head>
 <body>
@@ -49,6 +63,10 @@
 
 <div class="sec">
   <div class="breadcrumb" id="breadcrumb"></div>
+  <div class="filter-row" id="filterRow" style="display:none">
+    <input type="text" id="filterInput" placeholder="Filter by name…" autocomplete="off" spellcheck="false">
+    <button class="filter-clear" id="filterClear" title="Clear filter">&#x2715;</button>
+  </div>
   <div id="status">Loading…</div>
   <ul class="entry-list" id="entry-list"></ul>
 </div>
@@ -120,6 +138,7 @@ function load(path) {
 
       data.entries.forEach(e => {
         const li = document.createElement('li');
+        li.dataset.name = e.name;
         const isDir = e.type === 'dir';
         const entryPath = path + '/' + e.name;
 
@@ -142,6 +161,11 @@ function load(path) {
       list.querySelectorAll('[data-nav]').forEach(a => {
         a.addEventListener('click', ev => { ev.preventDefault(); load(a.dataset.nav); });
       });
+
+      // Show filter only when there are enough entries to warrant it
+      filterRow.style.display = data.entries.length > 5 ? 'flex' : 'none';
+      filterInput.value = '';
+      filterClear.style.display = 'none';
     })
     .catch(() => { document.getElementById('status').textContent = 'Failed to load directory.'; });
 }
@@ -156,6 +180,22 @@ function fileIcon(name) {
                 txt:'📝', md:'📝', csv:'📊', json:'📊', xml:'📊' };
   return map[ext] || '📎';
 }
+
+// ── Filter ────────────────────────────────────────────────────────────────────
+const filterInput = document.getElementById('filterInput');
+const filterClear = document.getElementById('filterClear');
+const filterRow   = document.getElementById('filterRow');
+
+function applyFilter() {
+  const q = filterInput.value.trim().toLowerCase();
+  filterClear.style.display = q ? 'block' : 'none';
+  document.querySelectorAll('#entry-list li[data-name]').forEach(li => {
+    li.style.display = (!q || li.dataset.name.toLowerCase().includes(q)) ? '' : 'none';
+  });
+}
+
+filterInput.addEventListener('input', applyFilter);
+filterClear.addEventListener('click', () => { filterInput.value = ''; applyFilter(); filterInput.focus(); });
 
 load(currentPath);
 </script>

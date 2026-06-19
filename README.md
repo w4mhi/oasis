@@ -70,7 +70,7 @@ Then open **`http://localhost:8083`** — or `http://<host-ip>:8083` from any ot
 | `install-rtl-sdr.py` | Installs RTL-SDR tools + blacklists the conflicting DVB driver | On the Pi, to enable USB SDR dongles (RTL2832U) | Raspberry Pi / Debian Linux | ⚠️ optional — uses bundled `.deb` if present |
 | `install-webssh.py` | Installs **ttyd** browser-based SSH terminal (login via `ssh@localhost`); `--dry-run` previews, `--verify` self-checks | On the Pi, to enable a web shell on port 7681 | Raspberry Pi / Debian Linux | ⚠️ optional — uses bundled static binary if present, else downloads |
 | `download-wikipedia.py` | Downloads a Wikipedia ZIM snapshot for Kiwix | After `install-kiwix.py`, to get content | Pi (or prep + copy) | ✅ yes |
-| `create-offline-dist.py` | Runs incrementally: updates only missing/outdated packages (wheels, GrayWolf, Kiwix, RTL-SDR, webssh, FCC), then builds the USB bundle. Use `--rebuild` for a clean slate | Run anytime — updates only what changed, then produces oasis-dist/ | Any online host | ⚠️ Windows runtime only |
+| `create-oasis-offline.py` | Runs incrementally: updates only missing/outdated packages (wheels, GrayWolf, Kiwix, RTL-SDR, webssh, FCC), then builds the USB bundle. Use `--rebuild` for a clean slate | Run anytime — updates only what changed, then produces oasis-offline/ | Any online host | ⚠️ Windows runtime only |
 
 > 🔢 **Version-aware installs:** every `install-*` script compares versions before acting — it installs when a package is absent, **upgrades** when the bundled/available version is newer, and **keeps what you have** when it's the same or older (never downgrades). So re-running an installer, or installing from an older USB bundle, can't clobber a newer package already on the Pi.
 
@@ -81,7 +81,7 @@ Then open **`http://localhost:8083`** — or `http://<host-ip>:8083` from any ot
 ## 💾 Portable USB bundle
 
 ```bash
-python3 scripts/create-offline-dist.py
+python3 scripts/create-oasis-offline.py
 ```
 
 Updates all offline packages (Python wheels · GrayWolf · Kiwix · RTL-SDR · webssh · FCC database), then produces a self-contained folder that runs with no system Python on Windows (bundled embedded Python) and bootstraps offline from the vendored wheels on Linux/macOS. Use `--skip-windows` for a 100% offline Linux/macOS build.
@@ -109,7 +109,7 @@ Antenna calculator · grid/distance/bearing · power & battery budget · gray-li
 U.S. band plan · Q-codes, NATO phonetics, pro-words, RST, ITU prefixes · per-radio cheatsheets & operation cards · CHIRP programming guides · GrayWolf handbook. *(Add your own PDF radio manuals to `radio-manuals/` — they're not bundled.)*
 
 #### 💾 Portable USB bundle
-`scripts/create-offline-dist.py` packages everything into a self-contained folder — Windows runs from a bundled Python (double-click `start.bat`), Linux/macOS bootstrap from the vendored wheels. [Details](#-portable-usb-bundle).
+`scripts/create-oasis-offline.py` packages everything into a self-contained folder — Windows runs from a bundled Python (double-click `start.bat`), Linux/macOS bootstrap from the vendored wheels. [Details](#-portable-usb-bundle).
 
 ---
 
@@ -129,7 +129,7 @@ GrayWolf runs on port **8080**; OASIS reads its history database and serves stat
 
 ## 💻 Platform support
 
-Every cell below is verified to install **fully offline** from the bundled wheels (`python3 scripts/create-offline-dist.py --check`):
+Every cell below is verified to install **fully offline** from the bundled wheels (`python3 scripts/create-oasis-offline.py --check`):
 
 | Platform | Python 3.9 | 3.10 | 3.11 | 3.12 | 3.13 | 3.14 |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|
@@ -184,7 +184,7 @@ OASIS is built for a **trusted off-grid LAN or hotspot**. By design it binds to 
 Full setup, data pipelines, and deployment guides live in **[docs/SETUP.md](docs/SETUP.md)**:
 server + systemd auto-start · FCC database pipeline · building map PMTiles from OSM · GrayWolf APRS · Kiwix/Wikipedia · ICS PDF templates · USB bundle · keeping data fresh.
 
-Maintainers: offline packages are kept current by running **`scripts/create-offline-dist.py`** (incremental — updates wheels, GrayWolf, Kiwix, RTL-SDR, webssh, and FCC data; only downloads what changed; use `--rebuild` for a full clean refresh). CI (`server-setup` workflow) verifies `setup-server.py` across all supported platforms and Python versions on every push.
+Maintainers: offline packages are kept current by running **`scripts/create-oasis-offline.py`** (incremental — updates wheels, GrayWolf, Kiwix, RTL-SDR, webssh, and FCC data; only downloads what changed; use `--rebuild` for a full clean refresh). CI (`server-setup` workflow) verifies `setup-server.py` across all supported platforms and Python versions on every push.
 
 ---
 
