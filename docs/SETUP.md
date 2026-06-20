@@ -95,7 +95,29 @@ source .venv/bin/activate
 gunicorn --workers 1 --bind 0.0.0.0:8083 server.app:app
 ```
 
-**systemd service (start on boot):**
+**systemd auto-start (start on boot):**
+
+Use the included script — it writes the service file, enables it, and optionally sets up a Chromium kiosk:
+
+```bash
+# Stop any manually-started server first (avoids port 8083 conflict):
+sudo fuser -k 8083/tcp
+
+# Server only (headless / multi-user)
+python3 scripts/enable-autostart-pi.py
+
+# Server + Chromium kiosk (Raspberry Pi OS with Desktop)
+python3 scripts/enable-autostart-pi.py --with-browser
+
+# Remove autostart
+python3 scripts/enable-autostart-pi.py --disable
+```
+
+The script creates `/etc/systemd/system/oasis.service` and runs `systemctl enable --now oasis`.
+
+> ⚠️ **Port conflict on first run:** if you ran `./start.sh` manually before enabling autostart, gunicorn already holds port 8083. Kill it first (`sudo fuser -k 8083/tcp`) or simply reboot — the systemd service will start cleanly on the next boot.
+
+<details><summary>Manual service file (if you prefer not to use the script)</summary>
 
 Create `/etc/systemd/system/oasis.service`:
 
@@ -117,6 +139,8 @@ WantedBy=multi-user.target
 ```bash
 sudo systemctl enable --now oasis
 ```
+
+</details>
 
 **Server routes:**
 

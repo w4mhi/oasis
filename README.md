@@ -69,6 +69,7 @@ Then open **`http://localhost:8083`** — or `http://<host-ip>:8083` from any ot
 | `install-kiwix.py` | Installs the `kiwix-serve` offline-content server | On the Pi, to turn on offline Wikipedia | Raspberry Pi / Linux | ⚠️ optional — uses bundled package if present |
 | `install-rtl-sdr.py` | Installs RTL-SDR tools + blacklists the conflicting DVB driver | On the Pi, to enable USB SDR dongles (RTL2832U) | Raspberry Pi / Debian Linux | ⚠️ optional — uses bundled `.deb` if present |
 | `install-webssh.py` | Installs **ttyd** browser-based SSH terminal (login via `ssh@localhost`); `--dry-run` previews, `--verify` self-checks | On the Pi, to enable a web shell on port 7681 | Raspberry Pi / Debian Linux | ⚠️ optional — uses bundled static binary if present, else downloads |
+| `enable-autostart-pi.py` | Installs a **systemd service** so OASIS starts on boot; `--with-browser` also opens Chromium in kiosk mode; `--disable` removes both | On the Pi, after first successful manual test run | Raspberry Pi OS (systemd) | ❌ offline |
 | `download-wikipedia.py` | Downloads a Wikipedia ZIM snapshot for Kiwix | After `install-kiwix.py`, to get content | Pi (or prep + copy) | ✅ yes |
 | `create-oasis-offline.py` | Runs incrementally: updates only missing/outdated packages (wheels, GrayWolf, Kiwix, RTL-SDR, webssh, FCC), then builds the USB bundle. Use `--rebuild` for a clean slate | Run anytime — updates only what changed, then produces oasis-offline/ | Any online host | ⚠️ Windows runtime only |
 
