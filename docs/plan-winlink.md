@@ -106,27 +106,36 @@ card that opens it and turns red when unreachable.
 
 ### Phase 1 — Pat + Telnet
 
-- [ ] **`scripts/install-pat.py`** — install Pat from bundled `.deb`
-      (`offline-packages/pat/`) or download from GitHub releases. Mirror
-      `install-graywolf.py`. Version-aware (no downgrade).
-- [ ] **oasis_lib helpers** — `pat_find_local`, `pat_latest_release`,
-      `pat_download_deb` (or **generalize** the GrayWolf GitHub-release-`.deb`
-      helpers into a shared `github_release_deb(...)` — this is the 2nd such
-      installer, so factoring it is the consistent move).
-- [ ] **`create-oasis-offline.py` Phase 7** — download Pat `.deb` for arm64,
-      armhf, amd64 into `oasis-offline/offline-packages/pat/`. Add to `--check`.
-- [ ] **Configuration** — write `~/.config/pat/config.json` (mode 600):
-      `mycall=W4MHI`, `locator` (Maidenhead), `secure_login_password` (Winlink
-      password — prompt), `http_addr=":8082"`, telnet connect alias. A
-      `--configure` flow or a small `configure-pat` step.
-- [ ] **systemd unit** `pat.service` → `pat --listen ... http -a 0.0.0.0:8082`
-      (bind LAN; or 127.0.0.1 + note). Enable on boot.
-- [ ] **Port registration** — add `"pat": 8082` to the ports map in
-      `server/app.py` (the `/api/config` + `/server-ports.json` payload).
-- [ ] **index.html dashboard card** — "Winlink (Pat)" card that opens
-      `http://<pi>:8082`, red when down (copy the GrayWolf/webssh card pattern).
+- [x] **`scripts/install-winlink.py`** — like `install-graywolf`, always resolves
+      the latest release from GitHub first so a **re-run updates** (implicit, no
+      `--update` flag — that matches every install-* script); installs the bundled
+      `.deb` from `offline-packages/pat/` when it matches, falls back to the
+      bundle when offline. Version-aware (no downgrade).
+      *(Built 2026-06-19; structure verified, on-Pi apt/service run pending.)*
+- [x] **oasis_lib helpers** — `pat_find_local`, `pat_latest_release`,
+      `pat_download_deb` added (mirrors `graywolf_*`, the established per-tool
+      convention — generalization deferred to keep the diff small/low-risk).
+- [x] **`create-oasis-offline.py` Phase 7** — downloads Pat `.deb` for arm64,
+      armhf, amd64 into `offline-packages/pat/`; wired into build + `--update` +
+      `--check`, with a missing-bundle warning. *(Built 2026-06-19.)*
+- [x] **Configuration** — `install-winlink.py` writes `~/.config/pat/config.json`
+      (mode 600, chowned to the operator): `mycall`, `locator`,
+      `secure_login_password` (prompted), `http_addr=0.0.0.0:8082`, telnet alias.
+      Non-destructive on re-run (keeps an existing config, only fixes the port).
+- [x] **systemd unit** `pat.service` → `pat http` as the operator user (port via
+      config `http_addr`). Created + enabled by `install-winlink.py`.
+- [x] **Port registration** — `"winlink": 8082` added to the ports map in
+      `server/app.py` (`/api/config` + `/server-ports.json`) and to the
+      health-probe allowlist. *(Built 2026-06-19.)*
+- [x] **index.html dashboard card** — clickable "Winlink" card (opens
+      `:8082`, red when down, mirrors the Web SSH card) + a "Pat (send/receive)"
+      link in the existing Winlink nav section. *(Built 2026-06-19.)*
 - [ ] **Docs** — `docs/SETUP.md` Winlink section + a `docs/winlink-pat.md`
       writeup (config, telnet test, gotchas), like `sdr-to-graywolf.md`.
+
+> **Pending on-Pi verification for the installer:** apt install of the `.deb`,
+> that `pat http` starts cleanly from the generated minimal config, and that the
+> service comes up `active` on :8082. Couldn't exercise apt/systemd/Pat off-Pi.
 
 ### Phase 2 — RF packet via GrayWolf's KISS TNC, later
 

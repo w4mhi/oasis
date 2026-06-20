@@ -42,9 +42,9 @@ oasis-emcomm/
 │
 ├── maps/                       ← map.html + map-config.json; *.pmtiles built by
 │                                  build-map.py (tiles are gitignored, not tracked)
-├── graywolf-api/               ← APRS history API (port 8085)
 ├── aprs/                       ← APRS map page
 ├── scripts/                    ← Setup, build, and install scripts (see README)
+│                                  (enable-graywolf-api.py = APRS history API, port 8085)
 │
 ├── static/
 │   ├── ics-205/                ← ICS 205 Radio Communications Plan

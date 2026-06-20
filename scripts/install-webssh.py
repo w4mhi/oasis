@@ -121,10 +121,10 @@ def check_platform():
 
 
 # ── Step 2: Install ttyd ───────────────────────────────────────────────────────
-def _download_ttyd(suffix, dest):
+def _download_ttyd(suffix, dest, version=TTYD_VERSION):
     """Download the ttyd static binary to dest. Returns True on success."""
-    url = f"https://github.com/tsl0922/ttyd/releases/download/{TTYD_VERSION}/ttyd.{suffix}"
-    _info(f"Downloading ttyd {TTYD_VERSION} ({suffix}) ...")
+    url = f"https://github.com/tsl0922/ttyd/releases/download/{version}/ttyd.{suffix}"
+    _info(f"Downloading ttyd {version} ({suffix}) ...")
     _info(f"  {url}")
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
@@ -143,7 +143,7 @@ def _install_binary(src):
     ).returncode == 0
 
 
-def install_ttyd():
+def install_ttyd(version=TTYD_VERSION):
     """Install ttyd best-effort: bundled binary first, then GitHub download."""
     _step(2, "Installing ttyd")
 
@@ -152,7 +152,7 @@ def install_ttyd():
         path = existing.stdout.strip()
         inst = binary_version([path, "--version"])
         # Only re-install if our bundled/downloaded version is newer.
-        if version_decision("ttyd", TTYD_VERSION, inst) == "skip":
+        if version_decision("ttyd", version, inst) == "skip":
             return path
         # else fall through and install the newer binary to /usr/local/bin
 
@@ -165,13 +165,22 @@ def install_ttyd():
     installed = False
 
     if local:
-        _info(f"Using bundled binary: {os.path.relpath(local)}")
-        installed = _install_binary(local)
-    else:
-        _info(f"No bundled binary in {os.path.relpath(OFFLINE_DIR)}/ — downloading from GitHub ...")
+        # Check the bundled binary's version before using it — it may be older
+        # than what was requested (e.g. offline bundle was built against an older
+        # release). If outdated, download the requested version instead.
+        local_ver = binary_version([local, "--version"])
+        if local_ver and version_decision("ttyd", version, local_ver) == "skip":
+            _info(f"Bundled binary {os.path.relpath(local)} is outdated ({local_ver} < {version}) — downloading ...")
+            local = None  # fall through to download
+        else:
+            _info(f"Using bundled binary: {os.path.relpath(local)}")
+            installed = _install_binary(local)
+
+    if not installed:
+        _info(f"No usable bundled binary in {os.path.relpath(OFFLINE_DIR)}/ — downloading from GitHub ...")
         with tempfile.TemporaryDirectory() as tmp:
             tmp_bin = os.path.join(tmp, f"ttyd.{suffix}")
-            if _download_ttyd(suffix, tmp_bin):
+            if _download_ttyd(suffix, tmp_bin, version=version):
                 installed = _install_binary(tmp_bin)
 
     if not installed:
@@ -400,6 +409,7 @@ def main():
         epilog=(
             "Examples:\n"
             "  python3 scripts/install-webssh.py                       # bundled binary if present, else download\n"
+            "  python3 scripts/install-webssh.py --version 1.7.7       # pin a specific ttyd version\n"
             "  python3 scripts/install-webssh.py --dry-run             # preview helper + unit, change nothing\n"
             "  python3 scripts/install-webssh.py --verify              # check an existing install, change nothing\n"
             "  python3 scripts/install-webssh.py --port 8090           # use a different port\n"
@@ -407,6 +417,11 @@ def main():
             "  python3 scripts/install-webssh.py --basic-auth          # prompt for user:pass gate\n"
             "  python3 scripts/install-webssh.py --basic-auth admin:s3cret\n"
         ),
+    )
+    parser.add_argument(
+        "--version", default=TTYD_VERSION, metavar="X.Y.Z",
+        help=f"ttyd version to install (default: {TTYD_VERSION}). "
+             "Bundled binary is used only if its version matches; otherwise downloads from GitHub.",
     )
     parser.add_argument(
         "--port", type=int, default=DEFAULT_PORT, metavar="N",
@@ -451,7 +466,7 @@ def main():
     _info(f"Service port: {args.port}")
 
     check_platform()
-    ttyd_bin   = install_ttyd()
+    ttyd_bin   = install_ttyd(version=args.version)
     basic_auth = resolve_basic_auth(args.basic_auth)
     if ttyd_bin:
         create_service(ttyd_bin, args.port, args.bind, basic_auth)

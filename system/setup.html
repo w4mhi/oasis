@@ -77,14 +77,58 @@
 'use strict';
 
 const HOST  = location.hostname;
-const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681 };
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082 };
+
+// ── Backend helpers ────────────────────────────────────────────────────────────
+async function jget(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  return r.json();
+}
+async function loadConfig() {
+  try { const d = await jget('/server-ports.json'); if (d && d.ports) Object.assign(PORTS, d.ports); }
+  catch (_) {}
+}
+// Binary present? (PATH + standard bin dirs, server-side)
+async function chkBinary(name) {
+  try { return await jget(`/api/health/binary?name=${name}`); } catch { return { ok: false }; }
+}
+// systemd unit status (active/enabled/installed)
+async function chkService(name) {
+  try { return await jget(`/api/health/service?name=${name}`); }
+  catch { return { ok: false, active: 'unknown', installed: false }; }
+}
+// Config artifact present? (allowlisted keys)
+async function chkFile(key) {
+  try { return await jget(`/api/health/file?key=${key}`); } catch { return { exists: false }; }
+}
+// Port reachable? (server-side proxy probe — no CORS issues)
+async function chkPort(service, port) {
+  try { const d = await jget(`/api/health/probe?service=${service}&port=${port}`); return !!d.ok; }
+  catch { return false; }
+}
+// Compact "active, enabled" string for a service result.
+function svcWord(svc) {
+  if (!svc || !svc.active) return 'unknown';
+  const en = (svc.enabled && svc.enabled !== 'not-found') ? `, ${svc.enabled}` : '';
+  return `${svc.active}${en}`;
+}
 
 // ── Check definitions ──────────────────────────────────────────────────────────
 const CHECKS_CORE = [
   {
     id: 'server',
     name: 'OASIS Server',
-    run: async () => ({ ok: true, badge: 'RUNNING', detail: `Serving on port ${PORTS.flask}` }),
+    run: async () => {
+      try {
+        const d = await jget('/api/server-info');
+        const dev = d.wsgi !== 'gunicorn';
+        return { ok: dev ? 'warn' : true, badge: dev ? 'DEV SERVER' : 'RUNNING',
+          detail: `Serving on :${d.port} via <code>${d.wsgi}</code> v${d.wsgi_version}.`
+            + (dev ? ' For always-on use run under gunicorn — see <code>docs/SETUP.md</code>.' : '') };
+      } catch {
+        return { ok: true, badge: 'RUNNING', detail: `Serving on port ${PORTS.flask}.` };
+      }
+    },
   },
   {
     id: 'fcc',
@@ -110,78 +154,178 @@ const CHECKS_CORE = [
       try {
         const r = await fetch('/maps/map-config.json', { cache: 'no-store' });
         if (!r.ok) return { ok: false, badge: 'MISSING',
-          detail: 'map-config.json not found. Run the build-map script to generate tiles.' };
-        const cfg = await r.json();
-        const region = (cfg.regions && cfg.regions[0] && cfg.regions[0].name) || 'unknown';
-        return { ok: true, badge: 'READY', detail: `Loaded. Active region: <strong>${region}</strong>` };
+          detail: 'map-config.json not found. Run: <code>python3 scripts/build-map.py</code>' };
+        let cfg;
+        try { cfg = await r.json(); } catch {
+          return { ok: false, badge: 'ERROR', detail: 'map-config.json is not valid JSON.' };
+        }
+        const keys = Object.keys(cfg).filter(k => k.endsWith('.pmtiles'));
+        if (!keys.length) return { ok: 'warn', badge: 'N/A',
+          detail: 'map-config.json exists but lists no .pmtiles regions.' };
+        // Verify each pmtiles file actually exists via a HEAD request
+        const checks = await Promise.all(keys.map(async k => {
+          try {
+            const h = await fetch(`/maps/${k}`, { method: 'HEAD', cache: 'no-store' });
+            return { name: k.replace('.pmtiles',''), ok: h.ok };
+          } catch { return { name: k.replace('.pmtiles',''), ok: false }; }
+        }));
+        const ok    = checks.filter(c => c.ok).map(c => c.name);
+        const missing = checks.filter(c => !c.ok).map(c => c.name);
+        if (!ok.length) return { ok: false, badge: 'MISSING',
+          detail: `map-config.json lists ${keys.length} region(s) but no .pmtiles files were found: <strong>${missing.join(', ')}</strong>. Run: <code>python3 scripts/build-map.py</code>` };
+        const detail = `${ok.length} region(s) ready: <strong>${ok.join(', ')}</strong>`
+          + (missing.length ? ` &nbsp;|&nbsp; <span style="color:var(--amber)">missing: ${missing.join(', ')}</span>` : '');
+        return { ok: missing.length ? 'warn' : true, badge: missing.length ? 'PARTIAL' : 'READY', detail };
       } catch (e) {
-        return { ok: false, badge: 'ERROR', detail: 'Could not load map config.' };
+        return { ok: false, badge: 'ERROR', detail: 'Could not load map config: ' + e.message };
       }
     },
   },
 ];
 
+const OPEN = (port, label) =>
+  `<a href="http://${HOST}:${port}" target="_blank" rel="noopener" style="color:var(--accent)">${label || ':' + port}</a>`;
+
 const CHECKS_OPTIONAL = [
   {
     id: 'graywolf',
-    name: 'GrayWolf APRS',
+    name: 'GrayWolf APRS  ·  :8080',
     run: async () => {
-      try {
-        const r = await fetch(`/api/health/probe?service=graywolf&port=${PORTS.graywolf}`, { cache: 'no-store' });
-        const d = await r.json();
-        if (d.ok) return { ok: true, badge: 'UP', detail: `Listening on port ${PORTS.graywolf}. Open <a href="http://${HOST}:${PORTS.graywolf}" target="_blank" rel="noopener" style="color:var(--accent)">:${PORTS.graywolf}</a> to configure.` };
-        return { ok: 'warn', badge: 'DOWN',
-          detail: `Not running. Install with: <code>python3 scripts/install-graywolf.py</code>` };
-      } catch {
-        return { ok: 'warn', badge: 'DOWN',
-          detail: `Not running. Install with: <code>python3 scripts/install-graywolf.py</code>` };
-      }
+      const up  = await chkPort('graywolf', PORTS.graywolf);
+      const svc = await chkService('graywolf');
+      if (up) return { ok: true, badge: 'UP',
+        detail: `Service <code>graywolf</code> (${svcWord(svc)}), listening on :${PORTS.graywolf}. Open ${OPEN(PORTS.graywolf)} to configure callsign, audio, channels.` };
+      if (svc.installed) return { ok: 'warn', badge: 'STOPPED',
+        detail: `Installed but not listening (service <code>graywolf</code> is ${svc.active}). Start: <code>sudo systemctl start graywolf</code> &nbsp;·&nbsp; logs: <code>journalctl -u graywolf -f</code>` };
+      return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `Install with: <code>python3 scripts/install-graywolf.py</code>` };
     },
   },
   {
-    id: 'aprs_api',
-    name: 'APRS Station API',
+    id: 'graywolf_api',
+    name: 'GrayWolf APRS History API  ·  :8085',
     run: async () => {
-      try {
-        const r = await fetch(`http://${HOST}:${PORTS.aprs_api}/api/aprs/stations`, { cache: 'no-store' });
-        const d = await r.json();
-        if (d.ok) return { ok: true, badge: 'UP', detail: `${d.count} station(s) in GrayWolf database.` };
-        return { ok: 'warn', badge: 'WARN', detail: d.error || 'API running but returned an error.' };
-      } catch {
-        return { ok: 'warn', badge: 'DOWN',
-          detail: `Not running. Start with: <code>python3 graywolf-api/graywolf_api.py</code>` };
+      const up  = await chkPort('aprs_api', PORTS.aprs_api);
+      const svc = await chkService('graywolf-api');
+      let count = null;
+      if (up) { try { const s = await jget(`http://${HOST}:${PORTS.aprs_api}/api/aprs/stations`); if (s.ok) count = s.count; } catch {} }
+      if (up) return { ok: true, badge: 'UP',
+        detail: `API on :${PORTS.aprs_api} (service <code>graywolf-api</code>, ${svcWord(svc)})`
+          + (count !== null ? `, ${count} station(s) in the history DB.` : '. Feeds the APRS map + system-stats bar.') };
+      if (svc.installed) return { ok: 'warn', badge: 'STOPPED',
+        detail: `Service installed but not responding (${svc.active}). Start: <code>sudo systemctl start graywolf-api</code> &nbsp;·&nbsp; logs: <code>journalctl -u graywolf-api -f</code>` };
+      return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `Enabled by <code>python3 scripts/install-graywolf.py</code> (needs <code>scripts/setup-server.py</code> first to build the .venv it runs under).` };
+    },
+  },
+  {
+    id: 'pat',
+    name: 'Winlink (Pat)  ·  :8082',
+    run: async () => {
+      const up  = await chkPort('winlink', PORTS.winlink);
+      const bin = await chkBinary('pat');
+      const svc = await chkService('pat');
+      const cfg = await chkFile('pat_config');
+      if (up) {
+        const noPw = cfg.exists && cfg.password_set === false;
+        const cfgNote = !cfg.exists
+          ? ' <span style="color:var(--amber)">No config.json yet.</span>'
+          : (noPw ? ' <span style="color:var(--amber)">Winlink password not set — run <code>pat configure</code> before connecting.</span>'
+                  : ' Callsign + password configured.');
+        return { ok: noPw ? 'warn' : true, badge: 'UP',
+          detail: `Pat web UI on :${PORTS.winlink} (service <code>pat</code>, ${svcWord(svc)}). Open ${OPEN(PORTS.winlink)} to send/receive.` + cfgNote };
       }
+      if (bin.ok) return { ok: 'warn', badge: 'STOPPED',
+        detail: `Pat installed (<code>${bin.path}</code>) but the web UI is not running (service ${svc.active}). Start: <code>sudo systemctl start pat</code> &nbsp;·&nbsp; logs: <code>journalctl -u pat -f</code>` };
+      return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `Install with: <code>python3 scripts/install-winlink.py</code>` };
+    },
+  },
+  {
+    id: 'rtl_sdr',
+    name: 'RTL-SDR + APRS audio feed',
+    run: async () => {
+      const [rtlTest, rtlFm, socat, tcpdump] = await Promise.all(
+        ['rtl_test', 'rtl_fm', 'socat', 'tcpdump'].map(chkBinary));
+      const blk  = await chkFile('rtl_blacklist');
+      const feed = await chkService('aprs-sdr-feed');
+
+      if (!rtlTest.ok) return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `RTL-SDR tools not found. Install with: <code>python3 scripts/install-rtl-sdr.py</code>` };
+
+      const yes = '<span style="color:var(--accent)">✓</span>';
+      const no  = t => `<span style="color:var(--amber)">${t}</span>`;
+      const lines = [];
+      lines.push(`Tools: <code>rtl_test</code> ${yes} &nbsp; <code>rtl_fm</code> ${rtlFm.ok ? yes : no('missing')} `
+        + `&nbsp; (at <code>${rtlTest.path}</code>)`);
+      lines.push(`Feed tools: socat ${socat.ok ? yes : no('✗')} &nbsp; tcpdump ${tcpdump.ok ? yes : no('✗')}`);
+      lines.push(`DVB driver blacklist: ${blk.exists ? yes : no('missing — re-run install-rtl-sdr.py, then reboot')}`);
+
+      let feedTxt, feedOk;
+      if (feed.active === 'active') { feedTxt = `APRS→GrayWolf feed <code>aprs-sdr-feed</code> ${yes} (${svcWord(feed)})`; feedOk = true; }
+      else if (feed.installed)      { feedTxt = no(`feed service is ${feed.active}`) + ` — start: <code>sudo systemctl start aprs-sdr-feed</code>`; feedOk = false; }
+      else                          { feedTxt = no('feed not enabled') + ` — run <code>python3 scripts/enable-rtl-sdr.py</code> to stream APRS audio into GrayWolf`; feedOk = false; }
+      lines.push(feedTxt);
+      lines.push(`Plug in the dongle and run <code>rtl_test -t</code> to confirm the hardware.`);
+
+      const toolsOk = rtlFm.ok && socat.ok && blk.exists;
+      const badge = feedOk ? 'READY' : (toolsOk ? 'INSTALLED' : 'PARTIAL');
+      const ok    = feedOk && toolsOk ? true : 'warn';
+      return { ok, badge, detail: lines.join('<br>') };
     },
   },
   {
     id: 'kiwix',
-    name: 'Kiwix (Offline Wikipedia)',
+    name: 'Kiwix (Offline Wikipedia)  ·  :8081',
     run: async () => {
-      try {
-        const r = await fetch(`/api/health/probe?service=kiwix&port=${PORTS.kiwix}`, { cache: 'no-store' });
-        const d = await r.json();
-        if (d.ok) return { ok: true, badge: 'UP', detail: `Listening on port ${PORTS.kiwix}. Open <a href="http://${HOST}:${PORTS.kiwix}" target="_blank" rel="noopener" style="color:var(--accent)">:${PORTS.kiwix}</a> to browse content.` };
-        return { ok: 'warn', badge: 'DOWN',
-          detail: `Not running. Install with: <code>python3 scripts/install-kiwix.py</code>` };
-      } catch {
-        return { ok: 'warn', badge: 'DOWN',
-          detail: `Not running. Install with: <code>python3 scripts/install-kiwix.py</code>` };
-      }
+      const up  = await chkPort('kiwix', PORTS.kiwix);
+      const bin = await chkBinary('kiwix-serve');
+      const svc = await chkService('kiwix');
+      if (up) return { ok: true, badge: 'UP',
+        detail: `<code>kiwix-serve</code> on :${PORTS.kiwix} (service <code>kiwix</code>, ${svcWord(svc)}). Open ${OPEN(PORTS.kiwix)} to browse.` };
+      if (bin.ok) return { ok: 'warn', badge: 'STOPPED',
+        detail: `<code>kiwix-serve</code> installed but not serving (${svc.active}). Add ZIM content, then: <code>sudo systemctl start kiwix</code>` };
+      return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `Install with: <code>python3 scripts/install-kiwix.py</code>` };
     },
   },
   {
     id: 'webssh',
-    name: 'Web SSH (ttyd)',
+    name: 'Web SSH (ttyd)  ·  :7681',
+    run: async () => {
+      const up  = await chkPort('webssh', PORTS.webssh);
+      const bin = await chkBinary('ttyd');
+      const svc = await chkService('webssh');
+      if (up) return { ok: true, badge: 'UP',
+        detail: `Browser terminal on :${PORTS.webssh} (service <code>webssh</code>, ${svcWord(svc)}). Open ${OPEN(PORTS.webssh)}.` };
+      if (bin.ok) return { ok: 'warn', badge: 'STOPPED',
+        detail: `<code>ttyd</code> installed but not running (${svc.active}). Needs <code>sshd</code>. Start: <code>sudo systemctl start webssh</code>` };
+      return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `Install with: <code>python3 scripts/install-webssh.py</code>` };
+    },
+  },
+  {
+    id: 'winlink_forms',
+    name: 'Winlink Forms (offline pages)',
     run: async () => {
       try {
-        const r = await fetch(`/api/health/probe?service=webssh&port=${PORTS.webssh}`, { cache: 'no-store' });
-        const d = await r.json();
-        if (d.ok) return { ok: true, badge: 'UP', detail: `Terminal available on port ${PORTS.webssh}.` };
-        return { ok: 'warn', badge: 'DOWN',
-          detail: `Not running. Install with: <code>python3 scripts/install-webssh.py</code>` };
+        const pages = ['position-report.html', 'to-position.html', 'radio-settings.html'];
+        const results = await Promise.all(
+          pages.map(p => fetch(`/winlink/${p}`, { method: 'HEAD', cache: 'no-store' })
+            .then(r => ({ name: p.replace('.html',''), ok: r.ok }))
+            .catch(() => ({ name: p.replace('.html',''), ok: false }))
+          )
+        );
+        const ok      = results.filter(r => r.ok).map(r => r.name);
+        const missing = results.filter(r => !r.ok).map(r => r.name);
+        if (!ok.length) return { ok: false, badge: 'MISSING',
+          detail: 'No Winlink form pages found in <code>winlink/</code>.' };
+        return { ok: missing.length ? 'warn' : true,
+          badge: missing.length ? 'PARTIAL' : 'READY',
+          detail: `${ok.length} form(s) available: <strong>${ok.join(', ')}</strong>`
+            + (missing.length ? ` &mdash; missing: ${missing.join(', ')}` : '') };
       } catch {
-        return { ok: 'warn', badge: 'DOWN',
-          detail: `Not running. Install with: <code>python3 scripts/install-webssh.py</code>` };
+        return { ok: 'warn', badge: 'UNKNOWN', detail: 'Could not verify Winlink form pages.' };
       }
     },
   },
@@ -242,6 +386,8 @@ async function runAll() {
   document.getElementById('allOk').style.display = 'none';
   document.getElementById('list-core').innerHTML = '';
   document.getElementById('list-optional').innerHTML = '';
+
+  await loadConfig();   // pull real ports from /server-ports.json before checking
 
   const [coreRes, optRes] = await Promise.all([
     runChecks(CHECKS_CORE, 'list-core'),

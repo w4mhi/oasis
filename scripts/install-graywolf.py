@@ -10,6 +10,11 @@ GrayWolf runs on port 8080 and provides a browser-based APRS TNC,
 iGate, digipeater, and live map. After install, open http://localhost:8080
 to complete configuration (callsign, audio device, radio channel).
 
+Also enables the GrayWolf APRS History API on port 8085 — it feeds the OASIS
+APRS map and dashboard from graywolf's history DB. This delegates to
+scripts/enable-graywolf-api.py (the API server + its systemd enabler in one).
+Runs under the repo's .venv (Flask + psutil).
+
 Usage:
   python3 scripts/install-graywolf.py
   python3 scripts/install-graywolf.py --version 0.13.16   # pin a version
@@ -35,6 +40,13 @@ SERVICE  = "graywolf"
 PORT     = 8080
 REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OFFLINE_DIR = os.path.join(REPO_ROOT, "offline-packages", "graywolf")
+
+# GrayWolf APRS History API — a small Flask service (port 8085) that feeds the
+# APRS map + dashboard. It owns its own systemd unit; we just delegate to its
+# enabler so the unit is defined in exactly one place.
+API_SERVICE = "graywolf-api"
+API_PORT    = 8085
+API_ENABLER = os.path.join(REPO_ROOT, "scripts", "enable-graywolf-api.py")
 
 ARCH_MAP = {
     "aarch64": "arm64",
@@ -125,6 +137,17 @@ def enable_service():
         _info("Check logs with:  journalctl -u graywolf -f")
 
 
+# ── Step 5: GrayWolf APRS History API service ──────────────────────────────────
+def enable_api_service():
+    """Enable the APRS History API by delegating to its own enabler script —
+    the systemd unit is defined there, not duplicated here."""
+    _step(5, f"Enabling the GrayWolf APRS History API (port {API_PORT})")
+    if not os.path.exists(API_ENABLER):
+        _warn(f"{API_ENABLER} not found — skipping API service.")
+        return
+    _run([sys.executable, API_ENABLER], check=False)
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(
@@ -167,11 +190,13 @@ def main():
             install_deb(deb_path)
 
     enable_service()
+    enable_api_service()
 
     print()
     print("  OASIS -- GrayWolf install complete.")
     _hr()
     _info(f"Open http://localhost:{PORT} to configure GrayWolf.")
+    _info(f"APRS History API + system stats serve on :{API_PORT} (graywolf-api.service).")
     print()
 
 

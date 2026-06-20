@@ -78,13 +78,26 @@ def check_platform():
 # ── Step 2: Resolve local or download ─────────────────────────────────────────
 def get_tarball(version, kiwix_arch):
     _step(2, "Locating kiwix-tools tarball")
-    local = kiwix_find_local(OFFLINE_DIR, kiwix_arch)
-    if local:
-        _info(f"Using offline package: {os.path.basename(local)}")
+
+    # The filename encodes the version, so we can detect a stale offline pkg
+    # the same way install-graywolf.py does: always resolve the target filename
+    # first, then compare against whatever is in the offline dir.
+    expected_filename = f"kiwix-tools_linux-{kiwix_arch}-{version}.tar.gz"
+    expected_path     = os.path.join(OFFLINE_DIR, expected_filename)
+
+    local = kiwix_find_local(OFFLINE_DIR, kiwix_arch)  # any version for this arch
+
+    if local and os.path.basename(local) == expected_filename:
+        _info(f"Using offline package: {expected_filename} (up to date)")
         with open(local, "rb") as fh:
             return fh.read()
-    _info("No offline package found -- downloading from kiwix.org ...")
-    _warn("Run 'python3 scripts/create-oasis-offline.py' to build a bundle with all packages.")
+
+    if local:
+        _info(f"Offline package {os.path.basename(local)} is outdated — downloading {expected_filename} ...")
+    else:
+        _info("No offline package found -- downloading from kiwix.org ...")
+        _warn("Run 'python3 scripts/create-oasis-offline.py' to build a bundle with all packages.")
+
     tarball_path = kiwix_download_tarball(
         os.path.join(REPO_ROOT, "offline-packages", "kiwix"),
         version, kiwix_arch,

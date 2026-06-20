@@ -34,20 +34,22 @@ Always outputs to oasis-offline/ in the repo root (existing bundle is wiped).
     Only valid with --update. Directory to update. Defaults to the current
     working directory when --update is used without --dir.
 
-Download phases (run automatically unless --check):
+Build phases (run automatically unless --check):
+  Phase 0 — Copy local files    oasis-offline/  (repo source tree)
   Phase 1 — Python wheels       oasis-offline/server/wheels/
   Phase 2 — GrayWolf .deb       oasis-offline/offline-packages/graywolf/
   Phase 3 — Kiwix binaries      oasis-offline/offline-packages/kiwix/
   Phase 4 — FCC database        oasis-offline/fcc-offline-database/data/
   Phase 5 — RTL-SDR .deb        oasis-offline/offline-packages/rtl-sdr/
   Phase 6 — webssh ttyd binary  oasis-offline/offline-packages/webssh/
+  Phase 7 — Pat (Winlink) .deb  oasis-offline/offline-packages/pat/
 
 Usage:
   python3 scripts/create-oasis-offline.py                    # incremental build
   python3 scripts/create-oasis-offline.py --rebuild          # wipe + full rebuild
   python3 scripts/create-oasis-offline.py --check            # verify bundle (CI)
   python3 scripts/create-oasis-offline.py --skip-windows     # build, no Win runtime
-  python3 scripts/create-oasis-offline.py --update           # update packages in cwd
+  python3 scripts/create-oasis-offline.py --update           # update packages in repo root
   python3 scripts/create-oasis-offline.py --update --dir /mnt/usb  # update on USB drive
 """
 
@@ -71,6 +73,7 @@ from common.oasis_lib import (
     download_to, download_bytes,
     fcc_download, fcc_download_zip,
     graywolf_latest_release, graywolf_download_deb,
+    pat_latest_release,
     kiwix_latest_version, kiwix_download_tarball,
     rtl_sdr_download_debs,
     ttyd_download,
@@ -360,6 +363,62 @@ def phase_webssh(webssh_dir, update=False):
         _warn("No ttyd binaries downloaded — webssh offline install will not work.")
 
 
+# ── Phase 7: Pat (Winlink) Debian packages ───────────────────────────────────
+_PAT_TARGETS = [
+    ("arm64", "Raspberry Pi (64-bit)"),
+    ("armhf", "Raspberry Pi (32-bit)"),
+    ("amd64", "Linux x86-64"),
+]
+
+
+def phase_pat(pat_dir, update=False):
+    """Phase 7: Download the Pat (Winlink) .deb for arm64, armhf, amd64.
+
+    Same GitHub-release shape as GrayWolf; asset names are
+    pat_<version>_linux_<arch>.deb. Used by install-winlink.py.
+    """
+    _section("Phase 7 — Pat (Winlink) binaries")
+    _info("Source  : https://github.com/la5nta/pat")
+    _info("Targets : arm64 (Pi 64-bit), armhf (Pi 32-bit), amd64")
+    _info("Note    : Linux .deb only here — install-winlink.py consumes these")
+    os.makedirs(pat_dir, exist_ok=True)
+
+    try:
+        release = pat_latest_release()
+    except SystemExit:
+        _warn("Pat will not be available for offline install.")
+        return
+
+    latest_ver = release["tag_name"].lstrip("v")
+    _info(f"Pat {latest_ver} — checking")
+    downloaded = []
+    for deb_arch, desc in _PAT_TARGETS:
+        filename  = f"pat_{latest_ver}_linux_{deb_arch}.deb"
+        dest_path = os.path.join(pat_dir, filename)
+        if os.path.exists(dest_path):
+            _cp(f"{filename}  (up to date)")
+            downloaded.append(filename)
+            continue
+        asset = next(
+            (a for a in release.get("assets", []) if a["name"] == filename), None
+        )
+        if not asset:
+            _warn(f"Asset not found: {filename} ({desc}) — skipping")
+            continue
+        _dl(f"{filename}  ({asset['size'] / 1_048_576:.1f} MB)  ← GitHub")
+        try:
+            download_to(asset["browser_download_url"], dest_path)
+            _ok(filename)
+            downloaded.append(filename)
+        except Exception as exc:
+            _warn(f"Failed: {filename}: {exc}")
+
+    if downloaded:
+        _ok(f"Pat {latest_ver} ready in {os.path.relpath(pat_dir)}/")
+    else:
+        _warn("No Pat assets downloaded.")
+
+
 # ── Phase 4: FCC callsign database ────────────────────────────────────────────
 def phase_fcc(fcc_dir):
     """
@@ -383,19 +442,22 @@ def phase_fcc(fcc_dir):
         _warn("Re-run this script when the FCC site is reachable.")
 
 # ── Build: copy project files ──────────────────────────────────────────────────
-def build_copy(dest):
+def build_copy(dest, src=None):
     """
     Copy the repo source tree into dest.  Package directories managed by the
     download phases (offline-packages/, server/wheels/) are skipped — they are
     already populated in dest before this function is called.
     Does not wipe dest.
+    src defaults to REPO_ROOT; pass a different path when calling from inside
+    the bundle (where REPO_ROOT is the bundle itself).
     """
+    src = src or REPO_ROOT
     _section(f"Copying source files  →  {dest}")
 
     exclude_relpaths = {p.replace("/", os.sep) for p in EXCLUDE_RELPATHS}
     copied = skipped = 0
-    for root, dirs, files in os.walk(REPO_ROOT):
-        rel_root = os.path.relpath(root, REPO_ROOT)
+    for root, dirs, files in os.walk(src):
+        rel_root = os.path.relpath(root, src)
         dirs[:] = [
             d for d in dirs
             if d not in EXCLUDE_DIRS
@@ -422,6 +484,7 @@ def build_copy(dest):
     kw_dir = os.path.join(dest, "offline-packages", "kiwix")
     rs_dir = os.path.join(dest, "offline-packages", "rtl-sdr")
     ws_dir = os.path.join(dest, "offline-packages", "webssh")
+    pt_dir = os.path.join(dest, "offline-packages", "pat")
     if not any(f.endswith(".deb") for f in (os.listdir(gw_dir) if os.path.isdir(gw_dir) else [])):
         _warn("GrayWolf .deb missing — Pi users will need internet to install GrayWolf.")
     if not any(f.endswith(".tar.gz") for f in (os.listdir(kw_dir) if os.path.isdir(kw_dir) else [])):
@@ -433,6 +496,8 @@ def build_copy(dest):
         _warn("socat/tcpdump .deb packages missing — Pi users will need internet to enable the RTL-SDR feed.")
     if not any(f.startswith("ttyd.") for f in (os.listdir(ws_dir) if os.path.isdir(ws_dir) else [])):
         _warn("webssh (ttyd) static binaries missing — Pi users will need internet to install webssh.")
+    if not any(f.endswith(".deb") for f in (os.listdir(pt_dir) if os.path.isdir(pt_dir) else [])):
+        _warn("Pat .deb missing — Winlink users will need internet to install Pat.")
     if not os.path.exists(os.path.join(dest, "fcc-offline-database", "data", "EN.idx")):
         _warn("FCC index missing — callsign lookup will return 'not found'.")
     if not os.path.exists(os.path.join(dest, "fcc-offline-database", "data", "zipcodes.csv")):
@@ -627,6 +692,14 @@ def cmd_check():
     else:
         _warn("Not found — run without --check to build the bundle.")
 
+    _section("Phase 7 — Pat (Winlink) packages  [check]")
+    pt_dir  = os.path.join(OUT_DIR, "offline-packages", "pat")
+    pt_debs = [f for f in (os.listdir(pt_dir) if os.path.isdir(pt_dir) else []) if f.endswith(".deb")]
+    if pt_debs:
+        _ok(f"{len(pt_debs)} Pat .deb file(s) present")
+    else:
+        _warn("Not found — run without --check to build the bundle.")
+
     _section("Phase 4 — FCC database  [check]")
     fcc_zip = os.path.join(OUT_DIR, "fcc-offline-database", "data", "l_amat.zip")
     if os.path.exists(fcc_zip):
@@ -654,6 +727,10 @@ def cmd_build(skip_windows, rebuild=False):
         shutil.rmtree(OUT_DIR)
     os.makedirs(OUT_DIR, exist_ok=True)
 
+    # Phase 0: copy repo source files first (offline-packages/ and server/wheels/
+    # are excluded — the download phases below will populate those dirs).
+    build_copy(OUT_DIR)
+
     # Download phases — each writes directly into its oasis-offline/ subdirectory.
     # update=True means "skip files already at current version" (always on by default).
     phase_wheels(os.path.join(OUT_DIR, "server", "wheels"))
@@ -663,9 +740,8 @@ def cmd_build(skip_windows, rebuild=False):
     phase_fcc(fcc_dir)
     phase_rtl_sdr(os.path.join(OUT_DIR, "offline-packages", "rtl-sdr"), update=True)
     phase_webssh(os.path.join(OUT_DIR, "offline-packages", "webssh"), update=True)
+    phase_pat(os.path.join(OUT_DIR, "offline-packages", "pat"), update=True)
 
-    # Copy repo source files (offline-packages/ and server/wheels/ are excluded).
-    build_copy(OUT_DIR)
     build_windows_runtime(OUT_DIR, skip_windows)
     build_launchers(OUT_DIR)
     build_summary(OUT_DIR)
@@ -673,14 +749,13 @@ def cmd_build(skip_windows, rebuild=False):
 
 # ── Update command ────────────────────────────────────────────────────────────
 def cmd_update(target_dir):
-    """Update offline packages in-place in an existing distribution directory.
-    Runs all download phases; does not copy source files, launchers, or the
-    Windows runtime.
+    """Update an existing distribution directory: refresh offline packages AND
+    sync repo source files.  When target_dir is the repo root itself (the
+    default), the source-sync step is skipped — the repo IS the source.
     """
     print("\n  OASIS — create-oasis-offline  [--update]")
     _hr()
     _info(f"Target : {target_dir}")
-    _info("Mode   : update offline packages only (source files and launchers unchanged)")
 
     if not os.path.isdir(target_dir):
         _fail(
@@ -688,15 +763,49 @@ def cmd_update(target_dir):
             "     Run without --update to build a new distribution first."
         )
 
+    # Determine if the target is a separate bundle directory or the repo root.
+    # os.path.samefile handles symlinks and trailing slashes correctly.
+    try:
+        same_as_repo = os.path.samefile(target_dir, REPO_ROOT)
+    except OSError:
+        same_as_repo = os.path.abspath(target_dir) == os.path.abspath(REPO_ROOT)
+
+    # When running from inside the bundle (oasis-offline/scripts/), REPO_ROOT is
+    # the bundle directory itself.  Check if the parent of REPO_ROOT is the main
+    # repo (has scripts/create-oasis-offline.py) and use it as the copy source.
+    parent_repo = os.path.dirname(REPO_ROOT)
+    parent_has_script = os.path.isfile(
+        os.path.join(parent_repo, "scripts", "create-oasis-offline.py")
+    )
+
+    if same_as_repo:
+        if parent_has_script:
+            _info("Mode   : inside bundle — updating offline packages + syncing from parent repo")
+        else:
+            _info("Mode   : bundle root — updating offline packages only (no parent repo found)")
+    else:
+        _info("Mode   : bundle directory — updating offline packages + syncing source files")
+
+    # Phase 0: sync repo source files first (before download phases populate
+    # offline-packages/ and server/wheels/, which are excluded from the copy).
+    # - If targeting a separate bundle dir → copy from this repo.
+    # - If targeting our own REPO_ROOT but parent is the main repo → copy from parent.
+    # - If we're on a USB drive with no parent repo → skip (nothing to copy from).
+    if not same_as_repo:
+        build_copy(target_dir)
+    elif parent_has_script:
+        build_copy(target_dir, src=parent_repo)
+
     phase_wheels(os.path.join(target_dir, "server", "wheels"))
     phase_graywolf(os.path.join(target_dir, "offline-packages", "graywolf"), update=True)
     phase_kiwix(os.path.join(target_dir, "offline-packages", "kiwix"), update=True)
     phase_fcc(os.path.join(target_dir, "fcc-offline-database", "data"))
     phase_rtl_sdr(os.path.join(target_dir, "offline-packages", "rtl-sdr"), update=True)
     phase_webssh(os.path.join(target_dir, "offline-packages", "webssh"), update=True)
+    phase_pat(os.path.join(target_dir, "offline-packages", "pat"), update=True)
 
     _section("Update complete")
-    _ok(f"Offline packages updated in: {target_dir}")
+    _ok(f"Updated: {target_dir}")
     print()
 
 
@@ -717,8 +826,9 @@ def main():
             "  python3 scripts/create-oasis-offline.py --rebuild              # wipe + full rebuild\n"
             "  python3 scripts/create-oasis-offline.py --check               # verify bundle (CI)\n"
             "  python3 scripts/create-oasis-offline.py --skip-windows        # skip Windows Python\n"
-            "  python3 scripts/create-oasis-offline.py --update              # update packages in cwd\n"
-            "  python3 scripts/create-oasis-offline.py --update --dir /mnt/usb  # update on USB drive\n"
+            "  python3 scripts/create-oasis-offline.py --update              # update packages + sync source files"
+            " into oasis-offline/\n"
+            "  python3 scripts/create-oasis-offline.py --update --dir /mnt/usb  # update USB bundle\n"
         ),
     )
     ap.add_argument(
@@ -740,14 +850,13 @@ def main():
     ap.add_argument(
         "--update", action="store_true",
         help=(
-            "Update offline packages in an existing distribution directory. "
-            "Targets the current working directory by default; use --dir to specify a path. "
-            "Source files, launchers, and the Windows runtime are not touched."
+            "Update an existing distribution: refresh offline packages and sync repo source files. "
+            f"Targets oasis-offline/ inside the repo by default; use --dir to specify a different path."
         ),
     )
     ap.add_argument(
         "--dir", metavar="DIR",
-        help="Directory to update. Only valid with --update. Defaults to the current working directory.",
+        help="Directory to update. Only valid with --update. Defaults to oasis-offline/ inside the repo.",
     )
     args = ap.parse_args()
 
@@ -755,7 +864,12 @@ def main():
         ap.error("--dir is only valid with --update")
 
     if args.update:
-        target = os.path.abspath(args.dir) if args.dir else os.getcwd()
+        if args.dir:
+            target = os.path.abspath(args.dir)
+        elif os.path.isdir(OUT_DIR):
+            target = OUT_DIR          # running from main repo → update oasis-offline/
+        else:
+            target = REPO_ROOT        # running from inside the bundle → update bundle root
         cmd_update(target)
     elif args.check:
         cmd_check()

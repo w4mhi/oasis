@@ -51,12 +51,12 @@ else
 fi
 VENV_PIP="$VENV_DIR/bin/pip"
 
-# ── Install Flask from bundled wheels (offline, idempotent) ───────────────────
+# ── Install Flask + psutil from bundled wheels (offline, idempotent) ────────────
 "$VENV_PIP" install \
     --quiet \
     --no-index \
     --find-links "$WHEELS_DIR" \
-    flask gunicorn 2>&1 | grep -v "already satisfied" || true
+    flask gunicorn psutil 2>&1 | grep -v "already satisfied" || true
 
 # ── Pre-flight check ──────────────────────────────────────────────────────────
 echo ""
@@ -91,10 +91,10 @@ _check "Python" "1" "$PY_VER"
     && _check "gunicorn" "1" "(WSGI server)" \
     || _warn_check "gunicorn" "(not installed — using Flask dev server)"
 
-# psutil (optional)
+# psutil
 "$VENV_PYTHON" -c "import psutil" 2>/dev/null \
     && _check "psutil" "1" \
-    || _warn_check "psutil" "(APRS stats unavailable → run: python3 scripts/setup-server.py)"
+    || _check "psutil" "0" "→ run: python3 scripts/setup-server.py"
 
 # FCC index
 FCC_INDEX="$SCRIPT_DIR/fcc-offline-database/data/EN.idx"

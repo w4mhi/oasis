@@ -472,6 +472,66 @@ def graywolf_download_deb(url, filename, dest_dir):
     return dest_path
 
 
+# ── Pat (Winlink) ───────────────────────────────────────────────────────────────
+# Pat is the Winlink client (web UI + Telnet/RF transports). Same GitHub-release
+# .deb shape as GrayWolf — asset names are pat_<version>_linux_<arch>.deb.
+_PAT_API = "https://api.github.com/repos/la5nta/pat/releases"
+
+
+def pat_find_local(offline_dir, deb_arch):
+    """Return path to a local Pat .deb for *deb_arch*, or None.
+
+    Expected name: pat_<version>_linux_<deb_arch>.deb. macOS AppleDouble
+    sidecars (._*) are ignored.
+    """
+    if not os.path.isdir(offline_dir):
+        return None
+    for fname in sorted(os.listdir(offline_dir)):
+        if fname.startswith("._"):
+            continue
+        if fname.startswith("pat_") and fname.endswith(f"_linux_{deb_arch}.deb"):
+            return os.path.join(offline_dir, fname)
+    return None
+
+
+def pat_latest_release(pinned_version=None):
+    """
+    Fetch Pat release metadata from GitHub.
+    Returns the parsed release dict (includes 'assets', 'tag_name', etc.).
+    Hard-fails on network error.
+    """
+    if pinned_version:
+        tag = f"v{pinned_version.lstrip('v')}"
+        url = f"{_PAT_API}/tags/{tag}"
+        _info(f"Pinned version: {tag}")
+    else:
+        url = f"{_PAT_API}/latest"
+        _info("Fetching latest Pat release from GitHub ...")
+
+    req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.load(resp)
+    except Exception as exc:
+        _fail(f"Could not reach GitHub API: {exc}")
+
+
+def pat_download_deb(url, filename, dest_dir):
+    """
+    Download a Pat .deb from *url* into *dest_dir*.
+    Returns the destination path. Hard-fails on error.
+    """
+    os.makedirs(dest_dir, exist_ok=True)
+    dest_path = os.path.join(dest_dir, filename)
+    _info(f"Source: {url}")
+    try:
+        download_to(url, dest_path)
+    except Exception as exc:
+        _fail(f"Pat download failed: {exc}")
+    _ok(f"Saved {filename}")
+    return dest_path
+
+
 # ── Kiwix ──────────────────────────────────────────────────────────────────────
 
 KIWIX_BASE = "https://download.kiwix.org/release/kiwix-tools"

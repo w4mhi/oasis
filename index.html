@@ -22,7 +22,7 @@ body {
   justify-content: space-between;
   padding: .6rem 1.25rem;
   background: var(--panel);
-  border-bottom: 2px solid var(--accent-dim);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 .brand-name {
@@ -44,14 +44,18 @@ body {
   color: var(--accent);
   letter-spacing: .1em;
   font-variant-numeric: tabular-nums;
-  text-align: right;
+}
+.clock-utc-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: .7rem;
 }
 .clock-date {
-  font-size: var(--fs-micro);
-  color: var(--text-dim);
+  font-size: var(--fs-small);
+  color: var(--accent);
   letter-spacing: .06em;
-  text-align: right;
-  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Service strip ───────────────────────────────────────────────────── */
@@ -75,9 +79,9 @@ body {
   padding: .38rem .7rem;
   transition: border-color .3s;
 }
-.svc-card.up   { border-color: var(--accent-dim); }
-.svc-card.down { border-color: #7a1010; }
-.svc-card.warn { border-color: var(--amber-dim); }
+.svc-card.up   { border-color: var(--accent-dim); background: rgba(0, 200, 100, 0.06); }
+.svc-card.down { border-color: #7a1010;           background: rgba(180, 30,  30,  0.08); }
+.svc-card.warn { border-color: var(--amber-dim);  background: rgba(255, 180, 84,  0.06); }
 a.svc-card { text-decoration: none; color: inherit; cursor: pointer; }
 a.svc-card:hover { border-color: var(--accent); }
 .svc-dot {
@@ -91,14 +95,15 @@ a.svc-card:hover { border-color: var(--accent); }
 .svc-dot.up   { background: var(--accent); }
 .svc-dot.down { background: var(--red); }
 .svc-dot.warn { background: var(--amber); }
-.svc-name { font-size: var(--fs-small); font-weight: 700; color: var(--text); }
-.svc-sub  { font-size: var(--fs-micro); color: var(--text-dim); }
+.svc-name { font-size: 0.85rem; font-weight: 700; color: var(--text); }
+.svc-sub  { font-size: var(--fs-small); color: var(--text-dim); }
 .svc-badge {
   margin-left: auto;
-  font-size: var(--fs-micro);
+  font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: .06em;
   color: var(--text-dim);
+  font-weight: 400;
 }
 .svc-badge.up   { color: var(--accent); }
 .svc-badge.down { color: var(--red); }
@@ -119,7 +124,7 @@ a.svc-card:hover { border-color: var(--accent); }
   display: flex;
   align-items: center;
   gap: .38rem;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-small);
   padding: 0 .9rem;
 }
 .stat-item:first-child { padding-left: 0; }
@@ -148,7 +153,7 @@ a.svc-card:hover { border-color: var(--accent); }
   padding: .3rem 1.25rem;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-small);
   flex-shrink: 0;
 }
 .aprs-tag {
@@ -164,11 +169,10 @@ a.svc-card:hover { border-color: var(--accent); }
 .nav-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  flex: 1;
-  min-height: 0;
+  flex-shrink: 0;
 }
 .nav-col {
-  padding: 1rem 1.25rem;
+  padding: .5rem 1.25rem;
   border-right: 1px solid var(--border);
   overflow-y: auto;
 }
@@ -209,7 +213,7 @@ a.svc-card:hover { border-color: var(--accent); }
 }
 .ql-icon { font-size: .95rem; line-height: 1; }
 .ql-lbl {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-small);
   text-transform: uppercase;
   letter-spacing: .08em;
   color: var(--accent);
@@ -218,19 +222,25 @@ a.svc-card:hover { border-color: var(--accent); }
 }
 
 /* Nav sections */
-.nav-sec { margin-bottom: 1.1rem; }
+.nav-sec {
+  margin-bottom: .75rem;
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--panel);
+}
 .nav-sec:last-child { margin-bottom: 0; }
 .nav-sec-title {
-  font-size: var(--fs-micro);
+  font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: .13em;
-  color: var(--amber);
+  color: var(--accent);
   font-weight: 700;
-  padding-bottom: .28rem;
-  margin-bottom: .3rem;
-  border-bottom: 1px solid var(--border);
+  padding: .28rem .6rem;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--accent-dim);
 }
-.nav-links { list-style: none; }
+.nav-links { list-style: none; padding: 0 .6rem; }
 .nav-links li { border-bottom: 1px solid var(--border); }
 .nav-links li:last-child { border-bottom: none; }
 .nav-links a {
@@ -246,8 +256,36 @@ a.svc-card:hover { border-color: var(--accent); }
 .nav-links a:hover { color: var(--accent); }
 .nav-links a.ext { color: var(--blue); }
 .nav-links a.ext:hover { color: var(--accent); }
+
+/* Nav link service-state badges */
+.nav-svc-badge {
+  margin-left: auto;
+  font-size: var(--fs-small);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: .07rem .45rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.nav-svc-badge.up   { color: var(--accent); border-color: var(--accent-dim); }
+.nav-svc-badge.warn { color: var(--amber);  border-color: var(--amber-dim, #7a5200); }
+.nav-svc-badge.down { color: var(--red);    border-color: #7a1010; }
+a.nav-link-svc {
+  color: var(--text-dim);
+  opacity: .45;
+  pointer-events: none;
+}
+a.nav-link-svc.enabled {
+  opacity: 1;
+}
+a.nav-link-svc.enabled {
+  color: var(--blue);
+  pointer-events: auto;
+}
+a.nav-link-svc.enabled:hover { color: var(--accent); }
 .nav-meta {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-small);
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: .06em;
@@ -268,6 +306,176 @@ a.svc-card:hover { border-color: var(--accent); }
   opacity: .65;
   flex-shrink: 0;
 }
+
+/* ── Local time ──────────────────────────────────────────────────────── */
+.clock-local {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--amber);
+  letter-spacing: .1em;
+  font-variant-numeric: tabular-nums;
+}
+.clock-local-date {
+  font-size: var(--fs-small);
+  color: var(--amber);
+  letter-spacing: .06em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Callsign / grid pill (inside topbar) ───────────────────────────── */
+.pill-row {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  margin-top: .35rem;
+}
+.callsign-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .18rem .7rem;
+  border: 1px solid var(--accent-dim);
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: var(--fs-label);
+}
+.svc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .18rem .65rem;
+  border: 1px solid var(--accent-dim);
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: var(--fs-label);
+  letter-spacing: .04em;
+}
+.cs-call { font-weight: 700; color: var(--accent); letter-spacing: .08em; }
+.cs-grid { color: var(--amber); }
+.cs-sep  { color: var(--border); }
+.cs-edit {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  padding: 0 .1rem;
+  line-height: 1;
+}
+.cs-edit:hover { color: var(--accent); }
+.cnt-up   { color: var(--accent); }
+.cnt-warn { color: var(--amber); }
+.cnt-down { color: var(--red); }
+.cnt-sep  { color: var(--border); }
+
+/* ── Section header (above svc-strip) ───────────────────────────────── */
+.section-hdr {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  padding: .22rem 1.25rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.section-hdr-title {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: .13em;
+  color: var(--accent);
+  font-weight: 700;
+}
+.section-hdr-sub {
+  font-size: var(--fs-small);
+  color: var(--text-dim);
+  letter-spacing: .05em;
+}
+
+/* ── Legend bar ──────────────────────────────────────────────────────── */
+.legend-bar {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  padding: .22rem 1.25rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-small);
+  color: var(--text-dim);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.legend-bar .leg-sep { color: var(--border); }
+
+/* ── Telemetry badge in stats bar ────────────────────────────────────── */
+.telemetry-badge {
+  margin-left: auto;
+  font-size: var(--fs-small);
+  color: var(--text-dim);
+  padding: 0 .9rem;
+  border-left: 1px solid var(--border);
+  white-space: nowrap;
+}
+.telemetry-badge.live { color: var(--accent); }
+.telemetry-badge.warn { color: var(--amber); }
+.telemetry-badge.bad  { color: var(--red); }
+
+/* ── APRS LIVE section ───────────────────────────────────────────────── */
+.aprs-section {
+  padding: .4rem 1.25rem .75rem;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  flex: 1;
+}
+.aprs-card {
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.aprs-section-hdr {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  padding: .28rem .6rem;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--accent-dim);
+}
+.aprs-section-title {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: .13em;
+  color: var(--text-dim);
+  font-weight: 700;
+  transition: color .3s;
+}
+.aprs-section-title.live    { color: var(--accent); }
+.aprs-section-title.offline { color: var(--amber); }
+.aprs-section-meta { font-size: var(--fs-small); color: var(--text-dim); }
+.aprs-tbl-wrap { overflow-x: auto; padding: 0 .6rem; }
+.aprs-tbl-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-small);
+}
+.aprs-tbl-wrap th {
+  text-align: left;
+  font-size: var(--fs-small);
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  padding: .2rem .5rem .2rem 0;
+}
+.aprs-tbl-wrap td {
+  padding: .22rem .5rem .22rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: top;
+}
+.aprs-tbl-wrap tr:last-child td { border-bottom: none; }
+.age-ok   { color: var(--accent); }
+.age-warn { color: var(--amber); }
+.age-old  { color: var(--red); }
 
 /* ── Responsive ──────────────────────────────────────────────────────── */
 @media (max-width: 860px) {
@@ -294,14 +502,66 @@ a.svc-card:hover { border-color: var(--accent); }
   <div>
     <div class="brand-name">OASIS - Off-grid Amateur Station Information Suite</div>
     <div class="brand-sub">An offline toolkit for amateur radio emergency communications.</div>
+    <div class="pill-row">
+      <div class="callsign-pill">
+        <span class="cs-call" id="my-callsign">N0CALL</span>
+        <span class="cs-sep">&middot;</span>
+        <span class="cs-grid" id="my-grid">&mdash;</span>
+        <button class="cs-edit" onclick="editCallsignGrid()" title="Edit callsign &amp; grid">&#9998;</button>
+      </div>
+    </div>
   </div>
   <div>
-    <div class="clock-utc" id="utc-time">--:--:-- UTC</div>
-    <div class="clock-date" id="utc-date">----·--·--</div>
+    <div class="clock-utc-row">
+      <div class="clock-utc" id="utc-time">UTC --:--:--</div>
+      <div class="clock-date" id="utc-date">----·--·--</div>
+    </div>
+    <div class="clock-utc-row">
+      <div class="clock-local" id="local-time">LOCAL --:--:--</div>
+      <div class="clock-local-date" id="local-date">----·--·--</div>
+    </div>
   </div>
 </div>
 
+<!-- ── SECTION HEADER ─────────────────────────────────────────────────────── -->
+<div class="section-hdr">
+  <span class="section-hdr-title">SERVICES</span>
+  <span class="section-hdr-sub">infrastructure · radio</span>
+  <span class="svc-pill" id="svc-counts" style="margin-left:auto"></span>
+</div>
+
 <!-- ── SERVICE STATUS STRIP ───────────────────────────────────────────────── -->
+<!-- Row 1: radio / external services -->
+<div class="svc-strip">
+  <div class="svc-card" id="card-gw">
+    <div class="svc-dot" id="dot-gw"></div>
+    <div><div class="svc-name">GrayWolf</div><div class="svc-sub" id="sub-gw">—</div></div>
+    <span class="svc-badge" id="badge-gw">—</span>
+  </div>
+  <div class="svc-card" id="card-aprs">
+    <div class="svc-dot" id="dot-aprs"></div>
+    <div><div class="svc-name">APRS Stats API</div><div class="svc-sub" id="sub-aprs">—</div></div>
+    <span class="svc-badge" id="badge-aprs">—</span>
+  </div>
+  <a class="svc-card" id="card-winlink" href="#" rel="noopener"
+     onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.winlink}/`,'_blank');return false;">
+    <div class="svc-dot" id="dot-winlink"></div>
+    <div><div class="svc-name">Winlink</div><div class="svc-sub" id="sub-winlink">—</div></div>
+    <span class="svc-badge" id="badge-winlink">—</span>
+  </a>
+  <div class="svc-card" id="card-kiwix">
+    <div class="svc-dot" id="dot-kiwix"></div>
+    <div><div class="svc-name">Kiwix</div><div class="svc-sub" id="sub-kiwix">—</div></div>
+    <span class="svc-badge" id="badge-kiwix">—</span>
+  </div>
+  <a class="svc-card" id="card-webssh" href="#" rel="noopener"
+     onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.webssh}/`,'_blank');return false;">
+    <div class="svc-dot" id="dot-webssh"></div>
+    <div><div class="svc-name">Web SSH</div><div class="svc-sub" id="sub-webssh">—</div></div>
+    <span class="svc-badge" id="badge-webssh">—</span>
+  </a>
+</div>
+<!-- Row 2: infrastructure services -->
 <div class="svc-strip">
   <div class="svc-card" id="card-flask">
     <div class="svc-dot" id="dot-flask"></div>
@@ -313,21 +573,6 @@ a.svc-card:hover { border-color: var(--accent); }
     <div><div class="svc-name">Web Server</div><div class="svc-sub" id="sub-wsgi">—</div></div>
     <span class="svc-badge" id="badge-wsgi">—</span>
   </div>
-  <div class="svc-card" id="card-gw">
-    <div class="svc-dot" id="dot-gw"></div>
-    <div><div class="svc-name">GrayWolf</div><div class="svc-sub" id="sub-gw">—</div></div>
-    <span class="svc-badge" id="badge-gw">—</span>
-  </div>
-  <div class="svc-card" id="card-kiwix">
-    <div class="svc-dot" id="dot-kiwix"></div>
-    <div><div class="svc-name">Kiwix</div><div class="svc-sub" id="sub-kiwix">—</div></div>
-    <span class="svc-badge" id="badge-kiwix">—</span>
-  </div>
-  <div class="svc-card" id="card-aprs">
-    <div class="svc-dot" id="dot-aprs"></div>
-    <div><div class="svc-name">APRS Stats API</div><div class="svc-sub" id="sub-aprs">—</div></div>
-    <span class="svc-badge" id="badge-aprs">—</span>
-  </div>
   <div class="svc-card" id="card-fcc">
     <div class="svc-dot" id="dot-fcc"></div>
     <div><div class="svc-name">FCC Database</div><div class="svc-sub" id="sub-fcc">—</div></div>
@@ -338,12 +583,6 @@ a.svc-card:hover { border-color: var(--accent); }
     <div><div class="svc-name">Offline Maps</div><div class="svc-sub" id="sub-maps">—</div></div>
     <span class="svc-badge" id="badge-maps">—</span>
   </div>
-  <a class="svc-card" id="card-webssh" href="#" rel="noopener"
-     onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.webssh}/`,'_blank');return false;">
-    <div class="svc-dot" id="dot-webssh"></div>
-    <div><div class="svc-name">Web SSH</div><div class="svc-sub" id="sub-webssh">—</div></div>
-    <span class="svc-badge" id="badge-webssh">—</span>
-  </a>
 </div>
 
 <!-- ── SYSTEM STATS BAR ──────────────────────────────────────────────────── -->
@@ -354,79 +593,70 @@ a.svc-card:hover { border-color: var(--accent); }
     <div class="mini-bar"><div class="mini-fill" id="b-cpu"></div></div>
   </div>
   <div class="stat-item">
-    <span class="stat-lbl">Temp</span>
-    <span class="stat-val" id="s-temp">—</span>
-  </div>
-  <div class="stat-item">
     <span class="stat-lbl">RAM</span>
     <span class="stat-val" id="s-ram">—</span>
     <div class="mini-bar"><div class="mini-fill" id="b-ram"></div></div>
   </div>
   <div class="stat-item">
-    <span class="stat-lbl">Disk</span>
+    <span class="stat-lbl">DISK</span>
     <span class="stat-val" id="s-disk">—</span>
     <div class="mini-bar"><div class="mini-fill" id="b-disk"></div></div>
   </div>
   <div class="stat-item">
-    <span class="stat-lbl">Load</span>
+    <span class="stat-lbl">LOAD</span>
     <span class="stat-val" id="s-load">—</span>
   </div>
   <div class="stat-item">
-    <span class="stat-lbl">Uptime</span>
+    <span class="stat-lbl">TEMP</span>
+    <span class="stat-val" id="s-temp">—</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-lbl">UPTIME</span>
     <span class="stat-val" id="s-uptime">—</span>
   </div>
   <div class="stat-item">
-    <span class="stat-lbl">Audio</span>
+    <span class="stat-lbl">AUDIO</span>
     <span class="stat-val" id="s-audio">—</span>
   </div>
-</div>
-
-<!-- ── APRS BAR ──────────────────────────────────────────────────────────── -->
-<div class="aprs-bar">
-  <span class="aprs-tag">APRS</span>
-  <span class="aprs-val"><span id="aprs-count">—</span> stations</span>
-  <span class="aprs-sep">·</span>
-  <span class="aprs-val">last packet <span id="aprs-last">—</span></span>
+  <div class="stat-item">
+    <span class="stat-lbl">PWR</span>
+    <span class="stat-val" id="s-pwr">—</span>
+  </div>
+  <span class="telemetry-badge" id="telemetry-badge">△ telemetry: offline</span>
 </div>
 
 <!-- ── NAVIGATION GRID ───────────────────────────────────────────────────── -->
 <div class="nav-grid">
 
-  <!-- COL 1: Quick Launch + System + ICS Forms ───────────────────────── -->
   <div class="nav-col">
 
-    <div class="ql-row">
-      <a class="ql-btn" href="maps/map.html">
-        <span class="ql-icon">📍</span>
-        <span class="ql-lbl">OFFLINE MAPS<br>Puget Sound</span>
-      </a>
-      <a class="ql-btn" href="tools/net-log.html">
-        <span class="ql-icon">📋</span>
-        <span class="ql-lbl">Net<br>Logger</span>
-      </a>
-      <a class="ql-btn" id="ql-fcc" href="/lookup">
-        <span class="ql-icon">🔍</span>
-        <span class="ql-lbl">FCC<br>Lookup</span>
-      </a>
-    </div>
-
     <div class="nav-sec">
-      <div class="nav-sec-title">System</div>
+      <div class="nav-sec-title">Util</div>
       <ul class="nav-links">
-        <li><a href="system/dashboard.html" class="ext">Server Dashboard <span class="nav-meta">health</span></a></li>
-        <li><a href="#" class="ext" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.webssh}/`,'_blank');return false;">SSH Terminal <span class="nav-meta">ttyd :7681</span></a></li>
-        <li><a href="static/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
+        <li><a id="nlink-maps" href="maps/map.html" class="nav-link-svc">Offline Maps <span class="nav-svc-badge" id="nsvc-maps">—</span></a></li>
+        <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>
+        <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
+        <li><a id="nlink-webssh" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.webssh}/`,'_blank');return false;">SSH Terminal <span class="nav-svc-badge" id="nsvc-webssh">—</span></a></li>
       </ul>
     </div>
 
     <div class="nav-sec">
-      <div class="nav-sec-title">APRS</div>
-      <ul class="nav-links">    
-        <li><a href="#" class="ext" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.graywolf}/`,'_blank');return false;">GrayWolf <span class="nav-meta">APRS :8080</span></a></li>
-        <li><a href="static/graywolf-handbook/index.html">GrayWolf Handbook <span class="nav-meta">docs</span></a></li>
-        <li><a href="aprs/map.html">APRS Map <span class="nav-meta">docs</span></a></li>
+      <div class="nav-sec-title">Tools</div>
+      <ul class="nav-links">
+        <li><a href="system/setup.html" class="ext">Setup Verification <span class="nav-meta">health</span></a></li>
+        <li><a href="static/antenna-calc.html">Antenna Calculator <span class="nav-meta">cut lengths</span></a></li>
+        <li><a href="static/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
+        <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
+        <li><a href="static/solar.html">Solar / Propagation <span class="nav-meta">band conditions</span></a></li>
+        <li><a href="static/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calc</span></a></li>
+        <li><a href="static/grayline.html">Gray Line <span class="nav-meta">HF propagation</span></a></li>
+        <li><a href="system/browser.html">File Browser <span class="nav-meta">manuals</span></a></li>
       </ul>
     </div>
+
+  </div>
+
+  <div class="nav-col">
 
     <div class="nav-sec">
       <div class="nav-sec-title">ICS Forms</div>
@@ -438,29 +668,35 @@ a.svc-card:hover { border-color: var(--accent); }
       </ul>
     </div>
 
-  </div>
-
-  <!-- COL 2: Tools ────────────────────────────────────────────────────── -->
-  <div class="nav-col">
-
     <div class="nav-sec">
-      <div class="nav-sec-title">Winlink</div>
+      <div class="nav-sec-title">Winlink &amp; APRS</div>
       <ul class="nav-links">
+        <li><a id="nlink-winlink" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.winlink}/`,'_blank');return false;">Pat (send/receive) <span class="nav-svc-badge" id="nsvc-winlink">—</span></a></li>
         <li><a href="winlink/position-report.html">Position Reports <span class="nav-meta">viewer</span></a></li>
         <li><a href="winlink/radio-settings.html">Radio Settings <span class="nav-meta">setup</span></a></li>
         <li><a href="winlink/to-position.html">Winlink → Position <span class="nav-meta">converter</span></a></li>
+        <li><a id="nlink-gw" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.graywolf}/`,'_blank');return false;">GrayWolf <span class="nav-svc-badge" id="nsvc-gw">—</span></a></li>
+        <li><a href="static/graywolf-handbook/index.html">GrayWolf Handbook <span class="nav-meta">docs</span></a></li>
+        <li><a href="aprs/map.html">APRS Map <span class="nav-meta">live</span></a></li>
       </ul>
     </div>
 
+  </div>
+
+  <div class="nav-col">
+
     <div class="nav-sec">
-      <div class="nav-sec-title">Maps</div>
+      <div class="nav-sec-title">Radio Ref</div>
       <ul class="nav-links">
-        <li><a href="maps/map.html">Puget Sound <span class="nav-meta">offline PMTiles</span></a></li>
+        <li><a href="repeater-guide/index.html">Repeater Guide <span class="nav-meta">CHIRP how-to</span></a></li>
+        <li><a href="radio-cards/index.html">Radio Cards <span class="nav-meta">CHIRP how-to</span></a></li>
+        <li><a href="static/cheatsheets/index.html">Radio Cheatsheets <span class="nav-meta">CHIRP how-to</span></a></li>
+        <li><a id="nlink-kiwix" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-kiwix">—</span></a></li>
       </ul>
     </div>
 
     <div class="nav-sec">
-      <div class="nav-sec-title">Quick Reference</div>
+      <div class="nav-sec-title">Operating</div>
       <ul class="nav-links">
         <li><a href="static/quick-ref/ics.html">ICS Plain Language <span class="nav-meta">emcomm</span></a></li>
         <li><a href="static/quick-ref/itu-prefixes.html">ITU Country Prefixes <span class="nav-meta">call sign series</span></a></li>
@@ -473,33 +709,22 @@ a.svc-card:hover { border-color: var(--accent); }
 
   </div>
 
-  <!-- COL 3: Reference ──────────────────────────────── -->
-  <div class="nav-col">
+</div>
 
-    <div class="nav-sec">
-      <div class="nav-sec-title">Tools</div>
-      <ul class="nav-links">
-        <li><a href="static/antenna-calc.html">Antenna Calculator <span class="nav-meta">cut lengths</span></a></li>
-        <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
-        <li><a href="static/solar.html">Solar / Propagation <span class="nav-meta">band conditions</span></a></li>
-        <li><a href="static/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calc</span></a></li>
-        <li><a href="static/grayline.html">Gray Line <span class="nav-meta">HF propagation</span></a></li>
-        <li><a href="system/browser.html">File Browser <span class="nav-meta">manuals</span></a></li>
-      </ul>
+<!-- ── APRS LIVE ────────────────────────────────────────────────────────────── -->
+<div class="aprs-section">
+  <div class="aprs-card">
+    <div class="aprs-section-hdr">
+      <span class="aprs-section-title" id="aprs-title">APRS LIVE</span>
+      <span class="aprs-section-meta">stations — <span id="aprs-count">—</span> &nbsp;·&nbsp; last packet — <span id="aprs-last">—</span></span>
     </div>
-
-    <div class="nav-sec">
-      <div class="nav-sec-title">Reference</div>
-      <ul class="nav-links">
-        <li><a href="repeater-guide/index.html">Repeater Guide <span class="nav-meta">CHIRP how-to</span></a></li>
-        <li><a href="radio-cards/index.html">Radio Cards <span class="nav-meta">CHIRP how-to</span></a></li>
-        <li><a href="static/cheatsheets/index.html">Radio Cheatsheets <span class="nav-meta">CHIRP how-to</span></a></li>
-        <li><a href="#" class="ext" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-meta">Kiwix :8081</span></a></li>
-      </ul>
+    <div class="aprs-tbl-wrap">
+      <table>
+        <thead><tr><th>Callsign</th><th>Last Heard</th><th>Age</th><th>Speed</th><th>Via</th><th>Comment</th></tr></thead>
+        <tbody id="aprs-tbody"><tr><td colspan="6" style="color:var(--text-dim)">Loading…</td></tr></tbody>
+      </table>
     </div>
-
   </div>
-
 </div>
 
 <!-- ── FOOTER ─────────────────────────────────────────────────────────────── -->
@@ -510,7 +735,13 @@ a.svc-card:hover { border-color: var(--accent); }
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
-const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681 };
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082 };
+// Port to show in svc-sub when a service is unreachable
+const SVC_PORTS = {
+  gw:    () => PORTS.graywolf, winlink: () => PORTS.winlink,
+  kiwix: () => PORTS.kiwix,   aprs:    () => PORTS.aprs_api,
+  webssh:() => PORTS.webssh
+};
 
 async function loadConfig() {
   try {
@@ -523,18 +754,57 @@ function go(port) {
   location.href = `${location.protocol}//${location.hostname}:${port}/`;
 }
 
-// ── UTC clock (ticks every second) ────────────────────────────────────────────
+// ── UTC + Local clock (ticks every second) ────────────────────────────────────
 function tickClock() {
   const n = new Date();
   const z = v => String(v).padStart(2, '0');
   document.getElementById('utc-time').textContent =
-    `${z(n.getUTCHours())}:${z(n.getUTCMinutes())}:${z(n.getUTCSeconds())} UTC`;
+    `UTC ${z(n.getUTCHours())}:${z(n.getUTCMinutes())}:${z(n.getUTCSeconds())}`;
   document.getElementById('utc-date').textContent =
     `${n.getUTCFullYear()}·${z(n.getUTCMonth()+1)}·${z(n.getUTCDate())}`;
+  document.getElementById('local-time').textContent =
+    `LOCAL ${z(n.getHours())}:${z(n.getMinutes())}:${z(n.getSeconds())}`;
+  document.getElementById('local-date').textContent =
+    `${n.getFullYear()}·${z(n.getMonth()+1)}·${z(n.getDate())}`;
 }
 tickClock();
 setInterval(tickClock, 1000);
 document.getElementById('footer-ts').textContent = new Date().toLocaleString();
+
+// ── Callsign / Grid (stored in localStorage) ──────────────────────────────────
+function loadCallsignGrid() {
+  const cs = localStorage.getItem('oasis_callsign') || 'N0CALL';
+  const gr = localStorage.getItem('oasis_grid')     || '—';
+  document.getElementById('my-callsign').textContent = cs;
+  document.getElementById('my-grid').textContent     = gr;
+}
+function editCallsignGrid() {
+  const cs = prompt('Callsign:', localStorage.getItem('oasis_callsign') || 'N0CALL');
+  if (cs === null) return;
+  const gr = prompt('Grid square (e.g. CN87):', localStorage.getItem('oasis_grid') || '');
+  if (gr === null) return;
+  localStorage.setItem('oasis_callsign', cs.trim().toUpperCase());
+  localStorage.setItem('oasis_grid',     gr.trim().toUpperCase());
+  loadCallsignGrid();
+}
+loadCallsignGrid();
+
+// ── Service state tracking (for counts badge) ─────────────────────────────────
+const _svcStates = {};
+function updateSvcCounts() {
+  const vals = Object.values(_svcStates);
+  const up   = vals.filter(s => s === 'up').length;
+  const warn = vals.filter(s => s === 'warn').length;
+  const down = vals.filter(s => s === 'down').length;
+  const el = document.getElementById('svc-counts');
+  if (!el) return;
+  el.innerHTML =
+    `<span class="cnt-up">${up} UP</span>` +
+    `<span class="cnt-sep">&#160;·&#160;</span>` +
+    `<span class="cnt-warn">${warn} WRN</span>` +
+    `<span class="cnt-sep">&#160;·&#160;</span>` +
+    `<span class="cnt-down">${down} DN</span>`;
+}
 
 // ── Service checks ────────────────────────────────────────────────────────────
 const HOST = location.hostname;
@@ -546,7 +816,7 @@ const SERVICES = [
       const r = await fetch('/api/server-info', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: `HTTP ${r.status}` };
       const d = await r.json();
-      return { up: true, badge: 'UP', sub: `v${d.flask_version} :${d.port}` };
+      return { up: true, badge: 'UP', sub: `v${d.flask_version}` };
     }
   },
   {
@@ -557,8 +827,8 @@ const SERVICES = [
       const d = await r.json();
       const g = d.wsgi === 'gunicorn';
       return { up: true, warn: !g,
-        badge: g ? 'gunicorn' : 'werkzeug (dev)',
-        sub: `v${d.wsgi_version} :${d.port}` };
+        badge: g ? 'gunicorn · UP' : 'werkzeug (dev) · WARN',
+        sub: `v${d.wsgi_version}` };
     }
   },
   {
@@ -566,6 +836,13 @@ const SERVICES = [
     check: async () => {
       await fetch(`http://${HOST}:${PORTS.graywolf}/`, { cache: 'no-store', mode: 'no-cors' });
       return { up: true, badge: 'UP', sub: `:${PORTS.graywolf}` };
+    }
+  },
+  {
+    id: 'winlink', name: 'Winlink',
+    check: async () => {
+      await fetch(`http://${HOST}:${PORTS.winlink}/`, { cache: 'no-store', mode: 'no-cors' });
+      return { up: true, badge: 'UP', sub: `:${PORTS.winlink}` };
     }
   },
   {
@@ -578,7 +855,7 @@ const SERVICES = [
   {
     id: 'aprs', name: 'APRS Stats API',
     check: async () => {
-      const r = await fetch(`http://${HOST}:${PORTS.aprs_api}/health`, { cache: 'no-store' });
+      const r = await fetch('/api/aprs/health', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: `:${PORTS.aprs_api}` };
       const d = await r.json();
       return { up: true, warn: !d.db_exists, badge: 'UP',
@@ -623,24 +900,33 @@ async function checkService(svc) {
   const badge = document.getElementById('badge-' + svc.id);
   const sub   = document.getElementById('sub-'   + svc.id);
   const card  = document.getElementById('card-'  + svc.id);
+  const nbadge = document.getElementById('nsvc-'  + svc.id);
+  const nlink  = document.getElementById('nlink-' + svc.id);
   try {
     const result = await Promise.race([
       svc.check(),
       new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
     ]);
     const state = result.up ? (result.warn ? 'warn' : 'up') : 'down';
+    _svcStates[svc.id] = state;
     dot.className   = 'svc-dot '   + state;
     badge.className = 'svc-badge ' + state;
     card.className  = 'svc-card '  + state;
     badge.textContent = result.badge || (result.up ? 'UP' : 'DOWN');
     if (sub) sub.textContent = result.sub || '';
+    if (nbadge) { nbadge.className = 'nav-svc-badge ' + state; nbadge.textContent = result.sub || (state === 'up' ? 'online' : state); }
+    if (nlink)  { nlink.classList.toggle('enabled', state === 'up'); }
   } catch (e) {
+    _svcStates[svc.id] = 'down';
     dot.className   = 'svc-dot down';
     badge.className = 'svc-badge down';
     card.className  = 'svc-card down';
     badge.textContent = e.message === 'timeout' ? 'TIMEOUT' : 'DOWN';
-    if (sub) sub.textContent = '';
+    if (sub) { const pf = SVC_PORTS[svc.id]; sub.textContent = pf ? `:${pf()}` : ''; }
+    if (nbadge) { nbadge.className = 'nav-svc-badge down'; nbadge.textContent = e.message === 'timeout' ? 'timeout' : 'offline'; }
+    if (nlink)  { nlink.classList.remove('enabled'); }
   }
+  updateSvcCounts();
 }
 
 function pingAll() { SERVICES.forEach(svc => checkService(svc)); }
@@ -692,35 +978,60 @@ async function fetchStats() {
     if (!r.ok) return;
     const d = await r.json();
 
+    // Track which stats are valid vs n/a to colour the telemetry badge
+    let valid = 0, total = 0;
+    const track = (ok) => { total++; if (ok) valid++; };
+
     // CPU %
+    track(d.cpu_pct != null);
     if (d.cpu_pct != null) {
       setStat('s-cpu', `${Math.round(d.cpu_pct)}%`, d.cpu_pct, 70, 90);
       setBar('b-cpu', d.cpu_pct, 70, 90);
     }
     // Temperature (°C) — absent on Mac/Windows
+    track(d.cpu_temp_c != null);
     setStat('s-temp', d.cpu_temp_c != null ? `${d.cpu_temp_c} °C` : 'n/a',
             d.cpu_temp_c, 65, 80);
     // RAM %
+    track(d.ram && d.ram.pct != null);
     if (d.ram && d.ram.pct != null) {
       setStat('s-ram', `${Math.round(d.ram.pct)}%`, d.ram.pct, 70, 90);
       setBar('b-ram', d.ram.pct, 70, 90);
     }
     // Disk usage %
+    track(d.disk && !d.disk.error && d.disk.pct != null);
     if (d.disk && !d.disk.error && d.disk.pct != null) {
       setStat('s-disk', `${Math.round(d.disk.pct)}%`, d.disk.pct, 70, 90);
       setBar('b-disk', d.disk.pct, 70, 90);
     }
     // Load (1-min avg) — coloured by load-vs-cores %, absent on Windows
+    track(d.load && d.load.avg1 != null);
     if (d.load && d.load.avg1 != null) {
       setStat('s-load', d.load.avg1.toFixed(2), d.load.pct, 75, 100);
     } else {
       setStat('s-load', 'n/a', null);
     }
     // Uptime — informational, no threshold colour
+    track(d.uptime_sec != null);
     if (d.uptime_sec != null) {
       const el = document.getElementById('s-uptime');
       el.textContent = fmtUptime(d.uptime_sec);
       el.className   = 'stat-val';
+    }
+
+    // Telemetry badge: green = all valid, amber = some n/a, red = all n/a
+    const tb = document.getElementById('telemetry-badge');
+    if (tb) {
+      if (valid === total) {
+        tb.textContent = '✓ telemetry: live';
+        tb.className   = 'telemetry-badge live';
+      } else if (valid > 0) {
+        tb.textContent = '△ telemetry: live';
+        tb.className   = 'telemetry-badge warn';
+      } else {
+        tb.textContent = '✗ telemetry: offline';
+        tb.className   = 'telemetry-badge bad';
+      }
     }
   } catch (_) {}
 }
@@ -745,19 +1056,66 @@ async function fetchAudio() {
   } catch (_) {}
 }
 
-// ── APRS station count ────────────────────────────────────────────────────────
-async function fetchAPRS() {
-  try {
-    const r = await fetch(
-      `${location.protocol}//${location.hostname}:${PORTS.aprs_api}/api/stations`,
-      { cache: 'no-store', signal: AbortSignal.timeout(4000) }
-    );
-    if (!r.ok) return;
-    const d = await r.json();
-    const stations = Array.isArray(d) ? d : (d.stations || []);
-    document.getElementById('aprs-count').textContent = stations.length;
+// ── APRS live station table ───────────────────────────────────────────────────
+function fmtAge(iso) {
+  if (!iso) return { text: '—', cls: '' };
+  const sec = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (sec < 0)    return { text: 'just now', cls: 'age-ok' };
+  if (sec < 3600) {
+    const m = Math.floor(sec / 60);
+    return { text: m + 'm ago', cls: m < 30 ? 'age-ok' : 'age-warn' };
+  }
+  const h = Math.floor(sec / 3600);
+  return { text: h + 'h ago', cls: h < 6 ? 'age-warn' : 'age-old' };
+}
+function fmtLastHeard(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  const utc = d.toISOString().replace('T', ' ').slice(0, 16) + 'Z';
+  const z = v => String(v).padStart(2, '0');
+  const local = `${z(d.getHours())}:${z(d.getMinutes())}`;
+  return `${utc} <span style="color:var(--text-dim)">[${local}]</span>`;
+}
 
-    const times = stations
+async function fetchAPRS() {
+  const tbody = document.getElementById('aprs-tbody');
+  const title = document.getElementById('aprs-title');
+  const setTitle = (live) => {
+    if (!title) return;
+    title.textContent = live ? 'APRS LIVE' : 'APRS OFFLINE';
+    title.className = 'aprs-section-title ' + (live ? 'live' : 'offline');
+  };
+  try {
+    const r = await fetch('/api/aprs/stations', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (!d.ok) {
+      const msg = d.error || 'API error';
+      const isNoDb = msg.toLowerCase().includes('database not found');
+      tbody.innerHTML = `<tr><td colspan="6" style="color:${isNoDb ? 'var(--text-dim)' : 'var(--red)'}">${
+        isNoDb
+          ? 'APRS feed offline — no packets to show. &#9658; Start APRS Stats API to populate the live station table.'
+          : 'Error: ' + msg
+      }</td></tr>`;
+      document.getElementById('aprs-count').textContent = '—';
+      document.getElementById('aprs-last').textContent  = '—';
+      setTitle(false);
+      return;
+    }
+
+    document.getElementById('aprs-count').textContent = d.count ?? d.stations.length;
+
+    if (!d.stations.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-dim)">No stations yet — GrayWolf needs a radio + TNC/audio input to receive APRS packets.</td></tr>';
+      document.getElementById('aprs-last').textContent = '—';
+      setTitle(false);
+      return;
+    }
+
+    // Last-packet time for the header
+    setTitle(true);
+    const times = d.stations
       .map(s => s.last_heard || s.timestamp || s.time)
       .filter(Boolean).map(t => new Date(t)).filter(t => !isNaN(t));
     if (times.length) {
@@ -767,7 +1125,26 @@ async function fetchAPRS() {
         ageMins < 60 ? `${ageMins}m ago`  :
                        `${Math.round(ageMins / 60)}h ago`;
     }
-  } catch (_) {}
+
+    tbody.innerHTML = d.stations.map(s => {
+      const age = fmtAge(s.last_heard);
+      const speed = s.speed_mph > 0 ? s.speed_mph + ' mph' : '';
+      const course = s.course != null && s.speed_mph > 0
+        ? ' ' + ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(s.course/22.5)%16]
+        : '';
+      return `<tr>
+        <td style="color:var(--accent);font-weight:700">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</td>
+        <td>${fmtLastHeard(s.last_heard)}</td>
+        <td class="${age.cls}">${age.text}</td>
+        <td>${speed}${course}</td>
+        <td style="color:var(--text-dim)">${s.via || ''}</td>
+        <td style="color:var(--text-dim);max-width:220px;overflow:hidden;text-overflow:ellipsis">${s.comment || ''}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    setTitle(false);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="color:var(--text-dim)">APRS feed offline — no packets to show. &#9658; Start APRS Stats API to populate the live station table.</td></tr>`;
+  }
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -780,8 +1157,7 @@ loadConfig().then(() => {
   setInterval(fetchStats, 30_000);
   setInterval(fetchAudio, 30_000);
   setInterval(fetchAPRS,  15_000);
-});
-</script>
+});</script>
 
 </body>
 </html>
