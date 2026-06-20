@@ -763,93 +763,72 @@ body {
 </script>
 
 <script src="/map-assets/maplibre-gl.js"></script>
-<script src="/map-assets/pmtiles.js"></script>
 <script>
 (function () {
   "use strict";
 
-  // ---- Tile Map (MapLibre + PMTiles) ----
+  // ---- Tile Map (MapLibre + MBTiles) ----
   const WA_BOUNDS = [[-124.8, 45.5], [-116.9, 49.0]]; // Washington state [SW, NE]
   const HOST = location.hostname;
 
-  let tileMap = null;          // MapLibre map instance (lazy-init)
-  let stationMarkers = [];     // current markers on the tile map
+  let tileMap = null;
+  let stationMarkers = [];
 
-  // PMTiles protocol — registered once before any map is created
-  const _ptProtocol = new pmtiles.Protocol();
-  maplibregl.addProtocol('pmtiles', _ptProtocol.tile.bind(_ptProtocol));
+  const TILE_FILE  = 'osm-2020-02-10-v3.11_us_washington.mbtiles';
+  const GLYPHS_URL = location.origin + '/map-assets/fonts/{fontstack}/{range}.pbf';
 
-  const TILE_FILE   = 'washington.pmtiles';
-  const tilesUrl    = location.origin + '/maps/' + TILE_FILE;
-  const GLYPHS_URL  = location.origin + '/map-assets/fonts/{fontstack}/{range}.pbf';
-
-  // Dark street map style using OASIS PMTiles (BBBike/ogr2ogr/tippecanoe layers)
+  // Dark street map style using OpenMapTiles schema
   const MAP_STYLE = {
     version: 8,
     glyphs: GLYPHS_URL,
     sources: {
-      osm: { type: "vector", url: "pmtiles://" + tilesUrl }
+      osm: { type: "vector", url: location.origin + '/api/tilejson/' + TILE_FILE }
     },
     layers: [
       { id: "background", type: "background", paint: { "background-color": "#1a1f2e" } },
-      // Water bodies (multipolygons)
-      { id: "water", type: "fill", source: "osm", "source-layer": "multipolygons",
-        filter: ["any", ["==", ["get", "natural"], "water"], ["==", ["get", "waterway"], "riverbank"]],
+      { id: "water", type: "fill", source: "osm", "source-layer": "water",
         paint: { "fill-color": "#1a3a5c" } },
-      // Parks & nature (multipolygons)
-      { id: "park", type: "fill", source: "osm", "source-layer": "multipolygons",
-        filter: ["any",
-          ["in", ["get", "leisure"], ["literal", ["park","nature_reserve","garden"]]],
-          ["in", ["get", "landuse"],  ["literal", ["forest","grass","meadow","village_green"]]]
-        ],
+      { id: "park", type: "fill", source: "osm", "source-layer": "park",
         paint: { "fill-color": "#1e3020", "fill-opacity": 0.7 } },
-      // General landuse (multipolygons)
-      { id: "landuse", type: "fill", source: "osm", "source-layer": "multipolygons",
-        filter: ["has", "landuse"],
+      { id: "landuse-park", type: "fill", source: "osm", "source-layer": "landuse",
+        filter: ["match", ["get", "class"], ["park", "national_park", "nature_reserve"], true, false],
+        paint: { "fill-color": "#1a2e18", "fill-opacity": 0.6 } },
+      { id: "landuse", type: "fill", source: "osm", "source-layer": "landuse",
+        filter: ["match", ["get", "class"], ["residential", "commercial", "industrial"], true, false],
         paint: { "fill-color": "#1c2230", "fill-opacity": 0.6 } },
-      // Buildings (multipolygons, zoom 13+)
-      { id: "building", type: "fill", source: "osm", "source-layer": "multipolygons",
+      { id: "building", type: "fill", source: "osm", "source-layer": "building",
         minzoom: 13,
-        filter: ["has", "building"],
         paint: { "fill-color": "#252c3a", "fill-outline-color": "#2e3848" } },
-      // Waterways (lines)
-      { id: "waterway", type: "line", source: "osm", "source-layer": "lines",
-        filter: ["has", "waterway"],
+      { id: "waterway", type: "line", source: "osm", "source-layer": "waterway",
         paint: { "line-color": "#1a3a5c", "line-width": 1 } },
-      // Roads (lines by OSM highway value)
-      { id: "road-motorway", type: "line", source: "osm", "source-layer": "lines",
-        filter: ["in", ["get", "highway"], ["literal", ["motorway","motorway_link"]]],
+      { id: "road-motorway", type: "line", source: "osm", "source-layer": "transportation",
+        filter: ["match", ["get", "class"], ["motorway", "trunk"], true, false],
         paint: { "line-color": "#00d98b", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 1.5, 10, 4, 14, 8] } },
-      { id: "road-trunk", type: "line", source: "osm", "source-layer": "lines",
-        filter: ["in", ["get", "highway"], ["literal", ["trunk","trunk_link"]]],
-        paint: { "line-color": "#0a7a52", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 1, 10, 3, 14, 6] } },
-      { id: "road-primary", type: "line", source: "osm", "source-layer": "lines",
-        filter: ["in", ["get", "highway"], ["literal", ["primary","primary_link"]]],
+      { id: "road-primary", type: "line", source: "osm", "source-layer": "transportation",
+        filter: ["==", ["get", "class"], "primary"],
         paint: { "line-color": "#2a3a50", "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1, 12, 3, 14, 5] } },
-      { id: "road-secondary", type: "line", source: "osm", "source-layer": "lines",
-        filter: ["in", ["get", "highway"], ["literal", ["secondary","tertiary","secondary_link","tertiary_link"]]],
+      { id: "road-secondary", type: "line", source: "osm", "source-layer": "transportation",
+        filter: ["match", ["get", "class"], ["secondary", "tertiary"], true, false],
         paint: { "line-color": "#222a38", "line-width": ["interpolate", ["linear"], ["zoom"], 10, 0.5, 14, 3] } },
-      { id: "road-minor", type: "line", source: "osm", "source-layer": "lines",
-        filter: ["in", ["get", "highway"], ["literal", ["residential","unclassified","service","track"]]],
+      { id: "road-minor", type: "line", source: "osm", "source-layer": "transportation",
+        filter: ["match", ["get", "class"], ["minor", "service"], true, false],
         paint: { "line-color": "#1c2330", "line-width": ["interpolate", ["linear"], ["zoom"], 12, 0.3, 14, 1.5] } },
-      // Admin boundaries (lines)
-      { id: "boundary-state", type: "line", source: "osm", "source-layer": "lines",
-        filter: ["all", ["==", ["get", "boundary"], "administrative"], ["==", ["get", "admin_level"], "4"]],
+      { id: "boundary-state", type: "line", source: "osm", "source-layer": "boundary",
+        filter: ["==", ["get", "admin_level"], 4],
         paint: { "line-color": "#4a5568", "line-width": 1.2, "line-dasharray": [4, 3] } },
-      { id: "boundary-county", type: "line", source: "osm", "source-layer": "lines",
-        filter: ["all", ["==", ["get", "boundary"], "administrative"], ["==", ["get", "admin_level"], "6"]],
+      { id: "boundary-county", type: "line", source: "osm", "source-layer": "boundary",
+        filter: ["==", ["get", "admin_level"], 6],
         minzoom: 8,
         paint: { "line-color": "#2a3441", "line-width": 0.6 } },
-      // Place labels (points)
-      { id: "label-place-city", type: "symbol", source: "osm", "source-layer": "points",
-        filter: ["in", ["get", "place"], ["literal", ["city", "town"]]],
-        layout: { "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]],
+      { id: "label-place-city", type: "symbol", source: "osm", "source-layer": "place",
+        filter: ["match", ["get", "class"], ["city", "town"], true, false],
+        layout: { "text-field": ["get", "name"],
           "text-font": ["Open Sans Regular"], "text-size": 12, "text-anchor": "left", "text-offset": [0.5, 0] },
         paint: { "text-color": "#d7e0ea", "text-halo-color": "#0d1117", "text-halo-width": 1.5 } },
-      { id: "label-place-village", type: "symbol", source: "osm", "source-layer": "points",
-        filter: ["in", ["get", "place"], ["literal", ["village", "suburb", "hamlet"]]],
+      { id: "label-place-village", type: "symbol", source: "osm", "source-layer": "place",
+        filter: ["match", ["get", "class"], ["village", "suburb", "hamlet"], true, false],
         minzoom: 10,
-        layout: { "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]],
+        layout: { "text-field": ["get", "name"],
           "text-font": ["Open Sans Regular"], "text-size": 10, "text-anchor": "left", "text-offset": [0.5, 0] },
         paint: { "text-color": "#8b97a6", "text-halo-color": "#0d1117", "text-halo-width": 1.5 } }
     ]

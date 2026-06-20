@@ -149,30 +149,30 @@ const CHECKS_CORE = [
   },
   {
     id: 'maps',
-    name: 'Map Tiles (PMTiles)',
+    name: 'Map Tiles (MBTiles)',
     run: async () => {
       try {
         const r = await fetch('/maps/map-config.json', { cache: 'no-store' });
         if (!r.ok) return { ok: false, badge: 'MISSING',
-          detail: 'map-config.json not found. Run: <code>python3 scripts/build-map.py</code>' };
+          detail: 'map-config.json not found. Place an .mbtiles file in maps/ and update map-config.json.' };
         let cfg;
         try { cfg = await r.json(); } catch {
           return { ok: false, badge: 'ERROR', detail: 'map-config.json is not valid JSON.' };
         }
-        const keys = Object.keys(cfg).filter(k => k.endsWith('.pmtiles'));
+        const keys = Object.keys(cfg).filter(k => k.endsWith('.mbtiles'));
         if (!keys.length) return { ok: 'warn', badge: 'N/A',
-          detail: 'map-config.json exists but lists no .pmtiles regions.' };
-        // Verify each pmtiles file actually exists via a HEAD request
+          detail: 'map-config.json exists but lists no .mbtiles regions.' };
+        // Verify each mbtiles file is reachable via /api/tilejson
         const checks = await Promise.all(keys.map(async k => {
           try {
-            const h = await fetch(`/maps/${k}`, { method: 'HEAD', cache: 'no-store' });
-            return { name: k.replace('.pmtiles',''), ok: h.ok };
-          } catch { return { name: k.replace('.pmtiles',''), ok: false }; }
+            const h = await fetch(`/api/tilejson/${k}`, { method: 'HEAD', cache: 'no-store' });
+            return { name: k.replace('.mbtiles',''), ok: h.ok };
+          } catch { return { name: k.replace('.mbtiles',''), ok: false }; }
         }));
         const ok    = checks.filter(c => c.ok).map(c => c.name);
         const missing = checks.filter(c => !c.ok).map(c => c.name);
         if (!ok.length) return { ok: false, badge: 'MISSING',
-          detail: `map-config.json lists ${keys.length} region(s) but no .pmtiles files were found: <strong>${missing.join(', ')}</strong>. Run: <code>python3 scripts/build-map.py</code>` };
+          detail: `map-config.json lists ${keys.length} region(s) but no .mbtiles files were found: <strong>${missing.join(', ')}</strong>. Place the .mbtiles file in maps/.` };
         const detail = `${ok.length} region(s) ready: <strong>${ok.join(', ')}</strong>`
           + (missing.length ? ` &nbsp;|&nbsp; <span style="color:var(--amber)">missing: ${missing.join(', ')}</span>` : '');
         return { ok: missing.length ? 'warn' : true, badge: missing.length ? 'PARTIAL' : 'READY', detail };

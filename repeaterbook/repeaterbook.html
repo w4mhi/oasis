@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OASIS - Repeater Book</title>
+<link rel="stylesheet" href="../css/common.css">
+<style>
+/* ── Controls ─────────────────────────────────────────────────────────── */
+.controls {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin-bottom: .9rem;
+  align-items: center;
+}
+.controls input[type="search"] {
+  flex: 1;
+  min-width: 160px;
+  padding: .42rem .7rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: var(--fs-body);
+}
+.controls input[type="search"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.controls select {
+  padding: .42rem .6rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: var(--fs-body);
+}
+.controls select:focus { outline: none; border-color: var(--accent); }
+.count-badge {
+  margin-left: auto;
+  font-size: var(--fs-small);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* ── Table ────────────────────────────────────────────────────────────── */
+.tbl-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .82rem;
+}
+thead tr {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+th {
+  text-align: left;
+  padding: .45rem .7rem;
+  font-size: var(--fs-small);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+th:hover { color: var(--accent); }
+th.sorted-asc::after  { content: " ▲"; color: var(--accent); }
+th.sorted-desc::after { content: " ▼"; color: var(--accent); }
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--panel-2); }
+td {
+  padding: .38rem .7rem;
+  color: var(--text);
+  vertical-align: top;
+}
+td.freq {
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+td.name { font-weight: 600; white-space: nowrap; }
+td.tone { color: var(--amber); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.mode { color: var(--blue); font-size: .78rem; text-transform: uppercase; white-space: nowrap; }
+td.power { color: var(--text-dim); font-size: .78rem; white-space: nowrap; }
+td.comment { color: var(--text-dim); font-size: .78rem; max-width: 280px; }
+td.duplex { font-size: .78rem; color: var(--text-dim); white-space: nowrap; }
+
+.badge-open   { display:inline-block; padding: 1px 6px; border-radius: 3px; font-size: .7rem; font-weight:700; text-transform:uppercase; background: rgba(0,200,100,.12); color: var(--accent); border: 1px solid var(--accent-dim); }
+.badge-closed { display:inline-block; padding: 1px 6px; border-radius: 3px; font-size: .7rem; font-weight:700; text-transform:uppercase; background: rgba(180,30,30,.12); color: var(--red); border: 1px solid #7a1010; }
+.badge-emcomm { display:inline-block; padding: 1px 5px; border-radius: 3px; font-size: .68rem; font-weight:700; text-transform:uppercase; background: rgba(255,180,84,.10); color: var(--amber); border: 1px solid var(--amber-dim); margin-left: 3px; }
+
+/* ── Error / empty state ─────────────────────────────────────────────── */
+.state-msg {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--text-dim);
+}
+.state-msg .icon { font-size: 2rem; margin-bottom: .5rem; }
+.state-msg .title { font-size: 1rem; font-weight: 700; color: var(--red); margin-bottom: .4rem; }
+.state-msg .hint  { font-size: var(--fs-small); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">&#8962; HOME</a>
+    <h1>Repeater Book</h1>
+    <p>Local repeater directory — loaded from <code>repeaterbook/repeaterbook.csv</code>.</p>
+  </header>
+
+  <div class="actions">
+    <button class="sbtn" onclick="window.print()" title="Print the repeater list using your browser's print dialog">🖨 Print</button>
+    <button class="sbtn" id="btn-export" onclick="exportChirp()" title="Export currently visible repeaters as a CHIRP-format CSV for ICS-205 import" style="display:none">&#8681; Export to Frequency Plan</button>
+  </div>
+
+  <div class="controls" id="controls" style="display:none">
+    <input type="search" id="search" placeholder="Search name, frequency, callsign, city…" autocomplete="off">
+    <select id="filter-mode">
+      <option value="">All modes</option>
+      <option value="FM">FM</option>
+      <option value="DMR">DMR</option>
+      <option value="YSF">YSF / C4FM</option>
+      <option value="P25">P25</option>
+      <option value="DSTAR">D-STAR</option>
+      <option value="NXDN">NXDN</option>
+      <option value="TETRA">Tetra</option>
+      <option value="M17">M17</option>
+    </select>
+    <select id="filter-status">
+      <option value="">All status</option>
+      <option value="OPEN">Open</option>
+      <option value="CLOSED">Closed</option>
+    </select>
+    <span class="count-badge" id="count-badge"></span>
+  </div>
+
+  <div id="state-area"></div>
+
+  <div class="tbl-wrap" id="tbl-wrap" style="display:none">
+    <table id="repeater-table">
+      <thead>
+        <tr>
+          <th data-col="name">Name</th>
+          <th data-col="freq">Frequency</th>
+          <th data-col="duplex">Duplex</th>
+          <th data-col="tone">Tone</th>
+          <th data-col="mode">Mode</th>
+          <th data-col="power">Power</th>
+          <th data-col="comment">Comment / Location</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <footer style="text-align:center;color:var(--text-dim);font-size:var(--fs-small);margin-top:1.8rem;padding-bottom:1rem;">
+    Offline reference &middot; data from <strong>RepeaterBook</strong> &middot; no network required
+  </footer>
+
+</div>
+<script>
+// ── CSV parser (handles quoted fields with commas) ─────────────────────
+function parseCSV(text) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const parseRow = line => {
+    const fields = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { inQ = !inQ; continue; }
+      if (c === ',' && !inQ) { fields.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    fields.push(cur.trim());
+    return fields;
+  };
+  const headers = parseRow(lines[0]);
+  const rows = lines.slice(1).filter(l => l.trim()).map(parseRow);
+  return { headers, rows };
+}
+
+// ── Column indices (CHIRP export format) ──────────────────────────────
+const COL = {
+  location: 0, name: 1, freq: 2, duplex: 3, offset: 4,
+  tone: 5, rTone: 6, cTone: 7, dtcs: 8, dtcsPol: 9,
+  mode: 12, tstep: 13, skip: 14, power: 15, comment: 16
+};
+
+// ── Build repeater objects from parsed CSV ────────────────────────────
+function buildRepeaters(headers, rows) {
+  return rows.map(r => {
+    const get = i => (r[i] || '').trim();
+    const comment = get(COL.comment);
+    // Extract callsign (first word of comment matching callsign pattern)
+    const callMatch = comment.match(/\b([A-Z]{1,2}\d[A-Z]{1,3})\b/);
+    const callsign  = callMatch ? callMatch[1] : '';
+    // Extract status
+    const isOpen    = /OPEN/i.test(comment);
+    const isClosed  = /CLOSE/i.test(comment);
+    // Detect emcomm keywords
+    const isEmcomm  = /ARES|RACES|SKYWARN|CANWARN|EMCOMM|emergency/i.test(comment);
+    // Normalize mode
+    const rawMode   = get(COL.mode).toUpperCase();
+    const mode = rawMode === 'YSF' ? 'YSF' : rawMode;
+    // Tone display
+    const toneType  = get(COL.tone);
+    const toneFreq  = get(COL.rTone);
+    const toneLabel = toneType === 'Tone' || toneType === 'TSQL'
+      ? toneFreq + ' Hz' : toneType || '—';
+    return {
+      name: get(COL.name),
+      freq: parseFloat(get(COL.freq)) || 0,
+      freqStr: get(COL.freq),
+      duplex: get(COL.duplex) || '—',
+      offset: get(COL.offset),
+      toneLabel,
+      mode,
+      power: get(COL.power) || '—',
+      comment,
+      callsign,
+      isOpen, isClosed, isEmcomm,
+      raw: r,
+    };
+  }).filter(r => r.freq > 0);
+}
+
+// ── Render ────────────────────────────────────────────────────────────
+let ALL = [], sortCol = 'freq', sortAsc = true, currentFiltered = [];
+
+function statusBadge(r) {
+  if (r.isOpen)   return '<span class="badge-open">Open</span>';
+  if (r.isClosed) return '<span class="badge-closed">Closed</span>';
+  return '';
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById('tbody');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-dim);text-align:center;padding:1.5rem">No repeaters match the filter.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td class="name">${r.name} ${r.isEmcomm ? '<span class="badge-emcomm">EMCOMM</span>' : ''}</td>
+      <td class="freq">${r.freqStr}</td>
+      <td class="duplex">${r.duplex}${r.offset && r.offset !== '0.000000' ? ' ' + parseFloat(r.offset).toFixed(3) : ''}</td>
+      <td class="tone">${r.toneLabel}</td>
+      <td class="mode">${r.mode}</td>
+      <td class="power">${r.power}</td>
+      <td class="comment">${statusBadge(r)} ${r.comment}</td>
+    </tr>`).join('');
+}
+
+function applyFilters() {
+  const q      = document.getElementById('search').value.toLowerCase();
+  const mode   = document.getElementById('filter-mode').value.toUpperCase();
+  const status = document.getElementById('filter-status').value.toUpperCase();
+
+  let data = ALL.filter(r => {
+    if (mode   && !r.mode.includes(mode)) return false;
+    if (status === 'OPEN'   && !r.isOpen)   return false;
+    if (status === 'CLOSED' && !r.isClosed) return false;
+    if (q) {
+      const hay = (r.name + r.freqStr + r.comment + r.callsign + r.mode).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  data.sort((a, b) => {
+    let va = a[sortCol], vb = b[sortCol];
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ?  1 : -1;
+    return 0;
+  });
+
+  currentFiltered = data;
+  document.getElementById('count-badge').textContent = `${data.length} of ${ALL.length} repeaters`;
+  renderTable(data);
+}
+
+// ── Export visible repeaters as CHIRP CSV ─────────────────────────────
+function exportChirp() {
+  if (!currentFiltered.length) return;
+  const csvField = v => (String(v).includes(',') || String(v).includes('"'))
+    ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+  const HEADER = 'Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Skip,Comment,Column1,_1';
+  const lines = currentFiltered.map((r, i) => {
+    const g = idx => csvField((r.raw[idx] || '').trim());
+    return [
+      i,           // Location (re-numbered from 0)
+      g(COL.name),
+      g(COL.freq),
+      g(COL.duplex) === '—' ? '' : g(COL.duplex),
+      g(COL.offset),
+      g(COL.tone),
+      g(COL.rTone),
+      g(COL.cTone),
+      g(COL.dtcs),
+      g(COL.dtcsPol),
+      g(COL.mode),
+      g(COL.tstep),
+      g(COL.skip),
+      csvField(r.comment),
+      '', ''
+    ].join(',');
+  });
+  const csv  = [HEADER, ...lines].join('\n');
+  const now  = new Date();
+  const pad  = n => String(n).padStart(2, '0');
+  const ts   = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const name = `${ts}_repeaters.csv`;
+
+  // Try to save directly into chirp/ via the server endpoint.
+  // Fall back to a browser download if the server is unreachable.
+  fetch('/api/save-chirp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: name, content: csv }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      alert(`Saved to ${d.saved}`);
+    } else {
+      throw new Error(d.error || 'save failed');
+    }
+  })
+  .catch(() => {
+    // Fallback: trigger browser download
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), { href: url, download: name });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+}
+
+// ── Sort on header click ──────────────────────────────────────────────
+document.querySelectorAll('th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (sortCol === col) { sortAsc = !sortAsc; }
+    else { sortCol = col; sortAsc = col === 'freq' ? true : true; }
+    document.querySelectorAll('th').forEach(h => h.classList.remove('sorted-asc','sorted-desc'));
+    th.classList.add(sortAsc ? 'sorted-asc' : 'sorted-desc');
+    applyFilters();
+  });
+});
+
+// Mark default sort column
+document.querySelector('th[data-col="freq"]').classList.add('sorted-asc');
+
+// ── Live filter on input ──────────────────────────────────────────────
+['search','filter-mode','filter-status'].forEach(id =>
+  document.getElementById(id).addEventListener('input', applyFilters));
+
+// ── Load CSV ──────────────────────────────────────────────────────────
+async function loadCSV() {
+  const stateArea = document.getElementById('state-area');
+  try {
+    const resp = await fetch('repeaterbook.csv', { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    const { headers, rows } = parseCSV(text);
+    ALL = buildRepeaters(headers, rows);
+    if (!ALL.length) throw new Error('CSV parsed but no valid repeater rows found.');
+
+    document.getElementById('controls').style.display = '';
+    document.getElementById('tbl-wrap').style.display = '';
+    document.getElementById('btn-export').style.display = '';
+    applyFilters();
+  } catch (err) {
+    stateArea.innerHTML = `
+      <div class="state-msg">
+        <div class="icon">📡</div>
+        <div class="title">Repeater data not found</div>
+        <div class="hint">
+          Download <strong>repeaterbook.csv</strong> from
+          <a href="https://www.repeaterbook.com" target="_blank" rel="noopener">RepeaterBook.com</a>
+          (Export → CHIRP format) and save it to<br>
+          <code>repeaterbook/repeaterbook.csv</code>
+          in your OASIS folder.
+        </div>
+      </div>`;
+  }
+}
+
+loadCSV();
+</script>
+</body>
+</html>

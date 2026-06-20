@@ -36,6 +36,7 @@ Always outputs to oasis-offline/ in the repo root (existing bundle is wiped).
 
 Build phases (run automatically unless --check):
   Phase 0 — Copy local files    oasis-offline/  (repo source tree)
+  Phase 0a— APRS symbol sprites  oasis-offline/server/map-assets/
   Phase 1 — Python wheels       oasis-offline/server/wheels/
   Phase 2 — GrayWolf .deb       oasis-offline/offline-packages/graywolf/
   Phase 3 — Kiwix binaries      oasis-offline/offline-packages/kiwix/
@@ -43,6 +44,7 @@ Build phases (run automatically unless --check):
   Phase 5 — RTL-SDR .deb        oasis-offline/offline-packages/rtl-sdr/
   Phase 6 — webssh ttyd binary  oasis-offline/offline-packages/webssh/
   Phase 7 — Pat (Winlink) .deb  oasis-offline/offline-packages/pat/
+  Phase 8 — Wikipedia (Best of Wikipedia Mini)  oasis-offline/zim/  (~316 MB, 50K articles)
 
 Usage:
   python3 scripts/create-oasis-offline.py                    # incremental build
@@ -297,6 +299,41 @@ def phase_kiwix(kiwix_dir, update=False):
         _warn("No Kiwix assets downloaded.")
 
 
+# ── Phase 0a: APRS symbol sprites ───────────────────────────────────────────
+_APRS_SPRITES = [
+    (
+        "aprs-symbols-24-0.png",
+        "https://github.com/hessu/aprs-symbols/raw/master/png/aprs-symbols-24-0.png",
+        "Primary APRS symbol table (table '/')",
+    ),
+    (
+        "aprs-symbols-24-1.png",
+        "https://github.com/hessu/aprs-symbols/raw/master/png/aprs-symbols-24-1.png",
+        "Alternate APRS symbol table (table '\\')",
+    ),
+]
+
+
+def phase_aprs_sprites(map_assets_dir):
+    """Phase 0a: Download APRS symbol sprite sheets into server/map-assets/."""
+    _section("Phase 0a — APRS symbol sprites")
+    _info("Source  : https://github.com/hessu/aprs-symbols")
+    _info(f"Dest    : {os.path.relpath(map_assets_dir)}/")
+    os.makedirs(map_assets_dir, exist_ok=True)
+
+    for filename, url, desc in _APRS_SPRITES:
+        dest = os.path.join(map_assets_dir, filename)
+        if os.path.exists(dest):
+            _cp(f"{filename}  (already present)")
+            continue
+        _dl(f"{filename}  ← {url}")
+        try:
+            download_to(url, dest)
+            _ok(f"{filename}  ({desc})")
+        except Exception as exc:
+            _warn(f"Failed to download {filename}: {exc}")
+
+
 # ── Phase 5: RTL-SDR Debian packages ─────────────────────────────────────────
 _RTL_SDR_TARGETS = [
     ("arm64", "Raspberry Pi (64-bit)"),
@@ -419,6 +456,93 @@ def phase_pat(pat_dir, update=False):
         _warn("No Pat assets downloaded.")
 
 
+# ── Phase 8: Wikipedia Mini ZIM ─────────────────────────────────────────────
+WIKI_EDITION   = "wikipedia_en_top"
+WIKI_FLAVOUR   = "mini"
+WIKI_ZIM_BASE  = "https://download.kiwix.org/zim/wikipedia"
+WIKI_CATALOG   = ("https://library.kiwix.org/catalog/v2/entries"
+                  "?lang=eng&category=wikipedia&count=100")
+
+
+def _resolve_wiki_url():
+    """Query the Kiwix OPDS catalog for the latest wikipedia_en_top_mini ZIM URL.
+    Returns (url, filename) or raises RuntimeError."""
+    import xml.etree.ElementTree as ET
+    edition_mini = f"{WIKI_EDITION}_{WIKI_FLAVOUR}"  # e.g. wikipedia_en_top_mini
+    try:
+        req = urllib.request.Request(
+            WIKI_CATALOG,
+            headers={"Accept": "application/atom+xml,application/xml,text/xml"}
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            catalog_xml = resp.read()
+        ns = {"atom": "http://www.w3.org/2005/Atom"}
+        root = ET.fromstring(catalog_xml)
+        for entry in root.findall("atom:entry", ns):
+            for link in entry.findall("atom:link", ns):
+                href = link.get("href", "")
+                # Catalog acquisition links end in .zim.meta4 on lb.download.kiwix.org.
+                # Extract just the filename and build the URL from WIKI_ZIM_BASE
+                # (download.kiwix.org) — the lb subdomain may redirect to a different file.
+                if edition_mini in href and (href.endswith(".zim") or href.endswith(".zim.meta4")):
+                    filename = href.removesuffix(".meta4").rsplit("/", 1)[-1]
+                    zim_url  = f"{WIKI_ZIM_BASE}/{filename}"
+                    return zim_url, filename
+    except Exception:
+        pass  # fall through to directory listing
+
+    # Fallback: scrape the directory listing for the newest matching filename.
+    import re
+    try:
+        with urllib.request.urlopen(f"{WIKI_ZIM_BASE}/", timeout=15) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+        matches = re.findall(rf'href="({re.escape(edition_mini)}[^"]+\.zim)"', html)
+        if matches:
+            fname = sorted(matches)[-1]
+            return f"{WIKI_ZIM_BASE}/{fname}", fname
+    except Exception:
+        pass
+
+    raise RuntimeError(f"Could not resolve download URL for {edition_mini}")
+
+
+def phase_wikipedia(zim_dir):
+    """Phase 8: Download Wikipedia Top (Best of Wikipedia Mini) ZIM (~316 MB) into zim_dir."""
+    edition_mini = f"{WIKI_EDITION}_{WIKI_FLAVOUR}"  # wikipedia_en_top_mini
+    _section("Phase 8 — Wikipedia (Best of Wikipedia)")
+    _info(f"Edition : {edition_mini}  (~316 MB, 50K best articles, no pictures)")
+    _info(f"Source  : {WIKI_ZIM_BASE}/")
+    _info(f"Dest    : {os.path.relpath(zim_dir)}/")
+    os.makedirs(zim_dir, exist_ok=True)
+
+    # Skip if any matching ZIM already present (handles date-stamped filenames).
+    existing = [f for f in os.listdir(zim_dir)
+                if f.startswith(edition_mini) and f.endswith(".zim")]
+    if existing:
+        _cp(f"{existing[0]}  (already present — skipping)")
+        return
+
+    try:
+        url, filename = _resolve_wiki_url()
+    except RuntimeError as exc:
+        _warn(f"{exc}")
+        _warn("Wikipedia will not be available in this bundle.")
+        return
+
+    _dl(f"{filename}  (∼316 MB)  ← Kiwix")
+    _info(f"URL     : {url}")
+    dest = os.path.join(zim_dir, filename)
+    try:
+        download_to(url, dest)
+        _ok(f"{filename} saved to {os.path.relpath(zim_dir)}/")
+    except Exception as exc:
+        # Remove partial file so a re-run retries cleanly.
+        if os.path.exists(dest):
+            os.remove(dest)
+        _warn(f"Download failed: {exc}")
+        _warn("Wikipedia will not be available in this bundle.")
+
+
 # ── Phase 4: FCC callsign database ────────────────────────────────────────────
 def phase_fcc(fcc_dir):
     """
@@ -498,10 +622,7 @@ def build_copy(dest, src=None):
         _warn("webssh (ttyd) static binaries missing — Pi users will need internet to install webssh.")
     if not any(f.endswith(".deb") for f in (os.listdir(pt_dir) if os.path.isdir(pt_dir) else [])):
         _warn("Pat .deb missing — Winlink users will need internet to install Pat.")
-    if not os.path.exists(os.path.join(dest, "fcc-offline-database", "data", "EN.idx")):
-        _warn("FCC index missing — callsign lookup will return 'not found'.")
-    if not os.path.exists(os.path.join(dest, "fcc-offline-database", "data", "zipcodes.csv")):
-        _warn("zipcodes.csv missing — grid square lookup will not work.")
+
 
 
 # ── Build: Windows embedded Python runtime ────────────────────────────────────
@@ -700,6 +821,17 @@ def cmd_check():
     else:
         _warn("Not found — run without --check to build the bundle.")
 
+    _section("Phase 8 — Wikipedia (Best of Wikipedia)  [check]")
+    zim_dir  = os.path.join(OUT_DIR, "zim")
+    edition_mini = f"{WIKI_EDITION}_{WIKI_FLAVOUR}"
+    zim_files = [f for f in (os.listdir(zim_dir) if os.path.isdir(zim_dir) else [])
+                 if f.startswith(edition_mini) and f.endswith(".zim")]
+    if zim_files:
+        size_mb = os.path.getsize(os.path.join(zim_dir, zim_files[0])) / 1_048_576
+        _ok(f"{zim_files[0]}  ({size_mb:.0f} MB)")
+    else:
+        _warn("Wikipedia Mini ZIM not found — run without --check to download.")
+
     _section("Phase 4 — FCC database  [check]")
     fcc_zip = os.path.join(OUT_DIR, "fcc-offline-database", "data", "l_amat.zip")
     if os.path.exists(fcc_zip):
@@ -733,6 +865,7 @@ def cmd_build(skip_windows, rebuild=False):
 
     # Download phases — each writes directly into its oasis-offline/ subdirectory.
     # update=True means "skip files already at current version" (always on by default).
+    phase_aprs_sprites(os.path.join(OUT_DIR, "server", "map-assets"))
     phase_wheels(os.path.join(OUT_DIR, "server", "wheels"))
     phase_graywolf(os.path.join(OUT_DIR, "offline-packages", "graywolf"), update=True)
     phase_kiwix(os.path.join(OUT_DIR, "offline-packages", "kiwix"), update=True)
@@ -741,6 +874,7 @@ def cmd_build(skip_windows, rebuild=False):
     phase_rtl_sdr(os.path.join(OUT_DIR, "offline-packages", "rtl-sdr"), update=True)
     phase_webssh(os.path.join(OUT_DIR, "offline-packages", "webssh"), update=True)
     phase_pat(os.path.join(OUT_DIR, "offline-packages", "pat"), update=True)
+    phase_wikipedia(os.path.join(OUT_DIR, "zim"))
 
     build_windows_runtime(OUT_DIR, skip_windows)
     build_launchers(OUT_DIR)
@@ -796,6 +930,7 @@ def cmd_update(target_dir):
     elif parent_has_script:
         build_copy(target_dir, src=parent_repo)
 
+    phase_aprs_sprites(os.path.join(target_dir, "server", "map-assets"))
     phase_wheels(os.path.join(target_dir, "server", "wheels"))
     phase_graywolf(os.path.join(target_dir, "offline-packages", "graywolf"), update=True)
     phase_kiwix(os.path.join(target_dir, "offline-packages", "kiwix"), update=True)
@@ -803,6 +938,7 @@ def cmd_update(target_dir):
     phase_rtl_sdr(os.path.join(target_dir, "offline-packages", "rtl-sdr"), update=True)
     phase_webssh(os.path.join(target_dir, "offline-packages", "webssh"), update=True)
     phase_pat(os.path.join(target_dir, "offline-packages", "pat"), update=True)
+    phase_wikipedia(os.path.join(target_dir, "zim"))
 
     _section("Update complete")
     _ok(f"Updated: {target_dir}")

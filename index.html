@@ -583,6 +583,11 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div><div class="svc-name">Offline Maps</div><div class="svc-sub" id="sub-maps">—</div></div>
     <span class="svc-badge" id="badge-maps">—</span>
   </div>
+  <a class="svc-card" id="card-rb" href="repeaterbook/repeaterbook.html">
+    <div class="svc-dot" id="dot-rb"></div>
+    <div><div class="svc-name">Repeater Book</div><div class="svc-sub" id="sub-rb">—</div></div>
+    <span class="svc-badge" id="badge-rb">—</span>
+  </a>
 </div>
 
 <!-- ── SYSTEM STATS BAR ──────────────────────────────────────────────────── -->
@@ -634,9 +639,9 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
       <div class="nav-sec-title">Util</div>
       <ul class="nav-links">
         <li><a id="nlink-maps" href="maps/map.html" class="nav-link-svc">Offline Maps <span class="nav-svc-badge" id="nsvc-maps">—</span></a></li>
-        <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>
         <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
         <li><a id="nlink-webssh" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.webssh}/`,'_blank');return false;">SSH Terminal <span class="nav-svc-badge" id="nsvc-webssh">—</span></a></li>
+        <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>        
       </ul>
     </div>
 
@@ -678,6 +683,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <li><a id="nlink-gw" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.graywolf}/`,'_blank');return false;">GrayWolf <span class="nav-svc-badge" id="nsvc-gw">—</span></a></li>
         <li><a href="static/graywolf-handbook/index.html">GrayWolf Handbook <span class="nav-meta">docs</span></a></li>
         <li><a href="aprs/map.html">APRS Map <span class="nav-meta">live</span></a></li>
+        <li><a href="repeaterbook/repeaterbook.html">Repeater Book <span class="nav-meta">WA database</span></a></li>
       </ul>
     </div>
 
@@ -691,6 +697,8 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <li><a href="repeater-guide/index.html">Repeater Guide <span class="nav-meta">CHIRP how-to</span></a></li>
         <li><a href="radio-cards/index.html">Radio Cards <span class="nav-meta">CHIRP how-to</span></a></li>
         <li><a href="static/cheatsheets/index.html">Radio Cheatsheets <span class="nav-meta">CHIRP how-to</span></a></li>
+        <li><a href="static/cheatsheets/aprs_bots.html">APRS Bots <span class="nav-meta">FIND · SMS · WXBOT</span></a></li>
+        <li><a href="static/cheatsheets/mpad.html">MPAD Bot <span class="nav-meta">WX · repeaters · METAR</span></a></li>
         <li><a id="nlink-kiwix" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-kiwix">—</span></a></li>
       </ul>
     </div>
@@ -880,10 +888,19 @@ const SERVICES = [
       const r = await fetch('/api/browse?path=maps', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: 'browse error' };
       const d = await r.json();
-      const n = (d.entries||[]).filter(e => e.name.endsWith('.pmtiles')).length;
+      const n = (d.entries||[]).filter(e => e.name.endsWith('.mbtiles')).length;
       return { up: true, warn: n === 0,
         badge: n > 0 ? 'UP' : 'WARN',
-        sub: n > 0 ? `${n} PMTiles` : 'no tiles' };
+        sub: n > 0 ? `${n} MBTiles` : 'no tiles' };
+    }
+  },
+  {
+    id: 'rb', name: 'Repeater Book',
+    check: async () => {
+      const r = await fetch('repeaterbook/repeaterbook.csv', { method: 'HEAD', cache: 'no-store' });
+      return { up: r.ok, warn: false,
+        badge: r.ok ? 'UP' : 'DOWN',
+        sub: r.ok ? 'CSV loaded' : 'CSV missing' };
     }
   },
   {

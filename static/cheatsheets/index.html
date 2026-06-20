@@ -56,11 +56,10 @@
 
   a.card {
     display: block; text-decoration: none; color: var(--text);
-    border: 1px solid var(--border); border-left: 3px solid var(--cardaccent, var(--accent));
-    border-radius: 9px; background: var(--panel); padding: 0.9rem 1rem; transition: background 0.15s, transform 0.1s;
+    border: 1px solid color-mix(in srgb, var(--cardaccent, var(--accent)) 35%, transparent);
+    border-radius: 6px; background: var(--panel); padding: 0.9rem 1rem; transition: border-color .3s, background .15s;
   }
-  a.card:hover { background: var(--panel-2); transform: translateX(2px); }
-  a.card:active { transform: translateX(0); }
+  a.card:hover { background: var(--panel-2); border-color: var(--cardaccent, var(--accent)); }
   .card .name { font-size: var(--fs-subtitle); font-weight: 700; color: var(--cardaccent, var(--accent)); letter-spacing: 0.02em; }
   .card .desc { font-size: var(--fs-label); color: var(--text-dim); margin-top: 0.3rem; }
   .card .rev { font-size: var(--fs-micro); color: var(--text-dim); opacity: 0.7; margin-top: 0.4rem; }
@@ -111,18 +110,6 @@
       <div class="name">Yaesu VX-6</div>
       <div class="desc">Memory, DMR recall, dual watch, home channel &amp; WX</div>
       <div class="rev">Rev 04NOV2024</div>
-    </a>
-  </div>
-
-  <div class="group-label">APRS / Server Bots</div>
-  <div class="grid">
-    <a class="card" href="aprs_bots.html" style="--cardaccent:#00d98b">
-      <div class="name">APRS Bots</div>
-      <div class="desc">FIND, SMS, WHO-IS, WXBOT, Winlink, ANSRVR &amp; more</div>
-    </a>
-    <a class="card" href="mpad.html" style="--cardaccent:#00d98b">
-      <div class="name">MPAD Bot</div>
-      <div class="desc">Weather, repeaters, coordinates, METAR &amp; OSM lookups</div>
     </a>
   </div>
 

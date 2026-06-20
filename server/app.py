@@ -16,10 +16,11 @@ Run (recommended):   see fcc-offline-database/README.md for the gunicorn + syste
 """
 
 import argparse
-import hashlib
+import json
 import os
 import re
 import socket
+import sqlite3
 import threading
 import time
 import webbrowser
@@ -53,75 +54,143 @@ def index():
 
 @app.route("/map-assets/<path:filename>")
 def map_assets(filename):
-    """Serve MapLibre GL + PMTiles libraries from server/map-assets/."""
+    """Serve MapLibre GL libraries from server/map-assets/."""
     return send_from_directory(MAP_ASSETS, filename)
 
 
 @app.route("/maps/<filename>")
 def serve_map(filename):
     """
-    Serve files from the maps/ directory.
-    HTML/text files are passed through Flask's static handler (correct MIME type).
-    PMTiles files use Range request streaming for efficient tile fetching.
+    Serve static files from the maps/ directory (HTML, GeoJSON, JSON, etc.).
+    MBTiles files are served via /api/tiles and /api/tilejson instead.
     """
     filepath = os.path.join(MAPS_DIR, filename)
     if not os.path.isfile(filepath):
         from flask import abort
         abort(404)
+    if filename.endswith(".mbtiles"):
+        from flask import abort
+        abort(403)  # Raw SQLite should not be downloaded; use /api/tiles instead
+    return send_from_directory(MAPS_DIR, filename)
 
-    # Non-PMTiles files (HTML, GeoJSON, etc.) — serve with correct MIME type
-    if not filename.endswith(".pmtiles"):
-        return send_from_directory(MAPS_DIR, filename)
 
-    file_size = os.path.getsize(filepath)
-    range_header = request.headers.get("Range")
+# ── MBTiles helpers ──────────────────────────────────────────────────────────
 
-    # ETag based on file size + mtime — cheap and stable across restarts.
-    mtime = os.path.getmtime(filepath)
-    etag = hashlib.md5(f"{filepath}:{file_size}:{mtime}".encode()).hexdigest()
-    last_modified = __import__('email.utils').utils.formatdate(mtime, usegmt=True)
+def _mbtiles_path(filename):
+    """
+    Resolve a bare filename to an absolute path inside MAPS_DIR.
+    Returns None if the filename is invalid or the file does not exist.
+    Security: rejects anything with path separators or a non-.mbtiles extension.
+    """
+    if not filename.endswith(".mbtiles") or os.sep in filename or "/" in filename:
+        return None
+    path = os.path.realpath(os.path.join(MAPS_DIR, filename))
+    if not path.startswith(os.path.realpath(MAPS_DIR) + os.sep):
+        return None
+    return path if os.path.isfile(path) else None
 
-    # 304 Not Modified shortcut
-    if request.headers.get("If-None-Match") == etag:
-        return Response(status=304)
 
-    base_headers = {
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "public, max-age=3600",
-        "Content-Type": "application/octet-stream",
-        "ETag": etag,
-        "Last-Modified": last_modified,
+def _mbtiles_metadata(db_path):
+    """Return the metadata table as a {name: value} dict."""
+    with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+        rows = conn.execute("SELECT name, value FROM metadata").fetchall()
+    return {k: v for k, v in rows}
+
+
+@app.route("/api/tilejson/<filename>")
+def api_tilejson(filename):
+    """
+    Return a TileJSON 2.2 descriptor for an MBTiles file.
+    MapLibre GL uses this as a vector source URL:
+      sources: { map: { type: 'vector', url: '/api/tilejson/<filename>' } }
+    """
+    db_path = _mbtiles_path(filename)
+    if db_path is None:
+        from flask import abort
+        abort(404)
+
+    meta   = _mbtiles_metadata(db_path)
+    origin = request.url_root.rstrip("/")
+
+    vector_layers = []
+    try:
+        vector_layers = json.loads(meta.get("json", "{}")).get("vector_layers", [])
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    bounds = [-180, -85.05, 180, 85.05]
+    if "bounds" in meta:
+        try:
+            bounds = [float(v) for v in meta["bounds"].split(",")]
+        except ValueError:
+            pass
+
+    center = None
+    if "center" in meta:
+        try:
+            parts  = meta["center"].split(",")
+            center = [float(parts[0]), float(parts[1]), int(float(parts[2]))]
+        except (ValueError, IndexError):
+            pass
+
+    tj = {
+        "tilejson":      "2.2.0",
+        "name":          meta.get("name", filename),
+        "description":   meta.get("description", ""),
+        "version":       meta.get("version", "1"),
+        "attribution":   meta.get("attribution", ""),
+        "scheme":        "xyz",
+        "tiles":         [f"{origin}/api/tiles/{filename}/{{z}}/{{x}}/{{y}}"],
+        "minzoom":       int(meta.get("minzoom", 0)),
+        "maxzoom":       int(meta.get("maxzoom", 14)),
+        "bounds":        bounds,
+        "vector_layers": vector_layers,
     }
+    if center:
+        tj["center"] = center
 
-    def stream(start, end):
-        with open(filepath, "rb") as f:
-            f.seek(start)
-            remaining = end - start + 1
-            while remaining > 0:
-                chunk = f.read(min(65536, remaining))
-                if not chunk:
-                    break
-                remaining -= len(chunk)
-                yield chunk
+    resp = jsonify(tj)
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
-    if range_header:
-        m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-        if not m:
-            from flask import abort
-            abort(416)
-        start = int(m.group(1))
-        end = int(m.group(2)) if m.group(2) else file_size - 1
-        if start >= file_size:
-            from flask import abort
-            abort(416)
-        end = min(end, file_size - 1)
-        headers = {**base_headers,
-                   "Content-Range": f"bytes {start}-{end}/{file_size}",
-                   "Content-Length": str(end - start + 1)}
-        return Response(stream(start, end), status=206, headers=headers)
 
-    headers = {**base_headers, "Content-Length": str(file_size)}
-    return Response(stream(0, file_size - 1), status=200, headers=headers)
+@app.route("/api/tiles/<filename>/<int:z>/<int:x>/<int:y>")
+def api_tile(filename, z, x, y):
+    """
+    Serve a single vector tile from an MBTiles file.
+    MBTiles uses TMS (Y origin at bottom); MapLibre uses XYZ (Y origin at top).
+    The Y coordinate is flipped before the SQLite query.
+    """
+    db_path = _mbtiles_path(filename)
+    if db_path is None:
+        from flask import abort
+        abort(404)
+
+    y_tms = (2 ** z - 1) - y
+
+    with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+        row = conn.execute(
+            "SELECT tile_data FROM tiles "
+            "WHERE zoom_level=? AND tile_column=? AND tile_row=?",
+            (z, x, y_tms)
+        ).fetchone()
+
+    if row is None:
+        from flask import abort
+        abort(404)
+
+    tile_data = row[0]
+    is_gzip   = tile_data[:2] == b"\x1f\x8b"
+
+    headers = {
+        "Content-Type":                "application/x-protobuf",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control":               "public, max-age=3600",
+    }
+    if is_gzip:
+        headers["Content-Encoding"] = "gzip"
+
+    return Response(tile_data, headers=headers)
 
 
 @app.route("/lookup")
@@ -239,6 +308,36 @@ def api_browse():
         return jsonify({"ok": False, "error": "Permission denied"}), 403
 
     return jsonify({"ok": True, "path": rel, "entries": entries})
+
+
+@app.route("/api/save-chirp", methods=["POST"])
+def api_save_chirp():
+    """Save a CHIRP CSV file directly into the suite's chirp/ folder.
+
+    Expects JSON body: { "filename": "<datetime>_repeaters.csv", "content": "<csv text>" }
+    Only filenames ending in .csv and containing no path separators are accepted.
+    """
+    data = request.get_json(silent=True) or {}
+    filename = (data.get("filename") or "").strip()
+    content  = data.get("content", "")
+
+    # Validate filename — no path traversal, .csv only
+    if not filename or os.sep in filename or "/" in filename or not filename.endswith(".csv"):
+        return jsonify({"ok": False, "error": "Invalid filename"}), 400
+
+    chirp_dir = os.path.join(SUITE_ROOT, "chirp")
+    os.makedirs(chirp_dir, exist_ok=True)
+    dest = os.path.realpath(os.path.join(chirp_dir, filename))
+    if not dest.startswith(os.path.realpath(chirp_dir) + os.sep):
+        return jsonify({"ok": False, "error": "Path traversal rejected"}), 403
+
+    try:
+        with open(dest, "w", encoding="utf-8", newline="") as fh:
+            fh.write(content)
+    except OSError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+    return jsonify({"ok": True, "saved": os.path.join("chirp", filename)})
 
 
 @app.route("/health")

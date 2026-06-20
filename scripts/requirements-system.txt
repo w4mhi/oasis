@@ -1,16 +1,4 @@
 # OASIS — System dependencies
 # These are installed via package manager, not pip.
-# Only needed on the prep machine (the machine that builds map tiles).
-# The Pi itself does not need any of these.
-
-# ── Map tile build pipeline ────────────────────────────────────────────────────
-
-# GDAL — provides ogr2ogr for GPKG → GeoJSON conversion
-# macOS:  brew install gdal
-# Linux:  sudo apt install gdal-bin
-gdal
-
-# tippecanoe — builds PMTiles from GeoJSON
-# macOS:  brew install tippecanoe
-# Linux:  build from source — https://github.com/felt/tippecanoe
-tippecanoe
+# Map tiles are served from a pre-built MBTiles file placed in maps/.
+# No build-time tools are required on the Pi or prep machine.

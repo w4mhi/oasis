@@ -26,6 +26,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   white-space:nowrap;
 }
 #refreshBtn:hover{color:var(--accent);border-color:var(--accent-dim);}
+.home-link{
+  margin-left:auto;
+  color:#58a6ff;
+  text-decoration:none;
+  font-size:0.9rem;
+  font-weight:bold;
+  letter-spacing:1px;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+.home-link:hover{color:#00d98b;}
 #filterSel{
   background:var(--bg);border:1px solid var(--border);color:var(--text);
   font-family:var(--mono);font-size:var(--fs-small);padding:3px 8px;border-radius:4px;cursor:pointer;
@@ -80,12 +91,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
     <option value="0" selected>All</option>
   </select>
   <button id="refreshBtn" onclick="fetchStations()">↺ Refresh</button>
+  <a href="/" class="home-link">⌂ HOME</a>
 </div>
 
 <div id="map"></div>
 
 <script src="/map-assets/maplibre-gl.js"></script>
-<script src="/map-assets/pmtiles.js"></script>
 <script>
 'use strict';
 
@@ -171,12 +182,8 @@ function makeMarkerEl(symTable, symCode) {
 }
 
 // ── Map setup ────────────────────────────────────────────────────────────────
-// PMTiles protocol — must be registered before the map is created
-const protocol = new pmtiles.Protocol();
-maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
-
-const TILE_FILE = 'washington.pmtiles';
-const tilesUrl  = location.origin + '/maps/' + TILE_FILE;
+const TILE_FILE = 'osm-2020-02-10-v3.11_us_washington.mbtiles';
+const tilesUrl  = location.origin + '/api/tilejson/' + TILE_FILE;
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -184,67 +191,98 @@ const map = new maplibregl.Map({
     version: 8,
     glyphs: location.origin + '/map-assets/fonts/{fontstack}/{range}.pbf',
     sources: {
-      osm: { type: 'vector', url: 'pmtiles://' + tilesUrl }
+      osm: { type: 'vector', url: tilesUrl }
     },
     layers: [
-      { id: 'background', type: 'background', paint: { 'background-color': '#1a1f2e' } },
-      // Water bodies (multipolygons)
-      { id: 'water', type: 'fill', source: 'osm', 'source-layer': 'multipolygons',
-        filter: ['any', ['==', ['get', 'natural'], 'water'], ['==', ['get', 'waterway'], 'riverbank']],
+      // ── Background ────────────────────────────────────────────────────────
+      { id: 'background', type: 'background',
+        paint: { 'background-color': '#111827' } },
+
+      // ── Water bodies ──────────────────────────────────────────────────────
+      { id: 'water-poly-fill', type: 'fill', source: 'osm', 'source-layer': 'water',
         paint: { 'fill-color': '#1a3a5c' } },
-      // Parks & nature (multipolygons)
-      { id: 'park', type: 'fill', source: 'osm', 'source-layer': 'multipolygons',
-        filter: ['any',
-          ['in', ['get', 'leisure'], ['literal', ['park','nature_reserve','garden']]],
-          ['in', ['get', 'landuse'],  ['literal', ['forest','grass','meadow','village_green']]]
-        ],
-        paint: { 'fill-color': '#1e3020', 'fill-opacity': 0.7 } },
-      // General landuse (multipolygons)
-      { id: 'landuse', type: 'fill', source: 'osm', 'source-layer': 'multipolygons',
-        filter: ['has', 'landuse'],
-        paint: { 'fill-color': '#1c2230', 'fill-opacity': 0.6 } },
-      // Buildings (multipolygons, zoom 13+)
-      { id: 'building', type: 'fill', source: 'osm', 'source-layer': 'multipolygons',
-        minzoom: 13, filter: ['has', 'building'],
-        paint: { 'fill-color': '#252c3a', 'fill-outline-color': '#2e3848' } },
-      // Waterways (lines)
-      { id: 'waterway', type: 'line', source: 'osm', 'source-layer': 'lines',
-        filter: ['has', 'waterway'],
-        paint: { 'line-color': '#1a3a5c', 'line-width': 1 } },
-      // Roads (lines, by OSM highway value)
-      { id: 'road-motorway', type: 'line', source: 'osm', 'source-layer': 'lines',
-        filter: ['in', ['get', 'highway'], ['literal', ['motorway','motorway_link']]],
-        paint: { 'line-color': '#00d98b', 'line-width': ['interpolate',['linear'],['zoom'],6,1.5,10,4,14,8] } },
-      { id: 'road-trunk', type: 'line', source: 'osm', 'source-layer': 'lines',
-        filter: ['in', ['get', 'highway'], ['literal', ['trunk','trunk_link']]],
-        paint: { 'line-color': '#0a7a52', 'line-width': ['interpolate',['linear'],['zoom'],6,1,10,3,14,6] } },
-      { id: 'road-primary', type: 'line', source: 'osm', 'source-layer': 'lines',
-        filter: ['in', ['get', 'highway'], ['literal', ['primary','primary_link']]],
-        paint: { 'line-color': '#2a3a50', 'line-width': ['interpolate',['linear'],['zoom'],8,1,12,3,14,5] } },
-      { id: 'road-secondary', type: 'line', source: 'osm', 'source-layer': 'lines',
-        filter: ['in', ['get', 'highway'], ['literal', ['secondary','tertiary','secondary_link','tertiary_link']]],
-        paint: { 'line-color': '#222a38', 'line-width': ['interpolate',['linear'],['zoom'],10,0.5,14,3] } },
-      // Admin boundaries (lines)
-      { id: 'boundary-state', type: 'line', source: 'osm', 'source-layer': 'lines',
-        filter: ['all', ['==', ['get', 'boundary'], 'administrative'], ['==', ['get', 'admin_level'], '4']],
-        paint: { 'line-color': '#4a5568', 'line-width': 1.2, 'line-dasharray': [4,3] } },
-      { id: 'boundary-county', type: 'line', source: 'osm', 'source-layer': 'lines',
-        filter: ['all', ['==', ['get', 'boundary'], 'administrative'], ['==', ['get', 'admin_level'], '6']],
-        minzoom: 8, paint: { 'line-color': '#2a3441', 'line-width': 0.6 } },
-      // Place labels (points)
-      { id: 'label-place', type: 'symbol', source: 'osm', 'source-layer': 'points',
-        filter: ['in', ['get', 'place'], ['literal', ['city','town']]],
-        layout: { 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
-          'text-font': ['Open Sans Regular'],
-          'text-size': 11, 'text-anchor': 'left', 'text-offset': [0.5,0] },
-        paint: { 'text-color': '#d7e0ea', 'text-halo-color': '#0d1117', 'text-halo-width': 1.5 } },
-      { id: 'label-village', type: 'symbol', source: 'osm', 'source-layer': 'points',
-        filter: ['in', ['get', 'place'], ['literal', ['village','suburb','hamlet']]],
-        minzoom: 10,
-        layout: { 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
-          'text-font': ['Open Sans Regular'],
-          'text-size': 9, 'text-anchor': 'left', 'text-offset': [0.5,0] },
-        paint: { 'text-color': '#8b97a6', 'text-halo-color': '#0d1117', 'text-halo-width': 1.5 } }
+
+      // ── Waterways ─────────────────────────────────────────────────────────
+      { id: 'waterways-line', type: 'line', source: 'osm', 'source-layer': 'waterway',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#1a4a7a',
+                 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 14, 4] } },
+
+      // ── Land cover ────────────────────────────────────────────────────────
+      { id: 'landcover-wood', type: 'fill', source: 'osm', 'source-layer': 'landcover',
+        filter: ['==', ['get', 'class'], 'wood'],
+        paint: { 'fill-color': '#1a2e1a', 'fill-opacity': 0.8 } },
+
+      { id: 'landcover-grass', type: 'fill', source: 'osm', 'source-layer': 'landcover',
+        filter: ['match', ['get', 'class'], ['grass', 'crop', 'scrub'], true, false],
+        paint: { 'fill-color': '#1e2e18', 'fill-opacity': 0.6 } },
+
+      // ── Parks / nature ────────────────────────────────────────────────────
+      { id: 'landuse-park', type: 'fill', source: 'osm', 'source-layer': 'landuse',
+        filter: ['match', ['get', 'class'], ['park', 'national_park', 'nature_reserve'], true, false],
+        paint: { 'fill-color': '#162616', 'fill-opacity': 0.7 } },
+
+      // ── Land use ──────────────────────────────────────────────────────────
+      { id: 'landuse-residential', type: 'fill', source: 'osm', 'source-layer': 'landuse',
+        filter: ['==', ['get', 'class'], 'residential'],
+        paint: { 'fill-color': '#1a1a2a', 'fill-opacity': 0.5 } },
+
+      { id: 'landuse-commercial', type: 'fill', source: 'osm', 'source-layer': 'landuse',
+        filter: ['match', ['get', 'class'], ['commercial', 'retail'], true, false],
+        paint: { 'fill-color': '#1e1a22', 'fill-opacity': 0.5 } },
+
+      { id: 'landuse-industrial', type: 'fill', source: 'osm', 'source-layer': 'landuse',
+        filter: ['==', ['get', 'class'], 'industrial'],
+        paint: { 'fill-color': '#1a1e22', 'fill-opacity': 0.5 } },
+
+      // ── Roads ─────────────────────────────────────────────────────────────
+      { id: 'road-minor', type: 'line', source: 'osm', 'source-layer': 'transportation',
+        filter: ['match', ['get', 'class'], ['minor', 'service', 'track', 'path'], true, false],
+        minzoom: 12,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#2a2a3a', 'line-width': 1 } },
+
+      { id: 'road-secondary', type: 'line', source: 'osm', 'source-layer': 'transportation',
+        filter: ['match', ['get', 'class'], ['secondary', 'tertiary'], true, false],
+        minzoom: 9,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#3a3a4e',
+                 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1, 14, 3] } },
+
+      { id: 'road-primary', type: 'line', source: 'osm', 'source-layer': 'transportation',
+        filter: ['==', ['get', 'class'], 'primary'],
+        minzoom: 7,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#4a4a20',
+                 'line-width': ['interpolate', ['linear'], ['zoom'], 7, 1, 14, 4] } },
+
+      { id: 'road-motorway', type: 'line', source: 'osm', 'source-layer': 'transportation',
+        filter: ['match', ['get', 'class'], ['motorway', 'trunk'], true, false],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#8b5a00',
+                 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 14, 6] } },
+
+      // ── Buildings ─────────────────────────────────────────────────────────
+      { id: 'buildings-fill', type: 'fill', source: 'osm', 'source-layer': 'building',
+        minzoom: 12,
+        paint: { 'fill-color': '#1e2030', 'fill-outline-color': '#2a2a4a',
+                 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 15, 0.9] } },
+
+      // ── Place labels ──────────────────────────────────────────────────────
+      { id: 'place-labels', type: 'symbol', source: 'osm', 'source-layer': 'place',
+        filter: ['match', ['get', 'class'], ['city', 'town'], true, false],
+        layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 5, 10, 12, 14],
+          'text-anchor': 'center', 'text-padding': 6, 'text-allow-overlap': false },
+        paint: { 'text-color': '#e0e0e0', 'text-halo-color': '#080810', 'text-halo-width': 1.5 } },
+
+      { id: 'pois-circle', type: 'symbol', source: 'osm', 'source-layer': 'place',
+        filter: ['match', ['get', 'class'], ['village', 'suburb', 'hamlet', 'neighbourhood', 'quarter'], true, false],
+        minzoom: 9,
+        layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 9, 10, 14, 13],
+          'text-anchor': 'center', 'text-padding': 4, 'text-allow-overlap': false },
+        paint: { 'text-color': '#b0b0c0', 'text-halo-color': '#080810', 'text-halo-width': 1.2 } }
     ]
   },
   center: [-122.1, 47.6],
@@ -323,7 +361,9 @@ function plotStations(stations) {
 }
 
 // ── Data fetching ────────────────────────────────────────────────────────────
-const API_URL = () => 'http://' + HOST + ':' + PORTS.aprs_api + '/api/aprs/stations';
+// Use the same-origin Flask proxy (/api/aprs/stations → 127.0.0.1:8085) to
+// avoid cross-origin requests from the browser (page is on :8083, API on :8085).
+const API_URL = () => location.origin + '/api/aprs/stations';
 const REFRESH_SEC = 15;
 let countdown = REFRESH_SEC;
 let timer = null;

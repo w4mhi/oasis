@@ -64,7 +64,6 @@ Then open **`http://localhost:8083`** — or `http://<host-ip>:8083` from any ot
 |---|---|---|---|:--:|
 | **`setup-server.py`** | Creates `.venv` and installs Flask / gunicorn / psutil — auto picks PyPI or bundled wheels | **Once** after cloning; again if `requirements.txt` changes | Every host that runs OASIS | ❌ offline |
 | `setup-fcc-database.py` | Downloads the FCC license data and builds the callsign lookup index | Once before first use; re-run weekly for fresh data (FCC updates Sundays) | Any online machine, then copy to the Pi | ✅ yes |
-| `build-map.py` | Turns an OSM / BBBike extract into an offline `.pmtiles` map region | When you want a new or updated map area | Prep machine (needs GDAL + tippecanoe) | ✅ extract downloaded separately |
 | `install-graywolf.py` | Installs the **GrayWolf** APRS service (TNC / iGate / digipeater) | On the Pi, to turn on APRS | Raspberry Pi / Debian Linux | ⚠️ optional — uses bundled `.deb` if present |
 | `install-kiwix.py` | Installs the `kiwix-serve` offline-content server | On the Pi, to turn on offline Wikipedia | Raspberry Pi / Linux | ⚠️ optional — uses bundled package if present |
 | `install-rtl-sdr.py` | Installs RTL-SDR tools + blacklists the conflicting DVB driver | On the Pi, to enable USB SDR dongles (RTL2832U) | Raspberry Pi / Debian Linux | ⚠️ optional — uses bundled `.deb` if present |
@@ -100,7 +99,10 @@ Offline binary search over a local copy of the FCC amateur database — name, ci
 #### 🗺️ Offline maps
 OpenStreetMap vector tiles via **MapLibre GL + PMTiles**, served from the host with HTTP range streaming. Multi-region, switchable layers, not a single tile fetched from the internet.
 
-#### 📡 APRS (Raspberry Pi)
+#### � Repeater Book
+Offline repeater directory — load a local CHIRP-format CSV exported from RepeaterBook.com and browse it with instant search and filters (mode, status). Export the currently visible set as a ready-to-import CHIRP frequency plan saved directly to the `chirp/` folder. See [setup notes](#-repeater-book) below.
+
+#### �📡 APRS (Raspberry Pi)
 **GrayWolf** TNC / iGate / digipeater plus a live station map, packet logs, and tactical messaging. See [the APRS section](#-aprs-on-the-raspberry-pi) below.
 
 #### 🧮 Tools & calculators *(browser-only)*
@@ -114,7 +116,36 @@ U.S. band plan · Q-codes, NATO phonetics, pro-words, RST, ITU prefixes · per-r
 
 ---
 
-## 📡 APRS on the Raspberry Pi
+## � Repeater Book
+
+OASIS includes a browser-based repeater viewer at **`repeaterbook/repeaterbook.html`**. It has no bundled data — repeater listings are **not distributable** under RepeaterBook's terms and must be downloaded by you personally.
+
+### Setup
+
+1. Go to **[repeaterbook.com](https://www.repeaterbook.com)**, sign in (free account required), and search for your region.
+2. Export the results → choose **CHIRP** format.
+3. Save the file as **`repeaterbook/repeaterbook.csv`** inside your OASIS folder (next to `index.html`).
+
+The page loads the CSV locally — no internet is used at runtime.
+
+> ⚠️ **RepeaterBook data is not freely redistributable.** Do not commit `repeaterbook/repeaterbook.csv` to a public repo, include it in shared USB bundles, or redistribute it in any form. It is listed in `.gitignore` for this reason.
+
+### Features
+
+| Feature | Details |
+|---|---|
+| **Search** | Filter by name, frequency, callsign, city, or any text in the comment field — live as you type |
+| **Mode filter** | FM · DMR · YSF/C4FM · P25 · D-STAR · NXDN · M17 |
+| **Status filter** | Open / Closed |
+| **Sortable columns** | Click any column header to sort ascending/descending |
+| **EMCOMM badge** | Automatically flags repeaters mentioning ARES, RACES, SKYWARN, etc. |
+| **Export to Frequency Plan** | Saves the currently visible (filtered) repeaters as a CHIRP-format CSV directly to `chirp/<datetime>_repeaters.csv` — ready to import into ICS-205 or CHIRP |
+| **Print** | Browser print dialog for a paper copy |
+| **Service card** | Dashboard shows green when CSV is present, red when missing |
+
+---
+
+## �📡 APRS on the Raspberry Pi
 
 APRS is the flagship Pi capability. OASIS installs and supervises **[GrayWolf](https://github.com/chrissnell/graywolf)** — a browser-based APRS TNC, iGate, and digipeater — and adds a companion API so the dashboard shows live stations on the offline map.
 

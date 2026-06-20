@@ -6,21 +6,26 @@ Download an offline Wikipedia ZIM file for use with kiwix-serve.
 ZIM files are self-contained offline snapshots published by the Kiwix project.
 
 Choose the edition that fits your storage:
-  mini        ~1 GB   — top articles, good for Pi Zero 2W (32 GB SD card)
-  top25k      ~1 GB   — top 25,000 articles with images
-  nopic       ~21 GB  — full English Wikipedia, no images
-  maxi        ~100 GB — full English Wikipedia with images (SSD recommended)
+  top-mini      ~316 MB  — 50K best articles, no pictures (Pi Zero 2W default)
+  simple-mini   ~447 MB  — Simple English, ~394K articles, no pictures
+  simple-nopic  ~937 MB  — Simple English with full details, no pictures
+  top-nopic     ~2.1 GB  — 50K best articles with full details, no pictures
+  simple-maxi   ~3.2 GB  — Simple English with pictures
+  all-mini      ~11.7 GB — All ~19M articles, no pictures, no details
+  all-nopic     ~48 GB   — Full English Wikipedia, no images (needs large SSD)
+  all-maxi      ~115 GB  — Full English Wikipedia with all images (large SSD)
 
 After download, the kiwix service is updated and restarted automatically.
 
 Usage:
   python3 scripts/download-wikipedia.py             # interactive picker
-  python3 scripts/download-wikipedia.py --edition mini
-  python3 scripts/download-wikipedia.py --edition nopic --zim-dir /mnt/ssd/zim
+  python3 scripts/download-wikipedia.py --edition top-mini
+  python3 scripts/download-wikipedia.py --edition simple-maxi --zim-dir /mnt/ssd/zim
   python3 scripts/download-wikipedia.py --list       # show all editions
   python3 scripts/download-wikipedia.py --url https://download.kiwix.org/zim/wikipedia/...zim
 
 ZIM files are sourced from https://download.kiwix.org/zim/wikipedia/
+Sizes are approximate and reflect the 2026 Kiwix catalog.
 """
 
 import argparse
@@ -33,36 +38,77 @@ import xml.etree.ElementTree as ET
 
 KIWIX_ZIM_BASE  = "https://download.kiwix.org/zim/wikipedia"
 KIWIX_CATALOG   = "https://library.kiwix.org/catalog/v2/entries?lang=eng&category=wikipedia&count=100"
-DEFAULT_ZIM_DIR = os.path.expanduser("~/zim")
+DEFAULT_ZIM_DIR = os.path.expanduser("~/oasis-offline/zim")
 SERVICE_NAME    = "kiwix"
 LIBRARY_XML     = "library.xml"
 
 # Curated editions with stable names, typical sizes, and descriptions.
+# Sizes reflect the 2026-06 Kiwix catalog (approximate — updates monthly).
 # Kiwix appends a date (YYYY-MM) to filenames; we resolve the latest via catalog.
+# "name" + "_" + "flavour" forms the ZIM filename prefix, e.g. wikipedia_en_top_mini
 EDITIONS = {
-    "mini": {
-        "name":    "wikipedia_en_all_mini",
-        "label":   "Wikipedia Mini",
-        "size":    "~1 GB",
-        "desc":    "Top articles. Best choice for Pi Zero 2W with a 32 GB card.",
+    "top-mini": {
+        "name":    "wikipedia_en_top",
+        "flavour": "mini",
+        "label":   "Best of Wikipedia — mini (no pics)",
+        "size":    "~316 MB",
+        "desc":    "50K best articles, no pictures, no detailed sections."
+                   " Best choice for Pi Zero 2W with a 32 GB SD card.",
     },
-    "top25k": {
-        "name":    "wikipedia_en_top_25000_2024-05",
-        "label":   "Wikipedia Top 25,000",
-        "size":    "~1 GB",
-        "desc":    "Most-read 25,000 articles with images.",
+    "simple-mini": {
+        "name":    "wikipedia_en_simple_all",
+        "flavour": "mini",
+        "label":   "Simple English Wikipedia — mini (no pics)",
+        "size":    "~447 MB",
+        "desc":    "~394K articles written in plain English, no pictures."
+                   " Great for quick lookups and non-native readers.",
     },
-    "nopic": {
-        "name":    "wikipedia_en_all_nopic",
-        "label":   "Wikipedia (full, no images)",
-        "size":    "~21 GB",
-        "desc":    "Complete English Wikipedia. Needs a 32+ GB card.",
+    "simple-nopic": {
+        "name":    "wikipedia_en_simple_all",
+        "flavour": "nopic",
+        "label":   "Simple English Wikipedia — full text, no pics",
+        "size":    "~937 MB",
+        "desc":    "~394K plain-English articles with full details, no pictures.",
     },
-    "maxi": {
-        "name":    "wikipedia_en_all_maxi",
-        "label":   "Wikipedia (full, with images)",
-        "size":    "~100 GB",
-        "desc":    "Complete English Wikipedia with all images. SSD recommended.",
+    "top-nopic": {
+        "name":    "wikipedia_en_top",
+        "flavour": "nopic",
+        "label":   "Best of Wikipedia — full text, no pics",
+        "size":    "~2.1 GB",
+        "desc":    "50K best articles with full detail sections, no pictures."
+                   " Good balance for a 4+ GB card.",
+    },
+    "simple-maxi": {
+        "name":    "wikipedia_en_simple_all",
+        "flavour": "maxi",
+        "label":   "Simple English Wikipedia — with pictures",
+        "size":    "~3.2 GB",
+        "desc":    "~394K plain-English articles with all images."
+                   " Good for tablets / Pi 4 with an 8+ GB card.",
+    },
+    "all-mini": {
+        "name":    "wikipedia_en_all",
+        "flavour": "mini",
+        "label":   "Wikipedia (all articles) — mini (no pics)",
+        "size":    "~11.7 GB",
+        "desc":    "All ~19M English articles, no pictures, no detail sections."
+                   " Needs 16+ GB free storage.",
+    },
+    "all-nopic": {
+        "name":    "wikipedia_en_all",
+        "flavour": "nopic",
+        "label":   "Wikipedia (all articles) — full text, no pics",
+        "size":    "~48 GB",
+        "desc":    "Complete English Wikipedia with full details, no images."
+                   " Requires a 64+ GB SSD.",
+    },
+    "all-maxi": {
+        "name":    "wikipedia_en_all",
+        "flavour": "maxi",
+        "label":   "Wikipedia (all articles) — with pictures",
+        "size":    "~115 GB",
+        "desc":    "Complete English Wikipedia with all images."
+                   " Large SSD required (128+ GB).",
     },
 }
 
@@ -96,9 +142,11 @@ class _Progress:
 
 
 # ── Step 1: Resolve latest ZIM filename from Kiwix catalog ────────────────────
-def resolve_zim_url(edition_name):
+def resolve_zim_url(edition_name, edition_flavour):
     _step(1, "Resolving latest ZIM from Kiwix catalog")
     _info(f"Querying: {KIWIX_CATALOG}")
+    # The combined prefix used in filenames, e.g. wikipedia_en_top_mini
+    combined = f"{edition_name}_{edition_flavour}"
 
     try:
         req = urllib.request.Request(
@@ -111,22 +159,23 @@ def resolve_zim_url(edition_name):
         _fail(f"Could not reach Kiwix catalog: {exc}\n"
               "       Check your internet connection and try again.")
 
-    # Parse OPDS/Atom catalog to find a matching entry.
+    # Parse OPDS/Atom catalog.
+    # Acquisition links end in .zim.meta4 — strip the .meta4 to get the real URL.
     try:
         ns = {"atom": "http://www.w3.org/2005/Atom",
               "dc":   "http://purl.org/dc/terms/"}
         root = ET.fromstring(catalog_xml)
         for entry in root.findall("atom:entry", ns):
-            title_el = entry.find("atom:title", ns)
-            if title_el is None:
-                continue
-            # Look for a download link matching the edition name prefix.
             for link in entry.findall("atom:link", ns):
                 href = link.get("href", "")
-                if edition_name.split("_2")[0] in href and href.endswith(".zim"):
-                    filename = href.rsplit("/", 1)[-1]
+                # Catalog hrefs end in .zim.meta4 on lb.download.kiwix.org.
+                # Extract just the filename and rebuild on KIWIX_ZIM_BASE
+                # (download.kiwix.org) — the lb subdomain may redirect to a different file.
+                if combined in href and (href.endswith(".zim") or href.endswith(".zim.meta4")):
+                    filename = href.removesuffix(".meta4").rsplit("/", 1)[-1]
+                    zim_url  = f"{KIWIX_ZIM_BASE}/{filename}"
                     _ok(f"Latest: {filename}")
-                    return href, filename
+                    return zim_url, filename
     except ET.ParseError:
         pass  # fall through to direct URL construction
 
@@ -134,27 +183,25 @@ def resolve_zim_url(edition_name):
     return None, None
 
 
-def build_direct_url(edition_name):
+def build_direct_url(edition_name, edition_flavour):
     """Construct a best-guess direct URL if catalog lookup fails."""
-    # Try the listing page for the latest file.
+    combined = f"{edition_name}_{edition_flavour}"
     listing_url = f"{KIWIX_ZIM_BASE}/"
     _info(f"Checking directory listing: {listing_url}")
     try:
         with urllib.request.urlopen(listing_url, timeout=10) as resp:
             html = resp.read().decode("utf-8", errors="replace")
-        prefix = edition_name.split("_2")[0]  # strip any pinned date
-        # Find all hrefs containing the edition name
         import re
-        matches = re.findall(rf'href="({re.escape(prefix)}[^"]+\.zim)"', html)
+        matches = re.findall(rf'href="({re.escape(combined)}[^"]+\.zim)"', html)
         if matches:
-            latest = sorted(matches)[-1]  # alphabetically latest = newest date
+            latest = sorted(matches)[-1]
             url = f"{KIWIX_ZIM_BASE}/{latest}"
             _ok(f"Found: {latest}")
             return url, latest
     except Exception:
         pass
 
-    _fail(f"Could not determine the download URL for '{edition_name}'.\n"
+    _fail(f"Could not determine the download URL for '{combined}'.\n"
           "       Browse available files at:\n"
           f"       {KIWIX_ZIM_BASE}/\n"
           "       Then use --url to provide it directly.")
@@ -266,10 +313,9 @@ def pick_edition():
         print()
 
     while True:
-        choice = input("  Select edition [1-4]: ").strip()
+        choice = input(f"  Select edition [1-{len(keys)}]: ").strip()
         if choice.isdigit() and 1 <= int(choice) <= len(keys):
             return keys[int(choice) - 1]
-        # Also accept the key name directly.
         if choice in EDITIONS:
             return choice
         print(f"  Enter a number from 1 to {len(keys)}.")
@@ -281,11 +327,15 @@ def main():
         description="Download an offline Wikipedia ZIM file for Kiwix.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Editions:\n"
-            "  mini    ~1 GB   Top articles (recommended for Pi Zero 2W)\n"
-            "  top25k  ~1 GB   Top 25,000 articles with images\n"
-            "  nopic   ~21 GB  Full Wikipedia, no images\n"
-            "  maxi    ~100 GB Full Wikipedia with images\n"
+            "Editions (sizes reflect 2026 Kiwix catalog):\n"
+            "  top-mini      ~316 MB   50K best articles, no pictures (Pi Zero 2W default)\n"
+            "  simple-mini   ~447 MB   Simple English, ~394K articles, no pictures\n"
+            "  simple-nopic  ~937 MB   Simple English with full details, no pictures\n"
+            "  top-nopic     ~2.1 GB   50K best articles with full details, no pictures\n"
+            "  simple-maxi   ~3.2 GB   Simple English with pictures\n"
+            "  all-mini      ~11.7 GB  All ~19M articles, no pictures, no details\n"
+            "  all-nopic     ~48 GB    Full Wikipedia, no images (SSD recommended)\n"
+            "  all-maxi      ~115 GB   Full Wikipedia with all images (large SSD)\n"
         )
     )
     parser.add_argument(
@@ -300,7 +350,7 @@ def main():
         "--zim-dir",
         default=DEFAULT_ZIM_DIR,
         metavar="PATH",
-        help="Directory to store ZIM files (default: ~/zim).",
+        help="Directory to store ZIM files (default: ~/oasis-offline/zim).",
     )
     parser.add_argument(
         "--list",
@@ -330,9 +380,9 @@ def main():
         ed = EDITIONS[edition]
         _info(f"Edition: {ed['label']}  ({ed['size']})")
 
-        url, filename = resolve_zim_url(ed["name"])
+        url, filename = resolve_zim_url(ed["name"], ed["flavour"])
         if not url:
-            url, filename = build_direct_url(ed["name"])
+            url, filename = build_direct_url(ed["name"], ed["flavour"])
 
     zim_path = download_zim(url, filename, zim_dir)
     update_library(zim_dir, zim_path)

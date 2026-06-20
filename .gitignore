@@ -10,7 +10,7 @@ __pycache__/
 # ── Large data — never checked in, to keep the repo footprint small ────────────
 
 # Offline map tiles — built by scripts/build-map.py (or copied in).
-*.pmtiles
+*.mbtiles
 
 # PDF radio manuals — large and license-encumbered; distributed separately.
 # Drop your own PDFs into radio-manuals/ on the target machine. The whole
@@ -38,3 +38,6 @@ server/wheels/*.whl
 # Offline binary packages — downloaded by scripts/create-oasis-offline.py.
 # Entire tree is excluded; scripts install from oasis-offline/ or the internet.
 offline-packages/
+
+# RepeaterBook data .
+repeaterbook/*.csv

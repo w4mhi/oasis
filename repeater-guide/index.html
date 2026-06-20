@@ -25,14 +25,13 @@ a.card {
   display: block;
   text-decoration: none;
   color: var(--text);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--cardaccent, var(--accent));
-  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--cardaccent, var(--accent)) 35%, transparent);
+  border-radius: 6px;
   background: var(--panel);
   padding: .9rem 1rem;
-  transition: background .15s, transform .1s;
+  transition: border-color .3s, background .15s;
 }
-a.card:hover { background: var(--panel-2); transform: translateX(2px); }
+a.card:hover { background: var(--panel-2); border-color: var(--cardaccent, var(--accent)); }
 .card-model {
   font-size: var(--fs-subtitle);
   font-weight: 700;

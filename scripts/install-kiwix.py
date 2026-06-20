@@ -41,7 +41,7 @@ INSTALL_BIN     = "/usr/local/bin/kiwix-serve"
 SERVICE_NAME    = "kiwix"
 PORT            = 8081
 DEFAULT_VERSION = "3.8.2"
-DEFAULT_ZIM_DIR = os.path.expanduser("~/zim")
+DEFAULT_ZIM_DIR = os.path.expanduser("~/oasis-offline/zim")
 SERVICE_FILE    = f"/etc/systemd/system/{SERVICE_NAME}.service"
 REPO_ROOT       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OFFLINE_DIR     = os.path.join(REPO_ROOT, "offline-packages", "kiwix")
@@ -137,10 +137,32 @@ def install_kiwix_serve(data, version):
 
 
 # ── Step 4: Create systemd service ────────────────────────────────────────────
+KIWIX_START     = "/usr/local/bin/kiwix-start"
+
+
 def create_service(zim_dir):
     _step(4, "Creating systemd service")
     os.makedirs(zim_dir, exist_ok=True)
     _info(f"ZIM directory: {zim_dir}")
+
+    # Write a wrapper script so the service file contains no shell variables
+    # (avoids all systemd $$ escaping issues).
+    start_script = (
+        "#!/bin/sh\n"
+        f"ZIMS=$(find {zim_dir} -maxdepth 1 -name '*.zim' -type f 2>/dev/null | tr '\\n' ' ')\n"
+        'if [ -z "$ZIMS" ]; then\n'
+        f"    echo 'kiwix: no ZIM files in {zim_dir}/ — run download-wikipedia.py first'\n"
+        "    exit 1\n"
+        "fi\n"
+        f"exec {INSTALL_BIN} --port {PORT} $ZIMS\n"
+    )
+    proc = subprocess.Popen(
+        ["sudo", "tee", KIWIX_START],
+        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+    )
+    proc.communicate(start_script.encode())
+    _run(["sudo", "chmod", "+x", KIWIX_START])
+    _ok(f"Start script: {KIWIX_START}")
 
     service_content = f"""[Unit]
 Description=Kiwix offline reader (OASIS)
@@ -148,9 +170,9 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart={INSTALL_BIN} --port {PORT} --library {zim_dir}/library.xml
+ExecStart={KIWIX_START}
 Restart=on-failure
-RestartSec=5
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
@@ -168,9 +190,17 @@ WantedBy=multi-user.target
     _ok("systemctl daemon-reload")
     _run(["sudo", "systemctl", "enable", SERVICE_NAME])
     _ok(f"systemctl enable {SERVICE_NAME}")
-    _warn("Service not started yet -- no ZIM content downloaded.")
-    _info("Run scripts/download-wikipedia.py, then:")
-    _info(f"  sudo systemctl start {SERVICE_NAME}")
+
+    # Check whether ZIM content already exists.
+    zim_files = [f for f in os.listdir(zim_dir) if f.endswith(".zim")] if os.path.isdir(zim_dir) else []
+    if zim_files:
+        _info(f"ZIM content found ({len(zim_files)} file(s)) — starting service ...")
+        _run(["sudo", "systemctl", "start", SERVICE_NAME], check=False)
+        _ok(f"systemctl start {SERVICE_NAME}")
+    else:
+        _warn("Service not started yet -- no ZIM content found.")
+        _info("Run scripts/download-wikipedia.py, then:")
+        _info(f"  sudo systemctl start {SERVICE_NAME}")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
@@ -188,7 +218,7 @@ def main():
     parser.add_argument("--version", default=DEFAULT_VERSION, metavar="X.Y.Z",
                         help=f"kiwix-tools version to install (default: {DEFAULT_VERSION}).")
     parser.add_argument("--zim-dir", default=DEFAULT_ZIM_DIR, metavar="PATH",
-                        help="Directory where ZIM files will be stored (default: ~/zim).")
+                        help="Directory where ZIM files will be stored (default: ~/oasis-offline/zim).")
     args = parser.parse_args()
 
     print()

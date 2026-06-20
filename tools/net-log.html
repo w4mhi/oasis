@@ -196,7 +196,7 @@ tr.editing td{background:var(--panel-2);}
       </div>
       <div id="net-map-container"></div>
       <div id="mapSkipped"></div>
-      <div id="mapNoFile" style="display:none;color:var(--text-dim);font-size:var(--fs-base);text-align:center;padding:2rem 0;">No .pmtiles files found in <code>maps/</code>. Add a PMTiles file and restart the server.</div>
+      <div id="mapNoFile" style="display:none;color:var(--text-dim);font-size:var(--fs-base);text-align:center;padding:2rem 0;">No .mbtiles files found in <code>maps/</code>. Add an MBTiles file and restart the server.</div>
     </div>
   </div>
 
@@ -675,14 +675,9 @@ document.querySelectorAll('.ltab').forEach(tab => {
 </script>
 
 <script src="/map-assets/maplibre-gl.js"></script>
-<script src="/map-assets/pmtiles.js"></script>
 <script>
 (function(){
   'use strict';
-
-  // Register PMTiles protocol
-  const _protocol = new pmtiles.Protocol();
-  maplibregl.addProtocol('pmtiles', _protocol.tile.bind(_protocol));
 
   const origin = window.location.origin;
   let currentFile = null;
@@ -714,44 +709,42 @@ document.querySelectorAll('.ltab').forEach(tab => {
     return [lon, lat];
   }
 
-  function hasVal(f){ return ['all',['has',f],['!=',['get',f],null],['!=',['get',f],'']] }
-
-  function buildStyle(pmtilesFile) {
-    const tilesUrl = 'pmtiles://' + origin + '/maps/' + pmtilesFile;
+  function buildStyle(mbtilesFile) {
+    const tilesUrl = origin + '/api/tilejson/' + mbtilesFile;
     return {
       version: 8,
       glyphs: origin + '/map-assets/fonts/{fontstack}/{range}.pbf',
       sources: { map: { type: 'vector', url: tilesUrl } },
       layers: [
         { id: 'background', type: 'background', paint: { 'background-color': '#1a1f2e' } },
-        { id: 'landuse-fill', type: 'fill', source: 'map', 'source-layer': 'multipolygons',
-          filter: hasVal('landuse'),
-          paint: { 'fill-color': ['match',['get','landuse'],['park','grass','meadow'],'#14311a',['forest','wood'],'#0d2010','residential','#161b2e','#161822'], 'fill-opacity': 0.9 } },
-        { id: 'water-poly', type: 'fill', source: 'map', 'source-layer': 'multipolygons',
-          filter: ['any',['==',['get','natural'],'water'],hasVal('waterway')],
+        { id: 'water-poly', type: 'fill', source: 'map', 'source-layer': 'water',
           paint: { 'fill-color': '#0d2d50', 'fill-opacity': 0.95 } },
-        { id: 'buildings', type: 'fill', source: 'map', 'source-layer': 'multipolygons',
-          filter: hasVal('building'), minzoom: 13,
+        { id: 'park-fill', type: 'fill', source: 'map', 'source-layer': 'park',
+          paint: { 'fill-color': '#14311a', 'fill-opacity': 0.7 } },
+        { id: 'landuse-fill', type: 'fill', source: 'map', 'source-layer': 'landuse',
+          filter: ['match', ['get', 'class'], ['residential', 'commercial', 'industrial'], true, false],
+          paint: { 'fill-color': '#161b2e', 'fill-opacity': 0.85 } },
+        { id: 'buildings', type: 'fill', source: 'map', 'source-layer': 'building',
+          minzoom: 13,
           paint: { 'fill-color': '#1e2540', 'fill-outline-color': '#2e3d66', 'fill-opacity': 0.8 } },
-        { id: 'waterways', type: 'line', source: 'map', 'source-layer': 'lines',
-          filter: hasVal('waterway'),
+        { id: 'waterways', type: 'line', source: 'map', 'source-layer': 'waterway',
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-color': '#1565c0', 'line-width': ['interpolate',['linear'],['zoom'],8,1.5,14,5], 'line-opacity': 0.9 } },
-        { id: 'roads-casing', type: 'line', source: 'map', 'source-layer': 'lines',
-          filter: hasVal('highway'),
+        { id: 'roads-casing', type: 'line', source: 'map', 'source-layer': 'transportation',
+          filter: ['match', ['get', 'class'], ['motorway','trunk','primary','secondary','tertiary'], true, false],
           layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': '#000', 'line-opacity': 0.7, 'line-width': ['interpolate',['linear'],['zoom'],8,['match',['get','highway'],['motorway','trunk'],5,['primary'],3,['secondary'],2,1],16,['match',['get','highway'],['motorway','trunk'],20,['primary'],14,['secondary'],10,['tertiary'],7,4]] } },
-        { id: 'roads-fill', type: 'line', source: 'map', 'source-layer': 'lines',
-          filter: hasVal('highway'),
+          paint: { 'line-color': '#000', 'line-opacity': 0.6, 'line-width': ['interpolate',['linear'],['zoom'],8,['match',['get','class'],['motorway','trunk'],5,'primary',3,'secondary',2,1],16,['match',['get','class'],['motorway','trunk'],20,'primary',14,'secondary',10,'tertiary',7,4]] } },
+        { id: 'roads-fill', type: 'line', source: 'map', 'source-layer': 'transportation',
+          filter: ['match', ['get', 'class'], ['motorway','trunk','primary','secondary','tertiary'], true, false],
           layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': ['match',['get','highway'],['motorway','trunk'],'#ff6b00','primary','#e8960a','secondary','#c9b40a','tertiary','#888899',['residential','living_street'],'#4a4a68','service','#303048','#303048'],
-            'line-width': ['interpolate',['linear'],['zoom'],8,['match',['get','highway'],['motorway','trunk'],4,'primary',2.5,'secondary',1.5,0.5],16,['match',['get','highway'],['motorway','trunk'],18,'primary',12,'secondary',8,'tertiary',5,3]] } },
-        { id: 'road-labels', type: 'symbol', source: 'map', 'source-layer': 'lines',
-          filter: ['all', hasVal('highway'), hasVal('name')], minzoom: 13,
+          paint: { 'line-color': ['match',['get','class'],['motorway','trunk'],'#ff6b00','primary','#e8960a','secondary','#c9b40a','tertiary','#888899','#555566'],
+            'line-width': ['interpolate',['linear'],['zoom'],6,['match',['get','class'],['motorway','trunk'],2,'primary',1,0.5],16,['match',['get','class'],['motorway','trunk'],18,'primary',12,'secondary',8,'tertiary',5,3]] } },
+        { id: 'road-labels', type: 'symbol', source: 'map', 'source-layer': 'transportation_name',
+          minzoom: 13,
           layout: { 'symbol-placement': 'line', 'text-field': ['get','name'], 'text-font': ['Open Sans Regular'], 'text-size': 11, 'text-max-angle': 30, 'text-allow-overlap': false },
           paint: { 'text-color': '#e8e8ff', 'text-halo-color': '#080810', 'text-halo-width': 1.5 } },
-        { id: 'place-labels', type: 'symbol', source: 'map', 'source-layer': 'points',
-          filter: ['all', hasVal('name'), hasVal('place')],
+        { id: 'place-labels', type: 'symbol', source: 'map', 'source-layer': 'place',
+          filter: ['match', ['get', 'class'], ['city', 'town', 'village', 'suburb'], true, false],
           layout: { 'text-field': ['get','name'], 'text-font': ['Open Sans Regular'], 'text-size': ['interpolate',['linear'],['zoom'],6,10,12,14], 'text-anchor': 'left', 'text-offset': [0.5,0], 'text-allow-overlap': false },
           paint: { 'text-color': '#d7e0ea', 'text-halo-color': '#0d1117', 'text-halo-width': 1.5 } }
       ]
@@ -761,12 +754,12 @@ document.querySelectorAll('.ltab').forEach(tab => {
   let netMap = null;
   let stationMarkers = [];
 
-  function initMap(pmtilesFile) {
+  function initMap(mbtilesFile) {
     if (netMap) { netMap.remove(); netMap = null; stationMarkers = []; }
-    currentFile = pmtilesFile;
+    currentFile = mbtilesFile;
     netMap = new maplibregl.Map({
       container: 'net-map-container',
-      style: buildStyle(pmtilesFile),
+      style: buildStyle(mbtilesFile),
       zoom: 4,
       center: [-98, 38],
       attributionControl: false
@@ -888,14 +881,14 @@ document.querySelectorAll('.ltab').forEach(tab => {
       const res = await fetch('/api/browse?path=maps');
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
-      const files = (data.entries || []).filter(e => e.name.endsWith('.pmtiles'));
+      const files = (data.entries || []).filter(e => e.name.endsWith('.mbtiles'));
       if (!files.length) {
         sel.style.display = 'none';
         container.style.display = 'none';
         noFile.style.display = '';
         return;
       }
-      sel.innerHTML = files.map(f => `<option value="${f.name}">${f.name.replace(/\.pmtiles$/,'')}</option>`).join('');
+      sel.innerHTML = files.map(f => `<option value="${f.name}">${f.name.replace(/\.mbtiles$/,'')}</option>`).join('');
       sel.style.display = '';
     } catch(e) {
       sel.innerHTML = '<option>(error loading files)</option>';
