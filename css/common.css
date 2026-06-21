@@ -108,7 +108,7 @@ header p::after {
 }
 /* tooltip bubble — hidden by default */
 header p::before {
-  content: 'Based on ACK Off-Grid Ham Radio Server\A by Jason KM4ACK (Tennessee).\A Original concept & architecture: KM4ACK.\A Extended for Pacific NW: W4MHI.';
+  content: 'Based on ACK Off-Grid Ham Radio Server\A by Jason [KM4ACK].\A Original concept: Jason [KM4ACK].\A Architectural extension : Mihai [W4MHI].';
   white-space: pre-wrap;
   position: absolute;
   bottom: unset;
@@ -145,7 +145,7 @@ header::after { content: ''; display: table; clear: both; }
   border-bottom: 1px dotted var(--text-dim);
 }
 .credits-link::before {
-  content: 'Based on ACK Off-Grid Ham Radio Server\A by Jason KM4ACK (Tennessee).\A Original concept & architecture: KM4ACK.\A Extended for Pacific NW: W4MHI.';
+  content: 'Based on ACK Off-Grid Ham Radio Server\A by Jason [KM4ACK].\A Original concept: Jason [KM4ACK].\A Architectural extension : Mihai [W4MHI].';
   white-space: pre-wrap;
   position: absolute;
   bottom: unset;

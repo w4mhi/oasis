@@ -20,12 +20,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #statusDot.err{background:var(--red);}
 #statusMsg{font-size:var(--fs-small);color:var(--text-dim);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #stationCount{font-size:var(--fs-small);color:var(--amber);white-space:nowrap;}
-#refreshBtn{
-  background:transparent;border:1px solid var(--border);color:var(--text-dim);
-  font-family:var(--mono);font-size:var(--fs-small);padding:3px 10px;border-radius:4px;cursor:pointer;
-  white-space:nowrap;
-}
-#refreshBtn:hover{color:var(--accent);border-color:var(--accent-dim);}
+#countdown{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;width:15ch;flex-shrink:0;text-align:right;transition:color .4s;overflow:visible;}
+#countdown.green{color:#3fb950;}
+#countdown.yellow{color:var(--amber);}
+#countdown.red{color:var(--red);}
 .home-link{
   margin-left:auto;
   color:#58a6ff;
@@ -39,7 +37,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .home-link:hover{color:#00d98b;}
 #filterSel{
   background:var(--bg);border:1px solid var(--border);color:var(--text);
-  font-family:var(--mono);font-size:var(--fs-small);padding:3px 8px;border-radius:4px;cursor:pointer;
+  font-family:var(--mono);font-size:var(--fs-small);padding:3px 6px;border-radius:4px;cursor:pointer;
 }
 #filterSel:focus{outline:none;border-color:var(--accent-dim);}
 
@@ -83,14 +81,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   <span id="statusMsg">Connecting…</span>
   <span id="stationCount"></span>
   <span id="countdown"></span>
-  <select id="filterSel" onchange="applyFilter()">
+  <select id="filterSel" style="margin-left:1rem;" onchange="applyFilter()">
     <option value="15">Last 15 min</option>
     <option value="30">Last 30 min</option>
     <option value="60">Last 60 min</option>
     <option value="1440">Last 24 hrs</option>
     <option value="0" selected>All</option>
   </select>
-  <button id="refreshBtn" onclick="fetchStations()">↺ Refresh</button>
+  <button id="refreshBtn" class="sbtn" onclick="fetchStations()">Refresh</button>
   <a href="/" class="home-link">⌂ HOME</a>
 </div>
 
@@ -393,7 +391,9 @@ function setStatus(state, msg) {
 }
 
 function updateCountdown() {
-  document.getElementById('countdown').textContent = 'next: ' + countdown + 's';
+  const el = document.getElementById('countdown');
+  el.textContent = 'refresh in: ' + countdown + 's.';
+  el.className = countdown >= 10 ? 'green' : countdown >= 5 ? 'yellow' : 'red';
 }
 
 function startCountdown() {

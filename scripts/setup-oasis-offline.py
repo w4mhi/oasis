@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-oasis-setup.py
---------------
+setup-oasis-offline.py
+----------------------
 Interactive OASIS feature installer / orchestrator. Lists every OASIS feature,
 lets you pick what you want, then runs the matching install-*/enable-* scripts
 in the right order. It does not reimplement anything — it delegates to the
@@ -9,7 +9,7 @@ existing scripts, so each remains the single source of truth.
 
 Privilege model — run as your NORMAL user, not with sudo:
 
-    python3 scripts/oasis-setup.py
+    python3 scripts/setup-oasis-offline.py
 
 The orchestrator primes sudo once up front (a single password prompt) and keeps
 the credential warm, so the sub-scripts' internal `sudo` calls don't re-prompt.
@@ -18,11 +18,11 @@ you (not root), install-winlink.py writes your ~/.config/pat. Running the whole
 thing under `sudo` would break those, so this script refuses to run as root.
 
 Usage:
-  python3 scripts/oasis-setup.py                 # interactive menu
-  python3 scripts/oasis-setup.py --list          # list features and exit
-  python3 scripts/oasis-setup.py --all           # run everything (incl. data)
-  python3 scripts/oasis-setup.py --features graywolf,rtl-sdr,winlink
-  python3 scripts/oasis-setup.py --features kiwix --yes   # non-interactive
+  python3 scripts/setup-oasis-offline.py                 # interactive menu
+  python3 scripts/setup-oasis-offline.py --list          # list features and exit
+  python3 scripts/setup-oasis-offline.py --all           # run everything (incl. data)
+  python3 scripts/setup-oasis-offline.py --features graywolf,rtl-sdr,winlink
+  python3 scripts/setup-oasis-offline.py --features kiwix --yes   # non-interactive
 
 Re-running is safe: every sub-script is version-aware/idempotent, so you can run
 this again later to add a feature.
@@ -46,7 +46,8 @@ SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 class Feature:
     """One selectable feature that delegates to a script in scripts/."""
     def __init__(self, key, name, script, desc, category,
-                 default=False, needs=(), internet=False, data=False, args=()):
+                 default=False, needs=(), internet=False, data=False,
+                 reboot=False, args=()):
         self.key      = key
         self.name     = name
         self.script   = script
@@ -56,6 +57,7 @@ class Feature:
         self.needs    = tuple(needs)      # prerequisite feature keys
         self.internet = internet          # warn if offline
         self.data     = data              # large/optional content download
+        self.reboot   = reboot            # may require a reboot to take effect
         self.args     = tuple(args)
 
     @property
@@ -66,30 +68,38 @@ class Feature:
 # Order here is the run order. Software/services default-checked; data opt-in;
 # boot-changing and hardware-gated steps left opt-in even though they're services.
 FEATURES = [
+    # ── Server: the web server and everything it fronts ────────────────────────
     Feature("server", "Server (.venv + deps)", "setup-server.py",
             "Create the Python .venv and install Flask/gunicorn/psutil (offline). Foundation for the web UI and the APRS API.",
-            "Core", default=True),
+            "Server", default=True),
     Feature("autostart", "Auto-start on boot", "enable-autostart-pi.py",
             "Install the systemd unit so the OASIS server starts at boot. Add --with-browser later for a Chromium kiosk.",
-            "Core", default=False, needs=["server"]),
+            "Server", default=False, needs=["server"]),
     Feature("graywolf", "GrayWolf APRS (+ history API)", "install-graywolf.py",
             "APRS TNC/iGate/digipeater on :8080, plus the history API on :8085.",
-            "Radio", default=True, needs=["server"], internet=True),
-    Feature("rtl-sdr", "RTL-SDR tools", "install-rtl-sdr.py",
-            "rtl_test/rtl_fm + socat/tcpdump and the DVB-driver blacklist.",
-            "Radio", default=True),
-    Feature("rtl-feed", "RTL-SDR → GrayWolf APRS feed", "enable-rtl-sdr.py",
-            "Stream demodulated APRS audio into GrayWolf (sdr_udp). Needs the dongle plugged in.",
-            "Radio", default=False, needs=["rtl-sdr"]),
+            "Server", default=True, needs=["server"], internet=True),
     Feature("winlink", "Winlink (Pat)", "install-winlink.py",
             "Pat Winlink client + web UI on :8082 (Telnet works immediately).",
-            "Radio", default=True, internet=True),
-    Feature("webssh", "Web SSH (ttyd)", "install-webssh.py",
-            "Browser terminal on :7681 (logs in via ssh to localhost).",
-            "Connectivity", default=True),
+            "Server", default=True, internet=True),
     Feature("kiwix", "Kiwix (offline content server)", "install-kiwix.py",
             "kiwix-serve on :8081 to browse ZIM content. (Add content below.)",
-            "Content", default=True, internet=True),
+            "Server", default=True, internet=True),
+    Feature("webssh", "Web SSH (ttyd)", "install-webssh.py",
+            "Browser terminal on :7681 (logs in via ssh to localhost).",
+            "Server", default=True),
+
+    # ── Audio: audio paths into GrayWolf (SDR dongle + DRA sound card) ─────────
+    Feature("rtl-sdr", "RTL-SDR tools", "install-rtl-sdr.py",
+            "rtl_test/rtl_fm + socat/tcpdump and the DVB-driver blacklist.",
+            "Audio", default=True),
+    Feature("rtl-feed", "RTL-SDR → GrayWolf APRS feed", "enable-rtl-sdr.py",
+            "Stream demodulated APRS audio into GrayWolf (sdr_udp). Needs the dongle plugged in.",
+            "Audio", default=False, needs=["rtl-sdr"]),
+    Feature("dra-pi", "DRA-Pi-Zero sound card", "enable-dra-pi.py",
+            "Configure the MastersCommunications DRA-Pi-Zero (WM8731 I²S codec) for GrayWolf — edits /boot/firmware/config.txt. REQUIRES A REBOOT.",
+            "Audio", default=False, reboot=True),
+
+    # ── Content / Data: large optional downloads ──────────────────────────────
     Feature("fcc", "FCC callsign database", "setup-fcc-database.py",
             "Download + index the FCC amateur license DB (~160 MB).",
             "Content / Data", default=False, internet=True, data=True),
@@ -183,7 +193,8 @@ def parse_selection(raw):
     return keys
 
 
-def interactive_select():
+def _text_select():
+    """Numbered fallback menu (no TTY / curses unavailable)."""
     print_menu()
     while True:
         raw = input("\n  Selection — Enter=defaults · numbers (e.g. 1,3,5) · 'all' · 'none' · 'q': ")
@@ -192,6 +203,126 @@ def interactive_select():
             _info("Aborted — nothing was changed.")
             sys.exit(0)
         return keys
+
+
+def _can_use_curses():
+    """curses needs a real interactive terminal on both ends."""
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
+    try:
+        import curses  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def _curses_select(stdscr):
+    """Arrow-key checkbox UI. Returns selected keys, or None if cancelled."""
+    import curses
+    import textwrap
+
+    curses.curs_set(0)
+    stdscr.keypad(True)
+    try:
+        curses.use_default_colors()
+    except Exception:
+        pass
+
+    checked = {f.key: f.default for f in FEATURES}
+    n   = len(FEATURES)
+    idx = 0
+
+    while True:
+        stdscr.erase()
+        max_y, max_x = stdscr.getmaxyx()
+
+        def put(y, x, s, attr=0):
+            if 0 <= y < max_y and 0 <= x < max_x:
+                stdscr.addnstr(y, x, s, max(0, max_x - x - 1), attr)
+
+        put(0, 2, "OASIS Setup — select features", curses.A_BOLD)
+        put(1, 2, "─" * max(0, max_x - 4))
+
+        list_top = 3
+        footer_h = 2
+        desc_h   = 4
+        list_h   = max(3, max_y - list_top - desc_h - footer_h)
+
+        # Flat rows: category headers (non-selectable) + feature rows.
+        rows, last_cat = [], None
+        for i, f in enumerate(FEATURES):
+            if f.category != last_cat:
+                last_cat = f.category
+                rows.append(("cat", f.category))
+            rows.append(("feat", i))
+
+        cur_row = next(r for r, (k, p) in enumerate(rows) if k == "feat" and p == idx)
+        start = 0
+        if len(rows) > list_h:
+            start = max(0, min(cur_row - list_h // 2, len(rows) - list_h))
+
+        y = list_top
+        for r in range(start, min(start + list_h, len(rows))):
+            kind, payload = rows[r]
+            if kind == "cat":
+                put(y, 2, payload, curses.A_DIM | curses.A_UNDERLINE)
+            else:
+                f = FEATURES[payload]
+                box = "[X]" if checked[f.key] else "[ ]"
+                tag = "  (data)" if f.data else ""
+                line = f"  {box} {f.name}{tag}"
+                put(y, 2, line.ljust(max(0, max_x - 4)),
+                    curses.A_REVERSE if payload == idx else 0)
+            y += 1
+
+        # Description pane for the highlighted feature.
+        dy = list_top + list_h
+        put(dy, 2, "─" * max(0, max_x - 4))
+        f = FEATURES[idx]
+        prereq = (" · needs " + ", ".join(f.needs)) if f.needs else ""
+        for j, wl in enumerate(textwrap.wrap(f.desc + prereq, max(10, max_x - 6))[:desc_h - 2]):
+            put(dy + 1 + j, 3, wl, curses.A_DIM)
+
+        fy = max_y - footer_h
+        put(fy, 2, "─" * max(0, max_x - 4))
+        put(fy + 1, 2, "↑/↓ move · SPACE toggle · A all · N none · ENTER confirm · Q cancel")
+
+        stdscr.refresh()
+
+        c = stdscr.getch()
+        if c in (curses.KEY_UP, ord("k")):
+            idx = (idx - 1) % n
+        elif c in (curses.KEY_DOWN, ord("j")):
+            idx = (idx + 1) % n
+        elif c == ord(" "):
+            f = FEATURES[idx]
+            checked[f.key] = not checked[f.key]
+        elif c in (ord("a"), ord("A")):
+            for k in checked:
+                checked[k] = True
+        elif c in (ord("n"), ord("N")):
+            for k in checked:
+                checked[k] = False
+        elif c in (curses.KEY_ENTER, 10, 13):
+            return [f.key for f in FEATURES if checked[f.key]]
+        elif c in (ord("q"), ord("Q"), 27):   # q / Esc
+            return None
+
+
+def interactive_select():
+    """Curses checkbox UI when possible, else the numbered text menu."""
+    if _can_use_curses():
+        import curses
+        try:
+            keys = curses.wrapper(_curses_select)
+        except Exception as e:
+            _warn(f"Interactive UI unavailable ({e}) — using text menu.")
+        else:
+            if keys is None:
+                _info("Aborted — nothing was changed.")
+                sys.exit(0)
+            return keys
+    return _text_select()
 
 
 # ── Run ─────────────────────────────────────────────────────────────────────────
@@ -210,6 +341,9 @@ def run_feature(f):
     if rc == 0:
         _ok(f"{f.name}: done")
         return ("ok", f)
+    if rc == 10:                      # convention: success, but a reboot is needed
+        _ok(f"{f.name}: done — a reboot is required to take effect")
+        return ("reboot", f)
     _warn(f"{f.name}: FAILED (exit {rc})")
     return ("failed", f)
 
@@ -224,16 +358,26 @@ def summarize(results):
     _hr()
     print("  Setup summary")
     _hr()
-    icons = {"ok": "✓", "failed": "✗", "skipped": "–"}
+    icons = {"ok": "✓", "failed": "✗", "skipped": "–", "reboot": "⟳"}
     for state, f in results:
-        print(f"   {icons.get(state, '?')}  {f.name}")
+        print(f"   {icons.get(state, '?')}  {f.name}"
+              + ("   (reboot required)" if state == "reboot" else ""))
     failed = [f for s, f in results if s == "failed"]
+    reboot = [f for s, f in results if s == "reboot"]
     print()
     if failed:
         _warn(f"{len(failed)} step(s) failed — see the output above and re-run to retry.")
     else:
         _ok("All selected steps completed.")
     _info(f"Verify everything at  http://{_guess_host()}:8083/system/setup.html")
+
+    if reboot:
+        names = ", ".join(f.name for f in reboot)
+        _warn(f"A reboot is required to finish: {names}")
+        _info("After rebooting, re-run this setup to complete any post-reboot steps "
+              "(e.g. DRA-Pi audio mixer).")
+        if sys.stdin.isatty() and input("\n  Reboot now? [y/N]: ").strip().lower() in ("y", "yes"):
+            subprocess.run(["sudo", "reboot"])
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────────
@@ -242,10 +386,10 @@ def main():
         description="Interactive OASIS feature installer (delegates to install-*/enable-* scripts).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=("Examples:\n"
-                "  python3 scripts/oasis-setup.py\n"
-                "  python3 scripts/oasis-setup.py --list\n"
-                "  python3 scripts/oasis-setup.py --all\n"
-                "  python3 scripts/oasis-setup.py --features graywolf,rtl-sdr,winlink --yes\n"),
+                "  python3 scripts/setup-oasis-offline.py\n"
+                "  python3 scripts/setup-oasis-offline.py --list\n"
+                "  python3 scripts/setup-oasis-offline.py --all\n"
+                "  python3 scripts/setup-oasis-offline.py --features graywolf,rtl-sdr,winlink --yes\n"),
     )
     parser.add_argument("--list", action="store_true", help="List features and exit.")
     parser.add_argument("--all", action="store_true", help="Select every feature (including data downloads).")
@@ -264,7 +408,7 @@ def main():
     # This orchestrator must run as the normal user (see module docstring).
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         _fail("Run as your normal user, NOT with sudo — I'll request sudo when needed.\n"
-              "       e.g.  python3 scripts/oasis-setup.py")
+              "       e.g.  python3 scripts/setup-oasis-offline.py")
 
     # Resolve the selection.
     if args.all:
