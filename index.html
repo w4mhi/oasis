@@ -380,6 +380,32 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
+.svc-collapse-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: .95rem;
+  line-height: 1;
+  padding: 0 .15rem;
+  color: var(--blue);
+  transition: color .15s, transform .2s;
+  display: flex;
+  align-items: center;
+}
+.svc-collapse-btn:hover { color: var(--accent); }
+.svc-collapse-btn.collapsed { transform: rotate(-90deg); }
+.svc-strips-wrap {
+  overflow: hidden;
+  transition: max-height .25s ease;
+  max-height: 300px;
+}
+.svc-strips-wrap.collapsed { max-height: 0; }
+.nav-grid-wrap {
+  overflow: hidden;
+  transition: max-height .25s ease;
+  max-height: 2000px;
+}
+.nav-grid-wrap.collapsed { max-height: 0; }
 .section-hdr-title {
   font-size: 0.85rem;
   text-transform: uppercase;
@@ -421,6 +447,19 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 .telemetry-badge.warn { color: var(--amber); }
 .telemetry-badge.bad  { color: var(--red); }
 
+/* ── APRS filter select ─────────────────────────────────────────────── */
+.aprs-filter-sel {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: var(--fs-small);
+  padding: .05rem .2rem;
+  cursor: pointer;
+  margin-left: auto;
+}
+.aprs-filter-sel:focus { outline: none; border-color: var(--accent-dim); }
+
 /* ── APRS LIVE section ───────────────────────────────────────────────── */
 .aprs-section {
   padding: .4rem 1.25rem .75rem;
@@ -449,10 +488,12 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   color: var(--text-dim);
   font-weight: 700;
   transition: color .3s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .aprs-section-title.live    { color: var(--accent); }
 .aprs-section-title.offline { color: var(--amber); }
-.aprs-section-meta { font-size: var(--fs-small); color: var(--text-dim); }
+.aprs-section-meta { font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; }
 .aprs-tbl-wrap { overflow-x: auto; padding: 0 .6rem; }
 .aprs-tbl-wrap table {
   width: 100%;
@@ -525,14 +566,55 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   </div>
 </div>
 
+<!-- ── SYSTEM MONITOR ─────────────────────────────────────────────────────── -->
+<div class="stats-bar">
+  <div class="stat-item" style="padding-left:0;border-left:none;margin-right:.4rem">
+    <span class="section-hdr-title">SYSTEM MONITOR</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-lbl">CPU</span>
+    <span class="stat-val" id="s-cpu">—</span>
+    <div class="mini-bar"><div class="mini-fill" id="b-cpu"></div></div>
+  </div>
+  <div class="stat-item">
+    <span class="stat-lbl">RAM</span>
+    <span class="stat-val" id="s-ram">—</span>
+    <div class="mini-bar"><div class="mini-fill" id="b-ram"></div></div>
+  </div>
+  <div class="stat-item">
+    <span class="stat-lbl">DISK</span>
+    <span class="stat-val" id="s-disk">—</span>
+    <div class="mini-bar"><div class="mini-fill" id="b-disk"></div></div>
+  </div>
+  <div class="stat-item">
+    <span class="stat-lbl">LOAD</span>
+    <span class="stat-val" id="s-load">—</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-lbl">TEMP</span>
+    <span class="stat-val" id="s-temp">—</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-lbl">UPTIME</span>
+    <span class="stat-val" id="s-uptime">—</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-lbl">AUDIO</span>
+    <span class="stat-val" id="s-audio">—</span>
+  </div>
+  <span class="telemetry-badge" id="telemetry-badge">△ telemetry: offline</span>
+</div>
+
 <!-- ── SECTION HEADER ─────────────────────────────────────────────────────── -->
 <div class="section-hdr">
   <span class="section-hdr-title">SERVICES</span>
   <span class="section-hdr-sub">infrastructure · radio</span>
+  <button class="svc-collapse-btn" id="svc-collapse-btn" title="Collapse service cards" onclick="toggleSvcStrip()">&#9660;</button>
   <span class="svc-pill" id="svc-counts" style="margin-left:auto"></span>
 </div>
 
 <!-- ── SERVICE STATUS STRIP ───────────────────────────────────────────────── -->
+<div class="svc-strips-wrap" id="svc-strips-wrap">
 <!-- Row 1: radio / external services -->
 <div class="svc-strip">
   <div class="svc-card" id="card-gw">
@@ -591,48 +673,15 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <span class="svc-badge" id="badge-rb">—</span>
   </a>
 </div>
-
-<!-- ── SYSTEM STATS BAR ──────────────────────────────────────────────────── -->
-<div class="stats-bar">
-  <div class="stat-item">
-    <span class="stat-lbl">CPU</span>
-    <span class="stat-val" id="s-cpu">—</span>
-    <div class="mini-bar"><div class="mini-fill" id="b-cpu"></div></div>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">RAM</span>
-    <span class="stat-val" id="s-ram">—</span>
-    <div class="mini-bar"><div class="mini-fill" id="b-ram"></div></div>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">DISK</span>
-    <span class="stat-val" id="s-disk">—</span>
-    <div class="mini-bar"><div class="mini-fill" id="b-disk"></div></div>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">LOAD</span>
-    <span class="stat-val" id="s-load">—</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">TEMP</span>
-    <span class="stat-val" id="s-temp">—</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">UPTIME</span>
-    <span class="stat-val" id="s-uptime">—</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">AUDIO</span>
-    <span class="stat-val" id="s-audio">—</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">PWR</span>
-    <span class="stat-val" id="s-pwr">—</span>
-  </div>
-  <span class="telemetry-badge" id="telemetry-badge">△ telemetry: offline</span>
-</div>
+</div><!-- /.svc-strips-wrap -->
 
 <!-- ── NAVIGATION GRID ───────────────────────────────────────────────────── -->
+<div class="section-hdr">
+  <span class="section-hdr-title">OPS</span>
+  <span class="section-hdr-sub">utilities · forms · reference</span>
+  <button class="svc-collapse-btn" id="nav-collapse-btn" title="Collapse utility cards" onclick="toggleNavGrid()">&#9660;</button>
+</div>
+<div class="nav-grid-wrap" id="nav-grid-wrap">
 <div class="nav-grid">
 
   <div class="nav-col">
@@ -720,6 +769,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   </div>
 
 </div>
+</div><!-- /.nav-grid-wrap -->
 
 <!-- ── APRS LIVE ────────────────────────────────────────────────────────────── -->
 <div class="aprs-section">
@@ -727,6 +777,13 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div class="aprs-section-hdr">
       <span class="aprs-section-title" id="aprs-title">APRS LIVE</span>
       <span class="aprs-section-meta">stations — <span id="aprs-count">—</span> &nbsp;·&nbsp; last packet — <span id="aprs-last">—</span></span>
+      <select class="aprs-filter-sel" id="aprs-filter-sel" onchange="applyAprsFilter()">
+        <option value="15">Last 15 min</option>
+        <option value="30">Last 30 min</option>
+        <option value="60">Last 60 min</option>
+        <option value="1440">Last 24 hrs</option>
+        <option value="0" selected>All</option>
+      </select>
     </div>
     <div class="aprs-tbl-wrap">
       <table>
@@ -788,6 +845,38 @@ function loadCallsignGrid() {
   document.getElementById('my-callsign').textContent = cs;
   document.getElementById('my-grid').textContent     = gr;
 }
+function toggleNavGrid() {
+  const wrap = document.getElementById('nav-grid-wrap');
+  const btn  = document.getElementById('nav-collapse-btn');
+  const collapsed = wrap.classList.toggle('collapsed');
+  btn.classList.toggle('collapsed', collapsed);
+  btn.title = collapsed ? 'Expand utility cards' : 'Collapse utility cards';
+  try { localStorage.setItem('oasis_nav_collapsed', collapsed ? '1' : '0'); } catch(e) {}
+}
+(function initNavCollapse() {
+  if (localStorage.getItem('oasis_nav_collapsed') === '1') {
+    const wrap = document.getElementById('nav-grid-wrap');
+    const btn  = document.getElementById('nav-collapse-btn');
+    if (wrap) wrap.classList.add('collapsed');
+    if (btn)  { btn.classList.add('collapsed'); btn.title = 'Expand utility cards'; }
+  }
+})();
+function toggleSvcStrip() {
+  const wrap = document.getElementById('svc-strips-wrap');
+  const btn  = document.getElementById('svc-collapse-btn');
+  const collapsed = wrap.classList.toggle('collapsed');
+  btn.classList.toggle('collapsed', collapsed);
+  btn.title = collapsed ? 'Expand service cards' : 'Collapse service cards';
+  try { localStorage.setItem('oasis_svc_collapsed', collapsed ? '1' : '0'); } catch(e) {}
+}
+(function initSvcCollapse() {
+  if (localStorage.getItem('oasis_svc_collapsed') === '1') {
+    const wrap = document.getElementById('svc-strips-wrap');
+    const btn  = document.getElementById('svc-collapse-btn');
+    if (wrap) wrap.classList.add('collapsed');
+    if (btn)  { btn.classList.add('collapsed'); btn.title = 'Expand service cards'; }
+  }
+})();
 function editCallsignGrid() {
   const cs = prompt('Callsign:', localStorage.getItem('oasis_callsign') || 'N0CALL');
   if (cs === null) return;
@@ -1107,6 +1196,41 @@ function fmtLastHeard(iso) {
   return `${utc} <span style="color:var(--text-dim)">[${local}]</span>`;
 }
 
+let _allAprsStations = [];
+
+function renderAprsTable(stations) {
+  const tbody = document.getElementById('aprs-tbody');
+  if (!stations.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-dim)">No stations match the selected time filter.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = stations.map(s => {
+    const age = fmtAge(s.last_heard);
+    const speed = s.speed_mph > 0 ? s.speed_mph + ' mph' : '';
+    const course = s.course != null && s.speed_mph > 0
+      ? ' ' + ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(s.course/22.5)%16]
+      : '';
+    return `<tr>
+      <td style="color:var(--accent);font-weight:700"><a href="aprs/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a></td>
+      <td>${fmtLastHeard(s.last_heard)}</td>
+      <td class="${age.cls}">${age.text}</td>
+      <td>${speed}${course}</td>
+      <td style="color:var(--text-dim)">${s.via || ''}</td>
+      <td style="color:var(--text-dim);max-width:220px;overflow:hidden;text-overflow:ellipsis">${s.comment || ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+function applyAprsFilter() {
+  const minutes = parseInt(document.getElementById('aprs-filter-sel').value);
+  if (!minutes) { renderAprsTable(_allAprsStations); return; }
+  const cutoff = Date.now() - minutes * 60000;
+  renderAprsTable(_allAprsStations.filter(s => {
+    const t = new Date(s.last_heard || s.timestamp || s.time);
+    return !isNaN(t) && t >= cutoff;
+  }));
+}
+
 async function fetchAPRS() {
   const tbody = document.getElementById('aprs-tbody');
   const title = document.getElementById('aprs-title');
@@ -1144,6 +1268,7 @@ async function fetchAPRS() {
 
     // Last-packet time for the header
     setTitle(true);
+    _allAprsStations = d.stations;
     const times = d.stations
       .map(s => s.last_heard || s.timestamp || s.time)
       .filter(Boolean).map(t => new Date(t)).filter(t => !isNaN(t));
@@ -1155,21 +1280,7 @@ async function fetchAPRS() {
                        `${Math.round(ageMins / 60)}h ago`;
     }
 
-    tbody.innerHTML = d.stations.map(s => {
-      const age = fmtAge(s.last_heard);
-      const speed = s.speed_mph > 0 ? s.speed_mph + ' mph' : '';
-      const course = s.course != null && s.speed_mph > 0
-        ? ' ' + ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(s.course/22.5)%16]
-        : '';
-      return `<tr>
-        <td style="color:var(--accent);font-weight:700">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</td>
-        <td>${fmtLastHeard(s.last_heard)}</td>
-        <td class="${age.cls}">${age.text}</td>
-        <td>${speed}${course}</td>
-        <td style="color:var(--text-dim)">${s.via || ''}</td>
-        <td style="color:var(--text-dim);max-width:220px;overflow:hidden;text-overflow:ellipsis">${s.comment || ''}</td>
-      </tr>`;
-    }).join('');
+    applyAprsFilter();
   } catch (e) {
     setTitle(false);
     if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="color:var(--text-dim)">APRS feed offline — no packets to show. &#9658; Start APRS Stats API to populate the live station table.</td></tr>`;

@@ -288,9 +288,49 @@ def install_dependencies(online):
         _warn("The server may have reduced functionality until these are installed.")
 
 
-# ── Step 4: Install system emoji + mono fonts (Linux / Raspberry Pi only) ──────
+# ── Step 4: Ensure python3-sqlite3 is available (Linux / Raspberry Pi only) ──────
+def install_sqlite3(online):
+    _step(4, "python3-sqlite3 (Raspberry Pi / Linux)")
+
+    if not _cmd_exists("apt-get"):
+        _warn("apt-get not found — install sqlite3 support manually:")
+        _warn("  sudo apt-get install -y python3-sqlite3")
+        return
+
+    # Fast check: can the venv python actually import sqlite3?
+    try:
+        venv_py = _venv_bin("python")
+        r = subprocess.run([venv_py, "-c", "import sqlite3"],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            _ok("python3-sqlite3 available")
+            return
+    except Exception:
+        pass
+
+    if not _apt_installed("python3-sqlite3"):
+        if not online:
+            _warn("Offline mode — cannot install python3-sqlite3 via apt.")
+            _warn("  When online: sudo apt-get install -y python3-sqlite3")
+            return
+        _info("Installing python3-sqlite3 ...")
+        result = subprocess.run(
+            ["sudo", "apt-get", "install", "-y", "python3-sqlite3"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            _ok("python3-sqlite3 installed")
+        else:
+            _warn("apt-get failed — try manually:")
+            _warn("  sudo apt-get install -y python3-sqlite3")
+            _log_err(result.stderr)
+    else:
+        _ok("python3-sqlite3 already installed")
+
+
+# ── Step 5: Install system emoji + mono fonts (Linux / Raspberry Pi only) ──────
 def install_system_fonts(online):
-    _step(4, "System fonts (Raspberry Pi / Linux)")
+    _step(5, "System fonts (Raspberry Pi / Linux)")
 
     if not _cmd_exists("apt-get"):
         _warn("apt-get not found — install fonts manually:")
@@ -415,6 +455,7 @@ def main():
     create_venv()
     install_dependencies(online)
     if sys.platform == "linux":
+        install_sqlite3(online)
         install_system_fonts(online)
 
     python = _venv_bin("python")

@@ -35,30 +35,47 @@ Forms · FCC lookup · offline maps · APRS · calculators · reference library 
 
 ## 🚀 Quick start
 
+New to OASIS? **See [concept.md](concept.md)** for what it is and the thinking behind it.
+
+### Raspberry Pi / Linux — the guided way *(recommended)*
+
 ```bash
 # 1 — Get the code
 git clone https://github.com/W4MHI/oasis-emcomm
 cd oasis-emcomm
 
-# 2 — Install the server (offline — all dependencies are vendored)
-python3 scripts/setup-server.py
+# 2 — Run the guided installer (NOT with sudo — it asks once when needed)
+python3 scripts/setup-oasis-offline.py
 
-# 3 — Download FCC callsign data (one-time, needs internet — ~160 MB)
-python3 scripts/setup-fcc-database.py --full-zip
+# 3 — Launch
+./start.sh
+```
 
-# 4 — Launch
-./start.sh                 # Linux / macOS   (Windows: double-click start.bat)
+`setup-oasis-offline.py` is a checkbox menu: tick the features you want (server, APRS, Winlink, Kiwix, Web SSH, FCC data, …) and it runs the right install/enable scripts **in the correct order**, pulling in prerequisites and asking for your password just once. The server (`.venv` + deps) is pre-checked — that's all you need for the dashboard, FCC lookup, and maps. Add **Auto-start on boot** in the menu and you can skip step 3 entirely. Re-run the menu anytime to add features.
+
+### macOS / Windows — the manual way
+
+The guided installer is Pi/Linux-only (it drives `apt`/`systemd`). On a laptop, run the two underlying scripts directly:
+
+```bash
+git clone https://github.com/W4MHI/oasis-emcomm
+cd oasis-emcomm
+
+python3 scripts/setup-server.py                       # install server (offline)
+python3 scripts/setup-fcc-database.py --full-zip      # optional: FCC data (~160 MB, online)
+
+./start.sh                                            # Windows: double-click start.bat
 ```
 
 Then open **`http://localhost:8083`** — or `http://<host-ip>:8083` from any other device on the network.
 
-> 💡 **Truly offline install.** Step 2 needs no internet — Flask, gunicorn, and psutil ship as pre-built wheels for every supported platform and Python 3.9–3.14. Only the one-time FCC data download (step 3) goes online, and you can do it on any machine and copy the result to the Pi.
+> 💡 **Truly offline install.** The server install needs no internet — Flask, gunicorn, and psutil ship as pre-built wheels for every supported platform and Python 3.9–3.14. Only the one-time data downloads (FCC, maps, Wikipedia) go online, and you can do them on any machine and copy the result to the Pi.
 
 ---
 
 ## 🧰 Scripts — what to run, when & why
 
-**Only `setup-server.py` is required to run OASIS.** Everything else is opt-in, per feature. **New here? Run `setup-oasis-offline.py` for a guided menu** that ticks the features you want and runs the right scripts in order. Each script prints a progress/pre-flight summary so you always know what it's doing.
+**On a Pi, `setup-oasis-offline.py` is the front door** — a guided checkbox menu that ticks the features you want and runs the right scripts in order (it delegates to the scripts below, so each stays the single source of truth). The only hard requirement underneath is `setup-server.py`; everything else is opt-in, per feature. Each script prints a progress/pre-flight summary so you always know what it's doing.
 
 | Script | What it does | When to run it | Runs on | Internet? |
 |---|---|---|---|:--:|
@@ -149,7 +166,7 @@ The page loads the CSV locally — no internet is used at runtime.
 
 ---
 
-## �📡 APRS on the Raspberry Pi
+## 📡 APRS on the Raspberry Pi
 
 APRS is the flagship Pi capability. OASIS installs and supervises **[GrayWolf](https://github.com/chrissnell/graywolf)** — a browser-based APRS TNC, iGate, and digipeater — and adds a companion API so the dashboard shows live stations on the offline map.
 
@@ -160,6 +177,16 @@ python3 scripts/install-graywolf.py     # Debian/Ubuntu/Raspberry Pi OS, picks t
 ![GrayWolf APRS live map](docs/images/file18.png)
 
 GrayWolf runs on port **8080**; OASIS reads its history database and serves station positions to the dashboard map. Full configuration walkthrough (audio, PTT, beacons, SmartBeaconing, digipeater rules, iGate) is in **[docs/SETUP.md](docs/SETUP.md)**.
+
+### Live map features
+
+The APRS map (`/aprs/map.html`) refreshes every 15 seconds and includes:
+
+- **Station markers** — APRS symbol icons with callsign labels; click any marker to open a popup with last-heard time, speed, course, altitude, and path.
+- **Historical track** — click **⟳ Show track** in a popup to draw the station's position history as a line on the map. The time window (1 h → all) is selectable in the topbar. The trail re-fetches and extends on every refresh cycle.
+- **✈ Auto-fly** — when enabled, the map automatically flies to the tracked station's latest position on each refresh.
+- **Recent-heard panel** (top-right) — after each refresh cycle, shows how many stations were newly heard or updated, with a clickable list sorted newest-first. Clicking a callsign flies to that station and loads its track. New markers show an amber sonar-ping animation (two expanding rings with a delay) that settles into a persistent dim halo until the next cycle.
+- **Focus via URL** — clicking a callsign in the main dashboard table opens the map at `?focus=CALLSIGN`, which automatically flies to that station and loads its track.
 
 ---
 
@@ -216,6 +243,8 @@ OASIS is built for a **trusted off-grid LAN or hotspot**. By design it binds to 
 ---
 
 ## 📖 Documentation
+
+**[concept.md](concept.md)** — what OASIS is, the vision, design principles, and the full feature picture. Start here if you want the *why*.
 
 Full setup, data pipelines, and deployment guides live in **[docs/SETUP.md](docs/SETUP.md)**:
 server + systemd auto-start · FCC database pipeline · building map PMTiles from OSM · GrayWolf APRS · Kiwix/Wikipedia · ICS PDF templates · USB bundle · keeping data fresh.

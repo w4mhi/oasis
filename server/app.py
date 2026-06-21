@@ -530,6 +530,31 @@ def api_aprs_stations_proxy():
                         "error": "APRS API timed out — graywolf-api slow or GrayWolf unreachable."}), 503
 
 
+@app.route("/api/aprs/track")
+def api_aprs_track_proxy():
+    """Proxy station position history from the graywolf-api (port 8085).
+    Forwards ?callsign= and ?minutes= query params verbatim."""
+    import urllib.request
+    import urllib.error
+    import urllib.parse
+    qs = urllib.parse.urlencode({k: v for k, v in request.args.items()})
+    url = f"http://127.0.0.1:8085/api/aprs/track?{qs}"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            return Response(resp.read(), status=200,
+                            content_type="application/json")
+    except urllib.error.HTTPError as e:
+        return Response(e.read(), status=e.code,
+                        content_type="application/json")
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", str(e))
+        return jsonify({"ok": False,
+                        "error": f"APRS API unavailable ({reason})."}), 503
+    except TimeoutError:
+        return jsonify({"ok": False,
+                        "error": "APRS API timed out."}), 503
+
+
 @app.route("/api/server-info")
 def server_info():
     """Report which WSGI server is running (gunicorn vs Flask dev server)."""

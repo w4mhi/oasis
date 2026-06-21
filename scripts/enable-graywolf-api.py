@@ -50,6 +50,41 @@ VENV_PYTHON = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
 # DB path is overridable for testing off-Pi (e.g. APRS_DB_PATH=./test.db).
 DB_PATH = os.environ.get("APRS_DB_PATH", "/var/lib/graywolf/graywolf-history.db")
 
+# Persistent DB connection — opened once per process, reused across requests.
+# WAL mode is set on first open so readers and GrayWolf's writer never block
+# each other, and the overhead of opening the file on every request (costly on
+# SD card storage) is eliminated.  Read-write access is required to issue the
+# WAL pragma; the API itself never writes any rows.
+_db_conn: "sqlite3.Connection | None" = None
+
+
+def _get_db() -> "tuple[sqlite3.Connection | None, str | None]":
+    """Return the shared DB connection, opening + configuring it if needed.
+
+    Returns (connection, None) on success or (None, error_string) on failure.
+    Resets *_db_conn* to None whenever an error is detected so the next call
+    retries the open — important when GrayWolf hasn't created the DB yet.
+    """
+    global _db_conn
+    if _db_conn is not None:
+        return _db_conn, None
+    if not os.path.exists(DB_PATH):
+        return None, f"Database not found at {DB_PATH}"
+    try:
+        # isolation_level=None → autocommit: every SELECT sees the latest
+        # committed data rather than a pinned WAL snapshot.  Without this a
+        # persistent connection in WAL mode holds a read transaction open
+        # indefinitely and GrayWolf's new packets are invisible to queries.
+        conn = sqlite3.connect(DB_PATH, isolation_level=None)  # read-write; needed for WAL pragma
+        conn.text_factory = lambda b: b.decode("latin-1")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")  # safe with WAL; faster on SD
+        _db_conn = conn
+        return _db_conn, None
+    except Exception as exc:
+        _db_conn = None
+        return None, str(exc)
+
 
 # ══ API server (serve mode) ═════════════════════════════════════════════════════
 # Flask/psutil are imported lazily inside the serve path so the enable path can
@@ -83,11 +118,11 @@ def _start_cpu_sampler():
 
 def read_stations():
     """Return (stations, error) — latest position per station from the DB."""
-    if not os.path.exists(DB_PATH):
-        return None, f"Database not found at {DB_PATH}"
+    global _db_conn
+    con, error = _get_db()
+    if error:
+        return None, error
     try:
-        con = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
-        con.text_factory = lambda b: b.decode("latin-1")
         cur = con.cursor()
         cur.execute("""
             SELECT
@@ -117,7 +152,6 @@ def read_stations():
             ORDER BY p.timestamp DESC
         """)
         rows = cur.fetchall()
-        con.close()
 
         stations = []
         for r in rows:
@@ -161,6 +195,55 @@ def read_stations():
         return stations, None
 
     except Exception as e:
+        _db_conn = None   # force reconnect on next request
+        return None, str(e)
+
+
+def read_track(callsign, minutes):
+    """Return ordered position history for *callsign* over the last *minutes*.
+    Pass minutes=0 to return all available history.
+    Returns (points, error)."""
+    global _db_conn
+    con, error = _get_db()
+    if error:
+        return None, error
+    try:
+        cur = con.cursor()
+        if minutes > 0:
+            cur.execute("""
+                SELECT p.lat, p.lon, p.timestamp, p.speed, p.course, p.has_course, p.alt
+                FROM stations s
+                JOIN positions p ON p.station_key = s.key
+                WHERE s.callsign = ?
+                  AND p.timestamp >= datetime('now', ? || ' minutes')
+                ORDER BY p.timestamp ASC
+            """, (callsign, f"-{minutes}"))
+        else:
+            cur.execute("""
+                SELECT p.lat, p.lon, p.timestamp, p.speed, p.course, p.has_course, p.alt
+                FROM stations s
+                JOIN positions p ON p.station_key = s.key
+                WHERE s.callsign = ?
+                ORDER BY p.timestamp ASC
+            """, (callsign,))
+        rows = cur.fetchall()
+
+        points = []
+        for lat, lon, timestamp, speed, course, has_course, alt in rows:
+            if lat is None or lon is None:
+                continue
+            points.append({
+                "lat":       lat,
+                "lon":       lon,
+                "timestamp": timestamp,
+                "speed_mph": round(speed * 1.15078, 1) if speed else 0,
+                "course":    int(course) if has_course else None,
+                "alt_m":     round(alt, 1) if alt else None,
+            })
+        return points, None
+
+    except Exception as e:
+        _db_conn = None   # force reconnect on next request
         return None, str(e)
 
 
@@ -270,6 +353,23 @@ def _build_app():
         if error:
             return jsonify({"ok": False, "error": error}), 503
         return jsonify({"ok": True, "count": len(stations), "stations": stations})
+
+    @app.route("/api/aprs/track")
+    def api_track():
+        from flask import request as freq
+        callsign = freq.args.get("callsign", "").strip().upper()
+        if not callsign:
+            return jsonify({"ok": False, "error": "callsign parameter required"}), 400
+        try:
+            minutes = int(freq.args.get("minutes", "60"))
+        except ValueError:
+            minutes = 60
+        minutes = max(0, minutes)
+        points, error = read_track(callsign, minutes)
+        if error:
+            return jsonify({"ok": False, "error": error}), 503
+        return jsonify({"ok": True, "callsign": callsign, "minutes": minutes,
+                        "count": len(points), "points": points})
 
     @app.route("/api/system")
     def api_system():

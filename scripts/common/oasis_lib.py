@@ -449,11 +449,18 @@ def graywolf_latest_release(pinned_version=None):
         _info("Fetching latest GrayWolf release from GitHub ...")
 
     req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.load(resp)
-    except Exception as exc:
-        _fail(f"Could not reach GitHub API: {exc}")
+    last_exc = None
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.load(resp)
+        except Exception as exc:
+            last_exc = exc
+            if attempt < 3:
+                wait = 5 * attempt
+                _warn(f"GitHub API attempt {attempt} failed ({exc}) — retrying in {wait}s ...")
+                time.sleep(wait)
+    _fail(f"Could not reach GitHub API: {last_exc}")
 
 
 def graywolf_download_deb(url, filename, dest_dir):
@@ -509,11 +516,18 @@ def pat_latest_release(pinned_version=None):
         _info("Fetching latest Pat release from GitHub ...")
 
     req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.load(resp)
-    except Exception as exc:
-        _fail(f"Could not reach GitHub API: {exc}")
+    last_exc = None
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.load(resp)
+        except Exception as exc:
+            last_exc = exc
+            if attempt < 3:
+                wait = 5 * attempt
+                _warn(f"GitHub API attempt {attempt} failed ({exc}) — retrying in {wait}s ...")
+                time.sleep(wait)
+    _fail(f"Could not reach GitHub API: {last_exc}")
 
 
 def pat_download_deb(url, filename, dest_dir):

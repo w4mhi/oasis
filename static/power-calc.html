@@ -6,8 +6,10 @@
 <title>Power Budget Calculator</title>
 <link rel="stylesheet" href="../css/common.css">
 <style>
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem;}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
 @media(max-width:640px){.grid{grid-template-columns:1fr;}}
+.col-left{display:flex;flex-direction:column;gap:1rem;}
+.col-right{display:flex;flex-direction:column;gap:1rem;}
 
 .panel{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:1rem 1.25rem;}
 .sec-label span{color:var(--text-dim);font-size:var(--fs-micro);letter-spacing:.05em;text-transform:none;}
@@ -73,8 +75,20 @@ select:focus{outline:none;border-color:var(--accent);}
   .stat{background:#f5f5f5;border-color:#ccc;}
   .stat-val{color:#000;}
   .stat-label,.stat-sub,.hint,.sec-label span,.breakdown th,.breakdown .pct,.unit,.range-val{color:#555;}
-  input,select,.add-btn,.misc-rm{display:none!important;}
+  input[type=number],input[type=text]{
+    display:block!important;border:none!important;background:transparent!important;
+    color:#000!important;padding:0!important;font-family:var(--mono)!important;
+    font-size:var(--fs-base)!important;width:auto!important;
+  }
+  select{
+    display:block!important;border:none!important;background:transparent!important;
+    color:#000!important;padding:0!important;font-family:var(--mono)!important;
+    font-size:var(--fs-base)!important;-webkit-appearance:none;appearance:none;
+  }
+  input[type=range]{display:none!important;}
   .range-row .range-val{display:block!important;}
+  .add-btn,.misc-rm,.actions{display:none!important;}
+  .bar-fill{background:#555!important;}
 }
 </style>
 </head>
@@ -87,154 +101,189 @@ select:focus{outline:none;border-color:var(--accent);}
   <p>Enter current draws and battery capacity to estimate runtime. Solar input offsets consumption in real time.</p>
 </header>
 
+<div class="actions">
+  <button class="sbtn" onclick="printReport()" title="Open a print-ready summary">Print</button>
+</div>
+
 <div class="grid">
 
-  <!-- ── Battery ─────────────────────────────────────────────────── -->
-  <div class="panel">
-    <div class="sec-label">Battery</div>
+  <!-- ── LEFT: Sources (Battery + Solar) ────────────────────────── -->
+  <div class="col-left">
 
-    <div class="field">
-      <label for="batCap">Capacity</label>
-      <div class="field-row">
-        <input type="number" id="batCap" min="1" step="any" placeholder="100">
-        <select id="batUnit" style="width:80px">
-          <option value="Ah">Ah</option>
-          <option value="Wh">Wh</option>
+    <!-- Battery -->
+    <div class="panel">
+      <div class="sec-label">Battery</div>
+
+      <div class="field">
+        <label for="batCap">Capacity</label>
+        <div class="field-row">
+          <input type="number" id="batCap" min="1" step="any" placeholder="100">
+          <select id="batUnit" style="width:80px">
+            <option value="Ah">Ah</option>
+            <option value="Wh">Wh</option>
+          </select>
+        </div>
+        <div class="hint">e.g. 100 Ah, 1200 Wh</div>
+      </div>
+
+      <div class="field">
+        <label for="batV">Nominal voltage</label>
+        <div class="field-row">
+          <input type="number" id="batV" min="1" step="any" placeholder="12.6">
+          <span class="unit">V</span>
+        </div>
+        <div class="hint">12V lead-acid ≈ 12.6 V, LiFePO4 ≈ 13.2 V</div>
+      </div>
+
+      <div class="field">
+        <label>Usable depth of discharge</label>
+        <div class="range-row">
+          <input type="range" id="dod" min="10" max="100" step="5" value="80">
+          <span class="range-val" id="dodVal">80%</span>
+        </div>
+        <div class="hint">Lead-acid: 50%. AGM: 60%. LiFePO4: 80–90%.</div>
+      </div>
+
+      <div class="field">
+        <label for="batChem">Battery chemistry</label>
+        <select id="batChem" onchange="onChemChange()">
+          <option value="lead">Lead-acid / AGM / SLA</option>
+          <option value="lifepo4" selected>LiFePO4 (lithium iron phosphate)</option>
+          <option value="liion">Li-ion / LiPo</option>
         </select>
       </div>
-      <div class="hint">e.g. 100 Ah, 1200 Wh</div>
-    </div>
 
-    <div class="field">
-      <label for="batV">Nominal voltage</label>
-      <div class="field-row">
-        <input type="number" id="batV" min="1" step="any" placeholder="12.6">
-        <span class="unit">V</span>
-      </div>
-      <div class="hint">12V lead-acid ≈ 12.6 V, LiFePO4 ≈ 13.2 V</div>
-    </div>
-
-    <div class="field">
-      <label>Usable depth of discharge</label>
-      <div class="range-row">
-        <input type="range" id="dod" min="10" max="100" step="5" value="80">
-        <span class="range-val" id="dodVal">80%</span>
-      </div>
-      <div class="hint">Lead-acid: 50%. AGM: 60%. LiFePO4: 80–90%.</div>
-    </div>
-  </div>
-
-  <!-- ── Solar ───────────────────────────────────────────────────── -->
-  <div class="panel">
-    <div class="sec-label">Solar Input <span>(optional)</span></div>
-
-    <div class="field">
-      <label for="solW">Panel rated wattage</label>
-      <div class="field-row">
-        <input type="number" id="solW" min="0" step="any" placeholder="100">
-        <span class="unit">W</span>
-      </div>
-      <div class="hint">Nameplate rating at STC</div>
-    </div>
-
-    <div class="field">
-      <label>Derating factor</label>
-      <div class="range-row">
-        <input type="range" id="solDerate" min="10" max="90" step="5" value="70">
-        <span class="range-val" id="solDerateVal">70%</span>
-      </div>
-      <div class="hint">Real-world: 60–75%. Overcast / partial shade: 20–40%.</div>
-    </div>
-
-    <div class="field">
-      <label for="solHours">Peak sun hours per day</label>
-      <div class="field-row">
-        <input type="number" id="solHours" min="0" max="12" step="0.5" placeholder="5">
-        <span class="unit">hrs</span>
-      </div>
-      <div class="hint">Mid-TN avg: ~4.5 summer / 3.5 winter</div>
-    </div>
-  </div>
-
-  <!-- ── Radio ───────────────────────────────────────────────────── -->
-  <div class="panel">
-    <div class="sec-label">Radio</div>
-
-    <div class="field">
-      <label for="radioTx">TX current draw</label>
-      <div class="field-row">
-        <input type="number" id="radioTx" min="0" step="any" placeholder="20">
-        <span class="unit">A</span>
-      </div>
-      <div class="hint">Check radio spec sheet — varies by power level</div>
-    </div>
-
-    <div class="field">
-      <label for="radioRx">RX current draw</label>
-      <div class="field-row">
-        <input type="number" id="radioRx" min="0" step="any" placeholder="1.5">
-        <span class="unit">A</span>
+      <div class="field">
+        <label for="tempC">Ambient temperature</label>
+        <div class="field-row">
+          <input type="number" id="tempC" step="1" placeholder="25">
+          <select id="tempUnit" style="width:60px" onchange="onTempUnitChange()">
+            <option value="C">&deg;C</option>
+            <option value="F">&deg;F</option>
+          </select>
+        </div>
+        <div class="hint">Leave blank for standard (25 &deg;C / 77 &deg;F)</div>
       </div>
     </div>
 
-    <div class="field">
-      <label>TX duty cycle</label>
-      <div class="range-row">
-        <input type="range" id="txDuty" min="0" max="100" step="5" value="20">
-        <span class="range-val" id="txDutyVal">20%</span>
+    <!-- Solar -->
+    <div class="panel">
+      <div class="sec-label">Solar Input <span>(optional)</span></div>
+
+      <div class="field">
+        <label for="solW">Panel rated wattage</label>
+        <div class="field-row">
+          <input type="number" id="solW" min="0" step="any" placeholder="100">
+          <span class="unit">W</span>
+        </div>
+        <div class="hint">Nameplate rating at STC</div>
       </div>
-      <div class="hint">Net check-in: ~10%. EMCOMM voice: ~20–30%. Digital: ~50%.</div>
-    </div>
 
-    <div class="field">
-      <label>Active hours per day</label>
-      <div class="range-row">
-        <input type="range" id="radioHrs" min="0" max="24" step="0.5" value="8">
-        <span class="range-val" id="radioHrsVal">8 h</span>
+      <div class="field">
+        <label>Derating factor</label>
+        <div class="range-row">
+          <input type="range" id="solDerate" min="10" max="90" step="5" value="70">
+          <span class="range-val" id="solDerateVal">70%</span>
+        </div>
+        <div class="hint">Real-world: 60–75%. Overcast / partial shade: 20–40%.</div>
       </div>
-      <div class="hint">Hours per day the radio is powered on and in use.</div>
-    </div>
 
-    <div class="field">
-      <label for="radioV">Radio supply voltage</label>
-      <div class="field-row">
-        <input type="number" id="radioV" min="1" step="any" placeholder="13.8">
-        <span class="unit">V</span>
-      </div>
-      <div class="hint">Used to convert A → W. Typical: 13.8 V</div>
-    </div>
-  </div>
-
-  <!-- ── Laptop ──────────────────────────────────────────────────── -->
-  <div class="panel">
-    <div class="sec-label">Laptop <span>(optional)</span></div>
-
-    <div class="field">
-      <label for="laptopW">Power draw</label>
-      <div class="field-row">
-        <input type="number" id="laptopW" min="0" step="any" placeholder="45">
-        <span class="unit">W</span>
-      </div>
-      <div class="hint">Check charger brick label. Light use: 15–30 W. Heavy: 45–65 W.</div>
-    </div>
-
-    <div class="field">
-      <label>Active hours per day</label>
-      <div class="range-row">
-        <input type="range" id="laptopHrs" min="0" max="24" step="0.5" value="8">
-        <span class="range-val" id="laptopHrsVal">8 h</span>
+      <div class="field">
+        <label for="solHours">Peak sun hours per day</label>
+        <div class="field-row">
+          <input type="number" id="solHours" min="0" max="12" step="0.5" placeholder="5">
+          <span class="unit">hrs</span>
+        </div>
+        <div class="hint">Mid-TN avg: ~4.5 summer / 3.5 winter</div>
       </div>
     </div>
-  </div>
+
+  </div><!-- /col-left -->
+
+  <!-- ── RIGHT: Loads (Radio + Laptop + Misc) ───────────────────── -->
+  <div class="col-right">
+
+    <!-- Radio -->
+    <div class="panel">
+      <div class="sec-label">Radio</div>
+
+      <div class="field">
+        <label for="radioTx">TX current draw</label>
+        <div class="field-row">
+          <input type="number" id="radioTx" min="0" step="any" placeholder="20">
+          <span class="unit">A</span>
+        </div>
+        <div class="hint">Check radio spec sheet — varies by power level</div>
+      </div>
+
+      <div class="field">
+        <label for="radioRx">RX current draw</label>
+        <div class="field-row">
+          <input type="number" id="radioRx" min="0" step="any" placeholder="1.5">
+          <span class="unit">A</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>TX duty cycle</label>
+        <div class="range-row">
+          <input type="range" id="txDuty" min="0" max="100" step="5" value="20">
+          <span class="range-val" id="txDutyVal">20%</span>
+        </div>
+        <div class="hint">Net check-in: ~10%. EMCOMM voice: ~20–30%. Digital: ~50%.</div>
+      </div>
+
+      <div class="field">
+        <label>Active hours per day</label>
+        <div class="range-row">
+          <input type="range" id="radioHrs" min="0" max="24" step="0.5" value="8">
+          <span class="range-val" id="radioHrsVal">8 h</span>
+        </div>
+        <div class="hint">Hours per day the radio is powered on and in use.</div>
+      </div>
+
+      <div class="field">
+        <label for="radioV">Radio supply voltage</label>
+        <div class="field-row">
+          <input type="number" id="radioV" min="1" step="any" placeholder="13.8">
+          <span class="unit">V</span>
+        </div>
+        <div class="hint">Used to convert A → W. Typical: 13.8 V</div>
+      </div>
+    </div>
+
+    <!-- Laptop -->
+    <div class="panel">
+      <div class="sec-label">Laptop <span>(optional)</span></div>
+
+      <div class="field">
+        <label for="laptopW">Power draw</label>
+        <div class="field-row">
+          <input type="number" id="laptopW" min="0" step="any" placeholder="45">
+          <span class="unit">W</span>
+        </div>
+        <div class="hint">Check charger brick label. Light use: 15–30 W. Heavy: 45–65 W.</div>
+      </div>
+
+      <div class="field">
+        <label>Active hours per day</label>
+        <div class="range-row">
+          <input type="range" id="laptopHrs" min="0" max="24" step="0.5" value="8">
+          <span class="range-val" id="laptopHrsVal">8 h</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Misc -->
+    <div class="panel">
+      <div class="sec-label">Miscellaneous Loads <span>(optional)</span></div>
+      <div class="misc-list" id="miscList"></div>
+      <button class="add-btn" onclick="addMisc()">+ Add item</button>
+    </div>
+
+  </div><!-- /col-right -->
 
 </div><!-- /grid -->
-
-<!-- ── Misc items ─────────────────────────────────────────────────────── -->
-<div class="panel" style="margin-bottom:.9rem;">
-  <div class="sec-label">Miscellaneous Loads <span>(optional — add as many as needed)</span></div>
-  <div class="misc-list" id="miscList"></div>
-  <button class="add-btn" onclick="addMisc()">+ Add item</button>
-</div>
 
 <!-- ── Results ───────────────────────────────────────────────────────── -->
 <div class="results" id="resultsPanel">
@@ -243,8 +292,7 @@ select:focus{outline:none;border-color:var(--accent);}
 </div>
 
 <footer>
-  Runtime assumes constant average load. Actual runtime varies with temperature, battery age, and usage pattern.<br>
-  Lead-acid capacity degrades ~20% at 0 °C. LiFePO4 degrades ~10%. Add margin for field use.
+  Runtime assumes constant average load. Actual runtime varies with temperature, battery age, and usage pattern.
 </footer>
 
 </div><!-- /wrap -->
@@ -296,6 +344,85 @@ bindRange('radioHrs',  'radioHrsVal',  v => parseFloat(v).toFixed(1) + ' h');
 bindRange('solDerate', 'solDerateVal', v => Math.round(v) + '%');
 bindRange('laptopHrs', 'laptopHrsVal', v => parseFloat(v).toFixed(1) + ' h');
 
+// ── Chemistry — auto-suggest DoD when chemistry changes ─────────────────────────
+const CHEM_DOD_DEFAULT = { lead: 50, lifepo4: 85, liion: 80 };
+function onChemChange() {
+  const chem = document.getElementById('batChem').value;
+  const dod  = document.getElementById('dod');
+  dod.value  = CHEM_DOD_DEFAULT[chem] || 80;
+  document.getElementById('dodVal').textContent = dod.value + '%';
+  calculate();
+}
+
+function onTempUnitChange() {
+  const input = document.getElementById('tempC');
+  const unit  = document.getElementById('tempUnit').value;
+  const val   = parseFloat(input.value);
+  if (!isNaN(val)) {
+    if (unit === 'F') {
+      input.value = Math.round(val * 9/5 + 32);
+    } else {
+      input.value = Math.round((val - 32) * 5/9);
+    }
+  }
+  calculate();
+}
+
+// Initialise DoD to match default chemistry (LiFePO4)
+document.addEventListener('DOMContentLoaded', () => {
+  const dod = document.getElementById('dod');
+  dod.value = 85;
+  document.getElementById('dodVal').textContent = '85%';
+});
+
+// ── Rate derating (Peukert-based capacity reduction at high discharge rates) ────────
+// Returns a capacity multiplier based on discharge C-rate and chemistry.
+// Lead-acid (k≈1.2): meaningful loss above C/5. LiFePO4 (k≈1.05) / Li-ion (k≈1.08): minor.
+// Reference: Peukert equation t = H*(C_n/(I*H))^k, normalised to C20 for lead-acid.
+const PEUKERT_K = { lead: 1.20, lifepo4: 1.05, liion: 1.08 };
+const RATED_HOUR = { lead: 20, lifepo4: 10, liion: 10 };
+function rateDerate(chem, batCapAh, avgA) {
+  if (avgA <= 0 || batCapAh <= 0) return 1;
+  const k  = PEUKERT_K[chem]  || 1.2;
+  const H  = RATED_HOUR[chem] || 20;
+  const cRate = avgA / batCapAh;          // e.g. 0.05 = C/20
+  // Capacity at this rate vs rated capacity
+  // Peukert: C_actual = C_n * (1/(H * cRate))^(k-1)
+  const factor = Math.pow(1 / (H * cRate), k - 1);
+  return Math.min(1.0, Math.max(0.3, factor));
+}
+
+// ── Temperature derating ─────────────────────────────────────────────────────
+// Returns a capacity multiplier (0–1) for the given chemistry and temp in °C.
+// Data points derived from manufacturer datasheets (Peukert-adjusted):
+//   Lead-acid: 100%@25, 80%@0, 65%@-10, 50%@-20
+//   LiFePO4:   100%@25, 92%@0, 82%@-10, 70%@-20
+//   Li-ion:    100%@25, 88%@0, 76%@-10, 62%@-20
+const TEMP_CURVES = {
+  lead:    [[25,1.00],[0,0.80],[-10,0.65],[-20,0.50],[-30,0.36]],
+  lifepo4: [[25,1.00],[0,0.92],[-10,0.82],[-20,0.70],[-30,0.55]],
+  liion:   [[25,1.00],[0,0.88],[-10,0.76],[-20,0.62],[-30,0.46]],
+};
+function tempDerate(chem, tempC) {
+  const curve = TEMP_CURVES[chem] || TEMP_CURVES.lead;
+  // Above 25°C — slight gain capped at 1.05 (≈ +1% per 5°C)
+  if (tempC >= 25) return Math.min(1.05, 1 + (tempC - 25) * 0.002);
+  // Linear interpolation between the two surrounding data points
+  for (let i = 0; i < curve.length - 1; i++) {
+    const [t1, v1] = curve[i];
+    const [t2, v2] = curve[i + 1];
+    if (tempC <= t1 && tempC >= t2) {
+      const frac = (t1 - tempC) / (t1 - t2);
+      return v1 + frac * (v2 - v1);
+    }
+  }
+  // Below lowest point — extrapolate from last segment
+  const [t1, v1] = curve[curve.length - 2];
+  const [t2, v2] = curve[curve.length - 1];
+  const frac = (t1 - tempC) / (t1 - t2);
+  return Math.max(0.1, v1 + frac * (v2 - v1));
+}
+
 // ── Highlight filled inputs ───────────────────────────────────────────────────
 document.querySelectorAll('input[type=number]').forEach(el => {
   el.addEventListener('input', function() {
@@ -337,6 +464,12 @@ function calculate() {
   const batUnit = document.getElementById('batUnit').value;
   const batV    = parseFloat(document.getElementById('batV').value)   || 12.6;
   const dod     = parseFloat(document.getElementById('dod').value)    / 100;
+  const batChem = document.getElementById('batChem').value;
+  const tempRaw = parseFloat(document.getElementById('tempC').value);
+  const tempUnit = document.getElementById('tempUnit').value;
+  const tempC   = isNaN(tempRaw) ? 25 : (tempUnit === 'F' ? (tempRaw - 32) * 5/9 : tempRaw);
+  const tDerate = tempDerate(batChem, tempC);
+  const tempEntered = !isNaN(tempRaw);
 
   const solW      = parseFloat(document.getElementById('solW').value)     || 0;
   const solDerate = parseFloat(document.getElementById('solDerate').value)/ 100;
@@ -367,7 +500,7 @@ function calculate() {
   } else {
     batWh = batCap;
   }
-  const usableWh = batWh * dod;
+  const usableWh = batWh * dod * tDerate;
   const usableAh = usableWh / batV;
 
   // ── Solar effective input (Wh/day) ──
@@ -394,6 +527,14 @@ function calculate() {
   const totalAvgW = radioAvgW + laptopAvgW + miscTotalW;
   const totalAvgA = totalAvgW / batV;
 
+  // ── Rate derating (needs totalAvgA and batCapAh) ──
+  const batCapAh  = batUnit === 'Ah' ? batCap : batCap / batV;
+  const rDerate   = rateDerate(batChem, batCapAh, totalAvgA);
+  const cRate     = totalAvgA > 0 && batCapAh > 0 ? totalAvgA / batCapAh : 0;
+  // Re-apply rate derating to usable capacity
+  const usableWhR = usableWh * rDerate;
+  const usableAhR = usableWhR / batV;
+
   // ── Net load after solar ──
   const solAvgW   = solWhDay / 24;    // spread over 24h for net calc
   const netAvgW   = Math.max(0, totalAvgW - solAvgW);
@@ -401,9 +542,9 @@ function calculate() {
 
   // ── Runtime ──
   // Without solar
-  const runtimeHr      = totalAvgA > 0 ? usableAh / totalAvgA : Infinity;
+  const runtimeHr      = totalAvgA > 0 ? usableAhR / totalAvgA : Infinity;
   // With solar (net draw from battery)
-  const runtimeSolarHr = netAvgA > 0 ? usableAh / netAvgA : Infinity;
+  const runtimeSolarHr = netAvgA > 0 ? usableAhR / netAvgA : Infinity;
   // Solar fully covers load?
   const solarSufficient = solAvgW >= totalAvgW && solW > 0;
 
@@ -414,11 +555,39 @@ function calculate() {
   html += '<div class="results-grid">';
 
   // Usable capacity
+  const tempDerateLabel = tempEntered ? ` · ×${tDerate.toFixed(2)} temp` : '';
+  const rateDerateLabel = rDerate < 0.99 ? ` · ×${rDerate.toFixed(2)} rate` : '';
   html += `<div class="stat">
     <div class="stat-label">Usable capacity</div>
-    <div class="stat-val">${usableAh.toFixed(1)} Ah</div>
-    <div class="stat-sub">${usableWh.toFixed(0)} Wh at ${dod*100|0}% DoD</div>
+    <div class="stat-val">${usableAhR.toFixed(1)} Ah</div>
+    <div class="stat-sub">${usableWhR.toFixed(0)} Wh at ${dod*100|0}% DoD${tempDerateLabel}${rateDerateLabel}</div>
   </div>`;
+
+  // Temperature derating card (only when a temp was entered)
+  if (tempEntered) {
+    const chemLabels = { lead: 'Lead-acid/AGM', lifepo4: 'LiFePO4', liion: 'Li-ion' };
+    const pctLoss = ((1 - tDerate) * 100).toFixed(0);
+    const tempDisp = tempUnit === 'F' ? tempRaw + ' °F' : tempC.toFixed(1) + ' °C';
+    const derateClass = tDerate < 0.7 ? 'bad' : tDerate < 0.85 ? 'warn' : '';
+    html += `<div class="stat">
+      <div class="stat-label">Temp derating</div>
+      <div class="stat-val ${derateClass}">×${tDerate.toFixed(2)}</div>
+      <div class="stat-sub">${chemLabels[batChem]} @ ${tempDisp} — ${pctLoss}% capacity loss</div>
+    </div>`;
+  }
+
+  // Rate derating card (only when meaningful, i.e. > 2% loss)
+  if (cRate > 0 && rDerate < 0.98) {
+    const chemLabels = { lead: 'Lead-acid/AGM', lifepo4: 'LiFePO4', liion: 'Li-ion' };
+    const rPctLoss = ((1 - rDerate) * 100).toFixed(0);
+    const cRateStr = cRate >= 1 ? 'C/' + (1/cRate).toFixed(1) : 'C/' + Math.round(1/cRate);
+    const rClass = rDerate < 0.75 ? 'bad' : rDerate < 0.90 ? 'warn' : '';
+    html += `<div class="stat">
+      <div class="stat-label">Rate derating</div>
+      <div class="stat-val ${rClass}">×${rDerate.toFixed(2)}</div>
+      <div class="stat-sub">${chemLabels[batChem]} at ${cRateStr} discharge — ${rPctLoss}% capacity loss</div>
+    </div>`;
+  }
 
   // Total load
   html += `<div class="stat">
@@ -537,6 +706,120 @@ function calculate() {
   }
 
   out.innerHTML = html;
+}
+
+// ── Print report ─────────────────────────────────────────────────────────────
+function printReport() {
+  const batCap   = parseFloat(document.getElementById('batCap').value);
+  const batUnit  = document.getElementById('batUnit').value;
+  const batV     = parseFloat(document.getElementById('batV').value) || 12.6;
+  const dod      = parseFloat(document.getElementById('dod').value) / 100;
+  const batChem  = document.getElementById('batChem').value;
+  const tempRaw  = parseFloat(document.getElementById('tempC').value);
+  const tempUnit = document.getElementById('tempUnit').value;
+  const tempC    = isNaN(tempRaw) ? 25 : (tempUnit === 'F' ? (tempRaw - 32) * 5/9 : tempRaw);
+  const tDerate  = tempDerate(batChem, tempC);
+  const tempEntered = !isNaN(tempRaw);
+  const solW     = parseFloat(document.getElementById('solW').value) || 0;
+  const solDer   = parseFloat(document.getElementById('solDerate').value) / 100;
+  const solHours = parseFloat(document.getElementById('solHours').value) || 0;
+  const radioTx  = parseFloat(document.getElementById('radioTx').value) || 0;
+  const radioRx  = parseFloat(document.getElementById('radioRx').value) || 0;
+  const txDuty   = parseFloat(document.getElementById('txDuty').value) / 100;
+  const radioHrs = parseFloat(document.getElementById('radioHrs').value) || 0;
+  const radioV   = parseFloat(document.getElementById('radioV').value) || 13.8;
+  const laptopW  = parseFloat(document.getElementById('laptopW').value) || 0;
+  const laptopH  = parseFloat(document.getElementById('laptopHrs').value) || 0;
+  const misc     = getMiscLoads();
+  if (isNaN(batCap) || batCap <= 0) { alert('Enter battery capacity first.'); return; }
+
+  const batWh      = batUnit === 'Ah' ? batCap * batV : batCap;
+  const batCapAh   = batUnit === 'Ah' ? batCap : batCap / batV;
+  const usableWh   = batWh * dod * tDerate;
+  const solEffW    = solW * solDer;
+  const solWhDay   = solEffW * solHours;
+  const solAh      = solWhDay / batV;
+  const radioAvgW  = radioHrs > 0 ? (radioTx*txDuty + radioRx*(1-txDuty)) * radioV * (radioHrs/24) : (radioTx*txDuty + radioRx*(1-txDuty)) * radioV;
+  const laptopAvgW = laptopH > 0 ? laptopW * (laptopH / 24) : 0;
+  const miscTotalW = misc.reduce((s, m) => s + m.amps * batV, 0);
+  const totalAvgW  = radioAvgW + laptopAvgW + miscTotalW;
+  const totalAvgA  = totalAvgW / batV;
+  const rDerate    = rateDerate(batChem, batCapAh, totalAvgA);
+  const cRate      = totalAvgA > 0 && batCapAh > 0 ? totalAvgA / batCapAh : 0;
+  const usableWhR  = usableWh * rDerate;
+  const usableAhR  = usableWhR / batV;
+  const solAvgW    = solWhDay / 24;
+  const netAvgW    = Math.max(0, totalAvgW - solAvgW);
+  const netAvgA    = netAvgW / batV;
+  const runtimeHr  = totalAvgA > 0 ? usableAhR / totalAvgA : Infinity;
+  const runtimeSolHr = netAvgA > 0 ? usableAhR / netAvgA : Infinity;
+  const solSuff    = solAvgW >= totalAvgW && solW > 0;
+  const chemLabel  = { lead: 'Lead-acid / AGM / SLA', lifepo4: 'LiFePO4', liion: 'Li-ion' }[batChem];
+  const tempDisp   = !tempEntered ? 'Standard (25 °C)' : (tempUnit === 'F' ? tempRaw + ' °F' : tempC.toFixed(1) + ' °C');
+
+  function row(l, v, n) { return '<tr><td class="rl">' + l + '</td><td class="rv">' + v + '</td><td class="rn">' + (n||'') + '</td></tr>'; }
+
+  const loadRows = [];
+  if (radioAvgW > 0) loadRows.push({ label: 'Radio (TX ' + Math.round(txDuty*100) + '% · ' + radioHrs.toFixed(1) + ' h/day)', w: radioAvgW, a: radioAvgW/batV });
+  if (laptopAvgW > 0) loadRows.push({ label: 'Laptop (' + laptopH.toFixed(1) + ' h/day)', w: laptopAvgW, a: laptopAvgW/batV });
+  misc.forEach(m => loadRows.push({ label: m.label, w: m.amps*batV, a: m.amps }));
+  const loadTR = loadRows.map(r => '<tr><td class="rl">' + r.label + '</td><td class="rv">' + r.w.toFixed(1) + ' W</td><td class="rv">' + r.a.toFixed(2) + ' A</td><td class="rn">' + (totalAvgW > 0 ? ((r.w/totalAvgW)*100).toFixed(1) + '%' : '') + '</td></tr>').join('');
+
+  const statCard = (label, val, sub, cls) => '<div class="stat"><div class="stat-label">' + label + '</div><div class="stat-val ' + (cls||'') + '">' + val + '</div><div class="stat-sub">' + sub + '</div></div>';
+  const stats = [
+    statCard('Usable capacity', usableAhR.toFixed(1) + ' Ah', usableWhR.toFixed(0) + ' Wh at ' + (dod*100|0) + '% DoD'),
+    statCard('Total avg load', totalAvgW.toFixed(1) + ' W', totalAvgA.toFixed(2) + ' A avg'),
+    statCard('Runtime (no solar)', totalAvgA > 0 ? fmtHours(runtimeHr) : '—', 'battery only', runtimeHr < 4 ? 'bad' : runtimeHr < 12 ? 'warn' : ''),
+    solW > 0 ? statCard('Runtime (with solar)', solSuff ? 'Indefinite' : fmtHours(runtimeSolHr), solSuff ? 'Solar covers full load' : 'net from battery') : '',
+    tempEntered ? statCard('Temp derating', '×' + tDerate.toFixed(2), tempDisp + ' — ' + ((1-tDerate)*100).toFixed(0) + '% loss', tDerate < 0.7 ? 'bad' : tDerate < 0.85 ? 'warn' : '') : '',
+    rDerate < 0.98 && cRate > 0 ? statCard('Rate derating', '×' + rDerate.toFixed(2), (cRate >= 1 ? 'C/'+(1/cRate).toFixed(1) : 'C/'+Math.round(1/cRate)) + ' — ' + ((1-rDerate)*100).toFixed(0) + '% loss', rDerate < 0.75 ? 'bad' : rDerate < 0.90 ? 'warn' : '') : ''
+  ].join('');
+
+  const now = new Date().toLocaleString();
+  const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Power Budget Report</title>' +
+    '<style>*{box-sizing:border-box;margin:0;padding:0;}' +
+    'body{font-family:monospace;font-size:13px;color:#111;background:#fff;padding:20px 28px;}' +
+    'h1{font-size:17px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;}' +
+    '.meta{color:#888;font-size:11px;margin-bottom:16px;}' +
+    '.sec{margin-bottom:16px;}.sec-title{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#888;border-bottom:1px solid #ccc;padding-bottom:3px;margin-bottom:8px;}' +
+    'table{width:100%;border-collapse:collapse;}.rl{color:#555;width:200px;padding:2px 0;vertical-align:top;}.rv{font-weight:700;padding:2px 12px 2px 0;white-space:nowrap;}.rn{color:#888;font-size:11px;}' +
+    '.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}' +
+    '.stat{border:1px solid #ccc;border-radius:5px;padding:7px 10px;}' +
+    '.stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:3px;}' +
+    '.stat-val{font-size:18px;font-weight:700;}.stat-sub{font-size:11px;color:#888;margin-top:2px;}' +
+    '.warn{color:#b45309;}.bad{color:#b91c1c;}' +
+    '@media print{body{padding:8px 14px;}}' +
+    '</style></head><body>' +
+    '<h1>Power Budget Report</h1><div class="meta">Generated ' + now + '</div>' +
+    '<div class="sec"><div class="sec-title">Battery</div><table>' +
+      row('Capacity', batCap + ' ' + batUnit, batUnit === 'Ah' ? batWh.toFixed(0) + ' Wh total' : '') +
+      row('Voltage', batV + ' V', '') +
+      row('Chemistry', chemLabel, '') +
+      row('Depth of discharge', (dod*100|0) + '%', '') +
+      row('Temperature', tempDisp, tempEntered ? '×' + tDerate.toFixed(2) + ' capacity factor' : '') +
+    '</table></div>' +
+    (solW > 0 ? '<div class="sec"><div class="sec-title">Solar</div><table>' +
+      row('Panel wattage', solW + ' W rated', solEffW.toFixed(0) + ' W effective') +
+      row('Derating / sun hours', (solDer*100|0) + '% / ' + solHours + ' h/day', '') +
+      row('Solar yield', solWhDay.toFixed(0) + ' Wh/day', solAh.toFixed(1) + ' Ah/day') +
+    '</table></div>' : '') +
+    '<div class="sec"><div class="sec-title">Loads</div><table>' +
+    '<thead><tr>' +
+    '<th style="text-align:left;font-weight:normal;color:#888;font-size:11px" class="rl">Load</th>' +
+    '<th style="text-align:left;font-weight:normal;color:#888;font-size:11px" class="rv">Avg W</th>' +
+    '<th style="text-align:left;font-weight:normal;color:#888;font-size:11px" class="rv">Avg A</th>' +
+    '<th style="text-align:left;font-weight:normal;color:#888;font-size:11px" class="rn">%</th>' +
+    '</tr></thead><tbody>' + loadTR + '</tbody>' +
+    '<tfoot><tr style="border-top:1px solid #ccc;font-weight:700"><td class="rl">Total</td>' +
+    '<td class="rv">' + totalAvgW.toFixed(1) + ' W</td><td class="rv">' + totalAvgA.toFixed(2) + ' A</td><td></td></tr></tfoot>' +
+    '</table></div>' +
+    '<div class="sec"><div class="sec-title">Results</div><div class="grid">' + stats + '</div></div>' +
+    '<scr' + 'ipt>window.onload=function(){window.print();}<\/scr' + 'ipt>' +
+    '</body></html>';
+
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
 }
 
 // ── Initial state ─────────────────────────────────────────────────────────────

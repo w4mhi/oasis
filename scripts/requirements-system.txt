@@ -2,3 +2,8 @@
 # These are installed via package manager, not pip.
 # Map tiles are served from a pre-built MBTiles file placed in maps/.
 # No build-time tools are required on the Pi or prep machine.
+#
+# Raspberry Pi / Debian — installed automatically by setup-server.py on Linux:
+#   python3-sqlite3   — Python sqlite3 stdlib module (not always present on minimal Pi OS)
+#   fonts-noto-color-emoji
+#   fonts-noto-mono

@@ -66,11 +66,65 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 }
 /* Callsign label above marker */
 .call-label{
-  font-family:var(--mono);font-size:10px;font-weight:700;
+  font-family:var(--mono);font-size:12px;font-weight:700;
   color:#e8f0f8;
   text-shadow:0 0 3px #0d1117,0 0 3px #0d1117,-1px -1px 0 #0d1117,1px -1px 0 #0d1117,-1px 1px 0 #0d1117,1px 1px 0 #0d1117;
   white-space:nowrap;pointer-events:none;line-height:1;
 }
+/* Track controls */
+#trackWindow{
+  background:var(--bg);border:1px solid var(--border);color:var(--text);
+  font-family:var(--mono);font-size:var(--fs-small);padding:3px 6px;border-radius:4px;cursor:pointer;
+}
+#trackWindow:focus{outline:none;border-color:var(--accent-dim);}
+#clearTrackBtn{display:none;}
+.track-sep{color:var(--border);font-size:var(--fs-small);}
+#trackMsg{font-size:var(--fs-small);color:#00c8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;display:none;}
+#autoFlyBtn{opacity:.45;transition:opacity .2s;white-space:nowrap;}
+#autoFlyBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
+/* Track popup link */
+.pop-track-btn{
+  display:block;margin-top:6px;padding-top:5px;
+  font-size:var(--fs-small);color:var(--blue);cursor:pointer;background:none;border:none;
+  font-family:var(--mono);text-align:left;padding-left:0;width:100%;
+}
+.pop-track-btn:hover{color:var(--accent);}
+/* Pulse glow for newly heard stations — box-shadow on the canvas, no wrapper div needed */
+@keyframes aprs-pulse{
+  0%  {box-shadow:0 0 0 0 rgba(255,180,84,.85);}
+  75% {box-shadow:0 0 0 14px rgba(255,180,84,.15);}
+  100%{box-shadow:0 0 0 16px rgba(255,180,84,0);}
+}
+.aprs-marker.is-new{
+  animation:aprs-pulse 2.5s ease-out 4;
+  border-radius:2px;
+}
+/* New-stations badge — moved to recent panel */
+/* Latest-station link — moved to recent panel */
+/* Recent-heard panel */
+#recent-panel{
+  position:fixed;top:54px;right:10px;z-index:200;
+  background:var(--panel);border:1px solid var(--border);border-radius:7px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+#recent-header{
+  display:flex;align-items:center;gap:.5rem;padding:6px 10px;
+  cursor:pointer;user-select:none;border-radius:7px;
+}
+#recent-header:hover{background:var(--panel-2);}
+#recent-arrow{font-size:10px;color:var(--text-dim);transition:transform .2s;flex-shrink:0;}
+#recent-panel.collapsed #recent-arrow{transform:rotate(-90deg);}
+#recent-count{color:var(--amber);font-weight:700;flex:1;white-space:nowrap;}
+#recent-body{border-top:1px solid var(--border);padding:4px 0;max-height:260px;overflow-y:auto;}
+#recent-panel.collapsed #recent-body{display:none;}
+.recent-row{
+  display:flex;align-items:center;gap:.4rem;
+  padding:4px 10px;cursor:pointer;white-space:nowrap;
+}
+.recent-row:hover{background:var(--panel-2);}
+.recent-call{color:var(--accent);font-weight:700;}
+.recent-age{color:var(--text-dim);font-size:var(--fs-micro);margin-left:auto;}
 </style>
 </head>
 <body>
@@ -88,11 +142,33 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
     <option value="1440">Last 24 hrs</option>
     <option value="0" selected>All</option>
   </select>
+  <span class="track-sep" style="margin-left:.75rem">|</span>
+  <span style="font-size:var(--fs-small);color:var(--text-dim);margin-left:.75rem;white-space:nowrap">Track:</span>
+  <select id="trackWindow" style="margin-left:.35rem;" onchange="if(activeTrack) showTrack(activeTrack)">
+    <option value="60">1 h</option>
+    <option value="240">4 h</option>
+    <option value="480">8 h</option>
+    <option value="1440">24 h</option>
+    <option value="10080">7 d</option>
+    <option value="0">All</option>
+  </select>
+  <button id="clearTrackBtn" class="sbtn" onclick="clearTrack()" style="margin-left:.35rem;">✕ Track</button>
+  <span id="trackMsg"></span>
+  <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">✈ Auto-fly</button>
   <button id="refreshBtn" class="sbtn" onclick="fetchStations()">Refresh</button>
   <a href="/" class="home-link">⌂ HOME</a>
 </div>
 
 <div id="map"></div>
+
+<!-- Recent-heard panel (top-right) -->
+<div id="recent-panel" class="collapsed">
+  <div id="recent-header" onclick="toggleRecentPanel()">
+    <span id="recent-arrow">▾</span>
+    <span id="recent-count">0 heard</span>
+  </div>
+  <div id="recent-body"></div>
+</div>
 
 <script src="/map-assets/maplibre-gl.js"></script>
 <script>
@@ -288,7 +364,7 @@ const map = new maplibregl.Map({
   attributionControl: false
 });
 
-map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
+map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-left');
 
 // ── Station markers ──────────────────────────────────────────────────────────
 let markers = [];
@@ -323,10 +399,15 @@ function buildPopup(s) {
   if (s.alt_m && s.alt_m > 0) {
     html += '<div class="pop-row"><span class="pop-lbl">Alt</span><span class="pop-val">' + Math.round(s.alt_m * 3.28084) + ' ft</span></div>';
   }
+  if (s.lat != null && s.lon != null) {
+    html += '<div class="pop-row"><span class="pop-lbl">Lat / Lon</span><span class="pop-val">' + s.lat.toFixed(4) + ', ' + s.lon.toFixed(4) + '</span></div>';
+  }
   html += '<div class="pop-row"><span class="pop-lbl">Via</span><span class="pop-val">' + (s.via || 'direct') + '</span></div>';
   if (s.comment) {
     html += '<div class="pop-comment">' + s.comment.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
   }
+  html += '<button class="pop-track-btn" onclick="showTrack(\'' + s.callsign + '\')">' +
+          (activeTrack === s.callsign ? '✕ Clear track' : '⟳ Show track') + '</button>';
   return html;
 }
 
@@ -335,12 +416,15 @@ function plotStations(stations) {
   stations.forEach(s => {
     if (s.lat == null || s.lon == null) return;
 
-    const el = makeMarkerEl(s.sym_table, s.sym_code);
+    const isNew = _newCallsigns.has(s.callsign);
+    const markerEl = makeMarkerEl(s.sym_table, s.sym_code);
+    // Pulse glow via CSS box-shadow animation — no wrapper div, no layout impact
+    if (isNew) markerEl.classList.add('is-new');
 
     const popup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '260px' })
       .setHTML(buildPopup(s));
 
-    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+    const marker = new maplibregl.Marker({ element: markerEl, anchor: 'top-left', offset: [-SPRITE_CELL / 2, -SPRITE_CELL / 2] })
       .setLngLat([s.lon, s.lat])
       .setPopup(popup)
       .addTo(map);
@@ -366,6 +450,9 @@ const REFRESH_SEC = 15;
 let countdown = REFRESH_SEC;
 let timer = null;
 let allStations = []; // full unfiltered station list
+let _prevHeard = {};  // callsign → last_heard string from previous fetch
+let _newCallsigns = new Set(); // callsigns new/updated in latest fetch
+let _latestStation = null; // station object with most recent last_heard
 
 function applyFilter() {
   const minutes = parseInt(document.getElementById('filterSel').value);
@@ -415,8 +502,39 @@ async function fetchStations() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'API error');
     allStations = data.stations;
+    // ── Detect new/updated stations (B + A) ──────────────────────────────
+    _newCallsigns = new Set();
+    allStations.forEach(s => {
+      if (!_prevHeard[s.callsign] || _prevHeard[s.callsign] !== s.last_heard) {
+        _newCallsigns.add(s.callsign);
+      }
+    });
+    // Update previous-heard map for next cycle
+    const nextPrev = {};
+    allStations.forEach(s => { nextPrev[s.callsign] = s.last_heard; });
+    _prevHeard = nextPrev;
+    // ── Latest station + recent-heard panel ──────────────────────────────
+    _latestStation = allStations.reduce((best, s) => {
+      if (!s.last_heard) return best;
+      if (!best || s.last_heard > best.last_heard) return s;
+      return best;
+    }, null);
+    const newList = allStations.filter(s => _newCallsigns.has(s.callsign));
+    updateRecentPanel(newList);
     applyFilter();
     setStatus('ok', 'Updated ' + new Date().toLocaleTimeString());
+    // Refresh active track data (updates trail + auto-fly if enabled)
+    if (activeTrack) _loadTrack(activeTrack);
+    // Handle ?focus=CALLSIGN on first load only
+    const focusParam = new URLSearchParams(location.search).get('focus');
+    if (focusParam && !_focusHandled) {
+      _focusHandled = true;
+      const target = allStations.find(s => s.callsign.toUpperCase() === focusParam.toUpperCase());
+      if (target) {
+        map.flyTo({ center: [target.lon, target.lat], zoom: 12, speed: 1.6 });
+        showTrack(target.callsign);
+      }
+    }
   } catch (e) {
     setStatus('err', 'Error: ' + e.message);
   }
@@ -424,7 +542,143 @@ async function fetchStations() {
 }
 
 // Start after config + map both load
-loadConfig().then(() => { map.on('load', () => fetchStations()); });
+loadConfig().then(() => {
+  map.on('load', () => {
+    // ── Track source + layers ──────────────────────────────────────────────
+    map.addSource('aprs-track', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'aprs-track-line', type: 'line', source: 'aprs-track',
+      filter: ['==', '$type', 'LineString'],
+      paint: { 'line-color': '#00c8ff', 'line-width': 2, 'line-opacity': 0.85 }
+    });
+    map.addLayer({
+      id: 'aprs-track-dots', type: 'circle', source: 'aprs-track',
+      filter: ['all', ['==', '$type', 'Point'], ['!=', 'latest', true]],
+      paint: {
+        'circle-radius': 4, 'circle-color': '#00c8ff',
+        'circle-stroke-width': 1.5, 'circle-stroke-color': '#080818'
+      }
+    });
+    map.addLayer({
+      id: 'aprs-track-latest', type: 'circle', source: 'aprs-track',
+      filter: ['all', ['==', '$type', 'Point'], ['==', 'latest', true]],
+      paint: {
+        'circle-radius': 9, 'circle-color': '#ffffff',
+        'circle-stroke-width': 2.5, 'circle-stroke-color': '#00c8ff'
+      }
+    });
+    fetchStations();
+  });
+});
+
+// ── Track rendering ──────────────────────────────────────────────────────────
+let activeTrack = null;
+let autoFly = false;
+let _focusHandled = false;
+
+function toggleAutoFly() {
+  autoFly = !autoFly;
+  document.getElementById('autoFlyBtn').classList.toggle('on', autoFly);
+}
+
+function flyToLatest() {
+  if (!_latestStation) return;
+  map.flyTo({ center: [_latestStation.lon, _latestStation.lat], zoom: Math.max(map.getZoom(), 11), speed: 1.4, essential: true });
+}
+
+function toggleRecentPanel() {
+  document.getElementById('recent-panel').classList.toggle('collapsed');
+}
+
+function updateRecentPanel(newStations) {
+  const count = document.getElementById('recent-count');
+  const body  = document.getElementById('recent-body');
+  count.textContent = newStations.length + ' heard';
+  if (!newStations.length) {
+    body.innerHTML = '<div style="padding:6px 10px;color:var(--text-dim)">None this cycle</div>';
+    return;
+  }
+  // Sort newest first
+  const sorted = [...newStations].sort((a, b) =>
+    (b.last_heard || '').localeCompare(a.last_heard || ''));
+  body.innerHTML = sorted.map(s => {
+    const ageSec = s.last_heard ? Math.round((Date.now() - new Date(s.last_heard)) / 1000) : null;
+    const ageStr = ageSec === null ? '' : ageSec < 60 ? ageSec + 's ago' : Math.round(ageSec/60) + 'm ago';
+    return `<div class="recent-row" onclick="recentRowClick('${s.callsign}')">
+      <span class="recent-call">${s.callsign}</span>
+      <span class="recent-age">${ageStr}</span>
+    </div>`;
+  }).join('');
+  // Auto-expand panel when there are new stations
+  document.getElementById('recent-panel').classList.remove('collapsed');
+}
+
+function recentRowClick(callsign) {
+  const s = allStations.find(x => x.callsign === callsign);
+  if (s) map.flyTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 11), speed: 1.4, essential: true });
+  showTrack(callsign);
+}
+
+async function showTrack(callsign) {
+  // Toggle off if clicking the already-active track
+  if (activeTrack === callsign) { clearTrack(); return; }
+  activeTrack = callsign;
+  document.getElementById('clearTrackBtn').style.display = '';
+  await _loadTrack(callsign);
+}
+
+async function _loadTrack(callsign) {
+  const minutes = parseInt(document.getElementById('trackWindow').value);
+  try {
+    const qs = new URLSearchParams({ callsign, minutes });
+    const res = await fetch('/api/aprs/track?' + qs, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'API error');
+    if (data.count < 2) {
+      setTrackMsg(callsign + ': only ' + data.count + ' pt(s)');
+      clearTrack();
+      return;
+    }
+    const coords = data.points.map(p => [p.lon, p.lat]);
+    const last = data.points[data.points.length - 1];
+    const features = [
+      { type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} },
+      ...data.points.map((p, i) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+        properties: { timestamp: p.timestamp, speed_mph: p.speed_mph,
+                      latest: i === data.points.length - 1 }
+      }))
+    ];
+    map.getSource('aprs-track').setData({ type: 'FeatureCollection', features });
+    if (autoFly && last) {
+      map.flyTo({ center: [last.lon, last.lat], zoom: Math.max(map.getZoom(), 12), speed: 1.4, essential: true });
+    }
+    setTrackMsg(callsign + ' · ' + data.count + ' pts');
+  } catch (e) {
+    setTrackMsg('error: ' + e.message);
+    clearTrack();
+  }
+}
+
+function setTrackMsg(msg) {
+  const el = document.getElementById('trackMsg');
+  el.textContent = msg;
+  el.style.display = msg ? '' : 'none';
+}
+
+function clearTrack() {
+  activeTrack = null;
+  document.getElementById('clearTrackBtn').style.display = 'none';
+  setTrackMsg('');
+  if (map.getSource('aprs-track')) {
+    map.getSource('aprs-track').setData({ type: 'FeatureCollection', features: [] });
+  }
+}
 </script>
 </body>
 </html>

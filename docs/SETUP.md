@@ -730,3 +730,31 @@ The dashboard, ICS forms, FCC lookup, **offline maps**, calculators, and the ref
 | RTL-SDR packages | `python3 scripts/create-oasis-offline.py` | Run anytime — only downloads if a newer version is in Debian Bookworm |
 | webssh (ttyd) packages | `python3 scripts/create-oasis-offline.py` | Run anytime — only downloads if a newer version is in Debian Bookworm |
 | Offline wheel set *(maintainers)* | `python3 scripts/create-oasis-offline.py` | Run anytime — updates only if newer packages are available |
+
+---
+
+## Known Limitations
+
+These are by design or accepted tradeoffs, documented here for transparency.
+
+- **No authentication.** Any device on the local network can access OASIS,
+  including the file browser. This is intentional for emergency mesh network
+  deployments where speed matters more than access control.
+
+- **No HTTPS.** The server runs plain HTTP. Appropriate for trusted local
+  networks; not recommended for public or internet-facing deployments.
+
+- **FCC grid squares are ZIP-centroid derived.** The FCC license database
+  contains ZIP codes, not GPS coordinates. Grid squares are computed from ZIP
+  centroids and may be several miles from the operator's actual location.
+
+- **GrayWolf and Kiwix are external services.** OASIS links to them but does
+  not manage their installation beyond the provided scripts, and they show as
+  DOWN on the dashboard when not running. (The map tile server is **not**
+  external — it is part of the OASIS Flask app and works wherever OASIS runs,
+  including the USB bundle.)
+
+- **USB bundle runs on Windows, Linux, and macOS.** Windows uses the embedded
+  Python bundled by `scripts/create-oasis-offline.py` (AMD64); Linux and macOS bootstrap
+  from the vendored wheels using system `python3` on first run. Only the
+  Windows embedded runtime is AMD64-specific.
