@@ -1,4 +1,7 @@
-﻿Operation,FT-2DR,FT-5DR,VX-6R,FT-60R,FTM-500DR,FT-817ND,FT-857D,FT-8800R/8900R,ID-51,IC-705,TH D-75,TM D-710,TM-V71A
+Operation,FT-2DR,FT-5DR,VX-6R,FT-60R,FTM-500DR,FT-817ND,FT-857D,FT-8800R/8900R,ID-51,IC-705,TH D-75,TM D-710,TM-V71A
+Brand,Yaesu,Yaesu,Yaesu,Yaesu,Yaesu,Yaesu,Yaesu,Yaesu,Icom,Icom,Kenwood,Kenwood,Kenwood
+Color,#00d98b,#00d98b,#00d98b,#00d98b,#00d98b,#00d98b,#00d98b,#00d98b,#4db8ff,#4db8ff,#ffb454,#ffb454,#ffb454
+FormFactor,HT,HT,HT,HT,Mobile,Portable,Mobile,Mobile,HT,Portable,HT,Mobile,Mobile
 Settings,,,,,,,,,,,,,
 Menu,[DISP][long press],[F MENU][long press],[F/W]+[0(SET)],[F/W]+[0(SET)],[FUNC](long press)/[FUNC]-->Quick Menu,[F] long press,[FUNC] long press,"[SET] - Center, unlabled button on panel-->DIAL to desired setting",[MENU],,,,
 SQL Level,[SQL]+Dial-->[BACK](exit),[SQL]+Dial-->[BACK](exit),[F/W]+MONI(left side)-->DIAL-->PTT(exit) / (Menu:59),DIAL BASE,[MAIN]/[SUB]+Dial,SQL Button (second dial on VOLUME),SQL Button (second dial on VOLUME),Inner ring on lower volume dials,[SQL]+Dial,,,,
@@ -12,7 +15,7 @@ DIAL(select memory for secondary)-->[V/M(DW)MT](1 sec)=>DW
 [V/M(DW)MT](exit)","Select VFO [V/M]-->[F/W]-->[V/M(PRI)] to enable
 [F/W]-->[V/M(PRI)] to disable
 Select Memory [V/M]-->[F/W]-->[V/M(PRI)] to enable
-[F/W]-->[V/M(PRI)] to disable",N/A ([DISP]-->Scope,Setup VFO-B/Setup VFO-A                           [FUNC]-->SEL (rotate) until DW over[C],Setup VFO-B/Setup VFO-A                           [FUNC]-->SEL (rotate) until DW over[C],Set desire frequency or memory channel-->[HM] long press-->VFO Priority Mode (aka Dual Watch)-->Exit[V/M],[MAIN/DUAL](long press),,,,
+[F/W]-->[V/M(PRI)] to disable",N/A ([DISP]-->Scope,Setup VFO-B/Setup VFO-A [FUNC]-->SEL (rotate) until DW over[C],Setup VFO-B/Setup VFO-A [FUNC]-->SEL (rotate) until DW over[C],Set desire frequency or memory channel-->[HM] long press-->VFO Priority Mode (aka Dual Watch)-->Exit[V/M],[MAIN/DUAL](long press),,,,
 V/M,V/M,V/M,[V/M],[V/M],[V/M],[V/M],[V/M] (side on the dial),[V/M],[V/MHZ],,,,
 Display Freq/Name,[A/B][long press],[A/B][long press],Press Moni Button on the side,Select Memory [V/M]-->[BAND],"By default on the screen, above the frequency.",[F]-->SEL (rotate) until TAG over[C],[FUNC]-->SEL (rotate) until TAG over[C],[LOW] long press,TBD,,,,
 Channel Step,[DISP][long press]+[CONFIG]+Dial:18,[F MENU][long press]+[CONFIG]+Dial:18,[F/W]+[1(STEP)]-->DIAL-->PTT(exit) / (Menu:61),[F/W]+[0(SET)]-->(Menu: 49)-->DIAL(select step frequency)-->PTT(exit),[FUNC](long press)+Dial:33,[F] (long press)+Dial:06/30/47 (AM/FM/SSB),[FUNC] (long press)+Dial:06/52/82 (AM/FM/SSB),(Menu: 37) Press upper dial; DIAL-->Exit [SET] [SET],[QUICK][TS],,,,
@@ -27,31 +30,32 @@ Home Channel,[F/MW][HOME],[F MENU][HOME],[F/W]+[HW/RV(EMG)],[F/W]+[0(SET)]-->(Me
 Home Freq (change on a custom freq),[F/MW][long press)+###+[H.WRITE],[V/M](long press)+###+[H.WRITE],[F/W]+[HW/RV(EMG)],[F/W]+[HS/RV(EMG)],[FUNC](long press)+Dial:20-->[FUNC][EDIT][FUNC],[FUNC]-->SEL (rotate) until MW over[A]-->[MW] (press)-->Memory Chck-->[HOME](long press),[FUNC]-->SEL (rotate) until MW over[A]-->[MW] (press)-->Memory Check-->[HOME](long press),TBD,[QUICK][Home CH Set],,,,
 Total Time,[DISP][long press]+[CONFIG]+Dial:20,[F MENU][long press]+[CONFIG]+Dial:21,[F/W]+[0(SET)]+Dial:67,[F/W]+[0(SET)]-->(Menu: 51)-->DIAL(select total time)-->PTT(exit),[FUNC](long press)+Dial:13,[F] (long press)+Dial:49,[FUNC] (long press)+Dial:84,(Menu: 41) - Press upper dial; select time-->Exit [SET] [SET],,,,,
 Weather Alert,[DISP][long press]+[SIGNALING]+Dial:14,[F MENU][long press]+[SIGNALING]+Dial:15,[F/W]+[0(SET)]+Dial:73,[F/W]+[0(SET)]-->(Menu: 56)-->DIAL(ALT.ON)-->PTT(exit),[FUNC](long press)+Dial:51,N/A,N/A,N/A,[QUICK][Weather Alert],,,,
-Time Setting,[DISP][long press]+[CONFIG]+Dial:19,[F MENU][long press]+[CONFIG]+Dial:20,,TBD,[FUNC](long press)+Dial:30,N/A,N/A,N/A,[MENU][Time Set],,,,
-Time Zone,[DISP][long press]+[APRS]+Dial:28,[F MENU][long press]+[APRS]+Dial:28,,TBD,[FUNC](long press)+Dial:32,N/A,N/A,N/A,,,,,
-APRS GPS,[DISP][long press]+[APRS]+Dial:20,[F MENU][long press]+[APRS]+Dial:20,,TBD,[FUNC](long press)+Dial:85,N/A,N/A,N/A,[MENU][GPS],,,,
-APRS Modem,[DISP][long press]+[APRS]+Dial:04,[F MENU][long press]+[APRS]+Dial:4,,TBD,[FUNC](long press)+Dial:76,N/A,N/A,N/A,[MENU][GPS][GPS TX Mode],,,,
-APRS Beacon Tx,[DISP][long press]+[APRS]+Dial:16,[F MENU][long press]+[APRS]+Dial:16,,TBD,[FUNC](long press)+Dial:85,N/A,N/A,N/A,[MENU][GPS][GPS Auto TX],,,,
-APRS Beacon Interval,[DISP][long press]+[APRS]+Dial:14,[F MENU][long press]+[APRS]+Dial:14,,TBD,[FUNC](long press)+Dial:85,N/A,N/A,N/A,[MENU][GPS][GPS Auto TX],,,,
-APRS Beacon Type,[DISP][long press]+[APRS]+Dial:27,[F MENU][long press]+[APRS]+Dial:27,,TBD,[FUNC](long press)+Dial:85,N/A,N/A,N/A,N/A,,,,
-APRS Callsign,[DISP][long press]+[APRS]+Dial:23,[F MENU][long press]+[APRS]+Dial:23,,TBD,[FUNC](long press)+Dial:93,N/A,N/A,N/A,[MENU][Call Sign],,,,
+Time Setting,[DISP][long press]+[CONFIG]+Dial:19,[F MENU][long press]+[CONFIG]+Dial:20,,N/A,[FUNC](long press)+Dial:30,N/A,N/A,N/A,[MENU][Time Set],,,,
+Time Zone,[DISP][long press]+[APRS]+Dial:28,[F MENU][long press]+[APRS]+Dial:28,,N/A,[FUNC](long press)+Dial:32,N/A,N/A,N/A,,,,,
+APRS GPS,[DISP][long press]+[APRS]+Dial:20,[F MENU][long press]+[APRS]+Dial:20,,N/A,[FUNC](long press)+Dial:85,N/A,N/A,N/A,[MENU][GPS],,,,
+APRS Modem,[DISP][long press]+[APRS]+Dial:04,[F MENU][long press]+[APRS]+Dial:4,,N/A,[FUNC](long press)+Dial:76,N/A,N/A,N/A,[MENU][GPS][GPS TX Mode],,,,
+APRS Beacon Tx,[DISP][long press]+[APRS]+Dial:16,[F MENU][long press]+[APRS]+Dial:16,,N/A,[FUNC](long press)+Dial:85,N/A,N/A,N/A,[MENU][GPS][GPS Auto TX],,,,
+APRS Beacon Interval,[DISP][long press]+[APRS]+Dial:14,[F MENU][long press]+[APRS]+Dial:14,,N/A,[FUNC](long press)+Dial:85,N/A,N/A,N/A,[MENU][GPS][GPS Auto TX],,,,
+APRS Beacon Type,[DISP][long press]+[APRS]+Dial:27,[F MENU][long press]+[APRS]+Dial:27,,N/A,[FUNC](long press)+Dial:85,N/A,N/A,N/A,N/A,,,,
+APRS Callsign,[DISP][long press]+[APRS]+Dial:23,[F MENU][long press]+[APRS]+Dial:23,,N/A,[FUNC](long press)+Dial:93,N/A,N/A,N/A,[MENU][Call Sign],,,,
 Extra,,,,,,,,,,,,,
-Scope,[F/MW][SCOPE],[F/MW][SCOPE],,TBD,[DSIP],[F] (long press)+Dial:42,[FUNC]-->SEL (rotate) until SCOP over [A],N/A,[QUICK][BAND-SCOPE](enter)/[V/MHZ/CLR](clear),,,,
-X-Band Repeater,,,,TBD,[GM]+[DISP]+[FUNC],N/A,N/A,N/A,N/A,,,,
-PMG (Primary Memory Group),,,,TBD,Navigate to Freq/Ch-->[PMG](long press),N/A,N/A,N/A,N/A,,,,
-Grid Menu/List Menu,,,,TBD,[BAND]+[FUNC]+[PWR],N/A,N/A,N/A,N/A,,,,
+Scope,[F/MW][SCOPE],[F/MW][SCOPE],,N/A,[DSIP],[F] (long press)+Dial:42,[FUNC]-->SEL (rotate) until SCOP over [A],N/A,[QUICK][BAND-SCOPE](enter)/[V/MHZ/CLR](clear),,,,
+X-Band Repeater,,,,N/A,[GM]+[DISP]+[FUNC],N/A,N/A,N/A,N/A,,,,
+PMG (Primary Memory Group),,,,N/A,Navigate to Freq/Ch-->[PMG](long press),N/A,N/A,N/A,N/A,,,,
+Grid Menu/List Menu,,,,N/A,[BAND]+[FUNC]+[PWR],N/A,N/A,N/A,N/A,,,,
 Reset Memory,,,,TBD,[FUNC](long press)+Dial:122,[V/M]+POWER,[V/M]+POWER,Radio Off-->[V/M]+Power On-->MEMORY RESET/HYPER RESET,N/A,,,,
 Reset Settings,,[F MENU][A/B]+POWER,[MODE(SP S)SQ TYP][V/M(DW)MT]+POWER,TBD,[FUNC](long press)+Dial:123 (APRS Reset),[F]+POWER,[FUNC]+POWER,Radio Off-->[V/M]+Power On-->SETMOD RESET,[MENU][Reset][Partial Reset],,,,
 Reset Factory Default,[BACK][DISP][BAND]+[PWR],[F MENU][A/B][BAND]+POWER,[MODE(SP S)SQ TYP][0(SET)][V/M(DW)MT]+POWER,TBD,[FUNC](long press)+Dial:127,[HOME]+POWER,[HOME]+POWER,Radio Off-->[V/M]+Power On-->ALL RESET,[MENU][Reset][All Reset],,,,
 Overview,,,,,,,,,,,,,
-Memories,,,,,,TBD,TBD,TBD,TBD,,,,
-Band Operation,"144MHz, 430MHz C4FM Digital / FM / AM (Air Band Receive)","144MHz, 430MHz C4FM Digital / FM / AM (Air Band Receive)",144/222/430 MHZ,144/430 MHZ,"144MHz, 430MHz C4FM Digital / FM / AM (Air Band Receive)",TBD,TBD,TBD,TBD,,,,
-Dual Capability,"Dual watch (V/V, U/U/, V/U), Dual Monitor (C4FM Digital/C4FM Digital)","Real Dual Band Operations (V+V, U+U, V+U, U+V) are available with two independent receivers","Dual watch (V/V, U/U/, V/U)",TBD,"True Dual Band Operation, C4FM/C4FM Digital D-D Dual Receive",TBD,TBD,TBD,TBD,,,,
-AM/FM,Yes,Yes,Yes,TBD,Yes,TBD,TBD,TBD,TBD,,,,
-Speaker,0.7W,1W,,TBD,9W Front Panel/3W Internal,TBD,TBD,TBD,TBD,,,,
-Bluetooth,N/A,Wireless Operation Capability with a Bluetooth® Headset,,TBD,Wireless Operation Capability with a Bluetooth® Headset,TBD,TBD,TBD,TBD,,,,
-GPS/APRS,1200/9600bps APRS® Data Communication,1200/9600bps APRS® Data Communication,,TBD,1200/9600bps APRS® Data Communication,TBD,TBD,TBD,TBD,,,,
-Battery,"2,200 mAh Li-Ion","2,200 mAh Li-Ion","1,400 mAh Li-Ion",TBD,N/A,TBD,TBD,TBD,TBD,,,,
-RX Amp,180mA,180mA,,TBD,TBD,TBD,300mA,TBD,200mA,,,,
-TX Amp,,,,TBD,TBD,TBD,TBD,TBD,2.5A,,,,
-TX Power,5W/2.5W/1.0W/0.3W,5W/2.5W/1.0W/0.3W,[2m-70cm][5W/2.5W/1.0W/0.3W]                                              [1.25m][1.5W/1.0W/0.5W/0.2W],TBD,50W/25W/5W,[SSB/CW/FM-5W][AM-1.5W],[160-6m][SSB/CW/FM-100W][AM-25W]        [2m][SSB/CW/FM-50W][AM-12.5W]            [70cm][SSB/CW/FM-20W][AM-5W]    ,TBD,5W/2.5W/1.0W/0.5W,,,,
+Memories,"900 regular (+50 scan-edge, 99 skip, 146 preset)","900 (24 banks; +50 scan-edge, 156 preset)",900 (24 banks),"1,000 regular (+5 home, 50 scan-edge, 10 WX)","1,104",200,200,"8800R: 1,054 (527/band); 8900R: 799","1,304 (incl. repeater/scan-edge/call)","500 regular (+25 scan-edge pairs, 4 call)","1,000 regular (30 groups; +100 scan, 1 priority)","1,000 (8-char names; +10 special)","1,000 (6-char names; +5 PM, 1 call)"
+Band Operation,TX: 2m/70cm | RX: 2m/70cm + Air Band,TX: 2m/70cm | RX: 2m/70cm + Air Band,TX/RX: 2m/1.25m/70cm,TX/RX: 2m/70cm,TX: 2m/70cm | RX: 2m/70cm + Air Band,TX: HF/6m/2m/70cm | RX: HF/6m/2m/70cm,TX: HF/6m/2m/70cm | RX: HF/6m/2m/70cm,8800R: TX/RX 2m/70cm + Air; 8900R: TX/RX 10m/6m/2m/70cm + Air,TX: 2m/70cm | RX: 2m/70cm + Air/Bcast,TX: HF/6m/2m/70cm | RX: HF/6m/2m/70cm + Air/Bcast,TX: 2m/1.25m/70cm | RX: 2m/1.25m/70cm + HF-UHF wideband (Band B),TX: 2m/70cm | RX: 2m/70cm + Air,TX: 2m/70cm | RX: 2m/70cm + Air
+Dual Capability,"Dual watch (V/V, U/U/, V/U), Dual Monitor (C4FM Digital/C4FM Digital)","Real Dual Band Operations (V+V, U+U, V+U, U+V) are available with two independent receivers","Dual watch (V/V, U/U/, V/U)",Monitor (Dual Watch w/ Priority Revert; single RX),"True Dual Band Operation, C4FM/C4FM Digital D-D Dual Receive",N/A (single receiver; no dual watch),N/A (single receiver; no dual watch),"Full (two radios in one; independent dual RX, separate vol/squelch; V+V, U+U, V+U)","Dual watch (V/V, U/U, V/U), independent vol/squelch; single RX - DV/DV, AM/AM, FM-N/FM-N & DV/FM-N pairs not supported",N/A (single receiver; no dual watch),Full (true dual receive incl. DV/DV; Band A + Band B independent),"Full (twin RX; V+V, U+U, V+U; separate vol/squelch)","Full (twin RX; V+V, U+U, V+U; separate vol/squelch)"
+Modes,FM/NFM,FM/NFM,FM/NFM (AM RX),FM/NFM (AM RX),FM/NFM,SSB/CW/AM/FM,SSB/CW/AM/FM,FM/NFM,FM/NFM (AM RX),SSB/CW/RTTY/AM/FM,FM/NFM TX; AM/SSB/CW/WFM RX,FM/NFM (AM RX),FM/NFM (AM RX)
+Digital Modes,C4FM,C4FM,N/A,N/A,C4FM,N/A,N/A,N/A,D-STAR,D-STAR,D-STAR,N/A,N/A
+Speaker,0.7W,1W,0.2W,0.4W,9W Front Panel/3W Internal,1W,2.5W,2W,TBD,0.53W,0.4W,2W,2W
+Bluetooth,N/A,Wireless Operation Capability with a Bluetooth® Headset,N/A,N/A,Wireless Operation Capability with a Bluetooth® Headset,N/A,N/A,N/A,N/A,Yes (built-in; wireless headset/data + WLAN),Yes (Bluetooth 3.0; HSP/SPP),N/A,N/A
+GPS/APRS,1200/9600bps APRS® Data Communication,1200/9600bps APRS® Data Communication,N/A,N/A,1200/9600bps APRS® Data Communication,N/A (9k6 packet via external TNC only),N/A (1k2/9k6 packet via external TNC only),N/A (1k2/9k6 packet via external TNC only),Built-in GPS; D-PRS position reporting (DV mode). No analog APRS,Built-in GPS (w/ logger); D-PRS (DV mode). No analog APRS,Built-in GPS; full APRS (built-in TNC + digipeater) + D-STAR D-PRS,Built-in APRS TNC (1200/9600); GPS via NMEA port (built-in on D710GA),N/A (external TNC jack only; no built-in APRS/GPS)
+Battery,"2,200 mAh Li-Ion","2,200 mAh Li-Ion","1,400 mAh Li-Ion","1,400 mAh Ni-MH (FNB-83)",N/A,"1,400 mAh Ni-MH (FNB-85) / 8x AA","N/A (mobile, 13.8V DC)","N/A (mobile, 13.8V DC)","1,150 mAh Li-Ion (BP-271; opt. BP-272 1,880 mAh)","BP-272 2,000 mAh Li-Ion (or BP-307 3,150 mAh)","1,820 mAh Li-Ion (KNB-75LA; opt. ~3,000 mAh)","N/A (mobile, 13.8V DC)","N/A (mobile, 13.8V DC)"
+RX Amp,180mA,180mA,150mA,19-125mA,TBD,250-450mA,300mA,<0.5A (squelched),200mA,260-320mA @13.8V (400-700mA @7.4V batt),50-310mA,1.2A (max),1.2A (max)
+TX Amp,1.8A (max),1.9A (max),1.6A (144) / 1.8A (430) / 1.5A (222),1.5A (max),"12A (max, 50W)",2A (max),22A (max),8800R: 8.5A; 8900R: ~9A (Hi),2.5A,3A @13.8V (2.5A @7.4V batt),2A (max @7.4V),13A (max),13A (max)
+TX Power,5W/2.5W/1W/0.3W,5W/2.5W/1W/0.3W,2m/70cm: 5W/2.5W/1W/0.3W; 1.25m: 1.5W/1W/0.5W/0.2W,5W/2W/0.5W,50W/25W/5W,5W (SSB/CW/FM)/1.5W (AM),HF/6m: 100W/25W(AM); 2m: 50W/12.5W(AM); 70cm: 20W/5W(AM),"8800R: 2m 50W/20W/10W/5W, 70cm 35W/20W/10W/5W; 8900R: 10m/6m/2m 50W/20W/10W/5W, 70cm 35W/20W/10W/5W",5W/2.5W/1W/0.5W,10W (13.8V ext)/5W (bat); steps: 0.5W/1W/2.5W/5W/10W,5W/2W/0.5W/0.05W,50W/10W/5W,50W/10W/5W
