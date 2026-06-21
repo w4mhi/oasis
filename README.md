@@ -58,15 +58,19 @@ Then open **`http://localhost:8083`** — or `http://<host-ip>:8083` from any ot
 
 ## 🧰 Scripts — what to run, when & why
 
-**Only `setup-server.py` is required to run OASIS.** Everything else is opt-in, per feature. Each script prints a progress/pre-flight summary so you always know what it's doing.
+**Only `setup-server.py` is required to run OASIS.** Everything else is opt-in, per feature. **New here? Run `setup-oasis-offline.py` for a guided menu** that ticks the features you want and runs the right scripts in order. Each script prints a progress/pre-flight summary so you always know what it's doing.
 
 | Script | What it does | When to run it | Runs on | Internet? |
 |---|---|---|---|:--:|
+| **`setup-oasis-offline.py`** | **Guided menu installer** — pick features (arrow keys + Space, OK to run), delegates to the install/enable scripts in order; primes `sudo` once | The easy way to set up a Pi; re-run anytime to add features | Raspberry Pi / Linux (run as your user, **not** sudo) | ⚠️ uses bundled packages if present |
 | **`setup-server.py`** | Creates `.venv` and installs Flask / gunicorn / psutil — auto picks PyPI or bundled wheels | **Once** after cloning; again if `requirements.txt` changes | Every host that runs OASIS | ❌ offline |
 | `setup-fcc-database.py` | Downloads the FCC license data and builds the callsign lookup index | Once before first use; re-run weekly for fresh data (FCC updates Sundays) | Any online machine, then copy to the Pi | ✅ yes |
-| `install-graywolf.py` | Installs the **GrayWolf** APRS service (TNC / iGate / digipeater) | On the Pi, to turn on APRS | Raspberry Pi / Debian Linux | ⚠️ optional — uses bundled `.deb` if present |
+| `install-graywolf.py` | Installs the **GrayWolf** APRS service (TNC / iGate / digipeater) **and enables the APRS history API on :8085** | On the Pi, to turn on APRS | Raspberry Pi / Debian Linux | ⚠️ optional — uses bundled `.deb` if present |
+| `install-winlink.py` | Installs the **Pat** Winlink client + web UI (:8082) and writes a starter config | On the Pi, to send/receive Winlink email (Telnet works at once) | Raspberry Pi / Debian Linux | ⚠️ optional — uses bundled `.deb` if present |
 | `install-kiwix.py` | Installs the `kiwix-serve` offline-content server | On the Pi, to turn on offline Wikipedia | Raspberry Pi / Linux | ⚠️ optional — uses bundled package if present |
-| `install-rtl-sdr.py` | Installs RTL-SDR tools + blacklists the conflicting DVB driver | On the Pi, to enable USB SDR dongles (RTL2832U) | Raspberry Pi / Debian Linux | ⚠️ optional — uses bundled `.deb` if present |
+| `install-rtl-sdr.py` | Installs RTL-SDR tools (+ socat/tcpdump) and blacklists the conflicting DVB driver | On the Pi, to enable USB SDR dongles (RTL2832U) | Raspberry Pi / Debian Linux | ⚠️ optional — uses bundled `.deb` if present |
+| `enable-rtl-sdr.py` | Tests the dongle and enables `aprs-sdr-feed` — streams demodulated APRS audio into GrayWolf | After `install-rtl-sdr.py`, with the dongle plugged in | Raspberry Pi / Linux | ❌ offline |
+| `enable-dra-pi.py` | Configures the DRA-Pi-Zero (WM8731) sound card in `config.txt` for GrayWolf — **reboot required** | On a Pi fitted with the DRA-Pi-Zero HAT | Raspberry Pi | ❌ offline |
 | `install-webssh.py` | Installs **ttyd** browser-based SSH terminal (login via `ssh@localhost`); `--dry-run` previews, `--verify` self-checks | On the Pi, to enable a web shell on port 7681 | Raspberry Pi / Debian Linux | ⚠️ optional — uses bundled static binary if present, else downloads |
 | `enable-autostart-pi.py` | Installs a **systemd service** so OASIS starts on boot; `--with-browser` also opens Chromium in kiosk mode; `--disable` removes both | On the Pi, after first successful manual test run | Raspberry Pi OS (systemd) | ❌ offline |
 | `download-wikipedia.py` | Downloads a Wikipedia ZIM snapshot for Kiwix | After `install-kiwix.py`, to get content | Pi (or prep + copy) | ✅ yes |

@@ -239,7 +239,9 @@ a.svc-card:hover { border-color: var(--accent); }
   padding: .28rem .6rem;
   background: var(--panel-2);
   border-bottom: 1px solid var(--accent-dim);
+  transition: color .3s;
 }
+.nav-sec-title.offline { color: var(--amber); border-bottom-color: var(--amber-dim, #7a5200); }
 .nav-links { list-style: none; padding: 0 .6rem; }
 .nav-links li { border-bottom: 1px solid var(--border); }
 .nav-links li:last-child { border-bottom: none; }
@@ -649,13 +651,13 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
       <div class="nav-sec-title">Tools</div>
       <ul class="nav-links">
         <li><a href="system/setup.html" class="ext">Setup Verification <span class="nav-meta">health</span></a></li>
-        <li><a href="static/antenna-calc.html">Antenna Calculator <span class="nav-meta">cut lengths</span></a></li>
+        <li><a href="static/antenna-calc.html">Antenna Calculator <span class="nav-meta">calculator</span></a></li>
         <li><a href="static/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
         <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
         <li><a href="static/solar.html">Solar / Propagation <span class="nav-meta">band conditions</span></a></li>
-        <li><a href="static/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calc</span></a></li>
+        <li><a href="static/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calculator</span></a></li>
         <li><a href="static/grayline.html">Gray Line <span class="nav-meta">HF propagation</span></a></li>
-        <li><a href="system/browser.html">File Browser <span class="nav-meta">manuals</span></a></li>
+        <li><a href="system/browser.html">File Browser <span class="nav-meta">user files</span></a></li>
       </ul>
     </div>
 
@@ -666,10 +668,10 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div class="nav-sec">
       <div class="nav-sec-title">ICS Forms</div>
       <ul class="nav-links">
-        <li><a href="static/ics-205/ics-205.html">ICS-205 <span class="nav-meta">Radio Plan</span></a></li>
-        <li><a href="static/ics-213/ics-213.html">ICS-213 <span class="nav-meta">General Message</span></a></li>
-        <li><a href="static/ics-214/ics-214.html">ICS-214 <span class="nav-meta">Activity Log</span></a></li>
-        <li><a href="static/ics-309/ics-309.html">ICS-309 <span class="nav-meta">Comms Log</span></a></li>
+        <li><a href="static/ics-205/ics-205.html">ICS-205 <span class="nav-meta">radio plan</span></a></li>
+        <li><a href="static/ics-213/ics-213.html">ICS-213 <span class="nav-meta">general message</span></a></li>
+        <li><a href="static/ics-214/ics-214.html">ICS-214 <span class="nav-meta">activity log</span></a></li>
+        <li><a href="static/ics-309/ics-309.html">ICS-309 <span class="nav-meta">comms log</span></a></li>
       </ul>
     </div>
 
@@ -681,9 +683,9 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <li><a href="winlink/radio-settings.html">Radio Settings <span class="nav-meta">setup</span></a></li>
         <li><a href="winlink/to-position.html">Winlink → Position <span class="nav-meta">converter</span></a></li>
         <li><a id="nlink-gw" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.graywolf}/`,'_blank');return false;">GrayWolf <span class="nav-svc-badge" id="nsvc-gw">—</span></a></li>
-        <li><a href="static/graywolf-handbook/index.html">GrayWolf Handbook <span class="nav-meta">docs</span></a></li>
-        <li><a href="aprs/map.html">APRS Map <span class="nav-meta">live</span></a></li>
-        <li><a href="repeaterbook/repeaterbook.html">Repeater Book <span class="nav-meta">WA database</span></a></li>
+        <li><a href="static/graywolf-handbook/index.html">GrayWolf handbook <span class="nav-meta">docs</span></a></li>
+        <li><a href="aprs/map.html">APRS Map <span class="nav-meta">live APRS</span></a></li>
+        <li><a href="repeaterbook/repeaterbook.html">Repeater Book <span class="nav-meta">repeater book</span></a></li>
       </ul>
     </div>
 
@@ -694,9 +696,9 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div class="nav-sec">
       <div class="nav-sec-title">Radio Ref</div>
       <ul class="nav-links">
-        <li><a href="repeater-guide/index.html">Repeater Guide <span class="nav-meta">CHIRP how-to</span></a></li>
-        <li><a href="radio-cards/index.html">Radio Cards <span class="nav-meta">CHIRP how-to</span></a></li>
-        <li><a href="static/cheatsheets/index.html">Radio Cheatsheets <span class="nav-meta">CHIRP how-to</span></a></li>
+        <li><a href="repeater-guide/index.html">Repeater Guide <span class="nav-meta">radio repeaters how-to</span></a></li>
+        <li><a href="radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
+        <li><a href="static/cheatsheets/index.html">Radio Cheatsheets <span class="nav-meta">radio reference</span></a></li>
         <li><a href="static/cheatsheets/aprs_bots.html">APRS Bots <span class="nav-meta">FIND · SMS · WXBOT</span></a></li>
         <li><a href="static/cheatsheets/mpad.html">MPAD Bot <span class="nav-meta">WX · repeaters · METAR</span></a></li>
         <li><a id="nlink-kiwix" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-kiwix">—</span></a></li>
@@ -706,12 +708,12 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div class="nav-sec">
       <div class="nav-sec-title">Operating</div>
       <ul class="nav-links">
-        <li><a href="static/quick-ref/ics.html">ICS Plain Language <span class="nav-meta">emcomm</span></a></li>
+        <li><a href="static/quick-ref/ics.html">ICS Plain Language <span class="nav-meta">ics language</span></a></li>
         <li><a href="static/quick-ref/itu-prefixes.html">ITU Country Prefixes <span class="nav-meta">call sign series</span></a></li>
-        <li><a href="static/quick-ref/phonetic.html">NATO Phonetic Alphabet <span class="nav-meta">reference</span></a></li>
-        <li><a href="static/quick-ref/prowords.html">Procedure Words <span class="nav-meta">reference</span></a></li>
-        <li><a href="static/quick-ref/qcodes.html">Q-Codes <span class="nav-meta">reference</span></a></li>
-        <li><a href="static/quick-ref/rst.html">RST Signal Reporting <span class="nav-meta">reference</span></a></li>
+        <li><a href="static/quick-ref/phonetic.html">NATO Phonetic Alphabet <span class="nav-meta">NATO reference</span></a></li>
+        <li><a href="static/quick-ref/prowords.html">Procedure Words <span class="nav-meta">procedure words</span></a></li>
+        <li><a href="static/quick-ref/qcodes.html">Q-Codes <span class="nav-meta">q-codes</span></a></li>
+        <li><a href="static/quick-ref/rst.html">RST Signal Reporting <span class="nav-meta">signal reporting</span></a></li>
       </ul>
     </div>
 
@@ -812,6 +814,16 @@ function updateSvcCounts() {
     `<span class="cnt-warn">${warn} WRN</span>` +
     `<span class="cnt-sep">&#160;·&#160;</span>` +
     `<span class="cnt-down">${down} DN</span>`;
+  updateNavTitles();
+}
+
+function updateNavTitles() {
+  const offline = _svcStates['flask'] === 'down';
+  document.querySelectorAll('.nav-sec-title').forEach(el => {
+    if (!el.dataset.label) el.dataset.label = el.textContent;
+    el.classList.toggle('offline', offline);
+    el.textContent = offline ? el.dataset.label + ' · UNAVAILABLE' : el.dataset.label;
+  });
 }
 
 // ── Service checks ────────────────────────────────────────────────────────────

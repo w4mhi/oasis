@@ -92,7 +92,7 @@ def decide_source():
 
 def print_source_banner(online, banner):
     """Print the chosen install source prominently at the top of the log."""
-    marker = "📦" if online is False else "🌐"
+    marker = "[offline]" if online is False else "[online]"
     print(f"  {marker}  {banner}")
     _hr()
     if online is False:

@@ -217,7 +217,13 @@ def _can_use_curses():
 
 
 def _curses_select(stdscr):
-    """Arrow-key checkbox UI. Returns selected keys, or None if cancelled."""
+    """Arrow-key checkbox UI with OK / Cancel buttons.
+
+    Focus moves through the feature rows and the two buttons. ENTER only runs
+    when focus is on OK — pressing ENTER on a feature just toggles it, so a
+    stray ENTER can't start the install by accident. Returns selected keys, or
+    None if cancelled.
+    """
     import curses
     import textwrap
 
@@ -230,6 +236,8 @@ def _curses_select(stdscr):
 
     checked = {f.key: f.default for f in FEATURES}
     n   = len(FEATURES)
+    OK, CANCEL = n, n + 1          # two extra focusable "rows" after the features
+    total = n + 2
     idx = 0
 
     while True:
@@ -243,11 +251,6 @@ def _curses_select(stdscr):
         put(0, 2, "OASIS Setup — select features", curses.A_BOLD)
         put(1, 2, "─" * max(0, max_x - 4))
 
-        list_top = 3
-        footer_h = 2
-        desc_h   = 4
-        list_h   = max(3, max_y - list_top - desc_h - footer_h)
-
         # Flat rows: category headers (non-selectable) + feature rows.
         rows, last_cat = [], None
         for i, f in enumerate(FEATURES):
@@ -256,7 +259,17 @@ def _curses_select(stdscr):
                 rows.append(("cat", f.category))
             rows.append(("feat", i))
 
-        cur_row = next(r for r, (k, p) in enumerate(rows) if k == "feat" and p == idx)
+        # Size the list to its content, but cap it so the description (sep + 2),
+        # the button row and the footer (sep + hint) — 6 rows — always stay on
+        # screen. Footer hint lands on the last visible row (list_top+list_h+5).
+        list_top = 3
+        list_h   = max(3, min(len(rows), max_y - 9))
+        desc_sep = list_top + list_h
+        btn_y    = desc_sep + 3
+        foot_sep = btn_y + 1
+
+        cur_feat = idx if idx < n else n - 1
+        cur_row  = next(r for r, (k, p) in enumerate(rows) if k == "feat" and p == cur_feat)
         start = 0
         if len(rows) > list_h:
             start = max(0, min(cur_row - list_h // 2, len(rows) - list_h))
@@ -269,34 +282,52 @@ def _curses_select(stdscr):
             else:
                 f = FEATURES[payload]
                 box = "[X]" if checked[f.key] else "[ ]"
-                tag = "  (data)" if f.data else ""
+                tag = "  (data)" if f.data else (" (reboot)" if f.reboot else "")
                 line = f"  {box} {f.name}{tag}"
                 put(y, 2, line.ljust(max(0, max_x - 4)),
-                    curses.A_REVERSE if payload == idx else 0)
+                    curses.A_REVERSE if (idx < n and payload == idx) else 0)
             y += 1
 
-        # Description pane for the highlighted feature.
-        dy = list_top + list_h
-        put(dy, 2, "─" * max(0, max_x - 4))
-        f = FEATURES[idx]
-        prereq = (" · needs " + ", ".join(f.needs)) if f.needs else ""
-        for j, wl in enumerate(textwrap.wrap(f.desc + prereq, max(10, max_x - 6))[:desc_h - 2]):
-            put(dy + 1 + j, 3, wl, curses.A_DIM)
+        # Description pane: highlighted feature, or button help when on a button.
+        put(desc_sep, 2, "─" * max(0, max_x - 4))
+        if idx < n:
+            f = FEATURES[idx]
+            prereq = (" · needs " + ", ".join(f.needs)) if f.needs else ""
+            for j, wl in enumerate(textwrap.wrap(f.desc + prereq, max(10, max_x - 6))[:2]):
+                put(desc_sep + 1 + j, 3, wl, curses.A_DIM)
+        else:
+            put(desc_sep + 1, 3,
+                "OK = run the checked features · Cancel = quit without running",
+                curses.A_DIM)
 
-        fy = max_y - footer_h
-        put(fy, 2, "─" * max(0, max_x - 4))
-        put(fy + 1, 2, "↑/↓ move · SPACE toggle · A all · N none · ENTER confirm · Q cancel")
+        # Buttons.
+        ok_lbl, cn_lbl = "[ OK — run ]", "[ Cancel ]"
+        put(btn_y, 4, ok_lbl,
+            curses.A_BOLD | (curses.A_REVERSE if idx == OK else 0))
+        put(btn_y, 4 + len(ok_lbl) + 3, cn_lbl,
+            curses.A_BOLD | (curses.A_REVERSE if idx == CANCEL else 0))
+
+        put(foot_sep, 2, "─" * max(0, max_x - 4))
+        put(foot_sep + 1, 2,
+            "Use SPACE to select/deselect features · ↑↓ move · A/N all/none · "
+            "TAB→OK · OK runs · Q quit")
 
         stdscr.refresh()
 
         c = stdscr.getch()
         if c in (curses.KEY_UP, ord("k")):
-            idx = (idx - 1) % n
+            idx = (idx - 1) % total
         elif c in (curses.KEY_DOWN, ord("j")):
-            idx = (idx + 1) % n
+            idx = (idx + 1) % total
+        elif c in (curses.KEY_LEFT, ord("h")) and idx == CANCEL:
+            idx = OK
+        elif c in (curses.KEY_RIGHT, ord("l")) and idx == OK:
+            idx = CANCEL
+        elif c == 9:                       # Tab → jump to OK
+            idx = OK
         elif c == ord(" "):
-            f = FEATURES[idx]
-            checked[f.key] = not checked[f.key]
+            if idx < n:
+                checked[FEATURES[idx].key] = not checked[FEATURES[idx].key]
         elif c in (ord("a"), ord("A")):
             for k in checked:
                 checked[k] = True
@@ -304,7 +335,11 @@ def _curses_select(stdscr):
             for k in checked:
                 checked[k] = False
         elif c in (curses.KEY_ENTER, 10, 13):
-            return [f.key for f in FEATURES if checked[f.key]]
+            if idx == OK:
+                return [f.key for f in FEATURES if checked[f.key]]
+            if idx == CANCEL:
+                return None
+            checked[FEATURES[idx].key] = not checked[FEATURES[idx].key]   # toggle, never start
         elif c in (ord("q"), ord("Q"), 27):   # q / Esc
             return None
 

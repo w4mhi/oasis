@@ -118,13 +118,13 @@ tr.empty-steps .op {{ color: var(--text-dim); }}
 <div class="wrap">
 
   <header>
-    <a class="home-link" href="/">🏠 HOME</a>
+    <a class="home-link" href="/">⌂ HOME</a>
     <h1>{html.escape(radio)}</h1>
     <p>Radio reference card</p>
   </header>
 
   <div class="actions">
-    <button class="sbtn" onclick="window.print()" title="Print this reference card">🖨 Print</button>
+    <button class="sbtn" onclick="window.print()" title="Print this reference card">Print</button>
     <button class="sbtn" onclick="document.getElementById('csvImport').click()" title="Import a two-column CSV (Operation, Steps) to replace the table">Import CSV</button>
     <input type="file" id="csvImport" accept=".csv,text/csv,text/plain" style="display:none" onchange="importCSV(this)">
     <button class="sbtn" onclick="savePage()" title="Download this card as a standalone HTML file">Save</button>
