@@ -49,8 +49,14 @@ ZIP_TABLE = lookup.load_zip_table()
 
 @app.route("/")
 def index():
-    """Serve the main suite index page."""
-    return app.send_static_file("index.html")
+    """Smart home: JS reads localStorage and redirects to index7.html or index.html."""
+    return '''<!doctype html><meta charset="utf-8">
+<script>
+window.location.replace(
+  localStorage.getItem("oasis_layout") === "7inch" ? "/index7.html" : "/index.html"
+);
+</script>
+<noscript><meta http-equiv="refresh" content="0;url=/index.html"></noscript>''', 200, {'Content-Type': 'text/html; charset=utf-8'}
 
 
 @app.route("/map-assets/<path:filename>")
@@ -649,7 +655,7 @@ def api_system():
         disk_info = {"error": "unavailable"}
 
     # CPU
-    cpu_pct   = psutil.cpu_percent(interval=1)
+    cpu_pct   = psutil.cpu_percent(interval=0.1)
     cpu_count = psutil.cpu_count(logical=True) or 1
 
     # RAM

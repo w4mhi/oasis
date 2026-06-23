@@ -784,6 +784,12 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <option value="1440">Last 24 hrs</option>
         <option value="0" selected>All</option>
       </select>
+      <select class="aprs-filter-sel" id="aprs-type-sel" onchange="applyAprsFilter()">
+        <option value="All">All types</option>
+        <option value="RF only">RF only</option>
+        <option value="Digipeaters">Digipeaters</option>
+        <option value="Messages">Messages</option>
+      </select>
     </div>
     <div class="aprs-tbl-wrap">
       <table>
@@ -1148,7 +1154,7 @@ async function fetchStats() {
         tb.className   = 'telemetry-badge warn';
       } else {
         tb.textContent = '✗ telemetry: offline';
-        tb.className   = 'telemetry-badge bad';
+        tb.className   = 'telemetry-badge warn';
       }
     }
   } catch (_) {}
@@ -1171,7 +1177,7 @@ async function fetchAudio() {
     el.textContent = `${n} card${n !== 1 ? 's' : ''}`;
     // SDR entry (sdr_udp path) is capture-only — that is sufficient for GrayWolf RX.
     const ready = d.cards.some(c => c.sdr ? c.capture : (c.usb && c.capture && c.playback));
-    el.className = 'stat-val' + (ready ? ' ok' : (n ? '' : ' bad'));
+    el.className = 'stat-val' + (ready ? ' ok' : (n ? '' : ' warn'));
     el.title = n
       ? d.cards.map(c => c.sdr
           ? `${c.name}  ${c.alsa}  [RX/--] USB SDR`
@@ -1230,12 +1236,25 @@ function renderAprsTable(stations) {
 
 function applyAprsFilter() {
   const minutes = parseInt(document.getElementById('aprs-filter-sel').value);
-  if (!minutes) { renderAprsTable(_allAprsStations); return; }
-  const cutoff = Date.now() - minutes * 60000;
-  renderAprsTable(_allAprsStations.filter(s => {
-    const t = new Date(s.last_heard || s.timestamp || s.time);
-    return !isNaN(t) && t >= cutoff;
-  }));
+  const type    = document.getElementById('aprs-type-sel')?.value || 'All';
+  let filtered  = _allAprsStations;
+  if (minutes) {
+    const cutoff = Date.now() - minutes * 60000;
+    filtered = filtered.filter(s => {
+      const t = new Date(s.last_heard || s.timestamp || s.time);
+      return !isNaN(t) && t >= cutoff;
+    });
+  }
+  if (type && type !== 'All') {
+    filtered = filtered.filter(s => {
+      const via = (s.via || '').toUpperCase();
+      if (type === 'RF only')     return via && !via.includes('TCPIP') && !via.includes('IGATE');
+      if (type === 'Digipeaters') return via.includes('WIDE') || via.includes('DIGI');
+      if (type === 'Messages')    return (s.comment || '').includes(':') || s.packet_type === 'message';
+      return true;
+    });
+  }
+  renderAprsTable(filtered);
 }
 
 async function fetchAPRS() {

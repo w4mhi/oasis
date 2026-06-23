@@ -48,7 +48,7 @@ class Feature:
     """One selectable feature that delegates to a script in scripts/."""
     def __init__(self, key, name, script, desc, category,
                  default=False, needs=(), internet=False, data=False,
-                 reboot=False, args=()):
+                 reboot=False, args=(), recommend=""):
         self.key      = key
         self.name     = name
         self.script   = script
@@ -60,6 +60,7 @@ class Feature:
         self.data     = data              # large/optional content download
         self.reboot   = reboot            # may require a reboot to take effect
         self.args     = tuple(args)
+        self.recommend = recommend        # short next-step surfaced in the final report
 
     @property
     def path(self):
@@ -75,38 +76,48 @@ FEATURES = [
             "Server", default=True),
     Feature("autostart", "Auto-start on boot", "enable-autostart-pi.py",
             "Install the systemd unit so the OASIS server starts at boot. Add --with-browser later for a Chromium kiosk.",
-            "Server", default=False, needs=["server"]),
+            "Server", default=False, needs=["server"],
+            recommend="OASIS now starts on boot. Stop any manual ./start.sh first to free port 8083."),
     Feature("graywolf", "GrayWolf APRS (+ history API)", "install-graywolf.py",
             "APRS TNC/iGate/digipeater on :8080, plus the history API on :8085.",
-            "Server", default=True, needs=["server"], internet=True),
+            "Server", default=True, needs=["server"], internet=True,
+            recommend="Open GrayWolf at :8080, add your audio device + an AFSK channel, then RESTART it: sudo systemctl restart graywolf"),
     Feature("winlink", "Winlink (Pat)", "install-winlink.py",
             "Pat Winlink client + web UI on :8082 (Telnet works immediately).",
-            "Server", default=True, internet=True),
+            "Server", default=True, internet=True,
+            recommend="Set your callsign and Winlink password in Pat at :8082."),
     Feature("kiwix", "Kiwix (offline content server)", "install-kiwix.py",
             "kiwix-serve on :8081 to browse ZIM content. (Add content below.)",
-            "Server", default=True, internet=True),
+            "Server", default=True, internet=True,
+            recommend="Add ZIM content (e.g. the Wikipedia feature below) — Kiwix serves it at :8081."),
     Feature("webssh", "Web SSH (ttyd)", "install-webssh.py",
             "Browser terminal on :7681 (logs in via ssh to localhost).",
-            "Server", default=True),
+            "Server", default=True,
+            recommend="Browser terminal at :7681 (logs in via ssh to localhost)."),
 
     # ── Audio: audio paths into GrayWolf (SDR dongle + DRA sound card) ─────────
     Feature("rtl-sdr", "RTL-SDR tools", "install-rtl-sdr.py",
             "rtl_test/rtl_fm + socat/tcpdump and the DVB-driver blacklist.",
-            "Audio", default=True),
+            "Audio", default=True,
+            recommend="RTL-SDR Blog V4 needs Pi OS Trixie (librtlsdr >= 2.0). Verify the dongle: rtl_test -t"),
     Feature("rtl-feed", "RTL-SDR → GrayWolf APRS feed", "enable-rtl-sdr.py",
             "Stream demodulated APRS audio into GrayWolf (sdr_udp). Needs the dongle plugged in.",
-            "Audio", default=False, needs=["rtl-sdr"]),
+            "Audio", default=False, needs=["rtl-sdr"],
+            recommend="In GrayWolf add the sdr_udp device + an AFSK1200 channel, then RESTART it: sudo systemctl restart graywolf"),
     Feature("dra-pi", "DRA-Pi-Zero sound card", "enable-dra-pi.py",
             "Configure the MastersCommunications DRA-Pi-Zero (WM8731 I²S codec) for GrayWolf — edits /boot/firmware/config.txt. REQUIRES A REBOOT.",
-            "Audio", default=False, reboot=True),
+            "Audio", default=False, reboot=True,
+            recommend="Reboot, then re-run this setup to apply the DRA-Pi ALSA mixer."),
 
     # ── Content / Data: large optional downloads ──────────────────────────────
     Feature("fcc", "FCC callsign database", "setup-fcc-database.py",
             "Download + index the FCC amateur license DB (~160 MB).",
-            "Content / Data", default=False, internet=True, data=True),
+            "Content / Data", default=False, internet=True, data=True,
+            recommend="FCC callsign lookup is ready on the dashboard."),
     Feature("wikipedia", "Wikipedia content (ZIM)", "download-wikipedia.py",
             "Download Wikipedia ZIM files for Kiwix (1 GB to ~100 GB).",
-            "Content / Data", default=False, internet=True, data=True),
+            "Content / Data", default=False, internet=True, data=True,
+            recommend="ZIM downloaded — Kiwix serves it at :8081 (install Kiwix if you haven't)."),
 ]
 
 BY_KEY = {f.key: f for f in FEATURES}
@@ -390,22 +401,41 @@ def _guess_host():
 
 
 def summarize(results):
-    print()
-    _hr()
-    print("  Setup summary")
-    _hr()
-    icons = {"ok": "✓", "failed": "✗", "skipped": "–", "reboot": "⟳"}
-    for state, f in results:
-        print(f"   {icons.get(state, '?')}  {f.name}"
-              + ("   (reboot required)" if state == "reboot" else ""))
+    """Print a clean, clearly-separated final report: what was installed, then the
+    next-step recommendations for exactly those features — so they aren't buried in
+    the scrolling install log."""
+    icons  = {"ok": "✓", "failed": "✗", "skipped": "–", "reboot": "⟳"}
     failed = [f for s, f in results if s == "failed"]
     reboot = [f for s, f in results if s == "reboot"]
-    print()
+    bar    = "═" * 60
+
+    # ── A hard separation from the install log, then the report ─────────────────
+    print("\n\n  " + bar)
+    print("  INSTALL REPORT")
+    print("  " + bar)
+
+    print("\n  Installed / attempted:")
+    for state, f in results:
+        tag = "   (reboot required)" if state == "reboot" else ""
+        print(f"     {icons.get(state, '?')}  {f.name}{tag}")
+
+    # Next steps only for what actually installed (ok/reboot) and that has advice.
+    recs = [(f.name, f.recommend) for s, f in results
+            if s in ("ok", "reboot") and getattr(f, "recommend", "")]
+    if recs:
+        print("\n  Next steps:")
+        for name, rec in recs:
+            print(f"     • {name}")
+            print(f"         {rec}")
+
+    print("\n  " + "─" * 60)
     if failed:
-        _warn(f"{len(failed)} step(s) failed — see the output above and re-run to retry.")
+        _warn(f"{len(failed)} step(s) FAILED: {', '.join(f.name for f in failed)} "
+              "— see the log above and re-run to retry.")
     else:
         _ok("All selected steps completed.")
     _info(f"Verify everything at  http://{_guess_host()}:8083/system/setup.html")
+    print("  " + bar + "\n")
 
     if reboot:
         names = ", ".join(f.name for f in reboot)

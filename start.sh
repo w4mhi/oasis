@@ -121,6 +121,14 @@ echo ""
 PORT=8083
 echo "  Starting OASIS..."
 echo ""
+
+# macOS: gunicorn uses fork() which clashes with the Objective-C runtime when
+# any ObjC class is being initialised in another thread at fork time. Setting
+# this env var tells the ObjC runtime not to abort in the child process.
+if [[ "$(uname)" == "Darwin" ]]; then
+    export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+fi
+
 cd "$SERVER_DIR"
 if "$VENV_PYTHON" -c "import gunicorn" 2>/dev/null; then
     exec "$VENV_DIR/bin/gunicorn" \

@@ -133,8 +133,8 @@ On a Pi, **`setup-oasis-offline.py` is the front door** — it delegates to the 
 | `install-graywolf.py` | Installs **GrayWolf** APRS (TNC/iGate/digipeater) + history API on :8085 | On the Pi, to turn on APRS | Raspberry Pi / Debian | ⚠️ bundled `.deb` if present |
 | `install-winlink.py` | Installs **Pat** Winlink client + web UI (:8082), writes a starter config | On the Pi, for Winlink email | Raspberry Pi / Debian | ⚠️ bundled `.deb` if present |
 | `install-kiwix.py` | Installs `kiwix-serve` offline-content server | On the Pi, for offline Wikipedia | Raspberry Pi / Linux | ⚠️ bundled if present |
-| `install-rtl-sdr.py` | Installs RTL-SDR tools (+ socat/tcpdump + multimon-ng), blacklists the DVB driver | On the Pi, for USB SDR dongles | Raspberry Pi / Debian | ⚠️ bundled `.deb` if present |
-| `enable-rtl-sdr.py` | Tests the dongle, streams demodulated APRS audio into GrayWolf | After `install-rtl-sdr.py`, dongle plugged in | Raspberry Pi / Linux | ❌ offline |
+| `install-rtl-sdr.py` | Installs RTL-SDR tools (+ socat/tcpdump + multimon-ng), blacklists the DVB driver | On the Pi, for USB SDR dongles | Pi OS **Trixie** (V4 needs librtlsdr ≥ 2.0) | ⚠️ bundled `.deb` if present |
+| `enable-rtl-sdr.py` | Tests the dongle, streams demodulated APRS audio into GrayWolf | After `install-rtl-sdr.py`, dongle plugged in | Pi OS **Trixie** | ❌ offline |
 | `enable-dra-pi.py` | Configures the DRA-Pi-Zero (WM8731) sound card for GrayWolf — **reboot required** | On a Pi with the DRA-Pi-Zero HAT | Raspberry Pi | ❌ offline |
 | `install-webssh.py` | Installs **ttyd** browser SSH terminal on :7681 | On the Pi, for a web shell | Raspberry Pi / Debian | ⚠️ bundled binary if present, else downloads |
 | `enable-autostart-pi.py` | Installs a **systemd service** so OASIS starts on boot; `--with-browser` adds a Chromium kiosk; `--desktop-icon` adds a clickable desktop shortcut; `--disable` removes all | After first successful manual run | Raspberry Pi OS (systemd) | ❌ offline |
@@ -195,6 +195,23 @@ python3 scripts/install-graywolf.py     # picks the right .deb for your arch
 
 GrayWolf runs on port **8080**; OASIS reads its history database and plots station positions on the dashboard map. Full configuration (audio, PTT, beacons, SmartBeaconing, digipeater rules, iGate) is in **[docs/SETUP.md](docs/SETUP.md)**.
 
+> ⚠️ **Restart GrayWolf after you create the device + channel** in its web UI:
+> ```bash
+> sudo systemctl restart graywolf
+> ```
+> GrayWolf reads channel config only when the modem **starts** — a device/channel you add at runtime isn't live until a restart, and it can keep reporting `state=RUNNING` on the old config while nothing decodes. (The classic *"I set it up, nothing worked, I restarted and it just worked."*)
+
+### 📻 RTL-SDR receive — **Raspberry Pi OS Trixie only**
+
+To feed APRS into GrayWolf from an **RTL-SDR dongle** (receive / iGate), OASIS demodulates 2 m APRS and streams the audio into GrayWolf over `sdr_udp`:
+
+```bash
+python3 scripts/install-rtl-sdr.py      # RTL-SDR driver + tools
+python3 scripts/enable-rtl-sdr.py       # test the dongle, wire it into GrayWolf
+```
+
+> ⚠️ **Requires Raspberry Pi OS Trixie (Debian 13) or newer.** The RTL-SDR Blog **V4** needs **`librtlsdr` ≥ 2.0**, and only Trixie ships it (`2.0.2`). **Bookworm and Bullseye top out at `librtlsdr 0.6.0`** — the V4 won't lock or decode there, and `apt` can't upgrade it. Use Trixie (or build the rtl-sdr-blog driver from source). Setup, gotchas, and the full debugging guide: **[docs/graywolf-rtl-sdr.md](docs/graywolf-rtl-sdr.md)**.
+
 <details>
 <summary>Live map features (<code>/aprs/map.html</code>)</summary>
 
@@ -237,7 +254,9 @@ Reference build: **Raspberry Pi Zero 2 W**, 512 MB RAM, 32 GB SD card, Raspberry
 | macOS (Intel) | ✅ | ✅ | ✅ | — | — | — |
 | Windows (amd64) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-Raspberry Pi OS **Bookworm** (3.11) and **Bullseye** (3.9) both work out of the box. 32-bit Pi OS (armv7l/armhf) is not yet covered offline.
+The server and everything else run on Raspberry Pi OS **Bookworm** (3.11) and **Bullseye** (3.9) too. 32-bit Pi OS (armv7l/armhf) is not yet covered offline.
+
+**Exception — RTL-SDR APRS requires Raspberry Pi OS Trixie (Debian 13):** the RTL-SDR Blog V4 needs `librtlsdr ≥ 2.0`, which only Trixie ships. Bookworm/Bullseye top out at `0.6.0` and can't drive the V4. (APRS via the DRA-Pi-Zero sound card has no such requirement.)
 
 </details>
 

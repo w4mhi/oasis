@@ -14,6 +14,11 @@ Configure OASIS to start automatically when the Raspberry Pi boots.
     kiosk mode (http://localhost:8083) after the server is ready.
     Requires Raspberry Pi OS with Desktop (a live desktop session).
 
+  --7inch
+    Same as --with-browser but targets the 7″ touchscreen layout
+    (http://localhost:8083/index7.html, 800×480).  Also enables touch
+    events and disables overscroll navigation in Chromium.
+
   --desktop-icon
     Create a clickable OASIS shortcut on the Raspberry Pi desktop
     (~Desktop/OASIS.desktop).  Requires Raspberry Pi OS with Desktop
@@ -27,6 +32,7 @@ Configure OASIS to start automatically when the Raspberry Pi boots.
 Usage:
   python3 scripts/enable-autostart-pi.py
   python3 scripts/enable-autostart-pi.py --with-browser
+  python3 scripts/enable-autostart-pi.py --7inch
   python3 scripts/enable-autostart-pi.py --desktop-icon
   python3 scripts/enable-autostart-pi.py --disable
 
@@ -123,7 +129,7 @@ def install_service(user):
 
 
 # ── Step 3: Chromium kiosk autostart ──────────────────────────────────────────
-def install_browser(home):
+def install_browser(home, url=None, seven_inch=False):
     _step(3, "Installing Chromium kiosk autostart")
 
     # Detect the Chromium binary name (Pi OS ships either variant).
@@ -141,15 +147,21 @@ def install_browser(home):
         _ok(f"Chromium binary: {chromium_bin}")
 
     # Launcher script — waits for the OASIS server, then opens Chromium kiosk.
+    kiosk_url = url or f"http://localhost:{PORT}"
+    extra_flags = (
+        " --touch-events=enabled --overscroll-history-navigation=0"
+        " --window-size=800,480"
+        if seven_inch else ""
+    )
     launcher = (
         "#!/bin/bash\n"
         "# Wait for OASIS server to be ready, then open Chromium in kiosk mode.\n"
-        f"URL=\"http://localhost:{PORT}\"\n"
+        f"URL=\"{kiosk_url}\"\n"
         "for i in $(seq 1 30); do\n"
         "    curl -sf \"$URL\" > /dev/null 2>&1 && break\n"
         "    sleep 2\n"
         "done\n"
-        f"exec {chromium_bin} --kiosk --noerrdialogs --disable-infobars \"$URL\"\n"
+        f"exec {chromium_bin} --kiosk --noerrdialogs --disable-infobars{extra_flags} \"$URL\"\n"
     )
     _info(f"Writing {BROWSER_BIN}")
     _sudo_write(BROWSER_BIN, launcher)
@@ -267,6 +279,7 @@ def main():
             "Examples:\n"
             "  python3 scripts/enable-autostart-pi.py                 # server only\n"
             "  python3 scripts/enable-autostart-pi.py --with-browser  # server + Chromium kiosk\n"
+            "  python3 scripts/enable-autostart-pi.py --7inch         # server + 7\u2033 touchscreen kiosk\n"
             "  python3 scripts/enable-autostart-pi.py --desktop-icon  # add desktop shortcut\n"
             "  python3 scripts/enable-autostart-pi.py --disable       # remove all\n"
         ),
@@ -277,6 +290,14 @@ def main():
             "Also open Chromium in kiosk mode on desktop login. "
             "Requires Raspberry Pi OS with Desktop. "
             "Chromium waits for the server to be ready before launching."
+        ),
+    )
+    parser.add_argument(
+        "--7inch", dest="seven_inch", action="store_true",
+        help=(
+            "Kiosk mode for the 7\u2033 touchscreen (800\u00d7480). "
+            "Opens index7.html, enables touch events, sets window size. "
+            "Implies --with-browser."
         ),
     )
     parser.add_argument(
@@ -300,22 +321,34 @@ def main():
         cmd_disable(home)
         return
 
+    # --7inch implies --with-browser
+    if args.seven_inch:
+        args.with_browser = True
+
+    kiosk_url = (
+        f"http://localhost:{PORT}/index7.html" if args.seven_inch
+        else f"http://localhost:{PORT}"
+    )
+
     print()
     print("  OASIS — Enable autostart on Raspberry Pi")
     _hr()
     _info(f"User: {user}")
-    if args.with_browser:
+    if args.seven_inch:
+        _info("Mode: server  +  Chromium kiosk  (7\u2033 touchscreen, 800\u00d7480)")
+        _info(f"URL : {kiosk_url}")
+    elif args.with_browser:
         _info("Mode: server  +  Chromium kiosk on desktop login")
     elif args.desktop_icon:
         _info("Mode: server  +  desktop shortcut icon")
     else:
         _info("Mode: server only (no browser)")
-        _info("Tip:  Re-run with --with-browser or --desktop-icon to add browser access later")
+        _info("Tip:  Re-run with --with-browser, --7inch, or --desktop-icon to add browser access later")
 
     check_platform()
     install_service(user)
     if args.with_browser:
-        install_browser(home)
+        install_browser(home, url=kiosk_url, seven_inch=args.seven_inch)
     if args.desktop_icon:
         install_desktop_icon(home)
 
@@ -325,7 +358,9 @@ def main():
     _info(f"Web interface : http://localhost:{PORT}")
     _info(f"Logs          : journalctl -u {SERVICE} -f")
     _info(f"Status        : systemctl status {SERVICE}")
-    if args.with_browser:
+    if args.seven_inch:
+        _info(f"Browser       : opens {kiosk_url} in 7\u2033 kiosk mode on next desktop login")
+    elif args.with_browser:
         _info("Browser       : opens in kiosk mode on next desktop login")
     if args.desktop_icon:
         _info("Desktop icon  : ~/Desktop/OASIS.desktop (double-click to open)")
