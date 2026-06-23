@@ -14,13 +14,20 @@ Configure OASIS to start automatically when the Raspberry Pi boots.
     kiosk mode (http://localhost:8083) after the server is ready.
     Requires Raspberry Pi OS with Desktop (a live desktop session).
 
+  --desktop-icon
+    Create a clickable OASIS shortcut on the Raspberry Pi desktop
+    (~Desktop/OASIS.desktop).  Requires Raspberry Pi OS with Desktop
+    (the ~/Desktop folder must exist).  Double-click the icon to open
+    the OASIS web interface in the default browser.
+
   --disable
-    Remove the systemd service and (if present) the browser autostart entry.
-    No OASIS files are deleted.
+    Remove the systemd service and (if present) the browser autostart
+    entry and the desktop icon.  No OASIS files are deleted.
 
 Usage:
   python3 scripts/enable-autostart-pi.py
   python3 scripts/enable-autostart-pi.py --with-browser
+  python3 scripts/enable-autostart-pi.py --desktop-icon
   python3 scripts/enable-autostart-pi.py --disable
 
 Requires: Raspberry Pi OS (Debian/Linux), systemd, sudo.
@@ -43,6 +50,7 @@ BROWSER_BIN  = "/usr/local/bin/oasis-browser-launch"
 REPO_ROOT    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 START_SH     = os.path.join(REPO_ROOT, "start.sh")
 PORT         = 8083
+DESKTOP_ICON_NAME = "OASIS.desktop"
 
 
 def _sudo_write(path, content):
@@ -168,6 +176,38 @@ def install_browser(home):
     _info("To exit kiosk at any time: Alt+F4  or  Ctrl+Alt+T")
 
 
+# ── Step 4: Desktop icon ──────────────────────────────────────────────────────
+def install_desktop_icon(home):
+    _step(4, "Creating desktop shortcut")
+
+    desktop_dir = os.path.join(home, "Desktop")
+    if not os.path.isdir(desktop_dir):
+        _warn("~/Desktop not found — Raspberry Pi OS with Desktop is required.")
+        _info("Install the desktop environment with:")
+        _info("  sudo apt install -y raspberrypi-ui-mods lxde-core")
+        _warn("Desktop icon NOT created.")
+        return
+
+    icon_path = os.path.join(desktop_dir, DESKTOP_ICON_NAME)
+    desktop = (
+        "[Desktop Entry]\n"
+        "Version=1.0\n"
+        "Type=Application\n"
+        "Name=OASIS\n"
+        "Comment=Off-grid Amateur Station Information Suite\n"
+        f"Exec=xdg-open http://localhost:{PORT}\n"
+        "Icon=web-browser\n"
+        "Terminal=false\n"
+        "Categories=HamRadio;Network;\n"
+    )
+    with open(icon_path, "w") as f:
+        f.write(desktop)
+    os.chmod(icon_path, 0o755)   # LXDE requires executable bit to trust the shortcut
+    _ok(f"Wrote {icon_path}")
+    _info("Double-click the OASIS icon on the desktop to open the web interface")
+    _info(f"URL: http://localhost:{PORT}")
+
+
 # ── Disable ────────────────────────────────────────────────────────────────────
 def cmd_disable(home):
     print()
@@ -204,6 +244,14 @@ def cmd_disable(home):
     if not removed_any:
         _info("Browser autostart not found — nothing to remove")
 
+    _step(3, "Removing desktop icon")
+    icon_path = os.path.join(home, "Desktop", DESKTOP_ICON_NAME)
+    if os.path.exists(icon_path):
+        os.remove(icon_path)
+        _ok(f"Removed {icon_path}")
+    else:
+        _info("Desktop icon not found — nothing to remove")
+
     print()
     print("  OASIS autostart removed.")
     _hr()
@@ -217,9 +265,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python3 scripts/enable-autostart-pi.py                # server only\n"
-            "  python3 scripts/enable-autostart-pi.py --with-browser # server + Chromium kiosk\n"
-            "  python3 scripts/enable-autostart-pi.py --disable      # remove autostart\n"
+            "  python3 scripts/enable-autostart-pi.py                 # server only\n"
+            "  python3 scripts/enable-autostart-pi.py --with-browser  # server + Chromium kiosk\n"
+            "  python3 scripts/enable-autostart-pi.py --desktop-icon  # add desktop shortcut\n"
+            "  python3 scripts/enable-autostart-pi.py --disable       # remove all\n"
         ),
     )
     parser.add_argument(
@@ -231,8 +280,16 @@ def main():
         ),
     )
     parser.add_argument(
+        "--desktop-icon", action="store_true",
+        help=(
+            "Create a clickable OASIS shortcut on ~/Desktop. "
+            "Requires Raspberry Pi OS with Desktop (~/Desktop must exist). "
+            "Double-click the icon to open OASIS in the default browser."
+        ),
+    )
+    parser.add_argument(
         "--disable", action="store_true",
-        help="Remove the OASIS systemd service and browser autostart entry (if present).",
+        help="Remove the OASIS systemd service, browser autostart, and desktop icon (if present).",
     )
     args = parser.parse_args()
 
@@ -249,14 +306,18 @@ def main():
     _info(f"User: {user}")
     if args.with_browser:
         _info("Mode: server  +  Chromium kiosk on desktop login")
+    elif args.desktop_icon:
+        _info("Mode: server  +  desktop shortcut icon")
     else:
         _info("Mode: server only (no browser)")
-        _info("Tip:  Re-run with --with-browser to add kiosk mode later")
+        _info("Tip:  Re-run with --with-browser or --desktop-icon to add browser access later")
 
     check_platform()
     install_service(user)
     if args.with_browser:
         install_browser(home)
+    if args.desktop_icon:
+        install_desktop_icon(home)
 
     print()
     print("  OASIS — Autostart configured.")
@@ -266,6 +327,8 @@ def main():
     _info(f"Status        : systemctl status {SERVICE}")
     if args.with_browser:
         _info("Browser       : opens in kiosk mode on next desktop login")
+    if args.desktop_icon:
+        _info("Desktop icon  : ~/Desktop/OASIS.desktop (double-click to open)")
     print()
 
 

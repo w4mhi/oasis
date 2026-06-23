@@ -115,7 +115,13 @@ sudo systemctl is-enabled alsa-restore   # should say "enabled"
 | `gain_db` | `0` |
 
 `plughw` (not `hw`) lets ALSA convert formats so GrayWolf opens the card; the
-`CARD=` name survives renumbering. Restart GrayWolf after changing the source.
+`CARD=` name survives renumbering.
+
+> ⚠️ **Restart GrayWolf after adding/changing the device or channel:**
+> `sudo systemctl restart graywolf`. GrayWolf applies channel config when the
+> modem **starts** — a device/channel created in the web UI at runtime isn't live
+> until a restart, and the modem can keep showing `state=RUNNING` on the old
+> config while nothing actually works. Restart, then it picks up the new channel.
 
 ### 4. GrayWolf PTT
 

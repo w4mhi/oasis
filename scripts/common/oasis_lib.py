@@ -610,12 +610,18 @@ DEBIAN_BASE      = "https://deb.debian.org/debian"
 DEBIAN_SUITE     = "bookworm"
 RTL_SDR_PACKAGES = ["rtl-sdr", "librtlsdr0", "libusb-1.0-0"]
 
-# Tools the RTL-SDR → GrayWolf APRS feed needs but Raspberry Pi OS does not ship:
-# socat carries the demodulated audio to GrayWolf's sdr_udp socket; tcpdump is
-# used to verify the feed. libwrap0 / libpcap0.8 are their not-always-present
-# shared-lib deps (libc6 / libssl3 are base-system, always installed). Bundled so
-# install-rtl-sdr.py can install them fully offline.
-FEED_PACKAGES = ["socat", "tcpdump", "libwrap0", "libpcap0.8"]
+# Tools the RTL-SDR → GrayWolf APRS feed (and bench-testing) need but Raspberry Pi
+# OS does not ship: socat carries the demodulated audio to GrayWolf's sdr_udp
+# socket; tcpdump verifies the feed; multimon-ng is a standalone AFSK1200 decoder
+# for testing the SDR chain independently of GrayWolf (see docs/graywolf-rtl-sdr.md).
+# libwrap0 / libpcap0.8 are socat/tcpdump's not-always-present shared-lib deps
+# (libc6 / libssl3 are base-system, always installed). Bundled so install-rtl-sdr.py
+# can install them fully offline.
+#
+# Note: multimon-ng pulls a larger X11/audio dependency tree than the feed tools;
+# only the multimon-ng .deb itself is vendored here, so on a minimal/Lite image its
+# deps are resolved by apt (internet). install-rtl-sdr.py installs it best-effort.
+FEED_PACKAGES = ["socat", "tcpdump", "multimon-ng", "libwrap0", "libpcap0.8"]
 
 
 def rtl_sdr_find_local(offline_dir, deb_arch):

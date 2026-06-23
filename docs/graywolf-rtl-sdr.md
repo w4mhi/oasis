@@ -43,10 +43,17 @@ So GrayWolf accepts the SDR audio directly. No loopback device in between.
 
 ## Prerequisites
 
-- RTL-SDR tools installed: `python3 scripts/install-rtl-sdr.py` (provides
-  `rtl_fm`, `rtl_test`; blacklists the conflicting DVB driver).
-- `socat` for the UDP feed: `sudo apt install socat`.
+- RTL-SDR tools installed: `python3 scripts/install-rtl-sdr.py` — provides
+  `rtl_fm`, `rtl_test`, the feed tools (`socat`, `tcpdump`) and the bench-test
+  decoder (`multimon-ng`), and blacklists the conflicting DVB driver. (On a
+  minimal/Lite image, `multimon-ng`'s X11/audio deps may pull from apt.)
 - A 2 m antenna on the dongle. Verify the device first: `rtl_test -t`.
+
+> ⚠️ **Host matters more than you'd think.** The **Pi 400 is a poor RTL-SDR
+> host** — the same dongle/antenna/power that decodes far-off stations on a laptop
+> can fail to even enumerate, or hear only the closest stations, on a Pi 400. If
+> reception is bad or flaky, suspect the host before the dongle. See
+> [debug §6](#6-host-matters--the-pi-400-is-a-poor-sdr-host).
 
 ---
 
@@ -122,9 +129,18 @@ whatever the Add Device form shows — but match `socat`'s target to it.
 A device does nothing until a channel uses it for RX. Create an **AFSK 1200 / RX**
 channel (mark 1200 Hz, space 2200 Hz) and set its **RX input device to the
 `sdr_udp` device** — confirm it's the one with path `127.0.0.1:7355`, *not* a
-soundcard. When the channel goes live the log prints `modem ready` /
-`modembridge state=RUNNING` and the level meter starts moving. If you instead
-see `cpal`/`POLLERR`, the channel is still on a soundcard — repoint it.
+soundcard.
+
+> ⚠️ **Restart GrayWolf after adding the device/channel:**
+> `sudo systemctl restart graywolf`. GrayWolf reads channel config when the modem
+> **starts** — a device/channel you create in the web UI at runtime is **not live
+> until a restart**, and the modem can keep reporting `state=RUNNING` on the old
+> config while the new channel does nothing. (This is the classic "I set it up,
+> nothing worked, I restarted and it magically worked.")
+
+After the restart, the log prints `modem ready` / `modembridge state=RUNNING` and
+the level meter starts moving. If you instead see `cpal`/`POLLERR`, the channel is
+still on a soundcard — repoint it.
 
 ### 3. systemd unit for the feed
 
@@ -210,6 +226,132 @@ bound to a **soundcard** (POLLERR loop) — see the table below.
 
 ---
 
+## Debugging: nothing decodes, or only nearby stations
+
+A moving audio/level meter only proves audio is *flowing* — `rtl_fm` outputs FM
+hiss whether or not a packet is present, so a twitching meter is **not** evidence
+of a decode. Work the chain in stages to separate *no signal* from
+*misconfiguration*, then push for range.
+
+### 1. Decode independently of GrayWolf
+
+Take GrayWolf out of the loop and feed the SDR straight into a gold-standard
+decoder. Stop the feed first — only one process can own the dongle:
+
+```bash
+sudo systemctl stop aprs-sdr-feed.service
+rtl_fm -f 144.390M -M fm -s 22050 -g 40 -p 0 - | multimon-ng -t raw -a AFSK1200 -
+```
+
+- **Packets here but not in GrayWolf** → it's GrayWolf config: `sample_rate` must
+  be **48000** (matching `rtl_fm -s`), and the channel must be AFSK **1200** /
+  **1200·2200 Hz** bound to the **`sdr_udp`** device, not a soundcard.
+- **Nothing here either** → the problem is RF / antenna / noise, *not* software.
+  Continue below.
+
+(`multimon-ng` is installed by `install-rtl-sdr.py`; it wants 22050 Hz. For a
+quality readout, `direwolf -n 1 -r 48000 -b 1 -` at `-s 48000` works too.)
+
+### 2. Prove the receiver hears a strong signal (NOAA)
+
+`rtl_fm`'s RMS is just audio energy — present even with no signal in. Confirm the
+front end actually receives RF using a guaranteed-strong local transmitter, in the
+*same* narrowband-FM mode as APRS: NOAA weather radio (162.400–162.550 MHz).
+
+```bash
+rtl_fm -f 162.550M -M fm -s 22050 -g 49 - | aplay -r 22050 -f S16_LE -t raw -c 1
+```
+
+- **Clear robot weather voice** → RX + antenna + drivers are fine; silence on
+  144.390 is just weak/no traffic → it's an antenna/location problem (§5).
+- **Hiss / nothing** → a loose SMA, an antenna with no sky view, or Pi self-noise
+  (§3). Try the other channels: `162.400 162.425 162.450 162.475 162.500 162.525`.
+
+### 3. Pi self-noise / desense — "worked on the bench, dead in production"
+
+A Raspberry Pi's onboard PWM audio, HDMI audio clocks, SD card, Wi-Fi, and cheap
+power supplies radiate broadband hash across VHF. An RTL-SDR plugged straight into
+the Pi with the antenna inches away gets **desensed**: the noise floor rises and
+swamps weak APRS, while strong locals still punch through. Mitigate, highest
+impact first:
+
+- **Silence the Pi's audio engines** — these are genuine RF noise sources, not
+  just config. In `/boot/firmware/config.txt`:
+  ```ini
+  dtparam=audio=off
+  dtoverlay=vc4-kms-v3d,noaudio
+  ```
+  then reboot. (On `oasis`, disabling onboard + HDMI audio measurably lowered the
+  noise floor and recovered decodes.)
+- **Get the dongle off the Pi.** Put it on a USB extension cable so the dongle
+  *and* antenna sit 0.5–1 m away from the Pi, PSU, SD card, and Wi-Fi. Clip a
+  **ferrite** on the USB lead.
+- **Use a clean supply** — the official Pi PSU, not a random charger; switchers
+  inject VHF garbage straight into the receiver.
+
+### 4. Gain is not the noise floor
+
+`-g` amplifies signal **and** noise together — it does **not** lower the noise
+floor. On the R820T/R828D, near-max gain often *raises* the floor and *overloads*
+on a strong nearby digipeater, which hurts weak/distant decodes. Max is rarely
+best — **sweep it and count decodes** over a fixed window:
+
+```bash
+for g in 30 40 44 49; do
+  echo "=== gain $g ==="
+  timeout 120 sh -c \
+    "rtl_fm -f 144.390M -M fm -s 22050 -g $g -p 0 - | multimon-ng -t raw -a AFSK1200 - 2>/dev/null | grep -c APRS"
+done
+```
+
+Whichever gain decodes the most wins. Lock it in permanently:
+
+```bash
+python3 scripts/enable-rtl-sdr.py --gain <best> --ppm <best>
+```
+
+### 5. Range is mostly the antenna, not the tuner
+
+Tuner gain buys a few dB; the antenna buys tens. If you only hear nearby stations:
+
+- A **resonant 2 m antenna, up high, with sky view** (roll-up J-pole, mag-mount,
+  ground plane) beats the stock whip by a mile — the indoor whip is the #1 reason
+  for locals-only reception.
+- **Digipeaters extend your reach** — you hear direct *and* digi'd packets, so a
+  higher, cleaner antenna multiplies coverage.
+- Sanity-check there's traffic to hear at all: open **aprs.fi** and look at your
+  area. If it's quiet, silence is expected — nothing is broken.
+
+### 6. Host matters — the Pi 400 is a poor SDR host
+
+If you've worked §1–§5 and reception is still bad **or the dongle won't reliably
+detect**, the host itself may be the problem. The single biggest variable in an
+RTL-SDR setup — after the antenna — is the computer the dongle is plugged into.
+
+**Verified the hard way on this project:** the *same* dongle, charger, antenna, and
+location that decoded distant stations perfectly on a laptop (even on its blue
+**USB 3.0** port) — on a **Raspberry Pi 400** either failed to enumerate at all or
+heard only the very closest stations. Nothing else changed. The Pi 400 is a Pi 4
+board packed into a keyboard with the USB ports hard against the PCB, and its
+USB 3.0 controller is a strong broadband RFI source that desenses the receiver.
+
+> ⚠️ **USB 3.0 RFI is host-dependent.** A blue port on a well-shielded laptop can
+> be perfectly clean; the same standard on a Pi 400 is not. Don't assume "it
+> worked on USB3 over there" carries over.
+
+If the Pi 400 is your only option, try these before giving up — cheapest first:
+
+1. **Move the dongle to the USB 2.0 (black) port**, not USB 3.0 (blue).
+2. **USB extension cable** to get the dongle + antenna a metre off the keyboard body.
+3. **Powered USB hub** — clean 5 V to the dongle off its own supply, isolated from
+   the Pi's rail; this also tends to cure intermittent detection.
+
+But the reliable fix is **a different host**: a regular Pi 4 in a metal case, a
+**Pi Zero 2 W** (tiny and much quieter), or a laptop/mini-PC. When in doubt, change
+the computer before you blame the dongle.
+
+---
+
 ## Caveats
 
 1. **RX-only.** An RTL-SDR cannot transmit. This makes GrayWolf a receive
@@ -243,6 +385,11 @@ bound to a **soundcard** (POLLERR loop) — see the table below.
 | Level meter flat; `tcpdump` shows packets; `ss` shows GrayWolf bound | `socat` sending 8192-byte datagrams, dropped by `sdr_udp` reader | Add **`-b 1920`** to `socat` (or `-b 960`). |
 | Log spams `cpal ... alsa::poll() returned POLLERR` / `rebuilding` | channel bound to an auto-detected **soundcard**, not the `sdr_udp` device | Repoint the channel's RX input to the `sdr_udp` device; delete the soundcard device; never use **Detect Devices**. |
 | `no channels configured, skipping audio setup` after reboot | channel config didn't persist | Recreate the channel; verify it survives the next reboot (caveat 6). |
+| New device/channel added in the UI does nothing; modem shows `state=RUNNING` | GrayWolf loads channel config at modem **start**; runtime UI changes aren't applied live | `sudo systemctl restart graywolf` after adding/editing a device or channel. The "RUNNING" is the *old* modem. |
+| Meter moves but **`multimon-ng` decodes nothing at any PPM** | no decodable RF reaching the demod — the meter is just FM hiss | Not a config bug. Run the NOAA strong-signal test (debug §2); check the SMA connector, antenna sky view, and Pi self-noise (§3). |
+| Strong locals decode but nothing distant; high noise floor | Pi self-noise (onboard/HDMI audio, PSU, dongle on-board) desensing RX | `dtparam=audio=off` + `dtoverlay=vc4-kms-v3d,noaudio`; move the dongle off the Pi on a USB extension + ferrite; clean PSU; better/higher antenna (debug §3–5). |
+| Cranking `-g` to max gives *fewer* decodes | near-max gain raises the floor / overloads on strong locals | Gain ≠ noise floor. Sweep gain and count decodes; pick the peak, not the max (debug §4). |
+| RTL-SDR Blog **V4** fails (PLL not locked / no decode) right after an OASIS install on a **newer OS** | the offline bundle installed an **older `librtlsdr`** than your OS ships (e.g. bookworm `0.6.0` on Trixie); the V4 (R828D) needs **`librtlsdr` ≥ 2.0** | Re-run `python3 scripts/install-rtl-sdr.py` — it's now suite-aware + newest-source-wins and will pull apt's newer driver. Or manually `sudo apt install --only-upgrade rtl-sdr librtlsdr2`. Background: [docs/offline-architecture.md](offline-architecture.md). |
 
 ---
 
@@ -250,9 +397,11 @@ bound to a **soundcard** (POLLERR loop) — see the table below.
 
 Speaker-free level meter for step 2 — reads S16LE mono from stdin and prints a
 live RMS/peak. Write it to a **file** (multi-line `python3 -c '...'` breaks on
-terminal auto-indent):
+terminal auto-indent). Keep the shebang line, or it'll run under the shell and
+fail with `import: command not found`:
 
 ```python
+#!/usr/bin/env python3
 import sys, array, math
 peak = 0
 while True:
@@ -268,6 +417,9 @@ while True:
     sys.stdout.write(f"\rRMS {rms:7.0f}   peak {peak:7.0f}   (S16 max 32768)")
     sys.stdout.flush()
 ```
+
+Run it as `... | python3 rmsmeter.py`, or `chmod +x rmsmeter.py` and pipe into
+`./rmsmeter.py`.
 
 ---
 

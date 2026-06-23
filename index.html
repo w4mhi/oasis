@@ -980,7 +980,7 @@ const SERVICES = [
       setFccLookup(d.index_present);   // disable FCC Lookup button if no index
       return { up: true, warn: !d.index_present,
         badge: d.index_present ? 'UP' : 'WARN',
-        sub: d.index_present ? `${(d.zip_entries||0).toLocaleString()} ZIP` : 'index not built' };
+        sub: d.index_present ? `${(d.callsign_count||0).toLocaleString()} callsigns · ${(d.zip_entries||0).toLocaleString()} ZIP` : 'index not built' };
     }
   },
   {
@@ -992,7 +992,7 @@ const SERVICES = [
       const n = (d.entries||[]).filter(e => e.name.endsWith('.mbtiles')).length;
       return { up: true, warn: n === 0,
         badge: n > 0 ? 'UP' : 'WARN',
-        sub: n > 0 ? `${n} MBTiles` : 'no tiles' };
+        sub: n > 0 ? `${n} ${n === 1 ? 'map' : 'maps'}` : 'no maps' };
     }
   },
   {
@@ -1155,8 +1155,11 @@ async function fetchStats() {
 }
 
 // ── Audio devices (sound cards) ───────────────────────────────────────────────
-// Compact count in the stats bar; full list lives on the dashboard. Green when
-// a USB card can both capture & play (i.e. GrayWolf-ready), red when none exist.
+// Compact count in the stats bar; full list lives on the dashboard.
+// Green when a GrayWolf-ready audio source exists:
+//   • USB sound card with both capture (RX) and playback (TX), OR
+//   • RTL-SDR feed (aprs-sdr-feed.service active — capture-only sdr_udp path).
+// Red when no audio source at all.
 async function fetchAudio() {
   const el = document.getElementById('s-audio');
   try {
@@ -1165,12 +1168,16 @@ async function fetchAudio() {
     const d = await r.json();
     if (!d.supported) { el.textContent = 'n/a'; el.className = 'stat-val'; el.title = 'ALSA / Linux only'; return; }
     const n = d.cards.length;
-    el.textContent = n ? `${n} card${n !== 1 ? 's' : ''}` : String(n);
-    const ready = d.cards.some(c => c.usb && c.capture && c.playback);
+    el.textContent = `${n} card${n !== 1 ? 's' : ''}`;
+    // SDR entry (sdr_udp path) is capture-only — that is sufficient for GrayWolf RX.
+    const ready = d.cards.some(c => c.sdr ? c.capture : (c.usb && c.capture && c.playback));
     el.className = 'stat-val' + (ready ? ' ok' : (n ? '' : ' bad'));
     el.title = n
-      ? d.cards.map(c => `${c.name}  ${c.alsa}  [${c.capture ? 'RX' : '--'}/${c.playback ? 'TX' : '--'}]${c.usb ? ' USB' : ''}`).join('\n')
-      : 'no sound cards detected';
+      ? d.cards.map(c => c.sdr
+          ? `${c.name}  ${c.alsa}  [RX/--] USB SDR`
+          : `${c.name}  ${c.alsa}  [${c.capture ? 'RX' : '--'}/${c.playback ? 'TX' : '--'}]${c.usb ? ' USB' : ''}`
+        ).join('\n')
+      : 'no audio source detected';
   } catch (_) {}
 }
 

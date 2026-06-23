@@ -1,0 +1,314 @@
+{
+  "schema_version": 1,
+  "_comment": [
+    "OASIS offline package manifest — the single source of truth for every",
+    "external package / driver / library OASIS installs. Two consumers:",
+    "  • the BUILDER (scripts/create-oasis-offline.py) vendors these into the",
+    "    offline bundle, per suite + per arch, and writes resolved versions back",
+    "    into each feature's `resolved` map (lockfile pattern).",
+    "  • the INSTALLER (scripts/setup-oasis-offline.py + scripts/common/<feature>.py)",
+    "    reads it on the Pi to decide source (newest of apt vs bundle vs installed),",
+    "    enforce `min_version` capability gates, then install/test/create services.",
+    "Source `type`: apt | github-release | pypi | url | data.",
+    "Suite-aware on purpose: a single-suite bundle installed librtlsdr 0.6.0",
+    "(bookworm) on a Trixie host, which lacks RTL-SDR Blog V4 support (needs >= 2.0)."
+  ],
+  "suites": [
+    "bookworm",
+    "trixie"
+  ],
+  "arches": [
+    "arm64",
+    "armhf",
+    "amd64"
+  ],
+  "features": {
+    "server": {
+      "type": "pypi",
+      "description": "Flask web server + WSGI + system stats. Vendored as wheels per platform/python.",
+      "packages": [
+        {
+          "name": "Flask",
+          "version": "3.1.3"
+        },
+        {
+          "name": "MarkupSafe",
+          "version": "3.0.3"
+        },
+        {
+          "name": "gunicorn",
+          "version": ">=23.0.0,<27",
+          "skip_on": [
+            "windows"
+          ]
+        },
+        {
+          "name": "psutil",
+          "version": "7.2.2"
+        }
+      ],
+      "resolved": {}
+    },
+    "rtl-sdr": {
+      "type": "apt",
+      "bundle_group": "rtl-sdr",
+      "description": "RTL-SDR RX driver + userspace tools (rtl_fm, rtl_test).",
+      "min_version": {
+        "librtlsdr": {
+          "min": "2.0",
+          "reason": "RTL-SDR Blog V4 (R828D) support requires librtlsdr/rtl-sdr >= 2.0. Bookworm ships pre-2.0 and breaks the V4."
+        }
+      },
+      "packages": {
+        "common": [
+          "rtl-sdr",
+          "libusb-1.0-0"
+        ],
+        "by_suite": {
+          "bookworm": [
+            "librtlsdr0"
+          ],
+          "trixie": [
+            "librtlsdr2"
+          ]
+        }
+      },
+      "suites": [
+        "bookworm",
+        "trixie"
+      ],
+      "arches": [
+        "arm64",
+        "armhf",
+        "amd64"
+      ],
+      "resolved": {
+        "trixie": {
+          "arm64": {
+            "rtl-sdr": "2.0.2-2+b1",
+            "libusb-1.0-0": "2:1.0.28-1"
+          },
+          "armhf": {
+            "rtl-sdr": "2.0.2-2+b1",
+            "libusb-1.0-0": "2:1.0.28-1"
+          },
+          "amd64": {
+            "rtl-sdr": "2.0.2-2+b1",
+            "libusb-1.0-0": "2:1.0.28-1"
+          }
+        }
+      }
+    },
+    "rtl-sdr-feed": {
+      "type": "apt",
+      "bundle_group": "rtl-sdr",
+      "description": "Carries/verifies the RTL-SDR -> GrayWolf sdr_udp audio feed. socat (feed) + tcpdump (verify) and their not-always-present shared-lib deps.",
+      "packages": {
+        "common": [
+          "socat",
+          "tcpdump",
+          "libwrap0",
+          "libpcap0.8"
+        ]
+      },
+      "suites": [
+        "bookworm",
+        "trixie"
+      ],
+      "arches": [
+        "arm64",
+        "armhf",
+        "amd64"
+      ],
+      "resolved": {
+        "trixie": {
+          "arm64": {
+            "socat": "1.8.0.3-1",
+            "tcpdump": "4.99.5-2",
+            "libwrap0": "7.6.q-36"
+          },
+          "armhf": {
+            "socat": "1.8.0.3-1",
+            "tcpdump": "4.99.5-2",
+            "libwrap0": "7.6.q-36"
+          },
+          "amd64": {
+            "socat": "1.8.0.3-1",
+            "tcpdump": "4.99.5-2",
+            "libwrap0": "7.6.q-36"
+          }
+        }
+      }
+    },
+    "rtl-sdr-diag": {
+      "type": "apt",
+      "bundle_group": "rtl-sdr",
+      "description": "Standalone AFSK1200 decoder for bench-testing the SDR chain independently of GrayWolf.",
+      "best_effort": true,
+      "_note": "Pulls a larger X11/audio dependency tree than the feed tools; only multimon-ng itself is vendored, so its deps may resolve from apt on a minimal image. Diagnostic only — not required for the GrayWolf feed.",
+      "packages": {
+        "common": [
+          "multimon-ng"
+        ]
+      },
+      "suites": [
+        "bookworm",
+        "trixie"
+      ],
+      "arches": [
+        "arm64",
+        "armhf",
+        "amd64"
+      ],
+      "resolved": {
+        "trixie": {
+          "arm64": {
+            "multimon-ng": "1.3.1+dfsg-1+b1"
+          },
+          "armhf": {
+            "multimon-ng": "1.3.1+dfsg-1"
+          },
+          "amd64": {
+            "multimon-ng": "1.3.1+dfsg-1"
+          }
+        }
+      }
+    },
+    "graywolf": {
+      "type": "github-release",
+      "description": "GrayWolf APRS TNC / iGate / digipeater. Prebuilt .deb per arch from GitHub releases.",
+      "repo": "chrissnell/graywolf",
+      "asset_pattern": "graywolf_{version}_{arch}.deb",
+      "_note": "Upstream ships only arm64 and amd64 .deb assets — no armhf.",
+      "arches": [
+        "arm64",
+        "amd64"
+      ],
+      "resolved": {
+        "_": {
+          "arm64": {
+            "graywolf": "0.14.8"
+          },
+          "amd64": {
+            "graywolf": "0.14.8"
+          }
+        }
+      },
+      "version": "0.14.8"
+    },
+    "kiwix": {
+      "type": "url",
+      "description": "kiwix-serve offline content server. Prebuilt static tarball per arch.",
+      "base_url": "https://download.kiwix.org/release/kiwix-tools",
+      "asset_pattern": "kiwix-tools_linux-{arch}-{version}.tar.gz",
+      "arches": [
+        "aarch64",
+        "armhf",
+        "x86_64"
+      ],
+      "resolved": {
+        "_": {
+          "aarch64": {
+            "kiwix-tools": "3.8.2"
+          },
+          "x86_64": {
+            "kiwix-tools": "3.8.2"
+          }
+        }
+      },
+      "version": "3.8.2"
+    },
+    "webssh": {
+      "type": "github-release",
+      "description": "ttyd browser SSH terminal. Prebuilt static binary per arch from GitHub releases.",
+      "repo": "tsl0922/ttyd",
+      "version": "1.7.7",
+      "asset_pattern": "ttyd.{arch}",
+      "arches": [
+        "aarch64",
+        "armhf",
+        "arm",
+        "x86_64"
+      ],
+      "resolved": {
+        "_": {
+          "aarch64": {
+            "ttyd": "1.7.7"
+          },
+          "armhf": {
+            "ttyd": "1.7.7"
+          },
+          "arm": {
+            "ttyd": "1.7.7"
+          },
+          "x86_64": {
+            "ttyd": "1.7.7"
+          }
+        }
+      }
+    },
+    "winlink": {
+      "type": "github-release",
+      "description": "Pat Winlink client + web UI (store-and-forward email over radio).",
+      "repo": "la5nta/pat",
+      "asset_pattern": "pat_{version}_linux_{arch}.deb",
+      "bundle_group": "pat",
+      "arches": [
+        "arm64",
+        "armhf",
+        "amd64"
+      ],
+      "resolved": {
+        "_": {
+          "arm64": {
+            "pat": "1.0.0"
+          },
+          "armhf": {
+            "pat": "1.0.0"
+          },
+          "amd64": {
+            "pat": "1.0.0"
+          }
+        }
+      },
+      "version": "1.0.0"
+    },
+    "fcc": {
+      "type": "data",
+      "description": "FCC amateur license database (EN.dat/HD.dat) + ZIP-to-grid table. Large one-time download, not vendored in the bundle.",
+      "online_only": true,
+      "resolved": {}
+    },
+    "wikipedia": {
+      "type": "data",
+      "description": "Wikipedia ZIM snapshot for Kiwix. Large one-time download (1 GB - 100 GB), not vendored in the bundle.",
+      "online_only": true,
+      "resolved": {}
+    }
+  },
+  "availability": {
+    "checked_utc": "2026-06-23T00:53:01+00:00",
+    "features": {
+      "graywolf": {
+        "bundled": null,
+        "latest": "0.14.8",
+        "status": "missing"
+      },
+      "kiwix": {
+        "bundled": null,
+        "latest": "3.8.2",
+        "status": "missing"
+      },
+      "winlink": {
+        "bundled": null,
+        "latest": "1.0.0",
+        "status": "missing"
+      },
+      "webssh": {
+        "bundled": null,
+        "latest": "1.7.7",
+        "status": "missing"
+      }
+    }
+  }
+}

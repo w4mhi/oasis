@@ -315,7 +315,7 @@ def print_instructions(port, gw_unit):
     unit = gw_unit or "graywolf"
     steps = f"""
   The audio feed is running. Now wire it into GrayWolf (browser config — there
-  is no config-file import). Full writeup: docs/sdr-to-graywolf.md
+  is no config-file import). Full writeup: docs/graywolf-rtl-sdr.md
 
   1. Audio Devices  →  + Add Device   (DO NOT click 'Detect Devices' — it
      auto-creates a soundcard device that hijacks the channel → POLLERR loop)
@@ -332,14 +332,20 @@ def print_instructions(port, gw_unit):
         mark / space  1200 / 2200 Hz
         RX input      the sdr_udp device (path 127.0.0.1:{port}) — NOT a soundcard
 
-  3. Confirm it works:
+  3. RESTART GrayWolf so it loads the new device/channel:
+        sudo systemctl restart {unit}
+     GrayWolf reads channel config when the modem STARTS — a device/channel you
+     add at runtime is not live until a restart. It can even keep showing
+     'state=RUNNING' on the old config while the new channel does nothing.
+
+  4. Confirm it works:
         journalctl -u {unit} -f --no-hostname
      Good: 'modem ready' + 'modembridge state=RUNNING', NO cpal/POLLERR.
      The sdr_udp level meter moves; a packet appears in the stream within minutes.
 
-  4. Reboot once and re-check — GrayWolf channel config has been seen to not
+  5. Reboot once and re-check — GrayWolf channel config has been seen to not
      persist ('no channels configured, skipping audio setup'). If it evaporates,
-     recreate it and chase persistence (see docs/sdr-to-graywolf.md, caveat 6).
+     recreate it and chase persistence (see docs/graywolf-rtl-sdr.md, caveat 6).
 """
     print(steps)
 

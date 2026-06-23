@@ -38,6 +38,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common.oasis_lib import _hr, _ok, _info, _warn, _fail, has_internet
+from common import manifest as M
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -415,6 +416,74 @@ def summarize(results):
             subprocess.run(["sudo", "reboot"])
 
 
+# ── Environment pre-flight (internet + suite + capability gates) ─────────────────
+# Colour only when writing to a real terminal — never dump escape codes into logs.
+_COLOR  = sys.stdout.isatty()
+_GREEN  = "\033[32m" if _COLOR else ""
+_YELLOW = "\033[33m" if _COLOR else ""
+_RESET  = "\033[0m"  if _COLOR else ""
+
+# Map this menu's feature keys to manifest feature names (only those with gates
+# matter here). The installers themselves do the full source resolution.
+_KEY_TO_MANIFEST = {"rtl-sdr": "rtl-sdr"}
+
+
+def _host_suite():
+    """Host Debian suite codename (Ubuntu LTS mapped to its Debian base)."""
+    try:
+        s = subprocess.run(["lsb_release", "-cs"], capture_output=True,
+                           text=True).stdout.strip().lower()
+    except Exception:
+        s = ""
+    return {"jammy": "bookworm", "focal": "bullseye",
+            "noble": "bookworm"}.get(s, s) or "unknown"
+
+
+def environment_preflight(plan):
+    """Show internet + suite up front, then flag capability gates before installing.
+
+    Green when online (newest packages come from the internet); yellow when offline
+    (we install from the bundle, which must match the host suite). Warns if a
+    selected feature has a min_version gate the host may not satisfy — e.g. the
+    RTL-SDR Blog V4 needs librtlsdr >= 2.0, which bookworm cannot provide.
+    """
+    online = has_internet()
+    suite  = _host_suite()
+
+    print()
+    _hr()
+    print("  Environment")
+    _hr()
+    if online:
+        print(f"  {_GREEN}● Internet detected — packages will be downloaded from the "
+              f"internet (newest available).{_RESET}")
+    else:
+        print(f"  {_YELLOW}● No internet — installing from the offline bundle, which "
+              f"must match this host's suite ({suite}).{_RESET}")
+    _info(f"Host suite: {suite}")
+
+    for f in plan:
+        feat = _KEY_TO_MANIFEST.get(f.key)
+        if not feat:
+            continue
+        try:
+            gate = M.min_version(feat)
+        except Exception:
+            gate = None
+        if not gate:
+            continue
+        for pkg, spec in gate.items():
+            req    = spec.get("min") if isinstance(spec, dict) else spec
+            reason = spec.get("reason") if isinstance(spec, dict) else None
+            print(f"  {_YELLOW}⚠ {f.name}: needs {pkg} >= {req} to work fully.{_RESET}")
+            if reason:
+                _info(f"    {reason}")
+            if online:
+                _info("    Online: apt is used if it offers a newer version than the bundle.")
+            else:
+                _info(f"    Offline: make sure the '{suite}' bundle ships {pkg} >= {req}.")
+
+
 # ── Entry point ─────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(
@@ -468,6 +537,8 @@ def main():
     plan = expand_with_prereqs(keys)
     for f in plan:
         print(f"   • {f.name}")
+
+    environment_preflight(plan)
 
     if not args.yes:
         if input("\n  Proceed? [Y/n]: ").strip().lower() in ("n", "no"):

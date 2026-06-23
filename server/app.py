@@ -21,6 +21,7 @@ import os
 import re
 import socket
 import sqlite3
+import sys
 import threading
 import time
 import webbrowser
@@ -343,10 +344,19 @@ def api_save_chirp():
 @app.route("/health")
 def health():
     """Simple health check; also reports whether the index is present."""
+    index_present = os.path.exists(lookup.INDEX_PATH)
+    callsign_count = 0
+    if index_present:
+        try:
+            with open(lookup.INDEX_PATH, "rb") as f:
+                callsign_count = sum(1 for _ in f)
+        except OSError:
+            callsign_count = 0
     return jsonify({
         "ok": True,
-        "index_present": os.path.exists(lookup.INDEX_PATH),
+        "index_present": index_present,
         "zip_entries": len(ZIP_TABLE),
+        "callsign_count": callsign_count,
     })
 
 
@@ -761,10 +771,36 @@ def api_audio():
             "alsa":     f"hw:{n},0",
         })
 
+    # ── RTL-SDR feed service (not an ALSA card; check systemd) ──────────
+    # aprs-sdr-feed.service pipes rtl_fm audio to GrayWolf via sdr_udp UDP.
+    # If it is active we expose it as a synthetic capture-only card so the UI
+    # can show green even when zero ALSA sound cards are attached.
+    import subprocess as _sp
+    SDR_SERVICE = "aprs-sdr-feed.service"
+    try:
+        rc = _sp.run(
+            ["systemctl", "is-active", "--quiet", SDR_SERVICE],
+            timeout=2,
+        ).returncode
+        if rc == 0:
+            cards.append({
+                "index":    -1,
+                "id":       "sdr",
+                "name":     "RTL-SDR (aprs-sdr-feed)",
+                "driver":   "rtlsdr",
+                "capture":  True,
+                "playback": False,
+                "usb":      True,
+                "alsa":     "sdr_udp",
+                "sdr":      True,
+            })
+    except Exception:
+        pass
+
     return jsonify({"ok": True, "supported": True, "cards": cards})
 
 
-PORT = 8083
+PORT = int(os.environ.get("OASIS_PORT", "8083"))
 
 def find_free_port(start=8083, end=8093):
     """Return the first TCP port in [start, end] not already in use."""
@@ -784,11 +820,41 @@ if __name__ == "__main__":
         action="store_true",
         help="Do not open a web browser on startup (useful for headless Pi deployments).",
     )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Force the Flask development server even when gunicorn is installed.",
+    )
     args = parser.parse_args()
 
     PORT = find_free_port()
+    os.environ["OASIS_PORT"] = str(PORT)   # so the gunicorn-loaded app reports this port
     url = f"http://localhost:{PORT}/"
-    print(f"\n  OASIS — {url}\n")
+
+    # Prefer the gunicorn production server when it's installed — re-exec into it.
+    # gunicorn imports this module as 'app', so __main__ never runs under gunicorn
+    # (no recursion). Falls back to the Flask dev server if gunicorn is absent or
+    # --dev is given. This is why a plain `python app.py` now serves via gunicorn.
+    if not args.dev:
+        try:
+            import gunicorn  # noqa: F401
+            _have_gunicorn = True
+        except ImportError:
+            _have_gunicorn = False
+        if _have_gunicorn:
+            app_dir = os.path.dirname(os.path.abspath(__file__))
+            print(f"\n  OASIS (gunicorn) — {url}\n")
+            os.execv(sys.executable, [
+                sys.executable, "-m", "gunicorn",
+                "--chdir", app_dir,
+                "--bind", f"0.0.0.0:{PORT}",
+                "--workers", "2",
+                "--access-logfile", "-",
+                "app:app",
+            ])
+            # os.execv replaces this process; nothing below runs on success.
+
+    print(f"\n  OASIS (dev server) — {url}\n")
     if not args.no_browser:
         # Open the browser shortly after the server starts.
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()

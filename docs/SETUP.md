@@ -146,7 +146,10 @@ python3 scripts/enable-autostart-pi.py
 # Server + Chromium kiosk (Raspberry Pi OS with Desktop)
 python3 scripts/enable-autostart-pi.py --with-browser
 
-# Remove autostart
+# Server + clickable desktop shortcut (Raspberry Pi OS with Desktop)
+python3 scripts/enable-autostart-pi.py --desktop-icon
+
+# Remove autostart, kiosk, and desktop icon
 python3 scripts/enable-autostart-pi.py --disable
 ```
 

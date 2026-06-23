@@ -1,0 +1,43 @@
+name: offline-manifest
+
+# Guards the offline package manifest + reader: suite-aware package selection,
+# capability gates, and newest-source-wins resolution — the behaviour that the
+# "bookworm bundle / librtlsdr 0.6.0 on Trixie" bug exposed. Also byte-compiles
+# every script and confirms the thin CLIs still parse args.
+
+on:
+  push:
+    paths:
+      - "scripts/**"
+      - ".github/workflows/offline-manifest.yml"
+  pull_request:
+    paths:
+      - "scripts/**"
+  workflow_dispatch:
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate manifest JSON
+        run: python3 -c "import json; json.load(open('scripts/offline-manifest.json'))"
+
+      - name: Manifest self-tests (suite-aware · gates · newest-source-wins)
+        run: python3 scripts/tests/test_offline_manifest.py
+
+      - name: Byte-compile all scripts
+        run: python3 -m py_compile $(git ls-files 'scripts/*.py' 'scripts/common/*.py' 'scripts/tests/*.py')
+
+      - name: Thin CLIs still parse --help
+        run: |
+          set -e
+          for s in install-rtl-sdr install-graywolf install-kiwix install-webssh \
+                   install-winlink setup-server setup-oasis-offline; do
+            echo "  --help: $s"
+            python3 "scripts/$s.py" --help >/dev/null
+          done

@@ -16,9 +16,13 @@ Always outputs to oasis-offline/ in the repo root (existing bundle is wiped).
     Wipe oasis-offline/ and perform a full clean rebuild from scratch.
 
   --check
-    Verify that all offline assets are present in an existing oasis-offline/
-    and that the wheel set satisfies every supported platform/Python target.
-    No changes are made. Use in CI or before shipping a bundle.
+    Refresh the manifest's per-feature `version` from upstream latest. For each
+    versioned feature (GrayWolf, Kiwix, Pat/Winlink, ttyd) it fetches the latest
+    available version and rewrites `version` in scripts/offline-manifest.json:
+    no version or a stale one -> UPDATED; already latest -> CURRENT; can't reach
+    upstream -> left for --update. No downloads — the files are fetched later on
+    --update / build, which read these pinned versions. Operates on the manifest
+    in the script's own root (repo or a deployed bundle), updating it in place.
 
   --skip-windows
     Skip downloading the embedded Windows Python runtime.
@@ -41,7 +45,7 @@ Build phases (run automatically unless --check):
   Phase 2 — GrayWolf .deb       oasis-offline/offline-packages/graywolf/
   Phase 3 — Kiwix binaries      oasis-offline/offline-packages/kiwix/
   Phase 4 — FCC database        oasis-offline/fcc-offline-database/data/
-  Phase 5 — RTL-SDR .deb        oasis-offline/offline-packages/rtl-sdr/
+  Phase 5 — RTL-SDR .deb        oasis-offline/offline-packages/rtl-sdr/<suite>/
   Phase 6 — webssh ttyd binary  oasis-offline/offline-packages/webssh/
   Phase 7 — Pat (Winlink) .deb  oasis-offline/offline-packages/pat/
   Phase 8 — Wikipedia (Best of Wikipedia Mini)  oasis-offline/zim/  (~316 MB, 50K articles)
@@ -57,6 +61,7 @@ Usage:
 
 import argparse
 import io
+import json
 import os
 import re
 import shutil
@@ -69,23 +74,35 @@ import urllib.request
 import zipfile
 
 # ── Shared library ─────────────────────────────────────────────────────────────
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _SCRIPTS_DIR)
 from common.oasis_lib import (
     _hr, _ok, _warn, _info, _dl, _cp, _section, _fail,
     download_to, download_bytes,
-    fcc_download, fcc_download_zip,
-    graywolf_latest_release, graywolf_download_deb,
+    fcc_download_zip,
+    graywolf_latest_release,
     pat_latest_release,
     kiwix_latest_version, kiwix_download_tarball,
     rtl_sdr_download_debs,
     ttyd_download,
-    KIWIX_BASE, RTL_SDR_PACKAGES, FEED_PACKAGES, DEBIAN_SUITE, TTYD_VERSION,
+    KIWIX_BASE, TTYD_VERSION,
+    debian_packages_index,
 )
+from common import manifest as M
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(_SCRIPTS_DIR)
 OUT_DIR   = os.path.join(REPO_ROOT, "oasis-offline")
+# --check works on the SCRIPT'S OWN root (parent of scripts/), so it behaves
+# identically run from the repo or from inside a deployed oasis-offline/ bundle (or
+# a card): it reads <root>/offline-packages/ and updates <root>/scripts/offline-manifest.json.
+# (The build still outputs into OUT_DIR = <repo>/oasis-offline/.)
+BUNDLE_PKG_ROOT = os.path.join(REPO_ROOT, "offline-packages")
 REQ_FILE  = os.path.join(REPO_ROOT, "scripts", "requirements.txt")
+
+# ── Manifest ───────────────────────────────────────────────────────────────────
+# Load once; all phases read from this.
+_MANIFEST_PATH = os.path.join(_SCRIPTS_DIR, "offline-manifest.json")
 
 # ── Windows embedded Python ────────────────────────────────────────────────────
 PYTHON_VERSION   = "3.12.10"
@@ -121,10 +138,6 @@ TARGETS = [
 ]
 
 
-
-
-
-
 def _abi(pyver):
     return "cp" + pyver.replace(".", "")
 
@@ -135,6 +148,84 @@ def _download_mem(url, label):
     if data is None:
         _fail(f"Download failed: {err}")
     return io.BytesIO(data)
+
+
+# ── Manifest resolved-version lockfile ─────────────────────────────────────────
+def _write_resolved(feature, suite, arch, versions):
+    """Write resolved package versions back into the manifest's `resolved` map.
+
+    Shape: feature.resolved[suite][arch] = {pkg: version, ...}
+    suite may be None for non-apt features (uses '_' as key).
+    """
+    with open(_MANIFEST_PATH, encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    suite_key = suite if suite is not None else "_"
+    feat = manifest["features"].get(feature)
+    if feat is None:
+        return
+    resolved = feat.setdefault("resolved", {})
+    by_arch = resolved.setdefault(suite_key, {})
+    by_arch[arch] = versions
+
+    with open(_MANIFEST_PATH, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
+# ── Version check (--check): refresh each feature's `version` in the manifest ────
+def _gh_version(fetch):
+    """Latest version string from a GitHub-release fetcher (graywolf/pat), or None."""
+    rel = fetch()
+    return (rel.get("tag_name") or rel.get("name") or "").lstrip("v") or None
+
+
+# feature -> callable returning the latest upstream version string (may raise).
+_VERSIONED = {
+    "graywolf": lambda: _gh_version(graywolf_latest_release),
+    "kiwix":    kiwix_latest_version,
+    "winlink":  lambda: _gh_version(pat_latest_release),
+    "webssh":   lambda: TTYD_VERSION,
+}
+
+
+def check_versions():
+    """Fetch each versioned feature's latest upstream version and rewrite the
+    manifest's `version` field — no downloads. Returns rows of
+    (feature, old, new, status) where status is:
+        'updated'     — manifest had no version, or a stale one; rewritten to latest
+        'current'     — manifest version already matches upstream
+        'uncheckable' — could not reach upstream (left as-is; fix on --update)
+    The manifest is written only if a version actually changed.
+    """
+    with open(_MANIFEST_PATH, encoding="utf-8") as f:
+        man = json.load(f)
+
+    rows, changed = [], False
+    for feat, fetch in _VERSIONED.items():
+        node = man.get("features", {}).get(feat)
+        if node is None:
+            continue
+        old = node.get("version") or None
+        try:
+            latest = fetch()
+        except Exception:
+            latest = None
+
+        if latest is None:
+            rows.append((feat, old, None, "uncheckable"))
+        elif old == latest:
+            rows.append((feat, old, latest, "current"))
+        else:
+            node["version"] = latest
+            changed = True
+            rows.append((feat, old, latest, "updated"))
+
+    if changed:
+        with open(_MANIFEST_PATH, "w", encoding="utf-8") as f:
+            json.dump(man, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+    return rows
 
 
 # ── Phase 1: Python wheels ─────────────────────────────────────────────────────
@@ -209,22 +300,26 @@ def phase_wheels(wheels_dir, check=False):
 
 
 # ── Phase 2: GrayWolf binaries ─────────────────────────────────────────────────
-_GRAYWOLF_TARGETS = [
-    ("arm64", "Raspberry Pi / Linux ARM 64-bit"),
-    ("amd64", "Linux x86-64"),
-]
+def phase_graywolf(bundle_root, update=False):
+    """Phase 2: Download GrayWolf .deb for each arch in the manifest.
 
+    Reads arches from the manifest feature. Output path: M.bundle_dir(bundle_root,
+    'graywolf') — no suite since this is a github-release feature.
+    """
+    feature    = "graywolf"
+    graywolf_dir = M.bundle_dir(bundle_root, feature)
+    feat       = M.get_feature(feature)
+    deb_arches = M.feature_arches(feature)
 
-def phase_graywolf(graywolf_dir, update=False):
-    """Phase 2: Download GrayWolf .deb for arm64 + amd64."""
     _section("Phase 2 — GrayWolf APRS binaries")
     _info("Source  : https://github.com/chrissnell/graywolf")
-    _info("Targets : arm64 (Pi), amd64 (Linux x86-64)")
+    _info(f"Targets : {', '.join(deb_arches)}")
     _info("Note    : Linux-only upstream — no macOS or Windows packages")
     os.makedirs(graywolf_dir, exist_ok=True)
 
+    pinned_ver = feat.get("version")
     try:
-        release = graywolf_latest_release()
+        release = graywolf_latest_release(pinned_version=pinned_ver)
     except SystemExit:
         _warn("GrayWolf will not be available for offline install.")
         return
@@ -232,24 +327,26 @@ def phase_graywolf(graywolf_dir, update=False):
     latest_ver = release["tag_name"].lstrip("v")
     _info(f"GrayWolf {latest_ver} — checking")
     downloaded = []
-    for deb_arch, desc in _GRAYWOLF_TARGETS:
+    for deb_arch in deb_arches:
         filename  = f"graywolf_{latest_ver}_{deb_arch}.deb"
         dest_path = os.path.join(graywolf_dir, filename)
         if os.path.exists(dest_path):
             _cp(f"{filename}  (up to date)")
             downloaded.append(filename)
+            _write_resolved(feature, None, deb_arch, {"graywolf": latest_ver})
             continue
         asset = next(
             (a for a in release.get("assets", []) if a["name"] == filename), None
         )
         if not asset:
-            _warn(f"Asset not found: {filename} ({desc}) — skipping")
+            _warn(f"Asset not found: {filename} ({deb_arch}) — skipping")
             continue
         _dl(f"{filename}  ({asset['size'] / 1_048_576:.1f} MB)  ← GitHub")
         try:
             download_to(asset["browser_download_url"], dest_path)
             _ok(filename)
             downloaded.append(filename)
+            _write_resolved(feature, None, deb_arch, {"graywolf": latest_ver})
         except Exception as exc:
             _warn(f"Failed: {filename}: {exc}")
 
@@ -260,17 +357,21 @@ def phase_graywolf(graywolf_dir, update=False):
 
 
 # ── Phase 3: Kiwix binaries ────────────────────────────────────────────────────
-_KIWIX_TARGETS = [
-    ("aarch64", "Linux ARM 64-bit"),
-    ("x86_64",  "Linux x86-64"),
-]
+def phase_kiwix(bundle_root, update=False):
+    """Phase 3: Download kiwix-tools for each arch in the manifest.
 
+    Reads arches and base_url from the manifest feature. Output path:
+    M.bundle_dir(bundle_root, 'kiwix') — no suite.
+    """
+    feature  = "kiwix"
+    kiwix_dir = M.bundle_dir(bundle_root, feature)
+    feat     = M.get_feature(feature)
+    base_url = feat.get("base_url", KIWIX_BASE)
 
-def phase_kiwix(kiwix_dir, update=False):
-    """Phase 3: Download kiwix-tools for linux-aarch64 + linux-x86_64."""
     _section("Phase 3 — Kiwix binaries")
-    _info(f"Source  : {KIWIX_BASE}/")
-    _info("Targets : linux-aarch64, linux-x86_64")
+    _info(f"Source  : {base_url}/")
+    kiwix_arches = M.feature_arches(feature)
+    _info(f"Targets : {', '.join(kiwix_arches)}")
     os.makedirs(kiwix_dir, exist_ok=True)
 
     latest_ver = kiwix_latest_version()
@@ -280,16 +381,18 @@ def phase_kiwix(kiwix_dir, update=False):
 
     _info(f"Kiwix {latest_ver} — checking")
     downloaded = []
-    for kiwix_arch, desc in _KIWIX_TARGETS:
+    for kiwix_arch in kiwix_arches:
         filename  = f"kiwix-tools_linux-{kiwix_arch}-{latest_ver}.tar.gz"
         dest_path = os.path.join(kiwix_dir, filename)
         if os.path.exists(dest_path):
             _cp(f"{filename}  (up to date)")
             downloaded.append(filename)
+            _write_resolved(feature, None, kiwix_arch, {"kiwix-tools": latest_ver})
             continue
         try:
             path = kiwix_download_tarball(kiwix_dir, latest_ver, kiwix_arch)
             downloaded.append(os.path.basename(path))
+            _write_resolved(feature, None, kiwix_arch, {"kiwix-tools": latest_ver})
         except SystemExit:
             _warn(f"Failed to download kiwix-tools for {kiwix_arch} — skipping.")
 
@@ -334,89 +437,169 @@ def phase_aprs_sprites(map_assets_dir):
             _warn(f"Failed to download {filename}: {exc}")
 
 
-# ── Phase 5: RTL-SDR Debian packages ─────────────────────────────────────────
-_RTL_SDR_TARGETS = [
-    ("arm64", "Raspberry Pi (64-bit)"),
-    ("armhf", "Raspberry Pi (32-bit)"),
-    ("amd64", "Linux x86-64"),
-]
+# ── Phase 5: RTL-SDR Debian packages (suite-aware) ────────────────────────────
+#
+# The manifest has three apt features that all share bundle_group "rtl-sdr":
+#   rtl-sdr        — driver + librtlsdr (librtlsdr0 on bookworm, librtlsdr2 on trixie)
+#   rtl-sdr-feed   — socat, tcpdump, and shared-lib deps
+#   rtl-sdr-diag   — multimon-ng (best-effort, diagnostic only)
+#
+# Each is vendored per suite per arch into:
+#   offline-packages/rtl-sdr/<suite>/  (M.bundle_dir uses bundle_group "rtl-sdr")
+#
+# The "up to date" check is now per-suite, keyed on suite-correct package names.
+
+_RTL_SDR_APT_FEATURES = ["rtl-sdr", "rtl-sdr-feed", "rtl-sdr-diag"]
 
 
-def phase_rtl_sdr(rtl_sdr_dir, update=False):
-    """Phase 5: Download RTL-SDR + feed-tool Debian packages for arm64, armhf, amd64."""
-    _section("Phase 5 — RTL-SDR Debian packages")
-    packages = RTL_SDR_PACKAGES + FEED_PACKAGES
-    _info(f"Suite   : Debian {DEBIAN_SUITE}")
-    _info(f"Packages: {', '.join(packages)}")
-    _info("Targets : arm64 (Pi 64-bit), armhf (Pi 32-bit), amd64")
-    # rtl-sdr is the RX driver; socat carries the GrayWolf feed; tcpdump verifies
-    # it. Both tool sets land in the same offline dir for install-rtl-sdr.py.
-    for deb_arch, desc in _RTL_SDR_TARGETS:
-        _info(f"  ─── {desc}")
-        if os.path.isdir(rtl_sdr_dir):
-            have = os.listdir(rtl_sdr_dir)
-            def _present(prefix):
-                return any(f.startswith(prefix) and f.endswith(f"_{deb_arch}.deb")
-                           for f in have)
-            # Up to date only if both the driver and the feed tools are bundled.
-            if _present("rtl-sdr_") and _present("socat_") and _present("tcpdump_"):
-                _cp(f"rtl-sdr + feed tools {deb_arch}: present  (up to date)")
+def _rtl_sdr_suite_dir(bundle_root, suite):
+    """Return the per-suite output directory for all rtl-sdr apt features."""
+    # All three features share bundle_group "rtl-sdr", so any of them gives the
+    # same bundle_dir. Pass suite so M.bundle_dir appends it.
+    return M.bundle_dir(bundle_root, "rtl-sdr", suite=suite)
+
+
+def _rtl_sdr_all_packages(suite):
+    """Collect all apt package names for the given suite across all rtl-sdr features."""
+    pkgs = []
+    for feature in _RTL_SDR_APT_FEATURES:
+        for p in M.apt_packages(feature, suite=suite):
+            if p not in pkgs:
+                pkgs.append(p)
+    return pkgs
+
+
+def _rtl_sdr_suite_present(suite_dir, suite, deb_arch):
+    """True when the suite+arch slot looks complete (driver + feed tools present)."""
+    if not os.path.isdir(suite_dir):
+        return False
+    have = os.listdir(suite_dir)
+    def _present(prefix):
+        return any(f.startswith(prefix) and f.endswith(f"_{deb_arch}.deb")
+                   for f in have)
+
+    # librtlsdr package name differs by suite.
+    rtlsdr_lib = "librtlsdr0" if suite == "bookworm" else "librtlsdr2"
+    return (
+        _present("rtl-sdr_")
+        and _present(f"{rtlsdr_lib}_")
+        and _present("socat_")
+        and _present("tcpdump_")
+    )
+
+
+def phase_rtl_sdr(bundle_root, update=False):
+    """Phase 5: Download RTL-SDR apt packages per suite per arch.
+
+    Iterates every suite and arch declared for apt features in the manifest. For
+    each (suite, arch) slot that is not already complete, calls
+    rtl_sdr_download_debs with the suite-correct package list and writes resolved
+    versions back into the manifest.
+    """
+    _section("Phase 5 — RTL-SDR Debian packages  (suite-aware)")
+
+    for suite in M.feature_suites("rtl-sdr"):
+        pkgs = _rtl_sdr_all_packages(suite)
+        suite_dir = _rtl_sdr_suite_dir(bundle_root, suite)
+        _info(f"Suite   : Debian {suite}")
+        _info(f"Packages: {', '.join(pkgs)}")
+        _info(f"Dest    : {os.path.relpath(suite_dir)}/")
+
+        for deb_arch in M.feature_arches("rtl-sdr"):
+            _info(f"  ─── {suite}/{deb_arch}")
+            if _rtl_sdr_suite_present(suite_dir, suite, deb_arch):
+                _cp(f"rtl-sdr {suite}/{deb_arch}: present  (up to date)")
                 continue
-        rtl_sdr_download_debs(rtl_sdr_dir, deb_arch, packages=packages)
+
+            downloaded = rtl_sdr_download_debs(
+                suite_dir, deb_arch, packages=pkgs, suite=suite
+            )
+
+            # Write resolved versions back into the manifest for each feature.
+            # Fetch the index once more (it may already be cached in memory by
+            # rtl_sdr_download_debs, but we need the version strings).
+            pkg_index = debian_packages_index(deb_arch, pkgs, suite=suite)
+            for feature in _RTL_SDR_APT_FEATURES:
+                feature_pkgs = M.apt_packages(feature, suite=suite)
+                versions = {
+                    p: pkg_index[p]["Version"]
+                    for p in feature_pkgs
+                    if p in pkg_index and pkg_index[p].get("Version")
+                }
+                if versions:
+                    _write_resolved(feature, suite, deb_arch, versions)
+
+        _ok(f"RTL-SDR {suite} done  →  {os.path.relpath(suite_dir)}/")
+
+
 # ── Phase 6: webssh (ttyd) static binaries ────────────────────────────────────
-_WEBSSH_TARGETS = [
-    ("aarch64", "Raspberry Pi (64-bit)"),
-    ("armhf",   "Raspberry Pi (32-bit)"),
-    ("arm",     "Raspberry Pi 1 / Zero (armv6)"),
-    ("x86_64",  "Linux x86-64"),
-]
+def phase_webssh(bundle_root, update=False):
+    """Phase 6: Download the ttyd prebuilt static binaries for each arch in the manifest.
 
+    Reads arches and pinned version from the manifest feature. Output:
+    M.bundle_dir(bundle_root, 'webssh') — no suite.
+    """
+    feature    = "webssh"
+    webssh_dir = M.bundle_dir(bundle_root, feature)
+    feat       = M.get_feature(feature)
+    ttyd_ver   = feat.get("version", TTYD_VERSION)
+    ttyd_arches = M.feature_arches(feature)
 
-def phase_webssh(webssh_dir, update=False):
-    """
-    Phase 6: Download the ttyd prebuilt static binaries (one per arch).
-    ttyd is not in Debian stable; static binaries are the only reliable offline
-    source. install-webssh.py installs these to /usr/local/bin/ttyd.
-    """
     _section("Phase 6 — webssh (ttyd) static binaries")
-    _info(f"Version : ttyd {TTYD_VERSION}")
-    _info("Targets : " + ", ".join(f"{s} ({d})" for s, d in _WEBSSH_TARGETS))
+    _info(f"Version : ttyd {ttyd_ver}")
+    _info(f"Targets : {', '.join(ttyd_arches)}")
     os.makedirs(webssh_dir, exist_ok=True)
 
     got = 0
-    for suffix, desc in _WEBSSH_TARGETS:
+    for suffix in ttyd_arches:
         dest = os.path.join(webssh_dir, f"ttyd.{suffix}")
         if os.path.exists(dest):
             _cp(f"ttyd.{suffix}  (up to date)")
             got += 1
+            _write_resolved(feature, None, suffix, {"ttyd": ttyd_ver})
             continue
-        if ttyd_download(webssh_dir, suffix) is not None:
+        if ttyd_download(webssh_dir, suffix, version=ttyd_ver) is not None:
             got += 1
+            _write_resolved(feature, None, suffix, {"ttyd": ttyd_ver})
 
     if got:
-        _ok(f"{got}/{len(_WEBSSH_TARGETS)} ttyd binaries ready in "
+        _ok(f"{got}/{len(ttyd_arches)} ttyd binaries ready in "
             f"{os.path.relpath(webssh_dir)}/")
     else:
         _warn("No ttyd binaries downloaded — webssh offline install will not work.")
 
 
 # ── Phase 7: Pat (Winlink) Debian packages ───────────────────────────────────
-_PAT_TARGETS = [
+# Pat is still a github-release shape. Read arches from the manifest if a
+# 'pat' feature is present; fall back to the hardcoded list.
+_PAT_TARGETS_DEFAULT = [
     ("arm64", "Raspberry Pi (64-bit)"),
     ("armhf", "Raspberry Pi (32-bit)"),
     ("amd64", "Linux x86-64"),
 ]
 
 
-def phase_pat(pat_dir, update=False):
-    """Phase 7: Download the Pat (Winlink) .deb for arm64, armhf, amd64.
+def phase_pat(bundle_root, update=False):
+    """Phase 7: Download the Pat (Winlink) .deb for each arch.
 
-    Same GitHub-release shape as GrayWolf; asset names are
-    pat_<version>_linux_<arch>.deb. Used by install-winlink.py.
+    Output: M.bundle_dir(bundle_root, 'pat') if 'pat' is in the manifest,
+    otherwise the legacy path offline-packages/pat/. No suite.
     """
     _section("Phase 7 — Pat (Winlink) binaries")
+
+    # Use manifest-declared arches if the feature exists; degrade gracefully.
+    # Feature key is 'winlink' (bundle_group 'pat' → offline-packages/pat/).
+    try:
+        pat_arches = [(a, "") for a in M.feature_arches("winlink")]
+        pat_dir    = M.bundle_dir(bundle_root, "winlink")
+        have_feat  = True
+    except KeyError:
+        pat_arches = _PAT_TARGETS_DEFAULT
+        pat_dir    = os.path.join(bundle_root, "offline-packages", "pat")
+        have_feat  = False
+
     _info("Source  : https://github.com/la5nta/pat")
-    _info("Targets : arm64 (Pi 64-bit), armhf (Pi 32-bit), amd64")
+    _info(f"Targets : {', '.join(a for a, _ in pat_arches)}")
     _info("Note    : Linux .deb only here — install-winlink.py consumes these")
     os.makedirs(pat_dir, exist_ok=True)
 
@@ -429,24 +612,28 @@ def phase_pat(pat_dir, update=False):
     latest_ver = release["tag_name"].lstrip("v")
     _info(f"Pat {latest_ver} — checking")
     downloaded = []
-    for deb_arch, desc in _PAT_TARGETS:
+    for deb_arch, desc in pat_arches:
         filename  = f"pat_{latest_ver}_linux_{deb_arch}.deb"
         dest_path = os.path.join(pat_dir, filename)
         if os.path.exists(dest_path):
             _cp(f"{filename}  (up to date)")
             downloaded.append(filename)
+            if have_feat:
+                _write_resolved("winlink", None, deb_arch, {"pat": latest_ver})
             continue
         asset = next(
             (a for a in release.get("assets", []) if a["name"] == filename), None
         )
         if not asset:
-            _warn(f"Asset not found: {filename} ({desc}) — skipping")
+            _warn(f"Asset not found: {filename} ({deb_arch}) — skipping")
             continue
         _dl(f"{filename}  ({asset['size'] / 1_048_576:.1f} MB)  ← GitHub")
         try:
             download_to(asset["browser_download_url"], dest_path)
             _ok(filename)
             downloaded.append(filename)
+            if have_feat:
+                _write_resolved("winlink", None, deb_arch, {"pat": latest_ver})
         except Exception as exc:
             _warn(f"Failed: {filename}: {exc}")
 
@@ -604,25 +791,38 @@ def build_copy(dest, src=None):
     _cp(f"{copied} files copied from repo to bundle  ({skipped} excluded)")
 
     # Report anything that will hurt the offline experience.
-    gw_dir = os.path.join(dest, "offline-packages", "graywolf")
-    kw_dir = os.path.join(dest, "offline-packages", "kiwix")
-    rs_dir = os.path.join(dest, "offline-packages", "rtl-sdr")
-    ws_dir = os.path.join(dest, "offline-packages", "webssh")
-    pt_dir = os.path.join(dest, "offline-packages", "pat")
+    # RTL-SDR is now split into per-suite subdirs; check at least one suite exists.
+    gw_dir = M.bundle_dir(dest, "graywolf")
+    kw_dir = M.bundle_dir(dest, "kiwix")
+    ws_dir = M.bundle_dir(dest, "webssh")
+    # Pat may or may not be in the manifest; use the same logic as phase_pat.
+    try:
+        pt_dir = M.bundle_dir(dest, "pat")
+    except KeyError:
+        pt_dir = os.path.join(dest, "offline-packages", "pat")
+
     if not any(f.endswith(".deb") for f in (os.listdir(gw_dir) if os.path.isdir(gw_dir) else [])):
         _warn("GrayWolf .deb missing — Pi users will need internet to install GrayWolf.")
     if not any(f.endswith(".tar.gz") for f in (os.listdir(kw_dir) if os.path.isdir(kw_dir) else [])):
         _warn("Kiwix binary missing — Pi users will need internet to install Kiwix.")
-    rs_debs = [f for f in (os.listdir(rs_dir) if os.path.isdir(rs_dir) else []) if f.endswith(".deb")]
+
+    # RTL-SDR: verify at least one suite/arch slot has the driver .deb.
+    rs_base = M.bundle_dir(dest, "rtl-sdr")
+    rs_debs = []
+    if os.path.isdir(rs_base):
+        for suite in M.feature_suites("rtl-sdr"):
+            suite_dir = os.path.join(rs_base, suite)
+            if os.path.isdir(suite_dir):
+                rs_debs += [f for f in os.listdir(suite_dir) if f.endswith(".deb")]
     if not any(f.startswith("rtl-sdr_") for f in rs_debs):
         _warn("RTL-SDR .deb packages missing — Pi users will need internet to install RTL-SDR.")
     if not any(f.startswith("socat_") for f in rs_debs):
         _warn("socat/tcpdump .deb packages missing — Pi users will need internet to enable the RTL-SDR feed.")
+
     if not any(f.startswith("ttyd.") for f in (os.listdir(ws_dir) if os.path.isdir(ws_dir) else [])):
         _warn("webssh (ttyd) static binaries missing — Pi users will need internet to install webssh.")
     if not any(f.endswith(".deb") for f in (os.listdir(pt_dir) if os.path.isdir(pt_dir) else [])):
         _warn("Pat .deb missing — Winlink users will need internet to install Pat.")
-
 
 
 # ── Build: Windows embedded Python runtime ────────────────────────────────────
@@ -734,7 +934,9 @@ def build_launchers(dest):
             "fi\n"
             "\n"
             'echo "Starting OASIS — open http://localhost:8083 in your browser"\n'
-            '"$VENV/bin/python" server/app.py\n'
+            '# app.py prefers gunicorn when installed, else the Flask dev server\n'
+            '# (see server/app.py __main__). The launcher stays dumb on purpose.\n'
+            'exec "$VENV/bin/python" server/app.py\n'
         )
     st = os.stat(sh)
     os.chmod(sh, st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
@@ -766,85 +968,36 @@ def build_summary(dest):
 
 # ── Commands ───────────────────────────────────────────────────────────────────
 def cmd_check():
-    """Verify all offline assets in an existing oasis-offline/. Hard-fails on missing wheels."""
+    """Refresh each feature's `version` in the manifest from upstream latest.
+
+    No downloads, no file inspection. Updates scripts/offline-manifest.json in place:
+    a feature with no version or a stale one is rewritten to the latest available
+    (UPDATED); a matching one is left alone (CURRENT); one we can't reach upstream is
+    left as-is and flagged for --update. The actual files are fetched later by a
+    build / --update, which read these pinned versions.
+    """
     print("\n  OASIS — create-oasis-offline  [--check]")
     _hr()
+    _info(f"Manifest: {os.path.relpath(_MANIFEST_PATH)}")
+    _section("Version check — manifest vs upstream latest")
 
-    wheels_dir = os.path.join(OUT_DIR, "server", "wheels")
-    if not os.path.isdir(wheels_dir):
-        _warn(f"oasis-offline/ not found or empty at {OUT_DIR}")
-        _warn("Run without --check to build the bundle first.")
-        sys.exit(1)
+    rows = check_versions()
+    for feat, old, new, status in rows:
+        if status == "updated":
+            print(f"  ⬆  {feat:<10} {str(old or '(none)'):<12} -> {new:<10} UPDATED")
+        elif status == "current":
+            print(f"  ✓  {feat:<10} {str(new):<12}    CURRENT")
+        else:  # uncheckable
+            print(f"  ⋯  {feat:<10} could not reach upstream — version corrected on --update")
 
-    wheel_failures = phase_wheels(wheels_dir, check=True)
-
-    _section("Phase 2 — GrayWolf binaries  [check]")
-    gw_dir  = os.path.join(OUT_DIR, "offline-packages", "graywolf")
-    gw_debs = [f for f in (os.listdir(gw_dir) if os.path.isdir(gw_dir) else []) if f.endswith(".deb")]
-    if gw_debs:
-        _ok(f"{len(gw_debs)} GrayWolf .deb file(s) present")
-    else:
-        _warn("Not found — run without --check to build the bundle.")
-
-    _section("Phase 3 — Kiwix binaries  [check]")
-    kw_dir   = os.path.join(OUT_DIR, "offline-packages", "kiwix")
-    kw_files = [f for f in (os.listdir(kw_dir) if os.path.isdir(kw_dir) else []) if f.endswith(".tar.gz")]
-    if kw_files:
-        _ok(f"{len(kw_files)} Kiwix archive(s) present")
-    else:
-        _warn("Not found — run without --check to build the bundle.")
-
-    _section("Phase 5 — RTL-SDR packages  [check]")
-    rs_dir  = os.path.join(OUT_DIR, "offline-packages", "rtl-sdr")
-    rs_debs = [f for f in (os.listdir(rs_dir) if os.path.isdir(rs_dir) else []) if f.endswith(".deb")]
-    if rs_debs:
-        _ok(f"{len(rs_debs)} RTL-SDR .deb file(s) present")
-    else:
-        _warn("Not found — run without --check to build the bundle.")
-
-    _section("Phase 6 — webssh (ttyd) static binaries  [check]")
-    ws_dir  = os.path.join(OUT_DIR, "offline-packages", "webssh")
-    ws_bins = [
-        f for f in (os.listdir(ws_dir) if os.path.isdir(ws_dir) else [])
-        if f.startswith("ttyd.") and not f.startswith("._")
-    ]
-    if ws_bins:
-        _ok(f"{len(ws_bins)} ttyd binary/binaries present")
-    else:
-        _warn("Not found — run without --check to build the bundle.")
-
-    _section("Phase 7 — Pat (Winlink) packages  [check]")
-    pt_dir  = os.path.join(OUT_DIR, "offline-packages", "pat")
-    pt_debs = [f for f in (os.listdir(pt_dir) if os.path.isdir(pt_dir) else []) if f.endswith(".deb")]
-    if pt_debs:
-        _ok(f"{len(pt_debs)} Pat .deb file(s) present")
-    else:
-        _warn("Not found — run without --check to build the bundle.")
-
-    _section("Phase 8 — Wikipedia (Best of Wikipedia)  [check]")
-    zim_dir  = os.path.join(OUT_DIR, "zim")
-    edition_mini = f"{WIKI_EDITION}_{WIKI_FLAVOUR}"
-    zim_files = [f for f in (os.listdir(zim_dir) if os.path.isdir(zim_dir) else [])
-                 if f.startswith(edition_mini) and f.endswith(".zim")]
-    if zim_files:
-        size_mb = os.path.getsize(os.path.join(zim_dir, zim_files[0])) / 1_048_576
-        _ok(f"{zim_files[0]}  ({size_mb:.0f} MB)")
-    else:
-        _warn("Wikipedia Mini ZIM not found — run without --check to download.")
-
-    _section("Phase 4 — FCC database  [check]")
-    fcc_zip = os.path.join(OUT_DIR, "fcc-offline-database", "data", "l_amat.zip")
-    if os.path.exists(fcc_zip):
-        size_mb = os.path.getsize(fcc_zip) / 1_048_576
-        _ok(f"l_amat.zip present  ({size_mb:.0f} MB)")
-    else:
-        _warn("l_amat.zip not found — run without --check to build the bundle.")
-
+    updated = [f for f, *_rest, s in rows if s == "updated"]
     _hr()
-    if wheel_failures:
-        print(f"\n  {wheel_failures} wheel target(s) FAILED.\n")
-        sys.exit(1)
-    print("\n  All wheel targets satisfied.\n")
+    if updated:
+        _ok(f"Manifest versions updated: {', '.join(updated)}.")
+        _info("Run --update (or a build) to fetch the new versions.")
+    else:
+        _ok("All manifest versions current — nothing to update.")
+    print()
 
 
 def cmd_build(skip_windows, rebuild=False):
@@ -865,15 +1018,16 @@ def cmd_build(skip_windows, rebuild=False):
 
     # Download phases — each writes directly into its oasis-offline/ subdirectory.
     # update=True means "skip files already at current version" (always on by default).
+    pkg_root = os.path.join(OUT_DIR, "offline-packages")
     phase_aprs_sprites(os.path.join(OUT_DIR, "server", "map-assets"))
     phase_wheels(os.path.join(OUT_DIR, "server", "wheels"))
-    phase_graywolf(os.path.join(OUT_DIR, "offline-packages", "graywolf"), update=True)
-    phase_kiwix(os.path.join(OUT_DIR, "offline-packages", "kiwix"), update=True)
-    fcc_dir    = os.path.join(OUT_DIR, "fcc-offline-database", "data")
+    phase_graywolf(pkg_root, update=True)
+    phase_kiwix(pkg_root, update=True)
+    fcc_dir = os.path.join(OUT_DIR, "fcc-offline-database", "data")
     phase_fcc(fcc_dir)
-    phase_rtl_sdr(os.path.join(OUT_DIR, "offline-packages", "rtl-sdr"), update=True)
-    phase_webssh(os.path.join(OUT_DIR, "offline-packages", "webssh"), update=True)
-    phase_pat(os.path.join(OUT_DIR, "offline-packages", "pat"), update=True)
+    phase_rtl_sdr(pkg_root, update=True)
+    phase_webssh(pkg_root, update=True)
+    phase_pat(pkg_root, update=True)
     phase_wikipedia(os.path.join(OUT_DIR, "zim"))
 
     build_windows_runtime(OUT_DIR, skip_windows)
@@ -930,14 +1084,15 @@ def cmd_update(target_dir):
     elif parent_has_script:
         build_copy(target_dir, src=parent_repo)
 
+    pkg_root = os.path.join(target_dir, "offline-packages")
     phase_aprs_sprites(os.path.join(target_dir, "server", "map-assets"))
     phase_wheels(os.path.join(target_dir, "server", "wheels"))
-    phase_graywolf(os.path.join(target_dir, "offline-packages", "graywolf"), update=True)
-    phase_kiwix(os.path.join(target_dir, "offline-packages", "kiwix"), update=True)
+    phase_graywolf(pkg_root, update=True)
+    phase_kiwix(pkg_root, update=True)
     phase_fcc(os.path.join(target_dir, "fcc-offline-database", "data"))
-    phase_rtl_sdr(os.path.join(target_dir, "offline-packages", "rtl-sdr"), update=True)
-    phase_webssh(os.path.join(target_dir, "offline-packages", "webssh"), update=True)
-    phase_pat(os.path.join(target_dir, "offline-packages", "pat"), update=True)
+    phase_rtl_sdr(pkg_root, update=True)
+    phase_webssh(pkg_root, update=True)
+    phase_pat(pkg_root, update=True)
     phase_wikipedia(os.path.join(target_dir, "zim"))
 
     _section("Update complete")
