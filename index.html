@@ -57,6 +57,8 @@ body {
   letter-spacing: .06em;
   font-variant-numeric: tabular-nums;
 }
+#s-host { font-weight: 700; }
+#s-host .host-ip { color: var(--text-dim); font-weight: 400; }
 
 /* ── Service strip ───────────────────────────────────────────────────── */
 .svc-strip {
@@ -592,7 +594,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   </div>
   <div class="stat-item">
     <span class="stat-lbl">TEMP</span>
-    <span class="stat-val" id="s-temp">—</span>
+    <span class="stat-val" id="s-temp" style="cursor:pointer" title="Click to toggle °C / °F">—</span>
   </div>
   <div class="stat-item">
     <span class="stat-lbl">UPTIME</span>
@@ -601,6 +603,10 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   <div class="stat-item">
     <span class="stat-lbl">AUDIO</span>
     <span class="stat-val" id="s-audio">—</span>
+  </div>
+    <div class="stat-item">
+    <span class="stat-lbl">HOST</span>
+    <span class="stat-val" id="s-host" title="Server these stats are read from">—</span>
   </div>
   <span class="telemetry-badge" id="telemetry-badge">△ telemetry: offline</span>
 </div>
@@ -733,8 +739,8 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <li><a href="winlink/to-position.html">Winlink → Position <span class="nav-meta">converter</span></a></li>
         <li><a id="nlink-gw" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.graywolf}/`,'_blank');return false;">GrayWolf <span class="nav-svc-badge" id="nsvc-gw">—</span></a></li>
         <li><a href="static/graywolf-handbook/index.html">GrayWolf handbook <span class="nav-meta">docs</span></a></li>
-        <li><a href="aprs/map.html">APRS Map <span class="nav-meta">live APRS</span></a></li>
-        <li><a href="repeaterbook/repeaterbook.html">Repeater Book <span class="nav-meta">repeater book</span></a></li>
+        <li><a href="static/cheatsheets/aprs_bots.html">APRS Bots <span class="nav-meta">FIND · SMS · WXBOT</span></a></li>
+        <li><a href="static/cheatsheets/mpad.html">MPAD Bot <span class="nav-meta">WX · repeaters · METAR</span></a></li>        
       </ul>
     </div>
 
@@ -748,8 +754,8 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <li><a href="repeater-guide/index.html">Repeater Guide <span class="nav-meta">radio repeaters how-to</span></a></li>
         <li><a href="radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
         <li><a href="static/cheatsheets/index.html">Radio Cheatsheets <span class="nav-meta">radio reference</span></a></li>
-        <li><a href="static/cheatsheets/aprs_bots.html">APRS Bots <span class="nav-meta">FIND · SMS · WXBOT</span></a></li>
-        <li><a href="static/cheatsheets/mpad.html">MPAD Bot <span class="nav-meta">WX · repeaters · METAR</span></a></li>
+        <li><a href="repeaterbook/repeaterbook.html">Repeater Book <span class="nav-meta">repeater book</span></a></li> 
+        <li><a href="aprs/map.html">APRS Animated Map <span class="nav-meta">live APRS</span></a></li>
         <li><a id="nlink-kiwix" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-kiwix">—</span></a></li>
       </ul>
     </div>
@@ -995,7 +1001,7 @@ const SERVICES = [
       const r = await fetch('/api/browse?path=maps', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: 'browse error' };
       const d = await r.json();
-      const n = (d.entries||[]).filter(e => e.name.endsWith('.mbtiles')).length;
+      const n = (d.entries||[]).filter(e => e.name.endsWith('.pmtiles')).length;
       return { up: true, warn: n === 0,
         badge: n > 0 ? 'UP' : 'WARN',
         sub: n > 0 ? `${n} ${n === 1 ? 'map' : 'maps'}` : 'no maps' };
@@ -1082,6 +1088,23 @@ function setStat(id, text, pct, amber, red) {
   el.textContent = text;
   el.className   = valClass(pct, amber, red);
 }
+// Temperature unit toggle (persisted). Server always reports °C; colour
+// thresholds stay in °C — only the displayed text changes.
+let TEMP_UNIT = localStorage.getItem('oasis_temp_unit') || 'C';
+let _lastTempC = null;
+function fmtTemp(c) {
+  if (c == null) return 'n/a';
+  return TEMP_UNIT === 'F' ? `${Math.round(c * 9 / 5 + 32)} °F` : `${c} °C`;
+}
+function renderTemp() {
+  setStat('s-temp', fmtTemp(_lastTempC), _lastTempC, 65, 80);
+}
+document.getElementById('s-temp').addEventListener('click', () => {
+  if (_lastTempC == null) return;          // nothing to toggle (sensor n/a)
+  TEMP_UNIT = TEMP_UNIT === 'C' ? 'F' : 'C';
+  localStorage.setItem('oasis_temp_unit', TEMP_UNIT);
+  renderTemp();
+});
 function setBar(id, pct, amber = 70, red = 90) {
   const el = document.getElementById(id);
   el.style.width = `${Math.min(pct, 100)}%`;
@@ -1102,6 +1125,14 @@ async function fetchStats() {
     if (!r.ok) return;
     const d = await r.json();
 
+    // Host identity — makes it unmistakable which machine these stats are from
+    // (e.g. a Mac browser hitting localhost vs the Pi over the LAN).
+    const hostEl = document.getElementById('s-host');
+    if (hostEl && d.hostname) {
+      hostEl.innerHTML = `${d.hostname}`
+        + (d.ip ? ` <span class="host-ip">· ${d.ip}</span>` : '');
+    }
+
     // Track which stats are valid vs n/a to colour the telemetry badge
     let valid = 0, total = 0;
     const track = (ok) => { total++; if (ok) valid++; };
@@ -1114,8 +1145,8 @@ async function fetchStats() {
     }
     // Temperature (°C) — absent on Mac/Windows
     track(d.cpu_temp_c != null);
-    setStat('s-temp', d.cpu_temp_c != null ? `${d.cpu_temp_c} °C` : 'n/a',
-            d.cpu_temp_c, 65, 80);
+    _lastTempC = d.cpu_temp_c;
+    renderTemp();
     // RAM %
     track(d.ram && d.ram.pct != null);
     if (d.ram && d.ram.pct != null) {

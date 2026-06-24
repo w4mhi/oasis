@@ -6,6 +6,7 @@
   <title>Emergency Maps — Offline</title>
   <link rel="stylesheet" href="/map-assets/maplibre-gl.css">
   <script src="/map-assets/maplibre-gl.js"></script>
+  <script src="/map-assets/pmtiles.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -61,6 +62,63 @@
       cursor: pointer;
     }
     #map-sel:focus { outline: none; border-color: #ff6b00; }
+
+    #load-maps-btn {
+      background: #0d0d1a;
+      color: #e0e0e0;
+      border: 1px solid #ff6b0055;
+      border-radius: 3px;
+      padding: 2px 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #load-maps-btn:hover { border-color: #ff6b00; color: #fff; }
+
+    /* Filesystem map browser modal */
+    #fs-modal {
+      position: fixed; inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #fs-modal.fs-hidden { display: none; }
+    #fs-dialog {
+      background: #0d0d1a;
+      border: 1px solid #ff6b0055;
+      border-radius: 5px;
+      width: min(560px, 92vw);
+      max-height: 80vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    }
+    #fs-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px;
+      border-bottom: 1px solid #1e2a4a;
+    }
+    #fs-title { color: #ff6b00; font-weight: bold; letter-spacing: 1px; flex: 1; }
+    #fs-close {
+      background: none; border: none; color: #888;
+      font-size: 1.1rem; cursor: pointer;
+    }
+    #fs-close:hover { color: #ff5252; }
+    #fs-path {
+      padding: 6px 12px; color: #7ecfff;
+      font-size: 0.8rem; word-break: break-all;
+      border-bottom: 1px solid #1e2a4a;
+    }
+    #fs-list { overflow-y: auto; padding: 4px 0; }
+    .fs-row {
+      padding: 6px 14px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .fs-row:hover { background: #161b2e; }
+    .fs-dir  { color: #e0e0e0; }
+    .fs-file { color: #4caf50; }
+    .fs-empty, #fs-msg { padding: 10px 14px; color: #888; font-size: 0.8rem; }
+    #fs-msg:empty { display: none; }
 
     /* Map */
     #map { flex: 1; width: 100%; }
@@ -124,6 +182,7 @@
 <div id="topbar">
   <span class="label">⚠ OFFLINE MAPS</span>
   <select id="map-sel" title="Switch map"></select>
+  <button id="load-maps-btn" title="Browse for .pmtiles maps on disk / USB">Load maps</button>
   <span id="coords">Move mouse over map…</span>
   <span id="zoom-level">Zoom: —</span>
   <span id="status">Loading…</span>
@@ -131,6 +190,19 @@
 </div>
 
 <div id="map"></div>
+
+<!-- Filesystem map browser (Load maps → browse Pi / USB for .pmtiles) -->
+<div id="fs-modal" class="fs-hidden">
+  <div id="fs-dialog">
+    <div id="fs-head">
+      <span id="fs-title">Load maps</span>
+      <button id="fs-close" title="Close">✕</button>
+    </div>
+    <div id="fs-path">—</div>
+    <div id="fs-list"></div>
+    <div id="fs-msg"></div>
+  </div>
+</div>
 
 <div id="layer-panel">
   <h3>Layers</h3>
@@ -150,9 +222,9 @@
 
 <script>
 // ── Config ──────────────────────────────────────────────────────────────────
-// Priority: URL params > TileJSON metadata center > map-config.json > neutral fallback
+// Priority: URL params > PMTiles archive header center > neutral fallback
 const _params    = new URLSearchParams(window.location.search);
-let   MAP_FILE   = _params.get('file') || 'osm-2020-02-10-v3.11_us_washington.mbtiles';
+let   MAP_FILE   = _params.get('file') || 'washington.pmtiles';
 const _pc        = _params.get('center');
 const _pz        = _params.get('zoom');
 const URL_CENTER = _pc ? _pc.split(',').map(Number) : null;
@@ -160,14 +232,26 @@ const URL_ZOOM   = _pz ? Number(_pz) : null;
 
 const origin = window.location.origin;
 
-// ── Load map-config.json (center + zoom per file) ───────────────────────────
-let MAP_CONFIG = {};
-(async () => {
+// ── PMTiles ─────────────────────────────────────────────────────────────────
+// Tiles live in a single .pmtiles archive read by the browser via HTTP range
+// requests. Center/zoom come from each archive's own header (getHeader()).
+const pmtilesProtocol = new pmtiles.Protocol();
+maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile);
+
+const pmtilesHttpUrl   = (file) => `${origin}/maps/${file}`;
+const pmtilesSourceUrl = (file) => `pmtiles://${pmtilesHttpUrl(file)}`;
+
+// Fly to an archive's native center/zoom (best-effort). httpUrl is the plain
+// (non-protocol) URL the PMTiles reader uses to fetch the archive header.
+async function flyToArchive(httpUrl, duration) {
   try {
-    const res = await fetch(`${origin}/maps/map-config.json`);
-    MAP_CONFIG = await res.json();
-  } catch(e) { /* config is optional */ }
-})();
+    const hdr = await new pmtiles.PMTiles(httpUrl).getHeader();
+    if (hdr && Number.isFinite(hdr.centerLon) && Number.isFinite(hdr.centerLat)) {
+      map.flyTo({ center: [hdr.centerLon, hdr.centerLat],
+                  zoom: hdr.centerZoom || 9, duration });
+    }
+  } catch(e) { /* centering is best-effort */ }
+}
 
 // ── Populate map file dropdown ────────────────────────────────────────────────
 (async () => {
@@ -175,18 +259,18 @@ let MAP_CONFIG = {};
   try {
     const res  = await fetch('/api/browse?path=maps');
     const data = await res.json();
-    const files = (data.entries || []).filter(e => e.name.endsWith('.mbtiles')).map(e => e.name);
+    const files = (data.entries || []).filter(e => e.name.endsWith('.pmtiles')).map(e => e.name);
     files.forEach(f => {
       const opt = document.createElement('option');
       opt.value = f;
-      opt.textContent = f.replace('.mbtiles', '');
+      opt.textContent = f.replace('.pmtiles', '');
       if (f === MAP_FILE) opt.selected = true;
       sel.appendChild(opt);
     });
   } catch(e) {
     const opt = document.createElement('option');
     opt.value = MAP_FILE;
-    opt.textContent = MAP_FILE.replace('.mbtiles', '');
+    opt.textContent = MAP_FILE.replace('.pmtiles', '');
     sel.appendChild(opt);
   }
   sel.addEventListener('change', () => switchMap(sel.value));
@@ -195,19 +279,18 @@ let MAP_CONFIG = {};
 // ── Diagnostics ───────────────────────────────────────────────────────────────
 (async () => {
   try {
-    const res  = await fetch(`${origin}/api/tilejson/${MAP_FILE}`);
-    const tj   = await res.json();
-    const layers = (tj.vector_layers || []).map(l => l.id).join(', ');
+    const meta   = await new pmtiles.PMTiles(pmtilesHttpUrl(MAP_FILE)).getMetadata();
+    const layers = (meta.vector_layers || []).map(l => l.id).join(', ');
     document.getElementById('layer-names').textContent = layers || '(none found)';
-    console.log('[MBTiles] TileJSON:', tj);
+    console.log('[PMTiles] metadata:', meta);
   } catch(e) {
     document.getElementById('layer-names').textContent = 'error — see console';
-    console.error('[MBTiles] TileJSON fetch failed:', e);
+    console.error('[PMTiles] metadata fetch failed:', e);
   }
 })();
 
 // ── Map ──────────────────────────────────────────────────────────────────────
-const tilesUrl = `${origin}/api/tilejson/${MAP_FILE}`;
+const tilesUrl = pmtilesSourceUrl(MAP_FILE);
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -413,34 +496,81 @@ map.on('mousemove', (e) => {
 });
 
 // ── Switch map file ───────────────────────────────────────────────────────────
-async function switchMap(filename) {
-  MAP_FILE = filename;
-  const newUrl = `${origin}/api/tilejson/${filename}`;
-
-  let tjData = null;
-  try {
-    const r = await fetch(newUrl);
-    if (r.ok) tjData = await r.json();
-  } catch(e) { /* best-effort */ }
-
-  map.getSource('map').setUrl(newUrl);
-
-  map.once('idle', () => {
-    const cfg = MAP_CONFIG[filename];
-    if (cfg?.center && cfg?.zoom) {
-      map.flyTo({ center: cfg.center, zoom: cfg.zoom, duration: 600 });
-      return;
-    }
-    if (tjData?.center) {
-      map.flyTo({ center: [tjData.center[0], tjData.center[1]], zoom: tjData.center[2] || 9, duration: 600 });
-      return;
-    }
-    if (tjData?.bounds) {
-      const b = tjData.bounds;
-      map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 40, duration: 600 });
-    }
-  });
+// Swap the basemap to a new PMTiles source; re-center from its header on idle.
+function loadMapSource(sourceUrl, httpUrl) {
+  map.getSource('map').setUrl(sourceUrl);
+  map.once('idle', () => flyToArchive(httpUrl, 600));
 }
+
+function switchMap(filename) {
+  MAP_FILE = filename;
+  loadMapSource(pmtilesSourceUrl(filename), pmtilesHttpUrl(filename));
+}
+
+// Load a .pmtiles from an arbitrary allowlisted path (USB / external mount).
+function loadExternalMap(absPath) {
+  const httpUrl = `${origin}/api/fs/pmtiles?path=${encodeURIComponent(absPath)}`;
+  loadMapSource('pmtiles://' + httpUrl, httpUrl);
+}
+
+// ── "Load maps" filesystem browser ──────────────────────────────────────────
+const _fsModal = document.getElementById('fs-modal');
+const _escHtml = (s) => String(s).replace(/[&<>"]/g, c =>
+  ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+
+async function openFsBrowser(path) {
+  const list   = document.getElementById('fs-list');
+  const pathEl = document.getElementById('fs-path');
+  const msg    = document.getElementById('fs-msg');
+  msg.textContent = '';
+  list.innerHTML  = '<div class="fs-empty">Loading…</div>';
+  try {
+    const res = await fetch(`${origin}/api/fs/browse?path=${encodeURIComponent(path)}`, { cache: 'no-store' });
+    let d = null;
+    try { d = await res.json(); } catch(_) { /* non-JSON body (e.g. a 404/500 HTML page) */ }
+    if (!res.ok || !d || !d.ok) {
+      list.innerHTML = '';
+      const why = (d && d.error) ? d.error
+        : (res.status === 404 ? `HTTP 404 — server has no /api/fs/browse route (restart OASIS with the updated server/app.py)`
+                              : `HTTP ${res.status} ${res.statusText}`);
+      msg.textContent = 'Browse failed: ' + why;
+      console.error('[fs-browse]', res.status, d);
+      return;
+    }
+
+    pathEl.textContent = d.roots ? 'Select a location:' : d.path;
+    let rows = '';
+    if (!d.roots && d.parent !== null) {
+      rows += `<div class="fs-row fs-dir" data-path="${_escHtml(d.parent)}" data-type="dir">..</div>`;
+    }
+    (d.entries || []).forEach(e => {
+      const cls   = e.type === 'dir' ? 'fs-dir' : 'fs-file';
+      const label = e.type === 'dir' ? _escHtml(e.name) + '/' : _escHtml(e.name);
+      rows += `<div class="fs-row ${cls}" data-path="${_escHtml(e.path)}" data-type="${e.type}">${label}</div>`;
+    });
+    list.innerHTML = rows || '<div class="fs-empty">No folders or .pmtiles here.</div>';
+  } catch(e) {
+    list.innerHTML = ''; msg.textContent = 'Browse failed: ' + e.message;
+    console.error('[fs-browse]', e);
+  }
+}
+
+document.getElementById('load-maps-btn').addEventListener('click', () => {
+  _fsModal.classList.remove('fs-hidden');
+  openFsBrowser('');
+});
+document.getElementById('fs-close').addEventListener('click', () => _fsModal.classList.add('fs-hidden'));
+_fsModal.addEventListener('click', (e) => { if (e.target === _fsModal) _fsModal.classList.add('fs-hidden'); });
+document.getElementById('fs-list').addEventListener('click', (e) => {
+  const row = e.target.closest('.fs-row');
+  if (!row) return;
+  if (row.dataset.type === 'dir') {
+    openFsBrowser(row.dataset.path);
+  } else {
+    loadExternalMap(row.dataset.path);
+    _fsModal.classList.add('fs-hidden');
+  }
+});
 
 // ── Status + initial positioning ──────────────────────────────────────────────
 map.on('load', async () => {
@@ -449,26 +579,7 @@ map.on('load', async () => {
   s.className = 'ok';
 
   if (URL_CENTER && URL_ZOOM) return;
-
-  const cfg = MAP_CONFIG[MAP_FILE];
-  if (cfg?.center && cfg?.zoom) {
-    map.flyTo({ center: cfg.center, zoom: cfg.zoom, duration: 800 });
-    return;
-  }
-
-  try {
-    const r = await fetch(`${origin}/api/tilejson/${MAP_FILE}`);
-    if (!r.ok) return;
-    const tj = await r.json();
-    if (tj.center) {
-      map.flyTo({ center: [tj.center[0], tj.center[1]], zoom: tj.center[2] || 9, duration: 800 });
-      return;
-    }
-    if (tj.bounds) {
-      const b = tj.bounds;
-      map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 40, duration: 800 });
-    }
-  } catch(e) { /* auto-position is best-effort */ }
+  flyToArchive(pmtilesHttpUrl(MAP_FILE), 800);
 });
 
 map.on('error', (e) => {

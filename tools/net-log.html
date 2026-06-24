@@ -196,7 +196,7 @@ tr.editing td{background:var(--panel-2);}
       </div>
       <div id="net-map-container"></div>
       <div id="mapSkipped"></div>
-      <div id="mapNoFile" style="display:none;color:var(--text-dim);font-size:var(--fs-base);text-align:center;padding:2rem 0;">No .mbtiles files found in <code>maps/</code>. Add an MBTiles file and restart the server.</div>
+      <div id="mapNoFile" style="display:none;color:var(--text-dim);font-size:var(--fs-base);text-align:center;padding:2rem 0;">No .pmtiles files found in <code>maps/</code>. Add a PMTiles file and restart the server.</div>
     </div>
   </div>
 
@@ -675,12 +675,17 @@ document.querySelectorAll('.ltab').forEach(tab => {
 </script>
 
 <script src="/map-assets/maplibre-gl.js"></script>
+<script src="/map-assets/pmtiles.js"></script>
 <script>
 (function(){
   'use strict';
 
   const origin = window.location.origin;
   let currentFile = null;
+
+  // PMTiles protocol — tiles read directly from a .pmtiles archive via HTTP
+  // range requests (no MBTiles server endpoint involved).
+  maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
 
   // Maidenhead grid square → center [lon, lat]
   // Supports 4-char (e.g. EM65) and 6-char (e.g. EM65ab) squares
@@ -709,8 +714,8 @@ document.querySelectorAll('.ltab').forEach(tab => {
     return [lon, lat];
   }
 
-  function buildStyle(mbtilesFile) {
-    const tilesUrl = origin + '/api/tilejson/' + mbtilesFile;
+  function buildStyle(file) {
+    const tilesUrl = 'pmtiles://' + origin + '/maps/' + file;
     return {
       version: 8,
       glyphs: origin + '/map-assets/fonts/{fontstack}/{range}.pbf',
@@ -754,12 +759,12 @@ document.querySelectorAll('.ltab').forEach(tab => {
   let netMap = null;
   let stationMarkers = [];
 
-  function initMap(mbtilesFile) {
+  function initMap(file) {
     if (netMap) { netMap.remove(); netMap = null; stationMarkers = []; }
-    currentFile = mbtilesFile;
+    currentFile = file;
     netMap = new maplibregl.Map({
       container: 'net-map-container',
-      style: buildStyle(mbtilesFile),
+      style: buildStyle(file),
       zoom: 4,
       center: [-98, 38],
       attributionControl: false
@@ -881,14 +886,14 @@ document.querySelectorAll('.ltab').forEach(tab => {
       const res = await fetch('/api/browse?path=maps');
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
-      const files = (data.entries || []).filter(e => e.name.endsWith('.mbtiles'));
+      const files = (data.entries || []).filter(e => e.name.endsWith('.pmtiles'));
       if (!files.length) {
         sel.style.display = 'none';
         container.style.display = 'none';
         noFile.style.display = '';
         return;
       }
-      sel.innerHTML = files.map(f => `<option value="${f.name}">${f.name.replace(/\.mbtiles$/,'')}</option>`).join('');
+      sel.innerHTML = files.map(f => `<option value="${f.name}">${f.name.replace(/\.pmtiles$/,'')}</option>`).join('');
       sel.style.display = '';
     } catch(e) {
       sel.innerHTML = '<option>(error loading files)</option>';

@@ -149,35 +149,35 @@ const CHECKS_CORE = [
   },
   {
     id: 'maps',
-    name: 'Map Tiles (MBTiles)',
+    name: 'Map Tiles (PMTiles)',
     run: async () => {
       try {
-        const r = await fetch('/maps/map-config.json', { cache: 'no-store' });
-        if (!r.ok) return { ok: false, badge: 'MISSING',
-          detail: 'map-config.json not found. Place an .mbtiles file in maps/ and update map-config.json.' };
-        let cfg;
-        try { cfg = await r.json(); } catch {
-          return { ok: false, badge: 'ERROR', detail: 'map-config.json is not valid JSON.' };
-        }
-        const keys = Object.keys(cfg).filter(k => k.endsWith('.mbtiles'));
-        if (!keys.length) return { ok: 'warn', badge: 'N/A',
-          detail: 'map-config.json exists but lists no .mbtiles regions.' };
-        // Verify each mbtiles file is reachable via /api/tilejson
-        const checks = await Promise.all(keys.map(async k => {
-          try {
-            const h = await fetch(`/api/tilejson/${k}`, { method: 'HEAD', cache: 'no-store' });
-            return { name: k.replace('.mbtiles',''), ok: h.ok };
-          } catch { return { name: k.replace('.mbtiles',''), ok: false }; }
-        }));
-        const ok    = checks.filter(c => c.ok).map(c => c.name);
-        const missing = checks.filter(c => !c.ok).map(c => c.name);
-        if (!ok.length) return { ok: false, badge: 'MISSING',
-          detail: `map-config.json lists ${keys.length} region(s) but no .mbtiles files were found: <strong>${missing.join(', ')}</strong>. Place the .mbtiles file in maps/.` };
-        const detail = `${ok.length} region(s) ready: <strong>${ok.join(', ')}</strong>`
-          + (missing.length ? ` &nbsp;|&nbsp; <span style="color:var(--amber)">missing: ${missing.join(', ')}</span>` : '');
-        return { ok: missing.length ? 'warn' : true, badge: missing.length ? 'PARTIAL' : 'READY', detail };
+        // Probe the "Load maps" endpoint so a stale server (missing /api/fs/*)
+        // is obvious — that route 404s until the server is restarted on new code.
+        let fsOk = false;
+        try { fsOk = (await fetch('/api/fs/browse', { cache: 'no-store' })).ok; }
+        catch { fsOk = false; }
+
+        const r = await fetch('/api/browse?path=maps', { cache: 'no-store' });
+        if (!r.ok) return { ok: false, badge: 'ERROR', detail: 'Could not list the maps/ directory.' };
+        const d = await r.json();
+        const names = (d.entries || []).filter(e => e.name.endsWith('.pmtiles'))
+                                       .map(e => e.name.replace('.pmtiles',''));
+
+        if (!fsOk) return { ok: 'warn', badge: 'RESTART',
+          detail: 'The “Load maps” endpoint (<code>/api/fs/browse</code>) is missing — the server is running older code. Restart OASIS to pick up the latest <code>server/app.py</code>.'
+                  + (names.length ? ` (${names.length} local map(s) present.)` : '') };
+
+        const gwHint = 'GrayWolf provides offline maps: register, download the region(s) you need, '
+          + 'then open <strong>Offline Maps → Load maps</strong> and load them from '
+          + '<code>/var/lib/graywolf/tiles/</code>.';
+
+        if (!names.length) return { ok: 'warn', badge: 'N/A',
+          detail: 'No .pmtiles maps in maps/. Place a .pmtiles file in maps/, or load one at runtime via the map page’s “Load maps” button.<br>' + gwHint };
+        return { ok: true, badge: 'READY',
+          detail: `${names.length} map(s) ready: <strong>${names.join(', ')}</strong> · Load maps endpoint OK<br>${gwHint}` };
       } catch (e) {
-        return { ok: false, badge: 'ERROR', detail: 'Could not load map config: ' + e.message };
+        return { ok: false, badge: 'ERROR', detail: 'Could not check maps: ' + e.message };
       }
     },
   },
@@ -260,13 +260,16 @@ const CHECKS_OPTIONAL = [
         + `&nbsp; (at <code>${rtlTest.path}</code>)`);
       lines.push(`Feed tools: socat ${socat.ok ? yes : no('✗')} &nbsp; tcpdump ${tcpdump.ok ? yes : no('✗')}`);
       lines.push(`DVB driver blacklist: ${blk.exists ? yes : no('missing — re-run install-rtl-sdr.py, then reboot')}`);
-
+      lines.push(`Plug in the dongle and run <code>rtl_test -t</code> to confirm the hardware.`);
+      
       let feedTxt, feedOk;
       if (feed.active === 'active') { feedTxt = `APRS→GrayWolf feed <code>aprs-sdr-feed</code> ${yes} (${svcWord(feed)})`; feedOk = true; }
       else if (feed.installed)      { feedTxt = no(`feed service is ${feed.active}`) + ` — start: <code>sudo systemctl start aprs-sdr-feed</code>`; feedOk = false; }
       else                          { feedTxt = no('feed not enabled') + ` — run <code>python3 scripts/enable-rtl-sdr.py</code> to stream APRS audio into GrayWolf`; feedOk = false; }
       lines.push(feedTxt);
-      lines.push(`Plug in the dongle and run <code>rtl_test -t</code> to confirm the hardware.`);
+      lines.push(no('Required for RTL-SDR: after setting up the feed in GrayWolf, restart it with '
+        + '<code>sudo systemctl restart graywolf</code> and confirm the modem shows live under '
+        + '<strong>Channels</strong>.'));
 
       const toolsOk = rtlFm.ok && socat.ok && blk.exists;
       const badge = feedOk ? 'READY' : (toolsOk ? 'INSTALLED' : 'PARTIAL');

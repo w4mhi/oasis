@@ -11,6 +11,7 @@ __pycache__/
 
 # Offline map tiles — built by scripts/build-map.py (or copied in).
 *.mbtiles
+*.pmtiles
 
 # PDF radio manuals — large and license-encumbered; distributed separately.
 # Drop your own PDFs into radio-manuals/ on the target machine. The whole
@@ -41,3 +42,9 @@ offline-packages/
 
 # RepeaterBook data .
 repeaterbook/*.csv
+
+# Personal Claude Code instructions (private)
+CLAUDE.local.md
+
+# Local Claude Code settings (private hooks/permissions)
+.claude/settings.local.json

@@ -186,7 +186,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   <button id="clearTrackBtn" class="sbtn" onclick="clearTrack()" style="margin-left:.35rem;">✕ Track</button>
   <span style="flex:1"></span>
   <span id="trackMsg"></span>
-  <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">✈ Auto-fly</button>
+  <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">Auto-fly</button>
   <!-- <button id="refreshBtn" class="sbtn" onclick="fetchStations()">Refresh</button> -->
   <span id="statusMsg">Connecting…</span>
   <a href="/" class="home-link" style="margin-left:.75rem;">⌂ HOME</a>
@@ -204,6 +204,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 </div>
 
 <script src="/map-assets/maplibre-gl.js"></script>
+<script src="/map-assets/pmtiles.js"></script>
 <script>
 'use strict';
 
@@ -289,8 +290,13 @@ function makeMarkerEl(symTable, symCode) {
 }
 
 // ── Map setup ────────────────────────────────────────────────────────────────
-const TILE_FILE = 'osm-2020-02-10-v3.11_us_washington.mbtiles';
-const tilesUrl  = location.origin + '/api/tilejson/' + TILE_FILE;
+// PMTiles: a single-file tile archive read directly by the browser via HTTP
+// range requests. Register the protocol, then point the vector source at it.
+const TILE_FILE = 'washington.pmtiles';
+const tilesUrl  = 'pmtiles://' + location.origin + '/maps/' + TILE_FILE;
+
+const pmtilesProtocol = new pmtiles.Protocol();
+maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile);
 
 const map = new maplibregl.Map({
   container: 'map',

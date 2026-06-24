@@ -16,17 +16,15 @@ Run (recommended):   see fcc-offline-database/README.md for the gunicorn + syste
 """
 
 import argparse
-import json
 import os
 import re
 import socket
-import sqlite3
 import sys
 import threading
 import time
 import webbrowser
 
-from flask import Flask, jsonify, render_template, request, send_from_directory, Response
+from flask import Flask, jsonify, render_template, request, send_file, send_from_directory, Response
 
 import lookup
 
@@ -34,6 +32,20 @@ import lookup
 SUITE_ROOT  = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MAP_ASSETS  = os.path.join(os.path.dirname(__file__), "map-assets")
 MAPS_DIR    = os.path.join(SUITE_ROOT, "maps")
+
+# Roots the filesystem map browser (/api/fs/*) may read .pmtiles archives from.
+# Lets an operator load maps off a USB stick or other mount at runtime without
+# staging them into the repo. Override with OASIS_MAP_ROOTS (os.pathsep-separated).
+# Defaults cover removable-media mounts on Pi OS, macOS volumes, the GrayWolf
+# offline-tiles directory, and always the suite's own maps/ directory.
+_map_roots_env = os.environ.get("OASIS_MAP_ROOTS")
+MAP_ROOTS = [
+    os.path.realpath(p)
+    for p in (_map_roots_env.split(os.pathsep) if _map_roots_env
+              else ["/media", "/mnt", "/run/media", "/Volumes",
+                    "/var/lib/graywolf/tiles", MAPS_DIR])
+    if p.strip()
+]
 
 # Serve the suite root as the static folder so all existing relative links
 # in index.html (antenna-calc.html, ics-205/, etc.) keep working as-is.
@@ -68,136 +80,19 @@ def map_assets(filename):
 @app.route("/maps/<filename>")
 def serve_map(filename):
     """
-    Serve static files from the maps/ directory (HTML, GeoJSON, JSON, etc.).
-    MBTiles files are served via /api/tiles and /api/tilejson instead.
+    Serve static files from the maps/ directory (HTML, GeoJSON, .pmtiles, etc.).
+    PMTiles archives are read client-side via HTTP range requests; send_file
+    (conditional) is used so those Range requests are honoured.
     """
     filepath = os.path.join(MAPS_DIR, filename)
     if not os.path.isfile(filepath):
         from flask import abort
         abort(404)
-    if filename.endswith(".mbtiles"):
-        from flask import abort
-        abort(403)  # Raw SQLite should not be downloaded; use /api/tiles instead
+    if filename.endswith(".pmtiles"):
+        resp = send_file(filepath, mimetype="application/octet-stream", conditional=True)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
     return send_from_directory(MAPS_DIR, filename)
-
-
-# ── MBTiles helpers ──────────────────────────────────────────────────────────
-
-def _mbtiles_path(filename):
-    """
-    Resolve a bare filename to an absolute path inside MAPS_DIR.
-    Returns None if the filename is invalid or the file does not exist.
-    Security: rejects anything with path separators or a non-.mbtiles extension.
-    """
-    if not filename.endswith(".mbtiles") or os.sep in filename or "/" in filename:
-        return None
-    path = os.path.realpath(os.path.join(MAPS_DIR, filename))
-    if not path.startswith(os.path.realpath(MAPS_DIR) + os.sep):
-        return None
-    return path if os.path.isfile(path) else None
-
-
-def _mbtiles_metadata(db_path):
-    """Return the metadata table as a {name: value} dict."""
-    with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
-        rows = conn.execute("SELECT name, value FROM metadata").fetchall()
-    return {k: v for k, v in rows}
-
-
-@app.route("/api/tilejson/<filename>")
-def api_tilejson(filename):
-    """
-    Return a TileJSON 2.2 descriptor for an MBTiles file.
-    MapLibre GL uses this as a vector source URL:
-      sources: { map: { type: 'vector', url: '/api/tilejson/<filename>' } }
-    """
-    db_path = _mbtiles_path(filename)
-    if db_path is None:
-        from flask import abort
-        abort(404)
-
-    meta   = _mbtiles_metadata(db_path)
-    origin = request.url_root.rstrip("/")
-
-    vector_layers = []
-    try:
-        vector_layers = json.loads(meta.get("json", "{}")).get("vector_layers", [])
-    except (json.JSONDecodeError, TypeError):
-        pass
-
-    bounds = [-180, -85.05, 180, 85.05]
-    if "bounds" in meta:
-        try:
-            bounds = [float(v) for v in meta["bounds"].split(",")]
-        except ValueError:
-            pass
-
-    center = None
-    if "center" in meta:
-        try:
-            parts  = meta["center"].split(",")
-            center = [float(parts[0]), float(parts[1]), int(float(parts[2]))]
-        except (ValueError, IndexError):
-            pass
-
-    tj = {
-        "tilejson":      "2.2.0",
-        "name":          meta.get("name", filename),
-        "description":   meta.get("description", ""),
-        "version":       meta.get("version", "1"),
-        "attribution":   meta.get("attribution", ""),
-        "scheme":        "xyz",
-        "tiles":         [f"{origin}/api/tiles/{filename}/{{z}}/{{x}}/{{y}}"],
-        "minzoom":       int(meta.get("minzoom", 0)),
-        "maxzoom":       int(meta.get("maxzoom", 14)),
-        "bounds":        bounds,
-        "vector_layers": vector_layers,
-    }
-    if center:
-        tj["center"] = center
-
-    resp = jsonify(tj)
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    return resp
-
-
-@app.route("/api/tiles/<filename>/<int:z>/<int:x>/<int:y>")
-def api_tile(filename, z, x, y):
-    """
-    Serve a single vector tile from an MBTiles file.
-    MBTiles uses TMS (Y origin at bottom); MapLibre uses XYZ (Y origin at top).
-    The Y coordinate is flipped before the SQLite query.
-    """
-    db_path = _mbtiles_path(filename)
-    if db_path is None:
-        from flask import abort
-        abort(404)
-
-    y_tms = (2 ** z - 1) - y
-
-    with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
-        row = conn.execute(
-            "SELECT tile_data FROM tiles "
-            "WHERE zoom_level=? AND tile_column=? AND tile_row=?",
-            (z, x, y_tms)
-        ).fetchone()
-
-    if row is None:
-        from flask import abort
-        abort(404)
-
-    tile_data = row[0]
-    is_gzip   = tile_data[:2] == b"\x1f\x8b"
-
-    headers = {
-        "Content-Type":                "application/x-protobuf",
-        "Access-Control-Allow-Origin": "*",
-        "Cache-Control":               "public, max-age=3600",
-    }
-    if is_gzip:
-        headers["Content-Encoding"] = "gzip"
-
-    return Response(tile_data, headers=headers)
 
 
 @app.route("/lookup")
@@ -315,6 +210,88 @@ def api_browse():
         return jsonify({"ok": False, "error": "Permission denied"}), 403
 
     return jsonify({"ok": True, "path": rel, "entries": entries})
+
+
+# ── Filesystem map browser (PMTiles on USB / external mounts) ─────────────────
+
+def _within_map_roots(abs_path):
+    """True if abs_path resolves inside one of the allowlisted MAP_ROOTS."""
+    rp = os.path.realpath(abs_path)
+    for root in MAP_ROOTS:
+        try:
+            if rp == root or os.path.commonpath([root, rp]) == root:
+                return True
+        except ValueError:
+            continue  # different drive / un-comparable paths
+    return False
+
+
+@app.route("/api/fs/browse")
+def api_fs_browse():
+    """
+    Browse the filesystem for .pmtiles archives, restricted to MAP_ROOTS.
+    Query string: ?path=<absolute-path>
+    With no path, returns the configured roots that currently exist so the UI
+    has starting points. With a path, lists sub-directories and *.pmtiles files.
+    """
+    raw = (request.args.get("path") or "").strip()
+
+    # No path → offer the allowed roots that actually exist.
+    if not raw:
+        roots = [{"name": r, "path": r, "type": "dir"}
+                 for r in MAP_ROOTS if os.path.isdir(r)]
+        return jsonify({"ok": True, "path": "", "parent": None, "roots": True, "entries": roots})
+
+    target = os.path.realpath(raw)
+    if not _within_map_roots(target):
+        return jsonify({"ok": False, "error": "Forbidden"}), 403
+    if not os.path.isdir(target):
+        return jsonify({"ok": False, "error": "Not a directory"}), 404
+
+    # Offer a parent link, but never let it climb above an allowed root.
+    parent = os.path.dirname(target)
+    if parent == target or not _within_map_roots(parent):
+        parent = None
+
+    entries = []
+    try:
+        for name in sorted(
+            (n for n in os.listdir(target) if not n.startswith(".")),
+            key=lambda n: (not os.path.isdir(os.path.join(target, n)), n.lower()),
+        ):
+            full = os.path.join(target, name)
+            if os.path.isdir(full):
+                entries.append({"name": name, "path": full, "type": "dir"})
+            elif name.endswith(".pmtiles"):
+                entries.append({"name": name, "path": full, "type": "file",
+                                "size": os.path.getsize(full)})
+    except PermissionError:
+        return jsonify({"ok": False, "error": "Permission denied"}), 403
+
+    return jsonify({"ok": True, "path": target, "parent": parent, "roots": False, "entries": entries})
+
+
+@app.route("/api/fs/pmtiles")
+def api_fs_pmtiles():
+    """
+    Stream a .pmtiles archive from an allowlisted absolute path, with HTTP Range
+    support so the client-side PMTiles protocol can read it incrementally.
+    Query string: ?path=<absolute-path>
+    """
+    from flask import abort
+    raw = (request.args.get("path") or "").strip()
+    target = os.path.realpath(raw) if raw else ""
+
+    if not raw or not target.endswith(".pmtiles") or not _within_map_roots(target):
+        abort(403)
+    if not os.path.isfile(target):
+        abort(404)
+
+    # conditional=True → Werkzeug honours Range/If-Range and returns 206 with
+    # Accept-Ranges, streaming the file rather than loading it into memory.
+    resp = send_file(target, mimetype="application/octet-stream", conditional=True)
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
 
 @app.route("/api/save-chirp", methods=["POST"])
@@ -626,6 +603,19 @@ def server_ports():
     return api_config()
 
 
+def _lan_ip():
+    """Best-effort primary LAN IP. Uses a UDP socket to pick the outbound
+    interface — no packets are actually sent and no internet is required."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
+
+
 @app.route("/api/system")
 def api_system():
     """System resource stats (CPU, RAM, disk, temp, load, uptime).
@@ -710,6 +700,8 @@ def api_system():
 
     return jsonify({
         "ok":          True,
+        "hostname":    socket.gethostname(),
+        "ip":          _lan_ip(),
         "cpu_pct":     cpu_pct,
         "cpu_count":   cpu_count,
         "cpu_temp_c":  temp,

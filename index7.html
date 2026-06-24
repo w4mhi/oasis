@@ -152,7 +152,7 @@
     <span class="m"><span class="k">RAM</span> <span class="v" id="k-ram">—</span></span>
     <span class="m"><span class="k">DISK</span> <span class="v" id="k-disk">—</span></span>
     <span class="m"><span class="k">LOAD</span> <span class="v" id="k-load">—</span></span>
-    <span class="m"><span class="k">TEMP</span> <span class="v" id="k-temp">—</span></span>
+    <span class="m"><span class="k">TEMP</span> <span class="v" id="k-temp" style="cursor:pointer" title="Tap to toggle °C / °F">—</span></span>
     <span class="m"><span class="k">UP</span> <span class="v" id="k-up">—</span></span>
     <span class="m"><span class="k">AUDIO</span> <span class="v" id="k-audio">—</span></span>
     <span class="live" id="k-telemetry">△ telemetry: …</span>
@@ -361,7 +361,7 @@ const SERVICES = [
       const r = await fetch('/api/browse?path=maps', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: 'browse error' };
       const d = await r.json();
-      const n = (d.entries||[]).filter(e => e.name.endsWith('.mbtiles')).length;
+      const n = (d.entries||[]).filter(e => e.name.endsWith('.pmtiles')).length;
       return { up: true, warn: n === 0, badge: n > 0 ? 'UP' : 'WARN', sub: n > 0 ? `${n} map${n===1?'':'s'}` : 'no maps' };
     }
   },
@@ -496,6 +496,27 @@ function setKStat(id, text, cls) {
   el.textContent = text;
   el.className = 'v' + (cls ? ' ' + cls : '');
 }
+// Temperature unit toggle (shared with index.html via the same localStorage key).
+// Server reports °C; thresholds stay in °C — only the displayed text changes.
+let TEMP_UNIT = localStorage.getItem('oasis_temp_unit') || 'C';
+let _lastTempC = null;
+function fmtTemp(c) {
+  if (c == null) return 'n/a';
+  return TEMP_UNIT === 'F' ? `${Math.round(c * 9 / 5 + 32)}°F` : `${c}°C`;
+}
+function renderTemp() {
+  const cls = _lastTempC != null ? (_lastTempC >= 80 ? 'hot' : _lastTempC >= 65 ? 'warm' : 'ok') : '';
+  setKStat('k-temp', fmtTemp(_lastTempC), cls);
+}
+(function () {
+  const el = document.getElementById('k-temp');
+  if (el) el.addEventListener('click', () => {
+    if (_lastTempC == null) return;          // sensor n/a — nothing to toggle
+    TEMP_UNIT = TEMP_UNIT === 'C' ? 'F' : 'C';
+    localStorage.setItem('oasis_temp_unit', TEMP_UNIT);
+    renderTemp();
+  });
+})();
 async function fetchStats() {
   try {
     const r = await fetch('/api/system', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
@@ -506,7 +527,8 @@ async function fetchStats() {
     track(d.cpu_pct != null);
     if (d.cpu_pct != null) setKStat('k-cpu', `${Math.round(d.cpu_pct)}%`, d.cpu_pct>=90?'hot':d.cpu_pct>=70?'warm':'ok');
     track(d.cpu_temp_c != null);
-    setKStat('k-temp', d.cpu_temp_c!=null ? `${d.cpu_temp_c}°C` : 'n/a', d.cpu_temp_c!=null?(d.cpu_temp_c>=80?'hot':d.cpu_temp_c>=65?'warm':'ok'):'');
+    _lastTempC = d.cpu_temp_c;
+    renderTemp();
     track(d.ram && d.ram.pct != null);
     if (d.ram?.pct != null) setKStat('k-ram', `${Math.round(d.ram.pct)}%`, d.ram.pct>=90?'hot':d.ram.pct>=70?'warm':'ok');
     track(d.disk && !d.disk.error && d.disk.pct != null);
