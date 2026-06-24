@@ -18,7 +18,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #statusDot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);flex-shrink:0;}
 #statusDot.ok{background:var(--accent);}
 #statusDot.err{background:var(--red);}
-#statusMsg{font-size:var(--fs-small);color:var(--text-dim);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#statusMsg{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #stationCount{font-size:var(--fs-small);color:var(--amber);white-space:nowrap;}
 #countdown{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;width:15ch;flex-shrink:0;text-align:right;transition:color .4s;overflow:visible;}
 #countdown.green{color:#3fb950;}
@@ -38,6 +38,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #filterSel{
   background:var(--bg);border:1px solid var(--border);color:var(--text);
   font-family:var(--mono);font-size:var(--fs-small);padding:3px 6px;border-radius:4px;cursor:pointer;
+  width:7rem;max-width:7rem;
 }
 #filterSel:focus{outline:none;border-color:var(--accent-dim);}
 
@@ -75,11 +76,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #trackWindow{
   background:var(--bg);border:1px solid var(--border);color:var(--text);
   font-family:var(--mono);font-size:var(--fs-small);padding:3px 6px;border-radius:4px;cursor:pointer;
+  width:4.5rem;max-width:4.5rem;
 }
 #trackWindow:focus{outline:none;border-color:var(--accent-dim);}
 #clearTrackBtn{display:none;}
 .track-sep{color:var(--border);font-size:var(--fs-small);}
-#trackMsg{font-size:var(--fs-small);color:#00c8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;display:none;}
+#trackMsg{font-size:var(--fs-small);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;display:none;}
 #autoFlyBtn{opacity:.45;transition:opacity .2s;white-space:nowrap;}
 #autoFlyBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
 /* Track popup link */
@@ -161,18 +163,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 <div id="topbar">
   <h1>APRS Map</h1>
   <div id="statusDot"></div>
-  <span id="statusMsg">Connecting…</span>
   <span id="stationCount"></span>
   <span id="countdown"></span>
-  <select id="filterSel" style="margin-left:1rem;" onchange="applyFilter()">
+  <select id="filterSel" onchange="applyFilter()">
     <option value="15">Last 15 min</option>
     <option value="30">Last 30 min</option>
     <option value="60">Last 60 min</option>
     <option value="1440">Last 24 hrs</option>
     <option value="0" selected>All</option>
   </select>
-  <span class="track-sep" style="margin-left:.75rem">|</span>
-  <span style="font-size:var(--fs-small);color:var(--text-dim);margin-left:.75rem;white-space:nowrap">Track:</span>
+  <span class="track-sep">|</span>
+  <span style="font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap">Track:</span>
   <select id="trackWindow" style="margin-left:.35rem;" onchange="if(activeTrack) showTrack(activeTrack)">
     <option value="60">1 h</option>
     <option value="240">4 h</option>
@@ -181,11 +182,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
     <option value="10080">7 d</option>
     <option value="0">All</option>
   </select>
+  <span class="track-sep">|</span>
   <button id="clearTrackBtn" class="sbtn" onclick="clearTrack()" style="margin-left:.35rem;">✕ Track</button>
+  <span style="flex:1"></span>
   <span id="trackMsg"></span>
   <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">✈ Auto-fly</button>
   <!-- <button id="refreshBtn" class="sbtn" onclick="fetchStations()">Refresh</button> -->
-  <a href="/" class="home-link">⌂ HOME</a>
+  <span id="statusMsg">Connecting…</span>
+  <a href="/" class="home-link" style="margin-left:.75rem;">⌂ HOME</a>
 </div>
 
 <div id="map"></div>
@@ -679,7 +683,8 @@ async function _loadTrack(callsign) {
     if (!data.ok) throw new Error(data.error || 'API error');
     if (data.count < 2) {
       clearTrack();
-      setTrackMsg(callsign + ': only ' + data.count + ' pt(s)');
+      const col = data.count === 0 ? 'red' : 'amber';
+      setTrackMsg(callsign + ': only ' + data.count + ' pt(s)', col);
       _setPopupTrackStatus(callsign, 'only ' + data.count + ' position(s) in window');
       return;
     }
@@ -698,7 +703,7 @@ async function _loadTrack(callsign) {
     if (autoFly && last) {
       map.flyTo({ center: [last.lon, last.lat], zoom: Math.max(map.getZoom(), 12), speed: 1.4, essential: true });
     }
-    setTrackMsg('');
+    setTrackMsg(callsign + ': ' + data.count + ' pts', 'blue');
     _setPopupTrackStatus(callsign, data.count + ' pts · ' + parseInt(document.getElementById('trackWindow').value || 60) + ' min window');
   } catch (e) {
     clearTrack();
@@ -716,10 +721,13 @@ function _setPopupTrackStatus(callsign, msg) {
   el.style.display = msg ? 'block' : 'none';
 }
 
-function setTrackMsg(msg) {
+function setTrackMsg(msg, color) {
   const el = document.getElementById('trackMsg');
   el.textContent = msg;
   el.style.display = msg ? 'inline' : 'none';
+  if (color === 'red') el.style.color = 'var(--red)';
+  else if (color === 'amber') el.style.color = 'var(--amber)';
+  else el.style.color = '#00c8ff';
 }
 
 function clearTrack() {
