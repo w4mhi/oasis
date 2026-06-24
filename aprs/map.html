@@ -89,16 +89,45 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   font-family:var(--mono);text-align:left;padding-left:0;width:100%;
 }
 .pop-track-btn:hover{color:var(--accent);}
-/* Pulse glow for newly heard stations — box-shadow on the canvas, no wrapper div needed */
+.pop-track-status{
+  margin-top:4px;font-size:var(--fs-small);
+  color:#00c8ff;font-family:var(--mono);display:none;
+}
+/* ── Sonar pings for newly heard stations — single element, no wrapper, MapLibre-safe ── */
+/* Three rings embedded in one box-shadow animation, staggered by keyframe offsets */
+@keyframes aprs-sonar{
+  0%  {box-shadow: 0 0 5px  0px rgba(0,255,80,.9 ), 0 0 0   0px rgba(0,255,80,0  ), 0 0 0   0px rgba(0,255,80,0  );}
+  16% {box-shadow: 0 0 5px 16px rgba(0,255,80,.45), 0 0 5px  0px rgba(0,255,80,.9 ), 0 0 0   0px rgba(0,255,80,0  );}
+  33% {box-shadow: 0 0 3px 32px rgba(0,255,80,.0 ), 0 0 5px 16px rgba(0,255,80,.45), 0 0 5px  0px rgba(0,255,80,.9 );}
+  50% {box-shadow: 0 0 0   0px rgba(0,255,80,0  ), 0 0 3px 32px rgba(0,255,80,.0 ), 0 0 5px 16px rgba(0,255,80,.45);}
+  66% {box-shadow: 0 0 0   0px rgba(0,255,80,0  ), 0 0 0   0px rgba(0,255,80,0  ), 0 0 3px 32px rgba(0,255,80,.0 );}
+  100%{box-shadow: 0 0 0   0px rgba(0,255,80,0  ), 0 0 0   0px rgba(0,255,80,0  ), 0 0 0   0px rgba(0,255,80,0  );}
+}
+.aprs-marker.is-new{
+  animation:aprs-sonar 2.4s ease-out 3 forwards;
+  border-radius:3px;
+}
+/* persistent glow — replaces is-new after pings finish, until next refresh */
+.aprs-marker.is-persistent{
+  animation:aprs-glow-breathe 2.5s ease-in-out infinite;
+  border-radius:3px;
+  box-shadow:0 0 5px 3px rgba(0,255,80,.3);
+}
+@keyframes aprs-glow-breathe{
+  0%,100%{box-shadow:0 0 4px 2px rgba(0,255,80,.2);}
+  50%    {box-shadow:0 0 8px 4px rgba(0,255,80,.5);}
+}
+/* ── preserved: old box-shadow pulse ─────────────────────────────────────────
 @keyframes aprs-pulse{
   0%  {box-shadow:0 0 0 0 rgba(255,180,84,.85);}
   75% {box-shadow:0 0 0 14px rgba(255,180,84,.15);}
   100%{box-shadow:0 0 0 16px rgba(255,180,84,0);}
 }
-.aprs-marker.is-new{
+.aprs-marker.is-new-OLD{
   animation:aprs-pulse 2.5s ease-out 4;
   border-radius:2px;
 }
+────────────────────────────────────────────────────────────────────────────── */
 /* New-stations badge — moved to recent panel */
 /* Latest-station link — moved to recent panel */
 /* Recent-heard panel */
@@ -406,6 +435,9 @@ function buildPopup(s) {
   if (s.comment) {
     html += '<div class="pop-comment">' + s.comment.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
   }
+  html += '<div class="pop-track-status" id="pop-track-status-' + s.callsign + '"' +
+           (activeTrack === s.callsign && _trackStatusMsg ? ' style="display:block">' + _trackStatusMsg : '>') +
+           '</div>';
   html += '<button class="pop-track-btn" onclick="showTrack(\'' + s.callsign + '\')">' +
           (activeTrack === s.callsign ? '✕ Clear track' : '⟳ Show track') + '</button>';
   return html;
@@ -418,8 +450,14 @@ function plotStations(stations) {
 
     const isNew = _newCallsigns.has(s.callsign);
     const markerEl = makeMarkerEl(s.sym_table, s.sym_code);
-    // Pulse glow via CSS box-shadow animation — no wrapper div, no layout impact
-    if (isNew) markerEl.classList.add('is-new');
+    // Sonar pings — applied directly to canvas, no wrapper, MapLibre positioning untouched
+    if (isNew) {
+      markerEl.classList.add('is-new');
+      markerEl.addEventListener('animationend', () => {
+        markerEl.classList.remove('is-new');
+        markerEl.classList.add('is-persistent');
+      }, { once: true });
+    }
 
     const popup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '260px' })
       .setHTML(buildPopup(s));
@@ -576,6 +614,7 @@ loadConfig().then(() => {
 
 // ── Track rendering ──────────────────────────────────────────────────────────
 let activeTrack = null;
+let _trackStatusMsg = '';  // persists across refreshes so popup can re-show it
 let autoFly = false;
 let _focusHandled = false;
 
@@ -639,8 +678,9 @@ async function _loadTrack(callsign) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'API error');
     if (data.count < 2) {
-      setTrackMsg(callsign + ': only ' + data.count + ' pt(s)');
       clearTrack();
+      setTrackMsg(callsign + ': only ' + data.count + ' pt(s)');
+      _setPopupTrackStatus(callsign, 'only ' + data.count + ' position(s) in window');
       return;
     }
     const coords = data.points.map(p => [p.lon, p.lat]);
@@ -658,21 +698,33 @@ async function _loadTrack(callsign) {
     if (autoFly && last) {
       map.flyTo({ center: [last.lon, last.lat], zoom: Math.max(map.getZoom(), 12), speed: 1.4, essential: true });
     }
-    setTrackMsg(callsign + ' · ' + data.count + ' pts');
+    setTrackMsg('');
+    _setPopupTrackStatus(callsign, data.count + ' pts · ' + parseInt(document.getElementById('trackWindow').value || 60) + ' min window');
   } catch (e) {
-    setTrackMsg('error: ' + e.message);
     clearTrack();
+    setTrackMsg('error: ' + e.message);
+    _setPopupTrackStatus(activeTrack, 'error: ' + e.message);
   }
+}
+
+function _setPopupTrackStatus(callsign, msg) {
+  if (!callsign) return;
+  if (callsign === activeTrack) _trackStatusMsg = msg;
+  const el = document.getElementById('pop-track-status-' + callsign);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
 }
 
 function setTrackMsg(msg) {
   const el = document.getElementById('trackMsg');
   el.textContent = msg;
-  el.style.display = msg ? '' : 'none';
+  el.style.display = msg ? 'inline' : 'none';
 }
 
 function clearTrack() {
   activeTrack = null;
+  _trackStatusMsg = '';
   document.getElementById('clearTrackBtn').style.display = 'none';
   setTrackMsg('');
   if (map.getSource('aprs-track')) {
