@@ -603,6 +603,27 @@ def server_ports():
     return api_config()
 
 
+# ── Background CPU sampler ────────────────────────────────────────────────────
+# CPU% is measured on a daemon thread over a rolling 2s window and cached, so
+# every /api/system request returns the same recently-measured value instead of
+# each taking its own noisy 0.1s snapshot. This gives stable, top-like readings
+# that agree across repeated polls and clients. (Under gunicorn each worker runs
+# its own sampler; the values track closely since both average the same window.)
+_CPU_PCT = None  # most recent rolling CPU%; None until the first sample lands
+
+def _cpu_sampler():
+    try:
+        import psutil
+    except ImportError:
+        return
+    global _CPU_PCT
+    psutil.cpu_percent(interval=None)          # prime the baseline (first call is 0.0)
+    while True:
+        _CPU_PCT = psutil.cpu_percent(interval=2.0)  # blocks ~2s, then refreshes
+
+threading.Thread(target=_cpu_sampler, name="cpu-sampler", daemon=True).start()
+
+
 def _lan_ip():
     """Best-effort primary LAN IP. Uses a UDP socket to pick the outbound
     interface — no packets are actually sent and no internet is required."""
@@ -644,8 +665,9 @@ def api_system():
     if disk_info is None:
         disk_info = {"error": "unavailable"}
 
-    # CPU
-    cpu_pct   = psutil.cpu_percent(interval=0.1)
+    # CPU — use the cached rolling sample; fall back to a quick snapshot only
+    # during the brief window before the background sampler produces its first.
+    cpu_pct   = _CPU_PCT if _CPU_PCT is not None else psutil.cpu_percent(interval=0.1)
     cpu_count = psutil.cpu_count(logical=True) or 1
 
     # RAM
