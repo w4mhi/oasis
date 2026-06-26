@@ -77,7 +77,7 @@
 'use strict';
 
 const HOST  = location.hostname;
-const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082 };
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082, openwebrx: 8073 };
 
 // ── Backend helpers ────────────────────────────────────────────────────────────
 async function jget(url) {
@@ -207,6 +207,20 @@ const OPEN = (port, label) =>
   `<a href="http://${HOST}:${port}" target="_blank" rel="noopener" style="color:var(--accent)">${label || ':' + port}</a>`;
 
 const CHECKS_OPTIONAL = [
+  {
+    id: 'openwebrx',
+    name: 'OpenWebRX (SDR)  ·  :8073',
+    run: async () => {
+      const svc = await chkService('openwebrx');
+      if (!svc.installed) return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `Install with: <code>python3 scripts/install-openwebrx.py</code> (browser SDR monitor — RTTY/CW/voice/FT8/…).` };
+      const up = await chkPort('openwebrx', PORTS.openwebrx);
+      if (up) return { ok: true, badge: 'UP',
+        detail: `Listening on :${PORTS.openwebrx} (service <code>openwebrx</code>, ${svcWord(svc)}). Open ${OPEN(PORTS.openwebrx)}. Shares the RTL-SDR with GrayWolf/feed — starting it from the dashboard stops them.` };
+      return { ok: 'warn', badge: 'OFF',
+        detail: `Installed (${svcWord(svc)}), off by default. Start from the dashboard (stops GrayWolf + the SDR feed) or: <code>sudo systemctl start openwebrx</code>.` };
+    },
+  },
   {
     id: 'graywolf',
     name: 'GrayWolf APRS  ·  :8080',

@@ -359,7 +359,7 @@ def api_health_probe():
     except ValueError:
         return jsonify({"ok": False, "error": "invalid port"}), 400
 
-    ALLOWED = {"graywolf", "kiwix", "webssh", "aprs_api", "winlink"}
+    ALLOWED = {"graywolf", "kiwix", "webssh", "aprs_api", "winlink", "openwebrx"}
     if service not in ALLOWED:
         return jsonify({"ok": False, "error": "unknown service"}), 400
     if not (1 <= port <= 65535):
@@ -794,6 +794,98 @@ def _wifi_info():
     return info or None
 
 
+def _gps_info():
+    """Snapshot from gpsd (127.0.0.1:2947): fix mode, sats, position. Returns None
+    if gpsd isn't reachable (so the card hides), or a dict (mode 0 = gpsd up, no
+    fix yet). Dependency-free — speaks gpsd's JSON protocol over a socket."""
+    import json as _json
+    try:
+        s = socket.create_connection(("127.0.0.1", 2947), timeout=1.5)
+    except OSError:
+        return None
+    info = {}
+    try:
+        s.sendall(b'?WATCH={"enable":true,"json":true};\n')
+        s.settimeout(1.5)
+        buf = b""
+        deadline = time.time() + 2.0
+        have_tpv = have_sky = False
+        while time.time() < deadline and not (have_tpv and have_sky):
+            try:
+                chunk = s.recv(4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    msg = _json.loads(line)
+                except ValueError:
+                    continue
+                if msg.get("class") == "TPV":
+                    info["mode"] = msg.get("mode", 0)
+                    if msg.get("lat") is not None:
+                        info["lat"] = msg["lat"]
+                    if msg.get("lon") is not None:
+                        info["lon"] = msg["lon"]
+                    alt = msg.get("altMSL", msg.get("alt"))
+                    if alt is not None:
+                        info["alt_m"] = alt
+                    have_tpv = True
+                elif msg.get("class") == "SKY":
+                    sats = msg.get("satellites", [])
+                    info["seen"] = msg.get("nSat", len(sats))
+                    info["used"] = msg.get("uSat", sum(1 for x in sats if x.get("used")))
+                    if msg.get("hdop") is not None:
+                        info["hdop"] = msg["hdop"]
+                    have_sky = True
+    except OSError:
+        pass
+    finally:
+        try:
+            s.close()
+        except OSError:
+            pass
+    return info or {"mode": 0}
+
+
+def _chrony_gps():
+    """chrony's GPS lock + clock offset via `chronyc -c tracking` (CSV). {} if
+    unavailable. Field 1 = reference name ('GPS' when locked to the GPS refclock),
+    field 4 = system-time offset in seconds."""
+    try:
+        out = subprocess.run(["chronyc", "-c", "tracking"],
+                             capture_output=True, text=True, timeout=3)
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        return {}
+    if out.returncode != 0:
+        return {}
+    f = out.stdout.strip().split(",")
+    if len(f) < 5:
+        return {}
+    res = {"source": f[1], "locked": "GPS" in f[1].upper()}
+    try:
+        res["offset_s"] = float(f[4])
+    except ValueError:
+        pass
+    return res
+
+
+def _gps_sample():
+    """Combined GPS fix + chrony time-lock for the dashboard GPS/Time widget.
+    None when gpsd is unreachable (widget hides)."""
+    g = _gps_info()
+    if g is None:
+        return None
+    g.update(_chrony_gps())
+    return g
+
+
 # ── Background sampler ─────────────────────────────────────────────────────────
 # CPU% over a rolling 2s window, plus slower-changing Pi facts (throttle state,
 # Wi-Fi), are measured on a daemon thread and cached. /api/system then never
@@ -803,13 +895,14 @@ def _wifi_info():
 _CPU_PCT  = None  # most recent rolling CPU%; None until the first sample lands
 _THROTTLE = None  # cached _pi_throttled(); None on non-Pi
 _NET      = None  # cached _wifi_info();    None when unavailable
+_GPS      = None  # cached _gps_sample();   None when gpsd unreachable
 
 def _sampler():
     try:
         import psutil
     except ImportError:
         psutil = None
-    global _CPU_PCT, _THROTTLE, _NET
+    global _CPU_PCT, _THROTTLE, _NET, _GPS
     if psutil:
         psutil.cpu_percent(interval=None)          # prime the baseline
     i = 0
@@ -821,6 +914,7 @@ def _sampler():
         if i % 5 == 0:                              # refresh ~every 10s
             _THROTTLE = _pi_throttled()
             _NET      = _wifi_info()
+            _GPS      = _gps_sample()
         i += 1
 
 threading.Thread(target=_sampler, name="oasis-sampler", daemon=True).start()
@@ -937,6 +1031,7 @@ def api_system():
         "fcc_db_date": fcc_db_mtime,
         "throttle":    _THROTTLE,
         "net":         _NET,
+        "gps":         _GPS,
     })
 
 

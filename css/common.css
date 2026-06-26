@@ -57,6 +57,8 @@
   --fs-label:    0.75rem;  /* th, .sec-label, field labels — uppercase caps */
   --fs-small:    0.7rem;   /* buttons, meta, footnotes */
   --fs-micro:    0.65rem;  /* form field labels, badge text */
+  --fs-clock:    1.05rem;  /* clocks & large display readouts */
+  --fs-icon:     0.95rem;  /* small UI glyphs (collapse / quick-launch icons) */
 }
 
 /* ─── Reset ─────────────────────────────────────────────── */

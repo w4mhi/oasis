@@ -3,7 +3,7 @@
 __pycache__/
 *.pyc
 *.pyo
-./claude/*
+.claude/*
 
 # macOS
 .DS_Store

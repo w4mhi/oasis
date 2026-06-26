@@ -16,6 +16,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [DRA-Pi-Zero sound card](#dra-pi-zero-sound-card)
 - [Kiwix / Wikipedia](#kiwix--wikipedia)
 - [RTL-SDR](#rtl-sdr)
+- [OpenWebRX (SIGINT)](#openwebrx-sigint)
 - [webssh / Browser Terminal](#webssh--browser-terminal)
 - [ICS Forms](#ics-forms)
 - [USB / Portable bundle](#usb--portable-bundle)
@@ -654,6 +655,71 @@ enables `aprs-sdr-feed.service` (`rtl_fm … | socat -u -b 1920 - UDP-SENDTO:127
 inspects GrayWolf's journal, and prints the browser steps to add the `sdr_udp`
 device and AFSK/RX channel. Receive-only — an RTL-SDR cannot transmit. Full
 writeup and troubleshooting: [`sdr-to-graywolf.md`](sdr-to-graywolf.md).
+
+---
+
+## OpenWebRX (SIGINT)
+
+A browser-based, **receive-only** SDR receiver/decoder — the OASIS monitoring
+front end. From an RTL-SDR it gives a waterfall + audio and decodes a wide range
+of modes (voice AM/FM/SSB, CW, RTTY, FT8/FT4/WSPR, SSTV, ACARS, AIS, ADS-B,
+POCSAG, …) in the browser on **port 8073**. It cannot transmit — for FT8/2-way
+operating you'd use a transceiver + WSJT-X instead.
+
+### Install
+
+```bash
+python3 scripts/install-openwebrx.py        # add the OpenWebRX+ apt repo, install, off by default
+python3 scripts/install-openwebrx.py --check # report install + boot state
+```
+
+This adds the **OpenWebRX+** (`luarvique`) upstream apt repo and installs the
+`openwebrx` package. It needs **internet** — OpenWebRX+ is a third-party repo and
+is **not** vendored into the offline bundle (install it on a connected build/host;
+offline bundling is a future task). Targets Debian/Raspberry Pi OS **bookworm/trixie**.
+
+### Running it — RTL-SDR is exclusive
+
+OpenWebRX is installed **off by default** (disabled at boot) because it grabs the
+RTL-SDR exclusively — the same dongle the **APRS SDR feed → GrayWolf** path uses.
+Manage it from the dashboard **OpenWebRX** card:
+
+- **Start** → stops + disables `aprs-sdr-feed` and `graywolf`, then enables + starts
+  `openwebrx` (so it survives a reboot).
+- **Stop** → disables + stops `openwebrx`, then re-enables + starts the APRS stack.
+
+So exactly one consumer of the radio is ever active, at runtime *and* after a
+reboot. The card's **title** links to the OpenWebRX UI (`:8073`) in a new tab.
+Requires `scripts/enable-service-controls.py` (grants the scoped systemctl rule).
+
+### Recommended monitoring profiles (band presets)
+
+OpenWebRX profiles are per-SDR and depend on your dongle, antenna, and local
+frequencies, so add them in **Admin → SDR devices → profiles** (open `:8073`, log
+in, ⚙ Settings) rather than from a fixed file that could clobber a tuned setup. A
+plain RTL-SDR covers ~VHF/UHF (HF needs a direct-sampling dongle or upconverter).
+A useful EmComm starter set:
+
+| Profile | Center | Mode | Notes |
+|---|---|---|---|
+| 2 m APRS | 144.390 MHz | NFM | National APRS; also feeds your GrayWolf interest |
+| 2 m calling | 146.520 MHz | NFM | National simplex calling |
+| 2 m band | ~145.5 MHz | NFM | Wide view of the 2 m repeater/simplex segment |
+| 70 cm band | ~435 MHz | NFM | UHF repeaters/simplex |
+| NOAA weather | 162.400–162.550 MHz | NFM | NWS weather radio (pick your local channel) |
+| Marine VHF | ~157 MHz | NFM | Coastal/inland waterway traffic |
+| Airband | 118–137 MHz | AM | Aircraft / ATC |
+| Local repeaters | *your outputs* | NFM | Add your area's repeater output frequencies |
+
+> HF nets (80/40 m, etc.) require an HF-capable SDR or a direct-sampling RTL-SDR
+> (Q-branch) — a stock RTL-SDR can't reach them.
+
+### Time matters for the decoders
+
+FT8/FT4/WSPR/SSTV decoding and spot timestamps need an accurate clock. With no
+internet, discipline it from GPS (`gpsd` + `chrony`) backed by the RTC — see the
+time-sync setup. The dashboard's clock indicator (when present) tells you when
+timing is trustworthy.
 
 ---
 

@@ -39,7 +39,7 @@ body {
   margin-top: 2px;
 }
 .clock-utc {
-  font-size: 1.05rem;
+  font-size: var(--fs-clock);
   font-weight: 700;
   color: var(--accent);
   letter-spacing: .1em;
@@ -59,6 +59,36 @@ body {
 }
 #s-host { font-weight: 700; }
 #s-host .host-ip { color: var(--text-dim); font-weight: 400; }
+
+/* ── GPS card (topbar centre — mirrors the service cards) ────────── */
+.gps-card {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  min-width: 232px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .4rem .7rem;
+  transition: border-color .3s, background .3s;
+}
+.gps-card.up   { border-color: var(--accent-dim); background: rgba(0, 200, 100, 0.06); }
+.gps-card.warn { border-color: var(--amber-dim);  background: rgba(255, 180, 84, 0.06); }
+.gps-card.down { border-color: #7a1010;           background: rgba(180, 30, 30, 0.08); }
+.gps-card-hdr { display: flex; align-items: center; gap: .45rem; }
+.gps-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; transition: background .3s; }
+.gps-dot.up { background: var(--accent); }
+.gps-dot.warn { background: var(--amber); }
+.gps-dot.down { background: var(--red); }
+.gps-card-name { font-size: var(--fs-base); font-weight: 700; color: var(--text); letter-spacing: .1em; }
+.gps-card-badge { margin-left: auto; font-size: var(--fs-small); text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); font-weight: 700; }
+.gps-card-badge.up   { color: var(--accent); }
+.gps-card-badge.warn { color: var(--amber); }
+.gps-card-badge.down { color: var(--red); }
+.gps-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .2rem .8rem; }
+.gps-cell { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.gps-lbl { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .07em; color: var(--text-dim); }
+.gps-val { font-size: var(--fs-small); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── Kiosk refresh button (header pill) ──────────────────────── */
 .kiosk-refresh {
@@ -80,10 +110,31 @@ body {
 }
 .kiosk-refresh:hover  { background: var(--panel); border-color: var(--accent); }
 .kiosk-refresh:active { transform: scale(.96); }
-.kiosk-refresh .kr-icon { font-size: 1.05rem; line-height: 1; }
+.kiosk-refresh .kr-icon { font-size: var(--fs-clock); line-height: 1; }
 .kiosk-refresh.spinning { pointer-events: none; }
 .kiosk-refresh.spinning .kr-icon { animation: kiosk-spin .6s linear infinite; }
 @keyframes kiosk-spin { to { transform: rotate(360deg); } }
+
+/* ── Units toggle pill (imperial / metric) ───────────────── */
+.units-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .18rem .7rem;
+  border: 1px solid var(--accent-dim);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.units-pill:hover { background: var(--panel); border-color: var(--accent); }
+.units-pill .units-val { color: var(--accent); }
 
 /* ── Service strip ───────────────────────────────────────────────────── */
 .svc-strip {
@@ -122,13 +173,13 @@ a.svc-card:hover { border-color: var(--accent); }
 .svc-dot.up   { background: var(--accent); }
 .svc-dot.down { background: var(--red); }
 .svc-dot.warn { background: var(--amber); }
-.svc-name { font-size: 0.85rem; font-weight: 700; color: var(--text); }
+.svc-name { font-size: var(--fs-base); font-weight: 700; color: var(--text); }
 .svc-name a.owrx-link { color: var(--accent); text-decoration: none; }
 .svc-name a.owrx-link:hover { text-decoration: underline; }
 .svc-sub  { font-size: var(--fs-small); color: var(--text-dim); }
 .svc-badge {
   margin-left: auto;
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   text-transform: uppercase;
   letter-spacing: .06em;
   color: var(--text-dim);
@@ -141,7 +192,7 @@ a.svc-card:hover { border-color: var(--accent); }
    so the action is readable at a glance on a wall dashboard. */
 .svc-power {
   margin-left: 6px; flex-shrink: 0;
-  font-size: 0.62rem; font-weight: 700; letter-spacing: .05em;
+  font-size: var(--fs-micro); font-weight: 700; letter-spacing: .05em;
   padding: 2px 6px; border-radius: 4px; cursor: pointer; user-select: none;
   border: 1px solid var(--border); color: var(--text-dim);
 }
@@ -253,7 +304,7 @@ a.svc-card:hover { border-color: var(--accent); }
   border-color: var(--border);
   cursor: not-allowed;
 }
-.ql-icon { font-size: .95rem; line-height: 1; }
+.ql-icon { font-size: var(--fs-icon); line-height: 1; }
 .ql-lbl {
   font-size: var(--fs-small);
   text-transform: uppercase;
@@ -273,7 +324,7 @@ a.svc-card:hover { border-color: var(--accent); }
 }
 .nav-sec:last-child { margin-bottom: 0; }
 .nav-sec-title {
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   text-transform: uppercase;
   letter-spacing: .13em;
   color: var(--accent);
@@ -353,7 +404,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 
 /* ── Local time ──────────────────────────────────────────────────────── */
 .clock-local {
-  font-size: 1.05rem;
+  font-size: var(--fs-clock);
   font-weight: 700;
   color: var(--amber);
   letter-spacing: .1em;
@@ -426,7 +477,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   background: none;
   border: none;
   cursor: pointer;
-  font-size: .95rem;
+  font-size: var(--fs-icon);
   line-height: 1;
   padding: 0 .15rem;
   color: var(--blue);
@@ -449,7 +500,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 }
 .nav-grid-wrap.collapsed { max-height: 0; }
 .section-hdr-title {
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   text-transform: uppercase;
   letter-spacing: .13em;
   color: var(--accent);
@@ -524,7 +575,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   border-bottom: 1px solid var(--accent-dim);
 }
 .aprs-section-title {
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   text-transform: uppercase;
   letter-spacing: .13em;
   color: var(--text-dim);
@@ -576,7 +627,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   .nav-col { border-right: none; border-bottom: 1px solid var(--border); }
   .nav-col:last-child { border-bottom: none; }
   .topbar { gap: .5rem; }
-  .clock-utc { font-size: .85rem; }
+  .clock-utc { font-size: var(--fs-base); }
 }
 </style>
 </head>
@@ -584,6 +635,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 
 <!-- ── TOP BAR ─────────────────────────────────────────────────────────────── -->
 <div class="topbar">
+  <div style="display:flex;align-items:center;gap:3.0rem">
   <div>
     <div class="brand-name">OASIS - Off-grid Amateur Station Information Suite</div>
     <div class="brand-sub">An offline toolkit for amateur radio emergency communications.</div>
@@ -594,12 +646,35 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <span class="cs-grid" id="my-grid">&mdash;</span>
         <button class="cs-edit" onclick="editCallsignGrid()" title="Edit callsign &amp; grid">&#9998;</button>
       </div>
+      <button class="units-pill" id="units-pill" onclick="toggleUnits()"
+              title="Toggle measurement units (imperial / metric)">
+        Units <span class="units-val" id="units-val">IMPERIAL</span>
+      </button>
       <button class="kiosk-refresh" id="kiosk-refresh" onclick="kioskRefresh()"
               title="Reload the dashboard" aria-label="Refresh dashboard">
         <span class="kr-icon">&#8635;</span>Refresh
       </button>
     </div>
   </div>
+
+  <!-- GPS / GNSS receiver card (next to the title) -->
+  <div class="gps-card down" id="gps-card" title="GNSS receiver + clock status">
+    <div class="gps-card-hdr">
+      <span class="gps-dot down" id="gps-dot"></span>
+      <span class="gps-card-name">GPS</span>
+      <span class="gps-card-badge down" id="gps-badge">NO FIX</span>
+    </div>
+    <div class="gps-card-grid">
+      <div class="gps-cell"><span class="gps-lbl">Sats</span><span class="gps-val" id="gps-sats">n/a</span></div>
+      <div class="gps-cell"><span class="gps-lbl">HDOP</span><span class="gps-val" id="gps-hdop">n/a</span></div>
+      <div class="gps-cell"><span class="gps-lbl">Alt</span><span class="gps-val" id="gps-alt">n/a</span></div>
+      <div class="gps-cell"><span class="gps-lbl">Lat</span><span class="gps-val" id="gps-lat">n/a</span></div>
+      <div class="gps-cell"><span class="gps-lbl">Lon</span><span class="gps-val" id="gps-lon">n/a</span></div>
+      <div class="gps-cell"><span class="gps-lbl">Clock</span><span class="gps-val" id="gps-clock">n/a</span></div>
+    </div>
+  </div>
+  </div>
+
   <div>
     <div class="clock-utc-row">
       <div class="clock-utc" id="utc-time">UTC --:--:--</div>
@@ -639,7 +714,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   </div>
   <div class="stat-item">
     <span class="stat-lbl">TEMP</span>
-    <span class="stat-val" id="s-temp" style="cursor:pointer" title="Click to toggle °C / °F">—</span>
+    <span class="stat-val" id="s-temp">—</span>
     <canvas class="spark" id="spark-temp" width="46" height="14" title="Temperature trend (recent polls)"></canvas>
   </div>
   <div class="stat-item">
@@ -1323,23 +1398,46 @@ function setStat(id, text, pct, amber, red) {
   el.textContent = text;
   el.className   = valClass(pct, amber, red);
 }
-// Temperature unit toggle (persisted). Server always reports °C; colour
-// thresholds stay in °C — only the displayed text changes.
-let TEMP_UNIT = localStorage.getItem('oasis_temp_unit') || 'C';
-let _lastTempC = null;
+// ── Measurement units (global imperial/metric toggle) ──────────────────────────
+// One source of truth for every convertible value on the dashboard. The server
+// always reports SI (°C, metres; APRS speed arrives as mph) — these helpers
+// convert for display only. Persisted; default imperial. Colour thresholds for
+// temperature stay in °C, so only the displayed text changes.
+let UNITS = localStorage.getItem('oasis_units') || 'imperial';
+const isImperial = () => UNITS === 'imperial';
+let _lastTempC   = null;
+let _lastGpsAltM = null;
 function fmtTemp(c) {
   if (c == null) return 'n/a';
-  return TEMP_UNIT === 'F' ? `${Math.round(c * 9 / 5 + 32)} °F` : `${c} °C`;
+  return isImperial() ? `${Math.round(c * 9 / 5 + 32)} °F` : `${c} °C`;
 }
-function renderTemp() {
-  setStat('s-temp', fmtTemp(_lastTempC), _lastTempC, 65, 80);
+function fmtAlt(m) {            // metres → ft (imperial) or m (metric)
+  if (m == null) return 'n/a';
+  return isImperial()
+    ? `${Math.round(m * 3.28084).toLocaleString()} ft`
+    : `${Math.round(m).toLocaleString()} m`;
 }
-document.getElementById('s-temp').addEventListener('click', () => {
-  if (_lastTempC == null) return;          // nothing to toggle (sensor n/a)
-  TEMP_UNIT = TEMP_UNIT === 'C' ? 'F' : 'C';
-  localStorage.setItem('oasis_temp_unit', TEMP_UNIT);
+function fmtSpeed(mph) {        // server reports mph; metric → km/h
+  if (mph == null) return '';
+  return isImperial() ? `${mph} mph` : `${Math.round(mph * 1.60934)} km/h`;
+}
+function renderTemp()   { setStat('s-temp', fmtTemp(_lastTempC), _lastTempC, 65, 80); }
+function renderGpsAlt() {
+  const el = document.getElementById('gps-alt');
+  if (el) el.textContent = _lastGpsAltM != null ? fmtAlt(_lastGpsAltM) : 'n/a';
+}
+function applyUnits() {
+  const v = document.getElementById('units-val');
+  if (v) v.textContent = isImperial() ? 'IMPERIAL' : 'METRIC';
   renderTemp();
-});
+  renderGpsAlt();
+  if (_allAprsStations.length) applyAprsFilter();   // re-render table in new units
+}
+function toggleUnits() {
+  UNITS = isImperial() ? 'metric' : 'imperial';
+  try { localStorage.setItem('oasis_units', UNITS); } catch (e) {}
+  applyUnits();
+}
 function setBar(id, pct, amber = 70, red = 90) {
   const el = document.getElementById(id);
   el.style.width = `${Math.min(pct, 100)}%`;
@@ -1401,6 +1499,67 @@ async function fetchStats() {
       hostEl.innerHTML = `${d.hostname}`
         + (d.ip ? ` <span class="host-ip">· ${d.ip}</span>` : '');
     }
+
+    // GPS card (topbar centre) — ALWAYS shown. Every field defaults to n/a and
+    // fills in as the receiver gets a fix. Fuses gpsd fix/sats/position with
+    // chrony's clock-lock. When gpsd isn't reachable (d.gps null) it reads
+    // OFFLINE rather than hiding, so the slot is always present.
+    const gpsCard = document.getElementById('gps-card');
+    if (gpsCard) {
+      const g     = d.gps;
+      const dot   = document.getElementById('gps-dot');
+      const badge = document.getElementById('gps-badge');
+      const setG  = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      // HDOP quality → colour (6 steps across good / warning / bad):
+      //   <1 ideal, 1–2 excellent (greens) · 2–5 good, 5–10 moderate (ambers)
+      //   · 10–20 fair, >20 poor (reds). Returns '' to fall back to the default.
+      const hdopColor = (h) => {
+        if (h == null) return '';
+        if (h < 1)  return '#00e676';   // ideal
+        if (h < 2)  return '#5bc47a';   // excellent
+        if (h < 5)  return '#ffd54a';   // good
+        if (h < 10) return '#ffb454';   // moderate
+        if (h < 20) return '#ff7a45';   // fair
+        return '#e5484d';               // poor
+      };
+      const setHdop = (h) => {
+        const el = document.getElementById('gps-hdop');
+        if (!el) return;
+        el.textContent = h != null ? h : 'n/a';
+        el.style.color = hdopColor(h);
+      };
+      const applyState = (s) => {
+        gpsCard.className = 'gps-card ' + s;
+        dot.className     = 'gps-dot ' + s;
+        badge.className   = 'gps-card-badge ' + s;
+      };
+      if (!g) {
+        applyState('down');
+        badge.textContent = 'OFFLINE';
+        setG('gps-sats', 'n/a'); setHdop(null); _lastGpsAltM = null; renderGpsAlt();
+        setG('gps-lat', 'n/a');  setG('gps-lon', 'n/a');  setG('gps-clock', 'n/a');
+        gpsCard.title = 'No GPS detected (gpsd not reachable)';
+      } else {
+        const mode   = g.mode || 0;
+        const used   = g.used != null ? g.used : 0;
+        const locked = !!g.locked;
+        applyState(mode >= 3 && locked ? 'up' : (mode >= 2 || locked) ? 'warn' : 'down');
+        badge.textContent = mode >= 3 ? '3D FIX' : mode === 2 ? '2D FIX' : 'NO FIX';
+        setG('gps-sats',  g.used != null ? `${used}${g.seen != null ? ' / ' + g.seen : ''}` : 'n/a');
+        setHdop(g.hdop != null ? g.hdop : null);
+        _lastGpsAltM = g.alt_m; renderGpsAlt();
+        setG('gps-lat',   g.lat != null ? g.lat.toFixed(5) : 'n/a');
+        setG('gps-lon',   g.lon != null ? g.lon.toFixed(5) : 'n/a');
+        setG('gps-clock', locked
+          ? (g.offset_s != null ? '✓ ' + (g.offset_s * 1000).toFixed(1) + ' ms' : '✓ locked')
+          : '✗ unlocked');
+        const t = [];
+        if (g.source) t.push(`src ${g.source}`);
+        if (g.seen != null) t.push(`${used}/${g.seen} sats used`);
+        gpsCard.title = t.length ? 'GNSS — ' + t.join(' · ') : 'GNSS receiver + clock status';
+      }
+    }
+
 
     // Track which stats are valid vs n/a to colour the telemetry badge
     let valid = 0, total = 0;
@@ -1574,11 +1733,11 @@ function renderAprsTable(stations) {
   }
   tbody.innerHTML = stations.map(s => {
     const age = fmtAge(s.last_heard);
-    const speed = s.speed_mph > 0 ? s.speed_mph + ' mph' : '';
+    const speed = s.speed_mph > 0 ? fmtSpeed(s.speed_mph) : '';
     const course = s.course != null && s.speed_mph > 0
       ? ' ' + ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(s.course/22.5)%16]
       : '';
-    const alt = s.alt_m != null ? Math.round(s.alt_m * 3.28084).toLocaleString() + ' ft' : '';
+    const alt = s.alt_m != null ? fmtAlt(s.alt_m) : '';
     return `<tr>
       <td style="color:var(--accent);font-weight:700"><a href="aprs/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a></td>
       <td>${fmtLastHeard(s.last_heard)}</td>
@@ -1672,6 +1831,7 @@ async function fetchAPRS() {
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 loadConfig().then(() => {
+  applyUnits();
   pingAll();
   fetchStats();
   fetchAudio();
