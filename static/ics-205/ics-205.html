@@ -238,7 +238,7 @@ window.addEventListener('DOMContentLoaded', () => {
     tpEl.value = String(_now.getHours()).padStart(2,'0') + String(_now.getMinutes()).padStart(2,'0');
   }
   const pdEl = document.getElementById('f-pd');
-  if (pdEl && !pdEl.value.includes('/')) {
+  if (pdEl) {
     const mo = String(_now.getMonth()+1).padStart(2,'0');
     const dy = String(_now.getDate()).padStart(2,'0');
     const hh = String(_now.getHours()).padStart(2,'0');

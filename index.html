@@ -146,6 +146,7 @@ a.svc-card:hover { border-color: var(--accent); }
 }
 .mini-fill.warn { background: var(--amber); }
 .mini-fill.bad  { background: var(--red); }
+.spark { vertical-align: middle; opacity: .85; }
 
 /* ── APRS bar ────────────────────────────────────────────────────────── */
 .aprs-bar {
@@ -577,6 +578,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <span class="stat-lbl">CPU</span>
     <span class="stat-val" id="s-cpu">—</span>
     <div class="mini-bar"><div class="mini-fill" id="b-cpu"></div></div>
+    <canvas class="spark" id="spark-cpu" width="46" height="14" title="CPU trend (recent polls)"></canvas>
   </div>
   <div class="stat-item">
     <span class="stat-lbl">RAM</span>
@@ -595,6 +597,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   <div class="stat-item">
     <span class="stat-lbl">TEMP</span>
     <span class="stat-val" id="s-temp" style="cursor:pointer" title="Click to toggle °C / °F">—</span>
+    <canvas class="spark" id="spark-temp" width="46" height="14" title="Temperature trend (recent polls)"></canvas>
   </div>
   <div class="stat-item">
     <span class="stat-lbl">UPTIME</span>
@@ -604,9 +607,17 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <span class="stat-lbl">AUDIO</span>
     <span class="stat-val" id="s-audio">—</span>
   </div>
+  <div class="stat-item" id="item-net" style="display:none">
+    <span class="stat-lbl">NET</span>
+    <span class="stat-val" id="s-net">—</span>
+  </div>
     <div class="stat-item">
     <span class="stat-lbl">HOST</span>
     <span class="stat-val" id="s-host" title="Server these stats are read from">—</span>
+  </div>
+  <div class="stat-item" id="item-throttle" style="display:none">
+    <span class="stat-lbl">PWR</span>
+    <span class="stat-val" id="s-throttle">—</span>
   </div>
   <span class="telemetry-badge" id="telemetry-badge">△ telemetry: offline</span>
 </div>
@@ -755,7 +766,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <li><a href="radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
         <li><a href="static/cheatsheets/index.html">Radio Cheatsheets <span class="nav-meta">radio reference</span></a></li>
         <li><a href="repeaterbook/repeaterbook.html">Repeater Book <span class="nav-meta">repeater book</span></a></li> 
-        <li><a href="aprs/map.html">APRS Animated Map <span class="nav-meta">live APRS</span></a></li>
+        <li><a href="aprs/map.html">APRS Maidenhead Map <span class="nav-meta">live APRS</span></a></li>
         <li><a id="nlink-kiwix" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-kiwix">—</span></a></li>
       </ul>
     </div>
@@ -1110,6 +1121,40 @@ function setBar(id, pct, amber = 70, red = 90) {
   el.style.width = `${Math.min(pct, 100)}%`;
   el.className   = `mini-fill${pct >= red ? ' bad' : pct >= amber ? ' warn' : ''}`;
 }
+// Tiny trend sparklines, built client-side from the recent polls (no server
+// history needed). One ring buffer per metric; coloured by the latest value.
+const SPARK_MAX = 30;                 // ~ last 30 polls (≈15 min at 30s)
+const _spark = { cpu: [], temp: [] };
+function pushSpark(key, v, amber, red) {
+  if (v == null) return;
+  const a = _spark[key];
+  a.push(v);
+  if (a.length > SPARK_MAX) a.shift();
+  const cv = document.getElementById('spark-' + key);
+  if (!cv) return;
+  const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+  ctx.clearRect(0, 0, w, h);
+  if (a.length < 2) return;
+  // CPU is a fixed 0-100 scale; temp auto-scales to its own range.
+  let lo, hi;
+  if (key === 'cpu') { lo = 0; hi = 100; }
+  else { lo = Math.min(...a); hi = Math.max(...a); if (hi - lo < 5) hi = lo + 5; }
+  const span = hi - lo || 1;
+  ctx.beginPath();
+  a.forEach((val, i) => {
+    const x = 1 + (i / (a.length - 1)) * (w - 2);
+    const y = h - 1 - ((val - lo) / span) * (h - 2);
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  });
+  const css  = getComputedStyle(document.documentElement);
+  const last = a[a.length - 1];
+  let col = css.getPropertyValue('--accent').trim() || '#00c864';
+  if (last >= red)        col = css.getPropertyValue('--red').trim()   || '#e5484d';
+  else if (last >= amber) col = css.getPropertyValue('--amber').trim() || '#ffb454';
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
 function fmtUptime(sec) {
   const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
   if (d) return `${d}d ${h}h`;
@@ -1142,22 +1187,34 @@ async function fetchStats() {
     if (d.cpu_pct != null) {
       setStat('s-cpu', `${Math.round(d.cpu_pct)}%`, d.cpu_pct, 70, 90);
       setBar('b-cpu', d.cpu_pct, 70, 90);
+      pushSpark('cpu', d.cpu_pct, 70, 90);
     }
     // Temperature (°C) — absent on Mac/Windows
     track(d.cpu_temp_c != null);
     _lastTempC = d.cpu_temp_c;
     renderTemp();
+    pushSpark('temp', d.cpu_temp_c, 65, 80);
     // RAM %
     track(d.ram && d.ram.pct != null);
     if (d.ram && d.ram.pct != null) {
       setStat('s-ram', `${Math.round(d.ram.pct)}%`, d.ram.pct, 70, 90);
       setBar('b-ram', d.ram.pct, 70, 90);
     }
-    // Disk usage %
+    // Disk usage % — warn on high % used OR low absolute free space (SD-card
+    // aware: a near-full small card is critical even below the % threshold).
     track(d.disk && !d.disk.error && d.disk.pct != null);
     if (d.disk && !d.disk.error && d.disk.pct != null) {
-      setStat('s-disk', `${Math.round(d.disk.pct)}%`, d.disk.pct, 70, 90);
-      setBar('b-disk', d.disk.pct, 70, 90);
+      const free = d.disk.free_gb;
+      let cls = valClass(d.disk.pct, 80, 92);
+      if (free != null) {
+        if (free < 1) cls = 'stat-val bad';
+        else if (free < 2 && cls === 'stat-val') cls = 'stat-val warn';
+      }
+      const el = document.getElementById('s-disk');
+      el.textContent = `${Math.round(d.disk.pct)}%`;
+      el.className   = cls;
+      el.title = free != null ? `${free} GB free of ${d.disk.total_gb} GB (${d.disk.label})` : '';
+      setBar('b-disk', d.disk.pct, 80, 92);
     }
     // Load (1-min avg) — coloured by load-vs-cores %, absent on Windows
     track(d.load && d.load.avg1 != null);
@@ -1172,6 +1229,49 @@ async function fetchStats() {
       const el = document.getElementById('s-uptime');
       el.textContent = fmtUptime(d.uptime_sec);
       el.className   = 'stat-val';
+    }
+    // Power/thermal throttling (Pi only) — hidden when unavailable, so it never
+    // shows n/a on non-Pi hosts. Not tracked in the telemetry badge (optional).
+    const throtItem = document.getElementById('item-throttle');
+    if (throtItem) {
+      if (d.throttle) {
+        throtItem.style.display = '';
+        const el = document.getElementById('s-throttle');
+        const names = { under_voltage: 'under-volt', freq_capped: 'freq-cap',
+                        throttled: 'throttled', soft_temp: 'temp-limit' };
+        if (d.throttle.now_any) {
+          const f = Object.keys(names).filter(k => d.throttle.now[k]).map(k => names[k]);
+          el.textContent = '⚠ ' + f.join(', ');
+          el.className   = 'stat-val bad';
+          el.title       = 'Active power/thermal limiting — ' + d.throttle.raw;
+        } else if (d.throttle.ever_any) {
+          const f = Object.keys(names).filter(k => d.throttle.ever[k]).map(k => names[k]);
+          el.textContent = f.join(', ') + ' (past)';
+          el.className   = 'stat-val warn';
+          el.title       = 'Occurred since boot, not active now — ' + d.throttle.raw;
+        } else {
+          el.textContent = 'OK';
+          el.className   = 'stat-val ok';
+          el.title       = 'No under-voltage or throttling — ' + d.throttle.raw;
+        }
+      } else {
+        throtItem.style.display = 'none';
+      }
+    }
+    // Network: SSID + associated clients (Pi access-point use) — hidden off-Pi.
+    const netItem = document.getElementById('item-net');
+    if (netItem) {
+      if (d.net && (d.net.ssid || d.net.clients != null)) {
+        netItem.style.display = '';
+        const parts = [];
+        if (d.net.ssid) parts.push(d.net.ssid);
+        if (d.net.clients != null) parts.push(`${d.net.clients} client${d.net.clients !== 1 ? 's' : ''}`);
+        const el = document.getElementById('s-net');
+        el.textContent = parts.join(' · ');
+        el.className   = 'stat-val';
+      } else {
+        netItem.style.display = 'none';
+      }
     }
 
     // Telemetry badge: green = all valid, amber = some n/a, red = all n/a

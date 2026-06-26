@@ -13,6 +13,11 @@ __pycache__/
 *.mbtiles
 *.pmtiles
 
+# pmtiles CLI binary — downloaded manually into maps/ for local conversion use,
+# and vendored per-platform into the bundle by create-oasis-offline.py.
+maps/pmtiles
+maps/pmtiles-*
+
 # PDF radio manuals — large and license-encumbered; distributed separately.
 # Drop your own PDFs into radio-manuals/ on the target machine. The whole
 # folder is excluded (PDFs and any other binaries) except this README.

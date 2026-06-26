@@ -181,6 +181,26 @@ const CHECKS_CORE = [
       }
     },
   },
+  {
+    id: 'disk',
+    name: 'Disk Space',
+    run: async () => {
+      try {
+        const d = await jget('/api/system');
+        if (!d.disk || d.disk.error || d.disk.pct == null)
+          return { ok: 'warn', badge: 'N/A', detail: 'Disk usage is unavailable.' };
+        const { pct, free_gb, total_gb, label } = d.disk;
+        const detail = `<strong>${free_gb} GB</strong> free of ${total_gb} GB on ${label} (${Math.round(pct)}% used).`;
+        if (free_gb < 1) return { ok: false, badge: 'CRITICAL',
+          detail: detail + ' Free space now — maps / Wikipedia / FCC data can fail to write.' };
+        if (free_gb < 2 || pct >= 92) return { ok: 'warn', badge: 'LOW',
+          detail: detail + ' Running low; large downloads (maps, ZIMs, FCC) may not fit.' };
+        return { ok: true, badge: 'OK', detail };
+      } catch (e) {
+        return { ok: false, badge: 'ERROR', detail: 'Could not read disk stats: ' + e.message };
+      }
+    },
+  },
 ];
 
 const OPEN = (port, label) =>

@@ -194,11 +194,13 @@ sudo systemctl enable --now oasis
 | `GET /api/fs/pmtiles?path=<file>` | Stream a `.pmtiles` from an allowlisted path (HTTP range) |
 | `GET /map-assets/<path>` | MapLibre GL + pmtiles.js JS/CSS, fonts |
 | `GET /health` | JSON health check (also reports whether the FCC index is built) |
-| `GET /api/system` | CPU / temp / RAM / disk / load / uptime (drives the dashboard stats bar) |
+| `GET /api/system` | hostname / IP / CPU / temp / RAM / disk / load / uptime (drives the dashboard stats bar) |
 | `GET /api/audio` | ALSA sound cards: index, name, capture (RX) / playback (TX), USB flag, `hw:N,0` address — Linux only, `supported:false` elsewhere |
 | `GET /server-ports.json` | Port map consumed by dashboard JS |
 
-The dashboard and home page poll these to show live status: a **System** stats bar (CPU/Temp/RAM/Disk/Load/Uptime, colour-coded green/amber/red by threshold), an **Audio Devices** panel (handy for picking the GrayWolf `hw:N,0` capture/playback device — see `/api/audio`), and a **Web SSH** card that opens the terminal in a new window and turns red when ttyd isn't reachable.
+The dashboard and home page poll these to show live status: a **System** stats bar (Host/CPU/Temp/RAM/Disk/Load/Uptime, colour-coded green/amber/red by threshold), an **Audio Devices** panel (handy for picking the GrayWolf `hw:N,0` capture/playback device — see `/api/audio`), and a **Web SSH** card that opens the terminal in a new window and turns red when ttyd isn't reachable.
+
+The stats bar leads with **HOST** — the hostname and LAN IP of the machine actually serving the page — so a browser tab pointed at `localhost` (your laptop) is never confused with one pointed at the Pi; the host label always matches the CPU/RAM figures beside it. **CPU** is sampled on a background thread over a rolling window and cached, so the reading is stable and tracks `top` rather than jumping between per-request snapshots. Click/tap the **Temp** value to toggle °C ⇄ °F (remembered per browser). The 7-inch layout (`index7.html`) shares the same behaviour, minus the host label since it only ever runs on the host.
 
 ---
 
@@ -258,11 +260,51 @@ Pi (no internet)
 
 **Easiest source — GrayWolf:** if GrayWolf is installed, register and download the offline maps for the region(s) you need. They land in `/var/lib/graywolf/tiles/`, which the **Load maps** browser can read directly (it's in the default `OASIS_MAP_ROOTS`) — no copying required.
 
-Otherwise, download a pre-built OpenMapTiles **PMTiles** archive for your region, or convert an existing MBTiles with the `pmtiles` CLI:
+Otherwise, download a pre-built OpenMapTiles **PMTiles** archive for your region, or convert an existing MBTiles using the helper script in `maps/`:
+
+#### Converting MBTiles → PMTiles
+
+`maps/convert-mbtiles.py` wraps the `pmtiles` CLI and handles binary detection,
+output naming, and cleanup on failure.  Do this on a machine with internet
+**before** going to the field — only the one-time binary download needs a
+connection.
+
+**1. Get the `pmtiles` binary (once, needs internet):**
+
+| Platform | Archive |
+|---|---|
+| Raspberry Pi 64-bit (arm64) | `go-pmtiles_*_Linux_arm64.tar.gz` |
+| Linux x86-64 | `go-pmtiles_*_Linux_x86_64.tar.gz` |
+| macOS Apple Silicon | `go-pmtiles-*_Darwin_arm64.zip` |
+
+Download from <https://github.com/protomaps/go-pmtiles/releases>, extract the
+`pmtiles` binary, and place it in `maps/` (or anywhere on `$PATH`):
 
 ```bash
-pmtiles convert <region>.mbtiles <region>.pmtiles
+# Example — Raspberry Pi 64-bit
+tar -xzf go-pmtiles_*_Linux_arm64.tar.gz pmtiles
+mv pmtiles maps/
+chmod +x maps/pmtiles
 ```
+
+The script checks `maps/` first, so it works even under the trimmed `PATH`
+that systemd uses.
+
+**2. Verify the binary is found:**
+
+```bash
+python3 maps/convert-mbtiles.py --check
+```
+
+**3. Convert:**
+
+```bash
+python3 maps/convert-mbtiles.py region.mbtiles              # output: region.pmtiles (same dir)
+python3 maps/convert-mbtiles.py region.mbtiles maps/region.pmtiles
+```
+
+The script refuses to overwrite an existing file and removes partial output if
+the conversion is interrupted.
 
 OASIS expects the **OpenMapTiles (OMT) v3.x** schema.
 

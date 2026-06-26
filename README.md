@@ -46,7 +46,7 @@ Forms · FCC lookup · offline maps · APRS · calculators · reference library 
 
 - **📋 Emergency forms** — ICS **205 · 213 · 214 · 309** on official FEMA PDF templates. Import/export CSV, auto-save, import frequencies from CHIRP.
 - **🔎 FCC callsign lookup** — sub-millisecond binary search over a local copy of the FCC amateur database (name, city, state, grid, lat/lon). No database engine.
-- **🗺️ Offline maps** — OpenStreetMap vector tiles via MapLibre GL + PMTiles, served from the host. Multi-region, switchable layers, not a single tile from the internet.
+- **🗺️ Offline maps** — OpenStreetMap vector tiles via MapLibre GL + PMTiles, streamed from the host with HTTP range reads. Multi-region, switchable layers, not a single tile from the internet. Load maps at runtime straight off a USB stick or the GrayWolf tiles directory — no copying into the repo.
 - **📻 Repeater Book** — load a CHIRP-format CSV from RepeaterBook, browse with instant search/filters, and export the visible set as a ready-to-import frequency plan.
 - **📡 APRS** *(Pi)* — **GrayWolf** TNC / iGate / digipeater with a live station map, packet logs, and tactical messaging.
 - **📧 Winlink** *(Pi)* — Pat client + web UI for store-and-forward email over radio.

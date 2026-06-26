@@ -49,6 +49,7 @@ Build phases (run automatically unless --check):
   Phase 6 — webssh ttyd binary  oasis-offline/offline-packages/webssh/
   Phase 7 — Pat (Winlink) .deb  oasis-offline/offline-packages/pat/
   Phase 8 — Wikipedia (Best of Wikipedia Mini)  oasis-offline/zim/  (~316 MB, 50K articles)
+  Phase 9 — pmtiles CLI binaries oasis-offline/maps/  (per-platform MBTiles→PMTiles converter)
 
 Usage:
   python3 scripts/create-oasis-offline.py                    # incremental build
@@ -57,9 +58,13 @@ Usage:
   python3 scripts/create-oasis-offline.py --skip-windows     # build, no Win runtime
   python3 scripts/create-oasis-offline.py --update           # update packages in repo root
   python3 scripts/create-oasis-offline.py --update --dir /mnt/usb  # update on USB drive
+  python3 scripts/create-oasis-offline.py --verify           # verify bundle checksums
+  python3 scripts/create-oasis-offline.py --verify --dir /mnt/usb  # verify USB copy
 """
 
 import argparse
+import datetime
+import hashlib
 import io
 import json
 import os
@@ -85,6 +90,7 @@ from common.oasis_lib import (
     kiwix_latest_version, kiwix_download_tarball,
     rtl_sdr_download_debs,
     ttyd_download,
+    pmtiles_latest_version, pmtiles_download_binary, PMTILES_VERSION,
     KIWIX_BASE, TTYD_VERSION,
     debian_packages_index,
 )
@@ -186,6 +192,7 @@ _VERSIONED = {
     "kiwix":    kiwix_latest_version,
     "winlink":  lambda: _gh_version(pat_latest_release),
     "webssh":   lambda: TTYD_VERSION,
+    "pmtiles":  pmtiles_latest_version,
 }
 
 
@@ -569,6 +576,58 @@ def phase_webssh(bundle_root, update=False):
         _warn("No ttyd binaries downloaded — webssh offline install will not work.")
 
 
+# ── Phase 9: pmtiles CLI (MBTiles → PMTiles converter) ────────────────────────
+def phase_pmtiles(maps_dir, update=False):
+    """Phase 9: Download the Protomaps go-pmtiles CLI for each platform in the
+    manifest into the bundle's maps/ directory.
+
+    Each release archive is fetched, the pmtiles executable is extracted, and it
+    is written as maps/<out> (e.g. pmtiles-linux-arm64). maps/convert-mbtiles.py
+    auto-detects the right one for the host so an operator can convert legacy
+    MBTiles to PMTiles in the field with no internet.
+    """
+    feature = "pmtiles"
+    try:
+        feat = M.get_feature(feature)
+    except KeyError:
+        _warn("pmtiles feature not in manifest — skipping.")
+        return
+
+    version   = feat.get("version", PMTILES_VERSION)
+    repo      = feat.get("repo", "protomaps/go-pmtiles")
+    platforms = feat.get("platforms", [])
+    base_url  = f"https://github.com/{repo}/releases/download/v{version}"
+
+    _section("Phase 9 — pmtiles CLI (MBTiles → PMTiles converter)")
+    _info(f"Source  : https://github.com/{repo}")
+    _info(f"Version : pmtiles {version}")
+    _info(f"Targets : {', '.join(p['out'] for p in platforms)}")
+    _info(f"Dest    : {os.path.relpath(maps_dir)}/")
+    os.makedirs(maps_dir, exist_ok=True)
+
+    got = 0
+    for plat in platforms:
+        out_name = plat["out"]
+        dest     = os.path.join(maps_dir, out_name)
+        if os.path.exists(dest):
+            _cp(f"{out_name}  (up to date)")
+            got += 1
+            _write_resolved(feature, None, out_name, {"pmtiles": version})
+            continue
+        asset = plat["asset"].format(version=version)
+        url   = f"{base_url}/{asset}"
+        if pmtiles_download_binary(maps_dir, url, out_name) is not None:
+            got += 1
+            _write_resolved(feature, None, out_name, {"pmtiles": version})
+
+    if got:
+        _ok(f"{got}/{len(platforms)} pmtiles binaries ready in "
+            f"{os.path.relpath(maps_dir)}/")
+    else:
+        _warn("No pmtiles binaries downloaded — offline MBTiles→PMTiles conversion "
+              "will be unavailable.")
+
+
 # ── Phase 7: Pat (Winlink) Debian packages ───────────────────────────────────
 # Pat is still a github-release shape. Read arches from the manifest if a
 # 'pat' feature is present; fall back to the hardcoded list.
@@ -943,6 +1002,128 @@ def build_launchers(dest):
     _ok("start.sh  (executable)")
 
 
+# ── Bundle integrity manifest ─────────────────────────────────────────────────
+MANIFEST_NAME = "bundle-manifest.json"
+
+
+def write_bundle_manifest(dest):
+    """Walk dest, SHA-256 every file, write bundle-manifest.json.
+
+    Skips bundle-manifest.json itself.  Called automatically at the end of a
+    build so every USB copy ships with a checksum file that --verify can use
+    to confirm the copy is intact on the target machine.
+    """
+    _section("Writing bundle integrity manifest")
+    manifest_path = os.path.join(dest, MANIFEST_NAME)
+    files = {}
+    file_list = []
+    for root, _dirs, fnames in os.walk(dest):
+        for fname in fnames:
+            fpath = os.path.join(root, fname)
+            rel   = os.path.relpath(fpath, dest).replace(os.sep, "/")
+            if rel == MANIFEST_NAME:
+                continue
+            file_list.append((rel, fpath))
+    file_list.sort()  # deterministic order
+
+    tty = sys.stdout.isatty()
+    total = len(file_list)
+    for i, (rel, fpath) in enumerate(file_list, 1):
+        if tty:
+            print(f"  ↳  Hashing {i}/{total} …\r", end="", flush=True)
+        sha = hashlib.sha256()
+        with open(fpath, "rb") as fh:
+            for chunk in iter(lambda: fh.read(65536), b""):
+                sha.update(chunk)
+        files[rel] = sha.hexdigest()
+
+    if tty:
+        print(" " * 40 + "\r", end="", flush=True)   # clear the progress line
+
+    manifest = {
+        "oasis_bundle": True,
+        "built_at":     datetime.datetime.now(datetime.timezone.utc)
+                        .strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "file_count":   len(files),
+        "files":        files,
+    }
+    with open(manifest_path, "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=2, sort_keys=True, ensure_ascii=False)
+        fh.write("\n")
+    _ok(f"{MANIFEST_NAME}  ({len(files)} files hashed)")
+
+
+def cmd_verify(target_dir):
+    """Verify every file in an oasis-offline bundle against bundle-manifest.json.
+
+    Exit 1 on any missing or corrupt file so the command can be used as a gate
+    before a field deployment (e.g. after copying the bundle to a USB drive).
+    """
+    print()
+    print("  OASIS — bundle integrity verify")
+    _hr()
+    _info(f"Bundle : {target_dir}")
+
+    manifest_path = os.path.join(target_dir, MANIFEST_NAME)
+    if not os.path.isfile(manifest_path):
+        _fail(
+            f"{MANIFEST_NAME} not found in {target_dir}\n"
+            "     Run create-oasis-offline.py (without --verify) to build a bundle first."
+        )
+
+    with open(manifest_path, encoding="utf-8") as fh:
+        manifest = json.load(fh)
+
+    expected_files = manifest.get("files", {})
+    built_at       = manifest.get("built_at", "unknown")
+    _info(f"Built  : {built_at}")
+    _info(f"Files  : {len(expected_files)} expected")
+    _section("Verifying checksums")
+
+    missing, corrupt = [], []
+    ok_count  = 0
+    total     = len(expected_files)
+    tty       = sys.stdout.isatty()
+
+    for i, (rel, expected_hex) in enumerate(sorted(expected_files.items()), 1):
+        if tty:
+            print(f"  ↳  Checking {i}/{total} …\r", end="", flush=True)
+        fpath = os.path.join(target_dir, rel.replace("/", os.sep))
+        if not os.path.isfile(fpath):
+            missing.append(rel)
+            continue
+        sha = hashlib.sha256()
+        with open(fpath, "rb") as fh:
+            for chunk in iter(lambda: fh.read(65536), b""):
+                sha.update(chunk)
+        if sha.hexdigest() == expected_hex:
+            ok_count += 1
+        else:
+            corrupt.append(rel)
+
+    if tty:
+        print(" " * 40 + "\r", end="", flush=True)   # clear progress line
+
+    _section("Results")
+    _ok(f"{ok_count}/{total} files OK")
+    for f in missing:
+        _warn(f"MISSING  {f}")
+    for f in corrupt:
+        _warn(f"CORRUPT  {f}")
+
+    print()
+    if not missing and not corrupt:
+        _ok("Bundle integrity verified — all checksums match.")
+        print()
+    else:
+        print(
+            f"  ERROR: {len(missing) + len(corrupt)} integrity failure(s).",
+            file=sys.stderr,
+        )
+        print()
+        sys.exit(1)
+
+
 # ── Build: summary ─────────────────────────────────────────────────────────────
 def build_summary(dest):
     total = sum(
@@ -1029,9 +1210,11 @@ def cmd_build(skip_windows, rebuild=False):
     phase_webssh(pkg_root, update=True)
     phase_pat(pkg_root, update=True)
     phase_wikipedia(os.path.join(OUT_DIR, "zim"))
+    phase_pmtiles(os.path.join(OUT_DIR, "maps"))
 
     build_windows_runtime(OUT_DIR, skip_windows)
     build_launchers(OUT_DIR)
+    write_bundle_manifest(OUT_DIR)
     build_summary(OUT_DIR)
 
 
@@ -1094,6 +1277,7 @@ def cmd_update(target_dir):
     phase_webssh(pkg_root, update=True)
     phase_pat(pkg_root, update=True)
     phase_wikipedia(os.path.join(target_dir, "zim"))
+    phase_pmtiles(os.path.join(target_dir, "maps"))
 
     _section("Update complete")
     _ok(f"Updated: {target_dir}")
@@ -1120,6 +1304,8 @@ def main():
             "  python3 scripts/create-oasis-offline.py --update              # update packages + sync source files"
             " into oasis-offline/\n"
             "  python3 scripts/create-oasis-offline.py --update --dir /mnt/usb  # update USB bundle\n"
+            "  python3 scripts/create-oasis-offline.py --verify              # verify oasis-offline/ checksums\n"
+            "  python3 scripts/create-oasis-offline.py --verify --dir /mnt/usb  # verify USB copy integrity\n"
         ),
     )
     ap.add_argument(
@@ -1146,13 +1332,21 @@ def main():
         ),
     )
     ap.add_argument(
+        "--verify", action="store_true",
+        help=(
+            "Verify every file in an existing bundle against its bundle-manifest.json. "
+            "Exits 1 if any file is missing or corrupt. "
+            "Defaults to oasis-offline/ inside the repo; use --dir to point at a USB copy."
+        ),
+    )
+    ap.add_argument(
         "--dir", metavar="DIR",
-        help="Directory to update. Only valid with --update. Defaults to oasis-offline/ inside the repo.",
+        help="Directory to target. Valid with --update or --verify. Defaults to oasis-offline/ inside the repo.",
     )
     args = ap.parse_args()
 
-    if args.dir and not args.update:
-        ap.error("--dir is only valid with --update")
+    if args.dir and not args.update and not args.verify:
+        ap.error("--dir is only valid with --update or --verify")
 
     if args.update:
         if args.dir:
@@ -1162,6 +1356,14 @@ def main():
         else:
             target = REPO_ROOT        # running from inside the bundle → update bundle root
         cmd_update(target)
+    elif args.verify:
+        if args.dir:
+            target = os.path.abspath(args.dir)
+        elif os.path.isdir(OUT_DIR):
+            target = OUT_DIR
+        else:
+            target = REPO_ROOT
+        cmd_verify(target)
     elif args.check:
         cmd_check()
     else:

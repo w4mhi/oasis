@@ -297,10 +297,10 @@ on a strong nearby digipeater, which hurts weak/distant decodes. Max is rarely
 best — **sweep it and count decodes** over a fixed window:
 
 ```bash
-for g in 30 40 44 49; do
+for g in 28 30 32 34 36 38 40 44 49; do
   echo "=== gain $g ==="
   timeout 120 sh -c \
-    "rtl_fm -f 144.390M -M fm -s 22050 -g $g -p 0 - | multimon-ng -t raw -a AFSK1200 - 2>/dev/null | grep -c APRS"
+    "rtl_fm -f 144.390M -M fm -s 48000 -g $g -p 0 - | multimon-ng -t raw -a AFSK1200 - 2>/dev/null | grep -c APRS"
 done
 ```
 

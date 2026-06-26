@@ -156,6 +156,32 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .recent-row:hover{background:var(--panel-2);}
 .recent-call{color:var(--accent);font-weight:700;}
 .recent-age{color:var(--text-dim);font-size:var(--fs-micro);margin-left:auto;}
+
+/* Active state for the Grid / Measure toggles (mirrors #autoFlyBtn.on) */
+#gridBtn.on,#measureBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
+/* Crosshair cursor while measuring */
+#map.measuring .maplibregl-canvas{cursor:crosshair;}
+
+/* Measure readout panel (bottom-center) */
+#measure-panel{
+  position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:200;
+  background:var(--panel);border:1px solid var(--accent-dim);border-radius:7px;
+  font-family:var(--mono);padding:7px 14px;display:none;text-align:center;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);max-width:92vw;
+}
+#measure-panel.show{display:block;}
+#measure-readout{font-size:var(--fs-label);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#measure-readout b{color:var(--accent);}
+#measure-hint{font-size:var(--fs-micro);color:var(--text-dim);margin-top:3px;}
+
+/* Base-map attribution label (bottom-right) */
+#basemap-info{
+  position:fixed;right:10px;bottom:6px;z-index:150;
+  background:rgba(13,17,23,.72);border:1px solid var(--border);border-radius:4px;
+  font-family:var(--mono);font-size:var(--fs-micro);color:var(--text-dim);
+  padding:2px 7px;pointer-events:auto;white-space:nowrap;
+}
+#basemap-info b{color:var(--accent);font-weight:700;}
 </style>
 </head>
 <body>
@@ -187,12 +213,24 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   <span style="flex:1"></span>
   <span id="trackMsg"></span>
   <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">Auto-fly</button>
+  <span class="track-sep">|</span>
+  <button id="gridBtn" class="sbtn" onclick="toggleGrid()" style="margin-left:.35rem;" title="Toggle Maidenhead grid overlay">Grid</button>
+  <button id="measureBtn" class="sbtn" onclick="toggleMeasure()" style="margin-left:.35rem;" title="Click two or more points to measure distance and bearing">Measure</button>
   <!-- <button id="refreshBtn" class="sbtn" onclick="fetchStations()">Refresh</button> -->
   <span id="statusMsg">Connecting…</span>
   <a href="/" class="home-link" style="margin-left:.75rem;">⌂ HOME</a>
 </div>
 
 <div id="map"></div>
+
+<!-- Base map attribution (bottom-right) -->
+<div id="basemap-info" title="The offline PMTiles base map this page is rendering"></div>
+
+<!-- Measure tool readout (bottom-center) -->
+<div id="measure-panel">
+  <div id="measure-readout">Click the map to add points</div>
+  <div id="measure-hint">Double-click or Esc to clear · click <b>Measure</b> again to exit</div>
+</div>
 
 <!-- Recent-heard panel (top-right) -->
 <div id="recent-panel" class="collapsed">
@@ -294,6 +332,14 @@ function makeMarkerEl(symTable, symCode) {
 // range requests. Register the protocol, then point the vector source at it.
 const TILE_FILE = 'washington.pmtiles';
 const tilesUrl  = 'pmtiles://' + location.origin + '/maps/' + TILE_FILE;
+
+// Show which offline base map this page is rendering (bottom-right label).
+(function showBasemapInfo() {
+  const el = document.getElementById('basemap-info');
+  if (!el) return;
+  const name = TILE_FILE.replace(/\.pmtiles$/i, '');
+  el.innerHTML = 'Base map: <b>' + name + '</b>';
+})();
 
 const pmtilesProtocol = new pmtiles.Protocol();
 maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile);
@@ -432,6 +478,53 @@ function fmtTime(iso) {
 function fmtCourse(deg) {
   const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
   return dirs[Math.round(deg / 22.5) % 16] + ' (' + deg + '°)';
+}
+
+// ── Geodesy helpers (client-side, offline) ───────────────────────────────────
+// 16-point compass cardinal for a bearing in degrees.
+function cardinal(deg) {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+}
+
+// Great-circle distance between two lat/lon points, in km. Haversine.
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371.0088; // mean Earth radius, km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Initial great-circle bearing from point 1 to point 2, in degrees (0–360).
+function initialBearing(lat1, lon1, lat2, lon2) {
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+  const dL = (lon2 - lon1) * Math.PI / 180;
+  const y = Math.sin(dL) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dL);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+// Convert lat/lon to a Maidenhead grid locator (ported from server/maidenhead.py).
+// precision: 2 (field), 4 (square), or 6 (subsquare).
+function latLonToGrid(lat, lon, precision) {
+  precision = precision || 6;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return '';
+  let L = lon + 180, B = lat + 90;
+  const out = [];
+  out.push(String.fromCharCode((L / 20 | 0) + 65));
+  out.push(String.fromCharCode((B / 10 | 0) + 65));
+  L %= 20; B %= 10;
+  out.push(String((L / 2 | 0)));
+  out.push(String((B / 1 | 0)));
+  L %= 2; B %= 1;
+  if (precision >= 6) {
+    out.push(String.fromCharCode((L / (2 / 24) | 0) + 97));
+    out.push(String.fromCharCode((B / (1 / 24) | 0) + 97));
+  }
+  return out.slice(0, precision).join('');
 }
 
 function buildPopup(s) {
@@ -626,9 +719,55 @@ loadConfig().then(() => {
         'circle-stroke-width': 2.5, 'circle-stroke-color': '#00c8ff'
       }
     });
+
+    // ── Maidenhead grid overlay (lines + labels) ───────────────────────────
+    map.addSource('mh-grid', {
+      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addSource('mh-grid-labels', {
+      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'mh-grid-line', type: 'line', source: 'mh-grid',
+      layout: { visibility: 'none' },
+      paint: { 'line-color': '#00d98b', 'line-width': 0.7, 'line-opacity': 0.45 }
+    });
+    map.addLayer({
+      id: 'mh-grid-label', type: 'symbol', source: 'mh-grid-labels',
+      layout: {
+        visibility: 'none',
+        'text-field': ['get', 'grid'],
+        'text-font': ['Open Sans Regular'],
+        'text-size': 13,
+        'text-allow-overlap': false
+      },
+      paint: { 'text-color': '#00d98b', 'text-halo-color': '#0a0e14', 'text-halo-width': 1.4, 'text-opacity': 0.9 }
+    });
+
+    // ── Measure tool (line + vertices) ─────────────────────────────────────
+    map.addSource('measure', {
+      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'measure-line', type: 'line', source: 'measure',
+      filter: ['==', '$type', 'LineString'],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#ffb454', 'line-width': 2, 'line-dasharray': [2, 1.5] }
+    });
+    map.addLayer({
+      id: 'measure-dots', type: 'circle', source: 'measure',
+      filter: ['==', '$type', 'Point'],
+      paint: {
+        'circle-radius': 4, 'circle-color': '#ffb454',
+        'circle-stroke-width': 1.5, 'circle-stroke-color': '#0a0e14'
+      }
+    });
+
     fetchStations();
   });
 });
+
+map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 120 }), 'bottom-left');
 
 // ── Track rendering ──────────────────────────────────────────────────────────
 let activeTrack = null;
@@ -752,6 +891,171 @@ function clearTrack() {
   if (map.getSource('aprs-track')) {
     map.getSource('aprs-track').setData({ type: 'FeatureCollection', features: [] });
   }
+}
+
+// ── Maidenhead grid overlay ──────────────────────────────────────────────────
+let gridOn = false;
+
+// Pick the grid level from the current zoom.
+// Returns { dLon, dLat, precision } for field / square / subsquare.
+function gridLevel(zoom) {
+  if (zoom < 5)   return { dLon: 20,     dLat: 10,    precision: 2 }; // field
+  if (zoom < 8.5) return { dLon: 2,      dLat: 1,     precision: 4 }; // square
+  return            { dLon: 5 / 60, dLat: 2.5 / 60, precision: 6 };    // subsquare
+}
+
+function toggleGrid() {
+  gridOn = !gridOn;
+  document.getElementById('gridBtn').classList.toggle('on', gridOn);
+  const vis = gridOn ? 'visible' : 'none';
+  map.setLayoutProperty('mh-grid-line', 'visibility', vis);
+  map.setLayoutProperty('mh-grid-label', 'visibility', vis);
+  if (gridOn) {
+    map.on('moveend', drawGrid);
+    drawGrid();
+  } else {
+    map.off('moveend', drawGrid);
+    map.getSource('mh-grid').setData({ type: 'FeatureCollection', features: [] });
+    map.getSource('mh-grid-labels').setData({ type: 'FeatureCollection', features: [] });
+  }
+}
+
+function drawGrid() {
+  if (!gridOn) return;
+  const { dLon, dLat, precision } = gridLevel(map.getZoom());
+  const b = map.getBounds();
+  // Clamp to valid range and snap outward to cell boundaries.
+  const west  = Math.max(-180, Math.floor(b.getWest()  / dLon) * dLon);
+  const east  = Math.min( 180, Math.ceil (b.getEast()  / dLon) * dLon);
+  const south = Math.max(-90,  Math.floor(b.getSouth() / dLat) * dLat);
+  const north = Math.min( 90,  Math.ceil (b.getNorth() / dLat) * dLat);
+
+  const lines = [];
+  const labels = [];
+
+  // Safety cap so a runaway viewport can never generate too much geometry.
+  const MAX = 400;
+  const nV = Math.min(MAX, Math.round((east - west) / dLon) + 1);
+  const nH = Math.min(MAX, Math.round((north - south) / dLat) + 1);
+
+  for (let i = 0; i <= nV; i++) {
+    const lon = west + i * dLon;
+    if (lon > east + 1e-9) break;
+    lines.push({ type: 'Feature', geometry: { type: 'LineString',
+      coordinates: [[lon, south], [lon, north]] }, properties: {} });
+  }
+  for (let j = 0; j <= nH; j++) {
+    const lat = south + j * dLat;
+    if (lat > north + 1e-9) break;
+    lines.push({ type: 'Feature', geometry: { type: 'LineString',
+      coordinates: [[west, lat], [east, lat]] }, properties: {} });
+  }
+
+  // Label each visible cell at its center.
+  for (let i = 0; i < nV; i++) {
+    const lon = west + i * dLon;
+    if (lon >= east) break;
+    for (let j = 0; j < nH; j++) {
+      const lat = south + j * dLat;
+      if (lat >= north) break;
+      const cLon = lon + dLon / 2, cLat = lat + dLat / 2;
+      const grid = latLonToGrid(cLat, cLon, precision);
+      if (grid) labels.push({ type: 'Feature',
+        geometry: { type: 'Point', coordinates: [cLon, cLat] },
+        properties: { grid } });
+    }
+  }
+
+  map.getSource('mh-grid').setData({ type: 'FeatureCollection', features: lines });
+  map.getSource('mh-grid-labels').setData({ type: 'FeatureCollection', features: labels });
+}
+
+// ── Click-to-measure (distance + bearing) ────────────────────────────────────
+let measureOn = false;
+let measurePts = [];   // array of [lon, lat]
+
+function toggleMeasure() {
+  measureOn = !measureOn;
+  document.getElementById('measureBtn').classList.toggle('on', measureOn);
+  document.getElementById('map').classList.toggle('measuring', measureOn);
+  document.getElementById('measure-panel').classList.toggle('show', measureOn);
+  if (measureOn) {
+    map.doubleClickZoom.disable();
+    map.on('click', measureClick);
+    map.on('dblclick', measureClear);
+    document.addEventListener('keydown', measureKey);
+    setMeasureReadout();
+  } else {
+    map.doubleClickZoom.enable();
+    map.off('click', measureClick);
+    map.off('dblclick', measureClear);
+    document.removeEventListener('keydown', measureKey);
+    measurePts = [];
+    renderMeasure();
+  }
+}
+
+function measureKey(e) {
+  if (e.key === 'Escape') measureClear();
+}
+
+function measureClear(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  measurePts = [];
+  renderMeasure();
+  setMeasureReadout();
+}
+
+function measureClick(e) {
+  // dblclick fires a click first; the dblclick handler clears, so this is fine.
+  measurePts.push([e.lngLat.lng, e.lngLat.lat]);
+  renderMeasure();
+  setMeasureReadout();
+}
+
+function renderMeasure() {
+  const features = measurePts.map(p => ({
+    type: 'Feature', geometry: { type: 'Point', coordinates: p }, properties: {} }));
+  if (measurePts.length >= 2) {
+    features.push({ type: 'Feature',
+      geometry: { type: 'LineString', coordinates: measurePts }, properties: {} });
+  }
+  if (map.getSource('measure')) {
+    map.getSource('measure').setData({ type: 'FeatureCollection', features });
+  }
+}
+
+function setMeasureReadout() {
+  const el = document.getElementById('measure-readout');
+  if (measurePts.length === 0) {
+    el.innerHTML = 'Click the map to add points';
+    return;
+  }
+  const last = measurePts[measurePts.length - 1];
+  const grid = latLonToGrid(last[1], last[0], 6);
+  if (measurePts.length === 1) {
+    el.innerHTML = `Start <b>${grid}</b> · ${last[1].toFixed(4)}, ${last[0].toFixed(4)} — click next point`;
+    return;
+  }
+  // Cumulative distance along the path.
+  let km = 0;
+  for (let i = 1; i < measurePts.length; i++) {
+    km += haversineKm(measurePts[i-1][1], measurePts[i-1][0],
+                      measurePts[i][1],   measurePts[i][0]);
+  }
+  const mi = km * 0.621371;
+  const nm = km * 0.539957;
+  // Bearing of the final leg + straight start→end bearing.
+  const prev = measurePts[measurePts.length - 2];
+  const legBrg = initialBearing(prev[1], prev[0], last[1], last[0]);
+  const first  = measurePts[0];
+  const e2eBrg = initialBearing(first[1], first[0], last[1], last[0]);
+  const startGrid = latLonToGrid(first[1], first[0], 6);
+  el.innerHTML =
+    `<b>${km.toFixed(2)} km</b> / ${mi.toFixed(2)} mi / ${nm.toFixed(2)} nm` +
+    ` · leg <b>${legBrg.toFixed(0)}°</b> ${cardinal(legBrg)}` +
+    (measurePts.length > 2 ? ` · end→end ${e2eBrg.toFixed(0)}° ${cardinal(e2eBrg)}` : '') +
+    `<br><b>${startGrid}</b> → <b>${grid}</b>`;
 }
 </script>
 </body>

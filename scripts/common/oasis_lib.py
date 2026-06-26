@@ -750,3 +750,93 @@ def ttyd_download(dest_dir, suffix, version=TTYD_VERSION):
         if os.path.exists(dest_path):
             os.remove(dest_path)
         return None
+
+
+# ── pmtiles CLI (Protomaps go-pmtiles) ─────────────────────────────────────────
+# Single self-contained Go binary that converts MBTiles -> PMTiles offline.
+# Vendored into the bundle's maps/ directory, one binary per platform, so an
+# operator can convert legacy archives in the field with no internet.
+# Used by maps/convert-mbtiles.py. Release asset naming is irregular: Darwin
+# archives use 'go-pmtiles-<ver>_...' (hyphen) while Linux/Windows use
+# 'go-pmtiles_<ver>_...' (underscore) — the manifest carries the exact template.
+
+PMTILES_VERSION = "1.30.3"
+_PMTILES_API    = "https://api.github.com/repos/protomaps/go-pmtiles/releases"
+
+
+def pmtiles_latest_version():
+    """Latest go-pmtiles version string (no leading 'v'), or None on failure."""
+    try:
+        req = urllib.request.Request(
+            f"{_PMTILES_API}/latest", headers={"User-Agent": "oasis-emcomm"}
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.load(resp)
+        return (data.get("tag_name") or "").lstrip("v") or None
+    except Exception:
+        return None
+
+
+def _pmtiles_extract_member(archive_bytes, asset_name):
+    """Extract the 'pmtiles' (or 'pmtiles.exe') executable from a downloaded
+    go-pmtiles archive. Handles .tar.gz and .zip. Returns the raw bytes, or None."""
+    import tarfile
+
+    data = io.BytesIO(archive_bytes)
+    if asset_name.endswith(".zip"):
+        try:
+            with zipfile.ZipFile(data) as zf:
+                for name in zf.namelist():
+                    base = os.path.basename(name)
+                    if base in ("pmtiles", "pmtiles.exe"):
+                        return zf.read(name)
+        except zipfile.BadZipFile:
+            return None
+    else:  # .tar.gz / .tgz
+        try:
+            with tarfile.open(fileobj=data, mode="r:gz") as tf:
+                for member in tf.getmembers():
+                    base = os.path.basename(member.name)
+                    if base in ("pmtiles", "pmtiles.exe") and member.isfile():
+                        fh = tf.extractfile(member)
+                        return fh.read() if fh else None
+        except (tarfile.TarError, OSError):
+            return None
+    return None
+
+
+def pmtiles_download_binary(dest_dir, url, out_name):
+    """
+    Download a go-pmtiles release archive from *url*, extract the pmtiles
+    executable, and write it to *dest_dir*/*out_name* (chmod +x).
+    Returns the destination path, or None on failure (logged).
+    """
+    import stat as _stat
+
+    os.makedirs(dest_dir, exist_ok=True)
+    _info(f"Source: {url}")
+    data, err = download_bytes(url)
+    if data is None:
+        _warn(f"Failed to download {out_name}: {err}")
+        return None
+
+    binary = _pmtiles_extract_member(data, url)
+    if binary is None:
+        _warn(f"Could not find the pmtiles executable inside {os.path.basename(url)}")
+        return None
+
+    dest_path = os.path.join(dest_dir, out_name)
+    try:
+        with open(dest_path, "wb") as fh:
+            fh.write(binary)
+        os.chmod(
+            dest_path,
+            os.stat(dest_path).st_mode | _stat.S_IEXEC | _stat.S_IXGRP | _stat.S_IXOTH,
+        )
+        _ok(f"Extracted {out_name}")
+        return dest_path
+    except Exception as exc:
+        _warn(f"Failed to write {out_name}: {exc}")
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        return None

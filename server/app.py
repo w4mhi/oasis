@@ -19,6 +19,7 @@ import argparse
 import os
 import re
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -603,25 +604,83 @@ def server_ports():
     return api_config()
 
 
-# ── Background CPU sampler ────────────────────────────────────────────────────
-# CPU% is measured on a daemon thread over a rolling 2s window and cached, so
-# every /api/system request returns the same recently-measured value instead of
-# each taking its own noisy 0.1s snapshot. This gives stable, top-like readings
-# that agree across repeated polls and clients. (Under gunicorn each worker runs
-# its own sampler; the values track closely since both average the same window.)
-_CPU_PCT = None  # most recent rolling CPU%; None until the first sample lands
+# ── Raspberry Pi power/thermal + Wi-Fi helpers ────────────────────────────────
+def _pi_throttled():
+    """Pi power/thermal throttling via `vcgencmd get_throttled`. Returns None on
+    non-Pi hosts (vcgencmd absent). Bitmask: bits 0-3 = under-voltage / freq
+    capped / throttled / soft-temp-limit happening *now*; bits 16-19 = the same
+    having *occurred since boot*."""
+    try:
+        out = subprocess.run(["vcgencmd", "get_throttled"],
+                             capture_output=True, text=True, timeout=2)
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0 or "throttled=" not in out.stdout:
+        return None
+    try:
+        val = int(out.stdout.strip().split("throttled=")[1], 16)
+    except (ValueError, IndexError):
+        return None
+    now  = {"under_voltage": bool(val & 0x1), "freq_capped": bool(val & 0x2),
+            "throttled": bool(val & 0x4), "soft_temp": bool(val & 0x8)}
+    ever = {"under_voltage": bool(val & 0x10000), "freq_capped": bool(val & 0x20000),
+            "throttled": bool(val & 0x40000), "soft_temp": bool(val & 0x80000)}
+    return {"raw": hex(val), "now": now, "ever": ever,
+            "now_any": any(now.values()), "ever_any": any(ever.values())}
 
-def _cpu_sampler():
+
+def _wifi_info():
+    """Best-effort Wi-Fi SSID + associated-station count (for Pi access-point
+    use). Returns None when the tools/interface are absent (e.g. on a Mac)."""
+    info = {}
+    try:
+        out = subprocess.run(["iwgetid", "-r"], capture_output=True, text=True, timeout=2)
+        if out.returncode == 0 and out.stdout.strip():
+            info["ssid"] = out.stdout.strip()
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        pass
+    for iface in ("wlan0", "wlan1"):
+        try:
+            out = subprocess.run(["iw", "dev", iface, "station", "dump"],
+                                 capture_output=True, text=True, timeout=2)
+        except (FileNotFoundError, OSError, subprocess.SubprocessError):
+            break  # `iw` not installed — stop trying
+        if out.returncode == 0 and "Station " in out.stdout:
+            info["clients"] = out.stdout.count("Station ")
+            break
+    return info or None
+
+
+# ── Background sampler ─────────────────────────────────────────────────────────
+# CPU% over a rolling 2s window, plus slower-changing Pi facts (throttle state,
+# Wi-Fi), are measured on a daemon thread and cached. /api/system then never
+# spawns a subprocess or blocks in the request path — stable, Pi-friendly, and
+# values agree across repeated polls. (Under gunicorn each worker samples its
+# own; they track closely since both average the same window.)
+_CPU_PCT  = None  # most recent rolling CPU%; None until the first sample lands
+_THROTTLE = None  # cached _pi_throttled(); None on non-Pi
+_NET      = None  # cached _wifi_info();    None when unavailable
+
+def _sampler():
     try:
         import psutil
     except ImportError:
-        return
-    global _CPU_PCT
-    psutil.cpu_percent(interval=None)          # prime the baseline (first call is 0.0)
+        psutil = None
+    global _CPU_PCT, _THROTTLE, _NET
+    if psutil:
+        psutil.cpu_percent(interval=None)          # prime the baseline
+    i = 0
     while True:
-        _CPU_PCT = psutil.cpu_percent(interval=2.0)  # blocks ~2s, then refreshes
+        if psutil:
+            _CPU_PCT = psutil.cpu_percent(interval=2.0)  # blocks ~2s
+        else:
+            time.sleep(2.0)
+        if i % 5 == 0:                              # refresh ~every 10s
+            _THROTTLE = _pi_throttled()
+            _NET      = _wifi_info()
+        i += 1
 
-threading.Thread(target=_cpu_sampler, name="cpu-sampler", daemon=True).start()
+threading.Thread(target=_sampler, name="oasis-sampler", daemon=True).start()
 
 
 def _lan_ip():
@@ -733,6 +792,8 @@ def api_system():
         "uptime_sec":  uptime_sec,
         "boot_str":    boot_str,
         "fcc_db_date": fcc_db_mtime,
+        "throttle":    _THROTTLE,
+        "net":         _NET,
     })
 
 
