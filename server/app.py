@@ -407,8 +407,39 @@ def api_health_binary():
 # Known OASIS systemd units (install/enable scripts create these). Allowlisted
 # so the status check can never run systemctl against an arbitrary unit name.
 _OASIS_SERVICES = {
-    "graywolf", "graywolf-api", "pat", "kiwix", "webssh", "aprs-sdr-feed", "oasis",
+    "graywolf", "graywolf-api", "pat", "kiwix", "webssh", "aprs-sdr-feed",
+    "openwebrx", "oasis",
 }
+
+# Units the dashboard may start/stop/restart. Everything in _OASIS_SERVICES
+# EXCEPT "oasis" itself — stopping the web server would kill the dashboard with
+# no way to bring it back from the browser.
+_CONTROLLABLE_SERVICES = _OASIS_SERVICES - {"oasis"}
+_SERVICE_ACTIONS = {"start", "stop", "restart"}
+
+# Hardware-exclusivity: starting the key stops the listed services first, since
+# they can't share the radio at once. OpenWebRX grabs the RTL-SDR, which the APRS
+# SDR feed pipes into GrayWolf — so bringing up OpenWebRX takes both down.
+_SERVICE_CONFLICTS = {
+    "openwebrx": ["aprs-sdr-feed", "graywolf"],
+}
+
+# Units whose boot state tracks their running state: starting also `enable`s them
+# (comes back after reboot), stopping also `disable`s them (stays off). Everything
+# else is transient (plain start/stop; boot state left untouched). restart never
+# changes boot state.
+_PERSIST_BOOT_STATE = {"openwebrx", "kiwix"}
+
+
+def _systemctl_seq(unit, verbs):
+    """Best-effort `sudo -n systemctl <verb> <unit>.service` for each verb in
+    order (used for conflict services — failures are tolerated/ignored)."""
+    for verb in verbs:
+        try:
+            subprocess.run(["sudo", "-n", "systemctl", verb, f"{unit}.service"],
+                           capture_output=True, text=True, timeout=30)
+        except Exception:
+            pass
 
 
 @app.route("/api/health/service")
@@ -442,6 +473,117 @@ def api_health_service():
         "enabled":   enabled or "not-found",
         "installed": bool(enabled),     # is-enabled prints nothing for absent units
     })
+
+
+@app.route("/api/service", methods=["POST"])
+def api_service():
+    """Start / stop / restart a known OASIS service (Linux only).
+
+    Body (JSON): {"unit": "<name>", "action": "start|stop|restart"}.
+
+    Authorization is OS-side: scripts/enable-service-controls.py installs a narrow
+    sudoers NOPASSWD rule scoped to exactly these units + actions, so no credential
+    ever touches this layer. CSRF is blocked by requiring a custom header that a
+    cross-origin page cannot set without a preflight this endpoint never grants.
+    """
+    import subprocess
+    import sys as _sys
+
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    data   = request.get_json(silent=True) or {}
+    unit   = (data.get("unit") or "").strip()
+    action = (data.get("action") or "").strip()
+
+    if unit not in _CONTROLLABLE_SERVICES:
+        return jsonify({"ok": False, "error": "unknown or protected service"}), 403
+    if action not in _SERVICE_ACTIONS:
+        return jsonify({"ok": False, "error": "invalid action"}), 400
+    if _sys.platform != "linux":
+        return jsonify({"ok": False, "supported": False,
+                        "error": "systemd not available"}), 200
+
+    # Hardware-exclusivity (symmetric): a unit's conflicts are taken fully DOWN
+    # (stop + disable) when it starts, and fully RESTORED (enable + start) when it
+    # stops — so exactly one consumer of the radio survives a reboot. `affected`
+    # tells the UI which other cards to refresh. (restart leaves conflicts alone.)
+    affected = []
+    for other in _SERVICE_CONFLICTS.get(unit, []):
+        if action == "start":
+            _systemctl_seq(other, ["stop", "disable"])
+            affected.append(other)
+        elif action == "stop":
+            _systemctl_seq(other, ["enable", "start"])
+            affected.append(other)
+
+    # Build the systemctl step(s). Boot-state-tracking units enable-on-start /
+    # disable-on-stop; the `action` verb is the one whose success we report on.
+    persist = unit in _PERSIST_BOOT_STATE
+    if action == "start":
+        steps = ["enable", "start"] if persist else ["start"]
+    elif action == "stop":
+        steps = ["stop", "disable"] if persist else ["stop"]
+    else:
+        steps = ["restart"]
+
+    result = None
+    try:
+        for verb in steps:
+            r = subprocess.run(["sudo", "-n", "systemctl", verb, f"{unit}.service"],
+                               capture_output=True, text=True, timeout=30)
+            if verb == action:        # the primary verb (start/stop/restart)
+                result = r
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc), "affected": affected}), 500
+
+    # Re-query state regardless of rc so the UI can refresh from the truth.
+    try:
+        active = subprocess.run(["systemctl", "is-active", f"{unit}.service"],
+                                capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception:
+        active = "unknown"
+
+    if result is None or result.returncode != 0:
+        err = (result.stderr or result.stdout or "").strip() if result else "no command run"
+        low = err.lower()
+        if "password" in low or "a terminal is required" in low or "not allowed" in low:
+            err += " — run: python3 scripts/enable-service-controls.py (grants permission)"
+        return jsonify({"ok": False, "service": unit, "action": action,
+                        "active": active or "unknown", "affected": affected,
+                        "error": err or "systemctl failed"}), 500
+
+    return jsonify({"ok": True, "service": unit, "action": action,
+                    "active": active or "unknown", "affected": affected})
+
+
+@app.route("/api/health/zim")
+def api_health_zim():
+    """Offline Wikipedia/ZIM content presence for the dashboard Wikipedia card.
+    Kiwix content lives OUTSIDE the suite root (~/oasis-offline/zim by default,
+    or an SSD), so /api/browse can't see it — scan the standard locations here."""
+    candidates = [
+        os.path.expanduser("~/oasis-offline/zim"),
+        "/mnt/ssd/zim",
+        "/mnt/ssd/Documents/reference/zim",
+    ]
+    for d in candidates:
+        try:
+            zims = [f for f in os.listdir(d) if f.endswith(".zim")]
+        except OSError:
+            continue
+        if zims:
+            total = 0
+            for f in zims:
+                try:
+                    total += os.path.getsize(os.path.join(d, f))
+                except OSError:
+                    pass
+            return jsonify({"ok": True, "count": len(zims), "dir": d,
+                            "total_gb": round(total / 1e9, 1),
+                            "names": [os.path.splitext(f)[0] for f in sorted(zims)]})
+    return jsonify({"ok": True, "count": 0, "dir": candidates[0],
+                    "total_gb": 0, "names": []})
 
 
 # Fixed config artifacts written by the install/enable scripts. Keys map to
@@ -592,6 +734,7 @@ def api_config():
             "aprs_api": 8085,
             "webssh": 7681,
             "winlink": 8082,
+            "openwebrx": 8073,
         },
     }
     return jsonify(payload)

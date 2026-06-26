@@ -60,6 +60,31 @@ body {
 #s-host { font-weight: 700; }
 #s-host .host-ip { color: var(--text-dim); font-weight: 400; }
 
+/* ── Kiosk refresh button (header pill) ──────────────────────── */
+.kiosk-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .18rem .7rem;
+  border: 1px solid var(--accent-dim);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--accent);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .15s, border-color .15s, color .15s, transform .15s;
+}
+.kiosk-refresh:hover  { background: var(--panel); border-color: var(--accent); }
+.kiosk-refresh:active { transform: scale(.96); }
+.kiosk-refresh .kr-icon { font-size: 1.05rem; line-height: 1; }
+.kiosk-refresh.spinning { pointer-events: none; }
+.kiosk-refresh.spinning .kr-icon { animation: kiosk-spin .6s linear infinite; }
+@keyframes kiosk-spin { to { transform: rotate(360deg); } }
+
 /* ── Service strip ───────────────────────────────────────────────────── */
 .svc-strip {
   display: flex;
@@ -98,6 +123,8 @@ a.svc-card:hover { border-color: var(--accent); }
 .svc-dot.down { background: var(--red); }
 .svc-dot.warn { background: var(--amber); }
 .svc-name { font-size: 0.85rem; font-weight: 700; color: var(--text); }
+.svc-name a.owrx-link { color: var(--accent); text-decoration: none; }
+.svc-name a.owrx-link:hover { text-decoration: underline; }
 .svc-sub  { font-size: var(--fs-small); color: var(--text-dim); }
 .svc-badge {
   margin-left: auto;
@@ -110,6 +137,18 @@ a.svc-card:hover { border-color: var(--accent); }
 .svc-badge.up   { color: var(--accent); }
 .svc-badge.down { color: var(--red); }
 .svc-badge.warn { color: var(--amber); }
+/* Start/stop control on controllable service cards. Text label (not an icon)
+   so the action is readable at a glance on a wall dashboard. */
+.svc-power {
+  margin-left: 6px; flex-shrink: 0;
+  font-size: 0.62rem; font-weight: 700; letter-spacing: .05em;
+  padding: 2px 6px; border-radius: 4px; cursor: pointer; user-select: none;
+  border: 1px solid var(--border); color: var(--text-dim);
+}
+.svc-power:hover { background: var(--panel-2); color: var(--text); }
+.svc-power.up   { color: var(--amber);  border-color: var(--amber-dim); }   /* running → STOP */
+.svc-power.down { color: var(--accent); border-color: var(--accent-dim); }  /* stopped → START */
+.svc-power.busy { opacity: .5; pointer-events: none; }
 
 /* ── Stats bar ───────────────────────────────────────────────────────── */
 .stats-bar {
@@ -555,6 +594,10 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <span class="cs-grid" id="my-grid">&mdash;</span>
         <button class="cs-edit" onclick="editCallsignGrid()" title="Edit callsign &amp; grid">&#9998;</button>
       </div>
+      <button class="kiosk-refresh" id="kiosk-refresh" onclick="kioskRefresh()"
+              title="Reload the dashboard" aria-label="Refresh dashboard">
+        <span class="kr-icon">&#8635;</span>Refresh
+      </button>
     </div>
   </div>
   <div>
@@ -636,7 +679,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 <div class="svc-strip">
   <div class="svc-card" id="card-gw">
     <div class="svc-dot" id="dot-gw"></div>
-    <div><div class="svc-name">GrayWolf</div><div class="svc-sub" id="sub-gw">—</div></div>
+    <div><div class="svc-name">APRS GrayWolf</div><div class="svc-sub" id="sub-gw">—</div></div>
     <span class="svc-badge" id="badge-gw">—</span>
   </div>
   <div class="svc-card" id="card-aprs">
@@ -644,15 +687,20 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div><div class="svc-name">APRS Stats API</div><div class="svc-sub" id="sub-aprs">—</div></div>
     <span class="svc-badge" id="badge-aprs">—</span>
   </div>
+  <div class="svc-card" id="card-feed">
+    <div class="svc-dot" id="dot-feed"></div>
+    <div><div class="svc-name">APRS SDR Feed</div><div class="svc-sub" id="sub-feed">—</div></div>
+    <span class="svc-badge" id="badge-feed">—</span>
+  </div>
   <a class="svc-card" id="card-winlink" href="#" rel="noopener"
      onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.winlink}/`,'_blank');return false;">
     <div class="svc-dot" id="dot-winlink"></div>
-    <div><div class="svc-name">Winlink</div><div class="svc-sub" id="sub-winlink">—</div></div>
+    <div><div class="svc-name">PAT Winlink</div><div class="svc-sub" id="sub-winlink">—</div></div>
     <span class="svc-badge" id="badge-winlink">—</span>
   </a>
   <div class="svc-card" id="card-kiwix">
     <div class="svc-dot" id="dot-kiwix"></div>
-    <div><div class="svc-name">Kiwix</div><div class="svc-sub" id="sub-kiwix">—</div></div>
+    <div><div class="svc-name">Wiki Kiwix</div><div class="svc-sub" id="sub-kiwix">—</div></div>
     <span class="svc-badge" id="badge-kiwix">—</span>
   </div>
   <a class="svc-card" id="card-webssh" href="#" rel="noopener"
@@ -661,12 +709,22 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div><div class="svc-name">Web SSH</div><div class="svc-sub" id="sub-webssh">—</div></div>
     <span class="svc-badge" id="badge-webssh">—</span>
   </a>
+  <div class="svc-card" id="card-owrx">
+    <div class="svc-dot" id="dot-owrx"></div>
+    <div>
+      <div class="svc-name"><a class="owrx-link" href="#" rel="noopener"
+           onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.openwebrx}/`,'_blank');return false;"
+           title="Open OpenWebRX in a new tab">OpenWebRX ↗</a></div>
+      <div class="svc-sub" id="sub-owrx">—</div>
+    </div>
+    <span class="svc-badge" id="badge-owrx">—</span>
+  </div>
 </div>
 <!-- Row 2: infrastructure services -->
 <div class="svc-strip">
   <div class="svc-card" id="card-flask">
     <div class="svc-dot" id="dot-flask"></div>
-    <div><div class="svc-name">Flask</div><div class="svc-sub" id="sub-flask">—</div></div>
+    <div><div class="svc-name">Frontend Flask</div><div class="svc-sub" id="sub-flask">—</div></div>
     <span class="svc-badge" id="badge-flask">—</span>
   </div>
   <div class="svc-card" id="card-wsgi">
@@ -684,11 +742,21 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div><div class="svc-name">Offline Maps</div><div class="svc-sub" id="sub-maps">—</div></div>
     <span class="svc-badge" id="badge-maps">—</span>
   </div>
+    <div class="svc-card" id="card-wiki">
+    <div class="svc-dot" id="dot-wiki"></div>
+    <div><div class="svc-name">Wikipedia</div><div class="svc-sub" id="sub-wiki">—</div></div>
+    <span class="svc-badge" id="badge-wiki">—</span>
+  </div>
   <a class="svc-card" id="card-rb" href="repeaterbook/repeaterbook.html">
     <div class="svc-dot" id="dot-rb"></div>
     <div><div class="svc-name">Repeater Book</div><div class="svc-sub" id="sub-rb">—</div></div>
     <span class="svc-badge" id="badge-rb">—</span>
   </a>
+  <div class="svc-card" id="card-manuals">
+    <div class="svc-dot" id="dot-manuals"></div>
+    <div><div class="svc-name">Radio Manuals</div><div class="svc-sub" id="sub-manuals">—</div></div>
+    <span class="svc-badge" id="badge-manuals">—</span>
+  </div>
 </div>
 </div><!-- /.svc-strips-wrap -->
 
@@ -810,8 +878,8 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     </div>
     <div class="aprs-tbl-wrap">
       <table>
-        <thead><tr><th>Callsign</th><th>Last Heard</th><th>Age</th><th>Speed</th><th>Via</th><th>Comment</th></tr></thead>
-        <tbody id="aprs-tbody"><tr><td colspan="6" style="color:var(--text-dim)">Loading…</td></tr></tbody>
+        <thead><tr><th>Callsign</th><th>Last Heard</th><th>Age</th><th>Speed</th><th>Altitude</th><th>Via</th><th>Comment</th></tr></thead>
+        <tbody id="aprs-tbody"><tr><td colspan="7" style="color:var(--text-dim)">Loading…</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -825,12 +893,12 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
-const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082 };
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082, openwebrx: 8073 };
 // Port to show in svc-sub when a service is unreachable
 const SVC_PORTS = {
   gw:    () => PORTS.graywolf, winlink: () => PORTS.winlink,
   kiwix: () => PORTS.kiwix,   aprs:    () => PORTS.aprs_api,
-  webssh:() => PORTS.webssh
+  webssh:() => PORTS.webssh,  owrx:    () => PORTS.openwebrx
 };
 
 async function loadConfig() {
@@ -848,18 +916,26 @@ function go(port) {
 function tickClock() {
   const n = new Date();
   const z = v => String(v).padStart(2, '0');
+  const WD = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
   document.getElementById('utc-time').textContent =
-    `UTC ${z(n.getUTCHours())}:${z(n.getUTCMinutes())}:${z(n.getUTCSeconds())}`;
+    `UTC ${WD[n.getUTCDay()]} ${z(n.getUTCHours())}:${z(n.getUTCMinutes())}:${z(n.getUTCSeconds())}`;
   document.getElementById('utc-date').textContent =
     `${n.getUTCFullYear()}·${z(n.getUTCMonth()+1)}·${z(n.getUTCDate())}`;
   document.getElementById('local-time').textContent =
-    `LOCAL ${z(n.getHours())}:${z(n.getMinutes())}:${z(n.getSeconds())}`;
+    `LOCAL ${WD[n.getDay()]} ${z(n.getHours())}:${z(n.getMinutes())}:${z(n.getSeconds())}`;
   document.getElementById('local-date').textContent =
     `${n.getFullYear()}·${z(n.getMonth()+1)}·${z(n.getDate())}`;
 }
 tickClock();
 setInterval(tickClock, 1000);
 document.getElementById('footer-ts').textContent = new Date().toLocaleString();
+
+// Kiosk manual refresh — spin the icon briefly, then reload the dashboard.
+function kioskRefresh() {
+  const btn = document.getElementById('kiosk-refresh');
+  if (btn) btn.classList.add('spinning');
+  setTimeout(() => location.reload(), 400);
+}
 
 // ── Callsign / Grid (stored in localStorage) ──────────────────────────────────
 function loadCallsignGrid() {
@@ -981,7 +1057,20 @@ const SERVICES = [
     id: 'kiwix', name: 'Kiwix',
     check: async () => {
       await fetch(`http://${HOST}:${PORTS.kiwix}/`, { cache: 'no-store', mode: 'no-cors' });
-      return { up: true, badge: 'UP', sub: `:${PORTS.kiwix}` };
+      // Card shows the port (server reachability); the OPS "Wikipedia" link
+      // shows the ZIM inventory instead (count + size, or just count if many).
+      let navSub;
+      try {
+        const zr = await fetch('/api/health/zim', { cache: 'no-store' });
+        if (zr.ok) {
+          const zd = await zr.json();
+          const n = zd.count || 0;
+          navSub = n === 0 ? 'no ZIM'
+                 : n === 1 ? `1 ZIM · ${zd.total_gb} GB`
+                 : `${n} ZIMs`;
+        }
+      } catch (_) {}
+      return { up: true, badge: 'UP', sub: `:${PORTS.kiwix}`, navSub };
     }
   },
   {
@@ -991,7 +1080,20 @@ const SERVICES = [
       if (!r.ok) return { up: false, sub: `:${PORTS.aprs_api}` };
       const d = await r.json();
       return { up: true, warn: !d.db_exists, badge: 'UP',
-        sub: d.db_exists ? `DB found :${PORTS.aprs_api}` : `no DB :${PORTS.aprs_api}` };
+        sub: d.db_exists ? `DB :${PORTS.aprs_api}` : `no DB :${PORTS.aprs_api}` };
+    }
+  },
+  {
+    id: 'feed', name: 'APRS SDR Feed',
+    check: async () => {
+      // No web port — status comes from systemd (socat RTL-SDR → GrayWolf feed).
+      const r = await fetch('/api/health/service?name=aprs-sdr-feed', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'status error' };
+      const d = await r.json();
+      if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      if (d.active === 'active') return { up: true, badge: 'UP', sub: '→ GrayWolf' };
+      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+        sub: d.installed ? 'inactive' : 'run enable-rtl-sdr.py' };
     }
   },
   {
@@ -1003,7 +1105,8 @@ const SERVICES = [
       setFccLookup(d.index_present);   // disable FCC Lookup button if no index
       return { up: true, warn: !d.index_present,
         badge: d.index_present ? 'UP' : 'WARN',
-        sub: d.index_present ? `${(d.callsign_count||0).toLocaleString()} callsigns · ${(d.zip_entries||0).toLocaleString()} ZIP` : 'index not built' };
+        sub: d.index_present ? 'present' : 'not found',
+        navSub: d.index_present ? `${(d.callsign_count||0).toLocaleString()} callsigns · ${(d.zip_entries||0).toLocaleString()} ZIP` : 'index not built' };
     }
   },
   {
@@ -1015,7 +1118,8 @@ const SERVICES = [
       const n = (d.entries||[]).filter(e => e.name.endsWith('.pmtiles')).length;
       return { up: true, warn: n === 0,
         badge: n > 0 ? 'UP' : 'WARN',
-        sub: n > 0 ? `${n} ${n === 1 ? 'map' : 'maps'}` : 'no maps' };
+        sub: n > 0 ? 'present' : 'not found',
+        navSub: n > 0 ? `${n} ${n === 1 ? 'map' : 'maps'}` : 'no maps' };
     }
   },
   {
@@ -1032,6 +1136,38 @@ const SERVICES = [
     check: async () => {
       await fetch(`http://${HOST}:${PORTS.webssh}/`, { cache: 'no-store', mode: 'no-cors' });
       return { up: true, badge: 'UP', sub: `:${PORTS.webssh}` };
+    }
+  },
+  {
+    id: 'owrx', name: 'OpenWebRX',
+    check: async () => {
+      await fetch(`http://${HOST}:${PORTS.openwebrx}/`, { cache: 'no-store', mode: 'no-cors' });
+      return { up: true, badge: 'UP', sub: `:${PORTS.openwebrx}` };
+    }
+  },
+  {
+    id: 'manuals', name: 'Radio Manuals',
+    check: async () => {
+      const r = await fetch('/api/browse?path=radio-manuals', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'browse error' };
+      const d = await r.json();
+      const n = (d.entries || []).filter(e => e.type === 'dir').length;
+      return { up: true, warn: n === 0,
+        badge: n > 0 ? 'UP' : 'WARN',
+        sub: n > 0 ? `${n} radio${n === 1 ? '' : 's'}` : 'no manuals' };
+    }
+  },
+  {
+    id: 'wiki', name: 'Wikipedia',
+    check: async () => {
+      // ZIM content lives outside the suite root — server scans the standard dirs.
+      const r = await fetch('/api/health/zim', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'check error' };
+      const d = await r.json();
+      const n = d.count || 0;
+      return { up: true, warn: n === 0,
+        badge: n > 0 ? 'UP' : 'WARN',
+        sub: n > 0 ? 'present' : 'not found' };
     }
   },
 ];
@@ -1055,8 +1191,9 @@ async function checkService(svc) {
     card.className  = 'svc-card '  + state;
     badge.textContent = result.badge || (result.up ? 'UP' : 'DOWN');
     if (sub) sub.textContent = result.sub || '';
-    if (nbadge) { nbadge.className = 'nav-svc-badge ' + state; nbadge.textContent = result.sub || (state === 'up' ? 'online' : state); }
+    if (nbadge) { nbadge.className = 'nav-svc-badge ' + state; nbadge.textContent = result.navSub || result.sub || (state === 'up' ? 'online' : state); }
     if (nlink)  { nlink.classList.toggle('enabled', state === 'up'); }
+    updatePower(svc.id, state);
   } catch (e) {
     _svcStates[svc.id] = 'down';
     dot.className   = 'svc-dot down';
@@ -1066,11 +1203,98 @@ async function checkService(svc) {
     if (sub) { const pf = SVC_PORTS[svc.id]; sub.textContent = pf ? `:${pf()}` : ''; }
     if (nbadge) { nbadge.className = 'nav-svc-badge down'; nbadge.textContent = e.message === 'timeout' ? 'timeout' : 'offline'; }
     if (nlink)  { nlink.classList.remove('enabled'); }
+    updatePower(svc.id, 'down');
   }
   updateSvcCounts();
 }
 
 function pingAll() { SERVICES.forEach(svc => checkService(svc)); }
+
+// ── Service start/stop controls ─────────────────────────────────────────────
+// Dashboard service-card id → systemd unit. Only these cards get a power
+// control; Flask / Web Server (the OASIS server itself) and the data cards
+// (FCC / Maps / Repeater Book) do not.
+const SVC_UNITS = { gw: 'graywolf', aprs: 'graywolf-api', feed: 'aprs-sdr-feed',
+                    winlink: 'pat', kiwix: 'kiwix', webssh: 'webssh', owrx: 'openwebrx' };
+
+// Lazily create the power control on a controllable card. A <span> (not a
+// <button>) so it's valid inside the cards that are <a> links; the click
+// handler stops the anchor from navigating.
+function powerBtn(svcId) {
+  const card = document.getElementById('card-' + svcId);
+  if (!card) return null;
+  let btn = card.querySelector('.svc-power');
+  if (!btn) {
+    btn = document.createElement('span');
+    btn.className = 'svc-power';
+    btn.setAttribute('role', 'button');
+    btn.tabIndex = 0;
+    btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); togglePower(svcId); });
+    card.appendChild(btn);
+  }
+  return btn;
+}
+
+// Services mid-start (settling): keep showing STARTING until the port answers
+// (OpenWebRX can take 10-15s after the unit goes active) or the deadline passes.
+const _pending = {};   // svcId -> deadline timestamp
+
+// Reflect current state on the power control (unless mid-action / settling).
+function updatePower(svcId, state) {
+  if (!SVC_UNITS[svcId]) return;
+  const btn = powerBtn(svcId);
+  if (!btn) return;
+  const running = state === 'up' || state === 'warn';
+  if (_pending[svcId] !== undefined) {
+    if (running || Date.now() >= _pending[svcId]) {
+      delete _pending[svcId];
+      btn.classList.remove('busy');
+    } else {
+      return;   // still settling — leave "STARTING…" shown, don't flip to START
+    }
+  }
+  if (btn.classList.contains('busy')) return;
+  btn.classList.toggle('up', running);
+  btn.classList.toggle('down', !running);
+  btn.textContent = running ? 'STOP' : 'START';
+  btn.title = (running ? 'Stop ' : 'Start ') + SVC_UNITS[svcId] + ' service';
+}
+
+async function togglePower(svcId) {
+  const unit = SVC_UNITS[svcId];
+  if (!unit) return;
+  const running = _svcStates[svcId] === 'up' || _svcStates[svcId] === 'warn';
+  const action  = running ? 'stop' : 'start';
+  if (action === 'stop' && !confirm(`Stop the "${unit}" service?`)) return;
+
+  const btn = powerBtn(svcId);
+  if (btn) { btn.classList.add('busy'); btn.textContent = running ? 'STOPPING' : 'STARTING'; }
+  let ok = false;
+  try {
+    const r = await fetch('/api/service', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+      body: JSON.stringify({ unit, action }),
+    });
+    const d = await r.json().catch(() => ({}));
+    ok = r.ok && d.ok;
+    if (!ok) alert(`Could not ${action} ${unit}:\n${(d && d.error) || ('HTTP ' + r.status)}`);
+  } catch (e) {
+    alert(`Could not ${action} ${unit}:\n${e.message}`);
+  } finally {
+    if (action === 'start' && ok) {
+      // Hold "STARTING…" until the service's port comes up (or ~16s elapse), so a
+      // slow starter (OpenWebRX) doesn't look failed and invite a second click.
+      _pending[svcId] = Date.now() + 16000;
+      if (btn) btn.textContent = 'STARTING…';
+    } else if (btn) {
+      btn.classList.remove('busy');
+    }
+    // A start can also change conflicting services (OpenWebRX stops GrayWolf + the
+    // feed), so re-poll every card several times as things settle.
+    [800, 2500, 5000, 9000, 14000, 17000].forEach(t => setTimeout(pingAll, t));
+  }
+}
 
 // Enable/disable the FCC Lookup quick-launch button based on index presence.
 function setFccLookup(enabled) {
@@ -1345,7 +1569,7 @@ let _allAprsStations = [];
 function renderAprsTable(stations) {
   const tbody = document.getElementById('aprs-tbody');
   if (!stations.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-dim)">No stations match the selected time filter.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-dim)">No stations match the selected time filter.</td></tr>';
     return;
   }
   tbody.innerHTML = stations.map(s => {
@@ -1354,11 +1578,13 @@ function renderAprsTable(stations) {
     const course = s.course != null && s.speed_mph > 0
       ? ' ' + ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(s.course/22.5)%16]
       : '';
+    const alt = s.alt_m != null ? Math.round(s.alt_m * 3.28084).toLocaleString() + ' ft' : '';
     return `<tr>
       <td style="color:var(--accent);font-weight:700"><a href="aprs/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a></td>
       <td>${fmtLastHeard(s.last_heard)}</td>
       <td class="${age.cls}">${age.text}</td>
       <td>${speed}${course}</td>
+      <td>${alt}</td>
       <td style="color:var(--text-dim)">${s.via || ''}</td>
       <td style="color:var(--text-dim);max-width:220px;overflow:hidden;text-overflow:ellipsis">${s.comment || ''}</td>
     </tr>`;
@@ -1403,7 +1629,7 @@ async function fetchAPRS() {
     if (!d.ok) {
       const msg = d.error || 'API error';
       const isNoDb = msg.toLowerCase().includes('database not found');
-      tbody.innerHTML = `<tr><td colspan="6" style="color:${isNoDb ? 'var(--text-dim)' : 'var(--red)'}">${
+      tbody.innerHTML = `<tr><td colspan="7" style="color:${isNoDb ? 'var(--text-dim)' : 'var(--red)'}">${
         isNoDb
           ? 'APRS feed offline — no packets to show. &#9658; Start APRS Stats API to populate the live station table.'
           : 'Error: ' + msg
@@ -1417,7 +1643,7 @@ async function fetchAPRS() {
     document.getElementById('aprs-count').textContent = d.count ?? d.stations.length;
 
     if (!d.stations.length) {
-      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-dim)">No stations yet — GrayWolf needs a radio + TNC/audio input to receive APRS packets.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-dim)">No stations yet — GrayWolf needs a radio + TNC/audio input to receive APRS packets.</td></tr>';
       document.getElementById('aprs-last').textContent = '—';
       setTitle(false);
       return;
@@ -1440,7 +1666,7 @@ async function fetchAPRS() {
     applyAprsFilter();
   } catch (e) {
     setTitle(false);
-    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="color:var(--text-dim)">APRS feed offline — no packets to show. &#9658; Start APRS Stats API to populate the live station table.</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="color:var(--text-dim)">APRS feed offline — no packets to show. &#9658; Start APRS Stats API to populate the live station table.</td></tr>`;
   }
 }
 

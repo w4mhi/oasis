@@ -82,8 +82,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #clearTrackBtn{display:none;}
 .track-sep{color:var(--border);font-size:var(--fs-small);}
 #trackMsg{font-size:var(--fs-small);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;display:none;}
-#autoFlyBtn{opacity:.45;transition:opacity .2s;white-space:nowrap;}
+#autoFlyBtn{opacity:1;transition:opacity .2s;white-space:nowrap;}
 #autoFlyBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
+/* Green "refresh now" button — deliberately obvious on the kiosk */
+#mapRefreshBtn{
+  display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;
+  color:var(--accent);border-color:var(--accent-dim);
+  background:rgba(0,200,100,0.10);
+}
+#mapRefreshBtn:hover{background:var(--accent-dim);color:#fff;border-color:var(--accent);}
+#mapRefreshBtn .kr-icon{display:inline-block;line-height:1;font-size:1.05em;}
+#mapRefreshBtn.spinning{pointer-events:none;}
+#mapRefreshBtn.spinning .kr-icon{animation:map-spin .6s linear infinite;}
+@keyframes map-spin{to{transform:rotate(360deg);}}
 /* Track popup link */
 .pop-track-btn{
   display:block;margin-top:6px;padding-top:5px;
@@ -201,7 +212,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   <span class="track-sep">|</span>
   <span style="font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap">Track:</span>
   <select id="trackWindow" style="margin-left:.35rem;" onchange="if(activeTrack) showTrack(activeTrack)">
-    <option value="60">1 h</option>
+    <option value="15">15 min</option>
+    <option value="30">30 min</option>
+    <option value="60" selected>1 h</option>
     <option value="240">4 h</option>
     <option value="480">8 h</option>
     <option value="1440">24 h</option>
@@ -212,11 +225,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   <button id="clearTrackBtn" class="sbtn" onclick="clearTrack()" style="margin-left:.35rem;">✕ Track</button>
   <span style="flex:1"></span>
   <span id="trackMsg"></span>
+  <button id="mapRefreshBtn" class="sbtn" onclick="mapRefresh()" style="margin-left:.35rem;" title="Reload APRS stations now"><span class="kr-icon">&#8635;</span>Refresh</button>
+  <span class="track-sep">|</span>
   <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">Auto-fly</button>
   <span class="track-sep">|</span>
   <button id="gridBtn" class="sbtn" onclick="toggleGrid()" style="margin-left:.35rem;" title="Toggle Maidenhead grid overlay">Grid</button>
   <button id="measureBtn" class="sbtn" onclick="toggleMeasure()" style="margin-left:.35rem;" title="Click two or more points to measure distance and bearing">Measure</button>
   <!-- <button id="refreshBtn" class="sbtn" onclick="fetchStations()">Refresh</button> -->
+  <span class="track-sep">|</span>
   <span id="statusMsg">Connecting…</span>
   <a href="/" class="home-link" style="margin-left:.75rem;">⌂ HOME</a>
 </div>
@@ -778,6 +794,14 @@ let _focusHandled = false;
 function toggleAutoFly() {
   autoFly = !autoFly;
   document.getElementById('autoFlyBtn').classList.toggle('on', autoFly);
+}
+
+// Manual "refresh now" — spin the icon briefly while re-fetching stations.
+async function mapRefresh() {
+  const btn = document.getElementById('mapRefreshBtn');
+  if (btn) btn.classList.add('spinning');
+  try { await fetchStations(); }
+  finally { if (btn) setTimeout(() => btn.classList.remove('spinning'), 400); }
 }
 
 function flyToLatest() {
