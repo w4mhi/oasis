@@ -60,7 +60,7 @@ It assumes the reader holds an amateur license and knows the hobby — it's a to
 4. **Minimal backend, browser-heavy.** A single small Flask app serves the dashboard, FCC lookup, and map tiles. Everything else — forms, calculators, reference — is static HTML running in the browser against `localStorage`. The server never holds browser state.
 5. **Services discovered, not hardcoded.** Companion services (GrayWolf APRS, Kiwix) run as their own processes; the dashboard finds them at runtime, so a missing service just greys out a card instead of breaking the page.
 6. **Version-aware, idempotent setup.** Every installer compares versions, upgrades when newer, and never downgrades — so re-running setup or installing from an older USB bundle can't clobber a newer package.
-7. **Runs small.** The reference build is a Raspberry Pi Zero 2 W with 512 MB RAM. If it runs there, it runs anywhere.
+7. **Runs small.** The reference build is a Raspberry Pi. If it runs there, it runs anywhere.
 
 ---
 

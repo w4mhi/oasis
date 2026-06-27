@@ -35,7 +35,7 @@ Forms · FCC lookup · offline maps · APRS · calculators · reference library 
 | **What it is** | A browser dashboard for emergency communications, served from a tiny local web server. |
 | **Who it's for** | Hams running nets, ARES/RACES ops, field deployments, and grid-down preparedness. |
 | **The promise** | No internet at runtime. No cloud account. No app to install on client devices. |
-| **Runs on** | Raspberry Pi Zero 2 W (primary) · also Pi 3/4/5, macOS, Windows, Linux. |
+| **Runs on** | Raspberry Pi 3/4/5 (primary) · also macOS, Windows, Linux. |
 | **Access it** | Any phone/tablet/laptop on the same Wi-Fi or hotspot → `http://<host-ip>:8083`. |
 
 📖 **Want the *why*?** Read **[concept.md](concept.md)** — the vision, the problem it solves, and the design principles.
@@ -45,15 +45,20 @@ Forms · FCC lookup · offline maps · APRS · calculators · reference library 
 ## ✨ Features
 
 - **📋 Emergency forms** — ICS **205 · 213 · 214 · 309** on official FEMA PDF templates. Import/export CSV, auto-save, import frequencies from CHIRP.
-- **🔎 FCC callsign lookup** — sub-millisecond binary search over a local copy of the FCC amateur database (name, city, state, grid, lat/lon). No database engine.
+- **🔎 FCC callsign lookup** — sub-millisecond binary search over a local copy of the FCC amateur database. Search by **callsign** (exact or prefix wildcard), **name** (last name + optional first name), or **Maidenhead grid** (2–6 char prefix). Returns callsign, name, city, state, grid, lat/lon. No database engine; three sorted flat-file indexes.
 - **🗺️ Offline maps** — OpenStreetMap vector tiles via MapLibre GL + PMTiles, streamed from the host with HTTP range reads. Multi-region, switchable layers, not a single tile from the internet. Load maps at runtime straight off a USB stick or the GrayWolf tiles directory — no copying into the repo.
 - **📻 Repeater Book** — load a CHIRP-format CSV from RepeaterBook, browse with instant search/filters, and export the visible set as a ready-to-import frequency plan.
-- **📡 APRS** *(Pi)* — **GrayWolf** TNC / iGate / digipeater with a live station map, packet logs, and tactical messaging.
+- **📡 APRS** *(Pi)* — **GrayWolf** TNC / iGate / digipeater with a live station map (track history, auto-fly, sonar animations), APRS Stats API, and tactical messaging. Dashboard shows live station table with callsign, last-heard time, speed, altitude, and comment.
 - **📧 Winlink** *(Pi)* — Pat client + web UI for store-and-forward email over radio.
+- **🛰️ GPS / GNSS** *(Pi)* — live GPS card in the dashboard header: fix mode (3D/2D/no-fix), satellites, HDOP (colour-coded by quality), altitude, lat/lon, and chrony clock-lock status.
+- **🌐 OpenWebRX** *(Pi)* — optional SDR receiver web UI for spectrum monitoring.
 - **🧮 Tools & calculators** — antenna, grid/distance/bearing, power & battery budget, gray-line propagation, band conditions, and a net check-in logger with CSV export.
-- **📚 Reference library** — U.S. band plan, Q-codes, phonetics, pro-words, RST, ITU prefixes, per-radio cheat-sheets, CHIRP guides, GrayWolf handbook. Drop your own PDFs into `radio-manuals/`.
+- **📚 Reference library** — U.S. band plan, Q-codes, phonetics, procedure words (including ICS plain-language substitution table), RST, ITU prefixes, per-radio cheat-sheets, CHIRP guides, GrayWolf handbook. Drop your own PDFs into `radio-manuals/`.
 - **📖 Offline Wikipedia** *(Pi)* — Kiwix serving a ZIM snapshot.
-- **💾 Portable USB bundle** — package the whole suite into a self-contained folder that runs with no system Python on Windows.
+- **⚙️ System monitor** — live CPU%, RAM, disk, load, temperature, uptime, audio devices, network SSID/clients, and Pi power-throttle status — all colour-coded and updated every 30 s.
+- **🔧 Service controls** — start/stop controllable services (GrayWolf, Winlink, Kiwix, Web SSH, OpenWebRX) directly from the dashboard service strip without SSH.
+- **📐 Units toggle** — switch all measured values (temperature, altitude, speed) between imperial and metric from a single pill button; preference persisted per browser.
+- **💾 Portable USB bundle** — package the whole suite into a self-contained folder that runs with no system Python on Windows (`--for-windows`), or Pi/Linux only (default).
 
 ---
 
@@ -239,7 +244,7 @@ OASIS is built for a **trusted off-grid LAN or hotspot**. It binds to `0.0.0.0` 
 
 ## 💻 Platform support & hardware
 
-Reference build: **Raspberry Pi Zero 2 W**, 512 MB RAM, 32 GB SD card, Raspberry Pi OS Lite 64-bit, on a local hotspot/LAN — no internet. Also runs on Pi 3/4/5 and any Linux/macOS/Windows host.
+Reference build: **Raspberry Pi 3/4/5**, 32 GB SD card, Raspberry Pi OS Lite 64-bit, on a local hotspot/LAN — no internet. Also runs on any Linux/macOS/Windows host.
 
 <details>
 <summary>Offline-install matrix (verified with <code>create-oasis-offline.py --check</code>)</summary>

@@ -135,7 +135,7 @@ def run(check_only=False):
     if check_only:
         verify()
         en = _run(["systemctl", "is-enabled", "openwebrx.service"],
-                  check=False, capture_output=True)
+                  check=False, capture_output=True, text=True)
         _info(f"boot state: {(getattr(en, 'stdout', '') or '').strip() or 'unknown'} "
               "(off by default is expected)")
         print(); return

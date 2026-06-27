@@ -87,11 +87,11 @@ def check_platform():
     _info(f"Architecture: {machine}")
 
     arch_map = {
-        "aarch64": "arm64",   # Pi Zero 2W, Pi 3/4/5 (64-bit OS)
+        "aarch64": "arm64",   # Pi 3/4/5 (64-bit OS)
         "arm64":   "arm64",
         "armv7l":  "armhf",   # Pi 2/3/4 (32-bit OS)
         "armhf":   "armhf",
-        "armv6l":  "armhf",   # Pi 1 / Pi Zero — closest available
+        "armv6l":  "armhf",   # Pi 1 — closest available
         "x86_64":  "amd64",
         "amd64":   "amd64",
     }

@@ -39,7 +39,7 @@ body {
   margin-top: 2px;
 }
 .clock-utc {
-  font-size: var(--fs-clock);
+  font-size: var(--fs-title);
   font-weight: 700;
   color: var(--accent);
   letter-spacing: .1em;
@@ -52,7 +52,7 @@ body {
   gap: .7rem;
 }
 .clock-date {
-  font-size: var(--fs-small);
+  font-size: var(--fs-label);
   color: var(--accent);
   letter-spacing: .06em;
   font-variant-numeric: tabular-nums;
@@ -349,7 +349,7 @@ a.svc-card:hover { border-color: var(--accent); }
   gap: .5rem;
 }
 .nav-links a:hover { color: var(--accent); }
-.nav-links a.ext { color: var(--blue); }
+.nav-links a.ext { color: var(--text); }
 .nav-links a.ext:hover { color: var(--accent); }
 
 /* Nav link service-state badges */
@@ -375,7 +375,7 @@ a.nav-link-svc.enabled {
   opacity: 1;
 }
 a.nav-link-svc.enabled {
-  color: var(--blue);
+  color: var(--text);
   pointer-events: auto;
 }
 a.nav-link-svc.enabled:hover { color: var(--accent); }
@@ -404,14 +404,14 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 
 /* ── Local time ──────────────────────────────────────────────────────── */
 .clock-local {
-  font-size: var(--fs-clock);
+  font-size: var(--fs-title);
   font-weight: 700;
   color: var(--amber);
   letter-spacing: .1em;
   font-variant-numeric: tabular-nums;
 }
 .clock-local-date {
-  font-size: var(--fs-small);
+  font-size: var(--fs-label);
   color: var(--amber);
   letter-spacing: .06em;
   font-variant-numeric: tabular-nums;
@@ -480,7 +480,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   font-size: var(--fs-icon);
   line-height: 1;
   padding: 0 .15rem;
-  color: var(--blue);
+  color: var(--text);
   transition: color .15s, transform .2s;
   display: flex;
   align-items: center;
@@ -598,7 +598,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   font-size: var(--fs-small);
   text-transform: uppercase;
   letter-spacing: .09em;
-  color: var(--text-dim);
+  color: var(--amber);
   border-bottom: 1px solid var(--border);
   padding: .2rem .5rem .2rem 0;
 }
@@ -627,7 +627,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   .nav-col { border-right: none; border-bottom: 1px solid var(--border); }
   .nav-col:last-child { border-bottom: none; }
   .topbar { gap: .5rem; }
-  .clock-utc { font-size: var(--fs-base); }
+  .clock-utc { font-size: var(--fs-subtitle); }
 }
 </style>
 </head>
@@ -696,7 +696,6 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <span class="stat-lbl">CPU</span>
     <span class="stat-val" id="s-cpu">—</span>
     <div class="mini-bar"><div class="mini-fill" id="b-cpu"></div></div>
-    <canvas class="spark" id="spark-cpu" width="46" height="14" title="CPU trend (recent polls)"></canvas>
   </div>
   <div class="stat-item">
     <span class="stat-lbl">RAM</span>
@@ -715,7 +714,6 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   <div class="stat-item">
     <span class="stat-lbl">TEMP</span>
     <span class="stat-val" id="s-temp">—</span>
-    <canvas class="spark" id="spark-temp" width="46" height="14" title="Temperature trend (recent polls)"></canvas>
   </div>
   <div class="stat-item">
     <span class="stat-lbl">UPTIME</span>
@@ -750,7 +748,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 
 <!-- ── SERVICE STATUS STRIP ───────────────────────────────────────────────── -->
 <div class="svc-strips-wrap" id="svc-strips-wrap">
-<!-- Row 1: radio / external services -->
+<!-- Row 1: radio / RF services -->
 <div class="svc-strip">
   <div class="svc-card" id="card-gw">
     <div class="svc-dot" id="dot-gw"></div>
@@ -767,23 +765,6 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div><div class="svc-name">APRS SDR Feed</div><div class="svc-sub" id="sub-feed">—</div></div>
     <span class="svc-badge" id="badge-feed">—</span>
   </div>
-  <a class="svc-card" id="card-winlink" href="#" rel="noopener"
-     onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.winlink}/`,'_blank');return false;">
-    <div class="svc-dot" id="dot-winlink"></div>
-    <div><div class="svc-name">PAT Winlink</div><div class="svc-sub" id="sub-winlink">—</div></div>
-    <span class="svc-badge" id="badge-winlink">—</span>
-  </a>
-  <div class="svc-card" id="card-kiwix">
-    <div class="svc-dot" id="dot-kiwix"></div>
-    <div><div class="svc-name">Wiki Kiwix</div><div class="svc-sub" id="sub-kiwix">—</div></div>
-    <span class="svc-badge" id="badge-kiwix">—</span>
-  </div>
-  <a class="svc-card" id="card-webssh" href="#" rel="noopener"
-     onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.webssh}/`,'_blank');return false;">
-    <div class="svc-dot" id="dot-webssh"></div>
-    <div><div class="svc-name">Web SSH</div><div class="svc-sub" id="sub-webssh">—</div></div>
-    <span class="svc-badge" id="badge-webssh">—</span>
-  </a>
   <div class="svc-card" id="card-owrx">
     <div class="svc-dot" id="dot-owrx"></div>
     <div>
@@ -794,8 +775,14 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     </div>
     <span class="svc-badge" id="badge-owrx">—</span>
   </div>
+  <a class="svc-card" id="card-winlink" href="#" rel="noopener"
+     onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.winlink}/`,'_blank');return false;">
+    <div class="svc-dot" id="dot-winlink"></div>
+    <div><div class="svc-name">PAT Winlink</div><div class="svc-sub" id="sub-winlink">—</div></div>
+    <span class="svc-badge" id="badge-winlink">—</span>
+  </a>
 </div>
-<!-- Row 2: infrastructure services -->
+<!-- Row 2: system / infrastructure -->
 <div class="svc-strip">
   <div class="svc-card" id="card-flask">
     <div class="svc-dot" id="dot-flask"></div>
@@ -807,31 +794,22 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div><div class="svc-name">Web Server</div><div class="svc-sub" id="sub-wsgi">—</div></div>
     <span class="svc-badge" id="badge-wsgi">—</span>
   </div>
-  <div class="svc-card" id="card-fcc">
-    <div class="svc-dot" id="dot-fcc"></div>
-    <div><div class="svc-name">FCC Database</div><div class="svc-sub" id="sub-fcc">—</div></div>
-    <span class="svc-badge" id="badge-fcc">—</span>
+  <div class="svc-card" id="card-gpsd">
+    <div class="svc-dot" id="dot-gpsd"></div>
+    <div><div class="svc-name">GPS (gpsd)</div><div class="svc-sub" id="sub-gpsd">—</div></div>
+    <span class="svc-badge" id="badge-gpsd">—</span>
   </div>
-  <div class="svc-card" id="card-maps">
-    <div class="svc-dot" id="dot-maps"></div>
-    <div><div class="svc-name">Offline Maps</div><div class="svc-sub" id="sub-maps">—</div></div>
-    <span class="svc-badge" id="badge-maps">—</span>
+  <div class="svc-card" id="card-kiwix">
+    <div class="svc-dot" id="dot-kiwix"></div>
+    <div><div class="svc-name">Wiki Kiwix</div><div class="svc-sub" id="sub-kiwix">—</div></div>
+    <span class="svc-badge" id="badge-kiwix">—</span>
   </div>
-    <div class="svc-card" id="card-wiki">
-    <div class="svc-dot" id="dot-wiki"></div>
-    <div><div class="svc-name">Wikipedia</div><div class="svc-sub" id="sub-wiki">—</div></div>
-    <span class="svc-badge" id="badge-wiki">—</span>
-  </div>
-  <a class="svc-card" id="card-rb" href="repeaterbook/repeaterbook.html">
-    <div class="svc-dot" id="dot-rb"></div>
-    <div><div class="svc-name">Repeater Book</div><div class="svc-sub" id="sub-rb">—</div></div>
-    <span class="svc-badge" id="badge-rb">—</span>
+  <a class="svc-card" id="card-webssh" href="#" rel="noopener"
+     onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.webssh}/`,'_blank');return false;">
+    <div class="svc-dot" id="dot-webssh"></div>
+    <div><div class="svc-name">Web SSH</div><div class="svc-sub" id="sub-webssh">—</div></div>
+    <span class="svc-badge" id="badge-webssh">—</span>
   </a>
-  <div class="svc-card" id="card-manuals">
-    <div class="svc-dot" id="dot-manuals"></div>
-    <div><div class="svc-name">Radio Manuals</div><div class="svc-sub" id="sub-manuals">—</div></div>
-    <span class="svc-badge" id="badge-manuals">—</span>
-  </div>
 </div>
 </div><!-- /.svc-strips-wrap -->
 
@@ -908,21 +886,21 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <li><a href="repeater-guide/index.html">Repeater Guide <span class="nav-meta">radio repeaters how-to</span></a></li>
         <li><a href="radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
         <li><a href="static/cheatsheets/index.html">Radio Cheatsheets <span class="nav-meta">radio reference</span></a></li>
-        <li><a href="repeaterbook/repeaterbook.html">Repeater Book <span class="nav-meta">repeater book</span></a></li> 
-        <li><a href="aprs/map.html">APRS Maidenhead Map <span class="nav-meta">live APRS</span></a></li>
-        <li><a id="nlink-kiwix" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-kiwix">—</span></a></li>
+        <li><a id="nlink-rb" href="repeaterbook/repeaterbook.html" class="nav-link-svc">Repeater Book <span class="nav-svc-badge" id="nsvc-rb">—</span></a></li>
+        <li><a id="nlink-manuals" href="system/browser.html?path=radio-manuals" class="nav-link-svc">Radio Manuals <span class="nav-svc-badge" id="nsvc-manuals">—</span></a></li>
+        <li><a id="nlink-wiki" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-wiki">—</span></a></li>
       </ul>
     </div>
 
     <div class="nav-sec">
       <div class="nav-sec-title">Operating</div>
       <ul class="nav-links">
-        <li><a href="static/quick-ref/ics.html">ICS Plain Language <span class="nav-meta">ics language</span></a></li>
         <li><a href="static/quick-ref/itu-prefixes.html">ITU Country Prefixes <span class="nav-meta">call sign series</span></a></li>
         <li><a href="static/quick-ref/phonetic.html">NATO Phonetic Alphabet <span class="nav-meta">NATO reference</span></a></li>
         <li><a href="static/quick-ref/prowords.html">Procedure Words <span class="nav-meta">procedure words</span></a></li>
         <li><a href="static/quick-ref/qcodes.html">Q-Codes <span class="nav-meta">q-codes</span></a></li>
         <li><a href="static/quick-ref/rst.html">RST Signal Reporting <span class="nav-meta">signal reporting</span></a></li>
+        <li><a href="aprs/map.html">APRS Maidenhead Map <span class="nav-meta">live APRS</span></a></li>
       </ul>
     </div>
 
@@ -1028,7 +1006,7 @@ function toggleNavGrid() {
   try { localStorage.setItem('oasis_nav_collapsed', collapsed ? '1' : '0'); } catch(e) {}
 }
 (function initNavCollapse() {
-  if (localStorage.getItem('oasis_nav_collapsed') === '1') {
+  if (localStorage.getItem('oasis_nav_collapsed') !== '0') {
     const wrap = document.getElementById('nav-grid-wrap');
     const btn  = document.getElementById('nav-collapse-btn');
     if (wrap) wrap.classList.add('collapsed');
@@ -1044,7 +1022,7 @@ function toggleSvcStrip() {
   try { localStorage.setItem('oasis_svc_collapsed', collapsed ? '1' : '0'); } catch(e) {}
 }
 (function initSvcCollapse() {
-  if (localStorage.getItem('oasis_svc_collapsed') === '1') {
+  if (localStorage.getItem('oasis_svc_collapsed') !== '0') {
     const wrap = document.getElementById('svc-strips-wrap');
     const btn  = document.getElementById('svc-collapse-btn');
     if (wrap) wrap.classList.add('collapsed');
@@ -1065,10 +1043,14 @@ loadCallsignGrid();
 // ── Service state tracking (for counts badge) ─────────────────────────────────
 const _svcStates = {};
 function updateSvcCounts() {
-  const vals = Object.values(_svcStates);
-  const up   = vals.filter(s => s === 'up').length;
-  const warn = vals.filter(s => s === 'warn').length;
-  const down = vals.filter(s => s === 'down').length;
+  // Count only services that have a card (the 10 service cards) — exclude the
+  // OPS-only checks (maps/fcc/rb/manuals/wiki) that merely feed nav badges.
+  const states = Object.keys(_svcStates)
+    .filter(id => document.getElementById('card-' + id))
+    .map(id => _svcStates[id]);
+  const up   = states.filter(s => s === 'up').length;
+  const warn = states.filter(s => s === 'warn').length;
+  const down = states.filter(s => s === 'down').length;
   const el = document.getElementById('svc-counts');
   if (!el) return;
   el.innerHTML =
@@ -1118,14 +1100,14 @@ const SERVICES = [
     id: 'gw', name: 'GrayWolf',
     check: async () => {
       await fetch(`http://${HOST}:${PORTS.graywolf}/`, { cache: 'no-store', mode: 'no-cors' });
-      return { up: true, badge: 'UP', sub: `:${PORTS.graywolf}` };
+      return { up: true, badge: 'UP', sub: `:${PORTS.graywolf}`, navSub: 'operational' };
     }
   },
   {
     id: 'winlink', name: 'Winlink',
     check: async () => {
       await fetch(`http://${HOST}:${PORTS.winlink}/`, { cache: 'no-store', mode: 'no-cors' });
-      return { up: true, badge: 'UP', sub: `:${PORTS.winlink}` };
+      return { up: true, badge: 'UP', sub: `:${PORTS.winlink}`, navSub: 'operational' };
     }
   },
   {
@@ -1172,6 +1154,18 @@ const SERVICES = [
     }
   },
   {
+    id: 'gpsd', name: 'GPS (gpsd)',
+    check: async () => {
+      const r = await fetch('/api/health/service?name=gpsd', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'status error' };
+      const d = await r.json();
+      if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      if (d.active === 'active') return { up: true, badge: 'UP', sub: ':2947' };
+      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+        sub: d.installed ? 'inactive' : 'run install-gps.py' };
+    }
+  },
+  {
     id: 'fcc', name: 'FCC Database',
     check: async () => {
       const r = await fetch('/health', { cache: 'no-store' });
@@ -1210,7 +1204,7 @@ const SERVICES = [
     id: 'webssh', name: 'SSH Terminal',
     check: async () => {
       await fetch(`http://${HOST}:${PORTS.webssh}/`, { cache: 'no-store', mode: 'no-cors' });
-      return { up: true, badge: 'UP', sub: `:${PORTS.webssh}` };
+      return { up: true, badge: 'UP', sub: `:${PORTS.webssh}`, navSub: 'operational' };
     }
   },
   {
@@ -1261,22 +1255,23 @@ async function checkService(svc) {
     ]);
     const state = result.up ? (result.warn ? 'warn' : 'up') : 'down';
     _svcStates[svc.id] = state;
-    dot.className   = 'svc-dot '   + state;
-    badge.className = 'svc-badge ' + state;
-    card.className  = 'svc-card '  + state;
-    badge.textContent = result.badge || (result.up ? 'UP' : 'DOWN');
+    if (dot)   dot.className  = 'svc-dot '  + state;
+    if (card)  card.className = 'svc-card ' + state;
+    if (badge) { badge.className = 'svc-badge ' + state; badge.textContent = result.badge || (result.up ? 'UP' : 'DOWN'); }
     if (sub) sub.textContent = result.sub || '';
-    if (nbadge) { nbadge.className = 'nav-svc-badge ' + state; nbadge.textContent = result.navSub || result.sub || (state === 'up' ? 'online' : state); }
-    if (nlink)  { nlink.classList.toggle('enabled', state === 'up'); }
+    // OPS pill: green only when fully ready (up); amber otherwise (missing data /
+    // degraded). No red here — red lives on the service cards. Link text is white
+    // (usable) unless the thing is actually down/offline, then grey + unclickable.
+    if (nbadge) { nbadge.className = 'nav-svc-badge ' + (state === 'up' ? 'up' : 'warn'); nbadge.textContent = result.navSub || result.sub || (state === 'up' ? 'online' : state); }
+    if (nlink)  { nlink.classList.toggle('enabled', state !== 'down'); }
     updatePower(svc.id, state);
   } catch (e) {
     _svcStates[svc.id] = 'down';
-    dot.className   = 'svc-dot down';
-    badge.className = 'svc-badge down';
-    card.className  = 'svc-card down';
-    badge.textContent = e.message === 'timeout' ? 'TIMEOUT' : 'DOWN';
+    if (dot)   dot.className  = 'svc-dot down';
+    if (card)  card.className = 'svc-card down';
+    if (badge) { badge.className = 'svc-badge down'; badge.textContent = e.message === 'timeout' ? 'TIMEOUT' : 'DOWN'; }
     if (sub) { const pf = SVC_PORTS[svc.id]; sub.textContent = pf ? `:${pf()}` : ''; }
-    if (nbadge) { nbadge.className = 'nav-svc-badge down'; nbadge.textContent = e.message === 'timeout' ? 'timeout' : 'offline'; }
+    if (nbadge) { nbadge.className = 'nav-svc-badge warn'; nbadge.textContent = 'offline'; }
     if (nlink)  { nlink.classList.remove('enabled'); }
     updatePower(svc.id, 'down');
   }
@@ -1447,36 +1442,8 @@ function setBar(id, pct, amber = 70, red = 90) {
 // history needed). One ring buffer per metric; coloured by the latest value.
 const SPARK_MAX = 30;                 // ~ last 30 polls (≈15 min at 30s)
 const _spark = { cpu: [], temp: [] };
-function pushSpark(key, v, amber, red) {
-  if (v == null) return;
-  const a = _spark[key];
-  a.push(v);
-  if (a.length > SPARK_MAX) a.shift();
-  const cv = document.getElementById('spark-' + key);
-  if (!cv) return;
-  const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
-  ctx.clearRect(0, 0, w, h);
-  if (a.length < 2) return;
-  // CPU is a fixed 0-100 scale; temp auto-scales to its own range.
-  let lo, hi;
-  if (key === 'cpu') { lo = 0; hi = 100; }
-  else { lo = Math.min(...a); hi = Math.max(...a); if (hi - lo < 5) hi = lo + 5; }
-  const span = hi - lo || 1;
-  ctx.beginPath();
-  a.forEach((val, i) => {
-    const x = 1 + (i / (a.length - 1)) * (w - 2);
-    const y = h - 1 - ((val - lo) / span) * (h - 2);
-    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-  });
-  const css  = getComputedStyle(document.documentElement);
-  const last = a[a.length - 1];
-  let col = css.getPropertyValue('--accent').trim() || '#00c864';
-  if (last >= red)        col = css.getPropertyValue('--red').trim()   || '#e5484d';
-  else if (last >= amber) col = css.getPropertyValue('--amber').trim() || '#ffb454';
-  ctx.strokeStyle = col;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-}
+function pushSpark(key, v, amber, red) {}
+
 function fmtUptime(sec) {
   const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
   if (d) return `${d}d ${h}h`;
@@ -1533,31 +1500,42 @@ async function fetchStats() {
         dot.className     = 'gps-dot ' + s;
         badge.className   = 'gps-card-badge ' + s;
       };
-      if (!g) {
-        applyState('down');
-        badge.textContent = 'OFFLINE';
-        setG('gps-sats', 'n/a'); setHdop(null); _lastGpsAltM = null; renderGpsAlt();
-        setG('gps-lat', 'n/a');  setG('gps-lon', 'n/a');  setG('gps-clock', 'n/a');
-        gpsCard.title = 'No GPS detected (gpsd not reachable)';
-      } else {
-        const mode   = g.mode || 0;
-        const used   = g.used != null ? g.used : 0;
-        const locked = !!g.locked;
-        applyState(mode >= 3 && locked ? 'up' : (mode >= 2 || locked) ? 'warn' : 'down');
-        badge.textContent = mode >= 3 ? '3D FIX' : mode === 2 ? '2D FIX' : 'NO FIX';
-        setG('gps-sats',  g.used != null ? `${used}${g.seen != null ? ' / ' + g.seen : ''}` : 'n/a');
-        setHdop(g.hdop != null ? g.hdop : null);
-        _lastGpsAltM = g.alt_m; renderGpsAlt();
-        setG('gps-lat',   g.lat != null ? g.lat.toFixed(5) : 'n/a');
-        setG('gps-lon',   g.lon != null ? g.lon.toFixed(5) : 'n/a');
-        setG('gps-clock', locked
-          ? (g.offset_s != null ? '✓ ' + (g.offset_s * 1000).toFixed(1) + ' ms' : '✓ locked')
-          : '✗ unlocked');
-        const t = [];
-        if (g.source) t.push(`src ${g.source}`);
-        if (g.seen != null) t.push(`${used}/${g.seen} sats used`);
-        gpsCard.title = t.length ? 'GNSS — ' + t.join(' · ') : 'GNSS receiver + clock status';
+      // Card colour is driven by the GPS FIX: 3D = green · 2D = amber · no fix /
+      // no gpsd = red. The CLOCK *value* is coloured separately by chrony (same
+      // per-value approach as HDOP): red = chrony down · amber = unsynced ·
+      // green = synced.
+      const mode = g ? (g.mode || 0) : -1;
+      const used = (g && g.used != null) ? g.used : 0;
+      applyState(!g ? 'down' : mode >= 3 ? 'up' : mode === 2 ? 'warn' : 'down');
+      badge.textContent = !g ? 'NO GPS'
+        : mode >= 3 ? '3D FIX' : mode === 2 ? '2D FIX' : 'NO FIX';
+      setG('gps-sats', (g && g.used != null) ? `${used}${g.seen != null ? ' / ' + g.seen : ''}` : 'n/a');
+      setHdop(g && g.hdop != null ? g.hdop : null);
+      _lastGpsAltM = g ? g.alt_m : null; renderGpsAlt();
+      setG('gps-lat', (g && g.lat != null) ? g.lat.toFixed(5) : 'n/a');
+      setG('gps-lon', (g && g.lon != null) ? g.lon.toFixed(5) : 'n/a');
+
+      // Clock value — text + colour by chrony state (independent of GPS).
+      const c = d.chrony;
+      const clockEl = document.getElementById('gps-clock');
+      if (clockEl) {
+        if (!c || !c.running) {
+          clockEl.textContent = 'chrony down'; clockEl.style.color = 'var(--red)';
+        } else if (c.queryable === false) {
+          clockEl.textContent = 'running'; clockEl.style.color = 'var(--amber)';
+        } else if (c.synced) {
+          clockEl.textContent = '✓ ' + (c.gps ? 'GPS' : 'NTP')
+            + (c.offset_s != null ? ' ' + (c.offset_s * 1000).toFixed(1) + ' ms' : '');
+          clockEl.style.color = 'var(--accent)';
+        } else {
+          clockEl.textContent = 'unsynced'; clockEl.style.color = 'var(--amber)';
+        }
       }
+
+      const t = [];
+      if (c && c.source) t.push(`clock src ${c.source}`);
+      if (g && g.seen != null) t.push(`${used}/${g.seen} sats`);
+      gpsCard.title = t.length ? 'GNSS / clock — ' + t.join(' · ') : 'GNSS receiver + clock status';
     }
 
 

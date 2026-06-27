@@ -12,8 +12,7 @@ body {
     background: var(--bg); color: var(--text);
     line-height: 1.5;
   }
-  h1 { font-size: var(--fs-title); margin: 0 0 4px; }
-  .sub { color: var(--text-dim); font-size: var(--fs-subtitle); margin: 0 0 20px; }
+
   .panel {
     background: var(--panel); border: 1px solid var(--border);
     border-radius: 10px; padding: 16px; margin-bottom: 16px;
@@ -100,8 +99,11 @@ body {
 </head>
 <body>
 <div class="wrap">
-  <h1>Winlink → YAAC <code>.pos</code> Converter</h1>
-  <p class="sub">Paste a "Winlink 2000 Nearby Mobile Users" report below, choose your options, and download a <code>.pos</code> file ready to import into YAAC. Runs entirely in your browser — no internet required.</p>
+  <header>
+    <a class="home-link" href="/">⌂ HOME</a>
+    <h1>Winlink → YAAC <code>.pos</code> Converter</h1>
+    <p>Paste a "Winlink 2000 Nearby Mobile Users" report below, choose your options, and download a <code>.pos</code> file ready to import into YAAC. Runs entirely in your browser — no internet required.</p>
+  </header>
 
   <div class="tabs">
     <button class="tab active" data-tab="convert">Convert</button>

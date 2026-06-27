@@ -133,7 +133,7 @@ sudo systemctl is-enabled alsa-restore   # should say "enabled"
 | `invert` | `false` |
 
 `gpio_line` is a kernel line offset (verify with `gpiofind GPIO12`); it equals
-BCM 12 on Pi Zero 2W / Pi 3 / Pi 4, but re-check on a Pi 5.
+BCM 12 on Pi 3 / Pi 4, but re-check on a Pi 5.
 
 ---
 
@@ -149,6 +149,62 @@ arecord -D plughw:CARD=audioinjectorpi,DEV=0 -c 2 -f S16_LE -r 48000 -V stereo -
 
 If the RX meter is flat: confirm `Input Mux` is `Mic` (`amixer -c audioinjectorpi
 sget 'Input Mux'`), and that the squelch is actually open.
+
+---
+
+## Troubleshooting — the card doesn't appear
+
+`enable-dra-pi.py` picks its phase from whether the card is present
+(`audioinjector` in `/proc/asound/cards`). If after a reboot it still prints
+*"DRA-Pi sound card not detected"*, or `aplay -l` never lists `audioinjectorpi`,
+work down this ladder — each rung tells you where the chain broke.
+
+```bash
+# 0 · Did the Pi actually reboot after the config phase? The codec only
+#     enumerates at boot, so a fresh uptime is required.
+uptime
+
+# 1 · Is the OASIS block in the ACTIVE config.txt? On Bookworm/Trixie the live
+#     file is /boot/firmware/config.txt — editing /boot/config.txt does nothing.
+grep -nE 'audioinjector|dtparam=audio|vc4-kms|i2s-mmap|i2c_arm' /boot/firmware/config.txt
+
+# 2 · Does the overlay binary exist for THIS kernel? No .dtbo = card can't load.
+ls /boot/firmware/overlays/ | grep -i audioinjector
+
+# 3 · Did the overlay load and the WM8731 probe cleanly? (the decisive one)
+sudo dmesg | grep -iE 'wm8731|audioinjector|asoc|i2s|simple-card' | tail -40
+
+# 4 · Is the WM8731 answering on its I²C control bus? Expect 1a (sometimes 1b).
+sudo apt-get install -y i2c-tools   # if i2cdetect is missing
+sudo i2cdetect -y 1
+
+# 5 · What does ALSA actually see now?
+cat /proc/asound/cards ; echo '---' ; aplay -l ; arecord -l
+```
+
+### Reading the results
+
+| What you see | Likely cause | Fix |
+|---|---|---|
+| Step 1 prints nothing / no OASIS block | edited the wrong file, or the script wrote `/boot/config.txt` while the Pi boots `/boot/firmware/config.txt` | re-run `python3 scripts/enable-dra-pi.py --config-only`; confirm it reports `Boot config: /boot/firmware/config.txt`; **reboot** |
+| Step 1 still shows an active `dtparam=audio=on` | on-board audio is holding the I²S bus | make sure that line is commented and `dtparam=audio=off` is present (the script does this); reboot |
+| Step 2 lists no `audioinjector*.dtbo` | overlay not shipped on this kernel/image | `sudo apt update && sudo apt full-upgrade` to refresh `linux-image`/overlays, or install the AudioInjector overlay manually (see Reference); reboot |
+| Step 3 shows `wm8731 1-001a: Failed to issue reset: -110` then `probe … failed with error -110` and `deferred probe pending` | overlay loaded and the codec device exists, but its **I²C control write timed out** (`-110` = `ETIMEDOUT`) — contact or I²C clock-stretching, **not** config. The `supply … dummy regulator` lines above it are normal | 1) power off and **reseat** the HAT on all 40 pins (SDA/SCL = pins 3/5; remove a heatsink that lifts the board). 2) still failing → slow the bus: add `dtparam=i2c_arm_baudrate=50000` (then `10000`) to the OASIS block, reboot. 3) on a **Pi 5** the I²C lives on RP1 and may need a different bus/overlay — check `cat /proc/device-tree/model` |
+| Step 3 shows `wm8731 … -ENODEV` / `-EREMOTEIO`, or nothing at all | codec not responding — seating/power, or I²C off | power off; reseat the HAT firmly on all 40 pins (remove the SoC heatsink if it fouls the board); confirm `dtparam=i2c_arm=on`; reboot |
+| Step 4 shows `--` everywhere (no `1a`) | the WM8731 isn't on the bus — hardware/seating, or I²C disabled | reseat the board; verify `dtparam=i2c_arm=on`. A blank grid here is almost always physical contact, not software |
+| Step 4 shows `UU` at `1a` | a driver already claimed the codec — **this is good** | proceed; the card should show in step 5 |
+| Step 5 lists `audioinjectorpi` | it's working — the earlier "not detected" was a stale check | run `python3 scripts/enable-dra-pi.py --mixer-only` to apply the RX/TX routing |
+
+### Still nothing?
+
+- **Confirm the board revision / overlay.** This doc targets the **REV2** WM8731
+  board using `dtoverlay=audioinjector-wm8731-audio`. The USB `CM108` DRA models
+  do **not** use this overlay at all — they enumerate as a USB sound card with no
+  `config.txt` change. Check which board you actually have.
+- **Rule out a heatsink or standoff shorting/lifting the header** — a classic for
+  press-on HATs.
+- **Capture the full overlay + audio boot view** when asking for help:
+  `sudo dmesg | grep -i overlay` and `sudo dmesg | grep -iE 'asoc|snd'`.
 
 ---
 

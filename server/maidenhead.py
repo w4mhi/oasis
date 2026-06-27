@@ -7,7 +7,7 @@ The Maidenhead Locator System divides the globe into a hierarchy of
 rectangles. A 6-character locator (e.g. "EM12kx") is precise enough for
 amateur-radio use and is what this project returns.
 
-No external libraries required -- this runs fine on a Pi Zero 2 W.
+No external libraries required -- this runs fine on a Raspberry Pi.
 """
 
 

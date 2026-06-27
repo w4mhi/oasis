@@ -7,7 +7,7 @@ Off-grid Flask web server for OASIS - Off-grid Amateur Station Information Suite
 Serves the main index.html and all suite static files at the root.
 The FCC amateur-radio call-sign lookup is available at /lookup.
 
-Designed to run on a Raspberry Pi Zero 2 W with no internet connection.
+Designed to run on a Raspberry Pi with no internet connection.
 All FCC data is served from local flat files (EN.dat + EN.idx + zipcodes.csv);
 no database engine is involved.
 
@@ -164,6 +164,49 @@ def api_lookup_prefix():
         return jsonify({"ok": False, "error": str(exc)}), 503
 
     return jsonify({"ok": True, "prefix": prefix.upper(), "count": len(results), "results": results})
+
+
+@app.route("/api/lookup/name")
+def api_lookup_name():
+    """
+    Search FCC licenses by last name (required) and optional first name prefix.
+    Query: ?last=SMITH  or  ?last=SMITH&first=JOHN
+    Returns up to 50 active-license records sorted by last name then first name.
+    Requires EN_name.idx (built by setup-fcc-database.py).
+    """
+    last  = (request.args.get("last")  or "").strip()
+    first = (request.args.get("first") or "").strip()
+    if not last:
+        return jsonify({"ok": False, "error": "Please enter a last name."}), 400
+    if len(last) < 2:
+        return jsonify({"ok": False, "error": "Last name must be at least 2 characters."}), 400
+    try:
+        results = lookup.lookup_by_name(last, first or None, zip_table=ZIP_TABLE)
+    except FileNotFoundError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 503
+    return jsonify({"ok": True, "count": len(results), "results": results,
+                    "query": {"last": last.upper(), "first": first.upper() or None}})
+
+
+@app.route("/api/lookup/grid")
+def api_lookup_grid():
+    """
+    Search FCC licenses by Maidenhead grid square prefix.
+    Query: ?grid=CN87  (2, 4, or 6 characters)
+    Returns up to 100 active-license records for that grid area.
+    Requires EN_grid.idx (built by setup-fcc-database.py after zipcodes.csv exists).
+    """
+    grid = (request.args.get("grid") or "").strip()
+    if not grid:
+        return jsonify({"ok": False, "error": "Please enter a grid square (e.g. CN87)."}), 400
+    if len(grid) < 2:
+        return jsonify({"ok": False, "error": "Grid prefix must be at least 2 characters."}), 400
+    try:
+        results = lookup.lookup_by_grid(grid, zip_table=ZIP_TABLE)
+    except FileNotFoundError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 503
+    return jsonify({"ok": True, "count": len(results), "results": results,
+                    "query": {"grid": grid.upper()}})
 
 
 @app.route("/api/browse")
@@ -341,6 +384,8 @@ def health():
         "index_present": index_present,
         "zip_entries": len(ZIP_TABLE),
         "callsign_count": callsign_count,
+        "name_index_present": os.path.exists(lookup.NAME_IDX_PATH),
+        "grid_index_present": os.path.exists(lookup.GRID_IDX_PATH),
     })
 
 
@@ -408,13 +453,13 @@ def api_health_binary():
 # so the status check can never run systemctl against an arbitrary unit name.
 _OASIS_SERVICES = {
     "graywolf", "graywolf-api", "pat", "kiwix", "webssh", "aprs-sdr-feed",
-    "openwebrx", "oasis",
+    "openwebrx", "gpsd", "oasis",
 }
 
 # Units the dashboard may start/stop/restart. Everything in _OASIS_SERVICES
-# EXCEPT "oasis" itself — stopping the web server would kill the dashboard with
-# no way to bring it back from the browser.
-_CONTROLLABLE_SERVICES = _OASIS_SERVICES - {"oasis"}
+# EXCEPT the web server itself (stopping it kills the dashboard) and gpsd (time
+# infrastructure — status-only, no power button).
+_CONTROLLABLE_SERVICES = _OASIS_SERVICES - {"oasis", "gpsd"}
 _SERVICE_ACTIONS = {"start", "stop", "restart"}
 
 # Hardware-exclusivity: starting the key stops the listed services first, since
@@ -466,6 +511,21 @@ def api_health_service():
 
     active  = _q("is-active")     # active | inactive | failed | activating | ""
     enabled = _q("is-enabled")    # enabled | disabled | static | "" (not installed)
+
+    # gpsd is socket-activated: gpsd.service is only "active" while a client is
+    # connected and goes idle otherwise, but it's available whenever gpsd.socket
+    # is listening. Treat a live socket as active so the card isn't falsely down.
+    if name == "gpsd" and active != "active":
+        try:
+            sock = subprocess.run(["systemctl", "is-active", "gpsd.socket"],
+                                  capture_output=True, text=True, timeout=5).stdout.strip()
+            if sock == "active":
+                active = "active"
+                if not enabled:
+                    enabled = "enabled"
+        except Exception:
+            pass
+
     return jsonify({
         "ok":        active == "active",
         "service":   name,
@@ -584,6 +644,38 @@ def api_health_zim():
                             "names": [os.path.splitext(f)[0] for f in sorted(zims)]})
     return jsonify({"ok": True, "count": 0, "dir": candidates[0],
                     "total_gb": 0, "names": []})
+
+
+@app.route("/api/health/rtc")
+def api_health_rtc():
+    """Hardware-RTC status from sysfs (no sudo): presence, driver name, whether
+    it set the system clock at boot (hctosys), and drift vs the system clock.
+    The Witty Pi 3's DS3231 appears here once enable-rtc.py + a reboot load it."""
+    import sys as _sys
+    base = "/sys/class/rtc/rtc0"
+    if _sys.platform != "linux" or not os.path.isdir(base):
+        return jsonify({"ok": True, "present": False})
+
+    def _read(name):
+        try:
+            with open(os.path.join(base, name), encoding="utf-8") as fh:
+                return fh.read().strip()
+        except OSError:
+            return ""
+
+    drift = None
+    date_s, time_s = _read("date"), _read("time")   # sysfs RTC date/time are UTC
+    if date_s and time_s:
+        try:
+            import calendar
+            import datetime as _dt
+            t = _dt.datetime.strptime(f"{date_s} {time_s}", "%Y-%m-%d %H:%M:%S")
+            drift = round(time.time() - calendar.timegm(t.timetuple()), 1)
+        except (ValueError, OverflowError):
+            pass
+
+    return jsonify({"ok": True, "present": True, "name": _read("name"),
+                    "hctosys": _read("hctosys") == "1", "drift_s": drift})
 
 
 # Fixed config artifacts written by the install/enable scripts. Keys map to
@@ -854,36 +946,57 @@ def _gps_info():
     return info or {"mode": 0}
 
 
-def _chrony_gps():
-    """chrony's GPS lock + clock offset via `chronyc -c tracking` (CSV). {} if
-    unavailable. Field 1 = reference name ('GPS' when locked to the GPS refclock),
-    field 4 = system-time offset in seconds."""
-    try:
-        out = subprocess.run(["chronyc", "-c", "tracking"],
-                             capture_output=True, text=True, timeout=3)
-    except (FileNotFoundError, OSError, subprocess.SubprocessError):
-        return {}
-    if out.returncode != 0:
-        return {}
-    f = out.stdout.strip().split(",")
+def _chrony_state():
+    """Clock state from chrony — INDEPENDENT of GPS (chrony runs regardless and
+    may sync from NTP or the RTC).
+
+    `running` comes from systemd (authoritative, needs no privilege). Sync detail
+    comes from `chronyc -c tracking` *when queryable* — the server user often
+    can't reach chronyd's command socket, so we also try forcing the localhost
+    UDP path, and degrade to {running, queryable:False} if neither works.
+    CSV: field 1 = reference name ('GPS' for the refclock, else an NTP host),
+    field 4 = system-time offset (s), last field = leap status."""
+    active = ""
+    for unit in ("chrony", "chronyd"):
+        try:
+            active = subprocess.run(["systemctl", "is-active", unit],
+                                   capture_output=True, text=True, timeout=5).stdout.strip()
+        except (FileNotFoundError, OSError, subprocess.SubprocessError):
+            active = ""
+        if active == "active":
+            break
+    if active != "active":
+        return {"running": False}
+
+    out = None
+    for cmd in (["chronyc", "-c", "tracking"],
+                ["chronyc", "-h", "127.0.0.1", "-c", "tracking"]):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+        except (FileNotFoundError, OSError, subprocess.SubprocessError):
+            continue
+        if r.returncode == 0 and r.stdout.strip():
+            out = r.stdout.strip()
+            break
+    if out is None:
+        return {"running": True, "queryable": False}   # daemon up, can't read detail
+
+    f = out.split(",")
     if len(f) < 5:
-        return {}
-    res = {"source": f[1], "locked": "GPS" in f[1].upper()}
+        return {"running": True, "queryable": False}
+    leap = f[-1].strip()
+    res = {
+        "running":   True,
+        "queryable": True,
+        "synced":    leap in ("Normal", "Insert second", "Delete second"),
+        "source":    f[1],
+        "gps":       "GPS" in f[1].upper(),
+    }
     try:
         res["offset_s"] = float(f[4])
     except ValueError:
         pass
     return res
-
-
-def _gps_sample():
-    """Combined GPS fix + chrony time-lock for the dashboard GPS/Time widget.
-    None when gpsd is unreachable (widget hides)."""
-    g = _gps_info()
-    if g is None:
-        return None
-    g.update(_chrony_gps())
-    return g
 
 
 # ── Background sampler ─────────────────────────────────────────────────────────
@@ -895,14 +1008,15 @@ def _gps_sample():
 _CPU_PCT  = None  # most recent rolling CPU%; None until the first sample lands
 _THROTTLE = None  # cached _pi_throttled(); None on non-Pi
 _NET      = None  # cached _wifi_info();    None when unavailable
-_GPS      = None  # cached _gps_sample();   None when gpsd unreachable
+_GPS      = None  # cached _gps_info();    None when gpsd unreachable
+_CHRONY   = None  # cached _chrony_state(); clock state, independent of GPS
 
 def _sampler():
     try:
         import psutil
     except ImportError:
         psutil = None
-    global _CPU_PCT, _THROTTLE, _NET, _GPS
+    global _CPU_PCT, _THROTTLE, _NET, _GPS, _CHRONY
     if psutil:
         psutil.cpu_percent(interval=None)          # prime the baseline
     i = 0
@@ -914,7 +1028,8 @@ def _sampler():
         if i % 5 == 0:                              # refresh ~every 10s
             _THROTTLE = _pi_throttled()
             _NET      = _wifi_info()
-            _GPS      = _gps_sample()
+            _GPS      = _gps_info()
+            _CHRONY   = _chrony_state()
         i += 1
 
 threading.Thread(target=_sampler, name="oasis-sampler", daemon=True).start()
@@ -1032,6 +1147,7 @@ def api_system():
         "throttle":    _THROTTLE,
         "net":         _NET,
         "gps":         _GPS,
+        "chrony":      _CHRONY,
     })
 
 

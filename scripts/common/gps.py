@@ -134,7 +134,7 @@ def restart_services():
 def verify():
     gpsd_ok = _run(["systemctl", "is-active", "--quiet", "gpsd"], check=False).returncode == 0
     _ok("gpsd active.") if gpsd_ok else _warn("gpsd is not active.")
-    src = _run(["chronyc", "sources"], check=False, capture_output=True)
+    src = _run(["chronyc", "sources"], check=False, capture_output=True, text=True)
     out = getattr(src, "stdout", "") or ""
     if "GPS" in out:
         _ok("chrony lists the GPS refclock.")

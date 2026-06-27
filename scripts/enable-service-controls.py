@@ -100,7 +100,7 @@ def disable():
 def status():
     present = os.path.exists(SUDOERS_PATH)
     _info(f"sudoers file: {'present' if present else 'absent'}  ({SUDOERS_PATH})")
-    r = _run(["sudo", "-n", "-l"], check=False, capture_output=True)
+    r = _run(["sudo", "-n", "-l"], check=False, capture_output=True, text=True)
     if r.returncode == 0 and "OASIS_SVC" in (getattr(r, "stdout", "") or ""):
         _ok("sudo grants the OASIS service commands without a password.")
     else:

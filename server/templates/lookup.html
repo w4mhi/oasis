@@ -6,18 +6,48 @@
 <title>FCC Amateur Radio Lookup</title>
 <link rel="stylesheet" href="/css/common.css">
 <style>
+/* ── Mode tabs ─────────────────────────────────────────────────────── */
+.mode-tabs {
+  display: flex;
+  gap: .4rem;
+  margin-bottom: .75rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: .4rem;
+}
+.mode-tab {
+  padding: .25rem .85rem;
+  border: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.mode-tab:hover  { color: var(--text); border-color: var(--accent-dim); }
+.mode-tab.active { background: var(--panel); color: var(--accent); border-color: var(--accent); }
+
+/* ── Search form areas ─────────────────────────────────────────────── */
+.search-panel { display: none; }
+.search-panel.active { display: block; }
 .search-row {
   display: flex;
   gap: .5rem;
   margin-top: .4rem;
+  flex-wrap: wrap;
 }
-.search-row input[type="text"] {
+.search-row input[type="text"], .search-row input[type="search"] {
   flex: 1;
-  letter-spacing: .12em;
+  min-width: 140px;
+  letter-spacing: .1em;
   text-transform: uppercase;
 }
+.search-row input#fn { text-transform: uppercase; letter-spacing: .08em; }
 
-/* result card */
+/* ── Result card (single callsign) ─────────────────────────────────── */
 .result-card {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -59,6 +89,51 @@
   padding: .15rem 0 .25rem;
 }
 
+/* ── Multi-result list (name / grid search) ────────────────────────── */
+.result-list-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+  animation: fadein .2s ease;
+  margin-top: .75rem;
+}
+.result-list-hdr {
+  font-size: var(--fs-small);
+  color: var(--text-dim);
+  padding: .45rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+}
+.result-list-hdr strong { color: var(--accent); }
+.result-row-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .35rem 1rem;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background .1s;
+}
+.result-row-link:last-child { border-bottom: none; }
+.result-row-link:hover { background: var(--panel-2); }
+.rrl-call { font-size: var(--fs-subtitle); letter-spacing: .1em; color: var(--amber); font-weight: 700; flex-shrink: 0; }
+.rrl-name { font-size: var(--fs-base); color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rrl-loc  { font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; flex-shrink: 0; }
+.rrl-grid { font-size: var(--fs-small); color: var(--accent); white-space: nowrap; flex-shrink: 0; }
+
+.back-link {
+  display: inline-block;
+  font-size: var(--fs-small);
+  color: var(--blue);
+  cursor: pointer;
+  margin-top: .5rem;
+  text-decoration: underline;
+}
+.back-link:hover { color: var(--accent); }
+
+/* ── Status/error message ──────────────────────────────────────────── */
 .msg {
   border: 1px dashed var(--border);
   border-radius: 8px;
@@ -79,16 +154,54 @@
   <header>
     <a class="home-link" href="/">⌂ HOME</a>
     <h1>FCC Amateur Radio Lookup</h1>
-    <p>Exact call-sign or prefix search (e.g. <code style="color:var(--amber-dim)">W4*</code>) &middot; offline &middot; no internet required</p>
+    <p>Search by call sign, name, or grid square &middot; offline &middot; no internet required</p>
   </header>
 
   <div class="sec">
-    <span class="sec-lbl">Enter Call Sign</span>
-    <div class="search-row">
-      <input id="cs" type="text" autocomplete="off" autocapitalize="characters"
-             spellcheck="false" placeholder="e.g. N0CALL or W4*" maxlength="12"
-             inputmode="text">
-      <button id="go" class="sbtn primary" type="button">Look Up</button>
+    <span class="sec-lbl">Search Mode</span>
+    <div class="mode-tabs" role="tablist">
+      <button class="mode-tab active" id="tab-cs"   onclick="setMode('cs')"   role="tab">Call Sign</button>
+      <button class="mode-tab"        id="tab-name" onclick="setMode('name')" role="tab">Name</button>
+      <button class="mode-tab"        id="tab-grid" onclick="setMode('grid')" role="tab">Grid</button>
+    </div>
+
+    <!-- Call Sign panel -->
+    <div class="search-panel active" id="panel-cs">
+      <div class="search-row">
+        <input id="cs" type="text" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" placeholder="e.g. N0CALL or W4*" maxlength="12"
+               inputmode="text">
+        <button id="go-cs" class="sbtn primary" type="button">Look Up</button>
+      </div>
+      <p style="font-size:var(--fs-small);color:var(--text-dim);margin:.3rem 0 0">
+        Exact match or prefix wildcard (e.g. <code style="color:var(--amber-dim)">W4*</code>)
+      </p>
+    </div>
+
+    <!-- Name panel -->
+    <div class="search-panel" id="panel-name">
+      <div class="search-row">
+        <input id="ln" type="text" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" placeholder="Last name (required)" maxlength="40">
+        <input id="fn" type="text" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" placeholder="First name (optional)" maxlength="30">
+        <button id="go-name" class="sbtn primary" type="button">Search</button>
+      </div>
+      <p style="font-size:var(--fs-small);color:var(--text-dim);margin:.3rem 0 0">
+        Prefix match &middot; last name required &middot; up to 50 results
+      </p>
+    </div>
+
+    <!-- Grid panel -->
+    <div class="search-panel" id="panel-grid">
+      <div class="search-row">
+        <input id="gq" type="text" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" placeholder="e.g. CN87 or CN" maxlength="6">
+        <button id="go-grid" class="sbtn primary" type="button">Search</button>
+      </div>
+      <p style="font-size:var(--fs-small);color:var(--text-dim);margin:.3rem 0 0">
+        2–6 character Maidenhead prefix &middot; up to 100 results &middot; grid derived from ZIP
+      </p>
     </div>
   </div>
 
@@ -96,33 +209,59 @@
 
   <footer style="margin-top:2rem;font-size:var(--fs-small);color:var(--text-dim);text-align:center">
     Data: FCC ULS public access file (<code style="color:var(--amber-dim)">EN.dat</code>) &middot;
-    Grid square derived from ZIP centroid
+    Grid derived from ZIP centroid &middot; Name/Grid search requires re-running setup-fcc-database.py
   </footer>
 </div>
 
 <script>
-  var input  = document.getElementById('cs');
-  var button = document.getElementById('go');
-  var out    = document.getElementById('readout');
+(function() {
+  var out     = document.getElementById('readout');
+  var curMode = 'cs';
+  var lastListResults = null; // stored for back-navigation from a drill-down
 
+  // ── Mode switching ──────────────────────────────────────────────────────
+  window.setMode = function(mode) {
+    curMode = mode;
+    ['cs','name','grid'].forEach(function(m) {
+      document.getElementById('tab-'  + m).classList.toggle('active', m === mode);
+      document.getElementById('panel-' + m).classList.toggle('active', m === mode);
+    });
+    out.innerHTML = '';
+    var focusId = {cs:'cs', name:'ln', grid:'gq'}[mode];
+    var el = document.getElementById(focusId);
+    if (el) el.focus();
+  };
+
+  // ── Helpers ─────────────────────────────────────────────────────────────
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
-
   function valOrEmpty(v) {
-    if (v && String(v).trim() !== '') return '<span class="result-val">' + esc(v) + '</span>';
-    return '<span class="result-val empty">not listed</span>';
+    return (v && String(v).trim())
+      ? '<span class="result-val">' + esc(v) + '</span>'
+      : '<span class="result-val empty">not listed</span>';
+  }
+  function msg(text, cls) {
+    out.innerHTML = '<div class="msg ' + cls + '">' + esc(text) + '</div>';
+  }
+  function setBtn(id, disabled) {
+    var b = document.getElementById(id); if (b) b.disabled = disabled;
   }
 
-  function showResult(r) {
+  // ── Single callsign result card ─────────────────────────────────────────
+  function showSingle(r, backFn) {
     var gridHtml = r.grid
       ? '<span class="result-val grid">' + esc(r.grid) + '</span>'
       : '<span class="result-val empty">unavailable for ZIP</span>';
     var gridNote = r.grid
-      ? '<div class="grid-note">Derived from ZIP ' + esc(r.zip || '') + ' centroid — may be several miles from actual QTH</div>'
+      ? '<div class="grid-note">Derived from ZIP ' + esc(r.zip||'') + ' centroid — may be several miles from actual QTH</div>'
+      : '';
+    var back = backFn
+      ? '<span class="back-link" id="back-btn">&#8592; Back to results</span>'
       : '';
     out.innerHTML =
+      back +
       '<div class="result-card">' +
         '<div class="result-call">' + esc(r.callsign) + '</div>' +
         '<div class="result-rows">' +
@@ -133,59 +272,155 @@
           gridNote +
         '</div>' +
       '</div>';
+    if (backFn) {
+      document.getElementById('back-btn').addEventListener('click', backFn);
+    }
   }
 
-  function showMessage(text, cls) {
-    out.innerHTML = '<div class="msg ' + cls + '">' + esc(text) + '</div>';
-  }
-
-  function showResults(results, query) {
+  // ── Multi-result list (name / grid / callsign prefix) ──────────────────
+  function showList(results, headerHtml, backFn) {
     if (!results.length) {
-      showMessage('No licenses found matching prefix ' + esc(query) + '.', 'notfound');
+      msg('No licenses found.', 'notfound');
       return;
     }
     var rows = results.map(function(r) {
-      var gridHtml = r.grid
-        ? '<span class="result-val grid">' + esc(r.grid) + '</span>'
-        : '<span class="result-val empty">—</span>';
-      return '<div class="result-card">' +
-        '<div class="result-call">' + esc(r.callsign) + '</div>' +
-        '<div class="result-rows">' +
-          '<div class="result-row"><span class="result-key">Name</span>'  + valOrEmpty(r.name)  + '</div>' +
-          '<div class="result-row"><span class="result-key">City</span>'  + valOrEmpty(r.city)  + '</div>' +
-          '<div class="result-row"><span class="result-key">State</span>' + valOrEmpty(r.state) + '</div>' +
-          '<div class="result-row"><span class="result-key">Grid</span>'  + gridHtml            + '</div>' +
-        '</div></div>';
+      return '<div class="result-row-link" data-cs="' + esc(r.callsign) + '">' +
+        '<span class="rrl-call">' + esc(r.callsign) + '</span>' +
+        '<span class="rrl-name">' + esc(r.name || '—') + '</span>' +
+        '<span class="rrl-loc">'  + esc([r.city, r.state].filter(Boolean).join(', ') || '—') + '</span>' +
+        '<span class="rrl-grid">' + esc(r.grid || '—') + '</span>' +
+      '</div>';
     }).join('');
-    var note = results.length === 50
-      ? '<p style="font-size:var(--fs-small);color:var(--text-dim);margin:.5rem 0 0">Showing first 50 results for <strong>' + esc(query) + '*</strong></p>'
-      : '<p style="font-size:var(--fs-small);color:var(--text-dim);margin:.5rem 0 0">' + results.length + ' result' + (results.length > 1 ? 's' : '') + ' for <strong>' + esc(query) + '*</strong></p>';
-    out.innerHTML = note + rows;
+    var back = backFn
+      ? '<span class="back-link" id="back-btn">&#8592; Back</span>'
+      : '';
+    out.innerHTML =
+      back +
+      '<div class="result-list-card">' +
+        '<div class="result-list-hdr">' + headerHtml + '</div>' +
+        rows +
+      '</div>';
+    if (backFn) document.getElementById('back-btn').addEventListener('click', backFn);
+    out.querySelectorAll('.result-row-link').forEach(function(row) {
+      row.addEventListener('click', function() {
+        var cs = row.getAttribute('data-cs');
+        // Drill into full callsign record — back returns to this list.
+        var savedHtml = out.innerHTML;
+        fetch('/api/lookup?callsign=' + encodeURIComponent(cs))
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (!d.ok || !d.found) { msg('Could not retrieve ' + cs, 'error'); return; }
+            showSingle(d.result, function() { out.innerHTML = savedHtml; reattachList(); });
+          })
+          .catch(function() { msg('Could not reach the local server.', 'error'); });
+      });
+    });
   }
 
-  function doLookup() {
-    var cs = input.value.trim().toUpperCase();
-    if (!cs) { showMessage('Enter a call sign to search.', 'notfound'); return; }
-    button.disabled = true;
-    showMessage('Searching local database\u2026', 'notfound');
+  // Re-attach click handlers after restoring list HTML from back navigation.
+  function reattachList() {
+    out.querySelectorAll('.result-row-link').forEach(function(row) {
+      row.addEventListener('click', function() {
+        var cs = row.getAttribute('data-cs');
+        var savedHtml = out.innerHTML;
+        fetch('/api/lookup?callsign=' + encodeURIComponent(cs))
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (!d.ok || !d.found) { msg('Could not retrieve ' + cs, 'error'); return; }
+            showSingle(d.result, function() { out.innerHTML = savedHtml; reattachList(); });
+          })
+          .catch(function() { msg('Could not reach the local server.', 'error'); });
+      });
+    });
+  }
+
+  // ── Call Sign lookup ────────────────────────────────────────────────────
+  document.getElementById('go-cs').addEventListener('click', doCallsign);
+  document.getElementById('cs').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doCallsign();
+  });
+  function doCallsign() {
+    var cs = (document.getElementById('cs').value || '').trim().toUpperCase();
+    if (!cs) { msg('Enter a call sign to search.', 'notfound'); return; }
+    setBtn('go-cs', true);
+    msg('Searching\u2026', 'notfound');
     fetch('/api/lookup?callsign=' + encodeURIComponent(cs))
-      .then(function(resp) { return resp.json().then(function(d) { return {status: resp.status, d: d}; }); })
-      .then(function(o) {
-        var d = o.d;
-        if (!d.ok) { showMessage(d.error || 'Lookup failed.', 'error'); return; }
-        if (d.prefix) { showResults(d.results, d.query); input.value = ''; input.focus(); return; }
-        if (!d.found) { showMessage('No license found for ' + cs + '.', 'notfound'); input.value = ''; input.focus(); return; }
-        showResult(d.result);
-        input.value = '';
-        input.focus();
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.ok) { msg(d.error || 'Lookup failed.', 'error'); return; }
+        if (d.prefix) {
+          showList(d.results,
+            d.results.length + ' result' + (d.results.length !== 1 ? 's' : '') +
+            ' for prefix <strong>' + esc(d.query) + '*</strong>' +
+            (d.results.length >= 50 ? ' (first 50)' : ''));
+          document.getElementById('cs').value = '';
+          document.getElementById('cs').focus();
+          return;
+        }
+        if (!d.found) { msg('No license found for ' + esc(cs) + '.', 'notfound'); document.getElementById('cs').value=''; document.getElementById('cs').focus(); return; }
+        showSingle(d.result, null);
+        document.getElementById('cs').value = '';
+        document.getElementById('cs').focus();
       })
-      .catch(function() { showMessage('Could not reach the local server.', 'error'); })
-      .finally(function() { button.disabled = false; });
+      .catch(function() { msg('Could not reach the local server.', 'error'); })
+      .finally(function() { setBtn('go-cs', false); });
   }
 
-  button.addEventListener('click', doLookup);
-  input.addEventListener('keydown', function(e) { if (e.key === 'Enter') doLookup(); });
-  input.focus();
+  // ── Name lookup ─────────────────────────────────────────────────────────
+  document.getElementById('go-name').addEventListener('click', doName);
+  ['ln','fn'].forEach(function(id) {
+    document.getElementById(id).addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') doName();
+    });
+  });
+  function doName() {
+    var last  = (document.getElementById('ln').value || '').trim();
+    var first = (document.getElementById('fn').value || '').trim();
+    if (!last) { msg('Enter a last name to search.', 'notfound'); return; }
+    setBtn('go-name', true);
+    msg('Searching\u2026', 'notfound');
+    var url = '/api/lookup/name?last=' + encodeURIComponent(last);
+    if (first) url += '&first=' + encodeURIComponent(first);
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.ok) { msg(d.error || 'Search failed.', 'error'); return; }
+        var qLabel = esc(d.query.last) + (d.query.first ? ', ' + esc(d.query.first) : '');
+        showList(d.results,
+          d.results.length + ' result' + (d.results.length !== 1 ? 's' : '') +
+          ' for <strong>' + qLabel + '</strong>' +
+          (d.results.length >= 50 ? ' (first 50)' : ''));
+      })
+      .catch(function() { msg('Could not reach the local server.', 'error'); })
+      .finally(function() { setBtn('go-name', false); });
+  }
+
+  // ── Grid lookup ─────────────────────────────────────────────────────────
+  document.getElementById('go-grid').addEventListener('click', doGrid);
+  document.getElementById('gq').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doGrid();
+  });
+  function doGrid() {
+    var grid = (document.getElementById('gq').value || '').trim().toUpperCase();
+    if (!grid) { msg('Enter a grid square to search.', 'notfound'); return; }
+    setBtn('go-grid', true);
+    msg('Searching\u2026', 'notfound');
+    fetch('/api/lookup/grid?grid=' + encodeURIComponent(grid))
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.ok) { msg(d.error || 'Search failed.', 'error'); return; }
+        showList(d.results,
+          d.results.length + ' result' + (d.results.length !== 1 ? 's' : '') +
+          ' in grid <strong>' + esc(d.query.grid) + '</strong>' +
+          (d.results.length >= 100 ? ' (first 100)' : ''));
+      })
+      .catch(function() { msg('Could not reach the local server.', 'error'); })
+      .finally(function() { setBtn('go-grid', false); });
+  }
+
+  // Focus the call sign input on load.
+  document.getElementById('cs').focus();
+})();
 </script>
 </body>
 </html>

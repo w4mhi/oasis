@@ -359,6 +359,32 @@ def fcc_build_index(data_dir, server_dir):
     _ok("Active-only filtering: ON (HD.dat used)" if filtered
         else "Active-only filtering: OFF (HD.dat absent — all records indexed)")
 
+    # ── Secondary indexes (name + grid) ──────────────────────────────────────
+    # These are built immediately after the primary index using the same EN.dat
+    # scan. They require zipcodes.csv for the grid index; if it is absent the
+    # grid index is silently skipped (the name index still works).
+    name_idx  = os.path.join(data_dir, "EN_name.idx")
+    grid_idx  = os.path.join(data_dir, "EN_grid.idx")
+    zip_path  = os.path.join(data_dir, "zipcodes.csv")
+
+    start = time.time()
+    try:
+        n = lookup.build_name_index(en_path=en_path, index_path=name_idx, hd_path=hd_path)
+        _ok(f"Name index: {n:,} entries in {time.time()-start:.1f}s")
+    except Exception as exc:
+        _warn(f"Name index build failed: {exc}")
+
+    if os.path.exists(zip_path):
+        start = time.time()
+        try:
+            n = lookup.build_grid_index(en_path=en_path, index_path=grid_idx,
+                                        hd_path=hd_path, zip_path=zip_path)
+            _ok(f"Grid index: {n:,} entries in {time.time()-start:.1f}s")
+        except Exception as exc:
+            _warn(f"Grid index build failed: {exc}")
+    else:
+        _warn("zipcodes.csv not found — grid index skipped (run without --index-only to build it)")
+
 
 def fcc_build_zip_table(data_dir):
     """

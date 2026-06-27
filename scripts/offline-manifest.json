@@ -96,6 +96,23 @@
             "rtl-sdr": "2.0.2-2+b1",
             "libusb-1.0-0": "2:1.0.28-1"
           }
+        },
+        "bookworm": {
+          "arm64": {
+            "rtl-sdr": "0.6.0-4",
+            "libusb-1.0-0": "2:1.0.26-1",
+            "librtlsdr0": "0.6.0-4"
+          },
+          "armhf": {
+            "rtl-sdr": "0.6.0-4",
+            "libusb-1.0-0": "2:1.0.26-1",
+            "librtlsdr0": "0.6.0-4"
+          },
+          "amd64": {
+            "rtl-sdr": "0.6.0-4",
+            "libusb-1.0-0": "2:1.0.26-1",
+            "librtlsdr0": "0.6.0-4"
+          }
         }
       }
     },
@@ -137,6 +154,26 @@
             "tcpdump": "4.99.5-2",
             "libwrap0": "7.6.q-36"
           }
+        },
+        "bookworm": {
+          "arm64": {
+            "socat": "1.7.4.4-2",
+            "tcpdump": "4.99.3-1",
+            "libwrap0": "7.6.q-32",
+            "libpcap0.8": "1.10.3-1"
+          },
+          "armhf": {
+            "socat": "1.7.4.4-2",
+            "tcpdump": "4.99.3-1",
+            "libwrap0": "7.6.q-32",
+            "libpcap0.8": "1.10.3-1"
+          },
+          "amd64": {
+            "socat": "1.7.4.4-2",
+            "tcpdump": "4.99.3-1",
+            "libwrap0": "7.6.q-32",
+            "libpcap0.8": "1.10.3-1"
+          }
         }
       }
     },
@@ -170,6 +207,17 @@
           },
           "amd64": {
             "multimon-ng": "1.3.1+dfsg-1"
+          }
+        },
+        "bookworm": {
+          "arm64": {
+            "multimon-ng": "1.2.0+dfsg-1"
+          },
+          "armhf": {
+            "multimon-ng": "1.2.0+dfsg-1"
+          },
+          "amd64": {
+            "multimon-ng": "1.2.0+dfsg-1"
           }
         }
       }
@@ -281,7 +329,11 @@
       "third_party_repo": {
         "key_url": "https://luarvique.github.io/ppa/openwebrx-plus.gpg",
         "base_url": "https://luarvique.github.io/ppa",
-        "suite_paths": { "bookworm": "bookworm", "trixie": "trixie", "bullseye": "debian" }
+        "suite_paths": {
+          "bookworm": "bookworm",
+          "trixie": "trixie",
+          "bullseye": "debian"
+        }
       },
       "packages": {
         "common": [

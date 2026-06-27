@@ -7,9 +7,10 @@ One-shot setup for the OASIS offline FCC callsign database.
 What this does (in order):
   1. Downloads EN.dat + HD.dat from the FCC (~160 MB total) — skipped if
      EN.dat already exists in the data directory.
-  2. Builds the binary-search index (EN.idx) from those files.
-  3. Downloads and builds the full ZIP→grid table from GeoNames if
-     zipcodes.csv is missing or --full-zip is passed.
+  2. Downloads and builds the ZIP->grid table from GeoNames (zipcodes.csv)
+     if it is missing or --full-zip is passed.
+  3. Builds the binary-search indexes (EN.idx + EN_name.idx + EN_grid.idx).
+     The grid index needs zipcodes.csv, which is why step 2 runs first.
 
 Install source is chosen automatically:
   - If EN.dat already exists, the download is skipped and only the index
@@ -99,30 +100,36 @@ def main():
             _info("Complete ULS file — EN.dat + HD.dat (~160 MB zipped).")
             fcc_download(DATA_DIR)
 
-    _step(2, "Building call-sign index")
-    _info("Reads EN.dat + HD.dat once; writes EN.idx (binary-search index).")
-    _info("On a Pi Zero this may take a couple of minutes.")
-    fcc_build_index(DATA_DIR, SERVER_DIR)
-
+    # Build the ZIP->grid table BEFORE the index. The call-sign index step also
+    # builds the secondary grid index (EN_grid.idx), which requires zipcodes.csv
+    # to exist. If the table were built afterwards, the grid index would be
+    # skipped on a fresh machine and only appear on a second run.
     need_zip = args.full_zip or not os.path.exists(ZIP_CSV)
     if need_zip:
         if not has_internet():
             if os.path.exists(ZIP_CSV):
-                _step(3, "ZIP->grid table")
+                _step(2, "ZIP->grid table")
                 _info("Offline — keeping existing zipcodes.csv.")
             else:
-                _fail(
-                    "No internet access and zipcodes.csv not found.\n"
-                    "     Connect to the internet and re-run to generate it."
+                _step(2, "ZIP->grid table")
+                _warn(
+                    "No internet access and zipcodes.csv not found —\n"
+                    "     the grid index (EN_grid.idx) will be skipped.\n"
+                    "     Re-run online to build it."
                 )
         else:
-            _step(3, "Building ZIP->grid table from GeoNames")
+            _step(2, "Building ZIP->grid table from GeoNames")
             _info("Downloads ~1 MB from GeoNames (CC BY 4.0) and produces")
             _info("a ~40,000-row zipcodes.csv used for Maidenhead grid lookup.")
             fcc_build_zip_table(DATA_DIR)
     else:
-        _step(3, "ZIP->grid table")
+        _step(2, "ZIP->grid table")
         _info("zipcodes.csv already present — skipping (use --full-zip to refresh).")
+
+    _step(3, "Building call-sign index")
+    _info("Reads EN.dat + HD.dat once; writes EN.idx, EN_name.idx, EN_grid.idx.")
+    _info("On a Pi this may take a couple of minutes.")
+    fcc_build_index(DATA_DIR, SERVER_DIR)
 
     print()
     print("  Setup complete.")

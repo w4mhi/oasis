@@ -366,6 +366,31 @@ const CHECKS_OPTIONAL = [
       }
     },
   },
+  {
+    id: 'rtc',
+    name: 'Hardware RTC (Witty Pi 3)',
+    run: async () => {
+      try {
+        const d = await jget('/api/health/rtc');
+        if (!d || !d.present) return { ok: 'warn', badge: 'NOT CONFIGURED',
+          detail: 'No <code>/dev/rtc0</code>. Configure the Witty Pi 3 DS3231 with '
+            + '<code>python3 scripts/enable-rtc.py</code>, then reboot.' };
+        const parts = [];
+        if (d.name) parts.push(`<strong>${d.name}</strong>`);
+        parts.push(d.hctosys ? 'set the clock at boot' : 'present (did NOT set clock at boot)');
+        if (d.drift_s != null) parts.push(`drift ${d.drift_s} s`);
+        const detail = parts.join(' &middot; ') + '.';
+        const bigDrift = d.drift_s != null && Math.abs(d.drift_s) > 5;
+        if (bigDrift) return { ok: 'warn', badge: 'DRIFT',
+          detail: detail + ' Large drift &mdash; once the clock is correct: <code>sudo hwclock -w</code>.' };
+        if (!d.hctosys) return { ok: 'warn', badge: 'CHECK',
+          detail: detail + ' RTC did not set the clock at boot &mdash; check the overlay / reboot.' };
+        return { ok: true, badge: 'OK', detail };
+      } catch (e) {
+        return { ok: false, badge: 'ERROR', detail: 'Could not query the RTC: ' + e.message };
+      }
+    },
+  },
 ];
 
 // ── Render ────────────────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ Download an offline Wikipedia ZIM file for use with kiwix-serve.
 ZIM files are self-contained offline snapshots published by the Kiwix project.
 
 Choose the edition that fits your storage:
-  top-mini      ~316 MB  — 50K best articles, no pictures (Pi Zero 2W default)
+  top-mini      ~316 MB  — 50K best articles, no pictures
   simple-mini   ~447 MB  — Simple English, ~394K articles, no pictures
   simple-nopic  ~937 MB  — Simple English with full details, no pictures
   top-nopic     ~2.1 GB  — 50K best articles with full details, no pictures
@@ -53,7 +53,7 @@ EDITIONS = {
         "label":   "Best of Wikipedia — mini (no pics)",
         "size":    "~316 MB",
         "desc":    "50K best articles, no pictures, no detailed sections."
-                   " Best choice for Pi Zero 2W with a 32 GB SD card.",
+                   " Best choice for a small SD card (32 GB+).",
     },
     "simple-mini": {
         "name":    "wikipedia_en_simple_all",
@@ -328,7 +328,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Editions (sizes reflect 2026 Kiwix catalog):\n"
-            "  top-mini      ~316 MB   50K best articles, no pictures (Pi Zero 2W default)\n"
+            "  top-mini      ~316 MB   50K best articles, no pictures\n"
             "  simple-mini   ~447 MB   Simple English, ~394K articles, no pictures\n"
             "  simple-nopic  ~937 MB   Simple English with full details, no pictures\n"
             "  top-nopic     ~2.1 GB   50K best articles with full details, no pictures\n"

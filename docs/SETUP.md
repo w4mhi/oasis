@@ -4,8 +4,63 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 
 ---
 
+## Before you begin (Raspberry Pi)
+
+If you are setting up a **fresh Raspberry Pi** for the first time, complete these steps before anything else. If you already have a Pi booted with SSH access and `git` installed, skip to [Guided setup](#guided-setup-menu).
+
+### 1. Flash Raspberry Pi OS
+
+Download and install **[Raspberry Pi Imager](https://www.raspberrypi.com/software/)** on your laptop/desktop. Use it to write **Raspberry Pi OS Lite (64-bit)** to a microSD card (32 GB minimum).
+
+Before clicking **Write**, open **Advanced Options** (gear icon ⚙️ or Ctrl+Shift+X) and:
+- Set a **hostname** (e.g. `oasis`)
+- Set a **username and password** (use your callsign or anything you'll remember — it does **not** have to be `pi`)
+- Enable **SSH** (use password authentication)
+- Enter your **Wi-Fi SSID and password** so the Pi connects on first boot
+
+> 💡 Doing this in Imager's Advanced Options means the Pi is headless-ready on first boot — no monitor or keyboard needed.
+
+### 2. Find the Pi on your network
+
+Insert the card, power on the Pi, wait ~60 seconds, then from your laptop:
+
+```bash
+ssh <username>@oasis.local        # replace <username> with what you set in Imager
+# e.g.  ssh w4mhi@oasis.local
+```
+
+If `.local` doesn't resolve, find the IP address:
+```bash
+# from a Mac/Linux laptop on the same network:
+arp -a | grep -i raspberry
+# or from the Pi itself once logged in:
+hostname -I
+```
+
+Write down the IP address — you'll need it to open OASIS from your phone/tablet (`http://<ip>:8083`).
+
+### 3. Install git
+
+Git is not installed on Raspberry Pi OS Lite by default:
+
+```bash
+sudo apt update && sudo apt install -y git
+```
+
+### 4. Clone OASIS
+
+```bash
+git clone https://github.com/W4MHI/oasis-emcomm
+cd oasis-emcomm
+```
+
+Now continue to [Guided setup](#guided-setup-menu).
+
+---
+
 ## Contents
 
+- [Before you begin (Raspberry Pi)](#before-you-begin-raspberry-pi)
 - [Project structure](#project-structure)
 - [Guided setup (menu)](#guided-setup-menu)
 - [Server setup](#server-setup)
@@ -96,12 +151,17 @@ python3 scripts/setup-oasis-offline.py --features graywolf,winlink  # non-intera
 - **Sections:** *Server* (server, auto-start, GrayWolf, Winlink, Kiwix, Web SSH),
   *Audio* (RTL-SDR, the APRS feed, DRA-Pi-Zero), *Content / Data* (FCC, Wikipedia).
   Software/services are pre-checked; large data downloads are opt-in.
-- **Privilege model:** runs as you and primes `sudo` once, so each step keeps its
-  correct context (e.g. `setup-server.py` builds `.venv` as you, not root). It
-  refuses to run under `sudo`.
+- **Privilege model:** runs as your normal user and caches `sudo` once at the start
+  (so your password isn't asked again mid-install). Each delegated script keeps the
+  right context — e.g. `.venv` is created as you, not root. The script refuses to
+  run under `sudo`.
 - **Idempotent:** every delegated script is version-aware, so re-run the menu
   anytime to add a feature. Steps that need a reboot (DRA-Pi) are flagged and the
   menu offers to reboot at the end.
+- **What to select for a basic net station:** tick **Server** and **FCC Database** for
+  the dashboard, callsign lookup, and offline maps. Add **GrayWolf** for APRS,
+  **Winlink** for email over radio, **Kiwix** for offline Wikipedia. Everything else
+  is optional.
 
 The sections below document each feature on its own, for when you want to run or
 re-run a single one.
@@ -110,10 +170,10 @@ re-run a single one.
 
 ## Server setup
 
-`scripts/setup-server.py` creates `.venv` and installs all server dependencies — **fully offline** on every supported platform.
+`scripts/setup-server.py` creates a **Python virtual environment** (`.venv`) in the project folder and installs all server dependencies into it — **fully offline** on every supported platform. A virtual environment is an isolated Python installation that keeps OASIS's packages separate from the system Python; you don't need to know the internals, just know that `setup-server.py` creates it for you.
 
 ```bash
-python3 scripts/setup-server.py           # install everything from bundled wheels
+python3 scripts/setup-server.py           # create .venv and install from bundled wheels
 python3 scripts/setup-server.py --check   # report what's installed / missing
 ```
 
@@ -121,17 +181,32 @@ Flask, gunicorn, MarkupSafe, and psutil are all vendored in `server/wheels/` as 
 
 The wheel set is kept current by running `scripts/create-oasis-offline.py` (incremental — checks PyPI for newer compatible packages, downloads them to a temp directory, and atomically swaps in the fresh set only if something changed). Run `--check` to confirm every platform resolves offline without downloading anything.
 
-**To run the server:**
+**To start the server manually (test / development):**
 
 ```bash
-# Development
-source .venv/bin/activate
-python3 server/app.py
+./start.sh
+```
 
-# Production (recommended for always-on Pi)
+You should see output like:
+```
+[INFO] Listening at: http://0.0.0.0:8083
+```
+Open `http://localhost:8083` in a browser (or `http://<pi-ip>:8083` from another device). If the dashboard loads, the server is working.
+
+> 💡 `./start.sh` is a convenience wrapper — it activates the `.venv` and starts gunicorn for you. You don't need to activate `.venv` yourself.
+
+**To stop the server:** press `Ctrl+C` in the terminal where `./start.sh` is running, or `sudo fuser -k 8083/tcp` from any terminal.
+
+<details><summary>What <code>./start.sh</code> does under the hood</summary>
+
+```bash
 source .venv/bin/activate
 gunicorn --workers 1 --bind 0.0.0.0:8083 server.app:app
 ```
+
+`source .venv/bin/activate` loads the virtual environment so Python finds Flask and gunicorn. `gunicorn` is a production-grade web server (more stable than the Flask development server). You never need to run these commands manually — `./start.sh` handles it.
+
+</details>
 
 **systemd auto-start (start on boot):**
 
@@ -156,11 +231,18 @@ python3 scripts/enable-autostart-pi.py --disable
 
 The script creates `/etc/systemd/system/oasis.service` and runs `systemctl enable --now oasis`.
 
-> ⚠️ **Port conflict on first run:** if you ran `./start.sh` manually before enabling autostart, gunicorn already holds port 8083. Kill it first (`sudo fuser -k 8083/tcp`) or simply reboot — the systemd service will start cleanly on the next boot.
+> ⚠️ **Port conflict:** if `./start.sh` was already running when you enabled auto-start,
+> gunicorn holds port 8083. **The easiest fix is to reboot** — the systemd service takes
+> over cleanly. Alternatively: `sudo fuser -k 8083/tcp` (kills whatever holds that port),
+> then `sudo systemctl start oasis`.
+
+> ℹ️ **Auto-start vs `./start.sh`:** once auto-start is enabled, the server starts on
+> every boot without you doing anything. You do **not** need to run `./start.sh` anymore.
+> Run `./start.sh` only if you want to test the server manually without enabling auto-start.
 
 <details><summary>Manual service file (if you prefer not to use the script)</summary>
 
-Create `/etc/systemd/system/oasis.service`:
+Create `/etc/systemd/system/oasis.service`, replacing `YOUR_USERNAME` with your actual login name (run `whoami` if unsure):
 
 ```ini
 [Unit]
@@ -168,9 +250,9 @@ Description=OASIS suite server
 After=network.target
 
 [Service]
-User=pi
-WorkingDirectory=/home/pi/oasis-emcomm
-ExecStart=/home/pi/oasis-emcomm/.venv/bin/gunicorn --workers 1 --bind 0.0.0.0:8083 server.app:app
+User=YOUR_USERNAME
+WorkingDirectory=/home/YOUR_USERNAME/oasis-emcomm
+ExecStart=/home/YOUR_USERNAME/oasis-emcomm/.venv/bin/gunicorn --workers 1 --bind 0.0.0.0:8083 server.app:app
 Restart=on-failure
 
 [Install]
@@ -188,39 +270,55 @@ sudo systemctl enable --now oasis
 | Route | Description |
 |---|---|
 | `GET /` | Dashboard |
-| `GET /lookup` | FCC callsign lookup page |
-| `GET /api/lookup?callsign=W7XYZ` | JSON callsign result |
+| `GET /lookup` | FCC callsign lookup page (callsign · name · grid tabs) |
+| `GET /api/lookup?callsign=W7XYZ` | JSON callsign result (exact or `W7*` prefix) |
+| `GET /api/lookup/name?last=SMITH&first=JOHN` | JSON name search (up to 50 results) |
+| `GET /api/lookup/grid?grid=CN87XN` | JSON grid search (up to 100 results; 2–6 char prefix) |
 | `GET /maps/<file>.pmtiles` | PMTiles archive bytes (HTTP range reads; the browser renders) |
 | `GET /api/fs/browse?path=<dir>` | Browse allowlisted locations (USB / mounts) for `.pmtiles` |
 | `GET /api/fs/pmtiles?path=<file>` | Stream a `.pmtiles` from an allowlisted path (HTTP range) |
 | `GET /map-assets/<path>` | MapLibre GL + pmtiles.js JS/CSS, fonts |
-| `GET /health` | JSON health check (also reports whether the FCC index is built) |
-| `GET /api/system` | hostname / IP / CPU / temp / RAM / disk / load / uptime (drives the dashboard stats bar) |
-| `GET /api/audio` | ALSA sound cards: index, name, capture (RX) / playback (TX), USB flag, `hw:N,0` address — Linux only, `supported:false` elsewhere |
+| `GET /health` | JSON health check (FCC index presence · callsign count · name/grid index presence) |
+| `GET /api/system` | hostname / IP / CPU / temp / RAM / disk / load / uptime / GPS / chrony (drives stats bar and GPS card) |
+| `GET /api/audio` | ALSA sound cards: index, name, capture/playback, USB flag — Linux only |
+| `GET /api/service` (POST) | Start/stop a controllable service (graywolf, kiwix, webssh, etc.) |
 | `GET /server-ports.json` | Port map consumed by dashboard JS |
 
-The dashboard and home page poll these to show live status: a **System** stats bar (Host/CPU/Temp/RAM/Disk/Load/Uptime, colour-coded green/amber/red by threshold), an **Audio Devices** panel (handy for picking the GrayWolf `hw:N,0` capture/playback device — see `/api/audio`), and a **Web SSH** card that opens the terminal in a new window and turns red when ttyd isn't reachable.
+The dashboard and home page poll these to show live status: a **System** stats bar (Host/CPU/Temp/RAM/Disk/Load/Uptime, colour-coded green/amber/red by threshold), an **Audio Devices** panel, a **Web SSH** card, and a **GPS card** in the header showing fix mode, satellites, HDOP, lat/lon, altitude, and chrony clock-lock status. A **Units** pill (Imperial/Metric) toggles all displayed measurements (temperature, altitude, speed) in one tap — preference is persisted per browser.
 
-The stats bar leads with **HOST** — the hostname and LAN IP of the machine actually serving the page — so a browser tab pointed at `localhost` (your laptop) is never confused with one pointed at the Pi; the host label always matches the CPU/RAM figures beside it. **CPU** is sampled on a background thread over a rolling window and cached, so the reading is stable and tracks `top` rather than jumping between per-request snapshots. Click/tap the **Temp** value to toggle °C ⇄ °F (remembered per browser). The 7-inch layout (`index7.html`) shares the same behaviour, minus the host label since it only ever runs on the host.
+The stats bar leads with **HOST** — the hostname and LAN IP of the machine actually serving the page. The **HDOP** value is colour-coded across six steps from ideal (bright green, < 1) through excellent, good, moderate, fair, to poor (red, > 20). Service cards include **START/STOP** buttons for controllable services (GrayWolf, Winlink, Kiwix, Web SSH, OpenWebRX), so you never need to SSH in just to restart a service.
 
 ---
 
 ## FCC Callsign Lookup
 
-Offline lookup of U.S. amateur licenses by callsign. No database engine — binary-search over FCC flat files. Lookups return callsign, name, city, state, and Maidenhead grid square (derived from ZIP centroid).
+Offline lookup of U.S. amateur licenses. No database engine — binary-search over FCC flat files. Three search modes are available:
+
+| Mode | Example | Returns |
+|------|---------|---------|
+| **Callsign** (exact) | `W4MHI` | Single record |
+| **Callsign** (prefix wildcard) | `W4*` | Up to 50 active licenses starting with W4 |
+| **Name** | Last: `SMITH`, First: `JOHN` (optional) | Up to 50 records, prefix match on last name |
+| **Grid** | `CN87` or `CN87XN` (2–6 chars) | Up to 100 records in that grid area |
+
+Lookups return callsign, name, city, state, and Maidenhead grid (derived from ZIP centroid). Name and grid search require the secondary indexes built by `setup-fcc-database.py`.
 
 **Setup (internet-connected machine, one-time):**
 
 ```bash
-# Download EN.dat + HD.dat (~160 MB), build index, and generate zipcodes.csv:
+# Download FCC data, build all indexes, and generate zipcodes.csv — do this once:
 python3 scripts/setup-fcc-database.py
 
-# Re-index only (rebuild EN.idx from existing EN.dat + HD.dat):
+# Re-index only (rebuild indexes from existing EN.dat, no download):
 python3 scripts/setup-fcc-database.py --index-only
 
 # Force refresh zipcodes.csv even if it already exists:
 python3 scripts/setup-fcc-database.py --full-zip
 ```
+
+> ℹ️ **Where to run this:** run on any machine with internet (your laptop, another Pi, etc.) then copy the `data/` folder to the Pi with `scp`. Alternatively, run it directly on the Pi if the Pi has internet access.
+>
+> **`--full-zip` vs plain invocation:** the plain command already downloads `zipcodes.csv` if it doesn't exist. Use `--full-zip` only when you want to force a fresh download of `zipcodes.csv` even if it already exists (e.g. after a GeoNames update).
 
 Files written to `fcc-offline-database/data/`:
 
@@ -228,16 +326,42 @@ Files written to `fcc-offline-database/data/`:
 |---|---|
 | `EN.dat` | FCC entity records (~200 MB) — gitignored |
 | `HD.dat` | FCC license headers (~120 MB) — gitignored |
-| `EN.idx` | Binary-search index — gitignored |
+| `EN.idx` | Primary callsign binary-search index — gitignored |
+| `EN_name.idx` | Secondary index sorted by last name — gitignored |
+| `EN_grid.idx` | Secondary index sorted by 6-char Maidenhead grid — gitignored |
 | `zipcodes.csv` | ZIP → lat/lon — gitignored; generated from GeoNames by `setup-fcc-database.py` |
 
-**How it works:** `HD.dat` identifies active licenses. `EN.dat` holds the entity records. A binary-search index over call signs points directly to byte offsets in `EN.dat` so lookups are sub-millisecond without loading the full file. Only active licenses are indexed — expired and cancelled records are excluded.
+**How it works:** `HD.dat` identifies active licenses. `EN.dat` holds the entity records. The primary index points to byte offsets in `EN.dat` by callsign. The name index is keyed by `LASTNAME\tFIRSTNAME`; the grid index by 6-char uppercase grid. All three use the same binary-search engine. Only active licenses are indexed.
 
-**Copy to Pi:**
+> ℹ️ **Name and grid search require `zipcodes.csv`.** The grid index is derived from ZIP centroids. If `zipcodes.csv` is absent when `--index-only` is run, the grid index is skipped (a warning is shown) — run without `--index-only` to download it.
+
+**Copy to Pi** (if you ran `setup-fcc-database.py` on a different machine):
 
 ```bash
-scp -r fcc-offline-database/data pi@raspberrypi.local:/home/pi/oasis-emcomm/fcc-offline-database/
+scp -r fcc-offline-database/data pi@oasis.local:/home/<username>/oasis-emcomm/fcc-offline-database/
+# Replace <username> with your actual username
 ```
+
+If you ran `setup-fcc-database.py` directly on the Pi, no copying is needed.
+
+---
+
+## Using OASIS in the field (no internet)
+
+For deployment at an activation or field event, the Pi needs to act as a Wi-Fi access point so other devices can connect without a separate router.
+
+**Set up the Pi as a Wi-Fi hotspot:**
+
+```bash
+# Using nmcli (works on Pi OS Bookworm and later):
+sudo nmcli device wifi hotspot ssid OASIS password yourpassword
+```
+
+Or use **Raspberry Pi Imager Advanced Options** before flashing — enable **Configure wireless LAN** and choose your SSID/password, which works for connecting to an existing network. For creating a hotspot, use `nmcli` or `hostapd` after boot.
+
+Once the hotspot is running, other devices connect to `OASIS` Wi-Fi and open `http://10.42.0.1:8083` (or `http://oasis.local:8083`).
+
+> 💡 The OASIS dashboard **System Monitor** shows connected clients and SSID when the Pi is acting as an access point.
 
 ---
 
@@ -259,9 +383,11 @@ Pi (no internet)
 
 ### Step 1 — Get a PMTiles file
 
-**Easiest source — GrayWolf:** if GrayWolf is installed, register and download the offline maps for the region(s) you need. They land in `/var/lib/graywolf/tiles/`, which the **Load maps** browser can read directly (it's in the default `OASIS_MAP_ROOTS`) — no copying required.
+**Option A — GrayWolf offline maps:** if GrayWolf is installed, go to `http://<pi-ip>:8080`, sign in, and download the offline map tiles for the region(s) you need from the GrayWolf interface. They land in `/var/lib/graywolf/tiles/`, which the OASIS **Load maps** browser can read directly (it's in the default `OASIS_MAP_ROOTS`) — no copying required.
 
-Otherwise, download a pre-built OpenMapTiles **PMTiles** archive for your region, or convert an existing MBTiles using the helper script in `maps/`:
+**Option B — Download a pre-built PMTiles archive:** find a PMTiles file for your region from sources like [protomaps.com](https://protomaps.com) or [Protomaps Basemaps](https://maps.protomaps.com). Download it on any machine with internet, then copy it to the Pi's `maps/` folder.
+
+**Option C — Convert an existing MBTiles file:** if you already have an MBTiles archive, use the helper script:
 
 #### Converting MBTiles → PMTiles
 
@@ -604,7 +730,7 @@ ZIM files are saved to `~/oasis-offline/zim/` by default (use `--zim-dir PATH` t
 
 | Edition | Size | Notes |
 |---|---|---|
-| `top-mini` | ~316 MB | 50K best articles, no pictures — **best for Pi Zero 2W** |
+| `top-mini` | ~316 MB | 50K best articles, no pictures — good for small SD cards |
 | `simple-mini` | ~447 MB | Simple English, ~394K articles, no pictures |
 | `simple-nopic` | ~937 MB | Simple English, full details, no pictures |
 | `top-nopic` | ~2.1 GB | 50K best articles, full details, no pictures |
@@ -619,8 +745,13 @@ ZIM files are saved to `~/oasis-offline/zim/` by default (use `--zim-dir PATH` t
 
 ## RTL-SDR
 
-Installs RTL-SDR tools (`rtl_test`, `rtl_fm`, `rtl_sdr`, etc.) for USB software-defined-radio dongles based on the RTL2832U chip (RTL-SDR Blog V3/V4, Nooelec, etc.).
-Also blacklists the `dvb_usb_rtl28xxu` kernel module that otherwise claims the dongle before RTL-SDR can use it.
+> ⚠️ **RTL-SDR requires Raspberry Pi OS Trixie (Debian 13).** The RTL-SDR Blog V4 dongle needs `librtlsdr ≥ 2.0`, which is only available on Trixie. Bookworm and Bullseye ship `librtlsdr 0.6.0` which cannot drive the V4.
+>
+> **Check your OS version:** `cat /etc/os-release | grep VERSION_CODENAME`
+> - `bookworm` or `bullseye` → upgrade to Trixie before using an RTL-SDR Blog V4
+> - `trixie` → you're good
+>
+> V3 dongles (older RTL-SDR Blog, Nooelec) may work on Bookworm but are not officially supported.
 
 ```bash
 python3 scripts/install-rtl-sdr.py                # auto: bundled .debs if present, else apt

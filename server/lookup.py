@@ -10,7 +10,7 @@ Two responsibilities:
                        index, then a single seek into EN.dat.
 
 No database engine is used. Everything is flat files, which keeps the
-memory footprint tiny -- important on a Raspberry Pi Zero 2 W (512 MB RAM).
+memory footprint tiny -- important on a Raspberry Pi.
 
 EN.dat field positions (pipe-delimited, 1-based per the FCC spec):
    5  = Call Sign
@@ -31,10 +31,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Data lives in the sibling fcc-offline-database/data/ directory.
 DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "fcc-offline-database", "data"))
 
-EN_DAT_PATH = os.path.join(DATA_DIR, "EN.dat")
-HD_DAT_PATH = os.path.join(DATA_DIR, "HD.dat")
-INDEX_PATH = os.path.join(DATA_DIR, "EN.idx")
-ZIP_PATH = os.path.join(DATA_DIR, "zipcodes.csv")
+EN_DAT_PATH   = os.path.join(DATA_DIR, "EN.dat")
+HD_DAT_PATH   = os.path.join(DATA_DIR, "HD.dat")
+INDEX_PATH    = os.path.join(DATA_DIR, "EN.idx")
+NAME_IDX_PATH = os.path.join(DATA_DIR, "EN_name.idx")
+GRID_IDX_PATH = os.path.join(DATA_DIR, "EN_grid.idx")
+ZIP_PATH      = os.path.join(DATA_DIR, "zipcodes.csv")
 
 # 0-based column indices into the pipe-delimited EN.dat record.
 COL_CALLSIGN = 4
@@ -446,6 +448,240 @@ def lookup_prefix(prefix, zip_table=None, limit=MAX_PREFIX_RESULTS,
                 continue
             try:
                 offset = int(parts[1])
+            except ValueError:
+                continue
+            en_fh.seek(offset)
+            raw = en_fh.readline()
+            if raw:
+                results.append(_parse_record(raw, zip_table))
+
+    return results
+
+
+# --------------------------------------------------------------------------
+# Name index builder — sorted by LASTNAME\tFIRSTNAME|callsign|offset.
+# --------------------------------------------------------------------------
+def build_name_index(en_path=EN_DAT_PATH, index_path=NAME_IDX_PATH,
+                     hd_path=HD_DAT_PATH):
+    """
+    Build EN_name.idx: each line is  LASTNAME\tFIRSTNAME|CALLSIGN|byte_offset
+    sorted lexicographically so binary / prefix search by last name works.
+    Only active-license records are included (HD.dat filtered, same as build_index).
+    Clubs/orgs with no last name are indexed under their entity name in the
+    LASTNAME field with an empty FIRSTNAME.
+    Returns the number of entries written.
+    """
+    if not os.path.exists(en_path):
+        return 0
+
+    active_usis = load_active_usis(hd_path)
+    filtered = active_usis is not None
+
+    zip_table = load_zip_table()
+
+    entries = []
+    with open(en_path, "rb") as fh:
+        offset = 0
+        for raw in fh:
+            parts = raw.split(b"|")
+            if len(parts) > max(COL_CALLSIGN, COL_LAST_NAME, COL_USI):
+                usi      = parts[COL_USI].strip()
+                callsign = parts[COL_CALLSIGN].strip().upper()
+                keep = bool(callsign) and (not filtered or usi in active_usis)
+                if keep:
+                    last  = parts[COL_LAST_NAME].strip().upper()
+                    first = parts[COL_FIRST_NAME].strip().upper() if len(parts) > COL_FIRST_NAME else b""
+                    entity = parts[COL_ENTITY_NAME].strip().upper() if len(parts) > COL_ENTITY_NAME else b""
+                    # Use entity name for clubs when no last name
+                    if not last:
+                        last = entity
+                    if last:
+                        key = last + b"\t" + first
+                        entries.append((key, callsign, offset))
+            offset += len(raw)
+
+    entries.sort(key=lambda e: e[0])
+
+    with open(index_path, "wb") as out:
+        for key, callsign, off in entries:
+            out.write(key + b"|" + callsign + b"|" + str(off).encode("ascii") + b"\n")
+
+    return len(entries)
+
+
+# --------------------------------------------------------------------------
+# Grid index builder — sorted by GRID4|callsign|offset.
+# --------------------------------------------------------------------------
+def build_grid_index(en_path=EN_DAT_PATH, index_path=GRID_IDX_PATH,
+                     hd_path=HD_DAT_PATH, zip_path=ZIP_PATH):
+    """
+    Build EN_grid.idx: each line is  GRID4|CALLSIGN|byte_offset  sorted by
+    the 4-character grid square derived from the licensee's ZIP code centroid.
+    Only active-license records with a known ZIP (and therefore a grid) are
+    included.
+    Returns the number of entries written.
+    """
+    if not os.path.exists(en_path):
+        return 0
+
+    active_usis = load_active_usis(hd_path)
+    filtered = active_usis is not None
+
+    # Load ZIP table; grid derived via maidenhead module.
+    zip_table = {}
+    if os.path.exists(zip_path):
+        with open(zip_path, newline="", encoding="utf-8") as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                zip5 = (row.get("zip") or "").strip()[:5]
+                try:
+                    zip_table[zip5] = (float(row["lat"]), float(row["lon"]))
+                except (KeyError, ValueError):
+                    continue
+
+    from maidenhead import latlon_to_grid
+
+    entries = []
+    with open(en_path, "rb") as fh:
+        offset = 0
+        for raw in fh:
+            parts = raw.split(b"|")
+            if len(parts) > max(COL_CALLSIGN, COL_ZIP, COL_USI):
+                usi      = parts[COL_USI].strip()
+                callsign = parts[COL_CALLSIGN].strip().upper()
+                keep = bool(callsign) and (not filtered or usi in active_usis)
+                if keep:
+                    zip5 = parts[COL_ZIP].strip().decode("ascii", "ignore")[:5]
+                    if zip5 in zip_table:
+                        lat, lon = zip_table[zip5]
+                        grid6 = latlon_to_grid(lat, lon, precision=6)
+                        if grid6:
+                            entries.append((grid6.upper().encode("ascii"), callsign, offset))
+            offset += len(raw)
+
+    entries.sort(key=lambda e: e[0])
+
+    with open(index_path, "wb") as out:
+        for grid6, callsign, off in entries:
+            out.write(grid6 + b"|" + callsign + b"|" + str(off).encode("ascii") + b"\n")
+
+    return len(entries)
+
+
+# --------------------------------------------------------------------------
+# Name lookup — prefix search over EN_name.idx.
+# --------------------------------------------------------------------------
+MAX_NAME_RESULTS = 50
+
+
+def lookup_by_name(last, first=None, limit=MAX_NAME_RESULTS,
+                   zip_table=None, en_path=EN_DAT_PATH,
+                   index_path=NAME_IDX_PATH):
+    """
+    Search active licenses by last name (prefix match, case-insensitive).
+    Optionally further filter by first-name prefix.
+    Returns up to *limit* result dicts sorted by last name then first name.
+    Raises FileNotFoundError if the name index has not been built.
+    """
+    if zip_table is None:
+        zip_table = load_zip_table()
+
+    if not os.path.exists(index_path):
+        raise FileNotFoundError(
+            "Name index not built yet. Run:  python3 scripts/setup-fcc-database.py"
+        )
+
+    last_clean   = last.strip().upper()
+    first_clean  = (first or "").strip().upper()
+    last_upper   = last_clean.encode("ascii", "ignore")
+    first_upper  = first_clean.encode("ascii", "ignore")
+
+    # _find_prefix_range expects a str (it encodes internally). Pass just the
+    # last name — the range will include SMITHSON when searching SMITH, so we
+    # add an exact prefix check on the last-name part inside the linear scan.
+    range_start, range_end = _find_prefix_range(last_clean, index_path)
+    if range_start is None:
+        return []
+
+    results = []
+    with open(index_path, "rb") as idx_fh, open(en_path, "rb") as en_fh:
+        idx_fh.seek(range_start)
+        while idx_fh.tell() < range_end and len(results) < limit:
+            line = idx_fh.readline()
+            if not line:
+                break
+            # Format: LASTNAME\tFIRSTNAME|CALLSIGN|offset
+            parts = line.rstrip(b"\n").split(b"|")
+            if len(parts) != 3:
+                continue
+            key_part = parts[0]   # LASTNAME\tFIRSTNAME
+            # Exact last-name prefix check (range may include SMITHSON for SMITH)
+            actual_last = key_part.split(b"\t", 1)[0]
+            if not actual_last.startswith(last_upper):
+                continue
+            # Apply first-name filter if requested
+            if first_upper:
+                fname_in_key = key_part.split(b"\t", 1)[1] if b"\t" in key_part else b""
+                if not fname_in_key.startswith(first_upper):
+                    continue
+            try:
+                offset = int(parts[2])
+            except ValueError:
+                continue
+            en_fh.seek(offset)
+            raw = en_fh.readline()
+            if raw:
+                results.append(_parse_record(raw, zip_table))
+
+    return results
+
+
+# --------------------------------------------------------------------------
+# Grid lookup — prefix search over EN_grid.idx.
+# --------------------------------------------------------------------------
+MAX_GRID_RESULTS = 100
+
+
+def lookup_by_grid(grid_prefix, limit=MAX_GRID_RESULTS,
+                   zip_table=None, en_path=EN_DAT_PATH,
+                   index_path=GRID_IDX_PATH):
+    """
+    Return up to *limit* active licenses whose grid square starts with
+    *grid_prefix* (e.g. "CN87" returns all licensees in that 4-char square;
+    "CN" returns everyone in the CN field).
+    Returns a list of result dicts sorted by grid then callsign.
+    Raises FileNotFoundError if the grid index has not been built.
+    """
+    if zip_table is None:
+        zip_table = load_zip_table()
+
+    if not os.path.exists(index_path):
+        raise FileNotFoundError(
+            "Grid index not built yet. Run:  python3 scripts/setup-fcc-database.py"
+        )
+
+    # _find_prefix_range expects a str (it encodes internally).
+    clean = grid_prefix.strip().upper()
+    if not clean:
+        return []
+
+    range_start, range_end = _find_prefix_range(clean, index_path)
+    if range_start is None:
+        return []
+
+    results = []
+    with open(index_path, "rb") as idx_fh, open(en_path, "rb") as en_fh:
+        idx_fh.seek(range_start)
+        while idx_fh.tell() < range_end and len(results) < limit:
+            line = idx_fh.readline()
+            if not line:
+                break
+            # Format: GRID4|CALLSIGN|offset
+            parts = line.rstrip(b"\n").split(b"|")
+            if len(parts) != 3:
+                continue
+            try:
+                offset = int(parts[2])
             except ValueError:
                 continue
             en_fh.seek(offset)

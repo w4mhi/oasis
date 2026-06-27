@@ -244,6 +244,7 @@ header::after { content: ''; display: table; clear: both; }
 
 /* ─── Inputs ────────────────────────────────────────────── */
 input[type=text],
+input[type=search],
 input[type=number],
 input[type=date],
 textarea,
@@ -258,6 +259,7 @@ select {
   width: 100%;
 }
 input[type=text]:focus,
+input[type=search]:focus,
 input[type=number]:focus,
 input[type=date]:focus,
 textarea:focus,

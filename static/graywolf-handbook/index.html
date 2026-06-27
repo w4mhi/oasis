@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OASIS - GrayWolf Handbook</title>
+<link rel="stylesheet" href="../../css/common.css">
 <style>
 :root {
   --fs-title:    1.2rem;
@@ -27,8 +28,7 @@
   }
   h1 {
     font-size: var(--fs-title); letter-spacing: 0.08em; color: var(--accent);
-    text-transform: uppercase; border-bottom: 1px solid var(--border);
-    padding-bottom: 0.6rem; margin-bottom: 1.4rem;
+    text-transform: uppercase; margin-bottom: 0.15rem;
   }
   h2 {
     font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: 0.12em;
@@ -41,11 +41,11 @@
   }
   li { border-bottom: 1px solid var(--border); }
   li:last-child { border-bottom: none; }
-  a {
+  li a {
     text-decoration: none; color: var(--text);
     display: block; padding: 0.45rem 1rem;
   }
-  a:hover { background: var(--panel-2); color: var(--accent); }
+  li a:hover { background: var(--panel-2); color: var(--accent); }
   .back a { color: var(--accent-dim); font-size: var(--fs-base); }
   .back a::before { content: "\2190  "; }
   .dir  a::before { content: "\1F4C1  "; }
@@ -54,10 +54,11 @@
 </style>
 </head>
 <body>
-<h1>GrayWolf Handbook</h1>
-<ul>
-  <li class="back"><a href="../">Back to main index</a></li>
-</ul>
+<header>
+  <a class="home-link" href="/">⌂ HOME</a>
+  <h1>GrayWolf Handbook</h1>
+  <p>APRS software reference</p>
+</header>
 <h2>Folders</h2>
 <ul>
   <li class="dir"><a href="fonts/">fonts/</a></li>

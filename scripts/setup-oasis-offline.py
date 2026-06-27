@@ -94,6 +94,24 @@ FEATURES = [
             "Browser terminal on :7681 (logs in via ssh to localhost).",
             "Server", default=True,
             recommend="Browser terminal at :7681 (logs in via ssh to localhost)."),
+    Feature("openwebrx", "OpenWebRX (SDR monitor) — experimental", "install-openwebrx.py",
+            "Browser SDR receiver/decoder on :8073 (RX only: voice/CW/RTTY/FT8/…). Installed OFF by default — start it from the dashboard. Needs internet (3rd-party apt repo).",
+            "Server", default=False, needs=["server"], internet=True,
+            recommend="OpenWebRX is OFF by default — start it from the dashboard (it stops GrayWolf + the SDR feed). Open :8073."),
+    Feature("service-controls", "Dashboard service controls", "enable-service-controls.py",
+            "Grant a scoped sudoers rule so the dashboard start/stop buttons work (no passwords in the browser). Needed to start OpenWebRX (and stop GrayWolf/Kiwix/…) from the dashboard.",
+            "Server", default=False, needs=["server"],
+            recommend="Dashboard power buttons enabled (start/stop GrayWolf · Kiwix · OpenWebRX · APRS feed)."),
+
+    # ── Display: local screen — Chromium kiosk / desktop launcher ──────────────
+    Feature("kiosk", "Kiosk mode (Chromium fullscreen)", "enable-autostart-pi.py",
+            "Auto-start the server and launch a fullscreen Chromium kiosk on the Pi's screen. Raspberry Pi OS with Desktop.",
+            "Display", default=False, needs=["server"], args=["--with-browser"],
+            recommend="Kiosk set up — reboot to see OASIS fullscreen on the local screen."),
+    Feature("desktop-icon", "Desktop launcher icon", "enable-autostart-pi.py",
+            "Auto-start the server and add a clickable OASIS desktop shortcut. Raspberry Pi OS with Desktop.",
+            "Display", default=False, needs=["server"], args=["--desktop-icon"],
+            recommend="Desktop icon added — double-click it to open OASIS."),
 
     # ── Audio: audio paths into GrayWolf (SDR dongle + DRA sound card) ─────────
     Feature("rtl-sdr", "RTL-SDR tools", "install-rtl-sdr.py",
@@ -108,6 +126,18 @@ FEATURES = [
             "Configure the MastersCommunications DRA-Pi-Zero (WM8731 I²S codec) for GrayWolf — edits /boot/firmware/config.txt. REQUIRES A REBOOT.",
             "Audio", default=False, reboot=True,
             recommend="Reboot, then re-run this setup to apply the DRA-Pi ALSA mixer."),
+
+    # ── GPS / Time: GPS-disciplined clock (gpsd + chrony) ──────────────────────
+    Feature("gps", "GPS time (gpsd + chrony)", "install-gps.py",
+            "Discipline the system clock from a GPS receiver (gpsd + chrony + RTC) for accurate time with no internet — needed for FT8/WSPR/SSTV decode timing. Auto-detects the device; needs internet to apt-install.",
+            "GPS", default=False, internet=True,
+            recommend="GPS time set up. Give the antenna sky view, then check: cgps -s  and  chronyc tracking."),
+
+    # ── RTC: Witty Pi 3 hardware clock (standalone) ────────────────────────────
+    Feature("rtc", "Witty Pi 3 RTC (DS3231)", "enable-rtc.py",
+            "Configure the Witty Pi 3's DS3231 hardware clock (i2c-rtc overlay + remove fake-hwclock) so the Pi keeps time across reboots / power loss with no network. REQUIRES A REBOOT.",
+            "RTC", default=False, reboot=True,
+            recommend="Reboot to load the RTC, then once the clock is correct: sudo hwclock -w"),
 
     # ── Content / Data: large optional downloads ──────────────────────────────
     Feature("fcc", "FCC callsign database", "setup-fcc-database.py",

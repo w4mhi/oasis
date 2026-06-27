@@ -184,19 +184,20 @@ WantedBy=multi-user.target
     _ok(f"Service file: {SERVICE_FILE}")
     _run(["sudo", "systemctl", "daemon-reload"])
     _ok("systemctl daemon-reload")
-    _run(["sudo", "systemctl", "enable", SERVICE_NAME])
-    _ok(f"systemctl enable {SERVICE_NAME}")
 
-    # Check whether ZIM content already exists.
+    # OASIS policy: Kiwix is installed OFF by default (not auto-started at boot),
+    # the same as OpenWebRX. The unit stays installed and ready; the user starts
+    # it on demand from the dashboard (the Wikipedia/Kiwix card).
+    _run(["sudo", "systemctl", "disable", "--now", SERVICE_NAME], check=False)
+    _ok(f"{SERVICE_NAME} set OFF by default (start it from the dashboard when needed).")
+
+    # Informational only — note whether content is present yet.
     zim_files = [f for f in os.listdir(zim_dir) if f.endswith(".zim")] if os.path.isdir(zim_dir) else []
     if zim_files:
-        _info(f"ZIM content found ({len(zim_files)} file(s)) — starting service ...")
-        _run(["sudo", "systemctl", "start", SERVICE_NAME], check=False)
-        _ok(f"systemctl start {SERVICE_NAME}")
+        _info(f"ZIM content found ({len(zim_files)} file(s)).")
     else:
-        _warn("Service not started yet -- no ZIM content found.")
-        _info("Run scripts/download-wikipedia.py, then:")
-        _info(f"  sudo systemctl start {SERVICE_NAME}")
+        _info("No ZIM content yet — run scripts/download-wikipedia.py to add some.")
+    _info(f"Start Kiwix from the dashboard, or: sudo systemctl start {SERVICE_NAME}")
 
 
 # ── Main entry point ───────────────────────────────────────────────────────────
@@ -214,6 +215,7 @@ def run(version=DEFAULT_VERSION, zim_dir=DEFAULT_ZIM_DIR, repo_root=None):
     print()
     print("  OASIS -- Kiwix install complete.")
     _hr()
-    _info(f"Service: {SERVICE_NAME}  (port {PORT})")
+    _info(f"Service: {SERVICE_NAME}  (port {PORT})  — off by default")
     _info("Get content:  python3 scripts/download-wikipedia.py")
+    _info("Start it from the OASIS dashboard (the Wikipedia/Kiwix card) when needed.")
     print()

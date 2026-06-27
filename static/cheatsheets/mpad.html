@@ -36,10 +36,11 @@
     border: 1px solid var(--border); border-radius: 10px;
     background: linear-gradient(160deg, var(--panel-2), var(--panel));
     padding: 1.25rem 1.25rem 1rem; margin-bottom: 1rem;
-    position: relative; overflow: hidden;
+    position: relative;
   }
+  header::after { content: ''; display: table; clear: both; }
   header::before {
-    content: ""; position: absolute; inset: 0;
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
     background-image: repeating-linear-gradient(90deg, transparent 0 6px, rgba(255,255,255,0.018) 6px 7px);
     pointer-events: none;
   }
@@ -47,14 +48,28 @@
     font-size: var(--fs-title); letter-spacing: 0.06em; color: var(--accent);
     text-transform: uppercase; position: relative;
   }
-  h1 .blip {
-    display: inline-block; width: 9px; height: 9px; background: var(--accent);
-    border-radius: 50%; margin-right: 0.5rem; box-shadow: 0 0 8px var(--accent);
-    animation: pulse 2s infinite; vertical-align: middle;
-  }
-  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
   header .sub { color: var(--text-dim); font-size: var(--fs-base); margin-top: 0.4rem; position: relative; }
   header .rev { color: var(--text-dim); font-size: var(--fs-small); margin-top: 0.3rem; position: relative; opacity: 0.8; }
+  .home-link {
+    float: right; margin-left: 1rem; font-size: var(--fs-subtitle);
+    letter-spacing: .1em; color: #58a6ff; text-decoration: none;
+    text-transform: uppercase; line-height: 1.6;
+  }
+  .home-link:hover { color: var(--accent); }
+  header .sub::after {
+    content: 'CREDITS'; float: right; font-size: var(--fs-micro); color: var(--text-dim);
+    letter-spacing: .08em; text-transform: uppercase; opacity: .5; margin-left: 1rem;
+    cursor: default; border-bottom: 1px dotted var(--text-dim);
+  }
+  header .sub::before {
+    content: 'Based on ACK Off-Grid Ham Radio Server\A by Jason [KM4ACK].\A Original concept: Jason [KM4ACK].\A Architectural extension : Mihai [W4MHI].';
+    white-space: pre-wrap; position: absolute; top: calc(100% + 6px); right: 0;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+    padding: .5rem .75rem; font-size: var(--fs-micro); color: var(--text); line-height: 1.7;
+    z-index: 100; pointer-events: none; opacity: 0; transition: opacity .15s ease; max-width: 300px;
+  }
+  header .sub:hover::before { opacity: 1; }
+  @media print { header .sub::after, header .sub::before, .home-link { display: none; } }
 
   .search-bar { position: sticky; top: 0; z-index: 10; margin-bottom: 0.8rem; padding-top: 0.25rem; background: var(--bg); }
   #search {
@@ -168,9 +183,9 @@
 <body>
 <div class="wrap">
   <header>
-    <h1><span class="blip"></span>MPAD Bot</h1>
+    <a class="home-link" href="/">⌂ HOME</a>
+    <h1>MPAD Bot</h1>
     <div class="sub">APRS server bot &mdash; send a message To MPAD with the listed command.</div>
-    
   </header>
 
   <div class="search-bar">

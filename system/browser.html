@@ -105,9 +105,9 @@ function load(path) {
   currentPath = path;
   history.replaceState(null, '', `browser.html?path=${encodeURIComponent(rootPath)}&browse=${encodeURIComponent(path)}`);
 
-  const title = rootPath.split('/').filter(Boolean).pop() || rootPath;
+  const title = rootPath.split('/').filter(Boolean).pop() || 'File Browser';
   document.getElementById('page-title').textContent = title;
-  document.getElementById('page-sub').textContent = path;
+  document.getElementById('page-sub').textContent = path || 'Browse user files';
   document.title = 'Browse — ' + title;
 
   buildBreadcrumb(path);

@@ -346,8 +346,7 @@ If the Pi 400 is your only option, try these before giving up — cheapest first
 3. **Powered USB hub** — clean 5 V to the dongle off its own supply, isolated from
    the Pi's rail; this also tends to cure intermittent detection.
 
-But the reliable fix is **a different host**: a regular Pi 4 in a metal case, a
-**Pi Zero 2 W** (tiny and much quieter), or a laptop/mini-PC. When in doubt, change
+But the reliable fix is **a different host**: a Pi 4 in a metal case, or a laptop/mini-PC. When in doubt, change
 the computer before you blame the dongle.
 
 ---

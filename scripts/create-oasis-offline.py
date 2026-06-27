@@ -24,9 +24,9 @@ Always outputs to oasis-offline/ in the repo root (existing bundle is wiped).
     --update / build, which read these pinned versions. Operates on the manifest
     in the script's own root (repo or a deployed bundle), updating it in place.
 
-  --skip-windows
-    Skip downloading the embedded Windows Python runtime.
-    start.bat will not work, but the build is fully offline.
+  --for-windows
+    Also download the embedded Windows Python runtime (opt-in).
+    Required for start.bat to work. By default the build targets the Pi only.
 
   --update
     Update offline packages only in an existing distribution directory.
@@ -52,10 +52,10 @@ Build phases (run automatically unless --check):
   Phase 9 — pmtiles CLI binaries oasis-offline/maps/  (per-platform MBTiles→PMTiles converter)
 
 Usage:
-  python3 scripts/create-oasis-offline.py                    # incremental build
+  python3 scripts/create-oasis-offline.py                    # incremental build (Pi only)
   python3 scripts/create-oasis-offline.py --rebuild          # wipe + full rebuild
   python3 scripts/create-oasis-offline.py --check            # verify bundle (CI)
-  python3 scripts/create-oasis-offline.py --skip-windows     # build, no Win runtime
+  python3 scripts/create-oasis-offline.py --for-windows      # include Windows Python runtime
   python3 scripts/create-oasis-offline.py --update           # update packages in repo root
   python3 scripts/create-oasis-offline.py --update --dir /mnt/usb  # update on USB drive
   python3 scripts/create-oasis-offline.py --verify           # verify bundle checksums
@@ -928,7 +928,7 @@ def build_windows_runtime(dest, skip):
     os.makedirs(win_dir, exist_ok=True)
 
     if skip:
-        _warn("--skip-windows: Python runtime omitted. start.bat will not work.")
+        _warn("Windows runtime not requested. start.bat will not work. Use --for-windows to include it.")
         return
 
     data = _download_mem(PYTHON_EMBED_URL, f"Python {PYTHON_VERSION} embeddable (amd64)  ← python.org latest")
@@ -1300,7 +1300,7 @@ def main():
             "  python3 scripts/create-oasis-offline.py                        # incremental build\n"
             "  python3 scripts/create-oasis-offline.py --rebuild              # wipe + full rebuild\n"
             "  python3 scripts/create-oasis-offline.py --check               # verify bundle (CI)\n"
-            "  python3 scripts/create-oasis-offline.py --skip-windows        # skip Windows Python\n"
+            "  python3 scripts/create-oasis-offline.py --for-windows         # include Windows Python\n"
             "  python3 scripts/create-oasis-offline.py --update              # update packages + sync source files"
             " into oasis-offline/\n"
             "  python3 scripts/create-oasis-offline.py --update --dir /mnt/usb  # update USB bundle\n"
@@ -1313,8 +1313,8 @@ def main():
         help="Verify offline assets in oasis-offline/ and report findings. No changes (CI mode).",
     )
     ap.add_argument(
-        "--skip-windows", action="store_true",
-        help="Skip the Windows embedded-Python download. start.bat will not work.",
+        "--for-windows", action="store_true",
+        help="Also include the Windows embedded-Python runtime. Required for start.bat to work.",
     )
     ap.add_argument(
         "--rebuild", action="store_true",
@@ -1367,7 +1367,7 @@ def main():
     elif args.check:
         cmd_check()
     else:
-        cmd_build(args.skip_windows, rebuild=args.rebuild)
+        cmd_build(not args.for_windows, rebuild=args.rebuild)
 
 
 if __name__ == "__main__":

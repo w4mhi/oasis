@@ -7,8 +7,6 @@
   <link rel="stylesheet" href="../css/common.css">
 <style>
 body { margin:0; }
-    header { background:var(--panel); padding:1.5rem; text-align:center; border-bottom:3px solid var(--accent); }
-    h1 { margin:0; color:var(--accent); }
 
     .controls {
       max-width:1200px; margin:20px auto; padding:0 20px;
@@ -51,11 +49,12 @@ body { margin:0; }
 </head>
 <body>
 <div id="toast" class="toast"></div>
+<div class="wrap">
   <header>
-  <a class="home-link" href="/">⌂ HOME</a>
-  <h1>🛰️ Winlink Position Reports • By Condition (Sorted by Callsign)</h1>
-  <p>Incoming Winlink position reports grouped by message condition.</p>
-</header>
+    <a class="home-link" href="/">⌂ HOME</a>
+    <h1>🛰️ Winlink Position Reports • By Condition (Sorted by Callsign)</h1>
+    <p>Incoming Winlink position reports grouped by message condition.</p>
+  </header>
 
   <div class="controls">
     <button onclick="document.getElementById('posFile').click()">📤 Upload .pos File</button>
@@ -214,5 +213,6 @@ body { margin:0; }
     t._timer = setTimeout(function() { t.className = 'toast'; }, duration);
   }
   </script>
+</div>
 </body>
 </html>
