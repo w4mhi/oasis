@@ -12,15 +12,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #topbar{
   position:fixed;top:0;left:0;right:0;z-index:100;
   background:var(--panel);border-bottom:1px solid var(--border);
-  display:flex;align-items:center;gap:.75rem;padding:.45rem .9rem;height:44px;
+  display:flex;flex-direction:column;
 }
+.topbar-row{
+  display:flex;align-items:center;gap:.7rem;padding:0 .9rem;height:36px;
+}
+.topbar-row + .topbar-row{border-top:1px solid var(--border);}
 #topbar h1{font-size:var(--fs-base);letter-spacing:.08em;color:var(--accent);text-transform:uppercase;white-space:nowrap;}
 #statusDot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);flex-shrink:0;}
 #statusDot.ok{background:var(--accent);}
 #statusDot.err{background:var(--red);}
 #statusMsg{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #stationCount{font-size:var(--fs-small);color:var(--amber);white-space:nowrap;}
-#countdown{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;width:15ch;flex-shrink:0;text-align:right;transition:color .4s;overflow:visible;}
+#countdown{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;width:16ch;flex-shrink:0;text-align:right;transition:color .4s;overflow:visible;}
 #countdown.green{color:#3fb950;}
 #countdown.yellow{color:var(--amber);}
 #countdown.red{color:var(--red);}
@@ -51,7 +55,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #movingBtn{white-space:nowrap;}
 #movingBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
 
-#map{position:fixed;top:44px;left:0;right:0;bottom:0;}
+#map{position:fixed;top:73px;left:0;right:0;bottom:0;}
 
 /* Popup */
 .maplibregl-popup-content{
@@ -204,7 +208,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 /* Latest-station link — moved to recent panel */
 /* Right-side stacked panels (recent-heard stations + map layers) */
 #right-stack{
-  position:fixed;top:54px;right:10px;z-index:200;
+  position:fixed;top:83px;right:10px;z-index:200;
   display:flex;flex-direction:column;gap:8px;align-items:flex-end;
   max-height:calc(100vh - 70px);
 }
@@ -329,6 +333,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #basemap-info .bm-caret{color:var(--text-dim);margin-left:4px;}
 #basemap-info .bm-path{display:block;color:var(--text-dim);font-size:var(--fs-small);opacity:.85;margin-top:1px;max-width:52ch;overflow:hidden;text-overflow:ellipsis;}
 
+/* Leading cell shared by both rows so the first separator lines up vertically */
+.lead-cell{display:flex;align-items:center;gap:.7rem;width:300px;flex-shrink:0;}
+#coordReadout{
+  font-family:var(--mono);font-size:var(--fs-small);color:var(--text-dim);
+  white-space:nowrap;display:flex;align-items:center;gap:6px;
+}
+#coordReadout .cr-lbl{color:var(--text-dim);}
+#coordReadout .cr-val{display:inline-block;text-align:right;color:#7ecfff;font-weight:600;}
+#coordReadout #crLat{width:9ch;}
+#coordReadout #crLon{width:10ch;}
+#coordReadout #crZoom{width:4ch;color:var(--amber);}
+#coordReadout .cr-sep{color:var(--border);}
+
 /* Base-map loader modal (click bottom-right label → browse Pi / USB for .pmtiles) */
 #fs-modal{
   position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;
@@ -352,58 +369,101 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .fs-file{color:var(--accent);}
 .fs-empty,#fs-msg{padding:10px 14px;color:var(--text-dim);font-size:var(--fs-small);}
 #fs-msg:empty{display:none;}
+
+/* ── Themed scrollbars ────────────────────────────────────────────────────────
+   Track-less bars whose thumb is tinted to each panel's header accent and
+   brightens on hover. WebKit/Chromium (the kiosk engine).
+   GOTCHA: do NOT set the standard `scrollbar-width`/`scrollbar-color` here — on
+   Chromium 121+ either one disables ALL ::-webkit-scrollbar rules (width
+   included), so width edits silently do nothing. WebKit pseudo-elements give
+   full width + colour control. */
+#recent-body::-webkit-scrollbar,
+#objects-body::-webkit-scrollbar,
+#coverage-body::-webkit-scrollbar,
+#fs-list::-webkit-scrollbar{width:14px;height:20px;}
+#recent-body::-webkit-scrollbar-track,
+#objects-body::-webkit-scrollbar-track,
+#coverage-body::-webkit-scrollbar-track,
+#fs-list::-webkit-scrollbar-track{background:transparent;}
+#recent-body::-webkit-scrollbar-thumb,
+#objects-body::-webkit-scrollbar-thumb,
+#coverage-body::-webkit-scrollbar-thumb,
+#fs-list::-webkit-scrollbar-thumb{
+  border-radius:6px;border:2px solid transparent;background-clip:padding-box;
+}
+/* Recent-heard + map browser → green */
+#recent-body::-webkit-scrollbar-thumb,
+#fs-list::-webkit-scrollbar-thumb{background-color:var(--accent-dim);}
+#recent-body::-webkit-scrollbar-thumb:hover,
+#fs-list::-webkit-scrollbar-thumb:hover{background-color:var(--accent);}
+/* APRS info → amber */
+#objects-body::-webkit-scrollbar-thumb{background-color:#8a6a1f;}
+#objects-body::-webkit-scrollbar-thumb:hover{background-color:var(--amber);}
+/* Coverage → teal */
+#coverage-body::-webkit-scrollbar-thumb{background-color:#1c7d72;}
+#coverage-body::-webkit-scrollbar-thumb:hover{background-color:#2dd4bf;}
 </style>
 </head>
 <body>
 
 <div id="topbar">
-  <h1>APRS Map</h1>
-  <div id="statusDot"></div>
-  <span id="stationCount"></span>
-  <span id="countdown"></span>
-  <span class="track-sep">|</span>
-  <button id="mapRefreshBtn" class="sbtn" onclick="toggleRefresh()" title="Auto-refresh on/off — green = updating every 15s, gray = paused"><span class="kr-icon">&#8635;</span>Refresh</button>
-  <span class="track-sep">|</span>
-  <select id="filterSel" onchange="applyFilter()">
-    <option value="15">Last 15 min</option>
-    <option value="30">Last 30 min</option>
-    <option value="60">Last 60 min</option>
-    <option value="1440">Last 24 hrs</option>
-    <option value="0" selected>All</option>
-  </select>
-  <span class="track-sep">|</span>
-  <span style="font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap">Track:</span>
-  <select id="trackWindow" style="margin-left:.35rem;" onchange="if(activeTrack) showTrack(activeTrack)">
-    <option value="15">15 min</option>
-    <option value="30">30 min</option>
-    <option value="60" selected>1 h</option>
-    <option value="240">4 h</option>
-    <option value="480">8 h</option>
-    <option value="1440">24 h</option>
-    <option value="10080">7 d</option>
-    <option value="0">All</option>
-  </select>
-  <button id="clearTrackBtn" class="sbtn" onclick="clearTrack()" style="margin-left:.35rem;">✕ Track</button>
-  <span class="track-sep">|</span>
-  <input id="callFilter" type="text" placeholder="Filter call…" autocomplete="off" spellcheck="false"
-         title="Filter by callsign — prefix match (K7ISQ catches all SSIDs), or * wildcard (K7*9)">
-  <span class="track-sep">|</span>
-  <button id="movingBtn" class="sbtn" onclick="toggleMoving()" title="Show only stations currently moving (speed > 0)">Moving</button>
-  <span style="flex:1"></span>
-  <span id="trackMsg"></span>
-  <span class="track-sep">|</span>
-  <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">Auto-fly</button>
-  <span class="track-sep">|</span>
-  <button id="autoPathBtn" class="sbtn" onclick="toggleAutoPath()" style="margin-left:.35rem;" title="Automatically draw the RF path of the most-recently-heard station">Auto-path</button>
-  <span class="track-sep">|</span>
-  <button id="coverageBtn" class="sbtn" onclick="toggleCoverage()" style="margin-left:.35rem;" title="Coverage — straight reach lines from every filtered station to its receiver">Coverage</button>
-  <span class="track-sep">|</span>
-  <button id="gridBtn" class="sbtn" onclick="toggleGrid()" style="margin-left:.35rem;" title="Toggle Maidenhead grid overlay">Grid</button>
-  <button id="measureBtn" class="sbtn" onclick="toggleMeasure()" style="margin-left:.35rem;" title="Click two or more points to measure distance and bearing">Measure</button>
-  <!-- <button id="refreshBtn" class="sbtn" onclick="fetchStations()">Refresh</button> -->
-  <span class="track-sep">|</span>
-  <span id="statusMsg">Connecting…</span>
-  <a href="/" class="home-link" style="margin-left:.75rem;">⌂ HOME</a>
+  <!-- Row 1 — system status & RF overlays -->
+  <div class="topbar-row">
+    <div class="lead-cell">
+      <h1>APRS Map</h1>
+      <div id="statusDot"></div>
+      <span id="stationCount"></span>
+      <span id="countdown"></span>
+    </div>
+    <span class="track-sep">|</span>
+    <button id="mapRefreshBtn" class="sbtn" onclick="toggleRefresh()" title="Auto-refresh on/off — green = updating every 15s, gray = paused"><span class="kr-icon">&#8635;</span>Refresh</button>
+    <span class="track-sep">|</span>
+    <button id="autoPathBtn" class="sbtn" onclick="toggleAutoPath()" title="Automatically draw the RF path of the most-recently-heard station">Auto-path</button>
+    <span class="track-sep">|</span>
+    <button id="coverageBtn" class="sbtn" onclick="toggleCoverage()" title="Coverage — straight reach lines from every filtered station to its receiver">Coverage</button>
+    <span class="track-sep">|</span>
+    <button id="gridBtn" class="sbtn" onclick="toggleGrid()" title="Toggle Maidenhead grid overlay">Grid</button>
+    <button id="measureBtn" class="sbtn" onclick="toggleMeasure()" style="margin-left:.35rem;" title="Click two or more points to measure distance and bearing">Measure</button>
+    <span style="flex:1"></span>
+    <a href="/" class="home-link" style="margin-left:.75rem;">⌂ HOME</a>
+  </div>
+  <!-- Row 2 — position, filtering & navigation -->
+  <div class="topbar-row">
+    <div id="coordReadout" class="lead-cell">
+      <span class="cr-lbl">Lat</span><span id="crLat" class="cr-val">—</span>
+      <span class="cr-lbl">Lon</span><span id="crLon" class="cr-val">—</span>
+      <span class="cr-sep">|</span>
+      <span class="cr-lbl">zoom</span><span id="crZoom" class="cr-val">—</span>
+    </div>
+    <span class="track-sep">|</span>
+    <select id="filterSel" onchange="applyFilter()">
+      <option value="15">Last 15 min</option>
+      <option value="30">Last 30 min</option>
+      <option value="60">Last 60 min</option>
+      <option value="1440">Last 24 hrs</option>
+      <option value="0" selected>All</option>
+    </select>
+    <input id="callFilter" type="text" placeholder="Filter call…" autocomplete="off" spellcheck="false"
+           title="Filter by callsign — prefix match (K7ISQ catches all SSIDs), or * wildcard (K7*9)">
+    <button id="movingBtn" class="sbtn" onclick="toggleMoving()" title="Show only stations currently moving (speed > 0)">Moving</button>
+    <span class="track-sep">|</span>
+    <span style="font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap">Track:</span>
+    <select id="trackWindow" onchange="if(activeTrack) showTrack(activeTrack)">
+      <option value="15">15 min</option>
+      <option value="30">30 min</option>
+      <option value="60" selected>1 h</option>
+      <option value="240">4 h</option>
+      <option value="480">8 h</option>
+      <option value="1440">24 h</option>
+      <option value="10080">7 d</option>
+      <option value="0">All</option>
+    </select>
+    <button id="clearTrackBtn" class="sbtn" onclick="clearTrack()">✕ Track</button>
+    <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">Auto-fly</button>
+    <span style="flex:1"></span>
+    <span id="trackMsg"></span>
+    <span id="statusMsg">Connecting…</span>
+  </div>
 </div>
 
 <div id="map"></div>
@@ -571,7 +631,14 @@ function makeMarkerEl(symTable, symCode) {
 // PMTiles: a single-file tile archive read directly by the browser via HTTP
 // range requests. Register the protocol, then point the vector source at it.
 const origin    = location.origin;
-let   MAP_FILE  = 'washington.pmtiles';
+// Deep-link params (parity with the offline maps viewer):
+//   ?file=<archive.pmtiles>  ?center=<lon,lat>  ?zoom=<z>
+const _params    = new URLSearchParams(location.search);
+let   MAP_FILE   = _params.get('file') || 'washington.pmtiles';
+const _pc        = _params.get('center');
+const _pz        = _params.get('zoom');
+const URL_CENTER = _pc ? _pc.split(',').map(Number) : null;
+const URL_ZOOM   = (_pz != null && _pz !== '') ? Number(_pz) : null;
 const tilesUrl  = 'pmtiles://' + origin + '/maps/' + MAP_FILE;
 
 const pmtilesHttpUrl   = (file) => origin + '/maps/' + file;
@@ -600,8 +667,8 @@ maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile);
 const map = new maplibregl.Map({
   container: 'map',
   style: oasisBaseMapStyle(tilesUrl),
-  center: [-122.1, 47.6],
-  zoom: 9,
+  center: (URL_CENTER && URL_CENTER.length === 2 && URL_CENTER.every(Number.isFinite)) ? URL_CENTER : [-122.1, 47.6],
+  zoom: (URL_ZOOM != null && Number.isFinite(URL_ZOOM)) ? URL_ZOOM : 9,
   attributionControl: false
 });
 
@@ -1064,8 +1131,9 @@ function applyFilter() {
   if (coverageOn) _refreshCoverage(filtered);
   const total = allStations.length;
   const shown = filtered.length;
-  document.getElementById('stationCount').textContent =
-    shown + ' of ' + total + ' station' + (total !== 1 ? 's' : '');
+  const scEl = document.getElementById('stationCount');
+  scEl.textContent = shown + '/' + total;
+  scEl.title = shown + ' shown of ' + total + ' station' + (total !== 1 ? 's' : '');
 }
 
 function setStatus(state, msg) {
@@ -1273,6 +1341,55 @@ loadConfig().then(() => {
 });
 
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 120 }), 'bottom-left');
+
+// ── Cursor coordinate + zoom readout (parity with the offline maps viewer) ──
+const _crLat  = document.getElementById('crLat');
+const _crLon  = document.getElementById('crLon');
+const _crZoom = document.getElementById('crZoom');
+let   _lastLngLat = null;
+function _updateReadout() {
+  _crZoom.textContent = map.getZoom().toFixed(1);
+  _crLat.textContent = _lastLngLat ? _lastLngLat.lat.toFixed(5) : '—';
+  _crLon.textContent = _lastLngLat ? _lastLngLat.lng.toFixed(5) : '—';
+}
+map.on('mousemove', (e) => { _lastLngLat = e.lngLat; _updateReadout(); });
+map.on('zoom', _updateReadout);
+map.on('load', _updateReadout);
+
+// ── Click a base-map feature to inspect its raw OSM properties ──────────────
+// Station markers are DOM elements, so map-canvas clicks never hit them. The
+// measure tool owns clicks while active, so bail out then.
+const OSM_INSPECT_LAYERS = [
+  'water-poly-fill', 'waterways-line',
+  'landcover-wood', 'landcover-grass', 'landuse-park',
+  'landuse-residential', 'landuse-commercial', 'landuse-industrial',
+  'road-minor', 'road-secondary', 'road-primary', 'road-motorway',
+  'buildings-fill', 'place-labels', 'pois-circle', 'mountain-peak',
+];
+map.on('click', (e) => {
+  if (measureOn) return;
+  const layers = OSM_INSPECT_LAYERS.filter(id => map.getLayer(id));
+  const feats  = map.queryRenderedFeatures(e.point, { layers });
+  if (!feats.length) return;
+  const props = feats[0].properties || {};
+  const rows  = Object.entries(props)
+    .filter(([, v]) => v !== null && v !== '' && v !== 'null')
+    .map(([k, v]) => '<div class="pop-row"><span class="pop-lbl">' + _escHtml(k) +
+                     '</span><span class="pop-val">' + _escHtml(v) + '</span></div>')
+    .join('');
+  if (!rows) return;
+  new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
+    .setLngLat(e.lngLat).setHTML(rows).addTo(map);
+});
+
+// ── PMTiles layer diagnostics (parity: log detected vector layers) ─────────
+(async () => {
+  try {
+    const meta   = await new pmtiles.PMTiles(pmtilesHttpUrl(MAP_FILE)).getMetadata();
+    const layers = (meta.vector_layers || []).map(l => l.id).join(', ');
+    console.log('[PMTiles] base map "' + MAP_FILE + '" vector layers:', layers || '(none found)');
+  } catch (e) { console.warn('[PMTiles] metadata fetch failed:', e); }
+})();
 
 // ── Track rendering ──────────────────────────────────────────────────────────
 let activeTrack = null;

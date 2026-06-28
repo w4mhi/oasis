@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Winlink Mail • OASIS</title>
+  <link rel="stylesheet" href="../css/common.css">
+<style>
+  /* ── Connect / status bar ─────────────────────────────────── */
+  .conn-bar { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
+  .conn-bar select { width:auto; min-width:200px; }
+  .conn-row {
+    display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;
+    margin-top:.55rem; padding-top:.55rem; border-top:1px solid var(--border);
+  }
+  .conn-row select, .conn-row input { width:auto; }
+  .conn-row #aliasSel { min-width:200px; }
+  .conn-tag {
+    font-size:var(--fs-micro); text-transform:uppercase; letter-spacing:.1em;
+    color:var(--amber); min-width:7.5rem;
+  }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--text-dim);
+         display:inline-block; flex:0 0 auto; }
+  .dot.up   { background:var(--accent); box-shadow:0 0 6px var(--accent); }
+  .dot.busy { background:var(--amber);  box-shadow:0 0 6px var(--amber); }
+  .dot.down { background:var(--red); }
+  .conn-state { font-size:var(--fs-small); color:var(--text-dim); }
+
+  /* ── Layout: folders + inbox on top, message window full-width below ──── */
+  .mail-grid {
+    display:grid; gap:.75rem; align-items:start;
+    grid-template-columns: 200px 1fr;
+    grid-template-areas:
+      "folders list"
+      "reader  reader";
+  }
+  .folders-panel { grid-area:folders; }
+  .list-panel    { grid-area:list; }
+  .reader-panel  { grid-area:reader; }
+  @media (max-width: 900px) {
+    .mail-grid {
+      grid-template-columns: 1fr;
+      grid-template-areas: "folders" "list" "reader";
+    }
+  }
+  /* Inbox list scrolls within a capped height. */
+  .list-panel .tbl-wrap { max-height:38vh; overflow-y:auto; }
+  /* Message window scrolls its body if the message is long. */
+  .reader .body { max-height:48vh; overflow-y:auto; }
+
+  /* Folders */
+  .folders { list-style:none; display:flex; flex-direction:column; gap:2px; }
+  .folder {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:7px 10px; border-radius:6px; cursor:pointer;
+    font-size:var(--fs-base); color:var(--text); border:1px solid transparent;
+  }
+  .folder:hover { background:var(--panel-2); }
+  .folder.active { background:var(--panel-2); border-color:var(--accent-dim);
+                   color:var(--accent); }
+  .folder .count { font-size:var(--fs-micro); color:var(--text-dim); }
+  .folder.has-unread .fname { color:var(--text); font-weight:700; }
+  .folder .unread-n { color:var(--amber); font-weight:700; }
+  .list-head { display:flex; justify-content:space-between; align-items:center;
+               gap:.5rem; margin-bottom:.5rem; }
+  .list-filter { display:flex; gap:.5rem; align-items:center; margin-bottom:.5rem; }
+  .list-filter input[type=search] { flex:1; }
+  .list-filter .chk { display:flex; align-items:center; gap:.3rem; white-space:nowrap;
+                      font-size:var(--fs-small); color:var(--text-dim); cursor:pointer; }
+  .list-filter .chk input { width:auto; cursor:pointer; }
+  .list-scan { font-size:var(--fs-small); color:var(--text-dim); font-style:italic;
+               padding:.35rem .1rem; }
+
+  /* Message list */
+  .msg-row { cursor:pointer; }
+  /* Left accent: new/unread = amber, read = green (fades after the read dwell). */
+  .msg-row td:first-child { border-left:2px solid transparent; transition:border-color .8s ease; }
+  .msg-row.unread td:first-child { border-left-color:var(--amber); }
+  .msg-row.read   td:first-child { border-left-color:var(--green); }
+  .msg-row .subj { color:var(--text); }
+  .msg-row .meta { color:var(--text-dim); font-size:var(--fs-small); }
+  .list-empty, .pane-empty {
+    text-align:center; padding:2rem 1rem; color:var(--text-dim);
+    font-style:italic;
+  }
+
+  /* Reader */
+  .reader { position:relative; }
+  .pane-close {
+    position:absolute; top:-.15rem; right:-.15rem;
+    background:none; border:none; cursor:pointer;
+    color:var(--text-dim); font-size:1rem; line-height:1; padding:.15rem .35rem;
+    border-radius:4px;
+  }
+  .pane-close:hover { color:var(--red); background:var(--panel-2); }
+  .reader h2 { font-size:var(--fs-title); color:var(--accent); margin-bottom:.4rem;
+               padding-right:1.5rem; word-break:break-word; }
+  .reader .hdr { font-size:var(--fs-small); color:var(--text-dim); margin-bottom:.15rem; }
+  .reader .body {
+    white-space:pre-wrap; word-break:break-word; margin-top:.8rem;
+    font-size:var(--fs-base); line-height:1.55;
+  }
+  .reader .attach { margin-top:.6rem; font-size:var(--fs-small); color:var(--amber); }
+
+  /* Compose */
+  .compose .field { margin-bottom:.6rem; }
+  .compose textarea { min-height:200px; }
+
+  /* Live session console */
+  .console {
+    background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
+    padding:.6rem .75rem; margin-top:.6rem; max-height:220px; overflow-y:auto;
+    font-size:var(--fs-small); white-space:pre-wrap; word-break:break-word;
+    color:var(--text-dim);
+  }
+  .console:empty { display:none; }
+
+  /* Error banner */
+  .banner {
+    border:1px solid var(--red); border-radius:6px; color:var(--red);
+    background:rgba(255,107,107,.08); padding:.6rem .85rem; margin-bottom:.75rem;
+    font-size:var(--fs-small);
+  }
+  .banner.hidden { display:none; }
+
+  .pane-actions { display:flex; gap:.5rem; margin-bottom:.6rem; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<div id="toast" class="toast"></div>
+<div class="wrap">
+  <header>
+    <a class="home-link" href="/">⌂ HOME</a>
+    <h1>🛰️ Winlink Mail</h1>
+    <p>Compose, read, and send Winlink radio-email via Pat. Composed messages are
+       <em>queued</em> — press Connect to actually transmit.</p>
+  </header>
+
+  <div id="banner" class="banner hidden"></div>
+
+  <!-- Connect / status bar -->
+  <div class="sec">
+    <span class="sec-label">Session</span>
+    <div class="conn-bar">
+      <span id="dot" class="dot down"></span>
+      <span id="connState" class="conn-state">unknown</span>
+      <button class="sbtn" onclick="refreshAll()">↻ Refresh</button>
+    </div>
+
+    <!-- Quick connect: saved aliases (e.g. telnet/CMS gateway) -->
+    <div class="conn-row">
+      <span class="conn-tag">Quick connect</span>
+      <select id="aliasSel" title="Saved connect alias"></select>
+      <button id="connectBtn" class="sbtn primary" onclick="onConnectAlias()">⚡ Connect</button>
+    </div>
+
+    <!-- New connection: build an RF transport session to a gateway -->
+    <div class="conn-row">
+      <span class="conn-tag">New connection</span>
+      <select id="transportSel" title="Transport">
+        <option value="ardop">ARDOP</option>
+        <option value="varahf">VARA HF</option>
+        <option value="varafm">VARA FM</option>
+        <option value="pactor">PACTOR</option>
+        <option value="ax25">Packet (AX.25)</option>
+        <option value="agwpe">Packet (AGWPE)</option>
+      </select>
+      <input type="text" id="targetCall" placeholder="Gateway callsign" autocomplete="off"
+             style="width:9rem" title="Target RMS gateway callsign">
+      <input type="text" id="freqKhz" placeholder="Freq kHz" autocomplete="off"
+             style="width:6.5rem" title="Dial/center frequency in kHz (HF transports)">
+      <button class="sbtn primary" onclick="onConnectBuild()">⚡ Connect</button>
+    </div>
+
+    <div id="console" class="console"></div>
+  </div>
+
+  <!-- Three-pane mail layout -->
+  <div class="mail-grid">
+    <!-- Folders -->
+    <div class="sec folders-panel">
+      <span class="sec-label">Mailboxes</span>
+      <ul id="folders" class="folders"></ul>
+      <button class="sbtn primary" style="width:100%;margin-top:.7rem"
+              onclick="showCompose()">✎ Compose</button>
+    </div>
+
+    <!-- Message list -->
+    <div class="sec list-panel">
+      <div class="list-head">
+        <span class="sec-label" id="listLabel" style="margin-bottom:0">Inbox</span>
+        <button class="sbtn" onclick="markAllRead()" title="Mark every message in this folder read">✓ Mark all read</button>
+      </div>
+      <div class="list-filter">
+        <input type="search" id="msgSearch" placeholder="Search subject / callsign…"
+               oninput="renderList()" autocomplete="off">
+        <label class="chk" title="Show only unread messages">
+          <input type="checkbox" id="unreadOnly" onchange="renderList()"> Unread only
+        </label>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <tbody id="msgList"></tbody>
+        </table>
+      </div>
+      <div id="searchScan" class="list-scan" style="display:none">⏳ scanning message text…</div>
+      <div id="listEmpty" class="list-empty" style="display:none">No messages.</div>
+    </div>
+
+    <!-- Reader / Compose pane -->
+    <div class="sec reader-panel">
+      <span class="sec-label" id="paneLabel">Message</span>
+      <div id="pane">
+        <div class="pane-empty">Select a message, or press Compose.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="read-state.js"></script>
+<script>
+// ── Config ────────────────────────────────────────────────────────────────
+const API = "/api/winlink";
+const PAT_PORT = 8082;
+const BOXES = [
+  { id: "in",      label: "Inbox"   },
+  { id: "out",     label: "Outbox"  },
+  { id: "sent",    label: "Sent"    },
+  { id: "archive", label: "Archive" },
+];
+let currentBox = "in";
+let _currentMsgs = [];   // messages for the loaded box (unfiltered)
+let _openMsg = null;     // the message object shown in the reader (for reply/fwd)
+// Body search: the mailbox LIST omits bodies, so we background-prefetch each
+// message's body into this IN-MEMORY cache (never localStorage — bodies are the
+// sensitive part). _prefetchGen is bumped on every box load to abandon a stale,
+// in-flight prefetch. Verified: fetching a message does NOT mark it read in Pat.
+const _bodyCache = new Map();   // mid -> body string
+let _prefetchGen = 0;
+let _prefetching = false;
+let ws = null;
+let statusTimer = null;
+
+// Read/unread state is shared with the dashboard via winlink/read-state.js
+// (window.WinlinkRead). A message is marked read once it's been open for
+// READ_DWELL_MS, fading its accent amber→green (mirrors the aprs map's
+// new→persistent settling).
+const READ_DWELL_MS = 3000;
+let _readTimer = null;
+
+// Pat serves plain HTTP; the live-log WebSocket is cross-origin to this page
+// (port 8082 vs 8083), which browsers allow for WS without CORS preflight.
+const WS_URL  = `ws://${location.hostname}:${PAT_PORT}/ws`;
+
+// ── Small helpers ─────────────────────────────────────────────────────────
+function toast(msg, kind) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show " + (kind || "");
+  setTimeout(() => { t.className = "toast"; }, 2600);
+}
+function banner(msg) {
+  const b = document.getElementById("banner");
+  if (!msg) { b.classList.add("hidden"); return; }
+  b.textContent = msg;
+  b.classList.remove("hidden");
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+// Pat field names vary slightly by version — read defensively.
+function pick(obj, ...keys) {
+  for (const k of keys) if (obj && obj[k] != null) return obj[k];
+  return "";
+}
+function addrText(v) {
+  if (v == null) return "";
+  if (Array.isArray(v)) return v.map(addrText).join(", ");
+  if (typeof v === "object") return pick(v, "Addr", "addr", "Address") || "";
+  return String(v);
+}
+
+async function api(path, opts) {
+  const res = await fetch(API + path, opts);
+  if (res.status === 503) {
+    let msg = "Pat (Winlink) service unreachable.";
+    try { msg = (await res.json()).error || msg; } catch (_) {}
+    banner(msg);
+    throw new Error(msg);
+  }
+  banner("");
+  if (!res.ok) throw new Error(`Pat error ${res.status}`);
+  return res;
+}
+async function apiJson(path, opts) { return (await api(path, opts)).json(); }
+
+// ── Folders ───────────────────────────────────────────────────────────────
+// counts[box] = { total, unread }. Unread shows as an amber "n/total" and the
+// folder name goes bold when there's unread (mail-client convention).
+function renderFolders(counts) {
+  const ul = document.getElementById("folders");
+  ul.innerHTML = "";
+  for (const b of BOXES) {
+    const c = counts && counts[b.id];
+    const hasUnread = !!(c && c.unread > 0);
+    const li = document.createElement("li");
+    li.className = "folder" + (b.id === currentBox ? " active" : "") +
+                   (hasUnread ? " has-unread" : "");
+    let countHtml = "";
+    if (c && c.total != null) {
+      countHtml = hasUnread
+        ? `<span class="count"><span class="unread-n">${c.unread}</span>/${c.total}</span>`
+        : `<span class="count">${c.total}</span>`;
+    }
+    li.innerHTML = `<span class="fname">${b.label}</span>${countHtml}`;
+    li.onclick = () => selectBox(b.id);
+    ul.appendChild(li);
+  }
+}
+
+// Tally a mailbox's totals without rendering rows (for the other folders'
+// badges). Returns {total, unread} or null if Pat is unreachable.
+async function fetchBoxStats(box) {
+  try {
+    const msgs = await apiJson(`/mailbox/${box}`);
+    const list = Array.isArray(msgs) ? msgs : [];
+    WinlinkRead.seed(list);
+    return { total: list.length, unread: WinlinkRead.unreadCount(list) };
+  } catch (_) { return null; }
+}
+
+async function refreshCounts() {
+  window._counts = window._counts || {};
+  await Promise.all(BOXES.map(async b => {
+    const st = await fetchBoxStats(b.id);
+    if (st) window._counts[b.id] = st;
+  }));
+  renderFolders(window._counts);
+}
+
+async function selectBox(box) {
+  currentBox = box;
+  const label = (BOXES.find(b => b.id === box) || {}).label || box;
+  document.getElementById("listLabel").textContent = label;
+  renderFolders(window._counts);
+  await loadBox(box);
+}
+
+// ── Message list ──────────────────────────────────────────────────────────
+async function loadBox(box) {
+  const empty = document.getElementById("listEmpty");
+  let msgs;
+  try { msgs = await apiJson(`/mailbox/${box}`); }
+  catch (e) {
+    _currentMsgs = [];
+    document.getElementById("msgList").innerHTML = "";
+    empty.style.display = "block"; empty.textContent = "—";
+    return;
+  }
+  _currentMsgs = Array.isArray(msgs) ? msgs : [];
+  WinlinkRead.seed(_currentMsgs);
+  renderList();
+  recountBox(box);
+  prefetchBodies(box, _currentMsgs, ++_prefetchGen);   // supersedes any prior run
+}
+
+// Background-fetch message bodies into _bodyCache so search can match them.
+// Sequential (Pi-Zero-friendly) and cancellable: a newer box load bumps
+// _prefetchGen and this run bails. Re-renders live only while the user is
+// actually searching, so it's silent otherwise.
+async function prefetchBodies(box, msgs, gen) {
+  _prefetching = true;
+  for (const m of msgs) {
+    if (gen !== _prefetchGen) { return; }              // superseded — stop
+    const mid = pick(m, "MID", "Mid", "mid");
+    if (mid == null || _bodyCache.has(mid)) continue;
+    let full;
+    try { full = await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`); }
+    catch (_) { continue; }                            // skip on error, keep going
+    if (gen !== _prefetchGen) { return; }
+    _bodyCache.set(mid, pick(full, "Body", "body") || "");
+    if (searchTerm()) renderList();                    // surface new matches live
+  }
+  if (gen === _prefetchGen) { _prefetching = false; renderList(); }  // clear scan hint
+}
+
+function searchTerm() {
+  return (document.getElementById("msgSearch")?.value || "").trim().toLowerCase();
+}
+
+// Render the current box applying the search + "unread only" filters. Search
+// matches subject, callsign, AND message body (from _bodyCache, filled by the
+// background prefetch). Counts (folder badges) reflect the full box.
+function renderList() {
+  const list = document.getElementById("msgList");
+  const empty = document.getElementById("listEmpty");
+  list.innerHTML = "";
+  const term = searchTerm();
+  const unreadOnly = !!document.getElementById("unreadOnly")?.checked;
+  let shown = 0;
+  for (const m of _currentMsgs) {
+    const mid     = pick(m, "MID", "Mid", "mid");
+    const subject = pick(m, "Subject", "subject") || "(no subject)";
+    const who     = currentBox === "in" ? addrText(pick(m, "From", "from"))
+                                        : addrText(pick(m, "To", "to"));
+    const date    = pick(m, "Date", "date");
+    const unread  = WinlinkRead.isUnread(mid);
+    if (unreadOnly && !unread) continue;
+    if (term) {
+      const body = _bodyCache.get(mid) || "";
+      if (!`${subject} ${who} ${body}`.toLowerCase().includes(term)) continue;
+    }
+    const tr = document.createElement("tr");
+    tr.className = "msg-row " + (unread ? "unread" : "read");
+    tr.dataset.mid = mid;
+    tr.innerHTML =
+      `<td><div class="subj">${esc(subject)}</div>` +
+      `<div class="meta">${esc(who)} · ${esc(date)}</div></td>`;
+    tr.onclick = () => openMessage(currentBox, mid);
+    list.appendChild(tr);
+    shown++;
+  }
+  empty.style.display = shown ? "none" : "block";
+  empty.textContent = _currentMsgs.length === 0 ? "No messages."
+                    : (unreadOnly && !term) ? "No unread messages." : "No matches.";
+  // While a search is active and bodies are still loading, say so — results
+  // keep appearing as the prefetch fills the cache.
+  const scan = document.getElementById("searchScan");
+  if (scan) scan.style.display = (term && _prefetching) ? "block" : "none";
+}
+
+// ── Reader ────────────────────────────────────────────────────────────────
+// Mark a message read once it's been open for READ_DWELL_MS, fading its row
+// accent amber→green. Opening another message resets the pending dwell, so only
+// a message you actually linger on gets marked read.
+// Recompute the current box's badge from the cached messages (full box, not
+// the filtered view), using the shared read-state.
+function recountBox(box) {
+  if (box !== currentBox) return;
+  window._counts = window._counts || {};
+  window._counts[box] = { total: _currentMsgs.length,
+                          unread: WinlinkRead.unreadCount(_currentMsgs) };
+  renderFolders(window._counts);
+}
+
+// Reflect a MID's current read state onto its row, the open reader's toggle,
+// and the folder badge.
+function applyReadState(box, mid) {
+  const u = WinlinkRead.isUnread(mid);
+  const row = document.querySelector(`.msg-row[data-mid="${CSS.escape(mid)}"]`);
+  if (row) { row.classList.toggle("unread", u); row.classList.toggle("read", !u); }
+  const btn = document.getElementById("readToggle");
+  if (btn && btn.dataset.mid === String(mid)) btn.textContent = u ? "Mark read" : "Mark unread";
+  recountBox(box);
+}
+
+// Manual per-message toggle. Cancels the auto-read dwell so it can't override.
+function toggleRead(box, mid) {
+  if (_readTimer) { clearTimeout(_readTimer); _readTimer = null; }
+  if (WinlinkRead.isUnread(mid)) WinlinkRead.markRead(mid);
+  else WinlinkRead.markUnread(mid);
+  applyReadState(box, mid);
+}
+
+// Folder-level: mark every message in the current box read (not just visible).
+function markAllRead() {
+  if (!_currentMsgs.length) { toast("Nothing to mark", "err"); return; }
+  WinlinkRead.markAllRead(_currentMsgs.map(m => pick(m, "MID", "Mid", "mid")));
+  renderList();
+  const btn = document.getElementById("readToggle");
+  if (btn) btn.textContent = "Mark unread";
+  recountBox(currentBox);
+  toast("All marked read", "ok");
+}
+
+function scheduleReadDwell(box, mid) {
+  if (_readTimer) { clearTimeout(_readTimer); _readTimer = null; }
+  if (!WinlinkRead.isUnread(mid)) return;
+  _readTimer = setTimeout(() => {
+    WinlinkRead.markRead(mid);
+    applyReadState(box, mid);
+  }, READ_DWELL_MS);
+}
+
+async function openMessage(box, mid) {
+  document.getElementById("paneLabel").textContent = "Message";
+  const pane = document.getElementById("pane");
+  pane.innerHTML = `<div class="pane-empty">Loading…</div>`;
+  scheduleReadDwell(box, mid);
+  let m;
+  try { m = await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`); }
+  catch (e) { pane.innerHTML = `<div class="pane-empty">Could not load message.</div>`; return; }
+  _openMsg = m;   // remembered for reply / reply-all / forward
+  _bodyCache.set(mid, pick(m, "Body", "body") || "");   // warm the search cache
+
+  const subject = esc(pick(m, "Subject", "subject") || "(no subject)");
+  const from    = esc(addrText(pick(m, "From", "from")));
+  const to      = esc(addrText(pick(m, "To", "to")));
+  const date    = esc(pick(m, "Date", "date"));
+  const body    = esc(pick(m, "Body", "body"));
+  const files   = pick(m, "Files", "files", "Attachments");
+  let attachHtml = "";
+  if (Array.isArray(files) && files.length) {
+    const names = files.map(f => esc(pick(f, "Name", "name") || f)).join(", ");
+    attachHtml = `<div class="attach">📎 ${names}</div>`;
+  }
+  pane.className = "reader";
+  pane.innerHTML =
+    `<button class="pane-close" onclick="clearReader()" aria-label="Clear message from screen"` +
+    ` title="Clear from screen (privacy)">✕</button>` +
+    `<div class="pane-actions">` +
+      `<button class="sbtn primary" onclick="replyTo('reply')">↩ Reply</button>` +
+      `<button class="sbtn" onclick="replyTo('replyAll')">↩ Reply all</button>` +
+      `<button class="sbtn" onclick="replyTo('forward')">➦ Forward</button>` +
+      `<button id="readToggle" class="sbtn" data-mid="${esc(mid)}" onclick="toggleRead('${box}','${esc(mid)}')">` +
+        `${WinlinkRead.isUnread(mid) ? "Mark read" : "Mark unread"}</button>` +
+      `<button class="sbtn danger" onclick="deleteMessage('${box}','${esc(mid)}')">🗑 Delete</button>` +
+    `</div>` +
+    `<h2>${subject}</h2>` +
+    `<div class="hdr"><strong>From:</strong> ${from}</div>` +
+    `<div class="hdr"><strong>To:</strong> ${to}</div>` +
+    `<div class="hdr"><strong>Date:</strong> ${date}</div>` +
+    attachHtml +
+    `<div class="body">${body}</div>`;
+}
+
+// Clear the reading pane back to the placeholder — gets message text off the
+// screen (privacy) without touching what Pat has stored.
+function clearReader() {
+  if (_readTimer) { clearTimeout(_readTimer); _readTimer = null; }
+  const pane = document.getElementById("pane");
+  pane.className = "";
+  pane.innerHTML = `<div class="pane-empty">Select a message, or press Compose.</div>`;
+  document.getElementById("paneLabel").textContent = "Message";
+}
+
+async function deleteMessage(box, mid) {
+  if (!confirm("Delete this message?")) return;
+  try {
+    await api(`/mailbox/${box}/${encodeURIComponent(mid)}`, { method: "DELETE" });
+    toast("Message deleted", "ok");
+    clearReader();
+    loadBox(box);
+  } catch (e) { toast(e.message, "err"); }
+}
+
+// ── Compose ───────────────────────────────────────────────────────────────
+function showCompose(prefill) {
+  prefill = prefill || {};
+  document.getElementById("paneLabel").textContent = "Compose";
+  const pane = document.getElementById("pane");
+  pane.className = "compose";
+  pane.innerHTML =
+    `<div class="field"><label>To (callsign / address)</label>` +
+      `<input type="text" id="cTo" placeholder="W4ABC" autocomplete="off"></div>` +
+    `<div class="field"><label>Cc</label>` +
+      `<input type="text" id="cCc" placeholder="(optional)" autocomplete="off"></div>` +
+    `<div class="field"><label>Subject</label>` +
+      `<input type="text" id="cSubject" autocomplete="off"></div>` +
+    `<div class="field"><label>Message</label>` +
+      `<textarea id="cBody"></textarea></div>` +
+    (prefill.note ? `<div class="conn-state">${esc(prefill.note)}</div>` : "") +
+    `<div class="pane-actions">` +
+      `<button class="sbtn primary" onclick="sendMessage()">📤 Queue message</button>` +
+      `<span class="conn-state">Queues to Outbox — Connect to transmit.</span>` +
+    `</div>`;
+  document.getElementById("cTo").value = prefill.to || "";
+  document.getElementById("cCc").value = prefill.cc || "";
+  document.getElementById("cSubject").value = prefill.subject || "";
+  document.getElementById("cBody").value = prefill.body || "";
+  // Focus the first empty field so a forward lands on To, a reply on the body.
+  (prefill.to ? document.getElementById("cBody") : document.getElementById("cTo")).focus();
+}
+
+// Pull a flat list of address strings from a Pat From/To/Cc field.
+function addrList(v) {
+  if (v == null) return [];
+  const arr = Array.isArray(v) ? v : [v];
+  return arr.map(x => (x && typeof x === "object")
+                        ? pick(x, "Addr", "addr", "Address") : String(x || ""))
+            .filter(Boolean);
+}
+
+// Reply / Reply-all / Forward — pre-fill Compose from the open message. No
+// transport involved: this only queues a draft to the Outbox.
+function replyTo(mode) {
+  const m = _openMsg;
+  if (!m) { toast("Open a message first", "err"); return; }
+  const from     = addrList(pick(m, "From", "from"))[0] || "";
+  const origSubj = pick(m, "Subject", "subject") || "";
+  const date     = pick(m, "Date", "date");
+  const body     = pick(m, "Body", "body") || "";
+  const quoted   = `\n\n----- Original message from ${from || "(unknown)"} on ${date} -----\n${body}`;
+  let to = "", cc = "", subject = "", note = "";
+
+  if (mode === "forward") {
+    subject = /^fw:/i.test(origSubj) ? origSubj : `FW: ${origSubj}`;
+    note = "Forward is text-only — attachments are not carried.";
+  } else {
+    to = from;
+    subject = /^re:/i.test(origSubj) ? origSubj : `RE: ${origSubj}`;
+    if (mode === "replyAll") {
+      const mycall = (localStorage.getItem("oasis_callsign") || "").toUpperCase();
+      const fromU = from.toUpperCase();
+      const others = [...addrList(pick(m, "To", "to")), ...addrList(pick(m, "Cc", "cc"))]
+        .map(a => a.toUpperCase())
+        .filter(a => a && a !== fromU && a !== mycall);
+      cc = [...new Set(others)].join(", ");
+    }
+  }
+  showCompose({ to, cc, subject, body: quoted, note });
+}
+
+async function sendMessage() {
+  const to = document.getElementById("cTo").value.trim();
+  if (!to) { toast("Recipient required", "err"); return; }
+  const form = new URLSearchParams();
+  form.set("to", to);
+  const cc = document.getElementById("cCc").value.trim();
+  if (cc) form.set("cc", cc);
+  form.set("subject", document.getElementById("cSubject").value);
+  form.set("body", document.getElementById("cBody").value);
+  try {
+    await api("/mailbox/out", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+    });
+    toast("Queued to Outbox — Connect to send", "ok");
+    selectBox("out");
+  } catch (e) { toast(e.message, "err"); }
+}
+
+// ── Connection status + aliases ───────────────────────────────────────────
+function setDot(state, text) {
+  const dot = document.getElementById("dot");
+  dot.className = "dot " + state;
+  document.getElementById("connState").textContent = text;
+}
+
+async function loadAliases() {
+  const sel = document.getElementById("aliasSel");
+  try {
+    const data = await apiJson("/aliases");
+    let entries = [];
+    if (Array.isArray(data)) entries = data.map(a => [a, a]);
+    else if (data && typeof data === "object") entries = Object.entries(data);
+    sel.innerHTML = "";
+    if (!entries.length) {
+      sel.innerHTML = `<option value="">No transports configured</option>`;
+      document.getElementById("connectBtn").disabled = true;
+      return;
+    }
+    document.getElementById("connectBtn").disabled = false;
+    for (const [name, url] of entries) {
+      const o = document.createElement("option");
+      o.value = name;            // Pat accepts the alias name on /api/connect
+      o.textContent = name;
+      o.title = String(url);
+      sel.appendChild(o);
+    }
+  } catch (e) {
+    sel.innerHTML = `<option value="">Pat unreachable</option>`;
+    document.getElementById("connectBtn").disabled = true;
+  }
+}
+
+async function pollStatus() {
+  try {
+    const s = await apiJson("/status");
+    const connected = !!pick(s, "Connected", "connected");
+    const dialing   = !!pick(s, "Dialing", "dialing");
+    if (connected)     setDot("up",   "connected");
+    else if (dialing)  setDot("busy", "dialing…");
+    else               setDot("down", "idle");
+  } catch (e) {
+    setDot("down", "offline");
+  }
+}
+
+// ── Connect session (live log over WebSocket, direct to Pat) ───────────────
+function logLine(text) {
+  const c = document.getElementById("console");
+  c.textContent += (c.textContent ? "\n" : "") + text;
+  c.scrollTop = c.scrollHeight;
+}
+
+function openWs() {
+  if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+  try {
+    ws = new WebSocket(WS_URL);
+    ws.onmessage = (ev) => {
+      let d; try { d = JSON.parse(ev.data); } catch (_) { logLine(ev.data); return; }
+      const line = pick(d, "LogLine", "Logline", "log");
+      if (line) logLine(line);
+      const note = d && d.Notification;
+      if (note) logLine("• " + (pick(note, "Message", "message") || JSON.stringify(note)));
+      const st = d && (d.Status || d.status);
+      if (st) {
+        const connected = !!pick(st, "Connected", "connected");
+        const dialing   = !!pick(st, "Dialing", "dialing");
+        if (connected) setDot("up", "connected");
+        else if (dialing) setDot("busy", "dialing…");
+      }
+    };
+    ws.onclose = () => { /* fall back to polling, already running */ };
+    ws.onerror = () => { logLine("(live log unavailable — using status polling)"); };
+  } catch (e) {
+    logLine("(live log unavailable — using status polling)");
+  }
+}
+
+// Shared session runner. `url` is either a saved alias name or a full Pat
+// transport URL; Pat's /api/connect accepts both. `label` is for the log.
+async function runConnect(url, label) {
+  document.getElementById("console").textContent = "";
+  logLine(`Connecting ${label}…`);
+  setDot("busy", "dialing…");
+  openWs();
+  try {
+    await api(`/connect?url=${encodeURIComponent(url)}`);
+    logLine("Session finished.");
+    toast("Connect session complete", "ok");
+  } catch (e) {
+    logLine("Connect failed: " + e.message);
+    toast(e.message, "err");
+  } finally {
+    pollStatus();
+    loadBox(currentBox);
+    refreshCounts();          // new mail may have landed in other boxes
+  }
+}
+
+// Quick connect — saved alias (e.g. telnet/CMS).
+function onConnectAlias() {
+  const alias = document.getElementById("aliasSel").value;
+  if (!alias) { toast("No alias selected", "err"); return; }
+  runConnect(alias, `via "${alias}"`);
+}
+
+// New connection — build a transport URL: transport:///TARGET[?freq=kHz].
+// Pat resolves the rig/QSY from the transport's own config; freq is the dial
+// frequency in kHz and applies to HF transports (ardop/varahf/pactor).
+function onConnectBuild() {
+  const transport = document.getElementById("transportSel").value;
+  const target = document.getElementById("targetCall").value.trim().toUpperCase();
+  const freq = document.getElementById("freqKhz").value.trim();
+  if (!target) { toast("Gateway callsign required", "err"); return; }
+  let url = `${transport}:///${encodeURIComponent(target)}`;
+  if (freq) url += `?freq=${encodeURIComponent(freq)}`;
+  runConnect(url, `to ${target} via ${transport}${freq ? " @ " + freq + " kHz" : ""}`);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+async function refreshAll() {
+  await Promise.all([loadAliases(), pollStatus(), refreshCounts()]);
+  await selectBox(currentBox);
+}
+
+renderFolders();
+refreshAll();
+statusTimer = setInterval(pollStatus, 5000);
+</script>
+</body>
+</html>

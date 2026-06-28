@@ -462,9 +462,11 @@ _OASIS_SERVICES = {
 _CONTROLLABLE_SERVICES = _OASIS_SERVICES - {"oasis", "gpsd"}
 _SERVICE_ACTIONS = {"start", "stop", "restart"}
 
-# Hardware-exclusivity: starting the key stops the listed services first, since
-# they can't share the radio at once. OpenWebRX grabs the RTL-SDR, which the APRS
-# SDR feed pipes into GrayWolf — so bringing up OpenWebRX takes both down.
+# Hardware-exclusivity: OpenWebRX and the APRS chain (SDR feed -> GrayWolf) can't
+# share the RTL-SDR. Listed in RESTORE order (producer first): the feed pipes into
+# GrayWolf, so on restore the feed comes up before its consumer. Teardown uses the
+# reverse (consumer first). Boot state is never touched, so the feed and GrayWolf
+# (shipped enabled) come back on reboot -> APRS is the default after a power cycle.
 _SERVICE_CONFLICTS = {
     "openwebrx": ["aprs-sdr-feed", "graywolf"],
 }
@@ -473,7 +475,7 @@ _SERVICE_CONFLICTS = {
 # (comes back after reboot), stopping also `disable`s them (stays off). Everything
 # else is transient (plain start/stop; boot state left untouched). restart never
 # changes boot state.
-_PERSIST_BOOT_STATE = {"openwebrx", "kiwix"}
+_PERSIST_BOOT_STATE = {"kiwix"}
 
 
 def _systemctl_seq(unit, verbs):
@@ -564,17 +566,21 @@ def api_service():
         return jsonify({"ok": False, "supported": False,
                         "error": "systemd not available"}), 200
 
-    # Hardware-exclusivity (symmetric): a unit's conflicts are taken fully DOWN
-    # (stop + disable) when it starts, and fully RESTORED (enable + start) when it
-    # stops — so exactly one consumer of the radio survives a reboot. `affected`
-    # tells the UI which other cards to refresh. (restart leaves conflicts alone.)
+    # Hardware-exclusivity: a unit's conflicts are stopped when it starts and
+    # restarted when it stops — boot state is never changed, so whatever shipped
+    # enabled (the APRS chain) returns on reboot. Order matters: tear the chain
+    # down consumer-first (GrayWolf before its feed), bring it back producer-first
+    # (feed before GrayWolf) so GrayWolf attaches to a live feed. `affected` tells
+    # the UI which other cards to refresh. (restart leaves conflicts alone.)
     affected = []
-    for other in _SERVICE_CONFLICTS.get(unit, []):
-        if action == "start":
-            _systemctl_seq(other, ["stop", "disable"])
+    conflicts = _SERVICE_CONFLICTS.get(unit, [])     # restore order: feed, graywolf
+    if action == "start":
+        for other in reversed(conflicts):            # teardown: graywolf, then feed
+            _systemctl_seq(other, ["stop"])
             affected.append(other)
-        elif action == "stop":
-            _systemctl_seq(other, ["enable", "start"])
+    elif action == "stop":
+        for other in conflicts:                      # restore: feed, then graywolf
+            _systemctl_seq(other, ["start"])
             affected.append(other)
 
     # Build the systemctl step(s). Boot-state-tracking units enable-on-start /
@@ -781,6 +787,110 @@ def api_aprs_track_proxy():
     except TimeoutError:
         return jsonify({"ok": False,
                         "error": "APRS API timed out."}), 503
+
+
+# ── Winlink (Pat) proxy ───────────────────────────────────────────────────────
+# OASIS ships an OASIS-styled Winlink mail client (winlink/mail.html) that talks
+# to Pat's JSON API. Pat runs on port 8082 and does NOT emit CORS headers, so the
+# browser stays same-origin by going through these thin pass-through proxies
+# (same pattern as the /api/aprs/* routes above). The live connect-session log is
+# the one exception: the page opens a WebSocket straight to Pat (ws://host:8082/ws),
+# which is not subject to CORS and keeps streaming off this sync backend.
+#
+# These are byte/JSON pass-throughs, so they are resilient to Pat payload-shape
+# changes; the front-end binds the actual field names.
+WINLINK_PORT = 8082
+WINLINK_BOXES = {"in", "out", "sent", "archive"}
+
+
+def _winlink_proxy(path, *, method="GET", query="", data=None, headers=None,
+                   timeout=10):
+    """Forward a request to Pat on WINLINK_PORT and pass its response through.
+
+    Mirrors api_aprs_*_proxy: same-origin pass-through, verbatim HTTPError body,
+    503 on URLError/timeout with an OASIS-style message.
+    """
+    import urllib.request
+    import urllib.error
+
+    url = f"http://127.0.0.1:{WINLINK_PORT}{path}"
+    if query:
+        url = f"{url}?{query}"
+    req = urllib.request.Request(url, data=data, method=method)
+    for k, v in (headers or {}).items():
+        req.add_header(k, v)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read()
+            status = getattr(resp, "status", 200) or 200
+        return Response(body, status=status, content_type="application/json")
+    except urllib.error.HTTPError as e:
+        # Pat is up but returned an error — pass its body through verbatim.
+        return Response(e.read(), status=e.code, content_type="application/json")
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", str(e))
+        return jsonify({"ok": False,
+                        "error": f"Pat (Winlink) unreachable ({reason}). "
+                                 "Is the 'pat' service running on "
+                                 f"port {WINLINK_PORT}?"}), 503
+    except TimeoutError:
+        return jsonify({"ok": False,
+                        "error": "Pat (Winlink) timed out."}), 503
+
+
+@app.route("/api/winlink/mailbox/<box>", methods=["GET"])
+def api_winlink_mailbox_list(box):
+    """List messages in a Pat mailbox (in / out / sent / archive)."""
+    if box not in WINLINK_BOXES:
+        return jsonify({"ok": False, "error": "unknown mailbox"}), 400
+    return _winlink_proxy(f"/api/mailbox/{box}")
+
+
+@app.route("/api/winlink/mailbox/<box>/<mid>", methods=["GET", "DELETE"])
+def api_winlink_message(box, mid):
+    """Read or delete a single Pat message."""
+    if box not in WINLINK_BOXES:
+        return jsonify({"ok": False, "error": "unknown mailbox"}), 400
+    return _winlink_proxy(f"/api/mailbox/{box}/{mid}", method=request.method)
+
+
+@app.route("/api/winlink/mailbox/out", methods=["POST"])
+def api_winlink_compose():
+    """Queue a composed message into Pat's outbox.
+
+    Forwards the form body (to / cc / subject / body) verbatim with its
+    Content-Type so Pat parses it exactly as its own UI would.
+    """
+    headers = {}
+    ctype = request.headers.get("Content-Type")
+    if ctype:
+        headers["Content-Type"] = ctype
+    return _winlink_proxy("/api/mailbox/out", method="POST",
+                          data=request.get_data(), headers=headers)
+
+
+@app.route("/api/winlink/status", methods=["GET"])
+def api_winlink_status():
+    """Proxy Pat's connection status."""
+    return _winlink_proxy("/api/status")
+
+
+@app.route("/api/winlink/aliases", methods=["GET"])
+def api_winlink_aliases():
+    """Proxy Pat's configured connect aliases (available transports)."""
+    return _winlink_proxy("/api/connect_aliases")
+
+
+@app.route("/api/winlink/connect", methods=["GET"])
+def api_winlink_connect():
+    """Start a Pat connect session. Forwards ?url=<alias-or-transport-url>.
+
+    Longer timeout: a connect (esp. RF) can take a while. The live log streams
+    over the browser's direct WebSocket to Pat, not through here.
+    """
+    import urllib.parse
+    qs = urllib.parse.urlencode({k: v for k, v in request.args.items()})
+    return _winlink_proxy("/api/connect", query=qs, timeout=120)
 
 
 @app.route("/api/server-info")
@@ -1240,13 +1350,54 @@ PORT = int(os.environ.get("OASIS_PORT", "8083"))
 def find_free_port(start=8083, end=8093):
     """Return the first TCP port in [start, end] not already in use."""
     for p in range(start, end + 1):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(("", p))
-                return p
-            except OSError:
-                continue
+        if _port_bindable(p):
+            return p
     raise RuntimeError(f"No free port found between {start} and {end}")
+
+
+def _port_bindable(port, host=""):
+    """True if `port` can be bound the way gunicorn binds it (SO_REUSEADDR).
+
+    Mirroring gunicorn's bind semantics matters on restart: the previous
+    instance's socket is often only in TIME_WAIT, which a plain bind() reports
+    as "in use" even though gunicorn (SO_REUSEADDR) would bind it fine. Probing
+    with SO_REUSEADDR keeps this check honest and avoids drifting to 8084.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind((host, port))
+            return True
+        except OSError:
+            return False
+
+
+def resolve_port(preferred=8083, wait=15.0, poll=0.5):
+    """Pick the port to serve on, deterministically across restarts.
+
+    Honors OASIS_PORT as an explicit override. Otherwise prefers `preferred`
+    (8083, the canonical OASIS port the dashboard expects). On a service
+    restart where the old instance is still releasing the port, waits up to
+    `wait` seconds for it to free rather than drifting to the next port —
+    drift strands the dashboard (every service shows red). Falls back to the
+    next free port only if the preferred one never frees, so startup never
+    hard-fails.
+    """
+    env = os.environ.get("OASIS_PORT")
+    if env:
+        try:
+            preferred = int(env)
+        except ValueError:
+            pass
+
+    deadline = time.monotonic() + wait
+    while True:
+        if _port_bindable(preferred):
+            return preferred
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(poll)
+    return find_free_port(preferred)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OASIS Flask server")
@@ -1262,7 +1413,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    PORT = find_free_port()
+    PORT = resolve_port()
     os.environ["OASIS_PORT"] = str(PORT)   # so the gunicorn-loaded app reports this port
     url = f"http://localhost:{PORT}/"
 

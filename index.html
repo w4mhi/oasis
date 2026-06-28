@@ -433,7 +433,10 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   border-radius: 999px;
   background: var(--panel-2);
   font-size: var(--fs-label);
+  font-family: var(--mono);
+  cursor: pointer;
 }
+.callsign-pill:hover { background: var(--panel); border-color: var(--accent); }
 .svc-pill {
   display: inline-flex;
   align-items: center;
@@ -448,16 +451,6 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 .cs-call { font-weight: 700; color: var(--accent); letter-spacing: .08em; }
 .cs-grid { color: var(--amber); }
 .cs-sep  { color: var(--border); }
-.cs-edit {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-dim);
-  font-size: var(--fs-small);
-  padding: 0 .1rem;
-  line-height: 1;
-}
-.cs-edit:hover { color: var(--accent); }
 .cnt-up   { color: var(--accent); }
 .cnt-warn { color: var(--amber); }
 .cnt-down { color: var(--red); }
@@ -487,6 +480,8 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 }
 .svc-collapse-btn:hover { color: var(--accent); }
 .svc-collapse-btn.collapsed { transform: rotate(-90deg); }
+.section-hdr-title.clickable { cursor: pointer; }
+.section-hdr-title.clickable:hover { color: var(--text); }
 .svc-strips-wrap {
   overflow: hidden;
   transition: max-height .25s ease;
@@ -640,12 +635,11 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div class="brand-name">OASIS - Off-grid Amateur Station Information Suite</div>
     <div class="brand-sub">An offline toolkit for amateur radio emergency communications.</div>
     <div class="pill-row">
-      <div class="callsign-pill">
+      <button class="callsign-pill" onclick="editCallsignGrid()" title="Edit callsign &amp; grid">
         <span class="cs-call" id="my-callsign">N0CALL</span>
         <span class="cs-sep">&middot;</span>
         <span class="cs-grid" id="my-grid">&mdash;</span>
-        <button class="cs-edit" onclick="editCallsignGrid()" title="Edit callsign &amp; grid">&#9998;</button>
-      </div>
+      </button>
       <button class="units-pill" id="units-pill" onclick="toggleUnits()"
               title="Toggle measurement units (imperial / metric)">
         Units <span class="units-val" id="units-val">IMPERIAL</span>
@@ -740,7 +734,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 
 <!-- ── SECTION HEADER ─────────────────────────────────────────────────────── -->
 <div class="section-hdr">
-  <span class="section-hdr-title">SERVICES</span>
+  <span class="section-hdr-title clickable" onclick="toggleSvcStrip()" title="Collapse service cards">SERVICES</span>
   <span class="section-hdr-sub">infrastructure · radio</span>
   <button class="svc-collapse-btn" id="svc-collapse-btn" title="Collapse service cards" onclick="toggleSvcStrip()">&#9660;</button>
   <span class="svc-pill" id="svc-counts" style="margin-left:auto"></span>
@@ -775,10 +769,9 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     </div>
     <span class="svc-badge" id="badge-owrx">—</span>
   </div>
-  <a class="svc-card" id="card-winlink" href="#" rel="noopener"
-     onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.winlink}/`,'_blank');return false;">
+  <a class="svc-card" id="card-winlink" href="winlink/mail.html">
     <div class="svc-dot" id="dot-winlink"></div>
-    <div><div class="svc-name">PAT Winlink</div><div class="svc-sub" id="sub-winlink">—</div></div>
+    <div><div class="svc-name">Winlink Mail</div><div class="svc-sub" id="sub-winlink">—</div></div>
     <span class="svc-badge" id="badge-winlink">—</span>
   </a>
 </div>
@@ -815,7 +808,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 
 <!-- ── NAVIGATION GRID ───────────────────────────────────────────────────── -->
 <div class="section-hdr">
-  <span class="section-hdr-title">OPS</span>
+  <span class="section-hdr-title clickable" onclick="toggleNavGrid()" title="Collapse utility cards">OPS</span>
   <span class="section-hdr-sub">utilities · forms · reference</span>
   <button class="svc-collapse-btn" id="nav-collapse-btn" title="Collapse utility cards" onclick="toggleNavGrid()">&#9660;</button>
 </div>
@@ -865,7 +858,8 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div class="nav-sec">
       <div class="nav-sec-title">Winlink &amp; APRS</div>
       <ul class="nav-links">
-        <li><a id="nlink-winlink" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.winlink}/`,'_blank');return false;">Pat (send/receive) <span class="nav-svc-badge" id="nsvc-winlink">—</span></a></li>
+        <li><a id="nlink-winlink" href="winlink/mail.html">Winlink Mail <span class="nav-svc-badge" id="nsvc-winlink">—</span></a></li>
+        <li><a href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.winlink}/`,'_blank');return false;">Pat (raw client) <span class="nav-meta">fallback</span></a></li>
         <li><a href="winlink/position-report.html">Position Reports <span class="nav-meta">viewer</span></a></li>
         <li><a href="winlink/radio-settings.html">Radio Settings <span class="nav-meta">setup</span></a></li>
         <li><a href="winlink/to-position.html">Winlink → Position <span class="nav-meta">converter</span></a></li>
@@ -944,6 +938,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   <span id="footer-ts"></span>
 </div>
 
+<script src="winlink/read-state.js"></script>
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
 const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082, openwebrx: 8073 };
@@ -1106,8 +1101,17 @@ const SERVICES = [
   {
     id: 'winlink', name: 'Winlink',
     check: async () => {
-      await fetch(`http://${HOST}:${PORTS.winlink}/`, { cache: 'no-store', mode: 'no-cors' });
-      return { up: true, badge: 'UP', sub: `:${PORTS.winlink}`, navSub: 'operational' };
+      // Same-origin via the Flask proxy: doubles as Pat's up/down probe and
+      // gives us the inbox so we can show the unread count (shared read-state).
+      const r = await fetch('/api/winlink/mailbox/in', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: `:${PORTS.winlink}` };   // 503 = Pat down
+      let unread = 0;
+      try {
+        const msgs = await r.json();
+        if (window.WinlinkRead) { WinlinkRead.seed(msgs); unread = WinlinkRead.unreadCount(msgs); }
+      } catch (_) {}
+      const sub = unread > 0 ? `${unread} unread` : 'no new mail';
+      return { up: true, badge: 'UP', sub, navSub: sub };
     }
   },
   {
