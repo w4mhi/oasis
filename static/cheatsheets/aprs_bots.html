@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>APRS Bots Reference</title>
+<link rel="stylesheet" href="/static/cheatsheets/cheatsheet.css">
 <style>
 :root {
   --fs-title:    1.2rem;
@@ -39,57 +40,6 @@
   }
 
   .wrap { max-width: 820px; margin: 0 auto; }
-
-  header {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: linear-gradient(160deg, var(--panel-2), var(--panel));
-    padding: 1.25rem 1.25rem 1rem;
-    margin-bottom: 1rem;
-    position: relative;
-  }
-  header::after { content: ''; display: table; clear: both; }
-  header::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background-image: repeating-linear-gradient(90deg, transparent 0 6px, rgba(0,217,139,0.035) 6px 7px);
-    pointer-events: none;
-  }
-  h1 {
-    font-size: var(--fs-title);
-    letter-spacing: 0.08em;
-    color: var(--accent);
-    text-transform: uppercase;
-    position: relative;
-  }
-  header p {
-    color: var(--text-dim);
-    font-size: var(--fs-base);
-    margin-top: 0.4rem;
-    position: relative;
-  }
-  .home-link {
-    float: right; margin-left: 1rem; font-size: var(--fs-subtitle);
-    letter-spacing: .1em; color: #58a6ff; text-decoration: none;
-    text-transform: uppercase; line-height: 1.6;
-  }
-  .home-link:hover { color: var(--accent); }
-  header p::after {
-    content: 'CREDITS'; float: right; font-size: var(--fs-micro); color: var(--text-dim);
-    letter-spacing: .08em; text-transform: uppercase; opacity: .5; margin-left: 1rem;
-    cursor: default; border-bottom: 1px dotted var(--text-dim);
-  }
-  header p::before {
-    content: 'Based on ACK Off-Grid Ham Radio Server\A by Jason [KM4ACK].\A Original concept: Jason [KM4ACK].\A Architectural extension : Mihai [W4MHI].';
-    white-space: pre-wrap; position: absolute; top: calc(100% + 6px); right: 0;
-    background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
-    padding: .5rem .75rem; font-size: var(--fs-micro); color: var(--text); line-height: 1.7;
-    z-index: 100; pointer-events: none; opacity: 0; transition: opacity .15s ease; max-width: 300px;
-  }
-  header p:hover::before { opacity: 1; }
-  @media print { header p::after, header p::before, .home-link { display: none; } }
 
   .search-bar {
     position: sticky;

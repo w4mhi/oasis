@@ -50,6 +50,12 @@ a.card:hover { background: var(--panel-2); border-color: var(--cardaccent, var(-
   opacity: .75;
 }
 
+/* Light mode: bright per-band accents glow on the pale background — mix each
+   with charcoal so the hue stays but renders dark and readable. */
+:root[data-theme="light"] a.card { border-color: color-mix(in srgb, var(--cardaccent, var(--accent)) 50%, #1c2430); }
+:root[data-theme="light"] a.card:hover { border-color: color-mix(in srgb, var(--cardaccent, var(--accent)) 60%, #1c2430); }
+:root[data-theme="light"] .card-band { color: color-mix(in srgb, var(--cardaccent, var(--accent)) 45%, #1c2430); }
+
 .all-link {
   display: inline-flex;
   align-items: center;

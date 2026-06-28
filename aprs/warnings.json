@@ -1,0 +1,14 @@
+[
+  { "id": "flood",     "label": "Flood",        "icon": "🌊" },
+  { "id": "fire",      "label": "Fire",         "icon": "🔥" },
+  { "id": "tornado",   "label": "Tornado",      "icon": "🌪️" },
+  { "id": "ice",       "label": "Ice / Snow",   "icon": "🧊" },
+  { "id": "storm",     "label": "Storm",        "icon": "⛈️" },
+  { "id": "wind",      "label": "High Wind",    "icon": "🌬️" },
+  { "id": "hazmat",    "label": "Hazmat",       "icon": "☣️" },
+  { "id": "medical",   "label": "Medical",      "icon": "🚑" },
+  { "id": "shelter",   "label": "Shelter",      "icon": "⛺" },
+  { "id": "roadblock", "label": "Road Closed",  "icon": "🚧" },
+  { "id": "power",     "label": "Power Outage", "icon": "⚡" },
+  { "id": "water",     "label": "Water Point",  "icon": "🚰" }
+]

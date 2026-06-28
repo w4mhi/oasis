@@ -32,6 +32,11 @@ a.card {
   transition: border-color .3s, background .15s;
 }
 a.card:hover { background: var(--panel-2); border-color: var(--cardaccent, var(--accent)); }
+/* Light mode: bright per-card accents glow on the pale background — mix each
+   with charcoal so the hue stays but renders dark and readable. */
+:root[data-theme="light"] a.card { border-color: color-mix(in srgb, var(--cardaccent, var(--accent)) 50%, #1c2430); }
+:root[data-theme="light"] a.card:hover { border-color: color-mix(in srgb, var(--cardaccent, var(--accent)) 60%, #1c2430); }
+:root[data-theme="light"] .card-model { color: color-mix(in srgb, var(--cardaccent, var(--accent)) 45%, #1c2430); }
 .card-model {
   font-size: var(--fs-subtitle);
   font-weight: 700;

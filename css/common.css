@@ -61,6 +61,26 @@
   --fs-icon:     0.95rem;  /* small UI glyphs (collapse / quick-launch icons) */
 }
 
+/* ─── Light theme ────────────────────────────────────────
+   Opt-in via <html data-theme="light">. Dark (above) stays the default, so
+   any page that doesn't toggle is unaffected. Only colour tokens change —
+   the type scale and fonts are shared. */
+:root[data-theme="light"] {
+  --bg:         #f4f6f9;   /* off-white pale grey */
+  --panel:      #ffffff;   /* white */
+  --panel-2:    #e9edf2;   /* light grey-blue */
+  --border:     #d0d7de;   /* soft grey */
+  --accent:     #00875a;   /* deep emerald */
+  --accent-dim: #7fd0b0;   /* soft mint */
+  --amber:      #b06a00;   /* dark amber / bronze */
+  --amber-dim:  #caa15a;   /* tan / sand */
+  --red:        #cf222e;   /* crimson */
+  --green:      #1a7f37;   /* dark green */
+  --blue:       #0969da;   /* azure blue */
+  --text:       #1c2430;   /* near-black charcoal */
+  --text-dim:   #5b6672;   /* slate grey */
+}
+
 /* ─── Reset ─────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 

@@ -9,6 +9,10 @@ __pycache__/
 # installed); the dashboard reads it to hide not-installed service cards.
 installed-services.json
 
+# Operator-placed APRS map warnings (shared runtime state, not repo content).
+aprs-warnings.json
+aprs-warnings.json.tmp
+
 # Screenshot / demo tooling — local mock backends used to populate the
 # dashboard & APRS map with fake data for documentation captures.
 mock-up/

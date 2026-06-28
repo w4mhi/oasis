@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  // Apply the saved theme before first paint (no flash). Dark is the default.
+  try { if (localStorage.getItem('oasis_theme') === 'light')
+          document.documentElement.dataset.theme = 'light'; } catch (e) {}
+</script>
 <title>OASIS - Off-grid Amateur Station Information Suite</title>
 <link rel="stylesheet" href="css/common.css">
 <style>
@@ -679,6 +684,10 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
       <button class="kiosk-refresh" id="kiosk-refresh" onclick="kioskRefresh()"
               title="Reload the dashboard" aria-label="Refresh dashboard">
         <span class="kr-icon">&#8635;</span>Refresh
+      </button>
+      <button class="units-pill" id="theme-toggle" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme">
+        <span id="theme-glyph">&#9728;</span>
       </button>
     </div>
   </div>
@@ -1552,6 +1561,22 @@ function toggleUnits() {
   try { localStorage.setItem('oasis_units', UNITS); } catch (e) {}
   applyUnits();
 }
+
+// ── Light / dark theme ────────────────────────────────────────────────
+// Show the theme you'd switch TO: a sun while in dark, a moon while in light.
+function applyThemeGlyph() {
+  const light = document.documentElement.dataset.theme === 'light';
+  const g = document.getElementById('theme-glyph');
+  if (g) g.innerHTML = light ? '&#9790;' : '&#9728;';
+}
+function toggleTheme() {
+  const light = document.documentElement.dataset.theme === 'light';
+  if (light) delete document.documentElement.dataset.theme;
+  else       document.documentElement.dataset.theme = 'light';
+  try { localStorage.setItem('oasis_theme', light ? 'dark' : 'light'); } catch (e) {}
+  applyThemeGlyph();
+}
+applyThemeGlyph();
 function setBar(id, pct, amber = 70, red = 90) {
   const el = document.getElementById(id);
   el.style.width = `${Math.min(pct, 100)}%`;

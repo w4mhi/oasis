@@ -24,6 +24,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import webbrowser
 
 from flask import Flask, jsonify, render_template, request, send_file, send_from_directory, Response
@@ -39,6 +40,12 @@ MAPS_DIR    = os.path.join(SUITE_ROOT, "maps")
 # The dashboard reads it (via /api/installed-services) to hide cards for
 # services that were never installed. Absent file → show everything.
 INSTALLED_SERVICES_FILE = os.path.join(SUITE_ROOT, "installed-services.json")
+
+# Operator-placed map warnings (flood/fire/etc.) shared across every device that
+# views the APRS map. Small JSON list on disk; serialized writes via a lock.
+# Runtime state, not repo content — gitignored.
+WARNINGS_FILE = os.path.join(SUITE_ROOT, "aprs-warnings.json")
+_warnings_lock = threading.Lock()
 
 # Roots the filesystem map browser (/api/fs/*) may read .pmtiles archives from.
 # Lets an operator load maps off a USB stick or other mount at runtime without
@@ -65,6 +72,38 @@ ZIP_TABLE = lookup.load_zip_table()
 # CORS is intentionally NOT applied globally.  All HTML is served from this
 # same Flask instance (same origin), so cross-origin headers are unnecessary.
 # Individual routes that legitimately need cross-origin access add them below.
+
+# ── Shared light/dark theme toggle ────────────────────────────────────────────
+# Inject static/theme.js just before </head> on every owned HTML page, so the
+# sun/moon toggle (and the no-flash theme apply) appears everywhere without
+# editing each page. Pages that manage their own theming are skipped:
+#   • the 7" kiosk (/small-screen/)   • the APRS map (/aprs/)
+#   • the graywolf-handbook (/static/graywolf-handbook/)
+# theme.js is idempotent — it leaves a page's own toggle button (e.g. the
+# dashboard's) alone and only adds the floating one when none exists.
+_THEME_SKIP_PREFIXES = ("/small-screen/", "/aprs/", "/static/graywolf-handbook/")
+_THEME_SNIPPET = '<script src="/static/theme.js"></script>'
+
+
+@app.after_request
+def _inject_theme_toggle(resp):
+    try:
+        if resp.mimetype != "text/html":
+            return resp
+        path = request.path or "/"
+        if any(path.startswith(p) for p in _THEME_SKIP_PREFIXES):
+            return resp
+        if resp.direct_passthrough:
+            resp.direct_passthrough = False
+        html = resp.get_data(as_text=True)
+        if "</head>" not in html or "/static/theme.js" in html:
+            return resp
+        resp.set_data(html.replace("</head>", _THEME_SNIPPET + "</head>", 1))
+    except Exception:
+        # The toggle is a nicety — never let injection break a page.
+        pass
+    return resp
+
 
 @app.route("/")
 def index():
@@ -816,6 +855,104 @@ def api_aprs_system_proxy():
     except TimeoutError:
         return jsonify({"ok": False,
                         "error": "APRS API timed out."}), 503
+
+
+# ── Operator map warnings (shared, persisted) ─────────────────────────────────
+# Flood/fire/etc. markers an operator drops on the APRS map. Stored server-side
+# so every device viewing the map sees the same set. Small JSON list on disk,
+# writes serialized through _warnings_lock. Owned by this server (not the APRS
+# API), so warnings work even when the APRS chain is offline.
+_WARN_TYPE_MAX = 64    # max length of a warning "type" id
+_WARN_NOTE_MAX = 50    # note character cap (mirrors the UI maxlength)
+_WARN_MAX      = 500   # hard cap on total stored warnings
+
+
+def _load_warnings():
+    """Return the warnings list from disk ([] if absent/unreadable)."""
+    try:
+        with open(WARNINGS_FILE, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _save_warnings(warnings):
+    """Write the list atomically (temp file + os.replace)."""
+    tmp = WARNINGS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(warnings, fh)
+    os.replace(tmp, WARNINGS_FILE)
+
+
+def _clean_note(value):
+    """Single-line, trimmed, length-capped note string."""
+    return str(value or "").replace("\n", " ").replace("\r", " ").strip()[:_WARN_NOTE_MAX]
+
+
+@app.route("/api/aprs/warnings", methods=["GET"])
+def api_aprs_warnings_list():
+    return jsonify({"ok": True, "warnings": _load_warnings()})
+
+
+@app.route("/api/aprs/warnings", methods=["POST"])
+def api_aprs_warnings_add():
+    body = request.get_json(silent=True) or {}
+    try:
+        lon = float(body.get("lon"))
+        lat = float(body.get("lat"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "lon/lat required (numeric)"}), 400
+    if not (-180 <= lon <= 180 and -90 <= lat <= 90):
+        return jsonify({"ok": False, "error": "lon/lat out of range"}), 400
+    wtype = str(body.get("type") or "").strip()[:_WARN_TYPE_MAX]
+    if not wtype:
+        return jsonify({"ok": False, "error": "type required"}), 400
+    note = _clean_note(body.get("note"))
+    with _warnings_lock:
+        warnings = _load_warnings()
+        if len(warnings) >= _WARN_MAX:
+            return jsonify({"ok": False, "error": "warning limit reached"}), 409
+        item = {
+            "id":   uuid.uuid4().hex,
+            "type": wtype,
+            "lon":  lon,
+            "lat":  lat,
+            "note": note,
+            "ts":   int(time.time()),
+        }
+        warnings.append(item)
+        _save_warnings(warnings)
+    return jsonify({"ok": True, "warning": item})
+
+
+@app.route("/api/aprs/warnings/<wid>", methods=["PATCH"])
+def api_aprs_warnings_update(wid):
+    body = request.get_json(silent=True) or {}
+    note = _clean_note(body.get("note"))
+    with _warnings_lock:
+        warnings = _load_warnings()
+        found = None
+        for w in warnings:
+            if w.get("id") == wid:
+                w["note"] = note
+                found = w
+                break
+        if found is None:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _save_warnings(warnings)
+    return jsonify({"ok": True, "warning": found})
+
+
+@app.route("/api/aprs/warnings/<wid>", methods=["DELETE"])
+def api_aprs_warnings_delete(wid):
+    with _warnings_lock:
+        warnings = _load_warnings()
+        kept = [w for w in warnings if w.get("id") != wid]
+        if len(kept) == len(warnings):
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _save_warnings(kept)
+    return jsonify({"ok": True})
 
 
 # ── Winlink (Pat) proxy ───────────────────────────────────────────────────────

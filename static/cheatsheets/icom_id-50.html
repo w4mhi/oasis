@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Icom ID-50 Reference</title>
+<link rel="stylesheet" href="/static/cheatsheets/cheatsheet.css">
 <style>
 :root {
   --fs-title:    1.2rem;
@@ -32,29 +33,6 @@
     line-height: 1.5; padding: 1rem; -webkit-text-size-adjust: 100%;
   }
   .wrap { max-width: 1280px; margin: 0 auto; }
-  header {
-    border: 1px solid var(--border); border-radius: 10px;
-    background: linear-gradient(160deg, var(--panel-2), var(--panel));
-    padding: 1.25rem 1.25rem 1rem; margin-bottom: 1rem;
-    position: relative; overflow: hidden;
-  }
-  header::before {
-    content: ""; position: absolute; inset: 0;
-    background-image: repeating-linear-gradient(90deg, transparent 0 6px, rgba(255,255,255,0.018) 6px 7px);
-    pointer-events: none;
-  }
-  h1 {
-    font-size: var(--fs-title); letter-spacing: 0.06em; color: var(--accent);
-    text-transform: uppercase; position: relative;
-  }
-  h1 .blip {
-    display: inline-block; width: 9px; height: 9px; background: var(--accent);
-    border-radius: 50%; margin-right: 0.5rem; box-shadow: 0 0 8px var(--accent);
-    animation: pulse 2s infinite; vertical-align: middle;
-  }
-  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
-  header .sub { color: var(--text-dim); font-size: var(--fs-base); margin-top: 0.4rem; position: relative; }
-  header .rev { color: var(--text-dim); font-size: var(--fs-small); margin-top: 0.3rem; position: relative; opacity: 0.8; }
 
   .search-bar { position: sticky; top: 0; z-index: 10; margin-bottom: 0.8rem; padding-top: 0.25rem; background: var(--bg); }
   #search {
@@ -168,9 +146,9 @@
 <body>
 <div class="wrap">
   <header>
-    <h1><span class="blip"></span>Icom ID-50</h1>
-    <div class="sub">Quick reference, D-STAR, GPS &amp; picture TX.</div>
-    <div class="rev">Rev 20251028</div>
+    <a class="home-link" href="/">⌂ HOME</a>
+    <h1>Icom ID-50</h1>
+    <p>Quick reference, D-STAR, GPS &amp; picture TX. · Rev 20251028</p>
   </header>
 
   <div class="search-bar">
