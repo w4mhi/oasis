@@ -8,7 +8,7 @@ and exposes a small query API shared by its two consumers:
 
   • the BUILDER  (scripts/create-oasis-offline.py) — vendors packages into the
     offline bundle, per suite + per arch, and writes resolved versions back.
-  • the INSTALLER (scripts/setup-oasis-offline.py + scripts/common/<feature>.py)
+  • the INSTALLER (setup-oasis.py + scripts/common/<feature>.py)
     — on the Pi, resolves the best source (newest of apt vs bundle vs installed),
     enforces `min_version` capability gates, then installs.
 

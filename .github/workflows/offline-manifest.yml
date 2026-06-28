@@ -31,13 +31,15 @@ jobs:
         run: python3 scripts/tests/test_offline_manifest.py
 
       - name: Byte-compile all scripts
-        run: python3 -m py_compile $(git ls-files 'scripts/*.py' 'scripts/common/*.py' 'scripts/tests/*.py')
+        run: python3 -m py_compile $(git ls-files 'scripts/*.py' 'scripts/common/*.py' 'scripts/tests/*.py' 'setup-oasis.py')
 
       - name: Thin CLIs still parse --help
         run: |
           set -e
           for s in install-rtl-sdr install-graywolf install-kiwix install-webssh \
-                   install-winlink setup-server setup-oasis-offline; do
+                   install-winlink setup-server; do
             echo "  --help: $s"
             python3 "scripts/$s.py" --help >/dev/null
           done
+          echo "  --help: setup-oasis"
+          python3 setup-oasis.py --help >/dev/null

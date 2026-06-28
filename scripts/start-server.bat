@@ -4,11 +4,12 @@
 
 setlocal enabledelayedexpansion
 
-:: ── Resolve suite root ───────────────────────────────────────────────────────
+:: ── Resolve suite root (this script lives in scripts\, root is one up) ────────
 set "SCRIPT_DIR=%~dp0"
-set "SERVER_DIR=%SCRIPT_DIR%server"
+set "REPO_ROOT=%SCRIPT_DIR%.."
+set "SERVER_DIR=%REPO_ROOT%\server"
 set "WHEELS_DIR=%SERVER_DIR%\wheels"
-set "VENV_DIR=%SCRIPT_DIR%.venv"
+set "VENV_DIR=%REPO_ROOT%\.venv"
 
 echo.
 echo   OASIS — Starting...

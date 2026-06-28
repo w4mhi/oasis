@@ -2,11 +2,12 @@
 # OASIS - Off-grid Amateur Station Information Suite — launcher for Linux and macOS (terminal)
 set -e
 
-# ── Resolve the suite root (wherever this script lives) ──────────────────────
+# ── Resolve the suite root (this script lives in scripts/, root is one up) ────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVER_DIR="$SCRIPT_DIR/server"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SERVER_DIR="$REPO_ROOT/server"
 WHEELS_DIR="$SERVER_DIR/wheels"
-VENV_DIR="$SCRIPT_DIR/.venv"
+VENV_DIR="$REPO_ROOT/.venv"
 
 # ── Find Python 3 ─────────────────────────────────────────────────────────────
 PYTHON=""
@@ -97,7 +98,7 @@ _check "Python" "1" "$PY_VER"
     || _check "psutil" "0" "→ run: python3 scripts/setup-server.py"
 
 # FCC index
-FCC_INDEX="$SCRIPT_DIR/fcc-offline-database/data/EN.idx"
+FCC_INDEX="$REPO_ROOT/fcc-offline-database/data/EN.idx"
 if [[ -f "$FCC_INDEX" ]]; then
     FCC_KB=$(( $(wc -c < "$FCC_INDEX") / 1024 ))
     _check "FCC index" "1" "${FCC_KB} KB"

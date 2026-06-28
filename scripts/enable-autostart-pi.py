@@ -5,7 +5,7 @@ enable-autostart-pi.py
 Configure OASIS to start automatically when the Raspberry Pi boots.
 
   Default (no flags)
-    Installs a systemd service (oasis.service) that runs start.sh on boot.
+    Installs a systemd service (oasis.service) that runs scripts/start-server.sh on boot.
     The OASIS web interface will be available at http://localhost:8083.
     No browser is launched — suitable for headless or multi-user setups.
 
@@ -16,7 +16,7 @@ Configure OASIS to start automatically when the Raspberry Pi boots.
 
   --7inch
     Same as --with-browser but targets the 7″ touchscreen layout
-    (http://localhost:8083/index7.html, 800×480).  Also enables touch
+    (http://localhost:8083/small-screen/index7.html, 800×480).  Also enables touch
     events and disables overscroll navigation in Chromium.
 
   --desktop-icon
@@ -54,7 +54,7 @@ SERVICE      = "oasis"
 SERVICE_FILE = f"/etc/systemd/system/{SERVICE}.service"
 BROWSER_BIN  = "/usr/local/bin/oasis-browser-launch"
 REPO_ROOT    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-START_SH     = os.path.join(REPO_ROOT, "start.sh")
+START_SH     = os.path.join(REPO_ROOT, "scripts", "start-server.sh")
 PORT         = 8083
 DESKTOP_ICON_NAME = "OASIS.desktop"
 
@@ -78,7 +78,7 @@ def check_platform():
     if _run(["which", "systemctl"], check=False, capture_output=True).returncode != 0:
         _fail("systemd not found. This script requires a systemd-based OS.")
     if not os.path.isfile(START_SH):
-        _fail(f"start.sh not found at:\n     {START_SH}\n"
+        _fail(f"start-server.sh not found at:\n     {START_SH}\n"
               "     Run this script from inside the OASIS repo.")
     _ok(f"Platform: Linux / systemd")
     _ok(f"OASIS root: {REPO_ROOT}")
@@ -296,7 +296,7 @@ def main():
         "--7inch", dest="seven_inch", action="store_true",
         help=(
             "Kiosk mode for the 7\u2033 touchscreen (800\u00d7480). "
-            "Opens index7.html, enables touch events, sets window size. "
+            "Opens small-screen/index7.html, enables touch events, sets window size. "
             "Implies --with-browser."
         ),
     )
@@ -326,7 +326,7 @@ def main():
         args.with_browser = True
 
     kiosk_url = (
-        f"http://localhost:{PORT}/index7.html" if args.seven_inch
+        f"http://localhost:{PORT}/small-screen/index7.html" if args.seven_inch
         else f"http://localhost:{PORT}"
     )
 

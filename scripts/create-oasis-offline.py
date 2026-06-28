@@ -26,7 +26,7 @@ Always outputs to oasis-offline/ in the repo root (existing bundle is wiped).
 
   --for-windows
     Also download the embedded Windows Python runtime (opt-in).
-    Required for start.bat to work. By default the build targets the Pi only.
+    Required for scripts/start-server.bat to work. By default the build targets the Pi only.
 
   --update
     Update offline packages only in an existing distribution directory.
@@ -126,7 +126,9 @@ EXCLUDE_DIRS = {".git", ".venv", "__pycache__", "temp", ".DS_Store",
 EXCLUDE_RELPATHS = {"server/wheels"}
 # EN.dat / HD.dat are large FCC raw source files; fcc-offline-database/ is in
 # EXCLUDE_DIRS so these are never reached by build_copy anyway.
-EXCLUDE_FILES = {"EN.dat", "HD.dat"}
+# installed-services.json is per-machine state (which features setup-oasis.py
+# installed) — must never leak from the build host into a fresh bundle.
+EXCLUDE_FILES = {"EN.dat", "HD.dat", "installed-services.json"}
 
 # ── Phase 1: Python wheel targets ─────────────────────────────────────────────
 # (pip --platform tag, [python versions]) — keep in sync with README.md.
@@ -928,7 +930,7 @@ def build_windows_runtime(dest, skip):
     os.makedirs(win_dir, exist_ok=True)
 
     if skip:
-        _warn("Windows runtime not requested. start.bat will not work. Use --for-windows to include it.")
+        _warn("Windows runtime not requested. scripts/start-server.bat will not work. Use --for-windows to include it.")
         return
 
     data = _download_mem(PYTHON_EMBED_URL, f"Python {PYTHON_VERSION} embeddable (amd64)  ← python.org latest")
@@ -956,26 +958,29 @@ def build_windows_runtime(dest, skip):
 def build_launchers(dest):
     _section("Writing launchers")
 
+    scripts_dir = os.path.join(dest, "scripts")
+    os.makedirs(scripts_dir, exist_ok=True)
+
     # Windows
-    bat = os.path.join(dest, "start.bat")
+    bat = os.path.join(scripts_dir, "start-server.bat")
     with open(bat, "w", newline="\r\n") as f:
         f.write(
             "@echo off\r\n"
             "title OASIS\r\n"
-            "cd /d \"%~dp0\"\r\n"
+            "cd /d \"%~dp0..\"\r\n"
             "echo Starting OASIS...\r\n"
             "_runtime\\windows\\python.exe server\\app.py\r\n"
             "pause\r\n"
         )
-    _ok("start.bat")
+    _ok("scripts/start-server.bat")
 
     # Linux / macOS — bootstraps a venv from the bundled wheels on first run.
-    sh = os.path.join(dest, "start.sh")
+    sh = os.path.join(scripts_dir, "start-server.sh")
     with open(sh, "w", newline="\n") as f:
         f.write(
             "#!/bin/bash\n"
             "set -e\n"
-            'DIR="$(cd "$(dirname "$0")" && pwd)"\n'
+            'DIR="$(cd "$(dirname "$0")/.." && pwd)"\n'
             'VENV="$DIR/_runtime/linux/.venv"\n'
             'WHEELS="$DIR/server/wheels"\n'
             "cd \"$DIR\"\n"
@@ -999,7 +1004,7 @@ def build_launchers(dest):
         )
     st = os.stat(sh)
     os.chmod(sh, st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    _ok("start.sh  (executable)")
+    _ok("scripts/start-server.sh  (executable)")
 
 
 # ── Bundle integrity manifest ─────────────────────────────────────────────────
@@ -1137,8 +1142,8 @@ def build_summary(dest):
     print()
     _info("Next step: copy oasis-offline/ to your USB drive")
     _info("")
-    _info("Windows : double-click start.bat")
-    _info("Linux   : chmod +x start.sh && ./start.sh  (first run bootstraps venv)")
+    _info("Windows : double-click scripts\\start-server.bat")
+    _info("Linux   : chmod +x scripts/start-server.sh && ./scripts/start-server.sh  (first run bootstraps venv)")
     _info("Browser : http://localhost:8083")
     print()
     _info("Maps, forms, FCC lookup, calculators and reference all work offline.")
@@ -1314,7 +1319,7 @@ def main():
     )
     ap.add_argument(
         "--for-windows", action="store_true",
-        help="Also include the Windows embedded-Python runtime. Required for start.bat to work.",
+        help="Also include the Windows embedded-Python runtime. Required for scripts/start-server.bat to work.",
     )
     ap.add_argument(
         "--rebuild", action="store_true",

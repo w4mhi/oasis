@@ -6,7 +6,7 @@
     "  • the BUILDER (scripts/create-oasis-offline.py) vendors these into the",
     "    offline bundle, per suite + per arch, and writes resolved versions back",
     "    into each feature's `resolved` map (lockfile pattern).",
-    "  • the INSTALLER (scripts/setup-oasis-offline.py + scripts/common/<feature>.py)",
+    "  • the INSTALLER (setup-oasis.py + scripts/common/<feature>.py)",
     "    reads it on the Pi to decide source (newest of apt vs bundle vs installed),",
     "    enforce `min_version` capability gates, then install/test/create services.",
     "Source `type`: apt | github-release | pypi | url | data.",

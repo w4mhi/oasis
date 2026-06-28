@@ -5,6 +5,14 @@ __pycache__/
 *.pyo
 .claude/*
 
+# Per-machine runtime state — written by setup-oasis.py (which features are
+# installed); the dashboard reads it to hide not-installed service cards.
+installed-services.json
+
+# Screenshot / demo tooling — local mock backends used to populate the
+# dashboard & APRS map with fake data for documentation captures.
+mock-up/
+
 # macOS
 .DS_Store
 

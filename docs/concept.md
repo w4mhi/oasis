@@ -86,7 +86,7 @@ All of it served from one host, reachable from any browser on the local network.
 ## How a deployment comes together
 
 1. **Clone the repo** — a fresh clone is just code; the large data is downloaded or generated per deployment, so the repo stays small.
-2. **Run the guided installer** (`setup-oasis-offline.py` on a Pi) — tick the features you want and it runs the right install/enable scripts in order, pulling in prerequisites and priming `sudo` once.
+2. **Run the guided installer** (`setup-oasis.py` on a Pi) — tick the features you want and it runs the right install/enable scripts in order, pulling in prerequisites and priming `sudo` once.
 3. **Add the data you need** — FCC database, map tiles, repeater CSV, Wikipedia. One-time, online, copy-able.
 4. **Start it** — manually with `./start.sh`, or enable the systemd service so it comes up on boot (optionally with a Chromium kiosk).
 5. **Connect** — every operator opens `http://<host-ip>:8083` from their own device. No app, no account, no internet.

@@ -388,7 +388,7 @@ def run(check_mode=False, repo_root=None):
         server_ok, fcc_ok = check_status(venv_dir, fcc_index)
 
         if server_ok and fcc_ok:
-            _ok("All components ready — run start.sh to launch OASIS.")
+            _ok("All components ready — run ./scripts/start-server.sh to launch OASIS.")
             print()
             return
 

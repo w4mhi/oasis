@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-setup-oasis-offline.py
-----------------------
+setup-oasis.py
+--------------
 Interactive OASIS feature installer / orchestrator. Lists every OASIS feature,
 lets you pick what you want, then runs the matching install-*/enable-* scripts
 in the right order. It does not reimplement anything — it delegates to the
@@ -9,7 +9,7 @@ existing scripts, so each remains the single source of truth.
 
 Privilege model — run as your NORMAL user, not with sudo:
 
-    python3 scripts/setup-oasis-offline.py
+    python3 setup-oasis.py
 
 The orchestrator primes sudo once up front (a single password prompt) and keeps
 the credential warm, so the sub-scripts' internal `sudo` calls don't re-prompt.
@@ -18,17 +18,18 @@ you (not root), install-winlink.py writes your ~/.config/pat. Running the whole
 thing under `sudo` would break those, so this script refuses to run as root.
 
 Usage:
-  python3 scripts/setup-oasis-offline.py                 # interactive menu
-  python3 scripts/setup-oasis-offline.py --list          # list features and exit
-  python3 scripts/setup-oasis-offline.py --all           # run everything (incl. data)
-  python3 scripts/setup-oasis-offline.py --features graywolf,rtl-sdr,winlink
-  python3 scripts/setup-oasis-offline.py --features kiwix --yes   # non-interactive
+  python3 setup-oasis.py                 # interactive menu
+  python3 setup-oasis.py --list          # list features and exit
+  python3 setup-oasis.py --all           # run everything (incl. data)
+  python3 setup-oasis.py --features graywolf,rtl-sdr,winlink
+  python3 setup-oasis.py --features kiwix --yes   # non-interactive
 
 Re-running is safe: every sub-script is version-aware/idempotent, so you can run
 this again later to add a feature.
 """
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -36,11 +37,10 @@ import sys
 import threading
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
+sys.path.insert(0, SCRIPTS_DIR)
 from common.oasis_lib import _hr, _ok, _info, _warn, _fail, has_internet
 from common import manifest as M
-
-SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 # ── Feature registry ────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ class Feature:
     """One selectable feature that delegates to a script in scripts/."""
     def __init__(self, key, name, script, desc, category,
                  default=False, needs=(), internet=False, data=False,
-                 reboot=False, args=(), recommend=""):
+                 reboot=False, args=(), recommend="", record_only=False):
         self.key      = key
         self.name     = name
         self.script   = script
@@ -61,10 +61,12 @@ class Feature:
         self.reboot   = reboot            # may require a reboot to take effect
         self.args     = tuple(args)
         self.recommend = recommend        # short next-step surfaced in the final report
+        self.record_only = record_only    # no script — just record in the manifest
+                                          # (toggles a dashboard card/link's visibility)
 
     @property
     def path(self):
-        return os.path.join(SCRIPTS_DIR, self.script)
+        return os.path.join(SCRIPTS_DIR, self.script) if self.script else None
 
 
 # Order here is the run order. Software/services default-checked; data opt-in;
@@ -77,7 +79,7 @@ FEATURES = [
     Feature("autostart", "Auto-start on boot", "enable-autostart-pi.py",
             "Install the systemd unit so the OASIS server starts at boot. Add --with-browser later for a Chromium kiosk.",
             "Server", default=False, needs=["server"],
-            recommend="OASIS now starts on boot. Stop any manual ./start.sh first to free port 8083."),
+            recommend="OASIS now starts on boot. Stop any manual ./scripts/start-server.sh first to free port 8083."),
     Feature("graywolf", "GrayWolf APRS (+ history API)", "install-graywolf.py",
             "APRS TNC/iGate/digipeater on :8080, plus the history API on :8085.",
             "Server", default=True, needs=["server"], internet=True,
@@ -148,6 +150,16 @@ FEATURES = [
             "Download Wikipedia ZIM files for Kiwix (1 GB to ~100 GB).",
             "Content / Data", default=False, internet=True, data=True,
             recommend="ZIM downloaded — Kiwix serves it at :8081 (install Kiwix if you haven't)."),
+    Feature("repeaterbook", "Repeater Book listing", None,
+            "Show the Repeater Book link on the dashboard. Needs repeaterbook/repeaterbook.csv "
+            "(copyright — export your own from repeaterbook.com and drop it in).",
+            "Content / Data", default=False, record_only=True,
+            recommend="Repeater Book link is on the dashboard — drop your repeaterbook.csv into repeaterbook/."),
+    Feature("forms", "ICS Forms (dashboard section)", None,
+            "Show the ICS-205/213/214/309 forms section on the dashboard. The forms ship with "
+            "OASIS — this only toggles whether the section is shown.",
+            "Content / Data", default=True, record_only=True,
+            recommend="ICS Forms section is shown on the dashboard."),
 ]
 
 BY_KEY = {f.key: f for f in FEATURES}
@@ -404,6 +416,15 @@ def interactive_select():
 
 # ── Run ─────────────────────────────────────────────────────────────────────────
 def run_feature(f):
+    # Record-only features have no script — they just flip a dashboard card/link
+    # on (recorded in the manifest). Nothing to execute.
+    if f.record_only:
+        print()
+        _hr()
+        print(f"  ▶  {f.name}   (dashboard visibility)")
+        _hr()
+        _ok(f"{f.name}: enabled")
+        return ("ok", f)
     if not os.path.exists(f.path):
         _warn(f"{f.script} not found — skipping {f.name}.")
         return ("skipped", f)
@@ -428,6 +449,62 @@ def run_feature(f):
 def _guess_host():
     out = subprocess.run(["hostname", "-I"], capture_output=True, text=True).stdout.split()
     return out[0] if out else "<pi-ip>"
+
+
+# Records which features are installed so the dashboard can hide cards for
+# services the user chose NOT to install. Lives at the suite root (next to this
+# script) so the server serves it via /api/installed-services. Cumulative: a
+# re-run merges newly-installed keys into the existing set (never shrinks it,
+# matching the idempotent “re-run to add a feature” model) — EXCEPT the
+# authoritative gate features below, which honor tick/untick when offered.
+INSTALLED_MANIFEST = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "installed-services.json")
+
+# Visibility-toggle features for static content/data. Unlike service installs
+# (which only accumulate), these reflect the operator's choice each run: ticking
+# shows the dashboard card/link, unticking hides it. Only acted on when the
+# feature was actually offered this run (full menu / --all, or named in
+# --features), so a targeted run never silently hides an unrelated card.
+GATE_AUTHORITATIVE = {"fcc", "repeaterbook", "wikipedia", "forms"}
+
+
+def record_installed(results, offered_gate=frozenset()):
+    """Update installed-services.json from this run.
+
+    Service installs accumulate (union). Authoritative gate features that were
+    *offered* this run are set to exactly the operator's choice (ticked = shown,
+    unticked = hidden).
+    """
+    selected_keys = {f.key for _state, f in results}                 # everything in the plan
+    ok_keys       = {f.key for state, f in results if state in ("ok", "reboot")}
+    existing = set()
+    try:
+        with open(INSTALLED_MANIFEST) as fh:
+            prev = json.load(fh)
+        if isinstance(prev.get("features"), list):
+            existing = {str(k) for k in prev["features"]}
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+
+    merged = existing | ok_keys
+    # Honor tick/untick for the gate features the operator was actually shown.
+    for k in GATE_AUTHORITATIVE & offered_gate:
+        if k in selected_keys:
+            merged.add(k)        # ticked → show (offline pill if its data is absent)
+        else:
+            merged.discard(k)    # unticked → hide
+
+    if merged == existing:
+        return
+    payload = {"features": sorted(merged),
+               "updated": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    try:
+        with open(INSTALLED_MANIFEST, "w") as fh:
+            json.dump(payload, fh, indent=2)
+            fh.write("\n")
+        _ok(f"Recorded installed features → {os.path.basename(INSTALLED_MANIFEST)}")
+    except OSError as e:
+        _warn(f"Could not write {os.path.basename(INSTALLED_MANIFEST)}: {e}")
 
 
 def summarize(results):
@@ -550,10 +627,10 @@ def main():
         description="Interactive OASIS feature installer (delegates to install-*/enable-* scripts).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=("Examples:\n"
-                "  python3 scripts/setup-oasis-offline.py\n"
-                "  python3 scripts/setup-oasis-offline.py --list\n"
-                "  python3 scripts/setup-oasis-offline.py --all\n"
-                "  python3 scripts/setup-oasis-offline.py --features graywolf,rtl-sdr,winlink --yes\n"),
+                "  python3 setup-oasis.py\n"
+                "  python3 setup-oasis.py --list\n"
+                "  python3 setup-oasis.py --all\n"
+                "  python3 setup-oasis.py --features graywolf,rtl-sdr,winlink --yes\n"),
     )
     parser.add_argument("--list", action="store_true", help="List features and exit.")
     parser.add_argument("--all", action="store_true", help="Select every feature (including data downloads).")
@@ -572,11 +649,12 @@ def main():
     # This orchestrator must run as the normal user (see module docstring).
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         _fail("Run as your normal user, NOT with sudo — I'll request sudo when needed.\n"
-              "       e.g.  python3 scripts/setup-oasis-offline.py")
+              "       e.g.  python3 setup-oasis.py")
 
     # Resolve the selection.
     if args.all:
         keys = [f.key for f in FEATURES]
+        offered_gate = GATE_AUTHORITATIVE
     elif args.features:
         keys = []
         for k in args.features.replace(",", " ").split():
@@ -586,8 +664,11 @@ def main():
                 _warn(f"Unknown feature key: {k}  (see --list)")
         if not keys:
             _fail("No valid feature keys given.")
+        # Only the named gate features were “offered” — never hide unrelated cards.
+        offered_gate = GATE_AUTHORITATIVE & set(keys)
     else:
         keys = interactive_select()
+        offered_gate = GATE_AUTHORITATIVE   # full menu shown → all gate features offered
 
     if not keys:
         _info("Nothing selected — exiting.")
@@ -615,6 +696,7 @@ def main():
     finally:
         _sudo_stop.set()
 
+    record_installed(results, offered_gate)
     summarize(results)
 
 

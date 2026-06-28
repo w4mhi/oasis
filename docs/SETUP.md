@@ -131,18 +131,18 @@ oasis-emcomm/
 
 ## Guided setup (menu)
 
-If you'd rather not run each script by hand, `scripts/setup-oasis-offline.py` is a
+If you'd rather not run each script by hand, `setup-oasis.py` is a
 **guided menu** that lists every feature, lets you tick what you want, and runs
 the matching `install-*` / `enable-*` scripts in the right order (pulling in any
 prerequisites automatically).
 
 ```bash
 # Run as your normal user — NOT with sudo (it asks for sudo once when needed):
-python3 scripts/setup-oasis-offline.py
+python3 setup-oasis.py
 
-python3 scripts/setup-oasis-offline.py --list                       # list features, change nothing
-python3 scripts/setup-oasis-offline.py --all                        # everything (incl. data downloads)
-python3 scripts/setup-oasis-offline.py --features graywolf,winlink  # non-interactive subset
+python3 setup-oasis.py --list                       # list features, change nothing
+python3 setup-oasis.py --all                        # everything (incl. data downloads)
+python3 setup-oasis.py --features graywolf,winlink  # non-interactive subset
 ```
 
 - **Navigation:** ↑/↓ move, **Space** to select/deselect, **A/N** all/none,

@@ -16,6 +16,7 @@ Run (recommended):   see fcc-offline-database/README.md for the gunicorn + syste
 """
 
 import argparse
+import json
 import os
 import re
 import socket
@@ -33,6 +34,11 @@ import lookup
 SUITE_ROOT  = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MAP_ASSETS  = os.path.join(os.path.dirname(__file__), "map-assets")
 MAPS_DIR    = os.path.join(SUITE_ROOT, "maps")
+
+# Written by setup-oasis.py: the set of features the operator chose to install.
+# The dashboard reads it (via /api/installed-services) to hide cards for
+# services that were never installed. Absent file → show everything.
+INSTALLED_SERVICES_FILE = os.path.join(SUITE_ROOT, "installed-services.json")
 
 # Roots the filesystem map browser (/api/fs/*) may read .pmtiles archives from.
 # Lets an operator load maps off a USB stick or other mount at runtime without
@@ -62,11 +68,11 @@ ZIP_TABLE = lookup.load_zip_table()
 
 @app.route("/")
 def index():
-    """Smart home: JS reads localStorage and redirects to index7.html or index.html."""
+    """Smart home: JS reads localStorage and redirects to the small-screen layout or index.html."""
     return '''<!doctype html><meta charset="utf-8">
 <script>
 window.location.replace(
-  localStorage.getItem("oasis_layout") === "7inch" ? "/index7.html" : "/index.html"
+  localStorage.getItem("oasis_layout") === "7inch" ? "/small-screen/index7.html" : "/index.html"
 );
 </script>
 <noscript><meta http-equiv="refresh" content="0;url=/index.html"></noscript>''', 200, {'Content-Type': 'text/html; charset=utf-8'}
@@ -1080,6 +1086,28 @@ def server_ports():
     """Alias for /api/config — canonical service-discovery endpoint.
     HTML pages fetch this on load so no port numbers need to be hardcoded."""
     return api_config()
+
+
+@app.route("/api/installed-services")
+def api_installed_services():
+    """Report which features setup-oasis.py recorded as installed, so the
+    dashboard can hide cards for services the operator chose not to install.
+
+    Returns {"ok": True, "features": [...]} when the manifest exists, or
+    {"ok": True, "features": None} when it's absent/unreadable — the dashboard
+    treats a null list as “no manifest” and shows every card."""
+    try:
+        with open(INSTALLED_SERVICES_FILE) as fh:
+            data = json.load(fh)
+        feats = data.get("features")
+        if isinstance(feats, list):
+            return jsonify({"ok": True,
+                            "features": sorted({str(k) for k in feats})})
+    except FileNotFoundError:
+        pass
+    except (ValueError, OSError):
+        pass
+    return jsonify({"ok": True, "features": None})
 
 
 # ── Raspberry Pi power/thermal + Wi-Fi helpers ────────────────────────────────

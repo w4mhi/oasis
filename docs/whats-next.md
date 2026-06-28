@@ -122,7 +122,7 @@ apt-type entry), pulling Hamlib (`rigctld`) for CAT/PTT.
   pull directly — this is how an always-connected station runs day to day.
   (2) *offline* — a bare/dark machine: build the bundle where there *is* internet
   (`create-oasis-offline.py`), carry it on USB, install with
-  `setup-oasis-offline.py` (zero network), and refresh the USB in place with
+  `setup-oasis.py` (zero network), and refresh the USB in place with
   `create-oasis-offline.py --update --dir /mnt/usb`. Same scripts either way —
   the only difference is whether packages come from the internet or the USB.
 

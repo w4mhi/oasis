@@ -70,15 +70,15 @@ Forms · FCC lookup · offline maps · APRS · calculators · reference library 
 git clone https://github.com/W4MHI/oasis-emcomm
 cd oasis-emcomm
 
-python3 scripts/setup-oasis-offline.py     # guided menu — NOT with sudo
+python3 setup-oasis.py     # guided menu — NOT with sudo
 ./start.sh
 ```
 
 <div align="center">
-  <img src="docs/images/offline-installer.png" width="75%" alt="setup-oasis-offline.py — guided feature-picker menu">
+  <img src="docs/images/offline-installer.png" width="75%" alt="setup-oasis.py — guided feature-picker menu">
 </div>
 
-`setup-oasis-offline.py` is a checkbox menu: tick the features you want (server, APRS, Winlink, Kiwix, Web SSH, FCC data, …) and it runs the right install scripts **in order**, pulling in prerequisites and asking for your password just once. The server is pre-checked — that alone gives you the dashboard, FCC lookup, and maps. Tick **Auto-start on boot** to skip `./start.sh` entirely. Re-run the menu anytime to add features.
+`setup-oasis.py` is a checkbox menu: tick the features you want (server, APRS, Winlink, Kiwix, Web SSH, FCC data, …) and it runs the right install scripts **in order**, pulling in prerequisites and asking for your password just once. The server is pre-checked — that alone gives you the dashboard, FCC lookup, and maps. Tick **Auto-start on boot** to skip `./start.sh` entirely. Re-run the menu anytime to add features.
 
 ### macOS / Windows — the manual way
 
@@ -119,7 +119,7 @@ A single small **Flask** app serves the dashboard, the FCC lookup API, and the m
 
 ## 🧰 Setup scripts
 
-On a Pi, **`setup-oasis-offline.py` is the front door** — it delegates to the individual scripts below, so each stays the single source of truth. The only hard requirement underneath is `setup-server.py`; everything else is opt-in, per feature.
+On a Pi, **`setup-oasis.py` is the front door** — it delegates to the individual scripts below, so each stays the single source of truth. The only hard requirement underneath is `setup-server.py`; everything else is opt-in, per feature.
 
 > 🔢 **Version-aware, suite-aware & idempotent:** every `install-*` script installs when absent, **upgrades** when newer, and **keeps what you have** otherwise — never downgrades. It also picks the **newest source** (apt vs the bundle) and the packages for **your OS version** (bookworm/trixie), so a bundle built for an older OS can't install a stale, broken driver on a newer one. Re-running setup, or installing from an older USB bundle, can't clobber a newer package. [Details](docs/offline-architecture.md).
 
@@ -132,7 +132,7 @@ On a Pi, **`setup-oasis-offline.py` is the front door** — it delegates to the 
 
 | Script | What it does | When | Runs on | Internet? |
 |---|---|---|---|:--:|
-| **`setup-oasis-offline.py`** | Guided menu installer — pick features, delegates to the install/enable scripts in order; primes `sudo` once | Set up a Pi; re-run to add features | Raspberry Pi / Linux (as your user, **not** sudo) | ⚠️ bundled if present |
+| **`setup-oasis.py`** | Guided menu installer — pick features, delegates to the install/enable scripts in order; primes `sudo` once | Set up a Pi; re-run to add features | Raspberry Pi / Linux (as your user, **not** sudo) | ⚠️ bundled if present |
 | **`setup-server.py`** | Creates `.venv` and installs Flask / gunicorn / psutil | Once after cloning; again if `requirements.txt` changes | Every host that runs OASIS | ❌ offline |
 | `setup-fcc-database.py` | Downloads FCC license data and builds the callsign index | Once before first use; weekly for fresh data (FCC updates Sundays) | Any online machine, then copy to the Pi | ✅ yes |
 | `install-graywolf.py` | Installs **GrayWolf** APRS (TNC/iGate/digipeater) + history API on :8085 | On the Pi, to turn on APRS | Raspberry Pi / Debian | ⚠️ bundled `.deb` if present |

@@ -6,4 +6,4 @@
 trap 'echo ""; echo "  Press any key to close..."; read -n1' ERR
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-bash "$SCRIPT_DIR/start.sh"
+bash "$SCRIPT_DIR/start-server.sh"

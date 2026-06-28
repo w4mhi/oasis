@@ -163,7 +163,7 @@ def check_server(host, port):
             "ok": False, "badge": "DOWN",
             "detail": (
                 f"No response on {host}:{port}. Is OASIS running?\n"
-                "     Start with: ./start.sh"
+                "     Start with: ./scripts/start-server.sh"
             ),
         }
 

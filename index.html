@@ -456,6 +456,38 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 .cnt-down { color: var(--red); }
 .cnt-sep  { color: var(--border); }
 
+/* ── Not-installed cards / nav links (hidden until "show all") ───────── */
+.svc-hidden { display: none !important; }
+/* When revealed via the show-all toggle, keep them visibly de-emphasised. */
+.svc-revealed { opacity: .42; }
+.svc-revealed:hover { opacity: .75; }
+/* Right-anchored group in the SERVICES header: the show-all toggle + the
+   up/warn/down counts pill. Pinned right so the counts pill never drifts left
+   when the toggle is hidden (no not-installed services). */
+.section-hdr-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+}
+/* Muted grey pill by default — low emphasis, since not-installed services are
+   hidden on purpose. Brightens on hover; turns accent while revealing. */
+.svc-showall-btn {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--text-dim);
+  opacity: .8;
+  font: inherit;
+  font-size: var(--fs-label);
+  letter-spacing: .04em;
+  padding: .12rem .65rem;
+  transition: color .15s, border-color .15s, opacity .15s;
+}
+.svc-showall-btn:hover { color: var(--text); opacity: 1; border-color: var(--accent-dim); }
+.svc-showall-btn.active { color: var(--accent); opacity: 1; border-color: var(--accent-dim); }
+
 /* ── Section header (above svc-strip) ───────────────────────────────── */
 .section-hdr {
   display: flex;
@@ -737,7 +769,10 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   <span class="section-hdr-title clickable" onclick="toggleSvcStrip()" title="Collapse service cards">SERVICES</span>
   <span class="section-hdr-sub">infrastructure · radio</span>
   <button class="svc-collapse-btn" id="svc-collapse-btn" title="Collapse service cards" onclick="toggleSvcStrip()">&#9660;</button>
-  <span class="svc-pill" id="svc-counts" style="margin-left:auto"></span>
+  <span class="section-hdr-right">
+    <button class="svc-showall-btn" id="svc-showall-btn" style="display:none" onclick="toggleShowHidden()"></button>
+    <span class="svc-pill" id="svc-counts"></span>
+  </span>
 </div>
 
 <!-- ── SERVICE STATUS STRIP ───────────────────────────────────────────────── -->
@@ -845,7 +880,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 
   <div class="nav-col">
 
-    <div class="nav-sec">
+    <div class="nav-sec" id="navsec-forms">
       <div class="nav-sec-title">ICS Forms</div>
       <ul class="nav-links">
         <li><a href="static/ics-205/ics-205.html">ICS-205 <span class="nav-meta">radio plan</span></a></li>
@@ -1035,11 +1070,16 @@ loadCallsignGrid();
 
 // ── Service state tracking (for counts badge) ─────────────────────────────────
 const _svcStates = {};
+// Service ids hidden because their feature wasn't installed (see loadInstalled).
+const HIDDEN_SVCS = new Set();
+let _showHidden = false;
+try { _showHidden = localStorage.getItem('oasis_show_hidden') === '1'; } catch (e) {}
 function updateSvcCounts() {
   // Count only services that have a card (the 10 service cards) — exclude the
-  // OPS-only checks (maps/fcc/rb/manuals/wiki) that merely feed nav badges.
+  // OPS-only checks (maps/fcc/rb/manuals/wiki) that merely feed nav badges, and
+  // any not-installed service that's been hidden from the strip.
   const states = Object.keys(_svcStates)
-    .filter(id => document.getElementById('card-' + id))
+    .filter(id => document.getElementById('card-' + id) && !HIDDEN_SVCS.has(id))
     .map(id => _svcStates[id]);
   const up   = states.filter(s => s === 'up').length;
   const warn = states.filter(s => s === 'warn').length;
@@ -1280,7 +1320,84 @@ async function checkService(svc) {
   updateSvcCounts();
 }
 
-function pingAll() { SERVICES.forEach(svc => checkService(svc)); }
+function pingAll() {
+  // Skip not-installed (hidden) services so a minimal install doesn't rack up
+  // needless 4s timeouts — unless the operator has clicked "show all".
+  SERVICES.forEach(svc => {
+    if (!HIDDEN_SVCS.has(svc.id) || _showHidden) checkService(svc);
+  });
+}
+
+// ── Installed-service gating ──────────────────────────────────────────────────
+// setup-oasis.py records which features the operator installed. We hide the
+// card / OPS link for any service that wasn't installed. Absent manifest
+// (features === null) → show everything (dev / unconfigured box). Each gateable
+// id maps to the feature key(s) that make it relevant; a card shows if ANY of
+// its keys is installed. The OASIS core (flask · wsgi) and always-bundled data
+// (maps · repeater book · manuals) are never gated.
+const GATEABLE = {
+  gw:    ['graywolf'],  aprs:    ['graywolf'],  feed: ['rtl-feed'],
+  owrx:  ['openwebrx'], winlink: ['winlink'],   gpsd: ['gps'],
+  kiwix: ['kiwix'],     webssh:  ['webssh'],    fcc:  ['fcc'],
+  wiki:  ['wikipedia'], rb:      ['repeaterbook'], forms: ['forms'],
+};
+let _hiddenEls = [];   // {card, nav-<li>, nav-section} elements currently gated off
+
+function _gateEls(id) {
+  const els = [];
+  const card = document.getElementById('card-' + id);
+  if (card) els.push(card);
+  const nlink = document.getElementById('nlink-' + id);
+  if (nlink) { const li = nlink.closest('li'); if (li) els.push(li); }
+  const navsec = document.getElementById('navsec-' + id);   // whole OPS section (e.g. ICS Forms)
+  if (navsec) els.push(navsec);
+  // The topbar GNSS receiver card is part of the GPS feature too — hide it
+  // alongside the gpsd service card when GPS isn't installed.
+  if (id === 'gpsd') { const g = document.getElementById('gps-card'); if (g) els.push(g); }
+  return els;
+}
+
+async function loadInstalled() {
+  let features = null;
+  try {
+    const r = await fetch('/api/installed-services', { cache: 'no-store' });
+    if (r.ok) { const d = await r.json(); features = d.features; }
+  } catch (_) {}
+  HIDDEN_SVCS.clear();
+  _hiddenEls = [];
+  if (Array.isArray(features)) {                 // null/absent → show all
+    const installed = new Set(features);
+    for (const [id, keys] of Object.entries(GATEABLE)) {
+      if (!keys.some(k => installed.has(k))) {
+        HIDDEN_SVCS.add(id);
+        _hiddenEls.push(..._gateEls(id));
+      }
+    }
+  }
+  applyHidden();
+  const btn = document.getElementById('svc-showall-btn');
+  if (btn) btn.style.display = _hiddenEls.length ? '' : 'none';
+}
+
+function applyHidden() {
+  _hiddenEls.forEach(el => {
+    el.classList.toggle('svc-hidden', !_showHidden);
+    el.classList.toggle('svc-revealed', _showHidden);
+  });
+  const btn = document.getElementById('svc-showall-btn');
+  if (btn) {
+    const n = HIDDEN_SVCS.size;   // distinct services (a service may have a card + a nav link)
+    btn.classList.toggle('active', _showHidden);
+    btn.textContent = _showHidden ? `HIDE ${n} NOT INSTALLED` : `SHOW ${n} NOT INSTALLED`;
+  }
+}
+
+function toggleShowHidden() {
+  _showHidden = !_showHidden;
+  try { localStorage.setItem('oasis_show_hidden', _showHidden ? '1' : '0'); } catch (e) {}
+  applyHidden();
+  if (_showHidden) pingAll();   // fill in real status for the revealed cards
+}
 
 // ── Service start/stop controls ─────────────────────────────────────────────
 // Dashboard service-card id → systemd unit. Only these cards get a power
@@ -1498,7 +1615,12 @@ async function fetchStats() {
         el.style.color = hdopColor(h);
       };
       const applyState = (s) => {
-        gpsCard.className = 'gps-card ' + s;
+        // Preserve gating: fetchStats rebuilds the class list every poll, so we
+        // must re-assert svc-hidden/svc-revealed or GPS (when not installed)
+        // would flash back into the topbar on each refresh.
+        let cls = 'gps-card ' + s;
+        if (HIDDEN_SVCS.has('gpsd')) cls += _showHidden ? ' svc-revealed' : ' svc-hidden';
+        gpsCard.className = cls;
         dot.className     = 'gps-dot ' + s;
         badge.className   = 'gps-card-badge ' + s;
       };
@@ -1812,7 +1934,7 @@ async function fetchAPRS() {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 loadConfig().then(() => {
   applyUnits();
-  pingAll();
+  loadInstalled().then(() => pingAll());
   fetchStats();
   fetchAudio();
   fetchAPRS();
