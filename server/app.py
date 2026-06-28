@@ -789,6 +789,29 @@ def api_aprs_track_proxy():
                         "error": "APRS API timed out."}), 503
 
 
+@app.route("/api/aprs/system")
+def api_aprs_system_proxy():
+    """Proxy system stats (CPU/RAM/temp) from the graywolf-api (port 8085).
+    The value is server-cached (5 s sampler) so this is a cheap, fast read."""
+    import urllib.request
+    import urllib.error
+    url = "http://127.0.0.1:8085/api/system"
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            return Response(resp.read(), status=200,
+                            content_type="application/json")
+    except urllib.error.HTTPError as e:
+        return Response(e.read(), status=e.code,
+                        content_type="application/json")
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", str(e))
+        return jsonify({"ok": False,
+                        "error": f"APRS API unavailable ({reason})."}), 503
+    except TimeoutError:
+        return jsonify({"ok": False,
+                        "error": "APRS API timed out."}), 503
+
+
 # ── Winlink (Pat) proxy ───────────────────────────────────────────────────────
 # OASIS ships an OASIS-styled Winlink mail client (winlink/mail.html) that talks
 # to Pat's JSON API. Pat runs on port 8082 and does NOT emit CORS headers, so the
@@ -854,6 +877,42 @@ def api_winlink_message(box, mid):
     return _winlink_proxy(f"/api/mailbox/{box}/{mid}", method=request.method)
 
 
+@app.route("/api/winlink/mailbox/<box>/<mid>/<path:attachment>", methods=["GET"])
+def api_winlink_attachment(box, mid, attachment):
+    """Stream a message attachment from Pat, passing Pat's Content-Type through.
+
+    Unlike the JSON proxies above, attachments are arbitrary bytes (form XML,
+    FormData.txt, photos, PDFs), so we forward Pat's Content-Type rather than
+    forcing application/json. ?download=1 adds a Content-Disposition so the
+    browser saves rather than renders inline.
+    """
+    if box not in WINLINK_BOXES:
+        return jsonify({"ok": False, "error": "unknown mailbox"}), 400
+    import urllib.request
+    import urllib.error
+    import urllib.parse
+
+    url = (f"http://127.0.0.1:{WINLINK_PORT}/api/mailbox/"
+           f"{box}/{mid}/{urllib.parse.quote(attachment)}")
+    try:
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            body = resp.read()
+            ctype = resp.headers.get("Content-Type", "application/octet-stream")
+        out = Response(body, status=200, content_type=ctype)
+        if request.args.get("download"):
+            safe = attachment.replace('"', "").replace("\\", "")
+            out.headers["Content-Disposition"] = f'attachment; filename="{safe}"'
+        return out
+    except urllib.error.HTTPError as e:
+        return Response(e.read(), status=e.code, content_type="application/json")
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", str(e))
+        return jsonify({"ok": False,
+                        "error": f"Pat (Winlink) unreachable ({reason})."}), 503
+    except TimeoutError:
+        return jsonify({"ok": False, "error": "Pat (Winlink) timed out."}), 503
+
+
 @app.route("/api/winlink/mailbox/out", methods=["POST"])
 def api_winlink_compose():
     """Queue a composed message into Pat's outbox.
@@ -879,6 +938,80 @@ def api_winlink_status():
 def api_winlink_aliases():
     """Proxy Pat's configured connect aliases (available transports)."""
     return _winlink_proxy("/api/connect_aliases")
+
+
+@app.route("/api/winlink/disconnect", methods=["GET"])
+def api_winlink_disconnect():
+    """Abort the in-progress Pat connect session (the Abort button).
+
+    Returns 400 from Pat when there's no active session — harmless.
+    """
+    return _winlink_proxy("/api/disconnect")
+
+
+# Transport modes Pat's rmslist accepts (verified against a live Pat). The
+# no-mode call hangs, so a mode is required and allowlisted.
+RMS_MODES = {"packet", "ardop", "vara", "varahf", "varafm", "pactor"}
+
+
+@app.route("/api/winlink/rmslist", methods=["GET"])
+def api_winlink_rmslist():
+    """Slim proxy of Pat's RMS gateway list for one transport mode.
+
+    Pat's /api/rmslist?mode=X returns the gateways PLUS a per-gateway VOACAP
+    propagation report whose raw text is ~95% of the (multi-MB) payload. We
+    strip that — keeping the link_quality score — so the browser caches a lean
+    snapshot (essential on the Pi Zero). The data is sourced from Pat's web API,
+    so it needs connectivity at download time; the client caches it for offline
+    use. Generous timeout because Pat computes the predictions live.
+    """
+    import json as _json
+    import urllib.request
+    import urllib.error
+
+    mode = (request.args.get("mode") or "").strip().lower()
+    if mode not in RMS_MODES:
+        return jsonify({"ok": False, "error": "unknown mode"}), 400
+
+    url = f"http://127.0.0.1:{WINLINK_PORT}/api/rmslist?mode={mode}"
+    try:
+        with urllib.request.urlopen(url, timeout=60) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as e:
+        return Response(e.read(), status=e.code, content_type="application/json")
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", str(e))
+        return jsonify({"ok": False,
+                        "error": f"Pat (Winlink) unreachable ({reason}). The "
+                                 "gateway list needs Pat running + connectivity."}), 503
+    except TimeoutError:
+        return jsonify({"ok": False,
+                        "error": "Pat timed out building the gateway list."}), 503
+
+    try:
+        gateways = _json.loads(raw)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Pat returned malformed data."}), 502
+
+    slim = []
+    for g in (gateways or []):
+        if not isinstance(g, dict):
+            continue
+        freq = g.get("freq") or {}
+        dial = g.get("dial") or {}
+        pred = g.get("prediction") or {}
+        slim.append({
+            "callsign":     g.get("callsign"),
+            "gridsquare":   g.get("gridsquare"),
+            "distance":     g.get("distance"),
+            "azimuth":      g.get("azimuth"),
+            "modes":        g.get("modes"),
+            "freq_khz":     freq.get("khz"),
+            "dial_khz":     dial.get("khz"),
+            "link_quality": pred.get("link_quality"),
+            "url":          g.get("url"),
+        })
+    return jsonify({"ok": True, "mode": mode, "count": len(slim), "gateways": slim})
 
 
 @app.route("/api/winlink/connect", methods=["GET"])

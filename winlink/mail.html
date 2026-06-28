@@ -7,18 +7,11 @@
   <link rel="stylesheet" href="../css/common.css">
 <style>
   /* ── Connect / status bar ─────────────────────────────────── */
-  .conn-bar { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
-  .conn-bar select { width:auto; min-width:200px; }
-  .conn-row {
-    display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;
-    margin-top:.55rem; padding-top:.55rem; border-top:1px solid var(--border);
-  }
-  .conn-row select, .conn-row input { width:auto; }
-  .conn-row #aliasSel { min-width:200px; }
-  .conn-tag {
-    font-size:var(--fs-micro); text-transform:uppercase; letter-spacing:.1em;
-    color:var(--amber); min-width:7.5rem;
-  }
+  .conn-bar { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  .conn-bar #connSel { width:auto; min-width:200px; max-width:340px; }
+  .conn-bar .conn-state { margin-right:.2rem; }
+  .conn-build { display:inline-flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  .conn-build select, .conn-build input { width:auto; }
   .dot { width:9px; height:9px; border-radius:50%; background:var(--text-dim);
          display:inline-block; flex:0 0 auto; }
   .dot.up   { background:var(--accent); box-shadow:0 0 6px var(--accent); }
@@ -65,9 +58,22 @@
                gap:.5rem; margin-bottom:.5rem; }
   .list-filter { display:flex; gap:.5rem; align-items:center; margin-bottom:.5rem; }
   .list-filter input[type=search] { flex:1; }
-  .list-filter .chk { display:flex; align-items:center; gap:.3rem; white-space:nowrap;
+  .list-filter .chk { display:flex; align-items:center; gap:.4rem; white-space:nowrap;
                       font-size:var(--fs-small); color:var(--text-dim); cursor:pointer; }
-  .list-filter .chk input { width:auto; cursor:pointer; }
+  /* OASIS-styled checkbox: dark box, green fill + black ✓ when checked. */
+  .chk input[type=checkbox] {
+    appearance:none; -webkit-appearance:none;
+    width:15px; height:15px; flex:0 0 auto; margin:0; cursor:pointer;
+    background:var(--bg); border:1px solid var(--border); border-radius:3px;
+    position:relative;
+  }
+  .chk input[type=checkbox]:hover { border-color:var(--text-dim); }
+  .chk input[type=checkbox]:checked { background:var(--accent); border-color:var(--accent); }
+  .chk input[type=checkbox]:checked::after {
+    content:"✓"; position:absolute; inset:0; line-height:13px; text-align:center;
+    color:#000; font-size:11px; font-weight:700;
+  }
+  .chk input[type=checkbox]:focus-visible { outline:none; border-color:var(--accent); }
   .list-scan { font-size:var(--fs-small); color:var(--text-dim); font-style:italic;
                padding:.35rem .1rem; }
 
@@ -100,20 +106,47 @@
     white-space:pre-wrap; word-break:break-word; margin-top:.8rem;
     font-size:var(--fs-base); line-height:1.55;
   }
-  .reader .attach { margin-top:.6rem; font-size:var(--fs-small); color:var(--amber); }
+  .reader .attach { margin-top:.7rem; font-size:var(--fs-small); }
+  .reader .msg-map { margin-top:.7rem; }
+  .reader .attach-label { color:var(--amber); margin-bottom:.25rem; }
+  .attach-row { display:flex; align-items:center; gap:.5rem; padding:2px 0; }
+  .attach-row a { color:var(--accent); text-decoration:none; }
+  .attach-row a:hover { text-decoration:underline; }
+  .attach-size { color:var(--text-dim); font-size:var(--fs-micro); }
+  .attach-dl { margin-left:auto; font-size:.95rem; }
 
   /* Compose */
   .compose .field { margin-bottom:.6rem; }
   .compose textarea { min-height:200px; }
 
   /* Live session console */
+  .console-wrap { position:relative; margin-top:.6rem; }
   .console {
     background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
-    padding:.6rem .75rem; margin-top:.6rem; max-height:220px; overflow-y:auto;
+    padding:.6rem 1.6rem .6rem .75rem; max-height:220px; overflow-y:auto;
     font-size:var(--fs-small); white-space:pre-wrap; word-break:break-word;
     color:var(--text-dim);
   }
-  .console:empty { display:none; }
+  .console-close {
+    position:absolute; top:4px; right:6px;
+    background:none; border:none; cursor:pointer; color:var(--text-dim);
+    font-size:.85rem; line-height:1; padding:2px 4px; border-radius:3px;
+  }
+  .console-close:hover { color:var(--red); background:var(--panel); }
+
+  /* RMS gateway panel */
+  .gw-head { display:flex; align-items:center; gap:.5rem; cursor:pointer; }
+  .gw-toggle { color:var(--text-dim); font-size:.9rem; }
+  .gw-controls { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;
+                 margin:.6rem 0; }
+  .gw-controls select, .gw-controls input[type=search] { width:auto; }
+  .gw-controls input[type=search] { flex:1; min-width:140px; }
+  .gw-tbl { max-height:40vh; overflow-y:auto; }
+  .gw-tbl th { cursor:pointer; position:sticky; top:0; background:var(--panel); }
+  .gw-tbl th:hover { color:var(--accent); }
+  .gw-q { font-weight:700; }
+  .gw-q.good { color:var(--green); } .gw-q.mid { color:var(--amber); }
+  .gw-q.low { color:var(--text-dim); }
 
   /* Error banner */
   .banner {
@@ -138,41 +171,79 @@
 
   <div id="banner" class="banner hidden"></div>
 
-  <!-- Connect / status bar -->
+  <!-- Connect / status bar — single line -->
   <div class="sec">
-    <span class="sec-label">Session</span>
     <div class="conn-bar">
       <span id="dot" class="dot down"></span>
       <span id="connState" class="conn-state">unknown</span>
-      <button class="sbtn" onclick="refreshAll()">↻ Refresh</button>
+      <select id="connSel" title="Connection (saved + recent)"
+              onchange="onConnSelChange()"></select>
+      <button id="forgetBtn" class="sbtn" style="display:none" onclick="forgetConn()"
+              title="Remove this connection from the list">🗑</button>
+      <!-- Structured builder — inline, shown only when "New connection…" is picked -->
+      <span id="connBuild" class="conn-build" style="display:none">
+        <select id="bTransport" title="Transport / mode">
+          <option value="ardop">ARDOP</option>
+          <option value="varahf">VARA HF</option>
+          <option value="varafm">VARA FM</option>
+          <option value="pactor">PACTOR</option>
+          <option value="ax25">Packet (AX.25)</option>
+          <option value="agwpe">Packet (AGWPE)</option>
+        </select>
+        <input type="text" id="bCall" placeholder="Gateway callsign" autocomplete="off"
+               style="width:9rem" title="Target RMS gateway callsign">
+        <input type="text" id="bFreq" placeholder="Freq kHz" autocomplete="off"
+               style="width:6.5rem" title="Dial frequency in kHz (HF modes)">
+      </span>
+      <button id="connectBtn" class="sbtn primary" onclick="doConnect()">⚡ Connect</button>
+      <button id="abortBtn" class="sbtn danger" style="display:none"
+              onclick="abortConnect()" title="Abort the in-progress session">■ Abort</button>
+      <button class="sbtn" onclick="refreshAll()" title="Refresh">↻</button>
     </div>
-
-    <!-- Quick connect: saved aliases (e.g. telnet/CMS gateway) -->
-    <div class="conn-row">
-      <span class="conn-tag">Quick connect</span>
-      <select id="aliasSel" title="Saved connect alias"></select>
-      <button id="connectBtn" class="sbtn primary" onclick="onConnectAlias()">⚡ Connect</button>
+    <div id="consoleWrap" class="console-wrap" style="display:none">
+      <button class="console-close" onclick="clearConsole()" title="Clear session log"
+              aria-label="Clear session log">✕</button>
+      <div id="console" class="console"></div>
     </div>
+  </div>
 
-    <!-- New connection: build an RF transport session to a gateway -->
-    <div class="conn-row">
-      <span class="conn-tag">New connection</span>
-      <select id="transportSel" title="Transport">
-        <option value="ardop">ARDOP</option>
-        <option value="varahf">VARA HF</option>
-        <option value="varafm">VARA FM</option>
-        <option value="pactor">PACTOR</option>
-        <option value="ax25">Packet (AX.25)</option>
-        <option value="agwpe">Packet (AGWPE)</option>
-      </select>
-      <input type="text" id="targetCall" placeholder="Gateway callsign" autocomplete="off"
-             style="width:9rem" title="Target RMS gateway callsign">
-      <input type="text" id="freqKhz" placeholder="Freq kHz" autocomplete="off"
-             style="width:6.5rem" title="Dial/center frequency in kHz (HF transports)">
-      <button class="sbtn primary" onclick="onConnectBuild()">⚡ Connect</button>
+  <!-- RMS gateway list — download while online, search/connect offline -->
+  <div class="sec">
+    <div class="gw-head" onclick="toggleGateways()">
+      <span class="sec-label" style="margin-bottom:0">📡 Gateways</span>
+      <span id="gwToggle" class="gw-toggle">▸</span>
     </div>
-
-    <div id="console" class="console"></div>
+    <div id="gwBody" style="display:none">
+      <div class="gw-controls">
+        <select id="gwMode" onchange="loadGatewaysCache()" title="Transport mode">
+          <option value="packet">Packet</option>
+          <option value="ardop">ARDOP</option>
+          <option value="vara">VARA</option>
+          <option value="varahf">VARA HF</option>
+          <option value="varafm">VARA FM</option>
+          <option value="pactor">PACTOR</option>
+        </select>
+        <button class="sbtn primary" onclick="updateGateways()"
+                title="Download the latest list (needs connectivity)">⬇ Update list</button>
+        <input type="search" id="gwSearch" placeholder="Search callsign / grid…"
+               oninput="renderGateways()" autocomplete="off">
+        <span id="gwStamp" class="conn-state"></span>
+      </div>
+      <div class="tbl-wrap gw-tbl">
+        <table>
+          <thead><tr>
+            <th onclick="sortGateways('callsign')">Callsign</th>
+            <th onclick="sortGateways('dial_khz')">Dial kHz</th>
+            <th>Mode</th>
+            <th onclick="sortGateways('distance')">Dist km</th>
+            <th onclick="sortGateways('link_quality')">Qual</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="gwList"></tbody>
+        </table>
+      </div>
+      <div id="gwEmpty" class="list-empty" style="display:none"></div>
+    </div>
   </div>
 
   <!-- Three-pane mail layout -->
@@ -231,6 +302,7 @@ const BOXES = [
 let currentBox = "in";
 let _currentMsgs = [];   // messages for the loaded box (unfiltered)
 let _openMsg = null;     // the message object shown in the reader (for reply/fwd)
+let _composeAttachment = null;   // {name,type,content} to attach on the next send (e.g. an ICS form XML)
 // Body search: the mailbox LIST omits bodies, so we background-prefetch each
 // message's body into this IN-MEMORY cache (never localStorage — bodies are the
 // sensitive part). _prefetchGen is bumped on every box load to abandon a stale,
@@ -279,6 +351,30 @@ function addrText(v) {
   if (Array.isArray(v)) return v.map(addrText).join(", ");
   if (typeof v === "object") return pick(v, "Addr", "addr", "Address") || "";
   return String(v);
+}
+// Decode numeric HTML character refs (&#10146; / &#x27A2;) to their characters.
+// Used on message bodies before esc()-ing, so Pat's double-escaped symbols render.
+function decodeNumericEntities(s) {
+  const cp = n => { try { return String.fromCodePoint(n); } catch (_) { return ""; } };
+  return String(s == null ? "" : s)
+    .replace(/&#(\d+);/g, (_, d) => cp(parseInt(d, 10)))
+    .replace(/&#[xX]([0-9a-fA-F]+);/g, (_, h) => cp(parseInt(h, 16)));
+}
+function fmtSize(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+// Pull a decimal lat/lon out of a message body, e.g. Pat's embedded
+// "[Sender: … Lat: 47.4653, Lon:-121.6801 …]". Returns {lat,lon} or null.
+function parsePosition(text) {
+  if (!text) return null;
+  const m = String(text).match(/Lat:?\s*(-?\d+\.\d+)\s*,?\s*Lon:?\s*(-?\d+\.\d+)/i);
+  if (!m) return null;
+  const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+  if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lat, lon };
 }
 
 async function api(path, opts) {
@@ -360,6 +456,7 @@ async function loadBox(box) {
   }
   _currentMsgs = Array.isArray(msgs) ? msgs : [];
   WinlinkRead.seed(_currentMsgs);
+  _currentMsgs.forEach(harvestAddrs);   // feed recipient autocomplete
   renderList();
   recountBox(box);
   prefetchBodies(box, _currentMsgs, ++_prefetchGen);   // supersedes any prior run
@@ -498,12 +595,33 @@ async function openMessage(box, mid) {
   const from    = esc(addrText(pick(m, "From", "from")));
   const to      = esc(addrText(pick(m, "To", "to")));
   const date    = esc(pick(m, "Date", "date"));
-  const body    = esc(pick(m, "Body", "body"));
+  // Pat double-escapes numeric entities (e.g. &#10146;) into the body text;
+  // decode them so arrows/symbols render, then esc() for safe insertion.
+  const body    = esc(decodeNumericEntities(pick(m, "Body", "body")));
   const files   = pick(m, "Files", "files", "Attachments");
   let attachHtml = "";
   if (Array.isArray(files) && files.length) {
-    const names = files.map(f => esc(pick(f, "Name", "name") || f)).join(", ");
-    attachHtml = `<div class="attach">📎 ${names}</div>`;
+    const base = `${API}/mailbox/${box}/${encodeURIComponent(mid)}`;
+    const rows = files.map(f => {
+      const name = pick(f, "Name", "name") || String(f);
+      const size = pick(f, "Size", "size");
+      const url  = `${base}/${encodeURIComponent(name)}`;
+      return `<div class="attach-row">` +
+        `<a href="${url}" target="_blank" rel="noopener" title="View in browser">${esc(name)}</a>` +
+        (size ? `<span class="attach-size">${fmtSize(size)}</span>` : "") +
+        `<a class="attach-dl" href="${url}?download=1" title="Download">⬇</a>` +
+      `</div>`;
+    }).join("");
+    attachHtml = `<div class="attach"><div class="attach-label">📎 Attachments</div>${rows}</div>`;
+  }
+  // Offline map link if the body carries a position (e.g. a Winlink position
+  // report). Links to OASIS's own map, not an online service.
+  let mapHtml = "";
+  const pos = parsePosition(pick(m, "Body", "body"));
+  if (pos) {
+    mapHtml = `<div class="msg-map"><a class="sbtn" target="_blank" rel="noopener" ` +
+      `href="../aprs/map.html?center=${pos.lon},${pos.lat}&zoom=12">` +
+      `📍 Show on map (${pos.lat.toFixed(4)}, ${pos.lon.toFixed(4)})</a></div>`;
   }
   pane.className = "reader";
   pane.innerHTML =
@@ -521,8 +639,10 @@ async function openMessage(box, mid) {
     `<div class="hdr"><strong>From:</strong> ${from}</div>` +
     `<div class="hdr"><strong>To:</strong> ${to}</div>` +
     `<div class="hdr"><strong>Date:</strong> ${date}</div>` +
+    mapHtml +
     attachHtml +
     `<div class="body">${body}</div>`;
+  harvestAddrs(m);   // feed sender/recipients into recipient autocomplete
 }
 
 // Clear the reading pane back to the placeholder — gets message text off the
@@ -545,32 +665,78 @@ async function deleteMessage(box, mid) {
   } catch (e) { toast(e.message, "err"); }
 }
 
+// ── Compose niceties: recipient history + draft autosave ───────────────────
+const ADDRS_KEY = "oasis_winlink_addrs";   // known callsigns/addresses (autocomplete)
+const DRAFT_KEY = "oasis_winlink_draft";   // single in-progress compose draft
+let _knownAddrs = new Set();
+try { _knownAddrs = new Set(JSON.parse(localStorage.getItem(ADDRS_KEY) || "[]")); } catch (_) {}
+
+function addKnownAddr(a) {
+  a = String(a || "").trim().toUpperCase();
+  if (!a || a.length > 64 || _knownAddrs.has(a)) return;
+  _knownAddrs.add(a);
+  try { localStorage.setItem(ADDRS_KEY, JSON.stringify([..._knownAddrs])); } catch (_) {}
+}
+function harvestAddrs(m) {
+  [...addrList(pick(m, "From", "from")), ...addrList(pick(m, "To", "to")),
+   ...addrList(pick(m, "Cc", "cc"))].forEach(addKnownAddr);
+}
+function addrDatalist() {
+  return `<datalist id="addrHints">` +
+    [..._knownAddrs].sort().map(a => `<option value="${esc(a)}"></option>`).join("") +
+    `</datalist>`;
+}
+function val(id) { const el = document.getElementById(id); return el ? el.value : ""; }
+function saveDraft() {
+  const d = { to: val("cTo"), cc: val("cCc"), subject: val("cSubject"), body: val("cBody") };
+  if (d.to || d.cc || d.subject || d.body) {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch (_) {}
+  } else { clearDraft(); }
+}
+function loadDraft() {
+  try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); } catch (_) { return null; }
+}
+function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (_) {} }
+function discardDraft() { clearDraft(); showCompose(); }
+
 // ── Compose ───────────────────────────────────────────────────────────────
 function showCompose(prefill) {
   prefill = prefill || {};
+  _composeAttachment = prefill.attachment || null;   // e.g. an ICS form XML handed off
+  const isReplyFwd = !!(prefill.to || prefill.cc || prefill.subject || prefill.body || _composeAttachment);
+  const draft = isReplyFwd ? null : loadDraft();   // reply/forward/form ignores the draft
+  const init = isReplyFwd ? prefill : (draft || {});
   document.getElementById("paneLabel").textContent = "Compose";
   const pane = document.getElementById("pane");
   pane.className = "compose";
   pane.innerHTML =
+    addrDatalist() +
     `<div class="field"><label>To (callsign / address)</label>` +
-      `<input type="text" id="cTo" placeholder="W4ABC" autocomplete="off"></div>` +
+      `<input type="text" id="cTo" list="addrHints" placeholder="W4ABC" autocomplete="off"></div>` +
     `<div class="field"><label>Cc</label>` +
-      `<input type="text" id="cCc" placeholder="(optional)" autocomplete="off"></div>` +
+      `<input type="text" id="cCc" list="addrHints" placeholder="(optional)" autocomplete="off"></div>` +
     `<div class="field"><label>Subject</label>` +
       `<input type="text" id="cSubject" autocomplete="off"></div>` +
     `<div class="field"><label>Message</label>` +
       `<textarea id="cBody"></textarea></div>` +
-    (prefill.note ? `<div class="conn-state">${esc(prefill.note)}</div>` : "") +
+    (_composeAttachment ?
+      `<div class="attach"><span class="attach-label">📎 Attachment</span> ${esc(_composeAttachment.name)}` +
+      ` <button class="sbtn" onclick="dropComposeAttachment()" title="Remove attachment">✕</button></div>` : "") +
+    ((prefill.note || draft) ?
+      `<div class="conn-state">${esc(prefill.note || "↩ Draft restored — autosaving as you type.")}</div>` : "") +
     `<div class="pane-actions">` +
       `<button class="sbtn primary" onclick="sendMessage()">📤 Queue message</button>` +
+      (draft ? `<button class="sbtn" onclick="discardDraft()">Discard draft</button>` : "") +
       `<span class="conn-state">Queues to Outbox — Connect to transmit.</span>` +
     `</div>`;
-  document.getElementById("cTo").value = prefill.to || "";
-  document.getElementById("cCc").value = prefill.cc || "";
-  document.getElementById("cSubject").value = prefill.subject || "";
-  document.getElementById("cBody").value = prefill.body || "";
+  document.getElementById("cTo").value = init.to || "";
+  document.getElementById("cCc").value = init.cc || "";
+  document.getElementById("cSubject").value = init.subject || "";
+  document.getElementById("cBody").value = init.body || "";
+  ["cTo", "cCc", "cSubject", "cBody"].forEach(id =>
+    document.getElementById(id).addEventListener("input", saveDraft));
   // Focus the first empty field so a forward lands on To, a reply on the body.
-  (prefill.to ? document.getElementById("cBody") : document.getElementById("cTo")).focus();
+  (init.to ? document.getElementById("cBody") : document.getElementById("cTo")).focus();
 }
 
 // Pull a flat list of address strings from a Pat From/To/Cc field.
@@ -612,21 +778,49 @@ function replyTo(mode) {
   showCompose({ to, cc, subject, body: quoted, note });
 }
 
+function dropComposeAttachment() {
+  _composeAttachment = null;
+  const el = document.querySelector(".compose .attach");
+  if (el) el.remove();
+}
+
 async function sendMessage() {
   const to = document.getElementById("cTo").value.trim();
   if (!to) { toast("Recipient required", "err"); return; }
-  const form = new URLSearchParams();
-  form.set("to", to);
   const cc = document.getElementById("cCc").value.trim();
-  if (cc) form.set("cc", cc);
-  form.set("subject", document.getElementById("cSubject").value);
-  form.set("body", document.getElementById("cBody").value);
+  const subject = document.getElementById("cSubject").value;
+  const body = document.getElementById("cBody").value;
+  // Pat requires an RFC3339 date (no fractional seconds) — else 400 "Missing date value".
+  const date = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   try {
-    await api("/mailbox/out", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: form.toString(),
-    });
+    if (_composeAttachment) {
+      // Multipart so we can attach the file (Pat's file field is "files").
+      const fd = new FormData();
+      fd.set("to", to);
+      if (cc) fd.set("cc", cc);
+      fd.set("subject", subject);
+      fd.set("body", body);
+      fd.set("date", date);
+      const a = _composeAttachment;
+      fd.append("files", new Blob([a.content], { type: a.type || "application/octet-stream" }), a.name);
+      await api("/mailbox/out", { method: "POST", body: fd });   // browser sets multipart Content-Type
+    } else {
+      const form = new URLSearchParams();
+      form.set("to", to);
+      if (cc) form.set("cc", cc);
+      form.set("subject", subject);
+      form.set("body", body);
+      form.set("date", date);
+      await api("/mailbox/out", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: form.toString(),
+      });
+    }
+    // Remember recipients for autocomplete; drop the saved draft + attachment.
+    [...to.split(/[;, ]+/), ...cc.split(/[;, ]+/)].forEach(addKnownAddr);
+    _composeAttachment = null;
+    clearDraft();
     toast("Queued to Outbox — Connect to send", "ok");
     selectBox("out");
   } catch (e) { toast(e.message, "err"); }
@@ -639,31 +833,106 @@ function setDot(state, text) {
   document.getElementById("connState").textContent = text;
 }
 
+// ── Connection picker: saved aliases + recent connections + Custom ─────────
+// A connection is just {target, label} where `target` is what Pat's /connect
+// accepts — a saved alias NAME or a full transport URL. Recents (incl. gateways
+// connected from the Gateways panel) persist; the last one is pre-selected.
+const RECENT_KEY = "oasis_winlink_recent";
+const LASTCONN_KEY = "oasis_winlink_lastconn";
+let _aliases = [];   // [[name, url], …] from Pat
+function loadRecents() { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); } catch (_) { return []; } }
+function saveRecents(r) { try { localStorage.setItem(RECENT_KEY, JSON.stringify(r)); } catch (_) {} }
+function loadLast() { try { return JSON.parse(localStorage.getItem(LASTCONN_KEY) || "null"); } catch (_) { return null; } }
+function saveLast(l) { try { localStorage.setItem(LASTCONN_KEY, JSON.stringify(l)); } catch (_) {} }
+
 async function loadAliases() {
-  const sel = document.getElementById("aliasSel");
   try {
     const data = await apiJson("/aliases");
-    let entries = [];
-    if (Array.isArray(data)) entries = data.map(a => [a, a]);
-    else if (data && typeof data === "object") entries = Object.entries(data);
-    sel.innerHTML = "";
-    if (!entries.length) {
-      sel.innerHTML = `<option value="">No transports configured</option>`;
-      document.getElementById("connectBtn").disabled = true;
-      return;
-    }
-    document.getElementById("connectBtn").disabled = false;
-    for (const [name, url] of entries) {
-      const o = document.createElement("option");
-      o.value = name;            // Pat accepts the alias name on /api/connect
-      o.textContent = name;
-      o.title = String(url);
-      sel.appendChild(o);
-    }
-  } catch (e) {
-    sel.innerHTML = `<option value="">Pat unreachable</option>`;
-    document.getElementById("connectBtn").disabled = true;
+    _aliases = Array.isArray(data) ? data.map(a => [a, a])
+             : (data && typeof data === "object") ? Object.entries(data) : [];
+  } catch (_) { _aliases = []; }
+  buildConnSel();
+}
+
+// Recents first, then any saved aliases not already listed, then Custom.
+function connOptions() {
+  const recents = loadRecents();
+  const seen = new Set(recents.map(r => r.target));
+  const opts = recents.slice();
+  for (const [name] of _aliases) if (!seen.has(name)) { opts.push({ target: name, label: name }); seen.add(name); }
+  return opts;
+}
+
+function buildConnSel() {
+  const sel = document.getElementById("connSel");
+  const want = sel.value;
+  sel.innerHTML = "";
+  for (const o of connOptions()) {
+    const opt = document.createElement("option");
+    opt.value = o.target; opt.textContent = o.label; sel.appendChild(opt);
   }
+  const neu = document.createElement("option");
+  neu.value = "__new__"; neu.textContent = "New connection…"; sel.appendChild(neu);
+  const last = loadLast();
+  const has = v => [...sel.options].some(o => o.value === v);
+  sel.value = (want && has(want)) ? want
+            : (last && has(last.target)) ? last.target
+            : (sel.options[0] ? sel.options[0].value : "__new__");
+  onConnSelChange();
+}
+
+function isRecent(target) { return loadRecents().some(r => r.target === target); }
+
+function onConnSelChange() {
+  const v = document.getElementById("connSel").value;
+  document.getElementById("connBuild").style.display = v === "__new__" ? "" : "none";
+  // Only recents are removable (aliases come from Pat and would just regenerate).
+  document.getElementById("forgetBtn").style.display = isRecent(v) ? "" : "none";
+}
+
+// Remove the selected recent connection from the dropdown (e.g. a dead gateway).
+function forgetConn() {
+  const sel = document.getElementById("connSel");
+  const target = sel.value;
+  if (!isRecent(target)) return;
+  saveRecents(loadRecents().filter(r => r.target !== target));
+  const last = loadLast();
+  if (last && last.target === target) { try { localStorage.removeItem(LASTCONN_KEY); } catch (_) {} }
+  sel.value = "";          // force buildConnSel to pick a fresh default
+  buildConnSel();
+  toast("Removed from list", "ok");
+}
+
+function doConnect() {
+  const sel = document.getElementById("connSel");
+  let target, label;
+  if (sel.value === "__new__") {
+    // Build a Pat connect URL from the friendly fields — no raw URL typing.
+    const transport = document.getElementById("bTransport").value;
+    const call = document.getElementById("bCall").value.trim().toUpperCase();
+    const freq = document.getElementById("bFreq").value.trim();
+    if (!call) { toast("Gateway callsign required", "err"); return; }
+    target = `${transport}:///${encodeURIComponent(call)}`;
+    if (freq) target += `?freq=${encodeURIComponent(freq)}`;
+    label = freq ? `${call} ${freq} kHz` : `${call} · ${transport}`;
+  } else {
+    target = sel.value;
+    label = sel.options[sel.selectedIndex].textContent;
+  }
+  startConnect(target, label);
+}
+
+// Single entry point for every connect — records it as the recent/last
+// connection, then runs the session.
+function startConnect(target, label) {
+  saveLast({ target, label });
+  let rec = loadRecents().filter(r => r.target !== target);
+  rec.unshift({ target, label });
+  saveRecents(rec.slice(0, 8));
+  buildConnSel();
+  const sel = document.getElementById("connSel");
+  if ([...sel.options].some(o => o.value === target)) { sel.value = target; onConnSelChange(); }
+  runConnect(target, label);
 }
 
 async function pollStatus() {
@@ -684,6 +953,13 @@ function logLine(text) {
   const c = document.getElementById("console");
   c.textContent += (c.textContent ? "\n" : "") + text;
   c.scrollTop = c.scrollHeight;
+  document.getElementById("consoleWrap").style.display = "";   // reveal on first line
+}
+
+// Clear/close the session log.
+function clearConsole() {
+  document.getElementById("console").textContent = "";
+  document.getElementById("consoleWrap").style.display = "none";
 }
 
 function openWs() {
@@ -717,6 +993,7 @@ async function runConnect(url, label) {
   document.getElementById("console").textContent = "";
   logLine(`Connecting ${label}…`);
   setDot("busy", "dialing…");
+  document.getElementById("abortBtn").style.display = "";   // session in progress
   openWs();
   try {
     await api(`/connect?url=${encodeURIComponent(url)}`);
@@ -726,30 +1003,119 @@ async function runConnect(url, label) {
     logLine("Connect failed: " + e.message);
     toast(e.message, "err");
   } finally {
+    document.getElementById("abortBtn").style.display = "none";
     pollStatus();
     loadBox(currentBox);
     refreshCounts();          // new mail may have landed in other boxes
   }
 }
 
-// Quick connect — saved alias (e.g. telnet/CMS).
-function onConnectAlias() {
-  const alias = document.getElementById("aliasSel").value;
-  if (!alias) { toast("No alias selected", "err"); return; }
-  runConnect(alias, `via "${alias}"`);
+// Abort the in-progress session. Pat's /api/disconnect ends the active connect,
+// which unblocks runConnect's await — its finally then refreshes everything.
+async function abortConnect() {
+  logLine("Aborting session…");
+  try { await fetch(`${API}/disconnect`, { cache: "no-store" }); }
+  catch (_) { /* the connect returning is what matters */ }
 }
 
-// New connection — build a transport URL: transport:///TARGET[?freq=kHz].
-// Pat resolves the rig/QSY from the transport's own config; freq is the dial
-// frequency in kHz and applies to HF transports (ardop/varahf/pactor).
-function onConnectBuild() {
-  const transport = document.getElementById("transportSel").value;
-  const target = document.getElementById("targetCall").value.trim().toUpperCase();
-  const freq = document.getElementById("freqKhz").value.trim();
-  if (!target) { toast("Gateway callsign required", "err"); return; }
-  let url = `${transport}:///${encodeURIComponent(target)}`;
-  if (freq) url += `?freq=${encodeURIComponent(freq)}`;
-  runConnect(url, `to ${target} via ${transport}${freq ? " @ " + freq + " kHz" : ""}`);
+// ── RMS gateway list (offline-cacheable) ──────────────────────────────────
+let _gateways = [];
+let _gwSort = { key: "distance", dir: 1 };
+let _gwLoaded = false;
+const gwKey = mode => `oasis_winlink_rms_${mode}`;
+const gwModeVal = () => document.getElementById("gwMode").value;
+
+function toggleGateways() {
+  const body = document.getElementById("gwBody");
+  const open = body.style.display === "none";
+  body.style.display = open ? "" : "none";
+  document.getElementById("gwToggle").textContent = open ? "▾" : "▸";
+  if (open && !_gwLoaded) { _gwLoaded = true; loadGatewaysCache(); }
+}
+
+// Load this mode's cached snapshot from localStorage (works fully offline).
+function loadGatewaysCache() {
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(gwKey(gwModeVal())) || "null"); } catch (_) {}
+  _gateways = (cached && Array.isArray(cached.gateways)) ? cached.gateways : [];
+  const stamp = document.getElementById("gwStamp");
+  stamp.textContent = (cached && cached.ts)
+    ? `${_gateways.length} gateways · downloaded ${new Date(cached.ts).toLocaleString()}`
+    : "No cached list — press Update while online.";
+  renderGateways();
+}
+
+// Download a fresh list (needs connectivity) and cache it for offline use.
+async function updateGateways() {
+  const mode = gwModeVal();
+  const stamp = document.getElementById("gwStamp");
+  stamp.textContent = "Downloading… (Pat may take a while)";
+  try {
+    const res = await fetch(`${API}/rmslist?mode=${encodeURIComponent(mode)}`, { cache: "no-store" });
+    const d = await res.json();
+    if (!res.ok || !d.ok) throw new Error(d.error || `HTTP ${res.status}`);
+    _gateways = d.gateways || [];
+    try {
+      localStorage.setItem(gwKey(mode), JSON.stringify({ ts: Date.now(), gateways: _gateways }));
+    } catch (_) { toast("List downloaded but too large to cache", "err"); }
+    stamp.textContent = `${_gateways.length} gateways · downloaded ${new Date().toLocaleString()}`;
+    renderGateways();
+    toast(`Updated ${mode}: ${_gateways.length} gateways`, "ok");
+  } catch (e) {
+    toast(`Update failed: ${e.message}`, "err");
+    loadGatewaysCache();   // keep showing whatever's cached
+  }
+}
+
+function sortGateways(key) {
+  if (_gwSort.key === key) _gwSort.dir *= -1; else _gwSort = { key, dir: 1 };
+  renderGateways();
+}
+function gwQualClass(q) { return q == null ? "low" : q >= 60 ? "good" : q >= 30 ? "mid" : "low"; }
+
+function renderGateways() {
+  const list = document.getElementById("gwList");
+  const empty = document.getElementById("gwEmpty");
+  const term = (document.getElementById("gwSearch")?.value || "").trim().toLowerCase();
+  const rows = _gateways.filter(g =>
+    !term || `${g.callsign || ""} ${g.gridsquare || ""}`.toLowerCase().includes(term));
+  const { key, dir } = _gwSort;
+  rows.sort((a, b) => {
+    const av = a[key], bv = b[key];
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return (typeof av === "string" ? av.localeCompare(bv) : av - bv) * dir;
+  });
+  list.innerHTML = "";
+  for (const g of rows) {
+    const q = g.link_quality;
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td>${esc(g.callsign || "?")}</td>` +
+      `<td>${g.dial_khz != null ? esc(g.dial_khz) : "—"}</td>` +
+      `<td>${esc(g.modes || "")}</td>` +
+      `<td>${g.distance != null ? Math.round(g.distance) : "—"}</td>` +
+      `<td class="gw-q ${gwQualClass(q)}">${q != null ? q : "—"}</td>` +
+      `<td></td>`;
+    const btn = document.createElement("button");
+    btn.className = "sbtn primary";
+    btn.textContent = "⚡ Connect";
+    btn.disabled = !g.url;
+    btn.onclick = () => connectGateway(g);
+    tr.lastElementChild.appendChild(btn);
+    list.appendChild(tr);
+  }
+  empty.style.display = rows.length ? "none" : "block";
+  empty.textContent = _gateways.length === 0
+    ? "No gateways cached for this mode — Update while online."
+    : "No matches.";
+}
+
+// Connect to a gateway using its ready-made Pat URL. Explicit user action —
+// this transmits (within the no-auto-connect guardrail).
+function connectGateway(g) {
+  if (!g.url) { toast("No connect URL for this gateway", "err"); return; }
+  startConnect(g.url, `${g.callsign || "gateway"} ${g.dial_khz || "?"} kHz`);
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
@@ -758,8 +1124,22 @@ async function refreshAll() {
   await selectBox(currentBox);
 }
 
+// Handoff from a form (e.g. ICS-213 "Send via Winlink"): a pending compose was
+// stashed in localStorage. Open Compose pre-filled with its text + attachment.
+function checkPendingCompose() {
+  let p;
+  try { p = JSON.parse(localStorage.getItem("oasis_winlink_compose") || "null"); } catch (_) {}
+  if (!p) return;
+  try { localStorage.removeItem("oasis_winlink_compose"); } catch (_) {}
+  showCompose({
+    to: p.to || "", cc: p.cc || "", subject: p.subject || "",
+    body: p.body || "", note: p.note || "", attachment: p.attachment || null,
+  });
+}
+
 renderFolders();
 refreshAll();
+checkPendingCompose();
 statusTimer = setInterval(pollStatus, 5000);
 </script>
 </body>

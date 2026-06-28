@@ -42,6 +42,7 @@
 
   <div class="actions">
     <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 213 PDF and download a timestamped copy">⬇ Save PDF</button>
+    <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this form as a message (text + RMS form attachment) ready to queue">→ Send via Winlink</button>
     <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
     <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 213 CSV file to restore form data">Import CSV</button>
     <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
@@ -270,6 +271,96 @@ function toggleInst(){
   const b=document.getElementById('i-body');
   const open=b.classList.toggle('open');
   document.getElementById('i-arrow').textContent=open?'▲':'▼';
+}
+
+// ── Send via Winlink ────────────────────────────────────────────────────────
+// Build a Winlink-style message (text body + RMS_Express_Form XML attachment)
+// from this form and hand it to winlink/mail.html via localStorage. No network.
+function _wlEsc(s){return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function _pad2(n){return String(n).padStart(2,'0');}
+
+// Text body — mirrors how Winlink renders an ICS-213 General Message.
+function ics213Body(){
+  return [
+    'GENERAL MESSAGE (ICS 213)',
+    '1. Incident Name: '+gv('f-inc'),
+    '2. To (Name and Position): '+gv('f-to'),
+    '3. From (Name and Position): '+gv('f-from'),
+    '4. Subject: '+gv('f-subj'),
+    '5. Date: '+gv('f-date'),
+    '6. Time: '+gv('f-time'),
+    '7. Message:',
+    '',
+    gv('f-msg'),
+    '',
+    '8. Approved by: '+gv('f-appr-name'),
+    '8a. Position/Title: '+gv('f-appr-pos'),
+  ].join('\n');
+}
+
+// RMS_Express_Form XML — structure matches a real received ICS-213 form. Fields
+// we don't capture are left empty/default. NOTE: rendering as an interactive form
+// on the receiving end depends on that station's Winlink Standard Templates.
+function ics213Xml(){
+  const n=new Date();
+  const sub=n.getFullYear()+_pad2(n.getMonth()+1)+_pad2(n.getDate())+_pad2(n.getHours())+_pad2(n.getMinutes())+_pad2(n.getSeconds());
+  const ts=n.getFullYear()+_pad2(n.getMonth()+1)+_pad2(n.getDate())+_pad2(n.getHours())+_pad2(n.getMinutes());
+  const call=(localStorage.getItem('oasis_callsign')||'').toUpperCase();
+  const grid=(localStorage.getItem('oasis_grid')||'');
+  const E=_wlEsc;
+  return `<?xml version="1.0"?>
+<RMS_Express_Form>
+  <form_parameters>
+    <xml_file_version>1.0</xml_file_version>
+    <rms_express_version>1.8.2.0</rms_express_version>
+    <submission_datetime>${sub}</submission_datetime>
+    <senders_callsign>${E(call)}</senders_callsign>
+    <grid_square>${E(grid)}</grid_square>
+    <display_form>ICS213_Initial_Viewer.html</display_form>
+    <reply_template>ICS213_SendReply.0</reply_template>
+  </form_parameters>
+  <variables>
+    <msgsender>${E(call)}</msgsender>
+    <msgp2p>False</msgp2p>
+    <msgisreply>False</msgisreply>
+    <msgisforward>False</msgisforward>
+    <msgisacknowledgement>False</msgisacknowledgement>
+    <exbtn>true</exbtn>
+    <isexercise></isexercise>
+    <formtitle></formtitle>
+    <inc_name>${E(gv('f-inc'))}</inc_name>
+    <to_name>${E(gv('f-to'))}</to_name>
+    <fm_name>${E(gv('f-from'))}</fm_name>
+    <subjectline>${E(gv('f-subj'))}</subjectline>
+    <mdate>${E(gv('f-date'))}</mdate>
+    <mtime>${E(gv('f-time'))}</mtime>
+    <timestamp>${ts}</timestamp>
+    <timestamp2>${n.toISOString()}</timestamp2>
+    <mapfilename>ICS-213</mapfilename>
+    <message>${E(gv('f-msg'))}</message>
+    <message2>${E(gv('f-msg'))}</message2>
+    <approved_name>${E(gv('f-appr-name'))}</approved_name>
+    <approved_postitle>${E(gv('f-appr-pos'))}</approved_postitle>
+    <templateversion>ICS 213  v.43.8</templateversion>
+  </variables>
+</RMS_Express_Form>`;
+}
+
+function sendWinlink(){
+  if(!gv('f-subj').trim() && !gv('f-msg').trim()){
+    showToast('Add a subject or message first',2500); return;
+  }
+  const subj='ICS-213: '+(gv('f-subj')||'(no subject)')+
+             (gv('f-date')?' - '+gv('f-date'):'')+(gv('f-time')?' '+gv('f-time'):'');
+  const payload={
+    to:'', subject:subj, body:ics213Body(),
+    note:'ICS-213 form — enter the recipient callsign, then Queue.',
+    attachment:{name:'RMS_Express_Form_ICS213_Initial_Viewer.xml',
+                type:'application/xml',content:ics213Xml()},
+  };
+  try{ localStorage.setItem('oasis_winlink_compose',JSON.stringify(payload)); }
+  catch(e){ showToast('Could not hand off to Winlink (storage full?)',2500); return; }
+  window.location.href='../../winlink/mail.html';   // static/ics-213/ → repo root → winlink/
 }
 
 function showToast(msg,ms=2800){

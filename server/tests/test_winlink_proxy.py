@@ -11,6 +11,7 @@ Run directly:  .venv/bin/python server/tests/test_winlink_proxy.py
 (plain unittest — no pytest, to stay within the offline wheel set: flask only.)
 """
 
+import json
 import os
 import sys
 import unittest
@@ -31,9 +32,10 @@ import app as oasis_app   # server/app.py
 class _FakePatResponse:
     """Minimal stand-in for the object urllib.request.urlopen returns."""
 
-    def __init__(self, body: bytes, status: int = 200):
+    def __init__(self, body: bytes, status: int = 200, headers=None):
         self._body = body
         self.status = status
+        self.headers = headers or {}
 
     def read(self):
         return self._body
@@ -45,7 +47,7 @@ class _FakePatResponse:
         return False
 
 
-def _patch_urlopen(*, body=b"", status=200, exc=None, capture=None):
+def _patch_urlopen(*, body=b"", status=200, exc=None, capture=None, headers=None):
     """Return a mock.patch context replacing urlopen in app's namespace.
 
     If `capture` is a dict, the requested URL/method are recorded so a test can
@@ -58,7 +60,7 @@ def _patch_urlopen(*, body=b"", status=200, exc=None, capture=None):
             capture["method"] = getattr(req, "method", None)
         if exc is not None:
             raise exc
-        return _FakePatResponse(body, status)
+        return _FakePatResponse(body, status, headers)
 
     return mock.patch.object(urllib.request, "urlopen", fake)
 
@@ -119,6 +121,91 @@ class WinlinkProxyTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(cap["url"].endswith("/api/mailbox/out"))
         self.assertEqual(cap["method"], "POST")
+
+    # ── Attachments ───────────────────────────────────────────────────────────
+    def test_attachment_passes_through_pats_content_type(self):
+        cap = {}
+        with _patch_urlopen(body=b"<RMS_Express_Form/>", status=200,
+                            headers={"Content-Type": "text/xml"}, capture=cap):
+            resp = self.client.get(
+                "/api/winlink/mailbox/in/ABC123/RMS_Express_Form_ICS213.xml")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data, b"<RMS_Express_Form/>")
+        # Must NOT be forced to application/json like the JSON proxies.
+        self.assertIn("text/xml", resp.content_type)
+        self.assertTrue(cap["url"].endswith(
+            "/api/mailbox/in/ABC123/RMS_Express_Form_ICS213.xml"))
+
+    def test_attachment_download_sets_content_disposition(self):
+        with _patch_urlopen(body=b"data", status=200,
+                            headers={"Content-Type": "text/plain"}):
+            resp = self.client.get(
+                "/api/winlink/mailbox/in/ABC123/FormData.txt?download=1")
+        self.assertEqual(resp.status_code, 200)
+        cd = resp.headers.get("Content-Disposition", "")
+        self.assertIn("attachment", cd)
+        self.assertIn("FormData.txt", cd)
+
+    # ── RMS gateway list ──────────────────────────────────────────────────────
+    def test_rmslist_slims_and_strips_prediction(self):
+        fake_list = json.dumps([{
+            "callsign": "ZL4RMS", "gridsquare": "RE44QI",
+            "distance": 4929.6, "azimuth": 270, "modes": "ARDOP 2000",
+            "freq": {"hz": 7137500, "khz": 7137.5, "desc": "..."},
+            "dial": {"hz": 7136000, "khz": 7136, "desc": "..."},
+            "url": "ardop:///ZL4RMS?freq=7136",
+            "prediction": {"link_quality": 22, "output_raw": "X" * 5000},
+        }]).encode()
+        with _patch_urlopen(body=fake_list, status=200):
+            resp = self.client.get("/api/winlink/rmslist?mode=ardop")
+        self.assertEqual(resp.status_code, 200)
+        d = resp.get_json()
+        self.assertTrue(d["ok"])
+        self.assertEqual(d["count"], 1)
+        g = d["gateways"][0]
+        self.assertEqual(g["callsign"], "ZL4RMS")
+        self.assertEqual(g["dial_khz"], 7136)
+        self.assertEqual(g["link_quality"], 22)
+        self.assertEqual(g["url"], "ardop:///ZL4RMS?freq=7136")
+        # The heavy VOACAP text must be gone.
+        self.assertNotIn("output_raw", resp.get_data(as_text=True))
+
+    def test_rmslist_unknown_mode_rejected(self):
+        called = {"hit": False}
+
+        def fake(req, timeout=None):
+            called["hit"] = True
+            return _FakePatResponse(b"[]")
+
+        with mock.patch.object(urllib.request, "urlopen", fake):
+            resp = self.client.get("/api/winlink/rmslist?mode=bogus")
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(called["hit"])
+
+    def test_rmslist_pat_down_returns_503(self):
+        with _patch_urlopen(exc=urllib.error.URLError("refused")):
+            resp = self.client.get("/api/winlink/rmslist?mode=ardop")
+        self.assertEqual(resp.status_code, 503)
+
+    # ── Disconnect / abort ────────────────────────────────────────────────────
+    def test_disconnect_proxies_pat(self):
+        cap = {}
+        with _patch_urlopen(body=b'{"ok":true}', status=200, capture=cap):
+            resp = self.client.get("/api/winlink/disconnect")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(cap["url"].endswith("/api/disconnect"))
+
+    def test_attachment_unknown_box_rejected(self):
+        called = {"hit": False}
+
+        def fake(req, timeout=None):
+            called["hit"] = True
+            return _FakePatResponse(b"")
+
+        with mock.patch.object(urllib.request, "urlopen", fake):
+            resp = self.client.get("/api/winlink/mailbox/bogus/ABC123/file.xml")
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(called["hit"])
 
 
 if __name__ == "__main__":

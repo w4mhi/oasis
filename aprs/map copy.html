@@ -23,18 +23,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #statusDot.ok{background:var(--accent);}
 #statusDot.err{background:var(--red);}
 #statusMsg{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-/* CPU readout sits outside #coordReadout — size it to match #statusMsg */
-#crCpuLbl,#crCpu{font-size:var(--fs-small);}
-#crCpu{font-weight:600;}
 #stationCount{font-size:var(--fs-small);color:var(--amber);white-space:nowrap;}
 #countdown{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;width:16ch;flex-shrink:0;text-align:right;transition:color .4s;overflow:visible;}
 #countdown.green{color:#3fb950;}
 #countdown.yellow{color:var(--amber);}
 #countdown.red{color:var(--red);}
-/* Pi CPU readout (telemetry row) — color-coded by load */
-#crCpu.cpu-ok{color:#3fb950;}
-#crCpu.cpu-warn{color:var(--amber);}
-#crCpu.cpu-hot{color:var(--red);}
 .home-link{
   margin-left:auto;
   color:#58a6ff;
@@ -163,38 +156,42 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 }
 .aprs-marker.is-new{
   animation:aprs-sonar 2.4s ease-out 3 forwards;
-  border-radius:50%;   /* circular sonar rings (box-shadow follows border-radius) */
-}
-/* persistent glow — replaces is-new after pings finish, until next refresh.
-   Static (non-animated) box-shadow: a perpetual breathe animation forces a
-   full repaint every frame on every glowing marker, which pegs a Pi's CPU
-   even when the map is idle. A fixed glow reads the same at a glance. */
-.aprs-marker.is-persistent{
   border-radius:3px;
-  box-shadow:0 0 6px 3px rgba(0,255,80,.35);
+}
+/* persistent glow — replaces is-new after pings finish, until next refresh */
+.aprs-marker.is-persistent{
+  animation:aprs-glow-breathe 2.5s ease-in-out infinite;
+  border-radius:3px;
+  box-shadow:0 0 5px 3px rgba(0,255,80,.3);
+}
+@keyframes aprs-glow-breathe{
+  0%,100%{box-shadow:0 0 4px 2px rgba(0,255,80,.2);}
+  50%    {box-shadow:0 0 8px 4px rgba(0,255,80,.5);}
 }
 /* Glowing destination (receiver) node for the RF path — a DOM marker so it uses
-   the same cheap CSS box-shadow glow as stations and never touches map layers.
-   Static glow (see note above) to avoid a per-frame repaint loop. */
+   the same cheap CSS box-shadow glow as stations and never touches map layers. */
 .path-rx{
   width:12px;height:12px;border-radius:50%;
   background:#fff;border:2px solid #b478ff;
-  box-shadow:0 0 8px 4px rgba(180,120,255,.5);
+  box-shadow:0 0 6px 3px rgba(180,120,255,.45);
+  animation:path-rx-breathe 2.2s ease-in-out infinite;
   pointer-events:none;
+}
+@keyframes path-rx-breathe{
+  0%,100%{box-shadow:0 0 5px 2px rgba(180,120,255,.30);}
+  50%    {box-shadow:0 0 12px 6px rgba(180,120,255,.65);}
 }
 /* Glowing convergence (receiver) node for the Coverage reach-fan — teal twin. */
 .cov-rx{
   width:11px;height:11px;border-radius:50%;
   background:#fff;border:2px solid #2dd4bf;
-  box-shadow:0 0 8px 4px rgba(45,212,191,.55);
+  box-shadow:0 0 6px 3px rgba(45,212,191,.5);
+  animation:cov-rx-breathe 2.2s ease-in-out infinite;
   pointer-events:none;
 }
-/* Honor a reduced-motion preference (e.g. a Pi kiosk configured for low power):
-   drop the sonar burst and the refresh-spinner so newly-heard stations appear
-   without any animated repaints at all. */
-@media (prefers-reduced-motion: reduce){
-  .aprs-marker.is-new{animation:none;}
-  #mapRefreshBtn.spinning .kr-icon{animation:none;}
+@keyframes cov-rx-breathe{
+  0%,100%{box-shadow:0 0 5px 2px rgba(45,212,191,.35);}
+  50%    {box-shadow:0 0 12px 6px rgba(45,212,191,.7);}
 }
 /* ── preserved: old box-shadow pulse ─────────────────────────────────────────
 @keyframes aprs-pulse{
@@ -465,8 +462,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
     <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">Auto-fly</button>
     <span style="flex:1"></span>
     <span id="trackMsg"></span>
-    <span id="crCpuLbl" class="cr-lbl">cpu</span><span id="crCpu" class="cr-val" title="Pi CPU load (whole system, ~5s sample)">—</span>
-    <span class="track-sep">|</span>
     <span id="statusMsg">Connecting…</span>
   </div>
 </div>
@@ -577,18 +572,6 @@ spriteImgs[ALT_TABLE]  = new Image();
 spriteImgs['/'].src        = '/map-assets/aprs-symbols-24-0.png';
 spriteImgs[ALT_TABLE].src  = '/map-assets/aprs-symbols-24-1.png';
 
-// If the sprite sheets finish loading after the first station plot, the symbol
-// images couldn't be registered yet — re-render once they're ready so icons fill in.
-let _spritesPending = 2;
-function _onSpriteLoad() {
-  if (--_spritesPending === 0 && typeof allStations !== 'undefined' && allStations.length) applyFilter();
-}
-['/', ALT_TABLE].forEach(k => {
-  const img = spriteImgs[k];
-  if (img.complete && img.naturalWidth > 0) _onSpriteLoad();
-  else img.addEventListener('load', _onSpriteLoad, { once: true });
-});
-
 // Get pixel offset in sprite for a symbol code char
 function symOffset(code) {
   const idx = code.charCodeAt(0) - 33;
@@ -603,10 +586,6 @@ function isOverlay(table) {
   return table !== '/' && table !== ALT_TABLE;
 }
 
-// Rendered-symbol cache: table+code → an offscreen 24×24 canvas. Lets the
-// per-refresh marker rebuild blit a finished cell instead of re-rasterizing.
-const _symCache = Object.create(null);
-
 // Build a canvas element as the marker — stable anchor point, no wrapper div
 function makeMarkerEl(symTable, symCode) {
   const canvas = document.createElement('canvas');
@@ -615,17 +594,6 @@ function makeMarkerEl(symTable, symCode) {
   canvas.className = 'aprs-marker';
   canvas.style.width  = SPRITE_CELL + 'px';
   canvas.style.height = SPRITE_CELL + 'px';
-
-  // Each refresh tears down and rebuilds every marker, so the same handful of
-  // symbols get re-rasterized hundreds of times. Memoize the rendered 24×24
-  // cell (keyed by table+code) and blit it — skips the sprite-offset math and
-  // overlay drawing on the hot path.
-  const _symKey = symTable + symCode;
-  const _cached = _symCache[_symKey];
-  if (_cached) {
-    canvas.getContext('2d').drawImage(_cached, 0, 0);
-    return canvas;
-  }
 
   // Pick the right sprite: alternate table for backslash, primary for '/' and overlays
   // Overlays use the alternate sprite sheet at the same symbol position
@@ -648,12 +616,6 @@ function makeMarkerEl(symTable, symCode) {
       ctx.textBaseline = 'middle';
       ctx.fillText(symTable, 19.5, 19.5);
     }
-    // Memoize the finished cell for every later marker of this symbol.
-    const off = document.createElement('canvas');
-    off.width = SPRITE_CELL;
-    off.height = SPRITE_CELL;
-    off.getContext('2d').drawImage(canvas, 0, 0);
-    _symCache[_symKey] = off;
   }
 
   if (sprite.complete && sprite.naturalWidth > 0) {
@@ -970,50 +932,12 @@ document.getElementById('objects-body').addEventListener('click', (e) => {
 });
 
 // ── Station markers ──────────────────────────────────────────────────────────
-// Stations render as a single GPU symbol layer ('aprs-stations'), not DOM
-// markers. Each refresh/filter just swaps the layer's GeoJSON — there are no
-// per-station DOM nodes to create or reposition, so panning/zooming on a Pi no
-// longer pays a per-frame transform on hundreds of elements.
+let markers = [];
+let openPopup = null;
 
-// Register an APRS symbol as a map image (once per unique table+code) and
-// return its image id. Returns null if the sprite sheet isn't loaded yet.
-function stationSymId(symTable, symCode) {
-  return 'aprs-sym|' + symTable + symCode;
-}
-
-function ensureStationImage(symTable, symCode) {
-  const id = stationSymId(symTable, symCode);
-  if (map.hasImage(id)) return id;
-
-  const sprite = (isOverlay(symTable) || symTable === ALT_TABLE)
-    ? spriteImgs[ALT_TABLE]
-    : spriteImgs['/'];
-  if (!sprite.complete || sprite.naturalWidth === 0) return null; // not loaded yet
-
-  // Reuse the cached offscreen cell if Step 2 already rasterized this symbol.
-  let off = _symCache[symTable + symCode];
-  if (!off) {
-    off = document.createElement('canvas');
-    off.width = SPRITE_CELL;
-    off.height = SPRITE_CELL;
-    const ctx = off.getContext('2d');
-    const [sx, sy] = symOffset(symCode);
-    ctx.drawImage(sprite, sx, sy, SPRITE_CELL, SPRITE_CELL, 0, 0, SPRITE_CELL, SPRITE_CELL);
-    if (isOverlay(symTable)) {
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(15, 15, 9, 9);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 7px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(symTable, 19.5, 19.5);
-    }
-    _symCache[symTable + symCode] = off;
-  }
-
-  const img = off.getContext('2d').getImageData(0, 0, SPRITE_CELL, SPRITE_CELL);
-  map.addImage(id, { width: img.width, height: img.height, data: img.data }, { pixelRatio: 1 });
-  return id;
+function clearMarkers() {
+  markers.forEach(m => m.remove());
+  markers = [];
 }
 
 function fmtTime(iso) {
@@ -1117,50 +1041,40 @@ function buildPopup(s) {
 }
 
 function plotStations(stations) {
-  const src = map.getSource('aprs-stations');
-  if (!src) return; // layers not added yet (first fetch races map load)
-  const features = [];
+  clearMarkers();
   stations.forEach(s => {
     if (s.lat == null || s.lon == null) return;
-    const symId = ensureStationImage(s.sym_table, s.sym_code);
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
-      properties: {
-        callsign: s.callsign,
-        sym: symId || '',
-        isNew: _newCallsigns.has(s.callsign) ? 1 : 0
-      }
-    });
-    // Transient sonar ping for a station heard this cycle — a single throwaway
-    // DOM marker that animates ~7s then removes itself. Only the handful of new
-    // stations pay any per-frame DOM cost, and only briefly; the persistent
-    // green halo (GPU) remains for the rest of the cycle.
-    if (_newCallsigns.has(s.callsign) && !_pingedCalls.has(s.callsign)) {
-      _pingedCalls.add(s.callsign);
-      spawnPing(s.lon, s.lat);
+
+    const isNew = _newCallsigns.has(s.callsign);
+    const markerEl = makeMarkerEl(s.sym_table, s.sym_code);
+    // Sonar pings — applied directly to canvas, no wrapper, MapLibre positioning untouched
+    if (isNew) {
+      markerEl.classList.add('is-new');
+      markerEl.addEventListener('animationend', () => {
+        markerEl.classList.remove('is-new');
+        markerEl.classList.add('is-persistent');
+      }, { once: true });
     }
+
+    const popup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '260px' })
+      .setHTML(buildPopup(s));
+
+    const marker = new maplibregl.Marker({ element: markerEl, anchor: 'top-left', offset: [-SPRITE_CELL / 2, -SPRITE_CELL / 2] })
+      .setLngLat([s.lon, s.lat])
+      .setPopup(popup)
+      .addTo(map);
+
+    markers.push(marker);
+
+    // Callsign label — separate marker offset above the icon
+    const labelEl = document.createElement('div');
+    labelEl.className = 'call-label';
+    labelEl.textContent = s.callsign;
+    const labelMarker = new maplibregl.Marker({ element: labelEl, anchor: 'bottom', offset: [0, -12] })
+      .setLngLat([s.lon, s.lat])
+      .addTo(map);
+    markers.push(labelMarker);
   });
-  src.setData({ type: 'FeatureCollection', features });
-}
-
-// Callsigns that have already played their ping this fetch cycle (so a filter
-// re-render doesn't re-trigger the animation). Reset each fetch.
-let _pingedCalls = new Set();
-
-function spawnPing(lon, lat) {
-  const el = document.createElement('div');
-  el.className = 'aprs-marker is-new';
-  el.style.width = SPRITE_CELL + 'px';
-  el.style.height = SPRITE_CELL + 'px';
-  el.style.background = 'transparent';
-  el.style.pointerEvents = 'none';
-  const m = new maplibregl.Marker({ element: el, anchor: 'center' })
-    .setLngLat([lon, lat]).addTo(map);
-  let killed = false;
-  const kill = () => { if (killed) return; killed = true; m.remove(); };
-  el.addEventListener('animationend', kill, { once: true });
-  setTimeout(kill, 8000); // fallback (e.g. prefers-reduced-motion → no animationend)
 }
 
 // ── Data fetching ────────────────────────────────────────────────────────────
@@ -1197,14 +1111,7 @@ function toggleMoving() {
   document.getElementById('movingBtn').classList.toggle('on', movingOnly);
   applyFilter();
 }
-// Debounce the callsign filter: each keystroke used to re-run applyFilter(),
-// which tears down and rebuilds every marker. Coalesce rapid typing into one
-// rebuild ~200ms after the last keypress.
-let _filterTimer = null;
-document.getElementById('callFilter').addEventListener('input', () => {
-  clearTimeout(_filterTimer);
-  _filterTimer = setTimeout(applyFilter, 200);
-});
+document.getElementById('callFilter').addEventListener('input', () => applyFilter());
 
 function applyFilter() {
   const minutes = parseInt(document.getElementById('filterSel').value);
@@ -1258,30 +1165,8 @@ function startCountdown() {
   }, 1000);
 }
 
-// Pi CPU readout — polled from /api/aprs/system (server-cached, ~5s sampler).
-// Shows whole-system load %, plus SoC temperature when available. This reflects
-// the Pi, not the browser; when Chromium renders on the Pi it includes that load.
-async function updateCpu() {
-  const el = document.getElementById('crCpu');
-  if (!el) return;
-  try {
-    const r = await fetch(location.origin + '/api/aprs/system', { cache: 'no-store' });
-    const d = await r.json();
-    if (!d.ok || typeof d.cpu_pct !== 'number') throw new Error('no data');
-    const pct = Math.round(d.cpu_pct);
-    let txt = pct + '%';
-    if (typeof d.cpu_temp_c === 'number') txt += ' · ' + Math.round(d.cpu_temp_c) + '°C';
-    el.textContent = txt;
-    el.className = 'cr-val ' + (pct < 60 ? 'cpu-ok' : pct < 85 ? 'cpu-warn' : 'cpu-hot');
-  } catch (_) {
-    el.textContent = '—';
-    el.className = 'cr-val';
-  }
-}
-
 async function fetchStations() {
   setStatus('', 'Fetching…');
-  updateCpu(); // refresh the Pi CPU readout alongside each station poll
   try {
     const res = await fetch(API_URL(), { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1290,7 +1175,6 @@ async function fetchStations() {
     allStations = data.stations;
     // ── Detect new/updated stations (B + A) ──────────────────────────────
     _newCallsigns = new Set();
-    _pingedCalls = new Set(); // new cycle → allow each new station to ping once
     allStations.forEach(s => {
       if (!_prevHeard[s.callsign] || _prevHeard[s.callsign] !== s.last_heard) {
         _newCallsigns.add(s.callsign);
@@ -1452,50 +1336,6 @@ loadConfig().then(() => {
       paint: { 'text-color': '#e0c8ff', 'text-halo-color': '#0a0e14', 'text-halo-width': 1.4 }
     });
 
-    // ── Station markers (GPU symbol layer — replaces per-station DOM markers) ──
-    map.addSource('aprs-stations', {
-      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
-    });
-    // Static green halo behind stations heard this refresh cycle (replaces the
-    // old animated sonar/persistent-glow DOM markers; GPU-drawn, no animation).
-    map.addLayer({
-      id: 'aprs-stations-halo', type: 'circle', source: 'aprs-stations',
-      filter: ['==', ['get', 'isNew'], 1],
-      paint: {
-        'circle-radius': 15,
-        'circle-color': 'rgba(0,255,80,0.12)',
-        'circle-stroke-width': 2,
-        'circle-stroke-color': 'rgba(0,255,80,0.55)'
-      }
-    });
-    // Icon + callsign label in a single symbol. icon-allow-overlap keeps every
-    // station visible (parity with the old always-on markers).
-    map.addLayer({
-      id: 'aprs-stations-icon', type: 'symbol', source: 'aprs-stations',
-      layout: {
-        'icon-image': ['get', 'sym'],
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-        'icon-anchor': 'center',
-        'text-field': ['get', 'callsign'],
-        'text-font': ['Open Sans Regular'],
-        'text-size': 12,
-        'text-offset': [0, -1.6],
-        'text-anchor': 'bottom',
-        // [AUTOCULL] Labels collide-cull in dense areas (icons always show).
-        // To make every label always show (old DOM-label parity), set:
-        //   'text-optional': false, 'text-allow-overlap': true, 'text-ignore-placement': true
-        'text-optional': true,
-        'text-allow-overlap': false
-      },
-      paint: {
-        'text-color': '#e8f0f8',
-        'text-halo-color': '#0d1117',
-        'text-halo-width': 1.6,
-        'text-halo-blur': 0.4
-      }
-    });
-
     fetchStations();
   });
 });
@@ -1517,8 +1357,8 @@ map.on('zoom', _updateReadout);
 map.on('load', _updateReadout);
 
 // ── Click a base-map feature to inspect its raw OSM properties ──────────────
-// Station icons live in the WebGL canvas now (symbol layer), so a click can hit
-// both a station and an OSM feature. The measure tool owns clicks while active.
+// Station markers are DOM elements, so map-canvas clicks never hit them. The
+// measure tool owns clicks while active, so bail out then.
 const OSM_INSPECT_LAYERS = [
   'water-poly-fill', 'waterways-line',
   'landcover-wood', 'landcover-grass', 'landuse-park',
@@ -1528,10 +1368,6 @@ const OSM_INSPECT_LAYERS = [
 ];
 map.on('click', (e) => {
   if (measureOn) return;
-  // A station click is handled by the station-layer handler below; don't also
-  // open an OSM inspect popup underneath it.
-  if (map.getLayer('aprs-stations-icon') &&
-      map.queryRenderedFeatures(e.point, { layers: ['aprs-stations-icon'] }).length) return;
   const layers = OSM_INSPECT_LAYERS.filter(id => map.getLayer(id));
   const feats  = map.queryRenderedFeatures(e.point, { layers });
   if (!feats.length) return;
@@ -1545,24 +1381,6 @@ map.on('click', (e) => {
   new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
     .setLngLat(e.lngLat).setHTML(rows).addTo(map);
 });
-
-// ── Station click → popup (symbol layer; built lazily from the station data) ──
-let _stationPopup = null;
-map.on('click', 'aprs-stations-icon', (e) => {
-  if (measureOn) return;
-  const f = e.features && e.features[0];
-  if (!f) return;
-  const call = f.properties.callsign;
-  const s = allStations.find(x => x.callsign === call);
-  if (!s) return;
-  if (_stationPopup) _stationPopup.remove();
-  _stationPopup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '260px' })
-    .setLngLat([s.lon, s.lat])
-    .setHTML(buildPopup(s))
-    .addTo(map);
-});
-map.on('mouseenter', 'aprs-stations-icon', () => { map.getCanvas().style.cursor = 'pointer'; });
-map.on('mouseleave', 'aprs-stations-icon', () => { map.getCanvas().style.cursor = ''; });
 
 // ── PMTiles layer diagnostics (parity: log detected vector layers) ─────────
 (async () => {
