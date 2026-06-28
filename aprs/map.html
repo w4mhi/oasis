@@ -41,6 +41,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   width:7rem;max-width:7rem;
 }
 #filterSel:focus{outline:none;border-color:var(--accent-dim);}
+#callFilter{
+  background:var(--bg);border:1px solid var(--border);color:var(--text);
+  font-family:var(--mono);font-size:var(--fs-small);padding:3px 6px;border-radius:4px;
+  width:9rem;max-width:9rem;
+}
+#callFilter:focus{outline:none;border-color:var(--accent-dim);}
+#callFilter::placeholder{color:var(--text-dim);}
+#movingBtn{white-space:nowrap;}
+#movingBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
 
 #map{position:fixed;top:44px;left:0;right:0;bottom:0;}
 
@@ -53,11 +62,26 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .maplibregl-popup-tip{border-top-color:var(--panel)!important;}
 .maplibregl-ctrl-group{background:var(--panel)!important;border:1px solid var(--border)!important;}
 .maplibregl-ctrl-group button{background:var(--panel)!important;}
+/* Distance scale bar (bottom-left) — themed to match our boxes */
+.maplibregl-ctrl-scale{
+  background:rgba(13,17,23,.72)!important;
+  border:2px solid var(--border)!important;
+  border-top:none!important;
+  color:var(--amber)!important;
+  font-family:var(--mono)!important;
+  font-size:var(--fs-small)!important;
+  line-height:1.4;padding:0 5px 1px;
+}
 .pop-call{font-size:var(--fs-subtitle);font-weight:700;color:var(--accent);margin-bottom:4px;}
 .pop-row{display:flex;gap:.4rem;margin-top:2px;font-size:var(--fs-small);}
 .pop-lbl{color:var(--text-dim);min-width:52px;}
 .pop-val{color:var(--text);}
 .pop-comment{margin-top:5px;padding-top:5px;border-top:1px solid var(--border);font-size:var(--fs-small);color:var(--text-dim);word-break:break-word;}
+/* Digipeater path row (who relayed the packet) */
+.pop-path .pop-val{display:flex;flex-wrap:wrap;gap:3px;align-items:center;}
+.pop-hop{color:var(--text-dim);}
+.pop-hop.used{color:var(--accent);font-weight:700;}
+.pop-hop-sep{color:var(--border);}
 
 /* APRS symbol marker — canvas IS the marker element */
 .aprs-marker{
@@ -84,6 +108,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #trackMsg{font-size:var(--fs-small);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;display:none;}
 #autoFlyBtn{opacity:1;transition:opacity .2s;white-space:nowrap;}
 #autoFlyBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
+#autoPathBtn{white-space:nowrap;}
+#autoPathBtn.on{opacity:1;color:#b478ff;border-color:#b478ff;}
+#coverageBtn{white-space:nowrap;}
+#coverageBtn.on{opacity:1;color:#2dd4bf;border-color:#2dd4bf;}
 /* Green "refresh now" button — deliberately obvious on the kiosk */
 #mapRefreshBtn{
   display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;
@@ -91,6 +119,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   background:rgba(0,200,100,0.10);
 }
 #mapRefreshBtn:hover{background:var(--accent-dim);color:#fff;border-color:var(--accent);}
+#mapRefreshBtn.paused{color:var(--text-dim);border-color:var(--border);background:none;}
+#mapRefreshBtn.paused:hover{color:var(--text);border-color:var(--accent-dim);background:none;}
 #mapRefreshBtn .kr-icon{display:inline-block;line-height:1;font-size:1.05em;}
 #mapRefreshBtn.spinning{pointer-events:none;}
 #mapRefreshBtn.spinning .kr-icon{animation:map-spin .6s linear infinite;}
@@ -105,6 +135,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .pop-track-status{
   margin-top:4px;font-size:var(--fs-small);
   color:#00c8ff;font-family:var(--mono);display:none;
+}
+.pop-path-status{
+  margin-top:4px;font-size:var(--fs-small);
+  color:#b478ff;font-family:var(--mono);display:none;
 }
 /* ── Sonar pings for newly heard stations — single element, no wrapper, MapLibre-safe ── */
 /* Three rings embedded in one box-shadow animation, staggered by keyframe offsets */
@@ -130,6 +164,31 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   0%,100%{box-shadow:0 0 4px 2px rgba(0,255,80,.2);}
   50%    {box-shadow:0 0 8px 4px rgba(0,255,80,.5);}
 }
+/* Glowing destination (receiver) node for the RF path — a DOM marker so it uses
+   the same cheap CSS box-shadow glow as stations and never touches map layers. */
+.path-rx{
+  width:12px;height:12px;border-radius:50%;
+  background:#fff;border:2px solid #b478ff;
+  box-shadow:0 0 6px 3px rgba(180,120,255,.45);
+  animation:path-rx-breathe 2.2s ease-in-out infinite;
+  pointer-events:none;
+}
+@keyframes path-rx-breathe{
+  0%,100%{box-shadow:0 0 5px 2px rgba(180,120,255,.30);}
+  50%    {box-shadow:0 0 12px 6px rgba(180,120,255,.65);}
+}
+/* Glowing convergence (receiver) node for the Coverage reach-fan — teal twin. */
+.cov-rx{
+  width:11px;height:11px;border-radius:50%;
+  background:#fff;border:2px solid #2dd4bf;
+  box-shadow:0 0 6px 3px rgba(45,212,191,.5);
+  animation:cov-rx-breathe 2.2s ease-in-out infinite;
+  pointer-events:none;
+}
+@keyframes cov-rx-breathe{
+  0%,100%{box-shadow:0 0 5px 2px rgba(45,212,191,.35);}
+  50%    {box-shadow:0 0 12px 6px rgba(45,212,191,.7);}
+}
 /* ── preserved: old box-shadow pulse ─────────────────────────────────────────
 @keyframes aprs-pulse{
   0%  {box-shadow:0 0 0 0 rgba(255,180,84,.85);}
@@ -143,9 +202,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 ────────────────────────────────────────────────────────────────────────────── */
 /* New-stations badge — moved to recent panel */
 /* Latest-station link — moved to recent panel */
+/* Right-side stacked panels (recent-heard stations + map layers) */
+#right-stack{
+  position:fixed;top:54px;right:10px;z-index:200;
+  display:flex;flex-direction:column;gap:8px;align-items:flex-end;
+  max-height:calc(100vh - 70px);
+}
 /* Recent-heard panel */
 #recent-panel{
-  position:fixed;top:54px;right:10px;z-index:200;
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
   font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
@@ -168,6 +232,74 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .recent-call{color:var(--accent);font-weight:700;}
 .recent-age{color:var(--text-dim);font-size:var(--fs-micro);margin-left:auto;}
 
+/* Map-layer toggle panel (collapsible, stacked beneath the stations panel) */
+#layer-panel{
+  background:var(--panel);border:1px solid var(--border);border-radius:7px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+#layer-header{
+  display:flex;align-items:center;gap:.5rem;padding:6px 10px;
+  cursor:pointer;user-select:none;border-radius:7px;
+}
+#layer-header:hover{background:var(--panel-2);}
+#layer-arrow{font-size:10px;color:var(--text-dim);transition:transform .2s;flex-shrink:0;}
+#layer-panel.collapsed #layer-arrow{transform:rotate(-90deg);}
+#layer-title{color:var(--accent);font-weight:700;flex:1;white-space:nowrap;letter-spacing:.04em;}
+#layer-body{border-top:1px solid var(--border);padding:7px 10px;}
+#layer-panel.collapsed #layer-body{display:none;}
+.layer-toggle{display:flex;align-items:center;gap:8px;margin-bottom:5px;cursor:pointer;user-select:none;}
+.layer-toggle:last-child{margin-bottom:0;}
+.layer-toggle input{accent-color:var(--accent);cursor:pointer;}
+.layer-toggle span{color:var(--text);}
+
+/* APRS objects filter panel (dynamic, collapsible) */
+#objects-panel{
+  background:var(--panel);border:1px solid var(--border);border-radius:7px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+#objects-header{
+  display:flex;align-items:center;gap:.5rem;padding:6px 10px;
+  cursor:pointer;user-select:none;border-radius:7px;
+}
+#objects-header:hover{background:var(--panel-2);}
+#objects-arrow{font-size:10px;color:var(--text-dim);transition:transform .2s;flex-shrink:0;}
+#objects-panel.collapsed #objects-arrow{transform:rotate(-90deg);}
+#objects-title{color:var(--amber);font-weight:700;flex:1;white-space:nowrap;letter-spacing:.04em;}
+#objects-count{color:var(--text-dim);font-size:var(--fs-micro);flex-shrink:0;}
+#objects-body{border-top:1px solid var(--border);padding:7px 10px;max-height:240px;overflow-y:auto;}
+#objects-panel.collapsed #objects-body{display:none;}
+.obj-count{margin-left:auto;color:var(--text-dim);font-size:var(--fs-micro);}
+.cat-icon{width:16px;height:16px;image-rendering:pixelated;flex-shrink:0;}
+.obj-name{cursor:pointer;}
+.obj-name:hover{color:var(--accent);text-decoration:underline;}
+.obj-actions{display:flex;gap:.5rem;margin-bottom:6px;}
+.obj-actions button{
+  background:var(--bg);border:1px solid var(--border);color:var(--text-dim);
+  font-family:var(--mono);font-size:var(--fs-micro);padding:1px 6px;border-radius:4px;cursor:pointer;
+}
+.obj-actions button:hover{border-color:var(--accent-dim);color:var(--text);}
+
+/* Coverage iGate panel — mirrors the objects panel, teal accent */
+#coverage-panel{
+  background:var(--panel);border:1px solid var(--border);border-radius:7px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+#coverage-header{
+  display:flex;align-items:center;gap:.5rem;padding:6px 10px;
+  cursor:pointer;user-select:none;border-radius:7px;
+}
+#coverage-header:hover{background:var(--panel-2);}
+#coverage-arrow{font-size:10px;color:var(--text-dim);transition:transform .2s;flex-shrink:0;}
+#coverage-panel.collapsed #coverage-arrow{transform:rotate(-90deg);}
+#coverage-title{color:#2dd4bf;font-weight:700;flex:1;white-space:nowrap;letter-spacing:.04em;}
+#coverage-count{color:var(--text-dim);font-size:var(--fs-micro);flex-shrink:0;}
+#coverage-body{border-top:1px solid var(--border);padding:7px 10px;max-height:240px;overflow-y:auto;}
+#coverage-panel.collapsed #coverage-body{display:none;}
+#coverage-body .layer-toggle input{accent-color:#2dd4bf;}
+
 /* Active state for the Grid / Measure toggles (mirrors #autoFlyBtn.on) */
 #gridBtn.on,#measureBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
 /* Crosshair cursor while measuring */
@@ -185,14 +317,41 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #measure-readout b{color:var(--accent);}
 #measure-hint{font-size:var(--fs-micro);color:var(--text-dim);margin-top:3px;}
 
-/* Base-map attribution label (bottom-right) */
+/* Base-map attribution label (bottom-right) — click to load a different map */
 #basemap-info{
   position:fixed;right:10px;bottom:6px;z-index:150;
   background:rgba(13,17,23,.72);border:1px solid var(--border);border-radius:4px;
-  font-family:var(--mono);font-size:var(--fs-micro);color:var(--text-dim);
-  padding:2px 7px;pointer-events:auto;white-space:nowrap;
+  font-family:var(--mono);font-size:var(--fs-small);color:var(--text-dim);
+  padding:2px 7px;pointer-events:auto;white-space:nowrap;cursor:pointer;
 }
+#basemap-info:hover{border-color:var(--accent-dim);color:var(--text);}
 #basemap-info b{color:var(--accent);font-weight:700;}
+#basemap-info .bm-caret{color:var(--text-dim);margin-left:4px;}
+#basemap-info .bm-path{display:block;color:var(--text-dim);font-size:var(--fs-small);opacity:.85;margin-top:1px;max-width:52ch;overflow:hidden;text-overflow:ellipsis;}
+
+/* Base-map loader modal (click bottom-right label → browse Pi / USB for .pmtiles) */
+#fs-modal{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;
+  display:flex;align-items:center;justify-content:center;
+}
+#fs-modal.fs-hidden{display:none;}
+#fs-dialog{
+  background:var(--panel);border:1px solid var(--border);border-radius:7px;
+  width:min(560px,92vw);max-height:80vh;display:flex;flex-direction:column;
+  box-shadow:0 8px 32px rgba(0,0,0,.6);
+}
+#fs-head{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);}
+#fs-title{color:var(--accent);font-weight:700;letter-spacing:1px;flex:1;font-family:var(--mono);}
+#fs-close{background:none;border:none;color:var(--text-dim);font-size:1.1rem;cursor:pointer;}
+#fs-close:hover{color:var(--red);}
+#fs-path{padding:6px 12px;color:var(--blue);font-size:var(--fs-small);word-break:break-all;border-bottom:1px solid var(--border);font-family:var(--mono);}
+#fs-list{overflow-y:auto;padding:4px 0;}
+.fs-row{padding:6px 14px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:var(--fs-small);}
+.fs-row:hover{background:var(--bg);}
+.fs-dir{color:var(--text);}
+.fs-file{color:var(--accent);}
+.fs-empty,#fs-msg{padding:10px 14px;color:var(--text-dim);font-size:var(--fs-small);}
+#fs-msg:empty{display:none;}
 </style>
 </head>
 <body>
@@ -202,6 +361,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   <div id="statusDot"></div>
   <span id="stationCount"></span>
   <span id="countdown"></span>
+  <span class="track-sep">|</span>
+  <button id="mapRefreshBtn" class="sbtn" onclick="toggleRefresh()" title="Auto-refresh on/off — green = updating every 15s, gray = paused"><span class="kr-icon">&#8635;</span>Refresh</button>
+  <span class="track-sep">|</span>
   <select id="filterSel" onchange="applyFilter()">
     <option value="15">Last 15 min</option>
     <option value="30">Last 30 min</option>
@@ -221,13 +383,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
     <option value="10080">7 d</option>
     <option value="0">All</option>
   </select>
-  <span class="track-sep">|</span>
   <button id="clearTrackBtn" class="sbtn" onclick="clearTrack()" style="margin-left:.35rem;">✕ Track</button>
+  <span class="track-sep">|</span>
+  <input id="callFilter" type="text" placeholder="Filter call…" autocomplete="off" spellcheck="false"
+         title="Filter by callsign — prefix match (K7ISQ catches all SSIDs), or * wildcard (K7*9)">
+  <span class="track-sep">|</span>
+  <button id="movingBtn" class="sbtn" onclick="toggleMoving()" title="Show only stations currently moving (speed > 0)">Moving</button>
   <span style="flex:1"></span>
   <span id="trackMsg"></span>
-  <button id="mapRefreshBtn" class="sbtn" onclick="mapRefresh()" style="margin-left:.35rem;" title="Reload APRS stations now"><span class="kr-icon">&#8635;</span>Refresh</button>
   <span class="track-sep">|</span>
   <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">Auto-fly</button>
+  <span class="track-sep">|</span>
+  <button id="autoPathBtn" class="sbtn" onclick="toggleAutoPath()" style="margin-left:.35rem;" title="Automatically draw the RF path of the most-recently-heard station">Auto-path</button>
+  <span class="track-sep">|</span>
+  <button id="coverageBtn" class="sbtn" onclick="toggleCoverage()" style="margin-left:.35rem;" title="Coverage — straight reach lines from every filtered station to its receiver">Coverage</button>
   <span class="track-sep">|</span>
   <button id="gridBtn" class="sbtn" onclick="toggleGrid()" style="margin-left:.35rem;" title="Toggle Maidenhead grid overlay">Grid</button>
   <button id="measureBtn" class="sbtn" onclick="toggleMeasure()" style="margin-left:.35rem;" title="Click two or more points to measure distance and bearing">Measure</button>
@@ -239,8 +408,21 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 
 <div id="map"></div>
 
-<!-- Base map attribution (bottom-right) -->
-<div id="basemap-info" title="The offline PMTiles base map this page is rendering"></div>
+<!-- Base map attribution (bottom-right) — click to load a different .pmtiles -->
+<div id="basemap-info" title="Click to load a different offline base map (.pmtiles on the Pi or a USB drive)"></div>
+
+<!-- Filesystem map browser (click base-map label → browse Pi / USB for .pmtiles) -->
+<div id="fs-modal" class="fs-hidden">
+  <div id="fs-dialog">
+    <div id="fs-head">
+      <span id="fs-title">Load base map</span>
+      <button id="fs-close" title="Close">✕</button>
+    </div>
+    <div id="fs-path">—</div>
+    <div id="fs-list"></div>
+    <div id="fs-msg"></div>
+  </div>
+</div>
 
 <!-- Measure tool readout (bottom-center) -->
 <div id="measure-panel">
@@ -248,17 +430,59 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   <div id="measure-hint">Double-click or Esc to clear · click <b>Measure</b> again to exit</div>
 </div>
 
-<!-- Recent-heard panel (top-right) -->
-<div id="recent-panel" class="collapsed">
-  <div id="recent-header" onclick="toggleRecentPanel()">
-    <span id="recent-arrow">▾</span>
-    <span id="recent-count">0 heard</span>
+<!-- Right-side stacked panels: recent-heard (stations) + map layers -->
+<div id="right-stack">
+  <!-- Recent-heard panel -->
+  <div id="recent-panel" class="collapsed">
+    <div id="recent-header" onclick="toggleRecentPanel()">
+      <span id="recent-arrow">▾</span>
+      <span id="recent-count">0 heard</span>
+    </div>
+    <div id="recent-body"></div>
   </div>
-  <div id="recent-body"></div>
+
+  <!-- Map layer toggles (collapsible) — same groups as maps/map.html -->
+  <div id="layer-panel" class="collapsed">
+    <div id="layer-header" onclick="toggleLayerPanel()">
+      <span id="layer-arrow">▾</span>
+      <span id="layer-title">Map layers</span>
+    </div>
+    <div id="layer-body">
+      <label class="layer-toggle"><input type="checkbox" data-group="roads" checked> <span>Roads</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="waterways" checked> <span>Waterways</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="water" checked> <span>Water bodies</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="buildings" checked> <span>Buildings</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="parks" checked> <span>Parks / Nature</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="landuse" checked> <span>Land use</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="pois" checked> <span>POIs / Places</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="peaks" checked> <span>Mt peaks</span></label>
+    </div>
+  </div>
+
+  <!-- APRS object-type filter (auto-populated from the symbols currently on the map) -->
+  <div id="objects-panel" class="collapsed">
+    <div id="objects-header" onclick="toggleObjectsPanel()">
+      <span id="objects-arrow">▾</span>
+      <span id="objects-title">APRS info</span>
+      <span id="objects-count"></span>
+    </div>
+    <div id="objects-body"></div>
+  </div>
+
+  <!-- Coverage iGate filter — convergence points of the reach-fan -->
+  <div id="coverage-panel" class="collapsed">
+    <div id="coverage-header" onclick="toggleCoveragePanel()">
+      <span id="coverage-arrow">▾</span>
+      <span id="coverage-title">Coverage</span>
+      <span id="coverage-count"></span>
+    </div>
+    <div id="coverage-body"><div style="padding:4px 2px;color:var(--text-dim)">Enable Coverage to list iGates</div></div>
+  </div>
 </div>
 
 <script src="/map-assets/maplibre-gl.js"></script>
 <script src="/map-assets/pmtiles.js"></script>
+<script src="/map-assets/basemap-style.js"></script>
 <script>
 'use strict';
 
@@ -346,134 +570,299 @@ function makeMarkerEl(symTable, symCode) {
 // ── Map setup ────────────────────────────────────────────────────────────────
 // PMTiles: a single-file tile archive read directly by the browser via HTTP
 // range requests. Register the protocol, then point the vector source at it.
-const TILE_FILE = 'washington.pmtiles';
-const tilesUrl  = 'pmtiles://' + location.origin + '/maps/' + TILE_FILE;
+const origin    = location.origin;
+let   MAP_FILE  = 'washington.pmtiles';
+const tilesUrl  = 'pmtiles://' + origin + '/maps/' + MAP_FILE;
 
-// Show which offline base map this page is rendering (bottom-right label).
-(function showBasemapInfo() {
+const pmtilesHttpUrl   = (file) => origin + '/maps/' + file;
+const pmtilesSourceUrl = (file) => 'pmtiles://' + pmtilesHttpUrl(file);
+
+// HTML-escape helper (used by the base-map label and the fs browser).
+const _escHtml = (s) => String(s).replace(/[&<>"]/g, c =>
+  ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+
+// Bottom-right label — shows the current base map (name + the path it loads
+// from) and acts as the "load map" affordance (click → browse the Pi / USB for
+// a different .pmtiles archive).
+function updateBasemapInfo(label, path) {
   const el = document.getElementById('basemap-info');
   if (!el) return;
-  const name = TILE_FILE.replace(/\.pmtiles$/i, '');
-  el.innerHTML = 'Base map: <b>' + name + '</b>';
-})();
+  const name = String(label).replace(/\.pmtiles$/i, '');
+  let html = 'Base map: <b>' + name + '</b> <span class="bm-caret">▾</span>';
+  if (path) html += '<span class="bm-path">' + _escHtml(path) + '</span>';
+  el.innerHTML = html;
+}
+updateBasemapInfo(MAP_FILE, '/maps/' + MAP_FILE);
 
 const pmtilesProtocol = new pmtiles.Protocol();
 maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile);
 
 const map = new maplibregl.Map({
   container: 'map',
-  style: {
-    version: 8,
-    glyphs: location.origin + '/map-assets/fonts/{fontstack}/{range}.pbf',
-    sources: {
-      osm: { type: 'vector', url: tilesUrl }
-    },
-    layers: [
-      // ── Background ────────────────────────────────────────────────────────
-      { id: 'background', type: 'background',
-        paint: { 'background-color': '#111827' } },
-
-      // ── Water bodies ──────────────────────────────────────────────────────
-      { id: 'water-poly-fill', type: 'fill', source: 'osm', 'source-layer': 'water',
-        paint: { 'fill-color': '#1a3a5c' } },
-
-      // ── Waterways ─────────────────────────────────────────────────────────
-      { id: 'waterways-line', type: 'line', source: 'osm', 'source-layer': 'waterway',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#1a4a7a',
-                 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 14, 4] } },
-
-      // ── Land cover ────────────────────────────────────────────────────────
-      { id: 'landcover-wood', type: 'fill', source: 'osm', 'source-layer': 'landcover',
-        filter: ['==', ['get', 'class'], 'wood'],
-        paint: { 'fill-color': '#1a2e1a', 'fill-opacity': 0.8 } },
-
-      { id: 'landcover-grass', type: 'fill', source: 'osm', 'source-layer': 'landcover',
-        filter: ['match', ['get', 'class'], ['grass', 'crop', 'scrub'], true, false],
-        paint: { 'fill-color': '#1e2e18', 'fill-opacity': 0.6 } },
-
-      // ── Parks / nature ────────────────────────────────────────────────────
-      { id: 'landuse-park', type: 'fill', source: 'osm', 'source-layer': 'landuse',
-        filter: ['match', ['get', 'class'], ['park', 'national_park', 'nature_reserve'], true, false],
-        paint: { 'fill-color': '#162616', 'fill-opacity': 0.7 } },
-
-      // ── Land use ──────────────────────────────────────────────────────────
-      { id: 'landuse-residential', type: 'fill', source: 'osm', 'source-layer': 'landuse',
-        filter: ['==', ['get', 'class'], 'residential'],
-        paint: { 'fill-color': '#1a1a2a', 'fill-opacity': 0.5 } },
-
-      { id: 'landuse-commercial', type: 'fill', source: 'osm', 'source-layer': 'landuse',
-        filter: ['match', ['get', 'class'], ['commercial', 'retail'], true, false],
-        paint: { 'fill-color': '#1e1a22', 'fill-opacity': 0.5 } },
-
-      { id: 'landuse-industrial', type: 'fill', source: 'osm', 'source-layer': 'landuse',
-        filter: ['==', ['get', 'class'], 'industrial'],
-        paint: { 'fill-color': '#1a1e22', 'fill-opacity': 0.5 } },
-
-      // ── Roads ─────────────────────────────────────────────────────────────
-      { id: 'road-minor', type: 'line', source: 'osm', 'source-layer': 'transportation',
-        filter: ['match', ['get', 'class'], ['minor', 'service', 'track', 'path'], true, false],
-        minzoom: 12,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#2a2a3a', 'line-width': 1 } },
-
-      { id: 'road-secondary', type: 'line', source: 'osm', 'source-layer': 'transportation',
-        filter: ['match', ['get', 'class'], ['secondary', 'tertiary'], true, false],
-        minzoom: 9,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#3a3a4e',
-                 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1, 14, 3] } },
-
-      { id: 'road-primary', type: 'line', source: 'osm', 'source-layer': 'transportation',
-        filter: ['==', ['get', 'class'], 'primary'],
-        minzoom: 7,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#4a4a20',
-                 'line-width': ['interpolate', ['linear'], ['zoom'], 7, 1, 14, 4] } },
-
-      { id: 'road-motorway', type: 'line', source: 'osm', 'source-layer': 'transportation',
-        filter: ['match', ['get', 'class'], ['motorway', 'trunk'], true, false],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#8b5a00',
-                 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 14, 6] } },
-
-      // ── Buildings ─────────────────────────────────────────────────────────
-      { id: 'buildings-fill', type: 'fill', source: 'osm', 'source-layer': 'building',
-        minzoom: 12,
-        paint: { 'fill-color': '#1e2030', 'fill-outline-color': '#2a2a4a',
-                 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 15, 0.9] } },
-
-      // ── Place labels ──────────────────────────────────────────────────────
-      { id: 'place-labels', type: 'symbol', source: 'osm', 'source-layer': 'place',
-        filter: ['match', ['get', 'class'], ['city', 'town'], true, false],
-        layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
-          'text-size': ['interpolate', ['linear'], ['zoom'], 5, 10, 12, 14],
-          'text-anchor': 'center', 'text-padding': 6, 'text-allow-overlap': false },
-        paint: { 'text-color': '#e0e0e0', 'text-halo-color': '#080810', 'text-halo-width': 1.5 } },
-
-      { id: 'pois-circle', type: 'symbol', source: 'osm', 'source-layer': 'place',
-        filter: ['match', ['get', 'class'], ['village', 'suburb', 'hamlet', 'neighbourhood', 'quarter'], true, false],
-        minzoom: 9,
-        layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
-          'text-size': ['interpolate', ['linear'], ['zoom'], 9, 10, 14, 13],
-          'text-anchor': 'center', 'text-padding': 4, 'text-allow-overlap': false },
-        paint: { 'text-color': '#b0b0c0', 'text-halo-color': '#080810', 'text-halo-width': 1.2 } },
-
-      // ── Street names ──────────────────────────────────────────────────────
-      { id: 'road-labels', type: 'symbol', source: 'osm', 'source-layer': 'transportation_name',
-        minzoom: 12,
-        layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
-          'symbol-placement': 'line', 'text-size': ['interpolate', ['linear'], ['zoom'], 12, 10, 16, 13],
-          'text-max-angle': 30, 'text-padding': 4, 'text-allow-overlap': false },
-        paint: { 'text-color': '#c8c8d8', 'text-halo-color': '#0d0d1a', 'text-halo-width': 1.5 } }
-    ]
-  },
+  style: oasisBaseMapStyle(tilesUrl),
   center: [-122.1, 47.6],
   zoom: 9,
   attributionControl: false
 });
 
 map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-left');
+
+// ── Base-map switching (click the bottom-right label to load a different map) ──
+// Fly to an archive's native center/zoom (best-effort). httpUrl is the plain
+// (non-protocol) URL the PMTiles reader uses to fetch the archive header.
+async function flyToArchive(httpUrl, duration) {
+  try {
+    const hdr = await new pmtiles.PMTiles(httpUrl).getHeader();
+    if (hdr && Number.isFinite(hdr.centerLon) && Number.isFinite(hdr.centerLat)) {
+      map.flyTo({ center: [hdr.centerLon, hdr.centerLat], zoom: hdr.centerZoom || 9, duration });
+    }
+  } catch (e) { /* centering is best-effort */ }
+}
+
+function loadMapSource(sourceUrl, httpUrl, label, path) {
+  map.getSource('basemap').setUrl(sourceUrl);
+  if (label) updateBasemapInfo(label, path);
+  map.once('idle', () => flyToArchive(httpUrl, 800));
+}
+
+// Swap to a bundled map in the suite's maps/ folder.
+function switchMap(filename) {
+  MAP_FILE = filename;
+  loadMapSource(pmtilesSourceUrl(filename), pmtilesHttpUrl(filename), filename, '/maps/' + filename);
+}
+
+// Load a .pmtiles from an arbitrary allowlisted path (Pi disk / USB / mount).
+function loadExternalMap(absPath) {
+  const httpUrl = origin + '/api/fs/pmtiles?path=' + encodeURIComponent(absPath);
+  const label = absPath.split(/[\\/]/).pop();
+  loadMapSource('pmtiles://' + httpUrl, httpUrl, label, absPath);
+}
+
+// ── "Load base map" filesystem browser ────────────────────────────────────────
+const _fsModal = document.getElementById('fs-modal');
+
+async function openFsBrowser(path) {
+  const list   = document.getElementById('fs-list');
+  const pathEl = document.getElementById('fs-path');
+  const msg    = document.getElementById('fs-msg');
+  msg.textContent = '';
+  list.innerHTML  = '<div class="fs-empty">Loading…</div>';
+  try {
+    const res = await fetch(origin + '/api/fs/browse?path=' + encodeURIComponent(path), { cache: 'no-store' });
+    let d = null;
+    try { d = await res.json(); } catch (_) { /* non-JSON body (e.g. a 404/500 HTML page) */ }
+    if (!res.ok || !d || !d.ok) {
+      list.innerHTML = '';
+      const why = (d && d.error) ? d.error
+        : (res.status === 404 ? 'HTTP 404 — server has no /api/fs/browse route (restart OASIS with the updated server/app.py)'
+                              : 'HTTP ' + res.status + ' ' + res.statusText);
+      msg.textContent = 'Browse failed: ' + why;
+      console.error('[fs-browse]', res.status, d);
+      return;
+    }
+    pathEl.textContent = d.roots ? 'Select a location:' : d.path;
+    let rows = '';
+    if (!d.roots && d.parent !== null) {
+      rows += '<div class="fs-row fs-dir" data-path="' + _escHtml(d.parent) + '" data-type="dir">..</div>';
+    }
+    (d.entries || []).forEach(e => {
+      const cls   = e.type === 'dir' ? 'fs-dir' : 'fs-file';
+      const label = e.type === 'dir' ? _escHtml(e.name) + '/' : _escHtml(e.name);
+      rows += '<div class="fs-row ' + cls + '" data-path="' + _escHtml(e.path) + '" data-type="' + e.type + '">' + label + '</div>';
+    });
+    list.innerHTML = rows || '<div class="fs-empty">No folders or .pmtiles here.</div>';
+  } catch (e) {
+    list.innerHTML = ''; msg.textContent = 'Browse failed: ' + e.message;
+    console.error('[fs-browse]', e);
+  }
+}
+
+document.getElementById('basemap-info').addEventListener('click', () => {
+  _fsModal.classList.remove('fs-hidden');
+  openFsBrowser('');
+});
+document.getElementById('fs-close').addEventListener('click', () => _fsModal.classList.add('fs-hidden'));
+_fsModal.addEventListener('click', (e) => { if (e.target === _fsModal) _fsModal.classList.add('fs-hidden'); });
+document.getElementById('fs-list').addEventListener('click', (e) => {
+  const row = e.target.closest('.fs-row');
+  if (!row) return;
+  if (row.dataset.type === 'dir') {
+    openFsBrowser(row.dataset.path);
+  } else {
+    loadExternalMap(row.dataset.path);
+    _fsModal.classList.add('fs-hidden');
+  }
+});
+
+// ── Base-map layer toggles ────────────────────────────────────────────────────
+// Group the shared base-map layer ids (from basemap-style.js) into the toggles
+// shown in the collapsible "Map layers" panel. Mirrors maps/map.html.
+const LAYER_GROUPS = {
+  roads:     ['road-minor', 'road-secondary', 'road-primary', 'road-motorway', 'road-labels'],
+  waterways: ['waterways-line'],
+  water:     ['water-poly-fill'],
+  buildings: ['buildings-fill'],
+  parks:     ['landuse-park'],
+  landuse:   ['landcover-wood', 'landcover-grass', 'landuse-residential', 'landuse-commercial', 'landuse-industrial'],
+  pois:      ['place-labels', 'pois-circle'],
+  peaks:     ['mountain-peak'],
+};
+
+function toggleLayerPanel() {
+  document.getElementById('layer-panel').classList.toggle('collapsed');
+}
+
+document.querySelectorAll('.layer-toggle input').forEach(cb => {
+  cb.addEventListener('change', () => {
+    const vis = cb.checked ? 'visible' : 'none';
+    (LAYER_GROUPS[cb.dataset.group] || []).forEach(id => {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+    });
+  });
+});
+
+// ── APRS object-type classification + filter panel ────────────────────────────
+// Each APRS station/object carries a symbol (sym_table + sym_code) that defines
+// its icon and, by extension, its type. We classify by symbol code into coarse,
+// human-friendly categories. Unknown symbols fall back to "Other". The filter
+// panel is built dynamically from whatever categories are actually on the map.
+const _OBJ_CATS = {
+  // Land vehicles
+  '>':['car','Cars'], 'j':['car','Cars'], 'v':['car','Cars'],
+  '<':['motorcycle','Motorcycles'],
+  'k':['truck','Trucks'], 'u':['truck','Trucks'],
+  'R':['rv','RVs / campers'],
+  'U':['bus','Buses'],
+  '=':['train','Trains'],
+  'b':['bicycle','Bicycles'],
+  // Air
+  "'":['aircraft','Aircraft'], '^':['aircraft','Aircraft'], 'g':['aircraft','Aircraft'],
+  'X':['heli','Helicopters'], 'O':['balloon','Balloons'],
+  // Marine
+  's':['marine','Boats & ships'], 'Y':['marine','Boats & ships'], 'C':['marine','Boats & ships'],
+  // People
+  '[':['pedestrian','People'], 'p':['pedestrian','People'],
+  // Weather
+  '_':['wx','Weather'], 'W':['wx','Weather'],
+  // RF infrastructure
+  '#':['digi','Digipeaters'], '&':['igate','Gateways'],
+  'r':['antenna','Antennas'], 'y':['antenna','Antennas'], '`':['antenna','Antennas'],
+  // Fixed locations
+  '-':['home','Home / QTH'],
+  // Public safety / emergency
+  '!':['safety','Public safety'], 'P':['safety','Public safety'], 'a':['safety','Public safety'],
+  'f':['safety','Public safety'], 'd':['safety','Public safety'], 'c':['safety','Public safety'],
+  'A':['safety','Public safety'], 'h':['safety','Public safety'], 'o':['safety','Public safety'],
+  '+':['safety','Public safety'],
+  // Services / places
+  '?':['services','Services / places'], '$':['services','Services / places'],
+  ';':['services','Services / places'], 'B':['services','Services / places'],
+  'K':['services','Services / places'],
+};
+
+function aprsCategory(s) {
+  // Weather stations use '_' on both the primary and alternate tables.
+  if (s && s.sym_code === '_') return { key:'wx', label:'Weather' };
+  const hit = s ? _OBJ_CATS[s.sym_code] : null;
+  return hit ? { key:hit[0], label:hit[1] } : { key:'other', label:'Other' };
+}
+
+// Representative APRS symbol per category (table, code) — drawn as the row icon.
+const _CAT_ICON = {
+  car:['/','>'], truck:['/','k'], bus:['/','U'], motorcycle:['/','<'], bicycle:['/','b'],
+  rv:['/','R'], aircraft:['/',"'"], heli:['/','X'], balloon:['/','O'], marine:['/','Y'],
+  train:['/','='], pedestrian:['/','['], wx:['/','_'], digi:['/','#'], igate:['/','&'],
+  antenna:['/','r'], home:['/','-'], safety:['/','P'], services:['/','?'], other:['/','/'],
+};
+function catIconEl(key) {
+  const sym = _CAT_ICON[key] || ['/', '/'];
+  const c = makeMarkerEl(sym[0], sym[1]);
+  c.className = 'cat-icon';
+  c.style.width = '16px';
+  c.style.height = '16px';
+  return c;
+}
+
+// Enabled state per category key (default: enabled). Persists across refreshes.
+const objCatState = {};
+
+function toggleObjectsPanel() {
+  document.getElementById('objects-panel').classList.toggle('collapsed');
+}
+
+// Rebuild the category checkboxes from the current station list, preserving the
+// user's enabled/disabled choices and showing a live count per category.
+function updateObjectsPanel() {
+  const body = document.getElementById('objects-body');
+  const countEl = document.getElementById('objects-count');
+  const cats = {}; // key -> { label, count }
+  const otherRaw = {}; // 'table+code' -> count, for the unclassified bucket
+  allStations.forEach(s => {
+    const { key, label } = aprsCategory(s);
+    if (!cats[key]) cats[key] = { label, count: 0 };
+    cats[key].count++;
+    if (!(key in objCatState)) objCatState[key] = true; // new category defaults on
+    if (key === 'other') {
+      const raw = ((s && s.sym_table) || '·') + ((s && s.sym_code) || '·');
+      otherRaw[raw] = (otherRaw[raw] || 0) + 1;
+    }
+  });
+  const keys = Object.keys(cats).sort((a, b) => cats[b].count - cats[a].count || cats[a].label.localeCompare(cats[b].label));
+  countEl.textContent = keys.length ? keys.length + ' types' : '';
+  if (!keys.length) {
+    body.innerHTML = '<div style="padding:4px 2px;color:var(--text-dim)">No objects heard yet</div>';
+    return;
+  }
+  // "Other" tooltip lists the raw table+code so unmapped symbols stay visible.
+  const otherTip = Object.entries(otherRaw).sort((a, b) => b[1] - a[1]).map(([r, n]) => r + '×' + n).join('  ');
+  let html = '<div class="obj-actions"><button onclick="setAllObjects(true)">All</button><button onclick="setAllObjects(false)">None</button></div>';
+  html += keys.map(k => {
+    const tip = (k === 'other' && otherTip) ? ' title="Unclassified symbols (table+code): ' + _escHtml(otherTip) + '"' : '';
+    return '<label class="layer-toggle"' + tip + '><input type="checkbox" data-objcat="' + k + '"' + (objCatState[k] ? ' checked' : '') + '> ' +
+      '<span class="obj-name" data-objcat="' + k + '" title="Click to show only this type">' + _escHtml(cats[k].label) + '</span>' +
+      '<span class="obj-count">' + cats[k].count + '</span></label>';
+  }).join('');
+  body.innerHTML = html;
+  // Prepend the representative APRS sprite icon to each row.
+  body.querySelectorAll('.layer-toggle').forEach(row => {
+    const cb = row.querySelector('input[data-objcat]');
+    if (!cb) return;
+    row.insertBefore(catIconEl(cb.dataset.objcat), cb.nextSibling);
+  });
+}
+
+function setAllObjects(on) {
+  Object.keys(objCatState).forEach(k => objCatState[k] = on);
+  updateObjectsPanel();
+  applyFilter();
+}
+
+// Solo a category — click a category name to show only that type; click the
+// soloed type again to restore all.
+function soloObject(key) {
+  const keys = Object.keys(objCatState);
+  const isSolo = objCatState[key] && keys.every(k => k === key || !objCatState[k]);
+  keys.forEach(k => objCatState[k] = isSolo ? true : (k === key));
+  updateObjectsPanel();
+  applyFilter();
+}
+
+// Delegated change handler for the dynamically-built category checkboxes.
+document.getElementById('objects-body').addEventListener('change', (e) => {
+  const cb = e.target.closest('input[data-objcat]');
+  if (!cb) return;
+  objCatState[cb.dataset.objcat] = cb.checked;
+  applyFilter();
+});
+
+// Click a category name to solo it (without toggling its checkbox).
+document.getElementById('objects-body').addEventListener('click', (e) => {
+  const name = e.target.closest('.obj-name');
+  if (!name) return;
+  e.preventDefault();   // don't let the <label> toggle the checkbox
+  e.stopPropagation();
+  soloObject(name.dataset.objcat);
+});
 
 // ── Station markers ──────────────────────────────────────────────────────────
 let markers = [];
@@ -558,7 +947,16 @@ function buildPopup(s) {
   if (s.lat != null && s.lon != null) {
     html += '<div class="pop-row"><span class="pop-lbl">Lat / Lon</span><span class="pop-val">' + s.lat.toFixed(4) + ', ' + s.lon.toFixed(4) + '</span></div>';
   }
-  html += '<div class="pop-row"><span class="pop-lbl">Via</span><span class="pop-val">' + (s.via || 'direct') + '</span></div>';
+  html += '<div class="pop-row"><span class="pop-lbl">Via</span><span class="pop-val">' + _escHtml(s.via || 'direct') + '</span></div>';
+  if (s.path && s.path.length) {
+    const hops = s.path.map(p => {
+      const raw = String(p);
+      const used = raw.endsWith('*');
+      const name = _escHtml(used ? raw.slice(0, -1) : raw);
+      return '<span class="pop-hop' + (used ? ' used' : '') + '" title="' + (used ? 'relayed this packet' : 'requested hop (not used)') + '">' + name + (used ? '*' : '') + '</span>';
+    }).join('<span class="pop-hop-sep">›</span>');
+    html += '<div class="pop-row pop-path"><span class="pop-lbl">Path</span><span class="pop-val">' + hops + '</span></div>';
+  }
   if (s.comment) {
     html += '<div class="pop-comment">' + s.comment.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
   }
@@ -567,6 +965,11 @@ function buildPopup(s) {
            '</div>';
   html += '<button class="pop-track-btn" onclick="showTrack(\'' + s.callsign + '\')">' +
           (activeTrack === s.callsign ? '✕ Clear track' : '⟳ Show track') + '</button>';
+  html += '<div class="pop-path-status" id="pop-path-status-' + s.callsign + '"' +
+           (activePath === s.callsign && _pathStatusMsg ? ' style="display:block">' + _escHtml(_pathStatusMsg) : '>') +
+           '</div>';
+  html += '<button class="pop-track-btn" onclick="showPath(\'' + s.callsign + '\')">' +
+          (activePath === s.callsign ? '✕ Clear path' : '⟲ Show path') + '</button>';
   return html;
 }
 
@@ -614,10 +1017,34 @@ const API_URL = () => location.origin + '/api/aprs/stations';
 const REFRESH_SEC = 15;
 let countdown = REFRESH_SEC;
 let timer = null;
+let autoRefresh = true;     // Refresh button toggles the 15s auto-refresh loop
 let allStations = []; // full unfiltered station list
 let _prevHeard = {};  // callsign → last_heard string from previous fetch
 let _newCallsigns = new Set(); // callsigns new/updated in latest fetch
 let _latestStation = null; // station object with most recent last_heard
+
+// ── Callsign filter + movers-only toggle ──────────────────────────────────────
+let movingOnly = false;
+
+// Match a callsign against the filter box: blank = all; plain text = prefix
+// match (so "K7ISQ" catches every K7ISQ-NN SSID); '*' = wildcard anywhere.
+function callMatches(callsign) {
+  const q = (document.getElementById('callFilter').value || '').trim().toUpperCase();
+  if (!q) return true;
+  const cs = (callsign || '').toUpperCase();
+  if (q.includes('*')) {
+    const re = new RegExp('^' + q.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+    return re.test(cs);
+  }
+  return cs.startsWith(q);
+}
+
+function toggleMoving() {
+  movingOnly = !movingOnly;
+  document.getElementById('movingBtn').classList.toggle('on', movingOnly);
+  applyFilter();
+}
+document.getElementById('callFilter').addEventListener('input', () => applyFilter());
 
 function applyFilter() {
   const minutes = parseInt(document.getElementById('filterSel').value);
@@ -629,7 +1056,12 @@ function applyFilter() {
       return new Date(s.last_heard).getTime() >= cutoff;
     });
   }
+  // APRS object-type filter (categories disabled in the objects panel)
+  filtered = filtered.filter(s => objCatState[aprsCategory(s).key] !== false);
+  // Callsign filter (prefix / * wildcard) + movers-only toggle
+  filtered = filtered.filter(s => callMatches(s.callsign) && (!movingOnly || (s.speed_mph > 0)));
   plotStations(filtered);
+  if (coverageOn) _refreshCoverage(filtered);
   const total = allStations.length;
   const shown = filtered.length;
   document.getElementById('stationCount').textContent =
@@ -650,6 +1082,12 @@ function updateCountdown() {
 
 function startCountdown() {
   clearInterval(timer);
+  if (!autoRefresh) {
+    const el = document.getElementById('countdown');
+    el.textContent = 'paused';
+    el.className = '';
+    return;
+  }
   countdown = REFRESH_SEC;
   updateCountdown();
   timer = setInterval(() => {
@@ -686,10 +1124,15 @@ async function fetchStations() {
     }, null);
     const newList = allStations.filter(s => _newCallsigns.has(s.callsign));
     updateRecentPanel(newList);
+    updateObjectsPanel();
     applyFilter();
     setStatus('ok', 'Updated ' + new Date().toLocaleTimeString());
     // Refresh active track data (updates trail + auto-fly if enabled)
     if (activeTrack) _loadTrack(activeTrack);
+    // Auto-path: draw paths only for stations heard THIS cycle, so previous
+    // cycles' paths don't persist. Manual single-path persists when auto is off.
+    if (autoPath) { activePath = null; _refreshAutoPaths(); }
+    else if (activePath) _refreshPath(false);
     // Handle ?focus=CALLSIGN on first load only
     const focusParam = new URLSearchParams(location.search).get('focus');
     if (focusParam && !_focusHandled) {
@@ -779,6 +1222,52 @@ loadConfig().then(() => {
       }
     });
 
+    // ── Coverage overlay (faint reach-fan from each station to its receiver) ──
+    map.addSource('aprs-coverage', {
+      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'aprs-coverage-line', type: 'line', source: 'aprs-coverage',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#2dd4bf', 'line-width': 1.3, 'line-opacity': 0.55 }
+    });
+
+    // ── RF path overlay (digipeater hops a packet traversed) ───────────────────
+    map.addSource('aprs-path', {
+      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'aprs-path-line', type: 'line', source: 'aprs-path',
+      filter: ['==', '$type', 'LineString'],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#b478ff', 'line-width': 2.5, 'line-opacity': 0.9, 'line-dasharray': [2, 1.2] }
+    });
+    map.addLayer({
+      id: 'aprs-path-dots', type: 'circle', source: 'aprs-path',
+      filter: ['all', ['==', '$type', 'Point'], ['==', 'kind', 'hop']],
+      paint: {
+        'circle-radius': 5, 'circle-color': '#b478ff',
+        'circle-stroke-width': 1.5, 'circle-stroke-color': '#1a0a2a'
+      }
+    });
+    map.addLayer({
+      id: 'aprs-path-incomplete', type: 'circle', source: 'aprs-path',
+      filter: ['all', ['==', '$type', 'Point'], ['==', 'kind', 'incomplete']],
+      paint: {
+        'circle-radius': 7, 'circle-color': '#ff5252',
+        'circle-stroke-width': 2, 'circle-stroke-color': '#1a0a2a'
+      }
+    });
+    map.addLayer({
+      id: 'aprs-path-labels', type: 'symbol', source: 'aprs-path',
+      filter: ['==', '$type', 'Point'],
+      layout: {
+        'text-field': ['get', 'label'], 'text-font': ['Open Sans Regular'],
+        'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-allow-overlap': true
+      },
+      paint: { 'text-color': '#e0c8ff', 'text-halo-color': '#0a0e14', 'text-halo-width': 1.4 }
+    });
+
     fetchStations();
   });
 });
@@ -790,10 +1279,138 @@ let activeTrack = null;
 let _trackStatusMsg = '';  // persists across refreshes so popup can re-show it
 let autoFly = false;
 let _focusHandled = false;
+let activePath = null;     // callsign whose RF path is currently drawn
+let _pathStatusMsg = '';   // persists across refreshes for popup re-show
+let autoPath = false;      // when on, auto-draw the latest-heard station's path
+let pathMarkers = [];      // glowing DOM markers for path receiver node(s)
+let coverageOn = false;    // when on, draw the filter-aware reach-fan
+let covMarkers = [];       // glowing DOM markers for coverage receiver node(s)
+const covRxState = {};     // iGate callsign -> enabled (Coverage panel checkboxes)
 
 function toggleAutoFly() {
   autoFly = !autoFly;
   document.getElementById('autoFlyBtn').classList.toggle('on', autoFly);
+}
+
+// Auto-path: keep the RF path of the most-recently-heard station drawn, updating
+// each refresh. Turning it off clears the path.
+function toggleAutoPath() {
+  autoPath = !autoPath;
+  document.getElementById('autoPathBtn').classList.toggle('on', autoPath);
+  if (autoPath) {
+    // Auto-path and Coverage are mutually exclusive
+    if (coverageOn) { coverageOn = false; document.getElementById('coverageBtn').classList.remove('on'); clearCoverage(); setAutoRefresh(true); }
+    activePath = null; _refreshAutoPaths();
+  } else {
+    clearPath();
+  }
+}
+
+// Coverage: a filter-aware "reach fan" — a straight, faint amber line from every
+// currently-filtered station to its receiver (the last *-used real callsign on
+// the map). Lines only; one glowing node at each convergence point.
+function toggleCoverage() {
+  coverageOn = !coverageOn;
+  document.getElementById('coverageBtn').classList.toggle('on', coverageOn);
+  if (coverageOn) {
+    if (autoPath) { autoPath = false; document.getElementById('autoPathBtn').classList.remove('on'); clearPath(); }
+    setAutoRefresh(false);   // freeze the data while studying coverage
+    applyFilter();           // builds the fan from the current filtered set
+  } else {
+    clearCoverage();
+    setAutoRefresh(true);     // resume live updates
+  }
+}
+
+function _refreshCoverage(stations) {
+  const src = map.getSource('aprs-coverage');
+  if (!src) return;
+  const byCall = {};
+  allStations.forEach(x => {
+    if (x.lat != null && x.lon != null) byCall[String(x.callsign).toUpperCase()] = x;
+  });
+  const features = [];
+  const rxInfo = {}; // receiver (iGate) callsign -> { lon, lat, count }
+  (stations || []).forEach(s => {
+    if (s.lat == null || s.lon == null) return;
+    // Receiver = the LAST *-used real callsign that is on the map.
+    let recv = null;
+    (s.path || []).forEach(el => {
+      const raw = String(el);
+      if (!raw.endsWith('*')) return;
+      const hit = byCall[raw.slice(0, -1).toUpperCase()];
+      if (hit) recv = hit;
+    });
+    if (!recv || recv.callsign === s.callsign) return;
+    const rc = recv.callsign;
+    if (!(rc in covRxState)) covRxState[rc] = true;        // new iGate defaults on
+    if (!rxInfo[rc]) rxInfo[rc] = { lon: recv.lon, lat: recv.lat, count: 0 };
+    rxInfo[rc].count++;
+    if (covRxState[rc] === false) return;                  // iGate hidden via panel
+    features.push({ type: 'Feature', properties: {},
+      geometry: { type: 'LineString', coordinates: [[s.lon, s.lat], [recv.lon, recv.lat]] } });
+  });
+  src.setData({ type: 'FeatureCollection', features });
+  clearCoverageMarkers();
+  Object.keys(rxInfo).forEach(rc => {
+    if (covRxState[rc] === false) return;
+    const el = document.createElement('div');
+    el.className = 'cov-rx';
+    covMarkers.push(new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([rxInfo[rc].lon, rxInfo[rc].lat]).addTo(map));
+  });
+  updateCoveragePanel(rxInfo);
+}
+
+// Build the Coverage panel: one row per convergence iGate (with a count and a
+// checkbox that shows/hides that iGate's whole cluster of lines).
+function updateCoveragePanel(rxInfo) {
+  const body = document.getElementById('coverage-body');
+  const countEl = document.getElementById('coverage-count');
+  const keys = Object.keys(rxInfo).sort((a, b) => rxInfo[b].count - rxInfo[a].count || a.localeCompare(b));
+  countEl.textContent = keys.length ? keys.length + (keys.length === 1 ? ' iGate' : ' iGates') : '';
+  if (!keys.length) {
+    body.innerHTML = '<div style="padding:4px 2px;color:var(--text-dim)">No convergence points in view</div>';
+    return;
+  }
+  let html = '<div class="obj-actions"><button onclick="setAllCoverageRx(true)">All</button><button onclick="setAllCoverageRx(false)">None</button></div>';
+  html += keys.map(rc =>
+    '<label class="layer-toggle"><input type="checkbox" data-covrx="' + _escHtml(rc) + '"' + (covRxState[rc] ? ' checked' : '') + '> ' +
+    '<span>' + _escHtml(rc) + '</span><span class="obj-count">' + rxInfo[rc].count + '</span></label>'
+  ).join('');
+  body.innerHTML = html;
+}
+
+function setAllCoverageRx(on) {
+  Object.keys(covRxState).forEach(k => covRxState[k] = on);
+  if (coverageOn) applyFilter();
+}
+
+function toggleCoveragePanel() {
+  document.getElementById('coverage-panel').classList.toggle('collapsed');
+}
+
+// Delegated change handler for the per-iGate checkboxes.
+document.getElementById('coverage-body').addEventListener('change', (e) => {
+  const cb = e.target.closest('input[data-covrx]');
+  if (!cb) return;
+  covRxState[cb.dataset.covrx] = cb.checked;
+  if (coverageOn) applyFilter();
+});
+
+function clearCoverageMarkers() {
+  covMarkers.forEach(m => m.remove());
+  covMarkers = [];
+}
+
+function clearCoverage() {
+  clearCoverageMarkers();
+  const src = map.getSource('aprs-coverage');
+  if (src) src.setData({ type: 'FeatureCollection', features: [] });
+  const body = document.getElementById('coverage-body');
+  if (body) body.innerHTML = '<div style="padding:4px 2px;color:var(--text-dim)">Enable Coverage to list iGates</div>';
+  const ce = document.getElementById('coverage-count');
+  if (ce) ce.textContent = '';
 }
 
 // Manual "refresh now" — spin the icon briefly while re-fetching stations.
@@ -802,6 +1419,23 @@ async function mapRefresh() {
   if (btn) btn.classList.add('spinning');
   try { await fetchStations(); }
   finally { if (btn) setTimeout(() => btn.classList.remove('spinning'), 400); }
+}
+
+// Set / toggle the 15s auto-refresh loop. Green = auto (default); gray = paused.
+function setAutoRefresh(on) {
+  autoRefresh = on;
+  document.getElementById('mapRefreshBtn').classList.toggle('paused', !on);
+  startCountdown();   // green → restart from 15; gray → stop + show "paused"
+}
+function toggleRefresh() {
+  const turningOn = !autoRefresh;
+  // Resuming auto-refresh leaves Coverage mode (they are mutually exclusive).
+  if (turningOn && coverageOn) {
+    coverageOn = false;
+    document.getElementById('coverageBtn').classList.remove('on');
+    clearCoverage();
+  }
+  setAutoRefresh(turningOn);
 }
 
 function flyToLatest() {
@@ -915,6 +1549,147 @@ function clearTrack() {
   if (map.getSource('aprs-track')) {
     map.getSource('aprs-track').setData({ type: 'FeatureCollection', features: [] });
   }
+}
+
+// ── RF path overlay (digipeater hops) ─────────────────────────────────────────
+// Build GeoJSON for a station's RF path. We connect the origin through each
+// *used* (has-been-used '*') real-callsign digipeater that is currently on the
+// map, in path order. Hops we can't locate (generic aliases like WIDEn-N, or a
+// real call that isn't on the map) are *skipped* — the line bridges over them —
+// because the meaningful endpoint (our receiver, e.g. K7NWS-2) is the LAST hop
+// and is on the map. The final plotted node is flagged 'receiver'.
+function buildPathFeatures(s) {
+  if (!s || s.lat == null || s.lon == null) return null;
+  const byCall = {};
+  allStations.forEach(x => {
+    if (x.lat != null && x.lon != null) byCall[String(x.callsign).toUpperCase()] = x;
+  });
+
+  const nodes = [{ lon: s.lon, lat: s.lat, label: s.callsign }];
+  let usedHops = 0, skipped = 0;
+  for (const el of (s.path || [])) {
+    const raw = String(el);
+    if (!raw.endsWith('*')) continue;          // only digis that actually relayed
+    usedHops++;
+    const base = raw.slice(0, -1).toUpperCase();
+    const hit = byCall[base];
+    if (!hit) { skipped++; continue; }         // alias / off-map — bridge over it
+    nodes.push({ lon: hit.lon, lat: hit.lat, label: hit.callsign });
+  }
+
+  const features = [];
+  if (nodes.length >= 2) {
+    features.push({ type: 'Feature', properties: {},
+      geometry: { type: 'LineString', coordinates: nodes.map(n => [n.lon, n.lat]) } });
+  }
+  // Hop nodes (skip the origin — it already has its station marker). The last
+  // plotted hop is the receiver/closest node — emphasized with a white core.
+  nodes.forEach((n, i) => {
+    if (i === 0) return;
+    const isLast = (i === nodes.length - 1);
+    features.push({ type: 'Feature', properties: { kind: isLast ? 'receiver' : 'hop', label: n.label },
+      geometry: { type: 'Point', coordinates: [n.lon, n.lat] } });
+  });
+  // Digipeated, but no hop could be located — mark the origin with a '?'.
+  if (nodes.length < 2 && usedHops > 0) {
+    features.push({ type: 'Feature', properties: { kind: 'incomplete', label: '?' },
+      geometry: { type: 'Point', coordinates: [s.lon, s.lat] } });
+  }
+  return { features, hops: nodes.length - 1, usedHops, skipped };
+}
+
+function showPath(callsign) {
+  if (activePath === callsign) { clearPath(); return; }
+  activePath = callsign;
+  _refreshPath(true);
+}
+
+function _refreshPath(fit) {
+  const s = allStations.find(x => x.callsign === activePath);
+  const res = s ? buildPathFeatures(s) : null;
+  const src = map.getSource('aprs-path');
+  if (src) src.setData({ type: 'FeatureCollection', features: res ? res.features : [] });
+  _renderPathRxMarkers(res ? res.features : []);
+
+  if (!res || res.hops === 0) {
+    _setPopupPathStatus(activePath, (res && res.usedHops > 0)
+      ? 'digipeated via ' + res.usedHops + ' hop(s), none on the map'
+      : 'heard direct — no path to plot');
+    return;
+  }
+  let msg = res.hops + ' hop' + (res.hops !== 1 ? 's' : '') + ' plotted';
+  if (res.skipped > 0) msg += ' · ' + res.skipped + ' off-map hop' + (res.skipped !== 1 ? 's' : '') + ' bridged';
+  _setPopupPathStatus(activePath, msg);
+
+  if (fit) {
+    const pts = res.features.filter(f => f.geometry.type === 'Point').map(f => f.geometry.coordinates);
+    pts.push([s.lon, s.lat]);
+    if (pts.length >= 2) {
+      const b = pts.reduce((bb, c) => bb.extend(c), new maplibregl.LngLatBounds(pts[0], pts[0]));
+      map.fitBounds(b, { padding: 80, maxZoom: 13, duration: 800 });
+    }
+  }
+}
+
+function _setPopupPathStatus(callsign, msg) {
+  if (!callsign) return;
+  if (callsign === activePath) _pathStatusMsg = msg;
+  const el = document.getElementById('pop-path-status-' + callsign);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+function clearPath() {
+  activePath = null;
+  _pathStatusMsg = '';
+  clearPathMarkers();
+  const src = map.getSource('aprs-path');
+  if (src) src.setData({ type: 'FeatureCollection', features: [] });
+}
+
+// Glowing receiver node(s) are rendered as DOM markers (not a circle layer) so
+// they reuse the station-style CSS box-shadow glow and never reorder map layers.
+function clearPathMarkers() {
+  pathMarkers.forEach(m => m.remove());
+  pathMarkers = [];
+}
+function _renderPathRxMarkers(features) {
+  clearPathMarkers();
+  (features || []).forEach(f => {
+    if (f.geometry.type === 'Point' && f.properties && f.properties.kind === 'receiver') {
+      const el = document.createElement('div');
+      el.className = 'path-rx';
+      pathMarkers.push(new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(f.geometry.coordinates).addTo(map));
+    }
+  });
+}
+
+// Auto-path: rebuild the overlay each refresh from ONLY the stations heard this
+// cycle (fresh packets), so paths from previous cycles do not persist. Points
+// that coincide (e.g. the shared receiver node) are de-duplicated.
+function _refreshAutoPaths() {
+  const src = map.getSource('aprs-path');
+  if (!src) return;
+  let calls = allStations.filter(s => _newCallsigns.has(s.callsign));
+  if (!calls.length && _latestStation) calls = [_latestStation];
+  const features = [];
+  const seen = new Set();
+  calls.forEach(s => {
+    const res = buildPathFeatures(s);
+    if (!res || res.hops === 0) return;
+    res.features.forEach(f => {
+      if (f.geometry.type === 'Point') {
+        const key = f.geometry.coordinates.join(',') + '|' + f.properties.kind + '|' + f.properties.label;
+        if (seen.has(key)) return;
+        seen.add(key);
+      }
+      features.push(f);
+    });
+  });
+  src.setData({ type: 'FeatureCollection', features });
+  _renderPathRxMarkers(features);
 }
 
 // ── Maidenhead grid overlay ──────────────────────────────────────────────────
