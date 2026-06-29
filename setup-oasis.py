@@ -460,12 +460,63 @@ def _guess_host():
 INSTALLED_MANIFEST = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "installed-services.json")
 
+# Operator identity (callsign + Maidenhead grid) shown on the dashboard pill.
+# Seeded here so the suite ships personalised; the dashboard still lets each
+# browser override it (localStorage). Lives at suite root → served at /station.json.
+STATION_MANIFEST = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "station.json")
+
 # Visibility-toggle features for static content/data. Unlike service installs
 # (which only accumulate), these reflect the operator's choice each run: ticking
 # shows the dashboard card/link, unticking hides it. Only acted on when the
 # feature was actually offered this run (full menu / --all, or named in
 # --features), so a targeted run never silently hides an unrelated card.
 GATE_AUTHORITATIVE = {"fcc", "repeaterbook", "wikipedia", "forms"}
+
+
+def configure_station(callsign=None, grid=None, interactive=True):
+    """Seed station.json with the operator's callsign + Maidenhead grid so the
+    dashboard pill shows them out of the box. Idempotent: pre-fills from any
+    existing file; pressing Enter keeps the current value. Non-interactive runs
+    only write when --callsign/--grid are passed. Browsers can still override
+    via the dashboard pill (localStorage)."""
+    cur = {"callsign": "", "grid": ""}
+    try:
+        with open(STATION_MANIFEST) as fh:
+            prev = json.load(fh)
+            cur["callsign"] = str(prev.get("callsign", "") or "")
+            cur["grid"] = str(prev.get("grid", "") or "")
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+
+    if interactive and sys.stdin.isatty():
+        try:
+            ans = input(f"\n  Your callsign [{cur['callsign'] or 'N0CALL'}]: ").strip().upper()
+            if ans:
+                callsign = ans
+            ans = input(f"  Your grid square (e.g. CN87) [{cur['grid'] or '—'}]: ").strip().upper()
+            if ans:
+                grid = ans
+        except (EOFError, KeyboardInterrupt):
+            print()
+
+    callsign = (callsign or cur["callsign"]).strip().upper()
+    grid = (grid or cur["grid"]).strip().upper()
+    if not callsign and not grid:
+        return                                   # nothing supplied → leave default N0CALL
+
+    payload = {"callsign": callsign or "N0CALL", "grid": grid or "",
+               "updated": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    if {"callsign": cur["callsign"], "grid": cur["grid"]} == \
+       {"callsign": payload["callsign"], "grid": payload["grid"]}:
+        return
+    try:
+        with open(STATION_MANIFEST, "w") as fh:
+            json.dump(payload, fh, indent=2)
+            fh.write("\n")
+        _ok(f"Saved station identity → {os.path.basename(STATION_MANIFEST)}")
+    except OSError as e:
+        _warn(f"Could not write {os.path.basename(STATION_MANIFEST)}: {e}")
 
 
 def record_installed(results, offered_gate=frozenset()):
@@ -640,6 +691,8 @@ def main():
                         help="Don't prompt to confirm the run.")
     parser.add_argument("--no-sudo-prime", action="store_true",
                         help="Skip priming sudo (each step will prompt as needed).")
+    parser.add_argument("--callsign", metavar="CALL", help="Set the dashboard callsign (station.json).")
+    parser.add_argument("--grid", metavar="GRID", help="Set the dashboard Maidenhead grid (station.json).")
     args = parser.parse_args()
 
     if args.list:
@@ -650,6 +703,10 @@ def main():
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         _fail("Run as your normal user, NOT with sudo — I'll request sudo when needed.\n"
               "       e.g.  python3 setup-oasis.py")
+
+    # Seed the dashboard pill identity (callsign + grid). Skips silently if
+    # already set and nothing new is given.
+    configure_station(args.callsign, args.grid, interactive=not args.yes)
 
     # Resolve the selection.
     if args.all:

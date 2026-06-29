@@ -927,11 +927,12 @@ def build_windows_runtime(dest, skip):
     _section("Windows runtime — embedded Python")
     win_dir    = os.path.join(dest, "_runtime", "windows")
     wheels_src = os.path.join(dest, "server", "wheels")
-    os.makedirs(win_dir, exist_ok=True)
 
     if skip:
         _warn("Windows runtime not requested. scripts/start-server.bat will not work. Use --for-windows to include it.")
         return
+
+    os.makedirs(win_dir, exist_ok=True)
 
     data = _download_mem(PYTHON_EMBED_URL, f"Python {PYTHON_VERSION} embeddable (amd64)  ← python.org latest")
     with zipfile.ZipFile(data) as zf:

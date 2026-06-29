@@ -9,6 +9,9 @@ __pycache__/
 # installed); the dashboard reads it to hide not-installed service cards.
 installed-services.json
 
+# Operator identity (callsign + grid) seeded by setup-oasis.py; per-machine.
+station.json
+
 # Operator-placed APRS map warnings (shared runtime state, not repo content).
 aprs-warnings.json
 aprs-warnings.json.tmp

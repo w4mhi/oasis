@@ -1059,12 +1059,26 @@ function kioskRefresh() {
   setTimeout(() => location.reload(), 400);
 }
 
-// ── Callsign / Grid (stored in localStorage) ──────────────────────────────────
+// ── Callsign / Grid (localStorage, seeded from /station.json) ─────────────────
 function loadCallsignGrid() {
   const cs = localStorage.getItem('oasis_callsign') || 'N0CALL';
   const gr = localStorage.getItem('oasis_grid')     || '—';
   document.getElementById('my-callsign').textContent = cs;
   document.getElementById('my-grid').textContent     = gr;
+}
+// Seed from the suite-level station.json (written by setup-oasis.py) the first
+// time this browser loads — only when the operator hasn't set their own. The
+// edit pill always overrides per-browser via localStorage.
+async function seedCallsignGrid() {
+  if (localStorage.getItem('oasis_callsign')) return;
+  try {
+    const r = await fetch('/station.json', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.callsign) localStorage.setItem('oasis_callsign', String(d.callsign).toUpperCase());
+    if (d.grid)     localStorage.setItem('oasis_grid',     String(d.grid).toUpperCase());
+    loadCallsignGrid();
+  } catch (_) {}
 }
 function toggleNavGrid() {
   const wrap = document.getElementById('nav-grid-wrap');
@@ -1108,6 +1122,7 @@ function editCallsignGrid() {
   loadCallsignGrid();
 }
 loadCallsignGrid();
+seedCallsignGrid();
 
 // ── Service state tracking (for counts badge) ─────────────────────────────────
 const _svcStates = {};
