@@ -27,8 +27,9 @@ python3 scripts/install-rgb-cooling-hat.py --check    # status
 python3 scripts/install-rgb-cooling-hat.py --disable  # remove
 ```
 
-Want to test in the foreground first (`Ctrl-C` to stop)? The OLED should show
-host/CPU/temp/RAM/IP and the fan should kick in once CPU temp crosses `FAN_ON`:
+Want to test in the foreground first (`Ctrl-C` to stop)? The OLED shows two lines
+(CPU% · temp · RAM, then host:ip), the fan kicks in once CPU temp crosses
+`FAN_ON`, and the LEDs show a thermal colour (green → amber → red):
 
 ```bash
 python3 /opt/rgb-cooling-hat/rgb-cooling-hat.py
@@ -68,11 +69,32 @@ WantedBy=multi-user.target
 | Constant | Default | Notes |
 |---|---|---|
 | `FAN_ON` / `FAN_OFF` | 55 / 48 °C | Hysteresis. Widen the gap if the fan chatters. |
-| `ENABLE_RGB` | `True` | LEDs show thermal colour (green → amber → red). |
+| `ENABLE_RGB` | `True` | Drive the RGB LEDs at all. |
+| `RGB_MODE` | `"thermal"` | `"thermal"` = colour by temp (green→amber→red); `"fan"` = amber while the fan runs, `DEFAULT_COLOR` when off; `"static"` = fixed `STATIC_COLOR`. |
+| `DEFAULT_COLOR` | `(0,255,0)` | `(R,G,B)` when fan is OFF (`RGB_MODE="fan"`). |
+| `FAN_ON_COLOR` | `(255,110,0)` | `(R,G,B)` when fan is ON, amber (`RGB_MODE="fan"`). |
+| `STATIC_COLOR` | `(0,80,255)` | `(R,G,B)` used when `RGB_MODE="static"`. |
+| `BRIGHTNESS` | `25` % | Scales all RGB output (no brightness register — dimming = scaling R/G/B). |
 | `REFRESH_S` | 2.0 s | OLED/fan update cadence. |
 
 On exit (service stop) the daemon **leaves the fan running** as a fail-safe and
 blanks the OLED.
+
+## Adjusting the LEDs by hand
+
+The same script doubles as a one-shot LED tool (no args = daemon; `--color`/`--off`
+sets the LEDs once and exits):
+
+```bash
+python3 /opt/rgb-cooling-hat/rgb-cooling-hat.py --color FF8800            # all LEDs orange
+python3 /opt/rgb-cooling-hat/rgb-cooling-hat.py --color 00FF00 --brightness 60
+python3 /opt/rgb-cooling-hat/rgb-cooling-hat.py --color 0000FF --led 1    # just LED 1 (0..2)
+python3 /opt/rgb-cooling-hat/rgb-cooling-hat.py --off
+```
+
+If the service is running with `RGB_MODE="thermal"` (or `"fan"`), it overwrites a manual colour
+on the next refresh — for a colour that sticks, set `RGB_MODE="static"` +
+`STATIC_COLOR` (+ `BRIGHTNESS`) and restart the service, or stop it.
 
 ## Notes / gotchas
 

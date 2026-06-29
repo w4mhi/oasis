@@ -935,9 +935,9 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
       <div class="nav-sec-title">Winlink &amp; APRS</div>
       <ul class="nav-links">
         <li><a id="nlink-winlink" href="winlink/mail.html">Winlink Mail <span class="nav-svc-badge" id="nsvc-winlink">—</span></a></li>
-        <li><a href="winlink/position-report.html">Position Reports <span class="nav-meta">viewer</span></a></li>
-        <li><a href="winlink/radio-settings.html">Radio Settings <span class="nav-meta">setup</span></a></li>
-        <li><a href="winlink/to-position.html">Winlink → Position <span class="nav-meta">converter</span></a></li>
+        <li><a id="nlink-wl-posrep" href="winlink/position-report.html">Position Reports <span class="nav-meta">viewer</span></a></li>
+        <li><a id="nlink-wl-radio" href="winlink/radio-settings.html">Radio Settings <span class="nav-meta">setup</span></a></li>
+        <li><a id="nlink-wl-conv" href="winlink/to-position.html">Winlink → Position <span class="nav-meta">converter</span></a></li>
         <li><a id="nlink-gw" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.graywolf}/`,'_blank');return false;">GrayWolf <span class="nav-svc-badge" id="nsvc-gw">—</span></a></li>
         <li><a href="static/graywolf-handbook/index.html">GrayWolf handbook <span class="nav-meta">docs</span></a></li>
         <li><a href="static/cheatsheets/aprs_bots.html">APRS Bots <span class="nav-meta">FIND · SMS · WXBOT</span></a></li>
@@ -1484,6 +1484,13 @@ function _gateEls(id) {
   // The topbar GNSS receiver card is part of the GPS feature too — hide it
   // alongside the gpsd service card when GPS isn't installed.
   if (id === 'gpsd') { const g = document.getElementById('gps-card'); if (g) els.push(g); }
+  // Winlink also drives three static pages (position reports, radio settings,
+  // Winlink→position) — hide their nav links when Winlink isn't installed.
+  if (id === 'winlink') {
+    ['nlink-wl-posrep', 'nlink-wl-radio', 'nlink-wl-conv'].forEach(x => {
+      const a = document.getElementById(x); if (a) { const li = a.closest('li'); if (li) els.push(li); }
+    });
+  }
   return els;
 }
 

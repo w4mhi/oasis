@@ -7,8 +7,9 @@ Drives the Yahboom "Raspberry Pi RGB Cooling HAT" on the 40-pin I2C bus (i2c-1):
   • SSD1306 OLED   @ 0x3c   (128x32, 1-bit)
 
 The fan is switched on/off with temperature hysteresis (this HAT's firmware is
-on/off, not PWM). The OLED shows host / CPU% / temp / RAM / IP / fan state, and
-the RGB LEDs give an at-a-glance thermal colour (green→amber→red).
+on/off, not PWM). The OLED shows two lines — CPU% · temp · RAM, then host:ip — and
+the RGB LEDs show a thermal colour by default (green→amber→red), or fan-state /
+static (see RGB_MODE).
 
 Offline-first, like the rest of OASIS: no pip, no venv, no display library. A
 ~40-line SSD1306 driver is inlined and the frame is composed with Pillow, so the
@@ -28,7 +29,8 @@ runs as must be in the `i2c` group.
   reg 0x01/0x02/0x03   : R / G / B for the selected LED(s) (static colour)
 """
 
-import os
+import argparse
+import socket
 import sys
 import time
 import signal
@@ -47,8 +49,19 @@ FAN_REG       = 0x08
 FAN_ON        = 55.0
 FAN_OFF       = 48.0
 
-ENABLE_RGB    = True        # temperature colour on the RGB LEDs
+ENABLE_RGB    = True        # drive the RGB LEDs at all
+RGB_MODE      = "thermal"   # "thermal" = colour by temp (green→amber→red);
+                            # "fan" = amber while the fan runs, DEFAULT_COLOR when off;
+                            # "static" = fixed STATIC_COLOR
+DEFAULT_COLOR = (0, 255, 0)    # (R,G,B) when the fan is OFF (RGB_MODE="fan")
+FAN_ON_COLOR  = (255, 110, 0)  # (R,G,B) when the fan is ON  (RGB_MODE="fan", amber)
+STATIC_COLOR  = (0, 80, 255)   # (R,G,B) used when RGB_MODE == "static"
+BRIGHTNESS    = 25          # 0–100 %, scales all RGB output (these LEDs have no
+                            # brightness register — dimming = scaling R/G/B)
 REFRESH_S     = 2.0         # OLED / fan update cadence
+
+N_LEDS        = 3           # the HAT has 3 RGB LEDs (indices 0..2)
+LED_ALL       = 0xff        # 0x00 register value that targets every LED at once
 
 OLED_W, OLED_H = 128, 32
 
@@ -89,17 +102,38 @@ class SSD1306:
 def set_fan(bus, on):
     bus.write_byte_data(HAT_ADDR, FAN_REG, 0x01 if on else 0x00)
 
-def set_rgb(bus, r, g, b):
-    """Static colour on all LEDs (overrides the boot-default breathing effect)."""
-    bus.write_byte_data(HAT_ADDR, 0x00, 0xff); time.sleep(0.005)
-    bus.write_byte_data(HAT_ADDR, 0x01, r & 0xff); time.sleep(0.005)
-    bus.write_byte_data(HAT_ADDR, 0x02, g & 0xff); time.sleep(0.005)
-    bus.write_byte_data(HAT_ADDR, 0x03, b & 0xff); time.sleep(0.005)
+def fan_decision(t, fan_on):
+    """Desired fan state from temp with hysteresis. Forces a known state when
+    fan_on is None (first pass / boot) so a fan left on at boot gets synced;
+    holds the current state inside the FAN_OFF..FAN_ON dead-band."""
+    if t >= FAN_ON:  return True
+    if t <= FAN_OFF: return False
+    return fan_on if fan_on is not None else False
+
+def scale(rgb, pct):
+    """Apply a brightness percent (0–100) to an (R,G,B) tuple."""
+    f = max(0, min(100, pct)) / 100.0
+    return tuple(int(round(c * f)) for c in rgb)
+
+def set_rgb(bus, r, g, b, led=LED_ALL):
+    """Static colour on the selected LED (LED_ALL = every LED). Writing the colour
+    registers directly overrides the boot-default breathing effect."""
+    bus.write_byte_data(HAT_ADDR, 0x00, led & 0xff); time.sleep(0.005)
+    bus.write_byte_data(HAT_ADDR, 0x01, r & 0xff);   time.sleep(0.005)
+    bus.write_byte_data(HAT_ADDR, 0x02, g & 0xff);   time.sleep(0.005)
+    bus.write_byte_data(HAT_ADDR, 0x03, b & 0xff);   time.sleep(0.005)
+
+def parse_hex_color(s):
+    """'FF8800' / '#ff8800' / 'ff8800' -> (255, 136, 0)."""
+    s = s.strip().lstrip("#")
+    if len(s) != 6 or any(c not in "0123456789abcdefABCDEF" for c in s):
+        raise ValueError(f"colour must be 6 hex digits (RRGGBB), got '{s}'")
+    return int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
 
 def temp_colour(t):
-    if t < FAN_ON:  return (0, 24, 0)     # cool  — dim green
-    if t < 68.0:    return (40, 16, 0)    # warm  — amber
-    return (60, 0, 0)                     # hot   — red
+    if t < FAN_ON:  return (0, 255, 0)    # cool — green
+    if t < 68.0:    return (255, 110, 0)  # warm — amber
+    return (255, 0, 0)                    # hot  — red
 
 
 # ── Stats (local, no subprocess, no network) ──────────────────────────────────
@@ -137,7 +171,6 @@ def ram_mb():
         return 0, 0
 
 def local_ip():
-    import socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("10.255.255.255", 1))   # no packet sent; just picks the route
@@ -147,15 +180,14 @@ def local_ip():
     finally:
         s.close()
 
-
-# ── Main loop ─────────────────────────────────────────────────────────────────
-def main():
+# ── Daemon loop ───────────────────────────────────────────────────────────────
+def run_daemon():
     bus  = smbus.SMBus(I2C_BUS)
     oled = SSD1306(bus)
     oled.clear()
     font = ImageFont.load_default()
-    host = os.uname().nodename
-    fan_on = False
+    host = socket.gethostname()
+    fan_on = None              # unknown until the first reading forces a known state
     cpu_pct()  # prime the /proc/stat baseline
 
     def shutdown(*_):
@@ -168,27 +200,86 @@ def main():
 
     while True:
         t = cpu_temp()
-        if not fan_on and t >= FAN_ON:
-            set_fan(bus, True);  fan_on = True
-        elif fan_on and t <= FAN_OFF:
-            set_fan(bus, False); fan_on = False
+        desired = fan_decision(t, fan_on)
+        if desired != fan_on:
+            try: set_fan(bus, desired)
+            except Exception: pass
+            fan_on = desired
 
         if ENABLE_RGB:
-            try: set_rgb(bus, *temp_colour(t))
+            if RGB_MODE == "static":
+                rgb = STATIC_COLOR
+            elif RGB_MODE == "fan":     # amber while running, default when off
+                rgb = FAN_ON_COLOR if fan_on else DEFAULT_COLOR
+            else:                       # "thermal": colour by temperature
+                rgb = temp_colour(t)
+            try: set_rgb(bus, *scale(rgb, BRIGHTNESS))
             except Exception: pass
 
         used, total = ram_mb()
         img  = Image.new("1", (OLED_W, OLED_H), 0)
         draw = ImageDraw.Draw(img)
-        draw.text((0,  0), f"{host[:13]}  {t:>4.0f}C",          font=font, fill=1)
-        draw.text((0,  8), f"CPU {cpu_pct():>3d}%  Fan {'ON ' if fan_on else 'off'}",
+        # Two lines (128x32 is too cramped for four). Kept compact to fit ~21
+        # default-font chars per line: line 1 = CPU% · temp · RAM, line 2 = host:ip.
+        draw.text((0,  4), f"CPU {cpu_pct():>3d}% {t:>2.0f}C {used}/{total}M",
                   font=font, fill=1)
-        draw.text((0, 16), f"RAM {used}/{total}MB",             font=font, fill=1)
-        draw.text((0, 24), local_ip(),                          font=font, fill=1)
+        draw.text((0, 18), f"{host}:{local_ip()}", font=font, fill=1)
         try: oled.display(img)
         except Exception: pass
 
         time.sleep(REFRESH_S)
+
+
+# ── One-shot LED control (CLI) ────────────────────────────────────────────────
+def apply_led_cli(args):
+    """Set colour/brightness (or turn LEDs off) once, then exit."""
+    led = LED_ALL if args.led == "all" else int(args.led)
+    bus = smbus.SMBus(I2C_BUS)
+    if args.off:
+        set_rgb(bus, 0, 0, 0, led)
+        print(f"LEDs ({args.led}) off.")
+        return
+    try:
+        base = parse_hex_color(args.color)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(2)
+    r, g, b = scale(base, args.brightness)
+    set_rgb(bus, r, g, b, led)
+    print(f"LED {args.led}: #{args.color.lstrip('#').upper()} @ {args.brightness}% "
+          f"-> RGB({r},{g},{b}).")
+    print("Note: if the rgb-cooling-hat service is running with ENABLE_RGB and "
+          "RGB_MODE='thermal'/'fan', it will overwrite this within REFRESH_S. For "
+          "a persistent manual colour set RGB_MODE='static' + STATIC_COLOR, or "
+          "stop the service.")
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description="RGB Cooling HAT fan + OLED daemon. With no arguments it runs "
+                    "the service loop; with --color/--off it sets the LEDs once "
+                    "and exits.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=("Examples:\n"
+                "  python3 rgb-cooling-hat.py                       # run the daemon\n"
+                "  python3 rgb-cooling-hat.py --color FF8800        # all LEDs orange\n"
+                "  python3 rgb-cooling-hat.py --color 00FF00 --brightness 60\n"
+                "  python3 rgb-cooling-hat.py --color 0000FF --led 1  # just LED 1\n"
+                "  python3 rgb-cooling-hat.py --off                 # LEDs off\n"),
+    )
+    ap.add_argument("--color", metavar="RRGGBB",
+                    help="Hex colour to set on the LEDs, then exit.")
+    ap.add_argument("--brightness", type=int, default=BRIGHTNESS, metavar="0-100",
+                    help=f"Brightness percent for --color (default {BRIGHTNESS}).")
+    ap.add_argument("--led", default="all", choices=["all"] + [str(i) for i in range(N_LEDS)],
+                    help="Which LED to set: all (default) or 0..%d." % (N_LEDS - 1))
+    ap.add_argument("--off", action="store_true", help="Turn the LEDs off, then exit.")
+    args = ap.parse_args()
+
+    if args.color or args.off:
+        apply_led_cli(args)
+    else:
+        run_daemon()
 
 
 if __name__ == "__main__":
