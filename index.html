@@ -206,6 +206,29 @@ a.svc-card:hover { border-color: var(--accent); }
 .svc-power.down { color: var(--accent); border-color: var(--accent-dim); }  /* stopped → START */
 .svc-power.busy { opacity: .5; pointer-events: none; }
 
+/* ── APRS SDR feed flow meter ─────────────────────────────────────────── */
+/* Data-flow health on the feed tile: proves UDP audio is moving, not just that
+   socat is "active". Live ~2s while the tab is visible (see pollFeedFlow). */
+/* Sub-line and meter share one row so the card stays slim and pkt/s shows once. */
+.feed-row { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.feed-row .svc-sub { flex-shrink: 0; white-space: nowrap; }
+.feed-meter { display: flex; align-items: center; gap: .4rem; flex: 1; min-width: 0; }
+.feed-meter[hidden] { display: none; }
+.feed-meter-track {
+  flex: 1; min-width: 30px; max-width: 90px; height: 5px;
+  background: var(--border); border-radius: 3px; overflow: hidden;
+}
+.feed-meter-fill {
+  height: 100%; width: 0%; background: var(--accent); border-radius: 3px;
+  transition: width .25s ease, background .25s ease;
+}
+.feed-meter.silent .feed-meter-fill { background: var(--red); }
+.feed-meter.flowing .feed-meter-fill { background: var(--accent); }
+.feed-meter-label {
+  font-size: var(--fs-micro); color: var(--text-dim);
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+
 /* ── Stats bar ───────────────────────────────────────────────────────── */
 .stats-bar {
   display: flex;
@@ -800,7 +823,16 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   </div>
   <div class="svc-card" id="card-feed">
     <div class="svc-dot" id="dot-feed"></div>
-    <div><div class="svc-name">APRS SDR Feed</div><div class="svc-sub" id="sub-feed">—</div></div>
+    <div style="flex:1; min-width:0">
+      <div class="svc-name">APRS SDR Feed</div>
+      <div class="feed-row">
+        <span class="svc-sub" id="sub-feed">—</span>
+        <div class="feed-meter" id="feed-meter" hidden>
+          <div class="feed-meter-track"><div class="feed-meter-fill" id="feed-meter-fill"></div></div>
+          <span class="feed-meter-label" id="feed-meter-label"></span>
+        </div>
+      </div>
+    </div>
     <span class="svc-badge" id="badge-feed">—</span>
   </div>
   <div class="svc-card" id="card-owrx">
@@ -1199,7 +1231,16 @@ const SERVICES = [
       if (!r.ok) return { up: false, sub: 'status error' };
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
-      if (d.active === 'active') return { up: true, badge: 'UP', sub: '→ GrayWolf' };
+      if (d.active === 'active') {
+        // Active means socat is alive — but a yanked dongle leaves it active and
+        // silent. If the flow probe last saw no packets, surface SILENT here too
+        // so the 30s refresh doesn't flash green over a dead feed (pollFeedFlow
+        // refines this every ~2s; see below).
+        if (_feedFlow && _feedFlow.ok !== false && _feedFlow.supported !== false
+            && _feedFlow.flowing === false)
+          return { up: true, warn: true, badge: 'SILENT', sub: 'no audio · check SDR/USB' };
+        return { up: true, badge: 'UP', sub: '→ GrayWolf' };
+      }
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
         sub: d.installed ? 'inactive' : 'run enable-rtl-sdr.py' };
     }
@@ -1335,6 +1376,71 @@ function pingAll() {
   SERVICES.forEach(svc => {
     if (!HIDDEN_SVCS.has(svc.id) || _showHidden) checkService(svc);
   });
+}
+
+// ── APRS SDR feed flow meter ──────────────────────────────────────────────────
+// systemctl is-active can't tell "audio flowing" from "socat alive but dongle
+// yanked". pollFeedFlow hits /api/health/feed-flow (a passive ~1s tcpdump on the
+// loopback feed) and drives the meter on the APRS SDR Feed tile. Live ~2s while
+// the tab is visible; paused when hidden. Cadence is one constant — to go 30s,
+// set FEED_FLOW_MS = 30_000 (or call from pingAll); the probe itself is stateless.
+const FEED_FLOW_MS = 2000;
+let _feedFlow = null;   // last probe result, also read by the 30s feed check
+
+// Annotate the (already-active) feed tile from the flow probe, without re-running
+// the 30s systemd check. Keeps dot/card/badge/sub consistent with the meter.
+function applyFeedFlowState(state, sub, badgeText) {
+  _svcStates['feed'] = state;
+  const dot = document.getElementById('dot-feed');
+  const card = document.getElementById('card-feed');
+  const badge = document.getElementById('badge-feed');
+  const sub_ = document.getElementById('sub-feed');
+  if (dot)   dot.className  = 'svc-dot '  + state;
+  if (card)  card.className = 'svc-card ' + state;
+  if (badge) { badge.className = 'svc-badge ' + state; badge.textContent = badgeText; }
+  if (sub_)  sub_.textContent = sub;
+  updateSvcCounts();
+}
+
+async function pollFeedFlow() {
+  if (document.visibilityState !== 'visible') return;
+  const meter = document.getElementById('feed-meter');
+  if (!meter) return;
+  const fill  = document.getElementById('feed-meter-fill');
+  const label = document.getElementById('feed-meter-label');
+  // Only meaningful while the unit is active. Stopped / not-installed / down →
+  // 0 pps is expected, not a fault: hide the meter and skip the probe.
+  const st = _svcStates['feed'];
+  if (st !== 'up' && st !== 'warn') { meter.hidden = true; _feedFlow = null; return; }
+  try {
+    const r = await fetch('/api/health/feed-flow', { cache: 'no-store' });
+    const d = await r.json();
+    _feedFlow = d;
+    meter.hidden = false;
+    if (d.supported === false || d.ok === false) {
+      // Degraded probe — show a muted note, don't scare the tile into SILENT.
+      meter.className = 'feed-meter';
+      if (fill) fill.style.width = '0%';
+      if (label) label.textContent =
+        d.reason === 'no-privilege'   ? 'flow: enable controls' :
+        d.reason === 'tcpdump-missing'? 'flow check n/a'        :
+        d.reason === 'not-linux'      ? ''                      : 'flow n/a';
+      if (d.reason === 'not-linux') meter.hidden = true;
+      return;
+    }
+    const pct = Math.max(0, Math.min(100, (d.pps / (d.nominal_pps || 50)) * 100));
+    if (fill) fill.style.width = pct.toFixed(0) + '%';
+    if (d.flowing) {
+      meter.className = 'feed-meter flowing';
+      if (label) label.textContent = Math.round(d.pps) + ' pkt/s';
+      // pkt/s lives in the meter label only — keep the sub line short.
+      applyFeedFlowState('up', '→ GrayWolf', 'UP');
+    } else {
+      meter.className = 'feed-meter silent';
+      if (label) label.textContent = '0 pkt/s';
+      applyFeedFlowState('warn', 'no audio · check SDR/USB', 'SILENT');
+    }
+  } catch (e) { /* transient — keep last state, retry next tick */ }
 }
 
 // ── Installed-service gating ──────────────────────────────────────────────────
@@ -1959,14 +2065,19 @@ async function fetchAPRS() {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 loadConfig().then(() => {
   applyUnits();
-  loadInstalled().then(() => pingAll());
+  loadInstalled().then(() => { pingAll(); pollFeedFlow(); });
   fetchStats();
   fetchAudio();
   fetchAPRS();
-  setInterval(pingAll,    30_000);
-  setInterval(fetchStats, 30_000);
-  setInterval(fetchAudio, 30_000);
-  setInterval(fetchAPRS,  15_000);
+  setInterval(pingAll,      30_000);
+  setInterval(fetchStats,   30_000);
+  setInterval(fetchAudio,   30_000);
+  setInterval(fetchAPRS,    15_000);
+  setInterval(pollFeedFlow, FEED_FLOW_MS);
+  // Refresh the meter immediately when the operator returns to the tab.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') pollFeedFlow();
+  });
 });</script>
 
 </body>

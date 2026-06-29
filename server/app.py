@@ -582,6 +582,94 @@ def api_health_service():
     })
 
 
+# ── RTL-SDR → GrayWolf feed flow probe ────────────────────────────────────────
+# The aprs-sdr-feed.service unit is `rtl_fm … | socat … UDP-SENDTO:127.0.0.1:7355`.
+# systemctl is-active only proves the pipe's tail (socat) is alive — a dongle
+# yanked from USB leaves the unit "active" while ZERO audio reaches GrayWolf.
+# To prove audio is actually moving we passively sniff the loopback feed with
+# tcpdump (libpcap copies datagrams; it never steals them from GrayWolf's reader).
+# socat emits ~50 datagrams/s (one per 20 ms audio chunk), so a short capture
+# either fills fast (healthy) or times out empty (silent/dead feed).
+FEED_FLOW_PORT     = 7355     # matches enable-rtl-sdr.py default + the sudoers rule
+_FEED_FLOW_NPKTS   = 10       # capture up to N packets, then tcpdump exits
+_FEED_FLOW_TIMEOUT = 1.0      # hard cap (s): bounds a dead feed's response time
+_FEED_FLOW_NOMINAL = 50       # pkt/s at full feed — the UI scales the bar to this
+# Pinned tcpdump argv (sans sudo + binary path). MUST match the OASIS_SNIFF
+# Cmnd_Alias in scripts/enable-service-controls.py token-for-token, or `sudo -n`
+# denies it. The port is baked in (not client-supplied) so there is no argument-
+# injection surface on the privileged path.
+_FEED_FLOW_ARGS = ["-ni", "lo", "-l", "-c", str(_FEED_FLOW_NPKTS),
+                   "udp", "port", str(FEED_FLOW_PORT)]
+
+
+def _resolve_tcpdump():
+    """tcpdump path, PATH first then the standard sbin/bin dirs (the WSGI server
+    can run under a trimmed systemd PATH). Mirrors api_health_binary's lookup."""
+    import shutil
+    path = shutil.which("tcpdump")
+    if not path:
+        for d in ("/usr/local/sbin", "/usr/local/bin", "/usr/sbin",
+                  "/usr/bin", "/sbin", "/bin"):
+            cand = os.path.join(d, "tcpdump")
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                path = cand
+                break
+    return path
+
+
+@app.route("/api/health/feed-flow")
+def api_health_feed_flow():
+    """Report whether UDP datagrams are actually flowing on the RTL-SDR feed port
+    (a data-flow health check the systemd is-active probe can't give). Returns
+    packet rate over a short passive capture. Linux + scoped sudo (tcpdump) only."""
+    if sys.platform != "linux":
+        return jsonify({"ok": False, "supported": False, "reason": "not-linux"})
+
+    tcpdump = _resolve_tcpdump()
+    if not tcpdump:
+        return jsonify({"ok": False, "supported": True, "reason": "tcpdump-missing"})
+
+    argv = ["sudo", "-n", tcpdump, *_FEED_FLOW_ARGS]
+    t0 = time.monotonic()
+    out = ""
+    err = ""
+    rc = None
+    timed_out = False
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True,
+                           timeout=_FEED_FLOW_TIMEOUT)
+        out, err, rc = r.stdout, r.stderr, r.returncode
+    except subprocess.TimeoutExpired as e:
+        # Healthy feeds exit on -c N before this; a timeout means the feed is slow
+        # or dead. Partial stdout (any trickle captured) is still on the exception.
+        out = e.stdout if isinstance(e.stdout, str) else (e.stdout or b"").decode("utf-8", "replace")
+        err = e.stderr if isinstance(e.stderr, str) else (e.stderr or b"").decode("utf-8", "replace")
+        timed_out = True
+    except Exception as e:
+        return jsonify({"ok": False, "supported": True, "reason": "probe-error",
+                        "error": str(e)})
+    elapsed = max(time.monotonic() - t0, 1e-3)
+
+    packets = sum(1 for ln in out.splitlines() if ln.strip())
+
+    # No packets AND tcpdump itself failed (not just an empty capture) → tell the
+    # operator whether it's a missing sudo grant vs. some other tcpdump error.
+    if packets == 0 and not timed_out and rc not in (0, None):
+        low = (err or "").lower()
+        if "password is required" in low or "not allowed to execute" in low or "a terminal is required" in low:
+            return jsonify({"ok": False, "supported": True, "reason": "no-privilege"})
+        return jsonify({"ok": False, "supported": True, "reason": "probe-error",
+                        "error": (err or "").strip()[:200]})
+
+    pps = round(packets / elapsed, 1)
+    return jsonify({
+        "ok": True, "supported": True, "port": FEED_FLOW_PORT,
+        "packets": packets, "elapsed_ms": round(elapsed * 1000),
+        "pps": pps, "nominal_pps": _FEED_FLOW_NOMINAL,
+        "flowing": packets > 0,
+    })
+
+
 @app.route("/api/service", methods=["POST"])
 def api_service():
     """Start / stop / restart a known OASIS service (Linux only).

@@ -224,6 +224,15 @@ If `tcpdump` shows packets and `ss` shows GrayWolf bound but the meter is still
 flat, it's one of the two gotchas: missing **`socat -b 1920`**, or the channel is
 bound to a **soundcard** (POLLERR loop) — see the table below.
 
+> **Dashboard flow meter.** The OASIS dashboard's *APRS SDR Feed* tile now does
+> step 3 automatically: it polls `/api/health/feed-flow`, which runs exactly this
+> passive `tcpdump -ni lo … udp port 7355` and shows the live packet rate as a
+> meter. A feed that is `systemctl active` but emitting **0 pkt/s** (e.g. the
+> dongle was unplugged) reads **SILENT** instead of a false green UP. The probe
+> needs the scoped sudo grant from `enable-service-controls.py` (it adds an
+> `OASIS_SNIFF` rule for this one fixed read-only capture); without it the meter
+> shows "flow: enable controls".
+
 ---
 
 ## Debugging: nothing decodes, or only nearby stations
