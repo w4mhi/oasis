@@ -34,12 +34,16 @@ body{background:#05080a; color:var(--text); font-family:var(--mono);
 .pill{display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border);
       border-radius:999px; padding:3px 9px; font-size:12px; letter-spacing:.04em}
 .pill.call{color:var(--accent); cursor:pointer}
+.pill.units{color:var(--link-live); cursor:pointer; letter-spacing:.06em; font-size:11px}
+.pill.units:hover{color:var(--text); border-color:var(--accent)}
+.pill.host{color:var(--dim); font-variant-numeric:tabular-nums; white-space:nowrap}
 .k-clocks{margin-left:auto; display:flex; align-items:baseline; gap:14px; font-variant-numeric:tabular-nums}
 .clk{font-size:14px} .clk .lab{color:var(--dim); font-size:12px; letter-spacing:.04em}
 .clk.utc b{color:var(--accent)} .clk.loc b{color:var(--local)}
-.k-gear{flex:0 0 auto; width:30px; height:30px; display:grid; place-items:center;
-        border:1px solid var(--border); border-radius:8px; color:var(--dim); cursor:pointer}
-.k-gear:hover{color:var(--text); border-color:var(--accent)}
+.k-refresh{flex:0 0 auto; width:30px; height:30px; display:grid; place-items:center;
+          border:1px solid var(--border); border-radius:8px; color:var(--dim); cursor:pointer; font-size:17px; line-height:1}
+.k-refresh:hover{color:var(--accent); border-color:var(--accent)}
+.k-refresh:active{transform:rotate(180deg); transition:transform .2s}
 
 /* ---------- system monitor (≤2 lines) ---------- */
 .k-mon{display:flex; flex-wrap:wrap; align-items:center; gap:4px 14px; padding:7px 12px;

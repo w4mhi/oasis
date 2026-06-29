@@ -15,11 +15,13 @@
   <div class="k-head">
     <span class="k-brand">OASIS</span>
     <span class="pill call" onclick="editCallsignGrid()" title="Edit callsign &amp; grid"><span id="k-callsign">N0CALL</span> · <span id="k-grid" style="color:var(--warn)">—</span></span>
+    <span class="pill units" id="k-units" onclick="toggleUnits()" title="Toggle imperial / metric">IMPERIAL</span>
+    <span class="pill host" id="k-host" title="hostname : IP address">—</span>
     <span class="k-clocks">
       <span class="clk utc"><span class="lab">UTC</span> <b id="utc">--:--:--</b></span>
       <span class="clk loc"><span class="lab">LOC</span> <b id="loc">--:--:--</b></span>
     </span>
-    <span class="k-gear" title="Edit callsign &amp; grid" onclick="editCallsignGrid()">⚙</span>
+    <span class="k-refresh" id="k-refresh" title="Reload the dashboard" onclick="location.reload()">↻</span>
   </div>
 
   <!-- SYSTEM MONITOR -->
@@ -148,7 +150,22 @@ function editCallsignGrid() {
   localStorage.setItem('oasis_grid',     gr.trim().toUpperCase());
   loadCallsignGrid();
 }
+// Seed from the suite-level station.json (written by setup-oasis.py) the first
+// time this browser loads — only when the operator hasn't set their own. The
+// edit pill always overrides per-browser via localStorage. Mirrors index.html.
+async function seedCallsignGrid() {
+  if (localStorage.getItem('oasis_callsign')) return;
+  try {
+    const r = await fetch('/station.json', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.callsign) localStorage.setItem('oasis_callsign', String(d.callsign).toUpperCase());
+    if (d.grid)     localStorage.setItem('oasis_grid',     String(d.grid).toUpperCase());
+    loadCallsignGrid();
+  } catch (_) {}
+}
 loadCallsignGrid();
+seedCallsignGrid();
 
 // ── Service state tracking ────────────────────────────────────────────────────
 const _svcStates = {};
@@ -511,20 +528,34 @@ function renderTemp() {
   const cls = _lastTempC != null ? (_lastTempC >= 80 ? 'hot' : _lastTempC >= 65 ? 'warm' : 'ok') : '';
   setKStat('k-temp', fmtTemp(_lastTempC), cls);
 }
+function renderUnits() {
+  const el = document.getElementById('k-units');
+  if (el) el.textContent = isImperial() ? 'IMPERIAL' : 'METRIC';
+}
+function toggleUnits() {
+  UNITS = isImperial() ? 'metric' : 'imperial';
+  localStorage.setItem('oasis_units', UNITS);
+  renderUnits();
+  renderTemp();
+  if (_allAprsStations.length) applyAprsFilter();   // re-render table in new units
+}
+renderUnits();
+// Tapping the TEMP stat is a second shortcut for the same toggle.
 (function () {
   const el = document.getElementById('k-temp');
-  if (el) el.addEventListener('click', () => {
-    UNITS = isImperial() ? 'metric' : 'imperial';
-    localStorage.setItem('oasis_units', UNITS);
-    renderTemp();
-    if (_allAprsStations.length) applyAprsFilter();   // re-render table in new units
-  });
+  if (el) el.addEventListener('click', toggleUnits);
 })();
 async function fetchStats() {
   try {
     const r = await fetch('/api/system', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
     if (!r.ok) return;
     const d = await r.json();
+    const hostEl = document.getElementById('k-host');
+    if (hostEl && (d.hostname || d.ip)) {
+      const txt = `${d.hostname || '—'}:${d.ip || '—'}`;
+      hostEl.textContent = txt;
+      hostEl.title = txt;
+    }
     let valid = 0, total = 0;
     const track = ok => { total++; if (ok) valid++; };
     track(d.cpu_pct != null);
