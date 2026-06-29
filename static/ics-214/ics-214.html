@@ -49,6 +49,7 @@ td textarea{overflow:hidden;}
 
   <div class="actions">
     <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 214 PDF and download a timestamped copy">⬇ Save PDF</button>
+    <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this log as a message (text + RMS form attachment) ready to queue">→ Send via Winlink</button>
     <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
     <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
     <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 214 CSV file to restore form data">Import CSV</button>
@@ -367,6 +368,127 @@ function importCSV(file){
     }
   };
   reader.readAsText(file);
+}
+
+// ── Send via Winlink ────────────────────────────────────────────────────────
+// Build a Winlink-style message (text body + RMS_Express_Form XML attachment)
+// from this activity log and hand it to winlink/mail.html via localStorage. No
+// network. XML schema matches a real received "ICS 214 v 17.10" sample.
+function _pad2(n){return String(n).padStart(2,'0');}
+function _wlCall(){return (localStorage.getItem('oasis_callsign')||'').toUpperCase();}
+function _214from(){return [gv('f-df'),gv('f-tf')].filter(Boolean).join(' ');}
+function _214to(){return [gv('f-dt'),gv('f-tt')].filter(Boolean).join(' ');}
+
+function ics214Body(){
+  const call=_wlCall();
+  const out=[
+    'ICS214','PAGE # 1','',
+    '1. Incident or Event Name:\t'+gv('f-inc'),
+    '2. Operational Period:',
+    ' From:\t'+_214from(),
+    ' To:\t'+_214to(),
+    '',
+    '3: Name:\t'+gv('f-name'),
+    '4: ICS Position:\t'+gv('f-pos'),
+    '5  Home Agency & Unit:\t'+gv('f-agency'),
+    '----------------------------------------------',
+    '6. RESOURCES ASSIGNED:','',
+    ['NAME','ICS POSITION','HOME AGENCY'].join('\t'),
+  ];
+  getRes().forEach(r=>out.push([r.name,r.pos,r.agency].join('\t')));
+  out.push('----------------------------------------------','7. ACTIVITY LOG OF NOTABLE EVENTS:','',
+    ['DATE & TIME','ACTIVITY'].join('\t'));
+  getAct().forEach(a=>out.push([a.dt,a.act].join('\t')));
+  out.push('---------------------------------------------',
+    '4. PREPARED BY:\t'+gv('f-pn'),
+    '---------------------------------------------','',
+    'Express Sending Station:\t'+call,
+    'Senders Template Version:\tICS 214 v 17.10',
+    '[No changes or editing of this message are allowed]');
+  return out.join('\n');
+}
+
+function ics214Xml(){
+  const n=new Date();
+  const sub=n.getFullYear()+_pad2(n.getMonth()+1)+_pad2(n.getDate())+_pad2(n.getHours())+_pad2(n.getMinutes())+_pad2(n.getSeconds());
+  const call=_wlCall();
+  const grid=localStorage.getItem('oasis_grid')||'';
+  const res=getRes(), act=getAct();
+  const resSlots=Math.max(8,res.length), actSlots=Math.max(24,act.length);
+  let resXml='';
+  for(let i=1;i<=resSlots;i++){
+    const r=res[i-1]||{};
+    resXml+=`    <name${i}>${x(r.name||'')}</name${i}>\n`+
+            `    <ics_position${i}>${x(r.pos||'')}</ics_position${i}>\n`+
+            `    <home_agency${i}>${x(r.agency||'')}</home_agency${i}>\n`;
+  }
+  let actXml='';
+  for(let i=1;i<=actSlots;i++){
+    const a=act[i-1]||{};
+    actXml+=`    <activitydatetime${i}>${x(a.dt||'')}</activitydatetime${i}>\n`+
+            `    <activities${i}>${x(a.act||'')}</activities${i}>\n`;
+  }
+  return `<?xml version="1.0"?>
+<RMS_Express_Form>
+  <form_parameters>
+    <xml_file_version>1.0</xml_file_version>
+    <rms_express_version>1.8.2.2</rms_express_version>
+    <submission_datetime>${sub}</submission_datetime>
+    <senders_callsign>${x(call)}</senders_callsign>
+    <grid_square>${x(grid)}</grid_square>
+    <display_form>ICS214_Viewer.html</display_form>
+    <reply_template></reply_template>
+  </form_parameters>
+  <variables>
+    <msgto></msgto>
+    <msgcc></msgcc>
+    <msgsender>${x(call)}</msgsender>
+    <name>${x(gv('f-name'))}</name>
+    <msgsubject></msgsubject>
+    <msgbody></msgbody>
+    <msgp2p>False</msgp2p>
+    <msgro>False</msgro>
+    <msgpostoffice>False</msgpostoffice>
+    <msgisreply>False</msgisreply>
+    <msgisforward>False</msgisforward>
+    <msgisacknowledgement>False</msgisacknowledgement>
+    <msgseqnum>0</msgseqnum>
+    <parseme2></parseme2>
+    <incident_name>${x(gv('f-inc'))}</incident_name>
+    <page>1</page>
+    <formtitle></formtitle>
+    <datetimefrom>${x(_214from())}</datetimefrom>
+    <datetimeto>${x(_214to())}</datetimeto>
+    <ics_position>${x(gv('f-pos'))}</ics_position>
+    <parseme></parseme>
+    <home_agency>${x(gv('f-agency'))}</home_agency>
+${resXml}${actXml}    <preparedname>${x(gv('f-pn'))}</preparedname>
+    <submit>Submit</submit>
+    <testcall>${x(call)}</testcall>
+    <templateversion>ICS 214 v 17.10</templateversion>
+  </variables>
+</RMS_Express_Form>`;
+}
+
+function sendWinlink(){
+  const res=getRes().filter(r=>r.name||r.pos||r.agency);
+  const act=getAct().filter(a=>a.dt||a.act);
+  if(!res.length && !act.length && !gv('f-inc').trim()){
+    showToast('Add an incident name, resource, or activity first',3000); return;
+  }
+  const call=_wlCall();
+  const subj='ICS 214 - '+(gv('f-inc')||'Activity Log')+
+             (gv('f-name')?' - '+gv('f-name'):'')+
+             (_214from()?' - '+_214from():'');
+  const payload={
+    to:'', subject:subj, body:ics214Body(),
+    note:'ICS-214 log — enter the recipient callsign, then Queue.',
+    attachment:{name:'RMS_Express_Form_ICS214_Viewer.xml',
+                type:'application/xml',content:ics214Xml()},
+  };
+  try{ localStorage.setItem('oasis_winlink_compose',JSON.stringify(payload)); }
+  catch(e){ showToast('Could not hand off to Winlink (storage full?)',3000); return; }
+  window.location.href='../../winlink/mail.html';   // static/ics-214/ → repo root → winlink/
 }
 
 function showToast(msg,ms=2800){

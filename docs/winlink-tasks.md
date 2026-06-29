@@ -87,6 +87,26 @@ incrementally — agents may update checkboxes and sections as work lands.
   which opens Compose pre-filled + attached. All offline (shared localStorage). Verified
   end-to-end against live Pat: posts (HTTP 201), attaches, retrievable. Sender call/grid from
   `oasis_callsign`/`oasis_grid`. Receiver-side interactive rendering still to confirm (see Planned).
+- [x] **Form → Winlink: ICS-205 / 214 / 309.** Same mechanism as ICS-213: each form has a
+  `→ Send via Winlink` button that builds a Winlink-style text body + `RMS_Express_Form` XML
+  and hands `{to,subject,body,attachment(s)}` to `mail.html` via `localStorage`. Each XML
+  generator was built field-for-field against a REAL received sample (forwarded by K7ISQ):
+  `Form 309 v13.12` (`Form-309_Viewer.html`), `ICS205- v 19.5` (`ICS205 Radio Plan_Viewer.html`),
+  `ICS 214 v 17.10` (`ICS214_Viewer.html`). Verified offline: each generator reproduces 100%
+  of its sample's variable tags and emits well-formed XML. Notable mappings: **309** Winlink
+  rows are Time/From/To/Subject (no Msg #), so OASIS Message→Subject and From/To Msg # are
+  folded into the call sign (e.g. "KI7RMO #12"); **205** the combined "freq N/W" cell is split
+  into Winlink's separate freq + N/W columns, op-period maps to Winlink's quirky
+  datefrom/timefrom/dateto/timeto, and the channel-data CSV is attached alongside the XML;
+  **214** op-period combines date+time. Receiver-side interactive rendering still to confirm
+  (see Planned) — `static/ics-{205,214,309}/*.html` —
+  files: `static/ics-309/ics-309.html`, `static/ics-205/ics-205.html`, `static/ics-214/ics-214.html`
+- [x] **mail.html: multi-attachment handoff.** Compose handoff now accepts an `attachments:[…]`
+  array (back-compat with single `attachment`); each is appended as a Pat multipart `files`
+  field. Used by ICS-205 (XML + channel CSV) — `winlink/mail.html`
+- [x] **Bug fix: ICS-309 dead script.** `ics-309.html` was missing its `function showToast(…)`
+  declaration line — a SyntaxError that broke the *entire* `<script>` (Save PDF, CSV, autosave,
+  Add Entry all dead). Restored the declaration — `static/ics-309/ics-309.html`
 - [x] Tests: `server/tests/test_winlink_proxy.py`, `server/tests/test_port_resolution.py`
   (plain unittest, run via `.venv/bin/python`)
 
@@ -94,10 +114,8 @@ incrementally — agents may update checkboxes and sections as work lands.
 
 ## Planned
 
-- [ ] **Form → Winlink: ICS-205 / 214 / 309.** Same mechanism as ICS-213 (below), but each
-  needs its own text-body + `RMS_Express_Form` XML generator built against a REAL sample
-  message (user is sending themselves one of each). Do not hand-roll their XML blind.
-  Compose-side (mail.html handoff + multipart attach) is already done and reusable.
+- [ ] **Verify ICS-205/214/309 forms render on the receiving end** (same template caveat as
+  ICS-213 below) — send one of each to self, open in Winlink Express, adjust XML if needed.
 - [ ] **Verify ICS-213 form renders on the receiving end.** The compose chain is proven
   end-to-end against Pat (attaches + retrievable), but whether the XML renders as an
   *interactive* form in the recipient's Winlink Express depends on their Standard Templates
@@ -115,13 +133,14 @@ incrementally — agents may update checkboxes and sections as work lands.
 
 ## Notes / open questions
 
-- **Form → Winlink (in progress).** Each ICS form (205/213/214/309) gets a "Send via Winlink"
-  button → hands `{to, subject, body, attachment-xml}` to `mail.html` via localStorage
-  (`oasis_winlink_compose`), which opens Compose pre-filled. Decision: **text body + real
-  `RMS_Express_Form` XML attachment** (full fidelity), all four forms. Build order: ICS-213
-  first (we have a real XML reference from KI7RMO's inbox message); 205/214/309 need real
-  sample messages (user is sending themselves one of each) before their XML can be generated
-  correctly — do NOT hand-roll those blind.
+- **Form → Winlink (DONE for all four).** Each ICS form (205/213/214/309) has a "Send via
+  Winlink" button → hands `{to, subject, body, attachment(s)}` to `mail.html` via localStorage
+  (`oasis_winlink_compose`), which opens Compose pre-filled. Decision realized: **text body +
+  real `RMS_Express_Form` XML attachment** (full fidelity). Each XML was built against a real
+  received sample (213 from KI7RMO; 205/214/309 forwarded by K7ISQ, MIDs in the inbox
+  2026-06-29) — none hand-rolled blind. Samples cached at `/tmp/winlink-samples/` during the
+  build (not committed). 205 also attaches Winlink's channel-data CSV via the new
+  multi-attachment handoff.
 - **Spike (2026-06-28) — Pat compose API:** `POST /api/mailbox/out` requires a `date`
   (RFC3339, no fractional seconds; else `400 Missing date value`). Attachments use multipart
   field name **`files`** (multiple OK) — verified an XML attached. `in_reply_to` field exists

@@ -57,6 +57,7 @@ td input:hover{border-color:var(--border);}
 
   <div class="actions">
     <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 309 PDF and download a timestamped copy">⬇ Save PDF</button>
+    <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this log as a message (text + RMS form attachment) ready to queue">→ Send via Winlink</button>
     <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
     <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
     <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 309 CSV file to restore form data">Import CSV</button>
@@ -430,6 +431,131 @@ function toggleInst(){
   document.getElementById('i-arrow').textContent=open?'▲':'▼';
 }
 
+// ── Send via Winlink ────────────────────────────────────────────────────────
+// Build a Winlink-style message (text body + RMS_Express_Form XML attachment)
+// from this log and hand it to winlink/mail.html via localStorage. No network.
+// XML schema matches a real received "Form 309 v13.12" sample. Winlink Form 309
+// rows are Time/From/To/Subject (no Msg #), so the OASIS From/To message numbers
+// are folded into the call sign (e.g. "KI7RMO #12"); the Message column → Subject.
+function _pad2(n){return String(n).padStart(2,'0');}
+function _wlCall(){return (gv('f-op-call')||localStorage.getItem('oasis_callsign')||'').toUpperCase();}
+function _309opPeriod(){
+  const from=[gv('f-df'),gv('f-tf')].filter(Boolean).join(' ');
+  const to=[gv('f-dt'),gv('f-tt')].filter(Boolean).join(' ');
+  return [from,to].filter(Boolean).join(' – ');
+}
+function _309from(r){return (r.fcs||'')+(r.fmn?' #'+r.fmn:'');}
+function _309to(r){return (r.tcs||'')+(r.tmn?' #'+r.tmn:'');}
+
+function form309Body(){
+  const call=_wlCall();
+  const out=[
+    ' - Form 309','',
+    'PAGE #: 1','',
+    'Task#: ',
+    'Task Name: '+gv('f-net'),'',
+    'Date/Time Prepared: '+gv('f-prep-dt'),
+    'Operational Period #: '+_309opPeriod(),'',
+    'Radio Operator Name: '+gv('f-op-name'),
+    'Station ID: '+call,
+    'Express Sender: '+call,'',
+    '         LOG',
+    '----------------------------',
+  ];
+  getRows().forEach(r=>{
+    out.push('TIME: '+(r.time||''));
+    out.push('STATION ID:');
+    out.push('FROM: '+_309from(r));
+    out.push('TO: '+_309to(r));
+    out.push('SUBJECT:');
+    out.push(' '+(r.msg||''));
+    out.push('');
+  });
+  out.push('------------------');
+  out.push('Express Sending Station: '+call);
+  out.push('Senders Template Version: Form 309 v13.12');
+  out.push('[No changes or editing of this message are allowed]');
+  return out.join('\n');
+}
+
+function form309Xml(){
+  const n=new Date();
+  const sub=n.getFullYear()+_pad2(n.getMonth()+1)+_pad2(n.getDate())+_pad2(n.getHours())+_pad2(n.getMinutes())+_pad2(n.getSeconds());
+  const call=_wlCall();
+  const grid=localStorage.getItem('oasis_grid')||'';
+  const rows=getRows();
+  const slots=Math.max(30,rows.length);
+  let rowXml='';
+  for(let i=1;i<=slots;i++){
+    const r=rows[i-1]||{};
+    rowXml+=`    <time${i}>${x(r.time||'')}</time${i}>\n`+
+            `    <from${i}>${x(_309from(r))}</from${i}>\n`+
+            `    <to${i}>${x(_309to(r))}</to${i}>\n`+
+            `    <sub${i}>${x(r.msg||'')}</sub${i}>\n`;
+  }
+  return `<?xml version="1.0"?>
+<RMS_Express_Form>
+  <form_parameters>
+    <xml_file_version>1.0</xml_file_version>
+    <rms_express_version>1.8.2.2</rms_express_version>
+    <submission_datetime>${sub}</submission_datetime>
+    <senders_callsign>${x(call)}</senders_callsign>
+    <grid_square>${x(grid)}</grid_square>
+    <display_form>Form-309_Viewer.html</display_form>
+    <reply_template></reply_template>
+  </form_parameters>
+  <variables>
+    <msgto></msgto>
+    <msgcc></msgcc>
+    <msgsender>${x(call)}</msgsender>
+    <name>${x(gv('f-op-name'))}</name>
+    <msgsubject></msgsubject>
+    <msgbody></msgbody>
+    <msgp2p>False</msgp2p>
+    <msgro>False</msgro>
+    <msgpostoffice>False</msgpostoffice>
+    <msgisreply>False</msgisreply>
+    <msgisforward>False</msgisforward>
+    <msgisacknowledgement>False</msgisacknowledgement>
+    <msgseqnum>0</msgseqnum>
+    <parseme2></parseme2>
+    <task></task>
+    <activitydatetime1>${x(gv('f-prep-dt'))}</activitydatetime1>
+    <opper>${x(_309opPeriod())}</opper>
+    <title>${x(gv('f-inc'))}</title>
+    <taskname>${x(gv('f-net'))}</taskname>
+    <opname>${x(gv('f-op-name'))}</opname>
+    <operid>${x(call)}</operid>
+    <page>1</page>
+    <parseme></parseme>
+${rowXml}    <submit>Submit</submit>
+    <testcall>${x(call)}</testcall>
+    <templateversion>Form 309 v13.12</templateversion>
+  </variables>
+</RMS_Express_Form>`;
+}
+
+function sendWinlink(){
+  const rows=getRows().filter(r=>r.time||r.msg||r.fcs||r.tcs);
+  if(!rows.length && !gv('f-net').trim()){
+    showToast('Add at least one log entry first','err',2800); return;
+  }
+  const call=_wlCall();
+  const subj='Form 309 - '+(gv('f-net')||'Communications Log')+
+             (gv('f-op-name')?' - '+gv('f-op-name'):'')+
+             (call?' - '+call:'')+
+             (gv('f-prep-dt')?' - '+gv('f-prep-dt'):'');
+  const payload={
+    to:'', subject:subj, body:form309Body(),
+    note:'ICS-309 log — enter the recipient callsign, then Queue.',
+    attachment:{name:'RMS_Express_Form_Form-309_Viewer.xml',
+                type:'application/xml',content:form309Xml()},
+  };
+  try{ localStorage.setItem('oasis_winlink_compose',JSON.stringify(payload)); }
+  catch(e){ showToast('Could not hand off to Winlink (storage full?)','err',2800); return; }
+  window.location.href='../../winlink/mail.html';   // static/ics-309/ → repo root → winlink/
+}
+
 // ─── PDF Save ────────────────────────────────────────────────────
 async function savePDF(){
   if(typeof window.PDFLib==='undefined'){
@@ -532,6 +658,8 @@ window.addEventListener('afterprint', () => {
   document.getElementById('log-body').innerHTML = _printNodes;
   _printNodes = null;
 });
+
+function showToast(msg,type,duration=3500){
   let t=document.getElementById('toast');
   if(!t){t=document.createElement('div');t.id='toast';t.className='toast';document.body.appendChild(t);}
   t.textContent=msg;

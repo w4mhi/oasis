@@ -116,6 +116,7 @@
   .attach-dl { margin-left:auto; font-size:.95rem; }
 
   /* Compose */
+  .compose { position:relative; padding-top:1.1rem; }   /* room for the close ✕ */
   .compose .field { margin-bottom:.6rem; }
   .compose textarea { min-height:200px; }
 
@@ -157,6 +158,11 @@
   .banner.hidden { display:none; }
 
   .pane-actions { display:flex; gap:.5rem; margin-bottom:.6rem; flex-wrap:wrap; }
+  /* Queued state: grey, non-interactive — overrides .sbtn.primary hover from common.css */
+  .sbtn:disabled, .sbtn:disabled:hover {
+    opacity:.5; cursor:default; color:var(--text-dim);
+    border-color:var(--border); background:transparent;
+  }
 </style>
 </head>
 <body>
@@ -302,7 +308,7 @@ const BOXES = [
 let currentBox = "in";
 let _currentMsgs = [];   // messages for the loaded box (unfiltered)
 let _openMsg = null;     // the message object shown in the reader (for reply/fwd)
-let _composeAttachment = null;   // {name,type,content} to attach on the next send (e.g. an ICS form XML)
+let _composeAttachments = [];   // [{name,type,content}] to attach on the next send (e.g. ICS form XML + CSV)
 // Body search: the mailbox LIST omits bodies, so we background-prefetch each
 // message's body into this IN-MEMORY cache (never localStorage — bodies are the
 // sensitive part). _prefetchGen is bumped on every box load to abandon a stale,
@@ -655,6 +661,16 @@ function clearReader() {
   document.getElementById("paneLabel").textContent = "Message";
 }
 
+// Close the compose pane back to the placeholder. The autosaved draft (if any) is
+// kept so Compose can restore it; anything already queued to the Outbox is untouched.
+function closeCompose() {
+  _composeAttachments = [];
+  const pane = document.getElementById("pane");
+  pane.className = "";
+  pane.innerHTML = `<div class="pane-empty">Select a message, or press Compose.</div>`;
+  document.getElementById("paneLabel").textContent = "Message";
+}
+
 async function deleteMessage(box, mid) {
   if (!confirm("Delete this message?")) return;
   try {
@@ -702,14 +718,17 @@ function discardDraft() { clearDraft(); showCompose(); }
 // ── Compose ───────────────────────────────────────────────────────────────
 function showCompose(prefill) {
   prefill = prefill || {};
-  _composeAttachment = prefill.attachment || null;   // e.g. an ICS form XML handed off
-  const isReplyFwd = !!(prefill.to || prefill.cc || prefill.subject || prefill.body || _composeAttachment);
+  // Accept either a single {attachment} or an {attachments:[…]} array handed off (e.g. ICS form XML + CSV).
+  _composeAttachments = prefill.attachments || (prefill.attachment ? [prefill.attachment] : []);
+  const isReplyFwd = !!(prefill.to || prefill.cc || prefill.subject || prefill.body || _composeAttachments.length);
   const draft = isReplyFwd ? null : loadDraft();   // reply/forward/form ignores the draft
   const init = isReplyFwd ? prefill : (draft || {});
   document.getElementById("paneLabel").textContent = "Compose";
   const pane = document.getElementById("pane");
   pane.className = "compose";
   pane.innerHTML =
+    `<button class="pane-close" onclick="closeCompose()" aria-label="Close compose"` +
+    ` title="Close compose (your draft is kept)">✕</button>` +
     addrDatalist() +
     `<div class="field"><label>To (callsign / address)</label>` +
       `<input type="text" id="cTo" list="addrHints" placeholder="W4ABC" autocomplete="off"></div>` +
@@ -719,13 +738,11 @@ function showCompose(prefill) {
       `<input type="text" id="cSubject" autocomplete="off"></div>` +
     `<div class="field"><label>Message</label>` +
       `<textarea id="cBody"></textarea></div>` +
-    (_composeAttachment ?
-      `<div class="attach"><span class="attach-label">📎 Attachment</span> ${esc(_composeAttachment.name)}` +
-      ` <button class="sbtn" onclick="dropComposeAttachment()" title="Remove attachment">✕</button></div>` : "") +
+    `<div id="cAttachments">` + _attachRowsHtml() + `</div>` +
     ((prefill.note || draft) ?
       `<div class="conn-state">${esc(prefill.note || "↩ Draft restored — autosaving as you type.")}</div>` : "") +
     `<div class="pane-actions">` +
-      `<button class="sbtn primary" onclick="sendMessage()">📤 Queue message</button>` +
+      `<button class="sbtn primary" id="cQueueBtn" onclick="sendMessage()">Queue message</button>` +
       (draft ? `<button class="sbtn" onclick="discardDraft()">Discard draft</button>` : "") +
       `<span class="conn-state">Queues to Outbox — Connect to transmit.</span>` +
     `</div>`;
@@ -733,8 +750,9 @@ function showCompose(prefill) {
   document.getElementById("cCc").value = init.cc || "";
   document.getElementById("cSubject").value = init.subject || "";
   document.getElementById("cBody").value = init.body || "";
+  // Editing any field after a queue re-enables the button (the queued copy is unchanged).
   ["cTo", "cCc", "cSubject", "cBody"].forEach(id =>
-    document.getElementById(id).addEventListener("input", saveDraft));
+    document.getElementById(id).addEventListener("input", () => { saveDraft(); setQueueBtn(false); }));
   // Focus the first empty field so a forward lands on To, a reply on the body.
   (init.to ? document.getElementById("cBody") : document.getElementById("cTo")).focus();
 }
@@ -778,10 +796,27 @@ function replyTo(mode) {
   showCompose({ to, cc, subject, body: quoted, note });
 }
 
-function dropComposeAttachment() {
-  _composeAttachment = null;
-  const el = document.querySelector(".compose .attach");
-  if (el) el.remove();
+function _attachRowsHtml() {
+  return _composeAttachments.map((a, i) =>
+    `<div class="attach" data-att="${i}"><span class="attach-label">📎 Attachment</span> ${esc(a.name)}` +
+    ` <button class="sbtn" onclick="dropComposeAttachment(${i})" title="Remove attachment">✕</button></div>`).join("");
+}
+
+function dropComposeAttachment(i) {
+  if (i === undefined) _composeAttachments = [];
+  else _composeAttachments.splice(i, 1);
+  const c = document.getElementById("cAttachments");
+  if (c) c.innerHTML = _attachRowsHtml();   // re-render so indices stay correct
+  setQueueBtn(false);                       // changing attachments is an edit — allow re-queue
+}
+
+// Reflect queue state on the Compose button: greyed "✓ Queued" after a successful
+// queue, back to "Queue message" once the user edits the message again.
+function setQueueBtn(queued) {
+  const b = document.getElementById("cQueueBtn");
+  if (!b) return;
+  b.disabled = queued;
+  b.textContent = queued ? "✓ Queued to Outbox" : "Queue message";
 }
 
 async function sendMessage() {
@@ -793,16 +828,16 @@ async function sendMessage() {
   // Pat requires an RFC3339 date (no fractional seconds) — else 400 "Missing date value".
   const date = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   try {
-    if (_composeAttachment) {
-      // Multipart so we can attach the file (Pat's file field is "files").
+    if (_composeAttachments.length) {
+      // Multipart so we can attach files (Pat's file field is "files"; repeat it for multiple).
       const fd = new FormData();
       fd.set("to", to);
       if (cc) fd.set("cc", cc);
       fd.set("subject", subject);
       fd.set("body", body);
       fd.set("date", date);
-      const a = _composeAttachment;
-      fd.append("files", new Blob([a.content], { type: a.type || "application/octet-stream" }), a.name);
+      for (const a of _composeAttachments)
+        fd.append("files", new Blob([a.content], { type: a.type || "application/octet-stream" }), a.name);
       await api("/mailbox/out", { method: "POST", body: fd });   // browser sets multipart Content-Type
     } else {
       const form = new URLSearchParams();
@@ -817,12 +852,15 @@ async function sendMessage() {
         body: form.toString(),
       });
     }
-    // Remember recipients for autocomplete; drop the saved draft + attachment.
+    // Remember recipients for autocomplete; drop the saved draft.
     [...to.split(/[;, ]+/), ...cc.split(/[;, ]+/)].forEach(addKnownAddr);
-    _composeAttachment = null;
     clearDraft();
+    // Stay on the message; signal "queued" by greying the button. Editing any field
+    // (or changing attachments) re-enables it so an amended copy can be re-queued —
+    // we keep _composeAttachments so the re-queue still carries them.
+    setQueueBtn(true);
+    refreshCounts();   // bump the Outbox badge without leaving the message
     toast("Queued to Outbox — Connect to send", "ok");
-    selectBox("out");
   } catch (e) { toast(e.message, "err"); }
 }
 
@@ -1133,7 +1171,8 @@ function checkPendingCompose() {
   try { localStorage.removeItem("oasis_winlink_compose"); } catch (_) {}
   showCompose({
     to: p.to || "", cc: p.cc || "", subject: p.subject || "",
-    body: p.body || "", note: p.note || "", attachment: p.attachment || null,
+    body: p.body || "", note: p.note || "",
+    attachment: p.attachment || null, attachments: p.attachments || null,
   });
 }
 
