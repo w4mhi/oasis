@@ -38,6 +38,11 @@ class TestInventory(unittest.TestCase):
         self.assertIn("/etc/sudoers.d/oasis-service-controls", remove_oasis.FILES)
         self.assertIn("/opt/rgb-cooling-hat", remove_oasis.DIRS)
 
+    def test_installed_services_manifest_in_teardown(self):
+        # The dashboard feature manifest must be removed for a clean factory reset.
+        names = [os.path.basename(p) for p in remove_oasis.SUITE_FILES]
+        self.assertIn("installed-services.json", names)
+
 
 class TestStripConfig(unittest.TestCase):
     SAMPLE = (
@@ -112,6 +117,35 @@ class TestDryRunIsSafe(unittest.TestCase):
         flat = " ".join(" ".join(str(x) for x in c) for c in calls)
         for bad in ("sudo", " rm ", "disable", "stop", "tee"):
             self.assertNotIn(bad, flat)
+
+    def test_dry_run_does_not_delete_suite_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            manifest = os.path.join(d, "installed-services.json")
+            with open(manifest, "w") as fh:
+                fh.write("{}")
+            orig = remove_oasis.SUITE_FILES
+            remove_oasis.SUITE_FILES = [manifest]
+            try:
+                remove_oasis.remove_files(apply=False)
+            finally:
+                remove_oasis.SUITE_FILES = orig
+            self.assertTrue(os.path.exists(manifest))  # dry-run must not delete it
+
+    def test_apply_deletes_suite_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            manifest = os.path.join(d, "installed-services.json")
+            with open(manifest, "w") as fh:
+                fh.write("{}")
+            orig_suite, orig_files, orig_dirs = (
+                remove_oasis.SUITE_FILES, remove_oasis.FILES, remove_oasis.DIRS)
+            remove_oasis.SUITE_FILES = [manifest]
+            remove_oasis.FILES, remove_oasis.DIRS = [], []
+            try:
+                remove_oasis.remove_files(apply=True)
+            finally:
+                (remove_oasis.SUITE_FILES, remove_oasis.FILES,
+                 remove_oasis.DIRS) = orig_suite, orig_files, orig_dirs
+            self.assertFalse(os.path.exists(manifest))  # --apply removes it
 
 
 if __name__ == "__main__":

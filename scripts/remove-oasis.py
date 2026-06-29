@@ -64,6 +64,19 @@ def repo_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+# Per-machine runtime state at the suite root (user-owned — removed without sudo).
+# installed-services.json is the feature manifest setup-oasis.py writes; the
+# dashboard reads it via /api/installed-services to hide cards for features that
+# were never installed. Leaving it behind makes the dashboard keep showing
+# torn-down services as if installed; deleting it returns the dashboard to its
+# default "show everything" state — i.e. factory-fresh. aprs-warnings.json is
+# operator-placed map warnings, also runtime state.
+SUITE_FILES = [
+    os.path.join(repo_root(), "installed-services.json"),
+    os.path.join(repo_root(), "aprs-warnings.json"),
+]
+
+
 # Large downloaded data — NEVER auto-deleted; probed for existence and sized.
 DATA_PATHS = [
     "/var/lib/graywolf",
@@ -183,7 +196,7 @@ def report_status():
         state, has_unit = _svc_state(svc)
         _info(f"{svc:<18} {state:<10} unit:{'present' if has_unit else 'absent'}")
     _step(2, "Files / dirs")
-    for p in FILES + DIRS:
+    for p in FILES + DIRS + SUITE_FILES:
         _info(f"{'present' if os.path.exists(p) else 'absent':<8} {p}")
     _step(3, "config.txt")
     cfg = config_path()
@@ -236,6 +249,18 @@ def remove_files(apply):
         else:
             _run(["sudo", "rm", "-rf", d], check=False)
             _ok(f"removed {d}/")
+    for p in SUITE_FILES:
+        if not os.path.exists(p):
+            _info(f"absent: {p}")
+            continue
+        if not apply:
+            _info(f"would remove {p} (dashboard reverts to default)")
+        else:
+            try:
+                os.remove(p)
+                _ok(f"removed {p}")
+            except OSError as e:
+                _warn(f"could not remove {p}: {e}")
 
 
 def remove_config(apply):
