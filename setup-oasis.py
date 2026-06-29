@@ -128,6 +128,10 @@ FEATURES = [
             "Configure the MastersCommunications DRA-Pi-Zero (WM8731 I²S codec) for GrayWolf — edits /boot/firmware/config.txt. REQUIRES A REBOOT.",
             "Audio", default=False, reboot=True,
             recommend="Reboot, then re-run this setup to apply the DRA-Pi ALSA mixer."),
+    Feature("dra-rx-led", "DRA-Pi green RX LED", "enable-dra-rx-led.py",
+            "Pulse the DRA-Pi-Zero's green RX LED (GPIO 16) on GrayWolf receive activity (polls the history DB). The red TX LED (GPIO 12) is keyed by GrayWolf itself — nothing to install.",
+            "Audio", default=False, needs=["dra-pi", "graywolf"],
+            recommend="Green RX LED follows GrayWolf RX. Verify wiring: python3 scripts/enable-dra-rx-led.py --self-test"),
 
     # ── GPS / Time: GPS-disciplined clock (gpsd + chrony) ──────────────────────
     Feature("gps", "GPS time (gpsd + chrony)", "install-gps.py",
@@ -415,6 +419,31 @@ def interactive_select():
 
 
 # ── Run ─────────────────────────────────────────────────────────────────────────
+def ensure_scripts_executable():
+    """Add the executable bit to every scripts/*.py (and this orchestrator).
+
+    A fresh clone/zip can land some scripts without +x, which breaks running
+    them directly (./scripts/foo.py), doc steps, and systemd ExecStarts that
+    call the file by path. Equivalent to `chmod +x scripts/*.py`; idempotent.
+    """
+    import glob
+    import stat
+    targets = glob.glob(os.path.join(SCRIPTS_DIR, "*.py"))
+    targets.append(os.path.abspath(__file__))
+    fixed = 0
+    for p in targets:
+        try:
+            mode = os.stat(p).st_mode
+            want = mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+            if want != mode:
+                os.chmod(p, want)
+                fixed += 1
+        except OSError:
+            pass   # missing/permission — not fatal, scripts also run via python3
+    if fixed:
+        _ok(f"Made {fixed} script(s) executable (chmod +x scripts/*.py)")
+
+
 def run_feature(f):
     # Record-only features have no script — they just flip a dashboard card/link
     # on (recorded in the manifest). Nothing to execute.
@@ -703,6 +732,9 @@ def main():
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         _fail("Run as your normal user, NOT with sudo — I'll request sudo when needed.\n"
               "       e.g.  python3 setup-oasis.py")
+
+    # Make sure every helper script is executable (a fresh clone/zip can drop +x).
+    ensure_scripts_executable()
 
     # Seed the dashboard pill identity (callsign + grid). Skips silently if
     # already set and nothing new is given.

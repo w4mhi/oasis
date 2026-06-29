@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 *.pyo
 .claude/*
+specs/
 
 # Per-machine runtime state — written by setup-oasis.py (which features are
 # installed); the dashboard reads it to hide not-installed service cards.

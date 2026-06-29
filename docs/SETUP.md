@@ -72,10 +72,22 @@ Now continue to [Guided setup](#guided-setup-menu).
 - [Kiwix / Wikipedia](#kiwix--wikipedia)
 - [RTL-SDR](#rtl-sdr)
 - [OpenWebRX (SIGINT)](#openwebrx-sigint)
+- [GPS time sync (gpsd + chrony)](#gps-time-sync-gpsd--chrony)
+- [Hardware RTC (Witty Pi 3)](#hardware-rtc-witty-pi-3)
 - [webssh / Browser Terminal](#webssh--browser-terminal)
+- [Service controls (dashboard power buttons)](#service-controls-dashboard-power-buttons)
 - [ICS Forms](#ics-forms)
+- [Tools & calculators](#tools--calculators)
+- [Reference library](#reference-library)
+- [Repeater Book](#repeater-book)
+- [File browser](#file-browser)
+- [CM4Stack panel display](#cm4stack-panel-display)
+- [RGB Cooling HAT](#rgb-cooling-hat)
+- [Small-screen / kiosk display](#small-screen--kiosk-display)
 - [USB / Portable bundle](#usb--portable-bundle)
 - [Keeping data fresh](#keeping-data-fresh)
+- [Factory reset / uninstall](#factory-reset--uninstall)
+- [Known Limitations](#known-limitations)
 
 ---
 
@@ -854,6 +866,73 @@ timing is trustworthy.
 
 ---
 
+## GPS time sync (gpsd + chrony)
+
+A field station has no internet to pull NTP from, so the clock drifts — and an
+inaccurate clock breaks FT8/FT4/WSPR/SSTV decode windows and timestamps. A cheap
+USB GPS receiver fixes this: `gpsd` reads the GPS, `chrony` steers the system
+clock from it, and the OASIS header **GPS card** shows the result (fix mode,
+satellites, HDOP, altitude, lat/lon, and chrony lock status).
+
+```bash
+python3 scripts/install-gps.py                 # autodetect the GPS serial device
+python3 scripts/install-gps.py --device /dev/ttyACM0
+python3 scripts/install-gps.py --check         # report gpsd/chrony status, change nothing
+python3 scripts/install-gps.py --help
+```
+
+The script installs `gpsd` and `chrony`, points `gpsd` at the receiver (with
+`GPSD_OPTIONS=-n` so it polls without a client connected), and adds the chrony
+**SHM refclock** that actually disciplines the clock from GPS. The `apt` step
+needs internet once; everything after runs offline.
+
+**Fast cold fix (u-blox only).** A u-blox receiver can load *AssistNow Offline*
+almanac data so it locks in seconds rather than minutes after a cold start:
+
+```bash
+OASIS_UBLOX_TOKEN=<your-token> python3 scripts/install-gps.py --assist-now
+```
+
+This needs internet and a free u-blox/Thingstream token. Run the normal setup
+first.
+
+> 💡 **Pair GPS with a hardware RTC** (next section) so the clock survives a full
+> power-loss with no GPS lock yet — chrony then rides the RTC until GPS reacquires.
+
+---
+
+## Hardware RTC (Witty Pi 3)
+
+Without GPS lock or internet, a Pi has **no idea what time it is** after a reboot
+(it has no battery-backed clock). A hardware real-time clock keeps accurate time
+across reboots and total power loss — the steady baseline that GPS/chrony then
+fine-tune. OASIS supports the **UUGear Witty Pi 3** (DS3231SN RTC on I²C `0x68`):
+
+```bash
+python3 scripts/enable-rtc.py                  # configure the DS3231 RTC overlay
+python3 scripts/enable-rtc.py --check          # report status, change nothing
+```
+
+The script is idempotent and **requires a reboot**. It enables I²C, adds the
+`i2c-rtc,ds3231` overlay (so `/dev/rtc0` appears at boot), removes
+`fake-hwclock` (which would otherwise overwrite the real RTC), and neutralises
+the `--systz` block in `/lib/udev/hwclock-set` (the classic DS3231 boot-reset
+fix).
+
+**After the reboot**, once the system clock is correct (from GPS or a one-time
+NTP sync), write it to the RTC once:
+
+```bash
+sudo hwclock -w        # set the RTC from the system clock
+sudo hwclock -r        # read it back to confirm
+```
+
+> ℹ️ Any DS3231-based RTC HAT works with the same overlay; the script is tuned
+> for the Witty Pi 3 but the I²C address and overlay are standard. Full hardware
+> writeup, troubleshooting, and revert steps: [`rtc-witty-pi.md`](rtc-witty-pi.md).
+
+---
+
 ## webssh / Browser Terminal
 
 Installs **[ttyd](https://github.com/tsl0922/ttyd)**, a browser-based SSH/terminal on port 7681. Any browser on the local network can open a login shell on the Pi — no SSH client needed. Surfaced as the **Web SSH** card/link in the dashboard and home page.
@@ -892,6 +971,36 @@ systemctl cat webssh | grep ExecStart   # confirm it runs the helper, not bare `
 
 ---
 
+## Service controls (dashboard power buttons)
+
+By default the dashboard shows each companion service's status but can't change
+it — restarting GrayWolf or switching to OpenWebRX means SSHing in. This optional
+step adds **START / STOP** buttons to the service cards so you never have to.
+
+```bash
+python3 scripts/enable-service-controls.py            # grant for the current user
+python3 scripts/enable-service-controls.py --user pi  # grant for a specific user
+python3 scripts/enable-service-controls.py --check    # report status
+python3 scripts/enable-service-controls.py --disable  # remove the permission
+```
+
+It installs a **narrow, validated sudoers rule**
+(`/etc/sudoers.d/oasis-service-controls`) that allows *only*
+`systemctl start|stop|restart|enable|disable` for the known OASIS units
+(GrayWolf, Winlink, Kiwix, webssh, OpenWebRX, the APRS SDR feed) plus one fixed
+read-only `tcpdump` for the APRS feed flow meter — and nothing else. The web
+endpoints then run `sudo -n …`, so the OS authorizes each exact command and **no
+password ever touches the web layer**.
+
+> 🔒 **The OASIS web server's own unit is deliberately excluded** — stopping it
+> would kill the dashboard with no way to bring it back from the browser. The
+> rule is opt-in and fully reversible with `--disable`.
+
+> ℹ️ OpenWebRX's dashboard card needs this rule, because Start/Stop there also
+> flips the APRS stack on/off (the RTL-SDR can only feed one consumer at a time).
+
+---
+
 ## ICS Forms
 
 All four forms support: PDF export (fills official FEMA AcroForm templates), CSV import/export, print-optimized layout, and auto-save to localStorage. No server required — open the HTML file directly in any browser.
@@ -913,6 +1022,149 @@ curl -L -o static/dependencies/pdf-lib.min.js https://unpkg.com/pdf-lib@1.17.1/d
 
 1. Replace the `.pdf` file in the form folder.
 2. Run `convert-template.sh` (Linux/macOS) or `convert-template.bat` (Windows) to regenerate the base64 `*-template.js` file.
+
+---
+
+## Tools & calculators
+
+A set of self-contained calculators and loggers. They are **static HTML** — no
+server, no internet, no install — so they work from the dashboard, opened
+directly, or from the USB bundle. State is saved to `localStorage` per browser.
+
+| Tool | Path | What it does |
+|---|---|---|
+| **Antenna Calculator** | `static/antenna-calc.html` | Dipole / vertical / loop lengths and feedline cuts from a target frequency |
+| **Power & Battery Budget** | `static/power-calc.html` | Estimates runtime from battery capacity and a per-device load list; exports a printable report |
+| **Grid / Distance / Bearing** | `tools/grid-calc.html` | Maidenhead grid ↔ lat/lon, plus great-circle distance and heading between two points |
+| **Gray Line** | `static/grayline.html` | Gray-line terminator for HF DX timing |
+| **Solar / Propagation** | `static/solar.html` | Band-condition summary and solar indices reference |
+| **Net Check-in Log** | `tools/net-log.html` | Logs check-ins during a net (callsign, name, location, traffic) and exports CSV |
+
+> 💡 **Units toggle.** The dashboard's Imperial/Metric pill switches displayed
+> temperature, altitude, and speed everywhere at once; the preference is stored
+> per browser.
+
+---
+
+## Reference library
+
+The offline operator's bookshelf — all static HTML, served by OASIS or browsable
+from the bundle. Nothing here needs the network.
+
+| Section | Path | Contents |
+|---|---|---|
+| **U.S. band plan** | `static/band-plan/index.html` | Per-band privilege/segment charts, HF → 23 cm, plus an all-bands view |
+| **Quick reference** | `static/quick-ref/index.html` | Q-codes, NATO phonetics, procedure words (incl. ICS plain-language table), RST, ITU prefixes |
+| **Radio cheat-sheets** | `static/cheatsheets/index.html` | Per-radio quick cards (Kenwood, Yaesu, Icom, BTECH, …) and APRS bot guides |
+| **Radio cards** | `radio-cards/index.html` | Per-radio operation cards generated from `radio-cards/radio-cards.csv` |
+| **Repeater programming guide** | `repeater-guide/index.html` | Step-by-step CHIRP programming walkthroughs per radio |
+| **GrayWolf handbook** | `static/graywolf-handbook/index.html` | Full offline GrayWolf documentation (channels, PTT, iGate, digipeater, API) |
+| **Radio manuals** | `radio-manuals/` | **Your own** PDF manuals — drop files into this folder; browse them via the dashboard **Radio Manuals** card |
+
+> 📄 **Radio manuals are not bundled** (copyright). Copy your PDFs into
+> `radio-manuals/<MAKE MODEL>/` and they appear in the file browser. The
+> dashboard card turns green once any PDF is present.
+
+---
+
+## Repeater Book
+
+Browse RepeaterBook listings offline at `repeaterbook/repeaterbook.html` — live
+search/filter by name, frequency, callsign, city, mode (FM · DMR · YSF · P25 ·
+D-STAR · NXDN · M17) and open/closed status, with an EMCOMM auto-badge and CSV
+export to a ready-to-import frequency plan.
+
+There is **no bundled data** — RepeaterBook listings are **not redistributable**,
+so you download your own:
+
+1. At [repeaterbook.com](https://www.repeaterbook.com), sign in (free) and search your region.
+2. Export → **CHIRP** format.
+3. Save the file as **`repeaterbook/repeaterbook.csv`** (next to `repeaterbook.html`).
+
+The dashboard **Repeater Book** card turns green when the CSV is present, red when
+missing. **Export to Frequency Plan** writes the visible repeaters as CHIRP CSV to
+`chirp/<datetime>_repeaters.csv` — ready for ICS-205 or CHIRP.
+
+> ⚠️ **Do not redistribute the CSV** — no public repos or shared USB bundles.
+> It's gitignored for this reason.
+
+---
+
+## File browser
+
+`system/browser.html` is a read-only browser for the user-facing folders
+(radio manuals, CHIRP exports, etc.), backed by the server's allowlisted
+`/api/fs/*` routes. It's how the dashboard surfaces **Radio Manuals** and lets you
+download generated frequency plans without SSH. The allowlisted locations are
+fixed in the server; it cannot escape the project's user folders.
+
+> 🔒 Like the rest of OASIS, the file browser has **no authentication** — keep the
+> server on a trusted LAN/hotspot.
+
+---
+
+## CM4Stack panel display
+
+For an **M5Stack CM4Stack** (Raspberry Pi CM4) with the built-in ST7789V2 SPI
+panel, GT911 touch, and GPIO fan, this configures the on-device OASIS panel
+display:
+
+```bash
+python3 scripts/enable-cm4stack.py             # auto-detect the setup phase
+python3 scripts/enable-cm4stack.py --dry-run    # preview config.txt changes
+python3 scripts/enable-cm4stack.py --config-only # only config.txt + headless boot
+python3 scripts/enable-cm4stack.py --service-only # only install the panel service
+```
+
+It runs in **two phases** (auto-detected) and **requires a reboot** between them:
+
+1. **Panel not live (first run):** patches `config.txt` with the OASIS-managed
+   M5Stack overlay block, sets headless boot, installs the Python runtime deps.
+   Exits with code `10` (reboot required) — the panel only appears after reboot.
+2. **Panel live (after reboot):** builds and installs the GT911 touch-fix overlay,
+   then installs and enables `oasis-panel.service`. May exit `10` again if a second
+   reboot is needed for the touch fix.
+
+Exit codes: `0` = done · `10` = reboot required · `1` = error. Full hardware
+writeup: [`cm4stack/cm4stack-oasis-panel.md`](../cm4stack/cm4stack-oasis-panel.md).
+
+---
+
+## RGB Cooling HAT
+
+For a **Yahboom RGB Cooling HAT** (PWM fan + status OLED + RGB LEDs), this installs
+a small daemon that drives the fan from CPU temperature and shows live stats on the
+OLED:
+
+```bash
+python3 scripts/install-rgb-cooling-hat.py            # install + enable the service
+python3 scripts/install-rgb-cooling-hat.py --user pi  # run the service as 'pi'
+python3 scripts/install-rgb-cooling-hat.py --check    # report status
+python3 scripts/install-rgb-cooling-hat.py --disable  # remove the service + daemon
+```
+
+It enables I²C, installs the apt deps (`python3-pil`, `python3-smbus`,
+`i2c-tools`), confirms the HAT is on the bus (`0x0d` fan/RGB MCU + `0x3c` OLED),
+and installs the daemon (`rgb-cooling-hat/rgb-cooling-hat.py`) to `/opt` as a
+systemd service. The daemon itself needs **no internet** (it has an inlined SSD1306
+driver); on a fully offline box, install the three apt deps from your apt cache or
+bundled `.deb`s first.
+
+---
+
+## Small-screen / kiosk display
+
+`small-screen/index7.html` is a compact, touch-friendly dashboard tuned for small
+panels (e.g. a 3.5–7″ Pi screen or the CM4Stack panel). Point a Chromium kiosk at
+it instead of the full dashboard:
+
+```bash
+python3 scripts/enable-autostart-pi.py --with-browser
+```
+
+then set the kiosk URL to `http://localhost:8083/small-screen/index7.html`. The
+layout uses `small-screen/kiosk.css` for large tap targets and a condensed status
+strip.
 
 ---
 
@@ -972,6 +1224,32 @@ The dashboard, ICS forms, FCC lookup, **offline maps**, calculators, and the ref
 | RTL-SDR packages | `python3 scripts/create-oasis-offline.py` | Run anytime — only downloads if a newer version is in Debian Bookworm |
 | webssh (ttyd) packages | `python3 scripts/create-oasis-offline.py` | Run anytime — only downloads if a newer version is in Debian Bookworm |
 | Offline wheel set *(maintainers)* | `python3 scripts/create-oasis-offline.py` | Run anytime — updates only if newer packages are available |
+
+---
+
+## Factory reset / uninstall
+
+To undo everything the setup scripts installed — stop, disable, and remove all
+OASIS services, delete OASIS-managed system files, and strip the OASIS blocks from
+`config.txt` (DRA-Pi, CM4Stack, and the DS3231 RTC overlay):
+
+```bash
+# Dry-run first — shows exactly what would be removed, changes nothing:
+python3 scripts/remove-oasis.py
+
+# Report what OASIS state is currently present:
+python3 scripts/remove-oasis.py --check
+
+# Perform the teardown, then reboot to drop the config.txt overlays:
+python3 scripts/remove-oasis.py --apply
+sudo reboot
+```
+
+By design it leaves apt packages installed (chromium, lxde, rtl-sdr, gpsd, …) and
+**never deletes downloaded data** — maps, the FCC database, ZIMs, and vendored
+wheels are expensive (often impossible) to re-fetch offline. The script lists those
+paths with their sizes so you can `sudo rm -rf` them manually if you want a fully
+clean slate.
 
 ---
 

@@ -216,7 +216,33 @@ packet stream** (and a SQLite history DB at
 `/var/lib/graywolf/graywolf-history.db`), so a small helper can pulse the LED on
 receive activity. GPIO 16 is free — GrayWolf only uses GPIO 12 (PTT).
 
-### Helper: `dra-rx-led.py`
+### Install it (recommended)
+
+`scripts/enable-dra-rx-led.py` ships this as a systemd service — no manual file
+copying. It polls the GrayWolf history DB (the reliable, offline source the APRS
+API already uses) and pulses the green LED on each decoded packet:
+
+```bash
+python3 scripts/enable-dra-rx-led.py             # write + enable the service
+python3 scripts/enable-dra-rx-led.py --self-test  # blink GPIO 16 to verify wiring
+python3 scripts/enable-dra-rx-led.py --uninstall  # stop + remove it
+```
+
+The daemon waits for the DB to appear, reads it **read-only**, and runs as root
+so it can drive the GPIO via `pinctrl`. Override the DB path with `$APRS_DB_PATH`
+and the LED pin with `--gpio`. Because it watches the `positions` table, the LED
+tracks **decoded** RX (APRS positions), not raw carrier/COS.
+
+### Red TX LED (GPIO 12) — nothing to install
+
+The red LED *is* GrayWolf's PTT line (GPIO 12), keyed automatically whenever
+GrayWolf transmits (see §4 *GrayWolf PTT*). It already lights on TX — do **not**
+run a second process against GPIO 12, or it will fight GrayWolf for the pin.
+
+### Helper: `dra-rx-led.py` (WebSocket — reference only)
+
+> Kept for reference. This hand-rolled variant uses GrayWolf's WebSocket, whose
+> `WS_URL` is an **unconfirmed placeholder** — prefer the script above.
 
 Pulses GPIO 16 (line 16 on `gpiochip0`) each time GrayWolf reports a decoded
 packet. The pin is toggled via `pinctrl` to avoid libgpiod binding-version

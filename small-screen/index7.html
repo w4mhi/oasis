@@ -70,7 +70,7 @@
       </select>
     </div>
     <div class="aprs-body" id="aprsBody">
-      <div class="row-head"><span>CALLSIGN</span><span>AGE</span><span>SPEED</span><span>VIA</span><span>COMMENT</span></div>
+      <div class="row-head"><span>CALLSIGN</span><span>AGE</span><span>SPEED</span><span>ALT</span><span>VIA</span><span>COMMENT</span></div>
       <!-- rows injected -->
     </div>
   </div>
@@ -109,13 +109,14 @@
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
-const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082 };
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082, openwebrx: 8073 };
 const SVC_PORTS = {
   gw:     () => PORTS.graywolf,
   winlink:() => PORTS.winlink,
   kiwix:  () => PORTS.kiwix,
   aprs:   () => PORTS.aprs_api,
   webssh: () => PORTS.webssh,
+  owrx:   () => PORTS.openwebrx,
 };
 
 async function loadConfig() {
@@ -200,7 +201,10 @@ const SERVICES = [
     id: 'winlink', name: 'Winlink',
     url: () => `${location.protocol}//${HOST}:${PORTS.winlink}/`,
     check: async () => {
-      await fetch(`http://${HOST}:${PORTS.winlink}/`, { cache: 'no-store', mode: 'no-cors' });
+      // Probe via the same-origin Flask proxy (mirrors the desktop): a 503 means
+      // Pat is down. A raw no-cors port fetch can't see that and always "passes".
+      const r = await fetch('/api/winlink/mailbox/in', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: `:${PORTS.winlink}` };   // 503 = Pat down
       return { up: true, badge: 'UP', sub: `:${PORTS.winlink}` };
     }
   },
@@ -213,7 +217,7 @@ const SERVICES = [
     }
   },
   {
-    id: 'aprs', name: 'APRS Stats',
+    id: 'aprs', name: 'APRS Stats API',
     check: async () => {
       const r = await fetch('/api/aprs/health', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: `:${PORTS.aprs_api}` };
@@ -222,7 +226,32 @@ const SERVICES = [
     }
   },
   {
-    id: 'fcc', name: 'FCC DB',
+    id: 'feed', name: 'APRS SDR Feed',
+    check: async () => {
+      // No web port — status comes from systemd (socat RTL-SDR → GrayWolf feed).
+      const r = await fetch('/api/health/service?name=aprs-sdr-feed', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'status error' };
+      const d = await r.json();
+      if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      if (d.active === 'active') return { up: true, badge: 'UP', sub: '→ GrayWolf' };
+      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+        sub: d.installed ? 'inactive' : 'enable-rtl-sdr.py' };
+    }
+  },
+  {
+    id: 'gpsd', name: 'GPS (gpsd)',
+    check: async () => {
+      const r = await fetch('/api/health/service?name=gpsd', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'status error' };
+      const d = await r.json();
+      if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      if (d.active === 'active') return { up: true, badge: 'UP', sub: ':2947' };
+      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+        sub: d.installed ? 'inactive' : 'install-gps.py' };
+    }
+  },
+  {
+    id: 'fcc', name: 'FCC Database',
     check: async () => {
       const r = await fetch('/health', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: 'server error' };
@@ -250,29 +279,92 @@ const SERVICES = [
     }
   },
   {
-    id: 'webssh', name: 'Web SSH',
+    id: 'webssh', name: 'SSH Terminal',
     url: () => `${location.protocol}//${HOST}:${PORTS.webssh}/`,
     check: async () => {
       await fetch(`http://${HOST}:${PORTS.webssh}/`, { cache: 'no-store', mode: 'no-cors' });
       return { up: true, badge: 'UP', sub: `:${PORTS.webssh}` };
     }
   },
+  {
+    id: 'owrx', name: 'OpenWebRX',
+    url: () => `${location.protocol}//${HOST}:${PORTS.openwebrx}/`,
+    check: async () => {
+      await fetch(`http://${HOST}:${PORTS.openwebrx}/`, { cache: 'no-store', mode: 'no-cors' });
+      return { up: true, badge: 'UP', sub: `:${PORTS.openwebrx}` };
+    }
+  },
+  {
+    id: 'manuals', name: 'Radio Manuals',
+    check: async () => {
+      const r = await fetch('/api/browse?path=radio-manuals', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'browse error' };
+      const d = await r.json();
+      const n = (d.entries || []).filter(e => e.type === 'dir').length;
+      return { up: true, warn: n === 0, badge: n > 0 ? 'UP' : 'WARN',
+        sub: n > 0 ? `${n} radio${n === 1 ? '' : 's'}` : 'no manuals' };
+    }
+  },
+  {
+    id: 'wiki', name: 'Wikipedia',
+    check: async () => {
+      const r = await fetch('/api/health/zim', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'check error' };
+      const d = await r.json();
+      const n = d.count || 0;
+      return { up: true, warn: n === 0, badge: n > 0 ? 'UP' : 'WARN',
+        sub: n > 0 ? `${n} ZIM${n === 1 ? '' : 's'}` : 'no ZIM' };
+    }
+  },
 ];
 
-// ── Build service tiles ───────────────────────────────────────────────────────
-const sg = document.getElementById('svcGrid');
-SERVICES.forEach(svc => {
-  const t = document.createElement(svc.url ? 'a' : 'div');
-  t.className = 'svc-tile';
-  t.id = 'tile-' + svc.id;
-  if (svc.url) {
-    t.href = '#';
-    t.addEventListener('click', e => { e.preventDefault(); window.open(svc.url(), '_blank'); });
-    t.style.cursor = 'pointer'; t.style.textDecoration = 'none'; t.style.color = 'inherit';
+// ── Installed-service gating ──────────────────────────────────────────────────
+// setup-oasis.py records which features the operator installed; we hide the tile
+// for any service that wasn't installed so a minimal box doesn't light up false
+// "down" tiles. Absent manifest (features === null) → show everything. Mirrors
+// the desktop's GATEABLE (the OASIS core flask · wsgi and bundled data
+// maps · repeater book · manuals are never gated).
+const HIDDEN_SVCS = new Set();
+const GATEABLE = {
+  gw:    ['graywolf'],   aprs:    ['graywolf'],  feed: ['rtl-feed'],
+  owrx:  ['openwebrx'],  winlink: ['winlink'],   gpsd: ['gps'],
+  kiwix: ['kiwix'],      webssh:  ['webssh'],    fcc:  ['fcc'],
+  wiki:  ['wikipedia'],  rb:      ['repeaterbook'],
+};
+
+async function loadInstalled() {
+  let features = null;
+  try {
+    const r = await fetch('/api/installed-services', { cache: 'no-store' });
+    if (r.ok) { const d = await r.json(); features = d.features; }
+  } catch (_) {}
+  HIDDEN_SVCS.clear();
+  if (Array.isArray(features)) {                 // null/absent → show all
+    const installed = new Set(features);
+    for (const [id, keys] of Object.entries(GATEABLE)) {
+      if (!keys.some(k => installed.has(k))) HIDDEN_SVCS.add(id);
+    }
   }
-  t.innerHTML = `<div class="n">${svc.name}</div><div class="p" id="tsub-${svc.id}">…</div><div class="b" id="tbadge-${svc.id}">…</div>`;
-  sg.appendChild(t);
-});
+}
+
+// ── Build service tiles ───────────────────────────────────────────────────────
+function buildTiles() {
+  const sg = document.getElementById('svcGrid');
+  sg.innerHTML = '';
+  SERVICES.forEach(svc => {
+    if (HIDDEN_SVCS.has(svc.id)) return;        // not installed — skip the tile
+    const t = document.createElement(svc.url ? 'a' : 'div');
+    t.className = 'svc-tile';
+    t.id = 'tile-' + svc.id;
+    if (svc.url) {
+      t.href = '#';
+      t.addEventListener('click', e => { e.preventDefault(); window.open(svc.url(), '_blank'); });
+      t.style.cursor = 'pointer'; t.style.textDecoration = 'none'; t.style.color = 'inherit';
+    }
+    t.innerHTML = `<div class="n">${svc.name}</div><div class="p" id="tsub-${svc.id}">…</div><div class="b" id="tbadge-${svc.id}">…</div>`;
+    sg.appendChild(t);
+  });
+}
 
 async function checkService(svc) {
   const tile  = document.getElementById('tile-'   + svc.id);
@@ -297,35 +389,56 @@ async function checkService(svc) {
   updateSvcCounts();
 }
 
-function pingAll() { SERVICES.forEach(svc => checkService(svc)); }
+function pingAll() { SERVICES.forEach(svc => { if (!HIDDEN_SVCS.has(svc.id)) checkService(svc); }); }
 
 // ── Build OPS overlay ─────────────────────────────────────────────────────────
 const OPS = {
-  Utilities: [
-    { icon:'🗺️', label:'Offline Maps',  url:'maps/map.html' },
-    { icon:'🔎', label:'FCC Lookup',     url:'/lookup' },
-    { icon:'📐', label:'Antenna Calc',   url:'static/antenna-calc.html' },
-    { icon:'🧭', label:'Grid/Bearing',   url:'tools/grid-calc.html' },
-    { icon:'☀️', label:'Propagation',    url:'static/solar.html' },
-    { icon:'🔋', label:'Power/Battery',  url:'static/power-calc.html' },
-    { icon:'🌓', label:'Gray Line',      url:'static/grayline.html' },
+  Util: [
+    { icon:'📍', label:'APRS Map',        url:'aprs/map.html' },
+    { icon:'🔎', label:'FCC Lookup',      url:'/lookup' },
+    { icon:'💻', label:'SSH Terminal',    ext: () => `${location.protocol}//${HOST}:${PORTS.webssh}/` },
+    { icon:'📋', label:'Net Logger',      url:'tools/net-log.html' },
   ],
-  'APRS / Winlink': [
-    { icon:'📍', label:'APRS Map',       url:'aprs/map.html' },
-    { icon:'🤖', label:'MPAD Bot',       url:'static/cheatsheets/mpad.html' },
-    { icon:'🤖', label:'APRS Bots',      url:'static/cheatsheets/aprs_bots.html' },
+  Tools: [
+    { icon:'✅', label:'Setup Verify',    url:'system/setup.html' },
+    { icon:'📐', label:'Antenna Calc',    url:'static/antenna-calc.html' },
+    { icon:'📻', label:'Band Plan',       url:'static/band-plan/index.html' },
+    { icon:'🧭', label:'Grid/Bearing',    url:'tools/grid-calc.html' },
+    { icon:'☀️', label:'Propagation',     url:'static/solar.html' },
+    { icon:'🔋', label:'Power/Battery',   url:'static/power-calc.html' },
+    { icon:'🌓', label:'Gray Line',       url:'static/grayline.html' },
+    { icon:'📁', label:'File Browser',    url:'system/browser.html' },
   ],
-  Reference: [
-    { icon:'📻', label:'Band Plan',      url:'static/band-plan/index.html' },
-    { icon:'📡', label:'Repeater Book',  url:'repeaterbook/repeaterbook.html' },
-    { icon:'📡', label:'Repeater Guide', url:'repeater-guide/index.html' },
-    { icon:'🃏', label:'Radio Cards',    url:'radio-cards/index.html' },
-    { icon:'📑', label:'Cheatsheets',    url:'static/cheatsheets/index.html' },
-    { icon:'🌐', label:'Wikipedia',      ext: () => `${location.protocol}//${HOST}:${PORTS.kiwix}/` },
-    { icon:'🔤', label:'NATO Phonetic',  url:'static/quick-ref/phonetic.html' },
-    { icon:'🆎', label:'Q-Codes',        url:'static/quick-ref/qcodes.html' },
-    { icon:'📶', label:'RST',            url:'static/quick-ref/rst.html' },
-    { icon:'🗣️', label:'Proc Words',    url:'static/quick-ref/prowords.html' },
+  'ICS Forms': [
+    { icon:'📄', label:'ICS-205',         url:'static/ics-205/ics-205.html' },
+    { icon:'📄', label:'ICS-213',         url:'static/ics-213/ics-213.html' },
+    { icon:'📄', label:'ICS-214',         url:'static/ics-214/ics-214.html' },
+    { icon:'📄', label:'ICS-309',         url:'static/ics-309/ics-309.html' },
+  ],
+  'Winlink / APRS': [
+    { icon:'✉️', label:'Winlink Mail',    url:'winlink/mail.html' },
+    { icon:'📍', label:'Position Reports',url:'winlink/position-report.html' },
+    { icon:'🛠️', label:'Radio Settings',  url:'winlink/radio-settings.html' },
+    { icon:'🔁', label:'WL → Position',   url:'winlink/to-position.html' },
+    { icon:'🐺', label:'GrayWolf',        ext: () => `${location.protocol}//${HOST}:${PORTS.graywolf}/` },
+    { icon:'📖', label:'GrayWolf Docs',   url:'static/graywolf-handbook/index.html' },
+    { icon:'🤖', label:'APRS Bots',       url:'static/cheatsheets/aprs_bots.html' },
+    { icon:'🤖', label:'MPAD Bot',        url:'static/cheatsheets/mpad.html' },
+  ],
+  'Radio Ref': [
+    { icon:'📡', label:'Repeater Guide',  url:'repeater-guide/index.html' },
+    { icon:'🃏', label:'Radio Cards',     url:'radio-cards/index.html' },
+    { icon:'📑', label:'Cheatsheets',     url:'static/cheatsheets/index.html' },
+    { icon:'📡', label:'Repeater Book',   url:'repeaterbook/repeaterbook.html' },
+    { icon:'📘', label:'Radio Manuals',   url:'system/browser.html?path=radio-manuals' },
+    { icon:'🌐', label:'Wikipedia',       ext: () => `${location.protocol}//${HOST}:${PORTS.kiwix}/` },
+  ],
+  Operating: [
+    { icon:'🌍', label:'ITU Prefixes',    url:'static/quick-ref/itu-prefixes.html' },
+    { icon:'🔤', label:'NATO Phonetic',   url:'static/quick-ref/phonetic.html' },
+    { icon:'🗣️', label:'Proc Words',      url:'static/quick-ref/prowords.html' },
+    { icon:'🆎', label:'Q-Codes',         url:'static/quick-ref/qcodes.html' },
+    { icon:'📶', label:'RST',             url:'static/quick-ref/rst.html' },
   ],
 };
 
@@ -357,7 +470,7 @@ function openSheet(s) {
   const ageSec = s.last_heard ? Math.floor((Date.now()-new Date(s.last_heard))/1000) : null;
   document.getElementById('shAge').textContent   = ageSec != null ? (ageSec<60?ageSec+'s ago':Math.floor(ageSec/60)+'m ago') : (s.a ? s.a+' ago' : '—');
   document.getElementById('shVia').textContent   = s.via || '—';
-  document.getElementById('shSpd').textContent   = s.speed_mph != null ? s.speed_mph+' mph' : (s.sp || '—');
+  document.getElementById('shSpd').textContent   = s.speed_mph != null ? fmtSpeed(s.speed_mph) : (s.sp || '—');
   document.getElementById('shCmt').textContent   = s.comment || s.cmt || '(no comment)';
   document.getElementById('sheet').classList.add('open');
 }
@@ -373,13 +486,26 @@ function setKStat(id, text, cls) {
   el.textContent = text;
   el.className = 'v' + (cls ? ' ' + cls : '');
 }
-// Temperature unit toggle (shared with index.html via the same localStorage key).
-// Server reports °C; thresholds stay in °C — only the displayed text changes.
-let TEMP_UNIT = localStorage.getItem('oasis_temp_unit') || 'C';
+// Units toggle — shared with index.html via the same localStorage key
+// ('oasis_units': imperial | metric). Tapping the TEMP stat flips it and
+// re-renders temperature plus the APRS table's speed + altitude columns.
+// Server reports °C / mph / metres; thresholds stay in °C — only text changes.
+let UNITS = localStorage.getItem('oasis_units') || 'imperial';
+const isImperial = () => UNITS === 'imperial';
 let _lastTempC = null;
 function fmtTemp(c) {
   if (c == null) return 'n/a';
-  return TEMP_UNIT === 'F' ? `${Math.round(c * 9 / 5 + 32)}°F` : `${c}°C`;
+  return isImperial() ? `${Math.round(c * 9 / 5 + 32)}°F` : `${c}°C`;
+}
+function fmtAlt(m) {            // metres → ft (imperial) or m (metric)
+  if (m == null) return '';
+  return isImperial()
+    ? `${Math.round(m * 3.28084).toLocaleString()} ft`
+    : `${Math.round(m).toLocaleString()} m`;
+}
+function fmtSpeed(mph) {        // server reports mph; metric → km/h
+  if (mph == null) return '';
+  return isImperial() ? `${mph} mph` : `${Math.round(mph * 1.60934)} km/h`;
 }
 function renderTemp() {
   const cls = _lastTempC != null ? (_lastTempC >= 80 ? 'hot' : _lastTempC >= 65 ? 'warm' : 'ok') : '';
@@ -388,10 +514,10 @@ function renderTemp() {
 (function () {
   const el = document.getElementById('k-temp');
   if (el) el.addEventListener('click', () => {
-    if (_lastTempC == null) return;          // sensor n/a — nothing to toggle
-    TEMP_UNIT = TEMP_UNIT === 'C' ? 'F' : 'C';
-    localStorage.setItem('oasis_temp_unit', TEMP_UNIT);
+    UNITS = isImperial() ? 'metric' : 'imperial';
+    localStorage.setItem('oasis_units', UNITS);
     renderTemp();
+    if (_allAprsStations.length) applyAprsFilter();   // re-render table in new units
   });
 })();
 async function fetchStats() {
@@ -457,10 +583,12 @@ function renderAprsRows(stations) {
   }
   stations.forEach(s => {
     const call = s.callsign || s.c || '—';
+    const alt  = s.alt_m != null ? fmtAlt(s.alt_m) : '';
     const r = document.createElement('div'); r.className = 'row';
     r.innerHTML = `<span class="call"><a href="aprs/map.html?focus=${encodeURIComponent(call)}" target="_blank" style="color:inherit;text-decoration:none">${call}</a></span>
       <span class="age">${fmtAge(s.last_heard||s.timestamp||s.time)}</span>
-      <span class="spd">${s.speed_mph > 0 ? s.speed_mph+' mph' : ''}</span>
+      <span class="spd">${s.speed_mph > 0 ? fmtSpeed(s.speed_mph) : ''}</span>
+      <span class="alt">${alt}</span>
       <span class="via">${s.via||''}</span>
       <span class="cmt ${(s.comment||s.cmt)?'':'empty'}">${s.comment||s.cmt||'—'}</span>`;
     r.onclick = () => openSheet(s);
@@ -530,7 +658,8 @@ async function fetchAPRS() {
 (function() {
   localStorage.setItem('oasis_layout', '7inch');
 })();
-loadConfig().then(() => {
+loadConfig().then(loadInstalled).then(() => {
+  buildTiles();
   pingAll();
   fetchStats();
   fetchAudio();
