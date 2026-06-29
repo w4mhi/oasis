@@ -64,16 +64,14 @@ def repo_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-# Per-machine runtime state at the suite root (user-owned — removed without sudo).
+# Install state at the suite root (user-owned — removed without sudo).
 # installed-services.json is the feature manifest setup-oasis.py writes; the
 # dashboard reads it via /api/installed-services to hide cards for features that
 # were never installed. Leaving it behind makes the dashboard keep showing
 # torn-down services as if installed; deleting it returns the dashboard to its
-# default "show everything" state — i.e. factory-fresh. aprs-warnings.json is
-# operator-placed map warnings, also runtime state.
+# default "show everything" state — i.e. factory-fresh.
 SUITE_FILES = [
     os.path.join(repo_root(), "installed-services.json"),
-    os.path.join(repo_root(), "aprs-warnings.json"),
 ]
 
 
