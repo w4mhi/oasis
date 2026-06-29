@@ -67,6 +67,21 @@ body{background:#05080a; color:var(--text); font-family:var(--mono);
 .navbtn .nb-r{margin-left:auto; display:flex; gap:8px; font-size:12px; font-variant-numeric:tabular-nums}
 .navbtn .nb-r .u{color:var(--up)} .navbtn .nb-r .w{color:var(--warn)} .navbtn .nb-r .d{color:var(--down)}
 .navbtn .chev{margin-left:auto; color:var(--dim)}
+.navbtn.ops{flex:0 0 auto}   /* shrink to content — only says "OPS" now */
+.navbtn.ops .chev{margin-left:8px}
+/* APRS feed flow card — between SERVICES and OPS; shows pkt/s into GrayWolf */
+.navbtn.feedcard{flex:0 0 210px; cursor:default; gap:10px}
+.navbtn.feedcard[hidden]{display:none}
+.navbtn.feedcard:hover{border-color:var(--border)}
+.feedcard .nb-dot{font-size:12px; color:var(--dim); line-height:1}
+.feedcard .feed-wrap{display:flex; flex-direction:column; gap:3px; min-width:0; flex:1}
+.feedcard .nb-t{color:var(--accent); font-weight:700; letter-spacing:.10em; font-size:12px}
+.feed-meter{display:flex; align-items:center; gap:6px; min-width:0}
+.feed-meter-track{flex:1; min-width:30px; height:6px; background:var(--border); border-radius:3px; overflow:hidden}
+.feed-meter-fill{display:block; height:100%; width:0%; background:var(--accent); border-radius:3px; transition:width .25s ease, background .25s ease}
+.feed-meter.silent .feed-meter-fill{background:var(--down)}
+.feed-meter.flowing .feed-meter-fill{background:var(--up)}
+.feed-meter-label{font-size:10px; color:var(--dim); white-space:nowrap; font-variant-numeric:tabular-nums}
 
 /* ---------- APRS (fills remaining; only the body scrolls) ---------- */
 .k-aprs{flex:0 0 auto; min-height:0; display:flex; flex-direction:column;

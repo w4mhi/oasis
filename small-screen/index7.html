@@ -44,9 +44,19 @@
       <span><span class="nb-t">SERVICES</span> <span class="nb-sub">infra · radio</span></span>
       <span class="nb-r"><span class="u" id="k-svc-up">— ✓</span><span class="w" id="k-svc-warn">— ⚠</span><span class="d" id="k-svc-down">— ✕</span></span>
     </button>
-    <button class="navbtn" onclick="openOv('ops')">
+    <div class="navbtn feedcard" id="k-feed" title="APRS SDR feed — packets/s into GrayWolf">
+      <span class="nb-ico nb-dot" id="k-feed-dot">●</span>
+      <span class="feed-wrap">
+        <span class="nb-t">APRS FEED</span>
+        <span class="feed-meter" id="feed-meter">
+          <span class="feed-meter-track"><span class="feed-meter-fill" id="feed-meter-fill"></span></span>
+          <span class="feed-meter-label" id="feed-meter-label">…</span>
+        </span>
+      </span>
+    </div>
+    <button class="navbtn ops" onclick="openOv('ops')">
       <span class="nb-ico">⚡</span>
-      <span><span class="nb-t">OPS</span> <span class="nb-sub">utilities · APRS · reference</span></span>
+      <span><span class="nb-t">OPS</span></span>
       <span class="chev">▸</span>
     </button>
   </div>
@@ -684,6 +694,53 @@ async function fetchAPRS() {
   }
 }
 
+// ── APRS SDR feed flow meter (mirrors index.html) ─────────────────────────────
+// Proves UDP audio is actually moving into GrayWolf, not just that the unit is
+// "active". Hidden entirely when the feed feature isn't installed (gated like
+// the service tile); muted when the unit is stopped.
+async function pollFeedFlow() {
+  const card = document.getElementById('k-feed');
+  if (!card) return;
+  if (HIDDEN_SVCS.has('feed')) { card.hidden = true; return; }   // not installed
+  card.hidden = false;
+  const meter = document.getElementById('feed-meter');
+  const fill  = document.getElementById('feed-meter-fill');
+  const label = document.getElementById('feed-meter-label');
+  const dot   = document.getElementById('k-feed-dot');
+  const setDot = c => { if (dot) dot.style.color = c; };
+  const st = _svcStates['feed'];
+  // Only meaningful while the unit is active; otherwise 0 pps is expected.
+  if (st !== 'up' && st !== 'warn') {
+    if (meter) meter.className = 'feed-meter';
+    if (fill)  fill.style.width = '0%';
+    if (label) label.textContent = st === 'down' ? 'stopped' : '…';
+    setDot('var(--dim)');
+    return;
+  }
+  try {
+    const r = await fetch('/api/health/feed-flow', { cache: 'no-store' });
+    const d = await r.json();
+    if (d.supported === false || d.ok === false) {
+      if (meter) meter.className = 'feed-meter';
+      if (fill)  fill.style.width = '0%';
+      if (label) label.textContent = d.reason === 'no-privilege' ? 'enable controls' : 'n/a';
+      setDot('var(--warn)');
+      return;
+    }
+    const pct = Math.max(0, Math.min(100, (d.pps / (d.nominal_pps || 50)) * 100));
+    if (fill) fill.style.width = pct.toFixed(0) + '%';
+    if (d.flowing) {
+      if (meter) meter.className = 'feed-meter flowing';
+      if (label) label.textContent = Math.round(d.pps) + ' pkt/s';
+      setDot('var(--up)');
+    } else {
+      if (meter) meter.className = 'feed-meter silent';
+      if (label) label.textContent = '0 pkt/s';
+      setDot('var(--down)');
+    }
+  } catch (_) { /* transient — keep last state, retry next tick */ }
+}
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 // Mark this device as a 7" kiosk so all ⌂ HOME links route back here
 (function() {
@@ -695,9 +752,11 @@ loadConfig().then(loadInstalled).then(() => {
   fetchStats();
   fetchAudio();
   fetchAPRS();
-  setInterval(pingAll,    30_000);
-  setInterval(fetchStats, 30_000);
-  setInterval(fetchAudio, 30_000);
-  setInterval(fetchAPRS,  15_000);
+  pollFeedFlow();
+  setInterval(pingAll,      30_000);
+  setInterval(fetchStats,   30_000);
+  setInterval(fetchAudio,   30_000);
+  setInterval(fetchAPRS,    15_000);
+  setInterval(pollFeedFlow,  2_500);
 });
 </script>
