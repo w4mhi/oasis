@@ -98,7 +98,8 @@ def check_prereqs():
 
 # ── Step 2: Test the SDR ────────────────────────────────────────────────────────
 def rtl_test_present():
-    """Return True if rtl_test reports a device. The R820T '-t' abort is fine."""
+    """Return True if rtl_test reports a device, False if none is plugged in.
+    The R820T '-t' abort is expected and still counts as present."""
     try:
         r = subprocess.run(["rtl_test", "-t"], capture_output=True, text=True,
                            timeout=20)
@@ -112,10 +113,7 @@ def rtl_test_present():
 
     out = r.stdout + r.stderr
     if "No supported devices found" in out or "usb_open error" in out:
-        _warn(out.strip())
-        _fail("No RTL-SDR device found. Plug in the dongle and check `lsusb`.\n"
-              "       If just plugged in after install, a reboot applies the "
-              "DVB-driver blacklist.")
+        return False   # no dongle enumerated — caller decides (defer vs. report)
     # 'No E4000 tuner found, aborting' + 'PLL not locked!' are EXPECTED on R820T.
     for line in out.splitlines():
         if "Found" in line and "device" in line:
@@ -163,8 +161,19 @@ def capture_rms(rtl_fm, freq, gain, ppm, seconds):
 
 
 def test_sdr(rtl_fm, freq, gain, ppm, seconds):
+    """Return True if live demodulated audio was verified, False if no RTL-SDR is
+    present. A False result is not fatal — the caller installs the feed service
+    anyway (it's deferred and starts when the dongle appears)."""
     _step(2, "Testing the SDR")
-    rtl_test_present()
+    if not rtl_test_present():
+        _warn("No RTL-SDR present.")
+        _info("No dongle is plugged in (or it hasn't enumerated yet — a reboot "
+              "applies the DVB-driver blacklist if you just installed the tools). "
+              "Skipping the audio test; the feed service is still installed and "
+              "enabled, and starts automatically once the dongle appears "
+              "(Restart=always). Verify reception later with:\n"
+              "       python3 scripts/enable-rtl-sdr.py --check")
+        return False
 
     _info(f"Listening on {freq} for {seconds}s (hardware tunes ~252 kHz higher — "
           "that offset is normal)...")
@@ -192,6 +201,7 @@ def test_sdr(rtl_fm, freq, gain, ppm, seconds):
         _fail(f"Audio level ~0 (peak {peak:.0f}). Check antenna and --gain.")
 
     _ok("SDR OK — live demodulated audio at the APRS frequency.")
+    return True
 
 
 # ── Step 3: Install + enable the feed service ────────────────────────────────────
@@ -387,11 +397,14 @@ def main():
     print()
 
     rtl_fm, socat = check_prereqs()
-    test_sdr(rtl_fm, args.freq, args.gain, args.ppm, args.seconds)
+    verified = test_sdr(rtl_fm, args.freq, args.gain, args.ppm, args.seconds)
 
     if args.check:
         _hr()
-        print("\n  SDR test passed. (--check: no service changes made.)\n")
+        if verified:
+            print("\n  SDR test passed. (--check: no service changes made.)\n")
+        else:
+            print("\n  No RTL-SDR present. (--check: no service changes made.)\n")
         return
 
     gw_unit = find_graywolf_unit()
@@ -402,7 +415,13 @@ def main():
     print_instructions(args.port, gw_unit)
 
     _hr()
-    print("\n  RTL-SDR feed enabled. Finish GrayWolf setup with the steps above.\n")
+    if verified:
+        print("\n  RTL-SDR feed enabled. Finish GrayWolf setup with the steps "
+              "above.\n")
+    else:
+        print("\n  RTL-SDR feed service installed and enabled — deferred: no "
+              "dongle detected yet, so it will start automatically when you plug "
+              "one in. Finish GrayWolf setup with the steps above.\n")
 
 
 if __name__ == "__main__":

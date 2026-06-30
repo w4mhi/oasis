@@ -359,6 +359,22 @@ const GATEABLE = {
   wiki:  ['wikipedia'],  rb:      ['repeaterbook'],
 };
 
+// A systemd-backed service can be live even when the manifest never recorded it
+// (e.g. enable-rtl-sdr.py / install-gps.py run directly, outside setup-oasis.py —
+// note rtl-sdr tools and the rtl-feed feed are separate features). Probe the
+// real unit so a running feed isn't hidden as "not installed".
+const SYSTEMD_GATED = { feed: 'aprs-sdr-feed', gpsd: 'gpsd' };
+async function unitInstalled(id) {
+  const unit = SYSTEMD_GATED[id];
+  if (!unit) return false;
+  try {
+    const r = await fetch('/api/health/service?name=' + unit, { cache: 'no-store' });
+    if (!r.ok) return false;
+    const d = await r.json();
+    return d.installed === true;
+  } catch (_) { return false; }
+}
+
 async function loadInstalled() {
   let features = null;
   try {
@@ -369,7 +385,10 @@ async function loadInstalled() {
   if (Array.isArray(features)) {                 // null/absent → show all
     const installed = new Set(features);
     for (const [id, keys] of Object.entries(GATEABLE)) {
-      if (!keys.some(k => installed.has(k))) HIDDEN_SVCS.add(id);
+      if (!keys.some(k => installed.has(k))) {
+        if (await unitInstalled(id)) continue;   // live systemd unit enabled outside setup → keep visible
+        HIDDEN_SVCS.add(id);
+      }
     }
   }
 }

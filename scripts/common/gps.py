@@ -62,8 +62,12 @@ def detect_device(preferred):
         if os.path.exists(dev):
             _ok(f"GPS device detected: {dev}")
             return dev
-    _warn("No GPS device found at the usual paths — defaulting to /dev/ttyACM0 "
-          "(USBAUTO will attach it when plugged in).")
+    _warn("No GPS unit present.")
+    _info("No GPS device found at the usual paths ("
+          + ", ".join(CANDIDATES) + "). gpsd + chrony will still be installed and "
+          "pointed at /dev/ttyACM0 — gpsd's USBAUTO attaches the receiver "
+          "automatically when you plug it in. Verify later with:\n"
+          "       python3 scripts/install-gps.py --check")
     return "/dev/ttyACM0"
 
 
