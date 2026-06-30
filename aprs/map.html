@@ -27,7 +27,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #crCpuLbl,#crCpu{font-size:var(--fs-small);}
 #crCpu{font-weight:600;}
 #stationCount{font-size:var(--fs-small);color:var(--amber);white-space:nowrap;}
-#countdown{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;width:16ch;flex-shrink:0;text-align:right;transition:color .4s;overflow:visible;}
+#countdown{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;width:7ch;flex-shrink:0;text-align:left;transition:color .4s;overflow:visible;cursor:pointer;user-select:none;}
+#countdown:hover{filter:brightness(1.25);}
 #countdown.green{color:#3fb950;}
 #countdown.yellow{color:var(--amber);}
 #countdown.red{color:var(--red);}
@@ -55,7 +56,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #callFilter{
   background:var(--bg);border:1px solid var(--border);color:var(--text);
   font-family:var(--mono);font-size:var(--fs-small);padding:3px 6px;border-radius:4px;
-  width:9rem;max-width:9rem;
+  width:13ch;max-width:13ch;box-sizing:content-box;
 }
 #callFilter:focus{outline:none;border-color:var(--accent-dim);}
 #callFilter::placeholder{color:var(--text-dim);}
@@ -121,21 +122,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #autoFlyBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
 #autoPathBtn{white-space:nowrap;}
 #autoPathBtn.on{opacity:1;color:#b478ff;border-color:#b478ff;}
-#coverageBtn{white-space:nowrap;}
-#coverageBtn.on{opacity:1;color:#2dd4bf;border-color:#2dd4bf;}
-/* Green "refresh now" button — deliberately obvious on the kiosk */
-#mapRefreshBtn{
-  display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;
-  color:var(--accent);border-color:var(--accent-dim);
-  background:rgba(0,200,100,0.10);
-}
-#mapRefreshBtn:hover{background:var(--accent-dim);color:#fff;border-color:var(--accent);}
-#mapRefreshBtn.paused{color:var(--text-dim);border-color:var(--border);background:none;}
-#mapRefreshBtn.paused:hover{color:var(--text);border-color:var(--accent-dim);background:none;}
-#mapRefreshBtn .kr-icon{display:inline-block;line-height:1;font-size:1.05em;}
-#mapRefreshBtn.spinning{pointer-events:none;}
-#mapRefreshBtn.spinning .kr-icon{animation:map-spin .6s linear infinite;}
-@keyframes map-spin{to{transform:rotate(360deg);}}
+
 /* Track popup link */
 .pop-track-btn{
   display:block;margin-top:6px;padding-top:5px;
@@ -194,7 +181,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
    without any animated repaints at all. */
 @media (prefers-reduced-motion: reduce){
   .aprs-marker.is-new{animation:none;}
-  #mapRefreshBtn.spinning .kr-icon{animation:none;}
 }
 /* ── preserved: old box-shadow pulse ─────────────────────────────────────────
 @keyframes aprs-pulse{
@@ -369,7 +355,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #basemap-info .bm-path{display:block;color:var(--text-dim);font-size:var(--fs-small);opacity:.85;margin-top:1px;max-width:52ch;overflow:hidden;text-overflow:ellipsis;}
 
 /* Leading cell shared by both rows so the first separator lines up vertically */
-.lead-cell{display:flex;align-items:center;gap:.7rem;width:300px;flex-shrink:0;}
+.lead-cell{display:flex;align-items:center;gap:.7rem;width:215px;flex-shrink:0;}
 #coordReadout{
   font-family:var(--mono);font-size:var(--fs-small);color:var(--text-dim);
   white-space:nowrap;display:flex;align-items:center;gap:6px;
@@ -378,8 +364,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #coordReadout .cr-val{display:inline-block;text-align:right;color:#7ecfff;font-weight:600;}
 #coordReadout #crLat{width:9ch;}
 #coordReadout #crLon{width:10ch;}
-#coordReadout #crZoom{width:4ch;color:var(--amber);}
 #coordReadout .cr-sep{color:var(--border);}
+/* Zoom readout — stacked just above the bottom-left zoom/compass control */
+.zoom-readout{
+  background:rgba(13,17,23,.72);border:1px solid var(--border);border-radius:4px;
+  font-family:var(--mono);font-size:var(--fs-small);color:var(--text-dim);
+  padding:2px 7px;display:flex;align-items:center;gap:6px;white-space:nowrap;
+  pointer-events:none;
+}
+.zoom-readout .cr-lbl{color:var(--text-dim);}
+.zoom-readout #crZoom{color:var(--amber);font-weight:600;}
 
 /* Base-map loader modal (click bottom-right label → browse Pi / USB for .pmtiles) */
 #fs-modal{
@@ -445,30 +439,29 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   <!-- Row 1 — system status & RF overlays -->
   <div class="topbar-row">
     <div class="lead-cell">
-      <h1>APRS Map</h1>
+      <h1 onclick="location.reload()" title="Reload the map" style="cursor:pointer;">APRS Map</h1>
       <div id="statusDot"></div>
       <span id="stationCount"></span>
-      <span id="countdown"></span>
+      <span class="track-sep">|</span>
+      <span id="countdown" onclick="toggleRefresh()" title="Auto-refresh on/off — click to pause/resume"></span>
     </div>
-    <span class="track-sep">|</span>
-    <button id="mapRefreshBtn" class="sbtn" onclick="toggleRefresh()" title="Auto-refresh on/off — green = updating every 15s, gray = paused"><span class="kr-icon">&#8635;</span>Refresh</button>
     <span class="track-sep">|</span>
     <button id="autoPathBtn" class="sbtn" onclick="toggleAutoPath()" title="Automatically draw the RF path of the most-recently-heard station">Auto-path</button>
     <span class="track-sep">|</span>
-    <button id="coverageBtn" class="sbtn" onclick="toggleCoverage()" title="Coverage — straight reach lines from every filtered station to its receiver">Coverage</button>
+    <button id="gridBtn" class="sbtn" onclick="toggleGrid()" title="Toggle Maidenhead grid overlay + distance/bearing measure">Grid</button>
     <span class="track-sep">|</span>
-    <button id="gridBtn" class="sbtn" onclick="toggleGrid()" title="Toggle Maidenhead grid overlay">Grid</button>
-    <button id="measureBtn" class="sbtn" onclick="toggleMeasure()" style="margin-left:.35rem;" title="Click two or more points to measure distance and bearing">Measure</button>
+    <button id="movingBtn" class="sbtn" onclick="toggleMoving()" title="Show only stations currently moving (speed > 0)">Moving</button>
+    <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">Auto-fly</button>
     <span style="flex:1"></span>
-    <a href="/" class="home-link" style="margin-left:.75rem;">⌂ HOME</a>
+    <span id="crCpu" class="cr-val" title="Pi CPU load (whole system, ~5s sample)">—</span>
+    <span class="track-sep">|</span>
+    <a href="/" class="home-link">⌂ HOME</a>
   </div>
   <!-- Row 2 — position, filtering & navigation -->
   <div class="topbar-row">
     <div id="coordReadout" class="lead-cell">
       <span class="cr-lbl">Lat</span><span id="crLat" class="cr-val">—</span>
       <span class="cr-lbl">Lon</span><span id="crLon" class="cr-val">—</span>
-      <span class="cr-sep">|</span>
-      <span class="cr-lbl">zoom</span><span id="crZoom" class="cr-val">—</span>
     </div>
     <span class="track-sep">|</span>
     <select id="filterSel" onchange="applyFilter()">
@@ -480,7 +473,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
     </select>
     <input id="callFilter" type="text" placeholder="Filter call…" autocomplete="off" spellcheck="false"
            title="Filter by callsign — prefix match (K7ISQ catches all SSIDs), or * wildcard (K7*9)">
-    <button id="movingBtn" class="sbtn" onclick="toggleMoving()" title="Show only stations currently moving (speed > 0)">Moving</button>
     <span class="track-sep">|</span>
     <span style="font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap">Track:</span>
     <select id="trackWindow" onchange="if(activeTrack) showTrack(activeTrack)">
@@ -494,11 +486,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
       <option value="0">All</option>
     </select>
     <button id="clearTrackBtn" class="sbtn" onclick="clearTrack()">✕ Track</button>
-    <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">Auto-fly</button>
     <span style="flex:1"></span>
     <span id="trackMsg"></span>
-    <span id="crCpuLbl" class="cr-lbl">cpu</span><span id="crCpu" class="cr-val" title="Pi CPU load (whole system, ~5s sample)">—</span>
-    <span class="track-sep">|</span>
     <span id="statusMsg">Connecting…</span>
   </div>
 </div>
@@ -566,16 +555,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
     <div id="objects-body"></div>
   </div>
 
-  <!-- Coverage iGate filter — convergence points of the reach-fan -->
-  <div id="coverage-panel" class="collapsed">
-    <div id="coverage-header" onclick="toggleCoveragePanel()">
-      <span id="coverage-arrow">▾</span>
-      <span id="coverage-title">Coverage</span>
-      <span id="coverage-count"></span>
-    </div>
-    <div id="coverage-body"><div style="padding:4px 2px;color:var(--text-dim)">Enable Coverage to list iGates</div></div>
-  </div>
-
   <!-- Add Warnings — operator-placed map markers (flood/fire/etc.), shared across devices -->
   <div id="warnings-panel" class="collapsed">
     <div id="warnings-header" onclick="toggleWarningsPanel()">
@@ -585,6 +564,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
     </div>
     <div id="warnings-body"></div>
   </div>
+
+  <!-- Coverage iGate filter — convergence points of the reach-fan -->
+  <div id="coverage-panel" class="collapsed">
+    <div id="coverage-header" onclick="toggleCoveragePanel()">
+      <span id="coverage-arrow">▾</span>
+      <span id="coverage-title">Coverage</span>
+      <span id="coverage-count"></span>
+    </div>
+    <div id="coverage-body"><div style="padding:4px 2px;color:var(--text-dim)">No convergence points in view</div></div>
+  </div>
+
 </div>
 
 <script src="/map-assets/maplibre-gl.js"></script>
@@ -719,9 +709,9 @@ const _pc        = _params.get('center');
 const _pz        = _params.get('zoom');
 const URL_CENTER = _pc ? _pc.split(',').map(Number) : null;
 const URL_ZOOM   = (_pz != null && _pz !== '') ? Number(_pz) : null;
-const tilesUrl  = 'pmtiles://' + origin + '/maps/' + MAP_FILE;
+const tilesUrl  = 'pmtiles://' + origin + '/maps/tiles/state/' + MAP_FILE;
 
-const pmtilesHttpUrl   = (file) => origin + '/maps/' + file;
+const pmtilesHttpUrl   = (file) => origin + '/maps/tiles/state/' + file;
 const pmtilesSourceUrl = (file) => 'pmtiles://' + pmtilesHttpUrl(file);
 
 // HTML-escape helper (used by the base-map label and the fs browser).
@@ -752,6 +742,19 @@ const map = new maplibregl.Map({
   attributionControl: false
 });
 
+// Zoom readout — a small custom control stacked above the bottom-left
+// navigation buttons (added first so it sits at the top of that corner's stack).
+const zoomReadoutControl = {
+  onAdd() {
+    const el = document.createElement('div');
+    el.className = 'maplibregl-ctrl zoom-readout';
+    el.innerHTML = '<span class="cr-lbl">zoom</span><span id="crZoom" class="cr-val">—</span>';
+    this._el = el;
+    return el;
+  },
+  onRemove() { this._el.remove(); }
+};
+map.addControl(zoomReadoutControl, 'bottom-left');
 map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-left');
 
 // ── Base-map switching (click the bottom-right label to load a different map) ──
@@ -1279,7 +1282,7 @@ function setStatus(state, msg) {
 
 function updateCountdown() {
   const el = document.getElementById('countdown');
-  el.textContent = 'refresh in: ' + countdown + 's.';
+  el.textContent = '\u21bb ' + countdown + 's.';
   el.className = countdown >= 10 ? 'green' : countdown >= 5 ? 'yellow' : 'red';
 }
 
@@ -1353,7 +1356,7 @@ async function fetchStations() {
     updateRecentPanel(newList);
     updateObjectsPanel();
     applyFilter();
-    setStatus('ok', 'Updated ' + new Date().toLocaleTimeString());
+    setStatus('ok', new Date().toLocaleTimeString([], { hour12: false }));
     // Refresh active track data (updates trail + auto-fly if enabled)
     if (activeTrack) _loadTrack(activeTrack);
     // Auto-path: draw paths only for stations heard THIS cycle, so previous
@@ -1642,7 +1645,7 @@ function toggleAutoPath() {
   document.getElementById('autoPathBtn').classList.toggle('on', autoPath);
   if (autoPath) {
     // Auto-path and Coverage are mutually exclusive
-    if (coverageOn) { coverageOn = false; document.getElementById('coverageBtn').classList.remove('on'); clearCoverage(); setAutoRefresh(true); }
+    if (coverageOn) { document.getElementById('coverage-panel').classList.add('collapsed'); setCoverage(false); }
     activePath = null; _refreshAutoPaths();
   } else {
     clearPath();
@@ -1651,10 +1654,11 @@ function toggleAutoPath() {
 
 // Coverage: a filter-aware "reach fan" — a straight, faint amber line from every
 // currently-filtered station to its receiver (the last *-used real callsign on
-// the map). Lines only; one glowing node at each convergence point.
-function toggleCoverage() {
-  coverageOn = !coverageOn;
-  document.getElementById('coverageBtn').classList.toggle('on', coverageOn);
+// the map). Lines only; one glowing node at each convergence point. Driven by
+// the Coverage panel's expand/collapse state (see toggleCoveragePanel).
+function setCoverage(on) {
+  if (on === coverageOn) return;
+  coverageOn = on;
   if (coverageOn) {
     if (autoPath) { autoPath = false; document.getElementById('autoPathBtn').classList.remove('on'); clearPath(); }
     setAutoRefresh(false);   // freeze the data while studying coverage
@@ -1729,8 +1733,11 @@ function setAllCoverageRx(on) {
   if (coverageOn) applyFilter();
 }
 
+// Expanding the Coverage panel enables the reach-fan; collapsing disables it.
 function toggleCoveragePanel() {
-  document.getElementById('coverage-panel').classList.toggle('collapsed');
+  const panel = document.getElementById('coverage-panel');
+  panel.classList.toggle('collapsed');
+  setCoverage(!panel.classList.contains('collapsed'));
 }
 
 // Delegated change handler for the per-iGate checkboxes.
@@ -1756,27 +1763,17 @@ function clearCoverage() {
   if (ce) ce.textContent = '';
 }
 
-// Manual "refresh now" — spin the icon briefly while re-fetching stations.
-async function mapRefresh() {
-  const btn = document.getElementById('mapRefreshBtn');
-  if (btn) btn.classList.add('spinning');
-  try { await fetchStations(); }
-  finally { if (btn) setTimeout(() => btn.classList.remove('spinning'), 400); }
-}
-
 // Set / toggle the 15s auto-refresh loop. Green = auto (default); gray = paused.
 function setAutoRefresh(on) {
   autoRefresh = on;
-  document.getElementById('mapRefreshBtn').classList.toggle('paused', !on);
   startCountdown();   // green → restart from 15; gray → stop + show "paused"
 }
 function toggleRefresh() {
   const turningOn = !autoRefresh;
   // Resuming auto-refresh leaves Coverage mode (they are mutually exclusive).
   if (turningOn && coverageOn) {
-    coverageOn = false;
-    document.getElementById('coverageBtn').classList.remove('on');
-    clearCoverage();
+    document.getElementById('coverage-panel').classList.add('collapsed');
+    setCoverage(false);
   }
   setAutoRefresh(turningOn);
 }
@@ -2060,6 +2057,8 @@ function toggleGrid() {
     map.getSource('mh-grid').setData({ type: 'FeatureCollection', features: [] });
     map.getSource('mh-grid-labels').setData({ type: 'FeatureCollection', features: [] });
   }
+  // Grid is now a combined control: it also drives Measure mode. Keep in sync.
+  if (measureOn !== gridOn) toggleMeasure();
 }
 
 function drawGrid() {
@@ -2244,7 +2243,8 @@ let measurePts = [];   // array of [lon, lat]
 
 function toggleMeasure() {
   measureOn = !measureOn;
-  document.getElementById('measureBtn').classList.toggle('on', measureOn);
+  const mb = document.getElementById('measureBtn');
+  if (mb) mb.classList.toggle('on', measureOn);
   document.getElementById('map').classList.toggle('measuring', measureOn);
   document.getElementById('measure-panel').classList.toggle('show', measureOn);
   if (measureOn) {
