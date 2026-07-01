@@ -410,6 +410,27 @@
       "description": "Wikipedia ZIM snapshot for Kiwix. Large one-time download (1 GB - 100 GB), not vendored in the bundle.",
       "online_only": true,
       "resolved": {}
+    },
+    "ap-fallback": {
+      "type": "apt",
+      "bundle_group": "ap-fallback",
+      "description": "Wi-Fi AP fallback + dashboard Wi-Fi picker (scripts/enable-ap-fallback.py). NetworkManager drives the OASIS WPA2 hotspot; avahi-daemon resolves oasis.local. Both ship in the Raspberry Pi OS base image, so on a standard install this is a no-op; listed so a minimal image can vendor them.",
+      "packages": {
+        "common": [
+          "network-manager",
+          "avahi-daemon"
+        ]
+      },
+      "suites": [
+        "bookworm",
+        "trixie"
+      ],
+      "arches": [
+        "arm64",
+        "armhf",
+        "amd64"
+      ],
+      "resolved": {}
     }
   },
   "availability": {

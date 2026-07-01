@@ -488,6 +488,122 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 .svc-hidden { display: none !important; }
 /* When revealed via the show-all toggle, keep them visibly de-emphasised. */
 .svc-revealed { opacity: .42; }
+
+/* ── Wi-Fi pill (under the clock) + picker modal ─────────────────────── */
+.wifi-pill-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: .6rem;
+  margin-top: .4rem;
+}
+.clock-uptime {
+  display: inline-flex;
+  align-items: baseline;
+  gap: .35rem;
+  padding-left: .6rem;
+  border-left: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+}
+.clock-uptime-lbl { color: var(--text-dim); letter-spacing: .06em; }
+.clock-uptime-val { color: var(--text); font-variant-numeric: tabular-nums; }
+.wifi-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .16rem .7rem;
+  border: 1px solid var(--accent-dim);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: var(--fs-label);
+  font-family: var(--mono);
+  cursor: pointer;
+}
+.wifi-pill:hover { background: var(--panel); border-color: var(--accent); }
+.wifi-pill.ap    { border-color: var(--amber); }
+.wifi-pill.ap .wifi-pill-txt     { color: var(--amber); }
+.wifi-pill.client .wifi-pill-txt { color: var(--accent); }
+.wifi-pill-txt { letter-spacing: .04em; }
+
+.wifi-modal-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, .55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+}
+.wifi-modal {
+  width: min(440px, 100%);
+  max-height: 82vh; overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem 1.15rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .5);
+}
+.wifi-modal-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: .5rem;
+}
+.wifi-modal-title {
+  font-size: var(--fs-title); font-weight: 700; color: var(--accent);
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.wifi-x {
+  background: none; border: none; color: var(--text-dim);
+  font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 .2rem;
+}
+.wifi-x:hover { color: var(--text); }
+.wifi-modal-status {
+  font-size: var(--fs-label); color: var(--text-dim);
+  font-family: var(--mono); margin-bottom: .6rem;
+}
+.wifi-modal-status .ok  { color: var(--accent); }
+.wifi-modal-status .ap  { color: var(--amber); }
+.wifi-list { display: flex; flex-direction: column; gap: .3rem; }
+.wifi-row {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .4rem .55rem;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--panel-2); cursor: pointer;
+}
+.wifi-row:hover { border-color: var(--accent); }
+.wifi-row.current { border-color: var(--accent); }
+.wifi-row-name { flex: 1; font-weight: 600; letter-spacing: .02em;
+                 overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wifi-row-meta { font-size: var(--fs-small); color: var(--text-dim);
+                 font-family: var(--mono); display: flex; align-items: center; gap: .45rem; }
+.wifi-lock { color: var(--text-dim); }
+.wifi-cur-tag { color: var(--accent); font-size: var(--fs-small); }
+.wifi-connect-form {
+  display: flex; flex-direction: column; gap: .45rem;
+  padding: .55rem; margin-top: .25rem;
+  border: 1px solid var(--accent-dim); border-radius: 7px; background: var(--panel-2);
+}
+.wifi-connect-form input {
+  padding: .4rem .55rem; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--text); font-family: var(--mono);
+  font-size: var(--fs-label);
+}
+.wifi-connect-row { display: flex; gap: .4rem; }
+.wifi-connect-row .wifi-btn { flex: 1; }
+.wifi-modal-note {
+  font-size: var(--fs-small); color: var(--text-dim);
+  line-height: 1.4; margin: .7rem 0 .5rem;
+}
+.wifi-modal-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+.wifi-btn {
+  padding: .35rem .8rem; border: 1px solid var(--accent-dim); border-radius: 6px;
+  background: var(--panel-2); color: var(--text); font-size: var(--fs-label);
+  font-family: var(--mono); cursor: pointer;
+}
+.wifi-btn:hover:not(:disabled) { border-color: var(--accent); background: var(--panel); }
+.wifi-btn.primary { border-color: var(--accent); color: var(--accent); }
+.wifi-btn:disabled { opacity: .5; cursor: default; }
+.wifi-msg { font-size: var(--fs-small); font-family: var(--mono); }
+.wifi-msg.err { color: var(--red); }
+.wifi-msg.ok  { color: var(--accent); }
 .svc-revealed:hover { opacity: .75; }
 /* Right-anchored group in the SERVICES header: the show-all toggle + the
    up/warn/down counts pill. Pinned right so the counts pill never drifts left
@@ -742,6 +858,18 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
       <div class="clock-local" id="local-time">LOCAL --:--:--</div>
       <div class="clock-local-date" id="local-date">----·--·--</div>
     </div>
+    <!-- Wi-Fi status / picker (pill hidden off-Pi) + uptime, to its right -->
+    <div class="wifi-pill-row" id="wifi-pill-row">
+      <button class="wifi-pill" id="wifi-pill" onclick="openWifiModal()"
+              style="display:none"
+              title="View Wi-Fi / connect to a network">
+        <span class="wifi-pill-txt" id="wifi-pill-txt">Wi-Fi</span>
+      </button>
+      <span class="clock-uptime" title="System uptime">
+        <span class="clock-uptime-lbl">UPTIME</span>
+        <span class="clock-uptime-val" id="s-uptime">—</span>
+      </span>
+    </div>
   </div>
 </div>
 
@@ -774,16 +902,8 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <span class="stat-val" id="s-temp">—</span>
   </div>
   <div class="stat-item">
-    <span class="stat-lbl">UPTIME</span>
-    <span class="stat-val" id="s-uptime">—</span>
-  </div>
-  <div class="stat-item">
     <span class="stat-lbl">AUDIO</span>
     <span class="stat-val" id="s-audio">—</span>
-  </div>
-  <div class="stat-item" id="item-net" style="display:none">
-    <span class="stat-lbl">NET</span>
-    <span class="stat-val" id="s-net">—</span>
   </div>
     <div class="stat-item">
     <span class="stat-lbl">HOST</span>
@@ -873,8 +993,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div><div class="svc-name">Wiki Kiwix</div><div class="svc-sub" id="sub-kiwix">—</div></div>
     <span class="svc-badge" id="badge-kiwix">—</span>
   </div>
-  <a class="svc-card" id="card-webssh" href="#" rel="noopener"
-     onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.webssh}/`,'_blank');return false;">
+  <a class="svc-card" id="card-webssh" href="static/terminal/index.html">
     <div class="svc-dot" id="dot-webssh"></div>
     <div><div class="svc-name">Web SSH</div><div class="svc-sub" id="sub-webssh">—</div></div>
     <span class="svc-badge" id="badge-webssh">—</span>
@@ -898,7 +1017,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
       <ul class="nav-links">
         <li><a href="aprs/map.html">APRS Maidenhead Map <span class="nav-meta">live APRS</span></a></li>
         <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
-        <li><a id="nlink-webssh" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.webssh}/`,'_blank');return false;">SSH Terminal <span class="nav-svc-badge" id="nsvc-webssh">—</span></a></li>
+        <li><a id="nlink-webssh" href="static/terminal/index.html" class="nav-link-svc">SSH Terminal <span class="nav-svc-badge" id="nsvc-webssh">—</span></a></li>
         <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>        
       </ul>
     </div>
@@ -1917,21 +2036,6 @@ async function fetchStats() {
         throtItem.style.display = 'none';
       }
     }
-    // Network: SSID + associated clients (Pi access-point use) — hidden off-Pi.
-    const netItem = document.getElementById('item-net');
-    if (netItem) {
-      if (d.net && (d.net.ssid || d.net.clients != null)) {
-        netItem.style.display = '';
-        const parts = [];
-        if (d.net.ssid) parts.push(d.net.ssid);
-        if (d.net.clients != null) parts.push(`${d.net.clients} client${d.net.clients !== 1 ? 's' : ''}`);
-        const el = document.getElementById('s-net');
-        el.textContent = parts.join(' · ');
-        el.className   = 'stat-val';
-      } else {
-        netItem.style.display = 'none';
-      }
-    }
 
     // Telemetry badge: green = all valid, amber = some n/a, red = all n/a
     const tb = document.getElementById('telemetry-badge');
@@ -2105,6 +2209,216 @@ async function fetchAPRS() {
   }
 }
 
+// ── Wi-Fi status pill + picker ────────────────────────────────────────────────
+// The pill under the clock stays hidden unless the AP-fallback controls are
+// installed (scripts/enable-ap-fallback.py). It reflects whether the Pi is on a
+// client network or hosting the OASIS access point.
+let _wifiSupported = false;
+let _wifiCurrentSsid = null;
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+async function pollWifi() {
+  const pill = document.getElementById('wifi-pill');
+  if (!pill) return;
+  try {
+    const r = await fetch('/api/wifi/status', { cache: 'no-store' });
+    const d = await r.json().catch(() => ({}));
+    if (!d || !d.supported) { pill.style.display = 'none'; _wifiSupported = false; return; }
+    _wifiSupported = true;
+    pill.style.display = '';
+    const txt  = document.getElementById('wifi-pill-txt');
+    pill.classList.remove('ap', 'client');
+    if (d.mode === 'ap') {
+      pill.classList.add('ap');
+      txt.textContent = 'AP: OASIS';
+      pill.title = 'Hosting the OASIS access point · http://' + (d.ap_ip || '10.42.0.1') + ':8083';
+    } else if (d.mode === 'client' && d.ssid) {
+      pill.classList.add('client');
+      txt.textContent = d.ssid;
+      pill.title = 'Connected to ' + d.ssid + ' · tap to change network';
+    } else {
+      txt.textContent = 'Wi-Fi';
+      pill.title = 'Not connected · tap to join a network';
+    }
+  } catch (e) {
+    pill.style.display = 'none';
+  }
+}
+
+function openWifiModal() {
+  document.getElementById('wifi-modal').style.display = 'flex';
+  scanWifi();
+}
+function closeWifiModal() {
+  document.getElementById('wifi-modal').style.display = 'none';
+}
+
+function wifiSignalBars(sig) {
+  const n = sig >= 75 ? 4 : sig >= 50 ? 3 : sig >= 25 ? 2 : 1;
+  return '▂▄▆█'.slice(0, n) + '·'.repeat(4 - n);
+}
+
+async function scanWifi() {
+  const list   = document.getElementById('wifi-list');
+  const status = document.getElementById('wifi-modal-status');
+  const rescan = document.getElementById('wifi-rescan');
+  status.innerHTML = 'Scanning…';
+  list.innerHTML = '';
+  if (rescan) rescan.disabled = true;
+  try {
+    const [sr, cr] = await Promise.all([
+      fetch('/api/wifi/scan',   { cache: 'no-store' }),
+      fetch('/api/wifi/status', { cache: 'no-store' }),
+    ]);
+    const s = await sr.json().catch(() => ({}));
+    const c = await cr.json().catch(() => ({}));
+
+    const forgetBtn = document.getElementById('wifi-forget');
+    _wifiCurrentSsid = null;
+    if (c && c.supported) {
+      if (c.mode === 'ap') {
+        status.innerHTML = '<span class="ap">Hosting AP “OASIS”</span> · http://' +
+                           (c.ap_ip || '10.42.0.1') + ':8083';
+      } else if (c.mode === 'client' && c.ssid) {
+        _wifiCurrentSsid = c.ssid;
+        status.innerHTML = 'Connected to <span class="ok">' + escapeHtml(c.ssid) + '</span>';
+      } else {
+        status.textContent = 'Not connected to any network.';
+      }
+    } else {
+      status.textContent = '';
+    }
+    if (forgetBtn) forgetBtn.style.display = _wifiCurrentSsid ? '' : 'none';
+
+    if (!s || !s.ok) {
+      const reason = s && s.reason === 'no-privilege'
+        ? 'Wi-Fi controls not authorised — run scripts/enable-ap-fallback.py.'
+        : 'Could not scan for networks.';
+      list.innerHTML = '<div class="wifi-msg err">' + reason + '</div>';
+      return;
+    }
+    if (!s.networks.length) {
+      list.innerHTML = '<div class="wifi-msg">No networks in range.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    s.networks.forEach(net => {
+      const row = document.createElement('div');
+      row.className = 'wifi-row' + (net.in_use ? ' current' : '');
+      row.innerHTML =
+        '<span class="wifi-row-name">' + escapeHtml(net.ssid) + '</span>' +
+        '<span class="wifi-row-meta">' +
+          (net.in_use ? '<span class="wifi-cur-tag">connected</span>' : '') +
+          (net.secure ? '<span class="wifi-lock">&#128274;</span>' : '') +
+          '<span title="' + net.signal + '%">' + wifiSignalBars(net.signal) + '</span>' +
+        '</span>';
+      row.onclick = () => showWifiConnectForm(row, net);
+      list.appendChild(row);
+    });
+  } catch (e) {
+    status.textContent = '';
+    list.innerHTML = '<div class="wifi-msg err">Scan failed: ' + escapeHtml(e.message) + '</div>';
+  } finally {
+    if (rescan) rescan.disabled = false;
+  }
+}
+
+function showWifiConnectForm(row, net) {
+  // Collapse any other open form first.
+  document.querySelectorAll('.wifi-connect-form').forEach(f => f.remove());
+  if (net.in_use) return;   // already on this one
+
+  const form = document.createElement('div');
+  form.className = 'wifi-connect-form';
+  form.innerHTML = net.secure
+    ? '<input type="password" id="wifi-pw" placeholder="Password (8–63 chars)" ' +
+      'autocomplete="off" maxlength="63">' +
+      '<div class="wifi-connect-row">' +
+        '<button class="wifi-btn primary" id="wifi-go">Connect</button>' +
+        '<button class="wifi-btn" id="wifi-cancel">Cancel</button>' +
+      '</div>' +
+      '<div class="wifi-msg" id="wifi-form-msg"></div>'
+    : '<div class="wifi-msg err">Open networks aren’t supported — choose a secured network.</div>' +
+      '<div class="wifi-connect-row"><button class="wifi-btn" id="wifi-cancel">Close</button></div>';
+  row.insertAdjacentElement('afterend', form);
+
+  const cancel = form.querySelector('#wifi-cancel');
+  if (cancel) cancel.onclick = () => form.remove();
+  const go = form.querySelector('#wifi-go');
+  const pw = form.querySelector('#wifi-pw');
+  if (pw) pw.focus();
+  if (go) {
+    go.onclick = () => connectWifi(net.ssid, pw.value, form);
+    if (pw) pw.onkeydown = (e) => { if (e.key === 'Enter') connectWifi(net.ssid, pw.value, form); };
+  }
+}
+
+async function connectWifi(ssid, password, form) {
+  const msg = form.querySelector('#wifi-form-msg');
+  const go  = form.querySelector('#wifi-go');
+  if ((password || '').length < 8 || password.length > 63) {
+    if (msg) { msg.className = 'wifi-msg err'; msg.textContent = 'Password must be 8–63 characters.'; }
+    return;
+  }
+  if (msg) { msg.className = 'wifi-msg'; msg.textContent = 'Connecting… (the OASIS AP will drop)'; }
+  if (go) go.disabled = true;
+  try {
+    const r = await fetch('/api/wifi/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+      body: JSON.stringify({ ssid, password }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      if (msg) { msg.className = 'wifi-msg ok'; msg.textContent = 'Connected to ' + ssid + '.'; }
+      setTimeout(() => { pollWifi(); scanWifi(); }, 1500);
+    } else {
+      if (msg) { msg.className = 'wifi-msg err'; msg.textContent = (d && d.error) || ('HTTP ' + r.status); }
+      if (go) go.disabled = false;
+    }
+  } catch (e) {
+    // Losing the connection mid-join is expected when reconfiguring over the AP.
+    if (msg) { msg.className = 'wifi-msg'; msg.textContent =
+      'Request sent — if the page dropped, reconnect to “' + ssid + '” and reopen the dashboard.'; }
+  }
+}
+
+async function forgetWifi() {
+  const ssid = _wifiCurrentSsid;
+  if (!ssid) return;
+  if (!confirm('Forget “' + ssid + '”?\n\nThe device will disconnect from this ' +
+               'network and raise the OASIS access point. If you are viewing this ' +
+               'page over that Wi-Fi, the connection will drop — rejoin the OASIS AP.')) return;
+  const btn = document.getElementById('wifi-forget');
+  const status = document.getElementById('wifi-modal-status');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Forgetting “' + ssid + '”…';
+  try {
+    const r = await fetch('/api/wifi/forget', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      setTimeout(() => { pollWifi(); scanWifi(); }, 2000);
+    } else {
+      if (status) status.textContent = '';
+      alert('Could not forget network:\n' + ((d && d.error) || ('HTTP ' + r.status)));
+      if (btn) btn.disabled = false;
+    }
+  } catch (e) {
+    // The link may drop as the radio switches to AP — expected.
+    setTimeout(() => { pollWifi(); scanWifi(); }, 2500);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 loadConfig().then(() => {
   applyUnits();
@@ -2112,16 +2426,41 @@ loadConfig().then(() => {
   fetchStats();
   fetchAudio();
   fetchAPRS();
+  pollWifi();
   setInterval(pingAll,      30_000);
   setInterval(fetchStats,   30_000);
   setInterval(fetchAudio,   30_000);
   setInterval(fetchAPRS,    15_000);
   setInterval(pollFeedFlow, FEED_FLOW_MS);
+  setInterval(pollWifi,     30_000);
   // Refresh the meter immediately when the operator returns to the tab.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') pollFeedFlow();
   });
 });</script>
+
+<!-- ── Wi-Fi picker modal ─────────────────────────────────────────────────── -->
+<div class="wifi-modal-backdrop" id="wifi-modal" style="display:none"
+     onclick="if(event.target===this)closeWifiModal()">
+  <div class="wifi-modal" role="dialog" aria-label="Wi-Fi networks">
+    <div class="wifi-modal-hdr">
+      <span class="wifi-modal-title">Wi-Fi</span>
+      <button class="wifi-x" onclick="closeWifiModal()" aria-label="Close">&times;</button>
+    </div>
+    <div class="wifi-modal-status" id="wifi-modal-status">Checking…</div>
+    <div class="wifi-list" id="wifi-list"></div>
+    <div class="wifi-modal-note">
+      This device has a single radio, so joining a network takes the
+      <strong>OASIS</strong> access point offline — anyone connected to it will
+      need to reconnect via the new address shown on the dashboard.
+    </div>
+    <div class="wifi-modal-actions">
+      <button class="wifi-btn" id="wifi-forget" onclick="forgetWifi()"
+              style="display:none">Forget network</button>
+      <button class="wifi-btn" id="wifi-rescan" onclick="scanWifi()">Rescan</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>

@@ -120,6 +120,38 @@ echo ""
 
 # ── Launch server ─────────────────────────────────────────────────────────────
 PORT=8083
+
+# ── Restart, don't just start: free the port if a previous instance is bound ──
+# Launching while an old OASIS still holds the port fails with "address already
+# in use". Find whatever is LISTENing on $PORT and stop it first (graceful TERM,
+# then KILL for stragglers). Works with whichever tool the host has.
+_pids_on_port() {
+    local port="$1"
+    if command -v lsof &>/dev/null; then
+        lsof -ti "tcp:$port" -sTCP:LISTEN 2>/dev/null
+    elif command -v fuser &>/dev/null; then
+        fuser "$port/tcp" 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$'
+    elif command -v ss &>/dev/null; then
+        ss -ltnpH "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u
+    fi
+}
+
+_busy=$(_pids_on_port "$PORT" | sort -u | tr '\n' ' ' | xargs 2>/dev/null || true)
+if [[ -n "$_busy" ]]; then
+    echo "  Port $PORT in use (PID: $_busy) — stopping it to restart..."
+    kill $_busy 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        sleep 0.5
+        [[ -z "$(_pids_on_port "$PORT" | xargs 2>/dev/null || true)" ]] && break
+    done
+    _busy=$(_pids_on_port "$PORT" | xargs 2>/dev/null || true)
+    if [[ -n "$_busy" ]]; then
+        echo "  Still running — forcing stop (PID: $_busy)..."
+        kill -9 $_busy 2>/dev/null || true
+        sleep 0.5
+    fi
+fi
+
 echo "  Starting OASIS..."
 echo ""
 

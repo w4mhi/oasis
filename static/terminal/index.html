@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  // Match the dashboard theme (dark default) before first paint.
+  try { if (localStorage.getItem('oasis_theme') === 'light')
+          document.documentElement.dataset.theme = 'light'; } catch (e) {}
+</script>
+<title>OASIS - SSH Terminal</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+/* Full-bleed: slim bar on top, terminal fills the rest. */
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; overflow: hidden; }
+.term-bar {
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+  padding: .4rem .9rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+/* .home-link floats right in common.css; flex ignores float, so it sits inline. */
+.term-bar .home-link { float: none; margin: 0; }
+.term-title {
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.term-frame { flex: 1 1 auto; width: 100%; border: 0; }
+</style>
+</head>
+<body>
+  <div class="term-bar">
+    <a class="home-link" href="/">⌂ HOME</a>
+    <span class="term-title">SSH Terminal</span>
+  </div>
+  <iframe class="term-frame" id="term" title="SSH Terminal"></iframe>
+<script>
+  // ttyd (browser SSH) runs on port 7681 on this same host. Built at runtime so
+  // it works over any hostname/IP the dashboard is reached on (LAN or 10.42.0.1).
+  document.getElementById('term').src =
+    location.protocol + '//' + location.hostname + ':7681/';
+</script>
+</body>
+</html>

@@ -360,20 +360,104 @@ If you ran `setup-fcc-database.py` directly on the Pi, no copying is needed.
 
 ## Using OASIS in the field (no internet)
 
-For deployment at an activation or field event, the Pi needs to act as a Wi-Fi access point so other devices can connect without a separate router.
+For deployment at an activation or field event, the Pi needs to act as a Wi-Fi access point so other devices can connect without a separate router. OASIS can do this **automatically** — preferring a known Wi-Fi network when one is in range, and falling back to its own access point when none is.
 
-**Set up the Pi as a Wi-Fi hotspot:**
+**Arm the AP fallback (one time):**
 
 ```bash
-# Using nmcli (works on Pi OS Bookworm and later):
-sudo nmcli device wifi hotspot ssid OASIS password yourpassword
+python3 scripts/enable-ap-fallback.py
+# custom hotspot name / password:
+python3 scripts/enable-ap-fallback.py --ssid FIELD1 --password mypassword
 ```
 
-Or use **Raspberry Pi Imager Advanced Options** before flashing — enable **Configure wireless LAN** and choose your SSID/password, which works for connecting to an existing network. For creating a hotspot, use `nmcli` or `hostapd` after boot.
+This installs `avahi-daemon` (so the dashboard resolves at `oasis.local`), creates a WPA2 hotspot profile, and arms a watcher (`oasis-netwatch.service`) that raises the AP whenever no known network is reachable. Undo any time with `--disable`; check status with `--check`.
 
-Once the hotspot is running, other devices connect to `OASIS` Wi-Fi and open `http://10.42.0.1:8083` (or `http://oasis.local:8083`).
+**Defaults** (a public, EmComm-friendly hotspot):
 
-> 💡 The OASIS dashboard **System Monitor** shows connected clients and SSID when the Pi is acting as an access point.
+| Setting | Value |
+|---|---|
+| SSID | `OASIS` (`--ssid`) |
+| Password | `oasis-emcomm` — WPA2, publicly documented for quick field access (`--password`) |
+| AP address | `10.42.0.1` (DHCP hands clients `10.42.0.2–254`) |
+| Hostname | `oasis.local` (via avahi) |
+
+Once the AP is up, other devices connect to the `OASIS` Wi-Fi (password `oasis-emcomm`) and open `http://10.42.0.1:8083` (or `http://oasis.local:8083`).
+
+**Joining a Wi-Fi network from the dashboard:** tap the **Wi-Fi** button under the clock, pick a network, and enter its password. Because the Pi Zero 2 W has a single radio, joining a network takes the OASIS AP offline — any device connected to the AP must reconnect via the Pi's new address.
+
+> 💡 The Wi-Fi pill under the clock shows the current SSID or `AP: OASIS`. The System Monitor **IP** row shows the address to reach the dashboard on (e.g. `10.42.0.1` when hosting the AP).
+
+**Manual hotspot** (without the fallback watcher) still works too:
+
+```bash
+sudo nmcli device wifi hotspot ssid OASIS password oasis-emcomm
+```
+
+### How it works
+
+- **`oasis-netwatch.service`** — a small daemon that, at boot, waits ~25 s for NetworkManager to auto-join a saved network; if none is reachable it raises the `OASIS-AP` hotspot. During operation it polls every 15 s and, after a client link has been gone ~45 s, falls back to the AP. It logs every decision:
+  ```bash
+  journalctl -u oasis-netwatch -f
+  ```
+- **`/usr/local/bin/oasis-netctl`** — a pinned privileged helper (scan / connect / forget / ap-up) the dashboard calls via a scoped `sudo` rule (`/etc/sudoers.d/oasis-wifi`); no password touches the web layer.
+- **Single radio:** the Pi Zero 2 W has one Wi-Fi radio, so it is **either** a client **or** the AP, never both. Joining or forgetting a network from the dashboard therefore drops the AP; reconnecting to a known network after an AP fallback happens on the next reboot or via the dashboard.
+
+Check status any time:
+
+```bash
+python3 scripts/enable-ap-fallback.py --check
+```
+
+### Troubleshooting the access point
+
+These are the real issues seen bringing the AP up on a Pi Zero 2 W (Broadcom `brcmfmac` radio), in the order to check them.
+
+**1. The `OASIS` network doesn't broadcast at all.** NetworkManager can report the AP as "up" while the radio isn't actually beaconing. The two usual causes are a soft-blocked radio and an unset Wi-Fi regulatory domain (`country 00`), which suppresses 2.4 GHz beaconing.
+
+```bash
+iw dev wlan0 info        # want: type AP · ssid OASIS · channel 6
+rfkill list              # wifi must NOT be "Soft blocked: yes"
+iw reg get               # want a real country (e.g. US), NOT "country 00"
+```
+
+Fix — set your country and unblock the radio (the enable script does this when you pass `--country`):
+
+```bash
+sudo python3 scripts/enable-ap-fallback.py --country US
+# or manually:
+sudo raspi-config nonint do_wifi_country US
+sudo rfkill unblock wifi
+sudo iw reg set US
+sudo nmcli connection up OASIS-AP
+```
+
+> A bare `raspi-config` country change doesn't always apply to the live radio until reboot — `iw reg set US` applies it immediately.
+
+**2. The `OASIS` network shows, but the phone asks for a WPS PIN (4–8 digits) instead of a password.** This happens when the AP advertises an ambiguous/mixed security mode; Windows and Android then fall back to the WPS flow. The fix is to force clean **WPA2-only (RSN / CCMP-AES)** — the enable script now sets this. To apply by hand:
+
+```bash
+sudo nmcli connection modify OASIS-AP \
+  802-11-wireless-security.key-mgmt wpa-psk \
+  802-11-wireless-security.proto rsn \
+  802-11-wireless-security.pairwise ccmp \
+  802-11-wireless-security.group ccmp \
+  802-11-wireless-security.pmf disable
+sudo nmcli connection down OASIS-AP; sudo nmcli connection up OASIS-AP
+```
+
+**3. Joining a network from the dashboard fails with `802-11-wireless-security.key-mgmt: property is missing`.** A stale saved profile for that SSID has an incomplete security section, and NetworkManager reactivates it instead of creating a fresh one. Delete the offending profile and reconnect:
+
+```bash
+nmcli -f NAME,TYPE connection show                          # find the wifi profile
+nmcli -g 802-11-wireless-security.key-mgmt connection show <NAME>   # empty = broken
+sudo nmcli connection delete <NAME>                          # e.g. MH-500 or netplan-<SSID>
+```
+
+The dashboard helper now purges a stale same-SSID profile automatically before every connect, so this shouldn't recur after re-running the enable script.
+
+**4. The System Monitor IP shows `127.0.0.1`.** Resolved — the server now falls back to the first non-loopback interface address (preferring `wlan*`) when there's no default route, so it reports `10.42.0.1` in AP mode.
+
+**5. `./start.sh` fails with "address already in use".** Resolved — the launcher now frees port 8083 (stops any process still bound to it) before starting, so it restarts cleanly. If the port is held by the systemd `oasis.service`, use `sudo systemctl restart oasis` instead.
 
 ---
 
