@@ -44,12 +44,18 @@ HTTP_TIMEOUT  = 5          # seconds per request
 APRS_EVERY    = 15         # data refresh cadence (s)
 SYSTEM_EVERY  = 30
 REDRAW_EVERY  = 1          # frame/clock cadence (s)
+STALE_SEC     = 600        # APRS "fresh" window (s) for the Live/Feed markers
 FB_NAME_MATCH = "st7789"   # substring matched against /sys/class/graphics/fbN/name
 BL_POWER_ON   = 0          # 0 = unblank (pwm-backlight). Old gpio-backlight needs 1.
+# Rotate the composed frame 180° before it reaches the panel — for an upside-down
+# CM4Stack mount. Touch is tap-only (no coordinates), so it needs no remap.
+# Enable at runtime with OASIS_PANEL_FLIP=1 (e.g. Environment= in the unit).
+FLIP_180      = os.environ.get("OASIS_PANEL_FLIP", "0") == "1"
 
 # Colours (R, G, B)
 BG     = (8, 10, 12)
 ACCENT = (0, 200, 100)
+GREEN_DIM = (0, 90, 45)     # dim phase of the Feed heartbeat pulse
 TEXT   = (220, 225, 228)
 DIM    = (120, 128, 135)
 AMBER  = (255, 180, 84)
@@ -346,25 +352,50 @@ def render(w, h, aprs, system, view="list"):
     y += 22
     hline(y); y += 6
 
-    # APRS status — mirrors index.html setTitle(): LIVE only when stations are
-    # present; empty feed / ok:false / unreachable all read as OFF (amber).
+    # ── GrayWolf service health: Live · API · Feed (dot + word). We monitor
+    # APRS, so the old "APRS" label is gone; the row now carries three markers.
     stations = aprs or []                 # aprs is None (unreachable) or a list
-    live = bool(stations)
-    up_txt = fmt_uptime(system.get("uptime_sec")) if system else "—"
-    text(pad, y, "APRS", F_BIG, TEXT)
-    d.ellipse([(pad + 50, y + 4), (pad + 58, y + 12)],
-              fill=ACCENT if live else AMBER)
-    status = "LIVE" if live else "OFF"
-    text(pad + 66, y, status, F_BIG, ACCENT if live else AMBER)
-    sw = d.textlength(status, font=F_BIG)
-    text(pad + 66 + sw + 5, y, f"\u00b7 {up_txt}", F_BIG, AMBER)   # uptime, after status
-    y += 22
-    # Most-recent station — drives the LAST HEARD card lower down.
+    live = bool(stations)                 # packets present (used by sections below)
+    up_txt = fmt_uptime(system.get("uptime_sec")) if system else "\u2014"
+
+    # Most-recent station — drives freshness here and the LAST HEARD card below.
     newest, best = None, None
-    for s in (stations or []):
+    for s in stations:
         dt = parse_iso(s.get("last_heard"))
         if dt and (best is None or dt > best):
             best, newest = dt, s
+    fresh = best is not None and \
+        (datetime.now(timezone.utc) - best).total_seconds() < STALE_SEC
+
+    serving  = aprs is not None                          # endpoint answered ok:true
+    api_hits = (system is not None) + (aprs is not None)  # 0, 1 or 2 endpoints up
+
+    # Live (GrayWolf core): green fresh · amber stale · red "Dead" when not serving
+    if not serving:
+        live_word, live_col = "DEAD", RED
+    else:
+        live_word, live_col = "LIVE", (ACCENT if fresh else AMBER)
+    # API (State API): green both endpoints · amber partial · red none
+    api_col = ACCENT if api_hits == 2 else (AMBER if api_hits == 1 else RED)
+    # Feed (APRS activity): green + heartbeat when fresh · amber silent · red down
+    if aprs is None:
+        feed_col, feed_pulse = RED, False
+    elif fresh:
+        feed_col, feed_pulse = ACCENT, True
+    else:
+        feed_col, feed_pulse = AMBER, False
+
+    def marker(x, word, color, pulse=False):
+        dot = GREEN_DIM if (pulse and int(time.time()) % 2) else color   # heartbeat
+        d.ellipse([(x, y + 3), (x + 11, y + 14)], fill=dot)
+        text(x + 16, y, word, F_BIG, color)
+        return int(x + 16 + d.textlength(word, font=F_BIG) + 16)
+
+    nx = marker(pad, live_word, live_col)
+    nx = marker(nx, "API", api_col)
+    marker(nx, "FEED", feed_col, feed_pulse)
+    y += 22
+
     hline(y); y += 6
 
     # System telemetry
@@ -386,9 +417,6 @@ def render(w, h, aprs, system, view="list"):
         text(pad + 112, y, "DISK", F_SM, DIM)
         text(pad + 152, y, f"{round(disk)}%" if disk is not None else "n/a",
              F_LBL, stat_color(disk, 70, 90))
-        y += 18
-        text(pad, y, "IP", F_SM, DIM)
-        text(pad + 34, y, str(system.get("ip") or "—"), F_LBL, TEXT)
         y += 18
     else:
         text(pad, y, "system: n/a", F_LBL, DIM)
@@ -506,12 +534,14 @@ def render(w, h, aprs, system, view="list"):
         else:
             text(pad, y, "no stations yet", F_LBL, DIM)
 
-    # Footer: host -> ip
+    # Footer: host · ip (left)  ·  uptime (right)
     host = (system or {}).get("hostname") or os.uname().nodename
     ip = (system or {}).get("ip")
-    foot = host + (f" \u00b7 {ip}" if ip else "")
+    left = host + (f" \u00b7 {ip}" if ip else "")
     d.line([(pad, h - 20), (w - pad, h - 20)], fill=LINE, width=1)
-    text(pad, h - 16, foot[:34], F_SM, DIM)
+    text(pad, h - 16, left[:26], F_SM, DIM)
+    if up_txt and up_txt != "\u2014":
+        rtext(h - 16, f"\u2191 {up_txt}", F_SM, DIM)
     return img
 
 # ── Touch input (GT911) ──────────────────────────────────────────────────────
@@ -609,7 +639,10 @@ def main():
                 set_backlight_on()
                 last_bl = tick
 
-            fb.show(render(fb.w, fb.h, aprs, system, state["view"]))
+            frame = render(fb.w, fb.h, aprs, system, state["view"])
+            if FLIP_180:
+                frame = frame.rotate(180)
+            fb.show(frame)
         except Exception as e:
             sys.stderr.write(f"[oasis-panel] loop error: {e}\n")
             try:                                     # recover a stale fb handle
@@ -650,6 +683,8 @@ def preview(out_path, mock=False, view="card", size=(240, 320)):
     else:
         aprs, system = fetch_aprs(), fetch_system()
     img = render(size[0], size[1], aprs, system, view)
+    if FLIP_180:
+        img = img.rotate(180)
     img.save(out_path)
     sys.stderr.write(f"[oasis-panel] preview written: {out_path} "
                      f"({'mock' if mock else 'live'} data, {view} view)\n")
