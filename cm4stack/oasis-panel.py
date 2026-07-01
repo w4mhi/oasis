@@ -21,12 +21,16 @@ Dependencies:
 """
 
 import os
+import re
 import sys
 import time
 import json
 import mmap
 import signal
+import struct
+import threading
 import urllib.request
+from io import BytesIO
 from datetime import datetime, timezone
 
 from PIL import Image, ImageDraw, ImageFont
@@ -69,9 +73,11 @@ def _font(bold, size):
 
 F_TITLE = _font(True, 22)
 F_CLOCK = _font(True, 17)
+F_CALL  = _font(True, 20)
 F_BIG   = _font(True, 15)
 F_LBL   = _font(False, 13)
 F_SM    = _font(False, 11)
+F_OVL   = _font(True, 9)
 
 # ── Framebuffer ─────────────────────────────────────────────────────────────
 class Framebuffer:
@@ -227,8 +233,89 @@ def speed_mph(s):
     except (TypeError, ValueError):
         return 0.0
 
+_ARROWS = ["\u2191", "\u2197", "\u2192", "\u2198",
+           "\u2193", "\u2199", "\u2190", "\u2196"]
+_CARD   = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+
+def course_dir(course):
+    """Map a course in degrees to (arrow, cardinal); (None, None) if absent."""
+    if course is None:
+        return None, None
+    try:
+        i = int((float(course) % 360) / 45.0 + 0.5) % 8
+    except (TypeError, ValueError):
+        return None, None
+    return _ARROWS[i], _CARD[i]
+
+def grid_square(lat, lon):
+    """6-char Maidenhead locator, or None. Inlined to stay import-free."""
+    try:
+        lat = float(lat); lon = float(lon)
+    except (TypeError, ValueError):
+        return None
+    if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+        return None
+    lon += 180.0; lat += 90.0
+    out = [chr(int(lon / 20) + 65), chr(int(lat / 10) + 65)]
+    lon %= 20; lat %= 10
+    out += [str(int(lon / 2)), str(int(lat))]
+    lon %= 2; lat %= 1
+    out += [chr(int(lon / (2 / 24.0)) + 97), chr(int(lat / (1 / 24.0)) + 97)]
+    return "".join(out)
+
+# ── APRS symbol sprites ───────────────────────────────────────────────────────
+# Same 24×24 sheets the web map uses; fetched once over local HTTP (offline-safe).
+SPRITE_CELL = 24
+SPRITE_COLS = 16
+SPRITE_URLS = {
+    "/":  BASE_URL + "/map-assets/aprs-symbols-24-0.png",   # primary table
+    "\\": BASE_URL + "/map-assets/aprs-symbols-24-1.png",   # alternate table
+}
+_sprites   = {}   # table char -> PIL.Image (RGBA) or False once a fetch failed
+_sym_cache = {}   # (table, code) -> rendered 24×24 RGBA cell
+
+def _load_sprite(table):
+    """Fetch + cache a sprite sheet. Returns an RGBA Image or None."""
+    if table in _sprites:
+        return _sprites[table] or None
+    img = None
+    url = SPRITE_URLS.get(table)
+    if url:
+        try:
+            with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT) as r:
+                img = Image.open(BytesIO(r.read())).convert("RGBA")
+        except Exception:
+            img = None
+    _sprites[table] = img or False
+    return img
+
+def symbol_cell(sym_table, sym_code):
+    """Return a 24×24 RGBA APRS symbol for table+code, or None if unavailable.
+
+    Mirrors the map: backslash + overlay tables use the alternate sheet, and an
+    overlay character is stamped into the bottom-right corner."""
+    key = (sym_table, sym_code)
+    if key in _sym_cache:
+        return _sym_cache[key]
+    overlay = sym_table not in ("/", "\\")
+    sheet = _load_sprite("\\" if (overlay or sym_table == "\\") else "/")
+    if sheet is None:
+        return None
+    idx = ord(sym_code) - 33 if sym_code else 0
+    if idx < 0 or idx > 95:
+        idx = 0
+    x0 = (idx % SPRITE_COLS) * SPRITE_CELL
+    y0 = (idx // SPRITE_COLS) * SPRITE_CELL
+    cell = sheet.crop((x0, y0, x0 + SPRITE_CELL, y0 + SPRITE_CELL)).copy()
+    if overlay:
+        od = ImageDraw.Draw(cell)
+        od.rectangle([15, 15, 23, 23], fill=(0, 0, 0, 191))
+        od.text((17, 14), sym_table, font=F_OVL, fill=(255, 255, 255, 255))
+    _sym_cache[key] = cell
+    return cell
+
 # ── Render ──────────────────────────────────────────────────────────────────
-def render(w, h, aprs, system):
+def render(w, h, aprs, system, view="list"):
     img = Image.new("RGB", (w, h), BG)
     d = ImageDraw.Draw(img)
     pad = 8
@@ -272,17 +359,12 @@ def render(w, h, aprs, system):
     sw = d.textlength(status, font=F_BIG)
     text(pad + 66 + sw + 5, y, f"\u00b7 {up_txt}", F_BIG, AMBER)   # uptime, after status
     y += 22
-    if live:
-        newest, best = None, None
-        for s in stations:
-            dt = parse_iso(s.get("last_heard"))
-            if dt and (best is None or dt > best):
-                best, newest = dt, s
-        if newest:
-            text(pad, y, "last", F_SM, DIM)
-            text(pad + 34, y, str(newest.get("callsign", "?"))[:12], F_LBL, ACCENT)
-            rtext(y, age_str(best), F_LBL, DIM)
-            y += 18
+    # Most-recent station — drives the LAST HEARD card lower down.
+    newest, best = None, None
+    for s in (stations or []):
+        dt = parse_iso(s.get("last_heard"))
+        if dt and (best is None or dt > best):
+            best, newest = dt, s
     hline(y); y += 6
 
     # System telemetry
@@ -313,29 +395,116 @@ def render(w, h, aprs, system):
         y += 18
     hline(y); y += 6
 
-    # Recent stations: callsign · speed (amber, only if moving) · age
-    text(pad, y, "RECENT", F_BIG, AMBER)
-    if live:
-        rtext(y, f"{len(stations)} stn", F_BIG, AMBER)
-    y += 16
-    if aprs:
-        rows = sorted(
-            (s for s in aprs if parse_iso(s.get("last_heard"))),
-            key=lambda s: parse_iso(s["last_heard"]), reverse=True,
-        )
-        line_h = 16
-        max_rows = max(0, (h - y - 24) // line_h)
-        for s in rows[:max_rows]:
-            text(pad, y, str(s.get("callsign") or "?")[:9], F_LBL, ACCENT)
-            spd = speed_mph(s)
+    if view == "card":
+        # ── LAST HEARD station card: icon · position · altitude · speed · comment
+        text(pad, y, "LAST HEARD", F_BIG, AMBER)
+        if live:
+            rtext(y, f"{len(stations)} stn", F_BIG, AMBER)
+        y += 20
+
+        if newest:
+            # APRS symbol (sprite cell scaled 2× → 48px), callsign + age beside it.
+            icon = symbol_cell(str(newest.get("sym_table") or "/"),
+                               str(newest.get("sym_code") or "-"))
+            icon_x, icon_y, icon_sz = pad, y, 48
+            if icon is not None:
+                big = icon.resize((icon_sz, icon_sz), Image.NEAREST)
+                img.paste(big, (icon_x, icon_y), big)
+            else:                                # sprites unreachable: text fallback
+                d.rectangle([icon_x, icon_y, icon_x + icon_sz, icon_y + icon_sz],
+                            outline=LINE, width=1)
+                sc = f"{newest.get('sym_table', '/')}{newest.get('sym_code', '-')}"
+                text(icon_x + 12, icon_y + 16, sc, F_LBL, DIM)
+
+            tx = icon_x + icon_sz + 10
+            text(tx, icon_y + 1, str(newest.get("callsign") or "?")[:10], F_CALL, ACCENT)
+            text(tx, icon_y + 26, f"{age_str(best)} ago", F_LBL, DIM)
+            via = str(newest.get("via") or "").strip()
+            if via:
+                rtext(icon_y + 26, via[:10], F_SM, DIM)
+            y = icon_y + icon_sz + 8
+
+            # Position + Maidenhead grid
+            lat, lon = newest.get("lat"), newest.get("lon")
+            if lat is not None and lon is not None:
+                text(pad, y, f"{float(lat):.4f}, {float(lon):.4f}", F_LBL, TEXT)
+                g = grid_square(lat, lon)
+                if g:
+                    rtext(y, g, F_LBL, ACCENT)
+                y += 18
+
+            # Speed + course (arrow · cardinal · bearing)
+            arrow, card = course_dir(newest.get("course"))
+            spd = speed_mph(newest)
+            text(pad, y, "SPD", F_SM, DIM)
             if spd > 0:
-                text(w - pad - 96, y, f"{round(spd)}mph", F_LBL, AMBER)  # moving
-            text(w - pad - 44, y, age_str(parse_iso(s.get("last_heard"))), F_LBL, DIM)
-            y += line_h
-    elif aprs is None:
-        text(pad, y, "—", F_LBL, DIM)
+                line = f"{round(spd)} mph"
+                if arrow:
+                    line += f"  {arrow} {card} {int(float(newest['course']))}\u00b0"
+                text(pad + 34, y, line, F_LBL, AMBER)
+            else:
+                text(pad + 34, y, "stationary", F_LBL, DIM)
+            y += 18
+
+            # Altitude — feet first (US ham), metres second
+            alt = newest.get("alt_m")
+            text(pad, y, "ALT", F_SM, DIM)
+            if alt is not None:
+                text(pad + 34, y,
+                     f"{round(float(alt) * 3.28084)} ft \u00b7 {round(float(alt))} m",
+                     F_LBL, TEXT)
+            else:
+                text(pad + 34, y, "\u2014", F_LBL, DIM)
+            y += 20
+
+            # Comment — word-wrapped to the panel width, as many lines as fit.
+            cmt = str(newest.get("comment") or "").strip()
+            if cmt:
+                avail = w - 2 * pad
+                lines, cur = [], ""
+                for word in cmt.split():
+                    trial = f"{cur} {word}".strip()
+                    if d.textlength(trial, font=F_SM) <= avail:
+                        cur = trial
+                    else:
+                        if cur:
+                            lines.append(cur)
+                        cur = word
+                if cur:
+                    lines.append(cur)
+                for ln in lines:
+                    if y + 14 > h - 22:          # stop before the footer
+                        break
+                    text(pad, y, ln, F_SM, DIM)
+                    y += 14
+        elif aprs is None:
+            text(pad, y, "feed offline", F_LBL, DIM)
+        else:
+            text(pad, y, "no stations yet", F_LBL, DIM)
     else:
-        text(pad, y, "no stations yet", F_LBL, DIM)
+        # ── RECENT list: callsign · speed (amber, only if moving) · age ─────────
+        text(pad, y, "RECENT", F_BIG, AMBER)
+        if live:
+            rtext(y, f"{len(stations)} stn", F_BIG, AMBER)
+        y += 16
+        if aprs:
+            rows = sorted(
+                (s for s in aprs if parse_iso(s.get("last_heard"))),
+                key=lambda s: parse_iso(s["last_heard"]), reverse=True,
+            )
+            line_h = 16
+            max_rows = max(0, (h - y - 24) // line_h)
+            for s in rows[:max_rows]:
+                text(pad, y, str(s.get("callsign") or "?")[:9], F_LBL, ACCENT)
+                spd = speed_mph(s)
+                if spd > 0:
+                    text(w - pad - 96, y, f"{round(spd)}mph", F_LBL, AMBER)  # moving
+                text(w - pad - 44, y, age_str(parse_iso(s.get("last_heard"))), F_LBL, DIM)
+                y += line_h
+        elif aprs is None:
+            text(pad, y, "\u2014", F_LBL, DIM)
+        else:
+            text(pad, y, "no stations yet", F_LBL, DIM)
 
     # Footer: host -> ip
     host = (system or {}).get("hostname") or os.uname().nodename
@@ -345,15 +514,74 @@ def render(w, h, aprs, system):
     text(pad, h - 16, foot[:34], F_SM, DIM)
     return img
 
+# ── Touch input (GT911) ──────────────────────────────────────────────────────
+# Raw evdev reader — no python-evdev dependency. A single tap toggles the view
+# between the station list and the LAST HEARD card.
+EV_KEY             = 0x01
+EV_ABS             = 0x03
+BTN_TOUCH          = 0x14a
+ABS_MT_TRACKING_ID = 0x39
+_EV_FORMAT = "llHHi"                 # input_event on 64-bit Linux (24 bytes)
+_EV_SIZE   = struct.calcsize(_EV_FORMAT)
+
+def find_touch_device():
+    """Locate the touchscreen's /dev/input/eventN via /proc/bus/input/devices."""
+    try:
+        blocks = open("/proc/bus/input/devices").read().split("\n\n")
+    except OSError:
+        return None
+    for blk in blocks:
+        low = blk.lower()
+        if "goodix" in low or "gt911" in low or "touch" in low:
+            for ln in blk.splitlines():
+                if ln.startswith("H:"):
+                    m = re.search(r"event\d+", ln)
+                    if m:
+                        return "/dev/input/" + m.group(0)
+    return None
+
+def touch_watch(state):
+    """Background thread: toggle state['view'] on each screen tap (touch-down)."""
+    contact = False
+    while state["go"]:
+        dev = find_touch_device()
+        if not dev:
+            time.sleep(3)
+            continue
+        try:
+            with open(dev, "rb", buffering=0) as f:
+                sys.stderr.write(f"[oasis-panel] touch input: {dev}\n")
+                while state["go"]:
+                    data = f.read(_EV_SIZE)
+                    if not data or len(data) < _EV_SIZE:
+                        break
+                    _s, _us, etype, code, value = struct.unpack(_EV_FORMAT, data)
+                    down = None
+                    if etype == EV_KEY and code == BTN_TOUCH:
+                        down = (value == 1)
+                    elif etype == EV_ABS and code == ABS_MT_TRACKING_ID:
+                        down = (value != -1)
+                    if down is None:
+                        continue
+                    if down and not contact:        # rising edge = one tap
+                        state["view"] = "card" if state["view"] == "list" else "list"
+                    contact = down
+        except OSError as e:
+            sys.stderr.write(f"[oasis-panel] touch read error: {e}\n")
+            time.sleep(2)
+
 # ── Main loop ───────────────────────────────────────────────────────────────
 def main():
-    state = {"go": True}
+    state = {"go": True, "view": "list"}
 
     def stop(*_):
         state["go"] = False
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
+
+    # Tap the screen to flip between the station list and the LAST HEARD card.
+    threading.Thread(target=touch_watch, args=(state,), daemon=True).start()
 
     set_backlight_on()
 
@@ -381,7 +609,7 @@ def main():
                 set_backlight_on()
                 last_bl = tick
 
-            fb.show(render(fb.w, fb.h, aprs, system))
+            fb.show(render(fb.w, fb.h, aprs, system, state["view"]))
         except Exception as e:
             sys.stderr.write(f"[oasis-panel] loop error: {e}\n")
             try:                                     # recover a stale fb handle
@@ -397,5 +625,45 @@ def main():
     sys.stderr.write("[oasis-panel] stopped\n")
 
 
+# ── Preview / self-test (no framebuffer) ─────────────────────────────────────
+_MOCK_STATION = {
+    "callsign": "W4MHI-9", "sym_table": "/", "sym_code": ">",
+    "lat": 39.7128, "lon": -104.9851, "alt_m": 1609.3, "speed_mph": 34.2,
+    "course": 132, "comment": "Mobile - heading home for dinner",
+    "last_heard": datetime.now(timezone.utc).isoformat(), "via": "WIDE1-1",
+}
+_MOCK_SYSTEM = {
+    "cpu_pct": 23, "cpu_temp_c": 47, "ram": {"pct": 41}, "disk": {"pct": 55},
+    "ip": "192.168.1.42", "uptime_sec": 90000, "hostname": os.uname().nodename,
+}
+
+def preview(out_path, mock=False, view="card", size=(240, 320)):
+    """Render one frame to a PNG instead of the panel. Great for testing the
+    layout over SSH: scp the file back, or open it on a desktop.
+
+    mock=False pulls live data from the running server (same as the panel);
+    mock=True uses built-in sample data so it works with no server at all.
+    view is "card" (LAST HEARD) or "list" (RECENT stations).
+    """
+    if mock:
+        aprs, system = [_MOCK_STATION], _MOCK_SYSTEM
+    else:
+        aprs, system = fetch_aprs(), fetch_system()
+    img = render(size[0], size[1], aprs, system, view)
+    img.save(out_path)
+    sys.stderr.write(f"[oasis-panel] preview written: {out_path} "
+                     f"({'mock' if mock else 'live'} data, {view} view)\n")
+    return out_path
+
+
 if __name__ == "__main__":
-    main()
+    args = sys.argv[1:]
+    if args and args[0] in ("--preview", "--selftest", "--mock"):
+        # oasis-panel.py --preview [--list|--card] [OUT.png]   -> live data
+        # oasis-panel.py --mock    [--list|--card] [OUT.png]   -> sample data
+        out = next((a for a in args[1:] if not a.startswith("-")),
+                   "/tmp/oasis-panel-preview.png")
+        view = "list" if "--list" in args else "card"
+        preview(out, mock=(args[0] == "--mock"), view=view)
+    else:
+        main()

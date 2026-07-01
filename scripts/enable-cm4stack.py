@@ -72,9 +72,9 @@ PYTHON_DEPS = ["python3-pil", "python3-numpy"]
 SERVICE_NAME = "oasis-panel"
 SERVICE_FILE = f"/etc/systemd/system/{SERVICE_NAME}.service"
 
-# oasis-panel.py lives in the repo root (one level up from scripts/)
+# oasis-panel.py lives in the repo's cm4stack/ dir (sibling of scripts/)
 REPO_ROOT  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PANEL_SCRIPT = os.path.join(REPO_ROOT, "oasis-panel.py")
+PANEL_SCRIPT = os.path.join(REPO_ROOT, "cm4stack", "oasis-panel.py")
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -439,10 +439,11 @@ After=multi-user.target network.target
 
 [Service]
 ExecStart=/usr/bin/python3 {PANEL_SCRIPT}
+WorkingDirectory={os.path.dirname(PANEL_SCRIPT)}
 Restart=always
 RestartSec=5
 User={user}
-SupplementaryGroups=video
+SupplementaryGroups=video input
 
 [Install]
 WantedBy=multi-user.target
