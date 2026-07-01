@@ -335,6 +335,30 @@ def _current_regdomain():
     return m.group(1) if m else None
 
 
+def resolve_country(country):
+    """Decide the Wi-Fi country to apply. Precedence: explicit --country, then
+    the already-configured regulatory domain (no prompt needed), else ask the
+    operator — the AP can't beacon without it. Returns a 2-letter code or None."""
+    if country:
+        return country.strip().upper()
+    reg = _current_regdomain()
+    if reg and reg != "00":
+        _info(f"Wi-Fi country already set to {reg} — using it.")
+        return None                     # already applied; nothing to change
+    _warn("Wi-Fi regulatory country is not set — the OASIS AP can't broadcast "
+          "without it.")
+    try:
+        ans = input("     Enter your 2-letter Wi-Fi country code "
+                    "(e.g. US, GB, DE): ").strip().upper()
+    except (EOFError, KeyboardInterrupt):
+        ans = ""
+    if len(ans) == 2 and ans.isalpha():
+        return ans
+    _warn("No valid country entered — continuing, but the AP may not broadcast. "
+          "Set it later with: python3 scripts/enable-ap-fallback.py --country <CC>")
+    return None
+
+
 def prep_radio(country):
     """AP mode won't beacon on a soft-blocked radio or with an unset regulatory
     domain (country 00) — the usual reason 'the AP is up but no device sees it'.
@@ -520,7 +544,7 @@ def run(args):
 
     user = target_user(args.user)
     _step(1, "Preparing the radio (rfkill + regulatory domain)")
-    prep_radio(args.country)
+    prep_radio(resolve_country(args.country))
     _step(2, "Installing avahi (oasis.local)")
     install_avahi()
     _step(3, f"Creating the '{args.ssid}' AP profile (WPA2, ch {args.channel})")
@@ -554,8 +578,9 @@ def main():
                     help="AP WPA2 password, 8–63 chars "
                          f"(default: {DEFAULT_PSK}).")
     ap.add_argument("--country", default=None,
-                    help="Wi-Fi regulatory country code, e.g. US. Required for AP "
-                         "beaconing if the Pi's country is unset (iw reg get → 00).")
+                    help="Wi-Fi regulatory country code, e.g. US. Needed for AP "
+                         "beaconing. If omitted and the Pi's country is unset, "
+                         "you'll be prompted for it.")
     ap.add_argument("--channel", type=int, default=6,
                     help="2.4 GHz AP channel (default: 6).")
     ap.add_argument("--user", default=None,

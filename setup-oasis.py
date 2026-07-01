@@ -86,11 +86,11 @@ FEATURES = [
             recommend="Open GrayWolf at :8080, add your audio device + an AFSK channel, then RESTART it: sudo systemctl restart graywolf"),
     Feature("winlink", "Winlink (Pat)", "install-winlink.py",
             "Pat Winlink client + web UI on :8082 (Telnet works immediately).",
-            "Server", default=True, internet=True,
+            "Server", default=False, internet=True,
             recommend="Set your callsign and Winlink password in Pat at :8082."),
     Feature("kiwix", "Kiwix (offline content server)", "install-kiwix.py",
             "kiwix-serve on :8081 to browse ZIM content. (Add content below.)",
-            "Server", default=True, internet=True,
+            "Server", default=False, internet=True,
             recommend="Add ZIM content (e.g. the Wikipedia feature below) — Kiwix serves it at :8081."),
     Feature("webssh", "Web SSH (ttyd)", "install-webssh.py",
             "Browser terminal on :7681 (logs in via ssh to localhost).",
@@ -102,8 +102,12 @@ FEATURES = [
             recommend="OpenWebRX is OFF by default — start it from the dashboard (it stops GrayWolf + the SDR feed). Open :8073."),
     Feature("service-controls", "Dashboard service controls", "enable-service-controls.py",
             "Grant a scoped sudoers rule so the dashboard start/stop buttons work (no passwords in the browser). Needed to start OpenWebRX (and stop GrayWolf/Kiwix/…) from the dashboard.",
-            "Server", default=False, needs=["server"],
+            "Server", default=True, needs=["server"],
             recommend="Dashboard power buttons enabled (start/stop GrayWolf · Kiwix · OpenWebRX · APRS feed)."),
+    Feature("ap-fallback", "Wi-Fi AP fallback", "enable-ap-fallback.py",
+            "Host the OASIS Wi-Fi access point (SSID OASIS, WPA2, 10.42.0.1) whenever no known network is in range, so the dashboard is always reachable in the field. Adds avahi (oasis.local) and the dashboard Wi-Fi picker (scan/join/forget). Prefers known Wi-Fi; falls back to the AP. Asks for your Wi-Fi country (needed for the AP to broadcast) if it isn't already set.",
+            "Server", default=True, needs=["server"],
+            recommend="AP fallback armed — the Pi hosts the OASIS Wi-Fi (password oasis-emcomm) when no known network is in range."),
 
     # ── Display: local screen — Chromium kiosk / desktop launcher ──────────────
     Feature("kiosk", "Kiosk mode (Chromium fullscreen)", "enable-autostart-pi.py",
@@ -122,7 +126,7 @@ FEATURES = [
     # ── Audio: audio paths into GrayWolf (SDR dongle + DRA sound card) ─────────
     Feature("rtl-sdr", "RTL-SDR tools", "install-rtl-sdr.py",
             "rtl_test/rtl_fm + socat/tcpdump and the DVB-driver blacklist.",
-            "Audio", default=True,
+            "Audio", default=False,
             recommend="RTL-SDR Blog V4 needs Pi OS Trixie (librtlsdr >= 2.0). Verify the dongle: rtl_test -t"),
     Feature("rtl-feed", "RTL-SDR → GrayWolf APRS feed", "enable-rtl-sdr.py",
             "Stream demodulated APRS audio into GrayWolf (sdr_udp). Needs the dongle plugged in.",
@@ -166,7 +170,7 @@ FEATURES = [
     Feature("forms", "ICS Forms (dashboard section)", None,
             "Show the ICS-205/213/214/309 forms section on the dashboard. The forms ship with "
             "OASIS — this only toggles whether the section is shown.",
-            "Content / Data", default=True, record_only=True,
+            "Content / Data", default=False, record_only=True,
             recommend="ICS Forms section is shown on the dashboard."),
 ]
 
