@@ -13,7 +13,7 @@
 
   <!-- HEADER -->
   <div class="k-head">
-    <span class="k-brand">OASIS</span>
+    <span class="k-brand">OASIS</span><span class="k-ver" id="k-ver"></span>
     <span class="pill call" onclick="editCallsignGrid()" title="Edit callsign &amp; grid"><span id="k-callsign">N0CALL</span> · <span id="k-grid" style="color:var(--warn)">—</span></span>
     <span class="pill units" id="k-units" onclick="toggleUnits()" title="Toggle imperial / metric">IMPERIAL</span>
     <span class="pill host" id="k-host" title="hostname : IP address">—</span>
@@ -176,6 +176,19 @@ async function seedCallsignGrid() {
 }
 loadCallsignGrid();
 seedCallsignGrid();
+
+// App version (from /version.json, shown in gray next to the brand).
+async function loadVersion() {
+  const el = document.getElementById('k-ver');
+  if (!el) return;
+  try {
+    const r = await fetch('/version.json', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.version) el.textContent = 'v' + d.version;
+  } catch (_) {}
+}
+loadVersion();
 
 // ── Service state tracking ────────────────────────────────────────────────────
 const _svcStates = {};
@@ -362,7 +375,9 @@ const GATEABLE = {
 // A systemd-backed service can be live even when the manifest never recorded it
 // (e.g. enable-rtl-sdr.py / install-gps.py run directly, outside setup-oasis.py —
 // note rtl-sdr tools and the rtl-feed feed are separate features). Probe the
-// real unit so a running feed isn't hidden as "not installed".
+// real unit so a running feed isn't hidden as "not installed". Require it to be
+// *enabled or active*, not merely present: a leftover/disabled unit the operator
+// never ticked must stay hidden, else the tile shows STOPPED instead of hidden.
 const SYSTEMD_GATED = { feed: 'aprs-sdr-feed', gpsd: 'gpsd' };
 async function unitInstalled(id) {
   const unit = SYSTEMD_GATED[id];
@@ -371,7 +386,17 @@ async function unitInstalled(id) {
     const r = await fetch('/api/health/service?name=' + unit, { cache: 'no-store' });
     if (!r.ok) return false;
     const d = await r.json();
-    return d.installed === true;
+    // gpsd is a stock Debian package other features pull in transitively (e.g.
+    // Winlink's `pat` Depends: gpsd) and its socket auto-enables — so a *running*
+    // gpsd is NOT proof the operator set up GPS. install-gps.py explicitly
+    // `systemctl enable gpsd`, so a deliberate setup reports enabled==='enabled',
+    // while a dependency-pulled one stays socket-activated ('indirect'/'static').
+    // Require that explicit boot-enable for gpsd; don't let mere activity un-hide
+    // the GPS tile (the server promotes a live gpsd.socket to active==='active').
+    if (id === 'gpsd') return d.enabled === 'enabled';
+    // aprs-sdr-feed only exists if enable-rtl-sdr.py created it, so any
+    // enabled/active state is a genuine, deliberate install.
+    return d.active === 'active' || d.enabled === 'enabled';
   } catch (_) { return false; }
 }
 

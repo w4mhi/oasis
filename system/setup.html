@@ -127,8 +127,9 @@ const CHECKS_CORE = [
       try {
         const d = await jget('/api/server-info');
         const dev = d.wsgi !== 'gunicorn';
+        const ver = (d.version && d.version !== 'unknown') ? ` OASIS <strong>v${d.version}</strong> ·` : '';
         return { ok: dev ? 'warn' : true, badge: dev ? 'DEV SERVER' : 'RUNNING',
-          detail: `Serving on :${d.port} via <code>${d.wsgi}</code> v${d.wsgi_version}.`
+          detail: `${ver} Serving on :${d.port} via <code>${d.wsgi}</code> v${d.wsgi_version}.`
             + (dev ? ' For always-on use run under gunicorn — see <code>docs/SETUP.md</code>.' : '') };
       } catch {
         return { ok: true, badge: 'RUNNING', detail: `Serving on port ${PORTS.flask}.` };
@@ -163,24 +164,64 @@ const CHECKS_CORE = [
         try { fsOk = (await fetch('/api/fs/browse', { cache: 'no-store' })).ok; }
         catch { fsOk = false; }
 
-        const r = await fetch('/api/browse?path=maps', { cache: 'no-store' });
-        if (!r.ok) return { ok: false, badge: 'ERROR', detail: 'Could not list the maps/ directory.' };
-        const d = await r.json();
-        const names = (d.entries || []).filter(e => e.name.endsWith('.pmtiles'))
-                                       .map(e => e.name.replace('.pmtiles',''));
+        // Local .pmtiles staged in the suite's maps/ folder (best-effort: GrayWolf
+        // tiles may be the only source, so a missing maps/ isn't fatal).
+        let localNames = [];
+        try {
+          const r = await fetch('/api/browse?path=maps', { cache: 'no-store' });
+          if (r.ok) {
+            const d = await r.json();
+            localNames = (d.entries || []).filter(e => e.name.endsWith('.pmtiles'))
+                                          .map(e => e.name.replace('.pmtiles',''));
+          }
+        } catch {}
 
-        if (!fsOk) return { ok: 'warn', badge: 'RESTART',
-          detail: 'The “Load maps” endpoint (<code>/api/fs/browse</code>) is missing — the server is running older code. Restart OASIS to pick up the latest <code>server/app.py</code>.'
-                  + (names.length ? ` (${names.length} local map(s) present.)` : '') };
+        // GrayWolf's offline downloader saves per-region .pmtiles under
+        // /var/lib/graywolf/tiles/, usually nested in states/ or country/
+        // subfolders — so recurse a few levels via the filesystem browser
+        // (bounded by depth + a dir/name cap so it stays Pi-friendly).
+        const gwNames = [];
+        let gwCount = 0;
+        if (fsOk) {
+          let dirsScanned = 0;
+          const scan = async (path, depth) => {
+            if (depth > 3 || dirsScanned > 60 || gwNames.length >= 50) return;
+            dirsScanned++;
+            let d;
+            try {
+              const r = await fetch('/api/fs/browse?path=' + encodeURIComponent(path), { cache: 'no-store' });
+              if (!r.ok) return;
+              d = await r.json();
+            } catch { return; }
+            for (const e of (d.entries || [])) {
+              if (e.type === 'file' && e.name.endsWith('.pmtiles')) {
+                gwCount++;
+                if (gwNames.length < 50) gwNames.push(e.name.replace('.pmtiles',''));
+              } else if (e.type === 'dir') {
+                await scan(e.path, depth + 1);
+              }
+            }
+          };
+          await scan('/var/lib/graywolf/tiles', 0);
+        }
 
         const gwHint = 'GrayWolf provides offline maps: register, download the region(s) you need, '
           + 'then open <strong>Offline Maps → Load maps</strong> and load them from '
           + '<code>/var/lib/graywolf/tiles/</code>.';
 
-        if (!names.length) return { ok: 'warn', badge: 'N/A',
-          detail: 'No .pmtiles maps in maps/. Place a .pmtiles file in maps/, or load one at runtime via the map page’s “Load maps” button.<br>' + gwHint };
+        if (!fsOk) return { ok: 'warn', badge: 'RESTART',
+          detail: 'The “Load maps” endpoint (<code>/api/fs/browse</code>) is missing — the server is running older code. Restart OASIS to pick up the latest <code>server/app.py</code>.'
+                  + (localNames.length ? ` (${localNames.length} local map(s) present.)` : '') };
+
+        const total = localNames.length + gwCount;
+        if (!total) return { ok: 'warn', badge: 'N/A',
+          detail: 'No .pmtiles maps in <code>maps/</code> or <code>/var/lib/graywolf/tiles/</code>. Place a .pmtiles file in maps/, or load one at runtime via the map page’s “Load maps” button.<br>' + gwHint };
+
+        const parts = [];
+        if (localNames.length) parts.push(`${localNames.length} in maps/: <strong>${localNames.join(', ')}</strong>`);
+        if (gwCount) parts.push(`${gwCount} in GrayWolf tiles${gwNames.length ? `: <strong>${gwNames.join(', ')}</strong>` : ''}`);
         return { ok: true, badge: 'READY',
-          detail: `${names.length} map(s) ready: <strong>${names.join(', ')}</strong> · Load maps endpoint OK<br>${gwHint}` };
+          detail: `${total} map(s) ready — ${parts.join(' · ')} · Load maps endpoint OK<br>${gwHint}` };
       } catch (e) {
         return { ok: false, badge: 'ERROR', detail: 'Could not check maps: ' + e.message };
       }

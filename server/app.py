@@ -36,6 +36,11 @@ SUITE_ROOT  = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MAP_ASSETS  = os.path.join(os.path.dirname(__file__), "map-assets")
 MAPS_DIR    = os.path.join(SUITE_ROOT, "maps")
 
+# Suite version (git-tracked, single source of truth). The dashboard reads it
+# via /version.json; the server also surfaces it in /api/server-info so doctor.py
+# and the setup page can report it.
+VERSION_FILE = os.path.join(SUITE_ROOT, "version.json")
+
 # Written by setup-oasis.py: the set of features the operator chose to install.
 # The dashboard reads it (via /api/installed-services) to hide cards for
 # services that were never installed. Absent file → show everything.
@@ -1462,6 +1467,14 @@ def server_info():
         except PackageNotFoundError:
             return "unknown"
 
+    def oasis_ver():
+        try:
+            import json as _json
+            with open(VERSION_FILE, encoding="utf-8") as fh:
+                return str(_json.load(fh).get("version") or "unknown")
+        except (OSError, ValueError):
+            return "unknown"
+
     if "gunicorn" in sys.modules:
         wsgi = "gunicorn"
         wsgi_version = get_ver("gunicorn")
@@ -1471,6 +1484,7 @@ def server_info():
 
     return jsonify({
         "ok":            True,
+        "version":       oasis_ver(),
         "wsgi":          wsgi,
         "wsgi_version":  wsgi_version,
         "flask_version": get_ver("flask"),

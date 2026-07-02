@@ -96,7 +96,8 @@ Each step is a no-op if already applied, so re-running is harmless.
 ## First-time setup
 
 ```bash
-# 1 · Configure (writes config.txt + neutralises fake-hwclock / hwclock-set)
+# 1 · Configure (writes config.txt + neutralises fake-hwclock / hwclock-set,
+#     and installs util-linux-extra if hwclock is missing — see note below)
 python3 scripts/enable-rtc.py
 
 # 2 · Reboot so the DS3231 overlay loads
@@ -107,6 +108,13 @@ sudo reboot
 sudo hwclock -w        # system clock  →  RTC
 sudo hwclock -r        # read the RTC back to confirm
 ```
+
+> ℹ️ **`hwclock` on Debian 13 (Trixie).** Trixie moved `hwclock` out of the base
+> `util-linux` package into `util-linux-extra`, so a minimal Pi OS image reports
+> `sudo hwclock: command not found`. `enable-rtc.py` installs it for you (step 5);
+> to add it by hand: `sudo apt install util-linux-extra`. To read the RTC without
+> `hwclock`, use `cat /sys/class/rtc/rtc0/{date,time}` (UTC) — the OASIS dashboard
+> RTC card reads it this way, no extra package needed.
 
 From then on the RTC seeds the system clock at every boot, and — if you also set
 up [GPS time sync](SETUP.md#gps-time-sync-gpsd--chrony) — `chrony` disciplines
@@ -125,6 +133,8 @@ ls -l /dev/rtc*
 sudo i2cdetect -y 1
 
 # Read the RTC and compare to the system clock — they should match.
+# (If 'hwclock: command not found', it's in util-linux-extra on Trixie —
+#  sudo apt install util-linux-extra — or read sysfs: cat /sys/class/rtc/rtc0/{date,time})
 sudo hwclock -r
 date
 

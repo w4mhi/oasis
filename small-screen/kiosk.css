@@ -31,6 +31,7 @@ body{background:#05080a; color:var(--text); font-family:var(--mono);
 .k-head{display:flex; align-items:center; gap:12px; height:42px; padding:0 12px;
         border-bottom:1px solid var(--border); flex:0 0 auto}
 .k-brand{color:var(--accent); font-weight:700; letter-spacing:.12em; font-size:16px}
+.k-ver{color:var(--dim); font-size:10px; letter-spacing:.04em; margin-left:5px}
 .pill{display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border);
       border-radius:999px; padding:3px 9px; font-size:12px; letter-spacing:.04em}
 .pill.call{color:var(--accent); cursor:pointer}

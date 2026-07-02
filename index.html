@@ -43,6 +43,14 @@ body {
   letter-spacing: .05em;
   margin-top: 2px;
 }
+.brand-ver {
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+  letter-spacing: .05em;
+  font-weight: 400;
+  text-transform: none;
+  margin-left: 6px;
+}
 .clock-utc {
   font-size: var(--fs-clock);
   font-weight: 700;
@@ -808,7 +816,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 <div class="topbar">
   <div style="display:flex;align-items:center;gap:2.0rem">
   <div>
-    <div class="brand-name">OASIS <span class="brand-sub" style="color: var(--blue);">Off-grid Amateur Station Information Suite</span></div>
+    <div class="brand-name">OASIS <span class="brand-sub" style="color: var(--blue);">Off-grid Amateur Station Information Suite</span><span class="brand-ver" id="brand-ver"></span></div>
     <div class="brand-sub">An offline toolkit for amateur radio emergency communications.</div>
     <div class="pill-row">
       <button class="callsign-pill" onclick="editCallsignGrid()" title="Edit callsign &amp; grid">
@@ -1243,6 +1251,19 @@ function editCallsignGrid() {
 loadCallsignGrid();
 seedCallsignGrid();
 
+// ── App version (from /version.json, shown in gray after the brand title) ─────
+async function loadVersion() {
+  const el = document.getElementById('brand-ver');
+  if (!el) return;
+  try {
+    const r = await fetch('/version.json', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.version) el.textContent = 'v' + d.version;
+  } catch (_) {}
+}
+loadVersion();
+
 // ── Service state tracking (for counts badge) ─────────────────────────────────
 const _svcStates = {};
 // Service ids hidden because their feature wasn't installed (see loadInstalled).
@@ -1618,9 +1639,12 @@ function _gateEls(id) {
 // the docs show. Those scripts enable the systemd unit but never write
 // installed-services.json, so the card would wrongly hide (it flashes in on load,
 // then vanishes once loadInstalled resolves). For the systemd-backed cards we
-// re-check reality: if the unit is actually installed, don't gate it, manifest or
-// not. Note rtl-sdr (the tools) and rtl-feed (the GrayWolf feed) are *separate*
-// features — having the tools doesn't list the feed, so we probe the feed unit.
+// re-check reality: if the unit was deliberately turned on outside setup, don't
+// gate it, manifest or not. Note rtl-sdr (the tools) and rtl-feed (the GrayWolf
+// feed) are *separate* features — having the tools doesn't list the feed, so we
+// probe the feed unit. We require the unit to be *enabled or active*, not merely
+// present: a leftover/disabled unit the operator never ticked must stay hidden
+// (otherwise the card slips the gate and renders STOPPED instead of hidden).
 const SYSTEMD_GATED = { feed: 'aprs-sdr-feed', gpsd: 'gpsd' };
 async function unitInstalled(id) {
   const unit = SYSTEMD_GATED[id];
@@ -1629,7 +1653,18 @@ async function unitInstalled(id) {
     const r = await fetch('/api/health/service?name=' + unit, { cache: 'no-store' });
     if (!r.ok) return false;
     const d = await r.json();
-    return d.installed === true;
+    // gpsd is a stock Debian package other features pull in transitively (e.g.
+    // Winlink's `pat` Depends: gpsd) and its socket auto-enables — so a *running*
+    // gpsd is NOT proof the operator set up GPS. install-gps.py explicitly
+    // `systemctl enable gpsd`, so a deliberate setup reports enabled==='enabled',
+    // while a dependency-pulled one stays socket-activated ('indirect'/'static').
+    // Require that explicit boot-enable for gpsd — the server promotes a live
+    // gpsd.socket to active==='active', which is exactly the transitive case, so
+    // don't let mere activity un-hide the GPS card.
+    if (id === 'gpsd') return d.enabled === 'enabled';
+    // aprs-sdr-feed only exists if enable-rtl-sdr.py created it, so any
+    // enabled/active state is a genuine, deliberate install.
+    return d.active === 'active' || d.enabled === 'enabled';
   } catch (_) { return false; }
 }
 

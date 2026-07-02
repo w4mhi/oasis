@@ -171,10 +171,12 @@ def check_server(host, port):
     if ok and info:
         wsgi  = info.get("wsgi", "unknown")
         ver   = info.get("wsgi_version", "?")
+        oasis = info.get("version", "unknown")
         dev   = wsgi != "gunicorn"
         svc   = _svc_status("oasis")
         svc_t = f", service {_svc_word(svc)}" if svc["installed"] else ""
-        detail = f"Serving on :{port} via {wsgi} v{ver}{svc_t}."
+        ver_t = f"OASIS v{oasis} · " if oasis and oasis != "unknown" else ""
+        detail = f"{ver_t}Serving on :{port} via {wsgi} v{ver}{svc_t}."
         if dev:
             detail += "\n     For always-on use, run under gunicorn (see docs/SETUP.md)."
         return {
@@ -217,13 +219,19 @@ def check_maps(host, port):
             if f.endswith(".pmtiles")
         ]
 
-    # GrayWolf offline tiles (Pi-only path)
+    # GrayWolf offline tiles (Pi-only path). The downloader nests per-region
+    # .pmtiles under states/ or country/ subfolders, so walk the tree (not just
+    # the top level) — bounded by a file cap so a huge cache can't stall doctor.
     gw_tiles = []
     if os.path.isdir(GRAYWOLF_TILES_DIR):
-        gw_tiles = [
-            f for f in os.listdir(GRAYWOLF_TILES_DIR)
-            if f.endswith(".pmtiles")
-        ]
+        for root, _dirs, files in os.walk(GRAYWOLF_TILES_DIR):
+            for f in files:
+                if f.endswith(".pmtiles"):
+                    gw_tiles.append(f)
+                    if len(gw_tiles) >= 500:
+                        break
+            if len(gw_tiles) >= 500:
+                break
 
     total = len(local_tiles) + len(gw_tiles)
 

@@ -14,6 +14,9 @@ What it does (idempotent · REQUIRES A REBOOT):
   3. removes/disables fake-hwclock  (so it can't overwrite the real RTC)
   4. neutralises the `--systz` block in /lib/udev/hwclock-set (the classic
      DS3231 fix that otherwise resets the clock at boot)
+  5. ensures the `hwclock` tool is installed — Debian 13 (Trixie) moved it out of
+     `util-linux` into `util-linux-extra`, so `hwclock -w/-r` are otherwise
+     “command not found” on a minimal Pi OS image
 
 After the reboot, once the system clock is correct (from GPS/NTP), write it to
 the RTC once:   sudo hwclock -w     (read it back with: sudo hwclock -r)
@@ -27,6 +30,7 @@ Requires: Linux (Raspberry Pi OS), sudo. A Witty Pi 3 attached on the I²C heade
 
 import argparse
 import os
+import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -122,12 +126,52 @@ def patch_hwclock_set():
         _ok("/lib/udev/hwclock-set already clean.")
 
 
-def verify():
-    if os.path.exists("/dev/rtc0"):
-        r = _run(["sudo", "hwclock", "-r"], check=False, capture_output=True, text=True)
-        _ok(f"/dev/rtc0 present — RTC reads: {(getattr(r, 'stdout', '') or '').strip() or '(unreadable)'}")
+def _hwclock_path():
+    """Locate the hwclock binary. Debian 13 (Trixie) moved it into the
+    `util-linux-extra` package, and it lives in /usr/sbin (not always on the
+    Python process's PATH), so probe the standard sbin locations too."""
+    return (shutil.which("hwclock")
+            or next((p for p in ("/usr/sbin/hwclock", "/sbin/hwclock")
+                     if os.path.exists(p)), None))
+
+
+def ensure_hwclock():
+    """Guarantee the `hwclock` tool exists — the RTC is seeded with `hwclock -w`
+    and read back with `hwclock -r`. On Debian Trixie it split out of util-linux
+    into `util-linux-extra`, which a minimal Pi OS image omits, so the classic
+    commands fail 'command not found'. Best-effort apt install (needs internet,
+    like the fake-hwclock removal step); warns with guidance if still missing."""
+    if _hwclock_path():
+        _ok("hwclock present.")
+        return
+    _info("hwclock not found — installing util-linux-extra (Trixie split it out) …")
+    _run(["sudo", "apt", "install", "-y", "util-linux-extra"], check=False)
+    if _hwclock_path():
+        _ok("Installed util-linux-extra — hwclock is now available.")
     else:
+        _warn("hwclock still missing. When online, run:  "
+              "sudo apt install util-linux-extra   "
+              "(the RTC read/write tool lives there on Debian Trixie).")
+
+
+def verify():
+    if not os.path.exists("/dev/rtc0"):
         _warn("/dev/rtc0 not present yet — reboot to load the DS3231 overlay.")
+        return
+    hw = _hwclock_path()
+    if hw:
+        r = _run(["sudo", hw, "-r"], check=False, capture_output=True, text=True)
+        _ok(f"/dev/rtc0 present — RTC reads: {(getattr(r, 'stdout', '') or '').strip() or '(unreadable)'}")
+        return
+    # hwclock absent (Trixie util-linux-extra not installed) — read the RTC via
+    # the kernel's sysfs interface instead, which needs no extra package.
+    try:
+        with open("/sys/class/rtc/rtc0/date") as fd, open("/sys/class/rtc/rtc0/time") as ft:
+            _ok(f"/dev/rtc0 present — RTC reads (UTC, via sysfs): {fd.read().strip()} {ft.read().strip()}")
+    except OSError:
+        _ok("/dev/rtc0 present.")
+    _warn("hwclock not installed — install it to seed/read the RTC:  "
+          "sudo apt install util-linux-extra")
 
 
 def run(check_only=False):
@@ -150,6 +194,7 @@ def run(check_only=False):
     _step(2, "Adding the DS3231 RTC overlay");      add_overlay(cfg)
     _step(3, "Disabling fake-hwclock");             disable_fake_hwclock()
     _step(4, "Neutralising hwclock-set --systz");   patch_hwclock_set()
+    _step(5, "Ensuring hwclock is installed");      ensure_hwclock()
 
     _hr()
     print("\n  Witty Pi 3 RTC configured — REBOOT to load it.")
