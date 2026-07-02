@@ -4,60 +4,6 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 
 ---
 
-## Before you begin (Raspberry Pi)
-
-If you are setting up a **fresh Raspberry Pi** for the first time, complete these steps before anything else. If you already have a Pi booted with SSH access and `git` installed, skip to [Guided setup](#guided-setup-menu).
-
-### 1. Flash Raspberry Pi OS
-
-Download and install **[Raspberry Pi Imager](https://www.raspberrypi.com/software/)** on your laptop/desktop. Use it to write **Raspberry Pi OS Lite (64-bit)** to a microSD card (32 GB minimum).
-
-Before clicking **Write**, open **Advanced Options** (gear icon ⚙️ or Ctrl+Shift+X) and:
-- Set a **hostname** (e.g. `oasis`)
-- Set a **username and password** (use your callsign or anything you'll remember — it does **not** have to be `pi`)
-- Enable **SSH** (use password authentication)
-- Enter your **Wi-Fi SSID and password** so the Pi connects on first boot
-
-> 💡 Doing this in Imager's Advanced Options means the Pi is headless-ready on first boot — no monitor or keyboard needed.
-
-### 2. Find the Pi on your network
-
-Insert the card, power on the Pi, wait ~60 seconds, then from your laptop:
-
-```bash
-ssh <username>@oasis.local        # replace <username> with what you set in Imager
-# e.g.  ssh w4mhi@oasis.local
-```
-
-If `.local` doesn't resolve, find the IP address:
-```bash
-# from a Mac/Linux laptop on the same network:
-arp -a | grep -i raspberry
-# or from the Pi itself once logged in:
-hostname -I
-```
-
-Write down the IP address — you'll need it to open OASIS from your phone/tablet (`http://<ip>:8083`).
-
-### 3. Install git
-
-Git is not installed on Raspberry Pi OS Lite by default:
-
-```bash
-sudo apt update && sudo apt install -y git
-```
-
-### 4. Clone OASIS
-
-```bash
-git clone https://github.com/W4MHI/oasis-emcomm
-cd oasis-emcomm
-```
-
-Now continue to [Guided setup](#guided-setup-menu).
-
----
-
 ## Contents
 
 - [Before you begin (Raspberry Pi)](#before-you-begin-raspberry-pi)
@@ -65,10 +11,12 @@ Now continue to [Guided setup](#guided-setup-menu).
 - [Guided setup (menu)](#guided-setup-menu)
 - [Server setup](#server-setup)
 - [FCC Callsign Lookup](#fcc-callsign-lookup)
+- [Using OASIS in the field (no internet)](#using-oasis-in-the-field-no-internet)
 - [Offline Maps](#offline-maps)
 - [GrayWolf APRS](#graywolf-aprs)
 - [Winlink (Pat)](#winlink-pat)
 - [DRA-Pi-Zero sound card](#dra-pi-zero-sound-card)
+- [DRA-Pi RX LED](#dra-pi-rx-led)
 - [Kiwix / Wikipedia](#kiwix--wikipedia)
 - [RTL-SDR](#rtl-sdr)
 - [OpenWebRX (SIGINT)](#openwebrx-sigint)
@@ -86,8 +34,84 @@ Now continue to [Guided setup](#guided-setup-menu).
 - [Small-screen / kiosk display](#small-screen--kiosk-display)
 - [USB / Portable bundle](#usb--portable-bundle)
 - [Keeping data fresh](#keeping-data-fresh)
+- [Updating OASIS](#updating-oasis)
+- [Health check (doctor)](#health-check-doctor)
 - [Factory reset / uninstall](#factory-reset--uninstall)
 - [Known Limitations](#known-limitations)
+
+---
+
+## Before you begin (Raspberry Pi)
+
+If you are setting up a **fresh Raspberry Pi** for the first time, complete these steps before anything else. If you already have a Pi booted with SSH access and `git` installed, skip to [Guided setup](#guided-setup-menu).
+
+### 1. Flash Raspberry Pi OS
+
+Download and install **[Raspberry Pi Imager](https://www.raspberrypi.com/software/)** on your laptop/desktop.
+
+**Which OS version to pick:**
+
+| Situation | Choose |
+|---|---|
+| Planning to use an **RTL-SDR dongle** for APRS receive | **Raspberry Pi OS Lite (64-bit) — Trixie** |
+| Everything else (no RTL-SDR, or using DigiRig/DRA-Pi) | **Raspberry Pi OS Lite (64-bit) — Bookworm** |
+
+**Lite vs. Desktop:** Lite has no graphical desktop — it boots to a command line and uses less memory (important on a Pi Zero 2 W or Pi 3). If you want to plug in a monitor and use a mouse/keyboard with a desktop environment, choose "Raspberry Pi OS (64-bit)" (without "Lite") instead. The kiosk/browser option (`--with-browser`) works on Desktop; on Lite, a browser can still run on a separate attached display if configured.
+
+Use Imager to write your chosen image to a microSD card (32 GB minimum). Before clicking **Write**, open **Advanced Options** (gear icon ⚙️ or Ctrl+Shift+X) and:
+- Set a **hostname** (e.g. `oasis`)
+- Set a **username and password** (use your callsign or anything you'll remember — it does **not** have to be `pi`)
+- Enable **SSH** — SSH lets you type commands on the Pi from your laptop's terminal, so you don't need a monitor. Use **password authentication** (the simpler of the two options).
+- Enter your **Wi-Fi SSID and password** so the Pi connects on first boot
+
+> 💡 Doing this in Imager's Advanced Options means the Pi is headless-ready on first boot — no monitor or keyboard needed.
+
+### 2. Find the Pi on your network and connect
+
+Insert the card, power on the Pi, wait ~60 seconds.
+
+**Open a terminal on your laptop:**
+- **Mac:** press Cmd+Space, type "Terminal", press Enter.
+- **Windows:** press Start, search "PowerShell", press Enter. (`ssh` is built into Windows 10/11 — no extra software needed.)
+- **Linux:** open your terminal application.
+
+Then connect to the Pi:
+
+```bash
+ssh <username>@oasis.local        # replace <username> with what you set in Imager
+# e.g.  ssh w4mhi@oasis.local
+```
+
+The first time you connect, SSH shows a "host key fingerprint" and asks if you want to continue — this is your laptop verifying it's talking to the right Pi (normal, expected). Type `yes` and press Enter, then enter your password. You're now typing commands directly on the Pi.
+
+If `oasis.local` doesn't resolve, find the IP address instead:
+```bash
+# from a Mac/Linux laptop on the same network:
+arp -a | grep -i raspberry
+# or from the Pi itself once logged in:
+hostname -I
+```
+
+Write it down — you'll need it throughout setup (`http://<ip>:8083` to open OASIS).
+
+### 3. Install git
+
+Git is not installed on Raspberry Pi OS Lite by default. This step requires the Pi to have internet access — confirm your Wi-Fi credentials were entered correctly in Imager's Advanced Options before running:
+
+```bash
+sudo apt update && sudo apt install -y git
+```
+
+### 4. Clone OASIS
+
+```bash
+git clone https://github.com/W4MHI/oasis-emcomm
+cd oasis-emcomm
+```
+
+> 💡 **Stay in this directory.** Every command in this guide assumes you are inside `oasis-emcomm/`. If you open a new terminal session or accidentally `cd` somewhere else, type `cd ~/oasis-emcomm` to get back.
+
+Now continue to [Guided setup](#guided-setup-menu).
 
 ---
 
@@ -157,9 +181,11 @@ python3 setup-oasis.py --all                        # everything (incl. data dow
 python3 setup-oasis.py --features graywolf,winlink  # non-interactive subset
 ```
 
-- **Navigation:** ↑/↓ move, **Space** to select/deselect, **A/N** all/none,
-  **Tab** jumps to **OK**, **OK** runs, **Q** cancels. (A stray Enter on a row
-  just toggles it — you have to land on **OK** to start.)
+- **What it looks like:** the menu fills your terminal with a checkbox list — it does not open a browser or a separate window. Use your keyboard only; the mouse does nothing here.
+- **Navigation:** ↑/↓ move, **Space** to check/uncheck, **A/N** all/none, **Q** cancels.
+
+> ⚠️ **Common mistake:** pressing **Enter** on a feature row just toggles its checkbox — it does **not** start the install. When you've ticked everything you want, press **Tab** to move the cursor to the **OK** button, then **Enter** on OK to begin. Nothing runs until you do this.
+
 - **Sections:** *Server* (server, auto-start, GrayWolf, Winlink, Kiwix, Web SSH),
   *Audio* (RTL-SDR, the APRS feed, DRA-Pi-Zero), *Content / Data* (FCC, Wikipedia).
   Software/services are pre-checked; large data downloads are opt-in.
@@ -189,15 +215,17 @@ python3 scripts/setup-server.py           # create .venv and install from bundle
 python3 scripts/setup-server.py --check   # report what's installed / missing
 ```
 
-Flask, gunicorn, MarkupSafe, and psutil are all vendored in `server/wheels/` as pre-built wheels for Python 3.9–3.14 on Linux (aarch64 + x86-64), macOS (Apple Silicon + Intel), and Windows — so no internet is required. On the rare platform/Python combo without a vendored wheel, `setup-server.py` falls back to PyPI automatically.
+Flask and gunicorn are the web server stack: Flask handles the OASIS routes and API, and gunicorn (a production-grade HTTP server) runs Flask reliably in the background. You don't need to know the internals — `setup-server.py` and `scripts/start-server.sh` handle everything. Flask, gunicorn, MarkupSafe, and psutil are all vendored in `server/wheels/` as pre-built wheels for Python 3.9–3.14 on Linux (aarch64 + x86-64), macOS (Apple Silicon + Intel), and Windows — so no internet is required. On the rare platform/Python combo without a vendored wheel, `setup-server.py` falls back to PyPI automatically.
 
 The wheel set is kept current by running `scripts/create-oasis-offline.py` (incremental — checks PyPI for newer compatible packages, downloads them to a temp directory, and atomically swaps in the fresh set only if something changed). Run `--check` to confirm every platform resolves offline without downloading anything.
 
 **To start the server manually (test / development):**
 
 ```bash
-./start.sh
+scripts/start-server.sh        # Linux / macOS terminal
 ```
+
+On macOS, you can also double-click `scripts/start-server.command` in Finder (it opens a Terminal window). On Windows, double-click `scripts\start-server.bat`.
 
 You should see output like:
 ```
@@ -205,24 +233,30 @@ You should see output like:
 ```
 Open `http://localhost:8083` in a browser (or `http://<pi-ip>:8083` from another device). If the dashboard loads, the server is working.
 
-> 💡 `./start.sh` is a convenience wrapper — it activates the `.venv` and starts gunicorn for you. You don't need to activate `.venv` yourself.
+**What to expect on first run:** service cards for GrayWolf, Winlink, and Kiwix will show as DOWN or greyed out — that's normal if you haven't installed them yet. The dashboard, FCC lookup, maps, ICS forms, and calculators work from the core server install alone.
 
-**To stop the server:** press `Ctrl+C` in the terminal where `./start.sh` is running, or `sudo fuser -k 8083/tcp` from any terminal.
+> ✅ **Verify your setup:** after the server is running, open `http://<pi-ip>:8083/system/setup.html` in a browser for a full visual health check. Or run `python3 scripts/doctor.py` from the terminal for the same checks without a browser. See [Health check (doctor)](#health-check-doctor).
 
-<details><summary>What <code>./start.sh</code> does under the hood</summary>
+> 💡 `scripts/start-server.sh` handles the entire startup sequence — you don't need to activate `.venv` yourself or worry about a previous instance on port 8083.
 
-```bash
-source .venv/bin/activate
-gunicorn --workers 1 --bind 0.0.0.0:8083 server.app:app
-```
+**To stop the server:** press `Ctrl+C` in the terminal where `scripts/start-server.sh` is running. If you need to stop it from a different terminal (e.g. when setting up auto-start), run `sudo fuser -k 8083/tcp` — this kills whatever process is using port 8083.
 
-`source .venv/bin/activate` loads the virtual environment so Python finds Flask and gunicorn. `gunicorn` is a production-grade web server (more stable than the Flask development server). You never need to run these commands manually — `./start.sh` handles it.
+<details><summary>What <code>scripts/start-server.sh</code> does under the hood</summary>
+
+1. **Finds Python 3.9+** — scans the system path for a compatible interpreter.
+2. **Creates `.venv`** (once) — if the virtual environment doesn't exist yet, creates it.
+3. **Installs from bundled wheels** — installs Flask, gunicorn, and psutil offline from `server/wheels/` (idempotent; no-op if already installed).
+4. **Pre-flight check** — reports Python, Flask, gunicorn, psutil, FCC index, and system fonts.
+5. **Frees port 8083** — if a previous OASIS instance is still bound, sends SIGTERM (then SIGKILL if needed) before starting a fresh one. Re-running the launcher is a clean restart.
+6. **Launches gunicorn** — `gunicorn --workers 2 --bind 0.0.0.0:8083 app:app` from the `server/` directory. Falls back to `python app.py` (Flask dev server) if gunicorn isn't available.
+
+You never need to run any of these steps manually — the launcher handles them.
 
 </details>
 
-**systemd auto-start (start on boot):**
+**Auto-start on boot (systemd):**
 
-Use the included script — it writes the service file, enables it, and optionally sets up a Chromium kiosk:
+systemd is the Pi's service manager — the equivalent of Windows Services. Once enabled, OASIS starts automatically every time the Pi powers on, without you needing to SSH in and run the launcher. Use the included script to set this up:
 
 ```bash
 # Stop any manually-started server first (avoids port 8083 conflict):
@@ -243,14 +277,11 @@ python3 scripts/enable-autostart-pi.py --disable
 
 The script creates `/etc/systemd/system/oasis.service` and runs `systemctl enable --now oasis`.
 
-> ⚠️ **Port conflict:** if `./start.sh` was already running when you enabled auto-start,
-> gunicorn holds port 8083. **The easiest fix is to reboot** — the systemd service takes
-> over cleanly. Alternatively: `sudo fuser -k 8083/tcp` (kills whatever holds that port),
-> then `sudo systemctl start oasis`.
+> ⚠️ **Port conflict:** OASIS can only run one copy at a time. If you started it manually before enabling auto-start, two copies will try to use port 8083 and one will fail. **The easiest fix is to reboot** — the systemd service takes over cleanly on boot. Alternatively: `sudo fuser -k 8083/tcp` (stops whatever is using port 8083), then `sudo systemctl start oasis`.
 
-> ℹ️ **Auto-start vs `./start.sh`:** once auto-start is enabled, the server starts on
-> every boot without you doing anything. You do **not** need to run `./start.sh` anymore.
-> Run `./start.sh` only if you want to test the server manually without enabling auto-start.
+> ℹ️ **Auto-start vs `scripts/start-server.sh`:** once auto-start is enabled, the server starts on
+> every boot without you doing anything. You do **not** need to run the launcher anymore.
+> Run `scripts/start-server.sh` only if you want to test the server manually without enabling auto-start.
 
 <details><summary>Manual service file (if you prefer not to use the script)</summary>
 
@@ -349,16 +380,23 @@ Files written to `fcc-offline-database/data/`:
 
 **Copy to Pi** (if you ran `setup-fcc-database.py` on a different machine):
 
+`scp` copies files from your laptop to the Pi over the network — like a command-line file transfer. Run this from your laptop (not the Pi), replacing `<username>` and `<hostname>` with the values you set in Imager:
+
 ```bash
-scp -r fcc-offline-database/data pi@oasis.local:/home/<username>/oasis-emcomm/fcc-offline-database/
-# Replace <username> with your actual username
+# Mac / Linux laptop:
+scp -r fcc-offline-database/data <username>@<hostname>.local:/home/<username>/oasis-emcomm/fcc-offline-database/
+# e.g.  scp -r fcc-offline-database/data w4mhi@oasis.local:/home/w4mhi/oasis-emcomm/fcc-offline-database/
 ```
+
+> 💡 **Windows users:** PowerShell has `scp` built in (Windows 10 1809 or later). If it doesn't work, use [WinSCP](https://winscp.net/) (free GUI app) or [FileZilla](https://filezilla-project.org/) (SFTP mode) — connect to `<hostname>.local`, port 22, with your Pi username and password, then drag the `fcc-offline-database/data/` folder to the same path on the Pi.
 
 If you ran `setup-fcc-database.py` directly on the Pi, no copying is needed.
 
 ---
 
 ## Using OASIS in the field (no internet)
+
+> 💡 **Set up at home, deploy in the field.** Complete the full setup — server, FCC database, GrayWolf, GPS, and AP fallback — while the Pi has internet access. Validate everything works, then take the Pi offline. Any step that needs internet (FCC data download, `apt install`, GrayWolf `.deb`) must run before the activation. This is the same practice as charging your radio and testing it before going to the EOC — not something to sort out on arrival.
 
 For deployment at an activation or field event, the Pi needs to act as a Wi-Fi access point so other devices can connect without a separate router. OASIS can do this **automatically** — preferring a known Wi-Fi network when one is in range, and falling back to its own access point when none is.
 
@@ -457,13 +495,13 @@ The dashboard helper now purges a stale same-SSID profile automatically before e
 
 **4. The System Monitor IP shows `127.0.0.1`.** Resolved — the server now falls back to the first non-loopback interface address (preferring `wlan*`) when there's no default route, so it reports `10.42.0.1` in AP mode.
 
-**5. `./start.sh` fails with "address already in use".** Resolved — the launcher now frees port 8083 (stops any process still bound to it) before starting, so it restarts cleanly. If the port is held by the systemd `oasis.service`, use `sudo systemctl restart oasis` instead.
+**5. Starting OASIS fails with "address already in use".** `scripts/start-server.sh` handles this automatically — it frees port 8083 before starting. If the port is held by the systemd `oasis.service`, use `sudo systemctl restart oasis` instead.
 
 ---
 
 ## Offline Maps
 
-Vector tile maps rendered in the browser with MapLibre GL. Tiles live in a single **PMTiles** archive the browser reads directly via HTTP range requests — no internet, no tile server, no database engine.
+Vector tile maps rendered in the browser with MapLibre GL. A **PMTiles file** is a single file that contains an entire regional map — think of it as an offline Google Maps for your region, packaged into one `.pmtiles` file you put on the Pi. The browser reads it directly via HTTP range requests — no internet, no tile server, no database engine.
 
 ```
 Prep machine (internet, one-time)
@@ -479,9 +517,20 @@ Pi (no internet)
 
 ### Step 1 — Get a PMTiles file
 
-**Option A — GrayWolf offline maps:** if GrayWolf is installed, go to `http://<pi-ip>:8080`, sign in, and download the offline map tiles for the region(s) you need from the GrayWolf interface. They land in `/var/lib/graywolf/tiles/`, which the OASIS **Load maps** browser can read directly (it's in the default `OASIS_MAP_ROOTS`) — no copying required.
+**Option A — GrayWolf offline maps *(easiest, recommended if GrayWolf is installed)*:** GrayWolf has a built-in offline map downloader. Open `http://<pi-ip>:8080`, sign in (GrayWolf registration is free — it requires a callsign), then go to **Maps → Offline Maps → Add a region**. A drawer opens with a country tree: expand **United States** to pick individual states, or pick a whole country. Download the region(s) you need. GrayWolf saves them to `/var/lib/graywolf/tiles/`, which OASIS's **Load maps** button already knows about — no copying required.
 
-**Option B — Download a pre-built PMTiles archive:** find a PMTiles file for your region from sources like [protomaps.com](https://protomaps.com) or [Protomaps Basemaps](https://maps.protomaps.com). Download it on any machine with internet, then copy it to the Pi's `maps/` folder.
+**Option B — Download a pre-built PMTiles archive:** Protomaps publishes free daily basemap builds at **[maps.protomaps.com/builds/](https://maps.protomaps.com/builds/)**. The full-planet file is very large (~90 GB), so use the `pmtiles extract` command to cut out just your state or region before copying to the Pi:
+
+```bash
+# Install the pmtiles CLI (one-time, needs internet — see Option C below for the binary download)
+# Then extract a region from the remote daily build — no need to download the full planet:
+pmtiles extract https://maps.protomaps.com/builds/latest.pmtiles washington.pmtiles \
+  --bbox=-124.8,45.5,-116.9,49.1    # minLon,minLat,maxLon,maxLat
+```
+
+Find bounding-box coordinates for your state at [bboxfinder.com](http://bboxfinder.com). The resulting file for a US state is typically 500 MB–2 GB. Copy it to `maps/` on the Pi (see Step 2 below).
+
+> ℹ️ If you already have the `pmtiles` binary from Option C, you can use the same binary here.
 
 **Option C — Convert an existing MBTiles file:** if you already have an MBTiles archive, use the helper script:
 
@@ -504,10 +553,12 @@ Download from <https://github.com/protomaps/go-pmtiles/releases>, extract the
 `pmtiles` binary, and place it in `maps/` (or anywhere on `$PATH`):
 
 ```bash
-# Example — Raspberry Pi 64-bit
+# Example — Raspberry Pi 64-bit (run on the Pi, or on any Linux arm64 machine)
+# The * glob works when exactly one matching file is in the current directory.
+# If you downloaded multiple versions, delete the old one first.
 tar -xzf go-pmtiles_*_Linux_arm64.tar.gz pmtiles
 mv pmtiles maps/
-chmod +x maps/pmtiles
+chmod +x maps/pmtiles   # marks the file as executable so the OS can run it
 ```
 
 The script checks `maps/` first, so it works even under the trimmed `PATH`
@@ -538,8 +589,12 @@ OASIS expects the **OpenMapTiles (OMT) v3.x** schema.
 Place the `.pmtiles` file in `maps/`. The map opens at the archive's own center/zoom — no config file needed:
 
 ```bash
-scp maps/<region>.pmtiles pi@raspberrypi.local:/home/pi/oasis-emcomm/maps/
+# Run this on your laptop, replacing <username> and <hostname> with what you set in Imager:
+scp maps/<region>.pmtiles <username>@<hostname>.local:/home/<username>/oasis-emcomm/maps/
+# e.g.  scp maps/washington.pmtiles w4mhi@oasis.local:/home/w4mhi/oasis-emcomm/maps/
 ```
+
+> 💡 **Windows users:** use WinSCP or FileZilla (SFTP, port 22) to drag the `.pmtiles` file into `/home/<username>/oasis-emcomm/maps/` on the Pi.
 
 Or skip copying entirely: keep `.pmtiles` files on a USB stick and use the **Load maps** button on the map page to browse and load them at runtime. The locations the browser may read from are controlled by the `OASIS_MAP_ROOTS` environment variable (default: `/media`, `/mnt`, `/run/media`, `/Volumes`, plus `maps/`).
 
@@ -584,6 +639,21 @@ python3 scripts/install-graywolf.py --help
 
 The script automatically picks the install source: if the bundled `.deb` is present in `offline-packages/graywolf/` (put there by `create-oasis-offline.py`) it is used without any network access; otherwise the matching `.deb` is downloaded from GitHub releases. After install, open `http://<pi-ip>:8080` to configure GrayWolf.
 
+**Hardware prerequisites** — before configuring GrayWolf, make sure you have:
+- A **VHF/UHF radio** capable of 2 m APRS (144.390 MHz in North America), e.g. Yaesu FT-65, Kenwood TH-D74, Baofeng UV-5R, or any FM transceiver
+- An **audio/PTT interface** connecting the radio to the Pi. Common options:
+  - **[DigiRig Mobile](https://digirig.net/)** — USB, supports most radios, recommended for beginners. The DigiRig needs a radio-specific cable — check **[digirig.net/product-category/cables/](https://digirig.net/product-category/cables/)** to find the cable for your exact radio model before ordering.
+  - **[AIOC (All-In-One-Cable)](https://github.com/skuep/AIOC)** — USB, designed for Baofeng/Kenwood
+  - **MastersCommunications DRA-Pi-Zero** — I²S HAT for the Pi GPIO header (see [DRA-Pi-Zero setup](#dra-pi-zero-sound-card))
+  - **RTL-SDR dongle** — receive only, no transmit (see [RTL-SDR](#rtl-sdr))
+- The interface plugged into the Pi **before** you start configuring channels
+
+> ⚠️ **Restart GrayWolf after adding a device and channel.** GrayWolf only reads channel config when the modem starts — adding a device at runtime won't take effect until you restart:
+> ```bash
+> sudo systemctl restart graywolf
+> ```
+> If you configured everything and nothing is decoding, restart GrayWolf first.
+
 > **APRS history API (port 8085) is enabled automatically.** `install-graywolf.py`
 > also sets up the `graywolf-api` systemd service (via `scripts/enable-graywolf-api.py`)
 > — a small Flask app that feeds the OASIS APRS map and the dashboard's
@@ -595,13 +665,26 @@ The script automatically picks the install source: if the bundled `.deb` is pres
 
 Go to **Settings → Station Callsign** and enter your callsign with SSID (e.g. `W4MHI-5`).
 
-### 2. Channels
+The **SSID** (the `-5` part) distinguishes multiple APRS stations on the same callsign — `-5` is the conventional suffix for a fixed home/base station, `-9` for a mobile, `-1` for a digipeater. Pick one that matches your role; `-5` is a safe default for a Pi-based EOC station.
+
+### 2. Audio Devices
+
+Go to **Settings → Audio Devices → Add Device**. Add your sound card for both input (RX) and output (TX). Use **Detect Devices** to find the ALSA path.
+
+- **Sample Rate:** 96000 Hz, **Channels:** Mono
+- Adjust LEVEL and GAIN sliders after a test transmission
+
+> 💡 **Do this before adding Channels** — the channel configuration (step 3 below) needs your audio device to already be listed here, or the dropdown will be empty.
+
+![GrayWolf — Audio Devices configured](images/file5.png)
+
+### 3. Channels
 
 Go to **Settings → Channels → Add Channel**. Configure a modem-backed VHF APRS channel:
 
 - **Modem Type:** AFSK
 - **Bit Rate:** 1200 / **Mark:** 1200 Hz / **Space:** 2200 Hz
-- **Input / Output Device:** select your sound card (configured in Audio Devices)
+- **Input / Output Device:** select the sound card you added in step 2
 - **TX Delay:** 300 ms — key-up time before sending
 
 ![GrayWolf — Edit Channel (VHF APRS)](images/file9.png)
@@ -610,23 +693,17 @@ After saving, the channel card shows the backing status and modem parameters at 
 
 ![GrayWolf — Channels list (VHF APRS configured)](images/file10.png)
 
-### 3. PTT
+### 4. PTT
 
-Go to **Settings → PTT → Add PTT**. Use **Detect Devices** — GrayWolf will recommend the best match for your hardware. For a CM108-based cable (AIOC, Digirig, etc.), select the `hidraw` device:
+Go to **Settings → PTT → Add PTT**. Use **Detect Devices** — GrayWolf will recommend the best match for your hardware.
 
-- **Device:** `/dev/hidraw1` (CM108) or a GPIO pin for a direct Pi connection
-- **GPIO Pin:** GPIO 3 (pin 13) when using CM108 GPIO mode
+**Which PTT method to use:**
+- **DigiRig, AIOC, or any CM108-based USB cable** → select the `/dev/hidraw*` device (e.g. `/dev/hidraw1`). Leave the GPIO Pin field blank. These cables handle PTT via USB HID, not GPIO.
+- **Direct wire from a Pi GPIO pin to your radio's PTT line** → leave Device blank and enter the GPIO BCM number (e.g. GPIO 12 for the DRA-Pi-Zero). Use this only if you've wired your radio PTT directly to the Pi header.
+
+Do not configure both — pick one method based on your cable.
 
 ![GrayWolf — PTT Configuration](images/file23.png)
-
-### 4. Audio Devices
-
-Go to **Settings → Audio Devices → Add Device**. Add your sound card for both input (RX) and output (TX). Use **Detect Devices** to find the ALSA path.
-
-- **Sample Rate:** 96000 Hz, **Channels:** Mono
-- Adjust LEVEL and GAIN sliders after a test transmission
-
-![GrayWolf — Audio Devices configured](images/file5.png)
 
 ### 5. GPS (optional)
 
@@ -738,6 +815,8 @@ The **Live Map** plots stations heard over RF and via iGate with layer toggles a
 
 ## Winlink (Pat)
 
+> **Current capability:** Internet Winlink (via Telnet gateway) works immediately after install — you can send and receive Winlink email as long as the Pi has internet access. RF Winlink (sending over radio when there's no internet) via GrayWolf's KISS TNC interface is **experimental** — the wiring is functional but the integration is not yet polished or documented for general use. For a fully offline Field Day where you need RF Winlink, plan accordingly.
+
 [Pat](https://getpat.io) is a Winlink client with a browser UI — compose, read,
 and send Winlink (radio email) from `http://<pi-ip>:8082`. Installed with:
 
@@ -757,8 +836,7 @@ running `pat http` on **:8082**. A Winlink account for your callsign is required
 then *Action → Connect → telnet*. If you skipped the password prompt, set it with
 `pat configure` before connecting.
 
-**Phase 2 — RF (off-grid)** reuses GrayWolf's KISS TNC as the modem (no second
-modem) — see [`plan-winlink.md`](plan-winlink.md) for the design and status.
+**Phase 2 — RF (off-grid)** reuses GrayWolf's KISS TNC as the modem (no second modem). Connect Pat to GrayWolf's KISS port (Settings → KISS Interfaces in GrayWolf, then configure Pat's `ax25.json`) — the plumbing is there but the end-to-end setup is experimental. See the [GrayWolf KISS docs](../static/graywolf-handbook/kiss.html) in the offline handbook.
 
 > Plain HTTP, and `config.json` holds your Winlink password — keep this on your
 > trusted LAN, not the open internet.
@@ -786,9 +864,33 @@ It runs in two phases, auto-detected by whether the card is present yet:
    `Input Mux = Mic`, capture gain, TX path — and persists it with `alsactl store`.
 
 > **Run `--dry-run` first** to review the `config.txt` diff before it writes —
-> this edits a boot file. PTT (GPIO 12) and the green RX LED (GPIO 16) are
-> GrayWolf-side; the full hardware writeup is in
+> this edits a boot file. The full hardware writeup is in
 > [`graywolf-dra-pi.md`](graywolf-dra-pi.md).
+
+---
+
+## DRA-Pi RX LED
+
+GrayWolf keys GPIO 12 (the red TX LED) during transmit, but it has no carrier-detect output, so the DRA-Pi-Zero's green RX LED (GPIO 16) stays dark even while APRS packets are decoding. `enable-dra-rx-led.py` installs a lightweight daemon that pulses the green LED on every newly decoded APRS position packet.
+
+```bash
+python3 scripts/enable-dra-rx-led.py                # install + enable dra-rx-led.service
+python3 scripts/enable-dra-rx-led.py --no-enable     # write the unit, don't start it
+python3 scripts/enable-dra-rx-led.py --gpio 16       # override the LED GPIO (BCM)
+python3 scripts/enable-dra-rx-led.py --self-test     # blink the LED 5× and exit
+python3 scripts/enable-dra-rx-led.py --uninstall     # stop and remove the service
+```
+
+The daemon polls GrayWolf's history database (`/var/lib/graywolf/graywolf-history.db`) for new rows in the `positions` table and pulses GPIO 16 for 120 ms on each hit. It runs as root so it can drive the GPIO via `pinctrl` (ships with Pi OS Bookworm/Trixie) and read the GrayWolf DB.
+
+> **Prerequisites:** DRA-Pi-Zero configured (`enable-dra-pi.py` + reboot), GrayWolf installed and running, and `pinctrl` available on the path. **Do not drive GPIO 12 from this script** — GrayWolf already owns that pin for PTT.
+
+Service management:
+```bash
+sudo systemctl status dra-rx-led
+sudo systemctl restart dra-rx-led
+journalctl -u dra-rx-led -f
+```
 
 ---
 
@@ -844,10 +946,15 @@ ZIM files are saved to `~/oasis-offline/zim/` by default (use `--zim-dir PATH` t
 > ⚠️ **RTL-SDR requires Raspberry Pi OS Trixie (Debian 13).** The RTL-SDR Blog V4 dongle needs `librtlsdr ≥ 2.0`, which is only available on Trixie. Bookworm and Bullseye ship `librtlsdr 0.6.0` which cannot drive the V4.
 >
 > **Check your OS version:** `cat /etc/os-release | grep VERSION_CODENAME`
-> - `bookworm` or `bullseye` → upgrade to Trixie before using an RTL-SDR Blog V4
+> - `bookworm` or `bullseye` → re-flash with Trixie before proceeding (if you're starting fresh, follow [Step 1](#1-flash-raspberry-pi-os) and choose Trixie)
 > - `trixie` → you're good
->
-> V3 dongles (older RTL-SDR Blog, Nooelec) may work on Bookworm but are not officially supported.
+
+**How to tell if you have a V3 or V4:**
+- **V4** (2023 or later): has a robust **True SMA Female** antenna connector (standard SMA thread) and uses the **R828D** tuner chip. The product page and packaging clearly state "V4". If you bought it from the RTL-SDR Blog website or Amazon after mid-2023, it's almost certainly a V4.
+- **V3** (older): has a lighter **RP-SMA** or PCB-trace antenna connector and uses the **R820T2** tuner. Look at the PCB itself — V3 says "RTL-SDR Blog R820T2 RTL2832U" on the silkscreen.
+- **Not sure?** Run `lsusb` with the dongle plugged in. V4 shows `0bda:2838` (same USB ID as V3) but `rtl_test -t` will report the tuner chip name.
+
+> V3 dongles (older RTL-SDR Blog, Nooelec) may work on Bookworm but are not officially supported with these scripts.
 
 ```bash
 python3 scripts/install-rtl-sdr.py                # auto: bundled .debs if present, else apt
@@ -881,7 +988,7 @@ This tests the dongle (measures live audio at the APRS frequency), installs and
 enables `aprs-sdr-feed.service` (`rtl_fm … | socat -u -b 1920 - UDP-SENDTO:127.0.0.1:7355`),
 inspects GrayWolf's journal, and prints the browser steps to add the `sdr_udp`
 device and AFSK/RX channel. Receive-only — an RTL-SDR cannot transmit. Full
-writeup and troubleshooting: [`sdr-to-graywolf.md`](sdr-to-graywolf.md).
+writeup and troubleshooting: [`graywolf-rtl-sdr.md`](graywolf-rtl-sdr.md).
 
 ---
 
@@ -967,21 +1074,14 @@ python3 scripts/install-gps.py --help
 
 The script installs `gpsd` and `chrony`, points `gpsd` at the receiver (with
 `GPSD_OPTIONS=-n` so it polls without a client connected), and adds the chrony
-**SHM refclock** that actually disciplines the clock from GPS. The `apt` step
-needs internet once; everything after runs offline.
+**SHM refclock** that actually disciplines the clock from GPS. **Run this at home while the Pi has internet** — the `apt install` step needs it once; everything after runs offline.
 
-**Fast cold fix (u-blox only).** A u-blox receiver can load *AssistNow Offline*
-almanac data so it locks in seconds rather than minutes after a cold start:
-
-```bash
-OASIS_UBLOX_TOKEN=<your-token> python3 scripts/install-gps.py --assist-now
-```
-
-This needs internet and a free u-blox/Thingstream token. Run the normal setup
-first.
+**Fast cold fix (u-blox only) — ⚠️ service discontinued July 2026.** The *AssistNow Offline* service that supplied satellite almanac data has entered end-of-maintenance/end-of-support status as of July 2026. The `--assist-now` flag in `install-gps.py` remains in the code but the Thingstream backend may no longer accept new tokens. For most deployments the standard GPS cold-start time (1–5 minutes for a first fix outdoors with a clear sky) is acceptable — pair GPS with a hardware RTC (next section) and the Pi will keep reasonable time between fixes.
 
 > 💡 **Pair GPS with a hardware RTC** (next section) so the clock survives a full
 > power-loss with no GPS lock yet — chrony then rides the RTC until GPS reacquires.
+
+> 📡 **Keep it exercised.** GPS satellite almanac data (the "Keplerian elements" that help the receiver find satellites quickly) ages out after weeks without a sky view. Power the Pi with the GPS connected and take it outdoors for a few minutes every few weeks — treat it like any emergency radio: test before deployment, not on arrival.
 
 ---
 
@@ -1034,9 +1134,13 @@ python3 scripts/install-webssh.py --help
 
 **Install source.** `ttyd` is **not in the Debian/Raspberry Pi OS stable repos**, so this installs the upstream **prebuilt static binary** to `/usr/local/bin/ttyd` (a single self-contained file — no `libwebsockets`/`libuv` dependencies). If the matching binary is bundled at `offline-packages/webssh/ttyd.<arch>` (put there by `create-oasis-offline.py`) it is used offline; otherwise it is downloaded from GitHub releases. Install is version-aware: an already-installed newer ttyd is kept, never downgraded.
 
-**Authentication — ssh to localhost.** The page prompts for a username and hands off to `ssh <user>@localhost`, so users authenticate with their **normal Pi username + password** (PAM, via `sshd`). This requires **sshd to be running** (`sudo systemctl enable --now ssh`); the installer adds `Wants=ssh.service` to the unit and warns if it's down. The optional `--basic-auth` gate adds an extra HTTP credential prompt in front.
+**Authentication.** Open the Web SSH card in the dashboard — the page asks for your Pi username and password, then gives you a full terminal. It uses your **normal Pi username and password** (the same ones you set in Imager). `sshd` must be running on the Pi; the installer checks for this and warns if it's not.
 
-> **Why ssh-to-localhost and not `/bin/login`?** Running `login` directly under ttyd's pty hangs — `login`'s `vhangup()` tears down the WebSocket so its password prompt never appears. `ssh` sets up its own pty and PAM session correctly. The command lives in a small helper script `/usr/local/bin/oasis-webssh-login` rather than inline in `ExecStart`, because systemd performs `$`-expansion even inside single quotes and would otherwise eat the `$u` username variable (making it `ssh @localhost` → root → no prompt).
+<details><summary>Technical note — why ssh-to-localhost instead of /bin/login</summary>
+
+Running `login` directly under ttyd's pty hangs — `login`'s `vhangup()` tears down the WebSocket so its password prompt never appears. `ssh` sets up its own pty and PAM session correctly. The command lives in a small helper script `/usr/local/bin/oasis-webssh-login` rather than inline in `ExecStart`, because systemd performs `$`-expansion even inside single quotes and would otherwise eat the `$u` username variable (making it `ssh @localhost` → root → no prompt).
+
+</details>
 
 **Verifying the install.** Because a systemd unit can silently drift from the source, the installer is self-checking:
 - `--dry-run` prints the exact helper script and unit file before writing anything.
@@ -1162,8 +1266,15 @@ There is **no bundled data** — RepeaterBook listings are **not redistributable
 so you download your own:
 
 1. At [repeaterbook.com](https://www.repeaterbook.com), sign in (free) and search your region.
-2. Export → **CHIRP** format.
-3. Save the file as **`repeaterbook/repeaterbook.csv`** (next to `repeaterbook.html`).
+2. Export → **CHIRP** format. Save the `.csv` file on your laptop.
+3. Copy it to the Pi as `repeaterbook/repeaterbook.csv`:
+
+```bash
+# Mac / Linux laptop:
+scp /path/to/exported.csv <username>@<hostname>.local:/home/<username>/oasis-emcomm/repeaterbook/repeaterbook.csv
+```
+
+> 💡 **Windows users:** in WinSCP or FileZilla, navigate to `/home/<username>/oasis-emcomm/repeaterbook/` on the Pi and drag the file in, renaming it to `repeaterbook.csv`.
 
 The dashboard **Repeater Book** card turns green when the CSV is present, red when
 missing. **Export to Frequency Plan** writes the visible repeaters as CHIRP CSV to
@@ -1239,16 +1350,17 @@ bundled `.deb`s first.
 ## Small-screen / kiosk display
 
 `small-screen/index7.html` is a compact, touch-friendly dashboard tuned for small
-panels (e.g. a 3.5–7″ Pi screen or the CM4Stack panel). Point a Chromium kiosk at
-it instead of the full dashboard:
+panels (e.g. a 3.5–7″ Pi screen or the CM4Stack panel). Use `--7inch` to configure
+the kiosk automatically:
 
 ```bash
-python3 scripts/enable-autostart-pi.py --with-browser
+python3 scripts/enable-autostart-pi.py --7inch
 ```
 
-then set the kiosk URL to `http://localhost:8083/small-screen/index7.html`. The
-layout uses `small-screen/kiosk.css` for large tap targets and a condensed status
-strip.
+`--7inch` implies `--with-browser` and sets the kiosk URL to
+`http://localhost:8083/small-screen/index7.html`, enables touch events, and sets
+the window size to 800×480. The layout uses `small-screen/kiosk.css` for large tap
+targets and a condensed status strip.
 
 ---
 
@@ -1257,10 +1369,12 @@ strip.
 `scripts/create-oasis-offline.py` updates all offline packages and packages OASIS into a self-contained folder that runs on Windows and Linux with no Python pre-installed. Can be built from macOS, Linux, or Windows.
 
 ```bash
-python3 scripts/create-oasis-offline.py                           # incremental build (reuse existing assets)
+python3 scripts/create-oasis-offline.py                           # incremental build (Linux/macOS/Pi target)
+python3 scripts/create-oasis-offline.py --for-windows             # also bundle Windows embedded Python runtime
 python3 scripts/create-oasis-offline.py --rebuild                 # wipe oasis-offline/ and full clean rebuild
-python3 scripts/create-oasis-offline.py --skip-windows            # skip Windows Python download
-python3 scripts/create-oasis-offline.py --check                   # verify offline assets (CI)
+python3 scripts/create-oasis-offline.py --update                  # refresh packages + sync source files into oasis-offline/
+python3 scripts/create-oasis-offline.py --verify                  # verify oasis-offline/ checksums
+python3 scripts/create-oasis-offline.py --check                   # verify offline assets (CI mode)
 python3 scripts/create-oasis-offline.py --help
 ```
 
@@ -1282,17 +1396,40 @@ Package update phases (smart: only downloads what changed):
 ```
 oasis-offline/
 ├── _runtime/
-│   └── windows/       ← embedded Python 3.12 + Flask + psutil (~30 MB)
+│   └── windows/                  ← embedded Python 3.12 + Flask + psutil (~30 MB, --for-windows only)
 ├── server/
 ├── static/
 ├── maps/
 ├── fcc-offline-database/
 ├── ... (all project files)
-├── start.bat          ← Windows: double-click to launch
-└── start.sh           ← Linux: bootstraps venv on first run
+└── scripts/
+    ├── start-server.bat          ← Windows: double-click to launch
+    └── start-server.sh           ← Linux/macOS: run from terminal
 ```
 
 The dashboard, ICS forms, FCC lookup, **offline maps**, calculators, and the reference library all work from the USB bundle — maps included, since they're served by the core OASIS app. Only the separate Pi companion services — GrayWolf APRS (8080), Kiwix (8081), and the APRS history API (8085) — show as DOWN, because they run as their own services on the Pi.
+
+---
+
+## Updating OASIS
+
+To pull a new version of OASIS when a release comes out:
+
+```bash
+cd ~/oasis-emcomm
+git pull                          # download the latest code
+python3 scripts/setup-server.py  # update server dependencies if requirements changed
+```
+
+If OASIS is running as a systemd service, restart it after updating:
+
+```bash
+sudo systemctl restart oasis
+```
+
+If you're running manually, stop the current server (`Ctrl+C`), then run `scripts/start-server.sh` again.
+
+> ℹ️ `git pull` downloads code changes only — it does not update the FCC database, map tiles, or Wikipedia (those are data files you manage separately with the commands in [Keeping data fresh](#keeping-data-fresh)).
 
 ---
 
@@ -1301,13 +1438,55 @@ The dashboard, ICS forms, FCC lookup, **offline maps**, calculators, and the ref
 | Data | Command | Frequency |
 |---|---|---|
 | FCC callsign database | `python3 scripts/setup-fcc-database.py` | FCC publishes every Sunday |
-| Offline maps | `python3 scripts/build-map.py <extract>.gpkg --bbox … --name <area>` | As needed |
+| Offline maps (GrayWolf) | Re-download in GrayWolf UI: **Maps → Offline Maps → Add a region** | As needed |
+| Offline maps (MBTiles → PMTiles) | `python3 maps/convert-mbtiles.py <source>.mbtiles` | When you have a new MBTiles source to convert |
 | Wikipedia ZIM | `python3 scripts/download-wikipedia.py --edition <edition>` | Monthly snapshots |
 | GrayWolf | `python3 scripts/install-graywolf.py` | Check GitHub releases |
 | kiwix-serve | `python3 scripts/install-kiwix.py --version <new>` | Check download.kiwix.org |
 | RTL-SDR packages | `python3 scripts/create-oasis-offline.py` | Run anytime — only downloads if a newer version is in Debian Bookworm |
 | webssh (ttyd) packages | `python3 scripts/create-oasis-offline.py` | Run anytime — only downloads if a newer version is in Debian Bookworm |
 | Offline wheel set *(maintainers)* | `python3 scripts/create-oasis-offline.py` | Run anytime — updates only if newer packages are available |
+
+---
+
+## Health check (doctor)
+
+`scripts/doctor.py` is a headless health check that mirrors every verification the browser setup page (`system/setup.html`) performs — useful for post-deploy confirmation over SSH when no browser is available, or as part of a CI / automated test.
+
+```bash
+python3 scripts/doctor.py                          # run all checks
+python3 scripts/doctor.py --core                   # core checks only (server, FCC, maps, disk)
+python3 scripts/doctor.py --json                   # machine-readable JSON output
+python3 scripts/doctor.py --host 192.168.1.10      # check a remote OASIS instance
+python3 scripts/doctor.py --host HOST --port PORT  # non-default host and port
+```
+
+**Exit codes:** `0` = all core checks pass (optional services may still show warnings) · `1` = one or more core checks failed.
+
+**Core checks** (determine the exit code):
+
+| Check | What it verifies |
+|---|---|
+| Server reachable | `GET /health` returns 200 on port 8083 |
+| FCC index present | `fcc-offline-database/data/EN.idx` exists and reports a callsign count |
+| Maps directory | `maps/` exists and contains at least one `.pmtiles` file |
+| Disk space | Reports free space on the SD card / disk |
+
+**Optional-service checks** (warnings only, do not affect exit code): GrayWolf (8080) · Kiwix (8081) · Winlink (8082) · APRS history API (8085) · Web SSH (7681) · RTL-SDR blacklist · GrayWolf offline-tiles directory.
+
+**Typical usage** — run immediately after setup to confirm the deployment is healthy before going to the field:
+
+```bash
+python3 scripts/doctor.py
+# All core checks pass  → exit 0
+# One core check failed → exit 1 (read the ✗ lines for the cause)
+```
+
+For scripted / CI use:
+
+```bash
+python3 scripts/doctor.py --json | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d['core_ok'] else 1)"
+```
 
 ---
 

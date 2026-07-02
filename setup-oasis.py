@@ -78,7 +78,7 @@ FEATURES = [
             "Server", default=True),
     Feature("autostart", "Auto-start on boot", "enable-autostart-pi.py",
             "Install the systemd unit so the OASIS server starts at boot. Add --with-browser later for a Chromium kiosk.",
-            "Server", default=False, needs=["server"],
+            "Server", default=True, needs=["server"],
             recommend="OASIS now starts on boot. Stop any manual ./scripts/start-server.sh first to free port 8083."),
     Feature("graywolf", "GrayWolf APRS (+ history API)", "install-graywolf.py",
             "APRS TNC/iGate/digipeater on :8080, plus the history API on :8085.",
@@ -156,7 +156,7 @@ FEATURES = [
     # ── Content / Data: large optional downloads ──────────────────────────────
     Feature("fcc", "FCC callsign database", "setup-fcc-database.py",
             "Download + index the FCC amateur license DB (~160 MB).",
-            "Content / Data", default=False, internet=True, data=True,
+            "Content / Data", default=True, internet=True, data=True,
             recommend="FCC callsign lookup is ready on the dashboard."),
     Feature("wikipedia", "Wikipedia content (ZIM)", "download-wikipedia.py",
             "Download Wikipedia ZIM files for Kiwix (1 GB to ~100 GB).",
@@ -165,12 +165,12 @@ FEATURES = [
     Feature("repeaterbook", "Repeater Book listing", None,
             "Show the Repeater Book link on the dashboard. Needs repeaterbook/repeaterbook.csv "
             "(copyright — export your own from repeaterbook.com and drop it in).",
-            "Content / Data", default=False, record_only=True,
+            "Content / Data", default=True, record_only=True,
             recommend="Repeater Book link is on the dashboard — drop your repeaterbook.csv into repeaterbook/."),
     Feature("forms", "ICS Forms (dashboard section)", None,
             "Show the ICS-205/213/214/309 forms section on the dashboard. The forms ship with "
             "OASIS — this only toggles whether the section is shown.",
-            "Content / Data", default=False, record_only=True,
+            "Content / Data", default=True, record_only=True,
             recommend="ICS Forms section is shown on the dashboard."),
 ]
 

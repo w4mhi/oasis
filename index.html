@@ -44,7 +44,7 @@ body {
   margin-top: 2px;
 }
 .clock-utc {
-  font-size: var(--fs-title);
+  font-size: var(--fs-clock);
   font-weight: 700;
   color: var(--accent);
   letter-spacing: .1em;
@@ -432,7 +432,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 
 /* ── Local time ──────────────────────────────────────────────────────── */
 .clock-local {
-  font-size: var(--fs-title);
+  font-size: var(--fs-clock);
   font-weight: 700;
   color: var(--amber);
   letter-spacing: .1em;
@@ -806,9 +806,9 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 
 <!-- ── TOP BAR ─────────────────────────────────────────────────────────────── -->
 <div class="topbar">
-  <div style="display:flex;align-items:center;gap:3.0rem">
+  <div style="display:flex;align-items:center;gap:2.0rem">
   <div>
-    <div class="brand-name">OASIS - Off-grid Amateur Station Information Suite</div>
+    <div class="brand-name">OASIS <span class="brand-sub" style="color: var(--blue);">Off-grid Amateur Station Information Suite</span></div>
     <div class="brand-sub">An offline toolkit for amateur radio emergency communications.</div>
     <div class="pill-row">
       <button class="callsign-pill" onclick="editCallsignGrid()" title="Edit callsign &amp; grid">
@@ -855,7 +855,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
       <div class="clock-date" id="utc-date">----·--·--</div>
     </div>
     <div class="clock-utc-row">
-      <div class="clock-local" id="local-time">LOCAL --:--:--</div>
+      <div class="clock-local" id="local-time">LOC --:--:--</div>
       <div class="clock-local-date" id="local-date">----·--·--</div>
     </div>
     <!-- Wi-Fi status / picker (pill hidden off-Pi) + uptime, to its right -->
@@ -876,7 +876,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 <!-- ── SYSTEM MONITOR ─────────────────────────────────────────────────────── -->
 <div class="stats-bar">
   <div class="stat-item" style="padding-left:0;border-left:none;margin-right:.4rem">
-    <span class="section-hdr-title">SYSTEM MONITOR</span>
+    <span class="section-hdr-title">SYSTEM</span>
   </div>
   <div class="stat-item">
     <span class="stat-lbl">CPU</span>
@@ -1163,7 +1163,7 @@ function tickClock() {
   document.getElementById('utc-date').textContent =
     `${n.getUTCFullYear()}·${z(n.getUTCMonth()+1)}·${z(n.getUTCDate())}`;
   document.getElementById('local-time').textContent =
-    `LOCAL ${WD[n.getDay()]} ${z(n.getHours())}:${z(n.getMinutes())}:${z(n.getSeconds())}`;
+    `LOC ${WD[n.getDay()]} ${z(n.getHours())}:${z(n.getMinutes())}:${z(n.getSeconds())}`;
   document.getElementById('local-date').textContent =
     `${n.getFullYear()}·${z(n.getMonth()+1)}·${z(n.getDate())}`;
 }
