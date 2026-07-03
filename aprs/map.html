@@ -139,14 +139,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   color:#b478ff;font-family:var(--mono);display:none;
 }
 /* ── Sonar pings for newly heard stations — single element, no wrapper, MapLibre-safe ── */
-/* Three rings embedded in one box-shadow animation, staggered by keyframe offsets */
+/* Three rings embedded in one box-shadow animation, staggered by keyframe offsets.
+   Ring colour is driven by --sonar-rgb (RF = green default · IS = blue), set per
+   marker in spawnPing() so the same animation serves both sources. */
 @keyframes aprs-sonar{
-  0%  {box-shadow: 0 0 5px  0px rgba(0,255,80,.9 ), 0 0 0   0px rgba(0,255,80,0  ), 0 0 0   0px rgba(0,255,80,0  );}
-  16% {box-shadow: 0 0 5px 16px rgba(0,255,80,.45), 0 0 5px  0px rgba(0,255,80,.9 ), 0 0 0   0px rgba(0,255,80,0  );}
-  33% {box-shadow: 0 0 3px 32px rgba(0,255,80,.0 ), 0 0 5px 16px rgba(0,255,80,.45), 0 0 5px  0px rgba(0,255,80,.9 );}
-  50% {box-shadow: 0 0 0   0px rgba(0,255,80,0  ), 0 0 3px 32px rgba(0,255,80,.0 ), 0 0 5px 16px rgba(0,255,80,.45);}
-  66% {box-shadow: 0 0 0   0px rgba(0,255,80,0  ), 0 0 0   0px rgba(0,255,80,0  ), 0 0 3px 32px rgba(0,255,80,.0 );}
-  100%{box-shadow: 0 0 0   0px rgba(0,255,80,0  ), 0 0 0   0px rgba(0,255,80,0  ), 0 0 0   0px rgba(0,255,80,0  );}
+  0%  {box-shadow: 0 0 5px  0px rgba(var(--sonar-rgb,0,255,80),.9 ), 0 0 0   0px rgba(var(--sonar-rgb,0,255,80),0  ), 0 0 0   0px rgba(var(--sonar-rgb,0,255,80),0  );}
+  16% {box-shadow: 0 0 5px 16px rgba(var(--sonar-rgb,0,255,80),.45), 0 0 5px  0px rgba(var(--sonar-rgb,0,255,80),.9 ), 0 0 0   0px rgba(var(--sonar-rgb,0,255,80),0  );}
+  33% {box-shadow: 0 0 3px 32px rgba(var(--sonar-rgb,0,255,80),.0 ), 0 0 5px 16px rgba(var(--sonar-rgb,0,255,80),.45), 0 0 5px  0px rgba(var(--sonar-rgb,0,255,80),.9 );}
+  50% {box-shadow: 0 0 0   0px rgba(var(--sonar-rgb,0,255,80),0  ), 0 0 3px 32px rgba(var(--sonar-rgb,0,255,80),.0 ), 0 0 5px 16px rgba(var(--sonar-rgb,0,255,80),.45);}
+  66% {box-shadow: 0 0 0   0px rgba(var(--sonar-rgb,0,255,80),0  ), 0 0 0   0px rgba(var(--sonar-rgb,0,255,80),0  ), 0 0 3px 32px rgba(var(--sonar-rgb,0,255,80),.0 );}
+  100%{box-shadow: 0 0 0   0px rgba(var(--sonar-rgb,0,255,80),0  ), 0 0 0   0px rgba(var(--sonar-rgb,0,255,80),0  ), 0 0 0   0px rgba(var(--sonar-rgb,0,255,80),0  );}
 }
 .aprs-marker.is-new{
   animation:aprs-sonar 2.4s ease-out 3 forwards;
@@ -223,6 +225,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 }
 .recent-row:hover{background:var(--panel-2);}
 .recent-call{color:var(--accent);font-weight:700;}
+/* Heard-via source tag (RF = over the air · IS = APRS-IS/igate), from via/path */
+.recent-src{font-size:var(--fs-micro);font-weight:700;letter-spacing:.03em;
+  padding:0 4px;border-radius:3px;border:1px solid var(--border);}
+.recent-src.rf{color:var(--accent);border-color:var(--accent-dim);}
+.recent-src.is{color:var(--blue);}
 .recent-age{color:var(--text-dim);font-size:var(--fs-micro);margin-left:auto;}
 
 /* Map-layer toggle panel (collapsible, stacked beneath the stations panel) */
@@ -1168,12 +1175,14 @@ function plotStations(stations) {
   stations.forEach(s => {
     if (s.lat == null || s.lon == null) return;
     const symId = ensureStationImage(s.sym_table, s.sym_code);
+    const src = _stationSource(s); // 'rf' (over the air) | 'is' (APRS-IS/igate)
     features.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
       properties: {
         callsign: s.callsign,
         sym: symId || '',
+        src: src,
         isNew: _newCallsigns.has(s.callsign) ? 1 : 0
       }
     });
@@ -1183,7 +1192,7 @@ function plotStations(stations) {
     // green halo (GPU) remains for the rest of the cycle.
     if (_newCallsigns.has(s.callsign) && !_pingedCalls.has(s.callsign)) {
       _pingedCalls.add(s.callsign);
-      spawnPing(s.lon, s.lat);
+      spawnPing(s.lon, s.lat, src);
     }
   });
   src.setData({ type: 'FeatureCollection', features });
@@ -1193,9 +1202,11 @@ function plotStations(stations) {
 // re-render doesn't re-trigger the animation). Reset each fetch.
 let _pingedCalls = new Set();
 
-function spawnPing(lon, lat) {
+function spawnPing(lon, lat, src) {
   const el = document.createElement('div');
   el.className = 'aprs-marker is-new';
+  // Ring colour follows the heard-via source: green RF, blue IS (APRS-IS/igate).
+  el.style.setProperty('--sonar-rgb', src === 'is' ? '88,166,255' : '0,255,80');
   el.style.width = SPRITE_CELL + 'px';
   el.style.height = SPRITE_CELL + 'px';
   el.style.background = 'transparent';
@@ -1503,16 +1514,19 @@ loadConfig().then(() => {
     map.addSource('aprs-stations', {
       type: 'geojson', data: { type: 'FeatureCollection', features: [] }
     });
-    // Static green halo behind stations heard this refresh cycle (replaces the
+    // Static halo behind stations heard this refresh cycle (replaces the
     // old animated sonar/persistent-glow DOM markers; GPU-drawn, no animation).
+    // Coloured by heard-via source: green for RF, blue for IS (APRS-IS/igate).
     map.addLayer({
       id: 'aprs-stations-halo', type: 'circle', source: 'aprs-stations',
       filter: ['==', ['get', 'isNew'], 1],
       paint: {
         'circle-radius': 15,
-        'circle-color': 'rgba(0,255,80,0.12)',
+        'circle-color': ['case', ['==', ['get', 'src'], 'is'],
+          'rgba(88,166,255,0.12)', 'rgba(0,255,80,0.12)'],
         'circle-stroke-width': 2,
-        'circle-stroke-color': 'rgba(0,255,80,0.55)'
+        'circle-stroke-color': ['case', ['==', ['get', 'src'], 'is'],
+          'rgba(88,166,255,0.55)', 'rgba(0,255,80,0.55)']
       }
     });
     // Icon + callsign label in a single symbol. icon-allow-overlap keeps every
@@ -1787,6 +1801,22 @@ function toggleRecentPanel() {
   document.getElementById('recent-panel').classList.toggle('collapsed');
 }
 
+// Heard-via source from the DB's via/path: 'is' when igated (TCPIP / IGATE / a
+// q-construct like qAR/qAC), else 'rf' (heard over the air). Same basis the
+// dashboard uses to tell RF-only from IS traffic.
+function _stationSource(s) {
+  const hay = ((s.via || '') + ' ' + (s.path || []).join(' ')).toUpperCase();
+  const isIS = hay.includes('TCPIP') || hay.includes('IGATE') || /\bQA[A-Z]/.test(hay);
+  return isIS ? 'is' : 'rf';
+}
+
+// Compact age formatter: <60s → "Ns", <60m → "Nm Ns", else → "Nh Nm".
+function fmtAge(sec) {
+  if (sec < 60) return sec + 's';
+  if (sec < 3600) return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's';
+  return Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm';
+}
+
 function updateRecentPanel(newStations) {
   const count = document.getElementById('recent-count');
   const body  = document.getElementById('recent-body');
@@ -1799,10 +1829,14 @@ function updateRecentPanel(newStations) {
   const sorted = [...newStations].sort((a, b) =>
     (b.last_heard || '').localeCompare(a.last_heard || ''));
   body.innerHTML = sorted.map(s => {
-    const ageSec = s.last_heard ? Math.round((Date.now() - new Date(s.last_heard)) / 1000) : null;
-    const ageStr = ageSec === null ? '' : ageSec < 60 ? ageSec + 's ago' : Math.round(ageSec/60) + 'm ago';
+    // Age since last heard, formatted as Ns / Nm Ns / Nh Nm (stations can carry
+    // last_heard timestamps well beyond the fetch window).
+    const ageSec = s.last_heard ? Math.max(0, Math.round((Date.now() - new Date(s.last_heard)) / 1000)) : null;
+    const ageStr = ageSec === null ? '' : fmtAge(ageSec) + ' ago';
+    const src = _stationSource(s);
     return `<div class="recent-row" onclick="recentRowClick('${s.callsign}')">
       <span class="recent-call">${s.callsign}</span>
+      <span class="recent-src ${src}">${src.toUpperCase()}</span>
       <span class="recent-age">${ageStr}</span>
     </div>`;
   }).join('');

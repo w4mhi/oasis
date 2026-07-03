@@ -101,6 +101,26 @@ sudo alsactl store
 sudo systemctl is-enabled alsa-restore   # should say "enabled"
 ```
 
+#### Dump / snapshot the mixer state
+
+Capture every control and its current value — to compare against this
+known-good, to spot drift when capture goes dead, or to attach when asking for
+help:
+
+```bash
+amixer -c audioinjectorpi scontents          # full dump: every control + its current value
+amixer -c audioinjectorpi sget 'Input Mux'   # spot-check the one that matters most (must be 'Mic')
+amixer -c audioinjectorpi sget 'Capture'     # capture volume + [on]/[off] state
+
+# Snapshot to a file you can diff or restore later
+alsactl store   -f dra-alsa-known-good.state
+alsactl restore -f dra-alsa-known-good.state  # push a saved snapshot back
+```
+
+If capture is dead, diff a fresh `scontents` against a known-good dump — the
+usual culprit is `Input Mux` drifting back to `Line In` (it **must** be `Mic`;
+see the gotcha above) or `Capture` coming up muted.
+
 ### 3. GrayWolf audio source
 
 | Field | Value |
@@ -128,12 +148,55 @@ sudo systemctl is-enabled alsa-restore   # should say "enabled"
 | Field | Value |
 |-------|-------|
 | `method` | `gpio` |
-| `device` | `/dev/gpiochip0` |
+| `device` | `/dev/gpiochip0` (Pi 3/4) · `/dev/gpiochip4` (Pi 5) — see below |
 | `gpio_line` | `12` |
 | `invert` | `false` |
 
-`gpio_line` is a kernel line offset (verify with `gpiofind GPIO12`); it equals
-BCM 12 on Pi 3 / Pi 4, but re-check on a Pi 5.
+`gpio_line` is a **line offset on one specific chip**, not a BCM number in the
+abstract — so the chip (`device`) *and* the offset both have to be right. The
+offset happens to equal BCM 12 on the 40-pin header, but *which gpiochip owns
+that header* changed with the Pi 5.
+
+#### Pick the right gpiochip (the Pi 5 gotcha)
+
+On a **Pi 3 / Pi 4** the 40-pin header is `gpiochip0` (`pinctrl-bcm2835/2711`).
+On a **Pi 5** the header hangs off the **RP1**, so it shows up as a *second*
+chip — you'll see both `gpiochip0` **and** `gpiochip4` in GrayWolf's device
+picker. The 40-pin header (and therefore BCM 12 / PTT) is the **RP1** chip,
+usually `gpiochip4` (label `pinctrl-rp1`) — **not** `gpiochip0`. Kernel updates
+have renumbered this before, so don't trust the number; read the label.
+
+```bash
+cat /proc/device-tree/model            # e.g. "Raspberry Pi 5 Model B"
+gpiodetect                             # find the chip whose label is pinctrl-rp1 (Pi 5)
+pinctrl get 12                         # pinctrl uses BCM numbering + abstracts the chip
+gpioinfo | grep -B2 -iE '"GPIO12"'     # shows the chip + line offset that owns BCM 12
+```
+
+Point GrayWolf's `device` at whichever `/dev/gpiochipN` carries the 40-pin
+header (`pinctrl-rp1` on a Pi 5), with `gpio_line = 12`. If GrayWolf is left on
+`gpiochip0` on a Pi 5 it drives a line that isn't the header — **PTT never keys
+and nothing errors**.
+
+#### Verify PTT without GrayWolf
+
+Key the pin by hand first — this isolates the wiring/radio from GrayWolf's
+config:
+
+```bash
+pinctrl set 12 op dh    # PTT ON  — red LED lights + radio keys
+pinctrl get 12          # confirm: "12: op dh" (output, driven high)
+pinctrl set 12 op dl    # PTT OFF — unkey
+```
+
+- **Keys by hand but not from GrayWolf** → wiring is fine; GrayWolf is pointing
+  at the wrong `gpiochip` (see above) or holding a stale channel — fix `device`,
+  then `sudo systemctl restart graywolf`.
+- **Won't key even by hand** → the fault is upstream of GrayWolf: wrong BCM pin,
+  PTT wiring/relay, or the radio's own settings — not a GrayWolf problem.
+
+> After changing PTT config, `sudo systemctl restart graywolf` — like the audio
+> channel, the PTT line is bound when the modem **starts**.
 
 ---
 
