@@ -8,7 +8,8 @@ Provides:
                                _dl, _cp, _run)
   - Progress bar             (Progress)
   - Network utilities        (has_internet, download_to, download_bytes)
-  - FCC database functions   (fcc_download, fcc_build_index, fcc_build_zip_table)
+  - FCC database functions   (fcc_download, fcc_build_index, fcc_build_zip_table,
+                               fcc_indexes_ready)
   - GrayWolf functions       (graywolf_find_local, graywolf_latest_release,
                                graywolf_download_deb)
   - Kiwix functions          (kiwix_find_local, kiwix_latest_version,
@@ -23,6 +24,7 @@ Usage (from any script in scripts/):
 
 import csv
 import gzip
+import hashlib
 import io
 import json
 import os
@@ -323,6 +325,62 @@ def fcc_download(data_dir, force=False):
     _fcc_extract(io.BytesIO(data), data_dir)
 
 
+FCC_INDEX_NAMES = ("EN.idx", "EN_name.idx", "EN_grid.idx")
+FCC_INDEX_META  = "EN.idx.meta"
+
+
+def _fcc_sha256(path):
+    """Streaming SHA-256 of a file — constant memory, safe on a Pi Zero."""
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _fcc_write_index_meta(data_dir):
+    """Record the EN.dat size + SHA-256 the indexes in *data_dir* were built
+    against (EN.idx.meta). Lets a target validate shipped prebuilt indexes
+    against its own extracted EN.dat before trusting them."""
+    en_path = os.path.join(data_dir, "EN.dat")
+    if not os.path.exists(en_path):
+        return
+    meta = {
+        "en_size":   os.path.getsize(en_path),
+        "en_sha256": _fcc_sha256(en_path),
+        "built":     time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "indexes":   [n for n in FCC_INDEX_NAMES
+                      if os.path.exists(os.path.join(data_dir, n))],
+    }
+    with open(os.path.join(data_dir, FCC_INDEX_META), "w", encoding="utf-8") as fh:
+        json.dump(meta, fh, indent=2)
+        fh.write("\n")
+
+
+def fcc_indexes_ready(data_dir):
+    """True when valid prebuilt indexes are present for the local EN.dat.
+
+    Requires all three index files plus EN.idx.meta whose recorded size and
+    SHA-256 match EN.dat. Used to skip the memory-heavy rebuild when an offline
+    bundle already shipped the indexes (the build that OOMs a 512 MB Pi Zero).
+    Size is compared first (cheap); the SHA-256 is only computed on a size match.
+    """
+    en_path   = os.path.join(data_dir, "EN.dat")
+    meta_path = os.path.join(data_dir, FCC_INDEX_META)
+    if not (os.path.exists(en_path) and os.path.exists(meta_path)):
+        return False
+    if any(not os.path.exists(os.path.join(data_dir, n)) for n in FCC_INDEX_NAMES):
+        return False
+    try:
+        with open(meta_path, encoding="utf-8") as fh:
+            meta = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    if os.path.getsize(en_path) != meta.get("en_size"):
+        return False
+    return _fcc_sha256(en_path) == meta.get("en_sha256")
+
+
 def fcc_build_index(data_dir, server_dir):
     """
     Build EN.idx from EN.dat + HD.dat in *data_dir*.
@@ -384,6 +442,12 @@ def fcc_build_index(data_dir, server_dir):
             _warn(f"Grid index build failed: {exc}")
     else:
         _warn("zipcodes.csv not found — grid index skipped (run without --index-only to build it)")
+
+    # Fingerprint the EN.dat these indexes were built against, so an offline
+    # bundle can ship prebuilt indexes and the target can verify they match its
+    # own EN.dat (identical bytes → the byte offsets stay valid) and skip the
+    # RAM-heavy rebuild — the build that OOMs a 512 MB Pi Zero.
+    _fcc_write_index_meta(data_dir)
 
 
 def fcc_build_zip_table(data_dir):

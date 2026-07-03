@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common.oasis_lib import (
     _hr, _step, _ok, _info, _warn, _fail,
     has_internet,
-    fcc_download, fcc_build_index, fcc_build_zip_table,
+    fcc_download, fcc_build_index, fcc_build_zip_table, fcc_indexes_ready,
 )
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -47,6 +47,23 @@ SERVER_DIR = os.path.join(REPO_ROOT, "server")
 DATA_DIR   = os.path.join(REPO_ROOT, "fcc-offline-database", "data")
 EN_DAT     = os.path.join(DATA_DIR, "EN.dat")
 ZIP_CSV    = os.path.join(DATA_DIR, "zipcodes.csv")
+
+
+def _drop_bundle_zip():
+    """Remove the bundled l_amat.zip once EN.dat is extracted and indexed.
+
+    An offline bundle ships l_amat.zip (~80 MB); after extraction the target has
+    EN.dat/HD.dat + the indexes, so the zip is pure bloat on a Raspberry Pi.
+    Only deletes when EN.dat is present (safe — a future FCC refresh re-downloads
+    the zip). The online install path never writes a zip, so this is a no-op there.
+    """
+    zip_path = os.path.join(DATA_DIR, "l_amat.zip")
+    if os.path.exists(zip_path) and os.path.exists(EN_DAT):
+        try:
+            os.remove(zip_path)
+            _ok("Removed bundled l_amat.zip (extracted — freed ~80 MB on disk).")
+        except OSError as e:
+            _warn(f"Could not remove l_amat.zip: {e}")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
@@ -100,6 +117,21 @@ def main():
             _info("Complete ULS file — EN.dat + HD.dat (~160 MB zipped).")
             fcc_download(DATA_DIR)
 
+    # Fast path: an offline bundle (built on a capable machine by
+    # create-oasis-offline.py) may ship prebuilt indexes. If they are valid for
+    # this EN.dat, skip the memory-heavy rebuild that OOMs a 512 MB Pi Zero.
+    # --index-only / --full-zip force the normal rebuild path.
+    if not args.index_only and not args.full_zip and fcc_indexes_ready(DATA_DIR):
+        _step(2, "Prebuilt indexes detected")
+        _ok("Valid EN.idx / EN_name.idx / EN_grid.idx shipped with this bundle —")
+        _ok("skipping the index build (no OOM risk on a Pi Zero).")
+        _info("Force a rebuild with --index-only (or delete EN.idx.meta).")
+        _drop_bundle_zip()
+        print()
+        print("  Setup complete.")
+        _hr()
+        return
+
     # Build the ZIP->grid table BEFORE the index. The call-sign index step also
     # builds the secondary grid index (EN_grid.idx), which requires zipcodes.csv
     # to exist. If the table were built afterwards, the grid index would be
@@ -130,6 +162,11 @@ def main():
     _info("Reads EN.dat + HD.dat once; writes EN.idx, EN_name.idx, EN_grid.idx.")
     _info("On a Pi this may take a couple of minutes.")
     fcc_build_index(DATA_DIR, SERVER_DIR)
+
+    # Everything built OK — drop the bundled zip so it doesn't sit as ~80 MB of
+    # bloat on the Pi (EN.dat/HD.dat + indexes are all in place now).
+    if os.path.exists(os.path.join(DATA_DIR, "EN.idx")):
+        _drop_bundle_zip()
 
     print()
     print("  Setup complete.")

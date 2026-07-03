@@ -84,7 +84,8 @@ sys.path.insert(0, _SCRIPTS_DIR)
 from common.oasis_lib import (
     _hr, _ok, _warn, _info, _dl, _cp, _section, _fail,
     download_to, download_bytes,
-    fcc_download_zip,
+    fcc_download_zip, fcc_download, fcc_build_zip_table, fcc_build_index,
+    fcc_indexes_ready, FCC_INDEX_NAMES, FCC_INDEX_META,
     graywolf_latest_release,
     pat_latest_release,
     kiwix_latest_version, kiwix_download_tarball,
@@ -129,6 +130,28 @@ EXCLUDE_RELPATHS = {"server/wheels"}
 # installed-services.json is per-machine state (which features setup-oasis.py
 # installed) — must never leak from the build host into a fresh bundle.
 EXCLUDE_FILES = {"EN.dat", "HD.dat", "installed-services.json"}
+
+
+# ── pmtiles platform selection ────────────────────────────────────────────────
+# The bundle targets Linux (Pi), so only the Linux pmtiles binaries ship by
+# default. macOS/Windows binaries are ~55 MB each and marked default=false in the
+# manifest — included only with --all-platforms. Derived from the manifest so it
+# stays the single source of truth. Non-default binaries are also skipped by
+# build_copy, so committed repo copies don't sneak back into a lean bundle.
+def _pmtiles_platforms(all_platforms=False):
+    try:
+        plats = M.get_feature("pmtiles").get("platforms", [])
+    except KeyError:
+        return []
+    return plats if all_platforms else [p for p in plats if p.get("default", True)]
+
+
+def _pmtiles_nondefault_outs():
+    try:
+        plats = M.get_feature("pmtiles").get("platforms", [])
+    except KeyError:
+        return set()
+    return {p["out"] for p in plats if not p.get("default", True)}
 
 # ── Phase 1: Python wheel targets ─────────────────────────────────────────────
 # (pip --platform tag, [python versions]) — keep in sync with README.md.
@@ -579,14 +602,15 @@ def phase_webssh(bundle_root, update=False):
 
 
 # ── Phase 9: pmtiles CLI (MBTiles → PMTiles converter) ────────────────────────
-def phase_pmtiles(maps_dir, update=False):
+def phase_pmtiles(maps_dir, update=False, all_platforms=False):
     """Phase 9: Download the Protomaps go-pmtiles CLI for each platform in the
     manifest into the bundle's maps/ directory.
 
     Each release archive is fetched, the pmtiles executable is extracted, and it
     is written as maps/<out> (e.g. pmtiles-linux-arm64). maps/convert-mbtiles.py
     auto-detects the right one for the host so an operator can convert legacy
-    MBTiles to PMTiles in the field with no internet.
+    MBTiles to PMTiles in the field with no internet. Only the default (Linux)
+    platforms are fetched unless all_platforms is set (--all-platforms).
     """
     feature = "pmtiles"
     try:
@@ -597,13 +621,14 @@ def phase_pmtiles(maps_dir, update=False):
 
     version   = feat.get("version", PMTILES_VERSION)
     repo      = feat.get("repo", "protomaps/go-pmtiles")
-    platforms = feat.get("platforms", [])
+    platforms = _pmtiles_platforms(all_platforms)
     base_url  = f"https://github.com/{repo}/releases/download/v{version}"
 
     _section("Phase 9 — pmtiles CLI (MBTiles → PMTiles converter)")
     _info(f"Source  : https://github.com/{repo}")
     _info(f"Version : pmtiles {version}")
-    _info(f"Targets : {', '.join(p['out'] for p in platforms)}")
+    _info(f"Targets : {', '.join(p['out'] for p in platforms)}"
+          + ("" if all_platforms else "  (Linux only; use --all-platforms for macOS/Windows)"))
     _info(f"Dest    : {os.path.relpath(maps_dir)}/")
     os.makedirs(maps_dir, exist_ok=True)
 
@@ -794,27 +819,65 @@ def phase_wikipedia(zim_dir):
 # ── Phase 4: FCC callsign database ────────────────────────────────────────────
 def phase_fcc(fcc_dir):
     """
-    Phase 4: Download l_amat.zip into fcc_dir.
-    Extraction and indexing happen later on the target via setup-fcc-database.py.
+    Phase 4: Download l_amat.zip AND prebuild the search indexes on this (capable)
+    build host, so a 512 MB Pi Zero never has to run the RAM-heavy sort that OOMs
+    it. Ships l_amat.zip + EN.idx / EN_name.idx / EN_grid.idx + zipcodes.csv +
+    EN.idx.meta. The target extracts EN.dat/HD.dat from the shipped zip (cheap,
+    streaming), validates the prebuilt indexes against it, and skips the build.
     """
     _section("Phase 4 — FCC callsign database")
 
-    zip_path = os.path.join(fcc_dir, "l_amat.zip")
-    if os.path.exists(zip_path):
-        _cp("l_amat.zip already present — skipping")
-        return
-
     os.makedirs(fcc_dir, exist_ok=True)
-    try:
-        fcc_download_zip(zip_path)
-        _ok(f"l_amat.zip saved → {os.path.relpath(zip_path)}")
-        _ok("Run setup-fcc-database.py on the target to extract and index")
-    except SystemExit:
-        _warn("FCC download failed — callsign lookup will not work offline.")
-        _warn("Re-run this script when the FCC site is reachable.")
+    zip_path   = os.path.join(fcc_dir, "l_amat.zip")
+    server_dir = os.path.join(REPO_ROOT, "server")
+
+    # 1 · Raw ULS zip (skip if already downloaded).
+    if os.path.exists(zip_path):
+        _cp("l_amat.zip already present — skipping download")
+    else:
+        try:
+            fcc_download_zip(zip_path)
+            _ok(f"l_amat.zip saved → {os.path.relpath(zip_path)}")
+        except SystemExit:
+            _warn("FCC download failed — callsign lookup will not work offline.")
+            _warn("Re-run this script when the FCC site is reachable.")
+            return
+
+    # 2 · Prebuild the indexes here so the Pi doesn't have to. Skip if a previous
+    #     run already produced them (existence check — EN.dat is dropped below, so
+    #     fcc_indexes_ready can't be used for this build-host short-circuit).
+    have_idx = (os.path.exists(os.path.join(fcc_dir, FCC_INDEX_META))
+                and all(os.path.exists(os.path.join(fcc_dir, n)) for n in FCC_INDEX_NAMES)
+                and os.path.exists(os.path.join(fcc_dir, "zipcodes.csv")))
+    if have_idx:
+        _cp("Prebuilt indexes already present — skipping rebuild")
+    else:
+        try:
+            fcc_download(fcc_dir)                  # extract EN.dat/HD.dat from the zip
+            fcc_build_zip_table(fcc_dir)           # zipcodes.csv (needed for the grid index)
+            fcc_build_index(fcc_dir, server_dir)   # EN.idx + EN_name.idx + EN_grid.idx + meta
+        except SystemExit:
+            _warn("Could not prebuild FCC indexes — the target will build them on")
+            _warn("first setup (may OOM a 512 MB Pi). Re-run this script online.")
+            return
+        if not fcc_indexes_ready(fcc_dir):
+            _warn("Index prebuild incomplete — shipping the zip only; the target")
+            _warn("will build indexes on first setup.")
+            return
+        _ok("Prebuilt EN.idx / EN_name.idx / EN_grid.idx + zipcodes.csv")
+
+    # 3 · Keep the bundle lean: the raw EN.dat/HD.dat are re-extracted on the
+    #     target from the shipped zip (identical bytes → prebuilt offsets stay
+    #     valid, verified via EN.idx.meta). Drop them so we don't ship both the
+    #     zip and the raw ~130 MB files.
+    for name in ("EN.dat", "HD.dat"):
+        p = os.path.join(fcc_dir, name)
+        if os.path.exists(p):
+            os.remove(p)
+    _ok("Bundle ships l_amat.zip + prebuilt indexes; target extracts EN.dat on setup")
 
 # ── Build: copy project files ──────────────────────────────────────────────────
-def build_copy(dest, src=None):
+def build_copy(dest, src=None, include_all_platforms=False):
     """
     Copy the repo source tree into dest.  Package directories managed by the
     download phases (offline-packages/, server/wheels/) are skipped — they are
@@ -822,10 +885,14 @@ def build_copy(dest, src=None):
     Does not wipe dest.
     src defaults to REPO_ROOT; pass a different path when calling from inside
     the bundle (where REPO_ROOT is the bundle itself).
+    Non-default pmtiles binaries (macOS/Windows) are skipped unless
+    include_all_platforms is set, so a committed repo copy doesn't bloat a
+    Linux-only bundle (--all-platforms re-adds them via the download phase).
     """
     src = src or REPO_ROOT
     _section(f"Copying source files  →  {dest}")
 
+    drop_pmtiles = set() if include_all_platforms else _pmtiles_nondefault_outs()
     exclude_relpaths = {p.replace("/", os.sep) for p in EXCLUDE_RELPATHS}
     copied = skipped = 0
     for root, dirs, files in os.walk(src):
@@ -839,6 +906,7 @@ def build_copy(dest, src=None):
         for fname in files:
             if (
                 fname in EXCLUDE_FILES
+                or fname in drop_pmtiles
                 or any(fname.endswith(e) for e in (".pyc", ".pyo"))
                 or fname == ".DS_Store"
             ):
@@ -1187,7 +1255,7 @@ def cmd_check():
     print()
 
 
-def cmd_build(skip_windows, rebuild=False):
+def cmd_build(skip_windows, rebuild=False, all_platforms=False):
     """Download all offline assets directly into oasis-offline/, then build the bundle."""
     print("\n  OASIS — create-oasis-offline")
     _hr()
@@ -1201,7 +1269,7 @@ def cmd_build(skip_windows, rebuild=False):
 
     # Phase 0: copy repo source files first (offline-packages/ and server/wheels/
     # are excluded — the download phases below will populate those dirs).
-    build_copy(OUT_DIR)
+    build_copy(OUT_DIR, include_all_platforms=all_platforms)
 
     # Download phases — each writes directly into its oasis-offline/ subdirectory.
     # update=True means "skip files already at current version" (always on by default).
@@ -1216,7 +1284,7 @@ def cmd_build(skip_windows, rebuild=False):
     phase_webssh(pkg_root, update=True)
     phase_pat(pkg_root, update=True)
     phase_wikipedia(os.path.join(OUT_DIR, "zim"))
-    phase_pmtiles(os.path.join(OUT_DIR, "maps"))
+    phase_pmtiles(os.path.join(OUT_DIR, "maps"), all_platforms=all_platforms)
 
     build_windows_runtime(OUT_DIR, skip_windows)
     build_launchers(OUT_DIR)
@@ -1225,7 +1293,7 @@ def cmd_build(skip_windows, rebuild=False):
 
 
 # ── Update command ────────────────────────────────────────────────────────────
-def cmd_update(target_dir):
+def cmd_update(target_dir, all_platforms=False):
     """Update an existing distribution directory: refresh offline packages AND
     sync repo source files.  When target_dir is the repo root itself (the
     default), the source-sync step is skipped — the repo IS the source.
@@ -1269,9 +1337,9 @@ def cmd_update(target_dir):
     # - If targeting our own REPO_ROOT but parent is the main repo → copy from parent.
     # - If we're on a USB drive with no parent repo → skip (nothing to copy from).
     if not same_as_repo:
-        build_copy(target_dir)
+        build_copy(target_dir, include_all_platforms=all_platforms)
     elif parent_has_script:
-        build_copy(target_dir, src=parent_repo)
+        build_copy(target_dir, src=parent_repo, include_all_platforms=all_platforms)
 
     pkg_root = os.path.join(target_dir, "offline-packages")
     phase_aprs_sprites(os.path.join(target_dir, "server", "map-assets"))
@@ -1283,7 +1351,7 @@ def cmd_update(target_dir):
     phase_webssh(pkg_root, update=True)
     phase_pat(pkg_root, update=True)
     phase_wikipedia(os.path.join(target_dir, "zim"))
-    phase_pmtiles(os.path.join(target_dir, "maps"))
+    phase_pmtiles(os.path.join(target_dir, "maps"), all_platforms=all_platforms)
 
     _section("Update complete")
     _ok(f"Updated: {target_dir}")
@@ -1307,6 +1375,7 @@ def main():
             "  python3 scripts/create-oasis-offline.py --rebuild              # wipe + full rebuild\n"
             "  python3 scripts/create-oasis-offline.py --check               # verify bundle (CI)\n"
             "  python3 scripts/create-oasis-offline.py --for-windows         # include Windows Python\n"
+            "  python3 scripts/create-oasis-offline.py --all-platforms       # also vendor macOS/Windows pmtiles binaries\n"
             "  python3 scripts/create-oasis-offline.py --update              # update packages + sync source files"
             " into oasis-offline/\n"
             "  python3 scripts/create-oasis-offline.py --update --dir /mnt/usb  # update USB bundle\n"
@@ -1321,6 +1390,13 @@ def main():
     ap.add_argument(
         "--for-windows", action="store_true",
         help="Also include the Windows embedded-Python runtime. Required for scripts/start-server.bat to work.",
+    )
+    ap.add_argument(
+        "--all-platforms", action="store_true",
+        help=(
+            "Also vendor the macOS + Windows pmtiles converter binaries (~166 MB). "
+            "By default only the Linux binaries ship, since the bundle targets the Pi."
+        ),
     )
     ap.add_argument(
         "--rebuild", action="store_true",
@@ -1361,7 +1437,7 @@ def main():
             target = OUT_DIR          # running from main repo → update oasis-offline/
         else:
             target = REPO_ROOT        # running from inside the bundle → update bundle root
-        cmd_update(target)
+        cmd_update(target, all_platforms=args.all_platforms)
     elif args.verify:
         if args.dir:
             target = os.path.abspath(args.dir)
@@ -1373,7 +1449,7 @@ def main():
     elif args.check:
         cmd_check()
     else:
-        cmd_build(not args.for_windows, rebuild=args.rebuild)
+        cmd_build(not args.for_windows, rebuild=args.rebuild, all_platforms=args.all_platforms)
 
 
 if __name__ == "__main__":
