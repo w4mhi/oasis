@@ -84,6 +84,18 @@ body{background:#05080a; color:var(--text); font-family:var(--mono);
 .feed-meter.flowing .feed-meter-fill{background:var(--up)}
 .feed-meter-label{font-size:10px; color:var(--dim); white-space:nowrap; font-variant-numeric:tabular-nums}
 
+/* GPS nav card — the "GPS" label stays green (a static indicator, like SERVICES/
+   OPS) and the satellite count stays white; only the DOT and the MODE text
+   (2D/3D/no fix/no gps) carry the state colour: grey/red/amber/green. */
+.navbtn.gpscard{flex:0 0 auto; cursor:default; gap:10px}
+.navbtn.gpscard:hover{border-color:var(--border)}
+.gpscard .nb-dot{font-size:12px; color:var(--dim); line-height:1}
+.gpscard .nb-sub .gps-sat{color:var(--text)}   /* satellites: always white */
+.gpscard.nogps .nb-dot, .gpscard.nogps .gps-mode{color:var(--dim)}
+.gpscard.nofix .nb-dot, .gpscard.nofix .gps-mode{color:var(--down)}
+.gpscard.fix2d .nb-dot, .gpscard.fix2d .gps-mode{color:var(--warn)}
+.gpscard.fix3d .nb-dot, .gpscard.fix3d .gps-mode{color:var(--up)}
+
 /* ---------- APRS (fills remaining; only the body scrolls) ---------- */
 .k-aprs{flex:0 0 auto; min-height:0; display:flex; flex-direction:column;
         margin:0 12px 12px; background:var(--panel); border:1px solid var(--border); border-radius:var(--r); overflow:hidden}
@@ -92,6 +104,13 @@ body{background:#05080a; color:var(--text); font-family:var(--mono);
 .aprs-head .st{color:var(--dim); font-size:12px} .aprs-head .st b{color:var(--text)}
 .aprs-head select{margin-left:auto; min-height:32px; background:var(--panel-2); color:var(--text);
                   border:1px solid var(--border); border-radius:7px; font-family:inherit; font-size:12px; padding:0 8px}
+/* RF/IS source toggles. When off, only the label greys — the coloured border stays. */
+.aprs-head .src-btn{min-height:32px; background:var(--panel-2); border:1px solid var(--border);
+                    border-radius:7px; font-family:inherit; font-size:12px; font-weight:700;
+                    letter-spacing:.03em; padding:0 12px; cursor:pointer; transition:color .2s}
+.aprs-head .src-btn.rf{color:var(--up); border-color:var(--up)}
+.aprs-head .src-btn.is{color:var(--link-live); border-color:var(--link-live)}
+.aprs-head .src-btn.off{color:var(--dim)}
 .aprs-body{flex:1 1 auto; min-height:0; overflow-y:auto; max-height:calc(5 * 36px)}
 .aprs-body::-webkit-scrollbar{width:20px}
 .aprs-body::-webkit-scrollbar-track{background:var(--panel); border-radius:4px}
@@ -103,10 +122,13 @@ body{background:#05080a; color:var(--text); font-family:var(--mono);
 .row{min-height:32px; border-bottom:1px solid var(--border-soft); cursor:pointer; font-size:14px}
 .row:hover{background:var(--panel-2)}
 .row .call{color:var(--up); font-weight:700; white-space:nowrap}
+.row .call.is{color:var(--link-live)}
 .row .age{color:var(--dim); white-space:nowrap}
 .row .spd{color:var(--dim); white-space:nowrap; font-size:11px}
 .row .alt{color:var(--dim); white-space:nowrap; font-size:11px}
-.row .via{color:var(--faint)}
+.row .via{color:var(--faint); font-weight:700}
+.row .via.rf{color:var(--up)}
+.row .via.is{color:var(--link-live)}
 .row .cmt{color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0}
 .row .cmt.empty{color:var(--faint)}
 

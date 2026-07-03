@@ -54,6 +54,10 @@
         </span>
       </span>
     </div>
+    <div class="navbtn gpscard" id="k-gps" title="GPS fix from gpsd">
+      <span class="nb-ico nb-dot" id="k-gps-dot">●</span>
+      <span><span class="nb-t">GPS</span> <span class="nb-sub" id="k-gps-sub">—</span></span>
+    </div>
     <button class="navbtn ops" onclick="openOv('ops')">
       <span class="nb-ico">⚡</span>
       <span><span class="nb-t">OPS</span></span>
@@ -80,6 +84,8 @@
         <option value="Digipeaters">Digipeaters</option>
         <option value="Messages">Messages</option>
       </select>
+      <button type="button" class="src-btn rf" id="aprs-rf-btn" onclick="toggleAprsSource('rf')" title="Show/hide RF stations">RF</button>
+      <button type="button" class="src-btn is" id="aprs-is-btn" onclick="toggleAprsSource('is')" title="Show/hide IS stations">IS</button>
     </div>
     <div class="aprs-body" id="aprsBody">
       <div class="row-head"><span>CALLSIGN</span><span>AGE</span><span>SPEED</span><span>ALT</span><span>VIA</span><span>COMMENT</span></div>
@@ -540,7 +546,7 @@ function openSheet(s) {
   document.getElementById('shHeard').textContent = s.last_heard || s.h || '—';
   const ageSec = s.last_heard ? Math.floor((Date.now()-new Date(s.last_heard))/1000) : null;
   document.getElementById('shAge').textContent   = ageSec != null ? (ageSec<60?ageSec+'s ago':Math.floor(ageSec/60)+'m ago') : (s.a ? s.a+' ago' : '—');
-  document.getElementById('shVia').textContent   = s.via || '—';
+  document.getElementById('shVia').textContent   = aprsSource(s).toUpperCase();
   document.getElementById('shSpd').textContent   = s.speed_mph != null ? fmtSpeed(s.speed_mph) : (s.sp || '—');
   document.getElementById('shCmt').textContent   = s.comment || s.cmt || '(no comment)';
   document.getElementById('sheet').classList.add('open');
@@ -604,6 +610,7 @@ async function fetchStats() {
     const r = await fetch('/api/system', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
     if (!r.ok) return;
     const d = await r.json();
+    renderGps(d.gps);   // GPS nav dot rides on the same /api/system poll
     const hostEl = document.getElementById('k-host');
     if (hostEl && (d.hostname || d.ip)) {
       const txt = `${d.hostname || '—'}:${d.ip || '—'}`;
@@ -649,6 +656,28 @@ async function fetchAudio() {
 
 // ── APRS live ─────────────────────────────────────────────────────────────────
 let _allAprsStations = [];
+let _aprsShowRF = true;  // RF/IS source toggles (both on by default)
+let _aprsShowIS = true;
+
+// Heard-via source. GrayWolf stores the transport in `via`: 'rf' (off the air)
+// or 'is' (APRS-IS/internet). Trust it; fall back to sniffing the path only when
+// `via` is missing/unrecognised. Mirrors the map + main dashboard.
+function aprsSource(s) {
+  const v = String(s.via || '').trim().toLowerCase();
+  if (v === 'rf') return 'rf';
+  if (v === 'is') return 'is';
+  const hay = (v + ' ' + ((s.path || []).join(' '))).toUpperCase();
+  return (hay.includes('TCPIP') || hay.includes('IGATE') || /\bQA[A-Z]/.test(hay)) ? 'is' : 'rf';
+}
+
+// Toggle a source on/off, grey the button label when off, and re-render.
+function toggleAprsSource(src) {
+  if (src === 'rf') _aprsShowRF = !_aprsShowRF;
+  else              _aprsShowIS = !_aprsShowIS;
+  document.getElementById('aprs-rf-btn').classList.toggle('off', !_aprsShowRF);
+  document.getElementById('aprs-is-btn').classList.toggle('off', !_aprsShowIS);
+  applyAprsFilter();
+}
 
 function fmtAge(iso) {
   if (!iso) return '—';
@@ -669,12 +698,13 @@ function renderAprsRows(stations) {
   stations.forEach(s => {
     const call = s.callsign || s.c || '—';
     const alt  = s.alt_m != null ? fmtAlt(s.alt_m) : '';
+    const src  = aprsSource(s); // 'rf' → green, 'is' → blue
     const r = document.createElement('div'); r.className = 'row';
-    r.innerHTML = `<span class="call"><a href="aprs/map.html?focus=${encodeURIComponent(call)}" target="_blank" style="color:inherit;text-decoration:none">${call}</a></span>
+    r.innerHTML = `<span class="call ${src}"><a href="aprs/map.html?focus=${encodeURIComponent(call)}" target="_blank" style="color:inherit;text-decoration:none">${call}</a></span>
       <span class="age">${fmtAge(s.last_heard||s.timestamp||s.time)}</span>
       <span class="spd">${s.speed_mph > 0 ? fmtSpeed(s.speed_mph) : ''}</span>
       <span class="alt">${alt}</span>
-      <span class="via">${s.via||''}</span>
+      <span class="via ${src}">${src.toUpperCase()}</span>
       <span class="cmt ${(s.comment||s.cmt)?'':'empty'}">${s.comment||s.cmt||'—'}</span>`;
     r.onclick = () => openSheet(s);
     body.appendChild(r);
@@ -700,6 +730,10 @@ function applyAprsFilter() {
       if (type === 'Messages')    return (s.comment || '').includes(':') || s.packet_type === 'message';
       return true;
     });
+  }
+  // Source toggles: hide RF and/or IS rows when their button is switched off.
+  if (!_aprsShowRF || !_aprsShowIS) {
+    filtered = filtered.filter(s => aprsSource(s) === 'is' ? _aprsShowIS : _aprsShowRF);
   }
   renderAprsRows(filtered);
 }
@@ -783,6 +817,27 @@ async function pollFeedFlow() {
       setDot('var(--down)');
     }
   } catch (_) { /* transient — keep last state, retry next tick */ }
+}
+
+// ── GPS fix (gpsd) ────────────────────────────────────────────────────────────
+// Colour the nav dot from the fix mode carried on /api/system (d.gps, the same
+// cached gpsd snapshot the main dashboard uses): grey = no gpsd (no GPS present),
+// red = no fix, amber = 2D, green = 3D. `used` is the satellites-in-fix count.
+function renderGps(g) {
+  const card = document.getElementById('k-gps');
+  const sub  = document.getElementById('k-gps-sub');
+  if (!card) return;
+  const mode = g ? (g.mode || 0) : -1;             // -1 = gpsd unreachable
+  const used = (g && g.used != null) ? g.used : null;
+  const sat  = used != null ? ' <span class="gps-sat">· ' + used + ' sat</span>' : '';
+  let state, modeTxt;
+  if (mode >= 3)       { state = 'fix3d'; modeTxt = '3D'; }
+  else if (mode === 2) { state = 'fix2d'; modeTxt = '2D'; }
+  else if (mode >= 0)  { state = 'nofix'; modeTxt = 'no fix'; }
+  else                 { state = 'nogps'; modeTxt = 'no gps'; }
+  card.className = 'navbtn gpscard ' + state;       // colours dot + mode via CSS
+  // GPS label stays green, satellites stay white — only the mode text is tinted.
+  if (sub) sub.innerHTML = '<span class="gps-mode">' + modeTxt + '</span>' + sat;
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
