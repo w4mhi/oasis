@@ -1,25 +1,11 @@
 // OASIS Handbook v2 — shared JS
-
-// Theme toggle (own key; dark default)
-(function () {
-  var key = 'oasis-hb-theme';
-  var btn = document.querySelector('[data-theme-toggle]');
-  function apply(t) {
-    document.documentElement.setAttribute('data-theme', t);
-    if (btn) btn.textContent = t === 'light' ? '◐ dark' : '◑ light';
-    localStorage.setItem(key, t);
-  }
-  var stored = localStorage.getItem(key) || 'dark';
-  apply(stored);
-  if (btn) btn.addEventListener('click', function () {
-    apply(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
-  });
-})();
+// Theming is handled by the suite-standard server-injected theme.js
+// (floating sun/moon toggle, `oasis_theme` key, [data-theme="light"]).
 
 // Active sidebar link
 (function () {
   var cur = location.pathname.split('/').pop() || 'index.html';
-  document.querySelectorAll('.sidebar a').forEach(function (a) {
+  document.querySelectorAll('.sidebar nav a').forEach(function (a) {
     if (a.getAttribute('href') === cur) a.classList.add('active');
   });
 })();

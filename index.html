@@ -371,6 +371,10 @@ a.svc-card:hover { border-color: var(--accent); }
   transition: color .3s;
 }
 .nav-sec-title.offline { color: var(--amber); border-bottom-color: var(--amber-dim, #7a5200); }
+.nav-sec.oasis .nav-sec-title { color: var(--blue); border-bottom-color: var(--blue); }
+.nav-sec.oasis .nav-links a { color: var(--blue); }
+.nav-sec.oasis .nav-links a:hover { color: var(--blue); text-decoration: underline; }
+.nav-sec.oasis .nav-links a .nav-meta { color: var(--blue); opacity: .6; }
 .nav-links { list-style: none; padding: 0 .6rem; }
 .nav-links li { border-bottom: 1px solid var(--border); }
 .nav-links li:last-child { border-bottom: none; }
@@ -1084,7 +1088,6 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <li><a id="nlink-wl-radio" href="winlink/radio-settings.html">Radio Settings <span class="nav-meta">setup</span></a></li>
         <li><a id="nlink-wl-conv" href="winlink/to-position.html">Winlink → Position <span class="nav-meta">converter</span></a></li>
         <li><a id="nlink-gw" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.graywolf}/`,'_blank');return false;">GrayWolf <span class="nav-svc-badge" id="nsvc-gw">—</span></a></li>
-        <li><a href="static/oasis-handbook/index.html">OASIS Handbook <span class="nav-meta">full docs</span></a></li>
         <li><a href="static/graywolf-handbook/index.html">GrayWolf handbook <span class="nav-meta">docs</span></a></li>
         <li><a href="static/cheatsheets/aprs_bots.html">APRS Bots <span class="nav-meta">FIND · SMS · WXBOT</span></a></li>
         <li><a href="static/cheatsheets/mpad.html">MPAD Bot <span class="nav-meta">WX · repeaters · METAR</span></a></li>        
@@ -1115,6 +1118,13 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <li><a href="static/quick-ref/prowords.html">Procedure Words <span class="nav-meta">procedure words</span></a></li>
         <li><a href="static/quick-ref/qcodes.html">Q-Codes <span class="nav-meta">q-codes</span></a></li>
         <li><a href="static/quick-ref/rst.html">RST Signal Reporting <span class="nav-meta">signal reporting</span></a></li>
+      </ul>
+    </div>
+
+    <div class="nav-sec oasis">
+      <div class="nav-sec-title">OASIS</div>
+      <ul class="nav-links">
+        <li><a href="static/oasis-handbook/index.html">OASIS Handbook <span class="nav-meta">full docs</span></a></li>
       </ul>
     </div>
 
