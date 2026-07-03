@@ -178,6 +178,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   box-shadow:0 0 8px 4px rgba(45,212,191,.55);
   pointer-events:none;
 }
+/* Local station ("home") node — anchor for direct-heard lines to me. Distinct
+   from station/receiver nodes: white core, gold ring + glow, with a house glyph. */
+.home-node{
+  width:16px;height:16px;border-radius:50%;
+  background:#fff;border:2px solid #ffd257;
+  box-shadow:0 0 9px 3px rgba(255,210,87,.6);
+  display:flex;align-items:center;justify-content:center;
+  font:700 10px/1 var(--mono);color:#7a5a00;
+  pointer-events:none;
+}
+.home-node::after{content:"\2302";} /* ⌂ */
 /* Honor a reduced-motion preference (e.g. a Pi kiosk configured for low power):
    drop the sonar burst and the refresh-spinner so newly-heard stations appear
    without any animated repaints at all. */
@@ -225,6 +236,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 }
 .recent-row:hover{background:var(--panel-2);}
 .recent-call{color:var(--accent);font-weight:700;}
+/* Callsign follows the heard-via source: green RF (default) · blue IS. */
+.recent-call.is{color:var(--blue);}
 /* Heard-via source tag (RF = over the air · IS = APRS-IS/igate), from via/path */
 .recent-src{font-size:var(--fs-micro);font-weight:700;letter-spacing:.03em;
   padding:0 4px;border-radius:3px;border:1px solid var(--border);}
@@ -1142,7 +1155,7 @@ function buildPopup(s) {
   if (s.lat != null && s.lon != null) {
     html += '<div class="pop-row"><span class="pop-lbl">Lat / Lon</span><span class="pop-val">' + s.lat.toFixed(4) + ', ' + s.lon.toFixed(4) + '</span></div>';
   }
-  html += '<div class="pop-row"><span class="pop-lbl">Via</span><span class="pop-val">' + _escHtml(s.via || 'direct') + '</span></div>';
+  html += '<div class="pop-row"><span class="pop-lbl">Via</span><span class="pop-val">' + _stationSource(s).toUpperCase() + '</span></div>';
   if (s.path && s.path.length) {
     const hops = s.path.map(p => {
       const raw = String(p);
@@ -1224,6 +1237,11 @@ function spawnPing(lon, lat, src) {
 // avoid cross-origin requests from the browser (page is on :8083, API on :8085).
 const API_URL = () => location.origin + '/api/aprs/stations';
 const REFRESH_SEC = 15;
+// Recent-heard panel = stations whose LAST reception is within this window. This
+// is a true recency gate (not "changed since last poll"), so IS stations that
+// the APRS-IS feed keeps re-reporting with stale timestamps age out instead of
+// lingering. Bump this if you want a longer memory in the panel.
+const RECENT_MAX_AGE_SEC = 60;
 let countdown = REFRESH_SEC;
 let timer = null;
 let autoRefresh = true;     // Refresh button toggles the 15s auto-refresh loop
@@ -1345,6 +1363,7 @@ async function fetchStations() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'API error');
     allStations = data.stations;
+    refreshMyPosition(); // resolve/upgrade the home node (e.g. own live beacon)
     // ── Detect new/updated stations (B + A) ──────────────────────────────
     _newCallsigns = new Set();
     _pingedCalls = new Set(); // new cycle → allow each new station to ping once
@@ -1363,7 +1382,11 @@ async function fetchStations() {
       if (!best || s.last_heard > best.last_heard) return s;
       return best;
     }, null);
-    const newList = allStations.filter(s => _newCallsigns.has(s.callsign));
+    const _nowMs = Date.now();
+    const newList = allStations.filter(s => {
+      if (!s.last_heard) return false;
+      return (_nowMs - new Date(s.last_heard).getTime()) / 1000 <= RECENT_MAX_AGE_SEC;
+    });
     updateRecentPanel(newList);
     updateObjectsPanel();
     applyFilter();
@@ -1482,7 +1505,15 @@ loadConfig().then(() => {
       id: 'aprs-path-line', type: 'line', source: 'aprs-path',
       filter: ['==', '$type', 'LineString'],
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': '#b478ff', 'line-width': 2.5, 'line-opacity': 0.9, 'line-dasharray': [2, 1.2] }
+      // Purple = digipeated RF path. A direct-heard line to home is coloured by
+      // source instead: green RF (over the air), blue IS (via the internet).
+      paint: {
+        'line-color': ['case',
+          ['==', ['get', 'src'], 'rf'], '#2be06b',
+          ['==', ['get', 'src'], 'is'], '#58a6ff',
+          '#b478ff'],
+        'line-width': 2.5, 'line-opacity': 0.9, 'line-dasharray': [2, 1.2]
+      }
     });
     map.addLayer({
       id: 'aprs-path-dots', type: 'circle', source: 'aprs-path',
@@ -1558,6 +1589,7 @@ loadConfig().then(() => {
     });
 
     fetchStations();
+    loadStationCfg(); // resolve local station position → render the home node
   });
 });
 
@@ -1801,11 +1833,15 @@ function toggleRecentPanel() {
   document.getElementById('recent-panel').classList.toggle('collapsed');
 }
 
-// Heard-via source from the DB's via/path: 'is' when igated (TCPIP / IGATE / a
-// q-construct like qAR/qAC), else 'rf' (heard over the air). Same basis the
-// dashboard uses to tell RF-only from IS traffic.
+// Heard-via source. GrayWolf classifies each packet's transport authoritatively
+// in `via`: 'rf' = decoded off the air, 'is' = received from APRS-IS (internet).
+// Trust it when present. Only if `via` is missing/unrecognised do we fall back
+// to sniffing the path for a q-construct/igate marker (TCPIP / IGATE / qAR…).
 function _stationSource(s) {
-  const hay = ((s.via || '') + ' ' + (s.path || []).join(' ')).toUpperCase();
+  const v = String(s.via || '').trim().toLowerCase();
+  if (v === 'rf') return 'rf';
+  if (v === 'is') return 'is';
+  const hay = (v + ' ' + (s.path || []).join(' ')).toUpperCase();
   const isIS = hay.includes('TCPIP') || hay.includes('IGATE') || /\bQA[A-Z]/.test(hay);
   return isIS ? 'is' : 'rf';
 }
@@ -1835,7 +1871,7 @@ function updateRecentPanel(newStations) {
     const ageStr = ageSec === null ? '' : fmtAge(ageSec) + ' ago';
     const src = _stationSource(s);
     return `<div class="recent-row" onclick="recentRowClick('${s.callsign}')">
-      <span class="recent-call">${s.callsign}</span>
+      <span class="recent-call ${src}">${s.callsign}</span>
       <span class="recent-src ${src}">${src.toUpperCase()}</span>
       <span class="recent-age">${ageStr}</span>
     </div>`;
@@ -1925,6 +1961,71 @@ function clearTrack() {
   }
 }
 
+// ── Local station identity + position ("home" node) ──────────────────────────
+// Resolution ladder (first hit wins): station.json lat/lon → own live beacon →
+// station.json Maidenhead grid → none. A fixed base needs no GPS fix; the live
+// beacon path only matters when mobile and beaconing.
+let _stationCfg = null;   // parsed station.json ({callsign, grid, lat, lon})
+let myPos = null;         // {lon, lat} of the local receiver, or null
+let _homeMarker = null;   // glowing DOM marker at myPos
+let _homeKey = '';        // last-rendered "lon,lat" — avoids needless re-adds
+
+async function loadStationCfg() {
+  try {
+    const r = await fetch('/station.json', { cache: 'no-store' });
+    _stationCfg = await r.json();
+  } catch (_) { _stationCfg = null; }
+  refreshMyPosition();
+}
+
+// Maidenhead locator (e.g. CN87XN) → [lon, lat] at the square/subsquare centre.
+function gridToLonLat(grid) {
+  if (typeof grid !== 'string') return null;
+  const g = grid.trim().toUpperCase();
+  if (!/^[A-R]{2}[0-9]{2}([A-X]{2})?$/.test(g)) return null;
+  let lon = (g.charCodeAt(0) - 65) * 20 - 180 + (+g[2]) * 2;
+  let lat = (g.charCodeAt(1) - 65) * 10 - 90  + (+g[3]) * 1;
+  if (g.length >= 6) {                                     // subsquare centre
+    lon += (g.charCodeAt(4) - 65) * (2 / 24) + (1 / 24);
+    lat += (g.charCodeAt(5) - 65) * (1 / 24) + (0.5 / 24);
+  } else {                                                 // square centre
+    lon += 1; lat += 0.5;
+  }
+  return [lon, lat];
+}
+
+// Recompute myPos from the resolution ladder and (re)draw the home node only
+// when the resolved coordinates actually change (cheap enough to call each poll).
+function refreshMyPosition() {
+  let pos = null;
+  const c = _stationCfg || {};
+  const lat = parseFloat(c.lat), lon = parseFloat(c.lon);
+  if (isFinite(lat) && isFinite(lon)) {
+    pos = [lon, lat];                                       // 1) explicit lat/lon
+  } else if (c.callsign) {                                  // 2) own live beacon
+    const me = allStations.find(s =>
+      String(s.callsign).toUpperCase() === String(c.callsign).toUpperCase()
+      && s.lat != null && s.lon != null);
+    if (me) pos = [me.lon, me.lat];
+  }
+  if (!pos && c.grid) pos = gridToLonLat(c.grid);          // 3) grid centre
+  myPos = pos ? { lon: pos[0], lat: pos[1] } : null;       // 4) none
+  const key = myPos ? myPos.lon.toFixed(5) + ',' + myPos.lat.toFixed(5) : '';
+  if (key === _homeKey) return;
+  _homeKey = key;
+  renderHomeMarker();
+}
+
+function renderHomeMarker() {
+  if (_homeMarker) { _homeMarker.remove(); _homeMarker = null; }
+  if (!myPos) return;
+  const el = document.createElement('div');
+  el.className = 'home-node';
+  el.title = ((_stationCfg && _stationCfg.callsign) ? _stationCfg.callsign + ' — ' : '') + 'this station';
+  _homeMarker = new maplibregl.Marker({ element: el, anchor: 'center' })
+    .setLngLat([myPos.lon, myPos.lat]).addTo(map);
+}
+
 // ── RF path overlay (digipeater hops) ─────────────────────────────────────────
 // Build GeoJSON for a station's RF path. We connect the origin through each
 // *used* (has-been-used '*') real-callsign digipeater that is currently on the
@@ -1932,7 +2033,8 @@ function clearTrack() {
 // real call that isn't on the map) are *skipped* — the line bridges over them —
 // because the meaningful endpoint (our receiver, e.g. K7NWS-2) is the LAST hop
 // and is on the map. The final plotted node is flagged 'receiver'.
-function buildPathFeatures(s) {
+function buildPathFeatures(s, opts) {
+  opts = opts || {};
   if (!s || s.lat == null || s.lon == null) return null;
   const byCall = {};
   allStations.forEach(x => {
@@ -1969,7 +2071,21 @@ function buildPathFeatures(s) {
     features.push({ type: 'Feature', properties: { kind: 'incomplete', label: '?' },
       geometry: { type: 'Point', coordinates: [s.lon, s.lat] } });
   }
-  return { features, hops: nodes.length - 1, usedHops, skipped };
+  // Truly direct-heard (nothing relayed it): optionally draw a straight line to
+  // the local station ("home"), coloured by source — green RF, blue IS. Only
+  // when a home position is known and the origin isn't ourselves. opts.direct:
+  //   'both' → RF + IS (per-station view) · 'rf' → RF only (bulk/coverage view).
+  let direct = null;
+  const meCall = (_stationCfg && _stationCfg.callsign) ? String(_stationCfg.callsign).toUpperCase() : '';
+  if (opts.direct && usedHops === 0 && myPos && String(s.callsign).toUpperCase() !== meCall) {
+    const srcTag = _stationSource(s);
+    if (srcTag === 'rf' || opts.direct === 'both') {
+      direct = srcTag;
+      features.push({ type: 'Feature', properties: { kind: 'direct', src: srcTag },
+        geometry: { type: 'LineString', coordinates: [[s.lon, s.lat], [myPos.lon, myPos.lat]] } });
+    }
+  }
+  return { features, hops: nodes.length - 1, usedHops, skipped, direct };
 }
 
 function showPath(callsign) {
@@ -1980,12 +2096,23 @@ function showPath(callsign) {
 
 function _refreshPath(fit) {
   const s = allStations.find(x => x.callsign === activePath);
-  const res = s ? buildPathFeatures(s) : null;
+  const res = s ? buildPathFeatures(s, { direct: 'both' }) : null;
   const src = map.getSource('aprs-path');
   if (src) src.setData({ type: 'FeatureCollection', features: res ? res.features : [] });
   _renderPathRxMarkers(res ? res.features : []);
 
   if (!res || res.hops === 0) {
+    // Direct-heard: a line to home was drawn when we know where "home" is.
+    if (res && res.direct) {
+      _setPopupPathStatus(activePath, res.direct === 'is'
+        ? 'via internet — line to your station'
+        : 'heard direct — line to your station');
+      if (fit && s && myPos) {
+        const b = new maplibregl.LngLatBounds([s.lon, s.lat], [s.lon, s.lat]).extend([myPos.lon, myPos.lat]);
+        map.fitBounds(b, { padding: 80, maxZoom: 13, duration: 800 });
+      }
+      return;
+    }
     _setPopupPathStatus(activePath, (res && res.usedHops > 0)
       ? 'digipeated via ' + res.usedHops + ' hop(s), none on the map'
       : 'heard direct — no path to plot');

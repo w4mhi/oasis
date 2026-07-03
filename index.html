@@ -732,6 +732,24 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 }
 .aprs-filter-sel:focus { outline: none; border-color: var(--accent-dim); }
 
+/* Source toggles (RF green / IS blue). When off, only the TEXT greys out — the
+   coloured border stays, so you can still tell which button is which. */
+.aprs-src-btn {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: var(--fs-small);
+  font-weight: 700;
+  letter-spacing: .03em;
+  padding: .05rem .6rem;
+  min-width: 2.5rem;
+  cursor: pointer;
+  transition: color .2s;
+}
+.aprs-src-btn.rf  { color: var(--accent); border-color: var(--accent); }
+.aprs-src-btn.is  { color: var(--blue);   border-color: var(--blue); }
+.aprs-src-btn.off { color: var(--text-dim); }
+
 /* ── APRS LIVE section ───────────────────────────────────────────────── */
 .aprs-section {
   padding: .4rem 1.25rem .75rem;
@@ -1123,6 +1141,8 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
         <option value="Digipeaters">Digipeaters</option>
         <option value="Messages">Messages</option>
       </select>
+      <button type="button" class="aprs-src-btn rf" id="aprs-rf-btn" onclick="toggleAprsSource('rf')" title="Show/hide RF stations">RF</button>
+      <button type="button" class="aprs-src-btn is" id="aprs-is-btn" onclick="toggleAprsSource('is')" title="Show/hide IS stations">IS</button>
     </div>
     <div class="aprs-tbl-wrap">
       <table>
@@ -2139,6 +2159,28 @@ function fmtLastHeard(iso) {
 }
 
 let _allAprsStations = [];
+let _aprsShowRF = true;  // RF/IS source toggles in the list header (both on by default)
+let _aprsShowIS = true;
+
+// Toggle a source on/off, grey the button when off, and re-render the table.
+function toggleAprsSource(src) {
+  if (src === 'rf') _aprsShowRF = !_aprsShowRF;
+  else              _aprsShowIS = !_aprsShowIS;
+  document.getElementById('aprs-rf-btn').classList.toggle('off', !_aprsShowRF);
+  document.getElementById('aprs-is-btn').classList.toggle('off', !_aprsShowIS);
+  applyAprsFilter();
+}
+
+// Heard-via source. GrayWolf stores the packet's transport in `via`: 'rf' (off
+// the air) or 'is' (APRS-IS/internet). Trust it; fall back to sniffing the path
+// for a q-construct/igate marker only when `via` is missing/unrecognised.
+function aprsSource(s) {
+  const v = String(s.via || '').trim().toLowerCase();
+  if (v === 'rf') return 'rf';
+  if (v === 'is') return 'is';
+  const hay = (v + ' ' + ((s.path || []).join(' '))).toUpperCase();
+  return (hay.includes('TCPIP') || hay.includes('IGATE') || /\bQA[A-Z]/.test(hay)) ? 'is' : 'rf';
+}
 
 function renderAprsTable(stations) {
   const tbody = document.getElementById('aprs-tbody');
@@ -2153,13 +2195,15 @@ function renderAprsTable(stations) {
       ? ' ' + ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(s.course/22.5)%16]
       : '';
     const alt = s.alt_m != null ? fmtAlt(s.alt_m) : '';
+    const src = aprsSource(s); // 'rf' → green, 'is' → blue (matches the map badge)
+    const callColor = src === 'is' ? 'var(--blue)' : 'var(--accent)';
     return `<tr>
-      <td style="color:var(--accent);font-weight:700"><a href="aprs/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a></td>
+      <td style="color:${callColor};font-weight:700"><a href="aprs/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a></td>
       <td>${fmtLastHeard(s.last_heard)}</td>
       <td class="${age.cls}">${age.text}</td>
       <td>${speed}${course}</td>
       <td>${alt}</td>
-      <td style="color:var(--text-dim)">${s.via || ''}</td>
+      <td style="color:${callColor};font-weight:700">${src.toUpperCase()}</td>
       <td style="color:var(--text-dim);max-width:220px;overflow:hidden;text-overflow:ellipsis">${s.comment || ''}</td>
     </tr>`;
   }).join('');
@@ -2184,6 +2228,10 @@ function applyAprsFilter() {
       if (type === 'Messages')    return (s.comment || '').includes(':') || s.packet_type === 'message';
       return true;
     });
+  }
+  // Source toggles: hide RF and/or IS rows when their button is switched off.
+  if (!_aprsShowRF || !_aprsShowIS) {
+    filtered = filtered.filter(s => aprsSource(s) === 'is' ? _aprsShowIS : _aprsShowRF);
   }
   renderAprsTable(filtered);
 }
