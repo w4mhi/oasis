@@ -47,6 +47,20 @@ SERVER_DIR = os.path.join(REPO_ROOT, "server")
 DATA_DIR   = os.path.join(REPO_ROOT, "fcc-offline-database", "data")
 EN_DAT     = os.path.join(DATA_DIR, "EN.dat")
 ZIP_CSV    = os.path.join(DATA_DIR, "zipcodes.csv")
+EN_IDX      = os.path.join(DATA_DIR, "EN.idx")
+EN_NAME_IDX = os.path.join(DATA_DIR, "EN_name.idx")
+EN_GRID_IDX = os.path.join(DATA_DIR, "EN_grid.idx")
+
+
+def _indexes_nonempty():
+    """True only when all three call-sign indexes exist and are non-empty."""
+    for path in (EN_IDX, EN_NAME_IDX, EN_GRID_IDX):
+        try:
+            if os.path.getsize(path) <= 0:
+                return False
+        except OSError:
+            return False
+    return True
 
 
 def _drop_bundle_zip():
@@ -157,6 +171,29 @@ def main():
     else:
         _step(2, "ZIP->grid table")
         _info("zipcodes.csv already present — skipping (use --full-zip to refresh).")
+
+    # Existing, non-empty indexes: don't silently rebuild. The rebuild reads
+    # EN.dat/HD.dat and is memory-heavy (can OOM a Pi Zero), so ask first —
+    # default No keeps what's there. --index-only is an explicit rebuild request
+    # and bypasses the prompt; a non-interactive run keeps existing indexes.
+    if not args.index_only and _indexes_nonempty():
+        rebuild = False
+        if sys.stdin.isatty():
+            try:
+                ans = input(
+                    "\n  EN.idx / EN_name.idx / EN_grid.idx already exist and are "
+                    "non-empty.\n  Rebuild them from EN.dat? (y/N): ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                ans = ""
+            rebuild = ans in ("y", "yes")
+        if not rebuild:
+            _step(3, "Call-sign index")
+            _info("Keeping existing EN.idx / EN_name.idx / EN_grid.idx — skipping rebuild.")
+            _drop_bundle_zip()
+            print()
+            print("  Setup complete.")
+            _hr()
+            return
 
     _step(3, "Building call-sign index")
     _info("Reads EN.dat + HD.dat once; writes EN.idx, EN_name.idx, EN_grid.idx.")

@@ -31,6 +31,7 @@ this again later to add a feature.
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -511,18 +512,21 @@ STATION_MANIFEST = os.path.join(
 GATE_AUTHORITATIVE = {"fcc", "repeaterbook", "wikipedia", "forms"}
 
 
-def configure_station(callsign=None, grid=None, interactive=True):
-    """Seed station.json with the operator's callsign + Maidenhead grid so the
-    dashboard pill shows them out of the box. Idempotent: pre-fills from any
-    existing file; pressing Enter keeps the current value. Non-interactive runs
-    only write when --callsign/--grid are passed. Browsers can still override
-    via the dashboard pill (localStorage)."""
-    cur = {"callsign": "", "grid": ""}
+def configure_station(callsign=None, grid=None, lat=None, lon=None, interactive=True):
+    """Seed station.json with the operator's callsign + Maidenhead grid (and, for
+    the APRS map's "home" node, latitude/longitude) so the dashboard ships
+    personalised. Idempotent: pre-fills from any existing file; pressing Enter
+    keeps the current value. Coordinates can be typed directly or derived from
+    the grid square. Non-interactive runs only write when values are passed in.
+    Browsers can still override callsign/grid via the dashboard pill."""
+    cur = {"callsign": "", "grid": "", "lat": None, "lon": None}
     try:
         with open(STATION_MANIFEST) as fh:
             prev = json.load(fh)
             cur["callsign"] = str(prev.get("callsign", "") or "")
             cur["grid"] = str(prev.get("grid", "") or "")
+            cur["lat"] = prev.get("lat", None)
+            cur["lon"] = prev.get("lon", None)
     except (FileNotFoundError, ValueError, OSError):
         pass
 
@@ -534,18 +538,46 @@ def configure_station(callsign=None, grid=None, interactive=True):
             ans = input(f"  Your grid square (e.g. CN87) [{cur['grid'] or '—'}]: ").strip().upper()
             if ans:
                 grid = ans
+            # Coordinates anchor the operator's own "home" node on the APRS map.
+            # Enter lat,lon directly, or press Enter to derive them from the grid.
+            eff_grid = (grid or cur["grid"]).strip().upper()
+            cur_ll = (f"{cur['lat']},{cur['lon']}"
+                      if cur["lat"] is not None and cur["lon"] is not None else "—")
+            ans = input(
+                f"  Your lat,lon — blank to derive from grid {eff_grid or 'n/a'} "
+                f"[{cur_ll}]: ").strip()
+            if ans:
+                parsed = _parse_latlon(ans)
+                if parsed:
+                    lat, lon = parsed
+                else:
+                    _warn("Could not parse coordinates — expected 'lat,lon' "
+                          "(e.g. 47.55,-122.02). Leaving them unchanged.")
+            elif eff_grid:
+                derived = grid_to_latlon(eff_grid)
+                if derived:
+                    lat, lon = derived
+                    _info(f"Derived {lat}, {lon} from grid {eff_grid}.")
+                else:
+                    _warn(f"Grid {eff_grid} is not a valid Maidenhead locator — "
+                          "leaving coordinates unset.")
         except (EOFError, KeyboardInterrupt):
             print()
 
     callsign = (callsign or cur["callsign"]).strip().upper()
     grid = (grid or cur["grid"]).strip().upper()
-    if not callsign and not grid:
+    if lat is None:
+        lat = cur["lat"]
+    if lon is None:
+        lon = cur["lon"]
+    if not callsign and not grid and lat is None and lon is None:
         return                                   # nothing supplied → leave default N0CALL
 
     payload = {"callsign": callsign or "N0CALL", "grid": grid or "",
+               "lat": lat, "lon": lon,
                "updated": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
-    if {"callsign": cur["callsign"], "grid": cur["grid"]} == \
-       {"callsign": payload["callsign"], "grid": payload["grid"]}:
+    if (cur["callsign"], cur["grid"], cur["lat"], cur["lon"]) == \
+       (payload["callsign"], payload["grid"], payload["lat"], payload["lon"]):
         return
     try:
         with open(STATION_MANIFEST, "w") as fh:
@@ -554,6 +586,40 @@ def configure_station(callsign=None, grid=None, interactive=True):
         _ok(f"Saved station identity → {os.path.basename(STATION_MANIFEST)}")
     except OSError as e:
         _warn(f"Could not write {os.path.basename(STATION_MANIFEST)}: {e}")
+
+
+def _parse_latlon(text):
+    """Parse 'lat,lon' (comma- or space-separated) into (lat, lon) floats, or
+    None if it isn't two sane, in-range decimal numbers."""
+    parts = [p for p in re.split(r"[,\s]+", text.strip()) if p]
+    if len(parts) != 2:
+        return None
+    try:
+        lat, lon = float(parts[0]), float(parts[1])
+    except ValueError:
+        return None
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        return None
+    return (round(lat, 4), round(lon, 4))
+
+
+def grid_to_latlon(grid):
+    """Maidenhead locator (e.g. CN87 or CN87XN) → (lat, lon) at the square /
+    subsquare centre, or None if the grid isn't valid. Mirrors the map's
+    client-side gridToLonLat() so seeded and derived coordinates agree."""
+    g = (grid or "").strip().upper()
+    if not re.match(r"^[A-R]{2}[0-9]{2}([A-X]{2})?$", g):
+        return None
+    lon = (ord(g[0]) - 65) * 20 - 180 + int(g[2]) * 2
+    lat = (ord(g[1]) - 65) * 10 - 90 + int(g[3]) * 1
+    if len(g) >= 6:                                  # subsquare centre
+        lon += (ord(g[4]) - 65) * (2 / 24) + (1 / 24)
+        lat += (ord(g[5]) - 65) * (1 / 24) + (0.5 / 24)
+    else:                                            # square centre
+        lon += 1
+        lat += 0.5
+    return (round(lat, 4), round(lon, 4))
+
 
 
 def record_installed(results, offered_gate=frozenset()):
@@ -635,8 +701,10 @@ def summarize(results):
     if reboot:
         names = ", ".join(f.name for f in reboot)
         _warn(f"A reboot is required to finish: {names}")
-        _info("After rebooting, re-run this setup to complete any post-reboot steps "
-              "(e.g. DRA-Pi audio mixer).")
+        _info("After rebooting, run the matching script to enable each one:")
+        for f in reboot:
+            _info(f"  python3 scripts/{f.script}   # {f.name}")
+        _info("(Re-running this setup does the same thing.)")
         if sys.stdin.isatty() and input("\n  Reboot now? [y/N]: ").strip().lower() in ("y", "yes"):
             subprocess.run(["sudo", "reboot"])
 
@@ -730,6 +798,8 @@ def main():
                         help="Skip priming sudo (each step will prompt as needed).")
     parser.add_argument("--callsign", metavar="CALL", help="Set the dashboard callsign (station.json).")
     parser.add_argument("--grid", metavar="GRID", help="Set the dashboard Maidenhead grid (station.json).")
+    parser.add_argument("--lat", metavar="LAT", type=float, help="Set the station latitude (station.json).")
+    parser.add_argument("--lon", metavar="LON", type=float, help="Set the station longitude (station.json).")
     args = parser.parse_args()
 
     if args.list:
@@ -746,7 +816,7 @@ def main():
 
     # Seed the dashboard pill identity (callsign + grid). Skips silently if
     # already set and nothing new is given.
-    configure_station(args.callsign, args.grid, interactive=not args.yes)
+    configure_station(args.callsign, args.grid, args.lat, args.lon, interactive=not args.yes)
 
     # Resolve the selection.
     if args.all:
