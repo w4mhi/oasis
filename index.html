@@ -371,10 +371,10 @@ a.svc-card:hover { border-color: var(--accent); }
   transition: color .3s;
 }
 .nav-sec-title.offline { color: var(--amber); border-bottom-color: var(--amber-dim, #7a5200); }
-.nav-sec.oasis .nav-sec-title { color: var(--blue); border-bottom-color: var(--blue); }
-.nav-sec.oasis .nav-links a { color: var(--blue); }
-.nav-sec.oasis .nav-links a:hover { color: var(--blue); text-decoration: underline; }
-.nav-sec.oasis .nav-links a .nav-meta { color: var(--blue); opacity: .6; }
+.nav-sec.oasis { border-color: var(--blue); }
+.nav-sec.oasis .nav-sec-title { color: var(--blue); border-bottom: none; }
+.nav-sec.oasis .nav-sec-title a { color: var(--blue); text-decoration: none; display: block; }
+.nav-sec.oasis .nav-sec-title a:hover { color: var(--blue); text-decoration: underline; }
 .nav-links { list-style: none; padding: 0 .6rem; }
 .nav-links li { border-bottom: 1px solid var(--border); }
 .nav-links li:last-child { border-bottom: none; }
@@ -1122,10 +1122,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     </div>
 
     <div class="nav-sec oasis">
-      <div class="nav-sec-title">OASIS</div>
-      <ul class="nav-links">
-        <li><a href="static/oasis-handbook/index.html">OASIS Handbook <span class="nav-meta">full docs</span></a></li>
-      </ul>
+      <div class="nav-sec-title"><a href="static/oasis-handbook/index.html">OASIS HANDBOOK</a></div>
     </div>
 
   </div>
@@ -1325,6 +1322,7 @@ function updateSvcCounts() {
 function updateNavTitles() {
   const offline = _svcStates['flask'] === 'down';
   document.querySelectorAll('.nav-sec-title').forEach(el => {
+    if (el.querySelector('a')) return;   // skip title bars that are links (e.g. OASIS HANDBOOK)
     if (!el.dataset.label) el.dataset.label = el.textContent;
     el.classList.toggle('offline', offline);
     el.textContent = offline ? el.dataset.label + ' · UNAVAILABLE' : el.dataset.label;

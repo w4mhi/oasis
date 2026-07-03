@@ -54,7 +54,11 @@
 <div class="wrap">
 
 <header>
-  <a class="home-link" href="/">⌂ HOME</a>
+  <div class="home-bar">
+    <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+            title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+    <a class="home-link" href="/">⌂ HOME</a>
+  </div>
   <h1>OASIS Setup Checklist</h1>
   <p>Checks each component and shows what still needs to be configured.
      <button class="recheck-btn" id="recheckAll" style="margin-left:.5rem">↻ Re-check all</button>

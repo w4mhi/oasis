@@ -23,7 +23,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-/* .home-link floats right in common.css; flex ignores float, so it sits inline. */
+/* .home-bar floats right in common.css; flex ignores float, so it sits inline. */
+.term-bar .home-bar { margin: 0; }
 .term-bar .home-link { float: none; margin: 0; }
 .term-title {
   font-size: var(--fs-label);
@@ -36,7 +37,11 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 </head>
 <body>
   <div class="term-bar">
-    <a class="home-link" href="/">⌂ HOME</a>
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">⌂ HOME</a>
+    </div>
     <span class="term-title">SSH Terminal</span>
   </div>
   <iframe class="term-frame" id="term" title="SSH Terminal"></iframe>

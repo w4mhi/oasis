@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Service Controls — OASIS Handbook</title>
-  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="stylesheet" href="handbook.css" />
   <link rel="icon" href="img/oasis-logo.svg" />
 </head>
 <body>
@@ -60,7 +60,11 @@
   </aside>
 
   <main class="content">
-    <a class="home-link" href="/">⌂ HOME</a>
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">⌂ HOME</a>
+    </div>
     <div class="eyebrow">The Dashboard</div>
     <h1>Service Controls</h1>
     <p class="subtitle">START / STOP buttons on the dashboard &mdash; no SSH required</p>
@@ -111,6 +115,6 @@ python3 scripts/enable-service-controls.py --disable  # remove the permission</c
   </aside>
 </div>
 
-<script src="handbook-v2.js"></script>
+<script src="handbook.js"></script>
 </body>
 </html>

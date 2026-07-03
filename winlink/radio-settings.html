@@ -16,7 +16,11 @@ td.radio { color: var(--amber); font-weight: 700; white-space: nowrap; }
 <div class="wrap">
 
   <header>
-    <a class="home-link" href="/">⌂ HOME</a>
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">⌂ HOME</a>
+    </div>
     <h1>Winlink Radio Settings</h1>
     <p>Hardware, cable, and software configuration per radio</p>
   </header>

@@ -94,7 +94,11 @@ textarea:focus{outline:none;border-color:var(--accent);}
 <div class="wrap">
 
 <header>
-  <a class="home-link" href="/">⌂ HOME</a>
+  <div class="home-bar">
+    <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+            title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+    <a class="home-link" href="/">⌂ HOME</a>
+  </div>
   <h1>Solar / Propagation Data</h1>
   <p>Paste HAMQSL XML solar data (received via Winlink or other means) to update band conditions. Data is saved locally and shared with the Grid Calculator.</p>
 </header>

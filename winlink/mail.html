@@ -169,7 +169,11 @@
 <div id="toast" class="toast"></div>
 <div class="wrap">
   <header>
-    <a class="home-link" href="/">⌂ HOME</a>
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">⌂ HOME</a>
+    </div>
     <h1>🛰️ Winlink Mail</h1>
     <p>Compose, read, and send Winlink radio-email via Pat. Composed messages are
        <em>queued</em> — press Connect to actually transmit.</p>

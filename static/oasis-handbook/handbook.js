@@ -1,6 +1,8 @@
-// OASIS Handbook v2 — shared JS
+// OASIS Handbook — shared JS
 // Theming is handled by the suite-standard server-injected theme.js
-// (floating sun/moon toggle, `oasis_theme` key, [data-theme="light"]).
+// (sun/moon toggle, `oasis_theme` key, [data-theme="light"]). The inline
+// #theme-toggle next to HOME suppresses theme.js's floating button; theme.js
+// provides window.toggleTheme and syncs the #theme-glyph on load.
 
 // Active sidebar link
 (function () {

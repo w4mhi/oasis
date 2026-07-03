@@ -104,7 +104,11 @@ tr.editing td{background:var(--panel-2);}
 <div class="wrap">
 
   <header>
-    <a class="home-link" href="/">⌂ HOME</a>
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">⌂ HOME</a>
+    </div>
     <h1>Net Check-in Log</h1>
     <p>Log station check-ins during a net operation.</p>
   </header>

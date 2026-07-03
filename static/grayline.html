@@ -80,7 +80,11 @@ tr:last-child .win-time{color:var(--accent);font-weight:700;white-space:nowrap;}
 <div class="wrap">
 
 <header>
-  <a class="home-link" href="/">⌂ HOME</a>
+  <div class="home-bar">
+    <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+            title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+    <a class="home-link" href="/">⌂ HOME</a>
+  </div>
   <h1>Gray Line Calculator</h1>
   <p>Enter your Maidenhead grid square and a date to compute sunrise, sunset, gray line passage times, and optimal DX propagation windows. All times in UTC.</p>
 </header>

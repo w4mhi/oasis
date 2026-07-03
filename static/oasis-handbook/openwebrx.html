@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OpenWebRX — OASIS Handbook</title>
-  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="stylesheet" href="handbook.css" />
   <link rel="icon" href="img/oasis-logo.svg" />
 </head>
 <body>
@@ -60,7 +60,11 @@
   </aside>
 
   <main class="content">
-    <a class="home-link" href="/">⌂ HOME</a>
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">⌂ HOME</a>
+    </div>
     <div class="eyebrow">Communications</div>
     <h1>OpenWebRX SDR</h1>
     <p class="subtitle">Optional receive-only SDR web UI for spectrum monitoring</p>
@@ -93,6 +97,6 @@
   </aside>
 </div>
 
-<script src="handbook-v2.js"></script>
+<script src="handbook.js"></script>
 </body>
 </html>

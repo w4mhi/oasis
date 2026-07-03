@@ -1,4 +1,4 @@
-/* OASIS Handbook v2 — wide, media-forward design system
+/* OASIS Handbook — wide, media-forward design system
    Offline-safe: system-ui sans for prose, vendored Inconsolata for code. */
 
 @font-face {
@@ -115,10 +115,15 @@ body {
 }
 .btn-ghost:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 
-/* suite-standard HOME link */
-.content a.home-link {
+/* suite-standard HOME link + inline theme toggle, top-right of content */
+.content .home-bar {
   float: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
   margin-left: 1rem;
+}
+.content a.home-link {
   font-family: var(--mono);
   font-size: 0.9rem;
   letter-spacing: 0.1em;
@@ -130,6 +135,29 @@ body {
   transition: color 0.15s ease;
 }
 .content a.home-link:hover { color: var(--accent); border-bottom-color: transparent; }
+
+.content .theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.content .theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+@media print { .content .home-bar { display: none; } }
 
 /* ── App grid ── */
 .app {

@@ -54,7 +54,11 @@
   }
 
   function injectButton() {
-    if (document.getElementById("theme-toggle")) return;   // page provides its own
+    if (document.getElementById("theme-toggle")) {   // page provides its own
+      var own = document.getElementById("theme-glyph");
+      if (own) own.textContent = glyph();            // …just sync its glyph
+      return;
+    }
     if (!document.body) return;
     injectStyle();
     var btn = document.createElement("button");

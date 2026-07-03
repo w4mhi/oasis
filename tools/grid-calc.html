@@ -95,7 +95,11 @@ canvas.compass{border-radius:50%;background:var(--panel-2);}
 <div class="wrap">
 
 <header>
-  <a class="home-link" href="/">⌂ HOME</a>
+  <div class="home-bar">
+    <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+            title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+    <a class="home-link" href="/">⌂ HOME</a>
+  </div>
   <h1>Grid / Distance / Bearing</h1>
   <p>Enter callsigns (auto-lookup via FCC) or type Maidenhead grid squares directly. Supports 4- and 6-character grids.</p>
 </header>

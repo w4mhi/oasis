@@ -51,7 +51,11 @@ body { margin:0; }
 <div id="toast" class="toast"></div>
 <div class="wrap">
   <header>
-    <a class="home-link" href="/">⌂ HOME</a>
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">⌂ HOME</a>
+    </div>
     <h1>🛰️ Winlink Position Reports • By Condition (Sorted by Callsign)</h1>
     <p>Incoming Winlink position reports grouped by message condition.</p>
   </header>

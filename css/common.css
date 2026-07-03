@@ -207,6 +207,34 @@ header::after { content: ''; display: table; clear: both; }
 .home-link:hover { color: var(--accent); }
 @media print { .home-link { display: none; } }
 
+/* ─── HOME + inline light/dark theme toggle cluster ─────── */
+.home-bar {
+  float: right;
+  margin-left: 1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+}
+.home-bar .home-link { float: none; margin-left: 0; }
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+.theme-toggle:hover { color: var(--accent); border-color: var(--accent-dim); }
+@media print { .home-bar { display: none; } }
+
 /* ─── Section / panel block ─────────────────────────────── */
 .sec {
   border: 1px solid var(--border);
