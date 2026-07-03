@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Themes & Units — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">The Dashboard</div>
+    <h1>Themes &amp; Units</h1>
+    <p class="subtitle">Dark / light and imperial / metric, remembered per browser</p>
+    <p>
+      Two dashboard preferences follow the operator, stored per browser in
+      <code>localStorage</code>: the colour theme and the measurement units. Both this
+      handbook and the dashboard honour their own theme toggle.
+    </p>
+    <h2>Dark / light</h2>
+    <p>The dashboard defaults to your system preference and can be flipped with the theme control.</p>
+    <figure class="figure">
+      <img src="img/dashboard-dark.png" alt="Dashboard — dark theme" />
+      <figcaption>Dashboard — dark theme</figcaption>
+    </figure>
+    <figure class="figure">
+      <img src="img/dashboard-light.png" alt="Dashboard — light theme" />
+      <figcaption>Dashboard — light theme</figcaption>
+    </figure>
+    <h2>Imperial / metric</h2>
+    <p>
+      A single <strong>Imperial / Metric</strong> pill switches every measured value &mdash;
+      temperature, altitude, speed &mdash; across the dashboard and tools at once. The
+      preference is remembered per browser, so each operator&rsquo;s device shows the units
+      they prefer.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>This handbook&rsquo;s own <code>[ dark ] / [ light ]</code> toggle (top right) is independent of the dashboard&rsquo;s theme &mdash; it&rsquo;s stored under its own key so the docs and the dashboard can differ.</p></div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="gps-card.html"><span class="lbl">Previous</span><span class="t">GPS / GNSS Card</span></a>
+      <a href="aprs.html" class="next"><span class="lbl">Next</span><span class="t">APRS Live Map</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

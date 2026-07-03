@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FCC Lookup — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">Field Tools</div>
+    <h1>FCC Callsign Lookup</h1>
+    <p class="subtitle">Offline U.S. amateur-licence lookup &mdash; by callsign, name, or grid</p>
+    <p>
+      Offline lookup of U.S. amateur licences, with <strong>no database engine</strong> &mdash;
+      a binary search over FCC flat files returns a result in well under a millisecond.
+      Three search modes:
+    </p>
+    <div class="ph">[ screenshot &mdash; FCC callsign lookup — search box and result card ]</div>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Mode</th><th>Example</th><th>Returns</th></tr></thead>
+      <tbody>
+        <tr><td>Callsign (exact)</td><td><code>W4MHI</code></td><td>A single record</td></tr>
+        <tr><td>Callsign (prefix wildcard)</td><td><code>W4*</code></td><td>Up to 50 active licences starting with W4</td></tr>
+        <tr><td>Name</td><td>Last <code>SMITH</code>, first <code>JOHN</code> (optional)</td><td>Up to 50, prefix match on last name</td></tr>
+        <tr><td>Grid</td><td><code>CN87</code> or <code>CN87XN</code> (2&ndash;6 chars)</td><td>Up to 100 records in that grid area</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>Results include callsign, name, city, state, and Maidenhead grid.</p>
+    <h2>Building the database (online, one-time)</h2>
+    <pre><code>python3 scripts/setup-fcc-database.py              # download + build all indexes
+python3 scripts/setup-fcc-database.py --index-only # rebuild indexes from existing EN.dat</code></pre>
+    <p>
+      Run it on any machine with internet, then copy the <code>data/</code> folder to the Pi
+      (or run it on the Pi if it has internet). FCC publishes fresh data every Sunday.
+    </p>
+    <h2>How it works</h2>
+    <p>
+      <code>HD.dat</code> identifies active licences; <code>EN.dat</code> holds the entity
+      records. Three sorted indexes point into <code>EN.dat</code>: a primary index by
+      callsign, a secondary by last name, and a third by 6-char Maidenhead grid &mdash; all
+      driven by the same binary-search engine. Only active licences are indexed.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p><strong>Grid squares are ZIP-centroid derived.</strong> The FCC database stores ZIP codes, not GPS coordinates, so a grid can be several miles from the operator&rsquo;s actual location. Name and grid search require the <code>zipcodes.csv</code> that <code>setup-fcc-database.py</code> generates.</p></div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="openwebrx.html"><span class="lbl">Previous</span><span class="t">OpenWebRX</span></a>
+      <a href="maps.html" class="next"><span class="lbl">Next</span><span class="t">Offline Maps</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

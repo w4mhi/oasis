@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>APRS Live Map — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">APRS</div>
+    <h1>APRS &mdash; Live Map</h1>
+    <p class="subtitle">The flagship Pi capability &mdash; heard stations plotted on the offline map</p>
+    <p>
+      APRS is the flagship Pi capability. OASIS installs and supervises
+      <strong>GrayWolf</strong> &mdash; a browser-based APRS TNC, iGate, and digipeater &mdash;
+      plus a companion history API so the dashboard plots live stations on the
+      <a href="maps.html">offline map</a>. Both are pre-checked in the setup menu.
+    </p>
+    <figure class="hero">
+      <img src="img/aprs-map.png" alt="The OASIS APRS live map at /aprs/map.html — station markers on offline vector tiles, with a recent-heard panel" />
+      <figcaption>The OASIS APRS live map at /aprs/map.html — station markers on offline vector tiles, with a recent-heard panel</figcaption>
+    </figure>
+    <p>
+      GrayWolf runs its own web UI on port <strong>8080</strong>; OASIS reads its history
+      database and shows the stations on the dashboard and at <code>/aprs/map.html</code>.
+      The map refreshes every 15&nbsp;seconds.
+    </p>
+    <h2>Map features</h2>
+    <div class="box"><div class="box-body"><table>
+      <tbody>
+        <tr><td>Station markers</td><td>APRS symbol icons with callsign labels; click for last-heard time, speed, course, altitude, and path</td></tr>
+        <tr><td>Historical track</td><td><strong>&#10227; Show track</strong> draws a station&rsquo;s position history; the window (1&nbsp;h &rarr; all) is selectable and re-fetches each cycle</td></tr>
+        <tr><td>Auto-fly</td><td><strong>&#9992; Auto-fly</strong> flies to the tracked station&rsquo;s latest position on each refresh</td></tr>
+        <tr><td>Recent-heard panel</td><td>Newly heard/updated stations, newest-first; click a callsign to fly there. New markers get an amber sonar-ping that settles into a dim halo</td></tr>
+        <tr><td>Focus via URL</td><td>Clicking a callsign in the dashboard table opens the map at <code>?focus=CALLSIGN</code> and loads its track</td></tr>
+      </tbody>
+    </table></div></div>
+    <figure class="figure">
+      <img src="img/aprs-station-track.png" alt="A station selected — its historical track drawn on the map with the detail popup" />
+      <figcaption>A station selected — its historical track drawn on the map with the detail popup</figcaption>
+    </figure>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>The map tiles are the same offline <a href="maps.html">PMTiles</a> basemap the rest of OASIS uses &mdash; not a single tile comes from the internet.</p></div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="themes-units.html"><span class="lbl">Previous</span><span class="t">Themes &amp; Units</span></a>
+      <a href="aprs-stations.html" class="next"><span class="lbl">Next</span><span class="t">Stations &amp; History</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Feeding APRS — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">APRS</div>
+    <h1>Feeding APRS</h1>
+    <p class="subtitle">Getting 2&nbsp;m APRS audio into GrayWolf &mdash; RTL-SDR or a sound-card interface</p>
+    <p>
+      GrayWolf needs an audio path from your radio (or an SDR) to decode APRS. OASIS
+      supports two common approaches on the Pi: an <strong>RTL-SDR dongle</strong> (receive
+      only) or a <strong>sound-card / PTT interface</strong> such as the DRA-Pi-Zero,
+      DigiRig, or AIOC (receive <em>and</em> transmit).
+    </p>
+    <h2>RTL-SDR &rarr; GrayWolf</h2>
+    <p>Tick <strong>RTL-SDR tools</strong> and <strong>RTL-SDR &rarr; GrayWolf APRS feed</strong> in the setup menu, or run:</p>
+    <pre><code>python3 scripts/install-rtl-sdr.py      # RTL-SDR driver + tools
+python3 scripts/enable-rtl-sdr.py       # test the dongle, start the audio feed</code></pre>
+    <p>
+      This demodulates 2&nbsp;m APRS and streams the audio to <code>127.0.0.1:7355</code> over
+      UDP. Finish the wiring in the GrayWolf web UI (<code>:8080</code>):
+    </p>
+    <ol class="steps">
+      <li><strong>Station</strong> &mdash; set your callsign.</li>
+      <li><strong>Position log</strong> &mdash; enable the database so heard stations are recorded.</li>
+      <li><strong>Audio Devices &rarr; + Add Device</strong> &mdash; create the SDR input. <em>Don&rsquo;t click Detect Devices</em> (it auto-adds a soundcard that hijacks the channel): source type <code>sdr_udp</code>, path <code>127.0.0.1:7355</code>, sample rate <code>48000</code>, Mono, format <code>s16le</code>, direction input.</li>
+      <li><strong>Channels &rarr; add an AFSK / RX channel</strong> &mdash; 1200&nbsp;bps, 1200 / 2200&nbsp;Hz, RX input = the <code>sdr_udp</code> device.</li>
+      <li><strong>Restart GrayWolf</strong> so it loads the new device + channel: <code>sudo systemctl restart graywolf</code>.</li>
+    </ol>
+    <div class="callout danger">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>The restart matters.</strong> GrayWolf reads channel config only when the modem <em>starts</em> &mdash; a device/channel added at runtime isn&rsquo;t live until a restart, and it can keep reporting <code>state=RUNNING</code> on the old config while nothing decodes. The classic &ldquo;I set it up, nothing worked, I restarted, and it just worked.&rdquo;</p></div>
+    </div>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>RTL-SDR needs Raspberry Pi OS Trixie (Debian 13).</strong> The RTL-SDR Blog V4 needs <code>librtlsdr &ge; 2.0</code>, which only Trixie ships. Bookworm/Bullseye top out at <code>0.6.0</code> and can&rsquo;t drive the V4. (APRS via the DRA-Pi-Zero sound card has no such requirement.)</p></div>
+    </div>
+    <h2>Sound-card interface</h2>
+    <p>
+      For a DRA-Pi-Zero, DigiRig, AIOC, or similar, configure the card as GrayWolf&rsquo;s audio
+      device and PTT directly &mdash; see <a href="audio-hardware.html">Audio Hardware</a> for
+      the DRA-Pi-Zero setup and <a href="graywolf-config.html">GrayWolf Config</a> for the
+      device, channel, and PTT steps. If the feed card shows <strong>SILENT</strong>, audio
+      is reaching the feed but nothing is decoding &mdash; check the dongle/antenna and frequency.
+    </p>
+
+    <nav class="page-nav">
+      <a href="aprs-stations.html"><span class="lbl">Previous</span><span class="t">Stations &amp; History</span></a>
+      <a href="graywolf-config.html" class="next"><span class="lbl">Next</span><span class="t">GrayWolf Config</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

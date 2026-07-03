@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Audio Hardware — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">Hardware & Deployment</div>
+    <h1>Audio Hardware</h1>
+    <p class="subtitle">The DRA-Pi-Zero sound card, its RX LED, and the RGB Cooling HAT</p>
+    <p>
+      Beyond a USB interface (DigiRig, AIOC) or an <a href="aprs-feed.html">RTL-SDR</a>, OASIS
+      has dedicated support for the <strong>DRA-Pi-Zero</strong> I&sup2;S sound card and the
+      <strong>Yahboom RGB Cooling HAT</strong>.
+    </p>
+    <h2>DRA-Pi-Zero sound card</h2>
+    <p>
+      The MastersCommunications DRA-Pi-Zero (Wolfson WM8731 I&sup2;S codec) is GrayWolf&rsquo;s radio
+      interface on many builds. Configure it with:
+    </p>
+    <pre><code>python3 scripts/enable-dra-pi.py            # auto-detects the phase
+python3 scripts/enable-dra-pi.py --dry-run  # preview the config.txt changes first</code></pre>
+    <p>
+      It runs in two phases. <strong>Before reboot</strong> (card absent) it edits
+      <code>/boot/firmware/config.txt</code> to load the WM8731 overlay and free the I&sup2;S bus
+      (backing the file up once). <strong>After reboot</strong> (card present) it applies the ALSA
+      mixer routing &mdash; the critical <code>Input Mux = Mic</code>, capture gain, TX path &mdash; and
+      persists it with <code>alsactl store</code>.
+    </p>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>Run <code>--dry-run</code> first</strong> to review the <code>config.txt</code> diff before it writes &mdash; this edits a boot file. A reboot is required for the codec to appear.</p></div>
+    </div>
+    <h2>DRA-Pi RX LED</h2>
+    <p>
+      GrayWolf keys GPIO 12 (the red TX LED) during transmit but has no carrier-detect output,
+      so the DRA-Pi-Zero&rsquo;s green RX LED (GPIO 16) stays dark while packets decode.
+      <code>enable-dra-rx-led.py</code> installs a lightweight daemon that pulses the green LED
+      on each newly decoded APRS position packet.
+    </p>
+    <pre><code>python3 scripts/enable-dra-rx-led.py            # install + enable dra-rx-led.service
+python3 scripts/enable-dra-rx-led.py --self-test  # blink the LED 5&times; and exit</code></pre>
+    <h2>RGB Cooling HAT</h2>
+    <p>
+      For a Yahboom RGB Cooling HAT (PWM fan + status OLED + RGB LEDs), a small daemon drives the
+      fan from CPU temperature and shows live stats on the OLED:
+    </p>
+    <pre><code>python3 scripts/install-rgb-cooling-hat.py           # install + enable the service
+python3 scripts/install-rgb-cooling-hat.py --check   # report status
+python3 scripts/install-rgb-cooling-hat.py --disable # remove it</code></pre>
+    <p>
+      It enables I&sup2;C, installs the apt deps, confirms the HAT on the bus (<code>0x0d</code>
+      fan/RGB MCU + <code>0x3c</code> OLED), and installs the daemon as a systemd service. The
+      daemon itself needs no internet (it has an inlined SSD1306 driver).
+    </p>
+
+    <nav class="page-nav">
+      <a href="gps-time.html"><span class="lbl">Previous</span><span class="t">GPS Time &amp; RTC</span></a>
+      <a href="panel-kiosk.html" class="next"><span class="lbl">Next</span><span class="t">Panel &amp; Kiosk</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

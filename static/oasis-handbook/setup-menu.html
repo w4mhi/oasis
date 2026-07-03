@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Setup Menu — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">Getting Started</div>
+    <h1>The Setup Menu</h1>
+    <p class="subtitle"><code>setup-oasis.py</code> &mdash; the front door for a Pi deployment</p>
+    <p>
+      On a Pi, <code>setup-oasis.py</code> is the front door. It is a grouped checkbox
+      menu that delegates to the individual <code>install-*</code> / <code>enable-*</code>
+      scripts, so each stays the single source of truth. Tick what you want; it runs the
+      matching scripts <strong>in order</strong>, pulls in prerequisites, and asks for
+      your password just once. The <strong>pre-checked</strong> items give you a working
+      field station out of the box &mdash; dashboard, APRS, web terminal, service controls,
+      and Wi-Fi fallback. Re-run the menu anytime to add features.
+    </p>
+    <div class="ph">[ screenshot &mdash; setup-oasis.py grouped checkbox menu in the terminal ]</div>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p><strong>Version-aware &amp; idempotent.</strong> Every installer installs when absent, <em>upgrades</em> when newer, and keeps what you have otherwise &mdash; never downgrades. It picks the newest source (apt vs the bundle) and the packages for your OS version, so an older USB bundle can&rsquo;t clobber a newer package.</p></div>
+    </div>
+    <h2>Server</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Menu item</th><th>Default</th><th>What it gives you</th></tr></thead>
+      <tbody>
+        <tr><td>Server (.venv + deps)</td><td><span class="badge primary">on</span></td><td>The Flask web server &mdash; dashboard, FCC lookup, map tiles. Foundation for everything.</td></tr>
+        <tr><td>Auto-start on boot</td><td><span class="badge primary">on</span></td><td>systemd unit so OASIS starts at boot.</td></tr>
+        <tr><td>GrayWolf APRS (+ history API)</td><td><span class="badge primary">on</span></td><td>APRS TNC/iGate/digipeater on :8080 + history API on :8085.</td></tr>
+        <tr><td>Winlink (Pat)</td><td>&mdash;</td><td>Pat client + web UI on :8082 (Telnet works now; RF experimental).</td></tr>
+        <tr><td>Kiwix (offline content)</td><td>&mdash;</td><td><code>kiwix-serve</code> on :8081 for ZIM content.</td></tr>
+        <tr><td>Web SSH (ttyd)</td><td><span class="badge primary">on</span></td><td>Browser terminal on :7681.</td></tr>
+        <tr><td>OpenWebRX (SDR monitor)</td><td>&mdash;</td><td>RX-only SDR web UI on :8073 &mdash; experimental.</td></tr>
+        <tr><td>Dashboard service controls</td><td><span class="badge primary">on</span></td><td>Scoped sudoers rule so the dashboard start/stop buttons work.</td></tr>
+        <tr><td>Wi-Fi AP fallback</td><td><span class="badge primary">on</span></td><td>Pi hosts the <code>OASIS</code> hotspot when no known network is in range.</td></tr>
+      </tbody>
+    </table></div></div>
+    <h2>Content / Data</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Menu item</th><th>Default</th><th>What it gives you</th></tr></thead>
+      <tbody>
+        <tr><td>FCC callsign database</td><td><span class="badge primary">on</span></td><td>Downloads + indexes the FCC amateur DB (~160 MB).</td></tr>
+        <tr><td>Wikipedia content (ZIM)</td><td>&mdash;</td><td>Downloads a Wikipedia ZIM for Kiwix (1 GB &rarr; ~100 GB).</td></tr>
+        <tr><td>Repeater Book listing</td><td><span class="badge primary">on</span></td><td>Shows the dashboard link &mdash; drop your own <code>repeaterbook.csv</code> in.</td></tr>
+        <tr><td>ICS Forms section</td><td><span class="badge primary">on</span></td><td>Toggles the ICS-205/213/214/309 dashboard section.</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      Display (kiosk), Audio (RTL-SDR, DRA-Pi), and GPS / RTC groups are all opt-in and
+      documented under <a href="audio-hardware.html">Hardware &amp; Deployment</a>. The
+      only hard requirement underneath the menu is the server itself; everything else is
+      per-feature.
+    </p>
+
+    <nav class="page-nav">
+      <a href="quick-start.html"><span class="lbl">Previous</span><span class="t">Quick Start</span></a>
+      <a href="accessing-oasis.html" class="next"><span class="lbl">Next</span><span class="t">Accessing OASIS</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

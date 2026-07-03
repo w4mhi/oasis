@@ -84,9 +84,10 @@ ZIP_TABLE = lookup.load_zip_table()
 # editing each page. Pages that manage their own theming are skipped:
 #   • the 7" kiosk (/small-screen/)   • the APRS map (/aprs/)
 #   • the graywolf-handbook (/static/graywolf-handbook/)
+#   • the oasis-handbook (/static/oasis-handbook/)
 # theme.js is idempotent — it leaves a page's own toggle button (e.g. the
 # dashboard's) alone and only adds the floating one when none exists.
-_THEME_SKIP_PREFIXES = ("/small-screen/", "/aprs/", "/static/graywolf-handbook/")
+_THEME_SKIP_PREFIXES = ("/small-screen/", "/aprs/", "/static/graywolf-handbook/", "/static/oasis-handbook/")
 _THEME_SNIPPET = '<script src="/static/theme.js"></script>'
 
 

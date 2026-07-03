@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GrayWolf Config — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">APRS</div>
+    <h1>GrayWolf Configuration</h1>
+    <p class="subtitle">The GrayWolf web UI (:8080) &mdash; station, audio, channels, PTT, beacons, iGate</p>
+    <p>
+      GrayWolf has its own web UI on port <strong>8080</strong>. This page covers the
+      configuration an OASIS operator needs to get on the air; for the exhaustive
+      per-field reference, the full
+      <a href="/static/graywolf-handbook/index.html">GrayWolf handbook</a> ships in the
+      OASIS reference library.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p><strong>Hardware first.</strong> You need a 2&nbsp;m-capable radio, an audio/PTT interface (DigiRig, AIOC, DRA-Pi-Zero, or an RTL-SDR for RX-only), and the interface plugged in <em>before</em> you configure channels.</p></div>
+    </div>
+    <h2>1 &middot; Station callsign</h2>
+    <p>
+      <strong>Settings &rarr; Station Callsign</strong> &mdash; enter your callsign with SSID
+      (e.g. <code>W4MHI-5</code>). The SSID distinguishes multiple stations on one call:
+      <code>-5</code> for a fixed base, <code>-9</code> mobile, <code>-1</code> a digipeater.
+      <code>-5</code> is a safe default for a Pi EOC station.
+    </p>
+    <h2>2 &middot; Audio devices</h2>
+    <p>
+      <strong>Settings &rarr; Audio Devices &rarr; Add Device</strong> &mdash; add your sound card
+      for RX and TX. Use <strong>Detect Devices</strong> to find the ALSA path; 96000&nbsp;Hz,
+      Mono. Do this <em>before</em> Channels, or the channel dropdown will be empty.
+    </p>
+    <figure class="figure">
+      <img src="img/gw-audio.png" alt="GrayWolf — Audio Devices configured" />
+      <figcaption>GrayWolf — Audio Devices configured</figcaption>
+    </figure>
+    <h2>3 &middot; Channels</h2>
+    <p>
+      <strong>Settings &rarr; Channels &rarr; Add Channel</strong> &mdash; an AFSK VHF APRS channel:
+      1200&nbsp;bps, mark 1200&nbsp;Hz, space 2200&nbsp;Hz, input/output = the sound card from step 2,
+      TX delay 300&nbsp;ms.
+    </p>
+    <figure class="figure">
+      <img src="img/gw-channel-edit.png" alt="GrayWolf — Edit Channel (VHF APRS): AFSK 1200, 1200/2200 Hz" />
+      <figcaption>GrayWolf — Edit Channel (VHF APRS): AFSK 1200, 1200/2200 Hz</figcaption>
+    </figure>
+    <figure class="figure">
+      <img src="img/gw-channels.png" alt="GrayWolf — Channels list showing the configured VHF APRS channel" />
+      <figcaption>GrayWolf — Channels list showing the configured VHF APRS channel</figcaption>
+    </figure>
+    <h2>4 &middot; PTT</h2>
+    <p>
+      <strong>Settings &rarr; PTT &rarr; Add PTT</strong>. For a DigiRig / AIOC / CM108-based
+      USB cable, select the <code>/dev/hidraw*</code> device and leave the GPIO field blank.
+      For a direct GPIO wire (e.g. GPIO 12 on the DRA-Pi-Zero), leave Device blank and enter
+      the BCM number. Pick one method &mdash; not both.
+    </p>
+    <figure class="figure">
+      <img src="img/gw-ptt.png" alt="GrayWolf — PTT configuration" />
+      <figcaption>GrayWolf — PTT configuration</figcaption>
+    </figure>
+    <h2>5 &middot; Beacons</h2>
+    <p>
+      <strong>Operations &rarr; Beacons &rarr; Add Beacon</strong> &mdash; choose the VHF channel,
+      a position source (fixed lat/lon or GPS), path <code>WIDE1-1,WIDE2-1</code>, a symbol,
+      and an interval (300&nbsp;s is a safe fixed-station default). SmartBeaconing adjusts the
+      rate by speed for mobile use.
+    </p>
+    <figure class="figure">
+      <img src="img/gw-beacon.png" alt="GrayWolf — Edit Beacon: channel, position source, path, symbol, interval" />
+      <figcaption>GrayWolf — Edit Beacon: channel, position source, path, symbol, interval</figcaption>
+    </figure>
+    <figure class="figure">
+      <img src="img/gw-symbol.png" alt="GrayWolf — the APRS symbol picker with primary/alternate tables and overlay" />
+      <figcaption>GrayWolf — the APRS symbol picker with primary/alternate tables and overlay</figcaption>
+    </figure>
+    <h2>6 &middot; Digipeater (optional)</h2>
+    <p>
+      <strong>Operations &rarr; Digipeater</strong> &mdash; enable and add rules. A 30&nbsp;s dedupe
+      window (APRS convention) drops duplicates; add a wide-area rule for standard
+      <code>WIDEn-N</code> digipeating.
+    </p>
+    <figure class="figure">
+      <img src="img/gw-digipeater.png" alt="GrayWolf — Digipeater settings and rules" />
+      <figcaption>GrayWolf — Digipeater settings and rules</figcaption>
+    </figure>
+    <h2>7 &middot; iGate (optional)</h2>
+    <p>
+      <strong>Operations &rarr; iGate</strong> &mdash; iGating needs internet on the Pi. Enable it,
+      set the APRS-IS server, enter your callsign and passcode, and a server-side filter
+      (e.g. <code>r/47.6/-122.0/100</code> for a 100&nbsp;km radius). Keep RF TX rules specific &mdash;
+      broad wildcards flood the local frequency.
+    </p>
+    <figure class="figure">
+      <img src="img/gw-igate.png" alt="GrayWolf — iGate connection tab" />
+      <figcaption>GrayWolf — iGate connection tab</figcaption>
+    </figure>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>GrayWolf also exposes <strong>KISS</strong> and <strong>AGW</strong> interfaces for third-party software (Winlink, Xastir). The KISS TNC is what <a href="winlink.html">Pat</a> reuses for experimental RF Winlink &mdash; no second modem needed.</p></div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="aprs-feed.html"><span class="lbl">Previous</span><span class="t">Feeding APRS</span></a>
+      <a href="aprs-messaging.html" class="next"><span class="lbl">Next</span><span class="t">APRS Messaging</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

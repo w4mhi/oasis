@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wi-Fi AP Fallback — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">Hardware & Deployment</div>
+    <h1>Wi-Fi AP Fallback</h1>
+    <p class="subtitle">The Pi hosts the OASIS hotspot when no known network is in range</p>
+    <p>
+      For deployment with no router, the Pi acts as a Wi-Fi access point so other devices can
+      connect directly. OASIS does this <strong>automatically</strong> &mdash; preferring a known
+      network when one is in range, and falling back to its own <code>OASIS</code> hotspot when
+      none is.
+    </p>
+    <pre><code>python3 scripts/enable-ap-fallback.py
+python3 scripts/enable-ap-fallback.py --ssid FIELD1 --password mypassword
+python3 scripts/enable-ap-fallback.py --check     # report status
+python3 scripts/enable-ap-fallback.py --disable   # undo</code></pre>
+    <p>
+      This installs <code>avahi-daemon</code> (so the dashboard resolves at
+      <code>oasis.local</code>), creates a WPA2 hotspot profile, and arms a watcher
+      (<code>oasis-netwatch.service</code>) that raises the AP whenever no known network is
+      reachable. See <a href="accessing-oasis.html">Accessing OASIS</a> for the connection details.
+    </p>
+    <h2>How it works</h2>
+    <div class="box"><div class="box-body"><table>
+      <tbody>
+        <tr><td><code>oasis-netwatch.service</code></td><td>At boot, waits ~25&nbsp;s for NetworkManager to join a saved network; if none is reachable it raises the hotspot. During operation it polls every 15&nbsp;s and falls back to the AP after a client link has been gone ~45&nbsp;s. Logs every decision.</td></tr>
+        <tr><td><code>/usr/local/bin/oasis-netctl</code></td><td>A pinned privileged helper (scan / connect / forget / ap-up) the dashboard calls via a scoped sudo rule &mdash; no password touches the web layer.</td></tr>
+      </tbody>
+    </table></div></div>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>Single radio.</strong> The Pi Zero 2 W has one Wi-Fi radio, so it is <em>either</em> a client <em>or</em> the AP, never both. Joining a network from the dashboard drops the AP; any device connected to the hotspot must reconnect at the Pi&rsquo;s new address.</p></div>
+    </div>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>If the <code>OASIS</code> network doesn&rsquo;t broadcast, the usual causes are a soft-blocked radio or an unset Wi-Fi country (<code>country 00</code> suppresses 2.4&nbsp;GHz beaconing). Pass <code>--country US</code> to the enable script, or set it live with <code>sudo iw reg set US</code>.</p></div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="panel-kiosk.html"><span class="lbl">Previous</span><span class="t">Panel &amp; Kiosk</span></a>
+      <a href="usb-bundle.html" class="next"><span class="lbl">Next</span><span class="t">USB Bundle</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

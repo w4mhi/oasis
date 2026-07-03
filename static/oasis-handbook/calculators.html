@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Calculators — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">Field Tools</div>
+    <h1>Calculators</h1>
+    <p class="subtitle">Antenna, grid, power/battery, gray-line, and band-condition tools &mdash; all offline</p>
+    <p>
+      A set of self-contained calculators and loggers. They are <strong>static HTML</strong> &mdash;
+      no server, no internet, no install &mdash; so they work from the dashboard, opened
+      directly, or from the USB bundle. State is saved to <code>localStorage</code> per browser.
+    </p>
+    <h2>Antenna Calculator</h2>
+    <p>Dipole / vertical / loop lengths and feedline cuts from a target frequency.</p>
+    <figure class="figure">
+      <img src="img/antenna-calc.png" alt="Antenna Calculator — element and feedline lengths from a target frequency" />
+      <figcaption>Antenna Calculator — element and feedline lengths from a target frequency</figcaption>
+    </figure>
+    <h2>Grid / Distance / Bearing</h2>
+    <p>Maidenhead grid &harr; lat/lon, plus great-circle distance and heading between two points.</p>
+    <figure class="figure">
+      <img src="img/grid-calc.png" alt="Grid / distance / bearing calculator" />
+      <figcaption>Grid / distance / bearing calculator</figcaption>
+    </figure>
+    <h2>Power &amp; Battery Budget</h2>
+    <p>Estimates runtime from battery capacity and a per-device load list; exports a printable report.</p>
+    <figure class="figure">
+      <img src="img/power-calc.png" alt="Power &amp; battery budget calculator" />
+      <figcaption>Power &amp; battery budget calculator</figcaption>
+    </figure>
+    <h2>Gray Line &amp; Propagation</h2>
+    <p>The gray-line terminator for HF DX timing, plus a band-condition summary and solar-indices reference.</p>
+    <figure class="figure">
+      <img src="img/grayline.png" alt="Gray-line terminator map for HF DX timing" />
+      <figcaption>Gray-line terminator map for HF DX timing</figcaption>
+    </figure>
+    <figure class="figure">
+      <img src="img/solar.png" alt="Solar / propagation — band-condition summary and solar indices" />
+      <figcaption>Solar / propagation — band-condition summary and solar indices</figcaption>
+    </figure>
+    <div class="callout tip">
+      <span class="ic">&#10003;</span>
+      <div><p>The dashboard&rsquo;s <a href="themes-units.html">Imperial / Metric</a> pill switches displayed temperature, altitude, and speed across the calculators at once.</p></div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="repeater-book.html"><span class="lbl">Previous</span><span class="t">Repeater Book</span></a>
+      <a href="net-logger.html" class="next"><span class="lbl">Next</span><span class="t">Net Logger</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

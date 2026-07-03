@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Accessing OASIS — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">Getting Started</div>
+    <h1>Accessing OASIS</h1>
+    <p class="subtitle">Reach the dashboard from any browser &mdash; on your LAN or the Pi&rsquo;s own hotspot</p>
+    <p>
+      OASIS binds to <code>0.0.0.0</code> on port <strong>8083</strong>, so any device on
+      the same network reaches it in a browser at
+      <code>http://&lt;host-ip&gt;:8083</code>. There is no app and no account &mdash; the
+      operator&rsquo;s existing browser is the only client.
+    </p>
+    <h2>On an existing network</h2>
+    <p>
+      If the Pi is joined to your Wi-Fi or LAN, find its address (the System Monitor
+      <strong>IP</strong> row shows it, or use <code>oasis.local</code> when avahi is
+      installed) and open <code>http://&lt;pi-ip&gt;:8083</code> from your phone, tablet,
+      or laptop.
+    </p>
+    <h2>In the field &mdash; the OASIS hotspot</h2>
+    <p>
+      For an activation or field event with no router, the Pi hosts its own Wi-Fi access
+      point. With <a href="ap-fallback.html">AP fallback</a> armed, it prefers a known
+      network when one is in range and raises the <code>OASIS</code> hotspot when none
+      is. Other devices then join the <code>OASIS</code> Wi-Fi and open
+      <code>http://10.42.0.1:8083</code> (or <code>http://oasis.local:8083</code>).
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Setting</th><th>Default</th></tr></thead>
+      <tbody>
+        <tr><td>SSID</td><td><code>OASIS</code></td></tr>
+        <tr><td>Password</td><td><code>oasis-emcomm</code> (WPA2, documented for quick field access)</td></tr>
+        <tr><td>AP address</td><td><code>10.42.0.1</code> (clients get <code>10.42.0.2&ndash;254</code>)</td></tr>
+        <tr><td>Hostname</td><td><code>oasis.local</code> (via avahi)</td></tr>
+      </tbody>
+    </table></div></div>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>Set up at home, deploy in the field.</strong> Complete the full setup &mdash; server, FCC database, GrayWolf, GPS, AP fallback &mdash; while the Pi has internet, validate it works, then take it offline. Sort out anything that needs internet before the activation, not on arrival.</p></div>
+    </div>
+    <div class="callout danger">
+      <span class="ic">&#9888;</span>
+      <div><p>OASIS has <strong>no authentication</strong> and runs plain HTTP by design &mdash; the right model for a trusted off-grid LAN or hotspot, the wrong one for the open internet. See <a href="security.html">Security</a>.</p></div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="setup-menu.html"><span class="lbl">Previous</span><span class="t">The Setup Menu</span></a>
+      <a href="dashboard.html" class="next"><span class="lbl">Next</span><span class="t">Dashboard Tour</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

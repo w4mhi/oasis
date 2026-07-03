@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Introduction — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">Getting Started</div>
+    <h1>OASIS Handbook</h1>
+    <p class="subtitle">Off-grid Amateur Station Information Suite &mdash; comms when the network&rsquo;s gone dark</p>
+    <figure class="hero">
+      <img src="img/dashboard-full.png" alt="The OASIS dashboard — service monitor, live station table, and feature tiles, served to any browser on the local network" />
+      <figcaption>The OASIS dashboard — service monitor, live station table, and feature tiles, served to any browser on the local network</figcaption>
+    </figure>
+    <p>
+      <strong>OASIS</strong> turns a Raspberry Pi &mdash; or any laptop &mdash; into a
+      self-contained emergency-communications station that every phone, tablet, and
+      laptop on a local network can use through a web browser, with <strong>no
+      internet, no cloud account, and nothing to install on the client</strong>.
+      When the grid is up it&rsquo;s a convenient ham-radio toolkit; when the grid is
+      down &mdash; the moment it was built for &mdash; it keeps working exactly the same.
+    </p>
+    <p>
+      This handbook is the operator&rsquo;s guide to the whole suite: how to build and
+      deploy it, what every dashboard card and tool does, and how to run a field
+      station. It assumes you hold an amateur licence and know the hobby &mdash; it is a
+      tool for operators, not an introduction to radio.
+    </p>
+    <h2>Offline-first, not offline-capable</h2>
+    <p>
+      The distinction is the whole point. <em>Offline-capable</em> software works
+      online and degrades when the network drops. <strong>Offline-first</strong>
+      assumes there is no network, ships every byte it needs locally, and treats
+      internet access as a rare convenience for refreshing data &mdash; never a runtime
+      dependency. At runtime OASIS fetches nothing: no CDN, no API, no font, no map
+      tile. Even <em>installing</em> it can happen with no internet, from a vendored
+      USB bundle.
+    </p>
+    <h2>What&rsquo;s in the suite</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Capability</th><th>What you get offline</th></tr></thead>
+      <tbody>
+        <tr><td>Emergency forms</td><td>ICS 205 / 213 / 214 / 309 on official FEMA PDF templates</td></tr>
+        <tr><td>FCC callsign lookup</td><td>Sub-millisecond search over a local copy of the FCC amateur database</td></tr>
+        <tr><td>Offline maps</td><td>OpenStreetMap vector tiles via MapLibre GL + PMTiles, served from the host</td></tr>
+        <tr><td>APRS <span class="badge accent">Pi</span></td><td>GrayWolf TNC / iGate / digipeater with a live station map and messaging</td></tr>
+        <tr><td>Winlink <span class="badge accent">Pi</span></td><td>Pat client + web UI for store-and-forward radio email</td></tr>
+        <tr><td>Tools &amp; calculators</td><td>Antenna, grid, power/battery, gray-line, band conditions, net logger</td></tr>
+        <tr><td>Reference library</td><td>Band plan, Q-codes, phonetics, prowords, RST, ITU prefixes, cheat-sheets</td></tr>
+        <tr><td>Offline Wikipedia <span class="badge accent">Pi</span></td><td>Kiwix serving a ZIM snapshot</td></tr>
+        <tr><td>Web SSH <span class="badge accent">Pi</span></td><td>A browser terminal (ttyd) with no separate SSH client</td></tr>
+      </tbody>
+    </table></div></div>
+    <h2>How it&rsquo;s served</h2>
+    <p>
+      A single small <strong>Flask</strong> app serves the dashboard, the FCC lookup
+      API, and the map tiles. Everything heavy &mdash; forms, calculators, reference &mdash;
+      is static HTML running in the browser against <code>localStorage</code>, so the
+      server never holds browser state. Companion services run as their own processes
+      and the dashboard discovers them at runtime, so a missing service just greys out
+      a card instead of breaking the page.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Port</th><th>Service</th></tr></thead>
+      <tbody>
+        <tr><td><code>8083</code></td><td>OASIS &mdash; dashboard, FCC lookup, map tile server</td></tr>
+        <tr><td><code>8085</code></td><td>APRS history API (feeds the dashboard map)</td></tr>
+        <tr><td><code>8080</code></td><td>GrayWolf APRS <span class="badge accent">optional, Pi</span></td></tr>
+        <tr><td><code>8082</code></td><td>Pat Winlink web UI <span class="badge accent">optional, Pi</span></td></tr>
+        <tr><td><code>8081</code></td><td>Kiwix offline Wikipedia <span class="badge accent">optional, Pi</span></td></tr>
+        <tr><td><code>7681</code></td><td>webssh / ttyd browser terminal <span class="badge accent">optional, Pi</span></td></tr>
+      </tbody>
+    </table></div></div>
+    <div class="callout tip">
+      <span class="ic">&#10003;</span>
+      <div><p>New here? Jump to <a href="quick-start.html">Quick Start</a> to build the offline USB bundle and stand up a Pi, then <a href="accessing-oasis.html">Accessing OASIS</a> to reach the dashboard from your phone.</p></div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="quick-start.html" class="next"><span class="lbl">Next</span><span class="t">Quick Start</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

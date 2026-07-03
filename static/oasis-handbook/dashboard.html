@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard Tour — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">The Dashboard</div>
+    <h1>Dashboard Tour</h1>
+    <p class="subtitle">The single page every operator opens &mdash; status, services, and every tool</p>
+    <figure class="hero">
+      <img src="img/dashboard-full.png" alt="The full dashboard: header clock and status cards, the service strip, the live APRS table, and the utilities / forms / reference navigation" />
+      <figcaption>The full dashboard: header clock and status cards, the service strip, the live APRS table, and the utilities / forms / reference navigation</figcaption>
+    </figure>
+    <p>
+      The dashboard at <code>http://&lt;host-ip&gt;:8083</code> is the home screen for the
+      whole suite. It is one page, refreshed live, that shows the health of the station
+      and links to every tool. It works on a phone as well as a desktop.
+    </p>
+    <h2>Header</h2>
+    <figure class="figure">
+      <img src="img/dashboard-top.png" alt="The header: clock, Wi-Fi pill, GPS card, and the system-monitor status cards" />
+      <figcaption>The header: clock, Wi-Fi pill, GPS card, and the system-monitor status cards</figcaption>
+    </figure>
+    <p>
+      Across the top: a clock, the <strong>Wi-Fi</strong> pill (current SSID or
+      <code>AP: OASIS</code>), the <a href="gps-card.html">GPS/GNSS card</a>, and the
+      <a href="system-monitor.html">System Monitor</a> cards (CPU, RAM, disk, temperature,
+      IP, uptime), all colour-coded and updated every 30&nbsp;seconds.
+    </p>
+    <h2>Service strip</h2>
+    <p>
+      A row of cards, one per companion service (GrayWolf APRS, APRS Stats API, Winlink,
+      Kiwix, Web SSH, OpenWebRX). Each shows live status &mdash; green when up, red when down,
+      grey when not installed &mdash; and, if you enabled
+      <a href="service-controls.html">service controls</a>, <strong>START / STOP</strong>
+      buttons so you never have to SSH in.
+    </p>
+    <h2>APRS live table</h2>
+    <p>
+      When APRS is running, the <strong>APRS LIVE</strong> table lists heard stations with
+      callsign, last-heard time, speed, altitude, and comment; clicking a callsign opens
+      the <a href="aprs.html">live map</a> focused on that station. See
+      <a href="aprs-stations.html">Stations &amp; History</a>.
+    </p>
+    <h2>Utilities &middot; forms &middot; reference</h2>
+    <p>
+      The lower navigation groups every static tool: the
+      <a href="calculators.html">calculators</a>, <a href="net-logger.html">net logger</a>,
+      <a href="ics-forms.html">ICS forms</a>, <a href="fcc-lookup.html">FCC lookup</a>,
+      <a href="maps.html">offline maps</a>, <a href="repeater-book.html">Repeater Book</a>,
+      and the whole <a href="reference-library.html">reference library</a> &mdash; including
+      this handbook.
+    </p>
+
+    <nav class="page-nav">
+      <a href="accessing-oasis.html"><span class="lbl">Previous</span><span class="t">Accessing OASIS</span></a>
+      <a href="system-monitor.html" class="next"><span class="lbl">Next</span><span class="t">System Monitor</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

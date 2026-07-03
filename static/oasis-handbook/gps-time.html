@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GPS Time & RTC — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">Hardware & Deployment</div>
+    <h1>GPS Time Sync &amp; Hardware RTC</h1>
+    <p class="subtitle">Keep an accurate clock with no internet &mdash; gpsd + chrony, and a battery-backed RTC</p>
+    <p>
+      A field station has no internet to pull NTP from, so the clock drifts &mdash; and an
+      inaccurate clock breaks FT8/FT4/WSPR/SSTV decode windows and timestamps. A cheap USB
+      GPS receiver fixes this: <code>gpsd</code> reads the GPS, <code>chrony</code> steers the
+      system clock from it, and the header <a href="gps-card.html">GPS card</a> shows the result.
+    </p>
+    <h2>GPS time sync</h2>
+    <pre><code>python3 scripts/install-gps.py                 # autodetect the GPS serial device
+python3 scripts/install-gps.py --device /dev/ttyACM0
+python3 scripts/install-gps.py --check         # report gpsd/chrony status</code></pre>
+    <p>
+      It installs <code>gpsd</code> and <code>chrony</code>, points <code>gpsd</code> at the
+      receiver (<code>GPSD_OPTIONS=-n</code> so it polls without a client), and adds the chrony
+      SHM refclock that disciplines the clock. Run it at home while the Pi has internet &mdash; the
+      <code>apt install</code> step needs it once; everything after runs offline.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p><strong>Keep it exercised.</strong> GPS almanac data ages out after weeks without a sky view. Power the Pi with the GPS connected and take it outdoors for a few minutes every few weeks &mdash; test before deployment, not on arrival. A first outdoor cold fix takes 1&ndash;5 minutes.</p></div>
+    </div>
+    <h2>Hardware RTC (Witty Pi 3)</h2>
+    <p>
+      Without GPS lock or internet, a Pi has <strong>no idea what time it is</strong> after a
+      reboot &mdash; it has no battery-backed clock. A hardware RTC keeps accurate time across
+      reboots and total power loss, the steady baseline GPS/chrony then fine-tune. OASIS
+      supports the <strong>UUGear Witty Pi 3</strong> (DS3231 on I&sup2;C <code>0x68</code>):
+    </p>
+    <pre><code>python3 scripts/enable-rtc.py                  # configure the DS3231 RTC overlay
+python3 scripts/enable-rtc.py --check          # report status</code></pre>
+    <p>
+      The script is idempotent and <strong>requires a reboot</strong>. It enables I&sup2;C, adds
+      the <code>i2c-rtc,ds3231</code> overlay, removes <code>fake-hwclock</code>, and applies the
+      classic DS3231 boot-reset fix. After the reboot, once the clock is correct, write it to
+      the RTC once with <code>sudo hwclock -w</code>.
+    </p>
+    <div class="callout tip">
+      <span class="ic">&#10003;</span>
+      <div><p>Any DS3231-based RTC HAT works with the same overlay. Pair GPS + RTC so chrony rides the RTC until GPS reacquires after a power loss.</p></div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="reference-library.html"><span class="lbl">Previous</span><span class="t">Reference Library</span></a>
+      <a href="audio-hardware.html" class="next"><span class="lbl">Next</span><span class="t">Audio Hardware</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>

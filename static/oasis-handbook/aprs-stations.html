@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stations & History — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook-v2.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="img/oasis-logo.svg" alt="" />
+    <b>OASIS</b> <span class="tag">handbook</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <a class="btn-ghost" href="/">⌂ dashboard</a>
+    <button class="btn-ghost" data-theme-toggle>◑ light</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">APRS</div>
+    <h1>APRS &mdash; Stations &amp; History</h1>
+    <p class="subtitle">The dashboard station table and the history API that feeds it</p>
+    <p>
+      Behind the map is the <strong>APRS history API</strong> on port <strong>8085</strong>
+      &mdash; a small Flask service (<code>graywolf-api</code>) that reads GrayWolf&rsquo;s history
+      database and feeds both the dashboard&rsquo;s <strong>APRS LIVE</strong> table and the
+      map. It is installed and enabled automatically with GrayWolf; if you move the repo,
+      re-enable it with <code>python3 scripts/enable-graywolf-api.py</code>.
+    </p>
+    <h2>The dashboard station table</h2>
+    <p>
+      When APRS is running, the dashboard lists heard stations newest-first with callsign,
+      last-heard time, speed, altitude, and comment. Click a callsign to open the
+      <a href="aprs.html">live map</a> focused on that station (<code>?focus=CALLSIGN</code>),
+      with its track loaded.
+    </p>
+    <figure class="figure">
+      <img src="img/aprs-stations.png" alt="The dashboard APRS LIVE table — heard stations with last-heard time, age, speed, altitude, path, and comment" />
+      <figcaption>The dashboard APRS LIVE table — heard stations with last-heard time, age, speed, altitude, path, and comment</figcaption>
+    </figure>
+    <h2>Recording heard stations</h2>
+    <p>
+      For the table and API to fill in, GrayWolf&rsquo;s <strong>Position log</strong> database
+      must be enabled (Station &rarr; Position log). That table is the single source both
+      the dashboard and the map read. See <a href="graywolf-config.html">GrayWolf Config</a>.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>Three service cards go green once it&rsquo;s all running: <strong>APRS GrayWolf</strong>, <strong>APRS Stats API</strong>, and &mdash; if you feed from an SDR &mdash; <strong>APRS SDR Feed</strong>.</p></div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="aprs.html"><span class="lbl">Previous</span><span class="t">APRS Live Map</span></a>
+      <a href="aprs-feed.html" class="next"><span class="lbl">Next</span><span class="t">Feeding APRS</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook-v2.js"></script>
+</body>
+</html>
