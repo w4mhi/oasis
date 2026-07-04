@@ -1566,11 +1566,9 @@ function pingAll() {
 // systemctl is-active can't tell "audio flowing" from "socat alive but dongle
 // yanked". pollFeedFlow hits /api/health/feed-flow (a passive ~1s tcpdump on the
 // loopback feed) and drives the meter on the APRS SDR Feed tile. Live ~2s while
-// the tab is visible; paused when hidden. The probe is a liveness check, not a
-// meter that needs sub-second resolution, so 15s keeps the sudo+tcpdump fork load
-// low; the server also caches the probe result ~5s so multiple open dashboards
-// share one capture.
-const FEED_FLOW_MS = 15000;
+// the tab is visible; paused when hidden. Cadence is one constant — to go 30s,
+// set FEED_FLOW_MS = 30_000 (or call from pingAll); the probe itself is stateless.
+const FEED_FLOW_MS = 2000;
 let _feedFlow = null;   // last probe result, also read by the 30s feed check
 
 // Annotate the (already-active) feed tile from the flow probe, without re-running

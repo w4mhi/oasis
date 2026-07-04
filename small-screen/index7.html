@@ -856,6 +856,6 @@ loadConfig().then(loadInstalled).then(() => {
   setInterval(fetchStats,   30_000);
   setInterval(fetchAudio,   30_000);
   setInterval(fetchAPRS,    15_000);
-  setInterval(pollFeedFlow, 15_000);  // liveness check; server caches ~5s so dashboards share one tcpdump
+  setInterval(pollFeedFlow,  2_500);
 });
 </script>

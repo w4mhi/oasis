@@ -70,12 +70,6 @@ MAP_ROOTS = [
 # in index.html (antenna-calc.html, ics-205/, etc.) keep working as-is.
 app = Flask(__name__, static_folder=SUITE_ROOT, static_url_path="")
 
-# Vendored assets (JS/CSS/fonts/sprites) change only on deploy, so let clients —
-# including the Pi's own kiosk Chromium — cache them instead of revalidating on
-# every page load. Dynamic JSON already uses fetch(cache:'no-store'), and HTML
-# shells are forced to revalidate in _inject_theme_toggle, so nothing goes stale.
-app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 3600  # seconds; per-route 86400 below
-
 # Load the small ZIP -> lat/long table once at startup and reuse it for every
 # request. It is only a few MB, well within the Pi's memory budget.
 ZIP_TABLE = lookup.load_zip_table()
@@ -93,8 +87,7 @@ ZIP_TABLE = lookup.load_zip_table()
 # theme.js is idempotent — it leaves a page's own toggle button (e.g. the
 # dashboard's) alone and only adds the floating one when none exists.
 _THEME_SKIP_PREFIXES = ("/small-screen/", "/aprs/", "/static/graywolf-handbook/")
-_THEME_SNIPPET = b'<script src="/static/theme.js"></script>'
-_THEME_MAX_BYTES = 256 * 1024  # don't buffer/scan pages larger than this
+_THEME_SNIPPET = '<script src="/static/theme.js"></script>'
 
 
 @app.after_request
@@ -102,27 +95,15 @@ def _inject_theme_toggle(resp):
     try:
         if resp.mimetype != "text/html":
             return resp
-        # HTML shells change on deploy; force revalidation (cheap 304s) so the
-        # kiosk/dashboard never serve a page stale under the asset cache above.
-        # Applies to every HTML page, including the skip-prefixed ones below.
-        resp.headers["Cache-Control"] = "no-cache"
         path = request.path or "/"
         if any(path.startswith(p) for p in _THEME_SKIP_PREFIXES):
             return resp
-        # Operate on bytes and bail early: skip errors/redirects and anything too
-        # large to be an owned page, so big static HTML keeps zero-copy sendfile
-        # and we avoid a full decode/encode round-trip on the hot page-load path.
-        if resp.status_code >= 300:
-            return resp
-        clen = resp.calculate_content_length()
-        if clen is not None and clen > _THEME_MAX_BYTES:
-            return resp
         if resp.direct_passthrough:
             resp.direct_passthrough = False
-        body = resp.get_data()
-        if b"</head>" not in body or b"/static/theme.js" in body:
+        html = resp.get_data(as_text=True)
+        if "</head>" not in html or "/static/theme.js" in html:
             return resp
-        resp.set_data(body.replace(b"</head>", _THEME_SNIPPET + b"</head>", 1))
+        resp.set_data(html.replace("</head>", _THEME_SNIPPET + "</head>", 1))
     except Exception:
         # The toggle is a nicety — never let injection break a page.
         pass
@@ -143,19 +124,8 @@ window.location.replace(
 
 @app.route("/map-assets/<path:filename>")
 def map_assets(filename):
-    """Serve MapLibre GL libraries from server/map-assets/ (immutable → long-cache)."""
-    resp = send_from_directory(MAP_ASSETS, filename)
-    resp.headers["Cache-Control"] = "public, max-age=86400"
-    return resp
-
-
-@app.route("/static/dependencies/<path:filename>")
-def static_dependencies(filename):
-    """Vendored JS/fonts (pdf-lib, etc.) — immutable between deploys, long-cache.
-    A dedicated route so these beat the catch-all static max-age (SEND_FILE_MAX_AGE)."""
-    resp = send_from_directory(os.path.join(SUITE_ROOT, "static", "dependencies"), filename)
-    resp.headers["Cache-Control"] = "public, max-age=86400"
-    return resp
+    """Serve MapLibre GL libraries from server/map-assets/."""
+    return send_from_directory(MAP_ASSETS, filename)
 
 
 @app.route("/maps/<filename>")
@@ -448,38 +418,17 @@ def api_save_chirp():
     return jsonify({"ok": True, "saved": os.path.join("chirp", filename)})
 
 
-_CALLSIGN_COUNT_CACHE = None  # ((st_mtime_ns, st_size), count) — see _callsign_count()
-
-
-def _callsign_count():
-    """Number of lines in EN.idx (one active call sign per line), memoized on the
-    index's (mtime, size). /health is polled every 30 s by every dashboard (plus a
-    6-pass startup sweep), and a naive re-count re-reads the whole ~13 MB /
-    ~800 K-line file each time — the single most expensive periodic op in the
-    suite. Re-count only when the index file actually changes."""
-    global _CALLSIGN_COUNT_CACHE
-    try:
-        st = os.stat(lookup.INDEX_PATH)
-    except OSError:
-        return 0
-    key = (st.st_mtime_ns, st.st_size)
-    cached = _CALLSIGN_COUNT_CACHE
-    if cached is not None and cached[0] == key:
-        return cached[1]
-    try:
-        with open(lookup.INDEX_PATH, "rb") as f:
-            count = sum(1 for _ in f)
-    except OSError:
-        return 0
-    _CALLSIGN_COUNT_CACHE = (key, count)
-    return count
-
-
 @app.route("/health")
 def health():
     """Simple health check; also reports whether the index is present."""
     index_present = os.path.exists(lookup.INDEX_PATH)
-    callsign_count = _callsign_count() if index_present else 0
+    callsign_count = 0
+    if index_present:
+        try:
+            with open(lookup.INDEX_PATH, "rb") as f:
+                callsign_count = sum(1 for _ in f)
+        except OSError:
+            callsign_count = 0
     return jsonify({
         "ok": True,
         "index_present": index_present,
@@ -657,14 +606,6 @@ _FEED_FLOW_NOMINAL = 50       # pkt/s at full feed — the UI scales the bar to 
 _FEED_FLOW_ARGS = ["-ni", "lo", "-l", "-c", str(_FEED_FLOW_NPKTS),
                    "udp", "port", str(FEED_FLOW_PORT)]
 
-# Short shared cache for the feed-flow probe. The main dashboard, the 7" kiosk
-# and any open map all poll this on overlapping cadences; without a cache each
-# open page forks its own sudo+tcpdump. This is a liveness check, so a few
-# seconds of staleness is fine, and N dashboards then share one capture.
-_FEED_FLOW_CACHE_SEC  = 5.0
-_FEED_FLOW_CACHE_LOCK = threading.Lock()
-_FEED_FLOW_CACHE      = None   # (monotonic_ts, payload_dict)
-
 
 def _resolve_tcpdump():
     """tcpdump path, PATH first then the standard sbin/bin dirs (the WSGI server
@@ -686,19 +627,12 @@ def api_health_feed_flow():
     """Report whether UDP datagrams are actually flowing on the RTL-SDR feed port
     (a data-flow health check the systemd is-active probe can't give). Returns
     packet rate over a short passive capture. Linux + scoped sudo (tcpdump) only."""
-    global _FEED_FLOW_CACHE
     if sys.platform != "linux":
         return jsonify({"ok": False, "supported": False, "reason": "not-linux"})
 
     tcpdump = _resolve_tcpdump()
     if not tcpdump:
         return jsonify({"ok": False, "supported": True, "reason": "tcpdump-missing"})
-
-    # Serve a recent probe result to all callers instead of forking per request.
-    now = time.monotonic()
-    with _FEED_FLOW_CACHE_LOCK:
-        if _FEED_FLOW_CACHE and (now - _FEED_FLOW_CACHE[0]) < _FEED_FLOW_CACHE_SEC:
-            return jsonify(_FEED_FLOW_CACHE[1])
 
     argv = ["sudo", "-n", tcpdump, *_FEED_FLOW_ARGS]
     t0 = time.monotonic()
@@ -728,22 +662,17 @@ def api_health_feed_flow():
     if packets == 0 and not timed_out and rc not in (0, None):
         low = (err or "").lower()
         if "password is required" in low or "not allowed to execute" in low or "a terminal is required" in low:
-            payload = {"ok": False, "supported": True, "reason": "no-privilege"}
-        else:
-            payload = {"ok": False, "supported": True, "reason": "probe-error",
-                       "error": (err or "").strip()[:200]}
-    else:
-        pps = round(packets / elapsed, 1)
-        payload = {
-            "ok": True, "supported": True, "port": FEED_FLOW_PORT,
-            "packets": packets, "elapsed_ms": round(elapsed * 1000),
-            "pps": pps, "nominal_pps": _FEED_FLOW_NOMINAL,
-            "flowing": packets > 0,
-        }
+            return jsonify({"ok": False, "supported": True, "reason": "no-privilege"})
+        return jsonify({"ok": False, "supported": True, "reason": "probe-error",
+                        "error": (err or "").strip()[:200]})
 
-    with _FEED_FLOW_CACHE_LOCK:
-        _FEED_FLOW_CACHE = (time.monotonic(), payload)
-    return jsonify(payload)
+    pps = round(packets / elapsed, 1)
+    return jsonify({
+        "ok": True, "supported": True, "port": FEED_FLOW_PORT,
+        "packets": packets, "elapsed_ms": round(elapsed * 1000),
+        "pps": pps, "nominal_pps": _FEED_FLOW_NOMINAL,
+        "flowing": packets > 0,
+    })
 
 
 @app.route("/api/service", methods=["POST"])
@@ -1395,7 +1324,14 @@ def api_winlink_attachment(box, mid, attachment):
     url = (f"http://127.0.0.1:{WINLINK_PORT}/api/mailbox/"
            f"{box}/{mid}/{urllib.parse.quote(attachment)}")
     try:
-        resp = urllib.request.urlopen(url, timeout=15)
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            body = resp.read()
+            ctype = resp.headers.get("Content-Type", "application/octet-stream")
+        out = Response(body, status=200, content_type=ctype)
+        if request.args.get("download"):
+            safe = attachment.replace('"', "").replace("\\", "")
+            out.headers["Content-Disposition"] = f'attachment; filename="{safe}"'
+        return out
     except urllib.error.HTTPError as e:
         return Response(e.read(), status=e.code, content_type="application/json")
     except urllib.error.URLError as e:
@@ -1404,30 +1340,6 @@ def api_winlink_attachment(box, mid, attachment):
                         "error": f"Pat (Winlink) unreachable ({reason})."}), 503
     except TimeoutError:
         return jsonify({"ok": False, "error": "Pat (Winlink) timed out."}), 503
-
-    # Attachments are photos/PDFs — potentially several MB. Stream in 64 KB chunks
-    # instead of buffering the whole body per worker (the main RAM-spike risk on a
-    # 512 MB Pi). The gthread worker keeps other requests moving during the copy.
-    ctype = resp.headers.get("Content-Type", "application/octet-stream")
-    clen = resp.headers.get("Content-Length")
-
-    def _stream(r=resp):
-        try:
-            while True:
-                chunk = r.read(64 * 1024)
-                if not chunk:
-                    break
-                yield chunk
-        finally:
-            r.close()
-
-    out = Response(_stream(), status=200, content_type=ctype)
-    if clen:
-        out.headers["Content-Length"] = clen
-    if request.args.get("download"):
-        safe = attachment.replace('"', "").replace("\\", "")
-        out.headers["Content-Disposition"] = f'attachment; filename="{safe}"'
-    return out
 
 
 @app.route("/api/winlink/mailbox/out", methods=["POST"])
@@ -2130,28 +2042,14 @@ if __name__ == "__main__":
         if _have_gunicorn:
             app_dir = os.path.dirname(os.path.abspath(__file__))
             print(f"\n  OASIS (gunicorn) — {url}\n")
-            # Threaded worker, not sync: one process × N threads handles the
-            # health-sweep concurrency (subprocess waits, proxy urlopens, sendfile)
-            # far better than 2 sync workers on a Pi Zero, and halves RSS. The 180 s
-            # timeout is a safety net only — gthread heartbeats from a side thread,
-            # so the 60/120 s Winlink proxies no longer get SIGKILLed mid-request.
-            # OASIS_WORKERS/OASIS_THREADS let a Pi 3/4 step up (e.g. 2 × 4).
-            gunicorn_argv = [
+            os.execv(sys.executable, [
                 sys.executable, "-m", "gunicorn",
                 "--chdir", app_dir,
                 "--bind", f"0.0.0.0:{PORT}",
-                "--workers", os.environ.get("OASIS_WORKERS", "1"),
-                "--worker-class", "gthread",
-                "--threads", os.environ.get("OASIS_THREADS", "8"),
-                "--timeout", "180",
-                "--error-logfile", "-",
-            ]
-            # Access log is per-request SD/journald churn; keep it off unless
-            # debugging (errors still land in the journal via --error-logfile).
-            if os.environ.get("OASIS_DEBUG"):
-                gunicorn_argv += ["--access-logfile", "-"]
-            gunicorn_argv.append("app:app")
-            os.execv(sys.executable, gunicorn_argv)
+                "--workers", "2",
+                "--access-logfile", "-",
+                "app:app",
+            ])
             # os.execv replaces this process; nothing below runs on success.
 
     print(f"\n  OASIS (dev server) — {url}\n")

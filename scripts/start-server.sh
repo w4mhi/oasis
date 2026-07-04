@@ -164,19 +164,10 @@ fi
 
 cd "$SERVER_DIR"
 if "$VENV_PYTHON" -c "import gunicorn" 2>/dev/null; then
-    # Threaded worker (gthread) rather than 2 sync workers: better health-sweep
-    # concurrency and half the RSS on a Pi Zero, and the 180 s timeout stops the
-    # 60/120 s Winlink proxies from being SIGKILLed. OASIS_WORKERS/OASIS_THREADS
-    # let a Pi 3/4 step up; OASIS_DEBUG re-enables the per-request access log.
-    _access_log=(); [[ -n "${OASIS_DEBUG:-}" ]] && _access_log=(--access-logfile -)
     exec "$VENV_DIR/bin/gunicorn" \
-        --workers "${OASIS_WORKERS:-1}" \
-        --worker-class gthread \
-        --threads "${OASIS_THREADS:-8}" \
-        --timeout 180 \
+        --workers 2 \
         --bind "0.0.0.0:$PORT" \
-        --error-logfile - \
-        "${_access_log[@]}" \
+        --access-logfile - \
         app:app
 else
     exec "$VENV_PYTHON" app.py
