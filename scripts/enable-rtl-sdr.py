@@ -101,8 +101,11 @@ def rtl_test_present():
     """Return True if rtl_test reports a device, False if none is plugged in.
     The R820T '-t' abort is expected and still counts as present."""
     try:
+        # errors="replace": rtl_test can emit non-UTF-8 bytes (e.g. 0x83 from the
+        # R820T -t probe); without it text-mode decoding raises UnicodeDecodeError
+        # from inside subprocess.run — not one of the excepts below — and aborts.
         r = subprocess.run(["rtl_test", "-t"], capture_output=True, text=True,
-                           timeout=20)
+                           errors="replace", timeout=20)
     except FileNotFoundError:
         _fail("rtl_test not found — install-rtl-sdr.py did not complete.")
     except subprocess.TimeoutExpired as e:
@@ -268,7 +271,7 @@ def install_service(unit_text, enable):
         _warn(f"{SERVICE_NAME} is '{active}'. Recent log:")
         log = subprocess.run(
             ["journalctl", "-u", SERVICE_NAME, "-n", "12", "--no-pager", "--no-hostname"],
-            capture_output=True, text=True,
+            capture_output=True, text=True, errors="replace",
         )
         for line in (log.stdout or log.stderr).strip().splitlines():
             _info(line)
@@ -283,7 +286,7 @@ def journal_lines(unit, n=120):
         ["journalctl", "-u", unit, "-n", str(n), "--no-pager", "--no-hostname"],
         ["sudo", "journalctl", "-u", unit, "-n", str(n), "--no-pager", "--no-hostname"],
     ):
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
         if r.returncode == 0 and r.stdout.strip():
             return r.stdout
     return ""

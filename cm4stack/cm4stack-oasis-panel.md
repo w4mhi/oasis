@@ -68,15 +68,21 @@ no userspace display library, no hand-built `panel.bin`.
 
 ### 3.1 Install the overlay
 
-The overlay binaries come from M5Stack's repo
-(`github.com/m5stack/m5stack-linux-dtoverlays`). After building/copying, the
-`.dtbo` files must land in **`/boot/firmware/overlays/`** (Trixie path — the
-repo's Makefile targets the old `/boot/overlays`, so copy them yourself if
-needed):
+`m5stack-cm4.dtbo` is a prebuilt overlay from M5Stack's repo
+(`github.com/m5stack/m5stack-linux-dtoverlays/tree/main/overlays/cm4stack/bin`)
+and is **not** in the stock Pi image. It is **not** committed to the OASIS repo;
+`scripts/create-oasis-offline.py` downloads it at build time into
+`offline-packages/cm4stack/`, and `scripts/enable-cm4stack.py` installs it into
+**`/boot/firmware/overlays/`** on every run — so a fresh image and a
+kernel/firmware update that wipes it are both handled offline, no `git clone`/`make`
+needed. (A `.dtbo` is a compiled device-tree blob — kernel-portable, unlike the
+aw882xx `.ko` in §7.)
+
+Verify what's live on the box with:
 
 ```bash
 ls /boot/firmware/overlays | grep -E 'm5stack|aw88'
-# expect: m5stack-cm4.dtbo  aw88xx.dtbo
+# expect: m5stack-cm4.dtbo   (aw88xx.dtbo not used — §7)
 ```
 
 ### 3.2 `/boot/firmware/config.txt`

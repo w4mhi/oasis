@@ -62,6 +62,9 @@ server/wheels/*.whl
 # Entire tree is excluded; scripts install from oasis-offline/ or the internet.
 offline-packages/
 
+# M5Stack CM4Stack overlay — fetched at build time / dropped manually, never committed.
+cm4stack/overlays/*.dtbo
+
 # RepeaterBook data .
 repeaterbook/*.csv
 

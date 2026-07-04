@@ -57,6 +57,19 @@ DB_PATH = os.environ.get("APRS_DB_PATH", "/var/lib/graywolf/graywolf-history.db"
 # WAL pragma; the API itself never writes any rows.
 _db_conn: "sqlite3.Connection | None" = None
 
+# read_stations() only returns stations whose latest position is within this
+# window, so the latest-position-per-station scan and the JSON payload stay
+# bounded as `positions` grows without limit while the iGate runs. Tunable if an
+# operator wants longer-silent stations to keep showing on the map.
+STATIONS_MAX_AGE   = "-24 hours"
+# The dashboard, the APRS map and the kiosk all poll /api/aprs/stations on a
+# ~15 s cadence; a short shared cache means overlapping polls reuse one query +
+# serialization instead of each running a fresh scan.
+STATIONS_CACHE_SEC = 5.0
+_stations_cache: "bytes | None" = None
+_stations_cache_ts   = 0.0
+_stations_cache_lock = threading.Lock()
+
 
 def _get_db() -> "tuple[sqlite3.Connection | None, str | None]":
     """Return the shared DB connection, opening + configuring it if needed.
@@ -79,6 +92,15 @@ def _get_db() -> "tuple[sqlite3.Connection | None, str | None]":
         conn.text_factory = lambda b: b.decode("latin-1")
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")  # safe with WAL; faster on SD
+        # Covering index for the latest-position-per-station subquery in
+        # read_stations() and the per-station history scans in read_track().
+        # Without it those do an ordered sub-scan of `positions` per station,
+        # which degrades unbounded as the table grows. IF NOT EXISTS → a no-op
+        # once built. GrayWolf owns the schema; we only add an index.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pos_station_ts "
+            "ON positions(station_key, timestamp DESC)"
+        )
         _db_conn = conn
         return _db_conn, None
     except Exception as exc:
@@ -149,8 +171,9 @@ def read_stations():
                 ORDER BY p2.timestamp DESC
                 LIMIT 1
             )
+              AND p.timestamp >= datetime('now', ?)
             ORDER BY p.timestamp DESC
-        """)
+        """, (STATIONS_MAX_AGE,))
         rows = cur.fetchall()
 
         stations = []
@@ -349,10 +372,21 @@ def _build_app():
 
     @app.route("/api/aprs/stations")
     def api_stations():
+        global _stations_cache, _stations_cache_ts
+        now = time.monotonic()
+        with _stations_cache_lock:
+            if _stations_cache is not None and (now - _stations_cache_ts) < STATIONS_CACHE_SEC:
+                # Rebuild a fresh Response from cached bytes so after_request adds
+                # CORS normally and we never hand back a mutated Response object.
+                return app.response_class(_stations_cache, mimetype="application/json")
         stations, error = read_stations()
         if error:
             return jsonify({"ok": False, "error": error}), 503
-        return jsonify({"ok": True, "count": len(stations), "stations": stations})
+        body = jsonify({"ok": True, "count": len(stations), "stations": stations}).get_data()
+        with _stations_cache_lock:
+            _stations_cache = body
+            _stations_cache_ts = time.monotonic()
+        return app.response_class(body, mimetype="application/json")
 
     @app.route("/api/aprs/track")
     def api_track():

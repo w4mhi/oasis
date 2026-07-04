@@ -64,20 +64,27 @@ def _indexes_nonempty():
 
 
 def _drop_bundle_zip():
-    """Remove the bundled l_amat.zip once EN.dat is extracted and indexed.
+    """Remove the bundled l_amat.zip once the indexes are proven good.
 
     An offline bundle ships l_amat.zip (~80 MB); after extraction the target has
     EN.dat/HD.dat + the indexes, so the zip is pure bloat on a Raspberry Pi.
-    Only deletes when EN.dat is present (safe — a future FCC refresh re-downloads
-    the zip). The online install path never writes a zip, so this is a no-op there.
+    Only deletes once the search indexes are *valid against the extracted EN.dat*
+    (fcc_indexes_ready: all index files present + EN.idx.meta size/SHA match) — not
+    merely that EN.dat exists. A failed or partial expand therefore always keeps the
+    recovery zip, so the target can rebuild rather than being left with EN.dat and no
+    usable index. The online install path never writes a zip, so this is a no-op there.
     """
     zip_path = os.path.join(DATA_DIR, "l_amat.zip")
-    if os.path.exists(zip_path) and os.path.exists(EN_DAT):
-        try:
-            os.remove(zip_path)
-            _ok("Removed bundled l_amat.zip (extracted — freed ~80 MB on disk).")
-        except OSError as e:
-            _warn(f"Could not remove l_amat.zip: {e}")
+    if not os.path.exists(zip_path):
+        return
+    if not fcc_indexes_ready(DATA_DIR):
+        _info("Keeping l_amat.zip — indexes are not yet valid against EN.dat.")
+        return
+    try:
+        os.remove(zip_path)
+        _ok("Removed bundled l_amat.zip (indexes verified — freed ~80 MB on disk).")
+    except OSError as e:
+        _warn(f"Could not remove l_amat.zip: {e}")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

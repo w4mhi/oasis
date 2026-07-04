@@ -779,6 +779,41 @@ def _resolve_wiki_url():
     raise RuntimeError(f"Could not resolve download URL for {edition_mini}")
 
 
+# M5Stack CM4Stack panel overlay — a prebuilt, kernel-portable device-tree blob.
+# Fetched at build time (not redistributed in the OASIS repo) and installed on the
+# target by scripts/enable-cm4stack.py. aw88xx.dtbo is intentionally NOT fetched
+# (no working arm64 driver — see cm4stack/cm4stack-oasis-panel.md §7).
+M5STACK_OVERLAY_URL = (
+    "https://raw.githubusercontent.com/m5stack/m5stack-linux-dtoverlays/"
+    "main/overlays/cm4stack/bin/m5stack-cm4.dtbo"
+)
+
+
+def phase_cm4stack(bundle_root, update=False):
+    """Download m5stack-cm4.dtbo into offline-packages/cm4stack/ for offline install.
+
+    Single arch-independent file (a device-tree overlay), so no suite/arch split.
+    Incremental: skips if already present; a clean --rebuild re-fetches it.
+    """
+    dest_dir = os.path.join(bundle_root, "cm4stack")
+    dest     = os.path.join(dest_dir, "m5stack-cm4.dtbo")
+
+    _section("Phase — CM4Stack panel overlay")
+    _info("Source  : github.com/m5stack/m5stack-linux-dtoverlays (overlays/cm4stack/bin)")
+
+    if os.path.exists(dest):
+        _cp("m5stack-cm4.dtbo  (already present)")
+        return
+    os.makedirs(dest_dir, exist_ok=True)
+    _dl("m5stack-cm4.dtbo  ← GitHub")
+    try:
+        download_to(M5STACK_OVERLAY_URL, dest)
+        _ok("m5stack-cm4.dtbo")
+    except Exception as exc:
+        _warn(f"Could not download m5stack-cm4.dtbo: {exc}")
+        _warn("CM4Stack panel setup will need it fetched manually on the target.")
+
+
 def phase_wikipedia(zim_dir):
     """Phase 8: Download Wikipedia Top (Best of Wikipedia Mini) ZIM (~316 MB) into zim_dir."""
     edition_mini = f"{WIKI_EDITION}_{WIKI_FLAVOUR}"  # wikipedia_en_top_mini
@@ -1283,6 +1318,7 @@ def cmd_build(skip_windows, rebuild=False, all_platforms=False):
     phase_rtl_sdr(pkg_root, update=True)
     phase_webssh(pkg_root, update=True)
     phase_pat(pkg_root, update=True)
+    phase_cm4stack(pkg_root, update=True)
     phase_wikipedia(os.path.join(OUT_DIR, "zim"))
     phase_pmtiles(os.path.join(OUT_DIR, "maps"), all_platforms=all_platforms)
 
@@ -1350,6 +1386,7 @@ def cmd_update(target_dir, all_platforms=False):
     phase_rtl_sdr(pkg_root, update=True)
     phase_webssh(pkg_root, update=True)
     phase_pat(pkg_root, update=True)
+    phase_cm4stack(pkg_root, update=True)
     phase_wikipedia(os.path.join(target_dir, "zim"))
     phase_pmtiles(os.path.join(target_dir, "maps"), all_platforms=all_platforms)
 
