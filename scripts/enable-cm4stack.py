@@ -58,9 +58,14 @@ OVERLAY_DIR_OLD   = "/boot/overlays"
 BLOCK_BEGIN = "# --- OASIS CM4Stack (managed by scripts/enable-cm4stack.py) ---"
 BLOCK_END   = "# --- end OASIS CM4Stack ---"
 
-# Base overlay lines (gt911-cm4 is added in phase 2)
+# Base overlay lines (gt911-cm4 is added in phase 2).
+# dtparam=i2c_vc=on enables i2c0 (GPIO0/1) so the m5stack-cm4 mux can attach and
+# expose the GT911 touch bus (i2c-10). Kernels through 6.12 enabled it implicitly;
+# 6.18+ does not — without this line there is no i2c-10 and touch can't bind. It's
+# idempotent/harmless on older kernels, so it stays unconditional.
 BASE_OVERLAY_LINES = [
     "[all]",
+    "dtparam=i2c_vc=on",
     "dtoverlay=m5stack-cm4",
     "dtoverlay=gpio-fan,gpiopin=13,temp=60000",
 ]
@@ -187,6 +192,18 @@ def i2c10_of_path():
         return real
     except OSError:
         return None
+
+
+def _i2c_buses():
+    """Sorted list of i2c bus numbers currently present, for diagnostics."""
+    out = []
+    try:
+        for name in os.listdir("/sys/bus/i2c/devices/"):
+            if name.startswith("i2c-") and name[4:].isdigit():
+                out.append(int(name[4:]))
+    except OSError:
+        pass
+    return sorted(out)
 
 
 def running_user():
@@ -393,22 +410,23 @@ def step_build_gt911_overlay(overlay_dir):
     Build and install the GT911 touch-fix overlay (phase 2).
     Resolves the i2c0 mux issue: the chip lives on i2c-10 (mux channel 1),
     not the i2c-0 node that m5stack-cm4 targets (§4 of the .md).
-    Returns True if the overlay was newly installed (config.txt needs updating).
+    Returns True when gt911-cm4.dtbo is present in overlay_dir afterwards
+    (already there or freshly built), False when it could not be built.
     """
     _step(5, "Building + installing GT911 touch-fix overlay")
 
     if gt911_overlay_installed(overlay_dir):
         _ok(f"gt911-cm4.dtbo already in {overlay_dir}.")
-        return False
+        return True
 
     dtpath = i2c10_of_path()
     if not dtpath:
-        _warn(
-            "i2c-10 bus not found in /sys/bus/i2c/devices/. "
-            "This is unexpected — the m5stack-cm4 overlay should have created it. "
-            "Check: dmesg | grep -i i2c"
-        )
-        _info("Skipping GT911 overlay build.  Re-run after confirming i2c-10 is present.")
+        buses = ", ".join(f"i2c-{b}" for b in _i2c_buses()) or "none"
+        _warn("i2c-10 bus not found — cannot build the GT911 touch overlay yet.")
+        _warn(f"  i2c buses present: {buses}")
+        _warn("  The m5stack-cm4 overlay must be loaded first: finish phase 1, then")
+        _warn("  REBOOT, then re-run this script. Touch stays off until the overlay builds;")
+        _warn("  the config line is NOT added while the overlay is missing (no dangling ref).")
         return False
 
     _info(f"GT911 bus DT path: {dtpath}")
@@ -459,7 +477,17 @@ def step_build_gt911_overlay(overlay_dir):
     return True   # newly installed, config.txt needs dtoverlay=gt911-cm4
 
 
-def step_install_service(user, no_enable):
+def _current_flip():
+    """OASIS_PANEL_FLIP ('0'/'1') from the installed unit, default '0'."""
+    try:
+        with open(SERVICE_FILE) as f:
+            m = re.search(r"^Environment=OASIS_PANEL_FLIP=(\d)", f.read(), re.MULTILINE)
+            return m.group(1) if m else "0"
+    except OSError:
+        return "0"
+
+
+def step_install_service(user, no_enable, flip=None):
     _step(6, "Installing oasis-panel systemd service")
 
     if not os.path.exists(PANEL_SCRIPT):
@@ -469,11 +497,11 @@ def step_install_service(user, no_enable):
         )
     _ok(f"Panel script: {PANEL_SCRIPT}")
 
-    # Resolve the user's home directory for any future path needs.
-    try:
-        home = pwd.getpwnam(user).pw_dir
-    except KeyError:
-        home = os.path.expanduser(f"~{user}")
+    # Panel rotation. flip=None preserves whatever the installed unit has, so a
+    # plain re-run never resets it; --flip / --no-flip set it explicitly.
+    flip_val = ("1" if flip else "0") if flip is not None else _current_flip()
+    _info(f"Panel rotation: OASIS_PANEL_FLIP={flip_val} "
+          f"({'180° flipped' if flip_val == '1' else 'normal'})")
 
     unit = f"""\
 [Unit]
@@ -481,6 +509,9 @@ Description=OASIS panel display (ST7789V2 CM4Stack)
 After=multi-user.target network.target
 
 [Service]
+# Rotate the panel 180°: set to 1 (or run enable-cm4stack.py --flip), then
+# `sudo systemctl restart oasis-panel`. 0 = normal orientation.
+Environment=OASIS_PANEL_FLIP={flip_val}
 ExecStart=/usr/bin/python3 {PANEL_SCRIPT}
 WorkingDirectory={os.path.dirname(PANEL_SCRIPT)}
 Restart=always
@@ -572,7 +603,7 @@ def do_phase1(dry_run):
     return REBOOT_EXIT
 
 
-def do_phase2(dry_run, no_enable):
+def do_phase2(dry_run, no_enable, flip=None):
     """Phase 2: GT911 overlay, systemd service. May need a second reboot for touch."""
     overlay_dir = find_overlay_dir()
     if not overlay_dir:
@@ -581,31 +612,40 @@ def do_phase2(dry_run, no_enable):
     # Check prereqs again (dtc may not have been installed in phase 1 if --service-only).
     step_prereqs()
 
-    gt911_newly_installed = step_build_gt911_overlay(overlay_dir)
+    # Source of truth is whether gt911-cm4.dtbo actually exists — the config line
+    # (dtoverlay=gt911-cm4) must never be present without the overlay behind it.
+    had_before  = gt911_overlay_installed(overlay_dir)
+    have_gt911  = step_build_gt911_overlay(overlay_dir)   # True iff the .dtbo is present now
+    freshly_built = have_gt911 and not had_before
 
-    # Patch config.txt to add dtoverlay=gt911-cm4 only when newly installed.
     needs_reboot = False
-    if gt911_newly_installed:
-        _step(6, "Adding dtoverlay=gt911-cm4 to config.txt")
+    path = find_config_txt()
+    if have_gt911:
+        # Always refresh the whole managed block (i2c_vc + m5stack + fan + gt911),
+        # even if dtoverlay=gt911-cm4 is already present — otherwise a pre-existing
+        # gt911 line would skip the refresh and drop newer lines like i2c_vc.
+        # step_patch_config is idempotent: it returns False when nothing changed.
+        _step(6, "Refreshing config.txt managed block (i2c_vc + overlays + gt911)")
         changed = step_patch_config(dry_run, include_gt911=True)
-        if changed and not dry_run:
+        # Reboot if the block changed, or the overlay was just built (it only
+        # loads on the next boot even when the config line was already there).
+        if (changed or freshly_built) and not dry_run:
             needs_reboot = True
     else:
-        # Already installed — refresh config.txt block if gt911-cm4 line is missing.
-        path = find_config_txt()
-        if path:
-            text = read_text(path)
-            if not gt911_in_config(text):
-                _step(6, "Adding dtoverlay=gt911-cm4 to existing config.txt block")
-                step_patch_config(dry_run, include_gt911=True)
-                if not dry_run:
+        # No overlay — make sure config.txt does NOT carry a dangling reference.
+        if path and gt911_in_config(read_text(path)):
+            _warn("config.txt has 'dtoverlay=gt911-cm4' but the overlay is not built —")
+            _warn("touch cannot work. Removing the dangling line; re-run after a reboot")
+            _warn("so i2c-10 is present and the overlay can build.")
+            if not dry_run:
+                new_text = re.sub(r"^\s*dtoverlay\s*=\s*gt911-cm4\b.*\n?", "",
+                                  read_text(path), flags=re.MULTILINE)
+                if write_text(path, new_text):
                     needs_reboot = True
-            else:
-                _info("dtoverlay=gt911-cm4 already in config.txt.")
 
     user = running_user()
     _info(f"Installing service for user: {user}")
-    step_install_service(user, no_enable)
+    step_install_service(user, no_enable, flip)
 
     print()
     print_health_check()
@@ -640,6 +680,10 @@ def main():
                         help="Only install/enable the systemd service (skip config.txt).")
     parser.add_argument("--no-enable", action="store_true",
                         help="Write the service unit but do not start or enable it.")
+    parser.add_argument("--flip", dest="flip", action="store_const", const=True, default=None,
+                        help="Rotate the panel 180° (OASIS_PANEL_FLIP=1 in the service).")
+    parser.add_argument("--no-flip", dest="flip", action="store_const", const=False,
+                        help="Restore normal panel orientation (OASIS_PANEL_FLIP=0).")
     args = parser.parse_args()
 
     print()
@@ -658,7 +702,7 @@ def main():
         user = running_user()
         _info(f"Installing service for user: {user}")
         step_prereqs()
-        step_install_service(user, args.no_enable)
+        step_install_service(user, args.no_enable, args.flip)
         print()
         print_health_check()
         sys.exit(0)
@@ -676,7 +720,7 @@ def main():
     # Auto-detect phase.
     if panel_fb_live():
         _info("ST7789V panel framebuffer detected — running phase 2 (post-reboot).")
-        sys.exit(do_phase2(args.dry_run, args.no_enable))
+        sys.exit(do_phase2(args.dry_run, args.no_enable, args.flip))
     else:
         _info("Panel framebuffer not detected — running phase 1 (initial setup).")
         sys.exit(do_phase1(args.dry_run))
