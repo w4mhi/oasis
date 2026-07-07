@@ -1050,7 +1050,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div class="nav-sec">
       <div class="nav-sec-title">Util</div>
       <ul class="nav-links">
-        <li><a href="server/aprs/map.html">APRS Maidenhead Map <span class="nav-meta">live APRS</span></a></li>
+        <li><a id="nlink-aprs" href="server/aprs/map.html">APRS Maidenhead Map <span class="nav-meta">live APRS</span></a></li>
         <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
         <li><a id="nlink-webssh" href="static/terminal/index.html" class="nav-link-svc">SSH Terminal <span class="nav-svc-badge" id="nsvc-webssh">—</span></a></li>
         <li><a href="server/tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>        
@@ -1136,7 +1136,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 </div><!-- /.nav-grid-wrap -->
 
 <!-- ── APRS LIVE ────────────────────────────────────────────────────────────── -->
-<div class="aprs-section">
+<div class="aprs-section" id="aprs-live">
   <div class="aprs-card">
     <div class="aprs-section-hdr">
       <span class="aprs-section-title" id="aprs-title">APRS LIVE</span>
@@ -1303,6 +1303,9 @@ const _svcStates = {};
 const HIDDEN_SVCS = new Set();
 let _showHidden = false;
 try { _showHidden = localStorage.getItem('oasis_show_hidden') === '1'; } catch (e) {}
+// Portable/locked profile (server sets locked=true when OASIS_FEATURES is set):
+// the not-installed cards are hidden with no reveal escape hatch.
+let _locked = false;
 function updateSvcCounts() {
   // Count only services that have a card (the 10 service cards) — exclude the
   // OPS-only checks (maps/fcc/rb/manuals/wiki) that merely feed nav badges, and
@@ -1674,6 +1677,10 @@ function _gateEls(id) {
   // The topbar GNSS receiver card is part of the GPS feature too — hide it
   // alongside the gpsd service card when GPS isn't installed.
   if (id === 'gpsd') { const g = document.getElementById('gps-card'); if (g) els.push(g); }
+  // The APRS LIVE station list is fed by the graywolf-api — hide the whole
+  // section alongside the APRS card when APRS/GrayWolf isn't installed (e.g. the
+  // portable build, where APRS is gated off entirely).
+  if (id === 'aprs') { const s = document.getElementById('aprs-live'); if (s) els.push(s); }
   // Winlink also drives three static pages (position reports, radio settings,
   // Winlink→position) — hide their nav links when Winlink isn't installed.
   if (id === 'winlink') {
@@ -1722,8 +1729,9 @@ async function loadInstalled() {
   let features = null;
   try {
     const r = await fetch('/api/installed-services', { cache: 'no-store' });
-    if (r.ok) { const d = await r.json(); features = d.features; }
+    if (r.ok) { const d = await r.json(); features = d.features; _locked = !!d.locked; }
   } catch (_) {}
+  if (_locked) _showHidden = false;              // locked build: never reveal hidden cards
   HIDDEN_SVCS.clear();
   _hiddenEls = [];
   if (Array.isArray(features)) {                 // null/absent → show all
@@ -1738,7 +1746,7 @@ async function loadInstalled() {
   }
   applyHidden();
   const btn = document.getElementById('svc-showall-btn');
-  if (btn) btn.style.display = _hiddenEls.length ? '' : 'none';
+  if (btn) btn.style.display = (!_locked && _hiddenEls.length) ? '' : 'none';
 }
 
 function applyHidden() {
@@ -2320,6 +2328,7 @@ function applyAprsFilter() {
 }
 
 async function fetchAPRS() {
+  if (HIDDEN_SVCS.has('aprs')) return;   // APRS gated off (e.g. portable build) — don't poll or paint
   const tbody = document.getElementById('aprs-tbody');
   const title = document.getElementById('aprs-title');
   const setTitle = (live) => {

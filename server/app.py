@@ -46,6 +46,29 @@ VERSION_FILE = os.path.join(SUITE_ROOT, "version.json")
 # services that were never installed. Absent file → show everything.
 INSTALLED_SERVICES_FILE = os.path.join(SUITE_ROOT, "installed-services.json")
 
+# Portable / "locked" profile. When OASIS_FEATURES is set (comma-separated
+# feature keys, e.g. "fcc,forms,repeaterbook"), the suite runs as a read-mostly
+# standalone-tools build straight off a USB stick: /api/installed-services
+# reports exactly this list with locked=True (so the dashboard shows only these
+# gated cards AND hides the "show not installed" reveal button), and the routes
+# for the daemon-backed features left out are refused (see _portable_gate).
+# Absent/empty → None → normal behaviour (read installed-services.json).
+# run-portable.command sets this before launching the server.
+_portable_env = os.environ.get("OASIS_FEATURES", "").strip()
+PORTABLE_FEATURES = (
+    sorted({f.strip() for f in _portable_env.split(",") if f.strip()})
+    if _portable_env else None
+)
+
+# In portable mode, refuse the URL prefixes for daemon-backed features that were
+# left out of PORTABLE_FEATURES — both the JSON proxies and their static pages.
+# Keeps a locked USB build from exposing a Winlink/APRS surface whose backing
+# services (pat, direwolf, graywolf-api) are not running. Feature key → prefixes.
+_PORTABLE_BLOCK = {
+    "winlink":  ("/api/winlink", "/server/winlink"),
+    "graywolf": ("/api/aprs", "/server/aprs"),
+}
+
 # Operator-placed map warnings (flood/fire/etc.) shared across every device that
 # views the APRS map. Small JSON list on disk; serialized writes via a lock.
 # Runtime state, not repo content — gitignored.
@@ -88,6 +111,20 @@ ZIP_TABLE = lookup.load_zip_table()
 # dashboard's) alone and only adds the floating one when none exists.
 _THEME_SKIP_PREFIXES = ("/small-screen/", "/server/aprs/", "/static/graywolf-handbook/")
 _THEME_SNIPPET = '<script src="/static/theme.js"></script>'
+
+
+@app.before_request
+def _portable_gate():
+    """In portable mode, 404 the Winlink/APRS surfaces (API + pages) for any
+    daemon-backed feature not in PORTABLE_FEATURES. No-op when unlocked."""
+    if PORTABLE_FEATURES is None:
+        return None
+    allowed = set(PORTABLE_FEATURES)
+    path = request.path or "/"
+    for feat, prefixes in _PORTABLE_BLOCK.items():
+        if feat not in allowed and any(path.startswith(p) for p in prefixes):
+            return jsonify({"ok": False, "error": "disabled in portable mode"}), 404
+    return None
 
 
 @app.after_request
@@ -1641,7 +1678,14 @@ def api_installed_services():
 
     Returns {"ok": True, "features": [...]} when the manifest exists, or
     {"ok": True, "features": None} when it's absent/unreadable — the dashboard
-    treats a null list as “no manifest” and shows every card."""
+    treats a null list as “no manifest” and shows every card.
+
+    Portable mode (OASIS_FEATURES set) overrides the on-disk manifest: it
+    returns exactly that list with locked=True, so the dashboard shows only
+    these cards and hides the reveal button. Nothing is written to disk."""
+    if PORTABLE_FEATURES is not None:
+        return jsonify({"ok": True, "locked": True,
+                        "features": PORTABLE_FEATURES})
     try:
         with open(INSTALLED_SERVICES_FILE) as fh:
             data = json.load(fh)
