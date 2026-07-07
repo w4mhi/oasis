@@ -315,8 +315,78 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 
 /* Active state for the Grid / Measure toggles (mirrors #autoFlyBtn.on) */
 #gridBtn.on,#measureBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
+/* Station-list toggle — floating hamburger glyph at the map's top-left corner */
+#listBtn{
+  position:fixed;top:83px;left:10px;z-index:200;
+  width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+  background:var(--panel);border:1px solid var(--border);border-radius:7px;
+  color:var(--text);font-size:18px;line-height:1;cursor:pointer;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+#listBtn:hover{background:var(--panel-2);border-color:var(--accent-dim);}
+#listBtn.on{color:var(--accent);border-color:var(--accent-dim);}
 /* Crosshair cursor while measuring */
 #map.measuring .maplibregl-canvas{cursor:crosshair;}
+
+/* ── Full station-list drawer (bottom, resizable) ────────────────────────────
+   Toggled by the "List" button. When open, the map shrinks to make room and the
+   drawer occupies the bottom --list-h of the viewport. A grab handle on the top
+   edge drag-resizes the split. Data is the same filtered set the map plots, so
+   there is no extra polling. */
+:root{--list-h:25vh;}
+body.list-open #map{bottom:var(--list-h);}
+#aprs-list-drawer{
+  display:none;position:fixed;left:0;right:0;bottom:0;height:var(--list-h);z-index:210;
+  background:var(--panel);border-top:1px solid var(--border);
+  box-shadow:0 -3px 12px rgba(0,0,0,.5);
+  flex-direction:column;font-family:var(--mono);
+}
+body.list-open #aprs-list-drawer{display:flex;}
+/* Drag handle straddles the top edge (a little taller than the border for grab). */
+#aprs-list-resize{
+  position:absolute;top:-3px;left:0;right:0;height:7px;cursor:ns-resize;z-index:2;
+}
+#aprs-list-resize::after{
+  content:"";position:absolute;top:3px;left:50%;transform:translateX(-50%);
+  width:44px;height:3px;border-radius:2px;background:var(--border);
+}
+#aprs-list-resize:hover::after{background:var(--accent-dim);}
+body.list-resizing{cursor:ns-resize;user-select:none;}
+body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
+#aprs-list-head{
+  display:flex;align-items:center;gap:.6rem;padding:5px 12px;
+  border-bottom:1px solid var(--border);flex-shrink:0;
+}
+#aprs-list-head .title{color:var(--amber);font-weight:700;letter-spacing:.04em;white-space:nowrap;}
+#aprs-list-head .count{color:var(--text-dim);font-size:var(--fs-micro);}
+#aprs-list-head .spacer{flex:1;}
+#aprs-list-close{
+  background:var(--bg);border:1px solid var(--border);color:var(--text-dim);
+  font-family:var(--mono);font-size:var(--fs-small);padding:1px 8px;border-radius:4px;cursor:pointer;
+}
+#aprs-list-close:hover{border-color:var(--accent-dim);color:var(--text);}
+#aprs-list-scroll{flex:1;overflow-y:auto;}
+#aprs-list-table{width:100%;border-collapse:collapse;font-size:var(--fs-small);white-space:nowrap;}
+#aprs-list-table thead th{
+  position:sticky;top:0;z-index:1;background:var(--panel-2);color:var(--text-dim);
+  text-align:left;font-weight:600;letter-spacing:.03em;padding:4px 10px;
+  border-bottom:1px solid var(--border);
+}
+#aprs-list-table td{padding:3px 10px;border-bottom:1px solid var(--border-dim,rgba(255,255,255,.05));}
+#aprs-list-table tbody tr{cursor:pointer;}
+#aprs-list-table tbody tr:hover{background:var(--panel-2);}
+#aprs-list-table tbody tr.active{background:rgba(255,210,87,.12);box-shadow:inset 3px 0 0 var(--amber);}
+.al-call{color:var(--accent);font-weight:700;}
+.al-call.is{color:var(--blue);}
+.al-src{font-weight:700;}
+.al-src.rf{color:var(--accent);}
+.al-src.is{color:var(--blue);}
+.al-dim{color:var(--text-dim);}
+.al-cmt{max-width:280px;overflow:hidden;text-overflow:ellipsis;color:var(--text-dim);}
+.al-age.age-ok{color:var(--accent);}
+.al-age.age-warn{color:var(--amber);}
+.al-age.age-old{color:var(--text-dim);}
+.al-empty{padding:14px 12px;color:var(--text-dim);}
 
 /* Warnings panel (operator-placed flood/fire/etc.) — red accent twin of coverage */
 #warnings-panel{
@@ -513,6 +583,33 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 </div>
 
 <div id="map"></div>
+
+<!-- Station-list toggle — floating hamburger at the map's top-left corner.
+     Keeps the control discoverable across the narrow topbar views. -->
+<button id="listBtn" onclick="toggleAprsList()" title="Show/hide the full station list along the bottom of the map" aria-label="Toggle station list">☰</button>
+
+<!-- Full station-list drawer (bottom, resizable) — mirrors the map's filtered
+     set; toggled by the "List" button. Drag the top edge to resize the split. -->
+<div id="aprs-list-drawer">
+  <div id="aprs-list-resize" title="Drag to resize"></div>
+  <div id="aprs-list-head">
+    <span class="title">STATIONS</span>
+    <span class="count" id="aprs-list-count">0</span>
+    <span class="spacer"></span>
+    <button id="aprs-list-close" onclick="toggleAprsList(false)" title="Close list">✕</button>
+  </div>
+  <div id="aprs-list-scroll">
+    <table id="aprs-list-table">
+      <thead>
+        <tr>
+          <th>Call</th><th>Last heard</th><th>Age</th><th>Speed</th>
+          <th>Alt</th><th>Grid</th><th>Dist</th><th>Src</th><th>Comment</th>
+        </tr>
+      </thead>
+      <tbody id="aprs-list-tbody"></tbody>
+    </table>
+  </div>
+</div>
 
 <!-- Base map attribution (bottom-right) — click to load a different .pmtiles -->
 <div id="basemap-info" title="Click to load a different offline base map (.pmtiles on the Pi or a USB drive)"></div>
@@ -1295,6 +1392,7 @@ function applyFilter() {
   // Callsign filter (prefix / * wildcard) + movers-only toggle
   filtered = filtered.filter(s => callMatches(s.callsign) && (!movingOnly || (s.speed_mph > 0)));
   plotStations(filtered);
+  if (aprsListOpen) renderAprsList(filtered);   // bottom list mirrors the map
   if (coverageOn) _refreshCoverage(filtered);
   const total = allStations.length;
   const shown = filtered.length;
@@ -1886,11 +1984,168 @@ function recentRowClick(callsign) {
   showTrack(callsign);
 }
 
+// ── Full station-list drawer (bottom, resizable) ─────────────────────────────
+// Renders the same filtered set the map plots (fed from applyFilter), so it
+// needs no extra polling. Units follow the dashboard's oasis_units preference.
+let aprsListOpen = false;
+const _listImperial = () => (localStorage.getItem('oasis_units') || 'imperial') === 'imperial';
+
+function _listAlt(m) {
+  if (m == null) return '';
+  return _listImperial()
+    ? Math.round(m * 3.28084).toLocaleString() + ' ft'
+    : Math.round(m).toLocaleString() + ' m';
+}
+function _listSpeed(mph) {
+  if (mph == null || mph <= 0) return '';
+  return _listImperial() ? mph + ' mph' : Math.round(mph * 1.60934) + ' km/h';
+}
+function _listGrid(lat, lon) {
+  if (lat == null || lon == null) return '';
+  let la = parseFloat(lat), lo = parseFloat(lon);
+  if (isNaN(la) || isNaN(lo)) return '';
+  lo += 180; la += 90;
+  const c1 = String.fromCharCode(65 + Math.floor(lo / 20));
+  const c2 = String.fromCharCode(65 + Math.floor(la / 10));
+  lo %= 20; la %= 10;
+  const n1 = Math.floor(lo / 2);
+  const n2 = Math.floor(la);
+  lo %= 2; la %= 1;
+  const c3 = String.fromCharCode(97 + Math.floor(lo / (2 / 24)));
+  const c4 = String.fromCharCode(97 + Math.floor(la / (1 / 24)));
+  return c1 + c2 + n1 + n2 + c3 + c4;
+}
+// Distance + bearing from the local station (myPos). Empty when home unknown.
+function _listDist(lat, lon) {
+  if (!myPos || lat == null || lon == null) return '';
+  const p1 = myPos.lat * Math.PI / 180, p2 = parseFloat(lat) * Math.PI / 180;
+  const dphi = (parseFloat(lat) - myPos.lat) * Math.PI / 180;
+  const dl   = (parseFloat(lon) - myPos.lon) * Math.PI / 180;
+  const a = Math.sin(dphi / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  const dMi = 2 * 3958.8 * Math.asin(Math.min(1, Math.sqrt(a)));
+  if (dMi < 0.1) return 'here';
+  const yb = Math.sin(dl) * Math.cos(p2);
+  const xb = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+  const bear = (Math.atan2(yb, xb) * 180 / Math.PI + 360) % 360;
+  const card = ['N','NE','E','SE','S','SW','W','NW'][Math.round(bear / 45) % 8];
+  if (_listImperial()) return (dMi < 100 ? dMi.toFixed(1) : Math.round(dMi)) + 'mi ' + card;
+  const dKm = dMi * 1.60934;
+  return (dKm < 100 ? dKm.toFixed(1) : Math.round(dKm)) + 'km ' + card;
+}
+// ISO age → {text, cls}. Distinct from fmtAge(sec) above (different signature).
+function _listAge(iso) {
+  if (!iso) return { text: '—', cls: '' };
+  const sec = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (sec < 0)    return { text: 'just now', cls: 'age-ok' };
+  if (sec < 3600) { const m = Math.floor(sec / 60); return { text: m + 'm ago', cls: m < 30 ? 'age-ok' : 'age-warn' }; }
+  const h = Math.floor(sec / 3600);
+  return { text: h + 'h ago', cls: h < 8 ? 'age-warn' : 'age-old' };
+}
+function _listLastHeard(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return _escHtml(iso);
+  const utc = d.toISOString().replace('T', ' ').slice(0, 16) + 'Z';
+  const z = v => String(v).padStart(2, '0');
+  return utc + ' <span class="al-dim">[' + z(d.getHours()) + ':' + z(d.getMinutes()) + ']</span>';
+}
+
+// Render the drawer table from a station list (already filtered by applyFilter).
+function renderAprsList(stations) {
+  const tbody = document.getElementById('aprs-list-tbody');
+  const countEl = document.getElementById('aprs-list-count');
+  if (!tbody) return;
+  countEl.textContent = stations.length + (stations.length === 1 ? ' station' : ' stations');
+  if (!stations.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="al-empty">No stations match the current filters.</td></tr>';
+    return;
+  }
+  const sorted = [...stations].sort((a, b) =>
+    (b.last_heard || '').localeCompare(a.last_heard || ''));
+  tbody.innerHTML = sorted.map(s => {
+    const src = _stationSource(s);
+    const age = _listAge(s.last_heard);
+    const courseNum = (s.course != null && s.speed_mph > 0) ? Math.round(s.course) : null;
+    const courseFmt = courseNum != null
+      ? ' <span style="display:inline-block;transform:rotate(' + courseNum + 'deg)">↑</span> '
+        + ['N','NE','E','SE','S','SW','W','NW'][Math.round(courseNum / 45) % 8] + ' ' + courseNum + '°'
+      : '';
+    const active = (activeTrack === s.callsign) ? ' class="active"' : '';
+    return '<tr' + active + ' data-call="' + _escHtml(s.callsign) + '" onclick="recentRowClick(\'' + _escHtml(s.callsign) + '\')">'
+      + '<td><span class="al-call ' + src + '">' + _escHtml(s.callsign)
+        + (s.is_object ? ' <span style="color:var(--amber)">[obj]</span>' : '') + '</span></td>'
+      + '<td>' + _listLastHeard(s.last_heard) + '</td>'
+      + '<td class="al-age ' + age.cls + '">' + age.text + '</td>'
+      + '<td>' + _listSpeed(s.speed_mph) + courseFmt + '</td>'
+      + '<td>' + _listAlt(s.alt_m) + '</td>'
+      + '<td class="al-dim">' + _listGrid(s.lat, s.lon) + '</td>'
+      + '<td class="al-dim">' + _listDist(s.lat, s.lon) + '</td>'
+      + '<td class="al-src ' + src + '">' + src.toUpperCase() + '</td>'
+      + '<td class="al-cmt">' + _escHtml(s.comment || '') + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+// Toggle the active-track highlight on drawer rows without a full re-render.
+function _syncListActive() {
+  if (!aprsListOpen) return;
+  document.querySelectorAll('#aprs-list-tbody tr[data-call]').forEach(tr => {
+    tr.classList.toggle('active', tr.getAttribute('data-call') === activeTrack);
+  });
+}
+
+// Open/close the drawer. Resizes the map so MapLibre repaints into the new size.
+function toggleAprsList(force) {
+  aprsListOpen = (force === undefined) ? !aprsListOpen : !!force;
+  document.body.classList.toggle('list-open', aprsListOpen);
+  document.getElementById('listBtn').classList.toggle('on', aprsListOpen);
+  if (aprsListOpen) applyFilter();          // paint immediately from current set
+  // Let the layout settle, then tell MapLibre its canvas changed size.
+  requestAnimationFrame(() => { if (map) map.resize(); });
+}
+
+// Drag-resize the split. Updates --list-h (clamped) and resizes the map live.
+(function initListResize() {
+  const handle = document.getElementById('aprs-list-resize');
+  if (!handle) return;
+  let dragging = false, raf = 0;
+  const MIN = 0.12, MAX = 0.70;             // fraction of viewport height
+  const onMove = e => {
+    if (!dragging) return;
+    const fromBottom = window.innerHeight - e.clientY;
+    const h = Math.max(window.innerHeight * MIN, Math.min(window.innerHeight * MAX, fromBottom));
+    document.documentElement.style.setProperty('--list-h', h + 'px');
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; if (map) map.resize(); });
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove('list-resizing');
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    if (map) map.resize();
+    try { localStorage.setItem('aprs_list_h', getComputedStyle(document.documentElement).getPropertyValue('--list-h').trim()); } catch (_) {}
+  };
+  handle.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    dragging = true;
+    document.body.classList.add('list-resizing');
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+  // Restore last drag height (open state is intentionally not persisted).
+  try {
+    const saved = localStorage.getItem('aprs_list_h');
+    if (saved) document.documentElement.style.setProperty('--list-h', saved);
+  } catch (_) {}
+})();
+
 async function showTrack(callsign) {
   // Toggle off if clicking the already-active track
   if (activeTrack === callsign) { clearTrack(); return; }
   activeTrack = callsign;
   document.getElementById('clearTrackBtn').style.display = '';
+  _syncListActive();
   await _loadTrack(callsign);
 }
 
@@ -1955,6 +2210,7 @@ function clearTrack() {
   activeTrack = null;
   _trackStatusMsg = '';
   document.getElementById('clearTrackBtn').style.display = 'none';
+  _syncListActive();
   setTrackMsg('');
   if (map.getSource('aprs-track')) {
     map.getSource('aprs-track').setData({ type: 'FeatureCollection', features: [] });
