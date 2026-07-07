@@ -242,8 +242,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .recent-src{font-size:var(--fs-micro);font-weight:700;letter-spacing:.03em;
   padding:0 4px;border-radius:3px;border:1px solid var(--border);}
 .recent-src.rf{color:var(--accent);border-color:var(--accent-dim);}
-.recent-src.is{color:var(--blue);}
+.recent-src.is{color:var(--blue);border-color:var(--blue);}
 .recent-age{color:var(--text-dim);font-size:var(--fs-micro);margin-left:auto;}
+/* Auto-path source filters — chip toggles atop the panel, styled like the
+   per-row RF/IS source chips above. Dimmed (.off) when that path is filtered. */
+#recent-filters{display:flex;align-items:center;gap:.4rem;padding:5px 10px;border-top:1px solid var(--border);}
+#recent-panel.collapsed #recent-filters{display:none;}
+.recent-filter-lbl{color:var(--text-dim);font-size:var(--fs-micro);letter-spacing:.03em;margin-right:.1rem;}
+.recent-filter-chip{font-size:var(--fs-micro);font-weight:700;letter-spacing:.03em;
+  padding:0 4px;border-radius:3px;border:1px solid var(--border);cursor:pointer;user-select:none;}
+.recent-filter-chip.rf{color:var(--accent);border-color:var(--accent-dim);}
+.recent-filter-chip.is{color:var(--blue);border-color:var(--blue);}
+.recent-filter-chip.off{color:var(--text-dim);border-color:var(--border);opacity:.5;}
 
 /* Map-layer toggle panel (collapsible, stacked beneath the stations panel) */
 #layer-panel{
@@ -640,6 +650,17 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
     <div id="recent-header" onclick="toggleRecentPanel()">
       <span id="recent-arrow">▾</span>
       <span id="recent-count">0 heard</span>
+    </div>
+    <!-- Auto-path source filters — chip toggles matching the RF/IS row chips
+         below. Gate which lines auto-path draws (RF: purple+green · IS: blue). -->
+    <div id="recent-filters" title="Show/hide these paths when Auto-path is on">
+      <span class="recent-filter-lbl">Paths filter</span>
+      <span id="pathChipRF" class="recent-filter-chip rf" role="button" tabindex="0"
+            aria-pressed="true" onclick="togglePathFilter('rf')"
+            onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();togglePathFilter('rf');}">RF</span>
+      <span id="pathChipIS" class="recent-filter-chip is" role="button" tabindex="0"
+            aria-pressed="true" onclick="togglePathFilter('is')"
+            onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();togglePathFilter('is');}">IS</span>
     </div>
     <div id="recent-body"></div>
   </div>
@@ -1391,6 +1412,11 @@ function applyFilter() {
   filtered = filtered.filter(s => objCatState[aprsCategory(s).key] !== false);
   // Callsign filter (prefix / * wildcard) + movers-only toggle
   filtered = filtered.filter(s => callMatches(s.callsign) && (!movingOnly || (s.speed_mph > 0)));
+  // Source chips (RF/IS atop the Last-heard panel): hide a source's stations
+  // from the map + list when its chip is switched off — parity with index.html.
+  if (!pathRF || !pathIS) {
+    filtered = filtered.filter(s => _stationSource(s) === 'is' ? pathIS : pathRF);
+  }
   plotStations(filtered);
   if (aprsListOpen) renderAprsList(filtered);   // bottom list mirrors the map
   if (coverageOn) _refreshCoverage(filtered);
@@ -1688,6 +1714,7 @@ loadConfig().then(() => {
 
     fetchStations();
     loadStationCfg(); // resolve local station position → render the home node
+    _syncPathChips(); // reflect any persisted RF/IS path-filter state on the chips
   });
 });
 
@@ -1772,6 +1799,11 @@ let _focusHandled = false;
 let activePath = null;     // callsign whose RF path is currently drawn
 let _pathStatusMsg = '';   // persists across refreshes for popup re-show
 let autoPath = false;      // when on, auto-draw the latest-heard station's path
+// Auto-path source filters (chip toggles atop the "Last heard" panel). RF gates
+// purple digipeated chains + green direct-to-home lines; IS gates blue direct
+// lines. Default on; persisted so the choice survives reloads.
+let pathRF = localStorage.getItem('oasis_path_rf') !== '0';
+let pathIS = localStorage.getItem('oasis_path_is') !== '0';
 let pathMarkers = [];      // glowing DOM markers for path receiver node(s)
 let coverageOn = false;    // when on, draw the filter-aware reach-fan
 let covMarkers = [];       // glowing DOM markers for coverage receiver node(s)
@@ -1794,6 +1826,25 @@ function toggleAutoPath() {
   } else {
     clearPath();
   }
+}
+
+// Flip an auto-path source filter (RF or IS), persist it, restyle the chip, and
+// redraw immediately if auto-path is live.
+function togglePathFilter(src) {
+  if (src === 'rf') { pathRF = !pathRF; localStorage.setItem('oasis_path_rf', pathRF ? '1' : '0'); }
+  else              { pathIS = !pathIS; localStorage.setItem('oasis_path_is', pathIS ? '1' : '0'); }
+  _syncPathChips();
+  applyFilter();               // hide/show that source's stations on the map + list
+  if (autoPath) _refreshAutoPaths();
+}
+
+// Reflect pathRF/pathIS on the chip toggles atop the Last-heard panel — full
+// colour when on, dimmed (.off) when filtered out.
+function _syncPathChips() {
+  const rf = document.getElementById('pathChipRF');
+  const is = document.getElementById('pathChipIS');
+  if (rf) { rf.classList.toggle('off', !pathRF); rf.setAttribute('aria-pressed', pathRF ? 'true' : 'false'); }
+  if (is) { is.classList.toggle('off', !pathIS); is.setAttribute('aria-pressed', pathIS ? 'true' : 'false'); }
 }
 
 // Coverage: a filter-aware "reach fan" — a straight, faint amber line from every
@@ -2309,33 +2360,41 @@ function buildPathFeatures(s, opts) {
     nodes.push({ lon: hit.lon, lat: hit.lat, label: hit.callsign });
   }
 
+  // Source-gated drawing. RF paths (purple digipeated chain, its hop dots, and
+  // the '?' incomplete marker) draw only when opts.rf; the direct-to-home line
+  // draws green when heard over RF (needs opts.rf) or blue when gated in via
+  // APRS-IS (needs opts.is). The per-station click view passes both true; the
+  // auto-path view passes the panel's RF/IS filter states.
+  const showRF = !!opts.rf, showIS = !!opts.is;
   const features = [];
-  if (nodes.length >= 2) {
-    features.push({ type: 'Feature', properties: {},
-      geometry: { type: 'LineString', coordinates: nodes.map(n => [n.lon, n.lat]) } });
+  if (showRF) {
+    if (nodes.length >= 2) {
+      features.push({ type: 'Feature', properties: {},
+        geometry: { type: 'LineString', coordinates: nodes.map(n => [n.lon, n.lat]) } });
+    }
+    // Hop nodes (skip the origin — it already has its station marker). The last
+    // plotted hop is the receiver/closest node — emphasized with a white core.
+    nodes.forEach((n, i) => {
+      if (i === 0) return;
+      const isLast = (i === nodes.length - 1);
+      features.push({ type: 'Feature', properties: { kind: isLast ? 'receiver' : 'hop', label: n.label },
+        geometry: { type: 'Point', coordinates: [n.lon, n.lat] } });
+    });
+    // Digipeated, but no hop could be located — mark the origin with a '?'.
+    if (nodes.length < 2 && usedHops > 0) {
+      features.push({ type: 'Feature', properties: { kind: 'incomplete', label: '?' },
+        geometry: { type: 'Point', coordinates: [s.lon, s.lat] } });
+    }
   }
-  // Hop nodes (skip the origin — it already has its station marker). The last
-  // plotted hop is the receiver/closest node — emphasized with a white core.
-  nodes.forEach((n, i) => {
-    if (i === 0) return;
-    const isLast = (i === nodes.length - 1);
-    features.push({ type: 'Feature', properties: { kind: isLast ? 'receiver' : 'hop', label: n.label },
-      geometry: { type: 'Point', coordinates: [n.lon, n.lat] } });
-  });
-  // Digipeated, but no hop could be located — mark the origin with a '?'.
-  if (nodes.length < 2 && usedHops > 0) {
-    features.push({ type: 'Feature', properties: { kind: 'incomplete', label: '?' },
-      geometry: { type: 'Point', coordinates: [s.lon, s.lat] } });
-  }
-  // Truly direct-heard (nothing relayed it): optionally draw a straight line to
-  // the local station ("home"), coloured by source — green RF, blue IS. Only
-  // when a home position is known and the origin isn't ourselves. opts.direct:
-  //   'both' → RF + IS (per-station view) · 'rf' → RF only (bulk/coverage view).
+  // Truly direct-heard (nothing relayed it): draw a straight line to the local
+  // station ("home"), coloured by source — green RF, blue IS — but only when a
+  // home position is known, the origin isn't ourselves, and that source's
+  // filter is enabled.
   let direct = null;
   const meCall = (_stationCfg && _stationCfg.callsign) ? String(_stationCfg.callsign).toUpperCase() : '';
-  if (opts.direct && usedHops === 0 && myPos && String(s.callsign).toUpperCase() !== meCall) {
+  if (usedHops === 0 && myPos && String(s.callsign).toUpperCase() !== meCall) {
     const srcTag = _stationSource(s);
-    if (srcTag === 'rf' || opts.direct === 'both') {
+    if ((srcTag === 'rf' && showRF) || (srcTag === 'is' && showIS)) {
       direct = srcTag;
       features.push({ type: 'Feature', properties: { kind: 'direct', src: srcTag },
         geometry: { type: 'LineString', coordinates: [[s.lon, s.lat], [myPos.lon, myPos.lat]] } });
@@ -2352,7 +2411,7 @@ function showPath(callsign) {
 
 function _refreshPath(fit) {
   const s = allStations.find(x => x.callsign === activePath);
-  const res = s ? buildPathFeatures(s, { direct: 'both' }) : null;
+  const res = s ? buildPathFeatures(s, { rf: true, is: true }) : null;
   const src = map.getSource('aprs-path');
   if (src) src.setData({ type: 'FeatureCollection', features: res ? res.features : [] });
   _renderPathRxMarkers(res ? res.features : []);
@@ -2434,8 +2493,8 @@ function _refreshAutoPaths() {
   const features = [];
   const seen = new Set();
   calls.forEach(s => {
-    const res = buildPathFeatures(s);
-    if (!res || res.hops === 0) return;
+    const res = buildPathFeatures(s, { rf: pathRF, is: pathIS });
+    if (!res || !res.features.length) return;
     res.features.forEach(f => {
       if (f.geometry.type === 'Point') {
         const key = f.geometry.coordinates.join(',') + '|' + f.properties.kind + '|' + f.properties.label;
