@@ -5,6 +5,7 @@ __pycache__/
 *.pyo
 .claude/*
 specs/
+tests/__pycache__/
 
 # Per-machine runtime state — written by setup-oasis.py (which features are
 # installed); the dashboard reads it to hide not-installed service cards.
@@ -30,23 +31,19 @@ mock-up/
 *.mbtiles
 *.pmtiles
 
-# pmtiles CLI binary — downloaded manually into maps/ for local conversion use,
-# and vendored per-platform into the bundle by create-oasis-offline.py.
-maps/pmtiles
-maps/pmtiles-*
-
 # PDF radio manuals — large and license-encumbered; distributed separately.
-# Drop your own PDFs into radio-manuals/ on the target machine. The whole
+# Drop your own PDFs into static/radio-manuals/ on the target machine. The whole
 # folder is excluded (PDFs and any other binaries) except this README.
-radio-manuals/*
-!radio-manuals/README.md
-
-# FCC offline database — directory is created locally by setup-fcc-database.py
-# and populated in oasis-offline/ by create-oasis-offline.py. Nothing is checked in.
-fcc-offline-database/
+static/radio-manuals/*
+!static/radio-manuals/README.md
 
 # Wikipedia ZIM files — downloaded by scripts/download-wikipedia.py.
 *.zim
+
+# FCC amateur-radio database — built by scripts/install-fcc-database.py into
+# fcc-offline-database/data/ (see server/lookup.py). Large, and the raw FCC dump
+# carries licensee names/addresses — never checked in; each machine builds its own.
+fcc-offline-database/
 
 # Scratch / temporary files
 temp/
@@ -63,13 +60,19 @@ server/wheels/*.whl
 offline-packages/
 
 # M5Stack CM4Stack overlay — fetched at build time / dropped manually, never committed.
-cm4stack/overlays/*.dtbo
+displays/cm4stack/overlays/*.dtbo
 
 # RepeaterBook data .
-repeaterbook/*.csv
+static/repeaterbook/*.csv
+static/chirp/*.csv
+!static/chirp/chirp-sample.csv
+
+# ICS-205 saved plans — written at runtime by /api/save-ics205, never committed.
+static/ics-205/saved/
 
 # Personal Claude Code instructions (private)
 CLAUDE.local.md
+docs/superpowers/*
 
 # Local Claude Code settings (private hooks/permissions)
 .claude/settings.local.json

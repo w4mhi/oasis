@@ -1,0 +1,12 @@
+# Vendored Waveshare driver (third-party; drop in per README, not committed)
+waveshare_epd/
+
+# Dev artifacts
+preview.png
+winlink-seen.json
+weather-cache.json
+weather-secrets.json
+__pycache__/
+*.pyc
+.venv/
+venv/

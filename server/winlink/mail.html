@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Winlink Mail • OASIS</title>
+  <link rel="stylesheet" href="../../css/common.css">
+<style>
+  /* ── Connect / status bar ─────────────────────────────────── */
+  .conn-bar { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  .conn-bar #connSel { width:auto; min-width:200px; max-width:340px; }
+  .conn-bar .conn-state { margin-right:.2rem; }
+  .conn-build { display:inline-flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  .conn-build select, .conn-build input { width:auto; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--text-dim);
+         display:inline-block; flex:0 0 auto; }
+  .dot.up   { background:var(--accent); box-shadow:0 0 6px var(--accent); }
+  .dot.busy { background:var(--amber);  box-shadow:0 0 6px var(--amber); }
+  .dot.down { background:var(--red); }
+  .conn-state { font-size:var(--fs-small); color:var(--text-dim); }
+
+  /* ── Layout: folders + inbox on top, message window full-width below ──── */
+  .mail-grid {
+    display:grid; gap:.75rem; align-items:start;
+    grid-template-columns: 200px 1fr;
+    grid-template-areas:
+      "folders list"
+      "reader  reader";
+  }
+  .folders-panel { grid-area:folders; }
+  .list-panel    { grid-area:list; }
+  .reader-panel  { grid-area:reader; }
+  @media (max-width: 900px) {
+    .mail-grid {
+      grid-template-columns: 1fr;
+      grid-template-areas: "folders" "list" "reader";
+    }
+  }
+  /* Inbox list scrolls within a capped height. */
+  .list-panel .tbl-wrap { max-height:38vh; overflow-y:auto; }
+  /* Message window scrolls its body if the message is long. */
+  .reader .body { max-height:48vh; overflow-y:auto; }
+
+  /* Themed scrollbars — match the rest of OASIS (see server/aprs/map.html), replacing
+     the OS default on every scroll container on this page. */
+  .list-panel .tbl-wrap::-webkit-scrollbar,
+  .reader .body::-webkit-scrollbar,
+  .console::-webkit-scrollbar,
+  .gw-tbl::-webkit-scrollbar { width:10px; height:10px; }
+  .list-panel .tbl-wrap::-webkit-scrollbar-track,
+  .reader .body::-webkit-scrollbar-track,
+  .console::-webkit-scrollbar-track,
+  .gw-tbl::-webkit-scrollbar-track { background:transparent; }
+  .list-panel .tbl-wrap::-webkit-scrollbar-thumb,
+  .reader .body::-webkit-scrollbar-thumb,
+  .console::-webkit-scrollbar-thumb,
+  .gw-tbl::-webkit-scrollbar-thumb {
+    background-color:var(--accent-dim); border-radius:6px;
+    border:2px solid transparent; background-clip:padding-box;
+  }
+  .list-panel .tbl-wrap::-webkit-scrollbar-thumb:hover,
+  .reader .body::-webkit-scrollbar-thumb:hover,
+  .console::-webkit-scrollbar-thumb:hover,
+  .gw-tbl::-webkit-scrollbar-thumb:hover { background-color:var(--accent); }
+  /* Firefox fallback (no pseudo-elements there). */
+  .list-panel .tbl-wrap, .reader .body, .console, .gw-tbl {
+    scrollbar-width:thin; scrollbar-color:var(--accent-dim) transparent;
+  }
+
+  /* Folders */
+  .folders { list-style:none; display:flex; flex-direction:column; gap:2px; }
+  .folder {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:7px 10px; border-radius:6px; cursor:pointer;
+    font-size:var(--fs-base); color:var(--text); border:1px solid transparent;
+  }
+  .folder:hover { background:var(--panel-2); }
+  .folder.active { background:var(--panel-2); border-color:var(--accent-dim);
+                   color:var(--accent); }
+  .folder .count { font-size:var(--fs-micro); color:var(--text-dim); }
+  .folder.has-unread .fname { color:var(--text); font-weight:700; }
+  .folder .unread-n { color:var(--amber); font-weight:700; }
+  .list-head { display:flex; justify-content:space-between; align-items:center;
+               gap:.5rem; margin-bottom:.5rem; }
+  .list-filter { display:flex; gap:.5rem; align-items:center; margin-bottom:.5rem; }
+  .list-filter input[type=search] { flex:1; }
+  .list-filter .chk { display:flex; align-items:center; gap:.4rem; white-space:nowrap;
+                      font-size:var(--fs-small); color:var(--text-dim); cursor:pointer; }
+  /* OASIS-styled checkbox: dark box, green fill + black ✓ when checked. */
+  .chk input[type=checkbox] {
+    appearance:none; -webkit-appearance:none;
+    width:15px; height:15px; flex:0 0 auto; margin:0; cursor:pointer;
+    background:var(--bg); border:1px solid var(--border); border-radius:3px;
+    position:relative;
+  }
+  .chk input[type=checkbox]:hover { border-color:var(--text-dim); }
+  .chk input[type=checkbox]:checked { background:var(--accent); border-color:var(--accent); }
+  .chk input[type=checkbox]:checked::after {
+    content:"✓"; position:absolute; inset:0; line-height:13px; text-align:center;
+    color:#000; font-size:11px; font-weight:700;
+  }
+  .chk input[type=checkbox]:focus-visible { outline:none; border-color:var(--accent); }
+  .list-scan { font-size:var(--fs-small); color:var(--text-dim); font-style:italic;
+               padding:.35rem .1rem; }
+
+  /* Message list */
+  .msg-row { cursor:pointer; }
+  /* Left accent: new/unread = amber, read = green (fades after the read dwell). */
+  .msg-row td:first-child { border-left:2px solid transparent; transition:border-color .8s ease; }
+  .msg-row.unread td:first-child { border-left-color:var(--amber); }
+  .msg-row.read   td:first-child { border-left-color:var(--green); }
+  .msg-row .subj { color:var(--text); }
+  .msg-row .meta { color:var(--text-dim); font-size:var(--fs-small); }
+  .list-empty, .pane-empty {
+    text-align:center; padding:2rem 1rem; color:var(--text-dim);
+    font-style:italic;
+  }
+
+  /* Reader */
+  .reader { position:relative; }
+  .pane-close {
+    position:absolute; top:-.15rem; right:-.15rem;
+    background:none; border:none; cursor:pointer;
+    color:var(--text-dim); font-size:1rem; line-height:1; padding:.15rem .35rem;
+    border-radius:4px;
+  }
+  .pane-close:hover { color:var(--red); background:var(--panel-2); }
+  .reader h2 { font-size:var(--fs-title); color:var(--accent); margin-bottom:.4rem;
+               padding-right:1.5rem; word-break:break-word; }
+  .reader .hdr { font-size:var(--fs-small); color:var(--text-dim); margin-bottom:.15rem; }
+  .reader .body {
+    white-space:pre-wrap; word-break:break-word; margin-top:.8rem;
+    font-size:var(--fs-base); line-height:1.55;
+  }
+  .reader .attach { margin-top:.7rem; font-size:var(--fs-small); }
+  .reader .msg-map { margin-top:.7rem; }
+  .reader .attach-label { color:var(--amber); margin-bottom:.25rem; }
+  .attach-row { display:flex; align-items:center; gap:.5rem; padding:2px 0; }
+  .attach-row a { color:var(--accent); text-decoration:none; }
+  .attach-row a:hover { text-decoration:underline; }
+  .attach-size { color:var(--text-dim); font-size:var(--fs-micro); }
+  .attach-dl { margin-left:auto; font-size:.95rem; }
+
+  /* Compose */
+  .compose { position:relative; padding-top:1.1rem; }   /* room for the close ✕ */
+  .compose .field { margin-bottom:.6rem; }
+  .compose textarea { min-height:200px; }
+
+  /* Live session console */
+  .console-wrap { position:relative; margin-top:.6rem; }
+  .console {
+    background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
+    padding:.5rem 1.6rem .5rem .75rem; line-height:1.45;
+    /* ~5 lines tall, then scroll — a compact session-log pane (closeable) */
+    max-height:calc(1.45em * 5 + 1rem); overflow-y:auto;
+    /* Reserve the scrollbar gutter so the close ✕ (right:14px) always clears
+       the 10px themed scrollbar, whether or not the log is scrolling. */
+    scrollbar-gutter:stable;
+    font-size:var(--fs-small); white-space:pre-wrap; word-break:break-word;
+    color:var(--text-dim); font-family:var(--mono, ui-monospace, monospace);
+  }
+  .console-close {
+    position:absolute; top:4px; right:14px;
+    background:none; border:none; cursor:pointer; color:var(--text-dim);
+    font-size:.85rem; line-height:1; padding:2px 4px; border-radius:3px;
+  }
+  .console-close:hover { color:var(--red); background:var(--panel); }
+
+  /* RMS gateway panel */
+  .gw-head { display:flex; align-items:center; gap:.5rem; cursor:pointer; }
+  .gw-toggle { color:var(--text-dim); font-size:.9rem; }
+  .gw-controls { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;
+                 margin:.6rem 0; }
+  .gw-controls select, .gw-controls input[type=search] { width:auto; }
+  .gw-controls input[type=search] { flex:1; min-width:140px; }
+  .gw-tbl { max-height:40vh; overflow-y:auto; }
+  .gw-tbl th { cursor:pointer; position:sticky; top:0; background:var(--panel); }
+  .gw-tbl th:hover { color:var(--accent); }
+  .gw-q { font-weight:700; }
+  .gw-q.good { color:var(--green); } .gw-q.mid { color:var(--amber); }
+  .gw-q.low { color:var(--text-dim); }
+
+  /* Error banner */
+  .banner {
+    border:1px solid var(--red); border-radius:6px; color:var(--red);
+    background:rgba(255,107,107,.08); padding:.6rem .85rem; margin-bottom:.75rem;
+    font-size:var(--fs-small);
+  }
+  .banner.hidden { display:none; }
+
+  .pane-actions { display:flex; gap:.5rem; margin-bottom:.6rem; flex-wrap:wrap; }
+  /* Queued state: grey, non-interactive — overrides .sbtn.primary hover from common.css */
+  .sbtn:disabled, .sbtn:disabled:hover {
+    opacity:.5; cursor:default; color:var(--text-dim);
+    border-color:var(--border); background:transparent;
+  }
+</style>
+</head>
+<body>
+<div id="toast" class="toast"></div>
+<div class="wrap">
+  <header>
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">⌂ HOME</a>
+    </div>
+    <h1>Winlink Mail</h1>
+    <p>Compose, read, and send Winlink radio-email via Pat. Composed messages are
+       <em>queued</em> — press Connect to actually transmit.</p>
+  </header>
+
+  <div id="banner" class="banner hidden"></div>
+
+  <!-- Connect / status bar — single line -->
+  <div class="sec">
+    <div class="conn-bar">
+      <span id="dot" class="dot down"></span>
+      <span id="connState" class="conn-state">unknown</span>
+      <select id="connSel" title="Connection (saved + recent)"
+              onchange="onConnSelChange()"></select>
+      <button id="forgetBtn" class="sbtn" style="display:none" onclick="forgetConn()"
+              title="Remove this connection from the list">🗑</button>
+      <!-- Structured builder — inline, shown only when "New connection…" is picked -->
+      <span id="connBuild" class="conn-build" style="display:none">
+        <select id="bTransport" title="Transport / mode" onchange="onTransportChange()">
+          <option value="ardop">ARDOP</option>
+          <option value="varahf">VARA HF</option>
+          <option value="varafm">VARA FM</option>
+          <option value="pactor">PACTOR</option>
+          <option value="ax25">Packet</option>
+        </select>
+        <input type="text" id="bCall" placeholder="Gateway callsign" autocomplete="off"
+               style="width:9rem" title="Target RMS gateway callsign">
+        <input type="text" id="bFreq" placeholder="Freq kHz" autocomplete="off"
+               style="width:6.5rem" title="Dial frequency in kHz (HF modes)">
+      </span>
+      <button id="connectBtn" class="sbtn primary" onclick="doConnect()">⚡ Connect</button>
+      <button id="abortBtn" class="sbtn danger" style="display:none"
+              onclick="abortConnect()" title="Abort the in-progress session">■ Abort</button>
+      <button class="sbtn" onclick="refreshAll()" title="Refresh">↻</button>
+    </div>
+    <div id="consoleWrap" class="console-wrap" style="display:none">
+      <button class="console-close" onclick="clearConsole()" title="Clear session log"
+              aria-label="Clear session log">✕</button>
+      <div id="console" class="console"></div>
+    </div>
+  </div>
+
+  <!-- RMS gateway list — download while online, search/connect offline -->
+  <div class="sec">
+    <div class="gw-head" onclick="toggleGateways()">
+      <span class="sec-label" style="margin-bottom:0">Gateways</span>
+      <span id="gwToggle" class="gw-toggle">▸</span>
+    </div>
+    <div id="gwBody" style="display:none">
+      <div class="gw-controls">
+        <select id="gwMode" onchange="loadGatewaysCache()" title="Transport mode">
+          <option value="packet">Packet</option>
+          <option value="ardop">ARDOP</option>
+          <option value="vara">VARA</option>
+          <option value="varahf">VARA HF</option>
+          <option value="varafm">VARA FM</option>
+          <option value="pactor">PACTOR</option>
+        </select>
+        <button class="sbtn primary" onclick="updateGateways()"
+                title="Download the latest list (needs connectivity)">⬇ Update list</button>
+        <input type="search" id="gwSearch" placeholder="Search callsign / grid…"
+               oninput="renderGateways()" autocomplete="off">
+        <span id="gwStamp" class="conn-state"></span>
+      </div>
+      <div class="tbl-wrap gw-tbl">
+        <table>
+          <thead><tr>
+            <th onclick="sortGateways('callsign')">Callsign</th>
+            <th onclick="sortGateways('dial_khz')">Dial kHz</th>
+            <th>Mode</th>
+            <th onclick="sortGateways('distance')">Dist km</th>
+            <th onclick="sortGateways('link_quality')">Qual</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="gwList"></tbody>
+        </table>
+      </div>
+      <div id="gwEmpty" class="list-empty" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- Three-pane mail layout -->
+  <div class="mail-grid">
+    <!-- Folders -->
+    <div class="sec folders-panel">
+      <span class="sec-label">Mailboxes</span>
+      <ul id="folders" class="folders"></ul>
+      <button class="sbtn primary" style="width:100%;margin-top:.7rem"
+              onclick="showCompose()">Compose</button>
+    </div>
+
+    <!-- Message list -->
+    <div class="sec list-panel">
+      <div class="list-head">
+        <span class="sec-label" id="listLabel" style="margin-bottom:0">Inbox</span>
+        <button class="sbtn" onclick="markAllRead()" title="Mark every message in this folder read">✓ Mark all read</button>
+      </div>
+      <div class="list-filter">
+        <input type="search" id="msgSearch" placeholder="Search subject / callsign…"
+               oninput="renderList()" autocomplete="off">
+        <label class="chk" title="Show only unread messages">
+          <input type="checkbox" id="unreadOnly" onchange="renderList()"> Unread only
+        </label>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <tbody id="msgList"></tbody>
+        </table>
+      </div>
+      <div id="searchScan" class="list-scan" style="display:none">⏳ scanning message text…</div>
+      <div id="listEmpty" class="list-empty" style="display:none">No messages.</div>
+    </div>
+
+    <!-- Reader / Compose pane -->
+    <div class="sec reader-panel">
+      <span class="sec-label" id="paneLabel">Message</span>
+      <div id="pane">
+        <div class="pane-empty">Select a message, or press Compose.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="read-state.js"></script>
+<script>
+// ── Config ────────────────────────────────────────────────────────────────
+const API = "/api/winlink";
+const BOXES = [
+  { id: "in",      label: "Inbox"   },
+  { id: "out",     label: "Outbox"  },
+  { id: "sent",    label: "Sent"    },
+  { id: "archive", label: "Archive" },
+];
+let currentBox = "in";
+let _currentMsgs = [];   // messages for the loaded box (unfiltered)
+let _openMsg = null;     // the message object shown in the reader (for reply/fwd)
+let _composeAttachments = [];   // [{name,type,content}] to attach on the next send (e.g. ICS-205 form XML)
+// Body search: the mailbox LIST omits bodies, so we background-prefetch each
+// message's body into this IN-MEMORY cache (never localStorage — bodies are the
+// sensitive part). _prefetchGen is bumped on every box load to abandon a stale,
+// in-flight prefetch. Verified: fetching a message does NOT mark it read in Pat.
+const _bodyCache = new Map();   // mid -> body string
+let _prefetchGen = 0;
+let _prefetching = false;
+let statusTimer = null;
+
+// Read/unread state is shared with the dashboard via server/winlink/read-state.js
+// (window.WinlinkRead). A message is marked read once it's been open for
+// READ_DWELL_MS, fading its accent amber→green (mirrors the aprs map's
+// new→persistent settling).
+const READ_DWELL_MS = 3000;
+let _readTimer = null;
+
+// ── Small helpers ─────────────────────────────────────────────────────────
+function toast(msg, kind) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show " + (kind || "");
+  setTimeout(() => { t.className = "toast"; }, 2600);
+}
+function banner(msg) {
+  const b = document.getElementById("banner");
+  if (!msg) { b.classList.add("hidden"); return; }
+  b.textContent = msg;
+  b.classList.remove("hidden");
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+// Pat field names vary slightly by version — read defensively.
+function pick(obj, ...keys) {
+  for (const k of keys) if (obj && obj[k] != null) return obj[k];
+  return "";
+}
+function addrText(v) {
+  if (v == null) return "";
+  if (Array.isArray(v)) return v.map(addrText).join(", ");
+  if (typeof v === "object") return pick(v, "Addr", "addr", "Address") || "";
+  return String(v);
+}
+// Decode numeric HTML character refs (&#10146; / &#x27A2;) to their characters.
+// Used on message bodies before esc()-ing, so Pat's double-escaped symbols render.
+function decodeNumericEntities(s) {
+  const cp = n => { try { return String.fromCodePoint(n); } catch (_) { return ""; } };
+  return String(s == null ? "" : s)
+    .replace(/&#(\d+);/g, (_, d) => cp(parseInt(d, 10)))
+    .replace(/&#[xX]([0-9a-fA-F]+);/g, (_, h) => cp(parseInt(h, 16)));
+}
+function fmtSize(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+// base64 → Uint8Array, for binary attachments handed off through localStorage.
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+// Pull a decimal lat/lon out of a message body, e.g. Pat's embedded
+// "[Sender: … Lat: 47.4653, Lon:-121.6801 …]". Returns {lat,lon} or null.
+function parsePosition(text) {
+  if (!text) return null;
+  const m = String(text).match(/Lat:?\s*(-?\d+\.\d+)\s*,?\s*Lon:?\s*(-?\d+\.\d+)/i);
+  if (!m) return null;
+  const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+  if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lat, lon };
+}
+
+async function api(path, opts) {
+  const res = await fetch(API + path, opts);
+  if (res.status === 503) {
+    let msg = "Pat (Winlink) service unreachable.";
+    try { msg = (await res.json()).error || msg; } catch (_) {}
+    banner(msg);
+    throw new Error(msg);
+  }
+  banner("");
+  if (!res.ok) throw new Error(`Pat error ${res.status}`);
+  return res;
+}
+async function apiJson(path, opts) { return (await api(path, opts)).json(); }
+
+// ── Folders ───────────────────────────────────────────────────────────────
+// counts[box] = { total, unread }. Unread shows as an amber "n/total" and the
+// folder name goes bold when there's unread (mail-client convention).
+function renderFolders(counts) {
+  const ul = document.getElementById("folders");
+  ul.innerHTML = "";
+  for (const b of BOXES) {
+    const c = counts && counts[b.id];
+    const hasUnread = !!(c && c.unread > 0);
+    const li = document.createElement("li");
+    li.className = "folder" + (b.id === currentBox ? " active" : "") +
+                   (hasUnread ? " has-unread" : "");
+    let countHtml = "";
+    if (c && c.total != null) {
+      countHtml = hasUnread
+        ? `<span class="count"><span class="unread-n">${c.unread}</span>/${c.total}</span>`
+        : `<span class="count">${c.total}</span>`;
+    }
+    li.innerHTML = `<span class="fname">${b.label}</span>${countHtml}`;
+    li.onclick = () => selectBox(b.id);
+    ul.appendChild(li);
+  }
+}
+
+// Tally a mailbox's totals without rendering rows (for the other folders'
+// badges). Returns {total, unread} or null if Pat is unreachable.
+async function fetchBoxStats(box) {
+  try {
+    const msgs = await apiJson(`/mailbox/${box}`);
+    const list = Array.isArray(msgs) ? msgs : [];
+    WinlinkRead.seed(list);
+    return { total: list.length, unread: WinlinkRead.unreadCount(list) };
+  } catch (_) { return null; }
+}
+
+async function refreshCounts() {
+  window._counts = window._counts || {};
+  await Promise.all(BOXES.map(async b => {
+    const st = await fetchBoxStats(b.id);
+    if (st) window._counts[b.id] = st;
+  }));
+  renderFolders(window._counts);
+}
+
+async function selectBox(box) {
+  currentBox = box;
+  const label = (BOXES.find(b => b.id === box) || {}).label || box;
+  document.getElementById("listLabel").textContent = label;
+  renderFolders(window._counts);
+  await loadBox(box);
+}
+
+// ── Message list ──────────────────────────────────────────────────────────
+async function loadBox(box) {
+  const empty = document.getElementById("listEmpty");
+  let msgs;
+  try { msgs = await apiJson(`/mailbox/${box}`); }
+  catch (e) {
+    _currentMsgs = [];
+    document.getElementById("msgList").innerHTML = "";
+    empty.style.display = "block"; empty.textContent = "—";
+    return;
+  }
+  _currentMsgs = Array.isArray(msgs) ? msgs : [];
+  WinlinkRead.seed(_currentMsgs);
+  _currentMsgs.forEach(harvestAddrs);   // feed recipient autocomplete
+  renderList();
+  recountBox(box);
+  prefetchBodies(box, _currentMsgs, ++_prefetchGen);   // supersedes any prior run
+}
+
+// Background-fetch message bodies into _bodyCache so search can match them.
+// Sequential (Pi-Zero-friendly) and cancellable: a newer box load bumps
+// _prefetchGen and this run bails. Re-renders live only while the user is
+// actually searching, so it's silent otherwise.
+async function prefetchBodies(box, msgs, gen) {
+  _prefetching = true;
+  for (const m of msgs) {
+    if (gen !== _prefetchGen) { return; }              // superseded — stop
+    const mid = pick(m, "MID", "Mid", "mid");
+    if (mid == null || _bodyCache.has(mid)) continue;
+    let full;
+    try { full = await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`); }
+    catch (_) { continue; }                            // skip on error, keep going
+    if (gen !== _prefetchGen) { return; }
+    _bodyCache.set(mid, pick(full, "Body", "body") || "");
+    if (searchTerm()) renderList();                    // surface new matches live
+  }
+  if (gen === _prefetchGen) { _prefetching = false; renderList(); }  // clear scan hint
+}
+
+function searchTerm() {
+  return (document.getElementById("msgSearch")?.value || "").trim().toLowerCase();
+}
+
+// Render the current box applying the search + "unread only" filters. Search
+// matches subject, callsign, AND message body (from _bodyCache, filled by the
+// background prefetch). Counts (folder badges) reflect the full box.
+function renderList() {
+  const list = document.getElementById("msgList");
+  const empty = document.getElementById("listEmpty");
+  list.innerHTML = "";
+  const term = searchTerm();
+  const unreadOnly = !!document.getElementById("unreadOnly")?.checked;
+  let shown = 0;
+  for (const m of _currentMsgs) {
+    const mid     = pick(m, "MID", "Mid", "mid");
+    const subject = pick(m, "Subject", "subject") || "(no subject)";
+    const who     = currentBox === "in" ? addrText(pick(m, "From", "from"))
+                                        : addrText(pick(m, "To", "to"));
+    const date    = pick(m, "Date", "date");
+    const unread  = WinlinkRead.isUnread(mid);
+    if (unreadOnly && !unread) continue;
+    if (term) {
+      const body = _bodyCache.get(mid) || "";
+      if (!`${subject} ${who} ${body}`.toLowerCase().includes(term)) continue;
+    }
+    const tr = document.createElement("tr");
+    tr.className = "msg-row " + (unread ? "unread" : "read");
+    tr.dataset.mid = mid;
+    tr.innerHTML =
+      `<td><div class="subj">${esc(subject)}</div>` +
+      `<div class="meta">${esc(who)} · ${esc(date)}</div></td>`;
+    tr.onclick = () => openMessage(currentBox, mid);
+    list.appendChild(tr);
+    shown++;
+  }
+  empty.style.display = shown ? "none" : "block";
+  empty.textContent = _currentMsgs.length === 0 ? "No messages."
+                    : (unreadOnly && !term) ? "No unread messages." : "No matches.";
+  // While a search is active and bodies are still loading, say so — results
+  // keep appearing as the prefetch fills the cache.
+  const scan = document.getElementById("searchScan");
+  if (scan) scan.style.display = (term && _prefetching) ? "block" : "none";
+}
+
+// ── Reader ────────────────────────────────────────────────────────────────
+// Mark a message read once it's been open for READ_DWELL_MS, fading its row
+// accent amber→green. Opening another message resets the pending dwell, so only
+// a message you actually linger on gets marked read.
+// Recompute the current box's badge from the cached messages (full box, not
+// the filtered view), using the shared read-state.
+function recountBox(box) {
+  if (box !== currentBox) return;
+  window._counts = window._counts || {};
+  window._counts[box] = { total: _currentMsgs.length,
+                          unread: WinlinkRead.unreadCount(_currentMsgs) };
+  renderFolders(window._counts);
+}
+
+// Reflect a MID's current read state onto its row, the open reader's toggle,
+// and the folder badge.
+function applyReadState(box, mid) {
+  const u = WinlinkRead.isUnread(mid);
+  const row = document.querySelector(`.msg-row[data-mid="${CSS.escape(mid)}"]`);
+  if (row) { row.classList.toggle("unread", u); row.classList.toggle("read", !u); }
+  const btn = document.getElementById("readToggle");
+  if (btn && btn.dataset.mid === String(mid)) btn.textContent = u ? "Mark read" : "Mark unread";
+  recountBox(box);
+}
+
+// Manual per-message toggle. Cancels the auto-read dwell so it can't override.
+function toggleRead(box, mid) {
+  if (_readTimer) { clearTimeout(_readTimer); _readTimer = null; }
+  if (WinlinkRead.isUnread(mid)) WinlinkRead.markRead(mid);
+  else WinlinkRead.markUnread(mid);
+  applyReadState(box, mid);
+}
+
+// Folder-level: mark every message in the current box read (not just visible).
+function markAllRead() {
+  if (!_currentMsgs.length) { toast("Nothing to mark", "err"); return; }
+  WinlinkRead.markAllRead(_currentMsgs.map(m => pick(m, "MID", "Mid", "mid")));
+  renderList();
+  const btn = document.getElementById("readToggle");
+  if (btn) btn.textContent = "Mark unread";
+  recountBox(currentBox);
+  toast("All marked read", "ok");
+}
+
+function scheduleReadDwell(box, mid) {
+  if (_readTimer) { clearTimeout(_readTimer); _readTimer = null; }
+  if (!WinlinkRead.isUnread(mid)) return;
+  _readTimer = setTimeout(() => {
+    WinlinkRead.markRead(mid);
+    applyReadState(box, mid);
+  }, READ_DWELL_MS);
+}
+
+async function openMessage(box, mid) {
+  document.getElementById("paneLabel").textContent = "Message";
+  const pane = document.getElementById("pane");
+  pane.innerHTML = `<div class="pane-empty">Loading…</div>`;
+  scheduleReadDwell(box, mid);
+  let m;
+  try { m = await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`); }
+  catch (e) { pane.innerHTML = `<div class="pane-empty">Could not load message.</div>`; return; }
+  _openMsg = m;   // remembered for reply / reply-all / forward
+  _bodyCache.set(mid, pick(m, "Body", "body") || "");   // warm the search cache
+
+  const subject = esc(pick(m, "Subject", "subject") || "(no subject)");
+  const from    = esc(addrText(pick(m, "From", "from")));
+  const to      = esc(addrText(pick(m, "To", "to")));
+  const date    = esc(pick(m, "Date", "date"));
+  // Pat double-escapes numeric entities (e.g. &#10146;) into the body text;
+  // decode them so arrows/symbols render, then esc() for safe insertion.
+  const body    = esc(decodeNumericEntities(pick(m, "Body", "body")));
+  const files   = pick(m, "Files", "files", "Attachments");
+  let attachHtml = "";
+  if (Array.isArray(files) && files.length) {
+    const base = `${API}/mailbox/${box}/${encodeURIComponent(mid)}`;
+    const rows = files.map(f => {
+      const name = pick(f, "Name", "name") || String(f);
+      const size = pick(f, "Size", "size");
+      const url  = `${base}/${encodeURIComponent(name)}`;
+      return `<div class="attach-row">` +
+        `<a href="${url}" target="_blank" rel="noopener" title="View in browser">${esc(name)}</a>` +
+        (size ? `<span class="attach-size">${fmtSize(size)}</span>` : "") +
+        `<a class="attach-dl" href="${url}?download=1" title="Download">⬇</a>` +
+      `</div>`;
+    }).join("");
+    attachHtml = `<div class="attach"><div class="attach-label">📎 Attachments</div>${rows}</div>`;
+  }
+  // Detect a received ICS-205 (Feature A) so we can offer to open it in the
+  // OASIS ICS-205 form. Strongest signal is the RMS_Express_Form XML attachment;
+  // fall back to subject / body markers.
+  const ics205XmlName = Array.isArray(files)
+    ? files.map(f => pick(f, "Name", "name") || String(f))
+           .find(nm => /RMS_Express_Form.*ICS.?205/i.test(nm) && /\.xml$/i.test(nm))
+    : null;
+  const _subj = pick(m, "Subject", "subject") || "";
+  const _bodyRaw = pick(m, "Body", "body") || "";
+  const isIcs205 = !!ics205XmlName || /^\s*ICS[ -]?205\b/i.test(_subj)
+                   || /ICS205-\s*v|BASIC RADIO CHANNEL USE/i.test(_bodyRaw);
+  const ics205BtnHtml = isIcs205
+    ? `<button class="sbtn primary" onclick="openInIcs205('${box}','${esc(mid)}')" ` +
+      `title="Open this ICS-205 in the OASIS form to edit, print, or Save PDF">📻 Open in ICS-205 form</button>`
+    : "";
+  // Offline map link if the body carries a position (e.g. a Winlink position
+  // report). Links to OASIS's own map, not an online service.
+  let mapHtml = "";
+  const pos = parsePosition(pick(m, "Body", "body"));
+  if (pos) {
+    mapHtml = `<div class="msg-map"><a class="sbtn" target="_blank" rel="noopener" ` +
+      `href="../aprs/map.html?center=${pos.lon},${pos.lat}&zoom=12">` +
+      `📍 Show on map (${pos.lat.toFixed(4)}, ${pos.lon.toFixed(4)})</a></div>`;
+  }
+  pane.className = "reader";
+  pane.innerHTML =
+    `<button class="pane-close" onclick="clearReader()" aria-label="Clear message from screen"` +
+    ` title="Clear from screen (privacy)">✕</button>` +
+    `<div class="pane-actions">` +
+      `<button class="sbtn primary" onclick="replyTo('reply')">↩ Reply</button>` +
+      `<button class="sbtn" onclick="replyTo('replyAll')">↩ Reply all</button>` +
+      `<button class="sbtn" onclick="replyTo('forward')">➦ Forward</button>` +
+      ics205BtnHtml +
+      `<button id="readToggle" class="sbtn" data-mid="${esc(mid)}" onclick="toggleRead('${box}','${esc(mid)}')">` +
+        `${WinlinkRead.isUnread(mid) ? "Mark read" : "Mark unread"}</button>` +
+      `<button class="sbtn danger" onclick="deleteMessage('${box}','${esc(mid)}')">🗑 Delete</button>` +
+    `</div>` +
+    `<h2>${subject}</h2>` +
+    `<div class="hdr"><strong>From:</strong> ${from}</div>` +
+    `<div class="hdr"><strong>To:</strong> ${to}</div>` +
+    `<div class="hdr"><strong>Date:</strong> ${date}</div>` +
+    mapHtml +
+    attachHtml +
+    `<div class="body">${body}</div>`;
+  harvestAddrs(m);   // feed sender/recipients into recipient autocomplete
+}
+
+// ─── ICS-205 export (Feature A) ──────────────────────────────────────────────
+// Fetch the open ICS-205, parse it (RMS_Express_Form XML preferred, tab-delimited
+// body as fallback), and hand it off to the OASIS ICS-205 form via localStorage.
+async function openInIcs205(box, mid) {
+  let m = _openMsg;
+  if (!m || String(pick(m, "MID", "Mid", "mid")) !== String(mid)) {
+    try { m = await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`); }
+    catch (e) { toast("Could not load message", "err"); return; }
+  }
+  const files = pick(m, "Files", "files", "Attachments");
+  const xmlName = Array.isArray(files)
+    ? files.map(f => pick(f, "Name", "name") || String(f))
+           .find(nm => /RMS_Express_Form.*ICS.?205/i.test(nm) && /\.xml$/i.test(nm))
+    : null;
+  let plan = null;
+  if (xmlName) {
+    try {
+      const res = await api(`/mailbox/${box}/${encodeURIComponent(mid)}/${encodeURIComponent(xmlName)}`);
+      plan = parseIcs205Xml(await res.text());
+    } catch (e) { /* fall through to body parse */ }
+  }
+  if (!planHasContent(plan)) {
+    const bodyPlan = parseIcs205Body(pick(m, "Body", "body") || "");
+    if (planHasContent(bodyPlan)) plan = bodyPlan;
+  }
+  if (!planHasContent(plan)) { toast("Couldn't read ICS-205 data", "err"); return; }
+  try { localStorage.setItem("oasis_ics205_import", JSON.stringify(plan)); }
+  catch (e) { toast("Handoff failed (storage full?)", "err"); return; }
+  window.location.href = "/static/ics-205/ics-205.html";
+}
+
+function planHasContent(p) {
+  return !!p && (String(p["f-inc"] || "").trim() || (Array.isArray(p.channels) && p.channels.length > 0));
+}
+
+// Reverse of ics-205.html's ics205Xml(): read the RMS_Express_Form <variables>
+// block back into the form's storage shape. Split rx/tx freq + N/W columns are
+// re-joined into the form's combined "146.520 N" cells.
+function parseIcs205Xml(xmlText) {
+  let doc;
+  try { doc = new DOMParser().parseFromString(xmlText, "application/xml"); }
+  catch (e) { return null; }
+  if (!doc || doc.getElementsByTagName("parsererror").length) return null;
+  const v = doc.getElementsByTagName("variables")[0] || doc.documentElement;
+  if (!v) return null;
+  const g = tag => {
+    const el = v.getElementsByTagName(tag)[0];
+    return el ? (el.textContent || "").trim() : "";
+  };
+  const has = tag => v.getElementsByTagName(tag).length > 0;
+  const join = (a, b) => [a, b].filter(Boolean).join(" ").trim();
+  const dtp = g("activitydatetime2");
+  const sp = dtp.indexOf(" ");
+  const plan = {
+    "f-inc": g("incident_name"),
+    "f-dp": sp >= 0 ? dtp.slice(0, sp) : dtp,
+    "f-tp": sp >= 0 ? dtp.slice(sp + 1).trim() : "",
+    "f-df": g("datefrom"), "f-tf": g("dateto"),
+    "f-dt": g("timefrom"), "f-tt": g("timeto"),
+    "f-special": g("specialinstructions"),
+    "f-pn": g("preparedname"), "f-pd": g("activitydatetime1"),
+    "f-pg": g("iap_page"),
+    channels: [],
+  };
+  for (let i = 1; i <= 60; i++) {
+    if (!has(`ch${i}`) && !has(`channelname${i}`) && !has(`rx${i}`)) break;
+    const c = {
+      zone: g(`zonegrp${i}`), ch: g(`ch${i}`), func: g(`function${i}`),
+      name: g(`channelname${i}`), assignment: g(`assignment${i}`),
+      rxfreq: join(g(`rx${i}`), g(`nwmode${i}`)), rxtone: g(`rxtone${i}`),
+      txfreq: join(g(`tx${i}`), g(`tnwmode${i}`)), txtone: g(`txtone${i}`),
+      mode: g(`mode${i}`), remarks: g(`remarks${i}`),
+    };
+    if (c.zone||c.ch||c.func||c.name||c.assignment||c.rxfreq||c.txfreq||c.rxtone||c.txtone||c.mode||c.remarks)
+      plan.channels.push(c);
+  }
+  return plan;
+}
+
+// Fallback: parse the tab-delimited ics205Body() layout when no XML attachment
+// is present. Best-effort — the XML path is preferred when available.
+function parseIcs205Body(body) {
+  if (!body) return null;
+  const lines = String(body).replace(/\r\n?/g, "\n").split("\n");
+  const plan = { channels: [] };
+  let inTable = false;
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].split("\t");
+    const key = (t[0] || "").trim();
+    if (/^1\.\s*Incident Name:/i.test(key)) plan["f-inc"] = (t[1] || "").trim();
+    else if (/Date & Time Prepared:/i.test(key)) {
+      const dt = (t[1] || "").trim(), sp = dt.indexOf(" ");
+      plan["f-dp"] = sp >= 0 ? dt.slice(0, sp) : dt;
+      plan["f-tp"] = sp >= 0 ? dt.slice(sp + 1).trim() : "";
+    }
+    else if (/^From:/i.test(key)) { plan["f-df"] = (t[1] || "").trim(); plan["f-dt"] = (t[2] || "").trim(); }
+    else if (/^To:/i.test(key)) { plan["f-tf"] = (t[1] || "").trim(); plan["f-tt"] = (t[2] || "").trim(); }
+    else if (/^IAP Page:/i.test(key)) plan["f-pg"] = (t[1] || "").trim();
+    else if (/^6\.\s*Approved by:/i.test(key)) {
+      plan["f-pn"] = (t[1] || "").trim();
+      const di = t.indexOf("Date/Time:");
+      if (di >= 0) plan["f-pd"] = (t[di + 1] || "").trim();
+    }
+    else if (/^5\.\s*Special Instructions:/i.test(key)) {
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j++;
+      if (j < lines.length && !/^-+$/.test(lines[j].trim())) plan["f-special"] = lines[j].trim();
+    }
+    else if (key === "ZONE GRP:") { inTable = true; }
+    else if (inTable) {
+      if (t.length >= 6 && (t[0].trim() || t[1].trim() || t[3].trim() || t[5].trim())) {
+        const jn = (a, b) => [ (a||"").trim(), (b||"").trim() ].filter(Boolean).join(" ");
+        plan.channels.push({
+          zone: (t[0]||"").trim(), ch: (t[1]||"").trim(), func: (t[2]||"").trim(),
+          name: (t[3]||"").trim(), assignment: (t[4]||"").trim(),
+          rxfreq: jn(t[5], t[6]), rxtone: (t[7]||"").trim(),
+          txfreq: jn(t[8], t[9]), txtone: (t[10]||"").trim(),
+          mode: (t[11]||"").trim(), remarks: (t[12]||"").trim(),
+        });
+      } else { inTable = false; }
+    }
+  }
+  return plan;
+}
+
+// Clear the reading pane back to the placeholder — gets message text off the
+// screen (privacy) without touching what Pat has stored.
+function clearReader() {
+  if (_readTimer) { clearTimeout(_readTimer); _readTimer = null; }
+  const pane = document.getElementById("pane");
+  pane.className = "";
+  pane.innerHTML = `<div class="pane-empty">Select a message, or press Compose.</div>`;
+  document.getElementById("paneLabel").textContent = "Message";
+}
+
+// Close the compose pane back to the placeholder. The autosaved draft (if any) is
+// kept so Compose can restore it; anything already queued to the Outbox is untouched.
+function closeCompose() {
+  _composeAttachments = [];
+  const pane = document.getElementById("pane");
+  pane.className = "";
+  pane.innerHTML = `<div class="pane-empty">Select a message, or press Compose.</div>`;
+  document.getElementById("paneLabel").textContent = "Message";
+}
+
+async function deleteMessage(box, mid) {
+  if (!confirm("Delete this message?")) return;
+  try {
+    await api(`/mailbox/${box}/${encodeURIComponent(mid)}`, { method: "DELETE" });
+    toast("Message deleted", "ok");
+    clearReader();
+    loadBox(box);
+  } catch (e) { toast(e.message, "err"); }
+}
+
+// ── Compose niceties: recipient history + draft autosave ───────────────────
+const ADDRS_KEY = "oasis_winlink_addrs";   // known callsigns/addresses (autocomplete)
+const DRAFT_KEY = "oasis_winlink_draft";   // single in-progress compose draft
+let _knownAddrs = new Set();
+try { _knownAddrs = new Set(JSON.parse(localStorage.getItem(ADDRS_KEY) || "[]")); } catch (_) {}
+
+function addKnownAddr(a) {
+  a = String(a || "").trim().toUpperCase();
+  if (!a || a.length > 64 || _knownAddrs.has(a)) return;
+  _knownAddrs.add(a);
+  try { localStorage.setItem(ADDRS_KEY, JSON.stringify([..._knownAddrs])); } catch (_) {}
+}
+function harvestAddrs(m) {
+  [...addrList(pick(m, "From", "from")), ...addrList(pick(m, "To", "to")),
+   ...addrList(pick(m, "Cc", "cc"))].forEach(addKnownAddr);
+}
+function addrDatalist() {
+  return `<datalist id="addrHints">` +
+    [..._knownAddrs].sort().map(a => `<option value="${esc(a)}"></option>`).join("") +
+    `</datalist>`;
+}
+function val(id) { const el = document.getElementById(id); return el ? el.value : ""; }
+function saveDraft() {
+  const d = { to: val("cTo"), cc: val("cCc"), subject: val("cSubject"), body: val("cBody") };
+  if (d.to || d.cc || d.subject || d.body) {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch (_) {}
+  } else { clearDraft(); }
+}
+function loadDraft() {
+  try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); } catch (_) { return null; }
+}
+function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (_) {} }
+function discardDraft() { clearDraft(); showCompose(); }
+
+// ── Compose ───────────────────────────────────────────────────────────────
+function showCompose(prefill) {
+  prefill = prefill || {};
+  // Accept either a single {attachment} or an {attachments:[…]} array handed off (e.g. ICS form XML + CSV).
+  _composeAttachments = prefill.attachments || (prefill.attachment ? [prefill.attachment] : []);
+  const isReplyFwd = !!(prefill.to || prefill.cc || prefill.subject || prefill.body || _composeAttachments.length);
+  const draft = isReplyFwd ? null : loadDraft();   // reply/forward/form ignores the draft
+  const init = isReplyFwd ? prefill : (draft || {});
+  document.getElementById("paneLabel").textContent = "Compose";
+  const pane = document.getElementById("pane");
+  pane.className = "compose";
+  pane.innerHTML =
+    `<button class="pane-close" onclick="closeCompose()" aria-label="Close compose"` +
+    ` title="Close compose (your draft is kept)">✕</button>` +
+    addrDatalist() +
+    `<div class="field"><label>To (callsign / address)</label>` +
+      `<input type="text" id="cTo" list="addrHints" placeholder="W4ABC" autocomplete="off"></div>` +
+    `<div class="field"><label>Cc</label>` +
+      `<input type="text" id="cCc" list="addrHints" placeholder="(optional)" autocomplete="off"></div>` +
+    `<div class="field"><label>Subject</label>` +
+      `<input type="text" id="cSubject" autocomplete="off"></div>` +
+    `<div class="field"><label>Message</label>` +
+      `<textarea id="cBody"></textarea></div>` +
+    `<div id="cAttachments">` + _attachRowsHtml() + `</div>` +
+    ((prefill.note || draft) ?
+      `<div class="conn-state">${esc(prefill.note || "↩ Draft restored — autosaving as you type.")}</div>` : "") +
+    `<div class="pane-actions">` +
+      `<button class="sbtn primary" id="cQueueBtn" onclick="sendMessage()">Queue message</button>` +
+      (draft ? `<button class="sbtn" onclick="discardDraft()">Discard draft</button>` : "") +
+      `<span class="conn-state">Queues to Outbox — Connect to transmit.</span>` +
+    `</div>`;
+  document.getElementById("cTo").value = init.to || "";
+  document.getElementById("cCc").value = init.cc || "";
+  document.getElementById("cSubject").value = init.subject || "";
+  document.getElementById("cBody").value = init.body || "";
+  // Editing any field after a queue re-enables the button (the queued copy is unchanged).
+  ["cTo", "cCc", "cSubject", "cBody"].forEach(id =>
+    document.getElementById(id).addEventListener("input", () => { saveDraft(); setQueueBtn(false); }));
+  // Focus the first empty field so a forward lands on To, a reply on the body.
+  (init.to ? document.getElementById("cBody") : document.getElementById("cTo")).focus();
+}
+
+// Pull a flat list of address strings from a Pat From/To/Cc field.
+function addrList(v) {
+  if (v == null) return [];
+  const arr = Array.isArray(v) ? v : [v];
+  return arr.map(x => (x && typeof x === "object")
+                        ? pick(x, "Addr", "addr", "Address") : String(x || ""))
+            .filter(Boolean);
+}
+
+// Reply / Reply-all / Forward — pre-fill Compose from the open message. No
+// transport involved: this only queues a draft to the Outbox.
+function replyTo(mode) {
+  const m = _openMsg;
+  if (!m) { toast("Open a message first", "err"); return; }
+  const from     = addrList(pick(m, "From", "from"))[0] || "";
+  const origSubj = pick(m, "Subject", "subject") || "";
+  const date     = pick(m, "Date", "date");
+  const body     = pick(m, "Body", "body") || "";
+  const quoted   = `\n\n----- Original message from ${from || "(unknown)"} on ${date} -----\n${body}`;
+  let to = "", cc = "", subject = "", note = "";
+
+  if (mode === "forward") {
+    subject = /^fw:/i.test(origSubj) ? origSubj : `FW: ${origSubj}`;
+    note = "Forward is text-only — attachments are not carried.";
+  } else {
+    to = from;
+    subject = /^re:/i.test(origSubj) ? origSubj : `RE: ${origSubj}`;
+    if (mode === "replyAll") {
+      const mycall = (localStorage.getItem("oasis_callsign") || "").toUpperCase();
+      const fromU = from.toUpperCase();
+      const others = [...addrList(pick(m, "To", "to")), ...addrList(pick(m, "Cc", "cc"))]
+        .map(a => a.toUpperCase())
+        .filter(a => a && a !== fromU && a !== mycall);
+      cc = [...new Set(others)].join(", ");
+    }
+  }
+  showCompose({ to, cc, subject, body: quoted, note });
+}
+
+function _attachRowsHtml() {
+  return _composeAttachments.map((a, i) =>
+    `<div class="attach" data-att="${i}"><span class="attach-label">📎 Attachment</span> ${esc(a.name)}` +
+    ` <button class="sbtn" onclick="dropComposeAttachment(${i})" title="Remove attachment">✕</button></div>`).join("");
+}
+
+function dropComposeAttachment(i) {
+  if (i === undefined) _composeAttachments = [];
+  else _composeAttachments.splice(i, 1);
+  const c = document.getElementById("cAttachments");
+  if (c) c.innerHTML = _attachRowsHtml();   // re-render so indices stay correct
+  setQueueBtn(false);                       // changing attachments is an edit — allow re-queue
+}
+
+// Reflect queue state on the Compose button: greyed "✓ Queued" after a successful
+// queue, back to "Queue message" once the user edits the message again.
+function setQueueBtn(queued) {
+  const b = document.getElementById("cQueueBtn");
+  if (!b) return;
+  b.disabled = queued;
+  b.textContent = queued ? "✓ Queued to Outbox" : "Queue message";
+}
+
+async function sendMessage() {
+  const to = document.getElementById("cTo").value.trim();
+  if (!to) { toast("Recipient required", "err"); return; }
+  const cc = document.getElementById("cCc").value.trim();
+  const subject = document.getElementById("cSubject").value;
+  const body = document.getElementById("cBody").value;
+  // Pat requires an RFC3339 date (no fractional seconds) — else 400 "Missing date value".
+  const date = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  try {
+    if (_composeAttachments.length) {
+      // Multipart so we can attach files (Pat's file field is "files"; repeat it for multiple).
+      const fd = new FormData();
+      fd.set("to", to);
+      if (cc) fd.set("cc", cc);
+      fd.set("subject", subject);
+      fd.set("body", body);
+      fd.set("date", date);
+      for (const a of _composeAttachments) {
+        // Binary attachments (e.g. a telnet-only ICS-205 PDF) arrive base64-encoded
+        // so they survive the text-only localStorage handoff; decode before sending.
+        const part = a.encoding === "base64" ? b64ToBytes(a.content) : a.content;
+        fd.append("files", new Blob([part], { type: a.type || "application/octet-stream" }), a.name);
+      }
+      await api("/mailbox/out", { method: "POST", body: fd });   // browser sets multipart Content-Type
+    } else {
+      const form = new URLSearchParams();
+      form.set("to", to);
+      if (cc) form.set("cc", cc);
+      form.set("subject", subject);
+      form.set("body", body);
+      form.set("date", date);
+      await api("/mailbox/out", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: form.toString(),
+      });
+    }
+    // Remember recipients for autocomplete; drop the saved draft.
+    [...to.split(/[;, ]+/), ...cc.split(/[;, ]+/)].forEach(addKnownAddr);
+    clearDraft();
+    // Stay on the message; signal "queued" by greying the button. Editing any field
+    // (or changing attachments) re-enables it so an amended copy can be re-queued —
+    // we keep _composeAttachments so the re-queue still carries them.
+    setQueueBtn(true);
+    refreshCounts();   // bump the Outbox badge without leaving the message
+    toast("Queued to Outbox — Connect to send", "ok");
+  } catch (e) { toast(e.message, "err"); }
+}
+
+// ── Connection status + aliases ───────────────────────────────────────────
+function setDot(state, text) {
+  const dot = document.getElementById("dot");
+  dot.className = "dot " + state;
+  document.getElementById("connState").textContent = text;
+}
+
+// ── Connection picker: saved aliases + recent connections + Custom ─────────
+// A connection is just {target, label} where `target` is what Pat's /connect
+// accepts — a saved alias NAME or a full transport URL. Recents (incl. gateways
+// connected from the Gateways panel) persist; the last one is pre-selected.
+const RECENT_KEY = "oasis_winlink_recent";
+const LASTCONN_KEY = "oasis_winlink_lastconn";
+let _aliases = [];   // [[name, url], …] from Pat
+function loadRecents() { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); } catch (_) { return []; } }
+function saveRecents(r) { try { localStorage.setItem(RECENT_KEY, JSON.stringify(r)); } catch (_) {} }
+function loadLast() { try { return JSON.parse(localStorage.getItem(LASTCONN_KEY) || "null"); } catch (_) { return null; } }
+function saveLast(l) { try { localStorage.setItem(LASTCONN_KEY, JSON.stringify(l)); } catch (_) {} }
+
+async function loadAliases() {
+  try {
+    const data = await apiJson("/aliases");
+    _aliases = Array.isArray(data) ? data.map(a => [a, a])
+             : (data && typeof data === "object") ? Object.entries(data) : [];
+  } catch (_) { _aliases = []; }
+  buildConnSel();
+}
+
+// Recents first, then any saved aliases not already listed, then Custom.
+function connOptions() {
+  const recents = loadRecents();
+  const seen = new Set(recents.map(r => r.target));
+  const opts = recents.slice();
+  for (const [name] of _aliases) if (!seen.has(name)) { opts.push({ target: name, label: name }); seen.add(name); }
+  return opts;
+}
+
+function buildConnSel() {
+  const sel = document.getElementById("connSel");
+  const want = sel.value;
+  sel.innerHTML = "";
+  for (const o of connOptions()) {
+    const opt = document.createElement("option");
+    opt.value = o.target; opt.textContent = o.label; sel.appendChild(opt);
+  }
+  const neu = document.createElement("option");
+  neu.value = "__new__"; neu.textContent = "New connection…"; sel.appendChild(neu);
+  const last = loadLast();
+  const has = v => [...sel.options].some(o => o.value === v);
+  sel.value = (want && has(want)) ? want
+            : (last && has(last.target)) ? last.target
+            : (sel.options[0] ? sel.options[0].value : "__new__");
+  onConnSelChange();
+}
+
+function isRecent(target) { return loadRecents().some(r => r.target === target); }
+
+function onConnSelChange() {
+  const v = document.getElementById("connSel").value;
+  document.getElementById("connBuild").style.display = v === "__new__" ? "" : "none";
+  // Only recents are removable (aliases come from Pat and would just regenerate).
+  document.getElementById("forgetBtn").style.display = isRecent(v) ? "" : "none";
+  if (v === "__new__") onTransportChange();   // sync the freq field to the mode
+}
+
+// Packet (ax25) has no rig to QSY, so a freq would make Pat 500 — hide the freq
+// field for it. HF modes (ARDOP/VARA/PACTOR) keep it.
+function onTransportChange() {
+  const isPacket = document.getElementById("bTransport").value === "ax25";
+  const freq = document.getElementById("bFreq");
+  freq.style.display = isPacket ? "none" : "";
+  if (isPacket) freq.value = "";
+}
+
+// Remove the selected recent connection from the dropdown (e.g. a dead gateway).
+function forgetConn() {
+  const sel = document.getElementById("connSel");
+  const target = sel.value;
+  if (!isRecent(target)) return;
+  saveRecents(loadRecents().filter(r => r.target !== target));
+  const last = loadLast();
+  if (last && last.target === target) { try { localStorage.removeItem(LASTCONN_KEY); } catch (_) {} }
+  sel.value = "";          // force buildConnSel to pick a fresh default
+  buildConnSel();
+  toast("Removed from list", "ok");
+}
+
+function doConnect() {
+  const sel = document.getElementById("connSel");
+  let target, label;
+  if (sel.value === "__new__") {
+    // Build a Pat connect URL from the friendly fields — no raw URL typing.
+    const transport = document.getElementById("bTransport").value;
+    const call = document.getElementById("bCall").value.trim().toUpperCase();
+    const freq = document.getElementById("bFreq").value.trim();
+    if (!call) { toast("Gateway callsign required", "err"); return; }
+    target = `${transport}:///${encodeURIComponent(call)}`;
+    // ?freq= only for HF modes that QSY via a configured rig. Packet (ax25 ->
+    // AGWPE/Direwolf) has no rig here, so a freq param makes Pat error 500 — QSY
+    // the radio by hand instead.
+    const useFreq = freq && transport !== "ax25";
+    if (useFreq) target += `?freq=${encodeURIComponent(freq)}`;
+    label = useFreq ? `${call} ${freq} kHz`
+                    : `${call} · ${transport === "ax25" ? "packet" : transport}`;
+  } else {
+    target = sel.value;
+    label = sel.options[sel.selectedIndex].textContent;
+  }
+  startConnect(target, label);
+}
+
+// Single entry point for every connect — records it as the recent/last
+// connection, then runs the session.
+function startConnect(target, label) {
+  saveLast({ target, label });
+  let rec = loadRecents().filter(r => r.target !== target);
+  rec.unshift({ target, label });
+  saveRecents(rec.slice(0, 8));
+  buildConnSel();
+  const sel = document.getElementById("connSel");
+  if ([...sel.options].some(o => o.value === target)) { sel.value = target; onConnSelChange(); }
+  runConnect(target, label);
+}
+
+async function pollStatus() {
+  try {
+    const s = await apiJson("/status");
+    const connected = !!pick(s, "Connected", "connected");
+    const dialing   = !!pick(s, "Dialing", "dialing");
+    if (connected)     setDot("up",   "connected");
+    else if (dialing)  setDot("busy", "dialing…");
+    else               setDot("down", "idle");
+  } catch (e) {
+    setDot("down", "offline");
+  }
+}
+
+// ── Connect session (live log over WebSocket, direct to Pat) ───────────────
+function logLine(text) {
+  const c = document.getElementById("console");
+  c.textContent += (c.textContent ? "\n" : "") + text;
+  c.scrollTop = c.scrollHeight;
+  document.getElementById("consoleWrap").style.display = "";   // reveal on first line
+}
+
+// Clear/close the session log.
+function clearConsole() {
+  document.getElementById("console").textContent = "";
+  document.getElementById("consoleWrap").style.display = "none";
+}
+
+// Note: Pat also exposes a live-log WebSocket, but gorilla's default origin check
+// rejects it from this cross-origin page (:8083 → Pat :8082), so it only littered
+// Pat's journal with "request origin not allowed" lines. We don't open it — the
+// journald tail below (same-origin) already carries Pat's session log, and
+// pollStatus() drives the connection dots. See /api/winlink/log.
+
+// ── Live session log (journald tail, same-origin) ───────────────────────────
+// Pat's own log WebSocket is same-origin-only (it rejects this cross-origin
+// page), so we tail journald (unit `pat`) via the Flask proxy instead — the
+// same lines as `journalctl -u pat` (Connecting…, Connected, FC/FS, Transmitting).
+let _logTimer = null, _logWarned = false;
+async function pollSessionLog() {
+  try {
+    const r = await fetch(`${API}/log?lines=60`, { cache: "no-store" });
+    const d = await r.json();
+    if (d && d.ok && Array.isArray(d.lines) && d.lines.length) {
+      const c = document.getElementById("console");
+      c.textContent = d.lines.join("\n");
+      c.scrollTop = c.scrollHeight;                       // stick to newest
+      document.getElementById("consoleWrap").style.display = "";
+    } else if (d && d.ok === false && d.error && !_logWarned) {
+      _logWarned = true;                                  // explain once, don't spam
+      logLine("(journald log unavailable: " + d.error + ")");
+    }
+  } catch (_) { /* keep whatever's shown */ }
+}
+function startLogPoll() { stopLogPoll(); _logWarned = false; pollSessionLog(); _logTimer = setInterval(pollSessionLog, 1500); }
+function stopLogPoll()  { if (_logTimer) { clearInterval(_logTimer); _logTimer = null; } }
+
+// Shared session runner. `url` is either a saved alias name or a full Pat
+// transport URL; Pat's /api/connect accepts both. `label` is for the log.
+async function runConnect(url, label) {
+  document.getElementById("console").textContent = "";
+  logLine(`Connecting ${label}…`);        // shown until the journald tail takes over
+  setDot("busy", "dialing…");
+  document.getElementById("abortBtn").style.display = "";   // session in progress
+  startLogPoll();                          // stream the journald log into the console
+  try {
+    await api(`/connect?url=${encodeURIComponent(url)}`);
+    toast("Connect session complete", "ok");
+  } catch (e) {
+    logLine("Connect failed: " + e.message);
+    toast(e.message, "err");
+  } finally {
+    document.getElementById("abortBtn").style.display = "none";
+    stopLogPoll();
+    [400, 1500, 3000].forEach(t => setTimeout(pollSessionLog, t));   // catch trailing lines
+    pollStatus();
+    loadBox(currentBox);
+    refreshCounts();          // new mail may have landed in other boxes
+  }
+}
+
+// Abort the in-progress session. Pat's /api/disconnect ends the active connect,
+// which unblocks runConnect's await — its finally then refreshes everything.
+async function abortConnect() {
+  logLine("Aborting session…");
+  try { await fetch(`${API}/disconnect`, { cache: "no-store" }); }
+  catch (_) { /* the connect returning is what matters */ }
+}
+
+// ── RMS gateway list (offline-cacheable) ──────────────────────────────────
+let _gateways = [];
+let _gwSort = { key: "distance", dir: 1 };
+let _gwLoaded = false;
+const gwKey = mode => `oasis_winlink_rms_${mode}`;
+const gwModeVal = () => document.getElementById("gwMode").value;
+
+function toggleGateways() {
+  const body = document.getElementById("gwBody");
+  const open = body.style.display === "none";
+  body.style.display = open ? "" : "none";
+  document.getElementById("gwToggle").textContent = open ? "▾" : "▸";
+  if (open && !_gwLoaded) { _gwLoaded = true; loadGatewaysCache(); }
+}
+
+// Load this mode's cached snapshot from localStorage (works fully offline).
+function loadGatewaysCache() {
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(gwKey(gwModeVal())) || "null"); } catch (_) {}
+  _gateways = (cached && Array.isArray(cached.gateways)) ? cached.gateways : [];
+  const stamp = document.getElementById("gwStamp");
+  stamp.textContent = (cached && cached.ts)
+    ? `${_gateways.length} gateways · downloaded ${new Date(cached.ts).toLocaleString()}`
+    : "No cached list — press Update while online.";
+  renderGateways();
+}
+
+// Download a fresh list (needs connectivity) and cache it for offline use.
+async function updateGateways() {
+  const mode = gwModeVal();
+  const stamp = document.getElementById("gwStamp");
+  stamp.textContent = "Downloading… (Pat may take a while)";
+  try {
+    const res = await fetch(`${API}/rmslist?mode=${encodeURIComponent(mode)}`, { cache: "no-store" });
+    const d = await res.json();
+    if (!res.ok || !d.ok) throw new Error(d.error || `HTTP ${res.status}`);
+    _gateways = d.gateways || [];
+    try {
+      localStorage.setItem(gwKey(mode), JSON.stringify({ ts: Date.now(), gateways: _gateways }));
+    } catch (_) { toast("List downloaded but too large to cache", "err"); }
+    stamp.textContent = `${_gateways.length} gateways · downloaded ${new Date().toLocaleString()}`;
+    renderGateways();
+    toast(`Updated ${mode}: ${_gateways.length} gateways`, "ok");
+  } catch (e) {
+    toast(`Update failed: ${e.message}`, "err");
+    loadGatewaysCache();   // keep showing whatever's cached
+  }
+}
+
+function sortGateways(key) {
+  if (_gwSort.key === key) _gwSort.dir *= -1; else _gwSort = { key, dir: 1 };
+  renderGateways();
+}
+function gwQualClass(q) { return q == null ? "low" : q >= 60 ? "good" : q >= 30 ? "mid" : "low"; }
+
+function renderGateways() {
+  const list = document.getElementById("gwList");
+  const empty = document.getElementById("gwEmpty");
+  const term = (document.getElementById("gwSearch")?.value || "").trim().toLowerCase();
+  const rows = _gateways.filter(g =>
+    !term || `${g.callsign || ""} ${g.gridsquare || ""}`.toLowerCase().includes(term));
+  const { key, dir } = _gwSort;
+  rows.sort((a, b) => {
+    const av = a[key], bv = b[key];
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return (typeof av === "string" ? av.localeCompare(bv) : av - bv) * dir;
+  });
+  list.innerHTML = "";
+  for (const g of rows) {
+    const q = g.link_quality;
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td>${esc(g.callsign || "?")}</td>` +
+      `<td>${g.dial_khz != null ? esc(g.dial_khz) : "—"}</td>` +
+      `<td>${esc(g.modes || "")}</td>` +
+      `<td>${g.distance != null ? Math.round(g.distance) : "—"}</td>` +
+      `<td class="gw-q ${gwQualClass(q)}">${q != null ? q : "—"}</td>` +
+      `<td></td>`;
+    const btn = document.createElement("button");
+    btn.className = "sbtn primary";
+    btn.textContent = "⚡ Connect";
+    btn.disabled = !g.url;
+    btn.onclick = () => connectGateway(g);
+    tr.lastElementChild.appendChild(btn);
+    list.appendChild(tr);
+  }
+  empty.style.display = rows.length ? "none" : "block";
+  empty.textContent = _gateways.length === 0
+    ? "No gateways cached for this mode — Update while online."
+    : "No matches.";
+}
+
+// Connect to a gateway using its ready-made Pat URL. Explicit user action —
+// this transmits (within the no-auto-connect guardrail).
+function connectGateway(g) {
+  if (!g.url) { toast("No connect URL for this gateway", "err"); return; }
+  // Packet (ax25 -> AGWPE/Direwolf) has no rig to QSY, so Pat's ?freq= in the
+  // RMS-list URL makes it error ("Unable to QSY: missing rig reference in config
+  // section for ax25+agwpe") and abort. Strip freq for ax25 — the same guard the
+  // manual builder applies (see onTransportChange/doConnect). HF modes keep freq.
+  const isPacket = /^ax25:/i.test(g.url);
+  const url = isPacket ? g.url.replace(/[?&]freq=[^&]*/gi, "").replace(/\?$/, "") : g.url;
+  const label = isPacket ? `${g.callsign || "gateway"} · packet`
+                         : `${g.callsign || "gateway"} ${g.dial_khz || "?"} kHz`;
+  startConnect(url, label);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+async function refreshAll() {
+  await Promise.all([loadAliases(), pollStatus(), refreshCounts()]);
+  await selectBox(currentBox);
+}
+
+// Handoff from a form (e.g. ICS-213 "Send via Winlink"): a pending compose was
+// stashed in localStorage. Open Compose pre-filled with its text + attachment.
+function checkPendingCompose() {
+  let p;
+  try { p = JSON.parse(localStorage.getItem("oasis_winlink_compose") || "null"); } catch (_) {}
+  if (!p) return;
+  try { localStorage.removeItem("oasis_winlink_compose"); } catch (_) {}
+  showCompose({
+    to: p.to || "", cc: p.cc || "", subject: p.subject || "",
+    body: p.body || "", note: p.note || "",
+    attachment: p.attachment || null, attachments: p.attachments || null,
+  });
+}
+
+renderFolders();
+refreshAll();
+checkPendingCompose();
+statusTimer = setInterval(pollStatus, 5000);
+</script>
+</body>
+</html>

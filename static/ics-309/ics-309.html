@@ -437,7 +437,7 @@ function toggleInst(){
 
 // ── Send via Winlink ────────────────────────────────────────────────────────
 // Build a Winlink-style message (text body + RMS_Express_Form XML attachment)
-// from this log and hand it to winlink/mail.html via localStorage. No network.
+// from this log and hand it to server/winlink/mail.html via localStorage. No network.
 // XML schema matches a real received "Form 309 v13.12" sample. Winlink Form 309
 // rows are Time/From/To/Subject (no Msg #), so the OASIS From/To message numbers
 // are folded into the call sign (e.g. "KI7RMO #12"); the Message column → Subject.

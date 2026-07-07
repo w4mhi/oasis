@@ -86,7 +86,7 @@ ZIP_TABLE = lookup.load_zip_table()
 #   • the graywolf-handbook (/static/graywolf-handbook/)
 # theme.js is idempotent — it leaves a page's own toggle button (e.g. the
 # dashboard's) alone and only adds the floating one when none exists.
-_THEME_SKIP_PREFIXES = ("/small-screen/", "/aprs/", "/static/graywolf-handbook/")
+_THEME_SKIP_PREFIXES = ("/small-screen/", "/server/aprs/", "/static/graywolf-handbook/")
 _THEME_SNIPPET = '<script src="/static/theme.js"></script>'
 
 
@@ -222,7 +222,7 @@ def api_lookup_name():
     Search FCC licenses by last name (required) and optional first name prefix.
     Query: ?last=SMITH  or  ?last=SMITH&first=JOHN
     Returns up to 50 active-license records sorted by last name then first name.
-    Requires EN_name.idx (built by setup-fcc-database.py).
+    Requires EN_name.idx (built by install-fcc-database.py).
     """
     last  = (request.args.get("last")  or "").strip()
     first = (request.args.get("first") or "").strip()
@@ -244,7 +244,7 @@ def api_lookup_grid():
     Search FCC licenses by Maidenhead grid square prefix.
     Query: ?grid=CN87  (2, 4, or 6 characters)
     Returns up to 100 active-license records for that grid area.
-    Requires EN_grid.idx (built by setup-fcc-database.py after zipcodes.csv exists).
+    Requires EN_grid.idx (built by install-fcc-database.py after zipcodes.csv exists).
     """
     grid = (request.args.get("grid") or "").strip()
     if not grid:
@@ -390,7 +390,7 @@ def api_fs_pmtiles():
 
 @app.route("/api/save-chirp", methods=["POST"])
 def api_save_chirp():
-    """Save a CHIRP CSV file directly into the suite's chirp/ folder.
+    """Save a CHIRP CSV file directly into the suite's static/chirp/ folder.
 
     Expects JSON body: { "filename": "<datetime>_repeaters.csv", "content": "<csv text>" }
     Only filenames ending in .csv and containing no path separators are accepted.
@@ -403,7 +403,7 @@ def api_save_chirp():
     if not filename or os.sep in filename or "/" in filename or not filename.endswith(".csv"):
         return jsonify({"ok": False, "error": "Invalid filename"}), 400
 
-    chirp_dir = os.path.join(SUITE_ROOT, "chirp")
+    chirp_dir = os.path.join(SUITE_ROOT, "static", "chirp")
     os.makedirs(chirp_dir, exist_ok=True)
     dest = os.path.realpath(os.path.join(chirp_dir, filename))
     if not dest.startswith(os.path.realpath(chirp_dir) + os.sep):
@@ -415,7 +415,81 @@ def api_save_chirp():
     except OSError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
 
-    return jsonify({"ok": True, "saved": os.path.join("chirp", filename)})
+    return jsonify({"ok": True, "saved": os.path.join("static", "chirp", filename)})
+
+
+@app.route("/api/save-ics205", methods=["POST"])
+def api_save_ics205():
+    """Save an ICS-205 plan as JSON into static/ics-205/saved/.
+
+    Expects JSON body: { "filename": "ics-205-<...>.json", "content": "<json text>" }
+    Only filenames ending in .json and containing no path separators are accepted.
+    """
+    data = request.get_json(silent=True) or {}
+    filename = (data.get("filename") or "").strip()
+    content  = data.get("content", "")
+
+    # Validate filename — no path traversal, .json only
+    if not filename or os.sep in filename or "/" in filename or not filename.endswith(".json"):
+        return jsonify({"ok": False, "error": "Invalid filename"}), 400
+
+    saved_dir = os.path.join(SUITE_ROOT, "static", "ics-205", "saved")
+    os.makedirs(saved_dir, exist_ok=True)
+    dest = os.path.realpath(os.path.join(saved_dir, filename))
+    if not dest.startswith(os.path.realpath(saved_dir) + os.sep):
+        return jsonify({"ok": False, "error": "Path traversal rejected"}), 403
+
+    try:
+        with open(dest, "w", encoding="utf-8") as fh:
+            fh.write(content)
+    except OSError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+    return jsonify({"ok": True, "saved": os.path.join("static", "ics-205", "saved", filename)})
+
+
+@app.route("/api/list-ics205")
+def api_list_ics205():
+    """List saved ICS-205 plans in static/ics-205/saved/, newest first.
+
+    The files themselves are fetched directly as static assets
+    (/static/ics-205/saved/<name>); this only enumerates them.
+    """
+    saved_dir = os.path.join(SUITE_ROOT, "static", "ics-205", "saved")
+    files = []
+    if os.path.isdir(saved_dir):
+        for name in os.listdir(saved_dir):
+            if not name.endswith(".json"):
+                continue
+            try:
+                st = os.stat(os.path.join(saved_dir, name))
+            except OSError:
+                continue
+            files.append({"name": name, "size": st.st_size, "mtime": int(st.st_mtime)})
+    files.sort(key=lambda f: f["mtime"], reverse=True)
+    return jsonify({"ok": True, "files": files})
+
+
+@app.route("/api/list-chirp")
+def api_list_chirp():
+    """List CHIRP frequency-plan CSVs in static/chirp/, newest first.
+
+    The files themselves are fetched directly as static assets
+    (/static/chirp/<name>); this only enumerates them.
+    """
+    chirp_dir = os.path.join(SUITE_ROOT, "static", "chirp")
+    files = []
+    if os.path.isdir(chirp_dir):
+        for name in os.listdir(chirp_dir):
+            if not name.endswith(".csv"):
+                continue
+            try:
+                st = os.stat(os.path.join(chirp_dir, name))
+            except OSError:
+                continue
+            files.append({"name": name, "size": st.st_size, "mtime": int(st.st_mtime)})
+    files.sort(key=lambda f: f["mtime"], reverse=True)
+    return jsonify({"ok": True, "files": files})
 
 
 @app.route("/health")
@@ -502,8 +576,8 @@ def api_health_binary():
 # Known OASIS systemd units (install/enable scripts create these). Allowlisted
 # so the status check can never run systemctl against an arbitrary unit name.
 _OASIS_SERVICES = {
-    "graywolf", "graywolf-api", "pat", "kiwix", "webssh", "aprs-sdr-feed",
-    "openwebrx", "gpsd", "oasis",
+    "graywolf", "graywolf-api", "pat", "pat-direwolf", "kiwix", "webssh",
+    "aprs-sdr-feed", "openwebrx", "gpsd", "oasis",
 }
 
 # Units the dashboard may start/stop/restart. Everything in _OASIS_SERVICES
@@ -513,12 +587,15 @@ _CONTROLLABLE_SERVICES = _OASIS_SERVICES - {"oasis", "gpsd"}
 _SERVICE_ACTIONS = {"start", "stop", "restart"}
 
 # Hardware-exclusivity: OpenWebRX and the APRS chain (SDR feed -> GrayWolf) can't
-# share the RTL-SDR. Listed in RESTORE order (producer first): the feed pipes into
-# GrayWolf, so on restore the feed comes up before its consumer. Teardown uses the
-# reverse (consumer first). Boot state is never touched, so the feed and GrayWolf
-# (shipped enabled) come back on reboot -> APRS is the default after a power cycle.
+# share the RTL-SDR; the Winlink RF modem (pat-direwolf) and GrayWolf can't share
+# the DRA sound card + GPIO 12 PTT. Listed in RESTORE order (producer first): the
+# feed pipes into GrayWolf, so on restore the feed comes up before its consumer.
+# Teardown uses the reverse (consumer first). Boot state is never touched, so the
+# feed and GrayWolf (shipped enabled) come back on reboot -> APRS is the default
+# after a power cycle, and pat-direwolf (never boot-enabled) stays off.
 _SERVICE_CONFLICTS = {
-    "openwebrx": ["aprs-sdr-feed", "graywolf"],
+    "openwebrx":    ["aprs-sdr-feed", "graywolf"],
+    "pat-direwolf": ["aprs-sdr-feed", "graywolf"],
 }
 
 # Units whose boot state tracks their running state: starting also `enable`s them
@@ -595,7 +672,7 @@ def api_health_service():
 # tcpdump (libpcap copies datagrams; it never steals them from GrayWolf's reader).
 # socat emits ~50 datagrams/s (one per 20 ms audio chunk), so a short capture
 # either fills fast (healthy) or times out empty (silent/dead feed).
-FEED_FLOW_PORT     = 7355     # matches enable-rtl-sdr.py default + the sudoers rule
+FEED_FLOW_PORT     = 7355     # matches features/rtl-sdr/enable-rtl-sdr.py default + the sudoers rule
 _FEED_FLOW_NPKTS   = 10       # capture up to N packets, then tcpdump exits
 _FEED_FLOW_TIMEOUT = 1.0      # hard cap (s): bounds a dead feed's response time
 _FEED_FLOW_NOMINAL = 50       # pkt/s at full feed — the UI scales the bar to this
@@ -987,7 +1064,7 @@ def api_health_zim():
 def api_health_rtc():
     """Hardware-RTC status from sysfs (no sudo): presence, driver name, whether
     it set the system clock at boot (hctosys), and drift vs the system clock.
-    The Witty Pi 3's DS3231 appears here once enable-rtc.py + a reboot load it."""
+    The Witty Pi 3's DS3231 appears here once features/rtc-hat/enable-rtc.py + a reboot load it."""
     import sys as _sys
     base = "/sys/class/rtc/rtc0"
     if _sys.platform != "linux" or not os.path.isdir(base):
@@ -1242,7 +1319,7 @@ def api_aprs_warnings_delete(wid):
 
 
 # ── Winlink (Pat) proxy ───────────────────────────────────────────────────────
-# OASIS ships an OASIS-styled Winlink mail client (winlink/mail.html) that talks
+# OASIS ships an OASIS-styled Winlink mail client (server/winlink/mail.html) that talks
 # to Pat's JSON API. Pat runs on port 8082 and does NOT emit CORS headers, so the
 # browser stays same-origin by going through these thin pass-through proxies
 # (same pattern as the /api/aprs/* routes above). The live connect-session log is
@@ -1453,6 +1530,43 @@ def api_winlink_connect():
     import urllib.parse
     qs = urllib.parse.urlencode({k: v for k, v in request.args.items()})
     return _winlink_proxy("/api/connect", query=qs, timeout=120)
+
+
+@app.route("/api/winlink/log", methods=["GET"])
+def api_winlink_log():
+    """Tail the Pat journald log for the mail UI's session console.
+
+    Pat's live-log WebSocket is same-origin only (gorilla's default origin check
+    rejects this cross-origin page on :8083 → Pat :8082), so it never reaches the
+    browser. journald is the reliable same-origin source (the same lines you see
+    in `journalctl -u pat`). We tail only the `pat` unit — Direwolf's audio-level
+    meters and raw AX.25 frame dumps are excluded so the console shows just Pat's
+    session/B2F lines. Read-only; the only input is a clamped line count. Falls
+    back gracefully (ok:false) so the client keeps whatever it already showed."""
+    import subprocess
+    import sys as _sys
+
+    if _sys.platform != "linux":
+        return jsonify({"ok": False, "supported": False, "lines": []})
+    try:
+        n = int(request.args.get("lines", 40))
+    except (TypeError, ValueError):
+        n = 40
+    n = max(1, min(n, 300))
+
+    # -o cat = message text only; Pat already prefixes its own timestamps.
+    cmd = ["journalctl", "-u", "pat",
+           "-n", str(n), "-o", "cat", "--no-pager"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc), "lines": []})
+    if r.returncode != 0:
+        err = (r.stderr or "").strip()
+        if "permission" in err.lower() or not err:
+            err += " (journal not readable — add the OASIS user to the 'systemd-journal' group)"
+        return jsonify({"ok": False, "error": err, "lines": []})
+    return jsonify({"ok": True, "lines": r.stdout.splitlines()})
 
 
 @app.route("/api/server-info")

@@ -8,17 +8,28 @@ NOTE: The offline-manifest.json has no 'winlink' entry as of this writing.
 The OFFLINE_DIR therefore defaults to the legacy path (offline-packages/pat/).
 When a manifest entry is added later, bundle_dir() will replace that path.
 
+Phase 1 = Telnet (internet gateway). Phase 2 = RF packet: Pat's AGWPE transport
+into a local **Direwolf** modem (this installer sets that up too, default-on).
+Direwolf drives the DRA/AudioInjector card + GPIO PTT and is hardware-exclusive
+with GrayWolf, so its 'pat-direwolf' service is start-on-demand from the
+dashboard (which stops GrayWolf + the SDR feed). See docs/plan-winlink.md.
+
 Public API
 ----------
   check_platform()                  -> deb_arch str
   resolve_release(pinned, arch)     -> (url, filename)
   install_deb(deb_path)
-  write_config(port, callsign, locator, password) -> cfg_path
+  write_config(port, callsign, locator, password) -> cfg_path   # + AGWPE transport
   create_service(port)
+  install_direwolf()                -> bool
+  compute_ptt_gpio(override)        -> int | None               # sysfs base + 12
+  write_direwolf_config(callsign, adevice, ptt_gpio) -> conf_path
+  create_modem_service(conf_path, ptt_gpio)
   run(args)                         # entry point for the thin CLI wrapper
 """
 
 import getpass
+import glob
 import json
 import os
 import platform
@@ -64,6 +75,20 @@ def _offline_dir(repo_root):
 SERVICE      = "pat"
 DEFAULT_PORT = 8082          # GrayWolf owns 8080; 8081 kiwix, 8083 flask, 8085 aprs_api
 SERVICE_FILE = f"/etc/systemd/system/{SERVICE}.service"
+
+# ── Winlink RF modem (Direwolf) — Phase 2 ─────────────────────────────────────
+# Direwolf is the AX.25 packet modem behind Pat's AGWPE transport. It drives the
+# DRA / AudioInjector sound card + a GPIO PTT line, so it is hardware-exclusive
+# with GrayWolf (same card + GPIO 12). Installed but NOT enabled at boot: the
+# dashboard '{MODEM_SERVICE}' card starts it (tearing down GrayWolf + the SDR
+# feed) and stops it (restoring them) — see server/app.py _SERVICE_CONFLICTS.
+# Exposes an AGWPE server on :8000 and a KISS TCP server on :8001.
+MODEM_SERVICE      = "pat-direwolf"
+MODEM_SERVICE_FILE = f"/etc/systemd/system/{MODEM_SERVICE}.service"
+MODEM_AGW_PORT     = 8000
+MODEM_KISS_PORT    = 8001
+MODEM_ADEVICE      = "plughw:audioinjectorpi,0"   # DRA WM8731 (name-based plughw)
+MODEM_PTT_BCM      = 12                            # BCM GPIO wired to the DIN8 PTT (DRA red-LED line)
 
 # The well-known Winlink CMS Telnet gateway password alias.
 TELNET_ALIAS = "telnet://{mycall}:CMSTelnet@cms.winlink.org:8772/wl2k"
@@ -211,10 +236,15 @@ def write_config(port, callsign, locator, password):
         except (OSError, ValueError) as exc:
             _warn(f"Existing config.json is not valid JSON ({exc}) — leaving it untouched.")
             return cfg_path
+        changed = False
         if cfg.get("http_addr") != addr:
             cfg["http_addr"] = addr
+            changed = True
+        if _ensure_agwpe_transport(cfg):
+            changed = True
+        if changed:
             _save_config(cfg_path, cfg, user)
-            _ok(f"Existing config kept; set http_addr -> {addr}")
+            _ok(f"Existing config updated (http_addr -> {addr}; AGWPE transport ensured)")
         else:
             _ok("Existing config.json already on the right port — left as-is.")
         return cfg_path
@@ -224,6 +254,10 @@ def write_config(port, callsign, locator, password):
         "secure_login_password": password or "",
         "locator": locator or "",
         "http_addr": addr,
+        # RF Winlink (packet) rides Pat's AGWPE transport into the local Direwolf
+        # modem (127.0.0.1 forces IPv4 — Direwolf's AGWPE listener is IPv4-only).
+        "ax25":  {"engine": "agwpe"},
+        "agwpe": {"addr": f"127.0.0.1:{MODEM_AGW_PORT}", "radio_port": 0},
         "connect_aliases": {"telnet": TELNET_ALIAS},
     }
     _save_config(cfg_path, cfg, user)
@@ -240,6 +274,27 @@ def _save_config(path, cfg, user):
         fh.write("\n")
     os.chmod(path, 0o600)          # holds the Winlink password
     _chown_to_user(path, user)
+
+
+def _ensure_agwpe_transport(cfg):
+    """Make sure Pat can reach the local Direwolf modem over AGWPE, WITHOUT
+    clobbering an operator's existing choices. Only fills in what's missing (an
+    already-set ax25.engine — e.g. a hand-configured 'linux' — is left alone).
+    Returns True if anything changed."""
+    changed = False
+    ax25 = cfg.setdefault("ax25", {})
+    if isinstance(ax25, dict) and not ax25.get("engine"):
+        ax25["engine"] = "agwpe"
+        changed = True
+    agwpe = cfg.setdefault("agwpe", {})
+    if isinstance(agwpe, dict):
+        if not agwpe.get("addr"):
+            agwpe["addr"] = f"127.0.0.1:{MODEM_AGW_PORT}"
+            changed = True
+        if "radio_port" not in agwpe:
+            agwpe["radio_port"] = 0
+            changed = True
+    return changed
 
 
 # ── Step 5: systemd service ────────────────────────────────────────────────────
@@ -287,6 +342,220 @@ WantedBy=multi-user.target
         _info(f"Check logs with:  journalctl -u {SERVICE} -f")
 
 
+# ── Step 6: Direwolf — the Winlink RF modem ────────────────────────────────────
+def _debian_suite():
+    """Best-effort Debian suite codename (bookworm/trixie), or None."""
+    try:
+        with open("/etc/os-release") as fh:
+            for line in fh:
+                if line.startswith("VERSION_CODENAME="):
+                    return line.strip().split("=", 1)[1].strip().strip('"') or None
+    except OSError:
+        pass
+    return None
+
+
+def _direwolf_bundle_debs(repo_root):
+    """Bundled direwolf .deb paths for this suite (offline-packages/direwolf/
+    <suite>/, then the flat dir), or []."""
+    if not repo_root:
+        return []
+    suite = _debian_suite()
+    base  = os.path.join(repo_root, "offline-packages", "direwolf")
+    for d in ([os.path.join(base, suite)] if suite else []) + [base]:
+        if os.path.isdir(d):
+            debs = [os.path.join(d, f) for f in sorted(os.listdir(d))
+                    if f.endswith(".deb") and not f.startswith("._")]
+            if debs:
+                return debs
+    return []
+
+
+def install_direwolf(repo_root=None):
+    """Install Direwolf — bundled .debs first (offline-first), else apt. Returns
+    True if Direwolf is available afterwards."""
+    _step(6, "Installing Direwolf (Winlink RF modem)")
+    inst = dpkg_installed_version("direwolf")
+    if inst:
+        _ok(f"Direwolf already installed ({inst})")
+        return True
+
+    debs = _direwolf_bundle_debs(repo_root)
+    if debs:
+        _info(f"Installing {len(debs)} bundled package(s) from offline-packages/direwolf/ ...")
+        # `apt install ./*.deb` resolves deps from the bundled set + what's on the image.
+        if (_run(["sudo", "apt", "install", "--no-install-recommends", "-y", *debs],
+                 check=False).returncode == 0 and dpkg_installed_version("direwolf")):
+            _ok("Direwolf installed (offline bundle)")
+            return True
+        _warn("Offline bundle install failed (missing deps?) — trying apt.")
+
+    if _run(["which", "apt"], check=False, capture_output=True).returncode != 0:
+        _warn("apt not found — install Direwolf manually for RF Winlink.")
+        return False
+    if not has_internet():
+        _warn("No internet and no usable Direwolf bundle. Telnet Winlink still "
+              "works; bundle it (scripts/create-oasis-offline.py) or connect to install.")
+        return False
+    _info("Running: sudo apt install -y direwolf")
+    _info("You may be prompted for your sudo password.")
+    print()
+    if _run(["sudo", "apt", "install", "-y", "direwolf"], check=False).returncode != 0:
+        _warn("Direwolf install failed. Telnet Winlink still works; the RF modem "
+              "is unavailable until it's installed.")
+        return False
+    _ok("Direwolf installed")
+    return True
+
+
+def compute_ptt_gpio(override=None):
+    """Return the sysfs global GPIO number for the PTT line (BCM 12).
+
+    Modern kernels base the SoC gpiochip at a non-zero offset (e.g. 512), so the
+    sysfs number Direwolf must export is base + 12, not 12. Auto-detect the 40-pin
+    header bank and add 12. An explicit override wins. Returns None when it can't
+    be determined (non-Pi, or no matching chip) — the caller warns and the
+    operator sets --ptt-gpio."""
+    if override is not None:
+        return override
+    best = None  # (base, ngpio, label)
+    for chip in sorted(glob.glob("/sys/class/gpio/gpiochip*")):
+        try:
+            base  = int(open(os.path.join(chip, "base")).read().strip())
+            ngpio = int(open(os.path.join(chip, "ngpio")).read().strip())
+            label = open(os.path.join(chip, "label")).read().strip().lower()
+        except (OSError, ValueError):
+            continue
+        # The 40-pin header bank: bcm2711/bcm2712/rp1 pinctrl, ~54-58 lines.
+        # Excludes small expanders (raspberrypi-exp-gpio=8, brcmvirt=2).
+        if ("bcm" in label or "rp1" in label or "pinctrl" in label) and 40 <= ngpio <= 80:
+            if best is None or ngpio > best[1]:
+                best = (base, ngpio, label)
+    if best is None:
+        return None
+    return best[0] + MODEM_PTT_BCM
+
+
+def _sync_ptt_line(cfg_path, ptt_gpio, user):
+    """Rewrite an existing 'PTT GPIO <n>' line to the freshly-computed number (the
+    sysfs base can shift across kernel updates). Returns True if it changed."""
+    try:
+        with open(cfg_path) as fh:
+            lines = fh.readlines()
+    except OSError:
+        return False
+    want, changed = f"PTT GPIO {ptt_gpio}", False
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if s.startswith("PTT GPIO") and s.split("#")[0].strip() != want:
+            comment = ln[ln.find("#"):].rstrip("\n") if "#" in ln else ""
+            lines[i] = f"{want}          {comment}\n" if comment else f"{want}\n"
+            changed = True
+    if changed:
+        with open(cfg_path, "w") as fh:
+            fh.writelines(lines)
+        _chown_to_user(cfg_path, user)
+    return changed
+
+
+def write_direwolf_config(callsign, adevice, ptt_gpio):
+    _step(7, "Writing Direwolf (RF modem) configuration")
+    user, home = target_user_home()
+    cfg_dir  = os.path.join(home, ".config", "direwolf")
+    cfg_path = os.path.join(cfg_dir, "oasis-winlink.conf")
+    os.makedirs(cfg_dir, exist_ok=True)
+    _chown_to_user(cfg_dir, user)
+
+    if os.path.exists(cfg_path):
+        # Respect a hand-tuned conf, but keep the drift-prone PTT line correct.
+        if ptt_gpio is not None and _sync_ptt_line(cfg_path, ptt_gpio, user):
+            _ok(f"Existing conf kept; PTT GPIO synced -> {ptt_gpio}")
+        else:
+            _ok("Existing Direwolf conf left as-is.")
+        return cfg_path
+
+    ptt_line = (f"PTT GPIO {ptt_gpio}" if ptt_gpio is not None
+                else f"# PTT GPIO <auto-detect failed — re-run with --ptt-gpio N (gpiochip base + {MODEM_PTT_BCM})>")
+    conf = f"""# OASIS — Winlink RF modem (Direwolf). Generated by install-winlink.py.
+# Pat reaches this over AGWPE at 127.0.0.1:{MODEM_AGW_PORT}. Hardware-exclusive
+# with GrayWolf (same sound card + GPIO {MODEM_PTT_BCM}); the dashboard's
+# '{MODEM_SERVICE}' card starts/stops it. Do NOT enable at boot.
+
+ADEVICE   {adevice}
+ARATE     48000
+ACHANNELS 1
+CHANNEL 0
+MYCALL {callsign}
+MODEM 1200
+{ptt_line}          # sysfs = SoC gpiochip base + {MODEM_PTT_BCM}; re-run installer if the kernel base shifts
+AGWPORT {MODEM_AGW_PORT}
+KISSPORT {MODEM_KISS_PORT}
+
+# Force AX.25 v2.0 for every station: skip the v2.2 SABME/XID negotiation.
+# Many RMS gateways mishandle the v2.2 XID exchange at teardown, leaving
+# Direwolf retransmitting DISC/XID until N2 retries expire (~30 s of dead
+# keying after the QSO). v2.0 matches Windows RMS Express; v2.2's mod-128 /
+# SREJ gains are negligible at 1200 baud. Per-station opt-out: 'V20 <call>'.
+MAXV22 0
+"""
+    with open(cfg_path, "w") as fh:
+        fh.write(conf)
+    _chown_to_user(cfg_path, user)
+    _ok(f"Wrote {cfg_path}")
+    if ptt_gpio is None:
+        _warn("Could not auto-detect the PTT GPIO number — set it with "
+              f"--ptt-gpio N (SoC gpiochip base + {MODEM_PTT_BCM}) and re-run.")
+    return cfg_path
+
+
+# ── Step 8: Direwolf systemd service (start-on-demand, NOT boot-enabled) ────────
+def create_modem_service(conf_path, ptt_gpio):
+    _step(8, f"Creating {MODEM_SERVICE} systemd service")
+    user, home = target_user_home()
+    direwolf_bin = shutil.which("direwolf") or "/usr/bin/direwolf"
+
+    # On a non-clean stop (kill), unexport the GPIO so GrayWolf can reclaim BCM 12
+    # via libgpiod on switch-back (a still-exported sysfs line reads as busy).
+    unexport = (
+        f"ExecStopPost=/bin/sh -c 'echo {ptt_gpio} > /sys/class/gpio/unexport 2>/dev/null || true'\n"
+        if ptt_gpio is not None else "")
+
+    unit = f"""[Unit]
+Description=Winlink RF modem (Direwolf) — OASIS
+After=network.target sound.target
+# NOT enabled at boot: hardware-exclusive with GrayWolf (DRA sound card + GPIO
+# {MODEM_PTT_BCM}). The dashboard '{MODEM_SERVICE}' card starts it (stopping
+# GrayWolf + the SDR feed) and stops it (restoring them) — see server/app.py
+# _SERVICE_CONFLICTS. Exposes AGWPE :{MODEM_AGW_PORT} / KISS :{MODEM_KISS_PORT}.
+
+[Service]
+Type=simple
+User={user}
+Environment=HOME={home}
+ExecStart={direwolf_bin} -t 0 -c {conf_path}
+{unexport}Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+"""
+    proc = subprocess.Popen(["sudo", "tee", MODEM_SERVICE_FILE],
+                            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+    proc.communicate(unit.encode())
+    if proc.returncode != 0:
+        _fail(f"Could not write {MODEM_SERVICE_FILE}")
+    _run(["sudo", "chmod", "644", MODEM_SERVICE_FILE], check=False)
+    _run(["sudo", "systemctl", "daemon-reload"], check=False)
+    # Deliberately NOT enabled/started — it would fight GrayWolf for the card +
+    # GPIO. Explicitly disable (idempotent: clears any prior enable) so the box
+    # boots into APRS — GrayWolf + the SDR feed own the hardware after a power
+    # cycle. The dashboard (or a manual systemctl start) brings it up on demand.
+    _run(["sudo", "systemctl", "disable", MODEM_SERVICE], check=False)
+    _ok(f"Service file: {MODEM_SERVICE_FILE}  (runs as {user}; disabled at boot, start on demand)")
+    _info(f"Start RF Winlink:  sudo systemctl start {MODEM_SERVICE}   "
+          f"(stops GrayWolf; frees the DRA card + GPIO {MODEM_PTT_BCM})")
+
+
 # ── Helper: LAN address for the closing hint ───────────────────────────────────
 def _guess_host():
     out = _run(["hostname", "-I"], check=False, capture_output=True, text=True).stdout
@@ -296,7 +565,9 @@ def _guess_host():
 
 # ── Main entry point ───────────────────────────────────────────────────────────
 def run(pinned_version=None, callsign="W4MHI", locator=None, password=None,
-        no_password=False, port=DEFAULT_PORT, no_service=False, repo_root=None):
+        no_password=False, port=DEFAULT_PORT, no_service=False, repo_root=None,
+        no_modem=False, ptt_gpio=None, modem_adevice=MODEM_ADEVICE,
+        modem_callsign=None):
     """Full install sequence. Called by the thin CLI wrapper."""
     if repo_root is None:
         repo_root = os.path.dirname(_SCRIPTS_DIR)
@@ -324,6 +595,20 @@ def run(pinned_version=None, callsign="W4MHI", locator=None, password=None,
     else:
         create_service(port)
 
+    # Phase 2 — the RF (packet) modem. Default-on; skip with --no-modem.
+    if no_modem:
+        _step(6, "Installing Direwolf (Winlink RF modem)")
+        _info("--no-modem: skipped. Telnet (internet) Winlink only.")
+    elif install_direwolf(repo_root):
+        gpio = compute_ptt_gpio(ptt_gpio)
+        conf = write_direwolf_config(callsign=(modem_callsign or callsign),
+                                     adevice=modem_adevice, ptt_gpio=gpio)
+        if no_service:
+            _step(8, f"Creating {MODEM_SERVICE} systemd service")
+            _info(f"--no-service: skipped. Start manually:  direwolf -t 0 -c {conf}")
+        else:
+            create_modem_service(conf, gpio)
+
     host = _guess_host()
     print()
     print("  OASIS -- Winlink (Pat) install complete.")
@@ -335,5 +620,8 @@ def run(pinned_version=None, callsign="W4MHI", locator=None, password=None,
     _info("Send a test (Telnet/internet):  compose a message, then Action -> Connect -> telnet")
     _warn("Plain HTTP + the Winlink password is stored in config.json (mode 600).")
     _info("Keep this on your trusted LAN; do not port-forward without TLS.")
-    _info("RF (packet via GrayWolf KISS) is Phase 2 — see docs/plan-winlink.md.")
+    if not no_modem:
+        _info(f"RF Winlink (packet): start the '{MODEM_SERVICE}' card on the dashboard "
+              "(it stops GrayWolf), then Action -> Connect -> ax25:///<gateway-call>.")
+        _info("Full runbook + APRS<->Winlink mode-switch: docs/plan-winlink.md")
     print()

@@ -102,8 +102,8 @@
       For an M5Stack CM4Stack (Pi CM4) with the built-in ST7789V2 SPI panel, GT911 touch, and
       GPIO fan, the on-device panel display is configured with:
     </p>
-    <pre><code>python3 scripts/enable-cm4stack.py             # auto-detect the setup phase
-python3 scripts/enable-cm4stack.py --dry-run    # preview config.txt changes</code></pre>
+    <pre><code>python3 displays/cm4stack/install-cm4stack.py             # auto-detect the setup phase
+python3 displays/cm4stack/install-cm4stack.py --dry-run    # preview config.txt changes</code></pre>
     <p>
       It runs in two phases and <strong>requires a reboot between them</strong>: first it patches
       <code>config.txt</code> and sets headless boot (exit code <code>10</code> = reboot required);

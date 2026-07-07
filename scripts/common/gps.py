@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-gps.py  (library — CLI entry point is scripts/install-gps.py)
+gps.py  (library — CLI entry point is features/gps/install-gps.py)
 ------------------------------------------------------------
 Set up GPS-disciplined time (gpsd + chrony) so the station keeps an accurate
 clock with NO internet — needed for correct FT8/FT4/WSPR/SSTV decode windows and
@@ -19,9 +19,9 @@ A position fix needs sky view; verify with `cgps -s` (fix) and
 across reboots when GPS isn't locked — set that up separately.
 
 Usage:
-  python3 scripts/install-gps.py                 # autodetect device
-  python3 scripts/install-gps.py --device /dev/ttyACM0
-  python3 scripts/install-gps.py --check         # report status only
+  python3 features/gps/install-gps.py                 # autodetect device
+  python3 features/gps/install-gps.py --device /dev/ttyACM0
+  python3 features/gps/install-gps.py --check         # report status only
 
 Requires: Linux (Debian/Raspberry Pi OS), apt/dpkg, sudo. apt step needs internet.
 """
@@ -67,7 +67,7 @@ def detect_device(preferred):
           + ", ".join(CANDIDATES) + "). gpsd + chrony will still be installed and "
           "pointed at /dev/ttyACM0 — gpsd's USBAUTO attaches the receiver "
           "automatically when you plug it in. Verify later with:\n"
-          "       python3 scripts/install-gps.py --check")
+          "       python3 features/gps/install-gps.py --check")
     return "/dev/ttyACM0"
 
 
@@ -158,7 +158,7 @@ def do_assistnow(device):
     token = os.environ.get("OASIS_UBLOX_TOKEN", "").strip()
     if not token:
         _warn("AssistNow needs a u-blox service token (free u-blox / Thingstream account).")
-        _info("Then:  export OASIS_UBLOX_TOKEN=<token>   and re-run:  install-gps.py --assist-now")
+        _info("Then:  export OASIS_UBLOX_TOKEN=<token>   and re-run:  features/gps/install-gps.py --assist-now")
         return
     if not has_internet():
         _fail("AssistNow needs internet to fetch the offline assistance pack.")
@@ -220,7 +220,7 @@ def run(device=None, check_only=False, assist_now=False):
         return
     if assist_now:
         # Standalone refresh: assumes gpsd is already set up (run plain
-        # install-gps.py first). Re-run this whenever you're online to refresh.
+        # features/gps/install-gps.py first). Re-run this whenever you're online to refresh.
         _step(1, "AssistNow Offline — fetch + upload to the u-blox")
         do_assistnow(device)
         print()

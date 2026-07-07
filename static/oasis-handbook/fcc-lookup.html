@@ -85,8 +85,8 @@
     </table></div></div>
     <p>Results include callsign, name, city, state, and Maidenhead grid.</p>
     <h2>Building the database (online, one-time)</h2>
-    <pre><code>python3 scripts/setup-fcc-database.py              # download + build all indexes
-python3 scripts/setup-fcc-database.py --index-only # rebuild indexes from existing EN.dat</code></pre>
+    <pre><code>python3 scripts/install-fcc-database.py              # download + build all indexes
+python3 scripts/install-fcc-database.py --index-only # rebuild indexes from existing EN.dat</code></pre>
     <p>
       Run it on any machine with internet, then copy the <code>data/</code> folder to the Pi
       (or run it on the Pi if it has internet). FCC publishes fresh data every Sunday.
@@ -100,7 +100,7 @@ python3 scripts/setup-fcc-database.py --index-only # rebuild indexes from existi
     </p>
     <div class="callout info">
       <span class="ic">&#8505;</span>
-      <div><p><strong>Grid squares are ZIP-centroid derived.</strong> The FCC database stores ZIP codes, not GPS coordinates, so a grid can be several miles from the operator&rsquo;s actual location. Name and grid search require the <code>zipcodes.csv</code> that <code>setup-fcc-database.py</code> generates.</p></div>
+      <div><p><strong>Grid squares are ZIP-centroid derived.</strong> The FCC database stores ZIP codes, not GPS coordinates, so a grid can be several miles from the operator&rsquo;s actual location. Name and grid search require the <code>zipcodes.csv</code> that <code>install-fcc-database.py</code> generates.</p></div>
     </div>
 
     <nav class="page-nav">

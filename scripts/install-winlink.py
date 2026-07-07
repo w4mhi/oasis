@@ -16,10 +16,15 @@ What this does (same workflow as the other install-* scripts):
   3. Writes a starter config (~/.config/pat/config.json) — callsign, Winlink
      password (optional prompt), and the web UI bound to the LAN on port 8082
   4. Creates + enables a systemd service that runs `pat http`
+  5. Installs Direwolf + writes its config + a start-on-demand `pat-direwolf`
+     service (the RF packet modem behind Pat's AGWPE transport). Skip with
+     --no-modem.
 
 Phase 1 = Telnet (internet gateway): works as soon as your Winlink password is
-set. RF transports (packet via GrayWolf's KISS TNC) are Phase 2 — see
-docs/plan-winlink.md.
+set. Phase 2 = RF packet over Direwolf (default-on): Pat's AGWPE transport ->
+local Direwolf on :8000. Direwolf drives the DRA/AudioInjector card + GPIO PTT
+and is hardware-exclusive with GrayWolf, so `pat-direwolf` is started on demand
+from the dashboard (which stops GrayWolf + the SDR feed). See docs/plan-winlink.md.
 
 Pat runs on port 8082 (GrayWolf already owns 8080). After install, open
 http://<pi-ip>:8082 to compose/send.
@@ -77,6 +82,15 @@ def main():
                         help=f"Port for the Pat web UI (default: {W.DEFAULT_PORT}).")
     parser.add_argument("--no-service", action="store_true",
                         help="Install Pat and write config, but don't create the systemd service.")
+    parser.add_argument("--no-modem", action="store_true",
+                        help="Skip the Direwolf RF modem (telnet-only Winlink).")
+    parser.add_argument("--ptt-gpio", type=int, default=None, metavar="N",
+                        help="Override the RF modem's sysfs PTT GPIO number "
+                             "(default: auto = SoC gpiochip base + 12).")
+    parser.add_argument("--modem-adevice", default=W.MODEM_ADEVICE, metavar="DEV",
+                        help=f"ALSA device for the RF modem (default: {W.MODEM_ADEVICE}).")
+    parser.add_argument("--modem-callsign", default=None, metavar="CALL",
+                        help="Direwolf MYCALL for the RF modem (default: --callsign).")
     args = parser.parse_args()
 
     # Resolve the Winlink password: explicit flag, interactive prompt, or skip.
@@ -99,6 +113,10 @@ def main():
         port=args.port,
         no_service=args.no_service,
         repo_root=REPO_ROOT,
+        no_modem=args.no_modem,
+        ptt_gpio=args.ptt_gpio,
+        modem_adevice=args.modem_adevice,
+        modem_callsign=args.modem_callsign,
     )
 
 

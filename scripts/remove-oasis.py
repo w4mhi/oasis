@@ -96,8 +96,8 @@ def _import_markers(filename, names):
     return tuple(getattr(mod, n) for n in names)
 
 
-_DRA_BEGIN, _DRA_END = _import_markers("enable-dra-pi.py", ("BLOCK_BEGIN", "BLOCK_END"))
-_CM4_BEGIN, _CM4_END = _import_markers("enable-cm4stack.py", ("BLOCK_BEGIN", "BLOCK_END"))
+_DRA_BEGIN, _DRA_END = _import_markers("../features/dra-audio-interface/enable-dra-pi.py", ("BLOCK_BEGIN", "BLOCK_END"))
+_CM4_BEGIN, _CM4_END = _import_markers("../displays/cm4stack/install-cm4stack.py", ("BLOCK_BEGIN", "BLOCK_END"))
 
 
 def config_path():

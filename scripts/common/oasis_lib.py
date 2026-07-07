@@ -705,12 +705,12 @@ RTL_SDR_PACKAGES = ["rtl-sdr", "librtlsdr0", "libusb-1.0-0"]
 # socket; tcpdump verifies the feed; multimon-ng is a standalone AFSK1200 decoder
 # for testing the SDR chain independently of GrayWolf (see docs/graywolf-rtl-sdr.md).
 # libwrap0 / libpcap0.8 are socat/tcpdump's not-always-present shared-lib deps
-# (libc6 / libssl3 are base-system, always installed). Bundled so install-rtl-sdr.py
+# (libc6 / libssl3 are base-system, always installed). Bundled so features/rtl-sdr/install-rtl-sdr.py
 # can install them fully offline.
 #
 # Note: multimon-ng pulls a larger X11/audio dependency tree than the feed tools;
 # only the multimon-ng .deb itself is vendored here, so on a minimal/Lite image its
-# deps are resolved by apt (internet). install-rtl-sdr.py installs it best-effort.
+# deps are resolved by apt (internet). features/rtl-sdr/install-rtl-sdr.py installs it best-effort.
 FEED_PACKAGES = ["socat", "tcpdump", "multimon-ng", "libwrap0", "libpcap0.8"]
 
 

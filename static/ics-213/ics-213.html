@@ -279,7 +279,7 @@ function toggleInst(){
 
 // ── Send via Winlink ────────────────────────────────────────────────────────
 // Build a Winlink-style message (text body + RMS_Express_Form XML attachment)
-// from this form and hand it to winlink/mail.html via localStorage. No network.
+// from this form and hand it to server/winlink/mail.html via localStorage. No network.
 function _wlEsc(s){return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function _pad2(n){return String(n).padStart(2,'0');}
 

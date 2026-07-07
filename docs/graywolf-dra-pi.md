@@ -249,14 +249,14 @@ cat /proc/asound/cards ; echo '---' ; aplay -l ; arecord -l
 
 | What you see | Likely cause | Fix |
 |---|---|---|
-| Step 1 prints nothing / no OASIS block | edited the wrong file, or the script wrote `/boot/config.txt` while the Pi boots `/boot/firmware/config.txt` | re-run `python3 scripts/enable-dra-pi.py --config-only`; confirm it reports `Boot config: /boot/firmware/config.txt`; **reboot** |
+| Step 1 prints nothing / no OASIS block | edited the wrong file, or the script wrote `/boot/config.txt` while the Pi boots `/boot/firmware/config.txt` | re-run `python3 features/dra-audio-interface/enable-dra-pi.py --config-only`; confirm it reports `Boot config: /boot/firmware/config.txt`; **reboot** |
 | Step 1 still shows an active `dtparam=audio=on` | on-board audio is holding the I²S bus | make sure that line is commented and `dtparam=audio=off` is present (the script does this); reboot |
 | Step 2 lists no `audioinjector*.dtbo` | overlay not shipped on this kernel/image | `sudo apt update && sudo apt full-upgrade` to refresh `linux-image`/overlays, or install the AudioInjector overlay manually (see Reference); reboot |
 | Step 3 shows `wm8731 1-001a: Failed to issue reset: -110` then `probe … failed with error -110` and `deferred probe pending` | overlay loaded and the codec device exists, but its **I²C control write timed out** (`-110` = `ETIMEDOUT`) — contact or I²C clock-stretching, **not** config. The `supply … dummy regulator` lines above it are normal | 1) power off and **reseat** the HAT on all 40 pins (SDA/SCL = pins 3/5; remove a heatsink that lifts the board). 2) still failing → slow the bus: add `dtparam=i2c_arm_baudrate=50000` (then `10000`) to the OASIS block, reboot. 3) on a **Pi 5** the I²C lives on RP1 and may need a different bus/overlay — check `cat /proc/device-tree/model` |
 | Step 3 shows `wm8731 … -ENODEV` / `-EREMOTEIO`, or nothing at all | codec not responding — seating/power, or I²C off | power off; reseat the HAT firmly on all 40 pins (remove the SoC heatsink if it fouls the board); confirm `dtparam=i2c_arm=on`; reboot |
 | Step 4 shows `--` everywhere (no `1a`) | the WM8731 isn't on the bus — hardware/seating, or I²C disabled | reseat the board; verify `dtparam=i2c_arm=on`. A blank grid here is almost always physical contact, not software |
 | Step 4 shows `UU` at `1a` | a driver already claimed the codec — **this is good** | proceed; the card should show in step 5 |
-| Step 5 lists `audioinjectorpi` | it's working — the earlier "not detected" was a stale check | run `python3 scripts/enable-dra-pi.py --mixer-only` to apply the RX/TX routing |
+| Step 5 lists `audioinjectorpi` | it's working — the earlier "not detected" was a stale check | run `python3 features/dra-audio-interface/enable-dra-pi.py --mixer-only` to apply the RX/TX routing |
 
 ### Still nothing?
 
@@ -281,14 +281,14 @@ receive activity. GPIO 16 is free — GrayWolf only uses GPIO 12 (PTT).
 
 ### Install it (recommended)
 
-`scripts/enable-dra-rx-led.py` ships this as a systemd service — no manual file
+`features/dra-audio-interface/enable-dra-rx-led.py` ships this as a systemd service — no manual file
 copying. It polls the GrayWolf history DB (the reliable, offline source the APRS
 API already uses) and pulses the green LED on each decoded packet:
 
 ```bash
-python3 scripts/enable-dra-rx-led.py             # write + enable the service
-python3 scripts/enable-dra-rx-led.py --self-test  # blink GPIO 16 to verify wiring
-python3 scripts/enable-dra-rx-led.py --uninstall  # stop + remove it
+python3 features/dra-audio-interface/enable-dra-rx-led.py             # write + enable the service
+python3 features/dra-audio-interface/enable-dra-rx-led.py --self-test  # blink GPIO 16 to verify wiring
+python3 features/dra-audio-interface/enable-dra-rx-led.py --uninstall  # stop + remove it
 ```
 
 The daemon waits for the DB to appear, reads it **read-only**, and runs as root

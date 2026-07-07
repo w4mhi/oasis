@@ -6,7 +6,7 @@ the steady baseline that GPS + `chrony` then fine-tune; without it, a Pi boots
 believing it is whenever it last shut down, which breaks FT8/WSPR/SSTV decode
 windows, log timestamps, and TLS-free time-sensitive tooling.
 
-Configured by **`scripts/enable-rtc.py`**.
+Configured by **`features/rtc-hat/enable-rtc.py`**.
 
 *Targets the UUGear **Witty Pi 3** (Rev1/Rev2). Any DS3231-based RTC HAT works
 with the same overlay.*
@@ -78,8 +78,8 @@ scope here.
 Idempotent and safe to re-run — **requires a reboot**:
 
 ```bash
-python3 scripts/enable-rtc.py            # configure the DS3231 RTC (then reboot)
-python3 scripts/enable-rtc.py --check     # report status, change nothing
+python3 features/rtc-hat/enable-rtc.py            # configure the DS3231 RTC (then reboot)
+python3 features/rtc-hat/enable-rtc.py --check     # report status, change nothing
 ```
 
 | Step | Action | Why |
@@ -98,7 +98,7 @@ Each step is a no-op if already applied, so re-running is harmless.
 ```bash
 # 1 · Configure (writes config.txt + neutralises fake-hwclock / hwclock-set,
 #     and installs util-linux-extra if hwclock is missing — see note below)
-python3 scripts/enable-rtc.py
+python3 features/rtc-hat/enable-rtc.py
 
 # 2 · Reboot so the DS3231 overlay loads
 sudo reboot
@@ -142,7 +142,7 @@ date
 systemctl status fake-hwclock 2>/dev/null || echo "fake-hwclock not present — good"
 ```
 
-`python3 scripts/enable-rtc.py --check` summarises the same: whether I²C is on,
+`python3 features/rtc-hat/enable-rtc.py --check` summarises the same: whether I²C is on,
 whether the overlay line is present, and what the RTC currently reads.
 
 ---

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-rtl_sdr.py  (library — CLI entry point is scripts/install-rtl-sdr.py)
+rtl_sdr.py  (library — CLI entry point is features/rtl-sdr/install-rtl-sdr.py)
 --------------------------------------------------------------------
 Install RTL-SDR tools and kernel module blacklist on Raspberry Pi OS or any
 Debian/Ubuntu Linux system. Call run() to perform the install.
@@ -14,14 +14,14 @@ What this does:
      (same offline-first / apt logic) — socat carries the SDR audio into GrayWolf,
      tcpdump verifies it, and multimon-ng bench-tests decoding independently of
      GrayWolf (docs/graywolf-rtl-sdr.md). Pi OS ships with none. Used by
-     enable-rtl-sdr.py and the SDR debug section.
+     features/rtl-sdr/enable-rtl-sdr.py and the SDR debug section.
   4. Blacklists the dvb_usb_rtl28xxu kernel module that conflicts with RTL-SDR
   5. Verifies the install with rtl_test --help
 
 After install, plug in your RTL-SDR dongle and run:
   rtl_test -t            # verify device is found
   rtl_fm -f 144.390M ... # receive APRS/FM audio
-  python3 scripts/enable-rtl-sdr.py   # wire the dongle into GrayWolf (RX-only)
+  python3 features/rtl-sdr/enable-rtl-sdr.py   # wire the dongle into GrayWolf (RX-only)
 
 Supported hardware: RTL2832U-based USB dongles (RTL-SDR Blog V3/V4, Nooelec, etc.)
 
@@ -31,7 +31,7 @@ apt is used (internet required). If a package can't be installed, the error
 is logged and the script continues with the remaining steps.
 
 Usage:
-  python3 scripts/install-rtl-sdr.py
+  python3 features/rtl-sdr/install-rtl-sdr.py
 
 Requires: Linux, apt/dpkg, sudo. Internet optional if bundled packages present.
 """
@@ -136,7 +136,7 @@ REQUIRED_DEBS = {
     "librtlsdr":    ["librtlsdr0_", "librtlsdr2_"],
 }
 
-# Feed tools for the RTL-SDR → GrayWolf sdr_udp path (see enable-rtl-sdr.py and
+# Feed tools for the RTL-SDR → GrayWolf sdr_udp path (see features/rtl-sdr/enable-rtl-sdr.py and
 # docs/graywolf-rtl-sdr.md). socat carries the audio; tcpdump verifies it. Their
 # not-always-present shared-lib deps are bundled so the offline install resolves.
 FEED_DEBS = {
@@ -478,7 +478,7 @@ def verify():
     _info("Plug in your RTL-SDR dongle and run:  rtl_test -t")
 
 
-# ── Entry point (called by the thin CLI scripts/install-rtl-sdr.py) ──────────────
+# ── Entry point (called by the thin CLI features/rtl-sdr/install-rtl-sdr.py) ──────────────
 def run():
     print("\n  OASIS — install-rtl-sdr")
     _hr()
@@ -525,5 +525,5 @@ def run():
     print("\n  RTL-SDR install complete.")
     _info("Plug in your dongle and run:  rtl_test -t")
     _info("For APRS receive:  rtl_fm -f 144.390M -M fm -s 48000 - | aplay -r 48000 -f S16_LE -t raw -c 1")
-    _info("Wire it into GrayWolf:  python3 scripts/enable-rtl-sdr.py")
+    _info("Wire it into GrayWolf:  python3 features/rtl-sdr/enable-rtl-sdr.py")
     print()

@@ -75,9 +75,9 @@
       system clock from it, and the header <a href="gps-card.html">GPS card</a> shows the result.
     </p>
     <h2>GPS time sync</h2>
-    <pre><code>python3 scripts/install-gps.py                 # autodetect the GPS serial device
-python3 scripts/install-gps.py --device /dev/ttyACM0
-python3 scripts/install-gps.py --check         # report gpsd/chrony status</code></pre>
+    <pre><code>python3 features/gps/install-gps.py                 # autodetect the GPS serial device
+python3 features/gps/install-gps.py --device /dev/ttyACM0
+python3 features/gps/install-gps.py --check         # report gpsd/chrony status</code></pre>
     <p>
       It installs <code>gpsd</code> and <code>chrony</code>, points <code>gpsd</code> at the
       receiver (<code>GPSD_OPTIONS=-n</code> so it polls without a client), and adds the chrony
@@ -95,8 +95,8 @@ python3 scripts/install-gps.py --check         # report gpsd/chrony status</code
       reboots and total power loss, the steady baseline GPS/chrony then fine-tune. OASIS
       supports the <strong>UUGear Witty Pi 3</strong> (DS3231 on I&sup2;C <code>0x68</code>):
     </p>
-    <pre><code>python3 scripts/enable-rtc.py                  # configure the DS3231 RTC overlay
-python3 scripts/enable-rtc.py --check          # report status</code></pre>
+    <pre><code>python3 features/rtc-hat/enable-rtc.py                  # configure the DS3231 RTC overlay
+python3 features/rtc-hat/enable-rtc.py --check          # report status</code></pre>
     <p>
       The script is idempotent and <strong>requires a reboot</strong>. It enables I&sup2;C, adds
       the <code>i2c-rtc,ds3231</code> overlay, removes <code>fake-hwclock</code>, and applies the

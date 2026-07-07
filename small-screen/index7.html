@@ -88,7 +88,7 @@
       <button type="button" class="src-btn is" id="aprs-is-btn" onclick="toggleAprsSource('is')" title="Show/hide IS stations">IS</button>
     </div>
     <div class="aprs-body" id="aprsBody">
-      <div class="row-head"><span>CALLSIGN</span><span>AGE</span><span>SPEED</span><span>ALT</span><span>VIA</span><span>COMMENT</span></div>
+      <div class="row-head"><span>CALLSIGN</span><span>AGE</span><span>SPEED</span><span>ALT</span><span>GRID</span><span>DIST</span><span>VIA</span><span>COMMENT</span></div>
       <!-- rows injected -->
     </div>
   </div>
@@ -117,6 +117,8 @@
       <span class="k">Age</span><span class="v" id="shAge">—</span>
       <span class="k">Via</span><span class="v" id="shVia">—</span>
       <span class="k">Speed</span><span class="v" id="shSpd">—</span>
+      <span class="k">Grid</span><span class="v" id="shGrid">—</span>
+      <span class="k">Dist</span><span class="v" id="shDist">—</span>
     </div>
     <div class="full" id="shCmt"></div>
   </div>
@@ -281,7 +283,7 @@ const SERVICES = [
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (d.active === 'active') return { up: true, badge: 'UP', sub: '→ GrayWolf' };
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
-        sub: d.installed ? 'inactive' : 'enable-rtl-sdr.py' };
+        sub: d.installed ? 'inactive' : 'features/rtl-sdr/enable-rtl-sdr.py' };
     }
   },
   {
@@ -293,7 +295,7 @@ const SERVICES = [
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (d.active === 'active') return { up: true, badge: 'UP', sub: ':2947' };
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
-        sub: d.installed ? 'inactive' : 'install-gps.py' };
+        sub: d.installed ? 'inactive' : 'features/gps/install-gps.py' };
     }
   },
   {
@@ -320,7 +322,7 @@ const SERVICES = [
   {
     id: 'rb', name: 'Repeater Book',
     check: async () => {
-      const r = await fetch('repeaterbook/repeaterbook.csv', { method: 'HEAD', cache: 'no-store' });
+      const r = await fetch('static/repeaterbook/repeaterbook.csv', { method: 'HEAD', cache: 'no-store' });
       return { up: r.ok, badge: r.ok ? 'UP' : 'DOWN', sub: r.ok ? 'CSV loaded' : 'CSV missing' };
     }
   },
@@ -343,7 +345,7 @@ const SERVICES = [
   {
     id: 'manuals', name: 'Radio Manuals',
     check: async () => {
-      const r = await fetch('/api/browse?path=radio-manuals', { cache: 'no-store' });
+      const r = await fetch('/api/browse?path=static/radio-manuals', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: 'browse error' };
       const d = await r.json();
       const n = (d.entries || []).filter(e => e.type === 'dir').length;
@@ -379,7 +381,7 @@ const GATEABLE = {
 };
 
 // A systemd-backed service can be live even when the manifest never recorded it
-// (e.g. enable-rtl-sdr.py / install-gps.py run directly, outside setup-oasis.py —
+// (e.g. features/rtl-sdr/enable-rtl-sdr.py / features/gps/install-gps.py run directly, outside setup-oasis.py —
 // note rtl-sdr tools and the rtl-feed feed are separate features). Probe the
 // real unit so a running feed isn't hidden as "not installed". Require it to be
 // *enabled or active*, not merely present: a leftover/disabled unit the operator
@@ -394,13 +396,13 @@ async function unitInstalled(id) {
     const d = await r.json();
     // gpsd is a stock Debian package other features pull in transitively (e.g.
     // Winlink's `pat` Depends: gpsd) and its socket auto-enables — so a *running*
-    // gpsd is NOT proof the operator set up GPS. install-gps.py explicitly
+    // gpsd is NOT proof the operator set up GPS. features/gps/install-gps.py explicitly
     // `systemctl enable gpsd`, so a deliberate setup reports enabled==='enabled',
     // while a dependency-pulled one stays socket-activated ('indirect'/'static').
     // Require that explicit boot-enable for gpsd; don't let mere activity un-hide
     // the GPS tile (the server promotes a live gpsd.socket to active==='active').
     if (id === 'gpsd') return d.enabled === 'enabled';
-    // aprs-sdr-feed only exists if enable-rtl-sdr.py created it, so any
+    // aprs-sdr-feed only exists if features/rtl-sdr/enable-rtl-sdr.py created it, so any
     // enabled/active state is a genuine, deliberate install.
     return d.active === 'active' || d.enabled === 'enabled';
   } catch (_) { return false; }
@@ -471,20 +473,20 @@ function pingAll() { SERVICES.forEach(svc => { if (!HIDDEN_SVCS.has(svc.id)) che
 // ── Build OPS overlay ─────────────────────────────────────────────────────────
 const OPS = {
   Util: [
-    { icon:'📍', label:'APRS Map',        url:'aprs/map.html' },
+    { icon:'📍', label:'APRS Map',        url:'server/aprs/map.html' },
     { icon:'🔎', label:'FCC Lookup',      url:'/lookup' },
     { icon:'💻', label:'SSH Terminal',    ext: () => `${location.protocol}//${HOST}:${PORTS.webssh}/` },
-    { icon:'📋', label:'Net Logger',      url:'tools/net-log.html' },
+    { icon:'📋', label:'Net Logger',      url:'server/tools/net-log.html' },
   ],
   Tools: [
-    { icon:'✅', label:'Setup Verify',    url:'system/setup.html' },
+    { icon:'✅', label:'Setup Verify',    url:'server/system/setup.html' },
     { icon:'📐', label:'Antenna Calc',    url:'static/antenna-calc.html' },
     { icon:'📻', label:'Band Plan',       url:'static/band-plan/index.html' },
-    { icon:'🧭', label:'Grid/Bearing',    url:'tools/grid-calc.html' },
+    { icon:'🧭', label:'Grid/Bearing',    url:'server/tools/grid-calc.html' },
     { icon:'☀️', label:'Propagation',     url:'static/solar.html' },
     { icon:'🔋', label:'Power/Battery',   url:'static/power-calc.html' },
     { icon:'🌓', label:'Gray Line',       url:'static/grayline.html' },
-    { icon:'📁', label:'File Browser',    url:'system/browser.html' },
+    { icon:'📁', label:'File Browser',    url:'server/system/browser.html' },
   ],
   'ICS Forms': [
     { icon:'📄', label:'ICS-205',         url:'static/ics-205/ics-205.html' },
@@ -493,21 +495,21 @@ const OPS = {
     { icon:'📄', label:'ICS-309',         url:'static/ics-309/ics-309.html' },
   ],
   'Winlink / APRS': [
-    { icon:'✉️', label:'Winlink Mail',    url:'winlink/mail.html' },
-    { icon:'📍', label:'Position Reports',url:'winlink/position-report.html' },
-    { icon:'🛠️', label:'Radio Settings',  url:'winlink/radio-settings.html' },
-    { icon:'🔁', label:'WL → Position',   url:'winlink/to-position.html' },
+    { icon:'✉️', label:'Winlink Mail',    url:'server/winlink/mail.html' },
+    { icon:'📍', label:'Position Reports',url:'server/winlink/position-report.html' },
+    { icon:'🛠️', label:'Radio Settings',  url:'server/winlink/radio-settings.html' },
+    { icon:'🔁', label:'WL → Position',   url:'server/winlink/to-position.html' },
     { icon:'🐺', label:'GrayWolf',        ext: () => `${location.protocol}//${HOST}:${PORTS.graywolf}/` },
     { icon:'📖', label:'GrayWolf Docs',   url:'static/graywolf-handbook/index.html' },
     { icon:'🤖', label:'APRS Bots',       url:'static/cheatsheets/aprs_bots.html' },
     { icon:'🤖', label:'MPAD Bot',        url:'static/cheatsheets/mpad.html' },
   ],
   'Radio Ref': [
-    { icon:'📡', label:'Repeater Guide',  url:'repeater-guide/index.html' },
-    { icon:'🃏', label:'Radio Cards',     url:'radio-cards/index.html' },
+    { icon:'📡', label:'Repeater Guide',  url:'static/repeater-guide/index.html' },
+    { icon:'🃏', label:'Radio Cards',     url:'static/radio-cards/index.html' },
     { icon:'📑', label:'Cheatsheets',     url:'static/cheatsheets/index.html' },
-    { icon:'📡', label:'Repeater Book',   url:'repeaterbook/repeaterbook.html' },
-    { icon:'📘', label:'Radio Manuals',   url:'system/browser.html?path=radio-manuals' },
+    { icon:'📡', label:'Repeater Book',   url:'static/repeaterbook/repeaterbook.html' },
+    { icon:'📘', label:'Radio Manuals',   url:'server/system/browser.html?path=static/radio-manuals' },
     { icon:'🌐', label:'Wikipedia',       ext: () => `${location.protocol}//${HOST}:${PORTS.kiwix}/` },
   ],
   Operating: [
@@ -548,6 +550,8 @@ function openSheet(s) {
   document.getElementById('shAge').textContent   = ageSec != null ? (ageSec<60?ageSec+'s ago':Math.floor(ageSec/60)+'m ago') : (s.a ? s.a+' ago' : '—');
   document.getElementById('shVia').textContent   = aprsSource(s).toUpperCase();
   document.getElementById('shSpd').textContent   = s.speed_mph != null ? fmtSpeed(s.speed_mph) : (s.sp || '—');
+  document.getElementById('shGrid').textContent  = gridSquare(s.lat, s.lon) || '—';
+  document.getElementById('shDist').textContent  = distFromHome(s.lat, s.lon) || '—';
   document.getElementById('shCmt').textContent   = s.comment || s.cmt || '(no comment)';
   document.getElementById('sheet').classList.add('open');
 }
@@ -659,6 +663,53 @@ let _allAprsStations = [];
 let _aprsShowRF = true;  // RF/IS source toggles (both on by default)
 let _aprsShowIS = true;
 
+let _homeLat = null, _homeLon = null;
+
+function loadHomeCoords() {
+  fetch('/station.json')
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if (!d || !d.lat || !d.lon) return;
+      _homeLat = parseFloat(d.lat);
+      _homeLon = parseFloat(d.lon);
+      if (_allAprsStations.length) applyAprsFilter();
+    })
+    .catch(() => {});
+}
+
+function distFromHome(lat, lon) {
+  if (_homeLat == null || lat == null || lon == null) return '';
+  const p1 = _homeLat * Math.PI / 180, p2 = parseFloat(lat) * Math.PI / 180;
+  const dphi = (parseFloat(lat) - _homeLat) * Math.PI / 180;
+  const dl   = (parseFloat(lon) - _homeLon) * Math.PI / 180;
+  const a = Math.sin(dphi / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  const dMi = 2 * 3958.8 * Math.asin(Math.min(1, Math.sqrt(a)));
+  if (dMi < 0.1) return 'here';
+  const yb   = Math.sin(dl) * Math.cos(p2);
+  const xb   = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+  const bear = (Math.atan2(yb, xb) * 180 / Math.PI + 360) % 360;
+  const card = ['N','NE','E','SE','S','SW','W','NW'][Math.round(bear / 45) % 8];
+  if (isImperial()) return dMi < 100 ? `${dMi.toFixed(1)}mi ${card}` : `${Math.round(dMi)}mi ${card}`;
+  const dKm = dMi * 1.60934;
+  return dKm < 100 ? `${dKm.toFixed(1)}km ${card}` : `${Math.round(dKm)}km ${card}`;
+}
+
+function gridSquare(lat, lon) {
+  if (lat == null || lon == null) return '';
+  let la = parseFloat(lat), lo = parseFloat(lon);
+  if (isNaN(la) || isNaN(lo)) return '';
+  lo += 180; la += 90;
+  const c1 = String.fromCharCode(65 + Math.floor(lo / 20));
+  const c2 = String.fromCharCode(65 + Math.floor(la / 10));
+  lo %= 20; la %= 10;
+  const n1 = Math.floor(lo / 2);
+  const n2 = Math.floor(la);
+  lo %= 2; la %= 1;
+  const c3 = String.fromCharCode(97 + Math.floor(lo / (2 / 24)));
+  const c4 = String.fromCharCode(97 + Math.floor(la / (1 / 24)));
+  return c1 + c2 + n1 + n2 + c3 + c4;
+}
+
 // Heard-via source. GrayWolf stores the transport in `via`: 'rf' (off the air)
 // or 'is' (APRS-IS/internet). Trust it; fall back to sniffing the path only when
 // `via` is missing/unrecognised. Mirrors the map + main dashboard.
@@ -698,12 +749,20 @@ function renderAprsRows(stations) {
   stations.forEach(s => {
     const call = s.callsign || s.c || '—';
     const alt  = s.alt_m != null ? fmtAlt(s.alt_m) : '';
+    const courseNum = s.course != null ? Math.round(s.course) : null;
+    const courseFmt = courseNum != null && s.speed_mph > 0
+      ? ` <span style="display:inline-block;transform:rotate(${courseNum}deg)">↑</span> ${['N','NE','E','SE','S','SW','W','NW'][Math.round(courseNum/45)%8]} ${courseNum}°`
+      : '';
+    const grid = gridSquare(s.lat, s.lon);
+    const dist = distFromHome(s.lat, s.lon);
     const src  = aprsSource(s); // 'rf' → green, 'is' → blue
     const r = document.createElement('div'); r.className = 'row';
-    r.innerHTML = `<span class="call ${src}"><a href="aprs/map.html?focus=${encodeURIComponent(call)}" target="_blank" style="color:inherit;text-decoration:none">${call}</a></span>
+    r.innerHTML = `<span class="call ${src}"><a href="server/aprs/map.html?focus=${encodeURIComponent(call)}" target="_blank" style="color:inherit;text-decoration:none">${call}</a></span>
       <span class="age">${fmtAge(s.last_heard||s.timestamp||s.time)}</span>
-      <span class="spd">${s.speed_mph > 0 ? fmtSpeed(s.speed_mph) : ''}</span>
+      <span class="spd">${s.speed_mph > 0 ? fmtSpeed(s.speed_mph) : ''}${courseFmt}</span>
       <span class="alt">${alt}</span>
+      <span class="alt">${grid}</span>
+      <span class="alt">${dist}</span>
       <span class="via ${src}">${src.toUpperCase()}</span>
       <span class="cmt ${(s.comment||s.cmt)?'':'empty'}">${s.comment||s.cmt||'—'}</span>`;
     r.onclick = () => openSheet(s);
@@ -851,6 +910,7 @@ loadConfig().then(loadInstalled).then(() => {
   fetchStats();
   fetchAudio();
   fetchAPRS();
+  loadHomeCoords();
   pollFeedFlow();
   setInterval(pingAll,      30_000);
   setInterval(fetchStats,   30_000);

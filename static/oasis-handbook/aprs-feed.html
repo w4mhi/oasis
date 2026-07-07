@@ -76,8 +76,8 @@
     </p>
     <h2>RTL-SDR &rarr; GrayWolf</h2>
     <p>Tick <strong>RTL-SDR tools</strong> and <strong>RTL-SDR &rarr; GrayWolf APRS feed</strong> in the setup menu, or run:</p>
-    <pre><code>python3 scripts/install-rtl-sdr.py      # RTL-SDR driver + tools
-python3 scripts/enable-rtl-sdr.py       # test the dongle, start the audio feed</code></pre>
+    <pre><code>python3 features/rtl-sdr/install-rtl-sdr.py      # RTL-SDR driver + tools
+python3 features/rtl-sdr/enable-rtl-sdr.py       # test the dongle, start the audio feed</code></pre>
     <p>
       This demodulates 2&nbsp;m APRS and streams the audio to <code>127.0.0.1:7355</code> over
       UDP. Finish the wiring in the GrayWolf web UI (<code>:8080</code>):

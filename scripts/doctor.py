@@ -4,7 +4,7 @@ doctor.py
 ---------
 Headless health check for an OASIS deployment.
 
-Mirrors every check in system/setup.html — safe to run over SSH with no
+Mirrors every check in server/system/setup.html — safe to run over SSH with no
 browser, or as a post-deploy verification step.
 
 Core checks (server, FCC index, maps, disk) set the exit code:
@@ -36,7 +36,7 @@ REPO_ROOT   = os.path.dirname(_SCRIPT_DIR)
 
 FCC_INDEX   = os.path.join(REPO_ROOT, "fcc-offline-database", "data", "EN.idx")
 MAPS_DIR    = os.path.join(REPO_ROOT, "maps")
-WINLINK_DIR = os.path.join(REPO_ROOT, "winlink")
+WINLINK_DIR = os.path.join(REPO_ROOT, "server", "winlink")
 
 # Default port (matches PORTS in setup.html)
 DEFAULT_PORT = 8083
@@ -54,7 +54,7 @@ PORTS = {
 # GrayWolf offline tiles directory (Pi OS default installation path)
 GRAYWOLF_TILES_DIR = "/var/lib/graywolf/tiles"
 
-# RTL-SDR DVB driver blacklist written by install-rtl-sdr.py
+# RTL-SDR DVB driver blacklist written by features/rtl-sdr/install-rtl-sdr.py
 RTL_BLACKLIST = "/etc/modprobe.d/rtlsdr-blacklist.conf"
 
 # ── Display helpers ────────────────────────────────────────────────────────────
@@ -195,7 +195,7 @@ def check_fcc():
             "ok": False, "badge": "NOT BUILT",
             "detail": (
                 f"Index not found at fcc-offline-database/data/EN.idx.\n"
-                "     Run: python3 scripts/setup-fcc-database.py"
+                "     Run: python3 scripts/install-fcc-database.py"
             ),
         }
     try:
@@ -392,7 +392,7 @@ def check_rtl_sdr():
     if not rtl_test:
         return {
             "ok": "warn", "badge": "NOT INSTALLED",
-            "detail": "RTL-SDR tools not found.\n     Install with: python3 scripts/install-rtl-sdr.py",
+            "detail": "RTL-SDR tools not found.\n     Install with: python3 features/rtl-sdr/install-rtl-sdr.py",
         }
 
     Y = "✓"
@@ -401,7 +401,7 @@ def check_rtl_sdr():
         f"rtl_test: {rtl_test}",
         f"rtl_fm: {Y if rtl_fm else N}  socat: {Y if socat else N}  tcpdump: {Y if tcpdump else N}",
         (f"DVB driver blacklist: {Y}" if blk
-         else "DVB driver blacklist: ✗  (re-run install-rtl-sdr.py, then reboot)"),
+         else "DVB driver blacklist: ✗  (re-run features/rtl-sdr/install-rtl-sdr.py, then reboot)"),
     ]
 
     if feed_svc["active"] == "active":
@@ -414,7 +414,7 @@ def check_rtl_sdr():
         )
         feed_ok = False
     else:
-        lines.append("Feed not enabled. Run: python3 scripts/enable-rtl-sdr.py")
+        lines.append("Feed not enabled. Run: python3 features/rtl-sdr/enable-rtl-sdr.py")
         feed_ok = False
 
     tools_ok = bool(rtl_fm and socat and blk)
@@ -476,7 +476,7 @@ def check_winlink_forms():
 
     if not present:
         return {"ok": False, "badge": "MISSING",
-                "detail": "No Winlink form pages found in winlink/."}
+                "detail": "No Winlink form pages found in server/winlink/."}
     detail = f"{len(present)} form(s) available: {', '.join(present)}"
     if missing:
         detail += f"  |  missing: {', '.join(missing)}"
@@ -613,7 +613,7 @@ def main():
     ap = argparse.ArgumentParser(
         description=(
             "OASIS deployment health check.\n"
-            "Mirrors system/setup.html — usable over SSH, no browser needed.\n\n"
+            "Mirrors server/system/setup.html — usable over SSH, no browser needed.\n\n"
             "Exit 0 = all CORE checks pass.  Exit 1 = core failure."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

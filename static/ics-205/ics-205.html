@@ -46,6 +46,32 @@ tr.row-overflow td input{color:var(--text-dim);}
   border:1px solid var(--red);border-radius:4px;background:rgba(255,107,107,.07);}
 .overflow-note.visible{display:block;}
 .save-ts{font-size:var(--fs-micro);color:var(--text-dim);opacity:.6;margin-top:.25rem;}
+.attach-pdf-lbl{display:inline-flex;align-items:center;gap:.35rem;font-size:var(--fs-small);color:var(--text-dim);cursor:pointer;white-space:nowrap;}
+.attach-pdf-lbl input{cursor:pointer;}
+.pdf-size-hint{font-size:var(--fs-small);color:var(--amber);white-space:nowrap;}
+.pdf-size-hint.over{color:var(--red);}
+#lib-status-msgs{display:contents;}
+
+/* Load-saved-plan picker */
+.load-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;
+  align-items:flex-start;justify-content:center;padding:8vh 1rem;}
+.load-modal.open{display:flex;}
+.load-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;
+  width:min(560px,100%);max-height:76vh;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 12px 40px rgba(0,0,0,.5);}
+.load-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;
+  padding:.7rem .9rem;border-bottom:1px solid var(--border);font-weight:600;}
+.load-x{background:transparent;border:none;color:var(--text-dim);font-size:1.1rem;cursor:pointer;line-height:1;}
+.load-x:hover{color:var(--text);}
+.load-list{overflow-y:auto;padding:.4rem;}
+.load-row{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;width:100%;
+  text-align:left;background:transparent;border:1px solid transparent;border-radius:5px;
+  color:var(--text);padding:.5rem .6rem;cursor:pointer;font-family:inherit;}
+.load-row:hover{border-color:var(--border);background:var(--bg);}
+.load-row .lr-name{font-family:var(--mono);font-size:var(--fs-small);word-break:break-all;}
+.load-row .lr-meta{color:var(--text-dim);font-size:var(--fs-micro);white-space:nowrap;}
+.load-empty{color:var(--text-dim);font-size:var(--fs-small);padding:1rem;text-align:center;}
+.load-foot{padding:.5rem .9rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end;}
 
 
 @media print{
@@ -85,7 +111,10 @@ tr.row-overflow td input{color:var(--text-dim);}
 
   <div class="actions">
     <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 205 PDF and download a timestamped copy">⬇ Save PDF</button>
-    <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this plan as a message (text + RMS form XML + channel CSV) ready to queue">→ Send via Winlink</button>
+    <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this plan as a message (text body + RMS form XML) ready to queue">→ Send via Winlink</button>
+    <label class="attach-pdf-lbl" title="Also attach the filled form page (page 1 only, FEMA instruction pages stripped to fit Winlink's size limit; fine over telnet, slower over RF). The XML alone also lets an OASIS recipient rebuild the form."><input type="checkbox" id="wl-attach-pdf" onchange="onAttachPdfToggle()"> Attach form PDF (page 1)</label>
+    <button class="sbtn" onclick="saveToServer()" title="Save this plan as JSON into OASIS (static/ics-205/saved/) so it survives on the device">Save form</button>
+    <button class="sbtn" onclick="openLoadDialog()" title="Load a previously saved ICS-205 plan from this device">Load form</button>    
     <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (landscape letter)">Print</button>
     <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
     <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 205 CSV file to restore form data">Import CSV</button>
@@ -94,7 +123,7 @@ tr.row-overflow td input{color:var(--text-dim);}
   </div>
   <div class="save-ts" id="save-ts"></div>
 
-  <div class="lib-status" id="lib-status"></div>
+  <div class="lib-status" id="lib-status"><span id="lib-status-msgs"></span><span class="pdf-size-hint" id="pdf-size-hint"></span></div>
 
   <!-- Blocks 1–3 -->
   <div class="sec">
@@ -142,7 +171,7 @@ tr.row-overflow td input{color:var(--text-dim);}
     </div>
     <button class="add-btn" onclick="addCh()">+ Add Channel</button>
     <div class="overflow-note" id="overflow-note">
-      ℹ Rows 9+ will be written to additional PDF pages (one page per 8 channels). All rows appear in Print and CSV.
+      ⚠ This plan has more than 8 channels. A single-page ICS-205 (required for the Winlink PDF) holds only 8 — move the extras into a new plan and number the pages with the IAP Page field.
     </div>
   </div>
 
@@ -204,6 +233,30 @@ tr.row-overflow td input{color:var(--text-dim);}
 
 <div class="toast" id="toast"></div>
 
+<!-- Load-saved-plan picker -->
+<div class="load-modal" id="load-modal" onclick="if(event.target===this)closeLoadDialog()">
+  <div class="load-card">
+    <div class="load-head">
+      <span>Load a saved ICS-205</span>
+      <button class="load-x" onclick="closeLoadDialog()" aria-label="Close">✕</button>
+    </div>
+    <div class="load-list" id="load-list"></div>
+  </div>
+</div>
+
+<div class="load-modal" id="chirp-modal" onclick="if(event.target===this)closeChirpDialog()">
+  <div class="load-card">
+    <div class="load-head">
+      <span>Load a frequency plan (CHIRP)</span>
+      <button class="load-x" onclick="closeChirpDialog()" aria-label="Close">✕</button>
+    </div>
+    <div class="load-list" id="chirp-list"></div>
+    <div class="load-foot">
+      <button class="sbtn" onclick="loadChirpFromFile()" title="Load a CHIRP CSV from this device instead of the server">📂 Browse device file…</button>
+    </div>
+  </div>
+</div>
+
 <!-- Hidden CSV import input -->
 <input type="file" id="csv-import-input" accept=".csv" style="display:none" onchange="importCSV(event)">
 <!-- Hidden CHIRP import input -->
@@ -218,6 +271,7 @@ tr.row-overflow td input{color:var(--text-dim);}
 const STORE = 'ics-205-v2';
 const PDF_ROWS_PER_PAGE = 8;  // FEMA template has 8 channel rows per page
 const PDF_MAX_ROWS = PDF_ROWS_PER_PAGE; // alias kept for overflow-note display
+const PDF_WINLINK_MAX = 115 * 1024;  // form-PDF byte cap for Winlink (~120 KB CMS limit, minus XML/envelope headroom)
 let chSeq = 0;
 let chirpPlan = null; // null = no plan loaded; array = CHIRP channels
 
@@ -231,6 +285,7 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   checkLibStatus();
   load();
+  checkWinlinkImport();   // Feature A: load an ICS-205 handed off from the Winlink reader
   // Pre-fill date fields with today and time with now if not restored from storage
   const _now = new Date();
   const today = _now.toISOString().slice(0, 10);
@@ -255,9 +310,47 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// ─── Winlink import (Feature A) ──────────────────────────────────────────────
+const IMPORT_KEY = 'oasis_ics205_import';
+
+// If the Winlink reader handed off a received ICS-205, load it into the form.
+// Asks before overwriting an in-progress form. The handoff key is consumed once.
+function checkWinlinkImport() {
+  let raw;
+  try { raw = localStorage.getItem(IMPORT_KEY); } catch(e) { return; }
+  if (!raw) return;
+  try { localStorage.removeItem(IMPORT_KEY); } catch(e) {}
+  let plan;
+  try { plan = JSON.parse(raw); } catch(e) { return; }
+  if (!plan || typeof plan !== 'object') return;
+  if (formHasData() &&
+      !confirm('Load the ICS-205 received via Winlink? This will replace the current form.')) return;
+  applyPlan(plan);
+  showToast('✓ Loaded from Winlink message', 'ok', 4000);
+}
+
+function formHasData() {
+  if (HF.some(id => { const el = document.getElementById(id); return el && el.value.trim(); })) return true;
+  return getCh().some(c => c.zone||c.ch||c.func||c.name||c.assignment||c.rxfreq||c.txfreq||c.rxtone||c.txtone||c.mode||c.remarks);
+}
+
+// Replace the entire form with a plan object {f-*, channels:[…]} — the same shape
+// persist() stores and saveToServer() writes.
+function applyPlan(plan) {
+  document.getElementById('ch-body').innerHTML = '';
+  chSeq = 0;
+  HF.forEach(id => { const el = document.getElementById(id); if (el) el.value = plan[id] !== undefined ? plan[id] : ''; });
+  const ta = document.getElementById('f-special');
+  if (ta) ar(ta);
+  (plan.channels || []).forEach(c => makeCh(c));
+  if (!document.querySelector('#ch-body tr')) { for (let i = 0; i < 8; i++) addCh(); }
+  updateOverflowNote();
+  persist();
+}
+
 // ─── Library status ─────────────────────────────────────────────────────────
 function checkLibStatus() {
-  const div = document.getElementById('lib-status');
+  const div = document.getElementById('lib-status-msgs');
   const hasPDFLib = typeof window.PDFLib !== 'undefined';
   const hasTemplate = typeof ICS205_PDF_B64 !== 'undefined';
 
@@ -334,6 +427,11 @@ function modeSel(sel) {
 
 // ─── CHIRP Frequency Plan ────────────────────────────────────────────────────
 function loadChirpPrompt() {
+  openChirpDialog();
+}
+
+// Kept for the "Browse device file…" fallback in the picker.
+function loadChirpFromFile() {
   document.getElementById('chirp-import-input').value = '';
   document.getElementById('chirp-import-input').click();
 }
@@ -342,37 +440,39 @@ function loadChirp(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const plan = parseChirpCSV(e.target.result);
-      if (!plan) return;
-      chirpPlan = plan;
-      // Update column header
-      const th = document.querySelector('th.c-name');
-      if (th) th.classList.add('plan-loaded');
-      // Rebuild name cell on every existing row
-      document.querySelectorAll('#ch-body tr').forEach(tr => {
-        const nameEl = tr.querySelector('[data-field="name"]');
-        const cur = nameEl ? nameEl.value : '';
-        const td = tr.querySelector('td.c-name');
-        if (td) {
-          td.innerHTML = makeNameCell(cur);
-          // Auto-apply if name already matches a plan entry
-          if (cur) {
-            const idx = chirpPlan.findIndex(ch => ch.name === cur);
-            if (idx >= 0) {
-              const sel = td.querySelector('[data-field="name-sel"]');
-              if (sel) { sel.value = idx; applyChirpChannel(sel); }
-            }
+  reader.onload = e => { closeChirpDialog(); applyChirpText(e.target.result); };
+  reader.readAsText(file);
+}
+
+function applyChirpText(text) {
+  try {
+    const plan = parseChirpCSV(text);
+    if (!plan) return;
+    chirpPlan = plan;
+    // Update column header
+    const th = document.querySelector('th.c-name');
+    if (th) th.classList.add('plan-loaded');
+    // Rebuild name cell on every existing row
+    document.querySelectorAll('#ch-body tr').forEach(tr => {
+      const nameEl = tr.querySelector('[data-field="name"]');
+      const cur = nameEl ? nameEl.value : '';
+      const td = tr.querySelector('td.c-name');
+      if (td) {
+        td.innerHTML = makeNameCell(cur);
+        // Auto-apply if name already matches a plan entry
+        if (cur) {
+          const idx = chirpPlan.findIndex(ch => ch.name === cur);
+          if (idx >= 0) {
+            const sel = td.querySelector('[data-field="name-sel"]');
+            if (sel) { sel.value = idx; applyChirpChannel(sel); }
           }
         }
-      });
-      showToast(`✓ Frequency plan loaded — ${plan.length} channels`, 'ok', 4000);
-    } catch(err) {
-      showToast('Failed to load plan: ' + err.message, 'err', 5000);
-    }
-  };
-  reader.readAsText(file);
+      }
+    });
+    showToast(`✓ Frequency plan loaded — ${plan.length} channels`, 'ok', 4000);
+  } catch(err) {
+    showToast('Failed to load plan: ' + err.message, 'err', 5000);
+  }
 }
 
 function parseChirpCSV(text) {
@@ -526,7 +626,17 @@ function makeCh(d) {
   updateOverflowNote();
 }
 
-function addCh() { makeCh({}); persist(); }
+function addCh() {
+  // Hard cap at one FEMA page (8 channels): the Winlink PDF must be a single page
+  // to stay under the CMS size limit, so beyond 8 the operator starts a new plan
+  // and numbers it with the IAP Page field.
+  if (document.querySelectorAll('#ch-body tr').length >= PDF_ROWS_PER_PAGE) {
+    showToast(`8 channels is the max for a single-page ICS-205. The Winlink PDF has to be one page — `+
+              `start a new plan for the next set and bump the IAP Page number (page 2).`, 'err', 7000);
+    return;
+  }
+  makeCh({}); persist();
+}
 
 function delRow(id) {
   const t = document.getElementById(id);
@@ -539,6 +649,10 @@ function updateOverflowNote() {
   const count = document.querySelectorAll('#ch-body tr').length;
   const note = document.getElementById('overflow-note');
   note.classList.toggle('visible', count > PDF_MAX_ROWS);
+  // Channel set changed — re-enable the PDF-attach box so a now-smaller plan can
+  // be re-tried (onAttachPdfToggle re-checks the size and re-disables if needed).
+  const cb = document.getElementById('wl-attach-pdf');
+  if (cb) cb.disabled = false;
 }
 
 function getCh() {
@@ -596,19 +710,21 @@ function load() {
 }
 
 // ─── PDF Save ────────────────────────────────────────────────────────────────
-async function savePDF() {
-  if (typeof window.PDFLib === 'undefined') {
-    showToast('pdf-lib not loaded. Run install.bat (Windows) or install.sh (Linux/Mac) first, then reload.', 'err', 6000);
-    return;
-  }
-  if (typeof ICS205_PDF_B64 === 'undefined') {
-    showToast('PDF template not found. Ensure ics205-template.js is in the same folder as this HTML file.', 'err', 6000);
-    return;
-  }
+// Build the filled FEMA ICS 205 PDF and return { bytes, totalPages }. Shared by
+// the Save PDF download button and the "attach filled PDF" Winlink send path.
+// Throws on missing pdf-lib / template so callers can surface the message.
+// formOnly=true drops the two FEMA instruction pages, keeping just the filled
+// landscape form page(s) — used for the Winlink attachment so the PDF clears the
+// CMS ~120 KB message limit (~171 KB → ~70 KB). The Save-PDF download passes
+// false to keep the complete official form.
+async function buildIcs205PdfBytes({ formOnly = false } = {}) {
+  if (typeof window.PDFLib === 'undefined')
+    throw new Error('pdf-lib not loaded. Run install.bat (Windows) or install.sh (Linux/Mac) first, then reload.');
+  if (typeof ICS205_PDF_B64 === 'undefined')
+    throw new Error('PDF template not found. Ensure ics205-template.js is in the same folder as this HTML file.');
 
-  try {
-    const channels = getCh();
-    const totalPages = Math.max(1, Math.ceil(channels.length / PDF_ROWS_PER_PAGE));
+  const channels = getCh();
+  const totalPages = Math.max(1, Math.ceil(channels.length / PDF_ROWS_PER_PAGE));
 
     // Helper: load a fresh copy of the template and fill one page's worth of rows.
     // pageIdx is 0-based; rows are channels[pageIdx*8 .. pageIdx*8+7].
@@ -666,40 +782,55 @@ async function savePDF() {
       return doc;
     }
 
-    // Build page 1 as the base document
-    const pdfDoc = await buildPage(0);
+    if (formOnly) {
+      // Winlink attachment: keep only the filled landscape form page(s) and drop
+      // the FEMA instruction pages. Copying the form pages into a FRESH doc
+      // (rather than removePage) discards the orphaned instruction fonts/resources
+      // that would otherwise keep the file at ~171 KB — this lands ~70 KB.
+      const out = await PDFLib.PDFDocument.create();
+      for (let p = 0; p < totalPages; p++) {
+        const pageDoc = await buildPage(p);
+        const [formPage] = await out.copyPages(pageDoc, [0]);   // page 0 = the form
+        out.addPage(formPage);
+      }
+      return { bytes: await out.save(), totalPages };
+    }
 
-    // Append additional pages if needed
+    // Full document (Save PDF download): filled form + the FEMA instruction pages.
+    const pdfDoc = await buildPage(0);
     for (let p = 1; p < totalPages; p++) {
       const pageDoc = await buildPage(p);
       const [copiedPage] = await pdfDoc.copyPages(pageDoc, [0]);
       pdfDoc.addPage(copiedPage);
     }
+    return { bytes: await pdfDoc.save(), totalPages };
+}
 
-    // Generate filename: ICS-205-YYYYMMDD-HHMM.pdf
-    const now = new Date();
-    const ts = [
-      String(now.getFullYear()),
-      String(now.getMonth()+1).padStart(2,'0'),
-      String(now.getDate()).padStart(2,'0'),
-      '-',
-      String(now.getHours()).padStart(2,'0'),
-      String(now.getMinutes()).padStart(2,'0')
-    ].join('');
-    const filename = `ICS-205-${ts}.pdf`;
+// Timestamp stem for saved/attached ICS-205 files, e.g. 20260706-1432.
+function ics205Stamp() {
+  const now = new Date();
+  return [
+    String(now.getFullYear()),
+    String(now.getMonth()+1).padStart(2,'0'),
+    String(now.getDate()).padStart(2,'0'),
+    '-',
+    String(now.getHours()).padStart(2,'0'),
+    String(now.getMinutes()).padStart(2,'0')
+  ].join('');
+}
 
-    // Download
-    const filledBytes = await pdfDoc.save();
-    const blob = new Blob([filledBytes], { type: 'application/pdf' });
+async function savePDF() {
+  try {
+    const { bytes, totalPages } = await buildIcs205PdfBytes();
+    const filename = `ICS-205-${ics205Stamp()}.pdf`;
+    const blob = new Blob([bytes], { type: 'application/pdf' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = filename;
     a.click();
     URL.revokeObjectURL(a.href);
-
     const pageNote = totalPages > 1 ? ` — ${totalPages} pages` : '';
     showToast(`✓ Saved: ${filename}${pageNote}`, 'ok', 4000);
-
   } catch(err) {
     console.error('savePDF error:', err);
     showToast('PDF save failed: ' + err.message, 'err', 7000);
@@ -866,7 +997,7 @@ function toggleInst() {
 
 // ── Send via Winlink ────────────────────────────────────────────────────────
 // Build a Winlink-style message (text body + RMS_Express_Form XML + channel CSV)
-// from this plan and hand it to winlink/mail.html via localStorage. No network.
+// from this plan and hand it to server/winlink/mail.html via localStorage. No network.
 // XML schema matches a real received "ICS205- v 19.5" sample. The OASIS combined
 // "freq N/W" cell is split into the separate freq + N/W columns Winlink expects.
 function _pad2(n){return String(n).padStart(2,'0');}
@@ -990,7 +1121,43 @@ ${chXml}    <specialinstructions>${x(gv('f-special'))}</specialinstructions>
 </RMS_Express_Form>`;
 }
 
-function sendWinlink(){
+// Ticking "Attach form PDF" builds the stripped PDF and shows its real byte size.
+// If it would hit/exceed the Winlink limit, we refuse the attachment outright —
+// untick + disable the box and tell the operator to send without it — so an
+// oversized message can never leave (updateOverflowNote re-enables the box when
+// the channel set changes). The maxKB is shown so the message is concrete.
+async function onAttachPdfToggle(){
+  const cb=document.getElementById('wl-attach-pdf');
+  const hint=document.getElementById('pdf-size-hint');
+  if(!cb||!hint) return;
+  if(!cb.checked){ hint.textContent=''; hint.className='pdf-size-hint'; return; }
+  // RF advisory — attaching a PDF balloons the message. Over RF that's slow and can
+  // tie up the RMS for everyone, so make the operator acknowledge before we even
+  // size it. Declining unticks the box; the size-check/disable logic below is
+  // unchanged and still runs once they accept.
+  if(!confirm('⚠ It is HIGHLY RECOMMENDED not to send any attachment over RF — it takes a long time and you risk blocking the server. Be responsible!\n\nAttach the form PDF anyway?')){
+    cb.checked=false; hint.textContent=''; hint.className='pdf-size-hint'; return;
+  }
+  hint.textContent='sizing…'; hint.className='pdf-size-hint';
+  try{
+    const {bytes}=await buildIcs205PdfBytes({formOnly:true});
+    const kb=Math.round(bytes.length/1024), maxKb=Math.round(PDF_WINLINK_MAX/1024);
+    if(bytes.length>PDF_WINLINK_MAX){
+      cb.checked=false; cb.disabled=true;
+      hint.textContent=`⚠ PDF is ${kb} KB — you can't attach more than ${maxKb} KB over Winlink. Send the message without the attachment.`;
+      hint.className='pdf-size-hint over';
+    }else{
+      hint.textContent=`PDF ${kb} KB ✓`;
+      hint.className='pdf-size-hint';
+    }
+  }catch(err){
+    cb.checked=false;
+    hint.textContent='(couldn’t build PDF: '+err.message+')';
+    hint.className='pdf-size-hint over';
+  }
+}
+
+async function sendWinlink(){
   const chans=getCh().filter(c=>c.ch||c.name||c.func||c.rxfreq||c.txfreq);
   if(!chans.length && !gv('f-inc').trim()){
     showToast('Add an incident name or at least one channel first','err',3000); return;
@@ -998,17 +1165,167 @@ function sendWinlink(){
   const call=_wlCall();
   const subj='ICS 205 - '+(gv('f-inc')||'Radio Communications Plan')+
              (gv('f-dp')?' - '+[gv('f-dp'),gv('f-tp')].filter(Boolean).join(' '):'');
+  // Winlink always carries the small RMS_Express_Form XML — it holds the full
+  // structured plan, and the recipient's OASIS (or an RMS Express template)
+  // rebuilds the form from it. The channel CSV is redundant, so it's dropped.
+  const attachments=[
+    {name:'RMS_Express_Form_ICS205 Radio Plan_Viewer.xml',type:'application/xml',content:ics205Xml()},
+  ];
+  // Optional filled PDF — form page(s) only, FEMA instruction pages stripped. The
+  // checkbox self-disables if the PDF would exceed the Winlink limit (see
+  // onAttachPdfToggle), so if it's ticked here the PDF fits; the size check is a
+  // defensive backstop that silently sends XML-only if somehow over. localStorage
+  // is text-only, so the PDF bytes ride along base64-encoded; mail.html decodes.
+  if(document.getElementById('wl-attach-pdf')?.checked){
+    try{
+      const {bytes}=await buildIcs205PdfBytes({formOnly:true});
+      if(bytes.length <= PDF_WINLINK_MAX){
+        attachments.push({name:`ICS-205-${ics205Stamp()}.pdf`,type:'application/pdf',content:u8ToB64(bytes),encoding:'base64'});
+      }
+    }catch(err){
+      showToast('Could not attach PDF: '+err.message,'err',5000); return;
+    }
+  }
   const payload={
     to:'', subject:subj, body:ics205Body(),
     note:'ICS-205 plan — enter the recipient callsign, then Queue.',
-    attachments:[
-      {name:'RMS_Express_Form_ICS205 Radio Plan_Viewer.xml',type:'application/xml',content:ics205Xml()},
-      {name:'ICS 205 data '+new Date().toISOString().slice(0,10)+'.csv',type:'text/csv',content:ics205Csv()},
-    ],
+    attachments,
   };
   try{ localStorage.setItem('oasis_winlink_compose',JSON.stringify(payload)); }
   catch(e){ showToast('Could not hand off to Winlink (storage full?)','err',3000); return; }
-  window.location.href='../../winlink/mail.html';   // static/ics-205/ → repo root → winlink/
+  window.location.href='/server/winlink/mail.html';   // OASIS Winlink client (root-absolute)
+}
+
+// Uint8Array → base64, chunked to avoid call-stack limits on large PDFs.
+function u8ToB64(bytes){
+  let bin='';
+  const CH=0x8000;
+  for(let i=0;i<bytes.length;i+=CH) bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));
+  return btoa(bin);
+}
+
+// ─── Save to OASIS (server) ──────────────────────────────────────────────────
+// Persist the current form as JSON into static/ics-205/saved/ so it survives on
+// the device. Mirrors the /api/save-chirp precedent. No load-back UI yet — the
+// files are re-loadable by hand; a picker is a planned follow-up.
+function ics205FormData(){
+  const d={};
+  HF.forEach(id=>{ const el=document.getElementById(id); if(el) d[id]=el.value; });
+  d.channels=getCh();
+  return d;
+}
+async function saveToServer(){
+  const data=ics205FormData();
+  data._saved=new Date().toISOString();
+  const slug=(gv('f-inc')||'plan').toLowerCase().replace(/[^a-z0-9]+/g,'-')
+             .replace(/^-+|-+$/g,'').slice(0,40) || 'plan';
+  const filename=`ics-205-${slug}-${ics205Stamp()}.json`;
+  try{
+    const res=await fetch('/api/save-ics205',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({filename,content:JSON.stringify(data,null,2)}),
+    });
+    const j=await res.json().catch(()=>({}));
+    if(res.ok && j.ok) showToast('✓ Saved to '+(j.saved||filename),'ok',4000);
+    else showToast('Save failed: '+(j.error||('HTTP '+res.status)),'err',6000);
+  }catch(err){
+    showToast('Save failed: '+err.message,'err',6000);
+  }
+}
+
+// ─── Load a saved plan (picker) ──────────────────────────────────────────────
+async function openLoadDialog(){
+  const list=document.getElementById('load-list');
+  list.innerHTML='<div class="load-empty">Loading…</div>';
+  document.getElementById('load-modal').classList.add('open');
+  let files=[];
+  try{
+    const res=await fetch('/api/list-ics205',{cache:'no-store'});
+    const j=await res.json().catch(()=>({}));
+    if(!res.ok || !j.ok) throw new Error(j.error||('HTTP '+res.status));
+    files=j.files||[];
+  }catch(err){
+    list.innerHTML='<div class="load-empty">Could not list saved plans: '+x(err.message)+'</div>';
+    return;
+  }
+  if(!files.length){
+    list.innerHTML='<div class="load-empty">No saved plans yet. Use 💾 Save first.</div>';
+    return;
+  }
+  list.innerHTML='';
+  files.forEach(f=>{
+    const row=document.createElement('button');
+    row.className='load-row';
+    row.onclick=()=>loadSaved(f.name);
+    const meta=[fmtSavedDate(f.mtime), fmtKB(f.size)].filter(Boolean).join(' · ');
+    row.innerHTML=`<span class="lr-name">${x(f.name)}</span><span class="lr-meta">${x(meta)}</span>`;
+    list.appendChild(row);
+  });
+}
+function closeLoadDialog(){ document.getElementById('load-modal').classList.remove('open'); }
+async function loadSaved(name){
+  let plan;
+  try{
+    const res=await fetch('/static/ics-205/saved/'+encodeURIComponent(name),{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    plan=await res.json();
+  }catch(err){ showToast('Load failed: '+err.message,'err',6000); return; }
+  if(!plan || typeof plan!=='object'){ showToast('That file is not a valid ICS-205 plan','err',5000); return; }
+  if(formHasData() && !confirm('Load "'+name+'"? This will replace the current form.')) return;
+  applyPlan(plan);
+  closeLoadDialog();
+  showToast('✓ Loaded '+name,'ok',4000);
+}
+
+// ─── Load a frequency plan from the server (CHIRP picker) ────────────────────
+async function openChirpDialog(){
+  const list=document.getElementById('chirp-list');
+  list.innerHTML='<div class="load-empty">Loading…</div>';
+  document.getElementById('chirp-modal').classList.add('open');
+  let files=[];
+  try{
+    const res=await fetch('/api/list-chirp',{cache:'no-store'});
+    const j=await res.json().catch(()=>({}));
+    if(!res.ok || !j.ok) throw new Error(j.error||('HTTP '+res.status));
+    files=j.files||[];
+  }catch(err){
+    list.innerHTML='<div class="load-empty">Could not list frequency plans: '+x(err.message)+'</div>';
+    return;
+  }
+  if(!files.length){
+    list.innerHTML='<div class="load-empty">No frequency plans on the server yet. Use “Browse device file…” below to load one from this device.</div>';
+    return;
+  }
+  list.innerHTML='';
+  files.forEach(f=>{
+    const row=document.createElement('button');
+    row.className='load-row';
+    row.onclick=()=>loadChirpFromServer(f.name);
+    const meta=[fmtSavedDate(f.mtime), fmtKB(f.size)].filter(Boolean).join(' · ');
+    row.innerHTML=`<span class="lr-name">${x(f.name)}</span><span class="lr-meta">${x(meta)}</span>`;
+    list.appendChild(row);
+  });
+}
+function closeChirpDialog(){ document.getElementById('chirp-modal').classList.remove('open'); }
+async function loadChirpFromServer(name){
+  let text;
+  try{
+    const res=await fetch('/static/chirp/'+encodeURIComponent(name),{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    text=await res.text();
+  }catch(err){ showToast('Load failed: '+err.message,'err',6000); return; }
+  closeChirpDialog();
+  applyChirpText(text);
+}
+
+function fmtSavedDate(mtime){
+  if(!mtime) return '';
+  try{ return new Date(mtime*1000).toLocaleString(); }catch(e){ return ''; }
+}
+function fmtKB(bytes){
+  const n=Number(bytes)||0;
+  return n<1024 ? n+' B' : (n/1024).toFixed(1)+' KB';
 }
 
 function showToast(msg, type, duration = 3500) {

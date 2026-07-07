@@ -78,8 +78,8 @@
       The MastersCommunications DRA-Pi-Zero (Wolfson WM8731 I&sup2;S codec) is GrayWolf&rsquo;s radio
       interface on many builds. Configure it with:
     </p>
-    <pre><code>python3 scripts/enable-dra-pi.py            # auto-detects the phase
-python3 scripts/enable-dra-pi.py --dry-run  # preview the config.txt changes first</code></pre>
+    <pre><code>python3 features/dra-audio-interface/enable-dra-pi.py            # auto-detects the phase
+python3 features/dra-audio-interface/enable-dra-pi.py --dry-run  # preview the config.txt changes first</code></pre>
     <p>
       It runs in two phases. <strong>Before reboot</strong> (card absent) it edits
       <code>/boot/firmware/config.txt</code> to load the WM8731 overlay and free the I&sup2;S bus
@@ -98,16 +98,16 @@ python3 scripts/enable-dra-pi.py --dry-run  # preview the config.txt changes fir
       <code>enable-dra-rx-led.py</code> installs a lightweight daemon that pulses the green LED
       on each newly decoded APRS position packet.
     </p>
-    <pre><code>python3 scripts/enable-dra-rx-led.py            # install + enable dra-rx-led.service
-python3 scripts/enable-dra-rx-led.py --self-test  # blink the LED 5&times; and exit</code></pre>
+    <pre><code>python3 features/dra-audio-interface/enable-dra-rx-led.py            # install + enable dra-rx-led.service
+python3 features/dra-audio-interface/enable-dra-rx-led.py --self-test  # blink the LED 5&times; and exit</code></pre>
     <h2>RGB Cooling HAT</h2>
     <p>
       For a Yahboom RGB Cooling HAT (PWM fan + status OLED + RGB LEDs), a small daemon drives the
       fan from CPU temperature and shows live stats on the OLED:
     </p>
-    <pre><code>python3 scripts/install-rgb-cooling-hat.py           # install + enable the service
-python3 scripts/install-rgb-cooling-hat.py --check   # report status
-python3 scripts/install-rgb-cooling-hat.py --disable # remove it</code></pre>
+    <pre><code>python3 features/rgb-cooling-hat/install-rgb-cooling-hat.py           # install + enable the service
+python3 features/rgb-cooling-hat/install-rgb-cooling-hat.py --check   # report status
+python3 features/rgb-cooling-hat/install-rgb-cooling-hat.py --disable # remove it</code></pre>
     <p>
       It enables I&sup2;C, installs the apt deps, confirms the HAT on the bus (<code>0x0d</code>
       fan/RGB MCU + <code>0x3c</code> OLED), and installs the daemon as a systemd service. The

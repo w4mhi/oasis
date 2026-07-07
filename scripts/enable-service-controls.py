@@ -16,6 +16,11 @@ OASIS never handles a credential.
 Notably absent from the list: the `oasis` service itself — stopping the web
 server would kill the dashboard with no way to bring it back from the browser.
 
+It also adds the OASIS user to the `systemd-journal` group so the server can
+read the Pat + Direwolf logs behind the Winlink mail client's session console
+(/api/winlink/log). That's a plain group membership (no sudoers), left in place
+on --disable (it grants nothing but log-read).
+
 Opt-in and reversible. Run as your normal user (it asks for sudo once to write
 the file); it refuses to run on non-Linux.
 
@@ -40,7 +45,7 @@ from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
 
 # Must match server/app.py _CONTROLLABLE_SERVICES (everything OASIS-managed
 # except the web server itself).
-UNITS   = ["graywolf", "graywolf-api", "pat", "kiwix", "webssh",
+UNITS   = ["graywolf", "graywolf-api", "pat", "pat-direwolf", "kiwix", "webssh",
            "aprs-sdr-feed", "openwebrx"]
 # enable/disable included so boot-state-tracking units (e.g. OpenWebRX: enable on
 # start, disable on stop) work; the dashboard still only exposes start/stop/restart.
@@ -102,6 +107,41 @@ def install(user):
     _ok(f"Installed {SUDOERS_PATH} for user '{user}'.")
 
 
+JOURNAL_GROUP = "systemd-journal"
+
+
+def _in_group(user, group):
+    """True if *user* is a member of *group* (secondary membership)."""
+    import grp
+    try:
+        return user in grp.getgrnam(group).gr_mem
+    except KeyError:
+        return False
+
+
+def grant_journal_access(user):
+    """Add *user* to the systemd-journal group so the OASIS server can read the
+    Pat + Direwolf logs behind the Winlink session console (/api/winlink/log).
+    Idempotent — safe to re-run."""
+    import grp
+    try:
+        grp.getgrnam(JOURNAL_GROUP)
+    except KeyError:
+        _warn(f"No '{JOURNAL_GROUP}' group here — skipping. The Winlink log console "
+              "may stay empty on this system.")
+        return
+    if _in_group(user, JOURNAL_GROUP):
+        _ok(f"'{user}' already in '{JOURNAL_GROUP}' — Winlink session log is readable.")
+        return
+    if _run(["sudo", "usermod", "-aG", JOURNAL_GROUP, user], check=False).returncode == 0:
+        _ok(f"Added '{user}' to '{JOURNAL_GROUP}' — Winlink session log now readable.")
+        _warn("Restart the OASIS server so it picks up the new group membership:")
+        _info("  sudo systemctl restart oasis")
+    else:
+        _warn(f"Could not add '{user}' to '{JOURNAL_GROUP}'. The Winlink log console "
+              "will show '(journald log unavailable…)'.")
+
+
 def disable():
     if not os.path.exists(SUDOERS_PATH):
         _ok("Already disabled (no sudoers file present).")
@@ -127,6 +167,13 @@ def status():
         _warn("sudo does not grant the feed flow probe yet — the APRS SDR Feed meter "
               "will show 'flow: enable controls'. Re-run without --check to grant it.")
 
+    u = target_user(None)
+    if _in_group(u, JOURNAL_GROUP):
+        _ok(f"'{u}' is in '{JOURNAL_GROUP}' — the Winlink session log is readable.")
+    else:
+        _warn(f"'{u}' not in '{JOURNAL_GROUP}' — the Winlink log console will be empty. "
+              "Re-run without --check to grant it.")
+
 
 def run(args):
     print("\n  OASIS — enable-service-controls")
@@ -149,6 +196,10 @@ def run(args):
     _step(1, f"Granting '{user}' scoped NOPASSWD systemctl for OASIS units")
     install(user)
     _info("The dashboard power buttons (start / stop) will now work.")
+
+    _step(2, f"Granting '{user}' journal read for the Winlink session log")
+    grant_journal_access(user)
+
     _info("Undo with: python3 scripts/enable-service-controls.py --disable")
     print()
 

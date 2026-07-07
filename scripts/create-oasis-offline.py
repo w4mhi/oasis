@@ -564,6 +564,54 @@ def phase_rtl_sdr(bundle_root, update=False):
         _ok(f"RTL-SDR {suite} done  →  {os.path.relpath(suite_dir)}/")
 
 
+# ── Phase 5b: Direwolf (Winlink RF modem) Debian packages (suite-aware) ────────
+#
+# The Winlink RF transport. Vendored per suite per arch into
+#   offline-packages/direwolf/<suite>/   (bundle_group "direwolf")
+# Only the packages the manifest names are fetched — no dependency-closure
+# resolution — so Direwolf's runtime deps (libhamlib*, etc.) must be curated in
+# the manifest's by_suite list on the connected build machine (see the feature
+# '_note'). Most deps are already on a stock Pi OS image.
+def _direwolf_present(suite_dir, deb_arch):
+    """True when the direwolf .deb for this arch is already bundled."""
+    if not os.path.isdir(suite_dir):
+        return False
+    return any(f.startswith("direwolf_") and f.endswith(f"_{deb_arch}.deb")
+               for f in os.listdir(suite_dir))
+
+
+def phase_direwolf(bundle_root, update=False):
+    """Download Direwolf apt package(s) per suite per arch, writing resolved."""
+    feature = "direwolf"
+    _section("Phase 5b — Direwolf (Winlink RF modem) Debian packages  (suite-aware)")
+
+    for suite in M.feature_suites(feature):
+        pkgs = M.apt_packages(feature, suite=suite)
+        suite_dir = M.bundle_dir(bundle_root, "direwolf", suite=suite)
+        _info(f"Suite   : Debian {suite}")
+        _info(f"Packages: {', '.join(pkgs)}")
+        _info(f"Dest    : {os.path.relpath(suite_dir)}/")
+
+        for deb_arch in M.feature_arches(feature):
+            _info(f"  ─── {suite}/{deb_arch}")
+            if _direwolf_present(suite_dir, deb_arch):
+                _cp(f"direwolf {suite}/{deb_arch}: present  (up to date)")
+                continue
+
+            rtl_sdr_download_debs(suite_dir, deb_arch, packages=pkgs, suite=suite)
+
+            pkg_index = debian_packages_index(deb_arch, pkgs, suite=suite)
+            versions = {
+                p: pkg_index[p]["Version"]
+                for p in pkgs
+                if p in pkg_index and pkg_index[p].get("Version")
+            }
+            if versions:
+                _write_resolved(feature, suite, deb_arch, versions)
+
+        _ok(f"Direwolf {suite} done  →  {os.path.relpath(suite_dir)}/")
+
+
 # ── Phase 6: webssh (ttyd) static binaries ────────────────────────────────────
 def phase_webssh(bundle_root, update=False):
     """Phase 6: Download the ttyd prebuilt static binaries for each arch in the manifest.
@@ -781,8 +829,8 @@ def _resolve_wiki_url():
 
 # M5Stack CM4Stack panel overlay — a prebuilt, kernel-portable device-tree blob.
 # Fetched at build time (not redistributed in the OASIS repo) and installed on the
-# target by scripts/enable-cm4stack.py. aw88xx.dtbo is intentionally NOT fetched
-# (no working arm64 driver — see cm4stack/cm4stack-oasis-panel.md §7).
+# target by displays/cm4stack/install-cm4stack.py. aw88xx.dtbo is intentionally NOT fetched
+# (no working arm64 driver — see displays/cm4stack/cm4stack-oasis-panel.md §7).
 M5STACK_OVERLAY_URL = (
     "https://raw.githubusercontent.com/m5stack/m5stack-linux-dtoverlays/"
     "main/overlays/cm4stack/bin/m5stack-cm4.dtbo"
@@ -854,11 +902,17 @@ def phase_wikipedia(zim_dir):
 # ── Phase 4: FCC callsign database ────────────────────────────────────────────
 def phase_fcc(fcc_dir):
     """
-    Phase 4: Download l_amat.zip AND prebuild the search indexes on this (capable)
-    build host, so a 512 MB Pi Zero never has to run the RAM-heavy sort that OOMs
-    it. Ships l_amat.zip + EN.idx / EN_name.idx / EN_grid.idx + zipcodes.csv +
-    EN.idx.meta. The target extracts EN.dat/HD.dat from the shipped zip (cheap,
-    streaming), validates the prebuilt indexes against it, and skips the build.
+    Phase 4: Download l_amat.zip, extract EN.dat/HD.dat, AND prebuild the search
+    indexes on this (capable) build host, so a 512 MB Pi Zero never has to run
+    the RAM-heavy sort that OOMs it — nor the extraction it can't afford either.
+
+    The bundle ships the raw EN.dat + HD.dat + EN.idx / EN_name.idx / EN_grid.idx
+    + zipcodes.csv + EN.idx.meta, and DROPS l_amat.zip. The zip only ever existed
+    to carry EN.dat to a machine capable of unpacking it; since we've already done
+    the extraction and indexing here, the target uses the shipped files as-is.
+    Copying a ~175 MB zip to a Pi Zero just to delete it on first setup is waste.
+    The zip is dropped IF AND ONLY IF the prebuilt indexes verify against the
+    shipped EN.dat; otherwise it is kept as a recovery copy.
     """
     _section("Phase 4 — FCC callsign database")
 
@@ -866,7 +920,8 @@ def phase_fcc(fcc_dir):
     zip_path   = os.path.join(fcc_dir, "l_amat.zip")
     server_dir = os.path.join(REPO_ROOT, "server")
 
-    # 1 · Raw ULS zip (skip if already downloaded).
+    # 1 · Raw ULS zip (skip if already downloaded). This is a transient build
+    #     artifact — it is dropped in step 3 once the .dat files + indexes exist.
     if os.path.exists(zip_path):
         _cp("l_amat.zip already present — skipping download")
     else:
@@ -878,9 +933,16 @@ def phase_fcc(fcc_dir):
             _warn("Re-run this script when the FCC site is reachable.")
             return
 
-    # 2 · Prebuild the indexes here so the Pi doesn't have to. Skip if a previous
-    #     run already produced them (existence check — EN.dat is dropped below, so
-    #     fcc_indexes_ready can't be used for this build-host short-circuit).
+    # 2 · Extract EN.dat/HD.dat from the zip (cheap, streaming) so they can be
+    #     shipped directly, then prebuild the indexes here so the Pi doesn't have
+    #     to. fcc_download is idempotent — it skips extraction if EN.dat exists.
+    try:
+        fcc_download(fcc_dir)                      # extract EN.dat/HD.dat from the zip
+    except SystemExit:
+        _warn("Could not extract EN.dat/HD.dat from l_amat.zip.")
+        _warn("Re-run this script when the FCC site is reachable.")
+        return
+
     have_idx = (os.path.exists(os.path.join(fcc_dir, FCC_INDEX_META))
                 and all(os.path.exists(os.path.join(fcc_dir, n)) for n in FCC_INDEX_NAMES)
                 and os.path.exists(os.path.join(fcc_dir, "zipcodes.csv")))
@@ -888,7 +950,6 @@ def phase_fcc(fcc_dir):
         _cp("Prebuilt indexes already present — skipping rebuild")
     else:
         try:
-            fcc_download(fcc_dir)                  # extract EN.dat/HD.dat from the zip
             fcc_build_zip_table(fcc_dir)           # zipcodes.csv (needed for the grid index)
             fcc_build_index(fcc_dir, server_dir)   # EN.idx + EN_name.idx + EN_grid.idx + meta
         except SystemExit:
@@ -896,20 +957,23 @@ def phase_fcc(fcc_dir):
             _warn("first setup (may OOM a 512 MB Pi). Re-run this script online.")
             return
         if not fcc_indexes_ready(fcc_dir):
-            _warn("Index prebuild incomplete — shipping the zip only; the target")
-            _warn("will build indexes on first setup.")
+            _warn("Index prebuild incomplete — shipping the zip as a fallback; the")
+            _warn("target will build indexes on first setup.")
             return
         _ok("Prebuilt EN.idx / EN_name.idx / EN_grid.idx + zipcodes.csv")
 
-    # 3 · Keep the bundle lean: the raw EN.dat/HD.dat are re-extracted on the
-    #     target from the shipped zip (identical bytes → prebuilt offsets stay
-    #     valid, verified via EN.idx.meta). Drop them so we don't ship both the
-    #     zip and the raw ~130 MB files.
-    for name in ("EN.dat", "HD.dat"):
-        p = os.path.join(fcc_dir, name)
-        if os.path.exists(p):
-            os.remove(p)
-    _ok("Bundle ships l_amat.zip + prebuilt indexes; target extracts EN.dat on setup")
+    # 3 · Ship EN.dat + HD.dat + prebuilt indexes directly, and DROP l_amat.zip.
+    #     The zip was only a carrier for EN.dat — now redundant on the target,
+    #     where it would otherwise be ~175 MB of bloat copied only to be deleted
+    #     on first setup. Drop it IF AND ONLY IF the indexes verify against the
+    #     shipped EN.dat (size + SHA-256 via EN.idx.meta); a failed/partial build
+    #     keeps the zip so the target can still recover.
+    if fcc_indexes_ready(fcc_dir):
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+        _ok("Bundle ships EN.dat + HD.dat + prebuilt indexes (l_amat.zip dropped)")
+    else:
+        _warn("Indexes not verified against EN.dat — keeping l_amat.zip as recovery.")
 
 # ── Build: copy project files ──────────────────────────────────────────────────
 def build_copy(dest, src=None, include_all_platforms=False):
@@ -1318,6 +1382,7 @@ def cmd_build(skip_windows, rebuild=False, all_platforms=False):
     phase_rtl_sdr(pkg_root, update=True)
     phase_webssh(pkg_root, update=True)
     phase_pat(pkg_root, update=True)
+    phase_direwolf(pkg_root, update=True)
     phase_cm4stack(pkg_root, update=True)
     phase_wikipedia(os.path.join(OUT_DIR, "zim"))
     phase_pmtiles(os.path.join(OUT_DIR, "maps"), all_platforms=all_platforms)
@@ -1386,6 +1451,7 @@ def cmd_update(target_dir, all_platforms=False):
     phase_rtl_sdr(pkg_root, update=True)
     phase_webssh(pkg_root, update=True)
     phase_pat(pkg_root, update=True)
+    phase_direwolf(pkg_root, update=True)
     phase_cm4stack(pkg_root, update=True)
     phase_wikipedia(os.path.join(target_dir, "zim"))
     phase_pmtiles(os.path.join(target_dir, "maps"), all_platforms=all_platforms)

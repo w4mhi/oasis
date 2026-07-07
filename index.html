@@ -995,11 +995,16 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     </div>
     <span class="svc-badge" id="badge-owrx">—</span>
   </div>
-  <a class="svc-card" id="card-winlink" href="winlink/mail.html">
+  <a class="svc-card" id="card-winlink" href="server/winlink/mail.html">
     <div class="svc-dot" id="dot-winlink"></div>
     <div><div class="svc-name">Winlink Mail</div><div class="svc-sub" id="sub-winlink">—</div></div>
     <span class="svc-badge" id="badge-winlink">—</span>
   </a>
+  <div class="svc-card" id="card-wlrf">
+    <div class="svc-dot" id="dot-wlrf"></div>
+    <div><div class="svc-name">Winlink RF</div><div class="svc-sub" id="sub-wlrf">—</div></div>
+    <span class="svc-badge" id="badge-wlrf">—</span>
+  </div>
 </div>
 <!-- Row 2: system / infrastructure -->
 <div class="svc-strip">
@@ -1045,24 +1050,24 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div class="nav-sec">
       <div class="nav-sec-title">Util</div>
       <ul class="nav-links">
-        <li><a href="aprs/map.html">APRS Maidenhead Map <span class="nav-meta">live APRS</span></a></li>
+        <li><a href="server/aprs/map.html">APRS Maidenhead Map <span class="nav-meta">live APRS</span></a></li>
         <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
         <li><a id="nlink-webssh" href="static/terminal/index.html" class="nav-link-svc">SSH Terminal <span class="nav-svc-badge" id="nsvc-webssh">—</span></a></li>
-        <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>        
+        <li><a href="server/tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>        
       </ul>
     </div>
 
     <div class="nav-sec">
       <div class="nav-sec-title">Tools</div>
       <ul class="nav-links">
-        <li><a href="system/setup.html" class="ext">Setup Verification <span class="nav-meta">health</span></a></li>
+        <li><a href="server/system/setup.html" class="ext">Setup Verification <span class="nav-meta">health</span></a></li>
         <li><a href="static/antenna-calc.html">Antenna Calculator <span class="nav-meta">calculator</span></a></li>
         <li><a href="static/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
-        <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
+        <li><a href="server/tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
         <li><a href="static/solar.html">Solar / Propagation <span class="nav-meta">band conditions</span></a></li>
         <li><a href="static/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calculator</span></a></li>
         <li><a href="static/grayline.html">Gray Line <span class="nav-meta">HF propagation</span></a></li>
-        <li><a href="system/browser.html">File Browser <span class="nav-meta">user files</span></a></li>
+        <li><a href="server/system/browser.html">File Browser <span class="nav-meta">user files</span></a></li>
       </ul>
     </div>
 
@@ -1083,10 +1088,10 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div class="nav-sec">
       <div class="nav-sec-title">Winlink &amp; APRS</div>
       <ul class="nav-links">
-        <li><a id="nlink-winlink" href="winlink/mail.html">Winlink Mail <span class="nav-svc-badge" id="nsvc-winlink">—</span></a></li>
-        <li><a id="nlink-wl-posrep" href="winlink/position-report.html">Position Reports <span class="nav-meta">viewer</span></a></li>
-        <li><a id="nlink-wl-radio" href="winlink/radio-settings.html">Radio Settings <span class="nav-meta">setup</span></a></li>
-        <li><a id="nlink-wl-conv" href="winlink/to-position.html">Winlink → Position <span class="nav-meta">converter</span></a></li>
+        <li><a id="nlink-winlink" href="server/winlink/mail.html">Winlink Mail <span class="nav-svc-badge" id="nsvc-winlink">—</span></a></li>
+        <li><a id="nlink-wl-posrep" href="server/winlink/position-report.html">Position Reports <span class="nav-meta">viewer</span></a></li>
+        <li><a id="nlink-wl-radio" href="server/winlink/radio-settings.html">Radio Settings <span class="nav-meta">setup</span></a></li>
+        <li><a id="nlink-wl-conv" href="server/winlink/to-position.html">Winlink → Position <span class="nav-meta">converter</span></a></li>
         <li><a id="nlink-gw" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.graywolf}/`,'_blank');return false;">GrayWolf <span class="nav-svc-badge" id="nsvc-gw">—</span></a></li>
         <li><a href="static/graywolf-handbook/index.html">GrayWolf handbook <span class="nav-meta">docs</span></a></li>
         <li><a href="static/cheatsheets/aprs_bots.html">APRS Bots <span class="nav-meta">FIND · SMS · WXBOT</span></a></li>
@@ -1101,11 +1106,11 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div class="nav-sec">
       <div class="nav-sec-title">Radio Ref</div>
       <ul class="nav-links">
-        <li><a href="repeater-guide/index.html">Repeater Guide <span class="nav-meta">radio repeaters how-to</span></a></li>
-        <li><a href="radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
+        <li><a href="static/repeater-guide/index.html">Repeater Guide <span class="nav-meta">radio repeaters how-to</span></a></li>
+        <li><a href="static/radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
         <li><a href="static/cheatsheets/index.html">Radio Cheatsheets <span class="nav-meta">radio reference</span></a></li>
-        <li><a id="nlink-rb" href="repeaterbook/repeaterbook.html" class="nav-link-svc">Repeater Book <span class="nav-svc-badge" id="nsvc-rb">—</span></a></li>
-        <li><a id="nlink-manuals" href="system/browser.html?path=radio-manuals" class="nav-link-svc">Radio Manuals <span class="nav-svc-badge" id="nsvc-manuals">—</span></a></li>
+        <li><a id="nlink-rb" href="static/repeaterbook/repeaterbook.html" class="nav-link-svc">Repeater Book <span class="nav-svc-badge" id="nsvc-rb">—</span></a></li>
+        <li><a id="nlink-manuals" href="server/system/browser.html?path=static/radio-manuals" class="nav-link-svc">Radio Manuals <span class="nav-svc-badge" id="nsvc-manuals">—</span></a></li>
         <li><a id="nlink-wiki" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-wiki">—</span></a></li>
       </ul>
     </div>
@@ -1154,8 +1159,8 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     </div>
     <div class="aprs-tbl-wrap">
       <table>
-        <thead><tr><th>Callsign</th><th>Last Heard</th><th>Age</th><th>Speed</th><th>Altitude</th><th>Via</th><th>Comment</th></tr></thead>
-        <tbody id="aprs-tbody"><tr><td colspan="7" style="color:var(--text-dim)">Loading…</td></tr></tbody>
+        <thead><tr><th>Callsign</th><th>Last Heard</th><th>Age</th><th>Speed</th><th>Altitude</th><th>Grid</th><th>Dist</th><th>Via</th><th>Comment</th></tr></thead>
+        <tbody id="aprs-tbody"><tr><td colspan="9" style="color:var(--text-dim)">Loading…</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -1167,7 +1172,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   <span id="footer-ts"></span>
 </div>
 
-<script src="winlink/read-state.js"></script>
+<script src="server/winlink/read-state.js"></script>
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
 const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082, openwebrx: 8073 };
@@ -1365,7 +1370,7 @@ const SERVICES = [
     id: 'winlink', name: 'Winlink',
     check: async () => {
       // Same-origin via the Flask proxy: doubles as Pat's up/down probe and
-      // gives us the inbox so we can show the unread count (shared read-state).
+      // seeds WinlinkRead so unread state is available to the mail pages.
       const r = await fetch('/api/winlink/mailbox/in', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: `:${PORTS.winlink}` };   // 503 = Pat down
       let unread = 0;
@@ -1373,8 +1378,24 @@ const SERVICES = [
         const msgs = await r.json();
         if (window.WinlinkRead) { WinlinkRead.seed(msgs); unread = WinlinkRead.unreadCount(msgs); }
       } catch (_) {}
-      const sub = unread > 0 ? `${unread} unread` : 'no new mail';
-      return { up: true, badge: 'UP', sub, navSub: sub };
+      const navSub = unread > 0 ? `${unread} unread` : 'no new mail';
+      return { up: true, badge: 'UP', sub: `:${PORTS.winlink}`, navSub };
+    }
+  },
+  {
+    id: 'wlrf', name: 'Winlink RF',
+    check: async () => {
+      // The Direwolf packet modem behind Pat's AGWPE transport. No web port —
+      // status is systemd. Start-on-demand: starting it stops GrayWolf + the SDR
+      // feed (hardware-exclusive on the DRA card + GPIO PTT), so it sits STOPPED
+      // until you enter RF mode.
+      const r = await fetch('/api/health/service?name=pat-direwolf', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'status error' };
+      const d = await r.json();
+      if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      if (d.active === 'active') return { up: true, badge: 'ON AIR', sub: 'AGWPE :8000 · APRS off' };
+      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+        sub: d.installed ? 'start for packet Winlink' : 'run install-winlink.py' };
     }
   },
   {
@@ -1426,7 +1447,7 @@ const SERVICES = [
         return { up: true, badge: 'UP', sub: '→ GrayWolf' };
       }
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
-        sub: d.installed ? 'inactive' : 'run enable-rtl-sdr.py' };
+        sub: d.installed ? 'inactive' : 'run features/rtl-sdr/enable-rtl-sdr.py' };
     }
   },
   {
@@ -1438,7 +1459,7 @@ const SERVICES = [
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (d.active === 'active') return { up: true, badge: 'UP', sub: ':2947' };
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
-        sub: d.installed ? 'inactive' : 'run install-gps.py' };
+        sub: d.installed ? 'inactive' : 'run features/gps/install-gps.py' };
     }
   },
   {
@@ -1470,7 +1491,7 @@ const SERVICES = [
   {
     id: 'rb', name: 'Repeater Book',
     check: async () => {
-      const r = await fetch('repeaterbook/repeaterbook.csv', { method: 'HEAD', cache: 'no-store' });
+      const r = await fetch('static/repeaterbook/repeaterbook.csv', { method: 'HEAD', cache: 'no-store' });
       return { up: r.ok, warn: false,
         badge: r.ok ? 'UP' : 'DOWN',
         sub: r.ok ? 'CSV loaded' : 'CSV missing' };
@@ -1493,7 +1514,7 @@ const SERVICES = [
   {
     id: 'manuals', name: 'Radio Manuals',
     check: async () => {
-      const r = await fetch('/api/browse?path=radio-manuals', { cache: 'no-store' });
+      const r = await fetch('/api/browse?path=static/radio-manuals', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: 'browse error' };
       const d = await r.json();
       const n = (d.entries || []).filter(e => e.type === 'dir').length;
@@ -1636,7 +1657,7 @@ async function pollFeedFlow() {
 // (maps · repeater book · manuals) are never gated.
 const GATEABLE = {
   gw:    ['graywolf'],  aprs:    ['graywolf'],  feed: ['rtl-feed'],
-  owrx:  ['openwebrx'], winlink: ['winlink'],   gpsd: ['gps'],
+  owrx:  ['openwebrx'], winlink: ['winlink'],   wlrf: ['winlink'],   gpsd: ['gps'],
   kiwix: ['kiwix'],     webssh:  ['webssh'],    fcc:  ['fcc'],
   wiki:  ['wikipedia'], rb:      ['repeaterbook'], forms: ['forms'],
 };
@@ -1664,7 +1685,7 @@ function _gateEls(id) {
 }
 
 // A manifest-gated service can still be live if it was enabled outside
-// setup-oasis.py — e.g. running enable-rtl-sdr.py / install-gps.py directly, as
+// setup-oasis.py — e.g. running features/rtl-sdr/enable-rtl-sdr.py / features/gps/install-gps.py directly, as
 // the docs show. Those scripts enable the systemd unit but never write
 // installed-services.json, so the card would wrongly hide (it flashes in on load,
 // then vanishes once loadInstalled resolves). For the systemd-backed cards we
@@ -1684,14 +1705,14 @@ async function unitInstalled(id) {
     const d = await r.json();
     // gpsd is a stock Debian package other features pull in transitively (e.g.
     // Winlink's `pat` Depends: gpsd) and its socket auto-enables — so a *running*
-    // gpsd is NOT proof the operator set up GPS. install-gps.py explicitly
+    // gpsd is NOT proof the operator set up GPS. features/gps/install-gps.py explicitly
     // `systemctl enable gpsd`, so a deliberate setup reports enabled==='enabled',
     // while a dependency-pulled one stays socket-activated ('indirect'/'static').
     // Require that explicit boot-enable for gpsd — the server promotes a live
     // gpsd.socket to active==='active', which is exactly the transitive case, so
     // don't let mere activity un-hide the GPS card.
     if (id === 'gpsd') return d.enabled === 'enabled';
-    // aprs-sdr-feed only exists if enable-rtl-sdr.py created it, so any
+    // aprs-sdr-feed only exists if features/rtl-sdr/enable-rtl-sdr.py created it, so any
     // enabled/active state is a genuine, deliberate install.
     return d.active === 'active' || d.enabled === 'enabled';
   } catch (_) { return false; }
@@ -1745,7 +1766,8 @@ function toggleShowHidden() {
 // control; Flask / Web Server (the OASIS server itself) and the data cards
 // (FCC / Maps / Repeater Book) do not.
 const SVC_UNITS = { gw: 'graywolf', aprs: 'graywolf-api', feed: 'aprs-sdr-feed',
-                    winlink: 'pat', kiwix: 'kiwix', webssh: 'webssh', owrx: 'openwebrx' };
+                    winlink: 'pat', wlrf: 'pat-direwolf', kiwix: 'kiwix',
+                    webssh: 'webssh', owrx: 'openwebrx' };
 
 // Lazily create the power control on a controllable card. A <span> (not a
 // <button>) so it's valid inside the cards that are <a> links; the click
@@ -1836,7 +1858,7 @@ function setFccLookup(enabled) {
     btn.title = '';
   } else {
     btn.setAttribute('aria-disabled', 'true');
-    btn.title = 'FCC index not built — run scripts/setup-fcc-database.py';
+    btn.title = 'FCC index not built — run scripts/install-fcc-database.py';
   }
 }
 
@@ -1875,6 +1897,53 @@ function fmtAlt(m) {            // metres → ft (imperial) or m (metric)
 function fmtSpeed(mph) {        // server reports mph; metric → km/h
   if (mph == null) return '';
   return isImperial() ? `${mph} mph` : `${Math.round(mph * 1.60934)} km/h`;
+}
+
+let _homeLat = null, _homeLon = null;
+
+function loadHomeCoords() {
+  fetch('/station.json')
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if (!d || !d.lat || !d.lon) return;
+      _homeLat = parseFloat(d.lat);
+      _homeLon = parseFloat(d.lon);
+      if (_allAprsStations.length) applyAprsFilter();
+    })
+    .catch(() => {});
+}
+
+function distFromHome(lat, lon) {
+  if (_homeLat == null || lat == null || lon == null) return '';
+  const p1 = _homeLat * Math.PI / 180, p2 = parseFloat(lat) * Math.PI / 180;
+  const dphi = (parseFloat(lat) - _homeLat) * Math.PI / 180;
+  const dl   = (parseFloat(lon) - _homeLon) * Math.PI / 180;
+  const a = Math.sin(dphi / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  const dMi = 2 * 3958.8 * Math.asin(Math.min(1, Math.sqrt(a)));
+  if (dMi < 0.1) return 'here';
+  const yb   = Math.sin(dl) * Math.cos(p2);
+  const xb   = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+  const bear = (Math.atan2(yb, xb) * 180 / Math.PI + 360) % 360;
+  const card = ['N','NE','E','SE','S','SW','W','NW'][Math.round(bear / 45) % 8];
+  if (isImperial()) return dMi < 100 ? `${dMi.toFixed(1)}mi ${card}` : `${Math.round(dMi)}mi ${card}`;
+  const dKm = dMi * 1.60934;
+  return dKm < 100 ? `${dKm.toFixed(1)}km ${card}` : `${Math.round(dKm)}km ${card}`;
+}
+
+function gridSquare(lat, lon) {
+  if (lat == null || lon == null) return '';
+  let la = parseFloat(lat), lo = parseFloat(lon);
+  if (isNaN(la) || isNaN(lo)) return '';
+  lo += 180; la += 90;
+  const c1 = String.fromCharCode(65 + Math.floor(lo / 20));
+  const c2 = String.fromCharCode(65 + Math.floor(la / 10));
+  lo %= 20; la %= 10;
+  const n1 = Math.floor(lo / 2);
+  const n2 = Math.floor(la);
+  lo %= 2; la %= 1;
+  const c3 = String.fromCharCode(97 + Math.floor(lo / (2 / 24)));
+  const c4 = String.fromCharCode(97 + Math.floor(la / (1 / 24)));
+  return c1 + c2 + n1 + n2 + c3 + c4;
 }
 function renderTemp()   { setStat('s-temp', fmtTemp(_lastTempC), _lastTempC, 65, 80); }
 function renderGpsAlt() {
@@ -2194,24 +2263,29 @@ function aprsSource(s) {
 function renderAprsTable(stations) {
   const tbody = document.getElementById('aprs-tbody');
   if (!stations.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-dim)">No stations match the selected time filter.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-dim)">No stations match the selected time filter.</td></tr>';
     return;
   }
   tbody.innerHTML = stations.map(s => {
     const age = fmtAge(s.last_heard);
     const speed = s.speed_mph > 0 ? fmtSpeed(s.speed_mph) : '';
-    const course = s.course != null && s.speed_mph > 0
-      ? ' ' + ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(s.course/22.5)%16]
+    const courseNum = s.course != null ? Math.round(s.course) : null;
+    const courseFmt = courseNum != null && s.speed_mph > 0
+      ? ` <span style="display:inline-block;transform:rotate(${courseNum}deg)">↑</span> ${['N','NE','E','SE','S','SW','W','NW'][Math.round(courseNum/45)%8]} ${courseNum}°`
       : '';
-    const alt = s.alt_m != null ? fmtAlt(s.alt_m) : '';
-    const src = aprsSource(s); // 'rf' → green, 'is' → blue (matches the map badge)
+    const alt  = s.alt_m != null ? fmtAlt(s.alt_m) : '';
+    const grid = gridSquare(s.lat, s.lon);
+    const dist = distFromHome(s.lat, s.lon);
+    const src = aprsSource(s);
     const callColor = src === 'is' ? 'var(--blue)' : 'var(--accent)';
     return `<tr>
-      <td style="color:${callColor};font-weight:700"><a href="aprs/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a></td>
+      <td style="color:${callColor};font-weight:700"><a href="server/aprs/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a></td>
       <td>${fmtLastHeard(s.last_heard)}</td>
       <td class="${age.cls}">${age.text}</td>
-      <td>${speed}${course}</td>
+      <td>${speed}${courseFmt}</td>
       <td>${alt}</td>
+      <td style="color:var(--text-dim)">${grid}</td>
+      <td style="color:var(--text-dim)">${dist}</td>
       <td style="color:${callColor};font-weight:700">${src.toUpperCase()}</td>
       <td style="color:var(--text-dim);max-width:220px;overflow:hidden;text-overflow:ellipsis">${s.comment || ''}</td>
     </tr>`;
@@ -2518,6 +2592,7 @@ loadConfig().then(() => {
   fetchStats();
   fetchAudio();
   fetchAPRS();
+  loadHomeCoords();
   pollWifi();
   setInterval(pingAll,      30_000);
   setInterval(fetchStats,   30_000);

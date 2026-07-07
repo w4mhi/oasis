@@ -5,7 +5,7 @@ enable-graywolf-api.py
 The GrayWolf APRS History API — a small Flask service that reads graywolf's
 history DB and exposes station positions + system stats as JSON for the OASIS
 APRS map and dashboard (port 8085). This single script is both the **server**
-and its **enabler**, the same idea as enable-rtl-sdr.py:
+and its **enabler**, the same idea as features/rtl-sdr/enable-rtl-sdr.py:
 
   enable-graywolf-api.py                 # write + enable the systemd service
   enable-graywolf-api.py serve [--port]  # run the API (what the service execs)

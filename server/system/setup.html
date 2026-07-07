@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OASIS Setup</title>
+<link rel="stylesheet" href="../css/common.css">
+<style>
+.check-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: .9rem; }
+
+.check-item {
+  display: flex; align-items: flex-start; gap: .85rem;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); padding: .7rem 1rem;
+  transition: border-color .25s;
+}
+.check-item.ok    { border-color: var(--accent-dim); }
+.check-item.fail  { border-color: #7a1010; }
+.check-item.warn  { border-color: var(--amber-dim); }
+.check-item.check { border-color: var(--border); }
+
+.check-icon { font-size: 1.2rem; line-height: 1.4; flex-shrink: 0; width: 1.4rem; text-align: center; }
+.check-body { flex: 1; }
+.check-name { font-size: var(--fs-base); font-weight: 700; color: var(--text); margin-bottom: .15rem; }
+.check-desc { font-size: var(--fs-label); color: var(--text-dim); line-height: 1.5; }
+.check-desc code { color: var(--accent); background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: var(--fs-small); }
+.check-badge {
+  flex-shrink: 0; font-size: var(--fs-micro); font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em;
+  padding: 2px 9px; border-radius: 4px; margin-top: 3px;
+  background: var(--panel-2); color: var(--text-dim);
+}
+.check-badge.ok   { background: #0a3a20; color: var(--accent); }
+.check-badge.fail { background: #3a0a0a; color: var(--red); }
+.check-badge.warn { background: #3a2a00; color: var(--amber); }
+
+.recheck-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+  font-family: var(--mono); font-size: var(--fs-small); padding: 3px 10px;
+  border-radius: 4px; cursor: pointer; margin-left: .5rem;
+}
+.recheck-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+
+.all-ok {
+  border: 1px solid var(--accent-dim); border-radius: 10px;
+  background: #0a2016; padding: 1.1rem 1.4rem; text-align: center;
+  margin-bottom: .9rem; display: none;
+}
+.all-ok-title { font-size: var(--fs-subtitle); color: var(--accent); font-weight: 700; margin-bottom: .3rem; }
+.all-ok-sub   { font-size: var(--fs-label); color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="home-bar">
+    <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+            title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+    <a class="home-link" href="/">⌂ HOME</a>
+  </div>
+  <h1>OASIS Setup Checklist</h1>
+  <p>Checks each component and shows what still needs to be configured.
+     <button class="recheck-btn" id="recheckAll" style="margin-left:.5rem">↻ Re-check all</button>
+  </p>
+</header>
+
+<div id="allOk" class="all-ok">
+  <div class="all-ok-title">✓ All components ready</div>
+  <div class="all-ok-sub">OASIS is fully configured. Open the <a href="/" style="color:var(--accent)">dashboard</a> to get started.</div>
+</div>
+
+<div class="sec-label">Core</div>
+<div class="check-list" id="list-core"></div>
+
+<div class="sec-label">Optional Services</div>
+<div class="check-list" id="list-optional"></div>
+
+</div>
+<script>
+'use strict';
+
+const HOST  = location.hostname;
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082, openwebrx: 8073 };
+
+// ── Backend helpers ────────────────────────────────────────────────────────────
+async function jget(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  return r.json();
+}
+async function loadConfig() {
+  try { const d = await jget('/server-ports.json'); if (d && d.ports) Object.assign(PORTS, d.ports); }
+  catch (_) {}
+}
+// Binary present? (PATH + standard bin dirs, server-side)
+async function chkBinary(name) {
+  try { return await jget(`/api/health/binary?name=${name}`); } catch { return { ok: false }; }
+}
+// systemd unit status (active/enabled/installed)
+async function chkService(name) {
+  try { return await jget(`/api/health/service?name=${name}`); }
+  catch { return { ok: false, active: 'unknown', installed: false }; }
+}
+// Config artifact present? (allowlisted keys)
+async function chkFile(key) {
+  try { return await jget(`/api/health/file?key=${key}`); } catch { return { exists: false }; }
+}
+// Port reachable? (server-side proxy probe — no CORS issues)
+async function chkPort(service, port) {
+  try { const d = await jget(`/api/health/probe?service=${service}&port=${port}`); return !!d.ok; }
+  catch { return false; }
+}
+// APRS feed actually emitting datagrams? (passive tcpdump on the loopback feed —
+// catches a feed that is systemd-"active" but silent, e.g. dongle unplugged).
+async function chkFeedFlow() {
+  try { return await jget('/api/health/feed-flow'); } catch { return { ok: false, reason: 'probe-error' }; }
+}
+// Compact "active, enabled" string for a service result.
+function svcWord(svc) {
+  if (!svc || !svc.active) return 'unknown';
+  const en = (svc.enabled && svc.enabled !== 'not-found') ? `, ${svc.enabled}` : '';
+  return `${svc.active}${en}`;
+}
+
+// ── Check definitions ──────────────────────────────────────────────────────────
+const CHECKS_CORE = [
+  {
+    id: 'server',
+    name: 'OASIS Server',
+    run: async () => {
+      try {
+        const d = await jget('/api/server-info');
+        const dev = d.wsgi !== 'gunicorn';
+        const ver = (d.version && d.version !== 'unknown') ? ` OASIS <strong>v${d.version}</strong> ·` : '';
+        return { ok: dev ? 'warn' : true, badge: dev ? 'DEV SERVER' : 'RUNNING',
+          detail: `${ver} Serving on :${d.port} via <code>${d.wsgi}</code> v${d.wsgi_version}.`
+            + (dev ? ' For always-on use run under gunicorn — see <code>docs/SETUP.md</code>.' : '') };
+      } catch {
+        return { ok: true, badge: 'RUNNING', detail: `Serving on port ${PORTS.flask}.` };
+      }
+    },
+  },
+  {
+    id: 'fcc',
+    name: 'FCC Callsign Database',
+    run: async () => {
+      try {
+        const r = await fetch('/api/lookup?callsign=W7', { cache: 'no-store' });
+        const d = await r.json();
+        if (!d.ok && d.error && d.error.toLowerCase().includes('index')) {
+          return { ok: false, badge: 'NOT BUILT',
+            detail: 'Index not found. Run: <code>python3 scripts/install-fcc-database.py</code>' };
+        }
+        return { ok: true, badge: 'READY', detail: 'Callsign index is built and responding.' };
+      } catch (e) {
+        return { ok: false, badge: 'ERROR', detail: 'Could not reach the lookup API: ' + e.message };
+      }
+    },
+  },
+  {
+    id: 'maps',
+    name: 'Map Tiles (PMTiles)',
+    run: async () => {
+      try {
+        // Probe the "Load maps" endpoint so a stale server (missing /api/fs/*)
+        // is obvious — that route 404s until the server is restarted on new code.
+        let fsOk = false;
+        try { fsOk = (await fetch('/api/fs/browse', { cache: 'no-store' })).ok; }
+        catch { fsOk = false; }
+
+        // Local .pmtiles staged in the suite's maps/ folder (best-effort: GrayWolf
+        // tiles may be the only source, so a missing maps/ isn't fatal).
+        let localNames = [];
+        try {
+          const r = await fetch('/api/browse?path=maps', { cache: 'no-store' });
+          if (r.ok) {
+            const d = await r.json();
+            localNames = (d.entries || []).filter(e => e.name.endsWith('.pmtiles'))
+                                          .map(e => e.name.replace('.pmtiles',''));
+          }
+        } catch {}
+
+        // GrayWolf's offline downloader saves per-region .pmtiles under
+        // /var/lib/graywolf/tiles/, usually nested in states/ or country/
+        // subfolders — so recurse a few levels via the filesystem browser
+        // (bounded by depth + a dir/name cap so it stays Pi-friendly).
+        const gwNames = [];
+        let gwCount = 0;
+        if (fsOk) {
+          let dirsScanned = 0;
+          const scan = async (path, depth) => {
+            if (depth > 3 || dirsScanned > 60 || gwNames.length >= 50) return;
+            dirsScanned++;
+            let d;
+            try {
+              const r = await fetch('/api/fs/browse?path=' + encodeURIComponent(path), { cache: 'no-store' });
+              if (!r.ok) return;
+              d = await r.json();
+            } catch { return; }
+            for (const e of (d.entries || [])) {
+              if (e.type === 'file' && e.name.endsWith('.pmtiles')) {
+                gwCount++;
+                if (gwNames.length < 50) gwNames.push(e.name.replace('.pmtiles',''));
+              } else if (e.type === 'dir') {
+                await scan(e.path, depth + 1);
+              }
+            }
+          };
+          await scan('/var/lib/graywolf/tiles', 0);
+        }
+
+        const gwHint = 'GrayWolf provides offline maps: register, download the region(s) you need, '
+          + 'then open <strong>Offline Maps → Load maps</strong> and load them from '
+          + '<code>/var/lib/graywolf/tiles/</code>.';
+
+        if (!fsOk) return { ok: 'warn', badge: 'RESTART',
+          detail: 'The “Load maps” endpoint (<code>/api/fs/browse</code>) is missing — the server is running older code. Restart OASIS to pick up the latest <code>server/app.py</code>.'
+                  + (localNames.length ? ` (${localNames.length} local map(s) present.)` : '') };
+
+        const total = localNames.length + gwCount;
+        if (!total) return { ok: 'warn', badge: 'N/A',
+          detail: 'No .pmtiles maps in <code>maps/</code> or <code>/var/lib/graywolf/tiles/</code>. Place a .pmtiles file in maps/, or load one at runtime via the map page’s “Load maps” button.<br>' + gwHint };
+
+        const parts = [];
+        if (localNames.length) parts.push(`${localNames.length} in maps/: <strong>${localNames.join(', ')}</strong>`);
+        if (gwCount) parts.push(`${gwCount} in GrayWolf tiles${gwNames.length ? `: <strong>${gwNames.join(', ')}</strong>` : ''}`);
+        return { ok: true, badge: 'READY',
+          detail: `${total} map(s) ready — ${parts.join(' · ')} · Load maps endpoint OK<br>${gwHint}` };
+      } catch (e) {
+        return { ok: false, badge: 'ERROR', detail: 'Could not check maps: ' + e.message };
+      }
+    },
+  },
+  {
+    id: 'disk',
+    name: 'Disk Space',
+    run: async () => {
+      try {
+        const d = await jget('/api/system');
+        if (!d.disk || d.disk.error || d.disk.pct == null)
+          return { ok: 'warn', badge: 'N/A', detail: 'Disk usage is unavailable.' };
+        const { pct, free_gb, total_gb, label } = d.disk;
+        const detail = `<strong>${free_gb} GB</strong> free of ${total_gb} GB on ${label} (${Math.round(pct)}% used).`;
+        if (free_gb < 1) return { ok: false, badge: 'CRITICAL',
+          detail: detail + ' Free space now — maps / Wikipedia / FCC data can fail to write.' };
+        if (free_gb < 2 || pct >= 92) return { ok: 'warn', badge: 'LOW',
+          detail: detail + ' Running low; large downloads (maps, ZIMs, FCC) may not fit.' };
+        return { ok: true, badge: 'OK', detail };
+      } catch (e) {
+        return { ok: false, badge: 'ERROR', detail: 'Could not read disk stats: ' + e.message };
+      }
+    },
+  },
+];
+
+const OPEN = (port, label) =>
+  `<a href="http://${HOST}:${port}" target="_blank" rel="noopener" style="color:var(--accent)">${label || ':' + port}</a>`;
+
+const CHECKS_OPTIONAL = [
+  {
+    id: 'openwebrx',
+    name: 'OpenWebRX (SDR)  ·  :8073',
+    run: async () => {
+      const svc = await chkService('openwebrx');
+      if (!svc.installed) return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `Install with: <code>python3 scripts/install-openwebrx.py</code> (browser SDR monitor — RTTY/CW/voice/FT8/…).` };
+      const up = await chkPort('openwebrx', PORTS.openwebrx);
+      if (up) return { ok: true, badge: 'UP',
+        detail: `Listening on :${PORTS.openwebrx} (service <code>openwebrx</code>, ${svcWord(svc)}). Open ${OPEN(PORTS.openwebrx)}. Shares the RTL-SDR with GrayWolf/feed — starting it from the dashboard stops them.` };
+      return { ok: 'warn', badge: 'OFF',
+        detail: `Installed (${svcWord(svc)}), off by default. Start from the dashboard (stops GrayWolf + the SDR feed) or: <code>sudo systemctl start openwebrx</code>.` };
+    },
+  },
+  {
+    id: 'graywolf',
+    name: 'GrayWolf APRS  ·  :8080',
+    run: async () => {
+      const up  = await chkPort('graywolf', PORTS.graywolf);
+      const svc = await chkService('graywolf');
+      if (up) return { ok: true, badge: 'UP',
+        detail: `Service <code>graywolf</code> (${svcWord(svc)}), listening on :${PORTS.graywolf}. Open ${OPEN(PORTS.graywolf)} to configure callsign, audio, channels.` };
+      if (svc.installed) return { ok: 'warn', badge: 'STOPPED',
+        detail: `Installed but not listening (service <code>graywolf</code> is ${svc.active}). Start: <code>sudo systemctl start graywolf</code> &nbsp;·&nbsp; logs: <code>journalctl -u graywolf -f</code>` };
+      return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `Install with: <code>python3 scripts/install-graywolf.py</code>` };
+    },
+  },
+  {
+    id: 'graywolf_api',
+    name: 'GrayWolf APRS History API  ·  :8085',
+    run: async () => {
+      const up  = await chkPort('aprs_api', PORTS.aprs_api);
+      const svc = await chkService('graywolf-api');
+      let count = null;
+      if (up) { try { const s = await jget(`http://${HOST}:${PORTS.aprs_api}/api/aprs/stations`); if (s.ok) count = s.count; } catch {} }
+      if (up) return { ok: true, badge: 'UP',
+        detail: `API on :${PORTS.aprs_api} (service <code>graywolf-api</code>, ${svcWord(svc)})`
+          + (count !== null ? `, ${count} station(s) in the history DB.` : '. Feeds the APRS map + system-stats bar.') };
+      if (svc.installed) return { ok: 'warn', badge: 'STOPPED',
+        detail: `Service installed but not responding (${svc.active}). Start: <code>sudo systemctl start graywolf-api</code> &nbsp;·&nbsp; logs: <code>journalctl -u graywolf-api -f</code>` };
+      return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `Enabled by <code>python3 scripts/install-graywolf.py</code> (needs <code>scripts/setup-server.py</code> first to build the .venv it runs under).` };
+    },
+  },
+  {
+    id: 'pat',
+    name: 'Winlink (Pat)  ·  :8082',
+    run: async () => {
+      const up  = await chkPort('winlink', PORTS.winlink);
+      const bin = await chkBinary('pat');
+      const svc = await chkService('pat');
+      const cfg = await chkFile('pat_config');
+      if (up) {
+        const noPw = cfg.exists && cfg.password_set === false;
+        const cfgNote = !cfg.exists
+          ? ' <span style="color:var(--amber)">No config.json yet.</span>'
+          : (noPw ? ' <span style="color:var(--amber)">Winlink password not set — run <code>pat configure</code> before connecting.</span>'
+                  : ' Callsign + password configured.');
+        return { ok: noPw ? 'warn' : true, badge: 'UP',
+          detail: `Pat web UI on :${PORTS.winlink} (service <code>pat</code>, ${svcWord(svc)}). Open ${OPEN(PORTS.winlink)} to send/receive.` + cfgNote };
+      }
+      if (bin.ok) return { ok: 'warn', badge: 'STOPPED',
+        detail: `Pat installed (<code>${bin.path}</code>) but the web UI is not running (service ${svc.active}). Start: <code>sudo systemctl start pat</code> &nbsp;·&nbsp; logs: <code>journalctl -u pat -f</code>` };
+      return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `Install with: <code>python3 scripts/install-winlink.py</code>` };
+    },
+  },
+  {
+    id: 'rtl_sdr',
+    name: 'RTL-SDR + APRS audio feed',
+    run: async () => {
+      const [rtlTest, rtlFm, socat, tcpdump] = await Promise.all(
+        ['rtl_test', 'rtl_fm', 'socat', 'tcpdump'].map(chkBinary));
+      const blk  = await chkFile('rtl_blacklist');
+      const feed = await chkService('aprs-sdr-feed');
+
+      if (!rtlTest.ok) return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `RTL-SDR tools not found. Install with: <code>python3 features/rtl-sdr/install-rtl-sdr.py</code>` };
+
+      const yes = '<span style="color:var(--accent)">✓</span>';
+      const no  = t => `<span style="color:var(--amber)">${t}</span>`;
+      const lines = [];
+      lines.push(`Tools: <code>rtl_test</code> ${yes} &nbsp; <code>rtl_fm</code> ${rtlFm.ok ? yes : no('missing')} `
+        + `&nbsp; (at <code>${rtlTest.path}</code>)`);
+      lines.push(`Feed tools: socat ${socat.ok ? yes : no('✗')} &nbsp; tcpdump ${tcpdump.ok ? yes : no('✗')}`);
+      lines.push(`DVB driver blacklist: ${blk.exists ? yes : no('missing — re-run features/rtl-sdr/install-rtl-sdr.py, then reboot')}`);
+      lines.push(`Plug in the dongle and run <code>rtl_test -t</code> to confirm the hardware.`);
+      
+      let feedTxt, feedOk;
+      if (feed.active === 'active') {
+        // Active only proves socat is alive — measure actual datagram flow so a
+        // yanked dongle (active, but silent → no audio to GrayWolf) is caught here.
+        const flow = await chkFeedFlow();
+        const base = `APRS→GrayWolf feed <code>aprs-sdr-feed</code> ${yes} (${svcWord(feed)})`;
+        if (flow && flow.ok && flow.flowing) {
+          feedTxt = `${base} · <strong>${Math.round(flow.pps)} pkt/s</strong> flowing`; feedOk = true;
+        } else if (flow && flow.ok && !flow.flowing) {
+          feedTxt = no(`feed service is active but <strong>0 pkt/s</strong> — no audio reaching GrayWolf (dongle unplugged? check the SDR / USB), then <code>sudo systemctl restart aprs-sdr-feed</code>`); feedOk = false;
+        } else if (flow && flow.reason === 'no-privilege') {
+          feedTxt = `${base} — live flow check needs <code>python3 scripts/enable-service-controls.py</code>`; feedOk = true;
+        } else {
+          feedTxt = base; feedOk = true;   // tcpdump-missing / not-linux / probe-error: trust systemd
+        }
+      }
+      else if (feed.installed)      { feedTxt = no(`feed service is ${feed.active}`) + ` — start: <code>sudo systemctl start aprs-sdr-feed</code>`; feedOk = false; }
+      else                          { feedTxt = no('feed not enabled') + ` — run <code>python3 features/rtl-sdr/enable-rtl-sdr.py</code> to stream APRS audio into GrayWolf`; feedOk = false; }
+      lines.push(feedTxt);
+      lines.push(no('Required for RTL-SDR: after setting up the feed in GrayWolf, restart it with '
+        + '<code>sudo systemctl restart graywolf</code> and confirm the modem shows live under '
+        + '<strong>Channels</strong>.'));
+
+      const toolsOk = rtlFm.ok && socat.ok && blk.exists;
+      const badge = feedOk ? 'READY' : (toolsOk ? 'INSTALLED' : 'PARTIAL');
+      const ok    = feedOk && toolsOk ? true : 'warn';
+      return { ok, badge, detail: lines.join('<br>') };
+    },
+  },
+  {
+    id: 'kiwix',
+    name: 'Kiwix (Offline Wikipedia)  ·  :8081',
+    run: async () => {
+      const up  = await chkPort('kiwix', PORTS.kiwix);
+      const bin = await chkBinary('kiwix-serve');
+      const svc = await chkService('kiwix');
+      if (up) return { ok: true, badge: 'UP',
+        detail: `<code>kiwix-serve</code> on :${PORTS.kiwix} (service <code>kiwix</code>, ${svcWord(svc)}). Open ${OPEN(PORTS.kiwix)} to browse.` };
+      if (bin.ok) return { ok: 'warn', badge: 'STOPPED',
+        detail: `<code>kiwix-serve</code> installed but not serving (${svc.active}). Add ZIM content, then: <code>sudo systemctl start kiwix</code>` };
+      return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `Install with: <code>python3 scripts/install-kiwix.py</code>` };
+    },
+  },
+  {
+    id: 'webssh',
+    name: 'Web SSH (ttyd)  ·  :7681',
+    run: async () => {
+      const up  = await chkPort('webssh', PORTS.webssh);
+      const bin = await chkBinary('ttyd');
+      const svc = await chkService('webssh');
+      if (up) return { ok: true, badge: 'UP',
+        detail: `Browser terminal on :${PORTS.webssh} (service <code>webssh</code>, ${svcWord(svc)}). Open ${OPEN(PORTS.webssh)}.` };
+      if (bin.ok) return { ok: 'warn', badge: 'STOPPED',
+        detail: `<code>ttyd</code> installed but not running (${svc.active}). Needs <code>sshd</code>. Start: <code>sudo systemctl start webssh</code>` };
+      return { ok: 'warn', badge: 'NOT INSTALLED',
+        detail: `Install with: <code>python3 scripts/install-webssh.py</code>` };
+    },
+  },
+  {
+    id: 'winlink_forms',
+    name: 'Winlink Forms (offline pages)',
+    run: async () => {
+      try {
+        const pages = ['position-report.html', 'to-position.html', 'radio-settings.html'];
+        const results = await Promise.all(
+          pages.map(p => fetch(`/winlink/${p}`, { method: 'HEAD', cache: 'no-store' })
+            .then(r => ({ name: p.replace('.html',''), ok: r.ok }))
+            .catch(() => ({ name: p.replace('.html',''), ok: false }))
+          )
+        );
+        const ok      = results.filter(r => r.ok).map(r => r.name);
+        const missing = results.filter(r => !r.ok).map(r => r.name);
+        if (!ok.length) return { ok: false, badge: 'MISSING',
+          detail: 'No Winlink form pages found in <code>winlink/</code>.' };
+        return { ok: missing.length ? 'warn' : true,
+          badge: missing.length ? 'PARTIAL' : 'READY',
+          detail: `${ok.length} form(s) available: <strong>${ok.join(', ')}</strong>`
+            + (missing.length ? ` &mdash; missing: ${missing.join(', ')}` : '') };
+      } catch {
+        return { ok: 'warn', badge: 'UNKNOWN', detail: 'Could not verify Winlink form pages.' };
+      }
+    },
+  },
+  {
+    id: 'rtc',
+    name: 'Hardware RTC (Witty Pi 3)',
+    run: async () => {
+      try {
+        const d = await jget('/api/health/rtc');
+        if (!d || !d.present) return { ok: 'warn', badge: 'NOT CONFIGURED',
+          detail: 'No <code>/dev/rtc0</code>. Configure the Witty Pi 3 DS3231 with '
+            + '<code>python3 features/rtc-hat/enable-rtc.py</code>, then reboot.' };
+        const parts = [];
+        if (d.name) parts.push(`<strong>${d.name}</strong>`);
+        parts.push(d.hctosys ? 'set the clock at boot' : 'present (did NOT set clock at boot)');
+        if (d.drift_s != null) parts.push(`drift ${d.drift_s} s`);
+        const detail = parts.join(' &middot; ') + '.';
+        const bigDrift = d.drift_s != null && Math.abs(d.drift_s) > 5;
+        if (bigDrift) return { ok: 'warn', badge: 'DRIFT',
+          detail: detail + ' Large drift &mdash; once the clock is correct: <code>sudo hwclock -w</code>.' };
+        if (!d.hctosys) return { ok: 'warn', badge: 'CHECK',
+          detail: detail + ' RTC did not set the clock at boot &mdash; check the overlay / reboot.' };
+        return { ok: true, badge: 'OK', detail };
+      } catch (e) {
+        return { ok: false, badge: 'ERROR', detail: 'Could not query the RTC: ' + e.message };
+      }
+    },
+  },
+];
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function icon(state) {
+  if (state === true   || state === 'ok')   return '✓';
+  if (state === false  || state === 'fail')  return '✗';
+  if (state === 'warn')                      return '⚠';
+  return '…';
+}
+function cssState(state) {
+  if (state === true   || state === 'ok')   return 'ok';
+  if (state === false  || state === 'fail')  return 'fail';
+  if (state === 'warn')                      return 'warn';
+  return 'check';
+}
+
+function renderItem(container, check, result) {
+  let el = document.getElementById('check-' + check.id);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'check-' + check.id;
+    container.appendChild(el);
+  }
+  const state = (result && result.ok === true) ? 'ok'
+    : (result && result.ok === 'warn') ? 'warn'
+    : (result && result.ok === false)  ? 'fail'
+    : 'check';
+  el.className = 'check-item ' + state;
+  el.innerHTML = `
+    <div class="check-icon">${result ? icon(result.ok) : '…'}</div>
+    <div class="check-body">
+      <div class="check-name">${check.name}</div>
+      <div class="check-desc">${result ? result.detail : 'Checking…'}</div>
+    </div>
+    <div class="check-badge ${state}">${result ? result.badge : '…'}</div>`;
+}
+
+async function runChecks(checks, containerId) {
+  const container = document.getElementById(containerId);
+  // render placeholders
+  checks.forEach(c => renderItem(container, c, null));
+  // run in parallel
+  const results = await Promise.allSettled(checks.map(c => c.run()));
+  results.forEach((r, i) => {
+    const result = r.status === 'fulfilled' ? r.value : { ok: false, badge: 'ERROR', detail: String(r.reason) };
+    renderItem(container, checks[i], result);
+  });
+  return results.map((r, i) => ({
+    check: checks[i],
+    result: r.status === 'fulfilled' ? r.value : { ok: false }
+  }));
+}
+
+async function runAll() {
+  document.getElementById('allOk').style.display = 'none';
+  document.getElementById('list-core').innerHTML = '';
+  document.getElementById('list-optional').innerHTML = '';
+
+  await loadConfig();   // pull real ports from /server-ports.json before checking
+
+  const [coreRes, optRes] = await Promise.all([
+    runChecks(CHECKS_CORE, 'list-core'),
+    runChecks(CHECKS_OPTIONAL, 'list-optional'),
+  ]);
+
+  const coreAllOk = coreRes.every(r => r.result.ok === true);
+  if (coreAllOk) {
+    document.getElementById('allOk').style.display = 'block';
+  }
+}
+
+document.getElementById('recheckAll').addEventListener('click', runAll);
+runAll();
+</script>
+</body>
+</html>

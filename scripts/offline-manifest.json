@@ -321,6 +321,54 @@
       },
       "version": "1.0.0"
     },
+    "direwolf": {
+      "type": "apt",
+      "bundle_group": "direwolf",
+      "description": "Direwolf AX.25 packet modem — the RF (packet) transport behind Pat's AGWPE. Started on demand (hardware-exclusive with GrayWolf); see docs/plan-winlink.md.",
+      "_note": "The bundler downloads only the packages named below (no dep-closure resolution). Direwolf's runtime deps (libhamlib*, libgps*, libasound2* — names differ bookworm vs trixie under the t64 transition) must be added to by_suite when bundling on the connected build machine, so the fully-offline `apt install ./*.deb` resolves. Most are already on a stock Pi OS image; libhamlib is the one to be sure of.",
+      "packages": {
+        "common": [
+          "direwolf"
+        ],
+        "by_suite": {
+          "bookworm": [],
+          "trixie": []
+        }
+      },
+      "suites": [
+        "bookworm",
+        "trixie"
+      ],
+      "arches": [
+        "arm64",
+        "armhf",
+        "amd64"
+      ],
+      "resolved": {
+        "bookworm": {
+          "arm64": {
+            "direwolf": "1.6+dfsg-3"
+          },
+          "armhf": {
+            "direwolf": "1.6+dfsg-3"
+          },
+          "amd64": {
+            "direwolf": "1.6+dfsg-3"
+          }
+        },
+        "trixie": {
+          "arm64": {
+            "direwolf": "1.7+dfsg-2+deb13u1"
+          },
+          "armhf": {
+            "direwolf": "1.7+dfsg-2+deb13u1"
+          },
+          "amd64": {
+            "direwolf": "1.7+dfsg-2+deb13u1"
+          }
+        }
+      }
+    },
     "openwebrx": {
       "type": "apt",
       "bundle_group": "openwebrx",

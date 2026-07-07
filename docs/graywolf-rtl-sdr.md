@@ -43,7 +43,7 @@ So GrayWolf accepts the SDR audio directly. No loopback device in between.
 
 ## Prerequisites
 
-- RTL-SDR tools installed: `python3 scripts/install-rtl-sdr.py` — provides
+- RTL-SDR tools installed: `python3 features/rtl-sdr/install-rtl-sdr.py` — provides
   `rtl_fm`, `rtl_test`, the feed tools (`socat`, `tcpdump`) and the bench-test
   decoder (`multimon-ng`), and blacklists the conflicting DVB driver. (On a
   minimal/Lite image, `multimon-ng`'s X11/audio deps may pull from apt.)
@@ -57,15 +57,15 @@ So GrayWolf accepts the SDR audio directly. No loopback device in between.
 
 ---
 
-## Quick path: `enable-rtl-sdr.py`
+## Quick path: `features/rtl-sdr/enable-rtl-sdr.py`
 
-[`scripts/enable-rtl-sdr.py`](../scripts/enable-rtl-sdr.py) automates everything
+[`features/rtl-sdr/enable-rtl-sdr.py`](../features/rtl-sdr/enable-rtl-sdr.py) automates everything
 below except the browser steps: it tests the dongle, installs + enables
 `aprs-sdr-feed.service`, checks GrayWolf's journal, and prints the web-UI steps.
 
 ```bash
-python3 scripts/enable-rtl-sdr.py            # test + enable + instructions
-python3 scripts/enable-rtl-sdr.py --check    # test the SDR only, no changes
+python3 features/rtl-sdr/enable-rtl-sdr.py            # test + enable + instructions
+python3 features/rtl-sdr/enable-rtl-sdr.py --check    # test the SDR only, no changes
 ```
 
 The rest of this doc explains what it does and how to do it by hand.
@@ -258,7 +258,7 @@ rtl_fm -f 144.390M -M fm -s 22050 -g 40 -p 0 - | multimon-ng -t raw -a AFSK1200 
 - **Nothing here either** → the problem is RF / antenna / noise, *not* software.
   Continue below.
 
-(`multimon-ng` is installed by `install-rtl-sdr.py`; it wants 22050 Hz. For a
+(`multimon-ng` is installed by `features/rtl-sdr/install-rtl-sdr.py`; it wants 22050 Hz. For a
 quality readout, `direwolf -n 1 -r 48000 -b 1 -` at `-s 48000` works too.)
 
 ### 2. Prove the receiver hears a strong signal (NOAA)
@@ -316,7 +316,7 @@ done
 Whichever gain decodes the most wins. Lock it in permanently:
 
 ```bash
-python3 scripts/enable-rtl-sdr.py --gain <best> --ppm <best>
+python3 features/rtl-sdr/enable-rtl-sdr.py --gain <best> --ppm <best>
 ```
 
 ### 5. Range is mostly the antenna, not the tuner
@@ -397,7 +397,7 @@ the computer before you blame the dongle.
 | Meter moves but **`multimon-ng` decodes nothing at any PPM** | no decodable RF reaching the demod — the meter is just FM hiss | Not a config bug. Run the NOAA strong-signal test (debug §2); check the SMA connector, antenna sky view, and Pi self-noise (§3). |
 | Strong locals decode but nothing distant; high noise floor | Pi self-noise (onboard/HDMI audio, PSU, dongle on-board) desensing RX | `dtparam=audio=off` + `dtoverlay=vc4-kms-v3d,noaudio`; move the dongle off the Pi on a USB extension + ferrite; clean PSU; better/higher antenna (debug §3–5). |
 | Cranking `-g` to max gives *fewer* decodes | near-max gain raises the floor / overloads on strong locals | Gain ≠ noise floor. Sweep gain and count decodes; pick the peak, not the max (debug §4). |
-| RTL-SDR Blog **V4** fails (PLL not locked / no decode) right after an OASIS install on a **newer OS** | the offline bundle installed an **older `librtlsdr`** than your OS ships (e.g. bookworm `0.6.0` on Trixie); the V4 (R828D) needs **`librtlsdr` ≥ 2.0** | Re-run `python3 scripts/install-rtl-sdr.py` — it's now suite-aware + newest-source-wins and will pull apt's newer driver. Or manually `sudo apt install --only-upgrade rtl-sdr librtlsdr2`. Check with `dpkg -l 'librtlsdr*' rtl-sdr`. Background: [docs/offline-architecture.md](offline-architecture.md). |
+| RTL-SDR Blog **V4** fails (PLL not locked / no decode) right after an OASIS install on a **newer OS** | the offline bundle installed an **older `librtlsdr`** than your OS ships (e.g. bookworm `0.6.0` on Trixie); the V4 (R828D) needs **`librtlsdr` ≥ 2.0** | Re-run `python3 features/rtl-sdr/install-rtl-sdr.py` — it's now suite-aware + newest-source-wins and will pull apt's newer driver. Or manually `sudo apt install --only-upgrade rtl-sdr librtlsdr2`. Check with `dpkg -l 'librtlsdr*' rtl-sdr`. Background: [docs/offline-architecture.md](offline-architecture.md). |
 
 ---
 

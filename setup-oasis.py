@@ -67,7 +67,11 @@ class Feature:
 
     @property
     def path(self):
-        return os.path.join(SCRIPTS_DIR, self.script) if self.script else None
+        if not self.script:
+            return None
+        if "/" in self.script:
+            return os.path.join(os.path.dirname(os.path.abspath(__file__)), self.script)
+        return os.path.join(SCRIPTS_DIR, self.script)
 
 
 # Order here is the run order. Software/services default-checked; data opt-in;
@@ -123,7 +127,7 @@ FEATURES = [
             "Auto-start the server and add a clickable OASIS desktop shortcut. Raspberry Pi OS with Desktop.",
             "Display", default=False, needs=["server"], args=["--desktop-icon"],
             recommend="Desktop icon added — double-click it to open OASIS."),
-    Feature("cm4stack", "CM4Stack panel (ST7789 + touch)", "enable-cm4stack.py",
+    Feature("cm4stack", "CM4Stack panel (ST7789 + touch)", "displays/cm4stack/install-cm4stack.py",
             "Set up a Raspberry Pi CM4 / M5Stack CM4Stack as a standalone OASIS panel: "
             "ST7789V2 SPI display + GT911 touch + GPIO fan (headless boot + oasis-panel.service). "
             "REQUIRES A REBOOT (a second reboot may be needed for the GT911 touch fix).",
@@ -131,37 +135,37 @@ FEATURES = [
             recommend="CM4Stack panel configured — reboot to bring up the display, then re-run to apply the touch fix."),
 
     # ── Audio: audio paths into GrayWolf (SDR dongle + DRA sound card) ─────────
-    Feature("rtl-sdr", "RTL-SDR tools", "install-rtl-sdr.py",
+    Feature("rtl-sdr", "RTL-SDR tools", "features/rtl-sdr/install-rtl-sdr.py",
             "rtl_test/rtl_fm + socat/tcpdump and the DVB-driver blacklist.",
             "Audio", default=False,
             recommend="RTL-SDR Blog V4 needs Pi OS Trixie (librtlsdr >= 2.0). Verify the dongle: rtl_test -t"),
-    Feature("rtl-feed", "RTL-SDR → GrayWolf APRS feed", "enable-rtl-sdr.py",
+    Feature("rtl-feed", "RTL-SDR → GrayWolf APRS feed", "features/rtl-sdr/enable-rtl-sdr.py",
             "Stream demodulated APRS audio into GrayWolf (sdr_udp). Needs the dongle plugged in.",
             "Audio", default=False, needs=["rtl-sdr"],
             recommend="In GrayWolf add the sdr_udp device + an AFSK1200 channel, then RESTART it: sudo systemctl restart graywolf"),
-    Feature("dra-pi", "DRA-Pi-Zero sound card", "enable-dra-pi.py",
+    Feature("dra-pi", "DRA-Pi-Zero sound card", "features/dra-audio-interface/enable-dra-pi.py",
             "Configure the MastersCommunications DRA-Pi-Zero (WM8731 I²S codec) for GrayWolf — edits /boot/firmware/config.txt. REQUIRES A REBOOT.",
             "Audio", default=False, reboot=True,
             recommend="Reboot, then re-run this setup to apply the DRA-Pi ALSA mixer."),
-    Feature("dra-rx-led", "DRA-Pi green RX LED", "enable-dra-rx-led.py",
+    Feature("dra-rx-led", "DRA-Pi green RX LED", "features/dra-audio-interface/enable-dra-rx-led.py",
             "Pulse the DRA-Pi-Zero's green RX LED (GPIO 16) on GrayWolf receive activity (polls the history DB). The red TX LED (GPIO 12) is keyed by GrayWolf itself — nothing to install.",
             "Audio", default=False, needs=["dra-pi", "graywolf"],
-            recommend="Green RX LED follows GrayWolf RX. Verify wiring: python3 scripts/enable-dra-rx-led.py --self-test"),
+            recommend="Green RX LED follows GrayWolf RX. Verify wiring: python3 features/dra-audio-interface/enable-dra-rx-led.py --self-test"),
 
     # ── GPS / Time: GPS-disciplined clock (gpsd + chrony) ──────────────────────
-    Feature("gps", "GPS time (gpsd + chrony)", "install-gps.py",
+    Feature("gps", "GPS time (gpsd + chrony)", "features/gps/install-gps.py",
             "Discipline the system clock from a GPS receiver (gpsd + chrony + RTC) for accurate time with no internet — needed for FT8/WSPR/SSTV decode timing. Auto-detects the device; needs internet to apt-install.",
             "GPS", default=False, internet=True,
             recommend="GPS time set up. Give the antenna sky view, then check: cgps -s  and  chronyc tracking."),
 
     # ── RTC: Witty Pi 3 hardware clock (standalone) ────────────────────────────
-    Feature("rtc", "Witty Pi 3 RTC (DS3231)", "enable-rtc.py",
+    Feature("rtc", "Witty Pi 3 RTC (DS3231)", "features/rtc-hat/enable-rtc.py",
             "Configure the Witty Pi 3's DS3231 hardware clock (i2c-rtc overlay + remove fake-hwclock) so the Pi keeps time across reboots / power loss with no network. REQUIRES A REBOOT.",
             "RTC", default=False, reboot=True,
             recommend="Reboot to load the RTC, then once the clock is correct: sudo hwclock -w"),
 
     # ── Content / Data: large optional downloads ──────────────────────────────
-    Feature("fcc", "FCC callsign database", "setup-fcc-database.py",
+    Feature("fcc", "FCC callsign database", "install-fcc-database.py",
             "Download + index the FCC amateur license DB (~160 MB).",
             "Content / Data", default=True, internet=True, data=True,
             recommend="FCC callsign lookup is ready on the dashboard."),
@@ -170,10 +174,10 @@ FEATURES = [
             "Content / Data", default=False, internet=True, data=True,
             recommend="ZIM downloaded — Kiwix serves it at :8081 (install Kiwix if you haven't)."),
     Feature("repeaterbook", "Repeater Book listing", None,
-            "Show the Repeater Book link on the dashboard. Needs repeaterbook/repeaterbook.csv "
+            "Show the Repeater Book link on the dashboard. Needs static/repeaterbook/repeaterbook.csv "
             "(copyright — export your own from repeaterbook.com and drop it in).",
             "Content / Data", default=True, record_only=True,
-            recommend="Repeater Book link is on the dashboard — drop your repeaterbook.csv into repeaterbook/."),
+            recommend="Repeater Book link is on the dashboard — drop your repeaterbook.csv into static/repeaterbook/."),
     Feature("forms", "ICS Forms (dashboard section)", None,
             "Show the ICS-205/213/214/309 forms section on the dashboard. The forms ship with "
             "OASIS — this only toggles whether the section is shown.",
@@ -701,7 +705,7 @@ def summarize(results):
               "— see the log above and re-run to retry.")
     else:
         _ok("All selected steps completed.")
-    _info(f"Verify everything at  http://{_guess_host()}:8083/system/setup.html")
+    _info(f"Verify everything at  http://{_guess_host()}:8083/server/system/setup.html")
     print("  " + bar + "\n")
 
     if reboot:
@@ -709,7 +713,8 @@ def summarize(results):
         _warn(f"A reboot is required to finish: {names}")
         _info("After rebooting, run the matching script to enable each one:")
         for f in reboot:
-            _info(f"  python3 scripts/{f.script}   # {f.name}")
+            script_path = f.script if "/" in f.script else f"scripts/{f.script}"
+            _info(f"  python3 {script_path}   # {f.name}")
         _info("(Re-running this setup does the same thing.)")
         if sys.stdin.isatty() and input("\n  Reboot now? [y/N]: ").strip().lower() in ("y", "yes"):
             subprocess.run(["sudo", "reboot"])
