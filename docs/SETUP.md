@@ -16,6 +16,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [Offline Maps](#offline-maps)
 - [GrayWolf APRS](#graywolf-aprs)
 - [Winlink (Pat)](#winlink-pat)
+- [Winlink RF via DigiRig](#winlink-rf-via-digirig)
 - [DRA-Pi-Zero sound card](#dra-pi-zero-sound-card)
 - [DRA-Pi RX LED](#dra-pi-rx-led)
 - [Kiwix / Wikipedia](#kiwix--wikipedia)
@@ -875,6 +876,22 @@ then *Action → Connect → telnet*. If you skipped the password prompt, set it
 
 **Phase 2 — RF (off-grid)** reuses GrayWolf's KISS TNC as the modem (no second modem). Connect Pat to GrayWolf's KISS port (Settings → KISS Interfaces in GrayWolf, then configure Pat's `ax25.json`) — the plumbing is there but the end-to-end setup is experimental. See the [GrayWolf KISS docs](../static/graywolf-handbook/kiss.html) in the offline handbook.
 
+**Dedicated Direwolf modem (default-on).** The installer also sets up its own
+Direwolf AX.25 modem behind Pat's AGWPE transport (`pat-direwolf` service on
+:8000, start-on-demand from the dashboard — hardware-exclusive with GrayWolf).
+It writes **both** interface configs to `~/.config/direwolf/` and points the
+service at the one you pick:
+
+| Interface | Config file | PTT | Selected by |
+|---|---|---|---|
+| **DRA-Pi-Zero** (default) | `oasis-winlink.conf` | GPIO 12 | default |
+| **DigiRig Mobile** | `oasis-winlink-digirig.conf` | CP210x serial **RTS** | `--modem-interface digirig` / the *Winlink RF via DigiRig* menu tick |
+
+`MYCALL` in both configs comes from your `station.json` callsign (seeded by the
+first setup step). See [Winlink RF via DigiRig](#winlink-rf-via-digirig) to wire
+up a DigiRig, including audio-level tuning and debugging. Skip the modem entirely
+with `--no-modem` (Telnet-only Winlink).
+
 > Plain HTTP, and `config.json` holds your Winlink password — keep this on your
 > trusted LAN, not the open internet.
 
@@ -928,6 +945,113 @@ sudo systemctl status dra-rx-led
 sudo systemctl restart dra-rx-led
 journalctl -u dra-rx-led -f
 ```
+
+---
+
+## Winlink RF via DigiRig
+
+A [DigiRig Mobile](https://digirig.net/) is an alternative to the DRA-Pi-Zero for
+the Winlink Direwolf modem: it's a **USB sound card** plus a **CP210x USB-serial
+bridge** whose **RTS** line keys PTT. No GPIO, no boot overlay, no reboot — plug
+it in and go. (The DRA-Pi-Zero keys PTT on GPIO 12 and needs the WM8731 overlay +
+a reboot; the DigiRig needs neither.)
+
+Install/point the modem at the DigiRig with either:
+
+```bash
+# menu: tick "Winlink RF via DigiRig" (needs the Winlink tick)
+python3 setup-oasis.py
+
+# or directly — only (re)writes the modem config + re-points the service,
+# it does NOT touch the Pat install or its saved password:
+python3 scripts/install-winlink.py --modem-interface digirig --modem-only
+```
+
+Both interface configs are always written to `~/.config/direwolf/`; the
+`pat-direwolf` service points at the DigiRig one (`oasis-winlink-digirig.conf`)
+and, because the DigiRig keys PTT over serial RTS (not GPIO), its service carries
+**no GPIO unexport** `ExecStopPost`. `MYCALL` comes from your `station.json`
+callsign. The installer **auto-detects** the DigiRig — plug it in first.
+
+### 1. Find the two devices (debugging)
+
+If auto-detect fails, or you want to confirm what was picked, identify the USB
+sound card and the CP210x serial port by hand:
+
+```bash
+# Audio: note the DigiRig's card name (e.g. "Device [USB Audio Device]")
+aplay -l
+arecord -l
+arecord -L | grep -i -A1 'CARD='        # the name-based plughw:CARD=… forms
+
+# PTT serial: the DigiRig's CP210x → a stable by-id path (survives replug)
+ls -l /dev/serial/by-id/
+dmesg | grep -i cp210                    # confirms which ttyUSB it grabbed
+```
+
+Feed non-default values back in via overrides (they win over auto-detect):
+
+```bash
+python3 scripts/install-winlink.py --modem-interface digirig --modem-only \
+  --modem-adevice 'plughw:CARD=Device,DEV=0' \
+  --modem-ptt-serial /dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_XXXX-if00-port0
+```
+
+A generated `oasis-winlink-digirig.conf` looks like:
+
+```conf
+ADEVICE   plughw:CARD=Device,DEV=0
+ARATE     48000
+ACHANNELS 1
+CHANNEL 0
+MYCALL W4MHI
+MODEM 1200
+PTT /dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_XXXX-if00-port0 RTS
+AGWPORT 8000
+KISSPORT 8001
+MAXV22 0
+```
+
+### 2. Set the USB card audio levels (alsamixer)
+
+The DigiRig's USB codec exposes different controls than the WM8731 (no
+`Input Mux`). Set the TX drive and RX level, disable AGC, then persist:
+
+```bash
+CARD=Device            # your aplay -l name
+alsamixer -c "$CARD"   # interactive: 'Speaker' = TX drive, 'Mic' = RX level
+
+# …or non-interactively:
+amixer -c "$CARD" sset 'Speaker' 80%              # TX audio into the radio (start conservative)
+amixer -c "$CARD" sset 'Mic' 50%                  # RX level from the radio
+amixer -c "$CARD" sset 'Auto Gain Control' off 2>/dev/null || true
+sudo alsactl store                                # persist across reboots
+```
+
+Overdriving `Speaker` distorts your transmit audio; too little `Mic` and Direwolf
+won't decode. Tune `Mic` for clean RX decodes and `Speaker` for a non-clipped TX.
+
+### 3. Test standalone before wiring it in
+
+```bash
+# RX: confirm the card opens and packets decode
+direwolf -c ~/.config/direwolf/oasis-winlink-digirig.conf -t 0
+
+# PTT: keys the radio for the transmit-calibration tone (RTS should key it)
+direwolf -c ~/.config/direwolf/oasis-winlink-digirig.conf -x
+```
+
+If RX decodes and `-x` keys the rig, start the service and use Pat's AGWPE
+transport as usual:
+
+```bash
+sudo systemctl start pat-direwolf         # stops GrayWolf; frees the audio path
+journalctl -u pat-direwolf -f             # watch the modem
+```
+
+> Switching back to the DRA-Pi-Zero: re-run with `--modem-interface dra`
+> `--modem-only` (or the DigiRig config stays on disk, unused). Both configs
+> coexist; only the service target changes.
 
 ---
 

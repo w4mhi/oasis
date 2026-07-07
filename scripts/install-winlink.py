@@ -70,8 +70,9 @@ def main():
     )
     parser.add_argument("--version", metavar="X.Y.Z",
                         help="Install a specific Pat version (always resolved from GitHub).")
-    parser.add_argument("--callsign", default="W4MHI", metavar="CALL",
-                        help="Winlink callsign for the starter config (default: W4MHI).")
+    parser.add_argument("--callsign", default=None, metavar="CALL",
+                        help="Winlink callsign for the config + modem MYCALL "
+                             "(default: from station.json, else W4MHI).")
     parser.add_argument("--locator", default=None, metavar="GRID",
                         help="Maidenhead grid square (e.g. FM18) — optional.")
     parser.add_argument("--password", default=None, metavar="PW",
@@ -87,26 +88,42 @@ def main():
     parser.add_argument("--ptt-gpio", type=int, default=None, metavar="N",
                         help="Override the RF modem's sysfs PTT GPIO number "
                              "(default: auto = SoC gpiochip base + 12).")
-    parser.add_argument("--modem-adevice", default=W.MODEM_ADEVICE, metavar="DEV",
-                        help=f"ALSA device for the RF modem (default: {W.MODEM_ADEVICE}).")
+    parser.add_argument("--modem-interface", choices=["dra", "digirig"], default="dra",
+                        help="RF interface the pat-direwolf service points at. Both configs "
+                             "are always written to disk; this selects the active one "
+                             "(default: dra). 'digirig' = USB sound card + CP210x serial RTS PTT.")
+    parser.add_argument("--modem-only", action="store_true",
+                        help="Skip the Pat install/config; only (re)write the modem configs "
+                             "and re-point the service. Used by the DigiRig setup tick.")
+    parser.add_argument("--modem-ptt-serial", default=None, metavar="PATH",
+                        help="Override the DigiRig PTT serial by-id path (default: auto-detect "
+                             "the CP210x). Its RTS line keys PTT.")
+    parser.add_argument("--modem-adevice", default=None, metavar="DEV",
+                        help="Override the ALSA device for the active RF interface "
+                             "(default: DRA = plughw:audioinjectorpi,0; DigiRig = auto-detect).")
     parser.add_argument("--modem-callsign", default=None, metavar="CALL",
                         help="Direwolf MYCALL for the RF modem (default: --callsign).")
     args = parser.parse_args()
 
+    # Callsign source of truth: explicit --callsign, else the suite station.json
+    # (seeded by setup-oasis's first step), else the placeholder. Feeds the Pat
+    # config AND both Direwolf modem MYCALLs (DRA + DigiRig).
+    callsign = args.callsign or W.station_callsign(REPO_ROOT) or "W4MHI"
+
     # Resolve the Winlink password: explicit flag, interactive prompt, or skip.
-    if args.no_password:
+    if args.no_password or args.modem_only:
         password = None
     elif args.password is not None:
         password = args.password
     elif sys.stdin.isatty():
         password = getpass.getpass(
-            f"    Winlink password for {args.callsign} (blank to skip): ") or None
+            f"    Winlink password for {callsign} (blank to skip): ") or None
     else:
         password = None
 
     W.run(
         pinned_version=args.version,
-        callsign=args.callsign,
+        callsign=callsign,
         locator=args.locator,
         password=password,
         no_password=args.no_password,
@@ -117,6 +134,9 @@ def main():
         ptt_gpio=args.ptt_gpio,
         modem_adevice=args.modem_adevice,
         modem_callsign=args.modem_callsign,
+        modem_interface=args.modem_interface,
+        modem_only=args.modem_only,
+        modem_ptt_serial=args.modem_ptt_serial,
     )
 
 

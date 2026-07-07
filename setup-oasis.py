@@ -93,6 +93,15 @@ FEATURES = [
             "Pat Winlink client + web UI on :8082 (Telnet works immediately).",
             "Server", default=False, internet=True,
             recommend="Set your callsign and Winlink password in Pat at :8082."),
+    Feature("winlink-digirig", "Winlink RF via DigiRig", "install-winlink.py",
+            "Point the Winlink RF modem (Direwolf) at a DigiRig Mobile (USB sound card + "
+            "CP210x serial RTS PTT) instead of the DRA-Pi. Both modem configs are written; "
+            "the pat-direwolf service uses the DigiRig (no GPIO / no reboot). Auto-detects "
+            "the DigiRig — plug it in before running.",
+            "Server", default=False, needs=["winlink"],
+            args=["--modem-interface", "digirig", "--modem-only"],
+            recommend="pat-direwolf now uses the DigiRig. Verify PTT keys the radio: "
+                      "direwolf -c ~/.config/direwolf/oasis-winlink-digirig.conf -x"),
     Feature("kiwix", "Kiwix (offline content server)", "install-kiwix.py",
             "kiwix-serve on :8081 to browse ZIM content. (Add content below.)",
             "Server", default=False, internet=True,
