@@ -291,5 +291,76 @@ def main(argv=None):
     return 0
 
 
+SWEEP_SECS = 10
+
+
+def _measure(stdscr, state, label, step_n, step_m):
+    """Run the current state's pipeline for SWEEP_SECS, return (decodes, avg)."""
+    runner = PipelineRunner(state.command())
+    runner.start()
+    events = []
+    t0 = time.time()
+    while time.time() - t0 < SWEEP_SECS:
+        for line in runner.poll_lines():
+            ev = S.parse_line(line)
+            if ev is not None:
+                events.append(ev)
+        remaining = SWEEP_SECS - (time.time() - t0)
+        stdscr.erase()
+        stdscr.addstr(0, 1, f"SWEEP {label}  step {step_n}/{step_m}   "
+                            f"{remaining:.0f}s left")
+        d, a = S.score(events)
+        stdscr.addstr(2, 1, f"gain {state.gain:.1f}  ppm {state.ppm}   "
+                            f"decodes {d}  avg-level {a:.0f}")
+        stdscr.refresh()
+        time.sleep(0.2)
+    runner.stop()
+    return S.score(events)
+
+
+def run_sweep(stdscr, runner, state):
+    if runner is not None:
+        runner.stop()
+
+    # Stage 1: gain.
+    results = []
+    for i, g in enumerate(state.gains, 1):
+        state.gi = state.gains.index(g)
+        d, a = _measure(stdscr, state, "GAIN", i, len(state.gains))
+        results.append((g, d, a))
+    best_gain = S.rank_sweep(results)
+
+    if best_gain is None:
+        _sweep_message(stdscr, "No traffic heard during the gain sweep — "
+                               "parameters left unchanged. Press any key.")
+        return respawn(None, state)
+    state.gi = state.gains.index(best_gain)
+
+    # Stage 2: ppm at the best gain.
+    ppm_vals = S.ppm_sweep_values()
+    results = []
+    for i, p in enumerate(ppm_vals, 1):
+        state.ppm = p
+        d, a = _measure(stdscr, state, "PPM", i, len(ppm_vals))
+        results.append((p, d, a))
+    best_ppm = S.rank_sweep(results)
+    if best_ppm is not None:
+        state.ppm = best_ppm
+
+    _sweep_message(stdscr, f"Sweep done: gain {best_gain:.1f}, "
+                           f"ppm {state.ppm}. Press any key.")
+    return respawn(None, state)
+
+
+def _sweep_message(stdscr, msg):
+    stdscr.erase()
+    for i, row in enumerate(msg.split("\n")):
+        stdscr.addstr(1 + i, 1, row)
+    stdscr.refresh()
+    stdscr.nodelay(False)
+    stdscr.getch()
+    stdscr.nodelay(True)
+
+
 if __name__ == "__main__":
     sys.exit(main())
