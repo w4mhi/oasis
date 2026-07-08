@@ -14,14 +14,24 @@ def build_pipeline(freq, gain, ppm, vol, srate, conf_path):
     rtl = f"rtl_fm -M fm -f {freq} -s {srate} -F 0 -g {gain} -p {ppm} -"
     sox = (f"sox -t raw -r {srate} -e signed-integer -b 16 -c 1 - "
            f"-t raw - vol {vol}")
-    dw  = f"direwolf -t 0 -c {conf_path} -r {srate} -D 1 -"
+    # -a 2: Direwolf prints an audio-device stats line every 2 s (approx sample
+    # rate, error count, continuous receive level) regardless of decodes — the
+    # bench's "audio flowing" heartbeat. Parsed by parse_line into AudioStat.
+    dw  = f"direwolf -t 0 -a 2 -c {conf_path} -r {srate} -D 1 -"
     return f"{rtl} | {sox} | {dw}"
 
 
 AudioLevel = namedtuple("AudioLevel", "level lo hi")
 Decoded = namedtuple("Decoded", "src dest payload")
+# Direwolf -a periodic stats: "ADEVICE0: Sample rate approx. 24.6 k, 0 errors,
+# receive audio level CH0 49". A decode-independent heartbeat + health signal.
+AudioStat = namedtuple("AudioStat", "rate_k errors level")
 
 _AUDIO_RE = re.compile(r"audio level = (\d+)\((\d+)/(\d+)\)")
+_ASTAT_RE = re.compile(
+    r"Sample rate approx\.\s*([\d.]+)\s*k,\s*(\d+)\s*errors,"
+    r"\s*receive audio level CH\d+\s+(\d+)"
+)
 # [0.4] SRC>DEST,path:payload   — SRC/DEST are callsign-SSID tokens.
 _PKT_RE = re.compile(
     r"^\[\d+(?:\.\d+)?\]\s+"
@@ -31,7 +41,11 @@ _PKT_RE = re.compile(
 
 
 def parse_line(line):
-    """Classify one line of Direwolf output. Returns AudioLevel, Decoded, or None."""
+    """Classify one line of Direwolf output. Returns AudioLevel, AudioStat,
+    Decoded, or None."""
+    m = _ASTAT_RE.search(line)
+    if m:
+        return AudioStat(float(m.group(1)), int(m.group(2)), int(m.group(3)))
     m = _AUDIO_RE.search(line)
     if m:
         return AudioLevel(int(m.group(1)), int(m.group(2)), int(m.group(3)))
@@ -66,15 +80,49 @@ def parse_gains(rtl_test_output):
     return []
 
 
+# Accepts operator-typed frequencies like "144.390M", "144800k", "144800000".
+# rtl_fm's -f parser (atofs) understands a trailing k/M/G suffix; we canonicalise
+# to that spelling and range-check against the RTL2832U's tuning span so a typo
+# ("14.4390M") is rejected in the TUI instead of silently killing the pipeline.
+_FREQ_RE = re.compile(r"^\d+(?:\.\d+)?[kKmMgG]?$")
+_SUFFIX_HZ = {"k": 1e3, "M": 1e6, "G": 1e9}
+_RTL_MIN_HZ, _RTL_MAX_HZ = 24e6, 1_766e6
+
+
+def _freq_to_hz(canon):
+    if canon and canon[-1] in _SUFFIX_HZ:
+        return float(canon[:-1]) * _SUFFIX_HZ[canon[-1]]
+    return float(canon)
+
+
+def normalize_freq(text):
+    """Validate a user-entered frequency for rtl_fm -f. Return the canonical
+    string (e.g. "144.800M") or None if it isn't a plausible RTL-SDR frequency."""
+    t = (text or "").strip().replace(" ", "")
+    if not _FREQ_RE.match(t):
+        return None
+    if t[-1] in "kKmMgG":
+        t = t[:-1] + {"K": "k", "M": "M", "G": "G"}[t[-1].upper()]
+    try:
+        hz = _freq_to_hz(t)
+    except ValueError:
+        return None
+    if not (_RTL_MIN_HZ <= hz <= _RTL_MAX_HZ):
+        return None
+    return t
+
+
 def ppm_sweep_values(lo=-50, hi=50, step=5):
     return list(range(lo, hi + 1, step))
 
 
-def rank_sweep(results, target_level=50):
+def rank_sweep(results, target_level=50, min_decodes=1):
     """Pick the best value from (value, decode_count, avg_level) rows.
-    Rank by decode_count, tie-break by avg_level nearest target_level.
-    Returns None when no row decoded anything (quiet band — don't guess)."""
-    scored = [r for r in results if r[1] > 0]
+    Only rows with at least `min_decodes` decodes are eligible (a step must
+    clear the confidence bar to count). Rank by decode_count, tie-break by
+    avg_level nearest target_level. Returns None when no row qualifies
+    (quiet/too-sparse band — don't guess)."""
+    scored = [r for r in results if r[1] >= min_decodes]
     if not scored:
         return None
     return max(scored, key=lambda r: (r[1], -abs(r[2] - target_level)))[0]
@@ -114,6 +162,42 @@ def check_deps(which):
 def deps_message(missing):
     return ("Missing required tools: " + ", ".join(missing) + "\n"
             "Install them with:  python3 features/rtl-sdr/install-rtl-sdr.py")
+
+
+# libusb error -6 (LIBUSB_ERROR_BUSY): the dongle is already claimed by another
+# process (aprs-sdr-feed.service, a stray rtl_fm/rtl_tcp) or by the kernel DVB-T
+# driver. When rtl_fm can't open the device it dies immediately, the pipeline
+# collapses, and the *last* stage (direwolf) exits 0 on EOF — masking the real
+# cause. Probing rtl_test before launching the TUI surfaces it up front.
+_BUSY_MARKERS = ("usb_claim_interface error", "Failed to open rtlsdr device")
+_ABSENT_MARKERS = ("No supported devices found", "usb_open error")
+
+
+def device_error(rtl_test_output):
+    """Inspect `rtl_test -t` output. Return "busy", "absent", or None (usable)."""
+    if any(m in rtl_test_output for m in _BUSY_MARKERS):
+        return "busy"
+    if any(m in rtl_test_output for m in _ABSENT_MARKERS):
+        return "absent"
+    return None
+
+
+def device_help(reason):
+    """Actionable fix steps for a device_error() reason."""
+    if reason == "busy":
+        return (
+            "RTL-SDR dongle is BUSY — another process or the kernel DVB-T driver "
+            "already owns it.\n"
+            "  1. Stop the feed service:  sudo systemctl stop aprs-sdr-feed.service\n"
+            "  2. Kill any stray tuner:   pkill -f rtl_fm ; pkill -f rtl_tcp\n"
+            "  3. If still busy, unload the DVB-T driver:\n"
+            "       sudo modprobe -r dvb_usb_rtl28xxu\n"
+            "     make it permanent: echo 'blacklist dvb_usb_rtl28xxu' | "
+            "sudo tee /etc/modprobe.d/blacklist-rtl.conf\n"
+            "Then re-run this tool.")
+    return (
+        "No RTL-SDR dongle detected. Check the USB connection, then run "
+        "`rtl_test -t` to confirm the device enumerates.")
 
 
 # Operator's known-good minimal Direwolf config. Audio comes from stdin at the
