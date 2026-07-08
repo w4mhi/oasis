@@ -1,5 +1,6 @@
 # tests/test_sdr_tune.py — plain unittest (no pytest; offline wheel set is flask-only).
 import importlib.util
+import json
 import os
 import sys
 import tempfile
@@ -174,6 +175,21 @@ class CliTests(unittest.TestCase):
                 body = fh.read()
             self.assertIn("MODEM 1200", body)
             self.assertIn(f"LOGDIR {d}", body)
+
+
+class SaveResultTests(unittest.TestCase):
+    def test_append_result_writes_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "tune-results.json")
+            rec = {"freq": "144.390M", "gain": 32.8, "ppm": 0, "vol": 0.5,
+                   "srate": 24000, "decodes_per_min": 14, "ts": "2026-07-08T00:00:00"}
+            tune.append_result(path, rec)
+            tune.append_result(path, rec)
+            with open(path) as fh:
+                data = json.load(fh)
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]["gain"], 32.8)
 
 
 if __name__ == "__main__":

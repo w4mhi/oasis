@@ -27,6 +27,8 @@ dongle.
 import argparse
 import collections
 import curses
+import datetime
+import json
 import os
 import queue
 import shutil
@@ -39,6 +41,45 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "scripts"))
 from common import sdr_tune as S
+
+
+RESULTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "tune-results.json")
+
+
+def append_result(path, record):
+    """Append a tuning record to a JSON array file (create if absent)."""
+    data = []
+    if os.path.exists(path):
+        try:
+            with open(path) as fh:
+                data = json.load(fh)
+        except (ValueError, OSError):
+            data = []
+    data.append(record)
+    with open(path, "w") as fh:
+        json.dump(data, fh, indent=2)
+
+
+def save_result(stdscr, state, decodes):
+    record = {
+        "freq": state.freq,
+        "gain": round(state.gain, 1),
+        "ppm": state.ppm,
+        "vol": round(state.vol, 2),
+        "srate": state.rate,
+        "decodes_per_min": round(decodes * 2),   # 30 s window → per-minute
+        "ts": datetime.datetime.now().isoformat(timespec="seconds"),
+    }
+    append_result(RESULTS_PATH, record)
+    feed = S.build_feed_command(state.freq, f"{state.gain:.1f}", state.ppm)
+    _sweep_message(
+        stdscr,
+        "Saved to features/rtl-sdr/tune-results.json\n\n"
+        "  GrayWolf feed command for aprs-sdr-feed.service:\n"
+        f"  {feed}\n\n"
+        f"  (bench vol {state.vol:.2f} recorded for reference; not used by the "
+        "GrayWolf path)\n\n  Press any key.")
 
 
 class PipelineRunner:
