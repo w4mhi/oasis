@@ -19,8 +19,7 @@
   ],
   "arches": [
     "arm64",
-    "armhf",
-    "amd64"
+    "armhf"
   ],
   "features": {
     "server": {
@@ -79,8 +78,7 @@
       ],
       "arches": [
         "arm64",
-        "armhf",
-        "amd64"
+        "armhf"
       ],
       "resolved": {
         "trixie": {
@@ -89,10 +87,6 @@
             "libusb-1.0-0": "2:1.0.28-1"
           },
           "armhf": {
-            "rtl-sdr": "2.0.2-2+b1",
-            "libusb-1.0-0": "2:1.0.28-1"
-          },
-          "amd64": {
             "rtl-sdr": "2.0.2-2+b1",
             "libusb-1.0-0": "2:1.0.28-1"
           }
@@ -104,11 +98,6 @@
             "librtlsdr0": "0.6.0-4"
           },
           "armhf": {
-            "rtl-sdr": "0.6.0-4",
-            "libusb-1.0-0": "2:1.0.26-1",
-            "librtlsdr0": "0.6.0-4"
-          },
-          "amd64": {
             "rtl-sdr": "0.6.0-4",
             "libusb-1.0-0": "2:1.0.26-1",
             "librtlsdr0": "0.6.0-4"
@@ -134,8 +123,7 @@
       ],
       "arches": [
         "arm64",
-        "armhf",
-        "amd64"
+        "armhf"
       ],
       "resolved": {
         "trixie": {
@@ -145,11 +133,6 @@
             "libwrap0": "7.6.q-36"
           },
           "armhf": {
-            "socat": "1.8.0.3-1",
-            "tcpdump": "4.99.5-2",
-            "libwrap0": "7.6.q-36"
-          },
-          "amd64": {
             "socat": "1.8.0.3-1",
             "tcpdump": "4.99.5-2",
             "libwrap0": "7.6.q-36"
@@ -163,12 +146,6 @@
             "libpcap0.8": "1.10.3-1"
           },
           "armhf": {
-            "socat": "1.7.4.4-2",
-            "tcpdump": "4.99.3-1",
-            "libwrap0": "7.6.q-32",
-            "libpcap0.8": "1.10.3-1"
-          },
-          "amd64": {
             "socat": "1.7.4.4-2",
             "tcpdump": "4.99.3-1",
             "libwrap0": "7.6.q-32",
@@ -194,8 +171,7 @@
       ],
       "arches": [
         "arm64",
-        "armhf",
-        "amd64"
+        "armhf"
       ],
       "resolved": {
         "trixie": {
@@ -204,9 +180,6 @@
           },
           "armhf": {
             "multimon-ng": "1.3.1+dfsg-1"
-          },
-          "amd64": {
-            "multimon-ng": "1.3.1+dfsg-1"
           }
         },
         "bookworm": {
@@ -214,9 +187,6 @@
             "multimon-ng": "1.2.0+dfsg-1"
           },
           "armhf": {
-            "multimon-ng": "1.2.0+dfsg-1"
-          },
-          "amd64": {
             "multimon-ng": "1.2.0+dfsg-1"
           }
         }
@@ -229,15 +199,11 @@
       "asset_pattern": "graywolf_{version}_{arch}.deb",
       "_note": "Upstream ships only arm64 and amd64 .deb assets — no armhf.",
       "arches": [
-        "arm64",
-        "amd64"
+        "arm64"
       ],
       "resolved": {
         "_": {
           "arm64": {
-            "graywolf": "0.14.8"
-          },
-          "amd64": {
             "graywolf": "0.14.8"
           }
         }
@@ -251,15 +217,11 @@
       "asset_pattern": "kiwix-tools_linux-{arch}-{version}.tar.gz",
       "arches": [
         "aarch64",
-        "armhf",
-        "x86_64"
+        "armhf"
       ],
       "resolved": {
         "_": {
           "aarch64": {
-            "kiwix-tools": "3.8.2"
-          },
-          "x86_64": {
             "kiwix-tools": "3.8.2"
           }
         }
@@ -275,8 +237,7 @@
       "arches": [
         "aarch64",
         "armhf",
-        "arm",
-        "x86_64"
+        "arm"
       ],
       "resolved": {
         "_": {
@@ -287,9 +248,6 @@
             "ttyd": "1.7.7"
           },
           "arm": {
-            "ttyd": "1.7.7"
-          },
-          "x86_64": {
             "ttyd": "1.7.7"
           }
         }
@@ -303,8 +261,7 @@
       "bundle_group": "pat",
       "arches": [
         "arm64",
-        "armhf",
-        "amd64"
+        "armhf"
       ],
       "resolved": {
         "_": {
@@ -312,9 +269,6 @@
             "pat": "1.0.0"
           },
           "armhf": {
-            "pat": "1.0.0"
-          },
-          "amd64": {
             "pat": "1.0.0"
           }
         }
@@ -341,8 +295,7 @@
       ],
       "arches": [
         "arm64",
-        "armhf",
-        "amd64"
+        "armhf"
       ],
       "resolved": {
         "bookworm": {
@@ -351,9 +304,6 @@
           },
           "armhf": {
             "direwolf": "1.6+dfsg-3"
-          },
-          "amd64": {
-            "direwolf": "1.6+dfsg-3"
           }
         },
         "trixie": {
@@ -361,9 +311,6 @@
             "direwolf": "1.7+dfsg-2+deb13u1"
           },
           "armhf": {
-            "direwolf": "1.7+dfsg-2+deb13u1"
-          },
-          "amd64": {
             "direwolf": "1.7+dfsg-2+deb13u1"
           }
         }
@@ -394,8 +341,7 @@
       ],
       "arches": [
         "arm64",
-        "armhf",
-        "amd64"
+        "armhf"
       ],
       "resolved": {}
     },
@@ -480,8 +426,7 @@
       ],
       "arches": [
         "arm64",
-        "armhf",
-        "amd64"
+        "armhf"
       ],
       "resolved": {}
     }
