@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RTL-SDR Tuning Bench — OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <a class="sb-brand" href="index.html">
+      <img src="img/oasis-logo.svg" alt="" />
+      <span><b>OASIS</b> handbook</span>
+    </a>
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="tuning-bench.html">RTL-SDR Tuning</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">⌂ HOME</a>
+    </div>
+    <div class="eyebrow">APRS</div>
+    <h1>RTL-SDR Tuning Bench</h1>
+    <p class="subtitle">Find the gain, PPM, and rate that make an RTL-SDR decode 2&nbsp;m APRS reliably &mdash; a live SSH tool</p>
+    <p>
+      Getting an RTL-SDR to decode APRS well means finding the right <strong>tuner
+      gain</strong>, the dongle&rsquo;s <strong>PPM</strong> crystal correction, and an
+      audio path that lands in the demodulator&rsquo;s sweet spot. The tuning bench
+      (<code>features/rtl-sdr/tune-rtl-sdr.py</code>) is a text UI you run over
+      <a href="webssh.html">SSH</a> that wraps <code>rtl_fm&nbsp;|&nbsp;sox&nbsp;|&nbsp;direwolf</code>
+      and lets you nudge each knob while watching decode quality live &mdash; then it
+      hands you the exact feed command for the live GrayWolf service.
+    </p>
+    <div class="callout tip">
+      <span class="ic">&#10003;</span>
+      <div><p>This is a <strong>diagnostic bench</strong>, separate from the live
+      <a href="aprs-feed.html">APRS feed</a>. It uses Direwolf only because its
+      per-2-second audio-stats line is the tuning signal; the production iGate still
+      runs GrayWolf. An RTL-SDR is <strong>receive-only</strong> &mdash; nothing here
+      transmits.</p></div>
+    </div>
+
+    <h2>Before you start</h2>
+    <p>
+      Only one process can own the dongle at a time, so stop the live feed first,
+      then launch the bench:
+    </p>
+    <pre><code>sudo systemctl stop aprs-sdr-feed.service   # release the USB dongle
+python3 features/rtl-sdr/tune-rtl-sdr.py    # 144.390M, 48k by default</code></pre>
+    <p>It needs <code>rtl_fm</code>, <code>sox</code>, and <code>direwolf</code>
+      (installed by <code>install-rtl-sdr.py</code>). If any are missing it prints
+      the install command and exits instead of crashing. On launch it probes the
+      dongle once &mdash; if the device is busy or absent it tells you exactly how to
+      free it before opening the UI.</p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Launch flag</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>--freq 144.800M</code></td><td>EU APRS frequency (default is <code>144.390M</code>, North America)</td></tr>
+        <tr><td><code>--rate 24000</code></td><td>Bench at 24k audio instead of the 48k default (see the sample-rate note below)</td></tr>
+        <tr><td><code>--gain</code> / <code>--ppm</code> / <code>--vol</code></td><td>Starting values for the live knobs</td></tr>
+        <tr><td><code>--conf mine.conf</code></td><td>Reuse an existing Direwolf config instead of the generated one</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h2>Reading the screen</h2>
+    <pre><code>APRS Tune — 144.390M    gain 32.8  vol 0.50  ppm 0  rate 48k
+────────────────────────────────────────────────────────────
+level  46  ██████████████░░░░░░░░░░░░░  good        (6/6 demod)
+        0        25        50        75       100
+audio: flowing  ~48.0k  CH0 49  err 0
+decodes  7 in 30s   (0.23/s)      last: KJ4XYZ-9  KC2ABC
+────────────────────────────────────────────────────────────
+recent packets:
+  KJ4XYZ-9>APDW17: !3358.12N/08412.55W#
+  KC2ABC>APRS: =3401.00N/08400.00W-
+────────────────────────────────────────────────────────────
+g/G gain  v/V vol  p/P ppm  r rate  f freq  s sweep  w save  q quit</code></pre>
+    <ul>
+      <li><strong>level bar</strong> &mdash; the receive audio level, updated every
+        2&nbsp;seconds from Direwolf&rsquo;s stats line so it moves even on a silent
+        band. Aim for the green band; red means clipping, dim means too low.</li>
+      <li><strong>audio: flowing</strong> &mdash; the heartbeat. It proves the
+        RF&nbsp;/&nbsp;USB&nbsp;/&nbsp;audio path is alive independent of decodes, shows
+        the approx sample rate and Direwolf&rsquo;s error count, and flips to
+        <strong>STALLED</strong> in red if samples stop arriving. This is the bench&rsquo;s
+        equivalent of the dashboard&rsquo;s <em>pkt/s</em> meter.</li>
+      <li><strong>decodes</strong> &mdash; rolling count over the last 30&nbsp;s plus the
+        most recent callsigns; the real proof that APRS is being heard.</li>
+    </ul>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>Audio flowing &ne; packets decoded.</strong> A steady
+      <em>flowing</em> heartbeat means the dongle is producing audio; it does
+      <em>not</em> mean a station was heard. Zero decodes with a healthy heartbeat
+      just means a quiet band &mdash; not a broken feed.</p></div>
+    </div>
+
+    <h2>Live knobs</h2>
+    <p>Every knob change kills and respawns the pipeline with the new value, so no
+      stray <code>rtl_fm</code> is ever left holding the dongle.</p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Key</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><code>g</code> / <code>G</code></td><td>Gain down / up through the tuner&rsquo;s valid steps</td></tr>
+        <tr><td><code>v</code> / <code>V</code></td><td>Sox volume down / up (&plusmn;0.05)</td></tr>
+        <tr><td><code>p</code> / <code>P</code></td><td>PPM correction down / up (&plusmn;1)</td></tr>
+        <tr><td><code>r</code></td><td>Toggle audio sample rate 48k &harr; 24k</td></tr>
+        <tr><td><code>f</code></td><td>Type a new frequency (e.g. <code>144.800M</code>); validated before it&rsquo;s applied</td></tr>
+        <tr><td><code>s</code></td><td>Auto-sweep gain, then PPM</td></tr>
+        <tr><td><code>w</code></td><td>Save the known-good settings + emit the feed command</td></tr>
+        <tr><td><code>q</code></td><td>Quit (tears down the pipeline cleanly)</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h2>Auto-sweep</h2>
+    <p>
+      Press <code>s</code> to sweep gain across every tuner step, then PPM at the best
+      gain. APRS traffic is bursty, so the sweep is built to be <strong>honest about
+      confidence</strong> rather than picking noise:
+    </p>
+    <ol class="steps">
+      <li>Each step listens up to <strong>60&nbsp;seconds</strong> and counts decodes.</li>
+      <li>A step must hear <strong>at least 3 packets</strong> to be scored &mdash; more
+        packets is a better score. Fewer than three prints
+        <code>Nothing heard. Inconclusive</code> and is excluded.</li>
+      <li>The winner is the setting with the most decodes, tie-broken by the cleanest
+        audio level. If <em>no</em> step clears three packets, the sweep reports
+        &ldquo;inconclusive&rdquo; and leaves your settings untouched &mdash; it never guesses.</li>
+    </ol>
+    <p>
+      A rolling per-step log and an overall time-remaining estimate keep it from being
+      a black box, and the audio heartbeat is shown throughout so an inconclusive step
+      clearly means &ldquo;quiet band&rdquo; and not &ldquo;dead feed.&rdquo; Press
+      <code>q</code> <em>or</em> <code>Ctrl-C</code> to abort a sweep at any time &mdash;
+      it unwinds gracefully back to the live bench without killing the tool.
+    </p>
+    <div class="callout tip">
+      <span class="ic">&#10003;</span>
+      <div><p>On a quiet band a full sweep can take a while &mdash; that is the price of
+      a trustworthy result. Gain on 2&nbsp;m has a broad flat plateau; the sweep most
+      earns its keep on <strong>PPM</strong>, where the dongle&rsquo;s crystal offset
+      actually matters.</p></div>
+    </div>
+
+    <h2>Saving &amp; the GrayWolf handoff</h2>
+    <p>
+      Press <code>w</code> to append a timestamped record to
+      <code>features/rtl-sdr/tune-results.json</code> and print the copy-paste feed
+      command for <code>aprs-sdr-feed.service</code>. That command always uses
+      <code>-s 48000</code> (GrayWolf&rsquo;s fixed sample rate) and no sox &mdash; only the
+      RF-domain <strong>gain</strong> and <strong>PPM</strong> carry over, since those
+      are independent of the bench audio rate:
+    </p>
+    <pre><code>rtl_fm -f 144.390M -M fm -s 48000 -g 32.8 -p 0 - | socat -u -b 1920 - UDP-SENDTO:127.0.0.1:7355</code></pre>
+    <p>See <a href="aprs-feed.html">Feeding APRS</a> for wiring that feed into GrayWolf,
+      and remember to restart the feed service when you&rsquo;re done tuning:
+      <code>sudo systemctl start aprs-sdr-feed.service</code>.</p>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td><code>PIPELINE EXITED</code> with <code>usb_claim_interface error -6</code></td>
+            <td>The dongle is busy. Stop <code>aprs-sdr-feed.service</code>, kill any stray <code>rtl_fm</code>/<code>rtl_tcp</code>, and if it persists unload the kernel DVB-T driver: <code>sudo modprobe -r dvb_usb_rtl28xxu</code>.</td></tr>
+        <tr><td><code>audio: STALLED</code></td>
+            <td>Pipeline alive but no samples arriving &mdash; a USB glitch or the dongle was pulled. Re-seat the dongle; the bench recovers on the next respawn.</td></tr>
+        <tr><td>Heartbeat rate sags (e.g. <code>~43k</code> at 48k, shown yellow)</td>
+            <td>The Pi can&rsquo;t keep up with the audio throughput. On a Pi Zero&nbsp;2&nbsp;W, bench at <code>--rate 24000</code>; gain/PPM still carry over to the 48k GrayWolf feed unchanged.</td></tr>
+        <tr><td>Healthy heartbeat, zero decodes</td>
+            <td>Quiet band, wrong frequency, or antenna. Confirm <code>144.390M</code> (or <code>144.800M</code> in the EU) and check the 2&nbsp;m antenna.</td></tr>
+      </tbody>
+    </table></div></div>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>RTL-SDR needs Raspberry Pi OS Trixie (Debian&nbsp;13).</strong> The
+      Blog&nbsp;V4 needs <code>librtlsdr&nbsp;&ge;&nbsp;2.0</code>, which only Trixie ships &mdash;
+      the same requirement as the live feed.</p></div>
+    </div>
+
+    <nav class="page-nav">
+      <a href="aprs-feed.html"><span class="lbl">Previous</span><span class="t">Feeding APRS</span></a>
+      <a href="graywolf-config.html" class="next"><span class="lbl">Next</span><span class="t">GrayWolf Config</span></a>
+    </nav>
+    <div class="foot">OASIS · off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook.js"></script>
+</body>
+</html>

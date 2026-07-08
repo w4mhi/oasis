@@ -195,8 +195,14 @@ rtl_fm -f 144.390M -M fm -s 48000 -p <PPM> -g <GAIN> - | graywolf ...
 Confirm the chain stage by stage — don't assume. This is the exact sequence that
 brought it up on `oasis`.
 
+The command will show the stations and the rate at 24000. Change 24K to 48k for GrayWolf.
+
 ```bash
-# 1. Dongle present and not claimed by the DVB driver.
+rtl_fm -M fm -f 144.39M -s 24k -g 32.8 -F 0 | sox -t raw -r 24k -e signed-integer -b 16 -c 1 - -t raw - vol 0.50 | direwolf -c sdr.conf -r 24000 -D 1 -a 2 -t 0 -
+```
+
+```bash
+# 1. Dongle present and not claimed by the DVB driver. '-t' is for old dongles. For the V4 is not needed.
 rtl_test -t
 #    R820T dongles end with "[R82XX] PLL not locked! ... No E4000 tuner found,
 #    aborting." — that is EXPECTED. -t is an E4000-specific test; the abort just
@@ -268,7 +274,7 @@ decoder. Stop the feed first — only one process can own the dongle:
 
 ```bash
 sudo systemctl stop aprs-sdr-feed.service
-rtl_fm -f 144.390M -M fm -s 22050 -g 40 -p 0 - | multimon-ng -t raw -a AFSK1200 -
+rtl_fm -f 144.390M -M fm -s 48000 -g 40 -p 0 - | multimon-ng -t raw -a AFSK1200 -
 ```
 
 - **Packets here but not in GrayWolf** → it's GrayWolf config: `sample_rate` must

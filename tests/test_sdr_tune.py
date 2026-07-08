@@ -24,7 +24,7 @@ class BuildPipelineTests(unittest.TestCase):
         self.assertEqual(cmd, (
             "rtl_fm -M fm -f 144.390M -s 24000 -F 0 -g 32.8 -p 0 - "
             "| sox -t raw -r 24000 -e signed-integer -b 16 -c 1 - -t raw - vol 0.50 "
-            "| direwolf -t 0 -c /tmp/sdr.conf -r 24000 -D 1 -"
+            "| direwolf -t 0 -a 2 -c /tmp/sdr.conf -r 24000 -D 1 -"
         ))
 
     def test_build_pipeline_48k_couples_all_stages(self):
@@ -46,6 +46,22 @@ class ParseLineTests(unittest.TestCase):
         self.assertEqual(ev.src, "KJ4XYZ-9")
         self.assertEqual(ev.dest, "APDW17")
         self.assertTrue(ev.payload.startswith("!3358.12N"))
+
+    def test_parse_audio_stat(self):
+        ev = S.parse_line(
+            "ADEVICE0: Sample rate approx. 24.6 k, 0 errors, "
+            "receive audio level CH0 49")
+        self.assertIsInstance(ev, S.AudioStat)
+        self.assertEqual((ev.rate_k, ev.errors, ev.level), (24.6, 0, 49))
+
+    def test_audio_stat_not_confused_with_audio_level(self):
+        # The stats line contains the substring "audio level" but must NOT parse
+        # as a decode-gated AudioLevel(46(6/6)).
+        ev = S.parse_line(
+            "ADEVICE0: Sample rate approx. 21.5 k, 3 errors, "
+            "receive audio level CH0 48")
+        self.assertIsInstance(ev, S.AudioStat)
+        self.assertEqual(ev.errors, 3)
 
     def test_parse_ignores_noise(self):
         self.assertIsNone(S.parse_line("Ready to accept AGW client application 0 ..."))
@@ -95,6 +111,31 @@ class SweepHelperTests(unittest.TestCase):
     def test_rank_sweep_no_traffic_returns_none(self):
         self.assertIsNone(S.rank_sweep([(28, 0, 0.0), (32, 0, 0.0)]))
 
+    def test_rank_sweep_min_decodes_gates_low_counts(self):
+        # With min_decodes=3, the 2-packet row is inconclusive and excluded;
+        # only the 4-packet row qualifies.
+        results = [(28, 2, 50.0), (32, 4, 70.0)]
+        self.assertEqual(S.rank_sweep(results, min_decodes=3), 32)
+
+    def test_rank_sweep_min_decodes_all_below_returns_none(self):
+        results = [(28, 1, 50.0), (32, 2, 48.0)]
+        self.assertIsNone(S.rank_sweep(results, min_decodes=3))
+
+
+class NormalizeFreqTests(unittest.TestCase):
+    def test_accepts_and_canonicalises(self):
+        self.assertEqual(S.normalize_freq("144.390M"), "144.390M")
+        self.assertEqual(S.normalize_freq(" 144.800m "), "144.800M")
+        self.assertEqual(S.normalize_freq("144800K"), "144800k")
+        self.assertEqual(S.normalize_freq("144390000"), "144390000")
+
+    def test_rejects_typos_and_out_of_range(self):
+        self.assertIsNone(S.normalize_freq("14.4390M"))   # 14 MHz < 24 MHz floor
+        self.assertIsNone(S.normalize_freq("2.5G"))        # above 1.766 GHz ceiling
+        self.assertIsNone(S.normalize_freq("abc"))
+        self.assertIsNone(S.normalize_freq(""))
+        self.assertIsNone(S.normalize_freq("144,390M"))
+
 
 class FormatterTests(unittest.TestCase):
     def test_level_band_thresholds(self):
@@ -134,6 +175,31 @@ class HandoffBuilderTests(unittest.TestCase):
         self.assertIn("MODEM 1200", conf)
         self.assertIn("ACHANNELS 1", conf)
         self.assertIn("LOGDIR /tmp/x", conf)
+
+
+class DeviceProbeTests(unittest.TestCase):
+    def test_device_error_busy(self):
+        out = ("Found 1 device(s):\n  0:  RTLSDRBlog, Blog V4, SN: 00000001\n"
+               "Using device 0: Generic RTL2832U OEM\n"
+               "usb_claim_interface error -6\n"
+               "Failed to open rtlsdr device #0.\n")
+        self.assertEqual(S.device_error(out), "busy")
+
+    def test_device_error_absent(self):
+        self.assertEqual(S.device_error("No supported devices found.\n"), "absent")
+
+    def test_device_error_ok(self):
+        out = ("Found 1 device(s):\n  0:  Realtek, RTL2838UHIDIR\n"
+               "Supported gain values (29): 0.0 0.9 1.4\n")
+        self.assertIsNone(S.device_error(out))
+
+    def test_device_help_busy_mentions_fixes(self):
+        msg = S.device_help("busy")
+        self.assertIn("aprs-sdr-feed.service", msg)
+        self.assertIn("dvb_usb_rtl28xxu", msg)
+
+    def test_device_help_absent(self):
+        self.assertIn("No RTL-SDR dongle", S.device_help("absent"))
 
 
 class PipelineRunnerTests(unittest.TestCase):
