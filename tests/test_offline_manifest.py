@@ -259,6 +259,13 @@ class TestManifestSanity(unittest.TestCase):
             with self.subTest(feature=feat):
                 self.assertEqual(M.bundle_group(feat, self.m), "rtl-sdr")
 
+    def test_rtl_sdr_bench_bundles_sox(self):
+        pkgs = M.apt_packages("rtl-sdr-bench", suite="trixie", m=self.m)
+        self.assertIn("sox", pkgs)
+
+    def test_rtl_sdr_bench_shares_bundle_group(self):
+        self.assertEqual(M.bundle_group("rtl-sdr-bench", self.m), "rtl-sdr")
+
     def test_server_is_pypi_type(self):
         self.assertEqual(M.source_type("server", self.m), "pypi")
         pkgs = M.pypi_packages("server", self.m)
