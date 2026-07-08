@@ -100,5 +100,30 @@ class FormatterTests(unittest.TestCase):
         self.assertEqual(S.format_bar(150, width=10), "█" * 10)   # clamped
 
 
+class HandoffBuilderTests(unittest.TestCase):
+    def test_build_feed_command_pins_48k(self):
+        cmd = S.build_feed_command("144.390M", "32.8", 0)
+        self.assertEqual(cmd, (
+            "rtl_fm -f 144.390M -M fm -s 48000 -g 32.8 -p 0 - "
+            "| socat -u -b 1920 - UDP-SENDTO:127.0.0.1:7355"
+        ))
+
+    def test_check_deps_reports_missing(self):
+        which = {"rtl_fm": "/usr/bin/rtl_fm", "sox": None, "direwolf": None}
+        self.assertEqual(S.check_deps(which), ["sox", "direwolf"])
+        self.assertEqual(S.check_deps({"rtl_fm": "x", "sox": "y", "direwolf": "z"}), [])
+
+    def test_deps_message_mentions_installer(self):
+        msg = S.deps_message(["sox"])
+        self.assertIn("sox", msg)
+        self.assertIn("install-rtl-sdr.py", msg)
+
+    def test_conf_template_has_modem_and_logdir(self):
+        conf = S.SDR_CONF_TEMPLATE.format(logdir="/tmp/x")
+        self.assertIn("MODEM 1200", conf)
+        self.assertIn("ACHANNELS 1", conf)
+        self.assertIn("LOGDIR /tmp/x", conf)
+
+
 if __name__ == "__main__":
     unittest.main()

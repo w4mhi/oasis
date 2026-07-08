@@ -92,3 +92,36 @@ def format_bar(level, width=27):
     level = max(0, min(100, level))
     filled = round(level / 100 * width)
     return "█" * filled + "░" * (width - filled)
+
+
+# Matches features/rtl-sdr/enable-rtl-sdr.py: SAMPLE_RATE 48000, DATAGRAM 1920, port 7355.
+def build_feed_command(freq, gain, ppm, port=7355):
+    """The GrayWolf feed command as it belongs in aprs-sdr-feed.service.
+    Always -s 48000 (GrayWolf's sample_rate) and no sox — only gain/ppm carry
+    over from the bench (both RF-domain, sample-rate-independent)."""
+    return (f"rtl_fm -f {freq} -M fm -s 48000 -g {gain} -p {ppm} - "
+            f"| socat -u -b 1920 - UDP-SENDTO:127.0.0.1:{port}")
+
+
+_REQUIRED_BINS = ("rtl_fm", "sox", "direwolf")
+
+
+def check_deps(which):
+    """Return the missing binaries (order: rtl_fm, sox, direwolf)."""
+    return [b for b in _REQUIRED_BINS if not which.get(b)]
+
+
+def deps_message(missing):
+    return ("Missing required tools: " + ", ".join(missing) + "\n"
+            "Install them with:  python3 features/rtl-sdr/install-rtl-sdr.py")
+
+
+# Operator's known-good minimal Direwolf config. Audio comes from stdin at the
+# selected rate via `-r <srate> -`, so the conf is rate-agnostic. LOGDIR points
+# at the tool's temp dir so Direwolf CSV logs don't land in the operator's cwd.
+SDR_CONF_TEMPLATE = """\
+ACHANNELS 1
+CHANNEL 0
+MODEM 1200
+LOGDIR {logdir}
+"""
