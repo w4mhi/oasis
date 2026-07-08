@@ -426,7 +426,7 @@ def install_diag_tools(deb_arch):
               "the GrayWolf feed). Install later: sudo apt install -y multimon-ng")
 
 
-# ── Step 6b: Bench decoder (sox + direwolf) ──────────────────────────────────
+# ── Step 7: Bench decoder (sox + direwolf) ───────────────────────────────────
 BENCH_DEBS_SOX = {"sox": ["sox_"]}
 BENCH_DEBS_DW = {"direwolf": ["direwolf_"]}
 

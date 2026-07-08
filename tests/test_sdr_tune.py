@@ -24,7 +24,7 @@ class BuildPipelineTests(unittest.TestCase):
         self.assertEqual(cmd, (
             "rtl_fm -M fm -f 144.390M -s 24000 -F 0 -g 32.8 -p 0 - "
             "| sox -t raw -r 24000 -e signed-integer -b 16 -c 1 - -t raw - vol 0.50 "
-            "| direwolf -c /tmp/sdr.conf -r 24000 -D 1 -"
+            "| direwolf -t 0 -c /tmp/sdr.conf -r 24000 -D 1 -"
         ))
 
     def test_build_pipeline_48k_couples_all_stages(self):

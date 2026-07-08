@@ -14,7 +14,7 @@ def build_pipeline(freq, gain, ppm, vol, srate, conf_path):
     rtl = f"rtl_fm -M fm -f {freq} -s {srate} -F 0 -g {gain} -p {ppm} -"
     sox = (f"sox -t raw -r {srate} -e signed-integer -b 16 -c 1 - "
            f"-t raw - vol {vol}")
-    dw  = f"direwolf -c {conf_path} -r {srate} -D 1 -"
+    dw  = f"direwolf -t 0 -c {conf_path} -r {srate} -D 1 -"
     return f"{rtl} | {sox} | {dw}"
 
 
