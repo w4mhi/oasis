@@ -231,10 +231,12 @@ def run_tui(stdscr, args, conf_path):
             stdscr.addstr(6, 1, "recent packets:")
             for i, d in enumerate(list(recent)[-3:]):
                 stdscr.addstr(7 + i, 3, f"{d.src}>{d.dest}: {d.payload}"[:56])
+            h, _w = stdscr.getmaxyx()
             stdscr.addstr(11, 1, "─" * 60)
-            stdscr.addstr(12, 1, "g/G gain  v/V vol  p/P ppm  r rate  "
-                                 "s sweep  w save  q quit")
-            if not runner.alive():
+            if h > 12:
+                stdscr.addstr(12, 1, "g/G gain  v/V vol  p/P ppm  r rate  "
+                                     "s sweep  w save  q quit")
+            if not runner.alive() and h > 13:
                 stdscr.addstr(13, 1, "PIPELINE EXITED — check rtl_fm/dongle "
                                      "(is aprs-sdr-feed.service running?)",
                               curses.color_pair(2))
