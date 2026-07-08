@@ -64,5 +64,26 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(S.score([]), (0, 0.0))
 
 
+class SweepHelperTests(unittest.TestCase):
+    def test_parse_gains_from_rtl_test(self):
+        out = ("Found 1 device(s):\n  0:  Realtek, RTL2838UHIDIR\n"
+               "Supported gain values (5): 0.0 8.7 16.6 32.8 49.6\n")
+        self.assertEqual(S.parse_gains(out), [0.0, 8.7, 16.6, 32.8, 49.6])
+
+    def test_parse_gains_absent_returns_empty(self):
+        self.assertEqual(S.parse_gains("no gain line here"), [])
+
+    def test_ppm_sweep_values(self):
+        self.assertEqual(S.ppm_sweep_values(-10, 10, 5), [-10, -5, 0, 5, 10])
+
+    def test_rank_sweep_prefers_more_decodes(self):
+        # 32 and 40 tie on decodes(5); 40's avg_level(52) is closer to 50 → wins.
+        results = [(28, 2, 45.0), (32, 5, 70.0), (40, 5, 52.0)]
+        self.assertEqual(S.rank_sweep(results), 40)
+
+    def test_rank_sweep_no_traffic_returns_none(self):
+        self.assertIsNone(S.rank_sweep([(28, 0, 0.0), (32, 0, 0.0)]))
+
+
 if __name__ == "__main__":
     unittest.main()

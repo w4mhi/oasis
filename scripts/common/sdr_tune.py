@@ -47,3 +47,34 @@ def score(events):
     levels = [e.level for e in events if isinstance(e, AudioLevel)]
     avg = sum(levels) / len(levels) if levels else 0.0
     return decodes, avg
+
+
+# R820T/R820T2 tuner gain steps — fallback when rtl_test can't be queried.
+STATIC_R820T_GAINS = [
+    0.0, 0.9, 1.4, 2.7, 3.7, 7.7, 8.7, 12.5, 14.4, 15.7, 16.6, 19.7,
+    20.7, 22.9, 25.4, 28.0, 29.7, 32.8, 33.8, 36.4, 37.2, 38.6, 40.2,
+    42.1, 43.4, 43.9, 44.5, 48.0, 49.6,
+]
+
+
+def parse_gains(rtl_test_output):
+    """Extract the tuner's supported gain values from `rtl_test` output."""
+    for line in rtl_test_output.splitlines():
+        if "gain values" in line.lower():
+            nums = re.findall(r"\d+\.\d+", line.split(":", 1)[-1])
+            return [float(n) for n in nums]
+    return []
+
+
+def ppm_sweep_values(lo=-50, hi=50, step=5):
+    return list(range(lo, hi + 1, step))
+
+
+def rank_sweep(results, target_level=50):
+    """Pick the best value from (value, decode_count, avg_level) rows.
+    Rank by decode_count, tie-break by avg_level nearest target_level.
+    Returns None when no row decoded anything (quiet band — don't guess)."""
+    scored = [r for r in results if r[1] > 0]
+    if not scored:
+        return None
+    return max(scored, key=lambda r: (r[1], -abs(r[2] - target_level)))[0]
