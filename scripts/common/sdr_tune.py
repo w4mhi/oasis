@@ -78,3 +78,17 @@ def rank_sweep(results, target_level=50):
     if not scored:
         return None
     return max(scored, key=lambda r: (r[1], -abs(r[2] - target_level)))[0]
+
+
+def level_band(level):
+    if level < 20:
+        return "low"
+    if level > 80:
+        return "high"
+    return "good"
+
+
+def format_bar(level, width=27):
+    level = max(0, min(100, level))
+    filled = round(level / 100 * width)
+    return "█" * filled + "░" * (width - filled)

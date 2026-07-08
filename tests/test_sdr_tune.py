@@ -85,5 +85,20 @@ class SweepHelperTests(unittest.TestCase):
         self.assertIsNone(S.rank_sweep([(28, 0, 0.0), (32, 0, 0.0)]))
 
 
+class FormatterTests(unittest.TestCase):
+    def test_level_band_thresholds(self):
+        self.assertEqual(S.level_band(10), "low")
+        self.assertEqual(S.level_band(46), "good")
+        self.assertEqual(S.level_band(92), "high")
+        self.assertEqual(S.level_band(20), "good")   # boundary: 20 is not low
+        self.assertEqual(S.level_band(80), "good")   # boundary: 80 is not high
+
+    def test_format_bar_fill(self):
+        self.assertEqual(len(S.format_bar(50, width=10)), 10)
+        self.assertEqual(S.format_bar(0, width=10), "░" * 10)
+        self.assertEqual(S.format_bar(100, width=10), "█" * 10)
+        self.assertEqual(S.format_bar(150, width=10), "█" * 10)   # clamped
+
+
 if __name__ == "__main__":
     unittest.main()
