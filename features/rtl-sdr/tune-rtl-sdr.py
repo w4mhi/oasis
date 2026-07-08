@@ -57,8 +57,11 @@ class PipelineRunner:
         self._reader.start()
 
     def _pump(self):
-        for line in self._proc.stdout:
-            self._q.put(line.rstrip("\n"))
+        try:
+            for line in self._proc.stdout:
+                self._q.put(line.rstrip("\n"))
+        except (ValueError, OSError):
+            pass
 
     def poll_lines(self):
         """Non-blocking drain of everything queued since the last call."""
@@ -87,4 +90,12 @@ class PipelineRunner:
                 os.killpg(os.getpgid(self._proc.pid), signal.SIGKILL)
             except ProcessLookupError:
                 pass
+            try:
+                self._proc.wait(timeout=1)   # reap; SIGKILL is unblockable
+            except subprocess.TimeoutExpired:
+                pass
+        if self._proc.stdout:
+            self._proc.stdout.close()        # unblock _pump; no ResourceWarning
+        if self._reader is not None:
+            self._reader.join(timeout=1)     # deterministic teardown
         self._proc = None

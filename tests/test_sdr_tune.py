@@ -150,9 +150,11 @@ class PipelineRunnerTests(unittest.TestCase):
             time.sleep(0.1)
         self.assertTrue(any("audio level" in ln for ln in lines))
         self.assertTrue(any(ln.startswith("[0.1]") for ln in lines))
+        self.assertTrue(r.alive())
         r.stop()
         time.sleep(0.2)
         self.assertFalse(r.alive())
+        r.stop()  # idempotent — must not raise
 
 
 if __name__ == "__main__":
