@@ -1,10 +1,19 @@
 # tests/test_sdr_tune.py — plain unittest (no pytest; offline wheel set is flask-only).
+import importlib.util
 import os
 import sys
+import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 from common import sdr_tune as S
+
+_tune_spec = importlib.util.spec_from_file_location(
+    "tune_rtl_sdr",
+    os.path.join(os.path.dirname(__file__), "..", "features", "rtl-sdr", "tune-rtl-sdr.py"),
+)
+tune = importlib.util.module_from_spec(_tune_spec)
+_tune_spec.loader.exec_module(tune)
 
 
 class BuildPipelineTests(unittest.TestCase):
@@ -123,6 +132,27 @@ class HandoffBuilderTests(unittest.TestCase):
         self.assertIn("MODEM 1200", conf)
         self.assertIn("ACHANNELS 1", conf)
         self.assertIn("LOGDIR /tmp/x", conf)
+
+
+class PipelineRunnerTests(unittest.TestCase):
+    def test_pipeline_runner_streams_and_stops(self):
+        # A stand-in for rtl_fm|sox|direwolf: emit two lines, then sleep so the
+        # process is still alive for the teardown assertion.
+        r = tune.PipelineRunner(
+            "printf 'audio level = 40(6/6)\\n[0.1] AA>BB:hi\\n'; sleep 5")
+        r.start()
+        time.sleep(0.5)
+        lines = []
+        for _ in range(20):
+            lines += r.poll_lines()
+            if len(lines) >= 2:
+                break
+            time.sleep(0.1)
+        self.assertTrue(any("audio level" in ln for ln in lines))
+        self.assertTrue(any(ln.startswith("[0.1]") for ln in lines))
+        r.stop()
+        time.sleep(0.2)
+        self.assertFalse(r.alive())
 
 
 if __name__ == "__main__":
