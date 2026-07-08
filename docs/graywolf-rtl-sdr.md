@@ -242,6 +242,25 @@ hiss whether or not a packet is present, so a twitching meter is **not** evidenc
 of a decode. Work the chain in stages to separate *no signal* from
 *misconfiguration*, then push for range.
 
+### Interactive tuning bench: `features/rtl-sdr/tune-rtl-sdr.py`
+
+For dialing in gain/ppm/volume against live decodes, run the tuning bench over
+SSH:
+
+```bash
+python3 features/rtl-sdr/tune-rtl-sdr.py            # 144.390M, 24k
+python3 features/rtl-sdr/tune-rtl-sdr.py --freq 144.800M
+```
+
+It wraps `rtl_fm | sox | direwolf` and shows Direwolf's `46(6/6)` audio level as
+a banded bar graph with a rolling decode count. `s` auto-sweeps gain then ppm;
+`w` saves the known-good values to `features/rtl-sdr/tune-results.json` and prints
+the exact feed command for `aprs-sdr-feed.service`. This uses **Direwolf** only
+for its per-packet level feedback — the live iGate still runs GrayWolf over
+`sdr_udp`. Only gain/ppm carry over to the GrayWolf feed (the `sox vol` factor is
+Direwolf-path-only). Needs `sox` + `direwolf`, both installed by
+`install-rtl-sdr.py`.
+
 ### 1. Decode independently of GrayWolf
 
 Take GrayWolf out of the loop and feed the SDR straight into a gold-standard
