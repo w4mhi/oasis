@@ -70,6 +70,9 @@ static/chirp/*.csv
 # ICS-205 saved plans — written at runtime by /api/save-ics205, never committed.
 static/ics-205/saved/
 
+# RTL-SDR tuning bench results — written at runtime by tune-rtl-sdr.py, never committed.
+features/rtl-sdr/tune-results.json
+
 # Personal Claude Code instructions (private)
 CLAUDE.local.md
 docs/superpowers/*

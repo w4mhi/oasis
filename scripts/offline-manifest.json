@@ -192,6 +192,27 @@
         }
       }
     },
+    "rtl-sdr-bench": {
+      "type": "apt",
+      "bundle_group": "rtl-sdr",
+      "description": "Interactive SDR tuning-bench decoder deps: sox (scales audio into Direwolf's demod range) for features/rtl-sdr/tune-rtl-sdr.py. Direwolf itself is vendored under the 'direwolf' bundle group; only sox is added here.",
+      "best_effort": true,
+      "_note": "sox is small and universally present in apt; vendored best-effort so a fully-offline install still gets it. Its `resolved` versions are populated by scripts/create-oasis-offline.py on the connected build machine.",
+      "packages": {
+        "common": [
+          "sox"
+        ]
+      },
+      "suites": [
+        "bookworm",
+        "trixie"
+      ],
+      "arches": [
+        "arm64",
+        "armhf"
+      ],
+      "resolved": {}
+    },
     "graywolf": {
       "type": "github-release",
       "description": "GrayWolf APRS TNC / iGate / digipeater. Prebuilt .deb per arch from GitHub releases.",
