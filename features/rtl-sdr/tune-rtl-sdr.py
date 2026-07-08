@@ -24,11 +24,14 @@ a dongle + 2 m antenna. Stop aprs-sdr-feed.service first — one process owns th
 dongle.
 """
 
+import argparse
 import os
 import queue
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "scripts"))
@@ -99,3 +102,49 @@ class PipelineRunner:
         if self._reader is not None:
             self._reader.join(timeout=1)     # deterministic teardown
         self._proc = None
+
+
+def build_argparser():
+    p = argparse.ArgumentParser(
+        description="Interactive RTL-SDR APRS tuning bench (curses TUI).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--freq", default="144.390M",
+                   help="APRS frequency (default 144.390M; EU 144.800M).")
+    p.add_argument("--gain", default="32.8", help="Initial tuner gain (dB).")
+    p.add_argument("--ppm", type=int, default=0, help="Initial ppm correction.")
+    p.add_argument("--vol", default="0.50", help="Initial sox vol factor.")
+    p.add_argument("--rate", type=int, default=24000, choices=(24000, 48000),
+                   help="Initial audio sample rate.")
+    p.add_argument("--conf", default=None,
+                   help="Reuse an existing Direwolf conf instead of generating one.")
+    return p
+
+
+def write_conf(logdir):
+    """Write the generated Direwolf conf into a temp dir; return its path."""
+    conf_path = os.path.join(logdir, "sdr.conf")
+    with open(conf_path, "w") as fh:
+        fh.write(S.SDR_CONF_TEMPLATE.format(logdir=logdir))
+    return conf_path
+
+
+def main(argv=None):
+    args = build_argparser().parse_args(argv)
+
+    which = {b: shutil.which(b) for b in ("rtl_fm", "sox", "direwolf")}
+    missing = S.check_deps(which)
+    if missing:
+        print(S.deps_message(missing))
+        return 1
+
+    workdir = tempfile.mkdtemp(prefix="sdr-tune-")
+    conf_path = args.conf or write_conf(workdir)
+
+    import curses
+    curses.wrapper(run_tui, args, conf_path)   # run_tui added in Task 9
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -2,6 +2,7 @@
 import importlib.util
 import os
 import sys
+import tempfile
 import time
 import unittest
 
@@ -155,6 +156,24 @@ class PipelineRunnerTests(unittest.TestCase):
         time.sleep(0.2)
         self.assertFalse(r.alive())
         r.stop()  # idempotent — must not raise
+
+
+class CliTests(unittest.TestCase):
+    def test_argparser_defaults(self):
+        p = tune.build_argparser()
+        ns = p.parse_args([])
+        self.assertEqual(ns.freq, "144.390M")
+        self.assertIsNone(ns.conf)
+        ns2 = p.parse_args(["--freq", "144.800M"])
+        self.assertEqual(ns2.freq, "144.800M")
+
+    def test_write_conf_creates_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            conf = tune.write_conf(d)
+            with open(conf) as fh:
+                body = fh.read()
+            self.assertIn("MODEM 1200", body)
+            self.assertIn(f"LOGDIR {d}", body)
 
 
 if __name__ == "__main__":
