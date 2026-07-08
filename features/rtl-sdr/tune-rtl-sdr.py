@@ -300,27 +300,32 @@ def _measure(stdscr, state, label, step_n, step_m):
     runner.start()
     events = []
     t0 = time.time()
-    while time.time() - t0 < SWEEP_SECS:
-        for line in runner.poll_lines():
-            ev = S.parse_line(line)
-            if ev is not None:
-                events.append(ev)
-        remaining = SWEEP_SECS - (time.time() - t0)
-        stdscr.erase()
-        stdscr.addstr(0, 1, f"SWEEP {label}  step {step_n}/{step_m}   "
-                            f"{remaining:.0f}s left")
-        d, a = S.score(events)
-        stdscr.addstr(2, 1, f"gain {state.gain:.1f}  ppm {state.ppm}   "
-                            f"decodes {d}  avg-level {a:.0f}")
-        stdscr.refresh()
-        time.sleep(0.2)
-    runner.stop()
+    try:
+        while time.time() - t0 < SWEEP_SECS:
+            for line in runner.poll_lines():
+                ev = S.parse_line(line)
+                if ev is not None:
+                    events.append(ev)
+            remaining = SWEEP_SECS - (time.time() - t0)
+            stdscr.erase()
+            stdscr.addstr(0, 1, f"SWEEP {label}  step {step_n}/{step_m}   "
+                                f"{remaining:.0f}s left")
+            d, a = S.score(events)
+            stdscr.addstr(2, 1, f"gain {state.gain:.1f}  ppm {state.ppm}   "
+                                f"decodes {d}  avg-level {a:.0f}")
+            stdscr.refresh()
+            time.sleep(0.2)
+    finally:
+        runner.stop()
     return S.score(events)
 
 
 def run_sweep(stdscr, runner, state):
     if runner is not None:
         runner.stop()
+
+    orig_gi = state.gi
+    orig_ppm = state.ppm
 
     # Stage 1: gain.
     results = []
@@ -331,6 +336,8 @@ def run_sweep(stdscr, runner, state):
     best_gain = S.rank_sweep(results)
 
     if best_gain is None:
+        state.gi = orig_gi          # no winner — leave params unchanged
+        state.ppm = orig_ppm
         _sweep_message(stdscr, "No traffic heard during the gain sweep — "
                                "parameters left unchanged. Press any key.")
         return respawn(None, state)
@@ -344,8 +351,7 @@ def run_sweep(stdscr, runner, state):
         d, a = _measure(stdscr, state, "PPM", i, len(ppm_vals))
         results.append((p, d, a))
     best_ppm = S.rank_sweep(results)
-    if best_ppm is not None:
-        state.ppm = best_ppm
+    state.ppm = best_ppm if best_ppm is not None else orig_ppm
 
     _sweep_message(stdscr, f"Sweep done: gain {best_gain:.1f}, "
                            f"ppm {state.ppm}. Press any key.")
