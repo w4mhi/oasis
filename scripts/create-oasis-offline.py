@@ -918,12 +918,19 @@ def phase_fcc(fcc_dir):
 
     os.makedirs(fcc_dir, exist_ok=True)
     zip_path   = os.path.join(fcc_dir, "l_amat.zip")
+    en_dat     = os.path.join(fcc_dir, "EN.dat")
+    hd_dat     = os.path.join(fcc_dir, "HD.dat")
     server_dir = os.path.join(REPO_ROOT, "server")
 
     # 1 · Raw ULS zip (skip if already downloaded). This is a transient build
     #     artifact — it is dropped in step 3 once the .dat files + indexes exist.
+    #     Because step 3 drops the zip, a re-run won't find it here; but the
+    #     EN.dat/HD.dat it exists only to produce are kept, so skip the ~160 MB
+    #     re-download whenever those extracted files are already present.
     if os.path.exists(zip_path):
         _cp("l_amat.zip already present — skipping download")
+    elif os.path.exists(en_dat) and os.path.exists(hd_dat):
+        _cp("EN.dat/HD.dat already extracted — skipping l_amat.zip download")
     else:
         try:
             fcc_download_zip(zip_path)
