@@ -25,6 +25,8 @@ dongle.
 """
 
 import argparse
+import collections
+import curses
 import os
 import queue
 import shutil
@@ -33,6 +35,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "scripts"))
 from common import sdr_tune as S
@@ -129,6 +132,144 @@ def write_conf(logdir):
     return conf_path
 
 
+def current_gains():
+    """Supported gains from rtl_test, or the static R820T list as fallback."""
+    try:
+        out = subprocess.run(["rtl_test", "-t"], capture_output=True, text=True,
+                             timeout=6).stderr
+        gains = S.parse_gains(out)
+        if gains:
+            return gains
+    except Exception:
+        pass
+    return list(S.STATIC_R820T_GAINS)
+
+
+class State:
+    def __init__(self, args, conf_path, gains):
+        self.freq = args.freq
+        self.conf = conf_path
+        self.gains = gains
+        self.gi = min(range(len(gains)),
+                      key=lambda i: abs(gains[i] - float(args.gain)))
+        self.ppm = args.ppm
+        self.vol = float(args.vol)
+        self.rate = args.rate
+
+    @property
+    def gain(self):
+        return self.gains[self.gi]
+
+    def command(self):
+        return S.build_pipeline(self.freq, f"{self.gain:.1f}", self.ppm,
+                                f"{self.vol:.2f}", self.rate, self.conf)
+
+
+def respawn(runner, state):
+    if runner is not None:
+        runner.stop()
+    r = PipelineRunner(state.command())
+    r.start()
+    return r
+
+
+def run_tui(stdscr, args, conf_path):
+    curses.curs_set(0)
+    stdscr.nodelay(True)
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_GREEN, -1)   # good
+    curses.init_pair(2, curses.COLOR_RED, -1)     # high/clip
+    curses.init_pair(3, curses.COLOR_YELLOW, -1)  # low
+    band_attr = {"good": curses.color_pair(1),
+                 "high": curses.color_pair(2),
+                 "low": curses.color_pair(3)}
+
+    state = State(args, conf_path, current_gains())
+    runner = respawn(None, state)
+
+    window = collections.deque()          # (timestamp, event)
+    recent = collections.deque(maxlen=3)  # recent Decoded
+    last_level = S.AudioLevel(0, 0, 0)
+    WINDOW_SECS = 30
+
+    try:
+        while True:
+            now = time.time()
+            for line in runner.poll_lines():
+                ev = S.parse_line(line)
+                if ev is None:
+                    continue
+                window.append((now, ev))
+                if isinstance(ev, S.AudioLevel):
+                    last_level = ev
+                elif isinstance(ev, S.Decoded):
+                    recent.append(ev)
+            while window and now - window[0][0] > WINDOW_SECS:
+                window.popleft()
+
+            events = [e for _, e in window]
+            decodes, avg = S.score(events)
+            band = S.level_band(last_level.level)
+
+            stdscr.erase()
+            stdscr.addstr(0, 1, f"APRS Tune — {state.freq}    "
+                                f"gain {state.gain:.1f}  vol {state.vol:.2f}  "
+                                f"ppm {state.ppm}  rate {state.rate // 1000}k")
+            stdscr.addstr(1, 1, "─" * 60)
+            bar = S.format_bar(last_level.level)
+            stdscr.addstr(2, 1, f"level {last_level.level:3d}  ")
+            stdscr.addstr(2, 12, bar, band_attr[band])
+            stdscr.addstr(2, 12 + len(bar) + 2,
+                          f"{band:5s}  ({last_level.lo}/{last_level.hi} demod)")
+            stdscr.addstr(3, 8, "0        25        50        75       100")
+            rate = decodes / WINDOW_SECS
+            last_calls = "  ".join(d.src for d in list(recent)[-2:]) or "-"
+            stdscr.addstr(4, 1, f"decodes  {decodes} in {WINDOW_SECS}s   "
+                                f"({rate:.2f}/s)      last: {last_calls}")
+            stdscr.addstr(5, 1, "─" * 60)
+            stdscr.addstr(6, 1, "recent packets:")
+            for i, d in enumerate(list(recent)[-3:]):
+                stdscr.addstr(7 + i, 3, f"{d.src}>{d.dest}: {d.payload}"[:56])
+            stdscr.addstr(11, 1, "─" * 60)
+            stdscr.addstr(12, 1, "g/G gain  v/V vol  p/P ppm  r rate  "
+                                 "s sweep  w save  q quit")
+            if not runner.alive():
+                stdscr.addstr(13, 1, "PIPELINE EXITED — check rtl_fm/dongle "
+                                     "(is aprs-sdr-feed.service running?)",
+                              curses.color_pair(2))
+            stdscr.refresh()
+
+            ch = stdscr.getch()
+            if ch == -1:
+                time.sleep(0.1)
+                continue
+            c = chr(ch) if 0 <= ch < 256 else ""
+            if c == "q":
+                break
+            elif c == "g":
+                state.gi = max(0, state.gi - 1); runner = respawn(runner, state)
+            elif c == "G":
+                state.gi = min(len(state.gains) - 1, state.gi + 1); runner = respawn(runner, state)
+            elif c == "v":
+                state.vol = max(0.0, round(state.vol - 0.05, 2)); runner = respawn(runner, state)
+            elif c == "V":
+                state.vol = min(4.0, round(state.vol + 0.05, 2)); runner = respawn(runner, state)
+            elif c == "p":
+                state.ppm -= 1; runner = respawn(runner, state)
+            elif c == "P":
+                state.ppm += 1; runner = respawn(runner, state)
+            elif c == "r":
+                state.rate = 48000 if state.rate == 24000 else 24000; runner = respawn(runner, state)
+            elif c == "s":
+                runner = run_sweep(stdscr, runner, state)   # Task 10
+            elif c == "w":
+                save_result(stdscr, state, decodes)         # Task 11
+    finally:
+        if runner is not None:
+            runner.stop()
+
+
 def main(argv=None):
     args = build_argparser().parse_args(argv)
 
@@ -141,8 +282,10 @@ def main(argv=None):
     workdir = tempfile.mkdtemp(prefix="sdr-tune-")
     conf_path = args.conf or write_conf(workdir)
 
-    import curses
-    curses.wrapper(run_tui, args, conf_path)   # run_tui added in Task 9
+    try:
+        curses.wrapper(run_tui, args, conf_path)
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
     return 0
 
 
