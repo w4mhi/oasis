@@ -23,5 +23,32 @@ class BuildPipelineTests(unittest.TestCase):
         self.assertIn("vol 0.75", cmd)
 
 
+class ParseLineTests(unittest.TestCase):
+    def test_parse_audio_level(self):
+        ev = S.parse_line("KJ4XYZ-9 audio level = 46(6/6)   [NONE]   |||||||||")
+        self.assertIsInstance(ev, S.AudioLevel)
+        self.assertEqual((ev.level, ev.lo, ev.hi), (46, 6, 6))
+
+    def test_parse_decoded_packet(self):
+        ev = S.parse_line("[0.4] KJ4XYZ-9>APDW17,WIDE1-1,WIDE2-1:!3358.12N/08412.55W#hi")
+        self.assertIsInstance(ev, S.Decoded)
+        self.assertEqual(ev.src, "KJ4XYZ-9")
+        self.assertEqual(ev.dest, "APDW17")
+        self.assertTrue(ev.payload.startswith("!3358.12N"))
+
+    def test_parse_ignores_noise(self):
+        self.assertIsNone(S.parse_line("Ready to accept AGW client application 0 ..."))
+        self.assertIsNone(S.parse_line(""))
+
+    def test_parse_fixture_counts(self):
+        path = os.path.join(os.path.dirname(__file__), "fixtures", "direwolf_output.txt")
+        with open(path) as fh:
+            events = [S.parse_line(ln) for ln in fh]
+        levels = [e for e in events if isinstance(e, S.AudioLevel)]
+        pkts = [e for e in events if isinstance(e, S.Decoded)]
+        self.assertEqual(len(levels), 3)
+        self.assertEqual(len(pkts), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
