@@ -39,3 +39,11 @@ def parse_line(line):
     if m:
         return Decoded(m.group(1), m.group(2), m.group(3))
     return None
+
+
+def score(events):
+    """Given a window of events, return (decode_count, avg_audio_level)."""
+    decodes = sum(1 for e in events if isinstance(e, Decoded))
+    levels = [e.level for e in events if isinstance(e, AudioLevel)]
+    avg = sum(levels) / len(levels) if levels else 0.0
+    return decodes, avg

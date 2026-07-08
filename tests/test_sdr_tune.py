@@ -50,5 +50,19 @@ class ParseLineTests(unittest.TestCase):
         self.assertEqual(len(pkts), 2)
 
 
+class ScoreTests(unittest.TestCase):
+    def test_score_counts_and_averages(self):
+        events = [
+            S.AudioLevel(40, 6, 6), S.AudioLevel(60, 6, 6),
+            S.Decoded("A", "B", "x"), S.Decoded("C", "D", "y"),
+        ]
+        count, avg = S.score(events)
+        self.assertEqual(count, 2)
+        self.assertEqual(avg, 50.0)
+
+    def test_score_empty_window(self):
+        self.assertEqual(S.score([]), (0, 0.0))
+
+
 if __name__ == "__main__":
     unittest.main()
