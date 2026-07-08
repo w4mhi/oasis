@@ -156,21 +156,18 @@ DIAG_DEBS = {
 }
 
 
-def find_local_debs(deb_arch, required=REQUIRED_DEBS):
-    """
-    Scan offline-packages/rtl-sdr/ for the *required* .debs matching deb_arch.
-    Returns (deb_paths, missing) where missing names the required packages not
-    found. macOS AppleDouble sidecars (._*) are ignored.
-    """
+def find_local_debs(deb_arch, required=REQUIRED_DEBS, directory=None):
+    """Scan `directory` (default OFFLINE_DIR) for the *required* .debs matching
+    deb_arch. Returns (deb_paths, missing)."""
+    scan_dir = directory or OFFLINE_DIR
     found = {}
-    if os.path.isdir(OFFLINE_DIR):
-        for fname in sorted(os.listdir(OFFLINE_DIR)):
+    if os.path.isdir(scan_dir):
+        for fname in sorted(os.listdir(scan_dir)):
             if fname.startswith("._") or not fname.endswith(f"_{deb_arch}.deb"):
                 continue
             for key, prefixes in required.items():
                 if key not in found and any(fname.startswith(p) for p in prefixes):
-                    found[key] = os.path.join(OFFLINE_DIR, fname)
-
+                    found[key] = os.path.join(scan_dir, fname)
     missing = [k for k in required if k not in found]
     return list(found.values()), missing
 
@@ -429,9 +426,54 @@ def install_diag_tools(deb_arch):
               "the GrayWolf feed). Install later: sudo apt install -y multimon-ng")
 
 
-# ── Step 7: Blacklist the conflicting DVB kernel module ──────────────────────
+# ── Step 6b: Bench decoder (sox + direwolf) ──────────────────────────────────
+BENCH_DEBS_SOX = {"sox": ["sox_"]}
+BENCH_DEBS_DW = {"direwolf": ["direwolf_"]}
+
+
+def install_bench_tools(deb_arch, suite):
+    """Install sox + direwolf — the RTL-SDR APRS tuning bench decoder
+    (features/rtl-sdr/tune-rtl-sdr.py). sox scales audio into Direwolf's demod
+    range; Direwolf's 46(6/6) audio-level line is the tuning signal. direwolf is
+    vendored under its own bundle group (also used by Winlink); sox is added to
+    the rtl-sdr bundle. Best-effort: bundled .deb first, then apt."""
+    _step(7, "Installing tuning-bench decoder (sox, direwolf)")
+
+    have = {b: shutil.which(b) is not None for b in ("sox", "direwolf")}
+    if all(have.values()):
+        _ok("sox and direwolf already installed.")
+        return
+    _info("Missing: " + ", ".join(b for b, ok in have.items() if not ok))
+
+    offline_paths = []
+    if not have["sox"]:
+        sox_paths, _ = find_local_debs(deb_arch, BENCH_DEBS_SOX, directory=OFFLINE_DIR)
+        offline_paths += sox_paths
+    if not have["direwolf"]:
+        dw_dir = M.bundle_dir(PKG_ROOT, "direwolf", suite)
+        dw_paths, _ = find_local_debs(deb_arch, BENCH_DEBS_DW, directory=dw_dir)
+        offline_paths += dw_paths
+    if offline_paths:
+        _info("Bundled bench packages found — installing offline.")
+        install_offline(offline_paths, label="bench-tool")
+
+    still = [b for b in ("sox", "direwolf") if shutil.which(b) is None]
+    if still:
+        install_feed_online(still)   # apt fallback (best-effort)
+
+    gone = [b for b in ("sox", "direwolf") if shutil.which(b) is None]
+    if gone:
+        _warn("Could not install: " + ", ".join(gone) + " — the SDR tuning "
+              "bench (features/rtl-sdr/tune-rtl-sdr.py) needs them. Install manually:")
+        _warn("  sudo apt install -y sox direwolf")
+    else:
+        _ok("Tuning-bench decoder ready — sox + direwolf "
+            "(features/rtl-sdr/tune-rtl-sdr.py).")
+
+
+# ── Step 8: Blacklist the conflicting DVB kernel module ──────────────────────
 def blacklist_dvb():
-    _step(7, "Blacklisting DVB kernel module")
+    _step(8, "Blacklisting DVB kernel module")
     _info(f"Writing {BLACKLIST_FILE}")
 
     try:
@@ -460,9 +502,9 @@ def blacklist_dvb():
     _info("Reboot for the blacklist to take full effect on next plug-in.")
 
 
-# ── Step 8: Verify install ─────────────────────────────────────────────────────
+# ── Step 9: Verify install ─────────────────────────────────────────────────────
 def verify():
-    _step(8, "Verifying install")
+    _step(9, "Verifying install")
     result = subprocess.run(
         ["rtl_test", "--help"], capture_output=True, text=True
     )
@@ -518,6 +560,7 @@ def run():
 
     install_feed_tools(deb_arch)
     install_diag_tools(deb_arch)
+    install_bench_tools(deb_arch, suite)
     blacklist_dvb()
     verify()
 
