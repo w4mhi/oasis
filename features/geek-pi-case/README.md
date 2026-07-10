@@ -44,7 +44,8 @@ python3 /opt/geek-pi-case/geek-pi-case.py --fan on   # manually kick the fan (te
 sudo raspi-config nonint do_i2c 0 && sudo reboot     # 1. enable I2C
 i2cdetect -y 1                                        # 2. confirm 3c + 17
 sudo apt install -y python3-pil python3-smbus i2c-tools python3-gpiozero python3-lgpio   # 3. deps
-sudo adduser "$USER" i2c                              # 4. bus access (re-login)
+sudo adduser "$USER" i2c                              # 4. I2C bus access (re-login)
+sudo adduser "$USER" gpio                             #    GPIO18 fan access (Pi 5 lgpio)
 sudo install -D -m0755 geek-pi-case.py /opt/geek-pi-case/geek-pi-case.py
 ```
 
