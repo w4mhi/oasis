@@ -41,6 +41,8 @@ from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
 SCRIPT_SRC   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "geek-pi-case.py")
 INSTALL_DIR  = "/opt/geek-pi-case"
 SCRIPT_DEST  = os.path.join(INSTALL_DIR, "geek-pi-case.py")
+MODULE_SRC   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "geek_pi_case.py")
+MODULE_DEST  = os.path.join(INSTALL_DIR, "geek_pi_case.py")
 SERVICE_NAME = "geek-pi-case.service"
 SERVICE_PATH = "/etc/systemd/system/" + SERVICE_NAME
 APT_DEPS     = ["python3-pil", "python3-smbus", "i2c-tools", "python3-gpiozero", "python3-lgpio"]
@@ -160,10 +162,17 @@ def install_service(user, enable):
     _step(5, "Installing the daemon + service")
     if not os.path.isfile(SCRIPT_SRC):
         _fail(f"Daemon script not found: {SCRIPT_SRC}")
+    if not os.path.isfile(MODULE_SRC):
+        _fail(f"Daemon logic module not found: {MODULE_SRC}")
     if _run(["sudo", "install", "-D", "-m", "0755", SCRIPT_SRC, SCRIPT_DEST],
             check=False).returncode != 0:
         _fail(f"Could not install {SCRIPT_DEST}")
     _ok(f"Installed {SCRIPT_DEST}")
+
+    if _run(["sudo", "install", "-D", "-m", "0644", MODULE_SRC, MODULE_DEST],
+            check=False).returncode != 0:
+        _fail(f"Could not install {MODULE_DEST}")
+    _ok(f"Installed {MODULE_DEST}")
 
     r = subprocess.run(["sudo", "tee", SERVICE_PATH], input=build_unit(user),
                        text=True, capture_output=True)

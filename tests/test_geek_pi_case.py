@@ -3,8 +3,8 @@ import os
 import sys
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from common import geek_pi_case as G
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "features", "geek-pi-case"))
+import geek_pi_case as G
 
 
 class FanTests(unittest.TestCase):
@@ -76,6 +76,31 @@ class ShutdownGuardTests(unittest.TestCase):
     def test_no_fire_above_threshold(self):
         g = G.ShutdownGuard(pct=15, samples=1)
         self.assertFalse(g.update(on_batt=True, capacity_pct=50))
+
+
+import shutil
+import subprocess
+import tempfile
+
+
+class OptInstallImportTests(unittest.TestCase):
+    """Regression: the installed daemon at /opt must import geek_pi_case as a
+    sibling (the repo's scripts/ is not present at /opt). Simulate by copying
+    only the two feature files into a temp dir and running with a clean env."""
+
+    def test_daemon_imports_logic_when_run_from_opt_like_dir(self):
+        feat = os.path.join(os.path.dirname(__file__), "..", "features", "geek-pi-case")
+        with tempfile.TemporaryDirectory() as d:
+            shutil.copy(os.path.join(feat, "geek-pi-case.py"), os.path.join(d, "geek-pi-case.py"))
+            shutil.copy(os.path.join(feat, "geek_pi_case.py"), os.path.join(d, "geek_pi_case.py"))
+            env = dict(os.environ)
+            env.pop("PYTHONPATH", None)   # nothing from the repo on the path
+            r = subprocess.run(
+                [sys.executable, os.path.join(d, "geek-pi-case.py"), "--help"],
+                cwd="/", capture_output=True, text=True, env=env,
+            )
+            self.assertEqual(r.returncode, 0, f"daemon --help failed: {r.stderr}")
+            self.assertNotIn("ModuleNotFoundError", r.stderr)
 
 
 if __name__ == "__main__":
