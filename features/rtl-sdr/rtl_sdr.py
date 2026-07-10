@@ -42,15 +42,17 @@ import shutil
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # repo root (features/rtl-sdr → features → repo)
+
 # ── Shared library ─────────────────────────────────────────────────────
-from .oasis_lib import (
+from common.oasis_lib import (
     _hr, _step, _ok, _info, _warn, _fail, _run,
     deb_field, dpkg_installed_version, version_decision,
 )
-from . import manifest as M
+from common import manifest as M
 
-# common/rtl_sdr.py → repo root is two levels up.
-REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# features/rtl-sdr/rtl_sdr.py → repo root is three levels up (features/rtl-sdr → features → repo).
+REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PKG_ROOT    = os.path.join(REPO_ROOT, "offline-packages")
 # Suite-aware: main() repoints this at offline-packages/rtl-sdr/<suite>/ once the
 # host suite is known. Defaults to the legacy flat dir for back-compat.
