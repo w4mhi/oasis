@@ -1,0 +1,39 @@
+# bundle-ignore — what create-oasis-offline.py must NOT copy into a bundle.
+#
+# gitignore-style syntax:
+#   • blank lines and #comments are ignored
+#   • a bare name (no slash) matches that file/dir at ANY depth  → __pycache__, *.pyc
+#   • a name with a slash is anchored to the bundle root          → server/wheels
+#   • trailing "/" is optional (dirs and their contents are excluded either way)
+#   • shell globs (*, ?, []) work in both forms
+#
+# This is the single source of truth for the copy filter. Edit here, not the code.
+# Applies to every profile; scripts/bundle-ignore.<profile> layers on top.
+
+# ── VCS / editor / build cruft ──
+.git/
+.github/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+temp/
+.DS_Store
+
+# ── dev-only trees: never ship in a field bundle ──
+specs/
+mock-up/
+tests/
+
+# ── populated in the bundle by the download/build phases, not copied from source ──
+oasis-offline/
+oasis-offline-windows/
+offline-packages/
+server/wheels/
+fcc-offline-database/
+zim/
+
+# ── per-machine state: must never leak from the build host into a fresh bundle ──
+installed-services.json
+EN.dat
+HD.dat

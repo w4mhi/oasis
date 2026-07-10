@@ -1,0 +1,15 @@
+# bundle-ignore.windows — extra exclusions for the "windows" (tools-only) profile.
+# Layered ON TOP of scripts/bundle-ignore. Same gitignore syntax.
+#
+# The Windows bundle ships only the standalone tools (FCC lookup, ICS forms,
+# RepeaterBook, net logger, radio references, handbook, calculators) — no Pi
+# hardware, no displays, no APRS/Winlink daemons, no offline maps, no Wikipedia.
+
+# ── Pi-only hardware & display integrations ──
+displays/
+small-screen/
+features/
+
+# ── large / Pi-only data sets ──
+zim/
+maps/

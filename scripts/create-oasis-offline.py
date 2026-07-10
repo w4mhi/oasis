@@ -26,7 +26,16 @@ Always outputs to oasis-offline/ in the repo root (existing bundle is wiped).
 
   --for-windows
     Also download the embedded Windows Python runtime (opt-in).
-    Required for scripts/start-server.bat to work. By default the build targets the Pi only.
+    By default the full build targets the Pi only; the launcher otherwise falls
+    back to system Python on the target. (Implied by --profile windows.)
+
+  --profile {full,windows}
+    full (default)  — the complete Pi bundle in oasis-offline/.
+    windows         — a tools-only bundle in oasis-offline-windows/: Flask +
+                      standalone tools + FCC lookup + embedded Windows Python,
+                      with no Pi hardware, displays, APRS/Winlink, ZIM or maps.
+    What each profile copies is controlled by scripts/bundle-ignore (base) and
+    scripts/bundle-ignore.windows (overlay) — gitignore syntax, edit those.
 
   --update
     Update offline packages only in an existing distribution directory.
@@ -64,6 +73,7 @@ Usage:
 
 import argparse
 import datetime
+import fnmatch
 import hashlib
 import io
 import json
@@ -99,7 +109,10 @@ from common import manifest as M
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 REPO_ROOT = os.path.dirname(_SCRIPTS_DIR)
-OUT_DIR   = os.path.join(REPO_ROOT, "oasis-offline")
+OUT_DIR   = os.path.join(REPO_ROOT, "oasis-offline")            # full (Pi) bundle
+# The "windows" (tools-only) profile builds into its own directory so it never
+# clobbers — or gets cross-contaminated by — a full Pi bundle.
+OUT_DIR_WINDOWS = os.path.join(REPO_ROOT, "oasis-offline-windows")
 # --check works on the SCRIPT'S OWN root (parent of scripts/), so it behaves
 # identically run from the repo or from inside a deployed oasis-offline/ bundle (or
 # a card): it reads <root>/offline-packages/ and updates <root>/scripts/offline-manifest.json.
@@ -118,18 +131,28 @@ PYTHON_EMBED_URL = (
     f"python-{PYTHON_VERSION}-embed-amd64.zip"
 )
 
-# ── Bundle copy exclusions ─────────────────────────────────────────────────────
-# Directories excluded from the source copy (matched by basename).
-EXCLUDE_DIRS = {".git", ".venv", "__pycache__", "temp", ".DS_Store",
-                "offline-packages", "oasis-offline", "fcc-offline-database"}
-# Directories excluded by path relative to REPO_ROOT (forward slashes).
-# server/wheels/ is populated by the wheels download phase, not copied from repo.
-EXCLUDE_RELPATHS = {"server/wheels"}
-# EN.dat / HD.dat are large FCC raw source files; fcc-offline-database/ is in
-# EXCLUDE_DIRS so these are never reached by build_copy anyway.
-# installed-services.json is per-machine state (which features setup-oasis.py
-# installed) — must never leak from the build host into a fresh bundle.
-EXCLUDE_FILES = {"EN.dat", "HD.dat", "installed-services.json"}
+# ── Bundle copy filter (gitignore-style, external) ─────────────────────────────
+# What never gets copied into a bundle is declared in scripts/bundle-ignore (and,
+# per profile, scripts/bundle-ignore.<profile>) — a single reviewable file in
+# gitignore syntax, not scattered constants. build_copy loads and honours it.
+BUNDLE_IGNORE       = os.path.join(_SCRIPTS_DIR, "bundle-ignore")
+BUNDLE_IGNORE_EXTRA = {"windows": os.path.join(_SCRIPTS_DIR, "bundle-ignore.windows")}
+
+# ── Paths owned by the download/build phases, not by build_copy ─────────────────
+# build_copy mirrors the repo *source* tree and reaps orphans (files that no longer
+# exist in the repo). These subtrees are populated by the download phases and the
+# runtime/launcher/manifest builders instead, so they must survive an incremental
+# build_copy untouched — matched against a dest-relative path or any of its parents.
+PRESERVE_IN_DEST = {
+    "offline-packages",      # graywolf / kiwix / rtl-sdr / webssh / pat / direwolf / cm4stack
+    "server/wheels",         # phase_wheels
+    "server/map-assets",     # phase_aprs_sprites
+    "fcc-offline-database",  # phase_fcc
+    "zim",                   # phase_wikipedia
+    "maps",                  # phase_pmtiles (binaries live here alongside source — preserve whole)
+    "_runtime",              # build_windows_runtime (embedded Python)
+    "bundle-manifest.json",  # write_bundle_manifest
+}
 
 
 # ── pmtiles platform selection ────────────────────────────────────────────────
@@ -293,22 +316,26 @@ def _resolve_target(platform, pyver, dest_dir, offline=False, find_links=None):
     return False
 
 
-def phase_wheels(wheels_dir, check=False):
+def phase_wheels(wheels_dir, check=False, targets=None):
     """
     Phase 1: Python wheels.
     check=True  → --no-index resolution for all targets against wheels_dir (CI mode).
     check=False → download from PyPI directly into wheels_dir.
+    targets defaults to the full TARGETS matrix; pass a subset (e.g. win_amd64
+    only) for a single-platform bundle.
     Returns failure count (0 = success).
     """
+    targets = targets if targets is not None else TARGETS
     _section("Phase 1 — Python wheels")
     _info(f"requirements : {os.path.relpath(REQ_FILE)}")
     _info(f"wheels dir   : {os.path.relpath(wheels_dir)}")
+    _info(f"targets      : {', '.join(plat for plat, _ in targets)}")
     os.makedirs(wheels_dir, exist_ok=True)
 
     if check:
         failures = 0
         with tempfile.TemporaryDirectory() as tmp:
-            for plat, pyvers in TARGETS:
+            for plat, pyvers in targets:
                 for pyver in pyvers:
                     if not _resolve_target(plat, pyver, tmp, offline=True,
                                            find_links=wheels_dir):
@@ -320,7 +347,7 @@ def phase_wheels(wheels_dir, check=False):
         return failures
 
     failures = 0
-    for plat, pyvers in TARGETS:
+    for plat, pyvers in targets:
         for pyver in pyvers:
             if not _resolve_target(plat, pyver, wheels_dir):
                 failures += 1
@@ -983,49 +1010,151 @@ def phase_fcc(fcc_dir):
         _warn("Indexes not verified against EN.dat — keeping l_amat.zip as recovery.")
 
 # ── Build: copy project files ──────────────────────────────────────────────────
-def build_copy(dest, src=None, include_all_platforms=False):
+def load_ignore(profile="full"):
+    """Load bundle-ignore patterns (base + optional per-profile overlay).
+
+    Returns a flat list of gitignore-style patterns with comments/blank lines
+    stripped and trailing/leading slashes normalised away. Missing files are
+    skipped so a profile without an overlay just uses the base list.
     """
-    Copy the repo source tree into dest.  Package directories managed by the
-    download phases (offline-packages/, server/wheels/) are skipped — they are
-    already populated in dest before this function is called.
-    Does not wipe dest.
+    paths = [BUNDLE_IGNORE]
+    extra = BUNDLE_IGNORE_EXTRA.get(profile)
+    if extra:
+        paths.append(extra)
+    patterns = []
+    for path in paths:
+        if not os.path.isfile(path):
+            continue
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                s = line.strip()
+                if not s or s.startswith("#"):
+                    continue
+                s = s.strip("/")           # dir marker / leading anchor — we exclude either way
+                if s:
+                    patterns.append(s)
+    return patterns
+
+
+def is_ignored(rel, patterns):
+    """True if the src-relative path `rel` matches any bundle-ignore pattern.
+
+    A bare pattern (no '/') matches any path segment at any depth (so `__pycache__`
+    prunes every such dir, `*.pyc` every such file); a pattern containing '/' is
+    anchored to the bundle root (`server/wheels`). fnmatch globs work in both.
+    """
+    rel = rel.replace(os.sep, "/")
+    segments = rel.split("/")
+    for pat in patterns:
+        if "/" in pat:
+            if rel == pat or rel.startswith(pat + "/") or fnmatch.fnmatch(rel, pat):
+                return True
+        elif any(fnmatch.fnmatch(seg, pat) for seg in segments):
+            return True
+    return False
+
+
+def _reap_orphans(dest, keep_rel):
+    """Delete files in dest that build_copy did NOT just write and that are not
+    owned by the download/build phases (PRESERVE_IN_DEST), then prune the dirs
+    that leaves empty.
+
+    This makes an incremental build behave like a mirror for the *source* tree:
+    files renamed or removed in the repo stop lingering in the bundle (the old
+    "stale start-server.bat / ghost file" problem) — while the heavy downloaded
+    assets (offline-packages/, wheels/, zim/, maps/, _runtime/, …) are untouched.
+    keep_rel is the set of dest-relative paths (normpath'd) build_copy just wrote.
+    """
+    preserve = {p.replace("/", os.sep) for p in PRESERVE_IN_DEST}
+
+    def is_preserved(rel):
+        parts = rel.split(os.sep)
+        return any(os.sep.join(parts[:i]) in preserve for i in range(1, len(parts) + 1))
+
+    reaped = 0
+    for root, dirs, files in os.walk(dest, topdown=True):
+        rel_root = os.path.relpath(root, dest)
+        rel_root = "" if rel_root == "." else rel_root
+        # Don't descend into preserved subtrees (offline-packages/, zim/, …).
+        dirs[:] = [d for d in dirs
+                   if not is_preserved(os.path.normpath(os.path.join(rel_root, d)))]
+        for fname in files:
+            rel = os.path.normpath(os.path.join(rel_root, fname))
+            if rel in keep_rel or is_preserved(rel):
+                continue
+            try:
+                os.remove(os.path.join(root, fname))
+                reaped += 1
+            except OSError:
+                pass
+
+    # Prune directories emptied by the reap (bottom-up; never the bundle root or
+    # a preserved subtree). rmdir only removes already-empty dirs, so it's safe.
+    for root, _dirs, _files in os.walk(dest, topdown=False):
+        rel_root = os.path.relpath(root, dest)
+        if rel_root == "." or is_preserved(os.path.normpath(rel_root)):
+            continue
+        try:
+            if not os.listdir(root):
+                os.rmdir(root)
+        except OSError:
+            pass
+
+    return reaped
+
+
+def build_copy(dest, src=None, include_all_platforms=False, ignore=None, warn_missing_pi=True):
+    """
+    Copy the repo source tree into dest, honouring the bundle-ignore patterns.
+    Package directories managed by the download phases (offline-packages/,
+    server/wheels/, …) are excluded there — they are populated in dest by the
+    download phases, not copied.
+    Mirrors the source tree: after copying, orphaned files in dest (removed or
+    renamed in the repo) are reaped, except for the download/build-managed
+    subtrees in PRESERVE_IN_DEST. Does not wipe dest wholesale.
     src defaults to REPO_ROOT; pass a different path when calling from inside
     the bundle (where REPO_ROOT is the bundle itself).
+    ignore defaults to the base (full-profile) bundle-ignore patterns; pass a
+    profile-specific list (see load_ignore) for a leaner bundle.
     Non-default pmtiles binaries (macOS/Windows) are skipped unless
     include_all_platforms is set, so a committed repo copy doesn't bloat a
     Linux-only bundle (--all-platforms re-adds them via the download phase).
     """
     src = src or REPO_ROOT
+    patterns = load_ignore() if ignore is None else ignore
     _section(f"Copying source files  →  {dest}")
 
     drop_pmtiles = set() if include_all_platforms else _pmtiles_nondefault_outs()
-    exclude_relpaths = {p.replace("/", os.sep) for p in EXCLUDE_RELPATHS}
     copied = skipped = 0
+    keep_rel = set()   # dest-relative paths we write — used to reap orphans below
     for root, dirs, files in os.walk(src):
         rel_root = os.path.relpath(root, src)
+        rel_root = "" if rel_root == "." else rel_root
+        # Prune ignored (and dotfile) directories so we never descend into them.
         dirs[:] = [
             d for d in dirs
-            if d not in EXCLUDE_DIRS
-            and not d.startswith(".")
-            and os.path.normpath(os.path.join(rel_root, d)) not in exclude_relpaths
+            if not d.startswith(".")
+            and not is_ignored(os.path.join(rel_root, d) if rel_root else d, patterns)
         ]
         for fname in files:
-            if (
-                fname in EXCLUDE_FILES
-                or fname in drop_pmtiles
-                or any(fname.endswith(e) for e in (".pyc", ".pyo"))
-                or fname == ".DS_Store"
-            ):
+            rel = os.path.join(rel_root, fname) if rel_root else fname
+            if fname in drop_pmtiles or is_ignored(rel, patterns):
                 skipped += 1
                 continue
-            dest_path = os.path.join(dest, rel_root, fname)
+            dest_path = os.path.join(dest, rel)
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
             shutil.copy2(os.path.join(root, fname), dest_path)
+            keep_rel.add(os.path.normpath(rel))
             copied += 1
 
-    _cp(f"{copied} files copied from repo to bundle  ({skipped} excluded)")
+    reaped = _reap_orphans(dest, keep_rel)
+    reap_note = f", {reaped} stale reaped" if reaped else ""
+    _cp(f"{copied} files copied from repo to bundle  ({skipped} excluded{reap_note})")
 
-    # Report anything that will hurt the offline experience.
+    # Report anything that will hurt the Pi offline experience. Meaningless for the
+    # tools-only bundle (which ships none of these), so callers pass warn_missing_pi=False.
+    if not warn_missing_pi:
+        return
     # RTL-SDR is now split into per-suite subdirs; check at least one suite exists.
     gw_dir = M.bundle_dir(dest, "graywolf")
     kw_dir = M.bundle_dir(dest, "kiwix")
@@ -1103,7 +1232,9 @@ def build_windows_runtime(dest, skip):
     wheels_src = os.path.join(dest, "server", "wheels")
 
     if skip:
-        _warn("Windows runtime not requested. scripts/start-server.bat will not work. Use --for-windows to include it.")
+        _warn("Windows embedded runtime not requested (--for-windows). The bundle's "
+              "start-server.bat will fall back to system Python on the target; pass "
+              "--for-windows to ship a self-contained runtime.")
         return
 
     os.makedirs(win_dir, exist_ok=True)
@@ -1129,22 +1260,65 @@ def build_windows_runtime(dest, skip):
     _install_into_embedded(win_dir, wheels_src)
 
 
+# The "windows" (tools-only) bundle boots in the portable profile: only the
+# daemon-free tools are shown, matching run-portable.bat's OASIS_FEATURES.
+PORTABLE_FEATURES = "fcc,forms,repeaterbook"
+
+
 # ── Build: launchers ───────────────────────────────────────────────────────────
-def build_launchers(dest):
+def build_launchers(dest, profile="full"):
     _section("Writing launchers")
 
     scripts_dir = os.path.join(dest, "scripts")
     os.makedirs(scripts_dir, exist_ok=True)
 
-    # Windows
+    # The tools-only bundle pins the portable feature set so daemon-backed cards
+    # (Winlink, APRS, …) stay hidden; the full bundle leaves OASIS_FEATURES unset.
+    features_line = (
+        f"set \"OASIS_FEATURES={PORTABLE_FEATURES}\"\r\n\r\n"
+        if profile == "windows" else ""
+    )
+
+    # Windows — prefer the bundled embedded Python (shipped only with
+    # --for-windows); otherwise fall back to any system Python on PATH so a
+    # Pi-targeted bundle still runs on a Windows box that has Python installed.
     bat = os.path.join(scripts_dir, "start-server.bat")
     with open(bat, "w", newline="\r\n") as f:
         f.write(
             "@echo off\r\n"
             "title OASIS\r\n"
             "cd /d \"%~dp0..\"\r\n"
-            "echo Starting OASIS...\r\n"
-            "_runtime\\windows\\python.exe server\\app.py\r\n"
+            "\r\n"
+            + features_line +
+            "REM Prefer the bundled embedded Python; else fall back to system Python.\r\n"
+            "set \"OASIS_PY=\"\r\n"
+            "if exist \"_runtime\\windows\\python.exe\" set \"OASIS_PY=_runtime\\windows\\python.exe\"\r\n"
+            "if not defined OASIS_PY (\r\n"
+            "    for %%C in (python.exe py.exe python3.exe) do (\r\n"
+            "        if not defined OASIS_PY (\r\n"
+            "            where %%C >nul 2>&1 && set \"OASIS_PY=%%C\"\r\n"
+            "        )\r\n"
+            "    )\r\n"
+            ")\r\n"
+            "\r\n"
+            "if not defined OASIS_PY (\r\n"
+            "    echo.\r\n"
+            "    echo   ERROR: No Python found.\r\n"
+            "    echo   This bundle has no embedded runtime ^(_runtime\\windows\\python.exe missing^)\r\n"
+            "    echo   and no system Python is on your PATH.\r\n"
+            "    echo.\r\n"
+            "    echo   Do ONE of these:\r\n"
+            "    echo     - Rebuild the bundle with the Windows runtime:\r\n"
+            "    echo         python3 scripts\\create-oasis-offline.py --rebuild --for-windows\r\n"
+            "    echo     - Or install Python 3.9+ from https://python.org\r\n"
+            "    echo       ^(tick \"Add Python to PATH\" during setup^), then re-run this file.\r\n"
+            "    echo.\r\n"
+            "    pause\r\n"
+            "    exit /b 1\r\n"
+            ")\r\n"
+            "\r\n"
+            "echo Starting OASIS... (using %OASIS_PY%)\r\n"
+            "\"%OASIS_PY%\" server\\app.py\r\n"
             "pause\r\n"
         )
     _ok("scripts/start-server.bat")
@@ -1159,7 +1333,8 @@ def build_launchers(dest):
             'VENV="$DIR/_runtime/linux/.venv"\n'
             'WHEELS="$DIR/server/wheels"\n'
             "cd \"$DIR\"\n"
-            "\n"
+            + (f'export OASIS_FEATURES="{PORTABLE_FEATURES}"\n' if profile == "windows" else "")
+            + "\n"
             "if ! command -v python3 &>/dev/null; then\n"
             '  echo "ERROR: python3 not found. Install it with your package manager."\n'
             "  exit 1\n"
@@ -1305,7 +1480,7 @@ def cmd_verify(target_dir):
 
 
 # ── Build: summary ─────────────────────────────────────────────────────────────
-def build_summary(dest):
+def build_summary(dest, profile="full"):
     total = sum(
         os.path.getsize(os.path.join(r, f))
         for r, _, files in os.walk(dest)
@@ -1315,15 +1490,20 @@ def build_summary(dest):
     _ok(f"Location : {dest}")
     _ok(f"Size     : {total / 1_048_576:.0f} MB")
     print()
-    _info("Next step: copy oasis-offline/ to your USB drive")
+    _info(f"Next step: copy the contents of {os.path.basename(dest)}/ to your USB drive")
     _info("")
     _info("Windows : double-click scripts\\start-server.bat")
     _info("Linux   : chmod +x scripts/start-server.sh && ./scripts/start-server.sh  (first run bootstraps venv)")
     _info("Browser : http://localhost:8083")
     print()
-    _info("Maps, forms, FCC lookup, calculators and reference all work offline.")
-    _warn("GrayWolf, Kiwix and the APRS API show DOWN — those are Pi-only services.")
-    _warn("Install them on the Pi from offline-packages/ using the install scripts.")
+    if profile == "windows":
+        _info("Tools-only bundle: FCC lookup, ICS forms, RepeaterBook, net logger,")
+        _info("radio references, handbook and calculators — all offline.")
+        _info("Winlink, APRS and the Pi-only cards are hidden (OASIS_FEATURES pinned).")
+    else:
+        _info("Maps, forms, FCC lookup, calculators and reference all work offline.")
+        _warn("GrayWolf, Kiwix and the APRS API show DOWN — those are Pi-only services.")
+        _warn("Install them on the Pi from offline-packages/ using the install scripts.")
     print()
 
 
@@ -1361,43 +1541,67 @@ def cmd_check():
     print()
 
 
-def cmd_build(skip_windows, rebuild=False, all_platforms=False):
-    """Download all offline assets directly into oasis-offline/, then build the bundle."""
+def cmd_build(skip_windows, rebuild=False, all_platforms=False, profile="full"):
+    """Download the offline assets into the profile's output dir, then build it.
+
+    profile="full"    → the complete Pi bundle in oasis-offline/ (all phases).
+    profile="windows" → a tools-only bundle in oasis-offline-windows/: no Pi
+                        hardware / displays / APRS / Winlink / ZIM / maps, just
+                        Flask + the standalone tools + FCC lookup, with the
+                        Windows embedded Python always shipped.
+    """
+    windows = (profile == "windows")
+    out_dir = OUT_DIR_WINDOWS if windows else OUT_DIR
+    # The windows bundle is self-contained: always ship the embedded runtime.
+    skip_windows = skip_windows and not windows
+
     print("\n  OASIS — create-oasis-offline")
     _hr()
-    _info(f"Output : {OUT_DIR}")
+    _info(f"Profile: {profile}")
+    _info(f"Output : {out_dir}")
     _info(f"Mode   : {'clean rebuild (wiping existing)' if rebuild else 'incremental (reusing existing assets)'}")
 
-    if rebuild and os.path.exists(OUT_DIR):
-        _info("Removing existing oasis-offline/ ...")
-        shutil.rmtree(OUT_DIR)
-    os.makedirs(OUT_DIR, exist_ok=True)
+    if rebuild and os.path.exists(out_dir):
+        _info(f"Removing existing {os.path.basename(out_dir)}/ ...")
+        shutil.rmtree(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
 
-    # Phase 0: copy repo source files first (offline-packages/ and server/wheels/
-    # are excluded — the download phases below will populate those dirs).
-    build_copy(OUT_DIR, include_all_platforms=all_platforms)
+    # Phase 0: copy repo source files first (download-managed dirs are excluded by
+    # bundle-ignore — the download phases below populate those in-place).
+    build_copy(out_dir, include_all_platforms=all_platforms,
+               ignore=load_ignore(profile), warn_missing_pi=not windows)
 
-    # Download phases — each writes directly into its oasis-offline/ subdirectory.
+    # Download phases — each writes directly into its subdirectory.
     # update=True means "skip files already at current version" (always on by default).
-    pkg_root = os.path.join(OUT_DIR, "offline-packages")
-    phase_aprs_sprites(os.path.join(OUT_DIR, "server", "map-assets"))
-    phase_wheels(os.path.join(OUT_DIR, "server", "wheels"))
-    phase_graywolf(pkg_root, update=True)
-    phase_kiwix(pkg_root, update=True)
-    fcc_dir = os.path.join(OUT_DIR, "fcc-offline-database", "data")
-    phase_fcc(fcc_dir)
-    phase_rtl_sdr(pkg_root, update=True)
-    phase_webssh(pkg_root, update=True)
-    phase_pat(pkg_root, update=True)
-    phase_direwolf(pkg_root, update=True)
-    phase_cm4stack(pkg_root, update=True)
-    phase_wikipedia(os.path.join(OUT_DIR, "zim"))
-    phase_pmtiles(os.path.join(OUT_DIR, "maps"), all_platforms=all_platforms)
+    pkg_root = os.path.join(out_dir, "offline-packages")
 
-    build_windows_runtime(OUT_DIR, skip_windows)
-    build_launchers(OUT_DIR)
-    write_bundle_manifest(OUT_DIR)
-    build_summary(OUT_DIR)
+    # Python wheels: full matrix for the Pi bundle; win_amd64 only for the tools bundle.
+    win_targets = [t for t in TARGETS if t[0] == "win_amd64"]
+    phase_wheels(os.path.join(out_dir, "server", "wheels"),
+                 targets=win_targets if windows else None)
+
+    # FCC lookup is a standalone tool — ships in both profiles.
+    fcc_dir = os.path.join(out_dir, "fcc-offline-database", "data")
+    phase_fcc(fcc_dir)
+
+    # Pi-only assets: APRS/Winlink/RTL-SDR/display daemons, Wikipedia, maps.
+    # None of these belong in the tools bundle.
+    if not windows:
+        phase_aprs_sprites(os.path.join(out_dir, "server", "map-assets"))
+        phase_graywolf(pkg_root, update=True)
+        phase_kiwix(pkg_root, update=True)
+        phase_rtl_sdr(pkg_root, update=True)
+        phase_webssh(pkg_root, update=True)
+        phase_pat(pkg_root, update=True)
+        phase_direwolf(pkg_root, update=True)
+        phase_cm4stack(pkg_root, update=True)
+        phase_wikipedia(os.path.join(out_dir, "zim"))
+        phase_pmtiles(os.path.join(out_dir, "maps"), all_platforms=all_platforms)
+
+    build_windows_runtime(out_dir, skip_windows)
+    build_launchers(out_dir, profile=profile)
+    write_bundle_manifest(out_dir)
+    build_summary(out_dir, profile=profile)
 
 
 # ── Update command ────────────────────────────────────────────────────────────
@@ -1485,6 +1689,7 @@ def main():
             "  python3 scripts/create-oasis-offline.py --rebuild              # wipe + full rebuild\n"
             "  python3 scripts/create-oasis-offline.py --check               # verify bundle (CI)\n"
             "  python3 scripts/create-oasis-offline.py --for-windows         # include Windows Python\n"
+            "  python3 scripts/create-oasis-offline.py --profile windows --rebuild  # tools-only Windows bundle → oasis-offline-windows/\n"
             "  python3 scripts/create-oasis-offline.py --all-platforms       # also vendor macOS/Windows pmtiles binaries\n"
             "  python3 scripts/create-oasis-offline.py --update              # update packages + sync source files"
             " into oasis-offline/\n"
@@ -1532,6 +1737,16 @@ def main():
         ),
     )
     ap.add_argument(
+        "--profile", choices=("full", "windows"), default="full",
+        help=(
+            "Bundle profile. 'full' (default) builds the complete Pi bundle in "
+            "oasis-offline/. 'windows' builds a tools-only bundle in "
+            "oasis-offline-windows/ (Flask + standalone tools + FCC lookup + "
+            "embedded Windows Python; no Pi hardware, displays, APRS/Winlink, ZIM "
+            "or maps)."
+        ),
+    )
+    ap.add_argument(
         "--dir", metavar="DIR",
         help="Directory to target. Valid with --update or --verify. Defaults to oasis-offline/ inside the repo.",
     )
@@ -1539,6 +1754,8 @@ def main():
 
     if args.dir and not args.update and not args.verify:
         ap.error("--dir is only valid with --update or --verify")
+    if args.profile != "full" and (args.update or args.verify or args.check):
+        ap.error("--profile only applies to a build (not --update/--verify/--check)")
 
     if args.update:
         if args.dir:
@@ -1559,7 +1776,8 @@ def main():
     elif args.check:
         cmd_check()
     else:
-        cmd_build(not args.for_windows, rebuild=args.rebuild, all_platforms=args.all_platforms)
+        cmd_build(not args.for_windows, rebuild=args.rebuild,
+                  all_platforms=args.all_platforms, profile=args.profile)
 
 
 if __name__ == "__main__":

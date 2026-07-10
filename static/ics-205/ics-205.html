@@ -16,6 +16,11 @@ td input{
   background:transparent;border:1px solid transparent;color:var(--text);
   font-family:var(--mono);font-size:var(--fs-base);padding:2px 4px;border-radius:3px;width:100%;
 }
+/* css/common.css sets input[type=text]{padding:5px 9px}, which out-specifies the
+   `td input` rule above and squeezes the narrow numeric columns so wide that a
+   2-3 digit Ch # (e.g. 14, 229) clips to just its first digit. Re-assert the
+   compact table padding with a higher-specificity selector so Ch # shows fully. */
+td input[type="text"]{padding:2px 4px;}
 td input:hover{border-color:var(--border);}
 td select:hover{border-color:var(--border);}
 td select:focus{outline:none;background:var(--bg);border-color:var(--accent-dim);}
@@ -32,7 +37,7 @@ tr.row-overflow td input{color:var(--text-dim);}
 /* Column widths */
 .cn{width:24px;text-align:center;color:var(--text-dim);font-size:var(--fs-small);white-space:nowrap;user-select:none;}
 .c-zone{width:52px;}
-.c-ch{width:38px;}
+.c-ch{width:56px;}
 .c-func{width:90px;}
 .c-name{width:160px;}
 .c-assign{width:110px;}

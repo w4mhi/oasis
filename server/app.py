@@ -29,6 +29,12 @@ import webbrowser
 
 from flask import Flask, jsonify, render_template, request, send_file, send_from_directory, Response
 
+# The Windows embeddable Python (shipped in _runtime/windows/) uses a pythonXX._pth
+# file, which builds sys.path solely from that file and suppresses the automatic
+# script-directory entry that normal CPython adds. Insert our own directory so the
+# sibling `lookup` module resolves under every launcher (embedded or system Python).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import lookup
 
 # Absolute path to the suite root (one level up from this file).
