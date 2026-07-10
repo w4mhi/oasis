@@ -2197,7 +2197,9 @@ if __name__ == "__main__":
     # gunicorn imports this module as 'app', so __main__ never runs under gunicorn
     # (no recursion). Falls back to the Flask dev server if gunicorn is absent or
     # --dev is given. This is why a plain `python app.py` now serves via gunicorn.
-    if not args.dev:
+    # gunicorn is POSIX-only (needs fcntl / os.fork), so Windows always uses the
+    # Flask dev server regardless of what's installed.
+    if not args.dev and sys.platform != "win32":
         try:
             import gunicorn  # noqa: F401
             _have_gunicorn = True

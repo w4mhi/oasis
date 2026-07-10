@@ -26,3 +26,11 @@ gunicorn>=23.0.0,<27
 
 # System stats (CPU, RAM, disk, uptime) — scripts/enable-graywolf-api.py
 psutil==7.2.2
+
+# Windows console ANSI support for click (Flask's CLI dependency). Pinned
+# unconditionally — without a marker — because `pip download` evaluates
+# click's `platform_system == "Windows"` marker against the build host, so a
+# non-Windows build silently drops it and the Windows dev server then crashes
+# with ModuleNotFoundError: colorama. Pure none-any wheel; harmless no-op on
+# Linux/macOS (imported only on win32).
+colorama==0.4.6

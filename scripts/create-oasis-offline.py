@@ -1205,6 +1205,12 @@ def _install_into_embedded(win_dir, wheels_src):
         if not fname.endswith(".whl"):
             continue
         lower    = fname.lower()
+        # gunicorn is a pure (none-any) wheel but POSIX-only — it imports fcntl
+        # and needs os.fork(), so it must never be vendored into the Windows
+        # runtime (app.py won't launch it on win32, but extracting it is dead
+        # weight and misleading). Skip it explicitly.
+        if lower.startswith("gunicorn"):
+            continue
         is_pure  = "none-any" in lower
         is_win   = "win_amd64" in lower and (
             "cp312" in lower or "abi3" in lower or "-none-" in lower
