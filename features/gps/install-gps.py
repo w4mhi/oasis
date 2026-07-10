@@ -2,13 +2,13 @@
 """
 install-gps.py
 --------------
-Thin CLI wrapper around scripts/common/gps.py.
+Thin CLI wrapper around gps.py (same directory).
 
 Sets up GPS-disciplined time (gpsd + chrony) so the station keeps an accurate
 clock with no internet — for correct FT8/WSPR/SSTV decode windows and timestamps
 in OpenWebRX. Installs gpsd/chrony, points gpsd at the GPS (with GPSD_OPTIONS=-n),
 and adds the chrony SHM refclock that actually steers the clock from GPS.
-All logic lives in common/gps.py.
+All logic lives in gps.py (same directory).
 
 Usage:
   python3 features/gps/install-gps.py                 # autodetect device

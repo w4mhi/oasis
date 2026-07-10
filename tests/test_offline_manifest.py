@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-test_offline_manifest.py — self-tests for scripts/common/manifest.py
+test_offline_manifest.py — self-tests for common/manifest.py
 
 Guards three behaviours that the "bookworm bundle / librtlsdr 0.6.0 on Trixie"
 bug exposed:
@@ -31,7 +31,7 @@ for _p in (_ROOT, _COMMON):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import manifest as M   # scripts/common/manifest.py
+import manifest as M   # common/manifest.py
 
 
 # ─────────────────────────────────────────────────────────────────────────────

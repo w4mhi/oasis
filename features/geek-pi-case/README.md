@@ -6,7 +6,7 @@ Raspberry Pi 4/5.
 
 Offline-first: apt-only deps, no pip/venv. The SSD1306 driver is inlined in
 [`geek-pi-case.py`](geek-pi-case.py); the pure decision logic lives in
-[`scripts/common/geek_pi_case.py`](../../scripts/common/geek_pi_case.py) and is
+[`geek_pi_case.py`](geek_pi_case.py) and is
 unit-tested (`python3 tests/test_geek_pi_case.py`).
 
 The ZP-0129's WS281x RGB fan-light / mood-light is **not** driven here (planned

@@ -14,7 +14,7 @@ SHUTDOWN_SAMPLES consecutive reads, a safe `systemctl poweroff` is issued.
 Offline-first: apt deps only, inlined SSD1306 driver, no pip/CDN:
     sudo apt install -y python3-pil python3-smbus i2c-tools python3-gpiozero python3-lgpio
 
-Pure decision logic lives in scripts/common/geek_pi_case.py (unit-tested);
+Pure decision logic lives in geek_pi_case.py (same directory, unit-tested);
 this file is the hardware-I/O shell. Hardware libs are imported lazily so
 `--help` works off-Pi.
 """

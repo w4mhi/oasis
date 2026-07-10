@@ -2,13 +2,13 @@
 """
 install-rtl-sdr.py
 ------------------
-Thin CLI wrapper around scripts/common/rtl_sdr.py.
+Thin CLI wrapper around rtl_sdr.py (same directory).
 
 Installs RTL-SDR tools, the GrayWolf feed tools (socat/tcpdump), the multimon-ng
 bench decoder, and the DVB-driver blacklist on Raspberry Pi OS / Debian / Ubuntu.
 Source selection is suite-aware and newest-source-wins (apt vs bundle), with a
 capability gate that warns when librtlsdr is too old for the RTL-SDR Blog V4
-(needs >= 2.0). All logic lives in common/rtl_sdr.py; see docs/offline-architecture.md.
+(needs >= 2.0). All logic lives in rtl_sdr.py (same directory); see docs/offline-architecture.md.
 
 Usage:
   python3 features/rtl-sdr/install-rtl-sdr.py

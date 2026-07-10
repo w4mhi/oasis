@@ -11,7 +11,7 @@ Press 's' to auto-sweep gain then ppm; 'w' to save the known-good settings and
 emit the exact GrayWolf feed command. Receive-only — an RTL-SDR cannot transmit.
 
 Pure logic (command builder, parser, scorer, sweep ranking, formatter) lives in
-scripts/common/sdr_tune.py and is unit-tested. This file holds the subprocess
+sdr_tune.py (same directory) and is unit-tested. This file holds the subprocess
 runner, the curses loop, and sweep driving.
 
 Usage:

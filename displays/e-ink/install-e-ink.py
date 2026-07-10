@@ -14,7 +14,7 @@ What it does (all idempotent, safe to re-run):
   5. Install + enable the oasis-e-ink.service systemd unit (runs --service).
 
 This installer is self-contained — it deliberately does NOT import OASIS's
-scripts/common helpers, so the displays/e-ink/ folder stays standalone and the
+common helpers, so the displays/e-ink/ folder stays standalone and the
 sidecar's only tie to OASIS is the HTTP API it reads at runtime.
 
 Usage:

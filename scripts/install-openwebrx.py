@@ -2,7 +2,7 @@
 """
 install-openwebrx.py
 --------------------
-Thin CLI wrapper around scripts/common/openwebrx.py.
+Thin CLI wrapper around common/openwebrx.py.
 
 Installs OpenWebRX+ (browser-based, receive-only SDR receiver/decoder) from its
 upstream apt repository, and sets it OFF by default (it grabs the RTL-SDR, which
