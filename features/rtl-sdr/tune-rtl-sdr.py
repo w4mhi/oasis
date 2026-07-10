@@ -39,8 +39,8 @@ import tempfile
 import threading
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-from common import sdr_tune as S
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sdr_tune as S
 
 
 RESULTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
