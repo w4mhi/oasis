@@ -204,7 +204,7 @@ WantedBy=multi-user.target
 def run(version=DEFAULT_VERSION, zim_dir=DEFAULT_ZIM_DIR, repo_root=None):
     """Full install sequence. Called by the thin CLI wrapper."""
     if repo_root is None:
-        repo_root = os.path.dirname(_SCRIPTS_DIR)
+        repo_root = _SCRIPTS_DIR
 
     offline_dir = _offline_dir(repo_root)
     kiwix_arch  = check_platform()

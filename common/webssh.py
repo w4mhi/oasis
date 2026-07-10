@@ -392,7 +392,7 @@ def run(version=None, port=DEFAULT_PORT, bind=None, basic_auth_arg=None,
         dry_run_mode=False, verify_mode=False, repo_root=None):
     """Full install sequence. Called by the thin CLI wrapper."""
     if repo_root is None:
-        repo_root = os.path.dirname(_SCRIPTS_DIR)
+        repo_root = _SCRIPTS_DIR
 
     if version is None:
         version = _ttyd_version_from_manifest()

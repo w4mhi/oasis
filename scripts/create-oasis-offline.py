@@ -90,7 +90,7 @@ import zipfile
 
 # ── Shared library ─────────────────────────────────────────────────────────────
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _SCRIPTS_DIR)
+sys.path.insert(0, os.path.dirname(_SCRIPTS_DIR))
 from common.oasis_lib import (
     _hr, _ok, _warn, _info, _dl, _cp, _section, _fail,
     download_to, download_bytes,

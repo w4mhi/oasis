@@ -694,7 +694,7 @@ def run(pinned_version=None, callsign="W4MHI", locator=None, password=None,
         modem_ptt_serial=None):
     """Full install sequence. Called by the thin CLI wrapper."""
     if repo_root is None:
-        repo_root = os.path.dirname(_SCRIPTS_DIR)
+        repo_root = _SCRIPTS_DIR
 
     offline_dir = _offline_dir(repo_root)
 

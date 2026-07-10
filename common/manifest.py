@@ -37,7 +37,8 @@ _HAS_DPKG = shutil.which("dpkg") is not None and _dpkg_cmp is not None
 
 # ── Paths ───────────────────────────────────────────────────────────────────────
 _THIS_DIR   = os.path.dirname(os.path.abspath(__file__))
-SCRIPTS_DIR = os.path.dirname(_THIS_DIR)
+REPO_ROOT   = os.path.dirname(_THIS_DIR)
+SCRIPTS_DIR = os.path.join(REPO_ROOT, "scripts")
 DEFAULT_MANIFEST = os.path.join(SCRIPTS_DIR, "offline-manifest.json")
 
 _cache = {}

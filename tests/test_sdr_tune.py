@@ -7,7 +7,7 @@ import tempfile
 import time
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from common import sdr_tune as S
 
 _tune_spec = importlib.util.spec_from_file_location(

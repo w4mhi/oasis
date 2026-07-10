@@ -25,9 +25,9 @@ import unittest
 # ── Make `import common.manifest` and `import manifest` both work whether this
 #    script is run from the repo root or from tests/. ──────────────────────────
 _HERE       = os.path.dirname(os.path.abspath(__file__))
-_SCRIPTS    = os.path.join(os.path.dirname(_HERE), "scripts")
-_COMMON     = os.path.join(_SCRIPTS, "common")
-for _p in (_SCRIPTS, _COMMON):
+_ROOT       = os.path.dirname(_HERE)
+_COMMON     = os.path.join(_ROOT, "common")
+for _p in (_ROOT, _COMMON):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

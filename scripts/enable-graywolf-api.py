@@ -405,7 +405,7 @@ def _target_user_home():
 def enable_service(start=True):
     # Imported here so the serve path (and the backward-compat shim) never need
     # the OASIS lib or a writable /etc.
-    sys.path.insert(0, os.path.dirname(SELF))
+    sys.path.insert(0, os.path.join(os.path.dirname(SELF), ".."))
     from common.oasis_lib import _step, _ok, _info, _warn, _fail, _run
 
     _step(1, f"Enabling the GrayWolf APRS History API (port {PORT})")

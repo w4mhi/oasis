@@ -49,8 +49,8 @@ from .oasis_lib import (
 )
 from . import manifest as M
 
-# common/rtl_sdr.py → repo root is three levels up (scripts/common → scripts → repo).
-REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# common/rtl_sdr.py → repo root is two levels up.
+REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PKG_ROOT    = os.path.join(REPO_ROOT, "offline-packages")
 # Suite-aware: main() repoints this at offline-packages/rtl-sdr/<suite>/ once the
 # host suite is known. Defaults to the legacy flat dir for back-compat.

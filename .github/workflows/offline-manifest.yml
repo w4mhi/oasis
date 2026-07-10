@@ -34,7 +34,7 @@ jobs:
         run: python3 tests/test_offline_manifest.py
 
       - name: Byte-compile all scripts
-        run: python3 -m py_compile $(git ls-files 'scripts/*.py' 'scripts/common/*.py' 'tests/*.py' 'setup-oasis.py' 'features/*/*.py')
+        run: python3 -m py_compile $(git ls-files 'scripts/*.py' 'common/*.py' 'tests/*.py' 'setup-oasis.py' 'features/*/*.py')
 
       - name: Thin CLIs still parse --help
         run: |

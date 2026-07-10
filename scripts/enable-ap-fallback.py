@@ -44,7 +44,7 @@ import shutil
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from common.oasis_lib import (
     _hr, _step, _ok, _info, _warn, _fail, _run, dpkg_installed_version,
 )

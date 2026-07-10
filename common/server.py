@@ -378,7 +378,7 @@ def _apt_installed(pkg):
 def run(check_mode=False, repo_root=None):
     """Full setup sequence. Called by the thin CLI wrapper."""
     if repo_root is None:
-        repo_root = os.path.dirname(_SCRIPTS_DIR)
+        repo_root = _SCRIPTS_DIR
 
     venv_dir   = os.path.join(repo_root, ".venv")
     wheels_dir = os.path.join(repo_root, "server", "wheels")

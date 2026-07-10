@@ -39,7 +39,7 @@ import threading
 import time
 
 SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
-sys.path.insert(0, SCRIPTS_DIR)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common.oasis_lib import _hr, _ok, _info, _warn, _fail, has_internet
 from common import manifest as M
 

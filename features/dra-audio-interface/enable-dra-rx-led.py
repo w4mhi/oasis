@@ -144,7 +144,7 @@ def self_test(gpio, n=5):
 
 # ── Service enabler (default mode) ──────────────────────────────────────────────
 def enable_service(gpio, start=True):
-    sys.path.insert(0, os.path.join(os.path.dirname(SELF), '..', '..', 'scripts'))
+    sys.path.insert(0, os.path.join(os.path.dirname(SELF), '..', '..'))
     from common.oasis_lib import _step, _ok, _info, _warn, _fail, _run
 
     _step(1, f"Enabling the DRA-Pi green RX LED service (GPIO {gpio})")
@@ -206,7 +206,7 @@ WantedBy=multi-user.target
 
 
 def uninstall_service(gpio):
-    sys.path.insert(0, os.path.join(os.path.dirname(SELF), '..', '..', 'scripts'))
+    sys.path.insert(0, os.path.join(os.path.dirname(SELF), '..', '..'))
     from common.oasis_lib import _step, _ok, _info, _run
 
     _step(1, f"Removing the DRA-Pi green RX LED service ({SERVICE})")
