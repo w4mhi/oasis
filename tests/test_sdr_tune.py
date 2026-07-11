@@ -170,11 +170,11 @@ class HandoffBuilderTests(unittest.TestCase):
         self.assertIn("sox", msg)
         self.assertIn("install-rtl-sdr.py", msg)
 
-    def test_conf_template_has_modem_and_logdir(self):
-        conf = S.SDR_CONF_TEMPLATE.format(logdir="/tmp/x")
+    def test_conf_template_has_modem(self):
+        conf = S.SDR_CONF_TEMPLATE
+        self.assertIn("ADEVICE - null", conf)
         self.assertIn("MODEM 1200", conf)
         self.assertIn("ACHANNELS 1", conf)
-        self.assertIn("LOGDIR /tmp/x", conf)
 
 
 class DeviceProbeTests(unittest.TestCase):
@@ -236,11 +236,16 @@ class CliTests(unittest.TestCase):
 
     def test_write_conf_creates_file(self):
         with tempfile.TemporaryDirectory() as d:
-            conf = tune.write_conf(d)
-            with open(conf) as fh:
-                body = fh.read()
+            cwd = os.getcwd()
+            try:
+                os.chdir(d)
+                conf = tune.write_conf(d)
+                with open(conf) as fh:
+                    body = fh.read()
+            finally:
+                os.chdir(cwd)
             self.assertIn("MODEM 1200", body)
-            self.assertIn(f"LOGDIR {d}", body)
+            self.assertIn("ADEVICE - null", body)
 
 
 class SaveResultTests(unittest.TestCase):
@@ -263,7 +268,7 @@ class ConfTemplateTests(unittest.TestCase):
         # Regression: the RX-only bench must not depend on a real audio output
         # device — Direwolf 1.7 won't start without one, and a headless Pi has
         # no ALSA 'default'. The generated conf pins output to null.
-        conf = S.SDR_CONF_TEMPLATE.format(logdir="/tmp/x")
+        conf = S.SDR_CONF_TEMPLATE
         self.assertIn("ADEVICE - null", conf)
 
 

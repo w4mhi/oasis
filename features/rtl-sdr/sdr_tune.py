@@ -201,8 +201,11 @@ def device_help(reason):
 
 
 # Operator's known-good minimal Direwolf config. Audio comes from stdin at the
-# selected rate via `-r <srate> -`, so the conf is rate-agnostic. LOGDIR points
-# at the tool's temp dir so Direwolf CSV logs don't land in the operator's cwd.
+# selected rate via `-r <srate> -`, so the conf is rate-agnostic. It is written
+# into the operator's working directory as rtl-sdr-direwolf.conf (reused if
+# already present) so it is easy to inspect while the session is running. No
+# LOGDIR is set — the bench reads decodes off Direwolf's stdout, so leaving it
+# out keeps the conf generic and avoids baking a machine-specific path into it.
 # ADEVICE '- null': receive from stdin, transmit to the ALSA null device. The
 # bench is receive-only, but Direwolf 1.7 refuses to start unless it can open an
 # audio *output* device — on a headless Pi with no audio configured, the default
@@ -213,5 +216,4 @@ ADEVICE - null
 ACHANNELS 1
 CHANNEL 0
 MODEM 1200
-LOGDIR {logdir}
 """

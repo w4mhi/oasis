@@ -84,6 +84,10 @@ static/ics-205/saved/
 # RTL-SDR tuning bench results — written at runtime by tune-rtl-sdr.py, never committed.
 features/rtl-sdr/tune-results.json
 
+# RTL-SDR tuning bench Direwolf conf — written into the operator's cwd by
+# tune-rtl-sdr.py (reused if present); a runtime artifact, never committed.
+rtl-sdr-direwolf.conf
+
 # Personal Claude Code instructions (private)
 CLAUDE.local.md
 docs/superpowers/*

@@ -185,10 +185,13 @@ def build_argparser():
 
 
 def write_conf(logdir):
-    """Write the generated Direwolf conf into a temp dir; return its path."""
-    conf_path = os.path.join(logdir, "sdr.conf")
+    """Create a default Direwolf conf in the current working directory when it
+    does not already exist; otherwise reuse the existing file."""
+    conf_path = os.path.join(os.getcwd(), "rtl-sdr-direwolf.conf")
+    if os.path.exists(conf_path):
+        return conf_path
     with open(conf_path, "w") as fh:
-        fh.write(S.SDR_CONF_TEMPLATE.format(logdir=logdir))
+        fh.write(S.SDR_CONF_TEMPLATE)
     return conf_path
 
 
