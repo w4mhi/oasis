@@ -51,6 +51,7 @@
     "rtl-sdr": {
       "type": "apt",
       "bundle_group": "rtl-sdr",
+      "bundle_base": "features/rtl-sdr/packages",
       "description": "RTL-SDR RX driver + userspace tools (rtl_fm, rtl_test).",
       "min_version": {
         "librtlsdr": {
@@ -299,6 +300,7 @@
     "direwolf": {
       "type": "apt",
       "bundle_group": "direwolf",
+      "bundle_base": "features/rtl-sdr/packages",
       "description": "Direwolf AX.25 packet modem — the RF (packet) transport behind Pat's AGWPE. Started on demand (hardware-exclusive with GrayWolf); see docs/plan-winlink.md.",
       "_note": "The bundler downloads only the packages named below (no dep-closure resolution). Direwolf's runtime deps (libhamlib*, libgps*, libasound2* — names differ bookworm vs trixie under the t64 transition) must be added to by_suite when bundling on the connected build machine, so the fully-offline `apt install ./*.deb` resolves. Most are already on a stock Pi OS image; libhamlib is the one to be sure of.",
       "packages": {

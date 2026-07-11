@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
 """
-GeekPi ZP-0129 Case — temperature-driven fan + status OLED + UPS Plus monitor.
+GeekPi ZP-0129 Case — status OLED + UPS Plus monitor + WS281x thermal LEDs.
 
 Drives the GeekPi ABS Mini Tower Kit (ZP-0129) on a Raspberry Pi 4/5:
-  • Fan          @ GPIO18 (BCM), on/off via gpiozero (lgpio backend, Pi 5-safe)
+  • WS281x strip @ GPIO18 (PWM0) — colour by CPU temp (green→amber→red)
   • SSD1306 OLED @ I2C 0x3c   (128x64, 1-bit)
   • UPS Plus     @ I2C 0x17   (EP-0136) — battery %, voltage, input source
 
-Fan uses temperature hysteresis (on/off). The OLED shows CPU%/temp/RAM, host,
-IP, and a UPS battery line. When on battery at/below SHUTDOWN_PCT for
-SHUTDOWN_SAMPLES consecutive reads, a safe `systemctl poweroff` is issued.
+The case fan is hardwired (always-on), so there is no fan control — the LED
+strip is the temperature indicator. The OLED shows CPU/temp/RAM, host, IP, and a
+UPS battery line. When on battery at/below SHUTDOWN_PCT for SHUTDOWN_SAMPLES
+consecutive reads, a safe `systemctl poweroff` is issued.
 
-Offline-first: apt deps only, inlined SSD1306 driver, no pip/CDN:
-    sudo apt install -y python3-pil python3-smbus i2c-tools python3-gpiozero python3-lgpio
+WS281x on GPIO18 uses PWM/DMA and needs root — the systemd unit runs as root.
+It conflicts with onboard PWM audio (blacklist snd_bcm2835; the installer does
+this). Offline-first: apt deps + a vendored rpi_ws281x wheel (installed
+--no-index), inlined SSD1306 driver, no CDN. Hardware libs (smbus, PIL,
+rpi_ws281x) are imported lazily so `--help` works off-Pi.
 
 Pure decision logic lives in geek_pi_case.py (same directory, unit-tested);
-this file is the hardware-I/O shell. Hardware libs are imported lazily so
-`--help` works off-Pi.
+this file is the hardware-I/O shell.
 """
 import argparse
 import os
@@ -33,13 +36,18 @@ import geek_pi_case as L
 I2C_BUS          = 1
 OLED_ADDR        = 0x3c
 UPS_ADDR         = L.UPS_ADDR          # 0x17
-FAN_GPIO         = 18                  # BCM pin driving the fan transistor
-FAN_ON           = 55.0               # °C — hysteresis high
-FAN_OFF          = 48.0               # °C — hysteresis low
-FAN_PWM          = False              # reserved; on/off only in v1
 SHUTDOWN_PCT     = 15                 # on-battery capacity % that triggers poweroff
 SHUTDOWN_SAMPLES = 3                  # consecutive low reads required first
-REFRESH_S        = 2.0                # OLED / fan / UPS cadence
+REFRESH_S        = 2.0                # OLED / LED / UPS cadence
+
+# ── WS281x LED strip (GPIO18 / PWM0) ──────────────────────────────────────────
+LED_COUNT        = 8                   # number of LEDs on the strip — SET to your real count
+LED_PIN          = 18                  # BCM GPIO (PWM0) — the ZP-0129 strip data line
+LED_FREQ         = 800000              # Hz (WS281x standard)
+LED_DMA          = 10                  # DMA channel
+LED_CHANNEL      = 0                   # PWM channel (0 for GPIO18)
+LED_INVERT       = False               # True only with an inverting level shifter
+LED_BRIGHTNESS   = 64                  # 0–255 master brightness
 
 OLED_W, OLED_H = 128, 64
 
@@ -120,10 +128,28 @@ def local_ip():
         s.close()
 
 
-# ── Fan (GPIO18 via gpiozero / lgpio) ─────────────────────────────────────────
-def make_fan():
-    from gpiozero import OutputDevice
-    return OutputDevice(FAN_GPIO, active_high=True, initial_value=False)
+# ── WS281x LED strip (GPIO18 via rpi_ws281x — PWM/DMA, needs root) ────────────
+def make_strip():
+    from rpi_ws281x import PixelStrip
+    strip = PixelStrip(LED_COUNT, LED_PIN, LED_FREQ, LED_DMA, LED_INVERT,
+                       LED_BRIGHTNESS, LED_CHANNEL)
+    strip.begin()
+    return strip
+
+def set_strip(strip, rgb):
+    """Paint every LED the same (R, G, B)."""
+    from rpi_ws281x import Color
+    c = Color(rgb[0], rgb[1], rgb[2])
+    for i in range(strip.numPixels()):
+        strip.setPixelColor(i, c)
+    strip.show()
+
+def parse_hex_color(s):
+    """'FF8800' / '#ff8800' -> (255, 136, 0)."""
+    s = s.strip().lstrip("#")
+    if len(s) != 6 or any(c not in "0123456789abcdefABCDEF" for c in s):
+        raise ValueError(f"colour must be 6 hex digits (RRGGBB), got '{s}'")
+    return int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
 
 
 # ── UPS Plus (I2C 0x17) ───────────────────────────────────────────────────────
@@ -155,14 +181,19 @@ def run_daemon():
     oled.clear()
     font = ImageFont.load_default()
     host = socket.gethostname()
-    fan  = make_fan()
-    fan_state = None
+    try:
+        strip = make_strip()
+    except Exception as e:
+        strip = None
+        print(f"[geek-pi-case] LED strip unavailable ({e}); running OLED+UPS only",
+              file=sys.stderr)
     guard = L.ShutdownGuard(pct=SHUTDOWN_PCT, samples=SHUTDOWN_SAMPLES)
     cpu_pct()  # prime the /proc/stat baseline
 
     def shutdown(*_):
         try:
-            fan.on()          # fail-safe: leave cooling running
+            if strip is not None:
+                set_strip(strip, (0, 0, 0))   # blank the LEDs on exit
             oled.clear()
         except Exception:
             pass
@@ -172,18 +203,19 @@ def run_daemon():
 
     while True:
         t = cpu_temp()
-        desired = L.fan_decision(t, fan_state, FAN_ON, FAN_OFF)
-        if desired != fan_state:
-            fan.on() if desired else fan.off()
-            fan_state = desired
+        if strip is not None:
+            try:
+                set_strip(strip, L.temp_colour(t))
+            except Exception:
+                pass
 
         ups = read_ups(bus)
 
         img = Image.new("1", (OLED_W, OLED_H), 0)
         d = ImageDraw.Draw(img)
         d.text((0, 0),  L.format_stats_line(cpu_pct(), t, ram_pct()), font=font, fill=1)
-        d.text((0, 16), host[:20], font=font, fill=1)
-        d.text((0, 32), local_ip(), font=font, fill=1)
+        d.text((0, 16), f"HOST: {host[:20]}", font=font, fill=1)
+        d.text((0, 32), f"IP: {local_ip()}", font=font, fill=1)
         if ups is not None:
             d.text((0, 48), L.format_ups_line(ups["capacity"], ups["batt_mv"], ups["on_batt"]),
                    font=font, fill=1)
@@ -206,7 +238,8 @@ def one_shot_check():
     import smbus
     bus = smbus.SMBus(I2C_BUS)
     t = cpu_temp()
-    print(f"cpu temp : {t:.1f} C   fan would be: {'ON' if L.fan_decision(t, None, FAN_ON, FAN_OFF) else 'off'}")
+    r, g, b = L.temp_colour(t)
+    print(f"cpu temp : {t:.1f} C   LED colour: #{r:02X}{g:02X}{b:02X}")
     ups = read_ups(bus)
     if ups is None:
         print("ups      : not readable on I2C 0x17")
@@ -214,26 +247,34 @@ def one_shot_check():
         print(f"ups      : {L.format_ups_line(ups['capacity'], ups['batt_mv'], ups['on_batt'])}  "
               f"({ups['temp_c']} C, {'battery' if ups['on_batt'] else 'mains'})")
 
-def one_shot_fan(state):
-    fan = make_fan()
-    fan.on() if state == "on" else fan.off()
-    print(f"fan → {state}")
-    # gpiozero releases the pin on process exit; hold briefly so the write lands.
-    time.sleep(0.2)
+def one_shot_led(spec):
+    strip = make_strip()
+    rgb = (0, 0, 0) if spec == "off" else parse_hex_color(spec)
+    set_strip(strip, rgb)
+    print(f"led → {'off' if spec == 'off' else '#' + spec.lstrip('#')}")
+    time.sleep(0.2)   # let the DMA transfer land before the process exits
 
 
 def main():
     ap = argparse.ArgumentParser(
-        description="GeekPi ZP-0129 case daemon (fan + OLED + UPS). No args = run the daemon.",
+        description="GeekPi ZP-0129 case daemon (OLED + UPS + WS281x thermal LEDs). "
+                    "No args = run the daemon.",
     )
-    ap.add_argument("--check", action="store_true", help="Print CPU temp, fan intent, and UPS snapshot, then exit.")
-    ap.add_argument("--fan", choices=("on", "off"), help="Manually set the fan and exit (testing).")
+    ap.add_argument("--check", action="store_true",
+                    help="Print CPU temp, LED colour, and UPS snapshot, then exit.")
+    ap.add_argument("--color", metavar="RRGGBB",
+                    help="Set all LEDs to a hex colour and exit (testing; needs root).")
+    ap.add_argument("--off", action="store_true",
+                    help="Turn the LED strip off and exit (needs root).")
     args = ap.parse_args()
     if args.check:
         one_shot_check()
         return
-    if args.fan:
-        one_shot_fan(args.fan)
+    if args.color:
+        one_shot_led(args.color)
+        return
+    if args.off:
+        one_shot_led("off")
         return
     run_daemon()
 

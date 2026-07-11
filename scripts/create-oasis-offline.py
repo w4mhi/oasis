@@ -54,7 +54,7 @@ Build phases (run automatically unless --check):
   Phase 2 — GrayWolf .deb       oasis-offline/offline-packages/graywolf/
   Phase 3 — Kiwix binaries      oasis-offline/offline-packages/kiwix/
   Phase 4 — FCC database        oasis-offline/fcc-offline-database/data/
-  Phase 5 — RTL-SDR .deb        oasis-offline/offline-packages/rtl-sdr/<suite>/
+  Phase 5 — RTL-SDR .deb        oasis-offline/features/rtl-sdr/packages/rtl-sdr/<suite>/  (feature-local)
   Phase 6 — webssh ttyd binary  oasis-offline/offline-packages/webssh/
   Phase 7 — Pat (Winlink) .deb  oasis-offline/offline-packages/pat/
   Phase 8 — Wikipedia (Best of Wikipedia Mini)  oasis-offline/zim/  (~316 MB, 50K articles)
@@ -144,7 +144,9 @@ BUNDLE_IGNORE_EXTRA = {"windows": os.path.join(_SCRIPTS_DIR, "bundle-ignore.wind
 # runtime/launcher/manifest builders instead, so they must survive an incremental
 # build_copy untouched — matched against a dest-relative path or any of its parents.
 PRESERVE_IN_DEST = {
-    "offline-packages",      # graywolf / kiwix / rtl-sdr / webssh / pat / direwolf / cm4stack
+    "offline-packages",      # graywolf / kiwix / webssh / pat (shared central tree)
+    "features/rtl-sdr/packages",  # feature-local: rtl-sdr + direwolf .debs (bundle_base)
+    "displays/cm4stack/packages", # feature-local: m5stack-cm4.dtbo
     "server/wheels",         # phase_wheels
     "server/map-assets",     # phase_aprs_sprites
     "fcc-offline-database",  # phase_fcc
@@ -504,7 +506,7 @@ def phase_aprs_sprites(map_assets_dir):
 #   rtl-sdr-diag   — multimon-ng (best-effort, diagnostic only)
 #
 # Each is vendored per suite per arch into:
-#   offline-packages/rtl-sdr/<suite>/  (M.bundle_dir uses bundle_group "rtl-sdr")
+#   features/rtl-sdr/packages/rtl-sdr/<suite>/  (bundle_base + bundle_group "rtl-sdr")
 #
 # The "up to date" check is now per-suite, keyed on suite-correct package names.
 
@@ -594,7 +596,7 @@ def phase_rtl_sdr(bundle_root, update=False):
 # ── Phase 5b: Direwolf (Winlink RF modem) Debian packages (suite-aware) ────────
 #
 # The Winlink RF transport. Vendored per suite per arch into
-#   offline-packages/direwolf/<suite>/   (bundle_group "direwolf")
+#   features/rtl-sdr/packages/direwolf/<suite>/   (bundle_base + bundle_group "direwolf")
 # Only the packages the manifest names are fetched — no dependency-closure
 # resolution — so Direwolf's runtime deps (libhamlib*, etc.) must be curated in
 # the manifest's by_suite list on the connected build machine (see the feature
@@ -865,12 +867,14 @@ M5STACK_OVERLAY_URL = (
 
 
 def phase_cm4stack(bundle_root, update=False):
-    """Download m5stack-cm4.dtbo into offline-packages/cm4stack/ for offline install.
+    """Download m5stack-cm4.dtbo into displays/cm4stack/packages/ for offline install.
 
     Single arch-independent file (a device-tree overlay), so no suite/arch split.
     Incremental: skips if already present; a clean --rebuild re-fetches it.
+    Feature-local: kept inside displays/cm4stack/ so removing the feature dir removes
+    it. bundle_root is <out>/offline-packages, so go up one to the bundle root.
     """
-    dest_dir = os.path.join(bundle_root, "cm4stack")
+    dest_dir = os.path.join(os.path.dirname(bundle_root), "displays", "cm4stack", "packages")
     dest     = os.path.join(dest_dir, "m5stack-cm4.dtbo")
 
     _section("Phase — CM4Stack panel overlay")

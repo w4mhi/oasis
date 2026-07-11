@@ -72,7 +72,7 @@ no userspace display library, no hand-built `panel.bin`.
 (`github.com/m5stack/m5stack-linux-dtoverlays/tree/main/overlays/cm4stack/bin`)
 and is **not** in the stock Pi image. It is **not** committed to the OASIS repo;
 `scripts/create-oasis-offline.py` downloads it at build time into
-`offline-packages/cm4stack/`, and `displays/cm4stack/install-cm4stack.py` installs it into
+`displays/cm4stack/packages/`, and `displays/cm4stack/install-cm4stack.py` installs it into
 **`/boot/firmware/overlays/`** on every run — so a fresh image and a
 kernel/firmware update that wipes it are both handled offline, no `git clone`/`make`
 needed. (A `.dtbo` is a compiled device-tree blob — kernel-portable, unlike the

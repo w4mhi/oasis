@@ -386,13 +386,18 @@ def _debian_suite():
 
 
 def _direwolf_bundle_debs(repo_root):
-    """Bundled direwolf .deb paths for this suite (offline-packages/direwolf/
-    <suite>/, then the flat dir), or []."""
+    """Bundled direwolf .deb paths for this suite, or [].
+
+    Resolved via manifest.bundle_dir so it follows direwolf's location (now
+    feature-local under features/rtl-sdr/packages/direwolf/<suite>/). Checks the
+    suite-scoped dir first, then the flat group dir."""
     if not repo_root:
         return []
     suite = _debian_suite()
-    base  = os.path.join(repo_root, "offline-packages", "direwolf")
-    for d in ([os.path.join(base, suite)] if suite else []) + [base]:
+    pkg_root = os.path.join(repo_root, "offline-packages")
+    cand = ([M.bundle_dir(pkg_root, "direwolf", suite)] if suite else []) \
+         + [M.bundle_dir(pkg_root, "direwolf")]
+    for d in cand:
         if os.path.isdir(d):
             debs = [os.path.join(d, f) for f in sorted(os.listdir(d))
                     if f.endswith(".deb") and not f.startswith("._")]
@@ -412,7 +417,7 @@ def install_direwolf(repo_root=None):
 
     debs = _direwolf_bundle_debs(repo_root)
     if debs:
-        _info(f"Installing {len(debs)} bundled package(s) from offline-packages/direwolf/ ...")
+        _info(f"Installing {len(debs)} bundled direwolf package(s) ...")
         # `apt install ./*.deb` resolves deps from the bundled set + what's on the image.
         if (_run(["sudo", "apt", "install", "--no-install-recommends", "-y", *debs],
                  check=False).returncode == 0 and dpkg_installed_version("direwolf")):

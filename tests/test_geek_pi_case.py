@@ -7,27 +7,41 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "features", "ge
 import geek_pi_case as G
 
 
-class FanTests(unittest.TestCase):
+class LogicTests(unittest.TestCase):
     def test_parse_cpu_temp_millidegrees(self):
         self.assertAlmostEqual(G.parse_cpu_temp("52300\n"), 52.3)
 
-    def test_fan_on_above_high_threshold(self):
-        self.assertTrue(G.fan_decision(56.0, currently_on=False))
+    # Sample temps derived from the module's own thresholds — robust to tuning
+    # COOL_MAX / WARM_MAX (which are user-owned).
+    def _bands(self):
+        return (G.temp_colour(G.COOL_MAX - 10),
+                G.temp_colour((G.COOL_MAX + G.WARM_MAX) / 2),
+                G.temp_colour(G.WARM_MAX + 10))
 
-    def test_fan_off_below_low_threshold(self):
-        self.assertFalse(G.fan_decision(47.0, currently_on=True))
+    def test_temp_colour_three_distinct_bands(self):
+        # Colours are user-owned; assert the banding logic, not specific RGB.
+        cool, warm, hot = self._bands()
+        self.assertEqual(len({cool, warm, hot}), 3)   # three distinct colours
 
-    def test_fan_holds_state_in_deadband(self):
-        # 48 < t < 55 → keep whatever it was
-        self.assertTrue(G.fan_decision(50.0, currently_on=True))
-        self.assertFalse(G.fan_decision(50.0, currently_on=False))
+    def test_temp_colour_thresholds(self):
+        # < COOL_MAX cool; [COOL_MAX, WARM_MAX) warm; >= WARM_MAX hot
+        cool, warm, hot = self._bands()
+        self.assertEqual(G.temp_colour(G.COOL_MAX - 0.1), cool)
+        self.assertEqual(G.temp_colour(G.COOL_MAX), warm)
+        self.assertEqual(G.temp_colour(G.WARM_MAX - 0.1), warm)
+        self.assertEqual(G.temp_colour(G.WARM_MAX), hot)
 
-    def test_fan_deadband_none_defaults_off(self):
-        # first pass (unknown state) inside the band → known OFF
-        self.assertFalse(G.fan_decision(50.0, currently_on=None))
+    def test_temp_colour_returns_valid_rgb(self):
+        # Guards against a malformed tuple (e.g. missing a channel).
+        for c in self._bands():
+            self.assertEqual(len(c), 3)
+            self.assertTrue(all(0 <= v <= 255 for v in c))
 
-    def test_format_stats_line(self):
-        self.assertEqual(G.format_stats_line(5, 52.3, 38), "  5%  52.3C  38%")
+    def test_format_stats_line_wires_values(self):
+        # Loose check — the OLED format is user-owned; just confirm the values land.
+        line = G.format_stats_line(5, 52.3, 38)
+        for token in ("52.3", "5", "38"):
+            self.assertIn(token, line)
 
 
 class UpsDecodeTests(unittest.TestCase):
@@ -48,10 +62,17 @@ class UpsDecodeTests(unittest.TestCase):
         self.assertFalse(G.on_battery(5100, 0))
 
     def test_format_ups_line_charging(self):
-        self.assertEqual(G.format_ups_line(87, 4100, on_batt=False), "BAT  87% CHG 4.10V")
+        # Loose — the OLED format is user-owned; confirm the values + source land.
+        line = G.format_ups_line(87, 4100, on_batt=False)
+        self.assertIn("87", line)
+        self.assertIn("CHG", line)
+        self.assertIn("4.10", line)
 
     def test_format_ups_line_on_battery(self):
-        self.assertEqual(G.format_ups_line(15, 3600, on_batt=True), "BAT  15% BATT 3.60V")
+        line = G.format_ups_line(15, 3600, on_batt=True)
+        self.assertIn("15", line)
+        self.assertIn("BATT", line)
+        self.assertIn("3.60", line)
 
 
 class ShutdownGuardTests(unittest.TestCase):

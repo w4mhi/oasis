@@ -8,7 +8,7 @@ Debian/Ubuntu Linux system. Call run() to perform the install.
 What this does:
   1. Detects your architecture and Debian suite (bookworm / bullseye)
   2. Installs: rtl-sdr, librtlsdr2 (or librtlsdr0), libusb-1.0-0
-     from offline-packages/rtl-sdr/ if bundled packages are present,
+     from features/rtl-sdr/packages/ if bundled packages are present,
      otherwise falls back to apt (internet required)
   3. Installs the feed tools socat + tcpdump and the multimon-ng AFSK1200 decoder
      (same offline-first / apt logic) — socat carries the SDR audio into GrayWolf,
@@ -26,7 +26,7 @@ After install, plug in your RTL-SDR dongle and run:
 Supported hardware: RTL2832U-based USB dongles (RTL-SDR Blog V3/V4, Nooelec, etc.)
 
 Install source is chosen automatically: bundled .deb packages in
-offline-packages/rtl-sdr/ are used when present (fully offline); otherwise
+features/rtl-sdr/packages/ are used when present (fully offline); otherwise
 apt is used (internet required). If a package can't be installed, the error
 is logged and the script continues with the remaining steps.
 
@@ -54,7 +54,7 @@ from common import manifest as M
 # features/rtl-sdr/rtl_sdr.py → repo root is three levels up (features/rtl-sdr → features → repo).
 REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PKG_ROOT    = os.path.join(REPO_ROOT, "offline-packages")
-# Suite-aware: main() repoints this at offline-packages/rtl-sdr/<suite>/ once the
+# Suite-aware: main() repoints this at features/rtl-sdr/packages/rtl-sdr/<suite>/ once the
 # host suite is known. Defaults to the legacy flat dir for back-compat.
 OFFLINE_DIR = os.path.join(PKG_ROOT, "rtl-sdr")
 
@@ -535,7 +535,7 @@ def run():
     _step(2, "Detecting Debian suite")
     suite = detect_suite()
 
-    # Prefer the per-suite bundle dir (offline-packages/rtl-sdr/<suite>/); fall
+    # Prefer the per-suite bundle dir (features/rtl-sdr/packages/rtl-sdr/<suite>/); fall
     # back to the legacy flat dir so older bundles still install.
     global OFFLINE_DIR
     suite_dir  = M.bundle_dir(PKG_ROOT, "rtl-sdr", suite)

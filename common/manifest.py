@@ -137,16 +137,35 @@ def bundle_group(feature, m=None):
     return get_feature(feature, m).get("bundle_group", feature)
 
 
+def bundle_base(feature, m=None):
+    """Repo/bundle-relative base dir for a feature's vendored packages.
+
+    Default (None) → the shared 'offline-packages' tree. A feature may set
+    'bundle_base' (e.g. 'features/rtl-sdr/packages') to keep its packages inside
+    its own directory, so deleting the feature dir removes them cleanly.
+    """
+    return get_feature(feature, m).get("bundle_base")
+
+
 def bundle_dir(root, feature, suite=None, m=None):
     """Path to a feature's vendored packages inside bundle *root*.
 
-    Suite-scoped for apt features: <root>/<group>/<suite> (so a bookworm and a
+    Suite-scoped for apt features: <base>/<group>/<suite> (so a bookworm and a
     trixie set never collide). Pass suite=None for non-apt features
-    (github-release / url / pypi), giving <root>/<group>. Both the BUILDER (writes
+    (github-release / url / pypi), giving <base>/<group>. Both the BUILDER (writes
     here) and the INSTALLER (reads here) must call this — it is the one place the
     bundle layout is defined.
+
+    *root* is always a '<bundle/repo root>/offline-packages' path. If the feature
+    sets 'bundle_base', its packages are relocated under that feature-local base
+    instead: we recover the bundle/repo root as os.path.dirname(root) and join the
+    base (self-contained removal). Otherwise packages stay under 'offline-packages'.
     """
-    parts = [root, bundle_group(feature, m)]
+    base = bundle_base(feature, m)
+    if base:
+        parts = [os.path.dirname(root), base, bundle_group(feature, m)]
+    else:
+        parts = [root, bundle_group(feature, m)]
     if suite is not None:
         parts.append(suite)
     return os.path.join(*parts)

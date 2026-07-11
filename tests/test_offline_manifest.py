@@ -284,6 +284,22 @@ class TestManifestSanity(unittest.TestCase):
         self.assertNotIn("bookworm", d)
         self.assertNotIn("trixie", d)
 
+    def test_bundle_dir_feature_local_uses_bundle_base(self):
+        # rtl-sdr sets bundle_base → packages live under the feature dir. The
+        # bundle/repo root is recovered as the parent of the offline-packages root.
+        p = M.bundle_dir("/bundle/offline-packages", "rtl-sdr", suite="bookworm", m=self.m)
+        self.assertEqual(
+            p, os.path.join("/bundle", "features/rtl-sdr/packages", "rtl-sdr", "bookworm"))
+        # direwolf shares the same feature-local base (both live in features/rtl-sdr/).
+        d = M.bundle_dir("/bundle/offline-packages", "direwolf", suite="bookworm", m=self.m)
+        self.assertEqual(
+            d, os.path.join("/bundle", "features/rtl-sdr/packages", "direwolf", "bookworm"))
+
+    def test_bundle_dir_central_default_unchanged(self):
+        # A feature without bundle_base stays under offline-packages (root used as-is).
+        p = M.bundle_dir("/bundle/offline-packages", "graywolf", m=self.m)
+        self.assertEqual(p, os.path.join("/bundle/offline-packages", "graywolf"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -258,5 +258,14 @@ class SaveResultTests(unittest.TestCase):
         self.assertEqual(data[0]["gain"], 32.8)
 
 
+class ConfTemplateTests(unittest.TestCase):
+    def test_conf_declares_null_output_device(self):
+        # Regression: the RX-only bench must not depend on a real audio output
+        # device — Direwolf 1.7 won't start without one, and a headless Pi has
+        # no ALSA 'default'. The generated conf pins output to null.
+        conf = S.SDR_CONF_TEMPLATE.format(logdir="/tmp/x")
+        self.assertIn("ADEVICE - null", conf)
+
+
 if __name__ == "__main__":
     unittest.main()

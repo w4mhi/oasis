@@ -56,6 +56,16 @@ oasis-offline-windows/
 # Never checked in; populated at bundle-build time.
 server/wheels/*.whl
 
+# Feature-local vendored wheels (e.g. features/geek-pi-case/wheels/rpi_ws281x-*.whl).
+# Kept in the feature dir for clean removal; bundled into the offline image, not git.
+features/*/wheels/*.whl
+
+# Feature-local vendored packages (e.g. features/rtl-sdr/packages/{rtl-sdr,direwolf}/<suite>/*.deb,
+# displays/cm4stack/packages/m5stack-cm4.dtbo). Co-located with the feature for
+# clean removal; bundled into the offline image, not git.
+features/*/packages/**/*.deb
+displays/*/packages/**/*.dtbo
+
 # Offline binary packages — downloaded by scripts/create-oasis-offline.py.
 # Entire tree is excluded; scripts install from oasis-offline/ or the internet.
 offline-packages/

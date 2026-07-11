@@ -86,10 +86,11 @@ PANEL_SCRIPT = os.path.join(REPO_ROOT, "displays", "cm4stack", "oasis-panel.py")
 # aw882xx .ko, §7) — so one binary is safe and durable. The stock Pi image does
 # not include it, and a kernel/firmware update can wipe a hand-copied one;
 # installing from here on every run covers both, fully offline. create-oasis-offline
-# downloads it into offline-packages/cm4stack/ (not committed to the repo); the
-# other paths are manual-drop fallbacks. Checked in order.
+# downloads it into this feature's own displays/cm4stack/packages/ (not committed
+# to the repo) — feature-local, so removing displays/cm4stack/ removes it; the other
+# paths are manual-drop fallbacks. Checked in order.
 VENDORED_M5_OVERLAY_CANDIDATES = (
-    os.path.join(REPO_ROOT, "offline-packages", "cm4stack", "m5stack-cm4.dtbo"),
+    os.path.join(REPO_ROOT, "displays", "cm4stack", "packages", "m5stack-cm4.dtbo"),
     os.path.join(REPO_ROOT, "displays", "cm4stack", "overlays", "m5stack-cm4.dtbo"),
     os.path.join(REPO_ROOT, "displays", "cm4stack", "m5stack-cm4.dtbo"),
 )

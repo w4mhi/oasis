@@ -6,8 +6,9 @@ and byte-compiled in CI. The I/O shell lives in
 features/geek-pi-case/geek-pi-case.py.
 """
 
-FAN_ON_DEFAULT  = 55.0
-FAN_OFF_DEFAULT = 48.0
+# LED thermal-colour thresholds (°C). Mirrors the RGB Cooling HAT mapping.
+COOL_MAX = 50.0   # below this → blue
+WARM_MAX = 68.0   # below this → amber; at/above → red
 
 
 def parse_cpu_temp(raw):
@@ -15,22 +16,23 @@ def parse_cpu_temp(raw):
     return int(str(raw).strip()) / 1000.0
 
 
-def fan_decision(temp_c, currently_on, fan_on=FAN_ON_DEFAULT, fan_off=FAN_OFF_DEFAULT):
-    """Desired fan on/off from temperature, with hysteresis.
+def temp_colour(temp_c, cool_max=COOL_MAX, warm_max=WARM_MAX):
+    """Thermal (R, G, B) for the WS281x strip, by CPU temperature.
 
-    >= fan_on  → on; <= fan_off → off; inside the dead-band → hold current
-    state. currently_on=None (boot/first pass) resolves the dead-band to OFF.
+    green below cool_max → amber below warm_max → red at/above. Same mapping the
+    RGB Cooling HAT uses. (The ZP-0129 fan is hardwired always-on; the strip is
+    the only temperature indicator we drive.)
     """
-    if temp_c >= fan_on:
-        return True
-    if temp_c <= fan_off:
-        return False
-    return bool(currently_on) if currently_on is not None else False
+    if temp_c < cool_max:
+        return (0, 0, 255)      # cool — blue
+    if temp_c < warm_max:
+        return (255, 110, 0)    # warm — amber
+    return (255, 0, 0)          # hot — red
 
 
 def format_stats_line(cpu_pct, temp_c, ram_pct):
     """One OLED line: 'ccc% tt.tC rrr%' — CPU busy %, CPU temp, RAM used %."""
-    return f"{cpu_pct:>3.0f}%  {temp_c:>4.1f}C {ram_pct:>3.0f}%"
+    return f"SYS: {cpu_pct:>3.0f}% / {ram_pct:>3.0f}% - T: {temp_c:>4.1f}C"
 
 
 # ── UPS Plus (EP-0136) — I2C 0x17, little-endian word registers (low byte addr) ──
@@ -63,7 +65,7 @@ def on_battery(usb_c_mv, micro_usb_mv, threshold_mv=ON_BATTERY_MV):
 def format_ups_line(capacity_pct, batt_mv, on_batt):
     """One OLED line: 'BAT  nn% SRC v.vvV' (SRC = BATT on battery, CHG on mains)."""
     src = "BATT" if on_batt else "CHG"
-    return f"BAT {capacity_pct:>3d}% {src} {batt_mv / 1000:.2f}V"
+    return f"BAT: {capacity_pct:>3d}% - {src}: {batt_mv / 1000:.2f}V"
 
 
 class ShutdownGuard:
