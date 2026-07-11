@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # tests/test_geek_pi_case.py — plain unittest (no pytest; offline wheel set is flask-only).
 import os
 import sys

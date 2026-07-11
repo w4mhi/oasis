@@ -448,28 +448,44 @@ def interactive_select():
 
 # ── Run ─────────────────────────────────────────────────────────────────────────
 def ensure_scripts_executable():
-    """Add the executable bit to every scripts/*.py (and this orchestrator).
+    """Add the executable bit to every repo *.py that declares a #! shebang.
 
-    A fresh clone/zip can land some scripts without +x, which breaks running
-    them directly (./scripts/foo.py), doc steps, and systemd ExecStarts that
-    call the file by path. Equivalent to `chmod +x scripts/*.py`; idempotent.
+    A fresh clone/zip — or a file relocated during refactoring — can land a
+    runnable script without +x, which breaks running it directly (./path/foo.py),
+    doc steps, and systemd ExecStarts that call the file by path. We walk the
+    whole repo (not just scripts/) so entry points under common/, features/*/,
+    displays/*/, tests/, etc. are covered too. Only files whose first two bytes
+    are '#!' are touched — import-only libraries (common/oasis_lib.py, the
+    pure-logic feature modules) and package markers (__init__.py) have no shebang
+    and stay non-executable. No git dependency (works from a zip). Idempotent.
     """
-    import glob
     import stat
-    targets = glob.glob(os.path.join(SCRIPTS_DIR, "*.py"))
-    targets.append(os.path.abspath(__file__))
+    repo_root = os.path.dirname(os.path.abspath(__file__))
+    skip_dirs = {"__pycache__", "oasis-offline", "offline-packages",
+                 "node_modules", "specs"}
     fixed = 0
-    for p in targets:
-        try:
-            mode = os.stat(p).st_mode
-            want = mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
-            if want != mode:
-                os.chmod(p, want)
-                fixed += 1
-        except OSError:
-            pass   # missing/permission — not fatal, scripts also run via python3
+    for dirpath, dirnames, filenames in os.walk(repo_root):
+        # Skip build/vendored trees and every dot-dir (.git, .venv, .claude/
+        # worktrees, …) so we never chmod files in an unrelated checkout.
+        dirnames[:] = [d for d in dirnames
+                       if d not in skip_dirs and not d.startswith(".")]
+        for fn in filenames:
+            if not fn.endswith(".py"):
+                continue
+            p = os.path.join(dirpath, fn)
+            try:
+                with open(p, "rb") as fh:
+                    if fh.read(2) != b"#!":
+                        continue          # no shebang → not meant to run by path
+                mode = os.stat(p).st_mode
+                want = mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+                if want != mode:
+                    os.chmod(p, want)
+                    fixed += 1
+            except OSError:
+                pass   # missing/permission — not fatal, scripts also run via python3
     if fixed:
-        _ok(f"Made {fixed} script(s) executable (chmod +x scripts/*.py)")
+        _ok(f"Made {fixed} script(s) executable (chmod +x on shebang'd *.py)")
 
 
 def run_feature(f):

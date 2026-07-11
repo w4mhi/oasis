@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # tests/test_sdr_tune.py — plain unittest (no pytest; offline wheel set is flask-only).
 import importlib.util
 import json
