@@ -152,7 +152,7 @@ After=graywolf.service
 Wants=graywolf.service
 
 [Service]
-ExecStart=/bin/sh -c 'rtl_fm -f 144.390M -M fm -s 48000 -g 40 -p 0 - | socat -u -b 1920 - UDP-SENDTO:127.0.0.1:7355'
+ExecStart=/bin/sh -c 'rtl_fm -f 144.390M -M fm -s 48000 -g 32.8 -p 0 - | socat -u -b 1920 - UDP-SENDTO:127.0.0.1:7355'
 Restart=always
 RestartSec=5
 
@@ -209,14 +209,14 @@ rtl_test -t
 #    confirms you have an R820T. Device-found + gain table = success.
 
 # 2. Demod produces live audio — measured, no speakers needed.
-rtl_fm -f 144.390M -M fm -s 48000 -g 40 - | python3 ./rmsmeter.py
+rtl_fm -f 144.390M -M fm -s 48000 -g 32.8 - | python3 ./rmsmeter.py
 #    rmsmeter.py reads S16LE from stdin and prints a moving RMS. A steady non-zero
 #    floor that VARIES = live audio (on oasis: ~1450 with squelch-open hiss).
 #    Banner: confirm "Output at 48000 Hz". (rmsmeter.py source is at the end of
 #    this doc.)
 
 # 3. Feed reaches the socket AND GrayWolf is listening.
-rtl_fm -f 144.390M -M fm -s 48000 -g 40 - | socat -u -b 1920 - UDP-SENDTO:127.0.0.1:7355
+rtl_fm -f 144.390M -M fm -s 48000 -g 32.8 - | socat -u -b 1920 - UDP-SENDTO:127.0.0.1:7355
 sudo tcpdump -ni lo udp port 7355     # packets streaming = feed is emitting
 sudo ss -lunp | grep 7355             # shows graywolf-modem bound = it's listening
 
@@ -274,7 +274,7 @@ decoder. Stop the feed first — only one process can own the dongle:
 
 ```bash
 sudo systemctl stop aprs-sdr-feed.service
-rtl_fm -f 144.390M -M fm -s 48000 -g 40 -p 0 - | multimon-ng -t raw -a AFSK1200 -
+rtl_fm -f 144.390M -M fm -s 48000 -g 32.8 -p 0 - | multimon-ng -t raw -a AFSK1200 -
 ```
 
 - **Packets here but not in GrayWolf** → it's GrayWolf config: `sample_rate` must

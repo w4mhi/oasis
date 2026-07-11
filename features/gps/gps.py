@@ -120,9 +120,16 @@ def configure_chrony():
         return
     lines = [CHRONY_MARK,
              "refclock SHM 0 refid GPS precision 1e-1 offset 0.0 delay 0.2"]
+    # PPS via gpsd's SHM segment 1, NOT the raw /dev/pps0 device. A raw
+    # `refclock PPS /dev/pps0` is a *fatal* chronyd error when the node is
+    # missing, and with pps_ldisc the node only appears after gpsd attaches it —
+    # so at boot chrony starts first and dies (works only on a later manual
+    # restart). An SHM refclock never fatally fails: gpsd (which owns the PPS)
+    # relays it on SHM 1, and until that's ready chrony simply gets no PPS
+    # samples and runs on SHM 0. /dev/pps0 here is only a "this box has PPS" hint.
     if os.path.exists("/dev/pps0"):
-        lines.append("refclock PPS /dev/pps0 refid PPS lock GPS")
-        _info("PPS device found — adding a PPS refclock (sub-100 ms).")
+        lines.append("refclock SHM 1 refid PPS precision 1e-7 lock GPS")
+        _info("PPS device found — adding a gpsd-SHM PPS refclock (boot-safe).")
     if _sudo_write(CHRONY_CONF, "\n" + "\n".join(lines) + "\n", append=True):
         _ok("Added GPS refclock to chrony.conf (the step most setups miss).")
     else:

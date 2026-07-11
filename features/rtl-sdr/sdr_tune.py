@@ -8,10 +8,15 @@ import re
 from collections import namedtuple
 
 
-def build_pipeline(freq, gain, ppm, vol, srate, conf_path):
+def build_pipeline(freq, gain, ppm, vol, srate, conf_path, fir=0):
     """The rtl_fm | sox | direwolf shell pipeline. srate (24000/48000) drives
-    rtl_fm -s, sox -r, and direwolf -r together — they must always match."""
-    rtl = f"rtl_fm -M fm -f {freq} -s {srate} -F 0 -g {gain} -p {ppm} -"
+    rtl_fm -s, sox -r, and direwolf -r together — they must always match.
+
+    fir is rtl_fm's -F down-sample FIR: 0 = off (plain decimation), 9 = the
+    9-tap low-leakage filter (cleaner passband, less aliasing, more CPU). Only
+    0 and 9 are meaningful to rtl_fm, but the bench exposes the whole 0–9 range
+    so the operator can A/B any value against the live decode count."""
+    rtl = f"rtl_fm -M fm -f {freq} -s {srate} -F {fir} -g {gain} -p {ppm} -"
     sox = (f"sox -t raw -r {srate} -e signed-integer -b 16 -c 1 - "
            f"-t raw - vol {vol}")
     # -a 2: Direwolf prints an audio-device stats line every 2 s (approx sample
@@ -143,11 +148,14 @@ def format_bar(level, width=27):
 
 
 # Matches features/rtl-sdr/enable-rtl-sdr.py: SAMPLE_RATE 48000, DATAGRAM 1920, port 7355.
-def build_feed_command(freq, gain, ppm, port=7355):
+def build_feed_command(freq, gain, ppm, fir=0, port=7355):
     """The GrayWolf feed command as it belongs in aprs-sdr-feed.service.
-    Always -s 48000 (GrayWolf's sample_rate) and no sox — only gain/ppm carry
-    over from the bench (both RF-domain, sample-rate-independent)."""
-    return (f"rtl_fm -f {freq} -M fm -s 48000 -g {gain} -p {ppm} - "
+    Always -s 48000 (GrayWolf's sample_rate) and no sox — only gain/ppm/fir
+    carry over from the bench (all RF/decimation-domain, sample-rate-agnostic).
+    fir is rtl_fm's -F down-sample FIR; only emitted when non-zero so the default
+    command is unchanged (note: -F 9 costs CPU — measure it on the Pi first)."""
+    fir_opt = f"-F {fir} " if fir else ""
+    return (f"rtl_fm -f {freq} -M fm -s 48000 {fir_opt}-g {gain} -p {ppm} - "
             f"| socat -u -b 1920 - UDP-SENDTO:127.0.0.1:{port}")
 
 

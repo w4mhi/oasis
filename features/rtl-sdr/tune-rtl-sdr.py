@@ -5,7 +5,8 @@ tune-rtl-sdr.py
 Interactive RTL-SDR APRS tuning bench (curses TUI, run over SSH on the Pi).
 
 Wraps  rtl_fm | sox | direwolf  and lets you live-adjust gain, sox volume, ppm,
-and the audio sample rate (24k/48k) while watching Direwolf's 46(6/6) audio-level
+the audio sample rate (24k/48k), and rtl_fm's -F down-sample FIR (0–9) while
+watching Direwolf's 46(6/6) audio-level
 feedback as a banded bar graph, plus a rolling decode count and recent callsigns.
 Press 's' to auto-sweep gain then ppm; 'w' to save the known-good settings and
 emit the exact GrayWolf feed command. Receive-only — an RTL-SDR cannot transmit.
@@ -68,11 +69,13 @@ def save_result(stdscr, state, decodes):
         "ppm": state.ppm,
         "vol": round(state.vol, 2),
         "srate": state.rate,
+        "fir": state.fir,
         "decodes_per_min": round(decodes * 2),   # 30 s window → per-minute
         "ts": datetime.datetime.now().isoformat(timespec="seconds"),
     }
     append_result(RESULTS_PATH, record)
-    feed = S.build_feed_command(state.freq, f"{state.gain:.1f}", state.ppm)
+    feed = S.build_feed_command(state.freq, f"{state.gain:.1f}", state.ppm,
+                                state.fir)
     _sweep_message(
         stdscr,
         "Saved to features/rtl-sdr/tune-results.json\n\n"
@@ -179,6 +182,10 @@ def build_argparser():
     p.add_argument("--rate", type=int, default=48000, choices=(24000, 48000),
                    help="Initial audio sample rate (default 48000, matches "
                         "GrayWolf's feed).")
+    p.add_argument("--fir", type=int, default=0, choices=range(0, 10),
+                   metavar="[0-9]",
+                   help="Initial rtl_fm -F down-sample FIR (0 = off, 9 = 9-tap "
+                        "low-leakage filter). Tune live with t/T.")
     p.add_argument("--conf", default=None,
                    help="Reuse an existing Direwolf conf instead of generating one.")
     return p
@@ -219,6 +226,7 @@ class State:
         self.ppm = args.ppm
         self.vol = float(args.vol)
         self.rate = args.rate
+        self.fir = args.fir
 
     @property
     def gain(self):
@@ -226,7 +234,8 @@ class State:
 
     def command(self):
         return S.build_pipeline(self.freq, f"{self.gain:.1f}", self.ppm,
-                                f"{self.vol:.2f}", self.rate, self.conf)
+                                f"{self.vol:.2f}", self.rate, self.conf,
+                                self.fir)
 
 
 def respawn(runner, state):
@@ -286,7 +295,8 @@ def run_tui(stdscr, args, conf_path, gains):
             stdscr.erase()
             stdscr.addstr(0, 1, f"APRS Tune — {state.freq}    "
                                 f"gain {state.gain:.1f}  vol {state.vol:.2f}  "
-                                f"ppm {state.ppm}  rate {state.rate // 1000}k")
+                                f"ppm {state.ppm}  rate {state.rate // 1000}k  "
+                                f"fir {state.fir}")
             stdscr.addstr(1, 1, "─" * 60)
             bar = S.format_bar(last_level.level)
             stdscr.addstr(2, 1, f"level {last_level.level:3d}  ")
@@ -322,8 +332,8 @@ def run_tui(stdscr, args, conf_path, gains):
             h, _w = stdscr.getmaxyx()
             stdscr.addstr(11, 1, "─" * 60)
             if h > 12:
-                stdscr.addstr(12, 1, "g/G gain  v/V vol  p/P ppm  r rate  "
-                                     "f freq  s sweep  w save  q quit")
+                stdscr.addstr(12, 1, "g/G gain  v/V vol  p/P ppm  t/T fir  "
+                                     "r rate  f freq  s sweep  w save  q quit")
             if not runner.alive() and h > 13:
                 rc = runner.returncode()
                 stdscr.addstr(13, 1,
@@ -358,6 +368,10 @@ def run_tui(stdscr, args, conf_path, gains):
                 state.ppm -= 1; runner = respawn(runner, state)
             elif c == "P":
                 state.ppm += 1; runner = respawn(runner, state)
+            elif c == "t":
+                state.fir = max(0, state.fir - 1); runner = respawn(runner, state)
+            elif c == "T":
+                state.fir = min(9, state.fir + 1); runner = respawn(runner, state)
             elif c == "r":
                 state.rate = 48000 if state.rate == 24000 else 24000; runner = respawn(runner, state)
             elif c == "f":

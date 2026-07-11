@@ -378,8 +378,9 @@ def main():
     parser.add_argument("--freq", default="144.390M",
                         help="APRS frequency (keep the 'M' suffix — a bare number "
                              "is parsed as Hz). Default: 144.390M (NA 2 m).")
-    parser.add_argument("--gain", type=float, default=40,
-                        help="Tuner gain in dB (default 40; omit-style AGC not "
+    parser.add_argument("--gain", type=float, default=32.8,
+                        help="Tuner gain in dB (default 32.8 — the R820T step "
+                             "that bench-tested best for APRS; omit-style AGC not "
                              "supported here). Lower if clipping.")
     parser.add_argument("--ppm", type=int, default=0,
                         help="Frequency-error correction in ppm (default 0).")

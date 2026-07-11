@@ -33,6 +33,16 @@ class BuildPipelineTests(unittest.TestCase):
         self.assertIn("-p 12", cmd)
         self.assertIn("vol 0.75", cmd)
 
+    def test_build_pipeline_fir_defaults_off(self):
+        cmd = S.build_pipeline("144.390M", "32.8", 0, "0.50", 24000, "/tmp/sdr.conf")
+        self.assertIn("-F 0", cmd)
+
+    def test_build_pipeline_fir_selects_filter(self):
+        cmd = S.build_pipeline("144.390M", "32.8", 0, "0.50", 24000,
+                               "/tmp/sdr.conf", fir=9)
+        self.assertIn("-F 9", cmd)
+        self.assertNotIn("-F 0", cmd)
+
 
 class ParseLineTests(unittest.TestCase):
     def test_parse_audio_level(self):
@@ -159,6 +169,13 @@ class HandoffBuilderTests(unittest.TestCase):
             "rtl_fm -f 144.390M -M fm -s 48000 -g 32.8 -p 0 - "
             "| socat -u -b 1920 - UDP-SENDTO:127.0.0.1:7355"
         ))
+
+    def test_build_feed_command_omits_fir_when_zero(self):
+        self.assertNotIn("-F", S.build_feed_command("144.390M", "32.8", 0, 0))
+
+    def test_build_feed_command_includes_fir_when_set(self):
+        cmd = S.build_feed_command("144.390M", "32.8", 0, 9)
+        self.assertIn("-M fm -s 48000 -F 9 -g 32.8", cmd)
 
     def test_check_deps_reports_missing(self):
         which = {"rtl_fm": "/usr/bin/rtl_fm", "sox": None, "direwolf": None}
