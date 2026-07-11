@@ -172,6 +172,7 @@ class HandoffBuilderTests(unittest.TestCase):
 
     def test_conf_template_has_modem_and_logdir(self):
         conf = S.SDR_CONF_TEMPLATE.format(logdir="/tmp/x")
+        self.assertIn("ADEVICE null null", conf)
         self.assertIn("MODEM 1200", conf)
         self.assertIn("ACHANNELS 1", conf)
         self.assertIn("LOGDIR /tmp/x", conf)
@@ -236,9 +237,14 @@ class CliTests(unittest.TestCase):
 
     def test_write_conf_creates_file(self):
         with tempfile.TemporaryDirectory() as d:
-            conf = tune.write_conf(d)
-            with open(conf) as fh:
-                body = fh.read()
+            cwd = os.getcwd()
+            try:
+                os.chdir(d)
+                conf = tune.write_conf(d)
+                with open(conf) as fh:
+                    body = fh.read()
+            finally:
+                os.chdir(cwd)
             self.assertIn("MODEM 1200", body)
             self.assertIn(f"LOGDIR {d}", body)
 

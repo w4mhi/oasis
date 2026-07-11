@@ -201,9 +201,13 @@ def device_help(reason):
 
 
 # Operator's known-good minimal Direwolf config. Audio comes from stdin at the
-# selected rate via `-r <srate> -`, so the conf is rate-agnostic. LOGDIR points
-# at the tool's temp dir so Direwolf CSV logs don't land in the operator's cwd.
+# selected rate via `-r <srate> -`, so the conf is rate-agnostic. The bench
+# writes it into the current working directory as rtl-sdr-direwolf.conf so it is
+# easy to inspect while the session is running. The null ADEVICE keeps Direwolf
+# from trying to use a local hardware audio device.
 SDR_CONF_TEMPLATE = """\
+# Disable local audio card hardware input/output
+ADEVICE null null
 ACHANNELS 1
 CHANNEL 0
 MODEM 1200
