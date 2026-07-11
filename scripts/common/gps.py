@@ -128,9 +128,9 @@ def configure_chrony():
 
 
 def restart_services():
-    for unit in ("gpsd.socket", "gpsd", "chrony"):
+    for unit in ("gpsd.socket", "gpsd", "chrony", "chronyd"):
         _run(["sudo", "systemctl", "enable", unit], check=False)
-    for unit in ("gpsd", "chrony"):
+    for unit in ("gpsd", "chrony", "chronyd"):
         _run(["sudo", "systemctl", "restart", unit], check=False)
     _ok("Enabled + restarted gpsd and chrony.")
 
