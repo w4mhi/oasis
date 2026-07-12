@@ -116,12 +116,13 @@ body{background:#05080a; color:var(--text); font-family:var(--mono);
 .aprs-body::-webkit-scrollbar-track{background:var(--panel); border-radius:4px}
 .aprs-body::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--accent) 40%,var(--border)); border-radius:4px}
 .aprs-body::-webkit-scrollbar-thumb:hover{background:var(--accent)}
-.row-head,.row{display:grid; grid-template-columns:75px 48px 120px 50px 50px 65px 35px 1fr; gap:12px; align-items:center; padding:0 12px}
+.row-head,.row{display:grid; grid-template-columns:75px 26px 48px 120px 50px 50px 65px 35px 1fr; gap:12px; align-items:center; padding:0 12px}
 .row-head{height:26px; position:sticky; top:0; background:var(--panel);
           color:var(--warn); font-size:10px; letter-spacing:.10em; border-bottom:1px solid var(--border)}
 .row{min-height:32px; border-bottom:1px solid var(--border-soft); cursor:pointer; font-size:14px}
 .row:hover{background:var(--panel-2)}
 .row .call{color:var(--up); font-weight:700; white-space:nowrap}
+.row .sym{display:inline-block; width:24px; height:24px; background-repeat:no-repeat; image-rendering:pixelated}
 .row .call.is{color:var(--link-live)}
 .row .age{color:var(--dim); white-space:nowrap}
 .row .spd{color:var(--dim); white-space:nowrap; font-size:11px}

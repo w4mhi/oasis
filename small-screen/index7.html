@@ -88,7 +88,7 @@
       <button type="button" class="src-btn is" id="aprs-is-btn" onclick="toggleAprsSource('is')" title="Show/hide IS stations">IS</button>
     </div>
     <div class="aprs-body" id="aprsBody">
-      <div class="row-head"><span>CALLSIGN</span><span>AGE</span><span>SPEED</span><span>ALT</span><span>GRID</span><span>DIST</span><span>VIA</span><span>COMMENT</span></div>
+      <div class="row-head"><span>CALLSIGN</span><span>TYPE</span><span>AGE</span><span>SPEED</span><span>ALT</span><span>GRID</span><span>DIST</span><span>VIA</span><span>COMMENT</span></div>
       <!-- rows injected -->
     </div>
   </div>
@@ -738,6 +738,21 @@ function fmtAge(iso) {
   return Math.floor(sec/3600)+'h ago';
 }
 
+// APRS symbol icon, blitted from the same shared sprite sheets the map uses
+// (24px cells, 16 cols). Primary table '/' → sheet 0; alternate '\' and overlay
+// tables → sheet 1. Rendered as a CSS background offset — no canvas, fully
+// offline (served from /map-assets/). Falls back to a blank cell if unknown.
+function aprsIconHtml(s) {
+  const table = s.sym_table || '/';
+  const code  = s.sym_code  || '-';
+  let idx = code.charCodeAt(0) - 33;
+  if (idx < 0 || idx > 95) idx = 0;
+  const x = -( (idx % 16) * 24 );
+  const y = -( Math.floor(idx / 16) * 24 );
+  const sheet = table === '/' ? 0 : 1;
+  return `<span class="sym" style="background-image:url('/map-assets/aprs-symbols-24-${sheet}.png');background-position:${x}px ${y}px"></span>`;
+}
+
 function renderAprsRows(stations) {
   const body = document.getElementById('aprsBody');
   body.querySelectorAll('.row').forEach(r => r.remove());
@@ -758,6 +773,7 @@ function renderAprsRows(stations) {
     const src  = aprsSource(s); // 'rf' → green, 'is' → blue
     const r = document.createElement('div'); r.className = 'row';
     r.innerHTML = `<span class="call ${src}"><a href="server/aprs/map.html?focus=${encodeURIComponent(call)}" target="_blank" style="color:inherit;text-decoration:none">${call}</a></span>
+      ${aprsIconHtml(s)}
       <span class="age">${fmtAge(s.last_heard||s.timestamp||s.time)}</span>
       <span class="spd">${s.speed_mph > 0 ? fmtSpeed(s.speed_mph) : ''}${courseFmt}</span>
       <span class="alt">${alt}</span>
@@ -812,10 +828,14 @@ async function fetchAPRS() {
       renderAprsRows([]); return;
     }
     if (title) title.textContent = 'APRS LIVE';
-    if (countEl) countEl.textContent = d.count ?? d.stations.length;
-    _allAprsStations = d.stations;
-    if (d.stations.length) {
-      const times = d.stations.map(s => s.last_heard||s.timestamp||s.time)
+    // The stations API now also returns position-less stations (status/message
+    // traffic) for the index/maps lists. The kiosk view is unchanged: it shows
+    // only stations that carry a position, exactly as before.
+    const posStations = d.stations.filter(s => s.lat != null && s.lon != null);
+    if (countEl) countEl.textContent = posStations.length;
+    _allAprsStations = posStations;
+    if (posStations.length) {
+      const times = posStations.map(s => s.last_heard||s.timestamp||s.time)
         .filter(Boolean).map(t => new Date(t)).filter(t => !isNaN(t));
       if (times.length && lastEl) {
         const ageMins = Math.round((Date.now()-Math.max(...times))/60000);

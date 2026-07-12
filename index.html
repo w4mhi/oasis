@@ -1159,8 +1159,8 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     </div>
     <div class="aprs-tbl-wrap">
       <table>
-        <thead><tr><th>Callsign</th><th>Last Heard</th><th>Age</th><th>Speed</th><th>Altitude</th><th>Grid</th><th>Dist</th><th>Via</th><th>Comment</th></tr></thead>
-        <tbody id="aprs-tbody"><tr><td colspan="9" style="color:var(--text-dim)">Loading…</td></tr></tbody>
+        <thead><tr><th>Callsign</th><th>Type</th><th>Last Heard</th><th>Age</th><th>Speed</th><th>Altitude</th><th>Grid</th><th>Dist</th><th>Via</th><th>Comment</th></tr></thead>
+        <tbody id="aprs-tbody"><tr><td colspan="10" style="color:var(--text-dim)">Loading…</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -2268,10 +2268,29 @@ function aprsSource(s) {
   return (hay.includes('TCPIP') || hay.includes('IGATE') || /\bQA[A-Z]/.test(hay)) ? 'is' : 'rf';
 }
 
+// APRS symbol code → human "type" label. Mirrors _OBJ_CATS in server/aprs/map.html
+// so the dashboard list and the map list name station types identically.
+const _APRS_TYPES = {
+  '>':'Car','j':'Car','v':'Car','<':'Motorcycle','k':'Truck','u':'Truck',
+  'R':'RV','U':'Bus','=':'Train','b':'Bicycle',
+  "'":'Aircraft','^':'Aircraft','g':'Aircraft','X':'Helicopter','O':'Balloon',
+  's':'Boat','Y':'Boat','C':'Boat','[':'Person','p':'Person',
+  '_':'Weather','W':'Weather','#':'Digipeater','&':'Gateway',
+  'r':'Antenna','y':'Antenna','`':'Antenna','-':'Home',
+  '!':'Public safety','P':'Public safety','a':'Public safety','f':'Public safety',
+  'd':'Public safety','c':'Public safety','A':'Public safety','h':'Public safety',
+  'o':'Public safety','+':'Public safety',
+  '?':'Services','$':'Services',';':'Services','B':'Services','K':'Services',
+};
+function aprsTypeLabel(s) {
+  if (s && s.sym_code === '_') return 'Weather';
+  return (s && _APRS_TYPES[s.sym_code]) || 'Other';
+}
+
 function renderAprsTable(stations) {
   const tbody = document.getElementById('aprs-tbody');
   if (!stations.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="color:var(--text-dim)">No stations match the selected time filter.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text-dim)">No stations match the selected time filter.</td></tr>';
     return;
   }
   tbody.innerHTML = stations.map(s => {
@@ -2288,6 +2307,7 @@ function renderAprsTable(stations) {
     const callColor = src === 'is' ? 'var(--blue)' : 'var(--accent)';
     return `<tr>
       <td style="color:${callColor};font-weight:700"><a href="server/aprs/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a></td>
+      <td style="color:var(--text-dim);white-space:nowrap">${aprsTypeLabel(s)}</td>
       <td>${fmtLastHeard(s.last_heard)}</td>
       <td class="${age.cls}">${age.text}</td>
       <td>${speed}${courseFmt}</td>
@@ -2343,7 +2363,7 @@ async function fetchAPRS() {
     if (!d.ok) {
       const msg = d.error || 'API error';
       const isNoDb = msg.toLowerCase().includes('database not found');
-      tbody.innerHTML = `<tr><td colspan="7" style="color:${isNoDb ? 'var(--text-dim)' : 'var(--red)'}">${
+      tbody.innerHTML = `<tr><td colspan="10" style="color:${isNoDb ? 'var(--text-dim)' : 'var(--red)'}">${
         isNoDb
           ? 'APRS feed offline — no packets to show. &#9658; Start APRS Stats API to populate the live station table.'
           : 'Error: ' + msg
@@ -2357,7 +2377,7 @@ async function fetchAPRS() {
     document.getElementById('aprs-count').textContent = d.count ?? d.stations.length;
 
     if (!d.stations.length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-dim)">No stations yet — GrayWolf needs a radio + TNC/audio input to receive APRS packets.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text-dim)">No stations yet — GrayWolf needs a radio + TNC/audio input to receive APRS packets.</td></tr>';
       document.getElementById('aprs-last').textContent = '—';
       setTitle(false);
       return;
@@ -2380,7 +2400,7 @@ async function fetchAPRS() {
     applyAprsFilter();
   } catch (e) {
     setTitle(false);
-    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="color:var(--text-dim)">APRS feed offline — no packets to show. &#9658; Start APRS Stats API to populate the live station table.</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="color:var(--text-dim)">APRS feed offline — no packets to show. &#9658; Start APRS Stats API to populate the live station table.</td></tr>`;
   }
 }
 

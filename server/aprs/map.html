@@ -392,6 +392,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 .al-src.rf{color:var(--accent);}
 .al-src.is{color:var(--blue);}
 .al-dim{color:var(--text-dim);}
+.al-type{color:var(--text-dim);white-space:nowrap;}
 .al-cmt{max-width:280px;overflow:hidden;text-overflow:ellipsis;color:var(--text-dim);}
 .al-age.age-ok{color:var(--accent);}
 .al-age.age-warn{color:var(--amber);}
@@ -612,7 +613,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
     <table id="aprs-list-table">
       <thead>
         <tr>
-          <th>Call</th><th>Last heard</th><th>Age</th><th>Speed</th>
+          <th>Call</th><th>Type</th><th>Last heard</th><th>Age</th><th>Speed</th>
           <th>Alt</th><th>Grid</th><th>Dist</th><th>Src</th><th>Comment</th>
         </tr>
       </thead>
@@ -1501,14 +1502,17 @@ async function fetchStations() {
     allStations.forEach(s => { nextPrev[s.callsign] = s.last_heard; });
     _prevHeard = nextPrev;
     // ── Latest station + recent-heard panel ──────────────────────────────
+    // Both are map-oriented (auto-fly target + "newly heard" pings), so they
+    // consider only stations that carry a position; position-less stations
+    // (status/message/telemetry) still appear in the bottom station list.
     _latestStation = allStations.reduce((best, s) => {
-      if (!s.last_heard) return best;
+      if (!s.last_heard || s.lat == null || s.lon == null) return best;
       if (!best || s.last_heard > best.last_heard) return s;
       return best;
     }, null);
     const _nowMs = Date.now();
     const newList = allStations.filter(s => {
-      if (!s.last_heard) return false;
+      if (!s.last_heard || s.lat == null || s.lon == null) return false;
       return (_nowMs - new Date(s.last_heard).getTime()) / 1000 <= RECENT_MAX_AGE_SEC;
     });
     updateRecentPanel(newList);
@@ -1527,7 +1531,9 @@ async function fetchStations() {
       _focusHandled = true;
       const target = allStations.find(s => s.callsign.toUpperCase() === focusParam.toUpperCase());
       if (target) {
-        map.flyTo({ center: [target.lon, target.lat], zoom: 12, speed: 1.6 });
+        if (target.lat != null && target.lon != null) {
+          map.flyTo({ center: [target.lon, target.lat], zoom: 12, speed: 1.6 });
+        }
         showTrack(target.callsign);
       }
     }
@@ -2031,7 +2037,11 @@ function updateRecentPanel(newStations) {
 
 function recentRowClick(callsign) {
   const s = allStations.find(x => x.callsign === callsign);
-  if (s) map.flyTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 11), speed: 1.4, essential: true });
+  // Position-less rows (station list) have no coordinates — skip the fly-to but
+  // still open the (empty) track so the row selection behaves consistently.
+  if (s && s.lat != null && s.lon != null) {
+    map.flyTo({ center: [s.lon, s.lat], zoom: Math.max(map.getZoom(), 11), speed: 1.4, essential: true });
+  }
   showTrack(callsign);
 }
 
@@ -2108,7 +2118,7 @@ function renderAprsList(stations) {
   if (!tbody) return;
   countEl.textContent = stations.length + (stations.length === 1 ? ' station' : ' stations');
   if (!stations.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="al-empty">No stations match the current filters.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="al-empty">No stations match the current filters.</td></tr>';
     return;
   }
   const sorted = [...stations].sort((a, b) =>
@@ -2125,6 +2135,7 @@ function renderAprsList(stations) {
     return '<tr' + active + ' data-call="' + _escHtml(s.callsign) + '" onclick="recentRowClick(\'' + _escHtml(s.callsign) + '\')">'
       + '<td><span class="al-call ' + src + '">' + _escHtml(s.callsign)
         + (s.is_object ? ' <span style="color:var(--amber)">[obj]</span>' : '') + '</span></td>'
+      + '<td class="al-type">' + _escHtml(aprsCategory(s).label) + '</td>'
       + '<td>' + _listLastHeard(s.last_heard) + '</td>'
       + '<td class="al-age ' + age.cls + '">' + age.text + '</td>'
       + '<td>' + _listSpeed(s.speed_mph) + courseFmt + '</td>'

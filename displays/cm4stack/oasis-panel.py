@@ -182,7 +182,13 @@ def get_json(url):
         return None
 
 def fetch_aprs():
-    """Returns a list of stations, or None when the feed is offline."""
+    """Returns a list of stations, or None when the feed is offline.
+
+    Returns every heard station, including position-less ones (status/message
+    traffic): the RECENT list shows all callsigns and the LAST HEARD card
+    represents whatever was heard most recently. Position-dependent fields on
+    the card (grid, position, altitude) are simply omitted when absent.
+    """
     d = get_json(APRS_URL)
     if not d or not d.get("ok"):
         return None                      # unreachable or ok:false -> offline

@@ -117,7 +117,14 @@ def _start_cpu_sampler():
 
 
 def read_stations():
-    """Return (stations, error) — latest position per station from the DB."""
+    """Return (stations, error) — every heard station with its latest position.
+
+    Uses a LEFT JOIN so stations GrayWolf heard but that never sent a lat/lon
+    (status, message, telemetry, bulletin traffic) are still returned, with
+    lat/lon = None. The map skips those markers; the index/maps station lists
+    show them. Ordered by most-recent activity (latest position, else the
+    station's last_heard) so position-less stations still sort sensibly.
+    """
     global _db_conn
     con, error = _get_db()
     if error:
@@ -142,14 +149,13 @@ def read_stations():
                 p.path,
                 p.timestamp
             FROM stations s
-            JOIN positions p ON p.station_key = s.key
-            WHERE p.id IN (
-                SELECT id FROM positions p2
+            LEFT JOIN positions p ON p.id = (
+                SELECT p2.id FROM positions p2
                 WHERE p2.station_key = s.key
                 ORDER BY p2.timestamp DESC
                 LIMIT 1
             )
-            ORDER BY p.timestamp DESC
+            ORDER BY COALESCE(p.timestamp, s.last_heard) DESC
         """)
         rows = cur.fetchall()
 
