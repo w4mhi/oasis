@@ -18,6 +18,15 @@ class AlertsTest(unittest.TestCase):
         out = alerts.evaluate(ac, station, radius_km=50)
         self.assertTrue(any(a["kind"] == "proximity" for a in out))
 
+    def test_proximity_carries_numeric_distance_km(self):
+        # Frontend formats distance per the imperial/metric toggle, so the alert
+        # must carry a numeric canonical distance, not just a baked km string.
+        station = {"lat": 47.60, "lon": -122.33}
+        ac = {"hex": "abc", "lat": 47.61, "lon": -122.34, "squawk": "1200"}
+        prox = [a for a in alerts.evaluate(ac, station, 50) if a["kind"] == "proximity"][0]
+        self.assertIsInstance(prox["distance_km"], (int, float))
+        self.assertGreaterEqual(prox["distance_km"], 0)
+
     def test_proximity_outside_radius(self):
         station = {"lat": 47.60, "lon": -122.33}
         ac = {"hex": "abc", "lat": 40.0, "lon": -100.0, "squawk": "1200"}

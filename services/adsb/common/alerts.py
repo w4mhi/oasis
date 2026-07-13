@@ -23,5 +23,8 @@ def evaluate(ac, station, radius_km):
             and station.get("lat") is not None and station.get("lon") is not None:
         d = haversine_km(ac["lat"], ac["lon"], station["lat"], station["lon"])
         if d <= radius_km:
-            out.append({"kind": "proximity", "detail": f"{d:.1f} km from station"})
+            # distance_km is canonical; the frontend formats it for display via the
+            # existing imperial/metric toggle (km↔mi). detail is the log fallback.
+            out.append({"kind": "proximity", "distance_km": round(d, 1),
+                        "detail": f"{d:.1f} km from station"})
     return out
