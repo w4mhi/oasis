@@ -339,6 +339,31 @@
         }
       }
     },
+    "dump1090-fa": {
+      "type": "apt",
+      "bundle_group": "dump1090-fa",
+      "bundle_base": "services/adsb/packages",
+      "description": "dump1090-fa Mode S/ADS-B decoder — owns the RTL-SDR and writes live aircraft positions consumed by services/adsb's adsb-api. Off by default; started on demand from the dashboard's ADS-B card (mutually exclusive with other RTL-SDR features, e.g. GrayWolf).",
+      "_note": "dump1090-fa is distributed by FlightAware, not the base Debian/Raspberry Pi OS apt repos. Vendoring its .deb (and any not-already-present runtime deps) requires adding the FlightAware apt repo on the connected build machine first; that sourcing step is not yet wired here. `packages.common` names the target package so the bundler/tree-walk shape is in place once .debs are fetched and dropped under services/adsb/packages/dump1090-fa/<suite>/.",
+      "packages": {
+        "common": [
+          "dump1090-fa"
+        ],
+        "by_suite": {
+          "bookworm": [],
+          "trixie": []
+        }
+      },
+      "suites": [
+        "bookworm",
+        "trixie"
+      ],
+      "arches": [
+        "arm64",
+        "armhf"
+      ],
+      "resolved": {}
+    },
     "openwebrx": {
       "type": "apt",
       "bundle_group": "openwebrx",

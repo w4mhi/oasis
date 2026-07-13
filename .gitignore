@@ -66,6 +66,10 @@ features/*/wheels/*.whl
 features/*/packages/**/*.deb
 displays/*/packages/**/*.dtbo
 
+# Service-local vendored packages (e.g. services/adsb/packages/dump1090-fa/<suite>/*.deb).
+# Same pattern as features/*/packages above, for services/.
+services/*/packages/**/*.deb
+
 # Offline binary packages — downloaded by scripts/create-oasis-offline.py.
 # Entire tree is excluded; scripts install from oasis-offline/ or the internet.
 offline-packages/
