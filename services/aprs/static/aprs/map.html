@@ -692,6 +692,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
       <label class="layer-toggle"><input type="checkbox" data-group="landuse" checked> <span>Land use</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="pois" checked> <span>POIs / Places</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="peaks" checked> <span>Mt peaks</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="aircraft" checked> <span>Aircraft</span></label>
     </div>
   </div>
 
@@ -746,6 +747,20 @@ async function loadConfig() {
       if (d.ok && d.ports) Object.assign(PORTS, d.ports);
     }
   } catch (_) { /* use defaults */ }
+}
+
+// ── ADS-B aircraft layer unit helpers ────────────────────────────────────────
+// map.html is a separate document from index.html, so it needs its own tiny
+// unit helpers. dump1090 reports alt_baro in feet and gs in knots natively.
+const _imperial = () => (localStorage.getItem('oasis_units') || 'imperial') === 'imperial';
+function fmtAcAlt(ft) {
+  if (ft == null) return '';
+  return _imperial() ? Math.round(ft).toLocaleString() + ' ft'
+                     : Math.round(ft * 0.3048).toLocaleString() + ' m';
+}
+function fmtAcSpeed(kt) {
+  if (kt == null) return '';
+  return _imperial() ? Math.round(kt) + ' kt' : Math.round(kt * 1.852) + ' km/h';
 }
 
 // ── Sprite sheets (primary and alternate tables) ────────────────────────────
@@ -1006,6 +1021,7 @@ const LAYER_GROUPS = {
   landuse:   ['landcover-wood', 'landcover-grass', 'landuse-residential', 'landuse-commercial', 'landuse-industrial'],
   pois:      ['place-labels', 'pois-circle'],
   peaks:     ['mountain-peak'],
+  aircraft:  ['adsb-dots', 'adsb-labels'],
 };
 
 function toggleLayerPanel() {
@@ -1747,6 +1763,34 @@ async function fetchStations() {
   startCountdown();
 }
 
+// ── ADS-B aircraft polling ───────────────────────────────────────────────────
+// Independent of the APRS 15s refresh loop (aircraft move much faster). If the
+// aircraft service is off, /api/adsb/aircraft returns non-200 — skip silently.
+async function refreshAdsb() {
+  try {
+    const r = await fetch('/api/adsb/aircraft');
+    if (!r.ok) return;
+    const j = await r.json();
+    const feats = (j.aircraft || [])
+      .filter(a => a.lat != null && a.lon != null)
+      .map(a => {
+        const emerg = ['7500', '7600', '7700'].includes(a.squawk);
+        return {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
+          properties: {
+            emergency: emerg,
+            label: (a.flight || a.hex || '').trim() +
+                   (a.alt_baro != null ? ' ' + fmtAcAlt(a.alt_baro) : '') +
+                   (emerg ? ' ⚠' : '')
+          }
+        };
+      });
+    const src = map.getSource('adsb');
+    if (src) src.setData({ type: 'FeatureCollection', features: feats });
+  } catch (e) { /* ignore — poll again next cycle */ }
+}
+
 // Start after config + map both load
 loadConfig().then(() => {
   loadWarningCatalog(); // populate the "Add Warnings" panel (independent of map)
@@ -1922,10 +1966,34 @@ loadConfig().then(() => {
       }
     });
 
+    // ── ADS-B aircraft layer (circle + label; no icon sprite available offline) ──
+    map.addSource('adsb', {
+      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'adsb-dots', type: 'circle', source: 'adsb',
+      paint: {
+        'circle-radius': 5,
+        'circle-color': ['case', ['get', 'emergency'], '#e53935', '#a06cd5'],
+        'circle-stroke-width': 1, 'circle-stroke-color': '#000'
+      }
+    });
+    map.addLayer({
+      id: 'adsb-labels', type: 'symbol', source: 'adsb',
+      layout: {
+        'text-field': ['get', 'label'], 'text-font': ['Open Sans Regular'],
+        'text-size': 10, 'text-offset': [0, 1.2],
+        'text-optional': true, 'text-allow-overlap': false
+      },
+      paint: { 'text-color': '#c8a6f0', 'text-halo-color': '#000', 'text-halo-width': 1 }
+    });
+
     fetchStations();
     loadStationCfg(); // resolve local station position → render the home node
     _syncPathChips(); // reflect any persisted RF/IS path-filter state on the chips
     _syncSrcColFromChips(); // and on the drawer's Src dropdown
+    refreshAdsb();
+    setInterval(refreshAdsb, 2000);
   });
 });
 
