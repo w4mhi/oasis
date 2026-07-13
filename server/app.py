@@ -641,6 +641,7 @@ def api_health_binary():
 _OASIS_SERVICES = {
     "graywolf", "graywolf-api", "pat", "pat-direwolf", "kiwix", "webssh",
     "aprs-sdr-feed", "openwebrx", "gpsd", "oasis",
+    "dump1090-fa", "adsb-api",
 }
 
 # Units the dashboard may start/stop/restart. Everything in _OASIS_SERVICES
@@ -649,17 +650,32 @@ _OASIS_SERVICES = {
 _CONTROLLABLE_SERVICES = _OASIS_SERVICES - {"oasis", "gpsd"}
 _SERVICE_ACTIONS = {"start", "stop", "restart"}
 
-# Hardware-exclusivity: OpenWebRX and the APRS chain (SDR feed -> GrayWolf) can't
-# share the RTL-SDR; the Winlink RF modem (pat-direwolf) and GrayWolf can't share
-# the DRA sound card + GPIO 12 PTT. Listed in RESTORE order (producer first): the
-# feed pipes into GrayWolf, so on restore the feed comes up before its consumer.
-# Teardown uses the reverse (consumer first). Boot state is never touched, so the
-# feed and GrayWolf (shipped enabled) come back on reboot -> APRS is the default
+# Hardware-exclusivity across the shared RTL-SDR. Each entry:
+#   "stop"    — units to STOP when this unit starts (all other SDR users)
+#   "restore" — units to START when this unit stops
+# ADS-B (dump1090-fa) is stop-only: starting it stops every other SDR user, but
+# stopping it auto-restarts NOTHING — the operator brings the next mode up by
+# hand (per operator preference). The existing OpenWebRX/pat-direwolf entries
+# keep their shipped behaviour of restoring the APRS default chain on stop.
+# "restore" lists are producer-first (feed pipes into GrayWolf, so the feed
+# comes up before its consumer); "stop" lists are torn down consumer-first
+# (reverse of restore) by the caller. Boot state is never touched, so the feed
+# and GrayWolf (shipped enabled) come back on reboot -> APRS is the default
 # after a power cycle, and pat-direwolf (never boot-enabled) stays off.
 _SERVICE_CONFLICTS = {
-    "openwebrx":    ["aprs-sdr-feed", "graywolf"],
-    "pat-direwolf": ["aprs-sdr-feed", "graywolf"],
+    "openwebrx":    {"stop": ["aprs-sdr-feed", "graywolf", "dump1090-fa"],
+                     "restore": ["aprs-sdr-feed", "graywolf"]},
+    "pat-direwolf": {"stop": ["aprs-sdr-feed", "graywolf"],
+                     "restore": ["aprs-sdr-feed", "graywolf"]},
+    "dump1090-fa":  {"stop": ["aprs-sdr-feed", "graywolf", "openwebrx"],
+                     "restore": []},
 }
+
+def _conflict_stop(unit):
+    return _SERVICE_CONFLICTS.get(unit, {}).get("stop", [])
+
+def _conflict_restore(unit):
+    return _SERVICE_CONFLICTS.get(unit, {}).get("restore", [])
 
 # Units whose boot state tracks their running state: starting also `enable`s them
 # (comes back after reboot), stopping also `disable`s them (stays off). Everything
@@ -844,20 +860,21 @@ def api_service():
         return jsonify({"ok": False, "supported": False,
                         "error": "systemd not available"}), 200
 
-    # Hardware-exclusivity: a unit's conflicts are stopped when it starts and
-    # restarted when it stops — boot state is never changed, so whatever shipped
+    # Hardware-exclusivity: a unit's "stop" list is stopped when it starts, and
+    # its "restore" list is started when it stops (see _SERVICE_CONFLICTS —
+    # these lists differ per unit, e.g. ADS-B stops other SDR users on start but
+    # restores nothing on stop). Boot state is never changed, so whatever shipped
     # enabled (the APRS chain) returns on reboot. Order matters: tear the chain
     # down consumer-first (GrayWolf before its feed), bring it back producer-first
     # (feed before GrayWolf) so GrayWolf attaches to a live feed. `affected` tells
     # the UI which other cards to refresh. (restart leaves conflicts alone.)
     affected = []
-    conflicts = _SERVICE_CONFLICTS.get(unit, [])     # restore order: feed, graywolf
     if action == "start":
-        for other in reversed(conflicts):            # teardown: graywolf, then feed
+        for other in reversed(_conflict_stop(unit)):    # consumer-first teardown
             _systemctl_seq(other, ["stop"])
             affected.append(other)
     elif action == "stop":
-        for other in conflicts:                      # restore: feed, then graywolf
+        for other in _conflict_restore(unit):            # producer-first restore
             _systemctl_seq(other, ["start"])
             affected.append(other)
 
