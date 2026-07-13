@@ -1015,6 +1015,16 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     </div>
     <span class="svc-badge" id="badge-owrx">—</span>
   </div>
+  <div class="svc-card" id="card-adsb">
+    <div class="svc-dot" id="dot-adsb"></div>
+    <div>
+      <div class="svc-name"><a class="owrx-link" href="#" rel="noopener"
+           onclick="window.open('server/aprs/map.html','_blank');return false;"
+           title="Open the offline map with the Aircraft layer">ADS-B Aircraft ↗</a></div>
+      <div class="svc-sub" id="sub-adsb">—</div>
+    </div>
+    <span class="svc-badge" id="badge-adsb">—</span>
+  </div>
   <a class="svc-card" id="card-winlink" href="server/winlink/mail.html">
     <div class="svc-dot" id="dot-winlink"></div>
     <div><div class="svc-name">Winlink Mail</div><div class="svc-sub" id="sub-winlink">—</div></div>
@@ -1520,6 +1530,21 @@ const SERVICES = [
     }
   },
   {
+    id: 'adsb', name: 'ADS-B Aircraft',
+    check: async () => {
+      // No web port — status comes from systemd (dump1090-fa owns the RTL-SDR).
+      // Starting it stops the other SDR users (GrayWolf/OpenWebRX/feed), so it
+      // sits STOPPED until the operator enters ADS-B mode from the dashboard.
+      const r = await fetch('/api/health/service?name=dump1090-fa', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'status error' };
+      const d = await r.json();
+      if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      if (d.active === 'active') return { up: true, badge: 'UP', sub: 'aircraft tracking' };
+      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+        sub: d.installed ? 'start for aircraft tracking' : 'run services/adsb/install.py' };
+    }
+  },
+  {
     id: 'manuals', name: 'Radio Manuals',
     check: async () => {
       const r = await fetch('/api/browse?path=static/radio-manuals', { cache: 'no-store' });
@@ -1666,7 +1691,7 @@ async function pollFeedFlow() {
 const GATEABLE = {
   gw:    ['graywolf'],  aprs:    ['graywolf'],  feed: ['rtl-feed'],
   owrx:  ['openwebrx'], winlink: ['winlink'],   wlrf: ['winlink'],   gpsd: ['gps'],
-  kiwix: ['kiwix'],     webssh:  ['webssh'],    fcc:  ['fcc'],
+  kiwix: ['kiwix'],     webssh:  ['webssh'],    fcc:  ['fcc'],       adsb: ['adsb'],
   wiki:  ['wikipedia'], rb:      ['repeaterbook'], forms: ['forms'],
 };
 let _hiddenEls = [];   // {card, nav-<li>, nav-section} elements currently gated off
@@ -1780,7 +1805,7 @@ function toggleShowHidden() {
 // (FCC / Maps / Repeater Book) do not.
 const SVC_UNITS = { gw: 'graywolf', aprs: 'graywolf-api', feed: 'aprs-sdr-feed',
                     winlink: 'pat', wlrf: 'pat-direwolf', kiwix: 'kiwix',
-                    webssh: 'webssh', owrx: 'openwebrx' };
+                    webssh: 'webssh', owrx: 'openwebrx', adsb: 'dump1090-fa' };
 
 // Lazily create the power control on a controllable card. A <span> (not a
 // <button>) so it's valid inside the cards that are <a> links; the click
