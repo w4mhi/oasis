@@ -723,37 +723,6 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 .telemetry-badge.warn { color: var(--amber); }
 .telemetry-badge.bad  { color: var(--red); }
 
-/* ── APRS filter select ─────────────────────────────────────────────── */
-.aprs-filter-sel {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text);
-  font-size: var(--fs-small);
-  padding: .05rem .2rem;
-  cursor: pointer;
-  margin-left: auto;
-}
-.aprs-filter-sel:focus { outline: none; border-color: var(--accent-dim); }
-
-/* Source toggles (RF green / IS blue). When off, only the TEXT greys out — the
-   coloured border stays, so you can still tell which button is which. */
-.aprs-src-btn {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: var(--fs-small);
-  font-weight: 700;
-  letter-spacing: .03em;
-  padding: .05rem .6rem;
-  min-width: 2.5rem;
-  cursor: pointer;
-  transition: color .2s;
-}
-.aprs-src-btn.rf  { color: var(--accent); border-color: var(--accent); }
-.aprs-src-btn.is  { color: var(--blue);   border-color: var(--blue); }
-.aprs-src-btn.off { color: var(--text-dim); }
-
 /* ── APRS LIVE section ───────────────────────────────────────────────── */
 .aprs-section {
   padding: .4rem 1.25rem .75rem;
@@ -788,6 +757,8 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 .aprs-section-title.live    { color: var(--accent); }
 .aprs-section-title.offline { color: var(--amber); }
 .aprs-section-meta { font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; }
+/* APRS symbol icon in the Type cell — sprite cell scaled to inline text size. */
+.aprs-sym { display: inline-block; background-repeat: no-repeat; image-rendering: pixelated; vertical-align: middle; margin-right: 5px; }
 .aprs-tbl-wrap { overflow-x: auto; padding: 0 .6rem; }
 .aprs-tbl-wrap table {
   width: 100%;
@@ -810,9 +781,58 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   vertical-align: top;
 }
 .aprs-tbl-wrap tr:last-child td { border-bottom: none; }
-.age-ok   { color: var(--accent); }
-.age-warn { color: var(--amber); }
-.age-old  { color: var(--red); }
+/* Age-column colours, matching the maps station list. Scoped to the table cell
+   so they outrank the generic `.aprs-tbl-wrap td` colour (else age stays plain). */
+.aprs-tbl-wrap td.age-ok,   #aprs-last.age-ok   { color: var(--accent); }
+.aprs-tbl-wrap td.age-warn, #aprs-last.age-warn { color: var(--amber); }
+.aprs-tbl-wrap td.age-old,  #aprs-last.age-old  { color: var(--text-dim); }
+/* Per-column header filter (prototype: TYPE). The <select> sits beside the
+   column label; it turns accent when a non-"All" filter is active (the "mark"). */
+.aprs-tbl-wrap th.aprs-col-filterable { white-space: nowrap; position: relative; }
+/* Caret toggle beside the column label — mirrors the OPS/SERVICES collapse
+   button. Rotated -90° (pointing right) while the filter is hidden; rotates to
+   point down when open. Turns accent when a filter is active, so it's visible
+   even while collapsed. */
+.aprs-col-toggle {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-dim); font-size: .55rem; line-height: 1;
+  padding: 0; margin-left: 5px; vertical-align: middle;
+  display: inline-block;
+  transform: rotate(-90deg);
+  transition: transform .15s, color .15s;
+}
+.aprs-col-toggle:hover { color: var(--accent); }
+.aprs-col-toggle.open   { transform: rotate(0deg); }
+.aprs-col-toggle.active { color: var(--accent); }
+/* The filter control itself — a popover anchored under the header cell, so
+   opening it never reflows the table. Hidden until its column is toggled open. */
+.aprs-col-sel, .aprs-col-inp {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  margin-top: 3px;
+  font-family: inherit;
+  font-size: var(--fs-small);
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 4px;
+  box-shadow: 0 4px 10px rgba(0,0,0,.4);
+  width: 5rem;
+  max-width: 5rem;
+  box-sizing: border-box;
+}
+th.aprs-col-filterable.filter-open .aprs-col-sel,
+th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
+.aprs-col-sel { cursor: pointer; }
+.aprs-col-inp { cursor: text; width: 5.5rem; max-width: 5.5rem; }
+.aprs-col-inp::placeholder { color: var(--text-dim); opacity: .6; }
+.aprs-col-sel.active, .aprs-col-inp.active { color: var(--accent); border-color: var(--accent); }
 
 /* ── Responsive ──────────────────────────────────────────────────────── */
 @media (max-width: 860px) {
@@ -1141,25 +1161,10 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
     <div class="aprs-section-hdr">
       <span class="aprs-section-title" id="aprs-title">APRS LIVE</span>
       <span class="aprs-section-meta">stations — <span id="aprs-count">—</span> &nbsp;·&nbsp; last packet — <span id="aprs-last">—</span></span>
-      <select class="aprs-filter-sel" id="aprs-filter-sel" onchange="applyAprsFilter()">
-        <option value="15">Last 15 min</option>
-        <option value="30">Last 30 min</option>
-        <option value="60">Last 60 min</option>
-        <option value="1440">Last 24 hrs</option>
-        <option value="0" selected>All</option>
-      </select>
-      <select class="aprs-filter-sel" id="aprs-type-sel" onchange="applyAprsFilter()">
-        <option value="All">All types</option>
-        <option value="RF only">RF only</option>
-        <option value="Digipeaters">Digipeaters</option>
-        <option value="Messages">Messages</option>
-      </select>
-      <button type="button" class="aprs-src-btn rf" id="aprs-rf-btn" onclick="toggleAprsSource('rf')" title="Show/hide RF stations">RF</button>
-      <button type="button" class="aprs-src-btn is" id="aprs-is-btn" onclick="toggleAprsSource('is')" title="Show/hide IS stations">IS</button>
     </div>
     <div class="aprs-tbl-wrap">
       <table>
-        <thead><tr><th>Callsign</th><th>Type</th><th>Last Heard</th><th>Age</th><th>Speed</th><th>Altitude</th><th>Grid</th><th>Dist</th><th>Via</th><th>Comment</th></tr></thead>
+        <thead><tr><th class="aprs-col-filterable">Callsign<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by callsign">&#9660;</button><input id="aprs-col-call" class="aprs-col-inp" type="text" placeholder="all" autocomplete="off" spellcheck="false" oninput="onCallFilterChange()" title="Filter by callsign prefix (e.g. K7 matches all K7…)"></th><th class="aprs-col-filterable">Type<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by type">&#9660;</button><select id="aprs-col-type" class="aprs-col-sel" onchange="onTypeFilterChange()" title="Filter by type"><option value="All">All</option></select></th><th>Last Heard</th><th class="aprs-col-filterable">Age<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by age">&#9660;</button><select id="aprs-col-age" class="aprs-col-sel" onchange="onAgeFilterChange()" title="Filter by age (time since last heard)"><option value="0" selected>All</option><option value="15">≤ 15m</option><option value="30">≤ 30m</option><option value="60">≤ 60m</option><option value="1440">≤ 24h</option></select></th><th>Speed</th><th>Altitude</th><th class="aprs-col-filterable">Grid<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by grid">&#9660;</button><select id="aprs-col-grid" class="aprs-col-sel" onchange="onGridFilterChange()" title="Filter by grid field"><option value="All">All</option></select></th><th>Dist</th><th class="aprs-col-filterable">Via<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by source (RF / APRS-IS)">&#9660;</button><select id="aprs-col-via" class="aprs-col-sel" onchange="onViaFilterChange()" title="Filter by source"><option value="All">All</option><option value="rf">RF</option><option value="is">IS</option></select></th><th>Comment</th></tr></thead>
         <tbody id="aprs-tbody"><tr><td colspan="10" style="color:var(--text-dim)">Loading…</td></tr></tbody>
       </table>
     </div>
@@ -2245,15 +2250,10 @@ function fmtLastHeard(iso) {
 }
 
 let _allAprsStations = [];
-let _aprsShowRF = true;  // RF/IS source toggles in the list header (both on by default)
-let _aprsShowIS = true;
-
-// Toggle a source on/off, grey the button when off, and re-render the table.
-function toggleAprsSource(src) {
-  if (src === 'rf') _aprsShowRF = !_aprsShowRF;
-  else              _aprsShowIS = !_aprsShowIS;
-  document.getElementById('aprs-rf-btn').classList.toggle('off', !_aprsShowRF);
-  document.getElementById('aprs-is-btn').classList.toggle('off', !_aprsShowIS);
+// VIA column filter — source (RF / APRS-IS). Static options; 'All' shows both.
+function onViaFilterChange() {
+  const sel = document.getElementById('aprs-col-via');
+  _markCol(sel, sel.value !== 'All');
   applyAprsFilter();
 }
 
@@ -2281,10 +2281,29 @@ const _APRS_TYPES = {
   'd':'Public safety','c':'Public safety','A':'Public safety','h':'Public safety',
   'o':'Public safety','+':'Public safety',
   '?':'Services','$':'Services',';':'Services','B':'Services','K':'Services',
+  // Emergency / incidents
+  ':':'Fire',
 };
 function aprsTypeLabel(s) {
   if (s && s.sym_code === '_') return 'Weather';
   return (s && _APRS_TYPES[s.sym_code]) || 'Other';
+}
+
+// APRS symbol icon from the shared sprite sheets (24px/16-col cells), scaled to
+// `px` for inline use in a table cell. Primary table '/' → sheet 0; alternate
+// '\' and overlay tables → sheet 1. Served from /map-assets/ (fully offline).
+function aprsSymIcon(s, px) {
+  px = px || 16;
+  const table = (s && s.sym_table) || '/';
+  const code  = (s && s.sym_code)  || '-';
+  let idx = code.charCodeAt(0) - 33;
+  if (idx < 0 || idx > 95) idx = 0;
+  const col = idx % 16, row = Math.floor(idx / 16);
+  const sheet = table === '/' ? 0 : 1;
+  return `<span class="aprs-sym" style="width:${px}px;height:${px}px;`
+    + `background-image:url('/map-assets/aprs-symbols-24-${sheet}.png');`
+    + `background-size:${16 * px}px ${6 * px}px;`
+    + `background-position:${-col * px}px ${-row * px}px"></span>`;
 }
 
 function renderAprsTable(stations) {
@@ -2307,7 +2326,7 @@ function renderAprsTable(stations) {
     const callColor = src === 'is' ? 'var(--blue)' : 'var(--accent)';
     return `<tr>
       <td style="color:${callColor};font-weight:700"><a href="server/aprs/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a></td>
-      <td style="color:var(--text-dim);white-space:nowrap">${aprsTypeLabel(s)}</td>
+      <td style="color:var(--text-dim);white-space:nowrap">${aprsSymIcon(s)}${aprsTypeLabel(s)}</td>
       <td>${fmtLastHeard(s.last_heard)}</td>
       <td class="${age.cls}">${age.text}</td>
       <td>${speed}${courseFmt}</td>
@@ -2321,8 +2340,11 @@ function renderAprsTable(stations) {
 }
 
 function applyAprsFilter() {
-  const minutes = parseInt(document.getElementById('aprs-filter-sel').value);
-  const type    = document.getElementById('aprs-type-sel')?.value || 'All';
+  const minutes    = parseInt(document.getElementById('aprs-col-age')?.value || '0');
+  const typeCat    = document.getElementById('aprs-col-type')?.value || 'All';
+  const callPrefix = (document.getElementById('aprs-col-call')?.value || '').trim().toUpperCase();
+  const gridSel    = document.getElementById('aprs-col-grid')?.value || 'All';
+  const viaSel     = document.getElementById('aprs-col-via')?.value || 'All';
   let filtered  = _allAprsStations;
   if (minutes) {
     const cutoff = Date.now() - minutes * 60000;
@@ -2331,20 +2353,139 @@ function applyAprsFilter() {
       return !isNaN(t) && t >= cutoff;
     });
   }
-  if (type && type !== 'All') {
-    filtered = filtered.filter(s => {
-      const via = (s.via || '').toUpperCase();
-      if (type === 'RF only')     return via && !via.includes('TCPIP') && !via.includes('IGATE');
-      if (type === 'Digipeaters') return via.includes('WIDE') || via.includes('DIGI');
-      if (type === 'Messages')    return (s.comment || '').includes(':') || s.packet_type === 'message';
-      return true;
-    });
+  // CALLSIGN column filter — case-insensitive prefix (K7 → all K7…, incl. SSIDs).
+  if (callPrefix) {
+    filtered = filtered.filter(s => String(s.callsign || '').toUpperCase().startsWith(callPrefix));
   }
-  // Source toggles: hide RF and/or IS rows when their button is switched off.
-  if (!_aprsShowRF || !_aprsShowIS) {
-    filtered = filtered.filter(s => aprsSource(s) === 'is' ? _aprsShowIS : _aprsShowRF);
+  // TYPE column filter — match the station's APRS symbol category.
+  if (typeCat !== 'All') {
+    filtered = filtered.filter(s => aprsTypeLabel(s) === typeCat);
   }
+  // GRID column filter — match the 4-char Maidenhead field, or 'No fix' for
+  // position-less stations (blank grid).
+  if (gridSel !== 'All') {
+    filtered = (gridSel === '__nofix')
+      ? filtered.filter(s => !gridSquare(s.lat, s.lon))
+      : filtered.filter(s => (gridSquare(s.lat, s.lon) || '').slice(0, 4) === gridSel);
+  }
+  // VIA column filter — heard-via source: RF (off-air) or IS (APRS-IS/internet).
+  if (viaSel !== 'All') {
+    filtered = filtered.filter(s => aprsSource(s) === viaSel);
+  }
+  // Float emergency stations (Fire, Public safety) to the top; keep recency
+  // (last_heard desc) within each rank. Mirrors the map's emergency-first panel.
+  filtered = filtered.slice().sort((a, b) => {
+    const ra = _emergencyRank(a), rb = _emergencyRank(b);
+    if (ra !== rb) return ra - rb;
+    return (b.last_heard || '').localeCompare(a.last_heard || '');
+  });
   renderAprsTable(filtered);
+}
+
+// Rank a station for emergency-first ordering: lower = higher priority.
+const _EMERGENCY_TYPES = ['Fire', 'Public safety'];
+function _emergencyRank(s) {
+  const i = _EMERGENCY_TYPES.indexOf(aprsTypeLabel(s));
+  return i === -1 ? 99 : i;
+}
+
+// Rebuild the TYPE column dropdown from the categories present in the current
+// data. Preserves the active selection across refreshes; falls back to "All"
+// when that category is no longer heard. Options come from our own category
+// map (aprsTypeLabel) so their text is safe to inline.
+// Mark a column filter active: colour both the control and its header caret so
+// an applied filter is visible even while the popover is collapsed.
+function _markCol(ctrl, active) {
+  if (!ctrl) return;
+  ctrl.classList.toggle('active', active);
+  const th  = ctrl.closest('th');
+  const btn = th && th.querySelector('.aprs-col-toggle');
+  if (btn) btn.classList.toggle('active', active);
+}
+
+// Close every open column-filter popover (optionally skipping one).
+function _closeColFilters(except) {
+  document.querySelectorAll('th.aprs-col-filterable.filter-open').forEach(th => {
+    if (th === except) return;
+    th.classList.remove('filter-open');
+    const b = th.querySelector('.aprs-col-toggle');
+    if (b) b.classList.remove('open');
+  });
+}
+
+// Caret click → reveal/hide this column's filter popover (one open at a time).
+function toggleColFilter(btn) {
+  const th = btn.closest('th');
+  const willOpen = !th.classList.contains('filter-open');
+  _closeColFilters(th);
+  th.classList.toggle('filter-open', willOpen);
+  btn.classList.toggle('open', willOpen);
+  if (willOpen) {
+    const ctrl = th.querySelector('.aprs-col-sel, .aprs-col-inp');
+    if (ctrl) ctrl.focus();
+  }
+}
+
+// Click anywhere outside a filter header closes any open popover.
+document.addEventListener('click', e => {
+  if (!e.target.closest('th.aprs-col-filterable')) _closeColFilters();
+});
+
+function refreshTypeFilter() {
+  const sel = document.getElementById('aprs-col-type');
+  if (!sel) return;
+  const prev = sel.value || 'All';
+  const cats = [...new Set((_allAprsStations || []).map(aprsTypeLabel))].sort();
+  sel.innerHTML = '<option value="All">All</option>'
+    + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+  sel.value = cats.includes(prev) ? prev : 'All';
+  _markCol(sel, sel.value !== 'All');
+}
+
+function onTypeFilterChange() {
+  const sel = document.getElementById('aprs-col-type');
+  _markCol(sel, sel.value !== 'All');
+  applyAprsFilter();
+}
+
+// AGE column filter — fixed time buckets (0 = All). Replaces the old header
+// time dropdown; the buckets are the same. No options to build.
+function onAgeFilterChange() {
+  const sel = document.getElementById('aprs-col-age');
+  _markCol(sel, sel.value !== '0');
+  applyAprsFilter();
+}
+
+// CALLSIGN column filter — free-text prefix; empty = all. No options to build.
+function onCallFilterChange() {
+  const el = document.getElementById('aprs-col-call');
+  _markCol(el, el.value.trim() !== '');
+  applyAprsFilter();
+}
+
+// GRID column filter — options are the 4-char Maidenhead fields present, plus a
+// "No fix" bucket when any position-less station is heard. Selection preserved
+// across refreshes, falling back to "All" when the field/bucket is gone.
+function refreshGridFilter() {
+  const sel = document.getElementById('aprs-col-grid');
+  if (!sel) return;
+  const prev = sel.value || 'All';
+  const fields = [...new Set((_allAprsStations || [])
+    .map(s => (gridSquare(s.lat, s.lon) || '').slice(0, 4))
+    .filter(Boolean))].sort();
+  const hasNoFix = (_allAprsStations || []).some(s => !gridSquare(s.lat, s.lon));
+  sel.innerHTML = '<option value="All">All</option>'
+    + fields.map(g => `<option value="${g}">${g}</option>`).join('')
+    + (hasNoFix ? '<option value="__nofix">No fix</option>' : '');
+  sel.value = prev === '__nofix' ? (hasNoFix ? '__nofix' : 'All')
+                                 : (fields.includes(prev) ? prev : 'All');
+  _markCol(sel, sel.value !== 'All');
+}
+
+function onGridFilterChange() {
+  const sel = document.getElementById('aprs-col-grid');
+  _markCol(sel, sel.value !== 'All');
+  applyAprsFilter();
 }
 
 async function fetchAPRS() {
@@ -2369,7 +2510,9 @@ async function fetchAPRS() {
           : 'Error: ' + msg
       }</td></tr>`;
       document.getElementById('aprs-count').textContent = '—';
-      document.getElementById('aprs-last').textContent  = '—';
+      const lastElErr = document.getElementById('aprs-last');
+      lastElErr.textContent = '—';
+      lastElErr.className = '';
       setTitle(false);
       return;
     }
@@ -2378,7 +2521,9 @@ async function fetchAPRS() {
 
     if (!d.stations.length) {
       tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text-dim)">No stations yet — GrayWolf needs a radio + TNC/audio input to receive APRS packets.</td></tr>';
-      document.getElementById('aprs-last').textContent = '—';
+      const lastElIdle = document.getElementById('aprs-last');
+      lastElIdle.textContent = '—';
+      lastElIdle.className = '';
       setTitle(false);
       return;
     }
@@ -2386,15 +2531,20 @@ async function fetchAPRS() {
     // Last-packet time for the header
     setTitle(true);
     _allAprsStations = d.stations;
+    refreshTypeFilter();               // rebuild the TYPE column dropdown options
+    refreshGridFilter();               // rebuild the GRID column dropdown options
     const times = d.stations
       .map(s => s.last_heard || s.timestamp || s.time)
       .filter(Boolean).map(t => new Date(t)).filter(t => !isNaN(t));
     if (times.length) {
       const ageMins = Math.round((Date.now() - Math.max(...times)) / 60000);
-      document.getElementById('aprs-last').textContent =
+      const lastEl = document.getElementById('aprs-last');
+      lastEl.textContent =
         ageMins < 2  ? 'just now'         :
         ageMins < 60 ? `${ageMins}m ago`  :
                        `${Math.round(ageMins / 60)}h ago`;
+      // Colour the "last packet" value by freshness, same buckets as the age column.
+      lastEl.className = ageMins < 30 ? 'age-ok' : ageMins < 360 ? 'age-warn' : 'age-old';
     }
 
     applyAprsFilter();

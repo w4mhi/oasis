@@ -141,12 +141,8 @@ def stations_status(cfg):
     reached, data = _get_json(cfg["oasis"]["base_url"], "/api/aprs/stations", _timeout(cfg))
     if not reached or not isinstance(data, dict) or data.get("ok") is False:
         return {"ok": False, "count": 0, "last": None, "list": []}
-    # The API also returns position-less stations (status/message traffic) for
-    # the web lists; the e-ink FEED card counts and shows only stations that
-    # carry a position, so its display is unchanged by that addition.
-    stations = [s for s in (data.get("stations") or [])
-                if s.get("lat") is not None and s.get("lon") is not None]
-    count = len(stations)
+    stations = data.get("stations") or []
+    count = data.get("count", len(stations))
     # Sort most-recently-heard first; stations without a parseable time go last.
     have = [s for s in stations if _parse_iso(s.get("last_heard"))]
     have.sort(key=lambda s: _parse_iso(s.get("last_heard")), reverse=True)
