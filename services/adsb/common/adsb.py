@@ -2,6 +2,7 @@
 """services/adsb/common/adsb.py — ADS-B recorder + JSON API (serve) and installer (run)."""
 import json
 import os
+import platform
 import subprocess
 import sys
 import threading
@@ -14,6 +15,7 @@ sys.path.insert(0, _REPO_ROOT)
 
 from services.adsb.common import history, alerts
 from common.oasis_lib import _hr, _step, _ok, _warn, _info, _fail, _run  # noqa: E402
+from common import manifest as M  # noqa: E402
 
 DB_PATH     = os.environ.get("ADSB_DB_PATH", "/var/lib/adsb/adsb-history.db")
 JSON_PATH   = os.environ.get("ADSB_JSON_PATH", "/run/dump1090-fa/aircraft.json")
@@ -115,6 +117,114 @@ API_SERVICE  = "adsb-api"
 DECODER_UNIT = "dump1090-fa"
 UNIT_PATH    = f"/etc/systemd/system/{API_SERVICE}.service"
 
+# FlightAware apt repo (online fallback). dump1090-fa isn't in base Debian/Pi OS
+# apt — it ships from FlightAware's own repo. Path/suite mapping below is the
+# maintainer's best current understanding; confirm on a real build before relying
+# on it for a new suite.
+FA_KEY_URL   = "https://www.flightaware.com/adsb/piaware/files/packages/flightaware-apt-repository.gpg"
+FA_KEYRING   = "/etc/apt/trusted.gpg.d/flightaware-apt-repository.gpg"
+FA_LIST_PATH = "/etc/apt/sources.list.d/flightaware.list"
+FA_BASE_URL  = "https://www.flightaware.com/adsb/piaware/files/packages"
+FA_REPO_SUITES = {"bookworm": "bookworm", "trixie": "trixie"}
+
+ARCH_MAP = {"aarch64": "arm64", "arm64": "arm64", "armv7l": "armhf",
+            "armhf": "armhf", "armv6l": "armhf", "x86_64": "amd64", "amd64": "amd64"}
+
+
+def _detect_suite():
+    """Return the Debian suite (bookworm / trixie / …), mirroring rtl_sdr.py."""
+    try:
+        result = subprocess.run(["lsb_release", "-cs"], capture_output=True, text=True, check=True)
+        suite = result.stdout.strip().lower()
+    except Exception:
+        suite = "other"
+    ubuntu_to_debian = {"jammy": "bookworm", "focal": "bullseye", "noble": "bookworm"}
+    suite = ubuntu_to_debian.get(suite, suite)
+    _info(f"Debian suite: {suite}")
+    return suite
+
+
+def _deb_arch():
+    machine = platform.machine()
+    arch = ARCH_MAP.get(machine)
+    if not arch:
+        _fail(f"No dump1090-fa package available for architecture '{machine}'.")
+    _info(f"Architecture → .deb arch: {arch}")
+    return arch
+
+
+def _find_local_debs(directory, deb_arch):
+    """Scan *directory* for vendored dump1090-fa .debs matching deb_arch."""
+    found = []
+    if directory and os.path.isdir(directory):
+        for fname in sorted(os.listdir(directory)):
+            if fname.startswith("._") or not fname.endswith(f"_{deb_arch}.deb"):
+                continue
+            found.append(os.path.join(directory, fname))
+    return found
+
+
+def _install_debs_offline(deb_paths):
+    """Install bundled .debs; apt resolves any co-vendored deps from the same dir."""
+    _info("Installing (offline):")
+    for p in deb_paths:
+        _info(f"  {os.path.basename(p)}")
+    cmd = ["sudo", "apt-get", "install", "-y"] + deb_paths
+    if _run(cmd, check=False).returncode == 0:
+        _ok("dump1090-fa installed from vendored .deb")
+        return True
+    _warn("Offline install failed. If you saw dependency errors, try:")
+    _warn("  sudo apt-get install -f")
+    return False
+
+
+def _add_flightaware_repo(suite):
+    repo_suite = FA_REPO_SUITES.get(suite)
+    if not repo_suite:
+        _warn(f"Unknown suite '{suite}' — assuming FlightAware repo suite '{suite}'.")
+        repo_suite = suite
+
+    _info("Installing the FlightAware repo signing key ...")
+    key_cmd = f"curl -fsSL {FA_KEY_URL} | sudo gpg --dearmor -o {FA_KEYRING}"
+    if _run(["bash", "-c", key_cmd], check=False).returncode != 0:
+        _fail("Could not install the FlightAware repo signing key (need internet + curl).")
+
+    line = f"deb [signed-by={FA_KEYRING}] {FA_BASE_URL} {repo_suite} piaware"
+    if _run(["bash", "-c", f'echo "{line}" | sudo tee {FA_LIST_PATH}'], check=False).returncode != 0:
+        _fail("Could not write the FlightAware apt sources entry.")
+    _ok(f"FlightAware repo added: {FA_BASE_URL} {repo_suite} piaware")
+
+
+def _install_dump1090(repo_root, online):
+    """Install dump1090-fa offline-first from the vendored .deb; falls back to
+    adding the FlightAware apt repo and installing online. See rtl_sdr.py
+    (vendored-.deb pattern) and openwebrx.py (third-party-repo pattern)."""
+    suite    = _detect_suite()
+    deb_arch = _deb_arch()
+
+    bundle_root = os.path.join(repo_root, "offline-packages")
+    offline_dir = M.bundle_dir(bundle_root, "dump1090-fa", suite)
+    _info(f"Offline dir: {os.path.relpath(offline_dir, repo_root)}")
+    deb_paths = _find_local_debs(offline_dir, deb_arch)
+
+    if deb_paths:
+        _ok(f"Found {len(deb_paths)} vendored dump1090-fa package(s) — installing offline.")
+        if _install_debs_offline(deb_paths):
+            return
+        _warn("Falling back to online install.")
+    else:
+        _info("No vendored dump1090-fa .deb found — will install online.")
+
+    if not online:
+        _fail("dump1090-fa is not vendored offline and online install is disabled.")
+        return
+
+    _add_flightaware_repo(suite)
+    _run(["sudo", "apt-get", "update"], check=False)
+    if _run(["sudo", "apt-get", "install", "-y", "dump1090-fa"], check=False).returncode != 0:
+        _fail("apt-get could not install dump1090-fa — check the FlightAware repo entry and internet.")
+    _ok("dump1090-fa installed via the FlightAware apt repo")
+
 
 def _write_api_unit(repo_root):
     venv_py = os.path.join(repo_root, ".venv", "bin", "python3")
@@ -151,9 +261,7 @@ def run(repo_root, online=True):
     print("  OASIS -- ADS-B Installer (dump1090-fa + adsb-api)")
     _hr()
     _step(1, "dump1090-fa decoder")
-    # Phase 1: install dump1090-fa via apt. Offline vendored-.deb install (via the
-    # offline-manifest bundle group + services/adsb/packages/) is wired in Task 9.
-    _run(["sudo", "apt-get", "install", "-y", "dump1090-fa"])
+    _install_dump1090(repo_root, online)
     _run(["sudo", "systemctl", "disable", "--now", f"{DECODER_UNIT}.service"])
     _step(2, "adsb-api unit (disabled by default)")
     _write_api_unit(repo_root)
