@@ -29,68 +29,18 @@ Re-run any time the FCC publishes new data (they refresh every Sunday):
   python3 scripts/install-fcc-database.py
 """
 
+#!/usr/bin/env python3
+"""Compatibility wrapper for the FCC database installer."""
+
 import argparse
 import os
 import sys
 
-# ── Shared library ─────────────────────────────────────────────────────────────
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from common.oasis_lib import (
-    _hr, _step, _ok, _info, _warn, _fail,
-    has_internet,
-    fcc_download, fcc_build_index, fcc_build_zip_table, fcc_indexes_ready,
-)
 
-# ── Paths ──────────────────────────────────────────────────────────────────────
-REPO_ROOT  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SERVER_DIR = os.path.join(REPO_ROOT, "server")
-DATA_DIR   = os.path.join(REPO_ROOT, "fcc-offline-database", "data")
-EN_DAT     = os.path.join(DATA_DIR, "EN.dat")
-ZIP_CSV    = os.path.join(DATA_DIR, "zipcodes.csv")
-EN_IDX      = os.path.join(DATA_DIR, "EN.idx")
-EN_NAME_IDX = os.path.join(DATA_DIR, "EN_name.idx")
-EN_GRID_IDX = os.path.join(DATA_DIR, "EN_grid.idx")
+from services.fcc_database.common.fcc_database import run
 
 
-def _indexes_nonempty():
-    """True only when all three call-sign indexes exist and are non-empty."""
-    for path in (EN_IDX, EN_NAME_IDX, EN_GRID_IDX):
-        try:
-            if os.path.getsize(path) <= 0:
-                return False
-        except OSError:
-            return False
-    return True
-
-
-def _drop_bundle_zip():
-    """Remove a leftover l_amat.zip once the indexes are proven good.
-
-    Normal offline bundles ship EN.dat/HD.dat + prebuilt indexes and NO zip, so
-    this is usually a no-op. It still fires as a fallback: an older bundle (or a
-    failed-prebuild bundle) may ship l_amat.zip (~175 MB), and the online install
-    path may extract from a downloaded zip. In those cases the zip is pure bloat
-    on a Raspberry Pi once EN.dat/HD.dat + indexes exist.
-    Only deletes once the search indexes are *valid against the extracted EN.dat*
-    (fcc_indexes_ready: all index files present + EN.idx.meta size/SHA match) — not
-    merely that EN.dat exists. A failed or partial expand therefore always keeps the
-    recovery zip, so the target can rebuild rather than being left with EN.dat and no
-    usable index. The online install path never writes a zip, so this is a no-op there.
-    """
-    zip_path = os.path.join(DATA_DIR, "l_amat.zip")
-    if not os.path.exists(zip_path):
-        return
-    if not fcc_indexes_ready(DATA_DIR):
-        _info("Keeping l_amat.zip — indexes are not yet valid against EN.dat.")
-        return
-    try:
-        os.remove(zip_path)
-        _ok("Removed bundled l_amat.zip (indexes verified — freed ~80 MB on disk).")
-    except OSError as e:
-        _warn(f"Could not remove l_amat.zip: {e}")
-
-
-# ── Entry point ────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(
         description="Set up the OASIS offline FCC callsign database.",
@@ -113,111 +63,12 @@ def main():
         help="Force download/rebuild of zipcodes.csv even if it already exists.",
     )
     args = parser.parse_args()
+    run(index_only=args.index_only, full_zip=args.full_zip)
 
-    print()
-    print("  OASIS — FCC Offline Database Setup")
-    _hr()
-    _info(f"Data directory: {DATA_DIR}")
 
-    if args.index_only:
-        _info("--index-only: skipping download, rebuilding index from local data.")
-        if not os.path.exists(EN_DAT):
-            _fail(
-                f"EN.dat not found in {DATA_DIR}.\n"
-                "     Remove --index-only to download FCC data first."
-            )
-    else:
-        if os.path.exists(EN_DAT):
-            _info("EN.dat already present — skipping FCC download.")
-        else:
-            _info("EN.dat not found — downloading from FCC (requires internet) ...")
-            if not has_internet():
-                _fail(
-                    "No internet access and EN.dat not found.\n"
-                    "     Connect to the internet and re-run, or copy EN.dat to:\n"
-                    f"     {DATA_DIR}"
-                )
-            _step(1, "Downloading FCC amateur license data")
-            _info("Complete ULS file — EN.dat + HD.dat (~160 MB zipped).")
-            fcc_download(DATA_DIR)
+if __name__ == "__main__":
+    main()
 
-    # Fast path: an offline bundle (built on a capable machine by
-    # create-oasis-offline.py) may ship prebuilt indexes. If they are valid for
-    # this EN.dat, skip the memory-heavy rebuild that OOMs a 512 MB Pi Zero.
-    # --index-only / --full-zip force the normal rebuild path.
-    if not args.index_only and not args.full_zip and fcc_indexes_ready(DATA_DIR):
-        _step(2, "Prebuilt indexes detected")
-        _ok("Valid EN.idx / EN_name.idx / EN_grid.idx shipped with this bundle —")
-        _ok("skipping the index build (no OOM risk on a Pi Zero).")
-        _info("Force a rebuild with --index-only (or delete EN.idx.meta).")
-        _drop_bundle_zip()
-        print()
-        print("  Setup complete.")
-        _hr()
-        return
-
-    # Build the ZIP->grid table BEFORE the index. The call-sign index step also
-    # builds the secondary grid index (EN_grid.idx), which requires zipcodes.csv
-    # to exist. If the table were built afterwards, the grid index would be
-    # skipped on a fresh machine and only appear on a second run.
-    need_zip = args.full_zip or not os.path.exists(ZIP_CSV)
-    if need_zip:
-        if not has_internet():
-            if os.path.exists(ZIP_CSV):
-                _step(2, "ZIP->grid table")
-                _info("Offline — keeping existing zipcodes.csv.")
-            else:
-                _step(2, "ZIP->grid table")
-                _warn(
-                    "No internet access and zipcodes.csv not found —\n"
-                    "     the grid index (EN_grid.idx) will be skipped.\n"
-                    "     Re-run online to build it."
-                )
-        else:
-            _step(2, "Building ZIP->grid table from GeoNames")
-            _info("Downloads ~1 MB from GeoNames (CC BY 4.0) and produces")
-            _info("a ~40,000-row zipcodes.csv used for Maidenhead grid lookup.")
-            fcc_build_zip_table(DATA_DIR)
-    else:
-        _step(2, "ZIP->grid table")
-        _info("zipcodes.csv already present — skipping (use --full-zip to refresh).")
-
-    # Existing, non-empty indexes: don't silently rebuild. The rebuild reads
-    # EN.dat/HD.dat and is memory-heavy (can OOM a Pi Zero), so ask first —
-    # default No keeps what's there. --index-only is an explicit rebuild request
-    # and bypasses the prompt; a non-interactive run keeps existing indexes.
-    if not args.index_only and _indexes_nonempty():
-        rebuild = False
-        if sys.stdin.isatty():
-            try:
-                ans = input(
-                    "\n  EN.idx / EN_name.idx / EN_grid.idx already exist and are "
-                    "non-empty.\n  Rebuild them from EN.dat? (y/N): ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                ans = ""
-            rebuild = ans in ("y", "yes")
-        if not rebuild:
-            _step(3, "Call-sign index")
-            _info("Keeping existing EN.idx / EN_name.idx / EN_grid.idx — skipping rebuild.")
-            _drop_bundle_zip()
-            print()
-            print("  Setup complete.")
-            _hr()
-            return
-
-    _step(3, "Building call-sign index")
-    _info("Reads EN.dat + HD.dat once; writes EN.idx, EN_name.idx, EN_grid.idx.")
-    _info("On a Pi this may take a couple of minutes.")
-    fcc_build_index(DATA_DIR, SERVER_DIR)
-
-    # Everything built OK — drop the bundled zip so it doesn't sit as ~80 MB of
-    # bloat on the Pi (EN.dat/HD.dat + indexes are all in place now).
-    if os.path.exists(os.path.join(DATA_DIR, "EN.idx")):
-        _drop_bundle_zip()
-
-    print()
-    print("  Setup complete.")
-    _hr()
 
 
 if __name__ == "__main__":

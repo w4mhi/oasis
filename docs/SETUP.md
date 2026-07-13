@@ -1384,10 +1384,10 @@ directly, or from the USB bundle. State is saved to `localStorage` per browser.
 |---|---|---|
 | **Antenna Calculator** | `static/antenna-calc.html` | Dipole / vertical / loop lengths and feedline cuts from a target frequency |
 | **Power & Battery Budget** | `static/power-calc.html` | Estimates runtime from battery capacity and a per-device load list; exports a printable report |
-| **Grid / Distance / Bearing** | `server/tools/grid-calc.html` | Maidenhead grid ↔ lat/lon, plus great-circle distance and heading between two points |
+| **Grid / Distance / Bearing** | `tools/grid-calc.html` | Maidenhead grid ↔ lat/lon, plus great-circle distance and heading between two points |
 | **Gray Line** | `static/grayline.html` | Gray-line terminator for HF DX timing |
 | **Solar / Propagation** | `static/solar.html` | Band-condition summary and solar indices reference |
-| **Net Check-in Log** | `server/tools/net-log.html` | Logs check-ins during a net (callsign, name, location, traffic) and exports CSV |
+| **Net Check-in Log** | `tools/net-log.html` | Logs check-ins during a net (callsign, name, location, traffic) and exports CSV |
 
 > 💡 **Units toggle.** The dashboard's Imperial/Metric pill switches displayed
 > temperature, altitude, and speed everywhere at once; the preference is stored

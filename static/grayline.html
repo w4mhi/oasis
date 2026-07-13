@@ -121,6 +121,7 @@ tr:last-child .win-time{color:var(--accent);font-weight:700;white-space:nowrap;}
 <div id="output"><div class="empty">Enter a grid square and date above to calculate.</div></div>
 
 </div>
+<script src="/static/maidenhead.js"></script>
 <script>
 'use strict';
 
@@ -128,24 +129,8 @@ const PRESET_KEY = 'grayline-preset';
 
 // ── Maidenhead → lat/lon ──────────────────────────────────────────────────────
 function gridToLatLon(grid) {
-  if (!grid || grid.length < 4) return null;
-  const g = grid.toUpperCase();
-  const A = g.charCodeAt(0) - 65;
-  const B = g.charCodeAt(1) - 65;
-  const C = parseInt(g[2], 10);
-  const D = parseInt(g[3], 10);
-  if (isNaN(C) || isNaN(D) || A < 0 || A > 17 || B < 0 || B > 17) return null;
-  let lon = A * 20 - 180 + C * 2;
-  let lat = B * 10 - 90 + D;
-  if (g.length >= 6) {
-    const E = g.charCodeAt(4) - 65;
-    const F = g.charCodeAt(5) - 65;
-    if (E >= 0 && E < 24 && F >= 0 && F < 24) {
-      lon += E * (5/60) + (2.5/60);
-      lat += F * (2.5/60) + (1.25/60);
-    } else { lon += 1.0; lat += 0.5; }
-  } else { lon += 1.0; lat += 0.5; }
-  return { lat, lon };
+  const result = window.maidenhead.gridToLatLon(grid);
+  return result ? { lat: result[1], lon: result[0] } : null;
 }
 
 // ── Solar calculations (NOAA algorithm) ──────────────────────────────────────

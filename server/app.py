@@ -31,15 +31,23 @@ from flask import Flask, jsonify, render_template, request, send_file, send_from
 
 # The Windows embeddable Python (shipped in _runtime/windows/) uses a pythonXX._pth
 # file, which builds sys.path solely from that file and suppresses the automatic
-# script-directory entry that normal CPython adds. Insert our own directory so the
-# sibling `lookup` module resolves under every launcher (embedded or system Python).
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# script-directory entry that normal CPython adds. Insert both the suite root and
+# the server directory so the shared `common` package and server-local modules
+# resolve under every launcher (embedded or system Python).
+SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+SUITE_ROOT = os.path.abspath(os.path.join(SERVER_DIR, ".."))
+for path in (SUITE_ROOT, SERVER_DIR):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
-import lookup
-
-# Absolute path to the suite root (one level up from this file).
-SUITE_ROOT  = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-MAP_ASSETS  = os.path.join(os.path.dirname(__file__), "map-assets")
+from common import lookup
+APRS_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "aprs", "static")
+WINLINK_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "winlink", "static")
+FCC_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "fcc_database", "static")
+MAP_ASSETS  = os.path.join(APRS_STATIC_DIR, "map-assets")
+APRS_DIR    = os.path.join(APRS_STATIC_DIR, "aprs")
+WINLINK_DIR = WINLINK_STATIC_DIR
+FCC_DIR     = FCC_STATIC_DIR
 MAPS_DIR    = os.path.join(SUITE_ROOT, "maps")
 
 # Suite version (git-tracked, single source of truth). The dashboard reads it
@@ -167,8 +175,20 @@ window.location.replace(
 
 @app.route("/map-assets/<path:filename>")
 def map_assets(filename):
-    """Serve MapLibre GL libraries from server/map-assets/."""
+    """Serve APRS map assets from the service-owned static directory."""
     return send_from_directory(MAP_ASSETS, filename)
+
+
+@app.route("/server/aprs/<path:filename>")
+def aprs_static(filename):
+    """Serve the APRS UI from the service-owned static directory."""
+    return send_from_directory(APRS_DIR, filename)
+
+
+@app.route("/server/winlink/<path:filename>")
+def winlink_static(filename):
+    """Serve the Winlink UI from the service-owned static directory."""
+    return send_from_directory(WINLINK_DIR, filename)
 
 
 @app.route("/maps/<filename>")
@@ -191,8 +211,8 @@ def serve_map(filename):
 
 @app.route("/lookup")
 def lookup_page():
-    """Serve the FCC call-sign lookup page."""
-    return render_template("lookup.html")
+    """Serve the FCC call-sign lookup page from the service-owned FCC package."""
+    return send_from_directory(FCC_DIR, "lookup.html")
 
 
 @app.route("/api/lookup")
@@ -1362,7 +1382,7 @@ def api_aprs_warnings_delete(wid):
 
 
 # ── Winlink (Pat) proxy ───────────────────────────────────────────────────────
-# OASIS ships an OASIS-styled Winlink mail client (server/winlink/mail.html) that talks
+# OASIS ships an OASIS-styled Winlink mail client (/server/winlink/mail.html) that talks
 # to Pat's JSON API. Pat runs on port 8082 and does NOT emit CORS headers, so the
 # browser stays same-origin by going through these thin pass-through proxies
 # (same pattern as the /api/aprs/* routes above). The live connect-session log is

@@ -384,7 +384,7 @@ def fcc_indexes_ready(data_dir):
 def fcc_build_index(data_dir, server_dir):
     """
     Build EN.idx from EN.dat + HD.dat in *data_dir*.
-    Imports server/lookup.py from *server_dir* and passes explicit file paths,
+    Imports common/lookup.py from the repo root and passes explicit file paths,
     so any data_dir works (including oasis-offline/).
     """
     en_path    = os.path.join(data_dir, "EN.dat")
@@ -395,12 +395,14 @@ def fcc_build_index(data_dir, server_dir):
         _warn(f"EN.dat not found at {en_path} — skipping index build.")
         return
 
-    if server_dir not in sys.path:
-        sys.path.insert(0, server_dir)
+    repo_root = os.path.abspath(os.path.join(server_dir, ".."))
+    for path in (repo_root, server_dir):
+        if path not in sys.path:
+            sys.path.insert(0, path)
     try:
-        import lookup
+        from common import lookup
     except ImportError as exc:
-        _warn(f"Could not import server/lookup.py: {exc} — skipping index build.")
+        _warn(f"Could not import common/lookup.py: {exc} — skipping index build.")
         return
 
     start = time.time()

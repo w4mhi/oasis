@@ -42,6 +42,7 @@ SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common.oasis_lib import _hr, _ok, _info, _warn, _fail, has_internet
 from common import manifest as M
+from common import maidenhead as MH
 
 
 # ── Feature registry ────────────────────────────────────────────────────────────
@@ -642,18 +643,7 @@ def grid_to_latlon(grid):
     """Maidenhead locator (e.g. CN87 or CN87XN) → (lat, lon) at the square /
     subsquare centre, or None if the grid isn't valid. Mirrors the map's
     client-side gridToLonLat() so seeded and derived coordinates agree."""
-    g = (grid or "").strip().upper()
-    if not re.match(r"^[A-R]{2}[0-9]{2}([A-X]{2})?$", g):
-        return None
-    lon = (ord(g[0]) - 65) * 20 - 180 + int(g[2]) * 2
-    lat = (ord(g[1]) - 65) * 10 - 90 + int(g[3]) * 1
-    if len(g) >= 6:                                  # subsquare centre
-        lon += (ord(g[4]) - 65) * (2 / 24) + (1 / 24)
-        lat += (ord(g[5]) - 65) * (1 / 24) + (0.5 / 24)
-    else:                                            # square centre
-        lon += 1
-        lat += 0.5
-    return (round(lat, 4), round(lon, 4))
+    return MH.grid_to_latlon(grid)
 
 
 

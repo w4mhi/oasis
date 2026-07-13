@@ -1,5 +1,5 @@
 /* ============================================================================
-   server/winlink/read-state.js — shared Winlink read/unread state (offline, no deps)
+ *   /server/winlink/read-state.js — shared Winlink read/unread state (offline, no deps)
 
    Used by BOTH the dashboard (index.html → Winlink service card) and the mail
    client (server/winlink/mail.html) so the unread count agrees everywhere. State lives

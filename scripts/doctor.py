@@ -476,7 +476,7 @@ def check_winlink_forms():
 
     if not present:
         return {"ok": False, "badge": "MISSING",
-                "detail": "No Winlink form pages found in server/winlink/."}
+                "detail": "No Winlink form pages found in services/winlink/static/."}
     detail = f"{len(present)} form(s) available: {', '.join(present)}"
     if missing:
         detail += f"  |  missing: {', '.join(missing)}"

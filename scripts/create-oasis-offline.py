@@ -148,7 +148,7 @@ PRESERVE_IN_DEST = {
     "features/rtl-sdr/packages",  # feature-local: rtl-sdr + direwolf .debs (bundle_base)
     "displays/cm4stack/packages", # feature-local: m5stack-cm4.dtbo
     "server/wheels",         # phase_wheels
-    "server/map-assets",     # phase_aprs_sprites
+    "services/aprs/static/map-assets",  # phase_aprs_sprites
     "fcc-offline-database",  # phase_fcc
     "zim",                   # phase_wikipedia
     "maps",                  # phase_pmtiles (binaries live here alongside source — preserve whole)
