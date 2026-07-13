@@ -1,0 +1,6 @@
+{"now": 1752400000.0, "aircraft": [
+  {"hex": "a1b2c3", "flight": "N123AB ", "lat": 47.61, "lon": -122.34,
+   "alt_baro": 3500, "gs": 120.0, "track": 90.0, "squawk": "1200"},
+  {"hex": "d4e5f6", "flight": "LIFE01 ", "lat": 47.60, "lon": -122.33,
+   "alt_baro": 900, "gs": 45.0, "track": 180.0, "squawk": "7700"}
+]}
