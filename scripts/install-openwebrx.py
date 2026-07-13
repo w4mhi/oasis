@@ -21,7 +21,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from common import openwebrx
+from services.openwebrx.common import openwebrx
 
 
 def main():

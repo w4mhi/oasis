@@ -29,7 +29,7 @@ import platform
 import shutil
 import sys
 
-from .oasis_lib import (_hr, _step, _ok, _info, _warn, _fail, _run,
+from common.oasis_lib import (_hr, _step, _ok, _info, _warn, _fail, _run,
                         dpkg_installed_version, has_internet)
 
 PACKAGE   = "openwebrx"

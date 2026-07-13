@@ -10,14 +10,14 @@ on:
       - "scripts/requirements.txt"
       - "scripts/setup-server.py"
       - "server/app.py"
-      - "server/lookup.py"
+      - "common/lookup.py"
       - ".github/workflows/offline-install.yml"
   pull_request:
     paths:
       - "scripts/requirements.txt"
       - "scripts/setup-server.py"
       - "server/app.py"
-      - "server/lookup.py"
+      - "common/lookup.py"
   workflow_dispatch:
 
 jobs:
@@ -39,5 +39,5 @@ jobs:
         run: python3 scripts/setup-server.py
       - name: Import the app
         run: |
-          python3 -c "import sys, os; sys.path.insert(0, 'server'); import lookup"
+          python3 -c "import sys; sys.path.insert(0, '.'); from common import lookup"
         shell: bash
