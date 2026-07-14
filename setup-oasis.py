@@ -44,6 +44,7 @@ from common.oasis_lib import _hr, _ok, _info, _warn, _fail, has_internet
 from common import manifest as M
 from common import maidenhead as MH
 from common import config_paths
+from common import hardware_detect
 
 
 # ── Feature registry ────────────────────────────────────────────────────────────
@@ -892,6 +893,15 @@ def main():
     results = []
     try:
         for f in plan:
+            # RTL-SDR feature: refuse to install blind without hardware detected
+            if f.key == "rtl-sdr":
+                result = hardware_detect.scan()
+                if not result["rtl_sdr"]:
+                    _warn("No RTL-SDR dongle detected — skipping RTL-SDR install.")
+                    _warn("Plug in a dongle and re-run setup, or install this feature later "
+                          "from the dashboard once a dongle is connected.")
+                    results.append(("skipped", f))
+                    continue
             results.append(run_feature(f))
     finally:
         _sudo_stop.set()
