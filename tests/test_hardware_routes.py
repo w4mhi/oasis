@@ -86,6 +86,83 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(mocked_subprocess.run.called)
 
+    def test_devices_route_includes_service_state(self):
+        inv = HW.Inventory(
+            devices={"a": {"id": "a", "kind": "rtl-sdr", "label": "X"}},
+            assignments={"adsb": "a"})
+        with mock.patch.object(HW, "load", return_value=inv):
+            r = self.c.get("/api/hardware/devices")
+        body = json.loads(r.data)
+        self.assertEqual(body["services"]["adsb"],
+                          {"device_id": "a", "ok": True, "reason": ""})
+        self.assertEqual(body["services"]["winlink"],
+                          {"device_id": None, "ok": False, "reason": "unassigned"})
+        self.assertIn("openwebrx", body["services"])
+        self.assertIn("aprs", body["services"])
+
+    def test_declare_device_requires_oasis_header(self):
+        r = self.c.post("/api/hardware/devices",
+                        json={"id": "x", "kind": "rtl-sdr", "serial": "1"})
+        self.assertEqual(r.status_code, 403)
+
+    def test_declare_device_rejects_bad_id(self):
+        r = self.c.post("/api/hardware/devices",
+                        json={"id": "bad id!", "kind": "rtl-sdr", "serial": "1"},
+                        headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 400)
+
+    def test_declare_device_rejects_unknown_kind(self):
+        r = self.c.post("/api/hardware/devices",
+                        json={"id": "x", "kind": "toaster", "serial": "1"},
+                        headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 400)
+
+    def test_declare_device_rejects_missing_kind_field(self):
+        r = self.c.post("/api/hardware/devices",
+                        json={"id": "x", "kind": "rtl-sdr"},
+                        headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 400)
+
+    def test_declare_device_digirig_requires_ptt_and_alsa(self):
+        r = self.c.post("/api/hardware/devices",
+                        json={"id": "r1", "kind": "digirig", "ptt": "/dev/serial/by-id/x"},
+                        headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 400)
+
+    def test_declare_device_rejects_duplicate_id(self):
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "serial": "1"}},
+                           assignments={})
+        with mock.patch.object(HW, "load", return_value=inv):
+            r = self.c.post("/api/hardware/devices",
+                            json={"id": "a", "kind": "rtl-sdr", "serial": "2"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 409)
+
+    def test_declare_device_success(self):
+        inv = HW.Inventory(devices={}, assignments={})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save") as mocked_save:
+            r = self.c.post("/api/hardware/devices",
+                            json={"id": "sdr-1", "kind": "rtl-sdr",
+                                  "serial": "00000042", "label": "ADS-B dongle"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(mocked_save.called)
+        body = json.loads(r.data)
+        self.assertEqual(body["device"]["id"], "sdr-1")
+        self.assertEqual(body["device"]["serial"], "00000042")
+        self.assertEqual(body["device"]["label"], "ADS-B dongle")
+
+    def test_declare_device_defaults_label_to_id(self):
+        inv = HW.Inventory(devices={}, assignments={})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"):
+            r = self.c.post("/api/hardware/devices",
+                            json={"id": "sdr-2", "kind": "rtl-sdr", "serial": "9"},
+                            headers={"X-OASIS-Request": "1"})
+        body = json.loads(r.data)
+        self.assertEqual(body["device"]["label"], "sdr-2")
+
 
 if __name__ == "__main__":
     unittest.main()

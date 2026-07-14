@@ -968,9 +968,65 @@ def _split_terse(line):
 
 @app.route("/api/hardware/devices")
 def api_hardware_devices():
-    """Live device-allocation list for the dashboard HARDWARE card."""
+    """Live device-allocation list for the dashboard HARDWARE card, plus each
+    logical service's own assignment/can_start state (Slice 4b, spec §7.1-7.2)
+    — drives the per-card device dropdown's selected value and the
+    unassigned-state messaging without duplicating can_start's logic in JS."""
     inv = HW.load(SUITE_ROOT)
-    return jsonify({"devices": HW.device_states(inv), "errors": inv.errors})
+    services = {}
+    for service in HW.SERVICE_UNITS:
+        ok, reason = HW.can_start(inv, service)
+        services[service] = {
+            "device_id": HW.device_of(inv, service),
+            "ok": ok,
+            "reason": reason,
+        }
+    return jsonify({"devices": HW.device_states(inv), "errors": inv.errors,
+                     "services": services})
+
+
+_DEVICE_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,32}$')
+_DEVICE_KIND_REQUIRED_FIELDS = {
+    "rtl-sdr": ["serial"],
+    "digirig": ["ptt", "alsa"],
+    "dra-pi":  ["ptt"],
+}
+
+
+@app.route("/api/hardware/devices", methods=["POST"])
+def api_hardware_declare_device():
+    """Declare a new device into hardware.json (Slice 4b setup view, spec
+    §7.4) — NAMING only, never assigns it to a service. Per this slice's
+    scope decision, the per-card dropdown (index.html) only ever lists
+    already-declared devices; this is the one route that turns a detected
+    candidate into something assignable."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    device_id = (data.get("id") or "").strip()
+    kind = (data.get("kind") or "").strip()
+    label = (data.get("label") or "").strip() or device_id
+
+    if not _DEVICE_ID_RE.match(device_id):
+        return jsonify({"ok": False,
+                        "error": "invalid id (alphanumeric/dash/underscore, 1-32 chars)"}), 400
+    if kind not in HW.VALID_KINDS:
+        return jsonify({"ok": False, "error": "unknown kind"}), 400
+
+    device = {"id": device_id, "kind": kind, "label": label}
+    for field in _DEVICE_KIND_REQUIRED_FIELDS[kind]:
+        value = (data.get(field) or "").strip()
+        if not value:
+            return jsonify({"ok": False, "error": f"missing field: {field}"}), 400
+        device[field] = value
+
+    inv = HW.load(SUITE_ROOT)
+    if device_id in inv.devices:
+        return jsonify({"ok": False,
+                        "error": f"device id {device_id!r} already declared"}), 409
+    inv.devices[device_id] = device
+    HW.save(SUITE_ROOT, inv)
+    return jsonify({"ok": True, "device": device})
 
 
 @app.route("/api/hardware/detect")
