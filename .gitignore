@@ -14,8 +14,6 @@ configuration/installed-services.json
 # Operator identity (callsign + grid) seeded by setup-oasis.py; per-machine.
 configuration/station.json
 
-# Operator-placed folder mount mappings (shared runtime state, not repo content).
-configuration/user-folders.json
 
 # Operator-placed APRS map warnings (shared runtime state, not repo content).
 aprs-warnings.json
