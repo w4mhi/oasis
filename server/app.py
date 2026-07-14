@@ -958,6 +958,55 @@ def _split_terse(line):
     return [_nmcli_unescape(p) for p in parts]
 
 
+@app.route("/api/hardware/devices")
+def api_hardware_devices():
+    """Live device-allocation list for the dashboard HARDWARE card."""
+    inv = HW.load(SUITE_ROOT)
+    return jsonify({"devices": HW.device_states(inv), "errors": inv.errors})
+
+
+@app.route("/api/hardware/assign", methods=["POST"])
+def api_hardware_assign():
+    """Assign a device to a logical service (exclusive — refused if the device
+    is already held by a DIFFERENT service; see HW.can_assign)."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    service = (data.get("service") or "").strip()
+    device_id = (data.get("device_id") or "").strip()
+    if service not in HW.SERVICE_UNITS:
+        return jsonify({"ok": False, "error": "unknown service"}), 400
+    inv = HW.load(SUITE_ROOT)
+    ok, holder = HW.can_assign(inv, service, device_id)
+    if not ok:
+        if holder:
+            return jsonify({"ok": False, "error": f"{device_id} is in use by {holder}",
+                            "holder": holder}), 409
+        return jsonify({"ok": False,
+                        "error": "device not declared, or wrong kind for this service"}), 400
+    HW.assign(SUITE_ROOT, inv, service, device_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/hardware/release", methods=["POST"])
+def api_hardware_release():
+    """Unassign a service's device. If the service is running, its unit(s) are
+    stopped first (frees the device) — nothing else auto-restarts."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    service = (data.get("service") or "").strip()
+    if service not in HW.SERVICE_UNITS:
+        return jsonify({"ok": False, "error": "unknown service"}), 400
+    inv = HW.load(SUITE_ROOT)
+
+    def _stop(unit):
+        _systemctl_seq(unit, ["stop"])
+
+    HW.release(SUITE_ROOT, inv, service, stop_fn=_stop)
+    return jsonify({"ok": True})
+
+
 def _current_ssid():
     """The SSID the radio is associated with, via read-only iwgetid (no sudo).
     NetworkManager profile names can be netplan-style (netplan-wlan-<SSID>), so
