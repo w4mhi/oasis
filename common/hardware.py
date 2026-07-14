@@ -33,6 +33,33 @@ DEVICE_KIND_FOR_SERVICE = {
     "openwebrx": {"rtl-sdr"},
 }
 
+# aprs runs an extra RX feed unit (rtl_fm -> UDP -> GrayWolf) ONLY when assigned
+# an SDR; on a radio port it's GrayWolf soundcard-only. All other services are
+# mode-invariant. (GrayWolf itself is web-admin-configured — OASIS binds only the
+# feed's dongle, not GrayWolf's radio interface.)
+APRS_FEED_UNIT = "aprs-sdr-feed"
+
+
+def service_units(inv, service):
+    """The systemd unit(s) implementing `service` given the current inventory.
+    Only `aprs` is mode-dependent: an rtl-sdr assignment prepends the RX feed."""
+    base = list(SERVICE_UNITS.get(service, []))
+    if service == "aprs":
+        dev_id = inv.assignments.get("aprs")
+        dev = inv.devices.get(dev_id) if dev_id else None
+        if dev and dev.get("kind") == "rtl-sdr":
+            return [APRS_FEED_UNIT] + base
+    return base
+
+
+def service_for_unit(inv, unit):
+    """Reverse map: the logical service a systemd unit belongs to (or None),
+    resolved against the current inventory."""
+    for svc in SERVICE_UNITS:
+        if unit in service_units(inv, svc):
+            return svc
+    return None
+
 
 class Inventory:
     def __init__(self, devices, assignments, errors=None):
@@ -129,10 +156,6 @@ def _default_is_active(unit):
         return False
 
 
-def _service_running(service, is_active):
-    return any(is_active(u) for u in SERVICE_UNITS.get(service, []))
-
-
 def device_states(inv, is_active=_default_is_active):
     """[{id, label, kind, assignee, running}] — drives the dashboard allocation
     card. 🟢 free = assignee is None OR assigned-but-idle; 🔴 in use = the
@@ -140,7 +163,7 @@ def device_states(inv, is_active=_default_is_active):
     out = []
     for did, d in inv.devices.items():
         service = assignee(inv, did)
-        running = _service_running(service, is_active) if service else False
+        running = any(is_active(u) for u in service_units(inv, service)) if service else False
         out.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
                     "assignee": service, "running": running})
     return out
