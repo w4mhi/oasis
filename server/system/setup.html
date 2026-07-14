@@ -716,7 +716,7 @@ async function setupGetPermissions() {
       cmd.textContent = '';
     } else {
       el.textContent = 'Permissions: missing';
-      cmd.innerHTML = `Run in WebSSH: <code>${d.localCommand}</code>`;
+      cmd.innerHTML = `Run in WebSSH: <code>${escapeHtml(d.localCommand)}</code>`;
     }
   } catch (e) {
     el.textContent = 'Permissions: unavailable (' + e.message + ')';
@@ -744,7 +744,7 @@ async function setupDetectHardware() {
     const d = await jget('/api/setup/hardware-detect');
     setupRenderHw(d);
   } catch (e) {
-    list.innerHTML = `<li>Hardware detect failed: ${e.message}</li>`;
+    list.innerHTML = `<li>Hardware detect failed: ${escapeHtml(e.message)}</li>`;
   }
 }
 
