@@ -9,10 +9,13 @@ tests/__pycache__/
 
 # Per-machine runtime state — written by setup-oasis.py (which features are
 # installed); the dashboard reads it to hide not-installed service cards.
-installed-services.json
+configuration/installed-services.json
 
 # Operator identity (callsign + grid) seeded by setup-oasis.py; per-machine.
-station.json
+configuration/station.json
+
+# Operator-placed folder mount mappings (shared runtime state, not repo content).
+configuration/user-folders.json
 
 # Operator-placed APRS map warnings (shared runtime state, not repo content).
 aprs-warnings.json
@@ -73,6 +76,7 @@ services/*/packages/**/*.deb
 # Offline binary packages — downloaded by scripts/create-oasis-offline.py.
 # Entire tree is excluded; scripts install from oasis-offline/ or the internet.
 offline-packages/
+maps/tiles/
 
 # M5Stack CM4Stack overlay — fetched at build time / dropped manually, never committed.
 displays/cm4stack/overlays/*.dtbo
@@ -98,3 +102,4 @@ docs/superpowers/*
 
 # Local Claude Code settings (private hooks/permissions)
 .claude/settings.local.json
+.superpowers/

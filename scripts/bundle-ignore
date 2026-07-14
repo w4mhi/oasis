@@ -34,6 +34,8 @@ fcc-offline-database/
 zim/
 
 # ── per-machine state: must never leak from the build host into a fresh bundle ──
-installed-services.json
+configuration/installed-services.json
+configuration/station.json
+configuration/user-folders.json
 EN.dat
 HD.dat
