@@ -1025,6 +1025,40 @@ def api_hardware_release():
     return jsonify({"ok": True})
 
 
+@app.route("/api/hardware/burn-serial", methods=["POST"])
+def api_hardware_burn_serial():
+    """Burn a unique serial onto the sole connected, unclaimed RTL-SDR dongle
+    (see common/hardware_detect.can_burn_serial for the exclusive-access +
+    ambiguity guard). The actual eeprom write runs via a validating wrapper
+    script authorized by a single pinned sudoers entry (see
+    scripts/burn_dongle_serial.py / scripts/enable-service-controls.py). This
+    route's own regex is a first-line check for a fast 400; the wrapper script
+    re-validates independently and is the actual trust boundary — do not treat
+    this route's check as sufficient on its own."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    new_serial = data.get("serial") or ""
+    if not re.match(r'^[A-Za-z0-9]{1,32}\Z', new_serial):
+        return jsonify({"ok": False, "error": "invalid serial format"}), 400
+
+    candidates = HD_detect.scan().get("rtl_sdr", [])
+    ok, reason = HD_detect.can_burn_serial(candidates, is_active=HW._default_is_active)
+    if not ok:
+        return jsonify({"ok": False, "error": reason}), 409
+
+    venv_python = os.path.join(SUITE_ROOT, ".venv", "bin", "python3")
+    script = os.path.join(SUITE_ROOT, "scripts", "burn_dongle_serial.py")
+    try:
+        r = subprocess.run(["sudo", "-n", venv_python, script, new_serial],
+                           capture_output=True, text=True, timeout=30)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    if r.returncode != 0:
+        return jsonify({"ok": False, "error": (r.stderr or r.stdout or "").strip()[:200]}), 500
+    return jsonify({"ok": True})
+
+
 def _current_ssid():
     """The SSID the radio is associated with, via read-only iwgetid (no sudo).
     NetworkManager profile names can be netplan-style (netplan-wlan-<SSID>), so
