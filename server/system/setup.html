@@ -221,6 +221,12 @@ let setupJobId = null;
 let setupLogCursor = 0;
 let setupPollTimer = null;
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
 // ── Backend helpers ────────────────────────────────────────────────────────────
 async function jget(url) {
   const r = await fetch(url, { cache: 'no-store' });
@@ -753,7 +759,7 @@ async function setupBuildPlan() {
   try {
     const r = await fetch('/api/setup/plan', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
       body: JSON.stringify(payload),
     });
     const d = await r.json();
@@ -770,7 +776,7 @@ async function setupBuildPlan() {
       rebootEl.textContent = 'Reboot required if run now: no';
     }
     if (blocked > 0) {
-      blockedEl.innerHTML = (d.preflight.blocked || []).map(b => `<li>${b.feature || 'unknown'}: ${b.reason_text || b.reason_code || 'blocked'}</li>`).join('');
+      blockedEl.innerHTML = (d.preflight.blocked || []).map(b => `<li>${escapeHtml(b.feature || 'unknown')}: ${escapeHtml(b.reason_text || b.reason_code || 'blocked')}</li>`).join('');
       const log = document.getElementById('setupLog');
       log.textContent += `\n[plan] blocked: ${JSON.stringify(d.preflight.blocked)}`;
       log.scrollTop = log.scrollHeight;
@@ -791,8 +797,8 @@ function setupRenderFeatureStates(features = []) {
     return;
   }
   ul.innerHTML = features.map(f => {
-    const reason = f.reasonText ? ` — ${f.reasonText}` : '';
-    return `<li><strong>${f.feature}</strong>: ${f.status || 'pending'}${reason}</li>`;
+    const reason = f.reasonText ? ` — ${escapeHtml(f.reasonText)}` : '';
+    return `<li><strong>${escapeHtml(f.feature)}</strong>: ${escapeHtml(f.status || 'pending')}${reason}</li>`;
   }).join('');
 }
 

@@ -29,12 +29,22 @@ def test_setup_plan_resolves_dependency_order():
         "service-controls": _ok_feature("service-controls", deps=["server"]),
     }
     with mock.patch.object(app_module, "_setup_registry", return_value=reg):
-        r = client.post("/api/setup/plan", json={"selectedFeatures": ["service-controls"]})
+        r = client.post(
+            "/api/setup/plan",
+            json={"selectedFeatures": ["service-controls"]},
+            headers={"X-OASIS-Request": "1"},
+        )
     assert r.status_code == 200
     data = r.get_json()
     assert data["ok"] is True
     assert data["orderedFeatures"] == ["server", "service-controls"]
     assert data["planId"].startswith("setup-plan-")
+
+
+def test_setup_plan_requires_oasis_header():
+    client = app_module.app.test_client()
+    r = client.post("/api/setup/plan", json={"selectedFeatures": ["server"]})
+    assert r.status_code == 403
 
 
 def test_setup_run_starts_job_and_job_endpoint_returns_status():
@@ -44,7 +54,11 @@ def test_setup_run_starts_job_and_job_endpoint_returns_status():
         "service-controls": _ok_feature("service-controls", deps=["server"]),
     }
     with mock.patch.object(app_module, "_setup_registry", return_value=reg):
-        p = client.post("/api/setup/plan", json={"selectedFeatures": ["service-controls"]}).get_json()
+        p = client.post(
+            "/api/setup/plan",
+            json={"selectedFeatures": ["service-controls"]},
+            headers={"X-OASIS-Request": "1"},
+        ).get_json()
         rr = client.post("/api/setup/run", json={"planId": p["planId"]}, headers={"X-OASIS-Request": "1"})
         assert rr.status_code == 200
         data = rr.get_json()
@@ -68,7 +82,11 @@ def test_setup_run_rejects_when_active_job_locked():
     client = app_module.app.test_client()
     reg = {"server": _ok_feature("server")}
     with mock.patch.object(app_module, "_setup_registry", return_value=reg):
-        p = client.post("/api/setup/plan", json={"selectedFeatures": ["server"]}).get_json()
+        p = client.post(
+            "/api/setup/plan",
+            json={"selectedFeatures": ["server"]},
+            headers={"X-OASIS-Request": "1"},
+        ).get_json()
         with app_module._setup_lock:
             app_module._setup_active_job = "setup-job-lock"
             app_module._setup_jobs["setup-job-lock"] = {
@@ -133,6 +151,7 @@ def test_setup_run_forwards_winlink_credentials_from_payload_to_install_script()
                 "winlink": {"callsign": "W4MHI", "password": "hunter2", "locator": "FM18"},
                 "wifi": {"mode": "none", "ssid": "", "password": ""},
             },
+            headers={"X-OASIS-Request": "1"},
         ).get_json()
         rr = client.post("/api/setup/run", json={"planId": p["planId"]}, headers={"X-OASIS-Request": "1"})
         assert rr.status_code == 200
@@ -179,6 +198,7 @@ def test_setup_run_uses_no_password_flag_when_winlink_password_omitted():
                 "winlink": {"callsign": "W4MHI"},
                 "wifi": {"mode": "none", "ssid": "", "password": ""},
             },
+            headers={"X-OASIS-Request": "1"},
         ).get_json()
         rr = client.post("/api/setup/run", json={"planId": p["planId"]}, headers={"X-OASIS-Request": "1"})
         job_id = rr.get_json()["jobId"]
@@ -230,6 +250,7 @@ def test_setup_plan_blocks_winlink_without_password():
                 "station": {},
                 "wifi": {"mode": "none", "ssid": "", "password": ""},
             },
+            headers={"X-OASIS-Request": "1"},
         )
     assert r.status_code == 200
     data = r.get_json()
@@ -249,6 +270,7 @@ def test_setup_plan_blocks_internet_required_features_when_offline():
                 "winlink": {"password": "x"},
                 "wifi": {"mode": "none", "ssid": "", "password": ""},
             },
+            headers={"X-OASIS-Request": "1"},
         )
     assert r.status_code == 200
     data = r.get_json()
@@ -260,7 +282,11 @@ def test_setup_cancel_requests_active_job():
     client = app_module.app.test_client()
     reg = {"server": _ok_feature("server")}
     with mock.patch.object(app_module, "_setup_registry", return_value=reg):
-        p = client.post("/api/setup/plan", json={"selectedFeatures": ["server"]}).get_json()
+        p = client.post(
+            "/api/setup/plan",
+            json={"selectedFeatures": ["server"]},
+            headers={"X-OASIS-Request": "1"},
+        ).get_json()
         rr = client.post("/api/setup/run", json={"planId": p["planId"]}, headers={"X-OASIS-Request": "1"})
         assert rr.status_code == 200
         job_id = rr.get_json()["jobId"]
@@ -285,6 +311,7 @@ def test_setup_run_fails_when_station_write_raises():
                 "winlink": {"password": "x"},
                 "wifi": {"mode": "none", "ssid": "", "password": ""},
             },
+            headers={"X-OASIS-Request": "1"},
         ).get_json()
         rr = client.post("/api/setup/run", json={"planId": p["planId"]}, headers={"X-OASIS-Request": "1"})
         assert rr.status_code == 200
@@ -312,6 +339,7 @@ def test_setup_plan_appends_wifi_last_and_marks_reboot_required():
                 "winlink": {"password": "x"},
                 "wifi": {"mode": "client", "ssid": "FieldNet", "password": "password123"},
             },
+            headers={"X-OASIS-Request": "1"},
         )
     assert r.status_code == 200
     data = r.get_json()
@@ -332,6 +360,7 @@ def test_setup_plan_blocks_linux_only_feature_on_non_linux():
                 "winlink": {"password": "x"},
                 "wifi": {"mode": "none", "ssid": "", "password": ""},
             },
+            headers={"X-OASIS-Request": "1"},
         )
     assert r.status_code == 200
     data = r.get_json()
@@ -353,6 +382,7 @@ def test_setup_run_includes_wifi_feature_state_when_selected():
                 "winlink": {"password": "x"},
                 "wifi": {"mode": "client", "ssid": "FieldNet", "password": "password123"},
             },
+            headers={"X-OASIS-Request": "1"},
         ).get_json()
         rr = client.post("/api/setup/run", json={"planId": p["planId"]}, headers={"X-OASIS-Request": "1"})
         assert rr.status_code == 200

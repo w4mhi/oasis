@@ -98,6 +98,37 @@ class SetupEngineRunTest(unittest.TestCase):
         summary = SE.JobSummary(green=0, amber=0, red=1, gray=0, features=[])
         self.assertEqual(SE.terminal_exit_code(summary), 1)
 
+    def test_runner_stops_later_features_once_cancel_requested(self):
+        trace = []
+
+        def mk(name):
+            def _step():
+                trace.append(name)
+                return {"ok": True}
+            return _step
+
+        reg = {
+            "server": SE.FeatureSpec(key="server", install_fn=mk("server.install"), verify_fn=mk("server.verify")),
+            "service-controls": SE.FeatureSpec(key="service-controls", install_fn=mk("service-controls.install"), verify_fn=mk("service-controls.verify")),
+            "kiwix": SE.FeatureSpec(key="kiwix", install_fn=mk("kiwix.install"), verify_fn=mk("kiwix.verify")),
+        }
+        plan = SE.resolve_plan(["server", "service-controls", "kiwix"], reg)
+
+        calls = {"n": 0}
+
+        def cancel_requested():
+            calls["n"] += 1
+            return calls["n"] > 1
+
+        states, _blocked, _summary = SE.run_plan(plan, SE.RunOptions(job_id="job-cancel", cancel_requested=cancel_requested), reg)
+
+        self.assertEqual(trace, ["server.install", "server.verify"])
+        self.assertNotEqual(states["server"].status, SE.STATUS_CANCELED)
+
+        for key in ("service-controls", "kiwix"):
+            self.assertEqual(states[key].status, SE.STATUS_CANCELED)
+            self.assertEqual(states[key].reason_code, "JOB_CANCELED")
+
 
 if __name__ == "__main__":
     unittest.main()

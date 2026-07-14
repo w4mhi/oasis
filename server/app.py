@@ -764,6 +764,9 @@ def api_setup_hardware_detect():
 
 @app.route("/api/setup/plan", methods=["POST"])
 def api_setup_plan():
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
     data = request.get_json(silent=True) or {}
     selected = data.get("selectedFeatures")
     if not isinstance(selected, list):
