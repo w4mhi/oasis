@@ -47,6 +47,7 @@ from common import server as SERVER_SETUP
 from common import setup_engine as SE
 from common import hardware as HW
 from common import hardware_detect as HD_detect
+from common import gpsd_chrony
 from common.oasis_lib import has_internet
 APRS_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "aprs", "static")
 WINLINK_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "winlink", "static")
@@ -2814,10 +2815,59 @@ def _wifi_info():
     return info or None
 
 
+def _gps_interface(device_path):
+    """Classify a gpsd device path as 'usb' (features/gps's own candidates)
+    or 'uart' (features/gps-L76X's candidates), or None if unrecognized or
+    absent. Path shape only — features/gps's own CANDIDATES list includes
+    /dev/ttyAMA0 and /dev/serial0 as fallbacks in case no dedicated USB path
+    is found, so this classifier (not "which feature wrote the config") is
+    the single source of truth for what the wire actually is. See
+    specs/2026-07-14-gps-detection-status-design.md §3."""
+    if not device_path:
+        return None
+    if device_path.startswith("/dev/ttyACM") or device_path.startswith("/dev/ttyUSB"):
+        return "usb"
+    if (device_path.startswith("/dev/ttyS") or device_path == "/dev/serial0"
+            or device_path.startswith("/dev/ttyAMA")):
+        return "uart"
+    return None
+
+
+# Union of features/gps's CANDIDATES (USB) and features/gps-L76X's
+# DEVICE_CANDIDATES (UART) — see specs/2026-07-14-gps-detection-status-design.md.
+_GPS_CANDIDATE_PATHS = ("/dev/ttyACM0", "/dev/ttyUSB0", "/dev/ttyS0",
+                        "/dev/serial0", "/dev/ttyAMA0")
+
+
+def _gps_presence_status():
+    """Which device gpsd is configured for (interface-classified), plus any
+    OTHER GPS-shaped path that's physically present but unused. Pure
+    filesystem/config-file reads only — NEVER opens the serial port itself
+    (gpsd may already hold it; see specs/2026-07-14-gps-detection-status-design.md
+    §3 for why that matters on a box that needs steady GPS-disciplined time).
+    Independent of whether gpsd itself is reachable right now — this is why
+    it's a separate function from _gps_info(), not inlined into its
+    socket-dependent early-return path."""
+    configured = gpsd_chrony.configured_device()
+    other = sorted(p for p in _GPS_CANDIDATE_PATHS
+                   if p != configured and os.path.exists(p))
+    return {
+        "device": configured,
+        "interface": _gps_interface(configured),
+        "otherDetected": [{"path": p, "interface": _gps_interface(p)} for p in other],
+    }
+
+
 def _gps_info():
-    """Snapshot from gpsd (127.0.0.1:2947): fix mode, sats, position. Returns None
-    if gpsd isn't reachable (so the card hides), or a dict (mode 0 = gpsd up, no
-    fix yet). Dependency-free — speaks gpsd's JSON protocol over a socket."""
+    """Snapshot from gpsd (127.0.0.1:2947): fix mode, sats, position, plus
+    which physical interface (usb/uart) is providing it and whether another
+    GPS-shaped device is present but unused (see _gps_presence_status()).
+    Returns None if gpsd isn't reachable (so the card hides — this also
+    means the presence/interface fields are only populated once gpsd is up;
+    see specs/2026-07-14-gps-detection-status-design.md for why that's an
+    intentional scope boundary, not an oversight). Otherwise a dict (mode 0
+    = gpsd up, no fix yet). Dependency-free — speaks gpsd's JSON protocol
+    over a socket."""
     import json as _json
     try:
         s = socket.create_connection(("127.0.0.1", 2947), timeout=1.5)
@@ -2871,7 +2921,9 @@ def _gps_info():
             s.close()
         except OSError:
             pass
-    return info or {"mode": 0}
+    result = info or {"mode": 0}
+    result.update(_gps_presence_status())
+    return result
 
 
 def _chrony_state():
