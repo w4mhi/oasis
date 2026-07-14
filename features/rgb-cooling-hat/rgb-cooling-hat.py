@@ -50,10 +50,10 @@ FAN_ON        = 55.0
 FAN_OFF       = 48.0
 
 ENABLE_RGB    = True        # drive the RGB LEDs at all
-RGB_MODE      = "thermal"   # "thermal" = colour by temp (green→amber→red);
+RGB_MODE      = "thermal"   # "thermal" = colour by temp (blue→amber→red);
                             # "fan" = amber while the fan runs, DEFAULT_COLOR when off;
                             # "static" = fixed STATIC_COLOR
-DEFAULT_COLOR = (0, 255, 0)    # (R,G,B) when the fan is OFF (RGB_MODE="fan")
+DEFAULT_COLOR = (0, 0, 255)    # (R,G,B) when the fan is OFF (RGB_MODE="fan")
 FAN_ON_COLOR  = (255, 110, 0)  # (R,G,B) when the fan is ON  (RGB_MODE="fan", amber)
 STATIC_COLOR  = (0, 80, 255)   # (R,G,B) used when RGB_MODE == "static"
 BRIGHTNESS    = 25          # 0–100 %, scales all RGB output (these LEDs have no
@@ -131,7 +131,7 @@ def parse_hex_color(s):
     return int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
 
 def temp_colour(t):
-    if t < FAN_ON:  return (0, 255, 0)    # cool — green
+    if t < FAN_ON:  return (0, 0, 255)    # cool — blue
     if t < 68.0:    return (255, 110, 0)  # warm — amber
     return (255, 0, 0)                    # hot  — red
 
