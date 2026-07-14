@@ -41,6 +41,7 @@ for path in (SUITE_ROOT, SERVER_DIR):
         sys.path.insert(0, path)
 
 from common import lookup
+from common import config_paths
 APRS_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "aprs", "static")
 WINLINK_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "winlink", "static")
 FCC_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "fcc_database", "static")
@@ -58,7 +59,7 @@ VERSION_FILE = os.path.join(SUITE_ROOT, "version.json")
 # Written by setup-oasis.py: the set of features the operator chose to install.
 # The dashboard reads it (via /api/installed-services) to hide cards for
 # services that were never installed. Absent file → show everything.
-INSTALLED_SERVICES_FILE = os.path.join(SUITE_ROOT, "installed-services.json")
+INSTALLED_SERVICES_FILE = config_paths.installed_services_json(SUITE_ROOT)
 
 # Portable / "locked" profile. When OASIS_FEATURES is set (comma-separated
 # feature keys, e.g. "fcc,forms,repeaterbook"), the suite runs as a read-mostly
@@ -171,6 +172,15 @@ window.location.replace(
 );
 </script>
 <noscript><meta http-equiv="refresh" content="0;url=/index.html"></noscript>''', 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+
+@app.route("/station.json")
+def serve_station_json():
+    """Serve the operator's station profile, now stored under configuration/."""
+    path = config_paths.station_json(SUITE_ROOT)
+    if not os.path.exists(path):
+        return jsonify({}), 404
+    return send_file(path, mimetype="application/json")
 
 
 @app.route("/map-assets/<path:filename>")
