@@ -168,6 +168,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: .38rem .7rem;
+  flex-wrap: wrap;
   transition: border-color .3s;
 }
 .svc-card.up   { border-color: var(--accent-dim); background: rgba(0, 200, 100, 0.06); }
@@ -256,6 +257,19 @@ a.svc-card:hover { border-color: var(--accent); }
 .hw-state { margin-left: auto; font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; }
 .hw-state.free { color: var(--accent); }
 .hw-state.busy { color: var(--red); }
+
+/* ── Per-card device dropdown (spec §7.3) ────────────────────────────────── */
+.hw-assign-row {
+  flex: 1 0 100%; display: flex; align-items: center; gap: .4rem; margin-top: .3rem;
+}
+.hw-assign-row[hidden] { display: none; }
+.hw-assign-lbl { font-size: var(--fs-small); color: var(--text-dim); }
+.hw-assign-sel {
+  flex: 1; min-width: 0; background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; font-size: var(--fs-small);
+  padding: 2px 4px; font-family: var(--mono);
+}
+.svc-power.blocked { color: var(--text-dim); border-color: var(--border); opacity: .6; pointer-events: none; }
 
 /* ── Stats bar ───────────────────────────────────────────────────────── */
 .stats-bar {
@@ -1005,6 +1019,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="svc-dot" id="dot-gw"></div>
     <div><div class="svc-name">APRS GrayWolf</div><div class="svc-sub" id="sub-gw">—</div></div>
     <span class="svc-badge" id="badge-gw">—</span>
+    <div class="hw-assign-row" id="hwrow-gw" hidden>
+      <span class="hw-assign-lbl">device:</span>
+      <select class="hw-assign-sel" id="hwsel-gw" onchange="onHardwareAssignChange('gw')"></select>
+    </div>
   </div>
   <div class="svc-card" id="card-aprs">
     <div class="svc-dot" id="dot-aprs"></div>
@@ -1034,6 +1052,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <div class="svc-sub" id="sub-owrx">—</div>
     </div>
     <span class="svc-badge" id="badge-owrx">—</span>
+    <div class="hw-assign-row" id="hwrow-owrx" hidden>
+      <span class="hw-assign-lbl">device:</span>
+      <select class="hw-assign-sel" id="hwsel-owrx" onchange="onHardwareAssignChange('owrx')"></select>
+    </div>
   </div>
   <div class="svc-card" id="card-adsb">
     <div class="svc-dot" id="dot-adsb"></div>
@@ -1044,6 +1066,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <div class="svc-sub" id="sub-adsb">—</div>
     </div>
     <span class="svc-badge" id="badge-adsb">—</span>
+    <div class="hw-assign-row" id="hwrow-adsb" hidden>
+      <span class="hw-assign-lbl">device:</span>
+      <select class="hw-assign-sel" id="hwsel-adsb" onchange="onHardwareAssignChange('adsb')"></select>
+    </div>
   </div>
   <a class="svc-card" id="card-winlink" href="server/winlink/mail.html">
     <div class="svc-dot" id="dot-winlink"></div>
@@ -1054,6 +1080,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="svc-dot" id="dot-wlrf"></div>
     <div><div class="svc-name">Winlink RF</div><div class="svc-sub" id="sub-wlrf">—</div></div>
     <span class="svc-badge" id="badge-wlrf">—</span>
+    <div class="hw-assign-row" id="hwrow-wlrf" hidden>
+      <span class="hw-assign-lbl">device:</span>
+      <select class="hw-assign-sel" id="hwsel-wlrf" onchange="onHardwareAssignChange('wlrf')"></select>
+    </div>
   </div>
 </div>
 <!-- Row 2: system / infrastructure -->
@@ -1411,6 +1441,11 @@ const SERVICES = [
   {
     id: 'gw', name: 'GrayWolf',
     check: async () => {
+      const hw = _hwLast && _hwLast.services && _hwLast.services.aprs;
+      if (hw && !hw.ok) {
+        return { up: false, badge: 'UNASSIGNED',
+          sub: hw.reason === 'unassigned' ? 'unassigned — pick a device below' : 'device not attached' };
+      }
       await fetch(`http://${HOST}:${PORTS.graywolf}/`, { cache: 'no-store', mode: 'no-cors' });
       return { up: true, badge: 'UP', sub: `:${PORTS.graywolf}`, navSub: 'operational' };
     }
@@ -1442,6 +1477,11 @@ const SERVICES = [
       if (!r.ok) return { up: false, sub: 'status error' };
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      const hw = _hwLast && _hwLast.services && _hwLast.services.winlink;
+      if (hw && !hw.ok) {
+        return { up: false, badge: 'UNASSIGNED',
+          sub: hw.reason === 'unassigned' ? 'unassigned — pick a device below' : 'device not attached' };
+      }
       if (d.active === 'active') return { up: true, badge: 'ON AIR', sub: 'AGWPE :8000 · APRS off' };
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
         sub: d.installed ? 'start for packet Winlink' : 'run install-winlink.py' };
@@ -1556,6 +1596,11 @@ const SERVICES = [
   {
     id: 'owrx', name: 'OpenWebRX',
     check: async () => {
+      const hw = _hwLast && _hwLast.services && _hwLast.services.openwebrx;
+      if (hw && !hw.ok) {
+        return { up: false, badge: 'UNASSIGNED',
+          sub: hw.reason === 'unassigned' ? 'unassigned — pick a device below' : 'device not attached' };
+      }
       await fetch(`http://${HOST}:${PORTS.openwebrx}/`, { cache: 'no-store', mode: 'no-cors' });
       return { up: true, badge: 'UP', sub: `:${PORTS.openwebrx}` };
     }
@@ -1570,6 +1615,11 @@ const SERVICES = [
       if (!r.ok) return { up: false, sub: 'status error' };
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      const hw = _hwLast && _hwLast.services && _hwLast.services.adsb;
+      if (hw && !hw.ok) {
+        return { up: false, badge: 'UNASSIGNED',
+          sub: hw.reason === 'unassigned' ? 'unassigned — pick a device below' : 'device not attached' };
+      }
       if (d.active === 'active') return { up: true, badge: 'UP', sub: 'aircraft tracking' };
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
         sub: d.installed ? 'start for aircraft tracking' : 'run services/adsb/install.py' };
@@ -1651,6 +1701,84 @@ function pingAll() {
 let _hwLast = null;   // last GET /api/hardware/devices payload — read by the
                        // per-card dropdown code too (added in Slice 4b Task 3)
 
+// Dashboard card id -> HW logical service. MUST mirror common/hardware.py's
+// SERVICE_UNITS keys and its inverse SVC_UNITS-vs-HW mapping documented in
+// specs/2026-07-14-hardware-engine-slice4b-plan.md's Global Constraints table
+// (card ids here are NOT the same string as the HW service name for aprs/winlink).
+const HW_SERVICE_FOR_CARD = { adsb: 'adsb', owrx: 'openwebrx', gw: 'aprs', wlrf: 'winlink' };
+// MUST mirror common/hardware.py's DEVICE_KIND_FOR_SERVICE — kept in JS
+// because the dropdown filters candidate devices client-side.
+const HW_KIND_FOR_SERVICE = {
+  aprs:      ['rtl-sdr', 'digirig', 'dra-pi'],
+  winlink:   ['digirig', 'dra-pi'],
+  adsb:      ['rtl-sdr'],
+  openwebrx: ['rtl-sdr'],
+};
+
+function populateHardwareDropdowns(data) {
+  const devices  = (data && data.devices) || [];
+  const services = (data && data.services) || {};
+  Object.keys(HW_SERVICE_FOR_CARD).forEach(cardId => {
+    const hwService = HW_SERVICE_FOR_CARD[cardId];
+    const row = document.getElementById('hwrow-' + cardId);
+    const sel = document.getElementById('hwsel-' + cardId);
+    if (!row || !sel) return;
+    row.hidden = false;
+    const allowedKinds = HW_KIND_FOR_SERVICE[hwService] || [];
+    const compatible = devices.filter(d => allowedKinds.includes(d.kind));
+    const current = (services[hwService] || {}).device_id || '';
+    sel.innerHTML = ['<option value="">— unassigned —</option>']
+      .concat(compatible.map(d =>
+        `<option value="${escapeHtml(d.id)}"${d.id === current ? ' selected' : ''}>`
+        + `${escapeHtml(d.label)} (${escapeHtml(d.kind)})</option>`))
+      .join('');
+    sel.value = current;
+  });
+}
+
+async function onHardwareAssignChange(cardId) {
+  const hwService = HW_SERVICE_FOR_CARD[cardId];
+  const sel = document.getElementById('hwsel-' + cardId);
+  if (!hwService || !sel) return;
+  const newDeviceId = sel.value;
+  const unit = SVC_UNITS[cardId];
+  const running = _svcStates[cardId] === 'up' || _svcStates[cardId] === 'warn';
+
+  if (running) {
+    if (!confirm(`Changing this device will stop the running "${unit}" service first. Continue?`)) {
+      populateHardwareDropdowns(_hwLast);   // revert the select to its prior value
+      return;
+    }
+    try {
+      await fetch('/api/service', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+        body: JSON.stringify({ unit, action: 'stop' }),
+      });
+    } catch (e) { /* best-effort — the assign/release call below still persists */ }
+  }
+
+  try {
+    const body = newDeviceId === ''
+      ? { service: hwService }
+      : { service: hwService, device_id: newDeviceId };
+    const r = await fetch(newDeviceId === '' ? '/api/hardware/release' : '/api/hardware/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) {
+      alert(`Could not update device assignment:\n${(d && d.error) || ('HTTP ' + r.status)}`);
+    }
+  } catch (e) {
+    alert(`Could not update device assignment:\n${e.message}`);
+  } finally {
+    await fetchHardware();
+    pingAll();
+  }
+}
+
 function renderHardwareCard(data) {
   const rows  = document.getElementById('hw-rows');
   const empty = document.getElementById('hw-empty');
@@ -1681,6 +1809,7 @@ async function fetchHardware() {
     if (!r.ok) return;
     _hwLast = await r.json();
     renderHardwareCard(_hwLast);
+    populateHardwareDropdowns(_hwLast);
   } catch (e) { /* transient — keep last render, retry next tick */ }
 }
 
@@ -1902,6 +2031,16 @@ function updatePower(svcId, state) {
   if (!SVC_UNITS[svcId]) return;
   const btn = powerBtn(svcId);
   if (!btn) return;
+  const hwService = HW_SERVICE_FOR_CARD[svcId];
+  const hw = hwService && _hwLast && _hwLast.services && _hwLast.services[hwService];
+  if (hw && !hw.ok) {
+    btn.classList.remove('up', 'down', 'busy');
+    btn.classList.add('blocked');
+    btn.textContent = 'ASSIGN DEVICE';
+    btn.title = 'Pick a device below to enable start';
+    return;
+  }
+  btn.classList.remove('blocked');
   const running = state === 'up' || state === 'warn';
   if (_pending[svcId] !== undefined) {
     if (running || Date.now() >= _pending[svcId]) {
@@ -1921,11 +2060,12 @@ function updatePower(svcId, state) {
 async function togglePower(svcId) {
   const unit = SVC_UNITS[svcId];
   if (!unit) return;
+  const btn = powerBtn(svcId);
+  if (btn && btn.classList.contains('blocked')) return;
   const running = _svcStates[svcId] === 'up' || _svcStates[svcId] === 'warn';
   const action  = running ? 'stop' : 'start';
   if (action === 'stop' && !confirm(`Stop the "${unit}" service?`)) return;
 
-  const btn = powerBtn(svcId);
   if (btn) { btn.classList.add('busy'); btn.textContent = running ? 'STOPPING' : 'STARTING'; }
   let ok = false;
   try {
