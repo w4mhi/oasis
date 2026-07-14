@@ -541,7 +541,8 @@ INSTALLED_MANIFEST = config_paths.installed_services_json(REPO_ROOT)
 
 # Operator identity (callsign + Maidenhead grid) shown on the dashboard pill.
 # Seeded here so the suite ships personalised; the dashboard still lets each
-# browser override it (localStorage). Lives at suite root → served at /station.json.
+# browser override it (localStorage). Lives under configuration/, served at
+# /station.json via an explicit Flask route (server/app.py).
 STATION_MANIFEST = config_paths.station_json(REPO_ROOT)
 
 # Visibility-toggle features for static content/data. Unlike service installs
