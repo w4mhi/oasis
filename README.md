@@ -405,7 +405,7 @@ OASIS is a personal project by **W4MHI**, built directly on the work of **Jason,
 
 **OASIS** is designed and maintained by **W4MHI** (Pacific Northwest) for field deployment in Washington state.
 
-It grew out of the **ACK Off-Grid Ham Radio Server** by **Jason, KM4ACK** (Tennessee) — the original concept of a fully offline, browser-accessible amateur-radio toolkit on a Raspberry Pi is his. [KM4ACK on GitHub](https://github.com/km4ack) · APRS by **[GrayWolf](https://github.com/chrissnell/graywolf)** (Chris Snell) · offline Wikipedia by **[Kiwix](https://kiwix.org/)**.
+It grew out of the **ACK Off-Grid Ham Radio Server** by **Jason, KM4ACK** (Tennessee) — the original concept of a fully offline, browser-accessible amateur-radio toolkit on a Raspberry Pi is his. [KM4ACK on GitHub](https://github.com/km4ack) · APRS by **[GrayWolf](https://github.com/chrissnell/graywolf)** (Chris Snell) · offline Wikipedia by **[Kiwix](https://kiwix.org/)** · ADS-B & 433 MHz feature concepts inspired by **[intercept](https://github.com/smittix/intercept)** (smittix).
 
 <div align="center">
 

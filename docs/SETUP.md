@@ -22,6 +22,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [Kiwix / Wikipedia](#kiwix--wikipedia)
 - [RTL-SDR](#rtl-sdr)
 - [OpenWebRX (SIGINT)](#openwebrx-sigint)
+- [ADS-B Aircraft](#adsb-aircraft)
 - [GPS time sync (gpsd + chrony)](#gps-time-sync-gpsd--chrony)
 - [Hardware RTC (Witty Pi 3)](#hardware-rtc-witty-pi-3)
 - [webssh / Browser Terminal](#webssh--browser-terminal)
@@ -60,6 +61,7 @@ Units OASIS writes itself live under `/etc/systemd/system/`:
 | Kiwix (Wikipedia server) | `/etc/systemd/system/kiwix.service` |
 | webssh / browser terminal | `/etc/systemd/system/webssh.service` |
 | RTL-SDR APRS feed | `/etc/systemd/system/aprs-sdr-feed.service` |
+| ADS-B recorder + history API | `/etc/systemd/system/adsb-api.service` |
 | RGB Cooling HAT | `/etc/systemd/system/rgb-cooling-hat.service` |
 | DRA-Pi RX LED | `/etc/systemd/system/dra-rx-led.service` |
 | Wi-Fi AP fallback | `/etc/systemd/system/oasis-netwatch.service` |
@@ -70,6 +72,7 @@ Package-provided units (installed via `apt`/`.deb`, so they live under `/lib/sys
 |---|---|
 | GrayWolf APRS | `/lib/systemd/system/graywolf.service` |
 | OpenWebRX (SIGINT) | `/lib/systemd/system/openwebrx.service` |
+| ADS-B decoder | `/lib/systemd/system/dump1090-fa.service` |
 | GPS time sync — gpsd | `/lib/systemd/system/gpsd.service` |
 | GPS time sync — chrony | `/lib/systemd/system/chrony.service` |
 
@@ -1215,6 +1218,82 @@ FT8/FT4/WSPR/SSTV decoding and spot timestamps need an accurate clock. With no
 internet, discipline it from GPS (`gpsd` + `chrony`) backed by the RTC — see the
 time-sync setup. The dashboard's clock indicator (when present) tells you when
 timing is trustworthy.
+
+---
+
+## ADS-B Aircraft
+
+Local ADS-B aircraft tracking (1090 MHz) via **`dump1090-fa`**, decoded
+entirely on the Pi and plotted as a live layer on the offline map — no
+FlightRadar24 or other internet feed involved, in keeping with the
+offline-first prime directive.
+
+### Hardware — shares the RTL-SDR
+
+ADS-B uses the same RTL-SDR dongle as the APRS SDR feed (`aprs-sdr-feed`) and
+OpenWebRX, so only one of those SDR modes can run at a time. **Starting ADS-B
+stops** `aprs-sdr-feed`, `graywolf`, and `openwebrx` — but **stopping ADS-B
+does not auto-restart** any of them; bring the next mode up by hand from the
+dashboard. GrayWolf running on a Digirig sound-card TNC (no SDR involved) is
+unaffected either way.
+
+### Units
+
+- **`dump1090-fa`** — the Mode S/ADS-B decoder. Owns the RTL-SDR and writes
+  live aircraft positions to `aircraft.json`. Off by default.
+- **`adsb-api`** — the OASIS recorder + history API. Polls `aircraft.json`,
+  records observations, evaluates alerts, and serves it all on
+  `127.0.0.1:8086`. Off by default.
+
+### Install
+
+```bash
+python3 services/adsb/install.py
+```
+
+Or select the **`adsb`** feature in the setup wizard (`python3 setup-oasis.py`).
+Either way, ADS-B is installed **off by default** — start it from the
+dashboard's **ADS-B Aircraft** card.
+
+**Sourcing:** `dump1090-fa` isn't in base Debian/Raspberry Pi OS apt — it
+ships from FlightAware's own apt repo. Install is offline-first: it prefers a
+vendored `.deb` under `services/adsb/packages/dump1090-fa/<suite>/`; if none
+is found it falls back to adding the FlightAware repo and installing online
+(needs internet once). The build-time step that fetches the `.deb` into the
+offline bundle is a pending follow-up, so today's offline image installs
+ADS-B via the online fallback.
+
+### Alerts
+
+The recorder watches every observation for:
+
+- **Emergency squawks** — transponder codes `7500` (unlawful interference),
+  `7600` (radio failure), `7700` (general emergency).
+- **Station proximity** — aircraft within a radius of your station's
+  coordinates (`station.json`). Distances follow the dashboard's
+  imperial/metric toggle.
+
+### History
+
+Every observation is persisted to a local SQLite database at
+`/var/lib/adsb/adsb-history.db` (WAL mode), mirroring GrayWolf's history-DB
+pattern — nothing heard is lost, even between dashboard sessions.
+
+### Env overrides (for off-Pi testing)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ADSB_DB_PATH` | `/var/lib/adsb/adsb-history.db` | SQLite history database path |
+| `ADSB_JSON_PATH` | `/run/dump1090-fa/aircraft.json` | dump1090-fa live aircraft JSON to poll |
+| `ADSB_API_PORT` | `8086` | HTTP API port |
+| `ADSB_ALERT_RADIUS_KM` | `50` | Proximity alert radius around the station |
+| `ADSB_POLL_SECS` | `1.0` | Poll interval for `aircraft.json` |
+
+Set these to point at a local JSON file and a writable DB path to run the
+recorder/API on a dev machine without `dump1090-fa` installed.
+
+> Like GrayWolf and OpenWebRX, ADS-B is Pi/Linux only. Pi 3/4/5 is the
+> target; Pi Zero is not.
 
 ---
 
