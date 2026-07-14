@@ -680,6 +680,21 @@ def _systemctl_seq(unit, verbs):
             pass
 
 
+def _apply_hardware_async():
+    """Best-effort: re-template every hardware-claiming service's device config
+    after an assignment change. Failure here does not undo the already-
+    persisted assignment (HW.assign/release already wrote hardware.json) — it
+    just means the binding isn't live until the next successful apply, exactly
+    like _systemctl_seq's own tolerated-failure philosophy."""
+    venv_python = os.path.join(SUITE_ROOT, ".venv", "bin", "python3")
+    script = os.path.join(SUITE_ROOT, "scripts", "apply_hardware.py")
+    try:
+        subprocess.run(["sudo", "-n", venv_python, script],
+                       capture_output=True, text=True, timeout=30)
+    except Exception:
+        pass
+
+
 @app.route("/api/health/service")
 def api_health_service():
     """Report systemd status for a known OASIS service (Linux only).
@@ -986,6 +1001,7 @@ def api_hardware_assign():
         return jsonify({"ok": False,
                         "error": "device not declared, or wrong kind for this service"}), 400
     HW.assign(SUITE_ROOT, inv, service, device_id)
+    _apply_hardware_async()
     return jsonify({"ok": True})
 
 
@@ -1005,6 +1021,7 @@ def api_hardware_release():
         _systemctl_seq(unit, ["stop"])
 
     HW.release(SUITE_ROOT, inv, service, stop_fn=_stop)
+    _apply_hardware_async()
     return jsonify({"ok": True})
 
 

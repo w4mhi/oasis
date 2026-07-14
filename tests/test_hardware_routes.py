@@ -62,6 +62,30 @@ class HardwareRoutesTest(unittest.TestCase):
                         headers={"X-OASIS-Request": "1"})
         self.assertEqual(r.status_code, 400)
 
+    def test_assign_triggers_apply_hardware(self):
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr"}}, assignments={})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "assign"), \
+             mock.patch.object(oasis_app, "subprocess") as mocked_subprocess:
+            r = self.c.post("/api/hardware/assign",
+                            json={"service": "adsb", "device_id": "a"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(mocked_subprocess.run.called)
+        call_args = mocked_subprocess.run.call_args[0][0]
+        self.assertIn("apply_hardware.py", " ".join(call_args))
+
+    def test_release_triggers_apply_hardware(self):
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr"}},
+                           assignments={"adsb": "a"})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "release"), \
+             mock.patch.object(oasis_app, "subprocess") as mocked_subprocess:
+            r = self.c.post("/api/hardware/release", json={"service": "adsb"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(mocked_subprocess.run.called)
+
 
 if __name__ == "__main__":
     unittest.main()
