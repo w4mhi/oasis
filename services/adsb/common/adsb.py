@@ -10,12 +10,13 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, _REPO_ROOT)
 
 from services.adsb.common import history, alerts
 from common.oasis_lib import _hr, _step, _ok, _warn, _info, _fail, _run  # noqa: E402
 from common import manifest as M  # noqa: E402
+from common import config_paths  # noqa: E402
 
 DB_PATH     = os.environ.get("ADSB_DB_PATH", "/var/lib/adsb/adsb-history.db")
 JSON_PATH   = os.environ.get("ADSB_JSON_PATH", "/run/dump1090-fa/aircraft.json")
@@ -31,7 +32,7 @@ _lock = threading.Lock()
 
 def _load_station():
     try:
-        with open(os.path.join(_REPO_ROOT, "station.json")) as f:
+        with open(config_paths.station_json(_REPO_ROOT)) as f:
             s = json.load(f)
         return {"lat": s.get("lat"), "lon": s.get("lon")}
     except Exception:
