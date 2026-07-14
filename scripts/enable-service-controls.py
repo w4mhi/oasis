@@ -9,9 +9,10 @@ the web layer.
 It installs a narrow, validated `sudoers` rule (/etc/sudoers.d/oasis-service-
 controls) that allows ONLY `systemctl start|stop|restart|enable|disable <unit>.service` for the
 known OASIS units below, plus one fixed read-only `tcpdump -ni lo … udp port 7355`
-for the dashboard's APRS SDR feed flow meter (/api/health/feed-flow), and nothing
-else. The endpoints then run `sudo -n …`; the OS authorizes the exact command, so
-OASIS never handles a credential.
+for the dashboard's APRS SDR feed flow meter (/api/health/feed-flow), plus a
+zero-arg `reboot` for the setup wizard's Reboot button (/api/setup/reboot), and
+nothing else. The endpoints then run `sudo -n …`; the OS authorizes the exact
+command, so OASIS never handles a credential.
 
 Notably absent from the list: the `oasis` service itself — stopping the web
 server would kill the dashboard with no way to bring it back from the browser.
@@ -70,13 +71,18 @@ VENV_PYTHON = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
 APPLY_HARDWARE_SCRIPT = os.path.join(REPO_ROOT, "scripts", "apply_hardware.py")
 BURN_SERIAL_SCRIPT = os.path.join(REPO_ROOT, "scripts", "burn_dongle_serial.py")
 
+# Setup wizard's Reboot button (/api/setup/reboot): reboot takes NO arguments,
+# same zero-arg pattern as apply_hardware above (nothing to inject). Path is
+# the Debian/Raspberry Pi OS convention (/sbin/reboot); BENCH-VERIFY on real
+# hardware — not confirmed in this dev environment.
+
 
 def target_user(explicit):
     """User the OASIS server runs as: explicit > $SUDO_USER > current user."""
     return explicit or os.environ.get("SUDO_USER") or getpass.getuser()
 
 
-def build_content(user, systemctl, tcpdump):
+def build_content(user, systemctl, tcpdump, reboot_bin):
     cmds = ", ".join(f"{systemctl} {a} {u}.service" for u in UNITS for a in ACTIONS)
     sniff = tcpdump + " " + " ".join(SNIFF_ARGS)
     apply_hw = f"{VENV_PYTHON} {APPLY_HARDWARE_SCRIPT}"
@@ -87,21 +93,27 @@ def build_content(user, systemctl, tcpdump):
         f"# plus a fixed read-only tcpdump on lo for the APRS SDR feed flow meter,\n"
         f"# plus the hardware-aware engine's apply-hardware (zero-arg) and the\n"
         f"# validating eeprom-serial wrapper (validates its own argument — see\n"
-        f"# scripts/burn_dongle_serial.py before assuming the wildcard below is unsafe).\n"
+        f"# scripts/burn_dongle_serial.py before assuming the wildcard below is unsafe),\n"
+        f"# plus a zero-arg reboot for the setup wizard's Reboot button.\n"
         f"Cmnd_Alias OASIS_SVC = {cmds}\n"
         f"Cmnd_Alias OASIS_SNIFF = {sniff}\n"
         f"Cmnd_Alias OASIS_HW_APPLY = {apply_hw}\n"
         f"Cmnd_Alias OASIS_HW_EEPROM = {burn_serial_cmd}\n"
-        f"{user} ALL=(root) NOPASSWD: OASIS_SVC, OASIS_SNIFF, OASIS_HW_APPLY, OASIS_HW_EEPROM\n"
+        f"Cmnd_Alias OASIS_REBOOT = {reboot_bin}\n"
+        f"{user} ALL=(root) NOPASSWD: OASIS_SVC, OASIS_SNIFF, OASIS_HW_APPLY, OASIS_HW_EEPROM, OASIS_REBOOT\n"
     )
 
 
 def install(user):
     systemctl = shutil.which("systemctl") or "/usr/bin/systemctl"
     tcpdump   = shutil.which("tcpdump")   or "/usr/bin/tcpdump"
-    content   = build_content(user, systemctl, tcpdump)
+    # Debian/Raspberry Pi OS convention; BENCH-VERIFY on real hardware — not
+    # confirmed in this dev environment.
+    reboot_bin = shutil.which("reboot")   or "/sbin/reboot"
+    content   = build_content(user, systemctl, tcpdump, reboot_bin)
     _info(f"systemctl: {systemctl}")
     _info(f"tcpdump:   {tcpdump}  (read-only feed flow probe on lo)")
+    _info(f"reboot:    {reboot_bin}  (zero-arg, setup wizard Reboot button)")
     _info("Units: " + ", ".join(UNITS))
 
     # Write to a temp file, VALIDATE with visudo, then install atomically. A
@@ -193,6 +205,11 @@ def status():
     else:
         _warn("sudo does not grant the eeprom wrapper yet — 'name this dongle' "
               "will be unavailable from the dashboard.")
+    if r.returncode == 0 and "OASIS_REBOOT" in out:
+        _ok("sudo grants reboot (zero-arg) without a password.")
+    else:
+        _warn("sudo does not grant reboot yet — the setup wizard's Reboot "
+              "button will be unavailable.")
 
     u = target_user(None)
     if _in_group(u, JOURNAL_GROUP):
