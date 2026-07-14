@@ -43,6 +43,7 @@ for path in (SUITE_ROOT, SERVER_DIR):
 from common import lookup
 from common import config_paths
 from common import hardware as HW
+from common import hardware_detect as HD_detect
 APRS_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "aprs", "static")
 WINLINK_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "winlink", "static")
 FCC_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "fcc_database", "static")
@@ -955,6 +956,14 @@ def api_hardware_devices():
     """Live device-allocation list for the dashboard HARDWARE card."""
     inv = HW.load(SUITE_ROOT)
     return jsonify({"devices": HW.device_states(inv), "errors": inv.errors})
+
+
+@app.route("/api/hardware/detect")
+def api_hardware_detect():
+    """Enumerate attached hardware (RTL-SDRs, ALSA cards, serial devices) as
+    candidates for the assignment editor. Read-only — never writes
+    hardware.json (spec §6)."""
+    return jsonify(HD_detect.scan())
 
 
 @app.route("/api/hardware/assign", methods=["POST"])

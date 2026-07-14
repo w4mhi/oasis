@@ -13,6 +13,8 @@ the target Pi against actual connected hardware.
 """
 import os
 import re
+import subprocess
+import sys
 
 
 def parse_rtl_test_devices(output):
@@ -48,3 +50,24 @@ def list_serial_by_id(directory="/dev/serial/by-id"):
     for name in sorted(os.listdir(directory)):
         out.append({"path": os.path.join(directory, name), "label": name})
     return out
+
+
+def _run_text(argv, timeout=10):
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        return (r.stdout or "") + (r.stderr or "")  # rtl_test writes to stderr
+    except Exception:
+        return ""
+
+
+def scan():
+    """Enumerate attached hardware for the assignment editor. Linux only —
+    returns empty candidate lists elsewhere (mirrors the no-op pattern used by
+    every apply()/install writer in this project)."""
+    if sys.platform != "linux":
+        return {"rtl_sdr": [], "alsa": [], "serial": []}
+    return {
+        "rtl_sdr": parse_rtl_test_devices(_run_text(["rtl_test", "-t"])),
+        "alsa": parse_aplay_cards(_run_text(["aplay", "-l"])),
+        "serial": list_serial_by_id(),
+    }
