@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -405,7 +406,24 @@ def _setup_write_station(payload):
         fh.write("\n")
 
 
-def _setup_registry():
+def _setup_winlink_install_fn(payload):
+    win = (payload or {}).get("winlink", {})
+    args = []
+    callsign = (win.get("callsign") or "").strip()
+    if callsign:
+        args += ["--callsign", callsign]
+    locator = (win.get("locator") or "").strip()
+    if locator:
+        args += ["--locator", locator]
+    password = win.get("password") or ""
+    if password:
+        args += ["--password", password]
+    else:
+        args += ["--no-password"]
+    return _setup_run_script("scripts/install-winlink.py", args)
+
+
+def _setup_registry(payload=None):
     # Expanded registry maps spec feature keys to installer scripts.
     return {
         "server": SE.FeatureSpec(
@@ -446,7 +464,7 @@ def _setup_registry():
         "winlink": SE.FeatureSpec(
             key="winlink",
             dependencies=["server"],
-            install_fn=lambda: _setup_run_script("scripts/install-winlink.py"),
+            install_fn=lambda: _setup_winlink_install_fn(payload),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
         ),
@@ -610,7 +628,7 @@ def _setup_cancel_requested(job_id):
 
 def _setup_run_job(job_id, plan_obj, payload):
     global _setup_active_job
-    reg = _setup_registry()
+    reg = _setup_registry(payload)
     run_opts = SE.RunOptions(
         sequential=True,
         auto_start_services=False,
@@ -935,8 +953,12 @@ def api_setup_reboot():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     if sys.platform != "linux":
         return jsonify({"ok": False, "supported": False, "error": "reboot unavailable"}), 200
+    # Debian/Raspberry Pi OS convention; BENCH-VERIFY on real hardware — not
+    # confirmed in this dev environment. MUST match the OASIS_REBOOT Cmnd_Alias
+    # in scripts/enable-service-controls.py token-for-token, or `sudo -n` denies it.
+    reboot_bin = shutil.which("reboot") or "/sbin/reboot"
     try:
-        subprocess.run(["sudo", "-n", "reboot"], capture_output=True, text=True, timeout=5)
+        subprocess.run(["sudo", "-n", reboot_bin], capture_output=True, text=True, timeout=5)
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
     return jsonify({"ok": True, "message": "reboot requested"})
