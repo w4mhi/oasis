@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common.oasis_lib import _hr, _ok, _info, _warn, _fail, has_internet
 from common import manifest as M
 from common import maidenhead as MH
+from common import config_paths
 
 
 # ── Feature registry ────────────────────────────────────────────────────────────
@@ -535,14 +536,13 @@ def _guess_host():
 # re-run merges newly-installed keys into the existing set (never shrinks it,
 # matching the idempotent “re-run to add a feature” model) — EXCEPT the
 # authoritative gate features below, which honor tick/untick when offered.
-INSTALLED_MANIFEST = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "installed-services.json")
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+INSTALLED_MANIFEST = config_paths.installed_services_json(REPO_ROOT)
 
 # Operator identity (callsign + Maidenhead grid) shown on the dashboard pill.
 # Seeded here so the suite ships personalised; the dashboard still lets each
 # browser override it (localStorage). Lives at suite root → served at /station.json.
-STATION_MANIFEST = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "station.json")
+STATION_MANIFEST = config_paths.station_json(REPO_ROOT)
 
 # Visibility-toggle features for static content/data. Unlike service installs
 # (which only accumulate), these reflect the operator's choice each run: ticking
@@ -620,6 +620,7 @@ def configure_station(callsign=None, grid=None, lat=None, lon=None, interactive=
        (payload["callsign"], payload["grid"], payload["lat"], payload["lon"]):
         return
     try:
+        os.makedirs(config_paths.config_dir(REPO_ROOT), exist_ok=True)
         with open(STATION_MANIFEST, "w") as fh:
             json.dump(payload, fh, indent=2)
             fh.write("\n")
@@ -682,6 +683,7 @@ def record_installed(results, offered_gate=frozenset()):
     payload = {"features": sorted(merged),
                "updated": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
     try:
+        os.makedirs(config_paths.config_dir(REPO_ROOT), exist_ok=True)
         with open(INSTALLED_MANIFEST, "w") as fh:
             json.dump(payload, fh, indent=2)
             fh.write("\n")
