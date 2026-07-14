@@ -786,3 +786,55 @@ def run(pinned_version=None, callsign="W4MHI", locator=None, password=None,
               "(it stops GrayWolf), then Action -> Connect -> ax25:///<gateway-call>.")
         _info("Full runbook + APRS<->Winlink mode-switch: docs/plan-winlink.md")
     print()
+
+
+# ── Device binding (hardware-aware engine, Slice 2b) ───────────────────────────
+# Direwolf's ADEVICE + PTT selection now comes from whichever radio-port device
+# (DRA-Pi or Digirig) is assigned to the `winlink` logical service, instead of a
+# fixed --modem-interface choice. Mirrors the ADS-B / APRS-feed apply(device)
+# pattern (services/adsb/common/adsb.py, services/aprs_feed/common/*).
+def radio_port_config(device):
+    """Pure: (adevice, ptt) for a radio-port device dict, or (None, None) when
+    the device isn't a radio port (e.g. rtl-sdr) or is unassigned (None).
+
+    For 'dra-pi', ptt is the sysfs GPIO number (int, or None if it can't be
+    auto-detected) — the same shape write_direwolf_config expects. For
+    'digirig', ptt is the CP210x serial-by-id path — the same shape
+    write_digirig_config expects."""
+    if not device:
+        return (None, None)
+    kind = device.get("kind")
+    if kind == "dra-pi":
+        return (MODEM_ADEVICE, compute_ptt_gpio())
+    if kind == "digirig":
+        adevice = device.get("alsa") or detect_usb_adevice()
+        ptt = device.get("ptt") or detect_digirig_serial()
+        return (adevice, ptt)
+    return (None, None)
+
+
+def apply(repo_root, device):
+    """Bind (or no-op, when device isn't a radio port) Direwolf's config to the
+    assigned radio port's sound card + PTT. Reuses write_direwolf_config /
+    write_digirig_config — does NOT reimplement config generation. Linux/root
+    only (no-op elsewhere).
+
+    BENCH-VERIFY on the target Pi: the Digirig ADEVICE autodetect (detect_usb_
+    adevice, via `aplay -l`) against a real USB sound card enumeration, and
+    that the CP210x RTS-line PTT path (detect_digirig_serial / device['ptt'])
+    matches what's actually on disk. This is the one element that can't be
+    validated off-Pi.
+    """
+    if sys.platform != "linux":
+        return
+    if not device:
+        return
+    kind = device.get("kind")
+    if kind not in ("dra-pi", "digirig"):
+        return  # not a radio port (e.g. rtl-sdr) — nothing to bind
+    adevice, ptt = radio_port_config(device)
+    callsign = station_callsign(repo_root) or ""
+    if kind == "dra-pi":
+        write_direwolf_config(callsign, adevice, ptt)
+    else:
+        write_digirig_config(callsign, adevice, ptt, force=True)

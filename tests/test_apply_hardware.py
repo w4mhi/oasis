@@ -64,5 +64,8 @@ class ApplyAllTest(unittest.TestCase):
     def test_default_registry_has_aprs(self):
         self.assertIn("aprs", apply_hardware.DEFAULT_HOOKS)
 
+    def test_default_registry_has_winlink(self):
+        self.assertIn("winlink", apply_hardware.DEFAULT_HOOKS)
+
 if __name__ == "__main__":
     unittest.main()
