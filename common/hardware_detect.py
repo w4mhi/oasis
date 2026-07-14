@@ -71,3 +71,47 @@ def scan():
         "alsa": parse_aplay_cards(_run_text(["aplay", "-l"])),
         "serial": list_serial_by_id(),
     }
+
+
+# ── rtl_eeprom "name this dongle" helper ───────────────────────────────────────
+# Burning a unique serial requires EXCLUSIVE USB access to the target dongle.
+# Cheap RTL-SDR dongles frequently ship with the same factory serial
+# (00000001), so this refuses to run unless the operator's situation is
+# unambiguous: nothing that consumes an SDR is currently running, and there is
+# exactly one detected candidate (or a caller-supplied explicit target — left
+# for the route/CLI layer to resolve, not this pure guard).
+SDR_CONSUMING_UNITS = ["dump1090-fa", "aprs-sdr-feed", "openwebrx"]
+
+
+def sdr_services_active(is_active):
+    return [u for u in SDR_CONSUMING_UNITS if is_active(u)]
+
+
+def can_burn_serial(candidates, is_active):
+    """(ok, reason). Refuses if any SDR-consuming service is active (exclusive
+    access required), if there's no detected dongle, or if there's more than
+    one (ambiguous — the operator must unplug the others or the caller must
+    pass an explicit target, which is out of scope for this guard)."""
+    active = sdr_services_active(is_active)
+    if active:
+        return False, f"stop these first: {', '.join(active)}"
+    if not candidates:
+        return False, "no RTL-SDR detected"
+    if len(candidates) > 1:
+        return False, "ambiguous — more than one RTL-SDR detected; unplug the others"
+    return True, ""
+
+
+def burn_serial(new_serial):
+    """Run `rtl_eeprom -s <new_serial>` against the (assumed sole-connected)
+    dongle. Linux/root only. Callers MUST have already confirmed
+    can_burn_serial() — this function does not re-check.
+
+    BENCH-VERIFY: rtl_eeprom's exact interactive confirmation prompt (it may
+    ask for y/n on stdin) — this may need `-y`/non-interactive handling that
+    can't be confirmed without the real tool and hardware.
+    """
+    if sys.platform != "linux":
+        return
+    subprocess.run(["sudo", "rtl_eeprom", "-s", new_serial],
+                   capture_output=True, text=True, timeout=15)
