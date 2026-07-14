@@ -48,13 +48,13 @@ def resolve_station(cfg, config_path):
     """Load the panel's identity (callsign/grid/lat/lon) from the shared OASIS
     station.json — the single source of truth, no inline fallback.
 
-    The file path comes from station.source (default ../../station.json, i.e. the
-    repo root — this panel lives two levels down at displays/e-ink/). If the file
-    is absent, station fields stay unset (the panel just shows no callsign)
+    The file path comes from station.source (default ../../configuration/station.json,
+    i.e. the repo root — this panel lives two levels down at displays/e-ink/). If the
+    file is absent, station fields stay unset (the panel just shows no callsign)
     rather than falling back to stale config values.
     """
     st = cfg.setdefault("station", {})
-    src = st.get("source", "../../station.json")
+    src = st.get("source", "../../configuration/station.json")
     base = os.path.dirname(os.path.abspath(config_path))
     path = src if os.path.isabs(src) else os.path.normpath(os.path.join(base, src))
     try:

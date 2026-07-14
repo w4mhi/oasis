@@ -9,7 +9,7 @@
   "default_screen": 1,
 
   "station": {
-    "source": "../../station.json"
+    "source": "../../configuration/station.json"
   },
 
   "oasis": {

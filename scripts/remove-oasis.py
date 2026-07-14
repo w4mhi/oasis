@@ -37,6 +37,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from common import config_paths  # noqa: E402
 from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run  # noqa: E402
 
 # ── Inventory (source of truth — see docs/remove-oasis-design.md) ─────────────
@@ -71,7 +72,7 @@ def repo_root():
 # torn-down services as if installed; deleting it returns the dashboard to its
 # default "show everything" state — i.e. factory-fresh.
 SUITE_FILES = [
-    os.path.join(repo_root(), "installed-services.json"),
+    config_paths.installed_services_json(repo_root()),
 ]
 
 

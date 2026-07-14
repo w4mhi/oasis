@@ -44,6 +44,7 @@ import tempfile
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _REPO_ROOT)
 
+from common import config_paths
 from common.oasis_lib import (
     _hr, _step, _ok, _info, _warn, _fail, _run, has_internet,
     pat_find_local, pat_latest_release, pat_download_deb,
@@ -129,7 +130,7 @@ def station_callsign(repo_root):
     setup-oasis.py's station step, the first thing setup asks). Returns an
     upper-cased callsign, or None when the file is missing/unset."""
     try:
-        with open(os.path.join(repo_root, "station.json")) as fh:
+        with open(config_paths.station_json(repo_root)) as fh:
             call = json.load(fh).get("callsign")
     except (OSError, ValueError):
         return None

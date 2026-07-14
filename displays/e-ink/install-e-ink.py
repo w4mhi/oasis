@@ -344,7 +344,7 @@ def step_driver(no_fetch):
 
 def step_check_station():
     _step(5, "Checking shared station identity")
-    path = os.path.normpath(os.path.join(HERE, "..", "station.json"))
+    path = os.path.normpath(os.path.join(HERE, "..", "configuration", "station.json"))
     if os.path.exists(path):
         _ok(f"Using {path} for callsign/grid/lat/lon.")
     else:
