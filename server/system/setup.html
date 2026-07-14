@@ -48,6 +48,40 @@
 }
 .all-ok-title { font-size: var(--fs-subtitle); color: var(--accent); font-weight: 700; margin-bottom: .3rem; }
 .all-ok-sub   { font-size: var(--fs-label); color: var(--text-dim); }
+
+.setup-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: .9rem 1rem;
+  margin-bottom: 1rem;
+}
+.setup-row { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin: .4rem 0 .6rem; }
+.setup-btn {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  font-family: var(--mono); font-size: var(--fs-small); padding: .35rem .7rem;
+  border-radius: 6px; cursor: pointer;
+}
+.setup-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+.setup-btn.primary { background: #0a3a20; border-color: #1c6f45; color: #c9ffd8; }
+.setup-kv { font-size: var(--fs-label); color: var(--text-dim); margin: .2rem 0; }
+.setup-kv code { color: var(--accent); background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: var(--fs-small); }
+.setup-grid { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.setup-box { border: 1px solid var(--border); border-radius: 8px; padding: .7rem; background: var(--panel-2); }
+.setup-box h3 { margin: 0 0 .45rem; font-size: var(--fs-base); }
+.setup-list { margin: 0; padding-left: 1rem; font-size: var(--fs-label); color: var(--text-dim); }
+.setup-features { display: flex; flex-direction: column; gap: .45rem; }
+.setup-check { display: flex; gap: .45rem; align-items: center; font-size: var(--fs-label); color: var(--text); }
+.setup-group { margin-bottom: .65rem; border-top: 1px dashed var(--border); padding-top: .55rem; }
+.setup-group:first-child { border-top: 0; padding-top: 0; }
+.setup-group h4 { margin: 0 0 .3rem; font-size: var(--fs-label); color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
+.setup-input { width: 100%; box-sizing: border-box; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: .35rem .45rem; font-family: var(--mono); font-size: var(--fs-small); }
+.setup-note { font-size: var(--fs-small); color: var(--amber); margin-top: .4rem; }
+.setup-log {
+  font-family: var(--mono); font-size: 12px; line-height: 1.4;
+  background: #0b0e10; color: #d7e6dd; border: 1px solid #27323b;
+  border-radius: 8px; padding: .55rem; max-height: 210px; overflow: auto; white-space: pre-wrap;
+}
 </style>
 </head>
 <body>
@@ -76,12 +110,116 @@
 <div class="sec-label">Optional Services</div>
 <div class="check-list" id="list-optional"></div>
 
+<div class="sec-label">Setup Orchestrator (Beta)</div>
+<div class="setup-panel">
+  <div class="setup-kv" id="setup-permissions">Permissions: checking…</div>
+  <div class="setup-kv" id="setup-command"></div>
+  <div class="setup-row">
+    <button class="setup-btn" id="setupRefreshHw">Detect hardware</button>
+    <button class="setup-btn" id="setupCheckPerm">Re-check permissions</button>
+    <button class="setup-btn" id="setupBuildPlan">Build plan</button>
+    <button class="setup-btn primary" id="setupRun">Run selected</button>
+    <button class="setup-btn" id="setupCancel">Cancel run</button>
+    <button class="setup-btn" id="setupRefreshJob">Refresh job</button>
+    <a class="setup-btn" id="setupWebssh" href="#" target="_blank" rel="noopener">Open WebSSH</a>
+  </div>
+
+  <div class="setup-grid">
+    <div class="setup-box">
+      <h3>Features</h3>
+      <div class="setup-features">
+        <div class="setup-group">
+          <h4>Foundation</h4>
+          <label class="setup-check"><input type="checkbox" data-feature="server" checked> server</label>
+          <label class="setup-check"><input type="checkbox" data-feature="webssh" checked> webssh</label>
+          <label class="setup-check"><input type="checkbox" data-feature="service-controls" checked> service-controls</label>
+          <label class="setup-check"><input type="checkbox" data-feature="ap-fallback" checked> ap-fallback</label>
+        </div>
+        <div class="setup-group">
+          <h4>Services</h4>
+          <label class="setup-check"><input type="checkbox" data-feature="graywolf"> graywolf (+ graywolf-api)</label>
+          <label class="setup-check"><input type="checkbox" data-feature="winlink"> winlink (+ direwolf)</label>
+          <label class="setup-check"><input type="checkbox" data-feature="kiwix"> kiwix</label>
+          <label class="setup-check"><input type="checkbox" data-feature="openwebrx"> openwebrx</label>
+          <label class="setup-check"><input type="checkbox" data-feature="adsb"> adsb</label>
+        </div>
+        <div class="setup-group">
+          <h4>Running Hardware</h4>
+          <label class="setup-check"><input type="checkbox" data-feature="pi-headless"> pi-headless</label>
+          <label class="setup-check"><input type="checkbox" data-feature="pi-local-monitor"> pi-local-monitor</label>
+          <label class="setup-check"><input type="checkbox" data-feature="pi-small-screen-7"> pi-small-screen-7</label>
+          <label class="setup-check"><input type="checkbox" data-feature="cm4stack"> cm4stack</label>
+          <label class="setup-check"><input type="checkbox" data-feature="pi-e-ink"> pi-e-ink</label>
+        </div>
+        <div class="setup-group">
+          <h4>Radio Interfaces</h4>
+          <label class="setup-check"><input type="checkbox" data-feature="rtl-sdr-feed"> rtl-sdr + rtl-feed</label>
+          <label class="setup-check"><input type="checkbox" data-feature="gps"> gps</label>
+          <label class="setup-check"><input type="checkbox" data-feature="dra-pi-rx-led"> dra-pi + dra-rx-led</label>
+          <label class="setup-check"><input type="checkbox" data-feature="rtc"> rtc</label>
+        </div>
+        <div class="setup-group">
+          <h4>Content</h4>
+          <label class="setup-check"><input type="checkbox" data-feature="fcc" checked> fcc</label>
+          <label class="setup-check"><input type="checkbox" data-feature="wikipedia"> wikipedia (depends on kiwix)</label>
+          <label class="setup-check"><input type="checkbox" data-feature="repeaterbook" checked> repeaterbook</label>
+          <label class="setup-check"><input type="checkbox" data-feature="forms" checked> forms</label>
+        </div>
+      </div>
+      <div class="setup-kv" id="setupPlanInfo">Plan: not built</div>
+      <div class="setup-kv" id="setupPlanReboot"></div>
+      <ul class="setup-list" id="setupPlanBlocked"></ul>
+    </div>
+    <div class="setup-box">
+      <h3>Station + Winlink Inputs</h3>
+      <div class="setup-kv">Station callsign</div>
+      <input class="setup-input" id="setupStationCallsign" placeholder="W4MHI">
+      <div class="setup-kv">Station grid</div>
+      <input class="setup-input" id="setupStationGrid" placeholder="EM95">
+      <div class="setup-kv">Winlink password (required if winlink selected)</div>
+      <input class="setup-input" id="setupWinlinkPassword" type="password" placeholder="Winlink password">
+      <div class="setup-kv">Winlink locator (optional)</div>
+      <input class="setup-input" id="setupWinlinkLocator" placeholder="EM95">
+    </div>
+    <div class="setup-box">
+      <h3>Wi-Fi (Final Phase)</h3>
+      <div class="setup-kv">Wi-Fi mode</div>
+      <select class="setup-input" id="setupWifiMode">
+        <option value="none" selected>No Wi-Fi change (AP-only remains valid)</option>
+        <option value="client">Join client network</option>
+        <option value="ap">Force AP fallback</option>
+      </select>
+      <div class="setup-kv">Client SSID</div>
+      <input class="setup-input" id="setupWifiSsid" placeholder="Field-Operations">
+      <div class="setup-kv">Client password</div>
+      <input class="setup-input" id="setupWifiPassword" type="password" placeholder="WPA2 password">
+      <div class="setup-note" id="setupWifiWarn" style="display:none;">Warning: changing Wi-Fi may drop your current AP session. Reboot is required after apply.</div>
+    </div>
+    <div class="setup-box">
+      <h3>Hardware Snapshot</h3>
+      <ul class="setup-list" id="setupHwList"><li>Detecting…</li></ul>
+    </div>
+    <div class="setup-box">
+      <h3>Job Status</h3>
+      <div class="setup-kv" id="setupJobState">No active job</div>
+      <ul class="setup-list" id="setupFeatureStates"></ul>
+    </div>
+  </div>
+
+  <div class="setup-kv" style="margin-top:.6rem">Job log</div>
+  <pre class="setup-log" id="setupLog"></pre>
+</div>
+
 </div>
 <script>
 'use strict';
 
 const HOST  = location.hostname;
 const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082, openwebrx: 8073 };
+let setupPlanId = null;
+let setupJobId = null;
+let setupLogCursor = 0;
+let setupPollTimer = null;
 
 // ── Backend helpers ────────────────────────────────────────────────────────────
 async function jget(url) {
@@ -526,8 +664,237 @@ async function runAll() {
   }
 }
 
+// ── Setup orchestrator panel ─────────────────────────────────────────────────
+function setupSelectedFeatures() {
+  return [...document.querySelectorAll('input[data-feature]:checked')]
+    .map(el => el.getAttribute('data-feature'));
+}
+
+function setupPayload() {
+  const wifiMode = (document.getElementById('setupWifiMode').value || 'none').trim();
+  return {
+    selectedFeatures: setupSelectedFeatures(),
+    station: {
+      callsign: (document.getElementById('setupStationCallsign').value || '').trim().toUpperCase(),
+      grid: (document.getElementById('setupStationGrid').value || '').trim().toUpperCase(),
+      lat: null,
+      lon: null,
+    },
+    winlink: {
+      callsign: (document.getElementById('setupStationCallsign').value || '').trim().toUpperCase(),
+      password: document.getElementById('setupWinlinkPassword').value || '',
+      locator: (document.getElementById('setupWinlinkLocator').value || '').trim().toUpperCase(),
+    },
+    wifi: {
+      mode: wifiMode,
+      ssid: (document.getElementById('setupWifiSsid').value || '').trim(),
+      password: document.getElementById('setupWifiPassword').value || '',
+    },
+  };
+}
+
+function setupWifiWarnRefresh() {
+  const mode = (document.getElementById('setupWifiMode').value || 'none').trim();
+  const warn = document.getElementById('setupWifiWarn');
+  warn.style.display = mode === 'none' ? 'none' : 'block';
+}
+
+async function setupGetPermissions() {
+  const el = document.getElementById('setup-permissions');
+  const cmd = document.getElementById('setup-command');
+  try {
+    const d = await jget('/api/setup/permissions');
+    if (!d.ok) throw new Error('permission API error');
+    if (d.serviceControlsGranted) {
+      el.textContent = 'Permissions: granted';
+      cmd.textContent = '';
+    } else {
+      el.textContent = 'Permissions: missing';
+      cmd.innerHTML = `Run in WebSSH: <code>${d.localCommand}</code>`;
+    }
+  } catch (e) {
+    el.textContent = 'Permissions: unavailable (' + e.message + ')';
+    cmd.textContent = '';
+  }
+}
+
+function setupRenderHw(d) {
+  const list = document.getElementById('setupHwList');
+  const lines = [];
+  const det = (d && d.detected) || {};
+  lines.push(`RTL-SDR: ${(det.rtl_sdr || []).length}`);
+  lines.push(`GPS: ${(det.gps || []).length}`);
+  lines.push(`Serial (incl DigiRig candidates): ${(det.serial || []).length}`);
+  lines.push(`DRA-Pi driver ready: ${d && d.draPiDriverReady ? 'yes' : 'no'}`);
+  const lsusbCount = (d && d.lsusb && d.lsusb.length) ? d.lsusb.length : 0;
+  lines.push(`lsusb entries: ${lsusbCount}`);
+  list.innerHTML = lines.map(s => `<li>${s}</li>`).join('');
+}
+
+async function setupDetectHardware() {
+  const list = document.getElementById('setupHwList');
+  list.innerHTML = '<li>Detecting…</li>';
+  try {
+    const d = await jget('/api/setup/hardware-detect');
+    setupRenderHw(d);
+  } catch (e) {
+    list.innerHTML = `<li>Hardware detect failed: ${e.message}</li>`;
+  }
+}
+
+async function setupBuildPlan() {
+  const info = document.getElementById('setupPlanInfo');
+  const blockedEl = document.getElementById('setupPlanBlocked');
+  const rebootEl = document.getElementById('setupPlanReboot');
+  const payload = setupPayload();
+  info.textContent = 'Plan: building…';
+  rebootEl.textContent = '';
+  blockedEl.innerHTML = '';
+  try {
+    const r = await fetch('/api/setup/plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'plan failed');
+    setupPlanId = d.planId;
+    const order = (d.orderedFeatures || []).join(', ') || '(none)';
+    const blocked = d.preflight && d.preflight.blocked ? d.preflight.blocked.length : 0;
+    info.textContent = `Plan: ${setupPlanId} | order: ${order} | blocked: ${blocked}`;
+    const reboot = d.reboot || {};
+    if (reboot.requiredIfRunNow) {
+      const reasons = (reboot.reasons || []).join(', ');
+      rebootEl.textContent = `Reboot required if run now: yes (${reasons || 'one or more features'})`;
+    } else {
+      rebootEl.textContent = 'Reboot required if run now: no';
+    }
+    if (blocked > 0) {
+      blockedEl.innerHTML = (d.preflight.blocked || []).map(b => `<li>${b.feature || 'unknown'}: ${b.reason_text || b.reason_code || 'blocked'}</li>`).join('');
+      const log = document.getElementById('setupLog');
+      log.textContent += `\n[plan] blocked: ${JSON.stringify(d.preflight.blocked)}`;
+      log.scrollTop = log.scrollHeight;
+    } else {
+      blockedEl.innerHTML = '<li>No blockers.</li>';
+    }
+  } catch (e) {
+    info.textContent = 'Plan: failed (' + e.message + ')';
+    rebootEl.textContent = '';
+    blockedEl.innerHTML = '';
+  }
+}
+
+function setupRenderFeatureStates(features = []) {
+  const ul = document.getElementById('setupFeatureStates');
+  if (!features.length) {
+    ul.innerHTML = '<li>No feature states yet.</li>';
+    return;
+  }
+  ul.innerHTML = features.map(f => {
+    const reason = f.reasonText ? ` — ${f.reasonText}` : '';
+    return `<li><strong>${f.feature}</strong>: ${f.status || 'pending'}${reason}</li>`;
+  }).join('');
+}
+
+async function setupRefreshJob() {
+  if (!setupJobId) return;
+  const stateEl = document.getElementById('setupJobState');
+  const logEl = document.getElementById('setupLog');
+  try {
+    const d = await jget(`/api/setup/jobs/${encodeURIComponent(setupJobId)}`);
+    if (!d.ok) throw new Error(d.error || 'job query failed');
+    const j = d.job || {};
+    stateEl.textContent = `Job ${j.id}: ${j.status} ${j.currentFeature ? '| ' + j.currentFeature + ' / ' + (j.currentStage || '-') : ''}`;
+    setupRenderFeatureStates(d.features || []);
+
+    const l = await jget(`/api/setup/jobs/${encodeURIComponent(setupJobId)}/log?cursor=${setupLogCursor}`);
+    if (l.ok) {
+      const lines = l.lines || [];
+      if (lines.length) {
+        logEl.textContent += (logEl.textContent ? '\n' : '') + lines.join('\n');
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+      setupLogCursor = l.nextCursor || setupLogCursor;
+      if (l.eof && setupPollTimer) {
+        clearInterval(setupPollTimer);
+        setupPollTimer = null;
+      }
+    }
+  } catch (e) {
+    stateEl.textContent = `Job refresh failed: ${e.message}`;
+  }
+}
+
+async function setupRunSelected() {
+  const log = document.getElementById('setupLog');
+  const stateEl = document.getElementById('setupJobState');
+  if (!setupPlanId) {
+    await setupBuildPlan();
+    if (!setupPlanId) return;
+  }
+  try {
+    const r = await fetch('/api/setup/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+      body: JSON.stringify({
+        planId: setupPlanId,
+        options: { executionMode: 'sequential', autoStartServices: false },
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'run failed');
+    setupJobId = d.jobId;
+    setupLogCursor = 0;
+    log.textContent = '';
+    stateEl.textContent = `Job ${setupJobId}: running`;
+    if (setupPollTimer) clearInterval(setupPollTimer);
+    setupPollTimer = setInterval(setupRefreshJob, 1200);
+    await setupRefreshJob();
+  } catch (e) {
+    stateEl.textContent = `Run failed: ${e.message}`;
+    log.textContent += `\n[run] ${e.message}`;
+  }
+}
+
+async function setupCancelRun() {
+  const stateEl = document.getElementById('setupJobState');
+  const logEl = document.getElementById('setupLog');
+  try {
+    const r = await fetch('/api/setup/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+      body: JSON.stringify({ jobId: setupJobId || null }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'cancel failed');
+    stateEl.textContent = `Job ${d.jobId}: ${d.status}`;
+    logEl.textContent += `\n[cancel] ${d.message || 'cancel requested'}`;
+    logEl.scrollTop = logEl.scrollHeight;
+    await setupRefreshJob();
+  } catch (e) {
+    stateEl.textContent = `Cancel failed: ${e.message}`;
+  }
+}
+
+function initSetupOrchestrator() {
+  const webssh = document.getElementById('setupWebssh');
+  webssh.href = `http://${HOST}:${PORTS.webssh}`;
+  document.getElementById('setupRefreshHw').addEventListener('click', setupDetectHardware);
+  document.getElementById('setupCheckPerm').addEventListener('click', setupGetPermissions);
+  document.getElementById('setupBuildPlan').addEventListener('click', setupBuildPlan);
+  document.getElementById('setupRun').addEventListener('click', setupRunSelected);
+  document.getElementById('setupCancel').addEventListener('click', setupCancelRun);
+  document.getElementById('setupRefreshJob').addEventListener('click', setupRefreshJob);
+  document.getElementById('setupWifiMode').addEventListener('change', setupWifiWarnRefresh);
+
+  setupGetPermissions();
+  setupDetectHardware();
+  setupWifiWarnRefresh();
+}
+
 document.getElementById('recheckAll').addEventListener('click', runAll);
 runAll();
+initSetupOrchestrator();
 </script>
 </body>
 </html>
