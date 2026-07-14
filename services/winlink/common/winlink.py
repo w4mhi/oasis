@@ -81,9 +81,11 @@ SERVICE_FILE = f"/etc/systemd/system/{SERVICE}.service"
 # ── Winlink RF modem (Direwolf) — Phase 2 ─────────────────────────────────────
 # Direwolf is the AX.25 packet modem behind Pat's AGWPE transport. It drives the
 # DRA / AudioInjector sound card + a GPIO PTT line, so it is hardware-exclusive
-# with GrayWolf (same card + GPIO 12). Installed but NOT enabled at boot: the
-# dashboard '{MODEM_SERVICE}' card starts it (tearing down GrayWolf + the SDR
-# feed) and stops it (restoring them) — see server/app.py _SERVICE_CONFLICTS.
+# with GrayWolf when they share the same radio port. Installed but NOT enabled
+# at boot: exclusivity is enforced by the hardware-aware conflict engine's
+# device allocation (common/hardware.py — logical services 'winlink'/'aprs' can
+# only be assigned to the SAME device one at a time; starting no longer
+# auto-stops the other, the operator releases/reassigns explicitly).
 # Exposes an AGWPE server on :8000 and a KISS TCP server on :8001.
 MODEM_SERVICE      = "pat-direwolf"
 MODEM_SERVICE_FILE = f"/etc/systemd/system/{MODEM_SERVICE}.service"
@@ -652,9 +654,9 @@ def create_modem_service(conf_path, ptt_gpio, interface="dra"):
     unit = f"""[Unit]
 Description=Winlink RF modem (Direwolf) — OASIS
 After=network.target sound.target
-# NOT enabled at boot: hardware-exclusive with GrayWolf ({hw_note}). The
-# dashboard '{MODEM_SERVICE}' card starts it (stopping GrayWolf + the SDR feed)
-# and stops it (restoring them) — see server/app.py _SERVICE_CONFLICTS.
+# NOT enabled at boot: hardware-exclusive with GrayWolf ({hw_note}) when they
+# share the same radio port. Enforced by the hardware-aware conflict engine's
+# device allocation (common/hardware.py) — no auto-stop of GrayWolf on start.
 # Exposes AGWPE :{MODEM_AGW_PORT} / KISS :{MODEM_KISS_PORT}.
 
 [Service]
