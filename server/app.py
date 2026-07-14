@@ -42,6 +42,7 @@ for path in (SUITE_ROOT, SERVER_DIR):
 
 from common import lookup
 from common import config_paths
+from common import hardware as HW
 APRS_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "aprs", "static")
 WINLINK_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "winlink", "static")
 FCC_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "fcc_database", "static")
@@ -660,32 +661,13 @@ _OASIS_SERVICES = {
 _CONTROLLABLE_SERVICES = _OASIS_SERVICES - {"oasis", "gpsd"}
 _SERVICE_ACTIONS = {"start", "stop", "restart"}
 
-# Hardware-exclusivity across the shared RTL-SDR. Each entry:
-#   "stop"    — units to STOP when this unit starts (all other SDR users)
-#   "restore" — units to START when this unit stops
-# ADS-B (dump1090-fa) is stop-only: starting it stops every other SDR user, but
-# stopping it auto-restarts NOTHING — the operator brings the next mode up by
-# hand (per operator preference). The existing OpenWebRX/pat-direwolf entries
-# keep their shipped behaviour of restoring the APRS default chain on stop.
-# "restore" lists are producer-first (feed pipes into GrayWolf, so the feed
-# comes up before its consumer); "stop" lists are torn down consumer-first
-# (reverse of restore) by the caller. Boot state is never touched, so the feed
-# and GrayWolf (shipped enabled) come back on reboot -> APRS is the default
-# after a power cycle, and pat-direwolf (never boot-enabled) stays off.
-_SERVICE_CONFLICTS = {
-    "openwebrx":    {"stop": ["aprs-sdr-feed", "graywolf", "dump1090-fa"],
-                     "restore": ["aprs-sdr-feed", "graywolf"]},
-    "pat-direwolf": {"stop": ["aprs-sdr-feed", "graywolf"],
-                     "restore": ["aprs-sdr-feed", "graywolf"]},
-    "dump1090-fa":  {"stop": ["aprs-sdr-feed", "graywolf", "openwebrx"],
-                     "restore": []},
-}
-
-def _conflict_stop(unit):
-    return _SERVICE_CONFLICTS.get(unit, {}).get("stop", [])
-
-def _conflict_restore(unit):
-    return _SERVICE_CONFLICTS.get(unit, {}).get("restore", [])
+# Reverse map: systemd unit -> logical hardware-claiming service (hardware-aware
+# conflict engine, common/hardware.py). Units NOT in this map (kiwix, webssh,
+# graywolf-api, adsb-api, pat, gpsd, aprs-sdr-feed) are not hardware-gated — they
+# start/stop exactly as before. aprs-sdr-feed is deliberately excluded (see
+# common/hardware.py SERVICE_UNITS comment) until a later slice gives aprs real
+# dual-mode logic.
+_UNIT_TO_HW_SERVICE = {u: s for s, units in HW.SERVICE_UNITS.items() for u in units}
 
 # Units whose boot state tracks their running state: starting also `enable`s them
 # (comes back after reboot), stopping also `disable`s them (stays off). Everything
@@ -870,23 +852,22 @@ def api_service():
         return jsonify({"ok": False, "supported": False,
                         "error": "systemd not available"}), 200
 
-    # Hardware-exclusivity: a unit's "stop" list is stopped when it starts, and
-    # its "restore" list is started when it stops (see _SERVICE_CONFLICTS —
-    # these lists differ per unit, e.g. ADS-B stops other SDR users on start but
-    # restores nothing on stop). Boot state is never changed, so whatever shipped
-    # enabled (the APRS chain) returns on reboot. Order matters: tear the chain
-    # down consumer-first (GrayWolf before its feed), bring it back producer-first
-    # (feed before GrayWolf) so GrayWolf attaches to a live feed. `affected` tells
-    # the UI which other cards to refresh. (restart leaves conflicts alone.)
+    # Hardware-aware gate: starting a unit that claims a physical device (SDR /
+    # radio port) is refused unless its logical service is assigned a present
+    # device. Exclusive allocation (common/hardware.py) means the device can
+    # never be held by ANOTHER service, so this can only fail for THIS
+    # service's own assignment state — never cross-service contention (that's
+    # refused earlier, at assign time, via /api/hardware/assign, added in a
+    # later task).
     affected = []
     if action == "start":
-        for other in reversed(_conflict_stop(unit)):    # consumer-first teardown
-            _systemctl_seq(other, ["stop"])
-            affected.append(other)
-    elif action == "stop":
-        for other in _conflict_restore(unit):            # producer-first restore
-            _systemctl_seq(other, ["start"])
-            affected.append(other)
+        hw_service = _UNIT_TO_HW_SERVICE.get(unit)
+        if hw_service:
+            inv = HW.load(SUITE_ROOT)
+            ok, reason = HW.can_start(inv, hw_service)
+            if not ok:
+                return jsonify({"ok": False, "error": f"cannot start {unit}: {reason}",
+                                "reason": reason}), 409
 
     # Build the systemctl step(s). Boot-state-tracking units enable-on-start /
     # disable-on-stop; the `action` verb is the one whose success we report on.
