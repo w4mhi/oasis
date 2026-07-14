@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+import builtins
+import io
 import os
 import sys
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "features", "gps"))
-import gps as G
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import common.gpsd_chrony as G
 
 
 class ChronyServiceTests(unittest.TestCase):
@@ -62,5 +64,50 @@ class ChronyRefclockTests(unittest.TestCase):
         self.assertNotIn("/dev/pps0", captured["content"])
 
 
+class MutualExclusionTests(unittest.TestCase):
+    """features/gps and features/gps-L76X share this module and must not
+    silently clobber each other's configured gpsd device."""
+
+    def test_configured_device_parses_devices_line(self):
+        orig_exists, orig_open = os.path.exists, builtins.open
+        os.path.exists = lambda p: p == G.GPSD_DEFAULT
+        builtins.open = lambda path, *a, **k: (
+            io.StringIO('START_DAEMON="true"\nDEVICES="/dev/ttyACM0"\n')
+            if path == G.GPSD_DEFAULT else orig_open(path, *a, **k)
+        )
+        try:
+            self.assertEqual(G.configured_device(), "/dev/ttyACM0")
+        finally:
+            os.path.exists, builtins.open = orig_exists, orig_open
+
+    def test_configured_device_none_when_absent(self):
+        orig_exists = os.path.exists
+        os.path.exists = lambda p: False
+        try:
+            self.assertIsNone(G.configured_device())
+        finally:
+            os.path.exists = orig_exists
+
+    def test_check_exclusive_allows_unconfigured_or_same_device(self):
+        orig = G.configured_device
+        try:
+            G.configured_device = lambda: None
+            self.assertTrue(G.check_exclusive("/dev/ttyS0"))
+            G.configured_device = lambda: "/dev/ttyS0"
+            self.assertTrue(G.check_exclusive("/dev/ttyS0"))
+        finally:
+            G.configured_device = orig
+
+    def test_check_exclusive_blocks_different_device_unless_forced(self):
+        orig = G.configured_device
+        G.configured_device = lambda: "/dev/ttyACM0"
+        try:
+            self.assertFalse(G.check_exclusive("/dev/ttyS0"))
+            self.assertTrue(G.check_exclusive("/dev/ttyS0", force=True))
+        finally:
+            G.configured_device = orig
+
+
 if __name__ == "__main__":
     unittest.main()
+
