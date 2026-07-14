@@ -61,5 +61,8 @@ class ApplyAllTest(unittest.TestCase):
         # scripts module can import the service hook without a cycle).
         self.assertIn("adsb", apply_hardware.DEFAULT_HOOKS)
 
+    def test_default_registry_has_aprs(self):
+        self.assertIn("aprs", apply_hardware.DEFAULT_HOOKS)
+
 if __name__ == "__main__":
     unittest.main()

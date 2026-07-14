@@ -7,6 +7,8 @@ owns the service -> apply-hook registry (it may import services/*). Each hook ha
 signature apply(repo_root, device_dict_or_None): bind when a device dict is
 given, clear the pinning when None.
 """
+import importlib
+import importlib.util
 import os
 import subprocess
 import sys
@@ -17,10 +19,21 @@ sys.path.insert(0, _REPO_ROOT)
 from common import hardware as HW
 from services.adsb.common import adsb as _adsb
 
+# Import the APRS feed module (hyphenated filename: enable-rtl-sdr.py)
+_feed_path = os.path.join(_REPO_ROOT, "features", "rtl-sdr")
+if _feed_path not in sys.path:
+    sys.path.insert(0, _feed_path)
+_aprs_feed_spec = importlib.util.spec_from_file_location(
+    "enable_rtl_sdr",
+    os.path.join(_feed_path, "enable-rtl-sdr.py"))
+_aprs_feed = importlib.util.module_from_spec(_aprs_feed_spec)
+_aprs_feed_spec.loader.exec_module(_aprs_feed)
+
 # service name -> apply(repo_root, device_or_None). Grows in a later slice
-# (aprs, winlink). OpenWebRX is intentionally absent (not device-bound).
+# (winlink). OpenWebRX is intentionally absent (not device-bound).
 DEFAULT_HOOKS = {
     "adsb": _adsb.apply,
+    "aprs": _aprs_feed.apply,
 }
 
 

@@ -430,3 +430,54 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ── Device binding (hardware-aware engine, Slice 2b) ───────────────────────────
+# The APRS RX feed (rtl_fm | socat -> GrayWolf) must run on the SAME dongle
+# assigned to the `aprs` logical service (only relevant when aprs is in SDR
+# mode — see common/hardware.py's dual-mode resolver). This mirrors the ADS-B
+# apply(device) pattern (services/adsb/common/adsb.py).
+def aprs_feed_device_args(device):
+    """Pure: the rtl_fm device selector for the APRS feed's assigned dongle.
+    Only rtl-sdr devices with a serial bind; anything else -> [] (feed unused
+    when aprs is on a radio port, or unassigned)."""
+    if not device or device.get("kind") != "rtl-sdr":
+        return []
+    serial = device.get("serial")
+    return ["-d", serial] if serial else []
+
+
+def apply(repo_root, device):
+    """Bind (or unbind, when device is None or not an rtl-sdr) the APRS feed's
+    rtl_fm invocation to the assigned dongle's serial, by rewriting any `-d
+    <value>` token in the existing aprs-sdr-feed.service ExecStart line.
+
+    Linux/root only (no-op elsewhere). BENCH-VERIFY on the target Pi: the exact
+    aprs-sdr-feed.service ExecStart shape this regex targets, and that this
+    rtl_fm build selects a dongle by SERIAL via `-d <serial>` (some builds want
+    `-d <index>` instead). This writer is the one element that can't be
+    validated off-Pi — the pure arg builder above is what the tests cover.
+    """
+    if sys.platform != "linux":
+        return
+    args = aprs_feed_device_args(device)
+    device_token = " ".join(args)  # "-d 1090" or ""
+    try:
+        with open(SERVICE_PATH) as f:
+            existing = f.read()
+    except OSError:
+        return  # unit not installed yet — nothing to rewrite
+    import re
+    def _rewrite(m):
+        cmd = m.group(1)
+        cmd = re.sub(r'-d\s+\S+', '', cmd).strip()
+        if device_token:
+            # insert the device flag right after "rtl_fm"
+            cmd = re.sub(r'(rtl_fm)\b', r'\1 ' + device_token, cmd, count=1)
+        return f"ExecStart={cmd}"
+    new_text = re.sub(r'ExecStart=(.*)', _rewrite, existing)
+    proc = subprocess.Popen(["sudo", "tee", SERVICE_PATH], stdin=subprocess.PIPE,
+                            stdout=subprocess.DEVNULL)
+    proc.communicate(new_text.encode())
+    # No daemon-reload here — the apply-hardware orchestrator does exactly one
+    # reload after calling every service's hook.
