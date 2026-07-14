@@ -237,6 +237,26 @@ a.svc-card:hover { border-color: var(--accent); }
   white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 
+/* ── HARDWARE allocation card (spec §7.1) ────────────────────────────────── */
+.hw-card {
+  margin: 0 1.25rem .9rem; padding: .4rem .7rem;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+}
+.hw-empty { font-size: var(--fs-small); color: var(--text-dim); padding: .35rem .2rem; }
+.hw-row {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .3rem .2rem; border-bottom: 1px solid var(--border);
+}
+.hw-row:last-child { border-bottom: none; }
+.hw-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.hw-dot.free { background: var(--accent); }
+.hw-dot.busy { background: var(--red); }
+.hw-label { font-size: var(--fs-base); font-weight: 700; color: var(--text); flex-shrink: 0; }
+.hw-kind  { font-size: var(--fs-small); color: var(--text-dim); flex-shrink: 0; }
+.hw-state { margin-left: auto; font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; }
+.hw-state.free { color: var(--accent); }
+.hw-state.busy { color: var(--red); }
+
 /* ── Stats bar ───────────────────────────────────────────────────────── */
 .stats-bar {
   display: flex;
@@ -1066,6 +1086,17 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 </div>
 </div><!-- /.svc-strips-wrap -->
 
+<!-- ── HARDWARE ALLOCATION CARD (spec §7.1) ──────────────────────────────── -->
+<div class="section-hdr">
+  <span class="section-hdr-title">HARDWARE</span>
+  <span class="section-hdr-sub">device allocation</span>
+</div>
+<div class="hw-card">
+  <div class="hw-empty" id="hw-empty">No devices declared yet — see
+    <a href="server/hardware/setup.html" style="color:var(--accent)">Hardware Devices</a>.</div>
+  <div class="hw-rows" id="hw-rows"></div>
+</div>
+
 <!-- ── NAVIGATION GRID ───────────────────────────────────────────────────── -->
 <div class="section-hdr">
   <span class="section-hdr-title clickable" onclick="toggleNavGrid()" title="Collapse utility cards">OPS</span>
@@ -1614,6 +1645,43 @@ function pingAll() {
   SERVICES.forEach(svc => {
     if (!HIDDEN_SVCS.has(svc.id) || _showHidden) checkService(svc);
   });
+}
+
+// ── HARDWARE allocation card (spec §7.1) ────────────────────────────────────
+let _hwLast = null;   // last GET /api/hardware/devices payload — read by the
+                       // per-card dropdown code too (added in Slice 4b Task 3)
+
+function renderHardwareCard(data) {
+  const rows  = document.getElementById('hw-rows');
+  const empty = document.getElementById('hw-empty');
+  if (!rows || !empty) return;
+  const devices = (data && data.devices) || [];
+  if (devices.length === 0) {
+    empty.style.display = '';
+    rows.innerHTML = '';
+    return;
+  }
+  empty.style.display = 'none';
+  rows.innerHTML = devices.map(d => {
+    const state = d.running ? 'busy' : 'free';
+    const stateText = d.running ? `busy — ${d.assignee}`
+                     : (d.assignee ? `assigned — ${d.assignee}` : 'free');
+    return `<div class="hw-row">
+      <span class="hw-dot ${state}"></span>
+      <span class="hw-label">${escapeHtml(d.label)}</span>
+      <span class="hw-kind">${escapeHtml(d.kind)}</span>
+      <span class="hw-state ${state}">${state === 'busy' ? '🔴' : '🟢'} ${escapeHtml(stateText)}</span>
+    </div>`;
+  }).join('');
+}
+
+async function fetchHardware() {
+  try {
+    const r = await fetch('/api/hardware/devices', { cache: 'no-store' });
+    if (!r.ok) return;
+    _hwLast = await r.json();
+    renderHardwareCard(_hwLast);
+  } catch (e) { /* transient — keep last render, retry next tick */ }
 }
 
 // ── APRS SDR feed flow meter ──────────────────────────────────────────────────
@@ -2792,13 +2860,13 @@ async function forgetWifi() {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 loadConfig().then(() => {
   applyUnits();
-  loadInstalled().then(() => { pingAll(); pollFeedFlow(); });
+  loadInstalled().then(async () => { await fetchHardware(); pingAll(); pollFeedFlow(); });
   fetchStats();
   fetchAudio();
   fetchAPRS();
   loadHomeCoords();
   pollWifi();
-  setInterval(pingAll,      30_000);
+  setInterval(async () => { await fetchHardware(); pingAll(); }, 30_000);
   setInterval(fetchStats,   30_000);
   setInterval(fetchAudio,   30_000);
   setInterval(fetchAPRS,    15_000);
