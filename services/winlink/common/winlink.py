@@ -25,6 +25,8 @@ Public API
   compute_ptt_gpio(override)        -> int | None               # sysfs base + 12
   write_direwolf_config(callsign, adevice, ptt_gpio) -> conf_path
   create_modem_service(conf_path, ptt_gpio)
+  radio_port_config(device)         -> (adevice, ptt)             # hardware-aware binding
+  apply(repo_root, device)          # hardware-aware engine hook (Slice 2b)
   run(args)                         # entry point for the thin CLI wrapper
 """
 
