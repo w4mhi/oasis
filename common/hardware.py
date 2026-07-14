@@ -103,3 +103,95 @@ def save(repo_root, inv):
         json.dump(payload, f, indent=2)
         f.write("\n")
     os.replace(tmp, path)
+
+
+def assignee(inv, device_id):
+    """The single service a device is assigned to, or None."""
+    for service, did in inv.assignments.items():
+        if did == device_id:
+            return service
+    return None
+
+
+def device_of(inv, service):
+    return inv.assignments.get(service)
+
+
+def _default_is_active(unit):
+    """systemctl is-active <unit>.service. Non-Linux or errors -> False."""
+    if sys.platform != "linux":
+        return False
+    try:
+        r = subprocess.run(["systemctl", "is-active", f"{unit}.service"],
+                           capture_output=True, text=True, timeout=5)
+        return r.stdout.strip() == "active"
+    except Exception:
+        return False
+
+
+def _service_running(service, is_active):
+    return any(is_active(u) for u in SERVICE_UNITS.get(service, []))
+
+
+def device_states(inv, is_active=_default_is_active):
+    """[{id, label, kind, assignee, running}] — drives the dashboard allocation
+    card. 🟢 free = assignee is None OR assigned-but-idle; 🔴 in use = the
+    assigned service's unit(s) are systemctl is-active."""
+    out = []
+    for did, d in inv.devices.items():
+        service = assignee(inv, did)
+        running = _service_running(service, is_active) if service else False
+        out.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
+                    "assignee": service, "running": running})
+    return out
+
+
+def can_start(inv, service, is_active=_default_is_active):
+    """(ok, reason). reason in {"", "unassigned", "device-not-attached"}. Under
+    exclusive allocation a device can never be held by ANOTHER service, so
+    this can only fail for the requesting service's OWN assignment state."""
+    device_id = inv.assignments.get(service)
+    if device_id is None:
+        return False, "unassigned"
+    if device_id not in inv.devices:
+        return False, "device-not-attached"
+    return True, ""
+
+
+def can_assign(inv, service, device_id):
+    """(ok, holder). holder is the blocking service's name, or None. Refuses a
+    device already assigned to a DIFFERENT service, or the wrong kind."""
+    if device_id not in inv.devices:
+        return False, None
+    allowed_kinds = DEVICE_KIND_FOR_SERVICE.get(service)
+    if allowed_kinds is not None and inv.devices[device_id]["kind"] not in allowed_kinds:
+        return False, None
+    holder = assignee(inv, device_id)
+    if holder is not None and holder != service:
+        return False, holder
+    return True, None
+
+
+def assign(repo_root, inv, service, device_id):
+    """Assign device_id to service and persist. Raises ValueError if
+    can_assign() refuses (caller should check can_assign() first to report a
+    clean error instead of catching this)."""
+    ok, holder = can_assign(inv, service, device_id)
+    if not ok:
+        raise ValueError(f"cannot assign {device_id!r} to {service!r} (holder={holder!r})")
+    inv.assignments[service] = device_id
+    save(repo_root, inv)
+    return inv
+
+
+def release(repo_root, inv, service, stop_fn=None):
+    """Unassign service's device, persist. If stop_fn is given, it is called
+    for each of the service's units (frees the device) BEFORE the assignment
+    is cleared — no auto-restart of anything else."""
+    if service in inv.assignments:
+        if stop_fn is not None:
+            for unit in SERVICE_UNITS.get(service, []):
+                stop_fn(unit)
+        del inv.assignments[service]
+        save(repo_root, inv)
+    return inv
