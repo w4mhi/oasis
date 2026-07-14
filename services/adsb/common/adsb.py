@@ -3,6 +3,7 @@
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 import threading
@@ -268,6 +269,66 @@ def run(repo_root, online=True):
     _write_api_unit(repo_root)
     _run(["sudo", "systemctl", "disable", f"{API_SERVICE}.service"])
     _ok("ADS-B installed. Start it from the dashboard (ADS-B card).")
+
+
+# ── Device binding (hardware-aware engine, Slice 2a) ──────────────────────────
+# dump1090-fa selects its dongle with `--device <serial-or-index>`. OASIS pins it
+# to the SERIAL of whatever device is assigned to the `adsb` logical service, so
+# with multiple dongles ADS-B always uses its own (not "index 0", which reorders
+# on replug). The device options live in the FlightAware package env-file that
+# dump1090-fa.service sources.
+DUMP1090_ENV_FILE = "/etc/default/dump1090-fa"
+
+
+def dump1090_device_args(device):
+    """Pure: the dump1090-fa CLI device selector for an assigned device dict (or
+    None). Returns [] when unassigned or the device has no serial."""
+    if not device:
+        return []
+    serial = device.get("serial")
+    return ["--device", serial] if serial else []
+
+
+def apply(repo_root, device):
+    """Bind (or unbind, when device is None) dump1090-fa to the assigned dongle
+    by writing a `--device <serial>` into its env-file's RECEIVER_OPTIONS.
+
+    Linux/root only (no-op elsewhere). BENCH-VERIFY: confirm on the target Pi
+    that (a) the FlightAware dump1090-fa package sources DUMP1090_ENV_FILE with a
+    RECEIVER_OPTIONS variable, and (b) dump1090-fa accepts `--device <serial>`
+    (vs `--device-index`). This writer is the one Slice-2a element that cannot be
+    validated off-Pi — the pure arg builder above is what the tests cover.
+    """
+    if sys.platform != "linux":
+        return
+    args = dump1090_device_args(device)
+    device_token = " ".join(args)  # "--device 1090" or ""
+    existing = ""
+    try:
+        with open(DUMP1090_ENV_FILE) as f:
+            existing = f.read()
+    except OSError:
+        existing = ""
+    out = []
+    found = False
+    for ln in existing.splitlines():
+        m = re.match(r'\s*RECEIVER_OPTIONS\s*=\s*"?(.*?)"?\s*$', ln)
+        if m:
+            found = True
+            opts = re.sub(r'--device(-index)?\s+\S+', '', m.group(1)).strip()
+            opts = (opts + " " + device_token).strip()
+            out.append(f'RECEIVER_OPTIONS="{opts}"')
+        else:
+            out.append(ln)
+    if not found:
+        out.append(f'RECEIVER_OPTIONS="{device_token}"')
+    new_text = "\n".join(out) + "\n"
+    # Reuse the exact sudo-tee Popen pattern from _write_api_unit above:
+    proc = subprocess.Popen(
+        ["sudo", "tee", DUMP1090_ENV_FILE],
+        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+    )
+    proc.communicate(new_text.encode())
 
 
 if __name__ == "__main__":
