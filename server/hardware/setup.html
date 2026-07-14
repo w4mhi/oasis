@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OASIS Hardware Devices</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+.hw-sec-label { font-size: var(--fs-label); color: var(--text-dim); text-transform: uppercase;
+  letter-spacing: .07em; font-weight: 700; margin: 1.1rem 0 .5rem; }
+.hw-cand-list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: .9rem; }
+.hw-cand-item {
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+  padding: .7rem 1rem;
+}
+.hw-cand-hdr { display: flex; align-items: center; gap: .6rem; margin-bottom: .4rem; }
+.hw-cand-title { font-size: var(--fs-base); font-weight: 700; color: var(--text); }
+.hw-cand-badge {
+  font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  padding: 2px 8px; border-radius: 4px; background: var(--panel-2); color: var(--text-dim);
+}
+.hw-cand-badge.warn { background: #3a2a00; color: var(--amber); }
+.hw-cand-badge.ok   { background: #0a3a20; color: var(--accent); }
+.hw-form-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: .4rem; }
+.hw-form-row input, .hw-form-row select {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; font-size: var(--fs-small); padding: 3px 6px; font-family: var(--mono);
+}
+.hw-form-row input { width: 9rem; }
+.hw-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+  font-family: var(--mono); font-size: var(--fs-small); padding: 4px 10px;
+  border-radius: 4px; cursor: pointer;
+}
+.hw-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+.hw-btn.danger:hover { color: var(--red); border-color: #7a1010; }
+.hw-declared-list { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .9rem; }
+.hw-declared-item {
+  display: flex; align-items: center; gap: .6rem; font-size: var(--fs-small);
+  color: var(--text-dim); padding: .25rem .3rem; border-bottom: 1px solid var(--border);
+}
+.hw-declared-item:last-child { border-bottom: none; }
+.hw-msg { font-size: var(--fs-small); color: var(--text-dim); padding: .3rem 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="home-bar">
+    <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+            title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+    <a class="home-link" href="/">⌂ HOME</a>
+  </div>
+  <h1>Hardware Devices</h1>
+  <p>Declare detected RTL-SDR dongles and radio ports so they can be assigned to a service
+     from its dashboard card. <button class="hw-btn" id="rescanAll">↻ Re-scan</button></p>
+</header>
+
+<div class="hw-sec-label">Detected RTL-SDR Dongles</div>
+<div class="hw-cand-list" id="list-rtlsdr"></div>
+
+<div class="hw-sec-label">Detected Radio Ports (ALSA + PTT serial)</div>
+<div class="hw-cand-item">
+  <div class="hw-cand-hdr"><span class="hw-cand-title">Declare a radio port</span></div>
+  <div class="hw-form-row">
+    <select id="declareKind"><option value="digirig">Digirig</option><option value="dra-pi">DRA-Pi</option></select>
+    <select id="declareAlsa"></select>
+    <select id="declarePtt"></select>
+    <input id="declareRadioId" placeholder="id (e.g. radio-2m)">
+    <input id="declareRadioLabel" placeholder="label (e.g. 2 m — FT-891)">
+    <button class="hw-btn" id="declareRadioBtn">Declare</button>
+  </div>
+  <div class="hw-msg" id="radioDeclareMsg"></div>
+</div>
+
+<div class="hw-sec-label">Already Declared Devices</div>
+<div class="hw-declared-list" id="list-declared"></div>
+<div class="hw-msg" id="declaredEmpty" style="display:none">None declared yet.</div>
+
+</div>
+<script>
+'use strict';
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+async function jget(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  return r.json();
+}
+async function jpost(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+    body: JSON.stringify(body),
+  });
+  const d = await r.json().catch(() => ({}));
+  return { ok: r.ok && d.ok, status: r.status, data: d };
+}
+
+let _declared = [];   // last GET /api/hardware/devices .devices
+let _detected = { rtl_sdr: [], alsa: [], serial: [] };
+
+function renderDeclaredList() {
+  const list = document.getElementById('list-declared');
+  const empty = document.getElementById('declaredEmpty');
+  if (_declared.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = _declared.map(d =>
+    `<div class="hw-declared-item">
+       <strong style="color:var(--text)">${escapeHtml(d.label)}</strong>
+       <span>${escapeHtml(d.kind)} · id ${escapeHtml(d.id)}</span>
+       <span>${d.assignee ? 'assigned to ' + escapeHtml(d.assignee) : 'unassigned'}</span>
+     </div>`).join('');
+}
+
+function renderRtlSdrCandidates() {
+  const list = document.getElementById('list-rtlsdr');
+  const declaredSerials = new Set(_declared.filter(d => d.kind === 'rtl-sdr').map(d => d.serial));
+  const candidates = _detected.rtl_sdr || [];
+  if (candidates.length === 0) {
+    list.innerHTML = '<div class="hw-msg">No RTL-SDR dongles detected (or not running on Linux hardware).</div>';
+    return;
+  }
+  const serialCounts = {};
+  candidates.forEach(c => { serialCounts[c.serial] = (serialCounts[c.serial] || 0) + 1; });
+
+  list.innerHTML = candidates.map(c => {
+    const already = declaredSerials.has(c.serial);
+    const ambiguous = serialCounts[c.serial] > 1;
+    const badge = already
+      ? '<span class="hw-cand-badge ok">DECLARED</span>'
+      : (ambiguous ? '<span class="hw-cand-badge warn">DUPLICATE SERIAL</span>' : '');
+    const body = already
+      ? `<div class="hw-msg">Already declared.</div>`
+      : `<div class="hw-form-row">
+           <input class="hw-declare-id" placeholder="id (e.g. sdr-adsb)">
+           <input class="hw-declare-label" placeholder="label (e.g. ADS-B dongle)">
+           <button class="hw-btn hw-declare-rtlsdr-btn" data-serial="${escapeHtml(c.serial)}">Declare</button>
+         </div>
+         <div class="hw-form-row">
+           <input class="hw-burn-serial" placeholder="new unique serial">
+           <button class="hw-btn hw-burn-btn">Name this dongle…</button>
+         </div>
+         <div class="hw-msg hw-cand-msg"></div>`;
+    return `<div class="hw-cand-item">
+      <div class="hw-cand-hdr">
+        <span class="hw-cand-title">RTL-SDR @ index ${c.index}, serial ${escapeHtml(c.serial)}</span>
+        ${badge}
+      </div>
+      ${body}
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.hw-declare-rtlsdr-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const item = btn.closest('.hw-cand-item');
+      const id = item.querySelector('.hw-declare-id').value.trim();
+      const label = item.querySelector('.hw-declare-label').value.trim();
+      const msg = item.querySelector('.hw-cand-msg');
+      const { ok, data } = await jpost('/api/hardware/devices',
+        { id, kind: 'rtl-sdr', serial: btn.dataset.serial, label });
+      msg.textContent = ok ? 'Declared.' : ('Error: ' + (data.error || 'unknown'));
+      if (ok) await loadAll();
+    });
+  });
+  list.querySelectorAll('.hw-burn-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const item = btn.closest('.hw-cand-item');
+      const serial = item.querySelector('.hw-burn-serial').value.trim();
+      const msg = item.querySelector('.hw-cand-msg');
+      const { ok, data } = await jpost('/api/hardware/burn-serial', { serial });
+      msg.textContent = ok ? 'Serial burned — re-scan to see it.' : ('Error: ' + (data.error || 'unknown'));
+      if (ok) await loadAll();
+    });
+  });
+}
+
+function renderRadioPortForm() {
+  const alsaSel = document.getElementById('declareAlsa');
+  const pttSel  = document.getElementById('declarePtt');
+  const kindSel = document.getElementById('declareKind');
+  alsaSel.innerHTML = (_detected.alsa || [])
+    .map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.description)} (card ${a.card})</option>`)
+    .join('') || '<option value="">no ALSA cards detected</option>';
+  const isDraPi = kindSel.value === 'dra-pi';
+  pttSel.style.display = isDraPi ? 'none' : '';
+  pttSel.innerHTML = (_detected.serial || [])
+    .map(s => `<option value="${escapeHtml(s.path)}">${escapeHtml(s.label)}</option>`)
+    .join('') || '<option value="">no serial devices detected</option>';
+}
+
+document.getElementById('declareKind').addEventListener('change', renderRadioPortForm);
+document.getElementById('declareRadioBtn').addEventListener('click', async () => {
+  const kind = document.getElementById('declareKind').value;
+  const alsa = document.getElementById('declareAlsa').value;
+  const id = document.getElementById('declareRadioId').value.trim();
+  const label = document.getElementById('declareRadioLabel').value.trim();
+  const msg = document.getElementById('radioDeclareMsg');
+  const body = { id, kind, label, alsa };
+  if (kind === 'dra-pi') body.ptt = 'gpio12';
+  else body.ptt = document.getElementById('declarePtt').value;
+  const { ok, data } = await jpost('/api/hardware/devices', body);
+  msg.textContent = ok ? 'Declared.' : ('Error: ' + (data.error || 'unknown'));
+  if (ok) await loadAll();
+});
+
+async function loadAll() {
+  const [devicesResp, detectResp] = await Promise.all([
+    jget('/api/hardware/devices'), jget('/api/hardware/detect'),
+  ]);
+  _declared = devicesResp.devices || [];
+  _detected = detectResp || { rtl_sdr: [], alsa: [], serial: [] };
+  renderDeclaredList();
+  renderRtlSdrCandidates();
+  renderRadioPortForm();
+}
+
+document.getElementById('rescanAll').addEventListener('click', loadAll);
+loadAll();
+</script>
+</body>
+</html>
