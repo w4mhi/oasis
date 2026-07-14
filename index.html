@@ -98,6 +98,11 @@ body {
 .gps-card-badge.up   { color: var(--accent); }
 .gps-card-badge.warn { color: var(--amber); }
 .gps-card-badge.down { color: var(--red); }
+.gps-iface {
+  font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-dim); font-weight: 700; margin-left: auto;
+}
+.gps-iface[hidden] { display: none; }
 .gps-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .2rem .8rem; }
 .gps-cell { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
 .gps-lbl { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .07em; color: var(--text-dim); }
@@ -920,6 +925,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="gps-card-hdr">
       <span class="gps-dot down" id="gps-dot"></span>
       <span class="gps-card-name">GPS</span>
+      <span class="gps-iface" id="gps-iface" hidden></span>
       <span class="gps-card-badge down" id="gps-badge">NO FIX</span>
     </div>
     <div class="gps-card-grid">
@@ -2329,9 +2335,34 @@ async function fetchStats() {
         }
       }
 
+      // Interface badge (USB/UART) — informational only, no colour semantics
+      // beyond the existing --text-dim label style (spec §5).
+      const ifaceEl = document.getElementById('gps-iface');
+      if (ifaceEl) {
+        if (g && g.interface) {
+          ifaceEl.hidden = false;
+          ifaceEl.textContent = g.interface.toUpperCase();
+        } else {
+          ifaceEl.hidden = true;
+        }
+      }
+
       const t = [];
       if (c && c.source) t.push(`clock src ${c.source}`);
       if (g && g.seen != null) t.push(`${used}/${g.seen} sats`);
+      // A second GPS physically present but unused by gpsd (spec
+      // specs/2026-07-14-gps-detection-status-design.md §5) — informational
+      // note only, no auto-switch. FUTURE WORK (spec §6, deliberately not
+      // built here): let the operator pick which GPS gpsd should use
+      // directly from this card — this is the hook point for that control.
+      if (g && g.otherDetected && g.otherDetected.length) {
+        const usbOther = g.otherDetected.find(d => d.interface === 'usb');
+        if (!g.device && usbOther) {
+          t.push(`+${g.otherDetected.length} GPS detected, unused — recommend ${usbOther.path} (USB)`);
+        } else {
+          t.push(`+${g.otherDetected.length} GPS detected, unused`);
+        }
+      }
       gpsCard.title = t.length ? 'GNSS / clock — ' + t.join(' · ') : 'GNSS receiver + clock status';
     }
 
