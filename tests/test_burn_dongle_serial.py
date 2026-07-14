@@ -24,6 +24,13 @@ class ValidateSerialTest(unittest.TestCase):
         self.assertFalse(bds.valid_serial("abc-def"))
         self.assertFalse(bds.valid_serial("abc def"))
 
+    def test_rejects_trailing_newline(self):
+        # Python's $ anchor matches just before a single trailing newline, not
+        # only true end-of-string — verify the regex uses \Z instead, so
+        # "1090\n" is correctly rejected rather than silently accepted.
+        self.assertFalse(bds.valid_serial("1090\n"))
+        self.assertFalse(bds.valid_serial("1090\r\n"))
+
 class MainRefusesInvalidTest(unittest.TestCase):
     def test_main_exits_nonzero_on_invalid_serial_without_calling_burn(self):
         with mock.patch.object(bds, "burn_serial") as mocked_burn:

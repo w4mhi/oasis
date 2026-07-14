@@ -20,7 +20,10 @@ sys.path.insert(0, _REPO_ROOT)
 
 from common.hardware_detect import burn_serial
 
-_SERIAL_RE = re.compile(r'^[A-Za-z0-9]{1,32}$')
+# \Z (not $) — Python's $ matches just before a single TRAILING newline, not
+# only true end-of-string, so "1090\n" would otherwise slip past this check.
+# \Z has no such exception: it matches only the absolute end of the string.
+_SERIAL_RE = re.compile(r'^[A-Za-z0-9]{1,32}\Z')
 
 
 def valid_serial(s):
