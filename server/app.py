@@ -661,14 +661,6 @@ _OASIS_SERVICES = {
 _CONTROLLABLE_SERVICES = _OASIS_SERVICES - {"oasis", "gpsd"}
 _SERVICE_ACTIONS = {"start", "stop", "restart"}
 
-# Reverse map: systemd unit -> logical hardware-claiming service (hardware-aware
-# conflict engine, common/hardware.py). Units NOT in this map (kiwix, webssh,
-# graywolf-api, adsb-api, pat, gpsd, aprs-sdr-feed) are not hardware-gated — they
-# start/stop exactly as before. aprs-sdr-feed is deliberately excluded (see
-# common/hardware.py SERVICE_UNITS comment) until a later slice gives aprs real
-# dual-mode logic.
-_UNIT_TO_HW_SERVICE = {u: s for s, units in HW.SERVICE_UNITS.items() for u in units}
-
 # Units whose boot state tracks their running state: starting also `enable`s them
 # (comes back after reboot), stopping also `disable`s them (stays off). Everything
 # else is transient (plain start/stop; boot state left untouched). restart never
@@ -861,9 +853,9 @@ def api_service():
     # later task).
     affected = []
     if action == "start":
-        hw_service = _UNIT_TO_HW_SERVICE.get(unit)
+        inv = HW.load(SUITE_ROOT)
+        hw_service = HW.service_for_unit(inv, unit)
         if hw_service:
-            inv = HW.load(SUITE_ROOT)
             ok, reason = HW.can_start(inv, hw_service)
             if not ok:
                 return jsonify({"ok": False, "error": f"cannot start {unit}: {reason}",

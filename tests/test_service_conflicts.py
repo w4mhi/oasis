@@ -17,14 +17,18 @@ class HardwareGateTest(unittest.TestCase):
             self.assertIn(unit, oasis_app._OASIS_SERVICES)
             self.assertIn(unit, oasis_app._CONTROLLABLE_SERVICES)
 
-    def test_unit_to_hw_service_reverse_map(self):
-        self.assertEqual(oasis_app._UNIT_TO_HW_SERVICE["dump1090-fa"], "adsb")
-        self.assertEqual(oasis_app._UNIT_TO_HW_SERVICE["graywolf"], "aprs")
-        self.assertEqual(oasis_app._UNIT_TO_HW_SERVICE["pat-direwolf"], "winlink")
-        self.assertEqual(oasis_app._UNIT_TO_HW_SERVICE["openwebrx"], "openwebrx")
-        # aprs-sdr-feed is NOT hardware-gated (deliberate scope decision — it
-        # stays an ordinary ungated controllable unit until a later slice).
-        self.assertNotIn("aprs-sdr-feed", oasis_app._UNIT_TO_HW_SERVICE)
+    def test_service_for_unit_resolves_via_inventory(self):
+        from common import hardware as HW
+        empty = HW.Inventory(devices={}, assignments={})
+        self.assertEqual(HW.service_for_unit(empty, "dump1090-fa"), "adsb")
+        self.assertEqual(HW.service_for_unit(empty, "graywolf"), "aprs")
+        self.assertEqual(HW.service_for_unit(empty, "pat-direwolf"), "winlink")
+        self.assertIsNone(HW.service_for_unit(empty, "kiwix"))
+        # feed maps to aprs only when aprs is assigned an sdr
+        sdr = HW.Inventory(devices={"s": {"id": "s", "kind": "rtl-sdr", "serial": "1"}},
+                           assignments={"aprs": "s"})
+        self.assertEqual(HW.service_for_unit(sdr, "aprs-sdr-feed"), "aprs")
+        self.assertIsNone(HW.service_for_unit(empty, "aprs-sdr-feed"))
 
     def test_starting_unassigned_service_refused_409(self):
         # api_service() early-returns 200 supported:false on non-Linux, before
@@ -53,9 +57,12 @@ class HardwareGateTest(unittest.TestCase):
         self.assertNotEqual(r.status_code, 409)
 
     def test_non_claiming_unit_not_gated(self):
-        # kiwix has no logical-service mapping — starting it must never consult
-        # the hardware inventory at all.
-        with mock.patch.object(HW, "load", side_effect=AssertionError("should not be called")), \
+        # kiwix has no logical-service mapping. The gate now always loads the
+        # inventory first (aprs-sdr-feed's mapping is assignment-dependent, so
+        # resolution can't skip loading), but resolution to None means kiwix is
+        # still never actually gated (no 409).
+        empty_inv = HW.Inventory(devices={}, assignments={})
+        with mock.patch.object(HW, "load", return_value=empty_inv), \
              mock.patch("sys.platform", "linux"):
             r = self.c.post("/api/service", json={"unit": "kiwix", "action": "start"},
                             headers={"X-OASIS-Request": "1"})
