@@ -64,6 +64,8 @@
 }
 .setup-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
 .setup-btn.primary { background: #0a3a20; border-color: #1c6f45; color: #c9ffd8; }
+.setup-btn.danger { background: #3a0a0a; border-color: #6f1c1c; color: #ffc9c9; }
+.setup-btn.danger:hover { border-color: #ff6b6b; color: #ff6b6b; }
 .setup-kv { font-size: var(--fs-label); color: var(--text-dim); margin: .2rem 0; }
 .setup-kv code { color: var(--accent); background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: var(--fs-small); }
 .setup-grid { display: flex; flex-wrap: wrap; gap: .7rem; align-items: stretch; }
@@ -124,6 +126,7 @@
     <button class="setup-btn" id="setupRefreshHw">Detect hardware</button>
     <button class="setup-btn" id="setupCheckPerm">Re-check permissions</button>
     <button class="setup-btn primary" id="setupRun">Run selected</button>
+    <button class="setup-btn danger" id="setupReboot">Reboot Pi</button>
   </div>
 
   <div class="setup-grid">
@@ -152,6 +155,7 @@
           <label class="setup-check"><input type="checkbox" data-feature="pi-small-screen-7"> pi-small-screen-7</label>
           <label class="setup-check"><input type="checkbox" data-feature="cm4stack"> cm4stack</label>
           <label class="setup-check"><input type="checkbox" data-feature="pi-e-ink"> pi-e-ink</label>
+          <label class="setup-check"><input type="checkbox" data-feature="rgb-cooling-hat"> rgb-cooling-hat</label>
         </div>
         <div class="setup-group">
           <h4>Radio Interfaces</h4>
@@ -339,17 +343,31 @@ const CHECKS_CORE = [
         try { fsOk = (await fetch('/api/fs/browse', { cache: 'no-store' })).ok; }
         catch { fsOk = false; }
 
-        // Local .pmtiles staged in the suite's maps/ folder (best-effort: GrayWolf
-        // tiles may be the only source, so a missing maps/ isn't fatal).
+        // Local .pmtiles staged in the suite's maps/ folder, including per-region
+        // downloads nested under maps/tiles/country/ and maps/tiles/state/ — recurse
+        // a few levels via the repo browser (best-effort: GrayWolf tiles may be the
+        // only source, so a missing/empty maps/ isn't fatal; bounded so it stays
+        // Pi-friendly, same shape as the GrayWolf scan below).
         let localNames = [];
-        try {
-          const r = await fetch('/api/browse?path=maps', { cache: 'no-store' });
-          if (r.ok) {
-            const d = await r.json();
-            localNames = (d.entries || []).filter(e => e.name.endsWith('.pmtiles'))
-                                          .map(e => e.name.replace('.pmtiles',''));
+        let localDirsScanned = 0;
+        const scanLocal = async (path, depth) => {
+          if (depth > 3 || localDirsScanned > 60 || localNames.length >= 50) return;
+          localDirsScanned++;
+          let d;
+          try {
+            const r = await fetch('/api/browse?path=' + encodeURIComponent(path), { cache: 'no-store' });
+            if (!r.ok) return;
+            d = await r.json();
+          } catch { return; }
+          for (const e of (d.entries || [])) {
+            if (e.type === 'file' && e.name.endsWith('.pmtiles')) {
+              if (localNames.length < 50) localNames.push(e.name.replace('.pmtiles',''));
+            } else if (e.type === 'dir') {
+              await scanLocal(path + '/' + e.name, depth + 1);
+            }
           }
-        } catch {}
+        };
+        try { await scanLocal('maps', 0); } catch {}
 
         // GrayWolf's offline downloader saves per-region .pmtiles under
         // /var/lib/graywolf/tiles/, usually nested in states/ or country/
@@ -583,7 +601,7 @@ const CHECKS_OPTIONAL = [
       try {
         const pages = ['position-report.html', 'to-position.html', 'radio-settings.html'];
         const results = await Promise.all(
-          pages.map(p => fetch(`/winlink/${p}`, { method: 'HEAD', cache: 'no-store' })
+          pages.map(p => fetch(`/server/winlink/${p}`, { method: 'HEAD', cache: 'no-store' })
             .then(r => ({ name: p.replace('.html',''), ok: r.ok }))
             .catch(() => ({ name: p.replace('.html',''), ok: false }))
           )
@@ -591,7 +609,7 @@ const CHECKS_OPTIONAL = [
         const ok      = results.filter(r => r.ok).map(r => r.name);
         const missing = results.filter(r => !r.ok).map(r => r.name);
         if (!ok.length) return { ok: false, badge: 'MISSING',
-          detail: 'No Winlink form pages found in <code>winlink/</code>.' };
+          detail: 'No Winlink form pages found in <code>services/winlink/static/</code>.' };
         return { ok: missing.length ? 'warn' : true,
           badge: missing.length ? 'PARTIAL' : 'READY',
           detail: `${ok.length} form(s) available: <strong>${ok.join(', ')}</strong>`
@@ -895,23 +913,46 @@ function setupRenderHw(d) {
   const hwVal = (text, good) => `<span style="color:var(${good ? '--green' : '--amber'})">${text}</span>`;
   const lines = [];
   const det = (d && d.detected) || {};
-  const rtlCount = (det.rtl_sdr || []).length;
-  lines.push(`RTL-SDR: ${hwVal(rtlCount, rtlCount > 0)}`);
-  const gpsCount = (det.gps || []).length;
-  lines.push(`GPS: ${hwVal(gpsCount, gpsCount > 0)}`);
-  const ports = det.serial_ports || [];
-  const uartPorts = ports.filter(p => p.kind === 'onboard');
-  const usbPorts = ports.filter(p => p.kind === 'usb');
-  lines.push(`UART (onboard) ports: ${hwVal(uartPorts.length, uartPorts.length > 0)}`);
-  uartPorts.forEach(p => lines.push(`&nbsp;&nbsp;\u2013 ${escapeHtml(p.path)}`));
-  lines.push(`USB serial ports: ${hwVal(usbPorts.length, usbPorts.length > 0)}`);
-  usbPorts.forEach(p => lines.push(`&nbsp;&nbsp;\u2013 ${escapeHtml(p.path)}`));
-  const digirigCount = (det.serial || []).length;
-  lines.push(`DigiRig by-id candidates: ${hwVal(digirigCount, digirigCount > 0)}`);
-  const driverReady = !!(d && d.draPiDriverReady);
-  lines.push(`DRA-Pi driver ready: ${hwVal(driverReady ? 'yes' : 'no', driverReady)}`);
-  const usbCount = (det.usb || []).length;
-  lines.push(`USB devices (lsusb): ${hwVal(usbCount, usbCount > 0)}`);
+  const usbC = (d && d.usbClassified) || { rtlSdr: [], digirig: [], cm108: [], other: [] };
+
+  lines.push('<strong>Recognized peripherals</strong>');
+
+  // RTL-SDR: prefer the exclusive rtl_test probe, but fall back to the lsusb
+  // signature — rtl_test reports "no devices" while the dongle is held open
+  // by another service (GrayWolf/OpenWebRX/adsb), which isn't the same as
+  // "not plugged in".
+  const rtlTest = (det.rtl_sdr || []).length;
+  const rtlUsb = usbC.rtlSdr.length;
+  const rtlCount = Math.max(rtlTest, rtlUsb);
+  let rtlNote = '';
+  if (rtlCount > 0 && rtlTest === 0) rtlNote = ' (in use by another service — not exclusively testable right now)';
+  lines.push(`&nbsp;&nbsp;RTL-SDR: ${hwVal(rtlCount, rtlCount > 0)}${rtlNote}`);
+
+  const digirigCount = usbC.digirig.length;
+  lines.push(`&nbsp;&nbsp;DigiRig: ${hwVal(digirigCount, digirigCount > 0)}`);
+
+  if (usbC.cm108.length) {
+    lines.push(`&nbsp;&nbsp;CM108 USB audio/PTT fob: ${hwVal(usbC.cm108.length, true)} `
+      + '<span style="color:var(--text-dim)">(generic chip — not this suite\u2019s DRA-Pi HAT; '
+      + 'only relevant if Winlink is set to a USB-DRA modem interface)</span>');
+  }
+
+  const draReady = !!(d && d.draPiDriverReady);
+  lines.push(`&nbsp;&nbsp;DRA-Pi (I2C HAT): ${hwVal(draReady ? 'yes' : 'no', draReady)}`
+    + (draReady ? '' : ' <span style="color:var(--text-dim)">(ALSA card "audioinjectorpi" not found)</span>'));
+
+  const gpsDevice = d && d.gpsConfiguredDevice;
+  if (gpsDevice) {
+    lines.push(`&nbsp;&nbsp;GPS: ${hwVal('configured', true)} \u2014 gpsd points at <code>${escapeHtml(gpsDevice)}</code>`);
+  } else {
+    lines.push(`&nbsp;&nbsp;GPS: ${hwVal('not configured', false)}`);
+  }
+
+  if (usbC.other.length) {
+    const otherDesc = usbC.other.map(u => u.description || `${u.vendor_id}:${u.product_id}`);
+    lines.push(`<strong>Other USB devices:</strong> ${otherDesc.map(escapeHtml).join(', ')}`);
+  }
+
   list.innerHTML = lines.map(s => `<li>${s}</li>`).join('');
 }
 
@@ -923,6 +964,23 @@ async function setupDetectHardware() {
     setupRenderHw(d);
   } catch (e) {
     list.innerHTML = `<li>Hardware detect failed: ${escapeHtml(e.message)}</li>`;
+  }
+}
+
+async function setupRebootPi() {
+  const stateEl = document.getElementById('setupJobState');
+  if (!confirm('Reboot this Pi now? Any running services will be interrupted.')) return;
+  stateEl.textContent = 'Requesting reboot…';
+  try {
+    const r = await fetch('/api/setup/reboot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'reboot request failed');
+    stateEl.textContent = 'Reboot requested — the Pi should go down shortly.';
+  } catch (e) {
+    stateEl.textContent = `Reboot request failed: ${e.message}`;
   }
 }
 
@@ -966,6 +1024,8 @@ function setupFormatEventLine(raw) {
       return `${f}starting install (job ${evt.position} of ${evt.total})`;
     case 'stage_started':
       return `${f}${evt.stage} started`;
+    case 'stage_log':
+      return `${f}${evt.line || ''}`;
     case 'stage_completed': {
       let line = `${f}${evt.stage} ${evt.ok ? 'ok' : 'FAILED'} (${evt.durationMs || 0}ms)`;
       const tail = (evt.stderrTail || evt.stdoutTail || '').trim();
@@ -976,8 +1036,11 @@ function setupFormatEventLine(raw) {
       return `${f}${evt.status}${evt.reasonText ? ' — ' + evt.reasonText : ''}`;
     case 'feature_skipped':
       return `${f}skipped: ${evt.reasonText || evt.status}`;
-    case 'installer_waiting':
-      return `${f}waiting for privileged installer worker... (${evt.waitedS || 0}s) — if this doesn't finish, run: python3 scripts/enable-oasis-installer.py`;
+    case 'installer_waiting': {
+      const waited = evt.waitedS || 0;
+      const timeout = evt.timeoutS || 300;
+      return `${f}waiting for privileged installer worker... (${waited}s / ${timeout}s)`;
+    }
     case 'job_finished': {
       const s = evt.summary || {};
       return `Job finished — ok: ${s.green || 0}, warn: ${s.amber || 0}, failed: ${s.red || 0}, skipped: ${s.gray || 0}`;
@@ -1109,6 +1172,7 @@ function initSetupOrchestrator() {
   document.getElementById('setupRefreshHw').addEventListener('click', setupDetectHardware);
   document.getElementById('setupCheckPerm').addEventListener('click', setupGetPermissions);
   document.getElementById('setupRun').addEventListener('click', setupRunSelected);
+  document.getElementById('setupReboot').addEventListener('click', setupRebootPi);
   document.getElementById('setupWifiMode').addEventListener('change', setupWifiWarnRefresh);
   document.getElementById('setupWinlinkPasswordChange').addEventListener('click', setupEnableWinlinkPasswordEdit);
 

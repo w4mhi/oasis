@@ -30,6 +30,7 @@ import json
 import os
 import re
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -74,6 +75,69 @@ def _run(cmd, check=True, **kwargs):
     if check and result.returncode != 0:
         _fail(f"Command failed: {' '.join(str(c) for c in cmd)}")
     return result
+
+
+def sudo_apt_cmd(*args):
+    """Build a `sudo DEBIAN_FRONTEND=noninteractive <args...>` argv list.
+
+    Use for any `sudo apt-get ...` / `sudo apt ...` / `sudo dpkg -i ...` call
+    that might run a debconf postinst question — needed when there's no
+    controlling tty (e.g. under the root systemd installer worker, see
+    scripts/oasis_installer_worker.py), which otherwise fails with
+    "unable to initialize frontend: Teletype".
+
+    NOTE: passing DEBIAN_FRONTEND via subprocess.run(env=...) is NOT enough
+    on its own — sudo's default sudoers policy (env_reset) discards almost
+    the whole environment before running the target command, so a var set
+    only in the *calling* process's env never reaches apt/dpkg. Sudo does
+    special-case VAR=value tokens given on ITS OWN command line (before the
+    target command) though — those survive env_reset — so we set it there.
+    """
+    return ["sudo", "DEBIAN_FRONTEND=noninteractive", *args]
+
+
+def ensure_scripts_executable(repo_root):
+    """Add the executable bit to every repo *.py that declares a #! shebang.
+
+    A fresh clone/zip — or a file relocated during refactoring — can land a
+    runnable script without +x, which breaks running it directly (./path/foo.py),
+    doc steps, and systemd ExecStarts that call the file by path. We walk the
+    whole repo (not just scripts/) so entry points under common/, features/*/,
+    displays/*/, tests/, etc. are covered too. Only files whose first two bytes
+    are '#!' are touched — import-only libraries (common/oasis_lib.py, the
+    pure-logic feature modules) and package markers (__init__.py) have no shebang
+    and stay non-executable. No git dependency (works from a zip). Idempotent.
+
+    Called from BOTH setup-oasis.py (the console installer) and start-oasis.py
+    (the everyday launcher) so scripts added/edited after the initial install
+    still self-heal instead of only being fixed the one time setup-oasis.py runs.
+    """
+    skip_dirs = {"__pycache__", "oasis-offline", "offline-packages",
+                 "node_modules", "specs"}
+    fixed = 0
+    for dirpath, dirnames, filenames in os.walk(repo_root):
+        # Skip build/vendored trees and every dot-dir (.git, .venv, .claude/
+        # worktrees, …) so we never chmod files in an unrelated checkout.
+        dirnames[:] = [d for d in dirnames
+                       if d not in skip_dirs and not d.startswith(".")]
+        for fn in filenames:
+            if not fn.endswith(".py"):
+                continue
+            p = os.path.join(dirpath, fn)
+            try:
+                with open(p, "rb") as fh:
+                    if fh.read(2) != b"#!":
+                        continue          # no shebang → not meant to run by path
+                mode = os.stat(p).st_mode
+                want = mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+                if want != mode:
+                    os.chmod(p, want)
+                    fixed += 1
+            except OSError:
+                pass   # missing/permission — not fatal, scripts also run via python3
+    if fixed:
+        _ok(f"Made {fixed} script(s) executable (chmod +x on shebang'd *.py)")
+    return fixed
 
 
 # ── Version helpers (install/upgrade, never downgrade) ──────────────────────────
@@ -142,18 +206,31 @@ def version_decision(name, our_version, installed_version, cmp=dpkg_cmp):
 # ── Progress bar ───────────────────────────────────────────────────────────────
 
 class Progress:
-    """Simple download progress bar (block characters, MB counter)."""
+    """Download progress bar (block characters, MB counter). When stdout is
+    not a real terminal (piped to a log, or streamed live by the Setup
+    Orchestrator — see common/setup_registry.py's _stream_process_output),
+    \r-redrawn lines never flush as separate lines, so this prints plain
+    newline-terminated updates every 5% instead, giving real incremental
+    progress in a captured/streamed log."""
 
     def __init__(self, total):
         self.total    = total
         self.received = 0
         self.start    = time.time()
+        self._tty     = sys.stdout.isatty()
+        self._last_step = -1
 
     def _draw(self):
         pct = (self.received / self.total * 100) if self.total else 0
         mb  = self.received / 1_048_576
-        bar = "█" * int(pct / 2) + "░" * (50 - int(pct / 2))
-        print(f"\r    {bar} {pct:5.1f}%  {mb:.1f} MB", end="", flush=True)
+        if self._tty:
+            bar = "█" * int(pct / 2) + "░" * (50 - int(pct / 2))
+            print(f"\r    {bar} {pct:5.1f}%  {mb:.1f} MB", end="", flush=True)
+            return
+        step = int(pct // 5)
+        if step != self._last_step:
+            self._last_step = step
+            print(f"    {mb:.1f} MB ({pct:.0f}%)", flush=True)
 
     def update(self, chunk_size):
         self.received += chunk_size
@@ -162,7 +239,10 @@ class Progress:
     def done(self):
         elapsed = time.time() - self.start
         mb = self.received / 1_048_576
-        print(f"\r    {'█' * 50} 100.0%  {mb:.1f} MB  ({elapsed:.0f}s)")
+        if self._tty:
+            print(f"\r{'█' * 50} 100.0%  {mb:.1f} MB  ({elapsed:.0f}s)")
+        else:
+            print(f"    {mb:.1f} MB (100%) \u2014 done in {elapsed:.0f}s", flush=True)
 
 
 # ── Network utilities ──────────────────────────────────────────────────────────

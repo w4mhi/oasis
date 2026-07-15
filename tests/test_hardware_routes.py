@@ -36,8 +36,10 @@ class HardwareRoutesTest(unittest.TestCase):
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr"}},
                            assignments={"adsb": "a"})
         with mock.patch.object(HW, "load", return_value=inv):
+            # "aprs" (not "openwebrx" — no longer a recognized hw service;
+            # both accept rtl-sdr, so this still exercises the holder conflict)
             r = self.c.post("/api/hardware/assign",
-                            json={"service": "openwebrx", "device_id": "a"},
+                            json={"service": "aprs", "device_id": "a"},
                             headers={"X-OASIS-Request": "1"})
         self.assertEqual(r.status_code, 409)
         self.assertEqual(json.loads(r.data)["holder"], "adsb")
@@ -97,7 +99,8 @@ class HardwareRoutesTest(unittest.TestCase):
                           {"device_id": "a", "ok": True, "reason": ""})
         self.assertEqual(body["services"]["winlink"],
                           {"device_id": None, "ok": False, "reason": "unassigned"})
-        self.assertIn("openwebrx", body["services"])
+        # openwebrx is intentionally never surfaced — see common/hardware.py.
+        self.assertNotIn("openwebrx", body["services"])
         self.assertIn("aprs", body["services"])
 
     def test_declare_device_requires_oasis_header(self):

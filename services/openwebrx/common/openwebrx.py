@@ -30,7 +30,7 @@ import shutil
 import sys
 
 from common.oasis_lib import (_hr, _step, _ok, _info, _warn, _fail, _run,
-                        dpkg_installed_version, has_internet)
+                        dpkg_installed_version, has_internet, sudo_apt_cmd)
 
 PACKAGE   = "openwebrx"
 KEY_URL   = "https://luarvique.github.io/ppa/openwebrx-plus.gpg"
@@ -92,7 +92,7 @@ def add_repo(suite):
         repo_path = suite
 
     _info("Installing the OpenWebRX+ signing key ...")
-    key_cmd = f"curl -fsSL {KEY_URL} | sudo gpg --dearmor -o {KEYRING}"
+    key_cmd = f"curl -fsSL {KEY_URL} | sudo gpg --batch --yes --dearmor -o {KEYRING}"
     if _run(["bash", "-c", key_cmd], check=False).returncode != 0:
         _fail("Could not install the repo signing key (need internet + curl).")
 
@@ -103,8 +103,8 @@ def add_repo(suite):
 
 
 def install():
-    _run(["sudo", "apt", "update", "-qq"], check=False)
-    if _run(["sudo", "apt", "install", "-y", PACKAGE], check=False).returncode != 0:
+    _run(sudo_apt_cmd("apt", "update", "-qq"), check=False)
+    if _run(sudo_apt_cmd("apt", "install", "-y", PACKAGE), check=False).returncode != 0:
         _fail("apt could not install openwebrx — check the repo entry and internet.")
     _ok("openwebrx installed.")
 

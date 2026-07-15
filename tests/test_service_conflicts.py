@@ -21,7 +21,9 @@ class HardwareGateTest(unittest.TestCase):
         from common import hardware as HW
         empty = HW.Inventory(devices={}, assignments={})
         self.assertEqual(HW.service_for_unit(empty, "dump1090-fa"), "adsb")
-        self.assertEqual(HW.service_for_unit(empty, "graywolf"), "aprs")
+        # graywolf is never hardware-gated — GrayWolf manages its own device
+        # assignment inside its own UI.
+        self.assertIsNone(HW.service_for_unit(empty, "graywolf"))
         self.assertEqual(HW.service_for_unit(empty, "pat-direwolf"), "winlink")
         self.assertIsNone(HW.service_for_unit(empty, "kiwix"))
         # feed maps to aprs only when aprs is assigned an sdr

@@ -19,7 +19,7 @@ from common.oasis_lib import (
 )
 
 SERVER_DIR = os.path.join(_REPO_ROOT, "server")
-DATA_DIR = os.path.join(_REPO_ROOT, "fcc-offline-database", "data")
+DATA_DIR = os.path.join(_REPO_ROOT, "services", "fcc_database", "data")
 EN_DAT = os.path.join(DATA_DIR, "EN.dat")
 ZIP_CSV = os.path.join(DATA_DIR, "zipcodes.csv")
 EN_IDX = os.path.join(DATA_DIR, "EN.idx")
@@ -56,6 +56,11 @@ def run(index_only=False, full_zip=False):
     print("  OASIS — FCC Offline Database Setup")
     _hr()
     _info(f"Data directory: {DATA_DIR}")
+    # Announce the detection results up front — this is what decides
+    # everything below (skip download? skip the index build?), and it's the
+    # first thing worth seeing in a live/streamed log before any slow step.
+    _info(f"EN.dat present: {'yes' if os.path.exists(EN_DAT) else 'no'}")
+    _info(f"Prebuilt indexes valid against current EN.dat: {'yes' if fcc_indexes_ready(DATA_DIR) else 'no'}")
 
     if index_only:
         _info("--index-only: skipping download, rebuilding index from local data.")

@@ -16,7 +16,10 @@ import sys
 import threading
 import time
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# services/aprs/common/aprs.py is 3 directories under the repo root
+# (services/aprs/common/<file>), so 4 dirname() calls are needed to reach it:
+# strip the filename, then walk up common -> aprs -> services -> repo root.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, _REPO_ROOT)
 
 from common.oasis_lib import _hr, _step, _ok, _warn, _info, _fail, _run
@@ -25,7 +28,7 @@ SERVICE = "graywolf-api"
 PORT = 8085
 SERVICE_FILE = f"/etc/systemd/system/{SERVICE}.service"
 SELF = os.path.abspath(__file__)
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(SELF)))
+REPO_ROOT = _REPO_ROOT
 VENV_PYTHON = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
 DB_PATH = os.environ.get("APRS_DB_PATH", "/var/lib/graywolf/graywolf-history.db")
 

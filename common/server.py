@@ -382,7 +382,7 @@ def run(check_mode=False, repo_root=None):
 
     venv_dir   = os.path.join(repo_root, ".venv")
     wheels_dir = os.path.join(repo_root, "server", "wheels")
-    fcc_index  = os.path.join(repo_root, "fcc-offline-database", "data", "EN.idx")
+    fcc_index  = os.path.join(repo_root, "services", "fcc_database", "data", "EN.idx")
 
     if check_mode:
         server_ok, fcc_ok = check_status(venv_dir, fcc_index)

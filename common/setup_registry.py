@@ -17,14 +17,110 @@ in-process web server never has that (no TTY, no cached sudo credential).
 """
 
 import os
+import queue
 import subprocess
 import sys
+import threading
+import time
 
 from common import setup_engine as SE
 from common import server as SERVER_SETUP
 
+# Shared exit-code convention used by several install scripts (e.g.
+# features/dra-audio-interface/enable-dra-pi.py, displays/cm4stack/
+# install-cm4stack.py, displays/e-ink/install-e-ink.py, features/gps-L76X/
+# gps_l76x.py) to mean "config written successfully, but a reboot is needed
+# before the next phase/effect can proceed" — NOT a real failure.
+_REBOOT_EXIT_CODE = 10
 
-def _setup_run_script(repo_root, script_rel, args=None, timeout=900):
+# ── Live console log streaming ──────────────────────────────────────────────
+# _setup_run_script() normally buffers a script's stdout/stderr and only
+# returns it once the whole process exits — fine for quick scripts, but a
+# slow one (FCC database download + index build, Wikipedia ZIM download, ...)
+# then looks completely silent in the Setup Orchestrator's console for
+# minutes. set_log_sink() lets the *current thread* bind a `line: str -> None`
+# callback that gets called live, as the subprocess produces output. It's
+# thread-local (not a plain module global) so it can never leak across
+# concurrent callers; server/app.py's job runner sets it for the duration of
+# one setup job (only one job runs at a time) and clears it afterwards.
+_log_ctx = threading.local()
+
+
+def set_log_sink(fn):
+    """Bind (or clear, with fn=None) the live subprocess-output callback for
+    the calling thread. See module docstring above _log_ctx for why."""
+    _log_ctx.fn = fn
+
+
+def _current_log_sink():
+    return getattr(_log_ctx, "fn", None)
+
+
+def _stream_process_output(proc, log_fn, timeout):
+    """Read *proc*'s combined stdout+stderr as it's produced, calling
+    log_fn(line) for each non-empty line as soon as it appears.
+
+    Uses readline() (via iterating the file object), which -- unlike
+    read(N) -- returns as soon as a line is available instead of blocking
+    until N bytes accumulate or the process exits. That matters here: most
+    of our scripts' total output is well under any fixed chunk size, so a
+    read(N)-based reader would silently buffer everything until EOF, which
+    is exactly the "looks frozen" behavior this whole mechanism exists to
+    fix. (common/oasis_lib.py's Progress class prints newline-terminated
+    updates when stdout isn't a tty -- i.e. always, under Popen -- so
+    download progress streams as real lines too.)
+
+    A background reader thread does the actual (blocking) readline() calls
+    so the *timeout* budget can still be enforced here without stalling on a
+    read that never returns. Returns (full_text, timed_out)."""
+    q = queue.Queue()
+
+    def _reader():
+        try:
+            for raw_line in proc.stdout:
+                q.put(raw_line)
+        except Exception:
+            pass
+        finally:
+            q.put(None)  # EOF sentinel
+
+    threading.Thread(target=_reader, daemon=True).start()
+
+    start = time.monotonic()
+    chunks = []
+    timed_out = False
+    while True:
+        remaining = timeout - (time.monotonic() - start)
+        if remaining <= 0:
+            timed_out = True
+            proc.kill()
+            break
+        try:
+            raw_line = q.get(timeout=min(1.0, max(0.05, remaining)))
+        except queue.Empty:
+            continue
+        if raw_line is None:
+            break
+        chunks.append(raw_line)
+        line = raw_line.rstrip("\r\n")
+        if line and log_fn:
+            try:
+                log_fn(line)
+            except Exception:
+                pass
+
+    try:
+        proc.stdout.close()
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=5 if timed_out else None)
+    except Exception:
+        pass
+    return "".join(chunks), timed_out
+
+
+def _setup_run_script(repo_root, script_rel, args=None, timeout=300):
     args = args or []
     script = os.path.join(repo_root, script_rel)
     if not os.path.exists(script):
@@ -33,18 +129,47 @@ def _setup_run_script(repo_root, script_rel, args=None, timeout=900):
             "reason_code": "MISSING_SCRIPT",
             "reason_text": f"missing script: {script_rel}",
         }
-    try:
-        r = subprocess.run([sys.executable, script, *args], capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        return {
-            "ok": False,
-            "reason_code": "TIMEOUT",
-            "reason_text": f"script timed out: {script_rel}",
-        }
-    except Exception as exc:
-        return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": str(exc)}
-    if r.returncode != 0:
-        err = (r.stderr or r.stdout or "script failed").strip()
+
+    log_fn = _current_log_sink()
+    timed_out = False
+    if log_fn is None:
+        # No live sink bound (CLI/tests/privileged worker) — cheap buffered path.
+        try:
+            r = subprocess.run([sys.executable, script, *args], capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return {
+                "ok": False,
+                "reason_code": "TIMEOUT",
+                "reason_text": f"script timed out: {script_rel}",
+            }
+        except Exception as exc:
+            return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": str(exc)}
+        stdout, stderr, returncode = r.stdout, r.stderr, r.returncode
+    else:
+        # A live sink is bound (the web Setup Orchestrator's job runner) —
+        # stream stdout+stderr line-by-line as the script runs instead of
+        # buffering silently until it exits.
+        try:
+            proc = subprocess.Popen(
+                [sys.executable, script, *args],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+            )
+        except Exception as exc:
+            return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": str(exc)}
+        stdout, timed_out = _stream_process_output(proc, log_fn, timeout)
+        stderr, returncode = "", proc.returncode
+        if timed_out:
+            return {
+                "ok": False,
+                "reason_code": "TIMEOUT",
+                "reason_text": f"script timed out: {script_rel}",
+                "stdout_tail": stdout.strip()[-300:] or None,
+            }
+
+    if returncode == _REBOOT_EXIT_CODE:
+        return {"ok": True, "requires_reboot": True}
+    if returncode != 0:
+        err = (stderr or stdout or "script failed").strip()
         low = err.lower()
         reason_code = "INSTALL_FAILED"
         if any(tok in low for tok in [
@@ -53,7 +178,7 @@ def _setup_run_script(repo_root, script_rel, args=None, timeout=900):
             "network is unreachable",
             "could not resolve",
             "could not reach the internet",
-            "could not download the flightaware repo signing key",
+            "could not download the flightaware apt-repository package",
         ]):
             reason_code = "INTERNET_REQUIRED"
         elif "command not found" in low and ("curl" in low or "gpg" in low):
@@ -62,18 +187,20 @@ def _setup_run_script(repo_root, script_rel, args=None, timeout=900):
             "ok": False,
             "reason_code": reason_code,
             "reason_text": err.splitlines()[-1][:300] if err else f"script failed: {script_rel}",
-            "stderr_tail": (r.stderr or "").strip()[-300:] or None,
-            "stdout_tail": (r.stdout or "").strip()[-300:] or None,
+            "stderr_tail": (stderr or "").strip()[-300:] or None,
+            "stdout_tail": (stdout or "").strip()[-300:] or None,
         }
     return {"ok": True}
 
 
 def _setup_run_chain(repo_root, steps):
+    needs_reboot = False
     for step in steps:
-        res = _setup_run_script(repo_root, step.get("script"), step.get("args"), timeout=step.get("timeout", 900))
+        res = _setup_run_script(repo_root, step.get("script"), step.get("args"), timeout=step.get("timeout", 300))
         if not res.get("ok"):
             return res
-    return {"ok": True}
+        needs_reboot = needs_reboot or bool(res.get("requires_reboot"))
+    return {"ok": True, "requires_reboot": True} if needs_reboot else {"ok": True}
 
 
 def _setup_record_only(_name):
@@ -138,7 +265,7 @@ def _setup_winlink_install_fn(repo_root, payload):
 PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
     "openwebrx", "adsb", "rtl-sdr-feed", "gps", "dra-pi-rx-led", "rtc",
-    "pi-local-monitor", "pi-small-screen-7", "cm4stack",
+    "pi-headless", "pi-local-monitor", "pi-small-screen-7", "cm4stack", "rgb-cooling-hat",
 }
 
 
@@ -264,9 +391,15 @@ def build_registry(repo_root, payload=None):
         "pi-headless": SE.FeatureSpec(
             key="pi-headless",
             dependencies=["server"],
-            install_fn=lambda: _setup_record_only("pi-headless"),
+            # Headless Pi (no monitor/kiosk): still needs the plain oasis.service
+            # systemd unit enabled so the server actually starts on boot. This
+            # used to be a no-op (_setup_record_only) which left the checkbox
+            # cosmetic — the service was never installed, so the server never
+            # came back up after a reboot.
+            install_fn=lambda: _setup_run_script(repo_root, "scripts/enable-autostart-pi.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
+            privileged=True,
         ),
         "pi-local-monitor": SE.FeatureSpec(
             key="pi-local-monitor",
@@ -302,10 +435,22 @@ def build_registry(repo_root, payload=None):
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
         ),
+        "rgb-cooling-hat": SE.FeatureSpec(
+            key="rgb-cooling-hat",
+            dependencies=["server"],
+            install_fn=lambda: _setup_run_script(repo_root, "features/rgb-cooling-hat/install-rgb-cooling-hat.py"),
+            verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
         "fcc": SE.FeatureSpec(
             key="fcc",
             dependencies=["server"],
-            install_fn=lambda: _setup_run_script(repo_root, "scripts/install-fcc-database.py"),
+            # Downloads ~160 MB from the FCC then builds 3 binary-search
+            # indexes over it — the default 300s script timeout can be too
+            # tight on a slow connection or a Pi Zero doing the index build,
+            # so give it a generous 20 minutes.
+            install_fn=lambda: _setup_run_script(repo_root, "scripts/install-fcc-database.py", timeout=1200),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
         ),

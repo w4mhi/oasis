@@ -11,7 +11,7 @@ import csv
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "fcc-offline-database", "data"))
+DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "services", "fcc_database", "data"))
 
 EN_DAT_PATH   = os.path.join(DATA_DIR, "EN.dat")
 HD_DAT_PATH   = os.path.join(DATA_DIR, "HD.dat")

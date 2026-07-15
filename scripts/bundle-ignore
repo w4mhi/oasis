@@ -30,7 +30,7 @@ oasis-offline/
 oasis-offline-windows/
 offline-packages/
 server/wheels/
-fcc-offline-database/
+services/fcc_database/data/
 zim/
 
 # ── per-machine state: must never leak from the build host into a fresh bundle ──

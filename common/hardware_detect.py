@@ -70,6 +70,70 @@ def parse_lsusb(output):
     return devices
 
 
+# ── Known-signature classification ──────────────────────────────────────────
+# A bare lsusb count ("7 USB devices") isn't actionable — the operator can't
+# tell which entries are radio peripherals they care about vs. hub/controller
+# noise. This is a small, explicit allowlist of the USB vendor:product IDs
+# OASIS actually knows how to use, so the Hardware Snapshot can say "1
+# RTL-SDR + 1 DigiRig, plus 4 other USB devices" instead of a raw total.
+# Extend this table as new supported peripherals are added.
+KNOWN_USB_SIGNATURES = {
+    ("0bda", "2832"): {"role": "rtl_sdr", "label": "RTL-SDR (RTL2832U)"},
+    ("0bda", "2838"): {"role": "rtl_sdr", "label": "RTL-SDR (RTL2838)"},
+    ("10c4", "ea60"): {"role": "digirig", "label": "DigiRig (CP210x USB-serial)"},
+    # CM108 is a generic USB audio+PTT chip used by many cheap ham-radio USB
+    # interfaces ("USB DRA" variants included) — it is NOT this repo's
+    # DRA-Pi-Zero, which is an I2C/I2S HAT with no USB signature at all (see
+    # docs/graywolf-dra-pi.md). Surface it honestly as "a CM108 fob is
+    # present", not as DRA-Pi confirmation.
+    ("0d8c", "013c"): {"role": "cm108", "label": "CM108 USB audio/PTT interface"},
+}
+
+
+def digirig_candidates(serial_by_id):
+    """Return every /dev/serial/by-id entry as a DigiRig candidate.
+
+    This is the primary, robust DigiRig signal: it only needs a directory
+    listing under /dev/serial/by-id, so it keeps working on images that don't
+    ship the `lsusb` binary (usbutils isn't installed by default on some
+    Raspberry Pi OS Lite images) — unlike classify_usb_devices(), which
+    depends on `lsusb` actually running and returning output. Deliberately not
+    filtered by CP210x label text — real by-id labels vary enough (CP2102 vs
+    CP2104 vs CP2102N, vendor string casing, etc.) that a substring filter was
+    dropping real DigiRig adapters to 0; any USB-serial adapter under
+    /dev/serial/by-id on this suite's supported hardware is the DigiRig."""
+    return list(serial_by_id)
+
+
+def classify_usb_devices(devices):
+    """Sort parse_lsusb() output into recognized ham-radio peripherals vs.
+    everything else (hubs, controllers, unrelated dongles), using
+    KNOWN_USB_SIGNATURES. Returns {"rtl_sdr": [...], "digirig": [...],
+    "cm108": [...], "other": [...]} — "other" is what's left over, so the UI
+    can show a plain count instead of implying every USB device matters."""
+    out = {"rtl_sdr": [], "digirig": [], "cm108": [], "other": []}
+    for dev in devices:
+        sig = ((dev.get("vendor_id") or "").lower(), (dev.get("product_id") or "").lower())
+        known = KNOWN_USB_SIGNATURES.get(sig)
+        if known:
+            out[known["role"]].append({**dev, "label": known["label"]})
+        else:
+            out["other"].append(dev)
+    return out
+
+
+def dra_pi_present(alsa_cards):
+    """True if `aplay -l` shows the DRA-Pi-Zero's ALSA card. The DRA-Pi is a
+    WM8731 HAT addressed over I2C (control) — not USB — so it can never show
+    up in lsusb (see docs/graywolf-dra-pi.md); GrayWolf/Direwolf address it by
+    the ALSA card name "audioinjectorpi" (it's electrically compatible with
+    the AudioInjector Zero card), which is the only reliable "is it actually
+    wired up and is the overlay loaded" signal. (Any OTHER ALSA card — onboard
+    HDMI/analog audio, a USB sound fob — must NOT count as DRA-Pi present.)"""
+    return any("audioinjector" in ((c.get("id") or "") + (c.get("description") or "")).lower()
+               for c in alsa_cards)
+
+
 _TTY_SERIAL_RE = re.compile(r'^(ttyUSB\d+|ttyACM\d+|ttyAMA\d+|ttyS\d+|serial0|serial1)$')
 _TTY_USB_RE = re.compile(r'^(ttyUSB|ttyACM)')
 

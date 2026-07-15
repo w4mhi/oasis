@@ -1025,10 +1025,6 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="svc-dot" id="dot-gw"></div>
     <div><div class="svc-name">APRS GrayWolf</div><div class="svc-sub" id="sub-gw">—</div></div>
     <span class="svc-badge" id="badge-gw">—</span>
-    <div class="hw-assign-row" id="hwrow-gw" hidden>
-      <span class="hw-assign-lbl">device:</span>
-      <select class="hw-assign-sel" id="hwsel-gw" onchange="onHardwareAssignChange('gw')"></select>
-    </div>
   </div>
   <div class="svc-card" id="card-aprs">
     <div class="svc-dot" id="dot-aprs"></div>
@@ -1058,10 +1054,6 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <div class="svc-sub" id="sub-owrx">—</div>
     </div>
     <span class="svc-badge" id="badge-owrx">—</span>
-    <div class="hw-assign-row" id="hwrow-owrx" hidden>
-      <span class="hw-assign-lbl">device:</span>
-      <select class="hw-assign-sel" id="hwsel-owrx" onchange="onHardwareAssignChange('owrx')"></select>
-    </div>
   </div>
   <div class="svc-card" id="card-adsb">
     <div class="svc-dot" id="dot-adsb"></div>
@@ -1448,11 +1440,6 @@ const SERVICES = [
   {
     id: 'gw', name: 'GrayWolf',
     check: async () => {
-      const hw = _hwLast && _hwLast.services && _hwLast.services.aprs;
-      if (hw && !hw.ok) {
-        return { up: false, badge: 'UNASSIGNED',
-          sub: hw.reason === 'unassigned' ? 'unassigned — pick a device below' : 'device not attached' };
-      }
       await fetch(`http://${HOST}:${PORTS.graywolf}/`, { cache: 'no-store', mode: 'no-cors' });
       return { up: true, badge: 'UP', sub: `:${PORTS.graywolf}`, navSub: 'operational' };
     }
@@ -1484,12 +1471,17 @@ const SERVICES = [
       if (!r.ok) return { up: false, sub: 'status error' };
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      // Ground truth (systemd is-active) wins over the hardware-assignment
+      // state: a unit that's actually running is ON AIR even if the
+      // dashboard's last-polled assignment snapshot is stale or momentarily
+      // unassigned — the UNASSIGNED badge only applies while it's stopped
+      // and can't start.
+      if (d.active === 'active') return { up: true, badge: 'ON AIR', sub: 'AGWPE :8000 · APRS off' };
       const hw = _hwLast && _hwLast.services && _hwLast.services.winlink;
       if (hw && !hw.ok) {
         return { up: false, badge: 'UNASSIGNED',
           sub: hw.reason === 'unassigned' ? 'unassigned — pick a device below' : 'device not attached' };
       }
-      if (d.active === 'active') return { up: true, badge: 'ON AIR', sub: 'AGWPE :8000 · APRS off' };
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
         sub: d.installed ? 'start for packet Winlink' : 'run install-winlink.py' };
     }
@@ -1603,11 +1595,6 @@ const SERVICES = [
   {
     id: 'owrx', name: 'OpenWebRX',
     check: async () => {
-      const hw = _hwLast && _hwLast.services && _hwLast.services.openwebrx;
-      if (hw && !hw.ok) {
-        return { up: false, badge: 'UNASSIGNED',
-          sub: hw.reason === 'unassigned' ? 'unassigned — pick a device below' : 'device not attached' };
-      }
       await fetch(`http://${HOST}:${PORTS.openwebrx}/`, { cache: 'no-store', mode: 'no-cors' });
       return { up: true, badge: 'UP', sub: `:${PORTS.openwebrx}` };
     }
@@ -1622,12 +1609,16 @@ const SERVICES = [
       if (!r.ok) return { up: false, sub: 'status error' };
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      // Ground truth (systemd is-active) wins over the hardware-assignment
+      // state: a unit that's actually running is UP even if the dashboard's
+      // last-polled assignment snapshot is stale or momentarily unassigned —
+      // the UNASSIGNED badge only applies while it's stopped and can't start.
+      if (d.active === 'active') return { up: true, badge: 'UP', sub: 'aircraft tracking' };
       const hw = _hwLast && _hwLast.services && _hwLast.services.adsb;
       if (hw && !hw.ok) {
         return { up: false, badge: 'UNASSIGNED',
           sub: hw.reason === 'unassigned' ? 'unassigned — pick a device below' : 'device not attached' };
       }
-      if (d.active === 'active') return { up: true, badge: 'UP', sub: 'aircraft tracking' };
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
         sub: d.installed ? 'start for aircraft tracking' : 'run services/adsb/install.py' };
     }
@@ -1712,14 +1703,17 @@ let _hwLast = null;   // last GET /api/hardware/devices payload — read by the
 // SERVICE_UNITS keys and its inverse SVC_UNITS-vs-HW mapping documented in
 // specs/2026-07-14-hardware-engine-slice4b-plan.md's Global Constraints table
 // (card ids here are NOT the same string as the HW service name for aprs/winlink).
-const HW_SERVICE_FOR_CARD = { adsb: 'adsb', owrx: 'openwebrx', gw: 'aprs', wlrf: 'winlink' };
+// GrayWolf ('gw') and OpenWebRX ('owrx') are intentionally absent: both are
+// web-admin-configured inside their own UI, not through OASIS's hardware
+// allocation (see common/hardware.py's SERVICE_UNITS comment — neither has
+// an apply hook in scripts/apply_hardware.py, so an OASIS-level assignment
+// would never actually do anything).
+const HW_SERVICE_FOR_CARD = { adsb: 'adsb', wlrf: 'winlink' };
 // MUST mirror common/hardware.py's DEVICE_KIND_FOR_SERVICE — kept in JS
 // because the dropdown filters candidate devices client-side.
 const HW_KIND_FOR_SERVICE = {
-  aprs:      ['rtl-sdr', 'digirig', 'dra-pi'],
   winlink:   ['digirig', 'dra-pi'],
   adsb:      ['rtl-sdr'],
-  openwebrx: ['rtl-sdr'],
 };
 
 function populateHardwareDropdowns(data) {
@@ -2038,9 +2032,13 @@ function updatePower(svcId, state) {
   if (!SVC_UNITS[svcId]) return;
   const btn = powerBtn(svcId);
   if (!btn) return;
+  const running = state === 'up' || state === 'warn';
   const hwService = HW_SERVICE_FOR_CARD[svcId];
   const hw = hwService && _hwLast && _hwLast.services && _hwLast.services[hwService];
-  if (hw && !hw.ok) {
+  // Ground truth wins: a unit that's actually running is never "blocked",
+  // even if the last-polled hardware assignment looks stale/unassigned —
+  // the ASSIGN DEVICE gate only applies while it's stopped and can't start.
+  if (hw && !hw.ok && !running) {
     btn.classList.remove('up', 'down', 'busy');
     btn.classList.add('blocked');
     btn.textContent = 'ASSIGN DEVICE';
@@ -2048,7 +2046,6 @@ function updatePower(svcId, state) {
     return;
   }
   btn.classList.remove('blocked');
-  const running = state === 'up' || state === 'warn';
   if (_pending[svcId] !== undefined) {
     if (running || Date.now() >= _pending[svcId]) {
       delete _pending[svcId];

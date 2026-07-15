@@ -80,7 +80,7 @@ SUITE_FILES = [
 DATA_PATHS = [
     "/var/lib/graywolf",
     os.path.join(repo_root(), "maps"),
-    os.path.join(repo_root(), "fcc-offline-database"),
+    os.path.join(repo_root(), "services", "fcc_database", "data"),
     os.path.join(repo_root(), "server", "wheels"),
     os.path.join(repo_root(), "offline-packages"),
 ]

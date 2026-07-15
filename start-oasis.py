@@ -12,14 +12,16 @@ systemd. Unlike scripts/start-server.sh (which `exec`s into gunicorn and
 blocks the shell/SSH session that ran it), this script exits on its own once
 the server is confirmed listening — you get your terminal back.
 
-This script does NOT do any privileged (root) work — it only touches the
-user-owned .venv and the server process. WebSSH, GrayWolf, Winlink, and every
-other feature that needs real root go through the Setup Orchestrator (the web
-dashboard) plus scripts/enable-oasis-installer.py's root worker daemon, which
-needs exactly ONE interactive sudo password (same single up-front prompt
-setup-oasis.py has always used) to install its systemd units — after that,
-privileged installs triggered from the dashboard need no further passwords,
-ever, because the worker already runs as root.
+Before starting the server, on Linux it also makes sure the Setup
+Orchestrator's two one-time privilege grants are in place:
+scripts/enable-service-controls.py (dashboard start/stop/restart/reboot
+buttons) and scripts/enable-oasis-installer.py (the root worker daemon that
+performs privileged installs — Winlink, GrayWolf, WebSSH, ...). Each only
+runs once (idempotent, checked via the same on-disk markers the dashboard's
+/api/setup/permissions endpoint already uses) and asks for your sudo
+password right here in this terminal if it hasn't been granted yet — after
+that, the dashboard never needs a password again. Skipped entirely on
+non-Linux dev machines, where both scripts refuse to run anyway.
 
 Server output goes to oasis-server.log (repo root) since nothing stays
 attached to this process's stdout after it exits. Re-running restarts: any
@@ -48,7 +50,7 @@ LOG_FILE    = os.path.join(REPO_ROOT, "oasis-server.log")
 PORT        = 8083
 
 sys.path.insert(0, REPO_ROOT)
-from common.oasis_lib import _hr, _ok, _info, _warn, _fail
+from common.oasis_lib import _hr, _ok, _info, _warn, _fail, ensure_scripts_executable
 
 
 def _venv_python():
@@ -157,9 +159,49 @@ def free_port(port):
         time.sleep(0.5)
 
 
+SUDOERS_PATH = "/etc/sudoers.d/oasis-service-controls"
+INSTALLER_PATH_UNIT = "/etc/systemd/system/oasis-installer.path"
+
+
+def _run_enable_script(rel_path, already_granted):
+    """Run one of the one-time enable-*.py privilege-grant scripts if it
+    hasn't been applied yet. Both are idempotent and handle their own `sudo`
+    call internally (see their docstrings) — run with inherited stdio so
+    the password prompt shows up right here, in the terminal the operator
+    is already watching. Best-effort: a failure here must not stop the
+    server from starting (same tolerant style as free_port() below) — the
+    dashboard's own Permissions banner will keep reporting what's missing."""
+    if already_granted:
+        return
+    script = os.path.join(REPO_ROOT, rel_path)
+    _info(f"Granting permissions: {rel_path} (may ask for your sudo password)...")
+    r = subprocess.run([sys.executable, script])
+    if r.returncode != 0:
+        _warn(f"{rel_path} did not complete (exit {r.returncode}) — "
+              f"re-run it yourself later: python3 {rel_path}")
+
+
+def ensure_permissions():
+    """One-time root-level grants the Setup Orchestrator needs: a narrow
+    sudoers rule for the dashboard's service-control buttons, and the
+    systemd worker that performs privileged installs on the dashboard's
+    behalf. Both are Linux/systemd-only, opt-in, reversible, and safe to
+    re-run — skipped on non-Linux dev machines, where they refuse to run
+    anyway."""
+    if sys.platform != "linux":
+        return
+    _run_enable_script("scripts/enable-service-controls.py",
+                        already_granted=os.path.exists(SUDOERS_PATH))
+    _run_enable_script("scripts/enable-oasis-installer.py",
+                        already_granted=os.path.exists(INSTALLER_PATH_UNIT))
+
+
 def main():
     print("\n  OASIS — start-oasis")
     _hr()
+
+    ensure_scripts_executable(REPO_ROOT)
+    ensure_permissions()
 
     venv_python = ensure_venv()
     _ok(f"Using venv Python: {venv_python}")

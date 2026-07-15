@@ -98,7 +98,7 @@ _check "Python" "1" "$PY_VER"
     || _check "psutil" "0" "→ run: python3 scripts/setup-server.py"
 
 # FCC index
-FCC_INDEX="$REPO_ROOT/fcc-offline-database/data/EN.idx"
+FCC_INDEX="$REPO_ROOT/services/fcc_database/data/EN.idx"
 if [[ -f "$FCC_INDEX" ]]; then
     FCC_KB=$(( $(wc -c < "$FCC_INDEX") / 1024 ))
     _check "FCC index" "1" "${FCC_KB} KB"

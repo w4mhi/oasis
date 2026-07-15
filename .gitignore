@@ -45,9 +45,9 @@ static/radio-manuals/*
 *.zim
 
 # FCC amateur-radio database — built by scripts/install-fcc-database.py into
-# fcc-offline-database/data/ (see server/lookup.py). Large, and the raw FCC dump
+# services/fcc_database/data/ (see common/lookup.py). Large, and the raw FCC dump
 # carries licensee names/addresses — never checked in; each machine builds its own.
-fcc-offline-database/
+services/fcc_database/data/
 
 # Scratch / temporary files
 temp/

@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT   = os.path.dirname(_SCRIPT_DIR)
 
-FCC_INDEX   = os.path.join(REPO_ROOT, "fcc-offline-database", "data", "EN.idx")
+FCC_INDEX   = os.path.join(REPO_ROOT, "services", "fcc_database", "data", "EN.idx")
 MAPS_DIR    = os.path.join(REPO_ROOT, "maps")
 WINLINK_DIR = os.path.join(REPO_ROOT, "server", "winlink")
 
@@ -194,7 +194,7 @@ def check_fcc():
         return {
             "ok": False, "badge": "NOT BUILT",
             "detail": (
-                f"Index not found at fcc-offline-database/data/EN.idx.\n"
+                f"Index not found at services/fcc_database/data/EN.idx.\n"
                 "     Run: python3 scripts/install-fcc-database.py"
             ),
         }

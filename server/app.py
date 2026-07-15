@@ -12,7 +12,7 @@ All FCC data is served from local flat files (EN.dat + EN.idx + zipcodes.csv);
 no database engine is involved.
 
 Run (development):   python3 app.py
-Run (recommended):   see fcc-offline-database/README.md for the gunicorn + systemd setup.
+Run (recommended):   see docs/SETUP.md for the gunicorn + systemd setup.
 """
 
 import argparse
@@ -366,6 +366,58 @@ def _setup_registry(payload=None):
     return SETUP_REGISTRY.build_registry(SUITE_ROOT, payload)
 
 
+# Gate/content features whose install_fn is a no-op "record only" toggle (see
+# setup_registry.py) — mirrors setup-oasis.py's identically-named
+# GATE_AUTHORITATIVE. These checkboxes are always shown on the setup page, so
+# an unticked box means "hide the card" here, unlike service features, which
+# only ever accumulate (installing one never un-installs it).
+_SETUP_GATE_AUTHORITATIVE = {"fcc", "repeaterbook", "wikipedia", "forms"}
+
+_SETUP_SUCCESS_STATUSES = {SE.STATUS_INSTALLED, SE.STATUS_INSTALLED_ENABLED_NOT_STARTED,
+                           SE.STATUS_INSTALLED_NEEDS_REBOOT}
+
+
+def _setup_record_installed_features(plan_obj, summary):
+    """Persist this web run's successful features into installed-services.json,
+    mirroring setup-oasis.py's record_installed() — otherwise a feature checked
+    and installed via the Setup Orchestrator page (e.g. rtl-sdr-feed, gps,
+    dra-pi-rx-led) never shows as checked again after a page refresh, since
+    /api/installed-services only ever reflects the CLI installer's writes.
+
+    Service installs accumulate (union with whatever is already recorded).
+    The always-visible gate/content checkboxes in _SETUP_GATE_AUTHORITATIVE
+    instead track this run's tick/untick exactly."""
+    ok_keys = {item.get("feature") for item in summary.features
+              if item.get("status") in _SETUP_SUCCESS_STATUSES}
+    selected_keys = set(plan_obj.selected_features)
+
+    existing = set()
+    try:
+        with open(INSTALLED_SERVICES_FILE) as fh:
+            prev = json.load(fh)
+        if isinstance(prev.get("features"), list):
+            existing = {str(k) for k in prev["features"]}
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+
+    merged = existing | ok_keys
+    for k in _SETUP_GATE_AUTHORITATIVE:
+        if k in selected_keys:
+            merged.add(k)
+        else:
+            merged.discard(k)
+
+    if merged == existing:
+        return
+    try:
+        os.makedirs(config_paths.config_dir(SUITE_ROOT), exist_ok=True)
+        with open(INSTALLED_SERVICES_FILE, "w", encoding="utf-8") as fh:
+            json.dump({"features": sorted(merged), "updated": _setup_iso_now()}, fh, indent=2)
+            fh.write("\n")
+    except OSError:
+        pass
+
+
 # ── Privileged installs: hand off to the out-of-process root worker ─────────────
 # The web server never runs as root and has no TTY/cached sudo credential, so a
 # privileged FeatureSpec's install_fn is NOT called in-process here. Instead we
@@ -377,7 +429,7 @@ def _setup_registry(payload=None):
 # a result file back. No password ever touches this process.
 INSTALLER_QUEUE_DIR = config_paths.installer_queue_dir(SUITE_ROOT)
 _INSTALLER_POLL_INTERVAL_S = 0.5
-_INSTALLER_JOB_TIMEOUT_S = 900
+_INSTALLER_JOB_TIMEOUT_S = 300
 _INSTALLER_HEARTBEAT_INTERVAL_S = 10
 # Written by scripts/enable-oasis-installer.py; its presence is the cheapest
 # (no subprocess, no root needed) signal that the root worker daemon exists.
@@ -401,9 +453,9 @@ def _setup_enqueue_and_wait_install(key, spec, payload, job_id=None):
         return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": f"{key} is not a privileged feature"}
 
     # Fail fast instead of silently queueing a job nothing will ever pick up
-    # and only finding out ~15 minutes later (the old behavior) — this is the
-    # single most common reason a privileged install looks "stuck" with no
-    # further log output.
+    # and only finding out ~5 minutes later (the old behavior was ~15 min) —
+    # this is the single most common reason a privileged install looks
+    # "stuck" with no further log output.
     if not _installer_daemon_enabled():
         return {
             "ok": False,
@@ -447,6 +499,7 @@ def _setup_enqueue_and_wait_install(key, spec, payload, job_id=None):
                 "ts": _setup_iso_now(),
                 "feature": key,
                 "waitedS": int(now - started),
+                "timeoutS": _INSTALLER_JOB_TIMEOUT_S,
             })
             next_heartbeat = now + _INSTALLER_HEARTBEAT_INTERVAL_S
         time.sleep(_INSTALLER_POLL_INTERVAL_S)
@@ -497,6 +550,24 @@ def _setup_cancel_requested(job_id):
         return job_id in _setup_cancel_requests
 
 
+def _setup_emit_log_line(job_id, line):
+    """Live-stream one line of a running installer script's console output
+    into the job's log (see common/setup_registry.py's set_log_sink). Tagged
+    with whatever feature is currently installing so the console shows it
+    right under that feature's "install started" line."""
+    with _setup_lock:
+        job = _setup_jobs.get(job_id)
+        feature = job.get("currentFeature") if job else None
+    _setup_emit_event(job_id, {
+        "schemaVersion": "1.0",
+        "event": "stage_log",
+        "jobId": job_id,
+        "ts": _setup_iso_now(),
+        "feature": feature,
+        "line": line,
+    })
+
+
 def _setup_run_job(job_id, plan_obj, payload):
     global _setup_active_job
     reg = _setup_registry(payload)
@@ -520,12 +591,22 @@ def _setup_run_job(job_id, plan_obj, payload):
             ordered_features=plan_obj.ordered_features,
             blocked=[*plan_obj.blocked, blocker],
         )
-    _states, _blocked, summary = SE.run_plan(
-        plan_obj,
-        run_opts,
-        reg,
-        event_sink=lambda e: _setup_emit_event(job_id, e),
-    )
+    SETUP_REGISTRY.set_log_sink(lambda line: _setup_emit_log_line(job_id, line))
+    try:
+        _states, _blocked, summary = SE.run_plan(
+            plan_obj,
+            run_opts,
+            reg,
+            event_sink=lambda e: _setup_emit_event(job_id, e),
+        )
+    finally:
+        SETUP_REGISTRY.set_log_sink(None)
+
+    if not _blocked:
+        try:
+            _setup_record_installed_features(plan_obj, summary)
+        except Exception:
+            pass
 
     wifi_result = None
     if not _blocked and _setup_wifi_mode(payload or {}) != "none":
@@ -628,12 +709,35 @@ def api_setup_hardware_detect():
                 lsusb = [ln for ln in (r.stdout or "").splitlines() if ln.strip()]
         except Exception:
             lsusb = []
-    has_dra_driver = bool(scan.get("alsa") or scan.get("serial"))
+
+    # Classify raw USB/ALSA/serial facts into recognized ham-radio peripherals
+    # so the Setup page can say "1 RTL-SDR + 1 DigiRig, 4 other USB devices"
+    # instead of an opaque lsusb count. See common/hardware_detect.py for why
+    # DRA-Pi is checked via the ALSA card name, not lsusb/serial presence.
+    usb_classified = HD_detect.classify_usb_devices(scan.get("usb") or [])
+    has_dra_driver = HD_detect.dra_pi_present(scan.get("alsa") or [])
+    # DigiRig: prefer the /dev/serial/by-id signal (needs no extra binary,
+    # works even on images without usbutils installed) over the lsusb-based
+    # match, which depends on the `lsusb` command actually succeeding.
+    digirig = (HD_detect.digirig_candidates(scan.get("serial") or [])
+               or usb_classified["digirig"])
+    try:
+        gps_configured_device = gpsd_chrony.configured_device()
+    except Exception:
+        gps_configured_device = None
+
     return jsonify({
         "ok": True,
         "lsusb": lsusb,
         "detected": scan,
         "draPiDriverReady": has_dra_driver,
+        "usbClassified": {
+            "rtlSdr": usb_classified["rtl_sdr"],
+            "digirig": digirig,
+            "cm108": usb_classified["cm108"],
+            "other": usb_classified["other"],
+        },
+        "gpsConfiguredDevice": gps_configured_device,
     })
 
 
@@ -2996,7 +3100,7 @@ def api_system():
     # FCC DB last modified
     fcc_db_mtime = None
     fcc_db_candidates = [
-        os.path.join(SUITE_ROOT, "fcc-offline-database", "data", "EN.dat"),
+        os.path.join(SUITE_ROOT, "services", "fcc_database", "data", "EN.dat"),
         "/mnt/ssd/Documents/reference/fcc-offline-database/data/EN.dat",
     ]
     for path in fcc_db_candidates:

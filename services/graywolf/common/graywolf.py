@@ -10,7 +10,10 @@ import platform
 import sys
 import tempfile
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# services/graywolf/common/graywolf.py is 3 directories under the repo root
+# (services/graywolf/common/<file>), so 4 dirname() calls are needed to reach
+# it: strip the filename, then walk up common -> graywolf -> services -> repo root.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, _REPO_ROOT)
 
 from common.oasis_lib import (

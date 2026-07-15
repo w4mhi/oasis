@@ -16,7 +16,8 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.
 sys.path.insert(0, _REPO_ROOT)
 
 from services.adsb.common import history, alerts
-from common.oasis_lib import _hr, _step, _ok, _warn, _info, _fail, _run, has_internet, download_bytes  # noqa: E402
+from common.oasis_lib import (_hr, _step, _ok, _warn, _info, _fail, _run, has_internet,
+                        download_bytes, sudo_apt_cmd, dpkg_installed_version)  # noqa: E402
 from common import manifest as M  # noqa: E402
 from common import config_paths  # noqa: E402
 
@@ -121,14 +122,18 @@ DECODER_UNIT = "dump1090-fa"
 UNIT_PATH    = f"/etc/systemd/system/{API_SERVICE}.service"
 
 # FlightAware apt repo (online fallback). dump1090-fa isn't in base Debian/Pi OS
-# apt — it ships from FlightAware's own repo. Path/suite mapping below is the
-# maintainer's best current understanding; confirm on a real build before relying
-# on it for a new suite.
-FA_KEY_URL   = "https://www.flightaware.com/adsb/piaware/files/packages/flightaware-apt-repository.gpg"
-FA_KEYRING   = "/etc/apt/trusted.gpg.d/flightaware-apt-repository.gpg"
-FA_LIST_PATH = "/etc/apt/sources.list.d/flightaware.list"
-FA_BASE_URL  = "https://www.flightaware.com/adsb/piaware/files/packages"
-FA_REPO_SUITES = {"bookworm": "bookworm", "trixie": "trixie"}
+# apt — it ships from FlightAware's own repo. This installs FlightAware's own
+# 'flightaware-apt-repository' .deb (see flightaware.com/adsb/piaware/install) —
+# that package bundles the signing keyring AND a postinst script that
+# auto-detects the OS codename and writes /etc/apt/sources.list.d/
+# flightaware.sources itself, so we don't need to track suite→URL mappings or
+# manage the keyring by hand. (Replaces an older approach that hand-downloaded
+# a standalone .gpg key file from a URL FlightAware has since discontinued —
+# it now 404s.)
+FA_REPO_DEB_URL = (
+    "https://www.flightaware.com/adsb/piaware/files/packages/pool/piaware/f/"
+    "flightaware-apt-repository/flightaware-apt-repository_1.3_all.deb"
+)
 
 ARCH_MAP = {"aarch64": "arm64", "arm64": "arm64", "armv7l": "armhf",
             "armhf": "armhf", "armv6l": "armhf", "x86_64": "amd64", "amd64": "amd64"}
@@ -172,7 +177,7 @@ def _install_debs_offline(deb_paths):
     _info("Installing (offline):")
     for p in deb_paths:
         _info(f"  {os.path.basename(p)}")
-    cmd = ["sudo", "apt-get", "install", "-y"] + deb_paths
+    cmd = sudo_apt_cmd("apt-get", "install", "-y", *deb_paths)
     if _run(cmd, check=False).returncode == 0:
         _ok("dump1090-fa installed from vendored .deb")
         return True
@@ -181,42 +186,48 @@ def _install_debs_offline(deb_paths):
     return False
 
 
-def _add_flightaware_repo(suite):
-    repo_suite = FA_REPO_SUITES.get(suite)
-    if not repo_suite:
-        _warn(f"Unknown suite '{suite}' — assuming FlightAware repo suite '{suite}'.")
-        repo_suite = suite
-
+def _add_flightaware_repo():
     if not has_internet():
-        _fail("Could not reach the internet to fetch the FlightAware repo signing key.")
+        _fail("Could not reach the internet to fetch the FlightAware apt-repository package.")
 
-    _info("Installing the FlightAware repo signing key ...")
-    key_bytes, err = download_bytes(FA_KEY_URL)
-    if err or not key_bytes:
-        _fail(f"Could not download the FlightAware repo signing key: {err or 'empty response'}")
+    _info("Downloading the FlightAware apt-repository package ...")
+    deb_bytes, err = download_bytes(FA_REPO_DEB_URL)
+    if err or not deb_bytes:
+        _fail(f"Could not download the FlightAware apt-repository package: {err or 'empty response'}")
 
-    fd, tmp = tempfile.mkstemp(prefix="flightaware-", suffix=".gpg")
+    fd, tmp = tempfile.mkstemp(prefix="flightaware-apt-repository-", suffix=".deb")
     try:
         with os.fdopen(fd, "wb") as fh:
-            fh.write(key_bytes)
-        if _run(["sudo", "gpg", "--dearmor", "-o", FA_KEYRING, tmp], check=False).returncode != 0:
-            _fail("Could not install the FlightAware repo signing key (gpg dearmor failed).")
+            fh.write(deb_bytes)
+        if _run(sudo_apt_cmd("dpkg", "-i", tmp), check=False).returncode != 0:
+            _fail("Could not install the FlightAware apt-repository package (dpkg -i failed).")
     finally:
         try:
             os.unlink(tmp)
         except OSError:
             pass
+    _ok("FlightAware apt repository installed (signing key + sources.list.d/flightaware.sources).")
 
-    line = f"deb [signed-by={FA_KEYRING}] {FA_BASE_URL} {repo_suite} piaware"
-    if _run(["bash", "-c", f'echo "{line}" | sudo tee {FA_LIST_PATH}'], check=False).returncode != 0:
-        _fail("Could not write the FlightAware apt sources entry.")
-    _ok(f"FlightAware repo added: {FA_BASE_URL} {repo_suite} piaware")
+
+def _remove_conflicting_dump1090_minimal():
+    """Some Raspberry Pi OS images/repos ship `dump1090-fa-minimal`, a
+    lightweight variant that installs its binary at the same path
+    (/usr/bin/dump1090-fa) as FlightAware's full `dump1090-fa` package.
+    Since the two packages don't know about each other's Conflicts/Replaces,
+    dpkg aborts the unpack ("trying to overwrite '/usr/bin/dump1090-fa',
+    which is also in package dump1090-fa-minimal") instead of apt resolving
+    it automatically. Remove the minimal variant first if present."""
+    if dpkg_installed_version("dump1090-fa-minimal"):
+        _info("Removing conflicting package dump1090-fa-minimal ...")
+        if _run(sudo_apt_cmd("apt-get", "remove", "-y", "dump1090-fa-minimal"), check=False).returncode != 0:
+            _warn("Could not remove dump1090-fa-minimal — dump1090-fa install may fail with a file conflict.")
 
 
 def _install_dump1090(repo_root, online):
     """Install dump1090-fa offline-first from the vendored .deb; falls back to
     adding the FlightAware apt repo and installing online. See rtl_sdr.py
     (vendored-.deb pattern) and openwebrx.py (third-party-repo pattern)."""
+    _remove_conflicting_dump1090_minimal()
     suite    = _detect_suite()
     deb_arch = _deb_arch()
 
@@ -237,9 +248,9 @@ def _install_dump1090(repo_root, online):
         _fail("dump1090-fa is not vendored offline and online install is disabled.")
         return
 
-    _add_flightaware_repo(suite)
-    _run(["sudo", "apt-get", "update"], check=False)
-    if _run(["sudo", "apt-get", "install", "-y", "dump1090-fa"], check=False).returncode != 0:
+    _add_flightaware_repo()
+    _run(sudo_apt_cmd("apt-get", "update"), check=False)
+    if _run(sudo_apt_cmd("apt-get", "install", "-y", "dump1090-fa"), check=False).returncode != 0:
         _fail("apt-get could not install dump1090-fa — check the FlightAware repo entry and internet.")
     _ok("dump1090-fa installed via the FlightAware apt repo")
 

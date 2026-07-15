@@ -304,6 +304,7 @@ def run_plan(plan: SetupPlan, run_options: RunOptions, registry: Dict[str, Featu
                 res = _ok_result() if res else {"ok": False, "reason_text": "privileged step returned false"}
         else:
             res = _run_step(spec.install_fn)
+        install_needs_reboot = bool(res.get("requires_reboot"))
         emit(
             "stage_completed",
             feature=key,
@@ -409,7 +410,7 @@ def run_plan(plan: SetupPlan, run_options: RunOptions, registry: Dict[str, Featu
         else:
             st.status = STATUS_INSTALLED
 
-        if spec.requires_reboot:
+        if spec.requires_reboot or install_needs_reboot:
             st.status = STATUS_INSTALLED_NEEDS_REBOOT
 
         emit("feature_terminal", feature=key, status=st.status)

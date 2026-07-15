@@ -13,24 +13,29 @@ class ServiceUnitsTest(unittest.TestCase):
         inv = _inv()
         self.assertEqual(HW.service_units(inv, "adsb"), ["dump1090-fa"])
         self.assertEqual(HW.service_units(inv, "winlink"), ["pat-direwolf"])
-        self.assertEqual(HW.service_units(inv, "openwebrx"), ["openwebrx"])
+        # openwebrx is not hardware-gated — see common/hardware.py's comment.
+        self.assertEqual(HW.service_units(inv, "openwebrx"), [])
 
     def test_aprs_on_sdr_adds_feed_unit(self):
         inv = _inv(devices={"s": _dev("s", "rtl-sdr", serial="1")}, assignments={"aprs": "s"})
-        self.assertEqual(HW.service_units(inv, "aprs"), ["aprs-sdr-feed", "graywolf"])
+        self.assertEqual(HW.service_units(inv, "aprs"), ["aprs-sdr-feed"])
 
-    def test_aprs_on_radio_port_is_graywolf_only(self):
+    def test_aprs_on_radio_port_is_empty(self):
+        # GrayWolf is web-admin-configured; OASIS's hardware gate never claims
+        # the graywolf unit itself, only the optional SDR feed.
         inv = _inv(devices={"r": _dev("r", "digirig")}, assignments={"aprs": "r"})
-        self.assertEqual(HW.service_units(inv, "aprs"), ["graywolf"])
+        self.assertEqual(HW.service_units(inv, "aprs"), [])
 
-    def test_aprs_unassigned_is_graywolf_only(self):
-        self.assertEqual(HW.service_units(_inv(), "aprs"), ["graywolf"])
+    def test_aprs_unassigned_is_empty(self):
+        self.assertEqual(HW.service_units(_inv(), "aprs"), [])
 
 class ServiceForUnitTest(unittest.TestCase):
     def test_static_reverse(self):
         inv = _inv()
         self.assertEqual(HW.service_for_unit(inv, "dump1090-fa"), "adsb")
-        self.assertEqual(HW.service_for_unit(inv, "graywolf"), "aprs")
+        # graywolf is never hardware-gated — GrayWolf manages its own device
+        # assignment inside its own UI.
+        self.assertIsNone(HW.service_for_unit(inv, "graywolf"))
         self.assertEqual(HW.service_for_unit(inv, "pat-direwolf"), "winlink")
         self.assertIsNone(HW.service_for_unit(inv, "kiwix"))
 

@@ -53,7 +53,7 @@ Build phases (run automatically unless --check):
   Phase 1 — Python wheels       oasis-offline/server/wheels/
   Phase 2 — GrayWolf .deb       oasis-offline/offline-packages/graywolf/
   Phase 3 — Kiwix binaries      oasis-offline/offline-packages/kiwix/
-  Phase 4 — FCC database        oasis-offline/fcc-offline-database/data/
+  Phase 4 — FCC database        oasis-offline/services/fcc_database/data/
   Phase 5 — RTL-SDR .deb        oasis-offline/features/rtl-sdr/packages/rtl-sdr/<suite>/  (feature-local)
   Phase 6 — webssh ttyd binary  oasis-offline/offline-packages/webssh/
   Phase 7 — Pat (Winlink) .deb  oasis-offline/offline-packages/pat/
@@ -151,7 +151,7 @@ PRESERVE_IN_DEST = {
     "displays/cm4stack/packages", # feature-local: m5stack-cm4.dtbo
     "server/wheels",         # phase_wheels
     "services/aprs/static/map-assets",  # phase_aprs_sprites
-    "fcc-offline-database",  # phase_fcc
+    "services/fcc_database/data",  # phase_fcc
     "zim",                   # phase_wikipedia
     "maps",                  # phase_pmtiles (binaries live here alongside source — preserve whole)
     "_runtime",              # build_windows_runtime (embedded Python)
@@ -1734,7 +1734,7 @@ def cmd_build(skip_windows, rebuild=False, all_platforms=False, profile="full"):
                  targets=win_targets if windows else None)
 
     # FCC lookup is a standalone tool — ships in both profiles.
-    fcc_dir = os.path.join(out_dir, "fcc-offline-database", "data")
+    fcc_dir = os.path.join(out_dir, "services", "fcc_database", "data")
     phase_fcc(fcc_dir)
 
     # Pi-only assets: APRS/Winlink/RTL-SDR/display daemons, Wikipedia, maps.
@@ -1812,7 +1812,7 @@ def cmd_update(target_dir, all_platforms=False):
     phase_wheels(os.path.join(target_dir, "server", "wheels"))
     phase_graywolf(pkg_root, update=True)
     phase_kiwix(pkg_root, update=True)
-    phase_fcc(os.path.join(target_dir, "fcc-offline-database", "data"))
+    phase_fcc(os.path.join(target_dir, "services", "fcc_database", "data"))
     phase_rtl_sdr(pkg_root, update=True)
     phase_webssh(pkg_root, update=True)
     phase_pat(pkg_root, update=True)

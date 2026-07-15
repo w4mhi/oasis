@@ -19,10 +19,9 @@ VALID_KINDS = {"rtl-sdr", "digirig", "dra-pi"}
 # Slice 1; dual-mode selection (aprs's SDR-vs-radio-port TNC modes) and
 # per-RTL feed units land in a later slice.
 SERVICE_UNITS = {
-    "aprs":      ["graywolf"],
+    "aprs":      [],
     "winlink":   ["pat-direwolf"],
     "adsb":      ["dump1090-fa"],
-    "openwebrx": ["openwebrx"],
 }
 
 # Which device kind(s) each logical service may be assigned.
@@ -30,13 +29,18 @@ DEVICE_KIND_FOR_SERVICE = {
     "aprs":      {"rtl-sdr", "digirig", "dra-pi"},
     "winlink":   {"digirig", "dra-pi"},
     "adsb":      {"rtl-sdr"},
-    "openwebrx": {"rtl-sdr"},
 }
 
 # aprs runs an extra RX feed unit (rtl_fm -> UDP -> GrayWolf) ONLY when assigned
 # an SDR; on a radio port it's GrayWolf soundcard-only. All other services are
 # mode-invariant. (GrayWolf itself is web-admin-configured — OASIS binds only the
 # feed's dongle, not GrayWolf's radio interface.)
+#
+# openwebrx is intentionally absent from SERVICE_UNITS/DEVICE_KIND_FOR_SERVICE:
+# scripts/apply_hardware.py has no apply hook for it (its RTL-SDR is picked
+# entirely inside OpenWebRX's own Admin -> SDR profiles UI), so an OASIS-level
+# assignment would never do anything — it would only block START on a
+# no-op gate. Same reasoning as GrayWolf above.
 APRS_FEED_UNIT = "aprs-sdr-feed"
 
 
