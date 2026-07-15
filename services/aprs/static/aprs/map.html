@@ -1021,7 +1021,7 @@ const LAYER_GROUPS = {
   landuse:   ['landcover-wood', 'landcover-grass', 'landuse-residential', 'landuse-commercial', 'landuse-industrial'],
   pois:      ['place-labels', 'pois-circle'],
   peaks:     ['mountain-peak'],
-  aircraft:  ['adsb-dots', 'adsb-labels'],
+  aircraft:  ['adsb-icon'],
 };
 
 function toggleLayerPanel() {
@@ -1373,6 +1373,35 @@ function buildPopup(s) {
            '</div>';
   html += '<button class="pop-track-btn" onclick="showPath(\'' + s.callsign + '\')">' +
           (activePath === s.callsign ? '✕ Clear path' : '⟲ Show path') + '</button>';
+  return html;
+}
+
+// Same shape/classes as buildPopup() above (pop-call/pop-row/pop-lbl/pop-val)
+// so an aircraft's card reads exactly like an APRS station's — same font,
+// color, and size, inherited from the shared .pop-* CSS with no overrides.
+function buildAdsbPopup(a) {
+  const title = (a.flight || a.hex || '').trim() || a.hex;
+  const isHeli = a.category === 'A7';
+  let html = '<div class="pop-call">' + _escHtml(title) +
+             (isHeli ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[heli]</span>' : '') + '</div>';
+  if (a.squawk) {
+    html += '<div class="pop-row"><span class="pop-lbl">Squawk</span><span class="pop-val">' + _escHtml(a.squawk) + '</span></div>';
+  }
+  if (a.alt_baro != null) {
+    html += '<div class="pop-row"><span class="pop-lbl">Alt</span><span class="pop-val">' + fmtAcAlt(a.alt_baro) + '</span></div>';
+  }
+  if (a.gs != null) {
+    html += '<div class="pop-row"><span class="pop-lbl">Speed</span><span class="pop-val">' + fmtAcSpeed(a.gs) + '</span></div>';
+    if (a.track != null) {
+      html += '<div class="pop-row"><span class="pop-lbl">Track</span><span class="pop-val">' + fmtCourse(a.track) + '</span></div>';
+    }
+  }
+  if (a.lat != null && a.lon != null) {
+    html += '<div class="pop-row"><span class="pop-lbl">Lat / Lon</span><span class="pop-val">' + a.lat.toFixed(4) + ', ' + a.lon.toFixed(4) + '</span></div>';
+  }
+  if (a.hex) {
+    html += '<div class="pop-row"><span class="pop-lbl">ICAO</span><span class="pop-val">' + _escHtml(a.hex.toUpperCase()) + '</span></div>';
+  }
   return html;
 }
 
@@ -1766,6 +1795,16 @@ async function fetchStations() {
 // ── ADS-B aircraft polling ───────────────────────────────────────────────────
 // Independent of the APRS 15s refresh loop (aircraft move much faster). If the
 // aircraft service is off, /api/adsb/aircraft returns non-200 — skip silently.
+// Emitter category (DO-260B, decoded by dump1090-fa when the aircraft has
+// transmitted an Aircraft Identification/Category message) -> which APRS
+// sprite cell to draw it as. A7 = rotorcraft; everything else (including
+// unknown/not-yet-received) defaults to the generic aircraft glyph — same
+// two icons APRS already uses for its own 'Aircraft'/'Helicopter' symbols
+// (primary table codes "'" and 'X'), so no new sprite assets are needed.
+function adsbSymCode(category) {
+  return category === 'A7' ? 'X' : "'";
+}
+
 async function refreshAdsb() {
   try {
     const r = await fetch('/api/adsb/aircraft');
@@ -1775,14 +1814,19 @@ async function refreshAdsb() {
       .filter(a => a.lat != null && a.lon != null)
       .map(a => {
         const emerg = ['7500', '7600', '7700'].includes(a.squawk);
+        const symId = ensureStationImage('/', adsbSymCode(a.category));
         return {
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
           properties: {
+            sym: symId || '',
             emergency: emerg,
-            label: (a.flight || a.hex || '').trim() +
-                   (a.alt_baro != null ? ' ' + fmtAcAlt(a.alt_baro) : '') +
-                   (emerg ? ' ⚠' : '')
+            label: (a.flight || a.hex || '').trim() + (emerg ? ' ⚠' : ''),
+            flight: a.flight || '', hex: a.hex || '', squawk: a.squawk || '',
+            alt_baro: a.alt_baro != null ? a.alt_baro : null,
+            gs: a.gs != null ? a.gs : null,
+            track: a.track != null ? a.track : null,
+            lat: a.lat, lon: a.lon
           }
         };
       });
@@ -1966,26 +2010,33 @@ loadConfig().then(() => {
       }
     });
 
-    // ── ADS-B aircraft layer (circle + label; no icon sprite available offline) ──
+    // ── ADS-B aircraft layer ─────────────────────────────────────────────────
+    // Icon + label in a single symbol, same construction as 'aprs-stations-icon'
+    // above (icon via ensureStationImage/the APRS sprite sheet, identical text
+    // layout/paint) so aircraft look and read exactly like APRS stations do.
     map.addSource('adsb', {
       type: 'geojson', data: { type: 'FeatureCollection', features: [] }
     });
     map.addLayer({
-      id: 'adsb-dots', type: 'circle', source: 'adsb',
-      paint: {
-        'circle-radius': 5,
-        'circle-color': ['case', ['get', 'emergency'], '#e53935', '#a06cd5'],
-        'circle-stroke-width': 1, 'circle-stroke-color': '#000'
-      }
-    });
-    map.addLayer({
-      id: 'adsb-labels', type: 'symbol', source: 'adsb',
+      id: 'adsb-icon', type: 'symbol', source: 'adsb',
       layout: {
-        'text-field': ['get', 'label'], 'text-font': ['Open Sans Regular'],
-        'text-size': 10, 'text-offset': [0, 1.2],
-        'text-optional': true, 'text-allow-overlap': false
+        'icon-image': ['get', 'sym'],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-anchor': 'center',
+        'text-field': ['get', 'label'],
+        'text-font': ['Open Sans Regular'],
+        'text-size': 12,
+        'text-offset': [0, -1.6],
+        'text-anchor': 'bottom',
+        'text-optional': true,
+        'text-allow-overlap': false
       },
-      paint: { 'text-color': '#c8a6f0', 'text-halo-color': '#000', 'text-halo-width': 1 }
+      paint: {
+        'text-color': '#e8f0f8',
+        'text-halo-color': '#0d1117',
+        'text-halo-width': 1.6
+      }
     });
 
     fetchStations();
@@ -2029,6 +2080,8 @@ map.on('click', (e) => {
   // open an OSM inspect popup underneath it.
   if (map.getLayer('aprs-stations-icon') &&
       map.queryRenderedFeatures(e.point, { layers: ['aprs-stations-icon'] }).length) return;
+  if (map.getLayer('adsb-icon') &&
+      map.queryRenderedFeatures(e.point, { layers: ['adsb-icon'] }).length) return;
   const layers = OSM_INSPECT_LAYERS.filter(id => map.getLayer(id));
   const feats  = map.queryRenderedFeatures(e.point, { layers });
   if (!feats.length) return;
@@ -2060,6 +2113,21 @@ map.on('click', 'aprs-stations-icon', (e) => {
 });
 map.on('mouseenter', 'aprs-stations-icon', () => { map.getCanvas().style.cursor = 'pointer'; });
 map.on('mouseleave', 'aprs-stations-icon', () => { map.getCanvas().style.cursor = ''; });
+
+// ── Aircraft click → popup (same pattern as the station popup above) ────────
+let _adsbPopup = null;
+map.on('click', 'adsb-icon', (e) => {
+  if (measureOn || placingWarning) return;
+  const f = e.features && e.features[0];
+  if (!f) return;
+  if (_adsbPopup) _adsbPopup.remove();
+  _adsbPopup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '260px' })
+    .setLngLat(f.geometry.coordinates)
+    .setHTML(buildAdsbPopup(f.properties))
+    .addTo(map);
+});
+map.on('mouseenter', 'adsb-icon', () => { map.getCanvas().style.cursor = 'pointer'; });
+map.on('mouseleave', 'adsb-icon', () => { map.getCanvas().style.cursor = ''; });
 
 // ── PMTiles layer diagnostics (parity: log detected vector layers) ─────────
 (async () => {
