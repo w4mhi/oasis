@@ -2068,6 +2068,44 @@ function updatePower(svcId, state) {
   btn.title = (running ? 'Stop ' : 'Start ') + SVC_UNITS[svcId] + ' service';
 }
 
+// Card id -> [signal card id, signal's systemd unit] whose activity means
+// GrayWolf might be using the same physical hardware this card is about to
+// claim. specs/2026-07-15-hardware-conflict-resolution-v2-design.md §4:
+// GrayWolf never opens an RTL-SDR itself — only aprs-sdr-feed (rtl_fm ->
+// UDP) does — so the feed's activity, not graywolf's, is the precise signal
+// for RTL-SDR-consuming cards. Pilot scope: adsb only; openwebrx joins on
+// its own turn once it's back in the assignment system.
+const GRAYWOLF_CONFLICT_SIGNAL = { adsb: ['feed', 'aprs-sdr-feed'] };
+
+// Returns true if togglePower should proceed with the start now. Shows a
+// confirmation when GrayWolf's feed is running and might hold the same
+// dongle; false means either the operator cancelled, or chose to stop the
+// feed first (they need to click START again once it's confirmed stopped).
+async function resolveHardwareConflict(svcId) {
+  const signal = GRAYWOLF_CONFLICT_SIGNAL[svcId];
+  if (!signal) return true;
+  const [signalCardId, signalUnit] = signal;
+  const signalRunning = _svcStates[signalCardId] === 'up' || _svcStates[signalCardId] === 'warn';
+  if (!signalRunning) return true;
+
+  const stopFeed = confirm(
+    `GrayWolf's APRS SDR feed is currently running and may be using this RTL-SDR.\n\n` +
+    `OK — stop the feed first (you'll need to click START again once it's stopped).\n` +
+    `Cancel — leave it running and try starting anyway (fails if it's the same dongle).`
+  );
+  if (!stopFeed) return true;   // "Continue anyway"
+
+  try {
+    await fetch('/api/service', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+      body: JSON.stringify({ unit: signalUnit, action: 'stop' }),
+    });
+  } catch (e) { /* best-effort — pingAll below reflects whatever actually happened */ }
+  pingAll();
+  return false;   // abort this start; operator retries once the feed is down
+}
+
 async function togglePower(svcId) {
   const unit = SVC_UNITS[svcId];
   if (!unit) return;
@@ -2075,6 +2113,7 @@ async function togglePower(svcId) {
   const running = _svcStates[svcId] === 'up' || _svcStates[svcId] === 'warn';
   const action  = running ? 'stop' : 'start';
   if (action === 'stop' && !confirm(`Stop the "${unit}" service?`)) return;
+  if (action === 'start' && !(await resolveHardwareConflict(svcId))) return;
 
   if (btn) { btn.classList.add('busy'); btn.textContent = running ? 'STOPPING' : 'STARTING'; }
   let ok = false;
