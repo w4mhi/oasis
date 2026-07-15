@@ -1639,8 +1639,13 @@ const SERVICES = [
       if (d.active === 'active') return { up: true, badge: 'UP', sub: 'aircraft tracking' };
       const hw = _hwLast && _hwLast.services && _hwLast.services.adsb;
       if (hw && !hw.ok) {
-        return { up: false, badge: 'UNASSIGNED',
-          sub: hw.reason === 'unassigned' ? 'unassigned — pick a device below' : 'device not attached' };
+        // Informational only — starting is never blocked by this (the hard
+        // gate on adsb was removed; see
+        // specs/2026-07-15-hardware-conflict-resolution-v2-design.md §4).
+        // Surfaces "no compatible device right now" without implying the
+        // operator must act before START will work.
+        return { up: false, badge: 'NO FREE SDR',
+          sub: hw.reason === 'unassigned' ? 'no RTL-SDR currently free' : 'assigned device not attached' };
       }
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
         sub: d.installed ? 'start for aircraft tracking' : 'run services/adsb/install.py' };
