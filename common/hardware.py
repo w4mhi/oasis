@@ -245,3 +245,28 @@ def default_assign(repo_root, inv, service, allowed_kinds):
         save(repo_root, inv)
         return inv
     return inv
+
+
+def auto_declare_lone_rtl_sdr(repo_root, inv, detected_serials):
+    """If no rtl-sdr device is declared yet, and exactly one detected RTL-SDR
+    serial isn't already declared, declare it (auto id `rtl-sdr-<serial>`)
+    and persist. No-op once any rtl-sdr is declared (the caller then skips
+    detection entirely — see server/app.py — since there's nothing new to
+    discover) or if zero/2+ undeclared serials are detected (ambiguous —
+    falls back to manual declare via the Hardware Devices page).
+
+    Follow-up to specs/2026-07-15-hardware-conflict-resolution-v2-design.md:
+    detection alone isn't enough to make a dongle usable — it still had to be
+    manually declared first. This closes that gap for the unambiguous
+    single-dongle case, matching the design's "list detected devices, that's
+    it" intent."""
+    if any(d.get("kind") == "rtl-sdr" for d in inv.devices.values()):
+        return inv
+    if len(detected_serials) != 1:
+        return inv
+    serial = detected_serials[0]
+    device_id = f"rtl-sdr-{serial}"
+    inv.devices[device_id] = {"id": device_id, "kind": "rtl-sdr", "serial": serial,
+                               "label": f"RTL-SDR ({serial})"}
+    save(repo_root, inv)
+    return inv

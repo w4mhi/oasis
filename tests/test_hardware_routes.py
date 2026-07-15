@@ -113,6 +113,29 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertEqual(body["services"]["adsb"]["device_id"], "a")
         self.assertTrue(body["services"]["adsb"]["ok"])
 
+    def test_devices_route_auto_declares_lone_detected_dongle(self):
+        inv = HW.Inventory(devices={}, assignments={})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(oasis_app.HD_detect, "scan",
+                               return_value={"rtl_sdr": [{"index": 0, "serial": "00001000"}]}):
+            r = self.c.get("/api/hardware/devices")
+        body = json.loads(r.data)
+        self.assertEqual(body["services"]["adsb"]["device_id"], "rtl-sdr-00001000")
+        self.assertTrue(body["services"]["adsb"]["ok"])
+        declared_ids = [d["id"] for d in body["devices"]]
+        self.assertIn("rtl-sdr-00001000", declared_ids)
+
+    def test_devices_route_skips_scan_when_an_rtl_sdr_already_declared(self):
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "serial": "1", "label": "X"}},
+                           assignments={})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(oasis_app.HD_detect, "scan") as mocked_scan:
+            r = self.c.get("/api/hardware/devices")
+        self.assertEqual(r.status_code, 200)
+        mocked_scan.assert_not_called()
+
     def test_declare_device_requires_oasis_header(self):
         r = self.c.post("/api/hardware/devices",
                         json={"id": "x", "kind": "rtl-sdr", "serial": "1"})

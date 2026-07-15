@@ -1806,8 +1806,20 @@ def api_hardware_devices():
     (specs/2026-07-15-hardware-conflict-resolution-v2-design.md §3): adsb
     gets the first free rtl-sdr automatically when unassigned, so the
     single-dongle case needs no manual step. Pilot scope — only `adsb` for
-    now; other services join as their own turns land."""
+    now; other services join as their own turns land.
+
+    Before that, a lone detected-but-undeclared RTL-SDR is auto-declared too
+    — detection alone wasn't enough to make a dongle usable without a manual
+    trip to the Hardware Devices page; this closes that gap for the
+    unambiguous case. The detection scan (rtl_test/aplay/lsusb subprocesses)
+    only runs while NO rtl-sdr is declared yet, so it costs nothing on every
+    poll once resolved — a real concern on a Pi Zero 2 W, and rtl_test needs
+    exclusive dongle access so running it constantly would contend with
+    whatever's actually using the dongle."""
     inv = HW.load(SUITE_ROOT)
+    if not any(d.get("kind") == "rtl-sdr" for d in inv.devices.values()):
+        detected_serials = [d["serial"] for d in HD_detect.scan().get("rtl_sdr", [])]
+        HW.auto_declare_lone_rtl_sdr(SUITE_ROOT, inv, detected_serials)
     HW.default_assign(SUITE_ROOT, inv, "adsb", HW.DEVICE_KIND_FOR_SERVICE["adsb"])
     services = {}
     for service in HW.SERVICE_UNITS:

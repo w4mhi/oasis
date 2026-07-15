@@ -140,5 +140,34 @@ class DefaultAssignTest(unittest.TestCase):
         hardware.default_assign(self.dir, inv, "adsb", {"rtl-sdr"})
         self.assertEqual(inv.assignments["adsb"], "a")
 
+class AutoDeclareLoneRtlSdrTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def test_declares_the_lone_detected_serial(self):
+        inv = _inv()
+        hardware.auto_declare_lone_rtl_sdr(self.dir, inv, ["00001000"])
+        self.assertEqual(inv.devices["rtl-sdr-00001000"],
+                          {"id": "rtl-sdr-00001000", "kind": "rtl-sdr",
+                           "serial": "00001000", "label": "RTL-SDR (00001000)"})
+        reloaded = hardware.load(self.dir)
+        self.assertIn("rtl-sdr-00001000", reloaded.devices)
+
+    def test_noop_when_an_rtl_sdr_is_already_declared(self):
+        inv = _inv(devices={"a": _dev("a", "rtl-sdr", serial="00001000")})
+        hardware.auto_declare_lone_rtl_sdr(self.dir, inv, ["00002000"])
+        self.assertNotIn("rtl-sdr-00002000", inv.devices)
+        self.assertEqual(len(inv.devices), 1)
+
+    def test_noop_when_no_serials_detected(self):
+        inv = _inv()
+        hardware.auto_declare_lone_rtl_sdr(self.dir, inv, [])
+        self.assertEqual(inv.devices, {})
+
+    def test_noop_when_ambiguous_multiple_serials_detected(self):
+        inv = _inv()
+        hardware.auto_declare_lone_rtl_sdr(self.dir, inv, ["00001000", "00002000"])
+        self.assertEqual(inv.devices, {})
+
 if __name__ == "__main__":
     unittest.main()
