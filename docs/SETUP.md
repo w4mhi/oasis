@@ -862,10 +862,10 @@ The **Live Map** plots stations heard over RF and via iGate with layer toggles a
 and send Winlink (radio email) from `http://<pi-ip>:8082`. Installed with:
 
 ```bash
-python3 scripts/install-winlink.py                 # bundled .deb if present, else download
-python3 scripts/install-winlink.py --callsign W4MHI
-python3 scripts/install-winlink.py --no-service    # install + config only
-python3 scripts/install-winlink.py --help
+python3 services/winlink/install.py                 # bundled .deb if present, else download
+python3 services/winlink/install.py --callsign W4MHI
+python3 services/winlink/install.py --no-service    # install + config only
+python3 services/winlink/install.py --help
 ```
 
 The script installs the Pat `.deb` (offline-first from `offline-packages/pat/`,
@@ -967,7 +967,7 @@ python3 setup-oasis.py
 
 # or directly — only (re)writes the modem config + re-points the service,
 # it does NOT touch the Pat install or its saved password:
-python3 scripts/install-winlink.py --modem-interface digirig --modem-only
+python3 services/winlink/install.py --modem-interface digirig --modem-only
 ```
 
 Both interface configs are always written to `~/.config/direwolf/`; the
@@ -995,7 +995,7 @@ dmesg | grep -i cp210                    # confirms which ttyUSB it grabbed
 Feed non-default values back in via overrides (they win over auto-detect):
 
 ```bash
-python3 scripts/install-winlink.py --modem-interface digirig --modem-only \
+python3 services/winlink/install.py --modem-interface digirig --modem-only \
   --modem-adevice 'plughw:CARD=Device,DEV=0' \
   --modem-ptt-serial /dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_XXXX-if00-port0
 ```
@@ -1063,16 +1063,16 @@ journalctl -u pat-direwolf -f             # watch the modem
 Kiwix serves offline snapshots of Wikipedia and other content through a local web server on port 8081.
 
 ```bash
-python3 scripts/install-kiwix.py
+python3 services/kiwix/install.py
 
 # Pin a version:
-python3 scripts/install-kiwix.py --version 3.8.2
+python3 services/kiwix/install.py --version 3.8.2
 
 # Custom ZIM directory:
-python3 scripts/install-kiwix.py --zim-dir /mnt/ssd/zim
+python3 services/kiwix/install.py --zim-dir /mnt/ssd/zim
 
 # Help:
-python3 scripts/install-kiwix.py --help
+python3 services/kiwix/install.py --help
 ```
 
 The script automatically picks the install source: if the bundled package is present in `offline-packages/kiwix/` (put there by `create-oasis-offline.py`) it is used without any network access; otherwise the package is downloaded from kiwix.org.
@@ -1080,12 +1080,12 @@ The script automatically picks the install source: if the bundled package is pre
 **Download Wikipedia content:**
 
 ```bash
-python3 scripts/download-wikipedia.py                        # interactive picker
-python3 scripts/download-wikipedia.py --edition top-mini     # ~316 MB, 50K best articles (default)
-python3 scripts/download-wikipedia.py --edition simple-mini  # ~447 MB, Simple English
-python3 scripts/download-wikipedia.py --edition top-nopic    # ~2.1 GB, 50K articles full text
-python3 scripts/download-wikipedia.py --edition simple-maxi  # ~3.2 GB, Simple English with pics
-python3 scripts/download-wikipedia.py --list                 # list all editions
+python3 services/kiwix/download-wikipedia.py                        # interactive picker
+python3 services/kiwix/download-wikipedia.py --edition top-mini     # ~316 MB, 50K best articles (default)
+python3 services/kiwix/download-wikipedia.py --edition simple-mini  # ~447 MB, Simple English
+python3 services/kiwix/download-wikipedia.py --edition top-nopic    # ~2.1 GB, 50K articles full text
+python3 services/kiwix/download-wikipedia.py --edition simple-maxi  # ~3.2 GB, Simple English with pics
+python3 services/kiwix/download-wikipedia.py --list                 # list all editions
 ```
 
 ZIM files are saved to `~/oasis-offline/zim/` by default (use `--zim-dir PATH` to override).
@@ -1680,9 +1680,9 @@ If you're running manually, stop the current server (`Ctrl+C`), then run `script
 | FCC callsign database | `python3 scripts/install-fcc-database.py` | FCC publishes every Sunday |
 | Offline maps (GrayWolf) | Re-download in GrayWolf UI: **Maps → Offline Maps → Add a region** | As needed |
 | Offline maps (MBTiles → PMTiles) | `python3 maps/convert-mbtiles.py <source>.mbtiles` | When you have a new MBTiles source to convert |
-| Wikipedia ZIM | `python3 scripts/download-wikipedia.py --edition <edition>` | Monthly snapshots |
+| Wikipedia ZIM | `python3 services/kiwix/download-wikipedia.py --edition <edition>` | Monthly snapshots |
 | GrayWolf | `python3 scripts/install-graywolf.py` | Check GitHub releases |
-| kiwix-serve | `python3 scripts/install-kiwix.py --version <new>` | Check download.kiwix.org |
+| kiwix-serve | `python3 services/kiwix/install.py --version <new>` | Check download.kiwix.org |
 | RTL-SDR packages | `python3 scripts/create-oasis-offline.py` | Run anytime — only downloads if a newer version is in Debian Bookworm |
 | webssh (ttyd) packages | `python3 scripts/create-oasis-offline.py` | Run anytime — only downloads if a newer version is in Debian Bookworm |
 | Offline wheel set *(maintainers)* | `python3 scripts/create-oasis-offline.py` | Run anytime — updates only if newer packages are available |

@@ -133,7 +133,7 @@ def test_setup_hardware_detect_endpoint_shape():
 def test_setup_run_forwards_winlink_credentials_from_payload_to_install_script():
     # _setup_run_job must thread the request payload into _setup_registry so the
     # winlink install_fn closure can build --callsign/--locator/--password from
-    # what the user actually typed, instead of invoking install-winlink.py bare.
+    # what the user actually typed, instead of invoking services/winlink/install.py bare.
     # winlink is a privileged feature, so it normally runs via the installer
     # queue+worker instead of in-process — stand in for a worker that runs the
     # job the instant it's queued, so the args-building logic below runs
@@ -176,7 +176,7 @@ def test_setup_run_forwards_winlink_credentials_from_payload_to_install_script()
 
     assert last is not None
     assert last["job"]["status"] == "completed"
-    winlink_calls = [c for c in calls if c[0] == "scripts/install-winlink.py"]
+    winlink_calls = [c for c in calls if c[0] == "services/winlink/install.py"]
     assert len(winlink_calls) == 1
     _, args = winlink_calls[0]
     assert "--callsign" in args and "W4MHI" in args
@@ -224,7 +224,7 @@ def test_setup_run_uses_no_password_flag_when_winlink_password_omitted():
                 break
             time.sleep(0.05)
 
-    winlink_calls = [c for c in calls if c[0] == "scripts/install-winlink.py"]
+    winlink_calls = [c for c in calls if c[0] == "services/winlink/install.py"]
     assert len(winlink_calls) == 1
     _, args = winlink_calls[0]
     assert "--no-password" in args

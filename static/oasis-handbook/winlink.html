@@ -87,9 +87,9 @@
       <div><p><strong>Current capability.</strong> Internet Winlink via the <strong>Telnet</strong> gateway works immediately after install (the Pi needs internet). <strong>RF Winlink over radio is experimental</strong> &mdash; the wiring through GrayWolf&rsquo;s KISS TNC is functional but not yet polished. Plan accordingly for a fully offline Field Day.</p></div>
     </div>
     <h2>Install</h2>
-    <pre><code>python3 scripts/install-winlink.py                 # bundled .deb if present, else download
-python3 scripts/install-winlink.py --callsign W4MHI
-python3 scripts/install-winlink.py --no-service    # install + config only</code></pre>
+    <pre><code>python3 services/winlink/install.py                 # bundled .deb if present, else download
+python3 services/winlink/install.py --callsign W4MHI
+python3 services/winlink/install.py --no-service    # install + config only</code></pre>
     <p>
       The script installs Pat, writes a starter <code>~/.config/pat/config.json</code>
       (mode 600; prompts for your Winlink password), and enables a <code>pat</code> systemd

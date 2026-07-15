@@ -41,7 +41,7 @@ mock-up/
 static/radio-manuals/*
 !static/radio-manuals/README.md
 
-# Wikipedia ZIM files — downloaded by scripts/download-wikipedia.py.
+# Wikipedia ZIM files — downloaded by services/kiwix/download-wikipedia.py.
 *.zim
 
 # FCC amateur-radio database — built by scripts/install-fcc-database.py into

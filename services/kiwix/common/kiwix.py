@@ -133,7 +133,7 @@ def create_service(zim_dir):
         "#!/bin/sh\n"
         f"ZIMS=$(find {zim_dir} -maxdepth 1 -name '*.zim' -type f 2>/dev/null | tr '\\n' ' ')\n"
         'if [ -z "$ZIMS" ]; then\n'
-        f"    echo 'kiwix: no ZIM files in {zim_dir}/ — run download-wikipedia.py first'\n"
+        f"    echo 'kiwix: no ZIM files in {zim_dir}/ — run services/kiwix/download-wikipedia.py first'\n"
         "    exit 1\n"
         "fi\n"
         f"exec {INSTALL_BIN} --port {PORT} $ZIMS\n"
@@ -178,7 +178,7 @@ WantedBy=multi-user.target
     if zim_files:
         _info(f"ZIM content found ({len(zim_files)} file(s)).")
     else:
-        _info("No ZIM content yet — run scripts/download-wikipedia.py to add some.")
+        _info("No ZIM content yet — run services/kiwix/download-wikipedia.py to add some.")
     _info(f"Start Kiwix from the dashboard, or: sudo systemctl start {SERVICE_NAME}")
 
 
@@ -197,6 +197,6 @@ def run(version=DEFAULT_VERSION, zim_dir=DEFAULT_ZIM_DIR, repo_root=None):
     print("  OASIS -- Kiwix install complete.")
     _hr()
     _info(f"Service: {SERVICE_NAME}  (port {PORT})  — off by default")
-    _info("Get content:  python3 scripts/download-wikipedia.py")
+    _info("Get content:  python3 services/kiwix/download-wikipedia.py")
     _info("Start it from the OASIS dashboard (the Wikipedia/Kiwix card) when needed.")
     print()

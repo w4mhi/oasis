@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-download-wikipedia.py
----------------------
-Download an offline Wikipedia ZIM file for use with kiwix-serve.
+services/kiwix/download_wikipedia.py
+-------------------------------------
+Service-owned implementation for downloading a Wikipedia ZIM file for use
+with kiwix-serve. Invoked via the thin CLI wrapper at
+scripts/download-wikipedia.py.
+
 ZIM files are self-contained offline snapshots published by the Kiwix project.
 
 Choose the edition that fits your storage:

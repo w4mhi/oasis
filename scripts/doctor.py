@@ -378,7 +378,7 @@ def check_pat(host):
             ),
         }
     return {"ok": "warn", "badge": "NOT INSTALLED",
-            "detail": "Install with: python3 scripts/install-winlink.py"}
+            "detail": "Install with: python3 services/winlink/install.py"}
 
 
 def check_rtl_sdr():
@@ -440,7 +440,7 @@ def check_kiwix(host):
             ),
         }
     return {"ok": "warn", "badge": "NOT INSTALLED",
-            "detail": "Install with: python3 scripts/install-kiwix.py"}
+            "detail": "Install with: python3 services/kiwix/install.py"}
 
 
 def check_webssh(host):

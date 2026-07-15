@@ -254,7 +254,7 @@ def _setup_winlink_install_fn(repo_root, payload):
         args += ["--password", password]
     else:
         args += ["--no-password"]
-    return _setup_run_script(repo_root, "scripts/install-winlink.py", args)
+    return _setup_run_script(repo_root, "services/winlink/install.py", args)
 
 
 # Feature keys whose install_fn needs real root. Kept as one explicit list right
@@ -329,7 +329,7 @@ def build_registry(repo_root, payload=None):
         "kiwix": SE.FeatureSpec(
             key="kiwix",
             dependencies=["server"],
-            install_fn=lambda: _setup_run_script(repo_root, "scripts/install-kiwix.py"),
+            install_fn=lambda: _setup_run_script(repo_root, "services/kiwix/install.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -457,7 +457,7 @@ def build_registry(repo_root, payload=None):
         "wikipedia": SE.FeatureSpec(
             key="wikipedia",
             dependencies=["kiwix"],
-            install_fn=lambda: _setup_run_script(repo_root, "scripts/download-wikipedia.py"),
+            install_fn=lambda: _setup_run_script(repo_root, "services/kiwix/download-wikipedia.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
         ),

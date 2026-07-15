@@ -873,7 +873,7 @@ def phase_pat(bundle_root, update=False):
 
     _info("Source  : https://github.com/la5nta/pat")
     _info(f"Targets : {', '.join(a for a, _ in pat_arches)}")
-    _info("Note    : Linux .deb only here — install-winlink.py consumes these")
+    _info("Note    : Linux .deb only here — services/winlink/install.py consumes these")
     os.makedirs(pat_dir, exist_ok=True)
 
     try:

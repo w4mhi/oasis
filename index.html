@@ -1506,7 +1506,7 @@ const SERVICES = [
           sub: hw.reason === 'unassigned' ? 'unassigned — pick a device below' : 'device not attached' };
       }
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
-        sub: d.installed ? 'start for packet Winlink' : 'run install-winlink.py' };
+        sub: d.installed ? 'start for packet Winlink' : 'run services/winlink/install.py' };
     }
   },
   {

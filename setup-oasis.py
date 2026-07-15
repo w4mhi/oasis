@@ -14,7 +14,7 @@ Privilege model — run as your NORMAL user, not with sudo:
 The orchestrator primes sudo once up front (a single password prompt) and keeps
 the credential warm, so the sub-scripts' internal `sudo` calls don't re-prompt.
 Each step keeps its correct context — e.g. setup-server.py builds the .venv as
-you (not root), install-winlink.py writes your ~/.config/pat. Running the whole
+you (not root), services/winlink/install.py writes your ~/.config/pat. Running the whole
 thing under `sudo` would break those, so this script refuses to run as root.
 
 Usage:
@@ -92,11 +92,11 @@ FEATURES = [
             "APRS TNC/iGate/digipeater on :8080, plus the history API on :8085.",
             "Server", default=True, needs=["server"], internet=True,
             recommend="Open GrayWolf at :8080, add your audio device + an AFSK channel, then RESTART it: sudo systemctl restart graywolf"),
-    Feature("winlink", "Winlink (Pat)", "install-winlink.py",
+    Feature("winlink", "Winlink (Pat)", "services/winlink/install.py",
             "Pat Winlink client + web UI on :8082 (Telnet works immediately).",
             "Server", default=False, internet=True,
             recommend="Set your callsign and Winlink password in Pat at :8082."),
-    Feature("winlink-digirig", "Winlink RF via DigiRig", "install-winlink.py",
+    Feature("winlink-digirig", "Winlink RF via DigiRig", "services/winlink/install.py",
             "Point the Winlink RF modem (Direwolf) at a DigiRig Mobile (USB sound card + "
             "CP210x serial RTS PTT) instead of the DRA-Pi. Both modem configs are written; "
             "the pat-direwolf service uses the DigiRig (no GPIO / no reboot). Auto-detects "
@@ -105,7 +105,7 @@ FEATURES = [
             args=["--modem-interface", "digirig", "--modem-only"],
             recommend="pat-direwolf now uses the DigiRig. Verify PTT keys the radio: "
                       "direwolf -c ~/.config/direwolf/oasis-winlink-digirig.conf -x"),
-    Feature("kiwix", "Kiwix (offline content server)", "install-kiwix.py",
+    Feature("kiwix", "Kiwix (offline content server)", "services/kiwix/install.py",
             "kiwix-serve on :8081 to browse ZIM content. (Add content below.)",
             "Server", default=False, internet=True,
             recommend="Add ZIM content (e.g. the Wikipedia feature below) — Kiwix serves it at :8081."),
@@ -185,7 +185,7 @@ FEATURES = [
             "Download + index the FCC amateur license DB (~160 MB).",
             "Content / Data", default=True, internet=True, data=True,
             recommend="FCC callsign lookup is ready on the dashboard."),
-    Feature("wikipedia", "Wikipedia content (ZIM)", "download-wikipedia.py",
+    Feature("wikipedia", "Wikipedia content (ZIM)", "services/kiwix/download-wikipedia.py",
             "Download Wikipedia ZIM files for Kiwix (1 GB to ~100 GB).",
             "Content / Data", default=False, internet=True, data=True,
             recommend="ZIM downloaded — Kiwix serves it at :8081 (install Kiwix if you haven't)."),
