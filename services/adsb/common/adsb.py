@@ -23,11 +23,12 @@ from common import config_paths  # noqa: E402
 
 DB_PATH     = os.environ.get("ADSB_DB_PATH", "/var/lib/adsb/adsb-history.db")
 JSON_PATH   = os.environ.get("ADSB_JSON_PATH", "/run/dump1090-fa/aircraft.json")
+STATS_PATH  = os.environ.get("ADSB_STATS_PATH", "/run/dump1090-fa/stats.json")
 API_PORT    = int(os.environ.get("ADSB_API_PORT", "8086"))
 RADIUS_KM   = float(os.environ.get("ADSB_ALERT_RADIUS_KM", "50"))
 POLL_SECS   = float(os.environ.get("ADSB_POLL_SECS", "1.0"))
 
-_live = {"now": 0.0, "aircraft": []}      # last-seen snapshot
+_live = {"now": 0.0, "aircraft": [], "stats": None}      # last-seen snapshot
 _alerts = []                              # in-memory ring (most recent last)
 _ALERTS_MAX = 200
 _lock = threading.Lock()
@@ -72,7 +73,59 @@ def _poller():
             pass    # decoder not running yet
         except Exception:
             pass
+
+        try:
+            with open(STATS_PATH) as f:
+                stats = json.load(f)
+            derived = parse_adsb_stats(stats)
+            if derived is not None:
+                with _lock:
+                    _live["stats"] = derived
+        except FileNotFoundError:
+            pass    # decoder not running yet, or too old to write stats.json
+        except Exception:
+            pass
         time.sleep(POLL_SECS)
+
+
+def parse_adsb_stats(stats):
+    """Pure: derive dashboard-facing numbers from dump1090-fa's stats.json
+    (already parsed). Reads the last1min window — a genuine, stable 60s
+    bucket — rather than "latest" (a near-instantaneous accumulator for the
+    window currently in progress, which is often all-zero right after a
+    rollover: real captured output shows start == end there).
+
+    samples_per_sec is the health signal: an RTL-SDR is effectively binary
+    in practice — streaming at its configured rate, or ~0 because the
+    device is gone/erroring — so this proves the physical RF chain is alive,
+    independent of actual air traffic (mirrors what tcpdump-sniffed packet
+    flow proves for the APRS SDR feed). messages_per_min is informational
+    only: real ADS-B traffic is sparse and traffic-dependent, so 0
+    messages does NOT mean the receiver is broken, just that the sky is
+    quiet right now — confirmed against a real field capture where a
+    working receiver saw only 1 message in a full minute.
+
+    Returns None if `stats` doesn't have a usable last1min window (missing,
+    malformed, or a zero-duration window) — the caller treats that the same
+    as "no stats file yet"."""
+    if not isinstance(stats, dict):
+        return None
+    window = stats.get("last1min")
+    if not isinstance(window, dict):
+        return None
+    duration = window.get("end", 0) - window.get("start", 0)
+    if duration <= 0:
+        return None
+    local = window.get("local") or {}
+    samples_per_sec = local.get("samples_processed", 0) / duration
+    messages_per_min = local.get("messages", 0) * (60.0 / duration)
+    return {
+        "samples_per_sec": samples_per_sec,
+        "messages_per_min": messages_per_min,
+        "signal_dbfs": local.get("signal"),
+        "noise_dbfs": local.get("noise"),
+        "flowing": samples_per_sec > 0,
+    }
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -93,7 +146,12 @@ class _Handler(BaseHTTPRequestHandler):
         if u.path == "/health":
             with _lock:
                 age = (time.time() - _live["now"]) if _live["now"] else None
-            self._send({"ok": True, "last_json_age_s": age})
+                aircraft_count = len(_live["aircraft"])
+                stats = _live["stats"]
+            resp = {"ok": True, "last_json_age_s": age, "aircraft_count": aircraft_count}
+            if stats:
+                resp.update(stats)
+            self._send(resp)
         elif u.path == "/aircraft":
             with _lock:
                 self._send({"now": _live["now"], "aircraft": _live["aircraft"]})

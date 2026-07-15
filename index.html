@@ -229,10 +229,13 @@ a.svc-card.svc-card-gated:not(.up):hover { border-color: var(--border); }
 .svc-power.down { color: var(--accent); border-color: var(--accent-dim); }  /* stopped → START */
 .svc-power.busy { opacity: .5; pointer-events: none; }
 
-/* ── APRS SDR feed flow meter ─────────────────────────────────────────── */
-/* Data-flow health on the feed tile: proves UDP audio is moving, not just that
-   socat is "active". Live ~2s while the tab is visible (see pollFeedFlow). */
-/* Sub-line and meter share one row so the card stays slim and pkt/s shows once. */
+/* ── SDR flow meters (APRS SDR feed + ADS-B) ─────────────────────────────── */
+/* Data-flow health, shared by both SDR-consuming cards: proves real signal is
+   moving, not just that the systemd unit is "active". Live ~2s while the tab
+   is visible (see pollFeedFlow / pollAdsbFlow). Class names are generic
+   (feed-meter/-track/-fill/-label) and reused by id (adsb-meter-*, etc.) so
+   both cards share one set of rules. */
+/* Sub-line and meter share one row so the card stays slim and the rate shows once. */
 .feed-row { display: flex; align-items: center; gap: .5rem; min-width: 0; }
 .feed-row .svc-sub { flex-shrink: 0; white-space: nowrap; }
 .feed-meter { display: flex; align-items: center; gap: .4rem; flex: 1; min-width: 0; }
@@ -1065,7 +1068,13 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="svc-dot" id="dot-adsb"></div>
     <div>
       <div class="svc-name">ADS-B Aircraft <span class="owrx-link" title="Opens in a new tab">↗</span></div>
-      <div class="svc-sub" id="sub-adsb">—</div>
+      <div class="feed-row">
+        <span class="svc-sub" id="sub-adsb">—</span>
+        <div class="feed-meter" id="adsb-meter" hidden>
+          <div class="feed-meter-track"><div class="feed-meter-fill" id="adsb-meter-fill"></div></div>
+          <span class="feed-meter-label" id="adsb-meter-label"></span>
+        </div>
+      </div>
     </div>
     <span class="svc-badge" id="badge-adsb">—</span>
     <div class="hw-assign-row" id="hwrow-adsb" hidden>
@@ -1637,7 +1646,16 @@ const SERVICES = [
       // last-polled assignment snapshot is stale or shows no free device —
       // the NO FREE SDR badge below is purely informational and never means
       // it can't start.
-      if (d.active === 'active') return { up: true, badge: 'UP', sub: 'aircraft tracking' };
+      if (d.active === 'active') {
+        // Active means dump1090-fa is alive — but a dead/unplugged dongle
+        // leaves it active with samples_per_sec ~0. If the flow probe last
+        // saw no signal, surface SILENT here too so the 30s refresh doesn't
+        // flash green over a dead receiver (pollAdsbFlow refines this every
+        // ~2s; see below).
+        if (_adsbFlow && _adsbFlow.ok !== false && _adsbFlow.flowing === false)
+          return { up: true, warn: true, badge: 'SILENT', sub: 'no signal · check SDR/USB' };
+        return { up: true, badge: 'UP', sub: 'aircraft tracking' };
+      }
       const hw = _hwLast && _hwLast.services && _hwLast.services.adsb;
       if (hw && !hw.ok) {
         // Informational only — starting is never blocked by this (the hard
@@ -1897,6 +1915,73 @@ async function pollFeedFlow() {
       meter.className = 'feed-meter silent';
       if (label) label.textContent = '0 pkt/s';
       applyFeedFlowState('warn', 'no audio · check SDR/USB', 'SILENT');
+    }
+  } catch (e) { /* transient — keep last state, retry next tick */ }
+}
+
+// ── ADS-B signal flow meter ──────────────────────────────────────────────────
+// Same problem as the APRS feed: dump1090-fa can be systemd-active with a dead
+// or unplugged RTL-SDR. dump1090-fa's own stats.json (read server-side by
+// services/adsb/common/adsb.py, see parse_adsb_stats) gives samples_per_sec —
+// an effectively binary signal (streaming at its configured rate, or ~0
+// because the device is gone) — so no tcpdump-style sniffing is needed here;
+// it's exposed straight through /api/adsb/health. messages_per_min is shown
+// as the human-relevant number but NOT used for flowing/silent: real ADS-B
+// traffic is sparse and airspace-dependent, so 0 messages in a quiet moment
+// is normal, not a fault (confirmed against a real field capture where a
+// working receiver saw only 1 message in a full minute).
+const ADSB_FLOW_MS = 2000;
+const ADSB_NOMINAL_SAMPLES_PER_SEC = 2_000_000;   // ~RTL-SDR's typical 2.4 MSPS default
+let _adsbFlow = null;   // last probe result, also read by the 30s adsb check
+
+function applyAdsbFlowState(state, aircraftCount, badgeText) {
+  _svcStates['adsb'] = state;
+  const dot = document.getElementById('dot-adsb');
+  const card = document.getElementById('card-adsb');
+  const badge = document.getElementById('badge-adsb');
+  const sub = document.getElementById('sub-adsb');
+  if (dot)   dot.className  = 'svc-dot '  + state;
+  if (card)  card.className = 'svc-card svc-card-gated ' + state;
+  if (badge) { badge.className = 'svc-badge ' + state; badge.textContent = badgeText; }
+  if (sub)   sub.textContent = aircraftCount + ' aircraft';
+  updateSvcCounts();
+}
+
+async function pollAdsbFlow() {
+  if (document.visibilityState !== 'visible') return;
+  const meter = document.getElementById('adsb-meter');
+  if (!meter) return;
+  const fill  = document.getElementById('adsb-meter-fill');
+  const label = document.getElementById('adsb-meter-label');
+  // Only meaningful while the unit is active. Stopped / not-installed / down →
+  // no signal is expected, not a fault: hide the meter and skip the probe.
+  const st = _svcStates['adsb'];
+  if (st !== 'up' && st !== 'warn') { meter.hidden = true; _adsbFlow = null; return; }
+  try {
+    const r = await fetch('/api/adsb/health', { cache: 'no-store' });
+    const d = await r.json();
+    _adsbFlow = d;
+    if (d.ok === false || d.flowing === undefined) {
+      // adsb-api unreachable, or dump1090-fa hasn't written stats.json yet
+      // (e.g. just started) — muted note, don't scare the tile into SILENT.
+      meter.hidden = false;
+      meter.className = 'feed-meter';
+      if (fill) fill.style.width = '0%';
+      if (label) label.textContent = 'signal check n/a';
+      return;
+    }
+    meter.hidden = false;
+    const pct = Math.max(0, Math.min(100, (d.samples_per_sec / ADSB_NOMINAL_SAMPLES_PER_SEC) * 100));
+    if (fill) fill.style.width = pct.toFixed(0) + '%';
+    const msgLabel = Math.round(d.messages_per_min || 0) + ' msg/min';
+    if (d.flowing) {
+      meter.className = 'feed-meter flowing';
+      if (label) label.textContent = msgLabel;
+      applyAdsbFlowState('up', d.aircraft_count || 0, 'UP');
+    } else {
+      meter.className = 'feed-meter silent';
+      if (label) label.textContent = msgLabel;
+      applyAdsbFlowState('warn', d.aircraft_count || 0, 'SILENT');
     }
   } catch (e) { /* transient — keep last state, retry next tick */ }
 }
@@ -3080,7 +3165,7 @@ async function forgetWifi() {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 loadConfig().then(() => {
   applyUnits();
-  loadInstalled().then(async () => { await fetchHardware(); pingAll(); pollFeedFlow(); });
+  loadInstalled().then(async () => { await fetchHardware(); pingAll(); pollFeedFlow(); pollAdsbFlow(); });
   fetchStats();
   fetchAudio();
   fetchAPRS();
@@ -3091,10 +3176,11 @@ loadConfig().then(() => {
   setInterval(fetchAudio,   30_000);
   setInterval(fetchAPRS,    15_000);
   setInterval(pollFeedFlow, FEED_FLOW_MS);
+  setInterval(pollAdsbFlow, ADSB_FLOW_MS);
   setInterval(pollWifi,     30_000);
-  // Refresh the meter immediately when the operator returns to the tab.
+  // Refresh the meters immediately when the operator returns to the tab.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') pollFeedFlow();
+    if (document.visibilityState === 'visible') { pollFeedFlow(); pollAdsbFlow(); }
   });
 });</script>
 
