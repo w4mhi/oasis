@@ -283,7 +283,6 @@ a.svc-card.svc-card-gated:not(.up):hover { border-color: var(--border); }
   border: 1px solid var(--border); border-radius: 4px; font-size: var(--fs-small);
   padding: 2px 4px; font-family: var(--mono);
 }
-.svc-power.blocked { color: var(--text-dim); border-color: var(--border); opacity: .6; pointer-events: none; }
 
 /* ── Stats bar ───────────────────────────────────────────────────────── */
 .stats-bar {
@@ -1758,30 +1757,23 @@ function populateHardwareDropdowns(data) {
         + `${escapeHtml(d.label)} (${escapeHtml(d.kind)})</option>`))
       .join('');
     sel.value = current;
+    // Reassigning while running would pull the device out from under a live
+    // unit; lock the control until the operator stops it via the power
+    // button instead (specs/2026-07-15-hardware-conflict-resolution-v2-design.md §5).
+    const running = _svcStates[cardId] === 'up' || _svcStates[cardId] === 'warn';
+    sel.disabled = running;
+    sel.title = running ? 'Stop the service to change its device' : '';
   });
 }
 
 async function onHardwareAssignChange(cardId) {
+  // The dropdown is disabled while its service runs (see
+  // populateHardwareDropdowns above), so this only ever fires when stopped —
+  // no need to stop-then-reassign here anymore.
   const hwService = HW_SERVICE_FOR_CARD[cardId];
   const sel = document.getElementById('hwsel-' + cardId);
   if (!hwService || !sel) return;
   const newDeviceId = sel.value;
-  const unit = SVC_UNITS[cardId];
-  const running = _svcStates[cardId] === 'up' || _svcStates[cardId] === 'warn';
-
-  if (running) {
-    if (!confirm(`Changing this device will stop the running "${unit}" service first. Continue?`)) {
-      populateHardwareDropdowns(_hwLast);   // revert the select to its prior value
-      return;
-    }
-    try {
-      await fetch('/api/service', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
-        body: JSON.stringify({ unit, action: 'stop' }),
-      });
-    } catch (e) { /* best-effort — the assign/release call below still persists */ }
-  }
 
   try {
     const body = newDeviceId === ''
@@ -2057,19 +2049,10 @@ function updatePower(svcId, state) {
   const btn = powerBtn(svcId);
   if (!btn) return;
   const running = state === 'up' || state === 'warn';
-  const hwService = HW_SERVICE_FOR_CARD[svcId];
-  const hw = hwService && _hwLast && _hwLast.services && _hwLast.services[hwService];
-  // Ground truth wins: a unit that's actually running is never "blocked",
-  // even if the last-polled hardware assignment looks stale/unassigned —
-  // the ASSIGN DEVICE gate only applies while it's stopped and can't start.
-  if (hw && !hw.ok && !running) {
-    btn.classList.remove('up', 'down', 'busy');
-    btn.classList.add('blocked');
-    btn.textContent = 'ASSIGN DEVICE';
-    btn.title = 'Pick a device below to enable start';
-    return;
-  }
-  btn.classList.remove('blocked');
+  // No hardware-assignment gate here anymore — starting never blocks
+  // (specs/2026-07-15-hardware-conflict-resolution-v2-design.md §4);
+  // conflicts are resolved at the moment START is clicked instead
+  // (see resolveHardwareConflict, Task 5).
   if (_pending[svcId] !== undefined) {
     if (running || Date.now() >= _pending[svcId]) {
       delete _pending[svcId];
@@ -2089,7 +2072,6 @@ async function togglePower(svcId) {
   const unit = SVC_UNITS[svcId];
   if (!unit) return;
   const btn = powerBtn(svcId);
-  if (btn && btn.classList.contains('blocked')) return;
   const running = _svcStates[svcId] === 'up' || _svcStates[svcId] === 'warn';
   const action  = running ? 'stop' : 'start';
   if (action === 'stop' && !confirm(`Stop the "${unit}" service?`)) return;
