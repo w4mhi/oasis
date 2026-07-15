@@ -45,6 +45,7 @@
   --red:        #ff6b6b;
   --green:      #3fb950;
   --blue:       #58a6ff;
+  --blue-dim:   #1f4e8c;
   --text:       #d7e0ea;
   --text-dim:   #8b97a6;
   --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
@@ -77,6 +78,7 @@
   --red:        #cf222e;   /* crimson */
   --green:      #1a7f37;   /* dark green */
   --blue:       #0969da;   /* azure blue */
+  --blue-dim:   #a8c7f0;   /* soft sky */
   --text:       #1c2430;   /* near-black charcoal */
   --text-dim:   #5b6672;   /* slate grey */
 }
