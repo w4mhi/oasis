@@ -103,5 +103,42 @@ class AssignReleaseTest(unittest.TestCase):
                          stop_fn=lambda unit: stopped.append(unit))
         self.assertEqual(stopped, ["dump1090-fa"])
 
+class DefaultAssignTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def test_assigns_the_only_free_compatible_device(self):
+        inv = _inv(devices={"a": _dev("a", "rtl-sdr")})
+        hardware.default_assign(self.dir, inv, "adsb", {"rtl-sdr"})
+        self.assertEqual(inv.assignments["adsb"], "a")
+        reloaded = hardware.load(self.dir)
+        self.assertEqual(reloaded.assignments["adsb"], "a")
+
+    def test_noop_when_already_assigned(self):
+        inv = _inv(devices={"a": _dev("a", "rtl-sdr"), "b": _dev("b", "rtl-sdr")},
+                   assignments={"adsb": "a"})
+        hardware.default_assign(self.dir, inv, "adsb", {"rtl-sdr"})
+        self.assertEqual(inv.assignments["adsb"], "a")
+
+    def test_skips_device_already_held_by_another_service(self):
+        inv = _inv(devices={"a": _dev("a", "rtl-sdr")}, assignments={"openwebrx": "a"})
+        hardware.default_assign(self.dir, inv, "adsb", {"rtl-sdr"})
+        self.assertNotIn("adsb", inv.assignments)
+
+    def test_skips_wrong_kind(self):
+        inv = _inv(devices={"a": _dev("a", "digirig", ptt="/dev/x", alsa="hw:0,0")})
+        hardware.default_assign(self.dir, inv, "adsb", {"rtl-sdr"})
+        self.assertNotIn("adsb", inv.assignments)
+
+    def test_noop_when_no_devices_at_all(self):
+        inv = _inv()
+        hardware.default_assign(self.dir, inv, "adsb", {"rtl-sdr"})
+        self.assertEqual(inv.assignments, {})
+
+    def test_picks_first_free_in_declaration_order(self):
+        inv = _inv(devices={"a": _dev("a", "rtl-sdr"), "b": _dev("b", "rtl-sdr")})
+        hardware.default_assign(self.dir, inv, "adsb", {"rtl-sdr"})
+        self.assertEqual(inv.assignments["adsb"], "a")
+
 if __name__ == "__main__":
     unittest.main()

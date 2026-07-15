@@ -222,3 +222,26 @@ def release(repo_root, inv, service, stop_fn=None):
         del inv.assignments[service]
         save(repo_root, inv)
     return inv
+
+
+def default_assign(repo_root, inv, service, allowed_kinds):
+    """If `service` has no assignment yet, assign it the first free declared
+    device (in hardware.json declaration order) whose kind is in
+    `allowed_kinds`, and persist. No-op if `service` is already assigned or
+    no free compatible device exists.
+
+    specs/2026-07-15-hardware-conflict-resolution-v2-design.md §3: reverses
+    the original design's "nothing auto-assigned, ever" stance for the
+    common single-dongle case — the operator can still override via the
+    per-card dropdown."""
+    if service in inv.assignments:
+        return inv
+    for device_id, device in inv.devices.items():
+        if device["kind"] not in allowed_kinds:
+            continue
+        if assignee(inv, device_id) is not None:
+            continue
+        inv.assignments[service] = device_id
+        save(repo_root, inv)
+        return inv
+    return inv
