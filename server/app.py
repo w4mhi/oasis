@@ -2111,9 +2111,13 @@ def api_wifi_forget():
 def api_health_zim():
     """Offline Wikipedia/ZIM content presence for the dashboard Wikipedia card.
     Kiwix content lives OUTSIDE the suite root (~/oasis-offline/zim by default,
-    or an SSD), so /api/browse can't see it — scan the standard locations here."""
+    or an SSD), so /api/browse can't see it — scan the standard locations here.
+    Uses the same $SUDO_USER-aware home resolution as the kiwix installer so
+    this matches the directory kiwix-start actually looks in, even if this
+    Flask process and the installer worker run as different users."""
+    from services.kiwix.common.kiwix import target_user_home
     candidates = [
-        os.path.expanduser("~/oasis-offline/zim"),
+        os.path.join(target_user_home()[1], "oasis-offline", "zim"),
         "/mnt/ssd/zim",
         "/mnt/ssd/Documents/reference/zim",
     ]

@@ -5,15 +5,17 @@ services/kiwix/common/kiwix.py
 Service-owned implementation for the Kiwix installer and service setup.
 """
 
+import getpass
 import io
 import os
 import platform
+import pwd
 import subprocess
 import sys
 import tarfile
 
 # Keep the repository root importable for shared helpers.
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, _REPO_ROOT)
 
 from common.oasis_lib import (
@@ -33,12 +35,30 @@ def _offline_dir(repo_root):
     return M.bundle_dir(os.path.join(repo_root, "offline-packages"), "kiwix")
 
 
+def target_user_home():
+    """Return (user, home) for the operator — honours sudo's original user.
+
+    Privileged installs run as real root via the no-tty installer worker
+    (scripts/oasis_installer_worker.py), which bakes $SUDO_USER into its own
+    systemd unit (see scripts/enable-oasis-installer.py). Without this, a
+    bare os.path.expanduser("~") would resolve to /root, while a manually-run
+    download-wikipedia.py (as the operator) resolves to their own $HOME —
+    landing ZIM files in a directory kiwix-start never looks in.
+    """
+    user = os.environ.get("SUDO_USER") or getpass.getuser()
+    try:
+        home = pwd.getpwnam(user).pw_dir
+    except KeyError:
+        home = os.path.expanduser("~")
+    return user, home
+
+
 INSTALL_BIN = "/usr/local/bin/kiwix-serve"
 KIWIX_START = "/usr/local/bin/kiwix-start"
 SERVICE_NAME = "kiwix"
 PORT = 8081
 DEFAULT_VERSION = "3.8.2"
-DEFAULT_ZIM_DIR = os.path.expanduser("~/oasis-offline/zim")
+DEFAULT_ZIM_DIR = os.path.join(target_user_home()[1], "oasis-offline", "zim")
 SERVICE_FILE = f"/etc/systemd/system/{SERVICE_NAME}.service"
 
 ARCH_MAP = {
