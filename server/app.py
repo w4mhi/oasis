@@ -1486,6 +1486,17 @@ _SERVICE_ACTIONS = {"start", "stop", "restart"}
 # changes boot state.
 _PERSIST_BOOT_STATE = {"kiwix"}
 
+# Services being migrated OFF the hard "unassigned -> refuse" gate below, one
+# at a time, per specs/2026-07-15-hardware-conflict-resolution-v2-design.md
+# — "never refuse a start" is the target end state for every hardware-bound
+# service. GrayWolf and OpenWebRX were never really gated here at all (no
+# apply hook ever backed their assignment, so they're permanently absent
+# from HW.SERVICE_UNITS instead — see common/hardware.py). This set is for
+# services that DO have a real apply hook (adsb, winlink) but are moving to
+# "resolve conflicts at start time instead" regardless. adsb is the pilot;
+# winlink joins on its own turn.
+_HW_GATE_MIGRATED = {"adsb"}
+
 
 def _systemctl_seq(unit, verbs):
     """Best-effort `sudo -n systemctl <verb> <unit>.service` for each verb in
@@ -1689,7 +1700,7 @@ def api_service():
     if action == "start":
         inv = HW.load(SUITE_ROOT)
         hw_service = HW.service_for_unit(inv, unit)
-        if hw_service:
+        if hw_service and hw_service not in _HW_GATE_MIGRATED:
             ok, reason = HW.can_start(inv, hw_service)
             if not ok:
                 return jsonify({"ok": False, "error": f"cannot start {unit}: {reason}",

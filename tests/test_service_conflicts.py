@@ -36,13 +36,26 @@ class HardwareGateTest(unittest.TestCase):
         # api_service() early-returns 200 supported:false on non-Linux, before
         # ever reaching the hardware gate — patch sys.platform so the test
         # exercises the gate itself regardless of the host OS running the suite.
+        # pat-direwolf (winlink) is used here because adsb is migrated off
+        # this hard gate — see test_starting_unassigned_adsb_never_refused.
+        empty_inv = HW.Inventory(devices={}, assignments={})
+        with mock.patch.object(HW, "load", return_value=empty_inv), \
+             mock.patch("sys.platform", "linux"):
+            r = self.c.post("/api/service", json={"unit": "pat-direwolf", "action": "start"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(json.loads(r.data)["reason"], "unassigned")
+
+    def test_starting_unassigned_adsb_never_refused(self):
+        # adsb is migrated off the hard gate
+        # (specs/2026-07-15-hardware-conflict-resolution-v2-design.md §4) — an
+        # unassigned dump1090-fa start is no longer pre-emptively blocked.
         empty_inv = HW.Inventory(devices={}, assignments={})
         with mock.patch.object(HW, "load", return_value=empty_inv), \
              mock.patch("sys.platform", "linux"):
             r = self.c.post("/api/service", json={"unit": "dump1090-fa", "action": "start"},
                             headers={"X-OASIS-Request": "1"})
-        self.assertEqual(r.status_code, 409)
-        self.assertEqual(json.loads(r.data)["reason"], "unassigned")
+        self.assertNotEqual(r.status_code, 409)
 
     def test_starting_assigned_service_is_not_gate_refused(self):
         # Assigned + present -> the hardware gate passes; whatever happens next
