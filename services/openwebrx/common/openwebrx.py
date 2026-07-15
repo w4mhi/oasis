@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-openwebrx.py  (library — CLI entry point is scripts/install-openwebrx.py)
+openwebrx.py  (library — CLI entry point is services/openwebrx/install.py)
 ------------------------------------------------------------------------
 Install OpenWebRX+ — a browser-based, receive-only SDR receiver/decoder — as the
 OASIS SIGINT/monitoring front end. It decodes a wide range of modes (voice,
@@ -19,8 +19,8 @@ demand from the dashboard (which stops GrayWolf + the feed first); stopping it
 from the dashboard restores them.
 
 Usage:
-  python3 scripts/install-openwebrx.py
-  python3 scripts/install-openwebrx.py --check    # report install/status only
+  python3 services/openwebrx/install.py
+  python3 services/openwebrx/install.py --check    # report install/status only
 
 Requires: Linux (Debian/Raspberry Pi OS bookworm/trixie), apt/dpkg, sudo, internet.
 """

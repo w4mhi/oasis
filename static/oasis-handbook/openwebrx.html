@@ -75,7 +75,7 @@
       default and experimental in OASIS.
     </p>
     <div class="ph">[ screenshot &mdash; OpenWebRX+ waterfall and receiver UI (not enabled on the reference box) ]</div>
-    <pre><code>python3 scripts/install-openwebrx.py    # installs OpenWebRX+ on :8073</code></pre>
+    <pre><code>python3 services/openwebrx/install.py    # installs OpenWebRX+ on :8073</code></pre>
     <div class="callout warn">
       <span class="ic">&#9888;</span>
       <div><p><strong>The RTL-SDR feeds one consumer at a time.</strong> OpenWebRX and the <a href="aprs-feed.html">APRS SDR feed</a> both want the dongle, so starting OpenWebRX from the dashboard flips the APRS stack off (and vice-versa). This is why its dashboard card needs <a href="service-controls.html">service controls</a> enabled.</p></div>

@@ -1115,7 +1115,7 @@ def api_lookup_name():
     Search FCC licenses by last name (required) and optional first name prefix.
     Query: ?last=SMITH  or  ?last=SMITH&first=JOHN
     Returns up to 50 active-license records sorted by last name then first name.
-    Requires EN_name.idx (built by install-fcc-database.py).
+    Requires EN_name.idx (built by services/fcc_database/install.py).
     """
     last  = (request.args.get("last")  or "").strip()
     first = (request.args.get("first") or "").strip()
@@ -1137,7 +1137,7 @@ def api_lookup_grid():
     Search FCC licenses by Maidenhead grid square prefix.
     Query: ?grid=CN87  (2, 4, or 6 characters)
     Returns up to 100 active-license records for that grid area.
-    Requires EN_grid.idx (built by install-fcc-database.py after zipcodes.csv exists).
+    Requires EN_grid.idx (built by services/fcc_database/install.py after zipcodes.csv exists).
     """
     grid = (request.args.get("grid") or "").strip()
     if not grid:

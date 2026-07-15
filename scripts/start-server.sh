@@ -103,7 +103,7 @@ if [[ -f "$FCC_INDEX" ]]; then
     FCC_KB=$(( $(wc -c < "$FCC_INDEX") / 1024 ))
     _check "FCC index" "1" "${FCC_KB} KB"
 else
-    _check "FCC index" "0" "→ run: python3 scripts/install-fcc-database.py"
+    _check "FCC index" "0" "→ run: python3 services/fcc_database/install.py"
 fi
 
 # System fonts (Linux only — needed for emoji/mono rendering in Chromium)

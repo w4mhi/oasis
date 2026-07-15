@@ -195,7 +195,7 @@ def check_fcc():
             "ok": False, "badge": "NOT BUILT",
             "detail": (
                 f"Index not found at services/fcc_database/data/EN.idx.\n"
-                "     Run: python3 scripts/install-fcc-database.py"
+                "     Run: python3 services/fcc_database/install.py"
             ),
         }
     try:
@@ -322,7 +322,7 @@ def check_graywolf(host):
             ),
         }
     return {"ok": "warn", "badge": "NOT INSTALLED",
-            "detail": "Install with: python3 scripts/install-graywolf.py"}
+            "detail": "Install with: python3 services/graywolf/install.py"}
 
 
 def check_graywolf_api(host):
@@ -344,7 +344,7 @@ def check_graywolf_api(host):
             ),
         }
     return {"ok": "warn", "badge": "NOT INSTALLED",
-            "detail": "Enabled by: python3 scripts/install-graywolf.py"}
+            "detail": "Enabled by: python3 services/graywolf/install.py"}
 
 
 def check_pat(host):

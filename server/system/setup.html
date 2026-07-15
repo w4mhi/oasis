@@ -324,7 +324,7 @@ const CHECKS_CORE = [
         const d = await r.json();
         if (!d.ok && d.error && d.error.toLowerCase().includes('index')) {
           return { ok: false, badge: 'NOT BUILT',
-            detail: 'Index not found. Run: <code>python3 scripts/install-fcc-database.py</code>' };
+            detail: 'Index not found. Run: <code>python3 services/fcc_database/install.py</code>' };
         }
         return { ok: true, badge: 'READY', detail: 'Callsign index is built and responding.' };
       } catch (e) {
@@ -452,7 +452,7 @@ const CHECKS_OPTIONAL = [
     run: async () => {
       const svc = await chkService('openwebrx');
       if (!svc.installed) return { ok: 'warn', badge: 'NOT INSTALLED',
-        detail: `Install with: <code>python3 scripts/install-openwebrx.py</code> (browser SDR monitor — RTTY/CW/voice/FT8/…).` };
+        detail: `Install with: <code>python3 services/openwebrx/install.py</code> (browser SDR monitor — RTTY/CW/voice/FT8/…).` };
       const up = await chkPort('openwebrx', PORTS.openwebrx);
       if (up) return { ok: true, badge: 'UP',
         detail: `Listening on :${PORTS.openwebrx} (service <code>openwebrx</code>, ${svcWord(svc)}). Open ${OPEN(PORTS.openwebrx)}. Shares the RTL-SDR with GrayWolf/feed — starting it from the dashboard stops them.` };
@@ -471,7 +471,7 @@ const CHECKS_OPTIONAL = [
       if (svc.installed) return { ok: 'warn', badge: 'STOPPED',
         detail: `Installed but not listening (service <code>graywolf</code> is ${svc.active}). Start: <code>sudo systemctl start graywolf</code> &nbsp;·&nbsp; logs: <code>journalctl -u graywolf -f</code>` };
       return { ok: 'warn', badge: 'NOT INSTALLED',
-        detail: `Install with: <code>python3 scripts/install-graywolf.py</code>` };
+        detail: `Install with: <code>python3 services/graywolf/install.py</code>` };
     },
   },
   {
@@ -488,7 +488,7 @@ const CHECKS_OPTIONAL = [
       if (svc.installed) return { ok: 'warn', badge: 'STOPPED',
         detail: `Service installed but not responding (${svc.active}). Start: <code>sudo systemctl start graywolf-api</code> &nbsp;·&nbsp; logs: <code>journalctl -u graywolf-api -f</code>` };
       return { ok: 'warn', badge: 'NOT INSTALLED',
-        detail: `Enabled by <code>python3 scripts/install-graywolf.py</code> (needs <code>scripts/setup-server.py</code> first to build the .venv it runs under).` };
+        detail: `Enabled by <code>python3 services/graywolf/install.py</code> (needs <code>scripts/setup-server.py</code> first to build the .venv it runs under).` };
     },
   },
   {

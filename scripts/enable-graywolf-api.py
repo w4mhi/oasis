@@ -16,7 +16,7 @@ works under a plain system python3 too.
 
 History: the API used to live at graywolf-api/graywolf_api.py (folder removed).
 A Pi that still has an old systemd unit pointing at that path will fail until it
-re-runs this script (or install-graywolf.py), which rewrites the unit here.
+re-runs this script (or services/graywolf/install.py), which rewrites the unit here.
 
 Usage:
   python3 scripts/enable-graywolf-api.py                 # enable + start service

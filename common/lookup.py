@@ -262,7 +262,7 @@ def lookup(callsign, zip_table=None, en_path=EN_DAT_PATH, index_path=INDEX_PATH)
         zip_table = load_zip_table()
     if not os.path.exists(index_path):
         raise FileNotFoundError(
-            "Index not built yet. Run:  python3 scripts/install-fcc-database.py"
+            "Index not built yet. Run:  python3 services/fcc_database/install.py"
         )
     offset = _find_offset(callsign, index_path)
     if offset is None:
@@ -283,7 +283,7 @@ def lookup_prefix(prefix, zip_table=None, limit=MAX_PREFIX_RESULTS,
         zip_table = load_zip_table()
     if not os.path.exists(index_path):
         raise FileNotFoundError(
-            "Index not built yet. Run:  python3 scripts/install-fcc-database.py"
+            "Index not built yet. Run:  python3 services/fcc_database/install.py"
         )
     clean = prefix.strip().upper().rstrip("*")
     if not clean:
@@ -356,7 +356,7 @@ def lookup_by_name(last, first=None, limit=MAX_NAME_RESULTS,
         zip_table = load_zip_table()
     if not os.path.exists(index_path):
         raise FileNotFoundError(
-            "Name index not built yet. Run:  python3 scripts/install-fcc-database.py"
+            "Name index not built yet. Run:  python3 services/fcc_database/install.py"
         )
     last_clean = last.strip().upper()
     first_clean = (first or "").strip().upper()
@@ -401,7 +401,7 @@ def lookup_by_grid(grid_prefix, limit=MAX_GRID_RESULTS,
         zip_table = load_zip_table()
     if not os.path.exists(index_path):
         raise FileNotFoundError(
-            "Grid index not built yet. Run:  python3 scripts/install-fcc-database.py"
+            "Grid index not built yet. Run:  python3 services/fcc_database/install.py"
         )
     clean = grid_prefix.strip().upper()
     if not clean:

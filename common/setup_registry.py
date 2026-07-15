@@ -313,7 +313,7 @@ def build_registry(repo_root, payload=None):
         "graywolf": SE.FeatureSpec(
             key="graywolf",
             dependencies=["server"],
-            install_fn=lambda: _setup_run_script(repo_root, "scripts/install-graywolf.py"),
+            install_fn=lambda: _setup_run_script(repo_root, "services/graywolf/install.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -337,7 +337,7 @@ def build_registry(repo_root, payload=None):
         "openwebrx": SE.FeatureSpec(
             key="openwebrx",
             dependencies=["server"],
-            install_fn=lambda: _setup_run_script(repo_root, "scripts/install-openwebrx.py"),
+            install_fn=lambda: _setup_run_script(repo_root, "services/openwebrx/install.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -450,7 +450,7 @@ def build_registry(repo_root, payload=None):
             # indexes over it — the default 300s script timeout can be too
             # tight on a slow connection or a Pi Zero doing the index build,
             # so give it a generous 20 minutes.
-            install_fn=lambda: _setup_run_script(repo_root, "scripts/install-fcc-database.py", timeout=1200),
+            install_fn=lambda: _setup_run_script(repo_root, "services/fcc_database/install.py", timeout=1200),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
         ),

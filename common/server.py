@@ -109,7 +109,7 @@ def check_status(venv_dir, fcc_index):
         _ok(f"{'FCC index':<14} {kb:,} KB")
         fcc_ok = True
     else:
-        print("  ✗  FCC index      missing       -> python3 scripts/install-fcc-database.py")
+        print("  ✗  FCC index      missing       -> python3 services/fcc_database/install.py")
         fcc_ok = False
 
     print()
@@ -417,11 +417,11 @@ def run(check_mode=False, repo_root=None):
             except (EOFError, KeyboardInterrupt):
                 ans = ""
             if ans == "y":
-                fcc_script = os.path.join(repo_root, "scripts", "install-fcc-database.py")
+                fcc_script = os.path.join(repo_root, "services", "fcc_database", "install.py")
                 subprocess.run([sys.executable, fcc_script], check=False)
             else:
                 _warn("Skipped. Callsign lookups will return 'not found'.")
-                _warn("Run:  python3 scripts/install-fcc-database.py")
+                _warn("Run:  python3 services/fcc_database/install.py")
                 print()
         return
 

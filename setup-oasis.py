@@ -88,7 +88,7 @@ FEATURES = [
             "Install the systemd unit so the OASIS server starts at boot. Add --with-browser later for a Chromium kiosk.",
             "Server", default=True, needs=["server"],
             recommend="OASIS now starts on boot. Stop any manual ./scripts/start-server.sh first to free port 8083."),
-    Feature("graywolf", "GrayWolf APRS (+ history API)", "install-graywolf.py",
+    Feature("graywolf", "GrayWolf APRS (+ history API)", "services/graywolf/install.py",
             "APRS TNC/iGate/digipeater on :8080, plus the history API on :8085.",
             "Server", default=True, needs=["server"], internet=True,
             recommend="Open GrayWolf at :8080, add your audio device + an AFSK channel, then RESTART it: sudo systemctl restart graywolf"),
@@ -113,7 +113,7 @@ FEATURES = [
             "Browser terminal on :7681 (logs in via ssh to localhost).",
             "Server", default=True,
             recommend="Browser terminal at :7681 (logs in via ssh to localhost)."),
-    Feature("openwebrx", "OpenWebRX (SDR monitor) — experimental", "install-openwebrx.py",
+    Feature("openwebrx", "OpenWebRX (SDR monitor) — experimental", "services/openwebrx/install.py",
             "Browser SDR receiver/decoder on :8073 (RX only: voice/CW/RTTY/FT8/…). Installed OFF by default — start it from the dashboard. Needs internet (3rd-party apt repo).",
             "Server", default=False, needs=["server"], internet=True,
             recommend="OpenWebRX is OFF by default — start it from the dashboard (it stops GrayWolf + the SDR feed). Open :8073."),
@@ -181,7 +181,7 @@ FEATURES = [
             recommend="Reboot to load the RTC, then once the clock is correct: sudo hwclock -w"),
 
     # ── Content / Data: large optional downloads ──────────────────────────────
-    Feature("fcc", "FCC callsign database", "install-fcc-database.py",
+    Feature("fcc", "FCC callsign database", "services/fcc_database/install.py",
             "Download + index the FCC amateur license DB (~160 MB).",
             "Content / Data", default=True, internet=True, data=True,
             recommend="FCC callsign lookup is ready on the dashboard."),

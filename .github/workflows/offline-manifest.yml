@@ -39,7 +39,7 @@ jobs:
       - name: Thin CLIs still parse --help
         run: |
           set -e
-          for s in install-graywolf install-webssh \
+          for s in install-webssh \
                    setup-server; do
             echo "  --help: $s"
             python3 "scripts/$s.py" --help >/dev/null
@@ -50,5 +50,9 @@ jobs:
           python3 services/kiwix/install.py --help >/dev/null
           echo "  --help: winlink install"
           python3 services/winlink/install.py --help >/dev/null
+          echo "  --help: fcc_database install"
+          python3 services/fcc_database/install.py --help >/dev/null
+          echo "  --help: graywolf install"
+          python3 services/graywolf/install.py --help >/dev/null
           echo "  --help: setup-oasis"
           python3 setup-oasis.py --help >/dev/null
