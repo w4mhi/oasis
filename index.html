@@ -1634,8 +1634,9 @@ const SERVICES = [
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       // Ground truth (systemd is-active) wins over the hardware-assignment
       // state: a unit that's actually running is UP even if the dashboard's
-      // last-polled assignment snapshot is stale or momentarily unassigned —
-      // the UNASSIGNED badge only applies while it's stopped and can't start.
+      // last-polled assignment snapshot is stale or shows no free device —
+      // the NO FREE SDR badge below is purely informational and never means
+      // it can't start.
       if (d.active === 'active') return { up: true, badge: 'UP', sub: 'aircraft tracking' };
       const hw = _hwLast && _hwLast.services && _hwLast.services.adsb;
       if (hw && !hw.ok) {
