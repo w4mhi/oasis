@@ -1789,8 +1789,15 @@ def api_hardware_devices():
     """Live device-allocation list for the dashboard HARDWARE card, plus each
     logical service's own assignment/can_start state (Slice 4b, spec §7.1-7.2)
     — drives the per-card device dropdown's selected value and the
-    unassigned-state messaging without duplicating can_start's logic in JS."""
+    unassigned-state messaging without duplicating can_start's logic in JS.
+
+    Also reconciles default assignment
+    (specs/2026-07-15-hardware-conflict-resolution-v2-design.md §3): adsb
+    gets the first free rtl-sdr automatically when unassigned, so the
+    single-dongle case needs no manual step. Pilot scope — only `adsb` for
+    now; other services join as their own turns land."""
     inv = HW.load(SUITE_ROOT)
+    HW.default_assign(SUITE_ROOT, inv, "adsb", HW.DEVICE_KIND_FOR_SERVICE["adsb"])
     services = {}
     for service in HW.SERVICE_UNITS:
         ok, reason = HW.can_start(inv, service)

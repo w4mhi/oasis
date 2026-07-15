@@ -103,6 +103,16 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertNotIn("openwebrx", body["services"])
         self.assertIn("aprs", body["services"])
 
+    def test_devices_route_default_assigns_lone_free_dongle_to_adsb(self):
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "label": "X"}},
+                           assignments={})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"):
+            r = self.c.get("/api/hardware/devices")
+        body = json.loads(r.data)
+        self.assertEqual(body["services"]["adsb"]["device_id"], "a")
+        self.assertTrue(body["services"]["adsb"]["ok"])
+
     def test_declare_device_requires_oasis_header(self):
         r = self.c.post("/api/hardware/devices",
                         json={"id": "x", "kind": "rtl-sdr", "serial": "1"})
