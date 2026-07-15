@@ -52,6 +52,45 @@ def list_serial_by_id(directory="/dev/serial/by-id"):
     return out
 
 
+def parse_lsusb(output):
+    """Parse `lsusb` output into [{"bus", "device", "vendor_id", "product_id",
+    "description"}, ...]. Matches lines like
+    'Bus 001 Device 004: ID 10c4:ea60 Silicon Labs CP210x UART Bridge'."""
+    devices = []
+    for line in output.splitlines():
+        m = re.match(r'Bus\s+(\d+)\s+Device\s+(\d+):\s+ID\s+([0-9a-fA-F]{4}):([0-9a-fA-F]{4})\s*(.*)', line)
+        if m:
+            devices.append({
+                "bus": m.group(1),
+                "device": m.group(2),
+                "vendor_id": m.group(3),
+                "product_id": m.group(4),
+                "description": m.group(5).strip(),
+            })
+    return devices
+
+
+_TTY_SERIAL_RE = re.compile(r'^(ttyUSB\d+|ttyACM\d+|ttyAMA\d+|ttyS\d+|serial0|serial1)$')
+_TTY_USB_RE = re.compile(r'^(ttyUSB|ttyACM)')
+
+
+def list_tty_serial_devices(directory="/dev"):
+    """List serial-capable device nodes under /dev — both USB-serial adapters
+    (ttyUSB*/ttyACM*) and the Pi's onboard GPIO UART (serial0/serial1/ttyAMA*/
+    ttyS*), as [{"path", "label", "kind": "usb"|"onboard"}, ...] sorted by
+    label. Onboard UART never appears under /dev/serial/by-id (no USB
+    descriptor), so this is the only way to see it. Missing directory -> []."""
+    if not os.path.isdir(directory):
+        return []
+    out = []
+    for name in sorted(os.listdir(directory)):
+        if not _TTY_SERIAL_RE.match(name):
+            continue
+        kind = "usb" if _TTY_USB_RE.match(name) else "onboard"
+        out.append({"path": os.path.join(directory, name), "label": name, "kind": kind})
+    return out
+
+
 def _run_text(argv, timeout=10):
     try:
         r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
@@ -65,11 +104,13 @@ def scan():
     returns empty candidate lists elsewhere (mirrors the no-op pattern used by
     every apply()/install writer in this project)."""
     if sys.platform != "linux":
-        return {"rtl_sdr": [], "alsa": [], "serial": []}
+        return {"rtl_sdr": [], "alsa": [], "serial": [], "usb": [], "serial_ports": []}
     return {
         "rtl_sdr": parse_rtl_test_devices(_run_text(["rtl_test", "-t"])),
         "alsa": parse_aplay_cards(_run_text(["aplay", "-l"])),
         "serial": list_serial_by_id(),
+        "usb": parse_lsusb(_run_text(["lsusb"])),
+        "serial_ports": list_tty_serial_devices(),
     }
 
 

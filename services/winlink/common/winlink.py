@@ -142,6 +142,20 @@ def station_callsign(repo_root):
     return call or None
 
 
+def station_grid(repo_root):
+    """Read the operator's Maidenhead grid square from the suite-root
+    station.json — same fallback role as station_callsign() above, so
+    --locator can be omitted and still get picked up on a fresh install.
+    Returns an upper-cased grid, or None when the file is missing/unset."""
+    try:
+        with open(config_paths.station_json(repo_root)) as fh:
+            grid = json.load(fh).get("grid")
+    except (OSError, ValueError):
+        return None
+    grid = str(grid or "").strip().upper()
+    return grid or None
+
+
 # ── Target user (so config + service belong to the operator, not root) ──────────
 def target_user_home():
     """Return (user, home) for the operator — honours sudo's original user."""

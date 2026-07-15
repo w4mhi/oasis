@@ -23,3 +23,6 @@ def user_folders_json(repo_root):
 
 def hardware_json(repo_root):
     return os.path.join(config_dir(repo_root), "hardware.json")
+
+def installer_queue_dir(repo_root):
+    return os.path.join(config_dir(repo_root), "installer-queue")

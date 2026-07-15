@@ -12,7 +12,7 @@ def main():
     if args.serve:
         adsb.serve()
     else:
-        adsb.run(repo_root=_REPO_ROOT)
+        adsb.run(repo_root=_REPO_ROOT, online=None)
 
 if __name__ == "__main__":
     main()

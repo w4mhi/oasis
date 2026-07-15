@@ -57,6 +57,7 @@ Build phases (run automatically unless --check):
   Phase 5 — RTL-SDR .deb        oasis-offline/features/rtl-sdr/packages/rtl-sdr/<suite>/  (feature-local)
   Phase 6 — webssh ttyd binary  oasis-offline/offline-packages/webssh/
   Phase 7 — Pat (Winlink) .deb  oasis-offline/offline-packages/pat/
+    Phase 7a — ADS-B dump1090-fa .deb  oasis-offline/services/adsb/packages/dump1090-fa/<suite>/
   Phase 8 — Wikipedia (Best of Wikipedia Mini)  oasis-offline/zim/  (~316 MB, 50K articles)
   Phase 9 — pmtiles CLI binaries oasis-offline/maps/  (per-platform MBTiles→PMTiles converter)
 
@@ -74,6 +75,7 @@ Usage:
 import argparse
 import datetime
 import fnmatch
+import gzip
 import hashlib
 import io
 import json
@@ -641,6 +643,114 @@ def phase_direwolf(bundle_root, update=False):
         _ok(f"Direwolf {suite} done  →  {os.path.relpath(suite_dir)}/")
 
 
+# ── Phase 7a: ADS-B (dump1090-fa) Debian package (suite-aware) ───────────────
+FA_BASE_URL = "https://www.flightaware.com/adsb/piaware/files/packages"
+
+
+def _fa_packages_records(suite, deb_arch):
+    """Return parsed package records from FlightAware apt index for suite/arch."""
+    candidates = [
+        f"{FA_BASE_URL}/dists/{suite}/piaware/binary-{deb_arch}/Packages.gz",
+        f"{FA_BASE_URL}/dists/{suite}/piaware/binary-{deb_arch}/Packages",
+    ]
+    text = None
+    for url in candidates:
+        data, _err = download_bytes(url)
+        if data is None:
+            continue
+        try:
+            if url.endswith(".gz"):
+                text = gzip.decompress(data).decode("utf-8", errors="replace")
+            else:
+                text = data.decode("utf-8", errors="replace")
+            break
+        except Exception:
+            continue
+    if not text:
+        return []
+
+    records = []
+    for stanza in text.split("\n\n"):
+        rec = {}
+        for line in stanza.splitlines():
+            if not line or line.startswith(" "):
+                continue
+            if ":" not in line:
+                continue
+            key, val = line.split(":", 1)
+            rec[key.strip()] = val.strip()
+        if rec.get("Package"):
+            records.append(rec)
+    return records
+
+
+def _fa_best_dump1090_record(suite, deb_arch):
+    recs = [r for r in _fa_packages_records(suite, deb_arch) if r.get("Package") == "dump1090-fa"]
+    if not recs:
+        return None
+    best = recs[0]
+    for rec in recs[1:]:
+        if M.vcmp(rec.get("Version", "0"), best.get("Version", "0")) > 0:
+            best = rec
+    return best
+
+
+def phase_adsb(bundle_root, update=False):
+    """Phase 7a: Download dump1090-fa .deb per suite/arch into ADS-B bundle path."""
+    feature = "dump1090-fa"
+    _section("Phase 7a — ADS-B dump1090-fa Debian packages  (suite-aware)")
+    _info(f"Source  : {FA_BASE_URL}")
+
+    try:
+        suites = M.feature_suites(feature)
+        arches = M.feature_arches(feature)
+    except KeyError:
+        _warn("Manifest feature 'dump1090-fa' missing — skipping ADS-B vendoring.")
+        return
+
+    for suite in suites:
+        suite_dir = M.bundle_dir(bundle_root, feature, suite=suite)
+        _info(f"Suite   : Debian {suite}")
+        _info(f"Dest    : {os.path.relpath(suite_dir)}/")
+        os.makedirs(suite_dir, exist_ok=True)
+
+        for deb_arch in arches:
+            _info(f"  ─── {suite}/{deb_arch}")
+            present = [
+                f for f in os.listdir(suite_dir)
+                if f.startswith("dump1090-fa_") and f.endswith(f"_{deb_arch}.deb")
+            ]
+            if present:
+                _cp(f"dump1090-fa {suite}/{deb_arch}: present  (up to date)")
+                continue
+
+            rec = _fa_best_dump1090_record(suite, deb_arch)
+            if not rec:
+                _warn(f"No dump1090-fa package found for {suite}/{deb_arch} in FlightAware index.")
+                continue
+            rel = rec.get("Filename") or ""
+            ver = rec.get("Version") or ""
+            if not rel:
+                _warn(f"Index entry missing Filename for {suite}/{deb_arch} — skipping")
+                continue
+            url = rel if rel.startswith("http") else f"{FA_BASE_URL}/{rel.lstrip('/')}"
+            out = os.path.join(suite_dir, os.path.basename(rel))
+            _dl(f"{os.path.basename(out)}  ({suite}/{deb_arch})  ← FlightAware")
+            try:
+                download_to(url, out)
+                _ok(os.path.basename(out))
+                _write_resolved(feature, suite, deb_arch, {"dump1090-fa": ver})
+            except Exception as exc:
+                if os.path.exists(out):
+                    try:
+                        os.remove(out)
+                    except OSError:
+                        pass
+                _warn(f"Failed to download dump1090-fa for {suite}/{deb_arch}: {exc}")
+
+        _ok(f"ADS-B {suite} done  →  {os.path.relpath(suite_dir)}/")
+
+
 # ── Phase 6: webssh (ttyd) static binaries ────────────────────────────────────
 def phase_webssh(bundle_root, update=False):
     """Phase 6: Download the ttyd prebuilt static binaries for each arch in the manifest.
@@ -1107,6 +1217,27 @@ def _reap_orphans(dest, keep_rel):
     return reaped
 
 
+# OS-generated metadata files that must never ship in a bundle — swept from the
+# ENTIRE dest tree (including PRESERVE_IN_DEST subtrees like maps/ and zim/,
+# which _reap_orphans skips) since Finder/Explorer can drop these into any
+# directory a user browses, including ones populated by the download phases.
+JUNK_FILE_NAMES = {".DS_Store", "Thumbs.db", "desktop.ini"}
+
+
+def _remove_junk_files(dest):
+    """Delete OS metadata junk files anywhere under dest. Returns count removed."""
+    removed = 0
+    for root, _dirs, files in os.walk(dest):
+        for fname in files:
+            if fname in JUNK_FILE_NAMES:
+                try:
+                    os.remove(os.path.join(root, fname))
+                    removed += 1
+                except OSError:
+                    pass
+    return removed
+
+
 def build_copy(dest, src=None, include_all_platforms=False, ignore=None, warn_missing_pi=True):
     """
     Copy the repo source tree into dest, honouring the bundle-ignore patterns.
@@ -1152,8 +1283,10 @@ def build_copy(dest, src=None, include_all_platforms=False, ignore=None, warn_mi
             copied += 1
 
     reaped = _reap_orphans(dest, keep_rel)
+    junked = _remove_junk_files(dest)
     reap_note = f", {reaped} stale reaped" if reaped else ""
-    _cp(f"{copied} files copied from repo to bundle  ({skipped} excluded{reap_note})")
+    junk_note = f", {junked} junk removed" if junked else ""
+    _cp(f"{copied} files copied from repo to bundle  ({skipped} excluded{reap_note}{junk_note})")
 
     # Report anything that will hurt the Pi offline experience. Meaningless for the
     # tools-only bundle (which ships none of these), so callers pass warn_missing_pi=False.
@@ -1191,6 +1324,16 @@ def build_copy(dest, src=None, include_all_platforms=False, ignore=None, warn_mi
         _warn("webssh (ttyd) static binaries missing — Pi users will need internet to install webssh.")
     if not any(f.endswith(".deb") for f in (os.listdir(pt_dir) if os.path.isdir(pt_dir) else [])):
         _warn("Pat .deb missing — Winlink users will need internet to install Pat.")
+
+    ad_base = M.bundle_dir(dest, "dump1090-fa")
+    ad_debs = []
+    if os.path.isdir(ad_base):
+        for suite in M.feature_suites("dump1090-fa"):
+            suite_dir = os.path.join(ad_base, suite)
+            if os.path.isdir(suite_dir):
+                ad_debs += [f for f in os.listdir(suite_dir) if f.endswith(".deb")]
+    if not any(f.startswith("dump1090-fa_") for f in ad_debs):
+        _warn("ADS-B dump1090-fa .deb missing — ADS-B users will need internet to install decoder.")
 
 
 # ── Build: Windows embedded Python runtime ────────────────────────────────────
@@ -1604,6 +1747,7 @@ def cmd_build(skip_windows, rebuild=False, all_platforms=False, profile="full"):
         phase_webssh(pkg_root, update=True)
         phase_pat(pkg_root, update=True)
         phase_direwolf(pkg_root, update=True)
+        phase_adsb(pkg_root, update=True)
         phase_cm4stack(pkg_root, update=True)
         phase_wikipedia(os.path.join(out_dir, "zim"))
         phase_pmtiles(os.path.join(out_dir, "maps"), all_platforms=all_platforms)
@@ -1673,6 +1817,7 @@ def cmd_update(target_dir, all_platforms=False):
     phase_webssh(pkg_root, update=True)
     phase_pat(pkg_root, update=True)
     phase_direwolf(pkg_root, update=True)
+    phase_adsb(pkg_root, update=True)
     phase_cm4stack(pkg_root, update=True)
     phase_wikipedia(os.path.join(target_dir, "zim"))
     phase_pmtiles(os.path.join(target_dir, "maps"), all_platforms=all_platforms)

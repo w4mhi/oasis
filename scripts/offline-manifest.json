@@ -226,11 +226,11 @@
       "resolved": {
         "_": {
           "arm64": {
-            "graywolf": "0.14.8"
+            "graywolf": "0.14.10"
           }
         }
       },
-      "version": "0.14.8"
+      "version": "0.14.10"
     },
     "kiwix": {
       "type": "url",
@@ -344,7 +344,7 @@
       "bundle_group": "dump1090-fa",
       "bundle_base": "services/adsb/packages",
       "description": "dump1090-fa Mode S/ADS-B decoder — owns the RTL-SDR and writes live aircraft positions consumed by services/adsb's adsb-api. Off by default; started on demand from the dashboard's ADS-B card (mutually exclusive with other RTL-SDR features, e.g. GrayWolf).",
-      "_note": "dump1090-fa is distributed by FlightAware, not the base Debian/Raspberry Pi OS apt repos. Vendoring its .deb (and any not-already-present runtime deps) requires adding the FlightAware apt repo on the connected build machine first; that sourcing step is not yet wired here. `packages.common` names the target package so the bundler/tree-walk shape is in place once .debs are fetched and dropped under services/adsb/packages/dump1090-fa/<suite>/.",
+      "_note": "dump1090-fa is distributed by FlightAware, not the base Debian/Raspberry Pi OS apt repos. create-oasis-offline.py now vendors dump1090-fa per suite/arch directly from FlightAware package indexes into services/adsb/packages/dump1090-fa/<suite>/. Runtime dependencies may still vary by target image, so keep online fallback available when dependency closure is incomplete.",
       "packages": {
         "common": [
           "dump1090-fa"
@@ -362,7 +362,24 @@
         "arm64",
         "armhf"
       ],
-      "resolved": {}
+      "resolved": {
+        "bookworm": {
+          "arm64": {
+            "dump1090-fa": "11.0~bpo12+1"
+          },
+          "armhf": {
+            "dump1090-fa": "11.0~bpo12+1"
+          }
+        },
+        "trixie": {
+          "arm64": {
+            "dump1090-fa": "11.0"
+          },
+          "armhf": {
+            "dump1090-fa": "11.0"
+          }
+        }
+      }
     },
     "openwebrx": {
       "type": "apt",
@@ -397,7 +414,7 @@
       "type": "github-release",
       "description": "Protomaps go-pmtiles CLI. Converts MBTiles -> PMTiles offline (used by maps/convert-mbtiles.py). Vendored into the bundle's maps/ directory. By default only the Linux binaries (the bundle's Pi/Linux targets) are fetched; macOS/Windows platforms are marked default=false and included only with create-oasis-offline.py --all-platforms so the default bundle stays lean.",
       "repo": "protomaps/go-pmtiles",
-      "version": "1.30.3",
+      "version": "1.31.1",
       "bundle_dest": "maps",
       "platforms": [
         {
@@ -429,10 +446,10 @@
       "resolved": {
         "_": {
           "pmtiles-linux-arm64": {
-            "pmtiles": "1.30.3"
+            "pmtiles": "1.31.1"
           },
           "pmtiles-linux-x86_64": {
-            "pmtiles": "1.30.3"
+            "pmtiles": "1.31.1"
           },
           "pmtiles-darwin-arm64": {
             "pmtiles": "1.30.3"

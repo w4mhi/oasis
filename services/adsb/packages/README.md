@@ -17,7 +17,6 @@ by the build's tree-walk via `manifest.bundle_dir("dump1090-fa")`. The
 installer reads them from here at install time.
 
 `dump1090-fa` is distributed by FlightAware, not the base Debian/Raspberry Pi
-OS apt repos — it requires FlightAware's own apt repo to be added on the
-connected build machine before it can be downloaded for vendoring. That
-sourcing step is not yet wired into the manifest (see the `_note` on the
-`dump1090-fa` manifest entry); a follow-up finalizes the fetch source.
+OS apt repos. `scripts/create-oasis-offline.py` now fetches the package directly
+from FlightAware's package indexes per suite/arch and vendors it into this
+directory layout during build/update.

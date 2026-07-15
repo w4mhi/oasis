@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -15,7 +16,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.
 sys.path.insert(0, _REPO_ROOT)
 
 from services.adsb.common import history, alerts
-from common.oasis_lib import _hr, _step, _ok, _warn, _info, _fail, _run  # noqa: E402
+from common.oasis_lib import _hr, _step, _ok, _warn, _info, _fail, _run, has_internet, download_bytes  # noqa: E402
 from common import manifest as M  # noqa: E402
 from common import config_paths  # noqa: E402
 
@@ -186,10 +187,25 @@ def _add_flightaware_repo(suite):
         _warn(f"Unknown suite '{suite}' — assuming FlightAware repo suite '{suite}'.")
         repo_suite = suite
 
+    if not has_internet():
+        _fail("Could not reach the internet to fetch the FlightAware repo signing key.")
+
     _info("Installing the FlightAware repo signing key ...")
-    key_cmd = f"curl -fsSL {FA_KEY_URL} | sudo gpg --dearmor -o {FA_KEYRING}"
-    if _run(["bash", "-c", key_cmd], check=False).returncode != 0:
-        _fail("Could not install the FlightAware repo signing key (need internet + curl).")
+    key_bytes, err = download_bytes(FA_KEY_URL)
+    if err or not key_bytes:
+        _fail(f"Could not download the FlightAware repo signing key: {err or 'empty response'}")
+
+    fd, tmp = tempfile.mkstemp(prefix="flightaware-", suffix=".gpg")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(key_bytes)
+        if _run(["sudo", "gpg", "--dearmor", "-o", FA_KEYRING, tmp], check=False).returncode != 0:
+            _fail("Could not install the FlightAware repo signing key (gpg dearmor failed).")
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
     line = f"deb [signed-by={FA_KEYRING}] {FA_BASE_URL} {repo_suite} piaware"
     if _run(["bash", "-c", f'echo "{line}" | sudo tee {FA_LIST_PATH}'], check=False).returncode != 0:
@@ -255,10 +271,11 @@ WantedBy=multi-user.target
     _run(["sudo", "systemctl", "daemon-reload"])
 
 
-def run(repo_root, online=True):
+def run(repo_root, online=None):
     if sys.platform != "linux":
         _fail("ADS-B service installs on Linux/Raspberry Pi only.")
         return
+    online = has_internet() if online is None else bool(online)
     print()
     print("  OASIS -- ADS-B Installer (dump1090-fa + adsb-api)")
     _hr()

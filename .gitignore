@@ -19,6 +19,9 @@ configuration/station.json
 aprs-warnings.json
 aprs-warnings.json.tmp
 
+# Runtime log for the detached server started by start-oasis.py.
+oasis-server.log
+
 # Screenshot / demo tooling — local mock backends used to populate the
 # dashboard & APRS map with fake data for documentation captures.
 mock-up/

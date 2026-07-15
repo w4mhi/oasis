@@ -23,7 +23,7 @@ class HardwareDetectRouteTest(unittest.TestCase):
         # Real (unmocked) scan() on this macOS box must return empty lists,
         # not raise.
         result = HD.scan()
-        self.assertEqual(result, {"rtl_sdr": [], "alsa": [], "serial": []})
+        self.assertEqual(result, {"rtl_sdr": [], "alsa": [], "serial": [], "usb": [], "serial_ports": []})
 
 if __name__ == "__main__":
     unittest.main()

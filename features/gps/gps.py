@@ -38,7 +38,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # repo root (features/gps → features → repo)
 
-from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, has_internet, download_bytes
+from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run, has_internet, download_bytes
 from common.gpsd_chrony import (install_packages, configure_gpsd, configure_chrony,
                           restart_services, verify, check_exclusive)
 

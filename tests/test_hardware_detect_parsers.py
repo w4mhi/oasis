@@ -64,5 +64,41 @@ class ListSerialByIdTest(unittest.TestCase):
     def test_missing_directory_returns_empty(self):
         self.assertEqual(HD.list_serial_by_id("/tmp/does-not-exist-xyz"), [])
 
+
+LSUSB_TWO_DEVICES = """\
+Bus 001 Device 004: ID 10c4:ea60 Silicon Labs CP210x UART Bridge
+Bus 001 Device 002: ID 0403:6001 Future Technology Devices International, Ltd FT232 Serial (UART) IC
+"""
+
+class ParseLsusbTest(unittest.TestCase):
+    def test_two_devices(self):
+        devices = HD.parse_lsusb(LSUSB_TWO_DEVICES)
+        self.assertEqual(len(devices), 2)
+        self.assertEqual(devices[0], {
+            "bus": "001", "device": "004", "vendor_id": "10c4", "product_id": "ea60",
+            "description": "Silicon Labs CP210x UART Bridge",
+        })
+        self.assertEqual(devices[1]["vendor_id"], "0403")
+
+    def test_empty_input(self):
+        self.assertEqual(HD.parse_lsusb(""), [])
+
+
+class ListTtySerialDevicesTest(unittest.TestCase):
+    def test_lists_usb_and_onboard_kinds(self):
+        d = tempfile.mkdtemp()
+        for name in ["ttyUSB0", "ttyACM0", "ttyAMA0", "serial0", "ttyS0", "not-a-tty"]:
+            open(os.path.join(d, name), "w").close()
+        result = HD.list_tty_serial_devices(d)
+        by_label = {r["label"]: r["kind"] for r in result}
+        self.assertEqual(by_label, {
+            "ttyUSB0": "usb", "ttyACM0": "usb",
+            "ttyAMA0": "onboard", "serial0": "onboard", "ttyS0": "onboard",
+        })
+        self.assertNotIn("not-a-tty", by_label)
+
+    def test_missing_directory_returns_empty(self):
+        self.assertEqual(HD.list_tty_serial_devices("/tmp/does-not-exist-xyz"), [])
+
 if __name__ == "__main__":
     unittest.main()

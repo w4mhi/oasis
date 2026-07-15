@@ -33,7 +33,7 @@ def main():
     parser.add_argument("--callsign", default=None, metavar="CALL",
                         help="Winlink callsign for the config + modem MYCALL (default: from station.json, else W4MHI).")
     parser.add_argument("--locator", default=None, metavar="GRID",
-                        help="Maidenhead grid square (e.g. FM18) — optional.")
+                        help="Maidenhead grid square (e.g. FM18). Default: from station.json, else unset.")
     parser.add_argument("--password", default=None, metavar="PW",
                         help="Winlink password. Omit to be prompted; see --no-password.")
     parser.add_argument("--no-password", action="store_true",
@@ -59,6 +59,7 @@ def main():
     args = parser.parse_args()
 
     callsign = args.callsign or run.__globals__["station_callsign"](_REPO_ROOT) or "W4MHI"
+    locator = args.locator or run.__globals__["station_grid"](_REPO_ROOT)
 
     print()
     print("  OASIS -- Winlink Installer")
@@ -67,7 +68,7 @@ def main():
     run(
         pinned_version=args.version,
         callsign=callsign,
-        locator=args.locator,
+        locator=locator,
         password=args.password,
         no_password=args.no_password,
         port=args.port,

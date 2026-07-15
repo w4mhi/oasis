@@ -289,7 +289,7 @@ Open `http://localhost:8083` in a browser (or `http://<pi-ip>:8083` from another
 3. **Installs from bundled wheels** — installs Flask, gunicorn, and psutil offline from `server/wheels/` (idempotent; no-op if already installed).
 4. **Pre-flight check** — reports Python, Flask, gunicorn, psutil, FCC index, and system fonts.
 5. **Frees port 8083** — if a previous OASIS instance is still bound, sends SIGTERM (then SIGKILL if needed) before starting a fresh one. Re-running the launcher is a clean restart.
-6. **Launches gunicorn** — `gunicorn --workers 2 --bind 0.0.0.0:8083 app:app` from the `server/` directory. Falls back to `python app.py` (Flask dev server) if gunicorn isn't available.
+6. **Launches gunicorn** — `gunicorn --workers 1 --bind 0.0.0.0:8083 app:app` from the `server/` directory. Falls back to `python app.py` (Flask dev server) if gunicorn isn't available. (Single worker deliberately — the Setup Orchestrator's in-process job/plan state isn't shared across multiple gunicorn worker processes.)
 
 You never need to run any of these steps manually — the launcher handles them.
 

@@ -164,8 +164,15 @@ fi
 
 cd "$SERVER_DIR"
 if "$VENV_PYTHON" -c "import gunicorn" 2>/dev/null; then
+    # --workers 1: the Setup Orchestrator (server/app.py's _setup_plans/_setup_jobs)
+    # keeps state in plain in-process memory guarded by a threading.Lock, which
+    # only synchronizes within a single process. Multiple gunicorn workers are
+    # separate OS processes with no shared memory, so a plan/job created on one
+    # worker is invisible to another -> intermittent 404 "unknown planId"/"unknown
+    # job". Setup work already runs in a background thread that doesn't block the
+    # request, so a single worker doesn't sacrifice responsiveness during installs.
     exec "$VENV_DIR/bin/gunicorn" \
-        --workers 2 \
+        --workers 1 \
         --bind "0.0.0.0:$PORT" \
         --access-logfile - \
         app:app

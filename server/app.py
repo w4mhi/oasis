@@ -45,6 +45,7 @@ from common import lookup
 from common import config_paths
 from common import server as SERVER_SETUP
 from common import setup_engine as SE
+from common import setup_registry as SETUP_REGISTRY
 from common import hardware as HW
 from common import hardware_detect as HD_detect
 from common import gpsd_chrony
@@ -158,82 +159,6 @@ def _setup_cleanup_plans_locked():
         _setup_plans.pop(k, None)
 
 
-def _setup_server_install():
-    try:
-        SERVER_SETUP.run(check_mode=False, repo_root=SUITE_ROOT)
-        return {"ok": True}
-    except SystemExit as exc:
-        code = exc.code if isinstance(exc.code, int) else 1
-        return {
-            "ok": False,
-            "reason_code": "INSTALL_FAILED",
-            "reason_text": f"server setup exited with code {code}",
-        }
-    except Exception as exc:
-        return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": str(exc)}
-
-
-def _setup_service_controls_install():
-    script = os.path.join(SUITE_ROOT, "scripts", "enable-service-controls.py")
-    try:
-        r = subprocess.run([sys.executable, script], capture_output=True, text=True, timeout=120)
-    except Exception as exc:
-        return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": str(exc)}
-    if r.returncode != 0:
-        err = (r.stderr or r.stdout or "service-controls install failed").strip()
-        return {
-            "ok": False,
-            "reason_code": "INSTALL_FAILED",
-            "reason_text": err.splitlines()[-1][:300] if err else "service-controls install failed",
-            "stderr_tail": (r.stderr or "").strip()[-300:] or None,
-            "stdout_tail": (r.stdout or "").strip()[-300:] or None,
-        }
-    return {"ok": True}
-
-
-def _setup_run_script(script_rel, args=None, timeout=900):
-    args = args or []
-    script = os.path.join(SUITE_ROOT, script_rel)
-    if not os.path.exists(script):
-        return {
-            "ok": False,
-            "reason_code": "MISSING_SCRIPT",
-            "reason_text": f"missing script: {script_rel}",
-        }
-    try:
-        r = subprocess.run([sys.executable, script, *args], capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        return {
-            "ok": False,
-            "reason_code": "TIMEOUT",
-            "reason_text": f"script timed out: {script_rel}",
-        }
-    except Exception as exc:
-        return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": str(exc)}
-    if r.returncode != 0:
-        err = (r.stderr or r.stdout or "script failed").strip()
-        return {
-            "ok": False,
-            "reason_code": "INSTALL_FAILED",
-            "reason_text": err.splitlines()[-1][:300] if err else f"script failed: {script_rel}",
-            "stderr_tail": (r.stderr or "").strip()[-300:] or None,
-            "stdout_tail": (r.stdout or "").strip()[-300:] or None,
-        }
-    return {"ok": True}
-
-
-def _setup_run_chain(steps):
-    for step in steps:
-        res = _setup_run_script(step.get("script"), step.get("args"), timeout=step.get("timeout", 900))
-        if not res.get("ok"):
-            return res
-    return {"ok": True}
-
-
-def _setup_record_only(_name):
-    return {"ok": True}
-
-
 def _setup_callsign_ok(c):
     if not c:
         return True
@@ -252,7 +177,7 @@ def _setup_preflight_blockers(selected, payload, online):
     win = payload.get("winlink") or {}
     st = payload.get("station") or {}
 
-    if "winlink" in sel and not (win.get("password") or "").strip():
+    if "winlink" in sel and not (win.get("password") or "").strip() and not _setup_pat_password_set():
         blocked.append({
             "feature": "winlink",
             "reason_code": "WINLINK_PASSWORD_REQUIRED",
@@ -391,10 +316,28 @@ def _setup_write_station(payload):
     grid = (st.get("grid") or "").strip().upper()
     lat = st.get("lat")
     lon = st.get("lon")
-    if not (callsign or grid or lat is not None or lon is not None):
-        return
     dst = config_paths.station_json(SUITE_ROOT)
     os.makedirs(config_paths.config_dir(SUITE_ROOT), exist_ok=True)
+    existing = {}
+    try:
+        with open(dst, "r", encoding="utf-8") as fh:
+            existing = json.load(fh) or {}
+    except Exception:
+        existing = {}
+
+    # Preserve existing values when a field is omitted in setup payload.
+    if not callsign:
+        callsign = (existing.get("callsign") or "").strip().upper()
+    if not grid:
+        grid = (existing.get("grid") or "").strip().upper()
+    if lat is None:
+        lat = existing.get("lat")
+    if lon is None:
+        lon = existing.get("lon")
+
+    if not (callsign or grid or lat is not None or lon is not None):
+        return
+
     body = {
         "callsign": callsign or "N0CALL",
         "grid": grid,
@@ -407,189 +350,116 @@ def _setup_write_station(payload):
         fh.write("\n")
 
 
-def _setup_winlink_install_fn(payload):
-    win = (payload or {}).get("winlink", {})
-    args = []
-    callsign = (win.get("callsign") or "").strip()
-    if callsign:
-        args += ["--callsign", callsign]
-    locator = (win.get("locator") or "").strip()
-    if locator:
-        args += ["--locator", locator]
-    password = win.get("password") or ""
-    if password:
-        args += ["--password", password]
-    else:
-        args += ["--no-password"]
-    return _setup_run_script("scripts/install-winlink.py", args)
+def _setup_pat_password_set():
+    path = _health_paths().get("pat_config")
+    if not path or not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            cfg = json.load(fh) or {}
+        return bool((cfg.get("secure_login_password") or "").strip())
+    except Exception:
+        return False
 
 
 def _setup_registry(payload=None):
-    # Expanded registry maps spec feature keys to installer scripts.
+    return SETUP_REGISTRY.build_registry(SUITE_ROOT, payload)
+
+
+# ── Privileged installs: hand off to the out-of-process root worker ─────────────
+# The web server never runs as root and has no TTY/cached sudo credential, so a
+# privileged FeatureSpec's install_fn is NOT called in-process here. Instead we
+# drop a small job file (feature key + the same setup payload, so the worker's
+# build_registry() call produces the byte-for-byte identical install_fn) into
+# the installer queue, and wait for the out-of-process root worker
+# (scripts/oasis_installer_worker.py, triggered by the oasis-installer.path
+# systemd unit — see scripts/enable-oasis-installer.py) to pick it up and write
+# a result file back. No password ever touches this process.
+INSTALLER_QUEUE_DIR = config_paths.installer_queue_dir(SUITE_ROOT)
+_INSTALLER_POLL_INTERVAL_S = 0.5
+_INSTALLER_JOB_TIMEOUT_S = 900
+_INSTALLER_HEARTBEAT_INTERVAL_S = 10
+# Written by scripts/enable-oasis-installer.py; its presence is the cheapest
+# (no subprocess, no root needed) signal that the root worker daemon exists.
+INSTALLER_PATH_UNIT_FILE = "/etc/systemd/system/oasis-installer.path"
+
+_INSTALLER_DAEMON_UNAVAILABLE_TEXT = (
+    "No privileged installer worker is enabled. Run "
+    "'python3 scripts/enable-oasis-installer.py' once from a terminal to enable it."
+)
+
+
+def _installer_daemon_enabled():
+    return sys.platform == "linux" and os.path.exists(INSTALLER_PATH_UNIT_FILE)
+
+
+def _setup_enqueue_and_wait_install(key, spec, payload, job_id=None):
+    if key not in SETUP_REGISTRY.PRIVILEGED_FEATURES:
+        # Defensive: only PRIVILEGED_FEATURES should ever reach here (run_plan
+        # only calls privileged_run_fn when spec.privileged is True), but never
+        # hand an unvalidated/unknown key to the root worker.
+        return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": f"{key} is not a privileged feature"}
+
+    # Fail fast instead of silently queueing a job nothing will ever pick up
+    # and only finding out ~15 minutes later (the old behavior) — this is the
+    # single most common reason a privileged install looks "stuck" with no
+    # further log output.
+    if not _installer_daemon_enabled():
+        return {
+            "ok": False,
+            "reason_code": "INSTALLER_DAEMON_UNAVAILABLE",
+            "reason_text": _INSTALLER_DAEMON_UNAVAILABLE_TEXT,
+        }
+
+    os.makedirs(INSTALLER_QUEUE_DIR, exist_ok=True)
+    job_id_suffix = f"{time.time():.6f}-{key}-{uuid.uuid4().hex[:8]}"
+    job_path = os.path.join(INSTALLER_QUEUE_DIR, f"{job_id_suffix}.job.json")
+    result_path = os.path.join(INSTALLER_QUEUE_DIR, f"{job_id_suffix}.result.json")
+    tmp_path = job_path + ".tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as fh:
+            json.dump({"feature": key, "payload": payload or {}}, fh)
+        os.rename(tmp_path, job_path)  # atomic on the same filesystem
+    except Exception as exc:
+        return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": f"could not queue install job: {exc}"}
+
+    started = _setup_now()
+    deadline = started + _INSTALLER_JOB_TIMEOUT_S
+    next_heartbeat = started + _INSTALLER_HEARTBEAT_INTERVAL_S
+    while _setup_now() < deadline:
+        if os.path.exists(result_path):
+            try:
+                with open(result_path, "r", encoding="utf-8") as fh:
+                    result = json.load(fh)
+            except Exception as exc:
+                result = {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": f"unreadable result: {exc}"}
+            try:
+                os.remove(result_path)
+            except OSError:
+                pass
+            return result
+        now = _setup_now()
+        if job_id and now >= next_heartbeat:
+            _setup_emit_event(job_id, {
+                "schemaVersion": "1.0",
+                "event": "installer_waiting",
+                "jobId": job_id,
+                "ts": _setup_iso_now(),
+                "feature": key,
+                "waitedS": int(now - started),
+            })
+            next_heartbeat = now + _INSTALLER_HEARTBEAT_INTERVAL_S
+        time.sleep(_INSTALLER_POLL_INTERVAL_S)
+
+    # Timed out — most likely the privileged worker/unit was never enabled.
+    try:
+        os.remove(job_path)
+    except OSError:
+        pass
     return {
-        "server": SE.FeatureSpec(
-            key="server",
-            dependencies=[],
-            install_fn=_setup_server_install,
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "webssh": SE.FeatureSpec(
-            key="webssh",
-            dependencies=["server"],
-            install_fn=lambda: _setup_run_script("scripts/install-webssh.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "service-controls": SE.FeatureSpec(
-            key="service-controls",
-            dependencies=["server"],
-            install_fn=_setup_service_controls_install,
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "ap-fallback": SE.FeatureSpec(
-            key="ap-fallback",
-            dependencies=["server"],
-            install_fn=lambda: _setup_run_script("scripts/enable-ap-fallback.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "graywolf": SE.FeatureSpec(
-            key="graywolf",
-            dependencies=["server"],
-            install_fn=lambda: _setup_run_script("scripts/install-graywolf.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "winlink": SE.FeatureSpec(
-            key="winlink",
-            dependencies=["server"],
-            install_fn=lambda: _setup_winlink_install_fn(payload),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "kiwix": SE.FeatureSpec(
-            key="kiwix",
-            dependencies=["server"],
-            install_fn=lambda: _setup_run_script("scripts/install-kiwix.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "openwebrx": SE.FeatureSpec(
-            key="openwebrx",
-            dependencies=["server"],
-            install_fn=lambda: _setup_run_script("scripts/install-openwebrx.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "adsb": SE.FeatureSpec(
-            key="adsb",
-            dependencies=["server"],
-            install_fn=lambda: _setup_run_script("services/adsb/install.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "rtl-sdr-feed": SE.FeatureSpec(
-            key="rtl-sdr-feed",
-            dependencies=[],
-            install_fn=lambda: _setup_run_chain([
-                {"script": "features/rtl-sdr/install-rtl-sdr.py"},
-                {"script": "features/rtl-sdr/enable-rtl-sdr.py"},
-            ]),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "gps": SE.FeatureSpec(
-            key="gps",
-            dependencies=[],
-            install_fn=lambda: _setup_run_script("features/gps/install-gps.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "dra-pi-rx-led": SE.FeatureSpec(
-            key="dra-pi-rx-led",
-            dependencies=["graywolf"],
-            install_fn=lambda: _setup_run_chain([
-                {"script": "features/dra-audio-interface/enable-dra-pi.py"},
-                {"script": "features/dra-audio-interface/enable-dra-rx-led.py"},
-            ]),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "rtc": SE.FeatureSpec(
-            key="rtc",
-            dependencies=[],
-            install_fn=lambda: _setup_run_script("features/rtc-hat/enable-rtc.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "pi-headless": SE.FeatureSpec(
-            key="pi-headless",
-            dependencies=["server"],
-            install_fn=lambda: _setup_record_only("pi-headless"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "pi-local-monitor": SE.FeatureSpec(
-            key="pi-local-monitor",
-            dependencies=["server"],
-            install_fn=lambda: _setup_run_script("scripts/enable-autostart-pi.py", ["--with-browser"]),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-            requires_reboot=True,
-        ),
-        "pi-small-screen-7": SE.FeatureSpec(
-            key="pi-small-screen-7",
-            dependencies=["server"],
-            install_fn=lambda: _setup_run_script("scripts/enable-autostart-pi.py", ["--7inch"]),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-            requires_reboot=True,
-        ),
-        "cm4stack": SE.FeatureSpec(
-            key="cm4stack",
-            dependencies=["server"],
-            install_fn=lambda: _setup_run_script("displays/cm4stack/install-cm4stack.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-            requires_reboot=True,
-        ),
-        "pi-e-ink": SE.FeatureSpec(
-            key="pi-e-ink",
-            dependencies=["server"],
-            install_fn=lambda: _setup_run_script("displays/e-ink/install-e-ink.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "fcc": SE.FeatureSpec(
-            key="fcc",
-            dependencies=["server"],
-            install_fn=lambda: _setup_run_script("scripts/install-fcc-database.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "wikipedia": SE.FeatureSpec(
-            key="wikipedia",
-            dependencies=["kiwix"],
-            install_fn=lambda: _setup_run_script("scripts/download-wikipedia.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "repeaterbook": SE.FeatureSpec(
-            key="repeaterbook",
-            dependencies=[],
-            install_fn=lambda: _setup_record_only("repeaterbook"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
-        "forms": SE.FeatureSpec(
-            key="forms",
-            dependencies=[],
-            install_fn=lambda: _setup_record_only("forms"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
-        ),
+        "ok": False,
+        "reason_code": "INSTALLER_DAEMON_UNAVAILABLE",
+        "reason_text": _INSTALLER_DAEMON_UNAVAILABLE_TEXT,
     }
 
 
@@ -635,6 +505,7 @@ def _setup_run_job(job_id, plan_obj, payload):
         auto_start_services=False,
         job_id=job_id,
         cancel_requested=lambda: _setup_cancel_requested(job_id),
+        privileged_run_fn=lambda key, spec: _setup_enqueue_and_wait_install(key, spec, payload, job_id),
     )
     try:
         _setup_write_station(payload or {})
@@ -735,11 +606,14 @@ def _setup_run_job(job_id, plan_obj, payload):
 @app.route("/api/setup/permissions")
 def api_setup_permissions():
     granted = bool(sys.platform == "linux" and os.path.exists("/etc/sudoers.d/oasis-service-controls"))
+    installer_active = _installer_daemon_enabled()
     return jsonify({
         "ok": True,
         "serviceControlsGranted": granted,
         "localCommand": "python3 scripts/enable-service-controls.py",
         "message": "Run command in WebSSH and click Re-check" if not granted else "permissions granted",
+        "installerDaemonActive": installer_active,
+        "installerLocalCommand": "python3 scripts/enable-oasis-installer.py",
     })
 
 
@@ -808,6 +682,8 @@ def api_setup_plan():
         "permissions": {
             "serviceControlsGranted": bool(sys.platform == "linux" and os.path.exists("/etc/sudoers.d/oasis-service-controls")),
             "localCommand": "python3 scripts/enable-service-controls.py",
+            "installerDaemonActive": _installer_daemon_enabled(),
+            "installerLocalCommand": "python3 scripts/enable-oasis-installer.py",
         },
         "orderedFeatures": ordered_for_response,
         "resolvedFeatures": ordered_for_response,
@@ -3321,11 +3197,17 @@ if __name__ == "__main__":
         if _have_gunicorn:
             app_dir = os.path.dirname(os.path.abspath(__file__))
             print(f"\n  OASIS (gunicorn) — {url}\n")
+            # --workers 1: the Setup Orchestrator's plan/job state (_setup_plans /
+            # _setup_jobs in this module) lives in plain in-process dicts, which
+            # multiple gunicorn workers (separate OS processes, no shared memory)
+            # can't see across each other — causing intermittent 404 "unknown
+            # planId". Setup work already runs in a background thread that
+            # doesn't block the request, so a single worker costs nothing here.
             os.execv(sys.executable, [
                 sys.executable, "-m", "gunicorn",
                 "--chdir", app_dir,
                 "--bind", f"0.0.0.0:{PORT}",
-                "--workers", "2",
+                "--workers", "1",
                 "--access-logfile", "-",
                 "app:app",
             ])

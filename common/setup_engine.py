@@ -42,6 +42,14 @@ class FeatureSpec:
     enable_fn: Optional[Callable[[], Dict[str, object]]] = None
     enable_policy: str = "none"  # none|if_installed|manual_only
     requires_reboot: bool = False
+    # True for features whose install_fn needs real root (writes /etc,
+    # /usr/local/bin, apt/GPG, sudoers, ...). The in-process web server never has
+    # that (no TTY, no cached sudo credential), so a privileged feature's install
+    # step is NOT run in-process here — the caller must supply
+    # RunOptions.privileged_run_fn to hand it off to an out-of-process privileged
+    # worker instead. install_fn is still the single source of truth for WHAT the
+    # step does; only WHO calls it changes.
+    privileged: bool = False
 
 
 @dataclass
@@ -50,6 +58,12 @@ class RunOptions:
     auto_start_services: bool = False
     job_id: str = "setup-job-cli"
     cancel_requested: Optional[Callable[[], bool]] = None
+    # Called instead of spec.install_fn() for any FeatureSpec with privileged=True.
+    # Signature: (feature_key: str, spec: FeatureSpec) -> Dict[str, object] (same
+    # result shape _run_step returns). If None, a privileged feature's install_fn
+    # runs in-process anyway (CLI/test callers already running as root, or
+    # non-Linux dev callers where the feature is preflight-blocked).
+    privileged_run_fn: Optional[Callable[[str, "FeatureSpec"], Dict[str, object]]] = None
 
 
 @dataclass
@@ -281,7 +295,15 @@ def run_plan(plan: SetupPlan, run_options: RunOptions, registry: Dict[str, Featu
         st.status = STATUS_INSTALLING
         st.stage = "install"
         emit("stage_started", feature=key, stage="install")
-        res = _run_step(spec.install_fn)
+        if spec.privileged and run_options.privileged_run_fn is not None:
+            try:
+                res = run_options.privileged_run_fn(key, spec)
+            except Exception as exc:  # pragma: no cover - defensive path
+                res = {"ok": False, "reason_text": str(exc)}
+            if not isinstance(res, dict):
+                res = _ok_result() if res else {"ok": False, "reason_text": "privileged step returned false"}
+        else:
+            res = _run_step(spec.install_fn)
         emit(
             "stage_completed",
             feature=key,
