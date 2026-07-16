@@ -301,11 +301,11 @@ body {
 }
 .hw-assign-row[hidden] { display: none; }
 .hw-assign-lbl { font-size: var(--fs-small); color: var(--text-dim); }
-.hw-assign-sel {
-  flex: 1; min-width: 0; background: var(--panel-2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 4px; font-size: var(--fs-small);
-  padding: 2px 4px; font-family: var(--mono);
+.hw-assign-dev {
+  flex: 1; min-width: 0; font-size: var(--fs-small); font-family: var(--mono);
+  color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.hw-assign-dev-none { color: var(--text-dim); font-style: italic; }
 
 /* ── Stats bar ───────────────────────────────────────────────────────── */
 .stats-bar {
@@ -1088,6 +1088,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     </div>
     <div class="svc-card-bottom">
       <span class="svc-badge" id="badge-feed">—</span>
+      <div class="hw-assign-row" id="hwrow-feed" hidden>
+        <span class="hw-assign-lbl">device:</span>
+        <span class="hw-assign-dev" id="hwdev-feed">—</span>
+      </div>
     </div>
   </div>
   <div class="svc-card svc-card-gated" id="card-owrx">
@@ -1101,6 +1105,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="svc-card-bottom">
       <button class="svc-open" id="open-owrx" onclick="svcOpenClick('owrx')" disabled>OPEN ↗</button>
       <span class="svc-badge" id="badge-owrx">—</span>
+      <div class="hw-assign-row" id="hwrow-owrx" hidden>
+        <span class="hw-assign-lbl">device:</span>
+        <span class="hw-assign-dev" id="hwdev-owrx">—</span>
+      </div>
     </div>
   </div>
   <div class="svc-card svc-card-gated" id="card-adsb" data-href="server/aprs/map.html" data-target="_blank">
@@ -1122,7 +1130,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="svc-badge" id="badge-adsb">—</span>
       <div class="hw-assign-row" id="hwrow-adsb" hidden>
         <span class="hw-assign-lbl">device:</span>
-        <select class="hw-assign-sel" id="hwsel-adsb" onchange="onHardwareAssignChange('adsb')"></select>
+        <span class="hw-assign-dev" id="hwdev-adsb">—</span>
       </div>
     </div>
   </div>
@@ -1136,7 +1144,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="svc-badge" id="badge-wlrf">—</span>
       <div class="hw-assign-row" id="hwrow-wlrf" hidden>
         <span class="hw-assign-lbl">device:</span>
-        <select class="hw-assign-sel" id="hwsel-wlrf" onchange="onHardwareAssignChange('wlrf')"></select>
+        <span class="hw-assign-dev" id="hwdev-wlrf">—</span>
       </div>
     </div>
   </div>
@@ -1208,8 +1216,8 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   <span class="section-hdr-sub">device allocation</span>
 </div>
 <div class="hw-card">
-  <div class="hw-empty" id="hw-empty">No devices declared yet — see
-    <a href="server/hardware/setup.html" style="color:var(--accent)">Hardware Devices</a>.</div>
+  <div class="hw-empty" id="hw-empty">No devices declared yet — detect &amp; assign on the
+    <a href="server/system/setup.html#hardware" style="color:var(--accent)">Setup → Hardware</a> page.</div>
   <div class="hw-rows" id="hw-rows"></div>
 </div>
 
@@ -1237,7 +1245,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <div class="nav-sec-title">Tools</div>
       <ul class="nav-links">
         <li><a href="server/system/setup.html" class="ext">OASIS Setup <span class="nav-meta">health</span></a></li>
-        <li><a href="server/hardware/setup.html" class="ext">Hardware Devices <span class="nav-meta">declare · name dongle</span></a></li>
+        <li><a href="server/system/setup.html#hardware" class="ext">Hardware Devices <span class="nav-meta">detect · declare · assign</span></a></li>
         <li><a href="static/antenna-calc.html">Antenna Calculator <span class="nav-meta">calculator</span></a></li>
         <li><a href="static/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
         <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
@@ -1667,7 +1675,7 @@ const SERVICES = [
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (d.active === 'active') return { up: true, badge: 'UP', sub: ':2947' };
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
-        sub: d.installed ? 'inactive' : 'run features/gps/install-gps.py' };
+        sub: d.installed ? 'inactive (aprs)' : 'run features/gps/install-gps.py' };
     }
   },
   {
@@ -1715,8 +1723,17 @@ const SERVICES = [
   {
     id: 'owrx', name: 'OpenWebRX',
     check: async () => {
-      await fetch(`http://${HOST}:${PORTS.openwebrx}/`, { cache: 'no-store', mode: 'no-cors' });
-      return { up: true, badge: 'UP', sub: `:${PORTS.openwebrx}` };
+      // The web port is cross-origin — a no-cors fetch can't read it and never
+      // throws, so it can't tell running from stopped. Status comes from systemd
+      // instead (same as adsb/feed): 'up' ONLY when the unit is actually active,
+      // so the shared-dongle dropdown unlocks while OpenWebRX is stopped.
+      const r = await fetch('/api/health/service?name=openwebrx', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'status error' };
+      const d = await r.json();
+      if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      if (d.active === 'active') return { up: true, badge: 'UP', sub: `:${PORTS.openwebrx}` };
+      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+        sub: d.installed ? 'inactive (advanced)' : 'not installed' };
     }
   },
   {
@@ -1755,7 +1772,7 @@ const SERVICES = [
           sub: hw.reason === 'unassigned' ? 'no RTL-SDR currently free' : 'assigned device not attached' };
       }
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
-        sub: d.installed ? 'start for aircraft tracking' : 'run services/adsb/install.py' };
+        sub: d.installed ? 'inactive (aircraft)' : 'run services/adsb/install.py' };
     }
   },
   {
@@ -1840,74 +1857,35 @@ let _hwLast = null;   // last GET /api/hardware/devices payload — read by the
 // SERVICE_UNITS keys and its inverse SVC_UNITS-vs-HW mapping documented in
 // specs/2026-07-14-hardware-engine-slice4b-plan.md's Global Constraints table
 // (card ids here are NOT the same string as the HW service name for aprs/winlink).
-// GrayWolf ('gw') and OpenWebRX ('owrx') are intentionally absent: both are
-// web-admin-configured inside their own UI, not through OASIS's hardware
-// allocation (see common/hardware.py's SERVICE_UNITS comment — neither has
-// an apply hook in scripts/apply_hardware.py, so an OASIS-level assignment
-// would never actually do anything).
-const HW_SERVICE_FOR_CARD = { adsb: 'adsb', wlrf: 'winlink' };
-// MUST mirror common/hardware.py's DEVICE_KIND_FOR_SERVICE — kept in JS
-// because the dropdown filters candidate devices client-side.
-const HW_KIND_FOR_SERVICE = {
-  winlink:   ['digirig', 'dra-pi'],
-  adsb:      ['rtl-sdr'],
-};
+// GrayWolf ('gw') is intentionally absent: it's web-admin-configured inside
+// its own UI and never opens an RTL-SDR itself (only the aprs-sdr-feed does).
+// OpenWebRX ('owrx') IS present but ADVISORY — assigning it a dongle writes
+// nothing (no apply hook); the record only lets the start-time shared-dongle
+// check know which RTL-SDR it wants. You still pick the real SDR in OpenWebRX's
+// own Admin → SDR profiles UI. The APRS SDR feed ('feed'), ADS-B ('adsb') and
+// OpenWebRX ('owrx') all share one dongle advisorily — see resolveHardwareConflict.
+const HW_SERVICE_FOR_CARD = { adsb: 'adsb', wlrf: 'winlink', feed: 'aprs', owrx: 'openwebrx' };
 
-function populateHardwareDropdowns(data) {
+// Device assignment now lives on the Setup page's Hardware card (detect ·
+// declare · assign). The dashboard shows each service's assigned device
+// READ-ONLY next to its power button; to change it, go to Setup. START/STOP
+// and the same-dongle conflict prompt (resolveHardwareConflict) stay here.
+function renderDeviceLabels(data) {
   const devices  = (data && data.devices) || [];
   const services = (data && data.services) || {};
+  const byId = {};
+  devices.forEach(d => { byId[d.id] = d; });
   Object.keys(HW_SERVICE_FOR_CARD).forEach(cardId => {
     const hwService = HW_SERVICE_FOR_CARD[cardId];
     const row = document.getElementById('hwrow-' + cardId);
-    const sel = document.getElementById('hwsel-' + cardId);
-    if (!row || !sel) return;
+    const out = document.getElementById('hwdev-' + cardId);
+    if (!row || !out) return;
     row.hidden = false;
-    const allowedKinds = HW_KIND_FOR_SERVICE[hwService] || [];
-    const compatible = devices.filter(d => allowedKinds.includes(d.kind));
-    const current = (services[hwService] || {}).device_id || '';
-    sel.innerHTML = ['<option value="">— unassigned —</option>']
-      .concat(compatible.map(d =>
-        `<option value="${escapeHtml(d.id)}"${d.id === current ? ' selected' : ''}>`
-        + `${escapeHtml(d.label)} (${escapeHtml(d.kind)})</option>`))
-      .join('');
-    sel.value = current;
-    // Reassigning while running would pull the device out from under a live
-    // unit; lock the control until the operator stops it via the power
-    // button instead (specs/2026-07-15-hardware-conflict-resolution-v2-design.md §5).
-    const running = _svcStates[cardId] === 'up' || _svcStates[cardId] === 'warn';
-    sel.disabled = running;
-    sel.title = running ? 'Stop the service to change its device' : '';
+    const deviceId = (services[hwService] || {}).device_id || '';
+    const dev = deviceId ? byId[deviceId] : null;
+    out.textContent = dev ? dev.label : (deviceId || 'unassigned');
+    out.classList.toggle('hw-assign-dev-none', !deviceId);
   });
-}
-
-async function onHardwareAssignChange(cardId) {
-  // The dropdown is disabled while its service runs (see
-  // populateHardwareDropdowns above), so this only ever fires when stopped —
-  // no need to stop-then-reassign here anymore.
-  const hwService = HW_SERVICE_FOR_CARD[cardId];
-  const sel = document.getElementById('hwsel-' + cardId);
-  if (!hwService || !sel) return;
-  const newDeviceId = sel.value;
-
-  try {
-    const body = newDeviceId === ''
-      ? { service: hwService }
-      : { service: hwService, device_id: newDeviceId };
-    const r = await fetch(newDeviceId === '' ? '/api/hardware/release' : '/api/hardware/assign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
-      body: JSON.stringify(body),
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.ok) {
-      alert(`Could not update device assignment:\n${(d && d.error) || ('HTTP ' + r.status)}`);
-    }
-  } catch (e) {
-    alert(`Could not update device assignment:\n${e.message}`);
-  } finally {
-    await fetchHardware();
-    pingAll();
-  }
 }
 
 function renderHardwareCard(data) {
@@ -1940,7 +1918,7 @@ async function fetchHardware() {
     if (!r.ok) return;
     _hwLast = await r.json();
     renderHardwareCard(_hwLast);
-    populateHardwareDropdowns(_hwLast);
+    renderDeviceLabels(_hwLast);
   } catch (e) { /* transient — keep last render, retry next tick */ }
 }
 
@@ -2252,41 +2230,51 @@ function updatePower(svcId, state) {
 }
 
 // Card id -> [signal card id, signal's systemd unit] whose activity means
-// GrayWolf might be using the same physical hardware this card is about to
-// claim. specs/2026-07-15-hardware-conflict-resolution-v2-design.md §4:
-// GrayWolf never opens an RTL-SDR itself — only aprs-sdr-feed (rtl_fm ->
-// UDP) does — so the feed's activity, not graywolf's, is the precise signal
-// for RTL-SDR-consuming cards. Pilot scope: adsb only; openwebrx joins on
-// its own turn once it's back in the assignment system.
-const GRAYWOLF_CONFLICT_SIGNAL = { adsb: ['feed', 'aprs-sdr-feed'] };
+// The three RTL-SDR consumers. A dongle can be ASSIGNED to all three at once
+// (shared, harmless — nothing runs), but starting one CLAIMS it exclusively.
+// specs/2026-07-15-hardware-conflict-resolution-v2-design.md §4: if another of
+// the three is already running on THIS card's assigned dongle, offer to stop it
+// first. Resolved entirely client-side from polled state (_svcStates + _hwLast)
+// — no server gate. GrayWolf itself never opens a dongle; only aprs-sdr-feed
+// ('feed') does, so GrayWolf isn't in this set.
+const RTL_SDR_CARDS = ['feed', 'adsb', 'owrx'];
+const RTL_SDR_LABEL = { feed: 'The APRS SDR feed', adsb: 'ADS-B', owrx: 'OpenWebRX' };
 
 // Returns true if togglePower should proceed with the start now. Shows a
-// confirmation when GrayWolf's feed is running and might hold the same
-// dongle; false means either the operator cancelled, or chose to stop the
-// feed first (they need to click START again once it's confirmed stopped).
+// confirmation when another RTL-SDR service is running on the same dongle;
+// false means either the operator cancelled, or chose to stop the other
+// service first (they click START again once it's confirmed stopped).
 async function resolveHardwareConflict(svcId) {
-  const signal = GRAYWOLF_CONFLICT_SIGNAL[svcId];
-  if (!signal) return true;
-  const [signalCardId, signalUnit] = signal;
-  const signalRunning = _svcStates[signalCardId] === 'up' || _svcStates[signalCardId] === 'warn';
-  if (!signalRunning) return true;
+  if (!RTL_SDR_CARDS.includes(svcId)) return true;
+  const svcHw = (_hwLast && _hwLast.services) || {};
+  const myDevice = (svcHw[HW_SERVICE_FOR_CARD[svcId]] || {}).device_id || '';
+  if (!myDevice) return true;   // unassigned — let it start (fails on its own terms)
 
-  const stopFeed = confirm(
-    `GrayWolf's APRS SDR feed is currently running and may be using this RTL-SDR.\n\n` +
-    `OK — stop the feed first (you'll need to click START again once it's stopped).\n` +
-    `Cancel — leave it running and try starting anyway (fails if it's the same dongle).`
-  );
-  if (!stopFeed) return true;   // "Continue anyway"
+  for (const otherId of RTL_SDR_CARDS) {
+    if (otherId === svcId) continue;
+    const running = _svcStates[otherId] === 'up' || _svcStates[otherId] === 'warn';
+    if (!running) continue;
+    const otherDevice = (svcHw[HW_SERVICE_FOR_CARD[otherId]] || {}).device_id || '';
+    if (otherDevice !== myDevice) continue;   // different dongle → no contention
 
-  try {
-    await fetch('/api/service', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
-      body: JSON.stringify({ unit: signalUnit, action: 'stop' }),
-    });
-  } catch (e) { /* best-effort — pingAll below reflects whatever actually happened */ }
-  pingAll();
-  return false;   // abort this start; operator retries once the feed is down
+    const stopIt = confirm(
+      `${RTL_SDR_LABEL[otherId]} is currently using this RTL-SDR.\n\n` +
+      `OK — stop it first (you'll need to click START again once it's stopped).\n` +
+      `Cancel — leave it running and try starting anyway (will fail on the shared dongle).`
+    );
+    if (!stopIt) return true;   // "Continue anyway"
+
+    try {
+      await fetch('/api/service', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+        body: JSON.stringify({ unit: SVC_UNITS[otherId], action: 'stop' }),
+      });
+    } catch (e) { /* best-effort — pingAll below reflects whatever actually happened */ }
+    pingAll();
+    return false;   // abort this start; operator retries once the other is down
+  }
+  return true;
 }
 
 async function togglePower(svcId) {

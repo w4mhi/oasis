@@ -1486,16 +1486,15 @@ _SERVICE_ACTIONS = {"start", "stop", "restart"}
 # changes boot state.
 _PERSIST_BOOT_STATE = {"kiwix"}
 
-# Services being migrated OFF the hard "unassigned -> refuse" gate below, one
-# at a time, per specs/2026-07-15-hardware-conflict-resolution-v2-design.md
-# — "never refuse a start" is the target end state for every hardware-bound
-# service. GrayWolf and OpenWebRX were never really gated here at all (no
-# apply hook ever backed their assignment, so they're permanently absent
-# from HW.SERVICE_UNITS instead — see common/hardware.py). This set is for
-# services that DO have a real apply hook (adsb, winlink) but are moving to
-# "resolve conflicts at start time instead" regardless. adsb is the pilot;
-# winlink joins on its own turn.
-_HW_GATE_MIGRATED = {"adsb"}
+# Services migrated OFF the hard "unassigned -> refuse" gate below, per
+# specs/2026-07-15-hardware-conflict-resolution-v2-design.md — "never refuse a
+# start" is the target end state for every hardware-bound service. The three
+# RTL-SDR consumers (adsb, aprs feed, openwebrx) share one dongle advisorily
+# and resolve contention at start-click time (index.html resolveHardwareConflict),
+# not via a server gate. GrayWolf stays permanently absent from HW.SERVICE_UNITS
+# (no apply hook ever backed its assignment — see common/hardware.py). winlink
+# keeps the hard gate for now and joins on its own turn.
+_HW_GATE_MIGRATED = {"adsb", "aprs", "openwebrx"}
 
 
 def _systemctl_seq(unit, verbs):
@@ -1803,24 +1802,37 @@ def api_hardware_devices():
     unassigned-state messaging without duplicating can_start's logic in JS.
 
     Also reconciles default assignment
-    (specs/2026-07-15-hardware-conflict-resolution-v2-design.md §3): adsb
-    gets the first free rtl-sdr automatically when unassigned, so the
-    single-dongle case needs no manual step. Pilot scope — only `adsb` for
-    now; other services join as their own turns land.
+    (specs/2026-07-15-hardware-conflict-resolution-v2-design.md §3): the three
+    RTL-SDR consumers (adsb, openwebrx, aprs) each get the first present rtl-sdr
+    automatically when unassigned — shared, since assignment is advisory — so
+    the single-dongle case needs no manual step.
 
-    Before that, a lone detected-but-undeclared RTL-SDR is auto-declared too
-    — detection alone wasn't enough to make a dongle usable without a manual
-    trip to the Hardware Devices page; this closes that gap for the
-    unambiguous case. The detection scan (rtl_test/aplay/lsusb subprocesses)
-    only runs while NO rtl-sdr is declared yet, so it costs nothing on every
-    poll once resolved — a real concern on a Pi Zero 2 W, and rtl_test needs
-    exclusive dongle access so running it constantly would contend with
-    whatever's actually using the dongle."""
+    Before that, every detected-but-undeclared RTL-SDR with a UNIQUE serial is
+    auto-declared (not just a lone one) so it appears in the assignment
+    dropdowns, which list DECLARED devices. The expensive exclusive rtl_test
+    scan is gated behind a cheap lsusb presence count: it runs only when more
+    dongles are present than declared (first run / newly plugged), so once
+    every dongle is declared the per-poll cost is just lsusb — a real concern
+    on a Pi Zero 2 W, where running rtl_test constantly would also contend with
+    whatever's actively using a dongle. Same-serial duplicates (factory
+    00000001) are left for the burn-serial flow to disambiguate."""
     inv = HW.load(SUITE_ROOT)
-    if not any(d.get("kind") == "rtl-sdr" for d in inv.devices.values()):
+    # Auto-declare every present dongle, not just a lone one. Gate the expensive
+    # exclusive rtl_test scan behind a cheap lsusb count: only scan when more
+    # RTL-SDRs are physically present than are declared (first run, or a newly
+    # plugged dongle). Once every present dongle is declared, present == declared
+    # and the per-poll cost is just the lsusb probe — no rtl_test contention.
+    declared_rtl = sum(1 for d in inv.devices.values() if d.get("kind") == "rtl-sdr")
+    if HD_detect.rtl_sdr_usb_count() > declared_rtl:
         detected_serials = [d["serial"] for d in HD_detect.scan().get("rtl_sdr", [])]
-        HW.auto_declare_lone_rtl_sdr(SUITE_ROOT, inv, detected_serials)
-    HW.default_assign(SUITE_ROOT, inv, "adsb", HW.DEVICE_KIND_FOR_SERVICE["adsb"])
+        HW.auto_declare_rtl_sdrs(SUITE_ROOT, inv, detected_serials)
+    # All three RTL-SDR consumers default to the first present dongle (shared —
+    # §2/§3); the operator spreads them across dongles via each card's dropdown.
+    # aprs is pinned to rtl-sdr for the DEFAULT so it never auto-grabs a
+    # digirig/dra-pi earmarked for winlink (its full kind set still governs
+    # manual assignment).
+    for _svc in ("adsb", "openwebrx", "aprs"):
+        HW.default_assign(SUITE_ROOT, inv, _svc, {"rtl-sdr"})
     services = {}
     for service in HW.SERVICE_UNITS:
         ok, reason = HW.can_start(inv, service)

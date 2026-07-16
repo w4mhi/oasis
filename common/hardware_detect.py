@@ -163,6 +163,16 @@ def _run_text(argv, timeout=10):
         return ""
 
 
+def rtl_sdr_usb_count():
+    """Cheap RTL-SDR presence count via `lsusb` only — NO exclusive `rtl_test`
+    probe. Used to decide whether a full scan()+declare is worth running on a
+    poll (rtl_test is slow and needs exclusive dongle access; lsusb is a few ms
+    and works even while a dongle is in use). Linux only; 0 elsewhere."""
+    if sys.platform != "linux":
+        return 0
+    return len(classify_usb_devices(parse_lsusb(_run_text(["lsusb"])))["rtl_sdr"])
+
+
 def scan():
     """Enumerate attached hardware for the assignment editor. Linux only —
     returns empty candidate lists elsewhere (mirrors the no-op pattern used by
@@ -212,11 +222,17 @@ def burn_serial(new_serial):
     dongle. Linux/root only. Callers MUST have already confirmed
     can_burn_serial() — this function does not re-check.
 
-    BENCH-VERIFY: rtl_eeprom's exact interactive confirmation prompt (it may
-    ask for y/n on stdin) — this may need `-y`/non-interactive handling that
-    can't be confirmed without the real tool and hardware.
-    """
+    rtl_eeprom prints "Write new configuration to device [y/n]?" and blocks on
+    a stdin read before committing the EEPROM write — there is no non-
+    interactive flag in mainline rtl_eeprom. Invoked from the web route there
+    is no TTY, so we feed "y\\n" on stdin to confirm; without it the read hits
+    EOF (write silently skipped) or blocks until the timeout.
+
+    BENCH-VERIFY: confirm on real hardware that a single "y" answers the prompt
+    on this rtl_eeprom build and that the write actually commits (some builds
+    ask a second time / require the dongle be re-plugged for the new serial to
+    take effect)."""
     if sys.platform != "linux":
         return
     subprocess.run(["sudo", "rtl_eeprom", "-s", new_serial],
-                   capture_output=True, text=True, timeout=15)
+                   input="y\n", capture_output=True, text=True, timeout=15)

@@ -15,12 +15,16 @@ class HardwareRoutesTest(unittest.TestCase):
     def test_devices_route_shape(self):
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "label": "X"}},
                            assignments={"adsb": "a"})
-        with mock.patch.object(HW, "load", return_value=inv):
+        # The route default-assigns the lone dongle to openwebrx + aprs too
+        # (shared) — mock save so nothing touches disk.
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"):
             r = self.c.get("/api/hardware/devices")
         self.assertEqual(r.status_code, 200)
         body = json.loads(r.data)
         self.assertEqual(body["devices"][0]["id"], "a")
-        self.assertEqual(body["devices"][0]["assignee"], "adsb")
+        # Shared, idle dongle → assignee lists every service that defaults to it.
+        self.assertEqual(body["devices"][0]["assignee"], "adsb, openwebrx, aprs")
 
     def test_assign_success(self):
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr"}}, assignments={})
@@ -32,17 +36,31 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(mocked_assign.called)
 
-    def test_assign_refuses_held_device_409(self):
+    def test_assign_refuses_held_exclusive_device_409(self):
+        # rtl-sdr is shared now, so the holder-conflict 409 only fires on
+        # exclusive kinds (digirig/dra-pi): a digirig held by winlink can't be
+        # taken by aprs.
+        inv = HW.Inventory(
+            devices={"d": {"id": "d", "kind": "digirig", "ptt": "/dev/x", "alsa": "hw:0,0"}},
+            assignments={"winlink": "d"})
+        with mock.patch.object(HW, "load", return_value=inv):
+            r = self.c.post("/api/hardware/assign",
+                            json={"service": "aprs", "device_id": "d"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(json.loads(r.data)["holder"], "winlink")
+
+    def test_assign_shares_rtl_sdr_dongle(self):
+        # A dongle already held by adsb can still be assigned to aprs (shared).
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr"}},
                            assignments={"adsb": "a"})
-        with mock.patch.object(HW, "load", return_value=inv):
-            # "aprs" (not "openwebrx" — no longer a recognized hw service;
-            # both accept rtl-sdr, so this still exercises the holder conflict)
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "assign") as mocked_assign:
             r = self.c.post("/api/hardware/assign",
                             json={"service": "aprs", "device_id": "a"},
                             headers={"X-OASIS-Request": "1"})
-        self.assertEqual(r.status_code, 409)
-        self.assertEqual(json.loads(r.data)["holder"], "adsb")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(mocked_assign.called)
 
     def test_assign_requires_oasis_header(self):
         r = self.c.post("/api/hardware/assign", json={"service": "adsb", "device_id": "a"})
@@ -92,16 +110,20 @@ class HardwareRoutesTest(unittest.TestCase):
         inv = HW.Inventory(
             devices={"a": {"id": "a", "kind": "rtl-sdr", "label": "X"}},
             assignments={"adsb": "a"})
-        with mock.patch.object(HW, "load", return_value=inv):
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"):
             r = self.c.get("/api/hardware/devices")
         body = json.loads(r.data)
         self.assertEqual(body["services"]["adsb"],
                           {"device_id": "a", "ok": True, "reason": ""})
         self.assertEqual(body["services"]["winlink"],
                           {"device_id": None, "ok": False, "reason": "unassigned"})
-        # openwebrx is intentionally never surfaced — see common/hardware.py.
-        self.assertNotIn("openwebrx", body["services"])
-        self.assertIn("aprs", body["services"])
+        # openwebrx is now surfaced (advisory) and shares the lone dongle with
+        # adsb + aprs via default-assign.
+        self.assertEqual(body["services"]["openwebrx"],
+                          {"device_id": "a", "ok": True, "reason": ""})
+        self.assertEqual(body["services"]["aprs"],
+                          {"device_id": "a", "ok": True, "reason": ""})
 
     def test_devices_route_default_assigns_lone_free_dongle_to_adsb(self):
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "label": "X"}},
@@ -113,28 +135,53 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertEqual(body["services"]["adsb"]["device_id"], "a")
         self.assertTrue(body["services"]["adsb"]["ok"])
 
-    def test_devices_route_auto_declares_lone_detected_dongle(self):
+    def test_devices_route_auto_declares_detected_dongles(self):
+        # present (2) > declared (0) → scan runs and declares both distinct serials.
         inv = HW.Inventory(devices={}, assignments={})
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
+             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=2), \
              mock.patch.object(oasis_app.HD_detect, "scan",
-                               return_value={"rtl_sdr": [{"index": 0, "serial": "00001000"}]}):
+                               return_value={"rtl_sdr": [{"index": 0, "serial": "00000001"},
+                                                          {"index": 1, "serial": "00001000"}]}):
             r = self.c.get("/api/hardware/devices")
         body = json.loads(r.data)
-        self.assertEqual(body["services"]["adsb"]["device_id"], "rtl-sdr-00001000")
-        self.assertTrue(body["services"]["adsb"]["ok"])
         declared_ids = [d["id"] for d in body["devices"]]
+        self.assertIn("rtl-sdr-00000001", declared_ids)
         self.assertIn("rtl-sdr-00001000", declared_ids)
+        # adsb defaults to the first present dongle.
+        self.assertEqual(body["services"]["adsb"]["device_id"], "rtl-sdr-00000001")
+        self.assertTrue(body["services"]["adsb"]["ok"])
 
-    def test_devices_route_skips_scan_when_an_rtl_sdr_already_declared(self):
+    def test_devices_route_skips_scan_when_all_present_dongles_declared(self):
+        # present (1) == declared (1) → the expensive rtl_test scan is skipped.
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "serial": "1", "label": "X"}},
                            assignments={})
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
+             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=1), \
              mock.patch.object(oasis_app.HD_detect, "scan") as mocked_scan:
             r = self.c.get("/api/hardware/devices")
         self.assertEqual(r.status_code, 200)
         mocked_scan.assert_not_called()
+
+    def test_devices_route_scans_when_new_dongle_plugged(self):
+        # present (2) > declared (1) → scan runs to pick up the new dongle.
+        inv = HW.Inventory(
+            devices={"rtl-sdr-00001000": {"id": "rtl-sdr-00001000", "kind": "rtl-sdr",
+                                          "serial": "00001000", "label": "X"}},
+            assignments={})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=2), \
+             mock.patch.object(oasis_app.HD_detect, "scan",
+                               return_value={"rtl_sdr": [{"index": 0, "serial": "00001000"},
+                                                          {"index": 1, "serial": "00000001"}]}) as mocked_scan:
+            r = self.c.get("/api/hardware/devices")
+        self.assertEqual(r.status_code, 200)
+        mocked_scan.assert_called_once()
+        declared_ids = [d["id"] for d in json.loads(r.data)["devices"]]
+        self.assertIn("rtl-sdr-00000001", declared_ids)
 
     def test_declare_device_requires_oasis_header(self):
         r = self.c.post("/api/hardware/devices",

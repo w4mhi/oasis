@@ -87,5 +87,19 @@ class NmeaParseTests(unittest.TestCase):
         self.assertGreater(r["lon"], 0)
 
 
+class DeviceMismatchTests(unittest.TestCase):
+    def test_different_device_is_a_mismatch(self):
+        # The exact trap: gpsd left pointing at a USB dongle from features/gps.
+        self.assertTrue(G.device_mismatch("/dev/ttyUSB0", "/dev/ttyS0"))
+
+    def test_same_device_is_not_a_mismatch(self):
+        self.assertFalse(G.device_mismatch("/dev/ttyS0", "/dev/ttyS0"))
+
+    def test_none_configured_is_not_a_mismatch(self):
+        # gpsd not configured yet — nothing to conflict with.
+        self.assertFalse(G.device_mismatch(None, "/dev/ttyS0"))
+        self.assertFalse(G.device_mismatch("", "/dev/ttyS0"))
+
+
 if __name__ == "__main__":
     unittest.main()

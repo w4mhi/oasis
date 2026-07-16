@@ -22,6 +22,11 @@ SERVICE_UNITS = {
     "aprs":      [],
     "winlink":   ["pat-direwolf"],
     "adsb":      ["dump1090-fa"],
+    # openwebrx's assignment is advisory (no apply hook — it's configured in
+    # OpenWebRX's own Admin → SDR profiles UI). It's tracked only so the
+    # start-time shared-dongle check knows which RTL-SDR it "wants"; empty
+    # unit list mirrors aprs's soundcard-only base. See v2 design §2.
+    "openwebrx": [],
 }
 
 # Which device kind(s) each logical service may be assigned.
@@ -29,6 +34,7 @@ DEVICE_KIND_FOR_SERVICE = {
     "aprs":      {"rtl-sdr", "digirig", "dra-pi"},
     "winlink":   {"digirig", "dra-pi"},
     "adsb":      {"rtl-sdr"},
+    "openwebrx": {"rtl-sdr"},
 }
 
 # aprs runs an extra RX feed unit (rtl_fm -> UDP -> GrayWolf) ONLY when assigned
@@ -137,11 +143,22 @@ def save(repo_root, inv):
 
 
 def assignee(inv, device_id):
-    """The single service a device is assigned to, or None."""
+    """The FIRST service a device is assigned to, or None. rtl-sdr devices are
+    a shared resource (§2) — several services may point at the same dongle;
+    use assignees() for the full list. Retained single-valued for exclusive
+    (digirig/dra-pi) kinds where at most one service can ever hold a device."""
     for service, did in inv.assignments.items():
         if did == device_id:
             return service
     return None
+
+
+def assignees(inv, device_id):
+    """Every service pointing at a device, in assignment (dict) order. Under
+    the shared-rtl-sdr model a dongle can be assigned to aprs/adsb/openwebrx
+    at once — assignment is advisory bookkeeping; exclusivity is acquired at
+    start time, not here."""
+    return [service for service, did in inv.assignments.items() if did == device_id]
 
 
 def device_of(inv, service):
@@ -162,14 +179,22 @@ def _default_is_active(unit):
 
 def device_states(inv, is_active=_default_is_active):
     """[{id, label, kind, assignee, running}] — drives the dashboard allocation
-    card. 🟢 free = assignee is None OR assigned-but-idle; 🔴 in use = the
-    assigned service's unit(s) are systemctl is-active."""
+    card. 🟢 free = no assignees, or assigned-but-idle (shared default); 🔴 in
+    use = one of its assigned services' unit(s) is systemctl is-active. A
+    shared rtl-sdr may have several assignees (advisory); `assignee` names the
+    running claimant when one is active, else lists all who default to it, so
+    the operator can see the dongle is spoken-for and reassign via the
+    dropdown."""
     out = []
     for did, d in inv.devices.items():
-        service = assignee(inv, did)
-        running = any(is_active(u) for u in service_units(inv, service)) if service else False
+        services = assignees(inv, did)
+        running_svc = next(
+            (svc for svc in services
+             if any(is_active(u) for u in service_units(inv, svc))),
+            None)
+        label = running_svc or (", ".join(services) if services else None)
         out.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
-                    "assignee": service, "running": running})
+                    "assignee": label, "running": running_svc is not None})
     return out
 
 
@@ -186,16 +211,23 @@ def can_start(inv, service, is_active=_default_is_active):
 
 
 def can_assign(inv, service, device_id):
-    """(ok, holder). holder is the blocking service's name, or None. Refuses a
-    device already assigned to a DIFFERENT service, or the wrong kind."""
+    """(ok, holder). holder is the blocking service's name, or None. Refuses the
+    wrong kind, and — for exclusive (digirig/dra-pi) devices only — a device
+    already assigned to a DIFFERENT service. rtl-sdr devices are shared and
+    never refused on holder grounds (§2)."""
     if device_id not in inv.devices:
         return False, None
+    kind = inv.devices[device_id]["kind"]
     allowed_kinds = DEVICE_KIND_FOR_SERVICE.get(service)
-    if allowed_kinds is not None and inv.devices[device_id]["kind"] not in allowed_kinds:
+    if allowed_kinds is not None and kind not in allowed_kinds:
         return False, None
-    holder = assignee(inv, device_id)
-    if holder is not None and holder != service:
-        return False, holder
+    # rtl-sdr is a SHARED resource: aprs/adsb/openwebrx may all be assigned the
+    # same dongle (advisory bookkeeping — §2). Exclusivity is acquired at start
+    # time, not here. digirig/dra-pi (winlink) stay exclusive: one holder only.
+    if kind != "rtl-sdr":
+        holder = assignee(inv, device_id)
+        if holder is not None and holder != service:
+            return False, holder
     return True, None
 
 
@@ -239,7 +271,11 @@ def default_assign(repo_root, inv, service, allowed_kinds):
     for device_id, device in inv.devices.items():
         if device["kind"] not in allowed_kinds:
             continue
-        if assignee(inv, device_id) is not None:
+        # rtl-sdr is shared: a dongle already assigned to another service is
+        # still a valid default here (all three RTL consumers converge on the
+        # first dongle out of the box — the operator spreads them across
+        # dongles via the dropdown). Exclusive kinds skip already-claimed ones.
+        if device["kind"] != "rtl-sdr" and assignee(inv, device_id) is not None:
             continue
         inv.assignments[service] = device_id
         save(repo_root, inv)
@@ -247,26 +283,39 @@ def default_assign(repo_root, inv, service, allowed_kinds):
     return inv
 
 
-def auto_declare_lone_rtl_sdr(repo_root, inv, detected_serials):
-    """If no rtl-sdr device is declared yet, and exactly one detected RTL-SDR
-    serial isn't already declared, declare it (auto id `rtl-sdr-<serial>`)
-    and persist. No-op once any rtl-sdr is declared (the caller then skips
-    detection entirely — see server/app.py — since there's nothing new to
-    discover) or if zero/2+ undeclared serials are detected (ambiguous —
-    falls back to manual declare via the Hardware Devices page).
+def auto_declare_rtl_sdrs(repo_root, inv, detected_serials):
+    """Declare every detected RTL-SDR whose serial is UNIQUE among the detected
+    set and not already declared (auto id `rtl-sdr-<serial>`), and persist.
+    Persist once if anything was added; no-op otherwise.
 
-    Follow-up to specs/2026-07-15-hardware-conflict-resolution-v2-design.md:
-    detection alone isn't enough to make a dongle usable — it still had to be
-    manually declared first. This closes that gap for the unambiguous
-    single-dongle case, matching the design's "list detected devices, that's
-    it" intent."""
-    if any(d.get("kind") == "rtl-sdr" for d in inv.devices.values()):
-        return inv
-    if len(detected_serials) != 1:
-        return inv
-    serial = detected_serials[0]
-    device_id = f"rtl-sdr-{serial}"
-    inv.devices[device_id] = {"id": device_id, "kind": "rtl-sdr", "serial": serial,
-                               "label": f"RTL-SDR ({serial})"}
-    save(repo_root, inv)
+    Dongles that share a serial — the ubiquitous factory `00000001` duplicate —
+    are indistinguishable to software, so they're skipped: the operator burns a
+    unique serial onto one first (hardware_detect.can_burn_serial / the burn
+    flow), after which the next detect declares both.
+
+    Supersedes the original single-dongle-only auto-declare: a second,
+    uniquely-serialed dongle was detected but left undeclared, so it never
+    appeared in the assignment dropdowns (which list DECLARED devices). Still
+    matches the design's "list detected devices, that's it" intent — just for
+    N unambiguous dongles instead of exactly one."""
+    counts = {}
+    for s in detected_serials:
+        counts[s] = counts.get(s, 0) + 1
+    declared_serials = {d.get("serial") for d in inv.devices.values()
+                        if d.get("kind") == "rtl-sdr"}
+    changed = False
+    for serial in detected_serials:
+        if counts[serial] != 1:          # ambiguous duplicate — needs a burn first
+            continue
+        if serial in declared_serials:
+            continue
+        device_id = f"rtl-sdr-{serial}"
+        if device_id in inv.devices:      # id already taken (non-rtl or manual)
+            continue
+        inv.devices[device_id] = {"id": device_id, "kind": "rtl-sdr", "serial": serial,
+                                   "label": f"RTL-SDR ({serial})"}
+        declared_serials.add(serial)
+        changed = True
+    if changed:
+        save(repo_root, inv)
     return inv

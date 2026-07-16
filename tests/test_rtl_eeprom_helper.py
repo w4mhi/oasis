@@ -1,4 +1,5 @@
 import os, sys, unittest
+from unittest import mock
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 from common import hardware_detect as HD
@@ -38,6 +39,16 @@ class CanBurnSerialTest(unittest.TestCase):
 class BurnSerialTest(unittest.TestCase):
     def test_noop_on_non_linux(self):
         HD.burn_serial("1090")  # must not raise
+
+    def test_answers_the_rtl_eeprom_prompt_on_stdin(self):
+        # rtl_eeprom blocks on a [y/n] confirmation before writing; without an
+        # answer piped in, the web-route call hangs or silently skips the write.
+        with mock.patch.object(HD.sys, "platform", "linux"), \
+             mock.patch.object(HD.subprocess, "run") as mocked_run:
+            HD.burn_serial("00001000")
+        args, kwargs = mocked_run.call_args
+        self.assertEqual(args[0], ["sudo", "rtl_eeprom", "-s", "00001000"])
+        self.assertEqual(kwargs.get("input"), "y\n")
 
 if __name__ == "__main__":
     unittest.main()

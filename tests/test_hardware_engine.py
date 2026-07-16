@@ -58,11 +58,24 @@ class CanAssignTest(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIsNone(holder)
 
-    def test_already_assigned_device_refused_names_holder(self):
+    def test_rtl_sdr_shared_across_services_allowed(self):
+        # rtl-sdr is a shared resource: a dongle already held by adsb can still
+        # be assigned to openwebrx/aprs (advisory — §2). No holder refusal.
         inv = _inv(devices={"a": _dev("a", "rtl-sdr")}, assignments={"adsb": "a"})
         ok, holder = hardware.can_assign(inv, "openwebrx", "a")
+        self.assertTrue(ok)
+        self.assertIsNone(holder)
+        ok, holder = hardware.can_assign(inv, "aprs", "a")
+        self.assertTrue(ok)
+        self.assertIsNone(holder)
+
+    def test_exclusive_kind_already_assigned_refused_names_holder(self):
+        # digirig/dra-pi stay exclusive: a device held by winlink is refused.
+        inv = _inv(devices={"d": _dev("d", "digirig", ptt="/dev/x", alsa="hw:0,0")},
+                   assignments={"winlink": "d"})
+        ok, holder = hardware.can_assign(inv, "aprs", "d")
         self.assertFalse(ok)
-        self.assertEqual(holder, "adsb")
+        self.assertEqual(holder, "winlink")
 
     def test_reassigning_same_service_to_same_device_allowed(self):
         inv = _inv(devices={"a": _dev("a", "rtl-sdr")}, assignments={"adsb": "a"})
@@ -84,10 +97,17 @@ class AssignReleaseTest(unittest.TestCase):
         reloaded = hardware.load(self.dir)
         self.assertEqual(reloaded.assignments["adsb"], "a")
 
-    def test_assign_raises_when_device_held(self):
+    def test_assign_shares_rtl_sdr_across_services(self):
         inv = _inv(devices={"a": _dev("a", "rtl-sdr")}, assignments={"adsb": "a"})
+        hardware.assign(self.dir, inv, "openwebrx", "a")
+        reloaded = hardware.load(self.dir)
+        self.assertEqual(reloaded.assignments, {"adsb": "a", "openwebrx": "a"})
+
+    def test_assign_raises_when_exclusive_device_held(self):
+        inv = _inv(devices={"d": _dev("d", "digirig", ptt="/dev/x", alsa="hw:0,0")},
+                   assignments={"winlink": "d"})
         with self.assertRaises(ValueError):
-            hardware.assign(self.dir, inv, "openwebrx", "a")
+            hardware.assign(self.dir, inv, "aprs", "d")
 
     def test_release_clears_assignment_and_persists(self):
         inv = _inv(devices={"a": _dev("a", "rtl-sdr")}, assignments={"adsb": "a"})
@@ -120,10 +140,18 @@ class DefaultAssignTest(unittest.TestCase):
         hardware.default_assign(self.dir, inv, "adsb", {"rtl-sdr"})
         self.assertEqual(inv.assignments["adsb"], "a")
 
-    def test_skips_device_already_held_by_another_service(self):
+    def test_shares_rtl_sdr_already_held_by_another_service(self):
+        # rtl-sdr is shared: the lone dongle held by openwebrx is still a valid
+        # default for adsb — all RTL consumers converge on it out of the box.
         inv = _inv(devices={"a": _dev("a", "rtl-sdr")}, assignments={"openwebrx": "a"})
         hardware.default_assign(self.dir, inv, "adsb", {"rtl-sdr"})
-        self.assertNotIn("adsb", inv.assignments)
+        self.assertEqual(inv.assignments["adsb"], "a")
+
+    def test_skips_exclusive_device_already_held(self):
+        inv = _inv(devices={"d": _dev("d", "digirig", ptt="/dev/x", alsa="hw:0,0")},
+                   assignments={"winlink": "d"})
+        hardware.default_assign(self.dir, inv, "aprs", {"digirig"})
+        self.assertNotIn("aprs", inv.assignments)
 
     def test_skips_wrong_kind(self):
         inv = _inv(devices={"a": _dev("a", "digirig", ptt="/dev/x", alsa="hw:0,0")})
@@ -140,34 +168,52 @@ class DefaultAssignTest(unittest.TestCase):
         hardware.default_assign(self.dir, inv, "adsb", {"rtl-sdr"})
         self.assertEqual(inv.assignments["adsb"], "a")
 
-class AutoDeclareLoneRtlSdrTest(unittest.TestCase):
+class AutoDeclareRtlSdrsTest(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
 
     def test_declares_the_lone_detected_serial(self):
         inv = _inv()
-        hardware.auto_declare_lone_rtl_sdr(self.dir, inv, ["00001000"])
+        hardware.auto_declare_rtl_sdrs(self.dir, inv, ["00001000"])
         self.assertEqual(inv.devices["rtl-sdr-00001000"],
                           {"id": "rtl-sdr-00001000", "kind": "rtl-sdr",
                            "serial": "00001000", "label": "RTL-SDR (00001000)"})
         reloaded = hardware.load(self.dir)
         self.assertIn("rtl-sdr-00001000", reloaded.devices)
 
-    def test_noop_when_an_rtl_sdr_is_already_declared(self):
-        inv = _inv(devices={"a": _dev("a", "rtl-sdr", serial="00001000")})
-        hardware.auto_declare_lone_rtl_sdr(self.dir, inv, ["00002000"])
-        self.assertNotIn("rtl-sdr-00002000", inv.devices)
-        self.assertEqual(len(inv.devices), 1)
+    def test_declares_all_distinct_serials(self):
+        inv = _inv()
+        hardware.auto_declare_rtl_sdrs(self.dir, inv, ["00000001", "00001000"])
+        self.assertIn("rtl-sdr-00000001", inv.devices)
+        self.assertIn("rtl-sdr-00001000", inv.devices)
+        reloaded = hardware.load(self.dir)
+        self.assertEqual(len(reloaded.devices), 2)
+
+    def test_declares_newly_detected_alongside_already_declared(self):
+        # The 2nd-dongle case: one already declared, a new unique serial shows up.
+        inv = _inv(devices={"rtl-sdr-00001000": _dev("rtl-sdr-00001000", "rtl-sdr", serial="00001000")})
+        hardware.auto_declare_rtl_sdrs(self.dir, inv, ["00001000", "00000001"])
+        self.assertIn("rtl-sdr-00000001", inv.devices)
+        self.assertEqual(len(inv.devices), 2)
 
     def test_noop_when_no_serials_detected(self):
         inv = _inv()
-        hardware.auto_declare_lone_rtl_sdr(self.dir, inv, [])
+        hardware.auto_declare_rtl_sdrs(self.dir, inv, [])
         self.assertEqual(inv.devices, {})
 
-    def test_noop_when_ambiguous_multiple_serials_detected(self):
+    def test_skips_duplicate_factory_serials(self):
+        # Two dongles sharing the factory 00000001 are indistinguishable — both
+        # skipped until one gets a unique serial burned.
         inv = _inv()
-        hardware.auto_declare_lone_rtl_sdr(self.dir, inv, ["00001000", "00002000"])
+        hardware.auto_declare_rtl_sdrs(self.dir, inv, ["00000001", "00000001"])
         self.assertEqual(inv.devices, {})
+
+    def test_declares_unique_but_skips_concurrent_duplicate(self):
+        inv = _inv()
+        hardware.auto_declare_rtl_sdrs(self.dir, inv, ["00000001", "00000001", "00001000"])
+        self.assertIn("rtl-sdr-00001000", inv.devices)
+        self.assertNotIn("rtl-sdr-00000001", inv.devices)
+        self.assertEqual(len(inv.devices), 1)
 
 if __name__ == "__main__":
     unittest.main()

@@ -57,6 +57,19 @@ class HardwareGateTest(unittest.TestCase):
                             headers={"X-OASIS-Request": "1"})
         self.assertNotEqual(r.status_code, 409)
 
+    def test_starting_unassigned_aprs_feed_never_refused(self):
+        # aprs is migrated off the hard gate too (shared-dongle model, resolved
+        # at start-click time) — an unassigned aprs-sdr-feed start is no longer
+        # pre-emptively blocked. aprs-sdr-feed maps to the aprs service only
+        # when aprs holds an sdr, so assign one to exercise the migrated path.
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "serial": "1"}},
+                           assignments={"aprs": "a"})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch("sys.platform", "linux"):
+            r = self.c.post("/api/service", json={"unit": "aprs-sdr-feed", "action": "start"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertNotEqual(r.status_code, 409)
+
     def test_starting_assigned_service_is_not_gate_refused(self):
         # Assigned + present -> the hardware gate passes; whatever happens next
         # (the actual systemctl call) is unmocked here and will report its own

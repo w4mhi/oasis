@@ -43,18 +43,22 @@ Requires: Linux (Raspberry Pi OS), sudo. Steps 4-5's apt installs need
 internet (or a local apt cache/mirror).
 """
 
+import errno
+import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
 import time
+from shutil import which
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # repo root
 from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
 from common.gpsd_chrony import (install_packages as install_gpsd_chrony_packages,
                           configure_gpsd, configure_chrony, restart_services,
-                          verify as verify_gpsd_chrony, check_exclusive)
+                          verify as verify_gpsd_chrony, check_exclusive,
+                          configured_device)
 
 CONFIG_CANDIDATES  = ("/boot/firmware/config.txt", "/boot/config.txt")
 CMDLINE_CANDIDATES = ("/boot/firmware/cmdline.txt", "/boot/cmdline.txt")
@@ -166,6 +170,17 @@ def parse_gpgga(sentence):
         "num_sats": int(f[7]) if f[7] else 0,
         "altitude_m": float(f[9]) if f[9] else None,
     }
+
+
+def device_mismatch(configured, target):
+    """True if gpsd is configured for a *different* serial device than the one
+    this feature targets — the exact trap that silently breaks the L76X when a
+    previous GPS feature (e.g. features/gps on /dev/ttyUSB0) already claimed
+    gpsd. Pure/os.path-only so it's unit-testable. Symlinks are resolved so
+    /dev/serial0 and /dev/ttyS0 are treated as the same device."""
+    if not configured or not target:
+        return False
+    return os.path.realpath(configured) != os.path.realpath(target)
 
 
 # ── Platform / paths ─────────────────────────────────────────────────────────────
@@ -324,14 +339,91 @@ def read_nmea_lines(device, baud=DEFAULT_BAUD, timeout=5.0):
                     except Exception:
                         pass
     except Exception as exc:
-        _warn(f"Could not open {device} at {baud} baud: {exc}")
+        if getattr(exc, "errno", None) == errno.EACCES or "Permission denied" in str(exc):
+            _warn(f"Permission denied opening {device} — your user isn't in the "
+                  "'dialout' group, so this check can't read the raw port. Add it "
+                  'with:  sudo usermod -aG dialout "$USER"   then log out/in (or '
+                  "re-run with sudo). This is a check-only limitation: gpsd runs as "
+                  "its own user and is unaffected.")
+        else:
+            _warn(f"Could not open {device} at {baud} baud: {exc}")
     return lines
+
+
+def gpsd_active():
+    return _run(["systemctl", "is-active", "--quiet", "gpsd"],
+                check=False).returncode == 0
+
+
+def verify_via_gpsd(device, timeout=8.0):
+    """Read NMEA *through* gpsd (gpspipe) rather than opening the raw serial
+    device gpsd already holds. Returns True if it reported a result (a fix, a
+    satellites-but-no-fix state, or a "gpsd running but no data" warning),
+    False only if gpspipe isn't installed so the caller can fall back."""
+    if which("gpspipe") is None:
+        return False
+    _info(f"gpsd is active — reading through gpsd (gpspipe) for up to {timeout:.0f}s ...")
+    out = ""
+    try:
+        r = _run(["gpspipe", "-w", "-n", "60"], check=False,
+                 capture_output=True, text=True, timeout=timeout)
+        out = getattr(r, "stdout", "") or ""
+    except subprocess.TimeoutExpired as exc:
+        partial = exc.stdout or ""
+        out = partial.decode("ascii", "replace") if isinstance(partial, bytes) else partial
+
+    fix = None
+    saw_sky = False
+    sats_used = 0
+    for line in out.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            continue
+        cls = obj.get("class")
+        if cls == "SKY":
+            saw_sky = True
+            sats_used = sum(1 for s in obj.get("satellites", []) if s.get("used"))
+        elif cls == "TPV" and obj.get("lat") is not None:
+            fix = obj
+
+    if fix:
+        _ok(f"gpsd has a fix — mode={fix.get('mode')}  lat={fix.get('lat')}  "
+            f"lon={fix.get('lon')}  time={fix.get('time')}")
+        return True
+    if saw_sky:
+        _info(f"gpsd sees satellites ({sats_used} in use) but no position fix yet — "
+              "give the antenna a clear sky view for a minute, then re-check.")
+        return True
+    _warn("gpsd is running but produced no TPV/SKY data — it's likely pointed at "
+          "the wrong device or getting no NMEA. Check:  gpspipe -w -n 20   and   "
+          "sudo journalctl -u gpsd -n 40")
+    return True
 
 
 def verify(device, baud=DEFAULT_BAUD, timeout=5.0):
     if not os.path.exists(device):
         _warn(f"{device} does not exist yet — reboot, then re-run with --check.")
         return
+    # The trap that silently breaks this HAT: a previous GPS feature (e.g.
+    # features/gps on a USB dongle) already claimed gpsd, so gpsd polls the
+    # wrong port and cgps shows nothing. Surface it in one line.
+    target = configured_device()
+    if device_mismatch(target, device):
+        _warn(f"gpsd is configured for {target}, NOT this L76X device ({device}). "
+              "gpsd is reading the wrong port, so cgps sees no data. Re-run the "
+              f"installer with --force to retarget gpsd/chrony at {device}.")
+    # Once gpsd owns the port, ask gpsd for data (gpspipe) instead of fighting
+    # it for the raw device — trying to open it directly typically fails with
+    # a permission/busy error and produces a misleading "no data" result.
+    if gpsd_active():
+        if verify_via_gpsd(device, max(timeout, 8.0)):
+            return
+        _info("gpspipe unavailable — falling back to a raw serial read "
+              "(stop gpsd first if this reports the port busy).")
     if not _pyserial_importable():
         _warn("python3-serial not installed — run this script once without --check "
               "first, or `sudo apt install python3-serial`.")

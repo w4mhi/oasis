@@ -91,6 +91,19 @@
   background: #0b0e10; color: #d7e6dd; border: 1px solid #27323b;
   border-radius: 8px; padding: .55rem; max-height: 210px; overflow: auto; white-space: pre-wrap;
 }
+/* ── Hardware card (detect · declare · assign) ─────────────────────────── */
+.setup-hw-cols { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.setup-hw-col { min-width: 0; }
+.setup-hw-h { font-size: var(--fs-label); color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 .4rem; border-bottom: 1px solid var(--border); padding-bottom: .2rem; }
+.setup-hw-sub { font-size: var(--fs-small); color: var(--text-dim); margin: .55rem 0 .25rem; }
+.setup-hw-row { display: flex; align-items: center; gap: .4rem; margin: .3rem 0; }
+.setup-hw-row .setup-hw-name { flex: 0 0 5.5rem; font-size: var(--fs-small); color: var(--text-dim); }
+.setup-hw-row select.setup-input { flex: 1; }
+.setup-hw-msg { font-size: var(--fs-small); color: var(--text-dim); margin-top: .3rem; min-height: 1em; }
+.setup-hw-declared { display: flex; align-items: center; gap: .4rem; font-size: var(--fs-small); margin: .2rem 0; }
+.setup-hw-declared .setup-hw-kind { color: var(--text-dim); }
+.setup-hw-btn-sm { font-size: var(--fs-small); padding: .15rem .45rem; }
+.setup-hw-fields > * { margin-top: .3rem; }
 </style>
 </head>
 <body>
@@ -212,10 +225,6 @@
       <input class="setup-input" id="setupWifiPassword" type="password" placeholder="WPA2 password">
       <div class="setup-note" id="setupWifiWarn" style="display:none;">Warning: changing Wi-Fi may drop your current AP session. Reboot is required after apply.</div>
     </div>
-    <div class="setup-box">
-      <h3>Hardware Snapshot</h3>
-      <ul class="setup-list" id="setupHwList"><li>Detecting…</li></ul>
-    </div>
     </div>
     <div class="setup-box setup-job-box">
       <h3>Job Status</h3>
@@ -225,6 +234,41 @@
     <div class="setup-box setup-job-log-box">
       <pre class="setup-log" id="setupLog"></pre>
     </div>
+    </div>
+    <div class="setup-box" id="hardware">
+      <h3>Hardware — detect · declare · assign</h3>
+      <div class="setup-hw-cols">
+
+        <div class="setup-hw-col">
+          <div class="setup-hw-h">Detected</div>
+          <ul class="setup-list" id="setupHwList"><li>Detecting…</li></ul>
+        </div>
+
+        <div class="setup-hw-col">
+          <div class="setup-hw-h">Declare devices</div>
+          <div id="hwRtlCandidates" class="setup-hw-fields"></div>
+          <div class="setup-hw-sub">Radio port (Digirig / DRA-Pi)</div>
+          <div class="setup-hw-fields">
+            <select class="setup-input" id="hwDeclareKind">
+              <option value="digirig">Digirig</option>
+              <option value="dra-pi">DRA-Pi</option>
+            </select>
+            <select class="setup-input" id="hwDeclareAlsa"></select>
+            <select class="setup-input" id="hwDeclarePtt"></select>
+            <input class="setup-input" id="hwDeclareId" placeholder="id (e.g. digirig-1)">
+            <input class="setup-input" id="hwDeclareLabel" placeholder="label (e.g. DigiRig — FT-891)">
+            <button class="setup-btn" id="hwDeclareBtn" type="button">Declare radio port</button>
+          </div>
+          <div class="setup-hw-msg" id="hwDeclareMsg"></div>
+        </div>
+
+        <div class="setup-hw-col">
+          <div class="setup-hw-h">Assign to services</div>
+          <div id="hwAssignRows"></div>
+          <div class="setup-hw-msg" id="hwAssignMsg"></div>
+        </div>
+
+      </div>
     </div>
   </div>
 </div>
@@ -262,6 +306,16 @@ function escapeHtml(s) {
 async function jget(url) {
   const r = await fetch(url, { cache: 'no-store' });
   return r.json();
+}
+async function jpost(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+    body: JSON.stringify(body || {}),
+  });
+  let data = {};
+  try { data = await r.json(); } catch (_) {}
+  return { ok: r.ok && data.ok !== false, status: r.status, data };
 }
 async function loadConfig() {
   try { const d = await jget('/server-ports.json'); if (d && d.ports) Object.assign(PORTS, d.ports); }
@@ -956,15 +1010,132 @@ function setupRenderHw(d) {
   list.innerHTML = lines.map(s => `<li>${s}</li>`).join('');
 }
 
+// ── Hardware card: detect · declare · assign ────────────────────────────────
+// This card is the single home for hardware management (v2 design §7). The
+// dashboard shows each service's assigned device read-only; changes happen here.
+// Services eligible for device assignment + the device kinds each accepts —
+// MUST mirror common/hardware.py's DEVICE_KIND_FOR_SERVICE. (aprs also accepts
+// digirig/dra-pi in the engine, but the SDR-feed path only makes sense on an
+// rtl-sdr, so this UI offers only that — same choice the dashboard made.)
+const HW_ASSIGN_SERVICES = [
+  { service: 'adsb',      label: 'ADS-B',      kinds: ['rtl-sdr'] },
+  { service: 'openwebrx', label: 'OpenWebRX',  kinds: ['rtl-sdr'] },
+  { service: 'aprs',      label: 'APRS Feed',  kinds: ['rtl-sdr'] },
+  { service: 'winlink',   label: 'Winlink RF', kinds: ['digirig', 'dra-pi'] },
+];
+
+// setupDetectHardware is the card's single refresh entry point (wired to the
+// "Detect hardware" button and initial load). One detect call feeds both the
+// Detected summary and the declare form's ALSA/serial pickers; a second call
+// pulls declared devices + assignment state.
 async function setupDetectHardware() {
   const list = document.getElementById('setupHwList');
   list.innerHTML = '<li>Detecting…</li>';
+  let detect = null;
   try {
-    const d = await jget('/api/setup/hardware-detect');
-    setupRenderHw(d);
+    detect = await jget('/api/setup/hardware-detect');
+    setupRenderHw(detect);
+    hwRenderDeclareForm(detect);
   } catch (e) {
     list.innerHTML = `<li>Hardware detect failed: ${escapeHtml(e.message)}</li>`;
   }
+  try {
+    const devices = await jget('/api/hardware/devices');
+    hwRenderAssignRows(devices);
+    hwRenderRtlCandidates(detect, devices);
+  } catch (e) { /* keep last render; the assign section retries on next refresh */ }
+}
+
+function hwRenderDeclareForm(detect) {
+  const det = (detect && detect.detected) || {};
+  const alsaSel = document.getElementById('hwDeclareAlsa');
+  const pttSel  = document.getElementById('hwDeclarePtt');
+  const kindSel = document.getElementById('hwDeclareKind');
+  if (!alsaSel || !pttSel || !kindSel) return;
+  alsaSel.innerHTML = (det.alsa || [])
+    .map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.description)} (card ${a.card})</option>`)
+    .join('') || '<option value="">no ALSA cards detected</option>';
+  // dra-pi drives PTT over a fixed GPIO, so no serial-port pick for it.
+  pttSel.style.display = kindSel.value === 'dra-pi' ? 'none' : '';
+  pttSel.innerHTML = (det.serial || [])
+    .map(s => `<option value="${escapeHtml(s.path)}">${escapeHtml(s.label)}</option>`)
+    .join('') || '<option value="">no serial ports detected</option>';
+}
+
+// Detected RTL-SDR serials auto-declare on the /api/hardware/devices poll, so
+// this is normally empty — it only surfaces a serial that couldn't auto-declare
+// (e.g. a factory-duplicate 00000001 pair, until one is burned) as a fallback.
+function hwRenderRtlCandidates(detect, devices) {
+  const box = document.getElementById('hwRtlCandidates');
+  if (!box) return;
+  const declared = ((devices && devices.devices) || [])
+    .filter(d => d.kind === 'rtl-sdr').map(d => d.serial);
+  const serials = ((detect && detect.detected && detect.detected.rtl_sdr) || []).map(s => s.serial);
+  const undeclared = [...new Set(serials.filter(s => s && !declared.includes(s)))];
+  if (undeclared.length === 0) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="setup-hw-sub">Undeclared RTL-SDR</div>' + undeclared.map(s =>
+    `<div class="setup-hw-declared"><span>SN ${escapeHtml(s)}</span>`
+    + `<button class="setup-btn setup-hw-btn-sm" data-rtl-serial="${escapeHtml(s)}" type="button">Declare</button></div>`
+  ).join('');
+}
+
+function hwRenderAssignRows(devices) {
+  const box = document.getElementById('hwAssignRows');
+  if (!box) return;
+  const declared = (devices && devices.devices) || [];
+  const services = (devices && devices.services) || {};
+  // A service is "running" when it holds a device that's currently busy — its
+  // dropdown locks then, so a live unit never has its device pulled (v2 §5).
+  const running = new Set(declared.filter(d => d.running).map(d => d.assignee));
+  box.innerHTML = HW_ASSIGN_SERVICES.map(svc => {
+    const compatible = declared.filter(d => svc.kinds.includes(d.kind));
+    const current = (services[svc.service] || {}).device_id || '';
+    const isRunning = running.has(svc.service);
+    const opts = ['<option value="">— unassigned —</option>'].concat(compatible.map(d =>
+      `<option value="${escapeHtml(d.id)}"${d.id === current ? ' selected' : ''}>`
+      + `${escapeHtml(d.label)} (${escapeHtml(d.kind)})</option>`)).join('');
+    return `<div class="setup-hw-row">
+      <span class="setup-hw-name">${escapeHtml(svc.label)}</span>
+      <select class="setup-input" data-assign-service="${escapeHtml(svc.service)}"${isRunning ? ' disabled title="Stop the service to change its device"' : ''}>${opts}</select>
+    </div>`;
+  }).join('');
+}
+
+async function hwDeclareRtl(serial) {
+  const msg = document.getElementById('hwDeclareMsg');
+  const id = `rtl-sdr-${serial}`;
+  const { ok, data } = await jpost('/api/hardware/devices',
+    { id, kind: 'rtl-sdr', serial, label: `RTL-SDR (${serial})` });
+  if (msg) msg.textContent = ok ? `Declared ${id}.` : ('Error: ' + (data.error || 'unknown'));
+  if (ok) setupDetectHardware();
+}
+
+async function hwDeclareRadioPort() {
+  const msg = document.getElementById('hwDeclareMsg');
+  const kind = document.getElementById('hwDeclareKind').value;
+  const body = {
+    id: document.getElementById('hwDeclareId').value.trim(),
+    kind,
+    label: document.getElementById('hwDeclareLabel').value.trim(),
+    alsa: document.getElementById('hwDeclareAlsa').value,
+    ptt: kind === 'dra-pi' ? 'gpio12' : document.getElementById('hwDeclarePtt').value,
+  };
+  const { ok, data } = await jpost('/api/hardware/devices', body);
+  if (msg) msg.textContent = ok ? 'Declared.' : ('Error: ' + (data.error || 'unknown'));
+  if (ok) {
+    document.getElementById('hwDeclareId').value = '';
+    document.getElementById('hwDeclareLabel').value = '';
+    setupDetectHardware();
+  }
+}
+
+async function hwAssignChange(service, deviceId) {
+  const msg = document.getElementById('hwAssignMsg');
+  const url = deviceId === '' ? '/api/hardware/release' : '/api/hardware/assign';
+  const body = deviceId === '' ? { service } : { service, device_id: deviceId };
+  const { ok, data } = await jpost(url, body);
+  if (msg) msg.textContent = ok ? 'Updated.' : ('Error: ' + (data.error || 'unknown'));
+  setupDetectHardware();
 }
 
 async function setupRebootPi() {
@@ -1170,6 +1341,19 @@ function initSetupOrchestrator() {
   const webssh = document.getElementById('setupWebssh');
   webssh.href = `http://${HOST}:${PORTS.webssh}/`;
   document.getElementById('setupRefreshHw').addEventListener('click', setupDetectHardware);
+  // Hardware card: declare + assign controls.
+  document.getElementById('hwDeclareKind').addEventListener('change', function () {
+    document.getElementById('hwDeclarePtt').style.display = this.value === 'dra-pi' ? 'none' : '';
+  });
+  document.getElementById('hwDeclareBtn').addEventListener('click', hwDeclareRadioPort);
+  document.getElementById('hwRtlCandidates').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-rtl-serial]');
+    if (btn) hwDeclareRtl(btn.dataset.rtlSerial);
+  });
+  document.getElementById('hwAssignRows').addEventListener('change', (e) => {
+    const sel = e.target.closest('[data-assign-service]');
+    if (sel) hwAssignChange(sel.dataset.assignService, sel.value);
+  });
   document.getElementById('setupCheckPerm').addEventListener('click', setupGetPermissions);
   document.getElementById('setupRun').addEventListener('click', setupRunSelected);
   document.getElementById('setupReboot').addEventListener('click', setupRebootPi);
