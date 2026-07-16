@@ -386,6 +386,90 @@ def _setup_pat_password_set():
         return False
 
 
+def _pat_config_path():
+    """Best-effort path to Pat's config.json.
+
+    Setup can run under a different account than Pat's target user (for example
+    gunicorn as root while Pat config lives under /home/pi), so probe a small
+    set of candidate homes and use the first existing config.
+    """
+    homes = []
+
+    def _add_home(h):
+        h = (h or "").strip()
+        if h and h not in homes:
+            homes.append(h)
+
+    current_home = os.path.expanduser("~")
+    _add_home(current_home)
+
+    sudo_user = (os.environ.get("SUDO_USER") or "").strip()
+    if sudo_user:
+        try:
+            import pwd as _pwd
+            su_home = _pwd.getpwnam(sudo_user).pw_dir
+            _add_home(su_home)
+        except Exception:
+            pass
+
+    # Pat may run as a different service user than the web server process.
+    # Probe systemd for that user/home and include it as a candidate.
+    try:
+        import pwd as _pwd
+        r = subprocess.run(
+            ["systemctl", "show", "pat", "--property", "User", "--value"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        pat_user = (r.stdout or "").strip()
+        if pat_user:
+            _add_home(_pwd.getpwnam(pat_user).pw_dir)
+    except Exception:
+        pass
+
+    # Explicit HOME from the unit environment takes precedence when present.
+    try:
+        r = subprocess.run(
+            ["systemctl", "show", "pat", "--property", "Environment", "--value"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        env_line = (r.stdout or "").strip()
+        for token in env_line.split():
+            if token.startswith("HOME="):
+                _add_home(token.split("=", 1)[1])
+                break
+    except Exception:
+        pass
+
+    # Common fallback locations on Pi and dev boxes.
+    _add_home("/home/pi")
+    _add_home("/root")
+    try:
+        for ent in os.scandir("/home"):
+            if ent.is_dir(follow_symlinks=False):
+                _add_home(ent.path)
+    except Exception:
+        pass
+
+    seen = set()
+    candidates = []
+    for home in homes:
+        if not home:
+            continue
+        p = os.path.join(home, ".config", "pat", "config.json")
+        if p not in seen:
+            seen.add(p)
+            candidates.append(p)
+
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    return candidates[0] if candidates else os.path.join(current_home, ".config", "pat", "config.json")
+
+
 def _setup_registry(payload=None):
     return SETUP_REGISTRY.build_registry(SUITE_ROOT, payload)
 
@@ -2241,7 +2325,7 @@ def api_health_rtc():
 def _health_paths():
     return {
         "rtl_blacklist": "/etc/modprobe.d/rtlsdr-blacklist.conf",
-        "pat_config":    os.path.join(os.path.expanduser("~"), ".config", "pat", "config.json"),
+        "pat_config":    _pat_config_path(),
     }
 
 
