@@ -133,12 +133,6 @@
   <div class="all-ok-sub">OASIS is fully configured. Open the <a href="/" style="color:var(--accent)">dashboard</a> to get started.</div>
 </div>
 
-<div class="sec-label">Core</div>
-<div class="check-list" id="list-core"></div>
-
-<div class="sec-label">Optional Services</div>
-<div class="check-list" id="list-optional"></div>
-
 <div class="sec-label">Setup Orchestrator (Beta)</div>
 <div class="setup-panel">
   <div class="setup-kv" id="setup-permissions"><span id="setupPermText">Permissions: checking…</span> <a class="setup-link-amber" id="setupWebssh" href="#" target="_blank" rel="noopener" style="display:none;">Open WebSSH</a> <span class="setup-link-amber" id="setupWebsshUrl" style="display:none;"></span><span id="setupPermCmd"></span></div>
@@ -282,7 +276,11 @@
     </div>
   </div>
 </div>
+<div class="sec-label">Core</div>
+<div class="check-list" id="list-core"></div>
 
+<div class="sec-label">Optional Services</div>
+<div class="check-list" id="list-optional"></div>
 </div>
 <script>
 'use strict';
@@ -999,14 +997,14 @@ function setupRenderHw(d) {
   }
 
   const draReady = !!(d && d.draPiDriverReady);
-  lines.push(`&nbsp;&nbsp;DRA-Pi (I2C HAT): ${hwVal(draReady ? 'yes' : 'no', draReady)}`
+  lines.push(`DRA-Pi (I2C HAT): ${hwVal(draReady ? 'yes' : 'no', draReady)}`
     + (draReady ? '' : ' <span style="color:var(--text-dim)">(ALSA card "audioinjectorpi" not found)</span>'));
 
   const gpsDevice = d && d.gpsConfiguredDevice;
   if (gpsDevice) {
-    lines.push(`&nbsp;&nbsp;GPS: ${hwVal('configured', true)} \u2014 gpsd points at <code>${escapeHtml(gpsDevice)}</code>`);
+    lines.push(`GPS: ${hwVal('configured', true)} \u2014 gpsd points at <code>${escapeHtml(gpsDevice)}</code>`);
   } else {
-    lines.push(`&nbsp;&nbsp;GPS: ${hwVal('not configured', false)}`);
+    lines.push(`GPS: ${hwVal('not configured', false)}`);
   }
 
   if (false) {   // "Other USB devices" list dropped — noise

@@ -345,6 +345,64 @@ def build_name_index(en_path=EN_DAT_PATH, index_path=NAME_IDX_PATH,
     return len(entries)
 
 
+def build_grid_index(en_path=EN_DAT_PATH, index_path=GRID_IDX_PATH,
+                     hd_path=HD_DAT_PATH, zip_path=ZIP_PATH):
+    """Build GRID_IDX_PATH as: GRID|CALLSIGN|OFFSET (sorted by GRID).
+
+    Uses ZIP -> (lat,lon) from zipcodes.csv to derive Maidenhead grids for each
+    active (or all, when HD.dat absent) EN.dat record that has a known ZIP code.
+    Returns the number of indexed rows.
+    """
+    if not os.path.exists(en_path):
+        return 0
+    if not os.path.exists(zip_path):
+        return 0
+
+    # Load ZIP -> lat/lon from the caller-selected table path.
+    zip_table = {}
+    with open(zip_path, newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            zip5 = (row.get("zip") or "").strip()[:5]
+            if not zip5:
+                continue
+            try:
+                zip_table[zip5] = (float(row["lat"]), float(row["lon"]))
+            except (KeyError, ValueError):
+                continue
+
+    if not zip_table:
+        return 0
+
+    from common.maidenhead import latlon_to_grid
+
+    active_usis = load_active_usis(hd_path)
+    filtered = active_usis is not None
+    entries = []
+    with open(en_path, "rb") as fh:
+        offset = 0
+        for raw in fh:
+            parts = raw.split(b"|")
+            if len(parts) > max(COL_CALLSIGN, COL_ZIP, COL_USI):
+                usi = parts[COL_USI].strip()
+                callsign = parts[COL_CALLSIGN].strip().upper()
+                keep = bool(callsign) and (not filtered or usi in active_usis)
+                if keep:
+                    zip5 = parts[COL_ZIP].strip().decode("ascii", "ignore")[:5]
+                    latlon = zip_table.get(zip5)
+                    if latlon:
+                        grid = latlon_to_grid(latlon[0], latlon[1], precision=6)
+                        if grid:
+                            entries.append((grid.encode("ascii"), callsign, offset))
+            offset += len(raw)
+
+    entries.sort(key=lambda e: e[0])
+    with open(index_path, "wb") as out:
+        for grid, callsign, off in entries:
+            out.write(grid + b"|" + callsign + b"|" + str(off).encode("ascii") + b"\n")
+    return len(entries)
+
+
 MAX_NAME_RESULTS = 50
 MAX_GRID_RESULTS = 100
 
