@@ -116,6 +116,30 @@ MAP_ROOTS = [
 # in index.html (antenna-calc.html, ics-205/, etc.) keep working as-is.
 app = Flask(__name__, static_folder=SUITE_ROOT, static_url_path="")
 
+
+@app.errorhandler(Exception)
+def _api_json_error_handler(exc):
+    """Return JSON (with the real error text) for any unhandled exception on an
+    /api/* route, instead of gunicorn/werkzeug's opaque HTML 500 page.
+
+    Without this, a server-side exception under gunicorn (the Pi's production
+    WSGI server) is rendered as its default '<html>...Internal Server Error'
+    page. The Setup Orchestrator's fetch() then calls response.json() on that
+    HTML and fails with the useless "Unexpected token '<', "<html> ..." error,
+    hiding the actual cause. Non-/api routes keep Flask's normal HTML handling.
+    """
+    from werkzeug.exceptions import HTTPException
+
+    status = exc.code if isinstance(exc, HTTPException) else 500
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False, "error": str(exc), "status": status}), status
+    # Non-API routes: preserve Flask's default behavior (HTTPExceptions are
+    # valid responses; re-raise anything else so the framework renders its 500).
+    if isinstance(exc, HTTPException):
+        return exc
+    raise exc
+
+
 # Load the small ZIP -> lat/long table once at startup and reuse it for every
 # request. It is only a few MB, well within the Pi's memory budget.
 ZIP_TABLE = lookup.load_zip_table()
@@ -1823,9 +1847,16 @@ def api_hardware_devices():
     # plugged dongle). Once every present dongle is declared, present == declared
     # and the per-poll cost is just the lsusb probe — no rtl_test contention.
     declared_rtl = sum(1 for d in inv.devices.values() if d.get("kind") == "rtl-sdr")
-    if HD_detect.rtl_sdr_usb_count() > declared_rtl:
+    present_rtl = HD_detect.rtl_sdr_usb_count()
+    if present_rtl > declared_rtl:
         detected_serials = [d["serial"] for d in HD_detect.scan().get("rtl_sdr", [])]
         HW.auto_declare_rtl_sdrs(SUITE_ROOT, inv, detected_serials)
+    elif present_rtl < declared_rtl:
+        # A dongle was unplugged (fewer present than declared) — undeclare it so
+        # services that had it show unassigned. Symmetric with auto-declare;
+        # busy-safe + count-bounded inside reconcile_present_rtl_sdrs.
+        detected_serials = [d["serial"] for d in HD_detect.scan().get("rtl_sdr", [])]
+        HW.reconcile_present_rtl_sdrs(SUITE_ROOT, inv, detected_serials, present_rtl)
     # All three RTL-SDR consumers default to the first present dongle (shared —
     # §2/§3); the operator spreads them across dongles via each card's dropdown.
     # aprs is pinned to rtl-sdr for the DEFAULT so it never auto-grabs a

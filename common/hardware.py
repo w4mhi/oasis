@@ -319,3 +319,38 @@ def auto_declare_rtl_sdrs(repo_root, inv, detected_serials):
     if changed:
         save(repo_root, inv)
     return inv
+
+
+def reconcile_present_rtl_sdrs(repo_root, inv, detected_serials, present_count,
+                               is_active=_default_is_active):
+    """Undeclare RTL-SDRs that are no longer physically present — the inverse of
+    auto_declare_rtl_sdrs, so an unplugged dongle stops showing as assigned.
+
+    A declared dongle counts as PRESENT if its serial appears in rtl_test
+    detection OR a service assigned to it is currently running (a busy dongle is
+    hidden from rtl_test's exclusive probe but is obviously still attached).
+
+    Assignments to a removed dongle are deliberately LEFT dangling: load()
+    tolerates an assignment whose device is absent (can_start reports
+    "device-not-attached"), the assign UI then shows that service as unassigned,
+    default_assign won't silently re-point it at a surviving dongle, and
+    re-plugging (auto_declare_rtl_sdrs re-adds the same rtl-sdr-<serial> id)
+    revalidates the assignment automatically.
+
+    Acts only when the number of confirmed-absent dongles equals the real USB
+    count drop (declared − present_count). A mismatch means detection is
+    ambiguous this cycle (e.g. rtl_test transiently empty, or lsusb unavailable
+    so present_count reads 0) — safer to leave everything declared than to guess
+    and unassign a dongle that's actually attached."""
+    declared = [(did, d) for did, d in inv.devices.items() if d.get("kind") == "rtl-sdr"]
+    present = set(detected_serials)
+    for did, d in declared:
+        if any(is_active(u) for svc in assignees(inv, did) for u in service_units(inv, svc)):
+            present.add(d.get("serial"))
+    absent = [did for did, d in declared if d.get("serial") not in present]
+    if not absent or len(absent) != len(declared) - present_count:
+        return inv
+    for did in absent:
+        del inv.devices[did]
+    save(repo_root, inv)
+    return inv

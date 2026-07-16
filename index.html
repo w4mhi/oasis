@@ -275,27 +275,7 @@ body {
   white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 
-/* ── HARDWARE allocation card (spec §7.1) ────────────────────────────────── */
-.hw-card {
-  margin: 0 1.25rem .9rem; padding: .4rem .7rem;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-}
-.hw-empty { font-size: var(--fs-small); color: var(--text-dim); padding: .35rem .2rem; }
-.hw-row {
-  display: flex; align-items: center; gap: .6rem;
-  padding: .3rem .2rem; border-bottom: 1px solid var(--border);
-}
-.hw-row:last-child { border-bottom: none; }
-.hw-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.hw-dot.free { background: var(--accent); }
-.hw-dot.busy { background: var(--red); }
-.hw-label { font-size: var(--fs-base); font-weight: 700; color: var(--text); flex-shrink: 0; }
-.hw-kind  { font-size: var(--fs-small); color: var(--text-dim); flex-shrink: 0; }
-.hw-state { margin-left: auto; font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; }
-.hw-state.free { color: var(--accent); }
-.hw-state.busy { color: var(--red); }
-
-/* ── Per-card device dropdown (spec §7.3) ────────────────────────────────── */
+/* ── Per-card device label (read-only; assign on Setup → Hardware) ───────── */
 .hw-assign-row {
   flex: 1 0 100%; display: flex; align-items: center; gap: .4rem; margin-top: .3rem;
 }
@@ -1210,16 +1190,9 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 </div>
 </div><!-- /.svc-strips-wrap -->
 
-<!-- ── HARDWARE ALLOCATION CARD (spec §7.1) ──────────────────────────────── -->
-<div class="section-hdr">
-  <span class="section-hdr-title">HARDWARE</span>
-  <span class="section-hdr-sub">device allocation</span>
-</div>
-<div class="hw-card">
-  <div class="hw-empty" id="hw-empty">No devices declared yet — detect &amp; assign on the
-    <a href="server/system/setup.html#hardware" style="color:var(--accent)">Setup → Hardware</a> page.</div>
-  <div class="hw-rows" id="hw-rows"></div>
-</div>
+<!-- Device allocation (which dongle is busy / free / assigned) lives on the
+     Setup → Hardware card now; each service card above shows its own device
+     inline. -->
 
 <!-- ── NAVIGATION GRID ───────────────────────────────────────────────────── -->
 <div class="section-hdr">
@@ -1883,33 +1856,11 @@ function renderDeviceLabels(data) {
     row.hidden = false;
     const deviceId = (services[hwService] || {}).device_id || '';
     const dev = deviceId ? byId[deviceId] : null;
-    out.textContent = dev ? dev.label : (deviceId || 'unassigned');
-    out.classList.toggle('hw-assign-dev-none', !deviceId);
+    // dev==null covers both truly unassigned and a dangling assignment whose
+    // dongle was unplugged (undeclared) — either way, show "unassigned".
+    out.textContent = dev ? dev.label : 'unassigned';
+    out.classList.toggle('hw-assign-dev-none', !dev);
   });
-}
-
-function renderHardwareCard(data) {
-  const rows  = document.getElementById('hw-rows');
-  const empty = document.getElementById('hw-empty');
-  if (!rows || !empty) return;
-  const devices = (data && data.devices) || [];
-  if (devices.length === 0) {
-    empty.style.display = '';
-    rows.innerHTML = '';
-    return;
-  }
-  empty.style.display = 'none';
-  rows.innerHTML = devices.map(d => {
-    const state = d.running ? 'busy' : 'free';
-    const stateText = d.running ? `busy — ${d.assignee}`
-                     : (d.assignee ? `assigned — ${d.assignee}` : 'free');
-    return `<div class="hw-row">
-      <span class="hw-dot ${state}"></span>
-      <span class="hw-label">${escapeHtml(d.label)}</span>
-      <span class="hw-kind">${escapeHtml(d.kind)}</span>
-      <span class="hw-state ${state}">${state === 'busy' ? '🔴' : '🟢'} ${escapeHtml(stateText)}</span>
-    </div>`;
-  }).join('');
 }
 
 async function fetchHardware() {
@@ -1917,7 +1868,6 @@ async function fetchHardware() {
     const r = await fetch('/api/hardware/devices', { cache: 'no-store' });
     if (!r.ok) return;
     _hwLast = await r.json();
-    renderHardwareCard(_hwLast);
     renderDeviceLabels(_hwLast);
   } catch (e) { /* transient — keep last render, retry next tick */ }
 }

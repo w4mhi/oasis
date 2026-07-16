@@ -215,5 +215,50 @@ class AutoDeclareRtlSdrsTest(unittest.TestCase):
         self.assertNotIn("rtl-sdr-00000001", inv.devices)
         self.assertEqual(len(inv.devices), 1)
 
+class ReconcilePresentRtlSdrsTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def _two(self, **assignments):
+        return _inv(devices={"rtl-sdr-A": _dev("rtl-sdr-A", "rtl-sdr", serial="A"),
+                             "rtl-sdr-B": _dev("rtl-sdr-B", "rtl-sdr", serial="B")},
+                    assignments=assignments)
+
+    def test_undeclares_removed_idle_dongle(self):
+        inv = self._two(adsb="rtl-sdr-A", aprs="rtl-sdr-B")
+        # B unplugged: 1 present, rtl_test sees only A, nothing running.
+        hardware.reconcile_present_rtl_sdrs(self.dir, inv, ["A"], 1, is_active=lambda u: False)
+        self.assertIn("rtl-sdr-A", inv.devices)
+        self.assertNotIn("rtl-sdr-B", inv.devices)
+        # assignment deliberately left dangling (re-plug revalidates it)
+        self.assertEqual(inv.assignments.get("aprs"), "rtl-sdr-B")
+
+    def test_keeps_busy_dongle_hidden_from_rtl_test(self):
+        inv = self._two(adsb="rtl-sdr-A")
+        # A is busy (dump1090-fa active) so rtl_test can't see it; B unplugged.
+        hardware.reconcile_present_rtl_sdrs(self.dir, inv, [], 1,
+                                            is_active=lambda u: u == "dump1090-fa")
+        self.assertIn("rtl-sdr-A", inv.devices)      # kept — running service proves present
+        self.assertNotIn("rtl-sdr-B", inv.devices)
+
+    def test_noop_when_detection_ambiguous(self):
+        inv = self._two()
+        # lsusb says 1 present but rtl_test empty + nothing running: can't tell
+        # which one left → leave both rather than guess.
+        hardware.reconcile_present_rtl_sdrs(self.dir, inv, [], 1, is_active=lambda u: False)
+        self.assertEqual(len(inv.devices), 2)
+
+    def test_undeclares_all_when_none_present(self):
+        inv = _inv(devices={"rtl-sdr-A": _dev("rtl-sdr-A", "rtl-sdr", serial="A")},
+                   assignments={"adsb": "rtl-sdr-A"})
+        hardware.reconcile_present_rtl_sdrs(self.dir, inv, [], 0, is_active=lambda u: False)
+        self.assertNotIn("rtl-sdr-A", inv.devices)
+        self.assertEqual(inv.assignments.get("adsb"), "rtl-sdr-A")   # dangles
+
+    def test_noop_when_all_present(self):
+        inv = _inv(devices={"rtl-sdr-A": _dev("rtl-sdr-A", "rtl-sdr", serial="A")})
+        hardware.reconcile_present_rtl_sdrs(self.dir, inv, ["A"], 1, is_active=lambda u: False)
+        self.assertIn("rtl-sdr-A", inv.devices)
+
 if __name__ == "__main__":
     unittest.main()

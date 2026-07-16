@@ -242,6 +242,8 @@
         <div class="setup-hw-col">
           <div class="setup-hw-h">Detected</div>
           <ul class="setup-list" id="setupHwList"><li>Detecting…</li></ul>
+          <div class="setup-hw-sub">Declared devices</div>
+          <div id="hwDeclaredList"></div>
         </div>
 
         <div class="setup-hw-col">
@@ -1041,9 +1043,30 @@ async function setupDetectHardware() {
   }
   try {
     const devices = await jget('/api/hardware/devices');
+    hwRenderDeclaredList(devices);
     hwRenderAssignRows(devices);
     hwRenderRtlCandidates(detect, devices);
   } catch (e) { /* keep last render; the assign section retries on next refresh */ }
+}
+
+// Device-centric status (which declared dongle is busy / free / assigned) —
+// moved here from the dashboard, which was too tall. 🔴 busy = a service is
+// running on it; 🟢 = free, or assigned-but-idle (shared dongle).
+function hwRenderDeclaredList(devices) {
+  const box = document.getElementById('hwDeclaredList');
+  if (!box) return;
+  const list = (devices && devices.devices) || [];
+  if (list.length === 0) { box.innerHTML = '<div class="setup-hw-msg">None declared yet.</div>'; return; }
+  box.innerHTML = list.map(d => {
+    const busy = d.running;
+    const stateText = busy ? `busy — ${d.assignee}` : (d.assignee ? `assigned — ${d.assignee}` : 'free');
+    const color = busy ? 'var(--red)' : (d.assignee ? 'var(--text-dim)' : 'var(--green)');
+    return `<div class="setup-hw-declared">
+      <span>${escapeHtml(d.label)}</span>
+      <span class="setup-hw-kind">${escapeHtml(d.kind)}</span>
+      <span style="margin-left:auto;color:${color};white-space:nowrap">${busy ? '🔴' : '🟢'} ${escapeHtml(stateText)}</span>
+    </div>`;
+  }).join('');
 }
 
 function hwRenderDeclareForm(detect) {
@@ -1252,6 +1275,19 @@ async function setupRefreshJob() {
   }
 }
 
+// Parse a fetch Response as JSON, but degrade gracefully when the server
+// returns non-JSON (e.g. gunicorn/werkzeug's HTML 500 page under the Pi's
+// production WSGI server). Without this, response.json() throws the opaque
+// "Unexpected token '<', "<html> ..." error that hides the real HTTP status.
+async function setupReadJson(r) {
+  const ct = r.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    return r.json();
+  }
+  const body = (await r.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 200);
+  throw new Error(`server returned HTTP ${r.status} (not JSON)${body ? ': ' + body : ''}`);
+}
+
 async function setupRunSelected() {
   const log = document.getElementById('setupLog');
   const stateEl = document.getElementById('setupJobState');
@@ -1280,7 +1316,7 @@ async function setupRunSelected() {
       headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
       body: JSON.stringify(payload),
     });
-    d = await r.json();
+    d = await setupReadJson(r);
     if (!d.ok) throw new Error(d.error || 'plan failed');
   } catch (e) {
     info.textContent = 'Plan: failed (' + e.message + ')';
@@ -1322,7 +1358,7 @@ async function setupRunSelected() {
         options: { executionMode: 'sequential', autoStartServices: false },
       }),
     });
-    const rd = await r.json();
+    const rd = await setupReadJson(r);
     if (!rd.ok) throw new Error(rd.error || 'run failed');
     setupJobId = rd.jobId;
     setupLogCursor = 0;

@@ -16,9 +16,11 @@ class HardwareRoutesTest(unittest.TestCase):
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "label": "X"}},
                            assignments={"adsb": "a"})
         # The route default-assigns the lone dongle to openwebrx + aprs too
-        # (shared) — mock save so nothing touches disk.
+        # (shared) — mock save so nothing touches disk. Present count matches the
+        # one declared dongle so neither auto-declare nor unplug-reconcile fires.
         with mock.patch.object(HW, "load", return_value=inv), \
-             mock.patch.object(HW, "save"):
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=1):
             r = self.c.get("/api/hardware/devices")
         self.assertEqual(r.status_code, 200)
         body = json.loads(r.data)
@@ -111,7 +113,8 @@ class HardwareRoutesTest(unittest.TestCase):
             devices={"a": {"id": "a", "kind": "rtl-sdr", "label": "X"}},
             assignments={"adsb": "a"})
         with mock.patch.object(HW, "load", return_value=inv), \
-             mock.patch.object(HW, "save"):
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=1):
             r = self.c.get("/api/hardware/devices")
         body = json.loads(r.data)
         self.assertEqual(body["services"]["adsb"],
@@ -129,7 +132,8 @@ class HardwareRoutesTest(unittest.TestCase):
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "label": "X"}},
                            assignments={})
         with mock.patch.object(HW, "load", return_value=inv), \
-             mock.patch.object(HW, "save"):
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=1):
             r = self.c.get("/api/hardware/devices")
         body = json.loads(r.data)
         self.assertEqual(body["services"]["adsb"]["device_id"], "a")
@@ -164,6 +168,26 @@ class HardwareRoutesTest(unittest.TestCase):
             r = self.c.get("/api/hardware/devices")
         self.assertEqual(r.status_code, 200)
         mocked_scan.assert_not_called()
+
+    def test_devices_route_undeclares_unplugged_dongle(self):
+        # present (1) < declared (2) → the removed dongle is undeclared so the
+        # service that had it no longer shows it assigned.
+        inv = HW.Inventory(
+            devices={"rtl-sdr-A": {"id": "rtl-sdr-A", "kind": "rtl-sdr", "serial": "A", "label": "A"},
+                     "rtl-sdr-B": {"id": "rtl-sdr-B", "kind": "rtl-sdr", "serial": "B", "label": "B"}},
+            assignments={"adsb": "rtl-sdr-A", "aprs": "rtl-sdr-B"})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=1), \
+             mock.patch.object(oasis_app.HD_detect, "scan",
+                               return_value={"rtl_sdr": [{"index": 0, "serial": "A"}]}):
+            r = self.c.get("/api/hardware/devices")
+        body = json.loads(r.data)
+        ids = [d["id"] for d in body["devices"]]
+        self.assertIn("rtl-sdr-A", ids)
+        self.assertNotIn("rtl-sdr-B", ids)                       # unplugged → undeclared
+        self.assertFalse(body["services"]["aprs"]["ok"])         # its device is gone
+        self.assertEqual(body["services"]["aprs"]["reason"], "device-not-attached")
 
     def test_devices_route_scans_when_new_dongle_plugged(self):
         # present (2) > declared (1) → scan runs to pick up the new dongle.
