@@ -244,6 +244,31 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .recent-filter-chip.is{color:var(--blue);border-color:var(--blue);}
 .recent-filter-chip.off{color:var(--text-dim);border-color:var(--border);opacity:.5;}
 
+/* ADS-B aircraft panel — same shape as #recent-panel, purple accent to match
+   the aircraft label color used elsewhere on the page. */
+#adsb-panel{
+  background:var(--panel);border:1px solid var(--border);border-radius:7px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+#adsb-header{
+  display:flex;align-items:center;gap:.5rem;padding:6px 10px;
+  cursor:pointer;user-select:none;border-radius:7px;
+}
+#adsb-header:hover{background:var(--panel-2);}
+#adsb-arrow{font-size:10px;color:var(--text-dim);transition:transform .2s;flex-shrink:0;}
+#adsb-panel.collapsed #adsb-arrow{transform:rotate(-90deg);}
+#adsb-count{color:#b478ff;font-weight:700;flex:1;white-space:nowrap;}
+#adsb-body{border-top:1px solid var(--border);padding:4px 0;max-height:260px;overflow-y:auto;}
+#adsb-panel.collapsed #adsb-body{display:none;}
+.adsb-row{
+  display:flex;align-items:center;gap:.4rem;
+  padding:4px 10px;cursor:pointer;white-space:nowrap;
+}
+.adsb-row:hover{background:var(--panel-2);}
+.adsb-flight{color:#b478ff;font-weight:700;}
+.adsb-alt{color:var(--text-dim);font-size:var(--fs-micro);margin-left:auto;}
+
 /* Map-layer toggle panel (collapsible, stacked beneath the stations panel) */
 #layer-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
@@ -675,6 +700,15 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();togglePathFilter('is');}">IS</span>
     </div>
     <div id="recent-body"></div>
+  </div>
+
+  <!-- ADS-B aircraft panel — mirrors the recent-heard panel above exactly. -->
+  <div id="adsb-panel" class="collapsed">
+    <div id="adsb-header" onclick="toggleAdsbPanel()">
+      <span id="adsb-arrow">▾</span>
+      <span id="adsb-count">0 aircraft</span>
+    </div>
+    <div id="adsb-body"></div>
   </div>
 
   <!-- Map layer toggles (collapsible) — same groups as maps/map.html -->
@@ -1152,6 +1186,17 @@ function updateObjectsPanel() {
       otherRaw[raw] = (otherRaw[raw] || 0) + 1;
     }
   });
+  // ADS-B aircraft fold into the SAME 'aircraft'/'heli' buckets APRS stations
+  // use (same icons, same labels) — one combined "everything on the map, by
+  // symbol" legend, not a separate ADS-B-only count.
+  _adsbAircraft.forEach(a => {
+    if (a.lat == null || a.lon == null) return;
+    const key = adsbCategoryKey(a);
+    const label = key === 'heli' ? 'Helicopter' : 'Aircraft';
+    if (!cats[key]) cats[key] = { label, count: 0 };
+    cats[key].count++;
+    if (!(key in objCatState)) objCatState[key] = true;
+  });
   // Auto-expand the panel the first time an emergency category appears, so the
   // operator sees it without opening the panel. Re-arms once none remain.
   const _hasEmergency = _EMERGENCY_CATS.some(k => k in cats);
@@ -1199,6 +1244,7 @@ function setAllObjects(on) {
   Object.keys(objCatState).forEach(k => objCatState[k] = on);
   updateObjectsPanel();
   applyFilter();
+  applyAdsbFilter();
 }
 
 // Solo a category — click a category name to show only that type; click the
@@ -1209,6 +1255,7 @@ function soloObject(key) {
   keys.forEach(k => objCatState[k] = isSolo ? true : (k === key));
   updateObjectsPanel();
   applyFilter();
+  applyAdsbFilter();
 }
 
 // Delegated change handler for the dynamically-built category checkboxes.
@@ -1218,6 +1265,7 @@ document.getElementById('objects-body').addEventListener('change', (e) => {
   objCatState[cb.dataset.objcat] = cb.checked;
   _syncTypeColFromPanel();
   applyFilter();
+  applyAdsbFilter();
 });
 
 // Click a category name to solo it (without toggling its checkbox).
@@ -1565,6 +1613,7 @@ function onTypeColFilter() {
   }
   updateObjectsPanel();   // rebuild panel checkboxes + sync this dropdown
   applyFilter();
+  applyAdsbFilter();
 }
 
 // Rebuild the TYPE dropdown options from categories present, then reflect state.
@@ -1805,34 +1854,95 @@ function adsbSymCode(category) {
   return category === 'A7' ? 'X' : "'";
 }
 
+// Which objects-panel category (see _OBJ_CATS/aprsCategory) an aircraft
+// belongs to — same key space APRS stations use, so ADS-B aircraft fold
+// into the SAME 'aircraft'/'heli' legend rows and their checkboxes, instead
+// of needing a parallel filter system.
+function adsbCategoryKey(a) {
+  return adsbSymCode(a.category) === 'X' ? 'heli' : 'aircraft';
+}
+
+let _adsbAircraft = [];   // raw list from the last successful /api/adsb/aircraft poll
+
+// Re-render the adsb source from the last-fetched list, honoring the
+// objects-panel's aircraft/heli checkboxes — called on every poll AND
+// whenever those checkboxes change (no need to re-fetch for a filter toggle).
+function applyAdsbFilter() {
+  const src = map.getSource('adsb');
+  if (!src) return;
+  const feats = _adsbAircraft
+    .filter(a => a.lat != null && a.lon != null)
+    .filter(a => objCatState[adsbCategoryKey(a)] !== false)
+    .map(a => {
+      const emerg = ['7500', '7600', '7700'].includes(a.squawk);
+      const symId = ensureStationImage('/', adsbSymCode(a.category));
+      return {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
+        properties: {
+          sym: symId || '',
+          emergency: emerg,
+          label: (a.flight || a.hex || '').trim() + (emerg ? ' ⚠' : ''),
+          flight: a.flight || '', hex: a.hex || '', squawk: a.squawk || '',
+          alt_baro: a.alt_baro != null ? a.alt_baro : null,
+          gs: a.gs != null ? a.gs : null,
+          track: a.track != null ? a.track : null,
+          category: a.category || '',
+          lat: a.lat, lon: a.lon
+        }
+      };
+    });
+  src.setData({ type: 'FeatureCollection', features: feats });
+}
+
 async function refreshAdsb() {
   try {
     const r = await fetch('/api/adsb/aircraft');
     if (!r.ok) return;
     const j = await r.json();
-    const feats = (j.aircraft || [])
-      .filter(a => a.lat != null && a.lon != null)
-      .map(a => {
-        const emerg = ['7500', '7600', '7700'].includes(a.squawk);
-        const symId = ensureStationImage('/', adsbSymCode(a.category));
-        return {
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
-          properties: {
-            sym: symId || '',
-            emergency: emerg,
-            label: (a.flight || a.hex || '').trim() + (emerg ? ' ⚠' : ''),
-            flight: a.flight || '', hex: a.hex || '', squawk: a.squawk || '',
-            alt_baro: a.alt_baro != null ? a.alt_baro : null,
-            gs: a.gs != null ? a.gs : null,
-            track: a.track != null ? a.track : null,
-            lat: a.lat, lon: a.lon
-          }
-        };
-      });
-    const src = map.getSource('adsb');
-    if (src) src.setData({ type: 'FeatureCollection', features: feats });
+    _adsbAircraft = j.aircraft || [];
+    applyAdsbFilter();
+    updateAdsbPanel();
+    updateObjectsPanel();   // aircraft/heli counts in "APRS info" track this poll too
   } catch (e) { /* ignore — poll again next cycle */ }
+}
+
+function toggleAdsbPanel() {
+  document.getElementById('adsb-panel').classList.toggle('collapsed');
+}
+
+function adsbRowClick(hex) {
+  const a = _adsbAircraft.find(x => x.hex === hex);
+  if (!a || a.lat == null || a.lon == null) return;
+  map.flyTo({ center: [a.lon, a.lat], zoom: Math.max(map.getZoom(), 11), speed: 1.4, essential: true });
+  if (_adsbPopup) _adsbPopup.remove();
+  _adsbPopup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '260px' })
+    .setLngLat([a.lon, a.lat])
+    .setHTML(buildAdsbPopup(a))
+    .addTo(map);
+}
+
+// Mirrors updateRecentPanel() exactly — same "N <noun>" header + clickable
+// row-list body shape, aircraft's own accent color.
+function updateAdsbPanel() {
+  const count = document.getElementById('adsb-count');
+  const body  = document.getElementById('adsb-body');
+  const withPos = _adsbAircraft.filter(a => a.lat != null && a.lon != null);
+  count.textContent = withPos.length + ' aircraft';
+  if (!withPos.length) {
+    body.innerHTML = '<div style="padding:6px 10px;color:var(--text-dim)">None this cycle</div>';
+    return;
+  }
+  const sorted = [...withPos].sort((a, b) =>
+    (a.flight || a.hex || '').localeCompare(b.flight || b.hex || ''));
+  body.innerHTML = sorted.map(a => {
+    const title = (a.flight || a.hex || '').trim() || a.hex;
+    const alt = a.alt_baro != null ? fmtAcAlt(a.alt_baro) : '';
+    return `<div class="adsb-row" onclick="adsbRowClick('${a.hex}')">
+      <span class="adsb-flight">${_escHtml(title)}</span>
+      <span class="adsb-alt">${alt}</span>
+    </div>`;
+  }).join('');
 }
 
 // Start after config + map both load
