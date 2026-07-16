@@ -2021,6 +2021,14 @@ loadConfig().then(() => {
       id: 'adsb-icon', type: 'symbol', source: 'adsb',
       layout: {
         'icon-image': ['get', 'sym'],
+        // Point the glyph the way the aircraft is actually flying. APRS never
+        // does this for its own stations (course isn't always meaningful for
+        // a car/vehicle icon) — this is ADS-B-specific, since track is a
+        // reliable compass heading for a moving aircraft. 'coalesce' falls
+        // back to 0° (nose "up"/north) for the rare aircraft with no track
+        // yet decoded, rather than a broken/undefined rotation.
+        'icon-rotate': ['coalesce', ['get', 'track'], 0],
+        'icon-rotation-alignment': 'map',
         'icon-allow-overlap': true,
         'icon-ignore-placement': true,
         'icon-anchor': 'center',
