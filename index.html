@@ -163,33 +163,44 @@ body {
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
+/* Cards are plain (non-clickable) containers, laid out as two rows:
+   top row = status dot/name + START/STOP (top-right); bottom row = OPEN
+   (bottom-left, only on cards with a launchable service page) + state
+   badge (bottom-right, on every card). */
 .svc-card {
   display: flex;
-  align-items: center;
-  gap: .5rem;
+  flex-direction: column;
+  gap: .3rem;
   flex: 1;
   min-width: 120px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: .38rem .7rem;
-  flex-wrap: wrap;
   transition: border-color .3s;
 }
 .svc-card.up   { border-color: var(--accent-dim); background: rgba(0, 200, 100, 0.06); }
 .svc-card.down { border-color: #7a1010;           background: rgba(180, 30,  30,  0.08); }
 .svc-card.warn { border-color: var(--amber-dim);  background: rgba(255, 180, 84,  0.06); }
-a.svc-card { text-decoration: none; color: inherit; cursor: pointer; }
-a.svc-card:hover { border-color: var(--accent); }
-/* Gated cards only launch their service page once the live check reports
-   "up" — dim the pointer affordance until then. */
-a.svc-card.svc-card-gated:not(.up) { cursor: default; }
-a.svc-card.svc-card-gated:not(.up):hover { border-color: var(--border); }
-/* Gated cards use blue (not green) for "up" so a launchable service card
-   reads as visually distinct from the plain online-status cards. */
+/* Gated cards use blue (not green) for "up" so a card with a launchable
+   OPEN button reads as visually distinct from the plain online-status
+   cards. The card itself is not clickable — use the OPEN button instead. */
 .svc-card-gated.up           { border-color: var(--blue); background: rgba(88, 166, 255, 0.06); }
 .svc-card-gated .svc-dot.up   { background: var(--blue); }
 .svc-card-gated .svc-badge.up { color: var(--blue); }
+.svc-card-top {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.svc-card-info { flex: 1; min-width: 0; }
+.svc-card-bottom {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
 .svc-dot {
   width: 8px;
   height: 8px;
@@ -202,8 +213,6 @@ a.svc-card.svc-card-gated:not(.up):hover { border-color: var(--border); }
 .svc-dot.down { background: var(--red); }
 .svc-dot.warn { background: var(--amber); }
 .svc-name { font-size: var(--fs-base); font-weight: 700; color: var(--text); }
-.svc-name .owrx-link { color: var(--accent); text-decoration: none; }
-.svc-name .owrx-link:hover { text-decoration: underline; }
 .svc-sub  { font-size: var(--fs-small); color: var(--text-dim); }
 .svc-badge {
   margin-left: auto;
@@ -216,10 +225,21 @@ a.svc-card.svc-card-gated:not(.up):hover { border-color: var(--border); }
 .svc-badge.up   { color: var(--accent); }
 .svc-badge.down { color: var(--red); }
 .svc-badge.warn { color: var(--amber); }
-/* Start/stop control on controllable service cards. Text label (not an icon)
-   so the action is readable at a glance on a wall dashboard. */
+/* OPEN launches the service page/tab — bottom-left of the card, blue like
+   the gated "up" accent. Disabled (greyed, not clickable) unless the card
+   is up. */
+.svc-open {
+  font-family: var(--mono); font-size: var(--fs-micro); font-weight: 700;
+  letter-spacing: .05em; padding: 2px 8px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--blue); color: var(--blue); background: transparent;
+}
+.svc-open:hover:not(:disabled) { background: rgba(88, 166, 255, 0.14); }
+.svc-open:disabled { opacity: .4; cursor: not-allowed; border-color: var(--border); color: var(--text-dim); }
+/* Start/stop control on controllable service cards — top-right of the
+   card. Text label (not an icon) so the action is readable at a glance on
+   a wall dashboard. */
 .svc-power {
-  margin-left: 6px; flex-shrink: 0;
+  margin-left: auto; flex-shrink: 0;
   font-size: var(--fs-micro); font-weight: 700; letter-spacing: .05em;
   padding: 2px 6px; border-radius: 4px; cursor: pointer; user-select: none;
   border: 1px solid var(--border); color: var(--text-dim);
@@ -1032,97 +1052,152 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <div class="svc-strips-wrap" id="svc-strips-wrap">
 <!-- Row 1: radio / RF services -->
 <div class="svc-strip">
-  <a class="svc-card svc-card-gated" id="card-webssh" href="static/terminal/index.html" onclick="return svcCardClick('webssh', event)">
-    <div class="svc-dot" id="dot-webssh"></div>
-    <div><div class="svc-name">Web SSH</div><div class="svc-sub" id="sub-webssh">—</div></div>
-    <span class="svc-badge" id="badge-webssh">—</span>
-  </a>
-  <a class="svc-card svc-card-gated" id="card-gw" href="#" onclick="return svcCardClick('gw', event)">
-    <div class="svc-dot" id="dot-gw"></div>
-    <div><div class="svc-name">APRS GrayWolf</div><div class="svc-sub" id="sub-gw">—</div></div>
-    <span class="svc-badge" id="badge-gw">—</span>
-  </a>
-  <div class="svc-card" id="card-feed">
-    <div class="svc-dot" id="dot-feed"></div>
-    <div style="flex:1; min-width:0">
-      <div class="svc-name">APRS SDR Feed</div>
-      <div class="feed-row">
-        <span class="svc-sub" id="sub-feed">—</span>
-        <div class="feed-meter" id="feed-meter" hidden>
-          <div class="feed-meter-track"><div class="feed-meter-fill" id="feed-meter-fill"></div></div>
-          <span class="feed-meter-label" id="feed-meter-label"></span>
-        </div>
-      </div>
+  <div class="svc-card svc-card-gated" id="card-webssh" data-href="static/terminal/index.html" data-target="_blank">
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-webssh"></div>
+      <div class="svc-card-info"><div class="svc-name">Web SSH</div><div class="svc-sub" id="sub-webssh">—</div></div>
     </div>
-    <span class="svc-badge" id="badge-feed">—</span>
+    <div class="svc-card-bottom">
+      <button class="svc-open" id="open-webssh" onclick="svcOpenClick('webssh')" disabled>OPEN ↗</button>
+      <span class="svc-badge" id="badge-webssh">—</span>
+    </div>
   </div>
-  <a class="svc-card svc-card-gated" id="card-owrx" href="#" onclick="return svcCardClick('owrx', event)">
-    <div class="svc-dot" id="dot-owrx"></div>
-    <div>
-      <div class="svc-name">OpenWebRX <span class="owrx-link" title="Opens in a new tab">↗</span></div>
-      <div class="svc-sub" id="sub-owrx">—</div>
+  <div class="svc-card svc-card-gated" id="card-gw">
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-gw"></div>
+      <div class="svc-card-info"><div class="svc-name">APRS GrayWolf</div><div class="svc-sub" id="sub-gw">—</div></div>
     </div>
-    <span class="svc-badge" id="badge-owrx">—</span>
-  </a>
-  <a class="svc-card svc-card-gated" id="card-adsb" href="server/aprs/map.html" target="_blank" onclick="return svcCardClick('adsb', event)">
-    <div class="svc-dot" id="dot-adsb"></div>
-    <div>
-      <div class="svc-name">ADS-B Aircraft <span class="owrx-link" title="Opens in a new tab">↗</span></div>
-      <div class="feed-row">
-        <span class="svc-sub" id="sub-adsb">—</span>
-        <div class="feed-meter" id="adsb-meter" hidden>
-          <div class="feed-meter-track"><div class="feed-meter-fill" id="adsb-meter-fill"></div></div>
-          <span class="feed-meter-label" id="adsb-meter-label"></span>
+    <div class="svc-card-bottom">
+      <button class="svc-open" id="open-gw" onclick="svcOpenClick('gw')" disabled>OPEN ↗</button>
+      <span class="svc-badge" id="badge-gw">—</span>
+    </div>
+  </div>
+  <div class="svc-card" id="card-feed">
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-feed"></div>
+      <div class="svc-card-info">
+        <div class="svc-name">APRS SDR Feed</div>
+        <div class="feed-row">
+          <span class="svc-sub" id="sub-feed">—</span>
+          <div class="feed-meter" id="feed-meter" hidden>
+            <div class="feed-meter-track"><div class="feed-meter-fill" id="feed-meter-fill"></div></div>
+            <span class="feed-meter-label" id="feed-meter-label"></span>
+          </div>
         </div>
       </div>
     </div>
-    <span class="svc-badge" id="badge-adsb">—</span>
-    <div class="hw-assign-row" id="hwrow-adsb" hidden>
-      <span class="hw-assign-lbl">device:</span>
-      <select class="hw-assign-sel" id="hwsel-adsb" onchange="onHardwareAssignChange('adsb')" onclick="event.stopPropagation()"></select>
+    <div class="svc-card-bottom">
+      <span class="svc-badge" id="badge-feed">—</span>
     </div>
-  </a>
-  <a class="svc-card svc-card-gated" id="card-wlrf" href="server/winlink/mail.html" onclick="return svcCardClick('wlrf', event)">
-    <div class="svc-dot" id="dot-wlrf"></div>
-    <div><div class="svc-name">Winlink RF</div><div class="svc-sub" id="sub-wlrf">—</div></div>
-    <span class="svc-badge" id="badge-wlrf">—</span>
-    <div class="hw-assign-row" id="hwrow-wlrf" hidden>
-      <span class="hw-assign-lbl">device:</span>
-      <select class="hw-assign-sel" id="hwsel-wlrf" onchange="onHardwareAssignChange('wlrf')" onclick="event.stopPropagation()"></select>
+  </div>
+  <div class="svc-card svc-card-gated" id="card-owrx">
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-owrx"></div>
+      <div class="svc-card-info">
+        <div class="svc-name">OpenWebRX</div>
+        <div class="svc-sub" id="sub-owrx">—</div>
+      </div>
     </div>
-  </a>
-    <a class="svc-card svc-card-gated" id="card-winlink" href="#" onclick="return svcCardClick('winlink', event)">
-    <div class="svc-dot" id="dot-winlink"></div>
-    <div><div class="svc-name">Winlink Classic Mail</div><div class="svc-sub" id="sub-winlink">—</div></div>
-    <span class="svc-badge" id="badge-winlink">—</span>
-  </a>
-    <a class="svc-card svc-card-gated" id="card-kiwix" href="#" onclick="return svcCardClick('kiwix', event)">
-    <div class="svc-dot" id="dot-kiwix"></div>
-    <div><div class="svc-name">Wiki Kiwix</div><div class="svc-sub" id="sub-kiwix">—</div></div>
-    <span class="svc-badge" id="badge-kiwix">—</span>
-  </a>
+    <div class="svc-card-bottom">
+      <button class="svc-open" id="open-owrx" onclick="svcOpenClick('owrx')" disabled>OPEN ↗</button>
+      <span class="svc-badge" id="badge-owrx">—</span>
+    </div>
+  </div>
+  <div class="svc-card svc-card-gated" id="card-adsb" data-href="server/aprs/map.html" data-target="_blank">
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-adsb"></div>
+      <div class="svc-card-info">
+        <div class="svc-name">ADS-B Aircraft</div>
+        <div class="feed-row">
+          <span class="svc-sub" id="sub-adsb">—</span>
+          <div class="feed-meter" id="adsb-meter" hidden>
+            <div class="feed-meter-track"><div class="feed-meter-fill" id="adsb-meter-fill"></div></div>
+            <span class="feed-meter-label" id="adsb-meter-label"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="svc-card-bottom">
+      <button class="svc-open" id="open-adsb" onclick="svcOpenClick('adsb')" disabled>OPEN ↗</button>
+      <span class="svc-badge" id="badge-adsb">—</span>
+      <div class="hw-assign-row" id="hwrow-adsb" hidden>
+        <span class="hw-assign-lbl">device:</span>
+        <select class="hw-assign-sel" id="hwsel-adsb" onchange="onHardwareAssignChange('adsb')"></select>
+      </div>
+    </div>
+  </div>
+  <div class="svc-card svc-card-gated" id="card-wlrf" data-href="server/winlink/mail.html">
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-wlrf"></div>
+      <div class="svc-card-info"><div class="svc-name">Winlink RF</div><div class="svc-sub" id="sub-wlrf">—</div></div>
+    </div>
+    <div class="svc-card-bottom">
+      <button class="svc-open" id="open-wlrf" onclick="svcOpenClick('wlrf')" disabled>OPEN</button>
+      <span class="svc-badge" id="badge-wlrf">—</span>
+      <div class="hw-assign-row" id="hwrow-wlrf" hidden>
+        <span class="hw-assign-lbl">device:</span>
+        <select class="hw-assign-sel" id="hwsel-wlrf" onchange="onHardwareAssignChange('wlrf')"></select>
+      </div>
+    </div>
+  </div>
+  <div class="svc-card svc-card-gated" id="card-winlink">
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-winlink"></div>
+      <div class="svc-card-info"><div class="svc-name">Winlink Classic Mail</div><div class="svc-sub" id="sub-winlink">—</div></div>
+    </div>
+    <div class="svc-card-bottom">
+      <button class="svc-open" id="open-winlink" onclick="svcOpenClick('winlink')" disabled>OPEN ↗</button>
+      <span class="svc-badge" id="badge-winlink">—</span>
+    </div>
+  </div>
+  <div class="svc-card svc-card-gated" id="card-kiwix">
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-kiwix"></div>
+      <div class="svc-card-info"><div class="svc-name">Wiki Kiwix</div><div class="svc-sub" id="sub-kiwix">—</div></div>
+    </div>
+    <div class="svc-card-bottom">
+      <button class="svc-open" id="open-kiwix" onclick="svcOpenClick('kiwix')" disabled>OPEN ↗</button>
+      <span class="svc-badge" id="badge-kiwix">—</span>
+    </div>
+  </div>
 </div>
 <!-- Row 2: system / infrastructure -->
 <div class="svc-strip">
   <div class="svc-card" id="card-flask">
-    <div class="svc-dot" id="dot-flask"></div>
-    <div><div class="svc-name">Frontend Flask</div><div class="svc-sub" id="sub-flask">—</div></div>
-    <span class="svc-badge" id="badge-flask">—</span>
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-flask"></div>
+      <div class="svc-card-info"><div class="svc-name">Frontend Flask</div><div class="svc-sub" id="sub-flask">—</div></div>
+    </div>
+    <div class="svc-card-bottom">
+      <span class="svc-badge" id="badge-flask">—</span>
+    </div>
   </div>
   <div class="svc-card" id="card-wsgi">
-    <div class="svc-dot" id="dot-wsgi"></div>
-    <div><div class="svc-name">Web Server</div><div class="svc-sub" id="sub-wsgi">—</div></div>
-    <span class="svc-badge" id="badge-wsgi">—</span>
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-wsgi"></div>
+      <div class="svc-card-info"><div class="svc-name">Web Server</div><div class="svc-sub" id="sub-wsgi">—</div></div>
+    </div>
+    <div class="svc-card-bottom">
+      <span class="svc-badge" id="badge-wsgi">—</span>
+    </div>
   </div>
   <div class="svc-card" id="card-gpsd">
-    <div class="svc-dot" id="dot-gpsd"></div>
-    <div><div class="svc-name">GPS (gpsd)</div><div class="svc-sub" id="sub-gpsd">—</div></div>
-    <span class="svc-badge" id="badge-gpsd">—</span>
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-gpsd"></div>
+      <div class="svc-card-info"><div class="svc-name">GPS (gpsd)</div><div class="svc-sub" id="sub-gpsd">—</div></div>
+    </div>
+    <div class="svc-card-bottom">
+      <span class="svc-badge" id="badge-gpsd">—</span>
+    </div>
   </div>
-    <div class="svc-card" id="card-aprs">
-    <div class="svc-dot" id="dot-aprs"></div>
-    <div><div class="svc-name">APRS Stats API</div><div class="svc-sub" id="sub-aprs">—</div></div>
-    <span class="svc-badge" id="badge-aprs">—</span>
+  <div class="svc-card" id="card-aprs">
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-aprs"></div>
+      <div class="svc-card-info"><div class="svc-name">APRS Stats API</div><div class="svc-sub" id="sub-aprs">—</div></div>
+    </div>
+    <div class="svc-card-bottom">
+      <span class="svc-badge" id="badge-aprs">—</span>
+    </div>
   </div>
 </div>
 </div><!-- /.svc-strips-wrap -->
@@ -1386,9 +1461,10 @@ loadVersion();
 // ── Service state tracking (for counts badge) ─────────────────────────────────
 const _svcStates = {};
 
-// Cards that only launch their service page once the live check reports "up"
-// — see svcCardClick(). Winlink RF is not listed here: it links to the
-// OASIS-hosted mail.html page (a static href), not an external service port.
+// Cards whose OPEN button launches an external service URL (own port), built
+// at click-time so a live PORTS/hostname change is always respected. Cards
+// not listed here (webssh, adsb, wlrf) instead carry a data-href (+ optional
+// data-target="_blank") on the card element — see svcOpenClick().
 const SVC_CARD_EXTERNAL_URL = {
   gw:      () => `${location.protocol}//${location.hostname}:${PORTS.graywolf}/`,
   owrx:    () => `${location.protocol}//${location.hostname}:${PORTS.openwebrx}/`,
@@ -1396,15 +1472,27 @@ const SVC_CARD_EXTERNAL_URL = {
   winlink: () => `${location.protocol}//${location.hostname}:${PORTS.winlink}/`,
 };
 
-function svcCardClick(id, event) {
-  // Let clicks on the power control / hardware-assignment dropdown behave
-  // normally — only the card body itself should launch the service page.
-  if (event.target.closest('.svc-power, .hw-assign-row')) return true;
-  if (_svcStates[id] !== 'up') { event.preventDefault(); return false; }
+// Called by each card's OPEN button (disabled via updateOpenBtn() unless the
+// service is up, so this guard is a backstop, not the primary gate).
+function svcOpenClick(id) {
+  if (_svcStates[id] !== 'up') return;
   const external = SVC_CARD_EXTERNAL_URL[id];
-  if (external) { event.preventDefault(); window.open(external(), '_blank'); return false; }
-  return true;   // static href already points at the right page/target
+  if (external) { window.open(external(), '_blank'); return; }
+  const card = document.getElementById('card-' + id);
+  const href = card && card.dataset.href;
+  if (!href) return;
+  if (card.dataset.target === '_blank') window.open(href, '_blank');
+  else location.href = href;
 }
+
+// Enable/disable a card's OPEN button to match its live state — disabled
+// (greyed) unless the service is up. No-op on cards without an OPEN button.
+function updateOpenBtn(svcId, state) {
+  const btn = document.getElementById('open-' + svcId);
+  if (!btn) return;
+  btn.disabled = state !== 'up';
+}
+
 
 // Service ids hidden because their feature wasn't installed (see loadInstalled).
 const HIDDEN_SVCS = new Set();
@@ -1721,6 +1809,7 @@ async function checkService(svc) {
     if (nbadge) { nbadge.className = 'nav-svc-badge ' + (state === 'up' ? 'up' : 'warn'); nbadge.textContent = result.navSub || result.sub || (state === 'up' ? 'online' : state); }
     if (nlink)  { nlink.classList.toggle('enabled', state !== 'down'); }
     updatePower(svc.id, state);
+    updateOpenBtn(svc.id, state);
   } catch (e) {
     _svcStates[svc.id] = 'down';
     if (dot)   dot.className  = 'svc-dot down';
@@ -1730,6 +1819,7 @@ async function checkService(svc) {
     if (nbadge) { nbadge.className = 'nav-svc-badge warn'; nbadge.textContent = 'offline'; }
     if (nlink)  { nlink.classList.remove('enabled'); }
     updatePower(svc.id, 'down');
+    updateOpenBtn(svc.id, 'down');
   }
   updateSvcCounts();
 }
@@ -1944,6 +2034,7 @@ function applyAdsbFlowState(state, aircraftCount, badgeText) {
   if (card)  card.className = 'svc-card svc-card-gated ' + state;
   if (badge) { badge.className = 'svc-badge ' + state; badge.textContent = badgeText; }
   if (sub)   sub.textContent = aircraftCount + ' aircraft';
+  updateOpenBtn('adsb', state);
   updateSvcCounts();
 }
 
@@ -2112,20 +2203,21 @@ const SVC_UNITS = { gw: 'graywolf', aprs: 'graywolf-api', feed: 'aprs-sdr-feed',
                     winlink: 'pat', wlrf: 'pat-direwolf', kiwix: 'kiwix',
                     webssh: 'webssh', owrx: 'openwebrx', adsb: 'dump1090-fa' };
 
-// Lazily create the power control on a controllable card. A <span> (not a
-// <button>) so it's valid inside the cards that are <a> links; the click
-// handler stops the anchor from navigating.
+// Lazily create the power control on a controllable card, appended into the
+// card's top row (top-right, alongside the name) so it stays clear of the
+// OPEN button + status badge in the bottom row.
 function powerBtn(svcId) {
   const card = document.getElementById('card-' + svcId);
   if (!card) return null;
   let btn = card.querySelector('.svc-power');
   if (!btn) {
+    const top = card.querySelector('.svc-card-top') || card;
     btn = document.createElement('span');
     btn.className = 'svc-power';
     btn.setAttribute('role', 'button');
     btn.tabIndex = 0;
     btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); togglePower(svcId); });
-    card.appendChild(btn);
+    top.appendChild(btn);
   }
   return btn;
 }
