@@ -7,6 +7,16 @@ import app as oasis_app
 from common import hardware as HW
 
 
+class _SyncThread:
+    """Stand-in for threading.Thread that runs the target synchronously on
+    start() — lets a test observe a fire-and-forget call within the request."""
+    def __init__(self, target=None, daemon=None, **kw):
+        self._target = target
+    def start(self):
+        if self._target:
+            self._target()
+
+
 class HardwareRoutesTest(unittest.TestCase):
     def setUp(self):
         oasis_app.app.config["TESTING"] = True
@@ -188,6 +198,27 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertNotIn("rtl-sdr-B", ids)                       # unplugged → undeclared
         self.assertFalse(body["services"]["aprs"]["ok"])         # its device is gone
         self.assertEqual(body["services"]["aprs"]["reason"], "device-not-attached")
+
+    def test_devices_route_auto_declares_assigns_and_applies_digirig(self):
+        ptt = ("/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_"
+               "Controller_3e54e82a-if00-port0")
+        inv = HW.Inventory(devices={}, assignments={})
+        applied = []
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=0), \
+             mock.patch.object(oasis_app.HD_detect, "detect_digirig",
+                               return_value={"ptt": ptt, "serial": "3e54e82a"}), \
+             mock.patch.object(oasis_app, "_apply_hardware_async",
+                               side_effect=lambda: applied.append(1)), \
+             mock.patch.object(oasis_app.threading, "Thread", _SyncThread):
+            r = self.c.get("/api/hardware/devices")
+        body = json.loads(r.data)
+        ids = [d["id"] for d in body["devices"]]
+        self.assertIn("digirig-3e54e82a", ids)
+        self.assertEqual(body["services"]["winlink"]["device_id"], "digirig-3e54e82a")
+        self.assertTrue(body["services"]["winlink"]["ok"])
+        self.assertEqual(applied, [1])   # direwolf re-templated on the change
 
     def test_devices_route_scans_when_new_dongle_plugged(self):
         # present (2) > declared (1) → scan runs to pick up the new dongle.

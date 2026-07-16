@@ -104,6 +104,13 @@
 .setup-hw-declared .setup-hw-kind { color: var(--text-dim); }
 .setup-hw-btn-sm { font-size: var(--fs-small); padding: .15rem .45rem; }
 .setup-hw-fields > * { margin-top: .3rem; }
+.setup-hw-note { font-size: var(--fs-micro, 11px); color: var(--text-dim); margin: .1rem 0 .4rem; line-height: 1.35; }
+.setup-dongle { display: flex; align-items: baseline; gap: .5rem; font-size: var(--fs-small); padding: .25rem 0; border-bottom: 1px solid var(--border); }
+.setup-dongle:last-child { border-bottom: none; }
+.setup-dongle .d-serial { font-family: var(--mono); color: var(--text); }
+.setup-dongle .d-port { color: var(--text-dim); font-size: var(--fs-micro, 11px); }
+.setup-dongle .d-svc { margin-left: auto; white-space: nowrap; }
+.setup-dongle .d-dot { flex: 0 0 auto; }
 </style>
 </head>
 <body>
@@ -240,16 +247,17 @@
       <div class="setup-hw-cols">
 
         <div class="setup-hw-col">
-          <div class="setup-hw-h">Detected</div>
+          <div class="setup-hw-h">Dongles (SDR)</div>
+          <div id="hwDonglesList"><div class="setup-hw-msg">Detecting…</div></div>
+          <div class="setup-hw-note">Plugged-in SDR dongles register automatically; unplug one and it drops here and its services go unassigned.</div>
+          <div class="setup-hw-sub">Also detected</div>
           <ul class="setup-list" id="setupHwList"><li>Detecting…</li></ul>
-          <div class="setup-hw-sub">Declared devices</div>
-          <div id="hwDeclaredList"></div>
         </div>
 
         <div class="setup-hw-col">
-          <div class="setup-hw-h">Declare devices</div>
-          <div id="hwRtlCandidates" class="setup-hw-fields"></div>
-          <div class="setup-hw-sub">Radio port (Digirig / DRA-Pi)</div>
+          <div class="setup-hw-h">Radio port (Winlink)</div>
+          <div id="hwRadioPorts"></div>
+          <div class="setup-hw-note">A lone DigiRig auto-registers (its CP210x PTT + audio go straight into direwolf). Use the form only to override, or to declare a DRA-Pi.</div>
           <div class="setup-hw-fields">
             <select class="setup-input" id="hwDeclareKind">
               <option value="digirig">Digirig</option>
@@ -971,23 +979,20 @@ function setupRenderHw(d) {
   const det = (d && d.detected) || {};
   const usbC = (d && d.usbClassified) || { rtlSdr: [], digirig: [], cm108: [], other: [] };
 
-  lines.push('<strong>Recognized peripherals</strong>');
-
+  // SDR dongles have their own Dongles list above; this is only the non-SDR
+  // peripherals relevant to Winlink/GPS setup.
   // RTL-SDR: prefer the exclusive rtl_test probe, but fall back to the lsusb
   // signature — rtl_test reports "no devices" while the dongle is held open
   // by another service (GrayWolf/OpenWebRX/adsb), which isn't the same as
   // "not plugged in".
   const rtlTest = (det.rtl_sdr || []).length;
   const rtlUsb = usbC.rtlSdr.length;
-  const rtlCount = Math.max(rtlTest, rtlUsb);
-  let rtlNote = '';
-  if (rtlCount > 0 && rtlTest === 0) rtlNote = ' (in use by another service — not exclusively testable right now)';
-  lines.push(`&nbsp;&nbsp;RTL-SDR: ${hwVal(rtlCount, rtlCount > 0)}${rtlNote}`);
+  void rtlTest; void rtlUsb;   // RTL-SDR dongles are shown in the Dongles list, not here
 
   const digirigCount = usbC.digirig.length;
-  lines.push(`&nbsp;&nbsp;DigiRig: ${hwVal(digirigCount, digirigCount > 0)}`);
+  lines.push(`DigiRig: ${hwVal(digirigCount || 'none', digirigCount > 0)}`);
 
-  if (usbC.cm108.length) {
+  if (false) {   // CM108 verbose note dropped — was noise for the operator
     lines.push(`&nbsp;&nbsp;CM108 USB audio/PTT fob: ${hwVal(usbC.cm108.length, true)} `
       + '<span style="color:var(--text-dim)">(generic chip — not this suite\u2019s DRA-Pi HAT; '
       + 'only relevant if Winlink is set to a USB-DRA modem interface)</span>');
@@ -1004,7 +1009,7 @@ function setupRenderHw(d) {
     lines.push(`&nbsp;&nbsp;GPS: ${hwVal('not configured', false)}`);
   }
 
-  if (usbC.other.length) {
+  if (false) {   // "Other USB devices" list dropped — noise
     const otherDesc = usbC.other.map(u => u.description || `${u.vendor_id}:${u.product_id}`);
     lines.push(`<strong>Other USB devices:</strong> ${otherDesc.map(escapeHtml).join(', ')}`);
   }
@@ -1043,28 +1048,52 @@ async function setupDetectHardware() {
   }
   try {
     const devices = await jget('/api/hardware/devices');
-    hwRenderDeclaredList(devices);
+    hwRenderDongles(devices);
+    hwRenderRadioPorts(devices);
     hwRenderAssignRows(devices);
-    hwRenderRtlCandidates(detect, devices);
   } catch (e) { /* keep last render; the assign section retries on next refresh */ }
 }
 
-// Device-centric status (which declared dongle is busy / free / assigned) —
-// moved here from the dashboard, which was too tall. 🔴 busy = a service is
-// running on it; 🟢 = free, or assigned-but-idle (shared dongle).
-function hwRenderDeclaredList(devices) {
-  const box = document.getElementById('hwDeclaredList');
+// Declared radio ports (digirig / dra-pi) with the auto-detected PTT path, so
+// the operator can see what was picked. A lone digirig lands here automatically.
+function hwRenderRadioPorts(devices) {
+  const box = document.getElementById('hwRadioPorts');
   if (!box) return;
-  const list = (devices && devices.devices) || [];
-  if (list.length === 0) { box.innerHTML = '<div class="setup-hw-msg">None declared yet.</div>'; return; }
+  const list = ((devices && devices.devices) || []).filter(d => d.kind === 'digirig' || d.kind === 'dra-pi');
+  if (list.length === 0) { box.innerHTML = ''; return; }
+  box.innerHTML = list.map(d => {
+    const ptt = d.ptt ? escapeHtml(d.ptt.replace(/^.*\//, '')) : 'auto';
+    const svc = d.assignee ? (d.running ? `🔴 ${d.assignee}` : `🟢 ${d.assignee}`) : '⚪ unassigned';
+    return `<div class="setup-dongle">
+      <span class="d-serial">${escapeHtml(d.label || d.kind)}</span>
+      <span class="d-port" title="${d.ptt ? escapeHtml(d.ptt) : ''}">PTT ${ptt}</span>
+      <span class="d-svc">${escapeHtml(svc)}</span>
+    </div>`;
+  }).join('');
+}
+
+// One row per registered SDR dongle: serial · USB port · service(s). Plug/unplug
+// is automatic (server-side auto-declare + unplug-reconcile), so there's no
+// manual "declare" for SDRs. 🔴 busy = a service is running on it; 🟢 =
+// assigned-but-idle (shared); ⚪ = unassigned.
+function hwRenderDongles(devices) {
+  const box = document.getElementById('hwDonglesList');
+  if (!box) return;
+  const list = ((devices && devices.devices) || []).filter(d => d.kind === 'rtl-sdr');
+  if (list.length === 0) {
+    box.innerHTML = '<div class="setup-hw-msg">No SDR dongles detected.</div>';
+    return;
+  }
   box.innerHTML = list.map(d => {
     const busy = d.running;
-    const stateText = busy ? `busy — ${d.assignee}` : (d.assignee ? `assigned — ${d.assignee}` : 'free');
-    const color = busy ? 'var(--red)' : (d.assignee ? 'var(--text-dim)' : 'var(--green)');
-    return `<div class="setup-hw-declared">
-      <span>${escapeHtml(d.label)}</span>
-      <span class="setup-hw-kind">${escapeHtml(d.kind)}</span>
-      <span style="margin-left:auto;color:${color};white-space:nowrap">${busy ? '🔴' : '🟢'} ${escapeHtml(stateText)}</span>
+    const port = d.usb_port ? `USB ${escapeHtml(d.usb_port)}` : '(port n/a)';
+    const svcText = busy ? `busy — ${d.assignee}` : (d.assignee || 'unassigned');
+    const color = busy ? 'var(--red)' : (d.assignee ? 'var(--green)' : 'var(--text-dim)');
+    const dot = busy ? '🔴' : (d.assignee ? '🟢' : '⚪');
+    return `<div class="setup-dongle">
+      <span class="d-serial">${escapeHtml(d.serial || d.label)}</span>
+      <span class="d-port">${port}</span>
+      <span class="d-svc" style="color:${color}">${dot} ${escapeHtml(svcText)}</span>
     </div>`;
   }).join('');
 }
@@ -1085,22 +1114,6 @@ function hwRenderDeclareForm(detect) {
     .join('') || '<option value="">no serial ports detected</option>';
 }
 
-// Detected RTL-SDR serials auto-declare on the /api/hardware/devices poll, so
-// this is normally empty — it only surfaces a serial that couldn't auto-declare
-// (e.g. a factory-duplicate 00000001 pair, until one is burned) as a fallback.
-function hwRenderRtlCandidates(detect, devices) {
-  const box = document.getElementById('hwRtlCandidates');
-  if (!box) return;
-  const declared = ((devices && devices.devices) || [])
-    .filter(d => d.kind === 'rtl-sdr').map(d => d.serial);
-  const serials = ((detect && detect.detected && detect.detected.rtl_sdr) || []).map(s => s.serial);
-  const undeclared = [...new Set(serials.filter(s => s && !declared.includes(s)))];
-  if (undeclared.length === 0) { box.innerHTML = ''; return; }
-  box.innerHTML = '<div class="setup-hw-sub">Undeclared RTL-SDR</div>' + undeclared.map(s =>
-    `<div class="setup-hw-declared"><span>SN ${escapeHtml(s)}</span>`
-    + `<button class="setup-btn setup-hw-btn-sm" data-rtl-serial="${escapeHtml(s)}" type="button">Declare</button></div>`
-  ).join('');
-}
 
 function hwRenderAssignRows(devices) {
   const box = document.getElementById('hwAssignRows');
@@ -1122,15 +1135,6 @@ function hwRenderAssignRows(devices) {
       <select class="setup-input" data-assign-service="${escapeHtml(svc.service)}"${isRunning ? ' disabled title="Stop the service to change its device"' : ''}>${opts}</select>
     </div>`;
   }).join('');
-}
-
-async function hwDeclareRtl(serial) {
-  const msg = document.getElementById('hwDeclareMsg');
-  const id = `rtl-sdr-${serial}`;
-  const { ok, data } = await jpost('/api/hardware/devices',
-    { id, kind: 'rtl-sdr', serial, label: `RTL-SDR (${serial})` });
-  if (msg) msg.textContent = ok ? `Declared ${id}.` : ('Error: ' + (data.error || 'unknown'));
-  if (ok) setupDetectHardware();
 }
 
 async function hwDeclareRadioPort() {
@@ -1382,10 +1386,6 @@ function initSetupOrchestrator() {
     document.getElementById('hwDeclarePtt').style.display = this.value === 'dra-pi' ? 'none' : '';
   });
   document.getElementById('hwDeclareBtn').addEventListener('click', hwDeclareRadioPort);
-  document.getElementById('hwRtlCandidates').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-rtl-serial]');
-    if (btn) hwDeclareRtl(btn.dataset.rtlSerial);
-  });
   document.getElementById('hwAssignRows').addEventListener('change', (e) => {
     const sel = e.target.closest('[data-assign-service]');
     if (sel) hwAssignChange(sel.dataset.assignService, sel.value);

@@ -1,4 +1,5 @@
 import os, sys, tempfile, unittest
+from unittest import mock
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 from common import hardware_detect as HD
@@ -99,6 +100,29 @@ class ListTtySerialDevicesTest(unittest.TestCase):
 
     def test_missing_directory_returns_empty(self):
         self.assertEqual(HD.list_tty_serial_devices("/tmp/does-not-exist-xyz"), [])
+
+class DetectDigirigTest(unittest.TestCase):
+    _CP ="/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_3e54e82ac39eec119daf9579a29c855c-if00-port0"
+
+    def test_lone_digirig_returns_ptt_and_chip_serial(self):
+        with mock.patch.object(HD.sys, "platform", "linux"), \
+             mock.patch.object(HD.glob, "glob", side_effect=lambda p: [self._CP]):
+            got = HD.detect_digirig()
+        self.assertEqual(got, {"ptt": self._CP, "serial": "3e54e82ac39eec119daf9579a29c855c"})
+
+    def test_ambiguous_two_cp210x_returns_none(self):
+        with mock.patch.object(HD.sys, "platform", "linux"), \
+             mock.patch.object(HD.glob, "glob", side_effect=lambda p: [self._CP, self._CP + "2"]):
+            self.assertIsNone(HD.detect_digirig())
+
+    def test_none_present_returns_none(self):
+        with mock.patch.object(HD.sys, "platform", "linux"), \
+             mock.patch.object(HD.glob, "glob", side_effect=lambda p: []):
+            self.assertIsNone(HD.detect_digirig())
+
+    def test_non_linux_returns_none(self):
+        with mock.patch.object(HD.sys, "platform", "darwin"):
+            self.assertIsNone(HD.detect_digirig())
 
 if __name__ == "__main__":
     unittest.main()

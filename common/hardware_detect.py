@@ -11,6 +11,7 @@ output formats; the parsers below match the well-established shape, but
 neither can be exercised against real output on this dev machine — confirm on
 the target Pi against actual connected hardware.
 """
+import glob
 import os
 import re
 import subprocess
@@ -171,6 +172,79 @@ def rtl_sdr_usb_count():
     if sys.platform != "linux":
         return 0
     return len(classify_usb_devices(parse_lsusb(_run_text(["lsusb"])))["rtl_sdr"])
+
+
+_USB_PORT_RE = re.compile(r'^\d+-[\d.]+$')   # e.g. '1-1.4' — a device, not an interface
+
+
+def rtl_sdr_usb_ports():
+    """Map each present RTL-SDR's serial -> its physical USB port path (e.g.
+    '1-1.4'), read from sysfs. Lets the UI say WHICH dongle by port, not just a
+    count — and it works even for a dongle a service is actively using (USB
+    enumeration is independent of who holds the device open, unlike rtl_test).
+    Linux only; {} elsewhere or if sysfs is unavailable.
+
+    BENCH-VERIFY: sysfs layout is stable on Pi OS, but confirm the port-path
+    format and that the 'serial' attribute is readable (it's normally 0444) on
+    the target image."""
+    out = {}
+    root = "/sys/bus/usb/devices"
+    if sys.platform != "linux" or not os.path.isdir(root):
+        return out
+    for name in os.listdir(root):
+        if not _USB_PORT_RE.match(name):   # skip interfaces ('1-1.4:1.0') and roots ('usb1')
+            continue
+        dev = os.path.join(root, name)
+        try:
+            with open(os.path.join(dev, "idVendor")) as f:
+                vid = f.read().strip().lower()
+            with open(os.path.join(dev, "idProduct")) as f:
+                pid = f.read().strip().lower()
+        except OSError:
+            continue
+        sig = KNOWN_USB_SIGNATURES.get((vid, pid))
+        if not sig or sig.get("role") != "rtl_sdr":
+            continue
+        try:
+            with open(os.path.join(dev, "serial")) as f:
+                serial = f.read().strip()
+        except OSError:
+            serial = ""
+        if serial:
+            out[serial] = name
+    return out
+
+
+# DigiRig PTT is a CP210x USB-serial bridge (its RTS line keys PTT). These
+# by-id globs mirror services/winlink/common/winlink.py's — the by-id path is a
+# stable per-chip identity that survives replug, and it's CP210x-specific so a
+# u-blox/CH340/PL2303 GPS adapter can never be mistaken for the DigiRig.
+_DIGIRIG_BYID_GLOB     = "/dev/serial/by-id/usb-Silicon_Labs_CP210*-if00-port0"
+_DIGIRIG_BYID_GLOB_ANY = "/dev/serial/by-id/*CP210*-if00*"
+_DIGIRIG_SERIAL_RE     = re.compile(r'_([0-9a-fA-F]{8,})-if\d')
+
+
+def detect_digirig():
+    """Detect a lone, unambiguous DigiRig by its CP210x PTT serial-by-id path.
+    Returns {'ptt': <by-id path>, 'serial': <chip hex or ''>}, or None when none
+    is present OR when 2+ CP210x adapters are found (ambiguous — fall back to the
+    manual declare form). Linux only.
+
+    Only the PTT identity is resolved here; the USB sound card (ADEVICE) is
+    autodetected at apply time by winlink.radio_port_config, so a bare
+    {kind:'digirig', ptt:…} declaration is enough to drive direwolf's config."""
+    if sys.platform != "linux":
+        return None
+    cands = []
+    for pattern in (_DIGIRIG_BYID_GLOB, _DIGIRIG_BYID_GLOB_ANY):
+        cands = sorted(set(glob.glob(pattern)))
+        if cands:
+            break
+    if len(cands) != 1:
+        return None
+    ptt = cands[0]
+    m = _DIGIRIG_SERIAL_RE.search(ptt)
+    return {"ptt": ptt, "serial": m.group(1) if m else ""}
 
 
 def scan():

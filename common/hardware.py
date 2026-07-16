@@ -178,13 +178,13 @@ def _default_is_active(unit):
 
 
 def device_states(inv, is_active=_default_is_active):
-    """[{id, label, kind, assignee, running}] — drives the dashboard allocation
-    card. 🟢 free = no assignees, or assigned-but-idle (shared default); 🔴 in
-    use = one of its assigned services' unit(s) is systemctl is-active. A
+    """[{id, label, kind, serial, assignee, running}] — drives the Setup card's
+    Dongles list. 🟢 free = no assignees, or assigned-but-idle (shared default);
+    🔴 in use = one of its assigned services' unit(s) is systemctl is-active. A
     shared rtl-sdr may have several assignees (advisory); `assignee` names the
     running claimant when one is active, else lists all who default to it, so
-    the operator can see the dongle is spoken-for and reassign via the
-    dropdown."""
+    the operator can see the dongle is spoken-for. `serial` lets the UI join in
+    the USB-port map (server/app.py) — empty for kinds without one."""
     out = []
     for did, d in inv.devices.items():
         services = assignees(inv, did)
@@ -194,6 +194,7 @@ def device_states(inv, is_active=_default_is_active):
             None)
         label = running_svc or (", ".join(services) if services else None)
         out.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
+                    "serial": d.get("serial", ""), "ptt": d.get("ptt", ""),
                     "assignee": label, "running": running_svc is not None})
     return out
 
@@ -351,6 +352,46 @@ def reconcile_present_rtl_sdrs(repo_root, inv, detected_serials, present_count,
     if not absent or len(absent) != len(declared) - present_count:
         return inv
     for did in absent:
+        del inv.devices[did]
+    save(repo_root, inv)
+    return inv
+
+
+def auto_declare_digirig(repo_root, inv, digirig):
+    """Declare a detected lone DigiRig (hardware_detect.detect_digirig()) when
+    none is declared yet — the radio-port analogue of auto_declare_rtl_sdrs. Its
+    CP210x by-id becomes the PTT and its chip serial gives a stable device id
+    (survives replug). `alsa` is left blank on purpose: winlink.radio_port_config
+    autodetects the USB sound card at apply time. No-op if a digirig is already
+    declared or `digirig` is None (absent/ambiguous)."""
+    if not digirig:
+        return inv
+    if any(d.get("kind") == "digirig" for d in inv.devices.values()):
+        return inv
+    serial = digirig.get("serial") or ""
+    device_id = f"digirig-{serial}" if serial else "digirig"
+    if device_id in inv.devices:
+        return inv
+    inv.devices[device_id] = {"id": device_id, "kind": "digirig",
+                               "ptt": digirig["ptt"], "alsa": "", "serial": serial,
+                               "label": "DigiRig"}
+    save(repo_root, inv)
+    return inv
+
+
+def reconcile_digirig(repo_root, inv, path_exists=None):
+    """Undeclare a DigiRig whose PTT by-id path no longer exists (unplugged) —
+    the radio-port analogue of reconcile_present_rtl_sdrs. Precise: it checks the
+    exact declared by-id, so no busy/ambiguity guard is needed. The assignment is
+    left dangling so re-plug (auto_declare_digirig re-adds the same id)
+    revalidates it."""
+    if path_exists is None:
+        path_exists = os.path.exists
+    removed = [did for did, d in inv.devices.items()
+               if d.get("kind") == "digirig" and d.get("ptt") and not path_exists(d["ptt"])]
+    if not removed:
+        return inv
+    for did in removed:
         del inv.devices[did]
     save(repo_root, inv)
     return inv

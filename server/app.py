@@ -1864,6 +1864,22 @@ def api_hardware_devices():
     # manual assignment).
     for _svc in ("adsb", "openwebrx", "aprs"):
         HW.default_assign(SUITE_ROOT, inv, _svc, {"rtl-sdr"})
+
+    # DigiRig: auto-declare a lone one / undeclare on unplug (radio-port analogue
+    # of the SDR flow), auto-assign Winlink RF to it. A digirig's PTT + audio
+    # flow straight into direwolf via winlink.apply, so when the declaration or
+    # winlink's assignment actually changes, re-template direwolf right away
+    # (threaded — never block this poll on the apply subprocess).
+    winlink_before = inv.assignments.get("winlink")
+    digirig_before = {did for did, d in inv.devices.items() if d.get("kind") == "digirig"}
+    HW.reconcile_digirig(SUITE_ROOT, inv)
+    if not any(d.get("kind") == "digirig" for d in inv.devices.values()):
+        HW.auto_declare_digirig(SUITE_ROOT, inv, HD_detect.detect_digirig())
+    HW.default_assign(SUITE_ROOT, inv, "winlink", {"digirig", "dra-pi"})
+    digirig_after = {did for did, d in inv.devices.items() if d.get("kind") == "digirig"}
+    if inv.assignments.get("winlink") != winlink_before or digirig_after != digirig_before:
+        threading.Thread(target=_apply_hardware_async, daemon=True).start()
+
     services = {}
     for service in HW.SERVICE_UNITS:
         ok, reason = HW.can_start(inv, service)
@@ -1872,8 +1888,13 @@ def api_hardware_devices():
             "ok": ok,
             "reason": reason,
         }
-    return jsonify({"devices": HW.device_states(inv), "errors": inv.errors,
-                     "services": services})
+    # Tag each dongle with its physical USB port (sysfs, by serial) so the Setup
+    # card can show WHICH one — cheap, and works even for a busy dongle.
+    devices = HW.device_states(inv)
+    ports = HD_detect.rtl_sdr_usb_ports()
+    for d in devices:
+        d["usb_port"] = ports.get(d.get("serial", ""), "")
+    return jsonify({"devices": devices, "errors": inv.errors, "services": services})
 
 
 _DEVICE_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,32}$')

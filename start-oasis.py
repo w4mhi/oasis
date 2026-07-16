@@ -159,6 +159,39 @@ def free_port(port):
         time.sleep(0.5)
 
 
+def systemd_oasis_active():
+    """True if systemd is already running the server as an active
+    'oasis.service'. When it is, a manual gunicorn launch can never win: systemd
+    respawns the unit the instant free_port() kills it, so the manual bind fails
+    with 'address already in use'. In that case start-oasis should restart the
+    UNIT, not race it. Linux only; False if systemctl or the unit is absent."""
+    if sys.platform != "linux":
+        return False
+    try:
+        r = subprocess.run(["systemctl", "is-active", "oasis.service"],
+                           capture_output=True, text=True)
+    except FileNotFoundError:
+        return False
+    return r.stdout.strip() == "active"
+
+
+def restart_systemd_oasis():
+    """Restart the systemd-managed server (picks up code changes) instead of
+    launching a competing gunicorn. Exits via _fail if the restart itself
+    fails, so the operator gets a clear next step rather than an opaque bind
+    error later."""
+    _info(f"oasis.service is managing the server under systemd — restarting that "
+          f"unit instead of launching a second gunicorn (which would only fight "
+          f"it for port {PORT}).")
+    r = subprocess.run(["sudo", "systemctl", "restart", "oasis.service"])
+    if r.returncode != 0:
+        _fail("`sudo systemctl restart oasis.service` failed. Run it yourself, "
+              "or `sudo systemctl stop oasis` first if you really want the "
+              "manual launcher.")
+    _ok(f"Restarted oasis.service — open http://{lan_ip()}:{PORT}")
+    _info("Logs: journalctl -u oasis -f")
+
+
 SUDOERS_PATH = "/etc/sudoers.d/oasis-service-controls"
 INSTALLER_PATH_UNIT = "/etc/systemd/system/oasis-installer.path"
 
@@ -199,6 +232,13 @@ def ensure_permissions():
 def main():
     print("\n  OASIS — start-oasis")
     _hr()
+
+    # If systemd already runs the server, delegate to it rather than launching a
+    # second gunicorn that would lose the race for PORT (systemd respawns the
+    # unit the moment free_port kills it — the 'address already in use' trap).
+    if systemd_oasis_active():
+        restart_systemd_oasis()
+        return
 
     ensure_scripts_executable(REPO_ROOT)
     ensure_permissions()

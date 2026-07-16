@@ -24,7 +24,12 @@ class DeviceStatesTest(unittest.TestCase):
                    assignments={"adsb": "a"})
         states = hardware.device_states(inv, is_active=lambda u: u == "dump1090-fa")
         self.assertEqual(states, [{"id": "a", "label": "ADS-B dongle", "kind": "rtl-sdr",
-                                   "assignee": "adsb", "running": True}])
+                                   "serial": "", "ptt": "", "assignee": "adsb", "running": True}])
+
+    def test_includes_serial_for_usb_port_join(self):
+        inv = _inv(devices={"a": _dev("a", "rtl-sdr", serial="00001000")})
+        states = hardware.device_states(inv, is_active=lambda u: False)
+        self.assertEqual(states[0]["serial"], "00001000")
 
     def test_unassigned_device_never_running(self):
         inv = _inv(devices={"a": _dev("a", "rtl-sdr")})
@@ -259,6 +264,44 @@ class ReconcilePresentRtlSdrsTest(unittest.TestCase):
         inv = _inv(devices={"rtl-sdr-A": _dev("rtl-sdr-A", "rtl-sdr", serial="A")})
         hardware.reconcile_present_rtl_sdrs(self.dir, inv, ["A"], 1, is_active=lambda u: False)
         self.assertIn("rtl-sdr-A", inv.devices)
+
+class DigirigTest(unittest.TestCase):
+    _PTT = "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_3e54e82a-if00-port0"
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def test_auto_declare_uses_chip_serial_for_stable_id(self):
+        inv = _inv()
+        hardware.auto_declare_digirig(self.dir, inv, {"ptt": self._PTT, "serial": "3e54e82a"})
+        self.assertEqual(inv.devices["digirig-3e54e82a"],
+                         {"id": "digirig-3e54e82a", "kind": "digirig",
+                          "ptt": self._PTT, "alsa": "", "serial": "3e54e82a", "label": "DigiRig"})
+
+    def test_auto_declare_noop_when_none_detected(self):
+        inv = _inv()
+        hardware.auto_declare_digirig(self.dir, inv, None)
+        self.assertEqual(inv.devices, {})
+
+    def test_auto_declare_noop_when_already_declared(self):
+        inv = _inv(devices={"digirig-x": _dev("digirig-x", "digirig", ptt="/dev/x", alsa="")})
+        hardware.auto_declare_digirig(self.dir, inv, {"ptt": self._PTT, "serial": "3e54e82a"})
+        self.assertNotIn("digirig-3e54e82a", inv.devices)
+        self.assertEqual(len(inv.devices), 1)
+
+    def test_reconcile_undeclares_unplugged_digirig(self):
+        inv = _inv(devices={"digirig-3e54e82a": _dev("digirig-3e54e82a", "digirig",
+                                                     ptt=self._PTT, alsa="")},
+                   assignments={"winlink": "digirig-3e54e82a"})
+        hardware.reconcile_digirig(self.dir, inv, path_exists=lambda p: False)
+        self.assertNotIn("digirig-3e54e82a", inv.devices)
+        self.assertEqual(inv.assignments.get("winlink"), "digirig-3e54e82a")   # dangles
+
+    def test_reconcile_keeps_present_digirig(self):
+        inv = _inv(devices={"digirig-3e54e82a": _dev("digirig-3e54e82a", "digirig",
+                                                     ptt=self._PTT, alsa="")})
+        hardware.reconcile_digirig(self.dir, inv, path_exists=lambda p: True)
+        self.assertIn("digirig-3e54e82a", inv.devices)
 
 if __name__ == "__main__":
     unittest.main()
