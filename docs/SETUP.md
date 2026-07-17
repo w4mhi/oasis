@@ -1362,14 +1362,14 @@ sudo hwclock -r        # read it back to confirm
 Installs **[ttyd](https://github.com/tsl0922/ttyd)**, a browser-based SSH/terminal on port 7681. Any browser on the local network can open a login shell on the Pi — no SSH client needed. Surfaced as the **Web SSH** card/link in the dashboard and home page.
 
 ```bash
-python3 scripts/install-webssh.py                       # auto: bundled binary if present, else download
-python3 scripts/install-webssh.py --dry-run             # show the helper + unit it would write, change nothing
-python3 scripts/install-webssh.py --verify              # check an existing install (helper, live unit, services, port)
-python3 scripts/install-webssh.py --port 8090           # use a different port
-python3 scripts/install-webssh.py --bind 127.0.0.1      # localhost only
-python3 scripts/install-webssh.py --basic-auth          # prompt for an extra user:pass HTTP gate
-python3 scripts/install-webssh.py --basic-auth admin:s3cret
-python3 scripts/install-webssh.py --help
+python3 services/webssh/install.py                       # auto: bundled binary if present, else download
+python3 services/webssh/install.py --dry-run             # show the helper + unit it would write, change nothing
+python3 services/webssh/install.py --verify              # check an existing install (helper, live unit, services, port)
+python3 services/webssh/install.py --port 8090           # use a different port
+python3 services/webssh/install.py --bind 127.0.0.1      # localhost only
+python3 services/webssh/install.py --basic-auth          # prompt for an extra user:pass HTTP gate
+python3 services/webssh/install.py --basic-auth admin:s3cret
+python3 services/webssh/install.py --help
 ```
 
 **Install source.** `ttyd` is **not in the Debian/Raspberry Pi OS stable repos**, so this installs the upstream **prebuilt static binary** to `/usr/local/bin/ttyd` (a single self-contained file — no `libwebsockets`/`libuv` dependencies). If the matching binary is bundled at `offline-packages/webssh/ttyd.<arch>` (put there by `create-oasis-offline.py`) it is used offline; otherwise it is downloaded from GitHub releases. Install is version-aware: an already-installed newer ttyd is kept, never downgraded.

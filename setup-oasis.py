@@ -109,7 +109,7 @@ FEATURES = [
             "kiwix-serve on :8081 to browse ZIM content. (Add content below.)",
             "Server", default=False, internet=True,
             recommend="Add ZIM content (e.g. the Wikipedia feature below) — Kiwix serves it at :8081."),
-    Feature("webssh", "Web SSH (ttyd)", "install-webssh.py",
+    Feature("webssh", "Web SSH (ttyd)", "services/webssh/install.py",
             "Browser terminal on :7681 (logs in via ssh to localhost).",
             "Server", default=True,
             recommend="Browser terminal at :7681 (logs in via ssh to localhost)."),

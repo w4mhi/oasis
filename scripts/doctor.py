@@ -460,7 +460,7 @@ def check_webssh(host):
             ),
         }
     return {"ok": "warn", "badge": "NOT INSTALLED",
-            "detail": "Install with: python3 scripts/install-webssh.py"}
+            "detail": "Install with: python3 services/webssh/install.py"}
 
 
 def check_winlink_forms():

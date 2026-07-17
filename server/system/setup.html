@@ -665,7 +665,7 @@ const CHECKS_OPTIONAL = [
       if (bin.ok) return { ok: 'warn', badge: 'STOPPED',
         detail: `<code>ttyd</code> installed but not running (${svc.active}). Needs <code>sshd</code>. Start: <code>sudo systemctl start webssh</code>` };
       return { ok: 'warn', badge: 'NOT INSTALLED',
-        detail: `Install with: <code>python3 scripts/install-webssh.py</code>` };
+        detail: `Install with: <code>python3 services/webssh/install.py</code>` };
     },
   },
   {

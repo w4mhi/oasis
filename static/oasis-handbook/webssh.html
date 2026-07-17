@@ -76,11 +76,11 @@
       card in the dashboard.
     </p>
     <div class="ph">[ screenshot &mdash; Web SSH browser terminal (ttyd) login ]</div>
-    <pre><code>python3 scripts/install-webssh.py                # bundled binary if present, else download
-python3 scripts/install-webssh.py --port 8090    # use a different port
-python3 scripts/install-webssh.py --bind 127.0.0.1   # localhost only
-python3 scripts/install-webssh.py --basic-auth   # add an extra HTTP user:pass gate
-python3 scripts/install-webssh.py --verify       # check an existing install</code></pre>
+    <pre><code>python3 services/webssh/install.py                # bundled binary if present, else download
+python3 services/webssh/install.py --port 8090    # use a different port
+python3 services/webssh/install.py --bind 127.0.0.1   # localhost only
+python3 services/webssh/install.py --basic-auth   # add an extra HTTP user:pass gate
+python3 services/webssh/install.py --verify       # check an existing install</code></pre>
     <h2>Logging in</h2>
     <p>
       Open the Web SSH card; the page asks for your <strong>normal Pi username and

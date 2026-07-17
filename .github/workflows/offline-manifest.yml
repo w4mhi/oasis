@@ -39,13 +39,14 @@ jobs:
       - name: Thin CLIs still parse --help
         run: |
           set -e
-          for s in install-webssh \
-                   setup-server; do
+          for s in setup-server; do
             echo "  --help: $s"
             python3 "scripts/$s.py" --help >/dev/null
           done
           echo "  --help: install-rtl-sdr"
           python3 features/rtl-sdr/install-rtl-sdr.py --help >/dev/null
+          echo "  --help: webssh install"
+          python3 services/webssh/install.py --help >/dev/null
           echo "  --help: kiwix install"
           python3 services/kiwix/install.py --help >/dev/null
           echo "  --help: winlink install"

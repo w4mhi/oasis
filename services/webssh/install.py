@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-install-webssh.py
------------------
+services/webssh/install.py
+--------------------------
 Install a browser-based SSH/terminal on Linux (Debian/Ubuntu/Raspberry Pi OS),
 exposing a login shell in a browser over WebSocket. This installs `ttyd`, which
 wraps a login shell in a pseudo-terminal and streams it to the browser over a
@@ -27,11 +27,11 @@ What this does:
 After install, open http://<pi-ip>:7681 and log in.
 
 Usage:
-  python3 scripts/install-webssh.py
-  python3 scripts/install-webssh.py --port 7681
-  python3 scripts/install-webssh.py --basic-auth          # prompt for extra gate
-  python3 scripts/install-webssh.py --basic-auth admin:s3cret
-  python3 scripts/install-webssh.py --bind 127.0.0.1      # localhost only
+  python3 services/webssh/install.py
+  python3 services/webssh/install.py --port 7681
+  python3 services/webssh/install.py --basic-auth          # prompt for extra gate
+  python3 services/webssh/install.py --basic-auth admin:s3cret
+  python3 services/webssh/install.py --bind 127.0.0.1      # localhost only
 
 Requires: Linux, sudo. Internet optional if bundled binary is present.
 Security: serves plain HTTP. Keep it on your trusted LAN/Wi-Fi side, not on an
@@ -43,10 +43,10 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+# services/webssh/install.py → repo root is two levels up (was one under scripts/).
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, REPO_ROOT)
 from common import webssh as W
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def main():
@@ -55,14 +55,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python3 scripts/install-webssh.py                       # bundled binary if present, else download\n"
-            "  python3 scripts/install-webssh.py --version 1.7.7       # pin a specific ttyd version\n"
-            "  python3 scripts/install-webssh.py --dry-run             # preview helper + unit, change nothing\n"
-            "  python3 scripts/install-webssh.py --verify              # check an existing install, change nothing\n"
-            "  python3 scripts/install-webssh.py --port 8090           # use a different port\n"
-            "  python3 scripts/install-webssh.py --bind 127.0.0.1      # localhost only\n"
-            "  python3 scripts/install-webssh.py --basic-auth          # prompt for user:pass gate\n"
-            "  python3 scripts/install-webssh.py --basic-auth admin:s3cret\n"
+            "  python3 services/webssh/install.py                       # bundled binary if present, else download\n"
+            "  python3 services/webssh/install.py --version 1.7.7       # pin a specific ttyd version\n"
+            "  python3 services/webssh/install.py --dry-run             # preview helper + unit, change nothing\n"
+            "  python3 services/webssh/install.py --verify              # check an existing install, change nothing\n"
+            "  python3 services/webssh/install.py --port 8090           # use a different port\n"
+            "  python3 services/webssh/install.py --bind 127.0.0.1      # localhost only\n"
+            "  python3 services/webssh/install.py --basic-auth          # prompt for user:pass gate\n"
+            "  python3 services/webssh/install.py --basic-auth admin:s3cret\n"
         ),
     )
     parser.add_argument(

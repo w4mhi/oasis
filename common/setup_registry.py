@@ -289,7 +289,7 @@ def build_registry(repo_root, payload=None):
         "webssh": SE.FeatureSpec(
             key="webssh",
             dependencies=["server"],
-            install_fn=lambda: _setup_run_script(repo_root, "scripts/install-webssh.py"),
+            install_fn=lambda: _setup_run_script(repo_root, "services/webssh/install.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
