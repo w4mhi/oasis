@@ -31,7 +31,7 @@ class HardwareRoutesTest(unittest.TestCase):
         # one declared dongle so neither auto-declare nor unplug-reconcile fires.
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
-             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=1):
+             mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=1):
             r = self.c.get("/api/hardware/devices")
         self.assertEqual(r.status_code, 200)
         body = json.loads(r.data)
@@ -125,7 +125,7 @@ class HardwareRoutesTest(unittest.TestCase):
             assignments={"adsb": "a"})
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
-             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=1):
+             mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=1):
             r = self.c.get("/api/hardware/devices")
         body = json.loads(r.data)
         self.assertEqual(body["services"]["adsb"],
@@ -144,7 +144,7 @@ class HardwareRoutesTest(unittest.TestCase):
                            assignments={})
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
-             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=1):
+             mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=1):
             r = self.c.get("/api/hardware/devices")
         body = json.loads(r.data)
         self.assertEqual(body["services"]["adsb"]["device_id"], "a")
@@ -155,8 +155,8 @@ class HardwareRoutesTest(unittest.TestCase):
         inv = HW.Inventory(devices={}, assignments={})
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
-             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=2), \
-             mock.patch.object(oasis_app.HD_detect, "scan",
+             mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=2), \
+             mock.patch.object(hardware_routes.HD_detect, "scan",
                                return_value={"rtl_sdr": [{"index": 0, "serial": "00000001"},
                                                           {"index": 1, "serial": "00001000"}]}):
             r = self.c.get("/api/hardware/devices")
@@ -174,8 +174,8 @@ class HardwareRoutesTest(unittest.TestCase):
                            assignments={})
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
-             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=1), \
-             mock.patch.object(oasis_app.HD_detect, "scan") as mocked_scan:
+             mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=1), \
+             mock.patch.object(hardware_routes.HD_detect, "scan") as mocked_scan:
             r = self.c.get("/api/hardware/devices")
         self.assertEqual(r.status_code, 200)
         mocked_scan.assert_not_called()
@@ -189,8 +189,8 @@ class HardwareRoutesTest(unittest.TestCase):
             assignments={"adsb": "rtl-sdr-A", "aprs": "rtl-sdr-B"})
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
-             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=1), \
-             mock.patch.object(oasis_app.HD_detect, "scan",
+             mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=1), \
+             mock.patch.object(hardware_routes.HD_detect, "scan",
                                return_value={"rtl_sdr": [{"index": 0, "serial": "A"}]}):
             r = self.c.get("/api/hardware/devices")
         body = json.loads(r.data)
@@ -207,8 +207,8 @@ class HardwareRoutesTest(unittest.TestCase):
             assignments={"adsb": "rtl-sdr-A"})
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
-             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=0), \
-             mock.patch.object(oasis_app.HD_detect, "scan", return_value={"rtl_sdr": []}):
+             mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=0), \
+             mock.patch.object(hardware_routes.HD_detect, "scan", return_value={"rtl_sdr": []}):
             r = self.c.get("/api/hardware/devices")
         body = json.loads(r.data)
         self.assertEqual(body["devices"], [])
@@ -222,10 +222,10 @@ class HardwareRoutesTest(unittest.TestCase):
         applied = []
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
-             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=0), \
-             mock.patch.object(oasis_app.HD_detect, "detect_digirig",
+             mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=0), \
+             mock.patch.object(hardware_routes.HD_detect, "detect_digirig",
                                return_value={"ptt": ptt, "serial": "3e54e82a"}), \
-             mock.patch.object(oasis_app.HD_detect, "detect_dra_pi", return_value=False), \
+             mock.patch.object(hardware_routes.HD_detect, "detect_dra_pi", return_value=False), \
              mock.patch.object(hardware_routes, "_apply_hardware_async",
                                side_effect=lambda: applied.append(1)), \
              mock.patch.object(oasis_app.threading, "Thread", _SyncThread):
@@ -242,9 +242,9 @@ class HardwareRoutesTest(unittest.TestCase):
         applied = []
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
-             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=0), \
-             mock.patch.object(oasis_app.HD_detect, "detect_digirig", return_value=None), \
-             mock.patch.object(oasis_app.HD_detect, "detect_dra_pi", return_value=True), \
+             mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=0), \
+             mock.patch.object(hardware_routes.HD_detect, "detect_digirig", return_value=None), \
+             mock.patch.object(hardware_routes.HD_detect, "detect_dra_pi", return_value=True), \
              mock.patch.object(hardware_routes, "_apply_hardware_async",
                                side_effect=lambda: applied.append(1)), \
              mock.patch.object(oasis_app.threading, "Thread", _SyncThread):
@@ -264,8 +264,8 @@ class HardwareRoutesTest(unittest.TestCase):
             assignments={})
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
-             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=2), \
-             mock.patch.object(oasis_app.HD_detect, "scan",
+             mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=2), \
+             mock.patch.object(hardware_routes.HD_detect, "scan",
                                return_value={"rtl_sdr": [{"index": 0, "serial": "00001000"},
                                                           {"index": 1, "serial": "00000001"}]}) as mocked_scan:
             r = self.c.get("/api/hardware/devices")

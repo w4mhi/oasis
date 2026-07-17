@@ -52,7 +52,7 @@ class TestFeedFlow(unittest.TestCase):
 
     def test_flowing_feed_reports_pps(self):
         lines = "\n".join(f"packet {i}" for i in range(health_routes._FEED_FLOW_NPKTS))
-        with mock.patch.object(oasis_app.subprocess, "run",
+        with mock.patch.object(health_routes.subprocess, "run",
                                return_value=_completed(stdout=lines, rc=0)):
             d = self.client.get("/api/health/feed-flow").get_json()
         self.assertTrue(d["ok"])
@@ -65,7 +65,7 @@ class TestFeedFlow(unittest.TestCase):
         # Dead/yanked dongle: tcpdump captures nothing and we hit the timeout.
         exc = subprocess.TimeoutExpired(cmd="tcpdump", timeout=1.0,
                                         output="", stderr="")
-        with mock.patch.object(oasis_app.subprocess, "run", side_effect=exc):
+        with mock.patch.object(health_routes.subprocess, "run", side_effect=exc):
             d = self.client.get("/api/health/feed-flow").get_json()
         self.assertTrue(d["ok"])            # a valid result, not a fault
         self.assertFalse(d["flowing"])
@@ -80,7 +80,7 @@ class TestFeedFlow(unittest.TestCase):
 
     def test_missing_sudo_grant_is_distinguished(self):
         denied = _completed(stdout="", stderr="sudo: a password is required", rc=1)
-        with mock.patch.object(oasis_app.subprocess, "run", return_value=denied):
+        with mock.patch.object(health_routes.subprocess, "run", return_value=denied):
             d = self.client.get("/api/health/feed-flow").get_json()
         self.assertFalse(d["ok"])
         self.assertEqual(d["reason"], "no-privilege")
@@ -101,7 +101,7 @@ class TestFeedFlow(unittest.TestCase):
             captured["argv"] = argv
             return _completed(stdout="x\n", rc=0)
 
-        with mock.patch.object(oasis_app.subprocess, "run", side_effect=_capture):
+        with mock.patch.object(health_routes.subprocess, "run", side_effect=_capture):
             # A bogus query param must not reach the command line.
             self.client.get("/api/health/feed-flow?port=9999&iface=eth0")
         self.assertEqual(captured["argv"],

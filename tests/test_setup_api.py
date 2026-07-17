@@ -11,6 +11,7 @@ if _SERVER not in sys.path:
     sys.path.insert(0, _SERVER)
 
 import app as app_module
+from routes import setup as setup_module
 from common import setup_engine as SE
 
 
@@ -30,7 +31,7 @@ def test_setup_plan_resolves_dependency_order():
         "server": _ok_feature("server"),
         "service-controls": _ok_feature("service-controls", deps=["server"]),
     }
-    with mock.patch.object(app_module, "_setup_registry", return_value=reg):
+    with mock.patch.object(setup_module, "_setup_registry", return_value=reg):
         r = client.post(
             "/api/setup/plan",
             json={"selectedFeatures": ["service-controls"]},
@@ -55,7 +56,7 @@ def test_setup_run_starts_job_and_job_endpoint_returns_status():
         "server": _ok_feature("server"),
         "service-controls": _ok_feature("service-controls", deps=["server"]),
     }
-    with mock.patch.object(app_module, "_setup_registry", return_value=reg):
+    with mock.patch.object(setup_module, "_setup_registry", return_value=reg):
         p = client.post(
             "/api/setup/plan",
             json={"selectedFeatures": ["service-controls"]},
@@ -83,15 +84,15 @@ def test_setup_run_starts_job_and_job_endpoint_returns_status():
 def test_setup_run_rejects_when_active_job_locked():
     client = app_module.app.test_client()
     reg = {"server": _ok_feature("server")}
-    with mock.patch.object(app_module, "_setup_registry", return_value=reg):
+    with mock.patch.object(setup_module, "_setup_registry", return_value=reg):
         p = client.post(
             "/api/setup/plan",
             json={"selectedFeatures": ["server"]},
             headers={"X-OASIS-Request": "1"},
         ).get_json()
-        with app_module._setup_lock:
-            app_module._setup_active_job = "setup-job-lock"
-            app_module._setup_jobs["setup-job-lock"] = {
+        with setup_module._setup_lock:
+            setup_module._setup_active_job = "setup-job-lock"
+            setup_module._setup_jobs["setup-job-lock"] = {
                 "id": "setup-job-lock",
                 "status": "running",
                 "events": [],
@@ -104,9 +105,9 @@ def test_setup_run_rejects_when_active_job_locked():
             data = r.get_json()
             assert data["reasonCode"] == "JOB_LOCKED"
         finally:
-            with app_module._setup_lock:
-                app_module._setup_active_job = None
-                app_module._setup_jobs.pop("setup-job-lock", None)
+            with setup_module._setup_lock:
+                setup_module._setup_active_job = None
+                setup_module._setup_jobs.pop("setup-job-lock", None)
 
 
 def test_setup_permissions_endpoint_shape():
@@ -121,7 +122,7 @@ def test_setup_permissions_endpoint_shape():
 
 def test_setup_hardware_detect_endpoint_shape():
     client = app_module.app.test_client()
-    with mock.patch.object(app_module.HD_detect, "scan", return_value={"rtl_sdr": [], "serial": [], "alsa": []}):
+    with mock.patch.object(setup_module.HD_detect, "scan", return_value={"rtl_sdr": [], "serial": [], "alsa": []}):
         r = client.get("/api/setup/hardware-detect")
     assert r.status_code == 200
     data = r.get_json()
@@ -148,11 +149,11 @@ def test_setup_run_forwards_winlink_credentials_from_payload_to_install_script()
     def fake_privileged_run(key, spec, payload=None, job_id=None):
         return spec.install_fn()
 
-    with mock.patch.object(app_module.SETUP_REGISTRY, "_setup_run_script", side_effect=fake_run_script), \
-         mock.patch.object(app_module.SETUP_REGISTRY, "_setup_server_install", return_value={"ok": True}), \
-         mock.patch.object(app_module, "_setup_enqueue_and_wait_install", side_effect=fake_privileged_run), \
+    with mock.patch.object(setup_module.SETUP_REGISTRY, "_setup_run_script", side_effect=fake_run_script), \
+         mock.patch.object(setup_module.SETUP_REGISTRY, "_setup_server_install", return_value={"ok": True}), \
+         mock.patch.object(setup_module, "_setup_enqueue_and_wait_install", side_effect=fake_privileged_run), \
          mock.patch.object(app_module.sys, "platform", "linux"), \
-         mock.patch.object(app_module, "has_internet", return_value=True):
+         mock.patch.object(setup_module, "has_internet", return_value=True):
         p = client.post(
             "/api/setup/plan",
             json={
@@ -198,12 +199,12 @@ def test_setup_run_uses_no_password_flag_when_winlink_password_omitted():
 
     # Bypass the WINLINK_PASSWORD_REQUIRED preflight blocker so the plan runs;
     # we're only exercising the arg-building for a payload with no password.
-    with mock.patch.object(app_module.SETUP_REGISTRY, "_setup_run_script", side_effect=fake_run_script), \
-         mock.patch.object(app_module.SETUP_REGISTRY, "_setup_server_install", return_value={"ok": True}), \
-         mock.patch.object(app_module, "_setup_enqueue_and_wait_install", side_effect=fake_privileged_run), \
-         mock.patch.object(app_module, "_setup_preflight_blockers", return_value=[]), \
+    with mock.patch.object(setup_module.SETUP_REGISTRY, "_setup_run_script", side_effect=fake_run_script), \
+         mock.patch.object(setup_module.SETUP_REGISTRY, "_setup_server_install", return_value={"ok": True}), \
+         mock.patch.object(setup_module, "_setup_enqueue_and_wait_install", side_effect=fake_privileged_run), \
+         mock.patch.object(setup_module, "_setup_preflight_blockers", return_value=[]), \
          mock.patch.object(app_module.sys, "platform", "linux"), \
-         mock.patch.object(app_module, "has_internet", return_value=True):
+         mock.patch.object(setup_module, "has_internet", return_value=True):
         p = client.post(
             "/api/setup/plan",
             json={
@@ -236,10 +237,10 @@ def test_setup_privileged_install_fails_fast_when_installer_daemon_not_enabled()
     # poll for up to 15 minutes with zero log output before finally timing out
     # if the root installer daemon (scripts/enable-oasis-installer.py) was
     # never enabled. It must now fail immediately with a clear reason instead.
-    reg = app_module._setup_registry()
+    reg = setup_module._setup_registry()
     spec = reg.get("webssh")
-    with mock.patch.object(app_module, "_installer_daemon_enabled", return_value=False):
-        result = app_module._setup_enqueue_and_wait_install("webssh", spec, {}, "job-1")
+    with mock.patch.object(setup_module, "_installer_daemon_enabled", return_value=False):
+        result = setup_module._setup_enqueue_and_wait_install("webssh", spec, {}, "job-1")
     assert result["ok"] is False
     assert result["reason_code"] == "INSTALLER_DAEMON_UNAVAILABLE"
     assert "enable-oasis-installer.py" in result["reason_text"]
@@ -257,8 +258,8 @@ def test_setup_reboot_invokes_resolved_absolute_path_not_bare_reboot():
         return mock.Mock(returncode=0, stdout="", stderr="")
 
     with mock.patch.object(app_module.sys, "platform", "linux"), \
-         mock.patch.object(app_module.shutil, "which", return_value=None), \
-         mock.patch.object(app_module.subprocess, "run", side_effect=fake_run):
+         mock.patch.object(setup_module.shutil, "which", return_value=None), \
+         mock.patch.object(setup_module.subprocess, "run", side_effect=fake_run):
         r = client.post("/api/setup/reboot", headers={"X-OASIS-Request": "1"})
     assert r.status_code == 200
     data = r.get_json()
@@ -269,7 +270,7 @@ def test_setup_reboot_invokes_resolved_absolute_path_not_bare_reboot():
 
 def test_setup_plan_blocks_winlink_without_password():
     client = app_module.app.test_client()
-    with mock.patch.object(app_module, "has_internet", return_value=True):
+    with mock.patch.object(setup_module, "has_internet", return_value=True):
         r = client.post(
             "/api/setup/plan",
             json={
@@ -289,7 +290,7 @@ def test_setup_plan_blocks_winlink_without_password():
 
 def test_setup_plan_blocks_internet_required_features_when_offline():
     client = app_module.app.test_client()
-    with mock.patch.object(app_module, "has_internet", return_value=False):
+    with mock.patch.object(setup_module, "has_internet", return_value=False):
         r = client.post(
             "/api/setup/plan",
             json={
@@ -309,7 +310,7 @@ def test_setup_plan_blocks_internet_required_features_when_offline():
 def test_setup_cancel_requests_active_job():
     client = app_module.app.test_client()
     reg = {"server": _ok_feature("server")}
-    with mock.patch.object(app_module, "_setup_registry", return_value=reg):
+    with mock.patch.object(setup_module, "_setup_registry", return_value=reg):
         p = client.post(
             "/api/setup/plan",
             json={"selectedFeatures": ["server"]},
@@ -329,8 +330,8 @@ def test_setup_cancel_requests_active_job():
 def test_setup_run_fails_when_station_write_raises():
     client = app_module.app.test_client()
     reg = {"server": _ok_feature("server")}
-    with mock.patch.object(app_module, "_setup_registry", return_value=reg), \
-         mock.patch.object(app_module, "_setup_write_station", side_effect=RuntimeError("disk full")):
+    with mock.patch.object(setup_module, "_setup_registry", return_value=reg), \
+         mock.patch.object(setup_module, "_setup_write_station", side_effect=RuntimeError("disk full")):
         p = client.post(
             "/api/setup/plan",
             json={
@@ -358,7 +359,7 @@ def test_setup_run_fails_when_station_write_raises():
 
 def test_setup_plan_appends_wifi_last_and_marks_reboot_required():
     client = app_module.app.test_client()
-    with mock.patch.object(app_module, "has_internet", return_value=True):
+    with mock.patch.object(setup_module, "has_internet", return_value=True):
         r = client.post(
             "/api/setup/plan",
             json={
@@ -378,7 +379,7 @@ def test_setup_plan_appends_wifi_last_and_marks_reboot_required():
 
 def test_setup_plan_blocks_linux_only_feature_on_non_linux():
     client = app_module.app.test_client()
-    with mock.patch.object(app_module, "has_internet", return_value=True), \
+    with mock.patch.object(setup_module, "has_internet", return_value=True), \
          mock.patch.object(app_module.sys, "platform", "darwin"):
         r = client.post(
             "/api/setup/plan",
@@ -399,9 +400,9 @@ def test_setup_plan_blocks_linux_only_feature_on_non_linux():
 def test_setup_run_includes_wifi_feature_state_when_selected():
     client = app_module.app.test_client()
     reg = {"server": _ok_feature("server")}
-    with mock.patch.object(app_module, "_setup_registry", return_value=reg), \
-         mock.patch.object(app_module, "_setup_apply_wifi", return_value={"ok": True, "requires_reboot": True}), \
-         mock.patch.object(app_module, "has_internet", return_value=True):
+    with mock.patch.object(setup_module, "_setup_registry", return_value=reg), \
+         mock.patch.object(setup_module, "_setup_apply_wifi", return_value={"ok": True, "requires_reboot": True}), \
+         mock.patch.object(setup_module, "has_internet", return_value=True):
         p = client.post(
             "/api/setup/plan",
             json={
@@ -434,9 +435,9 @@ def test_setup_run_script_classifies_internet_required_from_network_error():
     cp.returncode = 1
     cp.stderr = "ERROR: Could not reach the internet to fetch the FlightAware repo signing key."
     cp.stdout = ""
-    with mock.patch.object(app_module.SETUP_REGISTRY.os.path, "exists", return_value=True), \
-         mock.patch.object(app_module.SETUP_REGISTRY.subprocess, "run", return_value=cp):
-        res = app_module.SETUP_REGISTRY._setup_run_script(app_module.SUITE_ROOT, "services/adsb/install.py")
+    with mock.patch.object(setup_module.SETUP_REGISTRY.os.path, "exists", return_value=True), \
+         mock.patch.object(setup_module.SETUP_REGISTRY.subprocess, "run", return_value=cp):
+        res = setup_module.SETUP_REGISTRY._setup_run_script(setup_module.SUITE_ROOT, "services/adsb/install.py")
     assert res["ok"] is False
     assert res["reason_code"] == "INTERNET_REQUIRED"
 
@@ -446,17 +447,17 @@ def test_setup_run_script_classifies_missing_tool():
     cp.returncode = 1
     cp.stderr = "bash: gpg: command not found"
     cp.stdout = ""
-    with mock.patch.object(app_module.SETUP_REGISTRY.os.path, "exists", return_value=True), \
-         mock.patch.object(app_module.SETUP_REGISTRY.subprocess, "run", return_value=cp):
-        res = app_module.SETUP_REGISTRY._setup_run_script(app_module.SUITE_ROOT, "services/adsb/install.py")
+    with mock.patch.object(setup_module.SETUP_REGISTRY.os.path, "exists", return_value=True), \
+         mock.patch.object(setup_module.SETUP_REGISTRY.subprocess, "run", return_value=cp):
+        res = setup_module.SETUP_REGISTRY._setup_run_script(setup_module.SUITE_ROOT, "services/adsb/install.py")
     assert res["ok"] is False
     assert res["reason_code"] == "MISSING_TOOL"
 
 
 def test_setup_plan_allows_winlink_without_new_password_when_pat_password_exists():
     client = app_module.app.test_client()
-    with mock.patch.object(app_module, "has_internet", return_value=True), \
-         mock.patch.object(app_module, "_setup_pat_password_set", return_value=True):
+    with mock.patch.object(setup_module, "has_internet", return_value=True), \
+         mock.patch.object(setup_module, "_setup_pat_password_set", return_value=True):
         r = client.post(
             "/api/setup/plan",
             json={
@@ -475,7 +476,7 @@ def test_setup_plan_allows_winlink_without_new_password_when_pat_password_exists
 
 def test_setup_write_station_preserves_existing_lat_lon_when_omitted():
     with tempfile.TemporaryDirectory() as td:
-        with mock.patch.object(app_module, "SUITE_ROOT", td):
+        with mock.patch.object(setup_module, "SUITE_ROOT", td):
             cfg_dir = os.path.join(td, "configuration")
             os.makedirs(cfg_dir, exist_ok=True)
             st_path = os.path.join(cfg_dir, "station.json")
@@ -483,7 +484,7 @@ def test_setup_write_station_preserves_existing_lat_lon_when_omitted():
                 json.dump({"callsign": "W4MHI", "grid": "EM95", "lat": 35.91, "lon": -79.05}, fh)
                 fh.write("\n")
 
-            app_module._setup_write_station({
+            setup_module._setup_write_station({
                 "station": {"callsign": "W4MHI", "grid": "EM96", "lat": None, "lon": None}
             })
 
@@ -511,8 +512,8 @@ def test_record_keeps_unticked_installed_feature_additive(tmp_path):
     manifest = tmp_path / "installed-services.json"
     manifest.write_text(json.dumps({"features": ["fcc", "adsb"]}) + "\n")
     summary = _summary_with([("kiwix", SE.STATUS_INSTALLED)])
-    with mock.patch.object(app_module, "INSTALLED_SERVICES_FILE", str(manifest)):
-        app_module._setup_record_installed_features(summary)
+    with mock.patch.object(setup_module, "INSTALLED_SERVICES_FILE", str(manifest)):
+        setup_module._setup_record_installed_features(summary)
     got = set(json.loads(manifest.read_text())["features"])
     # fcc was NOT ticked this run and is a former GATE_AUTHORITATIVE member, but
     # additive recording must never drop it. kiwix is added.
@@ -524,8 +525,8 @@ def test_record_does_not_drop_former_gate_authoritative_on_untick(tmp_path):
     manifest.write_text(json.dumps({"features": ["fcc", "repeaterbook", "forms"]}) + "\n")
     # A run that installs nothing new and ticks none of the content gates.
     summary = _summary_with([])
-    with mock.patch.object(app_module, "INSTALLED_SERVICES_FILE", str(manifest)):
-        app_module._setup_record_installed_features(summary)
+    with mock.patch.object(setup_module, "INSTALLED_SERVICES_FILE", str(manifest)):
+        setup_module._setup_record_installed_features(summary)
     got = set(json.loads(manifest.read_text())["features"])
     assert got == {"fcc", "repeaterbook", "forms"}
 
@@ -537,7 +538,7 @@ def test_record_adds_only_successful_installs(tmp_path):
         ("kiwix", SE.STATUS_INSTALLED),
         ("adsb", SE.STATUS_INSTALL_FAILED),
     ])
-    with mock.patch.object(app_module, "INSTALLED_SERVICES_FILE", str(manifest)):
-        app_module._setup_record_installed_features(summary)
+    with mock.patch.object(setup_module, "INSTALLED_SERVICES_FILE", str(manifest)):
+        setup_module._setup_record_installed_features(summary)
     got = set(json.loads(manifest.read_text())["features"])
     assert got == {"kiwix"}
