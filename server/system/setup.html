@@ -201,7 +201,8 @@
         <div class="setup-group">
           <h4>Radio Interfaces</h4>
           <label class="setup-check"><input type="checkbox" data-feature="rtl-sdr-feed"> rtl-sdr + rtl-feed</label>
-          <label class="setup-check"><input type="checkbox" data-feature="gps"> gps</label>
+          <label class="setup-check"><input type="checkbox" data-feature="gps"> gps (USB / autodetect)</label>
+          <label class="setup-check"><input type="checkbox" data-feature="gps-l76x"> gps-L76X (UART / GPIO HAT)</label>
           <label class="setup-check"><input type="checkbox" data-feature="dra-pi-rx-led"> dra-pi + dra-rx-led</label>
           <label class="setup-check"><input type="checkbox" data-feature="rtc"> rtc</label>
         </div>
@@ -967,6 +968,13 @@ async function setupAutoSelectInstalledFeatures() {
 function setupWireReinstallHints() {
   document.querySelectorAll('input[data-feature]').forEach(ch => {
     ch.addEventListener('change', () => {
+      // gps (USB) and gps-l76x (UART) both drive gpsd — keep them mutually
+      // exclusive so a plan never configures two gpsd device targets at once.
+      if (ch.checked && (ch.dataset.feature === 'gps' || ch.dataset.feature === 'gps-l76x')) {
+        const otherKey = ch.dataset.feature === 'gps' ? 'gps-l76x' : 'gps';
+        const other = document.querySelector(`input[data-feature="${otherKey}"]`);
+        if (other && other.checked) { other.checked = false; other.dispatchEvent(new Event('change')); }
+      }
       const label = ch.closest('.setup-check');
       if (!label) return;
       const key = ch.getAttribute('data-feature');

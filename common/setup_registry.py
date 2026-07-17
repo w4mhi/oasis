@@ -375,6 +375,19 @@ def build_registry(repo_root, payload=None):
             enable_policy="none",
             privileged=True,
         ),
+        # UART/GPIO GPS HAT (Waveshare L76X, on ttyS0/serial0). Separate from the
+        # generic USB 'gps' feature: it enables the hardware UART + frees the
+        # serial console (reboot-required, exit 10) and points gpsd at serial0.
+        # Mutually exclusive with 'gps' — both drive gpsd (the UI unchecks the
+        # other; install-gps-l76x.py's check_exclusive is the runtime backstop).
+        "gps-l76x": SE.FeatureSpec(
+            key="gps-l76x",
+            dependencies=[],
+            install_fn=lambda: _setup_run_script(repo_root, "features/gps-L76X/install-gps-l76x.py"),
+            verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
         "dra-pi-rx-led": SE.FeatureSpec(
             key="dra-pi-rx-led",
             dependencies=["graywolf"],
