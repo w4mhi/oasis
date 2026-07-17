@@ -2,7 +2,7 @@
 //
 // Single source of truth for the MapLibre GL vector style used by both the
 // offline map viewer (maps/map.html) and the live APRS station map
-// (server/aprs/map.html). Served from /map-assets/basemap-style.js so any page can
+// (server/map/map.html). Served from /map-assets/basemap-style.js so any page can
 // load it with an absolute path, no build step, no CDN.
 //
 // Usage:

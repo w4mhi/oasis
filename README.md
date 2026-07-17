@@ -290,7 +290,7 @@ APRS is the flagship Pi capability. OASIS installs and supervises **[GrayWolf](h
 
 ![OASIS APRS live map](docs/images/oasis/06-aprs-map.png)
 
-GrayWolf runs its own web UI on port **8080**; OASIS reads its history database and shows the stations on the dashboard and at `/server/aprs/map.html`.
+GrayWolf runs its own web UI on port **8080**; OASIS reads its history database and shows the stations on the dashboard and at `/server/map/map.html`.
 
 ### Feeding APRS from an RTL-SDR dongle
 
@@ -320,7 +320,7 @@ Once it's running, the **APRS LIVE** table on the dashboard fills in and keeps u
 > ⚠️ **RTL-SDR needs Raspberry Pi OS Trixie (Debian 13).** The RTL-SDR Blog **V4** needs **`librtlsdr` ≥ 2.0**, which only Trixie ships (`2.0.2`). Bookworm/Bullseye top out at `0.6.0` and can't drive the V4. *(APRS via the DRA-Pi-Zero sound card has no such requirement.)*
 
 <details>
-<summary>Live map features (<code>/server/aprs/map.html</code>)</summary>
+<summary>Live map features (<code>/server/map/map.html</code>)</summary>
 
 <br>
 

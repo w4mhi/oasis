@@ -50,11 +50,14 @@ from common import hardware as HW
 from common import hardware_detect as HD_detect
 from common import gpsd_chrony
 from common.oasis_lib import has_internet
-APRS_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "aprs", "static")
 WINLINK_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "winlink", "static")
 FCC_STATIC_DIR = os.path.join(SUITE_ROOT, "services", "fcc_database", "static")
-MAP_ASSETS  = os.path.join(APRS_STATIC_DIR, "map-assets")
-APRS_DIR    = os.path.join(APRS_STATIC_DIR, "aprs")
+# The live map UI (APRS + ADS-B) and its shared assets are service-neutral —
+# they live under services/map/, not services/aprs/, since one page now serves
+# both. map-assets keeps its own top-level /map-assets/ URL (widely referenced,
+# incl. the e-ink/CM4 display sprite readers), independent of /server/map/.
+MAP_DIR     = os.path.join(SUITE_ROOT, "services", "map")
+MAP_ASSETS  = os.path.join(MAP_DIR, "map-assets")
 WINLINK_DIR = WINLINK_STATIC_DIR
 FCC_DIR     = FCC_STATIC_DIR
 MAPS_DIR    = os.path.join(SUITE_ROOT, "maps")
@@ -89,7 +92,9 @@ PORTABLE_FEATURES = (
 # services (pat, direwolf, graywolf-api) are not running. Feature key → prefixes.
 _PORTABLE_BLOCK = {
     "winlink":  ("/api/winlink", "/server/winlink"),
-    "graywolf": ("/api/aprs", "/server/aprs"),
+    # The live map moved to /server/map; keep it gated with graywolf so a locked
+    # portable build without the APRS backend still can't surface the map page.
+    "graywolf": ("/api/aprs", "/server/map"),
 }
 
 # Operator-placed map warnings (flood/fire/etc.) shared across every device that
@@ -152,11 +157,11 @@ ZIP_TABLE = lookup.load_zip_table()
 # Inject static/theme.js just before </head> on every owned HTML page, so the
 # sun/moon toggle (and the no-flash theme apply) appears everywhere without
 # editing each page. Pages that manage their own theming are skipped:
-#   • the 7" kiosk (/small-screen/)   • the APRS map (/aprs/)
+#   • the 7" kiosk (/small-screen/)   • the live map (/server/map/)
 #   • the graywolf-handbook (/static/graywolf-handbook/)
 # theme.js is idempotent — it leaves a page's own toggle button (e.g. the
 # dashboard's) alone and only adds the floating one when none exists.
-_THEME_SKIP_PREFIXES = ("/small-screen/", "/server/aprs/", "/static/graywolf-handbook/")
+_THEME_SKIP_PREFIXES = ("/small-screen/", "/server/map/", "/static/graywolf-handbook/")
 _THEME_SNIPPET = '<script src="/static/theme.js"></script>'
 
 # ── Setup orchestrator state (web API) ──────────────────────────────────────
@@ -1099,14 +1104,17 @@ def serve_station_json():
 
 @app.route("/map-assets/<path:filename>")
 def map_assets(filename):
-    """Serve APRS map assets from the service-owned static directory."""
+    """Serve shared map assets (MapLibre, PMTiles, basemap style, APRS sprites).
+    Top-level URL kept stable — referenced across the suite and by the display
+    sprite readers — even though the files now live under services/map/."""
     return send_from_directory(MAP_ASSETS, filename)
 
 
-@app.route("/server/aprs/<path:filename>")
-def aprs_static(filename):
-    """Serve the APRS UI from the service-owned static directory."""
-    return send_from_directory(APRS_DIR, filename)
+@app.route("/server/map/<path:filename>")
+def map_static(filename):
+    """Serve the live map UI (map.html + warnings.json) — APRS + ADS-B — from
+    the service-neutral services/map/ directory."""
+    return send_from_directory(MAP_DIR, filename)
 
 
 @app.route("/server/winlink/<path:filename>")

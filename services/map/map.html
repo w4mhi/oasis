@@ -3299,7 +3299,7 @@ function drawGrid() {
 
 // ── Operator warnings (shared, persisted) ────────────────────────────────────
 // Flood/fire/etc. markers an operator drops on the map. The catalog of icons is
-// /server/aprs/warnings.json; placed warnings live server-side (/api/aprs/warnings) so
+// /server/map/warnings.json; placed warnings live server-side (/api/aprs/warnings) so
 // every device sees the same set. Markers are DOM (few, user-placed) with a
 // persistent red glow, so the 15s station refresh never touches them.
 let WARN_CATALOG  = [];
@@ -3316,7 +3316,7 @@ function toggleWarningsPanel() {
 
 async function loadWarningCatalog() {
   try {
-    const r = await fetch('/server/aprs/warnings.json', { cache: 'no-store' });
+    const r = await fetch('/server/map/warnings.json', { cache: 'no-store' });
     WARN_CATALOG = await r.json();
   } catch (_) { WARN_CATALOG = []; }
   WARN_CATALOG.forEach(w => { WARN_BY_ID[w.id] = w; });

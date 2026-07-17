@@ -1094,7 +1094,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       </div>
     </div>
   </div>
-  <div class="svc-card svc-card-gated" id="card-adsb" data-href="server/aprs/map.html" data-target="_blank">
+  <div class="svc-card svc-card-gated" id="card-adsb" data-href="server/map/map.html" data-target="_blank">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-adsb"></div>
       <div class="svc-card-info">
@@ -1211,7 +1211,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="nav-sec">
       <div class="nav-sec-title">Util</div>
       <ul class="nav-links">
-        <li><a id="nlink-aprs" href="server/aprs/map.html">APRS Maidenhead Map <span class="nav-meta">live APRS</span></a></li>
+        <li><a id="nlink-aprs" href="server/map/map.html">APRS Maidenhead Map <span class="nav-meta">live APRS</span></a></li>
         <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
         <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>        
       </ul>
@@ -2744,7 +2744,7 @@ function aprsSource(s) {
   return (hay.includes('TCPIP') || hay.includes('IGATE') || /\bQA[A-Z]/.test(hay)) ? 'is' : 'rf';
 }
 
-// APRS symbol code → human "type" label. Mirrors _OBJ_CATS in server/aprs/map.html
+// APRS symbol code → human "type" label. Mirrors _OBJ_CATS in server/map/map.html
 // so the dashboard list and the map list name station types identically.
 const _APRS_TYPES = {
   '>':'Car','j':'Car','v':'Car','<':'Motorcycle','k':'Truck','u':'Truck',
@@ -2806,8 +2806,8 @@ function renderAprsTable(stations) {
     // unlocated aircraft grey out via the row class.
     const rowCls = (ac && !s._positioned) ? ' class="unlocated"' : '';
     const callCell = ac
-      ? `<a href="server/aprs/map.html" target="_blank" style="color:inherit;text-decoration:none">${escapeHtml(s.callsign)}</a>`
-      : `<a href="server/aprs/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a>`;
+      ? `<a href="server/map/map.html" target="_blank" style="color:inherit;text-decoration:none">${escapeHtml(s.callsign)}</a>`
+      : `<a href="server/map/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a>`;
     return `<tr${rowCls}>
       <td style="color:${callColor};font-weight:700">${callCell}</td>
       <td style="color:var(--text-dim);white-space:nowrap">${aprsSymIcon(s)}${aprsTypeLabel(s)}</td>
