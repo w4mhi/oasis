@@ -44,6 +44,11 @@ static/radio-manuals/*
 # Wikipedia ZIM files — downloaded by services/kiwix/download-wikipedia.py.
 *.zim
 
+# OpenFlights airlines.dat — raw source for scripts/build-adsb-operators.py.
+# Downloaded once at dev time; the generated static/js/adsb-operators.js is
+# committed, the raw dump is not.
+scripts/data/
+
 # FCC amateur-radio database — built by services/fcc_database/install.py into
 # services/fcc_database/data/ (see common/lookup.py). Large, and the raw FCC dump
 # carries licensee names/addresses — never checked in; each machine builds its own.
