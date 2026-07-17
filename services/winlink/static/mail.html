@@ -1233,7 +1233,10 @@ async function runConnect(url, label) {
   document.getElementById("abortBtn").style.display = "";   // session in progress
   startLogPoll();                          // stream the journald log into the console
   try {
-    await api(`/connect?url=${encodeURIComponent(url)}`);
+    // POST + custom header: the server gates this mutating call the same way
+    // as /api/service (CSRF — a cross-origin page can't set the header).
+    await api(`/connect?url=${encodeURIComponent(url)}`,
+              { method: "POST", headers: { "X-OASIS-Request": "1" } });
     toast("Connect session complete", "ok");
   } catch (e) {
     logLine("Connect failed: " + e.message);
@@ -1252,7 +1255,8 @@ async function runConnect(url, label) {
 // which unblocks runConnect's await — its finally then refreshes everything.
 async function abortConnect() {
   logLine("Aborting session…");
-  try { await fetch(`${API}/disconnect`, { cache: "no-store" }); }
+  try { await fetch(`${API}/disconnect`, { method: "POST", cache: "no-store",
+                                            headers: { "X-OASIS-Request": "1" } }); }
   catch (_) { /* the connect returning is what matters */ }
 }
 

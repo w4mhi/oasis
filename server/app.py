@@ -2727,12 +2727,19 @@ def api_winlink_aliases():
     return _winlink_proxy("/api/connect_aliases")
 
 
-@app.route("/api/winlink/disconnect", methods=["GET"])
+@app.route("/api/winlink/disconnect", methods=["POST"])
 def api_winlink_disconnect():
     """Abort the in-progress Pat connect session (the Abort button).
 
+    POST + custom-header gate: this mutates state (kills the active RF/telnet
+    session), so it gets the same CSRF protection as /api/service — a cross-
+    origin page can't set the header without a preflight this never grants.
+    Pat's own endpoint stays GET; only the OASIS-facing surface changes.
+
     Returns 400 from Pat when there's no active session — harmless.
     """
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
     return _winlink_proxy("/api/disconnect")
 
 
@@ -2801,14 +2808,21 @@ def api_winlink_rmslist():
     return jsonify({"ok": True, "mode": mode, "count": len(slim), "gateways": slim})
 
 
-@app.route("/api/winlink/connect", methods=["GET"])
+@app.route("/api/winlink/connect", methods=["POST"])
 def api_winlink_connect():
     """Start a Pat connect session. Forwards ?url=<alias-or-transport-url>.
+
+    POST + custom-header gate: starting a connect keys the transmitter on the
+    RF path, so it gets the same CSRF protection as /api/service (a GET here
+    could be triggered by any <img src=…> a LAN browser happens to load).
+    Pat's own endpoint stays GET; only the OASIS-facing surface changes.
 
     Longer timeout: a connect (esp. RF) can take a while. The live log streams
     over the browser's direct WebSocket to Pat, not through here.
     """
     import urllib.parse
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
     qs = urllib.parse.urlencode({k: v for k, v in request.args.items()})
     return _winlink_proxy("/api/connect", query=qs, timeout=120)
 

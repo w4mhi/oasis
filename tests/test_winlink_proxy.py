@@ -103,12 +103,34 @@ class WinlinkProxyTest(unittest.TestCase):
         self.assertFalse(resp.get_json()["ok"])
 
     # ── Connect (transport session kickoff) ──────────────────────────────────
+    # Mutating (keys the transmitter on RF): POST-only, gated by the same
+    # X-OASIS-Request CSRF header as /api/service. Pat's side stays GET.
     def test_connect_forwards_url_param(self):
         cap = {}
         with _patch_urlopen(body=b'{"ok":true}', status=200, capture=cap):
-            resp = self.client.get("/api/winlink/connect?url=telnet%3A%2F%2Fcms")
+            resp = self.client.post("/api/winlink/connect?url=telnet%3A%2F%2Fcms",
+                                    headers={"X-OASIS-Request": "1"})
         self.assertEqual(resp.status_code, 200)
         self.assertIn("url=telnet", cap["url"])
+
+    def test_connect_without_header_forbidden_before_pat(self):
+        called = {"hit": False}
+
+        def fake(req, timeout=None):
+            called["hit"] = True
+            return _FakePatResponse(b"")
+
+        with mock.patch.object(urllib.request, "urlopen", fake):
+            resp = self.client.post("/api/winlink/connect?url=telnet%3A%2F%2Fcms")
+        self.assertEqual(resp.status_code, 403)
+        self.assertFalse(called["hit"])
+
+    def test_connect_get_is_rejected(self):
+        # 404 not 405: with the suite root as static folder, an unmatched GET
+        # falls through to static serving. Either way, GET can't start a session.
+        resp = self.client.get("/api/winlink/connect?url=telnet%3A%2F%2Fcms",
+                               headers={"X-OASIS-Request": "1"})
+        self.assertIn(resp.status_code, (404, 405))
 
     # ── Compose / queue ───────────────────────────────────────────────────────
     def test_compose_posts_to_outbox(self):
@@ -188,12 +210,24 @@ class WinlinkProxyTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 503)
 
     # ── Disconnect / abort ────────────────────────────────────────────────────
+    # Mutating: POST-only + CSRF header, same as connect.
     def test_disconnect_proxies_pat(self):
         cap = {}
         with _patch_urlopen(body=b'{"ok":true}', status=200, capture=cap):
-            resp = self.client.get("/api/winlink/disconnect")
+            resp = self.client.post("/api/winlink/disconnect",
+                                    headers={"X-OASIS-Request": "1"})
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(cap["url"].endswith("/api/disconnect"))
+
+    def test_disconnect_without_header_is_forbidden(self):
+        resp = self.client.post("/api/winlink/disconnect")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_disconnect_get_is_rejected(self):
+        # See test_connect_get_is_rejected for why 404 (static fall-through).
+        resp = self.client.get("/api/winlink/disconnect",
+                               headers={"X-OASIS-Request": "1"})
+        self.assertIn(resp.status_code, (404, 405))
 
     def test_attachment_unknown_box_rejected(self):
         called = {"hit": False}
