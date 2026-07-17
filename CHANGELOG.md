@@ -20,6 +20,14 @@ standard from 3.0.0 on.
   stations. Map markers and the map's right-side "N aircraft" panel stay
   live-only. The heavier DB scan is throttled to ≤ once/60 s, off the 2 s live
   cadence, to stay Pi-cheap.
+- **Shared ADS-B front-end module** `static/js/adsb.js` (altitude-to-color scale,
+  airline-operator decode from ICAO callsign, Age filter fetch window) and a
+  seeded ICAO→telephony operator table `static/js/adsb-operators.js` (generated
+  by `scripts/build-adsb-operators.py` from OpenFlights). Supports aircraft
+  altitude coloring, airline tag display, and configurable history retention.
+- **Airline tag in the map aircraft card:** displays the airline callsign and
+  name for civil aircraft (e.g. `ASA424 [ALASKA]` from ICAO 0xAE0AD3); military
+  aircraft keep their `[MIL]` badge and get no airline tag.
 - **Shared front-end helper modules** `static/js/{units,geo,format}.js`
   (unit/temp/altitude/speed/uptime formatting, Maidenhead grid + distance/
   bearing, age/last-heard) now back both the main dashboard (`index.html`)
@@ -31,6 +39,15 @@ standard from 3.0.0 on.
   `.github/workflows/js-tests.yml` CI gate — delivers analysis-report §3/P2.
 
 ### Changed
+- **Aircraft altitude values are altitude-colored** on the map ADS-B panel,
+  map station list, and dashboard aircraft rows (using the same color scale;
+  the callsign keeps its purple accent). The map's aircraft card altitude value
+  is colored as well.
+- **The Age filter defaults to 24 hours** (dashboard and map station list; was
+  "All"), and selecting **ALL** now pulls the full aircraft history (previously
+  aircraft were hard-capped at 24 h regardless of filter). APRS stations and
+  aircraft now behave identically: Age="24h" for recent activity, Age="All" for
+  the full database scan.
 - **Aircraft map labels are always upper-case**, matching APRS callsign display
   (the popup card still shows the flight ID as received).
 - **The map's ADS-B panel row labels are upper-case and altitude-coloured**
