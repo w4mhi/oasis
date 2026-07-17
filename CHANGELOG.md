@@ -11,6 +11,13 @@ standard from 3.0.0 on.
 ## Unreleased
 
 ### Added
+- **Live install log in the setup page.** Privileged feature installs run in a
+  root worker whose output only reached the systemd journal; it's now streamed
+  into the setup log window (via a per-job log file the web wait-loop tails), so
+  apt/dpkg errors are visible without SSH/journalctl.
+- **Post-run reboot prompt.** After a setup run, the page shows a "Reboot
+  required to finish" note (and highlights the Reboot button) when any feature
+  came back `installed_needs_reboot`.
 - **ADS-B aircraft list keeps 24 h of history.** Out-of-range aircraft used to
   vanish from the station lists the moment they left the live poll. The recorder
   now exposes `GET /recent?hours=` (one row per aircraft = its latest
@@ -41,6 +48,9 @@ standard from 3.0.0 on.
   `.github/workflows/js-tests.yml` CI gate — delivers analysis-report §3/P2.
 
 ### Changed
+- **GPS and i2c-enable now signal that they need a reboot** (exit code 10), so
+  the setup page prompts for it — GPS no longer silently shows "not configured"
+  after install, and enabling i2c flags the reboot `/dev/i2c-1` needs.
 - **Aircraft altitude values are altitude-colored** on the map ADS-B panel,
   map station list, and dashboard aircraft rows (using the same color scale;
   the callsign keeps its purple accent). The map's aircraft card altitude value
