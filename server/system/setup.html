@@ -66,6 +66,8 @@
 .setup-btn.primary { background: #0a3a20; border-color: #1c6f45; color: #c9ffd8; }
 .setup-btn.danger { background: #3a0a0a; border-color: #6f1c1c; color: #ffc9c9; }
 .setup-btn.danger:hover { border-color: #ff6b6b; color: #ff6b6b; }
+.setup-btn.attn { box-shadow: 0 0 0 2px var(--amber); }
+.setup-reboot-note { font-size: var(--fs-small); color: var(--amber); font-weight: 700; margin-top: .4rem; }
 .setup-kv { font-size: var(--fs-label); color: var(--text-dim); margin: .2rem 0; }
 .setup-kv code { color: var(--accent); background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: var(--fs-small); }
 .setup-grid { display: flex; flex-wrap: wrap; gap: .7rem; align-items: stretch; }
@@ -166,6 +168,7 @@
     <button class="setup-btn primary" id="setupRun">Run selected</button>
     <button class="setup-btn danger" id="setupReboot">Reboot Pi</button>
   </div>
+  <div class="setup-reboot-note" id="setupRebootNote" style="display:none;"></div>
 
   <div class="setup-grid">
     <div class="setup-box setup-features-box">
@@ -1285,6 +1288,23 @@ async function setupRefreshJob() {
       if (l.eof && setupPollTimer) {
         clearInterval(setupPollTimer);
         setupPollTimer = null;
+        // Job finished — prompt for reboot if any feature came back needing one
+        // (i2c-enable, GPS, DRA-PI, the display HATs …).
+        const rebootFeats = (d.features || [])
+          .filter(f => f && f.status === 'installed_needs_reboot')
+          .map(f => f.feature);
+        const rb = document.getElementById('setupRebootNote');
+        if (rb) {
+          if (rebootFeats.length) {
+            rb.textContent = 'Reboot required to finish: ' + rebootFeats.join(', ')
+              + '. Click "Reboot Pi" above (or reboot later).';
+            rb.style.display = '';
+            const btn = document.getElementById('setupReboot');
+            if (btn) btn.classList.add('attn');
+          } else {
+            rb.style.display = 'none';
+          }
+        }
       }
     }
   } catch (e) {
