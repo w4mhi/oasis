@@ -2071,26 +2071,28 @@ function _gateEls(id) {
 // feed, so we probe the feed unit. We require the unit to be *enabled or active*, not merely
 // present: a leftover/disabled unit the operator never ticked must stay hidden
 // (otherwise the card slips the gate and renders STOPPED instead of hidden).
-const SYSTEMD_GATED = { feed: 'aprs-sdr-feed', gpsd: 'gpsd' };
 async function unitInstalled(id) {
-  const unit = SYSTEMD_GATED[id];
+  // Reconcile against live reality for EVERY service-backed card (SVC_UNITS maps
+  // card id → systemd unit), not just feed/gpsd — so a service that IS installed
+  // but missing from installed-services.json (installed manually, or in a run
+  // whose recording was interrupted) still shows on the dashboard, matching what
+  // /server/system/setup.html reports. Data-only features (fcc, forms, wikipedia,
+  // repeaterbook) have no unit → return false and stay manifest-gated.
+  const unit = (id === 'gpsd') ? 'gpsd' : SVC_UNITS[id];
   if (!unit) return false;
   try {
     const r = await fetch('/api/health/service?name=' + unit, { cache: 'no-store' });
     if (!r.ok) return false;
     const d = await r.json();
-    // gpsd is a stock Debian package other features pull in transitively (e.g.
-    // Winlink's `pat` Depends: gpsd) and its socket auto-enables — so a *running*
-    // gpsd is NOT proof the operator set up GPS. features/gps/install-gps.py explicitly
-    // `systemctl enable gpsd`, so a deliberate setup reports enabled==='enabled',
-    // while a dependency-pulled one stays socket-activated ('indirect'/'static').
-    // Require that explicit boot-enable for gpsd — the server promotes a live
-    // gpsd.socket to active==='active', which is exactly the transitive case, so
-    // don't let mere activity un-hide the GPS card.
+    // gpsd is transitively pulled in (Winlink's `pat` Depends: gpsd) and its
+    // socket auto-enables, so a running gpsd is NOT proof the operator set up GPS.
+    // features/gps/install-gps.py explicitly `systemctl enable gpsd`, so require
+    // that deliberate boot-enable for the GPS card.
     if (id === 'gpsd') return d.enabled === 'enabled';
-    // aprs-sdr-feed only exists if features/rtl-sdr/enable-rtl-sdr.py created it, so any
-    // enabled/active state is a genuine, deliberate install.
-    return d.active === 'active' || d.enabled === 'enabled';
+    // Otherwise the OASIS-managed unit merely EXISTING (installed) is proof the
+    // operator installed it — keep the card visible even if it's currently
+    // stopped/disabled. Same "installed = unit file exists" the setup page uses.
+    return !!d.installed;
   } catch (_) { return false; }
 }
 
