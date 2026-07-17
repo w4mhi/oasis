@@ -1065,6 +1065,16 @@ def _inject_theme_toggle(resp):
     return resp
 
 
+# ── Route blueprints ──────────────────────────────────────────────────────────
+# Service-owned routes live with their service (services/<name>/routes.py);
+# server-core domains live in server/routes/. Extracted from this file in the
+# blueprint split — every URL is unchanged (blueprints keep full literal paths,
+# no url_prefix, so each route stays greppable by its URL).
+from services.adsb.routes import bp as _adsb_bp
+
+app.register_blueprint(_adsb_bp)
+
+
 @app.route("/")
 def index():
     """Smart home: JS reads localStorage and redirects to the small-screen layout or index.html."""
@@ -2421,45 +2431,6 @@ def api_aprs_track_proxy():
     except TimeoutError:
         return jsonify({"ok": False,
                         "error": "APRS API timed out."}), 503
-
-
-def _adsb_proxy(path, timeout=10):
-    import urllib.request, urllib.error
-    url = f"http://127.0.0.1:8086{path}"
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            return Response(resp.read(), status=200, content_type="application/json")
-    except urllib.error.HTTPError as e:
-        return Response(e.read(), status=e.code, content_type="application/json")
-    except urllib.error.URLError as e:
-        reason = getattr(e, "reason", str(e))
-        return jsonify({"ok": False,
-                        "error": f"ADS-B API unavailable ({reason}). "
-                                 "Is the adsb-api service running?"}), 503
-    except TimeoutError:
-        return jsonify({"ok": False, "error": "ADS-B API timed out."}), 503
-
-
-@app.route("/api/adsb/health")
-def api_adsb_health_proxy():
-    return _adsb_proxy("/health", timeout=3)
-
-
-@app.route("/api/adsb/aircraft")
-def api_adsb_aircraft_proxy():
-    return _adsb_proxy("/aircraft")
-
-
-@app.route("/api/adsb/history")
-def api_adsb_history_proxy():
-    import urllib.parse
-    qs = urllib.parse.urlencode({k: v for k, v in request.args.items()})
-    return _adsb_proxy(f"/history?{qs}")
-
-
-@app.route("/api/adsb/alerts")
-def api_adsb_alerts_proxy():
-    return _adsb_proxy("/alerts")
 
 
 @app.route("/api/aprs/system")
