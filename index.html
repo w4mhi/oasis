@@ -904,6 +904,9 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   .clock-utc { font-size: var(--fs-subtitle); }
 }
 </style>
+<script src="/static/js/units.js"></script>
+<script src="/static/js/geo.js"></script>
+<script src="/static/js/format.js"></script>
 </head>
 <body>
 
@@ -2307,71 +2310,20 @@ function setStat(id, text, pct, amber, red) {
 // always reports SI (°C, metres; APRS speed arrives as mph) — these helpers
 // convert for display only. Persisted; default imperial. Colour thresholds for
 // temperature stay in °C, so only the displayed text changes.
-let UNITS = localStorage.getItem('oasis_units') || 'imperial';
-const isImperial = () => UNITS === 'imperial';
 let _lastTempC   = null;
 let _lastGpsAltM = null;
-function fmtTemp(c) {
-  if (c == null) return 'n/a';
-  return isImperial() ? `${Math.round(c * 9 / 5 + 32)} °F` : `${c} °C`;
-}
-function fmtAlt(m) {            // metres → ft (imperial) or m (metric)
-  if (m == null) return 'n/a';
-  return isImperial()
-    ? `${Math.round(m * 3.28084).toLocaleString()} ft`
-    : `${Math.round(m).toLocaleString()} m`;
-}
-function fmtSpeed(mph) {        // server reports mph; metric → km/h
-  if (mph == null) return '';
-  return isImperial() ? `${mph} mph` : `${Math.round(mph * 1.60934)} km/h`;
-}
-
-let _homeLat = null, _homeLon = null;
 
 function loadHomeCoords() {
   fetch('/station.json')
     .then(r => r.ok ? r.json() : null)
     .then(d => {
       if (!d || !d.lat || !d.lon) return;
-      _homeLat = parseFloat(d.lat);
-      _homeLon = parseFloat(d.lon);
+      OasisGeo.setHomeCoords(d.lat, d.lon);
       if (_allAprsStations.length) applyAprsFilter();
     })
     .catch(() => {});
 }
 
-function distFromHome(lat, lon) {
-  if (_homeLat == null || lat == null || lon == null) return '';
-  const p1 = _homeLat * Math.PI / 180, p2 = parseFloat(lat) * Math.PI / 180;
-  const dphi = (parseFloat(lat) - _homeLat) * Math.PI / 180;
-  const dl   = (parseFloat(lon) - _homeLon) * Math.PI / 180;
-  const a = Math.sin(dphi / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
-  const dMi = 2 * 3958.8 * Math.asin(Math.min(1, Math.sqrt(a)));
-  if (dMi < 0.1) return 'here';
-  const yb   = Math.sin(dl) * Math.cos(p2);
-  const xb   = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
-  const bear = (Math.atan2(yb, xb) * 180 / Math.PI + 360) % 360;
-  const card = ['N','NE','E','SE','S','SW','W','NW'][Math.round(bear / 45) % 8];
-  if (isImperial()) return dMi < 100 ? `${dMi.toFixed(1)}mi ${card}` : `${Math.round(dMi)}mi ${card}`;
-  const dKm = dMi * 1.60934;
-  return dKm < 100 ? `${dKm.toFixed(1)}km ${card}` : `${Math.round(dKm)}km ${card}`;
-}
-
-function gridSquare(lat, lon) {
-  if (lat == null || lon == null) return '';
-  let la = parseFloat(lat), lo = parseFloat(lon);
-  if (isNaN(la) || isNaN(lo)) return '';
-  lo += 180; la += 90;
-  const c1 = String.fromCharCode(65 + Math.floor(lo / 20));
-  const c2 = String.fromCharCode(65 + Math.floor(la / 10));
-  lo %= 20; la %= 10;
-  const n1 = Math.floor(lo / 2);
-  const n2 = Math.floor(la);
-  lo %= 2; la %= 1;
-  const c3 = String.fromCharCode(97 + Math.floor(lo / (2 / 24)));
-  const c4 = String.fromCharCode(97 + Math.floor(la / (1 / 24)));
-  return c1 + c2 + n1 + n2 + c3 + c4;
-}
 function renderTemp()   { setStat('s-temp', fmtTemp(_lastTempC), _lastTempC, 65, 80); }
 function renderGpsAlt() {
   const el = document.getElementById('gps-alt');
@@ -2385,8 +2337,7 @@ function applyUnits() {
   if (_allAprsStations.length) applyAprsFilter();   // re-render table in new units
 }
 function toggleUnits() {
-  UNITS = isImperial() ? 'metric' : 'imperial';
-  try { localStorage.setItem('oasis_units', UNITS); } catch (e) {}
+  OasisUnits.toggleUnits();
   applyUnits();
 }
 
@@ -2415,13 +2366,6 @@ function setBar(id, pct, amber = 70, red = 90) {
 const SPARK_MAX = 30;                 // ~ last 30 polls (≈15 min at 30s)
 const _spark = { cpu: [], temp: [] };
 function pushSpark(key, v, amber, red) {}
-
-function fmtUptime(sec) {
-  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
-  if (d) return `${d}d ${h}h`;
-  if (h) return `${h}h ${m}m`;
-  return `${m}m`;
-}
 
 async function fetchStats() {
   try {
@@ -2667,27 +2611,6 @@ async function fetchAudio() {
 }
 
 // ── APRS live station table ───────────────────────────────────────────────────
-function fmtAge(iso) {
-  if (!iso) return { text: '—', cls: '' };
-  const sec = Math.floor((Date.now() - new Date(iso)) / 1000);
-  if (sec < 0)    return { text: 'just now', cls: 'age-ok' };
-  if (sec < 3600) {
-    const m = Math.floor(sec / 60);
-    return { text: m + 'm ago', cls: m < 30 ? 'age-ok' : 'age-warn' };
-  }
-  const h = Math.floor(sec / 3600);
-  return { text: h + 'h ago', cls: h < 6 ? 'age-warn' : 'age-old' };
-}
-function fmtLastHeard(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d)) return iso;
-  const utc = d.toISOString().replace('T', ' ').slice(0, 16) + 'Z';
-  const z = v => String(v).padStart(2, '0');
-  const local = `${z(d.getHours())}:${z(d.getMinutes())}`;
-  return `${utc} <span style="color:var(--text-dim)">[${local}]</span>`;
-}
-
 let _allAprsStations = [];
 let _adsbAircraft = [];   // last /api/adsb/aircraft poll (empty when service off)
 let _adsbNow = 0;         // that poll's dump1090 clock, so `seen` → absolute time
