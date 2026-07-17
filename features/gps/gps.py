@@ -145,14 +145,14 @@ def run(device=None, check_only=False, assist_now=False, force=False):
     if check_only:
         verify()
         print()
-        return
+        return False
     if assist_now:
         # Standalone refresh: assumes gpsd is already set up (run plain
         # features/gps/install-gps.py first). Re-run this whenever you're online to refresh.
         _step(1, "AssistNow Offline — fetch + upload to the u-blox")
         do_assistnow(device)
         print()
-        return
+        return False
 
     _info("GPS-disciplined time (gpsd + chrony) for offline decode timing.")
     print()
@@ -168,9 +168,13 @@ def run(device=None, check_only=False, assist_now=False, force=False):
     _step(4, "Enabling + restarting services")
     restart_services()
     _step(5, "Verifying")
-    verify()
+    gpsd_ok = verify()
 
     _hr()
     print("\n  GPS time setup complete.")
     _info("Give it sky view and a minute, then: cgps -s  /  chronyc tracking")
+    if not gpsd_ok:
+        _warn("gpsd did not come up active after configuration — a reboot is "
+              "recommended to bring the GPS/serial device online.")
     print()
+    return not gpsd_ok

@@ -55,8 +55,12 @@ def main():
                     help="(u-blox) Fetch AssistNow Offline data (needs internet + "
                          "OASIS_UBLOX_TOKEN) and upload it for a fast cold fix. Run setup first.")
     args = ap.parse_args()
-    gps.run(device=args.device, check_only=args.check, assist_now=args.assist_now,
-           force=args.force)
+    needs_reboot = gps.run(device=args.device, check_only=args.check,
+                           assist_now=args.assist_now, force=args.force)
+    if needs_reboot:
+        # Exit 10 = "done, reboot required" (setup_registry._REBOOT_EXIT_CODE) so
+        # the setup page prompts for the reboot the GPS/serial device needs.
+        sys.exit(10)
 
 
 if __name__ == "__main__":

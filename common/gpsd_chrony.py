@@ -144,3 +144,4 @@ def verify():
         _warn("chrony does not list a GPS source yet — needs a fix + ~1 min.")
     _info("Confirm a fix:  cgps -s        (look for 3D FIX)")
     _info("Confirm time :  chronyc sources -v   then   chronyc tracking")
+    return gpsd_ok
