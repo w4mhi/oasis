@@ -4,6 +4,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "server"))
 sys.path.insert(0, os.path.dirname(_HERE))
 import app as oasis_app
+from routes import hardware as hardware_routes
 from common import hardware as HW
 
 
@@ -98,7 +99,7 @@ class HardwareRoutesTest(unittest.TestCase):
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr"}}, assignments={})
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "assign"), \
-             mock.patch.object(oasis_app, "subprocess") as mocked_subprocess:
+             mock.patch.object(hardware_routes, "subprocess") as mocked_subprocess:
             r = self.c.post("/api/hardware/assign",
                             json={"service": "adsb", "device_id": "a"},
                             headers={"X-OASIS-Request": "1"})
@@ -112,7 +113,7 @@ class HardwareRoutesTest(unittest.TestCase):
                            assignments={"adsb": "a"})
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "release"), \
-             mock.patch.object(oasis_app, "subprocess") as mocked_subprocess:
+             mock.patch.object(hardware_routes, "subprocess") as mocked_subprocess:
             r = self.c.post("/api/hardware/release", json={"service": "adsb"},
                             headers={"X-OASIS-Request": "1"})
         self.assertEqual(r.status_code, 200)
@@ -225,7 +226,7 @@ class HardwareRoutesTest(unittest.TestCase):
              mock.patch.object(oasis_app.HD_detect, "detect_digirig",
                                return_value={"ptt": ptt, "serial": "3e54e82a"}), \
              mock.patch.object(oasis_app.HD_detect, "detect_dra_pi", return_value=False), \
-             mock.patch.object(oasis_app, "_apply_hardware_async",
+             mock.patch.object(hardware_routes, "_apply_hardware_async",
                                side_effect=lambda: applied.append(1)), \
              mock.patch.object(oasis_app.threading, "Thread", _SyncThread):
             r = self.c.get("/api/hardware/devices")
@@ -244,7 +245,7 @@ class HardwareRoutesTest(unittest.TestCase):
              mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=0), \
              mock.patch.object(oasis_app.HD_detect, "detect_digirig", return_value=None), \
              mock.patch.object(oasis_app.HD_detect, "detect_dra_pi", return_value=True), \
-             mock.patch.object(oasis_app, "_apply_hardware_async",
+             mock.patch.object(hardware_routes, "_apply_hardware_async",
                                side_effect=lambda: applied.append(1)), \
              mock.patch.object(oasis_app.threading, "Thread", _SyncThread):
             r = self.c.get("/api/hardware/devices")

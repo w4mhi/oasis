@@ -4,6 +4,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "server"))
 sys.path.insert(0, os.path.dirname(_HERE))
 import app as oasis_app
+from routes import hardware as hardware_routes
 from common import hardware_detect as HD
 
 class BurnSerialRouteTest(unittest.TestCase):
@@ -36,7 +37,7 @@ class BurnSerialRouteTest(unittest.TestCase):
     def test_runs_wrapper_when_guard_clears(self):
         one = {"rtl_sdr": [{"index": 0, "serial": "00000001"}], "alsa": [], "serial": []}
         with mock.patch.object(HD, "scan", return_value=one), \
-             mock.patch.object(oasis_app, "subprocess") as mocked_subprocess:
+             mock.patch.object(hardware_routes, "subprocess") as mocked_subprocess:
             mocked_subprocess.run.return_value = mock.Mock(returncode=0, stdout="", stderr="")
             r = self.c.post("/api/hardware/burn-serial", json={"serial": "1090"},
                             headers={"X-OASIS-Request": "1"})
