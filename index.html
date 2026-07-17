@@ -907,6 +907,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <script src="/static/js/units.js"></script>
 <script src="/static/js/geo.js"></script>
 <script src="/static/js/format.js"></script>
+<script src="/static/js/adsb.js"></script>
 </head>
 <body>
 
@@ -1306,7 +1307,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     </div>
     <div class="aprs-tbl-wrap">
       <table>
-        <thead><tr><th class="aprs-col-filterable">Callsign<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by callsign">&#9660;</button><input id="aprs-col-call" class="aprs-col-inp" type="text" placeholder="all" autocomplete="off" spellcheck="false" oninput="onCallFilterChange()" title="Filter by callsign prefix (e.g. K7 matches all K7…)"></th><th class="aprs-col-filterable">Type<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by type">&#9660;</button><select id="aprs-col-type" class="aprs-col-sel" onchange="onTypeFilterChange()" title="Filter by type"><option value="All">All</option></select></th><th>Last Heard</th><th class="aprs-col-filterable">Age<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by age">&#9660;</button><select id="aprs-col-age" class="aprs-col-sel" onchange="onAgeFilterChange()" title="Filter by age (time since last heard)"><option value="0" selected>All</option><option value="15">≤ 15m</option><option value="30">≤ 30m</option><option value="60">≤ 60m</option><option value="1440">≤ 24h</option></select></th><th>Speed</th><th>Altitude</th><th class="aprs-col-filterable">Grid<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by grid">&#9660;</button><select id="aprs-col-grid" class="aprs-col-sel" onchange="onGridFilterChange()" title="Filter by grid field"><option value="All">All</option></select></th><th>Dist</th><th class="aprs-col-filterable">Via<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by source (RF / APRS-IS)">&#9660;</button><select id="aprs-col-via" class="aprs-col-sel" onchange="onViaFilterChange()" title="Filter by source"><option value="All">All</option><option value="rf">RF</option><option value="is">IS</option></select></th><th>Comment</th></tr></thead>
+        <thead><tr><th class="aprs-col-filterable">Callsign<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by callsign">&#9660;</button><input id="aprs-col-call" class="aprs-col-inp" type="text" placeholder="all" autocomplete="off" spellcheck="false" oninput="onCallFilterChange()" title="Filter by callsign prefix (e.g. K7 matches all K7…)"></th><th class="aprs-col-filterable">Type<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by type">&#9660;</button><select id="aprs-col-type" class="aprs-col-sel" onchange="onTypeFilterChange()" title="Filter by type"><option value="All">All</option></select></th><th>Last Heard</th><th class="aprs-col-filterable">Age<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by age">&#9660;</button><select id="aprs-col-age" class="aprs-col-sel" onchange="onAgeFilterChange()" title="Filter by age (time since last heard)"><option value="0">All</option><option value="15">≤ 15m</option><option value="30">≤ 30m</option><option value="60">≤ 60m</option><option value="1440" selected>≤ 24h</option></select></th><th>Speed</th><th>Altitude</th><th class="aprs-col-filterable">Grid<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by grid">&#9660;</button><select id="aprs-col-grid" class="aprs-col-sel" onchange="onGridFilterChange()" title="Filter by grid field"><option value="All">All</option></select></th><th>Dist</th><th class="aprs-col-filterable">Via<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by source (RF / APRS-IS)">&#9660;</button><select id="aprs-col-via" class="aprs-col-sel" onchange="onViaFilterChange()" title="Filter by source"><option value="All">All</option><option value="rf">RF</option><option value="is">IS</option></select></th><th>Comment</th></tr></thead>
         <tbody id="aprs-tbody"><tr><td colspan="10" style="color:var(--text-dim)">Loading…</td></tr></tbody>
       </table>
     </div>
@@ -2618,6 +2619,7 @@ let _adsbRecent = [];     // last /api/adsb/recent poll: latest obs per aircraft
                           // the past 24 h, so out-of-range aircraft stay in the table
                           // (aged like APRS) instead of vanishing on the next poll.
 let _adsbRecentAt = 0;    // ms of the last /recent fetch — throttles the DB scan
+let _adsbRecentHours = 24;   // window last fetched; Feature 3 refetches when it changes
 
 // Normalize the last-polled aircraft into station-shaped rows the APRS table's
 // renderAprsTable + column filters already understand: APRS aircraft/heli symbol
@@ -2739,6 +2741,9 @@ function renderAprsTable(stations) {
     const grid = gridSquare(s.lat, s.lon);
     const dist = distFromHome(s.lat, s.lon);
     const ac = s._kind === 'aircraft';
+    const altCell = (ac && s.alt_m != null)
+      ? '<span style="color:' + altColor(s.alt_m * 3.28084) + '">' + alt + '</span>'
+      : alt;
     const srcTxt = ac ? 'ADS-B' : aprsSource(s).toUpperCase();
     // Aircraft accent purple; stations green (RF) / blue (IS).
     const callColor = ac ? '#b478ff' : (aprsSource(s) === 'is' ? 'var(--blue)' : 'var(--accent)');
@@ -2754,7 +2759,7 @@ function renderAprsTable(stations) {
       <td>${fmtLastHeard(s.last_heard)}</td>
       <td class="${age.cls}">${age.text}</td>
       <td>${speed}${courseFmt}</td>
-      <td>${alt}</td>
+      <td>${altCell}</td>
       <td style="color:var(--text-dim)">${grid}</td>
       <td style="color:var(--text-dim)">${dist}</td>
       <td style="color:${callColor};font-weight:700">${srcTxt}</td>
@@ -2871,12 +2876,28 @@ function onTypeFilterChange() {
   applyAprsFilter();
 }
 
+async function pollAdsbRecent(force) {
+  const hours = recentHoursForAge(document.getElementById('aprs-col-age')?.value || '1440');
+  if (!force && hours === _adsbRecentHours && Date.now() - _adsbRecentAt < 60000) return;
+  try {
+    const rr = await fetch('/api/adsb/recent?hours=' + hours,
+                           { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+    if (rr.ok) { _adsbRecent = (await rr.json()).aircraft || []; }
+  } catch (_) { /* keep the last good history until the next cycle */ }
+  _adsbRecentAt = Date.now();
+  _adsbRecentHours = hours;
+}
+
 // AGE column filter — fixed time buckets (0 = All). Replaces the old header
 // time dropdown; the buckets are the same. No options to build.
 function onAgeFilterChange() {
   const sel = document.getElementById('aprs-col-age');
   _markCol(sel, sel.value !== '0');
   applyAprsFilter();
+  // Feature 3: ALL widens the aircraft history fetch; pull it now, then re-render.
+  if (recentHoursForAge(sel.value) !== _adsbRecentHours) {
+    pollAdsbRecent(true).then(() => applyAprsFilter());
+  }
 }
 
 // CALLSIGN column filter — free-text prefix; empty = all. No options to build.
@@ -2954,16 +2975,10 @@ async function fetchAPRS() {
       } else { _adsbAircraft = []; }
     } catch (_) { _adsbAircraft = []; }
 
-    // 24 h history feed — out-of-range aircraft stay in the table, aged like APRS
+    // History feed — out-of-range aircraft stay in the table, aged like APRS
     // stations. A DB scan, so throttled to ≤ once/60 s (the APRS cycle is 15 s).
-    if (Date.now() - _adsbRecentAt > 60000) {
-      try {
-        const rr = await fetch('/api/adsb/recent?hours=24',
-                               { cache: 'no-store', signal: AbortSignal.timeout(8000) });
-        if (rr.ok) { _adsbRecent = (await rr.json()).aircraft || []; }
-      } catch (_) { /* keep the last good history until the next cycle */ }
-      _adsbRecentAt = Date.now();
-    }
+    // Window follows the Age filter: 24 h by default, full history only on ALL.
+    await pollAdsbRecent(false);
 
     if (!d.stations.length && !_adsbAircraft.length && !_adsbRecent.length) {
       tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text-dim)">No stations yet — GrayWolf needs a radio + TNC/audio input to receive APRS packets.</td></tr>';
