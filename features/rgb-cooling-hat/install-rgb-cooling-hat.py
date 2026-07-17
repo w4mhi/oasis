@@ -61,22 +61,24 @@ def _py_importable(mod):
 
 # ── Step 1: I2C ───────────────────────────────────────────────────────────────
 def enable_i2c():
+    """Enable I2C. Returns True if a reboot is now required (i2c was just enabled
+    in config but /dev/i2c-N isn't live yet), else False."""
     _step(1, "Enabling I2C")
     if os.path.exists(f"/dev/i2c-{I2C_BUS}"):
         _ok(f"/dev/i2c-{I2C_BUS} present — I2C already enabled.")
-        return
+        return False
     raspi = shutil.which("raspi-config")
     if not raspi:
         _warn("raspi-config not found — enable I2C manually (dtparam=i2c_arm=on "
               "in /boot/firmware/config.txt) and reboot.")
-        return
+        return True
     _info("Running: sudo raspi-config nonint do_i2c 0")
     _run(["sudo", "raspi-config", "nonint", "do_i2c", "0"], check=False)
     if os.path.exists(f"/dev/i2c-{I2C_BUS}"):
         _ok("I2C enabled.")
-    else:
-        _warn("I2C enabled in config but /dev/i2c-1 not present yet — reboot, "
-              "then re-run this script.")
+        return False
+    _warn("I2C enabled in config but /dev/i2c-1 not present yet — a reboot is required.")
+    return True
 
 
 # ── Step 2: Dependencies ──────────────────────────────────────────────────────
@@ -233,7 +235,7 @@ def run(args):
         return
 
     user = target_user(args.user)
-    enable_i2c()
+    needs_reboot = enable_i2c()
     install_deps()
     add_i2c_group(user)
     detect_hat()
@@ -244,6 +246,11 @@ def run(args):
     _info(f"Tune fan thresholds / RGB at the top of {SCRIPT_DEST}")
     _info("Undo with: python3 features/rgb-cooling-hat/install-rgb-cooling-hat.py --disable")
     print()
+    if needs_reboot:
+        # Exit 10 = "done, reboot required" (setup_registry._REBOOT_EXIT_CODE) so
+        # the setup page prompts for the reboot i2c needs to bring up /dev/i2c-1.
+        _warn("Reboot required — I2C was just enabled; /dev/i2c-1 appears after a reboot.")
+        sys.exit(10)
 
 
 def main():
