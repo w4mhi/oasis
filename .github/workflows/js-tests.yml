@@ -1,0 +1,32 @@
+name: js-tests
+
+# Runs the pure-function JS unit tests (node --test, built in — no npm/build).
+# These guard the shared front-end helpers in static/js/ against drift.
+# Node is a dev/CI tool only; the Pi never runs it.
+
+on:
+  push:
+    paths:
+      - "static/js/**"
+      - "tests/js/**"
+      - "index.html"
+      - "small-screen/**"
+      - ".github/workflows/js-tests.yml"
+  pull_request:
+    paths:
+      - "static/js/**"
+      - "tests/js/**"
+      - "index.html"
+      - "small-screen/**"
+  workflow_dispatch:
+
+jobs:
+  js-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Run JS unit tests
+        run: node --test 'tests/js/**/*.test.js'
