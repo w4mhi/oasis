@@ -4,12 +4,20 @@ app.py
 ------
 Off-grid Flask web server for OASIS - Off-grid Amateur Station Information Suite.
 
-Serves the main index.html and all suite static files at the root.
-The FCC amateur-radio call-sign lookup is available at /lookup.
+Serves the main index.html and all suite static files at the root, and wires
+up the route blueprints:
+
+  services/<name>/routes.py   service-owned APIs (adsb, aprs, winlink,
+                              fcc_database, map)
+  server/routes/*.py          server-core domains (setup, hardware, wifi,
+                              service_control, health, system, files)
+  server/appconfig.py         shared runtime config (suite root, portable
+                              profile, port)
+
+This module keeps only app creation, the app-level hooks (JSON error handler,
+portable-mode gate, theme injection), the two root routes, and the launcher.
 
 Designed to run on a Raspberry Pi with no internet connection.
-All FCC data is served from local flat files (EN.dat + EN.idx + zipcodes.csv);
-no database engine is involved.
 
 Run (development):   python3 app.py
 Run (recommended):   see docs/SETUP.md for the gunicorn + systemd setup.
@@ -38,16 +46,9 @@ for path in (SUITE_ROOT, SERVER_DIR):
 
 import appconfig
 from common import config_paths
-# Shared runtime configuration (version file, installed-services manifest,
-# portable profile, port) now lives in server/appconfig.py so the route
-# blueprints can import it without touching this module. The aliases below
-# keep the not-yet-extracted code in this file working during the split.
-VERSION_FILE = appconfig.VERSION_FILE
-INSTALLED_SERVICES_FILE = appconfig.INSTALLED_SERVICES_FILE
-PORTABLE_FEATURES = appconfig.PORTABLE_FEATURES
 
 # In portable mode, refuse the URL prefixes for daemon-backed features that were
-# left out of PORTABLE_FEATURES — both the JSON proxies and their static pages.
+# left out of appconfig.PORTABLE_FEATURES — both the JSON proxies and their pages.
 # Keeps a locked USB build from exposing a Winlink/APRS surface whose backing
 # services (pat, direwolf, graywolf-api) are not running. Feature key → prefixes.
 _PORTABLE_BLOCK = {
@@ -104,9 +105,9 @@ _THEME_SNIPPET = '<script src="/static/theme.js"></script>'
 def _portable_gate():
     """In portable mode, 404 the Winlink/APRS surfaces (API + pages) for any
     daemon-backed feature not in PORTABLE_FEATURES. No-op when unlocked."""
-    if PORTABLE_FEATURES is None:
+    if appconfig.PORTABLE_FEATURES is None:
         return None
-    allowed = set(PORTABLE_FEATURES)
+    allowed = set(appconfig.PORTABLE_FEATURES)
     path = request.path or "/"
     for feat, prefixes in _PORTABLE_BLOCK.items():
         if feat not in allowed and any(path.startswith(p) for p in prefixes):
@@ -276,11 +277,11 @@ if __name__ == "__main__":
             app_dir = os.path.dirname(os.path.abspath(__file__))
             print(f"\n  OASIS (gunicorn) — {url}\n")
             # --workers 1: the Setup Orchestrator's plan/job state (_setup_plans /
-            # _setup_jobs in this module) lives in plain in-process dicts, which
-            # multiple gunicorn workers (separate OS processes, no shared memory)
-            # can't see across each other — causing intermittent 404 "unknown
-            # planId". Setup work already runs in a background thread that
-            # doesn't block the request, so a single worker costs nothing here.
+            # _setup_jobs in routes/setup.py) lives in plain in-process dicts,
+            # which multiple gunicorn workers (separate OS processes, no shared
+            # memory) can't see across each other — causing intermittent 404
+            # "unknown planId". Setup work already runs in a background thread
+            # that doesn't block the request, so a single worker costs nothing.
             os.execv(sys.executable, [
                 sys.executable, "-m", "gunicorn",
                 "--chdir", app_dir,
