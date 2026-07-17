@@ -474,30 +474,22 @@ def _setup_registry(payload=None):
     return SETUP_REGISTRY.build_registry(SUITE_ROOT, payload)
 
 
-# Gate/content features whose install_fn is a no-op "record only" toggle (see
-# setup_registry.py) — mirrors setup-oasis.py's identically-named
-# GATE_AUTHORITATIVE. These checkboxes are always shown on the setup page, so
-# an unticked box means "hide the card" here, unlike service features, which
-# only ever accumulate (installing one never un-installs it).
-_SETUP_GATE_AUTHORITATIVE = {"fcc", "repeaterbook", "wikipedia", "forms"}
-
 _SETUP_SUCCESS_STATUSES = {SE.STATUS_INSTALLED, SE.STATUS_INSTALLED_ENABLED_NOT_STARTED,
                            SE.STATUS_INSTALLED_NEEDS_REBOOT}
 
 
-def _setup_record_installed_features(plan_obj, summary):
+def _setup_record_installed_features(summary):
     """Persist this web run's successful features into installed-services.json,
-    mirroring setup-oasis.py's record_installed() — otherwise a feature checked
-    and installed via the Setup Orchestrator page (e.g. rtl-sdr-feed, gps,
-    dra-pi-rx-led) never shows as checked again after a page refresh, since
-    /api/installed-services only ever reflects the CLI installer's writes.
+    mirroring setup-oasis.py's record_installed().
 
-    Service installs accumulate (union with whatever is already recorded).
-    The always-visible gate/content checkboxes in _SETUP_GATE_AUTHORITATIVE
-    instead track this run's tick/untick exactly."""
+    The manifest is purely ADDITIVE: successful installs are unioned with
+    whatever is already recorded, and a feature is NEVER removed here as a side
+    effect of being left unticked. (Installed features render green+unticked on
+    the Setup page; dropping them on the next run would silently uninstall them
+    from the dashboard's point of view.) Per-feature removal has its own explicit
+    path — see FeatureSpec.remove_fn — and does not go through this function."""
     ok_keys = {item.get("feature") for item in summary.features
               if item.get("status") in _SETUP_SUCCESS_STATUSES}
-    selected_keys = set(plan_obj.selected_features)
 
     existing = set()
     try:
@@ -509,12 +501,6 @@ def _setup_record_installed_features(plan_obj, summary):
         pass
 
     merged = existing | ok_keys
-    for k in _SETUP_GATE_AUTHORITATIVE:
-        if k in selected_keys:
-            merged.add(k)
-        else:
-            merged.discard(k)
-
     if merged == existing:
         return
     try:
@@ -712,7 +698,7 @@ def _setup_run_job(job_id, plan_obj, payload):
 
     if not _blocked:
         try:
-            _setup_record_installed_features(plan_obj, summary)
+            _setup_record_installed_features(summary)
         except Exception:
             pass
 

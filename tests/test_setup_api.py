@@ -498,3 +498,46 @@ def test_gps_module_exposes_run_helper_import():
     import importlib
     gps_mod = importlib.import_module("features.gps.gps")
     assert hasattr(gps_mod, "_run")
+
+
+def _summary_with(features):
+    # features: list of (key, status) -> object with a .features list of dicts,
+    # matching what JobSummary exposes to _setup_record_installed_features.
+    from types import SimpleNamespace
+    return SimpleNamespace(features=[{"feature": k, "status": s} for k, s in features])
+
+
+def test_record_keeps_unticked_installed_feature_additive(tmp_path):
+    manifest = tmp_path / "installed-services.json"
+    manifest.write_text(json.dumps({"features": ["fcc", "adsb"]}) + "\n")
+    summary = _summary_with([("kiwix", SE.STATUS_INSTALLED)])
+    with mock.patch.object(app_module, "INSTALLED_SERVICES_FILE", str(manifest)):
+        app_module._setup_record_installed_features(summary)
+    got = set(json.loads(manifest.read_text())["features"])
+    # fcc was NOT ticked this run and is a former GATE_AUTHORITATIVE member, but
+    # additive recording must never drop it. kiwix is added.
+    assert got == {"fcc", "adsb", "kiwix"}
+
+
+def test_record_does_not_drop_former_gate_authoritative_on_untick(tmp_path):
+    manifest = tmp_path / "installed-services.json"
+    manifest.write_text(json.dumps({"features": ["fcc", "repeaterbook", "forms"]}) + "\n")
+    # A run that installs nothing new and ticks none of the content gates.
+    summary = _summary_with([])
+    with mock.patch.object(app_module, "INSTALLED_SERVICES_FILE", str(manifest)):
+        app_module._setup_record_installed_features(summary)
+    got = set(json.loads(manifest.read_text())["features"])
+    assert got == {"fcc", "repeaterbook", "forms"}
+
+
+def test_record_adds_only_successful_installs(tmp_path):
+    manifest = tmp_path / "installed-services.json"
+    manifest.write_text(json.dumps({"features": []}) + "\n")
+    summary = _summary_with([
+        ("kiwix", SE.STATUS_INSTALLED),
+        ("adsb", SE.STATUS_INSTALL_FAILED),
+    ])
+    with mock.patch.object(app_module, "INSTALLED_SERVICES_FILE", str(manifest)):
+        app_module._setup_record_installed_features(summary)
+    got = set(json.loads(manifest.read_text())["features"])
+    assert got == {"kiwix"}
