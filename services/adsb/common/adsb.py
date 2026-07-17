@@ -499,12 +499,19 @@ def apply(repo_root, device):
         return
     args = dump1090_device_args(device)
     device_token = " ".join(args)  # "--device 1090" or ""
-    existing = ""
     try:
         with open(DUMP1090_ENV_FILE) as f:
             existing = f.read()
     except OSError:
-        existing = ""
+        # dump1090-fa isn't installed yet — the FlightAware package ships this
+        # env-file. Do NOT create a minimal stand-in: it collides with the
+        # package conffile on the later install and, kept via --force-confold,
+        # lacks the package config, so dump1090-fa refuses to start ("not enabled
+        # in /etc/default/dump1090-fa"). The device serial is applied once the
+        # package's env-file exists (re-assign the dongle after dump1090-fa is in).
+        _warn(f"{DUMP1090_ENV_FILE} not present — dump1090-fa not installed yet; "
+              "skipping device binding (re-assign after install).")
+        return
     out = []
     found = False
     for ln in existing.splitlines():
