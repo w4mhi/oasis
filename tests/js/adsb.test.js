@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const A = require('../../static/js/adsb.js');
+const A = require('../../common/js/adsb.js');
 
 test('altColor bands (feet)', () => {
   assert.strictEqual(A.altColor('ground'), '#A0522D');

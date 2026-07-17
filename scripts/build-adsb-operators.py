@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build static/js/adsb-operators.js from OpenFlights airlines.dat.
+"""Build common/js/adsb-operators.js from OpenFlights airlines.dat.
 
 Offline build step: download airlines.dat once (OpenFlights raw data,
 data/airlines.dat in https://github.com/jpatokal/openflights) and pass its
@@ -42,7 +42,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--src", default="scripts/data/airlines.dat",
                     help="path to OpenFlights airlines.dat (download once; gitignored)")
-    ap.add_argument("--out", default="static/js/adsb-operators.js")
+    ap.add_argument("--out", default="common/js/adsb-operators.js")
     args = ap.parse_args()
     if not os.path.exists(args.src):
         sys.exit(f"source not found: {args.src} -- download OpenFlights airlines.dat there first")

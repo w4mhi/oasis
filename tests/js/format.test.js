@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const F = require('../../static/js/format.js');
+const F = require('../../common/js/format.js');
 
 const agoIso = (ms) => new Date(Date.now() - ms).toISOString();
 

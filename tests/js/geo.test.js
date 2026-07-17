@@ -1,8 +1,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const U = require('../../static/js/units.js'); // must load first: geo reads OasisUnits
-const G = require('../../static/js/geo.js');
+const U = require('../../common/js/units.js'); // must load first: geo reads OasisUnits
+const G = require('../../common/js/geo.js');
 
 test('gridSquare known values + guards', () => {
   assert.strictEqual(G.gridSquare(0, 0), 'JJ00aa');

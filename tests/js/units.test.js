@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const U = require('../../static/js/units.js');
+const U = require('../../common/js/units.js');
 
 test('fmtTemp imperial/metric/null', () => {
   U.setUnits('imperial');

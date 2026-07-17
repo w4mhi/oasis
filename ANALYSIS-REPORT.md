@@ -22,9 +22,9 @@ You have 381 passing tests, but `offline-manifest.yml` only byte-compiles files 
 The `refactoring-services` branch moved service *logic* into `services/<name>/common/`, but the route layer never followed: setup, FCC lookup, filesystem browse, hardware, Wi-Fi, service control, APRS, ADS-B, Winlink, system stats, and audio all live in one file. Consequences: every feature change touches the same file (merge/regression hotspot), route-level tests import the whole world, and the file mixes trust levels (public map assets next to `sudo reboot`). Flask blueprints per service — mirroring the `services/` layout you already created — would finish the refactor this branch started. Zero new dependencies, works fine on the Pi Zero.
 
 ### P1 — Front-end duplication with no shared JS layer ✅ FIXED (Unreleased) for the two dashboards
-**Importance: High · Effort: Medium · Fixed: `static/js/{units,geo,format}.js` extracted from `index.html` and `small-screen/index7.html`; both now load them via `<script src=...>`, no build step, no npm — delivers §3/P2's JS test harness too**
+**Importance: High · Effort: Medium · Fixed: `common/js/{units,geo,format}.js` extracted from `index.html` and `small-screen/index7.html`; both now load them via `<script src=...>`, no build step, no npm — delivers §3/P2's JS test harness too**
 
-`index.html` (3,308 lines, ~2,000 of inline JS) and `small-screen/index7.html` (940 lines) reimplement the same helpers (`fmtTemp`, `fmtAlt`, unit formatting, polling loops); `services/map/map.html` is another 3,516-line single file. "No build step" does **not** require inline scripts — plain `<script src="/static/js/units.js">` files shared between the three dashboards would cut duplication, make the code diffable, and finally give you something a JS test harness could load (see §3). Today a bug fixed in one dashboard silently survives in the other.
+`index.html` (3,308 lines, ~2,000 of inline JS) and `small-screen/index7.html` (940 lines) reimplement the same helpers (`fmtTemp`, `fmtAlt`, unit formatting, polling loops); `services/map/map.html` is another 3,516-line single file. "No build step" does **not** require inline scripts — plain `<script src="/common/js/units.js">` files shared between the three dashboards would cut duplication, make the code diffable, and finally give you something a JS test harness could load (see §3). Today a bug fixed in one dashboard silently survives in the other.
 
 `map.html` modularization and reconciling the third grid implementation in `static/maidenhead.js` were considered and deliberately deferred as separate, scoped follow-ons — see the plan's "Deferred follow-ons" notes.
 
@@ -106,7 +106,7 @@ ICS forms auto-save and the net-check-in log live in **browser localStorage**. I
 
 There is no JS test harness at all, yet the front-end contains real algorithms: maidenhead conversion (`static/maidenhead.js`), unit conversions, APRS symbol categorization, distance/bearing math. Once helpers are extracted to `.js` files (§1/P1 above), a `node --test` runner over the pure functions costs nothing at runtime (dev-only, no npm packages required) and can run in CI.
 
-Coverage so far is the newly-extracted `static/js/{units,geo,format}.js`; `static/maidenhead.js` still has its own, un-tested grid implementation (see the deferred reconciliation note under §1/P1).
+Coverage so far is the newly-extracted `common/js/{units,geo,format}.js`; `static/maidenhead.js` still has its own, un-tested grid implementation (see the deferred reconciliation note under §1/P1).
 
 ### P2 — Surface `doctor.py` in the web UI
 **Importance: Medium · Effort: Medium**

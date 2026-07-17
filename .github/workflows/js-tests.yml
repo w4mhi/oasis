@@ -1,20 +1,20 @@
 name: js-tests
 
 # Runs the pure-function JS unit tests (node --test, built in — no npm/build).
-# These guard the shared front-end helpers in static/js/ against drift.
+# These guard the shared front-end helpers in common/js/ against drift.
 # Node is a dev/CI tool only; the Pi never runs it.
 
 on:
   push:
     paths:
-      - "static/js/**"
+      - "common/js/**"
       - "tests/js/**"
       - "index.html"
       - "small-screen/**"
       - ".github/workflows/js-tests.yml"
   pull_request:
     paths:
-      - "static/js/**"
+      - "common/js/**"
       - "tests/js/**"
       - "index.html"
       - "small-screen/**"

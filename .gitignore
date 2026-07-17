@@ -45,7 +45,7 @@ static/radio-manuals/*
 *.zim
 
 # OpenFlights airlines.dat — raw source for scripts/build-adsb-operators.py.
-# Downloaded once at dev time; the generated static/js/adsb-operators.js is
+# Downloaded once at dev time; the generated common/js/adsb-operators.js is
 # committed, the raw dump is not.
 scripts/data/
 
