@@ -1,0 +1,23 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert');
+const F = require('../../static/js/format.js');
+
+const agoIso = (ms) => new Date(Date.now() - ms).toISOString();
+
+test('fmtAge buckets + classes', () => {
+  assert.deepStrictEqual(F.fmtAge(null), { text: '—', cls: '' });
+  assert.deepStrictEqual(F.fmtAge(agoIso(5 * 60000)), { text: '5m ago', cls: 'age-ok' });
+  assert.deepStrictEqual(F.fmtAge(agoIso(45 * 60000)), { text: '45m ago', cls: 'age-warn' });
+  assert.deepStrictEqual(F.fmtAge(agoIso(2 * 3600000)), { text: '2h ago', cls: 'age-warn' });
+  assert.deepStrictEqual(F.fmtAge(agoIso(8 * 3600000)), { text: '8h ago', cls: 'age-old' });
+  assert.deepStrictEqual(F.fmtAge(agoIso(-60000)), { text: 'just now', cls: 'age-ok' });
+});
+
+test('fmtLastHeard guards + shape', () => {
+  assert.strictEqual(F.fmtLastHeard(null), '—');
+  assert.strictEqual(F.fmtLastHeard('not-a-date'), 'not-a-date');
+  const out = F.fmtLastHeard('2026-07-17T14:05:00Z');
+  assert.ok(out.includes('Z'));
+  assert.ok(out.includes('['));
+});
