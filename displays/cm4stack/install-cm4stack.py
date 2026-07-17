@@ -35,7 +35,6 @@ import argparse
 import difflib
 import getpass
 import os
-import pwd
 import re
 import shutil
 import subprocess
@@ -43,7 +42,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
+from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -589,7 +588,7 @@ def do_phase1(dry_run):
 
     step_prereqs()
     step_check_overlays(overlay_dir)
-    changed = step_patch_config(dry_run, include_gt911=False)
+    step_patch_config(dry_run, include_gt911=False)
     step_set_headless()
     step_python_deps()
 
@@ -600,7 +599,7 @@ def do_phase1(dry_run):
 
     _warn("Reboot required — the ST7789V panel framebuffer only appears after a reboot.")
     _info("After rebooting, re-run this script to complete the installation:")
-    _info(f"  python3 displays/cm4stack/install-cm4stack.py")
+    _info("  python3 displays/cm4stack/install-cm4stack.py")
     return REBOOT_EXIT
 
 

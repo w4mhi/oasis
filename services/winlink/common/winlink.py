@@ -718,7 +718,11 @@ def run(pinned_version=None, callsign="W4MHI", locator=None, password=None,
         modem_ptt_serial=None):
     """Full install sequence. Called by the thin CLI wrapper."""
     if repo_root is None:
-        repo_root = _SCRIPTS_DIR
+        # services/winlink/common/winlink.py → repo root is three levels up.
+        # (Was _SCRIPTS_DIR — a NameError leftover from the pre-refactor
+        # script; the thin CLI always passed repo_root so it never fired.)
+        repo_root = os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))))
 
     offline_dir = _offline_dir(repo_root)
 

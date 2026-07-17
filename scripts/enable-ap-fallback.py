@@ -503,7 +503,7 @@ def status():
     info = getattr(r, "stdout", "") or ""
     if "type AP" in info:
         m = re.search(r"channel (\d+)", info)
-        _ok(f"radio in AP mode (broadcasting)"
+        _ok("radio in AP mode (broadcasting)"
             + (f" · channel {m.group(1)}" if m else ""))
     elif "type managed" in info:
         _info("radio in client (managed) mode — not hosting the AP right now.")

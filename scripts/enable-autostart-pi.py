@@ -80,7 +80,7 @@ def check_platform():
     if not os.path.isfile(START_SH):
         _fail(f"start-server.sh not found at:\n     {START_SH}\n"
               "     Run this script from inside the OASIS repo.")
-    _ok(f"Platform: Linux / systemd")
+    _ok("Platform: Linux / systemd")
     _ok(f"OASIS root: {REPO_ROOT}")
 
 

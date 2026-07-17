@@ -370,7 +370,7 @@ def fcc_download(data_dir, force=False):
 
     # ─ Offline path: extract from bundled zip ───────────────────────────────────
     if os.path.exists(zip_path):
-        _cp(f"Using bundled l_amat.zip (offline install)")
+        _cp("Using bundled l_amat.zip (offline install)")
         _info("Extracting EN.dat and HD.dat ...")
         _fcc_extract(zip_path, data_dir)
         return

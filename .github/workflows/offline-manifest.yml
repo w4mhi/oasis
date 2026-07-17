@@ -3,7 +3,8 @@ name: offline-manifest
 # Guards the offline package manifest + reader: suite-aware package selection,
 # capability gates, and newest-source-wins resolution — the behaviour that the
 # "bookworm bundle / librtlsdr 0.6.0 on Trixie" bug exposed. Also byte-compiles
-# every script and confirms the thin CLIs still parse args.
+# every script, lints with ruff (config: ruff.toml), and confirms the thin
+# CLIs still parse args.
 
 on:
   push:
@@ -11,11 +12,21 @@ on:
       - "scripts/**"
       - "tests/**"
       - "features/**"
+      - "common/**"
+      - "server/**"
+      - "services/**"
+      - "displays/**"
+      - "ruff.toml"
       - ".github/workflows/offline-manifest.yml"
   pull_request:
     paths:
       - "scripts/**"
       - "tests/**"
+      - "common/**"
+      - "server/**"
+      - "services/**"
+      - "displays/**"
+      - "ruff.toml"
   workflow_dispatch:
 
 jobs:
@@ -35,6 +46,13 @@ jobs:
 
       - name: Byte-compile all scripts
         run: python3 -m py_compile $(git ls-files 'scripts/*.py' 'common/*.py' 'tests/*.py' 'setup-oasis.py' 'features/*/*.py' 'services/*/*.py' 'services/*/common/*.py')
+
+      # Dev/CI-only tool — never a runtime dependency; the offline wheel set
+      # stays Flask-only. Rules and rationale live in ruff.toml.
+      - name: Lint (ruff)
+        run: |
+          python3 -m pip install --quiet ruff
+          python3 -m ruff check .
 
       - name: Thin CLIs still parse --help
         run: |

@@ -5,7 +5,6 @@ services/fcc-database/common/fcc_database.py
 Service-owned implementation for the offline FCC database installer.
 """
 
-import argparse
 import os
 import sys
 

@@ -53,8 +53,8 @@ def load_font(size, weight="regular", override=None):
 
 
 def _text_size(draw, text, font):
-    l, t, r, b = draw.textbbox((0, 0), text, font=font)
-    return r - l, b - t
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+    return right - left, bottom - top
 
 
 def _wrap(draw, text, font, max_w):

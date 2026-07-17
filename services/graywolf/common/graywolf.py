@@ -72,7 +72,8 @@ def resolve_release(pinned_version, deb_arch):
     _step(2, "Resolving GrayWolf release")
 
     feat = _feature()
-    repo = feat.get("repo", "chrissnell/graywolf")
+    # NB: the manifest's `repo` key is NOT honoured here —
+    # graywolf_latest_release() hard-codes its GitHub API base.
     pattern = feat.get("asset_pattern", "graywolf_{version}_{arch}.deb")
 
     release = graywolf_latest_release(pinned_version)

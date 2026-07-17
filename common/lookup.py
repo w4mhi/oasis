@@ -318,7 +318,6 @@ def build_name_index(en_path=EN_DAT_PATH, index_path=NAME_IDX_PATH,
         return 0
     active_usis = load_active_usis(hd_path)
     filtered = active_usis is not None
-    zip_table = load_zip_table()
     entries = []
     with open(en_path, "rb") as fh:
         offset = 0

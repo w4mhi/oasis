@@ -20,7 +20,7 @@ sys.path.insert(0, _REPO_ROOT)
 
 from common.oasis_lib import (
     _hr, _step, _ok, _info, _warn, _fail, _run,
-    kiwix_find_local, kiwix_latest_version, kiwix_download_tarball,
+    kiwix_find_local, kiwix_download_tarball,
     binary_version, version_decision,
 )
 from common import manifest as M

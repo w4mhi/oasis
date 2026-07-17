@@ -170,7 +170,7 @@ def cmd_check(pmtiles_bin):
 def cmd_convert(pmtiles_bin, src, dst):
     """Run pmtiles convert src → dst."""
     if not pmtiles_bin:
-        print(f"  ✗  pmtiles binary not found.")
+        print("  ✗  pmtiles binary not found.")
         print()
         print(_install_hint())
         return 1
@@ -198,7 +198,7 @@ def cmd_convert(pmtiles_bin, src, dst):
     os.makedirs(out_dir, exist_ok=True)
 
     src_mb = os.path.getsize(src) / 1_048_576
-    print(f"\n  OASIS — MBTiles → PMTiles converter")
+    print("\n  OASIS — MBTiles → PMTiles converter")
     print("─" * 56)
     print(f"     Input  : {src}  ({src_mb:.1f} MB)")
     print(f"     Output : {dst}")

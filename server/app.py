@@ -28,7 +28,7 @@ import time
 import uuid
 import webbrowser
 
-from flask import Flask, jsonify, render_template, request, send_file, send_from_directory, Response
+from flask import Flask, jsonify, request, send_file, send_from_directory, Response
 
 # The Windows embeddable Python (shipped in _runtime/windows/) uses a pythonXX._pth
 # file, which builds sys.path solely from that file and suppresses the automatic
@@ -43,7 +43,6 @@ for path in (SUITE_ROOT, SERVER_DIR):
 
 from common import lookup
 from common import config_paths
-from common import server as SERVER_SETUP
 from common import setup_engine as SE
 from common import setup_registry as SETUP_REGISTRY
 from common import hardware as HW

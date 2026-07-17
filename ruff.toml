@@ -1,0 +1,34 @@
+# OASIS lint gate — ruff (dev/CI tool only, never a runtime dependency).
+# Mirrored by CI (.github/workflows/offline-manifest.yml) and /preflight.
+#
+# Rule set is deliberately the high-signal bug class only: pyflakes (F) plus
+# the pycodestyle error subset ruff enables by default (E4 imports, E7
+# statements, E9 runtime errors). No style opinions — the codebase predates
+# the linter and formatting churn would bury real history in git blame.
+
+# Pi OS Bullseye still ships 3.9 — the suite's documented floor.
+target-version = "py39"
+
+extend-exclude = [
+    # Local-only trees (gitignored) that must never gate CI.
+    "oasis-offline",
+    "mock-up",
+    "specs",
+    ".claude",
+]
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = [
+    # E401/E402: the repo's import idiom is deliberate — `import os, sys`
+    # one-liners, and sys.path bootstrap lines *before* `from common import …`
+    # so every entry point resolves the shared packages offline (embedded
+    # Windows Python, thin CLIs, tests run from any cwd). Flagging them would
+    # fight the architecture, not find bugs.
+    "E401",
+    "E402",
+    # E701/E702: compact `if x: y` / `a; b` one-liners are established style
+    # here (~50 sites); pure formatting churn with zero bug signal.
+    "E701",
+    "E702",
+]

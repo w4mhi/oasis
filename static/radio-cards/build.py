@@ -19,7 +19,6 @@ import html
 import re
 import sys
 from pathlib import Path
-from typing import Optional
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CSV_FILE   = SCRIPT_DIR / "radio-cards.csv"

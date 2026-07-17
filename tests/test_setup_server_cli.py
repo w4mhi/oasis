@@ -15,7 +15,6 @@ _spec = importlib.util.spec_from_file_location("setup_server", _MOD_PATH)
 setup_server = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(setup_server)
 
-from common import setup_engine as SE
 
 
 class SetupServerCLITest(unittest.TestCase):

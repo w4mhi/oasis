@@ -194,7 +194,7 @@ def check_fcc():
         return {
             "ok": False, "badge": "NOT BUILT",
             "detail": (
-                f"Index not found at services/fcc_database/data/EN.idx.\n"
+                "Index not found at services/fcc_database/data/EN.idx.\n"
                 "     Run: python3 services/fcc_database/install.py"
             ),
         }

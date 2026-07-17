@@ -86,7 +86,6 @@ import stat
 import subprocess
 import sys
 import tempfile
-import time
 import urllib.request
 import zipfile
 
@@ -574,7 +573,7 @@ def phase_rtl_sdr(bundle_root, update=False):
                 _cp(f"rtl-sdr {suite}/{deb_arch}: present  (up to date)")
                 continue
 
-            downloaded = rtl_sdr_download_debs(
+            rtl_sdr_download_debs(
                 suite_dir, deb_arch, packages=pkgs, suite=suite
             )
 
@@ -952,7 +951,6 @@ def _resolve_wiki_url():
         pass  # fall through to directory listing
 
     # Fallback: scrape the directory listing for the newest matching filename.
-    import re
     try:
         with urllib.request.urlopen(f"{WIKI_ZIM_BASE}/", timeout=15) as resp:
             html = resp.read().decode("utf-8", errors="replace")
@@ -1880,7 +1878,7 @@ def main():
         "--update", action="store_true",
         help=(
             "Update an existing distribution: refresh offline packages and sync repo source files. "
-            f"Targets oasis-offline/ inside the repo by default; use --dir to specify a different path."
+            "Targets oasis-offline/ inside the repo by default; use --dir to specify a different path."
         ),
     )
     ap.add_argument(

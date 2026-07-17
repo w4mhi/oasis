@@ -29,7 +29,6 @@ Sizes are approximate and reflect the 2026 Kiwix catalog.
 """
 
 import argparse
-import io
 import os
 import subprocess
 import sys
@@ -402,7 +401,7 @@ def main():
     print("  Wikipedia download complete.")
     _info(f"ZIM file:  {zim_path}")
     _info(f"Start Kiwix:  sudo systemctl start {SERVICE_NAME}")
-    _info(f"Open browser: http://localhost:8081")
+    _info("Open browser: http://localhost:8081")
     _hr()
     print()
 

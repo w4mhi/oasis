@@ -122,7 +122,7 @@ def check_python():
     v = sys.version_info
     _info(f"Found Python {v.major}.{v.minor}.{v.micro}")
     if v < (3, 9):
-        _fail(f"Python 3.9+ required. Install it from https://python.org")
+        _fail("Python 3.9+ required. Install it from https://python.org")
     _ok(f"Python {v.major}.{v.minor} — OK")
 
 
@@ -130,7 +130,7 @@ def check_python():
 def create_venv(venv_dir):
     _step(2, "Virtual environment")
     if os.path.isdir(venv_dir):
-        _ok(f".venv already exists — skipping creation")
+        _ok(".venv already exists — skipping creation")
         return
     _info("Creating .venv ...")
     subprocess.run([sys.executable, "-m", "venv", venv_dir], check=True)
@@ -451,7 +451,7 @@ def run(check_mode=False, repo_root=None):
     print()
     _hr()
     print("  Setup complete.")
-    _info(f"Activate the venv:  source .venv/bin/activate")
+    _info("Activate the venv:  source .venv/bin/activate")
     _info(f"Or run directly:    {os.path.relpath(python)} server/app.py")
     _hr()
     print()
