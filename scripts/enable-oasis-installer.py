@@ -81,6 +81,10 @@ def _service_unit(python, operator_user):
         "[Unit]\n"
         "Description=OASIS privileged installer worker (oneshot)\n"
         "After=network.target\n"
+        # Safety net: a burst of jobs (or any residual queue churn) must never
+        # trip systemd's default start-limit (5 starts / 10 s) and wedge the
+        # worker — that silently drops every later install job.
+        "StartLimitIntervalSec=0\n"
         "\n"
         "[Service]\n"
         "Type=oneshot\n"
@@ -108,7 +112,11 @@ def _path_unit():
         "Description=Watch OASIS installer queue for pending jobs\n"
         "\n"
         "[Path]\n"
-        f"DirectoryNotEmpty={QUEUE_DIR}\n"
+        # Trigger ONLY on pending *.job.json files — NOT on the *.result.json the
+        # worker writes back into the same dir. DirectoryNotEmpty re-fired the
+        # oneshot in a tight loop on those lingering result files until systemd's
+        # start-limit killed the unit, after which later jobs were never picked up.
+        f"PathExistsGlob={QUEUE_DIR}/*.job.json\n"
         f"Unit={SERVICE_NAME}\n"
         "\n"
         "[Install]\n"
