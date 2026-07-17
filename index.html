@@ -2882,10 +2882,11 @@ async function pollAdsbRecent(force) {
   try {
     const rr = await fetch('/api/adsb/recent?hours=' + hours,
                            { cache: 'no-store', signal: AbortSignal.timeout(8000) });
-    if (rr.ok) { _adsbRecent = (await rr.json()).aircraft || []; }
+    // Mark the window loaded only on success, so a failed ALL fetch retries on
+    // the next cycle (matches map.html's refreshAdsbRecent) instead of sticking.
+    if (rr.ok) { _adsbRecent = (await rr.json()).aircraft || []; _adsbRecentHours = hours; }
   } catch (_) { /* keep the last good history until the next cycle */ }
   _adsbRecentAt = Date.now();
-  _adsbRecentHours = hours;
 }
 
 // AGE column filter — fixed time buckets (0 = All). Replaces the old header

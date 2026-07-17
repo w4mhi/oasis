@@ -2050,6 +2050,8 @@ function applyAdsbFilter() {
     .filter(a => objCatState[adsbCategoryKey(a)] !== false)
     .map(a => {
       const emerg = ['7500', '7600', '7700'].includes(a.squawk);
+      // Unknown altitude (null/undefined alt_baro) intentionally greys the icon
+      // via altColor, matching the panel/card/drawer — don't "fix" it back to red.
       const color = altColor(a.alt_baro);
       const shp = acShapeFor(a);
       const symId = ensureAircraftImage(shp.key, color, shp.filled);

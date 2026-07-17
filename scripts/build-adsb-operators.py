@@ -25,7 +25,7 @@ def build(src):
                 continue
             icao = (row[4] or "").strip().upper()
             callsign = (row[5] or "").strip().upper()
-            active = (row[7] or "").strip()
+            active = (row[7] or "").strip().upper()
             if len(icao) != 3 or not icao.isalpha():
                 continue
             if not callsign or callsign == "\\N":

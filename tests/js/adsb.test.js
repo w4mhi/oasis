@@ -6,6 +6,7 @@ const A = require('../../static/js/adsb.js');
 test('altColor bands (feet)', () => {
   assert.strictEqual(A.altColor('ground'), '#A0522D');
   assert.strictEqual(A.altColor(null), '#B8C4D0');
+  assert.strictEqual(A.altColor(undefined), '#B8C4D0');   // both consumers rely on undefined->grey
   assert.strictEqual(A.altColor(NaN), '#B8C4D0');
   assert.strictEqual(A.altColor(1000), '#FF3311');
   assert.strictEqual(A.altColor(2000), '#FF3311');
