@@ -4,6 +4,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "server"))
 sys.path.insert(0, os.path.dirname(_HERE))
 import app as oasis_app
+from routes import service_control
 from common import hardware as HW
 
 
@@ -14,8 +15,8 @@ class HardwareGateTest(unittest.TestCase):
 
     def test_units_still_allowlisted(self):
         for unit in ("dump1090-fa", "graywolf", "pat-direwolf", "openwebrx", "aprs-sdr-feed"):
-            self.assertIn(unit, oasis_app._OASIS_SERVICES)
-            self.assertIn(unit, oasis_app._CONTROLLABLE_SERVICES)
+            self.assertIn(unit, service_control._OASIS_SERVICES)
+            self.assertIn(unit, service_control._CONTROLLABLE_SERVICES)
 
     def test_service_for_unit_resolves_via_inventory(self):
         from common import hardware as HW
