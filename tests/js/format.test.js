@@ -18,6 +18,8 @@ test('fmtLastHeard guards + shape', () => {
   assert.strictEqual(F.fmtLastHeard(null), '—');
   assert.strictEqual(F.fmtLastHeard('not-a-date'), 'not-a-date');
   const out = F.fmtLastHeard('2026-07-17T14:05:00Z');
-  assert.ok(out.includes('Z'));
+  // UTC portion is timezone-independent — assert it exactly.
+  assert.ok(out.startsWith('2026-07-17 14:05Z'));
+  // Local [HH:MM] suffix depends on the runner's timezone — assert only its shape.
   assert.ok(out.includes('['));
 });
