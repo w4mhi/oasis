@@ -63,9 +63,11 @@ def serve_map(filename):
         from flask import abort
         abort(404)
     if filename.endswith(".pmtiles"):
-        resp = send_file(filepath, mimetype="application/octet-stream", conditional=True)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        return resp
+        # Range-streamed for the client-side PMTiles reader (the same-origin map
+        # UI). No Access-Control-Allow-Origin: cross-origin browser reads aren't
+        # needed and the wildcard only widened exposure. (Python display clients
+        # aren't affected — CORS is browser-enforced only.)
+        return send_file(filepath, mimetype="application/octet-stream", conditional=True)
     return send_from_directory(MAPS_DIR, filename)
 
 
@@ -146,8 +148,7 @@ def api_fs_pmtiles():
 
     # conditional=True → Werkzeug honours Range/If-Range and returns 206 with
     # Accept-Ranges, streaming the file rather than loading it into memory.
-    resp = send_file(target, mimetype="application/octet-stream", conditional=True)
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    return resp
+    # Same-origin map UI only — no Access-Control-Allow-Origin (see /maps/ above).
+    return send_file(target, mimetype="application/octet-stream", conditional=True)
 
 

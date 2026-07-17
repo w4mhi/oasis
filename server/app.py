@@ -76,12 +76,23 @@ def _api_json_error_handler(exc):
     """
     from werkzeug.exceptions import HTTPException
 
-    status = exc.code if isinstance(exc, HTTPException) else 500
+    is_http = isinstance(exc, HTTPException)
+    status = exc.code if is_http else 500
     if request.path.startswith("/api/"):
-        return jsonify({"ok": False, "error": str(exc), "status": status}), status
+        if is_http:
+            # Deliberate HTTP errors (abort(403)/404/…) carry a safe description.
+            message = str(exc)
+        else:
+            # Unexpected server error: log the real cause (with traceback) server-
+            # side, but return a generic message so raw internals (filesystem paths,
+            # values) don't leak to LAN clients. Routes that want to surface a
+            # specific cause already catch and return it themselves.
+            app.logger.exception("Unhandled exception on %s", request.path)
+            message = "Internal server error"
+        return jsonify({"ok": False, "error": message, "status": status}), status
     # Non-API routes: preserve Flask's default behavior (HTTPExceptions are
     # valid responses; re-raise anything else so the framework renders its 500).
-    if isinstance(exc, HTTPException):
+    if is_http:
         return exc
     raise exc
 
