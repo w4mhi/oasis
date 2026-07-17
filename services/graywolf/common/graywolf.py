@@ -132,7 +132,7 @@ def enable_service():
 def enable_api_service(repo_root):
     """Enable the APRS History API by delegating to its own enabler script."""
     _step(5, f"Enabling the GrayWolf APRS History API (port {API_PORT})")
-    api_enabler = os.path.join(repo_root, "scripts", "enable-graywolf-api.py")
+    api_enabler = os.path.join(repo_root, "services", "graywolf", "enable-graywolf-api.py")
     if not os.path.exists(api_enabler):
         _warn(f"{api_enabler} not found — skipping API service.")
         return

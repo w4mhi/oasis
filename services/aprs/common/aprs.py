@@ -354,7 +354,7 @@ Wants=graywolf.service
 Type=simple
 User={user}
 WorkingDirectory={REPO_ROOT}
-ExecStart={python} {os.path.join(REPO_ROOT, 'scripts', 'enable-graywolf-api.py')} serve --port {port}
+ExecStart={python} {os.path.join(REPO_ROOT, 'services', 'graywolf', 'enable-graywolf-api.py')} serve --port {port}
 Restart=on-failure
 RestartSec=5
 

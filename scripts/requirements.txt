@@ -10,7 +10,7 @@
 # offline resolver and the documented set can never drift apart. Bump these
 # together with the wheels (see scripts/create-oasis-offline.py).
 
-# Web framework — server/app.py, scripts/enable-graywolf-api.py
+# Web framework — server/app.py, services/graywolf/enable-graywolf-api.py
 Flask==3.1.3
 
 # Compiled transitive dep of Jinja2/Flask — vendored per platform/python.
@@ -24,7 +24,7 @@ MarkupSafe==3.0.3
 # target interpreter. (gunicorn is POSIX-only and is skipped on Windows.)
 gunicorn>=23.0.0,<27
 
-# System stats (CPU, RAM, disk, uptime) — scripts/enable-graywolf-api.py
+# System stats (CPU, RAM, disk, uptime) — services/graywolf/enable-graywolf-api.py
 psutil==7.2.2
 
 # Windows console ANSI support for click (Flask's CLI dependency). Pinned

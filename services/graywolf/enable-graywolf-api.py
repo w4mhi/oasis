@@ -14,15 +14,16 @@ The systemd unit's ExecStart runs this script in `serve` mode under the repo's
 .venv (Flask + psutil live there). Flask is imported lazily so the enable path
 works under a plain system python3 too.
 
-History: the API used to live at graywolf-api/graywolf_api.py (folder removed).
-A Pi that still has an old systemd unit pointing at that path will fail until it
-re-runs this script (or services/graywolf/install.py), which rewrites the unit here.
+History: the API lived at graywolf-api/graywolf_api.py, then scripts/enable-graywolf-api.py;
+it now lives with its service at services/graywolf/. A Pi with an old systemd unit pointing
+at either former path will fail until it re-runs this script (or services/graywolf/install.py),
+which rewrites the unit here.
 
 Usage:
-  python3 scripts/enable-graywolf-api.py                 # enable + start service
-  python3 scripts/enable-graywolf-api.py --no-enable      # write unit, don't start
-  python3 scripts/enable-graywolf-api.py serve            # run the API directly
-  python3 scripts/enable-graywolf-api.py serve --port 8085
+  python3 services/graywolf/enable-graywolf-api.py                 # enable + start service
+  python3 services/graywolf/enable-graywolf-api.py --no-enable      # write unit, don't start
+  python3 services/graywolf/enable-graywolf-api.py serve            # run the API directly
+  python3 services/graywolf/enable-graywolf-api.py serve --port 8085
 
 Requires: Linux + systemd + sudo for the enable path; Flask + psutil (the repo
 .venv) for the serve path. DB path is overridable with $APRS_DB_PATH.
@@ -44,7 +45,8 @@ PORT         = 8085
 SERVICE_FILE = f"/etc/systemd/system/{SERVICE}.service"
 
 SELF        = os.path.abspath(__file__)
-REPO_ROOT   = os.path.dirname(os.path.dirname(SELF))
+# services/graywolf/enable-graywolf-api.py → repo root is three levels up.
+REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.dirname(SELF)))
 VENV_PYTHON = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
 
 # DB path is overridable for testing off-Pi (e.g. APRS_DB_PATH=./test.db).
@@ -414,7 +416,7 @@ def _target_user_home():
 def enable_service(start=True):
     # Imported here so the serve path (and the backward-compat shim) never need
     # the OASIS lib or a writable /etc.
-    sys.path.insert(0, os.path.join(os.path.dirname(SELF), ".."))
+    sys.path.insert(0, REPO_ROOT)
     from common.oasis_lib import _step, _ok, _info, _warn, _fail, _run
 
     _step(1, f"Enabling the GrayWolf APRS History API (port {PORT})")

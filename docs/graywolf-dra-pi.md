@@ -369,7 +369,7 @@ sudo systemctl enable --now dra-rx-led.service
 
 - **DB-poll (no API docs needed):** tail
   `/var/lib/graywolf/graywolf-history.db` for new rows and pulse the LED — uses
-  the integration already in `scripts/enable-graywolf-api.py`. Higher latency, APRS-only.
+  the integration already in `services/graywolf/enable-graywolf-api.py`. Higher latency, APRS-only.
 - **Audio-presence (COS-style):** drive GPIO 16 from the WM8731 capture level
   instead of GrayWolf events. Fully independent of GrayWolf, but lights on noise
   unless the radio's squelch gates the audio.

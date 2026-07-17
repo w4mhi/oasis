@@ -696,11 +696,11 @@ The script automatically picks the install source: if the bundled `.deb` is pres
 > If you configured everything and nothing is decoding, restart GrayWolf first.
 
 > **APRS history API (port 8085) is enabled automatically.** `services/graywolf/install.py`
-> also sets up the `graywolf-api` systemd service (via `scripts/enable-graywolf-api.py`)
+> also sets up the `graywolf-api` systemd service (via `services/graywolf/enable-graywolf-api.py`)
 > — a small Flask app that feeds the OASIS APRS map and the dashboard's
 > system-stats bar from GrayWolf's history DB. It runs under the repo's `.venv`,
 > so run `setup-server.py` first. To re-enable it on its own (e.g. after moving
-> the repo): `python3 scripts/enable-graywolf-api.py`.
+> the repo): `python3 services/graywolf/enable-graywolf-api.py`.
 
 ### 1. Station Callsign
 
