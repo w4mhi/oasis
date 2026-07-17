@@ -81,8 +81,7 @@
 .setup-features { display: flex; flex-direction: column; gap: .45rem; }
 .setup-check { display: flex; gap: .45rem; align-items: center; font-size: var(--fs-label); color: var(--text); }
 .setup-check.is-installed { color: var(--green); }
-.setup-check.is-installed::after {
-  content: "installed";
+.setup-installed-badge {
   margin-left: .35rem;
   font-size: .72em;
   letter-spacing: .04em;
@@ -893,11 +892,6 @@ async function setupLoadExistingConfig() {
   }
 }
 
-function setupSetFeatureChecked(key, checked) {
-  const el = document.querySelector(`input[data-feature="${key}"]`);
-  if (el) el.checked = !!checked;
-}
-
 function setupNormalizeFeatureKey(raw) {
   const key = String(raw || '').trim();
   return SETUP_FEATURE_ALIASES[key] || key;
@@ -949,6 +943,12 @@ async function setupAutoSelectInstalledFeatures() {
       // Installed: green + unticked. Ticking it again means "reinstall".
       ch.checked = false;
       if (label) label.classList.add('is-installed');
+      if (label && !label.querySelector('.setup-installed-badge')) {
+        const badge = document.createElement('span');
+        badge.className = 'setup-installed-badge';
+        badge.textContent = 'installed';
+        label.appendChild(badge);
+      }
     } else if (returningBox) {
       // Returning box: don't auto-tick features the operator hasn't installed;
       // they opt in explicitly. (Fresh box keeps the HTML `checked` defaults.)
