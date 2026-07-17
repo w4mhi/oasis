@@ -1,23 +1,30 @@
 name: server-setup
 
 # Verifies that setup-server.py produces a working server environment on every
-# supported {platform, python} combination. Wheels are downloaded from PyPI at
-# run time (not committed to the repo).
+# supported {platform, python} combination, then runs the full unit test suite
+# against that environment. Wheels are downloaded from PyPI at run time (not
+# committed to the repo).
 
 on:
   push:
     paths:
       - "scripts/requirements.txt"
       - "scripts/setup-server.py"
-      - "server/app.py"
-      - "common/lookup.py"
+      - "server/**"
+      - "common/**"
+      - "services/**"
+      - "features/**"
+      - "tests/**"
       - ".github/workflows/offline-install.yml"
   pull_request:
     paths:
       - "scripts/requirements.txt"
       - "scripts/setup-server.py"
-      - "server/app.py"
-      - "common/lookup.py"
+      - "server/**"
+      - "common/**"
+      - "services/**"
+      - "features/**"
+      - "tests/**"
   workflow_dispatch:
 
 jobs:
@@ -40,4 +47,11 @@ jobs:
       - name: Import the app
         run: |
           python3 -c "import sys; sys.path.insert(0, '.'); from common import lookup"
+        shell: bash
+      # The suite (hardware layouts, systemd service files, sudoers paths) is
+      # written against POSIX targets — the Pi is the product. Windows keeps
+      # the setup + import gates above; the tests run on the two POSIX OSes.
+      - name: Run unit test suite
+        if: runner.os != 'Windows'
+        run: .venv/bin/python -m unittest discover -s tests
         shell: bash
