@@ -45,6 +45,15 @@ from the repository analysis (`ANALYSIS-REPORT.md` items 1–5).
 - Major-version bump: 2.7.5 → 3.0.0, marking the completed services
   refactoring (service logic under `services/<name>/`, maps under
   `services/map/`) as the new baseline.
+- **`server/app.py` split into Flask blueprints** (analysis item 6): service
+  routes live with their service (`services/{adsb,aprs,winlink,fcc_database,
+  map}/routes.py`), server-core domains under `server/routes/{setup,hardware,
+  wifi,service_control,health,system,files}.py`, shared runtime config in
+  `server/appconfig.py`. `app.py` is now ~300 lines (app creation, hooks,
+  blueprint registration, launcher). Every URL, method, and response shape is
+  unchanged — verified by a 52-route response snapshot taken before and after
+  the split, the full 385-test suite, and a live gunicorn boot. The WSGI entry
+  (`app:app`, `--chdir server`) is unchanged; no new dependencies.
 
 ## v.2.7.5 and earlier
 

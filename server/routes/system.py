@@ -21,7 +21,6 @@ from common import gpsd_chrony
 SUITE_ROOT = appconfig.SUITE_ROOT
 VERSION_FILE = appconfig.VERSION_FILE
 INSTALLED_SERVICES_FILE = appconfig.INSTALLED_SERVICES_FILE
-PORTABLE_FEATURES = appconfig.PORTABLE_FEATURES
 
 bp = Blueprint("system", __name__)
 
@@ -103,9 +102,9 @@ def api_installed_services():
     Portable mode (OASIS_FEATURES set) overrides the on-disk manifest: it
     returns exactly that list with locked=True, so the dashboard shows only
     these cards and hides the reveal button. Nothing is written to disk."""
-    if PORTABLE_FEATURES is not None:
+    if appconfig.PORTABLE_FEATURES is not None:
         return jsonify({"ok": True, "locked": True,
-                        "features": PORTABLE_FEATURES})
+                        "features": appconfig.PORTABLE_FEATURES})
     try:
         with open(INSTALLED_SERVICES_FILE) as fh:
             data = json.load(fh)
