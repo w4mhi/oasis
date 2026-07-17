@@ -11,8 +11,8 @@ Each item lists **Importance** (impact if ignored) and **Effort**.
 
 ## 1 · Flaws
 
-### P1 — CI never runs the unit test suite
-**Importance: High · Effort: Low**
+### P1 — CI never runs the unit test suite ✅ FIXED (v.3.0.0)
+**Importance: High · Effort: Low · Fixed: full 385-test suite runs in `offline-install.yml` (ubuntu+macos), trigger paths broadened**
 
 You have 381 passing tests, but `offline-manifest.yml` only byte-compiles files and runs the single manifest self-test, and `offline-install.yml` only verifies `setup-server.py` + one import. A regression in `hardware.py`, `setup_engine.py`, the APRS/ADS-B proxies, or any of the 40+ test modules merges green. This is the cheapest, highest-value fix in the repo: add a `python -m unittest discover -s tests` step (after `setup-server.py` installs Flask) to the existing matrix. Note the suite currently fails under system Python (`ModuleNotFoundError: flask`) — CI would also document the supported way to run it.
 
@@ -26,8 +26,8 @@ The `refactoring-services` branch moved service *logic* into `services/<name>/co
 
 `index.html` (3,308 lines, ~2,000 of inline JS) and `small-screen/index7.html` (940 lines) reimplement the same helpers (`fmtTemp`, `fmtAlt`, unit formatting, polling loops); `services/map/map.html` is another 3,516-line single file. "No build step" does **not** require inline scripts — plain `<script src="/static/js/units.js">` files shared between the three dashboards would cut duplication, make the code diffable, and finally give you something a JS test harness could load (see §3). Today a bug fixed in one dashboard silently survives in the other.
 
-### P2 — Duplicate tracked files: `tools/` vs `server/tools/`
-**Importance: Medium · Effort: Low**
+### P2 — Duplicate tracked files: `tools/` vs `server/tools/` ✅ FIXED (v.3.0.0)
+**Importance: Medium · Effort: Low · Fixed: `server/tools/` removed; `tools/` is canonical**
 
 `net-log.html` and `grid-calc.html` are byte-identical and **both tracked in git** at two paths. They *will* drift the first time someone edits only one. Keep one canonical location and serve the other URL via a route alias (like you already do for `/map-assets/`), or delete the stale pair.
 
@@ -36,13 +36,13 @@ The `refactoring-services` branch moved service *logic* into `services/<name>/co
 
 Anyone who can reach port 8083 can stop services, join the Pi to a Wi-Fi network, burn RTL-SDR EEPROM serials, and reboot the host. The mitigations present are good — sudoers rules scoped per command, the `X-OASIS-Request` CSRF header on mutating endpoints, portable-mode gating — but they assume every device on the LAN/AP is friendly. For field EmComm with an open AP fallback that's a real exposure. Two cheap steps: (a) write the threat model down in `docs/concept.md` so it's a decision, not an accident; (b) offer an optional operator PIN for the destructive subset (`/api/service`, `/api/wifi/*`, `/api/setup/reboot`, `/api/hardware/burn-serial`) — you already built exactly this pattern for WebSSH's `--basic-auth`.
 
-### P2 — State-changing endpoints on GET without the CSRF header
-**Importance: Medium · Effort: Low**
+### P2 — State-changing endpoints on GET without the CSRF header ✅ FIXED (v.3.0.0)
+**Importance: Medium · Effort: Low · Fixed: connect/disconnect are POST + `X-OASIS-Request`, with tests**
 
 `/api/winlink/connect` and `/api/winlink/disconnect` mutate state (start/abort a Pat RF session) but are `GET` and don't require `X-OASIS-Request`, unlike `/api/service` and `/api/wifi/*`. Any page a browser on the LAN loads could `<img src=…/api/winlink/connect?url=…>`. Make them POST (or at minimum apply the same header check).
 
-### P2 — Inconsistent release hygiene
-**Importance: Medium · Effort: Low**
+### P2 — Inconsistent release hygiene ✅ FIXED (v.3.0.0)
+**Importance: Medium · Effort: Low · Fixed: `CHANGELOG.md` added with release rules; tag format standardized as `v.<version>`**
 
 Tags are inconsistent (`2.5.0` vs `v.2.7.5` — note the odd `v.` prefix), there is no CHANGELOG, and `version.json` is the only version record. For a project users deploy offline from USB sticks, "what changed since the bundle I burned in March" is a question you can't currently answer. Adopt one tag format, add a short `CHANGELOG.md`, and bump both together (a preflight check can enforce it).
 
@@ -60,8 +60,8 @@ The map tile streamer allows any origin. Combined with path-listing under `/api/
 
 ## 2 · Improvements
 
-### P1 — Add a linter and formatter gate
-**Importance: High · Effort: Low**
+### P1 — Add a linter and formatter gate ✅ FIXED (v.3.0.0)
+**Importance: High · Effort: Low · Fixed: `ruff.toml` + CI step + preflight; 181 findings fixed incl. a real NameError in `winlink.run()`**
 
 There is no `pyproject.toml`, no ruff/flake8 config, nothing. At 279 Python files maintained by one person, `ruff` (single binary, no runtime dep, runs fine in CI) catches the unused-import/shadowed-variable/f-string bug class for free. Wire it into `/preflight` and the manifest workflow next to the existing `py_compile` step.
 
@@ -128,22 +128,22 @@ Once a CHANGELOG exists (§1), showing "what's new in 2.7.5" on the setup page i
 
 ## 4 · Suggested order of attack
 
-| # | Item | Priority | Effort |
-|---|------|----------|--------|
-| 1 | Run the 381-test suite in CI | P1 | Low |
-| 2 | Add ruff to preflight + CI | P1 | Low |
-| 3 | De-duplicate `tools/` vs `server/tools/` | P2 | Low |
-| 4 | POST + CSRF header on Winlink connect/disconnect | P2 | Low |
-| 5 | Tag format + CHANGELOG | P2 | Low |
-| 6 | Split `app.py` into blueprints per service | P1 | Medium |
-| 7 | Extract shared JS helpers; then map.html modules | P1 | Medium |
-| 8 | Server-side backup for forms/net logs | P1 | Medium |
-| 9 | Document threat model; optional PIN on destructive APIs | P2 | Low–Med |
-| 10 | Aggregate dashboard polling endpoint | P2 | Medium |
-| 11 | mDNS `oasis.local` | P2 | Low |
-| 12 | Doctor page in UI · JS tests · Winlink HW-gate migration | P2–P3 | Medium |
+| # | Item | Priority | Effort | Status |
+|---|------|----------|--------|--------|
+| 1 | Run the 381-test suite in CI | P1 | Low | ✅ Fixed (v.3.0.0) |
+| 2 | Add ruff to preflight + CI | P1 | Low | ✅ Fixed (v.3.0.0) |
+| 3 | De-duplicate `tools/` vs `server/tools/` | P2 | Low | ✅ Fixed (v.3.0.0) |
+| 4 | POST + CSRF header on Winlink connect/disconnect | P2 | Low | ✅ Fixed (v.3.0.0) |
+| 5 | Tag format + CHANGELOG | P2 | Low | ✅ Fixed (v.3.0.0) |
+| 6 | Split `app.py` into blueprints per service | P1 | Medium | — |
+| 7 | Extract shared JS helpers; then map.html modules | P1 | Medium | — |
+| 8 | Server-side backup for forms/net logs | P1 | Medium | — |
+| 9 | Document threat model; optional PIN on destructive APIs | P2 | Low–Med | — |
+| 10 | Aggregate dashboard polling endpoint | P2 | Medium | — |
+| 11 | mDNS `oasis.local` | P2 | Low | — |
+| 12 | Doctor page in UI · JS tests · Winlink HW-gate migration | P2–P3 | Medium | — |
 
-Items 1–5 are a week of small PRs that permanently raise the safety floor; 6–8 are the structural payoff of the refactoring branch you're already on.
+Items 1–5 shipped in v.3.0.0 (2026-07-16); 6–8 are the structural payoff of the refactoring branch and are next up.
 
 ---
 
