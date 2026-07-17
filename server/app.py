@@ -41,6 +41,7 @@ for path in (SUITE_ROOT, SERVER_DIR):
     if path not in sys.path:
         sys.path.insert(0, path)
 
+import appconfig
 from common import lookup
 from common import config_paths
 from common import setup_engine as SE
@@ -61,29 +62,13 @@ WINLINK_DIR = WINLINK_STATIC_DIR
 FCC_DIR     = FCC_STATIC_DIR
 MAPS_DIR    = os.path.join(SUITE_ROOT, "maps")
 
-# Suite version (git-tracked, single source of truth). The dashboard reads it
-# via /version.json; the server also surfaces it in /api/server-info so doctor.py
-# and the setup page can report it.
-VERSION_FILE = os.path.join(SUITE_ROOT, "version.json")
-
-# Written by setup-oasis.py: the set of features the operator chose to install.
-# The dashboard reads it (via /api/installed-services) to hide cards for
-# services that were never installed. Absent file → show everything.
-INSTALLED_SERVICES_FILE = config_paths.installed_services_json(SUITE_ROOT)
-
-# Portable / "locked" profile. When OASIS_FEATURES is set (comma-separated
-# feature keys, e.g. "fcc,forms,repeaterbook"), the suite runs as a read-mostly
-# standalone-tools build straight off a USB stick: /api/installed-services
-# reports exactly this list with locked=True (so the dashboard shows only these
-# gated cards AND hides the "show not installed" reveal button), and the routes
-# for the daemon-backed features left out are refused (see _portable_gate).
-# Absent/empty → None → normal behaviour (read installed-services.json).
-# run-portable.command sets this before launching the server.
-_portable_env = os.environ.get("OASIS_FEATURES", "").strip()
-PORTABLE_FEATURES = (
-    sorted({f.strip() for f in _portable_env.split(",") if f.strip()})
-    if _portable_env else None
-)
+# Shared runtime configuration (version file, installed-services manifest,
+# portable profile, port) now lives in server/appconfig.py so the route
+# blueprints can import it without touching this module. The aliases below
+# keep the not-yet-extracted code in this file working during the split.
+VERSION_FILE = appconfig.VERSION_FILE
+INSTALLED_SERVICES_FILE = appconfig.INSTALLED_SERVICES_FILE
+PORTABLE_FEATURES = appconfig.PORTABLE_FEATURES
 
 # In portable mode, refuse the URL prefixes for daemon-backed features that were
 # left out of PORTABLE_FEATURES — both the JSON proxies and their static pages.
@@ -3423,7 +3408,7 @@ def api_audio():
     return jsonify({"ok": True, "supported": True, "cards": cards})
 
 
-PORT = int(os.environ.get("OASIS_PORT", "8083"))
+PORT = appconfig.PORT
 
 def find_free_port(start=8083, end=8093):
     """Return the first TCP port in [start, end] not already in use."""
@@ -3492,6 +3477,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     PORT = resolve_port()
+    appconfig.PORT = PORT                  # blueprints report the live port (dev-server path)
     os.environ["OASIS_PORT"] = str(PORT)   # so the gunicorn-loaded app reports this port
     url = f"http://localhost:{PORT}/"
 
