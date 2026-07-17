@@ -46,7 +46,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 # ── Shared library ─────────────────────────────────────────────────────
 from common.oasis_lib import (
-    _hr, _step, _ok, _info, _warn, _fail, _run,
+    _hr, _step, _ok, _info, _warn, _fail, _run, sudo_apt_cmd,
     deb_field, dpkg_installed_version, version_decision,
 )
 from common import manifest as M
@@ -199,7 +199,7 @@ def install_offline(deb_paths, label="RTL-SDR"):
         _info(f"  {os.path.basename(p)}")
 
     # apt install ./file.deb resolves local deps from the bundled set.
-    cmd = ["sudo", "apt", "install", "--no-install-recommends", "-y"] + to_install
+    cmd = sudo_apt_cmd("apt", "install", "--no-install-recommends", "-y", *to_install)
     if _run(cmd, check=False).returncode == 0:
         _ok("Packages installed via apt")
         return True
@@ -211,8 +211,8 @@ def install_offline(deb_paths, label="RTL-SDR"):
 def install_online():
     """Install rtl-sdr from apt. Returns True on success, else False."""
     _info("Installing via apt (internet) ...")
-    _run(["sudo", "apt", "update", "-qq"], check=False)
-    if _run(["sudo", "apt", "install", "-y", "rtl-sdr"], check=False).returncode == 0:
+    _run(sudo_apt_cmd("apt", "update", "-qq"), check=False)
+    if _run(sudo_apt_cmd("apt", "install", "-y", "rtl-sdr"), check=False).returncode == 0:
         _ok("rtl-sdr installed")
         return True
     _warn("apt could not install rtl-sdr.")
@@ -345,8 +345,8 @@ def install_rtl_sdr(deb_paths, missing, suite):
 def install_feed_online(missing):
     """apt-install the missing feed tools (deps resolved online). Returns bool."""
     _info("Installing feed tools via apt (internet) ...")
-    _run(["sudo", "apt", "update", "-qq"], check=False)
-    if _run(["sudo", "apt", "install", "-y", *missing], check=False).returncode == 0:
+    _run(sudo_apt_cmd("apt", "update", "-qq"), check=False)
+    if _run(sudo_apt_cmd("apt", "install", "-y", *missing), check=False).returncode == 0:
         _ok("Feed tools installed via apt")
         return True
     _warn("apt could not install the feed tools.")
