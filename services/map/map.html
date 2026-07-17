@@ -2004,10 +2004,10 @@ function altColor(alt) {
   if (alt === 'ground')   return '#A0522D';   // brown — surface
   const ft = Number(alt);
   if (!isFinite(ft))      return '#B8C4D0';   // unknown altitude → neutral grey
-  if (ft <= 2000)         return '#EE6611';
+  if (ft <= 2000)         return '#FF3311';
   if (ft <= 5000)         return '#FF7F00';
   if (ft <= 10000)        return '#FFFF00';
-  if (ft <= 15000)        return '#00FF00';
+  if (ft <= 15000)        return '#11FF66';
   if (ft <= 25000)        return '#00FFFF';
   if (ft <= 35000)        return '#0066FF';
   return '#FF00FF';
