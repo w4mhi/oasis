@@ -15,6 +15,10 @@ standard from 3.0.0 on.
   root worker whose output only reached the systemd journal; it's now streamed
   into the setup log window (via a per-job log file the web wait-loop tails), so
   apt/dpkg errors are visible without SSH/journalctl.
+- **GPS UART/GPIO HAT selectable in setup.** Added a `gps-L76X (UART / GPIO HAT)`
+  feature next to `gps (USB / autodetect)` — previously only the USB feature was
+  offered, so a UART GPS HAT had no correct choice and autodetect grabbed the
+  wrong device. The two are mutually exclusive (both drive gpsd).
 - **Post-run reboot prompt.** After a setup run, the page shows a "Reboot
   required to finish" note (and highlights the Reboot button) when any feature
   came back `installed_needs_reboot`.
