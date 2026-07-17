@@ -2129,7 +2129,10 @@ function _adsbForList() {
 function _adsbListRows() {
   return _adsbForList().map(a => {
     const positioned = a.lat != null && a.lon != null;
-    const altFt = (a.alt_baro === 'ground') ? null
+    // alt_baro is null when the aircraft sends no barometric altitude (unknown,
+    // not 0) — guard it before Number(), since Number(null) === 0 would otherwise
+    // render a no-altitude aircraft as a (red) "0 ft".
+    const altFt = (a.alt_baro == null || a.alt_baro === 'ground') ? null
       : (isFinite(Number(a.alt_baro)) ? Number(a.alt_baro) : null);
     const emerg = ['7500', '7600', '7700'].includes(a.squawk);
     const shp = acShapeFor(a);
