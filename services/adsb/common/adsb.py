@@ -174,6 +174,18 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send({"ok": False, "error": err}, 503); return
             self._send({"observations": history.history(r, since, icao)})
             r.close()
+        elif u.path == "/recent":
+            # Latest obs per aircraft over the last `hours` (default 24) — the
+            # list-only history feed; shaped like /aircraft so the UI merges it
+            # with live state. Heavier than /aircraft, so the front-end polls
+            # it slowly (not on the 2 s live cadence).
+            hours = float(q.get("hours", ["24"])[0])
+            r, err = history.open_reader(DB_PATH)
+            if err:
+                self._send({"ok": False, "error": err}, 503); return
+            self._send({"now": time.time(),
+                        "aircraft": history.recent(r, time.time() - hours * 3600)})
+            r.close()
         elif u.path == "/alerts":
             with _lock:
                 self._send({"alerts": list(_alerts)})

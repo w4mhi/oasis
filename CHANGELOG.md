@@ -8,6 +8,25 @@ release bumps `version.json` and this file **together**, and the release commit
 on `main` is tagged `v.<version>` (e.g. `v.3.0.0`) — that tag format is the
 standard from 3.0.0 on.
 
+## Unreleased
+
+### Added
+- **ADS-B aircraft list keeps 24 h of history.** Out-of-range aircraft used to
+  vanish from the station lists the moment they left the live poll. The recorder
+  now exposes `GET /recent?hours=` (one row per aircraft = its latest
+  observation in the window, from the history DB), proxied as
+  `/api/adsb/recent`. The map's bottom drawer and the dashboard station table
+  merge this with live state (live wins) and age the rows exactly like APRS
+  stations. Map markers and the map's right-side "N aircraft" panel stay
+  live-only. The heavier DB scan is throttled to ≤ once/60 s, off the 2 s live
+  cadence, to stay Pi-cheap.
+
+### Changed
+- **Aircraft map labels are always upper-case**, matching APRS callsign display
+  (the popup card still shows the flight ID as received).
+- **The map's ADS-B panel row labels are upper-case and altitude-coloured**
+  (same scale as the map icons); the "N aircraft" header keeps its purple accent.
+
 ## v.3.0.0 — 2026-07-16
 
 Quality-gate release: the services refactoring plus the first round of fixes

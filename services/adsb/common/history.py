@@ -74,3 +74,31 @@ def history(conn, since_ts, icao=None):
         args.append(icao)
     q += " ORDER BY o.ts ASC"
     return [dict(r) for r in conn.execute(q, args).fetchall()]
+
+def recent(conn, since_ts):
+    """One row per aircraft — its latest observation since *since_ts* (epoch s).
+
+    Shaped like a live `/aircraft` entry (hex/flight/lat/lon/alt_baro/gs/track/
+    squawk) plus the absolute `ts` of that observation, so the front-end folds
+    24 h of out-of-range history and live state into one aged list. Mirrors
+    GrayWolf's latest-position-per-station read; the inner GROUP BY rides the
+    idx_obs_icao_ts index so the payload stays one row per aircraft (Pi-cheap).
+    """
+    q = (
+        "SELECT o.icao, a.callsign, o.ts, o.lat, o.lon, o.alt, o.speed, "
+        "o.track, o.squawk FROM observations o "
+        "JOIN (SELECT icao, MAX(ts) AS mts FROM observations "
+        "      WHERE ts >= ? GROUP BY icao) m "
+        "  ON o.icao = m.icao AND o.ts = m.mts "
+        "LEFT JOIN aircraft a ON a.icao = o.icao "
+        "ORDER BY o.ts DESC"
+    )
+    return [{
+        "hex": r["icao"],
+        "flight": r["callsign"] or "",
+        "ts": r["ts"],
+        "lat": r["lat"], "lon": r["lon"],
+        "alt_baro": r["alt"],
+        "gs": r["speed"], "track": r["track"],
+        "squawk": r["squawk"] or "",
+    } for r in conn.execute(q, (since_ts,)).fetchall()]

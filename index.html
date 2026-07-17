@@ -2691,6 +2691,10 @@ function fmtLastHeard(iso) {
 let _allAprsStations = [];
 let _adsbAircraft = [];   // last /api/adsb/aircraft poll (empty when service off)
 let _adsbNow = 0;         // that poll's dump1090 clock, so `seen` → absolute time
+let _adsbRecent = [];     // last /api/adsb/recent poll: latest obs per aircraft over
+                          // the past 24 h, so out-of-range aircraft stay in the table
+                          // (aged like APRS) instead of vanishing on the next poll.
+let _adsbRecentAt = 0;    // ms of the last /recent fetch — throttles the DB scan
 
 // Normalize the last-polled aircraft into station-shaped rows the APRS table's
 // renderAprsTable + column filters already understand: APRS aircraft/heli symbol
@@ -2699,12 +2703,25 @@ let _adsbNow = 0;         // that poll's dump1090 clock, so `seen` → absolute 
 // last_heard for the Age column. Position-less aircraft (heard but not yet
 // fixed) keep lat/lon null → blank Grid/Dist and a greyed row: an SDR-reception
 // readout of how many contacts we hear vs. can actually place.
+// Live aircraft ∪ last-24 h history, keyed by hex (live wins). Each entry gets an
+// absolute epoch `_ts`: a live target from its poll clock (`_adsbNow − seen`), a
+// history-only target from its stored observation `ts` — so both age identically
+// through the shared last_heard/Age path.
+function _adsbForList() {
+  const byHex = {};
+  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts: a.ts }); });
+  _adsbAircraft.forEach(a => {
+    const seenSec = (typeof a.seen === 'number') ? a.seen : 0;
+    byHex[a.hex] = Object.assign({}, a, { _ts: _adsbNow - seenSec });
+  });
+  return Object.values(byHex);
+}
+
 function _adsbListRows() {
-  return _adsbAircraft.map(a => {
+  return _adsbForList().map(a => {
     const positioned = a.lat != null && a.lon != null;
     const altFt = (a.alt_baro === 'ground') ? null
       : (isFinite(Number(a.alt_baro)) ? Number(a.alt_baro) : null);
-    const seenSec = (typeof a.seen === 'number') ? a.seen : 0;
     const emerg = ['7500', '7600', '7700'].includes(a.squawk);
     const bits = [];
     if (a.squawk) bits.push('sq ' + a.squawk);
@@ -2718,7 +2735,7 @@ function _adsbListRows() {
       speed_mph: (a.gs != null) ? Math.round(a.gs * 1.15078) : 0,
       course: (a.track != null) ? a.track : null,
       alt_m: (altFt != null) ? altFt / 3.28084 : null,
-      last_heard: new Date((_adsbNow - seenSec) * 1000).toISOString(),
+      last_heard: new Date(a._ts * 1000).toISOString(),
       via: 'adsb',
       comment: bits.join(' · '),
       _positioned: positioned
@@ -3014,7 +3031,18 @@ async function fetchAPRS() {
       } else { _adsbAircraft = []; }
     } catch (_) { _adsbAircraft = []; }
 
-    if (!d.stations.length && !_adsbAircraft.length) {
+    // 24 h history feed — out-of-range aircraft stay in the table, aged like APRS
+    // stations. A DB scan, so throttled to ≤ once/60 s (the APRS cycle is 15 s).
+    if (Date.now() - _adsbRecentAt > 60000) {
+      try {
+        const rr = await fetch('/api/adsb/recent?hours=24',
+                               { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+        if (rr.ok) { _adsbRecent = (await rr.json()).aircraft || []; }
+      } catch (_) { /* keep the last good history until the next cycle */ }
+      _adsbRecentAt = Date.now();
+    }
+
+    if (!d.stations.length && !_adsbAircraft.length && !_adsbRecent.length) {
       tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text-dim)">No stations yet — GrayWolf needs a radio + TNC/audio input to receive APRS packets.</td></tr>';
       const lastElIdle = document.getElementById('aprs-last');
       lastElIdle.textContent = '—';

@@ -2043,6 +2043,9 @@ function ensureAircraftImage(shapeKey, color, filled) {
 
 let _adsbAircraft = [];   // raw list from the last successful /api/adsb/aircraft poll
 let _adsbNow = 0;         // that poll's dump1090 clock, so `seen` → absolute time
+let _adsbRecent = [];     // last /api/adsb/recent poll: latest obs per aircraft over
+                          // the past 24 h. Feeds the station LIST only (aged like
+                          // APRS); the map markers + right panel stay live-only.
 
 // Re-render the adsb source from the last-fetched list, honoring the
 // objects-panel's aircraft/heli checkboxes — called on every poll AND
@@ -2066,7 +2069,7 @@ function applyAdsbFilter() {
           labelColor: color,
           military: shp.key === 'mil' ? (shp.filled ? 'confirmed' : 'suspected') : '',
           emergency: emerg,
-          label: (a.flight || a.hex || '').trim() + (emerg ? ' ⚠' : ''),
+          label: (a.flight || a.hex || '').trim().toUpperCase() + (emerg ? ' ⚠' : ''),
           flight: a.flight || '', hex: a.hex || '', squawk: a.squawk || '',
           alt_baro: a.alt_baro != null ? a.alt_baro : null,
           gs: a.gs != null ? a.gs : null,
@@ -2093,6 +2096,19 @@ async function refreshAdsb() {
   } catch (e) { /* ignore — poll again next cycle */ }
 }
 
+// 24 h history feed for the station list. Far heavier than the live poll (a DB
+// scan vs. a memory snapshot), so it runs on its own slow timer, not the 2 s
+// live cadence. Re-renders the drawer with the refreshed history immediately.
+async function refreshAdsbRecent() {
+  try {
+    const r = await fetch('/api/adsb/recent?hours=24');
+    if (!r.ok) return;
+    const j = await r.json();
+    _adsbRecent = j.aircraft || [];
+    _renderDrawer();
+  } catch (e) { /* ignore — retry next cycle */ }
+}
+
 // Normalize the last-polled aircraft into station-shaped rows the drawer's
 // renderAprsList/column-filters already understand: APRS aircraft/heli symbol
 // (so aprsCategory/aprsSymIcon + the Type filter fold them in), gs→mph and
@@ -2100,12 +2116,25 @@ async function refreshAdsb() {
 // absolute ISO last_heard so recency sort + Age colouring work. Position-less
 // aircraft (heard but not yet fixed) keep lat/lon null → blank Grid/Dist and a
 // greyed row, off the map but present as an SDR-reception readout.
+// Live aircraft ∪ last-24 h history, keyed by hex (live wins). Each entry gets an
+// absolute epoch `_ts`: a live target from its poll clock (`_adsbNow − seen`), a
+// history-only target from its stored observation `ts` — so both age identically
+// through the shared last_heard/Age path. List-only: does not touch map markers.
+function _adsbForList() {
+  const byHex = {};
+  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts: a.ts }); });
+  _adsbAircraft.forEach(a => {
+    const seenSec = (typeof a.seen === 'number') ? a.seen : 0;
+    byHex[a.hex] = Object.assign({}, a, { _ts: _adsbNow - seenSec });
+  });
+  return Object.values(byHex);
+}
+
 function _adsbListRows() {
-  return _adsbAircraft.map(a => {
+  return _adsbForList().map(a => {
     const positioned = a.lat != null && a.lon != null;
     const altFt = (a.alt_baro === 'ground') ? null
       : (isFinite(Number(a.alt_baro)) ? Number(a.alt_baro) : null);
-    const seenSec = (typeof a.seen === 'number') ? a.seen : 0;
     const emerg = ['7500', '7600', '7700'].includes(a.squawk);
     const shp = acShapeFor(a);
     const bits = [];
@@ -2122,7 +2151,7 @@ function _adsbListRows() {
       speed_mph: (a.gs != null) ? Math.round(a.gs * 1.15078) : 0,
       course: (a.track != null) ? a.track : null,
       alt_m: (altFt != null) ? altFt / 3.28084 : null,
-      last_heard: new Date((_adsbNow - seenSec) * 1000).toISOString(),
+      last_heard: new Date(a._ts * 1000).toISOString(),
       via: 'adsb',
       comment: bits.join(' · '),
       _positioned: positioned
@@ -2159,10 +2188,13 @@ function updateAdsbPanel() {
   const sorted = [...withPos].sort((a, b) =>
     (a.flight || a.hex || '').localeCompare(b.flight || b.hex || ''));
   body.innerHTML = sorted.map(a => {
-    const title = (a.flight || a.hex || '').trim() || a.hex;
+    const title = ((a.flight || a.hex || '').trim() || a.hex).toUpperCase();
     const alt = a.alt_baro != null ? fmtAcAlt(a.alt_baro) : '';
+    // Row label carries the same altitude colour as the aircraft's map icon;
+    // the panel header ("N aircraft") keeps its purple accent.
+    const col = a.alt_baro != null ? altColor(a.alt_baro) : altColor(undefined);
     return `<div class="adsb-row" onclick="adsbRowClick('${a.hex}')">
-      <span class="adsb-flight">${_escHtml(title)}</span>
+      <span class="adsb-flight" style="color:${col}">${_escHtml(title)}</span>
       <span class="adsb-alt">${alt}</span>
     </div>`;
   }).join('');
@@ -2391,6 +2423,8 @@ loadConfig().then(() => {
     _syncSrcColFromChips(); // and on the drawer's Src dropdown
     refreshAdsb();
     setInterval(refreshAdsb, 2000);
+    refreshAdsbRecent();
+    setInterval(refreshAdsbRecent, 60000);   // 24 h history — slow, list-only
   });
 });
 

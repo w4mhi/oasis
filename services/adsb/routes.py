@@ -43,6 +43,13 @@ def api_adsb_history_proxy():
     return _adsb_proxy(f"/history?{qs}")
 
 
+@bp.route("/api/adsb/recent")
+def api_adsb_recent_proxy():
+    import urllib.parse
+    qs = urllib.parse.urlencode({k: v for k, v in request.args.items()})
+    return _adsb_proxy(f"/recent?{qs}")
+
+
 @bp.route("/api/adsb/alerts")
 def api_adsb_alerts_proxy():
     return _adsb_proxy("/alerts")
