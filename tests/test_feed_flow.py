@@ -25,6 +25,7 @@ if _SERVER not in sys.path:
     sys.path.insert(0, _SERVER)
 
 import app as oasis_app   # server/app.py
+from routes import health as health_routes
 
 _FAKE_TCPDUMP = "/usr/bin/tcpdump"
 
@@ -40,7 +41,7 @@ class TestFeedFlow(unittest.TestCase):
         self.client = oasis_app.app.test_client()
         # Force the Linux + tcpdump-present path; individual tests drive subprocess.
         self._p_platform = mock.patch.object(oasis_app.sys, "platform", "linux")
-        self._p_tcpdump  = mock.patch.object(oasis_app, "_resolve_tcpdump",
+        self._p_tcpdump  = mock.patch.object(health_routes, "_resolve_tcpdump",
                                              return_value=_FAKE_TCPDUMP)
         self._p_platform.start()
         self._p_tcpdump.start()
@@ -50,15 +51,15 @@ class TestFeedFlow(unittest.TestCase):
         self._p_tcpdump.stop()
 
     def test_flowing_feed_reports_pps(self):
-        lines = "\n".join(f"packet {i}" for i in range(oasis_app._FEED_FLOW_NPKTS))
+        lines = "\n".join(f"packet {i}" for i in range(health_routes._FEED_FLOW_NPKTS))
         with mock.patch.object(oasis_app.subprocess, "run",
                                return_value=_completed(stdout=lines, rc=0)):
             d = self.client.get("/api/health/feed-flow").get_json()
         self.assertTrue(d["ok"])
         self.assertTrue(d["flowing"])
-        self.assertEqual(d["packets"], oasis_app._FEED_FLOW_NPKTS)
+        self.assertEqual(d["packets"], health_routes._FEED_FLOW_NPKTS)
         self.assertGreater(d["pps"], 0)
-        self.assertEqual(d["port"], oasis_app.FEED_FLOW_PORT)
+        self.assertEqual(d["port"], health_routes.FEED_FLOW_PORT)
 
     def test_silent_feed_on_timeout_is_not_an_error(self):
         # Dead/yanked dongle: tcpdump captures nothing and we hit the timeout.
@@ -72,7 +73,7 @@ class TestFeedFlow(unittest.TestCase):
         self.assertEqual(d["pps"], 0)
 
     def test_missing_tcpdump(self):
-        with mock.patch.object(oasis_app, "_resolve_tcpdump", return_value=None):
+        with mock.patch.object(health_routes, "_resolve_tcpdump", return_value=None):
             d = self.client.get("/api/health/feed-flow").get_json()
         self.assertFalse(d["ok"])
         self.assertEqual(d["reason"], "tcpdump-missing")
@@ -105,8 +106,8 @@ class TestFeedFlow(unittest.TestCase):
             self.client.get("/api/health/feed-flow?port=9999&iface=eth0")
         self.assertEqual(captured["argv"],
                          ["sudo", "-n", _FAKE_TCPDUMP, "-ni", "lo", "-l", "-c",
-                          str(oasis_app._FEED_FLOW_NPKTS), "udp", "port",
-                          str(oasis_app.FEED_FLOW_PORT)])
+                          str(health_routes._FEED_FLOW_NPKTS), "udp", "port",
+                          str(health_routes.FEED_FLOW_PORT)])
 
 
 if __name__ == "__main__":
