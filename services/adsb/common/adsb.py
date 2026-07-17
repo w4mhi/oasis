@@ -396,54 +396,27 @@ Wants={API_SERVICE}.service
     _run(["sudo", "systemctl", "daemon-reload"])
 
 
-SKYAWARE_PORT   = 8090
 LIGHTTPD_CONFD  = "/etc/lighttpd/conf-enabled"
 LIGHTTPD_DROPIN = f"{LIGHTTPD_CONFD}/99-oasis-skyaware-port.conf"
 
 
-def _tcp_port_free(port):
-    """Best-effort: True if nothing is bound to `port` on this host."""
-    import socket
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.bind(("0.0.0.0", port)); return True
-    except OSError:
-        return False
-    finally:
-        s.close()
+def _disable_skyaware_lighttpd():
+    """FlightAware's dump1090-fa pulls in lighttpd + SkyAware, which serves on
+    8080 (GrayWolf's port) and, on newer suites (Trixie), fails its own config
+    test (`lighttpd -tt` → exit 255) and enters a restart-loop / failed state.
 
-
-def _relocate_skyaware_lighttpd():
-    """FlightAware's dump1090-fa pulls in lighttpd + SkyAware, which on this
-    suite's images serves on 8080 — GrayWolf's port. OASIS decodes via adsb-api
-    (SkyAware isn't used), but we keep the map for now, so MOVE lighttpd to
-    SKYAWARE_PORT rather than disabling it. A conf-enabled drop-in sorted last
-    (99-) sets server.port, overriding whatever set 8080 wherever it lives — the
-    Debian lighttpd.conf includes conf-enabled after its own directives, so the
-    last server.port wins. Idempotent; no-op if lighttpd is absent, already
-    relocated, or SKYAWARE_PORT is taken by something else.
-
-    BENCH-VERIFY: confirm on the Pi that lighttpd honours the later server.port
-    and SkyAware answers on :SKYAWARE_PORT with :8080 freed for GrayWolf."""
+    OASIS decodes via adsb-api and never uses SkyAware, so relocating a broken
+    service buys nothing — disable lighttpd outright. That frees :8080 for
+    GrayWolf AND stops the failed-unit noise. Idempotent; no-op if lighttpd was
+    never installed. Re-enable with `sudo systemctl enable --now lighttpd` (and
+    fix its config) if you ever want the SkyAware page back."""
     if not os.path.isdir(LIGHTTPD_CONFD):
-        return   # lighttpd absent → FA didn't pull it in; nothing to move
-    if os.path.exists(LIGHTTPD_DROPIN):
-        return   # already relocated (idempotent re-run)
-    if not _tcp_port_free(SKYAWARE_PORT):
-        _warn(f"SkyAware left on its current port — {SKYAWARE_PORT} is already in use.")
-        return
-    dropin = (f"# OASIS: move FlightAware SkyAware off 8080 (GrayWolf's port).\n"
-              f"# conf-enabled is included last, so this server.port wins. Delete\n"
-              f"# this file to revert.\n"
-              f"server.port = {SKYAWARE_PORT}\n")
-    proc = subprocess.Popen(["sudo", "tee", LIGHTTPD_DROPIN],
-                            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
-    proc.communicate(dropin.encode())
-    if proc.returncode != 0:
-        _warn(f"Could not write {LIGHTTPD_DROPIN} — SkyAware still on 8080.")
-        return
-    _run(["sudo", "systemctl", "restart", "lighttpd"], check=False)
-    _ok(f"SkyAware (lighttpd) moved to :{SKYAWARE_PORT} — :8080 stays with GrayWolf.")
+        return   # lighttpd absent → FA didn't pull it in; nothing to do
+    # Drop any earlier OASIS port-relocation drop-in — superseded by disabling.
+    _run(["sudo", "rm", "-f", LIGHTTPD_DROPIN], check=False)
+    _run(["sudo", "systemctl", "disable", "--now", "lighttpd"], check=False)
+    _ok("SkyAware (lighttpd) disabled — OASIS decodes via adsb-api and :8080 "
+        "stays free for GrayWolf.")
 
 
 def run(repo_root, online=None):
@@ -461,8 +434,8 @@ def run(repo_root, online=None):
     _write_api_unit(repo_root)
     _run(["sudo", "systemctl", "disable", f"{API_SERVICE}.service"])
     _write_decoder_dropin()
-    _step(3, "SkyAware web port (keep the map, off GrayWolf's 8080)")
-    _relocate_skyaware_lighttpd()
+    _step(3, "SkyAware (lighttpd) — disabled; OASIS decodes via adsb-api, frees :8080")
+    _disable_skyaware_lighttpd()
     _ok("ADS-B installed. Start it from the dashboard (ADS-B card) — the "
         "recorder/API now starts and stops with the decoder.")
 

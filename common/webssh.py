@@ -208,7 +208,13 @@ def resolve_basic_auth(arg):
             _fail("--basic-auth must be in the form USER:PASSWORD")
         return arg
 
-    # Flag passed with no value -> prompt.
+    # Flag passed with no value -> prompt. A tty-less caller (e.g. the privileged
+    # installer worker) can't answer — skip the gate instead of crashing on
+    # input()/getpass's EOFError. Pass --basic-auth USER:PASS to set it non-interactively.
+    if not sys.stdin.isatty():
+        _warn("--basic-auth needs a value when non-interactive "
+              "(--basic-auth USER:PASS) — skipping the Basic-Auth gate.")
+        return None
     user = input("    HTTP Basic Auth username [admin]: ").strip() or "admin"
     pw1  = getpass.getpass("    HTTP Basic Auth password: ")
     if not pw1:
