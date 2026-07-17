@@ -6,7 +6,7 @@
    css/common.css because its shared header/table/form rules would clash with
    their bespoke design. This file supplies ONLY the light-theme variable
    overrides — mirroring css/common.css's light theme — so the shared sun/moon
-   toggle (static/theme.js) flips them too.
+   toggle (common/js/theme.js) flips them too.
 
    Toggled via <html data-theme="light">. In light mode the readable standard
    emerald accent is used for all pages (the dark per-radio accents stay).

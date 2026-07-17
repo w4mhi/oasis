@@ -91,7 +91,7 @@ def _api_json_error_handler(exc):
 # Individual routes that legitimately need cross-origin access add them below.
 
 # ── Shared light/dark theme toggle ────────────────────────────────────────────
-# Inject static/theme.js just before </head> on every owned HTML page, so the
+# Inject common/js/theme.js just before </head> on every owned HTML page, so the
 # sun/moon toggle (and the no-flash theme apply) appears everywhere without
 # editing each page. Pages that manage their own theming are skipped:
 #   • the 7" kiosk (/small-screen/)   • the live map (/server/map/)
@@ -99,7 +99,7 @@ def _api_json_error_handler(exc):
 # theme.js is idempotent — it leaves a page's own toggle button (e.g. the
 # dashboard's) alone and only adds the floating one when none exists.
 _THEME_SKIP_PREFIXES = ("/small-screen/", "/server/map/", "/static/graywolf-handbook/")
-_THEME_SNIPPET = '<script src="/static/theme.js"></script>'
+_THEME_SNIPPET = '<script src="/common/js/theme.js"></script>'
 
 @app.before_request
 def _portable_gate():
@@ -126,7 +126,7 @@ def _inject_theme_toggle(resp):
         if resp.direct_passthrough:
             resp.direct_passthrough = False
         html = resp.get_data(as_text=True)
-        if "</head>" not in html or "/static/theme.js" in html:
+        if "</head>" not in html or "/common/js/theme.js" in html:
             return resp
         resp.set_data(html.replace("</head>", _THEME_SNIPPET + "</head>", 1))
     except Exception:

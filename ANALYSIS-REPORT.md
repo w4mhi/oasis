@@ -26,7 +26,7 @@ The `refactoring-services` branch moved service *logic* into `services/<name>/co
 
 `index.html` (3,308 lines, ~2,000 of inline JS) and `small-screen/index7.html` (940 lines) reimplement the same helpers (`fmtTemp`, `fmtAlt`, unit formatting, polling loops); `services/map/map.html` is another 3,516-line single file. "No build step" does **not** require inline scripts — plain `<script src="/common/js/units.js">` files shared between the three dashboards would cut duplication, make the code diffable, and finally give you something a JS test harness could load (see §3). Today a bug fixed in one dashboard silently survives in the other.
 
-`map.html` modularization and reconciling the third grid implementation in `static/maidenhead.js` were considered and deliberately deferred as separate, scoped follow-ons — see the plan's "Deferred follow-ons" notes.
+`map.html` modularization and reconciling the third grid implementation in `common/js/maidenhead.js` were considered and deliberately deferred as separate, scoped follow-ons — see the plan's "Deferred follow-ons" notes.
 
 ### P2 — Duplicate tracked files: `tools/` vs `server/tools/` ✅ FIXED (v.3.0.0)
 **Importance: Medium · Effort: Low · Fixed: `server/tools/` removed; `tools/` is canonical**
@@ -104,9 +104,9 @@ ICS forms auto-save and the net-check-in log live in **browser localStorage**. I
 ### P2 — JS test coverage for the pure logic ✅ FIXED (Unreleased)
 **Importance: Medium · Effort: Medium · Fixed: `tests/js/` under `node --test` (no npm packages), wired into `/preflight` step 8 and `.github/workflows/js-tests.yml`**
 
-There is no JS test harness at all, yet the front-end contains real algorithms: maidenhead conversion (`static/maidenhead.js`), unit conversions, APRS symbol categorization, distance/bearing math. Once helpers are extracted to `.js` files (§1/P1 above), a `node --test` runner over the pure functions costs nothing at runtime (dev-only, no npm packages required) and can run in CI.
+There is no JS test harness at all, yet the front-end contains real algorithms: maidenhead conversion (`common/js/maidenhead.js`), unit conversions, APRS symbol categorization, distance/bearing math. Once helpers are extracted to `.js` files (§1/P1 above), a `node --test` runner over the pure functions costs nothing at runtime (dev-only, no npm packages required) and can run in CI.
 
-Coverage so far is the newly-extracted `common/js/{units,geo,format}.js`; `static/maidenhead.js` still has its own, un-tested grid implementation (see the deferred reconciliation note under §1/P1).
+Coverage so far is the newly-extracted `common/js/{units,geo,format}.js`; `common/js/maidenhead.js` still has its own, un-tested grid implementation (see the deferred reconciliation note under §1/P1).
 
 ### P2 — Surface `doctor.py` in the web UI
 **Importance: Medium · Effort: Medium**
