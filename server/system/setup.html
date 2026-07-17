@@ -80,6 +80,20 @@
 .setup-list { margin: 0; padding-left: 1rem; font-size: var(--fs-label); color: var(--text-dim); }
 .setup-features { display: flex; flex-direction: column; gap: .45rem; }
 .setup-check { display: flex; gap: .45rem; align-items: center; font-size: var(--fs-label); color: var(--text); }
+.setup-check.is-installed { color: var(--green); }
+.setup-check.is-installed::after {
+  content: "installed";
+  margin-left: .35rem;
+  font-size: .72em;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+.setup-reinstall-hint {
+  margin-left: .4rem;
+  font-size: .8em;
+  color: var(--amber);
+}
 .setup-group { margin-bottom: .65rem; border-top: 1px dashed var(--border); padding-top: .55rem; }
 .setup-group:first-child { border-top: 0; padding-top: 0; }
 .setup-group h4 { margin: 0 0 .3rem; font-size: var(--fs-label); color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
@@ -889,53 +903,85 @@ function setupNormalizeFeatureKey(raw) {
   return SETUP_FEATURE_ALIASES[key] || key;
 }
 
+// Heavy features whose reinstall is expensive — call it out in the hint.
+const SETUP_HEAVY_REINSTALL = {
+  fcc: '~160 MB re-download',
+  wikipedia: '~447 MB re-download',
+};
+
 async function setupAutoSelectInstalledFeatures() {
   if (setupAutoSelected) return;
   const checks = [...document.querySelectorAll('input[data-feature]')];
-  const selected = new Set();
-
-  // Keep foundation/content defaults checked unless we have explicit installed-services list.
-  checks.forEach(ch => {
-    if (ch.checked) selected.add(ch.getAttribute('data-feature'));
-  });
+  const installed = new Set();
+  let returningBox = false;  // a manifest and/or live service says something is already installed
 
   try {
     const d = await jget('/api/installed-services');
     const feats = Array.isArray(d && d.features) ? d.features : null;
     if (feats) {
-      checks.forEach(ch => { ch.checked = false; });
-      feats.forEach(k => selected.add(setupNormalizeFeatureKey(k)));
-      selected.add('server');
-      // These are treated as baseline helpers in setup orchestration.
-      selected.add('webssh');
-      selected.add('service-controls');
-      selected.add('ap-fallback');
+      returningBox = true;
+      feats.forEach(k => installed.add(setupNormalizeFeatureKey(k)));
+      installed.add('server');  // the page is served by it, so it's installed
     }
   } catch (_) {
-    // Keep defaults if installed-services endpoint is unavailable.
+    // Endpoint unavailable (e.g. Mac dev box) — fall through to HTML defaults.
   }
 
-  // Complement manifest-based selection with service probe facts.
+  // Complement the manifest with live systemd probes.
   try {
     const serviceMap = {
-      graywolf: 'graywolf',
-      pat: 'winlink',
-      kiwix: 'kiwix',
-      openwebrx: 'openwebrx',
-      'adsb-api': 'adsb',
-      webssh: 'webssh',
+      graywolf: 'graywolf', pat: 'winlink', kiwix: 'kiwix',
+      openwebrx: 'openwebrx', 'adsb-api': 'adsb', webssh: 'webssh',
     };
     const pairs = Object.entries(serviceMap);
     const probes = await Promise.all(pairs.map(([unit]) => chkService(unit)));
     probes.forEach((res, i) => {
-      if (res && res.installed) selected.add(pairs[i][1]);
+      if (res && res.installed) { installed.add(pairs[i][1]); returningBox = true; }
     });
   } catch (_) {
-    // Non-fatal: checkbox defaults still apply.
+    // Non-fatal: HTML defaults still apply.
   }
 
-  selected.forEach(k => setupSetFeatureChecked(k, true));
+  checks.forEach(ch => {
+    const key = ch.getAttribute('data-feature');
+    const label = ch.closest('.setup-check');
+    if (installed.has(key)) {
+      // Installed: green + unticked. Ticking it again means "reinstall".
+      ch.checked = false;
+      if (label) label.classList.add('is-installed');
+    } else if (returningBox) {
+      // Returning box: don't auto-tick features the operator hasn't installed;
+      // they opt in explicitly. (Fresh box keeps the HTML `checked` defaults.)
+      ch.checked = false;
+      if (label) label.classList.remove('is-installed');
+    }
+  });
+
+  setupWireReinstallHints();
   setupAutoSelected = true;
+}
+
+function setupWireReinstallHints() {
+  document.querySelectorAll('input[data-feature]').forEach(ch => {
+    ch.addEventListener('change', () => {
+      const label = ch.closest('.setup-check');
+      if (!label) return;
+      const key = ch.getAttribute('data-feature');
+      const reinstall = ch.checked && label.classList.contains('is-installed');
+      let hint = label.querySelector('.setup-reinstall-hint');
+      if (reinstall) {
+        if (!hint) {
+          hint = document.createElement('span');
+          hint.className = 'setup-reinstall-hint';
+          label.appendChild(hint);
+        }
+        const extra = SETUP_HEAVY_REINSTALL[key];
+        hint.textContent = extra ? `will reinstall — ${extra}` : 'will reinstall';
+      } else if (hint) {
+        hint.remove();
+      }
+    });
+  });
 }
 
 async function setupGetPermissions() {
