@@ -123,7 +123,12 @@ def api_health_service():
         "service":   name,
         "active":    active or "unknown",
         "enabled":   enabled or "not-found",
-        "installed": bool(enabled),     # is-enabled prints nothing for absent units
+        # Installed = the unit file exists in any real state (enabled/disabled/
+        # static/indirect/masked/…). Absent units make `systemctl is-enabled`
+        # print "not-found" (Pi OS Trixie / systemd ≥ 254, on stdout) or nothing
+        # (older) — both mean not installed, so exclude them explicitly rather
+        # than relying on `bool(enabled)`.
+        "installed": enabled not in ("", "not-found"),
     })
 
 

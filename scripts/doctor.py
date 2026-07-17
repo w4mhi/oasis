@@ -126,7 +126,10 @@ def _svc_status(name):
     return {
         "active":    active  or "unknown",
         "enabled":   enabled or "not-found",
-        "installed": bool(enabled),
+        # Absent units make `systemctl is-enabled` print "not-found" (Pi OS
+        # Trixie / systemd ≥ 254, on stdout) or nothing (older) — both mean not
+        # installed. Don't rely on bool(enabled): "not-found" is a truthy string.
+        "installed": enabled not in ("", "not-found"),
     }
 
 
