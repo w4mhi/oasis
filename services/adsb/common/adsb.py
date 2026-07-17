@@ -118,7 +118,11 @@ def parse_adsb_stats(stats):
         return None
     local = window.get("local") or {}
     samples_per_sec = local.get("samples_processed", 0) / duration
-    messages_per_min = local.get("messages", 0) * (60.0 / duration)
+    # `messages` is a period-level key (sibling of `local`/`remote`), NOT inside
+    # `local` — dump1090-fa README-json.md. Reading it from `local` (which has no
+    # such key) is why msg/min read a flat 0. samples_processed genuinely IS in
+    # `local`, so the signal meter kept working.
+    messages_per_min = window.get("messages", 0) * (60.0 / duration)
     return {
         "samples_per_sec": samples_per_sec,
         "messages_per_min": messages_per_min,
@@ -146,9 +150,16 @@ class _Handler(BaseHTTPRequestHandler):
         if u.path == "/health":
             with _lock:
                 age = (time.time() - _live["now"]) if _live["now"] else None
-                aircraft_count = len(_live["aircraft"])
+                acs = _live["aircraft"]
+                aircraft_count = len(acs)
+                # positioned = have a decodable lat/lon, i.e. what the map can
+                # actually plot. Mode-S-only / not-yet-CPR-decoded targets are
+                # tracked (counted) but unplaceable, hence positioned < total.
+                positioned = sum(1 for a in acs
+                                 if a.get("lat") is not None and a.get("lon") is not None)
                 stats = _live["stats"]
-            resp = {"ok": True, "last_json_age_s": age, "aircraft_count": aircraft_count}
+            resp = {"ok": True, "last_json_age_s": age,
+                    "aircraft_count": aircraft_count, "positioned": positioned}
             if stats:
                 resp.update(stats)
             self._send(resp)
@@ -178,6 +189,11 @@ def serve():
 API_SERVICE  = "adsb-api"
 DECODER_UNIT = "dump1090-fa"
 UNIT_PATH    = f"/etc/systemd/system/{API_SERVICE}.service"
+# Drop-in on the FlightAware package unit — a separate file, so it survives
+# dump1090-fa package upgrades. It makes systemd pull in adsb-api whenever the
+# decoder starts (the dashboard's ADS-B button starts dump1090-fa only).
+DECODER_DROPIN_DIR  = f"/etc/systemd/system/{DECODER_UNIT}.service.d"
+DECODER_DROPIN_PATH = f"{DECODER_DROPIN_DIR}/oasis-adsb-api.conf"
 
 # FlightAware apt repo (online fallback). dump1090-fa isn't in base Debian/Pi OS
 # apt — it ships from FlightAware's own repo. This installs FlightAware's own
@@ -316,9 +332,14 @@ def _install_dump1090(repo_root, online):
 def _write_api_unit(repo_root):
     venv_py = os.path.join(repo_root, ".venv", "bin", "python3")
     entry   = os.path.join(repo_root, "services", "adsb", "install.py")
+    # After: start once the decoder is up (its JSON must exist to serve).
+    # PartOf: stopping/restarting dump1090-fa propagates to adsb-api, so the
+    # dashboard's ADS-B stop takes the API down with the decoder. (The matching
+    # Wants= on dump1090-fa — the drop-in below — handles the START direction.)
     unit = f"""[Unit]
 Description=OASIS ADS-B recorder + history API
-After=network.target
+After=network.target {DECODER_UNIT}.service
+PartOf={DECODER_UNIT}.service
 
 [Service]
 Type=simple
@@ -340,6 +361,79 @@ WantedBy=multi-user.target
     _run(["sudo", "systemctl", "daemon-reload"])
 
 
+def _write_decoder_dropin():
+    """Install a systemd drop-in on dump1090-fa so starting the decoder also
+    pulls in adsb-api (Wants). Together with adsb-api's PartOf=dump1090-fa, the
+    two now start and stop as one — the dashboard's ADS-B button controls only
+    dump1090-fa, and the API used to be left behind (blank signal meter + no
+    aircraft on the map). Idempotent; a separate file, so a FlightAware
+    package upgrade of dump1090-fa.service can't clobber it."""
+    dropin = f"""[Unit]
+# Managed by OASIS (services/adsb) — pulls in the recorder/API with the decoder.
+Wants={API_SERVICE}.service
+"""
+    _run(["sudo", "mkdir", "-p", DECODER_DROPIN_DIR])
+    proc = subprocess.Popen(
+        ["sudo", "tee", DECODER_DROPIN_PATH],
+        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+    )
+    proc.communicate(dropin.encode())
+    if proc.returncode != 0:
+        _fail(f"Could not write {DECODER_DROPIN_PATH}")
+    _ok(f"Decoder drop-in: {DECODER_DROPIN_PATH}")
+    _run(["sudo", "systemctl", "daemon-reload"])
+
+
+SKYAWARE_PORT   = 8090
+LIGHTTPD_CONFD  = "/etc/lighttpd/conf-enabled"
+LIGHTTPD_DROPIN = f"{LIGHTTPD_CONFD}/99-oasis-skyaware-port.conf"
+
+
+def _tcp_port_free(port):
+    """Best-effort: True if nothing is bound to `port` on this host."""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("0.0.0.0", port)); return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
+def _relocate_skyaware_lighttpd():
+    """FlightAware's dump1090-fa pulls in lighttpd + SkyAware, which on this
+    suite's images serves on 8080 — GrayWolf's port. OASIS decodes via adsb-api
+    (SkyAware isn't used), but we keep the map for now, so MOVE lighttpd to
+    SKYAWARE_PORT rather than disabling it. A conf-enabled drop-in sorted last
+    (99-) sets server.port, overriding whatever set 8080 wherever it lives — the
+    Debian lighttpd.conf includes conf-enabled after its own directives, so the
+    last server.port wins. Idempotent; no-op if lighttpd is absent, already
+    relocated, or SKYAWARE_PORT is taken by something else.
+
+    BENCH-VERIFY: confirm on the Pi that lighttpd honours the later server.port
+    and SkyAware answers on :SKYAWARE_PORT with :8080 freed for GrayWolf."""
+    if not os.path.isdir(LIGHTTPD_CONFD):
+        return   # lighttpd absent → FA didn't pull it in; nothing to move
+    if os.path.exists(LIGHTTPD_DROPIN):
+        return   # already relocated (idempotent re-run)
+    if not _tcp_port_free(SKYAWARE_PORT):
+        _warn(f"SkyAware left on its current port — {SKYAWARE_PORT} is already in use.")
+        return
+    dropin = (f"# OASIS: move FlightAware SkyAware off 8080 (GrayWolf's port).\n"
+              f"# conf-enabled is included last, so this server.port wins. Delete\n"
+              f"# this file to revert.\n"
+              f"server.port = {SKYAWARE_PORT}\n")
+    proc = subprocess.Popen(["sudo", "tee", LIGHTTPD_DROPIN],
+                            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+    proc.communicate(dropin.encode())
+    if proc.returncode != 0:
+        _warn(f"Could not write {LIGHTTPD_DROPIN} — SkyAware still on 8080.")
+        return
+    _run(["sudo", "systemctl", "restart", "lighttpd"], check=False)
+    _ok(f"SkyAware (lighttpd) moved to :{SKYAWARE_PORT} — :8080 stays with GrayWolf.")
+
+
 def run(repo_root, online=None):
     if sys.platform != "linux":
         _fail("ADS-B service installs on Linux/Raspberry Pi only.")
@@ -351,10 +445,14 @@ def run(repo_root, online=None):
     _step(1, "dump1090-fa decoder")
     _install_dump1090(repo_root, online)
     _run(["sudo", "systemctl", "disable", "--now", f"{DECODER_UNIT}.service"])
-    _step(2, "adsb-api unit (disabled by default)")
+    _step(2, "adsb-api unit (disabled by default; starts with the decoder)")
     _write_api_unit(repo_root)
     _run(["sudo", "systemctl", "disable", f"{API_SERVICE}.service"])
-    _ok("ADS-B installed. Start it from the dashboard (ADS-B card).")
+    _write_decoder_dropin()
+    _step(3, "SkyAware web port (keep the map, off GrayWolf's 8080)")
+    _relocate_skyaware_lighttpd()
+    _ok("ADS-B installed. Start it from the dashboard (ADS-B card) — the "
+        "recorder/API now starts and stops with the decoder.")
 
 
 # ── Device binding (hardware-aware engine, Slice 2a) ──────────────────────────

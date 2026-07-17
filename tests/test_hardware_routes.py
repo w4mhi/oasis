@@ -179,9 +179,9 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         mocked_scan.assert_not_called()
 
-    def test_devices_route_undeclares_unplugged_dongle(self):
-        # present (1) < declared (2) → the removed dongle is undeclared so the
-        # service that had it no longer shows it assigned.
+    def test_devices_route_fails_over_to_surviving_dongle_on_unplug(self):
+        # present (1) < declared (2): the removed dongle is undeclared and the
+        # service that had it FAILS OVER to the surviving dongle (not unassigned).
         inv = HW.Inventory(
             devices={"rtl-sdr-A": {"id": "rtl-sdr-A", "kind": "rtl-sdr", "serial": "A", "label": "A"},
                      "rtl-sdr-B": {"id": "rtl-sdr-B", "kind": "rtl-sdr", "serial": "B", "label": "B"}},
@@ -196,8 +196,23 @@ class HardwareRoutesTest(unittest.TestCase):
         ids = [d["id"] for d in body["devices"]]
         self.assertIn("rtl-sdr-A", ids)
         self.assertNotIn("rtl-sdr-B", ids)                       # unplugged → undeclared
-        self.assertFalse(body["services"]["aprs"]["ok"])         # its device is gone
-        self.assertEqual(body["services"]["aprs"]["reason"], "device-not-attached")
+        self.assertEqual(body["services"]["aprs"]["device_id"], "rtl-sdr-A")   # failed over
+        self.assertTrue(body["services"]["aprs"]["ok"])
+
+    def test_devices_route_unassigns_when_last_dongle_unplugged(self):
+        # present (0) < declared (1) and no survivor → the service goes unassigned.
+        inv = HW.Inventory(
+            devices={"rtl-sdr-A": {"id": "rtl-sdr-A", "kind": "rtl-sdr", "serial": "A", "label": "A"}},
+            assignments={"adsb": "rtl-sdr-A"})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=0), \
+             mock.patch.object(oasis_app.HD_detect, "scan", return_value={"rtl_sdr": []}):
+            r = self.c.get("/api/hardware/devices")
+        body = json.loads(r.data)
+        self.assertEqual(body["devices"], [])
+        self.assertIsNone(body["services"]["adsb"]["device_id"])
+        self.assertEqual(body["services"]["adsb"]["reason"], "unassigned")
 
     def test_devices_route_auto_declares_assigns_and_applies_digirig(self):
         ptt = ("/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_"
@@ -209,6 +224,7 @@ class HardwareRoutesTest(unittest.TestCase):
              mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=0), \
              mock.patch.object(oasis_app.HD_detect, "detect_digirig",
                                return_value={"ptt": ptt, "serial": "3e54e82a"}), \
+             mock.patch.object(oasis_app.HD_detect, "detect_dra_pi", return_value=False), \
              mock.patch.object(oasis_app, "_apply_hardware_async",
                                side_effect=lambda: applied.append(1)), \
              mock.patch.object(oasis_app.threading, "Thread", _SyncThread):
@@ -219,6 +235,25 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertEqual(body["services"]["winlink"]["device_id"], "digirig-3e54e82a")
         self.assertTrue(body["services"]["winlink"]["ok"])
         self.assertEqual(applied, [1])   # direwolf re-templated on the change
+
+    def test_devices_route_auto_declares_assigns_and_applies_dra_pi(self):
+        inv = HW.Inventory(devices={}, assignments={})
+        applied = []
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(oasis_app.HD_detect, "rtl_sdr_usb_count", return_value=0), \
+             mock.patch.object(oasis_app.HD_detect, "detect_digirig", return_value=None), \
+             mock.patch.object(oasis_app.HD_detect, "detect_dra_pi", return_value=True), \
+             mock.patch.object(oasis_app, "_apply_hardware_async",
+                               side_effect=lambda: applied.append(1)), \
+             mock.patch.object(oasis_app.threading, "Thread", _SyncThread):
+            r = self.c.get("/api/hardware/devices")
+        body = json.loads(r.data)
+        ids = [d["id"] for d in body["devices"]]
+        self.assertIn("dra-pi", ids)
+        self.assertEqual(body["services"]["winlink"]["device_id"], "dra-pi")
+        self.assertTrue(body["services"]["winlink"]["ok"])
+        self.assertEqual(applied, [1])
 
     def test_devices_route_scans_when_new_dongle_plugged(self):
         # present (2) > declared (1) → scan runs to pick up the new dongle.

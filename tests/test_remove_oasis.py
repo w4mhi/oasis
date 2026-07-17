@@ -31,7 +31,8 @@ _spec.loader.exec_module(remove_oasis)
 class TestInventory(unittest.TestCase):
     def test_services_complete(self):
         for svc in ("oasis", "oasis-panel", "graywolf", "graywolf-api", "pat",
-                    "kiwix", "webssh", "aprs-sdr-feed", "openwebrx", "rgb-cooling-hat"):
+                    "kiwix", "webssh", "aprs-sdr-feed", "openwebrx", "adsb-api",
+                    "rgb-cooling-hat"):
             self.assertIn(svc, remove_oasis.SERVICES)
 
     def test_files_and_dirs(self):

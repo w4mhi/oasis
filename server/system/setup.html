@@ -91,25 +91,36 @@
   background: #0b0e10; color: #d7e6dd; border: 1px solid #27323b;
   border-radius: 8px; padding: .55rem; max-height: 210px; overflow: auto; white-space: pre-wrap;
 }
-/* ── Hardware card (detect · declare · assign) ─────────────────────────── */
-.setup-hw-cols { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+/* ── Hardware card ────────────────────────────────────────────────────── */
+/* Full row width: a plain .setup-box has no flex-basis, so as a direct child
+   of .setup-grid (display:flex;flex-wrap:wrap) it was only ever as wide as its
+   content — falling short of the row above (.setup-features-box + .setup-right,
+   which together span the full grid width). flex-basis 100% forces it onto its
+   own row, stretched edge-to-edge to match. */
+#hardware { flex: 1 1 100%; box-sizing: border-box; padding: 1rem 1.2rem; }
+#hardware h3 { font-size: var(--fs-subtitle); margin-bottom: .6rem; }
+.setup-hw-cols { display: grid; gap: 1.3rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .setup-hw-col { min-width: 0; }
-.setup-hw-h { font-size: var(--fs-label); color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 .4rem; border-bottom: 1px solid var(--border); padding-bottom: .2rem; }
-.setup-hw-sub { font-size: var(--fs-small); color: var(--text-dim); margin: .55rem 0 .25rem; }
-.setup-hw-row { display: flex; align-items: center; gap: .4rem; margin: .3rem 0; }
-.setup-hw-row .setup-hw-name { flex: 0 0 5.5rem; font-size: var(--fs-small); color: var(--text-dim); }
-.setup-hw-row select.setup-input { flex: 1; }
-.setup-hw-msg { font-size: var(--fs-small); color: var(--text-dim); margin-top: .3rem; min-height: 1em; }
-.setup-hw-declared { display: flex; align-items: center; gap: .4rem; font-size: var(--fs-small); margin: .2rem 0; }
+.setup-hw-h { font-size: var(--fs-base); color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 .55rem; border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
+.setup-hw-sub { font-size: var(--fs-label); color: var(--text-dim); margin: .7rem 0 .3rem; }
+.setup-hw-row { display: flex; align-items: center; gap: .5rem; margin: .4rem 0; }
+.setup-hw-row .setup-hw-name { flex: 0 0 6rem; font-size: var(--fs-label); color: var(--text-dim); }
+.setup-hw-row select.setup-input { flex: 1; padding: .45rem .5rem; }
+.setup-hw-msg { font-size: var(--fs-label); color: var(--text-dim); margin-top: .35rem; min-height: 1em; }
+.setup-hw-declared { display: flex; align-items: center; gap: .4rem; font-size: var(--fs-label); margin: .25rem 0; }
 .setup-hw-declared .setup-hw-kind { color: var(--text-dim); }
 .setup-hw-btn-sm { font-size: var(--fs-small); padding: .15rem .45rem; }
 .setup-hw-fields > * { margin-top: .3rem; }
-.setup-hw-note { font-size: var(--fs-micro, 11px); color: var(--text-dim); margin: .1rem 0 .4rem; line-height: 1.35; }
-.setup-dongle { display: flex; align-items: baseline; gap: .5rem; font-size: var(--fs-small); padding: .25rem 0; border-bottom: 1px solid var(--border); }
+.setup-hw-note { font-size: var(--fs-small); color: var(--text-dim); margin: .15rem 0 .5rem; line-height: 1.4; }
+/* Two-line layout: name+status on top, detail (e.g. a long PTT by-id path)
+   wrapped below on its own line — a single flex row let that detail text push
+   past the column edge into "Assign to services" instead of wrapping. */
+.setup-dongle { display: flex; flex-direction: column; gap: .15rem; font-size: var(--fs-label); padding: .35rem 0; border-bottom: 1px solid var(--border); min-width: 0; }
 .setup-dongle:last-child { border-bottom: none; }
-.setup-dongle .d-serial { font-family: var(--mono); color: var(--text); }
-.setup-dongle .d-port { color: var(--text-dim); font-size: var(--fs-micro, 11px); }
-.setup-dongle .d-svc { margin-left: auto; white-space: nowrap; }
+.setup-dongle-top { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.setup-dongle .d-serial { font-family: var(--mono); color: var(--text); flex-shrink: 0; }
+.setup-dongle .d-port { color: var(--text-dim); font-size: var(--fs-micro, 11px); word-break: break-all; overflow-wrap: anywhere; }
+.setup-dongle .d-svc { margin-left: auto; white-space: nowrap; flex-shrink: 0; }
 .setup-dongle .d-dot { flex: 0 0 auto; }
 </style>
 </head>
@@ -237,7 +248,7 @@
     </div>
     </div>
     <div class="setup-box" id="hardware">
-      <h3>Hardware — detect · declare · assign</h3>
+      <h3>Hardware</h3>
       <div class="setup-hw-cols">
 
         <div class="setup-hw-col">
@@ -251,19 +262,7 @@
         <div class="setup-hw-col">
           <div class="setup-hw-h">Radio port (Winlink)</div>
           <div id="hwRadioPorts"></div>
-          <div class="setup-hw-note">A lone DigiRig auto-registers (its CP210x PTT + audio go straight into direwolf). Use the form only to override, or to declare a DRA-Pi.</div>
-          <div class="setup-hw-fields">
-            <select class="setup-input" id="hwDeclareKind">
-              <option value="digirig">Digirig</option>
-              <option value="dra-pi">DRA-Pi</option>
-            </select>
-            <select class="setup-input" id="hwDeclareAlsa"></select>
-            <select class="setup-input" id="hwDeclarePtt"></select>
-            <input class="setup-input" id="hwDeclareId" placeholder="id (e.g. digirig-1)">
-            <input class="setup-input" id="hwDeclareLabel" placeholder="label (e.g. DigiRig — FT-891)">
-            <button class="setup-btn" id="hwDeclareBtn" type="button">Declare radio port</button>
-          </div>
-          <div class="setup-hw-msg" id="hwDeclareMsg"></div>
+          <div class="setup-hw-note">DigiRig (a lone CP210x) and DRA-Pi register automatically when present — then assign one to Winlink RF at right.</div>
         </div>
 
         <div class="setup-hw-col">
@@ -1015,9 +1014,12 @@ function setupRenderHw(d) {
   list.innerHTML = lines.map(s => `<li>${s}</li>`).join('');
 }
 
-// ── Hardware card: detect · declare · assign ────────────────────────────────
-// This card is the single home for hardware management (v2 design §7). The
-// dashboard shows each service's assigned device read-only; changes happen here.
+// ── Hardware card ────────────────────────────────────────────────────────────
+// This card is the single home for hardware management (v2 design §7) —
+// detection and declaration are automatic (SDRs, DigiRig, DRA-Pi all
+// self-register); the only manual action left is picking which service a
+// device is assigned to. The dashboard shows each service's assigned device
+// read-only; changes happen here.
 // Services eligible for device assignment + the device kinds each accepts —
 // MUST mirror common/hardware.py's DEVICE_KIND_FOR_SERVICE. (aprs also accepts
 // digirig/dra-pi in the engine, but the SDR-feed path only makes sense on an
@@ -1040,7 +1042,6 @@ async function setupDetectHardware() {
   try {
     detect = await jget('/api/setup/hardware-detect');
     setupRenderHw(detect);
-    hwRenderDeclareForm(detect);
   } catch (e) {
     list.innerHTML = `<li>Hardware detect failed: ${escapeHtml(e.message)}</li>`;
   }
@@ -1058,14 +1059,16 @@ function hwRenderRadioPorts(devices) {
   const box = document.getElementById('hwRadioPorts');
   if (!box) return;
   const list = ((devices && devices.devices) || []).filter(d => d.kind === 'digirig' || d.kind === 'dra-pi');
-  if (list.length === 0) { box.innerHTML = ''; return; }
+  if (list.length === 0) { box.innerHTML = '<div class="setup-hw-msg">None detected.</div>'; return; }
   box.innerHTML = list.map(d => {
     const ptt = d.ptt ? escapeHtml(d.ptt.replace(/^.*\//, '')) : 'auto';
     const svc = d.assignee ? (d.running ? `🔴 ${d.assignee}` : `🟢 ${d.assignee}`) : '⚪ unassigned';
     return `<div class="setup-dongle">
-      <span class="d-serial">${escapeHtml(d.label || d.kind)}</span>
-      <span class="d-port" title="${d.ptt ? escapeHtml(d.ptt) : ''}">PTT ${ptt}</span>
-      <span class="d-svc">${escapeHtml(svc)}</span>
+      <div class="setup-dongle-top">
+        <span class="d-serial">${escapeHtml(d.label || d.kind)}</span>
+        <span class="d-svc">${escapeHtml(svc)}</span>
+      </div>
+      <div class="d-port" title="${d.ptt ? escapeHtml(d.ptt) : ''}">PTT ${ptt}</div>
     </div>`;
   }).join('');
 }
@@ -1089,29 +1092,14 @@ function hwRenderDongles(devices) {
     const color = busy ? 'var(--red)' : (d.assignee ? 'var(--green)' : 'var(--text-dim)');
     const dot = busy ? '🔴' : (d.assignee ? '🟢' : '⚪');
     return `<div class="setup-dongle">
-      <span class="d-serial">${escapeHtml(d.serial || d.label)}</span>
-      <span class="d-port">${port}</span>
-      <span class="d-svc" style="color:${color}">${dot} ${escapeHtml(svcText)}</span>
+      <div class="setup-dongle-top">
+        <span class="d-serial">${escapeHtml(d.serial || d.label)}</span>
+        <span class="d-svc" style="color:${color}">${dot} ${escapeHtml(svcText)}</span>
+      </div>
+      <div class="d-port">${port}</div>
     </div>`;
   }).join('');
 }
-
-function hwRenderDeclareForm(detect) {
-  const det = (detect && detect.detected) || {};
-  const alsaSel = document.getElementById('hwDeclareAlsa');
-  const pttSel  = document.getElementById('hwDeclarePtt');
-  const kindSel = document.getElementById('hwDeclareKind');
-  if (!alsaSel || !pttSel || !kindSel) return;
-  alsaSel.innerHTML = (det.alsa || [])
-    .map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.description)} (card ${a.card})</option>`)
-    .join('') || '<option value="">no ALSA cards detected</option>';
-  // dra-pi drives PTT over a fixed GPIO, so no serial-port pick for it.
-  pttSel.style.display = kindSel.value === 'dra-pi' ? 'none' : '';
-  pttSel.innerHTML = (det.serial || [])
-    .map(s => `<option value="${escapeHtml(s.path)}">${escapeHtml(s.label)}</option>`)
-    .join('') || '<option value="">no serial ports detected</option>';
-}
-
 
 function hwRenderAssignRows(devices) {
   const box = document.getElementById('hwAssignRows');
@@ -1133,25 +1121,6 @@ function hwRenderAssignRows(devices) {
       <select class="setup-input" data-assign-service="${escapeHtml(svc.service)}"${isRunning ? ' disabled title="Stop the service to change its device"' : ''}>${opts}</select>
     </div>`;
   }).join('');
-}
-
-async function hwDeclareRadioPort() {
-  const msg = document.getElementById('hwDeclareMsg');
-  const kind = document.getElementById('hwDeclareKind').value;
-  const body = {
-    id: document.getElementById('hwDeclareId').value.trim(),
-    kind,
-    label: document.getElementById('hwDeclareLabel').value.trim(),
-    alsa: document.getElementById('hwDeclareAlsa').value,
-    ptt: kind === 'dra-pi' ? 'gpio12' : document.getElementById('hwDeclarePtt').value,
-  };
-  const { ok, data } = await jpost('/api/hardware/devices', body);
-  if (msg) msg.textContent = ok ? 'Declared.' : ('Error: ' + (data.error || 'unknown'));
-  if (ok) {
-    document.getElementById('hwDeclareId').value = '';
-    document.getElementById('hwDeclareLabel').value = '';
-    setupDetectHardware();
-  }
 }
 
 async function hwAssignChange(service, deviceId) {
@@ -1379,11 +1348,7 @@ function initSetupOrchestrator() {
   const webssh = document.getElementById('setupWebssh');
   webssh.href = `http://${HOST}:${PORTS.webssh}/`;
   document.getElementById('setupRefreshHw').addEventListener('click', setupDetectHardware);
-  // Hardware card: declare + assign controls.
-  document.getElementById('hwDeclareKind').addEventListener('change', function () {
-    document.getElementById('hwDeclarePtt').style.display = this.value === 'dra-pi' ? 'none' : '';
-  });
-  document.getElementById('hwDeclareBtn').addEventListener('click', hwDeclareRadioPort);
+  // Hardware card: the assign dropdowns (SDRs + radio ports auto-declare, no form).
   document.getElementById('hwAssignRows').addEventListener('change', (e) => {
     const sel = e.target.closest('[data-assign-service]');
     if (sel) hwAssignChange(sel.dataset.assignService, sel.value);

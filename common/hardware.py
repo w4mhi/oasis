@@ -331,12 +331,11 @@ def reconcile_present_rtl_sdrs(repo_root, inv, detected_serials, present_count,
     detection OR a service assigned to it is currently running (a busy dongle is
     hidden from rtl_test's exclusive probe but is obviously still attached).
 
-    Assignments to a removed dongle are deliberately LEFT dangling: load()
-    tolerates an assignment whose device is absent (can_start reports
-    "device-not-attached"), the assign UI then shows that service as unassigned,
-    default_assign won't silently re-point it at a surviving dongle, and
-    re-plugging (auto_declare_rtl_sdrs re-adds the same rtl-sdr-<serial> id)
-    revalidates the assignment automatically.
+    Assignments to a removed dongle are CLEARED, not left dangling: the caller's
+    default_assign then fails those services over to a surviving dongle (they
+    all share the one that's left), and only when NO dongle remains do they end
+    up truly unassigned. So unplugging one of two dongles keeps the services
+    running on the other; unplugging the last one is what shows "unassigned".
 
     Acts only when the number of confirmed-absent dongles equals the real USB
     count drop (declared − present_count). A mismatch means detection is
@@ -353,6 +352,8 @@ def reconcile_present_rtl_sdrs(repo_root, inv, detected_serials, present_count,
         return inv
     for did in absent:
         del inv.devices[did]
+        for svc in [s for s, dev in inv.assignments.items() if dev == did]:
+            del inv.assignments[svc]   # freed → default_assign re-points to a survivor
     save(repo_root, inv)
     return inv
 
@@ -389,6 +390,37 @@ def reconcile_digirig(repo_root, inv, path_exists=None):
         path_exists = os.path.exists
     removed = [did for did, d in inv.devices.items()
                if d.get("kind") == "digirig" and d.get("ptt") and not path_exists(d["ptt"])]
+    if not removed:
+        return inv
+    for did in removed:
+        del inv.devices[did]
+    save(repo_root, inv)
+    return inv
+
+
+def auto_declare_dra_pi(repo_root, inv, present):
+    """Declare the DRA-Pi HAT when its ALSA card is present and none is declared.
+    Fully deterministic — fixed `audioinjectorpi` ALSA + GPIO-12 PTT (the real
+    GPIO is resolved at apply time by winlink.compute_ptt_gpio), so a bare
+    kind='dra-pi' record is all that's needed; no detection ambiguity like the
+    DigiRig. There's only ever one DRA-Pi (a HAT), so the id is fixed."""
+    if not present:
+        return inv
+    if any(d.get("kind") == "dra-pi" for d in inv.devices.values()):
+        return inv
+    inv.devices["dra-pi"] = {"id": "dra-pi", "kind": "dra-pi", "ptt": "gpio12",
+                             "alsa": "audioinjectorpi", "label": "DRA-Pi"}
+    save(repo_root, inv)
+    return inv
+
+
+def reconcile_dra_pi(repo_root, inv, present):
+    """Undeclare the DRA-Pi when its ALSA card is gone (overlay unloaded / HAT
+    removed) — the analogue of reconcile_digirig. Assignment left dangling so a
+    re-detect revalidates it."""
+    if present:
+        return inv
+    removed = [did for did, d in inv.devices.items() if d.get("kind") == "dra-pi"]
     if not removed:
         return inv
     for did in removed:

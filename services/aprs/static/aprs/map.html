@@ -61,6 +61,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   min-width:160px;max-width:240px;
 }
 .maplibregl-popup-tip{border-top-color:var(--panel)!important;}
+/* Close "×": maplibre's own CSS loads after ours and paints it dark, so it
+   vanishes on our dark popup — override with !important. */
+.maplibregl-popup-close-button{
+  color:#fff!important;font-size:22px!important;line-height:1;font-family:var(--mono);
+  padding:2px 9px!important;right:2px;top:2px;background:transparent!important;border:none;
+}
+.maplibregl-popup-close-button:hover{color:var(--accent)!important;background:transparent!important;}
 .maplibregl-ctrl-group{background:var(--panel)!important;border:1px solid var(--border)!important;}
 .maplibregl-ctrl-group button{background:var(--panel)!important;}
 /* Distance scale bar (bottom-left) — themed to match our boxes */
@@ -73,7 +80,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   font-size:var(--fs-small)!important;
   line-height:1.4;padding:0 5px 1px;
 }
-.pop-call{font-size:var(--fs-subtitle);font-weight:700;color:var(--accent);margin-bottom:4px;}
+.pop-call{font-size:var(--fs-subtitle);font-weight:700;color:var(--accent);margin-bottom:4px;padding-right:16px;}
 .pop-row{display:flex;gap:.4rem;margin-top:2px;font-size:var(--fs-small);}
 .pop-lbl{color:var(--text-dim);min-width:52px;}
 .pop-val{color:var(--text);}
@@ -1430,8 +1437,12 @@ function buildPopup(s) {
 function buildAdsbPopup(a) {
   const title = (a.flight || a.hex || '').trim() || a.hex;
   const isHeli = a.category === 'A7';
+  const milBadge = !AC_CAT_SHAPE[a.category] && hexIsMilitary(a.hex) ? ' <span style="color:#ff5555;font-size:var(--fs-small)">[MIL]</span>'
+                 : !AC_CAT_SHAPE[a.category] && suspectedMilitary(a) ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[mil?]</span>'
+                 : '';
   let html = '<div class="pop-call">' + _escHtml(title) +
-             (isHeli ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[heli]</span>' : '') + '</div>';
+             (isHeli ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[heli]</span>' : '') +
+             milBadge + '</div>';
   if (a.squawk) {
     html += '<div class="pop-row"><span class="pop-lbl">Squawk</span><span class="pop-val">' + _escHtml(a.squawk) + '</span></div>';
   }
@@ -1862,6 +1873,149 @@ function adsbCategoryKey(a) {
   return adsbSymCode(a.category) === 'X' ? 'heli' : 'aircraft';
 }
 
+// ── Category-shaped, altitude-coloured aircraft icons (adsbexchange-style) ────
+// Top-down silhouettes (24×24 viewBox, nose UP so icon-rotate=track points them
+// the way they're flying). One SVG path per emitter-category shape; the marker
+// is filled in the altitude colour (same colour drives its label). Icons are
+// rasterised to a canvas ON DEMAND and cached by shape+colour, so only the
+// combos actually in view cost anything — a Pi Zero concern.
+// Each shape carries its own square viewBox size (`vb`) so shapes drawn in
+// different coordinate spaces can coexist — most are 24-unit, but A5/B1 are the
+// graphic-designer's preferred 100-unit paths.
+const AC_SHAPES = {
+  // airliner (A3) — swept wings + tailplane; also the fallback shape.
+  airliner:{vb:24, d:"M12 1.5C12.8 1.5 13.1 3.2 13.1 6L13.1 10.5 22 15.5 22 17.5 13.1 13.8 13.1 18.8 15.5 21.2 15.5 22.3 12 20.9 8.5 22.3 8.5 21.2 10.9 18.8 10.9 13.8 2 17.5 2 15.5 10.9 10.5 10.9 6C10.9 3.2 11.2 1.5 12 1.5Z"},
+  // light single-engine (A1) — small straight wings.
+  light:   {vb:24, d:"M12 3.5C12.6 3.5 12.9 4.8 12.9 7L12.9 10.2 20 11.6 20 13 12.9 12.2 12.9 17.5 14.6 19.6 14.6 20.6 12 19.5 9.4 20.6 9.4 19.6 11.1 17.5 11.1 12.2 4 13 4 11.6 11.1 10.2 11.1 7C11.1 4.8 11.4 3.5 12 3.5Z"},
+  // twin turboprop / small bizjet (A2) — mid span, mild sweep.
+  twin:    {vb:24, d:"M12 2.5C12.7 2.5 13 4 13 6.5L13 10.5 21 13.5 21 15.5 13 13.5 13 18.5 15.3 20.8 15.3 21.8 12 20.5 8.7 21.8 8.7 20.8 11 18.5 11 13.5 3 15.5 3 13.5 11 10.5 11 6.5C11 4 11.3 2.5 12 2.5Z"},
+  // heavy / widebody (A4) — wide swept wings.
+  heavy:   {vb:24, d:"M12 1C12.9 1 13.3 3 13.3 6L13.3 10 23 16 23 18.2 13.3 14 13.3 19 16 21.5 16 22.6 12 21 8 22.6 8 21.5 10.7 19 10.7 14 1 18.2 1 16 10.7 10 10.7 6C10.7 3 11.1 1 12 1Z"},
+  // fighter (A5) — designer's swept jet.
+  fighter: {vb:100, d:"M50 5 L46 20 L46 45 L15 70 L15 76 L45 68 L45 88 L34 92 L34 95 L50 92 L66 95 L66 92 L55 88 L55 68 L85 76 L85 70 L54 45 L54 20 Z"},
+  // helicopter (A7) — fuselage + tail boom + rotor cross.
+  heli:    {vb:24, d:"M12 7.5C14.2 7.5 14.6 12 12 13.2 9.4 12 9.8 7.5 12 7.5ZM11.4 12 12.6 12 12.6 21 11.4 21ZM3 11.3 21 11.3 21 12.7 3 12.7ZM11.3 3 12.7 3 12.7 21 11.3 21Z"},
+  // glider / parachute (B1/B2) — designer's ultra-wide thin wings.
+  glider:  {vb:100, d:"M48 15 C48 15 46 25 46 38 L2 45 C1 45.2 1 46.8 2 47 L46 48 L46 80 L35 88 C34 89 34 90 36 90 L48 87 L48 93 C48 95 52 95 52 93 L52 87 L64 90 C66 90 66 89 65 88 L54 80 L54 48 L98 47 C99 46.8 99 45.2 98 45 L54 38 C54 25 52 15 52 15 Z"},
+  // surface vehicle (C1/C2) — rounded rectangle.
+  ground:  {vb:24, d:"M6.5 7.5 17.5 7.5Q19 7.5 19 9L19 15Q19 16.5 17.5 16.5L6.5 16.5Q5 16.5 5 15L5 9Q5 7.5 6.5 7.5Z"},
+  // military / unidentified — stealth arrowhead (flying-wing delta, no fuselage),
+  // deliberately unlike A5's winged fighter and A3's airliner.
+  mil:     {vb:24, d:"M12 2.5 20.5 20 12 15.5 3.5 20Z"},
+};
+const AC_CAT_SHAPE = {
+  A1:'light', A2:'twin', A3:'airliner', A4:'heavy', A5:'fighter', A7:'heli',
+  B1:'glider', B2:'glider', C1:'ground', C2:'ground',
+};
+// Military ICAO-address blocks (24-bit hex, inclusive [lo, hi]), ordered by
+// address. Transcribed from wiedehopf/readsb `aircraft.c isMilRange()` (the
+// maintained upstream list) — 2026-07. readsb itself flags military from a
+// per-aircraft database (not offline-friendly); this allocation-range list is
+// the equivalent that needs no database. Append [lo, hi] pairs to extend.
+const MIL_HEX_RANGES = [
+  [0x010070, 0x01008F], // Egypt
+  [0x0A4000, 0x0A4FFF], // Algeria
+  [0x33FF00, 0x33FFFF], // Italy
+  [0x350000, 0x37FFFF], // Spain
+  [0x3AA000, 0x3AFFFF], // France
+  [0x3B7000, 0x3BFFFF], // France
+  [0x3EA000, 0x3EBFFF], // Germany
+  [0x3F4000, 0x3FBFFF], // Germany
+  [0x400000, 0x40003F], // United Kingdom
+  [0x43C000, 0x43CFFF], // United Kingdom
+  [0x444000, 0x446FFF], // Austria
+  [0x44F000, 0x44FFFF], // Belgium
+  [0x457000, 0x457FFF], // Bulgaria
+  [0x45F400, 0x45F4FF], // Denmark
+  [0x468000, 0x4683FF], // Greece
+  [0x473C00, 0x473C0F], // Hungary
+  [0x478100, 0x4781FF], // Norway
+  [0x480000, 0x480FFF], // Netherlands
+  [0x48D800, 0x48D87F], // Poland
+  [0x497C00, 0x497CFF], // Portugal
+  [0x498420, 0x49842F], // Czech Republic
+  [0x4B7000, 0x4B7FFF], // Switzerland
+  [0x4B8200, 0x4B82FF], // Turkey
+  [0x506F32, 0x506FFF], // Slovenia
+  [0x70C070, 0x70C07F], // Oman
+  [0x710258, 0x71028F], // Saudi Arabia
+  [0x710380, 0x71039F], // Saudi Arabia
+  [0x738A00, 0x738AFF], // Israel
+  [0x7CF800, 0x7CFAFF], // Australia
+  [0x800200, 0x8002FF], // India
+  [0xADF7C8, 0xAFFFFF], // United States
+  [0xC20000, 0xC3FFFF], // Canada
+  [0xE40000, 0xE41FFF], // Brazil
+  [0xE80600, 0xE806FF], // Chile
+];
+function hexIsMilitary(hex) {
+  if (!hex) return false;
+  const n = parseInt(String(hex).replace(/[^0-9a-fA-F]/g, ''), 16);   // strip '~' TIS-B prefix etc.
+  return isFinite(n) && MIL_HEX_RANGES.some(([lo, hi]) => n >= lo && n <= hi);
+}
+// Fuzzy tier for the "no id at all" case: anonymous (no callsign AND no category)
+// plus one kinematic tell that doesn't fit GA. Deliberately conservative — this
+// is SUSPECTED (rendered hollow), never claimed as confirmed.
+function suspectedMilitary(a) {
+  const anon = !(a.flight && a.flight.trim()) && !a.category;
+  const fast = a.gs != null && a.gs > 350;                     // knots
+  const high = a.alt_baro !== 'ground' && Number(a.alt_baro) > 40000;   // ft
+  return anon && (fast || high);
+}
+// Pick the icon shape + fill state for an aircraft. Known category always wins
+// (a tagged military transport still looks like its type); only the otherwise-
+// generic fallback becomes military-aware: confirmed (filled arrowhead) via hex,
+// suspected (hollow arrowhead) via the fuzzy tell, else the plain A3 airliner.
+function acShapeFor(a) {
+  if (AC_CAT_SHAPE[a.category]) return { key: AC_CAT_SHAPE[a.category], filled: true };
+  if (hexIsMilitary(a.hex))     return { key: 'mil', filled: true };
+  if (suspectedMilitary(a))     return { key: 'mil', filled: false };
+  return { key: 'airliner', filled: true };   // A3 fallback
+}
+
+// Altitude → colour (ft). dump1090 emits the literal string "ground" for
+// on-surface targets; everything else is a number of feet.
+function altColor(alt) {
+  if (alt === 'ground')   return '#A0522D';   // brown — surface
+  const ft = Number(alt);
+  if (!isFinite(ft))      return '#B8C4D0';   // unknown altitude → neutral grey
+  if (ft <= 2000)         return '#FF0000';
+  if (ft <= 5000)         return '#FF7F00';
+  if (ft <= 10000)        return '#FFFF00';
+  if (ft <= 15000)        return '#00FF00';
+  if (ft <= 25000)        return '#00FFFF';
+  if (ft <= 35000)        return '#0066FF';
+  return '#FF00FF';
+}
+
+const AC_ICON_PX = 30;   // on-map size; rasterised at 2× for crispness
+function ensureAircraftImage(shapeKey, color, filled) {
+  filled = filled !== false;   // default filled; false = hollow (suspected mil)
+  const id = 'ac|' + shapeKey + '|' + color + (filled ? '' : '|h');
+  if (map.hasImage(id)) return id;
+  const shape = AC_SHAPES[shapeKey] || AC_SHAPES.airliner;
+  const pr = 2, S = AC_ICON_PX * pr, pad = 3 * pr, sc = (S - pad * 2) / shape.vb;
+  const cv = document.createElement('canvas'); cv.width = S; cv.height = S;
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(sc, 0, 0, sc, pad, pad);
+  const p = new Path2D(shape.d);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  if (filled) {
+    // Rim is set in path units but rendered at ×sc — divide so the dark contrast
+    // outline is the same on-screen thickness for every shape's viewBox.
+    ctx.strokeStyle = 'rgba(13,17,23,0.92)'; ctx.lineWidth = 4.8 / sc;
+    ctx.stroke(p);
+    ctx.fillStyle = color; ctx.fill(p);
+  } else {
+    // Hollow: dark body + coloured outline — reads as "suspected, not confirmed".
+    ctx.fillStyle = 'rgba(13,17,23,0.55)'; ctx.fill(p);
+    ctx.strokeStyle = color; ctx.lineWidth = 3.2 / sc; ctx.stroke(p);
+  }
+  const data = ctx.getImageData(0, 0, S, S);
+  map.addImage(id, { width: S, height: S, data: data.data }, { pixelRatio: pr });
+  return id;
+}
+
 let _adsbAircraft = [];   // raw list from the last successful /api/adsb/aircraft poll
 
 // Re-render the adsb source from the last-fetched list, honoring the
@@ -1875,12 +2029,16 @@ function applyAdsbFilter() {
     .filter(a => objCatState[adsbCategoryKey(a)] !== false)
     .map(a => {
       const emerg = ['7500', '7600', '7700'].includes(a.squawk);
-      const symId = ensureStationImage('/', adsbSymCode(a.category));
+      const color = altColor(a.alt_baro);
+      const shp = acShapeFor(a);
+      const symId = ensureAircraftImage(shp.key, color, shp.filled);
       return {
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
         properties: {
           sym: symId || '',
+          labelColor: color,
+          military: shp.key === 'mil' ? (shp.filled ? 'confirmed' : 'suspected') : '',
           emergency: emerg,
           label: (a.flight || a.hex || '').trim() + (emerg ? ' ⚠' : ''),
           flight: a.flight || '', hex: a.hex || '', squawk: a.squawk || '',
@@ -2151,7 +2309,8 @@ loadConfig().then(() => {
         'text-allow-overlap': false
       },
       paint: {
-        'text-color': '#e8f0f8',
+        // Label takes the same altitude colour as the aircraft icon.
+        'text-color': ['coalesce', ['get', 'labelColor'], '#e8f0f8'],
         'text-halo-color': '#0d1117',
         'text-halo-width': 1.6
       }

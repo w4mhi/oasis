@@ -355,7 +355,13 @@ def build_registry(repo_root, payload=None):
             dependencies=[],
             install_fn=lambda: _setup_run_chain(repo_root, [
                 {"script": "features/rtl-sdr/install-rtl-sdr.py"},
-                {"script": "features/rtl-sdr/enable-rtl-sdr.py"},
+                # --no-enable: install the feed unit but leave it stopped and
+                # disabled after setup, like every other OASIS service (off by
+                # default; the operator starts it from the dashboard). Without
+                # it, enable-rtl-sdr.py runs `systemctl enable --now`, which both
+                # starts the feed immediately and auto-starts it on every boot.
+                # Operator-initiated start (enable --now) still survives reboots.
+                {"script": "features/rtl-sdr/enable-rtl-sdr.py", "args": ["--no-enable"]},
             ]),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
@@ -457,7 +463,16 @@ def build_registry(repo_root, payload=None):
         "wikipedia": SE.FeatureSpec(
             key="wikipedia",
             dependencies=["kiwix"],
-            install_fn=lambda: _setup_run_script(repo_root, "services/kiwix/download-wikipedia.py"),
+            # Automation runs headless (no TTY), so pass an explicit --edition —
+            # otherwise download-wikipedia.py falls through to its interactive
+            # picker and input() raises EOFError. "simple-mini" is the smallest
+            # Simple-English edition (~447 MB), a sane default for a small SD
+            # card; operators can fetch a larger one later from the CLI. The
+            # generous timeout covers the download on a slow field link (the
+            # default 300s can't finish ~447 MB on a Pi Zero's connection).
+            install_fn=lambda: _setup_run_script(
+                repo_root, "services/kiwix/download-wikipedia.py",
+                ["--edition", "top-mini"], timeout=1800),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
         ),

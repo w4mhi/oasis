@@ -44,11 +44,15 @@ from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run  # noqa:
 SERVICES = [
     "oasis", "oasis-panel",
     "graywolf", "graywolf-api", "pat", "kiwix", "webssh",
-    "aprs-sdr-feed", "openwebrx", "rgb-cooling-hat",
+    "aprs-sdr-feed", "openwebrx", "adsb-api", "rgb-cooling-hat",
 ]
 FILES = [
     "/etc/sudoers.d/oasis-service-controls",
     "/etc/modprobe.d/rtlsdr-blacklist.conf",
+    # OASIS drop-in that pulls adsb-api in with dump1090-fa (services/adsb).
+    "/etc/systemd/system/dump1090-fa.service.d/oasis-adsb-api.conf",
+    # OASIS lighttpd drop-in that moves FlightAware SkyAware off GrayWolf's 8080.
+    "/etc/lighttpd/conf-enabled/99-oasis-skyaware-port.conf",
     "/usr/local/bin/oasis-browser-launch",
     "/usr/local/bin/ttyd",
     "/usr/local/bin/kiwix-serve",

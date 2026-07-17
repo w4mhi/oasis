@@ -247,6 +247,17 @@ def detect_digirig():
     return {"ptt": ptt, "serial": m.group(1) if m else ""}
 
 
+def detect_dra_pi():
+    """True if the DRA-Pi HAT is present — its `audioinjectorpi` ALSA card shows,
+    i.e. the overlay is loaded. Self-contained (runs `aplay -l`) so the poll can
+    call it like detect_digirig(). The DRA-Pi is fully deterministic (card
+    present ⇒ fixed audioinjectorpi ALSA + GPIO-12 PTT), so a boolean is all
+    auto-declare needs. Linux only."""
+    if sys.platform != "linux":
+        return False
+    return dra_pi_present(parse_aplay_cards(_run_text(["aplay", "-l"])))
+
+
 def scan():
     """Enumerate attached hardware for the assignment editor. Linux only —
     returns empty candidate lists elsewhere (mirrors the no-op pattern used by

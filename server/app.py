@@ -1592,7 +1592,22 @@ _SERVICE_ACTIONS = {"start", "stop", "restart"}
 # (comes back after reboot), stopping also `disable`s them (stays off). Everything
 # else is transient (plain start/stop; boot state left untouched). restart never
 # changes boot state.
-_PERSIST_BOOT_STATE = {"kiwix"}
+#
+# This is exactly the set of RTL-SDR consumers that share the one dongle
+# advisorily (aprs-sdr-feed / dump1090-fa / openwebrx — see HW_SERVICE_FOR_CARD
+# in index.html). They're all installed OFF (e.g. setup passes enable-rtl-sdr.py
+# --no-enable), so nothing auto-starts after install or reboot. But the operator
+# hands the dongle between them from the dashboard — stop the APRS feed, start
+# ADS-B — and that choice must survive a reboot: the one they started comes back
+# enabled, the one they stopped stays disabled. So start enables / stop disables
+# each of them.
+#
+# ADS-B's card controls dump1090-fa (the decoder); its adsb-api recorder follows
+# via the unit's Wants=/PartOf= drop-in, so enabling dump1090-fa alone brings the
+# whole ADS-B stack back on boot. kiwix is deliberately NOT here — it's not a
+# hardware-shared service, so its boot state is left untouched (transient
+# start/stop) like every other unit.
+_PERSIST_BOOT_STATE = {"aprs-sdr-feed", "dump1090-fa"}
 
 # Services migrated OFF the hard "unassigned -> refuse" gate below, per
 # specs/2026-07-15-hardware-conflict-resolution-v2-design.md — "never refuse a
@@ -1949,19 +1964,24 @@ def api_hardware_devices():
     for _svc in ("adsb", "openwebrx", "aprs"):
         HW.default_assign(SUITE_ROOT, inv, _svc, {"rtl-sdr"})
 
-    # DigiRig: auto-declare a lone one / undeclare on unplug (radio-port analogue
-    # of the SDR flow), auto-assign Winlink RF to it. A digirig's PTT + audio
-    # flow straight into direwolf via winlink.apply, so when the declaration or
-    # winlink's assignment actually changes, re-template direwolf right away
-    # (threaded — never block this poll on the apply subprocess).
+    # Winlink radio ports auto-declare/undeclare like the SDRs — no manual form:
+    #   DigiRig — a lone CP210x PTT by-id (detect_digirig);
+    #   DRA-Pi  — its audioinjectorpi ALSA card (detect_dra_pi), fully fixed.
+    # Winlink RF auto-assigns to whichever is present (both → first, operator
+    # flips via the dropdown). Their PTT + audio flow straight into direwolf via
+    # winlink.apply, so when a declaration or winlink's assignment actually
+    # changes, re-template direwolf right away (threaded — never block the poll).
     winlink_before = inv.assignments.get("winlink")
-    digirig_before = {did for did, d in inv.devices.items() if d.get("kind") == "digirig"}
+    radio_before = {did for did, d in inv.devices.items() if d.get("kind") in ("digirig", "dra-pi")}
     HW.reconcile_digirig(SUITE_ROOT, inv)
     if not any(d.get("kind") == "digirig" for d in inv.devices.values()):
         HW.auto_declare_digirig(SUITE_ROOT, inv, HD_detect.detect_digirig())
+    dra_present = HD_detect.detect_dra_pi()
+    HW.reconcile_dra_pi(SUITE_ROOT, inv, dra_present)
+    HW.auto_declare_dra_pi(SUITE_ROOT, inv, dra_present)
     HW.default_assign(SUITE_ROOT, inv, "winlink", {"digirig", "dra-pi"})
-    digirig_after = {did for did, d in inv.devices.items() if d.get("kind") == "digirig"}
-    if inv.assignments.get("winlink") != winlink_before or digirig_after != digirig_before:
+    radio_after = {did for did, d in inv.devices.items() if d.get("kind") in ("digirig", "dra-pi")}
+    if inv.assignments.get("winlink") != winlink_before or radio_after != radio_before:
         threading.Thread(target=_apply_hardware_async, daemon=True).start()
 
     services = {}

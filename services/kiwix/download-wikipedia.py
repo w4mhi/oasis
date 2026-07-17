@@ -29,34 +29,21 @@ Sizes are approximate and reflect the 2026 Kiwix catalog.
 """
 
 import argparse
-import getpass
 import io
 import os
-import pwd
 import subprocess
 import sys
 import urllib.request
 import xml.etree.ElementTree as ET
 
+# Import the ONE operator-home resolver the kiwix installer uses, so this
+# downloader and the installed kiwix-start script can never disagree about
+# where ZIM files live — even when either is run as bare root. (See
+# target_user_home()'s docstring in services/kiwix/common/kiwix.py.)
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, _REPO_ROOT)
+from services.kiwix.common.kiwix import target_user_home as _target_user_home  # noqa: E402
 
-def _target_user_home():
-    """Return (user, home) for the operator — honours sudo's original user.
-
-    Kiwix's systemd service is installed by the no-tty root installer worker
-    (scripts/oasis_installer_worker.py), which bakes $SUDO_USER into its own
-    unit — see scripts/enable-oasis-installer.py. This script is normally run
-    interactively (not as root), but must resolve the SAME zim directory the
-    installed kiwix-start script looks in, so it uses the same
-    "$SUDO_USER > current user" resolution rather than a bare
-    os.path.expanduser("~") (which would silently diverge to /root's home if
-    this were ever run under sudo).
-    """
-    user = os.environ.get("SUDO_USER") or getpass.getuser()
-    try:
-        home = pwd.getpwnam(user).pw_dir
-    except KeyError:
-        home = os.path.expanduser("~")
-    return user, home
 
 
 KIWIX_ZIM_BASE  = "https://download.kiwix.org/zim/wikipedia"

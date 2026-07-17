@@ -124,5 +124,23 @@ class DetectDigirigTest(unittest.TestCase):
         with mock.patch.object(HD.sys, "platform", "darwin"):
             self.assertIsNone(HD.detect_digirig())
 
+class DetectDraPiTest(unittest.TestCase):
+    _APLAY_DRA = "card 0: audioinjectorpi [AudioInjector Pi], device 0: WM8731 HiFi wm8731-hifi-0 []\n"
+    _APLAY_USB = "card 0: Device [USB Audio Device], device 0: USB Audio [USB Audio]\n"
+
+    def test_true_when_audioinjector_card_present(self):
+        with mock.patch.object(HD.sys, "platform", "linux"), \
+             mock.patch.object(HD, "_run_text", return_value=self._APLAY_DRA):
+            self.assertTrue(HD.detect_dra_pi())
+
+    def test_false_when_only_a_usb_card(self):
+        with mock.patch.object(HD.sys, "platform", "linux"), \
+             mock.patch.object(HD, "_run_text", return_value=self._APLAY_USB):
+            self.assertFalse(HD.detect_dra_pi())
+
+    def test_false_on_non_linux(self):
+        with mock.patch.object(HD.sys, "platform", "darwin"):
+            self.assertFalse(HD.detect_dra_pi())
+
 if __name__ == "__main__":
     unittest.main()

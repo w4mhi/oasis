@@ -235,8 +235,9 @@ class ReconcilePresentRtlSdrsTest(unittest.TestCase):
         hardware.reconcile_present_rtl_sdrs(self.dir, inv, ["A"], 1, is_active=lambda u: False)
         self.assertIn("rtl-sdr-A", inv.devices)
         self.assertNotIn("rtl-sdr-B", inv.devices)
-        # assignment deliberately left dangling (re-plug revalidates it)
-        self.assertEqual(inv.assignments.get("aprs"), "rtl-sdr-B")
+        # its assignment is cleared (default_assign then fails it over to A)
+        self.assertNotIn("aprs", inv.assignments)
+        self.assertEqual(inv.assignments.get("adsb"), "rtl-sdr-A")   # untouched
 
     def test_keeps_busy_dongle_hidden_from_rtl_test(self):
         inv = self._two(adsb="rtl-sdr-A")
@@ -258,7 +259,7 @@ class ReconcilePresentRtlSdrsTest(unittest.TestCase):
                    assignments={"adsb": "rtl-sdr-A"})
         hardware.reconcile_present_rtl_sdrs(self.dir, inv, [], 0, is_active=lambda u: False)
         self.assertNotIn("rtl-sdr-A", inv.devices)
-        self.assertEqual(inv.assignments.get("adsb"), "rtl-sdr-A")   # dangles
+        self.assertNotIn("adsb", inv.assignments)   # no survivor → cleared → unassigned
 
     def test_noop_when_all_present(self):
         inv = _inv(devices={"rtl-sdr-A": _dev("rtl-sdr-A", "rtl-sdr", serial="A")})
@@ -302,6 +303,39 @@ class DigirigTest(unittest.TestCase):
                                                      ptt=self._PTT, alsa="")})
         hardware.reconcile_digirig(self.dir, inv, path_exists=lambda p: True)
         self.assertIn("digirig-3e54e82a", inv.devices)
+
+class DraPiTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def test_auto_declare_when_present(self):
+        inv = _inv()
+        hardware.auto_declare_dra_pi(self.dir, inv, True)
+        self.assertEqual(inv.devices["dra-pi"],
+                         {"id": "dra-pi", "kind": "dra-pi", "ptt": "gpio12",
+                          "alsa": "audioinjectorpi", "label": "DRA-Pi"})
+
+    def test_auto_declare_noop_when_absent(self):
+        inv = _inv()
+        hardware.auto_declare_dra_pi(self.dir, inv, False)
+        self.assertEqual(inv.devices, {})
+
+    def test_auto_declare_noop_when_already_declared(self):
+        inv = _inv(devices={"dra-pi": _dev("dra-pi", "dra-pi", ptt="gpio12", alsa="audioinjectorpi")})
+        hardware.auto_declare_dra_pi(self.dir, inv, True)
+        self.assertEqual(len(inv.devices), 1)
+
+    def test_reconcile_undeclares_when_absent(self):
+        inv = _inv(devices={"dra-pi": _dev("dra-pi", "dra-pi", ptt="gpio12", alsa="audioinjectorpi")},
+                   assignments={"winlink": "dra-pi"})
+        hardware.reconcile_dra_pi(self.dir, inv, False)
+        self.assertNotIn("dra-pi", inv.devices)
+        self.assertEqual(inv.assignments.get("winlink"), "dra-pi")   # dangles
+
+    def test_reconcile_keeps_when_present(self):
+        inv = _inv(devices={"dra-pi": _dev("dra-pi", "dra-pi", ptt="gpio12", alsa="audioinjectorpi")})
+        hardware.reconcile_dra_pi(self.dir, inv, True)
+        self.assertIn("dra-pi", inv.devices)
 
 if __name__ == "__main__":
     unittest.main()

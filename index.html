@@ -1218,7 +1218,6 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <div class="nav-sec-title">Tools</div>
       <ul class="nav-links">
         <li><a href="server/system/setup.html" class="ext">OASIS Setup <span class="nav-meta">health</span></a></li>
-        <li><a href="server/system/setup.html#hardware" class="ext">Hardware Devices <span class="nav-meta">detect · declare · assign</span></a></li>
         <li><a href="static/antenna-calc.html">Antenna Calculator <span class="nav-meta">calculator</span></a></li>
         <li><a href="static/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
         <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
@@ -1729,10 +1728,13 @@ const SERVICES = [
         // leaves it active with samples_per_sec ~0. If the flow probe last
         // saw no signal, surface SILENT here too so the 30s refresh doesn't
         // flash green over a dead receiver (pollAdsbFlow refines this every
-        // ~2s; see below).
-        if (_adsbFlow && _adsbFlow.ok !== false && _adsbFlow.flowing === false)
-          return { up: true, warn: true, badge: 'SILENT', sub: 'no signal · check SDR/USB' };
-        return { up: true, badge: 'UP', sub: 'aircraft tracking' };
+        // ~2s; see below). sub is the positioned/tracked ratio from the same
+        // flow probe, so this 30s poll agrees with it instead of flickering.
+        const f = _adsbFlow;
+        const sub = (f && f.aircraft_count != null) ? ((f.positioned || 0) + '/' + f.aircraft_count) : '';
+        if (f && f.ok !== false && f.flowing === false)
+          return { up: true, warn: true, badge: 'SILENT', sub };
+        return { up: true, badge: 'UP', sub };
       }
       const hw = _hwLast && _hwLast.services && _hwLast.services.adsb;
       if (hw && !hw.ok) {
@@ -1952,7 +1954,9 @@ const ADSB_FLOW_MS = 2000;
 const ADSB_NOMINAL_SAMPLES_PER_SEC = 2_000_000;   // ~RTL-SDR's typical 2.4 MSPS default
 let _adsbFlow = null;   // last probe result, also read by the 30s adsb check
 
-function applyAdsbFlowState(state, aircraftCount, badgeText) {
+// sub shows "positioned/tracked" (e.g. 4/10): what the map can plot vs. every
+// aircraft heard. Bare ratio by design — no "aircraft" word, just the numbers.
+function applyAdsbFlowState(state, positioned, total, badgeText) {
   _svcStates['adsb'] = state;
   const dot = document.getElementById('dot-adsb');
   const card = document.getElementById('card-adsb');
@@ -1961,7 +1965,7 @@ function applyAdsbFlowState(state, aircraftCount, badgeText) {
   if (dot)   dot.className  = 'svc-dot '  + state;
   if (card)  card.className = 'svc-card svc-card-gated ' + state;
   if (badge) { badge.className = 'svc-badge ' + state; badge.textContent = badgeText; }
-  if (sub)   sub.textContent = aircraftCount + ' aircraft';
+  if (sub)   sub.textContent = positioned + '/' + total;
   updateOpenBtn('adsb', state);
   updateSvcCounts();
 }
@@ -1996,11 +2000,11 @@ async function pollAdsbFlow() {
     if (d.flowing) {
       meter.className = 'feed-meter flowing';
       if (label) label.textContent = msgLabel;
-      applyAdsbFlowState('up', d.aircraft_count || 0, 'UP');
+      applyAdsbFlowState('up', d.positioned || 0, d.aircraft_count || 0, 'UP');
     } else {
       meter.className = 'feed-meter silent';
       if (label) label.textContent = msgLabel;
-      applyAdsbFlowState('warn', d.aircraft_count || 0, 'SILENT');
+      applyAdsbFlowState('warn', d.positioned || 0, d.aircraft_count || 0, 'SILENT');
     }
   } catch (e) { /* transient — keep last state, retry next tick */ }
 }
@@ -2013,7 +2017,11 @@ async function pollAdsbFlow() {
 // its keys is installed. The OASIS core (flask · wsgi) and always-bundled data
 // (maps · repeater book · manuals) are never gated.
 const GATEABLE = {
-  gw:    ['graywolf'],  aprs:    ['graywolf'],  feed: ['rtl-feed'],
+  // 'rtl-sdr-feed' is the canonical feature name the installer writes to the
+  // manifest; 'rtl-feed' is only a setup-UI alias (see SETUP_FEATURE_ALIASES) —
+  // keying the gate on the alias hid the card even when the feature WAS
+  // installed. Accept both.
+  gw:    ['graywolf'],  aprs:    ['graywolf'],  feed: ['rtl-sdr-feed', 'rtl-feed'],
   owrx:  ['openwebrx'], winlink: ['winlink'],   wlrf: ['winlink'],   gpsd: ['gps'],
   kiwix: ['kiwix'],     webssh:  ['webssh'],    fcc:  ['fcc'],       adsb: ['adsb'],
   wiki:  ['wikipedia'], rb:      ['repeaterbook'], forms: ['forms'],
@@ -2051,9 +2059,9 @@ function _gateEls(id) {
 // installed-services.json, so the card would wrongly hide (it flashes in on load,
 // then vanishes once loadInstalled resolves). For the systemd-backed cards we
 // re-check reality: if the unit was deliberately turned on outside setup, don't
-// gate it, manifest or not. Note rtl-sdr (the tools) and rtl-feed (the GrayWolf
-// feed) are *separate* features — having the tools doesn't list the feed, so we
-// probe the feed unit. We require the unit to be *enabled or active*, not merely
+// gate it, manifest or not. Note rtl-sdr (the tools) and rtl-sdr-feed (the
+// GrayWolf feed) are *separate* features — having the tools doesn't list the
+// feed, so we probe the feed unit. We require the unit to be *enabled or active*, not merely
 // present: a leftover/disabled unit the operator never ticked must stay hidden
 // (otherwise the card slips the gate and renders STOPPED instead of hidden).
 const SYSTEMD_GATED = { feed: 'aprs-sdr-feed', gpsd: 'gpsd' };

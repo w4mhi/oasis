@@ -36,21 +36,73 @@ def _offline_dir(repo_root):
 
 
 def target_user_home():
-    """Return (user, home) for the operator — honours sudo's original user.
+    """Return (user, home) for the operator — correct even when run as bare root.
 
-    Privileged installs run as real root via the no-tty installer worker
-    (scripts/oasis_installer_worker.py), which bakes $SUDO_USER into its own
-    systemd unit (see scripts/enable-oasis-installer.py). Without this, a
-    bare os.path.expanduser("~") would resolve to /root, while a manually-run
-    download-wikipedia.py (as the operator) resolves to their own $HOME —
-    landing ZIM files in a directory kiwix-start never looks in.
+    ZIM files (and the kiwix-start script's baked-in scan directory) must land
+    under the operator's home, not /root. But privileged installs run as *real*
+    root via the no-tty installer worker (scripts/oasis_installer_worker.py) —
+    nothing sets $SUDO_USER for a systemd-launched process, and the worker's
+    baked Environment=SUDO_USER can itself be wrong (it resolves to 'root' when
+    scripts/enable-oasis-installer.py was run from a root login). A bare
+    os.path.expanduser("~") or getpass.getuser() then silently yields /root, and
+    kiwix-start looks in a directory the operator never fills.
+
+    Resolve the operator in order of decreasing reliability, and only return
+    root if every signal points there (a genuinely root-only box):
+
+      1. $SUDO_USER, when it names a real non-root user (interactive `sudo`, and
+         the worker's baked Environment=SUDO_USER when it was set correctly).
+      2. The owner of the OASIS checkout (_REPO_ROOT) — deterministic and fully
+         offline: the operator cloned/unpacked OASIS into their own home, so the
+         tree is theirs regardless of which account runs the installer. This is
+         what fixes a mis-baked SUDO_USER=root without any manual commands.
+      3. getpass.getuser(), when it is a real non-root user.
+      4. The sole human login account (uid >= 1000 with a /home directory).
     """
-    user = os.environ.get("SUDO_USER") or getpass.getuser()
+    def _lookup(name):
+        if not name:
+            return None
+        try:
+            pw = pwd.getpwnam(name)
+        except KeyError:
+            return None
+        return pw.pw_name, pw.pw_dir
+
+    # 1. sudo's original (non-root) user.
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user and sudo_user != "root":
+        got = _lookup(sudo_user)
+        if got:
+            return got
+
+    # 2. Owner of the OASIS checkout — the operator, whoever runs us.
     try:
-        home = pwd.getpwnam(user).pw_dir
-    except KeyError:
-        home = os.path.expanduser("~")
-    return user, home
+        owner_uid = os.stat(_REPO_ROOT).st_uid
+        if owner_uid != 0:
+            pw = pwd.getpwuid(owner_uid)
+            return pw.pw_name, pw.pw_dir
+    except (OSError, KeyError):
+        pass
+
+    # 3. Current user, if not root.
+    current = getpass.getuser()
+    if current and current != "root":
+        got = _lookup(current)
+        if got:
+            return got
+
+    # 4. The single real login account on the box.
+    try:
+        humans = [p for p in pwd.getpwall()
+                  if p.pw_uid >= 1000 and p.pw_dir.startswith("/home/")
+                  and p.pw_shell not in ("", "/usr/sbin/nologin", "/bin/false")]
+        if len(humans) == 1:
+            return humans[0].pw_name, humans[0].pw_dir
+    except Exception:
+        pass
+
+    # Genuinely root-only system.
+    return (current or "root"), os.path.expanduser("~")
 
 
 INSTALL_BIN = "/usr/local/bin/kiwix-serve"
