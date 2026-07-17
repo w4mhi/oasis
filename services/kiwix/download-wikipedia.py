@@ -225,7 +225,16 @@ def download_zim(url, filename, zim_dir):
     dest = os.path.join(zim_dir, filename)
     if os.path.exists(dest):
         _warn(f"File already exists: {dest}")
-        answer = input("       Overwrite? [y/N] ").strip().lower()
+        # No controlling tty (e.g. the privileged installer worker): keep the
+        # existing ZIM rather than crash on input()'s EOFError — a present ZIM is
+        # the whole point of the offline bundle, so treat it as done, not failed.
+        if not sys.stdin.isatty():
+            _info("Non-interactive — keeping the existing file (skipping download).")
+            return dest
+        try:
+            answer = input("       Overwrite? [y/N] ").strip().lower()
+        except EOFError:
+            answer = "n"
         if answer != "y":
             _info("Download skipped — using existing file.")
             return dest
