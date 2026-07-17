@@ -359,20 +359,42 @@ def _setup_enqueue_and_wait_install(key, spec, payload, job_id=None):
     except Exception as exc:
         return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": f"could not queue install job: {exc}"}
 
+    # The worker writes its live output to <job>.log; tail it into the job's log
+    # stream so the setup page's log window shows the privileged install as it runs.
+    log_path = os.path.join(INSTALLER_QUEUE_DIR, f"{job_id_suffix}.log")
+    log_off = 0
+
+    def _drain_log(off):
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as lf:
+                lf.seek(off)
+                chunk = lf.read()
+                new_off = lf.tell()
+        except OSError:
+            return off
+        if chunk and job_id:
+            for ln in chunk.splitlines():
+                if ln.strip():
+                    _setup_emit_log_line(job_id, ln)
+        return new_off
+
     started = _setup_now()
     deadline = started + _INSTALLER_JOB_TIMEOUT_S
     next_heartbeat = started + _INSTALLER_HEARTBEAT_INTERVAL_S
     while _setup_now() < deadline:
+        log_off = _drain_log(log_off)
         if os.path.exists(result_path):
+            log_off = _drain_log(log_off)   # final flush before cleanup
             try:
                 with open(result_path, "r", encoding="utf-8") as fh:
                     result = json.load(fh)
             except Exception as exc:
                 result = {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": f"unreadable result: {exc}"}
-            try:
-                os.remove(result_path)
-            except OSError:
-                pass
+            for _p in (result_path, log_path):
+                try:
+                    os.remove(_p)
+                except OSError:
+                    pass
             return result
         now = _setup_now()
         if job_id and now >= next_heartbeat:

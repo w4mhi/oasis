@@ -103,10 +103,25 @@ def _process_job(job_path):
         return
 
     _info(f"{job_id}: installing '{feature}' ...")
+    # Stream the install's live output to a per-job log file so the web wait-loop
+    # can tail it into the setup log window (the worker's own stdout only reaches
+    # the systemd journal, invisible to the browser).
+    log_path = os.path.join(QUEUE_DIR, f"{job_id}.log")
+
+    def _log_sink(line):
+        try:
+            with open(log_path, "a", encoding="utf-8") as lf:
+                lf.write(line.rstrip("\n") + "\n")
+        except OSError:
+            pass
+
+    SETUP_REGISTRY.set_log_sink(_log_sink)
     try:
         result = spec.install_fn() or {"ok": True}
     except Exception as exc:
         result = {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": str(exc)}
+    finally:
+        SETUP_REGISTRY.set_log_sink(None)
 
     if result.get("ok"):
         _ok(f"{job_id}: '{feature}' installed.")
