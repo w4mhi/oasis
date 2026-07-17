@@ -54,7 +54,7 @@ import time
 from shutil import which
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # repo root
-from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
+from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run, sudo_apt_cmd
 from common.gpsd_chrony import (install_packages as install_gpsd_chrony_packages,
                           configure_gpsd, configure_chrony, restart_services,
                           verify as verify_gpsd_chrony, check_exclusive,
@@ -309,8 +309,8 @@ def install_pyserial():
     if _pyserial_importable():
         _ok("python3-serial already present.")
         return
-    _run(["sudo", "apt", "update", "-qq"], check=False)
-    if _run(["sudo", "apt", "install", "-y", "python3-serial"],
+    _run(sudo_apt_cmd("apt", "update", "-qq"), check=False)
+    if _run(sudo_apt_cmd("apt", "install", "-y", "python3-serial"),
            check=False).returncode != 0 or not _pyserial_importable():
         _warn("Could not install python3-serial (needs internet / apt cache). "
               "NMEA verification will be skipped; the rest of the setup still applies.")

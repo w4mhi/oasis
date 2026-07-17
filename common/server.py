@@ -26,7 +26,7 @@ import sys
 _SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _SCRIPTS_DIR)
 
-from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, has_internet
+from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, has_internet, sudo_apt_cmd
 from common import manifest as M
 
 # Modules the server imports — used only by the --check status display.
@@ -310,7 +310,7 @@ def install_sqlite3(online, venv_dir):
             return
         _info("Installing python3-sqlite3 ...")
         result = subprocess.run(
-            ["sudo", "apt-get", "install", "-y", "python3-sqlite3"],
+            sudo_apt_cmd("apt-get", "install", "-y", "python3-sqlite3"),
             capture_output=True, text=True,
         )
         if result.returncode == 0:
@@ -348,7 +348,7 @@ def install_system_fonts(online):
 
     _info(f"Installing: {', '.join(missing)}")
     result = subprocess.run(
-        ["sudo", "apt-get", "install", "-y"] + missing,
+        sudo_apt_cmd("apt-get", "install", "-y", *missing),
         capture_output=True, text=True,
     )
     if result.returncode == 0:

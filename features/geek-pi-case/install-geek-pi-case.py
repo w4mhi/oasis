@@ -44,7 +44,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
-from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
+from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run, sudo_apt_cmd
 
 SCRIPT_SRC   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "geek-pi-case.py")
 INSTALL_DIR  = "/opt/geek-pi-case"
@@ -105,8 +105,8 @@ def install_deps():
     _info("Missing: " + ", ".join(
         n for n, ok in (("python3-pil", have_pil), ("python3-smbus", have_smbus),
                         ("python3-pip", have_pip), ("i2c-tools", have_tools)) if not ok))
-    _run(["sudo", "apt", "update", "-qq"], check=False)
-    if _run(["sudo", "apt", "install", "-y", *APT_DEPS], check=False).returncode != 0:
+    _run(sudo_apt_cmd("apt", "update", "-qq"), check=False)
+    if _run(sudo_apt_cmd("apt", "install", "-y", *APT_DEPS), check=False).returncode != 0:
         _warn("apt could not install the dependencies. On an offline box, install "
               "them from your apt cache first:")
         _warn("  sudo apt install -y " + " ".join(APT_DEPS))
