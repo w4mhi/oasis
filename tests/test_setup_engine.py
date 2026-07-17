@@ -130,5 +130,17 @@ class SetupEngineRunTest(unittest.TestCase):
             self.assertEqual(states[key].reason_code, "JOB_CANCELED")
 
 
+def test_featurespec_remove_fn_defaults_none_and_is_settable():
+    spec = SE.FeatureSpec(key="repeaterbook")
+    assert spec.remove_fn is None  # reserved hook: not removable yet
+    called = {}
+    def _rm():
+        called["hit"] = True
+        return {"ok": True}
+    spec2 = SE.FeatureSpec(key="repeaterbook", remove_fn=_rm)
+    assert spec2.remove_fn() == {"ok": True}
+    assert called["hit"] is True
+
+
 if __name__ == "__main__":
     unittest.main()

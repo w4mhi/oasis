@@ -40,6 +40,10 @@ class FeatureSpec:
     install_fn: Optional[Callable[[], Dict[str, object]]] = None
     verify_fn: Optional[Callable[[], Dict[str, object]]] = None
     enable_fn: Optional[Callable[[], Dict[str, object]]] = None
+    # Reserved hook for future per-feature removal (design: installed-aware
+    # setup, C). None means "not removable yet". Same call/result contract as
+    # install_fn: () -> {"ok": bool, ...}. No caller today.
+    remove_fn: Optional[Callable[[], Dict[str, object]]] = None
     enable_policy: str = "none"  # none|if_installed|manual_only
     requires_reboot: bool = False
     # True for features whose install_fn needs real root (writes /etc,
