@@ -778,6 +778,8 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 <script src="/map-assets/maplibre-gl.js"></script>
 <script src="/map-assets/pmtiles.js"></script>
 <script src="/map-assets/basemap-style.js"></script>
+<script src="/static/js/adsb.js"></script>
+<script src="/static/js/adsb-operators.js"></script>
 <script>
 'use strict';
 
@@ -1446,14 +1448,16 @@ function buildAdsbPopup(a) {
   const milBadge = !AC_CAT_SHAPE[a.category] && hexIsMilitary(a.hex) ? ' <span style="color:#ff5555;font-size:var(--fs-small)">[MIL]</span>'
                  : !AC_CAT_SHAPE[a.category] && suspectedMilitary(a) ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[mil?]</span>'
                  : '';
+  const opName = milBadge ? '' : operatorTag(a.flight);
+  const opBadge = opName ? ' <span style="color:var(--text-dim);font-size:var(--fs-small)">[' + _escHtml(opName) + ']</span>' : '';
   let html = '<div class="pop-call">' + _escHtml(title) +
              (isHeli ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[heli]</span>' : '') +
-             milBadge + '</div>';
+             milBadge + opBadge + '</div>';
   if (a.squawk) {
     html += '<div class="pop-row"><span class="pop-lbl">Squawk</span><span class="pop-val">' + _escHtml(a.squawk) + '</span></div>';
   }
   if (a.alt_baro != null) {
-    html += '<div class="pop-row"><span class="pop-lbl">Alt</span><span class="pop-val">' + fmtAcAlt(a.alt_baro) + '</span></div>';
+    html += '<div class="pop-row"><span class="pop-lbl">Alt</span><span class="pop-val" style="color:' + altColor(a.alt_baro) + '">' + fmtAcAlt(a.alt_baro) + '</span></div>';
   }
   if (a.gs != null) {
     html += '<div class="pop-row"><span class="pop-lbl">Speed</span><span class="pop-val">' + fmtAcSpeed(a.gs) + '</span></div>';
@@ -1998,21 +2002,6 @@ function acShapeFor(a) {
   return { key: 'airliner', filled: true };   // A3 fallback
 }
 
-// Altitude → colour (ft). dump1090 emits the literal string "ground" for
-// on-surface targets; everything else is a number of feet.
-function altColor(alt) {
-  if (alt === 'ground')   return '#A0522D';   // brown — surface
-  const ft = Number(alt);
-  if (!isFinite(ft))      return '#B8C4D0';   // unknown altitude → neutral grey
-  if (ft <= 2000)         return '#FF3311';
-  if (ft <= 5000)         return '#FF7F00';
-  if (ft <= 10000)        return '#FFFF00';
-  if (ft <= 15000)        return '#11FF66';
-  if (ft <= 25000)        return '#00FFFF';
-  if (ft <= 35000)        return '#0066FF';
-  return '#FF00FF';
-}
-
 const AC_ICON_PX = 30;   // on-map size; rasterised at 2× for crispness
 function ensureAircraftImage(shapeKey, color, filled) {
   filled = filled !== false;   // default filled; false = hollow (suspected mil)
@@ -2194,8 +2183,8 @@ function updateAdsbPanel() {
     // the panel header ("N aircraft") keeps its purple accent.
     const col = a.alt_baro != null ? altColor(a.alt_baro) : altColor(undefined);
     return `<div class="adsb-row" onclick="adsbRowClick('${a.hex}')">
-      <span class="adsb-flight" style="color:${col}">${_escHtml(title)}</span>
-      <span class="adsb-alt">${alt}</span>
+      <span class="adsb-flight">${_escHtml(title)}</span>
+      <span class="adsb-alt" style="color:${col}">${alt}</span>
     </div>`;
   }).join('');
 }
@@ -2872,7 +2861,9 @@ function renderAprsList(stations) {
       + '<td>' + _listLastHeard(s.last_heard) + '</td>'
       + '<td class="al-age ' + age.cls + '">' + age.text + '</td>'
       + '<td>' + _listSpeed(s.speed_mph) + courseFmt + '</td>'
-      + '<td>' + _listAlt(s.alt_m) + '</td>'
+      + '<td>' + (ac && s.alt_m != null
+          ? '<span style="color:' + altColor(s.alt_m * 3.28084) + '">' + _listAlt(s.alt_m) + '</span>'
+          : _listAlt(s.alt_m)) + '</td>'
       + '<td class="al-dim">' + _listGrid(s.lat, s.lon) + '</td>'
       + '<td class="al-dim">' + _listDist(s.lat, s.lon) + '</td>'
       + '<td class="al-src ' + src + '">' + srcTxt + '</td>'
