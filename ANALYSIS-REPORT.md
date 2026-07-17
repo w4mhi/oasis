@@ -16,8 +16,8 @@ Each item lists **Importance** (impact if ignored) and **Effort**.
 
 You have 381 passing tests, but `offline-manifest.yml` only byte-compiles files and runs the single manifest self-test, and `offline-install.yml` only verifies `setup-server.py` + one import. A regression in `hardware.py`, `setup_engine.py`, the APRS/ADS-B proxies, or any of the 40+ test modules merges green. This is the cheapest, highest-value fix in the repo: add a `python -m unittest discover -s tests` step (after `setup-server.py` installs Flask) to the existing matrix. Note the suite currently fails under system Python (`ModuleNotFoundError: flask`) — CI would also document the supported way to run it.
 
-### P1 — `server/app.py` is a 3,521-line monolith with 73 routes
-**Importance: High · Effort: Medium**
+### P1 — `server/app.py` is a 3,521-line monolith with 73 routes ✅ FIXED (v.3.0.0)
+**Importance: High · Effort: Medium · Fixed: split into 12 blueprints (`services/*/routes.py` + `server/routes/*.py`), app.py now ~300 lines; URLs/behavior verified unchanged via route-snapshot diff + full suite + live gunicorn boot**
 
 The `refactoring-services` branch moved service *logic* into `services/<name>/common/`, but the route layer never followed: setup, FCC lookup, filesystem browse, hardware, Wi-Fi, service control, APRS, ADS-B, Winlink, system stats, and audio all live in one file. Consequences: every feature change touches the same file (merge/regression hotspot), route-level tests import the whole world, and the file mixes trust levels (public map assets next to `sudo reboot`). Flask blueprints per service — mirroring the `services/` layout you already created — would finish the refactor this branch started. Zero new dependencies, works fine on the Pi Zero.
 
@@ -135,7 +135,7 @@ Once a CHANGELOG exists (§1), showing "what's new in 2.7.5" on the setup page i
 | 3 | De-duplicate `tools/` vs `server/tools/` | P2 | Low | ✅ Fixed (v.3.0.0) |
 | 4 | POST + CSRF header on Winlink connect/disconnect | P2 | Low | ✅ Fixed (v.3.0.0) |
 | 5 | Tag format + CHANGELOG | P2 | Low | ✅ Fixed (v.3.0.0) |
-| 6 | Split `app.py` into blueprints per service | P1 | Medium | — |
+| 6 | Split `app.py` into blueprints per service | P1 | Medium | ✅ Fixed (v.3.0.0) |
 | 7 | Extract shared JS helpers; then map.html modules | P1 | Medium | — |
 | 8 | Server-side backup for forms/net logs | P1 | Medium | — |
 | 9 | Document threat model; optional PIN on destructive APIs | P2 | Low–Med | — |
