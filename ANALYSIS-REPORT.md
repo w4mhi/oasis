@@ -21,10 +21,12 @@ You have 381 passing tests, but `offline-manifest.yml` only byte-compiles files 
 
 The `refactoring-services` branch moved service *logic* into `services/<name>/common/`, but the route layer never followed: setup, FCC lookup, filesystem browse, hardware, Wi-Fi, service control, APRS, ADS-B, Winlink, system stats, and audio all live in one file. Consequences: every feature change touches the same file (merge/regression hotspot), route-level tests import the whole world, and the file mixes trust levels (public map assets next to `sudo reboot`). Flask blueprints per service — mirroring the `services/` layout you already created — would finish the refactor this branch started. Zero new dependencies, works fine on the Pi Zero.
 
-### P1 — Front-end duplication with no shared JS layer
-**Importance: High · Effort: Medium**
+### P1 — Front-end duplication with no shared JS layer ✅ FIXED (Unreleased) for the two dashboards
+**Importance: High · Effort: Medium · Fixed: `static/js/{units,geo,format}.js` extracted from `index.html` and `small-screen/index7.html`; both now load them via `<script src=...>`, no build step, no npm — delivers §3/P2's JS test harness too**
 
 `index.html` (3,308 lines, ~2,000 of inline JS) and `small-screen/index7.html` (940 lines) reimplement the same helpers (`fmtTemp`, `fmtAlt`, unit formatting, polling loops); `services/map/map.html` is another 3,516-line single file. "No build step" does **not** require inline scripts — plain `<script src="/static/js/units.js">` files shared between the three dashboards would cut duplication, make the code diffable, and finally give you something a JS test harness could load (see §3). Today a bug fixed in one dashboard silently survives in the other.
+
+`map.html` modularization and reconciling the third grid implementation in `static/maidenhead.js` were considered and deliberately deferred as separate, scoped follow-ons — see the plan's "Deferred follow-ons" notes.
 
 ### P2 — Duplicate tracked files: `tools/` vs `server/tools/` ✅ FIXED (v.3.0.0)
 **Importance: Medium · Effort: Low · Fixed: `server/tools/` removed; `tools/` is canonical**
@@ -99,10 +101,12 @@ The README is excellent but very long, and feature blurbs partially duplicate `d
 
 ICS forms auto-save and the net-check-in log live in **browser localStorage**. In a real deployment, a cleared browser cache, a swapped tablet, or a dead client device loses operational records mid-incident — the exact scenario OASIS exists for. Add a small opt-in "save to server" endpoint (JSON files under `configuration/`, mirroring the `station.json`/warnings pattern you already have) plus a restore/download list. No database needed; it fits the flat-file philosophy.
 
-### P2 — JS test coverage for the pure logic
-**Importance: Medium · Effort: Medium**
+### P2 — JS test coverage for the pure logic ✅ FIXED (Unreleased)
+**Importance: Medium · Effort: Medium · Fixed: `tests/js/` under `node --test` (no npm packages), wired into `/preflight` step 8 and `.github/workflows/js-tests.yml`**
 
 There is no JS test harness at all, yet the front-end contains real algorithms: maidenhead conversion (`static/maidenhead.js`), unit conversions, APRS symbol categorization, distance/bearing math. Once helpers are extracted to `.js` files (§1/P1 above), a `node --test` runner over the pure functions costs nothing at runtime (dev-only, no npm packages required) and can run in CI.
+
+Coverage so far is the newly-extracted `static/js/{units,geo,format}.js`; `static/maidenhead.js` still has its own, un-tested grid implementation (see the deferred reconciliation note under §1/P1).
 
 ### P2 — Surface `doctor.py` in the web UI
 **Importance: Medium · Effort: Medium**
@@ -136,7 +140,7 @@ Once a CHANGELOG exists (§1), showing "what's new in 2.7.5" on the setup page i
 | 4 | POST + CSRF header on Winlink connect/disconnect | P2 | Low | ✅ Fixed (v.3.0.0) |
 | 5 | Tag format + CHANGELOG | P2 | Low | ✅ Fixed (v.3.0.0) |
 | 6 | Split `app.py` into blueprints per service | P1 | Medium | ✅ Fixed (v.3.0.0) |
-| 7 | Extract shared JS helpers; then map.html modules | P1 | Medium | — |
+| 7 | Extract shared JS helpers; then map.html modules | P1 | Medium | ✅ Dashboards fixed (Unreleased); map.html deferred |
 | 8 | Server-side backup for forms/net logs | P1 | Medium | — |
 | 9 | Document threat model; optional PIN on destructive APIs | P2 | Low–Med | — |
 | 10 | Aggregate dashboard polling endpoint | P2 | Medium | — |

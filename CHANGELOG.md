@@ -20,12 +20,24 @@ standard from 3.0.0 on.
   stations. Map markers and the map's right-side "N aircraft" panel stay
   live-only. The heavier DB scan is throttled to ≤ once/60 s, off the 2 s live
   cadence, to stay Pi-cheap.
+- **Shared front-end helper modules** `static/js/{units,geo,format}.js`
+  (unit/temp/altitude/speed/uptime formatting, Maidenhead grid + distance/
+  bearing, age/last-heard) now back both the main dashboard (`index.html`)
+  and the 7" kiosk (`small-screen/index7.html`), ending the helper drift
+  between them — a fix in one used to silently not apply to the other. Plain
+  `<script src="/static/js/...">` tags; no build step, no npm.
+- **First JS test harness.** `tests/js/` runs under `node --test` (built into
+  Node 24, nothing to install), wired into `/preflight` (step 8) and a new
+  `.github/workflows/js-tests.yml` CI gate — delivers analysis-report §3/P2.
 
 ### Changed
 - **Aircraft map labels are always upper-case**, matching APRS callsign display
   (the popup card still shows the flight ID as received).
 - **The map's ADS-B panel row labels are upper-case and altitude-coloured**
   (same scale as the map icons); the "N aircraft" header keeps its purple accent.
+- **7" kiosk temperature now renders with a space before the unit**
+  (`72°F` → `72 °F`), matching the main dashboard — the shared `fmtTemp` is
+  the canonical spaced form.
 
 ## v.3.0.0 — 2026-07-16
 
