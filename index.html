@@ -831,6 +831,9 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   vertical-align: top;
 }
 .aprs-tbl-wrap tr:last-child td { border-bottom: none; }
+/* Aircraft heard but not yet position-fixed: greyed "detection, no fix" rows
+   (SDR reception readout — how many contacts we hear vs. can place). */
+.aprs-tbl-wrap tr.unlocated { opacity: .55; }
 /* Age-column colours, matching the maps station list. Scoped to the table cell
    so they outrank the generic `.aprs-tbl-wrap td` colour (else age stays plain). */
 .aprs-tbl-wrap td.age-ok,   #aprs-last.age-ok   { color: var(--accent); }
@@ -2686,6 +2689,43 @@ function fmtLastHeard(iso) {
 }
 
 let _allAprsStations = [];
+let _adsbAircraft = [];   // last /api/adsb/aircraft poll (empty when service off)
+let _adsbNow = 0;         // that poll's dump1090 clock, so `seen` → absolute time
+
+// Normalize the last-polled aircraft into station-shaped rows the APRS table's
+// renderAprsTable + column filters already understand: APRS aircraft/heli symbol
+// (so aprsSymIcon/aprsTypeLabel + the Type filter fold them in), gs→mph and
+// alt(ft)→m for the shared unit-aware formatters, and `seen`→an absolute ISO
+// last_heard for the Age column. Position-less aircraft (heard but not yet
+// fixed) keep lat/lon null → blank Grid/Dist and a greyed row: an SDR-reception
+// readout of how many contacts we hear vs. can actually place.
+function _adsbListRows() {
+  return _adsbAircraft.map(a => {
+    const positioned = a.lat != null && a.lon != null;
+    const altFt = (a.alt_baro === 'ground') ? null
+      : (isFinite(Number(a.alt_baro)) ? Number(a.alt_baro) : null);
+    const seenSec = (typeof a.seen === 'number') ? a.seen : 0;
+    const emerg = ['7500', '7600', '7700'].includes(a.squawk);
+    const bits = [];
+    if (a.squawk) bits.push('sq ' + a.squawk);
+    if (emerg) bits.push('⚠ ' + a.squawk);
+    return {
+      _kind: 'aircraft',
+      callsign: (a.flight || a.hex || '').trim() || (a.hex || '?'),
+      sym_table: '/', sym_code: (a.category === 'A7') ? 'X' : "'",
+      lat: positioned ? a.lat : null,
+      lon: positioned ? a.lon : null,
+      speed_mph: (a.gs != null) ? Math.round(a.gs * 1.15078) : 0,
+      course: (a.track != null) ? a.track : null,
+      alt_m: (altFt != null) ? altFt / 3.28084 : null,
+      last_heard: new Date((_adsbNow - seenSec) * 1000).toISOString(),
+      via: 'adsb',
+      comment: bits.join(' · '),
+      _positioned: positioned
+    };
+  });
+}
+
 // VIA column filter — source (RF / APRS-IS). Static options; 'All' shows both.
 function onViaFilterChange() {
   const sel = document.getElementById('aprs-col-via');
@@ -2758,10 +2798,18 @@ function renderAprsTable(stations) {
     const alt  = s.alt_m != null ? fmtAlt(s.alt_m) : '';
     const grid = gridSquare(s.lat, s.lon);
     const dist = distFromHome(s.lat, s.lon);
-    const src = aprsSource(s);
-    const callColor = src === 'is' ? 'var(--blue)' : 'var(--accent)';
-    return `<tr>
-      <td style="color:${callColor};font-weight:700"><a href="server/aprs/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a></td>
+    const ac = s._kind === 'aircraft';
+    const srcTxt = ac ? 'ADS-B' : aprsSource(s).toUpperCase();
+    // Aircraft accent purple; stations green (RF) / blue (IS).
+    const callColor = ac ? '#b478ff' : (aprsSource(s) === 'is' ? 'var(--blue)' : 'var(--accent)');
+    // Aircraft Call links to the map (no per-aircraft focus target); heard-but-
+    // unlocated aircraft grey out via the row class.
+    const rowCls = (ac && !s._positioned) ? ' class="unlocated"' : '';
+    const callCell = ac
+      ? `<a href="server/aprs/map.html" target="_blank" style="color:inherit;text-decoration:none">${escapeHtml(s.callsign)}</a>`
+      : `<a href="server/aprs/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a>`;
+    return `<tr${rowCls}>
+      <td style="color:${callColor};font-weight:700">${callCell}</td>
       <td style="color:var(--text-dim);white-space:nowrap">${aprsSymIcon(s)}${aprsTypeLabel(s)}</td>
       <td>${fmtLastHeard(s.last_heard)}</td>
       <td class="${age.cls}">${age.text}</td>
@@ -2769,8 +2817,8 @@ function renderAprsTable(stations) {
       <td>${alt}</td>
       <td style="color:var(--text-dim)">${grid}</td>
       <td style="color:var(--text-dim)">${dist}</td>
-      <td style="color:${callColor};font-weight:700">${src.toUpperCase()}</td>
-      <td style="color:var(--text-dim);max-width:220px;overflow:hidden;text-overflow:ellipsis">${s.comment || ''}</td>
+      <td style="color:${callColor};font-weight:700">${srcTxt}</td>
+      <td style="color:var(--text-dim);max-width:220px;overflow:hidden;text-overflow:ellipsis">${ac ? escapeHtml(s.comment || '') : (s.comment || '')}</td>
     </tr>`;
   }).join('');
 }
@@ -2781,41 +2829,40 @@ function applyAprsFilter() {
   const callPrefix = (document.getElementById('aprs-col-call')?.value || '').trim().toUpperCase();
   const gridSel    = document.getElementById('aprs-col-grid')?.value || 'All';
   const viaSel     = document.getElementById('aprs-col-via')?.value || 'All';
-  let filtered  = _allAprsStations;
-  if (minutes) {
-    const cutoff = Date.now() - minutes * 60000;
-    filtered = filtered.filter(s => {
+  const cutoff = minutes ? Date.now() - minutes * 60000 : 0;
+  // One predicate, applied to APRS stations AND ADS-B aircraft rows alike.
+  const pred = s => {
+    // AGE — case-insensitive on last_heard/timestamp/time.
+    if (cutoff) {
       const t = new Date(s.last_heard || s.timestamp || s.time);
-      return !isNaN(t) && t >= cutoff;
-    });
-  }
-  // CALLSIGN column filter — case-insensitive prefix (K7 → all K7…, incl. SSIDs).
-  if (callPrefix) {
-    filtered = filtered.filter(s => String(s.callsign || '').toUpperCase().startsWith(callPrefix));
-  }
-  // TYPE column filter — match the station's APRS symbol category.
-  if (typeCat !== 'All') {
-    filtered = filtered.filter(s => aprsTypeLabel(s) === typeCat);
-  }
-  // GRID column filter — match the 4-char Maidenhead field, or 'No fix' for
-  // position-less stations (blank grid).
-  if (gridSel !== 'All') {
-    filtered = (gridSel === '__nofix')
-      ? filtered.filter(s => !gridSquare(s.lat, s.lon))
-      : filtered.filter(s => (gridSquare(s.lat, s.lon) || '').slice(0, 4) === gridSel);
-  }
-  // VIA column filter — heard-via source: RF (off-air) or IS (APRS-IS/internet).
-  if (viaSel !== 'All') {
-    filtered = filtered.filter(s => aprsSource(s) === viaSel);
-  }
+      if (isNaN(t) || t < cutoff) return false;
+    }
+    // CALLSIGN — case-insensitive prefix (K7 → all K7…, incl. SSIDs).
+    if (callPrefix && !String(s.callsign || '').toUpperCase().startsWith(callPrefix)) return false;
+    // TYPE — match the APRS symbol category (aircraft carry aircraft/heli syms).
+    if (typeCat !== 'All' && aprsTypeLabel(s) !== typeCat) return false;
+    // GRID — 4-char Maidenhead field, or 'No fix' for position-less rows.
+    if (gridSel !== 'All') {
+      const g = gridSquare(s.lat, s.lon);
+      if (gridSel === '__nofix') { if (g) return false; }
+      else if ((g || '').slice(0, 4) !== gridSel) return false;
+    }
+    // VIA — RF/IS heard-via source. ADS-B is its own source, so any specific
+    // selection hides aircraft (only 'All' shows them).
+    if (viaSel !== 'All') {
+      if (s._kind === 'aircraft' || aprsSource(s) !== viaSel) return false;
+    }
+    return true;
+  };
+  const rows = _allAprsStations.filter(pred).concat(_adsbListRows().filter(pred));
   // Float emergency stations (Fire, Public safety) to the top; keep recency
   // (last_heard desc) within each rank. Mirrors the map's emergency-first panel.
-  filtered = filtered.slice().sort((a, b) => {
+  rows.sort((a, b) => {
     const ra = _emergencyRank(a), rb = _emergencyRank(b);
     if (ra !== rb) return ra - rb;
     return (b.last_heard || '').localeCompare(a.last_heard || '');
   });
-  renderAprsTable(filtered);
+  renderAprsTable(rows);
 }
 
 // Rank a station for emergency-first ordering: lower = higher priority.
@@ -2955,7 +3002,19 @@ async function fetchAPRS() {
 
     document.getElementById('aprs-count').textContent = d.count ?? d.stations.length;
 
-    if (!d.stations.length) {
+    // ADS-B aircraft fold into the same station list (gated: silent when the
+    // ADS-B service is off / API returns non-200). Fetched before the APRS-empty
+    // check so aircraft still show when APRS is live but has heard no stations.
+    try {
+      const ar = await fetch('/api/adsb/aircraft', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+      if (ar.ok) {
+        const aj = await ar.json();
+        _adsbAircraft = aj.aircraft || [];
+        _adsbNow = (typeof aj.now === 'number') ? aj.now : (Date.now() / 1000);
+      } else { _adsbAircraft = []; }
+    } catch (_) { _adsbAircraft = []; }
+
+    if (!d.stations.length && !_adsbAircraft.length) {
       tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text-dim)">No stations yet — GrayWolf needs a radio + TNC/audio input to receive APRS packets.</td></tr>';
       const lastElIdle = document.getElementById('aprs-last');
       lastElIdle.textContent = '—';

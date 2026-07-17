@@ -416,9 +416,15 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 #aprs-list-table tbody tr.active{background:rgba(255,210,87,.12);box-shadow:inset 3px 0 0 var(--amber);}
 .al-call{color:var(--accent);font-weight:700;}
 .al-call.is{color:var(--blue);}
+.al-call.adsb{color:#b478ff;}
 .al-src{font-weight:700;}
 .al-src.rf{color:var(--accent);}
 .al-src.is{color:var(--blue);}
+.al-src.adsb{color:#b478ff;}
+/* Aircraft heard but not yet position-fixed: greyed "detection, no fix" rows
+   (SDR reception readout — how many contacts we hear vs. can place). */
+#aprs-list-tbody tr.unlocated{opacity:.6;}
+#aprs-list-tbody tr.unlocated .al-call,#aprs-list-tbody tr.unlocated .al-src{color:var(--text-dim);}
 .al-dim{color:var(--text-dim);}
 .al-type{color:var(--text-dim);white-space:nowrap;}
 .al-type .aprs-sym{display:inline-block;background-repeat:no-repeat;image-rendering:pixelated;vertical-align:middle;margin-right:5px;}
@@ -1699,34 +1705,53 @@ function _syncSrcColFromChips() {
   _markCol(sel, v !== 'all');
 }
 
-function applyFilter() {
+// The active column filters as a single predicate, applied identically to APRS
+// stations (for the map + list) and to ADS-B aircraft rows (list only). Built
+// once per pass so live control values are captured together.
+function _columnFilterPredicate() {
   const minutes = parseInt(document.getElementById('filterSel').value);
-  let filtered = allStations;
-  if (minutes > 0) {
-    const cutoff = Date.now() - minutes * 60 * 1000;
-    filtered = allStations.filter(s => {
-      if (!s.last_heard) return false;
-      return new Date(s.last_heard).getTime() >= cutoff;
-    });
-  }
-  // APRS object-type filter (categories disabled in the objects panel)
-  filtered = filtered.filter(s => objCatState[aprsCategory(s).key] !== false);
-  // Callsign filter (prefix / * wildcard) + movers-only toggle
-  filtered = filtered.filter(s => callMatches(s.callsign) && (!movingOnly || (s.speed_mph > 0)));
-  // Source chips (RF/IS atop the Last-heard panel): hide a source's stations
-  // from the map + list when its chip is switched off — parity with index.html.
-  if (!pathRF || !pathIS) {
-    filtered = filtered.filter(s => _stationSource(s) === 'is' ? pathIS : pathRF);
-  }
-  // GRID column filter — 4-char Maidenhead field, or 'No fix' (position-less).
-  const _gridSel = document.getElementById('aprs-col-grid')?.value || 'All';
-  if (_gridSel !== 'All') {
-    filtered = (_gridSel === '__nofix')
-      ? filtered.filter(s => !_listGrid(s.lat, s.lon))
-      : filtered.filter(s => (_listGrid(s.lat, s.lon) || '').slice(0, 4) === _gridSel);
-  }
-  plotStations(filtered);
-  if (aprsListOpen) renderAprsList(filtered);   // bottom list mirrors the map
+  const cutoff = minutes > 0 ? Date.now() - minutes * 60 * 1000 : 0;
+  const gridSel = document.getElementById('aprs-col-grid')?.value || 'All';
+  return s => {
+    // Age (Last-heard cutoff) — position-less/undated rows drop under a filter.
+    if (cutoff && (!s.last_heard || new Date(s.last_heard).getTime() < cutoff)) return false;
+    // Object-type filter (categories disabled in the objects panel). Aircraft
+    // carry an APRS aircraft/heli symbol, so they fold into the same buckets.
+    if (objCatState[aprsCategory(s).key] === false) return false;
+    // Callsign filter (prefix / * wildcard) + movers-only toggle.
+    if (!callMatches(s.callsign) || (movingOnly && !(s.speed_mph > 0))) return false;
+    // Source chips (RF/IS): any specific source selection hides ADS-B (its own
+    // source); stations follow their heard-via source — parity with index.html.
+    if (!pathRF || !pathIS) {
+      if (s._kind === 'aircraft') { if (!(pathRF && pathIS)) return false; }
+      else if (_stationSource(s) === 'is' ? !pathIS : !pathRF) return false;
+    }
+    // GRID column filter — 4-char Maidenhead field, or 'No fix' (position-less).
+    if (gridSel !== 'All') {
+      const g = _listGrid(s.lat, s.lon);
+      if (gridSel === '__nofix') { if (g) return false; }
+      else if ((g || '').slice(0, 4) !== gridSel) return false;
+    }
+    return true;
+  };
+}
+
+// Render the bottom drawer = filtered APRS stations + filtered ADS-B aircraft,
+// merged and re-sorted by recency inside renderAprsList. Called from the map
+// refresh (applyFilter) and from the ADS-B poll (refreshAdsb) so aircraft rows
+// stay live even between station polls. No-op when the drawer is closed.
+function _renderDrawer(pred, aprsFiltered) {
+  if (!aprsListOpen) return;
+  pred = pred || _columnFilterPredicate();
+  aprsFiltered = aprsFiltered || allStations.filter(pred);
+  renderAprsList(aprsFiltered.concat(_adsbListRows().filter(pred)));
+}
+
+function applyFilter() {
+  const pred = _columnFilterPredicate();
+  const filtered = allStations.filter(pred);
+  plotStations(filtered);                 // map plots APRS stations only
+  _renderDrawer(pred, filtered);          // drawer mirrors the map + aircraft
   if (coverageOn) _refreshCoverage(filtered);
   const total = allStations.length;
   const shown = filtered.length;
@@ -2017,6 +2042,7 @@ function ensureAircraftImage(shapeKey, color, filled) {
 }
 
 let _adsbAircraft = [];   // raw list from the last successful /api/adsb/aircraft poll
+let _adsbNow = 0;         // that poll's dump1090 clock, so `seen` → absolute time
 
 // Re-render the adsb source from the last-fetched list, honoring the
 // objects-panel's aircraft/heli checkboxes — called on every poll AND
@@ -2059,10 +2085,49 @@ async function refreshAdsb() {
     if (!r.ok) return;
     const j = await r.json();
     _adsbAircraft = j.aircraft || [];
+    _adsbNow = (typeof j.now === 'number') ? j.now : (Date.now() / 1000);
     applyAdsbFilter();
     updateAdsbPanel();
     updateObjectsPanel();   // aircraft/heli counts in "APRS info" track this poll too
+    _renderDrawer();        // aircraft rows in the station-list drawer track this poll
   } catch (e) { /* ignore — poll again next cycle */ }
+}
+
+// Normalize the last-polled aircraft into station-shaped rows the drawer's
+// renderAprsList/column-filters already understand: APRS aircraft/heli symbol
+// (so aprsCategory/aprsSymIcon + the Type filter fold them in), gs→mph and
+// alt(ft)→m so the shared unit-aware formatters render them, and `seen`→an
+// absolute ISO last_heard so recency sort + Age colouring work. Position-less
+// aircraft (heard but not yet fixed) keep lat/lon null → blank Grid/Dist and a
+// greyed row, off the map but present as an SDR-reception readout.
+function _adsbListRows() {
+  return _adsbAircraft.map(a => {
+    const positioned = a.lat != null && a.lon != null;
+    const altFt = (a.alt_baro === 'ground') ? null
+      : (isFinite(Number(a.alt_baro)) ? Number(a.alt_baro) : null);
+    const seenSec = (typeof a.seen === 'number') ? a.seen : 0;
+    const emerg = ['7500', '7600', '7700'].includes(a.squawk);
+    const shp = acShapeFor(a);
+    const bits = [];
+    if (a.squawk) bits.push('sq ' + a.squawk);
+    if (emerg) bits.push('⚠ ' + a.squawk);
+    if (shp.key === 'mil') bits.push(shp.filled ? 'military' : 'susp. mil');
+    return {
+      _kind: 'aircraft',
+      hex: a.hex || '',
+      callsign: (a.flight || a.hex || '').trim() || (a.hex || '?'),
+      sym_table: '/', sym_code: adsbSymCode(a.category),
+      lat: positioned ? a.lat : null,
+      lon: positioned ? a.lon : null,
+      speed_mph: (a.gs != null) ? Math.round(a.gs * 1.15078) : 0,
+      course: (a.track != null) ? a.track : null,
+      alt_m: (altFt != null) ? altFt / 3.28084 : null,
+      last_heard: new Date((_adsbNow - seenSec) * 1000).toISOString(),
+      via: 'adsb',
+      comment: bits.join(' · '),
+      _positioned: positioned
+    };
+  });
 }
 
 function toggleAdsbPanel() {
@@ -2309,10 +2374,14 @@ loadConfig().then(() => {
         'text-allow-overlap': false
       },
       paint: {
-        // Label takes the same altitude colour as the aircraft icon.
-        'text-color': ['coalesce', ['get', 'labelColor'], '#e8f0f8'],
+        // Label reads identically to an APRS callsign — same fixed off-white,
+        // halo colour/width AND halo-blur as 'aprs-stations-icon'. The icon
+        // stays altitude-coloured (labelColor drives ensureAircraftImage); only
+        // the text is neutral, so aircraft and stations label the same way.
+        'text-color': '#e8f0f8',
         'text-halo-color': '#0d1117',
-        'text-halo-width': 1.6
+        'text-halo-width': 1.6,
+        'text-halo-blur': 0.4
       }
     });
 
@@ -2735,7 +2804,7 @@ function renderAprsList(stations) {
   const tbody = document.getElementById('aprs-list-tbody');
   const countEl = document.getElementById('aprs-list-count');
   if (!tbody) return;
-  countEl.textContent = stations.length + (stations.length === 1 ? ' station' : ' stations');
+  countEl.textContent = stations.length + ' shown';
   if (!stations.length) {
     tbody.innerHTML = '<tr><td colspan="10" class="al-empty">No stations match the current filters.</td></tr>';
     return;
@@ -2743,15 +2812,26 @@ function renderAprsList(stations) {
   const sorted = [...stations].sort((a, b) =>
     (b.last_heard || '').localeCompare(a.last_heard || ''));
   tbody.innerHTML = sorted.map(s => {
-    const src = _stationSource(s);
+    const ac = s._kind === 'aircraft';
+    // ADS-B carries its own source ("ADS-B"); stations use their heard-via.
+    const src = ac ? 'adsb' : _stationSource(s);
+    const srcTxt = ac ? 'ADS-B' : src.toUpperCase();
     const age = _listAge(s.last_heard);
     const courseNum = (s.course != null && s.speed_mph > 0) ? Math.round(s.course) : null;
     const courseFmt = courseNum != null
       ? ' <span style="display:inline-block;transform:rotate(' + courseNum + 'deg)">↑</span> '
         + ['N','NE','E','SE','S','SW','W','NW'][Math.round(courseNum / 45) % 8] + ' ' + courseNum + '°'
       : '';
-    const active = (activeTrack === s.callsign) ? ' class="active"' : '';
-    return '<tr' + active + ' data-call="' + _escHtml(s.callsign) + '" onclick="recentRowClick(\'' + _escHtml(s.callsign) + '\')">'
+    // Row class: aircraft heard-but-unlocated grey out; stations highlight the
+    // active track. Aircraft click flies to the fixed ones; the rest are inert.
+    const cls = ac
+      ? (s._positioned ? '' : ' class="unlocated"')
+      : ((activeTrack === s.callsign) ? ' class="active"' : '');
+    const onclick = ac
+      ? (s._positioned ? ' onclick="adsbRowClick(\'' + _escHtml(s.hex) + '\')"' : '')
+      : ' onclick="recentRowClick(\'' + _escHtml(s.callsign) + '\')"';
+    const dataCall = ac ? '' : ' data-call="' + _escHtml(s.callsign) + '"';
+    return '<tr' + cls + dataCall + onclick + '>'
       + '<td><span class="al-call ' + src + '">' + _escHtml(s.callsign)
         + (s.is_object ? ' <span style="color:var(--amber)">[obj]</span>' : '') + '</span></td>'
       + '<td class="al-type">' + aprsSymIcon(s) + _escHtml(aprsCategory(s).label) + '</td>'
@@ -2761,7 +2841,7 @@ function renderAprsList(stations) {
       + '<td>' + _listAlt(s.alt_m) + '</td>'
       + '<td class="al-dim">' + _listGrid(s.lat, s.lon) + '</td>'
       + '<td class="al-dim">' + _listDist(s.lat, s.lon) + '</td>'
-      + '<td class="al-src ' + src + '">' + src.toUpperCase() + '</td>'
+      + '<td class="al-src ' + src + '">' + srcTxt + '</td>'
       + '<td class="al-cmt">' + _escHtml(s.comment || '') + '</td>'
       + '</tr>';
   }).join('');
