@@ -19,7 +19,7 @@ silently clobbering the device the other one wired up.
 import os
 import tempfile
 
-from common.oasis_lib import _ok, _info, _warn, _fail, _run
+from common.oasis_lib import _ok, _info, _warn, _fail, _run, sudo_apt_cmd
 
 GPSD_DEFAULT = "/etc/default/gpsd"
 CHRONY_CONF  = "/etc/chrony/chrony.conf"
@@ -28,9 +28,10 @@ PACKAGES     = ["gpsd", "gpsd-clients", "python3-gps", "chrony"]
 
 
 def install_packages():
-    _run(["sudo", "apt", "update", "-qq"], check=False)
-    if _run(["sudo", "apt", "install", "-y", *PACKAGES], check=False).returncode != 0:
-        _fail("apt could not install the GPS/chrony packages (need internet).")
+    _run(sudo_apt_cmd("apt", "update", "-qq"), check=False)
+    if _run(sudo_apt_cmd("apt", "install", "-y", *PACKAGES), check=False).returncode != 0:
+        _fail("apt could not install the GPS/chrony packages "
+              "(check internet / apt cache, or a wedged dpkg: sudo dpkg --configure -a).")
     _ok("Installed: " + ", ".join(PACKAGES))
 
 

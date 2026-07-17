@@ -92,7 +92,19 @@ def sudo_apt_cmd(*args):
     only in the *calling* process's env never reaches apt/dpkg. Sudo does
     special-case VAR=value tokens given on ITS OWN command line (before the
     target command) though — those survive env_reset — so we set it there.
+
+    DEBIAN_FRONTEND=noninteractive suppresses *debconf* questions but NOT dpkg
+    *conffile* prompts ("Config file X was modified — keep or replace?"). Those
+    fire when a package ships a conffile OASIS also writes (e.g.
+    /etc/default/dump1090-fa) and, with no tty, leave the package half-configured
+    — which then poisons EVERY later apt/dpkg operation on the box. So for apt /
+    apt-get we also force the non-interactive conffile policy (keep the existing
+    file: --force-confold, with --force-confdef for the rest).
     """
+    if args and args[0] in ("apt", "apt-get"):
+        conf = ["-o", "Dpkg::Options::=--force-confdef",
+                "-o", "Dpkg::Options::=--force-confold"]
+        return ["sudo", "DEBIAN_FRONTEND=noninteractive", args[0], *conf, *args[1:]]
     return ["sudo", "DEBIAN_FRONTEND=noninteractive", *args]
 
 
