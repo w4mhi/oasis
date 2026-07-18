@@ -1,4 +1,4 @@
-import os, sys, unittest
+import json, os, sys, unittest
 from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import diagnostics as D
@@ -308,6 +308,244 @@ class TestRegistryAndKiwixCapability(unittest.TestCase):
         r = D.run_all("127.0.0.1", 8083)
         ids = [c["id"] for g in r["groups"] for c in g["checks"]]
         self.assertNotIn("winlink_forms", ids)
+
+
+class TestNewCoreAndHardwareChecks(unittest.TestCase):
+    """Per-check tests for Task 3's 6 new checks (station_identity, digirig,
+    dra_pi, gps, display, cooling_hat). Each stubs its signal source so
+    results are deterministic and offline."""
+
+    def _shape(self, r):
+        self.assertTrue({"id", "group", "label", "status", "badge", "detail",
+                          "breaks", "fix"} <= set(r))
+        self.assertIn(r["status"], ("ok", "warn", "fail"))
+
+    # -- station_identity --
+    def test_station_identity_no_file_is_fail(self):
+        with mock.patch.object(D.os.path, "isfile", return_value=False):
+            r = D.check_station_identity(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "fail")
+        self.assertEqual(r["badge"], "UNSET")
+        self.assertIsNotNone(r["fix"])
+
+    def test_station_identity_n0call_placeholder_is_fail(self):
+        # setup.py writes "N0CALL" when grid/lat/lon are set without a
+        # callsign — must be treated as unset, not a real callsign.
+        data = {"callsign": "N0CALL", "grid": "CN87", "lat": None, "lon": None}
+        with mock.patch.object(D.os.path, "isfile", return_value=True), \
+             mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(data))):
+            r = D.check_station_identity(_CTX)
+        self.assertEqual(r["status"], "fail")
+        self.assertEqual(r["badge"], "UNSET")
+
+    def test_station_identity_callsign_only_is_warn(self):
+        data = {"callsign": "W4MHI", "grid": "", "lat": None, "lon": None}
+        with mock.patch.object(D.os.path, "isfile", return_value=True), \
+             mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(data))):
+            r = D.check_station_identity(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "PARTIAL")
+
+    def test_station_identity_callsign_and_latlon_no_grid_is_ok(self):
+        data = {"callsign": "W4MHI", "grid": "", "lat": 47.6, "lon": -122.3}
+        with mock.patch.object(D.os.path, "isfile", return_value=True), \
+             mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(data))):
+            r = D.check_station_identity(_CTX)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "SET")
+
+    def test_station_identity_full_is_ok(self):
+        data = {"callsign": "w4mhi", "grid": "cn87", "lat": 47.6, "lon": -122.3}
+        with mock.patch.object(D.os.path, "isfile", return_value=True), \
+             mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(data))):
+            r = D.check_station_identity(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "SET")
+        self.assertEqual(r["detail"], "W4MHI · CN87")
+
+    def test_station_identity_corrupt_file_is_fail_not_raise(self):
+        with mock.patch.object(D.os.path, "isfile", return_value=True), \
+             mock.patch("builtins.open", mock.mock_open(read_data="{not json")):
+            r = D.check_station_identity(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "fail")
+
+    # -- digirig --
+    def test_digirig_present_is_ok(self):
+        cands = [{"path": "/dev/serial/by-id/usb-Silicon_Labs_CP2102-if00-port0",
+                  "label": "usb-Silicon_Labs_CP2102-if00-port0"}]
+        with mock.patch.object(D.hardware_detect, "list_serial_by_id", return_value=cands), \
+             mock.patch.object(D.hardware_detect, "digirig_candidates", return_value=cands):
+            r = D.check_digirig(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "PRESENT")
+        self.assertIn("CP2102", r["detail"])
+
+    def test_digirig_absent_is_warn(self):
+        with mock.patch.object(D.hardware_detect, "list_serial_by_id", return_value=[]), \
+             mock.patch.object(D.hardware_detect, "digirig_candidates", return_value=[]):
+            r = D.check_digirig(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "ABSENT")
+
+    # -- dra_pi --
+    def test_dra_pi_present_is_ok(self):
+        inv = mock.Mock(devices={"dra-pi": {"id": "dra-pi", "kind": "dra-pi"}})
+        with mock.patch.object(D.hardware, "load", return_value=inv):
+            r = D.check_dra_pi(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "PRESENT")
+
+    def test_dra_pi_absent_is_warn(self):
+        inv = mock.Mock(devices={})
+        with mock.patch.object(D.hardware, "load", return_value=inv):
+            r = D.check_dra_pi(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "ABSENT")
+
+    def test_dra_pi_inventory_error_is_warn_unknown_not_raise(self):
+        with mock.patch.object(D.hardware, "load", side_effect=Exception("boom")):
+            r = D.check_dra_pi(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "UNKNOWN")
+
+    # -- gps --
+    def test_gps_3d_fix_is_ok(self):
+        with mock.patch.object(D, "_http_get",
+                                return_value=(True, {"gps": {"mode": 3, "used": 9, "seen": 12}})):
+            r = D.check_gps(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "3D")
+        self.assertIn("9 sats", r["detail"])
+
+    def test_gps_2d_fix_is_ok(self):
+        with mock.patch.object(D, "_http_get",
+                                return_value=(True, {"gps": {"mode": 2, "used": 4}})):
+            r = D.check_gps(_CTX)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "2D")
+
+    def test_gps_mode0_no_fix_is_warn(self):
+        with mock.patch.object(D, "_http_get",
+                                return_value=(True, {"gps": {"mode": 0}})):
+            r = D.check_gps(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "NO FIX")
+
+    def test_gps_null_is_warn_off(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, {"gps": None})):
+            r = D.check_gps(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "OFF")
+
+    def test_gps_server_unreachable_is_warn_off_not_raise(self):
+        with mock.patch.object(D, "_http_get", return_value=(False, None)):
+            r = D.check_gps(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "OFF")
+
+    # -- display --
+    def test_display_up_is_ok(self):
+        with mock.patch.object(D, "_svc_status",
+                                return_value={"active": "active", "enabled": "enabled", "installed": True}):
+            r = D.check_display(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "UP")
+
+    def test_display_installed_not_running_is_warn(self):
+        with mock.patch.object(D, "_svc_status",
+                                return_value={"active": "inactive", "enabled": "enabled", "installed": True}):
+            r = D.check_display(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "OFF")
+
+    def test_display_not_installed_is_warn_na(self):
+        with mock.patch.object(D, "_svc_status",
+                                return_value={"active": "inactive", "enabled": "not-found", "installed": False}):
+            r = D.check_display(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "N/A")
+
+    def test_display_never_critical(self):
+        chk = next(c for c in D.REGISTRY if c.id == "display")
+        self.assertFalse(chk.critical)
+
+    # -- cooling_hat --
+    def test_cooling_hat_up_is_ok(self):
+        with mock.patch.object(D, "_svc_status",
+                                return_value={"active": "active", "enabled": "enabled", "installed": True}):
+            r = D.check_cooling_hat(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "UP")
+
+    def test_cooling_hat_installed_not_running_is_warn(self):
+        with mock.patch.object(D, "_svc_status",
+                                return_value={"active": "inactive", "enabled": "enabled", "installed": True}):
+            r = D.check_cooling_hat(_CTX)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "OFF")
+
+    def test_cooling_hat_not_installed_is_warn_na(self):
+        with mock.patch.object(D, "_svc_status",
+                                return_value={"active": "inactive", "enabled": "not-found", "installed": False}):
+            r = D.check_cooling_hat(_CTX)
+        self._shape(r)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "N/A")
+
+    def test_cooling_hat_group_and_capability(self):
+        chk = next(c for c in D.REGISTRY if c.id == "cooling_hat")
+        self.assertEqual(chk.group, "SYSTEM")
+        self.assertEqual(chk.capability, "POWER")
+        self.assertFalse(chk.critical)
+
+
+class TestNewChecksRegistered(unittest.TestCase):
+    def test_all_6_new_checks_registered(self):
+        ids = {c.id for c in D.REGISTRY}
+        expected = {"station_identity", "digirig", "dra_pi", "gps", "display", "cooling_hat"}
+        self.assertTrue(expected <= ids)
+
+    def test_station_identity_is_core_critical_access(self):
+        chk = next(c for c in D.REGISTRY if c.id == "station_identity")
+        self.assertEqual(chk.group, "CORE")
+        self.assertEqual(chk.capability, "ACCESS")
+        self.assertTrue(chk.critical)
+
+    def test_digirig_and_dra_pi_are_hardware_aprs_rx_not_critical(self):
+        for cid in ("digirig", "dra_pi"):
+            chk = next(c for c in D.REGISTRY if c.id == cid)
+            self.assertEqual(chk.group, "HARDWARE")
+            self.assertEqual(chk.capability, "APRS_RX")
+            self.assertFalse(chk.critical)
+
+    def test_gps_is_hardware_critical_position(self):
+        chk = next(c for c in D.REGISTRY if c.id == "gps")
+        self.assertEqual(chk.group, "HARDWARE")
+        self.assertEqual(chk.capability, "POSITION")
+        self.assertTrue(chk.critical)
+
+    def test_run_all_real_registry_includes_new_checks(self):
+        r = D.run_all("127.0.0.1", 8083)
+        ids = [c["id"] for g in r["groups"] for c in g["checks"]]
+        for cid in ("station_identity", "digirig", "dra_pi", "gps", "display", "cooling_hat"):
+            self.assertIn(cid, ids)
 
 
 class TestDoctorExitGate(unittest.TestCase):

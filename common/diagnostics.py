@@ -31,6 +31,8 @@ import sys
 import urllib.request
 from collections import namedtuple
 
+from common import config_paths, hardware, hardware_detect
+
 # ---------------------------------------------------------------------------
 # Registry entry
 # ---------------------------------------------------------------------------
@@ -756,6 +758,160 @@ def check_winlink_forms(ctx):
     return _result("winlink_forms", "DATA", "Winlink Forms (Offline Pages)", status, badge, detail)
 
 
+def check_station_identity(ctx):
+    """CORE/ACCESS, critical. Signal: configuration/station.json (written by
+    Setup -> Station). No callsign (missing file, or the "N0CALL" placeholder
+    setup.py writes when grid/lat/lon are set without a callsign) means every
+    beacon/position this station sends is anonymous -- that's a fail, not a
+    warn. A callsign with no locator (grid square or lat/lon) still identifies
+    the operator, so it only degrades to warn."""
+    path = config_paths.station_json(REPO_ROOT)
+    if not os.path.isfile(path):
+        return _result(
+            "station_identity", "CORE", "Station Identity", "fail", "UNSET",
+            "No station.json found — callsign not configured.\n     Set it in Setup → Station.",
+            breaks="No identity — beacons/positions are anonymous.",
+            fix="/system/setup.html#station",
+        )
+    try:
+        with open(path) as fh:
+            st = json.load(fh) or {}
+    except (OSError, ValueError):
+        st = {}
+
+    callsign = (st.get("callsign") or "").strip().upper()
+    if not callsign or callsign == "N0CALL":
+        return _result(
+            "station_identity", "CORE", "Station Identity", "fail", "UNSET",
+            "No callsign configured.\n     Set it in Setup → Station.",
+            breaks="No identity — beacons/positions are anonymous.",
+            fix="/system/setup.html#station",
+        )
+
+    grid = (st.get("grid") or "").strip().upper()
+    lat, lon = st.get("lat"), st.get("lon")
+    if not grid and lat is None and lon is None:
+        return _result(
+            "station_identity", "CORE", "Station Identity", "warn", "PARTIAL",
+            (
+                f"{callsign} set, but no grid square or coordinates.\n"
+                "     Add a locator in Setup → Station."
+            ),
+        )
+
+    detail = f"{callsign} · {grid}" if grid else f"{callsign} · {lat:.4f},{lon:.4f}"
+    return _result("station_identity", "CORE", "Station Identity", "ok", "SET", detail)
+
+
+def check_digirig(ctx):
+    """HARDWARE/APRS_RX, not critical -- a DRA-Pi or SDR-only station is a
+    valid setup with no DigiRig at all. Signal: any /dev/serial/by-id entry
+    (hardware_detect.digirig_candidates() -- any USB-serial adapter on this
+    suite's supported hardware is the DigiRig; see that function's docstring
+    for why label-substring filtering was dropped)."""
+    serial_by_id = hardware_detect.list_serial_by_id()
+    candidates = hardware_detect.digirig_candidates(serial_by_id)
+    if candidates:
+        first = candidates[0]
+        path = first.get("path") or first.get("label") or "detected"
+        extra = f" (+{len(candidates) - 1} more)" if len(candidates) > 1 else ""
+        return _result("digirig", "HARDWARE", "DigiRig (USB-Serial PTT)", "ok", "PRESENT",
+                        f"{path}{extra}")
+    return _result("digirig", "HARDWARE", "DigiRig (USB-Serial PTT)", "warn", "ABSENT",
+                    "No USB-serial PTT device found under /dev/serial/by-id.")
+
+
+def check_dra_pi(ctx):
+    """HARDWARE/APRS_RX, not critical -- a DigiRig or SDR-only station is a
+    valid setup with no DRA-Pi HAT at all. Signal: configuration/hardware.json
+    inventory (common.hardware.load), which the hardware poll keeps
+    reconciled against the HAT's audioinjectorpi ALSA card via
+    hardware.reconcile_dra_pi(). Reads the persisted inventory rather than
+    re-probing ALSA directly so this stays cheap and consistent with what the
+    Setup page's Dongles list shows. Never raises -- an unreadable inventory
+    degrades to warn/UNKNOWN rather than failing the whole sweep."""
+    try:
+        inv = hardware.load(REPO_ROOT)
+        present = any(d.get("kind") == "dra-pi" for d in inv.devices.values())
+    except Exception:
+        return _result("dra_pi", "HARDWARE", "DRA-Pi (GrayWolf Audio HAT)", "warn", "UNKNOWN",
+                        "Could not read the hardware inventory (configuration/hardware.json).")
+    if present:
+        return _result("dra_pi", "HARDWARE", "DRA-Pi (GrayWolf Audio HAT)", "ok", "PRESENT",
+                        "DRA-Pi HAT declared in the hardware inventory.")
+    return _result("dra_pi", "HARDWARE", "DRA-Pi (GrayWolf Audio HAT)", "warn", "ABSENT",
+                    "No DRA-Pi HAT declared in the hardware inventory.")
+
+
+def check_gps(ctx):
+    """HARDWARE/POSITION, critical. Signal: GET /api/system's "gps" block
+    (server/routes/system.py's _gps_info(), sampled from gpsd every ~10s).
+    mode 2/3 = fix (badge 2D/3D); mode 0 = gpsd up but no fix; gps missing/
+    null = gpsd itself unreachable (or the OASIS API call failed) -- both of
+    those non-fix cases surface as warn, never fail, so a station without a
+    GPS antenna attached doesn't get flagged as broken; the capability rollup
+    still shows POSITION as degraded via critical=True."""
+    host, port = ctx["host"], ctx["port"]
+    ok, data = _http_get(f"http://{host}:{port}/api/system", 5)
+    gps = (data or {}).get("gps") if ok else None
+    if not gps:
+        return _result(
+            "gps", "HARDWARE", "GPS", "warn", "OFF",
+            "No GPS data — gpsd unreachable or not running.\n     Check the gpsd service and antenna.",
+            breaks="No position fix — grid/beacon unreliable.",
+        )
+
+    mode = gps.get("mode", 0)
+    if mode not in (2, 3):
+        return _result(
+            "gps", "HARDWARE", "GPS", "warn", "NO FIX",
+            "gpsd is up but has no position fix yet.\n     Check sky visibility / antenna.",
+            breaks="No position fix — grid/beacon unreliable.",
+        )
+
+    badge = "3D" if mode == 3 else "2D"
+    sats = gps.get("used")
+    if sats is None:
+        sats = gps.get("seen")
+    parts = [badge]
+    if sats is not None:
+        parts.append(f"{sats} sats")
+    lat, lon = gps.get("lat"), gps.get("lon")
+    if lat is not None and lon is not None:
+        parts.append(f"{lat:.4f},{lon:.4f}")
+    return _result("gps", "HARDWARE", "GPS", "ok", badge, " · ".join(parts))
+
+
+def check_display(ctx):
+    """HARDWARE/ACCESS, never critical -- OASIS is fully usable from the web
+    UI with no e-ink panel attached, so this can never turn the ACCESS tile
+    red. Signal: systemd unit oasis-e-ink.service."""
+    svc = _svc_status("oasis-e-ink")
+    if svc["active"] == "active":
+        return _result("display", "HARDWARE", "E-Ink Display", "ok", "UP",
+                        f"oasis-e-ink service {_svc_word(svc)}.")
+    if svc["installed"]:
+        return _result("display", "HARDWARE", "E-Ink Display", "warn", "OFF",
+                        f"Installed but not running (oasis-e-ink is {svc['active']}).")
+    return _result("display", "HARDWARE", "E-Ink Display", "warn", "N/A",
+                    "oasis-e-ink service not installed.")
+
+
+def check_cooling_hat(ctx):
+    """SYSTEM group / POWER capability, not critical -- cooling is a nice-to-
+    have on a Pi Zero 2 W, not something that blocks a capability. Signal:
+    systemd unit rgb-cooling-hat.service (features/rgb-cooling-hat)."""
+    svc = _svc_status("rgb-cooling-hat")
+    if svc["active"] == "active":
+        return _result("cooling_hat", "SYSTEM", "RGB Cooling HAT", "ok", "UP",
+                        f"rgb-cooling-hat service {_svc_word(svc)}.")
+    if svc["installed"]:
+        return _result("cooling_hat", "SYSTEM", "RGB Cooling HAT", "warn", "OFF",
+                        f"Installed but not running (rgb-cooling-hat is {svc['active']}).")
+    return _result("cooling_hat", "SYSTEM", "RGB Cooling HAT", "warn", "N/A",
+                    "rgb-cooling-hat service not installed.")
+
+
 # ---------------------------------------------------------------------------
 # Registry: real checks
 # ---------------------------------------------------------------------------
@@ -783,4 +939,16 @@ REGISTRY.extend([
           capability="ACCESS", critical=False, tier="v1", fn=check_webssh),
     Check(id="winlink_forms", group="DATA", label="Winlink Forms (Offline Pages)",
           capability="REFERENCE", critical=False, tier="backlog", fn=check_winlink_forms),
+    Check(id="station_identity", group="CORE", label="Station Identity",
+          capability="ACCESS", critical=True, tier="v1", fn=check_station_identity),
+    Check(id="digirig", group="HARDWARE", label="DigiRig (USB-Serial PTT)",
+          capability="APRS_RX", critical=False, tier="v1", fn=check_digirig),
+    Check(id="dra_pi", group="HARDWARE", label="DRA-Pi (GrayWolf Audio HAT)",
+          capability="APRS_RX", critical=False, tier="v1", fn=check_dra_pi),
+    Check(id="gps", group="HARDWARE", label="GPS",
+          capability="POSITION", critical=True, tier="v1", fn=check_gps),
+    Check(id="display", group="HARDWARE", label="E-Ink Display",
+          capability="ACCESS", critical=False, tier="v1", fn=check_display),
+    Check(id="cooling_hat", group="SYSTEM", label="RGB Cooling HAT",
+          capability="POWER", critical=False, tier="v1", fn=check_cooling_hat),
 ])
