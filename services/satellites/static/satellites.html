@@ -1,0 +1,6 @@
+<!doctype html><html><head><meta charset="utf-8"><title>OASIS — Satellites</title></head>
+<body><h1>Satellites</h1><p id="status">loading…</p>
+<script>fetch('/api/satellites').then(r=>r.json()).then(d=>{
+  document.getElementById('status').textContent =
+    d.satellites.length + ' sats · TLE age ' + (d.tle_age_days==null?'—':d.tle_age_days.toFixed(1)+'d');
+});</script></body></html>
