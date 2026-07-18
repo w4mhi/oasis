@@ -17,6 +17,7 @@ edge, just before the frame reaches the glass.
 """
 
 import importlib
+import sys
 
 
 def make_display(cfg, force_simulate=False):
@@ -26,8 +27,15 @@ def make_display(cfg, force_simulate=False):
         try:
             module = importlib.import_module(f"waveshare_epd.{disp['model']}")
             return EpdBackend(cfg, module)
-        except (ImportError, ModuleNotFoundError):
-            pass
+        except (ImportError, ModuleNotFoundError) as exc:
+            # Loud, not silent. A missing / mis-vendored driver silently degrading
+            # to a PNG the operator can't see on the glass is the #1 cause of a
+            # "panel never updates" mystery (cost us ~2h once). Say so plainly.
+            print(f"[oasis-e-ink] WARNING: panel driver "
+                  f"'waveshare_epd.{disp['model']}' did not import ({exc}); "
+                  f"falling back to PNG simulator — THE PANEL WILL NOT UPDATE. "
+                  f"Vendor the Waveshare driver into displays/e-ink/waveshare_epd/ "
+                  f"(see README) and restart oasis-e-ink.", file=sys.stderr)
     return PngBackend(cfg)
 
 

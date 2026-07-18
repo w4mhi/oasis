@@ -148,6 +148,7 @@ PRESERVE_IN_DEST = {
     "offline-packages",      # graywolf / kiwix / webssh / pat (shared central tree)
     "features/rtl-sdr/packages",  # feature-local: rtl-sdr + direwolf .debs (bundle_base)
     "displays/cm4stack/packages", # feature-local: m5stack-cm4.dtbo
+    "displays/e-ink/waveshare_epd",  # feature-local: Waveshare e-ink driver (phase_eink)
     "server/wheels",         # phase_wheels
     "services/map/map-assets",  # phase_aprs_sprites
     "services/fcc_database/data",  # phase_fcc
@@ -1001,6 +1002,86 @@ def phase_cm4stack(bundle_root, update=False):
         _warn("CM4Stack panel setup will need it fetched manually on the target.")
 
 
+# Waveshare 2.7" e-Paper HAT driver — the vendored `waveshare_epd` Python package
+# that displays/e-ink/oasis-e-ink.py imports at runtime. Fetched at build time (not
+# redistributed in the OASIS repo — Waveshare's license) and staged into the bundle
+# so an OFFLINE install resolves it with zero runtime network. Mirrors phase_cm4stack.
+# Only the driver subpath is cloned (the full e-Paper repo is hundreds of MB of art).
+WAVESHARE_REPO = "https://github.com/waveshareteam/e-Paper"
+WAVESHARE_SUBPATH = "RaspberryPi_JetsonNano/python/lib/waveshare_epd"
+
+
+def _clone_waveshare_epd(tmp):
+    """Shallow+sparse clone just the waveshare_epd package into tmp; return its path.
+
+    Prefers a partial + sparse checkout (small download); falls back to a plain
+    shallow clone for older gits lacking --filter/--sparse. Returns the driver
+    package dir, or None on failure. Mirrors install-e-ink.py's _clone_driver.
+    """
+    dest = os.path.join(tmp, "repo")
+    pkg = os.path.join(dest, WAVESHARE_SUBPATH)
+
+    r = subprocess.run(
+        ["git", "clone", "--depth", "1", "--filter=blob:none", "--sparse",
+         WAVESHARE_REPO, dest],
+        capture_output=True, text=True,
+    )
+    if r.returncode == 0:
+        sc = subprocess.run(["git", "-C", dest, "sparse-checkout", "set",
+                             WAVESHARE_SUBPATH], capture_output=True, text=True)
+        if sc.returncode == 0 and os.path.isdir(pkg):
+            return pkg
+
+    if os.path.isdir(dest):
+        shutil.rmtree(dest)
+    r = subprocess.run(["git", "clone", "--depth", "1", WAVESHARE_REPO, dest],
+                       capture_output=True, text=True)
+    if r.returncode == 0 and os.path.isdir(pkg):
+        return pkg
+    if r.returncode != 0 and r.stderr:
+        _warn(f"git clone failed: {r.stderr.strip().splitlines()[-1]}")
+    return None
+
+
+def phase_eink(bundle_root, update=False):
+    """Fetch Waveshare's waveshare_epd driver into displays/e-ink/ for offline install.
+
+    Arch-independent pure-Python package, so no suite/arch split. Incremental:
+    skips if already present; a clean --rebuild re-fetches it. Feature-local:
+    kept inside displays/e-ink/ so removing the feature dir removes it. bundle_root
+    is <out>/offline-packages, so go up one to the bundle root. Requires git on the
+    build host (warn-not-fail if absent or offline — the target can vendor it by hand).
+    """
+    dest_dir = os.path.join(os.path.dirname(bundle_root), "displays", "e-ink",
+                            "waveshare_epd")
+
+    _section("Phase — Waveshare e-ink panel driver")
+    _info("Source  : github.com/waveshareteam/e-Paper (lib/waveshare_epd)")
+
+    if os.path.isdir(dest_dir) and os.path.exists(os.path.join(dest_dir, "epd2in7.py")):
+        _cp("waveshare_epd/  (already present)")
+        return
+    if not shutil.which("git"):
+        _warn("git not found on build host — cannot fetch waveshare_epd.")
+        _warn("E-ink panel setup will need the driver vendored manually on the target.")
+        return
+    _dl("waveshare_epd/  ← GitHub (shallow/sparse)")
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = _clone_waveshare_epd(tmp)
+            if not pkg:
+                _warn("Could not fetch waveshare_epd (no network, or git error).")
+                _warn("E-ink panel setup will need the driver vendored manually.")
+                return
+            if os.path.isdir(dest_dir):
+                shutil.rmtree(dest_dir)
+            shutil.copytree(pkg, dest_dir)
+        _ok("waveshare_epd/")
+    except Exception as exc:
+        _warn(f"Could not stage waveshare_epd: {exc}")
+        _warn("E-ink panel setup will need the driver vendored manually on the target.")
+
+
 def phase_wikipedia(zim_dir):
     """Phase 8: Download Wikipedia Top (Best of Wikipedia Mini) ZIM (~316 MB) into zim_dir."""
     edition_mini = f"{WIKI_EDITION}_{WIKI_FLAVOUR}"  # wikipedia_en_top_mini
@@ -1747,6 +1828,7 @@ def cmd_build(skip_windows, rebuild=False, all_platforms=False, profile="full"):
         phase_direwolf(pkg_root, update=True)
         phase_adsb(pkg_root, update=True)
         phase_cm4stack(pkg_root, update=True)
+        phase_eink(pkg_root, update=True)
         phase_wikipedia(os.path.join(out_dir, "zim"))
         phase_pmtiles(os.path.join(out_dir, "maps"), all_platforms=all_platforms)
 
