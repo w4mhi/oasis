@@ -44,7 +44,7 @@ def load(path):
         try:
             with open(path, encoding="utf-8") as fh:
                 data = json.load(fh)
-            if isinstance(data.get("satellites"), list):
+            if isinstance(data, dict) and isinstance(data.get("satellites"), list):
                 return data
         except (ValueError, OSError):
             pass

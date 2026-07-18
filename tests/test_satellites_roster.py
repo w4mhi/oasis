@@ -28,5 +28,14 @@ class RosterTest(unittest.TestCase):
             iss = [s for s in data["satellites"] if s["norad"] == 25544][0]
             self.assertTrue(iss["selected"])
 
+    def test_load_recovers_from_non_dict_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "satellites.json")
+            with open(p, "w") as fh:
+                json.dump([1, 2, 3], fh)          # valid JSON, wrong shape
+            data = roster.load(p)
+            self.assertEqual(len(data["satellites"]), len(roster.DEFAULT_ROSTER))
+            self.assertIsInstance(json.load(open(p)), dict)   # file was reseeded as a dict
+
 if __name__ == "__main__":
     unittest.main()
