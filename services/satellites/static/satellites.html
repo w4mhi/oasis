@@ -221,6 +221,19 @@ function drawCoastline(W, H) {
   }).join('');
 }
 
+// Index of the first track point at/after "now". Returns 0 for an entirely-future
+// pass (all dashed) and track.length-1 for an entirely-elapsed pass (all solid),
+// so splitAtNow() colours the whole track correctly in both corner cases.
+function nowIndex(track) {
+  if (!track.length) return 0;
+  const now = Date.now();
+  const first = new Date(track[0].t).getTime();
+  const last = new Date(track[track.length - 1].t).getTime();
+  if (now <= first) return 0;
+  if (now >= last) return track.length - 1;
+  return Math.max(0, track.findIndex(p => new Date(p.t).getTime() >= now));
+}
+
 function selectPass(el, norad, rise, set) {
   document.querySelectorAll('.pass-row.active').forEach(e => e.classList.remove('active'));
   el.classList.add('active');
@@ -248,14 +261,10 @@ async function showTrack(norad, rise, set) {
     info.textContent = j.error ? `No track: ${j.error}` : 'No track data for this pass (TLE sync needed?).';
     return;
   }
-  const now = Date.now();
-  const nowIdx = Math.max(0, j.track.findIndex(p => new Date(p.t).getTime() >= now));
-  for (const seg of satgeo.splitAntimeridian(j.track)) {
-    const localNow = seg.indexOf(j.track[nowIdx]);
-    if (localNow < 0) { out += pathFor(seg, 'trk-future'); continue; } // whole seg future/past
-    const { past, future } = satgeo.splitAtNow(seg, localNow);
-    out += pathFor(past, 'trk-past') + pathFor(future, 'trk-future');
-  }
+  const nowIdx = nowIndex(j.track);
+  const { past, future } = satgeo.splitAtNow(j.track, nowIdx);
+  for (const seg of satgeo.splitAntimeridian(past))   out += pathFor(seg, 'trk-past');
+  for (const seg of satgeo.splitAntimeridian(future)) out += pathFor(seg, 'trk-future');
   if (STATION && STATION.lat != null) {
     const st = satgeo.project(STATION.lat, STATION.lon, W, H);
     out += `<circle cx="${st.x}" cy="${st.y}" r="4" class="home"/>`;
