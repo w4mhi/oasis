@@ -171,8 +171,12 @@ if "$VENV_PYTHON" -c "import gunicorn" 2>/dev/null; then
     # worker is invisible to another -> intermittent 404 "unknown planId"/"unknown
     # job". Setup work already runs in a background thread that doesn't block the
     # request, so a single worker doesn't sacrifice responsiveness during installs.
+    # --threads: diagnostics /api/diagnostics makes in-process self-HTTP calls;
+    # a threaded worker serves them concurrently (sync single worker would
+    # deadlock/time them out).
     exec "$VENV_DIR/bin/gunicorn" \
         --workers 1 \
+        --threads 4 \
         --bind "0.0.0.0:$PORT" \
         --access-logfile - \
         app:app

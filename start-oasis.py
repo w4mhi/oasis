@@ -268,7 +268,10 @@ def main():
         # causing intermittent 404 "unknown planId". Setup work already runs in
         # a background thread that doesn't block the request, so this doesn't
         # cost responsiveness.
-        cmd = [venv_python, "-m", "gunicorn", "--workers", "1",
+        # --threads: diagnostics /api/diagnostics makes in-process self-HTTP
+        # calls; a threaded worker serves them concurrently (sync single worker
+        # would deadlock/time them out).
+        cmd = [venv_python, "-m", "gunicorn", "--workers", "1", "--threads", "4",
                "--bind", f"0.0.0.0:{PORT}", "--access-logfile", "-", "app:app"]
     else:
         cmd = [venv_python, "app.py"]
