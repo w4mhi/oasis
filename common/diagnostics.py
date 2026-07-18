@@ -28,7 +28,6 @@ import shutil
 import socket
 import subprocess
 import sys
-import urllib.error
 import urllib.request
 from collections import namedtuple
 
@@ -585,7 +584,7 @@ def check_graywolf(ctx):
             ),
         )
     return _result("graywolf", "SERVICES", "GrayWolf APRS", "warn", "NOT INSTALLED",
-                    "Install with: python3 services/graywolf/install.py")
+                    f"Install with: python3 services/graywolf/install.py (port {port}).")
 
 
 def check_graywolf_api(ctx):
@@ -608,7 +607,7 @@ def check_graywolf_api(ctx):
             ),
         )
     return _result("graywolf_api", "SERVICES", "GrayWolf APRS History API", "warn", "NOT INSTALLED",
-                    "Enabled by: python3 services/graywolf/install.py")
+                    f"Enabled by: python3 services/graywolf/install.py (port {port}).")
 
 
 def check_pat(ctx):
@@ -643,7 +642,7 @@ def check_pat(ctx):
             ),
         )
     return _result("pat", "SERVICES", "Winlink (Pat)", "warn", "NOT INSTALLED",
-                    "Install with: python3 services/winlink/install.py")
+                    f"Install with: python3 services/winlink/install.py (port {port}).")
 
 
 def check_rtl_sdr(ctx):
@@ -707,7 +706,7 @@ def check_kiwix(ctx):
             ),
         )
     return _result("kiwix", "DATA", "Kiwix (Offline Wikipedia)", "warn", "NOT INSTALLED",
-                    "Install with: python3 services/kiwix/install.py")
+                    f"Install with: python3 services/kiwix/install.py (port {port}).")
 
 
 def check_webssh(ctx):
@@ -728,7 +727,7 @@ def check_webssh(ctx):
             ),
         )
     return _result("webssh", "CORE", "Web SSH (ttyd)", "warn", "NOT INSTALLED",
-                    "Install with: python3 services/webssh/install.py")
+                    f"Install with: python3 services/webssh/install.py (port {port}).")
 
 
 def check_winlink_forms(ctx):

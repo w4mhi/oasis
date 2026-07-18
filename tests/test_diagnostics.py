@@ -2,6 +2,7 @@ import os, sys, unittest
 from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import diagnostics as D
+from scripts import doctor as DR
 
 _CTX = {"host": "127.0.0.1", "port": 8083}
 
@@ -307,6 +308,41 @@ class TestRegistryAndKiwixCapability(unittest.TestCase):
         r = D.run_all("127.0.0.1", 8083)
         ids = [c["id"] for g in r["groups"] for c in g["checks"]]
         self.assertNotIn("winlink_forms", ids)
+
+
+class TestDoctorExitGate(unittest.TestCase):
+    """doctor.py's exit-code contract: nonzero iff a *critical* check failed
+    anywhere in the full sweep, independent of the CORE display group."""
+
+    def _payload(self, results):
+        groups = {}
+        for r in results:
+            groups.setdefault(r["group"], []).append(r)
+        return {"groups": [{"name": name, "checks": checks} for name, checks in groups.items()]}
+
+    def test_critical_fail_outside_core_is_flagged(self):
+        # rtl_sdr is HARDWARE-group and critical -- not in CORE at all.
+        payload = self._payload([
+            D._result("server", "CORE", "OASIS Server", "ok", "RUNNING", "d"),
+            D._result("rtl_sdr", "HARDWARE", "RTL-SDR", "fail", "ERROR", "d"),
+        ])
+        critical_by_id = {"server": True, "rtl_sdr": True}
+        self.assertEqual(DR._critical_fail_ids(payload, critical_by_id), ["rtl_sdr"])
+
+    def test_non_critical_fail_does_not_flag(self):
+        payload = self._payload([
+            D._result("kiwix", "DATA", "Kiwix", "fail", "ERROR", "d"),
+        ])
+        critical_by_id = {"kiwix": False}
+        self.assertEqual(DR._critical_fail_ids(payload, critical_by_id), [])
+
+    def test_all_ok_or_warn_is_zero_fails(self):
+        payload = self._payload([
+            D._result("server", "CORE", "OASIS Server", "ok", "RUNNING", "d"),
+            D._result("pat", "SERVICES", "Winlink", "warn", "STOPPED", "d"),
+        ])
+        critical_by_id = {"server": True, "pat": True}
+        self.assertEqual(DR._critical_fail_ids(payload, critical_by_id), [])
 
 
 if __name__ == "__main__":
