@@ -24,6 +24,12 @@ def user_folders_json(repo_root):
 def aprs_frequencies_json(repo_root):
     return os.path.join(config_dir(repo_root), "aprs_frequencies.json")
 
+def satellites_json(repo_root):
+    return os.path.join(config_dir(repo_root), "satellites.json")
+
+def tle_cache_dir(repo_root):
+    return os.path.join(config_dir(repo_root), "tle-cache")
+
 def hardware_json(repo_root):
     return os.path.join(config_dir(repo_root), "hardware.json")
 

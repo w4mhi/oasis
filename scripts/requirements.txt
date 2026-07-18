@@ -34,3 +34,11 @@ psutil==7.2.2
 # with ModuleNotFoundError: colorama. Pure none-any wheel; harmless no-op on
 # Linux/macOS (imported only on win32).
 colorama==0.4.6
+
+# Satellite pass prediction (services/satellites/predict.py). Pure-Python SGP4
+# propagator + Skyfield's astronomy layer; numpy is Skyfield's compiled dep
+# (aarch64 wheels are prebuilt on PyPI — no per-arch compile). No .bsp/ephemeris
+# is used; timescale is built with builtin=True so nothing is fetched at runtime.
+skyfield>=1.49
+sgp4>=2.23
+numpy>=1.26

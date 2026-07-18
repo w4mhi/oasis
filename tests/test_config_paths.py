@@ -12,6 +12,8 @@ class ConfigPathsTest(unittest.TestCase):
                          "/x/oasis/configuration/installed-services.json")
         self.assertEqual(cp.user_folders_json(r),
                          "/x/oasis/configuration/user-folders.json")
+        self.assertEqual(cp.satellites_json(r), "/x/oasis/configuration/satellites.json")
+        self.assertEqual(cp.tle_cache_dir(r), "/x/oasis/configuration/tle-cache")
 
 if __name__ == "__main__":
     unittest.main()
