@@ -653,7 +653,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 <div id="aprs-list-drawer">
   <div id="aprs-list-resize" title="Drag to resize"></div>
   <div id="aprs-list-head">
-    <span class="title">APRS LIVE</span>
+    <span class="title">TRAFFIC LIVE</span>
     <span class="count" id="aprs-list-count">0</span>
     <span class="spacer"></span>
     <button id="aprs-list-close" onclick="toggleAprsList(false)" title="Close list">✕</button>
@@ -1914,28 +1914,26 @@ function adsbCategoryKey(a) {
 // different coordinate spaces can coexist — most are 24-unit, but A5/B1 are the
 // graphic-designer's preferred 100-unit paths.
 const AC_SHAPES = {
-  // airliner (A3) — swept wings + tailplane; also the fallback shape.
-  airliner:{vb:24, d:"M12 1.5C12.8 1.5 13.1 3.2 13.1 6L13.1 10.5 22 15.5 22 17.5 13.1 13.8 13.1 18.8 15.5 21.2 15.5 22.3 12 20.9 8.5 22.3 8.5 21.2 10.9 18.8 10.9 13.8 2 17.5 2 15.5 10.9 10.5 10.9 6C10.9 3.2 11.2 1.5 12 1.5Z"},
-  // light single-engine (A1) — small straight wings.
-  light:   {vb:24, d:"M12 3.5C12.6 3.5 12.9 4.8 12.9 7L12.9 10.2 20 11.6 20 13 12.9 12.2 12.9 17.5 14.6 19.6 14.6 20.6 12 19.5 9.4 20.6 9.4 19.6 11.1 17.5 11.1 12.2 4 13 4 11.6 11.1 10.2 11.1 7C11.1 4.8 11.4 3.5 12 3.5Z"},
-  // twin turboprop / small bizjet (A2) — mid span, mild sweep.
-  twin:    {vb:24, d:"M12 2.5C12.7 2.5 13 4 13 6.5L13 10.5 21 13.5 21 15.5 13 13.5 13 18.5 15.3 20.8 15.3 21.8 12 20.5 8.7 21.8 8.7 20.8 11 18.5 11 13.5 3 15.5 3 13.5 11 10.5 11 6.5C11 4 11.3 2.5 12 2.5Z"},
-  // heavy / widebody (A4) — wide swept wings.
-  heavy:   {vb:24, d:"M12 1C12.9 1 13.3 3 13.3 6L13.3 10 23 16 23 18.2 13.3 14 13.3 19 16 21.5 16 22.6 12 21 8 22.6 8 21.5 10.7 19 10.7 14 1 18.2 1 16 10.7 10 10.7 6C10.7 3 11.1 1 12 1Z"},
-  // fighter (A5) — designer's swept jet.
-  fighter: {vb:100, d:"M50 5 L46 20 L46 45 L15 70 L15 76 L45 68 L45 88 L34 92 L34 95 L50 92 L66 95 L66 92 L55 88 L55 68 L85 76 L85 70 L54 45 L54 20 Z"},
-  // helicopter (A7) — fuselage + tail boom + rotor cross.
-  heli:    {vb:24, d:"M12 7.5C14.2 7.5 14.6 12 12 13.2 9.4 12 9.8 7.5 12 7.5ZM11.4 12 12.6 12 12.6 21 11.4 21ZM3 11.3 21 11.3 21 12.7 3 12.7ZM11.3 3 12.7 3 12.7 21 11.3 21Z"},
-  // glider / parachute (B1/B2) — designer's ultra-wide thin wings.
-  glider:  {vb:100, d:"M48 15 C48 15 46 25 46 38 L2 45 C1 45.2 1 46.8 2 47 L46 48 L46 80 L35 88 C34 89 34 90 36 90 L48 87 L48 93 C48 95 52 95 52 93 L52 87 L64 90 C66 90 66 89 65 88 L54 80 L54 48 L98 47 C99 46.8 99 45.2 98 45 L54 38 C54 25 52 15 52 15 Z"},
-  // surface vehicle (C1/C2) — rounded rectangle.
-  ground:  {vb:24, d:"M6.5 7.5 17.5 7.5Q19 7.5 19 9L19 15Q19 16.5 17.5 16.5L6.5 16.5Q5 16.5 5 15L5 9Q5 7.5 6.5 7.5Z"},
-  // military / unidentified — stealth arrowhead (flying-wing delta, no fuselage),
-  // deliberately unlike A5's winged fighter and A3's airliner.
-  mil:     {vb:24, d:"M12 2.5 20.5 20 12 15.5 3.5 20Z"},
+  // Small aircraft (A1/A2) — straight, thin GA wings.
+  small: {vb:24, d:"M12 2.4C12.5 2.4 12.8 3.6 12.8 5.8L12.8 9.5 20.5 10.9 20.5 12.4 12.8 11.7 12.8 17.6 15 19.4 15 20.4 12 19.4 9 20.4 9 19.4 11.2 17.6 11.2 11.7 3.5 12.4 3.5 10.9 11.2 9.5 11.2 5.8C11.2 3.6 11.5 2.4 12 2.4Z"},
+  // Big aircraft (A3/A4/A5) — swept wings + wider span; also the fallback shape.
+  big:   {vb:24, d:"M12 1.4C12.9 1.4 13.2 3.4 13.2 6.2L13.2 8.8 22 15.2 22 17.2 13.2 13.2 13.2 18.4 15.8 20.8 15.8 21.8 12 20.3 8.2 21.8 8.2 20.8 10.8 18.4 10.8 13.2 2 17.2 2 15.2 10.8 8.8 10.8 6.2C10.8 3.4 11.1 1.4 12 1.4Z"},
+  // Helicopter (A7) — cockpit + tail boom, with a 4-blade rotor turned 45° (an ✕,
+  // so it reads as a rotor disc, not wings). Multi-part: each path filled separately
+  // (ensureAircraftImage) so the rotor-over-body seams don't punch winding holes.
+  heli:  {vb:24, paths:[
+    "M12 6.2C13.5 6.2 14.3 7.6 14.3 9.3 14.3 10.7 13.5 11.7 12.6 12L12.6 18.4 14 18.9 14 19.9 12 19.2 10 19.9 10 18.9 11.4 18.4 11.4 12C10.5 11.7 9.7 10.7 9.7 9.3 9.7 7.6 10.5 6.2 12 6.2Z",
+    "M17.23 15.93 18.93 14.23 6.77 2.07 5.07 3.77Z",
+    "M5.07 14.23 6.77 15.93 18.93 3.77 17.23 2.07Z"]},
+  // Glider / parachute (B1/B2) — ultra-wide thin wings.
+  glider:{vb:100, d:"M48 15 C48 15 46 25 46 38 L2 45 C1 45.2 1 46.8 2 47 L46 48 L46 80 L35 88 C34 89 34 90 36 90 L48 87 L48 93 C48 95 52 95 52 93 L52 87 L64 90 C66 90 66 89 65 88 L54 80 L54 48 L98 47 C99 46.8 99 45.2 98 45 L54 38 C54 25 52 15 52 15 Z"},
+  // Surface vehicle (C1/C2) — rounded rectangle.
+  ground:{vb:24, d:"M6.5 7.5 17.5 7.5Q19 7.5 19 9L19 15Q19 16.5 17.5 16.5L6.5 16.5Q5 16.5 5 15L5 9Q5 7.5 6.5 7.5Z"},
+  // Military / unidentified — stealth arrowhead (flying-wing delta, no fuselage).
+  mil:   {vb:24, d:"M12 2.5 20.5 20 12 15.5 3.5 20Z"},
 };
 const AC_CAT_SHAPE = {
-  A1:'light', A2:'twin', A3:'airliner', A4:'heavy', A5:'fighter', A7:'heli',
+  A1:'small', A2:'small', A3:'big', A4:'big', A5:'big', A7:'heli',
   B1:'glider', B2:'glider', C1:'ground', C2:'ground',
 };
 // Military ICAO-address blocks (24-bit hex, inclusive [lo, hi]), ordered by
@@ -1996,12 +1994,12 @@ function suspectedMilitary(a) {
 // Pick the icon shape + fill state for an aircraft. Known category always wins
 // (a tagged military transport still looks like its type); only the otherwise-
 // generic fallback becomes military-aware: confirmed (filled arrowhead) via hex,
-// suspected (hollow arrowhead) via the fuzzy tell, else the plain A3 airliner.
+// suspected (hollow arrowhead) via the fuzzy tell, else the plain big jet.
 function acShapeFor(a) {
   if (AC_CAT_SHAPE[a.category]) return { key: AC_CAT_SHAPE[a.category], filled: true };
   if (hexIsMilitary(a.hex))     return { key: 'mil', filled: true };
   if (suspectedMilitary(a))     return { key: 'mil', filled: false };
-  return { key: 'airliner', filled: true };   // A3 fallback
+  return { key: 'big', filled: true };   // unknown-category fallback
 }
 
 const AC_ICON_PX = 30;   // on-map size; rasterised at 2× for crispness
@@ -2009,23 +2007,26 @@ function ensureAircraftImage(shapeKey, color, filled) {
   filled = filled !== false;   // default filled; false = hollow (suspected mil)
   const id = 'ac|' + shapeKey + '|' + color + (filled ? '' : '|h');
   if (map.hasImage(id)) return id;
-  const shape = AC_SHAPES[shapeKey] || AC_SHAPES.airliner;
+  const shape = AC_SHAPES[shapeKey] || AC_SHAPES.big;
   const pr = 2, S = AC_ICON_PX * pr, pad = 3 * pr, sc = (S - pad * 2) / shape.vb;
   const cv = document.createElement('canvas'); cv.width = S; cv.height = S;
   const ctx = cv.getContext('2d');
   ctx.setTransform(sc, 0, 0, sc, pad, pad);
-  const p = new Path2D(shape.d);
+  // A shape is one `d` path or (heli) several `paths` filled separately — stroke
+  // every part first, then fill every part, so the rotor-over-body seams are
+  // covered and only the outer rim shows (a single Path2D would risk winding holes).
+  const parts = (shape.paths || [shape.d]).map(d => new Path2D(d));
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   if (filled) {
     // Rim is set in path units but rendered at ×sc — divide so the dark contrast
     // outline is the same on-screen thickness for every shape's viewBox.
     ctx.strokeStyle = 'rgba(13,17,23,0.92)'; ctx.lineWidth = 4.8 / sc;
-    ctx.stroke(p);
-    ctx.fillStyle = color; ctx.fill(p);
+    parts.forEach(p => ctx.stroke(p));
+    ctx.fillStyle = color; parts.forEach(p => ctx.fill(p));
   } else {
     // Hollow: dark body + coloured outline — reads as "suspected, not confirmed".
-    ctx.fillStyle = 'rgba(13,17,23,0.55)'; ctx.fill(p);
-    ctx.strokeStyle = color; ctx.lineWidth = 3.2 / sc; ctx.stroke(p);
+    ctx.fillStyle = 'rgba(13,17,23,0.55)'; parts.forEach(p => ctx.fill(p));
+    ctx.strokeStyle = color; ctx.lineWidth = 3.2 / sc; parts.forEach(p => ctx.stroke(p));
   }
   const data = ctx.getImageData(0, 0, S, S);
   map.addImage(id, { width: S, height: S, data: data.data }, { pixelRatio: pr });
@@ -2118,16 +2119,22 @@ async function refreshAdsbRecent() {
 // through the shared last_heard/Age path. List-only: does not touch map markers.
 function _adsbForList() {
   const byHex = {};
-  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts: a.ts }); });
+  // _live distinguishes currently-tracked aircraft from 24 h-history-only ones
+  // (out of range / landed) — the list keeps the latter so they age like APRS.
+  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts: a.ts, _live: false }); });
   _adsbAircraft.forEach(a => {
     const seenSec = (typeof a.seen === 'number') ? a.seen : 0;
-    byHex[a.hex] = Object.assign({}, a, { _ts: _adsbNow - seenSec });
+    byHex[a.hex] = Object.assign({}, a, { _ts: _adsbNow - seenSec, _live: true });   // live wins
   });
   return Object.values(byHex);
 }
 
 function _adsbListRows() {
-  return _adsbForList().map(a => {
+  // Drop LIVE aircraft with no position (heard-but-no-fix — many, and they
+  // clutter). But KEEP aged/out-of-range aircraft (24 h history) even when their
+  // last observation was position-less, so a plane that disappears ages 1m/2m…
+  // in the list like an APRS station instead of vanishing.
+  return _adsbForList().filter(a => (a.lat != null && a.lon != null) || !a._live).map(a => {
     const positioned = a.lat != null && a.lon != null;
     // alt_baro is null when the aircraft sends no barometric altitude (unknown,
     // not 0) — guard it before Number(), since Number(null) === 0 would otherwise
@@ -2833,6 +2840,19 @@ function _listLastHeard(iso) {
 }
 
 // Render the drawer table from a station list (already filtered by applyFilter).
+// last_heard → epoch ms, parsing BOTH GrayWolf's "YYYY-MM-DD HH:MM:SS.fff…±HH:MM"
+// (space separator, nanoseconds, local tz) and aircraft ISO "…T…Z". Normalize
+// space→T and clamp the fraction to ms so every browser's Date() parses it the
+// same; unparseable → 0 (sorts last). Replaces the old localeCompare, which
+// string-compared the two different formats (space+local-tz vs T+Z) — never a
+// valid chronological order across a station and an aircraft.
+function _lhEpoch(s) {
+  if (!s) return 0;
+  const norm = String(s).replace('Z', '+00:00').replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1');
+  const t = new Date(norm).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
 function renderAprsList(stations) {
   const tbody = document.getElementById('aprs-list-tbody');
   const countEl = document.getElementById('aprs-list-count');
@@ -2842,8 +2862,10 @@ function renderAprsList(stations) {
     tbody.innerHTML = '<tr><td colspan="10" class="al-empty">No stations match the current filters.</td></tr>';
     return;
   }
+  // Pure newest-first by real time — stations and aircraft interleaved by their
+  // actual last_heard (numeric epoch, both formats). No type grouping.
   const sorted = [...stations].sort((a, b) =>
-    (b.last_heard || '').localeCompare(a.last_heard || ''));
+    _lhEpoch(b.last_heard) - _lhEpoch(a.last_heard));
   tbody.innerHTML = sorted.map(s => {
     const ac = s._kind === 'aircraft';
     // ADS-B carries its own source ("ADS-B"); stations use their heard-via.

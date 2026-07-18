@@ -71,7 +71,7 @@
   <!-- APRS LIVE -->
   <div class="k-aprs">
     <div class="aprs-head">
-      <span class="e" id="k-aprs-title">APRS LIVE</span>
+      <span class="e" id="k-aprs-title">TRAFFIC LIVE</span>
       <span class="st">stations <b id="k-aprs-count">—</b></span>
       <span class="st">last packet <b id="k-aprs-last">—</b></span>
       <select id="aprs-filter-sel" onchange="applyAprsFilter()">
@@ -708,16 +708,19 @@ function renderAprsRows(stations) {
       : '';
     const grid = gridSquare(s.lat, s.lon);
     const dist = distFromHome(s.lat, s.lon);
-    const src  = aprsSource(s); // 'rf' → green, 'is' → blue
+    const ac   = s._kind === 'aircraft';
+    const src  = ac ? 'adsb' : aprsSource(s);   // 'rf'→green, 'is'→blue, aircraft→purple
+    const acStyle = ac ? ' style="color:#b478ff"' : '';
+    const srcTxt  = ac ? 'ADS-B' : src.toUpperCase();
     const r = document.createElement('div'); r.className = 'row';
-    r.innerHTML = `<span class="call ${src}"><a href="server/map/map.html?focus=${encodeURIComponent(call)}" target="_blank" style="color:inherit;text-decoration:none">${call}</a></span>
+    r.innerHTML = `<span class="call ${src}"${acStyle}><a href="server/map/map.html?focus=${encodeURIComponent(call)}" target="_blank" style="color:inherit;text-decoration:none">${call}</a></span>
       ${aprsIconHtml(s)}
       <span class="age">${fmtAge(s.last_heard||s.timestamp||s.time).text}</span>
       <span class="spd">${s.speed_mph > 0 ? fmtSpeed(s.speed_mph) : ''}${courseFmt}</span>
       <span class="alt">${alt}</span>
       <span class="alt">${grid}</span>
       <span class="alt">${dist}</span>
-      <span class="via ${src}">${src.toUpperCase()}</span>
+      <span class="via ${src}"${acStyle}>${srcTxt}</span>
       <span class="cmt ${(s.comment||s.cmt)?'':'empty'}">${s.comment||s.cmt||'—'}</span>`;
     r.onclick = () => openSheet(s);
     body.appendChild(r);
@@ -727,16 +730,20 @@ function renderAprsRows(stations) {
 function applyAprsFilter() {
   const minutes = parseInt(document.getElementById('aprs-filter-sel').value);
   const type    = document.getElementById('aprs-type-sel')?.value || 'All';
-  let filtered  = _allAprsStations;
+  // Fold ADS-B aircraft into the station list — same as the dashboard + map.
+  let filtered = _allAprsStations.concat(_adsbListRows());
+  const countEl = document.getElementById('k-aprs-count');
+  if (countEl) countEl.textContent = filtered.length;
   if (minutes) {
     const cutoff = Date.now() - minutes * 60000;
     filtered = filtered.filter(s => {
-      const t = new Date(s.last_heard || s.timestamp || s.time);
-      return !isNaN(t) && t >= cutoff;
+      const t = _lhEpoch(s.last_heard || s.timestamp || s.time);
+      return t && t >= cutoff;
     });
   }
   if (type && type !== 'All') {
     filtered = filtered.filter(s => {
+      if (s._kind === 'aircraft') return true;   // aircraft aren't an APRS type — always show
       const via = (s.via || '').toUpperCase();
       if (type === 'RF only')     return via && !via.includes('TCPIP') && !via.includes('IGATE');
       if (type === 'Digipeaters') return via.includes('WIDE') || via.includes('DIGI');
@@ -744,10 +751,14 @@ function applyAprsFilter() {
       return true;
     });
   }
-  // Source toggles: hide RF and/or IS rows when their button is switched off.
+  // Source toggles hide RF and/or IS stations; ADS-B aircraft always show.
   if (!_aprsShowRF || !_aprsShowIS) {
-    filtered = filtered.filter(s => aprsSource(s) === 'is' ? _aprsShowIS : _aprsShowRF);
+    filtered = filtered.filter(s => s._kind === 'aircraft'
+      || (aprsSource(s) === 'is' ? _aprsShowIS : _aprsShowRF));
   }
+  // Newest-first by real time (numeric epoch, both timestamp formats).
+  filtered.sort((a, b) => _lhEpoch(b.last_heard||b.timestamp||b.time)
+                        - _lhEpoch(a.last_heard||a.timestamp||a.time));
   renderAprsRows(filtered);
 }
 
@@ -760,33 +771,97 @@ async function fetchAPRS() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     if (!d.ok) {
-      if (countEl) countEl.textContent = '0';
       if (lastEl)  lastEl.textContent  = '—';
-      if (title)   title.textContent   = 'APRS OFFLINE';
-      renderAprsRows([]); return;
+      if (title)   title.textContent   = 'TRAFFIC OFFLINE';
+      _allAprsStations = [];
+      applyAprsFilter(); return;   // still surface ADS-B aircraft when APRS is down
     }
-    if (title) title.textContent = 'APRS LIVE';
-    // The stations API now also returns position-less stations (status/message
-    // traffic) for the index/maps lists. The kiosk view is unchanged: it shows
-    // only stations that carry a position, exactly as before.
-    const posStations = d.stations.filter(s => s.lat != null && s.lon != null);
-    if (countEl) countEl.textContent = posStations.length;
-    _allAprsStations = posStations;
-    if (posStations.length) {
-      const times = posStations.map(s => s.last_heard||s.timestamp||s.time)
-        .filter(Boolean).map(t => new Date(t)).filter(t => !isNaN(t));
-      if (times.length && lastEl) {
-        const ageMins = Math.round((Date.now()-Math.max(...times))/60000);
+    if (title) title.textContent = 'TRAFFIC LIVE';
+    // Full station list (positioned + position-less), merged with ADS-B aircraft
+    // in applyAprsFilter — mirrors the dashboard + map lists.
+    _allAprsStations = d.stations;
+    const times = d.stations.map(s => s.last_heard||s.timestamp||s.time)
+      .filter(Boolean).map(t => _lhEpoch(t)).filter(Boolean);
+    if (lastEl) {
+      if (times.length) {
+        const ageMins = Math.round((Date.now() - Math.max(...times)) / 60000);
         lastEl.textContent = ageMins<2?'just now':ageMins<60?`${ageMins}m ago`:`${Math.round(ageMins/60)}h ago`;
-      }
-    } else {
-      if (lastEl) lastEl.textContent = '—';
+      } else { lastEl.textContent = '—'; }
     }
     applyAprsFilter();
   } catch (e) {
-    if (title) title.textContent = 'APRS OFFLINE';
-    renderAprsRows([]);
+    if (title) title.textContent = 'TRAFFIC OFFLINE';
+    _allAprsStations = [];
+    applyAprsFilter();
   }
+}
+
+// ── ADS-B aircraft fold (mirrors index.html / map.html) ──────────────────────
+let _adsbAircraft = [];   // last /api/adsb/aircraft poll (live)
+let _adsbRecent   = [];   // last /api/adsb/recent poll (24 h history, list-only)
+let _adsbNow      = 0;    // that poll's dump1090 clock, so `seen` → absolute time
+
+// last_heard → epoch ms, parsing GrayWolf's "YYYY-MM-DD HH:MM:SS.fff…±HH:MM"
+// (space, nanoseconds) AND aircraft ISO. Unparseable → 0.
+function _lhEpoch(s) {
+  if (!s) return 0;
+  const norm = String(s).replace('Z', '+00:00').replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1');
+  const t = new Date(norm).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+function _adsbForList() {
+  const byHex = {};
+  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts: a.ts, _live: false }); });
+  _adsbAircraft.forEach(a => {
+    const seenSec = (typeof a.seen === 'number') ? a.seen : 0;
+    byHex[a.hex] = Object.assign({}, a, { _ts: _adsbNow - seenSec, _live: true });
+  });
+  return Object.values(byHex);
+}
+
+// Fold aircraft into station-shaped rows renderAprsRows understands. Drop LIVE
+// position-less aircraft (heard-no-fix clutter); keep aged ones so a disappeared
+// plane ages 1m/2m… like an APRS station.
+function _adsbListRows() {
+  return _adsbForList().filter(a => (a.lat != null && a.lon != null) || !a._live).map(a => {
+    const positioned = a.lat != null && a.lon != null;
+    const altFt = (a.alt_baro == null || a.alt_baro === 'ground') ? null
+      : (isFinite(Number(a.alt_baro)) ? Number(a.alt_baro) : null);
+    return {
+      _kind: 'aircraft',
+      callsign: (a.flight || a.hex || '').trim() || (a.hex || '?'),
+      sym_table: '/', sym_code: (a.category === 'A7') ? 'X' : "'",
+      lat: positioned ? a.lat : null,
+      lon: positioned ? a.lon : null,
+      speed_mph: (a.gs != null) ? Math.round(a.gs * 1.15078) : 0,
+      course: (a.track != null) ? a.track : null,
+      alt_m: (altFt != null) ? altFt / 3.28084 : null,
+      last_heard: new Date(a._ts * 1000).toISOString(),
+      via: 'adsb',
+      comment: a.squawk ? ('sq ' + a.squawk) : '',
+    };
+  });
+}
+
+async function refreshAdsb() {
+  try {
+    const r = await fetch('/api/adsb/aircraft', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    if (!r.ok) { _adsbAircraft = []; applyAprsFilter(); return; }
+    const j = await r.json();
+    _adsbAircraft = j.aircraft || [];
+    _adsbNow = (typeof j.now === 'number') ? j.now : (Date.now() / 1000);
+    applyAprsFilter();
+  } catch (e) { /* keep last good until next cycle */ }
+}
+
+async function refreshAdsbRecent() {
+  try {
+    const r = await fetch('/api/adsb/recent?hours=24', { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return;
+    _adsbRecent = (await r.json()).aircraft || [];
+    applyAprsFilter();
+  } catch (e) { /* keep last good until next cycle */ }
 }
 
 // ── APRS SDR feed flow meter (mirrors index.html) ─────────────────────────────
@@ -868,12 +943,16 @@ loadConfig().then(loadInstalled).then(() => {
   fetchStats();
   fetchAudio();
   fetchAPRS();
+  refreshAdsb();
+  refreshAdsbRecent();
   loadHomeCoords();
   pollFeedFlow();
-  setInterval(pingAll,      30_000);
-  setInterval(fetchStats,   30_000);
-  setInterval(fetchAudio,   30_000);
-  setInterval(fetchAPRS,    15_000);
-  setInterval(pollFeedFlow,  2_500);
+  setInterval(pingAll,         30_000);
+  setInterval(fetchStats,      30_000);
+  setInterval(fetchAudio,      30_000);
+  setInterval(fetchAPRS,       15_000);
+  setInterval(refreshAdsb,     15_000);
+  setInterval(refreshAdsbRecent, 60_000);
+  setInterval(pollFeedFlow,     2_500);
 });
 </script>

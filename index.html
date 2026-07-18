@@ -1303,7 +1303,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <div class="aprs-section" id="aprs-live">
   <div class="aprs-card">
     <div class="aprs-section-hdr">
-      <span class="aprs-section-title" id="aprs-title">APRS LIVE</span>
+      <span class="aprs-section-title" id="aprs-title">TRAFFIC LIVE</span>
       <span class="aprs-section-meta">stations — <span id="aprs-count">—</span> &nbsp;·&nbsp; last packet — <span id="aprs-last">—</span></span>
     </div>
     <div class="aprs-tbl-wrap">
@@ -2637,16 +2637,22 @@ let _adsbRecentHours = 24;   // window last fetched; Feature 3 refetches when it
 // through the shared last_heard/Age path.
 function _adsbForList() {
   const byHex = {};
-  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts: a.ts }); });
+  // _live distinguishes currently-tracked aircraft from 24 h-history-only ones
+  // (out of range / landed) — the list keeps the latter so they age like APRS.
+  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts: a.ts, _live: false }); });
   _adsbAircraft.forEach(a => {
     const seenSec = (typeof a.seen === 'number') ? a.seen : 0;
-    byHex[a.hex] = Object.assign({}, a, { _ts: _adsbNow - seenSec });
+    byHex[a.hex] = Object.assign({}, a, { _ts: _adsbNow - seenSec, _live: true });   // live wins
   });
   return Object.values(byHex);
 }
 
 function _adsbListRows() {
-  return _adsbForList().map(a => {
+  // Drop LIVE aircraft with no position (heard-but-no-fix — many, and they
+  // clutter). But KEEP aged/out-of-range aircraft (24 h history) even when their
+  // last observation was position-less, so a plane that disappears ages 1m/2m…
+  // in the table like an APRS station instead of vanishing.
+  return _adsbForList().filter(a => (a.lat != null && a.lon != null) || !a._live).map(a => {
     const positioned = a.lat != null && a.lon != null;
     // alt_baro is null when the aircraft sends no barometric altitude (unknown,
     // not 0) — guard it before Number(), since Number(null) === 0 would otherwise
@@ -2774,6 +2780,18 @@ function renderAprsTable(stations) {
   }).join('');
 }
 
+// last_heard → epoch ms, parsing BOTH GrayWolf's "YYYY-MM-DD HH:MM:SS.fff…±HH:MM"
+// (space separator, nanoseconds, local tz) and aircraft ISO "…T…Z". Normalize
+// space→T and clamp the fraction to ms so every browser's Date() parses it the
+// same; unparseable → 0. Replaces a localeCompare that string-compared the two
+// different formats (space+local-tz vs T+Z) — never a valid chronological order.
+function _lhEpoch(s) {
+  if (!s) return 0;
+  const norm = String(s).replace('Z', '+00:00').replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1');
+  const t = new Date(norm).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
 function applyAprsFilter() {
   const minutes    = parseInt(document.getElementById('aprs-col-age')?.value || '0');
   const typeCat    = document.getElementById('aprs-col-type')?.value || 'All';
@@ -2806,12 +2824,13 @@ function applyAprsFilter() {
     return true;
   };
   const rows = _allAprsStations.filter(pred).concat(_adsbListRows().filter(pred));
-  // Float emergency stations (Fire, Public safety) to the top; keep recency
-  // (last_heard desc) within each rank. Mirrors the map's emergency-first panel.
+  // Float emergency stations (Fire, Public safety) to the top; within each rank,
+  // pure newest-first by real time (numeric epoch, both timestamp formats) —
+  // stations and aircraft interleaved by their actual last_heard.
   rows.sort((a, b) => {
     const ra = _emergencyRank(a), rb = _emergencyRank(b);
     if (ra !== rb) return ra - rb;
-    return (b.last_heard || '').localeCompare(a.last_heard || '');
+    return _lhEpoch(b.last_heard) - _lhEpoch(a.last_heard);
   });
   renderAprsTable(rows);
 }
@@ -2945,7 +2964,7 @@ async function fetchAPRS() {
   const title = document.getElementById('aprs-title');
   const setTitle = (live) => {
     if (!title) return;
-    title.textContent = live ? 'APRS LIVE' : 'APRS OFFLINE';
+    title.textContent = live ? 'TRAFFIC LIVE' : 'TRAFFIC OFFLINE';
     title.className = 'aprs-section-title ' + (live ? 'live' : 'offline');
   };
   try {
