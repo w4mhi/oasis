@@ -1213,36 +1213,26 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 
   <div class="nav-col">
 
+    <div class="nav-sec oasis">
+      <div class="nav-sec-title">OASIS</div>
+      <ul class="nav-links">
+      <li><a href="static/oasis-handbook/index.html">OASIS HANDBOOK <span class="nav-meta">reference</span></a></li>
+      <li><a href="server/system/setup.html" class="ext">OASIS Setup <span class="nav-meta">configure</span></a></li>
+      <li><a href="server/system/diagnostic.html" class="ext">OASIS Diagnostic <span class="nav-meta">health</span></a></li>
+      </ul>
+    </div>
+
     <div class="nav-sec">
       <div class="nav-sec-title">Util</div>
       <ul class="nav-links">
-        <li><a id="nlink-aprs" href="server/map/map.html">APRS Maidenhead Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
+        <li><a id="nlink-aprs" href="server/map/map.html">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
         <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
         <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>        
       </ul>
     </div>
 
-    <div class="nav-sec">
-      <div class="nav-sec-title">Tools</div>
-      <ul class="nav-links">
-        <li><a href="server/system/setup.html" class="ext">OASIS Setup <span class="nav-meta">configure</span></a></li>
-        <li><a href="server/system/diagnostic.html" class="ext">OASIS Diagnostic <span class="nav-meta">health</span></a></li>
-        <li><a href="static/antenna-calc.html">Antenna Calculator <span class="nav-meta">calculator</span></a></li>
-        <li><a href="static/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
-        <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
-        <li><a href="static/solar.html">Solar / Propagation <span class="nav-meta">band conditions</span></a></li>
-        <li><a href="static/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calculator</span></a></li>
-        <li><a href="static/grayline.html">Gray Line <span class="nav-meta">HF propagation</span></a></li>
-        <li><a href="server/system/browser.html">File Browser <span class="nav-meta">user files</span></a></li>
-      </ul>
-    </div>
-
-  </div>
-
-  <div class="nav-col">
-
     <div class="nav-sec" id="navsec-forms">
-      <div class="nav-sec-title">ICS Forms</div>
+    <div class="nav-sec-title">ICS Forms</div>
       <ul class="nav-links">
         <li><a href="static/ics-205/ics-205.html">ICS-205 <span class="nav-meta">radio plan</span></a></li>
         <li><a href="static/ics-213/ics-213.html">ICS-213 <span class="nav-meta">general message</span></a></li>
@@ -1250,6 +1240,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
         <li><a href="static/ics-309/ics-309.html">ICS-309 <span class="nav-meta">comms log</span></a></li>
       </ul>
     </div>
+
+  </div>
+
+  <div class="nav-col">
 
     <div class="nav-sec">
       <div class="nav-sec-title">Winlink &amp; APRS</div>
@@ -1264,22 +1258,6 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       </ul>
     </div>
 
-  </div>
-
-  <div class="nav-col">
-
-    <div class="nav-sec">
-      <div class="nav-sec-title">Radio Ref</div>
-      <ul class="nav-links">
-        <li><a href="static/repeater-guide/index.html">Repeater Guide <span class="nav-meta">radio repeaters how-to</span></a></li>
-        <li><a href="static/radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
-        <li><a href="static/cheatsheets/index.html">Radio Cheatsheets <span class="nav-meta">radio reference</span></a></li>
-        <li><a id="nlink-rb" href="static/repeaterbook/repeaterbook.html" class="nav-link-svc">Repeater Book <span class="nav-svc-badge" id="nsvc-rb">—</span></a></li>
-        <li><a id="nlink-manuals" href="server/system/browser.html?path=static/radio-manuals" class="nav-link-svc">Radio Manuals <span class="nav-svc-badge" id="nsvc-manuals">—</span></a></li>
-        <li><a id="nlink-wiki" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-wiki">—</span></a></li>
-      </ul>
-    </div>
-
     <div class="nav-sec">
       <div class="nav-sec-title">Operating</div>
       <ul class="nav-links">
@@ -1291,8 +1269,32 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       </ul>
     </div>
 
-    <div class="nav-sec oasis">
-      <div class="nav-sec-title"><a href="static/oasis-handbook/index.html">OASIS HANDBOOK</a></div>
+  </div>
+
+  <div class="nav-col">
+
+    <div class="nav-sec">
+      <div class="nav-sec-title">Tools</div>
+      <ul class="nav-links">
+        <li><a href="static/antenna-calc.html">Antenna Calculator <span class="nav-meta">calculator</span></a></li>
+        <li><a href="static/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
+        <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
+        <li><a href="static/solar.html">Solar / Propagation <span class="nav-meta">band conditions</span></a></li>
+        <li><a href="static/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calculator</span></a></li>
+        <li><a href="static/grayline.html">Gray Line <span class="nav-meta">HF propagation</span></a></li>
+        <li><a href="server/system/browser.html">File Browser <span class="nav-meta">user files</span></a></li>
+      </ul>
+    </div>
+
+    <div class="nav-sec">
+      <div class="nav-sec-title">Radio Ref</div>
+      <ul class="nav-links">
+        <li><a href="static/repeater-guide/index.html">Repeater Guide <span class="nav-meta">radio repeaters how-to</span></a></li>
+        <li><a href="static/radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
+        <li><a id="nlink-rb" href="static/repeaterbook/repeaterbook.html" class="nav-link-svc">Repeater Book <span class="nav-svc-badge" id="nsvc-rb">—</span></a></li>
+        <li><a id="nlink-manuals" href="server/system/browser.html?path=static/radio-manuals" class="nav-link-svc">Radio Manuals <span class="nav-svc-badge" id="nsvc-manuals">—</span></a></li>
+        <li><a id="nlink-wiki" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-wiki">—</span></a></li>
+      </ul>
     </div>
 
   </div>
