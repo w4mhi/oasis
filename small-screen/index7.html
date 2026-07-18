@@ -711,7 +711,7 @@ function renderAprsRows(stations) {
     const ac   = s._kind === 'aircraft';
     const src  = ac ? 'adsb' : aprsSource(s);   // 'rf'→green, 'is'→blue, aircraft→purple
     const acStyle = ac ? ' style="color:#b478ff"' : '';
-    const srcTxt  = ac ? 'ADS-B' : src.toUpperCase();
+    const srcTxt  = ac ? 'ADS' : src.toUpperCase();   // short: 'ADS-B' wraps the narrow kiosk column
     const r = document.createElement('div'); r.className = 'row';
     r.innerHTML = `<span class="call ${src}"${acStyle}><a href="server/map/map.html?focus=${encodeURIComponent(call)}" target="_blank" style="color:inherit;text-decoration:none">${call}</a></span>
       ${aprsIconHtml(s)}

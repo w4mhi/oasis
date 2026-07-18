@@ -908,6 +908,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <script src="/common/js/geo.js"></script>
 <script src="/common/js/format.js"></script>
 <script src="/common/js/adsb.js"></script>
+<script src="/common/js/adsb-operators.js"></script>
 </head>
 <body>
 
@@ -2762,8 +2763,11 @@ function renderAprsTable(stations) {
     // Aircraft Call links to the map (no per-aircraft focus target); heard-but-
     // unlocated aircraft grey out via the row class.
     const rowCls = (ac && !s._positioned) ? ' class="unlocated"' : '';
+    // Decoded airline telephony name after an aircraft callsign, e.g. ASA405 [ALASKA].
+    const opTag = ac && operatorTag(s.callsign)
+      ? ` <span style="color:var(--text-dim);font-weight:400;font-size:var(--fs-small)">[${escapeHtml(operatorTag(s.callsign))}]</span>` : '';
     const callCell = ac
-      ? `<a href="server/map/map.html" target="_blank" style="color:inherit;text-decoration:none">${escapeHtml(s.callsign)}</a>`
+      ? `<a href="server/map/map.html" target="_blank" style="color:inherit;text-decoration:none">${escapeHtml(s.callsign)}</a>${opTag}`
       : `<a href="server/map/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a>`;
     return `<tr${rowCls}>
       <td style="color:${callColor};font-weight:700">${callCell}</td>

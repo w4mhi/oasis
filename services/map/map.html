@@ -2888,6 +2888,8 @@ function renderAprsList(stations) {
     const dataCall = ac ? '' : ' data-call="' + _escHtml(s.callsign) + '"';
     return '<tr' + cls + dataCall + onclick + '>'
       + '<td><span class="al-call ' + src + '">' + _escHtml(s.callsign)
+        + (ac && operatorTag(s.callsign)
+            ? ' <span style="color:var(--text-dim);font-weight:400">[' + _escHtml(operatorTag(s.callsign)) + ']</span>' : '')
         + (s.is_object ? ' <span style="color:var(--amber)">[obj]</span>' : '') + '</span></td>'
       + '<td class="al-type">' + aprsSymIcon(s) + _escHtml(aprsCategory(s).label) + '</td>'
       + '<td>' + _listLastHeard(s.last_heard) + '</td>'
