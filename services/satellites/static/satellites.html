@@ -130,6 +130,27 @@
 .poi-dot  { fill: #58a6ff; stroke: #0d1117; stroke-width: 1; }
 .poi-peak { fill: #ffb454; }
 .poi      { fill: #c9d1d9; font: 9px monospace; text-anchor: middle; }
+
+/* ── Live "now" marker on the ground track ─────────────────────────── */
+.sat-now  { fill: #fff; stroke: #00d98b; stroke-width: 2; }
+
+/* ── Pre-pass alert chips ───────────────────────────────────────────── */
+#alerts {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  margin: .5rem 0;
+}
+.chip-alert {
+  display: inline-block;
+  align-self: flex-start;
+  font-size: var(--fs-base);
+  padding: .3rem .7rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent-dim);
+  background: var(--panel-2);
+  color: var(--accent);
+}
 </style>
 </head>
 <body>
@@ -138,8 +159,11 @@
   <header>
     <a class="home-link" href="/">⌂ HOME</a>
     <h1>Satellites</h1>
-    <p>Roster, label chips, downlinks &amp; upcoming passes &middot; <span id="tle-age" class="badge">loading…</span></p>
+    <p>Roster, label chips, downlinks &amp; upcoming passes &middot; <span id="tle-age" class="badge">loading…</span>
+      <button class="sbtn" id="enable-alerts" type="button" onclick="Notification.requestPermission()">Enable alerts</button></p>
   </header>
+
+  <div id="alerts"></div>
 
   <div class="sat-cols">
     <div class="sec">
@@ -183,6 +207,7 @@ async function boot() {
   renderRoster();
   PASSES = (await (await fetch('/api/satellites/passes?window=48')).json()).passes || {};
   renderSchedule();
+  scheduleAlerts();
 }
 function renderRoster() {
   document.getElementById('roster').innerHTML = ROSTER.map(s => `
@@ -291,7 +316,7 @@ function showPolar(track) {
   const first = track[0], last = track[track.length - 1];
   out += mark(first, 'poi-dot', `${fmt(first.t)} ${first.az.toFixed(0)}°`);
   if (peak !== first && peak !== last) {
-    out += mark(peak, 'poi-dot poi-peak', `${fmt(peak.t)} ${peak.el.toFixed(0)}°el`);
+    out += mark(peak, 'poi-dot poi-peak', `${fmt(peak.t)} ${peak.az.toFixed(0)}°az/${peak.el.toFixed(0)}°el`);
   }
   out += mark(last, 'poi-dot', `${fmt(last.t)} ${last.az.toFixed(0)}°`);
   svg.innerHTML = out;
@@ -303,13 +328,12 @@ function selectPass(el, norad, rise, set) {
   showTrack(norad, rise, set);
 }
 
-async function showTrack(norad, rise, set) {
+// Renders the ground-track SVG (graticule + coastline + past-solid/future-dashed
+// split + station marker) from an already-fetched track array. Called both on
+// initial load and, repeatedly, by the live 1 Hz tick — it does NOT fetch.
+function drawTrack(track) {
   const info = document.getElementById('track-info');
   const svg = document.getElementById('track');
-  info.textContent = 'Loading track…';
-  await loadCoastline();
-  const j = await (await fetch(`/api/satellites/track?sat=${norad}&from=${encodeURIComponent(rise)}&to=${encodeURIComponent(set)}`)).json();
-  showPolar(j.track);
   const W = 720, H = 360;
   const pathFor = (pts, cls) => {
     if (!pts.length) return '';
@@ -320,13 +344,13 @@ async function showTrack(norad, rise, set) {
     return `<path d="${d}" class="${cls}"/>`;
   };
   let out = drawGraticule(W, H) + drawCoastline(W, H);
-  if (!j.track || !j.track.length) {
+  if (!track || !track.length) {
     svg.innerHTML = out;
-    info.textContent = j.error ? `No track: ${j.error}` : 'No track data for this pass (TLE sync needed?).';
+    info.textContent = 'No track data for this pass (TLE sync needed?).';
     return;
   }
-  const nowIdx = nowIndex(j.track);
-  const { past, future } = satgeo.splitAtNow(j.track, nowIdx);
+  const nowIdx = nowIndex(track);
+  const { past, future } = satgeo.splitAtNow(track, nowIdx);
   for (const seg of satgeo.splitAntimeridian(past))   out += pathFor(seg, 'trk-past');
   for (const seg of satgeo.splitAntimeridian(future)) out += pathFor(seg, 'trk-future');
   if (STATION && STATION.lat != null) {
@@ -335,6 +359,83 @@ async function showTrack(norad, rise, set) {
   }
   svg.innerHTML = out;
   info.textContent = '';
+}
+
+// The currently-plotted pass — stored so the live tick can re-render the
+// same track (growing solid trail) without re-fetching it every second.
+let _liveTrack = null, _liveNorad = null;
+
+async function showTrack(norad, rise, set) {
+  const info = document.getElementById('track-info');
+  info.textContent = 'Loading track…';
+  clearInterval(window._satTick);
+  await loadCoastline();
+  const j = await (await fetch(`/api/satellites/track?sat=${norad}&from=${encodeURIComponent(rise)}&to=${encodeURIComponent(set)}`)).json();
+  _liveTrack = j.track || [];
+  _liveNorad = norad;
+  showPolar(_liveTrack);
+  drawTrack(_liveTrack);
+  if (!_liveTrack.length) {
+    info.textContent = j.error ? `No track: ${j.error}` : 'No track data for this pass (TLE sync needed?).';
+    return;
+  }
+  startLive(j.l1, j.l2);
+}
+
+// 1 Hz client-side propagation of the plotted sat via satellite.js: moves a
+// "now" marker along the ground track AND re-renders drawTrack/showPolar each
+// tick so the solid (flown) portion grows behind the marker as time advances.
+function startLive(l1, l2) {
+  clearInterval(window._satTick);
+  window._satTick = null;
+  if (!l1 || !l2) return;   // no TLE for this sat — static plot only
+  const rec = satellite.twoline2satrec(l1, l2);
+  window._satTick = setInterval(() => {
+    const now = new Date();
+    const pv = satellite.propagate(rec, now);
+    if (!pv.position) return;
+    const gmst = satellite.gstime(now);
+    const gd = satellite.eciToGeodetic(pv.position, gmst);
+    const lat = satellite.degreesLat(gd.latitude), lon = satellite.degreesLong(gd.longitude);
+    if (_liveTrack && _liveTrack.length) { drawTrack(_liveTrack); showPolar(_liveTrack); }
+    const q = satgeo.project(lat, lon, 720, 360);
+    let m = document.getElementById('sat-now');
+    if (!m) {
+      m = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      m.id = 'sat-now'; m.setAttribute('r', '5'); m.setAttribute('class', 'sat-now');
+      document.getElementById('track').appendChild(m);
+    }
+    m.setAttribute('cx', q.x); m.setAttribute('cy', q.y);
+  }, 1000);
+}
+
+/* ── Pre-pass alerts (configurable lead times, default 10 + 2 min) ─────── */
+const ALERT_LEADS_MIN = [10, 2];
+function scheduleAlerts() {
+  (document.getElementById('alerts') || {}).innerHTML = '';
+  const fired = new Set();
+  for (const s of ROSTER.filter(x => x.selected)) {
+    const next = (PASSES[s.norad] || [])[0];
+    if (!next) continue;
+    const rise = new Date(next.rise).getTime();
+    for (const lead of ALERT_LEADS_MIN) {
+      const at = rise - lead * 60000 - Date.now();
+      if (at <= 0) continue;
+      setTimeout(() => {
+        const key = s.norad + ':' + lead;
+        if (fired.has(key)) return;
+        fired.add(key);
+        showChip(`🛰️ ${s.name} in ${lead} min`);
+        if (window.Notification && Notification.permission === 'granted')
+          new Notification(`${s.name} rises in ${lead} min`);
+      }, at);
+    }
+  }
+}
+function showChip(text) {
+  const el = document.getElementById('alerts');
+  el.innerHTML = `<div class="chip-alert">${text}</div>`;
+  setTimeout(() => { el.innerHTML = ''; }, 60000);
 }
 
 boot();

@@ -134,7 +134,12 @@ def api_track():
     except Exception:
         # Same stale-TLE risk as passes — never 500, just return an empty track.
         track = []
-    return jsonify({"track": track})
+    lines = tle.load_cache(config_paths.tle_cache_dir(SUITE_ROOT)).get(entry["name"]) if entry else None
+    return jsonify({
+        "track": track,
+        "l1": lines[0] if lines else None,
+        "l2": lines[1] if lines else None,
+    })
 
 
 @bp.route("/api/satellites/select", methods=["POST"])
