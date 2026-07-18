@@ -2193,6 +2193,108 @@ function applyAdsbFilter() {
       };
     });
   src.setData({ type: 'FeatureCollection', features: feats });
+  _adsbTrailRender();   // keep trails in lockstep with marker show/hide + filters
+}
+
+// ── ADS-B flight trails ──────────────────────────────────────────────────────
+// A fading breadcrumb behind each aircraft, drawn in the aircraft's own altitude
+// colour. A trail starts the first time an aircraft is heard WITH a position and
+// grows each poll; when the aircraft drops off the feed (signal lost) the trail
+// fades to nothing over TRAIL_FADE_MS and is then removed. This is the prototype
+// for the satellite ground-track/polar SVG work — same lifecycle (accumulate →
+// draw → fade → remove), different renderer (here a MapLibre GL line layer;
+// there a hand-drawn SVG <path>).
+const TRAIL_MAX_PTS = 200;      // cap so a long-loitering aircraft can't grow unbounded
+const TRAIL_FADE_MS = 12000;    // fade-out after signal loss, then remove
+const TRAIL_OPACITY = 0.85;     // solid-trail opacity (matches aprs-track)
+const TRAIL_DARKEN  = 0.6;      // trail = this fraction of the icon's brightness (same hue, darker)
+let _adsbTrails = {};           // hex -> { pts:[{ll:[lon,lat],color}...], key, fading, fadeStart }
+
+// Darken a #RRGGBB toward black by `f` (0..1) so the trail is a dimmer shade of
+// the aircraft's colour — same hue, clearly subordinate to the icon rather than
+// identical to it.
+function _darkenHex(hex, f) {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex || '');
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const r = Math.round(((n >> 16) & 255) * f);
+  const g = Math.round(((n >> 8) & 255) * f);
+  const b = Math.round((n & 255) * f);
+  return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
+}
+
+// Append this poll's live positions and start fading any trail whose aircraft
+// went silent. Called once per ADS-B poll (not on mere filter toggles).
+function _adsbTrailUpdate() {
+  const live = new Set();
+  _adsbAircraft.forEach(a => {
+    if (a.lat == null || a.lon == null) return;   // no fix yet → no trail
+    live.add(a.hex);
+    let t = _adsbTrails[a.hex];
+    if (!t) t = _adsbTrails[a.hex] = { pts: [], color: '', key: '', fading: false, fadeStart: 0 };
+    const ll = [a.lon, a.lat], last = t.pts[t.pts.length - 1];
+    if (!last || last.ll[0] !== ll[0] || last.ll[1] !== ll[1]) {   // skip duplicate (parked) fixes
+      // Colour is captured PER POINT (a dimmer shade of the icon's altitude
+      // colour), so a climb/descent recolours only the trail from here forward
+      // rather than the whole line.
+      t.pts.push({ ll, color: _darkenHex(altColor(a.alt_baro), TRAIL_DARKEN) });
+      if (t.pts.length > TRAIL_MAX_PTS) t.pts.shift();
+    }
+    t.key = adsbCategoryKey(a);
+    t.fading = false; t.fadeStart = 0;   // (re)appeared → solid again
+  });
+  const now = performance.now();
+  for (const hex in _adsbTrails) {       // in the store but not heard this poll → fade
+    const t = _adsbTrails[hex];
+    if (!live.has(hex) && !t.fading) { t.fading = true; t.fadeStart = now; }
+  }
+  _adsbTrailRender();
+}
+
+// Rebuild the trail source with each trail's current opacity, dropping ones that
+// have fully faded. Honours the ADS-B on/off toggle and the aircraft/heli
+// category filters so trails hide in lockstep with their markers.
+function _adsbTrailRender() {
+  const src = map.getSource('adsb-trails');
+  if (!src) return;
+  const now = performance.now();
+  const feats = [];
+  for (const hex in _adsbTrails) {
+    const t = _adsbTrails[hex];
+    let opacity = TRAIL_OPACITY;
+    if (t.fading) {
+      opacity = TRAIL_OPACITY * (1 - (now - t.fadeStart) / TRAIL_FADE_MS);
+      if (opacity <= 0) { delete _adsbTrails[hex]; continue; }   // fully faded → remove
+    }
+    if (!showADSB || objCatState[t.key] === false) continue;     // hidden with its marker
+    if (t.pts.length < 2) continue;                              // need a segment to draw
+    // Run-coalescing: emit one LineString per maximal run of same-coloured
+    // segments (a segment takes its START point's colour). Consecutive runs
+    // share the boundary vertex, so the line stays gap-free; a level-cruise
+    // trail collapses to a single feature, and a climb/descent splits into a few.
+    const op = Math.max(0, opacity), pts = t.pts;
+    let i = 0;
+    while (i < pts.length - 1) {
+      const c = pts[i].color;
+      let j = i;
+      while (j < pts.length - 1 && pts[j].color === c) j++;
+      const coords = [];
+      for (let k = i; k <= j; k++) coords.push(pts[k].ll);
+      feats.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: coords },
+        properties: { color: c || '#b478ff', opacity: op }
+      });
+      i = j;   // next run starts at the shared boundary vertex
+    }
+  }
+  src.setData({ type: 'FeatureCollection', features: feats });
+}
+
+// Advance active fades smoothly between the (slower) ADS-B polls. Cheap no-op
+// when nothing is fading.
+function _adsbTrailFadeTick() {
+  for (const hex in _adsbTrails) { if (_adsbTrails[hex].fading) { _adsbTrailRender(); return; } }
 }
 
 async function refreshAdsb() {
@@ -2203,6 +2305,7 @@ async function refreshAdsb() {
     _adsbAircraft = j.aircraft || [];
     _adsbNow = (typeof j.now === 'number') ? j.now : (Date.now() / 1000);
     applyAdsbFilter();
+    _adsbTrailUpdate();     // grow live trails + start fades for aircraft gone silent
     updateAdsbPanel();
     updateObjectsPanel();   // aircraft/heli counts in "APRS info" track this poll too
     _renderDrawer();        // aircraft rows in the station-list drawer track this poll
@@ -2354,6 +2457,26 @@ loadConfig().then(() => {
         'circle-stroke-width': 2.5, 'circle-stroke-color': '#00c8ff'
       }
     });
+
+    // ── ADS-B flight trails (fading breadcrumb behind each aircraft) ─────────
+    // Added here — low in the stack — so aircraft icons (added later) ride on
+    // top of their own trail. Colour + opacity are per-feature: colour = the
+    // aircraft's altitude colour; opacity ramps to 0 over TRAIL_FADE_MS once the
+    // signal is lost, then the feature is dropped. See _adsbTrailUpdate/Render.
+    map.addSource('adsb-trails', {
+      type: 'geojson', data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'adsb-trails-line', type: 'line', source: 'adsb-trails',
+      filter: ['==', '$type', 'LineString'],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': 2,
+        'line-opacity': ['get', 'opacity']
+      }
+    });
+    setInterval(_adsbTrailFadeTick, 400);   // smooth the post-signal-loss fade
 
     // ── Maidenhead grid overlay (lines + labels) ───────────────────────────
     map.addSource('mh-grid', {
