@@ -16,6 +16,16 @@
   .sat-cols { grid-template-columns: 1fr; }
 }
 
+.sec-cols {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: .75rem;
+  align-items: start;
+}
+@media (max-width: 760px) {
+  .sec-cols { grid-template-columns: 1fr; }
+}
+
 /* ── TLE-age badge ───────────────────────────────────────────────── */
 .badge {
   display: inline-block;
@@ -104,6 +114,22 @@
 .home       { fill: #ffb454; stroke: #0d1117; }
 .grat       { stroke: #243b53; stroke-width: .5; }
 .coast      { stroke: #3a4d63; stroke-width: .7; fill: none; }
+
+/* ── Polar sky-plot (az/el radar) ───────────────────────────────── */
+#polar {
+  display: block;
+  width: 220px;
+  height: 220px;
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: .4rem;
+}
+.ring     { fill: none; stroke: #243b53; stroke-width: .6; }
+.cmp      { fill: #7d8ea3; font: 10px monospace; text-anchor: middle; }
+.poi-dot  { fill: #58a6ff; stroke: #0d1117; stroke-width: 1; }
+.poi-peak { fill: #ffb454; }
+.poi      { fill: #c9d1d9; font: 9px monospace; text-anchor: middle; }
 </style>
 </head>
 <body>
@@ -127,10 +153,17 @@
     </div>
   </div>
 
-  <div class="sec">
-    <span class="sec-lbl">Ground Track</span>
-    <p id="track-info" class="muted">Click a pass above to plot its ground track.</p>
-    <svg id="track" viewBox="0 0 720 360"></svg>
+  <div class="sec-cols">
+    <div class="sec">
+      <span class="sec-lbl">Ground Track</span>
+      <p id="track-info" class="muted">Click a pass above to plot its ground track.</p>
+      <svg id="track" viewBox="0 0 720 360"></svg>
+    </div>
+
+    <div class="sec">
+      <span class="sec-lbl">Sky Plot (Az/El)</span>
+      <svg id="polar" viewBox="0 0 220 220"></svg>
+    </div>
   </div>
 
 </div>
@@ -234,6 +267,36 @@ function nowIndex(track) {
   return Math.max(0, track.findIndex(p => new Date(p.t).getTime() >= now));
 }
 
+/* ── Polar sky-plot panel ────────────────────────────────────────── */
+function showPolar(track) {
+  const CX = 110, CY = 110, R = 90, svg = document.getElementById('polar');
+  if (!track || !track.length) { svg.innerHTML = ''; return; }
+  let out = '';
+  for (const el of [0, 30, 60]) out += `<circle cx="${CX}" cy="${CY}" r="${(R * (90 - el) / 90).toFixed(1)}" class="ring"/>`;
+  out += `<text x="${CX}" y="14" class="cmp">N</text><text x="${CX}" y="214" class="cmp">S</text>` +
+         `<text x="6" y="${CY + 3}" class="cmp">W</text><text x="206" y="${CY + 3}" class="cmp">E</text>`;
+  const pt = p => { const q = satgeo.polar(p.az, p.el, CX, CY, R); return q.x.toFixed(1) + ' ' + q.y.toFixed(1); };
+  const nowIdx = nowIndex(track);           // shared helper — NOT a fresh findIndex
+  const { past, future } = satgeo.splitAtNow(track, nowIdx);
+  const d = a => a.map((p, i) => (i ? 'L' : 'M') + pt(p)).join(' ');
+  if (past.length)   out += `<path d="${d(past)}" class="trk-past"/>`;
+  if (future.length) out += `<path d="${d(future)}" class="trk-future"/>`;
+  // Rise / peak / set markers, each labelled with time + azimuth.
+  const peak = track.reduce((m, p) => (p.el > m.el ? p : m), track[0]);
+  const mark = (p, cls, label) => {
+    const q = satgeo.polar(p.az, p.el, CX, CY, R);
+    return `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="3" class="${cls}"/>` +
+           `<text x="${q.x.toFixed(1)}" y="${(q.y - 6).toFixed(1)}" class="poi">${label}</text>`;
+  };
+  const first = track[0], last = track[track.length - 1];
+  out += mark(first, 'poi-dot', `${fmt(first.t)} ${first.az.toFixed(0)}°`);
+  if (peak !== first && peak !== last) {
+    out += mark(peak, 'poi-dot poi-peak', `${fmt(peak.t)} ${peak.el.toFixed(0)}°el`);
+  }
+  out += mark(last, 'poi-dot', `${fmt(last.t)} ${last.az.toFixed(0)}°`);
+  svg.innerHTML = out;
+}
+
 function selectPass(el, norad, rise, set) {
   document.querySelectorAll('.pass-row.active').forEach(e => e.classList.remove('active'));
   el.classList.add('active');
@@ -246,6 +309,7 @@ async function showTrack(norad, rise, set) {
   info.textContent = 'Loading track…';
   await loadCoastline();
   const j = await (await fetch(`/api/satellites/track?sat=${norad}&from=${encodeURIComponent(rise)}&to=${encodeURIComponent(set)}`)).json();
+  showPolar(j.track);
   const W = 720, H = 360;
   const pathFor = (pts, cls) => {
     if (!pts.length) return '';
