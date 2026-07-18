@@ -1,4 +1,4 @@
-import json, os, sys, unittest
+import json, os, sys, time, unittest
 from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import diagnostics as D
@@ -581,6 +581,319 @@ class TestDoctorExitGate(unittest.TestCase):
         ])
         critical_by_id = {"server": True, "pat": True}
         self.assertEqual(DR._critical_fail_ids(payload, critical_by_id), [])
+
+
+class TestDataAge(unittest.TestCase):
+    """_data_age(path) -> human freshness string | None. Never raises."""
+
+    def test_missing_path_is_none(self):
+        self.assertIsNone(D._data_age("/nonexistent/path/for/sure/repeaterbook.csv"))
+
+    def test_recent_file_is_minutes_old(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile() as f:
+            age = D._data_age(f.name)
+        self.assertIsNotNone(age)
+        self.assertTrue(age.endswith("m old") or age.endswith("h old"), age)
+
+    def test_old_file_is_days_old(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            path = f.name
+        old_ts = time.time() - 41 * 86400
+        os.utime(path, (old_ts, old_ts))
+        try:
+            age = D._data_age(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(age, "41 days old")
+
+    def test_singular_day(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            path = f.name
+        old_ts = time.time() - 1.5 * 86400
+        os.utime(path, (old_ts, old_ts))
+        try:
+            age = D._data_age(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(age, "1 day old")
+
+
+class TestAprsFeedCheck(unittest.TestCase):
+    """aprs_feed: SERVICES/APRS_RX, critical. Signal: /api/aprs/stations'
+    newest last_heard -> decode age; tuned freq best-effort from the running
+    aprs-sdr-feed unit."""
+
+    def _stations(self, last_heard_list):
+        return {"ok": True, "count": len(last_heard_list),
+                "stations": [{"callsign": f"W{i}", "last_heard": lh}
+                             for i, lh in enumerate(last_heard_list)]}
+
+    def test_recent_packet_is_live(self):
+        now = D.datetime.datetime.now(D.datetime.timezone.utc)
+        recent = (now - D.datetime.timedelta(seconds=8)).strftime("%Y-%m-%d %H:%M:%S")
+        with mock.patch.object(D, "_http_get", return_value=(True, self._stations([recent]))), \
+             mock.patch.object(D, "_aprs_feed_freq", return_value="144.390M"):
+            r = D.check_aprs_feed(_CTX)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "LIVE")
+        self.assertIn("144.390 MHz", r["detail"])
+
+    def test_stale_packet_is_idle(self):
+        now = D.datetime.datetime.now(D.datetime.timezone.utc)
+        stale = (now - D.datetime.timedelta(seconds=D.APRS_RECENT_SECONDS + 300)).strftime("%Y-%m-%d %H:%M:%S")
+        with mock.patch.object(D, "_http_get", return_value=(True, self._stations([stale]))), \
+             mock.patch.object(D, "_aprs_feed_freq", return_value=None):
+            r = D.check_aprs_feed(_CTX)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "IDLE")
+
+    def test_no_stations_is_idle(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, self._stations([]))), \
+             mock.patch.object(D, "_aprs_feed_freq", return_value=None):
+            r = D.check_aprs_feed(_CTX)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "IDLE")
+
+    def test_unreachable_is_down_fail(self):
+        with mock.patch.object(D, "_http_get", return_value=(False, None)), \
+             mock.patch.object(D, "_aprs_feed_freq", return_value=None):
+            r = D.check_aprs_feed(_CTX)
+        self.assertEqual(r["status"], "fail")
+        self.assertEqual(r["badge"], "DOWN")
+        self.assertIsNotNone(r["breaks"])
+
+    def test_freq_parsed_from_systemctl_cat(self):
+        unit_text = (
+            "[Service]\n"
+            "ExecStart=/bin/sh -c 'rtl_fm -f 144.390M -M fm -s 48000 -g 28 -p 0 - "
+            "| socat -u -b 512 - UDP-SENDTO:127.0.0.1:9123'\n"
+        )
+        completed = mock.Mock(returncode=0, stdout=unit_text)
+        with mock.patch.object(D.sys, "platform", "linux"), \
+             mock.patch.object(D.subprocess, "run", return_value=completed):
+            freq = D._aprs_feed_freq()
+        self.assertEqual(freq, "144.390M")
+
+    def test_freq_none_on_non_linux(self):
+        with mock.patch.object(D.sys, "platform", "darwin"):
+            self.assertIsNone(D._aprs_feed_freq())
+
+    def test_freq_none_when_systemctl_absent(self):
+        with mock.patch.object(D.sys, "platform", "linux"), \
+             mock.patch.object(D.subprocess, "run", side_effect=FileNotFoundError):
+            self.assertIsNone(D._aprs_feed_freq())
+
+    def test_freq_none_when_unit_absent(self):
+        with mock.patch.object(D.sys, "platform", "linux"), \
+             mock.patch.object(D.subprocess, "run",
+                               return_value=mock.Mock(returncode=1, stdout="")):
+            self.assertIsNone(D._aprs_feed_freq())
+
+
+class TestPowerTempCpuChecks(unittest.TestCase):
+    """power/temp/cpu: SYSTEM/POWER, signal /api/system's throttle /
+    cpu_temp_c / cpu_pct."""
+
+    def _throttle(self, now=None, ever=None):
+        z = {"under_voltage": False, "freq_capped": False, "throttled": False, "soft_temp": False}
+        now = now or dict(z)
+        ever = ever or dict(z)
+        return {"raw": "0x0", "now": now, "ever": ever,
+                "now_any": any(now.values()), "ever_any": any(ever.values())}
+
+    # -- power --
+    def test_power_now_undervoltage_is_fail(self):
+        throttle = self._throttle(now={"under_voltage": True, "freq_capped": False,
+                                        "throttled": False, "soft_temp": False})
+        with mock.patch.object(D, "_http_get", return_value=(True, {"throttle": throttle})):
+            r = D.check_power(_CTX)
+        self.assertEqual(r["status"], "fail")
+        self.assertEqual(r["badge"], "UNDERVOLT")
+        self.assertIsNotNone(r["breaks"])
+
+    def test_power_now_throttled_is_fail(self):
+        throttle = self._throttle(now={"under_voltage": False, "freq_capped": False,
+                                        "throttled": True, "soft_temp": False})
+        with mock.patch.object(D, "_http_get", return_value=(True, {"throttle": throttle})):
+            r = D.check_power(_CTX)
+        self.assertEqual(r["status"], "fail")
+
+    def test_power_ever_only_is_warn(self):
+        throttle = self._throttle(ever={"under_voltage": True, "freq_capped": False,
+                                         "throttled": False, "soft_temp": False})
+        with mock.patch.object(D, "_http_get", return_value=(True, {"throttle": throttle})):
+            r = D.check_power(_CTX)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "PAST")
+
+    def test_power_clean_is_ok(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, {"throttle": self._throttle()})):
+            r = D.check_power(_CTX)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "OK")
+
+    def test_power_none_throttle_is_warn_na(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, {"throttle": None})):
+            r = D.check_power(_CTX)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "N/A")
+
+    def test_power_server_unreachable_is_warn_na_not_raise(self):
+        with mock.patch.object(D, "_http_get", return_value=(False, None)):
+            r = D.check_power(_CTX)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "N/A")
+
+    # -- temp --
+    def test_temp_cool_is_ok(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_temp_c": 48})):
+            r = D.check_temp(_CTX)
+        self.assertEqual(r["status"], "ok")
+        self.assertIn("48", r["detail"])
+
+    def test_temp_warm_band_is_warn(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_temp_c": 75})):
+            r = D.check_temp(_CTX)
+        self.assertEqual(r["status"], "warn")
+
+    def test_temp_boundary_70_is_warn(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_temp_c": 70})):
+            r = D.check_temp(_CTX)
+        self.assertEqual(r["status"], "warn")
+
+    def test_temp_85_is_fail(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_temp_c": 85})):
+            r = D.check_temp(_CTX)
+        self.assertEqual(r["status"], "fail")
+
+    def test_temp_none_is_warn_na(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_temp_c": None})):
+            r = D.check_temp(_CTX)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "N/A")
+
+    def test_temp_never_critical(self):
+        chk = next(c for c in D.REGISTRY if c.id == "temp")
+        self.assertFalse(chk.critical)
+
+    # -- cpu --
+    def test_cpu_low_is_ok(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_pct": 12})):
+            r = D.check_cpu(_CTX)
+        self.assertEqual(r["status"], "ok")
+        self.assertIn("12", r["detail"])
+
+    def test_cpu_high_is_warn(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_pct": 90})):
+            r = D.check_cpu(_CTX)
+        self.assertEqual(r["status"], "warn")
+
+    def test_cpu_none_is_warn_na(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_pct": None})):
+            r = D.check_cpu(_CTX)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "N/A")
+
+    def test_cpu_never_critical(self):
+        chk = next(c for c in D.REGISTRY if c.id == "cpu")
+        self.assertFalse(chk.critical)
+
+
+class TestRepeaterbookAndFormsChecks(unittest.TestCase):
+    def test_repeaterbook_missing_is_warn(self):
+        with mock.patch.object(D.os.path, "isfile", return_value=False):
+            r = D.check_repeaterbook(_CTX)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "MISSING")
+
+    def test_repeaterbook_present_is_ok_with_age(self):
+        with mock.patch.object(D.os.path, "isfile", return_value=True), \
+             mock.patch.object(D, "_data_age", return_value="41 days old"):
+            r = D.check_repeaterbook(_CTX)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "READY")
+        self.assertIn("41 days old", r["detail"])
+
+    def test_repeaterbook_never_critical(self):
+        chk = next(c for c in D.REGISTRY if c.id == "repeaterbook")
+        self.assertFalse(chk.critical)
+
+    def test_forms_all_missing_is_warn(self):
+        with mock.patch.object(D.os.path, "isfile", return_value=False):
+            r = D.check_forms(_CTX)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "MISSING")
+
+    def test_forms_all_present_is_ok(self):
+        with mock.patch.object(D.os.path, "isfile", return_value=True), \
+             mock.patch.object(D.os.path, "getmtime", return_value=time.time()):
+            r = D.check_forms(_CTX)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "READY")
+
+    def test_forms_never_critical(self):
+        chk = next(c for c in D.REGISTRY if c.id == "forms")
+        self.assertFalse(chk.critical)
+
+
+class TestTask4ChecksRegistered(unittest.TestCase):
+    def test_all_6_registered(self):
+        ids = {c.id for c in D.REGISTRY}
+        expected = {"aprs_feed", "power", "temp", "cpu", "repeaterbook", "forms"}
+        self.assertTrue(expected <= ids)
+
+    def test_metadata_matches_spec_table(self):
+        expect = {
+            "aprs_feed":    ("SERVICES", "APRS_RX",  True),
+            "power":        ("SYSTEM",   "POWER",    True),
+            "temp":         ("SYSTEM",   "POWER",    False),
+            "cpu":          ("SYSTEM",   "POWER",    False),
+            "repeaterbook": ("DATA",     "REFERENCE", False),
+            "forms":        ("DATA",     "REFERENCE", False),
+        }
+        for cid, (group, cap, crit) in expect.items():
+            chk = next(c for c in D.REGISTRY if c.id == cid)
+            self.assertEqual(chk.group, group, cid)
+            self.assertEqual(chk.capability, cap, cid)
+            self.assertEqual(chk.critical, crit, cid)
+            self.assertEqual(chk.tier, "v1", cid)
+
+    def test_run_all_real_registry_includes_new_checks(self):
+        r = D.run_all("127.0.0.1", 8083)
+        ids = [c["id"] for g in r["groups"] for c in g["checks"]]
+        for cid in ("aprs_feed", "power", "temp", "cpu", "repeaterbook", "forms"):
+            self.assertIn(cid, ids)
+
+
+class TestDataAgeEnrichment(unittest.TestCase):
+    """fcc/kiwix detail lines get a data-age suffix; status logic unchanged."""
+
+    def test_fcc_detail_includes_age_when_available(self):
+        with mock.patch.object(D.os.path, "isfile", return_value=True), \
+             mock.patch("builtins.open", mock.mock_open(read_data=b"a\nb\n")), \
+             mock.patch.object(D, "_data_age", return_value="3h old"):
+            r = D.check_fcc(_CTX)
+        self.assertEqual(r["status"], "ok")
+        self.assertIn("3h old", r["detail"])
+
+    def test_fcc_detail_omits_age_when_unavailable(self):
+        with mock.patch.object(D.os.path, "isfile", return_value=True), \
+             mock.patch("builtins.open", mock.mock_open(read_data=b"a\n")), \
+             mock.patch.object(D, "_data_age", return_value=None):
+            r = D.check_fcc(_CTX)
+        self.assertEqual(r["status"], "ok")
+
+    def test_kiwix_up_detail_includes_zim_age_when_available(self):
+        with mock.patch.object(D, "_probe_port", return_value=True), \
+             mock.patch.object(D, "_svc_status",
+                               return_value={"active": "active", "enabled": "enabled", "installed": True}), \
+             mock.patch.object(D, "_kiwix_zim_age", return_value="12 days old"):
+            r = D.check_kiwix(_CTX)
+        self.assertEqual(r["status"], "ok")
+        self.assertIn("12 days old", r["detail"])
 
 
 if __name__ == "__main__":

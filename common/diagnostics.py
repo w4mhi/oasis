@@ -24,10 +24,12 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
 import sys
+import time
 import urllib.request
 from collections import namedtuple
 
@@ -77,7 +79,7 @@ CAPABILITIES = {
     },
     "POWER": {
         "label": "Power / Health",
-        "members": ["power", "temp", "disk", "cooling_hat"],
+        "members": ["power", "temp", "cpu", "disk", "cooling_hat"],
     },
     "REFERENCE": {
         "label": "Reference Data",
@@ -306,6 +308,33 @@ FCC_INDEX = os.path.join(REPO_ROOT, "services", "fcc_database", "data", "EN.idx"
 MAPS_DIR = os.path.join(REPO_ROOT, "maps")
 WINLINK_DIR = os.path.join(REPO_ROOT, "server", "winlink")
 
+# RepeaterBook: a record_only feature (setup-oasis.py / common/setup_registry.py's
+# "repeaterbook" spec) -- there's no installer, the operator drops their own
+# export (copyrighted, can't be vendored) at this path.
+REPEATERBOOK_CSV = os.path.join(REPO_ROOT, "static", "repeaterbook", "repeaterbook.csv")
+
+# ICS Forms OASIS ships (docs/SETUP.md "ICS Forms"): four self-contained HTML
+# forms with PDF export, no server required. This is what the app's own
+# "forms" feature key (setup-oasis.py / common/setup_registry.py's record_only
+# "forms" spec) actually refers to -- the codebase has no separate Winlink
+# "Standard Templates" library to check instead.
+ICS_FORMS = [
+    ("ics-205", "ICS 205"),
+    ("ics-213", "ICS 213"),
+    ("ics-214", "ICS 214"),
+    ("ics-309", "ICS 309"),
+]
+
+# Mirrors services/kiwix/common/kiwix.py's DEFAULT_ZIM_DIR without importing
+# that module (it pulls in `pwd`, Unix-only, at import time, plus common.oasis_lib).
+# Best-effort only: a custom --zim-dir install won't be reflected here. Used
+# only to freshen the kiwix check's detail line, never to change its status.
+KIWIX_ZIM_DIR = os.path.expanduser(os.path.join("~", "oasis-offline", "zim"))
+
+# APRS: in normal RF conditions a station should be heard again within this
+# window; beyond it the feed is reachable but not actively decoding traffic.
+APRS_RECENT_SECONDS = 600
+
 # Default port (matches PORTS in setup.html)
 DEFAULT_PORT = 8083
 
@@ -406,6 +435,107 @@ def _http_get(url, timeout=5):
         return False, None
 
 
+def _data_age(path):
+    """mtime -> human freshness string ("41 days old" / "3h old" / "12m old"),
+    or None if the path is missing/unreadable. Never raises. Purely cosmetic
+    (folded into a check's detail text) -- never drives status."""
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return None
+    age_sec = max(0.0, time.time() - mtime)
+    days = age_sec / 86400
+    if days >= 1:
+        d = int(days)
+        return f"{d} day{'s' if d != 1 else ''} old"
+    hours = age_sec / 3600
+    if hours >= 1:
+        return f"{int(hours)}h old"
+    minutes = max(1, int(age_sec / 60))
+    return f"{minutes}m old"
+
+
+def _kiwix_zim_age():
+    """Best-effort freshness of the newest .zim file in KIWIX_ZIM_DIR. None
+    if the dir/files are absent, unreadable, or a custom --zim-dir install
+    was used (see KIWIX_ZIM_DIR's docstring). Never raises."""
+    try:
+        if not os.path.isdir(KIWIX_ZIM_DIR):
+            return None
+        zims = [os.path.join(KIWIX_ZIM_DIR, f)
+                for f in os.listdir(KIWIX_ZIM_DIR) if f.endswith(".zim")]
+    except OSError:
+        return None
+    if not zims:
+        return None
+    try:
+        newest = max(zims, key=os.path.getmtime)
+    except OSError:
+        return None
+    return _data_age(newest)
+
+
+def _parse_ts(val):
+    """Best-effort parse of a last_heard/timestamp value into an aware UTC
+    datetime. Accepts epoch numbers or SQLite-style 'YYYY-MM-DD HH:MM:SS'
+    text (optionally 'T'-separated, with fractional seconds, or a trailing
+    'Z') -- the shape services/aprs/common/aprs.py's last_heard column uses.
+    Returns None on anything unparseable. Never raises."""
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        try:
+            return datetime.datetime.fromtimestamp(val, tz=datetime.timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    if not isinstance(val, str):
+        return None
+    text = val.strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1]
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.datetime.strptime(text, fmt).replace(tzinfo=datetime.timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def _aprs_feed_freq():
+    """Best-effort tuned frequency, read from the running aprs-sdr-feed
+    unit's ExecStart line -- specifically rtl_fm's `-f <freq>` flag (see
+    features/rtl-sdr/enable-rtl-sdr.py's build_unit(), which embeds
+    "rtl_fm -f <freq> -M fm ..." verbatim). Returns the raw token (e.g.
+    "144.390M") or None on non-Linux, missing systemctl, an absent/
+    unrecognized unit, or any other failure. Never raises."""
+    if sys.platform != "linux":
+        return None
+    try:
+        r = subprocess.run(
+            ["systemctl", "cat", "aprs-sdr-feed.service"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return None
+    if r.returncode != 0 or not r.stdout:
+        return None
+    m = re.search(r"ExecStart=.*?\s-f\s+(\S+)", r.stdout)
+    return m.group(1) if m else None
+
+
+def _fmt_freq(freq):
+    """"144.390M" -> "144.390 MHz"; None -> None."""
+    if not freq:
+        return None
+    txt = freq.strip()
+    if txt.upper().endswith("M"):
+        txt = txt[:-1]
+    return f"{txt} MHz"
+
+
 # ---------------------------------------------------------------------------
 # Check functions (moved from scripts/doctor.py)
 #
@@ -495,8 +625,11 @@ def check_fcc(ctx):
         count = sum(1 for _ in open(FCC_INDEX, "rb"))
     except OSError:
         count = 0
-    return _result("fcc", "DATA", "FCC Callsign Database", "ok", "READY",
-                    f"Callsign index built ({count:,} entries).")
+    age = _data_age(FCC_INDEX)
+    detail = f"Callsign index built ({count:,} entries)."
+    if age:
+        detail += f" · {age}"
+    return _result("fcc", "DATA", "FCC Callsign Database", "ok", "READY", detail)
 
 
 def check_maps(ctx):
@@ -697,13 +830,18 @@ def check_kiwix(ctx):
     bin_ = _which_binary("kiwix-serve")
     svc  = _svc_status("kiwix")
     if up:
-        return _result("kiwix", "DATA", "Kiwix (Offline Wikipedia)", "ok", "UP",
-                        f"kiwix-serve on :{port} ({_svc_word(svc)}).")
+        detail = f"kiwix-serve on :{port} ({_svc_word(svc)})."
+        zim_age = _kiwix_zim_age()
+        if zim_age:
+            detail += f" ZIM {zim_age}."
+        return _result("kiwix", "DATA", "Kiwix (Offline Wikipedia)", "ok", "UP", detail)
     if bin_:
+        zim_age = _kiwix_zim_age()
+        zim_note = f" (ZIM {zim_age})" if zim_age else ""
         return _result(
             "kiwix", "DATA", "Kiwix (Offline Wikipedia)", "warn", "STOPPED",
             (
-                f"kiwix-serve installed but not serving ({svc['active']}).\n"
+                f"kiwix-serve installed but not serving ({svc['active']}){zim_note}.\n"
                 "     Add ZIM content, then: sudo systemctl start kiwix"
             ),
         )
@@ -912,6 +1050,188 @@ def check_cooling_hat(ctx):
                     "rgb-cooling-hat service not installed.")
 
 
+def check_aprs_feed(ctx):
+    """SERVICES/APRS_RX, critical. Signal: GET /api/aprs/stations on the
+    GrayWolf history API port -- the newest station last_heard tells us when
+    a packet was actually decoded, which `systemctl is-active` can't:
+    aprs-sdr-feed stays "active" even with a yanked dongle feeding silence.
+    ok/LIVE within APRS_RECENT_SECONDS of the newest decode; warn/IDLE when
+    the API is reachable but stale or empty; fail/DOWN when unreachable. The
+    tuned frequency (best-effort, from the running unit) is folded into
+    detail when known, and simply omitted otherwise."""
+    host = ctx["host"]
+    port = PORTS["aprs_api"]
+    ok, data = _http_get(f"http://{host}:{port}/api/aprs/stations", 5)
+
+    freq_disp = _fmt_freq(_aprs_feed_freq())
+    freq_suffix = f" · {freq_disp}" if freq_disp else ""
+    breaks = "Not hearing APRS traffic."
+
+    if not ok or data is None:
+        return _result(
+            "aprs_feed", "SERVICES", "APRS Feed", "fail", "DOWN",
+            f"GrayWolf APRS history API unreachable on :{port}{freq_suffix}.",
+            breaks=breaks,
+        )
+
+    stations = data.get("stations") or []
+    newest = None
+    for st in stations:
+        ts = _parse_ts((st or {}).get("last_heard"))
+        if ts is not None and (newest is None or ts > newest):
+            newest = ts
+
+    if newest is None:
+        return _result(
+            "aprs_feed", "SERVICES", "APRS Feed", "warn", "IDLE",
+            f"API reachable, no decoded packets yet{freq_suffix}.",
+            breaks=breaks,
+        )
+
+    age_sec = max(0, int((datetime.datetime.now(datetime.timezone.utc) - newest).total_seconds()))
+    age_txt = f"{age_sec}s ago" if age_sec < 120 else f"{age_sec // 60}m ago"
+
+    if age_sec <= APRS_RECENT_SECONDS:
+        return _result("aprs_feed", "SERVICES", "APRS Feed", "ok", "LIVE",
+                        f"last packet {age_txt}{freq_suffix}")
+
+    return _result(
+        "aprs_feed", "SERVICES", "APRS Feed", "warn", "IDLE",
+        f"last packet {age_txt}{freq_suffix} — no recent traffic.",
+        breaks=breaks,
+    )
+
+
+def check_power(ctx):
+    """SYSTEM/POWER, critical. Signal: GET /api/system's "throttle" block
+    (server/routes/system.py's _pi_throttled(), from `vcgencmd get_throttled`).
+    None means non-Pi/vcgencmd absent -- degrades to warn/N-A rather than
+    fail, since a dev machine legitimately has no throttle telemetry.
+    fail/UNDERVOLT only when under-voltage or throttling is happening right
+    now (next TX could brown out); warn/PAST when it merely happened since
+    boot but is currently clean; ok/OK when clean throughout."""
+    host, port = ctx["host"], ctx["port"]
+    ok, data = _http_get(f"http://{host}:{port}/api/system", 5)
+    throttle = (data or {}).get("throttle") if ok else None
+
+    if not throttle:
+        return _result(
+            "power", "SYSTEM", "Power", "warn", "N/A",
+            "No throttle telemetry (vcgencmd unavailable — not a Pi, or server unreachable).",
+        )
+
+    now = throttle.get("now") or {}
+    ever = throttle.get("ever") or {}
+    bits_order = ("under_voltage", "freq_capped", "throttled", "soft_temp")
+
+    if now.get("under_voltage") or now.get("throttled"):
+        bits = [b for b in bits_order if now.get(b)]
+        return _result(
+            "power", "SYSTEM", "Power", "fail", "UNDERVOLT",
+            f"Throttling now ({', '.join(bits)}).",
+            breaks="Undervoltage now — next TX may brown out.",
+            fix=_SETUP_URL,
+        )
+
+    if any(ever.get(b) for b in bits_order):
+        bits = [b for b in bits_order if ever.get(b)]
+        return _result(
+            "power", "SYSTEM", "Power", "warn", "PAST",
+            f"Throttling occurred since boot ({', '.join(bits)}); currently clean.",
+        )
+
+    return _result("power", "SYSTEM", "Power", "ok", "OK",
+                    "No under-voltage or throttling detected.")
+
+
+def check_temp(ctx):
+    """SYSTEM/POWER, not critical -- thermal throttling itself is what
+    breaks a capability (covered by check_power); this is an earlier warning
+    light. Signal: GET /api/system's cpu_temp_c (psutil sensors, Pi-specific
+    -- None on macOS/Windows degrades to warn/N-A, never fail)."""
+    host, port = ctx["host"], ctx["port"]
+    ok, data = _http_get(f"http://{host}:{port}/api/system", 5)
+    temp = (data or {}).get("cpu_temp_c") if ok else None
+
+    if temp is None:
+        return _result("temp", "SYSTEM", "CPU Temperature", "warn", "N/A",
+                        "No temperature sensor reading available.")
+
+    detail = f"{temp:g}°C"
+    if temp > 80:
+        return _result("temp", "SYSTEM", "CPU Temperature", "fail", "HOT", detail)
+    if temp >= 70:
+        return _result("temp", "SYSTEM", "CPU Temperature", "warn", "WARM", detail)
+    return _result("temp", "SYSTEM", "CPU Temperature", "ok", "OK", detail)
+
+
+def check_cpu(ctx):
+    """SYSTEM/POWER, never critical -- high CPU alone doesn't take a
+    capability down. Signal: GET /api/system's cpu_pct (psutil, rolling
+    ~2s sample)."""
+    host, port = ctx["host"], ctx["port"]
+    ok, data = _http_get(f"http://{host}:{port}/api/system", 5)
+    pct = (data or {}).get("cpu_pct") if ok else None
+
+    if pct is None:
+        return _result("cpu", "SYSTEM", "CPU Load", "warn", "N/A",
+                        "No CPU utilization reading available.")
+
+    detail = f"{pct:g}%"
+    if pct >= 85:
+        return _result("cpu", "SYSTEM", "CPU Load", "warn", "HIGH", detail)
+    return _result("cpu", "SYSTEM", "CPU Load", "ok", "OK", detail)
+
+
+def check_repeaterbook(ctx):
+    """DATA/REFERENCE, not critical. RepeaterBook is a record_only feature
+    (setup-oasis.py / common/setup_registry.py's "repeaterbook" spec) --
+    there's no installer step; the operator drops their own CSV export
+    (copyrighted, can't be vendored) at REPEATERBOOK_CSV. Signal: the file's
+    on-disk presence + mtime."""
+    if not os.path.isfile(REPEATERBOOK_CSV):
+        return _result(
+            "repeaterbook", "DATA", "RepeaterBook", "warn", "MISSING",
+            "No repeaterbook.csv at static/repeaterbook/ — export one from "
+            "repeaterbook.com and drop it in.",
+        )
+    age = _data_age(REPEATERBOOK_CSV)
+    detail = "RepeaterBook CSV present" + (f" · {age}" if age else "")
+    return _result("repeaterbook", "DATA", "RepeaterBook", "ok", "READY", detail)
+
+
+def check_forms(ctx):
+    """DATA/REFERENCE, not critical. Signal: on-disk presence of the four
+    ICS forms OASIS ships (docs/SETUP.md "ICS Forms"): static/ics-{205,213,
+    214,309}/ics-*.html. This is what the app's own "forms" feature key
+    (setup-oasis.py / common/setup_registry.py's record_only "forms" spec)
+    actually refers to on this suite -- there is no separate Winlink
+    "Standard Templates" library vendored anywhere in the codebase."""
+    present = []
+    missing = []
+    for slug, label in ICS_FORMS:
+        path = os.path.join(REPO_ROOT, "static", slug, f"{slug}.html")
+        if os.path.isfile(path):
+            present.append((label, path))
+        else:
+            missing.append(label)
+
+    if not present:
+        return _result("forms", "DATA", "ICS Forms", "warn", "MISSING",
+                        "No ICS form pages found in static/.")
+
+    newest_path = max((p for _, p in present), key=os.path.getmtime)
+    age = _data_age(newest_path)
+    detail = f"{len(present)}/{len(ICS_FORMS)} form(s) present"
+    if missing:
+        detail += f"  |  missing: {', '.join(missing)}"
+    if age:
+        detail += f" · {age}"
+    status = "warn" if missing else "ok"
+    badge = "PARTIAL" if missing else "READY"
+    return _result("forms", "DATA", "ICS Forms", status, badge, detail)
+
+
 # ---------------------------------------------------------------------------
 # Registry: real checks
 # ---------------------------------------------------------------------------
@@ -951,4 +1271,16 @@ REGISTRY.extend([
           capability="ACCESS", critical=False, tier="v1", fn=check_display),
     Check(id="cooling_hat", group="SYSTEM", label="RGB Cooling HAT",
           capability="POWER", critical=False, tier="v1", fn=check_cooling_hat),
+    Check(id="aprs_feed", group="SERVICES", label="APRS Feed",
+          capability="APRS_RX", critical=True, tier="v1", fn=check_aprs_feed),
+    Check(id="power", group="SYSTEM", label="Power",
+          capability="POWER", critical=True, tier="v1", fn=check_power),
+    Check(id="temp", group="SYSTEM", label="CPU Temperature",
+          capability="POWER", critical=False, tier="v1", fn=check_temp),
+    Check(id="cpu", group="SYSTEM", label="CPU Load",
+          capability="POWER", critical=False, tier="v1", fn=check_cpu),
+    Check(id="repeaterbook", group="DATA", label="RepeaterBook",
+          capability="REFERENCE", critical=False, tier="v1", fn=check_repeaterbook),
+    Check(id="forms", group="DATA", label="ICS Forms",
+          capability="REFERENCE", critical=False, tier="v1", fn=check_forms),
 ])
