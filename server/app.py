@@ -295,11 +295,14 @@ if __name__ == "__main__":
             # memory) can't see across each other — causing intermittent 404
             # "unknown planId". Setup work already runs in a background thread
             # that doesn't block the request, so a single worker costs nothing.
+            # --threads: /api/diagnostics makes in-process self-HTTP calls; a
+            # threaded worker serves them concurrently (a sync single worker would
+            # deadlock/time them out). Mirrors start-oasis.py + start-server.sh.
             os.execv(sys.executable, [
                 sys.executable, "-m", "gunicorn",
                 "--chdir", app_dir,
                 "--bind", f"0.0.0.0:{PORT}",
-                "--workers", "1",
+                "--workers", "1", "--threads", "4",
                 "--access-logfile", "-",
                 "app:app",
             ])
