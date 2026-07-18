@@ -82,6 +82,28 @@
 .pass-row b { color: var(--accent); margin-right: .5rem; }
 
 .muted { color: var(--text-dim); font-size: var(--fs-base); font-style: italic; }
+
+/* ── Pass rows are clickable — select one to plot its ground track ─ */
+.pass-row { cursor: pointer; }
+.pass-row:hover { background: var(--panel-2); }
+.pass-row.active { background: var(--panel-2); }
+.pass-row.active b { color: var(--amber); }
+
+/* ── Ground-track panel ──────────────────────────────────────────── */
+#track {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: .4rem;
+}
+.trk-past   { stroke: #00d98b; stroke-width: 2.5; fill: none; }
+.trk-future { stroke: #00d98b; stroke-width: 2; fill: none; stroke-dasharray: 5 4; opacity: .45; }
+.home       { fill: #ffb454; stroke: #0d1117; }
+.grat       { stroke: #243b53; stroke-width: .5; }
+.coast      { stroke: #3a4d63; stroke-width: .7; fill: none; }
 </style>
 </head>
 <body>
@@ -105,15 +127,22 @@
     </div>
   </div>
 
+  <div class="sec">
+    <span class="sec-lbl">Ground Track</span>
+    <p id="track-info" class="muted">Click a pass above to plot its ground track.</p>
+    <svg id="track" viewBox="0 0 720 360"></svg>
+  </div>
+
 </div>
 
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
 <script>
-let ROSTER = [], PASSES = {};
+let ROSTER = [], PASSES = {}, STATION = null;
 async function boot() {
   const meta = await (await fetch('/api/satellites')).json();
   ROSTER = meta.satellites;
+  STATION = meta.station;
   const age = meta.tle_age_days;
   const badge = document.getElementById('tle-age');
   badge.textContent = age == null ? 'no TLE data — run sync' : 'TLE ' + age.toFixed(1) + ' d old';
@@ -142,15 +171,99 @@ function renderSchedule() {
   const rows = [];
   for (const s of ROSTER) {
     for (const p of (PASSES[s.norad] || [])) {
-      rows.push({name: s.name, p, t: new Date(p.rise).getTime()});
+      rows.push({name: s.name, norad: s.norad, p, t: new Date(p.rise).getTime()});
     }
   }
   rows.sort((a,b) => a.t - b.t);
   document.getElementById('schedule').innerHTML = rows.map(r => `
-    <div class="pass-row"><b>${r.name}</b>
+    <div class="pass-row" onclick="selectPass(this, ${r.norad}, '${r.p.rise}', '${r.p.set}')"><b>${r.name}</b>
       ${fmt(r.p.rise)}–${fmt(r.p.set)} · max ${r.p.max_el.toFixed(0)}° · rise ${r.p.rise_az.toFixed(0)}°</div>`).join('')
     || '<div class="muted">No passes ≥10° in the next 48 h.</div>';
 }
+
+/* ── Ground-track panel ──────────────────────────────────────────── */
+let COASTLINE = null;   // fetched + cached once, module-level
+async function loadCoastline() {
+  if (COASTLINE) return COASTLINE;
+  try {
+    const j = await (await fetch('/server/satellites/coastline.json')).json();
+    COASTLINE = (j.features || [])
+      .filter(f => f.geometry && f.geometry.type === 'LineString')
+      .map(f => f.geometry.coordinates);   // GeoJSON: each coord is [lon, lat]
+  } catch (e) {
+    COASTLINE = [];
+  }
+  return COASTLINE;
+}
+
+function drawGraticule(W, H) {
+  let out = '';
+  for (let lon = -180; lon <= 180; lon += 30) {
+    const a = satgeo.project(90, lon, W, H), b = satgeo.project(-90, lon, W, H);
+    out += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="grat"/>`;
+  }
+  for (let lat = -90; lat <= 90; lat += 30) {
+    const a = satgeo.project(lat, -180, W, H), b = satgeo.project(lat, 180, W, H);
+    out += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="grat"/>`;
+  }
+  return out;
+}
+
+function drawCoastline(W, H) {
+  if (!COASTLINE || !COASTLINE.length) return '';
+  return COASTLINE.map(coords => {
+    const d = coords.map((c, i) => {
+      // GeoJSON coord order is [lon, lat] — lat is c[1], lon is c[0].
+      const q = satgeo.project(c[1], c[0], W, H);
+      return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1);
+    }).join(' ');
+    return `<path d="${d}" class="coast"/>`;
+  }).join('');
+}
+
+function selectPass(el, norad, rise, set) {
+  document.querySelectorAll('.pass-row.active').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  showTrack(norad, rise, set);
+}
+
+async function showTrack(norad, rise, set) {
+  const info = document.getElementById('track-info');
+  const svg = document.getElementById('track');
+  info.textContent = 'Loading track…';
+  await loadCoastline();
+  const j = await (await fetch(`/api/satellites/track?sat=${norad}&from=${encodeURIComponent(rise)}&to=${encodeURIComponent(set)}`)).json();
+  const W = 720, H = 360;
+  const pathFor = (pts, cls) => {
+    if (!pts.length) return '';
+    const d = pts.map((p, i) => {
+      const q = satgeo.project(p.lat, p.lon, W, H);
+      return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1);
+    }).join(' ');
+    return `<path d="${d}" class="${cls}"/>`;
+  };
+  let out = drawGraticule(W, H) + drawCoastline(W, H);
+  if (!j.track || !j.track.length) {
+    svg.innerHTML = out;
+    info.textContent = j.error ? `No track: ${j.error}` : 'No track data for this pass (TLE sync needed?).';
+    return;
+  }
+  const now = Date.now();
+  const nowIdx = Math.max(0, j.track.findIndex(p => new Date(p.t).getTime() >= now));
+  for (const seg of satgeo.splitAntimeridian(j.track)) {
+    const localNow = seg.indexOf(j.track[nowIdx]);
+    if (localNow < 0) { out += pathFor(seg, 'trk-future'); continue; } // whole seg future/past
+    const { past, future } = satgeo.splitAtNow(seg, localNow);
+    out += pathFor(past, 'trk-past') + pathFor(future, 'trk-future');
+  }
+  if (STATION && STATION.lat != null) {
+    const st = satgeo.project(STATION.lat, STATION.lon, W, H);
+    out += `<circle cx="${st.x}" cy="${st.y}" r="4" class="home"/>`;
+  }
+  svg.innerHTML = out;
+  info.textContent = '';
+}
+
 boot();
 </script>
 </body>
