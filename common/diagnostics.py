@@ -354,10 +354,11 @@ GRAYWOLF_TILES_DIR = "/var/lib/graywolf/tiles"
 # RTL-SDR DVB driver blacklist written by features/rtl-sdr/install-rtl-sdr.py
 RTL_BLACKLIST = "/etc/modprobe.d/rtlsdr-blacklist.conf"
 
-# Setup page has no #services / #content / #radio anchors today (only
-# id="hardware" exists) -- fix links bare-link to /system/setup.html per the
-# task brief's "if an anchor is absent, link bare" rule.
-_SETUP_URL = "/system/setup.html"
+# The Setup Orchestrator page is served statically at /server/system/setup.html
+# (SUITE_ROOT = repo root; index.html links it as server/system/setup.html).
+# Section anchors (#station, #services, #content, #radio) are added to setup.html
+# in the Diagnostic rollout; until then a bare/base link still lands on the page.
+_SETUP_URL = "/server/system/setup.html"
 
 
 # ---------------------------------------------------------------------------
@@ -927,7 +928,7 @@ def check_station_identity(ctx):
             "station_identity", "CORE", "Station Identity", "fail", "UNSET",
             "No station.json found — callsign not configured.\n     Set it in Setup → Station.",
             breaks="No identity — beacons/positions are anonymous.",
-            fix="/system/setup.html#station",
+            fix=_SETUP_URL + "#station",
         )
     try:
         with open(path) as fh:
@@ -941,7 +942,7 @@ def check_station_identity(ctx):
             "station_identity", "CORE", "Station Identity", "fail", "UNSET",
             "No callsign configured.\n     Set it in Setup → Station.",
             breaks="No identity — beacons/positions are anonymous.",
-            fix="/system/setup.html#station",
+            fix=_SETUP_URL + "#station",
         )
 
     grid = (st.get("grid") or "").strip().upper()
