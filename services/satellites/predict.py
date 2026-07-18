@@ -59,3 +59,38 @@ def compute_passes(sat, lat, lon, start_dt, hours=48, min_elev=10.0):
                 })
             cur = {}
     return passes
+
+
+_C_KM_S = 299792.458
+
+
+def compute_track(sat, lat, lon, start_dt, end_dt, step_s=10, downlink_hz=None):
+    """Sample the sub-satellite ground track + observer az/el over
+    [start_dt, end_dt] at step_s seconds. If downlink_hz is given, include the
+    Doppler shift (Hz) from the range-rate: +shift approaching, -shift receding."""
+    ts = _ts()
+    observer = wgs84.latlon(lat, lon)
+    total = (end_dt - start_dt).total_seconds()
+    n = max(2, int(total // step_s) + 1)
+    pts = []
+    for i in range(n):
+        t = ts.from_datetime(start_dt + datetime.timedelta(seconds=i * step_s))
+        topo = (sat - observer).at(t)
+        alt, az, _ = topo.altaz()
+        sub = wgs84.subpoint(sat.at(t))
+        doppler = None
+        if downlink_hz:
+            r = topo.position.km
+            v = topo.velocity.km_per_s
+            rng = (r[0] ** 2 + r[1] ** 2 + r[2] ** 2) ** 0.5
+            range_rate = (r[0] * v[0] + r[1] * v[1] + r[2] * v[2]) / rng  # +=receding
+            doppler = -range_rate / _C_KM_S * downlink_hz
+        pts.append({
+            "t": (start_dt + datetime.timedelta(seconds=i * step_s)).isoformat(),
+            "lat": sub.latitude.degrees,
+            "lon": sub.longitude.degrees,
+            "el": alt.degrees,
+            "az": az.degrees,
+            "doppler_hz": doppler,
+        })
+    return pts
