@@ -10,9 +10,11 @@ Configure OASIS to start automatically when the Raspberry Pi boots.
     No browser is launched — suitable for headless or multi-user setups.
 
   --with-browser
-    Also installs an LXDE desktop autostart entry that opens Chromium in
-    kiosk mode (http://localhost:8083) after the server is ready.
-    Requires Raspberry Pi OS with Desktop (a live desktop session).
+    Also installs a desktop autostart entry that opens Chromium in kiosk mode
+    (http://localhost:8083) after the server is ready. Writes the mechanism the
+    running compositor honors — ~/.config/labwc/autostart on modern Pi OS
+    (Bookworm/Trixie, Wayland) and the XDG ~/.config/autostart/*.desktop on
+    LXDE/X11. Requires Raspberry Pi OS with Desktop (a live desktop session).
 
   --7inch
     Same as --with-browser but targets the 7″ touchscreen layout
@@ -41,7 +43,10 @@ Requires: Raspberry Pi OS (Debian/Linux), systemd, sudo.
 
 import argparse
 import getpass
+import glob
 import os
+import pwd
+import shutil
 import subprocess
 import sys
 
@@ -67,6 +72,92 @@ def _sudo_write(path, content):
     )
     if proc.returncode != 0:
         _fail(f"Could not write {path}: {proc.stderr.strip()}")
+
+
+def resolve_desktop_user():
+    """(user, home) of the real desktop/login user.
+
+    Correct even when this runs as ROOT via the privileged installer worker,
+    where getpass.getuser() == 'root' and os.path.expanduser('~') == '/root'.
+    Order: SUDO_USER (invoked via sudo) -> ourselves if not root -> the uid-1000
+    first-boot user (Pi OS default) -> the sole /home/* owner -> current user.
+    Getting this right matters: the browser autostart + desktop icon must land
+    in the login user's home, or the desktop session never sees them.
+    """
+    su = os.environ.get("SUDO_USER")
+    if su and su != "root":
+        try:
+            pw = pwd.getpwnam(su)
+            return pw.pw_name, pw.pw_dir
+        except KeyError:
+            pass
+    if os.geteuid() != 0:
+        return getpass.getuser(), os.path.expanduser("~")
+    try:
+        pw = pwd.getpwuid(1000)          # Pi OS first-boot user
+        return pw.pw_name, pw.pw_dir
+    except KeyError:
+        pass
+    homes = [d for d in sorted(glob.glob("/home/*")) if os.path.isdir(d)]
+    if len(homes) == 1:
+        try:
+            pw = pwd.getpwuid(os.stat(homes[0]).st_uid)
+            return pw.pw_name, pw.pw_dir
+        except (KeyError, OSError):
+            pass
+    return getpass.getuser(), os.path.expanduser("~")
+
+
+def _chown_to(path, user):
+    """Best-effort chown *path* to *user* (no-op if we lack permission)."""
+    try:
+        shutil.chown(path, user=user)
+    except (LookupError, PermissionError, OSError):
+        pass
+
+
+def _user_write(path, content, user, mode=None):
+    """Write *content* to *path*, creating parent dirs, and chown everything
+    created to *user* — so files a root worker drops into the login user's home
+    aren't left root-owned (and thus unreadable by the desktop session)."""
+    missing = []
+    p = os.path.dirname(path)
+    while p and not os.path.isdir(p):
+        missing.append(p)
+        p = os.path.dirname(p)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    for parent in missing:               # chown newly-created dirs, innermost last
+        _chown_to(parent, user)
+    with open(path, "w") as f:
+        f.write(content)
+    if mode is not None:
+        os.chmod(path, mode)
+    _chown_to(path, user)
+
+
+def _append_line_once(path, line, user, mode=None):
+    """Idempotently append *line* to *path* (a shell-style autostart file),
+    owned by *user*. No-op if the line is already present."""
+    existing = ""
+    if os.path.exists(path):
+        with open(path, encoding="utf-8", errors="replace") as f:
+            existing = f.read()
+    if line in existing:
+        return
+    body = (existing.rstrip("\n") + "\n") if existing.strip() else ""
+    _user_write(path, body + line + "\n", user, mode=mode)
+
+
+def _labwc_autostart(home):
+    return os.path.join(home, ".config", "labwc", "autostart")
+
+
+def _xdg_autostart(home):
+    return os.path.join(home, ".config", "autostart", "oasis-browser.desktop")
+
+
+def _wayfire_ini(home):
+    return os.path.join(home, ".config", "wayfire.ini")
 
 
 # ── Step 1: Platform check ─────────────────────────────────────────────────────
@@ -129,7 +220,7 @@ def install_service(user):
 
 
 # ── Step 3: Chromium kiosk autostart ──────────────────────────────────────────
-def install_browser(home, url=None, seven_inch=False):
+def install_browser(user, home, url=None, seven_inch=False):
     _step(3, "Installing Chromium kiosk autostart")
 
     # Detect the Chromium binary name (Pi OS ships either variant).
@@ -147,6 +238,10 @@ def install_browser(home, url=None, seven_inch=False):
         _ok(f"Chromium binary: {chromium_bin}")
 
     # Launcher script — waits for the OASIS server, then opens Chromium kiosk.
+    # --password-store=basic: use Chromium's own local store instead of
+    # gnome-keyring, so a passwordless-autologin kiosk never gets prompted to
+    # unlock the login keyring on boot (any saved passwords stay in the user's
+    # profile, not the locked keyring).
     kiosk_url = url or f"http://localhost:{PORT}"
     extra_flags = (
         " --touch-events=enabled --overscroll-history-navigation=0"
@@ -161,18 +256,22 @@ def install_browser(home, url=None, seven_inch=False):
         "    curl -sf \"$URL\" > /dev/null 2>&1 && break\n"
         "    sleep 2\n"
         "done\n"
-        f"exec {chromium_bin} --kiosk --noerrdialogs --disable-infobars{extra_flags} \"$URL\"\n"
+        f"exec {chromium_bin} --kiosk --noerrdialogs --disable-infobars"
+        f" --password-store=basic{extra_flags} \"$URL\"\n"
     )
     _info(f"Writing {BROWSER_BIN}")
     _sudo_write(BROWSER_BIN, launcher)
     _run(["sudo", "chmod", "+x", BROWSER_BIN])
     _ok(f"Wrote {BROWSER_BIN}  (executable)")
 
-    # ~/.config/autostart/ .desktop entry — picked up by LXDE / Pi OS Desktop.
-    autostart_dir = os.path.join(home, ".config", "autostart")
-    os.makedirs(autostart_dir, exist_ok=True)
-    desktop_file = os.path.join(autostart_dir, "oasis-browser.desktop")
-    desktop = (
+    # Autostart — write the mechanism the running desktop actually honors.
+    # Modern Pi OS (Bookworm/Trixie) defaults to labwc (Wayland), which runs
+    # ~/.config/labwc/autostart (a shell script) and IGNORES the XDG
+    # ~/.config/autostart/*.desktop that LXDE/X11 used. Write whichever apply —
+    # each desktop honors only its own, so there's no double launch. Files go in
+    # the login user's home (resolved above) and are chowned to them.
+    xdg = _xdg_autostart(home)
+    _user_write(xdg, (
         "[Desktop Entry]\n"
         "Type=Application\n"
         "Name=OASIS Browser\n"
@@ -180,16 +279,24 @@ def install_browser(home, url=None, seven_inch=False):
         f"Exec={BROWSER_BIN}\n"
         "Hidden=false\n"
         "X-GNOME-Autostart-enabled=true\n"
-    )
-    with open(desktop_file, "w") as f:
-        f.write(desktop)
-    _ok(f"Wrote {desktop_file}")
+    ), user)
+    _ok(f"Autostart (LXDE/X11): {xdg}")
+
+    if os.path.isdir(os.path.join(home, ".config", "labwc")) or shutil.which("labwc"):
+        labwc = _labwc_autostart(home)
+        _append_line_once(labwc, f"{BROWSER_BIN} &", user, mode=0o755)
+        _ok(f"Autostart (labwc/Wayland): {labwc}")
+
+    if os.path.exists(_wayfire_ini(home)):
+        _warn("wayfire detected — add this under [autostart] in "
+              f"~/.config/wayfire.ini manually:  oasis = {BROWSER_BIN}")
+
     _info("Chromium will open in kiosk mode on next desktop login")
     _info("To exit kiosk at any time: Alt+F4  or  Ctrl+Alt+T")
 
 
 # ── Step 4: Desktop icon ──────────────────────────────────────────────────────
-def install_desktop_icon(home):
+def install_desktop_icon(user, home):
     _step(4, "Creating desktop shortcut")
 
     desktop_dir = os.path.join(home, "Desktop")
@@ -212,9 +319,7 @@ def install_desktop_icon(home):
         "Terminal=false\n"
         "Categories=HamRadio;Network;\n"
     )
-    with open(icon_path, "w") as f:
-        f.write(desktop)
-    os.chmod(icon_path, 0o755)   # LXDE requires executable bit to trust the shortcut
+    _user_write(icon_path, desktop, user, mode=0o755)  # +x: LXDE trusts the shortcut
     _ok(f"Wrote {icon_path}")
     _info("Double-click the OASIS icon on the desktop to open the web interface")
     _info(f"URL: http://localhost:{PORT}")
@@ -248,11 +353,22 @@ def cmd_disable(home):
         _run(["sudo", "rm", BROWSER_BIN])
         _ok(f"Removed {BROWSER_BIN}")
         removed_any = True
-    desktop_file = os.path.join(home, ".config", "autostart", "oasis-browser.desktop")
+    desktop_file = _xdg_autostart(home)
     if os.path.exists(desktop_file):
         os.remove(desktop_file)
         _ok(f"Removed {desktop_file}")
         removed_any = True
+    # labwc/Wayland: strip the oasis launcher line from ~/.config/labwc/autostart
+    labwc = _labwc_autostart(home)
+    if os.path.exists(labwc):
+        with open(labwc, encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        kept = [ln for ln in lines if BROWSER_BIN not in ln]
+        if len(kept) != len(lines):
+            with open(labwc, "w") as f:
+                f.writelines(kept)
+            _ok(f"Removed OASIS line from {labwc}")
+            removed_any = True
     if not removed_any:
         _info("Browser autostart not found — nothing to remove")
 
@@ -314,8 +430,10 @@ def main():
     )
     args = parser.parse_args()
 
-    user = getpass.getuser()
-    home = os.path.expanduser("~")
+    # Resolve the REAL login user even when run as root by the privileged
+    # installer worker — otherwise the kiosk autostart lands in /root and the
+    # desktop session (running as the login user) never sees it.
+    user, home = resolve_desktop_user()
 
     if args.disable:
         cmd_disable(home)
@@ -348,9 +466,9 @@ def main():
     check_platform()
     install_service(user)
     if args.with_browser:
-        install_browser(home, url=kiosk_url, seven_inch=args.seven_inch)
+        install_browser(user, home, url=kiosk_url, seven_inch=args.seven_inch)
     if args.desktop_icon:
-        install_desktop_icon(home)
+        install_desktop_icon(user, home)
 
     print()
     print("  OASIS — Autostart configured.")

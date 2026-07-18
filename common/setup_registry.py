@@ -264,7 +264,7 @@ def _setup_winlink_install_fn(repo_root, payload):
 # caller is already root).
 PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
-    "openwebrx", "adsb", "rtl-sdr-feed", "gps", "dra-pi-rx-led", "rtc",
+    "openwebrx", "adsb", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
     "pi-headless", "pi-local-monitor", "pi-small-screen-7", "cm4stack", "rgb-cooling-hat",
 }
 
