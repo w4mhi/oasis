@@ -27,5 +27,14 @@ class TleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self.assertIsNone(tle.cache_age_days(d))
 
+    def test_cache_mtime_stable_and_none_when_empty(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(tle.cache_mtime(d))
+            with open(FIXTURE) as fh:
+                open(os.path.join(d, "weather.txt"), "w").write(fh.read())
+            m1 = tle.cache_mtime(d)
+            self.assertIsNotNone(m1)
+            self.assertEqual(m1, tle.cache_mtime(d))   # stable across calls
+
 if __name__ == "__main__":
     unittest.main()

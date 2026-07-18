@@ -49,3 +49,14 @@ def cache_age_days(cache_dir):
     if not mtimes:
         return None
     return (time.time() - max(mtimes)) / 86400.0
+
+
+def cache_mtime(cache_dir):
+    """Newest group-file mtime (epoch seconds), or None if empty. Stable across
+    repeated calls (unlike cache_age_days) — suitable as a cache-version key so a
+    TLE refresh invalidates cached results but back-to-back requests reuse them."""
+    if not os.path.isdir(cache_dir):
+        return None
+    mtimes = [os.path.getmtime(os.path.join(cache_dir, fn))
+              for fn in os.listdir(cache_dir) if fn.endswith(".txt")]
+    return max(mtimes) if mtimes else None

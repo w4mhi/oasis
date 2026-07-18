@@ -45,5 +45,21 @@ class RoutesTest(unittest.TestCase):
         iss = [s for s in r.get_json()["satellites"] if s["norad"] == 25544][0]
         self.assertFalse(iss["selected"])
 
+    def test_passes_cache_reused(self):
+        calls = []
+        orig = self.routes.predict.compute_passes
+        def counting(*a, **k):
+            calls.append(1)
+            return orig(*a, **k)
+        self.routes.predict.compute_passes = counting
+        try:
+            self.client.get("/api/satellites/passes?window=24")
+            n1 = len(calls)
+            self.assertGreater(n1, 0)                 # first request computed
+            self.client.get("/api/satellites/passes?window=24")
+            self.assertEqual(len(calls), n1)          # identical 2nd request hit the cache
+        finally:
+            self.routes.predict.compute_passes = orig
+
 if __name__ == "__main__":
     unittest.main()

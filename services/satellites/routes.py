@@ -79,13 +79,16 @@ def _sats_by_norad():
 
 @bp.route("/api/satellites/passes")
 def api_passes():
-    window = int(request.args.get("window", 48))
+    try:
+        window = int(request.args.get("window", 48))
+    except (TypeError, ValueError):
+        window = 48
     st = _station()
     if st["lat"] is None:
         return jsonify({"passes": {}, "error": "no station location"}), 200
     only = request.args.get("sat")
-    tle_age = tle.cache_age_days(config_paths.tle_cache_dir(SUITE_ROOT))
-    key = f"{st['lat']},{st['lon']},{window},{only},{tle_age}"
+    tle_stamp = tle.cache_mtime(config_paths.tle_cache_dir(SUITE_ROOT))
+    key = f"{st['lat']},{st['lon']},{window},{only},{int(tle_stamp) if tle_stamp else 0}"
     cp = _cache_path(key)
     if os.path.exists(cp) and (datetime.datetime.now().timestamp() - os.path.getmtime(cp)) < _CACHE_TTL_S:
         with open(cp, encoding="utf-8") as fh:
@@ -111,13 +114,17 @@ def api_passes():
 def api_track():
     st = _station()
     norad = request.args.get("sat")
-    sat = _sats_by_norad().get(int(norad)) if norad else None
+    try:
+        norad_i = int(norad) if norad else None
+    except (TypeError, ValueError):
+        norad_i = None
+    sat = _sats_by_norad().get(norad_i) if norad_i is not None else None
     if sat is None or st["lat"] is None:
         return jsonify({"track": [], "error": "unknown sat or no station"}), 200
     frm = datetime.datetime.fromisoformat(request.args["from"])
     to = datetime.datetime.fromisoformat(request.args["to"])
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
-    entry = next((s for s in data["satellites"] if s["norad"] == int(norad)), None)
+    entry = next((s for s in data["satellites"] if s["norad"] == norad_i), None)
     dl = None
     if entry and entry["downlinks"]:
         dl = int(entry["downlinks"][0]["freq_mhz"] * 1_000_000)
