@@ -14,6 +14,12 @@ configuration/installed-services.json
 # Operator identity (callsign + grid) seeded by setup-oasis.py; per-machine.
 configuration/station.json
 
+# Satellite roster + selections, seeded at runtime by services/satellites/roster.py.
+configuration/satellites.json
+
+# TLE cache (group .txt files from sync-tle.py) + computed pass caches; runtime data.
+configuration/tle-cache/
+
 
 # Operator-placed APRS map warnings (shared runtime state, not repo content).
 aprs-warnings.json
