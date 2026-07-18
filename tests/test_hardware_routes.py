@@ -26,9 +26,9 @@ class HardwareRoutesTest(unittest.TestCase):
     def test_devices_route_shape(self):
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "label": "X"}},
                            assignments={"adsb": "a"})
-        # The route default-assigns the lone dongle to openwebrx + aprs too
-        # (shared) — mock save so nothing touches disk. Present count matches the
-        # one declared dongle so neither auto-declare nor unplug-reconcile fires.
+        # No auto-assign: the route reports only the explicit assignment. Present
+        # count matches the one declared dongle so neither auto-declare nor
+        # unplug-reconcile fires.
         with mock.patch.object(HW, "load", return_value=inv), \
              mock.patch.object(HW, "save"), \
              mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=1):
@@ -36,8 +36,8 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         body = json.loads(r.data)
         self.assertEqual(body["devices"][0]["id"], "a")
-        # Shared, idle dongle → assignee lists every service that defaults to it.
-        self.assertEqual(body["devices"][0]["assignee"], "adsb, openwebrx, aprs")
+        # Only the manually-assigned service shows as assignee.
+        self.assertEqual(body["devices"][0]["assignee"], "adsb")
 
     def test_assign_success(self):
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr"}}, assignments={})
@@ -132,14 +132,16 @@ class HardwareRoutesTest(unittest.TestCase):
                           {"device_id": "a", "ok": True, "reason": ""})
         self.assertEqual(body["services"]["winlink"],
                           {"device_id": None, "ok": False, "reason": "unassigned"})
-        # openwebrx is now surfaced (advisory) and shares the lone dongle with
-        # adsb + aprs via default-assign.
+        # No auto-assign: openwebrx + aprs stay unassigned until the operator
+        # assigns a dongle to them via the dropdown.
         self.assertEqual(body["services"]["openwebrx"],
-                          {"device_id": "a", "ok": True, "reason": ""})
+                          {"device_id": None, "ok": False, "reason": "unassigned"})
         self.assertEqual(body["services"]["aprs"],
-                          {"device_id": "a", "ok": True, "reason": ""})
+                          {"device_id": None, "ok": False, "reason": "unassigned"})
 
-    def test_devices_route_default_assigns_lone_free_dongle_to_adsb(self):
+    def test_devices_route_leaves_lone_free_dongle_unassigned(self):
+        # No auto-assign: a lone free dongle is declared but NOT assigned — the
+        # operator picks which service gets it via the dropdown.
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "label": "X"}},
                            assignments={})
         with mock.patch.object(HW, "load", return_value=inv), \
@@ -147,8 +149,9 @@ class HardwareRoutesTest(unittest.TestCase):
              mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=1):
             r = self.c.get("/api/hardware/devices")
         body = json.loads(r.data)
-        self.assertEqual(body["services"]["adsb"]["device_id"], "a")
-        self.assertTrue(body["services"]["adsb"]["ok"])
+        self.assertEqual(body["devices"][0]["id"], "a")            # declared
+        self.assertIsNone(body["services"]["adsb"]["device_id"])   # but unassigned
+        self.assertFalse(body["services"]["adsb"]["ok"])
 
     def test_devices_route_auto_declares_detected_dongles(self):
         # present (2) > declared (0) → scan runs and declares both distinct serials.
@@ -164,9 +167,10 @@ class HardwareRoutesTest(unittest.TestCase):
         declared_ids = [d["id"] for d in body["devices"]]
         self.assertIn("rtl-sdr-00000001", declared_ids)
         self.assertIn("rtl-sdr-00001000", declared_ids)
-        # adsb defaults to the first present dongle.
-        self.assertEqual(body["services"]["adsb"]["device_id"], "rtl-sdr-00000001")
-        self.assertTrue(body["services"]["adsb"]["ok"])
+        # No auto-assign: both dongles declared, but adsb (and the other SDR
+        # services) stay unassigned until the operator picks.
+        self.assertIsNone(body["services"]["adsb"]["device_id"])
+        self.assertFalse(body["services"]["adsb"]["ok"])
 
     def test_devices_route_skips_scan_when_all_present_dongles_declared(self):
         # present (1) == declared (1) → the expensive rtl_test scan is skipped.
@@ -180,9 +184,10 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         mocked_scan.assert_not_called()
 
-    def test_devices_route_fails_over_to_surviving_dongle_on_unplug(self):
+    def test_devices_route_unassigns_on_unplug_no_failover(self):
         # present (1) < declared (2): the removed dongle is undeclared and the
-        # service that had it FAILS OVER to the surviving dongle (not unassigned).
+        # service that had it goes UNASSIGNED — no auto-failover to the survivor
+        # (that was auto-assign; assignment is manual now).
         inv = HW.Inventory(
             devices={"rtl-sdr-A": {"id": "rtl-sdr-A", "kind": "rtl-sdr", "serial": "A", "label": "A"},
                      "rtl-sdr-B": {"id": "rtl-sdr-B", "kind": "rtl-sdr", "serial": "B", "label": "B"}},
@@ -196,9 +201,9 @@ class HardwareRoutesTest(unittest.TestCase):
         body = json.loads(r.data)
         ids = [d["id"] for d in body["devices"]]
         self.assertIn("rtl-sdr-A", ids)
-        self.assertNotIn("rtl-sdr-B", ids)                       # unplugged → undeclared
-        self.assertEqual(body["services"]["aprs"]["device_id"], "rtl-sdr-A")   # failed over
-        self.assertTrue(body["services"]["aprs"]["ok"])
+        self.assertNotIn("rtl-sdr-B", ids)                          # unplugged → undeclared
+        self.assertEqual(body["services"]["adsb"]["device_id"], "rtl-sdr-A")  # survivor keeps its assignment
+        self.assertIsNone(body["services"]["aprs"]["device_id"])    # its dongle gone → unassigned, no failover
 
     def test_devices_route_unassigns_when_last_dongle_unplugged(self):
         # present (0) < declared (1) and no survivor → the service goes unassigned.
@@ -215,7 +220,7 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertIsNone(body["services"]["adsb"]["device_id"])
         self.assertEqual(body["services"]["adsb"]["reason"], "unassigned")
 
-    def test_devices_route_auto_declares_assigns_and_applies_digirig(self):
+    def test_devices_route_auto_declares_digirig_but_leaves_it_unassigned(self):
         ptt = ("/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_"
                "Controller_3e54e82a-if00-port0")
         inv = HW.Inventory(devices={}, assignments={})
@@ -232,12 +237,11 @@ class HardwareRoutesTest(unittest.TestCase):
             r = self.c.get("/api/hardware/devices")
         body = json.loads(r.data)
         ids = [d["id"] for d in body["devices"]]
-        self.assertIn("digirig-3e54e82a", ids)
-        self.assertEqual(body["services"]["winlink"]["device_id"], "digirig-3e54e82a")
-        self.assertTrue(body["services"]["winlink"]["ok"])
-        self.assertEqual(applied, [1])   # direwolf re-templated on the change
+        self.assertIn("digirig-3e54e82a", ids)                        # declared
+        self.assertIsNone(body["services"]["winlink"]["device_id"])   # but unassigned
+        self.assertEqual(applied, [])   # winlink unchanged → no direwolf re-template
 
-    def test_devices_route_auto_declares_assigns_and_applies_dra_pi(self):
+    def test_devices_route_auto_declares_dra_pi_but_leaves_it_unassigned(self):
         inv = HW.Inventory(devices={}, assignments={})
         applied = []
         with mock.patch.object(HW, "load", return_value=inv), \
@@ -251,10 +255,9 @@ class HardwareRoutesTest(unittest.TestCase):
             r = self.c.get("/api/hardware/devices")
         body = json.loads(r.data)
         ids = [d["id"] for d in body["devices"]]
-        self.assertIn("dra-pi", ids)
-        self.assertEqual(body["services"]["winlink"]["device_id"], "dra-pi")
-        self.assertTrue(body["services"]["winlink"]["ok"])
-        self.assertEqual(applied, [1])
+        self.assertIn("dra-pi", ids)                                  # declared
+        self.assertIsNone(body["services"]["winlink"]["device_id"])   # but unassigned
+        self.assertEqual(applied, [])
 
     def test_devices_route_scans_when_new_dongle_plugged(self):
         # present (2) > declared (1) → scan runs to pick up the new dongle.

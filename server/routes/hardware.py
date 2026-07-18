@@ -76,32 +76,31 @@ def api_hardware_devices():
         # busy-safe + count-bounded inside reconcile_present_rtl_sdrs.
         detected_serials = [d["serial"] for d in HD_detect.scan().get("rtl_sdr", [])]
         HW.reconcile_present_rtl_sdrs(SUITE_ROOT, inv, detected_serials, present_rtl)
-    # All three RTL-SDR consumers default to the first present dongle (shared —
-    # §2/§3); the operator spreads them across dongles via each card's dropdown.
-    # aprs is pinned to rtl-sdr for the DEFAULT so it never auto-grabs a
-    # digirig/dra-pi earmarked for winlink (its full kind set still governs
-    # manual assignment).
-    for _svc in ("adsb", "openwebrx", "aprs"):
-        HW.default_assign(SUITE_ROOT, inv, _svc, {"rtl-sdr"})
+    # No auto-assign. SDR services start UNASSIGNED; the operator assigns each
+    # dongle explicitly via the card dropdown (which applies on change). Auto-
+    # assigning "the first present dongle" was a wrong guess on multi-dongle rigs
+    # — it can't know which antenna is on which — and it drifted from the applied
+    # config (it wrote the inventory on the poll but never re-applied). Auto-
+    # DECLARE + reconcile-on-unplug above stay; only the assignment is manual.
 
     # Winlink radio ports auto-declare/undeclare like the SDRs — no manual form:
     #   DigiRig — a lone CP210x PTT by-id (detect_digirig);
     #   DRA-Pi  — its audioinjectorpi ALSA card (detect_dra_pi), fully fixed.
-    # Winlink RF auto-assigns to whichever is present (both → first, operator
-    # flips via the dropdown). Their PTT + audio flow straight into direwolf via
-    # winlink.apply, so when a declaration or winlink's assignment actually
-    # changes, re-template direwolf right away (threaded — never block the poll).
+    # Assignment is MANUAL too (operator picks DigiRig/DRA-Pi in the dropdown).
+    # PTT + audio flow into direwolf via winlink.apply, so when a declaration
+    # change (an unplug that releases winlink's device) alters state, re-template
+    # direwolf right away (threaded — never block the poll).
     winlink_before = inv.assignments.get("winlink")
-    radio_before = {did for did, d in inv.devices.items() if d.get("kind") in ("digirig", "dra-pi")}
     HW.reconcile_digirig(SUITE_ROOT, inv)
     if not any(d.get("kind") == "digirig" for d in inv.devices.values()):
         HW.auto_declare_digirig(SUITE_ROOT, inv, HD_detect.detect_digirig())
     dra_present = HD_detect.detect_dra_pi()
     HW.reconcile_dra_pi(SUITE_ROOT, inv, dra_present)
     HW.auto_declare_dra_pi(SUITE_ROOT, inv, dra_present)
-    HW.default_assign(SUITE_ROOT, inv, "winlink", {"digirig", "dra-pi"})
-    radio_after = {did for did, d in inv.devices.items() if d.get("kind") in ("digirig", "dra-pi")}
-    if inv.assignments.get("winlink") != winlink_before or radio_after != radio_before:
+    # Re-template direwolf only when winlink's assigned device actually changed
+    # (a reconcile-release when its dongle is unplugged) — merely declaring a
+    # newly-plugged device no longer assigns it, so declaration alone is a no-op.
+    if inv.assignments.get("winlink") != winlink_before:
         threading.Thread(target=_apply_hardware_async, daemon=True).start()
 
     services = {}
