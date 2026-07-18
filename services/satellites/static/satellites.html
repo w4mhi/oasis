@@ -328,12 +328,13 @@ function selectPass(el, norad, rise, set) {
   showTrack(norad, rise, set);
 }
 
-// Renders the ground-track SVG (graticule + coastline + past-solid/future-dashed
-// split + station marker) from an already-fetched track array. Called both on
-// initial load and, repeatedly, by the live 1 Hz tick — it does NOT fetch.
+// Rebuilds ONLY the dynamic past-solid/future-dashed track paths inside the
+// static #trk-dyn group. Called both on initial load and, repeatedly, by the
+// live 1 Hz tick — it does NOT fetch and does NOT touch the graticule,
+// coastline, or station marker (those are drawn once per pass by showTrack).
 function drawTrack(track) {
-  const info = document.getElementById('track-info');
-  const svg = document.getElementById('track');
+  const dyn = document.getElementById('trk-dyn');
+  if (!dyn) return;
   const W = 720, H = 360;
   const pathFor = (pts, cls) => {
     if (!pts.length) return '';
@@ -343,42 +344,51 @@ function drawTrack(track) {
     }).join(' ');
     return `<path d="${d}" class="${cls}"/>`;
   };
-  let out = drawGraticule(W, H) + drawCoastline(W, H);
-  if (!track || !track.length) {
-    svg.innerHTML = out;
-    info.textContent = 'No track data for this pass (TLE sync needed?).';
-    return;
-  }
   const nowIdx = nowIndex(track);
   const { past, future } = satgeo.splitAtNow(track, nowIdx);
+  let out = '';
   for (const seg of satgeo.splitAntimeridian(past))   out += pathFor(seg, 'trk-past');
   for (const seg of satgeo.splitAntimeridian(future)) out += pathFor(seg, 'trk-future');
-  if (STATION && STATION.lat != null) {
-    const st = satgeo.project(STATION.lat, STATION.lon, W, H);
-    out += `<circle cx="${st.x}" cy="${st.y}" r="4" class="home"/>`;
-  }
-  svg.innerHTML = out;
-  info.textContent = '';
+  dyn.innerHTML = out;
 }
 
 // The currently-plotted pass — stored so the live tick can re-render the
 // same track (growing solid trail) without re-fetching it every second.
-let _liveTrack = null, _liveNorad = null;
+let _liveTrack = null;
+// Bumped on every showTrack() call so a slow-resolving fetch from a
+// previously-clicked pass row can detect it's been superseded and bail
+// instead of clobbering _liveTrack / starting a live tick for the wrong sat.
+let _trackReq = 0;
 
 async function showTrack(norad, rise, set) {
   const info = document.getElementById('track-info');
+  const svg = document.getElementById('track');
   info.textContent = 'Loading track…';
   clearInterval(window._satTick);
+  const myReq = ++_trackReq;
   await loadCoastline();
   const j = await (await fetch(`/api/satellites/track?sat=${norad}&from=${encodeURIComponent(rise)}&to=${encodeURIComponent(set)}`)).json();
+  if (myReq !== _trackReq) return;   // a newer showTrack() call superseded this one
   _liveTrack = j.track || [];
-  _liveNorad = norad;
+
+  // Static backdrop (graticule + coastline + station), built ONCE per pass —
+  // the 1 Hz tick only touches #trk-dyn and #sat-now from here on.
+  const W = 720, H = 360;
+  let stationMarker = '';
+  if (STATION && STATION.lat != null) {
+    const st = satgeo.project(STATION.lat, STATION.lon, W, H);
+    stationMarker = `<circle cx="${st.x}" cy="${st.y}" r="4" class="home"/>`;
+  }
+  svg.innerHTML = drawGraticule(W, H) + drawCoastline(W, H) + stationMarker +
+    '<g id="trk-dyn"></g>' + '<circle id="sat-now" class="sat-now" r="5" style="display:none"></circle>';
+
   showPolar(_liveTrack);
   drawTrack(_liveTrack);
   if (!_liveTrack.length) {
     info.textContent = j.error ? `No track: ${j.error}` : 'No track data for this pass (TLE sync needed?).';
     return;
   }
+  info.textContent = '';
   startLive(j.l1, j.l2);
 }
 
@@ -397,15 +407,10 @@ function startLive(l1, l2) {
     const gmst = satellite.gstime(now);
     const gd = satellite.eciToGeodetic(pv.position, gmst);
     const lat = satellite.degreesLat(gd.latitude), lon = satellite.degreesLong(gd.longitude);
-    if (_liveTrack && _liveTrack.length) { drawTrack(_liveTrack); showPolar(_liveTrack); }
     const q = satgeo.project(lat, lon, 720, 360);
-    let m = document.getElementById('sat-now');
-    if (!m) {
-      m = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      m.id = 'sat-now'; m.setAttribute('r', '5'); m.setAttribute('class', 'sat-now');
-      document.getElementById('track').appendChild(m);
-    }
-    m.setAttribute('cx', q.x); m.setAttribute('cy', q.y);
+    const m = document.getElementById('sat-now');
+    if (m) { m.setAttribute('cx', q.x); m.setAttribute('cy', q.y); m.style.display = ''; }
+    if (_liveTrack && _liveTrack.length) { drawTrack(_liveTrack); showPolar(_liveTrack); }
   }, 1000);
 }
 
