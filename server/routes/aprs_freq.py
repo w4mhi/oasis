@@ -126,6 +126,6 @@ def api_set_aprs_frequency():
     code, out = _apply_freq(freq)
     if code == 0:
         return jsonify({"ok": True, "freq": freq, "applied": True,
-                        "message": f"Applied — APRS feed restarted at {freq}."})
+                        "message": f"Applied — APRS feed set to {freq}."})
     return jsonify({"ok": False, "freq": freq, "applied": False,
                     "error": f"Saved {freq}, but applying it failed (code {code}): {out[:200]}"}), 500

@@ -966,12 +966,19 @@ async function aprsFreqApply() {
   const freq = sel.value === APRS_FREQ_CUSTOM
     ? (document.getElementById('aprsFreqCustom').value || '').trim()
     : sel.value;
-  if (!freq) { msg.textContent = 'Enter a frequency first.'; return; }
+  if (!freq) { msg.style.color = ''; msg.textContent = 'Enter a frequency first.'; return; }
   btn.disabled = true;
+  msg.style.color = '';
   msg.textContent = 'Applying…';
   const { ok, data } = await jpost('/api/aprs/frequency', { freq });
   btn.disabled = false;
-  msg.textContent = ok ? (data.message || 'Saved.') : ('Error: ' + (data.error || 'unknown'));
+  if (ok) {
+    msg.textContent = data.message || 'Saved.';
+    msg.style.color = data.applied ? 'var(--accent)' : '';   // green when live-applied; neutral when just saved
+  } else {
+    msg.textContent = 'Error: ' + (data.error || 'unknown');
+    msg.style.color = 'var(--red)';
+  }
 }
 
 function initSetupOrchestrator() {
