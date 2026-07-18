@@ -14,7 +14,6 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 import roster        # noqa: E402
 import tle           # noqa: E402
-import predict       # noqa: E402, F401
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 STATIC_DIR = os.path.join(_HERE, "static")
@@ -62,6 +61,7 @@ def _cache_path(key):
 
 def _sats_by_norad():
     """{norad: EarthSatellite} for roster entries present in the TLE cache."""
+    import predict
     cache = tle.load_cache(config_paths.tle_cache_dir(SUITE_ROOT))
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     out = {}
@@ -79,6 +79,7 @@ def _sats_by_norad():
 
 @bp.route("/api/satellites/passes")
 def api_passes():
+    import predict
     try:
         window = int(request.args.get("window", 48))
     except (TypeError, ValueError):
@@ -112,6 +113,7 @@ def api_passes():
 
 @bp.route("/api/satellites/track")
 def api_track():
+    import predict
     st = _station()
     norad = request.args.get("sat")
     try:

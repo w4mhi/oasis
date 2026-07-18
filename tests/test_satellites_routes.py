@@ -12,6 +12,14 @@ class RoutesTest(unittest.TestCase):
         # in tests/test_aprs_server_routes.py.
         from services.satellites import routes  # services/satellites/routes.py
         self.routes = routes
+        # routes.py imports `predict` (skyfield/numpy) lazily inside each
+        # function body rather than at module top, so the server boots even
+        # if skyfield/numpy is missing. `services/satellites` was put on
+        # sys.path as a side effect of importing `routes` above, so this
+        # bare import resolves to the exact same cached module object that
+        # routes.py's local `import predict` statements will pick up.
+        import predict
+        self.predict = predict
         from flask import Flask
         app = Flask(__name__)
         app.register_blueprint(routes.bp)
@@ -47,11 +55,11 @@ class RoutesTest(unittest.TestCase):
 
     def test_passes_cache_reused(self):
         calls = []
-        orig = self.routes.predict.compute_passes
+        orig = self.predict.compute_passes
         def counting(*a, **k):
             calls.append(1)
             return orig(*a, **k)
-        self.routes.predict.compute_passes = counting
+        self.predict.compute_passes = counting
         try:
             self.client.get("/api/satellites/passes?window=24")
             n1 = len(calls)
@@ -59,7 +67,7 @@ class RoutesTest(unittest.TestCase):
             self.client.get("/api/satellites/passes?window=24")
             self.assertEqual(len(calls), n1)          # identical 2nd request hit the cache
         finally:
-            self.routes.predict.compute_passes = orig
+            self.predict.compute_passes = orig
 
 if __name__ == "__main__":
     unittest.main()
