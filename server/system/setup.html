@@ -203,6 +203,16 @@
       <div class="setup-kv">Client password</div>
       <input class="setup-input" id="setupWifiPassword" type="password" placeholder="WPA2 password">
       <div class="setup-note" id="setupWifiWarn" style="display:none;">Warning: changing Wi-Fi may drop your current AP session. Reboot is required after apply.</div>
+      <!-- APRS frequency lives inside the Wi-Fi card (spare space), as its own sub-section. -->
+      <div id="aprsFreqBox" style="margin-top:.9rem;padding-top:.7rem;border-top:1px solid var(--border);">
+        <div class="setup-kv" style="font-weight:700;color:var(--text);">APRS frequency</div>
+        <select class="setup-input" id="aprsFreqPreset" onchange="aprsFreqPresetChange()"></select>
+        <div class="setup-kv" id="aprsFreqCustomLabel" style="display:none;">Custom frequency</div>
+        <input class="setup-input" id="aprsFreqCustom" style="display:none;"
+               placeholder="e.g. 144.640M" autocomplete="off" spellcheck="false">
+        <button class="setup-btn" id="aprsFreqApply" onclick="aprsFreqApply()">Apply frequency</button>
+        <div class="setup-note" id="aprsFreqMsg">Sets the RTL-SDR APRS feed. If you feed APRS from a radio/DigiRig, set the frequency on the radio.</div>
+      </div>
     </div>
     </div>
     <div class="setup-box setup-job-box">
@@ -917,6 +927,53 @@ async function setupRunSelected() {
   }
 }
 
+// ── APRS frequency selector ──────────────────────────────────────────────────
+// Region presets come from configuration/aprs_frequencies.json (operator-
+// editable). Applying persists to station.json and, when the feed is installed,
+// rewrites the aprs-sdr-feed unit + restarts it via the privileged endpoint.
+const APRS_FREQ_CUSTOM = '__custom__';
+
+async function aprsFreqLoad() {
+  const sel = document.getElementById('aprsFreqPreset');
+  const msg = document.getElementById('aprsFreqMsg');
+  if (!sel) return;
+  let d;
+  try { d = await jget('/api/aprs/frequency'); }
+  catch { sel.innerHTML = '<option>— unavailable —</option>'; return; }
+  const presets = Array.isArray(d.presets) ? d.presets : [];
+  const current = (d.current || '').trim();
+  const known = presets.some(p => p.freq === current);
+  sel.innerHTML = presets.map(p =>
+    `<option value="${escapeHtml(p.freq)}"${p.freq === current ? ' selected' : ''}>${escapeHtml(p.label)} — ${escapeHtml(p.freq)}</option>`
+  ).join('') + `<option value="${APRS_FREQ_CUSTOM}"${known ? '' : ' selected'}>Custom…</option>`;
+  if (!known && current) document.getElementById('aprsFreqCustom').value = current;
+  aprsFreqPresetChange();
+  if (!d.feed_installed && msg) {
+    msg.textContent = 'APRS SDR feed not installed — your choice is saved and applied when you enable it.';
+  }
+}
+
+function aprsFreqPresetChange() {
+  const isCustom = document.getElementById('aprsFreqPreset').value === APRS_FREQ_CUSTOM;
+  document.getElementById('aprsFreqCustomLabel').style.display = isCustom ? '' : 'none';
+  document.getElementById('aprsFreqCustom').style.display = isCustom ? '' : 'none';
+}
+
+async function aprsFreqApply() {
+  const sel = document.getElementById('aprsFreqPreset');
+  const msg = document.getElementById('aprsFreqMsg');
+  const btn = document.getElementById('aprsFreqApply');
+  const freq = sel.value === APRS_FREQ_CUSTOM
+    ? (document.getElementById('aprsFreqCustom').value || '').trim()
+    : sel.value;
+  if (!freq) { msg.textContent = 'Enter a frequency first.'; return; }
+  btn.disabled = true;
+  msg.textContent = 'Applying…';
+  const { ok, data } = await jpost('/api/aprs/frequency', { freq });
+  btn.disabled = false;
+  msg.textContent = ok ? (data.message || 'Saved.') : ('Error: ' + (data.error || 'unknown'));
+}
+
 function initSetupOrchestrator() {
   const webssh = document.getElementById('setupWebssh');
   webssh.href = `http://${HOST}:${PORTS.webssh}/`;
@@ -937,6 +994,7 @@ function initSetupOrchestrator() {
   setupGetPermissions();
   setupDetectHardware();
   setupWifiWarnRefresh();
+  aprsFreqLoad();
 }
 
 initSetupOrchestrator();

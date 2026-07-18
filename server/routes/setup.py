@@ -243,6 +243,10 @@ def _setup_write_station(payload):
         "lon": lon,
         "updated": _setup_iso_now(),
     }
+    # Preserve keys this write doesn't own (the APRS frequency is set from its own
+    # Setup control / endpoint, not the station form) so a station save can't drop it.
+    if existing.get("aprs_freq"):
+        body["aprs_freq"] = existing["aprs_freq"]
     with open(dst, "w", encoding="utf-8") as fh:
         json.dump(body, fh, indent=2)
         fh.write("\n")

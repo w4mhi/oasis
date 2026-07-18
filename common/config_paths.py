@@ -21,6 +21,9 @@ def installed_services_json(repo_root):
 def user_folders_json(repo_root):
     return os.path.join(config_dir(repo_root), "user-folders.json")
 
+def aprs_frequencies_json(repo_root):
+    return os.path.join(config_dir(repo_root), "aprs_frequencies.json")
+
 def hardware_json(repo_root):
     return os.path.join(config_dir(repo_root), "hardware.json")
 

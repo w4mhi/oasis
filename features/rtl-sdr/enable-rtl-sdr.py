@@ -50,8 +50,25 @@ import tempfile
 import time
 
 # ── Shared library ─────────────────────────────────────────────────────
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+_SUITE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
+sys.path.insert(0, _SUITE_ROOT)
 from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
+from common import config_paths
+
+DEFAULT_FREQ = "144.390M"           # NA 2 m APRS, used when station.json has none
+
+
+def _station_freq():
+    """The operator's chosen APRS frequency from configuration/station.json, or
+    the NA default. Setup persists it there; this keeps a re-enable on-frequency
+    instead of snapping back to 144.390M."""
+    try:
+        import json
+        with open(config_paths.station_json(_SUITE_ROOT), "r", encoding="utf-8") as fh:
+            freq = (json.load(fh) or {}).get("aprs_freq")
+        return freq.strip() if isinstance(freq, str) and freq.strip() else DEFAULT_FREQ
+    except Exception:
+        return DEFAULT_FREQ
 
 SERVICE_NAME = "aprs-sdr-feed.service"
 SERVICE_PATH = f"/etc/systemd/system/{SERVICE_NAME}"
@@ -375,9 +392,10 @@ def main():
             "  python3 features/rtl-sdr/enable-rtl-sdr.py --check       # test only\n"
         ),
     )
-    parser.add_argument("--freq", default="144.390M",
+    parser.add_argument("--freq", default=_station_freq(),
                         help="APRS frequency (keep the 'M' suffix — a bare number "
-                             "is parsed as Hz). Default: 144.390M (NA 2 m).")
+                             "is parsed as Hz). Default: configuration/station.json's "
+                             "aprs_freq, else 144.390M (NA 2 m).")
     parser.add_argument("--gain", type=float, default=32.8,
                         help="Tuner gain in dB (default 32.8 — the R820T step "
                              "that bench-tested best for APRS; omit-style AGC not "

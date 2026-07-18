@@ -495,6 +495,33 @@ def test_setup_write_station_preserves_existing_lat_lon_when_omitted():
             assert body["lon"] == -79.05
 
 
+import unittest
+
+
+class SetupWriteStationAprsFreqTests(unittest.TestCase):
+    # A TestCase (not a bare def) so `unittest discover` — the CI runner — actually
+    # collects it. The APRS frequency is owned by its own Setup control
+    # (/api/aprs/frequency), not the station form, so a station save must keep it.
+    def test_preserves_aprs_freq(self):
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(setup_module, "SUITE_ROOT", td):
+                cfg_dir = os.path.join(td, "configuration")
+                os.makedirs(cfg_dir, exist_ok=True)
+                st_path = os.path.join(cfg_dir, "station.json")
+                with open(st_path, "w", encoding="utf-8") as fh:
+                    json.dump({"callsign": "W4MHI", "grid": "EM95", "aprs_freq": "144.800M"}, fh)
+                    fh.write("\n")
+
+                setup_module._setup_write_station({
+                    "station": {"callsign": "W4MHI", "grid": "EM96"}
+                })
+
+                with open(st_path, "r", encoding="utf-8") as fh:
+                    body = json.load(fh)
+                self.assertEqual(body["grid"], "EM96")
+                self.assertEqual(body["aprs_freq"], "144.800M")
+
+
 def test_gps_module_exposes_run_helper_import():
     import importlib
     gps_mod = importlib.import_module("features.gps.gps")

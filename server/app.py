@@ -164,6 +164,7 @@ from routes.system import bp as _system_bp
 from routes.health import bp as _health_bp
 from routes.setup import bp as _setup_bp
 from routes.diagnostics import bp as _diag_bp
+from routes.aprs_freq import bp as _aprs_freq_bp
 
 app.register_blueprint(_adsb_bp)
 app.register_blueprint(_aprs_bp)
@@ -178,6 +179,7 @@ app.register_blueprint(_wifi_bp)
 app.register_blueprint(_system_bp)
 app.register_blueprint(_setup_bp)
 app.register_blueprint(_diag_bp)
+app.register_blueprint(_aprs_freq_bp)
 
 
 @app.route("/")
