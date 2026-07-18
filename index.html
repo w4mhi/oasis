@@ -807,6 +807,24 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 .aprs-section-title.live    { color: var(--accent); }
 .aprs-section-title.offline { color: var(--amber); }
 .aprs-section-meta { font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; }
+/* Emergency chip — right-aligned in the header. Calm (dim, non-interactive) when
+   no Fire/Public-safety station has been heard in 48h; amber alert when some are;
+   filled/inverted while the list is narrowed to them. */
+.emerg-chip {
+  margin-left: auto; flex-shrink: 0;
+  font-size: var(--fs-small); font-weight: 700; letter-spacing: .04em;
+  padding: .12rem .5rem; border-radius: 999px;
+  border: 1px solid transparent; color: var(--text-dim);
+  white-space: nowrap; user-select: none; cursor: default;
+}
+.emerg-chip.has-emerg {
+  color: var(--amber); border-color: var(--amber-dim);
+  background: rgba(255, 180, 84, 0.08); cursor: pointer;
+}
+.emerg-chip.has-emerg:hover { background: rgba(255, 180, 84, 0.16); }
+.emerg-chip.has-emerg.active {
+  color: #1a1400; background: var(--amber); border-color: var(--amber);
+}
 /* APRS symbol icon in the Type cell — sprite cell scaled to inline text size. */
 .aprs-sym { display: inline-block; background-repeat: no-repeat; image-rendering: pixelated; vertical-align: middle; margin-right: 5px; }
 .aprs-tbl-wrap { overflow-x: auto; padding: 0 .6rem; }
@@ -1308,6 +1326,12 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="aprs-section-hdr">
       <span class="aprs-section-title" id="aprs-title">TRAFFIC LIVE</span>
       <span class="aprs-section-meta">stations — <span id="aprs-count">—</span> &nbsp;·&nbsp; last packet — <span id="aprs-last">—</span></span>
+      <!-- Emergency chip: count of Fire/Public-safety stations heard in the last 48h.
+           Click to narrow the list to exactly that set (its own 48h window, overriding
+           the Age filter). Dim/read-only "no emergencies" state when the set is empty. -->
+      <span id="emerg-chip" class="emerg-chip" role="button" tabindex="0" aria-pressed="false"
+            onclick="toggleEmergencyOnly()"
+            onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleEmergencyOnly();}">✓ No emergencies</span>
     </div>
     <div class="aprs-tbl-wrap">
       <table>
@@ -2798,6 +2822,47 @@ function _lhEpoch(s) {
   return isNaN(t) ? 0 : t;
 }
 
+// Emergency chip state + membership. The set = Fire/Public-safety stations (same
+// types the list used to float) heard within 48h; older ones expire from it. The
+// chip counts this set and, when active, narrows the list to exactly it. Session
+// state — resets on reload.
+let emergencyOnly = false;
+const _EMERGENCY_WINDOW_MS = 48 * 3600 * 1000;
+function _isEmergency(s) {
+  const label = aprsTypeLabel(s);
+  if (label !== 'Fire' && label !== 'Public safety') return false;
+  const t = _lhEpoch(s.last_heard || s.timestamp || s.time);
+  return t > 0 && (Date.now() - t) <= _EMERGENCY_WINDOW_MS;
+}
+
+// Paint the header chip for the current count + filter state, and grey the Type
+// dropdown while active (the chip supersedes it).
+function _renderEmergencyChip(count) {
+  const chip = document.getElementById('emerg-chip');
+  if (!chip) return;
+  chip.classList.toggle('has-emerg', count > 0);
+  chip.classList.toggle('active', emergencyOnly && count > 0);
+  chip.setAttribute('aria-pressed', (emergencyOnly && count > 0) ? 'true' : 'false');
+  if (count > 0) {
+    chip.textContent = '⚠ ' + count + ' EMERGENCY';
+    chip.title = emergencyOnly
+      ? 'Showing only emergency stations (Fire / Public safety, ≤48h) — click to clear'
+      : count + ' emergency station' + (count !== 1 ? 's' : '') + ' (Fire / Public safety, ≤48h) — click to show only these';
+  } else {
+    chip.textContent = '✓ No emergencies';
+    chip.title = 'No Fire / Public-safety stations heard in the last 48h';
+  }
+  const typeSel = document.getElementById('aprs-col-type');
+  if (typeSel) typeSel.disabled = emergencyOnly && count > 0;
+}
+
+function toggleEmergencyOnly() {
+  const chip = document.getElementById('emerg-chip');
+  if (!chip || !chip.classList.contains('has-emerg')) return;   // calm state: nothing to filter
+  emergencyOnly = !emergencyOnly;
+  applyAprsFilter();
+}
+
 function applyAprsFilter() {
   const minutes    = parseInt(document.getElementById('aprs-col-age')?.value || '0');
   const typeCat    = document.getElementById('aprs-col-type')?.value || 'All';
@@ -2805,17 +2870,30 @@ function applyAprsFilter() {
   const gridSel    = document.getElementById('aprs-col-grid')?.value || 'All';
   const viaSel     = document.getElementById('aprs-col-via')?.value || 'All';
   const cutoff = minutes ? Date.now() - minutes * 60000 : 0;
+  // Emergency chip: count the set (Fire/Public-safety ≤48h) every pass; auto-clear
+  // the filter if it has emptied so we never show an empty "emergency" view.
+  const emergCount = _allAprsStations.reduce((n, s) => n + (_isEmergency(s) ? 1 : 0), 0);
+  if (emergencyOnly && emergCount === 0) emergencyOnly = false;
+  _renderEmergencyChip(emergCount);
+  const emergActive = emergencyOnly && emergCount > 0;
   // One predicate, applied to APRS stations AND ADS-B aircraft rows alike.
   const pred = s => {
-    // AGE — case-insensitive on last_heard/timestamp/time.
-    if (cutoff) {
-      const t = new Date(s.last_heard || s.timestamp || s.time);
-      if (isNaN(t) || t < cutoff) return false;
+    // EMERGENCY chip active — keep only the set (Fire/Public-safety ≤48h). This
+    // owns its own 48h window (overriding the Age dropdown) and supersedes Type;
+    // callsign / grid / src still apply below. Otherwise honour Age + Type.
+    if (emergActive) {
+      if (!_isEmergency(s)) return false;
+    } else {
+      // AGE — case-insensitive on last_heard/timestamp/time.
+      if (cutoff) {
+        const t = new Date(s.last_heard || s.timestamp || s.time);
+        if (isNaN(t) || t < cutoff) return false;
+      }
+      // TYPE — match the APRS symbol category (aircraft carry aircraft/heli syms).
+      if (typeCat !== 'All' && aprsTypeLabel(s) !== typeCat) return false;
     }
     // CALLSIGN — case-insensitive prefix (K7 → all K7…, incl. SSIDs).
     if (callPrefix && !String(s.callsign || '').toUpperCase().startsWith(callPrefix)) return false;
-    // TYPE — match the APRS symbol category (aircraft carry aircraft/heli syms).
-    if (typeCat !== 'All' && aprsTypeLabel(s) !== typeCat) return false;
     // GRID — 4-char Maidenhead field, or 'No fix' for position-less rows.
     if (gridSel !== 'All') {
       const g = gridSquare(s.lat, s.lon);
@@ -2831,22 +2909,12 @@ function applyAprsFilter() {
     return true;
   };
   const rows = _allAprsStations.filter(pred).concat(_adsbListRows().filter(pred));
-  // Float emergency stations (Fire, Public safety) to the top; within each rank,
-  // pure newest-first by real time (numeric epoch, both timestamp formats) —
-  // stations and aircraft interleaved by their actual last_heard.
-  rows.sort((a, b) => {
-    const ra = _emergencyRank(a), rb = _emergencyRank(b);
-    if (ra !== rb) return ra - rb;
-    return _lhEpoch(b.last_heard) - _lhEpoch(a.last_heard);
-  });
+  // Pure newest-first by real time (numeric epoch, both timestamp formats) —
+  // stations and aircraft interleaved by their actual last_heard. Matches the
+  // map's station list; no type grouping / emergency float (an EOC-symbol club
+  // station shouldn't outrank a fresher packet just for its symbol).
+  rows.sort((a, b) => _lhEpoch(b.last_heard) - _lhEpoch(a.last_heard));
   renderAprsTable(rows);
-}
-
-// Rank a station for emergency-first ordering: lower = higher priority.
-const _EMERGENCY_TYPES = ['Fire', 'Public safety'];
-function _emergencyRank(s) {
-  const i = _EMERGENCY_TYPES.indexOf(aprsTypeLabel(s));
-  return i === -1 ? 99 : i;
 }
 
 // Rebuild the TYPE column dropdown from the categories present in the current

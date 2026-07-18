@@ -87,6 +87,36 @@
       <img src="img/aprs-stations.png" alt="The dashboard APRS LIVE table — heard stations with last-heard time, age, speed, altitude, path, and comment" />
       <figcaption>The dashboard APRS LIVE table — heard stations with last-heard time, age, speed, altitude, path, and comment</figcaption>
     </figure>
+    <h2>Filtering the table</h2>
+    <p>
+      Each filterable column header carries a small <span class="caret">&#9660;</span> control:
+      match a <strong>Callsign</strong> prefix (e.g. <code>K7</code> matches every <code>K7&hellip;</code>),
+      or narrow by <strong>Type</strong>, <strong>Age</strong>, <strong>Grid</strong>, or
+      <strong>Via</strong>. The <strong>Via</strong> (source) filter selects <strong>RF</strong>
+      (heard over the air), <strong>IS</strong> (APRS-IS / iGate), or <strong>ADS-B</strong>
+      (aircraft) &mdash; the sources are exclusive, so choosing one hides the others.
+    </p>
+    <h2>The emergency chip</h2>
+    <p>
+      On the right of the table header sits the <strong>emergency chip</strong>. It counts
+      stations whose APRS symbol is <strong>Fire</strong> or <strong>Public&nbsp;safety</strong>
+      heard in the last <strong>48&nbsp;hours</strong>; older ones age out of the count. When
+      the station is quiet it shows a dim <em>&#10003;&nbsp;No&nbsp;emergencies</em>; when one is
+      heard it turns amber &mdash; <em>&#9888;&nbsp;N&nbsp;EMERGENCY</em>.
+    </p>
+    <p>
+      Click the amber chip to narrow the table to <em>only</em> those stations. It uses its own
+      48&#8209;hour window, so it overrides the <strong>Age</strong> filter (a 30&#8209;hour-old
+      fire station still shows even with Age set to &le;&nbsp;24h); the callsign, grid, and source
+      filters still apply. Click again to clear. The filter also clears itself if the last
+      emergency ages past 48&nbsp;hours, so you are never left staring at an empty list.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>&ldquo;Public safety&rdquo; follows the APRS symbol, not a live incident &mdash; the
+      EOC symbol (<code>/o</code>) that many club and net stations use counts too. Treat the chip
+      as &ldquo;emergency-service symbols heard,&rdquo; not a confirmed alert.</p></div>
+    </div>
     <h2>Recording heard stations</h2>
     <p>
       For the table and API to fill in, GrayWolf&rsquo;s <strong>Position log</strong> database
