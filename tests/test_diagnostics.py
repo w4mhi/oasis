@@ -621,6 +621,145 @@ class TestDataAge(unittest.TestCase):
         self.assertEqual(age, "1 day old")
 
 
+class TestKiwixZimAge(unittest.TestCase):
+    """_kiwix_zim_age() -> freshness string of the newest .zim in
+    KIWIX_ZIM_DIR | None. Exercises the real filesystem (tempfile + os.utime)
+    rather than mocking the function's own internals out."""
+
+    def test_newest_zim_age_from_real_tempdir(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            old_path = os.path.join(d, "old.zim")
+            new_path = os.path.join(d, "new.zim")
+            open(old_path, "w").close()
+            open(new_path, "w").close()
+            old_ts = time.time() - 41 * 86400
+            new_ts = time.time() - 2 * 3600
+            os.utime(old_path, (old_ts, old_ts))
+            os.utime(new_path, (new_ts, new_ts))
+            with mock.patch.object(D, "KIWIX_ZIM_DIR", d):
+                age = D._kiwix_zim_age()
+        # Must pick the *newest* .zim (new.zim, ~2h old), not old.zim.
+        self.assertEqual(age, "2h old")
+
+    def test_non_zim_files_are_ignored(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "readme.txt"), "w").close()
+            with mock.patch.object(D, "KIWIX_ZIM_DIR", d):
+                age = D._kiwix_zim_age()
+        self.assertIsNone(age)
+
+    def test_empty_dir_is_none(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(D, "KIWIX_ZIM_DIR", d):
+                age = D._kiwix_zim_age()
+        self.assertIsNone(age)
+
+    def test_missing_dir_is_none(self):
+        with mock.patch.object(D, "KIWIX_ZIM_DIR", "/nonexistent/for/sure/zim/dir"):
+            age = D._kiwix_zim_age()
+        self.assertIsNone(age)
+
+
+class TestParseTs(unittest.TestCase):
+    """_parse_ts(val) -> aware UTC datetime | None. Never raises.
+
+    GrayWolf's *actual* last_heard format is 'YYYY-MM-DD HH:MM:SS.fffffffff
+    ±HH:MM' -- a space separator, nanosecond (9-digit) fractional precision,
+    and a UTC offset -- not the simplified 'YYYY-MM-DD HH:MM:SS' text a naive
+    reading of services/aprs/common/aprs.py's schema might suggest. If this
+    doesn't parse, aprs_feed can never report LIVE off real GrayWolf data.
+    """
+
+    def test_graywolf_nanosecond_tz_format_parses(self):
+        dt = D._parse_ts("2023-11-14 22:15:00.123456789+00:00")
+        self.assertIsNotNone(dt)
+        self.assertEqual(dt.tzinfo.utcoffset(dt), D.datetime.timedelta(0))
+        self.assertEqual(
+            dt.replace(tzinfo=None),
+            D.datetime.datetime(2023, 11, 14, 22, 15, 0, 123456),
+        )
+
+    def test_graywolf_format_with_nonzero_offset_parses(self):
+        dt = D._parse_ts("2023-11-14 22:15:00.123456789-05:00")
+        self.assertIsNotNone(dt)
+        self.assertEqual(dt.tzinfo.utcoffset(dt), -D.datetime.timedelta(hours=5))
+
+    def test_epoch_number_parses(self):
+        dt = D._parse_ts(1700000000)
+        self.assertIsNotNone(dt)
+        self.assertEqual(dt, D.datetime.datetime.fromtimestamp(1700000000, tz=D.datetime.timezone.utc))
+
+    def test_epoch_float_parses(self):
+        dt = D._parse_ts(1700000000.5)
+        self.assertIsNotNone(dt)
+
+    def test_epoch_numeric_string_parses(self):
+        dt = D._parse_ts("1700000000")
+        self.assertIsNotNone(dt)
+        self.assertEqual(dt, D.datetime.datetime.fromtimestamp(1700000000, tz=D.datetime.timezone.utc))
+
+    def test_plain_iso_t_separator_with_z_parses(self):
+        dt = D._parse_ts("2023-11-14T22:15:00Z")
+        self.assertIsNotNone(dt)
+        self.assertEqual(dt.tzinfo.utcoffset(dt), D.datetime.timedelta(0))
+
+    def test_plain_iso_with_offset_parses(self):
+        dt = D._parse_ts("2023-11-14T22:15:00+02:00")
+        self.assertIsNotNone(dt)
+
+    def test_naive_space_separated_treated_as_utc(self):
+        dt = D._parse_ts("2023-11-14 22:15:00")
+        self.assertIsNotNone(dt)
+        self.assertEqual(dt.tzinfo.utcoffset(dt), D.datetime.timedelta(0))
+
+    def test_unparseable_returns_none(self):
+        self.assertIsNone(D._parse_ts("not-a-timestamp"))
+        self.assertIsNone(D._parse_ts("2023-13-99 99:99:99"))
+
+    def test_none_returns_none(self):
+        self.assertIsNone(D._parse_ts(None))
+
+    def test_empty_string_returns_none(self):
+        self.assertIsNone(D._parse_ts(""))
+
+    def test_non_str_non_numeric_returns_none(self):
+        self.assertIsNone(D._parse_ts(["not", "a", "timestamp"]))
+
+
+class TestAprsFeedRealGraywolfFormat(unittest.TestCase):
+    """aprs_feed computed off GrayWolf's real nanosecond+tz last_heard shape
+    (not the simplified 'YYYY-MM-DD HH:MM:SS' text other tests use)."""
+
+    def _stations(self, last_heard_list):
+        return {"ok": True, "count": len(last_heard_list),
+                "stations": [{"callsign": f"W{i}", "last_heard": lh}
+                             for i, lh in enumerate(last_heard_list)]}
+
+    def _graywolf_ts(self, when):
+        return when.strftime("%Y-%m-%d %H:%M:%S.000000000+00:00")
+
+    def test_recent_graywolf_timestamp_is_live(self):
+        now = D.datetime.datetime.now(D.datetime.timezone.utc)
+        recent = self._graywolf_ts(now - D.datetime.timedelta(seconds=10))
+        with mock.patch.object(D, "_http_get", return_value=(True, self._stations([recent]))), \
+             mock.patch.object(D, "_aprs_feed_freq", return_value=None):
+            r = D.check_aprs_feed(_CTX)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "LIVE")
+
+    def test_hour_old_graywolf_timestamp_is_idle(self):
+        now = D.datetime.datetime.now(D.datetime.timezone.utc)
+        stale = self._graywolf_ts(now - D.datetime.timedelta(hours=1))
+        with mock.patch.object(D, "_http_get", return_value=(True, self._stations([stale]))), \
+             mock.patch.object(D, "_aprs_feed_freq", return_value=None):
+            r = D.check_aprs_feed(_CTX)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "IDLE")
+
+
 class TestAprsFeedCheck(unittest.TestCase):
     """aprs_feed: SERVICES/APRS_RX, critical. Signal: /api/aprs/stations'
     newest last_heard -> decode age; tuned freq best-effort from the running
@@ -764,6 +903,12 @@ class TestPowerTempCpuChecks(unittest.TestCase):
             r = D.check_temp(_CTX)
         self.assertEqual(r["status"], "warn")
 
+    def test_temp_boundary_80_is_warn_not_fail(self):
+        # check_temp fails on "> 80", not ">= 80" -- exactly 80 must stay warn.
+        with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_temp_c": 80})):
+            r = D.check_temp(_CTX)
+        self.assertEqual(r["status"], "warn")
+
     def test_temp_85_is_fail(self):
         with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_temp_c": 85})):
             r = D.check_temp(_CTX)
@@ -790,6 +935,17 @@ class TestPowerTempCpuChecks(unittest.TestCase):
         with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_pct": 90})):
             r = D.check_cpu(_CTX)
         self.assertEqual(r["status"], "warn")
+
+    def test_cpu_boundary_85_is_warn(self):
+        # check_cpu warns on ">= 85" -- exactly 85 must already be warn.
+        with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_pct": 85})):
+            r = D.check_cpu(_CTX)
+        self.assertEqual(r["status"], "warn")
+
+    def test_cpu_boundary_just_under_85_is_ok(self):
+        with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_pct": 84.9})):
+            r = D.check_cpu(_CTX)
+        self.assertEqual(r["status"], "ok")
 
     def test_cpu_none_is_warn_na(self):
         with mock.patch.object(D, "_http_get", return_value=(True, {"cpu_pct": None})):
@@ -837,6 +993,32 @@ class TestRepeaterbookAndFormsChecks(unittest.TestCase):
     def test_forms_never_critical(self):
         chk = next(c for c in D.REGISTRY if c.id == "forms")
         self.assertFalse(chk.critical)
+
+    def test_forms_two_of_four_present_is_warn_partial(self):
+        # ics-205 and ics-214 present, ics-213 and ics-309 missing.
+        present_slugs = ("ics-205", "ics-214")
+
+        def isfile(path):
+            return any(f"{os.sep}{slug}{os.sep}" in path for slug in present_slugs)
+
+        with mock.patch.object(D.os.path, "isfile", side_effect=isfile), \
+             mock.patch.object(D.os.path, "getmtime", return_value=time.time()):
+            r = D.check_forms(_CTX)
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["badge"], "PARTIAL")
+        self.assertIn("2/4", r["detail"])
+        self.assertIn("ICS 213", r["detail"])
+        self.assertIn("ICS 309", r["detail"])
+
+    def test_forms_getmtime_vanished_file_degrades_gracefully(self):
+        # File passes the isfile() check but is gone by the time getmtime()
+        # runs (race) -- must not raise, should just drop the age suffix.
+        with mock.patch.object(D.os.path, "isfile", return_value=True), \
+             mock.patch.object(D.os.path, "getmtime", side_effect=OSError("gone")):
+            r = D.check_forms(_CTX)
+        self.assertEqual(r["status"], "ok")
+        self.assertEqual(r["badge"], "READY")
+        self.assertNotIn(" old", r["detail"])
 
 
 class TestTask4ChecksRegistered(unittest.TestCase):

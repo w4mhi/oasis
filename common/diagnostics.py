@@ -477,10 +477,21 @@ def _kiwix_zim_age():
 
 def _parse_ts(val):
     """Best-effort parse of a last_heard/timestamp value into an aware UTC
-    datetime. Accepts epoch numbers or SQLite-style 'YYYY-MM-DD HH:MM:SS'
-    text (optionally 'T'-separated, with fractional seconds, or a trailing
-    'Z') -- the shape services/aprs/common/aprs.py's last_heard column uses.
-    Returns None on anything unparseable. Never raises."""
+    datetime. Accepts:
+
+      - epoch numbers (int/float), or a numeric string of one;
+      - GrayWolf's *real* last_heard format --
+        'YYYY-MM-DD HH:MM:SS.fffffffff±HH:MM' (a space separator, nanosecond
+        -- not microsecond -- fractional precision, and a UTC offset). This is
+        what services/aprs actually stores, not simplified SQLite-text;
+      - plain ISO 8601 ('T'-separated, with an offset or trailing 'Z').
+
+    Uses the same normalize-then-fromisoformat technique as
+    displays/e-ink/oasis_client.py's _parse_iso() (and render.py's copy):
+    swap 'Z' for '+00:00', turn the first space into 'T', then clamp any
+    fractional-second digits beyond microseconds so fromisoformat() (which
+    only accepts up to 6) can parse it. A timezone-naive result is treated as
+    UTC. Returns None on anything unparseable. Never raises."""
     if val is None:
         return None
     if isinstance(val, (int, float)):
@@ -493,15 +504,22 @@ def _parse_ts(val):
     text = val.strip()
     if not text:
         return None
-    if text.endswith("Z"):
-        text = text[:-1]
-    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S",
-                "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
-        try:
-            return datetime.datetime.strptime(text, fmt).replace(tzinfo=datetime.timezone.utc)
-        except ValueError:
-            continue
-    return None
+
+    # Epoch given as a numeric string (e.g. "1700000000" or "1700000000.5").
+    try:
+        return datetime.datetime.fromtimestamp(float(text), tz=datetime.timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        pass
+
+    normalized = text.replace("Z", "+00:00").replace(" ", "T", 1)
+    normalized = re.sub(r"(\.\d{6})\d+", r"\1", normalized)  # ns -> us
+    try:
+        dt = datetime.datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return dt
 
 
 def _aprs_feed_freq():
@@ -1220,8 +1238,11 @@ def check_forms(ctx):
         return _result("forms", "DATA", "ICS Forms", "warn", "MISSING",
                         "No ICS form pages found in static/.")
 
-    newest_path = max((p for _, p in present), key=os.path.getmtime)
-    age = _data_age(newest_path)
+    try:
+        newest_path = max((p for _, p in present), key=os.path.getmtime)
+        age = _data_age(newest_path)
+    except OSError:
+        age = None
     detail = f"{len(present)}/{len(ICS_FORMS)} form(s) present"
     if missing:
         detail += f"  |  missing: {', '.join(missing)}"
