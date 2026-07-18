@@ -2120,7 +2120,7 @@ function acShapeFor(a) {
   return { key: 'big', filled: true };   // unknown-category fallback
 }
 
-const AC_ICON_PX = 44;   // on-map size; rasterised at 2× for crispness
+const AC_ICON_PX = 36;   // on-map size; rasterised at 2× for crispness - aircraft size
 function ensureAircraftImage(shapeKey, color, filled) {
   filled = filled !== false;   // default filled; false = hollow (suspected mil)
   const id = 'ac|' + shapeKey + '|' + color + (filled ? '' : '|h');
