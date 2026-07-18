@@ -1,6 +1,157 @@
-<!doctype html><html><head><meta charset="utf-8"><title>OASIS — Satellites</title></head>
-<body><h1>Satellites</h1><p id="status">loading…</p>
-<script>fetch('/api/satellites').then(r=>r.json()).then(d=>{
-  document.getElementById('status').textContent =
-    d.satellites.length + ' sats · TLE age ' + (d.tle_age_days==null?'—':d.tle_age_days.toFixed(1)+'d');
-});</script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OASIS — Satellites</title>
+<link rel="stylesheet" href="/css/common.css">
+<style>
+/* ── Two-column layout: roster (left) / pass schedule (right) ──────── */
+.sat-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+}
+@media (max-width: 760px) {
+  .sat-cols { grid-template-columns: 1fr; }
+}
+
+/* ── TLE-age badge ───────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  font-size: var(--fs-small);
+  font-weight: 700;
+  letter-spacing: .05em;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+}
+.badge.ok   { color: #3fb950; border-color: #3fb950; }
+.badge.warn { color: #d29922; border-color: #d29922; }
+
+/* ── Roster rows ─────────────────────────────────────────────────── */
+#roster { display: flex; flex-direction: column; gap: .5rem; }
+.sat-row {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  padding: .55rem .75rem;
+}
+.sat-row label {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  cursor: pointer;
+  font-size: var(--fs-base);
+}
+.sat-row label input[type="checkbox"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.sat-row .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+  margin-top: .4rem;
+}
+.chip {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 7px;
+}
+.sat-row .dl {
+  margin-top: .3rem;
+  font-size: var(--fs-small);
+  color: var(--amber);
+}
+
+/* ── Pass schedule rows ──────────────────────────────────────────── */
+#schedule { display: flex; flex-direction: column; gap: .35rem; }
+.pass-row {
+  border-bottom: 1px solid var(--panel-2);
+  padding: .35rem 0;
+  font-size: var(--fs-base);
+  color: var(--text);
+}
+.pass-row:last-child { border-bottom: none; }
+.pass-row b { color: var(--accent); margin-right: .5rem; }
+
+.muted { color: var(--text-dim); font-size: var(--fs-base); font-style: italic; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a class="home-link" href="/">⌂ HOME</a>
+    <h1>Satellites</h1>
+    <p>Roster, label chips, downlinks &amp; upcoming passes &middot; <span id="tle-age" class="badge">loading…</span></p>
+  </header>
+
+  <div class="sat-cols">
+    <div class="sec">
+      <span class="sec-lbl">Roster</span>
+      <div id="roster"><p class="muted">Loading roster…</p></div>
+    </div>
+
+    <div class="sec">
+      <span class="sec-lbl">Upcoming Passes (next 48 h)</span>
+      <div id="schedule"><p class="muted">Loading passes…</p></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/server/satellites/sat-geometry.js"></script>
+<script src="/server/satellites/satellite.min.js"></script>
+<script>
+let ROSTER = [], PASSES = {};
+async function boot() {
+  const meta = await (await fetch('/api/satellites')).json();
+  ROSTER = meta.satellites;
+  const age = meta.tle_age_days;
+  const badge = document.getElementById('tle-age');
+  badge.textContent = age == null ? 'no TLE data — run sync' : 'TLE ' + age.toFixed(1) + ' d old';
+  badge.className = 'badge ' + (age != null && age < 5 ? 'ok' : 'warn');
+  renderRoster();
+  PASSES = (await (await fetch('/api/satellites/passes?window=48')).json()).passes || {};
+  renderSchedule();
+}
+function renderRoster() {
+  document.getElementById('roster').innerHTML = ROSTER.map(s => `
+    <div class="sat-row">
+      <label><input type="checkbox" ${s.selected ? 'checked' : ''}
+        onchange="toggle(${s.norad}, this.checked)"> <b>${s.name}</b></label>
+      <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}</div>
+      <div class="dl">${(s.downlinks[0] || {}).freq_mhz || ''} MHz</div>
+    </div>`).join('');
+}
+async function toggle(norad, sel) {
+  const r = await (await fetch('/api/satellites/select',
+    {method:'POST', headers:{'Content-Type':'application/json'},
+     body: JSON.stringify({norad, selected: sel})})).json();
+  ROSTER = r.satellites; renderRoster();
+}
+function fmt(iso) { return new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function renderSchedule() {
+  const rows = [];
+  for (const s of ROSTER) {
+    for (const p of (PASSES[s.norad] || [])) {
+      rows.push({name: s.name, p, t: new Date(p.rise).getTime()});
+    }
+  }
+  rows.sort((a,b) => a.t - b.t);
+  document.getElementById('schedule').innerHTML = rows.map(r => `
+    <div class="pass-row"><b>${r.name}</b>
+      ${fmt(r.p.rise)}–${fmt(r.p.set)} · max ${r.p.max_el.toFixed(0)}° · rise ${r.p.rise_az.toFixed(0)}°</div>`).join('')
+    || '<div class="muted">No passes ≥10° in the next 48 h.</div>';
+}
+boot();
+</script>
+</body>
+</html>
