@@ -33,7 +33,9 @@ VERSION = "0.1.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG = os.path.join(HERE, "config.json")
 
-SCREEN_TITLES = {1: "STATIONS", 2: "WINLINK", 3: "PROPAGATION", 4: "WEATHER"}
+# Screen 1 monitors everything heard — APRS ground stations (RF/IS) *and* ADS-B
+# aircraft — so it's titled "TRAFFIC" rather than the APRS-only "STATIONS".
+SCREEN_TITLES = {1: "TRAFFIC", 2: "WINLINK", 3: "PROPAGATION", 4: "WEATHER"}
 
 
 def load_config(path):
@@ -102,15 +104,21 @@ def build_ctx(cfg, screen, view="base"):
     services = api.services_status(cfg, ["LIVE", "API", "NET"])
     stations = api.stations_status(cfg)
     system = api.system_status(cfg)
-    services["FEED"] = stations["ok"]           # mirrors the actual feed state
+    services["FEED"] = stations["ok"]           # APRS feed only (ADS-B has its own service)
     services["GPS"] = system.get("gps_up", False)  # up only on a real 2D/3D fix
 
-    # Pre-fetch the last-heard station's symbol for the detail card (base view
-    # only — the list view is text, so no icon fetch needed). Keeps render
+    # Screen 1 (TRAFFIC) folds ADS-B aircraft into the heard-station feed. Only
+    # fetched on screen 1 to keep the other screens' tick cheap on the Pi Zero.
+    aircraft = api.aircraft_status(cfg) if screen == 1 else {"ok": False, "list": []}
+    contacts = api.merge_contacts(stations, aircraft)
+
+    # Pre-fetch the last contact's APRS symbol for the detail card (base view
+    # only, APRS only — aircraft draw a plane glyph, no HTTP). Keeps render
     # HTTP-free.
     icon = None
-    last = stations.get("last")
-    if view == "base" and last and (last.get("sym_code") or last.get("sym_table")):
+    last = contacts.get("last")
+    if (view == "base" and last and last.get("source") == "aprs"
+            and (last.get("sym_code") or last.get("sym_table"))):
         try:
             import aprs_symbols
             icon = aprs_symbols.symbol_1bit(
@@ -141,6 +149,7 @@ def build_ctx(cfg, screen, view="base"):
         "gps_fix": system.get("gps_fix", "off"),
         "system": system,
         "stations": stations,
+        "contacts": contacts,
         "station_icon": icon,
         "weather": weather_data,
     }

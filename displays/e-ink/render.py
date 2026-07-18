@@ -360,10 +360,31 @@ def _weather_icon(draw, x, y, size, cond, night=False):
         # plain "cloud" (and any unknown key) draws just the cloud silhouette
 
 
+def _plane_icon(draw, x, y, size):
+    """A simple 1-bit top-view airplane glyph filling the size×size icon box —
+    the ADS-B counterpart to an APRS station's symbol."""
+    cx = x + size // 2
+    top, bot = y + 4, y + size - 6
+    draw.line([(cx, top), (cx, bot)], fill=BLACK, width=3)             # fuselage
+    draw.line([(x + 4, y + size // 2), (x + size - 4, y + size // 2)],
+              fill=BLACK, width=3)                                     # wings
+    draw.line([(cx - 6, bot - 3), (cx + 6, bot - 3)], fill=BLACK, width=2)  # tail
+    draw.ellipse([cx - 2, top - 2, cx + 2, top + 3], fill=BLACK)       # nose
+
+
+def _mini_plane(draw, x, y):
+    """A 9px top-view plane marker for the merged list's aircraft rows."""
+    cx = x + 4
+    draw.line([(cx, y), (cx, y + 9)], fill=BLACK)
+    draw.line([(x, y + 4), (x + 8, y + 4)], fill=BLACK)
+    draw.line([(cx - 2, y + 8), (cx + 2, y + 8)], fill=BLACK)
+
+
 def _render_screen1(draw, img, cfg, ctx, W, y):
-    """Screen 1 (Stations) — last-heard station card: icon · callsign · age ·
-    via · position + grid · speed/course · altitude · comment. Mirrors the
-    cm4stack panel, compacted for the smaller 1-bit display."""
+    """Screen 1 (TRAFFIC) — last-heard contact card for the merged APRS + ADS-B
+    feed: icon · callsign · age · source line · position + grid · speed/course ·
+    altitude · comment. APRS stations show their symbol + digi path + comment;
+    ADS-B aircraft show a plane glyph + squawk/hex + barometric altitude."""
     fonts = cfg.get("fonts", {})
     call_f = load_font(15, "bold", fonts.get("bold"))
     age_f = load_font(11, "regular", fonts.get("regular"))
@@ -373,40 +394,75 @@ def _render_screen1(draw, img, cfg, ctx, W, y):
     cmt_f = load_font(10, "regular", fonts.get("regular"))
     pad = 6
 
-    st = ctx.get("stations", {})
-    if not st.get("ok"):
-        draw.text((pad, y + 12), "APRS feed offline", font=call_f, fill=BLACK)
+    c = ctx.get("contacts", {})
+    if not c.get("ok"):
+        draw.text((pad, y + 12), "APRS & ADS-B offline", font=call_f, fill=BLACK)
         return
-    s = st.get("last")
+    s = c.get("last")
     if not s:
-        draw.text((pad, y + 12), "No stations heard yet", font=call_f, fill=BLACK)
+        draw.text((pad, y + 12), "No traffic heard yet", font=call_f, fill=BLACK)
         return
+    is_air = s.get("source") == "adsb"
 
-    # Icon (pre-fetched into ctx as a 1-bit image), or a labelled box fallback.
+    # Icon: aircraft draw a plane glyph; stations use the pre-fetched APRS symbol
+    # (or a labelled box fallback).
     icon_sz = 40
     ix, iy = pad, y
-    icon = ctx.get("station_icon")
-    if icon is not None:
-        img.paste(icon, (ix, iy))
+    if is_air:
+        _plane_icon(draw, ix, iy, icon_sz)
     else:
-        draw.rectangle([ix, iy, ix + icon_sz, iy + icon_sz], outline=BLACK)
-        sc = f"{s.get('sym_table', '/')}{s.get('sym_code', '-')}"
-        draw.text((ix + 8, iy + 14), sc, font=via_f, fill=BLACK)
+        icon = ctx.get("station_icon")
+        if icon is not None:
+            img.paste(icon, (ix, iy))
+        else:
+            draw.rectangle([ix, iy, ix + icon_sz, iy + icon_sz], outline=BLACK)
+            sc = f"{s.get('sym_table', '/')}{s.get('sym_code', '-')}"
+            draw.text((ix + 8, iy + 14), sc, font=via_f, fill=BLACK)
 
-    # Callsign + age (right) + via, beside the icon.
+    # Callsign + age (right), beside the icon.
     tx = ix + icon_sz + 8
-    draw.text((tx, iy), str(s.get("callsign") or "?")[:11], font=call_f, fill=BLACK)
+    call = str(s.get("callsign") or "?")[:11]
+    draw.text((tx, iy), call, font=call_f, fill=BLACK)
     age_raw = _age_str(_parse_iso(s.get("last_heard")))
     age = age_raw if age_raw in ("now", "—") else f"{age_raw} ago"
     aw, _ = _text_size(draw, age, age_f)
-    draw.text((W - pad - aw, iy + 2), age, font=age_f, fill=BLACK)
+    age_x = W - pad - aw
+    draw.text((age_x, iy + 2), age, font=age_f, fill=BLACK)
 
-    # Who-heard: the digipeater path, tagged RF or IS (from the `via` transport).
-    src = str(s.get("via") or "").strip().lower()
-    tag = "RF" if src == "rf" else ("IS" if src else "")
-    path = s.get("path")
-    pstr = ",".join(str(p) for p in path) if isinstance(path, list) else str(path or "")
-    heard = "  ".join(p for p in (tag, pstr) if p)
+    # Airline tag beside the callsign (aircraft only): ASA424 [ALASKA] — the same
+    # bracket the dashboard cards show. Truncates the name (keeping the closing
+    # bracket) so it never runs under the age; drops out entirely if nothing fits.
+    op = s.get("operator")
+    if is_air and op:
+        cw, _ = _text_size(draw, call, call_f)
+        tag_x = tx + cw + 5
+        avail = age_x - 4 - tag_x
+        name = str(op)
+        tag = f"[{name}]"
+        while name and _text_size(draw, tag, via_f)[0] > avail:
+            name = name[:-1]
+            tag = f"[{name}]"
+        if name:
+            draw.text((tag_x, iy + 4), tag, font=via_f, fill=BLACK)
+
+    # Source line: ADS-B → squawk (emergency-flagged) + hex; APRS → RF/IS + path.
+    if is_air:
+        bits = ["ADS-B"]
+        sq = str(s.get("squawk") or "").strip()
+        if sq in ("7500", "7600", "7700"):
+            bits.append(f"! {sq} EMERG")
+        elif sq:
+            bits.append(f"sq {sq}")
+        hexid = str(s.get("hex") or "").strip()
+        if hexid:
+            bits.append(hexid.upper())
+        heard = "  ".join(bits)
+    else:
+        src = str(s.get("via") or "").strip().lower()
+        tag = "RF" if src == "rf" else ("IS" if src else "")
+        path = s.get("path")
+        pstr = ",".join(str(p) for p in path) if isinstance(path, list) else str(path or "")
+        heard = "  ".join(p for p in (tag, pstr) if p)
     if heard:
         draw.text((tx, iy + 23), heard[:32], font=via_f, fill=BLACK)
 
@@ -442,26 +498,42 @@ def _render_screen1(draw, img, cfg, ctx, W, y):
         draw.text((pad + 30, y), "stationary", font=val_f, fill=BLACK)
     y += 17
 
-    # Altitude — feet then metres.
-    alt = s.get("alt_m", s.get("alt"))
-    if alt is not None:
-        try:
-            draw.text((pad, y + 1), "ALT", font=lbl_f, fill=BLACK)
-            draw.text((pad + 30, y),
-                      f"{round(float(alt) * 3.28084)} ft · {round(float(alt))} m",
-                      font=val_f, fill=BLACK)
+    # Altitude — aircraft report barometric feet directly (or 'ground');
+    # APRS stations report metres, shown as feet · metres.
+    if is_air:
+        alt = s.get("alt_ft")
+        draw.text((pad, y + 1), "ALT", font=lbl_f, fill=BLACK)
+        if alt == "ground":
+            draw.text((pad + 30, y), "on ground", font=val_f, fill=BLACK)
             y += 17
-        except (TypeError, ValueError):
-            pass
+        elif alt is not None:
+            try:
+                draw.text((pad + 30, y), f"{round(float(alt))} ft",
+                          font=val_f, fill=BLACK)
+                y += 17
+            except (TypeError, ValueError):
+                pass
+    else:
+        alt = s.get("alt_m", s.get("alt"))
+        if alt is not None:
+            try:
+                draw.text((pad, y + 1), "ALT", font=lbl_f, fill=BLACK)
+                draw.text((pad + 30, y),
+                          f"{round(float(alt) * 3.28084)} ft · {round(float(alt))} m",
+                          font=val_f, fill=BLACK)
+                y += 17
+            except (TypeError, ValueError):
+                pass
 
-    # Comment — as many wrapped lines as fit above the bottom border.
-    cmt = str(s.get("comment") or "").strip()
-    if cmt:
-        for line in _wrap(draw, cmt, cmt_f, W - 2 * pad):
-            if y > 160:
-                break
-            draw.text((pad, y), line, font=cmt_f, fill=BLACK)
-            y += 12
+    # Comment (APRS only — aircraft carry none).
+    if not is_air:
+        cmt = str(s.get("comment") or "").strip()
+        if cmt:
+            for line in _wrap(draw, cmt, cmt_f, W - 2 * pad):
+                if y > 160:
+                    break
+                draw.text((pad, y), line, font=cmt_f, fill=BLACK)
+                y += 12
 
 
 def _dist_dir(home, lat, lon):
@@ -485,22 +557,23 @@ def _dist_dir(home, lat, lon):
 
 
 def _render_screen1_list(draw, img, cfg, ctx, W, y):
-    """Screen 1 long-press view — the heard-station list, most recent first:
-    callsign · age · distance+bearing from home. Non-scrolling: shows as many as
-    fit with a '+N more' footer (station count can be large)."""
+    """Screen 1 long-press view — the merged APRS + ADS-B contact list, most
+    recent first: [✈] callsign · age · distance+bearing from home. Aircraft rows
+    carry a small plane marker. Non-scrolling: shows as many as fit with a
+    '+N more' footer (the combined count can be large)."""
     fonts = cfg.get("fonts", {})
     cs_f = load_font(12, "bold", fonts.get("bold"))
     row_f = load_font(11, "regular", fonts.get("regular"))
     pad = 6
     bottom = cfg["display"]["height"] - 6
 
-    st = ctx.get("stations", {})
-    if not st.get("ok"):
-        draw.text((pad, y + 12), "APRS feed offline", font=cs_f, fill=BLACK)
+    c = ctx.get("contacts", {})
+    if not c.get("ok"):
+        draw.text((pad, y + 12), "APRS & ADS-B offline", font=cs_f, fill=BLACK)
         return
-    lst = st.get("list") or []
+    lst = c.get("list") or []
     if not lst:
-        draw.text((pad, y + 12), "No stations heard yet", font=cs_f, fill=BLACK)
+        draw.text((pad, y + 12), "No traffic heard yet", font=cs_f, fill=BLACK)
         return
 
     station = cfg.get("station", {})
@@ -511,10 +584,13 @@ def _render_screen1_list(draw, img, cfg, ctx, W, y):
     footer = len(lst) > fits
     rows = lst[: fits - 1] if footer else lst[:fits]
 
+    cs_x = pad + 11   # leave a marker column so aircraft/station rows align
     for s in rows:
-        draw.text((pad, y), str(s.get("callsign") or "?")[:9], font=cs_f, fill=BLACK)
+        if s.get("source") == "adsb":
+            _mini_plane(draw, pad, y + 3)
+        draw.text((cs_x, y), str(s.get("callsign") or "?")[:9], font=cs_f, fill=BLACK)
         age = _age_str(_parse_iso(s.get("last_heard")))
-        draw.text((pad + 92, y + 1), age, font=row_f, fill=BLACK)
+        draw.text((cs_x + 92, y + 1), age, font=row_f, fill=BLACK)
         dd = _dist_dir(home, s.get("lat"), s.get("lon"))
         if dd:
             dw, _ = _text_size(draw, dd, row_f)

@@ -17,6 +17,10 @@
     "http_timeout_s": 5
   },
 
+  "adsb": {
+    "operators_source": "../../common/js/adsb-operators.js"
+  },
+
   "display": {
     "model": "epd2in7",
     "width": 264,
