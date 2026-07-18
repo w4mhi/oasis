@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OASIS Diagnostic</title>
+<link rel="stylesheet" href="../../css/common.css">
+<style>
+/* ── Header meta row ─────────────────────────────────────────────────── */
+.diag-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-top: .2rem; }
+.diag-meta-item { font-size: var(--fs-subtitle); color: var(--text-dim); }
+.diag-run-btn {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  font-family: var(--mono); font-size: var(--fs-small); padding: .35rem .8rem;
+  border-radius: 6px; cursor: pointer; margin-left: auto;
+}
+.diag-run-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+.diag-run-btn:disabled { opacity: .6; cursor: default; }
+
+.diag-stale {
+  border: 1px solid var(--amber-dim); border-radius: 8px; background: var(--panel);
+  color: var(--amber); font-size: var(--fs-label); padding: .55rem .9rem;
+  margin-bottom: .9rem;
+}
+
+/* Dim/grey a section while it's showing a cached (not freshly-run) result. */
+.diag-dim { opacity: .55; filter: grayscale(.35); transition: opacity .2s, filter .2s; }
+
+/* ── Capability band ─────────────────────────────────────────────────── */
+.cap-band { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: .9rem; }
+.cap-tile {
+  flex: 1 1 150px; min-width: 150px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+  overflow: hidden;
+}
+.cap-tile.ok      { border-color: var(--accent-dim); }
+.cap-tile.warn    { border-color: var(--amber-dim); }
+.cap-tile.fail    { border-color: var(--red); }
+.cap-tile.unknown { border-color: var(--border); }
+.cap-tile-head {
+  width: 100%; display: flex; align-items: center; gap: .5rem;
+  background: transparent; border: 0; color: var(--text);
+  font-family: var(--mono); font-size: var(--fs-base); text-align: left;
+  padding: .65rem .8rem; cursor: pointer;
+}
+.cap-tile-head:hover { background: var(--panel-2); }
+.cap-icon { font-size: 1.05rem; line-height: 1; flex-shrink: 0; width: 1.1rem; text-align: center; }
+.cap-tile.ok      .cap-icon { color: var(--accent); }
+.cap-tile.warn    .cap-icon { color: var(--amber); }
+.cap-tile.fail    .cap-icon { color: var(--red); }
+.cap-tile.unknown .cap-icon { color: var(--text-dim); }
+.cap-label { flex: 1; font-weight: 700; }
+.cap-chevron { color: var(--text-dim); font-size: var(--fs-small); flex-shrink: 0; }
+.cap-checks { border-top: 1px solid var(--border); padding: .5rem .6rem; background: var(--panel-2); }
+.cap-checks .check-row:last-child { margin-bottom: 0; }
+
+/* ── FIX NOW hero ─────────────────────────────────────────────────────── */
+.fixnow {
+  display: none; align-items: baseline; flex-wrap: wrap; gap: .4rem;
+  border: 1px solid var(--red); border-radius: 10px; background: #2a0d0d;
+  color: var(--text); padding: .8rem 1.1rem; margin-bottom: .9rem;
+  font-size: var(--fs-base);
+}
+:root[data-theme="light"] .fixnow { background: #fdecec; }
+.fixnow-label { color: var(--red); font-weight: 700; letter-spacing: .06em; margin-right: .3rem; }
+.fixnow-badge {
+  font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  background: var(--panel-2); color: var(--red); padding: 1px 8px; border-radius: 4px;
+}
+.fixnow-link { color: var(--accent); text-decoration: none; margin-left: .4rem; }
+.fixnow-link:hover { text-decoration: underline; }
+
+/* ── Summary banner ───────────────────────────────────────────────────── */
+.summary-banner {
+  display: none; border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+  color: var(--text-dim); font-size: var(--fs-label); padding: .55rem .9rem; margin-bottom: 1.1rem;
+}
+
+/* ── Groups + check rows (shared by capability tiles + group sections) ─── */
+.diag-group { margin-bottom: .9rem; }
+.check-list { display: flex; flex-direction: column; gap: .5rem; }
+.check-row {
+  display: flex; align-items: flex-start; gap: .75rem;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); padding: .6rem .85rem;
+  margin-bottom: .5rem;
+}
+.cap-checks .check-row { background: var(--panel); }
+.check-row.ok      { border-color: var(--accent-dim); }
+.check-row.warn    { border-color: var(--amber-dim); }
+.check-row.fail    { border-color: var(--red); }
+.check-row.unknown { border-color: var(--border); }
+.check-icon { font-size: 1.05rem; line-height: 1.4; flex-shrink: 0; width: 1.2rem; text-align: center; }
+.check-row.ok      .check-icon { color: var(--accent); }
+.check-row.warn    .check-icon { color: var(--amber); }
+.check-row.fail    .check-icon { color: var(--red); }
+.check-body { flex: 1; min-width: 0; }
+.check-top { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.check-name { font-size: var(--fs-base); font-weight: 700; color: var(--text); }
+.check-badge {
+  font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  padding: 1px 8px; border-radius: 4px; background: var(--panel-2); color: var(--text-dim);
+}
+.check-badge.ok   { background: #0a3a20; color: var(--accent); }
+.check-badge.fail { background: #3a0a0a; color: var(--red); }
+.check-badge.warn { background: #3a2a00; color: var(--amber); }
+.check-desc { font-size: var(--fs-label); color: var(--text-dim); line-height: 1.5; margin-top: .2rem; }
+.check-breaks { font-size: var(--fs-label); color: var(--red); margin-top: .3rem; }
+.check-fix { display: inline-block; font-size: var(--fs-label); color: var(--accent); text-decoration: none; margin-top: .25rem; }
+.check-fix:hover { text-decoration: underline; }
+.check-empty { font-size: var(--fs-label); color: var(--text-dim); padding: .4rem 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="home-bar">
+    <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+            title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+    <a class="home-link" href="/">⌂ HOME</a>
+  </div>
+  <h1>DIAGNOSTIC</h1>
+  <div class="diag-meta">
+    <span class="diag-meta-item" id="diagStation">—</span>
+    <span class="diag-meta-item" id="diagRanAt">not yet run</span>
+    <button class="diag-run-btn" id="diagRunBtn" type="button">[ Run diagnostics ]</button>
+  </div>
+</header>
+
+<div id="diagStale" class="diag-stale" style="display:none;"></div>
+
+<div class="sec-label">Capabilities</div>
+<div class="cap-band" id="capBand"></div>
+
+<div id="fixNow" class="fixnow"></div>
+
+<div id="summaryBanner" class="summary-banner"></div>
+
+<div id="groupsWrap"></div>
+
+</div>
+<script src="/common/js/diagnostics.js"></script>
+<script>
+'use strict';
+
+const LS_KEY = 'oasis-diag-last';
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+// Check details from common/diagnostics.py are plain text with '\n     '
+// used as a terminal continuation-line indent — collapse that into <br>
+// after escaping, rather than trusting it as HTML.
+function fmtDetail(detail) {
+  return escapeHtml(detail || '').replace(/\n\s*/g, '<br>');
+}
+
+function fmtWhen(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+
+function statusClass(status) { return OasisDiag.statusClass(status); }
+function statusIcon(status)  { return OasisDiag.statusIcon(status); }
+
+async function loadStation() {
+  const el = document.getElementById('diagStation');
+  try {
+    const r = await fetch('/station.json', { cache: 'no-store' });
+    if (!r.ok) return;
+    const st = await r.json();
+    const cs = (st && st.callsign) ? String(st.callsign).toUpperCase() : '';
+    const gr = (st && st.grid) ? String(st.grid).toUpperCase() : '';
+    const joined = [cs, gr].filter(Boolean).join(' · ');
+    if (joined) el.textContent = joined;
+  } catch (_) {
+    // Station file absent/unreachable — leave the placeholder, don't hard-fail.
+  }
+}
+
+function renderCheckRow(check) {
+  const cls = statusClass(check.status);
+  const icon = statusIcon(check.status);
+  const isFail = check.status === 'fail';
+  const breaksHtml = (isFail && check.breaks)
+    ? `<div class="check-breaks">${escapeHtml(check.breaks)}</div>` : '';
+  const fixHtml = (isFail && check.fix)
+    ? `<a class="check-fix" href="${escapeHtml(check.fix)}">&rarr; Setup</a>` : '';
+  return `
+    <div class="check-row ${cls}" id="check-${escapeHtml(check.id)}">
+      <div class="check-icon">${icon}</div>
+      <div class="check-body">
+        <div class="check-top">
+          <span class="check-name">${escapeHtml(check.label)}</span>
+          <span class="check-badge ${cls}">${escapeHtml(check.badge || '')}</span>
+        </div>
+        <div class="check-desc">${fmtDetail(check.detail)}</div>
+        ${breaksHtml}
+        ${fixHtml}
+      </div>
+    </div>`;
+}
+
+function renderCapabilityTile(cap, checksById) {
+  const cls = statusClass(cap.status);
+  const icon = statusIcon(cap.status);
+  const members = (cap.checks || []).map(id => checksById[id]).filter(Boolean);
+  const rows = members.length
+    ? members.map(renderCheckRow).join('')
+    : '<div class="check-empty">No checks reported.</div>';
+  return `
+    <div class="cap-tile ${cls}" data-cap="${escapeHtml(cap.id)}">
+      <button type="button" class="cap-tile-head" onclick="toggleCapTile('${escapeHtml(cap.id)}')"
+              aria-expanded="false" id="capHead-${escapeHtml(cap.id)}">
+        <span class="cap-icon">${icon}</span>
+        <span class="cap-label">${escapeHtml(cap.label)}</span>
+        <span class="cap-chevron" id="capChevron-${escapeHtml(cap.id)}">&#9662;</span>
+      </button>
+      <div class="cap-checks" id="capChecks-${escapeHtml(cap.id)}" style="display:none;">${rows}</div>
+    </div>`;
+}
+
+function toggleCapTile(id) {
+  const body = document.getElementById('capChecks-' + id);
+  const chev = document.getElementById('capChevron-' + id);
+  const head = document.getElementById('capHead-' + id);
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? 'block' : 'none';
+  if (chev) chev.innerHTML = opening ? '&#9652;' : '&#9662;';
+  if (head) head.setAttribute('aria-expanded', opening ? 'true' : 'false');
+}
+window.toggleCapTile = toggleCapTile;
+
+function renderFixNow(fixNow) {
+  const el = document.getElementById('fixNow');
+  if (!fixNow) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const breaksTxt = fixNow.breaks ? ' &middot; ' + escapeHtml(fixNow.breaks) : '';
+  const fixLink = fixNow.fix
+    ? `<a class="fixnow-link" href="${escapeHtml(fixNow.fix)}">&rarr; Setup</a>` : '';
+  el.innerHTML = `<span class="fixnow-label">FIX NOW</span>`
+    + `${escapeHtml(fixNow.label)} &mdash; <span class="fixnow-badge">${escapeHtml(fixNow.badge || '')}</span>${breaksTxt}`
+    + fixLink;
+  el.style.display = 'flex';
+}
+
+function renderSummary(summary, capabilities) {
+  const el = document.getElementById('summaryBanner');
+  const s = summary || { fail: 0, warn: 0, ok: 0 };
+  const { up, down } = OasisDiag.capUpDown(capabilities);
+  el.textContent = `${s.fail} problem${s.fail === 1 ? '' : 's'} · `
+    + `${s.warn} warning${s.warn === 1 ? '' : 's'} · ${s.ok} OK`
+    + `    —    ${up} capabilit${up === 1 ? 'y' : 'ies'} UP · ${down} DOWN`;
+  el.style.display = 'block';
+}
+
+function renderGroups(groups) {
+  const wrap = document.getElementById('groupsWrap');
+  wrap.innerHTML = (groups || []).map(g => `
+    <div class="diag-group">
+      <div class="sec-label">${escapeHtml(g.name)}</div>
+      <div class="check-list">${
+        (g.checks && g.checks.length)
+          ? g.checks.map(renderCheckRow).join('')
+          : '<div class="check-empty">No checks.</div>'
+      }</div>
+    </div>`).join('');
+}
+
+// Renders one full /api/diagnostics payload into every section of the page.
+function renderAll(data) {
+  const when = fmtWhen(data.ran_at);
+  document.getElementById('diagRanAt').textContent = when ? ('ran ' + when) : 'ran at unknown time';
+
+  const checksById = {};
+  (data.groups || []).forEach(g => (g.checks || []).forEach(c => { checksById[c.id] = c; }));
+
+  document.getElementById('capBand').innerHTML =
+    (data.capabilities || []).map(c => renderCapabilityTile(c, checksById)).join('');
+
+  renderFixNow(data.fix_now);
+  renderSummary(data.summary, data.capabilities);
+  renderGroups(data.groups);
+}
+
+function setDimmed(on) {
+  ['capBand', 'fixNow', 'summaryBanner', 'groupsWrap'].forEach(id => {
+    document.getElementById(id).classList.toggle('diag-dim', on);
+  });
+}
+
+async function runDiagnostics() {
+  const btn = document.getElementById('diagRunBtn');
+  btn.disabled = true;
+  const prevLabel = btn.textContent;
+  btn.textContent = 'Running…';
+  try {
+    const r = await fetch('/api/diagnostics', { cache: 'no-store' });
+    const data = await r.json();
+    if (!r.ok || data.ok === false) throw new Error((data && data.error) || ('HTTP ' + r.status));
+    document.getElementById('diagStale').style.display = 'none';
+    setDimmed(false);
+    renderAll(data);
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ data, at: Date.now() })); } catch (_) {}
+  } catch (e) {
+    document.getElementById('diagRanAt').textContent = 'run failed: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prevLabel;
+  }
+}
+
+// On load: render the last cached sweep (if any) immediately, dimmed, so the
+// operator sees the last-known state instantly. No auto-fetch, no polling —
+// the operator must click Run to get a live sweep.
+function loadCached() {
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (_) {}
+  if (!cached || !cached.data) return;
+  renderAll(cached.data);
+  setDimmed(true);
+  const staleEl = document.getElementById('diagStale');
+  staleEl.textContent = 'Showing last run ' + new Date(cached.at).toLocaleString()
+    + ' — click Run diagnostics to refresh.';
+  staleEl.style.display = 'block';
+}
+
+document.getElementById('diagRunBtn').addEventListener('click', runDiagnostics);
+loadStation();
+loadCached();
+</script>
+</body>
+</html>
