@@ -22,6 +22,14 @@ Adding or removing a check is registry-only -- ``run_all`` iterates
 from __future__ import annotations
 
 import datetime
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import urllib.error
+import urllib.request
 from collections import namedtuple
 
 # ---------------------------------------------------------------------------
@@ -72,7 +80,7 @@ CAPABILITIES = {
     },
     "REFERENCE": {
         "label": "Reference Data",
-        "members": ["fcc", "repeaterbook", "zim", "forms", "maps"],
+        "members": ["fcc", "repeaterbook", "kiwix", "forms", "maps"],
     },
 }
 
@@ -284,3 +292,496 @@ def run_all(host, port, include_backlog=False):
         "fix_now": fix_now,
         "groups": groups,
     }
+
+
+# ---------------------------------------------------------------------------
+# Real check paths / constants (moved from scripts/doctor.py)
+# ---------------------------------------------------------------------------
+
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(_MODULE_DIR)
+
+FCC_INDEX = os.path.join(REPO_ROOT, "services", "fcc_database", "data", "EN.idx")
+MAPS_DIR = os.path.join(REPO_ROOT, "maps")
+WINLINK_DIR = os.path.join(REPO_ROOT, "server", "winlink")
+
+# Default port (matches PORTS in setup.html)
+DEFAULT_PORT = 8083
+
+# Live port table -- updated from /server-ports.json if the server is up.
+PORTS = {
+    "flask":    8083,
+    "graywolf": 8080,
+    "kiwix":    8081,
+    "winlink":  8082,
+    "aprs_api": 8085,
+    "webssh":   7681,
+}
+
+# GrayWolf offline tiles directory (Pi OS default installation path)
+GRAYWOLF_TILES_DIR = "/var/lib/graywolf/tiles"
+
+# RTL-SDR DVB driver blacklist written by features/rtl-sdr/install-rtl-sdr.py
+RTL_BLACKLIST = "/etc/modprobe.d/rtlsdr-blacklist.conf"
+
+# Setup page has no #services / #content / #radio anchors today (only
+# id="hardware" exists) -- fix links bare-link to /system/setup.html per the
+# task brief's "if an anchor is absent, link bare" rule.
+_SETUP_URL = "/system/setup.html"
+
+
+# ---------------------------------------------------------------------------
+# Check signal helpers (moved from scripts/doctor.py, verbatim)
+# ---------------------------------------------------------------------------
+
+def _probe_port(host, port, timeout=3.0):
+    """True if a TCP port is accepting connections."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, ConnectionRefusedError, socket.timeout):
+        return False
+
+
+def _which_binary(name):
+    """Locate a binary on PATH + standard dirs. Returns path string or None."""
+    path = shutil.which(name)
+    if path:
+        return path
+    for d in ("/usr/local/sbin", "/usr/local/bin", "/usr/sbin",
+              "/usr/bin", "/sbin", "/bin"):
+        cand = os.path.join(d, name)
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    return None
+
+
+def _svc_status(name):
+    """Query systemd for a service unit. Always returns a dict — never raises."""
+    if sys.platform != "linux":
+        return {"active": "n/a", "enabled": "n/a", "installed": False}
+
+    def _q(verb):
+        try:
+            r = subprocess.run(
+                ["systemctl", verb, f"{name}.service"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return r.stdout.strip()
+        except Exception:
+            return ""
+
+    active  = _q("is-active")
+    enabled = _q("is-enabled")
+    return {
+        "active":    active  or "unknown",
+        "enabled":   enabled or "not-found",
+        # Absent units make `systemctl is-enabled` print "not-found" (Pi OS
+        # Trixie / systemd ≥ 254, on stdout) or nothing (older) — both mean not
+        # installed. Don't rely on bool(enabled): "not-found" is a truthy string.
+        "installed": enabled not in ("", "not-found"),
+    }
+
+
+def _svc_word(svc):
+    """Compact 'active, enabled' description string for a _svc_status result."""
+    en = f", {svc['enabled']}" if svc["enabled"] not in ("not-found", "n/a", "") else ""
+    return f"{svc['active']}{en}"
+
+
+def _http_get(url, timeout=5):
+    """GET url and JSON-decode. Returns (ok:bool, data:dict|None). Never raises."""
+    try:
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "OASIS-Doctor/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read()
+        try:
+            return True, json.loads(body)
+        except Exception:
+            return True, {}
+    except Exception:
+        return False, None
+
+
+# ---------------------------------------------------------------------------
+# Check functions (moved from scripts/doctor.py)
+#
+# Each check_*(ctx) takes ctx={"host":..., "port":...} and returns a
+# _result() dict. breaks/fix are populated only on status=="fail" (the
+# framework convention: fix is "where to go to fix this", shown when there's
+# something broken to fix).
+# ---------------------------------------------------------------------------
+
+def check_server(ctx):
+    host, port = ctx["host"], ctx["port"]
+    up = _probe_port(host, port)
+    if not up:
+        return _result(
+            "server", "CORE", "OASIS Server", "fail", "DOWN",
+            (
+                f"No response on {host}:{port}. Is OASIS running?\n"
+                "     Start with: ./scripts/start-server.sh"
+            ),
+            breaks="The OASIS web interface is completely unreachable — no station functions work.",
+            fix=_SETUP_URL,
+        )
+
+    ok, info = _http_get(f"http://{host}:{port}/api/server-info")
+    if ok and info:
+        wsgi  = info.get("wsgi", "unknown")
+        ver   = info.get("wsgi_version", "?")
+        oasis = info.get("version", "unknown")
+        dev   = wsgi != "gunicorn"
+        svc   = _svc_status("oasis")
+        svc_t = f", service {_svc_word(svc)}" if svc["installed"] else ""
+        ver_t = f"OASIS v{oasis} · " if oasis and oasis != "unknown" else ""
+        detail = f"{ver_t}Serving on :{port} via {wsgi} v{ver}{svc_t}."
+        if dev:
+            detail += "\n     For always-on use, run under gunicorn (see docs/SETUP.md)."
+        status = "warn" if dev else "ok"
+        badge  = "DEV SERVER" if dev else "RUNNING"
+        return _result("server", "CORE", "OASIS Server", status, badge, detail)
+
+    # Listening but /api/server-info unavailable — still counts as up.
+    return _result("server", "CORE", "OASIS Server", "ok", "RUNNING", f"Listening on :{port}.")
+
+
+def check_disk(ctx):
+    for mount, label in [
+        ("/mnt/ssd", "SSD"),
+        ("/mnt/emmc", "eMMC"),
+        ("/", "System"),
+        ("C:\\", "System"),
+    ]:
+        try:
+            d        = shutil.disk_usage(mount)
+            total_gb = round(d.total / 1e9, 1)
+            free_gb  = round(d.free  / 1e9, 1)
+            pct      = round(d.used  / d.total * 100)
+            detail   = f"{free_gb} GB free of {total_gb} GB on {label} ({pct}% used)."
+            if free_gb < 1:
+                return _result(
+                    "disk", "SYSTEM", "Disk Space", "fail", "CRITICAL",
+                    detail + "\n     Free space now — maps / Wikipedia / FCC may fail to write.",
+                    breaks="Maps, Wikipedia, and FCC downloads may fail to write; the station could stop logging.",
+                    fix=_SETUP_URL,
+                )
+            if free_gb < 2 or pct >= 92:
+                return _result(
+                    "disk", "SYSTEM", "Disk Space", "warn", "LOW",
+                    detail + "\n     Running low; large downloads (maps, ZIM, FCC) may not fit.",
+                )
+            return _result("disk", "SYSTEM", "Disk Space", "ok", "OK", detail)
+        except (FileNotFoundError, OSError):
+            continue
+    return _result("disk", "SYSTEM", "Disk Space", "warn", "N/A", "Could not read disk usage.")
+
+
+def check_fcc(ctx):
+    if not os.path.isfile(FCC_INDEX):
+        return _result(
+            "fcc", "DATA", "FCC Callsign Database", "fail", "NOT BUILT",
+            (
+                "Index not found at services/fcc_database/data/EN.idx.\n"
+                "     Run: python3 services/fcc_database/install.py"
+            ),
+            breaks="Callsign lookups will not work anywhere in the suite.",
+            fix=_SETUP_URL,
+        )
+    try:
+        count = sum(1 for _ in open(FCC_INDEX, "rb"))
+    except OSError:
+        count = 0
+    return _result("fcc", "DATA", "FCC Callsign Database", "ok", "READY",
+                    f"Callsign index built ({count:,} entries).")
+
+
+def check_maps(ctx):
+    host, port = ctx["host"], ctx["port"]
+
+    # Local .pmtiles in the suite maps/ dir
+    local_tiles = []
+    if os.path.isdir(MAPS_DIR):
+        local_tiles = [
+            f.replace(".pmtiles", "")
+            for f in os.listdir(MAPS_DIR)
+            if f.endswith(".pmtiles")
+        ]
+
+    # GrayWolf offline tiles (Pi-only path). The downloader nests per-region
+    # .pmtiles under states/ or country/ subfolders, so walk the tree (not just
+    # the top level) — bounded by a file cap so a huge cache can't stall doctor.
+    gw_tiles = []
+    if os.path.isdir(GRAYWOLF_TILES_DIR):
+        for root, _dirs, files in os.walk(GRAYWOLF_TILES_DIR):
+            for f in files:
+                if f.endswith(".pmtiles"):
+                    gw_tiles.append(f)
+                    if len(gw_tiles) >= 500:
+                        break
+            if len(gw_tiles) >= 500:
+                break
+
+    total = len(local_tiles) + len(gw_tiles)
+
+    # Check /api/fs/browse only when the server is reachable — a missing route
+    # means the server is running stale code and needs a restart.
+    server_up = _probe_port(host, port)
+    if server_up:
+        fs_ok, _ = _http_get(f"http://{host}:{port}/api/fs/browse", timeout=4)
+        if not fs_ok:
+            extra = f" ({len(local_tiles)} local map(s) in maps/.)" if local_tiles else ""
+            return _result(
+                "maps", "DATA", "Map Tiles (PMTiles)", "warn", "RESTART",
+                (
+                    "/api/fs/browse missing — server is running old code.\n"
+                    "     Restart OASIS to pick up the latest server/app.py."
+                    + extra
+                ),
+            )
+
+    gw_hint = (
+        "GrayWolf provides offline maps. Download a region, then open\n"
+        "     Offline Maps → Load maps and browse /var/lib/graywolf/tiles/."
+    )
+
+    if not total:
+        return _result(
+            "maps", "DATA", "Map Tiles (PMTiles)", "warn", "N/A",
+            (
+                "No .pmtiles maps found in maps/ or /var/lib/graywolf/tiles/.\n"
+                "     " + gw_hint
+            ),
+        )
+
+    parts = []
+    if local_tiles:
+        parts.append(f"{len(local_tiles)} in maps/: {', '.join(local_tiles)}")
+    if gw_tiles:
+        parts.append(f"{len(gw_tiles)} in GrayWolf tiles")
+    detail = f"Map(s) found — {'; '.join(parts)}."
+    if server_up:
+        detail += " Load maps endpoint OK."
+    return _result("maps", "DATA", "Map Tiles (PMTiles)", "ok", "READY", detail)
+
+
+def check_graywolf(ctx):
+    host = ctx["host"]
+    port = PORTS["graywolf"]
+    up   = _probe_port(host, port)
+    svc  = _svc_status("graywolf")
+    if up:
+        return _result("graywolf", "SERVICES", "GrayWolf APRS", "ok", "UP",
+                        f"graywolf ({_svc_word(svc)}), listening on :{port}.")
+    if svc["installed"]:
+        return _result(
+            "graywolf", "SERVICES", "GrayWolf APRS", "warn", "STOPPED",
+            (
+                f"Installed but not listening (service graywolf is {svc['active']}).\n"
+                "     Start: sudo systemctl start graywolf\n"
+                "     Logs:  journalctl -u graywolf -f"
+            ),
+        )
+    return _result("graywolf", "SERVICES", "GrayWolf APRS", "warn", "NOT INSTALLED",
+                    "Install with: python3 services/graywolf/install.py")
+
+
+def check_graywolf_api(ctx):
+    host = ctx["host"]
+    port = PORTS["aprs_api"]
+    up   = _probe_port(host, port)
+    svc  = _svc_status("graywolf-api")
+    if up:
+        ok2, data = _http_get(f"http://{host}:{port}/api/aprs/stations", timeout=5)
+        count  = data.get("count") if ok2 and data else None
+        detail = f"API on :{port} ({_svc_word(svc)})"
+        detail += f", {count} station(s) in history DB." if count is not None else "."
+        return _result("graywolf_api", "SERVICES", "GrayWolf APRS History API", "ok", "UP", detail)
+    if svc["installed"]:
+        return _result(
+            "graywolf_api", "SERVICES", "GrayWolf APRS History API", "warn", "STOPPED",
+            (
+                f"Installed but not responding ({svc['active']}).\n"
+                "     Start: sudo systemctl start graywolf-api"
+            ),
+        )
+    return _result("graywolf_api", "SERVICES", "GrayWolf APRS History API", "warn", "NOT INSTALLED",
+                    "Enabled by: python3 services/graywolf/install.py")
+
+
+def check_pat(ctx):
+    host    = ctx["host"]
+    port    = PORTS["winlink"]
+    up      = _probe_port(host, port)
+    bin_    = _which_binary("pat")
+    svc     = _svc_status("pat")
+    pat_cfg = os.path.join(os.path.expanduser("~"), ".config", "pat", "config.json")
+
+    if up:
+        cfg_note = ""
+        if os.path.isfile(pat_cfg):
+            try:
+                with open(pat_cfg) as fh:
+                    cfg = json.load(fh)
+                if not cfg.get("secure_login_password"):
+                    cfg_note = "\n     Winlink password not set — run: pat configure"
+            except Exception:
+                pass
+        badge  = "WARN" if cfg_note else "UP"
+        status = "warn" if cfg_note else "ok"
+        return _result("pat", "SERVICES", "Winlink (Pat)", status, badge,
+                        f"Pat web UI on :{port} ({_svc_word(svc)}).{cfg_note}")
+
+    if bin_:
+        return _result(
+            "pat", "SERVICES", "Winlink (Pat)", "warn", "STOPPED",
+            (
+                f"Pat installed ({bin_}) but web UI not running ({svc['active']}).\n"
+                "     Start: sudo systemctl start pat"
+            ),
+        )
+    return _result("pat", "SERVICES", "Winlink (Pat)", "warn", "NOT INSTALLED",
+                    "Install with: python3 services/winlink/install.py")
+
+
+def check_rtl_sdr(ctx):
+    rtl_test = _which_binary("rtl_test")
+    rtl_fm   = _which_binary("rtl_fm")
+    socat    = _which_binary("socat")
+    tcpdump  = _which_binary("tcpdump")
+    blk      = os.path.isfile(RTL_BLACKLIST)
+    feed_svc = _svc_status("aprs-sdr-feed")
+
+    if not rtl_test:
+        return _result(
+            "rtl_sdr", "HARDWARE", "RTL-SDR + APRS Audio Feed", "warn", "NOT INSTALLED",
+            "RTL-SDR tools not found.\n     Install with: python3 features/rtl-sdr/install-rtl-sdr.py",
+        )
+
+    Y = "✓"
+    N = "✗"
+    lines = [
+        f"rtl_test: {rtl_test}",
+        f"rtl_fm: {Y if rtl_fm else N}  socat: {Y if socat else N}  tcpdump: {Y if tcpdump else N}",
+        (f"DVB driver blacklist: {Y}" if blk
+         else "DVB driver blacklist: ✗  (re-run features/rtl-sdr/install-rtl-sdr.py, then reboot)"),
+    ]
+
+    if feed_svc["active"] == "active":
+        lines.append(f"APRS→GrayWolf feed: active ({_svc_word(feed_svc)})")
+        feed_ok = True
+    elif feed_svc["installed"]:
+        lines.append(
+            f"Feed service {feed_svc['active']}.\n"
+            "     Start: sudo systemctl start aprs-sdr-feed"
+        )
+        feed_ok = False
+    else:
+        lines.append("Feed not enabled. Run: python3 features/rtl-sdr/enable-rtl-sdr.py")
+        feed_ok = False
+
+    tools_ok = bool(rtl_fm and socat and blk)
+    badge    = "READY" if (feed_ok and tools_ok) else ("INSTALLED" if tools_ok else "PARTIAL")
+    status   = "ok" if (feed_ok and tools_ok) else "warn"
+    return _result("rtl_sdr", "HARDWARE", "RTL-SDR + APRS Audio Feed", status, badge,
+                    "\n     ".join(lines))
+
+
+def check_kiwix(ctx):
+    host = ctx["host"]
+    port = PORTS["kiwix"]
+    up   = _probe_port(host, port)
+    bin_ = _which_binary("kiwix-serve")
+    svc  = _svc_status("kiwix")
+    if up:
+        return _result("kiwix", "DATA", "Kiwix (Offline Wikipedia)", "ok", "UP",
+                        f"kiwix-serve on :{port} ({_svc_word(svc)}).")
+    if bin_:
+        return _result(
+            "kiwix", "DATA", "Kiwix (Offline Wikipedia)", "warn", "STOPPED",
+            (
+                f"kiwix-serve installed but not serving ({svc['active']}).\n"
+                "     Add ZIM content, then: sudo systemctl start kiwix"
+            ),
+        )
+    return _result("kiwix", "DATA", "Kiwix (Offline Wikipedia)", "warn", "NOT INSTALLED",
+                    "Install with: python3 services/kiwix/install.py")
+
+
+def check_webssh(ctx):
+    host = ctx["host"]
+    port = PORTS["webssh"]
+    up   = _probe_port(host, port)
+    bin_ = _which_binary("ttyd")
+    svc  = _svc_status("webssh")
+    if up:
+        return _result("webssh", "CORE", "Web SSH (ttyd)", "ok", "UP",
+                        f"ttyd (browser terminal) on :{port} ({_svc_word(svc)}).")
+    if bin_:
+        return _result(
+            "webssh", "CORE", "Web SSH (ttyd)", "warn", "STOPPED",
+            (
+                f"ttyd installed but not running ({svc['active']}).\n"
+                "     Start: sudo systemctl start webssh"
+            ),
+        )
+    return _result("webssh", "CORE", "Web SSH (ttyd)", "warn", "NOT INSTALLED",
+                    "Install with: python3 services/webssh/install.py")
+
+
+def check_winlink_forms(ctx):
+    pages = [
+        ("position-report.html", "position-report"),
+        ("to-position.html",     "to-position"),
+        ("radio-settings.html",  "radio-settings"),
+    ]
+    present = [lbl for fname, lbl in pages
+               if os.path.isfile(os.path.join(WINLINK_DIR, fname))]
+    missing = [lbl for fname, lbl in pages
+               if not os.path.isfile(os.path.join(WINLINK_DIR, fname))]
+
+    if not present:
+        return _result(
+            "winlink_forms", "DATA", "Winlink Forms (Offline Pages)", "fail", "MISSING",
+            "No Winlink form pages found in services/winlink/static/.",
+            breaks="No offline Winlink form pages are available to operators.",
+            fix=_SETUP_URL,
+        )
+    detail = f"{len(present)} form(s) available: {', '.join(present)}"
+    if missing:
+        detail += f"  |  missing: {', '.join(missing)}"
+    status = "warn" if missing else "ok"
+    badge  = "PARTIAL" if missing else "READY"
+    return _result("winlink_forms", "DATA", "Winlink Forms (Offline Pages)", status, badge, detail)
+
+
+# ---------------------------------------------------------------------------
+# Registry: real checks
+# ---------------------------------------------------------------------------
+
+REGISTRY.extend([
+    Check(id="server", group="CORE", label="OASIS Server",
+          capability="ACCESS", critical=True, tier="v1", fn=check_server),
+    Check(id="disk", group="SYSTEM", label="Disk Space",
+          capability="POWER", critical=False, tier="v1", fn=check_disk),
+    Check(id="fcc", group="DATA", label="FCC Callsign Database",
+          capability="REFERENCE", critical=False, tier="v1", fn=check_fcc),
+    Check(id="maps", group="DATA", label="Map Tiles (PMTiles)",
+          capability="REFERENCE", critical=False, tier="v1", fn=check_maps),
+    Check(id="graywolf", group="SERVICES", label="GrayWolf APRS",
+          capability="APRS_RX", critical=True, tier="v1", fn=check_graywolf),
+    Check(id="graywolf_api", group="SERVICES", label="GrayWolf APRS History API",
+          capability="APRS_RX", critical=False, tier="v1", fn=check_graywolf_api),
+    Check(id="pat", group="SERVICES", label="Winlink (Pat)",
+          capability="WINLINK", critical=True, tier="v1", fn=check_pat),
+    Check(id="rtl_sdr", group="HARDWARE", label="RTL-SDR + APRS Audio Feed",
+          capability="APRS_RX", critical=True, tier="v1", fn=check_rtl_sdr),
+    Check(id="kiwix", group="DATA", label="Kiwix (Offline Wikipedia)",
+          capability="REFERENCE", critical=False, tier="v1", fn=check_kiwix),
+    Check(id="webssh", group="CORE", label="Web SSH (ttyd)",
+          capability="ACCESS", critical=False, tier="v1", fn=check_webssh),
+    Check(id="winlink_forms", group="DATA", label="Winlink Forms (Offline Pages)",
+          capability="REFERENCE", critical=False, tier="backlog", fn=check_winlink_forms),
+])
