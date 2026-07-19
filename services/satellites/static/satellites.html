@@ -124,7 +124,23 @@ html, body { height: 100%; margin: 0; }
 .sat-row .chips { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-top: .35rem; }
 .chip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim);
   border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
-.sat-row .dl { font-size: var(--fs-small); color: var(--green); }
+/* Downlink mode buttons (checked sat only). Freq is on the face; state comes
+   from /listen/status. Two *disabled* looks that must not be confused: busy =
+   solid grey ("wait"), unsupported = ghosted/dashed ("never"). */
+.dlbtns { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .4rem; }
+.dlbtn { font-family: var(--mono); font-size: var(--fs-small); font-weight: 700; white-space: nowrap;
+  border: 1px solid var(--border); border-radius: 5px; padding: 2px 8px; cursor: pointer;
+  background: var(--panel); color: var(--text); transition: background .3s ease, color .3s ease, border-color .3s ease; }
+.dlbtn.free { border-color: var(--green); color: var(--green); }
+.dlbtn.free:hover { background: var(--green); color: #0d1117; }
+.dlbtn.rec { border-color: var(--red); background: var(--red); color: #fff; animation: recpulse 1.2s infinite; }
+.dlbtn.busy { border-color: var(--border); color: var(--text-dim); background: var(--panel-2);
+  cursor: not-allowed; opacity: .7; }
+.dlbtn.unsupported { border-style: dashed; border-color: var(--border); color: var(--text-dim);
+  background: transparent; cursor: not-allowed; opacity: .5; }
+@keyframes recpulse { 50% { opacity: .5; } }
+.sat-row .dl-status { font-size: var(--fs-small); color: var(--text-dim); }
+.sat-row .dl-status.rec { color: var(--red); font-weight: 700; }
 .sat-row .oov { margin-top: .3rem; font-size: var(--fs-micro); color: #d29922; font-weight: 700; }
 
 /* Popup — reuse the APRS/ADS-B popup look. */
@@ -235,13 +251,15 @@ function renderRoster() {
           ${p ? '' : 'disabled'} onchange="onToggle(${s.norad}, this.checked)">
         <span class="nm">${s.name}</span><span class="pass-hint" data-norad="${s.norad}">${passHint(p)}</span></label>
       <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}<span class="sat-elev" data-norad="${s.norad}"></span></div>
+      ${PLOTTED[s.norad] ? `<div class="dlbtns">${dlBtnsHTML(s)}</div>` : ''}
       <div class="sat-bottom">
-        <span class="dl">${(s.downlinks[0] || {}).freq_mhz || ''} MHz</span>
+        ${PLOTTED[s.norad] ? `<span class="dl-status" data-norad="${s.norad}"></span>` : '<span></span>'}
         <span class="sat-meter" data-norad="${s.norad}">${'<span class="seg"></span>'.repeat(5)}</span></div>
       ${PLOTTED[s.norad] && PLOTTED[s.norad].outOfView ? '<div class="oov">⚠ Track out of visible area — zoom out</div>' : ''}
     </div>`;
   }).join('');
-  updatePills();   // paint the meters immediately (avoid a dim flash until the tick)
+  updatePills();       // paint the meters immediately (avoid a dim flash until the tick)
+  updateListenUI();    // colour the downlink buttons from the latest listen status
 }
 
 function fmt(iso) { return new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
@@ -475,30 +493,16 @@ function updateVisibility() {
 }
 
 /* ── Popup: click a satellite's track/marker on the map ────────────────── */
-let _popup = null, _popupSat = null, _listenMsg = '';
+let _popup = null, _popupSat = null;
 function onMapClick(e) {
   const norad = e.features[0].properties.norad;
   const sat = ROSTER.find(s => s.norad == norad);
   if (!sat) return;
-  _popupSat = sat; _listenMsg = '';
+  _popupSat = sat;
   if (_popup) _popup.remove();
   _popup = new maplibregl.Popup({ offset: 12, maxWidth: '300px' })
     .setLngLat(e.lngLat).setHTML(popupHTML(sat)).addTo(_map);
   _popup.on('close', () => { _popupSat = null; });
-}
-function refreshPopup() { if (_popup && _popupSat) _popup.setHTML(popupHTML(_popupSat)); }
-// SDR listen control for the popup — reflects live preconditions + recording state.
-function listenSection(sat) {
-  const recThis = LISTEN.recording && String(LISTEN.norad) === String(sat.norad);
-  let ctl;
-  if (recThis) ctl = `<button class="sbtn" onclick="stopListen()">⏹ Stop recording</button>`;
-  else if (LISTEN.recording) ctl = `<span class="pop-lbl">busy — recording another satellite</span>`;
-  else if ((LISTEN.missing_deps || []).length) ctl = `<span class="pop-lbl">SDR tools not installed</span>`;
-  else if (!LISTEN.dongle_present) ctl = `<span class="pop-lbl">no RTL-SDR dongle</span>`;
-  else if (LISTEN.feed_active) ctl = `<span class="pop-lbl">stop the APRS SDR feed first</span>`;
-  else ctl = `<button class="sbtn" onclick="startListen(${sat.norad})">🎧 Record pass (SDR)</button>`;
-  const err = _listenMsg ? `<div class="pop-lbl" style="color:var(--red);margin-top:3px">${_listenMsg}</div>` : '';
-  return `<div class="pop-sec">${ctl}${err}</div>`;
 }
 function popupHTML(sat) {
   const plotted = PLOTTED[sat.norad];
@@ -514,7 +518,6 @@ function popupHTML(sat) {
     <div class="pop-chips">${chips}</div>
     <div class="pop-row"><span class="pop-lbl">Downlink</span><span class="pop-val">${dls || '—'}</span></div>
     <div class="pop-sec"><span class="pop-lbl">Upcoming passes</span>${passes}</div>
-    ${listenSection(sat)}
     ${polar ? `<div class="pop-sec">${polar}</div>` : ''}`;
 }
 // Re-plot a specific pass chosen from the popup.
@@ -652,32 +655,98 @@ async function toggleWorld() {
 
 /* ── SDR listen — record a pass to a WAV on the Pi ───────────────────────── */
 let LISTEN = { recording: false };
+let _listenErrNorad = null;   // norad whose last start attempt errored (shown in its status line)
+
+// One button per downlink of a checked sat: "mode · freq", state set live below.
+function dlBtnsHTML(s) {
+  return (s.downlinks || []).map(d => {
+    const sup = d.supported ? 1 : 0;
+    return `<button class="dlbtn" data-norad="${s.norad}" data-freq="${d.freq_mhz}" data-supported="${sup}"
+      ${sup ? `onclick="onDownlinkClick(${s.norad}, ${d.freq_mhz})"` : 'disabled'}>${d.mode} · ${d.freq_mhz}</button>`;
+  }).join('');
+}
+function _recThis(norad, freqMhz) {
+  return LISTEN.recording && String(LISTEN.norad) === String(norad)
+    && LISTEN.freq_hz && Math.abs(LISTEN.freq_hz / 1e6 - freqMhz) < 1e-6;
+}
+function _busyReason() {
+  if ((LISTEN.missing_deps || []).length) return 'SDR tools not installed';
+  if (!LISTEN.dongle_present) return 'no RTL-SDR dongle';
+  if (LISTEN.recording) { const s = ROSTER.find(x => String(x.norad) === String(LISTEN.norad));
+    return `recording ${s ? s.name : 'another satellite'}`; }
+  if (LISTEN.busy) return `dongle in use by ${LISTEN.holder || 'another service'}`;
+  return 'dongle busy';
+}
+function _dongleStatus(norad) {
+  if (_listenErrNorad === norad && LISTEN && LISTEN._err) return { txt: LISTEN._err, rec: false };
+  if ((LISTEN.missing_deps || []).length) return { txt: 'SDR tools not installed', rec: false };
+  if (!LISTEN.dongle_present) return { txt: 'no RTL-SDR dongle', rec: false };
+  if (LISTEN.recording && String(LISTEN.norad) === String(norad)) {
+    const m = Math.floor(LISTEN.seconds / 60), s = String(LISTEN.seconds % 60).padStart(2, '0');
+    return { txt: `● REC ${m}:${s}`, rec: true };
+  }
+  if (LISTEN.recording) { const s = ROSTER.find(x => String(x.norad) === String(LISTEN.norad));
+    return { txt: `busy — recording ${s ? s.name : 'another'}`, rec: false }; }
+  if (LISTEN.busy) return { txt: `dongle: ${LISTEN.holder || 'in use'}`, rec: false };
+  return { txt: 'dongle: free', rec: false };
+}
+// Set every rendered downlink button + status line from the latest LISTEN state.
+function updateListenUI() {
+  document.querySelectorAll('.dlbtn[data-norad]').forEach(btn => {
+    const norad = +btn.dataset.norad, freq = parseFloat(btn.dataset.freq);
+    const supported = btn.dataset.supported === '1';
+    const dl = (ROSTER.find(s => s.norad === norad) || { downlinks: [] }).downlinks
+      .find(d => Math.abs(d.freq_mhz - freq) < 1e-6);
+    btn.classList.remove('free', 'rec', 'busy', 'unsupported');
+    if (!supported) { btn.classList.add('unsupported'); btn.disabled = true;
+      btn.title = dl ? dl.blurb : 'not supported'; return; }
+    if (_recThis(norad, freq)) { btn.classList.add('rec'); btn.disabled = false;
+      btn.title = 'recording — click to stop'; }
+    else if (LISTEN.recording || LISTEN.busy || !LISTEN.dongle_present || (LISTEN.missing_deps || []).length) {
+      btn.classList.add('busy'); btn.disabled = true; btn.title = _busyReason(); }
+    else { btn.classList.add('free'); btn.disabled = false;
+      btn.title = `record ${dl ? dl.mode : ''} ${freq} MHz`; }
+  });
+  document.querySelectorAll('.dl-status[data-norad]').forEach(el => {
+    const st = _dongleStatus(+el.dataset.norad);
+    el.textContent = st.txt; el.classList.toggle('rec', st.rec);
+  });
+}
+function onDownlinkClick(norad, freqMhz) {
+  if (_recThis(norad, freqMhz)) stopListen(); else startListen(norad, freqMhz);
+}
 async function pollListen() {
+  const err = LISTEN._err;   // preserve a just-set error across the refresh
   try { LISTEN = await (await fetch('/api/satellites/listen/status')).json(); }
   catch (e) { LISTEN = { recording: false }; }
+  if (err && _listenErrNorad != null) LISTEN._err = err;
   const el = document.getElementById('listen-status');
-  if (!el) return;
-  if (LISTEN.recording) {
-    el.classList.add('on');
-    const sat = ROSTER.find(s => String(s.norad) === String(LISTEN.norad));
-    const m = Math.floor(LISTEN.seconds / 60), s = String(LISTEN.seconds % 60).padStart(2, '0');
-    document.getElementById('listen-text').textContent = `REC ${sat ? sat.name : LISTEN.norad} ${m}:${s}`;
-  } else { el.classList.remove('on'); }
+  if (el) {
+    if (LISTEN.recording) {
+      el.classList.add('on');
+      const sat = ROSTER.find(s => String(s.norad) === String(LISTEN.norad));
+      const m = Math.floor(LISTEN.seconds / 60), s = String(LISTEN.seconds % 60).padStart(2, '0');
+      document.getElementById('listen-text').textContent = `REC ${sat ? sat.name : LISTEN.norad} ${m}:${s}`;
+    } else { el.classList.remove('on'); }
+  }
+  updateListenUI();
 }
-async function startListen(norad) {
-  _listenMsg = '';
+async function startListen(norad, freqMhz) {
+  _listenErrNorad = null;
+  const body = { norad };
+  if (freqMhz != null) body.freq_mhz = freqMhz;
   try {
     const r = await fetch('/api/satellites/listen', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ norad }) });
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json();
-    if (!r.ok) _listenMsg = d.error || 'listen failed';
-  } catch (e) { _listenMsg = 'listen request failed'; }
-  await pollListen(); refreshPopup();
+    if (!r.ok) { _listenErrNorad = norad; LISTEN._err = d.error || 'listen failed'; }
+  } catch (e) { _listenErrNorad = norad; LISTEN._err = 'listen request failed'; }
+  await pollListen(); updateListenUI();
 }
 async function stopListen() {
   try { await fetch('/api/satellites/listen/stop', { method: 'POST' }); } catch (e) { /* ignore */ }
-  _listenMsg = '';
-  await pollListen(); refreshPopup();
+  _listenErrNorad = null;
+  await pollListen(); updateListenUI();
 }
 
 boot();
