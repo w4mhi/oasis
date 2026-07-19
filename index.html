@@ -3052,11 +3052,35 @@ async function fetchAPRS() {
     title.textContent = live ? 'TRAFFIC LIVE' : 'TRAFFIC OFFLINE';
     title.className = 'aprs-section-title ' + (live ? 'live' : 'offline');
   };
+
+  // ADS-B aircraft fold into this same table and MUST appear even when the APRS
+  // Stats API is offline (fresh install: dump1090 up, APRS not running yet).
+  // Fetch ADS-B FIRST, independent of the APRS result, so the error/offline
+  // paths below can still render an aircraft-only table instead of a bare error.
+  try {
+    const ar = await fetch('/api/adsb/aircraft', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    if (ar.ok) {
+      const aj = await ar.json();
+      _adsbAircraft = aj.aircraft || [];
+      _adsbNow = (typeof aj.now === 'number') ? aj.now : (Date.now() / 1000);
+    } else { _adsbAircraft = []; }
+  } catch (_) { _adsbAircraft = []; }
+  await pollAdsbRecent(false);
+  const haveAircraft = _adsbAircraft.length || _adsbRecent.length;
+  const renderAircraftOnly = () => {
+    _allAprsStations = [];
+    document.getElementById('aprs-count').textContent = '—';
+    refreshTypeFilter(); refreshGridFilter();
+    setTitle(true);          // aircraft are live traffic even when APRS is down
+    applyAprsFilter();
+  };
+
   try {
     const r = await fetch('/api/aprs/stations', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     if (!d.ok) {
+      if (haveAircraft) { renderAircraftOnly(); return; }   // APRS down, but aircraft are live
       const msg = d.error || 'API error';
       const isNoDb = msg.toLowerCase().includes('database not found');
       tbody.innerHTML = `<tr><td colspan="10" style="color:${isNoDb ? 'var(--text-dim)' : 'var(--red)'}">${
@@ -3074,24 +3098,9 @@ async function fetchAPRS() {
 
     document.getElementById('aprs-count').textContent = d.count ?? d.stations.length;
 
-    // ADS-B aircraft fold into the same station list (gated: silent when the
-    // ADS-B service is off / API returns non-200). Fetched before the APRS-empty
-    // check so aircraft still show when APRS is live but has heard no stations.
-    try {
-      const ar = await fetch('/api/adsb/aircraft', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
-      if (ar.ok) {
-        const aj = await ar.json();
-        _adsbAircraft = aj.aircraft || [];
-        _adsbNow = (typeof aj.now === 'number') ? aj.now : (Date.now() / 1000);
-      } else { _adsbAircraft = []; }
-    } catch (_) { _adsbAircraft = []; }
-
-    // History feed — out-of-range aircraft stay in the table, aged like APRS
-    // stations. A DB scan, so throttled to ≤ once/60 s (the APRS cycle is 15 s).
-    // Window follows the Age filter: 24 h by default, full history only on ALL.
-    await pollAdsbRecent(false);
-
-    if (!d.stations.length && !_adsbAircraft.length && !_adsbRecent.length) {
+    // ADS-B was already fetched up-front (so it survives an APRS outage); it
+    // folds into the same table via applyAprsFilter → _adsbListRows().
+    if (!d.stations.length && !haveAircraft) {
       tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text-dim)">No stations yet — GrayWolf needs a radio + TNC/audio input to receive APRS packets.</td></tr>';
       const lastElIdle = document.getElementById('aprs-last');
       lastElIdle.textContent = '—';
@@ -3121,6 +3130,7 @@ async function fetchAPRS() {
 
     applyAprsFilter();
   } catch (e) {
+    if (haveAircraft) { renderAircraftOnly(); return; }   // APRS unreachable, but aircraft are live
     setTitle(false);
     if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="color:var(--text-dim)">APRS feed offline — no packets to show. &#9658; Start APRS Stats API to populate the live station table.</td></tr>`;
   }
