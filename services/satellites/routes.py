@@ -39,8 +39,19 @@ def satellites_static(filename="satellites.html"):
 @bp.route("/api/satellites")
 def api_satellites():
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
+    # Attach each roster entry's TLE lines (matched by NORAD id) so the client
+    # can propagate live look-angles itself (satellite.js) for the workability
+    # pill — no per-satellite server round-trip. None when not in the cache.
+    by_norad = tle.index_by_norad(tle.load_cache(config_paths.tle_cache_dir(SUITE_ROOT)))
+    sats = []
+    for s in data["satellites"]:
+        entry = by_norad.get(s["norad"])
+        s = dict(s)
+        s["l1"] = entry[1] if entry else None
+        s["l2"] = entry[2] if entry else None
+        sats.append(s)
     return jsonify({
-        "satellites": data["satellites"],
+        "satellites": sats,
         "tle_age_days": tle.cache_age_days(config_paths.tle_cache_dir(SUITE_ROOT)),
         "station": _station(),
     })

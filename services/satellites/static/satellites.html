@@ -98,17 +98,33 @@ html, body { height: 100%; margin: 0; }
 #roster-card.collapsed #roster { display: none; }
 #roster { overflow-y: auto; padding: .5rem; display: flex; flex-direction: column; gap: .45rem; }
 
-.sat-row { border: 1px solid var(--border); border-left-width: 4px; border-radius: 6px;
+.sat-row { position: relative; border: 1px solid var(--border); border-left-width: 4px; border-radius: 6px;
   background: var(--panel-2); padding: .5rem .6rem; }
 .sat-row.on { border-color: var(--accent-dim); }
 .sat-row label { display: flex; align-items: center; gap: .5rem; cursor: pointer; font-size: var(--fs-base); }
 .sat-row label input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+/* Workability meter — signal-strength bars. More bars + more vivid red as the
+   satellite climbs; all bars dim when below the horizon. */
+.sat-bottom { display: flex; align-items: flex-end; justify-content: space-between; margin-top: .25rem; }
+.sat-signal { display: flex; align-items: flex-end; gap: .4rem; }
+.sat-meter { display: inline-flex; align-items: flex-end; gap: 2px; flex-shrink: 0; height: 14px; }
+.sat-meter .seg { width: 4px; border-radius: 1px; background: var(--border);
+  transition: background .5s ease, box-shadow .5s ease; }
+.sat-meter .seg:nth-child(1) { height: 5px; }
+.sat-meter .seg:nth-child(2) { height: 7px; }
+.sat-meter .seg:nth-child(3) { height: 9px; }
+.sat-meter .seg:nth-child(4) { height: 11px; }
+.sat-meter .seg:nth-child(5) { height: 14px; }
+.sat-row .sat-elev { font-size: var(--fs-base); font-weight: 700; color: var(--text);
+  margin-left: auto; white-space: nowrap; }
 .sat-row .nm { font-weight: 700; }
-.sat-row .pass-hint { font-size: var(--fs-micro); color: var(--text-dim); margin-left: auto; white-space: nowrap; }
-.sat-row .chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .35rem; }
+.sat-row .pass-hint { display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+  font-size: var(--fs-small); color: var(--text); margin-left: auto; white-space: nowrap; line-height: 1.25; }
+.sat-row .pass-hint .ph-when { color: var(--amber); font-weight: 700; }
+.sat-row .chips { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-top: .35rem; }
 .chip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim);
   border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
-.sat-row .dl { margin-top: .25rem; font-size: var(--fs-small); color: var(--amber); }
+.sat-row .dl { font-size: var(--fs-small); color: var(--green); }
 .sat-row .oov { margin-top: .3rem; font-size: var(--fs-micro); color: #d29922; font-weight: 700; }
 
 /* Popup — reuse the APRS/ADS-B popup look. */
@@ -204,6 +220,7 @@ async function boot() {
   pollListen(); setInterval(pollListen, 3000);
   PASSES = (await (await fetch(`/api/satellites/passes?window=${WINDOW_H}`)).json()).passes || {};
   renderRoster();
+  updatePills(); setInterval(updatePills, 2000);   // live workability colour
 }
 
 function nextPassOf(norad) { return (PASSES[norad] || [])[0] || null; }
@@ -213,19 +230,95 @@ function renderRoster() {
   document.getElementById('roster').innerHTML = ROSTER.map(s => {
     const p = nextPassOf(s.norad);
     const color = PLOTTED[s.norad] ? PLOTTED[s.norad].color : 'transparent';
-    const hint = p ? `next ${fmt(p.rise)} · ${p.max_el.toFixed(0)}°` : 'no pass 24h';
     return `<div class="sat-row ${PLOTTED[s.norad] ? 'on' : ''}" style="border-left-color:${color}">
       <label><input type="checkbox" ${PLOTTED[s.norad] ? 'checked' : ''}
           ${p ? '' : 'disabled'} onchange="onToggle(${s.norad}, this.checked)">
-        <span class="nm">${s.name}</span><span class="pass-hint">${hint}</span></label>
-      <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}</div>
-      <div class="dl">${(s.downlinks[0] || {}).freq_mhz || ''} MHz</div>
+        <span class="nm">${s.name}</span><span class="pass-hint" data-norad="${s.norad}">${passHint(p)}</span></label>
+      <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}<span class="sat-elev" data-norad="${s.norad}"></span></div>
+      <div class="sat-bottom">
+        <span class="dl">${(s.downlinks[0] || {}).freq_mhz || ''} MHz</span>
+        <span class="sat-meter" data-norad="${s.norad}">${'<span class="seg"></span>'.repeat(5)}</span></div>
       ${PLOTTED[s.norad] && PLOTTED[s.norad].outOfView ? '<div class="oov">⚠ Track out of visible area — zoom out</div>' : ''}
     </div>`;
   }).join('');
+  updatePills();   // paint the meters immediately (avoid a dim flash until the tick)
 }
 
 function fmt(iso) { return new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+
+/* ── Workability pill ──────────────────────────────────────────────────────
+   Pure geometry (satellite.js), no SDR. Below the horizon the pill is grey —
+   nothing to work, no false expectation. Above the horizon it reddens and
+   brightens with elevation: soft pink just peeking over the horizon, vivid red
+   and glowing near the zenith (its "hit". PILL_CAP_DEG is where it reads fully
+   hot — tune to taste. */
+const PILL_CAP_DEG = 50;
+function currentElev(l1, l2) {
+  if (!l1 || !l2 || !STATION || STATION.lat == null || typeof satellite === 'undefined') return null;
+  try {
+    const now = new Date();
+    const pv = satellite.propagate(satellite.twoline2satrec(l1, l2), now);
+    if (!pv || !pv.position) return null;
+    const ecf = satellite.eciToEcf(pv.position, satellite.gstime(now));
+    const obs = { longitude: STATION.lon * Math.PI / 180,
+                  latitude: STATION.lat * Math.PI / 180, height: 0 };
+    return satellite.ecfToLookAngles(obs, ecf).elevation * 180 / Math.PI;   // deg, <0 below horizon
+  } catch (e) { return null; }
+}
+function pillColor(elev) {
+  if (elev == null || elev < 0)
+    return { css: 'var(--border)', glow: 'none', title: 'below horizon' };
+  const t = Math.min(elev / PILL_CAP_DEG, 1);
+  const sat = (45 + 50 * t).toFixed(0);       // 45% pale -> 95% vivid
+  const light = (64 - 16 * t).toFixed(0);     // 64% soft pink -> 48% vivid red
+  const css = `hsl(0, ${sat}%, ${light}%)`;
+  return { css, glow: `0 0 ${(3 + 7 * t).toFixed(0)}px hsla(0, ${sat}%, ${light}%, .85)`,
+           title: `above horizon · ${elev.toFixed(0)}°` };
+}
+// How many signal bars to light for a given elevation. Non-linear thresholds
+// (deg) so low passes still register and the useful range spreads across bars.
+const METER_THRESH = [2, 10, 22, 38, 58];
+function meterLevel(elev) {
+  if (elev == null || elev < 0) return 0;
+  return METER_THRESH.filter(t => elev >= t).length;
+}
+// Fixed spectrum across the 5 bars — red (low, near the horizon) to blue (high,
+// overhead). Astronomical sense: blue = highest / coming right at you. The
+// COUNT of lit bars tracks elevation; each bar keeps its own colour.
+const BAR_COLORS = ['hsl(0, 85%, 57%)', 'hsl(322, 75%, 60%)', 'hsl(285, 65%, 62%)',
+                    'hsl(258, 72%, 64%)', 'hsl(235, 85%, 62%)'];
+// Roster hint: rise time + pass PEAK elevation + a live countdown, so the
+// number can't be mistaken for the current elevation (that's the ↑nn° text).
+function passHint(p) {
+  if (!p) return 'no pass 24h';
+  const rise = new Date(p.rise), set = new Date(p.set), now = new Date();
+  let when = '';
+  if (now < rise) { const m = Math.round((rise - now) / 60000);
+    when = m >= 60 ? `in ${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m` : `in ${m}m`; }
+  else if (now < set) { when = `LOS ${Math.max(1, Math.round((set - now) / 60000))}m`; }
+  return `<span class="ph-main">${fmt(p.rise)} · max ${p.max_el.toFixed(0)}°</span>`
+       + (when ? `<span class="ph-when">${when}</span>` : '');
+}
+function updatePills() {
+  ROSTER.forEach(s => {
+    const elev = currentElev(s.l1, s.l2);
+    const up = elev != null && elev >= 0;
+    const pc = pillColor(elev), lvl = meterLevel(elev);
+    const meter = document.querySelector(`.sat-meter[data-norad="${s.norad}"]`);
+    if (meter) {
+      meter.title = pc.title;
+      [...meter.children].forEach((seg, i) => {
+        const on = i < lvl;
+        seg.style.background = on ? BAR_COLORS[i] : 'var(--border)';
+        seg.style.boxShadow = (on && i === lvl - 1) ? `0 0 6px ${BAR_COLORS[i]}` : 'none';   // glow the peak bar
+      });
+    }
+    const et = document.querySelector(`.sat-elev[data-norad="${s.norad}"]`);
+    if (et) et.textContent = up ? `↑${elev.toFixed(0)}°` : '';
+    const ph = document.querySelector(`.pass-hint[data-norad="${s.norad}"]`);
+    if (ph) ph.innerHTML = passHint(nextPassOf(s.norad));
+  });
+}
 
 /* ── Plot / unplot a satellite's next pass ─────────────────────────────── */
 async function onToggle(norad, checked) {

@@ -41,6 +41,15 @@ class RoutesTest(unittest.TestCase):
         self.assertIn("satellites", data)
         self.assertIn("tle_age_days", data)
         self.assertIn("station", data)
+        # Each roster entry carries its TLE lines so the client can propagate
+        # live look-angles for the workability pill (l1/l2 present, None if the
+        # satellite is absent from the cache). ISS is in the fixture.
+        for s in data["satellites"]:
+            self.assertIn("l1", s)
+            self.assertIn("l2", s)
+        iss = [s for s in data["satellites"] if s["norad"] == 25544][0]
+        self.assertTrue(iss["l1"].startswith("1 25544"))
+        self.assertTrue(iss["l2"].startswith("2 25544"))
 
     def test_passes_endpoint(self):
         r = self.client.get("/api/satellites/passes?window=24")
