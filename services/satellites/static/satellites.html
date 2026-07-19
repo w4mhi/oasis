@@ -50,6 +50,7 @@ html, body { height: 100%; margin: 0; }
 .zoom-readout .cr-lbl { color: var(--text-dim); }
 .zoom-readout #crZoom { color: var(--amber); font-weight: 600; }
 /* Miles scale bar — match the APRS map styling. */
+.sat-home-node { line-height: 0; filter: drop-shadow(0 0 4px rgba(255,210,87,.7)); pointer-events: none; }
 .maplibregl-ctrl-scale { background: rgba(13,17,23,.72) !important; border: 2px solid var(--border) !important;
   border-top: none !important; color: var(--amber) !important; font-family: var(--mono) !important;
   font-size: var(--fs-small) !important; line-height: 1.4; padding: 0 5px 1px; }
@@ -224,6 +225,17 @@ let ROSTER = [], STATION = null, PASSES = {};
 const PLOTTED = {};
 const PALETTE = ['#00d98b', '#58a6ff', '#ffb454', '#ff7b72', '#bc8cff', '#39d0d8', '#f778ba', '#7ee787'];
 const _freeColors = [...PALETTE];
+// Shared "home QTH" marker — gold house + antenna + signal arcs, identical to the
+// APRS map. Bottom-anchored: the house base sits exactly on the station coordinate.
+const HOME_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-16 -30 32 39" width="34" height="41" aria-hidden="true">
+  <path d="M-12 -3 L0 -14 L12 -3 Z" fill="#ffb454" stroke="#0d1117" stroke-width="1.4" stroke-linejoin="round"/>
+  <rect x="-9" y="-3" width="18" height="12" rx="1.5" fill="#ffd257" stroke="#0d1117" stroke-width="1.4"/>
+  <rect x="-2.2" y="2" width="4.4" height="7" fill="#0d1117"/>
+  <line x1="6" y1="-9" x2="6" y2="-24" stroke="#ffd257" stroke-width="1.8"/>
+  <circle cx="6" cy="-25" r="2" fill="#ffd257"/>
+  <path d="M10 -25 A6 6 0 0 1 10 -18" fill="none" stroke="#ffd257" stroke-width="1.5"/>
+  <path d="M13 -27 A10 10 0 0 1 13 -15" fill="none" stroke="#ffd257" stroke-width="1.3" opacity="0.7"/>
+</svg>`;
 
 async function boot() {
   const meta = await (await fetch('/api/satellites')).json();
@@ -393,9 +405,14 @@ function initSatMap() {
     _map.addLayer({ id: 'sat-past', type: 'line', source: 'sat-tracks',
       filter: ['==', ['get', 'seg'], 'past'], layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: { 'line-color': ['get', 'color'], 'line-width': 3.5, 'line-opacity': .95 } });
-    _map.addSource('sat-home', { type: 'geojson', data: homeFC() });
-    _map.addLayer({ id: 'sat-home', type: 'circle', source: 'sat-home',
-      paint: { 'circle-radius': 5, 'circle-color': '#ffb454', 'circle-stroke-width': 2, 'circle-stroke-color': '#0d1117' } });
+    if (STATION && STATION.lon != null) {
+      const homeEl = document.createElement('div');
+      homeEl.className = 'sat-home-node';
+      homeEl.innerHTML = HOME_SVG;
+      homeEl.title = 'this station';
+      new maplibregl.Marker({ element: homeEl, anchor: 'bottom' })
+        .setLngLat([STATION.lon, STATION.lat]).addTo(_map);
+    }
     _map.addSource('sat-now', { type: 'geojson', data: fc([]) });
     _map.addLayer({ id: 'sat-now', type: 'circle', source: 'sat-now',
       paint: { 'circle-radius': 6, 'circle-color': ['get', 'color'], 'circle-stroke-width': 2.5, 'circle-stroke-color': '#fff' } });
@@ -427,10 +444,6 @@ function initSatMap() {
   setInterval(liveTick, 1000);
 }
 function fc(features) { return { type: 'FeatureCollection', features }; }
-function homeFC() {
-  if (!STATION || STATION.lon == null) return fc([]);
-  return { type: 'Feature', geometry: { type: 'Point', coordinates: [STATION.lon, STATION.lat] } };
-}
 
 // Rebuild every plotted satellite's track (past-solid / future-dashed, split at
 // its own "now") + live markers, and push to the map sources.
