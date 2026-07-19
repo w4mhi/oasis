@@ -9,28 +9,60 @@
 <style>
 html, body { height: 100%; margin: 0; }
 /* Full-screen map, APRS-style. */
-/* Map sits below the fixed header, same as the APRS map. */
-#satmap { position: fixed; top: 37px; left: 0; right: 0; bottom: 0; background: #0d1117; }
+/* Map sits below the fixed 2-row header, same as the APRS map. */
+#satmap { position: fixed; top: 73px; left: 0; right: 0; bottom: 0; background: #0d1117; }
 
-/* Header — same shape as the APRS map's top bar. */
+/* Header — same shape as the APRS map's top bar (two rows). */
 #topbar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 100;
   background: var(--panel); border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column;
 }
 .topbar-row { display: flex; align-items: center; gap: .7rem; padding: 0 .9rem; height: 36px; }
+.topbar-row + .topbar-row { border-top: 1px solid var(--border); }
 #topbar h1 { font-size: var(--fs-base); letter-spacing: .08em; color: var(--accent);
   text-transform: uppercase; margin: 0; white-space: nowrap; cursor: pointer; }
 .track-sep { color: var(--border); font-size: var(--fs-small); }
 .win-lbl { font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; }
-.home-link { margin-left: auto; color: #58a6ff; text-decoration: none; font-size: .9rem;
+.home-link { color: #58a6ff; text-decoration: none; font-size: .9rem;
   font-weight: bold; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
 .home-link:hover { color: #00d98b; }
+/* CPU/temp readout (row 1, near HOME) — same colour bands as APRS. */
+#crCpu { font-size: var(--fs-small); font-weight: 600; color: var(--text-dim); }
+#crCpu.cpu-ok { color: #3fb950; } #crCpu.cpu-warn { color: var(--amber); } #crCpu.cpu-hot { color: var(--red); }
+/* Cursor lat/lon readout + clock (row 2, like APRS). */
+#coordReadout { display: flex; align-items: center; gap: .5rem; font-size: var(--fs-small); }
+#coordReadout .cr-lbl { color: var(--text-dim); }
+#coordReadout .cr-val { display: inline-block; text-align: right; color: #7ecfff; font-weight: 600; }
+#coordReadout #crLat { width: 8ch; } #coordReadout #crLon { width: 9ch; }
+#clock { font-size: var(--fs-small); color: var(--amber); font-weight: 600; white-space: nowrap; }
 /* Zoom-level readout control (bottom-left, matching APRS). */
 .zoom-readout { background: rgba(13,17,23,.72); border: 1px solid var(--border); border-radius: 4px;
   font-family: var(--mono); font-size: var(--fs-small); color: var(--text-dim);
   padding: 2px 7px; display: flex; align-items: center; gap: 6px; white-space: nowrap; pointer-events: none; }
 .zoom-readout .cr-lbl { color: var(--text-dim); }
 .zoom-readout #crZoom { color: var(--amber); font-weight: 600; }
+/* Miles scale bar — match the APRS map styling. */
+.maplibregl-ctrl-scale { background: rgba(13,17,23,.72) !important; border: 2px solid var(--border) !important;
+  border-top: none !important; color: var(--amber) !important; font-family: var(--mono) !important;
+  font-size: var(--fs-small) !important; line-height: 1.4; padding: 0 5px 1px; }
+/* Hamburger (top-left) → world-overview card. */
+#burger { position: fixed; top: 83px; left: 10px; z-index: 200; width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-size: 18px;
+  line-height: 1; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+#burger:hover { background: var(--panel-2); border-color: var(--accent-dim); }
+#burger.on { color: var(--accent); border-color: var(--accent-dim); }
+/* World-overview card — equirectangular whole-track view, toggled by the burger. */
+#world-card { position: absolute; top: 83px; left: 54px; z-index: 6; display: none;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 6px 4px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+#world-card.show { display: block; }
+#world-card .wc-title { font-size: var(--fs-small); color: var(--accent); text-transform: uppercase;
+  letter-spacing: .06em; padding: 0 2px 4px; }
+#world-svg { display: block; width: 560px; max-width: 62vw; height: auto; background: #0d1117; border-radius: 4px; }
+.grat { stroke: #243b53; stroke-width: .5; }
+.coast { stroke: #3a4d63; stroke-width: .7; fill: none; }
 .badge { display: inline-block; font-size: var(--fs-small); font-weight: 700; letter-spacing: .05em;
   padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); }
 .badge.ok   { color: #3fb950; border-color: #3fb950; }
@@ -39,8 +71,8 @@ html, body { height: 100%; margin: 0; }
 /* Floating Roster card (right side, like the APRS recent-stations panel) —
    wider than APRS since it carries more info, same font size. */
 #roster-card {
-  position: absolute; top: 45px; right: .75rem; z-index: 5;
-  width: 340px; max-width: 46vw; max-height: calc(100vh - 60px);
+  position: absolute; top: 81px; right: .75rem; z-index: 5;
+  width: 340px; max-width: 46vw; max-height: calc(100vh - 95px);
   display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
   box-shadow: 0 6px 24px rgba(0,0,0,.45);
@@ -98,13 +130,30 @@ html, body { height: 100%; margin: 0; }
 
 <div id="topbar">
   <div class="topbar-row">
-    <h1 onclick="location.reload()" title="Reload">🛰 Satellites</h1>
+    <h1 onclick="location.reload()" title="Reload">Satellites</h1>
     <span class="track-sep">|</span>
     <span id="tle-age" class="badge">loading…</span>
     <span class="track-sep">|</span>
     <span class="win-lbl">24 h window</span>
+    <span style="flex:1"></span>
+    <span id="crCpu" title="Pi CPU load · SoC temperature">—</span>
+    <span class="track-sep">|</span>
     <a href="/" class="home-link">⌂ HOME</a>
   </div>
+  <div class="topbar-row">
+    <div id="coordReadout">
+      <span class="cr-lbl">Lat</span><span id="crLat" class="cr-val">—</span>
+      <span class="cr-lbl">Lon</span><span id="crLon" class="cr-val">—</span>
+    </div>
+    <span class="track-sep">|</span>
+    <span id="clock">—</span>
+  </div>
+</div>
+
+<button id="burger" onclick="toggleWorld()" title="World overview — whole ground track" aria-label="World overview">☰</button>
+<div id="world-card">
+  <div class="wc-title">World Overview — Ground Tracks</div>
+  <svg id="world-svg" viewBox="0 0 720 360"></svg>
 </div>
 
 <div id="roster-card">
@@ -142,6 +191,7 @@ async function boot() {
   badge.textContent = age == null ? 'no TLE data — run sync' : 'TLE ' + age.toFixed(1) + ' d old';
   badge.className = 'badge ' + (age != null && age < 5 ? 'ok' : 'warn');
   initSatMap();
+  startClock(); updateCpu(); setInterval(updateCpu, 8000);
   PASSES = (await (await fetch(`/api/satellites/passes?window=${WINDOW_H}`)).json()).passes || {};
   renderRoster();
 }
@@ -211,6 +261,8 @@ function initSatMap() {
   _map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 120 }), 'bottom-left');
   const _showZoom = () => { const z = document.getElementById('crZoom'); if (z) z.textContent = _map.getZoom().toFixed(1); };
   _map.on('zoom', _showZoom);
+  _map.on('mousemove', e => setCoord(e.lngLat));   // cursor lat/lon readout (row 2)
+  _map.on('mouseout', () => setCoord(null));
   const setupLayers = () => {
     if (_mapReady) return;
     _map.addSource('sat-tracks', { type: 'geojson', data: fc([]) });
@@ -285,6 +337,7 @@ function redraw() {
   }
   _map.getSource('sat-tracks').setData(fc(trackFeats));
   _map.getSource('sat-now').setData(fc(nowFeats));
+  renderWorldIfOpen();   // keep the world-overview card in sync when it's open
 }
 
 // First track index at/after now (0 = all future/dashed, last = all past/solid).
@@ -367,6 +420,93 @@ function skyPlotSVG(track, color) {
     return `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="3" class="poi-dot" fill="${color}"/>`; };
   out += dot(track[0]) + dot(peak) + dot(track[track.length-1]);
   return out + '</svg>';
+}
+
+/* ── Header chrome: CPU/temp, clock, cursor lat/lon ─────────────────────── */
+function setCoord(lngLat) {
+  const la = document.getElementById('crLat'), lo = document.getElementById('crLon');
+  if (!la || !lo) return;
+  if (!lngLat) { la.textContent = '—'; lo.textContent = '—'; return; }
+  la.textContent = lngLat.lat.toFixed(4); lo.textContent = lngLat.lng.toFixed(4);
+}
+// Pi CPU load + SoC temp, polled from the same endpoint the APRS map uses.
+// Degrades to "—" when unavailable (e.g. the aprs service isn't running).
+async function updateCpu() {
+  const el = document.getElementById('crCpu');
+  if (!el) return;
+  try {
+    const d = await (await fetch(location.origin + '/api/aprs/system', { cache: 'no-store' })).json();
+    if (!d.ok || typeof d.cpu_pct !== 'number') throw 0;
+    const pct = Math.round(d.cpu_pct);
+    let txt = pct + '%';
+    if (typeof d.cpu_temp_c === 'number') txt += ' · ' + Math.round(d.cpu_temp_c) + '°C';
+    el.textContent = txt;
+    el.className = pct < 60 ? 'cpu-ok' : pct < 85 ? 'cpu-warn' : 'cpu-hot';
+  } catch (_) { el.textContent = '—'; el.className = ''; }
+}
+function startClock() {
+  const tick = () => { const el = document.getElementById('clock');
+    if (el) el.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
+  tick(); setInterval(tick, 1000);
+}
+
+/* ── World-overview card — equirectangular whole-track SVG, toggled by ☰ ─── */
+let COASTLINE = null;
+async function loadCoastline() {
+  if (COASTLINE) return COASTLINE;
+  try {
+    const j = await (await fetch('/server/satellites/coastline.json')).json();
+    COASTLINE = (j.features || []).filter(f => f.geometry && f.geometry.type === 'LineString')
+      .map(f => f.geometry.coordinates);   // GeoJSON coords are [lon, lat]
+  } catch (e) { COASTLINE = []; }
+  return COASTLINE;
+}
+function drawGraticule(W, H) {
+  let out = '';
+  for (let lon = -180; lon <= 180; lon += 30) { const a = satgeo.project(90, lon, W, H), b = satgeo.project(-90, lon, W, H);
+    out += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="grat"/>`; }
+  for (let lat = -90; lat <= 90; lat += 30) { const a = satgeo.project(lat, -180, W, H), b = satgeo.project(lat, 180, W, H);
+    out += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="grat"/>`; }
+  return out;
+}
+function drawCoastline(W, H) {
+  if (!COASTLINE || !COASTLINE.length) return '';
+  return COASTLINE.map(coords => {
+    const d = coords.map((c, i) => { const q = satgeo.project(c[1], c[0], W, H); return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1); }).join(' ');
+    return `<path d="${d}" class="coast"/>`;
+  }).join('');
+}
+function renderWorld() {
+  const svg = document.getElementById('world-svg');
+  if (!svg) return;
+  const W = 720, H = 360;
+  let out = drawGraticule(W, H) + drawCoastline(W, H);
+  if (STATION && STATION.lon != null) { const st = satgeo.project(STATION.lat, STATION.lon, W, H);
+    out += `<circle cx="${st.x.toFixed(1)}" cy="${st.y.toFixed(1)}" r="4" fill="#ffb454" stroke="#0d1117"/>`; }
+  for (const norad in PLOTTED) {
+    const s = PLOTTED[norad];
+    if (!s.track.length) continue;
+    const { past, future } = satgeo.splitAtNow(s.track, nowIndex(s.track));
+    const draw = (pts, dash) => { for (const seg of satgeo.splitAntimeridian(pts)) { if (seg.length < 2) continue;
+      const d = seg.map((p, i) => { const q = satgeo.project(p.lat, p.lon, W, H); return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1); }).join(' ');
+      out += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${dash ? 1.5 : 2.5}"${dash ? ' stroke-dasharray="4 3" opacity="0.5"' : ''}/>`; } };
+    draw(past, false); draw(future, true);
+    const now = Date.now(), r = new Date(s.pass.rise).getTime(), se = new Date(s.pass.set).getTime();
+    if (now >= r && now <= se && s.l1 && s.l2) { const pos = livePos(s.l1, s.l2);
+      if (pos) { const q = satgeo.project(pos.lat, pos.lon, W, H);
+        out += `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="4" fill="#fff" stroke="${s.color}" stroke-width="2"/>`; } }
+  }
+  svg.innerHTML = out;
+}
+function renderWorldIfOpen() {
+  const card = document.getElementById('world-card');
+  if (card && card.classList.contains('show')) renderWorld();
+}
+async function toggleWorld() {
+  const card = document.getElementById('world-card');
+  const open = card.classList.toggle('show');
+  document.getElementById('burger').classList.toggle('on', open);
+  if (open) { await loadCoastline(); renderWorld(); }
 }
 
 boot();

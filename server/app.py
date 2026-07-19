@@ -109,7 +109,7 @@ def _api_json_error_handler(exc):
 #   • the graywolf-handbook (/static/graywolf-handbook/)
 # theme.js is idempotent — it leaves a page's own toggle button (e.g. the
 # dashboard's) alone and only adds the floating one when none exists.
-_THEME_SKIP_PREFIXES = ("/small-screen/", "/server/map/", "/static/graywolf-handbook/")
+_THEME_SKIP_PREFIXES = ("/small-screen/", "/server/map/", "/server/satellites/", "/static/graywolf-handbook/")
 _THEME_SNIPPET = '<script src="/common/js/theme.js"></script>'
 
 @app.before_request
