@@ -7,182 +7,95 @@
 <link rel="stylesheet" href="/map-assets/maplibre-gl.css">
 <link rel="stylesheet" href="/css/common.css">
 <style>
-/* ── Two-column layout: roster (left) / pass schedule (right) ──────── */
-.sat-cols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: .75rem;
-}
-@media (max-width: 760px) {
-  .sat-cols { grid-template-columns: 1fr; }
-}
+html, body { height: 100%; margin: 0; }
+/* Full-screen map, APRS-style. */
+#satmap { position: absolute; inset: 0; background: #0d1117; }
 
-.sec-cols {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: .75rem;
-  align-items: start;
+/* Top bar */
+#topbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+  display: flex; align-items: center; gap: 1rem;
+  padding: .5rem .9rem;
+  background: linear-gradient(180deg, rgba(13,17,23,.92), rgba(13,17,23,0));
+  pointer-events: none;
 }
-@media (max-width: 760px) {
-  .sec-cols { grid-template-columns: 1fr; }
-}
-
-/* ── TLE-age badge ───────────────────────────────────────────────── */
-.badge {
-  display: inline-block;
-  font-size: var(--fs-small);
-  font-weight: 700;
-  letter-spacing: .05em;
-  padding: 2px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-}
+#topbar > * { pointer-events: auto; }
+#topbar h1 { font-size: var(--fs-base); letter-spacing: .08em; color: var(--accent);
+  text-transform: uppercase; margin: 0; white-space: nowrap; }
+.home-link { color: #58a6ff; text-decoration: none; font-size: var(--fs-small); white-space: nowrap; }
+.home-link:hover { color: #00d98b; }
+.badge { display: inline-block; font-size: var(--fs-small); font-weight: 700; letter-spacing: .05em;
+  padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); }
 .badge.ok   { color: #3fb950; border-color: #3fb950; }
 .badge.warn { color: #d29922; border-color: #d29922; }
 
-/* ── Roster rows ─────────────────────────────────────────────────── */
-#roster { display: flex; flex-direction: column; gap: .5rem; }
-.sat-row {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel-2);
-  padding: .55rem .75rem;
+/* Floating Roster card (right side, like the APRS recent-stations panel) —
+   wider than APRS since it carries more info, same font size. */
+#roster-card {
+  position: absolute; top: 3rem; right: .75rem; z-index: 5;
+  width: 340px; max-width: 46vw; max-height: calc(100vh - 4rem);
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.45);
 }
-.sat-row label {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  cursor: pointer;
-  font-size: var(--fs-base);
+#roster-card > header {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .5rem .7rem; border-bottom: 1px solid var(--border); cursor: pointer;
 }
-.sat-row label input[type="checkbox"] {
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-.sat-row .chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .3rem;
-  margin-top: .4rem;
-}
-.chip {
-  font-size: var(--fs-micro);
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 1px 7px;
-}
-.sat-row .dl {
-  margin-top: .3rem;
-  font-size: var(--fs-small);
-  color: var(--amber);
-}
+#roster-card > header .title { color: var(--accent); font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; font-size: var(--fs-small); }
+#roster-card > header .count { color: var(--amber); font-size: var(--fs-small); margin-left: auto; }
+#roster-card.collapsed #roster { display: none; }
+#roster { overflow-y: auto; padding: .5rem; display: flex; flex-direction: column; gap: .45rem; }
 
-/* ── Pass schedule rows ──────────────────────────────────────────── */
-#schedule { display: flex; flex-direction: column; gap: .35rem; }
-.pass-row {
-  border-bottom: 1px solid var(--panel-2);
-  padding: .35rem 0;
-  font-size: var(--fs-base);
-  color: var(--text);
-  cursor: pointer;
-}
-.pass-row:last-child { border-bottom: none; }
-.pass-row b { color: var(--accent); margin-right: .5rem; }
-.pass-row:hover { background: var(--panel-2); }
-.pass-row.active { background: var(--panel-2); }
-.pass-row.active b { color: var(--amber); }
+.sat-row { border: 1px solid var(--border); border-left-width: 4px; border-radius: 6px;
+  background: var(--panel-2); padding: .5rem .6rem; }
+.sat-row.on { border-color: var(--accent-dim); }
+.sat-row label { display: flex; align-items: center; gap: .5rem; cursor: pointer; font-size: var(--fs-base); }
+.sat-row label input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+.sat-row .nm { font-weight: 700; }
+.sat-row .pass-hint { font-size: var(--fs-micro); color: var(--text-dim); margin-left: auto; white-space: nowrap; }
+.sat-row .chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .35rem; }
+.chip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
+.sat-row .dl { margin-top: .25rem; font-size: var(--fs-small); color: var(--amber); }
 
-.muted { color: var(--text-dim); font-size: var(--fs-base); font-style: italic; }
-
-/* ── Ground-track map (MapLibre GL — same basemap as the APRS map) ── */
-#satmap {
-  width: 100%;
-  height: 420px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  margin-top: .4rem;
-  background: #0d1117;
-}
-
-/* ── Polar sky-plot (az/el radar) ───────────────────────────────── */
-#polar {
-  display: block;
-  width: 220px;
-  height: 220px;
-  background: #0d1117;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  margin-top: .4rem;
-}
+/* Popup — reuse the APRS/ADS-B popup look. */
+.maplibregl-popup-content { background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-family: var(--mono); }
+.maplibregl-popup-tip { border-top-color: var(--panel) !important; }
+.pop-call { font-size: var(--fs-subtitle); font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.pop-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: 5px; }
+.pop-row { display: flex; gap: 6px; font-size: var(--fs-small); }
+.pop-lbl { color: var(--text-dim); min-width: 46px; }
+.pop-val { color: var(--text); }
+.pop-sec { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--border); }
+.pop-pass { font-size: var(--fs-small); padding: 2px 0; cursor: pointer; color: var(--text); }
+.pop-pass:hover { color: var(--accent); }
+.pop-pass.active { color: var(--amber); font-weight: 700; }
+.pop-polar { display: block; width: 150px; height: 150px; margin: 6px auto 0; }
 .ring     { fill: none; stroke: #243b53; stroke-width: .6; }
-.cmp      { fill: #7d8ea3; font: 10px monospace; text-anchor: middle; }
-.poi-dot  { fill: #58a6ff; stroke: #0d1117; stroke-width: 1; }
-.poi-peak { fill: #ffb454; }
-.poi      { fill: #c9d1d9; font: 9px monospace; text-anchor: middle; }
-/* Polar arc: flown = solid, upcoming = dim/dashed (same language as the map). */
-.trk-past   { stroke: #00d98b; stroke-width: 2.5; fill: none; }
-.trk-future { stroke: #00d98b; stroke-width: 2; fill: none; stroke-dasharray: 5 4; opacity: .45; }
-
-/* ── Pre-pass alert chips ───────────────────────────────────────────── */
-#alerts {
-  display: flex;
-  flex-direction: column;
-  gap: .35rem;
-  margin: .5rem 0;
-}
-.chip-alert {
-  display: inline-block;
-  align-self: flex-start;
-  font-size: var(--fs-base);
-  padding: .3rem .7rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent-dim);
-  background: var(--panel-2);
-  color: var(--accent);
-}
+.cmp      { fill: #7d8ea3; font: 9px monospace; text-anchor: middle; }
+.poi-dot  { stroke: #0d1117; stroke-width: 1; }
+.poi      { fill: #c9d1d9; font: 8px monospace; text-anchor: middle; }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <header>
-    <a class="home-link" href="/">⌂ HOME</a>
-    <h1>Satellites</h1>
-    <p>Roster, label chips, downlinks &amp; upcoming passes &middot; <span id="tle-age" class="badge">loading…</span>
-      <button class="sbtn" id="enable-alerts" type="button" onclick="Notification.requestPermission()">Enable alerts</button></p>
+<div id="satmap"></div>
+
+<div id="topbar">
+  <a class="home-link" href="/">⌂ HOME</a>
+  <h1>🛰 Satellites</h1>
+  <span id="tle-age" class="badge">loading…</span>
+</div>
+
+<div id="roster-card">
+  <header onclick="this.parentElement.classList.toggle('collapsed')">
+    <span class="title">Roster</span>
+    <span class="count" id="roster-count">—</span>
   </header>
-
-  <div id="alerts"></div>
-
-  <div class="sat-cols">
-    <div class="sec">
-      <span class="sec-lbl">Roster</span>
-      <div id="roster"><p class="muted">Loading roster…</p></div>
-    </div>
-
-    <div class="sec">
-      <span class="sec-lbl">Upcoming Passes (next 48 h)</span>
-      <div id="schedule"><p class="muted">Loading passes…</p></div>
-    </div>
-  </div>
-
-  <div class="sec-cols">
-    <div class="sec">
-      <span class="sec-lbl">Ground Track</span>
-      <p id="track-info" class="muted">Click a pass above to plot its ground track.</p>
-      <div id="satmap"></div>
-    </div>
-
-    <div class="sec">
-      <span class="sec-lbl">Sky Plot (Az/El)</span>
-      <svg id="polar" viewBox="0 0 220 220"></svg>
-    </div>
-  </div>
-
+  <div id="roster"><p style="color:var(--text-dim);padding:.4rem">Loading roster…</p></div>
 </div>
 
 <script src="/map-assets/maplibre-gl.js"></script>
@@ -191,271 +104,219 @@
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
 <script>
-let ROSTER = [], PASSES = {}, STATION = null;
+/* ─────────────────────────────────────────────────────────────────────────
+   Roster-driven satellite map. Check a satellite → plot its NEXT pass ground
+   track (rise→set arc near the station), coloured per satellite; multiple
+   checked = multiple colours. Click a satellite on the map → an APRS-style
+   popup with its labels, downlink, next passes, and az/el sky-plot.
+   ───────────────────────────────────────────────────────────────────────── */
+const WINDOW_H = 24;                       // default prediction window
+let ROSTER = [], STATION = null, PASSES = {};
+// norad -> { color, pass, track, l1, l2 }   for each checked/plotted satellite.
+const PLOTTED = {};
+const PALETTE = ['#00d98b', '#58a6ff', '#ffb454', '#ff7b72', '#bc8cff', '#39d0d8', '#f778ba', '#7ee787'];
+const _freeColors = [...PALETTE];
+
 async function boot() {
   const meta = await (await fetch('/api/satellites')).json();
-  ROSTER = meta.satellites;
-  STATION = meta.station;
-  const age = meta.tle_age_days;
-  const badge = document.getElementById('tle-age');
+  ROSTER = meta.satellites; STATION = meta.station;
+  const age = meta.tle_age_days, badge = document.getElementById('tle-age');
   badge.textContent = age == null ? 'no TLE data — run sync' : 'TLE ' + age.toFixed(1) + ' d old';
   badge.className = 'badge ' + (age != null && age < 5 ? 'ok' : 'warn');
   initSatMap();
+  PASSES = (await (await fetch(`/api/satellites/passes?window=${WINDOW_H}`)).json()).passes || {};
   renderRoster();
-  PASSES = (await (await fetch('/api/satellites/passes?window=48')).json()).passes || {};
-  renderSchedule();
-  scheduleAlerts();
 }
+
+function nextPassOf(norad) { return (PASSES[norad] || [])[0] || null; }
+
 function renderRoster() {
-  document.getElementById('roster').innerHTML = ROSTER.map(s => `
-    <div class="sat-row">
-      <label><input type="checkbox" ${s.selected ? 'checked' : ''}
-        onchange="toggle(${s.norad}, this.checked)"> <b>${s.name}</b></label>
+  document.getElementById('roster-count').textContent = ROSTER.length + ' sats';
+  document.getElementById('roster').innerHTML = ROSTER.map(s => {
+    const p = nextPassOf(s.norad);
+    const color = PLOTTED[s.norad] ? PLOTTED[s.norad].color : 'transparent';
+    const hint = p ? `next ${fmt(p.rise)} · ${p.max_el.toFixed(0)}°` : 'no pass 24h';
+    return `<div class="sat-row ${PLOTTED[s.norad] ? 'on' : ''}" style="border-left-color:${color}">
+      <label><input type="checkbox" ${PLOTTED[s.norad] ? 'checked' : ''}
+          ${p ? '' : 'disabled'} onchange="onToggle(${s.norad}, this.checked)">
+        <span class="nm">${s.name}</span><span class="pass-hint">${hint}</span></label>
       <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}</div>
       <div class="dl">${(s.downlinks[0] || {}).freq_mhz || ''} MHz</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
-async function toggle(norad, sel) {
-  const r = await (await fetch('/api/satellites/select',
-    {method:'POST', headers:{'Content-Type':'application/json'},
-     body: JSON.stringify({norad, selected: sel})})).json();
-  ROSTER = r.satellites; renderRoster();
-}
+
 function fmt(iso) { return new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
-function renderSchedule() {
-  const rows = [];
-  for (const s of ROSTER) {
-    for (const p of (PASSES[s.norad] || [])) {
-      rows.push({name: s.name, norad: s.norad, p, t: new Date(p.rise).getTime()});
-    }
-  }
-  rows.sort((a,b) => a.t - b.t);
-  document.getElementById('schedule').innerHTML = rows.map(r => `
-    <div class="pass-row" onclick="selectPass(this, ${r.norad}, '${r.p.rise}', '${r.p.set}')"><b>${r.name}</b>
-      ${fmt(r.p.rise)}–${fmt(r.p.set)} · max ${r.p.max_el.toFixed(0)}° · rise ${r.p.rise_az.toFixed(0)}°</div>`).join('')
-    || '<div class="muted">No passes ≥10° in the next 48 h.</div>';
+
+/* ── Plot / unplot a satellite's next pass ─────────────────────────────── */
+async function onToggle(norad, checked) {
+  if (checked) await plotSat(norad, nextPassOf(norad));
+  else unplotSat(norad);
+  renderRoster();
 }
 
-// Index of the first track point at/after "now". Returns 0 for an entirely-future
-// pass (all dashed) and track.length-1 for an entirely-elapsed pass (all solid),
-// so splitAtNow() colours the whole track correctly in both corner cases.
-function nowIndex(track) {
-  if (!track.length) return 0;
-  const now = Date.now();
-  const first = new Date(track[0].t).getTime();
-  const last = new Date(track[track.length - 1].t).getTime();
-  if (now <= first) return 0;
-  if (now >= last) return track.length - 1;
-  return Math.max(0, track.findIndex(p => new Date(p.t).getTime() >= now));
+async function plotSat(norad, pass) {
+  if (!pass) return;
+  const color = PLOTTED[norad] ? PLOTTED[norad].color : (_freeColors.shift() || PALETTE[0]);
+  const j = await (await fetch(
+    `/api/satellites/track?sat=${norad}&from=${encodeURIComponent(pass.rise)}&to=${encodeURIComponent(pass.set)}`)).json();
+  PLOTTED[norad] = { color, pass, track: j.track || [], l1: j.l1, l2: j.l2 };
+  redraw();
+  fitTrack(PLOTTED[norad].track);
 }
 
-/* ── Ground-track map (MapLibre GL + PMTiles) ─────────────────────────
-   Its OWN MapLibre map that loads the same offline basemap the APRS map
-   uses (washington.pmtiles via /maps/tiles/state/), so satellites match the
-   APRS look without touching the APRS map page. The pass ground track is drawn
-   as GeoJSON line layers — flown (past) solid, upcoming (future) dashed — with a
-   live "now" marker, the same technique as the APRS/ADS-B track layers. */
+function unplotSat(norad) {
+  if (PLOTTED[norad]) { _freeColors.unshift(PLOTTED[norad].color); delete PLOTTED[norad]; }
+  redraw();
+}
+
+/* ── Map ───────────────────────────────────────────────────────────────── */
 let _map = null, _mapReady = false;
 function initSatMap() {
   if (_map || typeof maplibregl === 'undefined' || typeof oasisBaseMapStyle !== 'function') return;
-  try {
-    const origin = location.origin;
-    const tilesUrl = 'pmtiles://' + origin + '/maps/tiles/state/washington.pmtiles';
-    maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
-    _map = new maplibregl.Map({
-      container: 'satmap',
-      style: oasisBaseMapStyle(tilesUrl),
-      center: (STATION && STATION.lon != null) ? [STATION.lon, STATION.lat] : [-122.1, 47.6],
-      zoom: 3,
-      attributionControl: false,
-    });
-    _map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
-    _map.on('load', () => {
-      _map.addSource('sat-track', { type: 'geojson', data: emptyFC() });
-      _map.addLayer({
-        id: 'sat-track-future', type: 'line', source: 'sat-track',
-        filter: ['==', ['get', 'seg'], 'future'],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#00d98b', 'line-width': 2.5, 'line-opacity': 0.5, 'line-dasharray': [2, 1.5] },
-      });
-      _map.addLayer({
-        id: 'sat-track-past', type: 'line', source: 'sat-track',
-        filter: ['==', ['get', 'seg'], 'past'],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#00d98b', 'line-width': 3.5, 'line-opacity': 0.95 },
-      });
-      _map.addSource('sat-home', { type: 'geojson', data: homeFC() });
-      _map.addLayer({
-        id: 'sat-home', type: 'circle', source: 'sat-home',
-        paint: { 'circle-radius': 5, 'circle-color': '#ffb454', 'circle-stroke-width': 2, 'circle-stroke-color': '#0d1117' },
-      });
-      _map.addSource('sat-now', { type: 'geojson', data: emptyFC() });
-      _map.addLayer({
-        id: 'sat-now', type: 'circle', source: 'sat-now',
-        paint: { 'circle-radius': 6, 'circle-color': '#ffffff', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#00d98b' },
-      });
-      _mapReady = true;
-      if (_liveTrack && _liveTrack.length) { drawTrack(_liveTrack); fitTrack(_liveTrack); }
-    });
-  } catch (e) {
-    document.getElementById('track-info').textContent = 'Map failed to load (offline basemap missing?).';
-  }
+  maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
+  _map = new maplibregl.Map({
+    container: 'satmap',
+    style: oasisBaseMapStyle('pmtiles://' + location.origin + '/maps/tiles/state/washington.pmtiles'),
+    center: (STATION && STATION.lon != null) ? [STATION.lon, STATION.lat] : [-122.1, 47.6],
+    zoom: 4, attributionControl: false,
+  });
+  _map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
+  _map.on('load', () => {
+    _map.addSource('sat-tracks', { type: 'geojson', data: fc([]) });
+    _map.addLayer({ id: 'sat-future', type: 'line', source: 'sat-tracks',
+      filter: ['==', ['get', 'seg'], 'future'], layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-opacity': .55, 'line-dasharray': [2, 1.5] } });
+    _map.addLayer({ id: 'sat-past', type: 'line', source: 'sat-tracks',
+      filter: ['==', ['get', 'seg'], 'past'], layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': 3.5, 'line-opacity': .95 } });
+    _map.addSource('sat-home', { type: 'geojson', data: homeFC() });
+    _map.addLayer({ id: 'sat-home', type: 'circle', source: 'sat-home',
+      paint: { 'circle-radius': 5, 'circle-color': '#ffb454', 'circle-stroke-width': 2, 'circle-stroke-color': '#0d1117' } });
+    _map.addSource('sat-now', { type: 'geojson', data: fc([]) });
+    _map.addLayer({ id: 'sat-now', type: 'circle', source: 'sat-now',
+      paint: { 'circle-radius': 6, 'circle-color': ['get', 'color'], 'circle-stroke-width': 2.5, 'circle-stroke-color': '#fff' } });
+    _mapReady = true;
+    redraw();
+    for (const id of ['sat-past', 'sat-future', 'sat-now']) {
+      _map.on('click', id, onMapClick);
+      _map.on('mouseenter', id, () => _map.getCanvas().style.cursor = 'pointer');
+      _map.on('mouseleave', id, () => _map.getCanvas().style.cursor = '');
+    }
+  });
+  setInterval(liveTick, 1000);
 }
-function emptyFC() { return { type: 'FeatureCollection', features: [] }; }
+function fc(features) { return { type: 'FeatureCollection', features }; }
 function homeFC() {
-  if (!STATION || STATION.lon == null) return emptyFC();
+  if (!STATION || STATION.lon == null) return fc([]);
   return { type: 'Feature', geometry: { type: 'Point', coordinates: [STATION.lon, STATION.lat] } };
 }
 
-// Push the past/future track to the map source. No fetch, no camera move — safe
-// to call every live tick so the solid (flown) portion grows behind the marker.
-function drawTrack(track) {
-  if (!_mapReady || !_map.getSource('sat-track')) return;
-  const { past, future } = satgeo.splitAtNow(track, nowIndex(track));
-  const feats = [];
-  const addSegs = (pts, seg) => {
-    for (const s of satgeo.splitAntimeridian(pts)) {
-      if (s.length < 2) continue;
-      feats.push({ type: 'Feature', properties: { seg },
-        geometry: { type: 'LineString', coordinates: s.map(p => [p.lon, p.lat]) } });
+// Rebuild every plotted satellite's track (past-solid / future-dashed, split at
+// its own "now") + live markers, and push to the map sources.
+function redraw() {
+  if (!_mapReady) return;
+  const trackFeats = [], nowFeats = [];
+  for (const norad in PLOTTED) {
+    const s = PLOTTED[norad];
+    if (!s.track.length) continue;
+    const { past, future } = satgeo.splitAtNow(s.track, nowIndex(s.track));
+    const push = (pts, seg) => {
+      for (const sg of satgeo.splitAntimeridian(pts)) {
+        if (sg.length < 2) continue;
+        trackFeats.push({ type: 'Feature', properties: { norad, color: s.color, seg },
+          geometry: { type: 'LineString', coordinates: sg.map(p => [p.lon, p.lat]) } });
+      }
+    };
+    push(past, 'past'); push(future, 'future');
+    const now = Date.now(), r = new Date(s.pass.rise).getTime(), se = new Date(s.pass.set).getTime();
+    if (now >= r && now <= se && s.l1 && s.l2) {          // live only while the pass is happening
+      const pos = livePos(s.l1, s.l2);
+      if (pos) nowFeats.push({ type: 'Feature', properties: { norad, color: s.color },
+        geometry: { type: 'Point', coordinates: [pos.lon, pos.lat] } });
     }
-  };
-  addSegs(past, 'past');
-  addSegs(future, 'future');
-  _map.getSource('sat-track').setData({ type: 'FeatureCollection', features: feats });
+  }
+  _map.getSource('sat-tracks').setData(fc(trackFeats));
+  _map.getSource('sat-now').setData(fc(nowFeats));
 }
-function setNowMarker(lat, lon) {
-  if (!_mapReady || !_map.getSource('sat-now')) return;
-  _map.getSource('sat-now').setData(
-    (lat == null) ? emptyFC()
-                  : { type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] } });
+
+// First track index at/after now (0 = all future/dashed, last = all past/solid).
+function nowIndex(track) {
+  if (!track.length) return 0;
+  const now = Date.now();
+  if (now <= new Date(track[0].t).getTime()) return 0;
+  if (now >= new Date(track[track.length - 1].t).getTime()) return track.length - 1;
+  return Math.max(0, track.findIndex(p => new Date(p.t).getTime() >= now));
 }
-// Frame the pass slice (+ the station) — the workable rise→set arc is regional,
-// so this zooms to your area rather than the whole globe.
+function livePos(l1, l2) {
+  try {
+    const now = new Date(), pv = satellite.propagate(satellite.twoline2satrec(l1, l2), now);
+    if (!pv.position) return null;
+    const gd = satellite.eciToGeodetic(pv.position, satellite.gstime(now));
+    return { lat: satellite.degreesLat(gd.latitude), lon: satellite.degreesLong(gd.longitude) };
+  } catch (e) { return null; }
+}
+function liveTick() { if (Object.keys(PLOTTED).length) redraw(); }
+
 function fitTrack(track) {
   if (!_mapReady || !track.length) return;
-  let minLon = 180, minLat = 90, maxLon = -180, maxLat = -90;
-  for (const p of track) {
-    if (p.lon < minLon) minLon = p.lon; if (p.lon > maxLon) maxLon = p.lon;
-    if (p.lat < minLat) minLat = p.lat; if (p.lat > maxLat) maxLat = p.lat;
-  }
-  if (STATION && STATION.lon != null) {
-    minLon = Math.min(minLon, STATION.lon); maxLon = Math.max(maxLon, STATION.lon);
-    minLat = Math.min(minLat, STATION.lat); maxLat = Math.max(maxLat, STATION.lat);
-  }
-  if (maxLon - minLon < 340) {   // skip fit if the slice wraps the dateline
-    _map.fitBounds([[minLon, minLat], [maxLon, maxLat]], { padding: 50, maxZoom: 6, duration: 800 });
-  }
+  let mnLon = 180, mnLat = 90, mxLon = -180, mxLat = -90;
+  for (const p of track) { mnLon = Math.min(mnLon, p.lon); mxLon = Math.max(mxLon, p.lon);
+    mnLat = Math.min(mnLat, p.lat); mxLat = Math.max(mxLat, p.lat); }
+  if (STATION && STATION.lon != null) { mnLon = Math.min(mnLon, STATION.lon); mxLon = Math.max(mxLon, STATION.lon);
+    mnLat = Math.min(mnLat, STATION.lat); mxLat = Math.max(mxLat, STATION.lat); }
+  if (mxLon - mnLon < 340) _map.fitBounds([[mnLon, mnLat], [mxLon, mxLat]], { padding: 60, maxZoom: 6, duration: 800 });
 }
 
-/* ── Polar sky-plot panel ────────────────────────────────────────── */
-function showPolar(track) {
-  const CX = 110, CY = 110, R = 90, svg = document.getElementById('polar');
-  if (!track || !track.length) { svg.innerHTML = ''; return; }
-  let out = '';
-  for (const el of [0, 30, 60]) out += `<circle cx="${CX}" cy="${CY}" r="${(R * (90 - el) / 90).toFixed(1)}" class="ring"/>`;
-  out += `<text x="${CX}" y="14" class="cmp">N</text><text x="${CX}" y="214" class="cmp">S</text>` +
-         `<text x="6" y="${CY + 3}" class="cmp">W</text><text x="206" y="${CY + 3}" class="cmp">E</text>`;
-  const pt = p => { const q = satgeo.polar(p.az, p.el, CX, CY, R); return q.x.toFixed(1) + ' ' + q.y.toFixed(1); };
+/* ── Popup: click a satellite's track/marker on the map ────────────────── */
+let _popup = null;
+function onMapClick(e) {
+  const norad = e.features[0].properties.norad;
+  const sat = ROSTER.find(s => s.norad == norad);
+  if (!sat) return;
+  if (_popup) _popup.remove();
+  _popup = new maplibregl.Popup({ offset: 12, maxWidth: '280px' })
+    .setLngLat(e.lngLat).setHTML(popupHTML(sat)).addTo(_map);
+}
+function popupHTML(sat) {
+  const plotted = PLOTTED[sat.norad];
+  const chips = sat.labels.map(l => `<span class="chip">${l}</span>`).join('');
+  const dls = sat.downlinks.map(d => `${d.mode} ${d.freq_mhz} MHz`).join(' · ');
+  const passes = (PASSES[sat.norad] || []).slice(0, 4).map(p => {
+    const active = plotted && plotted.pass.rise === p.rise ? 'active' : '';
+    return `<div class="pop-pass ${active}" onclick="pickPass(${sat.norad}, '${p.rise}', '${p.set}')">
+      ${fmt(p.rise)}–${fmt(p.set)} · max ${p.max_el.toFixed(0)}° · rise ${p.rise_az.toFixed(0)}°</div>`;
+  }).join('') || '<div class="pop-row"><span class="pop-val">No passes in 24 h.</span></div>';
+  const polar = (plotted && plotted.track.length) ? skyPlotSVG(plotted.track, plotted.color) : '';
+  return `<div class="pop-call">${sat.name}</div>
+    <div class="pop-chips">${chips}</div>
+    <div class="pop-row"><span class="pop-lbl">Downlink</span><span class="pop-val">${dls || '—'}</span></div>
+    <div class="pop-sec"><span class="pop-lbl">Upcoming passes</span>${passes}</div>
+    ${polar ? `<div class="pop-sec">${polar}</div>` : ''}`;
+}
+// Re-plot a specific pass chosen from the popup.
+async function pickPass(norad, rise, set) {
+  const pass = (PASSES[norad] || []).find(p => p.rise === rise && p.set === set);
+  if (pass) { await plotSat(norad, pass); renderRoster();
+    const sat = ROSTER.find(s => s.norad == norad);
+    if (_popup && sat) _popup.setHTML(popupHTML(sat)); }
+}
+
+function skyPlotSVG(track, color) {
+  const CX = 75, CY = 75, R = 62;
+  let out = `<svg class="pop-polar" viewBox="0 0 150 150">`;
+  for (const el of [0, 30, 60]) out += `<circle cx="${CX}" cy="${CY}" r="${(R*(90-el)/90).toFixed(1)}" class="ring"/>`;
+  out += `<text x="${CX}" y="10" class="cmp">N</text><text x="${CX}" y="147" class="cmp">S</text>` +
+         `<text x="6" y="${CY+3}" class="cmp">W</text><text x="144" y="${CY+3}" class="cmp">E</text>`;
+  const pt = p => { const q = satgeo.polar(p.az, p.el, CX, CY, R); return q.x.toFixed(1)+' '+q.y.toFixed(1); };
   const { past, future } = satgeo.splitAtNow(track, nowIndex(track));
-  const d = a => a.map((p, i) => (i ? 'L' : 'M') + pt(p)).join(' ');
-  if (past.length)   out += `<path d="${d(past)}" class="trk-past"/>`;
-  if (future.length) out += `<path d="${d(future)}" class="trk-future"/>`;
-  // Rise / peak / set markers, each labelled with time + azimuth (+ el at peak).
-  const peak = track.reduce((m, p) => (p.el > m.el ? p : m), track[0]);
-  const mark = (p, cls, label) => {
-    const q = satgeo.polar(p.az, p.el, CX, CY, R);
-    return `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="3" class="${cls}"/>` +
-           `<text x="${q.x.toFixed(1)}" y="${(q.y - 6).toFixed(1)}" class="poi">${label}</text>`;
-  };
-  const first = track[0], last = track[track.length - 1];
-  out += mark(first, 'poi-dot', `${fmt(first.t)} ${first.az.toFixed(0)}°`);
-  if (peak !== first && peak !== last) {
-    out += mark(peak, 'poi-dot poi-peak', `${fmt(peak.t)} ${peak.az.toFixed(0)}°az/${peak.el.toFixed(0)}°el`);
-  }
-  out += mark(last, 'poi-dot', `${fmt(last.t)} ${last.az.toFixed(0)}°`);
-  svg.innerHTML = out;
-}
-
-function selectPass(el, norad, rise, set) {
-  document.querySelectorAll('.pass-row.active').forEach(e => e.classList.remove('active'));
-  el.classList.add('active');
-  showTrack(norad, rise, set);
-}
-
-// The currently-plotted pass — stored so the live tick can re-render it (growing
-// solid trail) without re-fetching every second.
-let _liveTrack = null;
-// Bumped on every showTrack() so a slow-resolving fetch from a previously-clicked
-// pass row can detect it's superseded and bail instead of clobbering _liveTrack.
-let _trackReq = 0;
-
-async function showTrack(norad, rise, set) {
-  const info = document.getElementById('track-info');
-  info.textContent = 'Loading track…';
-  clearInterval(window._satTick);
-  const myReq = ++_trackReq;
-  const j = await (await fetch(`/api/satellites/track?sat=${norad}&from=${encodeURIComponent(rise)}&to=${encodeURIComponent(set)}`)).json();
-  if (myReq !== _trackReq) return;   // a newer showTrack() call superseded this one
-  _liveTrack = j.track || [];
-  showPolar(_liveTrack);
-  drawTrack(_liveTrack);
-  fitTrack(_liveTrack);
-  setNowMarker(null);
-  if (!_liveTrack.length) {
-    info.textContent = j.error ? `No track: ${j.error}` : 'No track data for this pass (TLE sync needed?).';
-    return;
-  }
-  info.textContent = '';
-  startLive(j.l1, j.l2);
-}
-
-// 1 Hz client-side propagation via satellite.js: moves the "now" marker along the
-// ground track AND re-renders drawTrack/showPolar each tick so the solid (flown)
-// portion grows behind the marker as time advances.
-function startLive(l1, l2) {
-  clearInterval(window._satTick);
-  window._satTick = null;
-  if (!l1 || !l2) return;   // no TLE for this sat — static plot only
-  const rec = satellite.twoline2satrec(l1, l2);
-  window._satTick = setInterval(() => {
-    const now = new Date();
-    const pv = satellite.propagate(rec, now);
-    if (!pv.position) return;
-    const gmst = satellite.gstime(now);
-    const gd = satellite.eciToGeodetic(pv.position, gmst);
-    setNowMarker(satellite.degreesLat(gd.latitude), satellite.degreesLong(gd.longitude));
-    if (_liveTrack && _liveTrack.length) { drawTrack(_liveTrack); showPolar(_liveTrack); }
-  }, 1000);
-}
-
-/* ── Pre-pass alerts (configurable lead times, default 10 + 2 min) ─────── */
-const ALERT_LEADS_MIN = [10, 2];
-function scheduleAlerts() {
-  (document.getElementById('alerts') || {}).innerHTML = '';
-  const fired = new Set();
-  for (const s of ROSTER.filter(x => x.selected)) {
-    const next = (PASSES[s.norad] || [])[0];
-    if (!next) continue;
-    const rise = new Date(next.rise).getTime();
-    for (const lead of ALERT_LEADS_MIN) {
-      const at = rise - lead * 60000 - Date.now();
-      if (at <= 0) continue;
-      setTimeout(() => {
-        const key = s.norad + ':' + lead;
-        if (fired.has(key)) return;
-        fired.add(key);
-        showChip(`🛰️ ${s.name} in ${lead} min`);
-        if (window.Notification && Notification.permission === 'granted')
-          new Notification(`${s.name} rises in ${lead} min`);
-      }, at);
-    }
-  }
-}
-function showChip(text) {
-  const el = document.getElementById('alerts');
-  el.innerHTML = `<div class="chip-alert">${text}</div>`;
-  setTimeout(() => { el.innerHTML = ''; }, 60000);
+  const path = (a, dash) => a.length ? `<path d="${a.map((p,i)=>(i?'L':'M')+pt(p)).join(' ')}" fill="none" stroke="${color}" stroke-width="2" ${dash}/>` : '';
+  out += path(future, 'stroke-dasharray="4 3" opacity="0.5"') + path(past, '');
+  const peak = track.reduce((m, p) => p.el > m.el ? p : m, track[0]);
+  const dot = p => { const q = satgeo.polar(p.az, p.el, CX, CY, R);
+    return `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="3" class="poi-dot" fill="${color}"/>`; };
+  out += dot(track[0]) + dot(peak) + dot(track[track.length-1]);
+  return out + '</svg>';
 }
 
 boot();
