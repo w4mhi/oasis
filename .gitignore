@@ -20,6 +20,9 @@ configuration/satellites.json
 # TLE cache (group .txt files from sync-tle.py) + computed pass caches; runtime data.
 configuration/tle-cache/
 
+# Satellite pass recordings (WAV) from the RTL-SDR listen feature; runtime data.
+configuration/sat-recordings/
+
 
 # Operator-placed APRS map warnings (shared runtime state, not repo content).
 aprs-warnings.json

@@ -36,6 +36,13 @@ html, body { height: 100%; margin: 0; }
 #coordReadout .cr-val { display: inline-block; text-align: right; color: #7ecfff; font-weight: 600; }
 #coordReadout #crLat { width: 8ch; } #coordReadout #crLon { width: 9ch; }
 #clock { font-size: var(--fs-small); color: var(--amber); font-weight: 600; white-space: nowrap; }
+/* SDR recording indicator (row 1). */
+#listen-status { display: none; align-items: center; gap: .4rem; font-size: var(--fs-small);
+  color: var(--red); font-weight: 600; white-space: nowrap; }
+#listen-status.on { display: inline-flex; }
+#listen-status .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red);
+  animation: recblink 1.2s infinite; }
+@keyframes recblink { 50% { opacity: .3; } }
 /* Zoom-level readout control (bottom-left, matching APRS). */
 .zoom-readout { background: rgba(13,17,23,.72); border: 1px solid var(--border); border-radius: 4px;
   font-family: var(--mono); font-size: var(--fs-small); color: var(--text-dim);
@@ -135,6 +142,8 @@ html, body { height: 100%; margin: 0; }
     <span id="tle-age" class="badge">loading…</span>
     <span class="track-sep">|</span>
     <span class="win-lbl">24 h window</span>
+    <span id="listen-status"><span class="rec-dot"></span><span id="listen-text"></span>
+      <button class="sbtn" onclick="stopListen()">Stop</button></span>
     <span style="flex:1"></span>
     <span id="crCpu" title="Pi CPU load · SoC temperature">—</span>
     <span class="track-sep">|</span>
@@ -192,6 +201,7 @@ async function boot() {
   badge.className = 'badge ' + (age != null && age < 5 ? 'ok' : 'warn');
   initSatMap();
   startClock(); updateCpu(); setInterval(updateCpu, 8000);
+  pollListen(); setInterval(pollListen, 3000);
   PASSES = (await (await fetch(`/api/satellites/passes?window=${WINDOW_H}`)).json()).passes || {};
   renderRoster();
 }
@@ -372,14 +382,30 @@ function updateVisibility() {
 }
 
 /* ── Popup: click a satellite's track/marker on the map ────────────────── */
-let _popup = null;
+let _popup = null, _popupSat = null, _listenMsg = '';
 function onMapClick(e) {
   const norad = e.features[0].properties.norad;
   const sat = ROSTER.find(s => s.norad == norad);
   if (!sat) return;
+  _popupSat = sat; _listenMsg = '';
   if (_popup) _popup.remove();
-  _popup = new maplibregl.Popup({ offset: 12, maxWidth: '280px' })
+  _popup = new maplibregl.Popup({ offset: 12, maxWidth: '300px' })
     .setLngLat(e.lngLat).setHTML(popupHTML(sat)).addTo(_map);
+  _popup.on('close', () => { _popupSat = null; });
+}
+function refreshPopup() { if (_popup && _popupSat) _popup.setHTML(popupHTML(_popupSat)); }
+// SDR listen control for the popup — reflects live preconditions + recording state.
+function listenSection(sat) {
+  const recThis = LISTEN.recording && String(LISTEN.norad) === String(sat.norad);
+  let ctl;
+  if (recThis) ctl = `<button class="sbtn" onclick="stopListen()">⏹ Stop recording</button>`;
+  else if (LISTEN.recording) ctl = `<span class="pop-lbl">busy — recording another satellite</span>`;
+  else if ((LISTEN.missing_deps || []).length) ctl = `<span class="pop-lbl">SDR tools not installed</span>`;
+  else if (!LISTEN.dongle_present) ctl = `<span class="pop-lbl">no RTL-SDR dongle</span>`;
+  else if (LISTEN.feed_active) ctl = `<span class="pop-lbl">stop the APRS SDR feed first</span>`;
+  else ctl = `<button class="sbtn" onclick="startListen(${sat.norad})">🎧 Record pass (SDR)</button>`;
+  const err = _listenMsg ? `<div class="pop-lbl" style="color:var(--red);margin-top:3px">${_listenMsg}</div>` : '';
+  return `<div class="pop-sec">${ctl}${err}</div>`;
 }
 function popupHTML(sat) {
   const plotted = PLOTTED[sat.norad];
@@ -395,6 +421,7 @@ function popupHTML(sat) {
     <div class="pop-chips">${chips}</div>
     <div class="pop-row"><span class="pop-lbl">Downlink</span><span class="pop-val">${dls || '—'}</span></div>
     <div class="pop-sec"><span class="pop-lbl">Upcoming passes</span>${passes}</div>
+    ${listenSection(sat)}
     ${polar ? `<div class="pop-sec">${polar}</div>` : ''}`;
 }
 // Re-plot a specific pass chosen from the popup.
@@ -528,6 +555,36 @@ async function toggleWorld() {
   const open = card.classList.toggle('show');
   document.getElementById('burger').classList.toggle('on', open);
   if (open) { await loadCoastline(); renderWorld(); }
+}
+
+/* ── SDR listen — record a pass to a WAV on the Pi ───────────────────────── */
+let LISTEN = { recording: false };
+async function pollListen() {
+  try { LISTEN = await (await fetch('/api/satellites/listen/status')).json(); }
+  catch (e) { LISTEN = { recording: false }; }
+  const el = document.getElementById('listen-status');
+  if (!el) return;
+  if (LISTEN.recording) {
+    el.classList.add('on');
+    const sat = ROSTER.find(s => String(s.norad) === String(LISTEN.norad));
+    const m = Math.floor(LISTEN.seconds / 60), s = String(LISTEN.seconds % 60).padStart(2, '0');
+    document.getElementById('listen-text').textContent = `REC ${sat ? sat.name : LISTEN.norad} ${m}:${s}`;
+  } else { el.classList.remove('on'); }
+}
+async function startListen(norad) {
+  _listenMsg = '';
+  try {
+    const r = await fetch('/api/satellites/listen', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ norad }) });
+    const d = await r.json();
+    if (!r.ok) _listenMsg = d.error || 'listen failed';
+  } catch (e) { _listenMsg = 'listen request failed'; }
+  await pollListen(); refreshPopup();
+}
+async function stopListen() {
+  try { await fetch('/api/satellites/listen/stop', { method: 'POST' }); } catch (e) { /* ignore */ }
+  _listenMsg = '';
+  await pollListen(); refreshPopup();
 }
 
 boot();

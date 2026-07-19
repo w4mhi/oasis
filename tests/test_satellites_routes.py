@@ -53,6 +53,19 @@ class RoutesTest(unittest.TestCase):
         iss = [s for s in r.get_json()["satellites"] if s["norad"] == 25544][0]
         self.assertFalse(iss["selected"])
 
+    def test_listen_status_shape(self):
+        r = self.client.get("/api/satellites/listen/status")
+        self.assertEqual(r.status_code, 200)
+        d = r.get_json()
+        for k in ("recording", "missing_deps", "dongle_present", "feed_active"):
+            self.assertIn(k, d)
+
+    def test_listen_degrades_without_hardware(self):
+        # No rtl_fm/sox/dongle in CI -> a clean 4xx with an error, never a 500.
+        r = self.client.post("/api/satellites/listen", json={"norad": 25544})
+        self.assertIn(r.status_code, (400, 409))
+        self.assertIn("error", r.get_json())
+
     def test_passes_cache_reused(self):
         calls = []
         orig = self.predict.compute_passes

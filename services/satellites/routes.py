@@ -154,3 +154,70 @@ def api_select():
     data = roster.set_selected(config_paths.satellites_json(SUITE_ROOT),
                                int(body["norad"]), bool(body["selected"]))
     return jsonify(data)
+
+
+# ── Phase 2: RTL-SDR listen (record a pass to a WAV) ─────────────────────────
+@bp.route("/api/satellites/listen/status")
+def api_listen_status():
+    import listen
+    st = listen.status()
+    st.update(listen.preconditions())
+    return jsonify(st)
+
+
+@bp.route("/api/satellites/listen", methods=["POST"])
+def api_listen():
+    import listen
+    body = request.get_json(force=True)
+    try:
+        norad = int(body["norad"])
+    except (TypeError, ValueError, KeyError):
+        return jsonify({"error": "bad or missing norad"}), 400
+    pre = listen.preconditions()
+    if pre["missing_deps"]:
+        return jsonify({"error": "missing tools: " + ", ".join(pre["missing_deps"])
+                        + " — run features/rtl-sdr/install-rtl-sdr.py"}), 400
+    if not pre["dongle_present"]:
+        return jsonify({"error": "no RTL-SDR dongle detected"}), 400
+    if pre["feed_active"]:
+        return jsonify({"error": "stop the APRS SDR feed first — it owns the dongle"}), 409
+    if listen.is_recording():
+        return jsonify({"error": "already recording"}), 409
+    data = roster.load(config_paths.satellites_json(SUITE_ROOT))
+    entry = next((s for s in data["satellites"] if s["norad"] == norad), None)
+    if not entry or not entry.get("downlinks"):
+        return jsonify({"error": "no downlink frequency for this satellite"}), 400
+    freq_hz = listen.mhz_to_hz(entry["downlinks"][0]["freq_mhz"])
+    safe = "".join(c if c.isalnum() else "_" for c in entry["name"]).strip("_")
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    out = os.path.join(listen.recordings_dir(SUITE_ROOT), f"{safe}_{ts}.wav")
+    try:
+        return jsonify(listen.start(freq_hz, norad, out))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/api/satellites/listen/stop", methods=["POST"])
+def api_listen_stop():
+    import listen
+    return jsonify(listen.stop())
+
+
+@bp.route("/api/satellites/listen/recordings")
+def api_listen_recordings():
+    import listen
+    d = listen.recordings_dir(SUITE_ROOT)
+    files = []
+    if os.path.isdir(d):
+        for fn in sorted(os.listdir(d), reverse=True):
+            if fn.endswith(".wav"):
+                p = os.path.join(d, fn)
+                files.append({"name": fn, "bytes": os.path.getsize(p),
+                              "mtime": os.path.getmtime(p)})
+    return jsonify({"recordings": files})
+
+
+@bp.route("/api/satellites/listen/recording/<path:filename>")
+def api_listen_recording(filename):
+    import listen
+    return send_from_directory(listen.recordings_dir(SUITE_ROOT), filename)
