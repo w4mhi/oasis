@@ -27,6 +27,13 @@ SERVICE_UNITS = {
     # start-time shared-dongle check knows which RTL-SDR it "wants"; empty
     # unit list mirrors aprs's soundcard-only base. See v2 design §2.
     "openwebrx": [],
+    # satellites listening (services/satellites/listen.py) is an ad-hoc rtl_fm
+    # subprocess run by Flask, not a systemd unit. "satellites-listen" is a
+    # SYNTHETIC unit: callers that care whether we hold the dongle wrap is_active
+    # so it answers this token from listen.is_recording() (see listen.is_active_
+    # wrapper). Keeps device_states() generic — no special-casing. Also advisory
+    # (no apply hook); the recorder binds the dongle itself at start time.
+    "satellites": ["satellites-listen"],
 }
 
 # Which device kind(s) each logical service may be assigned.
@@ -35,6 +42,7 @@ DEVICE_KIND_FOR_SERVICE = {
     "winlink":   {"digirig", "dra-pi"},
     "adsb":      {"rtl-sdr"},
     "openwebrx": {"rtl-sdr"},
+    "satellites": {"rtl-sdr"},
 }
 
 # aprs runs an extra RX feed unit (rtl_fm -> UDP -> GrayWolf) ONLY when assigned
