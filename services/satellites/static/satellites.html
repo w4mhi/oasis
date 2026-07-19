@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OASIS — Satellites</title>
+<link rel="stylesheet" href="/map-assets/maplibre-gl.css">
 <link rel="stylesheet" href="/css/common.css">
 <style>
 /* ── Two-column layout: roster (left) / pass schedule (right) ──────── */
@@ -87,33 +88,25 @@
   padding: .35rem 0;
   font-size: var(--fs-base);
   color: var(--text);
+  cursor: pointer;
 }
 .pass-row:last-child { border-bottom: none; }
 .pass-row b { color: var(--accent); margin-right: .5rem; }
-
-.muted { color: var(--text-dim); font-size: var(--fs-base); font-style: italic; }
-
-/* ── Pass rows are clickable — select one to plot its ground track ─ */
-.pass-row { cursor: pointer; }
 .pass-row:hover { background: var(--panel-2); }
 .pass-row.active { background: var(--panel-2); }
 .pass-row.active b { color: var(--amber); }
 
-/* ── Ground-track panel ──────────────────────────────────────────── */
-#track {
-  display: block;
+.muted { color: var(--text-dim); font-size: var(--fs-base); font-style: italic; }
+
+/* ── Ground-track map (MapLibre GL — same basemap as the APRS map) ── */
+#satmap {
   width: 100%;
-  height: auto;
-  background: #0d1117;
+  height: 420px;
   border: 1px solid var(--border);
   border-radius: 6px;
   margin-top: .4rem;
+  background: #0d1117;
 }
-.trk-past   { stroke: #00d98b; stroke-width: 2.5; fill: none; }
-.trk-future { stroke: #00d98b; stroke-width: 2; fill: none; stroke-dasharray: 5 4; opacity: .45; }
-.home       { fill: #ffb454; stroke: #0d1117; }
-.grat       { stroke: #243b53; stroke-width: .5; }
-.coast      { stroke: #3a4d63; stroke-width: .7; fill: none; }
 
 /* ── Polar sky-plot (az/el radar) ───────────────────────────────── */
 #polar {
@@ -130,9 +123,9 @@
 .poi-dot  { fill: #58a6ff; stroke: #0d1117; stroke-width: 1; }
 .poi-peak { fill: #ffb454; }
 .poi      { fill: #c9d1d9; font: 9px monospace; text-anchor: middle; }
-
-/* ── Live "now" marker on the ground track ─────────────────────────── */
-.sat-now  { fill: #fff; stroke: #00d98b; stroke-width: 2; }
+/* Polar arc: flown = solid, upcoming = dim/dashed (same language as the map). */
+.trk-past   { stroke: #00d98b; stroke-width: 2.5; fill: none; }
+.trk-future { stroke: #00d98b; stroke-width: 2; fill: none; stroke-dasharray: 5 4; opacity: .45; }
 
 /* ── Pre-pass alert chips ───────────────────────────────────────────── */
 #alerts {
@@ -181,7 +174,7 @@
     <div class="sec">
       <span class="sec-lbl">Ground Track</span>
       <p id="track-info" class="muted">Click a pass above to plot its ground track.</p>
-      <svg id="track" viewBox="0 0 720 360"></svg>
+      <div id="satmap"></div>
     </div>
 
     <div class="sec">
@@ -192,6 +185,9 @@
 
 </div>
 
+<script src="/map-assets/maplibre-gl.js"></script>
+<script src="/map-assets/pmtiles.js"></script>
+<script src="/map-assets/basemap-style.js"></script>
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
 <script>
@@ -204,6 +200,7 @@ async function boot() {
   const badge = document.getElementById('tle-age');
   badge.textContent = age == null ? 'no TLE data — run sync' : 'TLE ' + age.toFixed(1) + ' d old';
   badge.className = 'badge ' + (age != null && age < 5 ? 'ok' : 'warn');
+  initSatMap();
   renderRoster();
   PASSES = (await (await fetch('/api/satellites/passes?window=48')).json()).passes || {};
   renderSchedule();
@@ -239,46 +236,6 @@ function renderSchedule() {
     || '<div class="muted">No passes ≥10° in the next 48 h.</div>';
 }
 
-/* ── Ground-track panel ──────────────────────────────────────────── */
-let COASTLINE = null;   // fetched + cached once, module-level
-async function loadCoastline() {
-  if (COASTLINE) return COASTLINE;
-  try {
-    const j = await (await fetch('/server/satellites/coastline.json')).json();
-    COASTLINE = (j.features || [])
-      .filter(f => f.geometry && f.geometry.type === 'LineString')
-      .map(f => f.geometry.coordinates);   // GeoJSON: each coord is [lon, lat]
-  } catch (e) {
-    COASTLINE = [];
-  }
-  return COASTLINE;
-}
-
-function drawGraticule(W, H) {
-  let out = '';
-  for (let lon = -180; lon <= 180; lon += 30) {
-    const a = satgeo.project(90, lon, W, H), b = satgeo.project(-90, lon, W, H);
-    out += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="grat"/>`;
-  }
-  for (let lat = -90; lat <= 90; lat += 30) {
-    const a = satgeo.project(lat, -180, W, H), b = satgeo.project(lat, 180, W, H);
-    out += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="grat"/>`;
-  }
-  return out;
-}
-
-function drawCoastline(W, H) {
-  if (!COASTLINE || !COASTLINE.length) return '';
-  return COASTLINE.map(coords => {
-    const d = coords.map((c, i) => {
-      // GeoJSON coord order is [lon, lat] — lat is c[1], lon is c[0].
-      const q = satgeo.project(c[1], c[0], W, H);
-      return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1);
-    }).join(' ');
-    return `<path d="${d}" class="coast"/>`;
-  }).join('');
-}
-
 // Index of the first track point at/after "now". Returns 0 for an entirely-future
 // pass (all dashed) and track.length-1 for an entirely-elapsed pass (all solid),
 // so splitAtNow() colours the whole track correctly in both corner cases.
@@ -292,6 +249,105 @@ function nowIndex(track) {
   return Math.max(0, track.findIndex(p => new Date(p.t).getTime() >= now));
 }
 
+/* ── Ground-track map (MapLibre GL + PMTiles) ─────────────────────────
+   Its OWN MapLibre map that loads the same offline basemap the APRS map
+   uses (washington.pmtiles via /maps/tiles/state/), so satellites match the
+   APRS look without touching the APRS map page. The pass ground track is drawn
+   as GeoJSON line layers — flown (past) solid, upcoming (future) dashed — with a
+   live "now" marker, the same technique as the APRS/ADS-B track layers. */
+let _map = null, _mapReady = false;
+function initSatMap() {
+  if (_map || typeof maplibregl === 'undefined' || typeof oasisBaseMapStyle !== 'function') return;
+  try {
+    const origin = location.origin;
+    const tilesUrl = 'pmtiles://' + origin + '/maps/tiles/state/washington.pmtiles';
+    maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
+    _map = new maplibregl.Map({
+      container: 'satmap',
+      style: oasisBaseMapStyle(tilesUrl),
+      center: (STATION && STATION.lon != null) ? [STATION.lon, STATION.lat] : [-122.1, 47.6],
+      zoom: 3,
+      attributionControl: false,
+    });
+    _map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
+    _map.on('load', () => {
+      _map.addSource('sat-track', { type: 'geojson', data: emptyFC() });
+      _map.addLayer({
+        id: 'sat-track-future', type: 'line', source: 'sat-track',
+        filter: ['==', ['get', 'seg'], 'future'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#00d98b', 'line-width': 2.5, 'line-opacity': 0.5, 'line-dasharray': [2, 1.5] },
+      });
+      _map.addLayer({
+        id: 'sat-track-past', type: 'line', source: 'sat-track',
+        filter: ['==', ['get', 'seg'], 'past'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#00d98b', 'line-width': 3.5, 'line-opacity': 0.95 },
+      });
+      _map.addSource('sat-home', { type: 'geojson', data: homeFC() });
+      _map.addLayer({
+        id: 'sat-home', type: 'circle', source: 'sat-home',
+        paint: { 'circle-radius': 5, 'circle-color': '#ffb454', 'circle-stroke-width': 2, 'circle-stroke-color': '#0d1117' },
+      });
+      _map.addSource('sat-now', { type: 'geojson', data: emptyFC() });
+      _map.addLayer({
+        id: 'sat-now', type: 'circle', source: 'sat-now',
+        paint: { 'circle-radius': 6, 'circle-color': '#ffffff', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#00d98b' },
+      });
+      _mapReady = true;
+      if (_liveTrack && _liveTrack.length) { drawTrack(_liveTrack); fitTrack(_liveTrack); }
+    });
+  } catch (e) {
+    document.getElementById('track-info').textContent = 'Map failed to load (offline basemap missing?).';
+  }
+}
+function emptyFC() { return { type: 'FeatureCollection', features: [] }; }
+function homeFC() {
+  if (!STATION || STATION.lon == null) return emptyFC();
+  return { type: 'Feature', geometry: { type: 'Point', coordinates: [STATION.lon, STATION.lat] } };
+}
+
+// Push the past/future track to the map source. No fetch, no camera move — safe
+// to call every live tick so the solid (flown) portion grows behind the marker.
+function drawTrack(track) {
+  if (!_mapReady || !_map.getSource('sat-track')) return;
+  const { past, future } = satgeo.splitAtNow(track, nowIndex(track));
+  const feats = [];
+  const addSegs = (pts, seg) => {
+    for (const s of satgeo.splitAntimeridian(pts)) {
+      if (s.length < 2) continue;
+      feats.push({ type: 'Feature', properties: { seg },
+        geometry: { type: 'LineString', coordinates: s.map(p => [p.lon, p.lat]) } });
+    }
+  };
+  addSegs(past, 'past');
+  addSegs(future, 'future');
+  _map.getSource('sat-track').setData({ type: 'FeatureCollection', features: feats });
+}
+function setNowMarker(lat, lon) {
+  if (!_mapReady || !_map.getSource('sat-now')) return;
+  _map.getSource('sat-now').setData(
+    (lat == null) ? emptyFC()
+                  : { type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] } });
+}
+// Frame the pass slice (+ the station) — the workable rise→set arc is regional,
+// so this zooms to your area rather than the whole globe.
+function fitTrack(track) {
+  if (!_mapReady || !track.length) return;
+  let minLon = 180, minLat = 90, maxLon = -180, maxLat = -90;
+  for (const p of track) {
+    if (p.lon < minLon) minLon = p.lon; if (p.lon > maxLon) maxLon = p.lon;
+    if (p.lat < minLat) minLat = p.lat; if (p.lat > maxLat) maxLat = p.lat;
+  }
+  if (STATION && STATION.lon != null) {
+    minLon = Math.min(minLon, STATION.lon); maxLon = Math.max(maxLon, STATION.lon);
+    minLat = Math.min(minLat, STATION.lat); maxLat = Math.max(maxLat, STATION.lat);
+  }
+  if (maxLon - minLon < 340) {   // skip fit if the slice wraps the dateline
+    _map.fitBounds([[minLon, minLat], [maxLon, maxLat]], { padding: 50, maxZoom: 6, duration: 800 });
+  }
+}
+
 /* ── Polar sky-plot panel ────────────────────────────────────────── */
 function showPolar(track) {
   const CX = 110, CY = 110, R = 90, svg = document.getElementById('polar');
@@ -301,12 +357,11 @@ function showPolar(track) {
   out += `<text x="${CX}" y="14" class="cmp">N</text><text x="${CX}" y="214" class="cmp">S</text>` +
          `<text x="6" y="${CY + 3}" class="cmp">W</text><text x="206" y="${CY + 3}" class="cmp">E</text>`;
   const pt = p => { const q = satgeo.polar(p.az, p.el, CX, CY, R); return q.x.toFixed(1) + ' ' + q.y.toFixed(1); };
-  const nowIdx = nowIndex(track);           // shared helper — NOT a fresh findIndex
-  const { past, future } = satgeo.splitAtNow(track, nowIdx);
+  const { past, future } = satgeo.splitAtNow(track, nowIndex(track));
   const d = a => a.map((p, i) => (i ? 'L' : 'M') + pt(p)).join(' ');
   if (past.length)   out += `<path d="${d(past)}" class="trk-past"/>`;
   if (future.length) out += `<path d="${d(future)}" class="trk-future"/>`;
-  // Rise / peak / set markers, each labelled with time + azimuth.
+  // Rise / peak / set markers, each labelled with time + azimuth (+ el at peak).
   const peak = track.reduce((m, p) => (p.el > m.el ? p : m), track[0]);
   const mark = (p, cls, label) => {
     const q = satgeo.polar(p.az, p.el, CX, CY, R);
@@ -328,62 +383,25 @@ function selectPass(el, norad, rise, set) {
   showTrack(norad, rise, set);
 }
 
-// Rebuilds ONLY the dynamic past-solid/future-dashed track paths inside the
-// static #trk-dyn group. Called both on initial load and, repeatedly, by the
-// live 1 Hz tick — it does NOT fetch and does NOT touch the graticule,
-// coastline, or station marker (those are drawn once per pass by showTrack).
-function drawTrack(track) {
-  const dyn = document.getElementById('trk-dyn');
-  if (!dyn) return;
-  const W = 720, H = 360;
-  const pathFor = (pts, cls) => {
-    if (!pts.length) return '';
-    const d = pts.map((p, i) => {
-      const q = satgeo.project(p.lat, p.lon, W, H);
-      return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1);
-    }).join(' ');
-    return `<path d="${d}" class="${cls}"/>`;
-  };
-  const nowIdx = nowIndex(track);
-  const { past, future } = satgeo.splitAtNow(track, nowIdx);
-  let out = '';
-  for (const seg of satgeo.splitAntimeridian(past))   out += pathFor(seg, 'trk-past');
-  for (const seg of satgeo.splitAntimeridian(future)) out += pathFor(seg, 'trk-future');
-  dyn.innerHTML = out;
-}
-
-// The currently-plotted pass — stored so the live tick can re-render the
-// same track (growing solid trail) without re-fetching it every second.
+// The currently-plotted pass — stored so the live tick can re-render it (growing
+// solid trail) without re-fetching every second.
 let _liveTrack = null;
-// Bumped on every showTrack() call so a slow-resolving fetch from a
-// previously-clicked pass row can detect it's been superseded and bail
-// instead of clobbering _liveTrack / starting a live tick for the wrong sat.
+// Bumped on every showTrack() so a slow-resolving fetch from a previously-clicked
+// pass row can detect it's superseded and bail instead of clobbering _liveTrack.
 let _trackReq = 0;
 
 async function showTrack(norad, rise, set) {
   const info = document.getElementById('track-info');
-  const svg = document.getElementById('track');
   info.textContent = 'Loading track…';
   clearInterval(window._satTick);
   const myReq = ++_trackReq;
-  await loadCoastline();
   const j = await (await fetch(`/api/satellites/track?sat=${norad}&from=${encodeURIComponent(rise)}&to=${encodeURIComponent(set)}`)).json();
   if (myReq !== _trackReq) return;   // a newer showTrack() call superseded this one
   _liveTrack = j.track || [];
-
-  // Static backdrop (graticule + coastline + station), built ONCE per pass —
-  // the 1 Hz tick only touches #trk-dyn and #sat-now from here on.
-  const W = 720, H = 360;
-  let stationMarker = '';
-  if (STATION && STATION.lat != null) {
-    const st = satgeo.project(STATION.lat, STATION.lon, W, H);
-    stationMarker = `<circle cx="${st.x}" cy="${st.y}" r="4" class="home"/>`;
-  }
-  svg.innerHTML = drawGraticule(W, H) + drawCoastline(W, H) + stationMarker +
-    '<g id="trk-dyn"></g>' + '<circle id="sat-now" class="sat-now" r="5" style="display:none"></circle>';
-
   showPolar(_liveTrack);
   drawTrack(_liveTrack);
+  fitTrack(_liveTrack);
+  setNowMarker(null);
   if (!_liveTrack.length) {
     info.textContent = j.error ? `No track: ${j.error}` : 'No track data for this pass (TLE sync needed?).';
     return;
@@ -392,9 +410,9 @@ async function showTrack(norad, rise, set) {
   startLive(j.l1, j.l2);
 }
 
-// 1 Hz client-side propagation of the plotted sat via satellite.js: moves a
-// "now" marker along the ground track AND re-renders drawTrack/showPolar each
-// tick so the solid (flown) portion grows behind the marker as time advances.
+// 1 Hz client-side propagation via satellite.js: moves the "now" marker along the
+// ground track AND re-renders drawTrack/showPolar each tick so the solid (flown)
+// portion grows behind the marker as time advances.
 function startLive(l1, l2) {
   clearInterval(window._satTick);
   window._satTick = null;
@@ -406,10 +424,7 @@ function startLive(l1, l2) {
     if (!pv.position) return;
     const gmst = satellite.gstime(now);
     const gd = satellite.eciToGeodetic(pv.position, gmst);
-    const lat = satellite.degreesLat(gd.latitude), lon = satellite.degreesLong(gd.longitude);
-    const q = satgeo.project(lat, lon, 720, 360);
-    const m = document.getElementById('sat-now');
-    if (m) { m.setAttribute('cx', q.x); m.setAttribute('cy', q.y); m.style.display = ''; }
+    setNowMarker(satellite.degreesLat(gd.latitude), satellite.degreesLong(gd.longitude));
     if (_liveTrack && _liveTrack.length) { drawTrack(_liveTrack); showPolar(_liveTrack); }
   }, 1000);
 }
