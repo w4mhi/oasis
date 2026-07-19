@@ -31,15 +31,55 @@ class ListenTest(unittest.TestCase):
         self.assertEqual(listen.missing_deps(lambda b: None), ["rtl_fm", "sox", "timeout"])
         self.assertEqual(listen.missing_deps(lambda b: "/usr/bin/" + b), [])
 
-    def test_feed_active_injectable(self):
-        self.assertTrue(listen.feed_active(lambda u: u == "aprs-sdr-feed"))
-        self.assertFalse(listen.feed_active(lambda u: False))
+    def test_mode_support_fm_family(self):
+        for m in ("FM voice", "APRS", "APT", "fm"):
+            self.assertTrue(listen.mode_support(m)["supported"], m)
+            self.assertEqual(listen.mode_support(m)["demod"], "fm")
+
+    def test_mode_support_unsupported(self):
+        for m in ("LRPT", "SSB", "USB", "CW", ""):
+            s = listen.mode_support(m)
+            self.assertFalse(s["supported"], m)
+            self.assertIsNone(s["demod"])
+            self.assertTrue(s["blurb"])          # always explains why
+
+    def test_is_active_wrapper_bridges_recorder(self):
+        w = listen.is_active_wrapper(lambda u: u == "dump1090-fa")
+        self.assertTrue(w("dump1090-fa"))        # delegates to base
+        self.assertFalse(w("satellites-listen")) # not recording -> False
+        self.assertFalse(w("aprs-sdr-feed"))
+
+    def test_dongle_busy_same_dongle(self):
+        from common import hardware
+        inv = hardware.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr"}},
+                                 assignments={"aprs": "a", "satellites": "a"})
+        busy, holder = listen.dongle_busy(inv, lambda u: u == "aprs-sdr-feed")
+        self.assertTrue(busy)
+        self.assertEqual(holder, "aprs")
+
+    def test_dongle_free_when_other_service_on_different_dongle(self):
+        from common import hardware
+        inv = hardware.Inventory(
+            devices={"a": {"id": "a", "kind": "rtl-sdr"}, "b": {"id": "b", "kind": "rtl-sdr"}},
+            assignments={"adsb": "a", "satellites": "b"})
+        busy, holder = listen.dongle_busy(inv, lambda u: u == "dump1090-fa")
+        self.assertFalse(busy)                   # ADS-B is on dongle a, not ours
+        self.assertIsNone(holder)
+
+    def test_dongle_busy_global_fallback_when_unassigned(self):
+        from common import hardware
+        inv = hardware.Inventory(devices={}, assignments={})
+        busy, holder = listen.dongle_busy(inv, lambda u: u == "openwebrx")
+        self.assertTrue(busy)
+        self.assertEqual(holder, "openwebrx")
 
     def test_preconditions_no_deps(self):
-        p = listen.preconditions(which=lambda b: None, run=None, is_active=lambda u: False)
+        p = listen.preconditions(which=lambda b: None, run=None,
+                                 is_active=lambda u: False, inv=None)
         self.assertEqual(p["missing_deps"], ["rtl_fm", "sox", "timeout"])
         self.assertFalse(p["dongle_present"])   # missing deps -> never "present"
-        self.assertFalse(p["feed_active"])
+        self.assertFalse(p["busy"])
+        self.assertIsNone(p["holder"])
 
     def test_status_idle(self):
         s = listen.status()

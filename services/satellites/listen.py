@@ -28,7 +28,6 @@ SAMPLE_RATE = 48000       # rtl_fm -s — matches the proven aprs-sdr-feed build
 MAX_SECONDS = 20 * 60     # safety cap: a forgotten recording can't run forever
 DEFAULT_GAIN = "40"
 DEFAULT_PPM = "0"
-FEED_SERVICE = "aprs-sdr-feed"
 
 
 def recordings_dir(repo_root):
@@ -70,23 +69,78 @@ def dongle_present(run=None):
         return False
 
 
-def feed_active(is_active=None):
-    """True if aprs-sdr-feed.service (the dongle's usual owner) is running — in
-    which case listening must wait until it's stopped."""
-    if is_active is None:
+# ── Downlink type support (v1 = FM family only) ──────────────────────────────
+_SUPPORTED_MODES = ("fm", "fm voice", "voice", "aprs", "apt")
+_MODE_BLURBS = {
+    "apt": "NOAA/weather image (FM) — recorded now, decoded offline",
+    "aprs": "APRS packet (FM) — recorded now, decoded offline",
+    "fm voice": "FM voice audio",
+    "voice": "FM voice audio",
+    "fm": "FM voice audio",
+    "lrpt": "digital image — record-only / offline decode (planned)",
+    "ssb": "SSB / linear transponder — not yet supported",
+    "usb": "SSB / linear transponder — not yet supported",
+    "lsb": "SSB / linear transponder — not yet supported",
+}
+
+
+def mode_support(mode):
+    """Classify a downlink `mode` string for v1. Supported = the FM family
+    (rtl_fm -M fm captures it); everything else is shown-but-ghosted."""
+    m = (mode or "").strip().lower()
+    supported = m in _SUPPORTED_MODES
+    return {"supported": supported, "demod": "fm" if supported else None,
+            "blurb": _MODE_BLURBS.get(m, "mode not yet supported")}
+
+
+def is_active_wrapper(base_is_active=None):
+    """Wrap systemctl is-active so the SYNTHETIC "satellites-listen" unit is
+    answered from our own recorder state — this is the recorder→engine bridge
+    that lets device_states()/dongle_busy() see satellites as a claimant even
+    though it is not a systemd unit (see hardware.SERVICE_UNITS)."""
+    if base_is_active is None:
         from common.hardware import _default_is_active
-        return _default_is_active(FEED_SERVICE)
-    return bool(is_active(FEED_SERVICE))
+        base_is_active = _default_is_active
+    def _wrapped(unit):
+        if unit == "satellites-listen":
+            return is_recording()
+        return base_is_active(unit)
+    return _wrapped
 
 
-def preconditions(which=shutil.which, run=None, is_active=None):
+def dongle_busy(inv, is_active):
+    """(busy, holder) for the dongle assigned to satellites. Busy when ANOTHER
+    co-assigned service holds it (its unit is-active). Our own recording is not
+    "busy" (that's the red REC state, tracked via is_recording). If satellites
+    is unassigned or there's no inventory, fall back to the global SDR-consumer
+    check so a bare dev/Pi without hardware.json still arbitrates sensibly."""
+    from common import hardware
+    from common.hardware_detect import sdr_services_active
+    dev = inv.assignments.get("satellites") if inv else None
+    if dev is None:
+        holders = sdr_services_active(is_active)
+        return (bool(holders), holders[0] if holders else None)
+    for svc in hardware.assignees(inv, dev):
+        if svc == "satellites":
+            continue
+        if any(is_active(u) for u in hardware.service_units(inv, svc)):
+            return True, svc
+    return False, None
+
+
+def preconditions(which=shutil.which, run=None, is_active=None, inv=None):
     """Everything the UI needs to decide whether listening is possible right now.
-    Pure of side effects; each check is independently injectable for tests."""
+    Pure of side effects; each check is independently injectable for tests.
+    `is_active` defaults to the recorder-aware wrapper; `inv` is the hardware
+    inventory (None → global SDR-consumer fallback)."""
     missing = missing_deps(which)
+    eff_is_active = is_active if is_active is not None else is_active_wrapper()
+    busy, holder = dongle_busy(inv, eff_is_active)
     return {
         "missing_deps": missing,
         "dongle_present": (not missing) and dongle_present(run),
-        "feed_active": feed_active(is_active),
+        "busy": busy,
+        "holder": holder,
     }
 
 

@@ -38,10 +38,13 @@ def satellites_static(filename="satellites.html"):
 
 @bp.route("/api/satellites")
 def api_satellites():
+    import listen
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     # Attach each roster entry's TLE lines (matched by NORAD id) so the client
     # can propagate live look-angles itself (satellite.js) for the workability
     # pill — no per-satellite server round-trip. None when not in the cache.
+    # Also tag each downlink with v1 support (FM family) + a blurb so the roster
+    # buttons ghost unsupported modes without their own table.
     by_norad = tle.index_by_norad(tle.load_cache(config_paths.tle_cache_dir(SUITE_ROOT)))
     sats = []
     for s in data["satellites"]:
@@ -49,6 +52,8 @@ def api_satellites():
         s = dict(s)
         s["l1"] = entry[1] if entry else None
         s["l2"] = entry[2] if entry else None
+        s["downlinks"] = [dict(d, **listen.mode_support(d.get("mode")))
+                          for d in s.get("downlinks", [])]
         sats.append(s)
     return jsonify({
         "satellites": sats,
@@ -171,34 +176,55 @@ def api_select():
 @bp.route("/api/satellites/listen/status")
 def api_listen_status():
     import listen
+    from common import hardware
+    inv = hardware.load(SUITE_ROOT)
     st = listen.status()
-    st.update(listen.preconditions())
+    st.update(listen.preconditions(inv=inv))   # busy/holder scoped to our dongle
     return jsonify(st)
 
 
 @bp.route("/api/satellites/listen", methods=["POST"])
 def api_listen():
     import listen
+    from common import hardware
     body = request.get_json(force=True)
     try:
         norad = int(body["norad"])
     except (TypeError, ValueError, KeyError):
         return jsonify({"error": "bad or missing norad"}), 400
-    pre = listen.preconditions()
+    pre = listen.preconditions(inv=hardware.load(SUITE_ROOT))
     if pre["missing_deps"]:
         return jsonify({"error": "missing tools: " + ", ".join(pre["missing_deps"])
                         + " — run features/rtl-sdr/install-rtl-sdr.py"}), 400
     if not pre["dongle_present"]:
         return jsonify({"error": "no RTL-SDR dongle detected"}), 400
-    if pre["feed_active"]:
-        return jsonify({"error": "stop the APRS SDR feed first — it owns the dongle"}), 409
+    if pre["busy"]:
+        who = pre["holder"] or "another service"
+        return jsonify({"error": f"the dongle is in use by {who} — stop it first"}), 409
     if listen.is_recording():
         return jsonify({"error": "already recording"}), 409
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     entry = next((s for s in data["satellites"] if s["norad"] == norad), None)
     if not entry or not entry.get("downlinks"):
         return jsonify({"error": "no downlink frequency for this satellite"}), 400
-    freq_hz = listen.mhz_to_hz(entry["downlinks"][0]["freq_mhz"])
+    # Pick the downlink: an optional freq_mhz override must match one of the
+    # satellite's downlinks; else default to the first. Re-validate support
+    # server-side — never trust the button.
+    downlinks = entry["downlinks"]
+    dl = downlinks[0]
+    req_freq = body.get("freq_mhz")
+    if req_freq is not None:
+        try:
+            req = float(req_freq)
+        except (TypeError, ValueError):
+            return jsonify({"error": "bad freq_mhz"}), 400
+        dl = next((d for d in downlinks if abs(float(d["freq_mhz"]) - req) < 1e-6), None)
+        if dl is None:
+            return jsonify({"error": "frequency is not a downlink of this satellite"}), 400
+    support = listen.mode_support(dl.get("mode"))
+    if not support["supported"]:
+        return jsonify({"error": f"{dl.get('mode')} not supported yet — {support['blurb']}"}), 400
+    freq_hz = listen.mhz_to_hz(dl["freq_mhz"])
     safe = "".join(c if c.isalnum() else "_" for c in entry["name"]).strip("_")
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = os.path.join(listen.recordings_dir(SUITE_ROOT), f"{safe}_{ts}.wav")

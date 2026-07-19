@@ -50,6 +50,12 @@ class RoutesTest(unittest.TestCase):
         iss = [s for s in data["satellites"] if s["norad"] == 25544][0]
         self.assertTrue(iss["l1"].startswith("1 25544"))
         self.assertTrue(iss["l2"].startswith("2 25544"))
+        # Each downlink is tagged with v1 support + blurb for the roster buttons.
+        for dl in iss["downlinks"]:
+            self.assertIn("supported", dl)
+            self.assertIn("blurb", dl)
+        # ISS has FM voice + APRS — both supported in v1.
+        self.assertTrue(all(dl["supported"] for dl in iss["downlinks"]))
 
     def test_passes_endpoint(self):
         r = self.client.get("/api/satellites/passes?window=24")
@@ -66,12 +72,21 @@ class RoutesTest(unittest.TestCase):
         r = self.client.get("/api/satellites/listen/status")
         self.assertEqual(r.status_code, 200)
         d = r.get_json()
-        for k in ("recording", "missing_deps", "dongle_present", "feed_active"):
+        for k in ("recording", "missing_deps", "dongle_present", "busy", "holder"):
             self.assertIn(k, d)
 
     def test_listen_degrades_without_hardware(self):
         # No rtl_fm/sox/dongle in CI -> a clean 4xx with an error, never a 500.
         r = self.client.post("/api/satellites/listen", json={"norad": 25544})
+        self.assertIn(r.status_code, (400, 409))
+        self.assertIn("error", r.get_json())
+
+    def test_listen_rejects_freq_not_a_downlink(self):
+        # An override that matches no downlink is a 400 before any hardware check
+        # would matter (the precondition order: deps first). On a dev box with no
+        # rtl_fm the deps check fires first — accept either as a clean 4xx.
+        r = self.client.post("/api/satellites/listen",
+                             json={"norad": 25544, "freq_mhz": 999.0})
         self.assertIn(r.status_code, (400, 409))
         self.assertIn("error", r.get_json())
 
