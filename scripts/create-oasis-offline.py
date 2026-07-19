@@ -183,10 +183,16 @@ def _pmtiles_nondefault_outs():
 # ── Phase 1: Python wheel targets ─────────────────────────────────────────────
 # (pip --platform tag, [python versions]) — keep in sync with README.md.
 TARGETS = [
-    # Raspberry Pi (64-bit Pi OS) — the primary target.
-    ("manylinux2014_aarch64", ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]),
+    # Raspberry Pi (64-bit Pi OS) — the primary target. Python 3.14 splits to the
+    # newer manylinux_2_28 baseline: numpy (Skyfield's compiled dep) ships no
+    # manylinux2014 aarch64/x86_64 wheel for 3.14, only manylinux_2_28 — and any
+    # glibc new enough to run CPython 3.14 already satisfies 2_28. 3.9–3.13 stay
+    # on manylinux2014 (numpy 2.0.2 / 2.2.6 still publish 2014 wheels there).
+    ("manylinux2014_aarch64", ["3.9", "3.10", "3.11", "3.12", "3.13"]),
+    ("manylinux_2_28_aarch64", ["3.14"]),
     # Linux desktop / server.
-    ("manylinux2014_x86_64",  ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]),
+    ("manylinux2014_x86_64",  ["3.9", "3.10", "3.11", "3.12", "3.13"]),
+    ("manylinux_2_28_x86_64", ["3.14"]),
     # Apple Silicon.
     ("macosx_11_0_arm64",     ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]),
     # Intel Mac — MarkupSafe has no x86_64 macOS wheels past Python 3.11.
