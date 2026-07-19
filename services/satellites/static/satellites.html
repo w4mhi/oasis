@@ -510,9 +510,8 @@ function renderWorld() {
     const { past, future } = satgeo.splitAtNow(track, nowIndex(track));
     const draw = (pts, dash) => { for (const seg of satgeo.splitAntimeridian(pts)) { if (seg.length < 2) continue;
       const d = seg.map((p, i) => { const q = satgeo.project(p.lat, p.lon, W, H); return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1); }).join(' ');
-      // Flown = solid; predicted (ahead) = clearly-visible dashed in the same colour.
-      out += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2.5"${dash ? ' stroke-dasharray="6 4" stroke-opacity="0.8"' : ''}/>`; } };
-    draw(future, true); draw(past, false);   // draw predicted first so the solid flown trail sits on top
+      out += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${dash ? 1.5 : 2.5}"${dash ? ' stroke-dasharray="4 3" opacity="0.5"' : ''}/>`; } };
+    draw(past, false); draw(future, true);
     // The satellite is always somewhere on its orbit — show the live marker always.
     if (s.l1 && s.l2) { const pos = livePos(s.l1, s.l2);
       if (pos) { const q = satgeo.project(pos.lat, pos.lon, W, H);
