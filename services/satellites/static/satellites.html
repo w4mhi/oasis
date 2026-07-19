@@ -9,21 +9,28 @@
 <style>
 html, body { height: 100%; margin: 0; }
 /* Full-screen map, APRS-style. */
-#satmap { position: absolute; inset: 0; background: #0d1117; }
+/* Map sits below the fixed header, same as the APRS map. */
+#satmap { position: fixed; top: 37px; left: 0; right: 0; bottom: 0; background: #0d1117; }
 
-/* Top bar */
+/* Header — same shape as the APRS map's top bar. */
 #topbar {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 5;
-  display: flex; align-items: center; gap: 1rem;
-  padding: .5rem .9rem;
-  background: linear-gradient(180deg, rgba(13,17,23,.92), rgba(13,17,23,0));
-  pointer-events: none;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: var(--panel); border-bottom: 1px solid var(--border);
 }
-#topbar > * { pointer-events: auto; }
+.topbar-row { display: flex; align-items: center; gap: .7rem; padding: 0 .9rem; height: 36px; }
 #topbar h1 { font-size: var(--fs-base); letter-spacing: .08em; color: var(--accent);
-  text-transform: uppercase; margin: 0; white-space: nowrap; }
-.home-link { color: #58a6ff; text-decoration: none; font-size: var(--fs-small); white-space: nowrap; }
+  text-transform: uppercase; margin: 0; white-space: nowrap; cursor: pointer; }
+.track-sep { color: var(--border); font-size: var(--fs-small); }
+.win-lbl { font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; }
+.home-link { margin-left: auto; color: #58a6ff; text-decoration: none; font-size: .9rem;
+  font-weight: bold; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
 .home-link:hover { color: #00d98b; }
+/* Zoom-level readout control (bottom-left, matching APRS). */
+.zoom-readout { background: rgba(13,17,23,.72); border: 1px solid var(--border); border-radius: 4px;
+  font-family: var(--mono); font-size: var(--fs-small); color: var(--text-dim);
+  padding: 2px 7px; display: flex; align-items: center; gap: 6px; white-space: nowrap; pointer-events: none; }
+.zoom-readout .cr-lbl { color: var(--text-dim); }
+.zoom-readout #crZoom { color: var(--amber); font-weight: 600; }
 .badge { display: inline-block; font-size: var(--fs-small); font-weight: 700; letter-spacing: .05em;
   padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); }
 .badge.ok   { color: #3fb950; border-color: #3fb950; }
@@ -32,16 +39,20 @@ html, body { height: 100%; margin: 0; }
 /* Floating Roster card (right side, like the APRS recent-stations panel) —
    wider than APRS since it carries more info, same font size. */
 #roster-card {
-  position: absolute; top: 3rem; right: .75rem; z-index: 5;
-  width: 340px; max-width: 46vw; max-height: calc(100vh - 4rem);
+  position: absolute; top: 45px; right: .75rem; z-index: 5;
+  width: 340px; max-width: 46vw; max-height: calc(100vh - 60px);
   display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
   box-shadow: 0 6px 24px rgba(0,0,0,.45);
 }
 #roster-card > header {
   display: flex; align-items: center; gap: .5rem;
-  padding: .5rem .7rem; border-bottom: 1px solid var(--border); cursor: pointer;
+  padding: .5rem .7rem; cursor: pointer; user-select: none; border-radius: 8px;
 }
+#roster-card:not(.collapsed) > header { border-bottom: 1px solid var(--border); }
+#roster-card > header:hover { background: var(--panel-2); }
+#roster-card > header .arrow { font-size: 10px; color: var(--text-dim); transition: transform .2s; flex-shrink: 0; }
+#roster-card.collapsed > header .arrow { transform: rotate(-90deg); }
 #roster-card > header .title { color: var(--accent); font-weight: 700; letter-spacing: .06em;
   text-transform: uppercase; font-size: var(--fs-small); }
 #roster-card > header .count { color: var(--amber); font-size: var(--fs-small); margin-left: auto; }
@@ -86,13 +97,19 @@ html, body { height: 100%; margin: 0; }
 <div id="satmap"></div>
 
 <div id="topbar">
-  <a class="home-link" href="/">⌂ HOME</a>
-  <h1>🛰 Satellites</h1>
-  <span id="tle-age" class="badge">loading…</span>
+  <div class="topbar-row">
+    <h1 onclick="location.reload()" title="Reload">🛰 Satellites</h1>
+    <span class="track-sep">|</span>
+    <span id="tle-age" class="badge">loading…</span>
+    <span class="track-sep">|</span>
+    <span class="win-lbl">24 h window</span>
+    <a href="/" class="home-link">⌂ HOME</a>
+  </div>
 </div>
 
 <div id="roster-card">
   <header onclick="this.parentElement.classList.toggle('collapsed')">
+    <span class="arrow">▾</span>
     <span class="title">Roster</span>
     <span class="count" id="roster-count">—</span>
   </header>
@@ -183,8 +200,19 @@ function initSatMap() {
     center: (STATION && STATION.lon != null) ? [STATION.lon, STATION.lat] : [-122.1, 47.6],
     zoom: 9, attributionControl: false,   // same default as the APRS map
   });
+  // Bottom-left cluster like the APRS map: zoom-level readout, zoom buttons, miles scale.
+  const zoomReadout = {
+    onAdd() { const el = document.createElement('div'); el.className = 'maplibregl-ctrl zoom-readout';
+      el.innerHTML = '<span class="cr-lbl">zoom</span><span id="crZoom">—</span>'; this._el = el; return el; },
+    onRemove() { this._el.remove(); },
+  };
+  _map.addControl(zoomReadout, 'bottom-left');
   _map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
-  _map.on('load', () => {
+  _map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 120 }), 'bottom-left');
+  const _showZoom = () => { const z = document.getElementById('crZoom'); if (z) z.textContent = _map.getZoom().toFixed(1); };
+  _map.on('zoom', _showZoom);
+  const setupLayers = () => {
+    if (_mapReady) return;
     _map.addSource('sat-tracks', { type: 'geojson', data: fc([]) });
     _map.addLayer({ id: 'sat-future', type: 'line', source: 'sat-tracks',
       filter: ['==', ['get', 'seg'], 'future'], layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -206,11 +234,23 @@ function initSatMap() {
       _map.on('mouseleave', id, () => _map.getCanvas().style.cursor = '');
     }
     _map.on('moveend', () => { updateVisibility(); renderRoster(); });   // update "zoom out" hints
-    _map.resize();   // force a repaint — the container can finish layout after init (blank-tiles fix)
-  });
-  // Belt-and-suspenders: resize once more after layout settles, in case 'load'
-  // fired before the full-screen container reached its final size.
-  setTimeout(() => { if (_map) _map.resize(); }, 400);
+    _showZoom();
+    _map.resize();
+  };
+  _map.on('load', setupLayers);
+  // Some full-screen container layouts leave MapLibre's first frame unrendered,
+  // so 'load' never fires and the map stays blank (resize alone doesn't fix it —
+  // only a real camera change does). Once the style is ready, nudge the camera
+  // imperceptibly to force the first paint and set the layers up ourselves.
+  // Self-clears as soon as the map is ready (incl. the normal 'load' path).
+  const _kick = setInterval(() => {
+    if (_mapReady) { clearInterval(_kick); return; }
+    if (_map.isStyleLoaded()) {
+      _map.resize();
+      _map.setZoom(_map.getZoom() - 0.0001);   // imperceptible real change forces the first render
+      setupLayers();
+    }
+  }, 350);
   setInterval(liveTick, 1000);
 }
 function fc(features) { return { type: 'FeatureCollection', features }; }
