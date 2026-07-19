@@ -60,7 +60,7 @@ html, body { height: 100%; margin: 0; }
 #world-card.show { display: block; }
 #world-card .wc-title { font-size: var(--fs-small); color: var(--accent); text-transform: uppercase;
   letter-spacing: .06em; padding: 0 2px 4px; }
-#world-svg { display: block; width: 560px; max-width: 62vw; height: auto; background: #0d1117; border-radius: 4px; }
+#world-svg { display: block; width: 840px; max-width: 90vw; height: auto; background: #0d1117; border-radius: 4px; }
 .grat { stroke: #243b53; stroke-width: .5; }
 .coast { stroke: #3a4d63; stroke-width: .7; fill: none; }
 .badge { display: inline-block; font-size: var(--fs-small); font-weight: 700; letter-spacing: .05em;
@@ -476,6 +476,26 @@ function drawCoastline(W, H) {
     return `<path d="${d}" class="coast"/>`;
   }).join('');
 }
+// One full orbital period of ground track, centred on now, propagated client-side
+// from the TLE (satellite.js). This is the WHOLE track that wraps the globe — the
+// local map keeps the short workable pass slice. Cached ~20 s per satellite.
+function orbitTrack(norad) {
+  const s = PLOTTED[norad];
+  if (!s || !s.l1 || !s.l2) return [];
+  if (s._orbit && Date.now() - s._orbitAt < 20000) return s._orbit;
+  const rec = satellite.twoline2satrec(s.l1, s.l2);
+  const noRadMin = rec.no || rec.no_kozai || (2 * Math.PI / 100);   // mean motion, rad/min
+  const periodMs = (2 * Math.PI / noRadMin) * 60000;                // one orbit
+  const now = Date.now(), step = periodMs / 220, pts = [];
+  for (let t = now - periodMs / 2; t <= now + periodMs / 2; t += step) {
+    const date = new Date(t), pv = satellite.propagate(rec, date);
+    if (!pv.position) continue;
+    const gd = satellite.eciToGeodetic(pv.position, satellite.gstime(date));
+    pts.push({ t: date.toISOString(), lat: satellite.degreesLat(gd.latitude), lon: satellite.degreesLong(gd.longitude) });
+  }
+  s._orbit = pts; s._orbitAt = now;
+  return pts;
+}
 function renderWorld() {
   const svg = document.getElementById('world-svg');
   if (!svg) return;
@@ -485,14 +505,15 @@ function renderWorld() {
     out += `<circle cx="${st.x.toFixed(1)}" cy="${st.y.toFixed(1)}" r="4" fill="#ffb454" stroke="#0d1117"/>`; }
   for (const norad in PLOTTED) {
     const s = PLOTTED[norad];
-    if (!s.track.length) continue;
-    const { past, future } = satgeo.splitAtNow(s.track, nowIndex(s.track));
+    const track = orbitTrack(norad);   // WHOLE orbit, not just the pass slice
+    if (track.length < 2) continue;
+    const { past, future } = satgeo.splitAtNow(track, nowIndex(track));
     const draw = (pts, dash) => { for (const seg of satgeo.splitAntimeridian(pts)) { if (seg.length < 2) continue;
       const d = seg.map((p, i) => { const q = satgeo.project(p.lat, p.lon, W, H); return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1); }).join(' ');
       out += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${dash ? 1.5 : 2.5}"${dash ? ' stroke-dasharray="4 3" opacity="0.5"' : ''}/>`; } };
     draw(past, false); draw(future, true);
-    const now = Date.now(), r = new Date(s.pass.rise).getTime(), se = new Date(s.pass.set).getTime();
-    if (now >= r && now <= se && s.l1 && s.l2) { const pos = livePos(s.l1, s.l2);
+    // The satellite is always somewhere on its orbit — show the live marker always.
+    if (s.l1 && s.l2) { const pos = livePos(s.l1, s.l2);
       if (pos) { const q = satgeo.project(pos.lat, pos.lon, W, H);
         out += `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="4" fill="#fff" stroke="${s.color}" stroke-width="2"/>`; } }
   }
