@@ -591,10 +591,11 @@ function setupRenderHw(d) {
 // digirig/dra-pi in the engine, but the SDR-feed path only makes sense on an
 // rtl-sdr, so this UI offers only that — same choice the dashboard made.)
 const HW_ASSIGN_SERVICES = [
-  { service: 'adsb',      label: 'ADS-B',      kinds: ['rtl-sdr'] },
-  { service: 'openwebrx', label: 'OpenWebRX',  kinds: ['rtl-sdr'] },
-  { service: 'aprs',      label: 'APRS Feed',  kinds: ['rtl-sdr'] },
-  { service: 'winlink',   label: 'Winlink RF', kinds: ['digirig', 'dra-pi'] },
+  { service: 'adsb',       label: 'ADS-B',       kinds: ['rtl-sdr'] },
+  { service: 'openwebrx',  label: 'OpenWebRX',   kinds: ['rtl-sdr'] },
+  { service: 'aprs',       label: 'APRS Feed',   kinds: ['rtl-sdr'] },
+  { service: 'satellites', label: 'Satellites',  kinds: ['rtl-sdr'] },
+  { service: 'winlink',    label: 'Winlink RF',  kinds: ['digirig', 'dra-pi'] },
 ];
 
 // setupDetectHardware is the card's single refresh entry point (wired to the
