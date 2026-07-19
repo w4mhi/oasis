@@ -59,6 +59,7 @@ html, body { height: 100%; margin: 0; }
 .chip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim);
   border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
 .sat-row .dl { margin-top: .25rem; font-size: var(--fs-small); color: var(--amber); }
+.sat-row .oov { margin-top: .3rem; font-size: var(--fs-micro); color: #d29922; font-weight: 700; }
 
 /* Popup — reuse the APRS/ADS-B popup look. */
 .maplibregl-popup-content { background: var(--panel); color: var(--text);
@@ -142,6 +143,7 @@ function renderRoster() {
         <span class="nm">${s.name}</span><span class="pass-hint">${hint}</span></label>
       <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}</div>
       <div class="dl">${(s.downlinks[0] || {}).freq_mhz || ''} MHz</div>
+      ${PLOTTED[s.norad] && PLOTTED[s.norad].outOfView ? '<div class="oov">⚠ Track out of visible area — zoom out</div>' : ''}
     </div>`;
   }).join('');
 }
@@ -162,7 +164,7 @@ async function plotSat(norad, pass) {
     `/api/satellites/track?sat=${norad}&from=${encodeURIComponent(pass.rise)}&to=${encodeURIComponent(pass.set)}`)).json();
   PLOTTED[norad] = { color, pass, track: j.track || [], l1: j.l1, l2: j.l2 };
   redraw();
-  fitTrack(PLOTTED[norad].track);
+  updateVisibility();
 }
 
 function unplotSat(norad) {
@@ -179,7 +181,7 @@ function initSatMap() {
     container: 'satmap',
     style: oasisBaseMapStyle('pmtiles://' + location.origin + '/maps/tiles/state/washington.pmtiles'),
     center: (STATION && STATION.lon != null) ? [STATION.lon, STATION.lat] : [-122.1, 47.6],
-    zoom: 4, attributionControl: false,
+    zoom: 9, attributionControl: false,   // same default as the APRS map
   });
   _map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
   _map.on('load', () => {
@@ -203,7 +205,12 @@ function initSatMap() {
       _map.on('mouseenter', id, () => _map.getCanvas().style.cursor = 'pointer');
       _map.on('mouseleave', id, () => _map.getCanvas().style.cursor = '');
     }
+    _map.on('moveend', () => { updateVisibility(); renderRoster(); });   // update "zoom out" hints
+    _map.resize();   // force a repaint — the container can finish layout after init (blank-tiles fix)
   });
+  // Belt-and-suspenders: resize once more after layout settles, in case 'load'
+  // fired before the full-screen container reached its final size.
+  setTimeout(() => { if (_map) _map.resize(); }, 400);
   setInterval(liveTick, 1000);
 }
 function fc(features) { return { type: 'FeatureCollection', features }; }
@@ -258,14 +265,17 @@ function livePos(l1, l2) {
 }
 function liveTick() { if (Object.keys(PLOTTED).length) redraw(); }
 
-function fitTrack(track) {
-  if (!_mapReady || !track.length) return;
-  let mnLon = 180, mnLat = 90, mxLon = -180, mxLat = -90;
-  for (const p of track) { mnLon = Math.min(mnLon, p.lon); mxLon = Math.max(mxLon, p.lon);
-    mnLat = Math.min(mnLat, p.lat); mxLat = Math.max(mxLat, p.lat); }
-  if (STATION && STATION.lon != null) { mnLon = Math.min(mnLon, STATION.lon); mxLon = Math.max(mxLon, STATION.lon);
-    mnLat = Math.min(mnLat, STATION.lat); mxLat = Math.max(mxLat, STATION.lat); }
-  if (mxLon - mnLon < 340) _map.fitBounds([[mnLon, mnLat], [mxLon, mxLat]], { padding: 60, maxZoom: 6, duration: 800 });
+// True if any point of the track falls within the current map viewport.
+function trackInView(track) {
+  if (!_mapReady || !track.length) return true;
+  const b = _map.getBounds();
+  return track.some(p => b.contains([p.lon, p.lat]));
+}
+// Flag each plotted satellite whose track is entirely off-screen, so the roster
+// can prompt "zoom out". Recomputed on plot and on every map move.
+function updateVisibility() {
+  for (const norad in PLOTTED)
+    PLOTTED[norad].outOfView = (_mapReady && PLOTTED[norad].track.length) ? !trackInView(PLOTTED[norad].track) : false;
 }
 
 /* ── Popup: click a satellite's track/marker on the map ────────────────── */
