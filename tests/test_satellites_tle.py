@@ -36,5 +36,22 @@ class TleTest(unittest.TestCase):
             self.assertIsNotNone(m1)
             self.assertEqual(m1, tle.cache_mtime(d))   # stable across calls
 
+    def test_norad_of_parses_line1(self):
+        self.assertEqual(
+            tle.norad_of("1 25544U 98067A   24010.51782528 -.00002182  00000-0 -24984-4 0  9990"),
+            25544)
+        self.assertIsNone(tle.norad_of("garbage"))
+        self.assertIsNone(tle.norad_of(""))
+
+    def test_index_by_norad_keys_on_catalog_number(self):
+        with open(FIXTURE) as fh:
+            idx = tle.index_by_norad(tle.parse_tle_text(fh.read()))
+        # ISS (25544) and NOAA 19 (33591) indexed by NORAD id, not name.
+        self.assertIn(25544, idx)
+        self.assertIn(33591, idx)
+        name, l1, l2 = idx[25544]
+        self.assertEqual(name, "ISS (ZARYA)")
+        self.assertTrue(l1.startswith("1 25544"))
+
 if __name__ == "__main__":
     unittest.main()

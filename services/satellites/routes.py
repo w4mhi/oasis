@@ -60,16 +60,19 @@ def _cache_path(key):
 
 
 def _sats_by_norad():
-    """{norad: EarthSatellite} for roster entries present in the TLE cache."""
+    """{norad: EarthSatellite} for roster entries present in the TLE cache,
+    matched by NORAD id (not name — CelesTrak's names differ from the roster's,
+    e.g. 'SAUDISAT 1C (SO-50)' vs the roster's 'SO-50')."""
     import predict
-    cache = tle.load_cache(config_paths.tle_cache_dir(SUITE_ROOT))
+    by_norad = tle.index_by_norad(tle.load_cache(config_paths.tle_cache_dir(SUITE_ROOT)))
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     out = {}
     for s in data["satellites"]:
-        lines = cache.get(s["name"])
-        if lines:
+        entry = by_norad.get(s["norad"])
+        if entry:
+            name, l1, l2 = entry
             try:
-                out[s["norad"]] = predict.make_satellite(s["name"], lines[0], lines[1])
+                out[s["norad"]] = predict.make_satellite(name, l1, l2)
             except Exception:
                 # A malformed/unparsable TLE must not take down the roster lookup —
                 # just skip that satellite.
@@ -136,11 +139,12 @@ def api_track():
     except Exception:
         # Same stale-TLE risk as passes — never 500, just return an empty track.
         track = []
-    lines = tle.load_cache(config_paths.tle_cache_dir(SUITE_ROOT)).get(entry["name"]) if entry else None
+    by_norad = tle.index_by_norad(tle.load_cache(config_paths.tle_cache_dir(SUITE_ROOT)))
+    tle_lines = by_norad.get(norad_i)   # (name, l1, l2), matched by NORAD id
     return jsonify({
         "track": track,
-        "l1": lines[0] if lines else None,
-        "l2": lines[1] if lines else None,
+        "l1": tle_lines[1] if tle_lines else None,
+        "l2": tle_lines[2] if tle_lines else None,
     })
 
 

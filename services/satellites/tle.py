@@ -60,3 +60,23 @@ def cache_mtime(cache_dir):
     mtimes = [os.path.getmtime(os.path.join(cache_dir, fn))
               for fn in os.listdir(cache_dir) if fn.endswith(".txt")]
     return max(mtimes) if mtimes else None
+
+
+def norad_of(line1):
+    """NORAD catalog number from TLE line 1 (columns 3-7), or None if unparseable."""
+    try:
+        return int(line1[2:7])
+    except (ValueError, IndexError):
+        return None
+
+
+def index_by_norad(cache):
+    """Re-index a name->(l1,l2) cache as {norad_int: (name, l1, l2)}. Matching by
+    NORAD id is robust against the roster's clean names not matching the verbose
+    names CelesTrak uses (e.g. roster 'SO-50' vs cache 'SAUDISAT 1C (SO-50)')."""
+    out = {}
+    for name, (l1, l2) in cache.items():
+        n = norad_of(l1)
+        if n is not None:
+            out[n] = (name, l1, l2)
+    return out
