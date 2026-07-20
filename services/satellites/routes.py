@@ -62,6 +62,34 @@ def api_satellites():
     })
 
 
+@bp.route("/api/satellites/sync-tle", methods=["POST"])
+def api_sync_tle():
+    """Refresh the TLE cache from CelesTrak on demand — backs the clickable age
+    pill. ONLINE-ONLY and the one operator-triggered exception to "runtime never
+    fetches". With no internet we report {ok:false, offline:true} (HTTP 200)
+    instead of failing, so the UI can tell the operator to try again later."""
+    import subprocess
+    from common.oasis_lib import has_internet
+    cache_dir = config_paths.tle_cache_dir(SUITE_ROOT)
+    if not has_internet():
+        return jsonify({"ok": False, "offline": True,
+                        "tle_age_days": tle.cache_age_days(cache_dir)}), 200
+    script = os.path.join(_HERE, "sync-tle.py")
+    try:
+        p = subprocess.run([sys.executable, script],
+                           capture_output=True, text=True, timeout=180)
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "error": "sync timed out",
+                        "tle_age_days": tle.cache_age_days(cache_dir)}), 200
+    if p.returncode != 0:
+        # A mid-download failure (e.g. CelesTrak unreachable despite DNS) must not
+        # 500 — surface it as a handled error the pill can show.
+        return jsonify({"ok": False,
+                        "error": (p.stderr or p.stdout or "sync failed").strip()[-300:],
+                        "tle_age_days": tle.cache_age_days(cache_dir)}), 200
+    return jsonify({"ok": True, "tle_age_days": tle.cache_age_days(cache_dir)})
+
+
 import datetime
 import hashlib
 

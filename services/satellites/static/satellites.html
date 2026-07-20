@@ -30,11 +30,12 @@ html, body { height: 100%; margin: 0; }
 /* CPU/temp readout (row 1, near HOME) — same colour bands as APRS. */
 #crCpu { font-size: var(--fs-small); font-weight: 600; color: var(--text-dim); }
 #crCpu.cpu-ok { color: #3fb950; } #crCpu.cpu-warn { color: var(--amber); } #crCpu.cpu-hot { color: var(--red); }
-/* Cursor lat/lon readout + clock (row 2, like APRS). */
+/* Cursor lat/lon readout (row 2, like APRS). */
 #coordReadout { display: flex; align-items: center; gap: .5rem; font-size: var(--fs-small); }
 #coordReadout .cr-lbl { color: var(--text-dim); }
 #coordReadout .cr-val { display: inline-block; text-align: right; color: #7ecfff; font-weight: 600; }
 #coordReadout #crLat { width: 8ch; } #coordReadout #crLon { width: 9ch; }
+/* Wall clock (row 2, right side). */
 #clock { font-size: var(--fs-small); color: var(--amber); font-weight: 600; white-space: nowrap; }
 /* SDR recording indicator (row 1). */
 #listen-status { display: none; align-items: center; gap: .4rem; font-size: var(--fs-small);
@@ -56,8 +57,9 @@ html, body { height: 100%; margin: 0; }
 #coverage-wash { position: fixed; top: 73px; left: 0; right: 0; bottom: 0; z-index: 1;
   pointer-events: none; opacity: 0; transition: opacity 1.2s ease;
   box-shadow: inset 0 0 130px 40px rgba(0,217,139,.4); }
-#coverage-badge { position: fixed; top: 120px; left: 50%; transform: translateX(-50%); z-index: 90;
-  display: none; padding: 3px 12px; border-radius: 12px; white-space: nowrap;
+/* Coverage badge — inline pill in the top header (row 1); shown only while a
+   plotted sat is above the horizon. */
+#coverage-badge { display: none; padding: 2px 10px; border-radius: 12px; white-space: nowrap;
   background: rgba(0,217,139,.14); border: 1px solid var(--green); color: var(--green);
   font: 700 var(--fs-small)/1.5 var(--mono); letter-spacing: .05em; }
 .maplibregl-ctrl-scale { background: rgba(13,17,23,.72) !important; border: 2px solid var(--border) !important;
@@ -184,17 +186,17 @@ html, body { height: 100%; margin: 0; }
 <!-- Coverage wash: a green edge-glow over the map while a plotted satellite is
      above the horizon (you're inside its footprint). Opacity tracks elevation. -->
 <div id="coverage-wash"></div>
-<div id="coverage-badge"></div>
 
 <div id="topbar">
   <div class="topbar-row">
     <h1 onclick="location.reload()" title="Reload">Satellites</h1>
     <span class="track-sep">|</span>
-    <span id="tle-age" class="badge">loading…</span>
+    <span id="tle-age" class="badge" onclick="syncTle()" title="Click to update TLEs from CelesTrak (needs internet)" style="cursor:pointer">loading…</span>
     <span class="track-sep">|</span>
     <span class="win-lbl">24 h window</span>
     <span id="listen-status"><span class="rec-dot"></span><span id="listen-text"></span>
       <button class="sbtn" onclick="stopListen()">Stop</button></span>
+    <span id="coverage-badge"></span>
     <span style="flex:1"></span>
     <span id="crCpu" title="Pi CPU load · SoC temperature">—</span>
     <span class="track-sep">|</span>
@@ -205,7 +207,7 @@ html, body { height: 100%; margin: 0; }
       <span class="cr-lbl">Lat</span><span id="crLat" class="cr-val">—</span>
       <span class="cr-lbl">Lon</span><span id="crLon" class="cr-val">—</span>
     </div>
-    <span class="track-sep">|</span>
+    <span style="flex:1"></span>
     <span id="clock">—</span>
   </div>
 </div>
@@ -258,15 +260,50 @@ const HOME_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-16 -30 32 39
 async function boot() {
   const meta = await (await fetch('/api/satellites')).json();
   ROSTER = meta.satellites; STATION = meta.station;
-  const age = meta.tle_age_days, badge = document.getElementById('tle-age');
-  badge.textContent = age == null ? 'no TLE data — run sync' : 'TLE ' + age.toFixed(1) + ' d old';
-  badge.className = 'badge ' + (age != null && age < 5 ? 'ok' : 'warn');
+  setTleBadge(meta.tle_age_days);
   initSatMap();
   startClock(); updateCpu(); setInterval(updateCpu, 8000);
   pollListen(); setInterval(pollListen, 3000);
   await refreshPasses();
   setInterval(refreshPasses, 10 * 60 * 1000);      // keep the 24 h pass window fresh over long sessions
   updatePills(); setInterval(updatePills, 2000);   // live workability colour
+}
+
+// Render the TLE-age pill from a cache age in days (null = empty cache).
+function setTleBadge(age) {
+  const badge = document.getElementById('tle-age');
+  badge.textContent = age == null ? 'no TLE data — click to sync' : 'TLE ' + age.toFixed(1) + ' d old';
+  badge.className = 'badge ' + (age != null && age < 5 ? 'ok' : 'warn');
+}
+
+// Clicking the age pill refreshes the TLE cache from CelesTrak. Online-only: if
+// the Pi is offline the server reports it (never fails), and we flash a "no
+// internet — try later" note on the pill, then restore the previous state.
+let _syncingTle = false;
+async function syncTle() {
+  if (_syncingTle) return;
+  _syncingTle = true;
+  const badge = document.getElementById('tle-age');
+  const prev = { text: badge.textContent, cls: badge.className };
+  badge.textContent = 'syncing TLEs…'; badge.className = 'badge';
+  const flash = msg => { badge.textContent = msg; badge.className = 'badge warn';
+    setTimeout(() => { badge.textContent = prev.text; badge.className = prev.cls; }, 5000); };
+  try {
+    const j = await (await fetch('/api/satellites/sync-tle', { method: 'POST' })).json();
+    if (j.ok) {
+      setTleBadge(j.tle_age_days);
+      // Pull the refreshed TLE lines into the roster + recompute pass predictions.
+      const meta = await (await fetch('/api/satellites')).json();
+      ROSTER = meta.satellites; STATION = meta.station;
+      await refreshPasses();
+    } else {
+      flash(j.offline ? '⚠ no internet — try later' : '⚠ sync failed — try later');
+    }
+  } catch (e) {
+    flash('⚠ sync failed — try later');
+  } finally {
+    _syncingTle = false;
+  }
 }
 
 // Refetch pass predictions + re-render the roster (server-cached, so cheap).
@@ -407,7 +444,7 @@ function updateCoverage() {
   const badge = document.getElementById('coverage-badge');
   if (wash) wash.style.opacity = elev >= 0 ? Math.min(0.16 + elev / 90 * 0.5, 0.62).toFixed(2) : '0';
   if (badge) {
-    if (elev >= 0) { badge.style.display = 'block'; badge.textContent = `● IN COVERAGE · ${name} ${elev.toFixed(0)}°`; }
+    if (elev >= 0) { badge.style.display = 'inline-block'; badge.textContent = `● IN COVERAGE · ${name} ${elev.toFixed(0)}°`; }
     else badge.style.display = 'none';
   }
 }
@@ -645,7 +682,7 @@ async function updateCpu() {
 }
 function startClock() {
   const tick = () => { const el = document.getElementById('clock');
-    if (el) el.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
+    if (el) el.textContent = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
   tick(); setInterval(tick, 1000);
 }
 

@@ -189,6 +189,12 @@ FEATURES = [
             "Download Wikipedia ZIM files for Kiwix (1 GB to ~100 GB).",
             "Content / Data", default=False, internet=True, data=True,
             recommend="ZIM downloaded — Kiwix serves it at :8081 (install Kiwix if you haven't)."),
+    Feature("satellites-tle", "Satellite TLE cache", "services/satellites/sync-tle.py",
+            "Download CelesTrak TLEs so satellite pass prediction works (~30 KB). "
+            "TLEs go stale in a few days — click the age pill on the Satellites page "
+            "to refresh, or re-run this script when you next have internet.",
+            "Content / Data", default=True, internet=True,
+            recommend="Satellite passes are ready — refresh TLEs via the age pill (or re-run sync-tle.py) every few days."),
     Feature("repeaterbook", "Repeater Book listing", None,
             "Show the Repeater Book link on the dashboard. Needs static/repeaterbook/repeaterbook.csv "
             "(copyright — export your own from repeaterbook.com and drop it in).",
