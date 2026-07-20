@@ -77,6 +77,8 @@
 .setup-hw-sub { font-size: var(--fs-label); color: var(--text-dim); margin: .7rem 0 .3rem; }
 .setup-hw-row { display: flex; align-items: center; gap: .5rem; margin: .4rem 0; }
 .setup-hw-row .setup-hw-name { flex: 0 0 6rem; font-size: var(--fs-label); color: var(--text-dim); }
+/* Service has a device assigned → label goes green (operational); unassigned stays dim. */
+.setup-hw-row .setup-hw-name.assigned { color: var(--green); }
 .setup-hw-row select.setup-input { flex: 1; padding: .45rem .5rem; }
 .setup-hw-msg { font-size: var(--fs-label); color: var(--text-dim); margin-top: .35rem; min-height: 1em; }
 .setup-hw-declared { display: flex; align-items: center; gap: .4rem; font-size: var(--fs-label); margin: .25rem 0; }
@@ -683,7 +685,7 @@ function hwRenderAssignRows(devices) {
       `<option value="${escapeHtml(d.id)}"${d.id === current ? ' selected' : ''}>`
       + `${escapeHtml(d.label)} (${escapeHtml(d.kind)})</option>`)).join('');
     return `<div class="setup-hw-row">
-      <span class="setup-hw-name">${escapeHtml(svc.label)}</span>
+      <span class="setup-hw-name${current ? ' assigned' : ''}">${escapeHtml(svc.label)}</span>
       <select class="setup-input" data-assign-service="${escapeHtml(svc.service)}"${isRunning ? ' disabled title="Stop the service to change its device"' : ''}>${opts}</select>
     </div>`;
   }).join('');
