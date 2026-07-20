@@ -1224,6 +1224,12 @@ const _OBJ_CATS = {
 };
 
 function aprsCategory(s) {
+  // Configured natural hazards win — keyed on (sym_table, sym_code) + name, the
+  // same match the hazard pills + alert card use. This is what pulls alternate-
+  // table hazards (hurricane \@, flood \w, emergency \!) out of the "Other"
+  // bucket into their own legend row. _OBJ_CATS below is sym_code-only.
+  const hz = _hazardOf(s);
+  if (hz) return { key: hz.key, label: hz.label };
   // Weather stations use '_' on both the primary and alternate tables.
   if (s && s.sym_code === '_') return { key:'wx', label:'Weather' };
   const hit = s ? _OBJ_CATS[s.sym_code] : null;
@@ -1256,6 +1262,16 @@ const _CAT_ICON = {
   fire:['/',':'], other:['/','/'],
 };
 function catIconEl(key) {
+  // Hazard categories draw their catalog emoji (🔥🌊🌀…) instead of an APRS
+  // sprite — most hazards have no representative primary-table glyph anyway.
+  const hz = _HAZARDS.find(h => h.key === key);
+  if (hz) {
+    const e = document.createElement('span');
+    e.className = 'cat-icon';
+    e.textContent = hz.emoji || '⚠';
+    e.style.cssText = 'width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;';
+    return e;
+  }
   const sym = _CAT_ICON[key] || ['/', '/'];
   const c = makeMarkerEl(sym[0], sym[1]);
   c.className = 'cat-icon';
@@ -1267,10 +1283,10 @@ function catIconEl(key) {
 // Enabled state per category key (default: enabled). Persists across refreshes.
 const objCatState = {};
 
-// Emergency categories are pinned to the top of the APRS info panel (in this
-// order), ahead of the by-count sort, so incidents surface first regardless of
-// how many other stations are heard.
-const _EMERGENCY_CATS = ['fire', 'safety'];
+// Categories pinned to the top of the APRS info panel (ahead of the by-count
+// sort, so incidents surface first): every configured hazard (in catalog order),
+// then Public safety. Computed live since the hazard catalog loads from config.
+function _pinnedCats() { return _HAZARDS.map(h => h.key).concat(['safety']); }
 // ── Natural-hazard catalog — config-driven, shared with the dashboard ────────
 // configuration/hazards.json → /hazards.json. A station matches a hazard by its
 // (sym_table, sym_code) OR an object-name / comment keyword. Hazards bypass the
@@ -1430,9 +1446,10 @@ function updateObjectsPanel() {
     cats[key].count++;
     if (!(key in objCatState)) objCatState[key] = true;
   });
+  const _pinned = _pinnedCats();
   const keys = Object.keys(cats).sort((a, b) => {
-    // Emergency categories first, in _EMERGENCY_CATS order; then by count desc.
-    const ea = _EMERGENCY_CATS.indexOf(a), eb = _EMERGENCY_CATS.indexOf(b);
+    // Hazards + Public safety pinned first (in _pinnedCats order); then count desc.
+    const ea = _pinned.indexOf(a), eb = _pinned.indexOf(b);
     if (ea !== -1 || eb !== -1) {
       if (ea === -1) return 1;
       if (eb === -1) return -1;
