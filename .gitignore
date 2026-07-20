@@ -22,6 +22,8 @@ configuration/tle-cache/
 
 # Satellite pass recordings (WAV) from the RTL-SDR listen feature; runtime data.
 configuration/sat-recordings/
+# ...and any WAV copied out for inspection (e.g. to the repo root) — never commit audio.
+*.wav
 
 
 # Operator-placed APRS map warnings (shared runtime state, not repo content).
