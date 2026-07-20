@@ -1581,7 +1581,12 @@ def build_launchers(dest, profile="full"):
             'if [ ! -d "$VENV" ]; then\n'
             '  echo "First run — setting up Python environment from bundled wheels (offline) ..."\n'
             '  python3 -m venv "$VENV"\n'
-            '  "$VENV/bin/pip" install --quiet --no-index --find-links "$WHEELS" flask gunicorn psutil\n'
+            # Install the FULL base requirements, not a hand-picked subset — a
+            # stale subset here silently starved the runtime venv of skyfield/
+            # numpy/sgp4 (the satellites feature), so /passes 500'd even though
+            # the wheels were bundled. requirements.txt is the single source; new
+            # base deps now flow in automatically.
+            '  "$VENV/bin/pip" install --quiet --no-index --find-links "$WHEELS" -r "$DIR/scripts/requirements.txt"\n'
             '  echo "Done."\n'
             "fi\n"
             "\n"
