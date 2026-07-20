@@ -42,5 +42,62 @@
     return { x: cx + rad * Math.sin(a), y: cy - rad * Math.cos(a) };
   }
 
-  return { project, splitAntimeridian, splitAtNow, polar };
+  // Footprint = the ground region from which the satellite is above the horizon.
+  // Its great-circle angular radius from the sub-point, for altitude altKm above
+  // a spherical Earth: γ = acos(R / (R + h)).  Degrees.
+  var _R_EARTH_KM = 6371;
+  function footprintRadiusDeg(altKm) {
+    return Math.acos(_R_EARTH_KM / (_R_EARTH_KM + altKm)) * 180 / Math.PI;
+  }
+
+  // Ring of {lat, lon} points on the footprint circle centred on (lat, lon) at
+  // great-circle angular radius radiusDeg — great-circle destination points at
+  // every bearing. n segments (default 72). Longitudes normalised to −180..180.
+  function footprint(lat, lon, radiusDeg, n) {
+    n = n || 72;
+    var latR = lat * Math.PI / 180, lonR = lon * Math.PI / 180, d = radiusDeg * Math.PI / 180;
+    var pts = [];
+    for (var i = 0; i <= n; i++) {
+      var brng = 2 * Math.PI * i / n;
+      var lat2 = Math.asin(Math.sin(latR) * Math.cos(d) +
+                           Math.cos(latR) * Math.sin(d) * Math.cos(brng));
+      var lon2 = lonR + Math.atan2(Math.sin(brng) * Math.sin(d) * Math.cos(latR),
+                                   Math.cos(d) - Math.sin(latR) * Math.sin(lat2));
+      pts.push({ lat: lat2 * 180 / Math.PI,
+                 lon: ((lon2 * 180 / Math.PI + 540) % 360) - 180 });
+    }
+    return pts;
+  }
+
+  // Build SVG path 'd' string(s) for a footprint filled on the equirectangular
+  // map, handling the two cases a great-circle circle breaks under: it encircles
+  // a POLE (fill the polar cap — close along the top/bottom map edge), or it
+  // crosses the ANTIMERIDIAN without a pole (split into arcs). Returns an array
+  // of path strings (usually 1, or 2 for a dateline split).
+  function footprintPaths(lat, lon, radiusDeg, w, h, n) {
+    var ring = footprint(lat, lon, radiusDeg, n || 96);
+    var trace = function (pts) {
+      return pts.map(function (p, i) {
+        var q = project(p.lat, p.lon, w, h);
+        return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1);
+      }).join(' ');
+    };
+    // Pole cap: the circle reaches over a pole. Trace the boundary sorted by
+    // longitude and close it along that pole's map edge (y=0 north, y=h south).
+    if (lat + radiusDeg >= 90 || lat - radiusDeg <= -90) {
+      var edgeY = (lat + radiusDeg >= 90) ? 0 : h;
+      var sorted = ring.slice().sort(function (a, b) { return a.lon - b.lon; });
+      return ['M0 ' + edgeY + ' ' + sorted.map(function (p) {
+        var q = project(p.lat, p.lon, w, h);
+        return 'L' + q.x.toFixed(1) + ' ' + q.y.toFixed(1);
+      }).join(' ') + ' L' + w + ' ' + edgeY + ' Z'];
+    }
+    // No pole: one polygon, or two arcs if it straddles the dateline.
+    var segs = splitAntimeridian(ring);
+    if (segs.length <= 1) return [trace(ring) + ' Z'];
+    return segs.filter(function (s) { return s.length >= 2; }).map(function (s) { return trace(s) + ' Z'; });
+  }
+
+  return { project, splitAntimeridian, splitAtNow, polar,
+           footprintRadiusDeg, footprint, footprintPaths };
 });

@@ -20,4 +20,20 @@ ok(JSON.stringify(g.polar(0, 90, 100, 100, 90)) === JSON.stringify({x:100,y:100}
 const north = g.polar(0, 0, 100, 100, 90);
 ok(Math.abs(north.x - 100) < 1e-9 && north.y < 100, 'polar horizon-north points up');
 
+// Footprint radius: 0° at the surface, grows with altitude (~27° at 800 km).
+ok(Math.abs(g.footprintRadiusDeg(0)) < 1e-9, 'footprint radius 0 at surface');
+ok(Math.abs(g.footprintRadiusDeg(800) - 27.3) < 1.5, 'footprint radius ~27° at 800 km');
+
+// Footprint ring: n+1 points, longitudes normalised to -180..180.
+const fp = g.footprint(47.5, -122, 20, 36);
+ok(fp.length === 37, 'footprint returns n+1 points');
+ok(fp.every(p => p.lon >= -180 && p.lon <= 180 && p.lat >= -90 && p.lat <= 90), 'footprint coords in range');
+
+// footprintPaths: a mid-latitude circle → one closed polygon.
+const p1 = g.footprintPaths(47.5, -122, 20, 720, 360);
+ok(p1.length === 1 && /Z$/.test(p1[0]), 'footprint path: single closed polygon when clear');
+// A circle over a pole (80°+20°>90°) → a cap closed along the top edge (y=0).
+const p2 = g.footprintPaths(80, 0, 20, 720, 360);
+ok(p2.length === 1 && /^M0 0 /.test(p2[0]) && / L720 0 Z$/.test(p2[0]), 'footprint path: north-pole cap closed along top edge');
+
 console.log(pass ? '\nALL PASS' : '\nFAIL'); process.exit(pass ? 0 : 1);

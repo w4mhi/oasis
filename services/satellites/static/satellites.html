@@ -51,6 +51,15 @@ html, body { height: 100%; margin: 0; }
 .zoom-readout #crZoom { color: var(--amber); font-weight: 600; }
 /* Miles scale bar — match the APRS map styling. */
 .sat-home-node { line-height: 0; filter: drop-shadow(0 0 4px rgba(255,210,87,.7)); pointer-events: none; }
+/* Coverage wash — green edge-glow over the map when a plotted sat is above the
+   horizon (you're inside its footprint); opacity scales with elevation. */
+#coverage-wash { position: fixed; top: 73px; left: 0; right: 0; bottom: 0; z-index: 1;
+  pointer-events: none; opacity: 0; transition: opacity 1.2s ease;
+  box-shadow: inset 0 0 130px 40px rgba(0,217,139,.4); }
+#coverage-badge { position: fixed; top: 120px; left: 50%; transform: translateX(-50%); z-index: 90;
+  display: none; padding: 3px 12px; border-radius: 12px; white-space: nowrap;
+  background: rgba(0,217,139,.14); border: 1px solid var(--green); color: var(--green);
+  font: 700 var(--fs-small)/1.5 var(--mono); letter-spacing: .05em; }
 .maplibregl-ctrl-scale { background: rgba(13,17,23,.72) !important; border: 2px solid var(--border) !important;
   border-top: none !important; color: var(--amber) !important; font-family: var(--mono) !important;
   font-size: var(--fs-small) !important; line-height: 1.4; padding: 0 5px 1px; }
@@ -121,7 +130,9 @@ html, body { height: 100%; margin: 0; }
 .sat-row .nm { font-weight: 700; }
 .sat-row .pass-hint { display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
   font-size: var(--fs-small); color: var(--text); margin-left: auto; white-space: nowrap; line-height: 1.25; }
-.sat-row .pass-hint .ph-when { color: var(--amber); font-weight: 700; }
+.sat-row .pass-hint .ph-when { color: var(--amber); font-weight: 700; }   /* pre-AOS: "in X min" (waiting) */
+.sat-row .pass-hint .ph-when.live { color: var(--green); animation: los-pulse 1.1s ease-in-out infinite; }  /* pass in progress: contact window open */
+@keyframes los-pulse { 50% { opacity: .35; } }
 .sat-row .chips { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-top: .35rem; }
 .chip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim);
   border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
@@ -143,6 +154,9 @@ html, body { height: 100%; margin: 0; }
 .sat-row .dl-status { font-size: var(--fs-small); color: var(--text-dim); }
 .sat-row .dl-status.rec { color: var(--red); font-weight: 700; }
 .sat-row .oov { margin-top: .3rem; font-size: var(--fs-micro); color: #d29922; font-weight: 700; }
+/* No upcoming pass: dim the row and say plainly why there are no controls. */
+.sat-row.no-pass { opacity: .6; }
+.sat-row .no-pass-hint { margin-top: .4rem; font-size: var(--fs-small); color: var(--text-dim); font-style: italic; }
 
 /* Popup — reuse the APRS/ADS-B popup look. */
 .maplibregl-popup-content { background: var(--panel); color: var(--text);
@@ -167,6 +181,10 @@ html, body { height: 100%; margin: 0; }
 <body>
 
 <div id="satmap"></div>
+<!-- Coverage wash: a green edge-glow over the map while a plotted satellite is
+     above the horizon (you're inside its footprint). Opacity tracks elevation. -->
+<div id="coverage-wash"></div>
+<div id="coverage-badge"></div>
 
 <div id="topbar">
   <div class="topbar-row">
@@ -246,28 +264,51 @@ async function boot() {
   initSatMap();
   startClock(); updateCpu(); setInterval(updateCpu, 8000);
   pollListen(); setInterval(pollListen, 3000);
-  PASSES = (await (await fetch(`/api/satellites/passes?window=${WINDOW_H}`)).json()).passes || {};
-  renderRoster();
+  await refreshPasses();
+  setInterval(refreshPasses, 10 * 60 * 1000);      // keep the 24 h pass window fresh over long sessions
   updatePills(); setInterval(updatePills, 2000);   // live workability colour
 }
 
-function nextPassOf(norad) { return (PASSES[norad] || [])[0] || null; }
+// Refetch pass predictions + re-render the roster (server-cached, so cheap).
+async function refreshPasses() {
+  try {
+    PASSES = (await (await fetch(`/api/satellites/passes?window=${WINDOW_H}`)).json()).passes || {};
+  } catch (e) { /* keep last-good passes */ }
+  renderRoster();
+}
+
+// The current-or-next pass: skip any whose set time is already past, so a row
+// stops showing an elapsed pass the moment it ends (updatePills re-evaluates
+// this every 2 s, so the hint advances to the next pass on its own).
+function nextPassOf(norad) {
+  const now = Date.now();
+  return (PASSES[norad] || []).find(p => new Date(p.set).getTime() > now) || null;
+}
+// Footprint is drawn only from 15 min before AOS through LOS — the window where
+// it's actually useful (mirrors the countdown pill's lifetime), which also keeps
+// the world map uncluttered when the sat is on the far side of its orbit.
+function inFootprintWindow(norad) {
+  const p = nextPassOf(norad);
+  if (!p) return false;
+  const now = Date.now();
+  return now >= new Date(p.rise).getTime() - 15 * 60000 && now <= new Date(p.set).getTime();
+}
 
 function renderRoster() {
   document.getElementById('roster-count').textContent = ROSTER.length + ' sats';
   document.getElementById('roster').innerHTML = ROSTER.map(s => {
     const p = nextPassOf(s.norad);
     const color = PLOTTED[s.norad] ? PLOTTED[s.norad].color : 'transparent';
-    return `<div class="sat-row ${PLOTTED[s.norad] ? 'on' : ''}" style="border-left-color:${color}">
+    return `<div class="sat-row ${PLOTTED[s.norad] ? 'on' : ''} ${p ? '' : 'no-pass'}" style="border-left-color:${color}">
       <label><input type="checkbox" ${PLOTTED[s.norad] ? 'checked' : ''}
           ${p ? '' : 'disabled'} onchange="onToggle(${s.norad}, this.checked)">
         <span class="nm">${s.name}</span><span class="pass-hint" data-norad="${s.norad}">${passHint(p)}</span></label>
       <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}<span class="sat-elev" data-norad="${s.norad}"></span></div>
-      ${PLOTTED[s.norad] ? `<div class="dlbtns">${dlBtnsHTML(s)}</div>` : ''}
+      ${!p ? '<div class="no-pass-hint">— no upcoming pass · no SDR controls —</div>'
+           : (PLOTTED[s.norad] ? `<div class="dlbtns">${dlBtnsHTML(s)}</div>` : '')}
       <div class="sat-bottom">
         ${PLOTTED[s.norad] ? `<span class="dl-status" data-norad="${s.norad}"></span>` : '<span></span>'}
         <span class="sat-meter" data-norad="${s.norad}">${'<span class="seg"></span>'.repeat(5)}</span></div>
-      ${PLOTTED[s.norad] && PLOTTED[s.norad].outOfView ? '<div class="oov">⚠ Track out of visible area — zoom out</div>' : ''}
     </div>`;
   }).join('');
   updatePills();       // paint the meters immediately (avoid a dim flash until the tick)
@@ -322,12 +363,12 @@ const BAR_COLORS = ['hsl(0, 85%, 57%)', 'hsl(322, 75%, 60%)', 'hsl(285, 65%, 62%
 function passHint(p) {
   if (!p) return 'no pass 24h';
   const rise = new Date(p.rise), set = new Date(p.set), now = new Date();
-  let when = '';
+  let when = '', live = false;
   if (now < rise) { const m = Math.round((rise - now) / 60000);
     when = m >= 60 ? `in ${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m` : `in ${m}m`; }
-  else if (now < set) { when = `LOS ${Math.max(1, Math.round((set - now) / 60000))}m`; }
+  else if (now < set) { when = `LOS ${Math.max(1, Math.round((set - now) / 60000))}m`; live = true; }  // contact window open
   return `<span class="ph-main">${fmt(p.rise)} · max ${p.max_el.toFixed(0)}°</span>`
-       + (when ? `<span class="ph-when">${when}</span>` : '');
+       + (when ? `<span class="ph-when${live ? ' live' : ''}">${when}</span>` : '');
 }
 function updatePills() {
   ROSTER.forEach(s => {
@@ -348,6 +389,27 @@ function updatePills() {
     const ph = document.querySelector(`.pass-hint[data-norad="${s.norad}"]`);
     if (ph) ph.innerHTML = passHint(nextPassOf(s.norad));
   });
+  updateCoverage();
+}
+
+// Coverage wash: tint the local map green while a PLOTTED satellite is above the
+// horizon (you're inside its footprint). Opacity + badge scale with elevation —
+// faint at the horizon, strong near the zenith.
+function updateCoverage() {
+  let elev = -1, name = '';
+  for (const norad in PLOTTED) {
+    const s = ROSTER.find(x => x.norad === +norad);
+    if (!s) continue;
+    const e = currentElev(s.l1, s.l2);
+    if (e != null && e > elev) { elev = e; name = s.name; }
+  }
+  const wash = document.getElementById('coverage-wash');
+  const badge = document.getElementById('coverage-badge');
+  if (wash) wash.style.opacity = elev >= 0 ? Math.min(0.16 + elev / 90 * 0.5, 0.62).toFixed(2) : '0';
+  if (badge) {
+    if (elev >= 0) { badge.style.display = 'block'; badge.textContent = `● IN COVERAGE · ${name} ${elev.toFixed(0)}°`; }
+    else badge.style.display = 'none';
+  }
 }
 
 /* ── Plot / unplot a satellite's next pass ─────────────────────────────── */
@@ -487,7 +549,8 @@ function livePos(l1, l2) {
     const now = new Date(), pv = satellite.propagate(satellite.twoline2satrec(l1, l2), now);
     if (!pv.position) return null;
     const gd = satellite.eciToGeodetic(pv.position, satellite.gstime(now));
-    return { lat: satellite.degreesLat(gd.latitude), lon: satellite.degreesLong(gd.longitude) };
+    return { lat: satellite.degreesLat(gd.latitude), lon: satellite.degreesLong(gd.longitude),
+             altKm: gd.height };   // gd.height is km — drives the footprint radius
   } catch (e) { return null; }
 }
 function liveTick() { if (Object.keys(PLOTTED).length) redraw(); }
@@ -643,15 +706,24 @@ function renderWorld() {
     const s = PLOTTED[norad];
     const track = orbitTrack(norad);   // WHOLE orbit, not just the pass slice
     if (track.length < 2) continue;
+    const pos = (s.l1 && s.l2) ? livePos(s.l1, s.l2) : null;
+    // Footprint fill (drawn UNDER the track): the ground area from which the sat
+    // is above the horizon — "the region it covers". Only during the pass window
+    // (15 min before AOS → LOS), matching the countdown pill's lifetime. Proper
+    // pole/antimeridian clipping so it stays drawn at high latitude.
+    if (pos && pos.altKm > 0 && inFootprintWindow(norad)) {
+      for (const d of satgeo.footprintPaths(pos.lat, pos.lon, satgeo.footprintRadiusDeg(pos.altKm), W, H)) {
+        out += `<path d="${d}" fill="${s.color}" fill-opacity="0.12" stroke="${s.color}" stroke-opacity="0.45" stroke-width="1"/>`;
+      }
+    }
     const { past, future } = satgeo.splitAtNow(track, nowIndex(track));
     const draw = (pts, dash) => { for (const seg of satgeo.splitAntimeridian(pts)) { if (seg.length < 2) continue;
       const d = seg.map((p, i) => { const q = satgeo.project(p.lat, p.lon, W, H); return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1); }).join(' ');
       out += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${dash ? 1.5 : 2.5}"${dash ? ' stroke-dasharray="4 3" opacity="0.5"' : ''}/>`; } };
     draw(past, false); draw(future, true);
     // The satellite is always somewhere on its orbit — show the live marker always.
-    if (s.l1 && s.l2) { const pos = livePos(s.l1, s.l2);
-      if (pos) { const q = satgeo.project(pos.lat, pos.lon, W, H);
-        out += `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="4" fill="#fff" stroke="${s.color}" stroke-width="2"/>`; } }
+    if (pos) { const q = satgeo.project(pos.lat, pos.lon, W, H);
+      out += `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="4" fill="#fff" stroke="${s.color}" stroke-width="2"/>`; }
   }
   svg.innerHTML = out;
 }
