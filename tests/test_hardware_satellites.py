@@ -51,6 +51,16 @@ class SatellitesServiceTest(unittest.TestCase):
         states = hardware.device_states(inv, is_active=lambda u: False)
         self.assertFalse(states[0]["running"])
 
+    def test_shared_dongle_lists_all_assignees(self):
+        # aprs running on the dongle it shares with satellites must NOT hide the
+        # satellites assignment — the row lists both, and stays flagged running.
+        inv = _inv(devices={"a": _dev("a", "rtl-sdr")},
+                   assignments={"aprs": "a", "satellites": "a"})
+        st = hardware.device_states(inv, is_active=lambda u: u == "aprs-sdr-feed")[0]
+        self.assertIn("aprs", st["assignee"])
+        self.assertIn("satellites", st["assignee"])
+        self.assertTrue(st["running"])
+
 
 if __name__ == "__main__":
     unittest.main()

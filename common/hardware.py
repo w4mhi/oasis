@@ -189,10 +189,11 @@ def device_states(inv, is_active=_default_is_active):
     """[{id, label, kind, serial, assignee, running}] — drives the Setup card's
     Dongles list. 🟢 free = no assignees, or assigned-but-idle (shared default);
     🔴 in use = one of its assigned services' unit(s) is systemctl is-active. A
-    shared rtl-sdr may have several assignees (advisory); `assignee` names the
-    running claimant when one is active, else lists all who default to it, so
-    the operator can see the dongle is spoken-for. `serial` lets the UI join in
-    the USB-port map (server/app.py) — empty for kinds without one."""
+    shared rtl-sdr may have several assignees (advisory); `assignee` lists ALL of
+    them (comma-joined) so an idle co-assignee (e.g. `satellites`) isn't hidden
+    behind the one that's currently running, while `running` still flags in-use.
+    `serial` lets the UI join in the USB-port map (server/app.py) — empty for
+    kinds without one."""
     out = []
     for did, d in inv.devices.items():
         services = assignees(inv, did)
@@ -200,7 +201,7 @@ def device_states(inv, is_active=_default_is_active):
             (svc for svc in services
              if any(is_active(u) for u in service_units(inv, svc))),
             None)
-        label = running_svc or (", ".join(services) if services else None)
+        label = ", ".join(services) if services else None   # all assignees, not just the running one
         out.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
                     "serial": d.get("serial", ""), "ptt": d.get("ptt", ""),
                     "assignee": label, "running": running_svc is not None})
