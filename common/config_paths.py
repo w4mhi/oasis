@@ -24,6 +24,9 @@ def user_folders_json(repo_root):
 def aprs_frequencies_json(repo_root):
     return os.path.join(config_dir(repo_root), "aprs_frequencies.json")
 
+def hazards_json(repo_root):
+    return os.path.join(config_dir(repo_root), "hazards.json")
+
 def satellites_json(repo_root):
     return os.path.join(config_dir(repo_root), "satellites.json")
 

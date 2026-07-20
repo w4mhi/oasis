@@ -811,12 +811,26 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
    no Fire/Public-safety station has been heard in 48h; amber alert when some are;
    filled/inverted while the list is narrowed to them. */
 .emerg-chip {
-  margin-left: auto; flex-shrink: 0;
+  margin-left: .4rem; flex-shrink: 0;
   font-size: var(--fs-small); font-weight: 700; letter-spacing: .04em;
   padding: .12rem .5rem; border-radius: 999px;
   border: 1px solid transparent; color: var(--text-dim);
   white-space: nowrap; user-select: none; cursor: default;
 }
+/* Hazard pills — one per configured natural-hazard type currently heard
+   (config: configuration/hazards.json). Coloured per-hazard via the inline --hz
+   custom property; click narrows the list to that hazard. Right-aligned as a
+   group with the emergency chip; the container's margin-left:auto right-aligns
+   the whole cluster even when no hazard is present (empty container). */
+.hazard-pills { margin-left: auto; display: inline-flex; align-items: center; gap: .3rem; flex-shrink: 0; }
+.hazard-pill {
+  font-size: var(--fs-small); font-weight: 700; letter-spacing: .03em;
+  padding: .12rem .5rem; border-radius: 999px;
+  border: 1px solid var(--hz); color: var(--hz); background: transparent;
+  white-space: nowrap; user-select: none; cursor: pointer;
+}
+.hazard-pill:hover { background: rgba(255, 255, 255, 0.06); }
+.hazard-pill.active { color: #0d1117; background: var(--hz); border-color: var(--hz); }
 .emerg-chip.has-emerg {
   color: var(--amber); border-color: var(--amber-dim);
   background: rgba(255, 180, 84, 0.08); cursor: pointer;
@@ -1335,9 +1349,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="aprs-section-hdr">
       <span class="aprs-section-title" id="aprs-title">TRAFFIC LIVE</span>
       <span class="aprs-section-meta">stations — <span id="aprs-count">—</span> &nbsp;·&nbsp; last packet — <span id="aprs-last">—</span></span>
-      <!-- Emergency chip: count of Fire/Public-safety stations heard in the last 48h.
-           Click to narrow the list to exactly that set (its own 48h window, overriding
-           the Age filter). Dim/read-only "no emergencies" state when the set is empty. -->
+      <!-- Hazard pills (per natural-hazard type, config-driven) + Emergency chip.
+           Hazards persist (no age window — they're incident objects); the Emergency
+           chip is Public-safety stations heard in the last 48h. Both narrow the list. -->
+      <span id="hazard-pills" class="hazard-pills"></span>
       <span id="emerg-chip" class="emerg-chip" role="button" tabindex="0" aria-pressed="false"
             onclick="toggleEmergencyOnly()"
             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleEmergencyOnly();}">✓ No emergencies</span>
@@ -2860,17 +2875,63 @@ function _lhEpoch(s) {
   return isNaN(t) ? 0 : t;
 }
 
-// Emergency chip state + membership. The set = Fire/Public-safety stations (same
-// types the list used to float) heard within 48h; older ones expire from it. The
-// chip counts this set and, when active, narrows the list to exactly it. Session
-// state — resets on reload.
+// Emergency chip state + membership. The set = Public-safety POIs (EOC / first-aid
+// / emergency-service stations) heard within 48h; older ones expire from it. The
+// chip counts this set and, when active, narrows the list to exactly it. Natural
+// hazards (Fire, Flood, Tornado, …) are surfaced separately by the hazard pills.
+// Session state — resets on reload.
 let emergencyOnly = false;
 const _EMERGENCY_WINDOW_MS = 48 * 3600 * 1000;
 function _isEmergency(s) {
-  const label = aprsTypeLabel(s);
-  if (label !== 'Fire' && label !== 'Public safety') return false;
+  if (aprsTypeLabel(s) !== 'Public safety') return false;
   const t = _lhEpoch(s.last_heard || s.timestamp || s.time);
   return t > 0 && (Date.now() - t) <= _EMERGENCY_WINDOW_MS;
+}
+
+// ── Natural-hazard pills (config: configuration/hazards.json → /hazards.json) ──
+// Each hazard matches a station by its (sym_table, sym_code) OR an object-name /
+// comment keyword. Hazards persist (no age window) — an incident stays until it
+// stops being reported. Loaded once at startup; pills repaint every filter pass.
+let _HAZARDS = [];
+let hazardFilter = null;   // active hazard key, or null (mutually exclusive with emergencyOnly)
+async function loadHazards() {
+  try {
+    const d = await (await fetch('/hazards.json', { cache: 'no-store' })).json();
+    _HAZARDS = Array.isArray(d.hazards) ? d.hazards : [];
+  } catch (e) { _HAZARDS = []; }
+  applyAprsFilter();   // repaint pills now that the config is in
+}
+function _hazardKeyOf(s) {
+  if (!s || !_HAZARDS.length) return null;
+  const tbl = s.sym_table || '/', code = s.sym_code || '';
+  const name = String(s.callsign || '').toUpperCase();
+  const comment = String(s.comment || '').toUpperCase();
+  const hit = kw => kw && (name.includes(kw) || comment.includes(kw));
+  for (const h of _HAZARDS) {
+    if ((h.symbols || []).some(p => p[0] === tbl && p[1] === code)) return h.key;   // symbol wins outright
+    // Name match, minus false-positive facilities (e.g. "FIRE STATION" vs a wildfire).
+    if ((h.name_match || []).some(hit) && !(h.name_exclude || []).some(hit)) return h.key;
+  }
+  return null;
+}
+function toggleHazardFilter(key) {
+  hazardFilter = (hazardFilter === key) ? null : key;
+  if (hazardFilter) emergencyOnly = false;   // one narrowing filter at a time
+  applyAprsFilter();
+}
+function _renderHazardPills(counts) {
+  const box = document.getElementById('hazard-pills');
+  if (!box) return;
+  box.innerHTML = _HAZARDS.filter(h => counts[h.key]).map(h => {
+    const active = hazardFilter === h.key;
+    return '<span class="hazard-pill' + (active ? ' active' : '') + '" role="button" tabindex="0"'
+      + ' style="--hz:' + escapeHtml(h.color || '#ff5c33') + '"'
+      + ' onclick="toggleHazardFilter(\'' + escapeHtml(h.key) + '\')"'
+      + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleHazardFilter(\'' + escapeHtml(h.key) + '\');}"'
+      + ' aria-pressed="' + (active ? 'true' : 'false') + '"'
+      + ' title="' + counts[h.key] + ' ' + escapeHtml(h.label) + (active ? ' — showing only these (click to clear)' : ' — click to show only these') + '">'
+      + escapeHtml(h.emoji || '⚠') + ' ' + counts[h.key] + ' ' + escapeHtml((h.label || '').toUpperCase()) + '</span>';
+  }).join('');
 }
 
 // Paint the header chip for the current count + filter state, and grey the Type
@@ -2884,11 +2945,11 @@ function _renderEmergencyChip(count) {
   if (count > 0) {
     chip.textContent = '⚠ ' + count + ' EMERGENCY';
     chip.title = emergencyOnly
-      ? 'Showing only emergency stations (Fire / Public safety, ≤48h) — click to clear'
-      : count + ' emergency station' + (count !== 1 ? 's' : '') + ' (Fire / Public safety, ≤48h) — click to show only these';
+      ? 'Showing only emergency POIs (Public safety, ≤48h) — click to clear'
+      : count + ' emergency POI' + (count !== 1 ? 's' : '') + ' (Public safety, ≤48h) — click to show only these';
   } else {
     chip.textContent = '✓ No emergencies';
-    chip.title = 'No Fire / Public-safety stations heard in the last 48h';
+    chip.title = 'No Public-safety stations heard in the last 48h';
   }
   const typeSel = document.getElementById('aprs-col-type');
   if (typeSel) typeSel.disabled = emergencyOnly && count > 0;
@@ -2908,18 +2969,28 @@ function applyAprsFilter() {
   const gridSel    = document.getElementById('aprs-col-grid')?.value || 'All';
   const viaSel     = document.getElementById('aprs-col-via')?.value || 'All';
   const cutoff = minutes ? Date.now() - minutes * 60000 : 0;
-  // Emergency chip: count the set (Fire/Public-safety ≤48h) every pass; auto-clear
-  // the filter if it has emptied so we never show an empty "emergency" view.
+  // Emergency chip: count the set (Public-safety ≤48h) every pass; auto-clear the
+  // filter if it has emptied so we never show an empty "emergency" view.
   const emergCount = _allAprsStations.reduce((n, s) => n + (_isEmergency(s) ? 1 : 0), 0);
   if (emergencyOnly && emergCount === 0) emergencyOnly = false;
   _renderEmergencyChip(emergCount);
   const emergActive = emergencyOnly && emergCount > 0;
+  // Hazard pills: count each configured hazard (no age window — hazards persist),
+  // repaint, and auto-clear the hazard filter if its type has emptied.
+  const hazardCounts = {};
+  _allAprsStations.forEach(s => { const k = _hazardKeyOf(s); if (k) hazardCounts[k] = (hazardCounts[k] || 0) + 1; });
+  if (hazardFilter && !hazardCounts[hazardFilter]) hazardFilter = null;
+  _renderHazardPills(hazardCounts);
+  const hazardActive = hazardFilter && hazardCounts[hazardFilter] > 0;
   // One predicate, applied to APRS stations AND ADS-B aircraft rows alike.
   const pred = s => {
-    // EMERGENCY chip active — keep only the set (Fire/Public-safety ≤48h). This
-    // owns its own 48h window (overriding the Age dropdown) and supersedes Type;
-    // callsign / grid / src still apply below. Otherwise honour Age + Type.
-    if (emergActive) {
+    // HAZARD pill active — keep only that hazard type (any age; hazards persist).
+    // Else EMERGENCY chip active — keep only Public-safety ≤48h. Either owns its
+    // own window (overriding the Age dropdown) and supersedes Type; callsign /
+    // grid / src still apply below. Otherwise honour Age + Type.
+    if (hazardActive) {
+      if (_hazardKeyOf(s) !== hazardFilter) return false;
+    } else if (emergActive) {
       if (!_isEmergency(s)) return false;
     } else {
       // AGE — case-insensitive on last_heard/timestamp/time.
@@ -3380,6 +3451,7 @@ loadConfig().then(() => {
   loadInstalled().then(async () => { await fetchHardware(); pingAll(); pollFeedFlow(); pollAdsbFlow(); });
   fetchStats();
   fetchAudio();
+  loadHazards();   // hazard-pill config (before/after the first APRS fetch — pills repaint on load)
   fetchAPRS();
   loadHomeCoords();
   pollWifi();

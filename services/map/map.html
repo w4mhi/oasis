@@ -399,6 +399,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 /* Quiet placeholder shown in an alerts card body when there are 0 alerts — the
    card stays put (collapsed "0") instead of popping in and out of the stack. */
 .alert-empty{color:var(--text-dim);font-size:var(--fs-micro);}
+/* Per-hazard rows in the APRS Alerts card — one coloured row per hazard type
+   present (colour from the hazard catalog via the inline --hz custom property). */
+.hazard-alert-row{display:flex;align-items:baseline;gap:.5rem;padding:3px 0;}
+.hazard-alert-label{color:var(--hz);font-weight:700;white-space:nowrap;}
+.hazard-alert-count{color:var(--hz);font-weight:700;margin-left:auto;}
 /* "N dismissed · restore" footer in the APRS Alerts card. */
 .alert-dismissed-note{margin-top:6px;padding-top:5px;border-top:1px solid var(--border);color:var(--text-dim);font-size:var(--fs-micro);}
 .alert-dismissed-note a{color:var(--blue);text-decoration:none;}
@@ -826,10 +831,11 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
     <div id="recent-body"></div>
   </div>
 
-  <!-- APRS Alerts — APRS Fire stations, surfaced in their own card (Public safety
-       is a presence ping, not an alert — see _APRS_ALERT_CATS). Hidden entirely
-       until at least one is heard; auto-expands on first appearance (see
-       updateEmergenciesPanel). ADS-B alerts live in #adsb-alerts-panel. -->
+  <!-- APRS Alerts — a per-hazard rollup driven by the shared hazard catalog
+       (configuration/hazards.json → _HAZARDS): one coloured row per hazard type
+       (Fire/Flood/Tornado/…) currently on the map. Stays visible "0 / No alerts"
+       when quiet; auto-expands on first appearance (see updateEmergenciesPanel).
+       ADS-B alerts live in #adsb-alerts-panel. -->
   <div id="emergencies-panel" class="collapsed">
     <div id="emergencies-header" onclick="toggleEmergenciesPanel()">
       <span id="emergencies-arrow">▾</span>
@@ -1265,43 +1271,61 @@ const objCatState = {};
 // order), ahead of the by-count sort, so incidents surface first regardless of
 // how many other stations are heard.
 const _EMERGENCY_CATS = ['fire', 'safety'];
-// The APRS Alerts card is narrower: only genuine alerts. Public safety (A/h/o/+)
-// is an EOC/first-aid presence ping, not an alert — so the card is Fire only.
-// (Public safety still shows in the APRS Info legend above, just not as an alert.)
-const _APRS_ALERT_CATS = ['fire'];
+// ── Natural-hazard catalog — config-driven, shared with the dashboard ────────
+// configuration/hazards.json → /hazards.json. A station matches a hazard by its
+// (sym_table, sym_code) OR an object-name / comment keyword. Hazards bypass the
+// age filter (an incident stays on the map until it stops being reported) and are
+// cleared by hand (dismissedHazard), not by aging out. Seeded with a Fire default
+// so it works even before the config fetch resolves / if it fails.
+let _HAZARDS = [{ key: 'fire', label: 'Fire', emoji: '🔥', color: '#ff5c33',
+                 symbols: [['/', ':']], name_match: ['FIRE', 'WILDFIRE'] }];
+async function loadHazards() {
+  try {
+    const d = await (await fetch('/hazards.json', { cache: 'no-store' })).json();
+    if (Array.isArray(d.hazards) && d.hazards.length) _HAZARDS = d.hazards;
+  } catch (e) { /* keep the Fire default */ }
+  applyFilter();
+  updateEmergenciesPanel();
+}
+function _hazardOf(s) {
+  if (!s) return null;
+  const tbl = s.sym_table || '/', code = s.sym_code || '';
+  const name = String(s.callsign || '').toUpperCase();
+  const comment = String(s.comment || '').toUpperCase();
+  const hit = kw => kw && (name.includes(kw) || comment.includes(kw));
+  for (const h of _HAZARDS) {
+    if ((h.symbols || []).some(p => p[0] === tbl && p[1] === code)) return h;   // symbol wins outright
+    // Name match, minus false-positive facilities (e.g. "FIRE STATION" vs a wildfire).
+    if ((h.name_match || []).some(hit) && !(h.name_exclude || []).some(hit)) return h;
+  }
+  return null;
+}
 
-// ── Manual EOC dismissal of APRS alerts (fires) ──────────────────────────────
-// Fires bypass the age filter (Part 1), so a stale incident never ages off the
-// map on its own — the operator clears it by hand when the EOC confirms it's
-// capped. Dismissal is stored client-side (localStorage, offline-first), keyed by
-// callsign → the last_heard epoch at dismiss time. If that fire ever beacons a
-// NEWER update (fresh signal = active again), it auto-restores. Clear-all via the
-// restore link in the APRS Alerts card.
-const _DISMISSED_FIRES_KEY = 'oasis_dismissed_fires';
-let _dismissedFires = (() => {
-  try { return JSON.parse(localStorage.getItem(_DISMISSED_FIRES_KEY) || '{}'); }
+// ── Manual EOC dismissal of hazard alerts ────────────────────────────────────
+// Client-side (localStorage), keyed by callsign → the last_heard at dismiss time.
+// Any newer beacon (fresh signal) auto-restores it. Clear-all via the restore
+// link in the APRS Alerts card.
+const _DISMISSED_KEY = 'oasis_dismissed_hazards';
+let _dismissedHazards = (() => {
+  try { return JSON.parse(localStorage.getItem(_DISMISSED_KEY) || '{}'); }
   catch (e) { return {}; }
 })();
-function _saveDismissedFires() {
-  localStorage.setItem(_DISMISSED_FIRES_KEY, JSON.stringify(_dismissedFires));
-}
-// Dismissed while its last_heard is unchanged from the dismissal. Any new beacon
-// advances last_heard → the record no longer matches → the fire auto-restores.
-function dismissedFire(s) {
-  const at = _dismissedFires[s.callsign];
+function _saveDismissed() { localStorage.setItem(_DISMISSED_KEY, JSON.stringify(_dismissedHazards)); }
+function dismissedHazard(s) {
+  const at = _dismissedHazards[s.callsign];
   return at != null && at === (s.last_heard || '');
 }
-function dismissFire(callsign) {
+function dismissHazard(callsign) {
   const s = allStations.find(x => x.callsign === callsign);
-  _dismissedFires[callsign] = (s && s.last_heard) || '';
-  _saveDismissedFires();
+  _dismissedHazards[callsign] = (s && s.last_heard) || '';
+  _saveDismissed();
   if (_stationPopup) _stationPopup.remove();
   applyFilter();               // drop it from the map + list now
-  updateEmergenciesPanel();    // refresh the active-fire count + restore footer
+  updateEmergenciesPanel();    // refresh the active-hazard counts + restore footer
 }
-function restoreDismissedFires() {
-  _dismissedFires = {};
-  _saveDismissedFires();
+function restoreDismissedHazards() {
+  _dismissedHazards = {};
+  _saveDismissed();
   applyFilter();
   updateEmergenciesPanel();
 }
@@ -1331,61 +1355,48 @@ function toggleEmergenciesPanel() {
   document.getElementById('emergencies-panel').classList.toggle('collapsed');
 }
 
-// Dedicated APRS Alerts card: a rollup of APRS Fire stations heard (Public
-// safety is a presence ping, not an alert — see _APRS_ALERT_CATS), rendered
-// identically to APRS Info (checkbox + sprite icon +
-// clickable label + count) and driving the same objCatState — so its checkboxes
-// stay in sync with the APRS Info card and toggle the same map/list visibility.
-// Hidden entirely when none are heard; auto-expands the first time one appears (a
-// manual collapse then sticks until they clear and return). APRS-only — ADS-B
-// aircraft alerts live in their own distance-banded card (updateAdsbAlertsPanel).
-// Driven from updateObjectsPanel so it tracks the same station poll lifecycle.
+// Dedicated APRS Alerts card: a per-hazard-type rollup driven by the shared
+// hazard catalog (_HAZARDS / hazards.json) — one coloured row per hazard present
+// (🔥 Fire 34, 🌊 Flood 2, …), counts excluding EOC-dismissed stations, with a
+// "N dismissed · restore" footer. Stays visible showing "0 / No alerts" when
+// quiet; auto-expands the first time a hazard appears (a manual collapse then
+// sticks until they clear and return). APRS-only — ADS-B aircraft alerts live in
+// their own distance-banded card (updateAdsbAlertsPanel). Driven from
+// updateObjectsPanel so it tracks the same station poll lifecycle.
 function updateEmergenciesPanel() {
   const panel   = document.getElementById('emergencies-panel');
   const body    = document.getElementById('emergencies-body');
   const countEl = document.getElementById('emergencies-count');
-  // Count stations per emergency category, capturing the same label APRS Info uses.
-  const cats = {};   // key -> { label, count }
-  let total = 0;
-  let dismissedCount = 0;
+  const counts = {};        // hazard key -> count (excluding dismissed)
+  let total = 0, dismissedCount = 0;
   allStations.forEach(s => {
-    const { key, label } = aprsCategory(s);
-    if (!_APRS_ALERT_CATS.includes(key)) return;
-    if (dismissedFire(s)) { dismissedCount++; return; }   // EOC-cleared: off the map, not counted
-    if (!cats[key]) cats[key] = { label, count: 0 };
-    cats[key].count++;
+    const h = _hazardOf(s);
+    if (!h) return;
+    if (dismissedHazard(s)) { dismissedCount++; return; }   // EOC-cleared: off the map, not counted
+    counts[h.key] = (counts[h.key] || 0) + 1;
     total++;
-    if (!(key in objCatState)) objCatState[key] = true;   // new category defaults on
   });
   // "N dismissed · restore" footer, so a manual clear is never a dead end.
   const footer = dismissedCount
     ? '<div class="alert-dismissed-note">' + dismissedCount + ' dismissed · '
-      + '<a href="#" onclick="restoreDismissedFires();return false" title="Un-dismiss all cleared fires">restore</a></div>'
+      + '<a href="#" onclick="restoreDismissedHazards();return false" title="Un-dismiss all cleared hazards">restore</a></div>'
     : '';
   if (!total) {
     // Stay visible with a quiet "0" instead of hiding — a card popping in/out of
     // the stack every poll is worse than a persistent "0 alerts". Don't force a
-    // collapse either: leave it as the operator set it, so the body doesn't flap
-    // open/closed on every transition (re-arm only, so the next alert expands it).
+    // collapse either (re-arm only, so the next alert expands it).
     _emergencyShown = false;
     body.innerHTML = '<div class="alert-empty">No alerts</div>' + footer;
     countEl.textContent = '0';
     return;
   }
   countEl.textContent = total;
-  // One row per present alert category (Fire only) — same markup as APRS Info
-  // rows: checkbox (bound to objCatState) + icon + clickable name.
-  const keys = _APRS_ALERT_CATS.filter(k => cats[k]);
-  body.innerHTML = keys.map(k =>
-    '<label class="layer-toggle"><input type="checkbox" data-objcat="' + k + '"' + (objCatState[k] ? ' checked' : '') + '> ' +
-      '<span class="obj-name" data-objcat="' + k + '" title="Click to show only this type">' + _escHtml(cats[k].label) + '</span>' +
-      '<span class="obj-count">' + cats[k].count + '</span></label>'
+  // One coloured row per hazard type present, in catalog order.
+  body.innerHTML = _HAZARDS.filter(h => counts[h.key]).map(h =>
+    '<div class="hazard-alert-row" style="--hz:' + _escHtml(h.color || '#ff5c33') + '">' +
+      '<span class="hazard-alert-label">' + _escHtml(h.emoji || '⚠') + ' ' + _escHtml(h.label || h.key) + '</span>' +
+      '<span class="hazard-alert-count">' + counts[h.key] + '</span></div>'
   ).join('') + footer;
-  // Prepend the representative APRS sprite icon after the checkbox, as APRS Info does.
-  body.querySelectorAll('.layer-toggle').forEach(row => {
-    const cb = row.querySelector('input[data-objcat]');
-    if (cb) row.insertBefore(catIconEl(cb.dataset.objcat), cb.nextSibling);
-  });
   panel.hidden = false;
   if (!_emergencyShown) { panel.classList.remove('collapsed'); _emergencyShown = true; }
 }
@@ -1662,11 +1673,11 @@ function buildPopup(s) {
            '</div>';
   html += '<button class="pop-track-btn" onclick="showPath(\'' + s.callsign + '\')">' +
           (activePath === s.callsign ? '✕ Clear path' : '⟲ Show path') + '</button>';
-  // Fire = an EOC alert that bypasses the age filter — give the operator a manual
-  // "mark cleared" so a capped incident (whose signal we've stopped receiving) can
-  // be taken off the map. Auto-restores if the fire ever beacons a newer update.
-  if (_APRS_ALERT_CATS.includes(aprsCategory(s).key)) {
-    html += '<button class="pop-track-btn pop-dismiss" onclick="dismissFire(\'' + s.callsign + '\')">✕ Dismiss alert (EOC cleared)</button>';
+  // A configured hazard (fire/flood/tornado/…) bypasses the age filter — give the
+  // operator a manual "mark cleared" so a stale incident (whose signal we've
+  // stopped receiving) can be taken off the map. Auto-restores on a newer beacon.
+  if (_hazardOf(s)) {
+    html += '<button class="pop-track-btn pop-dismiss" onclick="dismissHazard(\'' + s.callsign + '\')">✕ Dismiss alert (EOC cleared)</button>';
   }
   return html;
 }
@@ -1960,12 +1971,12 @@ function _columnFilterPredicate() {
   const gridSel = document.getElementById('aprs-col-grid')?.value || 'All';
   return s => {
     // Age (Last-heard cutoff) — position-less/undated rows drop under a filter.
-    // EXCEPT APRS alert categories (Fire): an active EOC incident must stay on the
-    // map no matter how stale its last update — it's cleared by manual dismissal
-    // (dismissedFire), not by aging out. See Part 1 of the EOC fire-handling work.
-    const _isAlert = _APRS_ALERT_CATS.includes(aprsCategory(s).key);
-    if (!_isAlert && cutoff && (!s.last_heard || new Date(s.last_heard).getTime() < cutoff)) return false;
-    if (_isAlert && dismissedFire(s)) return false;
+    // EXCEPT configured natural hazards (Fire/Flood/Tornado/…): an active EOC
+    // incident must stay on the map no matter how stale its last update — it's
+    // cleared by manual dismissal (dismissedHazard), not by aging out.
+    const _hz = _hazardOf(s);
+    if (!_hz && cutoff && (!s.last_heard || new Date(s.last_heard).getTime() < cutoff)) return false;
+    if (_hz && dismissedHazard(s)) return false;
     // Object-type filter (categories disabled in the objects panel). Aircraft
     // carry an APRS aircraft/heli symbol, so they fold into the same buckets.
     if (objCatState[aprsCategory(s).key] === false) return false;
@@ -2887,6 +2898,7 @@ loadConfig().then(() => {
     homeImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(HOME_SVG);
 
     startClock();
+    loadHazards();    // shared natural-hazard catalog (hazards.json) — pills/age-exempt/dismiss
     fetchStations();
     loadStationCfg(); // resolve local station position → render the home node
     _syncPathChips(); // reflect any persisted RF/IS path-filter state on the chips

@@ -1,0 +1,11 @@
+{
+  "_note": "APRS natural-hazard categories for the dashboard hazard pills and the map. A station matches a hazard if its (sym_table, sym_code) is listed in `symbols`, OR its object name (callsign)/comment contains a `name_match` keyword AND no `name_exclude` keyword (both case-insensitive substrings). name_exclude filters out facilities/POIs that share a word — e.g. 'FIRE STATION'/'FIRE REPEATER' are fire-dept infrastructure, not wildfire incidents. A symbol match always wins regardless of name_exclude. sym_table is '/' (primary) or '\\' (alternate). Edit freely to add regional hazards — read locally, no network. Codes verified against aprs.org/symbols/symbolsX.txt.",
+  "hazards": [
+    { "key": "fire",      "label": "Fire",      "emoji": "🔥", "color": "#ff5c33", "symbols": [["/", ":"]],  "name_match": ["WILDFIRE"] },
+    { "key": "hurricane", "label": "Hurricane", "emoji": "🌀", "color": "#b478ff", "symbols": [["\\", "@"]], "name_match": ["HURRICANE", "TROPICAL"] },
+    { "key": "tornado",   "label": "Tornado",   "emoji": "🌪", "color": "#e34aff", "symbols": [["\\", "<"]], "name_match": ["TORNADO", "TORNDO", "FUNNEL"] },
+    { "key": "flood",     "label": "Flood",     "emoji": "🌊", "color": "#4aa8ff", "symbols": [["\\", "w"]], "name_match": ["FLOOD"] },
+    { "key": "smoke",     "label": "Smoke",     "emoji": "💨", "color": "#c9a227", "symbols": [["\\", "E"]], "name_match": ["SMOKE"] },
+    { "key": "emergency", "label": "Emergency", "emoji": "🆘", "color": "#ff3b3b", "symbols": [["\\", "!"]], "name_match": ["EMERGENCY", "MAYDAY"] }
+  ]
+}

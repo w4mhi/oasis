@@ -205,6 +205,24 @@ def serve_station_json():
     return send_file(path, mimetype="application/json")
 
 
+# Minimal built-in default so the hazard pills work even if the operator deleted
+# configuration/hazards.json — the shipped file is the real source of truth.
+_HAZARDS_FALLBACK = {"hazards": [
+    {"key": "fire", "label": "Fire", "emoji": "\U0001F525", "color": "#ff5c33",
+     "symbols": [["/", ":"]], "name_match": ["WILDFIRE"]},
+]}
+
+
+@app.route("/hazards.json")
+def serve_hazards_json():
+    """APRS natural-hazard categories (dashboard hazard pills + map). Served from
+    configuration/hazards.json — operator-editable — with a built-in fallback."""
+    path = config_paths.hazards_json(SUITE_ROOT)
+    if os.path.exists(path):
+        return send_file(path, mimetype="application/json")
+    return jsonify(_HAZARDS_FALLBACK)
+
+
 PORT = appconfig.PORT
 
 def find_free_port(start=8083, end=8093):
