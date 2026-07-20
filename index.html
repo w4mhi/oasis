@@ -2254,6 +2254,30 @@ const RTL_SDR_LABEL = { feed: 'The APRS SDR feed', adsb: 'ADS-B', owrx: 'OpenWeb
 // false means either the operator cancelled, or chose to stop the other
 // service first (they click START again once it's confirmed stopped).
 async function resolveHardwareConflict(svcId) {
+  // Winlink RF vs. GrayWolf (spec v2 §4): GrayWolf can bind a digirig/dra-pi
+  // radio port with zero OASIS visibility into which one, so — unlike the
+  // RTL-SDR same-device check below — this is deliberately coarse: GrayWolf
+  // running at all → confirm. "Stop GrayWolf" stops the graywolf unit itself
+  // (no feed-style proxy exists for a direct radio-port claim). No server gate.
+  if (svcId === 'wlrf') {
+    const gwRunning = _svcStates['gw'] === 'up' || _svcStates['gw'] === 'warn';
+    if (!gwRunning) return true;
+    const stopIt = confirm(
+      `GrayWolf is running and may be using this radio port.\n\n` +
+      `OK — stop GrayWolf first (you'll need to click START again once it's stopped).\n` +
+      `Cancel — leave it running and try starting anyway.`
+    );
+    if (!stopIt) return true;   // "Continue anyway"
+    try {
+      await fetch('/api/service', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+        body: JSON.stringify({ unit: SVC_UNITS['gw'], action: 'stop' }),
+      });
+    } catch (e) { /* best-effort — pingAll below reflects whatever happened */ }
+    pingAll();
+    return false;   // abort this start; operator retries once GrayWolf is down
+  }
   if (!RTL_SDR_CARDS.includes(svcId)) return true;
   const svcHw = (_hwLast && _hwLast.services) || {};
   const myDevice = (svcHw[HW_SERVICE_FOR_CARD[svcId]] || {}).device_id || '';

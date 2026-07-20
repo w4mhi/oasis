@@ -1,4 +1,4 @@
-import json, os, sys, unittest
+import os, sys, unittest
 from unittest import mock
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "server"))
@@ -33,19 +33,20 @@ class HardwareGateTest(unittest.TestCase):
         self.assertEqual(HW.service_for_unit(sdr, "aprs-sdr-feed"), "aprs")
         self.assertIsNone(HW.service_for_unit(empty, "aprs-sdr-feed"))
 
-    def test_starting_unassigned_service_refused_409(self):
-        # api_service() early-returns 200 supported:false on non-Linux, before
-        # ever reaching the hardware gate — patch sys.platform so the test
-        # exercises the gate itself regardless of the host OS running the suite.
-        # pat-direwolf (winlink) is used here because adsb is migrated off
-        # this hard gate — see test_starting_unassigned_adsb_never_refused.
+    def test_starting_unassigned_winlink_never_refused(self):
+        # winlink was the LAST service on the hard "unassigned -> refuse" gate;
+        # with that gate removed (spec 2026-07-15 §4, "never refuse a start"),
+        # even an unassigned pat-direwolf start is no longer pre-emptively
+        # blocked. Pat's separate telnet transport is unaffected either way; RF
+        # contention with GrayWolf is resolved client-side at start-click time,
+        # not by a server 409. (systemctl runs unmocked here and fails in this
+        # test env — a 500, never a gate 409.)
         empty_inv = HW.Inventory(devices={}, assignments={})
         with mock.patch.object(HW, "load", return_value=empty_inv), \
              mock.patch("sys.platform", "linux"):
             r = self.c.post("/api/service", json={"unit": "pat-direwolf", "action": "start"},
                             headers={"X-OASIS-Request": "1"})
-        self.assertEqual(r.status_code, 409)
-        self.assertEqual(json.loads(r.data)["reason"], "unassigned")
+        self.assertNotEqual(r.status_code, 409)
 
     def test_starting_unassigned_adsb_never_refused(self):
         # adsb is migrated off the hard gate
@@ -72,11 +73,11 @@ class HardwareGateTest(unittest.TestCase):
         self.assertNotEqual(r.status_code, 409)
 
     def test_starting_assigned_service_is_not_gate_refused(self):
-        # Assigned + present -> the hardware gate passes; whatever happens next
-        # (the actual systemctl call) is unmocked here and will report its own
-        # outcome (sudo -n systemctl will fail in this test environment) — the
-        # point of this test is ONLY that we do not get a 409
-        # "unassigned"/"device-not-attached" from the gate itself.
+        # With no hardware start-gate, an assigned+present service is of course
+        # not refused either; whatever happens next (the actual systemctl call)
+        # is unmocked here and reports its own outcome (sudo -n systemctl fails
+        # in this test environment) — the point is ONLY that we never get a 409
+        # "unassigned"/"device-not-attached" from a gate.
         inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "serial": "1"}},
                            assignments={"adsb": "a"})
         with mock.patch.object(HW, "load", return_value=inv), \
@@ -86,10 +87,9 @@ class HardwareGateTest(unittest.TestCase):
         self.assertNotEqual(r.status_code, 409)
 
     def test_non_claiming_unit_not_gated(self):
-        # kiwix has no logical-service mapping. The gate now always loads the
-        # inventory first (aprs-sdr-feed's mapping is assignment-dependent, so
-        # resolution can't skip loading), but resolution to None means kiwix is
-        # still never actually gated (no 409).
+        # kiwix has no logical-service mapping and, with the hardware start-gate
+        # gone entirely, nothing is gated anyway — a kiwix start never returns a
+        # gate 409.
         empty_inv = HW.Inventory(devices={}, assignments={})
         with mock.patch.object(HW, "load", return_value=empty_inv), \
              mock.patch("sys.platform", "linux"):

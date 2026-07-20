@@ -10,11 +10,6 @@ import subprocess
 
 from flask import Blueprint, jsonify, request
 
-import appconfig
-from common import hardware as HW
-
-SUITE_ROOT = appconfig.SUITE_ROOT
-
 bp = Blueprint("service_control", __name__)
 
 # Known OASIS systemd units (install/enable scripts create these). Allowlisted
@@ -51,16 +46,6 @@ _SERVICE_ACTIONS = {"start", "stop", "restart"}
 # hardware-shared service, so its boot state is left untouched (transient
 # start/stop) like every other unit.
 _PERSIST_BOOT_STATE = {"aprs-sdr-feed", "dump1090-fa"}
-
-# Services migrated OFF the hard "unassigned -> refuse" gate below, per
-# specs/2026-07-15-hardware-conflict-resolution-v2-design.md — "never refuse a
-# start" is the target end state for every hardware-bound service. The three
-# RTL-SDR consumers (adsb, aprs feed, openwebrx) share one dongle advisorily
-# and resolve contention at start-click time (index.html resolveHardwareConflict),
-# not via a server gate. GrayWolf stays permanently absent from HW.SERVICE_UNITS
-# (no apply hook ever backed its assignment — see common/hardware.py). winlink
-# keeps the hard gate for now and joins on its own turn.
-_HW_GATE_MIGRATED = {"adsb", "aprs", "openwebrx"}
 
 
 def _systemctl_seq(unit, verbs):
@@ -103,22 +88,15 @@ def api_service():
         return jsonify({"ok": False, "supported": False,
                         "error": "systemd not available"}), 200
 
-    # Hardware-aware gate: starting a unit that claims a physical device (SDR /
-    # radio port) is refused unless its logical service is assigned a present
-    # device. Exclusive allocation (common/hardware.py) means the device can
-    # never be held by ANOTHER service, so this can only fail for THIS
-    # service's own assignment state — never cross-service contention (that's
-    # refused earlier, at assign time, via /api/hardware/assign, added in a
-    # later task).
+    # No hardware start-gate: "never refuse a start" is the end state for every
+    # hardware-bound service (spec 2026-07-15-hardware-conflict-resolution-v2 §4).
+    # Device assignment is advisory bookkeeping; a service acquires its device
+    # exclusively only when it actually STARTS. Cross-service contention on the
+    # shared RTL-SDR (and Winlink RF vs. GrayWolf on a radio port) is resolved
+    # client-side at start-click time in index.html's resolveHardwareConflict,
+    # not by a server 409. Assign-time exclusivity for digirig/dra-pi still holds
+    # via /api/hardware/assign's can_assign check.
     affected = []
-    if action == "start":
-        inv = HW.load(SUITE_ROOT)
-        hw_service = HW.service_for_unit(inv, unit)
-        if hw_service and hw_service not in _HW_GATE_MIGRATED:
-            ok, reason = HW.can_start(inv, hw_service)
-            if not ok:
-                return jsonify({"ok": False, "error": f"cannot start {unit}: {reason}",
-                                "reason": reason}), 409
 
     # Build the systemctl step(s). Boot-state-tracking units enable-on-start /
     # disable-on-stop; the `action` verb is the one whose success we report on.
