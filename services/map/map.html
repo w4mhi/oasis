@@ -127,6 +127,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   font-family:var(--mono);text-align:left;padding-left:0;width:100%;
 }
 .pop-track-btn:hover{color:var(--accent);}
+/* Dismiss-alert button in a fire popup — red to read as a deliberate "clear this
+   incident" action, distinct from the blue track/path buttons. */
+.pop-dismiss{color:var(--red);font-weight:700;margin-top:8px;border-top:1px solid var(--border);padding-top:7px;}
+.pop-dismiss:hover{color:#ff6b6b;}
 .pop-track-status{
   margin-top:4px;font-size:var(--fs-small);
   color:#00c8ff;font-family:var(--mono);display:none;
@@ -344,10 +348,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #coverage-panel.collapsed #coverage-body{display:none;}
 #coverage-body .layer-toggle input{accent-color:#2dd4bf;}
 
-/* Emergencies panel — chrome matches APRS Info (amber title, dimmed count) but
+/* APRS Alerts panel — chrome matches APRS Info (amber title, dimmed count) but
    carries an amber border so it stands out at a glance from the other cards.
-   Hidden entirely when no fire/safety station is heard. The Fire row still reads
-   red via .obj-name[data-objcat="fire"]. */
+   Hidden entirely when no Fire station is heard. The Fire row still reads red
+   via .obj-name[data-objcat="fire"]. */
 #emergencies-panel{
   background:var(--panel);border:1px solid var(--amber);border-radius:7px;
   font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
@@ -367,6 +371,38 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
    drives the same objCatState, so it stays in sync with the APRS Info card. */
 #emergencies-body{border-top:1px solid var(--border);padding:7px 10px;max-height:240px;overflow-y:auto;}
 #emergencies-panel.collapsed #emergencies-body{display:none;}
+/* ADS-B Alerts card — aircraft within ADSB_ALERT_KM of the station, coloured by
+   distance band — red inside …RED_KM (or an emergency squawk), amber inside
+   …AMBER_KM, green out to …_KM (thresholds are the ADSB_ALERT_* consts).
+   Same chrome as the ADS-B / APRS Alerts panels; purple title to match ADS-B. */
+#adsb-alerts-panel{
+  background:var(--panel);border:1px solid var(--border);border-radius:7px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+#adsb-alerts-header{display:flex;align-items:center;gap:.5rem;padding:6px 10px;cursor:pointer;user-select:none;border-radius:7px;}
+#adsb-alerts-header:hover{background:var(--panel-2);}
+#adsb-alerts-arrow{font-size:10px;color:var(--text-dim);transition:transform .2s;flex-shrink:0;}
+#adsb-alerts-panel.collapsed #adsb-alerts-arrow{transform:rotate(-90deg);}
+#adsb-alerts-title{color:#b478ff;font-weight:700;flex:1;white-space:nowrap;letter-spacing:.04em;}
+#adsb-alerts-count{color:var(--text-dim);font-size:var(--fs-micro);flex-shrink:0;}
+#adsb-alerts-body{border-top:1px solid var(--border);padding:7px 10px;max-height:240px;overflow-y:auto;}
+#adsb-alerts-panel.collapsed #adsb-alerts-body{display:none;}
+.adsb-alert-row{display:flex;align-items:baseline;gap:.5rem;padding:3px 0;cursor:pointer;}
+.adsb-alert-row:hover{background:var(--panel-2);}
+.adsb-alert-flight{font-weight:700;white-space:nowrap;}
+.adsb-alert-flight.red{color:var(--red);}
+.adsb-alert-flight.amber{color:var(--amber);}
+.adsb-alert-flight.green{color:#3fb950;}
+.adsb-alert-detail{color:var(--text-dim);font-size:var(--fs-micro);flex:1;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.adsb-alert-more{color:var(--text-dim);font-size:var(--fs-micro);padding:3px 0 1px;font-style:italic;}
+/* Quiet placeholder shown in an alerts card body when there are 0 alerts — the
+   card stays put (collapsed "0") instead of popping in and out of the stack. */
+.alert-empty{color:var(--text-dim);font-size:var(--fs-micro);}
+/* "N dismissed · restore" footer in the APRS Alerts card. */
+.alert-dismissed-note{margin-top:6px;padding-top:5px;border-top:1px solid var(--border);color:var(--text-dim);font-size:var(--fs-micro);}
+.alert-dismissed-note a{color:var(--blue);text-decoration:none;}
+.alert-dismissed-note a:hover{color:var(--accent);}
 
 /* Active state for the Grid / Measure toggles (mirrors #autoFlyBtn.on) */
 #gridBtn.on,#measureBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
@@ -718,11 +754,63 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 
 <!-- Right-side stacked panels: recent-heard (stations) + map layers -->
 <div id="right-stack">
-  <!-- Recent-heard panel -->
+  <!-- Card order (top → bottom): Map Layers · Gate Coverage · APRS Info ·
+       Insert Alerts · APRS heard · APRS Alerts · ADS-B aircraft · ADS-B Alerts. -->
+
+  <!-- Map layer toggles (collapsible) — same groups as maps/map.html -->
+  <div id="layer-panel" class="collapsed">
+    <div id="layer-header" onclick="toggleLayerPanel()">
+      <span id="layer-arrow">▾</span>
+      <span id="layer-title">Map Layers</span>
+    </div>
+    <div id="layer-body">
+      <label class="layer-toggle"><input type="checkbox" data-group="roads" checked> <span>Roads</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="waterways" checked> <span>Waterways</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="water" checked> <span>Water bodies</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="buildings" checked> <span>Buildings</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="parks" checked> <span>Parks / Nature</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="landuse" checked> <span>Land use</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="pois" checked> <span>POIs / Places</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="peaks" checked> <span>Mt peaks</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="aircraft" checked> <span>Aircraft</span></label>
+    </div>
+  </div>
+
+  <!-- Gate Coverage — iGate reach-fan convergence points -->
+  <div id="coverage-panel" class="collapsed">
+    <div id="coverage-header" onclick="toggleCoveragePanel()">
+      <span id="coverage-arrow">▾</span>
+      <span id="coverage-title">Gate Coverage</span>
+      <span id="coverage-count"></span>
+    </div>
+    <div id="coverage-body"><div style="padding:4px 2px;color:var(--text-dim)">No convergence points in view</div></div>
+  </div>
+
+  <!-- APRS object-type filter (auto-populated from the symbols currently on the map) -->
+  <div id="objects-panel" class="collapsed">
+    <div id="objects-header" onclick="toggleObjectsPanel()">
+      <span id="objects-arrow">▾</span>
+      <span id="objects-title">APRS Info</span>
+      <span id="objects-count"></span>
+    </div>
+    <div id="objects-body"></div>
+  </div>
+
+  <!-- Insert Alerts — operator-placed map markers (flood/fire/etc.), shared across devices -->
+  <div id="warnings-panel" class="collapsed">
+    <div id="warnings-header" onclick="toggleWarningsPanel()">
+      <span id="warnings-arrow">▾</span>
+      <span id="warnings-title">Insert Alerts</span>
+      <span id="warnings-count"></span>
+    </div>
+    <div id="warnings-body"></div>
+  </div>
+
+  <!-- APRS heard — recent-heard stations -->
   <div id="recent-panel" class="collapsed">
     <div id="recent-header" onclick="toggleRecentPanel()">
       <span id="recent-arrow">▾</span>
-      <span id="recent-count">0 heard</span>
+      <span id="recent-count">APRS 0 heard</span>
     </div>
     <!-- Auto-path source filters — chip toggles matching the RF/IS row chips
          below. Gate which lines auto-path draws (RF: purple+green · IS: blue). -->
@@ -738,74 +826,38 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
     <div id="recent-body"></div>
   </div>
 
-  <!-- ADS-B aircraft panel — mirrors the recent-heard panel above exactly. -->
+  <!-- APRS Alerts — APRS Fire stations, surfaced in their own card (Public safety
+       is a presence ping, not an alert — see _APRS_ALERT_CATS). Hidden entirely
+       until at least one is heard; auto-expands on first appearance (see
+       updateEmergenciesPanel). ADS-B alerts live in #adsb-alerts-panel. -->
+  <div id="emergencies-panel" class="collapsed">
+    <div id="emergencies-header" onclick="toggleEmergenciesPanel()">
+      <span id="emergencies-arrow">▾</span>
+      <span id="emergencies-title">APRS Alerts</span>
+      <span id="emergencies-count">0</span>
+    </div>
+    <div id="emergencies-body"><div class="alert-empty">No alerts</div></div>
+  </div>
+
+  <!-- ADS-B aircraft panel — mirrors the recent-heard panel's shape. -->
   <div id="adsb-panel" class="collapsed">
     <div id="adsb-header" onclick="toggleAdsbPanel()">
       <span id="adsb-arrow">▾</span>
-      <span id="adsb-count">0 aircraft</span>
+      <span id="adsb-count">ADS-B 0 aircraft</span>
     </div>
     <div id="adsb-body"></div>
   </div>
 
-  <!-- Map layer toggles (collapsible) — same groups as maps/map.html -->
-  <div id="layer-panel" class="collapsed">
-    <div id="layer-header" onclick="toggleLayerPanel()">
-      <span id="layer-arrow">▾</span>
-      <span id="layer-title">Map layers</span>
+  <!-- ADS-B Alerts — aircraft within ADSB_ALERT_KM of the station, coloured by
+       distance band (red closest / amber mid / green outer — see the ADSB_ALERT_*
+       consts). Hidden until at least one is in range (see updateAdsbAlertsPanel). -->
+  <div id="adsb-alerts-panel" class="collapsed">
+    <div id="adsb-alerts-header" onclick="toggleAdsbAlertsPanel()">
+      <span id="adsb-alerts-arrow">▾</span>
+      <span id="adsb-alerts-title">ADS-B Alerts</span>
+      <span id="adsb-alerts-count">0</span>
     </div>
-    <div id="layer-body">
-      <label class="layer-toggle"><input type="checkbox" data-group="roads" checked> <span>Roads</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="waterways" checked> <span>Waterways</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="water" checked> <span>Water bodies</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="buildings" checked> <span>Buildings</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="parks" checked> <span>Parks / Nature</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="landuse" checked> <span>Land use</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="pois" checked> <span>POIs / Places</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="peaks" checked> <span>Mt peaks</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="aircraft" checked> <span>Aircraft</span></label>
-    </div>
-  </div>
-
-  <!-- APRS object-type filter (auto-populated from the symbols currently on the map) -->
-  <div id="objects-panel" class="collapsed">
-    <div id="objects-header" onclick="toggleObjectsPanel()">
-      <span id="objects-arrow">▾</span>
-      <span id="objects-title">APRS info</span>
-      <span id="objects-count"></span>
-    </div>
-    <div id="objects-body"></div>
-  </div>
-
-  <!-- Add Warnings — operator-placed map markers (flood/fire/etc.), shared across devices -->
-  <div id="warnings-panel" class="collapsed">
-    <div id="warnings-header" onclick="toggleWarningsPanel()">
-      <span id="warnings-arrow">▾</span>
-      <span id="warnings-title">Add Warnings</span>
-      <span id="warnings-count"></span>
-    </div>
-    <div id="warnings-body"></div>
-  </div>
-
-  <!-- Coverage iGate filter — convergence points of the reach-fan -->
-  <div id="coverage-panel" class="collapsed">
-    <div id="coverage-header" onclick="toggleCoveragePanel()">
-      <span id="coverage-arrow">▾</span>
-      <span id="coverage-title">Coverage</span>
-      <span id="coverage-count"></span>
-    </div>
-    <div id="coverage-body"><div style="padding:4px 2px;color:var(--text-dim)">No convergence points in view</div></div>
-  </div>
-
-  <!-- Emergencies — APRS fire/public-safety stations, filtered out of the heard
-       list into their own card. Hidden entirely until at least one is heard;
-       auto-expands on first appearance (see updateEmergenciesPanel). -->
-  <div id="emergencies-panel" class="collapsed" hidden>
-    <div id="emergencies-header" onclick="toggleEmergenciesPanel()">
-      <span id="emergencies-arrow">▾</span>
-      <span id="emergencies-title">Emergencies</span>
-      <span id="emergencies-count"></span>
-    </div>
-    <div id="emergencies-body"></div>
+    <div id="adsb-alerts-body"><div class="alert-empty">No alerts</div></div>
   </div>
 
 </div>
@@ -1213,6 +1265,59 @@ const objCatState = {};
 // order), ahead of the by-count sort, so incidents surface first regardless of
 // how many other stations are heard.
 const _EMERGENCY_CATS = ['fire', 'safety'];
+// The APRS Alerts card is narrower: only genuine alerts. Public safety (A/h/o/+)
+// is an EOC/first-aid presence ping, not an alert — so the card is Fire only.
+// (Public safety still shows in the APRS Info legend above, just not as an alert.)
+const _APRS_ALERT_CATS = ['fire'];
+
+// ── Manual EOC dismissal of APRS alerts (fires) ──────────────────────────────
+// Fires bypass the age filter (Part 1), so a stale incident never ages off the
+// map on its own — the operator clears it by hand when the EOC confirms it's
+// capped. Dismissal is stored client-side (localStorage, offline-first), keyed by
+// callsign → the last_heard epoch at dismiss time. If that fire ever beacons a
+// NEWER update (fresh signal = active again), it auto-restores. Clear-all via the
+// restore link in the APRS Alerts card.
+const _DISMISSED_FIRES_KEY = 'oasis_dismissed_fires';
+let _dismissedFires = (() => {
+  try { return JSON.parse(localStorage.getItem(_DISMISSED_FIRES_KEY) || '{}'); }
+  catch (e) { return {}; }
+})();
+function _saveDismissedFires() {
+  localStorage.setItem(_DISMISSED_FIRES_KEY, JSON.stringify(_dismissedFires));
+}
+// Dismissed while its last_heard is unchanged from the dismissal. Any new beacon
+// advances last_heard → the record no longer matches → the fire auto-restores.
+function dismissedFire(s) {
+  const at = _dismissedFires[s.callsign];
+  return at != null && at === (s.last_heard || '');
+}
+function dismissFire(callsign) {
+  const s = allStations.find(x => x.callsign === callsign);
+  _dismissedFires[callsign] = (s && s.last_heard) || '';
+  _saveDismissedFires();
+  if (_stationPopup) _stationPopup.remove();
+  applyFilter();               // drop it from the map + list now
+  updateEmergenciesPanel();    // refresh the active-fire count + restore footer
+}
+function restoreDismissedFires() {
+  _dismissedFires = {};
+  _saveDismissedFires();
+  applyFilter();
+  updateEmergenciesPanel();
+}
+// Transponder emergency squawks (mirrors services/adsb/common/alerts.py) — these
+// aircraft are always the top, red tier of the ADS-B Alerts card, any distance.
+const _EMERGENCY_SQUAWKS = ['7500', '7600', '7700'];
+const _SQUAWK_MEANING = { '7500': 'unlawful interference', '7600': 'radio failure',
+                          '7700': 'general emergency' };
+// ADS-B Alerts card: aircraft within ADSB_ALERT_KM of the station are listed,
+// coloured by distance band — red when closer than …RED_KM (or squawking an
+// emergency), amber when closer than …AMBER_KM, green out to …_KM. Computed
+// client-side off myPos + haversineKm.
+const ADSB_ALERT_KM = 15;         // outer radius shown (green band ceiling)
+const ADSB_ALERT_AMBER_KM = 5;   // inside this → amber
+const ADSB_ALERT_RED_KM = 2;      // inside this → red
+const _ADSB_ALERT_ROW_CAP = 10;   // show the closest N; summarise the rest
 // Tracks whether the dedicated Emergencies card has auto-expanded for the current
 // batch of emergencies, so a manual collapse sticks until they clear (re-arms in
 // updateEmergenciesPanel once none remain).
@@ -1226,14 +1331,15 @@ function toggleEmergenciesPanel() {
   document.getElementById('emergencies-panel').classList.toggle('collapsed');
 }
 
-// Dedicated Emergencies card: a category rollup of the APRS fire/public-safety
-// stations heard, rendered identically to APRS Info (checkbox + sprite icon +
+// Dedicated APRS Alerts card: a rollup of APRS Fire stations heard (Public
+// safety is a presence ping, not an alert — see _APRS_ALERT_CATS), rendered
+// identically to APRS Info (checkbox + sprite icon +
 // clickable label + count) and driving the same objCatState — so its checkboxes
 // stay in sync with the APRS Info card and toggle the same map/list visibility.
 // Hidden entirely when none are heard; auto-expands the first time one appears (a
-// manual collapse then sticks until they clear and return). Aircraft are excluded —
-// they never carry a fire/safety APRS symbol. Driven from updateObjectsPanel so it
-// tracks the same station/aircraft poll lifecycle.
+// manual collapse then sticks until they clear and return). APRS-only — ADS-B
+// aircraft alerts live in their own distance-banded card (updateAdsbAlertsPanel).
+// Driven from updateObjectsPanel so it tracks the same station poll lifecycle.
 function updateEmergenciesPanel() {
   const panel   = document.getElementById('emergencies-panel');
   const body    = document.getElementById('emergencies-body');
@@ -1241,31 +1347,40 @@ function updateEmergenciesPanel() {
   // Count stations per emergency category, capturing the same label APRS Info uses.
   const cats = {};   // key -> { label, count }
   let total = 0;
+  let dismissedCount = 0;
   allStations.forEach(s => {
     const { key, label } = aprsCategory(s);
-    if (!_EMERGENCY_CATS.includes(key)) return;
+    if (!_APRS_ALERT_CATS.includes(key)) return;
+    if (dismissedFire(s)) { dismissedCount++; return; }   // EOC-cleared: off the map, not counted
     if (!cats[key]) cats[key] = { label, count: 0 };
     cats[key].count++;
     total++;
     if (!(key in objCatState)) objCatState[key] = true;   // new category defaults on
   });
+  // "N dismissed · restore" footer, so a manual clear is never a dead end.
+  const footer = dismissedCount
+    ? '<div class="alert-dismissed-note">' + dismissedCount + ' dismissed · '
+      + '<a href="#" onclick="restoreDismissedFires();return false" title="Un-dismiss all cleared fires">restore</a></div>'
+    : '';
   if (!total) {
-    panel.hidden = true;
-    panel.classList.add('collapsed');
-    _emergencyShown = false;   // re-arm: the next emergency re-expands the card
-    body.innerHTML = '';
-    countEl.textContent = '';
+    // Stay visible with a quiet "0" instead of hiding — a card popping in/out of
+    // the stack every poll is worse than a persistent "0 alerts". Don't force a
+    // collapse either: leave it as the operator set it, so the body doesn't flap
+    // open/closed on every transition (re-arm only, so the next alert expands it).
+    _emergencyShown = false;
+    body.innerHTML = '<div class="alert-empty">No alerts</div>' + footer;
+    countEl.textContent = '0';
     return;
   }
   countEl.textContent = total;
-  // One row per present category, fire first (_EMERGENCY_CATS order) — same markup
-  // as APRS Info rows: checkbox (bound to objCatState) + icon + clickable name.
-  const keys = _EMERGENCY_CATS.filter(k => cats[k]);
+  // One row per present alert category (Fire only) — same markup as APRS Info
+  // rows: checkbox (bound to objCatState) + icon + clickable name.
+  const keys = _APRS_ALERT_CATS.filter(k => cats[k]);
   body.innerHTML = keys.map(k =>
     '<label class="layer-toggle"><input type="checkbox" data-objcat="' + k + '"' + (objCatState[k] ? ' checked' : '') + '> ' +
       '<span class="obj-name" data-objcat="' + k + '" title="Click to show only this type">' + _escHtml(cats[k].label) + '</span>' +
       '<span class="obj-count">' + cats[k].count + '</span></label>'
-  ).join('');
+  ).join('') + footer;
   // Prepend the representative APRS sprite icon after the checkbox, as APRS Info does.
   body.querySelectorAll('.layer-toggle').forEach(row => {
     const cb = row.querySelector('input[data-objcat]');
@@ -1547,6 +1662,12 @@ function buildPopup(s) {
            '</div>';
   html += '<button class="pop-track-btn" onclick="showPath(\'' + s.callsign + '\')">' +
           (activePath === s.callsign ? '✕ Clear path' : '⟲ Show path') + '</button>';
+  // Fire = an EOC alert that bypasses the age filter — give the operator a manual
+  // "mark cleared" so a capped incident (whose signal we've stopped receiving) can
+  // be taken off the map. Auto-restores if the fire ever beacons a newer update.
+  if (_APRS_ALERT_CATS.includes(aprsCategory(s).key)) {
+    html += '<button class="pop-track-btn pop-dismiss" onclick="dismissFire(\'' + s.callsign + '\')">✕ Dismiss alert (EOC cleared)</button>';
+  }
   return html;
 }
 
@@ -1644,8 +1765,9 @@ const REFRESH_SEC = 15;
 // Recent-heard panel = stations whose LAST reception is within this window. This
 // is a true recency gate (not "changed since last poll"), so IS stations that
 // the APRS-IS feed keeps re-reporting with stale timestamps age out instead of
-// lingering. Bump this if you want a longer memory in the panel.
-const RECENT_MAX_AGE_SEC = 60;
+// lingering. Tied to one refresh cycle so the panel shows only stations heard in
+// the current cycle; bump this (e.g. 2 * REFRESH_SEC) if you want a longer memory.
+const RECENT_MAX_AGE_SEC = REFRESH_SEC;
 let countdown = REFRESH_SEC;
 let timer = null;
 let autoRefresh = true;     // Refresh button toggles the 15s auto-refresh loop
@@ -1838,7 +1960,12 @@ function _columnFilterPredicate() {
   const gridSel = document.getElementById('aprs-col-grid')?.value || 'All';
   return s => {
     // Age (Last-heard cutoff) — position-less/undated rows drop under a filter.
-    if (cutoff && (!s.last_heard || new Date(s.last_heard).getTime() < cutoff)) return false;
+    // EXCEPT APRS alert categories (Fire): an active EOC incident must stay on the
+    // map no matter how stale its last update — it's cleared by manual dismissal
+    // (dismissedFire), not by aging out. See Part 1 of the EOC fire-handling work.
+    const _isAlert = _APRS_ALERT_CATS.includes(aprsCategory(s).key);
+    if (!_isAlert && cutoff && (!s.last_heard || new Date(s.last_heard).getTime() < cutoff)) return false;
+    if (_isAlert && dismissedFire(s)) return false;
     // Object-type filter (categories disabled in the objects panel). Aircraft
     // carry an APRS aircraft/heli symbol, so they fold into the same buckets.
     if (objCatState[aprsCategory(s).key] === false) return false;
@@ -2314,6 +2441,7 @@ async function refreshAdsb() {
     applyAdsbFilter();
     _adsbTrailUpdate();     // grow live trails + start fades for aircraft gone silent
     updateAdsbPanel();
+    updateAdsbAlertsPanel(); // distance-banded nearby-aircraft alert card
     updateObjectsPanel();   // aircraft/heli counts in "APRS info" track this poll too
     _renderDrawer();        // aircraft rows in the station-list drawer track this poll
   } catch (e) { /* ignore — poll again next cycle */ }
@@ -2408,13 +2536,79 @@ function adsbRowClick(hex) {
     .addTo(map);
 }
 
+// ── ADS-B Alerts card ─────────────────────────────────────────────────────────
+// Distance-banded list of nearby aircraft: an emergency squawk (7500/7600/7700)
+// is always red and pinned top regardless of range; otherwise the band is by
+// distance from the station, banded by the ADSB_ALERT_* consts (red closest,
+// amber mid, green out to the outer radius).
+// Separate from the APRS Emergencies card by design (routine traffic must not
+// masquerade as an emergency). Refreshed on the 2 s ADS-B poll.
+function toggleAdsbAlertsPanel() {
+  document.getElementById('adsb-alerts-panel').classList.toggle('collapsed');
+}
+let _adsbAlertShown = false;
+
+function _adsbAlertTier(a, dKm) {
+  if (_EMERGENCY_SQUAWKS.includes(a.squawk)) return 'red';   // emergency squawk → red, any distance
+  if (dKm == null) return null;                              // no position/station → not a proximity alert
+  if (dKm < ADSB_ALERT_RED_KM) return 'red';
+  if (dKm < ADSB_ALERT_AMBER_KM) return 'amber';
+  if (dKm <= ADSB_ALERT_KM) return 'green';
+  return null;                                               // beyond the outer radius
+}
+
+function updateAdsbAlertsPanel() {
+  const panel   = document.getElementById('adsb-alerts-panel');
+  const body    = document.getElementById('adsb-alerts-body');
+  const countEl = document.getElementById('adsb-alerts-count');
+  if (!panel) return;
+  const rows = [];
+  _adsbAircraft.forEach(a => {
+    const hasPos = a.lat != null && a.lon != null;
+    const dKm = (myPos && hasPos) ? haversineKm(myPos.lat, myPos.lon, a.lat, a.lon) : null;
+    const tier = _adsbAlertTier(a, dKm);
+    if (!tier) return;
+    rows.push({ a, dKm, tier, sq: _EMERGENCY_SQUAWKS.includes(a.squawk) });
+  });
+  // Emergency squawks first, then nearest first (position-less squawks sort last
+  // within the squawk group via the Infinity fallback).
+  rows.sort((x, y) => (y.sq - x.sq) || ((x.dKm ?? Infinity) - (y.dKm ?? Infinity)));
+  if (!rows.length) {
+    // Stay visible with a quiet "0" (no hide, no forced collapse — see the APRS
+    // Alerts card) so the body doesn't flap as aircraft cross the radius.
+    _adsbAlertShown = false;
+    body.innerHTML = '<div class="alert-empty">No alerts</div>'; countEl.textContent = '0';
+    return;
+  }
+  countEl.textContent = rows.length;
+  let html = rows.slice(0, _ADSB_ALERT_ROW_CAP).map(({ a, dKm, tier, sq }) => {
+    const title = ((a.flight || a.hex || '').trim() || a.hex || '?').toUpperCase();
+    const detail = sq ? (a.squawk + ' · ' + (_SQUAWK_MEANING[a.squawk] || ''))
+                      : (dKm != null ? _listDist(a.lat, a.lon) : '');
+    const hasPos = a.lat != null && a.lon != null;
+    return '<div class="adsb-alert-row" onclick="adsbRowClick(\'' + _escHtml(a.hex || '') + '\')" ' +
+      'title="' + (hasPos ? 'Click to focus on the map' : 'No position yet') + '">' +
+      '<span class="adsb-alert-flight ' + tier + '">✈ ' + _escHtml(title) + '</span>' +
+      '<span class="adsb-alert-detail">' + _escHtml(detail) + '</span></div>';
+  }).join('');
+  if (rows.length > _ADSB_ALERT_ROW_CAP) {
+    html += '<div class="adsb-alert-more">+' + (rows.length - _ADSB_ALERT_ROW_CAP) +
+            ' more within ' + ADSB_ALERT_KM + ' km</div>';
+  }
+  body.innerHTML = html;
+  panel.hidden = false;
+  // Auto-expand once when alerts first appear (mirrors the ADS-B count panel);
+  // a manual collapse then sticks until the card empties and re-arms.
+  if (!_adsbAlertShown) { panel.classList.remove('collapsed'); _adsbAlertShown = true; }
+}
+
 // Mirrors updateRecentPanel() exactly — same "N <noun>" header + clickable
 // row-list body shape, aircraft's own accent color.
 function updateAdsbPanel() {
   const count = document.getElementById('adsb-count');
   const body  = document.getElementById('adsb-body');
   const withPos = _adsbAircraft.filter(a => a.lat != null && a.lon != null);
-  count.textContent = withPos.length + ' aircraft';
+  count.textContent = 'ADS-B ' + withPos.length + ' aircraft';
   if (!withPos.length) {
     body.innerHTML = '<div style="padding:6px 10px;color:var(--text-dim)">None this cycle</div>';
     return;
@@ -2441,7 +2635,7 @@ function updateAdsbPanel() {
 
 // Start after config + map both load
 loadConfig().then(() => {
-  loadWarningCatalog(); // populate the "Add Warnings" panel (independent of map)
+  loadWarningCatalog(); // populate the "Insert Alerts" panel (independent of map)
   map.on('load', () => {
     // ── Track source + layers ──────────────────────────────────────────────
     map.addSource('aprs-track', {
@@ -3028,7 +3222,7 @@ let _recentAutoExpanded = false, _adsbAutoExpanded = false;
 function updateRecentPanel(newStations) {
   const count = document.getElementById('recent-count');
   const body  = document.getElementById('recent-body');
-  count.textContent = newStations.length + ' heard';
+  count.textContent = 'APRS ' + newStations.length + ' heard';
   if (!newStations.length) {
     body.innerHTML = '<div style="padding:6px 10px;color:var(--text-dim)">None this cycle</div>';
     return;
