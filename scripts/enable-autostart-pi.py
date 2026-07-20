@@ -242,7 +242,7 @@ def install_browser(user, home, url=None, seven_inch=False):
     # gnome-keyring, so a passwordless-autologin kiosk never gets prompted to
     # unlock the login keyring on boot (any saved passwords stay in the user's
     # profile, not the locked keyring).
-    kiosk_url = url or f"http://localhost:{PORT}"
+    kiosk_url = url or f"http://localhost:{PORT}/index.html"   # explicit page, not the "/" redirect
     extra_flags = (
         " --touch-events=enabled --overscroll-history-navigation=0"
         " --window-size=800,480"
@@ -444,8 +444,13 @@ def main():
         args.with_browser = True
 
     kiosk_url = (
+        # Point each mode at an EXPLICIT page, never the "/" smart-redirect: "/"
+        # honors a stored localStorage oasis_layout=7inch (which the 7" page
+        # stamps), so a --with-browser kiosk that opened "/" would get hijacked
+        # back to index7 forever. Explicit URLs make the layout depend only on
+        # which feature you installed.
         f"http://localhost:{PORT}/small-screen/index7.html" if args.seven_inch
-        else f"http://localhost:{PORT}"
+        else f"http://localhost:{PORT}/index.html"
     )
 
     print()

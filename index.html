@@ -1360,6 +1360,11 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 
 <script src="server/winlink/read-state.js"></script>
 <script>
+// Reaching the desktop dashboard clears any stored 7" layout preference, so the
+// "/" smart-redirect can never get stuck looping back to index7 (index7.html
+// stamps oasis_layout=7inch; nothing else ever cleared it). Self-healing hatch.
+try { localStorage.removeItem('oasis_layout'); } catch (e) {}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082, openwebrx: 8073 };
 // Port to show in svc-sub when a service is unreachable
