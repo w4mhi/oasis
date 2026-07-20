@@ -23,6 +23,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #statusDot.ok{background:var(--accent);}
 #statusDot.err{background:var(--red);}
 #statusMsg{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* Wall clock (row 2, right side) — matches the Satellites map header clock. */
+#clock{font-size:var(--fs-small);color:var(--amber);font-weight:600;white-space:nowrap;}
 /* CPU readout sits outside #coordReadout — size it to match #statusMsg */
 #crCpuLbl,#crCpu{font-size:var(--fs-small);}
 #crCpu{font-weight:600;}
@@ -658,6 +660,8 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
     <span style="flex:1"></span>
     <span id="trackMsg"></span>
     <span id="statusMsg">Connecting…</span>
+    <span class="track-sep">|</span>
+    <span id="clock">—</span>
   </div>
 </div>
 
@@ -1929,6 +1933,14 @@ async function updateCpu() {
   }
 }
 
+// Live wall clock in the header (row 2, right side) — 24h HH:MM:SS, amber.
+// Mirrors the Satellites map header clock.
+function startClock() {
+  const tick = () => { const el = document.getElementById('clock');
+    if (el) el.textContent = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
+  tick(); setInterval(tick, 1000);
+}
+
 async function fetchStations() {
   setStatus('', 'Fetching…');
   updateCpu(); // refresh the Pi CPU readout alongside each station poll
@@ -1971,7 +1983,7 @@ async function fetchStations() {
     refreshTypeColFilter();      // rebuild the drawer Type dropdown options
     refreshGridColFilter();      // rebuild the drawer Grid dropdown options
     applyFilter();
-    setStatus('ok', new Date().toLocaleTimeString([], { hour12: false }));
+    setStatus('ok', '');   // green dot = OK; the header clock shows the time
     // Refresh active track data (updates trail + auto-fly if enabled)
     if (activeTrack) _loadTrack(activeTrack);
     // Auto-path: draw paths only for stations heard THIS cycle, so previous
@@ -2680,6 +2692,7 @@ loadConfig().then(() => {
     };
     homeImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(HOME_SVG);
 
+    startClock();
     fetchStations();
     loadStationCfg(); // resolve local station position → render the home node
     _syncPathChips(); // reflect any persisted RF/IS path-filter state on the chips
