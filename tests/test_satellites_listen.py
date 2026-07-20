@@ -26,6 +26,13 @@ class ListenTest(unittest.TestCase):
         self.assertIn("sox -t raw -r 48000 -e signed-integer -b 16 -c 1 -", cmd)
         self.assertIn("'/tmp/a b.wav'", cmd)         # output path shell-quoted
         self.assertIn(" | sox", cmd)
+        self.assertNotIn(" -d ", cmd)                # no device pin when serial omitted
+
+    def test_record_command_pins_dongle_by_serial(self):
+        # Multi-dongle Pi: rtl_fm must target the assigned dongle by serial, else
+        # it grabs index 0 (often another service's dongle) and dies on startup.
+        cmd = listen.record_command(137100000, "/tmp/a.wav", device_serial="00000001")
+        self.assertIn("rtl_fm -d 00000001 -f 137100000", cmd)
 
     def test_missing_deps_injectable(self):
         self.assertEqual(listen.missing_deps(lambda b: None), ["rtl_fm", "sox", "timeout"])

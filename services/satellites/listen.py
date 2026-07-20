@@ -41,13 +41,19 @@ def mhz_to_hz(freq_mhz):
 
 
 def record_command(freq_hz, out_wav, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM,
-                   srate=SAMPLE_RATE, max_seconds=MAX_SECONDS):
+                   srate=SAMPLE_RATE, max_seconds=MAX_SECONDS, device_serial=None):
     """The rtl_fm | sox shell pipeline that records demodulated narrowband-FM
     audio to a WAV. Mirrors the proven aprs-sdr-feed rtl_fm invocation, piped to
     sox -> WAV instead of socat -> GrayWolf. `timeout` bounds the run so it always
-    finalises the WAV. freq_hz is an integer Hz."""
+    finalises the WAV. freq_hz is an integer Hz.
+
+    device_serial pins rtl_fm to a specific dongle via `-d <serial>` (same as the
+    APRS feed's aprs_feed_device_args). Without it, rtl_fm defaults to device
+    index 0 — which on a multi-dongle Pi is often another service's dongle (e.g.
+    ADS-B/dump1090), so it can't claim it and dies immediately."""
+    dev = f"-d {shlex.quote(str(device_serial))} " if device_serial else ""
     rtl = (f"timeout {int(max_seconds)} "
-           f"rtl_fm -f {int(freq_hz)} -M fm -s {int(srate)} -g {gain} -p {ppm} -")
+           f"rtl_fm {dev}-f {int(freq_hz)} -M fm -s {int(srate)} -g {gain} -p {ppm} -")
     sox = (f"sox -t raw -r {int(srate)} -e signed-integer -b 16 -c 1 - "
            f"{shlex.quote(out_wav)}")
     return f"{rtl} | {sox}"
@@ -165,15 +171,17 @@ def status():
     }
 
 
-def start(freq_hz, norad, out_wav, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, srate=SAMPLE_RATE):
+def start(freq_hz, norad, out_wav, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM,
+          srate=SAMPLE_RATE, device_serial=None):
     """Begin recording to out_wav. Raises RuntimeError if already recording. The
-    caller verifies deps/dongle/feed first (see preconditions)."""
+    caller verifies deps/dongle/feed first (see preconditions). device_serial
+    pins rtl_fm to the dongle assigned to satellites (see record_command)."""
     with _lock:
         if is_recording():
             raise RuntimeError("already recording")
         os.makedirs(os.path.dirname(out_wav), exist_ok=True)
         proc = subprocess.Popen(
-            record_command(freq_hz, out_wav, gain, ppm, srate),
+            record_command(freq_hz, out_wav, gain, ppm, srate, device_serial=device_serial),
             shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             preexec_fn=os.setsid)   # own process group so stop() kills the whole pipe
         _state.update(proc=proc, norad=norad, path=out_wav,

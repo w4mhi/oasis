@@ -192,7 +192,8 @@ def api_listen():
         norad = int(body["norad"])
     except (TypeError, ValueError, KeyError):
         return jsonify({"error": "bad or missing norad"}), 400
-    pre = listen.preconditions(inv=hardware.load(SUITE_ROOT))
+    inv = hardware.load(SUITE_ROOT)
+    pre = listen.preconditions(inv=inv)
     if pre["missing_deps"]:
         return jsonify({"error": "missing tools: " + ", ".join(pre["missing_deps"])
                         + " — run features/rtl-sdr/install-rtl-sdr.py"}), 400
@@ -225,11 +226,16 @@ def api_listen():
     if not support["supported"]:
         return jsonify({"error": f"{dl.get('mode')} not supported yet — {support['blurb']}"}), 400
     freq_hz = listen.mhz_to_hz(dl["freq_mhz"])
+    # Pin rtl_fm to the dongle assigned to satellites (by serial) — else it grabs
+    # device index 0, which on a multi-dongle Pi is another service's dongle and
+    # the capture dies on startup. Serial resolved from the hardware inventory.
+    dev = inv.devices.get(inv.assignments.get("satellites"))
+    device_serial = (dev or {}).get("serial") or None
     safe = "".join(c if c.isalnum() else "_" for c in entry["name"]).strip("_")
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = os.path.join(listen.recordings_dir(SUITE_ROOT), f"{safe}_{ts}.wav")
     try:
-        return jsonify(listen.start(freq_hz, norad, out))
+        return jsonify(listen.start(freq_hz, norad, out, device_serial=device_serial))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
