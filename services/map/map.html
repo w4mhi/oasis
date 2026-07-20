@@ -2664,6 +2664,22 @@ loadConfig().then(() => {
       }
     });
 
+    // Home QTH as a symbol layer placed BELOW the aircraft ('adsb-icon'). A DOM
+    // marker sits above the map canvas and hid planes passing over the station;
+    // a symbol layer participates in canvas draw order, so aircraft render on top.
+    const homeImg = new Image(34, 41);
+    homeImg.onload = () => {
+      if (!map.hasImage('home-qth')) map.addImage('home-qth', homeImg);
+      if (!map.getSource('home')) map.addSource('home', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      if (!map.getLayer('home-qth')) map.addLayer({
+        id: 'home-qth', type: 'symbol', source: 'home',
+        layout: { 'icon-image': 'home-qth', 'icon-anchor': 'bottom',
+                  'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-size': 1 }
+      }, map.getLayer('adsb-icon') ? 'adsb-icon' : undefined);
+      renderHomeMarker();
+    };
+    homeImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(HOME_SVG);
+
     fetchStations();
     loadStationCfg(); // resolve local station position → render the home node
     _syncPathChips(); // reflect any persisted RF/IS path-filter state on the chips
@@ -3306,7 +3322,6 @@ function clearTrack() {
 // beacon path only matters when mobile and beaconing.
 let _stationCfg = null;   // parsed station.json ({callsign, grid, lat, lon})
 let myPos = null;         // {lon, lat} of the local receiver, or null
-let _homeMarker = null;   // glowing DOM marker at myPos
 let _homeKey = '';        // last-rendered "lon,lat" — avoids needless re-adds
 
 async function loadStationCfg() {
@@ -3369,14 +3384,13 @@ const HOME_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-16 -30 32 39
 </svg>`;
 
 function renderHomeMarker() {
-  if (_homeMarker) { _homeMarker.remove(); _homeMarker = null; }
-  if (!myPos) return;
-  const el = document.createElement('div');
-  el.className = 'home-node';
-  el.innerHTML = HOME_SVG;
-  el.title = ((_stationCfg && _stationCfg.callsign) ? _stationCfg.callsign + ' — ' : '') + 'this station';
-  _homeMarker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-    .setLngLat([myPos.lon, myPos.lat]).addTo(map);
+  // Drives the 'home' symbol-layer source (created on map load). No-op until the
+  // rasterised icon has loaded and the source exists — its onload re-calls this.
+  const src = map.getSource('home');
+  if (!src) return;
+  src.setData(myPos
+    ? { type: 'Feature', geometry: { type: 'Point', coordinates: [myPos.lon, myPos.lat] } }
+    : { type: 'FeatureCollection', features: [] });
 }
 
 // ── RF path overlay (digipeater hops) ─────────────────────────────────────────
