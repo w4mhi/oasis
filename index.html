@@ -248,6 +248,10 @@ body {
 .svc-power.up   { color: var(--amber);  border-color: var(--amber-dim); }   /* running → STOP */
 .svc-power.down { color: var(--accent); border-color: var(--accent-dim); }  /* stopped → START */
 .svc-power.busy { opacity: .5; pointer-events: none; }
+/* Stopped service that can't start yet (no device assigned, or telnet Winlink
+   while hosting the AP): START stays visible but reads as unavailable. */
+.svc-power.blocked { opacity: .4; cursor: not-allowed; color: var(--text-dim); border-color: var(--border); }
+.svc-power.blocked:hover { background: none; color: var(--text-dim); }
 
 /* ── SDR flow meters (APRS SDR feed + ADS-B) ─────────────────────────────── */
 /* Data-flow health, shared by both SDR-consuming cards: proves real signal is
@@ -265,19 +269,23 @@ body {
   background: var(--border); border-radius: 3px; overflow: hidden;
 }
 .feed-meter-fill {
-  height: 100%; width: 0%; background: var(--accent); border-radius: 3px;
+  height: 100%; width: 0%; background: var(--blue); border-radius: 3px;
   transition: width .25s ease, background .25s ease;
 }
 .feed-meter.silent .feed-meter-fill { background: var(--red); }
-.feed-meter.flowing .feed-meter-fill { background: var(--accent); }
+.feed-meter.flowing .feed-meter-fill { background: var(--blue); }   /* match the blue SDR cards */
 .feed-meter-label {
   font-size: var(--fs-micro); color: var(--text-dim);
   white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 
 /* ── Per-card device label (read-only; assign on Setup → Hardware) ───────── */
+/* order:-1 pulls the full-width device row ABOVE the OPEN/badge line inside
+   .svc-card-bottom, so the badge stays pinned bottom-right on hardware cards
+   (feed/adsb/owrx/wlrf) exactly like the cards with no device row — otherwise
+   the extra line pushes the badge up and it reads as "floating in the middle". */
 .hw-assign-row {
-  flex: 1 0 100%; display: flex; align-items: center; gap: .4rem; margin-top: .3rem;
+  order: -1; flex: 1 0 100%; display: flex; align-items: center; gap: .4rem; margin-bottom: .3rem;
 }
 .hw-assign-row[hidden] { display: none; }
 .hw-assign-lbl { font-size: var(--fs-small); color: var(--text-dim); }
@@ -1092,7 +1100,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="svc-badge" id="badge-gw">—</span>
     </div>
   </div>
-  <div class="svc-card" id="card-feed">
+  <div class="svc-card svc-card-gated" id="card-feed">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-feed"></div>
       <div class="svc-card-info">
@@ -1154,21 +1162,13 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       </div>
     </div>
   </div>
-  <div class="svc-card" id="card-satellites" data-href="server/satellites/" data-target="_blank"
-       style="cursor:pointer" onclick="window.open(this.dataset.href, this.dataset.target || '_self')">
-    <div class="svc-card-top">
-      <div class="svc-card-info">
-        <div class="svc-name">Satellites</div>
-      </div>
-    </div>
-  </div>
   <div class="svc-card svc-card-gated" id="card-wlrf" data-href="server/winlink/mail.html">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-wlrf"></div>
       <div class="svc-card-info"><div class="svc-name">Winlink RF</div><div class="svc-sub" id="sub-wlrf">—</div></div>
     </div>
     <div class="svc-card-bottom">
-      <button class="svc-open" id="open-wlrf" onclick="svcOpenClick('wlrf')" disabled>OPEN</button>
+      <button class="svc-open" id="open-wlrf" onclick="svcOpenClick('wlrf')" disabled>OPEN ↗</button>
       <span class="svc-badge" id="badge-wlrf">—</span>
       <div class="hw-assign-row" id="hwrow-wlrf" hidden>
         <span class="hw-assign-lbl">device:</span>
@@ -1265,8 +1265,8 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="nav-sec">
       <div class="nav-sec-title">Util</div>
       <ul class="nav-links">
-        <li><a id="nlink-aprs" href="server/map/map.html">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
-        <li><a id="nlink-sat" href="server/satellites/">Satellites <span class="nav-meta">passes · tracking</span></a></li>
+        <li><a id="nlink-aprs" href="server/map/map.html" target="_blank" rel="noopener">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
+        <li><a id="nlink-sat" href="server/satellites/" target="_blank" rel="noopener">Satellites World Map<span class="nav-meta">passes · tracking</span></a></li>
         <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
         <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>        
       </ul>
@@ -1628,46 +1628,56 @@ const SERVICES = [
     id: 'wlrf', name: 'Winlink RF',
     check: async () => {
       // The Direwolf packet modem behind Pat's AGWPE transport. No web port —
-      // status is systemd. Start-on-demand: starting it stops GrayWolf + the SDR
-      // feed (hardware-exclusive on the DRA card + GPIO PTT), so it sits STOPPED
-      // until you enter RF mode.
+      // status is systemd. Two personalities, split on whether a radio is assigned:
+      //   • radio assigned → RF/packet: START runs the modem (red/STOPPED until ON AIR)
+      //   • no radio        → telnet: nothing to start, so the power control is hidden
+      //                       and the card reflects internet reachability instead.
       const r = await fetch('/api/health/service?name=pat-direwolf', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: 'status error' };
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
-      // Ground truth (systemd is-active) wins over the hardware-assignment
-      // state: a unit that's actually running is ON AIR even if the
-      // dashboard's last-polled assignment snapshot is stale or momentarily
-      // unassigned — the UNASSIGNED badge only applies while it's stopped
-      // and can't start.
+      if (!d.installed) return { up: false, badge: 'not installed', sub: 'run services/winlink/install.py' };
       if (d.active === 'active') return { up: true, badge: 'ON AIR', sub: 'AGWPE :8000 · APRS off' };
-      const hw = _hwLast && _hwLast.services && _hwLast.services.winlink;
-      if (hw && !hw.ok) {
-        return { up: false, badge: 'UNASSIGNED',
-          sub: hw.reason === 'unassigned' ? 'unassigned — pick a device below' : 'device not attached' };
-      }
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
-        sub: d.installed ? 'start for packet Winlink' : 'run services/winlink/install.py' };
+      // Stopped + radio assigned → RF mode: red, STOPPED, START present (gauntlet).
+      if (_assignedDevice('wlrf')) return { up: false, badge: 'STOPPED', sub: 'start for packet Winlink' };
+      // Stopped + no radio → telnet mode: START hidden. Green + operational when the
+      // internet is up (telnet can reach a CMS); amber + "choose a device" when it
+      // isn't (AP mode = no upstream), nudging the operator toward RF. The device row
+      // already reads "telnet", so the badge carries connectivity, not the mode.
+      return _wifiMode === 'ap'
+        ? { up: true, warn: true, badge: 'NO INTERNET', sub: 'choose a device in setup', hidePower: true }
+        : { up: true,             badge: 'INTERNET',    sub: 'operational',              hidePower: true };
     }
   },
   {
     id: 'kiwix', name: 'Kiwix',
     check: async () => {
-      await fetch(`http://${HOST}:${PORTS.kiwix}/`, { cache: 'no-store', mode: 'no-cors' });
-      // Card shows the port (server reachability); the OPS "Wikipedia" link
-      // shows the ZIM inventory instead (count + size, or just count if many).
-      let navSub;
-      try {
-        const zr = await fetch('/api/health/zim', { cache: 'no-store' });
-        if (zr.ok) {
-          const zd = await zr.json();
-          const n = zd.count || 0;
-          navSub = n === 0 ? 'no ZIM'
-                 : n === 1 ? `1 ZIM · ${zd.total_gb} GB`
-                 : `${n} ZIMs`;
-        }
-      } catch (_) {}
-      return { up: true, badge: 'UP', sub: `:${PORTS.kiwix}`, navSub };
+      // Status comes from systemd (same as owrx/adsb/feed) so a not-installed
+      // Kiwix reads "not installed" instead of DOWN: a raw port probe throws
+      // identically whether the unit is absent, stopped, or crashed — it can't
+      // tell them apart. The unit being 'active' means kiwix-serve is up on :8081.
+      const r = await fetch('/api/health/service?name=kiwix', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'status error' };
+      const d = await r.json();
+      if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      if (d.active === 'active') {
+        // Card shows the port (server reachability); the OPS "Wikipedia" link
+        // shows the ZIM inventory instead (count + size, or just count if many).
+        let navSub;
+        try {
+          const zr = await fetch('/api/health/zim', { cache: 'no-store' });
+          if (zr.ok) {
+            const zd = await zr.json();
+            const n = zd.count || 0;
+            navSub = n === 0 ? 'no ZIM'
+                   : n === 1 ? `1 ZIM · ${zd.total_gb} GB`
+                   : `${n} ZIMs`;
+          }
+        } catch (_) {}
+        return { up: true, badge: 'UP', sub: `:${PORTS.kiwix}`, navSub };
+      }
+      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+        sub: d.installed ? 'inactive' : 'run services/kiwix/install.py' };
     }
   },
   {
@@ -1866,6 +1876,10 @@ async function checkService(svc) {
     if (nlink)  { nlink.classList.toggle('enabled', state !== 'down'); }
     updatePower(svc.id, state);
     updateOpenBtn(svc.id, state);
+    // A service may hide its power control entirely (Winlink RF in telnet mode:
+    // no RF modem to start/stop). Default is visible.
+    const pb = SVC_UNITS[svc.id] ? powerBtn(svc.id) : null;
+    if (pb) pb.style.display = result.hidePower ? 'none' : '';
   } catch (e) {
     _svcStates[svc.id] = 'down';
     if (dot)   dot.className  = 'svc-dot down';
@@ -1876,6 +1890,8 @@ async function checkService(svc) {
     if (nlink)  { nlink.classList.remove('enabled'); }
     updatePower(svc.id, 'down');
     updateOpenBtn(svc.id, 'down');
+    const pb = SVC_UNITS[svc.id] ? powerBtn(svc.id) : null;
+    if (pb) pb.style.display = '';   // a transient error must not leave START hidden
   }
   updateSvcCounts();
 }
@@ -1923,9 +1939,15 @@ function renderDeviceLabels(data) {
     const deviceId = (services[hwService] || {}).device_id || '';
     const dev = deviceId ? byId[deviceId] : null;
     // dev==null covers both truly unassigned and a dangling assignment whose
-    // dongle was unplugged (undeclared) — either way, show "unassigned".
-    out.textContent = dev ? dev.label : 'unassigned';
-    out.classList.toggle('hw-assign-dev-none', !dev);
+    // dongle was unplugged (undeclared). Winlink RF with no radio isn't idle —
+    // it runs over telnet, so label that mode rather than "unassigned".
+    if (!dev && cardId === 'wlrf') {
+      out.textContent = 'telnet';
+      out.classList.remove('hw-assign-dev-none');
+    } else {
+      out.textContent = dev ? dev.label : 'unassigned';
+      out.classList.toggle('hw-assign-dev-none', !dev);
+    }
   });
 }
 
@@ -1956,7 +1978,7 @@ function applyFeedFlowState(state, sub, badgeText) {
   const badge = document.getElementById('badge-feed');
   const sub_ = document.getElementById('sub-feed');
   if (dot)   dot.className  = 'svc-dot '  + state;
-  if (card)  card.className = 'svc-card ' + state;
+  if (card)  card.className = 'svc-card svc-card-gated ' + state;   // blue up-state, matching its RTL-SDR siblings
   if (badge) { badge.className = 'svc-badge ' + state; badge.textContent = badgeText; }
   if (sub_)  sub_.textContent = sub;
   updateSvcCounts();
@@ -2228,16 +2250,42 @@ function powerBtn(svcId) {
 // (OpenWebRX can take 10-15s after the unit goes active) or the deadline passes.
 const _pending = {};   // svcId -> deadline timestamp
 
+// Cards whose START requires an OASIS RTL-SDR assignment: they open the assigned
+// dongle directly and misbehave with none (OpenWebRX's assignment is advisory,
+// but the operator still wants START gated until a dongle is picked).
+const START_NEEDS_DEVICE = ['feed', 'adsb', 'owrx'];
+
+// The device object currently assigned to a card's HW service, or null (covers
+// both truly unassigned and a dangling assignment whose dongle was unplugged) —
+// same condition renderDeviceLabels() uses to print "unassigned".
+function _assignedDevice(svcId) {
+  const hwService = HW_SERVICE_FOR_CARD[svcId];
+  if (!hwService || !_hwLast) return null;
+  const id = ((_hwLast.services || {})[hwService] || {}).device_id || '';
+  if (!id) return null;
+  return ((_hwLast.devices || []).find(d => d.id === id)) || null;
+}
+
+// Why START is unavailable for this stopped service, or '' if it may start.
+function _startBlockReason(svcId) {
+  // Not installed (manifest gate, reconciled against live units in loadInstalled)
+  // — nothing to start. Only seen when the operator reveals not-installed cards.
+  if (HIDDEN_SVCS.has(svcId))
+    return 'Not installed — run its install script first.';
+  if (START_NEEDS_DEVICE.includes(svcId) && !_assignedDevice(svcId))
+    return 'Assign an SDR dongle in Setup before starting.';
+  // Winlink RF's START is gated purely on a radio being assigned — and in telnet
+  // mode (no radio) the control is hidden outright (see the wlrf check), so there's
+  // nothing to block here.
+  return '';
+}
+
 // Reflect current state on the power control (unless mid-action / settling).
 function updatePower(svcId, state) {
   if (!SVC_UNITS[svcId]) return;
   const btn = powerBtn(svcId);
   if (!btn) return;
   const running = state === 'up' || state === 'warn';
-  // No hardware-assignment gate here anymore — starting never blocks
-  // (specs/2026-07-15-hardware-conflict-resolution-v2-design.md §4);
-  // conflicts are resolved at the moment START is clicked instead
-  // (see resolveHardwareConflict, Task 5).
   if (_pending[svcId] !== undefined) {
     if (running || Date.now() >= _pending[svcId]) {
       delete _pending[svcId];
@@ -2250,7 +2298,12 @@ function updatePower(svcId, state) {
   btn.classList.toggle('up', running);
   btn.classList.toggle('down', !running);
   btn.textContent = running ? 'STOP' : 'START';
-  btn.title = (running ? 'Stop ' : 'Start ') + SVC_UNITS[svcId] + ' service';
+  // Gate START only (STOP is always allowed). Conflicts between running RTL-SDR
+  // users are still resolved at click time (resolveHardwareConflict); this blocks
+  // the up-front cases the operator can't act on: no device, or telnet-in-AP.
+  const block = running ? '' : _startBlockReason(svcId);
+  btn.classList.toggle('blocked', !!block);
+  btn.title = block || ((running ? 'Stop ' : 'Start ') + SVC_UNITS[svcId] + ' service');
 }
 
 // Card id -> [signal card id, signal's systemd unit] whose activity means
@@ -2331,6 +2384,9 @@ async function togglePower(svcId) {
   const btn = powerBtn(svcId);
   const running = _svcStates[svcId] === 'up' || _svcStates[svcId] === 'warn';
   const action  = running ? 'stop' : 'start';
+  // Blocked START (no device, or telnet Winlink in AP mode) — no-op; the dimmed
+  // control's tooltip already explains why. STOP is never blocked.
+  if (action === 'start' && _startBlockReason(svcId)) return;
   if (action === 'stop' && !confirm(`Stop the "${unit}" service?`)) return;
   if (action === 'start' && !(await resolveHardwareConflict(svcId))) return;
 
@@ -2889,8 +2945,10 @@ function _isEmergency(s) {
 }
 
 // ── Natural-hazard pills (config: configuration/hazards.json → /hazards.json) ──
-// Each hazard matches a station by its (sym_table, sym_code) OR an object-name /
-// comment keyword. Hazards persist (no age window) — an incident stays until it
+// A hazard matches a station ONLY by its APRS (sym_table, sym_code) — the symbol
+// is the trigger. A comment never creates a match (a motorcycle joking "like a
+// tornado", a digi named "Lake Smoke"). `name_exclude` (whole-word) can only VETO
+// a symbol match. Hazards persist (no age window) — an incident stays until it
 // stops being reported. Loaded once at startup; pills repaint every filter pass.
 let _HAZARDS = [];
 let hazardFilter = null;   // active hazard key, or null (mutually exclusive with emergencyOnly)
@@ -2904,13 +2962,12 @@ async function loadHazards() {
 function _hazardKeyOf(s) {
   if (!s || !_HAZARDS.length) return null;
   const tbl = s.sym_table || '/', code = s.sym_code || '';
-  const name = String(s.callsign || '').toUpperCase();
-  const comment = String(s.comment || '').toUpperCase();
-  const hit = kw => kw && (name.includes(kw) || comment.includes(kw));
+  const text = (String(s.comment || '') + ' ' + String(s.callsign || '')).toUpperCase();
+  const vetoed = kw => kw && new RegExp('\\b' + kw.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(text);
   for (const h of _HAZARDS) {
-    if ((h.symbols || []).some(p => p[0] === tbl && p[1] === code)) return h.key;   // symbol wins outright
-    // Name match, minus false-positive facilities (e.g. "FIRE STATION" vs a wildfire).
-    if ((h.name_match || []).some(hit) && !(h.name_exclude || []).some(hit)) return h.key;
+    if (!(h.symbols || []).some(p => p[0] === tbl && p[1] === code)) continue;   // symbol is the trigger
+    if ((h.name_exclude || []).some(vetoed)) continue;                           // comment can only veto a match
+    return h.key;
   }
   return null;
 }
@@ -3241,6 +3298,7 @@ async function fetchAPRS() {
 // client network or hosting the OASIS access point.
 let _wifiSupported = false;
 let _wifiCurrentSsid = null;
+let _wifiMode = null;   // 'ap' | 'client' | null — gates telnet Winlink (see _startBlockReason)
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
@@ -3254,8 +3312,14 @@ async function pollWifi() {
   try {
     const r = await fetch('/api/wifi/status', { cache: 'no-store' });
     const d = await r.json().catch(() => ({}));
-    if (!d || !d.supported) { pill.style.display = 'none'; _wifiSupported = false; return; }
+    if (!d || !d.supported) { pill.style.display = 'none'; _wifiSupported = false; _wifiMode = null; return; }
     _wifiSupported = true;
+    _wifiMode = d.mode || null;
+    // Winlink RF's telnet badge (INTERNET / NO INTERNET), card colour and sub all
+    // track connectivity — re-run its check when AP/client mode flips rather than
+    // waiting up to 30s for the next service poll.
+    const wlrf = SERVICES.find(s => s.id === 'wlrf');
+    if (wlrf) checkService(wlrf);
     pill.style.display = '';
     const txt  = document.getElementById('wifi-pill-txt');
     pill.classList.remove('ap', 'client');
