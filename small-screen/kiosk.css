@@ -67,12 +67,12 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .upill{ font-size:1.05rem; letter-spacing:.05em; color:var(--blue); border:1px solid var(--border);
         border-radius:999px; padding:.3rem .8rem; cursor:pointer; }
 .upill:hover{ border-color:var(--blue); color:var(--text); }
-.refresh{ width:2.4rem; height:2.4rem; display:grid; place-items:center; border:1px solid var(--border);
-          border-radius:.6rem; color:var(--dim); cursor:pointer; font-size:1.5rem; line-height:1; }
-.refresh:active{ transform:rotate(180deg); transition:transform .2s; }
-.ops{ margin-left:auto; font-size:1.2rem; font-weight:700; letter-spacing:.12em; color:var(--accent);
+.hd-actions{ margin-left:auto; display:flex; flex-direction:column; gap:.4rem; align-items:stretch; }
+.ops{ font-size:1.2rem; font-weight:700; letter-spacing:.12em; color:var(--accent); text-align:center;
       border:1px solid var(--accent); background:rgba(53,208,160,.08); border-radius:.6rem;
       padding:.45rem 1.3rem; cursor:pointer; }
+.refresh-btn{ color:var(--blue); border-color:var(--border); background:var(--panel-2); }
+.refresh-btn:active{ background:rgba(92,184,255,.12); }
 .gpsrow{ display:flex; align-items:center; gap:.9rem; font-size:1.4rem; margin-bottom:.8rem; }
 .dot{ width:.9rem; height:.9rem; border-radius:50%; flex:0 0 auto; background:var(--faint); }
 .gpsrow .mode{ font-weight:700; } .gpsrow .sub{ color:var(--dim); font-size:1.25rem; }

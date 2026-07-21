@@ -34,8 +34,10 @@
           <span class="cs" id="k-callsign">N0CALL</span><span class="sep">·</span><span class="gr" id="k-grid">—</span>
         </span>
         <span class="upill" id="k-units" onclick="toggleUnits()" title="Toggle imperial / metric">IMPERIAL</span>
-        <span class="refresh" onclick="location.reload()" title="Reload">↻</span>
-        <button class="ops" onclick="openOv('ops')">OPS ▸</button>
+        <div class="hd-actions">
+          <button class="ops" onclick="openOv('ops')">OPS ▸</button>
+          <button class="ops refresh-btn" onclick="location.reload()">REFRESH</button>
+        </div>
       </div>
       <div class="gpsrow" id="k-gps">
         <span class="dot"></span><span class="mode" id="k-gps-mode">GPS —</span><span class="sub" id="k-gps-sub">—</span>
