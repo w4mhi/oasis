@@ -242,6 +242,10 @@ def install_browser(user, home, url=None, seven_inch=False):
     # gnome-keyring, so a passwordless-autologin kiosk never gets prompted to
     # unlock the login keyring on boot (any saved passwords stay in the user's
     # profile, not the locked keyring).
+    # --enable-speech-dispatcher: turn on Chromium's Web Speech (TTS) backend so
+    # the Satellites page can *speak* pass alerts. It's gated behind this flag on
+    # Linux, so kiosk mode has no voice without it — needs speech-dispatcher +
+    # espeak-ng installed (services/satellites/install-voice.py).
     kiosk_url = url or f"http://localhost:{PORT}/index.html"   # explicit page, not the "/" redirect
     extra_flags = (
         " --touch-events=enabled --overscroll-history-navigation=0"
@@ -257,6 +261,7 @@ def install_browser(user, home, url=None, seven_inch=False):
         "    sleep 2\n"
         "done\n"
         f"exec {chromium_bin} --kiosk --noerrdialogs --disable-infobars"
+        f" --enable-speech-dispatcher"
         f" --password-store=basic{extra_flags} \"$URL\"\n"
     )
     _info(f"Writing {BROWSER_BIN}")

@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OASIS — Satellites</title>
-<link rel="stylesheet" href="/map-assets/maplibre-gl.css">
 <link rel="stylesheet" href="/css/common.css">
 <style>
 html, body { height: 100%; margin: 0; }
@@ -44,7 +43,6 @@ html, body { height: 100%; margin: 0; }
 #listen-status .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red);
   animation: recblink 1.2s infinite; }
 @keyframes recblink { 50% { opacity: .3; } }
-.sat-home-node { line-height: 0; filter: drop-shadow(0 0 4px rgba(255,210,87,.7)); pointer-events: none; }
 /* Coverage wash — green edge-glow over the map when a plotted sat is above the
    horizon (you're inside its footprint); opacity scales with elevation. */
 #coverage-wash { position: fixed; top: 73px; left: 0; right: 0; bottom: 0; z-index: 1;
@@ -61,7 +59,9 @@ html, body { height: 100%; margin: 0; }
 .grat { stroke: #243b53; stroke-width: .5; }
 /* Dark land fill + faint country borders (Natural Earth 110m, public domain). */
 .land { fill: #18222f; stroke: rgba(130,150,180,.28); stroke-width: .35; }
-.sat-marker, .sat-track { cursor: pointer; }
+.sat-marker, .sat-track, .sat-glyph { cursor: pointer; }
+.sat-glyph { font-size: 10px; }
+.home-glyph { font-size: 8px; }
 /* Click-a-satellite popup (replaces the old MapLibre popup; same pop-* content). */
 .sat-popup { position: fixed; z-index: 300; max-width: 300px; background: var(--panel);
   border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px 9px;
@@ -238,19 +238,6 @@ let ROSTER = [], STATION = null, PASSES = {};
 const PLOTTED = {};
 const PALETTE = ['#00d98b', '#58a6ff', '#ffb454', '#ff7b72', '#bc8cff', '#39d0d8', '#f778ba', '#7ee787'];
 const _freeColors = [...PALETTE];
-// Shared "home QTH" marker — gold house + antenna + signal arcs, identical to the
-// APRS map. Bottom-anchored: the house base sits exactly on the station coordinate.
-const HOME_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-16 -30 32 39" width="34" height="41" aria-hidden="true">
-  <path d="M-12 -3 L0 -14 L12 -3 Z" fill="#ffb454" stroke="#0d1117" stroke-width="1.4" stroke-linejoin="round"/>
-  <rect x="-9" y="-3" width="18" height="12" rx="1.5" fill="#ffd257" stroke="#0d1117" stroke-width="1.4"/>
-  <rect x="-2.2" y="2" width="4.4" height="7" fill="#0d1117"/>
-  <line x1="6" y1="-9" x2="6" y2="-24" stroke="#ffd257" stroke-width="1.8"/>
-  <circle cx="6" cy="-25" r="2" fill="#ffd257"/>
-  <path d="M10 -25 A6 6 0 0 1 10 -18" fill="none" stroke="#ffd257" stroke-width="1.5"/>
-  <path d="M13 -27 A10 10 0 0 1 13 -15" fill="none" stroke="#ffd257" stroke-width="1.3" opacity="0.7"/>
-</svg>`;
-// Inner markup only, for nesting the house at the station point on the world SVG.
-const HOME_INNER = HOME_SVG.replace(/^\s*<svg[^>]*>/i, '').replace(/<\/svg>\s*$/i, '');
 
 async function boot() {
   const meta = await (await fetch('/api/satellites')).json();
@@ -463,6 +450,24 @@ function playMorseV(reps, freq) {
     t += unit * 3;   // gap between repeated V's
   }
 }
+// Spoken heads-up at T-10 (after the Vs) — says which sat is coming + how good the
+// pass is. Browser speech synthesis; silently no-ops if no voice is installed, so
+// the VVV chime always carries the alert regardless. Honours the global mute.
+let _voices = [];
+function _loadVoices() { try { _voices = speechSynthesis.getVoices() || []; } catch (e) { _voices = []; } }
+if (window.speechSynthesis) { _loadVoices(); speechSynthesis.onvoiceschanged = _loadVoices; }
+function speak(text) {
+  if (_satMuted || !window.speechSynthesis) return;
+  if (!_voices.length) _loadVoices();
+  if (!_voices.length) return;   // no TTS voice on this box — the chime already fired
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.9; u.pitch = 1.0; u.volume = 1.0;
+    const en = _voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+    if (en) u.voice = en;
+    speechSynthesis.speak(u);
+  } catch (e) { /* ignore */ }
+}
 // Bell control for a roster row (only rendered for a plotted sat).
 function bellBtnHTML(norad) {
   const on = bellArmed(norad);
@@ -474,6 +479,7 @@ function bellBtnHTML(norad) {
 // one per tick. Per-sat+pass flags prevent re-firing; T-5 uses a higher pitch.
 function _runPassAlerts() {
   let fire = false, freq = 620;
+  const t10 = [];   // sats crossing T-10 this tick → spoken heads-up after the Vs
   const now = Date.now();
   for (const norad in PLOTTED) {
     if (!bellArmed(norad)) continue;
@@ -483,10 +489,17 @@ function _runPassAlerts() {
     let st = _alertState[norad];
     if (!st || st.key !== p.rise) st = _alertState[norad] = { key: p.rise, t10: false, t5: false };
     const tMinus = rise - now;
-    if (!st.t10 && tMinus <= 600000 && tMinus > 0) { st.t10 = true; fire = true; }
+    if (!st.t10 && tMinus <= 600000 && tMinus > 0) { st.t10 = true; fire = true; t10.push({ norad: +norad, p }); }
     if (!st.t5  && tMinus <= 300000 && tMinus > 0) { st.t5  = true; fire = true; freq = 780; }  // closer → higher/urgent
   }
   if (fire) playMorseV(3, freq);   // VVV — T-10 (620 Hz), then T-5 (780 Hz)
+  // T-10 only: once the Vs finish, speak which sat is coming + the pass quality.
+  if (t10.length) setTimeout(() => {
+    for (const { norad, p } of t10) {
+      const sat = ROSTER.find(s => s.norad === norad);
+      if (sat) speak(`${sat.name}, in ten minutes, maximum elevation ${Math.round(p.max_el)} degrees`);
+    }
+  }, 2600);   // ~length of the VVV chime, so the voice follows it, not overlaps
 }
 
 function updatePills() {
@@ -594,7 +607,7 @@ function renderBase() {
   let out = drawCountries(W, H) + drawGraticule(W, H);
   if (STATION && STATION.lon != null) {
     const st = satgeo.project(STATION.lat, STATION.lon, W, H);
-    out += `<svg x="${(st.x - 9).toFixed(1)}" y="${(st.y - 22).toFixed(1)}" width="18" height="22" viewBox="-16 -30 32 39" class="sat-home-node" overflow="visible">${HOME_INNER}</svg>`;
+    out += `<text class="home-glyph" x="${st.x.toFixed(1)}" y="${st.y.toFixed(1)}" text-anchor="middle" dominant-baseline="central">🏠</text>`;
   }
   g.innerHTML = out;
 }
@@ -627,10 +640,12 @@ function redraw() {
     const { past, future } = satgeo.splitAtNow(track, nowIndex(track));
     const draw = (pts, dash) => { for (const seg of satgeo.splitAntimeridian(pts)) { if (seg.length < 2) continue;
       const d = seg.map((p, i) => { const q = satgeo.project(p.lat, p.lon, W, H); return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1); }).join(' ');
-      out += `<path d="${d}" class="sat-track" data-norad="${norad}" fill="none" stroke="${s.color}" stroke-width="${dash ? 1.5 : 2.5}"${dash ? ' stroke-dasharray="4 3" opacity="0.5"' : ''}/>`; } };
+      // non-scaling-stroke → constant pixel width regardless of the SVG's scale-up.
+      out += `<path d="${d}" class="sat-track" data-norad="${norad}" fill="none" stroke="${s.color}" stroke-width="${dash ? 1 : 1.5}" vector-effect="non-scaling-stroke"${dash ? ' stroke-dasharray="3 2.5" opacity="0.5"' : ''}/>`; } };
     draw(past, false); draw(future, true);
+    // Live marker: just the 🛰️ glyph (its colour association comes from the track).
     if (pos) { const q = satgeo.project(pos.lat, pos.lon, W, H);
-      out += `<circle class="sat-marker" data-norad="${norad}" cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="4.5" fill="#fff" stroke="${s.color}" stroke-width="2"/>`; }
+      out += `<text class="sat-glyph" data-norad="${norad}" x="${q.x.toFixed(1)}" y="${q.y.toFixed(1)}" text-anchor="middle" dominant-baseline="central">🛰️</text>`; }
   }
   g.innerHTML = out;
 }

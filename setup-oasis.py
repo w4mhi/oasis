@@ -195,6 +195,12 @@ FEATURES = [
             "to refresh, or re-run this script when you next have internet.",
             "Content / Data", default=True, internet=True,
             recommend="Satellite passes are ready — refresh TLEs via the age pill (or re-run sync-tle.py) every few days."),
+    Feature("satellites-voice", "Satellite pass-alert voice", "services/satellites/install-voice.py",
+            "Text-to-speech for satellite pass alerts (speech-dispatcher + espeak-ng, ~5 MB apt). "
+            "After the T-10 chime the Satellites page speaks which bird is coming + the pass "
+            "elevation; without it, alerts still chime. Needs internet (apt).",
+            "Content / Data", default=True, internet=True,
+            recommend="Pass-alert voice ready — arm a satellite's bell (🔔) on the Satellites page."),
     Feature("repeaterbook", "Repeater Book listing", None,
             "Show the Repeater Book link on the dashboard. Needs static/repeaterbook/repeaterbook.csv "
             "(copyright — export your own from repeaterbook.com and drop it in).",
