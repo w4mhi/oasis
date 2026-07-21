@@ -225,6 +225,18 @@ body {
 .svc-badge.up   { color: var(--accent); }
 .svc-badge.down { color: var(--red); }
 .svc-badge.warn { color: var(--amber); }
+/* Web Server card: gunicorn/werkzeug as a bordered pill in the top row (styled
+   like the STOP control). Hooked on the id, not a class, because the generic
+   renderer overwrites .svc-badge's className on every poll. */
+#badge-wsgi {
+  flex-shrink: 0; margin-left: auto;
+  font-size: var(--fs-micro); font-weight: 700; letter-spacing: .05em;
+  padding: 2px 6px; border-radius: 4px;
+  border: 1px solid var(--border); color: var(--text-dim);
+}
+#badge-wsgi.up   { color: var(--accent); border-color: var(--accent-dim); }
+#badge-wsgi.warn { color: var(--amber);  border-color: var(--amber-dim); }
+#badge-wsgi.down { color: var(--red);    border-color: #7a1010; }
 /* OPEN launches the service page/tab — bottom-left of the card, blue like
    the gated "up" accent. Disabled (greyed, not clickable) unless the card
    is up. */
@@ -280,17 +292,17 @@ body {
 }
 
 /* ── Per-card device label (read-only; assign on Setup → Hardware) ───────── */
-/* order:-1 pulls the full-width device row ABOVE the OPEN/badge line inside
-   .svc-card-bottom, so the badge stays pinned bottom-right on hardware cards
-   (feed/adsb/owrx/wlrf) exactly like the cards with no device row — otherwise
-   the extra line pushes the badge up and it reads as "floating in the middle". */
+/* Sits inline on the OPEN/badge line (feed/adsb/owrx/wlrf) to save a row of
+   height: `OPEN ↗ · device: xxx ···· badge`. Shrinkable (min-width:0) so a long
+   dongle label ellipsises instead of pushing the badge onto a second line; the
+   full name is on the element's title for hover. */
 .hw-assign-row {
-  order: -1; flex: 1 0 100%; display: flex; align-items: center; gap: .4rem; margin-bottom: .3rem;
+  display: flex; align-items: center; gap: .4rem; min-width: 0; flex: 0 1 auto;
 }
 .hw-assign-row[hidden] { display: none; }
-.hw-assign-lbl { font-size: var(--fs-small); color: var(--text-dim); }
+.hw-assign-lbl { font-size: var(--fs-small); color: var(--text-dim); flex-shrink: 0; }
 .hw-assign-dev {
-  flex: 1; min-width: 0; font-size: var(--fs-small); font-family: var(--mono);
+  flex: 0 1 auto; min-width: 0; font-size: var(--fs-small); font-family: var(--mono);
   color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .hw-assign-dev-none { color: var(--text-dim); font-style: italic; }
@@ -1115,11 +1127,11 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       </div>
     </div>
     <div class="svc-card-bottom">
-      <span class="svc-badge" id="badge-feed">—</span>
       <div class="hw-assign-row" id="hwrow-feed" hidden>
         <span class="hw-assign-lbl">device:</span>
         <span class="hw-assign-dev" id="hwdev-feed">—</span>
       </div>
+      <span class="svc-badge" id="badge-feed">—</span>
     </div>
   </div>
   <div class="svc-card svc-card-gated" id="card-owrx">
@@ -1132,11 +1144,11 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     </div>
     <div class="svc-card-bottom">
       <button class="svc-open" id="open-owrx" onclick="svcOpenClick('owrx')" disabled>OPEN ↗</button>
-      <span class="svc-badge" id="badge-owrx">—</span>
       <div class="hw-assign-row" id="hwrow-owrx" hidden>
         <span class="hw-assign-lbl">device:</span>
         <span class="hw-assign-dev" id="hwdev-owrx">—</span>
       </div>
+      <span class="svc-badge" id="badge-owrx">—</span>
     </div>
   </div>
   <div class="svc-card svc-card-gated" id="card-adsb" data-href="server/map/map.html" data-target="_blank">
@@ -1155,11 +1167,11 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     </div>
     <div class="svc-card-bottom">
       <button class="svc-open" id="open-adsb" onclick="svcOpenClick('adsb')" disabled>OPEN ↗</button>
-      <span class="svc-badge" id="badge-adsb">—</span>
       <div class="hw-assign-row" id="hwrow-adsb" hidden>
         <span class="hw-assign-lbl">device:</span>
         <span class="hw-assign-dev" id="hwdev-adsb">—</span>
       </div>
+      <span class="svc-badge" id="badge-adsb">—</span>
     </div>
   </div>
   <div class="svc-card svc-card-gated" id="card-wlrf" data-href="server/winlink/mail.html">
@@ -1169,11 +1181,11 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     </div>
     <div class="svc-card-bottom">
       <button class="svc-open" id="open-wlrf" onclick="svcOpenClick('wlrf')" disabled>OPEN ↗</button>
-      <span class="svc-badge" id="badge-wlrf">—</span>
       <div class="hw-assign-row" id="hwrow-wlrf" hidden>
         <span class="hw-assign-lbl">device:</span>
         <span class="hw-assign-dev" id="hwdev-wlrf">—</span>
       </div>
+      <span class="svc-badge" id="badge-wlrf">—</span>
     </div>
   </div>
   <div class="svc-card svc-card-gated" id="card-winlink">
@@ -1199,22 +1211,21 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 </div>
 <!-- Row 2: system / infrastructure -->
 <div class="svc-strip">
+  <!-- Row 2 foundation cards are single-row: colour (dot + border/bg) carries
+       up/warn/down, so the old UP/DOWN badge line is dropped to save height.
+       The svc-sub keeps the useful detail (version, port, down-reason). Web
+       Server keeps a pill — gunicorn vs werkzeug is real info, not redundant. -->
   <div class="svc-card" id="card-flask">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-flask"></div>
       <div class="svc-card-info"><div class="svc-name">Frontend Flask</div><div class="svc-sub" id="sub-flask">—</div></div>
-    </div>
-    <div class="svc-card-bottom">
-      <span class="svc-badge" id="badge-flask">—</span>
     </div>
   </div>
   <div class="svc-card" id="card-wsgi">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-wsgi"></div>
       <div class="svc-card-info"><div class="svc-name">Web Server</div><div class="svc-sub" id="sub-wsgi">—</div></div>
-    </div>
-    <div class="svc-card-bottom">
-      <span class="svc-badge" id="badge-wsgi">—</span>
+      <span class="svc-badge svc-badge-pill" id="badge-wsgi">—</span>
     </div>
   </div>
   <div class="svc-card" id="card-gpsd">
@@ -1222,17 +1233,11 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <div class="svc-dot" id="dot-gpsd"></div>
       <div class="svc-card-info"><div class="svc-name">GPS (gpsd)</div><div class="svc-sub" id="sub-gpsd">—</div></div>
     </div>
-    <div class="svc-card-bottom">
-      <span class="svc-badge" id="badge-gpsd">—</span>
-    </div>
   </div>
   <div class="svc-card" id="card-aprs">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-aprs"></div>
       <div class="svc-card-info"><div class="svc-name">APRS Stats API</div><div class="svc-sub" id="sub-aprs">—</div></div>
-    </div>
-    <div class="svc-card-bottom">
-      <span class="svc-badge" id="badge-aprs">—</span>
     </div>
   </div>
 </div>
@@ -1597,8 +1602,8 @@ const SERVICES = [
       const d = await r.json();
       const g = d.wsgi === 'gunicorn';
       return { up: true, warn: !g,
-        badge: g ? 'gunicorn · UP' : 'werkzeug (dev) · WARN',
-        sub: `v${d.wsgi_version}` };
+        badge: g ? 'gunicorn' : 'werkzeug',
+        sub: g ? `v${d.wsgi_version}` : `dev · v${d.wsgi_version}` };
     }
   },
   {
@@ -1948,6 +1953,7 @@ function renderDeviceLabels(data) {
       out.textContent = dev ? dev.label : 'unassigned';
       out.classList.toggle('hw-assign-dev-none', !dev);
     }
+    out.title = out.textContent;   // full label on hover — the inline row ellipsises
   });
 }
 
@@ -3000,12 +3006,12 @@ function _renderEmergencyChip(count) {
   chip.classList.toggle('active', emergencyOnly && count > 0);
   chip.setAttribute('aria-pressed', (emergencyOnly && count > 0) ? 'true' : 'false');
   if (count > 0) {
-    chip.textContent = '⚠ ' + count + ' EMERGENCY';
+    chip.textContent = '⚠ ' + count + ' EMERGENCY POI';
     chip.title = emergencyOnly
       ? 'Showing only emergency POIs (Public safety, ≤48h) — click to clear'
       : count + ' emergency POI' + (count !== 1 ? 's' : '') + ' (Public safety, ≤48h) — click to show only these';
   } else {
-    chip.textContent = '✓ No emergencies';
+    chip.textContent = '✓ No emergency POI';
     chip.title = 'No Public-safety stations heard in the last 48h';
   }
   const typeSel = document.getElementById('aprs-col-type');
