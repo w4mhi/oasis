@@ -151,7 +151,7 @@ def _setup_preflight_blockers(selected, payload, online):
         pass
 
     internet_required = {
-        "graywolf", "winlink", "kiwix", "openwebrx", "adsb",
+        "graywolf", "winlink", "kiwix", "openwebrx", "adsb", "satellites",
         "gps", "cm4stack", "wikipedia",
     }
     if not online:

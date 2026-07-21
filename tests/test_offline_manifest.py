@@ -300,6 +300,29 @@ class TestManifestSanity(unittest.TestCase):
         p = M.bundle_dir("/bundle/offline-packages", "graywolf", m=self.m)
         self.assertEqual(p, os.path.join("/bundle/offline-packages", "graywolf"))
 
+    def test_satellites_voice_is_apt(self):
+        self.assertEqual(M.source_type("satellites-voice", self.m), "apt")
+
+    def test_satellites_voice_bundles_speech_stack(self):
+        """The pass-alert voice must vendor speech-dispatcher + espeak-ng for
+        every suite it declares (common packages, no suite split)."""
+        for suite in ("bookworm", "trixie"):
+            with self.subTest(suite=suite):
+                pkgs = M.apt_packages("satellites-voice", suite=suite, m=self.m)
+                self.assertIn("speech-dispatcher", pkgs)
+                self.assertIn("speech-dispatcher-espeak-ng", pkgs)
+                self.assertIn("espeak-ng", pkgs)
+
+    def test_satellites_voice_bundle_dir_feature_local(self):
+        # satellites-voice sets bundle_base → packages live under the service dir,
+        # suite-scoped (bookworm and trixie never collide). The installer
+        # (services/satellites/install-voice.py) reads this same path.
+        p = M.bundle_dir("/bundle/offline-packages", "satellites-voice", suite="trixie", m=self.m)
+        self.assertEqual(
+            p, os.path.join("/bundle", "services/satellites/packages", "satellites-voice", "trixie"))
+        bw = M.bundle_dir("/bundle/offline-packages", "satellites-voice", suite="bookworm", m=self.m)
+        self.assertNotEqual(p, bw)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

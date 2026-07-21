@@ -264,7 +264,7 @@ def _setup_winlink_install_fn(repo_root, payload):
 # caller is already root).
 PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
-    "openwebrx", "adsb", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
+    "openwebrx", "adsb", "satellites", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
     "pi-headless", "pi-local-monitor", "pi-small-screen-7", "cm4stack", "rgb-cooling-hat",
 }
 
@@ -346,6 +346,22 @@ def build_registry(repo_root, payload=None):
             key="adsb",
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "services/adsb/install.py"),
+            verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
+        # The Satellites page itself ships with `server` (Flask blueprint); this
+        # feature installs its two dependencies — the CelesTrak TLE cache (pass
+        # prediction) and the pass-alert voice (speech-dispatcher + espeak-ng).
+        # Both sub-scripts self-guard off-Linux/offline, so the chain degrades
+        # gracefully rather than failing (voice needs apt → privileged).
+        "satellites": SE.FeatureSpec(
+            key="satellites",
+            dependencies=["server"],
+            install_fn=lambda: _setup_run_chain(repo_root, [
+                {"script": "services/satellites/sync-tle.py"},
+                {"script": "services/satellites/install-voice.py", "timeout": 600},
+            ]),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,

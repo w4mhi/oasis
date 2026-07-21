@@ -435,6 +435,7 @@ function toggleSatMute() {
   const el = document.getElementById('sat-mute');
   if (el) { el.textContent = _satMuted ? '🔕' : '🔔';
     el.title = (_satMuted ? 'Unmute' : 'Mute') + ' pass-alert chimes'; }
+  renderRoster();   // re-render so each monitored sat's per-card bell reflects the mute
   _unlockAudio();
 }
 // Morse "V" = dit dit dit dah, `reps` times, `freq` Hz. dah = 3× dit; 1-unit gaps.
@@ -481,9 +482,16 @@ function speak(text) {
 // Bell control for a roster row (only rendered for a plotted sat).
 function bellBtnHTML(norad) {
   const on = bellArmed(norad);
-  return `<button class="sat-bell${on ? ' on' : ''}" onclick="toggleBell(${norad})" title="${on
-    ? 'Pass alerts armed — VVV chime at T-10 + T-5 min. Click to disarm.'
-    : 'Arm pass alerts (VVV chime at T-10 + T-5 min before the pass)'}">${on ? '🔔' : '🔕'}</button>`;
+  // The glyph reflects whether a chime will actually sound: an armed sat rings (🔔),
+  // but while the global mute is on even armed sats show the crossed 🔕 — kept bright
+  // via .on so it still reads as monitored (a disarmed sat shows a dim/grey 🔕).
+  const glyph = (on && !_satMuted) ? '🔔' : '🔕';
+  const title = on
+    ? (_satMuted
+        ? 'Pass alerts armed, but chimes are muted globally (header 🔕). Click to disarm.'
+        : 'Pass alerts armed — VVV chime at T-10 + T-5 min. Click to disarm.')
+    : 'Arm pass alerts (VVV chime at T-10 + T-5 min before the pass)';
+  return `<button class="sat-bell${on ? ' on' : ''}" onclick="toggleBell(${norad})" title="${title}">${glyph}</button>`;
 }
 // Ridden by updatePills every 2 s: fire the T-10 and T-5 "VVV" chimes, deduped to
 // one per tick. Per-sat+pass flags prevent re-firing; T-5 uses a higher pitch.

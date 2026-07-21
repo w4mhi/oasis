@@ -410,6 +410,33 @@
       ],
       "resolved": {}
     },
+    "satellites-voice": {
+      "type": "apt",
+      "bundle_group": "satellites-voice",
+      "bundle_base": "services/satellites/packages",
+      "description": "Text-to-speech stack for the Satellites page's spoken pass alert — speech-dispatcher + espeak-ng, so Chromium's Web Speech API exposes a voice. Optional: without it, pass alerts still chime. The installer is offline-first (bundled .debs, else apt) and no-ops off-Linux.",
+      "_note": "The bundler downloads only the packages named below (no dep-closure resolution). speech-dispatcher's runtime deps (libspeechd2, libsonic0, libdotconf0, and the espeak-ng data/libs — names can differ bookworm vs trixie under the t64 transition) must be curated into by_suite when bundling on the connected build machine, so a fully-offline `apt install ./*.deb` resolves. Several are already on a stock Pi OS Desktop image.",
+      "packages": {
+        "common": [
+          "speech-dispatcher",
+          "speech-dispatcher-espeak-ng",
+          "espeak-ng"
+        ],
+        "by_suite": {
+          "bookworm": [],
+          "trixie": []
+        }
+      },
+      "suites": [
+        "bookworm",
+        "trixie"
+      ],
+      "arches": [
+        "arm64",
+        "armhf"
+      ],
+      "resolved": {}
+    },
     "pmtiles": {
       "type": "github-release",
       "description": "Protomaps go-pmtiles CLI. Converts MBTiles -> PMTiles offline (used by maps/convert-mbtiles.py). Vendored into the bundle's maps/ directory. By default only the Linux binaries (the bundle's Pi/Linux targets) are fetched; macOS/Windows platforms are marked default=false and included only with create-oasis-offline.py --all-platforms so the default bundle stays lean.",

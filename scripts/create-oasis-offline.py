@@ -147,6 +147,7 @@ BUNDLE_IGNORE_EXTRA = {"windows": os.path.join(_SCRIPTS_DIR, "bundle-ignore.wind
 PRESERVE_IN_DEST = {
     "offline-packages",      # graywolf / kiwix / webssh / pat (shared central tree)
     "features/rtl-sdr/packages",  # feature-local: rtl-sdr + direwolf .debs (bundle_base)
+    "services/satellites/packages",  # feature-local: satellites-voice .debs (phase_satellites_voice)
     "displays/cm4stack/packages", # feature-local: m5stack-cm4.dtbo
     "displays/e-ink/waveshare_epd",  # feature-local: Waveshare e-ink driver (phase_eink)
     "server/wheels",         # phase_wheels
@@ -647,6 +648,55 @@ def phase_direwolf(bundle_root, update=False):
                 _write_resolved(feature, suite, deb_arch, versions)
 
         _ok(f"Direwolf {suite} done  →  {os.path.relpath(suite_dir)}/")
+
+
+# ── Phase 5c: Satellites pass-alert voice (TTS) Debian packages (suite-aware) ──
+#
+# The speech-dispatcher + espeak-ng stack the Satellites page uses for the spoken
+# pass alert. Vendored per suite per arch into
+#   services/satellites/packages/satellites-voice/<suite>/   (bundle_base + bundle_group)
+# Like Direwolf, only the packages the manifest names are fetched — no
+# dependency-closure resolution — so runtime deps (libspeechd2, libsonic0, …) must
+# be curated in the manifest's by_suite list on the connected build machine (see
+# the feature '_note'). The voice is optional, so a missing bundle is non-fatal.
+def _satellites_voice_present(suite_dir, deb_arch):
+    """True when the core speech-dispatcher .deb for this arch is already bundled."""
+    if not os.path.isdir(suite_dir):
+        return False
+    return any(f.startswith("speech-dispatcher_") and f.endswith(f"_{deb_arch}.deb")
+               for f in os.listdir(suite_dir))
+
+
+def phase_satellites_voice(bundle_root, update=False):
+    """Download the pass-alert voice apt packages per suite per arch, writing resolved."""
+    feature = "satellites-voice"
+    _section("Phase 5c — Satellites pass-alert voice (TTS) Debian packages  (suite-aware)")
+
+    for suite in M.feature_suites(feature):
+        pkgs = M.apt_packages(feature, suite=suite)
+        suite_dir = M.bundle_dir(bundle_root, feature, suite=suite)
+        _info(f"Suite   : Debian {suite}")
+        _info(f"Packages: {', '.join(pkgs)}")
+        _info(f"Dest    : {os.path.relpath(suite_dir)}/")
+
+        for deb_arch in M.feature_arches(feature):
+            _info(f"  ─── {suite}/{deb_arch}")
+            if _satellites_voice_present(suite_dir, deb_arch):
+                _cp(f"satellites-voice {suite}/{deb_arch}: present  (up to date)")
+                continue
+
+            rtl_sdr_download_debs(suite_dir, deb_arch, packages=pkgs, suite=suite)
+
+            pkg_index = debian_packages_index(deb_arch, pkgs, suite=suite)
+            versions = {
+                p: pkg_index[p]["Version"]
+                for p in pkgs
+                if p in pkg_index and pkg_index[p].get("Version")
+            }
+            if versions:
+                _write_resolved(feature, suite, deb_arch, versions)
+
+        _ok(f"Satellites voice {suite} done  →  {os.path.relpath(suite_dir)}/")
 
 
 # ── Phase 7a: ADS-B (dump1090-fa) Debian package (suite-aware) ───────────────
@@ -1837,6 +1887,7 @@ def cmd_build(skip_windows, rebuild=False, all_platforms=False, profile="full"):
         phase_webssh(pkg_root, update=True)
         phase_pat(pkg_root, update=True)
         phase_direwolf(pkg_root, update=True)
+        phase_satellites_voice(pkg_root, update=True)
         phase_adsb(pkg_root, update=True)
         phase_cm4stack(pkg_root, update=True)
         phase_eink(pkg_root, update=True)
@@ -1908,6 +1959,7 @@ def cmd_update(target_dir, all_platforms=False):
     phase_webssh(pkg_root, update=True)
     phase_pat(pkg_root, update=True)
     phase_direwolf(pkg_root, update=True)
+    phase_satellites_voice(pkg_root, update=True)
     phase_adsb(pkg_root, update=True)
     phase_cm4stack(pkg_root, update=True)
     phase_wikipedia(os.path.join(target_dir, "zim"))

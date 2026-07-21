@@ -140,6 +140,7 @@
           <label class="setup-check"><input type="checkbox" data-feature="kiwix"> kiwix</label>
           <label class="setup-check"><input type="checkbox" data-feature="openwebrx"> openwebrx</label>
           <label class="setup-check"><input type="checkbox" data-feature="adsb"> adsb</label>
+          <label class="setup-check"><input type="checkbox" data-feature="satellites"> satellites (+ TLE cache + pass-alert voice)</label>
         </div>
         <div class="setup-group">
           <h4>Running Hardware</h4>
@@ -275,6 +276,8 @@ const SETUP_FEATURE_ALIASES = {
   'rtl-feed': 'rtl-sdr-feed',
   'dra-pi': 'dra-pi-rx-led',
   'dra-rx-led': 'dra-pi-rx-led',
+  'satellites-tle': 'satellites',
+  'satellites-voice': 'satellites',
 };
 
 function escapeHtml(s) {
