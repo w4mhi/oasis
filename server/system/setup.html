@@ -681,7 +681,9 @@ function hwRenderAssignRows(devices) {
     const compatible = declared.filter(d => svc.kinds.includes(d.kind));
     const current = (services[svc.service] || {}).device_id || '';
     const isRunning = running.has(svc.service);
-    const opts = ['<option value="">— unassigned —</option>'].concat(compatible.map(d =>
+    // Winlink RF with no radio isn't "unassigned" — it falls back to telnet.
+    const emptyLabel = svc.service === 'winlink' ? '— telnet —' : '— unassigned —';
+    const opts = [`<option value="">${emptyLabel}</option>`].concat(compatible.map(d =>
       `<option value="${escapeHtml(d.id)}"${d.id === current ? ' selected' : ''}>`
       + `${escapeHtml(d.label)} (${escapeHtml(d.kind)})</option>`)).join('');
     return `<div class="setup-hw-row">
