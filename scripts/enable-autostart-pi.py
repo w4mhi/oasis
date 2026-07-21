@@ -247,11 +247,38 @@ def install_browser(user, home, url=None, seven_inch=False):
     # Linux, so kiosk mode has no voice without it — needs speech-dispatcher +
     # espeak-ng installed (services/satellites/install-voice.py).
     kiosk_url = url or f"http://localhost:{PORT}/index.html"   # explicit page, not the "/" redirect
-    extra_flags = (
-        " --touch-events=enabled --overscroll-history-navigation=0"
-        " --window-size=800,480"
-        if seven_inch else ""
-    )
+    # ── Chromium flags ────────────────────────────────────────────────────────
+    flags = [
+        "--kiosk", "--noerrdialogs", "--disable-infobars",
+        "--enable-speech-dispatcher",           # Web Speech for Satellites voice
+        "--password-store=basic",               # avoid keyring unlock prompt
+    ]
+    # Offline box: Chromium's background phone-home tasks only ever time out here,
+    # burning CPU and wakeups on a Pi that has no internet. Turn them off.
+    flags += [
+        "--disable-background-networking", "--disable-component-update",
+        "--disable-sync", "--disable-domain-reliability",
+    ]
+    # Perf on the Pi's VideoCore GPU: push rasterisation/compositing onto the GPU
+    # instead of software raster (the usual kiosk CPU hog); drop momentum scroll
+    # (needless repaints). If the driver proves flaky — watch for a busy
+    # crashpad_handler, the tell-tale of a renderer/GPU crash loop — swap
+    # `--use-gl=egl` for `--disable-gpu` (stable software path) or drop
+    # `--ignore-gpu-blocklist`.
+    flags += [
+        "--use-gl=egl", "--enable-gpu-rasterization", "--ignore-gpu-blocklist",
+        "--enable-zero-copy", "--disable-smooth-scrolling",
+    ]
+    # Offline: crash uploads go nowhere, so disabling breakpad stops
+    # crashpad_handler from churning CPU writing minidumps on every renderer blip.
+    flags.append("--disable-breakpad")
+    if seven_inch:
+        flags += [
+            "--touch-events=enabled", "--overscroll-history-navigation=0",
+            "--window-size=800,480",
+            "--force-device-scale-factor=1",    # 800×480 native — no fractional-scale repaint
+        ]
+    flag_str = " ".join(flags)
     launcher = (
         "#!/bin/bash\n"
         "# Wait for OASIS server to be ready, then open Chromium in kiosk mode.\n"
@@ -260,9 +287,7 @@ def install_browser(user, home, url=None, seven_inch=False):
         "    curl -sf \"$URL\" > /dev/null 2>&1 && break\n"
         "    sleep 2\n"
         "done\n"
-        f"exec {chromium_bin} --kiosk --noerrdialogs --disable-infobars"
-        f" --enable-speech-dispatcher"
-        f" --password-store=basic{extra_flags} \"$URL\"\n"
+        f"exec {chromium_bin} {flag_str} \"$URL\"\n"
     )
     _info(f"Writing {BROWSER_BIN}")
     _sudo_write(BROWSER_BIN, launcher)

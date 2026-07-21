@@ -43,7 +43,7 @@
   <!-- NAV (overlays) -->
   <div class="k-nav">
     <button class="navbtn" onclick="openOv('svc')">
-      <span class="nb-ico">🟢</span>
+      <span class="nb-dot" id="k-svc-dot">●</span>
       <span class="nb-t">SERVICES</span>
       <span class="nb-r"><span class="u" id="k-svc-up">— ✓</span><span class="w" id="k-svc-warn">— ⚠</span><span class="d" id="k-svc-down">— ✕</span></span>
     </button>
@@ -62,7 +62,6 @@
       <span><span class="nb-t">GPS</span> <span class="nb-sub" id="k-gps-sub">—</span></span>
     </div>
     <button class="navbtn ops" onclick="openOv('ops')">
-      <span class="nb-ico">⚡</span>
       <span class="nb-t">OPS</span>
       <span class="chev">▸</span>
     </button>
@@ -72,7 +71,7 @@
   <div class="k-aprs">
     <div class="aprs-head">
       <span class="e" id="k-aprs-title">TRAFFIC LIVE</span>
-      <span class="st">stations <b id="k-aprs-count">—</b></span>
+      <span class="st" id="k-aprs-countwrap" title="stations heard">top <b id="k-aprs-count">—</b></span>
       <span class="st">last packet <b id="k-aprs-last">—</b></span>
       <select id="aprs-filter-sel" onchange="applyAprsFilter()">
         <option value="15">Last 15 min</option>
@@ -214,6 +213,9 @@ function updateSvcCounts() {
   if (u) u.textContent = up   + ' ✓';
   if (w) w.textContent = warn + ' ⚠';
   if (d) d.textContent = down + ' ✕';
+  // Worst-of status dot on the SERVICES nav button (replaces the old emoji).
+  const dot = document.getElementById('k-svc-dot');
+  if (dot) dot.className = 'nb-dot ' + (down ? 'down' : warn ? 'warn' : up ? 'up' : '');
   const ov = document.querySelector('#ov-svc .st');
   if (ov) ov.textContent = `${up} up · ${warn} warn · ${down} down`;
 }
@@ -473,54 +475,66 @@ async function checkService(svc) {
 
 function pingAll() { SERVICES.forEach(svc => { if (!HIDDEN_SVCS.has(svc.id)) checkService(svc); }); }
 
+// Steady-state health checks as a circular queue: one service per tick instead
+// of firing all ~16 at once every 30 s (that burst spiked CPU + network). The
+// tick interval is sized so each service still refreshes ~every 16 s. Only the
+// initial fill (bootstrap) pings everything at once so the tiles populate fast.
+let _pingIdx = 0;
+function pingNext() {
+  const active = SERVICES.filter(svc => !HIDDEN_SVCS.has(svc.id));
+  if (!active.length) return;
+  checkService(active[_pingIdx % active.length]);
+  _pingIdx = (_pingIdx + 1) % active.length;
+}
+
 // ── Build OPS overlay ─────────────────────────────────────────────────────────
 const OPS = {
   Util: [
-    { icon:'📍', label:'APRS Map',        url:'server/map/map.html' },
-    { icon:'🔎', label:'FCC Lookup',      url:'/lookup' },
-    { icon:'💻', label:'SSH Terminal',    ext: () => `${location.protocol}//${HOST}:${PORTS.webssh}/` },
-    { icon:'📋', label:'Net Logger',      url:'tools/net-log.html' },
+    { sub:'live APRS · air',    label:'APRS Map',        url:'server/map/map.html' },
+    { sub:'callsign',           label:'FCC Lookup',      url:'/lookup' },
+    { sub:'shell',              label:'SSH Terminal',    ext: () => `${location.protocol}//${HOST}:${PORTS.webssh}/` },
+    { sub:'log',                label:'Net Logger',      url:'tools/net-log.html' },
   ],
   Tools: [
-    { icon:'✅', label:'Setup Verify',    url:'server/system/setup.html' },
-    { icon:'📐', label:'Antenna Calc',    url:'static/antenna-calc.html' },
-    { icon:'📻', label:'Band Plan',       url:'static/band-plan/index.html' },
-    { icon:'🧭', label:'Grid/Bearing',    url:'tools/grid-calc.html' },
-    { icon:'☀️', label:'Propagation',     url:'static/solar.html' },
-    { icon:'🔋', label:'Power/Battery',   url:'static/power-calc.html' },
-    { icon:'🌓', label:'Gray Line',       url:'static/grayline.html' },
-    { icon:'📁', label:'File Browser',    url:'server/system/browser.html' },
+    { sub:'configure',          label:'Setup Verify',    url:'server/system/setup.html' },
+    { sub:'calculator',         label:'Antenna Calc',    url:'static/antenna-calc.html' },
+    { sub:'HF · VHF · UHF',     label:'Band Plan',       url:'static/band-plan/index.html' },
+    { sub:'distance · heading', label:'Grid/Bearing',    url:'tools/grid-calc.html' },
+    { sub:'band conditions',    label:'Propagation',     url:'static/solar.html' },
+    { sub:'runtime calc',       label:'Power/Battery',   url:'static/power-calc.html' },
+    { sub:'HF propagation',     label:'Gray Line',       url:'static/grayline.html' },
+    { sub:'user files',         label:'File Browser',    url:'server/system/browser.html' },
   ],
   'ICS Forms': [
-    { icon:'📄', label:'ICS-205',         url:'static/ics-205/ics-205.html' },
-    { icon:'📄', label:'ICS-213',         url:'static/ics-213/ics-213.html' },
-    { icon:'📄', label:'ICS-214',         url:'static/ics-214/ics-214.html' },
-    { icon:'📄', label:'ICS-309',         url:'static/ics-309/ics-309.html' },
+    { sub:'radio plan',         label:'ICS-205',         url:'static/ics-205/ics-205.html' },
+    { sub:'general message',    label:'ICS-213',         url:'static/ics-213/ics-213.html' },
+    { sub:'activity log',       label:'ICS-214',         url:'static/ics-214/ics-214.html' },
+    { sub:'comms log',          label:'ICS-309',         url:'static/ics-309/ics-309.html' },
   ],
   'Winlink / APRS': [
-    { icon:'✉️', label:'Winlink Mail',    url:'server/winlink/mail.html' },
-    { icon:'📍', label:'Position Reports',url:'server/winlink/position-report.html' },
-    { icon:'🛠️', label:'Radio Settings',  url:'server/winlink/radio-settings.html' },
-    { icon:'🔁', label:'WL → Position',   url:'server/winlink/to-position.html' },
-    { icon:'🐺', label:'GrayWolf',        ext: () => `${location.protocol}//${HOST}:${PORTS.graywolf}/` },
-    { icon:'📖', label:'GrayWolf Docs',   url:'static/graywolf-handbook/index.html' },
-    { icon:'🤖', label:'APRS Bots',       url:'static/cheatsheets/aprs_bots.html' },
-    { icon:'🤖', label:'MPAD Bot',        url:'static/cheatsheets/mpad.html' },
+    { sub:'mailbox',            label:'Winlink Mail',    url:'server/winlink/mail.html' },
+    { sub:'viewer',             label:'Position Reports',url:'server/winlink/position-report.html' },
+    { sub:'setup',              label:'Radio Settings',  url:'server/winlink/radio-settings.html' },
+    { sub:'converter',          label:'WL → Position',   url:'server/winlink/to-position.html' },
+    { sub:'decoder',            label:'GrayWolf',        ext: () => `${location.protocol}//${HOST}:${PORTS.graywolf}/` },
+    { sub:'docs',               label:'GrayWolf Docs',   url:'static/graywolf-handbook/index.html' },
+    { sub:'FIND · SMS · WX',    label:'APRS Bots',       url:'static/cheatsheets/aprs_bots.html' },
+    { sub:'WX · repeaters',     label:'MPAD Bot',        url:'static/cheatsheets/mpad.html' },
   ],
   'Radio Ref': [
-    { icon:'📡', label:'Repeater Guide',  url:'static/repeater-guide/index.html' },
-    { icon:'🃏', label:'Radio Cards',     url:'static/radio-cards/index.html' },
-    { icon:'📑', label:'Cheatsheets',     url:'static/cheatsheets/index.html' },
-    { icon:'📡', label:'Repeater Book',   url:'static/repeaterbook/repeaterbook.html' },
-    { icon:'📘', label:'Radio Manuals',   url:'server/system/browser.html?path=static/radio-manuals' },
-    { icon:'🌐', label:'Wikipedia',       ext: () => `${location.protocol}//${HOST}:${PORTS.kiwix}/` },
+    { sub:'how-to',             label:'Repeater Guide',  url:'static/repeater-guide/index.html' },
+    { sub:'reference',          label:'Radio Cards',     url:'static/radio-cards/index.html' },
+    { sub:'reference',          label:'Cheatsheets',     url:'static/cheatsheets/index.html' },
+    { sub:'repeaters',          label:'Repeater Book',   url:'static/repeaterbook/repeaterbook.html' },
+    { sub:'manuals',            label:'Radio Manuals',   url:'server/system/browser.html?path=static/radio-manuals' },
+    { sub:'offline',            label:'Wikipedia',       ext: () => `${location.protocol}//${HOST}:${PORTS.kiwix}/` },
   ],
   Operating: [
-    { icon:'🌍', label:'ITU Prefixes',    url:'static/quick-ref/itu-prefixes.html' },
-    { icon:'🔤', label:'NATO Phonetic',   url:'static/quick-ref/phonetic.html' },
-    { icon:'🗣️', label:'Proc Words',      url:'static/quick-ref/prowords.html' },
-    { icon:'🆎', label:'Q-Codes',         url:'static/quick-ref/qcodes.html' },
-    { icon:'📶', label:'RST',             url:'static/quick-ref/rst.html' },
+    { sub:'call sign series',   label:'ITU Prefixes',    url:'static/quick-ref/itu-prefixes.html' },
+    { sub:'NATO reference',     label:'NATO Phonetic',   url:'static/quick-ref/phonetic.html' },
+    { sub:'procedure words',    label:'Proc Words',      url:'static/quick-ref/prowords.html' },
+    { sub:'q-codes',            label:'Q-Codes',         url:'static/quick-ref/qcodes.html' },
+    { sub:'signal reporting',   label:'RST',             url:'static/quick-ref/rst.html' },
   ],
 };
 
@@ -531,7 +545,7 @@ Object.entries(OPS).forEach(([sec, items]) => {
   const g = document.createElement('div'); g.className = 'ops-grid';
   items.forEach(it => {
     const b = document.createElement('button'); b.className = 'ops-btn';
-    b.innerHTML = `<span class="l">${it.icon}</span><span class="n">${it.label}</span>`;
+    b.innerHTML = `<span class="n">${it.label}</span>${it.sub ? `<span class="s">${it.sub}</span>` : ''}`;
     b.addEventListener('click', () => {
       if (it.ext) window.open(it.ext(), '_blank');
       else if (it.url) window.open(it.url, '_blank');
@@ -727,13 +741,30 @@ function renderAprsRows(stations) {
   });
 }
 
+// Coalesce table re-renders. Three pollers (APRS 15 s, ADS-B 15 s, ADS-B recent
+// 60 s) all feed the same station table; without this each tears down and
+// rebuilds every row on its own cadence. Leading-edge throttle: the first call
+// renders now, calls within the window collapse into one trailing render, so the
+// DOM rebuilds at most once per 15 s. UI actions (filter/toggle) still call
+// applyAprsFilter directly so they stay instant.
+let _aprsRenderAt = 0, _aprsRenderTimer = null;
+const APRS_RENDER_MS = 15000;
+function scheduleAprsRender() {
+  const since = Date.now() - _aprsRenderAt;
+  if (since >= APRS_RENDER_MS) { _aprsRenderAt = Date.now(); applyAprsFilter(); }
+  else if (!_aprsRenderTimer) {
+    _aprsRenderTimer = setTimeout(() => {
+      _aprsRenderTimer = null; _aprsRenderAt = Date.now(); applyAprsFilter();
+    }, APRS_RENDER_MS - since);
+  }
+}
+
 function applyAprsFilter() {
   const minutes = parseInt(document.getElementById('aprs-filter-sel').value);
   const type    = document.getElementById('aprs-type-sel')?.value || 'All';
   // Fold ADS-B aircraft into the station list — same as the dashboard + map.
   let filtered = _allAprsStations.concat(_adsbListRows());
   const countEl = document.getElementById('k-aprs-count');
-  if (countEl) countEl.textContent = filtered.length;
   if (minutes) {
     const cutoff = Date.now() - minutes * 60000;
     filtered = filtered.filter(s => {
@@ -759,6 +790,14 @@ function applyAprsFilter() {
   // Newest-first by real time (numeric epoch, both timestamp formats).
   filtered.sort((a, b) => _lhEpoch(b.last_heard||b.timestamp||b.time)
                         - _lhEpoch(a.last_heard||a.timestamp||a.time));
+  // Kiosk: render only the 10 newest — the 800×480 screen shows ~12 rows, so
+  // building the full station list is wasted DOM + paint. Total heard (post
+  // filter/toggle) stays on the header's hover title.
+  const total = filtered.length;
+  filtered = filtered.slice(0, 10);
+  if (countEl) countEl.textContent = filtered.length;
+  const wrap = document.getElementById('k-aprs-countwrap');
+  if (wrap) wrap.title = total + ' station' + (total === 1 ? '' : 's') + ' heard';
   renderAprsRows(filtered);
 }
 
@@ -774,7 +813,7 @@ async function fetchAPRS() {
       if (lastEl)  lastEl.textContent  = '—';
       if (title)   title.textContent   = 'TRAFFIC OFFLINE';
       _allAprsStations = [];
-      applyAprsFilter(); return;   // still surface ADS-B aircraft when APRS is down
+      scheduleAprsRender(); return;   // still surface ADS-B aircraft when APRS is down
     }
     if (title) title.textContent = 'TRAFFIC LIVE';
     // Full station list (positioned + position-less), merged with ADS-B aircraft
@@ -788,11 +827,11 @@ async function fetchAPRS() {
         lastEl.textContent = ageMins<2?'just now':ageMins<60?`${ageMins}m ago`:`${Math.round(ageMins/60)}h ago`;
       } else { lastEl.textContent = '—'; }
     }
-    applyAprsFilter();
+    scheduleAprsRender();
   } catch (e) {
     if (title) title.textContent = 'TRAFFIC OFFLINE';
     _allAprsStations = [];
-    applyAprsFilter();
+    scheduleAprsRender();
   }
 }
 
@@ -847,11 +886,11 @@ function _adsbListRows() {
 async function refreshAdsb() {
   try {
     const r = await fetch('/api/adsb/aircraft', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
-    if (!r.ok) { _adsbAircraft = []; applyAprsFilter(); return; }
+    if (!r.ok) { _adsbAircraft = []; scheduleAprsRender(); return; }
     const j = await r.json();
     _adsbAircraft = j.aircraft || [];
     _adsbNow = (typeof j.now === 'number') ? j.now : (Date.now() / 1000);
-    applyAprsFilter();
+    scheduleAprsRender();
   } catch (e) { /* keep last good until next cycle */ }
 }
 
@@ -860,7 +899,7 @@ async function refreshAdsbRecent() {
     const r = await fetch('/api/adsb/recent?hours=24', { cache: 'no-store', signal: AbortSignal.timeout(8000) });
     if (!r.ok) return;
     _adsbRecent = (await r.json()).aircraft || [];
-    applyAprsFilter();
+    scheduleAprsRender();
   } catch (e) { /* keep last good until next cycle */ }
 }
 
@@ -947,7 +986,9 @@ loadConfig().then(loadInstalled).then(() => {
   refreshAdsbRecent();
   loadHomeCoords();
   pollFeedFlow();
-  setInterval(pingAll,         30_000);
+  // Round-robin one service per tick, cycle ≈ 16 s across the active set.
+  const activeN = SERVICES.filter(svc => !HIDDEN_SVCS.has(svc.id)).length || 1;
+  setInterval(pingNext, Math.round(16_000 / activeN));
   setInterval(fetchStats,      30_000);
   setInterval(fetchAudio,      30_000);
   setInterval(fetchAPRS,       15_000);

@@ -15,6 +15,11 @@
   --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box} html,body{margin:0}
+/* Touch-only 800×480 panel — no pointer device, so never show a mouse cursor.
+   The kiosk is fullscreen Chromium over this page, so hiding it here covers the
+   whole screen; works on X11 and Wayland with no extra package (unclutter is
+   X11-only + would need apt). !important because buttons/pills set cursor:pointer. */
+*{cursor:none !important}
 body{background:#05080a; color:var(--text); font-family:var(--mono);
      min-height:100vh; display:flex; flex-direction:column; align-items:center; gap:10px;
      padding:24px 12px; -webkit-font-smoothing:antialiased}
@@ -65,6 +70,10 @@ body{background:#05080a; color:var(--text); font-family:var(--mono);
 .navbtn .nb-ico{font-size:16px}
 .navbtn .nb-t{font-weight:700; letter-spacing:.10em; color:var(--accent); font-size:12px}
 .navbtn .nb-sub{color:var(--dim); font-size:11px}
+.navbtn .nb-dot{font-size:12px; line-height:1}
+/* SERVICES status dot — worst-of colouring, replaces the old emoji. */
+#k-svc-dot{color:var(--dim)}
+#k-svc-dot.up{color:var(--up)} #k-svc-dot.warn{color:var(--warn)} #k-svc-dot.down{color:var(--down)}
 .navbtn .nb-r{margin-left:auto; display:flex; gap:8px; font-size:12px; font-variant-numeric:tabular-nums}
 .navbtn .nb-r .u{color:var(--up)} .navbtn .nb-r .w{color:var(--warn)} .navbtn .nb-r .d{color:var(--down)}
 .navbtn .chev{margin-left:auto; color:var(--dim)}
@@ -160,10 +169,11 @@ body{background:#05080a; color:var(--text); font-family:var(--mono);
 .ops-sec{margin-bottom:10px}
 .ops-sec .lab{color:var(--accent); font-size:10px; letter-spacing:.14em; font-weight:700; margin:0 2px 6px}
 .ops-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:8px}
-.ops-btn{min-height:52px; display:flex; align-items:center; gap:8px; padding:0 12px;
+.ops-btn{min-height:52px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; padding:0 12px;
          background:var(--panel-2); border:1px solid var(--border); border-radius:var(--r); color:var(--text); cursor:pointer}
 .ops-btn:hover{border-color:var(--accent)}
-.ops-btn .l{color:var(--link-live)} .ops-btn .n{font-size:12px}
+.ops-btn .n{font-size:12px; font-weight:700; letter-spacing:.02em; line-height:1.15}
+.ops-btn .s{font-size:10px; color:var(--dim); line-height:1.15}
 
 /* detail sheet */
 .sheet{position:absolute; left:0; right:0; bottom:0; transform:translateY(110%); transition:transform .18s;
