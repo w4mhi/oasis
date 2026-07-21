@@ -437,6 +437,27 @@
       ],
       "resolved": {}
     },
+    "satellites": {
+      "type": "pypi",
+      "bundle_group": "server",
+      "description": "Satellite pass-prediction Python stack (services/satellites/predict.py) — Skyfield over the SGP4 propagator plus its compiled numpy dependency. Shares the server wheel set (server/wheels/, bundled from scripts/requirements.txt). Installed into the venv by services/satellites/install-predict.py when the Satellites feature is set up; without it the roster still loads but /api/satellites/passes and /track 500 (no prediction engine).",
+      "_note": "Version ranges (not exact pins) for the compiled wheels so pip picks the right per-interpreter build offline, matching scripts/requirements.txt: numpy ships 2.0.2 (py3.9) / 2.2.6 (py3.10-3.13) / 2.5.1 (py3.14) and sgp4 2.25 (cp39/cp310) / 2.27 (cp311-abi3). Skyfield is a pure none-any wheel (pinned exactly) and pulls jplephem + certifi transitively from the same wheel dir.",
+      "packages": [
+        {
+          "name": "skyfield",
+          "version": "1.54"
+        },
+        {
+          "name": "sgp4",
+          "version": ">=2.23,<3"
+        },
+        {
+          "name": "numpy",
+          "version": ">=1.26,<3"
+        }
+      ],
+      "resolved": {}
+    },
     "pmtiles": {
       "type": "github-release",
       "description": "Protomaps go-pmtiles CLI. Converts MBTiles -> PMTiles offline (used by maps/convert-mbtiles.py). Vendored into the bundle's maps/ directory. By default only the Linux binaries (the bundle's Pi/Linux targets) are fetched; macOS/Windows platforms are marked default=false and included only with create-oasis-offline.py --all-platforms so the default bundle stays lean.",

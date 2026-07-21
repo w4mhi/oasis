@@ -351,14 +351,18 @@ def build_registry(repo_root, payload=None):
             privileged=True,
         ),
         # The Satellites page itself ships with `server` (Flask blueprint); this
-        # feature installs its two dependencies — the CelesTrak TLE cache (pass
-        # prediction) and the pass-alert voice (speech-dispatcher + espeak-ng).
-        # Both sub-scripts self-guard off-Linux/offline, so the chain degrades
-        # gracefully rather than failing (voice needs apt → privileged).
+        # feature installs its three dependencies — the Python prediction stack
+        # (Skyfield + numpy into the venv, else /passes and /track 500), the
+        # CelesTrak TLE cache (the elements pass prediction propagates), and the
+        # pass-alert voice (speech-dispatcher + espeak-ng). Prediction runs first
+        # so the engine is ready; each sub-script self-guards off-Linux/offline,
+        # so the chain degrades gracefully rather than failing (voice needs apt →
+        # privileged).
         "satellites": SE.FeatureSpec(
             key="satellites",
             dependencies=["server"],
             install_fn=lambda: _setup_run_chain(repo_root, [
+                {"script": "services/satellites/install-predict.py"},
                 {"script": "services/satellites/sync-tle.py"},
                 {"script": "services/satellites/install-voice.py", "timeout": 600},
             ]),

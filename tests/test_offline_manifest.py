@@ -313,6 +313,25 @@ class TestManifestSanity(unittest.TestCase):
                 self.assertIn("speech-dispatcher-espeak-ng", pkgs)
                 self.assertIn("espeak-ng", pkgs)
 
+    def test_satellites_is_pypi(self):
+        """The pass-prediction stack is a pypi group (distinct from the apt
+        'satellites-voice' group)."""
+        self.assertEqual(M.source_type("satellites", self.m), "pypi")
+
+    def test_satellites_bundles_prediction_stack(self):
+        """The venv-side prediction deps predict.py imports — Skyfield over SGP4,
+        plus its compiled numpy dep — must be declared so setup installs them
+        (else /api/satellites/passes and /track 500)."""
+        names = [p["name"].lower() for p in M.pypi_packages("satellites", self.m)]
+        for pkg in ("skyfield", "sgp4", "numpy"):
+            with self.subTest(package=pkg):
+                self.assertIn(pkg, names)
+
+    def test_satellites_shares_server_wheel_group(self):
+        """The prediction wheels are bundled with the server set (server/wheels/),
+        not a separate group — so bundle_group resolves to 'server'."""
+        self.assertEqual(M.bundle_group("satellites", self.m), "server")
+
     def test_satellites_voice_bundle_dir_feature_local(self):
         # satellites-voice sets bundle_base → packages live under the service dir,
         # suite-scoped (bookworm and trixie never collide). The installer

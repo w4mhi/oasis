@@ -145,14 +145,16 @@ def _venv_bin(venv_dir, name):
 
 
 # ── Step 3: Install dependencies ───────────────────────────────────────────────
-def _packages_from_manifest():
-    """Read the server's package list from the manifest.
+def _packages_from_manifest(feature="server"):
+    """Read a pypi feature's package list from the manifest.
 
     Returns a list of pip requirement spec strings, e.g. ["Flask==3.1.3", ...].
-    Falls back to an empty list if the manifest is unavailable.
+    `feature` names the manifest pypi group (default "server"; the satellites
+    installer passes "satellites"). Falls back to an empty list if the manifest
+    is unavailable.
     """
     try:
-        pkgs = M.pypi_packages("server")
+        pkgs = M.pypi_packages(feature)
         specs = []
         for p in pkgs:
             name = p.get("name", "")
@@ -170,7 +172,7 @@ def _packages_from_manifest():
                 specs.append(name)
         return specs
     except Exception as exc:
-        _warn(f"Could not read server packages from manifest: {exc}")
+        _warn(f"Could not read {feature} packages from manifest: {exc}")
         return []
 
 
