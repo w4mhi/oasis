@@ -145,6 +145,10 @@ def preconditions(which=shutil.which, run=None, is_active=None, inv=None):
     return {
         "missing_deps": missing,
         "dongle_present": (not missing) and dongle_present(run),
+        # Whether satellites has its OWN device assignment (Setup → Hardware).
+        # Unassigned → the UI shows "unassigned" rather than the global-fallback
+        # holder (busy/holder still arbitrate recording; see dongle_busy).
+        "assigned": bool(inv and inv.assignments.get("satellites")),
         "busy": busy,
         "holder": holder,
     }

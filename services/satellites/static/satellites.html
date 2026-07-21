@@ -238,6 +238,15 @@ let ROSTER = [], STATION = null, PASSES = {};
 const PLOTTED = {};
 const PALETTE = ['#00d98b', '#58a6ff', '#ffb454', '#ff7b72', '#bc8cff', '#39d0d8', '#f778ba', '#7ee787'];
 const _freeColors = [...PALETTE];
+// Persisted selection (norad -> colour). PLOTTED is the live subset (only sats
+// with an upcoming pass can be drawn); this is the operator's full choice, so it
+// survives refresh + server restart. Restored on boot (see restoreSelection),
+// which also re-shows each sat's bell — bells already persist (oasis_sat_bells)
+// but only render on a plotted sat, so they vanished with the lost selection.
+let _satSelected = (() => { try { return JSON.parse(localStorage.getItem('oasis_sat_selected') || '{}'); } catch (e) { return {}; } })();
+function saveSelection() { try { localStorage.setItem('oasis_sat_selected', JSON.stringify(_satSelected)); } catch (e) { /* private mode */ } }
+// Claim already-chosen colours so a fresh selection doesn't collide with them.
+Object.values(_satSelected).forEach(c => { const i = _freeColors.indexOf(c); if (i >= 0) _freeColors.splice(i, 1); });
 
 async function boot() {
   const meta = await (await fetch('/api/satellites')).json();
@@ -253,6 +262,7 @@ async function boot() {
   startClock(); updateCpu(); setInterval(updateCpu, 8000);
   pollListen(); setInterval(pollListen, 3000);
   await refreshPasses();
+  await restoreSelection();                         // re-plot the operator's saved satellite selection + bells
   setInterval(refreshPasses, 10 * 60 * 1000);      // keep the 24 h pass window fresh over long sessions
   updatePills(); setInterval(updatePills, 2000);   // live workability colour
 }
@@ -547,14 +557,21 @@ function updateCoverage() {
 
 /* ── Plot / unplot a satellite's next pass ─────────────────────────────── */
 async function onToggle(norad, checked) {
-  if (checked) await plotSat(norad, nextPassOf(norad));
-  else unplotSat(norad);
+  if (checked) {
+    if (!(norad in _satSelected)) { _satSelected[norad] = _freeColors.shift() || PALETTE[0]; saveSelection(); }
+    await plotSat(norad, nextPassOf(norad));
+  } else {
+    if (norad in _satSelected) { _freeColors.unshift(_satSelected[norad]); delete _satSelected[norad]; saveSelection(); }
+    unplotSat(norad);
+  }
   renderRoster();
 }
 
 async function plotSat(norad, pass) {
   if (!pass) return;
-  const color = PLOTTED[norad] ? PLOTTED[norad].color : (_freeColors.shift() || PALETTE[0]);
+  // Colour comes from the persisted selection (assigned in onToggle); fall back
+  // for any direct caller so behaviour is unchanged when a sat isn't selected.
+  const color = _satSelected[norad] || (PLOTTED[norad] ? PLOTTED[norad].color : (_freeColors.shift() || PALETTE[0]));
   const j = await (await fetch(
     `/api/satellites/track?sat=${norad}&from=${encodeURIComponent(pass.rise)}&to=${encodeURIComponent(pass.set)}`)).json();
   PLOTTED[norad] = { color, pass, track: j.track || [], l1: j.l1, l2: j.l2 };
@@ -562,9 +579,24 @@ async function plotSat(norad, pass) {
   updateVisibility();
 }
 
+// Only removes the drawn/live copy; the selection + its colour are owned by
+// onToggle (which frees the colour), so a re-plot of a still-selected sat keeps it.
 function unplotSat(norad) {
-  if (PLOTTED[norad]) { _freeColors.unshift(PLOTTED[norad].color); delete PLOTTED[norad]; }
+  delete PLOTTED[norad];
   redraw();
+}
+
+// Re-plot the operator's saved selection after the roster + passes are loaded.
+// Sats without an upcoming pass right now stay selected (persisted) and re-draw
+// when they next have one — nothing is silently dropped.
+async function restoreSelection() {
+  for (const norad in _satSelected) {
+    const n = +norad;
+    if (!ROSTER.some(s => s.norad === n)) continue;   // dropped from the roster
+    const pass = nextPassOf(n);
+    if (pass) await plotSat(n, pass);
+  }
+  renderRoster();
 }
 
 /* ── Map — lightweight SVG world map (no MapLibre/WebGL/tiles) ─────────────── */
@@ -805,6 +837,7 @@ function _recThis(norad, freqMhz) {
 function _busyReason() {
   if ((LISTEN.missing_deps || []).length) return 'SDR tools not installed';
   if (!LISTEN.dongle_present) return 'no RTL-SDR dongle';
+  if (!LISTEN.assigned) return 'no device assigned — set one in Setup → Hardware';
   if (LISTEN.recording) { const s = ROSTER.find(x => String(x.norad) === String(LISTEN.norad));
     return `recording ${s ? s.name : 'another satellite'}`; }
   if (LISTEN.busy) return `dongle in use by ${LISTEN.holder || 'another service'}`;
@@ -814,14 +847,20 @@ function _dongleStatus(norad) {
   if (_listenErrNorad === norad && LISTEN && LISTEN._err) return { txt: LISTEN._err, rec: false };
   if ((LISTEN.missing_deps || []).length) return { txt: 'SDR tools not installed', rec: false };
   if (!LISTEN.dongle_present) return { txt: 'no RTL-SDR dongle', rec: false };
+  // Unassigned → say so (matches Setup); don't report the global-fallback holder,
+  // which would read as if satellites had claimed another service's dongle.
+  if (!LISTEN.assigned) return { txt: 'device: unassigned', rec: false };
   if (LISTEN.recording && String(LISTEN.norad) === String(norad)) {
     const m = Math.floor(LISTEN.seconds / 60), s = String(LISTEN.seconds % 60).padStart(2, '0');
     return { txt: `● REC ${m}:${s}`, rec: true };
   }
   if (LISTEN.recording) { const s = ROSTER.find(x => String(x.norad) === String(LISTEN.norad));
     return { txt: `busy — recording ${s ? s.name : 'another'}`, rec: false }; }
-  if (LISTEN.busy) return { txt: `dongle: ${LISTEN.holder || 'in use'}`, rec: false };
-  return { txt: 'dongle: free', rec: false };
+  // "device:" mirrors the dashboard/Setup label; word it as a runtime holder
+  // ("in use by …"), NOT an assignment — the listen feature shares whatever dongle
+  // is free, so this must not read like Setup's per-service device assignment.
+  if (LISTEN.busy) return { txt: `device: in use by ${LISTEN.holder || 'another service'}`, rec: false };
+  return { txt: 'device: free', rec: false };
 }
 // Set every rendered downlink button + status line from the latest LISTEN state.
 function updateListenUI() {
@@ -835,7 +874,7 @@ function updateListenUI() {
       btn.title = dl ? dl.blurb : 'not supported'; return; }
     if (_recThis(norad, freq)) { btn.classList.add('rec'); btn.disabled = false;
       btn.title = 'recording — click to stop'; }
-    else if (LISTEN.recording || LISTEN.busy || !LISTEN.dongle_present || (LISTEN.missing_deps || []).length) {
+    else if (LISTEN.recording || LISTEN.busy || !LISTEN.dongle_present || !LISTEN.assigned || (LISTEN.missing_deps || []).length) {
       btn.classList.add('busy'); btn.disabled = true; btn.title = _busyReason(); }
     else { btn.classList.add('free'); btn.disabled = false;
       btn.title = `record ${dl ? dl.mode : ''} ${freq} MHz`; }
