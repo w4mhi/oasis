@@ -174,10 +174,14 @@ FEATURES = [
             "GPS", default=False, internet=True,
             recommend="GPS time set up. Give the antenna sky view, then check: cgps -s  and  chronyc tracking."),
 
-    # ── RTC: Witty Pi 3 hardware clock (standalone) ────────────────────────────
+    # ── RTC: battery-backed hardware clocks (standalone) ───────────────────────
     Feature("rtc", "Witty Pi 3 RTC (DS3231)", "features/rtc-hat/enable-rtc.py",
             "Configure the Witty Pi 3's DS3231 hardware clock (i2c-rtc overlay + remove fake-hwclock) so the Pi keeps time across reboots / power loss with no network. REQUIRES A REBOOT.",
-            "RTC", default=False, reboot=True,
+            "RTC", default=False, reboot=True, args=["--board", "wittypi"],
+            recommend="Reboot to load the RTC, then once the clock is correct: sudo hwclock -w"),
+    Feature("rtc-7inch", "BigTreeTech 7″ RTC (PCF8563)", "features/rtc-hat/enable-rtc.py",
+            "Configure the BigTreeTech 7″ touchscreen's onboard PCF8563 hardware clock (i2c-rtc overlay on the DSI ribbon's i2c_csi_dsi bus + remove fake-hwclock) so the Pi keeps time across reboots / power loss with no network. The RTC is on the DSI bus, not the GPIO header — that's why it never appears on `i2cdetect -y 1`. REQUIRES A REBOOT.",
+            "RTC", default=False, reboot=True, args=["--board", "bigtreetech-7in"],
             recommend="Reboot to load the RTC, then once the clock is correct: sudo hwclock -w"),
 
     # ── Content / Data: large optional downloads ──────────────────────────────

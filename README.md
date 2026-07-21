@@ -186,6 +186,7 @@ On a Pi, **`setup-oasis.py` is the front door** — it delegates to the individu
 |---|:--:|---|
 | GPS time (gpsd + chrony) | ⬜ | GPS-disciplined clock for FT8/WSPR/SSTV timing with no internet. |
 | Witty Pi 3 RTC (DS3231) | ⬜ | Battery-backed hardware clock — **reboot required**. |
+| BigTreeTech 7″ RTC (PCF8563) | ⬜ | The 7″ touchscreen's onboard clock (DSI `i2c_csi_dsi` bus) — **reboot required**. |
 
 **Content / Data** *(large downloads / dashboard toggles)*
 
@@ -232,7 +233,7 @@ A single small **Flask** app serves the dashboard, the FCC lookup API, and the m
 | `features/rtl-sdr/enable-rtl-sdr.py` | Tests the dongle, streams demodulated APRS audio into GrayWolf | After `features/rtl-sdr/install-rtl-sdr.py`, dongle plugged in | Pi OS **Trixie** | ❌ offline |
 | `services/openwebrx/install.py` | Installs **OpenWebRX+** receive-only SDR web UI on :8073 (off by default) | On the Pi, for spectrum monitoring | Pi OS bookworm/trixie | ✅ yes (3rd-party repo) |
 | `features/gps/install-gps.py` | Sets up GPS-disciplined time (`gpsd` + `chrony`) for offline FT8/WSPR/SSTV timing | On the Pi, with a USB GPS | Raspberry Pi / Debian | ⚠️ apt step online |
-| `enable-rtc.py` | Configures a Witty Pi 3 (DS3231) hardware RTC — **reboot required** | On a Pi with the RTC HAT | Raspberry Pi | ❌ offline |
+| `enable-rtc.py` | Configures a hardware RTC — Witty Pi 3 DS3231 (default) or `--board bigtreetech-7in` PCF8563 on the DSI bus — **reboot required** | On a Pi with the RTC | Raspberry Pi | ❌ offline |
 | `enable-dra-pi.py` | Configures the DRA-Pi-Zero (WM8731) sound card for GrayWolf — **reboot required** | On a Pi with the DRA-Pi-Zero HAT | Raspberry Pi | ❌ offline |
 | `services/webssh/install.py` | Installs **ttyd** browser SSH terminal on :7681 | On the Pi, for a web shell | Raspberry Pi / Debian | ⚠️ bundled binary if present, else downloads |
 | `enable-service-controls.py` | Grants a narrow sudoers rule so the dashboard can start/stop services | To enable dashboard power buttons | Raspberry Pi / Linux (systemd) | ❌ offline |

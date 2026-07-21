@@ -1,19 +1,27 @@
 #!/usr/bin/env python3
 """
-enable-rtc.py — Witty Pi 3 (DS3231) hardware real-time clock
-------------------------------------------------------------
-Configure the UUGear **Witty Pi 3** (Rev1/Rev2) hardware RTC so the Pi keeps
-accurate time across reboots and total power loss with NO network — the clock
-that chrony/GPS then discipline and ride on. The Witty Pi 3's RTC is a
-**DS3231SN** on the I²C bus (address 0x68), so this uses the standard Raspberry
-Pi `i2c-rtc,ds3231` overlay.
+enable-rtc.py — hardware real-time clock (i2c-rtc overlay)
+----------------------------------------------------------
+Configure a battery-backed I²C RTC so the Pi keeps accurate time across reboots
+and total power loss with NO network — the clock that chrony/GPS then discipline
+and ride on. Two boards are supported via --board:
+
+  wittypi          UUGear Witty Pi 3 (Rev1/Rev2) — DS3231SN @ 0x68 on the GPIO
+                   ARM I²C bus (i2c-1). This is the default.
+                   → dtparam=i2c_arm=on + dtoverlay=i2c-rtc,ds3231
+
+  bigtreetech-7in  BigTreeTech 7" touchscreen — PCF8563 @ 0x51 on the DSI
+                   ribbon's I²C bus (i2c-10 / i2c_csi_dsi), NOT the GPIO header,
+                   which is why it never shows on `i2cdetect -y 1`.
+                   → dtoverlay=i2c-rtc,pcf8563,i2c_csi_dsi
 
 What it does (idempotent · REQUIRES A REBOOT):
-  1. enables I²C            (dtparam=i2c_arm=on)
-  2. adds the RTC overlay   (dtoverlay=i2c-rtc,ds3231)  → /dev/rtc0 at boot
+  1. enables I²C on the GPIO bus  (dtparam=i2c_arm=on) — ARM-bus boards only;
+     DSI-bus boards get their bus from the overlay's i2c_csi_dsi flag
+  2. adds the RTC overlay         (dtoverlay=i2c-rtc,<chip>[,i2c_csi_dsi])  → /dev/rtc0 at boot
   3. removes/disables fake-hwclock  (so it can't overwrite the real RTC)
   4. neutralises the `--systz` block in /lib/udev/hwclock-set (the classic
-     DS3231 fix that otherwise resets the clock at boot)
+     i2c-rtc fix that otherwise resets the clock at boot)
   5. ensures the `hwclock` tool is installed — Debian 13 (Trixie) moved it out of
      `util-linux` into `util-linux-extra`, so `hwclock -w/-r` are otherwise
      “command not found” on a minimal Pi OS image
@@ -22,10 +30,11 @@ After the reboot, once the system clock is correct (from GPS/NTP), write it to
 the RTC once:   sudo hwclock -w     (read it back with: sudo hwclock -r)
 
 Usage:
-  python3 features/rtc-hat/enable-rtc.py
-  python3 features/rtc-hat/enable-rtc.py --check    # report status; change nothing
+  python3 features/rtc-hat/enable-rtc.py                          # Witty Pi 3 (DS3231)
+  python3 features/rtc-hat/enable-rtc.py --board bigtreetech-7in  # BTT 7" (PCF8563)
+  python3 features/rtc-hat/enable-rtc.py --check                  # report status; change nothing
 
-Requires: Linux (Raspberry Pi OS), sudo. A Witty Pi 3 attached on the I²C header.
+Requires: Linux (Raspberry Pi OS), sudo. The RTC attached on its I²C bus.
 """
 
 import argparse
@@ -37,8 +46,32 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
 
 I2C_PARAM   = "dtparam=i2c_arm=on"
-OVERLAY     = "dtoverlay=i2c-rtc,ds3231"      # Witty Pi 3 = DS3231SN @ 0x68
 HWCLOCK_SET = "/lib/udev/hwclock-set"
+
+# Per-board RTC facts. `i2c_arm` is True when the chip sits on the GPIO ARM bus
+# (i2c-1) and so needs dtparam=i2c_arm=on; False when it hangs off the DSI
+# ribbon's bus (i2c-10), where the overlay's own i2c_csi_dsi flag brings the bus
+# up and enabling the GPIO bus would be pointless. `bus`/`addr` are only used for
+# the verify hint (`i2cdetect -y <bus>` shows the chip as UU at <addr>).
+BOARDS = {
+    "wittypi": {
+        "label":   "Witty Pi 3 · DS3231",
+        "chip":    "ds3231",
+        "addr":    "0x68",
+        "bus":     1,
+        "overlay": "dtoverlay=i2c-rtc,ds3231",
+        "i2c_arm": True,
+    },
+    "bigtreetech-7in": {
+        "label":   'BigTreeTech 7" touchscreen · PCF8563',
+        "chip":    "pcf8563",
+        "addr":    "0x51",
+        "bus":     10,
+        "overlay": "dtoverlay=i2c-rtc,pcf8563,i2c_csi_dsi",
+        "i2c_arm": False,
+    },
+}
+DEFAULT_BOARD = "wittypi"
 
 
 def config_path():
@@ -67,12 +100,18 @@ def _append_line(path, line):
 
 def check_platform():
     if sys.platform != "linux":
-        _fail("The Witty Pi 3 RTC is configured on Raspberry Pi OS (Linux) only.")
+        _fail("The hardware RTC is configured on Raspberry Pi OS (Linux) only.")
     if not config_path():
         _fail("No /boot/firmware/config.txt or /boot/config.txt — is this Raspberry Pi OS?")
 
 
-def enable_i2c(cfg):
+def enable_i2c(cfg, board):
+    # DSI-bus boards (i2c_csi_dsi) don't use the GPIO ARM I²C bus at all — the
+    # overlay's i2c_csi_dsi flag stands up i2c-10 itself, so adding i2c_arm=on
+    # would just clutter config.txt with an unused bus.
+    if not board["i2c_arm"]:
+        _info("RTC is on the DSI i2c_csi_dsi bus — the GPIO ARM I²C bus (i2c_arm) is not needed.")
+        return
     if _line_present(cfg, I2C_PARAM):
         _ok("I²C already enabled.")
     elif _append_line(cfg, I2C_PARAM):
@@ -81,11 +120,12 @@ def enable_i2c(cfg):
         _fail(f"Could not write to {cfg}.")
 
 
-def add_overlay(cfg):
-    if _line_present(cfg, "dtoverlay=i2c-rtc,ds3231"):
-        _ok("DS3231 RTC overlay already present.")
-    elif _append_line(cfg, OVERLAY):
-        _ok(f"Added '{OVERLAY}' to {cfg}.")
+def add_overlay(cfg, board):
+    overlay = board["overlay"]
+    if _line_present(cfg, overlay):
+        _ok(f"{board['chip'].upper()} RTC overlay already present.")
+    elif _append_line(cfg, overlay):
+        _ok(f"Added '{overlay}' to {cfg}.")
     else:
         _fail(f"Could not write to {cfg}.")
 
@@ -99,7 +139,7 @@ def disable_fake_hwclock():
 
 def patch_hwclock_set():
     """Comment any active `--systz` line in /lib/udev/hwclock-set (the classic
-    DS3231 fix). Idempotent; backs the file up once."""
+    i2c-rtc fix). Idempotent; backs the file up once."""
     if not os.path.exists(HWCLOCK_SET):
         _info(f"{HWCLOCK_SET} not present — skipping.")
         return
@@ -150,13 +190,14 @@ def ensure_hwclock():
         _ok("Installed util-linux-extra — hwclock is now available.")
     else:
         _warn("hwclock still missing. When online, run:  "
-              "sudo apt install util-linux-extra   "
-              "(the RTC read/write tool lives there on Debian Trixie).")
+              "sudo apt update && sudo apt install util-linux-extra   "
+              "(the RTC read/write tool lives there on Debian Trixie). "
+              "Meanwhile the RTC still reads via sysfs — see below.")
 
 
-def verify():
+def verify(board):
     if not os.path.exists("/dev/rtc0"):
-        _warn("/dev/rtc0 not present yet — reboot to load the DS3231 overlay.")
+        _warn(f"/dev/rtc0 not present yet — reboot to load the {board['chip'].upper()} overlay.")
         return
     hw = _hwclock_path()
     if hw:
@@ -174,46 +215,54 @@ def verify():
           "sudo apt install util-linux-extra")
 
 
-def run(check_only=False):
-    print("\n  OASIS — enable-rtc  (Witty Pi 3 · DS3231)")
+def run(check_only=False, board_id=DEFAULT_BOARD):
+    board = BOARDS[board_id]
+    print(f"\n  OASIS — enable-rtc  ({board['label']})")
     _hr()
     check_platform()
     cfg = config_path()
 
     if check_only:
-        _info(f"config: {cfg}")
-        _info("I²C enabled : " + ("yes" if _line_present(cfg, I2C_PARAM) else "no"))
-        _info("RTC overlay : " + ("yes" if _line_present(cfg, 'dtoverlay=i2c-rtc,ds3231') else "no"))
-        verify()
+        _info(f"board  : {board_id}  ({board['label']})")
+        _info(f"config : {cfg}")
+        if board["i2c_arm"]:
+            _info("I²C (arm)   : " + ("yes" if _line_present(cfg, I2C_PARAM) else "no"))
+        _info("RTC overlay : " + ("yes" if _line_present(cfg, board["overlay"]) else "no"))
+        verify(board)
         print()
         return
 
-    _info("Configures the Witty Pi 3 DS3231 hardware clock for time across reboots.")
+    _info(f"Configures the {board['label']} hardware clock for time across reboots.")
     print()
-    _step(1, "Enabling I²C");                       enable_i2c(cfg)
-    _step(2, "Adding the DS3231 RTC overlay");      add_overlay(cfg)
-    _step(3, "Disabling fake-hwclock");             disable_fake_hwclock()
-    _step(4, "Neutralising hwclock-set --systz");   patch_hwclock_set()
-    _step(5, "Ensuring hwclock is installed");      ensure_hwclock()
+    _step(1, "Enabling I²C");                            enable_i2c(cfg, board)
+    _step(2, f"Adding the {board['chip'].upper()} RTC overlay");  add_overlay(cfg, board)
+    _step(3, "Disabling fake-hwclock");                  disable_fake_hwclock()
+    _step(4, "Neutralising hwclock-set --systz");        patch_hwclock_set()
+    _step(5, "Ensuring hwclock is installed");           ensure_hwclock()
 
     _hr()
-    print("\n  Witty Pi 3 RTC configured — REBOOT to load it.")
+    print(f"\n  {board['label']} RTC configured — REBOOT to load it.")
     _info("After reboot, once the clock is correct (GPS/NTP):  sudo hwclock -w")
-    _info("Verify:  sudo hwclock -r   and   i2cdetect -y 1   (UU at 0x68)")
+    _info(f"Verify:  sudo hwclock -r   and   i2cdetect -y {board['bus']}   "
+          f"(the chip shows as UU at {board['addr']})")
     print()
 
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Configure the Witty Pi 3 (DS3231) hardware RTC on Raspberry Pi OS.",
+        description="Configure a hardware RTC (i2c-rtc overlay) on Raspberry Pi OS.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=("Examples:\n"
-                "  python3 features/rtc-hat/enable-rtc.py            # configure (needs a reboot)\n"
-                "  python3 features/rtc-hat/enable-rtc.py --check     # report status, change nothing\n"),
+                "  python3 features/rtc-hat/enable-rtc.py                          # Witty Pi 3 (DS3231)\n"
+                "  python3 features/rtc-hat/enable-rtc.py --board bigtreetech-7in  # BTT 7\" (PCF8563)\n"
+                "  python3 features/rtc-hat/enable-rtc.py --check                  # report status, change nothing\n"),
     )
+    ap.add_argument("--board", choices=sorted(BOARDS), default=DEFAULT_BOARD,
+                    help=f"RTC board preset (default: {DEFAULT_BOARD}).")
     ap.add_argument("--check", action="store_true",
                     help="Report RTC/overlay status; change nothing.")
-    run(check_only=ap.parse_args().check)
+    args = ap.parse_args()
+    run(check_only=args.check, board_id=args.board)
 
 
 if __name__ == "__main__":
