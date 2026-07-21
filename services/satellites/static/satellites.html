@@ -44,13 +44,6 @@ html, body { height: 100%; margin: 0; }
 #listen-status .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red);
   animation: recblink 1.2s infinite; }
 @keyframes recblink { 50% { opacity: .3; } }
-/* Zoom-level readout control (bottom-left, matching APRS). */
-.zoom-readout { background: rgba(13,17,23,.72); border: 1px solid var(--border); border-radius: 4px;
-  font-family: var(--mono); font-size: var(--fs-small); color: var(--text-dim);
-  padding: 2px 7px; display: flex; align-items: center; gap: 6px; white-space: nowrap; pointer-events: none; }
-.zoom-readout .cr-lbl { color: var(--text-dim); }
-.zoom-readout #crZoom { color: var(--amber); font-weight: 600; }
-/* Miles scale bar — match the APRS map styling. */
 .sat-home-node { line-height: 0; filter: drop-shadow(0 0 4px rgba(255,210,87,.7)); pointer-events: none; }
 /* Coverage wash — green edge-glow over the map when a plotted sat is above the
    horizon (you're inside its footprint); opacity scales with elevation. */
@@ -62,26 +55,21 @@ html, body { height: 100%; margin: 0; }
 #coverage-badge { display: none; padding: 2px 10px; border-radius: 12px; white-space: nowrap;
   background: rgba(0,217,139,.14); border: 1px solid var(--green); color: var(--green);
   font: 700 var(--fs-small)/1.5 var(--mono); letter-spacing: .05em; }
-.maplibregl-ctrl-scale { background: rgba(13,17,23,.72) !important; border: 2px solid var(--border) !important;
-  border-top: none !important; color: var(--amber) !important; font-family: var(--mono) !important;
-  font-size: var(--fs-small) !important; line-height: 1.4; padding: 0 5px 1px; }
-/* Hamburger (top-left) → world-overview card. */
-#burger { position: fixed; top: 83px; left: 10px; z-index: 200; width: 34px; height: 34px;
-  display: flex; align-items: center; justify-content: center; background: var(--panel);
-  border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-size: 18px;
-  line-height: 1; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
-#burger:hover { background: var(--panel-2); border-color: var(--accent-dim); }
-#burger.on { color: var(--accent); border-color: var(--accent-dim); }
-/* World-overview card — equirectangular whole-track view, toggled by the burger. */
-#world-card { position: absolute; top: 83px; left: 54px; z-index: 6; display: none;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 6px 4px;
-  box-shadow: 0 6px 24px rgba(0,0,0,.5); }
-#world-card.show { display: block; }
-#world-card .wc-title { font-size: var(--fs-small); color: var(--accent); text-transform: uppercase;
-  letter-spacing: .06em; padding: 0 2px 4px; }
-#world-svg { display: block; width: 840px; max-width: 90vw; height: auto; background: #0d1117; border-radius: 4px; }
+/* The world map fills the whole map area, undistorted (2:1 letterboxed on the
+   dark #satmap background). */
+#satmap #world-svg { display: block; width: 100%; height: 100%; }
 .grat { stroke: #243b53; stroke-width: .5; }
-.coast { stroke: #3a4d63; stroke-width: .7; fill: none; }
+/* Dark land fill + faint country borders (Natural Earth 110m, public domain). */
+.land { fill: #18222f; stroke: rgba(130,150,180,.28); stroke-width: .35; }
+.sat-marker, .sat-track { cursor: pointer; }
+/* Click-a-satellite popup (replaces the old MapLibre popup; same pop-* content). */
+.sat-popup { position: fixed; z-index: 300; max-width: 300px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px 9px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.6); font-size: var(--fs-small); }
+.sat-popup[hidden] { display: none; }
+.sat-popup .sp-close { float: right; background: none; border: none; color: var(--text-dim);
+  font-size: 18px; line-height: 1; cursor: pointer; padding: 0 0 0 8px; }
+.sat-popup .sp-close:hover { color: var(--text); }
 .badge { display: inline-block; font-size: var(--fs-small); font-weight: 700; letter-spacing: .05em;
   padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); }
 .badge.ok   { color: #3fb950; border-color: #3fb950; }
@@ -167,10 +155,7 @@ html, body { height: 100%; margin: 0; }
 .sat-row.no-pass { opacity: .6; }
 .sat-row .no-pass-hint { margin-top: .4rem; font-size: var(--fs-small); color: var(--text-dim); font-style: italic; }
 
-/* Popup — reuse the APRS/ADS-B popup look. */
-.maplibregl-popup-content { background: var(--panel); color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-family: var(--mono); }
-.maplibregl-popup-tip { border-top-color: var(--panel) !important; }
+/* Popup — reuse the APRS/ADS-B popup look (see .sat-popup for the container). */
 .pop-call { font-size: var(--fs-subtitle); font-weight: 700; color: var(--accent); margin-bottom: 4px; }
 .pop-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: 5px; }
 .pop-row { display: flex; gap: 6px; font-size: var(--fs-small); }
@@ -189,7 +174,12 @@ html, body { height: 100%; margin: 0; }
 </head>
 <body>
 
-<div id="satmap"></div>
+<div id="satmap">
+  <svg id="world-svg" viewBox="0 0 720 360" preserveAspectRatio="xMidYMid meet">
+    <g id="wg-base"></g><g id="wg-over"></g>
+  </svg>
+</div>
+<div id="sat-popup" class="sat-popup" hidden><button class="sp-close" onclick="hideSatPopup()" aria-label="Close">×</button><div class="pop-body"></div></div>
 <!-- Coverage wash: a green edge-glow over the map while a plotted satellite is
      above the horizon (you're inside its footprint). Opacity tracks elevation. -->
 <div id="coverage-wash"></div>
@@ -221,11 +211,6 @@ html, body { height: 100%; margin: 0; }
   </div>
 </div>
 
-<button id="burger" onclick="toggleWorld()" title="World overview — whole ground track" aria-label="World overview">☰</button>
-<div id="world-card">
-  <div class="wc-title">World Overview — Ground Tracks</div>
-  <svg id="world-svg" viewBox="0 0 720 360"></svg>
-</div>
 
 <div id="roster-card">
   <header onclick="this.parentElement.classList.toggle('collapsed')">
@@ -236,9 +221,8 @@ html, body { height: 100%; margin: 0; }
   <div id="roster"><p style="color:var(--text-dim);padding:.4rem">Loading roster…</p></div>
 </div>
 
-<script src="/map-assets/maplibre-gl.js"></script>
-<script src="/map-assets/pmtiles.js"></script>
-<script src="/map-assets/basemap-style.js"></script>
+<!-- Satellites uses a lightweight SVG world map (no MapLibre/WebGL/tiles) — a
+     memory win on the Pi Zero, and the whole-globe view is what pass tracks need. -->
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
 <script>
@@ -265,6 +249,8 @@ const HOME_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-16 -30 32 39
   <path d="M10 -25 A6 6 0 0 1 10 -18" fill="none" stroke="#ffd257" stroke-width="1.5"/>
   <path d="M13 -27 A10 10 0 0 1 13 -15" fill="none" stroke="#ffd257" stroke-width="1.3" opacity="0.7"/>
 </svg>`;
+// Inner markup only, for nesting the house at the station point on the world SVG.
+const HOME_INNER = HOME_SVG.replace(/^\s*<svg[^>]*>/i, '').replace(/<\/svg>\s*$/i, '');
 
 async function boot() {
   const meta = await (await fetch('/api/satellites')).json();
@@ -568,106 +554,85 @@ function unplotSat(norad) {
   redraw();
 }
 
-/* ── Map ───────────────────────────────────────────────────────────────── */
-let _map = null, _mapReady = false;
+/* ── Map — lightweight SVG world map (no MapLibre/WebGL/tiles) ─────────────── */
+// A static base layer (dark countries + graticule + station house) rendered once,
+// plus a dynamic overlay (footprint + ground tracks + live markers) redrawn each
+// tick. The whole-globe equirectangular view is what pass tracks want, and it
+// costs a fraction of MapLibre's memory on the Pi Zero.
+let COUNTRIES = null;
+async function loadCountries() {
+  if (COUNTRIES) return COUNTRIES;
+  try { COUNTRIES = (await (await fetch('/server/satellites/world-countries.json')).json()).polys || []; }
+  catch (e) { COUNTRIES = []; }
+  return COUNTRIES;
+}
 function initSatMap() {
-  if (_map || typeof maplibregl === 'undefined' || typeof oasisBaseMapStyle !== 'function') return;
-  maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
-  _map = new maplibregl.Map({
-    container: 'satmap',
-    style: oasisBaseMapStyle('pmtiles://' + location.origin + '/maps/tiles/state/washington.pmtiles'),
-    center: (STATION && STATION.lon != null) ? [STATION.lon, STATION.lat] : [-122.1, 47.6],
-    zoom: 9, attributionControl: false,   // same default as the APRS map
+  const svg = document.getElementById('world-svg');
+  if (!svg || svg._wired) return;
+  svg._wired = true;
+  // Cursor lat/lon readout (row 2) — inverse of the equirectangular projection.
+  svg.addEventListener('mousemove', e => {
+    const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+    const q = pt.matrixTransform(svg.getScreenCTM().inverse());
+    if (q.x < 0 || q.x > 720 || q.y < 0 || q.y > 360) { setCoord(null); return; }
+    setCoord({ lat: 90 - q.y / 360 * 180, lng: q.x / 720 * 360 - 180 });
   });
-  // Bottom-left cluster like the APRS map: zoom-level readout, zoom buttons, miles scale.
-  const zoomReadout = {
-    onAdd() { const el = document.createElement('div'); el.className = 'maplibregl-ctrl zoom-readout';
-      el.innerHTML = '<span class="cr-lbl">zoom</span><span id="crZoom">—</span>'; this._el = el; return el; },
-    onRemove() { this._el.remove(); },
-  };
-  _map.addControl(zoomReadout, 'bottom-left');
-  _map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
-  _map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 120 }), 'bottom-left');
-  const _showZoom = () => { const z = document.getElementById('crZoom'); if (z) z.textContent = _map.getZoom().toFixed(1); };
-  _map.on('zoom', _showZoom);
-  _map.on('mousemove', e => setCoord(e.lngLat));   // cursor lat/lon readout (row 2)
-  _map.on('mouseout', () => setCoord(null));
-  const setupLayers = () => {
-    if (_mapReady) return;
-    _map.addSource('sat-tracks', { type: 'geojson', data: fc([]) });
-    _map.addLayer({ id: 'sat-future', type: 'line', source: 'sat-tracks',
-      filter: ['==', ['get', 'seg'], 'future'], layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-opacity': .55, 'line-dasharray': [2, 1.5] } });
-    _map.addLayer({ id: 'sat-past', type: 'line', source: 'sat-tracks',
-      filter: ['==', ['get', 'seg'], 'past'], layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': ['get', 'color'], 'line-width': 3.5, 'line-opacity': .95 } });
-    if (STATION && STATION.lon != null) {
-      const homeEl = document.createElement('div');
-      homeEl.className = 'sat-home-node';
-      homeEl.innerHTML = HOME_SVG;
-      homeEl.title = 'this station';
-      new maplibregl.Marker({ element: homeEl, anchor: 'bottom' })
-        .setLngLat([STATION.lon, STATION.lat]).addTo(_map);
-    }
-    _map.addSource('sat-now', { type: 'geojson', data: fc([]) });
-    _map.addLayer({ id: 'sat-now', type: 'circle', source: 'sat-now',
-      paint: { 'circle-radius': 6, 'circle-color': ['get', 'color'], 'circle-stroke-width': 2.5, 'circle-stroke-color': '#fff' } });
-    _mapReady = true;
-    redraw();
-    for (const id of ['sat-past', 'sat-future', 'sat-now']) {
-      _map.on('click', id, onMapClick);
-      _map.on('mouseenter', id, () => _map.getCanvas().style.cursor = 'pointer');
-      _map.on('mouseleave', id, () => _map.getCanvas().style.cursor = '');
-    }
-    _map.on('moveend', () => { updateVisibility(); renderRoster(); });   // update "zoom out" hints
-    _showZoom();
-    _map.resize();
-  };
-  _map.on('load', setupLayers);
-  // Some full-screen container layouts leave MapLibre's first frame unrendered,
-  // so 'load' never fires and the map stays blank (resize alone doesn't fix it —
-  // only a real camera change does). Once the style is ready, nudge the camera
-  // imperceptibly to force the first paint and set the layers up ourselves.
-  // Self-clears as soon as the map is ready (incl. the normal 'load' path).
-  const _kick = setInterval(() => {
-    if (_mapReady) { clearInterval(_kick); return; }
-    if (_map.isStyleLoaded()) {
-      _map.resize();
-      _map.setZoom(_map.getZoom() - 0.0001);   // imperceptible real change forces the first render
-      setupLayers();
-    }
-  }, 350);
+  svg.addEventListener('mouseleave', () => setCoord(null));
+  // Click a satellite marker/track → popup; click empty space → close it.
+  svg.addEventListener('click', e => {
+    const m = e.target.closest('[data-norad]');
+    if (m) satClick(+m.dataset.norad, e); else hideSatPopup();
+  });
+  loadCountries().then(() => { renderBase(); redraw(); });
   setInterval(liveTick, 1000);
 }
-function fc(features) { return { type: 'FeatureCollection', features }; }
+// Static base — dark country fills + graticule + the station house. Rendered once.
+function renderBase() {
+  const g = document.getElementById('wg-base');
+  if (!g) return;
+  const W = 720, H = 360;
+  let out = drawCountries(W, H) + drawGraticule(W, H);
+  if (STATION && STATION.lon != null) {
+    const st = satgeo.project(STATION.lat, STATION.lon, W, H);
+    out += `<svg x="${(st.x - 9).toFixed(1)}" y="${(st.y - 22).toFixed(1)}" width="18" height="22" viewBox="-16 -30 32 39" class="sat-home-node" overflow="visible">${HOME_INNER}</svg>`;
+  }
+  g.innerHTML = out;
+}
+function drawCountries(W, H) {
+  if (!COUNTRIES || !COUNTRIES.length) return '';
+  return COUNTRIES.map(ring => satgeo.splitAntimeridian(ring.map(c => ({ lon: c[0], lat: c[1] }))).map(seg => {
+    if (seg.length < 2) return '';
+    const d = seg.map((p, i) => { const q = satgeo.project(p.lat, p.lon, W, H); return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1); }).join(' ') + ' Z';
+    return `<path d="${d}" class="land"/>`;
+  }).join('')).join('');
+}
 
-// Rebuild every plotted satellite's track (past-solid / future-dashed, split at
-// its own "now") + live markers, and push to the map sources.
+// Overlay — footprint + whole-orbit ground track (past-solid / future-dashed) +
+// clickable live marker for every plotted sat. Redrawn on plot/unplot + each tick.
 function redraw() {
-  if (!_mapReady) return;
-  const trackFeats = [], nowFeats = [];
+  const g = document.getElementById('wg-over');
+  if (!g) return;
+  const W = 720, H = 360;
+  let out = '';
   for (const norad in PLOTTED) {
     const s = PLOTTED[norad];
-    if (!s.track.length) continue;
-    const { past, future } = satgeo.splitAtNow(s.track, nowIndex(s.track));
-    const push = (pts, seg) => {
-      for (const sg of satgeo.splitAntimeridian(pts)) {
-        if (sg.length < 2) continue;
-        trackFeats.push({ type: 'Feature', properties: { norad, color: s.color, seg },
-          geometry: { type: 'LineString', coordinates: sg.map(p => [p.lon, p.lat]) } });
-      }
-    };
-    push(past, 'past'); push(future, 'future');
-    const now = Date.now(), r = new Date(s.pass.rise).getTime(), se = new Date(s.pass.set).getTime();
-    if (now >= r && now <= se && s.l1 && s.l2) {          // live only while the pass is happening
-      const pos = livePos(s.l1, s.l2);
-      if (pos) nowFeats.push({ type: 'Feature', properties: { norad, color: s.color },
-        geometry: { type: 'Point', coordinates: [pos.lon, pos.lat] } });
+    const track = orbitTrack(norad);   // WHOLE orbit — the world view
+    if (track.length < 2) continue;
+    const pos = (s.l1 && s.l2) ? livePos(s.l1, s.l2) : null;
+    // Footprint (under the track) only during the pass window (15 min pre-AOS → LOS).
+    if (pos && pos.altKm > 0 && inFootprintWindow(norad)) {
+      for (const d of satgeo.footprintPaths(pos.lat, pos.lon, satgeo.footprintRadiusDeg(pos.altKm), W, H))
+        out += `<path d="${d}" fill="${s.color}" fill-opacity="0.12" stroke="${s.color}" stroke-opacity="0.45" stroke-width="1"/>`;
     }
+    const { past, future } = satgeo.splitAtNow(track, nowIndex(track));
+    const draw = (pts, dash) => { for (const seg of satgeo.splitAntimeridian(pts)) { if (seg.length < 2) continue;
+      const d = seg.map((p, i) => { const q = satgeo.project(p.lat, p.lon, W, H); return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1); }).join(' ');
+      out += `<path d="${d}" class="sat-track" data-norad="${norad}" fill="none" stroke="${s.color}" stroke-width="${dash ? 1.5 : 2.5}"${dash ? ' stroke-dasharray="4 3" opacity="0.5"' : ''}/>`; } };
+    draw(past, false); draw(future, true);
+    if (pos) { const q = satgeo.project(pos.lat, pos.lon, W, H);
+      out += `<circle class="sat-marker" data-norad="${norad}" cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="4.5" fill="#fff" stroke="${s.color}" stroke-width="2"/>`; }
   }
-  _map.getSource('sat-tracks').setData(fc(trackFeats));
-  _map.getSource('sat-now').setData(fc(nowFeats));
-  renderWorldIfOpen();   // keep the world-overview card in sync when it's open
+  g.innerHTML = out;
 }
 
 // First track index at/after now (0 = all future/dashed, last = all past/solid).
@@ -689,31 +654,25 @@ function livePos(l1, l2) {
 }
 function liveTick() { if (Object.keys(PLOTTED).length) redraw(); }
 
-// True if any point of the track falls within the current map viewport.
-function trackInView(track) {
-  if (!_mapReady || !track.length) return true;
-  const b = _map.getBounds();
-  return track.some(p => b.contains([p.lon, p.lat]));
-}
-// Flag each plotted satellite whose track is entirely off-screen, so the roster
-// can prompt "zoom out". Recomputed on plot and on every map move.
-function updateVisibility() {
-  for (const norad in PLOTTED)
-    PLOTTED[norad].outOfView = (_mapReady && PLOTTED[norad].track.length) ? !trackInView(PLOTTED[norad].track) : false;
-}
+// The world map shows the whole globe — a track is never "out of view", so the
+// roster's zoom-out hint never fires.
+function updateVisibility() { for (const norad in PLOTTED) PLOTTED[norad].outOfView = false; }
 
 /* ── Popup: click a satellite's track/marker on the map ────────────────── */
-let _popup = null, _popupSat = null;
-function onMapClick(e) {
-  const norad = e.features[0].properties.norad;
+let _popupSat = null;
+function satClick(norad, e) {
   const sat = ROSTER.find(s => s.norad == norad);
   if (!sat) return;
   _popupSat = sat;
-  if (_popup) _popup.remove();
-  _popup = new maplibregl.Popup({ offset: 12, maxWidth: '300px' })
-    .setLngLat(e.lngLat).setHTML(popupHTML(sat)).addTo(_map);
-  _popup.on('close', () => { _popupSat = null; });
+  const el = document.getElementById('sat-popup');
+  el.querySelector('.pop-body').innerHTML = popupHTML(sat);
+  el.hidden = false;
+  const pw = el.offsetWidth || 280, ph = el.offsetHeight || 220;
+  const x = (e ? e.clientX : innerWidth / 2) + 12, y = (e ? e.clientY : 100);
+  el.style.left = Math.max(8, Math.min(x, innerWidth - pw - 8)) + 'px';
+  el.style.top  = Math.max(8, Math.min(y, innerHeight - ph - 8)) + 'px';
 }
+function hideSatPopup() { const el = document.getElementById('sat-popup'); if (el) el.hidden = true; _popupSat = null; }
 function popupHTML(sat) {
   const plotted = PLOTTED[sat.norad];
   const chips = sat.labels.map(l => `<span class="chip">${l}</span>`).join('');
@@ -734,8 +693,8 @@ function popupHTML(sat) {
 async function pickPass(norad, rise, set) {
   const pass = (PASSES[norad] || []).find(p => p.rise === rise && p.set === set);
   if (pass) { await plotSat(norad, pass); renderRoster();
-    const sat = ROSTER.find(s => s.norad == norad);
-    if (_popup && sat) _popup.setHTML(popupHTML(sat)); }
+    const sat = ROSTER.find(s => s.norad == norad), el = document.getElementById('sat-popup');
+    if (_popupSat && sat && el && !el.hidden) el.querySelector('.pop-body').innerHTML = popupHTML(sat); }
 }
 
 function skyPlotSVG(track, color) {
@@ -784,16 +743,6 @@ function startClock() {
 }
 
 /* ── World-overview card — equirectangular whole-track SVG, toggled by ☰ ─── */
-let COASTLINE = null;
-async function loadCoastline() {
-  if (COASTLINE) return COASTLINE;
-  try {
-    const j = await (await fetch('/server/satellites/coastline.json')).json();
-    COASTLINE = (j.features || []).filter(f => f.geometry && f.geometry.type === 'LineString')
-      .map(f => f.geometry.coordinates);   // GeoJSON coords are [lon, lat]
-  } catch (e) { COASTLINE = []; }
-  return COASTLINE;
-}
 function drawGraticule(W, H) {
   let out = '';
   for (let lon = -180; lon <= 180; lon += 30) { const a = satgeo.project(90, lon, W, H), b = satgeo.project(-90, lon, W, H);
@@ -801,13 +750,6 @@ function drawGraticule(W, H) {
   for (let lat = -90; lat <= 90; lat += 30) { const a = satgeo.project(lat, -180, W, H), b = satgeo.project(lat, 180, W, H);
     out += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="grat"/>`; }
   return out;
-}
-function drawCoastline(W, H) {
-  if (!COASTLINE || !COASTLINE.length) return '';
-  return COASTLINE.map(coords => {
-    const d = coords.map((c, i) => { const q = satgeo.project(c[1], c[0], W, H); return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1); }).join(' ');
-    return `<path d="${d}" class="coast"/>`;
-  }).join('');
 }
 // One full orbital period of ground track, centred on now, propagated client-side
 // from the TLE (satellite.js). This is the WHOLE track that wraps the globe — the
@@ -829,49 +771,6 @@ function orbitTrack(norad) {
   s._orbit = pts; s._orbitAt = now;
   return pts;
 }
-function renderWorld() {
-  const svg = document.getElementById('world-svg');
-  if (!svg) return;
-  const W = 720, H = 360;
-  let out = drawGraticule(W, H) + drawCoastline(W, H);
-  if (STATION && STATION.lon != null) { const st = satgeo.project(STATION.lat, STATION.lon, W, H);
-    out += `<circle cx="${st.x.toFixed(1)}" cy="${st.y.toFixed(1)}" r="4" fill="#ffb454" stroke="#0d1117"/>`; }
-  for (const norad in PLOTTED) {
-    const s = PLOTTED[norad];
-    const track = orbitTrack(norad);   // WHOLE orbit, not just the pass slice
-    if (track.length < 2) continue;
-    const pos = (s.l1 && s.l2) ? livePos(s.l1, s.l2) : null;
-    // Footprint fill (drawn UNDER the track): the ground area from which the sat
-    // is above the horizon — "the region it covers". Only during the pass window
-    // (15 min before AOS → LOS), matching the countdown pill's lifetime. Proper
-    // pole/antimeridian clipping so it stays drawn at high latitude.
-    if (pos && pos.altKm > 0 && inFootprintWindow(norad)) {
-      for (const d of satgeo.footprintPaths(pos.lat, pos.lon, satgeo.footprintRadiusDeg(pos.altKm), W, H)) {
-        out += `<path d="${d}" fill="${s.color}" fill-opacity="0.12" stroke="${s.color}" stroke-opacity="0.45" stroke-width="1"/>`;
-      }
-    }
-    const { past, future } = satgeo.splitAtNow(track, nowIndex(track));
-    const draw = (pts, dash) => { for (const seg of satgeo.splitAntimeridian(pts)) { if (seg.length < 2) continue;
-      const d = seg.map((p, i) => { const q = satgeo.project(p.lat, p.lon, W, H); return (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1); }).join(' ');
-      out += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${dash ? 1.5 : 2.5}"${dash ? ' stroke-dasharray="4 3" opacity="0.5"' : ''}/>`; } };
-    draw(past, false); draw(future, true);
-    // The satellite is always somewhere on its orbit — show the live marker always.
-    if (pos) { const q = satgeo.project(pos.lat, pos.lon, W, H);
-      out += `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="4" fill="#fff" stroke="${s.color}" stroke-width="2"/>`; }
-  }
-  svg.innerHTML = out;
-}
-function renderWorldIfOpen() {
-  const card = document.getElementById('world-card');
-  if (card && card.classList.contains('show')) renderWorld();
-}
-async function toggleWorld() {
-  const card = document.getElementById('world-card');
-  const open = card.classList.toggle('show');
-  document.getElementById('burger').classList.toggle('on', open);
-  if (open) { await loadCoastline(); renderWorld(); }
-}
-
 /* ── SDR listen — record a pass to a WAV on the Pi ───────────────────────── */
 let LISTEN = { recording: false };
 let _listenErrNorad = null;   // norad whose last start attempt errored (shown in its status line)
