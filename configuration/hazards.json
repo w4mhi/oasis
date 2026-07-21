@@ -1,11 +1,12 @@
 {
-  "_note": "APRS natural-hazard categories for the dashboard hazard pills and the map. A station matches a hazard if its (sym_table, sym_code) is listed in `symbols`, OR its object name (callsign)/comment contains a `name_match` keyword AND no `name_exclude` keyword (both case-insensitive substrings). name_exclude filters out facilities/POIs that share a word — e.g. 'FIRE STATION'/'FIRE REPEATER' are fire-dept infrastructure, not wildfire incidents. A symbol match always wins regardless of name_exclude. sym_table is '/' (primary) or '\\' (alternate). Edit freely to add regional hazards — read locally, no network. Codes verified against aprs.org/symbols/symbolsX.txt.",
+  "_note": "APRS natural-hazard categories for the dashboard hazard pills and the map. A station matches a hazard ONLY when its (sym_table, sym_code) is listed in `symbols` — the APRS symbol is the trigger. A comment can never create a match (too many false positives: a motorcycle whose comment says 'like a tornado', a digipeater named 'Lake Smoke'). `name_exclude` is an optional list of case-insensitive whole-word keywords that VETO a symbol match (e.g. an obvious test/joke station squatting the emergency symbol); it can only remove a match, never add one. sym_table is '/' (primary) or '\\' (alternate). Symbol codes verified against the shipped APRS-Symbols.pdf: '\\t'=Tornado, '\\w'=Flooding, '\\E'=Smoke, '\\@'=Hurricane/Tropical Storm, '\\!'=Emergency, '/:'=Fire. Edit freely to add regional hazards (e.g. '\\y'=Skywarn) — read locally, no network.",
   "hazards": [
-    { "key": "fire",      "label": "Fire",      "emoji": "🔥", "color": "#ff5c33", "symbols": [["/", ":"]],  "name_match": ["WILDFIRE"] },
-    { "key": "hurricane", "label": "Hurricane", "emoji": "🌀", "color": "#b478ff", "symbols": [["\\", "@"]], "name_match": ["HURRICANE", "TROPICAL"] },
-    { "key": "tornado",   "label": "Tornado",   "emoji": "🌪", "color": "#e34aff", "symbols": [["\\", "<"]], "name_match": ["TORNADO", "TORNDO", "FUNNEL"] },
-    { "key": "flood",     "label": "Flood",     "emoji": "🌊", "color": "#4aa8ff", "symbols": [["\\", "w"]], "name_match": ["FLOOD"] },
-    { "key": "smoke",     "label": "Smoke",     "emoji": "💨", "color": "#c9a227", "symbols": [["\\", "E"]], "name_match": ["SMOKE"] },
-    { "key": "emergency", "label": "Emergency", "emoji": "🆘", "color": "#ff3b3b", "symbols": [["\\", "!"]], "name_match": ["EMERGENCY", "MAYDAY"] }
+    { "key": "fire",      "label": "Fire",      "emoji": "🔥", "color": "#ff5c33", "symbols": [["/", ":"]],  "name_exclude": [] },
+    { "key": "hurricane", "label": "Hurricane", "emoji": "🌀", "color": "#b478ff", "symbols": [["\\", "@"]], "name_exclude": [] },
+    { "key": "tornado",   "label": "Tornado",   "emoji": "🌪", "color": "#e34aff", "symbols": [["\\", "t"]], "name_exclude": [] },
+    { "key": "flood",     "label": "Flood",     "emoji": "🌊", "color": "#4aa8ff", "symbols": [["\\", "w"]], "name_exclude": [] },
+    { "key": "smoke",     "label": "Smoke",     "emoji": "💨", "color": "#c9a227", "symbols": [["\\", "E"]], "name_exclude": [] },
+    { "key": "skywarn",   "label": "Skywarn",   "emoji": "🌩", "color": "#2ec4b6", "symbols": [["\\", "y"]], "name_exclude": [] },
+    { "key": "emergency", "label": "Emergency", "emoji": "🆘", "color": "#ff3b3b", "symbols": [["\\", "!"]], "name_exclude": [] }
   ]
 }
