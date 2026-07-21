@@ -182,10 +182,10 @@ def build_argparser():
     p.add_argument("--rate", type=int, default=48000, choices=(24000, 48000),
                    help="Initial audio sample rate (default 48000, matches "
                         "GrayWolf's feed).")
-    p.add_argument("--fir", type=int, default=0, choices=range(0, 10),
+    p.add_argument("--fir", type=int, default=3, choices=range(0, 10),
                    metavar="[0-9]",
-                   help="Initial rtl_fm -F down-sample FIR (0 = off, 9 = 9-tap "
-                        "low-leakage filter). Tune live with t/T.")
+                   help="Initial rtl_fm -F down-sample FIR (0 = off, 3 = default, "
+                        "9 = 9-tap low-leakage filter — heavier). Tune live with t/T.")
     p.add_argument("--conf", default=None,
                    help="Reuse an existing Direwolf conf instead of generating one.")
     return p

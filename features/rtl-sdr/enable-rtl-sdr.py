@@ -74,6 +74,10 @@ SERVICE_NAME = "aprs-sdr-feed.service"
 SERVICE_PATH = f"/etc/systemd/system/{SERVICE_NAME}"
 SAMPLE_RATE  = 48000           # rtl_fm -s; must equal GrayWolf's sample_rate
 DATAGRAM     = 1920            # socat -b: one 20 ms audio chunk (960 samples x 2 B)
+DEFAULT_FIR  = 3               # rtl_fm -F down-sample FIR: low-passes before
+                               # decimation → cleaner AFSK → measurably better APRS
+                               # decode. 3 is a good quality/CPU balance (the tuning
+                               # bench dials 0-9; -F 9 is heavier — see sdr_tune.py).
 DEFAULT_PORT = 7355            # GQRX UDP-audio convention; matches docs/sdr-to-graywolf.md
 
 
@@ -239,7 +243,7 @@ def find_graywolf_unit():
 
 
 def build_unit(rtl_fm, socat, freq, gain, ppm, port, gw_unit):
-    feed = (f"{rtl_fm} -f {freq} -M fm -s {SAMPLE_RATE} -g {gain} -p {ppm} - "
+    feed = (f"{rtl_fm} -f {freq} -M fm -s {SAMPLE_RATE} -F {DEFAULT_FIR} -g {gain} -p {ppm} - "
             f"| {socat} -u -b {DATAGRAM} - UDP-SENDTO:127.0.0.1:{port}")
     ordering = ""
     if gw_unit:

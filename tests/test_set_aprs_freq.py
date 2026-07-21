@@ -21,7 +21,7 @@ UNIT = (
     "Wants=graywolf.service\n"
     "\n"
     "[Service]\n"
-    "ExecStart=/bin/sh -c 'rtl_fm -f 144.390M -M fm -s 48000 -g 28 -p 0 - "
+    "ExecStart=/bin/sh -c 'rtl_fm -f 144.390M -M fm -s 48000 -F 3 -g 28 -p 0 - "
     "| socat -u -b 1920 - UDP-SENDTO:127.0.0.1:7355'\n"
     "Restart=always\n"
     "RestartSec=5\n"
