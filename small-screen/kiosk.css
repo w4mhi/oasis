@@ -45,8 +45,8 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
        border:1px solid var(--border); border-radius:1.1rem; padding:.9rem 1.4rem 1.1rem 1.6rem;
        position:relative; overflow:hidden; box-shadow:0 .8rem 2rem -1.2rem #000; }
 .face::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:.4rem; }
-.face.utc{ margin-right:3.4rem; } .face.utc::before{ background:var(--amber); }
-.face.loc{ margin-left:3.4rem; margin-top:.8rem; } .face.loc::before{ background:var(--blue); }
+.face.utc::before{ background:var(--amber); }
+.face.loc{ margin-top:.8rem; } .face.loc::before{ background:var(--blue); }
 .face .zn{ display:flex; align-items:baseline; gap:.8rem; }
 .face .zn .z{ font-size:1.1rem; letter-spacing:.22em; font-weight:700; }
 .face.utc .z{ color:var(--amber); } .face.loc .z{ color:var(--blue); }
