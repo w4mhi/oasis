@@ -76,11 +76,13 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .gpsrow{ display:flex; align-items:center; gap:.9rem; font-size:1.4rem; margin-bottom:.8rem; }
 .dot{ width:.9rem; height:.9rem; border-radius:50%; flex:0 0 auto; background:var(--faint); }
 .gpsrow .mode{ font-weight:700; } .gpsrow .sub{ color:var(--dim); font-size:1.25rem; }
-#k-gps.nogps .dot,#k-gps.nogps .mode{ color:var(--dim); background:var(--dim); }
-#k-gps.nofix .dot,#k-gps.nofix .mode{ color:var(--down); background:var(--down); }
-#k-gps.fix2d .dot,#k-gps.fix2d .mode{ color:var(--warn); background:var(--warn); }
-#k-gps.fix3d .dot,#k-gps.fix3d .mode{ color:var(--accent); background:var(--accent);
-        box-shadow:0 0 .8rem -.1rem var(--accent); }
+/* dot = filled circle (background); mode = text (colour only — never a fill,
+   or colour==background hides the text and it reads as a grey bar). */
+#k-gps.nogps .dot{ background:var(--dim); }    #k-gps.nogps .mode{ color:var(--dim); }
+#k-gps.nofix .dot{ background:var(--down); }    #k-gps.nofix .mode{ color:var(--down); }
+#k-gps.fix2d .dot{ background:var(--warn); }    #k-gps.fix2d .mode{ color:var(--warn); }
+#k-gps.fix3d .dot{ background:var(--accent); box-shadow:0 0 .8rem -.1rem var(--accent); }
+#k-gps.fix3d .mode{ color:var(--accent); }
 #k-gps .sub .gps-sat{ color:var(--text); }
 .divider{ height:1px; background:var(--border-soft); margin:.8rem 0; }
 .sys{ display:grid; grid-template-columns:repeat(5,1fr); gap:.2rem 1rem; }
