@@ -458,14 +458,13 @@ function renderSats() {
   const hm = t => { const d = new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
   body.innerHTML = items.map(it => {
     const el = Math.round(it.p.max_el || 0), dir = azCompass(it.p.rise_az);
-    const dl = it.dl ? ` · ${esc(it.dl.mode)} ${it.dl.freq_mhz}` : '';
     if (it.inPass) {
       const arc = `${esc(azCompass(it.p.rise_az))}→${esc(azCompass(it.p.set_az))}`;
-      return `<div class="sat now"><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}</span><span class="aos">overhead</span><span class="cd">NOW</span></div><div class="l2">${el}° max · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
+      return `<div class="sat now"><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}</span><span class="aos">overhead</span><span class="cd">NOW</span></div><div class="l2">el ${el}° ↗ · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
     }
     const soon = it.mins <= 10;
     const nm = soon ? `<span class="nm"><span class="pulse"></span>${esc(it.name)}</span>` : `<span class="nm">${esc(it.name)}</span>`;
-    const l2 = soon ? `rise ${esc(dir)} · ${el}° max · get ready` : `rise ${esc(dir)} · ${el}° max${dl}`;
+    const l2 = soon ? `rise ${esc(dir)} · ${el}° max · get ready` : `rise ${esc(dir)} · ${el}° max`;
     return `<div class="sat${soon?' soon':''}"><div class="l1">${nm}<span class="aos">${hm(it.p._r)}</span><span class="cd">↑ ${it.mins}m</span></div><div class="l2">${l2}</div></div>`;
   }).join('');
 }
