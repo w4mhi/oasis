@@ -53,7 +53,7 @@ def api_satellites():
         s["l1"] = entry[1] if entry else None
         s["l2"] = entry[2] if entry else None
         s["downlinks"] = [dict(d, **listen.mode_support(d.get("mode")))
-                          for d in s.get("downlinks", [])]
+                          for d in roster.legacy_downlinks(s)]
         sats.append(s)
     return jsonify({
         "satellites": sats,
@@ -174,9 +174,8 @@ def api_track():
     to = datetime.datetime.fromisoformat(request.args["to"])
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     entry = next((s for s in data["satellites"] if s["norad"] == norad_i), None)
-    dl = None
-    if entry and entry["downlinks"]:
-        dl = int(entry["downlinks"][0]["freq_mhz"] * 1_000_000)
+    dls = roster.legacy_downlinks(entry) if entry else []
+    dl = int(dls[0]["freq_mhz"] * 1_000_000) if dls else None
     try:
         track = predict.compute_track(sat, st["lat"], st["lon"], frm, to,
                                        step_s=10, downlink_hz=dl)
@@ -234,12 +233,12 @@ def api_listen():
         return jsonify({"error": "already recording"}), 409
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     entry = next((s for s in data["satellites"] if s["norad"] == norad), None)
-    if not entry or not entry.get("downlinks"):
+    downlinks = roster.legacy_downlinks(entry) if entry else []
+    if not downlinks:
         return jsonify({"error": "no downlink frequency for this satellite"}), 400
     # Pick the downlink: an optional freq_mhz override must match one of the
     # satellite's downlinks; else default to the first. Re-validate support
     # server-side — never trust the button.
-    downlinks = entry["downlinks"]
     dl = downlinks[0]
     req_freq = body.get("freq_mhz")
     if req_freq is not None:

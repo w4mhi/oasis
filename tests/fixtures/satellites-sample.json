@@ -1,0 +1,23 @@
+{
+  "updated": "2026-07-22T00:00:00+00:00",
+  "source": "satnogs+celestrak",
+  "labels": {"VOICE": 1, "FM": 1, "APRS": 1, "CREWED": 1},
+  "satellites": [
+    {
+      "name": "ISS (ZARYA)",
+      "norad": 25544,
+      "sat_id": "ISS-UUID",
+      "status": "alive",
+      "labels": ["VOICE", "FM", "APRS", "CREWED"],
+      "transmitters": [
+        {"mode": "FM", "type": "Transceiver", "invert": false, "baud": null,
+         "downlink": {"freq_mhz": 145.8, "freq_high_mhz": null},
+         "uplink": {"freq_mhz": 145.99, "freq_high_mhz": null}},
+        {"mode": "APRS", "type": "Transmitter", "invert": false, "baud": 1200,
+         "downlink": {"freq_mhz": 145.825, "freq_high_mhz": null},
+         "uplink": null}
+      ],
+      "selected": true
+    }
+  ]
+}

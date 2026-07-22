@@ -4,28 +4,24 @@ sys.path.insert(0, os.path.dirname(_HERE))
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "services", "satellites"))
 import roster  # noqa: E402
 
-class RosterTest(unittest.TestCase):
-    def test_defaults_have_required_fields(self):
-        for s in roster.DEFAULT_ROSTER:
-            self.assertIn("name", s)
-            self.assertIn("norad", s)
-            self.assertIsInstance(s["labels"], list)
-            self.assertIsInstance(s["downlinks"], list)
 
-    def test_load_writes_defaults_when_missing(self):
+class RosterTest(unittest.TestCase):
+    def test_load_seeds_empty_envelope_when_missing(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "satellites.json")
             data = roster.load(p)
             self.assertTrue(os.path.exists(p))
-            self.assertEqual(len(data["satellites"]), len(roster.DEFAULT_ROSTER))
+            self.assertEqual(data["satellites"], [])
+            self.assertEqual(data["labels"], {})
 
     def test_set_selected_persists(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "satellites.json")
-            roster.load(p)
+            json.dump({"updated": "x", "labels": {}, "satellites":
+                       [{"norad": 25544, "selected": False, "transmitters": []}]},
+                      open(p, "w"))
             roster.set_selected(p, 25544, True)
-            data = json.load(open(p))
-            iss = [s for s in data["satellites"] if s["norad"] == 25544][0]
+            iss = json.load(open(p))["satellites"][0]
             self.assertTrue(iss["selected"])
 
     def test_load_recovers_from_non_dict_json(self):
@@ -34,8 +30,21 @@ class RosterTest(unittest.TestCase):
             with open(p, "w") as fh:
                 json.dump([1, 2, 3], fh)          # valid JSON, wrong shape
             data = roster.load(p)
-            self.assertEqual(len(data["satellites"]), len(roster.DEFAULT_ROSTER))
-            self.assertIsInstance(json.load(open(p)), dict)   # file was reseeded as a dict
+            self.assertEqual(data["satellites"], [])
+            self.assertIsInstance(json.load(open(p)), dict)   # reseeded as a dict
+
+    def test_legacy_downlinks_flattens_transmitters(self):
+        sat = {"transmitters": [
+            {"mode": "FM", "downlink": {"freq_mhz": 145.8, "freq_high_mhz": None},
+             "uplink": {"freq_mhz": 145.99, "freq_high_mhz": None}},
+            {"mode": "APRS", "downlink": {"freq_mhz": 145.825, "freq_high_mhz": None},
+             "uplink": None},
+            {"mode": "BEACONONLYUP", "downlink": None,
+             "uplink": {"freq_mhz": 435.0, "freq_high_mhz": None}}]}
+        dls = roster.legacy_downlinks(sat)
+        self.assertEqual(dls, [{"mode": "FM", "freq_mhz": 145.8},
+                               {"mode": "APRS", "freq_mhz": 145.825}])
+
 
 if __name__ == "__main__":
     unittest.main()
