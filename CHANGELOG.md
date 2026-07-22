@@ -5,12 +5,42 @@ All notable changes to OASIS are recorded here, newest first.
 **Versioning rules.** The suite version lives in `version.json` (single source of
 truth — the dashboard, `/api/server-info`, and `doctor.py` all read it). Every
 release bumps `version.json` and this file **together**, and the release commit
-on `main` is tagged `v.<version>` (e.g. `v.3.0.0`) — that tag format is the
-standard from 3.0.0 on.
+on `main` is tagged `v.<version>` (e.g. `v.2.8.0`) — the `v.`-prefixed format
+used since `v.2.7.5`.
 
-## Unreleased
+## v.2.8.0 — 2026-07-22
+
+Feature + fix release on the 2.7.5 baseline: the services refactoring, the
+repository-analysis fixes, ADS-B history / airline work, shared front-end
+modules, the first JS test harness, server-side backup of ICS forms + the net
+log, dashboard-polling and mDNS improvements, and a round of APRS map filter
+fixes. No breaking changes — every URL, method, and response shape is unchanged
+(verified by a 52-route snapshot and the full unit suite), so an in-place upgrade
+needs only a code pull and a re-run of the idempotent setup. Minor, not major,
+bump for that reason.
 
 ### Added
+- **APRS Alerts "show only Fires" (hazard isolate).** Each hazard row in the
+  map's APRS Alerts card is now click-to-isolate: clicking a row (e.g. Fire)
+  solos that hazard category on the map — a one-tap emergency view — and clicking
+  the soloed row restores all. Keyboard-accessible; the active row highlights.
+  Previously the rows were inert (the click handlers looked for markup the render
+  no longer emitted).
+- **APRS source filter in the map station list.** The Src column filter gains an
+  **APRS** option (RF + IS, ADS-B excluded) alongside All / RF / IS / ADS-B, so
+  the two APRS sources can be shown together without aircraft.
+- **Server-side backup of ICS forms + the net log.** The ICS-213/214/309 forms
+  and the net-check-in log lived only in browser localStorage — a cleared cache
+  or a swapped tablet lost them mid-incident. A **Save to server** / **Restore**
+  action now persists JSON snapshots under `static/<kind>/saved/` via a shared
+  `POST /api/forms/save` + `GET /api/forms/list` (whitelisted kinds); the existing
+  ICS-205 save/list delegate to the same store. Same flat-file model as
+  station.json/warnings.json — no DB. Shared client helper `common/js/form-backup.js`.
+- **`oasis.local` now resolves.** The AP-fallback setup installed avahi but never
+  set the hostname, so the promised `http://oasis.local:8083` didn't work on a
+  stock Pi (avahi only publishes `<hostname>.local`). Setup now sets the hostname
+  to `oasis` (+ a `/etc/hosts` alias); avahi keeps `oasis.local` pointed at the
+  current IP across Wi-Fi/AP transitions.
 - **Live install log in the setup page.** Privileged feature installs run in a
   root worker whose output only reached the systemd journal; it's now streamed
   into the setup log window (via a per-job log file the web wait-loop tails), so
@@ -52,6 +82,32 @@ standard from 3.0.0 on.
   `.github/workflows/js-tests.yml` CI gate — delivers analysis-report §3/P2.
 
 ### Changed
+- **Minor-version bump: 2.7.5 → 2.8.0**, marking the completed services
+  refactoring (service logic under `services/<name>/`, maps under
+  `services/map/`) as the new baseline. Behaviour-preserving, so a minor rather
+  than major bump.
+- **Dashboard polling de-bursted (Pi Zero).** `index.html` fired a synchronized
+  herd every 30 s — `pingAll` bursting all 17 service health checks at once plus
+  the hardware/stats/audio/wifi loops on the same boundary — and ~100 requests per
+  start/stop toggle. Now a round-robin `pingNext` (one check per ~1.8 s, same ~30 s
+  per-badge refresh), `fetchHardware` decoupled onto its own tick, the post-toggle
+  burst replaced with a one-at-a-time settle poll, and the 30 s loops phase-offset.
+  Same freshness and request count, no bursts (mirrors the `index7` approach).
+- **Hardware-conflict-resolution v2 completed for all four services.** Winlink RF
+  joined ADS-B / APRS-feed / OpenWebRX on the unified model: the start-time gate
+  (`_HW_GATE_MIGRATED`) is gone, `/api/service` never refuses a start, `winlink`
+  is a first-class service in `common/hardware.py` with a real radio-port apply
+  hook, and start-click contention (Winlink RF vs. GrayWolf) is resolved in
+  `index.html`'s `resolveHardwareConflict`.
+- **`server/app.py` split into Flask blueprints** (analysis item 6): service
+  routes live with their service (`services/{adsb,aprs,winlink,fcc_database,
+  map}/routes.py`), server-core domains under `server/routes/{setup,hardware,
+  wifi,service_control,health,system,files}.py`, shared runtime config in
+  `server/appconfig.py`. `app.py` is now ~300 lines (app creation, hooks,
+  blueprint registration, launcher). Every URL, method, and response shape is
+  unchanged — verified by a 52-route response snapshot taken before and after
+  the split, the full 385-test suite, and a live gunicorn boot. The WSGI entry
+  (`app:app`, `--chdir server`) is unchanged; no new dependencies.
 - **GPS and i2c-enable now signal that they need a reboot** (exit code 10), so
   the setup page prompts for it — GPS no longer silently shows "not configured"
   after install, and enabling i2c flags the reboot `/dev/i2c-1` needs.
@@ -72,18 +128,16 @@ standard from 3.0.0 on.
   (`72°F` → `72 °F`), matching the main dashboard — the shared `fmtTemp` is
   the canonical spaced form.
 
-## v.3.0.0 — 2026-07-16
-
-Quality-gate release: the services refactoring plus the first round of fixes
-from the repository analysis (`ANALYSIS-REPORT.md` items 1–5).
-
-### Security
-- **Winlink connect/disconnect hardened against CSRF.** Both endpoints mutate
-  state (connect keys the transmitter on the RF path) but accepted plain GET.
-  They now require POST plus the same `X-OASIS-Request` header gate as
-  `/api/service` and `/api/wifi/*`.
-
 ### Fixed
+- **Auto-path lines now respect the station-list column filter.** Isolating a
+  type that has no path (e.g. Aircraft) left RF/IS path lines drawn for hidden
+  stations; `_refreshAutoPaths` now filters its candidates through the same
+  visibility predicate as the markers, and `applyFilter` rebuilds the overlay on
+  every filter change (a manually-shown path also clears if its station is
+  filtered out).
+- **APRS heard RF/IS chips no longer hide ADS-B.** Toggling the RF or IS chip
+  forced aircraft off too (`showADSB = pathRF && pathIS`); the chips now gate
+  only the APRS RF/IS stations, leaving ADS-B to the Src dropdown.
 - `services/winlink/common/winlink.py`: `run()` without an explicit
   `repo_root` referenced the undefined `_SCRIPTS_DIR` (NameError leftover from
   the pre-refactor script). Now derives the repo root from its own location.
@@ -94,8 +148,26 @@ from the repository analysis (`ANALYSIS-REPORT.md` items 1–5).
 - Assorted dead code found by the new linter: unused imports, unused
   assignments, a shadowed `import re`, placeholder-less f-strings.
 
+### Security
+- **Winlink connect/disconnect hardened against CSRF.** Both endpoints mutate
+  state (connect keys the transmitter on the RF path) but accepted plain GET.
+  They now require POST plus the same `X-OASIS-Request` header gate as
+  `/api/service` and `/api/wifi/*`.
+- **Removed the unnecessary `Access-Control-Allow-Origin: *`** from the APRS
+  history/stats daemon (port 8085). It's reached only by the main server's
+  same-origin proxy (`services/aprs/routes.py` → `127.0.0.1:8085`), never by a
+  browser cross-origin, so the wildcard only let any origin read the data for no
+  benefit. (The report's original pmtiles target was already fixed in map routes.)
+
 ### CI / tooling
-- **The full unit test suite (385 tests) now runs in CI** (`offline-install.yml`,
+- **One-command quiet test runner** `scripts/run-tests.sh` — uses the `.venv`
+  Python (system Python has no Flask) and unittest's `-b/--buffer`, so noisy
+  per-test output is hidden on success and the `OK`/`FAILED` verdict is the last
+  line. Documented in the README.
+- **`common/js/maidenhead.js` now covered by the JS harness** — the last pure-logic
+  front-end module without tests. Added a CommonJS export + `tests/js/maidenhead.test.js`
+  (encoding, parsing/validation, round-trip). JS suite: 24 tests.
+- **The full unit test suite now runs in CI** (`offline-install.yml`,
   ubuntu + macos matrix) via the `.venv` that `setup-server.py` builds. It
   previously never ran on push — only byte-compile and an import smoke test.
 - **ruff lint gate** added (`ruff.toml` + step in `offline-manifest.yml`):
@@ -104,20 +176,6 @@ from the repository analysis (`ANALYSIS-REPORT.md` items 1–5).
   the offline runtime wheel set is unchanged.
 - Workflow trigger paths broadened so the gates fire on changes to `common/`,
   `server/`, `services/`, `displays/`, and `tests/`.
-
-### Changed
-- Major-version bump: 2.7.5 → 3.0.0, marking the completed services
-  refactoring (service logic under `services/<name>/`, maps under
-  `services/map/`) as the new baseline.
-- **`server/app.py` split into Flask blueprints** (analysis item 6): service
-  routes live with their service (`services/{adsb,aprs,winlink,fcc_database,
-  map}/routes.py`), server-core domains under `server/routes/{setup,hardware,
-  wifi,service_control,health,system,files}.py`, shared runtime config in
-  `server/appconfig.py`. `app.py` is now ~300 lines (app creation, hooks,
-  blueprint registration, launcher). Every URL, method, and response shape is
-  unchanged — verified by a 52-route response snapshot taken before and after
-  the split, the full 385-test suite, and a live gunicorn boot. The WSGI entry
-  (`app:app`, `--chdir server`) is unchanged; no new dependencies.
 
 ## v.2.7.5 and earlier
 
