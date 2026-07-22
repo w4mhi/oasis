@@ -394,6 +394,13 @@ OASIS is a personal project by **W4MHI**, built directly on the work of **Jason,
 
 - **Open an issue** for bugs, hardware reports (radios, SDRs, HATs), or feature ideas.
 - **Send a pull request** for fixes and additions. Keep the front-end vanilla JS and the backend minimal so it still runs on a Raspberry Pi Zero 2 W.
+- **Run the tests** with the one-command runner (uses the `.venv` Python — the
+  system Python has no Flask — and buffers noisy test output so the `OK`/`FAILED`
+  verdict is the last line):
+  ```bash
+  scripts/run-tests.sh          # full suite, quiet
+  scripts/run-tests.sh -k forms # only tests matching "forms"
+  ```
 - **Run the preflight checks** before pushing so CI (`server-setup` · `offline-manifest`) stays green:
   ```bash
   python3 -c "import json; json.load(open('scripts/offline-manifest.json'))"
