@@ -177,7 +177,6 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .age.age-ok{ color:var(--accent); } .age.age-warn{ color:var(--warn); } .age.age-old{ color:var(--dim); }
 .trow.empty{ color:var(--faint); cursor:default; }
 .trow.empty:hover{ background:none; }
-.thint{ padding-top:.5rem; font-size:1rem; color:var(--faint); flex:0 0 auto; }
 
 /* ── satellites ─────────────────────────────────────────────────────────────── */
 .sats{ flex:0 0 29rem; min-width:0; }
