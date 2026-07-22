@@ -65,6 +65,8 @@ td input:hover{border-color:var(--border);}
     <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
     <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
     <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 309 CSV file to restore form data">Import CSV</button>
+    <button class="sbtn" id="fb-save" title="Save this log onto the device (survives a cleared browser cache or a swapped tablet)">Save to server</button>
+    <button class="sbtn" id="fb-restore" title="Restore a log previously saved on this device">Restore</button>
     <button class="sbtn danger" onclick="clearAll()" title="Clear all form data and reset to a blank form">Clear</button>
   </div>
   <div class="save-ts" id="save-ts"></div>
@@ -671,6 +673,40 @@ function showToast(msg,type,duration=3500){
   clearTimeout(t._timer);
   t._timer=setTimeout(()=>{t.className='toast';},duration);
 }
+</script>
+<script src="/common/js/form-backup.js"></script>
+<script>
+/* Server backup of this ICS log — survives a cleared cache / swapped device.
+   STORE/persist are top-level bindings from the main script above; the log rows
+   ride along inside d.rows. Restore writes the snapshot into STORE and reloads,
+   reusing the page's own hydrate path (avoids the append/duplicate quirks in
+   load(), which appends rows without clearing). */
+(function () {
+  function currentData() {
+    persist();
+    var raw = localStorage.getItem(STORE);
+    if (!raw) return null;
+    var d; try { d = JSON.parse(raw); } catch (e) { return null; }
+    var meaningful = Object.keys(d).some(function (k) {
+      var v = d[k];
+      if (Array.isArray(v)) return v.some(function (r) {
+        return r && Object.keys(r).some(function (rk) { return String(r[rk] || '').trim(); }); });
+      return String(v || '').trim();
+    });
+    return meaningful ? d : null;
+  }
+  OasisFormBackup.attach({
+    kind: 'ics-309', noun: 'ICS 309',
+    saveButton: document.getElementById('fb-save'),
+    restoreButton: document.getElementById('fb-restore'),
+    hasData: function () { return currentData() != null; },
+    getData: currentData,
+    applyData: function (obj) {
+      try { localStorage.setItem(STORE, JSON.stringify(obj)); } catch (e) {}
+      location.reload();
+    }
+  });
+})();
 </script>
 </body>
 </html>

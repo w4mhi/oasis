@@ -90,7 +90,7 @@ class LabelsTest(unittest.TestCase):
         self.assertIn("CREWED", labs)
         self.assertIn("VOICE", labs)
         # order follows the closed vocabulary, never insertion order
-        self.assertEqual(labs, [l for l in satnogs.LABELS if l in labs])
+        self.assertEqual(labs, [lab for lab in satnogs.LABELS if lab in labs])
 
     def test_transponder_type_implies_linear(self):
         labs = satnogs.labels_for(
@@ -150,7 +150,7 @@ class BuildTest(unittest.TestCase):
         records, facet = satnogs.build_records(self.sats, self.txs, self.tle)
         self.assertEqual(facet.get("WEATHER"), 1)    # NOAA 19
         self.assertEqual(facet.get("CREWED"), 1)     # ISS
-        self.assertEqual(list(facet), [l for l in satnogs.LABELS if l in facet])
+        self.assertEqual(list(facet), [lab for lab in satnogs.LABELS if lab in facet])
 
     def test_diff_added_removed_changed(self):
         old = [{"norad": 25544, "name": "ISS (ZARYA)", "status": "alive",

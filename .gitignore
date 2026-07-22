@@ -103,8 +103,13 @@ static/repeaterbook/*.csv
 static/chirp/*.csv
 !static/chirp/chirp-sample.csv
 
-# ICS-205 saved plans — written at runtime by /api/save-ics205, never committed.
+# Client-data backups (ICS forms + net log) — written at runtime by
+# /api/forms/save (and the /api/save-ics205 alias), never committed.
 static/ics-205/saved/
+static/ics-213/saved/
+static/ics-214/saved/
+static/ics-309/saved/
+static/net-log/saved/
 
 # RTL-SDR tuning bench results — written at runtime by tune-rtl-sdr.py, never committed.
 features/rtl-sdr/tune-results.json

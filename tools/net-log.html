@@ -119,6 +119,8 @@ tr.editing td{background:var(--panel-2);}
     <button class="sbtn" onclick="document.getElementById('importFile').click()" title="Import a previously exported net log CSV">Import CSV</button>
     <input type="file" id="importFile" accept=".csv,text/csv,text/plain" style="display:none" onchange="importCSV(this)">
     <button class="sbtn" onclick="sendToICS309()" title="Copy this log into ICS-309 and open it in a new tab">→ ICS-309</button>
+    <button class="sbtn" id="fb-save" title="Save this net log onto the device (survives a cleared browser cache or a swapped tablet)">Save to server</button>
+    <button class="sbtn" id="fb-restore" title="Restore a net log previously saved on this device">Restore</button>
     <button class="sbtn danger" onclick="clearLog()" title="Clear all check-ins and reset the log">Clear</button>
   </div>
 
@@ -681,6 +683,39 @@ document.querySelectorAll('.ltab').forEach(tab => {
 <script src="/map-assets/maplibre-gl.js"></script>
 <script src="/map-assets/pmtiles.js"></script>
 <script src="/common/js/maidenhead.js"></script>
+<script src="/common/js/form-backup.js"></script>
+<script>
+/* Server backup of the net log — survives a cleared cache / swapped device.
+   rows/seq/addRow/persist/updateCount are top-level bindings from the main
+   script block above (shared global scope), reachable here. */
+OasisFormBackup.attach({
+  kind: 'net-log',
+  noun: 'net log',
+  saveButton: document.getElementById('fb-save'),
+  restoreButton: document.getElementById('fb-restore'),
+  label: function () { var el = document.getElementById('nn'); return el ? el.value : 'net'; },
+  hasData: function () { return rows.length > 0; },
+  getData: function () {
+    if (!rows.length) return null;
+    return { rows: rows, seq: seq, header: {
+      nn: document.getElementById('nn').value, nf: document.getElementById('nf').value,
+      nc: document.getElementById('nc').value, nd: document.getElementById('nd').value } };
+  },
+  applyData: function (data) {
+    rows.length = 0; seq = 0;
+    document.getElementById('tbody').innerHTML =
+      '<tr><td colspan="11" id="empty-msg">No check-ins yet.</td></tr>';
+    if (data.header) ['nn', 'nf', 'nc', 'nd'].forEach(function (id) {
+      document.getElementById(id).value = data.header[id] || ''; });
+    if (Array.isArray(data.rows)) data.rows.forEach(function (e) { rows.push(e); addRow(e); });
+    seq = data.seq || (rows.length ? Math.max.apply(null, rows.map(function (r) { return r.seq; })) + 1 : 0);
+    updateCount();
+    window._netRows = rows;
+    if (window.updateNetMap) window.updateNetMap(rows);
+    persist();
+  }
+});
+</script>
 <script>
 (function(){
   'use strict';
