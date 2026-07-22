@@ -148,9 +148,10 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 /* ── satellites ─────────────────────────────────────────────────────────────── */
 .sats{ flex:0 0 29rem; min-width:0; }
 .satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; }
-.sat{ padding:.55rem .9rem .6rem; border:1px solid var(--border); border-radius:.8rem;
-      background:var(--panel-2); margin-bottom:.5rem; }
-.sat:last-child{ margin-bottom:0; }
+/* Plain upcoming pass = plain row (divider only). Only NOW (green pill) and
+   ≤10min (amber pill) get a border + glowing dot — see .sat.now / .sat.soon. */
+.sat{ padding:.55rem .2rem .6rem; border-bottom:1px solid var(--border-soft); }
+.sat:last-child{ border-bottom:none; }
 .sat .l1{ display:flex; align-items:baseline; gap:.8rem; font-size:1.35rem; }
 .sat .nm{ font-weight:700; color:var(--text); min-width:6.6rem; }
 .sat .aos{ color:var(--dim); font-variant-numeric:tabular-nums; }
