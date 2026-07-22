@@ -533,11 +533,11 @@ function renderAprsRows(list) {
   list.forEach(s => {
     const call = s.callsign || s.c || '—';
     const ac = s._kind==='aircraft', src = ac ? 'air' : aprsSource(s);
-    const age = fmtAge(s.last_heard||s.timestamp||s.time).text;
+    const age = fmtAge(s.last_heard||s.timestamp||s.time);   // { text, cls } — cls colours staleness
     const dist = distFromHome(s.lat, s.lon) || '';
     const grid = gridSquare(s.lat, s.lon) || '';
     const r = document.createElement('div'); r.className = 'trow';
-    r.innerHTML = `<span class="call ${src}">${esc(call)}</span><span>${aprsIconHtml(s)}</span><span class="age">${esc(age)}</span><span class="dist">${esc(dist)}</span><span class="grid">${esc(grid)}</span>`;
+    r.innerHTML = `<span class="call ${src}">${esc(call)}</span><span>${aprsIconHtml(s)}</span><span class="age ${age.cls}">${esc(age.text)}</span><span class="dist">${esc(dist)}</span><span class="grid">${esc(grid)}</span>`;
     r.onclick = () => openSheet(s);
     frag.appendChild(r);
   });

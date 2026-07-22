@@ -128,11 +128,13 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .fchip.adsb{ color:var(--purple); border-color:rgba(180,120,255,.45); }
 .fchip.off{ color:var(--faint); border-color:var(--border); background:transparent; opacity:.55; }
 .tbl{ display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
-.colhd,.trow{ display:grid; grid-template-columns:1fr 3.4rem 4.2rem 5.6rem 6.8rem; gap:.8rem; align-items:center; }
-.colhd{ font-size:.95rem; letter-spacing:.12em; color:var(--faint); padding:0 .2rem .5rem;
-        border-bottom:1px solid var(--border-soft); flex:0 0 auto; }
+.colhd,.trow{ display:grid; grid-template-columns:1fr 3rem 5rem 7.5rem 6rem; gap:.7rem; align-items:center; }
+/* Header + rows mirror the parent dashboard's APRS table: amber uppercase
+   column labels, compact rows with hairline dividers, age coloured by staleness. */
+.colhd{ font-size:1rem; letter-spacing:.09em; text-transform:uppercase; color:var(--warn); padding:0 .2rem .4rem;
+        border-bottom:1px solid var(--border); flex:0 0 auto; }
 .tscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; }
-.trow{ padding:.45rem .2rem; border-bottom:1px solid var(--border-soft); font-size:1.35rem; cursor:pointer; }
+.trow{ padding:.34rem .2rem; border-bottom:1px solid var(--border); font-size:1.2rem; cursor:pointer; }
 .trow:hover{ background:var(--panel-2); border-radius:.5rem; }
 .trow .call{ font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .call.rf{ color:var(--accent); } .call.is{ color:var(--blue); } .call.air{ color:var(--purple); }
@@ -140,7 +142,9 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
    the background-position math stays correct (don't scale with rem). */
 .trow .sym{ display:inline-block; width:24px; height:24px; background-repeat:no-repeat;
             image-rendering:pixelated; vertical-align:middle; }
-.age,.dist,.grid{ color:var(--dim); font-variant-numeric:tabular-nums; font-size:1.2rem; }
+.age,.dist,.grid{ color:var(--dim); font-variant-numeric:tabular-nums; font-size:1.1rem; white-space:nowrap; }
+/* age coloured by staleness (fmtAge cls), matching the parent list */
+.age.age-ok{ color:var(--accent); } .age.age-warn{ color:var(--warn); } .age.age-old{ color:var(--dim); }
 .trow.empty{ color:var(--faint); cursor:default; }
 .trow.empty:hover{ background:none; }
 .thint{ padding-top:.5rem; font-size:1rem; color:var(--faint); flex:0 0 auto; }
