@@ -139,8 +139,6 @@ html, body { height: 100%; margin: 0; }
 .filters .f-search { width: 100%; box-sizing: border-box; padding: 4px 9px; font-size: var(--fs-small);
   color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; }
 .f-group { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
-.f-group .f-label { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em;
-  color: var(--text-dim); margin-right: .15rem; min-width: 3.2em; }
 .fchip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim);
   background: none; border: 1px solid var(--border); border-radius: 4px; padding: 1px 7px; cursor: pointer; }
 .fchip .n { opacity: .55; margin-left: .3rem; }
@@ -322,7 +320,7 @@ function renderFilterBar() {
     ? tags.map(t => chip(t, tagCounts[t], _filters.tags.has(t), 'toggleTagFilter')).join('') + clear
     : '';
   document.getElementById('band-filters').innerHTML = bands.length
-    ? '<span class="f-label">band</span>' + bands.map(b => chip(b, bandCounts[b], _filters.bands.has(b), 'toggleBandFilter')).join('')
+    ? bands.map(b => chip(b, bandCounts[b], _filters.bands.has(b), 'toggleBandFilter')).join('')
     : '';
 }
 // norad -> { color, pass, track, l1, l2 }   for each checked/plotted satellite.
@@ -445,9 +443,10 @@ function inFootprintWindow(norad) {
 
 function renderRoster() {
   const shown = ROSTER.filter(passesFilters);
-  document.getElementById('roster-count').textContent =
-    shown.length === ROSTER.length ? ROSTER.length + ' sats'
-                                    : `${shown.length} of ${ROSTER.length}`;
+  const mon = Object.keys(PLOTTED).length;
+  const tally = shown.length === ROSTER.length
+    ? `${ROSTER.length} sats` : `${shown.length} of ${ROSTER.length} sats`;
+  document.getElementById('roster-count').textContent = `${mon} monitored - ${tally}`;
   if (!shown.length) {
     document.getElementById('roster').innerHTML =
       '<p style="color:var(--text-dim);padding:.5rem">No satellites match the filters.</p>';
