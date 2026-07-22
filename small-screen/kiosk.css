@@ -54,10 +54,10 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .face .zn .z{ font-size:1.1rem; letter-spacing:.22em; font-weight:700; }
 .face.utc .z{ color:var(--amber); } .face.loc .z{ color:var(--blue); }
 .face .zn .tz{ font-size:1.25rem; color:var(--dim); letter-spacing:.04em; }
-.face .time{ font-size:3.5rem; line-height:1.02; font-weight:600; letter-spacing:.01em;
+.face .time{ font-size:3rem; line-height:1.02; font-weight:600; letter-spacing:.01em;
              font-variant-numeric:tabular-nums; margin:.1rem 0 0; }
 .face.utc .time{ color:var(--amber); } .face.loc .time{ color:var(--blue); }
-.face .time .s{ font-size:1.8rem; opacity:.62; }
+.face .time .s{ font-size:1.5rem; opacity:.62; }
 .face .date{ font-size:1.2rem; color:var(--dim); letter-spacing:.04em; margin-top:.2rem;
              font-variant-numeric:tabular-nums; }
 
