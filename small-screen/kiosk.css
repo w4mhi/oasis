@@ -213,6 +213,19 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .alert.on.fire{ color:var(--warn); border-color:rgba(246,168,33,.45); background:rgba(246,168,33,.08); }
 .alert.on.torn,.alert.on.emg{ color:var(--down); border-color:rgba(255,91,74,.45); background:rgba(255,91,74,.08); }
 .alert.clear{ color:var(--accent); border-color:rgba(53,208,160,.35); background:rgba(53,208,160,.06); }
+/* ── SDR flow meters (footer, shown when calm) ─────────────────────────────────
+   Copied from the parent dashboard's APRS/ADS-B feed meters: blue fill = signal
+   flowing, red = silent. Proves the RTL-SDRs are receiving, not just "unit up". */
+.feedmeters{ display:flex; align-items:center; gap:1.6rem; min-width:0; }
+.feed-meter{ display:flex; align-items:center; gap:.5rem; }
+.feed-meter[hidden]{ display:none; }
+.feed-meter-name{ color:var(--text); font-weight:700; letter-spacing:.08em; font-size:1.05rem; }
+.feed-meter-track{ width:5rem; height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+.feed-meter-fill{ display:block; height:100%; width:0%; background:var(--blue); border-radius:3px;
+                  transition:width .25s ease, background .25s ease; }
+.feed-meter.silent .feed-meter-fill{ background:var(--down); }   /* red = deaf/unplugged */
+.feed-meter.flowing .feed-meter-fill{ background:var(--blue); }
+.feed-meter-label{ color:var(--text); font-variant-numeric:tabular-nums; font-size:1.05rem; white-space:nowrap; }
 
 /* ── overlays (SERVICES / OPS) + detail sheet — cover the screen ───────────────
    Kept close to the previous kiosk styling; sized in rem so they scale too. */

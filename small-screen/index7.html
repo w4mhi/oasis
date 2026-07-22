@@ -82,12 +82,26 @@
 
   </div>
 
-  <!-- ── FOOTER: area hazards / emergencies ─────────────────────────────────── -->
+  <!-- ── FOOTER: area hazards first (priority), SDR flow meters after ─────────── -->
   <div class="footer">
     <span class="alert fire" id="hz-fire">FIRES <b>0</b></span>
     <span class="alert torn" id="hz-torn">TORNADOES <b>0</b></span>
     <span class="alert emg"  id="hz-emg">EMERGENCY POI <b>0</b></span>
     <span class="alert clear" id="hz-clear">✓ all clear</span>
+    <!-- Blue = signal flowing, red = silent. Proves the RTL-SDRs are actually
+         receiving. Hidden the moment a hazard fires (emergencies own this bar). -->
+    <div class="feedmeters" id="feedmeters">
+      <span class="feed-meter" id="fm-aprs" hidden>
+        <span class="feed-meter-name">APRS</span>
+        <span class="feed-meter-track"><span class="feed-meter-fill" id="fm-aprs-fill"></span></span>
+        <span class="feed-meter-label" id="fm-aprs-rate"></span>
+      </span>
+      <span class="feed-meter" id="fm-adsb" hidden>
+        <span class="feed-meter-name">ADS-B</span>
+        <span class="feed-meter-track"><span class="feed-meter-fill" id="fm-adsb-fill"></span></span>
+        <span class="feed-meter-label" id="fm-adsb-rate"></span>
+      </span>
+    </div>
   </div>
 
   <!-- SERVICES OVERLAY -->
@@ -500,6 +514,8 @@ function renderHazardFooter() {
   set('hz-torn','torn','TORNADOES', counts.tornado||0);
   set('hz-emg','emg','EMERGENCY POI', counts.emergency||0);
   const clear = document.getElementById('hz-clear'); if (clear) clear.style.display = active ? 'none' : '';
+  // Hazards own the footer when active — hide the SDR meters until it's clear.
+  const fm = document.getElementById('feedmeters'); if (fm) fm.style.display = active ? 'none' : '';
 }
 
 // ── APRS + ADS-B live traffic ─────────────────────────────────────────────────
@@ -618,6 +634,45 @@ async function refreshAdsbRecent() {
         if (!r.ok) return; _adsbRecent = (await r.json()).aircraft||[]; scheduleAprsRender(); } catch (_) {}
 }
 
+// ── SDR flow meters (footer) ──────────────────────────────────────────────────
+// Copied from the parent dashboard. Blue bar = signal flowing, red = silent. A
+// systemd-active feed can still be deaf (dongle yanked / antenna dead), so this
+// proves the RTL-SDRs are truly receiving. Cadence kept gentle for the Pi Zero:
+// the APRS probe runs a ~1s tcpdump server-side (raise FEED_FLOW_MS to relax).
+const FEED_FLOW_MS = 4000;
+const ADSB_NOMINAL_SAMPLES_PER_SEC = 2_000_000;   // ~RTL-SDR's 2.4 MSPS default
+async function pollFeedFlow() {
+  if (document.visibilityState !== 'visible') return;
+  const meter = document.getElementById('fm-aprs'); if (!meter) return;
+  const fill = document.getElementById('fm-aprs-fill'), label = document.getElementById('fm-aprs-rate');
+  const st = _svcStates['feed'];                 // only meaningful while the feed unit is up
+  if (st !== 'up' && st !== 'warn') { meter.hidden = true; return; }
+  try {
+    const d = await (await fetch('/api/health/feed-flow', { cache:'no-store' })).json();
+    if (d.supported === false || d.ok === false) { meter.hidden = true; return; }
+    meter.hidden = false;
+    const pct = Math.max(0, Math.min(100, (d.pps / (d.nominal_pps || 50)) * 100));
+    if (fill) fill.style.width = pct.toFixed(0) + '%';
+    meter.className = 'feed-meter ' + (d.flowing ? 'flowing' : 'silent');
+    if (label) label.textContent = Math.round(d.pps || 0) + ' pkt/s';
+  } catch (_) { /* transient — keep last state */ }
+}
+async function pollAdsbFlow() {
+  if (document.visibilityState !== 'visible') return;
+  const meter = document.getElementById('fm-adsb'); if (!meter) return;
+  const fill = document.getElementById('fm-adsb-fill'), label = document.getElementById('fm-adsb-rate');
+  try {
+    const d = await (await fetch('/api/adsb/health', { cache:'no-store' })).json();
+    // adsb not installed / stats.json not written yet → nothing to show.
+    if (d.ok === false || d.flowing === undefined) { meter.hidden = true; return; }
+    meter.hidden = false;
+    const pct = Math.max(0, Math.min(100, (d.samples_per_sec / ADSB_NOMINAL_SAMPLES_PER_SEC) * 100));
+    if (fill) fill.style.width = pct.toFixed(0) + '%';
+    meter.className = 'feed-meter ' + (d.flowing ? 'flowing' : 'silent');
+    if (label) label.textContent = Math.round(d.messages_per_min || 0) + ' msg/min';
+  } catch (_) { meter.hidden = true; }
+}
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 (function () { localStorage.setItem('oasis_layout', '7inch'); })();
 loadConfig().then(loadInstalled).then(() => {
@@ -625,6 +680,7 @@ loadConfig().then(loadInstalled).then(() => {
   pingAll();                                   // one initial burst so the pill/tiles fill fast
   fetchStats(); fetchAPRS(); refreshAdsb(); refreshAdsbRecent();
   fetchHardware(); fetchSats(); loadHomeCoords();
+  pollFeedFlow(); pollAdsbFlow();
   const activeN = SERVICES.filter(s => !HIDDEN_SVCS.has(s.id)).length || 1;
   setInterval(pingNext,        Math.round(16000 / activeN));
   setInterval(fetchStats,      30000);
@@ -633,5 +689,7 @@ loadConfig().then(loadInstalled).then(() => {
   setInterval(refreshAdsbRecent, 60000);
   setInterval(fetchHardware,   30000);
   setInterval(fetchSats,       60000);
+  setInterval(pollFeedFlow,    FEED_FLOW_MS);
+  setInterval(pollAdsbFlow,    FEED_FLOW_MS);
 });
 </script>
