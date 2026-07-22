@@ -146,6 +146,10 @@ html, body { height: 100%; margin: 0; }
 .fchip.active .n { opacity: .8; }
 .f-clear { font-size: var(--fs-micro); color: var(--accent); background: none; border: none;
   cursor: pointer; padding: 1px 4px; margin-left: auto; }
+/* View mode: mutually-exclusive segmented control (All / Monitored / In 1h). */
+#view-modes { gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+#view-modes .fchip { border: none; border-right: 1px solid var(--border); border-radius: 0; padding: 2px 9px; }
+#view-modes .fchip:last-child { border-right: none; }
 /* Downlink mode buttons (checked sat only). Freq is on the face; state comes
    from /listen/status. Two *disabled* looks that must not be confused: busy =
    solid grey ("wait"), unsupported = ghosted/dashed ("never"). */
@@ -234,6 +238,11 @@ html, body { height: 100%; margin: 0; }
     <span class="count" id="roster-count">—</span>
   </header>
   <div class="filters" id="sat-filters">
+    <div class="f-group" id="view-modes">
+      <button class="fchip" data-view="all" onclick="setView('all')">All</button>
+      <button class="fchip" data-view="monitored" onclick="setView('monitored')">Monitored</button>
+      <button class="fchip" data-view="soon" onclick="setView('soon')">In 1h</button>
+    </div>
     <input class="f-search" id="sat-search" type="search" placeholder="Search name…" autocomplete="off"
            oninput="setSearchFilter(this.value)">
     <div class="f-group" id="band-filters"></div>
@@ -275,7 +284,32 @@ function saveFilters() {
 }
 function bandOf(mhz) { return mhz < 300 ? 'VHF' : mhz < 1000 ? 'UHF' : 'L-band'; }
 function satBands(s) { return new Set((s.downlinks || []).map(d => bandOf(d.freq_mhz))); }
+// View mode is a separate axis from tag/band/search: 'all' (whole list),
+// 'monitored' (checked/plotted birds), 'soon' (monitored + a pass within 1h,
+// matching the kiosk index7 window: in-progress OR rise ≤ 60 min).
+let _view = (() => { try { return localStorage.getItem('oasis_sat_view') || 'all'; } catch (e) { return 'all'; } })();
+function setView(v) {
+  _view = v;
+  try { localStorage.setItem('oasis_sat_view', v); } catch (e) { /* private mode */ }
+  applyViewButtons(); renderRoster();
+}
+function applyViewButtons() {
+  document.querySelectorAll('#view-modes .fchip').forEach(b =>
+    b.classList.toggle('active', b.dataset.view === _view));
+}
+function withinHour(s) {
+  const p = nextPassOf(s.norad);
+  if (!p) return false;
+  const now = Date.now();
+  const rise = new Date(p.rise).getTime(), set = new Date(p.set).getTime();
+  const inPass = rise <= now && now < set;
+  return inPass || (rise - now) / 60000 <= 60;
+}
 function passesFilters(s) {
+  if (_view !== 'all') {
+    if (!PLOTTED[s.norad]) return false;
+    if (_view === 'soon' && !withinHour(s)) return false;
+  }
   const q = _filters.q.trim().toLowerCase();
   if (q && !s.name.toLowerCase().includes(q)) return false;
   if (_filters.tags.size && !(s.labels || []).some(l => _filters.tags.has(l))) return false;
@@ -322,6 +356,7 @@ function renderFilterBar() {
   document.getElementById('band-filters').innerHTML = bands.length
     ? bands.map(b => chip(b, bandCounts[b], _filters.bands.has(b), 'toggleBandFilter')).join('')
     : '';
+  applyViewButtons();
 }
 // norad -> { color, pass, track, l1, l2 }   for each checked/plotted satellite.
 const PLOTTED = {};
