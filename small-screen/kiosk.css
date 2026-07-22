@@ -99,13 +99,16 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .sys .stat .k{ font-size:1.1rem; letter-spacing:.1em; color:var(--dim); }
 .sys .stat .v{ font-size:1.25rem; font-weight:700; font-variant-numeric:tabular-nums; color:var(--text); }
 .v.ok{ color:var(--accent); } .v.warm{ color:var(--warn); } .v.hot{ color:var(--down); }
-.svcpill{ display:inline-flex; align-items:center; gap:1rem; padding:.3rem 1.2rem; border-radius:999px;
-          border:1px solid var(--border); background:var(--panel-2); font-size:1.2rem;
-          font-variant-numeric:tabular-nums; margin:0 0 .45rem; cursor:pointer; }
-.svcpill .t{ letter-spacing:.14em; color:var(--dim); font-weight:700; font-size:.95rem; }
-.svcpill .up{ color:var(--accent); font-weight:700; }
-.svcpill .wn{ color:var(--warn); font-weight:700; }
-.svcpill .dn{ color:var(--faint); font-weight:700; }
+/* Exact match to the parent dashboard's .svc-pill: accent-dim pill, "N UP · N
+   WRN · N DN" with green / amber / red counts and dim separators. */
+.svcpill{ display:inline-flex; align-items:center; gap:.5rem; padding:.25rem 1rem; border-radius:999px;
+          border:1px solid rgba(53,208,160,.35); background:var(--panel-2); font-size:1.15rem;
+          letter-spacing:.04em; font-variant-numeric:tabular-nums; margin:0 0 .45rem; cursor:pointer; }
+.svcpill .t{ letter-spacing:.14em; color:var(--dim); font-weight:700; font-size:.9rem; }
+.svcpill .cnt-up{ color:var(--accent); }
+.svcpill .cnt-warn{ color:var(--warn); }
+.svcpill .cnt-down{ color:var(--down); }
+.svcpill .cnt-sep{ color:var(--dim); }
 .hwpills{ display:flex; flex-wrap:wrap; gap:.5rem; }
 .hwpill{ display:inline-flex; align-items:center; gap:.6rem; font-size:1.1rem; letter-spacing:.01em;
          padding:.3rem .9rem; border-radius:999px; border:1px solid var(--border); background:var(--panel-2); }

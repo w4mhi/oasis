@@ -48,9 +48,7 @@
           <div class="stat"><span class="k">DISK</span><span class="v" id="k-disk">—</span></div>
         </div>
         <div class="divider"></div>
-        <span class="svcpill" onclick="openOv('svc')" title="Open services">
-          <span class="t">SERVICES</span><span class="up" id="k-svc-up">— ✓</span><span class="wn" id="k-svc-warn">— ⚠</span><span class="dn" id="k-svc-off">— ✕</span>
-        </span>
+        <span class="svcpill" onclick="openOv('svc')" title="Open services"><span class="t">SERVICES</span><span class="cnt-up" id="k-svc-up">—</span><span class="cnt-sep">·</span><span class="cnt-warn" id="k-svc-warn">—</span><span class="cnt-sep">·</span><span class="cnt-down" id="k-svc-down">—</span></span>
         <div class="hwpills" id="devPills"><span class="hwempty">…</span></div>
       </div>
       <div class="status-actions">
@@ -204,11 +202,11 @@ const _svcStates = {};
 function updateSvcCounts() {
   const vals = Object.values(_svcStates);
   const up   = vals.filter(s => s === 'up').length;
-  const attn = vals.filter(s => s === 'warn' || s === 'down').length;
-  const off  = HIDDEN_SVCS.size;
+  const warn = vals.filter(s => s === 'warn').length;
+  const down = vals.filter(s => s === 'down').length;
   const set = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
-  set('k-svc-up', up + ' ✓'); set('k-svc-warn', attn + ' ⚠'); set('k-svc-off', off + ' ✕');
-  const ov = document.getElementById('ov-svc-st'); if (ov) ov.textContent = `${up} up · ${attn} attn · ${off} n/a`;
+  set('k-svc-up', up + ' UP'); set('k-svc-warn', warn + ' WRN'); set('k-svc-down', down + ' DN');
+  const ov = document.getElementById('ov-svc-st'); if (ov) ov.textContent = `${up} up · ${warn} warn · ${down} down`;
 }
 
 // ── Services (probed for the SERVICES overlay + the summary pill) ──────────────
