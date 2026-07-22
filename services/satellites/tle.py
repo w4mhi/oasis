@@ -1,13 +1,14 @@
 """TLE cache: parse, load, and freshness. Read-only at runtime — the cache is
-populated out-of-band by sync-tle.py (online). No network here."""
+populated out-of-band by build-roster.py (online). No network here."""
 import os
 import time
 
-# CelesTrak groups the roster draws from. Used only by sync-tle.py.
+# CelesTrak groups the roster draws from. Fetched by build-roster.py.
 GROUPS = {
     "weather":  "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
     "amateur":  "https://celestrak.org/NORAD/elements/gp.php?GROUP=amateur&FORMAT=tle",
     "stations": "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle",
+    "cubesat":  "https://celestrak.org/NORAD/elements/gp.php?GROUP=cubesat&FORMAT=tle",
 }
 
 

@@ -147,5 +147,16 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(d["changed"], [25544])      # transmitters differ
 
 
+class BuildRosterCliTest(unittest.TestCase):
+    def test_help_runs(self):
+        import subprocess
+        script = os.path.join(os.path.dirname(_HERE),
+                              "services", "satellites", "build-roster.py")
+        p = subprocess.run([sys.executable, script, "--help"],
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(p.returncode, 0)
+        self.assertIn("--cache", p.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

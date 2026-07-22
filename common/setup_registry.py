@@ -363,7 +363,7 @@ def build_registry(repo_root, payload=None):
             dependencies=["server"],
             install_fn=lambda: _setup_run_chain(repo_root, [
                 {"script": "services/satellites/install-predict.py"},
-                {"script": "services/satellites/sync-tle.py"},
+                {"script": "services/satellites/build-roster.py"},
                 {"script": "services/satellites/install-voice.py", "timeout": 600},
             ]),
             verify_fn=lambda: {"ok": True},

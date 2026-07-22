@@ -308,7 +308,7 @@ async function syncTle() {
   const flash = msg => { badge.textContent = msg; badge.className = 'badge warn';
     setTimeout(() => { badge.textContent = prev.text; badge.className = prev.cls; }, 5000); };
   try {
-    const j = await (await fetch('/api/satellites/sync-tle', { method: 'POST' })).json();
+    const j = await (await fetch('/api/satellites/refresh', { method: 'POST' })).json();
     if (j.ok) {
       setTleBadge(j.tle_age_days);
       // Pull the refreshed TLE lines into the roster + recompute pass predictions.
