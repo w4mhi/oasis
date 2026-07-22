@@ -11,6 +11,12 @@ GROUPS = {
     "cubesat":  "https://celestrak.org/NORAD/elements/gp.php?GROUP=cubesat&FORMAT=tle",
 }
 
+# High-value APT weather birds that CelesTrak lists in NO bulk group, so the
+# group pulls above miss them. build-roster.py gap-fills these individually via
+# CATNR (a handful of extra requests) and writes them to the cache as extra.txt.
+CATNR_URL = "https://celestrak.org/NORAD/elements/gp.php?CATNR={}&FORMAT=tle"
+GAPFILL_NORADS = (25338, 28654, 33591)  # NOAA 15 / 18 / 19 (137 MHz APT)
+
 
 def parse_tle_text(text):
     """Parse 3-line TLE blocks into {name: (line1, line2)}. Tolerant of blank

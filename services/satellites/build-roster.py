@@ -29,10 +29,34 @@ def _get(url, timeout=30):
 
 
 def _atomic_write(path, text):
-    tmp = f"{path}.tmp"
+    tmp = f"{path}.{os.getpid()}.tmp"   # pid-unique so concurrent runs don't clash
     with open(tmp, "w", encoding="utf-8") as fh:
         fh.write(text)
     os.replace(tmp, path)
+
+
+def _gapfill_blocks():
+    """CATNR-fetch the group-less APT weather birds (tle.GAPFILL_NORADS). A
+    single bird failing is non-fatal (skip it) — unlike a whole-group failure."""
+    blocks = []
+    for norad in tle.GAPFILL_NORADS:
+        try:
+            t = _get(tle.CATNR_URL.format(norad))
+        except Exception:  # noqa: BLE001 — one missing bird must not abort the build
+            continue
+        if t.lstrip().startswith("Invalid") or "1 " not in t:
+            continue
+        blocks.append(t.strip())
+    return blocks
+
+
+def _prune_stale_cache(cache_dir):
+    """Remove cache *.txt files this build no longer produces (e.g. a leftover
+    group from an older version) so load_cache() can't merge stale orbits."""
+    known = {f"{g}.txt" for g in tle.GROUPS} | {"extra.txt"}
+    for fn in os.listdir(cache_dir):
+        if fn.endswith(".txt") and fn not in known:
+            os.remove(os.path.join(cache_dir, fn))
 
 
 def main():
@@ -49,6 +73,7 @@ def main():
         sats_raw = json.loads(_get(satnogs.SAT_API))
         txs_raw = json.loads(_get(satnogs.TX_API))
         tle_texts = {g: _get(u) for g, u in tle.GROUPS.items()}
+        extra_blocks = _gapfill_blocks()
     except Exception as e:  # noqa: BLE001 — any network/parse failure is a no-op
         print(f"build-roster: fetch failed ({e}); leaving existing data untouched",
               file=sys.stderr)
@@ -58,6 +83,10 @@ def main():
     for group, text in tle_texts.items():
         if "1 " in text:
             _atomic_write(os.path.join(args.cache, f"{group}.txt"), text)
+    if extra_blocks:
+        _atomic_write(os.path.join(args.cache, "extra.txt"),
+                      "\n".join(extra_blocks) + "\n")
+    _prune_stale_cache(args.cache)
 
     tle_index = tle.index_by_norad(tle.load_cache(args.cache))
     sats = satnogs.parse_satellites(sats_raw)

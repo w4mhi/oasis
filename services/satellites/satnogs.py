@@ -20,8 +20,9 @@ _MODE_LABELS = {
     "APT": ("WEATHER",), "LRPT": ("WEATHER",),
     "FM": ("VOICE", "FM"), "FMN": ("VOICE", "FM"), "NFM": ("VOICE", "FM"),
     "SSTV": ("SSTV",),
-    "SSB": ("LINEAR", "SSB"), "CW": ("LINEAR", "SSB"),
-    "USB": ("LINEAR", "SSB"), "LSB": ("LINEAR", "SSB"),
+    # SSB mode implies a linear/SSB channel; CW/USB/LSB do NOT (a CW telemetry
+    # beacon is not a transponder). A linear transponder is caught by `type`.
+    "SSB": ("LINEAR", "SSB"),
     "BPSK": ("DATA",), "GMSK": ("DATA",), "AFSK": ("DATA",),
     "FSK": ("DATA",), "GFSK": ("DATA",), "MSK": ("DATA",),
 }
@@ -29,6 +30,12 @@ _MODE_LABELS = {
 # description keyword (upper-cased) -> label. APRS/SSTV intent lives in the
 # free-text description, not the `mode` field.
 _DESC_LABELS = (("APRS", "APRS"), ("SSTV", "SSTV"))
+
+# 137.0-138.0 MHz is the meteorological-satellite VHF downlink band (NOAA APT,
+# METEOR LRPT, Direct Sounder Broadcast). SatNOGS labels these downlinks with
+# assorted modes (APT/DSB/FSK/FM), so the frequency is the reliable WEATHER
+# signal, not the mode string.
+_WX_BAND_MHZ = (137.0, 138.0)
 
 
 def _mode_tokens(mode):
@@ -44,6 +51,10 @@ def _tx_labels(t):
     for kw, lab in _DESC_LABELS:
         if kw in desc:
             tags.add(lab)
+    dl = t.get("downlink")
+    if dl and dl.get("freq_mhz") is not None \
+            and _WX_BAND_MHZ[0] <= dl["freq_mhz"] <= _WX_BAND_MHZ[1]:
+        tags.add("WEATHER")
     if (t.get("type") or "") == "Transponder":
         tags.update(("LINEAR", "SSB"))
     # An AFSK/FSK packet channel described as APRS is APRS, not generic DATA.

@@ -52,6 +52,18 @@ class LabelsTest(unittest.TestCase):
             [{"mode": "APT", "type": "Transmitter", "description": ""}], 33591),
             ["WEATHER"])
 
+    def test_weather_from_137mhz_band(self):
+        # NOAA/METEOR downlinks in 137-138 MHz are WEATHER regardless of the
+        # (non-APT) mode SatNOGS assigns them.
+        labs = satnogs.labels_for([{"mode": "DSB", "type": "Transmitter",
+            "description": "Direct Sounder Broadcast",
+            "downlink": {"freq_mhz": 137.35, "freq_high_mhz": None}}], 25338)
+        self.assertIn("WEATHER", labs)
+        # A 435 MHz downlink with the same mode is NOT weather.
+        labs2 = satnogs.labels_for([{"mode": "DSB", "type": "Transmitter",
+            "description": "", "downlink": {"freq_mhz": 435.0, "freq_high_mhz": None}}], 1)
+        self.assertNotIn("WEATHER", labs2)
+
     def test_messy_mode_token_matches(self):
         # "GMSK USP" must still resolve to DATA via token matching.
         self.assertEqual(satnogs.labels_for(
@@ -85,6 +97,14 @@ class LabelsTest(unittest.TestCase):
             [{"mode": "SSB", "type": "Transponder", "description": ""}], 44909)
         self.assertIn("LINEAR", labs)
         self.assertIn("SSB", labs)
+
+    def test_cw_beacon_does_not_imply_linear(self):
+        # A CW telemetry beacon (Transmitter, not Transponder) is not a linear
+        # transponder — it must not pollute the LINEAR/SSB filter.
+        labs = satnogs.labels_for(
+            [{"mode": "CW", "type": "Transmitter", "description": "beacon"}], 12345)
+        self.assertNotIn("LINEAR", labs)
+        self.assertNotIn("SSB", labs)
 
     def test_unmapped_mode_yields_no_label(self):
         self.assertEqual(satnogs.labels_for(
@@ -145,6 +165,16 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(d["added"], [33591])
         self.assertEqual(d["removed"], [40000])
         self.assertEqual(d["changed"], [25544])      # transmitters differ
+
+
+class GapfillConfigTest(unittest.TestCase):
+    def test_noaa_apt_birds_are_gapfilled(self):
+        # NOAA 15/18/19 sit in no CelesTrak group; they must be gap-filled by
+        # NORAD so the APT weather birds survive the intersection.
+        import tle
+        for norad in (25338, 28654, 33591):
+            self.assertIn(norad, tle.GAPFILL_NORADS)
+        self.assertIn("CATNR={}", tle.CATNR_URL)
 
 
 class BuildRosterCliTest(unittest.TestCase):
