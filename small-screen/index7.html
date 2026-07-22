@@ -36,9 +36,7 @@
           </span>
           <span class="upill" id="k-units" onclick="toggleUnits()" title="Toggle imperial / metric">IMPERIAL</span>
         </div>
-        <div class="gpsrow" id="k-gps">
-          <span class="dot"></span><span class="mode" id="k-gps-mode">GPS —</span><span class="sub" id="k-gps-sub">—</span>
-        </div>
+        <div class="gpspill" id="k-gps"><span class="mode" id="k-gps-mode">GPS —</span><span class="sub" id="k-gps-sub">—</span></div>
         <div class="divider"></div>
         <div class="sys">
           <div class="stat"><span class="k">CPU</span><span class="v" id="k-cpu">—</span></div>
@@ -397,7 +395,7 @@ function renderGps(g) {
   else if (mode===2) { state='fix2d'; modeTxt='2D'; }
   else if (mode>=0) { state='nofix'; modeTxt='NO FIX'; }
   else { state='nogps'; modeTxt='NO GPS'; }
-  card.className = 'gpsrow '+state;
+  card.className = 'gpspill '+state;
   const m = document.getElementById('k-gps-mode'); if (m) m.textContent = 'GPS '+modeTxt;
   const sub = document.getElementById('k-gps-sub');
   if (sub) sub.innerHTML = used != null

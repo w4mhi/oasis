@@ -82,15 +82,16 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 /* Same pill style as OPS, but blue. Two-line label (REFRESH / DISPLAY). */
 .refresh-btn{ color:var(--blue); border-color:var(--blue); background:rgba(92,184,255,.08); line-height:1.12; }
 .refresh-btn:active{ background:rgba(92,184,255,.18); }
-.gpsrow{ display:flex; align-items:center; gap:.9rem; font-size:1.4rem; margin-bottom:.45rem; }
-.dot{ width:.9rem; height:.9rem; border-radius:50%; flex:0 0 auto; background:var(--faint); }
-.gpsrow .mode{ font-weight:700; } .gpsrow .sub{ color:var(--dim); font-size:1.25rem; }
-/* dot = filled circle (background); mode = text (colour only — never a fill,
-   or colour==background hides the text and it reads as a grey bar). */
-#k-gps.nogps .dot{ background:var(--dim); }    #k-gps.nogps .mode{ color:var(--dim); }
-#k-gps.nofix .dot{ background:var(--down); }    #k-gps.nofix .mode{ color:var(--down); }
-#k-gps.fix2d .dot{ background:var(--warn); }    #k-gps.fix2d .mode{ color:var(--warn); }
-#k-gps.fix3d .dot{ background:var(--accent); box-shadow:0 0 .8rem -.1rem var(--accent); }
+/* GPS as a pill (no dot), same size + shape as the header pills; the fix-state
+   colour lives on the mode text. */
+.gpspill{ display:inline-flex; align-self:flex-start; align-items:baseline; gap:.5rem; padding:.3rem 1rem;
+          border-radius:999px; border:1px solid var(--border); background:var(--panel-2);
+          font-size:1.2rem; margin:0 0 .5rem; }
+.gpspill .mode{ font-weight:700; }
+.gpspill .sub{ color:var(--dim); font-size:1.05rem; }
+#k-gps.nogps .mode{ color:var(--dim); }
+#k-gps.nofix .mode{ color:var(--down); }
+#k-gps.fix2d .mode{ color:var(--warn); }
 #k-gps.fix3d .mode{ color:var(--accent); }
 #k-gps .sub .gps-sat{ color:var(--text); }
 .divider{ height:1px; background:var(--border-soft); margin:.5rem 0; }
