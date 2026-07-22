@@ -181,7 +181,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 
 /* ── satellites ─────────────────────────────────────────────────────────────── */
 .sats{ flex:0 0 29rem; min-width:0; }
-.satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; }
+.satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.9rem; }
 /* Plain upcoming pass = plain row (divider only). Only NOW (green pill) and
    ≤10min (amber pill) get a border + glowing dot — see .sat.now / .sat.soon. */
 .sat{ padding:.55rem .2rem .6rem; border-bottom:1px solid var(--border-soft); }
