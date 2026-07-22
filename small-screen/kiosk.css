@@ -22,7 +22,10 @@
    Chromium over this page, so hiding it here covers the whole screen; works on
    X11 and Wayland with no extra package. !important beats buttons' cursor:pointer. */
 *{cursor:none !important}
-html{ font-size:clamp(9px, 2.02vh, 24px); }
+/* Font size has a readable FLOOR (~13px) so the small 5"/7" panels stay legible
+   — tying it to viewport height alone shrank exactly the screens that need big
+   text. Only the large 1920×1200 panel scales up past the floor. */
+html{ font-size:clamp(13px, 1.9vh, 24px); }
 html,body{ margin:0; height:100%; }
 body{ background:var(--bg); color:var(--text); font-family:var(--mono);
       -webkit-font-smoothing:antialiased; overflow:hidden; }
@@ -30,7 +33,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .kiosk{ width:100vw; height:100vh; display:flex; flex-direction:column; gap:.8rem;
         padding:.8rem; position:relative; }
 .row{ display:flex; gap:.8rem; min-height:0; }
-.row.top{ flex:0 0 20rem; }
+.row.top{ flex:0 0 auto; }
 .row.bot{ flex:1 1 auto; min-height:0; }
 
 .card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r);
@@ -51,10 +54,10 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .face .zn .z{ font-size:1.1rem; letter-spacing:.22em; font-weight:700; }
 .face.utc .z{ color:var(--amber); } .face.loc .z{ color:var(--blue); }
 .face .zn .tz{ font-size:1.25rem; color:var(--dim); letter-spacing:.04em; }
-.face .time{ font-size:4.3rem; line-height:1.02; font-weight:600; letter-spacing:.01em;
+.face .time{ font-size:3.5rem; line-height:1.02; font-weight:600; letter-spacing:.01em;
              font-variant-numeric:tabular-nums; margin:.1rem 0 0; }
 .face.utc .time{ color:var(--amber); } .face.loc .time{ color:var(--blue); }
-.face .time .s{ font-size:2.2rem; opacity:.62; }
+.face .time .s{ font-size:1.8rem; opacity:.62; }
 .face .date{ font-size:1.2rem; color:var(--dim); letter-spacing:.04em; margin-top:.2rem;
              font-variant-numeric:tabular-nums; }
 
@@ -128,12 +131,19 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .fchip.adsb{ color:var(--purple); border-color:rgba(180,120,255,.45); }
 .fchip.off{ color:var(--faint); border-color:var(--border); background:transparent; opacity:.55; }
 .tbl{ display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
-.colhd,.trow{ display:grid; grid-template-columns:1fr 3rem 5rem 7.5rem 6rem; gap:.7rem; align-items:center; }
+.colhd,.trow{ display:grid; grid-template-columns:1.3fr 2.6rem 1fr 1.3fr 1.1fr; gap:.7rem; align-items:center; }
 /* Header + rows mirror the parent dashboard's APRS table: amber uppercase
    column labels, compact rows with hairline dividers, age coloured by staleness. */
 .colhd{ font-size:1rem; letter-spacing:.09em; text-transform:uppercase; color:var(--warn); padding:0 .2rem .4rem;
         border-bottom:1px solid var(--border); flex:0 0 auto; }
 .tscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; }
+/* Custom scrollbar (touch-friendly, accent thumb) — not the OS default. Shared
+   by the Traffic + Satellites scroll areas + the overlay bodies. */
+.tscroll::-webkit-scrollbar, .satscroll::-webkit-scrollbar, .ov-body::-webkit-scrollbar{ width:14px; }
+.tscroll::-webkit-scrollbar-track, .satscroll::-webkit-scrollbar-track, .ov-body::-webkit-scrollbar-track{ background:var(--panel); border-radius:4px; }
+.tscroll::-webkit-scrollbar-thumb, .satscroll::-webkit-scrollbar-thumb, .ov-body::-webkit-scrollbar-thumb{
+  background:color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius:4px; }
+.tscroll::-webkit-scrollbar-thumb:hover, .satscroll::-webkit-scrollbar-thumb:hover, .ov-body::-webkit-scrollbar-thumb:hover{ background:var(--accent); }
 .trow{ padding:.34rem .2rem; border-bottom:1px solid var(--border); font-size:1.2rem; cursor:pointer; }
 .trow:hover{ background:var(--panel-2); border-radius:.5rem; }
 .trow .call{ font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
