@@ -152,7 +152,8 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 /* Header + rows mirror the parent dashboard's APRS table: amber uppercase
    column labels, compact rows with hairline dividers, age coloured by staleness. */
 .colhd{ font-size:1rem; letter-spacing:.09em; text-transform:uppercase; color:var(--warn); padding:0 .2rem .4rem;
-        border-bottom:1px solid var(--border); flex:0 0 auto; }
+        flex:0 0 auto; }
+.heard{ color:var(--warn); font-weight:700; font-variant-numeric:tabular-nums; font-size:1.05rem; }
 .tscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; }
 /* Custom scrollbar (touch-friendly, accent thumb) — not the OS default. Shared
    by the Traffic + Satellites scroll areas + the overlay bodies. */
