@@ -38,20 +38,19 @@
         </div>
         <div class="gpspill" id="k-gps"><span class="mode" id="k-gps-mode">GPS —</span><span class="sub" id="k-gps-sub">—</span></div>
         <div class="divider"></div>
-        <div class="sys">
-          <div class="stat"><span class="k">CPU</span><span class="v" id="k-cpu">—</span></div>
-          <div class="stat"><span class="k">RAM</span><span class="v" id="k-ram">—</span></div>
-          <div class="stat"><span class="k">LOAD</span><span class="v" id="k-load">—</span></div>
-          <div class="stat"><span class="k">TEMP</span><span class="v" id="k-temp" style="cursor:pointer" title="Tap to toggle °C / °F">—</span></div>
-          <div class="stat"><span class="k">DISK</span><span class="v" id="k-disk">—</span></div>
-        </div>
-        <div class="divider"></div>
         <span class="svcpill" onclick="openOv('svc')" title="Open services"><span class="t">SERVICES</span><span class="cnt-up" id="k-svc-up">—</span><span class="cnt-sep">·</span><span class="cnt-warn" id="k-svc-warn">—</span><span class="cnt-sep">·</span><span class="cnt-down" id="k-svc-down">—</span></span>
         <div class="hwpills" id="devPills"><span class="hwempty">…</span></div>
       </div>
       <div class="status-actions">
         <button class="ops" onclick="openOv('ops')">OPS ▸</button>
         <button class="ops refresh-btn" onclick="location.reload()">REFRESH<br>DISPLAY</button>
+        <div class="syspill">
+          <div class="srow"><span class="k">CPU</span><span class="v" id="k-cpu">—</span></div>
+          <div class="srow"><span class="k">RAM</span><span class="v" id="k-ram">—</span></div>
+          <div class="srow"><span class="k">LOAD</span><span class="v" id="k-load">—</span></div>
+          <div class="srow"><span class="k">TEMP</span><span class="v" id="k-temp" style="cursor:pointer" title="Tap to toggle °C / °F">—</span></div>
+          <div class="srow"><span class="k">DISK</span><span class="v" id="k-disk">—</span></div>
+        </div>
       </div>
     </div>
 

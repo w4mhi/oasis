@@ -95,10 +95,14 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 #k-gps.fix3d .mode{ color:var(--accent); }
 #k-gps .sub .gps-sat{ color:var(--text); }
 .divider{ height:1px; background:var(--border-soft); margin:.5rem 0; }
-.sys{ display:grid; grid-template-columns:repeat(5,1fr); gap:.2rem 1rem; }
-.sys .stat{ display:flex; flex-direction:column; }
-.sys .stat .k{ font-size:1.1rem; letter-spacing:.1em; color:var(--dim); }
-.sys .stat .v{ font-size:1.25rem; font-weight:700; font-variant-numeric:tabular-nums; color:var(--text); }
+/* System as a stacked pill under REFRESH DISPLAY — one stat per line, styled
+   like the Services pill (accent-dim border, panel-2). No header for now. */
+.syspill{ display:flex; flex-direction:column; gap:.15rem; padding:.4rem 1rem; border-radius:.9rem;
+          border:1px solid rgba(53,208,160,.35); background:var(--panel-2);
+          font-size:1.15rem; color:var(--text); font-variant-numeric:tabular-nums; }
+.syspill .srow{ display:flex; gap:.6rem; }
+.syspill .k{ min-width:3.2rem; color:var(--dim); letter-spacing:.05em; }
+.syspill .v{ font-weight:700; }
 .v.ok{ color:var(--accent); } .v.warm{ color:var(--warn); } .v.hot{ color:var(--down); }
 /* Exact match to the parent dashboard's .svc-pill: accent-dim pill, "N UP · N
    WRN · N DN" with green / amber / red counts and dim separators. */
