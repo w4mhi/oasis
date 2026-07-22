@@ -59,4 +59,7 @@
   };
 
   root.maidenhead = api;
+  // Also export for node --test (tests/js/maidenhead.test.js); the guard keeps
+  // browsers happy where `module` is undefined.
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
