@@ -400,8 +400,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
    card stays put (collapsed "0") instead of popping in and out of the stack. */
 .alert-empty{color:var(--text-dim);font-size:var(--fs-micro);}
 /* Per-hazard rows in the APRS Alerts card — one coloured row per hazard type
-   present (colour from the hazard catalog via the inline --hz custom property). */
-.hazard-alert-row{display:flex;align-items:baseline;gap:.5rem;padding:3px 0;}
+   present (colour from the hazard catalog via the inline --hz custom property).
+   Each row is a click-to-isolate control: click 🔥 Fire to show only fires on the
+   map (solo that category), click the soloed row again to restore all. */
+.hazard-alert-row{display:flex;align-items:baseline;gap:.5rem;padding:3px 4px;cursor:pointer;border-radius:3px;}
+.hazard-alert-row:hover{background:color-mix(in srgb,var(--hz) 14%,transparent);}
+.hazard-alert-row:focus-visible{outline:2px solid var(--hz);outline-offset:-2px;}
+/* Soloed row — filled swatch so it's clear this hazard is the active map filter. */
+.hazard-alert-row.is-solo{background:color-mix(in srgb,var(--hz) 22%,transparent);box-shadow:inset 3px 0 0 var(--hz);}
 .hazard-alert-label{color:var(--hz);font-weight:700;white-space:nowrap;}
 .hazard-alert-count{color:var(--hz);font-weight:700;margin-left:auto;}
 /* "N dismissed · restore" footer in the APRS Alerts card. */
@@ -727,7 +733,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
       <thead>
         <tr>
           <th class="aprs-col-filterable">Call<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by callsign">&#9660;</button><input id="callFilter" class="aprs-col-inp" type="text" placeholder="all" autocomplete="off" spellcheck="false" title="Prefix (K7ISQ catches all SSIDs) or * wildcard (K7*9)"></th><th class="aprs-col-filterable">Type<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by type">&#9660;</button><select id="aprs-col-type" class="aprs-col-sel" onchange="onTypeColFilter()" title="Filter by type"><option value="All">All</option></select></th><th>Last heard</th><th class="aprs-col-filterable">Age<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by age">&#9660;</button><select id="filterSel" class="aprs-col-sel" onchange="onAgeColFilter()" title="Filter by age (time since last heard)"><option value="0">All</option><option value="15">≤ 15m</option><option value="30">≤ 30m</option><option value="60">≤ 60m</option><option value="1440" selected>≤ 24h</option></select></th><th>Speed</th>
-          <th>Alt</th><th class="aprs-col-filterable">Grid<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by grid">&#9660;</button><select id="aprs-col-grid" class="aprs-col-sel" onchange="onGridColFilter()" title="Filter by grid field"><option value="All">All</option></select></th><th>Dist</th><th class="aprs-col-filterable">Src<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by source (RF / APRS-IS)">&#9660;</button><select id="aprs-col-src" class="aprs-col-sel" onchange="onSrcColFilter()" title="Filter by source"><option value="all">All</option><option value="rf">RF</option><option value="is">IS</option><option value="adsb">ADS-B</option></select></th><th>Comment</th>
+          <th>Alt</th><th class="aprs-col-filterable">Grid<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by grid">&#9660;</button><select id="aprs-col-grid" class="aprs-col-sel" onchange="onGridColFilter()" title="Filter by grid field"><option value="All">All</option></select></th><th>Dist</th><th class="aprs-col-filterable">Src<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by source (RF / APRS-IS)">&#9660;</button><select id="aprs-col-src" class="aprs-col-sel" onchange="onSrcColFilter()" title="Filter by source"><option value="all">All</option><option value="aprs">APRS</option><option value="rf">RF</option><option value="is">IS</option><option value="adsb">ADS-B</option></select></th><th>Comment</th>
         </tr>
       </thead>
       <tbody id="aprs-list-tbody"></tbody>
@@ -1407,12 +1413,20 @@ function updateEmergenciesPanel() {
     return;
   }
   countEl.textContent = total;
-  // One coloured row per hazard type present, in catalog order.
-  body.innerHTML = _HAZARDS.filter(h => counts[h.key]).map(h =>
-    '<div class="hazard-alert-row" style="--hz:' + _escHtml(h.color || '#ff5c33') + '">' +
-      '<span class="hazard-alert-label">' + _escHtml(h.emoji || '⚠') + ' ' + _escHtml(h.label || h.key) + '</span>' +
-      '<span class="hazard-alert-count">' + counts[h.key] + '</span></div>'
-  ).join('') + footer;
+  // One coloured row per hazard type present, in catalog order. Each row is a
+  // click-to-isolate control (see the #emergencies-body click handler): clicking
+  // it solos that hazard category on the map — "show only Fires" in one tap.
+  body.innerHTML = _HAZARDS.filter(h => counts[h.key]).map(h => {
+    const solo = _isSoloCat(h.key);
+    const label = _escHtml(h.label || h.key);
+    return '<div class="hazard-alert-row' + (solo ? ' is-solo' : '') + '"' +
+      ' style="--hz:' + _escHtml(h.color || '#ff5c33') + '"' +
+      ' data-objcat="' + _escHtml(h.key) + '" role="button" tabindex="0"' +
+      ' aria-pressed="' + (solo ? 'true' : 'false') + '"' +
+      ' title="' + (solo ? 'Showing only ' + label + ' — click to restore all' : 'Click to show only ' + label + ' on the map') + '">' +
+      '<span class="hazard-alert-label">' + _escHtml(h.emoji || '⚠') + ' ' + label + '</span>' +
+      '<span class="hazard-alert-count">' + counts[h.key] + '</span></div>';
+  }).join('') + footer;
   panel.hidden = false;
   if (!_emergencyShown) { panel.classList.remove('collapsed'); _emergencyShown = true; }
 }
@@ -1488,11 +1502,18 @@ function setAllObjects(on) {
   applyAdsbFilter();
 }
 
+// True when `key` is the only enabled category (i.e. currently soloed). Shared by
+// soloObject (toggle detection) and the APRS Alerts card (active-row highlight).
+function _isSoloCat(key) {
+  const keys = Object.keys(objCatState);
+  return objCatState[key] && keys.every(k => k === key || !objCatState[k]);
+}
+
 // Solo a category — click a category name to show only that type; click the
 // soloed type again to restore all.
 function soloObject(key) {
   const keys = Object.keys(objCatState);
-  const isSolo = objCatState[key] && keys.every(k => k === key || !objCatState[k]);
+  const isSolo = _isSoloCat(key);
   keys.forEach(k => objCatState[k] = isSolo ? true : (k === key));
   updateObjectsPanel();
   applyFilter();
@@ -1527,23 +1548,30 @@ document.getElementById('objects-body').addEventListener('click', (e) => {
   soloObject(name.dataset.objcat);
 });
 
-// The Emergencies card carries the same fire/safety rows, so its checkbox + name
-// clicks drive the exact same handlers as APRS Info above.
-document.getElementById('emergencies-body').addEventListener('change', (e) => {
-  const cb = e.target.closest('input[data-objcat]');
-  if (!cb) return;
-  objCatState[cb.dataset.objcat] = cb.checked;
-  _syncObjCatCheckbox(cb.dataset.objcat);   // mirror into the APRS Info card
-  _syncTypeColFromPanel();
-  applyFilter();
-  applyAdsbFilter();
-});
+// The APRS Alerts card renders one click-to-isolate row per hazard type present
+// (see updateEmergenciesPanel). Clicking a row solos that hazard category on the
+// map — the "show only Fires" emergency view — and clicking the soloed row again
+// restores all. soloObject drives the shared objCatState, so the matching APRS
+// Info checkbox stays in sync. Keyboard: Enter/Space activate the focused row.
+function _soloHazardRow(row) {
+  const key = row.dataset.objcat;
+  if (!(key in objCatState)) return;   // hazard not currently on the map
+  soloObject(key);
+}
 document.getElementById('emergencies-body').addEventListener('click', (e) => {
-  const name = e.target.closest('.obj-name');
-  if (!name) return;
+  if (e.target.closest('a')) return;   // let the "restore" footer link work
+  const row = e.target.closest('.hazard-alert-row');
+  if (!row) return;
   e.preventDefault();
   e.stopPropagation();
-  soloObject(name.dataset.objcat);
+  _soloHazardRow(row);
+});
+document.getElementById('emergencies-body').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const row = e.target.closest('.hazard-alert-row');
+  if (!row) return;
+  e.preventDefault();
+  _soloHazardRow(row);
 });
 
 // ── Station markers ──────────────────────────────────────────────────────────
@@ -1947,14 +1975,14 @@ function onGridColFilter() {
   applyFilter();
 }
 
-// SRC — single-select over {all, rf, is, adsb}. RF/IS drive the path chips
-// (pathRF/pathIS); ADS-B drives aircraft visibility (showADSB). Each source is
-// exclusive: picking one shows only that source's rows on the map + list.
+// SRC — single-select over {all, aprs, rf, is, adsb}. RF/IS drive the path chips
+// (pathRF/pathIS); ADS-B drives aircraft visibility (showADSB). 'aprs' = both APRS
+// sources (RF+IS) with aircraft filtered out. Picking one shows only that set.
 function onSrcColFilter() {
   const sel = document.getElementById('aprs-col-src');
   const v = sel.value;
-  pathRF = (v === 'all' || v === 'rf');
-  pathIS = (v === 'all' || v === 'is');
+  pathRF = (v === 'all' || v === 'aprs' || v === 'rf');
+  pathIS = (v === 'all' || v === 'aprs' || v === 'is');
   showADSB = (v === 'all' || v === 'adsb');
   localStorage.setItem('oasis_path_rf', pathRF ? '1' : '0');
   localStorage.setItem('oasis_path_is', pathIS ? '1' : '0');
@@ -1966,13 +1994,15 @@ function onSrcColFilter() {
   if (autoPath) _refreshAutoPaths();
 }
 
-// Reflect pathRF/pathIS/showADSB onto the SRC dropdown. All three on → All; a
-// single source on → that source; anything else (e.g. both chips off) → All.
+// Reflect pathRF/pathIS/showADSB onto the SRC dropdown. All three on → All;
+// RF+IS without aircraft → APRS; a single source on → that source; anything
+// else (e.g. both chips off) → All.
 function _syncSrcColFromChips() {
   const sel = document.getElementById('aprs-col-src');
   if (!sel) return;
   let v = 'all';
-  if (pathRF && !pathIS && !showADSB) v = 'rf';
+  if (pathRF && pathIS && !showADSB) v = 'aprs';
+  else if (pathRF && !pathIS && !showADSB) v = 'rf';
   else if (!pathRF && pathIS && !showADSB) v = 'is';
   else if (!pathRF && !pathIS && showADSB) v = 'adsb';
   sel.value = v;
@@ -2031,6 +2061,11 @@ function applyFilter() {
   plotStations(filtered);                 // map plots APRS stations only
   _renderDrawer(pred, filtered);          // drawer mirrors the map + aircraft
   if (coverageOn) _refreshCoverage(filtered);
+  // Keep the path overlay consistent with the visible set: auto-path redraws
+  // (now filter-aware), and a manually-shown path clears if its station is now
+  // hidden — otherwise an RF/IS line lingers for a filtered-out station.
+  if (autoPath) _refreshAutoPaths();
+  else if (activePath && !filtered.some(s => s.callsign === activePath)) clearPath();
   const total = allStations.length;
   const shown = filtered.length;
   const scEl = document.getElementById('stationCount');
@@ -3064,19 +3099,16 @@ function toggleAutoPath() {
   }
 }
 
-// Flip an auto-path source filter (RF or IS), persist it, restyle the chip, and
-// redraw immediately if auto-path is live.
+// Flip an APRS source filter (RF or IS), persist it, restyle the chip, and redraw
+// immediately if auto-path is live. These chips gate ONLY the APRS RF/IS stations
+// (either, or both when both are on) — ADS-B aircraft are controlled solely by the
+// Src dropdown, so leave showADSB untouched.
 function togglePathFilter(src) {
   if (src === 'rf') { pathRF = !pathRF; localStorage.setItem('oasis_path_rf', pathRF ? '1' : '0'); }
   else              { pathIS = !pathIS; localStorage.setItem('oasis_path_is', pathIS ? '1' : '0'); }
-  // Chips have no ADS-B toggle, so mirror the old rule: aircraft show iff both
-  // RF and IS are on. (The Src dropdown's ADS-B state is set only via the dropdown.)
-  showADSB = pathRF && pathIS;
-  localStorage.setItem('oasis_show_adsb', showADSB ? '1' : '0');
   _syncPathChips();
-  _syncSrcColFromChips();      // keep the drawer Src dropdown in sync
+  _syncSrcColFromChips();      // keep the drawer Src dropdown in sync where it can represent the state
   applyFilter();               // hide/show that source's stations on the map + list
-  applyAdsbFilter();           // and aircraft markers on the map
   if (autoPath) _refreshAutoPaths();
 }
 
@@ -3784,8 +3816,12 @@ function _renderPathRxMarkers(features) {
 function _refreshAutoPaths() {
   const src = map.getSource('aprs-path');
   if (!src) return;
-  let calls = allStations.filter(s => _newCallsigns.has(s.callsign));
-  if (!calls.length && _latestStation) calls = [_latestStation];
+  // Only draw lines for stations that pass the current column filter — a station
+  // hidden by the Type/Grid/Src/callsign filters must not keep its RF/IS path on
+  // the map (e.g. isolating "Aircraft", which have no auto-path, clears the overlay).
+  const pred = _columnFilterPredicate();
+  let calls = allStations.filter(s => _newCallsigns.has(s.callsign) && pred(s));
+  if (!calls.length && _latestStation && pred(_latestStation)) calls = [_latestStation];
   const features = [];
   const seen = new Set();
   calls.forEach(s => {
