@@ -180,7 +180,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .trow.empty:hover{ background:none; }
 
 /* ── satellites ─────────────────────────────────────────────────────────────── */
-.sats{ flex:0 0 25rem; min-width:0; }
+.sats{ flex:0 0 28rem; min-width:0; }
 /* No negative margin here (unlike .tscroll): the sat entries are bordered pills,
    so pulling them outward makes their right border bleed into the card edge.
    Keep them inset; the scrollbar rides at the normal gap. */
