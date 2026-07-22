@@ -43,6 +43,19 @@ def _pkg_ok(venv_dir, pkg):
     return r.returncode == 0
 
 
+def _import_ok(venv_dir, code):
+    """Return True if `code` (an import statement string) runs cleanly in the venv.
+    Stricter than _pkg_ok's bare `import pkg`: use it to verify the exact import a
+    consumer does, so a lazily-imported compiled dependency that's actually missing
+    is caught (e.g. `import skyfield` passes without numpy, but `from skyfield.api
+    import EarthSatellite` does not)."""
+    r = subprocess.run(
+        [_venv_bin(venv_dir, "python"), "-c", code],
+        capture_output=True,
+    )
+    return r.returncode == 0
+
+
 def decide_source(wheels_dir):
     """
     Decide where packages come from — wheels-first.

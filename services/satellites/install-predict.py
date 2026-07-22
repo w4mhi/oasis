@@ -40,6 +40,11 @@ from common.oasis_lib import _hr, _ok, _info, _warn  # noqa: E402
 
 FEATURE = "satellites"
 
+# The exact import services/satellites/predict.py performs — the real success
+# signal for the prediction stack. numpy + sgp4 are named explicitly so a missing
+# compiled dep fails here even though skyfield imports them lazily.
+PREDICT_IMPORT = "import numpy, sgp4; from skyfield.api import EarthSatellite, load, wgs84"
+
 
 def run():
     _hr()
@@ -74,13 +79,30 @@ def run():
     for spec in specs:
         S.install_one(pip, spec, online, wheels_dir)
 
-    # Verify the actual import the server does — the real success signal. A logged
-    # per-package failure above (best-effort) surfaces here as a hard error so the
-    # setup run reports the feature as failed rather than silently broken.
-    if not S._pkg_ok(venv_dir, "skyfield"):
-        _warn("skyfield still not importable after install — pass prediction "
-              "will be unavailable. See the pip errors above.")
-        return 1
+    # Verify the EXACT import the server does (services/satellites/predict.py), NOT
+    # a bare `import skyfield`: skyfield is pure-Python and imports numpy lazily, so
+    # `import skyfield` passes even when the compiled numpy/sgp4 wheels failed to
+    # install (wrong interpreter/ABI in the bundle). That false-pass would ship a
+    # "successful" feature with a broken stack (/api/satellites/passes 500, roster
+    # greyed). This exercises numpy + sgp4 through skyfield.api, so a missing
+    # compiled dep is caught here.
+    if not S._import_ok(venv_dir, PREDICT_IMPORT):
+        # Bundled wheels didn't satisfy this interpreter. If we installed offline
+        # and there's internet, retry from PyPI (pull matching wheels — what a
+        # manual `pip install` does) and re-verify, rather than falsely succeeding.
+        if online is False and S.has_internet():
+            _warn("Prediction import failed from the bundled wheels — retrying from "
+                  "PyPI for this interpreter.")
+            for spec in specs:
+                S.install_one(pip, spec, True, wheels_dir)
+        if not S._import_ok(venv_dir, PREDICT_IMPORT):
+            v = sys.version_info
+            _warn("Pass prediction is NOT usable: `from skyfield.api import "
+                  "EarthSatellite` fails — numpy/sgp4 are missing or ABI-mismatched "
+                  f"for this Python {v.major}.{v.minor}. /api/satellites/passes will "
+                  "500 and the roster stays greyed. Fix: re-run online, or bundle "
+                  "wheels matching this interpreter. See the pip errors above.")
+            return 1
     _ok("Prediction stack installed — /api/satellites/passes and /track are live.")
     _info("Restart the server to pick it up if it was already running.")
     return 0
