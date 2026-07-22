@@ -43,7 +43,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .hd .meta{ margin-left:auto; font-size:1.1rem; color:var(--faint); font-variant-numeric:tabular-nums; }
 
 /* ── travel clock — UTC amber (primary), Local blue ─────────────────────────── */
-.clock{ flex:0 0 32rem; background:transparent; border:none; padding:0; }
+.clock{ flex:0 0 19rem; background:transparent; border:none; padding:0; }
 .face{ background:linear-gradient(180deg,var(--raise),var(--panel-2));
        border:1px solid var(--border); border-radius:1.1rem; padding:.9rem 1.4rem 1.1rem 1.6rem;
        position:relative; overflow:hidden; box-shadow:0 .8rem 2rem -1.2rem #000; }
