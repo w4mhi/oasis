@@ -84,9 +84,13 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .refresh-btn:active{ background:rgba(92,184,255,.18); }
 /* GPS as a pill (no dot), same size + shape as the header pills; the fix-state
    colour lives on the mode text. */
-.gpspill{ display:inline-flex; align-self:flex-start; align-items:baseline; gap:.5rem; padding:.3rem 1rem;
-          border-radius:999px; border:1px solid var(--border); background:var(--panel-2);
-          font-size:1.2rem; margin:0 0 .5rem; }
+/* GPS / Services / device pills share one width: a single-column grid sized to
+   the widest pill (Services), so every pill stretches to match — content stays
+   left, empty space falls on the right. */
+.pillstack{ display:grid; grid-template-columns:max-content; gap:.5rem; }
+.hwpills{ display:contents; }   /* device pills join the pillstack grid directly */
+.gpspill{ display:flex; align-items:baseline; gap:.5rem; padding:.3rem 1rem;
+          border-radius:999px; border:1px solid var(--border); background:var(--panel-2); font-size:1.2rem; }
 .gpspill .mode{ font-weight:700; }
 .gpspill .sub{ color:var(--dim); font-size:1.05rem; }
 #k-gps.nogps .mode{ color:var(--dim); }
@@ -106,16 +110,15 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .v.ok{ color:var(--accent); } .v.warm{ color:var(--warn); } .v.hot{ color:var(--down); }
 /* Exact match to the parent dashboard's .svc-pill: accent-dim pill, "N UP · N
    WRN · N DN" with green / amber / red counts and dim separators. */
-.svcpill{ display:inline-flex; align-items:baseline; gap:.5rem; padding:.3rem 1rem; border-radius:999px;
+.svcpill{ display:flex; align-items:baseline; gap:.5rem; padding:.3rem 1rem; border-radius:999px;
           border:1px solid rgba(53,208,160,.35); background:var(--panel-2); font-size:1.2rem;
-          letter-spacing:.04em; font-variant-numeric:tabular-nums; margin:0 0 .5rem; cursor:pointer; }
+          letter-spacing:.04em; font-variant-numeric:tabular-nums; cursor:pointer; }
 .svcpill .t{ letter-spacing:.14em; color:var(--dim); font-weight:700; font-size:1.05rem; }
 .svcpill .cnt-up{ color:var(--accent); }
 .svcpill .cnt-warn{ color:var(--warn); }
 .svcpill .cnt-down{ color:var(--down); }
 .svcpill .cnt-sep{ color:var(--dim); }
-.hwpills{ display:flex; flex-wrap:wrap; gap:.5rem; }
-.hwpill{ display:inline-flex; align-items:center; gap:.6rem; font-size:1.1rem; letter-spacing:.01em;
+.hwpill{ display:flex; align-items:center; gap:.6rem; font-size:1.1rem; letter-spacing:.01em;
          padding:.3rem .9rem; border-radius:999px; border:1px solid var(--border); background:var(--panel-2); }
 .hwpill .d{ width:.6rem; height:.6rem; border-radius:50%; background:var(--accent); }
 .hwpill.on{ border-color:rgba(53,208,160,.35); }
