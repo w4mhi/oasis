@@ -92,5 +92,60 @@ class LabelsTest(unittest.TestCase):
             [])
 
 
+class BuildTest(unittest.TestCase):
+    def setUp(self):
+        self.sats = satnogs.parse_satellites(_fx("satnogs-satellites.json"))
+        self.txs = satnogs.parse_transmitters(_fx("satnogs-transmitters.json"))
+        # TLE index: ISS + NOAA 19 present; RS-44 (44909) absent on purpose.
+        self.tle = {25544: ("ISS", "1 25544U", "2 25544"),
+                    33591: ("NOAA 19", "1 33591U", "2 33591")}
+
+    def test_intersection_filter(self):
+        records, _ = satnogs.build_records(self.sats, self.txs, self.tle)
+        norads = sorted(r["norad"] for r in records)
+        # 25544 + 33591 kept; 44909 dropped (no TLE); 55555 dropped (no sat);
+        # 99999 dropped (dead); null dropped (no norad).
+        self.assertEqual(norads, [25544, 33591])
+
+    def test_record_shape_and_uplink(self):
+        records, _ = satnogs.build_records(self.sats, self.txs, self.tle)
+        iss = next(r for r in records if r["norad"] == 25544)
+        self.assertEqual(iss["sat_id"], "ISS-UUID")
+        self.assertEqual(iss["status"], "alive")
+        self.assertIn("CREWED", iss["labels"])
+        self.assertIn("APRS", iss["labels"])         # from AFSK "Mode V APRS"
+        self.assertNotIn("DATA", iss["labels"])      # APRS suppressed generic DATA
+        self.assertEqual(len(iss["transmitters"]), 2)  # Ku + inactive dropped
+        fm = next(t for t in iss["transmitters"] if t["mode"] == "FM")
+        self.assertEqual(fm["uplink"]["freq_mhz"], 145.99)
+        self.assertFalse(iss["selected"])            # default off
+
+    def test_selected_carried_over(self):
+        records, _ = satnogs.build_records(
+            self.sats, self.txs, self.tle, prev_selected={25544: True})
+        iss = next(r for r in records if r["norad"] == 25544)
+        self.assertTrue(iss["selected"])
+
+    def test_facet_counts_in_vocab_order(self):
+        records, facet = satnogs.build_records(self.sats, self.txs, self.tle)
+        self.assertEqual(facet.get("WEATHER"), 1)    # NOAA 19
+        self.assertEqual(facet.get("CREWED"), 1)     # ISS
+        self.assertEqual(list(facet), [l for l in satnogs.LABELS if l in facet])
+
+    def test_diff_added_removed_changed(self):
+        old = [{"norad": 25544, "name": "ISS (ZARYA)", "status": "alive",
+                "labels": ["CREWED"], "transmitters": []},
+               {"norad": 40000, "name": "OLDSAT", "status": "alive",
+                "labels": [], "transmitters": []}]
+        new = [{"norad": 25544, "name": "ISS (ZARYA)", "status": "alive",
+                "labels": ["CREWED"], "transmitters": [{"mode": "FM"}]},
+               {"norad": 33591, "name": "NOAA 19", "status": "alive",
+                "labels": ["WEATHER"], "transmitters": []}]
+        d = satnogs.diff_rosters(old, new)
+        self.assertEqual(d["added"], [33591])
+        self.assertEqual(d["removed"], [40000])
+        self.assertEqual(d["changed"], [25544])      # transmitters differ
+
+
 if __name__ == "__main__":
     unittest.main()

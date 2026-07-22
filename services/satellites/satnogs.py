@@ -112,3 +112,45 @@ def parse_transmitters(raw):
             "uplink": _direction(t.get("uplink_low"), t.get("uplink_high")),
         })
     return out
+
+
+def build_records(sats, txs, tle_index, prev_selected=None):
+    """Intersect SatNOGS identity + active transmitters + CelesTrak TLE index
+    into records. A bird is included iff it is alive (in `sats`), has >=1 active
+    transmitter (in `txs`), AND has a TLE (in `tle_index`) — no TLE means no
+    pass prediction, so the record would be useless. Returns (records, facet)."""
+    prev_selected = prev_selected or {}
+    records = []
+    for norad in sorted(sats):
+        transmitters = txs.get(norad)
+        if not transmitters or norad not in tle_index:
+            continue
+        meta = sats[norad]
+        records.append({
+            "name": meta["name"],
+            "norad": norad,
+            "sat_id": meta["sat_id"],
+            "status": meta["status"],
+            "labels": labels_for(transmitters, norad),
+            "transmitters": transmitters,
+            "selected": bool(prev_selected.get(norad, False)),
+        })
+    counts = {}
+    for r in records:
+        for lab in r["labels"]:
+            counts[lab] = counts.get(lab, 0) + 1
+    facet = {lab: counts[lab] for lab in LABELS if lab in counts}
+    return records, facet
+
+
+def diff_rosters(old, new):
+    """By-NORAD diff of two record lists for operator change-flagging.
+    `changed` = same NORAD whose name/status/labels/transmitters differ."""
+    o = {s["norad"]: s for s in old}
+    n = {s["norad"]: s for s in new}
+    changed = [norad for norad in sorted(set(o) & set(n))
+               if any(o[norad].get(k) != n[norad].get(k)
+                      for k in ("name", "status", "labels", "transmitters"))]
+    return {"added": sorted(set(n) - set(o)),
+            "removed": sorted(set(o) - set(n)),
+            "changed": changed}
