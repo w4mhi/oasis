@@ -62,7 +62,7 @@
 
     <div class="card traffic">
       <div class="hd">
-        <span class="lbl" id="k-aprs-title">TRAFFIC LIVE</span>
+        <span class="lbl">TRAFFIC</span><span class="livebadge ok" id="k-aprs-live"><span class="lvd">●</span><span class="lvtxt">LIVE</span></span>
         <span class="fchip rf"   id="f-rf"   onclick="toggleFilter('rf')"   title="RF stations">RF</span>
         <span class="fchip is"   id="f-is"   onclick="toggleFilter('is')"   title="Internet (APRS-IS) stations">IS</span>
         <span class="fchip aprs" id="f-aprs" onclick="toggleFilter('aprs')" title="APRS stations">APRS</span>
@@ -557,19 +557,29 @@ function scheduleAprsRender() {
   if (since >= 15000) { _renderAt = Date.now(); applyAprsFilter(); }
   else if (!_renderTimer) _renderTimer = setTimeout(() => { _renderTimer = null; _renderAt = Date.now(); applyAprsFilter(); }, 15000 - since);
 }
+// LIVE badge on the TRAFFIC header — degrades with the newest packet's age:
+// green ● LIVE (<5m) → amber ● LIVE (5-30m, reception lapsing) → red ● OFFLINE.
+function setAprsLive(state) {
+  const el = document.getElementById('k-aprs-live'); if (!el) return;
+  el.className = 'livebadge ' + state;
+  const t = el.querySelector('.lvtxt'); if (t) t.textContent = (state === 'down') ? 'OFFLINE' : 'LIVE';
+}
 async function fetchAPRS() {
-  const lastEl = document.getElementById('k-aprs-last'), title = document.getElementById('k-aprs-title');
+  const lastEl = document.getElementById('k-aprs-last');
   try {
     const r = await fetch('/api/aprs/stations', { cache:'no-store', signal: AbortSignal.timeout(10000) });
     if (!r.ok) throw new Error('HTTP '+r.status);
     const d = await r.json();
-    if (!d.ok) { if (lastEl) lastEl.textContent='—'; if (title) title.textContent='TRAFFIC OFFLINE'; _allAprsStations=[]; scheduleAprsRender(); return; }
-    if (title) title.textContent = 'TRAFFIC LIVE';
+    if (!d.ok) { if (lastEl) lastEl.textContent='—'; setAprsLive('down'); _allAprsStations=[]; scheduleAprsRender(); return; }
     _allAprsStations = d.stations;
     const times = d.stations.map(s => s.last_heard||s.timestamp||s.time).filter(Boolean).map(t => _lhEpoch(t)).filter(Boolean);
-    if (lastEl) { if (times.length) { const m = Math.round((Date.now()-Math.max(...times))/60000); lastEl.textContent = m<2?'just now':m<60?`${m}m ago`:`${Math.round(m/60)}h ago`; } else lastEl.textContent='—'; }
+    if (times.length) {
+      const m = Math.round((Date.now()-Math.max(...times))/60000);
+      if (lastEl) lastEl.textContent = m<2?'just now':m<60?`${m}m ago`:`${Math.round(m/60)}h ago`;
+      setAprsLive(m < 5 ? 'ok' : m < 30 ? 'warn' : 'down');
+    } else { if (lastEl) lastEl.textContent='—'; setAprsLive('down'); }
     scheduleAprsRender();
-  } catch (e) { if (title) title.textContent='TRAFFIC OFFLINE'; _allAprsStations=[]; scheduleAprsRender(); }
+  } catch (e) { setAprsLive('down'); _allAprsStations=[]; scheduleAprsRender(); }
 }
 
 // ADS-B fold (mirrors index.html / map.html)

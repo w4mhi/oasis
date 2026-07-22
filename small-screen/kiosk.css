@@ -131,6 +131,12 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 /* ── traffic ────────────────────────────────────────────────────────────────── */
 .traffic{ flex:1 1 auto; min-width:0; }
 .traffic .hd{ flex-wrap:wrap; row-gap:.4rem; }
+/* LIVE badge — degrades with the newest packet age (green→amber→red OFFLINE). */
+.livebadge{ display:inline-flex; align-items:center; gap:.35rem; font-size:1rem; font-weight:700; letter-spacing:.1em; }
+.livebadge .lvd{ font-size:.85rem; line-height:1; }
+.livebadge.ok{ color:var(--accent); } .livebadge.ok .lvd{ text-shadow:0 0 .5rem var(--accent); }
+.livebadge.warn{ color:var(--warn); }
+.livebadge.down{ color:var(--down); }
 .chip{ font-size:.95rem; letter-spacing:.1em; font-weight:700; color:var(--accent);
        border:1px solid rgba(53,208,160,.35); background:rgba(53,208,160,.09);
        border-radius:.4rem; padding:.2rem .6rem; }
