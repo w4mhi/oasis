@@ -154,12 +154,22 @@ def _sudo_write(path, content):
 
 
 def install():
-    os.makedirs(QUEUE_DIR, exist_ok=True)
-    _ok(f"Queue directory: {QUEUE_DIR}")
-
     python = _worker_python()
     operator_user = _operator_user()
     _info(f"Operator user for privileged installs: {operator_user}")
+
+    # The non-root web server DROPS job files here; the root worker CONSUMES them.
+    # Create (or correct) the queue dir OWNED BY THE OPERATOR so the server can
+    # write — a plain os.makedirs would inherit this script's ownership (root, when
+    # setup runs it under sudo), and the server would hit EACCES queuing a job.
+    # `install -d` also re-owns an already-root-owned dir from an earlier run, so
+    # re-running this script fixes the permissions in place (idempotent).
+    rc = _run(["sudo", "install", "-d", "-o", operator_user, "-m", "0775", QUEUE_DIR],
+              check=False, capture_output=True, text=True)
+    if rc.returncode != 0:
+        _fail(f"Could not create the queue directory {QUEUE_DIR}: "
+              f"{(rc.stderr or '').strip()}")
+    _ok(f"Queue directory: {QUEUE_DIR}  (owner {operator_user}, mode 0775)")
     service = _service_unit(python, operator_user)
     path = _path_unit()
 
