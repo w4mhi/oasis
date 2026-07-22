@@ -479,7 +479,8 @@ function inFootprintWindow(norad) {
 }
 
 function renderRoster() {
-  const shown = ROSTER.filter(passesFilters);
+  const shown = ROSTER.filter(passesFilters).sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }));
   const mon = Object.keys(PLOTTED).length;
   const tally = shown.length === ROSTER.length
     ? `${ROSTER.length} sats` : `${shown.length} of ${ROSTER.length} sats`;
