@@ -410,7 +410,11 @@ async function boot() {
   reconcileSelection();                             // sync local picks ↔ shared server roster (kiosk sees them)
   await restoreSelection();                         // re-plot the operator's saved satellite selection + bells
   setInterval(refreshPasses, 10 * 60 * 1000);      // keep the 24 h pass window fresh over long sessions
-  updatePills(); setInterval(updatePills, 2000);   // live workability colour
+  updatePills();                                   // live workability colour
+  // In the "In 1h" view, re-render the roster each tick so birds enter/leave the
+  // 60-min window on their own and the countdowns tick live (few rows, cheap).
+  // Other views just repaint pills — no time-dependent membership there.
+  setInterval(() => { _view === 'soon' ? renderRoster() : updatePills(); }, 2000);
 }
 
 // Render the TLE-age pill from a cache age in days (null = empty cache).
