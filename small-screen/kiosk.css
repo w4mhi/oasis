@@ -180,7 +180,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .trow.empty:hover{ background:none; }
 
 /* ── satellites ─────────────────────────────────────────────────────────────── */
-.sats{ flex:0 0 28rem; min-width:0; }
+.sats{ flex:0 0 27rem; min-width:0; }
 .satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.9rem; }
 /* Plain upcoming pass = plain row (divider only). Only NOW (green pill) and
    ≤10min (amber pill) get a border + glowing dot — see .sat.now / .sat.soon. */
