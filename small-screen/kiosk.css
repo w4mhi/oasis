@@ -104,10 +104,6 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .syspill{ display:flex; flex-direction:column; gap:.15rem; padding:.4rem 1rem; border-radius:.9rem;
           border:1px solid var(--border); background:var(--panel-2);
           font-size:1.15rem; color:var(--text); font-variant-numeric:tabular-nums; }
-/* SYSTEM title — Services-label font/colour, with a side-to-side divider (pill
-   border colour) via negative margins that cancel the pill's horizontal padding. */
-.syspill .stitle{ margin:0 -1rem .4rem; padding:0 1rem .4rem; border-bottom:1px solid var(--border);
-                  color:var(--text); font-weight:700; letter-spacing:.14em; font-size:1.05rem; }
 .syspill .srow{ display:flex; gap:.6rem; }
 .syspill .k{ min-width:3.2rem; color:var(--text); letter-spacing:.05em; }
 .syspill .v{ font-weight:700; }
