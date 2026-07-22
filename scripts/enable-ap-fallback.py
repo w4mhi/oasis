@@ -41,6 +41,7 @@ import getpass
 import os
 import re
 import shutil
+import socket
 import sys
 import tempfile
 
@@ -310,6 +311,52 @@ def _write_root_file(content, dest, mode):
             pass
 
 
+# ── Hostname → oasis (so avahi publishes oasis.local) ─────────────────────────
+
+def _ensure_hosts_alias(name):
+    """Point /etc/hosts' 127.0.1.1 line at `name` so local resolution works and
+    sudo doesn't warn 'unable to resolve host'. Rewrites only that line; adds one
+    if absent. Leaves the 127.0.0.1 localhost line untouched."""
+    try:
+        with open("/etc/hosts", "r", encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        _warn("Could not read /etc/hosts — skipping the 127.0.1.1 alias.")
+        return
+    out, seen = [], False
+    for ln in lines:
+        if ln.strip().startswith("127.0.1.1"):
+            out.append(f"127.0.1.1\t{name}")
+            seen = True
+        else:
+            out.append(ln)
+    if not seen:
+        out.append(f"127.0.1.1\t{name}")
+    _write_root_file("\n".join(out) + "\n", "/etc/hosts", "644")
+
+
+def set_hostname(name="oasis"):
+    """Set the system hostname to `name` so avahi advertises <name>.local — which
+    avahi keeps pointed at the Pi's current IP across Wi-Fi/AP transitions (the
+    exact moment operators are most confused about the address). Idempotent: a
+    no-op when the hostname is already `name`. Also fixes /etc/hosts and nudges
+    avahi to re-advertise immediately."""
+    current = socket.gethostname().split(".")[0]
+    if current == name:
+        _ok(f"Hostname already '{name}'.")
+        _ensure_hosts_alias(name)
+        return
+    if _run(["sudo", "hostnamectl", "set-hostname", name], check=False).returncode != 0:
+        _warn(f"Could not set hostname to '{name}' — 'oasis.local' may not resolve; "
+              f"the Pi stays reachable by IP and {current}.local.")
+        return
+    _ensure_hosts_alias(name)
+    # avahi advertises the hostname; restart it (only if already running) so
+    # oasis.local goes live now rather than whenever the daemon next notices.
+    _run(["sudo", "systemctl", "try-restart", "avahi-daemon"], check=False)
+    _ok(f"Hostname set to '{name}' (was '{current}') — avahi will publish {name}.local")
+
+
 # ── avahi (oasis.local) ────────────────────────────────────────────────────────
 
 def install_avahi():
@@ -545,7 +592,8 @@ def run(args):
     user = target_user(args.user)
     _step(1, "Preparing the radio (rfkill + regulatory domain)")
     prep_radio(resolve_country(args.country))
-    _step(2, "Installing avahi (oasis.local)")
+    _step(2, "Publishing oasis.local (hostname + avahi)")
+    set_hostname()
     install_avahi()
     _step(3, f"Creating the '{args.ssid}' AP profile (WPA2, ch {args.channel})")
     create_ap_profile(args.ssid, psk, args.channel)
