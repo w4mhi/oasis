@@ -184,10 +184,11 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 /* Same moderate tuck as .tscroll — a consistent ~9px gap between scrollbar and
    card edge. Gentle enough that the bordered sat pills don't bleed. */
 .satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.6rem; padding-right:10px; }
-/* Plain upcoming pass = plain row (divider only). Only NOW (green pill) and
-   ≤10min (amber pill) get a border + glowing dot — see .sat.now / .sat.soon. */
-.sat{ padding:.55rem .2rem .6rem; border-bottom:1px solid var(--border-soft); }
-.sat:last-child{ border-bottom:none; }
+/* Every monitored pass is a framed pill, so a card doesn't pop into a box when it
+   crosses a threshold — only the border/background COLOUR changes: dim grey while
+   just monitored, amber ≤10min (.sat.soon), green NOW (.sat.now). */
+.sat{ padding:.6rem .9rem .7rem; border:1px solid var(--border); border-radius:.8rem; margin-bottom:.5rem; }
+.sat:last-child{ margin-bottom:0; }
 .sat .l1{ display:flex; align-items:baseline; gap:.8rem; font-size:1.35rem; }
 .sat .nm{ font-weight:700; color:var(--text); min-width:6.6rem; }
 .sat .aos{ color:var(--dim); font-variant-numeric:tabular-nums; }
