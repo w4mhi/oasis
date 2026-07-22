@@ -146,10 +146,8 @@ html, body { height: 100%; margin: 0; }
 .fchip.active .n { opacity: .8; }
 .f-clear { font-size: var(--fs-micro); color: var(--accent); background: none; border: none;
   cursor: pointer; padding: 1px 4px; margin-left: auto; }
-/* View mode: mutually-exclusive segmented control (All / Monitored / In 1h). */
-#view-modes { gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-#view-modes .fchip { border: none; border-right: 1px solid var(--border); border-radius: 0; padding: 2px 9px; }
-#view-modes .fchip:last-child { border-right: none; }
+/* View mode: three independent, mutually-exclusive pills (All / Monitored / In 1h). */
+#view-modes .fchip { padding: 2px 9px; }
 /* Downlink mode buttons (checked sat only). Freq is on the face; state comes
    from /listen/status. Two *disabled* looks that must not be confused: busy =
    solid grey ("wait"), unsupported = ghosted/dashed ("never"). */
