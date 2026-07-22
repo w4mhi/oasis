@@ -15,7 +15,7 @@ Behaviour (single onboard radio → AP *or* client, never both at once):
     the dashboard Wi-Fi picker (a single radio can't host the AP and scan at once).
 
 What it installs (all reversible with --disable):
-  • avahi-daemon                     → the dashboard resolves at http://oasis.local:8083
+  • avahi-daemon                     → the dashboard resolves at http://<hostname>.local:8083
   • NetworkManager `OASIS-AP` profile → WPA2 hotspot, 10.42.0.1/24, DHCP for clients
   • /usr/local/bin/oasis-netctl      → tiny privileged Wi-Fi helper (scan/connect/AP)
   • /usr/local/bin/oasis-netwatch    → the boot-decision + drop-monitor daemon
@@ -41,7 +41,6 @@ import getpass
 import os
 import re
 import shutil
-import socket
 import sys
 import tempfile
 
@@ -311,66 +310,25 @@ def _write_root_file(content, dest, mode):
             pass
 
 
-# ── Hostname → oasis (so avahi publishes oasis.local) ─────────────────────────
-
-def _ensure_hosts_alias(name):
-    """Point /etc/hosts' 127.0.1.1 line at `name` so local resolution works and
-    sudo doesn't warn 'unable to resolve host'. Rewrites only that line; adds one
-    if absent. Leaves the 127.0.0.1 localhost line untouched."""
-    try:
-        with open("/etc/hosts", "r", encoding="utf-8") as fh:
-            lines = fh.read().splitlines()
-    except OSError:
-        _warn("Could not read /etc/hosts — skipping the 127.0.1.1 alias.")
-        return
-    out, seen = [], False
-    for ln in lines:
-        if ln.strip().startswith("127.0.1.1"):
-            out.append(f"127.0.1.1\t{name}")
-            seen = True
-        else:
-            out.append(ln)
-    if not seen:
-        out.append(f"127.0.1.1\t{name}")
-    _write_root_file("\n".join(out) + "\n", "/etc/hosts", "644")
-
-
-def set_hostname(name="oasis"):
-    """Set the system hostname to `name` so avahi advertises <name>.local — which
-    avahi keeps pointed at the Pi's current IP across Wi-Fi/AP transitions (the
-    exact moment operators are most confused about the address). Idempotent: a
-    no-op when the hostname is already `name`. Also fixes /etc/hosts and nudges
-    avahi to re-advertise immediately."""
-    current = socket.gethostname().split(".")[0]
-    if current == name:
-        _ok(f"Hostname already '{name}'.")
-        _ensure_hosts_alias(name)
-        return
-    if _run(["sudo", "hostnamectl", "set-hostname", name], check=False).returncode != 0:
-        _warn(f"Could not set hostname to '{name}' — 'oasis.local' may not resolve; "
-              f"the Pi stays reachable by IP and {current}.local.")
-        return
-    _ensure_hosts_alias(name)
-    # avahi advertises the hostname; restart it (only if already running) so
-    # oasis.local goes live now rather than whenever the daemon next notices.
-    _run(["sudo", "systemctl", "try-restart", "avahi-daemon"], check=False)
-    _ok(f"Hostname set to '{name}' (was '{current}') — avahi will publish {name}.local")
-
-
-# ── avahi (oasis.local) ────────────────────────────────────────────────────────
+# ── avahi (<hostname>.local resolution) ───────────────────────────────────────
 
 def install_avahi():
+    # avahi publishes THIS machine's own name — <hostname>.local — so the dashboard
+    # is reachable by name without changing the operator's hostname. (We do NOT
+    # rename the box to 'oasis': that would rewrite the machine's identity and, e.g.,
+    # invalidate Chromium's hostname-keyed kiosk profile lock.)
+    host = os.uname().nodename.split(".")[0]
     if dpkg_installed_version("avahi-daemon"):
         _ok("avahi-daemon already installed.")
     else:
         _info("Installing avahi-daemon (apt)…")
         if _run(["sudo", "apt-get", "install", "-y", "avahi-daemon"],
                 check=False).returncode != 0:
-            _warn("Could not install avahi-daemon — 'oasis.local' may not resolve. "
+            _warn(f"Could not install avahi-daemon — '{host}.local' may not resolve. "
                   "Operators can still use http://10.42.0.1:8083 on the AP.")
             return
     _run(["sudo", "systemctl", "enable", "--now", "avahi-daemon"], check=False)
-    _ok("avahi-daemon enabled — dashboard resolves at http://oasis.local:8083")
+    _ok(f"avahi-daemon enabled — dashboard resolves at http://{host}.local:8083 (or the Pi's IP).")
 
 
 # ── OASIS-AP NetworkManager profile ────────────────────────────────────────────
@@ -592,8 +550,7 @@ def run(args):
     user = target_user(args.user)
     _step(1, "Preparing the radio (rfkill + regulatory domain)")
     prep_radio(resolve_country(args.country))
-    _step(2, "Publishing oasis.local (hostname + avahi)")
-    set_hostname()
+    _step(2, "Installing avahi (<hostname>.local resolution)")
     install_avahi()
     _step(3, f"Creating the '{args.ssid}' AP profile (WPA2, ch {args.channel})")
     create_ap_profile(args.ssid, psk, args.channel)
@@ -606,7 +563,7 @@ def run(args):
     print()
     _ok("Done. The Pi now prefers known Wi-Fi and raises the OASIS AP as a fallback.")
     _info(f"AP SSID '{args.ssid}' · password '{psk}' · http://10.42.0.1:8083 "
-          "(or http://oasis.local:8083)")
+          f"(or http://{os.uname().nodename.split('.')[0]}.local:8083)")
     _info("Test the AP now (drops any client link on this single radio):")
     _info("  sudo nmcli connection up OASIS-AP && iw dev wlan0 info")
     _info("Undo with: python3 scripts/enable-ap-fallback.py --disable")
