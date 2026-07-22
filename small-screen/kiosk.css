@@ -147,7 +147,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
         border:1px solid var(--border); background:var(--panel-2); cursor:pointer; }
 .fchip.rf{ color:var(--accent); border-color:rgba(53,208,160,.45); }
 .fchip.is{ color:var(--blue); border-color:rgba(92,184,255,.45); }
-.fchip.aprs{ color:var(--text); }
+.fchip.aprs{ color:var(--text); border-color:rgba(205,216,224,.45); }
 .fchip.adsb{ color:var(--purple); border-color:rgba(180,120,255,.45); }
 .fchip.off{ color:var(--faint); border-color:var(--border); background:transparent; opacity:.55; }
 .tbl{ display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
@@ -157,7 +157,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .heard{ color:var(--warn); font-weight:700; font-variant-numeric:tabular-nums; font-size:1.05rem; }
 /* Pull the scroll area toward the card's right edge so its scrollbar isn't
    floating 1.2rem in (the card's right padding). Header/rows stay left-aligned. */
-.tscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.8rem; }
+.tscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.6rem; padding-right:10px; }
 /* Custom scrollbar (touch-friendly, accent thumb) — not the OS default. Shared
    by the Traffic + Satellites scroll areas + the overlay bodies. */
 .tscroll::-webkit-scrollbar, .satscroll::-webkit-scrollbar, .ov-body::-webkit-scrollbar{ width:14px; }
@@ -180,10 +180,10 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .trow.empty:hover{ background:none; }
 
 /* ── satellites ─────────────────────────────────────────────────────────────── */
-.sats{ flex:0 0 28rem; min-width:0; }
+.sats{ flex:none; width:28rem; min-width:0; }
 /* Same moderate tuck as .tscroll — a consistent ~9px gap between scrollbar and
    card edge. Gentle enough that the bordered sat pills don't bleed. */
-.satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.8rem; }
+.satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.6rem; padding-right:10px; }
 /* Plain upcoming pass = plain row (divider only). Only NOW (green pill) and
    ≤10min (amber pill) get a border + glowing dot — see .sat.now / .sat.soon. */
 .sat{ padding:.55rem .2rem .6rem; border-bottom:1px solid var(--border-soft); }
