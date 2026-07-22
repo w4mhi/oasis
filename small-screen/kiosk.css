@@ -105,7 +105,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
           border:1px solid rgba(53,208,160,.35); background:var(--panel-2);
           font-size:1.15rem; color:var(--text); font-variant-numeric:tabular-nums; }
 .syspill .srow{ display:flex; gap:.6rem; }
-.syspill .k{ min-width:3.2rem; color:var(--dim); letter-spacing:.05em; }
+.syspill .k{ min-width:3.2rem; color:var(--text); letter-spacing:.05em; }
 .syspill .v{ font-weight:700; }
 .v.ok{ color:var(--accent); } .v.warm{ color:var(--warn); } .v.hot{ color:var(--down); }
 /* Exact match to the parent dashboard's .svc-pill: accent-dim pill, "N UP · N
@@ -113,7 +113,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .svcpill{ display:flex; align-items:baseline; gap:.5rem; padding:.3rem 1rem; border-radius:999px;
           border:1px solid rgba(53,208,160,.35); background:var(--panel-2); font-size:1.2rem;
           letter-spacing:.04em; font-variant-numeric:tabular-nums; cursor:pointer; }
-.svcpill .t{ letter-spacing:.14em; color:var(--dim); font-weight:700; font-size:1.05rem; }
+.svcpill .t{ letter-spacing:.14em; color:var(--text); font-weight:700; font-size:1.05rem; }
 .svcpill .cnt-up{ color:var(--accent); }
 .svcpill .cnt-warn{ color:var(--warn); }
 .svcpill .cnt-down{ color:var(--down); }
