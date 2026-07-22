@@ -36,11 +36,12 @@ bump for that reason.
   `POST /api/forms/save` + `GET /api/forms/list` (whitelisted kinds); the existing
   ICS-205 save/list delegate to the same store. Same flat-file model as
   station.json/warnings.json — no DB. Shared client helper `common/js/form-backup.js`.
-- **`oasis.local` now resolves.** The AP-fallback setup installed avahi but never
-  set the hostname, so the promised `http://oasis.local:8083` didn't work on a
-  stock Pi (avahi only publishes `<hostname>.local`). Setup now sets the hostname
-  to `oasis` (+ a `/etc/hosts` alias); avahi keeps `oasis.local` pointed at the
-  current IP across Wi-Fi/AP transitions.
+- **Dashboard reachable by name (`<hostname>.local`).** The AP-fallback setup
+  installs avahi and the install/final messages now name the actual host
+  (`http://<hostname>.local:8083`) instead of a hard-coded "oasis.local" that only
+  resolved if the box happened to be named `oasis`. The setup does NOT rename the
+  machine — renaming the host is invasive (and, e.g., invalidates Chromium's
+  hostname-keyed kiosk profile lock).
 - **Live install log in the setup page.** Privileged feature installs run in a
   root worker whose output only reached the systemd journal; it's now streamed
   into the setup log window (via a per-job log file the web wait-loop tails), so
@@ -129,6 +130,29 @@ bump for that reason.
   the canonical spaced form.
 
 ### Fixed
+- **Satellites: `/api/satellites/passes` no longer wedges at 500 on a large
+  roster.** It computed a 24 h propagation for every roster sat and wrote the
+  cache only after the whole loop, so a big roster (150+ sats) overran gunicorn's
+  30 s worker timeout — the worker was killed before the cache was written, so
+  every retry recomputed cold and the endpoint stayed stuck at 500 (roster greyed,
+  nothing selectable). Now time-budgeted and incremental: selected sats first,
+  progress persisted and resumed across polls, always 200.
+- **Satellites: selection now persists.** `build-roster.py` runs under the root
+  installer worker and left `configuration/satellites.json` root-owned, so the
+  non-root server's `/api/satellites/select` write 500'd and selections were lost
+  (dashboards showed nothing monitored). build-roster now chowns the roster to the
+  operator; the select endpoint reports a clear error instead of a blank 500.
+- **Privileged feature installs no longer fail with a queue permission error.**
+  `enable-oasis-installer.py` created `configuration/installer-queue/` root-owned,
+  so the non-root server couldn't drop job files (`EACCES`) — satellites, kiosk,
+  and headless features failed to install. The queue is now created (and re-owned)
+  as the operator.
+- **Satellites voice install degrades gracefully.** A transient Raspberry Pi OS
+  `speech-dispatcher` vs. `+rpt1` `speech-dispatcher-audio-plugins` apt conflict
+  no longer fails the whole Satellites feature — voice is optional (pass alerts
+  still chime), so it warns and continues. `install-predict.py` also now verifies
+  the real `skyfield.api` import (catching a missing compiled numpy) instead of a
+  bare `import skyfield`, and self-heals from PyPI when online.
 - **Auto-path lines now respect the station-list column filter.** Isolating a
   type that has no path (e.g. Aircraft) left RF/IS path lines drawn for hidden
   stations; `_refreshAutoPaths` now filters its candidates through the same
