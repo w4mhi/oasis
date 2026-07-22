@@ -428,7 +428,10 @@ function azCompass(deg) { if (deg == null) return ''; return ['N','NE','E','SE',
 let _satSel = [], _satPasses = {};
 async function fetchSats() {
   try { const m = await (await fetch('/api/satellites', { cache:'no-store' })).json(); _satSel = (m.satellites||[]).filter(s => s.selected); } catch (_) { _satSel = []; }
-  try { _satPasses = (await (await fetch('/api/satellites/passes?window=2', { cache:'no-store' })).json()).passes || {}; } catch (_) {}
+  // window=24 (same as the map) so we cover a full day of passes — a short
+  // window goes stale within its span and the server caches for 6 h — and share
+  // the map's warm cache. We still filter to the next hour client-side below.
+  try { _satPasses = (await (await fetch('/api/satellites/passes?window=24', { cache:'no-store' })).json()).passes || {}; } catch (_) {}
   renderSats();
 }
 function renderSats() {
