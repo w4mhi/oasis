@@ -19,9 +19,6 @@ html, body { height: 100%; margin: 0; }
 }
 .topbar-row { display: flex; align-items: center; gap: .7rem; padding: 0 .9rem; height: 36px; }
 .topbar-row + .topbar-row { border-top: 1px solid var(--border); }
-/* Tag-filter row: chips can wrap, so let it grow past the fixed 36px. */
-.topbar-row.filter-row { height: auto; min-height: 34px; flex-wrap: wrap; gap: .3rem;
-  padding-top: .3rem; padding-bottom: .3rem; }
 #topbar h1 { font-size: var(--fs-base); letter-spacing: .08em; color: var(--accent);
   text-transform: uppercase; margin: 0; white-space: nowrap; cursor: pointer; }
 .track-sep { color: var(--border); font-size: var(--fs-small); }
@@ -209,6 +206,8 @@ html, body { height: 100%; margin: 0; }
     <span id="tle-age" class="badge" onclick="syncTle()" title="Click to update TLEs from CelesTrak (needs internet)" style="cursor:pointer">loading…</span>
     <span class="track-sep">|</span>
     <span class="win-lbl">24 h window</span>
+    <span class="track-sep">|</span>
+    <div class="f-group" id="tag-filters"></div>
     <span id="listen-status"><span class="rec-dot"></span><span id="listen-text"></span>
       <button class="sbtn" onclick="stopListen()">Stop</button></span>
     <span id="coverage-badge"></span>
@@ -226,9 +225,6 @@ html, body { height: 100%; margin: 0; }
     </div>
     <span style="flex:1"></span>
     <span id="clock">—</span>
-  </div>
-  <div class="topbar-row filter-row">
-    <div class="f-group" id="tag-filters"></div>
   </div>
 </div>
 
@@ -323,7 +319,7 @@ function renderFilterBar() {
   const bands = BAND_ORDER.filter(b => bandCounts[b]);
   const clear = filtersActive() ? '<button class="f-clear" onclick="clearFilters()">clear ✕</button>' : '';
   document.getElementById('tag-filters').innerHTML = tags.length
-    ? '<span class="f-label">tag</span>' + tags.map(t => chip(t, tagCounts[t], _filters.tags.has(t), 'toggleTagFilter')).join('') + clear
+    ? tags.map(t => chip(t, tagCounts[t], _filters.tags.has(t), 'toggleTagFilter')).join('') + clear
     : '';
   document.getElementById('band-filters').innerHTML = bands.length
     ? '<span class="f-label">band</span>' + bands.map(b => chip(b, bandCounts[b], _filters.bands.has(b), 'toggleBandFilter')).join('')
