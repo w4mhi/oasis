@@ -19,6 +19,9 @@ html, body { height: 100%; margin: 0; }
 }
 .topbar-row { display: flex; align-items: center; gap: .7rem; padding: 0 .9rem; height: 36px; }
 .topbar-row + .topbar-row { border-top: 1px solid var(--border); }
+/* Tag-filter row: chips can wrap, so let it grow past the fixed 36px. */
+.topbar-row.filter-row { height: auto; min-height: 34px; flex-wrap: wrap; gap: .3rem;
+  padding-top: .3rem; padding-bottom: .3rem; }
 #topbar h1 { font-size: var(--fs-base); letter-spacing: .08em; color: var(--accent);
   text-transform: uppercase; margin: 0; white-space: nowrap; cursor: pointer; }
 .track-sep { color: var(--border); font-size: var(--fs-small); }
@@ -224,6 +227,9 @@ html, body { height: 100%; margin: 0; }
     <span style="flex:1"></span>
     <span id="clock">—</span>
   </div>
+  <div class="topbar-row filter-row">
+    <div class="f-group" id="tag-filters"></div>
+  </div>
 </div>
 
 
@@ -236,7 +242,6 @@ html, body { height: 100%; margin: 0; }
   <div class="filters" id="sat-filters">
     <input class="f-search" id="sat-search" type="search" placeholder="Search name…" autocomplete="off"
            oninput="setSearchFilter(this.value)">
-    <div class="f-group" id="tag-filters"></div>
     <div class="f-group" id="band-filters"></div>
   </div>
   <div id="roster"><p style="color:var(--text-dim);padding:.4rem">Loading roster…</p></div>
