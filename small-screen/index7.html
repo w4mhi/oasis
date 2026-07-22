@@ -565,19 +565,17 @@ function setAprsLive(state) {
   const t = el.querySelector('.lvtxt'); if (t) t.textContent = (state === 'down') ? 'OFFLINE' : 'LIVE';
 }
 async function fetchAPRS() {
-  const lastEl = document.getElementById('k-aprs-last');
   try {
     const r = await fetch('/api/aprs/stations', { cache:'no-store', signal: AbortSignal.timeout(10000) });
     if (!r.ok) throw new Error('HTTP '+r.status);
     const d = await r.json();
-    if (!d.ok) { if (lastEl) lastEl.textContent='—'; setAprsLive('down'); _allAprsStations=[]; scheduleAprsRender(); return; }
+    if (!d.ok) { setAprsLive('down'); _allAprsStations=[]; scheduleAprsRender(); return; }
     _allAprsStations = d.stations;
     const times = d.stations.map(s => s.last_heard||s.timestamp||s.time).filter(Boolean).map(t => _lhEpoch(t)).filter(Boolean);
     if (times.length) {
-      const m = Math.round((Date.now()-Math.max(...times))/60000);
-      if (lastEl) lastEl.textContent = m<2?'just now':m<60?`${m}m ago`:`${Math.round(m/60)}h ago`;
+      const m = Math.round((Date.now()-Math.max(...times))/60000);   // newest packet age → LIVE state
       setAprsLive(m < 5 ? 'ok' : m < 30 ? 'warn' : 'down');
-    } else { if (lastEl) lastEl.textContent='—'; setAprsLive('down'); }
+    } else { setAprsLive('down'); }
     scheduleAprsRender();
   } catch (e) { setAprsLive('down'); _allAprsStations=[]; scheduleAprsRender(); }
 }
