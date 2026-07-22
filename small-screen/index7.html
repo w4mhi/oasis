@@ -84,11 +84,10 @@
 
   <!-- ── FOOTER: area hazards / emergencies ─────────────────────────────────── -->
   <div class="footer">
-    <span class="flbl">AREA ALERTS</span>
     <span class="alert fire" id="hz-fire">FIRES <b>0</b></span>
     <span class="alert torn" id="hz-torn">TORNADOES <b>0</b></span>
     <span class="alert emg"  id="hz-emg">EMERGENCY POI <b>0</b></span>
-    <span class="fhint" id="k-hostver">—</span>
+    <span class="alert clear" id="hz-clear">✓ all clear</span>
   </div>
 
   <!-- SERVICES OVERLAY -->
@@ -173,14 +172,14 @@ async function seedCallsignGrid() {
 }
 loadCallsignGrid(); seedCallsignGrid();
 
-// hostname:ip · version in the footer's right corner
+// hostname:ip · version — PARKED for now (removed from the footer; re-add the
+// #k-hostver span + this call + its interval to bring it back later).
 async function loadHostVer() {
   let host = '', ver = '';
   try { const d = await (await fetch('/api/system', { cache: 'no-store' })).json(); if (d.hostname || d.ip) host = `${d.hostname||'—'}:${d.ip||'—'}`; } catch (_) {}
   try { const d = await (await fetch('/version.json', { cache: 'no-store' })).json(); if (d.version) ver = 'v'+d.version; } catch (_) {}
   const el = document.getElementById('k-hostver'); if (el) el.textContent = [host, ver].filter(Boolean).join(' · ') || '';
 }
-loadHostVer();
 
 // ── Units toggle (shared key with index.html) ─────────────────────────────────
 let _lastTempC = null;
@@ -485,10 +484,18 @@ function _hazardKeyOf(s) {
 function renderHazardFooter() {
   const counts = {};
   _allAprsStations.forEach(s => { const k = _hazardKeyOf(s); if (k) counts[k] = (counts[k]||0)+1; });
-  const set = (id, cls, label, n) => { const el = document.getElementById(id); if (!el) return; el.className = 'alert '+cls+(n>0?' on':''); el.innerHTML = label+' <b>'+n+'</b>'; };
+  // Only show a hazard that's actually being heard (>0); hide the rest. When
+  // nothing is active, show a calm "all clear" instead of a row of zeros.
+  let active = false;
+  const set = (id, cls, label, n) => {
+    const el = document.getElementById(id); if (!el) return;
+    if (n > 0) { el.style.display = ''; el.className = 'alert on '+cls; el.innerHTML = label+' <b>'+n+'</b>'; active = true; }
+    else { el.style.display = 'none'; }
+  };
   set('hz-fire','fire','FIRES', counts.fire||0);
   set('hz-torn','torn','TORNADOES', counts.tornado||0);
   set('hz-emg','emg','EMERGENCY POI', counts.emergency||0);
+  const clear = document.getElementById('hz-clear'); if (clear) clear.style.display = active ? 'none' : '';
 }
 
 // ── APRS + ADS-B live traffic ─────────────────────────────────────────────────
@@ -622,6 +629,5 @@ loadConfig().then(loadInstalled).then(() => {
   setInterval(refreshAdsbRecent, 60000);
   setInterval(fetchHardware,   30000);
   setInterval(fetchSats,       60000);
-  setInterval(loadHostVer,     60000);
 });
 </script>

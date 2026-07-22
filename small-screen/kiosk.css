@@ -204,13 +204,12 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 /* ── hazard footer ──────────────────────────────────────────────────────────── */
 .footer{ flex:0 0 3rem; display:flex; align-items:center; gap:1rem; padding:0 1rem;
          background:var(--panel); border:1px solid var(--border); border-radius:var(--r); }
-.footer .flbl{ font-size:.95rem; letter-spacing:.16em; color:var(--faint); font-weight:700; }
 .alert{ display:inline-flex; align-items:center; gap:.7rem; font-size:1.1rem; letter-spacing:.06em;
         padding:.3rem 1.1rem; border-radius:999px; border:1px solid var(--border); color:var(--dim); }
 .alert b{ font-variant-numeric:tabular-nums; }
 .alert.on.fire{ color:var(--warn); border-color:rgba(246,168,33,.45); background:rgba(246,168,33,.08); }
 .alert.on.torn,.alert.on.emg{ color:var(--down); border-color:rgba(255,91,74,.45); background:rgba(255,91,74,.08); }
-.footer .fhint{ margin-left:auto; font-size:1rem; color:var(--faint); font-variant-numeric:tabular-nums; }
+.alert.clear{ color:var(--accent); border-color:rgba(53,208,160,.35); background:rgba(53,208,160,.06); }
 
 /* ── overlays (SERVICES / OPS) + detail sheet — cover the screen ───────────────
    Kept close to the previous kiosk styling; sized in rem so they scale too. */
