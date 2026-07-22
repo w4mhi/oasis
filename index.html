@@ -1909,6 +1909,28 @@ function pingAll() {
   });
 }
 
+// Round-robin health check — one service per tick instead of pingAll's burst of
+// all 17 at once. On a Pi Zero 2 W the synchronized 30s burst woke many gunicorn
+// workers together; trickling one request per tick keeps each badge on the same
+// ~30s refresh with no burst. Same hidden/show-all filter as pingAll.
+let _pingIdx = 0;
+function pingNext() {
+  const active = SERVICES.filter(svc => !HIDDEN_SVCS.has(svc.id) || _showHidden);
+  if (!active.length) return;
+  checkService(active[_pingIdx % active.length]);
+  _pingIdx = (_pingIdx + 1) % active.length;
+}
+
+// After a start/stop, conflicting services (OpenWebRX stops GrayWolf + the feed)
+// settle over ~15s. Re-check one card at a time on a faster tick than the steady
+// round-robin — ~2 passes over all cards — then stop. Replaces the old 6x pingAll
+// burst (~100 simultaneous requests per toggle) with a trickle.
+function settlePoll() {
+  let n = 0;
+  const passes = SERVICES.length * 2;
+  const t = setInterval(() => { pingNext(); if (++n >= passes) clearInterval(t); }, 700);
+}
+
 // ── HARDWARE allocation card (spec §7.1) ────────────────────────────────────
 let _hwLast = null;   // last GET /api/hardware/devices payload — read by the
                        // per-card dropdown code too (added in Slice 4b Task 3)
@@ -2419,8 +2441,9 @@ async function togglePower(svcId) {
       btn.classList.remove('busy');
     }
     // A start can also change conflicting services (OpenWebRX stops GrayWolf + the
-    // feed), so re-poll every card several times as things settle.
-    [800, 2500, 5000, 9000, 14000, 17000].forEach(t => setTimeout(pingAll, t));
+    // feed), so re-poll cards as things settle — one at a time (see settlePoll),
+    // not a 6x all-cards burst.
+    settlePoll();
   }
 }
 
@@ -3525,13 +3548,19 @@ loadConfig().then(() => {
   fetchAPRS();
   loadHomeCoords();
   pollWifi();
-  setInterval(async () => { await fetchHardware(); pingAll(); }, 30_000);
-  setInterval(fetchStats,   30_000);
-  setInterval(fetchAudio,   30_000);
+  // Service badges: round-robin one at a time (~30s per badge) instead of a
+  // 17-request burst every 30s (see pingNext). Hardware keeps its own 30s tick,
+  // decoupled from the pings so they no longer fire together.
+  setInterval(fetchHardware, 30_000);
+  setInterval(pingNext, Math.round(30_000 / SERVICES.length));
+  // Phase-offset the remaining 30s loops so they don't all land on the same
+  // boundary — staggered startup delays, then steady 30s each.
+  setTimeout(() => setInterval(fetchStats, 30_000),  4_000);
+  setTimeout(() => setInterval(fetchAudio, 30_000),  8_000);
+  setTimeout(() => setInterval(pollWifi,   30_000), 12_000);
   setInterval(fetchAPRS,    15_000);
   setInterval(pollFeedFlow, FEED_FLOW_MS);
   setInterval(pollAdsbFlow, ADSB_FLOW_MS);
-  setInterval(pollWifi,     30_000);
   // Refresh the meters immediately when the operator returns to the tab.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') { pollFeedFlow(); pollAdsbFlow(); }
