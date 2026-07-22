@@ -54,10 +54,10 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .face .zn .z{ font-size:1.1rem; letter-spacing:.22em; font-weight:700; }
 .face.utc .z{ color:var(--amber); } .face.loc .z{ color:var(--blue); }
 .face .zn .tz{ font-size:1.25rem; color:var(--dim); letter-spacing:.04em; }
-.face .time{ font-size:3rem; line-height:1.02; font-weight:600; letter-spacing:.01em;
+.face .time{ font-size:3.2rem; line-height:1.02; font-weight:600; letter-spacing:.01em;
              font-variant-numeric:tabular-nums; margin:.1rem 0 0; }
 .face.utc .time{ color:var(--amber); } .face.loc .time{ color:var(--blue); }
-.face .time .s{ font-size:1.5rem; opacity:.62; }
+.face .time .s{ font-size:1.6rem; opacity:.62; }
 .face .date{ font-size:1.2rem; color:var(--dim); letter-spacing:.04em; margin-top:.2rem;
              font-variant-numeric:tabular-nums; }
 
@@ -80,7 +80,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
       border:1px solid var(--accent); background:rgba(53,208,160,.08); border-radius:.6rem;
       padding:.45rem 1.3rem; cursor:pointer; }
 /* Same pill style as OPS, but blue. Two-line label (REFRESH / DISPLAY). */
-.refresh-btn{ color:var(--blue); border-color:var(--blue); background:rgba(92,184,255,.08); line-height:1.12; }
+.refresh-btn{ color:var(--blue); border-color:var(--blue); background:rgba(92,184,255,.08); line-height:1.12; padding:.7rem 1.3rem; }
 .refresh-btn:active{ background:rgba(92,184,255,.18); }
 /* GPS as a pill (no dot), same size + shape as the header pills; the fix-state
    colour lives on the mode text. */
@@ -107,6 +107,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .syspill .srow{ display:flex; gap:.6rem; }
 .syspill .k{ min-width:3.2rem; color:var(--text); letter-spacing:.05em; }
 .syspill .v{ font-weight:700; }
+.sysip{ font-size:1rem; color:var(--dim); text-align:center; letter-spacing:.03em; font-variant-numeric:tabular-nums; margin-top:.6rem; }
 .v.ok{ color:var(--accent); } .v.warm{ color:var(--warn); } .v.hot{ color:var(--down); }
 /* Exact match to the parent dashboard's .svc-pill: accent-dim pill, "N UP · N
    WRN · N DN" with green / amber / red counts and dim separators. */
@@ -132,7 +133,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 
 /* ── traffic ────────────────────────────────────────────────────────────────── */
 .traffic{ flex:1 1 auto; min-width:0; }
-.traffic .hd{ flex-wrap:wrap; row-gap:.4rem; }
+.traffic .hd{ flex-wrap:wrap; row-gap:.4rem; border-bottom:1px solid var(--border); padding-bottom:.5rem; }
 /* LIVE badge — degrades with the newest packet age (green→amber→red OFFLINE). */
 .livebadge{ display:inline-flex; align-items:center; gap:.35rem; font-size:1rem; font-weight:700; letter-spacing:.1em; }
 .livebadge .lvd{ font-size:.85rem; line-height:1; }
@@ -150,11 +151,9 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .fchip.adsb{ color:var(--purple); border-color:rgba(180,120,255,.45); }
 .fchip.off{ color:var(--faint); border-color:var(--border); background:transparent; opacity:.55; }
 .tbl{ display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
-.colhd,.trow{ display:grid; grid-template-columns:1.3fr 2.6rem 1fr 1.3fr 1.1fr; gap:.7rem; align-items:center; }
+.trow{ display:grid; grid-template-columns:1.3fr 2.6rem 1fr 1.3fr 1.1fr; gap:.7rem; align-items:center; }
 /* Header + rows mirror the parent dashboard's APRS table: amber uppercase
    column labels, compact rows with hairline dividers, age coloured by staleness. */
-.colhd{ font-size:1rem; letter-spacing:.09em; text-transform:uppercase; color:var(--warn); padding:0 .2rem .4rem;
-        flex:0 0 auto; }
 .heard{ color:var(--warn); font-weight:700; font-variant-numeric:tabular-nums; font-size:1.05rem; }
 .tscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; }
 /* Custom scrollbar (touch-friendly, accent thumb) — not the OS default. Shared
