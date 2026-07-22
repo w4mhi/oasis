@@ -1,30 +1,10 @@
-"""Curated satellite roster (labels + downlink frequencies + selection),
-persisted to configuration/satellites.json. Labels/freqs are not in TLEs."""
+"""Satellite roster persisted to configuration/satellites.json. The list is
+built by build-roster.py (SatNOGS + CelesTrak aggregation); this module only
+loads/saves it and persists per-satellite selection. Labels/freqs are not in
+TLEs, so they live in the records build-roster.py writes."""
 import datetime
 import json
 import os
-
-DEFAULT_ROSTER = [
-    {"name": "NOAA 15", "norad": 25338, "labels": ["WEATHER", "APT"],
-     "downlinks": [{"mode": "APT", "freq_mhz": 137.620}], "selected": False},
-    {"name": "NOAA 18", "norad": 28654, "labels": ["WEATHER", "APT"],
-     "downlinks": [{"mode": "APT", "freq_mhz": 137.9125}], "selected": False},
-    {"name": "NOAA 19", "norad": 33591, "labels": ["WEATHER", "APT"],
-     "downlinks": [{"mode": "APT", "freq_mhz": 137.100}], "selected": False},
-    {"name": "METEOR-M2 3", "norad": 57166, "labels": ["WEATHER", "LRPT"],
-     "downlinks": [{"mode": "LRPT", "freq_mhz": 137.900}], "selected": False},
-    {"name": "ISS (ZARYA)", "norad": 25544, "labels": ["APRS", "VOICE", "CREWED"],
-     "downlinks": [{"mode": "APRS", "freq_mhz": 145.825},
-                   {"mode": "FM voice", "freq_mhz": 145.800}], "selected": True},
-    {"name": "SO-50", "norad": 27607, "labels": ["VOICE"],
-     "downlinks": [{"mode": "FM", "freq_mhz": 436.795}], "selected": False},
-    {"name": "AO-91", "norad": 43017, "labels": ["VOICE"],
-     "downlinks": [{"mode": "FM", "freq_mhz": 145.960}], "selected": False},
-    {"name": "RS-44", "norad": 44909, "labels": ["LINEAR", "SSB"],
-     "downlinks": [{"mode": "SSB", "freq_mhz": 435.640}], "selected": False},
-    {"name": "PO-101", "norad": 43678, "labels": ["APRS", "VOICE"],
-     "downlinks": [{"mode": "FM", "freq_mhz": 145.900}], "selected": False},
-]
 
 
 def _now():
@@ -38,8 +18,8 @@ def save(path, data):
 
 
 def load(path):
-    """Return the roster, seeding configuration/satellites.json with the
-    defaults on first run. A garbled file is replaced with defaults."""
+    """Return the roster. When the file is missing or garbled, seed an empty
+    envelope (build-roster.py populates it on the first online run)."""
     if os.path.exists(path):
         try:
             with open(path, encoding="utf-8") as fh:
@@ -48,7 +28,7 @@ def load(path):
                 return data
         except (ValueError, OSError):
             pass
-    data = {"updated": _now(), "satellites": [dict(s) for s in DEFAULT_ROSTER]}
+    data = {"updated": _now(), "source": None, "labels": {}, "satellites": []}
     save(path, data)
     return data
 
@@ -61,3 +41,16 @@ def set_selected(path, norad, selected):
     data["updated"] = _now()
     save(path, data)
     return data
+
+
+def legacy_downlinks(sat):
+    """Phase-1 compat view: flatten the on-disk `transmitters` list into the old
+    `downlinks` shape [{"mode","freq_mhz"}] that routes/listen/UI still read.
+    Transmitters with no downlink leg are skipped. Phase 2 migrates consumers to
+    `transmitters`/uplink and this helper goes away."""
+    out = []
+    for t in sat.get("transmitters", []):
+        dl = t.get("downlink")
+        if dl and dl.get("freq_mhz") is not None:
+            out.append({"mode": t.get("mode"), "freq_mhz": dl["freq_mhz"]})
+    return out

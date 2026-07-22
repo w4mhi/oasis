@@ -193,12 +193,13 @@ FEATURES = [
             "Download Wikipedia ZIM files for Kiwix (1 GB to ~100 GB).",
             "Content / Data", default=False, internet=True, data=True,
             recommend="ZIM downloaded — Kiwix serves it at :8081 (install Kiwix if you haven't)."),
-    Feature("satellites-tle", "Satellite TLE cache", "services/satellites/sync-tle.py",
-            "Download CelesTrak TLEs so satellite pass prediction works (~30 KB). "
-            "TLEs go stale in a few days — click the age pill on the Satellites page "
-            "to refresh, or re-run this script when you next have internet.",
+    Feature("satellites-tle", "Satellite list (SatNOGS + CelesTrak)", "services/satellites/build-roster.py",
+            "Build the satellite list from SatNOGS (freqs/modes) + CelesTrak (TLEs) "
+            "so pass prediction works (~5 MB fetch). The list + TLEs go stale in a few "
+            "days — click the age pill on the Satellites page to refresh, or re-run "
+            "this script when you next have internet.",
             "Content / Data", default=True, internet=True,
-            recommend="Satellite passes are ready — refresh TLEs via the age pill (or re-run sync-tle.py) every few days."),
+            recommend="Satellite list is ready — refresh via the age pill (or re-run build-roster.py) every few days."),
     Feature("satellites-voice", "Satellite pass-alert voice", "services/satellites/install-voice.py",
             "Text-to-speech for satellite pass alerts (speech-dispatcher + espeak-ng, ~5 MB apt). "
             "After the T-10 chime the Satellites page speaks which bird is coming + the pass "

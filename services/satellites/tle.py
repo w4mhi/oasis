@@ -1,14 +1,21 @@
 """TLE cache: parse, load, and freshness. Read-only at runtime — the cache is
-populated out-of-band by sync-tle.py (online). No network here."""
+populated out-of-band by build-roster.py (online). No network here."""
 import os
 import time
 
-# CelesTrak groups the roster draws from. Used only by sync-tle.py.
+# CelesTrak groups the roster draws from. Fetched by build-roster.py.
 GROUPS = {
     "weather":  "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
     "amateur":  "https://celestrak.org/NORAD/elements/gp.php?GROUP=amateur&FORMAT=tle",
     "stations": "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle",
+    "cubesat":  "https://celestrak.org/NORAD/elements/gp.php?GROUP=cubesat&FORMAT=tle",
 }
+
+# High-value APT weather birds that CelesTrak lists in NO bulk group, so the
+# group pulls above miss them. build-roster.py gap-fills these individually via
+# CATNR (a handful of extra requests) and writes them to the cache as extra.txt.
+CATNR_URL = "https://celestrak.org/NORAD/elements/gp.php?CATNR={}&FORMAT=tle"
+GAPFILL_NORADS = (25338, 28654, 33591)  # NOAA 15 / 18 / 19 (137 MHz APT)
 
 
 def parse_tle_text(text):

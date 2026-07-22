@@ -133,6 +133,21 @@ html, body { height: 100%; margin: 0; }
 .sat-row .chips { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-top: .35rem; }
 .chip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim);
   border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
+/* Roster filter bar: name search + toggleable tag/band chips (OR within a group,
+   AND across groups). Filter state lives in _filters and persists to localStorage. */
+.filters { padding: .45rem .5rem .15rem; display: flex; flex-direction: column; gap: .4rem; }
+.filters .f-search { width: 100%; box-sizing: border-box; padding: 4px 9px; font-size: var(--fs-small);
+  color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; }
+.f-group { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+.fchip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim);
+  background: none; border: 1px solid var(--border); border-radius: 4px; padding: 1px 7px; cursor: pointer; }
+.fchip .n { opacity: .55; margin-left: .3rem; }
+.fchip.active { color: var(--panel); background: var(--accent); border-color: var(--accent); }
+.fchip.active .n { opacity: .8; }
+.f-clear { font-size: var(--fs-micro); color: var(--accent); background: none; border: none;
+  cursor: pointer; padding: 1px 4px; margin-left: auto; }
+/* View mode: three independent, mutually-exclusive pills (All / Monitored / In 1h). */
+#view-modes .fchip { padding: 2px 9px; }
 /* Downlink mode buttons (checked sat only). Freq is on the face; state comes
    from /listen/status. Two *disabled* looks that must not be confused: busy =
    solid grey ("wait"), unsupported = ghosted/dashed ("never"). */
@@ -188,9 +203,11 @@ html, body { height: 100%; margin: 0; }
   <div class="topbar-row">
     <h1 onclick="location.reload()" title="Reload">Satellites</h1>
     <span class="track-sep">|</span>
-    <span id="tle-age" class="badge" onclick="syncTle()" title="Click to update TLEs from CelesTrak (needs internet)" style="cursor:pointer">loading…</span>
+    <span id="tle-age" class="badge" onclick="syncTle()" title="Click to rebuild the satellite list from SatNOGS + CelesTrak (needs internet)" style="cursor:pointer">loading…</span>
     <span class="track-sep">|</span>
     <span class="win-lbl">24 h window</span>
+    <span class="track-sep">|</span>
+    <div class="f-group" id="tag-filters"></div>
     <span id="listen-status"><span class="rec-dot"></span><span id="listen-text"></span>
       <button class="sbtn" onclick="stopListen()">Stop</button></span>
     <span id="coverage-badge"></span>
@@ -218,6 +235,16 @@ html, body { height: 100%; margin: 0; }
     <span class="title">Roster</span>
     <span class="count" id="roster-count">—</span>
   </header>
+  <div class="filters" id="sat-filters">
+    <div class="f-group" id="view-modes">
+      <button class="fchip" data-view="all" onclick="setView('all')">All</button>
+      <button class="fchip" data-view="monitored" onclick="setView('monitored')">Monitored</button>
+      <button class="fchip" data-view="soon" onclick="setView('soon')">In 1h</button>
+    </div>
+    <input class="f-search" id="sat-search" type="search" placeholder="Search name…" autocomplete="off"
+           oninput="setSearchFilter(this.value)">
+    <div class="f-group" id="band-filters"></div>
+  </div>
   <div id="roster"><p style="color:var(--text-dim);padding:.4rem">Loading roster…</p></div>
 </div>
 
@@ -234,6 +261,101 @@ html, body { height: 100%; margin: 0; }
    ───────────────────────────────────────────────────────────────────────── */
 const WINDOW_H = 24;                       // default prediction window
 let ROSTER = [], STATION = null, PASSES = {};
+
+// ── Roster filters ─────────────────────────────────────────────────────────
+// Name search + tag chips + band chips. Within a group the selected values are
+// OR'd; the three groups are AND'd. Persisted so a browse session survives a
+// reload. Tag order follows the server's closed vocabulary.
+const TAG_ORDER = ['WEATHER', 'VOICE', 'FM', 'APRS', 'SSTV', 'LINEAR', 'SSB', 'DATA', 'CREWED'];
+const BAND_ORDER = ['VHF', 'UHF', 'L-band'];
+let _filters = (() => {
+  try {
+    const f = JSON.parse(localStorage.getItem('oasis_sat_filters') || '{}');
+    return { q: f.q || '', tags: new Set(f.tags || []), bands: new Set(f.bands || []) };
+  } catch (e) { return { q: '', tags: new Set(), bands: new Set() }; }
+})();
+function saveFilters() {
+  try {
+    localStorage.setItem('oasis_sat_filters', JSON.stringify(
+      { q: _filters.q, tags: [..._filters.tags], bands: [..._filters.bands] }));
+  } catch (e) { /* private mode */ }
+}
+function bandOf(mhz) { return mhz < 300 ? 'VHF' : mhz < 1000 ? 'UHF' : 'L-band'; }
+function satBands(s) { return new Set((s.downlinks || []).map(d => bandOf(d.freq_mhz))); }
+// View mode is a separate axis from tag/band/search: 'all' (whole list),
+// 'monitored' (checked/plotted birds), 'soon' (monitored + a pass within 1h,
+// matching the kiosk index7 window: in-progress OR rise ≤ 60 min).
+let _view = (() => { try { return localStorage.getItem('oasis_sat_view') || 'all'; } catch (e) { return 'all'; } })();
+function setView(v) {
+  _view = v;
+  try { localStorage.setItem('oasis_sat_view', v); } catch (e) { /* private mode */ }
+  applyViewButtons(); renderRoster();
+}
+function applyViewButtons() {
+  document.querySelectorAll('#view-modes .fchip').forEach(b =>
+    b.classList.toggle('active', b.dataset.view === _view));
+}
+function withinHour(s) {
+  const p = nextPassOf(s.norad);
+  if (!p) return false;
+  const now = Date.now();
+  const rise = new Date(p.rise).getTime(), set = new Date(p.set).getTime();
+  const inPass = rise <= now && now < set;
+  return inPass || (rise - now) / 60000 <= 60;
+}
+function passesFilters(s) {
+  if (_view !== 'all') {
+    if (!PLOTTED[s.norad]) return false;
+    if (_view === 'soon' && !withinHour(s)) return false;
+  }
+  const q = _filters.q.trim().toLowerCase();
+  if (q && !s.name.toLowerCase().includes(q)) return false;
+  if (_filters.tags.size && !(s.labels || []).some(l => _filters.tags.has(l))) return false;
+  if (_filters.bands.size) {
+    const b = satBands(s);
+    if (![..._filters.bands].some(x => b.has(x))) return false;
+  }
+  return true;
+}
+function filtersActive() { return !!_filters.q || _filters.tags.size > 0 || _filters.bands.size > 0; }
+function setSearchFilter(v) { _filters.q = v; saveFilters(); renderRoster(); }
+function toggleTagFilter(t) {
+  _filters.tags.has(t) ? _filters.tags.delete(t) : _filters.tags.add(t);
+  saveFilters(); renderFilterBar(); renderRoster();
+}
+function toggleBandFilter(b) {
+  _filters.bands.has(b) ? _filters.bands.delete(b) : _filters.bands.add(b);
+  saveFilters(); renderFilterBar(); renderRoster();
+}
+function clearFilters() {
+  _filters = { q: '', tags: new Set(), bands: new Set() };
+  saveFilters();
+  const box = document.getElementById('sat-search'); if (box) box.value = '';
+  renderFilterBar(); renderRoster();
+}
+// Build the tag + band chips from what's actually present in the roster, each
+// with a count over the full roster (stable, so "WEATHER 6" always reads true).
+function renderFilterBar() {
+  const box = document.getElementById('sat-search');
+  if (box && box.value !== _filters.q) box.value = _filters.q;
+  const tagCounts = {}, bandCounts = {};
+  (ROSTER || []).forEach(s => {
+    new Set(s.labels || []).forEach(l => tagCounts[l] = (tagCounts[l] || 0) + 1);
+    satBands(s).forEach(b => bandCounts[b] = (bandCounts[b] || 0) + 1);
+  });
+  const chip = (val, count, on, fn) =>
+    `<button class="fchip ${on ? 'active' : ''}" onclick="${fn}('${val}')">${val}<span class="n">${count}</span></button>`;
+  const tags = TAG_ORDER.filter(t => tagCounts[t]);
+  const bands = BAND_ORDER.filter(b => bandCounts[b]);
+  const clear = filtersActive() ? '<button class="f-clear" onclick="clearFilters()">clear ✕</button>' : '';
+  document.getElementById('tag-filters').innerHTML = tags.length
+    ? tags.map(t => chip(t, tagCounts[t], _filters.tags.has(t), 'toggleTagFilter')).join('') + clear
+    : '';
+  document.getElementById('band-filters').innerHTML = bands.length
+    ? bands.map(b => chip(b, bandCounts[b], _filters.bands.has(b), 'toggleBandFilter')).join('')
+    : '';
+  applyViewButtons();
+}
 // norad -> { color, pass, track, l1, l2 }   for each checked/plotted satellite.
 const PLOTTED = {};
 const PALETTE = ['#00d98b', '#58a6ff', '#ffb454', '#ff7b72', '#bc8cff', '#39d0d8', '#f778ba', '#7ee787'];
@@ -271,6 +393,7 @@ Object.values(_satSelected).forEach(c => { const i = _freeColors.indexOf(c); if 
 async function boot() {
   const meta = await (await fetch('/api/satellites')).json();
   ROSTER = meta.satellites; STATION = meta.station;
+  renderFilterBar();
   setTleBadge(meta.tle_age_days);
   if (_satMuted) { const m = document.getElementById('sat-mute');
     if (m) { m.textContent = '🔕'; m.title = 'Unmute pass-alert chimes'; } }
@@ -285,7 +408,11 @@ async function boot() {
   reconcileSelection();                             // sync local picks ↔ shared server roster (kiosk sees them)
   await restoreSelection();                         // re-plot the operator's saved satellite selection + bells
   setInterval(refreshPasses, 10 * 60 * 1000);      // keep the 24 h pass window fresh over long sessions
-  updatePills(); setInterval(updatePills, 2000);   // live workability colour
+  updatePills();                                   // live workability colour
+  // In the "In 1h" view, re-render the roster each tick so birds enter/leave the
+  // 60-min window on their own and the countdowns tick live (few rows, cheap).
+  // Other views just repaint pills — no time-dependent membership there.
+  setInterval(() => { _view === 'soon' ? renderRoster() : updatePills(); }, 2000);
 }
 
 // Render the TLE-age pill from a cache age in days (null = empty cache).
@@ -308,12 +435,13 @@ async function syncTle() {
   const flash = msg => { badge.textContent = msg; badge.className = 'badge warn';
     setTimeout(() => { badge.textContent = prev.text; badge.className = prev.cls; }, 5000); };
   try {
-    const j = await (await fetch('/api/satellites/sync-tle', { method: 'POST' })).json();
+    const j = await (await fetch('/api/satellites/refresh', { method: 'POST' })).json();
     if (j.ok) {
       setTleBadge(j.tle_age_days);
       // Pull the refreshed TLE lines into the roster + recompute pass predictions.
       const meta = await (await fetch('/api/satellites')).json();
       ROSTER = meta.satellites; STATION = meta.station;
+  renderFilterBar();
       await refreshPasses();
     } else {
       flash(j.offline ? '⚠ no internet — try later' : '⚠ sync failed — try later');
@@ -351,8 +479,21 @@ function inFootprintWindow(norad) {
 }
 
 function renderRoster() {
-  document.getElementById('roster-count').textContent = ROSTER.length + ' sats';
-  document.getElementById('roster').innerHTML = ROSTER.map(s => {
+  const shown = ROSTER.filter(passesFilters).sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }));
+  const mon = Object.keys(PLOTTED).length;
+  const tally = shown.length === ROSTER.length
+    ? `${ROSTER.length} sats` : `${shown.length} of ${ROSTER.length} sats`;
+  document.getElementById('roster-count').textContent = `${mon} monitored - ${tally}`;
+  if (!shown.length) {
+    const msg = _view === 'soon' ? 'No monitored passes in the next hour.'
+              : _view === 'monitored' ? 'Nothing monitored — check a satellite to track it.'
+              : 'No satellites match the filters.';
+    document.getElementById('roster').innerHTML =
+      `<p style="color:var(--text-dim);padding:.5rem">${msg}</p>`;
+    return;
+  }
+  document.getElementById('roster').innerHTML = shown.map(s => {
     const p = nextPassOf(s.norad);
     const color = PLOTTED[s.norad] ? PLOTTED[s.norad].color : 'transparent';
     return `<div class="sat-row ${PLOTTED[s.norad] ? 'on' : ''} ${p ? '' : 'no-pass'}" style="border-left-color:${color}">

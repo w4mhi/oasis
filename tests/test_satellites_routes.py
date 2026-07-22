@@ -32,6 +32,9 @@ class RoutesTest(unittest.TestCase):
         open(os.path.join(self._tmp, "configuration", "tle-cache", "stations.txt"), "w").write(open(fx).read())
         json.dump({"lat": 47.5495, "lon": -122.0298},
                   open(os.path.join(self._tmp, "configuration", "station.json"), "w"))
+        import shutil
+        shutil.copy(os.path.join(_HERE, "fixtures", "satellites-sample.json"),
+                    os.path.join(self._tmp, "configuration", "satellites.json"))
         self.routes.SUITE_ROOT = self._tmp
 
     def test_api_satellites_shape(self):

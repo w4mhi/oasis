@@ -1,0 +1,7 @@
+[
+  {"norad_cat_id": 25544, "sat_id": "ISS-UUID", "name": "ISS (ZARYA)", "status": "alive"},
+  {"norad_cat_id": 33591, "sat_id": "N19-UUID", "name": "NOAA 19", "status": "alive"},
+  {"norad_cat_id": 44909, "sat_id": "RS44-UUID", "name": "RS-44", "status": "alive"},
+  {"norad_cat_id": 99999, "sat_id": "DEAD-UUID", "name": "DEADSAT", "status": "re-entered"},
+  {"norad_cat_id": null, "sat_id": "NONORAD-UUID", "name": "NO NORAD", "status": "alive"}
+]

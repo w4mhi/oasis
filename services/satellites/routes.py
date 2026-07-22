@@ -53,7 +53,7 @@ def api_satellites():
         s["l1"] = entry[1] if entry else None
         s["l2"] = entry[2] if entry else None
         s["downlinks"] = [dict(d, **listen.mode_support(d.get("mode")))
-                          for d in s.get("downlinks", [])]
+                          for d in roster.legacy_downlinks(s)]
         sats.append(s)
     return jsonify({
         "satellites": sats,
@@ -62,32 +62,37 @@ def api_satellites():
     })
 
 
-@bp.route("/api/satellites/sync-tle", methods=["POST"])
-def api_sync_tle():
-    """Refresh the TLE cache from CelesTrak on demand — backs the clickable age
-    pill. ONLINE-ONLY and the one operator-triggered exception to "runtime never
-    fetches". With no internet we report {ok:false, offline:true} (HTTP 200)
-    instead of failing, so the UI can tell the operator to try again later."""
+@bp.route("/api/satellites/refresh", methods=["POST"])
+def api_refresh():
+    """Rebuild the satellite list from SatNOGS + CelesTrak on demand — backs the
+    age pill. ONLINE-ONLY, the one operator-triggered exception to "runtime never
+    fetches". Offline → {ok:false, offline:true} (HTTP 200) so the UI can say
+    'try again later' rather than error."""
     import subprocess
     from common.oasis_lib import has_internet
     cache_dir = config_paths.tle_cache_dir(SUITE_ROOT)
     if not has_internet():
         return jsonify({"ok": False, "offline": True,
                         "tle_age_days": tle.cache_age_days(cache_dir)}), 200
-    script = os.path.join(_HERE, "sync-tle.py")
+    script = os.path.join(_HERE, "build-roster.py")
     try:
         p = subprocess.run([sys.executable, script],
                            capture_output=True, text=True, timeout=180)
     except subprocess.TimeoutExpired:
-        return jsonify({"ok": False, "error": "sync timed out",
+        return jsonify({"ok": False, "error": "refresh timed out",
                         "tle_age_days": tle.cache_age_days(cache_dir)}), 200
     if p.returncode != 0:
         # A mid-download failure (e.g. CelesTrak unreachable despite DNS) must not
         # 500 — surface it as a handled error the pill can show.
         return jsonify({"ok": False,
-                        "error": (p.stderr or p.stdout or "sync failed").strip()[-300:],
+                        "error": (p.stderr or p.stdout or "refresh failed").strip()[-300:],
                         "tle_age_days": tle.cache_age_days(cache_dir)}), 200
-    return jsonify({"ok": True, "tle_age_days": tle.cache_age_days(cache_dir)})
+    try:
+        summary = json.loads(p.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        summary = {}
+    return jsonify({"ok": True, "tle_age_days": tle.cache_age_days(cache_dir),
+                    **summary})
 
 
 import datetime
@@ -174,9 +179,8 @@ def api_track():
     to = datetime.datetime.fromisoformat(request.args["to"])
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     entry = next((s for s in data["satellites"] if s["norad"] == norad_i), None)
-    dl = None
-    if entry and entry["downlinks"]:
-        dl = int(entry["downlinks"][0]["freq_mhz"] * 1_000_000)
+    dls = roster.legacy_downlinks(entry) if entry else []
+    dl = int(dls[0]["freq_mhz"] * 1_000_000) if dls else None
     try:
         track = predict.compute_track(sat, st["lat"], st["lon"], frm, to,
                                        step_s=10, downlink_hz=dl)
@@ -234,12 +238,12 @@ def api_listen():
         return jsonify({"error": "already recording"}), 409
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     entry = next((s for s in data["satellites"] if s["norad"] == norad), None)
-    if not entry or not entry.get("downlinks"):
+    downlinks = roster.legacy_downlinks(entry) if entry else []
+    if not downlinks:
         return jsonify({"error": "no downlink frequency for this satellite"}), 400
     # Pick the downlink: an optional freq_mhz override must match one of the
     # satellite's downlinks; else default to the first. Re-validate support
     # server-side — never trust the button.
-    downlinks = entry["downlinks"]
     dl = downlinks[0]
     req_freq = body.get("freq_mhz")
     if req_freq is not None:

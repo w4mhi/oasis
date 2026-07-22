@@ -7,8 +7,9 @@ Pat/Winlink, Kiwix, OpenWebRX, WebSSH, gpsd).
 
 > Offline-first: every endpoint here is served on the local device / LAN. There
 > are **no** outbound API calls at runtime. The one operator-triggered exception
-> is `POST /api/satellites/sync-tle`, which fetches TLEs from CelesTrak when the
-> operator clicks the age pill and the Pi happens to have internet.
+> is `POST /api/satellites/refresh`, which rebuilds the satellite list from
+> SatNOGS + CelesTrak when the operator clicks the age pill and the Pi happens to
+> have internet.
 
 ---
 
@@ -337,7 +338,7 @@ Hardware-free routes are always available; listen routes need a dongle.
 | GET | `/api/satellites/passes` | `window` (h, default 48), `sat?` | Predicted passes `{passes:{norad:[{rise, peak, set, max_elev, …}]}}`. Disk-cached (6 h TTL, keyed by TLE mtime). |
 | GET | `/api/satellites/track` | `sat`, `from`, `to` (ISO) | Ground track + `{track, l1, l2}`. |
 | POST | `/api/satellites/select` | `{norad, selected}` | Toggle a satellite in the roster. |
-| POST | `/api/satellites/sync-tle` | — | **Online-only** refresh of the TLE cache from CelesTrak. Offline → `{ok:false, offline:true}` (HTTP 200, never fails). Returns `{ok, tle_age_days}`. |
+| POST | `/api/satellites/refresh` | — | **Online-only** rebuild of the satellite list from SatNOGS (freqs/modes) + CelesTrak (TLEs). Offline → `{ok:false, offline:true}` (HTTP 200, never fails). Returns `{ok, tle_age_days, count, labels, changes}`. |
 | GET | `/api/satellites/listen/status` | — | Recorder state + dongle preconditions. |
 | POST | `/api/satellites/listen` | `{norad, freq_mhz?}` | Start recording a pass to WAV (pins `rtl_fm` to the assigned dongle by serial). Errors: `400` deps/downlink, `409` busy/already recording. |
 | POST | `/api/satellites/listen/stop` | — | Stop recording. |
@@ -436,7 +437,7 @@ Run their own web servers; OASIS links out and/or health-checks them.
 | Hardware inventory | `configuration/hardware.json` | `/api/hardware/*` | service control, apply-hardware |
 | Installed features | `configuration/installed-services.json` | setup-oasis / `/api/setup/*` | `/api/installed-services` |
 | Map warnings | warnings JSON (suite) | `/api/aprs/warnings` | map "Insert Alerts" |
-| TLE cache | `configuration/tle-cache/` | `sync-tle.py` / `/api/satellites/sync-tle` | satellites |
+| TLE cache | `configuration/tle-cache/` | `build-roster.py` / `/api/satellites/refresh` | satellites |
 
 ---
 
