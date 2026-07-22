@@ -97,8 +97,15 @@ def api_refresh():
 
 import datetime
 import hashlib
+import time
 
 _CACHE_TTL_S = 6 * 3600   # recompute at most every 6 h (TLEs change ~every 3 days)
+# Wall-clock budget for one /passes request. Kept well under gunicorn's default
+# 30 s worker timeout: a full-roster propagation (150+ sats) cold used to overrun
+# it, so the worker was killed at 500 before the cache was written — every retry
+# then recomputed cold and the endpoint stayed stuck at 500. Each request now does
+# a bounded chunk and persists progress (see api_passes).
+_PASSES_BUDGET_S = 20
 
 
 def _cache_path(key):
@@ -108,15 +115,22 @@ def _cache_path(key):
     return os.path.join(d, h + ".json")
 
 
-def _sats_by_norad():
+def _sats_by_norad(selected_first=False):
     """{norad: EarthSatellite} for roster entries present in the TLE cache,
     matched by NORAD id (not name — CelesTrak's names differ from the roster's,
-    e.g. 'SAUDISAT 1C (SO-50)' vs the roster's 'SO-50')."""
+    e.g. 'SAUDISAT 1C (SO-50)' vs the roster's 'SO-50').
+
+    selected_first orders monitored sats ahead of the rest (dict preserves
+    insertion order) so a budgeted /passes computation reaches the ones the
+    dashboards actually need before the time cutoff."""
     import predict
     by_norad = tle.index_by_norad(tle.load_cache(config_paths.tle_cache_dir(SUITE_ROOT)))
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
+    entries = data["satellites"]
+    if selected_first:
+        entries = sorted(entries, key=lambda s: not s.get("selected"))
     out = {}
-    for s in data["satellites"]:
+    for s in entries:
         entry = by_norad.get(s["norad"])
         if entry:
             name, l1, l2 = entry
@@ -147,19 +161,45 @@ def api_passes():
         with open(cp, encoding="utf-8") as fh:
             return jsonify(json.load(fh))
     start = datetime.datetime.now(datetime.timezone.utc)
-    result = {"passes": {}}
-    for norad, sat in _sats_by_norad().items():
-        if only and str(norad) != str(only):
-            continue
+    # Resume from any prior (possibly partial) cache and compute only the missing
+    # sats, under a wall-clock budget below the worker timeout. Selected sats go
+    # first, so the dashboards get their passes on the first poll; the remainder
+    # fill in over the next couple of polls. A partial result still returns 200 —
+    # never 500 — and progress is persisted so it completes across requests.
+    prior = {}
+    if os.path.exists(cp):
         try:
-            result["passes"][str(norad)] = predict.compute_passes(
+            with open(cp, encoding="utf-8") as fh:
+                prior = (json.load(fh) or {}).get("passes", {})
+        except (OSError, ValueError):
+            prior = {}
+    result = {"passes": dict(prior)}
+    deadline = time.monotonic() + _PASSES_BUDGET_S
+    complete = True
+    for norad, sat in _sats_by_norad(selected_first=True).items():
+        nk = str(norad)
+        if only and nk != str(only):
+            continue
+        if nk in result["passes"]:
+            continue                     # already computed (fresh or a prior chunk)
+        if time.monotonic() > deadline:
+            complete = False             # out of budget — finish on the next poll
+            break
+        try:
+            result["passes"][nk] = predict.compute_passes(
                 sat, st["lat"], st["lon"], start, hours=window, min_elev=10.0)
         except Exception:
             # A stale/decayed TLE can make SGP4 propagation blow up (e.g. far past
             # epoch). One bad satellite must never 500 the whole response — skip it.
-            result["passes"][str(norad)] = []
+            result["passes"][nk] = []
     with open(cp, "w", encoding="utf-8") as fh:
         json.dump(result, fh)
+    if not complete:
+        # Persist progress so the next request resumes, but backdate the file so
+        # the freshness check treats it as stale and keeps filling the remainder
+        # rather than serving an incomplete set for the full TTL.
+        stale = datetime.datetime.now().timestamp() - _CACHE_TTL_S - 1
+        os.utime(cp, (stale, stale))
     return jsonify(result)
 
 
@@ -199,8 +239,16 @@ def api_track():
 @bp.route("/api/satellites/select", methods=["POST"])
 def api_select():
     body = request.get_json(force=True)
-    data = roster.set_selected(config_paths.satellites_json(SUITE_ROOT),
-                               int(body["norad"]), bool(body["selected"]))
+    try:
+        data = roster.set_selected(config_paths.satellites_json(SUITE_ROOT),
+                                   int(body["norad"]), bool(body["selected"]))
+    except OSError as exc:
+        # Almost always a permissions problem: satellites.json left root-owned by
+        # the privileged installer worker, so the non-root server can't rewrite it.
+        # Surface the cause instead of a blank 500 (build-roster now chowns it to
+        # the operator; this guards a stale file from an older bundle).
+        return jsonify({"ok": False, "error": f"could not save selection: {exc} — is "
+                        "configuration/satellites.json writable by the server user?"}), 500
     return jsonify(data)
 
 

@@ -35,6 +35,24 @@ def _atomic_write(path, text):
     os.replace(tmp, path)
 
 
+def _match_dir_owner(path):
+    """When this runs as root (the privileged installer worker), leave `path`
+    owned by whoever owns its parent configuration/ dir — the web-server user —
+    so the server can REWRITE it later. satellites.json in particular is updated
+    by /api/satellites/select; a root-owned file makes that endpoint 500 (EACCES)
+    and selections silently never persist. No-op off-root or on any error."""
+    try:
+        if os.geteuid() != 0:
+            return
+    except AttributeError:
+        return   # os.geteuid is Unix-only
+    try:
+        st = os.stat(os.path.dirname(path))
+        os.chown(path, st.st_uid, st.st_gid)
+    except OSError:
+        pass
+
+
 def _gapfill_blocks():
     """CATNR-fetch the group-less APT weather birds (tle.GAPFILL_NORADS). A
     single bird failing is non-fatal (skip it) — unlike a whole-group failure."""
@@ -102,6 +120,7 @@ def main():
             "labels": facet, "satellites": records}
     os.makedirs(os.path.dirname(args.config), exist_ok=True)
     _atomic_write(args.config, json.dumps(data, indent=2))
+    _match_dir_owner(args.config)   # server must rewrite this on /select — not root-owned
 
     print(json.dumps({"count": len(records), "labels": facet, "changes": diff}))
     return 0

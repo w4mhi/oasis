@@ -109,5 +109,23 @@ class RoutesTest(unittest.TestCase):
         finally:
             self.predict.compute_passes = orig
 
+    def test_passes_over_budget_returns_200_and_resumes(self):
+        # A roster too large to finish in one budget window must NOT 500 (the old
+        # behaviour: worker timeout → cache never written → stuck at 500 forever).
+        # It returns 200 with partial data and persists progress; a later request
+        # resumes and completes.
+        orig_budget = self.routes._PASSES_BUDGET_S
+        try:
+            self.routes._PASSES_BUDGET_S = -1        # force "out of budget" at once
+            r = self.client.get("/api/satellites/passes?window=24")
+            self.assertEqual(r.status_code, 200)     # partial, never 500
+            self.assertIn("passes", r.get_json())
+            self.routes._PASSES_BUDGET_S = orig_budget   # normal budget → resume
+            r2 = self.client.get("/api/satellites/passes?window=24")
+            self.assertEqual(r2.status_code, 200)
+            self.assertIn("25544", r2.get_json()["passes"])   # ISS computed on resume
+        finally:
+            self.routes._PASSES_BUDGET_S = orig_budget
+
 if __name__ == "__main__":
     unittest.main()
