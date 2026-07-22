@@ -126,7 +126,9 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .hwpill .svc{ color:var(--blue); font-weight:600; }
 .hwpill.off{ border-style:dashed; } .hwpill.off .d{ background:var(--faint); }
 .hwpill.off .dev{ color:var(--dim); } .hwpill.off .svc{ color:var(--warn); }
-.hwempty{ color:var(--faint); font-size:1.1rem; }
+/* no-devices state: a pill like the device pills, amber text. */
+.hwempty{ display:flex; align-items:center; padding:.3rem .9rem; border-radius:999px;
+          border:1px solid var(--border); background:var(--panel-2); color:var(--warn); font-size:1.1rem; }
 
 /* ── traffic ────────────────────────────────────────────────────────────────── */
 .traffic{ flex:1 1 auto; min-width:0; }
