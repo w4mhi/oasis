@@ -157,7 +157,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .heard{ color:var(--warn); font-weight:700; font-variant-numeric:tabular-nums; font-size:1.05rem; }
 /* Pull the scroll area toward the card's right edge so its scrollbar isn't
    floating 1.2rem in (the card's right padding). Header/rows stay left-aligned. */
-.tscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.9rem; }
+.tscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.5rem; }
 /* Custom scrollbar (touch-friendly, accent thumb) — not the OS default. Shared
    by the Traffic + Satellites scroll areas + the overlay bodies. */
 .tscroll::-webkit-scrollbar, .satscroll::-webkit-scrollbar, .ov-body::-webkit-scrollbar{ width:14px; }
@@ -181,10 +181,9 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 
 /* ── satellites ─────────────────────────────────────────────────────────────── */
 .sats{ flex:0 0 28rem; min-width:0; }
-/* No negative margin here (unlike .tscroll): the sat entries are bordered pills,
-   so pulling them outward makes their right border bleed into the card edge.
-   Keep them inset; the scrollbar rides at the normal gap. */
-.satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; }
+/* Same moderate tuck as .tscroll — a consistent ~9px gap between scrollbar and
+   card edge. Gentle enough that the bordered sat pills don't bleed. */
+.satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.5rem; }
 /* Plain upcoming pass = plain row (divider only). Only NOW (green pill) and
    ≤10min (amber pill) get a border + glowing dot — see .sat.now / .sat.soon. */
 .sat{ padding:.55rem .2rem .6rem; border-bottom:1px solid var(--border-soft); }
