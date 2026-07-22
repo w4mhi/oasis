@@ -108,7 +108,13 @@ def _install_online():
     rc = _run(sudo_apt_cmd("apt-get", "install", "-y", *PACKAGES), check=False)
     if rc.returncode == 0:
         return True
-    _warn("apt install failed — pass alerts will still chime, just no voice.")
+    _warn("Speech stack could not be installed — pass alerts will still chime, "
+          "just no spoken voice.")
+    _warn("This is often a transient Raspberry Pi OS archive conflict — e.g. "
+          "speech-dispatcher pinned to '= 0.12.0-5' vs. a '+rpt1' rebuild of "
+          "speech-dispatcher-audio-plugins. It usually clears after RPi OS "
+          "refreshes the archive; retry later with:  sudo apt-get update && "
+          "python3 services/satellites/install-voice.py")
     return False
 
 
@@ -137,7 +143,13 @@ def run():
         return 0   # optional feature: skip cleanly rather than fail the setup run
 
     if not ok:
-        return 1
+        # Voice is an OPTIONAL enhancement — pass alerts still chime without it.
+        # Never fail the satellites feature over a missing TTS stack (matches the
+        # off-Linux / offline paths above, which also return 0). The warnings from
+        # the install path already explain what happened and how to add it later.
+        _warn("Continuing without voice — the satellites feature is otherwise "
+              "installed and pass alerts will chime.")
+        return 0
     _ok("Speech stack installed — Chromium gets an espeak-ng voice for pass alerts.")
     _info("Verify after a browser restart: on the Satellites page console, "
           "`speechSynthesis.getVoices().length` should be > 0.")
