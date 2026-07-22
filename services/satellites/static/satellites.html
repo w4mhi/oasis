@@ -245,6 +245,26 @@ const _freeColors = [...PALETTE];
 // but only render on a plotted sat, so they vanished with the lost selection.
 let _satSelected = (() => { try { return JSON.parse(localStorage.getItem('oasis_sat_selected') || '{}'); } catch (e) { return {}; } })();
 function saveSelection() { try { localStorage.setItem('oasis_sat_selected', JSON.stringify(_satSelected)); } catch (e) { /* private mode */ } }
+// Persist a selection toggle to the SHARED server roster (configuration/
+// satellites.json) so other clients — notably the 7" kiosk, which reads the
+// roster's `selected` flag — see the same picks. Fire-and-forget; localStorage
+// stays this browser's per-sat colour store.
+function postSelect(norad, selected) {
+  fetch('/api/satellites/select', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ norad: +norad, selected: !!selected }) }).catch(() => {});
+}
+// Reconcile this browser's selection with the shared server roster on load, so
+// the map and the kiosk agree: adopt any sat the roster marks selected (a pick
+// made on another device — e.g. the laptop — shows here too), and push up any
+// local-only picks so the server (and kiosk) learn them. Union — nothing dropped.
+function reconcileSelection() {
+  (ROSTER || []).forEach(s => {
+    const has = s.norad in _satSelected;
+    if (s.selected && !has) _satSelected[s.norad] = _freeColors.shift() || PALETTE[0];
+    else if (has && !s.selected) postSelect(s.norad, true);
+  });
+  saveSelection();
+}
 // Claim already-chosen colours so a fresh selection doesn't collide with them.
 Object.values(_satSelected).forEach(c => { const i = _freeColors.indexOf(c); if (i >= 0) _freeColors.splice(i, 1); });
 
@@ -262,6 +282,7 @@ async function boot() {
   startClock(); updateCpu(); setInterval(updateCpu, 8000);
   pollListen(); setInterval(pollListen, 3000);
   await refreshPasses();
+  reconcileSelection();                             // sync local picks ↔ shared server roster (kiosk sees them)
   await restoreSelection();                         // re-plot the operator's saved satellite selection + bells
   setInterval(refreshPasses, 10 * 60 * 1000);      // keep the 24 h pass window fresh over long sessions
   updatePills(); setInterval(updatePills, 2000);   // live workability colour
@@ -572,6 +593,7 @@ async function onToggle(norad, checked) {
     if (norad in _satSelected) { _freeColors.unshift(_satSelected[norad]); delete _satSelected[norad]; saveSelection(); }
     unplotSat(norad);
   }
+  postSelect(norad, checked);          // persist to the shared server roster (kiosk reads it)
   renderRoster();
 }
 

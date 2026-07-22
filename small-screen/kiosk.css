@@ -1,187 +1,268 @@
 /* ============================================================
    OASIS 7" kiosk (index7.html) — standalone stylesheet.
 
-   Detached from css/common.css on purpose: the kiosk is a fixed 800×480
-   touchscreen layout with its own dark palette and never uses the suite's
-   light/dark theme toggle (theme.js skips /small-screen/). Some duplication
-   with common.css is expected and intentional — keep this file self-contained.
+   A fluid landscape dashboard for the BigTreeTech 7" / any 800×480 touch panel,
+   scaling to 1024×600 and 1920×1200: everything is sized in rem, and the root
+   font-size tracks viewport height (clamp below), so the same 3-zone layout
+   grows proportionally and the Traffic list simply shows more rows on bigger
+   screens. Detached from css/common.css on purpose — own dark palette, no
+   light/dark toggle (theme.js skips /small-screen/). Self-contained by design.
    ============================================================ */
 :root{
   --bg:#0a0e11; --panel:#10161b; --panel-2:#141c22; --raise:#18222a;
   --border:#222d35; --border-soft:#1a242b;
   --text:#cdd8e0; --dim:#7e8d99; --faint:#4c5b66;
-  --accent:#35d0a0; --up:#35d0a0; --warn:#f6a821; --down:#ff5b4a; --local:#f59e2e;
-  --link-live:#5cb8ff; --r:9px;
+  --accent:#35d0a0; --up:#35d0a0; --warn:#f6a821; --down:#ff5b4a;
+  --amber:#f4b64a; --blue:#5cb8ff; --purple:#b478ff;
+  --r:.9rem;
   --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
 }
-*{box-sizing:border-box} html,body{margin:0}
-/* Touch-only 800×480 panel — no pointer device, so never show a mouse cursor.
-   The kiosk is fullscreen Chromium over this page, so hiding it here covers the
-   whole screen; works on X11 and Wayland with no extra package (unclutter is
-   X11-only + would need apt). !important because buttons/pills set cursor:pointer. */
+*{box-sizing:border-box}
+/* Touch-only panel — no pointer device, so never show a mouse cursor. Fullscreen
+   Chromium over this page, so hiding it here covers the whole screen; works on
+   X11 and Wayland with no extra package. !important beats buttons' cursor:pointer. */
 *{cursor:none !important}
-body{background:#05080a; color:var(--text); font-family:var(--mono);
-     min-height:100vh; display:flex; flex-direction:column; align-items:center; gap:10px;
-     padding:24px 12px; -webkit-font-smoothing:antialiased}
-.frame-label{color:var(--faint); font-size:12px; letter-spacing:.05em}
+/* Font size has a readable FLOOR (~13px) so the small 5"/7" panels stay legible
+   — tying it to viewport height alone shrank exactly the screens that need big
+   text. Only the large 1920×1200 panel scales up past the floor. */
+html{ font-size:clamp(13px, 1.9vh, 24px); }
+html,body{ margin:0; height:100%; }
+body{ background:var(--bg); color:var(--text); font-family:var(--mono);
+      -webkit-font-smoothing:antialiased; overflow:hidden; }
 
-/* the actual Pi screen : fixed 800x480, nothing scrolls but the table */
-.kiosk{
-  position:relative; width:800px; height:auto; flex:0 0 auto;
-  background:var(--bg); border:1px solid #2a3742; border-radius:12px; overflow:hidden;
-  display:flex; flex-direction:column; font-size:13px;
-}
+.kiosk{ width:100vw; height:100vh; display:flex; flex-direction:column; gap:.8rem;
+        padding:.8rem; position:relative; }
+.row{ display:flex; gap:.8rem; min-height:0; }
+.row.top{ flex:0 0 auto; }
+.row.bot{ flex:1 1 auto; min-height:0; }
 
-/* ---------- header (42) ---------- */
-.k-head{display:flex; align-items:center; gap:12px; height:42px; padding:0 12px;
-        border-bottom:1px solid var(--border); flex:0 0 auto}
-.k-brand{color:var(--accent); font-weight:700; letter-spacing:.12em; font-size:16px}
-.k-ver{color:var(--dim); font-size:10px; letter-spacing:.04em; margin-left:5px}
-.pill{display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border);
-      border-radius:999px; padding:3px 9px; font-size:12px; letter-spacing:.04em}
-.pill.call{color:var(--accent); cursor:pointer}
-.pill.units{color:var(--link-live); cursor:pointer; letter-spacing:.06em; font-size:11px}
-.pill.units:hover{color:var(--text); border-color:var(--accent)}
-.pill.host{color:var(--dim); font-variant-numeric:tabular-nums; white-space:nowrap}
-.k-clocks{margin-left:auto; display:flex; align-items:baseline; gap:14px; font-variant-numeric:tabular-nums}
-.clk{font-size:14px} .clk .lab{color:var(--dim); font-size:12px; letter-spacing:.04em}
-.clk.utc b{color:var(--accent)} .clk.loc b{color:var(--local)}
-.k-refresh{flex:0 0 auto; width:30px; height:30px; display:grid; place-items:center;
-          border:1px solid var(--border); border-radius:8px; color:var(--dim); cursor:pointer; font-size:17px; line-height:1}
-.k-refresh:hover{color:var(--accent); border-color:var(--accent)}
-.k-refresh:active{transform:rotate(180deg); transition:transform .2s}
+.card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r);
+       padding:1rem 1.2rem; min-width:0; display:flex; flex-direction:column; }
+.hd{ display:flex; align-items:center; gap:.8rem; margin-bottom:.6rem; }
+.hd .lbl{ font-size:1.05rem; letter-spacing:.16em; color:var(--dim); font-weight:700; }
+.hd .meta{ margin-left:auto; font-size:1.1rem; color:var(--faint); font-variant-numeric:tabular-nums; }
 
-/* ---------- system monitor (≤2 lines) ---------- */
-.k-mon{display:flex; flex-wrap:wrap; align-items:center; gap:4px 14px; padding:7px 12px;
-       border-bottom:1px solid var(--border); flex:0 0 auto; font-size:12px}
-.k-mon .e{color:var(--accent); font-size:12px; letter-spacing:.14em; font-weight:700; margin-right:4px}
-.k-mon .m .k{color:var(--dim)} .k-mon .m .v{color:var(--text)}
-.k-mon .m .v.ok{color:var(--up)}
-.k-mon .m .v.warm{color:var(--warn)}
-.k-mon .m .v.hot{color:var(--down)}
-.k-mon .live{margin-left:auto; color:var(--up)}
+/* ── travel clock — UTC amber (primary), Local blue ─────────────────────────── */
+.clock{ flex:0 0 19rem; background:transparent; border:none; padding:0; }
+.face{ background:linear-gradient(180deg,var(--raise),var(--panel-2));
+       border:1px solid var(--border); border-radius:1.1rem; padding:.9rem 1.4rem 1.1rem 1.6rem;
+       position:relative; overflow:hidden; box-shadow:0 .8rem 2rem -1.2rem #000; }
+.face::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:.4rem; }
+.face.utc::before{ background:var(--amber); }
+.face.loc{ margin-top:.8rem; } .face.loc::before{ background:var(--blue); }
+.face .zn{ display:flex; align-items:baseline; gap:.8rem; }
+.face .zn .z{ font-size:1.1rem; letter-spacing:.22em; font-weight:700; }
+.face.utc .z{ color:var(--amber); } .face.loc .z{ color:var(--blue); }
+.face .zn .tz{ font-size:1.25rem; color:var(--dim); letter-spacing:.04em; }
+.face .time{ font-size:3.2rem; line-height:1.02; font-weight:600; letter-spacing:.01em;
+             font-variant-numeric:tabular-nums; margin:.1rem 0 0; }
+.face.utc .time{ color:var(--amber); } .face.loc .time{ color:var(--blue); }
+.face .time .s{ font-size:1.6rem; opacity:.62; }
+.face .date{ font-size:1.2rem; color:var(--dim); letter-spacing:.04em; margin-top:.2rem;
+             font-variant-numeric:tabular-nums; }
 
-/* ---------- nav row (44, touch) ---------- */
-.k-nav{display:flex; gap:10px; padding:8px 12px; flex:0 0 auto}
-.navbtn{flex:1; min-height:44px; display:flex; align-items:center; gap:10px; padding:0 14px;
-        background:var(--panel); border:1px solid var(--border); border-radius:var(--r);
-        color:var(--text); cursor:pointer; font-family:inherit; font-size:13px}
-.navbtn:hover{border-color:var(--accent)}
-.navbtn .nb-ico{font-size:16px}
-.navbtn .nb-t{font-weight:700; letter-spacing:.10em; color:var(--accent); font-size:12px}
-.navbtn .nb-sub{color:var(--dim); font-size:11px}
-.navbtn .nb-dot{font-size:12px; line-height:1}
-/* SERVICES status dot — worst-of colouring, replaces the old emoji. */
-#k-svc-dot{color:var(--dim)}
-#k-svc-dot.up{color:var(--up)} #k-svc-dot.warn{color:var(--warn)} #k-svc-dot.down{color:var(--down)}
-.navbtn .nb-r{margin-left:auto; display:flex; gap:8px; font-size:12px; font-variant-numeric:tabular-nums}
-.navbtn .nb-r .u{color:var(--up)} .navbtn .nb-r .w{color:var(--warn)} .navbtn .nb-r .d{color:var(--down)}
-.navbtn .chev{margin-left:auto; color:var(--dim)}
-.navbtn.ops{flex:0 0 auto}   /* shrink to content — only says "OPS" now */
-.navbtn.ops .chev{margin-left:8px}
-/* APRS feed flow card — between SERVICES and OPS; shows pkt/s into GrayWolf */
-.navbtn.feedcard{flex:0 0 210px; cursor:default; gap:10px}
-.navbtn.feedcard[hidden]{display:none}
-.navbtn.feedcard:hover{border-color:var(--border)}
-.feedcard .nb-dot{font-size:12px; color:var(--dim); line-height:1}
-.feedcard .feed-wrap{display:flex; flex-direction:column; gap:3px; min-width:0; flex:1}
-.feedcard .nb-t{color:var(--accent); font-weight:700; letter-spacing:.10em; font-size:12px}
-.feed-meter{display:flex; align-items:center; gap:6px; min-width:0}
-.feed-meter-track{flex:1; min-width:30px; height:6px; background:var(--border); border-radius:3px; overflow:hidden}
-.feed-meter-fill{display:block; height:100%; width:0%; background:var(--accent); border-radius:3px; transition:width .25s ease, background .25s ease}
-.feed-meter.silent .feed-meter-fill{background:var(--down)}
-.feed-meter.flowing .feed-meter-fill{background:var(--up)}
-.feed-meter-label{font-size:10px; color:var(--dim); white-space:nowrap; font-variant-numeric:tabular-nums}
+/* ── status card (callsign · gps · system · services · hardware) ────────────── */
+/* Two columns: content (left, flows compactly) + action buttons (right, top).
+   Keeps GPS/System directly under the callsign instead of below the tall
+   OPS/REFRESH button column (which otherwise stretches the header). */
+.status{ flex:1 1 auto; flex-direction:row; gap:1rem; }
+.status-body{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+.status-actions{ flex:0 0 auto; display:flex; flex-direction:column; gap:.4rem; align-items:stretch; }
+.callrow{ display:flex; align-items:center; gap:.8rem; margin-bottom:.5rem; }
+.callpill{ display:inline-flex; align-items:center; gap:.7rem; padding:.35rem 1.1rem; border-radius:999px;
+           border:1px solid var(--border); background:var(--panel-2); font-size:1.25rem; cursor:pointer; }
+.callpill .cs{ color:var(--accent); font-weight:700; letter-spacing:.05em; }
+.callpill .sep{ color:var(--faint); } .callpill .gr{ color:var(--warn); font-weight:600; }
+.upill{ font-size:1.05rem; letter-spacing:.05em; color:var(--blue); border:1px solid var(--border);
+        border-radius:999px; padding:.3rem .8rem; cursor:pointer; }
+.upill:hover{ border-color:var(--blue); color:var(--text); }
+.ops{ font-size:1.2rem; font-weight:700; letter-spacing:.12em; color:var(--accent); text-align:center;
+      border:1px solid var(--accent); background:rgba(53,208,160,.08); border-radius:.6rem;
+      padding:.45rem 1.3rem; cursor:pointer; }
+/* Same pill style as OPS, but blue. Two-line label (REFRESH / DISPLAY). */
+.refresh-btn{ color:var(--blue); border-color:var(--blue); background:rgba(92,184,255,.08); line-height:1.12; padding:.7rem 1.3rem; }
+.refresh-btn:active{ background:rgba(92,184,255,.18); }
+/* GPS as a pill (no dot), same size + shape as the header pills; the fix-state
+   colour lives on the mode text. */
+/* GPS / Services / device pills share one width: a single-column grid sized to
+   the widest pill (Services), so every pill stretches to match — content stays
+   left, empty space falls on the right. */
+.pillstack{ display:grid; grid-template-columns:max-content; gap:.5rem; }
+.hwpills{ display:contents; }   /* device pills join the pillstack grid directly */
+.gpspill{ display:flex; align-items:baseline; gap:.5rem; padding:.3rem 1rem;
+          border-radius:999px; border:1px solid var(--border); background:var(--panel-2); font-size:1.2rem; }
+.gpspill .mode{ font-weight:700; }
+.gpspill .sub{ color:var(--dim); font-size:1.05rem; }
+#k-gps.nogps .mode{ color:var(--dim); }
+#k-gps.nofix .mode{ color:var(--down); }
+#k-gps.fix2d .mode{ color:var(--warn); }
+#k-gps.fix3d .mode{ color:var(--accent); }
+#k-gps .sub .gps-sat{ color:var(--text); }
+.divider{ height:1px; background:var(--border-soft); margin:.5rem 0; }
+/* System as a stacked pill under REFRESH DISPLAY — one stat per line, styled
+   like the Services pill (accent-dim border, panel-2). No header for now. */
+.syspill{ display:flex; flex-direction:column; gap:.15rem; padding:.4rem 1rem; border-radius:.9rem;
+          border:1px solid var(--border); background:var(--panel-2);
+          font-size:1.15rem; color:var(--text); font-variant-numeric:tabular-nums; }
+.syspill .srow{ display:flex; gap:.6rem; }
+.syspill .k{ min-width:3.2rem; color:var(--text); letter-spacing:.05em; }
+.syspill .v{ font-weight:700; }
+.sysip{ font-size:1rem; color:var(--dim); text-align:center; letter-spacing:.03em; font-variant-numeric:tabular-nums; margin-top:.6rem; }
+.v.ok{ color:var(--accent); } .v.warm{ color:var(--warn); } .v.hot{ color:var(--down); }
+/* Exact match to the parent dashboard's .svc-pill: accent-dim pill, "N UP · N
+   WRN · N DN" with green / amber / red counts and dim separators. */
+.svcpill{ display:flex; align-items:baseline; gap:.5rem; padding:.3rem 1rem; border-radius:999px;
+          border:1px solid var(--border); background:var(--panel-2); font-size:1.2rem;
+          letter-spacing:.04em; font-variant-numeric:tabular-nums; cursor:pointer; }
+.svcpill .t{ letter-spacing:.14em; color:var(--text); font-weight:700; font-size:1.05rem; }
+.svcpill .cnt-up{ color:var(--accent); }
+.svcpill .cnt-warn{ color:var(--warn); }
+.svcpill .cnt-down{ color:var(--down); }
+.svcpill .cnt-sep{ color:var(--dim); }
+.hwpill{ display:flex; align-items:center; gap:.6rem; font-size:1.1rem; letter-spacing:.01em;
+         padding:.3rem .9rem; border-radius:999px; border:1px solid var(--border); background:var(--panel-2); }
+.hwpill .d{ width:.6rem; height:.6rem; border-radius:50%; background:var(--accent); }
+.hwpill.on{ border-color:rgba(53,208,160,.35); }
+.hwpill .dev{ color:var(--text); } .hwpill .arr{ color:var(--faint); }
+.hwpill .svc{ color:var(--blue); font-weight:600; }
+.hwpill.off{ border-style:dashed; } .hwpill.off .d{ background:var(--faint); }
+.hwpill.off .dev{ color:var(--dim); } .hwpill.off .svc{ color:var(--warn); }
+/* no-devices state: a pill like the device pills, amber text. */
+.hwempty{ display:flex; align-items:center; padding:.3rem .9rem; border-radius:999px;
+          border:1px solid var(--border); background:var(--panel-2); color:var(--warn); font-size:1.1rem; }
 
-/* GPS nav card — the "GPS" label stays green (a static indicator, like SERVICES/
-   OPS) and the satellite count stays white; only the DOT and the MODE text
-   (2D/3D/no fix/no gps) carry the state colour: grey/red/amber/green. */
-.navbtn.gpscard{flex:0 0 auto; cursor:default; gap:10px}
-.navbtn.gpscard:hover{border-color:var(--border)}
-.gpscard .nb-dot{font-size:12px; color:var(--dim); line-height:1}
-.gpscard .nb-sub .gps-sat{color:var(--text)}   /* satellites: always white */
-.gpscard.nogps .nb-dot, .gpscard.nogps .gps-mode{color:var(--dim)}
-.gpscard.nofix .nb-dot, .gpscard.nofix .gps-mode{color:var(--down)}
-.gpscard.fix2d .nb-dot, .gpscard.fix2d .gps-mode{color:var(--warn)}
-.gpscard.fix3d .nb-dot, .gpscard.fix3d .gps-mode{color:var(--up)}
+/* ── traffic ────────────────────────────────────────────────────────────────── */
+.traffic{ flex:1 1 auto; min-width:0; }
+.traffic .hd{ flex-wrap:wrap; row-gap:.4rem; border-bottom:1px solid var(--border); padding-bottom:.5rem; }
+/* LIVE badge — degrades with the newest packet age (green→amber→red OFFLINE). */
+.livebadge{ display:inline-flex; align-items:center; gap:.35rem; font-size:1rem; font-weight:700; letter-spacing:.1em; }
+.livebadge .lvd{ font-size:.85rem; line-height:1; }
+.livebadge.ok{ color:var(--accent); } .livebadge.ok .lvd{ text-shadow:0 0 .5rem var(--accent); }
+.livebadge.warn{ color:var(--warn); }
+.livebadge.down{ color:var(--down); }
+.chip{ font-size:.95rem; letter-spacing:.1em; font-weight:700; color:var(--accent);
+       border:1px solid rgba(53,208,160,.35); background:rgba(53,208,160,.09);
+       border-radius:.4rem; padding:.2rem .6rem; }
+.fchip{ font-size:1rem; font-weight:700; letter-spacing:.04em; padding:.25rem .8rem; border-radius:999px;
+        border:1px solid var(--border); background:var(--panel-2); cursor:pointer; }
+.fchip.rf{ color:var(--accent); border-color:rgba(53,208,160,.45); }
+.fchip.is{ color:var(--blue); border-color:rgba(92,184,255,.45); }
+.fchip.aprs{ color:var(--text); border-color:rgba(205,216,224,.45); }
+.fchip.adsb{ color:var(--purple); border-color:rgba(180,120,255,.45); }
+.fchip.off{ color:var(--faint); border-color:var(--border); background:transparent; opacity:.55; }
+.tbl{ display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
+.trow{ display:grid; grid-template-columns:1.3fr 2.6rem 1fr 1.3fr 1.1fr; gap:.7rem; align-items:center; }
+/* Header + rows mirror the parent dashboard's APRS table: amber uppercase
+   column labels, compact rows with hairline dividers, age coloured by staleness. */
+.heard{ color:var(--warn); font-weight:700; font-variant-numeric:tabular-nums; font-size:1.05rem; }
+/* Pull the scroll area toward the card's right edge so its scrollbar isn't
+   floating 1.2rem in (the card's right padding). Header/rows stay left-aligned. */
+.tscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.6rem; padding-right:10px; }
+/* Custom scrollbar (touch-friendly, accent thumb) — not the OS default. Shared
+   by the Traffic + Satellites scroll areas + the overlay bodies. */
+.tscroll::-webkit-scrollbar, .satscroll::-webkit-scrollbar, .ov-body::-webkit-scrollbar{ width:14px; }
+.tscroll::-webkit-scrollbar-track, .satscroll::-webkit-scrollbar-track, .ov-body::-webkit-scrollbar-track{ background:var(--panel); border-radius:4px; }
+.tscroll::-webkit-scrollbar-thumb, .satscroll::-webkit-scrollbar-thumb, .ov-body::-webkit-scrollbar-thumb{
+  background:color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius:4px; }
+.tscroll::-webkit-scrollbar-thumb:hover, .satscroll::-webkit-scrollbar-thumb:hover, .ov-body::-webkit-scrollbar-thumb:hover{ background:var(--accent); }
+.trow{ padding:.34rem .2rem; border-bottom:1px solid var(--border); font-size:1.2rem; cursor:pointer; }
+.trow:hover{ background:var(--panel-2); border-radius:.5rem; }
+.trow .call{ font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.call.rf{ color:var(--accent); } .call.is{ color:var(--blue); } .call.air{ color:var(--purple); }
+/* APRS symbol sprite: 24px cells, positioned by px offset — keep native size so
+   the background-position math stays correct (don't scale with rem). */
+.trow .sym{ display:inline-block; width:24px; height:24px; background-repeat:no-repeat;
+            image-rendering:pixelated; vertical-align:middle; }
+.age,.dist,.grid{ color:var(--dim); font-variant-numeric:tabular-nums; font-size:1.1rem; white-space:nowrap; }
+/* age coloured by staleness (fmtAge cls), matching the parent list */
+.age.age-ok{ color:var(--accent); } .age.age-warn{ color:var(--warn); } .age.age-old{ color:var(--dim); }
+.trow.empty{ color:var(--faint); cursor:default; }
+.trow.empty:hover{ background:none; }
 
-/* ---------- APRS (fills remaining; only the body scrolls) ---------- */
-.k-aprs{flex:0 0 auto; min-height:0; display:flex; flex-direction:column;
-        margin:0 12px 12px; background:var(--panel); border:1px solid var(--border); border-radius:var(--r); overflow:hidden}
-.aprs-head{display:flex; align-items:center; gap:12px; padding:8px 12px; border-bottom:1px solid var(--border); flex:0 0 auto}
-.aprs-head .e{color:var(--accent); font-size:12px; letter-spacing:.14em; font-weight:700}
-.aprs-head .st{color:var(--dim); font-size:12px} .aprs-head .st b{color:var(--text)}
-.aprs-head select{margin-left:auto; min-height:32px; background:var(--panel-2); color:var(--text);
-                  border:1px solid var(--border); border-radius:7px; font-family:inherit; font-size:12px; padding:0 8px}
-/* RF/IS source toggles. When off, only the label greys — the coloured border stays. */
-.aprs-head .src-btn{min-height:32px; background:var(--panel-2); border:1px solid var(--border);
-                    border-radius:7px; font-family:inherit; font-size:12px; font-weight:700;
-                    letter-spacing:.03em; padding:0 12px; cursor:pointer; transition:color .2s}
-.aprs-head .src-btn.rf{color:var(--up); border-color:var(--up)}
-.aprs-head .src-btn.is{color:var(--link-live); border-color:var(--link-live)}
-.aprs-head .src-btn.off{color:var(--dim)}
-.aprs-body{flex:1 1 auto; min-height:0; overflow-y:auto; max-height:calc(5 * 36px)}
-.aprs-body::-webkit-scrollbar{width:20px}
-.aprs-body::-webkit-scrollbar-track{background:var(--panel); border-radius:4px}
-.aprs-body::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--accent) 40%,var(--border)); border-radius:4px}
-.aprs-body::-webkit-scrollbar-thumb:hover{background:var(--accent)}
-.row-head,.row{display:grid; grid-template-columns:75px 26px 48px 120px 50px 50px 65px 35px 1fr; gap:12px; align-items:center; padding:0 12px}
-.row-head{height:26px; position:sticky; top:0; background:var(--panel);
-          color:var(--warn); font-size:10px; letter-spacing:.10em; border-bottom:1px solid var(--border)}
-.row{min-height:32px; border-bottom:1px solid var(--border-soft); cursor:pointer; font-size:14px}
-.row:hover{background:var(--panel-2)}
-.row .call{color:var(--up); font-weight:700; white-space:nowrap}
-.row .sym{display:inline-block; width:24px; height:24px; background-repeat:no-repeat; image-rendering:pixelated}
-.row .call.is{color:var(--link-live)}
-.row .age{color:var(--dim); white-space:nowrap}
-.row .spd{color:var(--dim); white-space:nowrap; font-size:11px}
-.row .alt{color:var(--dim); white-space:nowrap; font-size:11px}
-.row .via{color:var(--faint); font-weight:700}
-.row .via.rf{color:var(--up)}
-.row .via.is{color:var(--link-live)}
-.row .cmt{color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; font-size:11px}
-.row .cmt.empty{color:var(--faint)}
+/* ── satellites ─────────────────────────────────────────────────────────────── */
+.sats{ flex:none; width:28rem; min-width:0; }
+/* Same moderate tuck as .tscroll — a consistent ~9px gap between scrollbar and
+   card edge. Gentle enough that the bordered sat pills don't bleed. */
+.satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.6rem; padding-right:10px; }
+/* Plain upcoming pass = plain row (divider only). Only NOW (green pill) and
+   ≤10min (amber pill) get a border + glowing dot — see .sat.now / .sat.soon. */
+.sat{ padding:.55rem .2rem .6rem; border-bottom:1px solid var(--border-soft); }
+.sat:last-child{ border-bottom:none; }
+.sat .l1{ display:flex; align-items:baseline; gap:.8rem; font-size:1.35rem; }
+.sat .nm{ font-weight:700; color:var(--text); min-width:6.6rem; }
+.sat .aos{ color:var(--dim); font-variant-numeric:tabular-nums; }
+.sat .cd{ margin-left:auto; color:var(--accent); font-weight:700; font-variant-numeric:tabular-nums; }
+.sat .l2{ font-size:1.1rem; color:var(--faint); margin-top:.2rem; letter-spacing:.02em; }
+.sat.now{ background:rgba(53,208,160,.07); border:1px solid var(--accent); border-radius:.8rem;
+          padding:.6rem .9rem .7rem; margin-bottom:.5rem; }
+.sat.now .cd,.sat.now .l2{ color:var(--accent); }
+.sat.soon{ background:rgba(246,168,33,.07); border:1px solid var(--warn); border-radius:.8rem;
+           padding:.6rem .9rem .7rem; margin-bottom:.5rem; }
+.sat.soon .cd,.sat.soon .l2{ color:var(--warn); }
+.sat.soon .pulse{ background:var(--warn); box-shadow:0 0 .8rem 0 var(--warn); }
+.satempty{ color:var(--faint); font-size:1.15rem; padding:.4rem .2rem; }
+.pulse{ display:inline-block; width:.8rem; height:.8rem; border-radius:50%; background:var(--accent);
+        box-shadow:0 0 .8rem 0 var(--accent); margin-right:.5rem; vertical-align:middle; }
 
-/* ---------- overlays (cover frame; keep page fixed) ---------- */
-.ov{position:absolute; inset:0; background:rgba(7,11,14,.97); display:none; flex-direction:column; z-index:5}
-.ov.open{display:flex}
-.ov-head{display:flex; align-items:center; gap:10px; height:42px; padding:0 12px; border-bottom:1px solid var(--border); flex:0 0 auto}
-.ov-head .e{color:var(--accent); font-weight:700; letter-spacing:.12em; font-size:13px}
-.ov-head .st{color:var(--dim); font-size:11px}
-.ov-x{margin-left:auto; width:32px; height:32px; display:grid; place-items:center;
-      border:1px solid var(--border); border-radius:8px; color:var(--text); cursor:pointer}
-.ov-x:hover{border-color:var(--down); color:var(--down)}
-.ov-body{flex:1; overflow-y:auto; padding:12px}
+/* ── hazard footer ──────────────────────────────────────────────────────────── */
+.footer{ flex:0 0 3rem; display:flex; align-items:center; gap:1rem; padding:0 1rem;
+         background:var(--panel); border:1px solid var(--border); border-radius:var(--r); }
+.alert{ display:inline-flex; align-items:center; gap:.7rem; font-size:1.1rem; letter-spacing:.06em;
+        padding:.3rem 1.1rem; border-radius:999px; border:1px solid var(--border); color:var(--dim); }
+.alert b{ font-variant-numeric:tabular-nums; }
+.alert.on.fire{ color:var(--warn); border-color:rgba(246,168,33,.45); background:rgba(246,168,33,.08); }
+.alert.on.torn,.alert.on.emg{ color:var(--down); border-color:rgba(255,91,74,.45); background:rgba(255,91,74,.08); }
+.alert.clear{ color:var(--accent); border-color:rgba(53,208,160,.35); background:rgba(53,208,160,.06); }
+/* ── SDR flow meters (footer, shown when calm) ─────────────────────────────────
+   Copied from the parent dashboard's APRS/ADS-B feed meters: blue fill = signal
+   flowing, red = silent. Proves the RTL-SDRs are receiving, not just "unit up". */
+.feedmeters{ display:flex; align-items:center; gap:1.6rem; min-width:0; }
+.feed-meter{ display:flex; align-items:center; gap:.5rem; }
+.feed-meter[hidden]{ display:none; }
+.feed-meter-name{ color:var(--text); font-weight:700; letter-spacing:.08em; font-size:1.05rem; }
+.feed-meter-track{ width:5rem; height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+.feed-meter-fill{ display:block; height:100%; width:0%; background:var(--blue); border-radius:3px;
+                  transition:width .25s ease, background .25s ease; }
+.feed-meter.silent .feed-meter-fill{ background:var(--down); }   /* red = deaf/unplugged */
+.feed-meter.flowing .feed-meter-fill{ background:var(--blue); }
+.feed-meter-label{ color:var(--text); font-variant-numeric:tabular-nums; font-size:1.05rem; white-space:nowrap; }
 
-/* services grid */
-.svc-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:8px}
-.svc-tile{min-height:64px; display:flex; flex-direction:column; justify-content:center; gap:3px;
-          padding:8px 10px; border-radius:var(--r); background:var(--panel-2); border:1px solid;
-          border-color:color-mix(in srgb,var(--up) 55%,var(--border)); background:color-mix(in srgb,var(--up) 7%,var(--panel-2))}
-.svc-tile .n{font-weight:700; font-size:12px} .svc-tile .p{color:var(--faint); font-size:10px}
-.svc-tile .b{color:var(--up); font-size:10px; font-weight:700; margin-top:2px}
-.svc-tile.warn{border-color:color-mix(in srgb,var(--warn) 55%,var(--border)); background:color-mix(in srgb,var(--warn) 7%,var(--panel-2))}
-.svc-tile.warn .b{color:var(--warn)}
-.svc-tile.down{border-color:color-mix(in srgb,var(--down) 55%,var(--border)); background:color-mix(in srgb,var(--down) 7%,var(--panel-2))}
-.svc-tile.down .b{color:var(--down)}
-
-/* ops launcher */
-.ops-sec{margin-bottom:10px}
-.ops-sec .lab{color:var(--accent); font-size:10px; letter-spacing:.14em; font-weight:700; margin:0 2px 6px}
-.ops-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:8px}
-.ops-btn{min-height:52px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; padding:0 12px;
-         background:var(--panel-2); border:1px solid var(--border); border-radius:var(--r); color:var(--text); cursor:pointer}
-.ops-btn:hover{border-color:var(--accent)}
-.ops-btn .n{font-size:12px; font-weight:700; letter-spacing:.02em; line-height:1.15}
-.ops-btn .s{font-size:10px; color:var(--dim); line-height:1.15}
-
-/* detail sheet */
-.sheet{position:absolute; left:0; right:0; bottom:0; transform:translateY(110%); transition:transform .18s;
-       background:var(--panel); border-top:1px solid var(--accent); border-radius:14px 14px 0 0; z-index:6; padding:14px 16px}
-.sheet.open{transform:translateY(0)}
-.sheet .sh-head{display:flex; align-items:center; gap:10px; margin-bottom:8px}
-.sheet .sh-call{color:var(--up); font-weight:700; font-size:16px}
-.sheet .sh-x{margin-left:auto; color:var(--dim); cursor:pointer; font-size:18px}
-.sheet .kv{display:grid; grid-template-columns:repeat(2,1fr); gap:6px 18px; font-size:12px}
-.sheet .kv .k{color:var(--dim)} .sheet .kv .v{color:var(--text)}
-.sheet .full{margin-top:8px; color:var(--text); font-size:12px}
+/* ── overlays (SERVICES / OPS) + detail sheet — cover the screen ───────────────
+   Kept close to the previous kiosk styling; sized in rem so they scale too. */
+.ov{ position:absolute; inset:0; background:rgba(7,11,14,.97); display:none; flex-direction:column; z-index:5; }
+.ov.open{ display:flex; }
+.ov-head{ display:flex; align-items:center; gap:1rem; height:3.6rem; padding:0 1.2rem;
+          border-bottom:1px solid var(--border); flex:0 0 auto; }
+.ov-head .e{ color:var(--accent); font-weight:700; letter-spacing:.12em; font-size:1.3rem; }
+.ov-head .st{ color:var(--dim); font-size:1.1rem; }
+.ov-x{ margin-left:auto; width:3rem; height:3rem; display:grid; place-items:center; border:1px solid var(--border);
+       border-radius:.7rem; color:var(--text); cursor:pointer; font-size:1.4rem; }
+.ov-x:hover{ border-color:var(--down); color:var(--down); }
+.ov-body{ flex:1; overflow-y:auto; padding:1.2rem; }
+.svc-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:.8rem; }
+.svc-tile{ min-height:6rem; display:flex; flex-direction:column; justify-content:center; gap:.3rem;
+           padding:.8rem 1rem; border-radius:var(--r); border:1px solid;
+           border-color:color-mix(in srgb,var(--up) 55%,var(--border)); background:color-mix(in srgb,var(--up) 7%,var(--panel-2)); }
+.svc-tile .n{ font-weight:700; font-size:1.2rem; } .svc-tile .p{ color:var(--faint); font-size:1rem; }
+.svc-tile .b{ color:var(--up); font-size:1rem; font-weight:700; margin-top:.2rem; }
+.svc-tile.warn{ border-color:color-mix(in srgb,var(--warn) 55%,var(--border)); background:color-mix(in srgb,var(--warn) 7%,var(--panel-2)); }
+.svc-tile.warn .b{ color:var(--warn); }
+.svc-tile.down{ border-color:color-mix(in srgb,var(--down) 55%,var(--border)); background:color-mix(in srgb,var(--down) 7%,var(--panel-2)); }
+.svc-tile.down .b{ color:var(--down); }
+.ops-sec{ margin-bottom:1rem; }
+.ops-sec .lab{ color:var(--accent); font-size:1rem; letter-spacing:.14em; font-weight:700; margin:0 .2rem .6rem; }
+.ops-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:.8rem; }
+.ops-btn{ min-height:5rem; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:.2rem;
+          padding:0 1.2rem; background:var(--panel-2); border:1px solid var(--border); border-radius:var(--r); color:var(--text); cursor:pointer; }
+.ops-btn:hover{ border-color:var(--accent); }
+.ops-btn .n{ font-size:1.2rem; font-weight:700; letter-spacing:.02em; line-height:1.15; }
+.ops-btn .s{ font-size:1rem; color:var(--dim); line-height:1.15; }
+.sheet{ position:absolute; left:0; right:0; bottom:0; transform:translateY(110%); transition:transform .18s;
+        background:var(--panel); border-top:1px solid var(--accent); border-radius:1.4rem 1.4rem 0 0; z-index:6; padding:1.4rem 1.6rem; }
+.sheet.open{ transform:translateY(0); }
+.sheet .sh-head{ display:flex; align-items:center; gap:1rem; margin-bottom:.8rem; }
+.sheet .sh-call{ color:var(--accent); font-weight:700; font-size:1.7rem; }
+.sheet .sh-x{ margin-left:auto; color:var(--dim); cursor:pointer; font-size:1.8rem; }
+.sheet .kv{ display:grid; grid-template-columns:repeat(2,1fr); gap:.6rem 1.8rem; font-size:1.2rem; }
+.sheet .kv .k{ color:var(--dim); } .sheet .kv .v{ color:var(--text); }
+.sheet .full{ margin-top:.8rem; color:var(--text); font-size:1.2rem; }

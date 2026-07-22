@@ -4,104 +4,111 @@
      resolve relative URLs from "/" rather than this folder. -->
 <base href="/">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OASIS — 7″ kiosk (800×480)</title>
+<title>OASIS — 7″ kiosk</title>
 <link rel="stylesheet" href="/small-screen/kiosk.css">
 <script src="/common/js/units.js"></script>
 <script src="/common/js/geo.js"></script>
 <script src="/common/js/format.js"></script>
 
-<div class="frame-label">Raspberry Pi 7″ touchscreen · 800×480 · actual size · nothing scrolls but the station table</div>
-
 <div class="kiosk" id="kiosk">
 
-  <!-- HEADER -->
-  <div class="k-head">
-    <span class="k-brand">OASIS</span><span class="k-ver" id="k-ver"></span>
-    <span class="pill call" onclick="editCallsignGrid()" title="Edit callsign &amp; grid"><span id="k-callsign">N0CALL</span> · <span id="k-grid" style="color:var(--warn)">—</span></span>
-    <span class="pill units" id="k-units" onclick="toggleUnits()" title="Toggle imperial / metric">IMPERIAL</span>
-    <span class="pill host" id="k-host" title="hostname : IP address">—</span>
-    <span class="k-clocks">
-      <span class="clk utc"><span class="lab">UTC</span> <b id="utc">--:--:--</b></span>
-      <span class="clk loc"><span class="lab">LOC</span> <b id="loc">--:--:--</b></span>
-    </span>
-    <span class="k-refresh" id="k-refresh" title="Reload the dashboard" onclick="location.reload()">↻</span>
+  <!-- ── TOP: travel clock | status ─────────────────────────────────────────── -->
+  <div class="row top">
+
+    <div class="card clock">
+      <div class="face utc">
+        <div class="zn"><span class="z">UTC</span><span class="tz">Zulu</span></div>
+        <div class="time" id="utc-t">--:--<span class="s">:--</span></div>
+        <div class="date" id="utc-d">—</div>
+      </div>
+      <div class="face loc">
+        <div class="zn"><span class="z">LOCAL</span><span class="tz" id="loc-tz">local</span></div>
+        <div class="time" id="loc-t">--:--<span class="s">:--</span></div>
+        <div class="date" id="loc-d">—</div>
+      </div>
+    </div>
+
+    <div class="card status">
+      <div class="status-body">
+        <div class="callrow">
+          <span class="callpill" onclick="editCallsignGrid()" title="Edit callsign &amp; grid">
+            <span class="cs" id="k-callsign">N0CALL</span><span class="sep">·</span><span class="gr" id="k-grid">—</span>
+          </span>
+          <span class="upill" id="k-units" onclick="toggleUnits()" title="Toggle imperial / metric">IMPERIAL</span>
+        </div>
+        <div class="pillstack">
+          <div class="gpspill" id="k-gps"><span class="mode" id="k-gps-mode">GPS —</span><span class="sub" id="k-gps-sub">—</span></div>
+          <span class="svcpill" onclick="openOv('svc')" title="Open services"><span class="t">SERVICES</span><span class="cnt-up" id="k-svc-up">—</span><span class="cnt-sep">·</span><span class="cnt-warn" id="k-svc-warn">—</span><span class="cnt-sep">·</span><span class="cnt-down" id="k-svc-down">—</span></span>
+          <div class="hwpills" id="devPills"><span class="hwempty">…</span></div>
+        </div>
+      </div>
+      <div class="status-actions">
+        <button class="ops" onclick="openOv('ops')">OPS ▸</button>
+        <button class="ops refresh-btn" onclick="location.reload()">REFRESH</button>
+        <div class="syspill">
+          <div class="srow"><span class="k">CPU</span><span class="v" id="k-cpu">—</span></div>
+          <div class="srow"><span class="k">RAM</span><span class="v" id="k-ram">—</span></div>
+          <div class="srow"><span class="k">LOAD</span><span class="v" id="k-load">—</span></div>
+          <div class="srow"><span class="k">TEMP</span><span class="v" id="k-temp" style="cursor:pointer" title="Tap to toggle °C / °F">—</span></div>
+          <div class="srow"><span class="k">DISK</span><span class="v" id="k-disk">—</span></div>
+        </div>
+        <div class="sysip" id="k-ip">—</div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- SYSTEM MONITOR -->
-  <div class="k-mon">
-    <span class="e">SYSTEM</span>
-    <span class="m"><span class="k">CPU</span> <span class="v" id="k-cpu">—</span></span>
-    <span class="m"><span class="k">RAM</span> <span class="v" id="k-ram">—</span></span>
-    <span class="m"><span class="k">DISK</span> <span class="v" id="k-disk">—</span></span>
-    <span class="m"><span class="k">LOAD</span> <span class="v" id="k-load">—</span></span>
-    <span class="m"><span class="k">TEMP</span> <span class="v" id="k-temp" style="cursor:pointer" title="Tap to toggle °C / °F">—</span></span>
-    <span class="m"><span class="k">UP</span> <span class="v" id="k-up">—</span></span>
-    <span class="m"><span class="k">AUDIO</span> <span class="v" id="k-audio">—</span></span>
-    <span class="live" id="k-telemetry">△ telemetry: …</span>
+  <!-- ── BOTTOM: traffic | satellites ───────────────────────────────────────── -->
+  <div class="row bot">
+
+    <div class="card traffic">
+      <div class="hd">
+        <span class="livebadge ok" id="k-aprs-live"><span class="lvd">●</span><span class="lvtxt">LIVE</span></span>
+        <span class="heard" id="k-aprs-count">—</span>
+        <span class="fchip rf"   id="f-rf"   onclick="toggleFilter('rf')"   title="RF stations">RF</span>
+        <span class="fchip is"   id="f-is"   onclick="toggleFilter('is')"   title="Internet (APRS-IS) stations">IS</span>
+        <span class="fchip aprs" id="f-aprs" onclick="toggleFilter('aprs')" title="APRS stations">APRS</span>
+        <span class="fchip adsb" id="f-adsb" onclick="toggleFilter('adsb')" title="ADS-B aircraft">ADS-B</span>
+      </div>
+      <div class="tbl">
+        <div class="tscroll" id="aprsScroll"></div>
+      </div>
+    </div>
+
+    <div class="card sats">
+      <div class="hd"><span class="lbl">SATELLITES</span><span class="meta" id="k-sat-meta">—</span></div>
+      <div class="satscroll" id="satBody"><div class="satempty">…</div></div>
+    </div>
+
   </div>
 
-  <!-- NAV (overlays) -->
-  <div class="k-nav">
-    <button class="navbtn" onclick="openOv('svc')">
-      <span class="nb-dot" id="k-svc-dot">●</span>
-      <span class="nb-t">SERVICES</span>
-      <span class="nb-r"><span class="u" id="k-svc-up">— ✓</span><span class="w" id="k-svc-warn">— ⚠</span><span class="d" id="k-svc-down">— ✕</span></span>
-    </button>
-    <div class="navbtn feedcard" id="k-feed" title="APRS SDR feed — packets/s into GrayWolf">
-      <span class="nb-ico nb-dot" id="k-feed-dot">●</span>
-      <span class="feed-wrap">
-        <span class="nb-t">APRS FEED</span>
-        <span class="feed-meter" id="feed-meter">
-          <span class="feed-meter-track"><span class="feed-meter-fill" id="feed-meter-fill"></span></span>
-          <span class="feed-meter-label" id="feed-meter-label">…</span>
-        </span>
+  <!-- ── FOOTER: area hazards first (priority), SDR flow meters after ─────────── -->
+  <div class="footer">
+    <span class="alert fire" id="hz-fire">FIRES <b>0</b></span>
+    <span class="alert torn" id="hz-torn">TORNADOES <b>0</b></span>
+    <span class="alert emg"  id="hz-emg">EMERGENCY POI <b>0</b></span>
+    <span class="alert clear" id="hz-clear">✓ all clear</span>
+    <!-- Blue = signal flowing, red = silent. Proves the RTL-SDRs are actually
+         receiving. Hidden the moment a hazard fires (emergencies own this bar). -->
+    <div class="feedmeters" id="feedmeters">
+      <span class="feed-meter" id="fm-aprs" hidden>
+        <span class="feed-meter-name">APRS</span>
+        <span class="feed-meter-track"><span class="feed-meter-fill" id="fm-aprs-fill"></span></span>
+        <span class="feed-meter-label" id="fm-aprs-rate"></span>
       </span>
-    </div>
-    <div class="navbtn gpscard" id="k-gps" title="GPS fix from gpsd">
-      <span class="nb-ico nb-dot" id="k-gps-dot">●</span>
-      <span><span class="nb-t">GPS</span> <span class="nb-sub" id="k-gps-sub">—</span></span>
-    </div>
-    <button class="navbtn ops" onclick="openOv('ops')">
-      <span class="nb-t">OPS</span>
-      <span class="chev">▸</span>
-    </button>
-  </div>
-
-  <!-- APRS LIVE -->
-  <div class="k-aprs">
-    <div class="aprs-head">
-      <span class="e" id="k-aprs-title">TRAFFIC LIVE</span>
-      <span class="st" id="k-aprs-countwrap" title="stations heard">top <b id="k-aprs-count">—</b></span>
-      <span class="st">last packet <b id="k-aprs-last">—</b></span>
-      <select id="aprs-filter-sel" onchange="applyAprsFilter()">
-        <option value="15">Last 15 min</option>
-        <option value="30">Last 30 min</option>
-        <option value="60">Last 60 min</option>
-        <option value="1440">Last 24 hrs</option>
-        <option value="0" selected>All</option>
-      </select>
-      <select id="aprs-type-sel" onchange="applyAprsFilter()">
-        <option value="All">All types</option>
-        <option value="RF only">RF only</option>
-        <option value="Digipeaters">Digipeaters</option>
-        <option value="Messages">Messages</option>
-      </select>
-      <button type="button" class="src-btn rf" id="aprs-rf-btn" onclick="toggleAprsSource('rf')" title="Show/hide RF stations">RF</button>
-      <button type="button" class="src-btn is" id="aprs-is-btn" onclick="toggleAprsSource('is')" title="Show/hide IS stations">IS</button>
-    </div>
-    <div class="aprs-body" id="aprsBody">
-      <div class="row-head"><span>CALLSIGN</span><span>TYPE</span><span>AGE</span><span>SPEED</span><span>ALT</span><span>GRID</span><span>DIST</span><span>VIA</span><span>COMMENT</span></div>
-      <!-- rows injected -->
+      <span class="feed-meter" id="fm-adsb" hidden>
+        <span class="feed-meter-name">ADS-B</span>
+        <span class="feed-meter-track"><span class="feed-meter-fill" id="fm-adsb-fill"></span></span>
+        <span class="feed-meter-label" id="fm-adsb-rate"></span>
+      </span>
     </div>
   </div>
 
   <!-- SERVICES OVERLAY -->
   <div class="ov" id="ov-svc">
-    <div class="ov-head"><span class="e">SERVICES</span><span class="st">10 up · 0 warn · 0 down</span>
+    <div class="ov-head"><span class="e">SERVICES</span><span class="st" id="ov-svc-st">—</span>
       <span class="ov-x" onclick="closeOv('svc')">✕</span></div>
-    <div class="ov-body">
-      <div class="svc-grid" id="svcGrid"></div>
-    </div>
+    <div class="ov-body"><div class="svc-grid" id="svcGrid"></div></div>
   </div>
 
   <!-- OPS OVERLAY -->
@@ -127,32 +134,33 @@
 
 </div>
 
-<div class="frame-label">tap SERVICES / OPS to open an overlay · tap any station row for full detail</div>
-
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
 const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082, openwebrx: 8073 };
 const SVC_PORTS = {
-  gw:     () => PORTS.graywolf,
-  winlink:() => PORTS.winlink,
-  kiwix:  () => PORTS.kiwix,
-  aprs:   () => PORTS.aprs_api,
-  webssh: () => PORTS.webssh,
-  owrx:   () => PORTS.openwebrx,
+  gw: () => PORTS.graywolf, winlink: () => PORTS.winlink, kiwix: () => PORTS.kiwix,
+  aprs: () => PORTS.aprs_api, webssh: () => PORTS.webssh, owrx: () => PORTS.openwebrx,
 };
+const HOST = location.hostname;
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 async function loadConfig() {
-  try {
-    const r = await fetch('/server-ports.json', { cache: 'no-store' });
-    if (r.ok) { const d = await r.json(); if (d.ports) Object.assign(PORTS, d.ports); }
-  } catch (_) {}
+  try { const r = await fetch('/server-ports.json', { cache: 'no-store' });
+        if (r.ok) { const d = await r.json(); if (d.ports) Object.assign(PORTS, d.ports); } } catch (_) {}
 }
 
-// ── Clock ─────────────────────────────────────────────────────────────────────
+// ── Travel clock — UTC + Local, each its own date ─────────────────────────────
 function tick() {
-  const n = new Date(), p = x => String(x).padStart(2, '0');
-  document.getElementById('utc').textContent = p(n.getUTCHours())+':'+p(n.getUTCMinutes())+':'+p(n.getUTCSeconds());
-  document.getElementById('loc').textContent = p(n.getHours())+':'+p(n.getMinutes())+':'+p(n.getSeconds());
+  const n = new Date(), p = x => String(x).padStart(2,'0');
+  const dw = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const set = (id, html) => { const e = document.getElementById(id); if (e) e.innerHTML = html; };
+  const txt = (id, s) => { const e = document.getElementById(id); if (e) e.textContent = s; };
+  set('utc-t', p(n.getUTCHours())+':'+p(n.getUTCMinutes())+'<span class="s">:'+p(n.getUTCSeconds())+'</span>');
+  txt('utc-d', dw[n.getUTCDay()]+' · '+p(n.getUTCDate())+' '+mo[n.getUTCMonth()]+' '+n.getUTCFullYear());
+  set('loc-t', p(n.getHours())+':'+p(n.getMinutes())+'<span class="s">:'+p(n.getSeconds())+'</span>');
+  txt('loc-d', dw[n.getDay()]+' · '+p(n.getDate())+' '+mo[n.getMonth()]+' '+n.getFullYear());
+  try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+        txt('loc-tz', tz.split('/').pop().replace('_',' ')); } catch (_) {}
 }
 tick(); setInterval(tick, 1000);
 
@@ -162,838 +170,526 @@ function loadCallsignGrid() {
   document.getElementById('k-grid').textContent     = localStorage.getItem('oasis_grid')     || '—';
 }
 function editCallsignGrid() {
-  const cs = prompt('Callsign:', localStorage.getItem('oasis_callsign') || 'N0CALL');
-  if (cs === null) return;
-  const gr = prompt('Grid square (e.g. CN87):', localStorage.getItem('oasis_grid') || '');
-  if (gr === null) return;
+  const cs = prompt('Callsign:', localStorage.getItem('oasis_callsign') || 'N0CALL'); if (cs === null) return;
+  const gr = prompt('Grid square (e.g. CN87):', localStorage.getItem('oasis_grid') || ''); if (gr === null) return;
   localStorage.setItem('oasis_callsign', cs.trim().toUpperCase());
   localStorage.setItem('oasis_grid',     gr.trim().toUpperCase());
   loadCallsignGrid();
 }
-// Seed from the suite-level station.json (written by setup-oasis.py) the first
-// time this browser loads — only when the operator hasn't set their own. The
-// edit pill always overrides per-browser via localStorage. Mirrors index.html.
 async function seedCallsignGrid() {
   if (localStorage.getItem('oasis_callsign')) return;
-  try {
-    const r = await fetch('/station.json', { cache: 'no-store' });
-    if (!r.ok) return;
-    const d = await r.json();
-    if (d.callsign) localStorage.setItem('oasis_callsign', String(d.callsign).toUpperCase());
-    if (d.grid)     localStorage.setItem('oasis_grid',     String(d.grid).toUpperCase());
-    loadCallsignGrid();
-  } catch (_) {}
+  try { const r = await fetch('/station.json', { cache: 'no-store' }); if (!r.ok) return;
+        const d = await r.json();
+        if (d.callsign) localStorage.setItem('oasis_callsign', String(d.callsign).toUpperCase());
+        if (d.grid)     localStorage.setItem('oasis_grid',     String(d.grid).toUpperCase());
+        loadCallsignGrid(); } catch (_) {}
 }
-loadCallsignGrid();
-seedCallsignGrid();
+loadCallsignGrid(); seedCallsignGrid();
 
-// App version (from /version.json, shown in gray next to the brand).
-async function loadVersion() {
-  const el = document.getElementById('k-ver');
-  if (!el) return;
-  try {
-    const r = await fetch('/version.json', { cache: 'no-store' });
-    if (!r.ok) return;
-    const d = await r.json();
-    if (d.version) el.textContent = 'v' + d.version;
-  } catch (_) {}
+// hostname:ip · version — PARKED for now (removed from the footer; re-add the
+// #k-hostver span + this call + its interval to bring it back later).
+async function loadHostVer() {
+  let host = '', ver = '';
+  try { const d = await (await fetch('/api/system', { cache: 'no-store' })).json(); if (d.hostname || d.ip) host = `${d.hostname||'—'}:${d.ip||'—'}`; } catch (_) {}
+  try { const d = await (await fetch('/version.json', { cache: 'no-store' })).json(); if (d.version) ver = 'v'+d.version; } catch (_) {}
+  const el = document.getElementById('k-hostver'); if (el) el.textContent = [host, ver].filter(Boolean).join(' · ') || '';
 }
-loadVersion();
 
-// ── Service state tracking ────────────────────────────────────────────────────
+// ── Units toggle (shared key with index.html) ─────────────────────────────────
+let _lastTempC = null;
+function renderTemp() {
+  const cls = _lastTempC != null ? (_lastTempC >= 80 ? 'hot' : _lastTempC >= 65 ? 'warm' : 'ok') : '';
+  setKStat('k-temp', fmtTemp(_lastTempC), cls);
+}
+function renderUnits() { const el = document.getElementById('k-units'); if (el) el.textContent = isImperial() ? 'IMPERIAL' : 'METRIC'; }
+function toggleUnits() { OasisUnits.toggleUnits(); renderUnits(); renderTemp(); applyAprsFilter(); }
+renderUnits();
+(function () { const el = document.getElementById('k-temp'); if (el) el.addEventListener('click', toggleUnits); })();
+function setKStat(id, text, cls) { const el = document.getElementById(id); if (!el) return; el.textContent = text; el.className = 'v' + (cls ? ' ' + cls : ''); }
+
+// ── Service state tracking + summary pill ─────────────────────────────────────
 const _svcStates = {};
 function updateSvcCounts() {
   const vals = Object.values(_svcStates);
   const up   = vals.filter(s => s === 'up').length;
   const warn = vals.filter(s => s === 'warn').length;
   const down = vals.filter(s => s === 'down').length;
-  const u = document.getElementById('k-svc-up');
-  const w = document.getElementById('k-svc-warn');
-  const d = document.getElementById('k-svc-down');
-  if (u) u.textContent = up   + ' ✓';
-  if (w) w.textContent = warn + ' ⚠';
-  if (d) d.textContent = down + ' ✕';
-  // Worst-of status dot on the SERVICES nav button (replaces the old emoji).
-  const dot = document.getElementById('k-svc-dot');
-  if (dot) dot.className = 'nb-dot ' + (down ? 'down' : warn ? 'warn' : up ? 'up' : '');
-  const ov = document.querySelector('#ov-svc .st');
-  if (ov) ov.textContent = `${up} up · ${warn} warn · ${down} down`;
+  const set = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
+  set('k-svc-up', up + ' UP'); set('k-svc-warn', warn + ' WRN'); set('k-svc-down', down + ' DN');
+  const ov = document.getElementById('ov-svc-st'); if (ov) ov.textContent = `${up} up · ${warn} warn · ${down} down`;
 }
 
-// ── Services ──────────────────────────────────────────────────────────────────
-const HOST = location.hostname;
+// ── Services (probed for the SERVICES overlay + the summary pill) ──────────────
 const SERVICES = [
-  {
-    id: 'flask', name: 'Flask',
-    check: async () => {
-      const r = await fetch('/api/server-info', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: `HTTP ${r.status}` };
-      const d = await r.json();
-      return { up: true, badge: 'UP', sub: `v${d.flask_version}` };
-    }
-  },
-  {
-    id: 'wsgi', name: 'Web Server',
-    check: async () => {
-      const r = await fetch('/api/server-info', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: `HTTP ${r.status}` };
-      const d = await r.json();
-      const g = d.wsgi === 'gunicorn';
-      return { up: true, warn: !g, badge: g ? 'gunicorn · UP' : 'werkzeug · WARN', sub: `v${d.wsgi_version}` };
-    }
-  },
-  {
-    id: 'gw', name: 'GrayWolf',
-    url: () => `${location.protocol}//${HOST}:${PORTS.graywolf}/`,
-    check: async () => {
-      await fetch(`http://${HOST}:${PORTS.graywolf}/`, { cache: 'no-store', mode: 'no-cors' });
-      return { up: true, badge: 'UP', sub: `:${PORTS.graywolf}` };
-    }
-  },
-  {
-    id: 'winlink', name: 'Winlink',
-    url: () => `${location.protocol}//${HOST}:${PORTS.winlink}/`,
-    check: async () => {
-      // Probe via the same-origin Flask proxy (mirrors the desktop): a 503 means
-      // Pat is down. A raw no-cors port fetch can't see that and always "passes".
-      const r = await fetch('/api/winlink/mailbox/in', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: `:${PORTS.winlink}` };   // 503 = Pat down
-      return { up: true, badge: 'UP', sub: `:${PORTS.winlink}` };
-    }
-  },
-  {
-    id: 'kiwix', name: 'Kiwix',
-    url: () => `${location.protocol}//${HOST}:${PORTS.kiwix}/`,
-    check: async () => {
-      await fetch(`http://${HOST}:${PORTS.kiwix}/`, { cache: 'no-store', mode: 'no-cors' });
-      return { up: true, badge: 'UP', sub: `:${PORTS.kiwix}` };
-    }
-  },
-  {
-    id: 'aprs', name: 'APRS Stats API',
-    check: async () => {
-      const r = await fetch('/api/aprs/health', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: `:${PORTS.aprs_api}` };
-      const d = await r.json();
-      return { up: true, warn: !d.db_exists, badge: 'UP', sub: d.db_exists ? 'DB found' : 'no DB' };
-    }
-  },
-  {
-    id: 'feed', name: 'APRS SDR Feed',
-    check: async () => {
-      // No web port — status comes from systemd (socat RTL-SDR → GrayWolf feed).
-      const r = await fetch('/api/health/service?name=aprs-sdr-feed', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'status error' };
-      const d = await r.json();
-      if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
-      if (d.active === 'active') return { up: true, badge: 'UP', sub: '→ GrayWolf' };
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
-        sub: d.installed ? 'inactive' : 'features/rtl-sdr/enable-rtl-sdr.py' };
-    }
-  },
-  {
-    id: 'gpsd', name: 'GPS (gpsd)',
-    check: async () => {
-      const r = await fetch('/api/health/service?name=gpsd', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'status error' };
-      const d = await r.json();
-      if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
-      if (d.active === 'active') return { up: true, badge: 'UP', sub: ':2947' };
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
-        sub: d.installed ? 'inactive' : 'features/gps/install-gps.py' };
-    }
-  },
-  {
-    id: 'fcc', name: 'FCC Database',
-    check: async () => {
-      const r = await fetch('/health', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'server error' };
-      const d = await r.json();
-      return { up: true, warn: !d.index_present,
-        badge: d.index_present ? 'UP' : 'WARN',
-        sub: d.index_present ? `${(d.callsign_count||0).toLocaleString()} calls` : 'not indexed' };
-    }
-  },
-  {
-    id: 'maps', name: 'Offline Maps',
-    check: async () => {
-      const r = await fetch('/api/browse?path=maps', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'browse error' };
-      const d = await r.json();
-      const n = (d.entries||[]).filter(e => e.name.endsWith('.pmtiles')).length;
-      return { up: true, warn: n === 0, badge: n > 0 ? 'UP' : 'WARN', sub: n > 0 ? `${n} map${n===1?'':'s'}` : 'no maps' };
-    }
-  },
-  {
-    id: 'rb', name: 'Repeater Book',
-    check: async () => {
-      const r = await fetch('static/repeaterbook/repeaterbook.csv', { method: 'HEAD', cache: 'no-store' });
-      return { up: r.ok, badge: r.ok ? 'UP' : 'DOWN', sub: r.ok ? 'CSV loaded' : 'CSV missing' };
-    }
-  },
-  {
-    id: 'webssh', name: 'SSH Terminal',
-    url: () => `${location.protocol}//${HOST}:${PORTS.webssh}/`,
-    check: async () => {
-      await fetch(`http://${HOST}:${PORTS.webssh}/`, { cache: 'no-store', mode: 'no-cors' });
-      return { up: true, badge: 'UP', sub: `:${PORTS.webssh}` };
-    }
-  },
-  {
-    id: 'owrx', name: 'OpenWebRX',
-    url: () => `${location.protocol}//${HOST}:${PORTS.openwebrx}/`,
-    check: async () => {
-      await fetch(`http://${HOST}:${PORTS.openwebrx}/`, { cache: 'no-store', mode: 'no-cors' });
-      return { up: true, badge: 'UP', sub: `:${PORTS.openwebrx}` };
-    }
-  },
-  {
-    id: 'manuals', name: 'Radio Manuals',
-    check: async () => {
-      const r = await fetch('/api/browse?path=static/radio-manuals', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'browse error' };
-      const d = await r.json();
-      const n = (d.entries || []).filter(e => e.type === 'dir').length;
-      return { up: true, warn: n === 0, badge: n > 0 ? 'UP' : 'WARN',
-        sub: n > 0 ? `${n} radio${n === 1 ? '' : 's'}` : 'no manuals' };
-    }
-  },
-  {
-    id: 'wiki', name: 'Wikipedia',
-    check: async () => {
-      const r = await fetch('/api/health/zim', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'check error' };
-      const d = await r.json();
-      const n = d.count || 0;
-      return { up: true, warn: n === 0, badge: n > 0 ? 'UP' : 'WARN',
-        sub: n > 0 ? `${n} ZIM${n === 1 ? '' : 's'}` : 'no ZIM' };
-    }
-  },
+  { id:'flask', name:'Flask', check: async () => { const r = await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); return {up:true,badge:'UP',sub:`v${d.flask_version}`}; } },
+  { id:'wsgi', name:'Web Server', check: async () => { const r=await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); const g=d.wsgi==='gunicorn'; return {up:true,warn:!g,badge:g?'gunicorn':'werkzeug',sub:`v${d.wsgi_version}`}; } },
+  { id:'gw', name:'GrayWolf', url:()=>`${location.protocol}//${HOST}:${PORTS.graywolf}/`, check: async () => { await fetch(`http://${HOST}:${PORTS.graywolf}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.graywolf}`}; } },
+  { id:'winlink', name:'Winlink', url:()=>`${location.protocol}//${HOST}:${PORTS.winlink}/`, check: async () => { const r=await fetch('/api/winlink/mailbox/in',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`:${PORTS.winlink}`}; return {up:true,badge:'UP',sub:`:${PORTS.winlink}`}; } },
+  { id:'kiwix', name:'Kiwix', url:()=>`${location.protocol}//${HOST}:${PORTS.kiwix}/`, check: async () => { await fetch(`http://${HOST}:${PORTS.kiwix}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.kiwix}`}; } },
+  { id:'aprs', name:'APRS Stats API', check: async () => { const r=await fetch('/api/aprs/health',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`:${PORTS.aprs_api}`}; const d=await r.json(); return {up:true,warn:!d.db_exists,badge:'UP',sub:d.db_exists?'DB found':'no DB'}; } },
+  { id:'feed', name:'APRS SDR Feed', check: async () => { const r=await fetch('/api/health/service?name=aprs-sdr-feed',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:'→ GrayWolf'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
+  { id:'gpsd', name:'GPS (gpsd)', check: async () => { const r=await fetch('/api/health/service?name=gpsd',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:':2947'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
+  { id:'fcc', name:'FCC Database', check: async () => { const r=await fetch('/health',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'server error'}; const d=await r.json(); return {up:true,warn:!d.index_present,badge:d.index_present?'UP':'WARN',sub:d.index_present?`${(d.callsign_count||0).toLocaleString()} calls`:'not indexed'}; } },
+  { id:'maps', name:'Offline Maps', check: async () => { const r=await fetch('/api/browse?path=maps',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'browse error'}; const d=await r.json(); const n=(d.entries||[]).filter(e=>e.name.endsWith('.pmtiles')).length; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} map${n===1?'':'s'}`:'no maps'}; } },
+  { id:'rb', name:'Repeater Book', check: async () => { const r=await fetch('static/repeaterbook/repeaterbook.csv',{method:'HEAD',cache:'no-store'}); return {up:r.ok,badge:r.ok?'UP':'DOWN',sub:r.ok?'CSV loaded':'CSV missing'}; } },
+  { id:'webssh', name:'SSH Terminal', url:()=>`${location.protocol}//${HOST}:${PORTS.webssh}/`, check: async () => { await fetch(`http://${HOST}:${PORTS.webssh}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.webssh}`}; } },
+  { id:'owrx', name:'OpenWebRX', url:()=>`${location.protocol}//${HOST}:${PORTS.openwebrx}/`, check: async () => { await fetch(`http://${HOST}:${PORTS.openwebrx}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.openwebrx}`}; } },
+  { id:'manuals', name:'Radio Manuals', check: async () => { const r=await fetch('/api/browse?path=static/radio-manuals',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'browse error'}; const d=await r.json(); const n=(d.entries||[]).filter(e=>e.type==='dir').length; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} radio${n===1?'':'s'}`:'no manuals'}; } },
+  { id:'wiki', name:'Wikipedia', check: async () => { const r=await fetch('/api/health/zim',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'check error'}; const d=await r.json(); const n=d.count||0; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} ZIM${n===1?'':'s'}`:'no ZIM'}; } },
 ];
 
-// ── Installed-service gating ──────────────────────────────────────────────────
-// setup-oasis.py records which features the operator installed; we hide the tile
-// for any service that wasn't installed so a minimal box doesn't light up false
-// "down" tiles. Absent manifest (features === null) → show everything. Mirrors
-// the desktop's GATEABLE (the OASIS core flask · wsgi and bundled data
-// maps · repeater book · manuals are never gated).
+// ── Installed-service gating (hide tiles for features the operator didn't install) ─
 const HIDDEN_SVCS = new Set();
 const GATEABLE = {
-  gw:    ['graywolf'],   aprs:    ['graywolf'],  feed: ['rtl-feed'],
-  owrx:  ['openwebrx'],  winlink: ['winlink'],   gpsd: ['gps'],
-  kiwix: ['kiwix'],      webssh:  ['webssh'],    fcc:  ['fcc'],
-  wiki:  ['wikipedia'],  rb:      ['repeaterbook'],
+  gw:['graywolf'], aprs:['graywolf'], feed:['rtl-feed'], owrx:['openwebrx'], winlink:['winlink'],
+  gpsd:['gps'], kiwix:['kiwix'], webssh:['webssh'], fcc:['fcc'], wiki:['wikipedia'], rb:['repeaterbook'],
 };
-
-// A systemd-backed service can be live even when the manifest never recorded it
-// (e.g. features/rtl-sdr/enable-rtl-sdr.py / features/gps/install-gps.py run directly, outside setup-oasis.py —
-// note rtl-sdr tools and the rtl-feed feed are separate features). Probe the
-// real unit so a running feed isn't hidden as "not installed". Require it to be
-// *enabled or active*, not merely present: a leftover/disabled unit the operator
-// never ticked must stay hidden, else the tile shows STOPPED instead of hidden.
-const SYSTEMD_GATED = { feed: 'aprs-sdr-feed', gpsd: 'gpsd' };
+const SYSTEMD_GATED = { feed:'aprs-sdr-feed', gpsd:'gpsd' };
 async function unitInstalled(id) {
-  const unit = SYSTEMD_GATED[id];
-  if (!unit) return false;
-  try {
-    const r = await fetch('/api/health/service?name=' + unit, { cache: 'no-store' });
-    if (!r.ok) return false;
-    const d = await r.json();
-    // gpsd is a stock Debian package other features pull in transitively (e.g.
-    // Winlink's `pat` Depends: gpsd) and its socket auto-enables — so a *running*
-    // gpsd is NOT proof the operator set up GPS. features/gps/install-gps.py explicitly
-    // `systemctl enable gpsd`, so a deliberate setup reports enabled==='enabled',
-    // while a dependency-pulled one stays socket-activated ('indirect'/'static').
-    // Require that explicit boot-enable for gpsd; don't let mere activity un-hide
-    // the GPS tile (the server promotes a live gpsd.socket to active==='active').
-    if (id === 'gpsd') return d.enabled === 'enabled';
-    // aprs-sdr-feed only exists if features/rtl-sdr/enable-rtl-sdr.py created it, so any
-    // enabled/active state is a genuine, deliberate install.
-    return d.active === 'active' || d.enabled === 'enabled';
-  } catch (_) { return false; }
+  const unit = SYSTEMD_GATED[id]; if (!unit) return false;
+  try { const r = await fetch('/api/health/service?name='+unit,{cache:'no-store'}); if(!r.ok) return false; const d=await r.json();
+        if (id==='gpsd') return d.enabled==='enabled';
+        return d.active==='active' || d.enabled==='enabled'; } catch(_) { return false; }
 }
-
 async function loadInstalled() {
   let features = null;
-  try {
-    const r = await fetch('/api/installed-services', { cache: 'no-store' });
-    if (r.ok) { const d = await r.json(); features = d.features; }
-  } catch (_) {}
+  try { const r = await fetch('/api/installed-services',{cache:'no-store'}); if(r.ok){ const d=await r.json(); features=d.features; } } catch(_) {}
   HIDDEN_SVCS.clear();
-  if (Array.isArray(features)) {                 // null/absent → show all
+  if (Array.isArray(features)) {
     const installed = new Set(features);
     for (const [id, keys] of Object.entries(GATEABLE)) {
-      if (!keys.some(k => installed.has(k))) {
-        if (await unitInstalled(id)) continue;   // live systemd unit enabled outside setup → keep visible
-        HIDDEN_SVCS.add(id);
-      }
+      if (!keys.some(k => installed.has(k))) { if (await unitInstalled(id)) continue; HIDDEN_SVCS.add(id); }
     }
   }
 }
 
-// ── Build service tiles ───────────────────────────────────────────────────────
 function buildTiles() {
-  const sg = document.getElementById('svcGrid');
-  sg.innerHTML = '';
+  const sg = document.getElementById('svcGrid'); sg.innerHTML = '';
   SERVICES.forEach(svc => {
-    if (HIDDEN_SVCS.has(svc.id)) return;        // not installed — skip the tile
+    if (HIDDEN_SVCS.has(svc.id)) return;
     const t = document.createElement(svc.url ? 'a' : 'div');
-    t.className = 'svc-tile';
-    t.id = 'tile-' + svc.id;
-    if (svc.url) {
-      t.href = '#';
-      t.addEventListener('click', e => { e.preventDefault(); window.open(svc.url(), '_blank'); });
-      t.style.cursor = 'pointer'; t.style.textDecoration = 'none'; t.style.color = 'inherit';
-    }
-    t.innerHTML = `<div class="n">${svc.name}</div><div class="p" id="tsub-${svc.id}">…</div><div class="b" id="tbadge-${svc.id}">…</div>`;
+    t.className = 'svc-tile'; t.id = 'tile-'+svc.id;
+    if (svc.url) { t.href='#'; t.addEventListener('click', e => { e.preventDefault(); window.open(svc.url(),'_blank'); }); t.style.cursor='pointer'; t.style.textDecoration='none'; t.style.color='inherit'; }
+    t.innerHTML = `<div class="n">${esc(svc.name)}</div><div class="p" id="tsub-${svc.id}">…</div><div class="b" id="tbadge-${svc.id}">…</div>`;
     sg.appendChild(t);
   });
 }
-
 async function checkService(svc) {
-  const tile  = document.getElementById('tile-'   + svc.id);
-  const badge = document.getElementById('tbadge-' + svc.id);
-  const sub   = document.getElementById('tsub-'   + svc.id);
+  const tile=document.getElementById('tile-'+svc.id), badge=document.getElementById('tbadge-'+svc.id), sub=document.getElementById('tsub-'+svc.id);
   try {
-    const result = await Promise.race([
-      svc.check(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
-    ]);
-    const state = result.up ? (result.warn ? 'warn' : 'up') : 'down';
-    _svcStates[svc.id] = state;
-    if (tile)  tile.className    = 'svc-tile ' + state;
-    if (badge) badge.textContent = result.badge || (result.up ? 'UP' : 'DOWN');
-    if (sub)   sub.textContent   = result.sub   || '';
+    const result = await Promise.race([ svc.check(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),4000)) ]);
+    const state = result.up ? (result.warn ? 'warn':'up') : 'down';
+    _svcStates[svc.id]=state;
+    if (tile) tile.className='svc-tile '+state;
+    if (badge) badge.textContent=result.badge||(result.up?'UP':'DOWN');
+    if (sub) sub.textContent=result.sub||'';
   } catch (e) {
-    _svcStates[svc.id] = 'down';
-    if (tile)  tile.className    = 'svc-tile down';
-    if (badge) badge.textContent = e.message === 'timeout' ? 'TIMEOUT' : 'DOWN';
-    if (sub)   { const pf = SVC_PORTS[svc.id]; sub.textContent = pf ? `:${pf()}` : ''; }
+    _svcStates[svc.id]='down';
+    if (tile) tile.className='svc-tile down';
+    if (badge) badge.textContent = e.message==='timeout' ? 'TIMEOUT':'DOWN';
+    if (sub) { const pf=SVC_PORTS[svc.id]; sub.textContent = pf?`:${pf()}`:''; }
   }
   updateSvcCounts();
 }
-
 function pingAll() { SERVICES.forEach(svc => { if (!HIDDEN_SVCS.has(svc.id)) checkService(svc); }); }
-
-// Steady-state health checks as a circular queue: one service per tick instead
-// of firing all ~16 at once every 30 s (that burst spiked CPU + network). The
-// tick interval is sized so each service still refreshes ~every 16 s. Only the
-// initial fill (bootstrap) pings everything at once so the tiles populate fast.
+// Round-robin: one service per tick (cycle ≈ 16 s), not a burst of ~14 fetches.
 let _pingIdx = 0;
 function pingNext() {
   const active = SERVICES.filter(svc => !HIDDEN_SVCS.has(svc.id));
   if (!active.length) return;
-  checkService(active[_pingIdx % active.length]);
-  _pingIdx = (_pingIdx + 1) % active.length;
+  checkService(active[_pingIdx % active.length]); _pingIdx = (_pingIdx + 1) % active.length;
 }
 
-// ── Build OPS overlay ─────────────────────────────────────────────────────────
+// ── OPS overlay ───────────────────────────────────────────────────────────────
 const OPS = {
   Util: [
-    { sub:'live APRS · air',    label:'APRS Map',        url:'server/map/map.html' },
-    { sub:'callsign',           label:'FCC Lookup',      url:'/lookup' },
-    { sub:'shell',              label:'SSH Terminal',    ext: () => `${location.protocol}//${HOST}:${PORTS.webssh}/` },
-    { sub:'log',                label:'Net Logger',      url:'tools/net-log.html' },
+    { sub:'live APRS · air', label:'APRS Map', url:'server/map/map.html' },
+    { sub:'callsign', label:'FCC Lookup', url:'/lookup' },
+    { sub:'passes · tracking', label:'Satellites', url:'server/satellites/' },
+    { sub:'shell', label:'SSH Terminal', ext:()=>`${location.protocol}//${HOST}:${PORTS.webssh}/` },
+    { sub:'log', label:'Net Logger', url:'tools/net-log.html' },
   ],
   Tools: [
-    { sub:'configure',          label:'Setup Verify',    url:'server/system/setup.html' },
-    { sub:'calculator',         label:'Antenna Calc',    url:'static/antenna-calc.html' },
-    { sub:'HF · VHF · UHF',     label:'Band Plan',       url:'static/band-plan/index.html' },
-    { sub:'distance · heading', label:'Grid/Bearing',    url:'tools/grid-calc.html' },
-    { sub:'band conditions',    label:'Propagation',     url:'static/solar.html' },
-    { sub:'runtime calc',       label:'Power/Battery',   url:'static/power-calc.html' },
-    { sub:'HF propagation',     label:'Gray Line',       url:'static/grayline.html' },
-    { sub:'user files',         label:'File Browser',    url:'server/system/browser.html' },
+    { sub:'configure', label:'Setup Verify', url:'server/system/setup.html' },
+    { sub:'calculator', label:'Antenna Calc', url:'static/antenna-calc.html' },
+    { sub:'HF · VHF · UHF', label:'Band Plan', url:'static/band-plan/index.html' },
+    { sub:'distance · heading', label:'Grid/Bearing', url:'tools/grid-calc.html' },
+    { sub:'band conditions', label:'Propagation', url:'static/solar.html' },
+    { sub:'runtime calc', label:'Power/Battery', url:'static/power-calc.html' },
+    { sub:'HF propagation', label:'Gray Line', url:'static/grayline.html' },
+    { sub:'user files', label:'File Browser', url:'server/system/browser.html' },
   ],
   'ICS Forms': [
-    { sub:'radio plan',         label:'ICS-205',         url:'static/ics-205/ics-205.html' },
-    { sub:'general message',    label:'ICS-213',         url:'static/ics-213/ics-213.html' },
-    { sub:'activity log',       label:'ICS-214',         url:'static/ics-214/ics-214.html' },
-    { sub:'comms log',          label:'ICS-309',         url:'static/ics-309/ics-309.html' },
+    { sub:'radio plan', label:'ICS-205', url:'static/ics-205/ics-205.html' },
+    { sub:'general message', label:'ICS-213', url:'static/ics-213/ics-213.html' },
+    { sub:'activity log', label:'ICS-214', url:'static/ics-214/ics-214.html' },
+    { sub:'comms log', label:'ICS-309', url:'static/ics-309/ics-309.html' },
   ],
   'Winlink / APRS': [
-    { sub:'mailbox',            label:'Winlink Mail',    url:'server/winlink/mail.html' },
-    { sub:'viewer',             label:'Position Reports',url:'server/winlink/position-report.html' },
-    { sub:'setup',              label:'Radio Settings',  url:'server/winlink/radio-settings.html' },
-    { sub:'converter',          label:'WL → Position',   url:'server/winlink/to-position.html' },
-    { sub:'decoder',            label:'GrayWolf',        ext: () => `${location.protocol}//${HOST}:${PORTS.graywolf}/` },
-    { sub:'docs',               label:'GrayWolf Docs',   url:'static/graywolf-handbook/index.html' },
-    { sub:'FIND · SMS · WX',    label:'APRS Bots',       url:'static/cheatsheets/aprs_bots.html' },
-    { sub:'WX · repeaters',     label:'MPAD Bot',        url:'static/cheatsheets/mpad.html' },
+    { sub:'mailbox', label:'Winlink Mail', url:'server/winlink/mail.html' },
+    { sub:'viewer', label:'Position Reports', url:'server/winlink/position-report.html' },
+    { sub:'setup', label:'Radio Settings', url:'server/winlink/radio-settings.html' },
+    { sub:'converter', label:'WL → Position', url:'server/winlink/to-position.html' },
+    { sub:'decoder', label:'GrayWolf', ext:()=>`${location.protocol}//${HOST}:${PORTS.graywolf}/` },
+    { sub:'docs', label:'GrayWolf Docs', url:'static/graywolf-handbook/index.html' },
+    { sub:'FIND · SMS · WX', label:'APRS Bots', url:'static/cheatsheets/aprs_bots.html' },
+    { sub:'WX · repeaters', label:'MPAD Bot', url:'static/cheatsheets/mpad.html' },
   ],
   'Radio Ref': [
-    { sub:'how-to',             label:'Repeater Guide',  url:'static/repeater-guide/index.html' },
-    { sub:'reference',          label:'Radio Cards',     url:'static/radio-cards/index.html' },
-    { sub:'reference',          label:'Cheatsheets',     url:'static/cheatsheets/index.html' },
-    { sub:'repeaters',          label:'Repeater Book',   url:'static/repeaterbook/repeaterbook.html' },
-    { sub:'manuals',            label:'Radio Manuals',   url:'server/system/browser.html?path=static/radio-manuals' },
-    { sub:'offline',            label:'Wikipedia',       ext: () => `${location.protocol}//${HOST}:${PORTS.kiwix}/` },
+    { sub:'how-to', label:'Repeater Guide', url:'static/repeater-guide/index.html' },
+    { sub:'reference', label:'Radio Cards', url:'static/radio-cards/index.html' },
+    { sub:'reference', label:'Cheatsheets', url:'static/cheatsheets/index.html' },
+    { sub:'repeaters', label:'Repeater Book', url:'static/repeaterbook/repeaterbook.html' },
+    { sub:'manuals', label:'Radio Manuals', url:'server/system/browser.html?path=static/radio-manuals' },
+    { sub:'offline', label:'Wikipedia', ext:()=>`${location.protocol}//${HOST}:${PORTS.kiwix}/` },
   ],
   Operating: [
-    { sub:'call sign series',   label:'ITU Prefixes',    url:'static/quick-ref/itu-prefixes.html' },
-    { sub:'NATO reference',     label:'NATO Phonetic',   url:'static/quick-ref/phonetic.html' },
-    { sub:'procedure words',    label:'Proc Words',      url:'static/quick-ref/prowords.html' },
-    { sub:'q-codes',            label:'Q-Codes',         url:'static/quick-ref/qcodes.html' },
-    { sub:'signal reporting',   label:'RST',             url:'static/quick-ref/rst.html' },
+    { sub:'call sign series', label:'ITU Prefixes', url:'static/quick-ref/itu-prefixes.html' },
+    { sub:'NATO reference', label:'NATO Phonetic', url:'static/quick-ref/phonetic.html' },
+    { sub:'procedure words', label:'Proc Words', url:'static/quick-ref/prowords.html' },
+    { sub:'q-codes', label:'Q-Codes', url:'static/quick-ref/qcodes.html' },
+    { sub:'signal reporting', label:'RST', url:'static/quick-ref/rst.html' },
   ],
 };
-
-const ob = document.getElementById('opsBody');
-Object.entries(OPS).forEach(([sec, items]) => {
-  const w = document.createElement('div'); w.className = 'ops-sec';
-  w.innerHTML = `<div class="lab">${sec.toUpperCase()}</div>`;
-  const g = document.createElement('div'); g.className = 'ops-grid';
-  items.forEach(it => {
-    const b = document.createElement('button'); b.className = 'ops-btn';
-    b.innerHTML = `<span class="n">${it.label}</span>${it.sub ? `<span class="s">${it.sub}</span>` : ''}`;
-    b.addEventListener('click', () => {
-      if (it.ext) window.open(it.ext(), '_blank');
-      else if (it.url) window.open(it.url, '_blank');
+(function buildOps() {
+  const ob = document.getElementById('opsBody');
+  Object.entries(OPS).forEach(([sec, items]) => {
+    const w = document.createElement('div'); w.className = 'ops-sec';
+    w.innerHTML = `<div class="lab">${esc(sec.toUpperCase())}</div>`;
+    const g = document.createElement('div'); g.className = 'ops-grid';
+    items.forEach(it => {
+      const b = document.createElement('button'); b.className = 'ops-btn';
+      b.innerHTML = `<span class="n">${esc(it.label)}</span>${it.sub?`<span class="s">${esc(it.sub)}</span>`:''}`;
+      b.addEventListener('click', () => { if (it.ext) window.open(it.ext(),'_blank'); else if (it.url) window.open(it.url,'_blank'); });
+      g.appendChild(b);
     });
-    g.appendChild(b);
+    w.appendChild(g); ob.appendChild(w);
   });
-  w.appendChild(g); ob.appendChild(w);
-});
+})();
+function openOv(id) { document.getElementById('ov-'+id).classList.add('open'); }
+function closeOv(id){ document.getElementById('ov-'+id).classList.remove('open'); }
 
-// ── Overlays ──────────────────────────────────────────────────────────────────
-function openOv(id)  { document.getElementById('ov-'+id).classList.add('open'); }
-function closeOv(id) { document.getElementById('ov-'+id).classList.remove('open'); }
-
-// ── APRS detail sheet ─────────────────────────────────────────────────────────
+// ── Detail sheet (APRS/aircraft row → full card) ──────────────────────────────
 function openSheet(s) {
   document.getElementById('shCall').textContent  = s.callsign || s.c || '—';
   document.getElementById('shHeard').textContent = s.last_heard || s.h || '—';
-  const ageSec = s.last_heard ? Math.floor((Date.now()-new Date(s.last_heard))/1000) : null;
-  document.getElementById('shAge').textContent   = ageSec != null ? (ageSec<60?ageSec+'s ago':Math.floor(ageSec/60)+'m ago') : (s.a ? s.a+' ago' : '—');
-  document.getElementById('shVia').textContent   = aprsSource(s).toUpperCase();
-  document.getElementById('shSpd').textContent   = s.speed_mph != null ? fmtSpeed(s.speed_mph) : (s.sp || '—');
-  document.getElementById('shGrid').textContent  = gridSquare(s.lat, s.lon) || '—';
-  document.getElementById('shDist').textContent  = distFromHome(s.lat, s.lon) || '—';
+  const ageSec = s.last_heard ? Math.floor((Date.now()-_lhEpoch(s.last_heard))/1000) : null;
+  document.getElementById('shAge').textContent   = ageSec != null ? (ageSec<60?ageSec+'s ago':Math.floor(ageSec/60)+'m ago') : (s.a?s.a+' ago':'—');
+  document.getElementById('shVia').textContent   = (s._kind==='aircraft'?'ADS-B':aprsSource(s).toUpperCase());
+  document.getElementById('shSpd').textContent   = s.speed_mph != null ? fmtSpeed(s.speed_mph) : (s.sp||'—');
+  document.getElementById('shGrid').textContent  = gridSquare(s.lat,s.lon) || '—';
+  document.getElementById('shDist').textContent  = distFromHome(s.lat,s.lon) || '—';
   document.getElementById('shCmt').textContent   = s.comment || s.cmt || '(no comment)';
   document.getElementById('sheet').classList.add('open');
 }
 function closeSheet() { document.getElementById('sheet').classList.remove('open'); }
 
-// ── System stats ──────────────────────────────────────────────────────────────
-function setKStat(id, text, cls) {
-  const el = document.getElementById(id); if (!el) return;
-  el.textContent = text;
-  el.className = 'v' + (cls ? ' ' + cls : '');
-}
-// Units toggle — shared with index.html via the same localStorage key
-// ('oasis_units': imperial | metric). Tapping the TEMP stat flips it and
-// re-renders temperature plus the APRS table's speed + altitude columns.
-// Server reports °C / mph / metres; thresholds stay in °C — only text changes.
-let _lastTempC = null;
-function renderTemp() {
-  const cls = _lastTempC != null ? (_lastTempC >= 80 ? 'hot' : _lastTempC >= 65 ? 'warm' : 'ok') : '';
-  setKStat('k-temp', fmtTemp(_lastTempC), cls);
-}
-function renderUnits() {
-  const el = document.getElementById('k-units');
-  if (el) el.textContent = isImperial() ? 'IMPERIAL' : 'METRIC';
-}
-function toggleUnits() {
-  OasisUnits.toggleUnits();
-  renderUnits();
-  renderTemp();
-  if (_allAprsStations.length) applyAprsFilter();   // re-render table in new units
-}
-renderUnits();
-// Tapping the TEMP stat is a second shortcut for the same toggle.
-(function () {
-  const el = document.getElementById('k-temp');
-  if (el) el.addEventListener('click', toggleUnits);
-})();
+// ── System stats + GPS (one /api/system poll) ─────────────────────────────────
 async function fetchStats() {
   try {
-    const r = await fetch('/api/system', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+    const r = await fetch('/api/system', { cache:'no-store', signal: AbortSignal.timeout(4000) });
     if (!r.ok) return;
     const d = await r.json();
-    renderGps(d.gps);   // GPS nav dot rides on the same /api/system poll
-    const hostEl = document.getElementById('k-host');
-    if (hostEl && (d.hostname || d.ip)) {
-      const txt = `${d.hostname || '—'}:${d.ip || '—'}`;
-      hostEl.textContent = txt;
-      hostEl.title = txt;
-    }
-    let valid = 0, total = 0;
-    const track = ok => { total++; if (ok) valid++; };
-    track(d.cpu_pct != null);
+    const ipEl = document.getElementById('k-ip'); if (ipEl && d.ip) ipEl.textContent = d.ip;
+    renderGps(d.gps);
     if (d.cpu_pct != null) setKStat('k-cpu', `${Math.round(d.cpu_pct)}%`, d.cpu_pct>=90?'hot':d.cpu_pct>=70?'warm':'ok');
-    track(d.cpu_temp_c != null);
-    _lastTempC = d.cpu_temp_c;
-    renderTemp();
-    track(d.ram && d.ram.pct != null);
+    _lastTempC = d.cpu_temp_c; renderTemp();
     if (d.ram?.pct != null) setKStat('k-ram', `${Math.round(d.ram.pct)}%`, d.ram.pct>=90?'hot':d.ram.pct>=70?'warm':'ok');
-    track(d.disk && !d.disk.error && d.disk.pct != null);
     if (d.disk?.pct != null && !d.disk.error) setKStat('k-disk', `${Math.round(d.disk.pct)}%`, d.disk.pct>=90?'hot':d.disk.pct>=70?'warm':'ok');
-    track(d.load && d.load.avg1 != null);
     setKStat('k-load', d.load?.avg1 != null ? d.load.avg1.toFixed(2) : 'n/a', d.load?.pct!=null?(d.load.pct>=100?'hot':d.load.pct>=75?'warm':'ok'):'');
-    track(d.uptime_sec != null);
-    if (d.uptime_sec != null) setKStat('k-up', fmtUptime(d.uptime_sec), '');
-    const tb = document.getElementById('k-telemetry');
-    if (tb) {
-      if (valid > 0) { tb.textContent = '✓ telemetry: live';    tb.style.color = ''; }
-      else           { tb.textContent = '✗ telemetry: offline'; tb.style.color = 'var(--warn)'; }
-    }
   } catch (_) {}
 }
+// GPS fix → the status card's GPS row (dot + mode colour, sat count).
+function renderGps(g) {
+  const card = document.getElementById('k-gps'); if (!card) return;
+  const mode = g ? (g.mode||0) : -1, used = (g && g.used != null) ? g.used : null;
+  let state, modeTxt;
+  if (mode>=3) { state='fix3d'; modeTxt='3D'; }
+  else if (mode===2) { state='fix2d'; modeTxt='2D'; }
+  else if (mode>=0) { state='nofix'; modeTxt='NO FIX'; }
+  else { state='nogps'; modeTxt='NO GPS'; }
+  card.className = 'gpspill '+state;
+  const m = document.getElementById('k-gps-mode'); if (m) m.textContent = 'GPS '+modeTxt;
+  const sub = document.getElementById('k-gps-sub');
+  if (sub) sub.innerHTML = used != null
+    ? '· <span class="gps-sat">'+used+' sat</span>'+(g && g.hdop!=null?' · HDOP '+Number(g.hdop).toFixed(1):'')
+    : (mode>=0 ? '· acquiring…' : '· no receiver');
+}
 
-async function fetchAudio() {
-  const el = document.getElementById('k-audio'); if (!el) return;
+// ── Hardware device pills (device → service; assigned + installed only) ────────
+const HW_SVC_LABEL = { aprs:'APRS', adsb:'ADS-B', openwebrx:'OpenWebRX', winlink:'Winlink', graywolf:'GrayWolf' };
+async function fetchHardware() {
+  const box = document.getElementById('devPills'); if (!box) return;
   try {
-    const r = await fetch('/api/audio', { cache: 'no-store' });
-    if (!r.ok) return;
+    const r = await fetch('/api/hardware/devices', { cache:'no-store' });
+    if (!r.ok) { box.innerHTML = '<span class="hwempty">—</span>'; return; }
     const d = await r.json();
-    if (!d.supported) { el.textContent = 'n/a'; return; }
-    const n = d.cards.length;
-    el.textContent = `${n} card${n !== 1 ? 's' : ''}`;
-    const ready = d.cards.some(c => c.sdr ? c.capture : (c.usb && c.capture && c.playback));
-    el.className = 'v' + (ready ? ' ok' : (n ? '' : ' warm'));
-  } catch (_) {}
+    const byId = {}; (d.devices||[]).forEach(x => byId[x.id] = x);
+    const pills = [];
+    Object.entries(d.services||{}).forEach(([svc, info]) => {
+      const dev = info && info.device_id ? byId[info.device_id] : null;
+      if (!dev) return;                       // only show services with a device assigned
+      const label = (dev.label || dev.id) + (dev.usb_port ? ' '+dev.usb_port : '');
+      const name  = HW_SVC_LABEL[svc] || svc.toUpperCase();
+      pills.push(`<span class="hwpill on"><span class="d"></span><span class="dev">${esc(label)}</span><span class="arr">→</span><span class="svc">${esc(name)}</span></span>`);
+    });
+    box.innerHTML = pills.length ? pills.join('') : '<span class="hwempty">no assigned devices</span>';
+  } catch (_) { box.innerHTML = '<span class="hwempty">—</span>'; }
 }
 
-// ── APRS live ─────────────────────────────────────────────────────────────────
+// ── Satellites (operator's map selection, server roster) ──────────────────────
+function azCompass(deg) { if (deg == null) return ''; return ['N','NE','E','SE','S','SW','W','NW'][Math.round((((deg%360)+360)%360)/45)%8]; }
+let _satSel = [], _satPasses = {};
+async function fetchSats() {
+  try { const m = await (await fetch('/api/satellites', { cache:'no-store' })).json(); _satSel = (m.satellites||[]).filter(s => s.selected); } catch (_) { _satSel = []; }
+  // window=24 (same as the map) so we cover a full day of passes — a short
+  // window goes stale within its span and the server caches for 6 h — and share
+  // the map's warm cache. We still filter to the next hour client-side below.
+  try { _satPasses = (await (await fetch('/api/satellites/passes?window=24', { cache:'no-store' })).json()).passes || {}; } catch (_) {}
+  renderSats();
+}
+function renderSats() {
+  const body = document.getElementById('satBody'), meta = document.getElementById('k-sat-meta');
+  if (!body) return;
+  const now = Date.now();
+  const items = [];
+  _satSel.forEach(s => {
+    const norad = s.norad || s.id;
+    const passes = _satPasses[norad] || _satPasses[String(norad)] || [];
+    const p = passes.map(x => ({ ...x, _r:new Date(x.rise).getTime(), _s:new Date(x.set).getTime() }))
+                    .filter(x => x._s > now).sort((a,b) => a._r - b._r)[0];
+    if (!p) return;
+    const inPass = p._r <= now && now < p._s;
+    const mins = Math.round((p._r - now)/60000);
+    if (!inPass && mins > 60) return;                 // 1 h window
+    items.push({ name:s.name || ('#'+norad), p, inPass, mins, dl:(s.downlinks && s.downlinks[0]) });
+  });
+  items.sort((a,b) => (b.inPass?1:0)-(a.inPass?1:0) || a.p._r - b.p._r);
+  if (meta) meta.textContent = _satSel.length + ' monitored · ' + items.length + ' in 1h';
+  if (!items.length) { body.innerHTML = '<div class="satempty">no monitored passes in the next hour</div>'; return; }
+  const hm = t => { const d = new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+  body.innerHTML = items.map(it => {
+    const el = Math.round(it.p.max_el || 0), dir = azCompass(it.p.rise_az);
+    if (it.inPass) {
+      const arc = `${esc(azCompass(it.p.rise_az))}→${esc(azCompass(it.p.set_az))}`;
+      return `<div class="sat now"><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}</span><span class="aos">overhead</span><span class="cd">NOW</span></div><div class="l2">el ${el}° ↗ · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
+    }
+    const soon = it.mins <= 10;
+    const nm = soon ? `<span class="nm"><span class="pulse"></span>${esc(it.name)}</span>` : `<span class="nm">${esc(it.name)}</span>`;
+    const l2 = soon ? `rise ${esc(dir)} · ${el}° max · get ready` : `rise ${esc(dir)} · ${el}° max`;
+    return `<div class="sat${soon?' soon':''}"><div class="l1">${nm}<span class="aos">${hm(it.p._r)}</span><span class="cd">↑ ${it.mins}m</span></div><div class="l2">${l2}</div></div>`;
+  }).join('');
+}
+
+// ── Natural-hazard footer (symbol-matched; config: /hazards.json) ──────────────
+let _HAZARDS = [];
+async function loadHazards() {
+  try { const d = await (await fetch('/hazards.json', { cache:'no-store' })).json(); _HAZARDS = Array.isArray(d.hazards) ? d.hazards : []; } catch (_) { _HAZARDS = []; }
+  renderHazardFooter();
+}
+function _hazardKeyOf(s) {
+  if (!s || !_HAZARDS.length) return null;
+  const tbl = s.sym_table || '/', code = s.sym_code || '';
+  const text = (String(s.comment||'') + ' ' + String(s.callsign||'')).toUpperCase();
+  const vetoed = kw => kw && new RegExp('\\b'+kw.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b').test(text);
+  for (const h of _HAZARDS) {
+    if (!(h.symbols||[]).some(p => p[0]===tbl && p[1]===code)) continue;
+    if ((h.name_exclude||[]).some(vetoed)) continue;
+    return h.key;
+  }
+  return null;
+}
+function renderHazardFooter() {
+  const counts = {};
+  _allAprsStations.forEach(s => { const k = _hazardKeyOf(s); if (k) counts[k] = (counts[k]||0)+1; });
+  // Only show a hazard that's actually being heard (>0); hide the rest. When
+  // nothing is active, show a calm "all clear" instead of a row of zeros.
+  let active = false;
+  const set = (id, cls, label, n) => {
+    const el = document.getElementById(id); if (!el) return;
+    if (n > 0) { el.style.display = ''; el.className = 'alert on '+cls; el.innerHTML = label+' <b>'+n+'</b>'; active = true; }
+    else { el.style.display = 'none'; }
+  };
+  set('hz-fire','fire','FIRES', counts.fire||0);
+  set('hz-torn','torn','TORNADOES', counts.tornado||0);
+  set('hz-emg','emg','EMERGENCY POI', counts.emergency||0);
+  const clear = document.getElementById('hz-clear'); if (clear) clear.style.display = active ? 'none' : '';
+  // Hazards own the footer when active — hide the SDR meters until it's clear.
+  const fm = document.getElementById('feedmeters'); if (fm) fm.style.display = active ? 'none' : '';
+}
+
+// ── APRS + ADS-B live traffic ─────────────────────────────────────────────────
 let _allAprsStations = [];
-let _aprsShowRF = true;  // RF/IS source toggles (both on by default)
-let _aprsShowIS = true;
-
+let _showRF = true, _showIS = true, _showAPRS = true, _showADSB = true;
+const MAX_ROWS = 25;
 function loadHomeCoords() {
-  fetch('/station.json')
-    .then(r => r.ok ? r.json() : null)
-    .then(d => {
-      if (!d || !d.lat || !d.lon) return;
-      OasisGeo.setHomeCoords(d.lat, d.lon);
-      if (_allAprsStations.length) applyAprsFilter();
-    })
-    .catch(() => {});
+  fetch('/station.json').then(r => r.ok ? r.json() : null).then(d => {
+    if (!d || !d.lat || !d.lon) return; OasisGeo.setHomeCoords(d.lat, d.lon);
+    if (_allAprsStations.length) applyAprsFilter();
+  }).catch(() => {});
 }
-
-// Heard-via source. GrayWolf stores the transport in `via`: 'rf' (off the air)
-// or 'is' (APRS-IS/internet). Trust it; fall back to sniffing the path only when
-// `via` is missing/unrecognised. Mirrors the map + main dashboard.
 function aprsSource(s) {
-  const v = String(s.via || '').trim().toLowerCase();
-  if (v === 'rf') return 'rf';
-  if (v === 'is') return 'is';
-  const hay = (v + ' ' + ((s.path || []).join(' '))).toUpperCase();
-  return (hay.includes('TCPIP') || hay.includes('IGATE') || /\bQA[A-Z]/.test(hay)) ? 'is' : 'rf';
+  const v = String(s.via||'').trim().toLowerCase();
+  if (v==='rf') return 'rf'; if (v==='is') return 'is';
+  const hay = (v+' '+((s.path||[]).join(' '))).toUpperCase();
+  return (hay.includes('TCPIP')||hay.includes('IGATE')||/\bQA[A-Z]/.test(hay)) ? 'is' : 'rf';
 }
-
-// Toggle a source on/off, grey the button label when off, and re-render.
-function toggleAprsSource(src) {
-  if (src === 'rf') _aprsShowRF = !_aprsShowRF;
-  else              _aprsShowIS = !_aprsShowIS;
-  document.getElementById('aprs-rf-btn').classList.toggle('off', !_aprsShowRF);
-  document.getElementById('aprs-is-btn').classList.toggle('off', !_aprsShowIS);
+function toggleFilter(which) {
+  if (which==='rf') _showRF=!_showRF; else if (which==='is') _showIS=!_showIS;
+  else if (which==='aprs') _showAPRS=!_showAPRS; else if (which==='adsb') _showADSB=!_showADSB;
+  const states = { rf:_showRF, is:_showIS, aprs:_showAPRS, adsb:_showADSB };
+  Object.entries(states).forEach(([k,on]) => { const el = document.getElementById('f-'+k); if (el) el.classList.toggle('off', !on); });
   applyAprsFilter();
 }
-
-// APRS symbol icon, blitted from the same shared sprite sheets the map uses
-// (24px cells, 16 cols). Primary table '/' → sheet 0; alternate '\' and overlay
-// tables → sheet 1. Rendered as a CSS background offset — no canvas, fully
-// offline (served from /map-assets/). Falls back to a blank cell if unknown.
 function aprsIconHtml(s) {
-  const table = s.sym_table || '/';
-  const code  = s.sym_code  || '-';
-  let idx = code.charCodeAt(0) - 33;
-  if (idx < 0 || idx > 95) idx = 0;
-  const x = -( (idx % 16) * 24 );
-  const y = -( Math.floor(idx / 16) * 24 );
-  const sheet = table === '/' ? 0 : 1;
+  const table = s.sym_table||'/', code = s.sym_code||'-';
+  let idx = code.charCodeAt(0)-33; if (idx<0||idx>95) idx=0;
+  const x = -((idx%16)*24), y = -(Math.floor(idx/16)*24), sheet = table==='/'?0:1;
   return `<span class="sym" style="background-image:url('/map-assets/aprs-symbols-24-${sheet}.png');background-position:${x}px ${y}px"></span>`;
 }
-
-function renderAprsRows(stations) {
-  const body = document.getElementById('aprsBody');
-  body.querySelectorAll('.row').forEach(r => r.remove());
-  if (!stations.length) {
-    const r = document.createElement('div'); r.className = 'row';
-    r.innerHTML = '<span class="cmt empty" style="grid-column:1/-1">No stations to show.</span>';
-    body.appendChild(r); return;
-  }
-  stations.forEach(s => {
+function renderAprsRows(list) {
+  const body = document.getElementById('aprsScroll'); if (!body) return;
+  body.innerHTML = '';
+  if (!list.length) { body.innerHTML = '<div class="trow empty"><span style="grid-column:1/-1">No stations to show.</span></div>'; return; }
+  const frag = document.createDocumentFragment();
+  list.forEach(s => {
     const call = s.callsign || s.c || '—';
-    const alt  = s.alt_m != null ? fmtAlt(s.alt_m) : '';
-    const courseNum = s.course != null ? Math.round(s.course) : null;
-    const courseFmt = courseNum != null && s.speed_mph > 0
-      ? ` <span style="display:inline-block;transform:rotate(${courseNum}deg)">↑</span> ${['N','NE','E','SE','S','SW','W','NW'][Math.round(courseNum/45)%8]} ${courseNum}°`
-      : '';
-    const grid = gridSquare(s.lat, s.lon);
-    const dist = distFromHome(s.lat, s.lon);
-    const ac   = s._kind === 'aircraft';
-    const src  = ac ? 'adsb' : aprsSource(s);   // 'rf'→green, 'is'→blue, aircraft→purple
-    const acStyle = ac ? ' style="color:#b478ff"' : '';
-    const srcTxt  = ac ? 'ADS' : src.toUpperCase();   // short: 'ADS-B' wraps the narrow kiosk column
-    const r = document.createElement('div'); r.className = 'row';
-    r.innerHTML = `<span class="call ${src}"${acStyle}><a href="server/map/map.html?focus=${encodeURIComponent(call)}" target="_blank" style="color:inherit;text-decoration:none">${call}</a></span>
-      ${aprsIconHtml(s)}
-      <span class="age">${fmtAge(s.last_heard||s.timestamp||s.time).text}</span>
-      <span class="spd">${s.speed_mph > 0 ? fmtSpeed(s.speed_mph) : ''}${courseFmt}</span>
-      <span class="alt">${alt}</span>
-      <span class="alt">${grid}</span>
-      <span class="alt">${dist}</span>
-      <span class="via ${src}"${acStyle}>${srcTxt}</span>
-      <span class="cmt ${(s.comment||s.cmt)?'':'empty'}">${s.comment||s.cmt||'—'}</span>`;
+    const ac = s._kind==='aircraft', src = ac ? 'air' : aprsSource(s);
+    const age = fmtAge(s.last_heard||s.timestamp||s.time);   // { text, cls } — cls colours staleness
+    const dist = distFromHome(s.lat, s.lon) || '';
+    const grid = gridSquare(s.lat, s.lon) || '';
+    const r = document.createElement('div'); r.className = 'trow';
+    r.innerHTML = `<span class="call ${src}">${esc(call)}</span><span>${aprsIconHtml(s)}</span><span class="age ${age.cls}">${esc(age.text)}</span><span class="dist">${esc(dist)}</span><span class="grid">${esc(grid)}</span>`;
     r.onclick = () => openSheet(s);
-    body.appendChild(r);
+    frag.appendChild(r);
   });
+  body.appendChild(frag);
 }
-
-// Coalesce table re-renders. Three pollers (APRS 15 s, ADS-B 15 s, ADS-B recent
-// 60 s) all feed the same station table; without this each tears down and
-// rebuilds every row on its own cadence. Leading-edge throttle: the first call
-// renders now, calls within the window collapse into one trailing render, so the
-// DOM rebuilds at most once per 15 s. UI actions (filter/toggle) still call
-// applyAprsFilter directly so they stay instant.
-let _aprsRenderAt = 0, _aprsRenderTimer = null;
-const APRS_RENDER_MS = 15000;
-function scheduleAprsRender() {
-  const since = Date.now() - _aprsRenderAt;
-  if (since >= APRS_RENDER_MS) { _aprsRenderAt = Date.now(); applyAprsFilter(); }
-  else if (!_aprsRenderTimer) {
-    _aprsRenderTimer = setTimeout(() => {
-      _aprsRenderTimer = null; _aprsRenderAt = Date.now(); applyAprsFilter();
-    }, APRS_RENDER_MS - since);
-  }
-}
-
 function applyAprsFilter() {
-  const minutes = parseInt(document.getElementById('aprs-filter-sel').value);
-  const type    = document.getElementById('aprs-type-sel')?.value || 'All';
-  // Fold ADS-B aircraft into the station list — same as the dashboard + map.
-  let filtered = _allAprsStations.concat(_adsbListRows());
-  const countEl = document.getElementById('k-aprs-count');
-  if (minutes) {
-    const cutoff = Date.now() - minutes * 60000;
-    filtered = filtered.filter(s => {
-      const t = _lhEpoch(s.last_heard || s.timestamp || s.time);
-      return t && t >= cutoff;
-    });
-  }
-  if (type && type !== 'All') {
-    filtered = filtered.filter(s => {
-      if (s._kind === 'aircraft') return true;   // aircraft aren't an APRS type — always show
-      const via = (s.via || '').toUpperCase();
-      if (type === 'RF only')     return via && !via.includes('TCPIP') && !via.includes('IGATE');
-      if (type === 'Digipeaters') return via.includes('WIDE') || via.includes('DIGI');
-      if (type === 'Messages')    return (s.comment || '').includes(':') || s.packet_type === 'message';
-      return true;
-    });
-  }
-  // Source toggles hide RF and/or IS stations; ADS-B aircraft always show.
-  if (!_aprsShowRF || !_aprsShowIS) {
-    filtered = filtered.filter(s => s._kind === 'aircraft'
-      || (aprsSource(s) === 'is' ? _aprsShowIS : _aprsShowRF));
-  }
-  // Newest-first by real time (numeric epoch, both timestamp formats).
-  filtered.sort((a, b) => _lhEpoch(b.last_heard||b.timestamp||b.time)
-                        - _lhEpoch(a.last_heard||a.timestamp||a.time));
-  // Kiosk: render only the 10 newest — the 800×480 screen shows ~12 rows, so
-  // building the full station list is wasted DOM + paint. Total heard (post
-  // filter/toggle) stays on the header's hover title.
-  const total = filtered.length;
-  filtered = filtered.slice(0, 10);
-  if (countEl) countEl.textContent = filtered.length;
-  const wrap = document.getElementById('k-aprs-countwrap');
-  if (wrap) wrap.title = total + ' station' + (total === 1 ? '' : 's') + ' heard';
-  renderAprsRows(filtered);
+  renderHazardFooter();
+  let list = [];
+  if (_showAPRS) list = list.concat(_allAprsStations);
+  if (_showADSB) list = list.concat(_adsbListRows());
+  if (!_showRF || !_showIS) list = list.filter(s => s._kind==='aircraft' || (aprsSource(s)==='is' ? _showIS : _showRF));
+  const total = list.length;
+  list.sort((a,b) => _lhEpoch(b.last_heard||b.timestamp||b.time) - _lhEpoch(a.last_heard||a.timestamp||a.time));
+  const cEl = document.getElementById('k-aprs-count'); if (cEl) cEl.textContent = total;
+  renderAprsRows(list.slice(0, MAX_ROWS));
 }
-
+// Coalesce re-renders to ≤ once / 15 s (three pollers feed one table).
+let _renderAt = 0, _renderTimer = null;
+function scheduleAprsRender() {
+  const since = Date.now() - _renderAt;
+  if (since >= 15000) { _renderAt = Date.now(); applyAprsFilter(); }
+  else if (!_renderTimer) _renderTimer = setTimeout(() => { _renderTimer = null; _renderAt = Date.now(); applyAprsFilter(); }, 15000 - since);
+}
+// LIVE badge on the TRAFFIC header — degrades with the newest packet's age:
+// green ● LIVE (<5m) → amber ● LIVE (5-30m, reception lapsing) → red ● OFFLINE.
+function setAprsLive(state) {
+  const el = document.getElementById('k-aprs-live'); if (!el) return;
+  el.className = 'livebadge ' + state;
+  const t = el.querySelector('.lvtxt'); if (t) t.textContent = (state === 'down') ? 'OFFLINE' : 'LIVE';
+}
 async function fetchAPRS() {
-  const countEl = document.getElementById('k-aprs-count');
-  const lastEl  = document.getElementById('k-aprs-last');
-  const title   = document.getElementById('k-aprs-title');
   try {
-    const r = await fetch('/api/aprs/stations', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const r = await fetch('/api/aprs/stations', { cache:'no-store', signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error('HTTP '+r.status);
     const d = await r.json();
-    if (!d.ok) {
-      if (lastEl)  lastEl.textContent  = '—';
-      if (title)   title.textContent   = 'TRAFFIC OFFLINE';
-      _allAprsStations = [];
-      scheduleAprsRender(); return;   // still surface ADS-B aircraft when APRS is down
-    }
-    if (title) title.textContent = 'TRAFFIC LIVE';
-    // Full station list (positioned + position-less), merged with ADS-B aircraft
-    // in applyAprsFilter — mirrors the dashboard + map lists.
+    if (!d.ok) { setAprsLive('down'); _allAprsStations=[]; scheduleAprsRender(); return; }
     _allAprsStations = d.stations;
-    const times = d.stations.map(s => s.last_heard||s.timestamp||s.time)
-      .filter(Boolean).map(t => _lhEpoch(t)).filter(Boolean);
-    if (lastEl) {
-      if (times.length) {
-        const ageMins = Math.round((Date.now() - Math.max(...times)) / 60000);
-        lastEl.textContent = ageMins<2?'just now':ageMins<60?`${ageMins}m ago`:`${Math.round(ageMins/60)}h ago`;
-      } else { lastEl.textContent = '—'; }
-    }
+    const times = d.stations.map(s => s.last_heard||s.timestamp||s.time).filter(Boolean).map(t => _lhEpoch(t)).filter(Boolean);
+    if (times.length) {
+      const m = Math.round((Date.now()-Math.max(...times))/60000);   // newest packet age → LIVE state
+      setAprsLive(m < 5 ? 'ok' : m < 30 ? 'warn' : 'down');
+    } else { setAprsLive('down'); }
     scheduleAprsRender();
-  } catch (e) {
-    if (title) title.textContent = 'TRAFFIC OFFLINE';
-    _allAprsStations = [];
-    scheduleAprsRender();
-  }
+  } catch (e) { setAprsLive('down'); _allAprsStations=[]; scheduleAprsRender(); }
 }
 
-// ── ADS-B aircraft fold (mirrors index.html / map.html) ──────────────────────
-let _adsbAircraft = [];   // last /api/adsb/aircraft poll (live)
-let _adsbRecent   = [];   // last /api/adsb/recent poll (24 h history, list-only)
-let _adsbNow      = 0;    // that poll's dump1090 clock, so `seen` → absolute time
-
-// last_heard → epoch ms, parsing GrayWolf's "YYYY-MM-DD HH:MM:SS.fff…±HH:MM"
-// (space, nanoseconds) AND aircraft ISO. Unparseable → 0.
-function _lhEpoch(s) {
-  if (!s) return 0;
-  const norm = String(s).replace('Z', '+00:00').replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1');
-  const t = new Date(norm).getTime();
-  return isNaN(t) ? 0 : t;
-}
-
+// ADS-B fold (mirrors index.html / map.html)
+let _adsbAircraft = [], _adsbRecent = [], _adsbNow = 0;
+function _lhEpoch(s) { if (!s) return 0; const norm = String(s).replace('Z','+00:00').replace(' ','T').replace(/(\.\d{3})\d+/,'$1'); const t = new Date(norm).getTime(); return isNaN(t)?0:t; }
 function _adsbForList() {
   const byHex = {};
-  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts: a.ts, _live: false }); });
-  _adsbAircraft.forEach(a => {
-    const seenSec = (typeof a.seen === 'number') ? a.seen : 0;
-    byHex[a.hex] = Object.assign({}, a, { _ts: _adsbNow - seenSec, _live: true });
-  });
+  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts:a.ts, _live:false }); });
+  _adsbAircraft.forEach(a => { const seen = (typeof a.seen==='number')?a.seen:0; byHex[a.hex] = Object.assign({}, a, { _ts:_adsbNow-seen, _live:true }); });
   return Object.values(byHex);
 }
-
-// Fold aircraft into station-shaped rows renderAprsRows understands. Drop LIVE
-// position-less aircraft (heard-no-fix clutter); keep aged ones so a disappeared
-// plane ages 1m/2m… like an APRS station.
 function _adsbListRows() {
-  return _adsbForList().filter(a => (a.lat != null && a.lon != null) || !a._live).map(a => {
-    const positioned = a.lat != null && a.lon != null;
-    const altFt = (a.alt_baro == null || a.alt_baro === 'ground') ? null
-      : (isFinite(Number(a.alt_baro)) ? Number(a.alt_baro) : null);
-    return {
-      _kind: 'aircraft',
-      callsign: (a.flight || a.hex || '').trim() || (a.hex || '?'),
-      sym_table: '/', sym_code: (a.category === 'A7') ? 'X' : "'",
-      lat: positioned ? a.lat : null,
-      lon: positioned ? a.lon : null,
-      speed_mph: (a.gs != null) ? Math.round(a.gs * 1.15078) : 0,
-      course: (a.track != null) ? a.track : null,
-      alt_m: (altFt != null) ? altFt / 3.28084 : null,
-      last_heard: new Date(a._ts * 1000).toISOString(),
-      via: 'adsb',
-      comment: a.squawk ? ('sq ' + a.squawk) : '',
-    };
+  return _adsbForList().filter(a => (a.lat!=null && a.lon!=null) || !a._live).map(a => {
+    const positioned = a.lat!=null && a.lon!=null;
+    const altFt = (a.alt_baro==null||a.alt_baro==='ground') ? null : (isFinite(Number(a.alt_baro))?Number(a.alt_baro):null);
+    return { _kind:'aircraft', callsign:(a.flight||a.hex||'').trim()||(a.hex||'?'), sym_table:'/', sym_code:(a.category==='A7')?'X':"'",
+      lat:positioned?a.lat:null, lon:positioned?a.lon:null, speed_mph:(a.gs!=null)?Math.round(a.gs*1.15078):0, course:(a.track!=null)?a.track:null,
+      alt_m:(altFt!=null)?altFt/3.28084:null, last_heard:new Date(a._ts*1000).toISOString(), via:'adsb', comment:a.squawk?('sq '+a.squawk):'' };
   });
 }
-
 async function refreshAdsb() {
-  try {
-    const r = await fetch('/api/adsb/aircraft', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
-    if (!r.ok) { _adsbAircraft = []; scheduleAprsRender(); return; }
-    const j = await r.json();
-    _adsbAircraft = j.aircraft || [];
-    _adsbNow = (typeof j.now === 'number') ? j.now : (Date.now() / 1000);
-    scheduleAprsRender();
-  } catch (e) { /* keep last good until next cycle */ }
+  try { const r = await fetch('/api/adsb/aircraft', { cache:'no-store', signal: AbortSignal.timeout(5000) });
+        if (!r.ok) { _adsbAircraft=[]; scheduleAprsRender(); return; }
+        const j = await r.json(); _adsbAircraft = j.aircraft||[]; _adsbNow = (typeof j.now==='number')?j.now:(Date.now()/1000); scheduleAprsRender(); } catch (_) {}
 }
-
 async function refreshAdsbRecent() {
-  try {
-    const r = await fetch('/api/adsb/recent?hours=24', { cache: 'no-store', signal: AbortSignal.timeout(8000) });
-    if (!r.ok) return;
-    _adsbRecent = (await r.json()).aircraft || [];
-    scheduleAprsRender();
-  } catch (e) { /* keep last good until next cycle */ }
+  try { const r = await fetch('/api/adsb/recent?hours=24', { cache:'no-store', signal: AbortSignal.timeout(8000) });
+        if (!r.ok) return; _adsbRecent = (await r.json()).aircraft||[]; scheduleAprsRender(); } catch (_) {}
 }
 
-// ── APRS SDR feed flow meter (mirrors index.html) ─────────────────────────────
-// Proves UDP audio is actually moving into GrayWolf, not just that the unit is
-// "active". Hidden entirely when the feed feature isn't installed (gated like
-// the service tile); muted when the unit is stopped.
+// ── SDR flow meters (footer) ──────────────────────────────────────────────────
+// Copied from the parent dashboard. Blue bar = signal flowing, red = silent. A
+// systemd-active feed can still be deaf (dongle yanked / antenna dead), so this
+// proves the RTL-SDRs are truly receiving. Cadence kept gentle for the Pi Zero:
+// the APRS probe runs a ~1s tcpdump server-side (raise FEED_FLOW_MS to relax).
+const FEED_FLOW_MS = 4000;
+const ADSB_NOMINAL_SAMPLES_PER_SEC = 2_000_000;   // ~RTL-SDR's 2.4 MSPS default
 async function pollFeedFlow() {
-  const card = document.getElementById('k-feed');
-  if (!card) return;
-  if (HIDDEN_SVCS.has('feed')) { card.hidden = true; return; }   // not installed
-  card.hidden = false;
-  const meter = document.getElementById('feed-meter');
-  const fill  = document.getElementById('feed-meter-fill');
-  const label = document.getElementById('feed-meter-label');
-  const dot   = document.getElementById('k-feed-dot');
-  const setDot = c => { if (dot) dot.style.color = c; };
-  const st = _svcStates['feed'];
-  // Only meaningful while the unit is active; otherwise 0 pps is expected.
-  if (st !== 'up' && st !== 'warn') {
-    if (meter) meter.className = 'feed-meter';
-    if (fill)  fill.style.width = '0%';
-    if (label) label.textContent = st === 'down' ? 'stopped' : '…';
-    setDot('var(--dim)');
-    return;
-  }
+  if (document.visibilityState !== 'visible') return;
+  const meter = document.getElementById('fm-aprs'); if (!meter) return;
+  const fill = document.getElementById('fm-aprs-fill'), label = document.getElementById('fm-aprs-rate');
+  const st = _svcStates['feed'];                 // only meaningful while the feed unit is up
+  if (st !== 'up' && st !== 'warn') { meter.hidden = true; return; }
   try {
-    const r = await fetch('/api/health/feed-flow', { cache: 'no-store' });
-    const d = await r.json();
-    if (d.supported === false || d.ok === false) {
-      if (meter) meter.className = 'feed-meter';
-      if (fill)  fill.style.width = '0%';
-      if (label) label.textContent = d.reason === 'no-privilege' ? 'enable controls' : 'n/a';
-      setDot('var(--warn)');
-      return;
-    }
+    const d = await (await fetch('/api/health/feed-flow', { cache:'no-store' })).json();
+    if (d.supported === false || d.ok === false) { meter.hidden = true; return; }
+    meter.hidden = false;
     const pct = Math.max(0, Math.min(100, (d.pps / (d.nominal_pps || 50)) * 100));
     if (fill) fill.style.width = pct.toFixed(0) + '%';
-    if (d.flowing) {
-      if (meter) meter.className = 'feed-meter flowing';
-      if (label) label.textContent = Math.round(d.pps) + ' pkt/s';
-      setDot('var(--up)');
-    } else {
-      if (meter) meter.className = 'feed-meter silent';
-      if (label) label.textContent = '0 pkt/s';
-      setDot('var(--down)');
-    }
-  } catch (_) { /* transient — keep last state, retry next tick */ }
+    meter.className = 'feed-meter ' + (d.flowing ? 'flowing' : 'silent');
+    if (label) label.textContent = Math.round(d.pps || 0) + ' pkt/s';
+  } catch (_) { /* transient — keep last state */ }
 }
-
-// ── GPS fix (gpsd) ────────────────────────────────────────────────────────────
-// Colour the nav dot from the fix mode carried on /api/system (d.gps, the same
-// cached gpsd snapshot the main dashboard uses): grey = no gpsd (no GPS present),
-// red = no fix, amber = 2D, green = 3D. `used` is the satellites-in-fix count.
-function renderGps(g) {
-  const card = document.getElementById('k-gps');
-  const sub  = document.getElementById('k-gps-sub');
-  if (!card) return;
-  const mode = g ? (g.mode || 0) : -1;             // -1 = gpsd unreachable
-  const used = (g && g.used != null) ? g.used : null;
-  const sat  = used != null ? ' <span class="gps-sat">· ' + used + ' sat</span>' : '';
-  let state, modeTxt;
-  if (mode >= 3)       { state = 'fix3d'; modeTxt = '3D'; }
-  else if (mode === 2) { state = 'fix2d'; modeTxt = '2D'; }
-  else if (mode >= 0)  { state = 'nofix'; modeTxt = 'no fix'; }
-  else                 { state = 'nogps'; modeTxt = 'no gps'; }
-  card.className = 'navbtn gpscard ' + state;       // colours dot + mode via CSS
-  // GPS label stays green, satellites stay white — only the mode text is tinted.
-  if (sub) sub.innerHTML = '<span class="gps-mode">' + modeTxt + '</span>' + sat;
+async function pollAdsbFlow() {
+  if (document.visibilityState !== 'visible') return;
+  const meter = document.getElementById('fm-adsb'); if (!meter) return;
+  const fill = document.getElementById('fm-adsb-fill'), label = document.getElementById('fm-adsb-rate');
+  try {
+    const d = await (await fetch('/api/adsb/health', { cache:'no-store' })).json();
+    // adsb not installed / stats.json not written yet → nothing to show.
+    if (d.ok === false || d.flowing === undefined) { meter.hidden = true; return; }
+    meter.hidden = false;
+    const pct = Math.max(0, Math.min(100, (d.samples_per_sec / ADSB_NOMINAL_SAMPLES_PER_SEC) * 100));
+    if (fill) fill.style.width = pct.toFixed(0) + '%';
+    meter.className = 'feed-meter ' + (d.flowing ? 'flowing' : 'silent');
+    if (label) label.textContent = Math.round(d.messages_per_min || 0) + ' msg/min';
+  } catch (_) { meter.hidden = true; }
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
-// Mark this device as a 7" kiosk so all ⌂ HOME links route back here
-(function() {
-  localStorage.setItem('oasis_layout', '7inch');
-})();
+(function () { localStorage.setItem('oasis_layout', '7inch'); })();
 loadConfig().then(loadInstalled).then(() => {
-  buildTiles();
-  pingAll();
-  fetchStats();
-  fetchAudio();
-  fetchAPRS();
-  refreshAdsb();
-  refreshAdsbRecent();
-  loadHomeCoords();
-  pollFeedFlow();
-  // Round-robin one service per tick, cycle ≈ 16 s across the active set.
-  const activeN = SERVICES.filter(svc => !HIDDEN_SVCS.has(svc.id)).length || 1;
-  setInterval(pingNext, Math.round(16_000 / activeN));
-  setInterval(fetchStats,      30_000);
-  setInterval(fetchAudio,      30_000);
-  setInterval(fetchAPRS,       15_000);
-  setInterval(refreshAdsb,     15_000);
-  setInterval(refreshAdsbRecent, 60_000);
-  setInterval(pollFeedFlow,     2_500);
+  buildTiles(); loadHazards();
+  pingAll();                                   // one initial burst so the pill/tiles fill fast
+  fetchStats(); fetchAPRS(); refreshAdsb(); refreshAdsbRecent();
+  fetchHardware(); fetchSats(); loadHomeCoords();
+  pollFeedFlow(); pollAdsbFlow();
+  const activeN = SERVICES.filter(s => !HIDDEN_SVCS.has(s.id)).length || 1;
+  setInterval(pingNext,        Math.round(16000 / activeN));
+  setInterval(fetchStats,      30000);
+  setInterval(fetchAPRS,       15000);
+  setInterval(refreshAdsb,     15000);
+  setInterval(refreshAdsbRecent, 60000);
+  setInterval(fetchHardware,   30000);
+  setInterval(fetchSats,       60000);
+  setInterval(pollFeedFlow,    FEED_FLOW_MS);
+  setInterval(pollAdsbFlow,    FEED_FLOW_MS);
 });
 </script>
