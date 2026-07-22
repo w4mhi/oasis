@@ -487,8 +487,11 @@ function renderRoster() {
     ? `${ROSTER.length} sats` : `${shown.length} of ${ROSTER.length} sats`;
   document.getElementById('roster-count').textContent = `${mon} monitored - ${tally}`;
   if (!shown.length) {
+    const msg = _view === 'soon' ? 'No monitored passes in the next hour.'
+              : _view === 'monitored' ? 'Nothing monitored — check a satellite to track it.'
+              : 'No satellites match the filters.';
     document.getElementById('roster').innerHTML =
-      '<p style="color:var(--text-dim);padding:.5rem">No satellites match the filters.</p>';
+      `<p style="color:var(--text-dim);padding:.5rem">${msg}</p>`;
     return;
   }
   document.getElementById('roster').innerHTML = shown.map(s => {
