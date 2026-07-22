@@ -97,7 +97,7 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .sys{ display:grid; grid-template-columns:repeat(5,1fr); gap:.2rem 1rem; }
 .sys .stat{ display:flex; flex-direction:column; }
 .sys .stat .k{ font-size:1.1rem; letter-spacing:.1em; color:var(--dim); }
-.sys .stat .v{ font-size:1.9rem; font-weight:700; font-variant-numeric:tabular-nums; color:var(--text); }
+.sys .stat .v{ font-size:1.25rem; font-weight:700; font-variant-numeric:tabular-nums; color:var(--text); }
 .v.ok{ color:var(--accent); } .v.warm{ color:var(--warn); } .v.hot{ color:var(--down); }
 .svcpill{ display:inline-flex; align-items:center; gap:1rem; padding:.3rem 1.2rem; border-radius:999px;
           border:1px solid var(--border); background:var(--panel-2); font-size:1.2rem;
