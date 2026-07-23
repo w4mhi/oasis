@@ -141,9 +141,11 @@ html, body { height: 100%; margin: 0; }
 .f-group { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
 .fchip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim);
   background: none; border: 1px solid var(--border); border-radius: 4px; padding: 1px 7px; cursor: pointer; }
-.fchip .n { opacity: .55; margin-left: .3rem; }
+.fchip .n { color: var(--text); font-weight: 700; margin-left: .3rem; }
+#tag-filters .fchip { border-color: rgba(255,255,255,.5); }   /* whiter border for the tag-count pills */
 .fchip.active { color: var(--panel); background: var(--accent); border-color: var(--accent); }
-.fchip.active .n { opacity: .8; }
+.fchip.active .n { color: var(--panel); opacity: 1; }         /* dark count on the amber active pill */
+.sat-row .dl-status .dv { color: var(--text); }               /* device value white; "device:" stays dim (index-consistent) */
 .f-clear { font-size: var(--fs-micro); color: var(--accent); background: none; border: none;
   cursor: pointer; padding: 1px 4px; margin-left: auto; }
 /* View mode: three independent, mutually-exclusive pills (All / Monitored / In 1h). */
@@ -158,6 +160,21 @@ html, body { height: 100%; margin: 0; }
 .dlbtn.free { border-color: var(--green); color: var(--green); }
 .dlbtn.free:hover { background: var(--green); color: #0d1117; }
 .dlbtn.rec { border-color: var(--red); background: var(--red); color: #fff; animation: recpulse 1.2s infinite; }
+.dlbtn.live { border-color: var(--green); background: var(--green); color: #0d1117; animation: recpulse 1.2s infinite; }
+#listen-status.live .rec-dot { background: var(--green); }
+/* Capture-mode pills follow the studio convention: REC red, LISTEN green. */
+/* Transport cluster (⏺ Rec / ▶ Play / ⏹ Stop) — one dongle, so one global set.
+   Acts on the ARMED frequency. Rec red / Play green pulse while running; Stop blue. */
+.tbtn { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em; padding: 2px 9px;
+        border: 1px solid var(--border); border-radius: 999px; background: var(--panel-2);
+        color: var(--text-dim); cursor: pointer; font-weight: 700; }
+.tbtn:disabled { opacity: .4; cursor: default; }
+.tbtn.active { opacity: 1; }   /* running state stays vivid even while non-interactive */
+#t-rec.active  { background: var(--red);   border-color: var(--red);   color: #fff;    animation: recpulse 1.2s infinite; }
+#t-play.active { background: var(--green); border-color: var(--green); color: #0d1117; animation: recpulse 1.2s infinite; }
+#t-stop.active { background: #3b82f6;      border-color: #3b82f6;      color: #fff; }
+/* Armed frequency = steady accent highlight (selected, not yet capturing). */
+.dlbtn.armed { border-color: var(--accent); background: var(--accent); color: #0d1117; }
 .dlbtn.busy { border-color: var(--border); color: var(--text-dim); background: var(--panel-2);
   cursor: not-allowed; opacity: .7; }
 .dlbtn.unsupported { border-style: dashed; border-color: var(--border); color: var(--text-dim);
@@ -165,6 +182,7 @@ html, body { height: 100%; margin: 0; }
 @keyframes recpulse { 50% { opacity: .5; } }
 .sat-row .dl-status { font-size: var(--fs-small); color: var(--text-dim); }
 .sat-row .dl-status.rec { color: var(--red); font-weight: 700; }
+.sat-row .dl-status.live { color: var(--green); font-weight: 700; }
 .sat-row .oov { margin-top: .3rem; font-size: var(--fs-micro); color: #d29922; font-weight: 700; }
 /* No upcoming pass: dim the row and say plainly why there are no controls. */
 .sat-row.no-pass { opacity: .6; }
@@ -208,8 +226,14 @@ html, body { height: 100%; margin: 0; }
     <span class="win-lbl">24 h window</span>
     <span class="track-sep">|</span>
     <div class="f-group" id="tag-filters"></div>
-    <span id="listen-status"><span class="rec-dot"></span><span id="listen-text"></span>
-      <button class="sbtn" onclick="stopListen()">Stop</button></span>
+    <span class="track-sep">|</span>
+    <span class="f-group" id="transport" title="Transport for the armed frequency — Rec to a WAV, Play live in the browser">
+      <button class="tbtn" id="t-rec" onclick="transport('rec')">⏺ Rec</button>
+      <button class="tbtn" id="t-play" onclick="transport('play')">▶ Play</button>
+      <button class="tbtn" id="t-stop" onclick="transport('stop')">⏹ Stop</button>
+    </span>
+    <span id="listen-status"><span class="rec-dot"></span><span id="listen-text"></span></span>
+    <span class="track-sep">|</span>
     <span id="coverage-badge"></span>
     <span style="flex:1"></span>
     <span id="sat-mute" class="sat-mute" title="Mute / unmute pass-alert chimes" onclick="toggleSatMute()">🔔</span>
@@ -239,7 +263,8 @@ html, body { height: 100%; margin: 0; }
     <div class="f-group" id="view-modes">
       <button class="fchip" data-view="all" onclick="setView('all')">All</button>
       <button class="fchip" data-view="monitored" onclick="setView('monitored')">Monitored</button>
-      <button class="fchip" data-view="soon" onclick="setView('soon')">In 1h</button>
+      <button class="fchip" data-view="soon" onclick="setView('soon')" title="Monitored birds with a pass in the next hour">Mon · 1h</button>
+      <button class="fchip" data-view="soon-all" onclick="setView('soon-all')" title="Every bird passing over in the next hour — check one to start monitoring it">All · 1h</button>
     </div>
     <input class="f-search" id="sat-search" type="search" placeholder="Search name…" autocomplete="off"
            oninput="setSearchFilter(this.value)">
@@ -283,8 +308,11 @@ function saveFilters() {
 function bandOf(mhz) { return mhz < 300 ? 'VHF' : mhz < 1000 ? 'UHF' : 'L-band'; }
 function satBands(s) { return new Set((s.downlinks || []).map(d => bandOf(d.freq_mhz))); }
 // View mode is a separate axis from tag/band/search: 'all' (whole list),
-// 'monitored' (checked/plotted birds), 'soon' (monitored + a pass within 1h,
-// matching the kiosk index7 window: in-progress OR rise ≤ 60 min).
+// 'monitored' (checked/plotted birds), 'soon' = "Mon · 1h" (monitored + a pass
+// within 1h, matching the kiosk index7 window: in-progress OR rise ≤ 60 min),
+// 'soon-all' = "All · 1h" (ANY roster bird passing in the next hour — discovery;
+// check one to start monitoring it). Both 1h views need whole-roster passes,
+// which the server fills incrementally, so they populate over the first polls.
 let _view = (() => { try { return localStorage.getItem('oasis_sat_view') || 'all'; } catch (e) { return 'all'; } })();
 function setView(v) {
   _view = v;
@@ -304,10 +332,10 @@ function withinHour(s) {
   return inPass || (rise - now) / 60000 <= 60;
 }
 function passesFilters(s) {
-  if (_view !== 'all') {
-    if (!PLOTTED[s.norad]) return false;
-    if (_view === 'soon' && !withinHour(s)) return false;
-  }
+  // Two independent axes: monitored-only ('monitored','soon') and passing-in-1h
+  // ('soon','soon-all'). 'all' = neither; 'soon-all' = any bird passing over now.
+  if ((_view === 'monitored' || _view === 'soon') && !PLOTTED[s.norad]) return false;
+  if ((_view === 'soon' || _view === 'soon-all') && !withinHour(s)) return false;
   const q = _filters.q.trim().toLowerCase();
   if (q && !s.name.toLowerCase().includes(q)) return false;
   if (_filters.tags.size && !(s.labels || []).some(l => _filters.tags.has(l))) return false;
@@ -412,7 +440,7 @@ async function boot() {
   // In the "In 1h" view, re-render the roster each tick so birds enter/leave the
   // 60-min window on their own and the countdowns tick live (few rows, cheap).
   // Other views just repaint pills — no time-dependent membership there.
-  setInterval(() => { _view === 'soon' ? renderRoster() : updatePills(); }, 2000);
+  setInterval(() => { (_view === 'soon' || _view === 'soon-all') ? renderRoster() : updatePills(); }, 2000);
 }
 
 // Render the TLE-age pill from a cache age in days (null = empty cache).
@@ -479,14 +507,22 @@ function inFootprintWindow(norad) {
 }
 
 function renderRoster() {
-  const shown = ROSTER.filter(passesFilters).sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }));
+  // The 1h views (Mon · 1h / All · 1h) sort by next-pass time — soonest first,
+  // in-progress passes at the top (their rise time is already in the past) — which
+  // is what you act on. All other views sort alphabetically (natural numeric).
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+  const riseMs = s => { const p = nextPassOf(s.norad); return p ? new Date(p.rise).getTime() : Infinity; };
+  const sorter = (_view === 'soon' || _view === 'soon-all')
+    ? (a, b) => (riseMs(a) - riseMs(b)) || byName(a, b)
+    : byName;
+  const shown = ROSTER.filter(passesFilters).sort(sorter);
   const mon = Object.keys(PLOTTED).length;
   const tally = shown.length === ROSTER.length
     ? `${ROSTER.length} sats` : `${shown.length} of ${ROSTER.length} sats`;
   document.getElementById('roster-count').textContent = `${mon} monitored - ${tally}`;
   if (!shown.length) {
     const msg = _view === 'soon' ? 'No monitored passes in the next hour.'
+              : _view === 'soon-all' ? 'Nothing passing over in the next hour (or passes still computing…).'
               : _view === 'monitored' ? 'Nothing monitored — check a satellite to track it.'
               : 'No satellites match the filters.';
     document.getElementById('roster').innerHTML =
@@ -1001,16 +1037,14 @@ function dlBtnsHTML(s) {
       ${sup ? `onclick="onDownlinkClick(${s.norad}, ${d.freq_mhz})"` : 'disabled'}>${d.mode} · ${d.freq_mhz}</button>`;
   }).join('');
 }
-function _recThis(norad, freqMhz) {
-  return LISTEN.recording && String(LISTEN.norad) === String(norad)
-    && LISTEN.freq_hz && Math.abs(LISTEN.freq_hz / 1e6 - freqMhz) < 1e-6;
-}
 function _busyReason() {
   if ((LISTEN.missing_deps || []).length) return 'SDR tools not installed';
   if (!LISTEN.dongle_present) return 'no RTL-SDR dongle';
   if (!LISTEN.assigned) return 'no device assigned — set one in Setup → Hardware';
   if (LISTEN.recording) { const s = ROSTER.find(x => String(x.norad) === String(LISTEN.norad));
     return `recording ${s ? s.name : 'another satellite'}`; }
+  if (LISTEN.streaming) { const s = ROSTER.find(x => String(x.norad) === String(LISTEN.norad));
+    return `listening ${s ? s.name : 'a pass'}`; }
   if (LISTEN.busy) return `dongle in use by ${LISTEN.holder || 'another service'}`;
   return 'dongle busy';
 }
@@ -1018,20 +1052,17 @@ function _dongleStatus(norad) {
   if (_listenErrNorad === norad && LISTEN && LISTEN._err) return { txt: LISTEN._err, rec: false };
   if ((LISTEN.missing_deps || []).length) return { txt: 'SDR tools not installed', rec: false };
   if (!LISTEN.dongle_present) return { txt: 'no RTL-SDR dongle', rec: false };
-  // Unassigned → say so (matches Setup); don't report the global-fallback holder,
-  // which would read as if satellites had claimed another service's dongle.
   if (!LISTEN.assigned) return { txt: 'device: unassigned', rec: false };
-  if (LISTEN.recording && String(LISTEN.norad) === String(norad)) {
+  if ((LISTEN.recording || LISTEN.streaming) && String(LISTEN.norad) === String(norad)) {
     const m = Math.floor(LISTEN.seconds / 60), s = String(LISTEN.seconds % 60).padStart(2, '0');
-    return { txt: `● REC ${m}:${s}`, rec: true };
+    const live = !!LISTEN.streaming;
+    return { txt: `● ${live ? 'LIVE' : 'REC'} ${m}:${s}`, rec: !live, live };
   }
-  if (LISTEN.recording) { const s = ROSTER.find(x => String(x.norad) === String(LISTEN.norad));
-    return { txt: `busy — recording ${s ? s.name : 'another'}`, rec: false }; }
-  // "device:" mirrors the dashboard/Setup label; word it as a runtime holder
-  // ("in use by …"), NOT an assignment — the listen feature shares whatever dongle
-  // is free, so this must not read like Setup's per-service device assignment.
-  if (LISTEN.busy) return { txt: `device: in use by ${LISTEN.holder || 'another service'}`, rec: false };
-  return { txt: 'device: free', rec: false };
+  if (LISTEN.recording || LISTEN.streaming) { const s = ROSTER.find(x => String(x.norad) === String(LISTEN.norad));
+    return { txt: `busy — ${LISTEN.streaming ? 'listening' : 'recording'} ${s ? s.name : 'another'}`, rec: false }; }
+  // Resting / busy-by-other: dim "device:" + white value, matching the dashboard.
+  const post = LISTEN.busy ? ` — in use by ${LISTEN.holder || 'another service'}` : '';
+  return { dev: LISTEN.device || 'free', post, rec: false };
 }
 // Set every rendered downlink button + status line from the latest LISTEN state.
 function updateListenUI() {
@@ -1040,37 +1071,154 @@ function updateListenUI() {
     const supported = btn.dataset.supported === '1';
     const dl = (ROSTER.find(s => s.norad === norad) || { downlinks: [] }).downlinks
       .find(d => Math.abs(d.freq_mhz - freq) < 1e-6);
-    btn.classList.remove('free', 'rec', 'busy', 'unsupported');
+    btn.classList.remove('free', 'armed', 'rec', 'live', 'busy', 'unsupported');
     if (!supported) { btn.classList.add('unsupported'); btn.disabled = true;
       btn.title = dl ? dl.blurb : 'not supported'; return; }
-    if (_recThis(norad, freq)) { btn.classList.add('rec'); btn.disabled = false;
-      btn.title = 'recording — click to stop'; }
-    else if (LISTEN.recording || LISTEN.busy || !LISTEN.dongle_present || !LISTEN.assigned || (LISTEN.missing_deps || []).length) {
-      btn.classList.add('busy'); btn.disabled = true; btn.title = _busyReason(); }
+    if (_capturingFreq(norad, freq)) {                    // this one is live → pulse in capture colour
+      btn.classList.add(LISTEN.streaming ? 'live' : 'rec'); btn.disabled = true;
+      btn.title = LISTEN.streaming ? 'listening — Stop in the header' : 'recording — Stop in the header'; return; }
+    if (_capturing()) { btn.classList.add('busy'); btn.disabled = true; btn.title = _busyReason(); return; }
+    if (!_dongleFree()) { btn.classList.add('busy'); btn.disabled = true; btn.title = _busyReason(); return; }
+    if (!inCaptureWindow(norad)) { btn.classList.add('busy'); btn.disabled = true;
+      btn.title = 'not in range yet — armable ~5 min before the pass'; return; }
+    if (_isArmed(norad, freq)) { btn.classList.add('armed'); btn.disabled = false;
+      btn.title = 'armed — use Rec / Play'; }
     else { btn.classList.add('free'); btn.disabled = false;
-      btn.title = `record ${dl ? dl.mode : ''} ${freq} MHz`; }
+      btn.title = `arm ${dl ? dl.mode : ''} ${freq} MHz`; }
   });
   document.querySelectorAll('.dl-status[data-norad]').forEach(el => {
     const st = _dongleStatus(+el.dataset.norad);
-    el.textContent = st.txt; el.classList.toggle('rec', st.rec);
+    if (st.dev) {                       // "device: " dim + value white (dashboard-consistent)
+      el.textContent = 'device: ';
+      const v = document.createElement('span'); v.className = 'dv'; v.textContent = st.dev;
+      el.append(v);
+      if (st.post) el.append(st.post);
+    } else {
+      el.textContent = st.txt;
+    }
+    el.classList.toggle('rec', st.rec); el.classList.toggle('live', !!st.live);
   });
+  updateTransport();
 }
+// Capture model — a frequency button ARMS a downlink (steady highlight); the
+// header transport (Rec/Play/Stop) then acts on the armed one. One dongle → one
+// global transport, so Rec and Play are mutually exclusive. A frequency is
+// armable from 5 min before AOS through LOS; arming a new one disarms the old.
+let _armed = null;   // { norad, freq } of the selected downlink
+function _capturing() { return !!(LISTEN.recording || LISTEN.streaming); }
+function _capturingFreq(norad, freq) {
+  return _capturing() && String(LISTEN.norad) === String(norad)
+    && LISTEN.freq_hz && Math.abs(LISTEN.freq_hz / 1e6 - freq) < 1e-6;
+}
+function _dongleFree() {
+  return LISTEN.dongle_present && LISTEN.assigned && !LISTEN.busy && !(LISTEN.missing_deps || []).length;
+}
+function inCaptureWindow(norad) {
+  const p = nextPassOf(norad);
+  if (!p) return false;
+  const now = Date.now();
+  return now >= new Date(p.rise).getTime() - 5 * 60000 && now <= new Date(p.set).getTime();
+}
+function _isArmed(norad, freq) {
+  return !!_armed && String(_armed.norad) === String(norad) && Math.abs(_armed.freq - freq) < 1e-6;
+}
+
+// Live audio: one hidden <audio> plays the /listen/stream endpoint. Closing it
+// (pause + drop src) ends the HTTP request, which tears the pipeline down server-side.
+let _streamNorad = null, _streamFreq = null;
+function _satAudio() {
+  let a = document.getElementById('sat-audio');
+  if (!a) {
+    a = document.createElement('audio');
+    a.id = 'sat-audio'; a.autoplay = true; a.style.display = 'none';
+    a.addEventListener('error', () => {
+      if (_streamNorad != null) { _listenErrNorad = _streamNorad; LISTEN._err = 'listen stream failed'; }
+      _streamNorad = _streamFreq = null; updateListenUI();
+    });
+    // Stream closed by the server (EOF) → drop the client flag so nothing lingers.
+    a.addEventListener('ended', () => { _streamNorad = _streamFreq = null; updateListenUI(); });
+    document.body.appendChild(a);
+  }
+  return a;
+}
+function startStream(norad, freqMhz) {
+  _listenErrNorad = null;
+  _streamNorad = norad; _streamFreq = freqMhz;
+  const a = _satAudio();
+  a.src = `/api/satellites/listen/stream?norad=${norad}` + (freqMhz != null ? `&freq_mhz=${freqMhz}` : '');
+  a.play().catch(() => {});   // the click IS the user gesture autoplay needs
+  updateListenUI();
+}
+function stopStream() {
+  const a = document.getElementById('sat-audio');
+  if (a) { a.pause(); a.removeAttribute('src'); a.load(); }
+  _streamNorad = _streamFreq = null;
+  // Also force the server-side teardown: a browser disconnect often isn't noticed
+  // by gunicorn, so the rtl_fm pipeline (and the streaming flag) would otherwise
+  // linger and keep every downlink button greyed out.
+  fetch('/api/satellites/listen/stop', { method: 'POST' }).catch(() => {});
+  pollListen();
+}
+// Header transport buttons act on the armed frequency.
+function transport(action) {
+  if (action === 'stop') {
+    if (LISTEN.streaming || _streamNorad != null) stopStream(); else stopListen();
+    return;
+  }
+  if (!_armed || _capturing()) return;
+  if (action === 'rec') startListen(_armed.norad, _armed.freq);       // → WAV
+  else if (action === 'play') startStream(_armed.norad, _armed.freq); // → browser
+}
+function updateTransport() {
+  const rec = document.getElementById('t-rec'), play = document.getElementById('t-play'),
+        stop = document.getElementById('t-stop');
+  if (!rec) return;
+  const capturing = _capturing();
+  const canStart = !!_armed && !capturing && _dongleFree() && inCaptureWindow(_armed.norad);
+  rec.classList.toggle('active', !!LISTEN.recording);
+  play.classList.toggle('active', !!LISTEN.streaming);
+  stop.classList.toggle('active', capturing);
+  rec.disabled = LISTEN.recording ? true : !canStart;
+  play.disabled = LISTEN.streaming ? true : !canStart;
+  stop.disabled = !capturing;
+  const armHint = _armed ? 'not in range yet (armable ~5 min before the pass)' : 'arm a frequency first';
+  rec.title = LISTEN.recording ? 'recording — press Stop' : (canStart ? 'record the armed pass to a WAV' : armHint);
+  play.title = LISTEN.streaming ? 'listening — press Stop' : (canStart ? 'listen live to the armed pass' : armHint);
+}
+// A frequency button ARMS its downlink (toggles); the transport does the rest.
 function onDownlinkClick(norad, freqMhz) {
-  if (_recThis(norad, freqMhz)) stopListen(); else startListen(norad, freqMhz);
+  if (_capturing()) return;   // buttons locked while a capture runs — use Stop
+  _armed = _isArmed(norad, freqMhz) ? null : { norad, freq: freqMhz };
+  updateListenUI();
 }
 async function pollListen() {
   const err = LISTEN._err;   // preserve a just-set error across the refresh
   try { LISTEN = await (await fetch('/api/satellites/listen/status')).json(); }
   catch (e) { LISTEN = { recording: false }; }
   if (err && _listenErrNorad != null) LISTEN._err = err;
+  // Reconcile the client stream flag against the server: if we think we're
+  // streaming but the server is idle and the <audio> isn't actually playing, the
+  // stream ended — drop it so buttons don't stay greyed. (Requires the audio to be
+  // stopped too, so a just-started stream in the click→first-poll gap isn't cleared.)
+  if (_streamNorad != null && !LISTEN.streaming) {
+    const a = document.getElementById('sat-audio');
+    if (!a || a.paused || a.ended || !a.getAttribute('src')) { _streamNorad = _streamFreq = null; }
+  }
+  // Reflect an in-progress capture (e.g. after a reload) as the armed frequency,
+  // so the transport + card show the running pass rather than an empty selection.
+  if (_capturing() && !_armed && LISTEN.norad != null && LISTEN.freq_hz) {
+    _armed = { norad: LISTEN.norad, freq: LISTEN.freq_hz / 1e6 };
+  }
   const el = document.getElementById('listen-status');
   if (el) {
-    if (LISTEN.recording) {
+    if (LISTEN.recording || LISTEN.streaming) {
       el.classList.add('on');
+      el.classList.toggle('live', !!LISTEN.streaming);
       const sat = ROSTER.find(s => String(s.norad) === String(LISTEN.norad));
       const m = Math.floor(LISTEN.seconds / 60), s = String(LISTEN.seconds % 60).padStart(2, '0');
-      document.getElementById('listen-text').textContent = `REC ${sat ? sat.name : LISTEN.norad} ${m}:${s}`;
-    } else { el.classList.remove('on'); }
+      document.getElementById('listen-text').textContent =
+        `${LISTEN.streaming ? 'LIVE' : 'REC'} ${sat ? sat.name : LISTEN.norad} ${m}:${s}`;
+    } else { el.classList.remove('on', 'live'); }
   }
   updateListenUI();
 }

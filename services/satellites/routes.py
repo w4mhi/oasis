@@ -263,61 +263,101 @@ def api_listen_status():
     return jsonify(st)
 
 
+class _CaptureError(Exception):
+    """A validation failure while preparing an SDR capture; carries an HTTP code."""
+    def __init__(self, msg, code):
+        super().__init__(msg)
+        self.code = code
+
+
+def _prep_capture(norad, req_freq):
+    """Shared validation for /listen (record) and /listen/stream: deps, dongle,
+    exclusivity, and resolving the requested downlink + mode. Returns
+    (entry, freq_hz, device_serial) or raises _CaptureError(msg, http_code).
+    Server-side re-validation — never trust the button. The dongle is pinned to
+    the satellites-assigned serial so rtl_fm doesn't grab device 0 (another
+    service's dongle on a multi-dongle Pi)."""
+    import listen
+    from common import hardware
+    inv = hardware.load(SUITE_ROOT)
+    pre = listen.preconditions(inv=inv)
+    if pre["missing_deps"]:
+        raise _CaptureError("missing tools: " + ", ".join(pre["missing_deps"])
+                            + " — run features/rtl-sdr/install-rtl-sdr.py", 400)
+    if not pre["dongle_present"]:
+        raise _CaptureError("no RTL-SDR dongle detected", 400)
+    if pre["busy"]:
+        raise _CaptureError(f"the dongle is in use by {pre['holder'] or 'another service'}"
+                            " — stop it first", 409)
+    if listen.is_capturing():
+        raise _CaptureError("already capturing", 409)
+    data = roster.load(config_paths.satellites_json(SUITE_ROOT))
+    entry = next((s for s in data["satellites"] if s["norad"] == norad), None)
+    downlinks = roster.legacy_downlinks(entry) if entry else []
+    if not downlinks:
+        raise _CaptureError("no downlink frequency for this satellite", 400)
+    dl = downlinks[0]
+    if req_freq is not None:
+        try:
+            req = float(req_freq)
+        except (TypeError, ValueError):
+            raise _CaptureError("bad freq_mhz", 400)
+        dl = next((d for d in downlinks if abs(float(d["freq_mhz"]) - req) < 1e-6), None)
+        if dl is None:
+            raise _CaptureError("frequency is not a downlink of this satellite", 400)
+    support = listen.mode_support(dl.get("mode"))
+    if not support["supported"]:
+        raise _CaptureError(f"{dl.get('mode')} not supported yet — {support['blurb']}", 400)
+    freq_hz = listen.mhz_to_hz(dl["freq_mhz"])
+    dev = inv.devices.get(inv.assignments.get("satellites"))
+    device_serial = (dev or {}).get("serial") or None
+    return entry, freq_hz, device_serial, dl.get("mode")
+
+
 @bp.route("/api/satellites/listen", methods=["POST"])
 def api_listen():
     import listen
-    from common import hardware
     body = request.get_json(force=True)
     try:
         norad = int(body["norad"])
     except (TypeError, ValueError, KeyError):
         return jsonify({"error": "bad or missing norad"}), 400
-    inv = hardware.load(SUITE_ROOT)
-    pre = listen.preconditions(inv=inv)
-    if pre["missing_deps"]:
-        return jsonify({"error": "missing tools: " + ", ".join(pre["missing_deps"])
-                        + " — run features/rtl-sdr/install-rtl-sdr.py"}), 400
-    if not pre["dongle_present"]:
-        return jsonify({"error": "no RTL-SDR dongle detected"}), 400
-    if pre["busy"]:
-        who = pre["holder"] or "another service"
-        return jsonify({"error": f"the dongle is in use by {who} — stop it first"}), 409
-    if listen.is_recording():
-        return jsonify({"error": "already recording"}), 409
-    data = roster.load(config_paths.satellites_json(SUITE_ROOT))
-    entry = next((s for s in data["satellites"] if s["norad"] == norad), None)
-    downlinks = roster.legacy_downlinks(entry) if entry else []
-    if not downlinks:
-        return jsonify({"error": "no downlink frequency for this satellite"}), 400
-    # Pick the downlink: an optional freq_mhz override must match one of the
-    # satellite's downlinks; else default to the first. Re-validate support
-    # server-side — never trust the button.
-    dl = downlinks[0]
-    req_freq = body.get("freq_mhz")
-    if req_freq is not None:
-        try:
-            req = float(req_freq)
-        except (TypeError, ValueError):
-            return jsonify({"error": "bad freq_mhz"}), 400
-        dl = next((d for d in downlinks if abs(float(d["freq_mhz"]) - req) < 1e-6), None)
-        if dl is None:
-            return jsonify({"error": "frequency is not a downlink of this satellite"}), 400
-    support = listen.mode_support(dl.get("mode"))
-    if not support["supported"]:
-        return jsonify({"error": f"{dl.get('mode')} not supported yet — {support['blurb']}"}), 400
-    freq_hz = listen.mhz_to_hz(dl["freq_mhz"])
-    # Pin rtl_fm to the dongle assigned to satellites (by serial) — else it grabs
-    # device index 0, which on a multi-dongle Pi is another service's dongle and
-    # the capture dies on startup. Serial resolved from the hardware inventory.
-    dev = inv.devices.get(inv.assignments.get("satellites"))
-    device_serial = (dev or {}).get("serial") or None
+    try:
+        entry, freq_hz, device_serial, dmode = _prep_capture(norad, body.get("freq_mhz"))
+    except _CaptureError as e:
+        return jsonify({"error": str(e)}), e.code
     safe = "".join(c if c.isalnum() else "_" for c in entry["name"]).strip("_")
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = os.path.join(listen.recordings_dir(SUITE_ROOT), f"{safe}_{ts}.wav")
     try:
-        return jsonify(listen.start(freq_hz, norad, out, device_serial=device_serial))
+        return jsonify(listen.start(freq_hz, norad, out, device_serial=device_serial, dmode=dmode))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/api/satellites/listen/stream")
+def api_listen_stream():
+    """Live pass audio for a browser <audio> element — a chunked MP3 stream. GET
+    so a plain <audio src=…> works. Holds the dongle for the connection; the
+    pipeline is torn down on disconnect. Same validation + exclusivity as /listen
+    (they can't both run — one dongle)."""
+    from flask import Response, stream_with_context
+    import listen
+    try:
+        norad = int(request.args.get("norad"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "bad or missing norad"}), 400
+    try:
+        _entry, freq_hz, device_serial, dmode = _prep_capture(norad, request.args.get("freq_mhz"))
+    except _CaptureError as e:
+        return jsonify({"error": str(e)}), e.code
+    try:
+        gen, mime = listen.stream(freq_hz, norad, device_serial=device_serial, dmode=dmode)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), (409 if "busy" in str(e) else 400)
+    resp = Response(stream_with_context(gen), mimetype=mime)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @bp.route("/api/satellites/listen/stop", methods=["POST"])

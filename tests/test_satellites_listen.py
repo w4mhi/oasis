@@ -38,13 +38,78 @@ class ListenTest(unittest.TestCase):
         self.assertEqual(listen.missing_deps(lambda b: None), ["rtl_fm", "sox", "timeout"])
         self.assertEqual(listen.missing_deps(lambda b: "/usr/bin/" + b), [])
 
+    def test_stream_command_prefers_ffmpeg_mp3_no_timeout(self):
+        # everything present → ffmpeg wins
+        cmd, mime = listen.stream_command(137100000, gain="40", ppm="0",
+                                          srate=48000, which=lambda b: "/usr/bin/" + b)
+        self.assertEqual(mime, "audio/mpeg")
+        self.assertIn("rtl_fm -f 137100000 -M fm -s 48000 -g 40 -p 0 -", cmd)
+        self.assertNotIn("timeout ", cmd)              # live stream runs unbounded
+        self.assertIn("ffmpeg", cmd)
+        self.assertIn("-f mp3", cmd)
+        self.assertIn(" | ffmpeg", cmd)
+
+    def test_stream_command_falls_back_to_sox(self):
+        cmd, mime = listen.stream_command(   # no ffmpeg → sox
+            137100000, which=lambda b: "/usr/bin/sox" if b == "sox" else None)
+        self.assertEqual(mime, "audio/mpeg")
+        self.assertIn(" | sox ", cmd)
+        self.assertIn("-t mp3", cmd)
+
+    def test_stream_command_no_encoder_returns_none(self):
+        cmd, mime = listen.stream_command(137100000, which=lambda b: None)
+        self.assertIsNone(cmd)
+        self.assertIsNone(mime)
+
+    def test_stream_command_pins_dongle_by_serial(self):
+        cmd, _ = listen.stream_command(137100000, device_serial="00000001",
+                                       which=lambda b: "/usr/bin/" + b)
+        self.assertIn("rtl_fm -d 00000001 -f 137100000", cmd)
+
+    def test_demod_params(self):
+        self.assertEqual(listen.demod_params("fm"), ("fm", 48000, 0))
+        self.assertEqual(listen.demod_params("aprs"), ("fm", 48000, 0))
+        self.assertEqual(listen.demod_params("CW"), ("usb", 12000, -700))
+        self.assertEqual(listen.demod_params("usb"), ("usb", 12000, 0))
+        self.assertEqual(listen.demod_params("ssb"), ("usb", 12000, 0))
+        self.assertEqual(listen.demod_params("lsb"), ("lsb", 12000, 0))
+        # FM family, matched on messy tokens.
+        self.assertEqual(listen.demod_params("AFSK1k2"), ("fm", 48000, 0))
+        self.assertEqual(listen.demod_params("GMSK USP"), ("fm", 48000, 0))
+        self.assertEqual(listen.demod_params("SSTV"), ("fm", 48000, 0))
+        # Not live-demodulable.
+        self.assertEqual(listen.demod_params("LRPT"), (None, None, None))
+        self.assertEqual(listen.demod_params("PSK"), (None, None, None))
+
+    def test_record_command_cw_uses_usb_with_offset(self):
+        # CW → USB demod, narrow rate, tuned 700 Hz low so the carrier is audible.
+        cmd = listen.record_command(145900000, "/tmp/cw.wav", gain="40", ppm="0", dmode="cw")
+        self.assertIn("rtl_fm -f 145899300 -M usb -s 12000", cmd)
+        self.assertIn("sox -t raw -r 12000", cmd)
+
+    def test_stream_command_ssb_uses_usb_no_offset(self):
+        cmd, mime = listen.stream_command(437800000, dmode="usb",
+                                          which=lambda b: "/usr/bin/" + b)
+        self.assertEqual(mime, "audio/mpeg")
+        self.assertIn("rtl_fm -f 437800000 -M usb -s 12000", cmd)   # SSB: no CW offset
+
+    def test_mode_support_cw_ssb_now_supported(self):
+        for m in ("CW", "USB", "LSB", "SSB", "FM", "APRS", "AFSK1k2", "SSTV", "GMSK USP"):
+            self.assertTrue(listen.mode_support(m)["supported"], m)
+        self.assertEqual(listen.mode_support("CW")["demod"], "usb")
+        self.assertEqual(listen.mode_support("LSB")["demod"], "lsb")
+        self.assertEqual(listen.mode_support("AFSK1k2")["demod"], "fm")
+        # Digital-image / PSK are still unsupported for live demod.
+        self.assertFalse(listen.mode_support("LRPT")["supported"])
+        self.assertFalse(listen.mode_support("PSK")["supported"])
+
     def test_mode_support_fm_family(self):
         for m in ("FM voice", "APRS", "APT", "fm"):
             self.assertTrue(listen.mode_support(m)["supported"], m)
             self.assertEqual(listen.mode_support(m)["demod"], "fm")
 
     def test_mode_support_unsupported(self):
-        for m in ("LRPT", "SSB", "USB", "CW", ""):
+        for m in ("LRPT", "DVB", ""):            # CW/SSB are now supported (see below)
             s = listen.mode_support(m)
             self.assertFalse(s["supported"], m)
             self.assertIsNone(s["demod"])
