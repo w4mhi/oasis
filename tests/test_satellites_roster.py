@@ -45,6 +45,19 @@ class RosterTest(unittest.TestCase):
         self.assertEqual(dls, [{"mode": "FM", "freq_mhz": 145.8},
                                {"mode": "APRS", "freq_mhz": 145.825}])
 
+    def test_legacy_downlinks_dedup_and_aprs_naming(self):
+        sat = {"transmitters": [
+            {"mode": "AFSK", "description": "ISS APRS Digipeater", "downlink": {"freq_mhz": 145.825}},
+            {"mode": "AFSK", "description": "ISS APRS Digipeater", "downlink": {"freq_mhz": 145.825}},
+            {"mode": "FM", "description": "Voice Repeater", "downlink": {"freq_mhz": 437.8}},
+            {"mode": "FM", "description": "Voice Repeater", "downlink": {"freq_mhz": 437.8}},
+            {"mode": "SSTV", "description": "SSTV", "downlink": {"freq_mhz": 145.8}}]}
+        dls = roster.legacy_downlinks(sat)
+        self.assertEqual(dls, [
+            {"mode": "APRS", "freq_mhz": 145.825},   # AFSK + APRS-in-description → APRS
+            {"mode": "FM", "freq_mhz": 437.8},       # dup collapsed
+            {"mode": "SSTV", "freq_mhz": 145.8}])
+
 
 if __name__ == "__main__":
     unittest.main()
