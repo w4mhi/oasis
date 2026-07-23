@@ -32,6 +32,35 @@ class PassesTest(unittest.TestCase):
         for p in hi_p:
             self.assertGreaterEqual(p["max_el"], 10.0)
 
+    def test_pass_in_progress_at_start_is_included(self):
+        # A pass already underway at start_dt has its rise event in the past. The
+        # lookback must still return it whole (rise < start <= set) — otherwise the
+        # map footprint / countdown key off the *next* pass while the sat is overhead.
+        p0 = predict.compute_passes(self.sat, LAT, LON, START, hours=72, min_elev=10.0)[0]
+        rise = datetime.datetime.fromisoformat(p0["rise"])
+        sett = datetime.datetime.fromisoformat(p0["set"])
+        mid = rise + (sett - rise) / 2          # a moment inside the pass
+        passes = predict.compute_passes(self.sat, LAT, LON, mid, hours=72, min_elev=10.0)
+        first = passes[0]
+        self.assertLess(datetime.datetime.fromisoformat(first["rise"]), mid)
+        self.assertGreater(datetime.datetime.fromisoformat(first["set"]), mid)
+        # It's the same pass as the full-window computation (root-finding differs
+        # only at the sub-millisecond level with a different search-window start).
+        def _close(a, b):
+            d = abs((datetime.datetime.fromisoformat(a) - datetime.datetime.fromisoformat(b)).total_seconds())
+            self.assertLess(d, 1.0)
+        _close(first["rise"], p0["rise"])
+        _close(first["set"], p0["set"])
+
+    def test_pass_ended_before_start_is_excluded(self):
+        # Backward-compat: the lookback window must not resurrect a pass that already
+        # set before start_dt — every returned pass ends at or after start_dt.
+        p0 = predict.compute_passes(self.sat, LAT, LON, START, hours=72, min_elev=10.0)[0]
+        after = datetime.datetime.fromisoformat(p0["set"]) + datetime.timedelta(minutes=1)
+        passes = predict.compute_passes(self.sat, LAT, LON, after, hours=72, min_elev=10.0)
+        for p in passes:
+            self.assertGreater(datetime.datetime.fromisoformat(p["set"]), after)
+
 class TrackTest(unittest.TestCase):
     def setUp(self):
         self.sat = predict.make_satellite("ISS (ZARYA)", ISS_L1, ISS_L2)

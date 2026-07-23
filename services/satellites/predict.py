@@ -24,13 +24,21 @@ def _altaz(sat, observer, t):
     return alt.degrees, az.degrees
 
 
-def compute_passes(sat, lat, lon, start_dt, hours=48, min_elev=10.0):
+def compute_passes(sat, lat, lon, start_dt, hours=48, min_elev=10.0, lookback_min=30):
     """Passes over [start_dt, start_dt+hours] as seen from lat/lon. Events are
     found at the 0° horizon; only passes whose culmination reaches >= min_elev
-    are returned (max_el filter). Times are ISO-8601 UTC strings."""
+    are returned (max_el filter). Times are ISO-8601 UTC strings.
+
+    The search actually starts lookback_min before start_dt so a pass already in
+    progress at start_dt — whose rise event lies in the past — is still captured
+    whole (rise→peak→set); without this the in-progress pass is silently dropped
+    because the builder needs the rise first. lookback_min must exceed the longest
+    pass in view (30 min comfortably covers RTL-range LEO/MEO). Passes that already
+    ended before start_dt are then discarded, so the result is unchanged when
+    nothing is overhead at start_dt."""
     ts = _ts()
     observer = wgs84.latlon(lat, lon)
-    t0 = ts.from_datetime(start_dt)
+    t0 = ts.from_datetime(start_dt - datetime.timedelta(minutes=lookback_min))
     t1 = ts.from_datetime(start_dt + datetime.timedelta(hours=hours))
     times, events = sat.find_events(observer, t0, t1, altitude_degrees=0.0)
 
@@ -47,7 +55,7 @@ def compute_passes(sat, lat, lon, start_dt, hours=48, min_elev=10.0):
             az = _altaz(sat, observer, t)[1]
             cur["set"] = t.utc_datetime()
             cur["set_az"] = az
-            if cur["max_el"] >= min_elev:
+            if cur["max_el"] >= min_elev and cur["set"] > start_dt:
                 passes.append({
                     "rise": cur["rise"].isoformat(),
                     "rise_az": cur["rise_az"],
