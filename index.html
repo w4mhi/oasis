@@ -2158,7 +2158,7 @@ const GATEABLE = {
   gw:    ['graywolf'],  aprs:    ['graywolf'],  feed: ['rtl-sdr-feed', 'rtl-feed'],
   owrx:  ['openwebrx'], winlink: ['winlink'],   wlrf: ['winlink'],   gpsd: ['gps', 'gps-l76x'],
   kiwix: ['kiwix'],     webssh:  ['webssh'],    fcc:  ['fcc'],       adsb: ['adsb'],
-  wiki:  ['wikipedia'], rb:      ['repeaterbook'], forms: ['forms'],
+  wiki:  ['wikipedia'], rb:      ['repeaterbook'], forms: ['forms'], ai: ['ai'],
 };
 let _hiddenEls = [];   // {card, nav-<li>, nav-section} elements currently gated off
 
@@ -2620,7 +2620,11 @@ async function fetchStats() {
       applyState(!g ? 'down' : mode >= 3 ? 'up' : mode === 2 ? 'warn' : 'down');
       badge.textContent = !g ? 'NO GPS'
         : mode >= 3 ? '3D FIX' : mode === 2 ? '2D FIX' : 'NO FIX';
-      setG('gps-sats', (g && g.used != null) ? `${used}${g.seen != null ? ' / ' + g.seen : ''}` : 'n/a');
+      // Show the sky view during acquisition too: gate on either used OR seen so a
+      // no-fix antenna reads "0 / 12" (tracking, none used yet) instead of "n/a".
+      setG('gps-sats', (g && (g.used != null || g.seen != null))
+        ? `${g.used != null ? g.used : 0}${g.seen != null ? ' / ' + g.seen : ''}`
+        : 'n/a');
       setHdop(g && g.hdop != null ? g.hdop : null);
       _lastGpsAltM = g ? g.alt_m : null; renderGpsAlt();
       setG('gps-lat', (g && g.lat != null) ? g.lat.toFixed(5) : 'n/a');
