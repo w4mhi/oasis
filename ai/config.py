@@ -29,6 +29,8 @@ DEFAULTS = {
     "max_tool_iterations": 5,
     "request_timeout_s": 60.0,
     "auto_actions": [],
+    "action_tools": ["service_control", "aprs_post_warning", "satellite_monitor"],
+    "actions_enabled": True,
 }
 
 
@@ -43,6 +45,8 @@ class Config:
     max_tool_iterations: int
     request_timeout_s: float
     auto_actions: list[str]
+    action_tools: list[str]
+    actions_enabled: bool
 
 
 def _build(model, data) -> Config:
@@ -56,6 +60,8 @@ def _build(model, data) -> Config:
         max_tool_iterations=int(data["max_tool_iterations"]),
         request_timeout_s=float(data["request_timeout_s"]),
         auto_actions=list(data["auto_actions"]),
+        action_tools=list(data["action_tools"]),
+        actions_enabled=bool(data["actions_enabled"]),
     )
 
 
@@ -70,7 +76,7 @@ def load(path: str | None = None) -> Config:
             if isinstance(raw.get("model"), dict):
                 model.update(raw["model"])
             for key in ("oasis_api_base", "system_prompt", "max_tool_iterations",
-                        "request_timeout_s", "auto_actions"):
+                        "request_timeout_s", "auto_actions", "action_tools", "actions_enabled"):
                 if key in raw:
                     data[key] = raw[key]
     except (OSError, ValueError):

@@ -49,3 +49,22 @@ class TestConfig(unittest.TestCase):
             self.assertEqual(cfg.max_tokens, 1024)
         finally:
             os.unlink(path)
+
+    def test_action_defaults(self):
+        cfg = config.load("/nonexistent-plan4")
+        self.assertEqual(set(cfg.action_tools),
+                         {"service_control", "aprs_post_warning", "satellite_monitor"})
+        self.assertTrue(cfg.actions_enabled)
+        self.assertEqual(cfg.auto_actions, [])
+
+    def test_actions_enabled_override(self):
+        import json as _json, os as _os, tempfile as _tf
+        with _tf.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            _json.dump({"actions_enabled": False, "auto_actions": ["satellite_monitor"]}, fh)
+            path = fh.name
+        try:
+            cfg = config.load(path)
+            self.assertFalse(cfg.actions_enabled)
+            self.assertEqual(cfg.auto_actions, ["satellite_monitor"])
+        finally:
+            _os.unlink(path)
