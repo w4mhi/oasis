@@ -435,7 +435,32 @@
         "arm64",
         "armhf"
       ],
-      "resolved": {}
+      "resolved": {
+        "bookworm": {
+          "arm64": {
+            "speech-dispatcher": "0.11.4-2",
+            "speech-dispatcher-espeak-ng": "0.11.4-2",
+            "espeak-ng": "1.51+dfsg-10+deb12u2"
+          },
+          "armhf": {
+            "speech-dispatcher": "0.11.4-2",
+            "speech-dispatcher-espeak-ng": "0.11.4-2",
+            "espeak-ng": "1.51+dfsg-10+deb12u2"
+          }
+        },
+        "trixie": {
+          "arm64": {
+            "speech-dispatcher": "0.12.0-5",
+            "speech-dispatcher-espeak-ng": "0.12.0-5",
+            "espeak-ng": "1.52.0+dfsg-5"
+          },
+          "armhf": {
+            "speech-dispatcher": "0.12.0-5",
+            "speech-dispatcher-espeak-ng": "0.12.0-5",
+            "espeak-ng": "1.52.0+dfsg-5"
+          }
+        }
+      }
     },
     "satellites": {
       "type": "pypi",
