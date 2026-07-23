@@ -113,3 +113,45 @@ class TestAssistantRoutes(unittest.TestCase):
             events = _sse_events(r.data)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(events[-1]["type"], "final")
+
+
+class TestAssistantConfirm(unittest.TestCase):
+    def setUp(self):
+        from flask import Flask
+        app = Flask(__name__)
+        app.register_blueprint(ai_routes.bp)
+        self.client = app.test_client()
+
+    def test_confirm_executes_pending_action(self):
+        pid = ai_routes._pending.add("service_control", {"unit": "graywolf", "action": "stop"})
+
+        class FakeRuntimeExec:
+            def call_tool(self, name, args):
+                return '{"ok": true, "did": "%s"}' % name
+        with mock.patch.object(ai_routes, "_get_runtime", return_value=FakeRuntimeExec()):
+            r = self.client.post("/api/assistant/confirm", json={"id": pid})
+        self.assertEqual(r.status_code, 200)
+        body = r.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["name"], "service_control")
+
+    def test_confirm_decline_does_not_execute(self):
+        pid = ai_routes._pending.add("service_control", {"unit": "graywolf", "action": "stop"})
+        called = []
+
+        class FR:
+            def call_tool(self, name, args):
+                called.append(name); return "{}"
+        with mock.patch.object(ai_routes, "_get_runtime", return_value=FR()):
+            r = self.client.post("/api/assistant/confirm", json={"id": pid, "decision": "decline"})
+        self.assertTrue(r.get_json()["declined"])
+        self.assertEqual(called, [])
+        # the id is consumed even on decline
+        self.assertIsNone(ai_routes._pending.take(pid))
+
+    def test_confirm_unknown_id_410(self):
+        r = self.client.post("/api/assistant/confirm", json={"id": "nope"})
+        self.assertEqual(r.status_code, 410)
+
+    def test_confirm_missing_id_400(self):
+        self.assertEqual(self.client.post("/api/assistant/confirm", json={}).status_code, 400)

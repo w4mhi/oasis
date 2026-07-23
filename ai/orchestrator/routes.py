@@ -14,9 +14,13 @@ import os
 from flask import Blueprint, Response, jsonify, request, send_file
 
 from ai import config
+from ai.orchestrator.gate import ActionGate
 from ai.orchestrator.loop import run_turn
+from ai.orchestrator.pending import PendingRegistry
 
 bp = Blueprint("assistant", __name__)
+
+_pending = PendingRegistry()
 
 _WEB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "web"))
 
@@ -61,8 +65,9 @@ def chat():
         try:
             runtime = _get_runtime()
             model = _make_model(cfg)
+            gate = ActionGate(cfg, _pending)
             for event in run_turn(messages, runtime, model.complete,
-                                  max_iterations=cfg.max_tool_iterations):
+                                  max_iterations=cfg.max_tool_iterations, gate=gate):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as exc:  # noqa: BLE001 - report, don't drop the stream
             err = {"type": "error", "content": f"{type(exc).__name__}: {exc}"}
@@ -70,6 +75,26 @@ def chat():
 
     return Response(stream(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@bp.route("/api/assistant/confirm", methods=["POST"])
+def confirm():
+    body = request.get_json(silent=True) or {}
+    pid = (body.get("id") or "").strip()
+    if not pid:
+        return jsonify({"ok": False, "error": "id required"}), 400
+    decision = (body.get("decision") or "approve").strip().lower()
+    action = _pending.take(pid)
+    if decision == "decline":
+        return jsonify({"ok": True, "declined": True})
+    if action is None:
+        return jsonify({"ok": False, "error": "unknown or expired confirmation"}), 410
+    name, args = action
+    try:
+        result = _get_runtime().call_tool(name, args)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+    return jsonify({"ok": True, "name": name, "result": result})
 
 
 @bp.route("/assistant")
