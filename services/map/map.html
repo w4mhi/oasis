@@ -1322,6 +1322,15 @@ function _hazardOf(s) {
   }
   return null;
 }
+// An incident whose comment reports full containment ("Containment: 100%") is
+// treated as cleared — dropped from the map, list, and alert counts automatically,
+// the same end state as a manual dismissal but data-driven. Self-restores if a
+// later beacon reports <100% (flare-up). Callers gate on _hazardOf first; today
+// only fire objects carry a Containment field.
+function _containedIncident(s) {
+  const m = String((s && s.comment) || '').match(/Containment:\s*(\d+)\s*%/i);
+  return m != null && parseInt(m[1], 10) === 100;
+}
 
 // ── Manual EOC dismissal of hazard alerts ────────────────────────────────────
 // Client-side (localStorage), keyed by callsign → the last_heard at dismiss time.
@@ -1394,6 +1403,7 @@ function updateEmergenciesPanel() {
   allStations.forEach(s => {
     const h = _hazardOf(s);
     if (!h) return;
+    if (_containedIncident(s)) return;                      // 100% contained: off the map, silently uncounted
     if (dismissedHazard(s)) { dismissedCount++; return; }   // EOC-cleared: off the map, not counted
     counts[h.key] = (counts[h.key] || 0) + 1;
     total++;
@@ -1440,6 +1450,7 @@ function updateObjectsPanel() {
   const cats = {}; // key -> { label, count }
   const otherRaw = {}; // 'table+code' -> count, for the unclassified bucket
   allStations.forEach(s => {
+    if (_containedIncident(s)) return;   // 100% contained: off the map, so out of the legend count too
     const { key, label } = aprsCategory(s);
     if (!cats[key]) cats[key] = { label, count: 0 };
     cats[key].count++;
@@ -2024,6 +2035,7 @@ function _columnFilterPredicate() {
     const _hz = _hazardOf(s);
     if (!_hz && cutoff && (!s.last_heard || new Date(s.last_heard).getTime() < cutoff)) return false;
     if (_hz && dismissedHazard(s)) return false;
+    if (_hz && _containedIncident(s)) return false;   // 100% contained → cleared
     // Object-type filter (categories disabled in the objects panel). Aircraft
     // carry an APRS aircraft/heli symbol, so they fold into the same buckets.
     if (objCatState[aprsCategory(s).key] === false) return false;

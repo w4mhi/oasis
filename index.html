@@ -2996,6 +2996,14 @@ function _hazardKeyOf(s) {
   }
   return null;
 }
+// An incident whose comment reports full containment ("Containment: 100%") is
+// treated as cleared — dropped from the list and the hazard-pill count, matching
+// the map. Self-restores if a later beacon reports <100% (flare-up). Today only
+// fire objects carry a Containment field.
+function _containedIncident(s) {
+  const m = String((s && s.comment) || '').match(/Containment:\s*(\d+)\s*%/i);
+  return m != null && parseInt(m[1], 10) === 100;
+}
 function toggleHazardFilter(key) {
   hazardFilter = (hazardFilter === key) ? null : key;
   if (hazardFilter) emergencyOnly = false;   // one narrowing filter at a time
@@ -3060,12 +3068,14 @@ function applyAprsFilter() {
   // Hazard pills: count each configured hazard (no age window — hazards persist),
   // repaint, and auto-clear the hazard filter if its type has emptied.
   const hazardCounts = {};
-  _allAprsStations.forEach(s => { const k = _hazardKeyOf(s); if (k) hazardCounts[k] = (hazardCounts[k] || 0) + 1; });
+  _allAprsStations.forEach(s => { if (_containedIncident(s)) return; const k = _hazardKeyOf(s); if (k) hazardCounts[k] = (hazardCounts[k] || 0) + 1; });
   if (hazardFilter && !hazardCounts[hazardFilter]) hazardFilter = null;
   _renderHazardPills(hazardCounts);
   const hazardActive = hazardFilter && hazardCounts[hazardFilter] > 0;
   // One predicate, applied to APRS stations AND ADS-B aircraft rows alike.
   const pred = s => {
+    // 100% contained incident — cleared, so never listed (parity with the map).
+    if (_containedIncident(s)) return false;
     // HAZARD pill active — keep only that hazard type (any age; hazards persist).
     // Else EMERGENCY chip active — keep only Public-safety ≤48h. Either owns its
     // own window (overriding the Age dropdown) and supersedes Type; callsign /
