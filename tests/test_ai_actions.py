@@ -55,3 +55,9 @@ class TestActionTools(unittest.TestCase):
         fake.add_tool = lambda fn, name=None, description=None: added.append(name)
         actions.register(fake, config.load("/nonexistent"))
         self.assertEqual(sorted(added), sorted(actions.ACTION_TOOL_NAMES))
+
+    def test_register_fails_closed_when_a_tool_is_ungated(self):
+        from dataclasses import replace
+        cfg = replace(config.load("/nonexistent"), action_tools=["service_control"])
+        with self.assertRaises(ValueError):
+            actions.register(mock.Mock(add_tool=lambda *a, **k: None), cfg)

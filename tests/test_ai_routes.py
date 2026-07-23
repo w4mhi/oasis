@@ -155,3 +155,7 @@ class TestAssistantConfirm(unittest.TestCase):
 
     def test_confirm_missing_id_400(self):
         self.assertEqual(self.client.post("/api/assistant/confirm", json={}).status_code, 400)
+
+    def test_confirm_non_string_id_does_not_500(self):
+        r = self.client.post("/api/assistant/confirm", json={"id": 123})
+        self.assertIn(r.status_code, (400, 410))   # clean, not a 500 crash

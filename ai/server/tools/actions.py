@@ -24,8 +24,9 @@ def service_control(unit: str, action: str) -> str:
 
 
 def aprs_post_warning(lat: float, lon: float, warning_type: str, note: str = "") -> str:
-    """Post an APRS hazard/warning object at a location. THIS TRANSMITS on the
-    APRS network. lat/lon in decimal degrees; warning_type is a short label."""
+    """Add a hazard/warning marker to the OASIS map's local APRS warning overlay
+    at a location. Stored locally and shown on the map — NOT beaconed over RF.
+    lat/lon in decimal degrees; warning_type is a short label (e.g. hazard, road)."""
     return _post("/api/aprs/warnings",
                  {"lat": lat, "lon": lon, "type": warning_type, "note": note})
 
@@ -45,5 +46,10 @@ _TOOLS = {
 def register(mcp, cfg):
     global _CFG
     _CFG = cfg
+    missing = set(_TOOLS) - set(cfg.action_tools)
+    if missing:
+        raise ValueError(
+            "write tools missing from config.action_tools (would run UNGATED): "
+            + ", ".join(sorted(missing)))
     for name, fn in _TOOLS.items():
         mcp.add_tool(fn, name=name, description=fn.__doc__)

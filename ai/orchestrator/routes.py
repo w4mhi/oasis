@@ -80,10 +80,10 @@ def chat():
 @bp.route("/api/assistant/confirm", methods=["POST"])
 def confirm():
     body = request.get_json(silent=True) or {}
-    pid = (body.get("id") or "").strip()
+    pid = str(body.get("id") or "").strip()
     if not pid:
         return jsonify({"ok": False, "error": "id required"}), 400
-    decision = (body.get("decision") or "approve").strip().lower()
+    decision = str(body.get("decision") or "approve").strip().lower()
     action = _pending.take(pid)
     if decision == "decline":
         return jsonify({"ok": True, "declined": True})
