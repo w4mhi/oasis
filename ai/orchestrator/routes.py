@@ -50,16 +50,17 @@ def chat():
     if not message:
         return jsonify({"ok": False, "error": "message is required"}), 400
     cfg = config.load()
-    history = body.get("history") or []
+    history = body.get("history")
+    if not isinstance(history, list):
+        history = []
     messages = [{"role": "system", "content": cfg.system_prompt}]
     messages.extend(history)
     messages.append({"role": "user", "content": message})
 
-    runtime = _get_runtime()
-    model = _make_model(cfg)
-
     def stream():
         try:
+            runtime = _get_runtime()
+            model = _make_model(cfg)
             for event in run_turn(messages, runtime, model,
                                   max_iterations=cfg.max_tool_iterations):
                 yield f"data: {json.dumps(event)}\n\n"

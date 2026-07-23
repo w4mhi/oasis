@@ -67,3 +67,28 @@ class TestAssistantRoutes(unittest.TestCase):
     def test_chat_requires_message(self):
         r = self.client.post("/api/assistant/chat", json={})
         self.assertEqual(r.status_code, 400)
+
+    def test_chat_runtime_failure_becomes_error_event_not_500(self):
+        with mock.patch.object(ai_routes, "_get_runtime",
+                               side_effect=RuntimeError("mcp subprocess failed to spawn")):
+            r = self.client.post("/api/assistant/chat", json={"message": "hi"})
+            events = _sse_events(r.data)
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(events)
+        self.assertEqual(events[-1]["type"], "error")
+        self.assertIn("mcp subprocess failed", events[-1]["content"])
+
+    def test_chat_ignores_non_list_history(self):
+        script = [AssistantMessage(content="ok")]
+
+        def fake_model(cfg):
+            calls = iter(script)
+            return lambda messages, tools: next(calls)
+
+        with mock.patch.object(ai_routes, "_get_runtime", return_value=FakeRuntime()), \
+             mock.patch.object(ai_routes, "_make_model", side_effect=fake_model):
+            r = self.client.post("/api/assistant/chat",
+                                 json={"message": "hi", "history": "not-a-list"})
+            events = _sse_events(r.data)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(events[-1]["type"], "final")
