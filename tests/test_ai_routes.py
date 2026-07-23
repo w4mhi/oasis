@@ -52,7 +52,9 @@ class TestAssistantRoutes(unittest.TestCase):
 
         def fake_model(cfg):
             calls = iter(script)
-            return lambda messages, tools: next(calls)
+            model = mock.Mock()
+            model.complete.side_effect = lambda messages, tools: next(calls)
+            return model
 
         with mock.patch.object(ai_routes, "_get_runtime", return_value=FakeRuntime()), \
              mock.patch.object(ai_routes, "_make_model", side_effect=fake_model):
@@ -78,12 +80,31 @@ class TestAssistantRoutes(unittest.TestCase):
         self.assertEqual(events[-1]["type"], "error")
         self.assertIn("mcp subprocess failed", events[-1]["content"])
 
+    def test_chat_real_model_client_through_loop(self):
+        # Regression: the loop calls complete(...); ensure the REAL
+        # OpenAIChatModel is wired via model.complete, not passed as a
+        # non-callable instance. With the bug present this yields an error event.
+        payload = {"choices": [{"message": {"role": "assistant",
+                                            "content": "2 stations active."}}]}
+        resp = mock.Mock(status_code=200)
+        resp.raise_for_status = mock.Mock()
+        resp.json = mock.Mock(return_value=payload)
+        with mock.patch.object(ai_routes, "_get_runtime", return_value=FakeRuntime()), \
+             mock.patch("ai.orchestrator.model_client.httpx.post", return_value=resp):
+            r = self.client.post("/api/assistant/chat", json={"message": "how many?"})
+            events = _sse_events(r.data)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(events[-1]["type"], "final")
+        self.assertEqual(events[-1]["content"], "2 stations active.")
+
     def test_chat_ignores_non_list_history(self):
         script = [AssistantMessage(content="ok")]
 
         def fake_model(cfg):
             calls = iter(script)
-            return lambda messages, tools: next(calls)
+            model = mock.Mock()
+            model.complete.side_effect = lambda messages, tools: next(calls)
+            return model
 
         with mock.patch.object(ai_routes, "_get_runtime", return_value=FakeRuntime()), \
              mock.patch.object(ai_routes, "_make_model", side_effect=fake_model):

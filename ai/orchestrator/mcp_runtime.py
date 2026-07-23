@@ -17,13 +17,16 @@ import threading
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from ai import config
+
 _CALL_TIMEOUT = 30
 _START_TIMEOUT = 30
 
 
 class AssistantRuntime:
-    def __init__(self, server_cmd, server_args):
+    def __init__(self, server_cmd, server_args, call_timeout=_CALL_TIMEOUT):
         self._params = StdioServerParameters(command=server_cmd, args=list(server_args))
+        self._call_timeout = call_timeout
         self._loop = asyncio.new_event_loop()
         self._session = None
         self._stop = None            # asyncio.Event, created on the loop thread
@@ -56,7 +59,7 @@ class AssistantRuntime:
             self._ready.set()
 
     def _submit(self, coro):
-        return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout=_CALL_TIMEOUT)
+        return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout=self._call_timeout)
 
     def list_tools(self):
         resp = self._submit(self._session.list_tools())
@@ -80,7 +83,7 @@ class AssistantRuntime:
         # the loop also makes any post-close call_tool/list_tools fail fast.
         if self._stop is not None:
             self._loop.call_soon_threadsafe(self._stop.set)
-        self._thread.join(timeout=_CALL_TIMEOUT)
+        self._thread.join(timeout=self._call_timeout)
         if not self._loop.is_closed():
             self._loop.close()
 
@@ -93,5 +96,7 @@ def default_runtime():
     global _runtime
     with _runtime_lock:
         if _runtime is None:
-            _runtime = AssistantRuntime(sys.executable, ["-m", "ai.server.mcp_server"])
+            cfg = config.load()
+            _runtime = AssistantRuntime(sys.executable, ["-m", "ai.server.mcp_server"],
+                                        call_timeout=cfg.request_timeout_s + 10)
         return _runtime

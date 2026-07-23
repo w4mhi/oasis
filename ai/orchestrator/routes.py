@@ -61,7 +61,7 @@ def chat():
         try:
             runtime = _get_runtime()
             model = _make_model(cfg)
-            for event in run_turn(messages, runtime, model,
+            for event in run_turn(messages, runtime, model.complete,
                                   max_iterations=cfg.max_tool_iterations):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as exc:  # noqa: BLE001 - report, don't drop the stream
