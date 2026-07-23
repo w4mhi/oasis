@@ -75,3 +75,10 @@ def chat():
 @bp.route("/assistant")
 def page():
     return send_file(os.path.join(_WEB_DIR, "assistant.html"))
+
+
+@bp.route("/assistant/<path:asset>")
+def page_asset(asset):
+    if asset not in ("assistant.js", "assistant.css"):
+        return jsonify({"ok": False, "error": "not found"}), 404
+    return send_file(os.path.join(_WEB_DIR, asset))
