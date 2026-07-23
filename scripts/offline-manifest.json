@@ -483,6 +483,23 @@
       ],
       "resolved": {}
     },
+    "ai": {
+      "type": "pypi",
+      "bundle_group": "server",
+      "description": "AI assistant Python stack (ai/): the MCP SDK + httpx client. Shares the server wheel set (server/wheels/, bundled from scripts/requirements.txt). Installed into the venv by ai/runtime/install.py when the AI assistant feature is set up. Without it the assistant blueprint still imports (lazy) but /api/assistant/* returns errors.",
+      "_note": "mcp requires Python >=3.10 (so does anyio); the AI feature is gated to Pi 5 / 8 GB which runs Bookworm (3.11) or Trixie (3.13). Both mcp and httpx are pure none-any wheels. The base server install on a 3.9 box must NOT install these — they belong to this feature group only.",
+      "packages": [
+        {
+          "name": "mcp",
+          "version": ">=1.2,<2"
+        },
+        {
+          "name": "httpx",
+          "version": ">=0.27,<1"
+        }
+      ],
+      "resolved": {}
+    },
     "pmtiles": {
       "type": "github-release",
       "description": "Protomaps go-pmtiles CLI. Converts MBTiles -> PMTiles offline (used by maps/convert-mbtiles.py). Vendored into the bundle's maps/ directory. By default only the Linux binaries (the bundle's Pi/Linux targets) are fetched; macOS/Windows platforms are marked default=false and included only with create-oasis-offline.py --all-platforms so the default bundle stays lean.",

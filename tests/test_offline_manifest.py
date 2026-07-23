@@ -342,6 +342,19 @@ class TestManifestSanity(unittest.TestCase):
         bw = M.bundle_dir("/bundle/offline-packages", "satellites-voice", suite="bookworm", m=self.m)
         self.assertNotEqual(p, bw)
 
+    def test_ai_pypi_group_present_and_synced_with_requirements(self):
+        ai = M.get_feature("ai", self.m)
+        self.assertEqual(ai["type"], "pypi")
+        names = {p["name"] for p in ai["packages"]}
+        self.assertEqual(names, {"mcp", "httpx"})
+        # requirements.txt must carry every ai package (bundle↔install sync gotcha)
+        from pathlib import Path
+        req = (Path(__file__).resolve().parents[1] / "scripts" / "requirements.txt").read_text()
+        for name in names:
+            self.assertIn(name, req, f"{name} missing from requirements.txt")
+        # mcp needs py>=3.10 — the note must record the floor so the bundler targets it
+        self.assertIn("3.10", ai.get("_note", ""))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
