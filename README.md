@@ -50,6 +50,8 @@ Forms · FCC lookup · offline maps · APRS · calculators · reference library 
 Each feature links to its full setup section. New here? Start with **[Quick start](#-quick-start)** below — the server alone gives you the dashboard, FCC lookup, maps, forms, calculators, and the reference library.
 
 - **📡 APRS** *(Pi)* — **GrayWolf** TNC / iGate / digipeater with a live station map (track history, auto-fly, sonar animations), APRS Stats API, and tactical messaging. Dashboard shows live station table with callsign, last-heard time, speed, altitude, and comment. → [Setup](docs/SETUP.md#graywolf-aprs)
+- **✈️ ADS-B aircraft** *(Pi)* — decode 1090 MHz aircraft locally with `dump1090-fa` and plot them live on the *same* offline map as APRS: altitude-coloured icons, airline decode from the flight callsign, and a 24 h history drawer. Emergency-squawk (7500 / 7600 / 7700) and station-proximity alerts. Shares the RTL-SDR dongle, so starting it stops the APRS feed / OpenWebRX. → [Setup](docs/SETUP.md#adsb-aircraft)
+- **🛰️ Satellite tracking** *(Pi)* — an offline pass predictor for the ham and weather birds. A roster aggregated from **SatNOGS** (downlink freqs + modes) and **CelesTrak** (TLEs); next-pass times, peak elevation, and a live sky/footprint view via **Skyfield/SGP4** — all computed on the Pi, no internet at runtime. **Monitored·1h / All·1h** views, Morse-"V" + spoken pass alerts, and **live SDR audio**: arm a downlink and Listen or Record it through the pass (FM/APRS · CW · SSB) straight in the browser. → [Setup](docs/SETUP.md#satellites)
 - **📧 Winlink** *(Pi)* — Pat client + web UI for store-and-forward email over radio. **Internet gateway (Telnet) works now. RF radio path is experimental** — see [Winlink setup](docs/SETUP.md#winlink-pat) for current status. → [Setup](docs/SETUP.md#winlink-pat)
 - **🛰️ GPS / GNSS & time sync** *(Pi)* — GPS-disciplined clock (`gpsd` + `chrony`) for accurate FT8/WSPR/SSTV timing with no internet, plus a live GPS card in the dashboard header: fix mode (3D/2D/no-fix), satellites, HDOP (colour-coded), altitude, lat/lon, and chrony clock-lock status. → [Setup](docs/SETUP.md#gps-time-sync-gpsd--chrony)
 - **🧮 Tools & calculators** — antenna, grid/distance/bearing, power & battery budget, gray-line propagation, band conditions, and a net check-in logger with CSV export. → [Setup](docs/SETUP.md#tools--calculators)
@@ -177,6 +179,7 @@ On a Pi, **`setup-oasis.py` is the front door** — it delegates to the individu
 |---|:--:|---|
 | RTL-SDR tools | ⬜ | `rtl_test`/`rtl_fm` + socat/tcpdump; blacklists the DVB driver. **Pi OS Trixie for the V4.** |
 | RTL-SDR → GrayWolf APRS feed | ⬜ | Streams demodulated 2 m APRS into GrayWolf over `sdr_udp`. |
+| ADS-B Aircraft | ⬜ | 1090 MHz aircraft on the offline map (`dump1090-fa` + recorder on :8086); shares the SDR dongle. Off by default. |
 | DRA-Pi-Zero sound card | ⬜ | Configures the WM8731 codec for GrayWolf — **reboot required**. |
 | DRA-Pi green RX LED | ⬜ | Pulses the RX LED on decoded packets. |
 
@@ -193,6 +196,8 @@ On a Pi, **`setup-oasis.py` is the front door** — it delegates to the individu
 | Menu item | Default | What it gives you |
 |---|:--:|---|
 | FCC callsign database | ✅ | Downloads + indexes the FCC amateur DB (~160 MB). |
+| Satellite list (SatNOGS + CelesTrak) | ✅ | Builds the satellite roster + TLEs so offline pass prediction works (~5 MB). Refresh every few days. |
+| Satellite pass-alert voice | ✅ | Spoken pass alerts (speech-dispatcher + espeak-ng, ~5 MB apt); alerts still chime without it. |
 | Wikipedia content (ZIM) | ⬜ | Downloads a Wikipedia ZIM for Kiwix (1 GB → ~100 GB). |
 | Repeater Book listing | ✅ | Shows the dashboard link — drop your own `repeaterbook.csv` in. |
 | ICS Forms section | ✅ | Toggles the ICS-205/213/214/309 dashboard section. |
@@ -207,8 +212,9 @@ A single small **Flask** app serves the dashboard, the FCC lookup API, and the m
 
 | Port | Service |
 |:--:|---|
-| **8083** | OASIS — dashboard, FCC lookup, map tile server |
+| **8083** | OASIS — dashboard, FCC lookup, map tile server, ICS/tools, **Satellites** page + pass API + live SDR audio |
 | 8085 | APRS history API (feeds the dashboard map) |
+| 8086 | ADS-B recorder + history API *(optional, Pi)* |
 | 8080 | GrayWolf APRS *(optional, Pi)* |
 | 8082 | Pat Winlink web UI *(optional, Pi)* |
 | 8081 | Kiwix offline Wikipedia *(optional, Pi)* |
@@ -232,6 +238,10 @@ A single small **Flask** app serves the dashboard, the FCC lookup API, and the m
 | `features/rtl-sdr/install-rtl-sdr.py` | Installs RTL-SDR tools (+ socat/tcpdump + multimon-ng), blacklists the DVB driver | On the Pi, for USB SDR dongles | Pi OS **Trixie** (V4 needs librtlsdr ≥ 2.0) | ⚠️ bundled `.deb` if present |
 | `features/rtl-sdr/enable-rtl-sdr.py` | Tests the dongle, streams demodulated APRS audio into GrayWolf | After `features/rtl-sdr/install-rtl-sdr.py`, dongle plugged in | Pi OS **Trixie** | ❌ offline |
 | `services/openwebrx/install.py` | Installs **OpenWebRX+** receive-only SDR web UI on :8073 (off by default) | On the Pi, for spectrum monitoring | Pi OS bookworm/trixie | ✅ yes (3rd-party repo) |
+| `services/adsb/install.py` | Installs **`dump1090-fa`** (1090 MHz ADS-B decoder) + the OASIS recorder/history API on :8086 (off by default) | On the Pi, for aircraft tracking | Pi OS bookworm/trixie | ⚠️ bundled `.deb` if present, else online |
+| `services/satellites/build-roster.py` | Aggregates the satellite list from **SatNOGS** (freqs/modes) + **CelesTrak** (TLEs) into `configuration/satellites.json` | On any online machine; re-run every few days as TLEs age | Any host | ✅ yes |
+| `services/satellites/install-predict.py` | Installs the **Skyfield** + numpy pass-prediction stack into the server venv (required for passes/track) | When enabling Satellites | Any host running OASIS | ⚠️ bundled wheels if present, else online |
+| `services/satellites/install-voice.py` | Installs the TTS stack (speech-dispatcher + espeak-ng) for spoken pass alerts | Optional, with Satellites | Raspberry Pi / Debian | ⚠️ apt step online |
 | `features/gps/install-gps.py` | Sets up GPS-disciplined time (`gpsd` + `chrony`) for offline FT8/WSPR/SSTV timing | On the Pi, with a USB GPS | Raspberry Pi / Debian | ⚠️ apt step online |
 | `enable-rtc.py` | Configures a hardware RTC — Witty Pi 3 DS3231 (default) or `--board bigtreetech-7in` PCF8563 on the DSI bus — **reboot required** | On a Pi with the RTC | Raspberry Pi | ❌ offline |
 | `enable-dra-pi.py` | Configures the DRA-Pi-Zero (WM8731) sound card for GrayWolf — **reboot required** | On a Pi with the DRA-Pi-Zero HAT | Raspberry Pi | ❌ offline |
@@ -373,7 +383,7 @@ The server and everything else run on Raspberry Pi OS **Bookworm** (3.11) and **
 ## 📖 Documentation
 
 - **[docs/concept.md](docs/concept.md)** — what OASIS is, the vision, and design principles. *Start here for the why.*
-- **[docs/SETUP.md](docs/SETUP.md)** — full setup, data pipelines, and deployment for **every** feature: server + systemd auto-start · AP fallback · FCC database · map PMTiles · GrayWolf APRS · Winlink · RTL-SDR · OpenWebRX · GPS time sync & hardware RTC · web SSH · service controls · ICS forms · tools & calculators · reference library · Repeater Book · CM4Stack panel · RGB Cooling HAT · USB bundle · health check · keeping data fresh.
+- **[docs/SETUP.md](docs/SETUP.md)** — full setup, data pipelines, and deployment for **every** feature: server + systemd auto-start · AP fallback · FCC database · map PMTiles · GrayWolf APRS · ADS-B aircraft · satellites · Winlink · RTL-SDR · OpenWebRX · GPS time sync & hardware RTC · web SSH · service controls · ICS forms · tools & calculators · reference library · Repeater Book · CM4Stack panel · RGB Cooling HAT · USB bundle · health check · keeping data fresh.
 - **[docs/graywolf-dra-pi.md](docs/graywolf-dra-pi.md)** · **[docs/graywolf-rtl-sdr.md](docs/graywolf-rtl-sdr.md)** · **[docs/rtc-witty-pi.md](docs/rtc-witty-pi.md)** — hardware deep-dives: the DRA-Pi-Zero sound card, RTL-SDR APRS receive, and the Witty Pi 3 / DS3231 hardware clock.
 
 > 🛠️ **Maintainers:** keep offline packages current with `scripts/create-oasis-offline.py` (incremental — only downloads what changed; `--rebuild` for a full refresh). CI (`server-setup`) verifies `setup-server.py` across all platforms and Python versions on every push.
@@ -384,7 +394,7 @@ The server and everything else run on Raspberry Pi OS **Bookworm** (3.11) and **
 
 OASIS is released under the **[MIT License](LICENSE)** © 2026 W4MHI — free to use, modify, and distribute.
 
-> ℹ️ **Third-party data and services keep their own licenses/terms.** OpenStreetMap map data is **ODbL**; **RepeaterBook** CSV exports are **not redistributable** (download your own); radio manuals are copyright their manufacturers; and the companion services (GrayWolf, Pat, Kiwix, ttyd, OpenWebRX) ship under their respective upstream licenses.
+> ℹ️ **Third-party data and services keep their own licenses/terms.** OpenStreetMap map data is **ODbL**; **RepeaterBook** CSV exports are **not redistributable** (download your own); satellite transmitter data from **SatNOGS** (CC BY-SA) and **CelesTrak** TLEs are fetched at build time and go stale in days; radio manuals are copyright their manufacturers; and the companion services (GrayWolf, Pat, Kiwix, ttyd, OpenWebRX, dump1090-fa) ship under their respective upstream licenses.
 
 ---
 
@@ -413,7 +423,7 @@ OASIS is a personal project by **W4MHI**, built directly on the work of **Jason,
 
 **OASIS** is designed and maintained by **W4MHI** (Pacific Northwest) for field deployment in Washington state.
 
-It grew out of the **ACK Off-Grid Ham Radio Server** by **Jason, KM4ACK** (Tennessee) — the original concept of a fully offline, browser-accessible amateur-radio toolkit on a Raspberry Pi is his. [KM4ACK on GitHub](https://github.com/km4ack) · APRS by **[GrayWolf](https://github.com/chrissnell/graywolf)** (Chris Snell) · offline Wikipedia by **[Kiwix](https://kiwix.org/)** · ADS-B & 433 MHz feature concepts inspired by **[intercept](https://github.com/smittix/intercept)** (smittix).
+It grew out of the **ACK Off-Grid Ham Radio Server** by **Jason, KM4ACK** (Tennessee) — the original concept of a fully offline, browser-accessible amateur-radio toolkit on a Raspberry Pi is his. [KM4ACK on GitHub](https://github.com/km4ack) · APRS by **[GrayWolf](https://github.com/chrissnell/graywolf)** (Chris Snell) · offline Wikipedia by **[Kiwix](https://kiwix.org/)** · ADS-B decode by **[dump1090-fa](https://github.com/flightaware/dump1090)** (FlightAware) · satellite data from **[SatNOGS](https://db.satnogs.org/)** (transmitter DB) and **[CelesTrak](https://celestrak.org/)** (TLEs), pass prediction by **[Skyfield](https://rhodesmill.org/skyfield/)** · ADS-B & 433 MHz feature concepts inspired by **[intercept](https://github.com/smittix/intercept)** (smittix).
 
 <div align="center">
 

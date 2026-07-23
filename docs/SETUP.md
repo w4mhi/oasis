@@ -23,6 +23,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [RTL-SDR](#rtl-sdr)
 - [OpenWebRX (SIGINT)](#openwebrx-sigint)
 - [ADS-B Aircraft](#adsb-aircraft)
+- [Satellites](#satellites)
 - [GPS time sync (gpsd + chrony)](#gps-time-sync-gpsd--chrony)
 - [Hardware RTC (Witty Pi 3)](#hardware-rtc-witty-pi-3)
 - [webssh / Browser Terminal](#webssh--browser-terminal)
@@ -1296,6 +1297,76 @@ recorder/API on a dev machine without `dump1090-fa` installed.
 
 > Like GrayWolf and OpenWebRX, ADS-B is Pi/Linux only. Pi 3/4/5 is the
 > target; Pi Zero is not.
+
+---
+
+## Satellites
+
+Offline satellite pass prediction — and, with an RTL-SDR, live pass audio — for
+the amateur and weather birds. Everything at runtime is computed on the Pi: no
+online tracker, no `.bsp` ephemeris download. The `/server/satellites/` page
+lists the roster, the next passes, and a live sky/footprint view.
+
+### How it's built — two layers
+
+1. **Roster + TLEs (online, periodic).** `build-roster.py` aggregates two
+   sources into `configuration/satellites.json`:
+   - **SatNOGS** — satellite identity, transmitters, and downlink/uplink
+     frequencies + modes.
+   - **CelesTrak** — the TLEs (orbital elements) the propagator needs.
+
+   The list and TLEs go stale in a few days — refresh with the **age pill** on
+   the Satellites page, or re-run the script when you next have internet.
+2. **Pass prediction (offline, runtime).** `predict.py` uses **Skyfield** over
+   the SGP4 propagator with a *builtin* timescale, so it never touches the
+   network. `/api/satellites/passes` and `/api/satellites/track` return rise/set
+   times, peak elevation, and the ground track. Predictions are time-budgeted
+   and cached incrementally, so a 150-sat roster never overruns the worker
+   timeout.
+
+### Install
+
+Enable **Satellite list (SatNOGS + CelesTrak)** in the setup menu, or run the
+scripts directly:
+
+```bash
+python3 services/satellites/build-roster.py     # online: build the roster + TLEs
+python3 services/satellites/install-predict.py  # Skyfield + numpy into the venv
+python3 services/satellites/install-voice.py    # optional: spoken pass alerts
+```
+
+`install-predict.py` is **required** for passes/track — without Skyfield (and its
+compiled numpy) those endpoints return 500 and the page shows the roster but no
+passes. The prediction wheels ship in the offline bundle; the voice stack
+(speech-dispatcher + espeak-ng) is a small apt step and is optional — alerts
+still chime without it.
+
+### Views & alerts
+
+- **Monitored·1h / All·1h** — the birds you've armed (🔔) versus *every* bird
+  passing in the next hour, each sorted by next-pass time.
+- **Pass alerts** — a Morse-"V" chime at T-10 minutes; with the voice stack, a
+  spoken announcement of which bird is coming and its peak elevation.
+- **Sky / footprint** — a live footprint drawn from 15 min before AOS through
+  LOS, brightening with elevation.
+
+### Live SDR audio (RTL-SDR)
+
+Arm a downlink button on a monitored bird — armable from **5 min before AOS
+through LOS** — and use the header transport to **Listen** (stream the audio to
+the browser) or **Record** (capture a WAV under `configuration/sat-recordings/`
+for offline APT/LRPT/SSTV decode). Demodulation follows the transmitter mode:
+**FM / APRS** (wide FM), **CW** (USB with a 700 Hz tone offset), and **SSB**
+(USB / LSB). VHF/UHF Doppler stays within the FM passband, so FM birds need no
+active retuning.
+
+Like ADS-B and OpenWebRX, listening **owns the RTL-SDR** — the APRS SDR feed (or
+any other SDR mode) must be stopped first. The transport is global (one dongle,
+one capture at a time) and the header shows which bird currently holds it.
+
+> Satellites is served by the main OASIS server on **:8083** — no separate port.
+> Pass prediction is Pi-cheap; the live-audio capture needs an RTL-SDR (Pi/Linux
+> only) and momentary sole use of the dongle.
 
 ---
 
