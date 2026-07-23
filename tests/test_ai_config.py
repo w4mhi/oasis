@@ -27,3 +27,25 @@ class TestConfig(unittest.TestCase):
             self.assertEqual(cfg.oasis_api_base, "http://127.0.0.1:8083")
         finally:
             os.unlink(path)
+
+    def test_non_dict_json_falls_back_to_defaults(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump(["not", "an", "object"], fh)
+            path = fh.name
+        try:
+            cfg = config.load(path)
+            self.assertEqual(cfg.oasis_api_base, "http://127.0.0.1:8083")
+            self.assertEqual(cfg.max_tool_iterations, 5)
+        finally:
+            os.unlink(path)
+
+    def test_bad_typed_value_falls_back_to_defaults(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump({"model": {"max_tokens": "not-a-number"}}, fh)
+            path = fh.name
+        try:
+            cfg = config.load(path)
+            # unparseable max_tokens → whole load degrades to defaults
+            self.assertEqual(cfg.max_tokens, 1024)
+        finally:
+            os.unlink(path)

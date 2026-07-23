@@ -3,6 +3,8 @@
 Single source of truth for endpoints and loop limits. Never hard-code these
 URLs elsewhere — read them through load().
 """
+from __future__ import annotations
+
 import json
 import os
 from dataclasses import dataclass
@@ -40,31 +42,41 @@ class Config:
     system_prompt: str
     max_tool_iterations: int
     request_timeout_s: float
-    auto_actions: list
+    auto_actions: list[str]
 
 
-def load(path: str | None = None) -> Config:
-    data = dict(DEFAULTS)
-    model = dict(DEFAULTS["model"])
-    src = path or DEFAULT_PATH
-    try:
-        with open(src, encoding="utf-8") as fh:
-            raw = json.load(fh)
-        model.update(raw.get("model", {}))
-        for key in ("oasis_api_base", "system_prompt", "max_tool_iterations",
-                    "request_timeout_s", "auto_actions"):
-            if key in raw:
-                data[key] = raw[key]
-    except (FileNotFoundError, ValueError):
-        pass
+def _build(model, data) -> Config:
     return Config(
-        model_base_url=model["base_url"],
-        model_name=model["name"],
+        model_base_url=str(model["base_url"]),
+        model_name=str(model["name"]),
         temperature=float(model["temperature"]),
         max_tokens=int(model["max_tokens"]),
-        oasis_api_base=data["oasis_api_base"],
-        system_prompt=data["system_prompt"],
+        oasis_api_base=str(data["oasis_api_base"]),
+        system_prompt=str(data["system_prompt"]),
         max_tool_iterations=int(data["max_tool_iterations"]),
         request_timeout_s=float(data["request_timeout_s"]),
         auto_actions=list(data["auto_actions"]),
     )
+
+
+def load(path: str | None = None) -> Config:
+    model = dict(DEFAULTS["model"])
+    data = dict(DEFAULTS)
+    src = path or DEFAULT_PATH
+    try:
+        with open(src, encoding="utf-8") as fh:
+            raw = json.load(fh)
+        if isinstance(raw, dict):
+            if isinstance(raw.get("model"), dict):
+                model.update(raw["model"])
+            for key in ("oasis_api_base", "system_prompt", "max_tool_iterations",
+                        "request_timeout_s", "auto_actions"):
+                if key in raw:
+                    data[key] = raw[key]
+    except (OSError, ValueError):
+        pass
+    try:
+        return _build(model, data)
+    except (TypeError, ValueError, KeyError):
+        # A bad-typed or missing field in config.json → fall back to defaults.
+        return _build(dict(DEFAULTS["model"]), dict(DEFAULTS))
