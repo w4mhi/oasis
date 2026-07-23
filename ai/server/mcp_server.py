@@ -15,7 +15,7 @@ if _SUITE_ROOT not in sys.path:
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from ai import config  # noqa: E402
-from ai.server.tools import read_tools, ref  # noqa: E402
+from ai.server.tools import read_tools, ref, actions  # noqa: E402
 
 
 def build_server(cfg=None):
@@ -23,6 +23,7 @@ def build_server(cfg=None):
     mcp = FastMCP("oasis")
     read_tools.register(mcp, cfg)
     ref.register(mcp, cfg)
+    actions.register(mcp, cfg)
     return mcp
 
 

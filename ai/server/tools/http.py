@@ -16,3 +16,13 @@ def oasis_get(path, params=None, *, base, timeout):
         return resp.text
     except Exception as exc:  # noqa: BLE001 - deliberately total; model reads the error
         return json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+def oasis_post(path, body=None, *, base, timeout, headers=None):
+    try:
+        url = base.rstrip("/") + path
+        resp = httpx.post(url, json=body or {}, timeout=timeout, headers=headers or {})
+        resp.raise_for_status()
+        return resp.text
+    except Exception as exc:  # noqa: BLE001 - deliberately total; model reads the error
+        return json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
