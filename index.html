@@ -1208,6 +1208,16 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="svc-badge" id="badge-kiwix">—</span>
     </div>
   </div>
+  <div class="svc-card svc-card-gated" id="card-ai" data-href="/assistant" data-target="_blank">
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-ai"></div>
+      <div class="svc-card-info"><div class="svc-name">AI Assistant</div><div class="svc-sub" id="sub-ai">—</div></div>
+    </div>
+    <div class="svc-card-bottom">
+      <button class="svc-open" id="open-ai" onclick="svcOpenClick('ai')" disabled>OPEN ↗</button>
+      <span class="svc-badge" id="badge-ai">—</span>
+    </div>
+  </div>
 </div>
 <!-- Row 2: system / infrastructure -->
 <div class="svc-strip">
@@ -1826,6 +1836,20 @@ const SERVICES = [
     }
   },
   {
+    id: 'ai', name: 'AI Assistant',
+    check: async () => {
+      // llama-server binds 127.0.0.1:8087 (localhost-only) — the browser can't
+      // probe that port directly, so status comes from systemd, same as adsb/owrx.
+      const r = await fetch('/api/health/service?name=oasis-ai', { cache: 'no-store' });
+      if (!r.ok) return { up: false, sub: 'status error' };
+      const d = await r.json();
+      if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
+      if (d.active === 'active') return { up: true, badge: 'UP', sub: 'ready' };
+      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+        sub: d.installed ? 'inactive' : 'not installed' };
+    }
+  },
+  {
     id: 'manuals', name: 'Radio Manuals',
     check: async () => {
       const r = await fetch('/api/browse?path=static/radio-manuals', { cache: 'no-store' });
@@ -2249,7 +2273,8 @@ function toggleShowHidden() {
 // (FCC / Maps / Repeater Book) do not.
 const SVC_UNITS = { gw: 'graywolf', aprs: 'graywolf-api', feed: 'aprs-sdr-feed',
                     winlink: 'pat', wlrf: 'pat-direwolf', kiwix: 'kiwix',
-                    webssh: 'webssh', owrx: 'openwebrx', adsb: 'dump1090-fa' };
+                    webssh: 'webssh', owrx: 'openwebrx', adsb: 'dump1090-fa',
+                    ai: 'oasis-ai' };
 
 // Lazily create the power control on a controllable card, appended into the
 // card's top row (top-right, alongside the name) so it stays clear of the
