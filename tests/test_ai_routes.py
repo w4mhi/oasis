@@ -159,3 +159,33 @@ class TestAssistantConfirm(unittest.TestCase):
     def test_confirm_non_string_id_does_not_500(self):
         r = self.client.post("/api/assistant/confirm", json={"id": 123})
         self.assertIn(r.status_code, (400, 410))   # clean, not a 500 crash
+
+
+class TestAssistantPrompts(unittest.TestCase):
+    def setUp(self):
+        from flask import Flask
+        app = Flask(__name__)
+        app.register_blueprint(ai_routes.bp)
+        self.client = app.test_client()
+
+    def test_prompts_lists_with_text(self):
+        class FakeRuntimePrompts:
+            def list_prompts(self):
+                return [{"name": "net-briefing", "title": "Net status briefing"}]
+            def get_prompt(self, name):
+                return "Give me a briefing."
+        with mock.patch.object(ai_routes, "_get_runtime", return_value=FakeRuntimePrompts()):
+            r = self.client.get("/api/assistant/prompts")
+        self.assertEqual(r.status_code, 200)
+        body = r.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["prompts"][0]["name"], "net-briefing")
+        self.assertEqual(body["prompts"][0]["title"], "Net status briefing")
+        self.assertEqual(body["prompts"][0]["text"], "Give me a briefing.")
+
+    def test_prompts_degrades_when_runtime_down(self):
+        with mock.patch.object(ai_routes, "_get_runtime",
+                               side_effect=RuntimeError("mcp down")):
+            r = self.client.get("/api/assistant/prompts")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()["prompts"], [])

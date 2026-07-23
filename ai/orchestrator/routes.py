@@ -47,6 +47,17 @@ def health():
                     "model_base_url": cfg.model_base_url})
 
 
+@bp.route("/api/assistant/prompts")
+def prompts():
+    try:
+        rt = _get_runtime()
+        out = [{"name": p["name"], "title": p["title"], "text": rt.get_prompt(p["name"])}
+               for p in rt.list_prompts()]
+        return jsonify({"ok": True, "prompts": out})
+    except Exception as exc:  # noqa: BLE001 - page load must never 500
+        return jsonify({"ok": True, "prompts": [], "error": f"{type(exc).__name__}: {exc}"})
+
+
 @bp.route("/api/assistant/chat", methods=["POST"])
 def chat():
     body = request.get_json(silent=True) or {}

@@ -27,3 +27,28 @@ class TestAssistantRuntime(unittest.TestCase):
         # OpenAI schema shape
         self.assertEqual(tools[0]["type"], "function")
         self.assertIn("parameters", tools[0]["function"])
+
+
+@unittest.skipUnless(HAVE_MCP, "mcp SDK not installed")
+class TestAssistantRuntimePrompts(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from ai.orchestrator.mcp_runtime import AssistantRuntime
+        cls.rt = AssistantRuntime(sys.executable, ["-m", "ai.server.mcp_server"])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.rt.close()
+
+    def test_lists_and_roundtrips_net_briefing_prompt(self):
+        prompts = self.rt.list_prompts()
+        names = {p["name"] for p in prompts}
+        self.assertIn("net-briefing", names)
+        briefing = next(p for p in prompts if p["name"] == "net-briefing")
+        self.assertIn("name", briefing)
+        self.assertIn("title", briefing)
+
+        text = self.rt.get_prompt("net-briefing")
+        # "scannable" appears only in the body of net-briefing.md, not in its
+        # title/description - proves the body (not just metadata) round-trips.
+        self.assertIn("scannable", text)

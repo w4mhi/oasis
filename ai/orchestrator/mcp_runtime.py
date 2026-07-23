@@ -77,6 +77,16 @@ class AssistantRuntime:
         parts = [c.text for c in resp.content if getattr(c, "type", None) == "text"]
         return "\n".join(parts) if parts else json.dumps({"ok": True})
 
+    def list_prompts(self):
+        resp = self._submit(self._session.list_prompts())
+        return [{"name": p.name, "title": p.description or p.name} for p in resp.prompts]
+
+    def get_prompt(self, name):
+        resp = self._submit(self._session.get_prompt(name, {}))
+        parts = [m.content.text for m in resp.messages
+                 if getattr(m.content, "type", None) == "text"]
+        return "\n".join(parts)
+
     def close(self):
         # Signal the owning task to exit its async-with blocks (same task that
         # entered them), then wait for it to unwind and close the loop. Closing
