@@ -22,6 +22,11 @@ class TestOasisGet(unittest.TestCase):
         self.assertFalse(parsed["ok"])
         self.assertIn("connection refused", parsed["error"])
 
+    def test_never_raises_on_bad_base(self):
+        out = http.oasis_get("/api/x", base=None, timeout=5)
+        parsed = json.loads(out)
+        self.assertFalse(parsed["ok"])
+
 
 class TestRegistry(unittest.TestCase):
     def test_registry_has_core_read_tools(self):
@@ -41,3 +46,18 @@ class TestRegistry(unittest.TestCase):
         from ai import config
         read_tools.register(fake_mcp, config.load("/nonexistent"))
         self.assertEqual(sorted(added), sorted(t.name for t in read_tools.READ_TOOLS))
+
+    def test_declared_types_map_to_annotations(self):
+        import inspect
+        from ai import config
+        spec = next(t for t in read_tools.READ_TOOLS if t.name == "aprs_track")
+        fn = read_tools._make_tool_fn(spec, config.load("/nonexistent"))
+        params = inspect.signature(fn).parameters
+        self.assertEqual(params["minutes"].annotation, int)
+        self.assertEqual(params["callsign"].annotation, str)
+
+    def test_tool_description_includes_param_docs(self):
+        spec = next(t for t in read_tools.READ_TOOLS if t.name == "aprs_track")
+        desc = read_tools._tool_description(spec)
+        self.assertIn("minutes", desc)
+        self.assertIn("Look-back", desc)

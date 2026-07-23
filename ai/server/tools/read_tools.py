@@ -4,6 +4,7 @@ Each ReadTool is a thin GET to the OASIS REST API. No-arg tools take nothing;
 parameterised tools (fcc_lookup) declare JSON-schema properties that map 1:1
 onto the query string. Adding a read endpoint = one row here.
 """
+import inspect
 from collections import namedtuple
 
 from ai.server.tools.http import oasis_get
@@ -36,6 +37,20 @@ READ_TOOLS = [
 ]
 
 
+_TYPE_MAP = {"string": str, "integer": int, "number": float, "boolean": bool}
+
+
+def _tool_description(spec):
+    """Tool description plus a Parameters block so the model sees each arg's meaning."""
+    if not spec.params:
+        return spec.description
+    lines = [spec.description, "Parameters:"]
+    for name, schema in spec.params.items():
+        desc = schema.get("description", "")
+        lines.append(f"- {name}: {desc}".rstrip())
+    return "\n".join(lines)
+
+
 def _make_tool_fn(spec, cfg):
     param_names = list(spec.params.keys())
 
@@ -46,17 +61,16 @@ def _make_tool_fn(spec, cfg):
 
     _fn.__name__ = spec.name
     _fn.__doc__ = spec.description
-    # Give FastMCP a typed signature so it can build the input schema.
-    import inspect
-    _fn.__signature__ = inspect.Signature(
-        [inspect.Parameter(n, inspect.Parameter.KEYWORD_ONLY,
-                           default=None, annotation=str)
-         for n in param_names]
-    )
+    # Give FastMCP a typed signature (honest types) so it can build the input schema.
+    _fn.__signature__ = inspect.Signature([
+        inspect.Parameter(name, inspect.Parameter.KEYWORD_ONLY, default=None,
+                          annotation=_TYPE_MAP.get(spec.params[name].get("type"), str))
+        for name in param_names
+    ])
     return _fn
 
 
 def register(mcp, cfg):
     for spec in READ_TOOLS:
         mcp.add_tool(_make_tool_fn(spec, cfg), name=spec.name,
-                     description=spec.description)
+                     description=_tool_description(spec))

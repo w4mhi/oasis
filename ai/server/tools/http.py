@@ -9,8 +9,8 @@ import httpx
 
 
 def oasis_get(path, params=None, *, base, timeout):
-    url = base.rstrip("/") + path
     try:
+        url = base.rstrip("/") + path
         resp = httpx.get(url, params=params or {}, timeout=timeout)
         resp.raise_for_status()
         return resp.text
