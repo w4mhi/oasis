@@ -76,10 +76,13 @@ class AssistantRuntime:
 
     def close(self):
         # Signal the owning task to exit its async-with blocks (same task that
-        # entered them), then wait for it to unwind.
+        # entered them), then wait for it to unwind and close the loop. Closing
+        # the loop also makes any post-close call_tool/list_tools fail fast.
         if self._stop is not None:
             self._loop.call_soon_threadsafe(self._stop.set)
         self._thread.join(timeout=_CALL_TIMEOUT)
+        if not self._loop.is_closed():
+            self._loop.close()
 
 
 _runtime = None
