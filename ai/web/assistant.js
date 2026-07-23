@@ -44,22 +44,12 @@ function renderConfirm(ev) {
   li.scrollIntoView({ block: 'end' });
 }
 
-fetch('/api/assistant/health').then(r => r.json()).then(h => {
-  statusEl.textContent = h.mcp_ready
-    ? 'MCP ready · model: ' + h.model_base_url
-    : 'MCP not ready — is the model/server running?';
-}).catch(() => statusEl.textContent = 'assistant offline');
-
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const message = input.value.trim();
+async function sendMessage(message) {
+  message = (message || '').trim();
   if (!message) return;
   add('user', message);
-  input.value = '';
-
   const resp = await fetch('/api/assistant/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message })
   });
   const reader = resp.body.getReader();
@@ -82,4 +72,27 @@ form.addEventListener('submit', async (e) => {
       else if (ev.type === 'confirm_required') renderConfirm(ev);
     }
   }
+}
+
+fetch('/api/assistant/health').then(r => r.json()).then(h => {
+  statusEl.textContent = h.mcp_ready
+    ? 'MCP ready · model: ' + h.model_base_url
+    : 'MCP not ready — is the model/server running?';
+}).catch(() => statusEl.textContent = 'assistant offline');
+
+const quickEl = document.getElementById('quick');
+fetch('/api/assistant/prompts').then(r => r.json()).then(d => {
+  for (const p of (d.prompts || [])) {
+    const b = document.createElement('button');
+    b.textContent = p.title;
+    b.addEventListener('click', () => sendMessage(p.text));
+    quickEl.appendChild(b);
+  }
+}).catch(() => {});
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const message = input.value.trim();
+  input.value = '';
+  sendMessage(message);
 });

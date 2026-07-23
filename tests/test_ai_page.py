@@ -29,6 +29,13 @@ class TestAssistantPage(unittest.TestCase):
         self.assertIn(b"confirm_required", r.data)
         self.assertIn(b"/api/assistant/confirm", r.data)
 
+    def test_page_has_quick_actions_wiring(self):
+        js = self.client.get("/assistant/assistant.js").data
+        self.assertIn(b"/api/assistant/prompts", js)
+        self.assertIn(b"sendMessage", js)
+        html = self.client.get("/assistant").data
+        self.assertIn(b'id="quick"', html)
+
 
 class TestDashboardHasAiCard(unittest.TestCase):
     """The dashboard (index.html, served as a static file off SUITE_ROOT) must
