@@ -31,7 +31,7 @@ Run `python3 ai/runtime/install.py` (or via `setup-oasis.py` → choose "AI assi
 (Pi 5 / 8 GB)"). The installer:
 - Fetches the llama.cpp arm64 binary from GitHub releases
 - Downloads the Qwen 2.5 3B q4_k_m GGUF model from Hugging Face
-- Installs `mcp` + `httpx` wheels into the system interpreter
+- Installs `mcp` + `httpx` wheels into the OASIS `.venv`
 - Writes and enables the `oasis-ai` systemd unit (listens on 127.0.0.1:8087)
 
 The installer self-gates to Pi 5 / Linux-arm64 / 8 GB RAM / Python ≥ 3.10; it

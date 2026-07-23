@@ -113,3 +113,40 @@ class TestExtractAndUnit(unittest.TestCase):
         self.assertIn("LD_LIBRARY_PATH=/opt/ai/bin", unit)
         self.assertIn("User=mihai", unit)
         self.assertIn("WantedBy=multi-user.target", unit)
+
+
+class TestInstallWheels(unittest.TestCase):
+    def test_reads_specs_from_manifest_and_returns_import_ok(self):
+        with mock.patch("ai.runtime.install._manifest_entry",
+                        return_value={"packages": [{"name": "mcp", "version": ">=1.2,<2"},
+                                                    {"name": "httpx", "version": ">=0.27,<1"}]}), \
+             mock.patch("ai.runtime.install.os.path.exists", return_value=True), \
+             mock.patch("ai.runtime.install.S._venv_bin", return_value="/venv/bin/pip"), \
+             mock.patch("ai.runtime.install.S.decide_source", return_value=(False, "offline")), \
+             mock.patch("ai.runtime.install.S.print_source_banner"), \
+             mock.patch("ai.runtime.install.S.install_one") as inst, \
+             mock.patch("ai.runtime.install.S._import_ok", return_value=True) as impok:
+            ok = install._install_wheels()
+        self.assertTrue(ok)
+        specs = [c.args[1] for c in inst.call_args_list]  # spec is 2nd positional
+        self.assertIn("mcp>=1.2,<2", specs)
+        self.assertIn("httpx>=0.27,<1", specs)
+        impok.assert_called_once()
+
+    def test_no_venv_returns_false_without_installing(self):
+        with mock.patch("ai.runtime.install.os.path.exists", return_value=False), \
+             mock.patch("ai.runtime.install.S.install_one") as inst:
+            ok = install._install_wheels()
+        self.assertFalse(ok)
+        inst.assert_not_called()
+
+    def test_no_source_returns_false(self):
+        with mock.patch("ai.runtime.install._manifest_entry",
+                        return_value={"packages": [{"name": "mcp", "version": ">=1.2,<2"}]}), \
+             mock.patch("ai.runtime.install.os.path.exists", return_value=True), \
+             mock.patch("ai.runtime.install.S._venv_bin", return_value="/venv/bin/pip"), \
+             mock.patch("ai.runtime.install.S.decide_source", return_value=(None, "no source")), \
+             mock.patch("ai.runtime.install.S.install_one") as inst:
+            ok = install._install_wheels()
+        self.assertFalse(ok)
+        inst.assert_not_called()

@@ -31,6 +31,12 @@ _BIN_DIR = os.path.join(_HERE, "bin")
 _MODELS_DIR = os.path.join(_SUITE_ROOT, "ai", "models")
 _MANIFEST = os.path.join(_SUITE_ROOT, "scripts", "offline-manifest.json")
 
+sys.path.insert(0, _SUITE_ROOT)
+try:
+    from common import server as S
+except ImportError:  # pragma: no cover - common should always be importable
+    S = None
+
 _MIN_RAM_BYTES = int(7.0 * 1024**3)
 _SERVICE = "oasis-ai"
 _SERVICE_FILE = f"/etc/systemd/system/{_SERVICE}.service"
@@ -143,9 +149,37 @@ def _run(cmd, **kw):
 
 
 def _install_wheels():
-    # mcp + httpx into the venv running this interpreter.
-    _run([sys.executable, "-m", "pip", "install", "--quiet",
-          "mcp>=1.2,<2", "httpx>=0.27,<1"], check=False)
+    """Install mcp+httpx into the OASIS venv (not sys.executable) — bundled
+    wheels first, PyPI as fallback — the same machinery
+    services/satellites/install-predict.py uses, so behavior doesn't drift.
+    Returns True iff mcp+httpx import cleanly in the venv afterward."""
+    if S is None:
+        print("[ai] WARNING: common.server not importable — cannot install "
+              "mcp/httpx", file=sys.stderr)
+        return False
+
+    venv_dir = os.path.join(_SUITE_ROOT, ".venv")
+    wheels_dir = os.path.join(_SUITE_ROOT, "server", "wheels")
+    pip = S._venv_bin(venv_dir, "pip")
+
+    if not os.path.exists(S._venv_bin(venv_dir, "python")):
+        print(f"[ai] WARNING: no OASIS venv at {venv_dir} — run "
+              "scripts/setup-server.py first", file=sys.stderr)
+        return False
+
+    specs = [f"{p['name']}{p['version']}" for p in _manifest_entry("ai")["packages"]]
+
+    online, banner = S.decide_source(wheels_dir)
+    if online is None:
+        print("[ai] WARNING: server/wheels/ is empty and no internet is "
+              "reachable — can't install mcp/httpx now", file=sys.stderr)
+        return False
+    S.print_source_banner(online, banner, wheels_dir)
+
+    for spec in specs:
+        S.install_one(pip, spec, online, wheels_dir)
+
+    return S._import_ok(venv_dir, "import mcp, httpx")
 
 
 def _write_and_enable_unit(unit_text, enable):
@@ -173,7 +207,7 @@ def main(argv=None):
 
     llama = _manifest_entry("ai-llama")
     model = _manifest_entry("ai-model")
-    version = llama["resolved"]["_"]["arm64"]["llama"]
+    version = llama["version"]
     asset = llama["asset_pattern"].format(version=version)
     binary_url = f"https://github.com/{llama['repo']}/releases/download/{version}/{asset}"
 
@@ -194,7 +228,9 @@ def main(argv=None):
             return 1
         print(f"[ai] model → {model_path}")
 
-    _install_wheels()
+    if not _install_wheels():
+        print("[ai] ERROR: could not install mcp/httpx into the venv", file=sys.stderr)
+        return 1
 
     user = os.environ.get("SUDO_USER") or os.environ.get("USER") or "oasis"
     unit = build_unit(binary=server, model=model_path, bin_dir=_BIN_DIR,
