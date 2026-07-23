@@ -1,20 +1,22 @@
 """RTL-SDR "listen" capture for the satellites feature (Phase 2).
 
-Tunes rtl_fm to a selected satellite's downlink and records the pass audio to a
-WAV file — e.g. to capture a NOAA/Meteor weather pass for offline APT/LRPT
-decoding, or a voice/APRS bird. Only one process can own the dongle, so recording
-requires the APRS SDR feed (aprs-sdr-feed.service) to be stopped first, exactly
-like the tuning bench.
+Tunes rtl_fm to a selected satellite's downlink and either streams the pass
+audio live to the browser or records it to a WAV file — e.g. to capture a
+NOAA/Meteor weather pass for offline APT/LRPT decoding, or to listen to a
+voice/APRS/CW/SSB bird as it goes over. Only one process can own the dongle, so
+capture requires the APRS SDR feed (aprs-sdr-feed.service) to be stopped first,
+exactly like the tuning bench.
 
-Record-first MVP. NOT yet implemented (next increments, and the riskiest untested
-pieces): live browser audio streaming, and active Doppler retuning across the
-pass. A fixed narrowband-FM tune already captures NOAA APT (the Doppler stays
-within the passband).
+Demodulation follows the transmitter mode (demod_params): FM/APRS -> wide FM,
+CW -> USB with a 700 Hz tone offset, USB/LSB/SSB -> SSB; PSK/LRPT/DVB are not
+live-demodulable. VHF/UHF Doppler stays within the FM passband, so FM birds
+need no active retuning (narrowband CW/SSB is more Doppler-sensitive).
 
-The pure helpers below — command building, path building, dependency and dongle
-checks — are unit-tested. The subprocess capture needs a real dongle and rtl_fm
-on the Pi; it mirrors the proven aprs-sdr-feed invocation to maximise the chance
-it works first try, but it is exercised on the Pi, not in CI.
+The pure helpers below — command building, demod-mode mapping, path building,
+dependency and dongle checks — are unit-tested. The subprocess capture needs a
+real dongle and rtl_fm on the Pi; it mirrors the proven aprs-sdr-feed invocation
+to maximise the chance it works first try, but it is exercised on the Pi, not in
+CI.
 """
 import os
 import re
