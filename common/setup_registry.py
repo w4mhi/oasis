@@ -265,7 +265,7 @@ def _setup_winlink_install_fn(repo_root, payload):
 PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
     "openwebrx", "adsb", "satellites", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
-    "pi-headless", "pi-local-monitor", "pi-small-screen-7", "cm4stack", "rgb-cooling-hat",
+    "pi-headless", "pi-local-monitor", "pi-small-screen-7", "cm4stack", "rgb-cooling-hat", "ai",
 }
 
 
@@ -346,6 +346,17 @@ def build_registry(repo_root, payload=None):
             key="adsb",
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "services/adsb/install.py"),
+            verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
+        # Gated (Pi 5 / 8 GB / Linux / py>=3.10) inside ai/runtime/install.py
+        # itself — a clean, non-fatal skip elsewhere. The generous timeout
+        # covers the one-time ~1.9 GB model + llama-server binary download.
+        "ai": SE.FeatureSpec(
+            key="ai",
+            dependencies=["server"],
+            install_fn=lambda: _setup_run_script(repo_root, "ai/runtime/install.py", timeout=1800),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
