@@ -18,19 +18,26 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   'use strict';
 
-  function altColor(alt) {
-    if (alt === 'ground')   return '#A0522D';   // brown — surface
-    if (alt == null)        return '#B8C4D0';   // null/undefined -> unknown altitude
+function altColor(alt) {
+    if (alt === 'ground') return '#A0522D'; 
+    if (alt == null) return '#B8C4D0'; 
+    
     var ft = Number(alt);
-    if (!isFinite(ft))      return '#B8C4D0';   // unknown altitude -> neutral grey
-    if (ft <= 2000)         return '#FF3311';
-    if (ft <= 5000)         return '#FF7F00';
-    if (ft <= 10000)        return '#FFFF00';
-    if (ft <= 15000)        return '#11FF66';
-    if (ft <= 25000)        return '#00FFFF';
-    if (ft <= 35000)        return '#0066FF';
-    return '#FF00FF';
-  }
+    if (!isFinite(ft) || ft < 0) return '#B8C4D0'; 
+
+    if (ft <= 1500)  return '#4B0082'; // Indigo
+    if (ft <= 3000)  return '#0000FF'; // Blue
+    if (ft <= 6000)  return '#0080FF'; // Light Blue
+    if (ft <= 10000) return '#00FFFF'; // Cyan
+    if (ft <= 14000) return '#00FF80'; // Teal
+    if (ft <= 18000) return '#00FF00'; // Green
+    if (ft <= 23000) return '#80FF00'; // Chartreuse
+    if (ft <= 28000) return '#FFFF00'; // Yellow
+    if (ft <= 33000) return '#FFCC00'; // Amber
+    if (ft <= 38000) return '#FF8000'; // Orange
+    if (ft <= 43000) return '#FF0000'; // Red
+    return '#FF00FF';                  // Magenta
+}
 
   // Airline telephony callsign from a flight id: 3 letters + a digit -> ICAO
   // operator code -> table lookup. Registrations (N12345) and unknown codes

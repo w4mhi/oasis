@@ -1019,9 +1019,17 @@ def check_gps(ctx):
 
     mode = gps.get("mode", 0)
     if mode not in (2, 3):
+        seen = gps.get("seen")
+        # Surface the sky view even without a fix: "12 seen / 0 used" is the
+        # cgps signal that tells acquiring-antenna apart from blind-antenna.
+        sat_line = ""
+        if seen is not None:
+            sat_line = f"\n     {seen} sats seen, {gps.get('used') or 0} used in fix."
+        badge = f"{seen} SEEN" if seen else "NO FIX"
         return _result(
-            "gps", "HARDWARE", "GPS", "warn", "NO FIX",
-            "gpsd is up but has no position fix yet.\n     Check sky visibility / antenna.",
+            "gps", "HARDWARE", "GPS", "warn", badge,
+            "gpsd is up but has no position fix yet." + sat_line
+            + "\n     Check sky visibility / antenna.",
             breaks="No position fix — grid/beacon unreliable.",
         )
 
