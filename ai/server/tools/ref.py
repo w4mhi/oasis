@@ -152,3 +152,22 @@ def format_results(entries):
         body = e.body if len(e.body) <= 240 else e.body[:237] + "..."
         lines.append(f"[{e.topic}] {e.key} — {body}" if body else f"[{e.topic}] {e.key}")
     return "\n".join(lines)
+
+
+_TOOL_DESC = (
+    "Search the offline ham-radio reference library by keyword and return "
+    "matching entries. Topics: bandplan (US band plan segments/frequencies), "
+    "qcodes, phonetic (NATO alphabet), prowords (procedure words / ICS plain "
+    "language), rst (signal reports), itu-prefixes (call-sign country prefixes). "
+    "Leave topic empty to search all. Examples: ref_search('QRM'), "
+    "ref_search('what is on 14.230'), ref_search('Poland', topic='itu-prefixes')."
+)
+
+
+def ref_search(query: str, topic: str = "") -> str:
+    """Search the offline ham reference library; see the tool description."""
+    return format_results(search(build_index(), query, topic=topic))
+
+
+def register(mcp, cfg):
+    mcp.add_tool(ref_search, name="ref_search", description=_TOOL_DESC)

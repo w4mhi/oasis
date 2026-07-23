@@ -123,3 +123,36 @@ class TestFormat(unittest.TestCase):
 
     def test_empty_has_no_match_text(self):
         self.assertIn("no match", ref.format_results([]).lower())
+
+
+class TestRefSearchTool(unittest.TestCase):
+    def test_ref_search_returns_text_hit_over_real_files(self):
+        out = ref.ref_search("QRM")
+        self.assertIn("QRM", out)
+        self.assertIn("[qcodes]", out)
+
+    def test_ref_search_topic_scopes(self):
+        out = ref.ref_search("20 meters", topic="bandplan")
+        self.assertIn("[bandplan]", out)
+
+
+try:
+    import mcp  # noqa: F401
+    _HAVE_MCP = True
+except ImportError:
+    _HAVE_MCP = False
+
+
+@unittest.skipUnless(_HAVE_MCP, "mcp SDK not installed")
+class TestRefRegisteredOnServer(unittest.TestCase):
+    def test_ref_search_is_registered_with_typed_schema(self):
+        import asyncio
+        from ai import config
+        from ai.server.mcp_server import build_server
+        server = build_server(config.load("/nonexistent"))
+        tools = asyncio.run(server.list_tools())
+        by_name = {t.name: t for t in tools}
+        self.assertIn("ref_search", by_name)
+        props = by_name["ref_search"].inputSchema.get("properties", {})
+        self.assertIn("query", props)
+        self.assertIn("topic", props)
