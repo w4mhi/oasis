@@ -24,6 +24,11 @@ class TestAssistantPage(unittest.TestCase):
     def test_unknown_asset_404(self):
         self.assertEqual(self.client.get("/assistant/evil.txt").status_code, 404)
 
+    def test_assistant_js_has_confirm_handler(self):
+        r = self.client.get("/assistant/assistant.js")
+        self.assertIn(b"confirm_required", r.data)
+        self.assertIn(b"/api/assistant/confirm", r.data)
+
 
 class TestDashboardHasAiCard(unittest.TestCase):
     """The dashboard (index.html, served as a static file off SUITE_ROOT) must

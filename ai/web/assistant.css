@@ -9,6 +9,7 @@ body { font-family: system-ui, sans-serif; margin: 0; }
 #log li.tool { font-family: ui-monospace, monospace; font-size: .8rem; opacity: .8; }
 #log li.final { background: rgba(46,164,79,.2); }
 #log li.error { background: rgba(200,60,60,.25); }
+#log li.confirm { background: rgba(255,180,84,.15); }
 #form { display: flex; gap: .5rem; margin-top: .75rem; }
 #msg { flex: 1; padding: .6rem; }
 button { padding: .6rem 1rem; }

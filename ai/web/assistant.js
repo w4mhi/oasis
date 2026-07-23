@@ -12,6 +12,38 @@ function add(cls, text) {
   return li;
 }
 
+function renderConfirm(ev) {
+  const li = document.createElement('li');
+  li.className = 'confirm';
+  const label = document.createElement('div');
+  label.textContent = 'Confirm action: ' + ev.name + '(' + JSON.stringify(ev.arguments) + ')';
+  li.appendChild(label);
+  const ok = document.createElement('button');
+  ok.textContent = 'Confirm';
+  const no = document.createElement('button');
+  no.textContent = 'Decline';
+  async function send(decision) {
+    ok.disabled = no.disabled = true;
+    const r = await fetch('/api/assistant/confirm', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(decision ? { id: ev.id } : { id: ev.id, decision: 'decline' })
+    });
+    const body = await r.json().catch(() => ({ ok: false }));
+    const out = document.createElement('div');
+    out.className = 'confirm-result';
+    out.textContent = decision
+      ? (body.ok ? ('Done: ' + (body.result || '')).slice(0, 400) : ('Failed: ' + (body.error || r.status)))
+      : 'Declined.';
+    li.appendChild(out);
+  }
+  ok.addEventListener('click', () => send(true));
+  no.addEventListener('click', () => send(false));
+  li.appendChild(ok);
+  li.appendChild(no);
+  log.appendChild(li);
+  li.scrollIntoView({ block: 'end' });
+}
+
 fetch('/api/assistant/health').then(r => r.json()).then(h => {
   statusEl.textContent = h.mcp_ready
     ? 'MCP ready · model: ' + h.model_base_url
@@ -47,6 +79,7 @@ form.addEventListener('submit', async (e) => {
       else if (ev.type === 'tool_result') add('tool', '  ' + ev.content.slice(0, 300));
       else if (ev.type === 'final') add('final', ev.content);
       else if (ev.type === 'error') add('error', ev.content);
+      else if (ev.type === 'confirm_required') renderConfirm(ev);
     }
   }
 });
