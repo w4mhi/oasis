@@ -19,7 +19,7 @@ def _assistant_dict(msg):
     return out
 
 
-def run_turn(messages, mcp, complete, *, max_iterations=5):
+def run_turn(messages, mcp, complete, *, max_iterations=5, gate=None):
     tools = mcp.list_tools()
     for _ in range(max_iterations):
         msg = complete(messages, tools)
@@ -28,12 +28,27 @@ def run_turn(messages, mcp, complete, *, max_iterations=5):
             return
         messages.append(_assistant_dict(msg))
         for tc in msg.tool_calls:
-            yield {"type": "tool", "name": tc.name, "arguments": tc.arguments}
-            try:
-                result = mcp.call_tool(tc.name, tc.arguments)
-            except Exception as exc:  # noqa: BLE001 - surfaced to the model, not fatal
-                result = json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
-            yield {"type": "tool_result", "name": tc.name, "content": result}
+            decision = gate.classify(tc.name, tc.arguments) if gate else "execute"
+            if decision == "confirm":
+                pid = gate.pending(tc.name, tc.arguments)
+                yield {"type": "confirm_required", "id": pid,
+                       "name": tc.name, "arguments": tc.arguments}
+                result = json.dumps({"ok": False, "pending": True,
+                                     "note": "NOT executed — awaiting user confirmation. "
+                                             "Tell the user what you intend to do and that "
+                                             "they must confirm; do not retry the action."})
+            elif decision == "blocked":
+                yield {"type": "tool", "name": tc.name, "arguments": tc.arguments}
+                result = json.dumps({"ok": False,
+                                     "error": "Actions are disabled (assistant is in read-only mode)."})
+                yield {"type": "tool_result", "name": tc.name, "content": result}
+            else:
+                yield {"type": "tool", "name": tc.name, "arguments": tc.arguments}
+                try:
+                    result = mcp.call_tool(tc.name, tc.arguments)
+                except Exception as exc:  # noqa: BLE001 - surfaced to the model, not fatal
+                    result = json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+                yield {"type": "tool_result", "name": tc.name, "content": result}
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
     yield {"type": "error",
            "content": "Reached the tool-call limit without a final answer."}

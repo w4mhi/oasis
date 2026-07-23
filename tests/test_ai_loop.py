@@ -28,6 +28,19 @@ class ScriptedModel:
         return self.script.pop(0)
 
 
+class _Gate:
+    def __init__(self, decisions):
+        self.decisions = decisions      # {name: "execute"|"confirm"|"blocked"}
+        self.pending_calls = []
+
+    def classify(self, name, args):
+        return self.decisions.get(name, "execute")
+
+    def pending(self, name, args):
+        self.pending_calls.append((name, args))
+        return "pid-123"
+
+
 class TestRunTurn(unittest.TestCase):
     def test_tool_then_final(self):
         model = ScriptedModel([
@@ -72,3 +85,48 @@ class TestRunTurn(unittest.TestCase):
         events = list(loop.run_turn([{"role": "user", "content": "x"}],
                                     FakeMcp(), Loopy(), max_iterations=3))
         self.assertEqual(events[-1]["type"], "error")
+
+
+class TestRunTurnGate(unittest.TestCase):
+    def test_confirm_emits_event_and_does_not_execute(self):
+        model = ScriptedModel([
+            AssistantMessage(content="", tool_calls=[
+                ToolCall(id="c1", name="service_control", arguments={"unit": "graywolf", "action": "stop"})]),
+            AssistantMessage(content="I'd stop GrayWolf — confirm below."),
+        ])
+        mcp = FakeMcp()
+        gate = _Gate({"service_control": "confirm"})
+        events = list(loop.run_turn([{"role": "user", "content": "stop graywolf"}],
+                                    mcp, model, gate=gate))
+        types = [e["type"] for e in events]
+        self.assertIn("confirm_required", types)
+        cr = next(e for e in events if e["type"] == "confirm_required")
+        self.assertEqual(cr["id"], "pid-123")
+        self.assertEqual(cr["name"], "service_control")
+        self.assertEqual(mcp.calls, [])                      # NOT executed
+        self.assertEqual(gate.pending_calls, [("service_control", {"unit": "graywolf", "action": "stop"})])
+        self.assertEqual(events[-1]["type"], "final")
+
+    def test_blocked_readonly_does_not_execute(self):
+        model = ScriptedModel([
+            AssistantMessage(content="", tool_calls=[
+                ToolCall(id="c1", name="service_control", arguments={})]),
+            AssistantMessage(content="Actions are off."),
+        ])
+        mcp = FakeMcp()
+        events = list(loop.run_turn([{"role": "user", "content": "x"}], mcp, model,
+                                    gate=_Gate({"service_control": "blocked"})))
+        self.assertEqual(mcp.calls, [])
+        res = next(e for e in events if e["type"] == "tool_result")
+        self.assertIn("read-only", res["content"].lower())
+
+    def test_execute_still_runs(self):
+        model = ScriptedModel([
+            AssistantMessage(content="", tool_calls=[
+                ToolCall(id="c1", name="aprs_stations", arguments={})]),
+            AssistantMessage(content="3 stations."),
+        ])
+        mcp = FakeMcp()
+        list(loop.run_turn([{"role": "user", "content": "x"}], mcp, model,
+                           gate=_Gate({})))              # default execute
+        self.assertEqual(mcp.calls, [("aprs_stations", {})])
