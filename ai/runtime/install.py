@@ -41,11 +41,13 @@ _CTX = 4096
 def _total_ram_bytes():
     try:
         return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
-    except (ValueError, OSError):
+    except (ValueError, OSError, AttributeError):
         return 0
 
 
 def gate():
+    if platform.system() != "Linux":
+        return False, "AI assistant runs on Linux/Pi only (on macOS dev use: brew install llama.cpp)"
     machine = platform.machine().lower()
     if machine not in ("aarch64", "arm64"):
         return False, f"unsupported arch {machine!r} (AI assistant needs arm64/aarch64)"

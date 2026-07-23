@@ -10,7 +10,8 @@ from ai.runtime import install
 
 class TestGate(unittest.TestCase):
     def _gate(self, machine, ram_gib, pyver):
-        with mock.patch("ai.runtime.install.platform.machine", return_value=machine), \
+        with mock.patch("ai.runtime.install.platform.system", return_value="Linux"), \
+             mock.patch("ai.runtime.install.platform.machine", return_value=machine), \
              mock.patch("ai.runtime.install._total_ram_bytes",
                         return_value=int(ram_gib * 1024**3)), \
              mock.patch("ai.runtime.install.sys") as fake_sys:
@@ -35,6 +36,15 @@ class TestGate(unittest.TestCase):
         ok, reason = self._gate("aarch64", 8.0, (3, 9, 0))
         self.assertFalse(ok)
         self.assertIn("3.10", reason)
+
+    def test_refuses_non_linux(self):
+        with mock.patch("ai.runtime.install.platform.system", return_value="Darwin"), \
+             mock.patch("ai.runtime.install.platform.machine", return_value="arm64"), \
+             mock.patch("ai.runtime.install._total_ram_bytes",
+                        return_value=int(8 * 1024**3)):
+            ok, reason = install.gate()
+        self.assertFalse(ok)
+        self.assertIn("linux", reason.lower())
 
 
 class TestDownloadVerified(unittest.TestCase):
