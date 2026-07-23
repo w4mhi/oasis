@@ -368,6 +368,21 @@ class TestManifestSanity(unittest.TestCase):
         # mcp needs py>=3.10 — the note must record the floor.
         self.assertIn("3.10", ai.get("_note", ""))
 
+    def test_ai_llama_github_release_entry(self):
+        e = M.get_feature("ai-llama", self.m)
+        self.assertEqual(e["type"], "github-release")
+        self.assertEqual(e["repo"], "ggml-org/llama.cpp")
+        self.assertIn("arm64", e["asset_pattern"])
+        self.assertIn("arm64", e["arches"])
+
+    def test_ai_model_entry(self):
+        e = M.get_feature("ai-model", self.m)
+        self.assertTrue(e.get("online_only"))
+        self.assertTrue(e["url"].endswith(".gguf"))
+        self.assertRegex(e["sha256"], r"^[0-9a-f]{64}$")
+        self.assertGreater(e["size_bytes"], 1_000_000_000)  # ~1.9 GB
+        self.assertTrue(e["out"].endswith(".gguf"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
