@@ -79,3 +79,47 @@ class TestBuildIndexRealFiles(unittest.TestCase):
             self.assertIn(t, topics)
         # sanity: a well-known entry is present
         self.assertTrue(any(e.topic == "qcodes" and e.key == "QRM" for e in idx))
+
+
+class TestSearch(unittest.TestCase):
+    def _idx(self):
+        return [
+            ref.Entry("qcodes", "QRM", "I am being interfered with · Man-made interference"),
+            ref.Entry("qcodes", "QSL", "I acknowledge receipt · Confirm received"),
+            ref.Entry("bandplan", "20m", "20 Meters · General+ · SSB / Phone: SSTV 14.230"),
+        ]
+
+    def test_exact_key_ranks_first(self):
+        hits = ref.search(self._idx(), "QSL")
+        self.assertEqual(hits[0].key, "QSL")
+
+    def test_token_match_in_body(self):
+        hits = ref.search(self._idx(), "interfered")
+        self.assertEqual([h.key for h in hits], ["QRM"])
+
+    def test_substring_frequency_hits_bandplan(self):
+        hits = ref.search(self._idx(), "14.230")
+        self.assertEqual(hits[0].key, "20m")
+
+    def test_topic_filter(self):
+        hits = ref.search(self._idx(), "receipt", topic="qcodes")
+        self.assertTrue(all(h.topic == "qcodes" for h in hits))
+        self.assertEqual(ref.search(self._idx(), "receipt", topic="bandplan"), [])
+
+    def test_topic_alias(self):
+        # 'q-codes' alias normalizes to 'qcodes'
+        hits = ref.search(self._idx(), "QRM", topic="q-codes")
+        self.assertEqual(hits[0].key, "QRM")
+
+    def test_no_match_returns_empty(self):
+        self.assertEqual(ref.search(self._idx(), "zzzznomatch"), [])
+
+
+class TestFormat(unittest.TestCase):
+    def test_formats_with_topic_labels(self):
+        out = ref.format_results([ref.Entry("qcodes", "QRM", "I am being interfered with")])
+        self.assertIn("[qcodes] QRM", out)
+        self.assertIn("interfered", out)
+
+    def test_empty_has_no_match_text(self):
+        self.assertIn("no match", ref.format_results([]).lower())

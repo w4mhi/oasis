@@ -106,3 +106,49 @@ def build_index(suite_root=None):
     if default:
         _index_cache = entries
     return entries
+
+
+_TOPIC_ALIASES = {
+    "phonetics": "phonetic", "nato": "phonetic",
+    "itu": "itu-prefixes", "prefixes": "itu-prefixes", "prefix": "itu-prefixes",
+    "band": "bandplan", "bands": "bandplan", "band-plan": "bandplan",
+    "q-codes": "qcodes", "qcode": "qcodes", "q-code": "qcodes",
+    "proword": "prowords", "prosigns": "prowords",
+}
+
+
+def _normalize_topic(topic):
+    t = (topic or "").lower().strip()
+    return _TOPIC_ALIASES.get(t, t)
+
+
+def search(index, query, topic="", limit=5):
+    q = (query or "").lower().strip()
+    tokens = [t for t in q.split() if t]
+    want_topic = _normalize_topic(topic)
+    scored = []
+    for e in index:
+        if want_topic and e.topic != want_topic:
+            continue
+        hay = (e.key + " " + e.body).lower()
+        score = 0
+        if e.key.lower() == q:
+            score += 10
+        if q and q in hay:
+            score += 5
+        score += sum(1 for t in tokens if t in hay)
+        if score > 0:
+            scored.append((score, e))
+    # stable sort: equal scores keep original index order
+    scored.sort(key=lambda se: -se[0])
+    return [e for _, e in scored[:limit]]
+
+
+def format_results(entries):
+    if not entries:
+        return "No matching reference entry."
+    lines = []
+    for e in entries:
+        body = e.body if len(e.body) <= 240 else e.body[:237] + "..."
+        lines.append(f"[{e.topic}] {e.key} — {body}" if body else f"[{e.topic}] {e.key}")
+    return "\n".join(lines)
