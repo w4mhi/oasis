@@ -1,0 +1,94 @@
+"""Bridge the async MCP client into sync Flask.
+
+A dedicated background thread runs one asyncio loop that owns a persistent
+stdio ClientSession to the MCP server subprocess. The session is opened AND
+closed inside a single owning coroutine (_main) so anyio's task-affine cancel
+scope (inside stdio_client) is entered and exited on the SAME task. Flask
+request threads submit method-call coroutines (list_tools/call_tool) to the
+loop via run_coroutine_threadsafe — those only USE the already-open session's
+streams, which is safe across tasks. Keeps the subprocess warm across requests
+(no per-request spawn) with no event loop in the request thread.
+"""
+import asyncio
+import json
+import sys
+import threading
+
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+_CALL_TIMEOUT = 30
+_START_TIMEOUT = 30
+
+
+class AssistantRuntime:
+    def __init__(self, server_cmd, server_args):
+        self._params = StdioServerParameters(command=server_cmd, args=list(server_args))
+        self._loop = asyncio.new_event_loop()
+        self._session = None
+        self._stop = None            # asyncio.Event, created on the loop thread
+        self._error = None
+        self._ready = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        if not self._ready.wait(timeout=_START_TIMEOUT):
+            raise RuntimeError("MCP runtime did not start within %ss" % _START_TIMEOUT)
+        if self._error is not None:
+            raise self._error
+
+    def _run(self):
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_until_complete(self._main())
+
+    async def _main(self):
+        # Open and close the session in THIS one task so anyio's cancel scope
+        # (inside stdio_client) is entered and exited on the same task.
+        self._stop = asyncio.Event()
+        try:
+            async with stdio_client(self._params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    self._session = session
+                    self._ready.set()
+                    await self._stop.wait()
+        except Exception as exc:  # noqa: BLE001 - surfaced to __init__
+            self._error = exc
+            self._ready.set()
+
+    def _submit(self, coro):
+        return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout=_CALL_TIMEOUT)
+
+    def list_tools(self):
+        resp = self._submit(self._session.list_tools())
+        out = []
+        for t in resp.tools:
+            out.append({"type": "function", "function": {
+                "name": t.name,
+                "description": t.description or "",
+                "parameters": t.inputSchema or {"type": "object", "properties": {}},
+            }})
+        return out
+
+    def call_tool(self, name, arguments):
+        resp = self._submit(self._session.call_tool(name, arguments or {}))
+        parts = [c.text for c in resp.content if getattr(c, "type", None) == "text"]
+        return "\n".join(parts) if parts else json.dumps({"ok": True})
+
+    def close(self):
+        # Signal the owning task to exit its async-with blocks (same task that
+        # entered them), then wait for it to unwind.
+        if self._stop is not None:
+            self._loop.call_soon_threadsafe(self._stop.set)
+        self._thread.join(timeout=_CALL_TIMEOUT)
+
+
+_runtime = None
+_runtime_lock = threading.Lock()
+
+
+def default_runtime():
+    global _runtime
+    with _runtime_lock:
+        if _runtime is None:
+            _runtime = AssistantRuntime(sys.executable, ["-m", "ai.server.mcp_server"])
+        return _runtime
