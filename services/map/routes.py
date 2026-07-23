@@ -15,7 +15,7 @@ SUITE_ROOT = appconfig.SUITE_ROOT
 # The live map UI (APRS + ADS-B) and its shared assets are service-neutral —
 # they live under services/map/, not services/aprs/, since one page now serves
 # both. map-assets keeps its own top-level /map-assets/ URL (widely referenced,
-# incl. the e-ink/CM4 display sprite readers), independent of /server/map/.
+# incl. the CM4 display sprite readers), independent of /server/map/.
 MAP_DIR    = os.path.join(SUITE_ROOT, "services", "map")
 MAP_ASSETS = os.path.join(MAP_DIR, "map-assets")
 MAPS_DIR   = os.path.join(SUITE_ROOT, "maps")

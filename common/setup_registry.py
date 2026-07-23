@@ -28,7 +28,7 @@ from common import server as SERVER_SETUP
 
 # Shared exit-code convention used by several install scripts (e.g.
 # features/dra-audio-interface/enable-dra-pi.py, displays/cm4stack/
-# install-cm4stack.py, displays/e-ink/install-e-ink.py, features/gps-L76X/
+# install-cm4stack.py, features/gps-L76X/
 # gps_l76x.py) to mean "config written successfully, but a reboot is needed
 # before the next phase/effect can proceed" — NOT a real failure.
 _REBOOT_EXIT_CODE = 10
@@ -466,13 +466,6 @@ def build_registry(repo_root, payload=None):
             enable_policy="none",
             requires_reboot=True,
             privileged=True,
-        ),
-        "pi-e-ink": SE.FeatureSpec(
-            key="pi-e-ink",
-            dependencies=["server"],
-            install_fn=lambda: _setup_run_script(repo_root, "displays/e-ink/install-e-ink.py"),
-            verify_fn=lambda: {"ok": True},
-            enable_policy="none",
         ),
         "rgb-cooling-hat": SE.FeatureSpec(
             key="rgb-cooling-hat",

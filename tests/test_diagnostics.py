@@ -311,8 +311,8 @@ class TestRegistryAndKiwixCapability(unittest.TestCase):
 
 
 class TestNewCoreAndHardwareChecks(unittest.TestCase):
-    """Per-check tests for Task 3's 6 new checks (station_identity, digirig,
-    dra_pi, gps, display, cooling_hat). Each stubs its signal source so
+    """Per-check tests for Task 3's new checks (station_identity, digirig,
+    dra_pi, gps, cooling_hat). Each stubs its signal source so
     results are deterministic and offline."""
 
     def _shape(self, r):
@@ -456,35 +456,6 @@ class TestNewCoreAndHardwareChecks(unittest.TestCase):
         self.assertEqual(r["status"], "warn")
         self.assertEqual(r["badge"], "OFF")
 
-    # -- display --
-    def test_display_up_is_ok(self):
-        with mock.patch.object(D, "_svc_status",
-                                return_value={"active": "active", "enabled": "enabled", "installed": True}):
-            r = D.check_display(_CTX)
-        self._shape(r)
-        self.assertEqual(r["status"], "ok")
-        self.assertEqual(r["badge"], "UP")
-
-    def test_display_installed_not_running_is_warn(self):
-        with mock.patch.object(D, "_svc_status",
-                                return_value={"active": "inactive", "enabled": "enabled", "installed": True}):
-            r = D.check_display(_CTX)
-        self._shape(r)
-        self.assertEqual(r["status"], "warn")
-        self.assertEqual(r["badge"], "OFF")
-
-    def test_display_not_installed_is_warn_na(self):
-        with mock.patch.object(D, "_svc_status",
-                                return_value={"active": "inactive", "enabled": "not-found", "installed": False}):
-            r = D.check_display(_CTX)
-        self._shape(r)
-        self.assertEqual(r["status"], "warn")
-        self.assertEqual(r["badge"], "N/A")
-
-    def test_display_never_critical(self):
-        chk = next(c for c in D.REGISTRY if c.id == "display")
-        self.assertFalse(chk.critical)
-
     # -- cooling_hat --
     def test_cooling_hat_up_is_ok(self):
         with mock.patch.object(D, "_svc_status",
@@ -517,9 +488,9 @@ class TestNewCoreAndHardwareChecks(unittest.TestCase):
 
 
 class TestNewChecksRegistered(unittest.TestCase):
-    def test_all_6_new_checks_registered(self):
+    def test_all_new_checks_registered(self):
         ids = {c.id for c in D.REGISTRY}
-        expected = {"station_identity", "digirig", "dra_pi", "gps", "display", "cooling_hat"}
+        expected = {"station_identity", "digirig", "dra_pi", "gps", "cooling_hat"}
         self.assertTrue(expected <= ids)
 
     def test_station_identity_is_core_critical_access(self):
@@ -544,7 +515,7 @@ class TestNewChecksRegistered(unittest.TestCase):
     def test_run_all_real_registry_includes_new_checks(self):
         r = D.run_all("127.0.0.1", 8083)
         ids = [c["id"] for g in r["groups"] for c in g["checks"]]
-        for cid in ("station_identity", "digirig", "dra_pi", "gps", "display", "cooling_hat"):
+        for cid in ("station_identity", "digirig", "dra_pi", "gps", "cooling_hat"):
             self.assertIn(cid, ids)
 
 

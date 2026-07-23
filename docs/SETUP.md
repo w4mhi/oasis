@@ -54,7 +54,6 @@ Units OASIS writes itself live under `/etc/systemd/system/`:
 |---|---|
 | OASIS web server (autostart on boot) | `/etc/systemd/system/oasis.service` |
 | CM4Stack panel display | `/etc/systemd/system/oasis-panel.service` |
-| E-ink monitor display | `/etc/systemd/system/oasis-e-ink.service` |
 | GrayWolf API (dashboard feed) | `/etc/systemd/system/graywolf-api.service` |
 | Winlink (Pat) | `/etc/systemd/system/pat.service` |
 | Winlink Direwolf modem | `/etc/systemd/system/pat-direwolf.service` |

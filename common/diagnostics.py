@@ -487,8 +487,7 @@ def _parse_ts(val):
         what services/aprs actually stores, not simplified SQLite-text;
       - plain ISO 8601 ('T'-separated, with an offset or trailing 'Z').
 
-    Uses the same normalize-then-fromisoformat technique as
-    displays/e-ink/oasis_client.py's _parse_iso() (and render.py's copy):
+    Uses a normalize-then-fromisoformat technique:
     swap 'Z' for '+00:00', turn the first space into 'T', then clamp any
     fractional-second digits beyond microseconds so fromisoformat() (which
     only accepts up to 6) can parse it. A timezone-naive result is treated as
@@ -1039,21 +1038,6 @@ def check_gps(ctx):
     return _result("gps", "HARDWARE", "GPS", "ok", badge, " · ".join(parts))
 
 
-def check_display(ctx):
-    """HARDWARE/ACCESS, never critical -- OASIS is fully usable from the web
-    UI with no e-ink panel attached, so this can never turn the ACCESS tile
-    red. Signal: systemd unit oasis-e-ink.service."""
-    svc = _svc_status("oasis-e-ink")
-    if svc["active"] == "active":
-        return _result("display", "HARDWARE", "E-Ink Display", "ok", "UP",
-                        f"oasis-e-ink service {_svc_word(svc)}.")
-    if svc["installed"]:
-        return _result("display", "HARDWARE", "E-Ink Display", "warn", "OFF",
-                        f"Installed but not running (oasis-e-ink is {svc['active']}).")
-    return _result("display", "HARDWARE", "E-Ink Display", "warn", "N/A",
-                    "oasis-e-ink service not installed.")
-
-
 def check_cooling_hat(ctx):
     """SYSTEM group / POWER capability, not critical -- cooling is a nice-to-
     have on a Pi Zero 2 W, not something that blocks a capability. Signal:
@@ -1289,8 +1273,6 @@ REGISTRY.extend([
           capability="APRS_RX", critical=False, tier="v1", fn=check_dra_pi),
     Check(id="gps", group="HARDWARE", label="GPS",
           capability="POSITION", critical=True, tier="v1", fn=check_gps),
-    Check(id="display", group="HARDWARE", label="E-Ink Display",
-          capability="ACCESS", critical=False, tier="v1", fn=check_display),
     Check(id="cooling_hat", group="SYSTEM", label="RGB Cooling HAT",
           capability="POWER", critical=False, tier="v1", fn=check_cooling_hat),
     Check(id="aprs_feed", group="SERVICES", label="APRS Feed",
