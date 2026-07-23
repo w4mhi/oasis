@@ -343,16 +343,29 @@ class TestManifestSanity(unittest.TestCase):
         self.assertNotEqual(p, bw)
 
     def test_ai_pypi_group_present_and_synced_with_requirements(self):
+        import re
+        from pathlib import Path
         ai = M.get_feature("ai", self.m)
         self.assertEqual(ai["type"], "pypi")
-        names = {p["name"] for p in ai["packages"]}
-        self.assertEqual(names, {"mcp", "httpx"})
-        # requirements.txt must carry every ai package (bundle↔install sync gotcha)
-        from pathlib import Path
-        req = (Path(__file__).resolve().parents[1] / "scripts" / "requirements.txt").read_text()
-        for name in names:
-            self.assertIn(name, req, f"{name} missing from requirements.txt")
-        # mcp needs py>=3.10 — the note must record the floor so the bundler targets it
+        pkgs = {p["name"].lower(): p["version"].replace(" ", "") for p in ai["packages"]}
+        self.assertEqual(set(pkgs), {"mcp", "httpx"})
+        # Parse the REAL pinned lines (skip blanks/comments): "name<spec>".
+        req_path = Path(__file__).resolve().parents[1] / "scripts" / "requirements.txt"
+        req = {}
+        for line in req_path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            m = re.match(r"^([A-Za-z0-9_.\-]+)\s*(.*)$", line)
+            if m:
+                req[m.group(1).lower()] = m.group(2).replace(" ", "")
+        # Every ai package must be a real pinned requirement AND its spec must match
+        # (guards the bundle↔install sync gotcha AND version drift between the two).
+        for name, version in pkgs.items():
+            self.assertIn(name, req, f"{name} not a pinned line in requirements.txt")
+            self.assertEqual(req[name], version,
+                             f"{name} version drift: manifest {version!r} vs requirements {req[name]!r}")
+        # mcp needs py>=3.10 — the note must record the floor.
         self.assertIn("3.10", ai.get("_note", ""))
 
 
