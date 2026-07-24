@@ -22,6 +22,7 @@ import appconfig
 from common import config_paths
 from common import gpsd_chrony
 from common import installed_services
+from common import removal_backfill
 from common import hardware_detect as HD_detect
 from common import setup_engine as SE
 from common import setup_registry as SETUP_REGISTRY
@@ -285,12 +286,18 @@ def _setup_record_installed_features(summary):
     path — see FeatureSpec.remove_fn — and does not go through this function.
 
     Writes through common/installed_services.py, the single owner of the manifest
-    schema. Removal records for the just-installed features are attached in Task 7
-    (see removal_backfill); this function stays additive."""
+    schema, and attaches each just-installed feature's removal record (generated
+    from the installer's own constants) so removal reads back exactly what install
+    created. Stays additive: installed features are never dropped here."""
     ok_keys = {item.get("feature") for item in summary.features
                if item.get("status") in _SETUP_SUCCESS_STATUSES}
     ok_keys.discard(None)
-    installed_services.add_installed(SUITE_ROOT, ok_keys, {})
+    records = {}
+    for k in ok_keys:
+        rec = removal_backfill.record_for(SUITE_ROOT, k)
+        if rec is not None:
+            records[k] = rec
+    installed_services.add_installed(SUITE_ROOT, ok_keys, records)
 
 
 # ── Privileged installs: hand off to the out-of-process root worker ─────────────
