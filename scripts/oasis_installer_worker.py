@@ -38,8 +38,14 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from common import config_paths
+from common import installed_services
+from common import removal
+from common import removal_backfill
 from common import setup_registry as SETUP_REGISTRY
 from common.oasis_lib import _hr, _ok, _info, _warn, _fail
+
+# Features never removable from the web/worker (see the design carve-outs).
+_UNREMOVABLE = {"server", "wikipedia"}
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 QUEUE_DIR = config_paths.installer_queue_dir(REPO_ROOT)
@@ -53,6 +59,56 @@ def _write_result(job_id, result):
     with open(tmp_path, "w", encoding="utf-8") as fh:
         json.dump(result, fh)
     os.rename(tmp_path, result_path)  # atomic on the same filesystem
+
+
+def _process_remove(job_id, feature):
+    """Uninstall one feature: run common/removal.py's apply() as root over the
+    feature's removal record (from the manifest, regenerated if a legacy box never
+    stored one), and report the changes + advisory. The route (web user) — not this
+    root process — subtracts the feature from installed-services.json afterwards."""
+    reg = SETUP_REGISTRY.build_registry(REPO_ROOT, payload={})
+    spec = reg.get(feature)
+    if feature in _UNREMOVABLE or spec is None or spec.removal_record_fn is None:
+        _warn(f"{job_id}: refusing to remove non-removable feature '{feature}'")
+        _write_result(job_id, {
+            "ok": False,
+            "reason_code": "REMOVE_FAILED",
+            "reason_text": f"'{feature}' is not a removable feature",
+        })
+        return
+
+    record = installed_services.removal_map(REPO_ROOT).get(feature)
+    if record is None:
+        record = removal_backfill.record_for(REPO_ROOT, feature) or {}
+
+    log_path = os.path.join(QUEUE_DIR, f"{job_id}.log")
+
+    def _log(line):
+        try:
+            with open(log_path, "a", encoding="utf-8") as lf:
+                lf.write(line.rstrip("\n") + "\n")
+        except OSError:
+            pass
+
+    _info(f"{job_id}: removing '{feature}' ...")
+    try:
+        res = removal.apply(record, apply=True)
+    except Exception as exc:
+        _write_result(job_id, {"ok": False, "reason_code": "REMOVE_FAILED", "reason_text": str(exc)})
+        return
+
+    for line in res.get("changes", []):
+        _log(line)
+    for line in res.get("advisory", []):
+        _log("advisory: " + line)
+
+    _ok(f"{job_id}: '{feature}' removed.")
+    _write_result(job_id, {
+        "ok": True,
+        "advisory": res.get("advisory", []),
+        "changes": res.get("changes", []),
+        "requires_reboot": bool(res.get("requires_reboot")),
+    })
 
 
 def _process_job(job_path):
@@ -80,7 +136,12 @@ def _process_job(job_path):
         pass
 
     feature = data.get("feature")
+    action = data.get("action") or "install"
     payload = data.get("payload") or {}
+
+    if action == "remove":
+        _process_remove(job_id, feature)
+        return
 
     if feature not in SETUP_REGISTRY.PRIVILEGED_FEATURES:
         _warn(f"{job_id}: refusing non-privileged/unknown feature '{feature}'")
