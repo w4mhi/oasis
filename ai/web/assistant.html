@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OASIS Assistant</title>
+  <link rel="stylesheet" href="/assistant/assistant.css">
+</head>
+<body>
+  <main id="chat">
+    <header id="hdr">
+      <span class="brand">🛜 OASIS Assistant</span>
+      <span id="status" class="status">checking…</span>
+    </header>
+    <div id="quick" class="quick"></div>
+    <ul id="log"></ul>
+    <form id="form">
+      <input id="msg" autocomplete="off" placeholder="Ask about stations, aircraft, passes…">
+      <button type="submit">Send</button>
+    </form>
+  </main>
+  <script src="/assistant/assistant.js"></script>
+</body>
+</html>
