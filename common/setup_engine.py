@@ -173,6 +173,65 @@ def resolve_plan(selected_features: Iterable[str], registry: Dict[str, FeatureSp
     return SetupPlan(selected_features=selected, ordered_features=ordered, blocked=[])
 
 
+@dataclass
+class UninstallPlan:
+    selected: List[str]
+    ordered: List[str]
+    blocked: List[Dict[str, str]] = field(default_factory=list)
+
+
+def resolve_uninstall(selected, installed, registry):
+    """Plan the removal of *selected* features.
+
+    - Only installed features are considered (others are dropped).
+    - A feature is blocked if some still-installed feature that is NOT also being
+      removed depends on it (removing it would orphan the dependant).
+    - `ordered` is the non-blocked removable set in reverse-dependency order:
+      dependants are torn down before the dependencies they rely on.
+    """
+    installed = set(installed)
+    sel = [k for k in selected if k in installed]
+    sel_set = set(sel)
+
+    blocked: List[Dict[str, str]] = []
+    blocked_keys = set()
+    for key in sel:
+        for other in sorted(installed):
+            if other in sel_set:
+                continue
+            spec = registry.get(other)
+            if spec and key in spec.dependencies:
+                blocked.append({
+                    "feature": key,
+                    "reason_code": "DEPENDANT_INSTALLED",
+                    "reason_text": f"{other} depends on {key}; uninstall {other} first",
+                })
+                blocked_keys.add(key)
+
+    removable = [k for k in sel if k not in blocked_keys]
+    removable_set = set(removable)
+
+    # Dependency-first order within the removable set, then reverse it so
+    # dependants come out before the dependencies they need.
+    order: List[str] = []
+    perm = set()
+
+    def visit(k):
+        if k in perm:
+            return
+        perm.add(k)
+        spec = registry.get(k)
+        for dep in (spec.dependencies if spec else []):
+            if dep in removable_set:
+                visit(dep)
+        order.append(k)
+
+    for k in removable:
+        visit(k)
+    ordered = list(reversed(order))
+    return UninstallPlan(selected=sel, ordered=ordered, blocked=blocked)
+
+
 def _run_step(fn: Optional[Callable[[], Dict[str, object]]]) -> Dict[str, object]:
     if fn is None:
         return _ok_result()
