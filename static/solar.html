@@ -103,6 +103,17 @@ textarea:focus{outline:none;border-color:var(--accent);}
   <p>Paste HAMQSL XML solar data (received via Winlink or other means) to update band conditions. Data is saved locally and shared with the Grid Calculator.</p>
 </header>
 
+<!-- Primary action: fetch propagation via Winlink (mirrors a form's "Send via Winlink"). -->
+<div style="margin-bottom:.9rem;">
+  <button class="sbtn primary" onclick="getPropagationViaWinlink()"
+          title="Open Winlink Compose pre-filled with the SailDocs propagation request">📡 Get propagation via Winlink</button>
+  <span style="font-size:var(--fs-label);color:var(--text-dim);margin-left:.6rem;">Queue → Connect to send, then Connect again after ~1 min — the reply carries a “Parse Propagation” button.</span>
+</div>
+
+<!-- Manual import: collapsed by default; the automated Winlink flow above is primary. -->
+<details class="manual-import">
+  <summary style="cursor:pointer;font-size:var(--fs-label);color:var(--text-dim);margin-bottom:.6rem;">Manual import (paste XML / load a saved attachment)</summary>
+
 <!-- How to get data -->
 <div style="border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:1rem 1.25rem;margin-bottom:.9rem;">
   <div class="sec-label">How to Get Solar Data via Winlink</div>
@@ -162,6 +173,7 @@ textarea:focus{outline:none;border-color:var(--accent);}
   </div>
   <div class="import-status" id="importStatus"></div>
 </div>
+</details>
 
 <!-- Stale data warning (shown by JS if data > 24h old) -->
 <div id="staleWarn" style="display:none"></div>
@@ -291,6 +303,38 @@ function parseHAMQSL(xmlStr) {
 }
 
 // ── Import from file ──────────────────────────────────────────────────────────
+// Shared parse → save → render, used by manual paste, file load, AND the Winlink
+// "Parse Propagation" auto-import handoff. Throws on bad XML (callers report it).
+function importXMLString(xml, label) {
+  const data = parseHAMQSL(xml);
+  const hist = saveWithHistory(data);
+  const statusEl = document.getElementById('importStatus');
+  if (statusEl) {
+    statusEl.className = 'import-status ok';
+    statusEl.textContent = (label || 'Parsed and saved') + ' — Updated: ' + data.updated;
+  }
+  const vb = document.getElementById('histViewingBar');
+  if (vb) vb.style.display = 'none';
+  renderDashboard(data);
+  renderHistory(hist);
+  return data;
+}
+
+// Open Winlink Compose pre-filled with the SailDocs propagation request. Uses the
+// same localStorage handoff a form's "Send via Winlink" uses (mail.html's
+// checkPendingCompose reads "oasis_winlink_compose").
+function getPropagationViaWinlink() {
+  try {
+    localStorage.setItem('oasis_winlink_compose', JSON.stringify({
+      to: 'query@saildocs.com',
+      subject: 'Propagation',
+      body: 'http://hamqsl.com/solarrss.php',
+      note: '📡 SailDocs propagation request — Queue this, Connect to send, then Connect again after ~1 min for the reply (which carries a “Parse Propagation” button).',
+    }));
+  } catch (e) { /* storage full — the compose still opens, just not pre-filled */ }
+  window.location.href = '/server/winlink/mail.html';
+}
+
 function importFile(input) {
   const file = input.files[0];
   if (!file) return;
@@ -300,14 +344,8 @@ function importFile(input) {
   const reader = new FileReader();
   reader.onload = function(e) {
     try {
-      const data = parseHAMQSL(e.target.result);
-      const hist = saveWithHistory(data);
-      statusEl.className = 'import-status ok';
-      statusEl.textContent = 'Loaded ' + file.name + ' — Updated: ' + data.updated;
+      importXMLString(e.target.result, 'Loaded ' + file.name);
       input.value = ''; // reset so same file can be reloaded
-      document.getElementById('histViewingBar').style.display = 'none';
-      renderDashboard(data);
-      renderHistory(hist);
     } catch(err) {
       statusEl.className = 'import-status err';
       statusEl.textContent = 'Parse error: ' + err.message;
@@ -324,16 +362,9 @@ function importXML() {
   const xml = document.getElementById('xmlInput').value.trim();
   const statusEl = document.getElementById('importStatus');
   if (!xml) { statusEl.className = 'import-status err'; statusEl.textContent = 'Paste XML first.'; return; }
-
   try {
-    const data = parseHAMQSL(xml);
-    const hist = saveWithHistory(data);
-    statusEl.className = 'import-status ok';
-    statusEl.textContent = 'Parsed and saved. Updated: ' + data.updated;
+    importXMLString(xml, 'Parsed and saved');
     document.getElementById('xmlInput').value = '';
-    document.getElementById('histViewingBar').style.display = 'none';
-    renderDashboard(data);
-    renderHistory(hist);
   } catch(e) {
     statusEl.className = 'import-status err';
     statusEl.textContent = 'Parse error: ' + e.message;
@@ -628,6 +659,17 @@ function renderDashboard(data) {
   }
   renderDashboard(hist[0] || null);
   renderHistory(hist);
+
+  // Winlink "Parse Propagation" handoff: mail.html stashes the SailDocs XML
+  // attachment under "oasis_solar_import" and opens this page (?src=winlink).
+  // Auto-parse it, render, and save — then clear the key so a refresh won't re-import.
+  try {
+    const handoff = localStorage.getItem('oasis_solar_import');
+    if (handoff) {
+      localStorage.removeItem('oasis_solar_import');
+      importXMLString(handoff, 'Imported from Winlink');
+    }
+  } catch (e) { /* ignore a malformed/absent handoff */ }
 })();
 </script>
 </body>

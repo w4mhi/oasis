@@ -677,6 +677,18 @@ async function openMessage(box, mid) {
     ? `<button class="sbtn primary" onclick="openInIcs205('${box}','${esc(mid)}')" ` +
       `title="Open this ICS-205 in the OASIS form to edit, print, or Save PDF">📻 Open in ICS-205 form</button>`
     : "";
+  // Detect a SailDocs propagation reply: it comes from query-reply@saildocs.com
+  // with the HAMQSL solar XML attached as "solarrss.php". Offer to parse+render it
+  // in the Solar/Propagation tool (the inbound mirror of solar.html's request btn).
+  const _from = addrText(pick(m, "From", "from")) || "";
+  const solarAttName = Array.isArray(files)
+    ? files.map(f => pick(f, "Name", "name") || String(f)).find(nm => /solarrss\.php/i.test(nm))
+    : null;
+  const isPropagation = /saildocs\.com/i.test(_from) && (!!solarAttName || /solarrss\.php/i.test(_subj));
+  const propBtnHtml = isPropagation
+    ? `<button class="sbtn primary" onclick="openInPropagation('${box}','${esc(mid)}')" ` +
+      `title="Parse this SailDocs reply and show band conditions">📡 Parse Propagation</button>`
+    : "";
   // Offline map link if the body carries a position (e.g. a Winlink position
   // report). Links to OASIS's own map, not an online service.
   let mapHtml = "";
@@ -695,6 +707,7 @@ async function openMessage(box, mid) {
       `<button class="sbtn" onclick="replyTo('replyAll')">↩ Reply all</button>` +
       `<button class="sbtn" onclick="replyTo('forward')">➦ Forward</button>` +
       ics205BtnHtml +
+      propBtnHtml +
       `<button id="readToggle" class="sbtn" data-mid="${esc(mid)}" onclick="toggleRead('${box}','${esc(mid)}')">` +
         `${WinlinkRead.isUnread(mid) ? "Mark read" : "Mark unread"}</button>` +
       `<button class="sbtn danger" onclick="deleteMessage('${box}','${esc(mid)}')">🗑 Delete</button>` +
@@ -742,6 +755,39 @@ async function openInIcs205(box, mid) {
 
 function planHasContent(p) {
   return !!p && (String(p["f-inc"] || "").trim() || (Array.isArray(p.channels) && p.channels.length > 0));
+}
+
+// ─── SailDocs propagation import ─────────────────────────────────────────────
+// Fetch the HAMQSL solar XML attachment from a SailDocs reply and hand it off to
+// the Solar/Propagation tool (solar.html), which auto-parses + renders it and
+// feeds the Grid Calculator. Inbound mirror of solar.html's "Get propagation".
+async function openInPropagation(box, mid) {
+  let m = _openMsg;
+  if (!m || String(pick(m, "MID", "Mid", "mid")) !== String(mid)) {
+    try { m = await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`); }
+    catch (e) { toast("Could not load message", "err"); return; }
+  }
+  const files = pick(m, "Files", "files", "Attachments");
+  const names = Array.isArray(files)
+    ? files.map(f => pick(f, "Name", "name") || String(f)) : [];
+  // Prefer the solarrss.php attachment; else any xml/rss/txt attachment.
+  const xmlName = names.find(nm => /solarrss\.php/i.test(nm))
+               || names.find(nm => /\.(xml|rss|txt)$/i.test(nm));
+  let xml = "";
+  if (xmlName) {
+    try {
+      const res = await api(`/mailbox/${box}/${encodeURIComponent(mid)}/${encodeURIComponent(xmlName)}`);
+      xml = await res.text();
+    } catch (e) { /* fall through to body */ }
+  }
+  if (!/<solar[\s>]/i.test(xml)) {
+    const b = pick(m, "Body", "body") || "";
+    if (/<solar[\s>]/i.test(b)) xml = b;
+  }
+  if (!/<solar[\s>]/i.test(xml)) { toast("Couldn't read solar data from this message", "err"); return; }
+  try { localStorage.setItem("oasis_solar_import", xml); }
+  catch (e) { toast("Handoff failed (storage full?)", "err"); return; }
+  window.open("/static/solar.html?src=winlink", "_blank");
 }
 
 // Reverse of ics-205.html's ics205Xml(): read the RMS_Express_Form <variables>
