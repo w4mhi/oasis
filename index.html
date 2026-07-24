@@ -1822,14 +1822,14 @@ const SERVICES = [
         return { up: true, badge: 'UP', sub };
       }
       const hw = _hwLast && _hwLast.services && _hwLast.services.adsb;
-      if (hw && !hw.ok) {
+      if (hw && !hw.ok && hw.reason !== 'unassigned') {
         // Informational only — starting is never blocked by this (the hard
         // gate on adsb was removed; see
         // specs/2026-07-15-hardware-conflict-resolution-v2-design.md §4).
-        // Surfaces "no compatible device right now" without implying the
-        // operator must act before START will work.
-        return { up: false, badge: 'NO FREE SDR',
-          sub: hw.reason === 'unassigned' ? 'no RTL-SDR currently free' : 'assigned device not attached' };
+        // A plain *unassigned* ADS-B is NOT surfaced here: like GrayWolf and
+        // the other SDR consumers, installed-but-unassigned just reads STOPPED.
+        // This branch is only the genuine "your assigned dongle isn't attached".
+        return { up: false, badge: 'NO FREE SDR', sub: 'assigned device not attached' };
       }
       return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
         sub: d.installed ? 'inactive (aircraft)' : 'run services/adsb/install.py' };
