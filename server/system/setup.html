@@ -25,6 +25,7 @@
 .setup-btn.danger:hover { border-color: #ff6b6b; color: #ff6b6b; }
 .setup-btn.attn { box-shadow: 0 0 0 2px var(--amber); }
 .setup-reboot-note { font-size: var(--fs-small); color: var(--amber); font-weight: 700; margin-top: .4rem; }
+.setup-job-interrupted { color: var(--amber); font-weight: 700; }
 .setup-kv { font-size: var(--fs-label); color: var(--text-dim); margin: .2rem 0; }
 .setup-kv code { color: var(--accent); background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: var(--fs-small); }
 .setup-grid { display: flex; flex-wrap: wrap; gap: .7rem; align-items: stretch; }
@@ -828,7 +829,20 @@ async function setupRefreshJob() {
   const stateEl = document.getElementById('setupJobState');
   const logEl = document.getElementById('setupLog');
   try {
-    const d = await jget(`/api/setup/jobs/${encodeURIComponent(setupJobId)}`);
+    const r = await fetch(`/api/setup/jobs/${encodeURIComponent(setupJobId)}`, { cache: 'no-store' });
+    // A 404 means the job vanished: the server was restarted mid-run (its
+    // progress state is in memory only). Stop polling and tell the operator to
+    // re-run — otherwise the page freezes forever at the last "installing" state.
+    if (r.status === 404) {
+      if (setupPollTimer) { clearInterval(setupPollTimer); setupPollTimer = null; }
+      setupJobId = null;
+      stateEl.className = 'setup-job-interrupted';
+      stateEl.textContent = 'Install interrupted — the server restarted before it '
+        + 'finished, so its progress was lost. Re-run the install: already-installed '
+        + 'features are detected and skipped.';
+      return;
+    }
+    const d = await r.json();
     if (!d.ok) throw new Error(d.error || 'job query failed');
     const j = d.job || {};
     stateEl.textContent = setupFormatJobState(j, d.features || []);
@@ -932,6 +946,7 @@ async function setupRunSelected() {
     log.scrollTop = log.scrollHeight;
   };
 
+  stateEl.className = '';          // clear any prior "interrupted" styling
   stateEl.textContent = 'Preparing…';
   info.textContent = 'Plan: building…';
   rebootEl.textContent = '';
