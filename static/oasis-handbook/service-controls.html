@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -102,6 +107,16 @@ python3 scripts/enable-service-controls.py --disable  # remove the permission</c
       <span class="ic">&#8505;</span>
       <div><p>OpenWebRX&rsquo;s card needs this rule too: starting it there also flips the APRS stack, because the RTL-SDR can only feed one consumer at a time.</p></div>
     </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>No START / STOP buttons on the cards</td><td>Service controls aren&rsquo;t enabled. Turn them on in <a href="setup-menu.html">setup</a> &mdash; it installs a narrow sudoers rule so the web UI can (only) start/stop those units.</td></tr>
+        <tr><td>START does nothing / silently fails</td><td>The sudoers scope is missing or the unit errored. Check <code>journalctl -u &lt;service&gt; -e</code>.</td></tr>
+        <tr><td>A radio service refuses to start</td><td>The RTL-SDR is held by another consumer (APRS feed, ADS-B, OpenWebRX, satellite listen). Stop the other one first &mdash; the dongle is exclusive.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="system-monitor.html"><span class="lbl">Previous</span><span class="t">System Monitor</span></a>

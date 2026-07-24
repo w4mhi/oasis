@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -69,6 +74,11 @@
     <div class="eyebrow">Getting Started</div>
     <h1>The Setup Menu</h1>
     <p class="subtitle"><code>setup-oasis.py</code> &mdash; the front door for a Pi deployment</p>
+
+    <figure class="figure">
+      <img src="img/setup-menu.png" alt="The OASIS setup orchestrator: features, services, and hardware as grouped checkboxes" />
+      <figcaption>The setup orchestrator &mdash; every feature, service, and hardware option as an idempotent, version-aware checkbox</figcaption>
+    </figure>
     <p>
       On a Pi, <code>setup-oasis.py</code> is the front door. It is a grouped checkbox
       menu that delegates to the individual <code>install-*</code> / <code>enable-*</code>
@@ -78,7 +88,6 @@
       field station out of the box &mdash; dashboard, APRS, web terminal, service controls,
       and Wi-Fi fallback. Re-run the menu anytime to add features.
     </p>
-    <div class="ph">[ screenshot &mdash; setup-oasis.py grouped checkbox menu in the terminal ]</div>
     <div class="callout info">
       <span class="ic">&#8505;</span>
       <div><p><strong>Version-aware &amp; idempotent.</strong> Every installer installs when absent, <em>upgrades</em> when newer, and keeps what you have otherwise &mdash; never downgrades. It picks the newest source (apt vs the bundle) and the packages for your OS version, so an older USB bundle can&rsquo;t clobber a newer package.</p></div>
@@ -114,6 +123,17 @@
       only hard requirement underneath the menu is the server itself; everything else is
       per-feature.
     </p>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>A feature is greyed out / can&rsquo;t be ticked</td><td>It self-gates on hardware &mdash; e.g. the <a href="assistant.html">AI assistant</a> needs a Pi&nbsp;5&nbsp;/&nbsp;8&nbsp;GB. Press <strong>Detect hardware</strong> to re-probe.</td></tr>
+        <tr><td>Permissions: needed, not granted</td><td>Press <strong>Re-check permissions</strong>. Some installs need sudo scope; the menu tells you what is missing.</td></tr>
+        <tr><td>An install job seems lost after a server restart</td><td>The UI recovers &mdash; reopen the setup page and the <strong>Job Status</strong> pane re-syncs to the running (or finished) job.</td></tr>
+        <tr><td>An install hangs</td><td>Watch the <strong>Job Status</strong> pane; the per-service installer logs the real error. Re-running is safe (idempotent, never downgrades).</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="quick-start.html"><span class="lbl">Previous</span><span class="t">Quick Start</span></a>

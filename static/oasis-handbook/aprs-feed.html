@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -106,6 +111,17 @@ python3 features/rtl-sdr/enable-rtl-sdr.py       # test the dongle, start the au
       device, channel, and PTT steps. If the feed card shows <strong>SILENT</strong>, audio
       is reaching the feed but nothing is decoding &mdash; check the dongle/antenna and frequency.
     </p>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>Feed runs but decodes nothing</td><td>Wrong gain / PPM / frequency. Bench it on the <a href="tuning-bench.html">RTL-SDR tuning bench</a> until decodes appear, then copy the feed command back.</td></tr>
+        <tr><td><code>usb_claim_interface error -6</code></td><td>The dongle is busy. Stop other SDR consumers (ADS-B, OpenWebRX) and any stray <code>rtl_fm</code>; if it persists, <code>sudo modprobe -r dvb_usb_rtl28xxu</code>.</td></tr>
+        <tr><td>DRA-Pi sound-card path is silent</td><td>Wrong ALSA device or levels. Verify the card with <code>arecord -l</code> and set input gain; see <a href="audio-hardware.html">Audio Hardware</a>.</td></tr>
+        <tr><td>RTL-SDR APRS won&rsquo;t install</td><td>The Blog&nbsp;V4 needs <code>librtlsdr&nbsp;&ge;&nbsp;2.0</code>, which only Raspberry Pi OS Trixie ships.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="aprs-stations.html"><span class="lbl">Previous</span><span class="t">Stations &amp; History</span></a>

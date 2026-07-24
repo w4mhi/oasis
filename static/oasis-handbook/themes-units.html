@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -95,6 +100,15 @@
       <span class="ic">&#8505;</span>
       <div><p>This handbook&rsquo;s own <code>[ dark ] / [ light ]</code> toggle (top right) is independent of the dashboard&rsquo;s theme &mdash; it&rsquo;s stored under its own key so the docs and the dashboard can differ.</p></div>
     </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>The theme resets every visit</td><td>The choice lives in <code>localStorage</code> (<code>oasis_theme</code>). A private/incognito window or blocked storage forgets it.</td></tr>
+        <tr><td>Distances/temps in the wrong system</td><td>Toggle the <strong>UNITS</strong> pill (imperial &harr; metric). It is per-client and also stored in <code>localStorage</code>.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="gps-card.html"><span class="lbl">Previous</span><span class="t">GPS / GNSS Card</span></a>

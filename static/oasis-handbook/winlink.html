@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -112,8 +117,18 @@ python3 services/winlink/install.py --no-service    # install + config only</cod
       <div><p>Plain HTTP, and <code>config.json</code> holds your Winlink password &mdash; keep this on your trusted LAN, not the open internet.</p></div>
     </div>
 
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td><code>PAT Error 400</code></td><td>OASIS now surfaces the real reason (e.g. an empty subject). Read the message and fix that field.</td></tr>
+        <tr><td>Telnet connect fails</td><td>Telnet needs an internet CMS gateway, which an off-grid station won&rsquo;t have. RF is the offline path (experimental).</td></tr>
+        <tr><td>Messages sit in the Outbox</td><td>Composing only <em>queues</em> &mdash; press <strong>Connect</strong> to actually transmit/forward.</td></tr>
+      </tbody>
+    </table></div></div>
+
     <nav class="page-nav">
-      <a href="aprs-messaging.html"><span class="lbl">Previous</span><span class="t">APRS Messaging</span></a>
+      <a href="satellites.html"><span class="lbl">Previous</span><span class="t">Satellites</span></a>
       <a href="webssh.html" class="next"><span class="lbl">Next</span><span class="t">Web SSH</span></a>
     </nav>
     <div class="foot">OASIS · off-grid amateur station information suite</div>

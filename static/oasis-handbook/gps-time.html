@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -108,6 +113,16 @@ python3 features/rtc-hat/enable-rtc.py --check          # report status</code></
       <span class="ic">&#10003;</span>
       <div><p>Any DS3231-based RTC HAT works with the same overlay. Pair GPS + RTC so chrony rides the RTC until GPS reacquires after a power loss.</p></div>
     </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>The clock drifts with no internet</td><td>That is what GPS-disciplining fixes. Confirm chrony sees GPS: <code>chronyc sources</code> should list the GPS/PPS refclock; check <code>gpsd</code> is feeding it.</td></tr>
+        <tr><td>No PPS / coarse time only</td><td>PPS needs the wire connected to the right GPIO. Without PPS you still get seconds-level time from NMEA; with it, sub-millisecond.</td></tr>
+        <tr><td>Time is right at boot with no fix</td><td>The <a href="gps-time.html">Witty Pi / DS3231 RTC</a> holds time across reboots until GPS locks.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="reference-library.html"><span class="lbl">Previous</span><span class="t">Reference Library</span></a>

@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -91,11 +96,13 @@
     </p>
     <h2>Service strip</h2>
     <p>
-      A row of cards, one per companion service (GrayWolf APRS, APRS Stats API, Winlink,
-      Kiwix, Web SSH, OpenWebRX). Each shows live status &mdash; green when up, red when down,
-      grey when not installed &mdash; and, if you enabled
-      <a href="service-controls.html">service controls</a>, <strong>START / STOP</strong>
-      buttons so you never have to SSH in.
+      A row of cards, one per companion service &mdash; GrayWolf APRS, the APRS SDR feed,
+      <a href="adsb.html">ADS-B</a>, APRS Stats API, Winlink, the
+      <a href="assistant.html">AI assistant</a>, Kiwix, Web SSH, and OpenWebRX. Each shows
+      live status &mdash; green when up, red when down, grey when not installed &mdash; and, if
+      you enabled <a href="service-controls.html">service controls</a>, <strong>START /
+      STOP</strong> buttons so you never have to SSH in. Radio cards also name the RTL-SDR
+      they hold, since those services share the dongle.
     </p>
     <h2>APRS live table</h2>
     <p>
@@ -110,9 +117,20 @@
       <a href="calculators.html">calculators</a>, <a href="net-logger.html">net logger</a>,
       <a href="ics-forms.html">ICS forms</a>, <a href="fcc-lookup.html">FCC lookup</a>,
       <a href="maps.html">offline maps</a>, <a href="repeater-book.html">Repeater Book</a>,
-      and the whole <a href="reference-library.html">reference library</a> &mdash; including
-      this handbook.
+      the <a href="satellites.html">satellites</a> world map, and the whole
+      <a href="reference-library.html">reference library</a> &mdash; including this handbook.
     </p>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>A service card is grey / <code>NOT INSTALLED</code></td><td>That companion isn&rsquo;t installed. Add it from <a href="setup-menu.html">the setup menu</a>; click <strong>SHOW N NOT INSTALLED</strong> to reveal hidden cards.</td></tr>
+        <tr><td>A card is red / DOWN</td><td>The service crashed or was stopped. Use <strong>START</strong> (if <a href="service-controls.html">service controls</a> are on) or <code>sudo systemctl restart &lt;service&gt;</code>.</td></tr>
+        <tr><td>Stats or the clock look frozen</td><td>The page refreshes every 30&nbsp;s &mdash; check the <code>telemetry: live</code> badge. If it says stalled, hard-refresh; the browser lost the poll.</td></tr>
+        <tr><td>Everything greys out at once</td><td>The Flask app went down. <code>sudo systemctl restart start-oasis</code>.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="accessing-oasis.html"><span class="lbl">Previous</span><span class="t">Accessing OASIS</span></a>

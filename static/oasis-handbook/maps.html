@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -69,13 +74,17 @@
     <div class="eyebrow">Field Tools</div>
     <h1>Offline Maps</h1>
     <p class="subtitle">OpenStreetMap vector tiles from a single PMTiles file &mdash; no tile server</p>
+
+    <figure class="figure">
+      <img src="img/maps.png" alt="The offline MapLibre map served from PMTiles on the Pi" />
+      <figcaption>Offline vector maps &mdash; MapLibre GL over a PMTiles archive, streamed from the host by HTTP range reads</figcaption>
+    </figure>
     <p>
       Vector maps rendered in the browser with <strong>MapLibre GL</strong>. A
       <strong>PMTiles</strong> file is a single file containing an entire regional map &mdash;
       think offline Google Maps for your region in one <code>.pmtiles</code>. The browser
       reads it directly via HTTP range requests: no internet, no tile server, no database.
     </p>
-    <div class="ph">[ screenshot &mdash; offline vector map (MapLibre + PMTiles) with the Load maps control ]</div>
     <h2>Get a PMTiles file</h2>
     <div class="box"><div class="box-body"><table>
       <tbody>
@@ -100,6 +109,16 @@
       <span class="ic">&#9888;</span>
       <div><p>After adding a <code>.pmtiles</code> file or updating <code>app.py</code>, <strong>restart the server</strong> &mdash; new routes and files won&rsquo;t load until it restarts.</p></div>
     </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>The map is blank</td><td>No PMTiles file covers the view, or WebGL is off in the browser. Add a region and confirm the base-map selector points at a present <code>.pmtiles</code>.</td></tr>
+        <tr><td>Tiles load slowly</td><td>Large archives are streamed by HTTP range reads. An SSD over USB beats the SD card for big regions.</td></tr>
+        <tr><td>Wrong area shown</td><td>Switch regions with the <strong>Base map</strong> selector (bottom-right); each region is a separate PMTiles archive.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="fcc-lookup.html"><span class="lbl">Previous</span><span class="t">FCC Lookup</span></a>

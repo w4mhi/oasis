@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -69,12 +74,16 @@
     <div class="eyebrow">The Dashboard</div>
     <h1>GPS / GNSS Card</h1>
     <p class="subtitle">Live fix quality in the dashboard header</p>
+
+    <figure class="figure">
+      <img src="img/gps-card.png" alt="The GPS/GNSS header card showing fix mode, satellites, HDOP, altitude, position, and clock lock" />
+      <figcaption>The GPS / GNSS card &mdash; fix mode, satellites, HDOP, altitude, position, and the chrony clock lock</figcaption>
+    </figure>
     <p>
       When a GPS receiver is attached and <a href="gps-time.html">GPS time sync</a> is set
       up, the dashboard header shows a live <strong>GPS card</strong> reporting the current
       fix &mdash; so you can confirm position and clock discipline at a glance before a net.
     </p>
-    <div class="ph">[ screenshot &mdash; dashboard GPS / GNSS header card showing fix mode, satellites, and HDOP ]</div>
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
       <tbody>
@@ -90,6 +99,16 @@
       <span class="ic">&#10003;</span>
       <div><p>An accurate GPS-disciplined clock is what makes offline FT8 / FT4 / WSPR / SSTV decode correctly with no internet NTP. Pair GPS with a <a href="gps-time.html">hardware RTC</a> so time survives a power loss before the first fix.</p></div>
     </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td><strong>NO FIX</strong> that never clears</td><td>The antenna needs a clear view of the sky, and a cold start can take minutes. Check the daemon: <code>systemctl status gpsd</code>, then <code>cgps</code> or <code>gpsmon</code> for live satellites.</td></tr>
+        <tr><td><strong>CLOCK</strong> shows NTP-locked but GPS is <code>n/a</code></td><td>Normal &mdash; chrony is disciplined by the RTC or last-known time while GPS is still acquiring. See <a href="gps-time.html">GPS Time &amp; RTC</a>.</td></tr>
+        <tr><td><strong>SATS 0</strong> / <strong>UART</strong> vs USB confusion</td><td>Wrong device or wiring. The L76X hat is on the serial UART, a USB puck on <code>/dev/ttyACM*</code> &mdash; set the right one and check the cable/antenna.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="service-controls.html"><span class="lbl">Previous</span><span class="t">Service Controls</span></a>

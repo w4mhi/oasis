@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -99,6 +104,16 @@ python3 scripts/create-oasis-offline.py --verify      # verify checksums</code><
       <span class="ic">&#8505;</span>
       <div><p>From the bundle, the dashboard, ICS forms, FCC lookup, <strong>offline maps</strong>, calculators, and reference library all work &mdash; maps included, since they&rsquo;re served by the core app. Only the separate Pi services (GrayWolf 8080, Kiwix 8081, APRS history 8085) show as DOWN, since they run as their own services on the Pi.</p></div>
     </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>The build errors out</td><td>It needs internet <em>once</em> to vendor wheels/packages, plus free disk. Run it online; re-runs are incremental.</td></tr>
+        <tr><td>The bundle is huge</td><td>Large data (maps, ZIMs, FCC DB) dominates. Use <code>--update</code> to refresh only what changed, and stage big regions separately.</td></tr>
+        <tr><td>Target is a Windows machine</td><td>Build with <code>--for-windows</code> so the portable launcher and paths are cross-platform.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="ap-fallback.html"><span class="lbl">Previous</span><span class="t">Wi-Fi AP Fallback</span></a>

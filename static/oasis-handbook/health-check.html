@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -69,6 +74,11 @@
     <div class="eyebrow">Operations</div>
     <h1>Health Check (doctor)</h1>
     <p class="subtitle">A headless check that mirrors the browser setup page &mdash; confirm a deployment over SSH</p>
+
+    <figure class="figure">
+      <img src="img/health-check.png" alt="The OASIS Diagnostic page running headless health checks in the browser" />
+      <figcaption>The OASIS Diagnostic page &mdash; the same checks doctor.py runs, surfaced in the browser</figcaption>
+    </figure>
     <p>
       <code>scripts/doctor.py</code> is a headless health check that mirrors every verification
       the browser setup page performs &mdash; useful for post-deploy confirmation over SSH when no
@@ -99,6 +109,16 @@ python3 scripts/doctor.py --host 192.168.1.10   # check a remote OASIS instance<
       <span class="ic">&#10003;</span>
       <div><p>Scriptable: <code>python3 scripts/doctor.py --json | &hellip;</code> parses <code>core_ok</code> for a CI gate.</p></div>
     </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>A check is red</td><td>Each line names what failed and the fix &mdash; a missing binary, a stopped service, a bad file. Work them top-down.</td></tr>
+        <tr><td><code>doctor.py</code> vs the Diagnostic page disagree</td><td>They run the same checks; a difference is usually a stale browser &mdash; hard-refresh. <code>python3 doctor.py</code> is the headless source of truth.</td></tr>
+        <tr><td>A service shows down but the card is green</td><td>The probe caught a restart. Re-run the check; if it persists, <code>journalctl -u &lt;service&gt; -e</code>.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="usb-bundle.html"><span class="lbl">Previous</span><span class="t">USB Bundle</span></a>

@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -69,12 +74,16 @@
     <div class="eyebrow">Field Tools</div>
     <h1>FCC Callsign Lookup</h1>
     <p class="subtitle">Offline U.S. amateur-licence lookup &mdash; by callsign, name, or grid</p>
+
+    <figure class="figure">
+      <img src="img/fcc-lookup.png" alt="The offline FCC lookup page: search by call sign, name, or grid with no internet" />
+      <figcaption>The offline FCC lookup &mdash; call sign, name, or grid, answered from a local copy of the FCC database</figcaption>
+    </figure>
     <p>
       Offline lookup of U.S. amateur licences, with <strong>no database engine</strong> &mdash;
       a binary search over FCC flat files returns a result in well under a millisecond.
       Three search modes:
     </p>
-    <div class="ph">[ screenshot &mdash; FCC callsign lookup — search box and result card ]</div>
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Mode</th><th>Example</th><th>Returns</th></tr></thead>
       <tbody>
@@ -104,8 +113,18 @@ python3 services/fcc_database/install.py --index-only # rebuild indexes from exi
       <div><p><strong>Grid squares are ZIP-centroid derived.</strong> The FCC database stores ZIP codes, not GPS coordinates, so a grid can be several miles from the operator&rsquo;s actual location. Name and grid search require the <code>zipcodes.csv</code> that <code>services/fcc_database/install.py</code> generates.</p></div>
     </div>
 
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>Search returns nothing</td><td>The database isn&rsquo;t installed. Build it once online: <code>python3 services/fcc_database/install.py</code> (it is gitignored, not in the repo).</td></tr>
+        <tr><td>Name or grid search is empty but call-sign works</td><td>Those modes need the ZIP-centroid / name index built by the installer &mdash; re-run it.</td></tr>
+        <tr><td>Lookups feel slow</td><td>The index may be on slow storage. It is a binary-search flat file &mdash; keep it on the SD card or an SSD, not a network mount.</td></tr>
+      </tbody>
+    </table></div></div>
+
     <nav class="page-nav">
-      <a href="openwebrx.html"><span class="lbl">Previous</span><span class="t">OpenWebRX</span></a>
+      <a href="kiwix.html"><span class="lbl">Previous</span><span class="t">Kiwix Wikipedia</span></a>
       <a href="maps.html" class="next"><span class="lbl">Next</span><span class="t">Offline Maps</span></a>
     </nav>
     <div class="foot">OASIS · off-grid amateur station information suite</div>

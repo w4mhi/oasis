@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Assistant &mdash; OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <a class="sb-brand" href="index.html">
+      <img src="img/oasis-logo.svg" alt="" />
+      <span><b>OASIS</b> handbook</span>
+    </a>
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="tuning-bench.html">RTL-SDR Tuning</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">&#8962; HOME</a>
+    </div>
+    <div class="eyebrow">Communications</div>
+    <h1>AI Assistant</h1>
+    <p class="subtitle">An offline local-LLM assistant that can read your live station data over MCP</p>
+    <figure class="hero">
+      <img src="img/assistant.png" alt="The OASIS Assistant chat page: a title bar with a model-status pill and a chat input reading Ask about stations, aircraft, passes" />
+      <figcaption>The OASIS Assistant at <code>/assistant</code> &mdash; a plain chat page over a local model that can read your live station data</figcaption>
+    </figure>
+    <p>
+      The <strong>OASIS Assistant</strong> at <code>/assistant</code> is a chat page backed
+      by a <strong>local language model</strong> that can answer questions about your live
+      station &mdash; &ldquo;which aircraft are closest?&rdquo;, &ldquo;when&rsquo;s the next
+      ISS pass?&rdquo;, &ldquo;look up W4MHI&rdquo; &mdash; entirely offline. No cloud, no API
+      key, nothing leaves the Pi.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>The assistant is a <strong>Pi&nbsp;5&nbsp;/&nbsp;8&nbsp;GB</strong> feature &mdash;
+      the model needs the RAM. The page and its MCP tool layer load on any box, but chat
+      answers require the local model daemon to be running.</p></div>
+    </div>
+
+    <h2>How it works</h2>
+    <p>
+      The assistant is <strong>three cooperating processes</strong>, not one. Its most
+      surprising property is that the tool layer contains <strong>no API of its own</strong>:
+      OASIS already has a REST API, and the assistant&rsquo;s tools are a thin adapter that
+      re-exposes those same endpoints to the model (the &ldquo;self-loop&rdquo;).
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Process</th><th>What it is</th><th>Endpoint</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Flask host</strong></td><td>The OASIS web app <em>and</em> the assistant orchestrator (<code>ai/orchestrator/</code>). Holds the real REST API.</td><td><code>:8083</code></td></tr>
+        <tr><td><strong>llama-server</strong></td><td>The local LLM (Qwen&nbsp;2.5&nbsp;3B), run as the <code>oasis-ai</code> systemd daemon. OpenAI-compatible.</td><td><code>:8087/v1</code></td></tr>
+        <tr><td><strong>MCP server</strong></td><td><code>ai.server.mcp_server</code>, spawned by the host as a warm stdio subprocess. Exposes OASIS&rsquo;s API as MCP tools.</td><td>stdio</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>A question flows through the loop like this:</p>
+    <div class="code-file"><pre><code>Browser  (/assistant)
+   |  POST /api/assistant/chat  { message }
+   v
+Flask host (:8083)  ->  loop.py   agentic loop, <= 5 tool iterations
+   |                      |
+   |                      +-- model_client.py --> llama-server :8087  (what to say / which tool)
+   |                      +-- mcp_runtime.py  --> MCP subprocess (stdio)
+   |                                                   |  each tool =
+   v                                                   v
+final answer  <--------------------------  oasis_get / oasis_post
+   (streams to page)                        HTTP self-loop --> OASIS REST API :8083 /api/...</code></pre></div>
+    <p>
+      The model is offered the MCP tool list; if it calls a tool, the host forwards it over
+      stdio to the MCP subprocess, whose tool simply does an HTTP <code>GET</code> back into
+      OASIS&rsquo;s own API on localhost and returns the JSON to the model. The loop repeats up
+      to five iterations, then the answer streams back to the page.
+    </p>
+
+    <h2>Reads, writes, and the confirm gate</h2>
+    <p>
+      <strong>Read</strong> tools (heard stations, aircraft, passes, FCC lookup, health) are
+      unrestricted &mdash; they only GET. <strong>Write</strong> tools (start/stop a service,
+      post an APRS warning, monitor a satellite) would change station state, so they are
+      <strong>gated</strong>: instead of firing, the call is parked and surfaced to you, and
+      nothing happens until you approve it.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Endpoint / knob</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>POST /api/assistant/chat</code></td><td>Send a message; the reply streams back.</td></tr>
+        <tr><td><code>GET /api/assistant/health</code></td><td>Reports <code>mcp_ready</code> and whether the model is reachable (drives the status pill).</td></tr>
+        <tr><td><code>POST /api/assistant/confirm</code></td><td>Approve a parked write action so it actually runs.</td></tr>
+        <tr><td><code>actions_enabled</code> (config.json)</td><td>Master switch for write tools.</td></tr>
+        <tr><td><code>auto_actions</code> (config.json)</td><td>Allow-list of writes permitted <em>without</em> a confirm (empty by default).</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h2>Installing &amp; running</h2>
+    <p>On a Pi&nbsp;5, install through the setup menu or directly:</p>
+    <pre><code>python3 ai/runtime/install.py    # or setup-oasis.py -> "AI assistant (Pi 5 / 8 GB)"</code></pre>
+    <p>
+      The installer fetches the llama.cpp arm64 binary and the Qwen&nbsp;2.5&nbsp;3B
+      <code>q4_k_m</code> GGUF model, installs the <code>mcp</code> and <code>httpx</code>
+      wheels into the OASIS venv, and writes and enables the <code>oasis-ai</code> systemd
+      unit on <code>127.0.0.1:8087</code>. It <strong>self-gates</strong> to Pi&nbsp;5 /
+      Linux-arm64 / 8&nbsp;GB / Python&nbsp;&ge;&nbsp;3.10 and skips cleanly elsewhere. The
+      dashboard <strong>AI Assistant</strong> card can <strong>Stop</strong> the daemon to
+      reclaim ~2&nbsp;GB of RAM and <strong>Start</strong> it again on demand.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p><strong>Mac / dev:</strong> the prebuilt binary is Linux-arm64. On a Mac,
+      <code>brew install llama.cpp</code>, run <code>llama-server --jinja -m &lt;qwen&hellip;gguf&gt;
+      --host 127.0.0.1 --port 8087</code>, then <code>./start.sh</code> and open
+      <code>localhost:8083/assistant</code>. Without a model the page still loads and
+      <code>/api/assistant/health</code> reports <code>mcp_ready</code> &mdash; only chat needs
+      the model up.</p></div>
+    </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>Status pill stuck on <code>checking&hellip;</code> or shows the model offline</td>
+            <td>The <code>oasis-ai</code> daemon isn&rsquo;t up. <code>sudo systemctl status oasis-ai</code>; start it, or use the dashboard card&rsquo;s <strong>Start</strong>. On a Mac, launch <code>llama-server</code> by hand.</td></tr>
+        <tr><td>Page loads, health is <code>mcp_ready</code>, but chat never answers</td>
+            <td>MCP is fine; the model is not. That split is the whole point of the health check &mdash; bring up llama-server on <code>:8087</code>.</td></tr>
+        <tr><td>&ldquo;AI Assistant&rdquo; card is grey / missing</td>
+            <td>Not installed, or the box isn&rsquo;t a Pi&nbsp;5&nbsp;/&nbsp;8&nbsp;GB &mdash; the installer self-gates. Confirm the hardware, then run <code>ai/runtime/install.py</code>.</td></tr>
+        <tr><td>The model &ldquo;can&rsquo;t see&rdquo; live data</td>
+            <td>Tool loop trouble. Check the OASIS log for the self-loop HTTP calls; verify the underlying endpoint (e.g. <code>/api/adsb/aircraft</code>) answers on <code>:8083</code>. The MCP layer only relays those.</td></tr>
+        <tr><td>It refuses to start/stop a service or send a warning</td>
+            <td>Working as designed &mdash; writes are gated. Approve the parked action (<code>POST /api/assistant/confirm</code>), or set <code>actions_enabled</code> / <code>auto_actions</code> in <code>ai/config.json</code>.</td></tr>
+        <tr><td>The Pi is thrashing / low on RAM</td>
+            <td>The model resident set is ~2&nbsp;GB. <strong>Stop</strong> the assistant from its dashboard card when you&rsquo;re not using it to hand the RAM back.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <nav class="page-nav">
+      <a href="webssh.html"><span class="lbl">Previous</span><span class="t">Web SSH</span></a>
+      <a href="openwebrx.html" class="next"><span class="lbl">Next</span><span class="t">OpenWebRX</span></a>
+    </nav>
+    <div class="foot">OASIS &middot; off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook.js"></script>
+</body>
+</html>

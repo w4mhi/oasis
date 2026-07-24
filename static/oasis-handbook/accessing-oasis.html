@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -107,6 +112,17 @@
       <span class="ic">&#9888;</span>
       <div><p>OASIS has <strong>no authentication</strong> and runs plain HTTP by design &mdash; the right model for a trusted off-grid LAN or hotspot, the wrong one for the open internet. See <a href="security.html">Security</a>.</p></div>
     </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td><code>http://&lt;ip&gt;:8083</code> won&rsquo;t load</td><td>Wrong address or different network. Read the <strong>HOST</strong> line on any working client for the real LAN IP, or join the <code>OASIS</code> <a href="ap-fallback.html">AP hotspot</a>. Confirm the app is up: <code>sudo systemctl status start-oasis</code>.</td></tr>
+        <tr><td>&ldquo;Connection refused&rdquo;</td><td>Flask isn&rsquo;t running. <code>sudo systemctl restart start-oasis</code>, or re-run <code>setup-server.py</code>.</td></tr>
+        <tr><td>Loads on a laptop but not a phone</td><td>The phone is on cellular or a different SSID. Put it on the same Wi-Fi or the OASIS AP &mdash; there is no internet path in.</td></tr>
+        <tr><td>Blank page after an update</td><td>Stale cache / service worker. Hard-refresh (Ctrl/Cmd-Shift-R).</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="setup-menu.html"><span class="lbl">Previous</span><span class="t">The Setup Menu</span></a>

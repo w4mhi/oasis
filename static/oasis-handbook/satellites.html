@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Satellites &mdash; OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <a class="sb-brand" href="index.html">
+      <img src="img/oasis-logo.svg" alt="" />
+      <span><b>OASIS</b> handbook</span>
+    </a>
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="tuning-bench.html">RTL-SDR Tuning</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">&#8962; HOME</a>
+    </div>
+    <div class="eyebrow">Tracking</div>
+    <h1>Satellites</h1>
+    <p class="subtitle">Offline pass prediction, sky tracks, and RTL-SDR listening for the birds overhead</p>
+    <figure class="hero">
+      <img src="img/satellites.png" alt="The satellites page: a world map with the station marker and the roster panel listing 152 satellites with next-pass time, max elevation, mode badges, and a workability meter" />
+      <figcaption>The satellites page &mdash; station-centred world map, category and band filters, and a roster of every workable bird with its next pass, max elevation, and downlink modes</figcaption>
+    </figure>
+    <p>
+      The <strong>Satellites</strong> page at <code>/server/satellites/</code> answers one
+      question offline: <em>which birds are workable or receivable from here, now and
+      soon?</em> It predicts passes, draws the ground track and sky path, animates the
+      satellite live, alerts you before a pass, and &mdash; with an RTL-SDR &mdash; can
+      <strong>listen</strong> to a selected downlink. The prediction core is pure math and
+      needs <strong>no radio at all</strong>; listening is an optional layer on top.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>Prediction is hardware-free and always available. <strong>Listening</strong>
+      needs an RTL-SDR and a Pi&nbsp;4&nbsp;/&nbsp;4&nbsp;GB or better; the sky-plot and
+      timeline run happily on lighter boxes. It needs your
+      <a href="gps-card.html">station lat/lon</a> to compute look-angles.</p></div>
+    </div>
+
+    <h2>The roster</h2>
+    <p>
+      The right panel is the roster &mdash; every satellite OASIS knows about, sorted by next
+      pass. Each row shows the acquisition time, <strong>max elevation</strong> (higher is a
+      better pass), a countdown, and <strong>mode badges</strong> (VOICE, FM, DATA, APRS,
+      SSTV, LINEAR, SSB&hellip;). A small bar meter on each row is the <strong>workability</strong>
+      pill, propagated live in the browser with <code>satellite.js</code> so it moves without
+      a server round-trip.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Control</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><strong>ALL / MONITORED</strong></td><td>Show the whole roster, or just the birds you ticked to monitor.</td></tr>
+        <tr><td><strong>MON&middot;1H / ALL&middot;1H</strong></td><td>Narrow to passes inside the next hour.</td></tr>
+        <tr><td>Category chips (WEATHER, VOICE, FM, APRS, SSTV, LINEAR, SSB, DATA, CREWED)</td><td>Filter by what the bird carries.</td></tr>
+        <tr><td>Band chips (VHF, UHF, L-BAND)</td><td>Filter by downlink band &mdash; e.g. show only what your antenna and dongle can hear.</td></tr>
+        <tr><td>Search box</td><td>Find a satellite by name.</td></tr>
+        <tr><td>Row checkbox</td><td>Add the bird to your <strong>monitored</strong> set (drives the 1H filters and pass alerts).</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      The roster itself is built offline by <code>services/satellites/build-roster.py</code>,
+      which aggregates <strong>SatNOGS</strong> transmitter data and <strong>CelesTrak</strong>
+      orbital groups into <code>configuration/satellites.json</code> (names, categories,
+      downlink frequencies, modes). Orbits come from a <strong>TLE cache</strong> refreshed
+      roughly every three days when the box has internet, via the offline manifest. The
+      <strong>TLE age</strong> pill in the header shows how stale the elements are &mdash;
+      predictions drift as TLEs age.
+    </p>
+
+    <h2>Passes &amp; tracks</h2>
+    <p>
+      Selecting a bird computes its passes with <strong>Skyfield</strong> on the server and
+      draws them: a polar sky plot (where it rises, culminates, and sets) and a ground
+      track over the world map, with the satellite animated along it. This is served by the
+      satellites API:
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Endpoint</th><th>Returns</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/satellites</code></td><td>The roster with per-bird TLE lines and mode support tags.</td></tr>
+        <tr><td><code>GET /api/satellites/passes</code></td><td>Predicted passes for the station over the window.</td></tr>
+        <tr><td><code>GET /api/satellites/track</code></td><td>Ground-track points for the selected bird.</td></tr>
+        <tr><td><code>POST /api/satellites/select</code></td><td>Set the selected / monitored birds.</td></tr>
+        <tr><td><code>POST /api/satellites/refresh</code></td><td>Re-sync TLEs (when online) and rebuild look-angles.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h2>Listening (RTL-SDR)</h2>
+    <p>
+      With a dongle, the <strong>REC / PLAY / STOP</strong> controls capture a selected
+      bird&rsquo;s downlink &mdash; live-stream the pass audio to the browser over SSE, or
+      record it to a WAV for offline decoding (e.g. a NOAA/Meteor weather pass for later APT
+      / LRPT work). Demodulation follows the transmitter mode automatically:
+    </p>
+    <ul>
+      <li><strong>FM / APRS</strong> &rarr; wide FM. VHF/UHF Doppler stays inside the FM
+        passband, so FM birds need no active retuning.</li>
+      <li><strong>CW</strong> &rarr; USB with a 700&nbsp;Hz tone offset; <strong>USB / LSB /
+        SSB</strong> &rarr; SSB. These are narrowband and more Doppler-sensitive.</li>
+      <li><strong>PSK / LRPT / DVB</strong> &mdash; capturable, but not live-demodulable in
+        the browser; record and decode offline.</li>
+    </ul>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>Listen needs the dongle to itself.</strong> Exactly like the
+      <a href="tuning-bench.html">tuning bench</a> and <a href="adsb.html">ADS-B</a>, stop
+      the <a href="aprs-feed.html">APRS SDR feed</a> first. Recordings are safety-capped at
+      <strong>20&nbsp;minutes</strong> and written to
+      <code>configuration/sat-recordings/</code> (per-machine, gitignored).</p></div>
+    </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>Roster loads but every row says <code>Lat &ndash; Lon &ndash;</code> / no pass times</td>
+            <td>No station position. Set your lat/lon (the <a href="gps-card.html">GPS card</a> or <code>configuration/station.json</code>); look-angles can&rsquo;t be computed without it.</td></tr>
+        <tr><td>TLE age pill is red / high</td>
+            <td>Elements are stale and predictions drift. Press <strong>refresh</strong> (or hit <code>POST /api/satellites/refresh</code>) while online; TLEs auto-sync ~every 3 days via the offline manifest.</td></tr>
+        <tr><td>Roster is empty</td>
+            <td><code>configuration/satellites.json</code> is missing. Rebuild it: <code>python3 services/satellites/build-roster.py</code> (uses vendored SatNOGS/CelesTrak data offline).</td></tr>
+        <tr><td>Passes look right but times are hours off</td>
+            <td>Clock skew. Satellite math is time-critical &mdash; set up <a href="gps-time.html">GPS time sync</a> so the Pi&rsquo;s clock is disciplined without internet NTP.</td></tr>
+        <tr><td><code>skyfield</code> / <code>numpy</code> import error in the log</td>
+            <td>The prediction wheels weren&rsquo;t installed. They ship in the bundle but must be in the manifest&rsquo;s pip groups &mdash; reinstall the satellites feature from <a href="setup-menu.html">the setup menu</a>.</td></tr>
+        <tr><td>REC does nothing / &ldquo;dongle busy&rdquo;</td>
+            <td>Another consumer holds the RTL-SDR. Stop <code>aprs-sdr-feed.service</code> and any ADS-B, then try again. Listening needs a Pi&nbsp;4&nbsp;/&nbsp;4&nbsp;GB or better.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <nav class="page-nav">
+      <a href="adsb.html"><span class="lbl">Previous</span><span class="t">ADS-B Aircraft</span></a>
+      <a href="winlink.html" class="next"><span class="lbl">Next</span><span class="t">Winlink (Pat)</span></a>
+    </nav>
+    <div class="foot">OASIS &middot; off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook.js"></script>
+</body>
+</html>

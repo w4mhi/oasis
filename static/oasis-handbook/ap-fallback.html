@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -100,6 +105,17 @@ python3 scripts/enable-ap-fallback.py --disable   # undo</code></pre>
       <span class="ic">&#8505;</span>
       <div><p>If the <code>OASIS</code> network doesn&rsquo;t broadcast, the usual causes are a soft-blocked radio or an unset Wi-Fi country (<code>country 00</code> suppresses 2.4&nbsp;GHz beaconing). Pass <code>--country US</code> to the enable script, or set it live with <code>sudo iw reg set US</code>.</p></div>
     </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>The <code>OASIS</code> hotspot never appears</td><td>A soft-blocked radio or unset Wi-Fi country (<code>country 00</code> suppresses 2.4&nbsp;GHz beaconing). <code>sudo rfkill unblock wifi</code>, then set the country: <code>--country US</code> on the enable script or <code>sudo iw reg set US</code>.</td></tr>
+        <tr><td>It won&rsquo;t fall back to AP when the network drops</td><td>Check the watcher: <code>systemctl status oasis-netwatch</code> and <code>journalctl -u oasis-netwatch -e</code> &mdash; it logs every decision. Fallback trips ~45&nbsp;s after the client link is lost.</td></tr>
+        <tr><td>Connected to the AP but can&rsquo;t reach <code>:8083</code></td><td>On the AP the Pi&rsquo;s address is its hotspot IP, not the old LAN IP. Browse to the gateway address the phone was handed (commonly <code>10.42.0.1</code> / the AP host).</td></tr>
+        <tr><td>It flaps between AP and a weak Wi-Fi</td><td>A marginal saved network keeps almost-joining. Forget it, or move the Pi &mdash; the watcher prefers a known network whenever one is reachable.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="panel-kiosk.html"><span class="lbl">Previous</span><span class="t">Panel &amp; Kiosk</span></a>

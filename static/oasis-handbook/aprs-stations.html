@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -127,6 +132,16 @@
       <span class="ic">&#8505;</span>
       <div><p>Three service cards go green once it&rsquo;s all running: <strong>APRS GrayWolf</strong>, <strong>APRS Stats API</strong>, and &mdash; if you feed from an SDR &mdash; <strong>APRS SDR Feed</strong>.</p></div>
     </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>The <strong>TRAFFIC LIVE</strong> table is empty</td><td>No feed, or the time filter is too tight. Confirm APRS is up and widen the <em>stations &mdash;</em> time window.</td></tr>
+        <tr><td>Ages all read the same / stop advancing</td><td>The feed stalled. Check the GrayWolf service and the APRS Stats API.</td></tr>
+        <tr><td>Clicking a call sign doesn&rsquo;t open the map</td><td>A pop-up blocker stopped the new tab, or no base map is loaded for that area.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="aprs.html"><span class="lbl">Previous</span><span class="t">APRS Live Map</span></a>

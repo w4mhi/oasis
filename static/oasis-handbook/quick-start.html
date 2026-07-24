@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -117,6 +122,16 @@ scripts/start-server.sh</code></pre>
       <span class="ic">&#8505;</span>
       <div><p>Fresh Pi? Flash the SD card, enable SSH, and install <code>git</code> first &mdash; it isn&rsquo;t pre-installed on Raspberry Pi OS Lite. Then validate everything at home <em>before</em> going to the field. See <a href="accessing-oasis.html">Accessing OASIS</a>.</p></div>
     </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>USB bundle build fails</td><td><code>create-oasis-offline.py</code> needs internet <em>once</em> and free disk. Re-run it online; check space with <code>df -h</code>.</td></tr>
+        <tr><td><code>python3: command not found</code> on the Pi</td><td>Install Python 3 (Raspberry Pi OS ships it; a minimal image may not). The setup scripts need <code>python3</code>.</td></tr>
+        <tr><td>Dashboard is down after the first reboot</td><td>The service didn&rsquo;t enable. <code>sudo systemctl enable --now start-oasis</code>, or re-run <code>setup-server.py</code>.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="index.html"><span class="lbl">Previous</span><span class="t">Introduction</span></a>

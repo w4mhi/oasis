@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kiwix Wikipedia &mdash; OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <a class="sb-brand" href="index.html">
+      <img src="img/oasis-logo.svg" alt="" />
+      <span><b>OASIS</b> handbook</span>
+    </a>
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="tuning-bench.html">RTL-SDR Tuning</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">&#8962; HOME</a>
+    </div>
+    <div class="eyebrow">Communications</div>
+    <h1>Kiwix Wikipedia</h1>
+    <p class="subtitle">Offline Wikipedia and reference ZIMs served on the LAN with kiwix-serve</p>
+    <p>
+      <strong>Kiwix</strong> serves offline snapshots of Wikipedia and other reference
+      content through a local web server on port <strong>8081</strong>. When the grid is
+      down, it turns a ZIM archive on the Pi into a searchable, browsable encyclopedia for
+      every device on the LAN &mdash; medicine, survival, repair, radio theory &mdash; with no
+      internet.
+    </p>
+    <div class="ph">[ screenshot &mdash; the Kiwix reader serving a Wikipedia ZIM (not enabled on the reference box) ]</div>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>Kiwix is optional and off by default. Its dashboard card shows
+      <code>NOT INSTALLED</code> or DOWN until you install it and load a ZIM &mdash; that is
+      normal, and the rest of OASIS works without it.</p></div>
+    </div>
+
+    <h2>Installing the server</h2>
+    <p>
+      The installer sets up <code>kiwix-serve</code> and its systemd unit
+      (<code>/etc/systemd/system/kiwix.service</code>). It picks its source automatically:
+      if <code>create-oasis-offline.py</code> staged the package in
+      <code>offline-packages/kiwix/</code> it installs with <strong>no network</strong>;
+      otherwise it downloads from kiwix.org.
+    </p>
+    <pre><code>python3 services/kiwix/install.py              # install latest kiwix-serve on :8081
+python3 services/kiwix/install.py --version 3.8.2
+python3 services/kiwix/install.py --zim-dir /mnt/ssd/zim   # keep ZIMs on external storage</code></pre>
+
+    <h2>Getting Wikipedia content</h2>
+    <p>
+      The ZIM archives are large and copyright-managed, so they are <strong>never in the
+      repo</strong> &mdash; you fetch them once (online) and carry them to the field. The
+      helper offers editions sized for a Pi:
+    </p>
+    <pre><code>python3 services/kiwix/download-wikipedia.py                    # interactive picker
+python3 services/kiwix/download-wikipedia.py --edition top-mini    # ~316 MB, 50K best articles (default)
+python3 services/kiwix/download-wikipedia.py --edition simple-mini # ~447 MB, Simple English</code></pre>
+    <div class="callout tip">
+      <span class="ic">&#10003;</span>
+      <div><p>ZIM files are just data &mdash; drop any <code>.zim</code> (Wikipedia, Wiktionary,
+      medical references, project docs) into the ZIM directory and restart the service to
+      serve it. External SSD storage plus <code>--zim-dir</code> keeps the SD card small.</p></div>
+    </div>
+    <p>
+      Once installed, control it from the dashboard&rsquo;s <strong>Kiwix</strong> card
+      (<a href="service-controls.html">service controls</a> give it START / STOP), or open it
+      directly at <code>http://&lt;host-ip&gt;:8081</code>.
+    </p>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>Card shows <code>NOT INSTALLED</code></td>
+            <td>Run <code>python3 services/kiwix/install.py</code> (or pick Kiwix in <a href="setup-menu.html">the setup menu</a>), then reload the dashboard.</td></tr>
+        <tr><td>Installed but the card is DOWN / <code>:8081</code> refuses</td>
+            <td>The service isn&rsquo;t running: <code>sudo systemctl start kiwix</code>. Check <code>journalctl -u kiwix -e</code> &mdash; the usual cause is no ZIM in the library.</td></tr>
+        <tr><td>Server is up but shows an empty library</td>
+            <td>No ZIM loaded. Fetch one with <code>download-wikipedia.py</code> (or copy a <code>.zim</code> into the ZIM directory) and restart the service.</td></tr>
+        <tr><td>Ran out of disk pulling a ZIM</td>
+            <td>Editions range from a few hundred&nbsp;MB to many&nbsp;GB. Use a smaller edition (<code>top-mini</code>) or point <code>--zim-dir</code> at an external SSD.</td></tr>
+        <tr><td>Search finds nothing inside a ZIM</td>
+            <td>The archive&rsquo;s full-text index may be missing. Re-download the ZIM (the indexed editions from the picker include search).</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <nav class="page-nav">
+      <a href="openwebrx.html"><span class="lbl">Previous</span><span class="t">OpenWebRX</span></a>
+      <a href="fcc-lookup.html" class="next"><span class="lbl">Next</span><span class="t">FCC Lookup</span></a>
+    </nav>
+    <div class="foot">OASIS &middot; off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook.js"></script>
+</body>
+</html>

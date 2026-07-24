@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -97,9 +102,18 @@
       <div><p>APRS messaging is unencrypted and shares the local frequency &mdash; keep traffic short and remember everyone in range can hear it. It is coordination, not a private channel.</p></div>
     </div>
 
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>A message never arrives</td><td>APRS messaging is best-effort and path-dependent. Confirm both stations are on the feed and a digipeater/iGate bridges them.</td></tr>
+        <tr><td>A tactical invite isn&rsquo;t received</td><td>The other station must be heard on the same feed; check it appears in the live table first.</td></tr>
+      </tbody>
+    </table></div></div>
+
     <nav class="page-nav">
       <a href="graywolf-config.html"><span class="lbl">Previous</span><span class="t">GrayWolf Config</span></a>
-      <a href="winlink.html" class="next"><span class="lbl">Next</span><span class="t">Winlink (Pat)</span></a>
+      <a href="adsb.html" class="next"><span class="lbl">Next</span><span class="t">ADS-B Aircraft</span></a>
     </nav>
     <div class="foot">OASIS · off-grid amateur station information suite</div>
   </main>

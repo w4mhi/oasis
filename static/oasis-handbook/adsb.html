@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ADS-B Aircraft &mdash; OASIS Handbook</title>
+  <link rel="stylesheet" href="handbook.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <a class="sb-brand" href="index.html">
+      <img src="img/oasis-logo.svg" alt="" />
+      <span><b>OASIS</b> handbook</span>
+    </a>
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="tuning-bench.html">RTL-SDR Tuning</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="health-check.html">Health Check</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">&#8962; HOME</a>
+    </div>
+    <div class="eyebrow">Tracking</div>
+    <h1>ADS-B Aircraft</h1>
+    <p class="subtitle">Hear and map nearby aircraft on 1090&nbsp;MHz with a cheap RTL-SDR &mdash; offline</p>
+    <figure class="hero">
+      <img src="img/adsb-map.png" alt="The live map with the ADS-B layer on: aircraft icons coloured by altitude over the base map, and the ADS-B aircraft and alert panels on the right" />
+      <figcaption>The live map with ADS-B on &mdash; aircraft coloured by altitude, with the live aircraft list and proximity alerts on the right, sharing the map with APRS</figcaption>
+    </figure>
+    <p>
+      <strong>ADS-B</strong> puts nearby aircraft on the same <a href="aprs.html">live
+      map</a> as APRS. A cheap RTL-SDR dongle tuned to <strong>1090&nbsp;MHz</strong> hears
+      the Mode&nbsp;S / ADS-B broadcasts that airliners and most GA aircraft send
+      continuously &mdash; position, altitude, speed, and callsign &mdash; and OASIS decodes,
+      records, and plots them with no internet and no subscription.
+    </p>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>ADS-B holds the RTL-SDR exclusively.</strong> Only one consumer can
+      own a dongle at a time, so ADS-B is <em>mutually exclusive</em> with the
+      <a href="aprs-feed.html">APRS SDR feed</a>, <a href="satellites.html">satellite
+      listen</a>, and <a href="openwebrx.html">OpenWebRX</a> on the same dongle. It ships
+      <strong>off by default</strong> and is started on demand from the dashboard card;
+      starting it stops the APRS SDR feed (and vice-versa). A second dongle lets you run
+      both at once.</p></div>
+    </div>
+
+    <h2>Turning it on</h2>
+    <p>
+      ADS-B installs two systemd units, both <strong>disabled</strong> until you ask for
+      them from the dashboard&rsquo;s <strong>ADS-B</strong> card (which needs
+      <a href="service-controls.html">service controls</a> enabled). Pressing
+      <strong>START</strong> enables and starts both; <strong>STOP</strong> disables and
+      stops them, releasing the dongle.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Unit</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>dump1090-fa</code></td><td>The Mode&nbsp;S / ADS-B decoder (installed via <code>apt</code>). Owns the RTL-SDR and writes live positions to <code>aircraft.json</code>.</td></tr>
+        <tr><td><code>adsb-api</code></td><td>OASIS&rsquo;s own recorder + history API on <strong>:8086</strong>. Polls <code>aircraft.json</code>, records observations to a local SQLite database, evaluates alerts against your station location, and serves it all to the map.</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      Install happens through <a href="setup-menu.html">the setup menu</a> or directly:
+    </p>
+    <pre><code>python3 services/adsb/install.py           # installs dump1090-fa + the adsb-api unit
+python3 services/adsb/install.py --serve   # run the recorder/API in the foreground (dev)</code></pre>
+
+    <h2>Reading the map</h2>
+    <p>
+      With ADS-B running, the map&rsquo;s right rail gains two panels. The behaviour mirrors
+      the APRS layer so there is nothing new to learn:
+    </p>
+    <ul>
+      <li><strong>ADS-B <em>N</em> aircraft</strong> &mdash; the live list, each row an ICAO
+        hex or flight number with its current altitude. Altitude is <strong>colour-coded</strong>
+        (low to high) and the same colour tints the aircraft icon on the map, so a glance
+        shows who is on approach versus overflying at cruise.</li>
+      <li><strong>ADS-B Alerts</strong> &mdash; aircraft that tripped a
+        <strong>proximity</strong> (within <code>ADSB_ALERT_RADIUS_KM</code>, default
+        50&nbsp;km) or <strong>altitude</strong> rule, with bearing and distance from your
+        station. The alert list is a recent-events ring buffer.</li>
+    </ul>
+    <p>
+      Where a flight number resolves to an operator, OASIS tags it from an offline airline
+      table (<code>common/js/adsb-operators.js</code>, built by
+      <code>scripts/build-adsb-operators.py</code>) &mdash; no lookup call leaves the box.
+    </p>
+
+    <h2>The history API</h2>
+    <p>
+      The <code>adsb-api</code> daemon on <strong>:8086</strong> is what the map talks to,
+      and you can query it directly &mdash; handy for debugging or scripting:
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Endpoint</th><th>Returns</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /health</code></td><td>Poller liveness &mdash; the age of the last <code>aircraft.json</code> read. Stale age means dump1090-fa stopped feeding.</td></tr>
+        <tr><td><code>GET /aircraft</code></td><td>The current live snapshot (what the map plots).</td></tr>
+        <tr><td><code>GET /history?since=&lt;ts&gt;&amp;icao=&lt;hex&gt;</code></td><td>Recorded observations from the SQLite history database.</td></tr>
+        <tr><td><code>GET /alerts</code></td><td>Recent proximity / altitude alert events.</td></tr>
+      </tbody>
+    </table></div></div>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>The recorder is a <strong>separate daemon</strong> from the Flask app. If you
+      change ADS-B recorder code, restart it with <code>sudo systemctl restart
+      adsb-api</code> &mdash; restarting the OASIS web server alone will not pick it up.</p></div>
+    </div>
+
+    <h2>Configuration &amp; off-Pi testing</h2>
+    <p>
+      Environment variables override the defaults, which also lets you run
+      <code>adsb.serve()</code> on a laptop with no dump1090-fa by pointing it at a saved
+      JSON file and a writable database path:
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>ADSB_JSON_PATH</code></td><td><code>/run/dump1090-fa/aircraft.json</code></td><td>The live aircraft JSON to poll</td></tr>
+        <tr><td><code>ADSB_DB_PATH</code></td><td><code>/var/lib/adsb/adsb-history.db</code></td><td>SQLite history database</td></tr>
+        <tr><td><code>ADSB_API_PORT</code></td><td><code>8086</code></td><td>HTTP API port</td></tr>
+        <tr><td><code>ADSB_ALERT_RADIUS_KM</code></td><td><code>50</code></td><td>Proximity-alert radius around the station</td></tr>
+        <tr><td><code>ADSB_POLL_SECS</code></td><td><code>1.0</code></td><td>Poll interval for <code>aircraft.json</code></td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>Dashboard card is grey / <code>NOT INSTALLED</code></td>
+            <td>ADS-B isn&rsquo;t installed. Run <code>python3 services/adsb/install.py</code> (or pick it in <a href="setup-menu.html">the setup menu</a>), then reload the dashboard.</td></tr>
+        <tr><td>START fails, or the APRS feed died when you started ADS-B</td>
+            <td>Expected on a single dongle &mdash; they share it. Stop the <a href="aprs-feed.html">APRS SDR feed</a> first, or fit a second RTL-SDR. Check <code>journalctl -u dump1090-fa -e</code> for <code>usb_claim_interface error -6</code> (dongle busy).</td></tr>
+        <tr><td>Card is UP but <strong>0 aircraft</strong></td>
+            <td>Decoder running, nothing heard. 1090&nbsp;MHz is line-of-sight &mdash; you need a clear-sky antenna. Confirm decodes at the source: <code>journalctl -u dump1090-fa -f</code>. A basic dongle whip indoors hears little.</td></tr>
+        <tr><td>Map plots nothing but the list has aircraft</td>
+            <td>The map needs your <a href="gps-card.html">station position</a> and a <a href="maps.html">base map</a> for the area. Aircraft without a position fix (message-only) never plot.</td></tr>
+        <tr><td><code>/health</code> shows a growing <em>age</em></td>
+            <td><code>dump1090-fa</code> stopped writing <code>aircraft.json</code>. Restart it: <code>sudo systemctl restart dump1090-fa</code>. If <code>adsb-api</code> code changed, also <code>sudo systemctl restart adsb-api</code>.</td></tr>
+        <tr><td>No alerts ever fire</td>
+            <td>Alerts are relative to your station. Set position on the <a href="gps-card.html">GPS card</a>, and widen the radius with <code>ADSB_ALERT_RADIUS_KM</code> if traffic is sparse.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <nav class="page-nav">
+      <a href="aprs-messaging.html"><span class="lbl">Previous</span><span class="t">APRS Messaging</span></a>
+      <a href="satellites.html" class="next"><span class="lbl">Next</span><span class="t">Satellites</span></a>
+    </nav>
+    <div class="foot">OASIS &middot; off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook.js"></script>
+</body>
+</html>

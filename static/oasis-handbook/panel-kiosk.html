@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -87,16 +92,21 @@
       window to 800&times;480.
     </p>
     <figure class="figure">
-      <img src="img/small-screen.png" alt="The small-screen dashboard — condensed status for a 7-inch panel" />
-      <figcaption>The small-screen dashboard — condensed status for a 7-inch panel</figcaption>
+      <img src="img/small-screen.png" alt="The small-screen dashboard: UTC/local clocks, callsign, GPS, the services with their RTL-SDR assignments, system stats, a live traffic list, satellites, and a fire count" />
+      <figcaption>The small-screen dashboard &mdash; clocks, GPS, live services with their RTL-SDR device assignments, system stats, and a filterable APRS / ADS-B traffic list, all on one panel</figcaption>
     </figure>
+    <p>
+      The main screen packs the whole station onto one panel: dual clocks, call sign and
+      grid, GPS state, a <strong>SERVICES</strong> block that shows which RTL-SDR each radio
+      service holds (APRS, ADS-B, satellites), the system stats, a live traffic list with
+      <strong>RF / IS / APRS / ADS-B</strong> filter chips, an upcoming-<a href="satellites.html">satellite</a>
+      panel, and a fire-alert count. Tapping <strong>OPS</strong> opens a full-screen
+      launcher for every tool &mdash; map, FCC lookup, calculators, ICS forms, and
+      <a href="winlink.html">Winlink</a>.
+    </p>
     <figure class="figure">
-      <img src="img/small-screen-services.png" alt="Small-screen — services view" />
-      <figcaption>Small-screen — services view</figcaption>
-    </figure>
-    <figure class="figure">
-      <img src="img/small-screen-ops.png" alt="Small-screen — operations view" />
-      <figcaption>Small-screen — operations view</figcaption>
+      <img src="img/small-screen-ops.png" alt="Small-screen OPS launcher: large tap targets for the map, FCC lookup, satellites, SSH, calculators, ICS forms, and Winlink" />
+      <figcaption>The OPS launcher &mdash; large tap targets for every tool, reachable in one touch from the main screen</figcaption>
     </figure>
     <h2>CM4Stack panel</h2>
     <p>
@@ -112,6 +122,16 @@ python3 displays/cm4stack/install-cm4stack.py --dry-run    # preview config.txt 
       <code>oasis-panel.service</code>. Exit codes: <code>0</code> done &middot; <code>10</code>
       reboot required &middot; <code>1</code> error.
     </p>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>The kiosk pins a CPU core / runs hot</td><td>Usually a Chromium crash-loop (watch for <code>crashpad_handler</code>). Launch with <code>--use-gl=egl --disable-breakpad</code> &mdash; it drops a stuck Pi kiosk from ~100% of one core to ~25%.</td></tr>
+        <tr><td>Blank or wrong-size screen</td><td>Display/rotation config. Check the kiosk service and the panel&rsquo;s resolution; the 7-inch view is <code>/small-screen/index7.html</code>.</td></tr>
+        <tr><td>Touch doesn&rsquo;t register</td><td>The touchscreen overlay/driver isn&rsquo;t loaded for that panel &mdash; enable it in <code>config.txt</code> and reboot.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="audio-hardware.html"><span class="lbl">Previous</span><span class="t">Audio Hardware</span></a>

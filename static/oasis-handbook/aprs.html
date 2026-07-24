@@ -34,10 +34,15 @@
       <a href="tuning-bench.html">RTL-SDR Tuning</a>
       <a href="graywolf-config.html">GrayWolf Config</a>
       <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
       <div class="nav-group">Communications</div>
       <a href="winlink.html">Winlink (Pat)</a>
       <a href="webssh.html">Web SSH</a>
+      <a href="assistant.html">AI Assistant</a>
       <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
       <div class="nav-group">Field Tools</div>
       <a href="fcc-lookup.html">FCC Lookup</a>
       <a href="maps.html">Offline Maps</a>
@@ -102,6 +107,16 @@
       <span class="ic">&#8505;</span>
       <div><p>The map tiles are the same offline <a href="maps.html">PMTiles</a> basemap the rest of OASIS uses &mdash; not a single tile comes from the internet.</p></div>
     </div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>The map is blank (no base map)</td><td>No PMTiles cover your area, or the browser lacks WebGL. Add a region in <a href="maps.html">Offline Maps</a>; MapLibre needs WebGL enabled.</td></tr>
+        <tr><td>No stations appear</td><td>The APRS feed is down. Check the GrayWolf / <a href="aprs-feed.html">SDR feed</a> service and the dashboard APRS card.</td></tr>
+        <tr><td>Top-right stays on <code>Connecting&hellip;</code></td><td>The APRS Stats API (<code>:8085</code>) that streams the map isn&rsquo;t answering &mdash; restart it and reload.</td></tr>
+      </tbody>
+    </table></div></div>
 
     <nav class="page-nav">
       <a href="themes-units.html"><span class="lbl">Previous</span><span class="t">Themes &amp; Units</span></a>
