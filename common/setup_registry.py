@@ -353,6 +353,9 @@ def build_registry(repo_root, payload=None):
             removal_record_fn=lambda: _removal_record(repo_root, "common.webssh"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
+            # Remote shell — a lifeline for an SSH-driven uninstall, so torn down
+            # late (after everything but pi-headless).
+            teardown_priority=20,
             privileged=True,
         ),
         "service-controls": SE.FeatureSpec(
@@ -362,6 +365,9 @@ def build_registry(repo_root, payload=None):
             removal_record_fn=lambda: _removal_record(repo_root, "scripts/enable-service-controls.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
+            # Dashboard service control — kept late so the operator can still
+            # start/stop units through most of the teardown.
+            teardown_priority=10,
             privileged=True,
         ),
         "ap-fallback": SE.FeatureSpec(
@@ -525,6 +531,11 @@ def build_registry(repo_root, payload=None):
             removal_record_fn=lambda: _removal_record(repo_root, "scripts/enable-autostart-pi.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
+            # Removed LAST (highest teardown_priority) and only disables autostart
+            # — the running oasis.service stays alive until the reboot this signals
+            # — so tearing it down never kills the server driving the uninstall.
+            requires_reboot=True,
+            teardown_priority=30,
             privileged=True,
         ),
         "pi-local-monitor": SE.FeatureSpec(

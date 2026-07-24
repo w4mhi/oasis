@@ -59,6 +59,15 @@ class FeatureSpec:
     # worker instead. install_fn is still the single source of truth for WHAT the
     # step does; only WHO calls it changes.
     privileged: bool = False
+    # Teardown ordering knob for uninstall. Higher = removed LATER. Default 0.
+    # "Lifeline" features that keep the operator's session usable during a mass
+    # uninstall get a positive value so they are torn down after everything else:
+    # service-controls, webssh (remote shell), and pi-headless (the oasis.service
+    # autostart / running server) — the last thing standing before a reboot.
+    # Safe only for features with no *removable* dependencies (these depend on
+    # server, which is non-removable), so pushing them last never orphans a
+    # dependant. resolve_uninstall applies this as a stable sort.
+    teardown_priority: int = 0
 
 
 @dataclass
@@ -180,6 +189,13 @@ class UninstallPlan:
     blocked: List[Dict[str, str]] = field(default_factory=list)
 
 
+def _is_removable(spec):
+    """A feature is removable if it carries a removal record or a remove hook.
+    Non-removable specs (server, wikipedia) are excluded from teardown by
+    design — their removal_record_fn/remove_fn are both None."""
+    return spec.removal_record_fn is not None or spec.remove_fn is not None
+
+
 def resolve_uninstall(selected, installed, registry):
     """Plan the removal of *selected* features.
 
@@ -200,7 +216,14 @@ def resolve_uninstall(selected, installed, registry):
             if other in sel_set:
                 continue
             spec = registry.get(other)
-            if spec and key in spec.dependencies:
+            # Only a *removable* dependant blocks: telling the operator to
+            # "uninstall <other> first" is only actionable if <other> can be
+            # uninstalled. A non-removable dependant (removal_record_fn/remove_fn
+            # both None — i.e. wikipedia, whose ZIM is kept data, not a service)
+            # can never be removed, so it must not permanently wedge removal of
+            # its dependency (kiwix). Removing kiwix just leaves the ZIM as inert
+            # data on disk, which is exactly the intended behavior.
+            if spec and key in spec.dependencies and _is_removable(spec):
                 blocked.append({
                     "feature": key,
                     "reason_code": "DEPENDANT_INSTALLED",
@@ -229,6 +252,15 @@ def resolve_uninstall(selected, installed, registry):
     for k in removable:
         visit(k)
     ordered = list(reversed(order))
+    # Stable sort by teardown_priority: 0-priority features keep their
+    # reverse-dependency order and come first; lifeline features (positive
+    # priority) move to the end, ascending, so the session-critical ones are
+    # removed last (pi-headless dead last). Stable + these features having no
+    # removable dependencies means dependency ordering is preserved.
+    def _prio(k):
+        spec = registry.get(k)
+        return spec.teardown_priority if spec else 0
+    ordered.sort(key=_prio)
     return UninstallPlan(selected=sel, ordered=ordered, blocked=blocked)
 
 

@@ -375,8 +375,12 @@ def cmd_disable(home):
         check=False, capture_output=True, text=True,
     ).stdout.strip()
     if active != "inactive":
-        _run(["sudo", "systemctl", "disable", "--now", SERVICE], check=False)
-        _ok(f"systemctl disable --now {SERVICE}")
+        # Disable autostart WITHOUT --now: stopping oasis.service here would kill
+        # the very server driving a web/SSH uninstall (blanking the kiosk and
+        # aborting the rest of the teardown). The running instance stays up until
+        # the reboot this teardown asks for; after that it won't come back.
+        _run(["sudo", "systemctl", "disable", SERVICE], check=False)
+        _ok(f"systemctl disable {SERVICE}  (stays running until reboot)")
     if os.path.exists(SERVICE_FILE):
         _run(["sudo", "rm", SERVICE_FILE])
         _ok(f"Removed {SERVICE_FILE}")
