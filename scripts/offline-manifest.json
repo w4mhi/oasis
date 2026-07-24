@@ -503,11 +503,19 @@
     "ai-llama": {
       "type": "github-release",
       "repo": "ggml-org/llama.cpp",
-      "arches": ["arm64"],
+      "arches": [
+        "arm64"
+      ],
       "asset_pattern": "llama-{version}-bin-ubuntu-arm64.tar.gz",
       "description": "llama.cpp llama-server (prebuilt Ubuntu arm64). The OpenAI-compatible local-model endpoint for the AI assistant, run as the oasis-ai systemd daemon. Ubuntu-built — confirmed on Pi OS (Debian) arm64 during Pi verification.",
       "version": "b10098",
-      "resolved": {"_": {"arm64": {"llama": "b10098"}}}
+      "resolved": {
+        "_": {
+          "arm64": {
+            "llama": "b10098"
+          }
+        }
+      }
     },
     "ai-model": {
       "type": "url",
