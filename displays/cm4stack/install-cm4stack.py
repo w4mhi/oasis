@@ -76,6 +76,14 @@ PYTHON_DEPS = ["python3-pil", "python3-numpy"]
 SERVICE_NAME = "oasis-panel"
 SERVICE_FILE = f"/etc/systemd/system/{SERVICE_NAME}.service"
 
+
+def removal_record(repo_root=None):
+    """Teardown record for the cm4stack feature: the oasis-panel service and the
+    CM4Stack config.txt block. Reboot to drop the display/overlay settings."""
+    return {"services": [SERVICE_NAME],
+            "config_blocks": [[BLOCK_BEGIN, BLOCK_END]],
+            "requires_reboot": True}
+
 # oasis-panel.py lives in the repo's displays/cm4stack/ dir (sibling of this installer)
 REPO_ROOT  = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PANEL_SCRIPT = os.path.join(REPO_ROOT, "displays", "cm4stack", "oasis-panel.py")

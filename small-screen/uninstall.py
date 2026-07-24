@@ -58,6 +58,14 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DRY = False
 
 
+def removal_record(repo_root):
+    """Teardown record for the pi-small-screen-7 kiosk feature: run this very
+    script (its default keeps oasis.service — only the 7" kiosk browser is
+    removed). Reboot to confirm the Pi no longer opens the 7" layout."""
+    return {"script": [os.path.join(repo_root, "small-screen", "uninstall.py")],
+            "requires_reboot": True}
+
+
 def _sh(cmd):
     """Run a command (skipped under --dry-run). Returns the exit code (0 on dry-run)."""
     _info("$ " + " ".join(cmd))

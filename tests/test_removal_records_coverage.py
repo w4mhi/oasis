@@ -34,6 +34,12 @@ SERVICES_GROUP = {
     "webssh", "service-controls", "ap-fallback", "rgb-cooling-hat",
 }
 
+# The hardware/config group delivered in Task 5.
+HARDWARE_GROUP = {
+    "rtc", "dra-pi-rx-led", "cm4stack", "gps", "gps-l76x",
+    "pi-headless", "pi-local-monitor", "pi-small-screen-7",
+}
+
 
 class RemovalRecordCoverageTest(unittest.TestCase):
     def setUp(self):
@@ -54,6 +60,25 @@ class RemovalRecordCoverageTest(unittest.TestCase):
             rec = self.reg[key].removal_record_fn()
             self.assertTrue(rec.get("services") or rec.get("files"),
                             f"{key} names no service unit or file")
+
+    def test_hardware_group_has_removal_records(self):
+        for key in HARDWARE_GROUP:
+            spec = self.reg.get(key)
+            self.assertIsNotNone(spec, f"{key} missing from registry")
+            self.assertIsNotNone(spec.removal_record_fn, f"{key} has no removal_record_fn")
+            rec = spec.removal_record_fn()
+            self.assertTrue(rec, f"{key} removal record is empty")
+
+    def test_config_features_flag_reboot(self):
+        # config.txt-touching removals must require a reboot to take effect.
+        for key in ("rtc", "dra-pi-rx-led", "cm4stack", "gps-l76x"):
+            rec = self.reg[key].removal_record_fn()
+            self.assertTrue(rec.get("requires_reboot"), f"{key} should require reboot")
+
+    def test_kiosk_features_use_script_hook(self):
+        for key in ("pi-headless", "pi-local-monitor", "pi-small-screen-7"):
+            rec = self.reg[key].removal_record_fn()
+            self.assertTrue(rec.get("script"), f"{key} should use a teardown script")
 
     def test_satellites_is_data_style_advisory(self):
         rec = self.reg["satellites"].removal_record_fn()

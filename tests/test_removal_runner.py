@@ -61,12 +61,24 @@ class RemovalRunnerTest(unittest.TestCase):
                              "requires_reboot": True}, apply=False)
         self.assertTrue(out["requires_reboot"])
 
-    def test_script_hook_runs_teardown_script(self):
+    def test_script_hook_runs_teardown_argv(self):
         fr = FakeRun()
-        out = removal.apply({"script": "small-screen/uninstall.py"}, apply=True, run=fr)
+        out = removal.apply({"script": ["/repo/scripts/enable-autostart-pi.py", "--disable"]},
+                            apply=True, run=fr)
+        flat = [" ".join(c) for c in fr.calls]
+        self.assertTrue(any("enable-autostart-pi.py --disable" in c for c in flat))
+        self.assertFalse(any("--apply" in c for c in flat))  # no forced --apply
+        self.assertTrue(any("enable-autostart-pi.py" in c for c in out["changes"]))
+
+    def test_script_hook_accepts_bare_string(self):
+        fr = FakeRun()
+        removal.apply({"script": "/repo/small-screen/uninstall.py"}, apply=True, run=fr)
         flat = [" ".join(c) for c in fr.calls]
         self.assertTrue(any("small-screen/uninstall.py" in c for c in flat))
-        self.assertTrue(any("small-screen/uninstall.py" in c for c in out["changes"]))
+
+    def test_notes_surface_as_advisory(self):
+        out = removal.apply({"notes": ["gpsd/chrony reconfig left in place"]}, apply=False)
+        self.assertIn("gpsd/chrony reconfig left in place", out["advisory"])
 
     def test_empty_record_is_ok_noop(self):
         fr = FakeRun()

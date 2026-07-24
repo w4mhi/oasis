@@ -13,8 +13,10 @@ Record schema (all keys optional):
       "config_blocks": [[begin, end]],  # marker pairs to strip from config.txt
       "config_lines": [str],   # standalone lines to strip from config.txt
       "restore": [[src, dst]], # sudo cp src dst (e.g. hwclock-set backup)
-      "script": str,           # repo-relative teardown script run instead of the above
+      "script": [str],         # argv (abs path + flags) for a bespoke teardown script,
+                               #   run instead of the declarative fields above
       "data_paths": [str],     # ADVISORY ONLY — never deleted (offline data is precious)
+      "notes": [str],          # free-text advisories for shared config left in place
       "requires_reboot": bool
     }
 
@@ -36,12 +38,19 @@ def apply(record, apply=False, run=_default_run):
     reboot = bool(record.get("requires_reboot"))
 
     # A bespoke teardown script owns the whole removal for complex features
-    # (e.g. the 7" kiosk). It supersedes the declarative fields.
+    # (e.g. the 7" kiosk, the boot-autostart family). It supersedes the
+    # declarative fields. `script` is an argv list (path + its own flags, e.g.
+    # ["/abs/enable-autostart-pi.py", "--disable"]); a bare string is one arg.
+    # Paths are absolute (removal_record() builds them from repo_root), so the
+    # runner does not depend on the caller's cwd.
     script = record.get("script")
     if script:
-        changes.append(f"run teardown script {script}")
+        argv = list(script) if isinstance(script, (list, tuple)) else [script]
+        changes.append("run teardown script: " + " ".join(argv))
         if apply:
-            run(["python3", script, "--apply"], check=False)
+            run(["python3", *argv], check=False)
+        for note in record.get("notes", []):
+            advisory.append(note)
         return {"ok": True, "changes": changes, "advisory": advisory, "requires_reboot": reboot}
 
     for svc in record.get("services", []):
@@ -81,5 +90,10 @@ def apply(record, apply=False, run=_default_run):
 
     for p in record.get("data_paths", []):
         advisory.append(f"left in place (delete manually to reclaim space): {p}")
+
+    # Free-text advisories: shared system config an installer changed but that is
+    # not safe to auto-undo (e.g. gpsd/chrony reconfig, serial-console changes).
+    for note in record.get("notes", []):
+        advisory.append(note)
 
     return {"ok": True, "changes": changes, "advisory": advisory, "requires_reboot": reboot}

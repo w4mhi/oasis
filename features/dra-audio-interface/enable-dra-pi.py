@@ -48,6 +48,15 @@ REBOOT_EXIT = 10
 
 BLOCK_BEGIN = "# --- OASIS DRA-Pi-Zero (managed by scripts/enable-dra-pi.py) ---"
 BLOCK_END   = "# --- end OASIS DRA-Pi-Zero ---"
+
+
+def removal_record(repo_root=None):
+    """Teardown record for the dra-pi-rx-led chain feature: strip the DRA-Pi
+    config.txt block and remove the dra-rx-led service (installed by the chain's
+    enable-dra-rx-led.py). Reboot to drop the sound-card overlay."""
+    return {"config_blocks": [[BLOCK_BEGIN, BLOCK_END]],
+            "services": ["dra-rx-led"],
+            "requires_reboot": True}
 BLOCK_LINES = [
     "dtparam=i2c_arm=on",                    # WM8731 control interface (I2C)
     "dtparam=audio=off",                     # free the I2S bus from PWM/HDMI audio

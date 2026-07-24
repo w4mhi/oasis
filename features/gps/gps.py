@@ -51,6 +51,15 @@ ASSISTNOW_URL_DEFAULT    = "https://offline-live1.services.u-blox.com/GetOffline
 ASSISTNOW_PARAMS_DEFAULT = "gnss=gps,glo,gal;period=5;resolution=1"
 
 
+def removal_record(repo_root=None):
+    """Teardown record for the gps (USB) feature. It only reconfigures the SHARED
+    gpsd/chrony services (no OASIS-owned units/files/config to delete), so removal
+    just deregisters the feature and advises: the reconfig is left in place because
+    auto-undoing shared system time config is unsafe."""
+    return {"notes": ["gpsd/chrony were reconfigured for GPS time; left in place "
+                      "(shared system services — no safe automatic undo)."]}
+
+
 def check_platform():
     if sys.platform != "linux":
         _fail("GPS time setup uses gpsd + chrony on Linux only.")

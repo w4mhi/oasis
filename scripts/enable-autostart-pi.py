@@ -57,6 +57,14 @@ from common.oasis_lib import (
 
 SERVICE      = "oasis"
 SERVICE_FILE = f"/etc/systemd/system/{SERVICE}.service"
+
+
+def removal_record(repo_root):
+    """Teardown record for the pi-headless / pi-local-monitor autostart features.
+    Reuses this script's own --disable path (removes oasis.service + any browser
+    autostart entries). Only affects the next boot, not the running server."""
+    import os as _os
+    return {"script": [_os.path.join(repo_root, "scripts", "enable-autostart-pi.py"), "--disable"]}
 BROWSER_BIN  = "/usr/local/bin/oasis-browser-launch"
 REPO_ROOT    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 START_SH     = os.path.join(REPO_ROOT, "scripts", "start-server.sh")
