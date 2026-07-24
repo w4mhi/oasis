@@ -1534,10 +1534,10 @@ directly, or from the USB bundle. State is saved to `localStorage` per browser.
 
 | Tool | Path | What it does |
 |---|---|---|
-| **Antenna Calculator** | `static/antenna-calc.html` | Dipole / vertical / loop lengths and feedline cuts from a target frequency |
-| **Power & Battery Budget** | `static/power-calc.html` | Estimates runtime from battery capacity and a per-device load list; exports a printable report |
+| **Antenna Calculator** | `tools/antenna-calc.html` | Dipole / vertical / loop lengths and feedline cuts from a target frequency |
+| **Power & Battery Budget** | `tools/power-calc.html` | Estimates runtime from battery capacity and a per-device load list; exports a printable report |
 | **Grid / Distance / Bearing** | `tools/grid-calc.html` | Maidenhead grid ↔ lat/lon, plus great-circle distance and heading between two points |
-| **Gray Line** | `static/grayline.html` | Gray-line terminator for HF DX timing |
+| **Gray Line** | `tools/grayline.html` | Gray-line terminator for HF DX timing |
 | **Solar / Propagation** | `static/solar.html` | Band-condition summary and solar indices reference |
 | **Net Check-in Log** | `tools/net-log.html` | Logs check-ins during a net (callsign, name, location, traffic) and exports CSV |
 
@@ -1554,7 +1554,7 @@ from the bundle. Nothing here needs the network.
 
 | Section | Path | Contents |
 |---|---|---|
-| **U.S. band plan** | `static/band-plan/index.html` | Per-band privilege/segment charts, HF → 23 cm, plus an all-bands view |
+| **U.S. band plan** | `tools/band-plan/index.html` | Per-band privilege/segment charts, HF → 23 cm, plus an all-bands view |
 | **Quick reference** | `static/quick-ref/index.html` | Q-codes, NATO phonetics, procedure words (incl. ICS plain-language table), RST, ITU prefixes |
 | **Radio cheat-sheets** | `static/cheatsheets/index.html` | Per-radio quick cards (Kenwood, Yaesu, Icom, BTECH, …) and APRS bot guides |
 | **Radio cards** | `static/radio-cards/index.html` | Per-radio operation cards generated from `static/radio-cards/radio-cards.csv` |

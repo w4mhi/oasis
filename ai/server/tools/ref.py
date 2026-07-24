@@ -102,7 +102,7 @@ def build_index(suite_root=None):
         if os.path.exists(path):
             with open(path, encoding="utf-8") as fh:
                 entries.extend(parse_quickref(fh.read(), topic))
-    entries.extend(load_bandplan(os.path.join(root, "static", "band-plan", "data")))
+    entries.extend(load_bandplan(os.path.join(root, "tools", "band-plan", "data")))
     if default:
         _index_cache = entries
     return entries

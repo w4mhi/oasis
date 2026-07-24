@@ -171,6 +171,7 @@ canvas.compass{border-radius:50%;background:var(--panel-2);}
 
 </div>
 <script src="/common/js/maidenhead.js"></script>
+<script src="/common/js/solar-data.js"></script>
 <script>
 'use strict';
 
@@ -316,14 +317,13 @@ function drawCompass(canvasId, bearingDeg, label) {
   ctx.fillText(Math.round(bearingDeg) + '°', cx, cy + r - 16);
 }
 
-const SOLAR_KEY = 'solar-data';
-
 // ── Load solar data from localStorage ────────────────────────────────────────
+// Uses the shared reader (common/js/solar-data.js), which reads the current
+// 'solar-history' key that solar.html writes. (This page used to read the legacy
+// 'solar-data' key, which solar.html migrates away from and deletes — so it never
+// saw any data. Reading through OasisSolar fixes that.)
 function loadSolarData() {
-  try {
-    const s = localStorage.getItem(SOLAR_KEY);
-    return s ? JSON.parse(s) : null;
-  } catch(e) { return null; }
+  return (window.OasisSolar && OasisSolar.latestSolar()) || null;
 }
 
 // Get band condition string for a given distance from solar data
@@ -359,7 +359,7 @@ function propNote(distKm) {
   }
 
   if (!solar) {
-    return baseNote + `<br><span style="color:var(--text-dim);font-size:var(--fs-small);margin-top:.3rem;display:block">ℹ No solar data loaded — <a href="solar.html" style="color:var(--accent-dim)">open Solar page</a> to import HAMQSL data for live band conditions.</span>`;
+    return baseNote + `<br><span style="color:var(--text-dim);font-size:var(--fs-small);margin-top:.3rem;display:block">No solar data loaded — <a href="/static/solar.html" style="color:var(--accent-dim)">open Solar page</a> to import HAMQSL data for live band conditions.</span>`;
   }
 
   // Solar data available — add band condition and space weather context
@@ -375,7 +375,7 @@ function propNote(distKm) {
     solarNote += `Night <strong style="color:${nightColor}">${cond.night || '—'}</strong>`;
     solarNote += ` &nbsp;·&nbsp; SFI ${solar.solarflux} · K=${solar.kindex.trim()}`;
     if (parseInt(solar.kindex) >= 4) {
-      solarNote += ` <strong style="color:var(--red)">⚠ K≥4 — HF degradation possible</strong>`;
+      solarNote += ` <strong style="color:var(--red)">K≥4 — HF degradation possible</strong>`;
     }
     solarNote += `<br><span style="color:var(--text-dim);font-size:var(--fs-micro)">Solar data: ${solar.updated}</span>`;
     solarNote += `</span>`;

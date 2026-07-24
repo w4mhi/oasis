@@ -122,10 +122,79 @@ tr:last-child .win-time{color:var(--accent);font-weight:700;white-space:nowrap;}
 
 </div>
 <script src="/common/js/maidenhead.js"></script>
+<script src="/common/js/solar-data.js"></script>
 <script>
 'use strict';
 
 const PRESET_KEY = 'grayline-preset';
+
+// ── Solar propagation feed (reads solar.html's latest HAMQSL report) ───────────
+// Optional enhancement: if a propagation report exists (common/js/solar-data.js),
+// show current band conditions + a path band suggestion. Everything below the
+// gray-line/grid-to-grid math degrades to nothing when no report is present.
+const SOLAR_BANDS = [
+  ['80m-40m', '80m / 40m'], ['60m', '60m'], ['30m-20m', '30m / 20m'],
+  ['17m-15m', '17m / 15m'], ['12m-10m', '12m / 10m'],
+];
+function solarCondColor(v) {
+  const s = (v || '').toLowerCase();
+  if (s === 'good') return 'var(--green)';
+  if (s === 'fair') return 'var(--amber)';
+  if (s === 'poor') return 'var(--red)';
+  return 'var(--text-dim)';
+}
+function solarStaleNote(rep) {
+  if (!window.OasisSolar || !OasisSolar.isStale(rep, 24)) return '';
+  const h = Math.round(OasisSolar.ageHours(rep));
+  const age = h >= 48 ? Math.floor(h / 24) + ' days' : h + 'h';
+  return ` <span style="color:var(--amber)">(stale — ${age} old)</span>`;
+}
+function solarConditionsPanel() {
+  if (!window.OasisSolar) return '';
+  const rep = OasisSolar.latestSolar();
+  if (!rep) return '';
+  const rows = SOLAR_BANDS.map(([g, label]) => {
+    const c = OasisSolar.bandCondition(rep, g);
+    if (!c.day && !c.night) return '';
+    return `<tr><td>${label}</td>` +
+      `<td style="color:${solarCondColor(c.day)}">${c.day || '—'}</td>` +
+      `<td style="color:${solarCondColor(c.night)}">${c.night || '—'}</td></tr>`;
+  }).join('');
+  return `<div class="sec-label">Current Band Conditions${solarStaleNote(rep)}</div>` +
+    `<div class="prop-panel">` +
+    `<div style="font-size:var(--fs-label);color:var(--text-dim);margin-bottom:.5rem">` +
+    `SFI ${rep.solarflux || '—'} · K ${rep.kindex || '—'} · A ${rep.aindex || '—'}` +
+    `${rep.geomagfield ? ' · ' + rep.geomagfield : ''} · Updated: ${rep.updated || '—'}</div>` +
+    `<table style="width:100%;border-collapse:collapse;font-size:var(--fs-label)">` +
+    `<thead><tr style="color:var(--text-dim);text-align:left"><th>Band</th><th>Day</th><th>Night</th></tr></thead>` +
+    `<tbody>${rows}</tbody></table>` +
+    `<div style="font-size:var(--fs-label);color:var(--text-dim);margin-top:.5rem">` +
+    `From your latest HAMQSL report (Solar / Propagation).</div></div>`;
+}
+function pathBandSuggestion(km) {
+  if (!window.OasisSolar) return '';
+  const rep = OasisSolar.latestSolar();
+  if (!rep) return '';
+  const rank = { good: 0, fair: 1, poor: 2, '': 3 };
+  const rows = OasisSolar.bandsForDistanceKm(km).map(g => {
+    const c = OasisSolar.bandCondition(rep, g);
+    const label = (SOLAR_BANDS.find(b => b[0] === g) || [g, g])[1];
+    const dayR = rank[(c.day || '').toLowerCase()] != null ? rank[(c.day || '').toLowerCase()] : 3;
+    const nightR = rank[(c.night || '').toLowerCase()] != null ? rank[(c.night || '').toLowerCase()] : 3;
+    return { label, c, score: Math.min(dayR, nightR) };
+  }).sort((a, b) => a.score - b.score);
+  if (!rows.length) return '';
+  const items = rows.map(r =>
+    `<div class="prop-item"><div class="prop-title">${r.label}</div>` +
+    `<div class="prop-body">Day: <span style="color:${solarCondColor(r.c.day)}">${r.c.day || '—'}</span> · ` +
+    `Night: <span style="color:${solarCondColor(r.c.night)}">${r.c.night || '—'}</span></div></div>`
+  ).join('');
+  return `<div class="sec-label">Suggested Bands for this Path${solarStaleNote(rep)}</div>` +
+    `<div class="prop-panel">` +
+    `<div style="font-size:var(--fs-label);color:var(--text-dim);margin-bottom:.4rem">` +
+    `~${Math.round(km).toLocaleString()} km — candidate bands from current conditions (best first):</div>` +
+    `${items}</div>`;
+}
 
 // ── Maidenhead → lat/lon ──────────────────────────────────────────────────────
 function gridToLatLon(grid) {
@@ -471,6 +540,9 @@ function calculate() {
 
   let html = '<div class="results">';
 
+  // Current band conditions from the latest solar report (empty string if none).
+  html += solarConditionsPanel();
+
   // Stat cards
   html += '<div class="sec-label">Key Times — UTC</div><div class="stat-grid">';
   const stats = [
@@ -511,6 +583,8 @@ function calculate() {
       <div class="stat-sub">${Math.round(dxInfo.mi).toLocaleString()} mi</div>
     </div>`;
     html += '</div>';
+    // Path-specific band suggestion from current conditions (empty if no report).
+    html += pathBandSuggestion(dxInfo.km);
   }
   html += `<div class="timeline-panel">
     <div class="sec-label">24-Hour Timeline (UTC)</div>
