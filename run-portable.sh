@@ -44,10 +44,16 @@ _open_browser() {
     fi
     sleep 0.5
   done
+  # Open the explicit desktop page, never the bare "/" smart-redirect: "/"
+  # honors a stored localStorage oasis_layout=7inch (which the 7" kiosk page
+  # stamps) and would hijack portable back to index7 forever. Landing on
+  # index.html also runs its self-healing hatch, clearing a stale stamp. Mirrors
+  # scripts/enable-autostart-pi.py, which points its kiosk browser the same way.
+  local landing="$URL/index.html"
   if command -v open >/dev/null 2>&1; then
-    open "$URL" >/dev/null 2>&1               # macOS
+    open "$landing" >/dev/null 2>&1           # macOS
   elif command -v xdg-open >/dev/null 2>&1; then
-    xdg-open "$URL" >/dev/null 2>&1           # Linux desktop
+    xdg-open "$landing" >/dev/null 2>&1       # Linux desktop
   fi
 }
 _open_browser &

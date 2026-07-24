@@ -334,7 +334,11 @@ if __name__ == "__main__":
 
     print(f"\n  OASIS (dev server) — {url}\n")
     if not args.no_browser:
-        # Open the browser shortly after the server starts.
-        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+        # Open the explicit desktop page, not the bare "/" smart-redirect: "/"
+        # honors a stored localStorage oasis_layout=7inch (stamped by the 7" kiosk
+        # page) and would hijack the auto-open back to index7 forever. index.html
+        # also runs its self-healing hatch to clear a stale stamp. Matches
+        # run-portable.sh and scripts/enable-autostart-pi.py.
+        threading.Timer(1.2, lambda: webbrowser.open(url + "index.html")).start()
     # host=0.0.0.0 so other devices on the off-grid network can reach it.
     app.run(host="0.0.0.0", port=PORT, debug=False, threaded=True)

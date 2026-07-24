@@ -42,7 +42,13 @@ def load_cache(cache_dir):
         return out
     for fn in sorted(os.listdir(cache_dir)):
         if fn.endswith(".txt"):
-            with open(os.path.join(cache_dir, fn), encoding="utf-8") as fh:
+            # errors="replace": OASIS runs off a USB stick, where a copy can flip
+            # a byte in a cache file. TLE orbital lines are ASCII by spec, so a
+            # stray non-UTF-8 byte only ever lands in a satellite name — decode it
+            # loosely (one glyph becomes U+FFFD) rather than 500-ing the whole
+            # /api/satellites endpoint on the entire cache.
+            with open(os.path.join(cache_dir, fn), encoding="utf-8",
+                      errors="replace") as fh:
                 out.update(parse_tle_text(fh.read()))
     return out
 

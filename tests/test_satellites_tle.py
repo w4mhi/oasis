@@ -23,6 +23,20 @@ class TleTest(unittest.TestCase):
             sats = tle.load_cache(d)
             self.assertIn("NOAA 19", sats)
 
+    def test_load_cache_tolerates_non_utf8_byte(self):
+        # A USB copy can flip a byte in a cache file (0xb0 = latin-1 degree sign,
+        # invalid as UTF-8). load_cache must not 500 the whole endpoint over it —
+        # the corrupt entry degrades, valid ones still parse.
+        with tempfile.TemporaryDirectory() as d:
+            with open(FIXTURE, "rb") as fh:
+                raw = fh.read()
+            corrupt = raw.replace(b"NOAA 19", b"NOAA 1\xb09", 1)
+            self.assertNotEqual(corrupt, raw)      # fixture actually contains it
+            with open(os.path.join(d, "weather.txt"), "wb") as fh:
+                fh.write(corrupt)
+            sats = tle.load_cache(d)               # must not raise
+            self.assertIn("ISS (ZARYA)", sats)     # the clean entry survives
+
     def test_cache_age_none_when_empty(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertIsNone(tle.cache_age_days(d))
