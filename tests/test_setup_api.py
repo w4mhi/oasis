@@ -576,3 +576,28 @@ def test_record_adds_only_successful_installs(tmp_path):
         setup_module._setup_record_installed_features(summary)
     got = set(json.loads(manifest.read_text())["features"])
     assert got == {"kiwix"}
+
+
+class EnqueueRemoveShapeTest(unittest.TestCase):
+    # A TestCase so `unittest discover` (the CI runner) collects it. Verifies the
+    # remove variant hands the shared enqueue-and-wait helper a job body carrying
+    # action:"remove" for the right feature — without running the time/IO loop.
+    def test_remove_job_body_has_action(self):
+        captured = {}
+
+        def _fake_wait(body, key, job_id=None):
+            captured["body"] = body
+            captured["key"] = key
+            return {"ok": True}
+
+        with mock.patch.object(setup_module, "_setup_enqueue_and_wait", _fake_wait):
+            res = setup_module._setup_enqueue_and_wait_remove("kiwix", job_id=None)
+        self.assertTrue(res["ok"])
+        self.assertEqual(captured["key"], "kiwix")
+        self.assertEqual(captured["body"]["feature"], "kiwix")
+        self.assertEqual(captured["body"]["action"], "remove")
+
+    def test_remove_rejects_unremovable(self):
+        res = setup_module._setup_enqueue_and_wait_remove("server", job_id=None)
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["reason_code"], "REMOVE_FAILED")

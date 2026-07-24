@@ -327,16 +327,33 @@ def _installer_daemon_enabled():
     return sys.platform == "linux" and os.path.exists(INSTALLER_PATH_UNIT_FILE)
 
 
+# Features never removable from the web (see the design carve-outs). The worker
+# re-validates this too (defense in depth).
+_UNREMOVABLE_WEB = {"server", "wikipedia"}
+
+
 def _setup_enqueue_and_wait_install(key, spec, payload, job_id=None):
     if key not in SETUP_REGISTRY.PRIVILEGED_FEATURES:
         # Defensive: only PRIVILEGED_FEATURES should ever reach here (run_plan
         # only calls privileged_run_fn when spec.privileged is True), but never
         # hand an unvalidated/unknown key to the root worker.
         return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": f"{key} is not a privileged feature"}
+    return _setup_enqueue_and_wait({"feature": key, "payload": payload or {}}, key, job_id)
 
+
+def _setup_enqueue_and_wait_remove(key, job_id=None):
+    # Only features with a removal record (and not carved out) may be handed to the
+    # root worker for teardown — the mirror of the install allowlist.
+    spec = _setup_registry({}).get(key)
+    if key in _UNREMOVABLE_WEB or spec is None or spec.removal_record_fn is None:
+        return {"ok": False, "reason_code": "REMOVE_FAILED", "reason_text": f"{key} is not a removable feature"}
+    return _setup_enqueue_and_wait({"feature": key, "action": "remove"}, key, job_id)
+
+
+def _setup_enqueue_and_wait(job_body, key, job_id=None):
     # Fail fast instead of silently queueing a job nothing will ever pick up
     # and only finding out ~5 minutes later (the old behavior was ~15 min) —
-    # this is the single most common reason a privileged install looks
+    # this is the single most common reason a privileged job looks
     # "stuck" with no further log output.
     if not _installer_daemon_enabled():
         return {
@@ -352,10 +369,10 @@ def _setup_enqueue_and_wait_install(key, spec, payload, job_id=None):
     tmp_path = job_path + ".tmp"
     try:
         with open(tmp_path, "w", encoding="utf-8") as fh:
-            json.dump({"feature": key, "payload": payload or {}}, fh)
+            json.dump(job_body, fh)
         os.rename(tmp_path, job_path)  # atomic on the same filesystem
     except Exception as exc:
-        return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": f"could not queue install job: {exc}"}
+        return {"ok": False, "reason_code": "INSTALL_FAILED", "reason_text": f"could not queue job: {exc}"}
 
     # The worker writes its live output to <job>.log; tail it into the job's log
     # stream so the setup page's log window shows the privileged install as it runs.
