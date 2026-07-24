@@ -70,6 +70,22 @@ def _satellites_removal_record(repo_root):
     from common import config_paths as _cp
     return {"data_paths": [_cp.tle_cache_dir(repo_root)]}
 
+
+# repeaterbook and forms are record-only features (no installer module to host a
+# removal_record); their teardown is "hide the card + advise on data", defined here
+# at their definition site.
+def _repeaterbook_removal_record(repo_root):
+    """RepeaterBook ships a single copyrighted CSV under static/repeaterbook/;
+    advisory-only (never auto-deleted). Uninstalling hides the dashboard card."""
+    return {"data_paths": [os.path.join(repo_root, "static", "repeaterbook")]}
+
+
+def _forms_removal_record(repo_root):
+    """ICS forms ship with the repo (not downloaded data); uninstalling only hides
+    the dashboard card. Any saved form instances are left untouched."""
+    return {"notes": ["ICS forms ship with the repo; uninstalling hides the "
+                      "dashboard card only. Saved form instances are left untouched."]}
+
 # Shared exit-code convention used by several install scripts (e.g.
 # features/dra-audio-interface/enable-dra-pi.py, displays/cm4stack/
 # install-cm4stack.py, features/gps-L76X/
@@ -436,6 +452,7 @@ def build_registry(repo_root, payload=None):
                 # Operator-initiated start (enable --now) still survives reboots.
                 {"script": "features/rtl-sdr/enable-rtl-sdr.py", "args": ["--no-enable"]},
             ]),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/rtl-sdr/enable-rtl-sdr.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -545,6 +562,7 @@ def build_registry(repo_root, payload=None):
             # tight on a slow connection or a Pi Zero doing the index build,
             # so give it a generous 20 minutes.
             install_fn=lambda: _setup_run_script(repo_root, "services/fcc_database/install.py", timeout=1200),
+            removal_record_fn=lambda: _removal_record(repo_root, "services.fcc_database.common.fcc_database"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
         ),
@@ -568,6 +586,7 @@ def build_registry(repo_root, payload=None):
             key="repeaterbook",
             dependencies=[],
             install_fn=lambda: _setup_record_only("repeaterbook"),
+            removal_record_fn=lambda: _repeaterbook_removal_record(repo_root),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
         ),
@@ -575,6 +594,7 @@ def build_registry(repo_root, payload=None):
             key="forms",
             dependencies=[],
             install_fn=lambda: _setup_record_only("forms"),
+            removal_record_fn=lambda: _forms_removal_record(repo_root),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
         ),

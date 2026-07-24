@@ -85,6 +85,30 @@ class RemovalRecordCoverageTest(unittest.TestCase):
         self.assertTrue(rec.get("data_paths"), "satellites should advise on its TLE cache")
         self.assertFalse(rec.get("services"), "satellites has no dedicated service to stop")
 
+    def test_data_features_are_advisory_only(self):
+        # Data features remove no services/files — only advise (data_paths/notes).
+        for key in ("fcc", "repeaterbook", "forms"):
+            rec = self.reg[key].removal_record_fn()
+            self.assertTrue(rec.get("data_paths") or rec.get("notes"),
+                            f"{key} should carry an advisory")
+            self.assertFalse(rec.get("services") or rec.get("files"),
+                             f"{key} is data-only; it must not remove services/files")
+
+    def test_every_non_excluded_feature_has_a_record(self):
+        # The enforcing guard: no feature can ship without a removal record (or an
+        # explicit exclusion). This is what keeps the manifest's removal map from
+        # drifting from what the installers create.
+        missing = sorted(k for k, spec in self.reg.items()
+                         if k not in EXCLUDED and spec.removal_record_fn is None)
+        self.assertEqual(missing, [], f"features without removal_record_fn: {missing}")
+
+    def test_every_record_is_callable_and_returns_dict(self):
+        for key, spec in self.reg.items():
+            if spec.removal_record_fn is None:
+                continue
+            rec = spec.removal_record_fn()
+            self.assertIsInstance(rec, dict, f"{key} removal_record must return a dict")
+
 
 if __name__ == "__main__":
     unittest.main()
