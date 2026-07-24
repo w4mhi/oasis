@@ -126,6 +126,7 @@
     <button class="setup-btn" id="setupCheckPerm">Re-check permissions</button>
     <button class="setup-btn primary" id="setupRun">Run selected</button>
     <button class="setup-btn danger" id="setupReboot">Reboot Pi</button>
+    <button class="setup-btn danger" id="setupFactoryReset">Factory reset</button>
   </div>
   <div class="setup-reboot-note" id="setupRebootNote" style="display:none;"></div>
 
@@ -873,6 +874,40 @@ async function setupReadJson(r) {
 let setupSkipUninstallConfirm = false;   // Factory reset does its own type-to-confirm.
 function uplanList(x) { return Array.isArray(x) ? x : []; }
 
+// Uninstall EVERYTHING installed (except never-removable). Ticks all installed
+// removable features red, unticks the rest, then runs — behind a type-to-confirm.
+async function setupFactoryReset() {
+  const installed = [...document.querySelectorAll('input[data-feature]')]
+    .filter(el => el.closest('.setup-check').classList.contains('is-installed'))
+    .map(el => el.getAttribute('data-feature'))
+    .filter(key => !SETUP_NEVER_REMOVABLE.has(key));
+  if (!installed.length) { alert('Nothing installed to remove.'); return; }
+
+  const typed = prompt(
+    `Factory reset will UNINSTALL all ${installed.length} installed feature(s):\n` +
+    `${installed.join(', ')}\n\n` +
+    `Downloaded data (maps, ZIMs, FCC DB) is kept. Type REMOVE to confirm.`);
+  if (typed !== 'REMOVE') {
+    if (typed !== null) alert('Not confirmed — type REMOVE exactly. No changes made.');
+    return;
+  }
+
+  // Reflect the choice in the checkboxes (all installed-removable -> red uninstall,
+  // everything else off) so the shared run path picks them up, then run without a
+  // second confirm (the type-to-confirm above is the gate).
+  document.querySelectorAll('input[data-feature]').forEach(el => {
+    const key = el.getAttribute('data-feature');
+    el.checked = installed.includes(key);
+    el.dispatchEvent(new Event('change'));
+  });
+  setupSkipUninstallConfirm = true;
+  try {
+    await setupRunSelected();
+  } finally {
+    setupSkipUninstallConfirm = false;
+  }
+}
+
 async function setupRunSelected() {
   const log = document.getElementById('setupLog');
   const stateEl = document.getElementById('setupJobState');
@@ -1052,6 +1087,7 @@ function initSetupOrchestrator() {
   document.getElementById('setupCheckPerm').addEventListener('click', setupGetPermissions);
   document.getElementById('setupRun').addEventListener('click', setupRunSelected);
   document.getElementById('setupReboot').addEventListener('click', setupRebootPi);
+  document.getElementById('setupFactoryReset').addEventListener('click', setupFactoryReset);
   document.getElementById('setupWifiMode').addEventListener('change', setupWifiWarnRefresh);
   document.getElementById('setupWinlinkPasswordChange').addEventListener('click', setupEnableWinlinkPasswordEdit);
 
