@@ -616,3 +616,35 @@ class RecordRemovedTest(unittest.TestCase):
             setup_module._setup_record_removed_features({"kiwix"})
         self.assertEqual(installed_services.installed_features(root), {"graywolf"})
         self.assertNotIn("kiwix", installed_services.removal_map(root))
+
+
+class RunUninstallsTest(unittest.TestCase):
+    def _seed(self):
+        import tempfile
+        from common import installed_services, config_paths
+        root = tempfile.mkdtemp()
+        os.makedirs(config_paths.config_dir(root), exist_ok=True)
+        installed_services.write(root, {"kiwix"}, {"kiwix": {"services": ["kiwix"]}})
+        return root
+
+    def test_run_uninstalls_removes_on_success(self):
+        from common import installed_services
+        root = self._seed()
+        with mock.patch.object(setup_module, "SUITE_ROOT", root), \
+             mock.patch.object(setup_module, "_setup_enqueue_and_wait_remove",
+                               lambda key, job_id=None: {"ok": True, "advisory": []}), \
+             mock.patch.object(setup_module, "_setup_emit_event", lambda *a, **k: None):
+            removed = setup_module._setup_run_uninstalls("job-1", ["kiwix"])
+        self.assertEqual(removed, ["kiwix"])
+        self.assertEqual(installed_services.installed_features(root), set())
+
+    def test_run_uninstalls_keeps_feature_on_failure(self):
+        from common import installed_services
+        root = self._seed()
+        with mock.patch.object(setup_module, "SUITE_ROOT", root), \
+             mock.patch.object(setup_module, "_setup_enqueue_and_wait_remove",
+                               lambda key, job_id=None: {"ok": False, "reason_text": "boom"}), \
+             mock.patch.object(setup_module, "_setup_emit_event", lambda *a, **k: None):
+            removed = setup_module._setup_run_uninstalls("job-1", ["kiwix"])
+        self.assertEqual(removed, [])
+        self.assertEqual(installed_services.installed_features(root), {"kiwix"})

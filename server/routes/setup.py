@@ -310,6 +310,32 @@ def _setup_record_removed_features(removed_keys):
         installed_services.remove_installed(SUITE_ROOT, keys)
 
 
+def _setup_run_uninstalls(job_id, uninstall_ordered):
+    """Enqueue a remove job per feature (already in reverse-dependency order),
+    emit the same feature/stage/terminal events installs use, and subtract each
+    successfully-removed feature from the manifest. Returns the removed keys."""
+    removed = []
+    total = len(uninstall_ordered)
+    for i, key in enumerate(uninstall_ordered, start=1):
+        _setup_emit_event(job_id, {"schemaVersion": "1.0", "event": "feature_started",
+                                   "jobId": job_id, "ts": _setup_iso_now(), "feature": key,
+                                   "position": i, "total": total})
+        _setup_emit_event(job_id, {"schemaVersion": "1.0", "event": "stage_started",
+                                   "jobId": job_id, "ts": _setup_iso_now(), "feature": key,
+                                   "stage": "remove"})
+        res = _setup_enqueue_and_wait_remove(key, job_id)
+        ok = bool(res.get("ok"))
+        if ok:
+            _setup_record_removed_features({key})
+            removed.append(key)
+        _setup_emit_event(job_id, {"schemaVersion": "1.0", "event": "feature_terminal",
+                                   "jobId": job_id, "ts": _setup_iso_now(), "feature": key,
+                                   "status": "removed" if ok else "remove_failed",
+                                   "reasonCode": None if ok else res.get("reason_code", "REMOVE_FAILED"),
+                                   "reasonText": None if ok else res.get("reason_text", "remove failed")})
+    return removed
+
+
 # ── Privileged installs: hand off to the out-of-process root worker ─────────────
 # The web server never runs as root and has no TTY/cached sudo credential, so a
 # privileged FeatureSpec's install_fn is NOT called in-process here. Instead we
@@ -499,8 +525,9 @@ def _setup_emit_log_line(job_id, line):
     })
 
 
-def _setup_run_job(job_id, plan_obj, payload):
+def _setup_run_job(job_id, plan_obj, payload, uninstall_ordered=None):
     global _setup_active_job
+    uninstall_ordered = uninstall_ordered or []
     reg = _setup_registry(payload)
     run_opts = SE.RunOptions(
         sequential=True,
@@ -536,6 +563,15 @@ def _setup_run_job(job_id, plan_obj, payload):
     if not _blocked:
         try:
             _setup_record_installed_features(summary)
+        except Exception:
+            pass
+
+    # Uninstalls run after installs (reverse-dependency order already resolved),
+    # each riding the same root-worker rail and subtracting from the manifest on
+    # success. A blocked install plan skips uninstalls too.
+    if not _blocked and uninstall_ordered and not _setup_cancel_requested(job_id):
+        try:
+            _setup_run_uninstalls(job_id, uninstall_ordered)
         except Exception:
             pass
 
@@ -685,6 +721,14 @@ def api_setup_plan():
     online = bool(has_internet())
     reg = _setup_registry()
     plan = SE.resolve_plan(selected, reg)
+
+    # Uninstall side of the plan: the red-ticked installed features. Resolved in
+    # reverse-dependency order with orphan blocking (SE.resolve_uninstall).
+    uninstall_req = data.get("uninstallFeatures")
+    uninstall_req = uninstall_req if isinstance(uninstall_req, list) else []
+    installed_now = installed_services.installed_features(SUITE_ROOT)
+    uplan = SE.resolve_uninstall(uninstall_req, installed_now, reg)
+
     blockers = _setup_preflight_blockers(plan.ordered_features, data, online)
     if blockers:
         plan = SE.SetupPlan(
@@ -708,7 +752,7 @@ def api_setup_plan():
     plan_id = f"setup-plan-{uuid.uuid4().hex[:7]}"
     with _setup_lock:
         _setup_cleanup_plans_locked()
-        _setup_plans[plan_id] = {"plan": plan, "created_at": _setup_now(), "payload": data}
+        _setup_plans[plan_id] = {"plan": plan, "uplan": uplan, "created_at": _setup_now(), "payload": data}
 
     return jsonify({
         "ok": True,
@@ -722,6 +766,7 @@ def api_setup_plan():
         },
         "orderedFeatures": ordered_for_response,
         "resolvedFeatures": ordered_for_response,
+        "uninstall": {"ordered": uplan.ordered, "blocked": uplan.blocked},
         "preflight": {"blocked": plan.blocked, "warnings": []},
         "reboot": {"requiredIfRunNow": bool(reboot_reasons), "reasons": reboot_reasons},
     })
@@ -752,6 +797,8 @@ def api_setup_run():
             return jsonify({"ok": False, "error": "unknown planId"}), 404
         plan_obj = rec.get("plan")
         payload = rec.get("payload") or {}
+        uplan = rec.get("uplan")
+        uninstall_ordered = list(uplan.ordered) if uplan else []
 
         job_id = f"setup-job-{uuid.uuid4().hex[:7]}"
         _setup_jobs[job_id] = {
@@ -764,8 +811,9 @@ def api_setup_run():
             "currentStage": None,
             "events": [],
             "summary": {},
-            "featureStates": {k: {"feature": k, "status": "pending", "reasonCode": None, "reasonText": None} for k in plan_obj.ordered_features},
-            "orderedFeatures": list(plan_obj.ordered_features),
+            "featureStates": {k: {"feature": k, "status": "pending", "reasonCode": None, "reasonText": None}
+                              for k in [*plan_obj.ordered_features, *uninstall_ordered]},
+            "orderedFeatures": [*plan_obj.ordered_features, *uninstall_ordered],
         }
         if _setup_wifi_mode(payload) != "none":
             _setup_jobs[job_id]["featureStates"]["wifi"] = {
@@ -775,7 +823,7 @@ def api_setup_run():
         _setup_active_job = job_id
         _setup_cancel_requests.discard(job_id)
 
-    t = threading.Thread(target=_setup_run_job, args=(job_id, plan_obj, payload), daemon=True)
+    t = threading.Thread(target=_setup_run_job, args=(job_id, plan_obj, payload, uninstall_ordered), daemon=True)
     t.start()
     return jsonify({"ok": True, "jobId": job_id, "status": "running", "startedAt": _setup_jobs[job_id]["startedAt"]})
 
