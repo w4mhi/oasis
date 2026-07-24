@@ -106,7 +106,7 @@ textarea:focus{outline:none;border-color:var(--accent);}
 <!-- Primary action: fetch propagation via Winlink (mirrors a form's "Send via Winlink"). -->
 <div style="margin-bottom:.9rem;">
   <button class="sbtn primary" onclick="getPropagationViaWinlink()"
-          title="Open Winlink Compose pre-filled with the SailDocs propagation request">📡 Get propagation via Winlink</button>
+          title="Open Winlink Compose pre-filled with the SailDocs propagation request">Get propagation via Winlink</button>
   <span style="font-size:var(--fs-label);color:var(--text-dim);margin-left:.6rem;">Queue → Connect to send, then Connect again after ~1 min — the reply carries a “Parse Propagation” button.</span>
 </div>
 
@@ -135,7 +135,7 @@ textarea:focus{outline:none;border-color:var(--accent);}
   <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.7rem;flex-wrap:wrap;">
     <span style="font-size:var(--fs-label);color:var(--text-dim);">Option 1 — load the saved attachment directly:</span>
     <button class="sbtn primary" onclick="document.getElementById('fileInput').click()">📂 Load File</button>
-    <input type="file" id="fileInput" accept=".xml,.txt,.rss,text/xml,application/xml,text/plain" style="display:none" onchange="importFile(this)">
+    <input type="file" id="fileInput" accept=".xml,.txt,.rss,.php,text/xml,application/xml,text/plain" style="display:none" onchange="importFile(this)">
   </div>
 
   <!-- Divider -->
@@ -329,7 +329,7 @@ function getPropagationViaWinlink() {
       to: 'query@saildocs.com',
       subject: 'Propagation',
       body: 'http://hamqsl.com/solarrss.php',
-      note: '📡 SailDocs propagation request — Queue this, Connect to send, then Connect again after ~1 min for the reply (which carries a “Parse Propagation” button).',
+      note: 'SailDocs propagation request — Queue this, Connect to send, then Connect again after ~1 min for the reply (which carries a "Parse Propagation" button).',
     }));
   } catch (e) { /* storage full — the compose still opens, just not pre-filled */ }
   window.location.href = '/server/winlink/mail.html';

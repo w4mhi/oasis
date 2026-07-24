@@ -687,7 +687,7 @@ async function openMessage(box, mid) {
   const isPropagation = /saildocs\.com/i.test(_from) && (!!solarAttName || /solarrss\.php/i.test(_subj));
   const propBtnHtml = isPropagation
     ? `<button class="sbtn primary" onclick="openInPropagation('${box}','${esc(mid)}')" ` +
-      `title="Parse this SailDocs reply and show band conditions">📡 Parse Propagation</button>`
+      `title="Parse this SailDocs reply and show band conditions">Parse Propagation</button>`
     : "";
   // Offline map link if the body carries a position (e.g. a Winlink position
   // report). Links to OASIS's own map, not an online service.
