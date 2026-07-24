@@ -377,7 +377,9 @@ class TestManifestSanity(unittest.TestCase):
 
     def test_ai_model_entry(self):
         e = M.get_feature("ai-model", self.m)
-        self.assertTrue(e.get("online_only"))
+        # Now vendored into the offline bundle (phase_ai) so ai installs fully
+        # offline — it must NOT be marked online_only.
+        self.assertFalse(e.get("online_only"), "ai-model must be bundled, not online_only")
         self.assertTrue(e["url"].endswith(".gguf"))
         self.assertRegex(e["sha256"], r"^[0-9a-f]{64}$")
         self.assertGreater(e["size_bytes"], 1_000_000_000)  # ~1.9 GB

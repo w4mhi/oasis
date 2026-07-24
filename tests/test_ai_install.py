@@ -115,6 +115,31 @@ class TestExtractAndUnit(unittest.TestCase):
         self.assertIn("WantedBy=multi-user.target", unit)
 
 
+class TestOfflineFirst(unittest.TestCase):
+    def test_bundle_dir_points_at_offline_packages(self):
+        # phase_ai vendors here; install reads from here before the network.
+        d = install._bundle_dir("ai-model")
+        self.assertTrue(d.endswith(os.path.join("offline-packages", "ai-model")), d)
+        d2 = install._bundle_dir("ai-llama")
+        self.assertTrue(d2.endswith(os.path.join("offline-packages", "ai-llama")), d2)
+
+    def test_model_copy_makes_download_verified_a_noop(self):
+        # The install path copies a bundled model into place, then download_verified
+        # sees it present + SHA-valid and never touches the network — the offline
+        # guarantee. Exercise that final no-op step directly.
+        tmp = tempfile.mkdtemp()
+        payload = b"gguf-bytes"
+        sha = hashlib.sha256(payload).hexdigest()
+        dest = os.path.join(tmp, "models", "m.gguf")
+        os.makedirs(os.path.dirname(dest))
+        with open(dest, "wb") as fh:      # simulate the bundled copy already in place
+            fh.write(payload)
+        with mock.patch("ai.runtime.install.urllib.request.urlopen") as uo:
+            ok = install.download_verified("http://unused/m.gguf", dest, sha)
+        self.assertTrue(ok)
+        uo.assert_not_called()
+
+
 class TestInstallWheels(unittest.TestCase):
     def test_reads_specs_from_manifest_and_returns_import_ok(self):
         with mock.patch("ai.runtime.install._manifest_entry",

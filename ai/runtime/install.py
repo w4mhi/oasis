@@ -44,6 +44,14 @@ _PORT = 8087
 _CTX = 4096
 
 
+def _bundle_dir(feature):
+    """offline-packages/<feature> — where create-oasis-offline.py's phase_ai vendors
+    the llama-server binary and GGUF model. Install prefers these over the network so
+    the ai feature installs fully offline (mirrors common.manifest.bundle_dir for a
+    non-suite feature). Returns the path whether or not it exists."""
+    return os.path.join(_SUITE_ROOT, "offline-packages", feature)
+
+
 def removal_record(repo_root=None):
     """Teardown record for the ai feature (see common/removal.py). Removes the
     oasis-ai service and the llama-server binary dir; the GGUF model (~1.9 GB,
@@ -224,18 +232,33 @@ def main(argv=None):
     asset = llama["asset_pattern"].format(version=version)
     binary_url = f"https://github.com/{llama['repo']}/releases/download/{version}/{asset}"
 
+    bundled_tarball = os.path.join(_bundle_dir("ai-llama"), asset)
     with tempfile.TemporaryDirectory() as td:
-        tarball = os.path.join(td, asset)
-        print(f"[ai] fetching {asset} …")
-        # GitHub release assets have no manifest sha; verify by successful extract.
-        with urllib.request.urlopen(binary_url, timeout=120) as resp, open(tarball, "wb") as out:
-            shutil.copyfileobj(resp, out)
+        if os.path.exists(bundled_tarball):
+            # Offline-first: use the copy phase_ai vendored into the bundle.
+            print(f"[ai] using bundled {asset} (offline)")
+            tarball = bundled_tarball
+        else:
+            tarball = os.path.join(td, asset)
+            print(f"[ai] fetching {asset} …")
+            # GitHub release assets have no manifest sha; verify by successful extract.
+            with urllib.request.urlopen(binary_url, timeout=120) as resp, open(tarball, "wb") as out:
+                shutil.copyfileobj(resp, out)
         server = extract_llama(tarball, _BIN_DIR)
     print(f"[ai] llama-server → {server}")
 
     model_path = os.path.join(_SUITE_ROOT, model["out"])
     if not args.skip_model:
-        print(f"[ai] fetching model (~{model['size_bytes'] // 1024**2} MB) …")
+        # Offline-first: if phase_ai vendored the model, copy it into place. Then
+        # download_verified is a no-op (dest present + SHA matches), so a truly
+        # offline box never touches the network; an online box without a bundled
+        # model still downloads as before.
+        bundled_model = os.path.join(_bundle_dir("ai-model"), os.path.basename(model["out"]))
+        if not os.path.exists(model_path) and os.path.exists(bundled_model):
+            print(f"[ai] using bundled model (offline): {os.path.basename(bundled_model)}")
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            shutil.copyfile(bundled_model, model_path)
+        print(f"[ai] verifying model (~{model['size_bytes'] // 1024**2} MB) …")
         if not download_verified(model["url"], model_path, model["sha256"], timeout=120):
             print("[ai] ERROR: model SHA-256 mismatch", file=sys.stderr)
             return 1
