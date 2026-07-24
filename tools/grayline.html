@@ -7,7 +7,11 @@
 <link rel="stylesheet" href="../css/common.css">
 <style>
 /* Input panel */
-.input-row{display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;}
+.input-row{display:flex;flex-wrap:wrap;gap:1.25rem;align-items:flex-start;}
+/* Date + Today + Calculate ride one line, grouped under the Date label so they
+   align with the Grid Square input (the grid hint hangs below without dropping
+   this row — the reason align-items is flex-start, not flex-end). */
+.control-row{display:flex;gap:.5rem;align-items:center;}
 input[type=text],input.filled{border-color:var(--accent-dim);}
 input.error{border-color:var(--red);}
 
@@ -99,10 +103,12 @@ tr:last-child .win-time{color:var(--accent);font-weight:700;white-space:nowrap;}
     </div>
     <div class="field">
       <label for="dateIn">Date</label>
-      <input type="date" id="dateIn">
+      <div class="control-row">
+        <input type="date" id="dateIn">
+        <button class="today-btn" onclick="setToday()">Today</button>
+        <button class="calc-btn" onclick="calculate()">Calculate</button>
+      </div>
     </div>
-    <button class="today-btn" onclick="setToday()">Today</button>
-    <button class="calc-btn" onclick="calculate()">Calculate</button>
   </div>
   <div class="input-row">
     <div class="field">
