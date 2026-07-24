@@ -358,7 +358,10 @@ class TestManifestSanity(unittest.TestCase):
                 continue
             m = re.match(r"^([A-Za-z0-9_.\-]+)\s*(.*)$", line)
             if m:
-                req[m.group(1).lower()] = m.group(2).replace(" ", "")
+                # Drop any environment marker (e.g. '; python_version >= "3.10"')
+                # so the version spec still matches the manifest pin.
+                spec = m.group(2).split(";", 1)[0]
+                req[m.group(1).lower()] = spec.replace(" ", "")
         # Every ai package must be a real pinned requirement AND its spec must match
         # (guards the bundle↔install sync gotcha AND version drift between the two).
         for name, version in pkgs.items():

@@ -294,15 +294,57 @@ def check_versions():
 
 
 # ── Phase 1: Python wheels ─────────────────────────────────────────────────────
+_PYVER_MARKER_RE = re.compile(r'python_version\s*(>=|>|==|<=|<)\s*["\']([\d.]+)["\']')
+
+
+def _req_ok_for_pyver(line, pyver):
+    """True if a requirements line's python_version marker (if any) admits *pyver*.
+
+    pip's --python-version does NOT evaluate python_version markers against the
+    target — it uses the running interpreter — so a 3.10-only pin like `mcp` is
+    still resolved for the py3.9 targets and fails ("No matching distribution").
+    The builder therefore pre-filters requirements per target instead."""
+    if ";" not in line:
+        return True
+    m = _PYVER_MARKER_RE.search(line.split(";", 1)[1])
+    if not m:
+        return True
+    op, ver = m.group(1), m.group(2)
+    a = tuple(int(x) for x in pyver.split("."))
+    b = tuple(int(x) for x in ver.split("."))
+    return {">=": a >= b, ">": a > b, "==": a == b, "<=": a <= b, "<": a < b}[op]
+
+
+def _requirements_for_pyver(pyver, tmp_dir):
+    """Path to REQ_FILE with python_version-marker-excluded lines removed (or
+    REQ_FILE unchanged when nothing is filtered)."""
+    kept, filtered = [], False
+    with open(REQ_FILE, encoding="utf-8") as fh:
+        for raw in fh:
+            s = raw.strip()
+            if s and not s.startswith("#") and not _req_ok_for_pyver(s, pyver):
+                filtered = True
+                continue
+            kept.append(raw)
+    if not filtered:
+        return REQ_FILE
+    os.makedirs(tmp_dir, exist_ok=True)
+    path = os.path.join(tmp_dir, f"requirements-py{pyver.replace('.', '')}.txt")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.writelines(kept)
+    return path
+
+
 def _resolve_target(platform, pyver, dest_dir, offline=False, find_links=None):
     """
     Run pip download for one (platform, python) target into dest_dir.
     offline=True adds --no-index --find-links find_links (CI / verify mode).
     Returns True on success.
     """
+    req_file = _requirements_for_pyver(pyver, dest_dir)
     cmd = [
         sys.executable, "-m", "pip", "download",
-        "-r",                REQ_FILE,
+        "-r",                req_file,
         "--only-binary=:all:",
         "--platform",        platform,
         "--python-version",  pyver,
