@@ -401,10 +401,15 @@ LIGHTTPD_DROPIN = f"{LIGHTTPD_CONFD}/99-oasis-skyaware-port.conf"
 
 
 def removal_record(repo_root=None):
-    """Teardown record for the adsb feature: our adsb-api unit plus the two OASIS
-    drop-ins (dump1090-fa pull-in + SkyAware lighttpd port move). The apt-installed
-    dump1090-fa package itself is left in place, per remove-oasis policy."""
-    return {"services": [API_SERVICE],
+    """Teardown record for the adsb feature: our adsb-api unit AND the decoder
+    daemon (dump1090-fa) — both stopped + disabled — plus the two OASIS drop-ins
+    (dump1090-fa pull-in + SkyAware lighttpd port move). The apt-installed
+    dump1090-fa PACKAGE is left in place per the leave-apt policy, but its service
+    is disabled so a factory reset doesn't leave the decoder running and reading
+    as installed. dump1090-fa's unit lives in /usr/lib/systemd/system, so the
+    `services` teardown's rm of the /etc unit is a harmless no-op — package stays,
+    daemon stops."""
+    return {"services": [API_SERVICE, DECODER_UNIT],
             "files": [DECODER_DROPIN_PATH, LIGHTTPD_DROPIN]}
 
 

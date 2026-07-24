@@ -88,6 +88,14 @@ class RemovalRecordCoverageTest(unittest.TestCase):
         self.assertTrue(any("OASIS-AP" in n for n in rec.get("notes", [])),
                         "ap-fallback should advise that OASIS-AP is left in place")
 
+    def test_adsb_stops_the_decoder_daemon(self):
+        # The dump1090-fa decoder (apt-provided) must be stopped/disabled on
+        # removal, not left running. The leave-apt policy keeps the package; the
+        # unit lives in /usr/lib, so the /etc rm is a harmless no-op.
+        services = self.reg["adsb"].removal_record_fn().get("services", [])
+        self.assertIn("dump1090-fa", services,
+                      "adsb removal must stop+disable the dump1090-fa decoder")
+
     def test_config_features_flag_reboot(self):
         # config.txt-touching removals must require a reboot to take effect.
         for key in ("rtc", "dra-pi-rx-led", "cm4stack", "gps-l76x"):
