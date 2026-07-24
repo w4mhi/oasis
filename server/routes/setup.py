@@ -21,6 +21,7 @@ from flask import Blueprint, jsonify, request
 import appconfig
 from common import config_paths
 from common import gpsd_chrony
+from common import installed_services
 from common import hardware_detect as HD_detect
 from common import setup_engine as SE
 from common import setup_registry as SETUP_REGISTRY
@@ -281,29 +282,15 @@ def _setup_record_installed_features(summary):
     effect of being left unticked. (Installed features render green+unticked on
     the Setup page; dropping them on the next run would silently uninstall them
     from the dashboard's point of view.) Per-feature removal has its own explicit
-    path — see FeatureSpec.remove_fn — and does not go through this function."""
+    path — see FeatureSpec.remove_fn — and does not go through this function.
+
+    Writes through common/installed_services.py, the single owner of the manifest
+    schema. Removal records for the just-installed features are attached in Task 7
+    (see removal_backfill); this function stays additive."""
     ok_keys = {item.get("feature") for item in summary.features
-              if item.get("status") in _SETUP_SUCCESS_STATUSES}
-
-    existing = set()
-    try:
-        with open(INSTALLED_SERVICES_FILE) as fh:
-            prev = json.load(fh)
-        if isinstance(prev.get("features"), list):
-            existing = {str(k) for k in prev["features"]}
-    except (FileNotFoundError, ValueError, OSError):
-        pass
-
-    merged = existing | ok_keys
-    if merged == existing:
-        return
-    try:
-        os.makedirs(config_paths.config_dir(SUITE_ROOT), exist_ok=True)
-        with open(INSTALLED_SERVICES_FILE, "w", encoding="utf-8") as fh:
-            json.dump({"features": sorted(merged), "updated": _setup_iso_now()}, fh, indent=2)
-            fh.write("\n")
-    except OSError:
-        pass
+               if item.get("status") in _SETUP_SUCCESS_STATUSES}
+    ok_keys.discard(None)
+    installed_services.add_installed(SUITE_ROOT, ok_keys, {})
 
 
 # ── Privileged installs: hand off to the out-of-process root worker ─────────────

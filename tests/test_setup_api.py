@@ -535,11 +535,20 @@ def _summary_with(features):
     return SimpleNamespace(features=[{"feature": k, "status": s} for k, s in features])
 
 
+def _seed_manifest(tmp_path, obj):
+    # The manifest now lives under <SUITE_ROOT>/configuration/ and is written by
+    # common/installed_services.py; tests patch SUITE_ROOT and seed there.
+    cfg = tmp_path / "configuration"
+    cfg.mkdir(exist_ok=True)
+    manifest = cfg / "installed-services.json"
+    manifest.write_text(json.dumps(obj) + "\n")
+    return manifest
+
+
 def test_record_keeps_unticked_installed_feature_additive(tmp_path):
-    manifest = tmp_path / "installed-services.json"
-    manifest.write_text(json.dumps({"features": ["fcc", "adsb"]}) + "\n")
+    manifest = _seed_manifest(tmp_path, {"features": ["fcc", "adsb"]})
     summary = _summary_with([("kiwix", SE.STATUS_INSTALLED)])
-    with mock.patch.object(setup_module, "INSTALLED_SERVICES_FILE", str(manifest)):
+    with mock.patch.object(setup_module, "SUITE_ROOT", str(tmp_path)):
         setup_module._setup_record_installed_features(summary)
     got = set(json.loads(manifest.read_text())["features"])
     # fcc was NOT ticked this run and is a former GATE_AUTHORITATIVE member, but
@@ -548,24 +557,22 @@ def test_record_keeps_unticked_installed_feature_additive(tmp_path):
 
 
 def test_record_does_not_drop_former_gate_authoritative_on_untick(tmp_path):
-    manifest = tmp_path / "installed-services.json"
-    manifest.write_text(json.dumps({"features": ["fcc", "repeaterbook", "forms"]}) + "\n")
+    manifest = _seed_manifest(tmp_path, {"features": ["fcc", "repeaterbook", "forms"]})
     # A run that installs nothing new and ticks none of the content gates.
     summary = _summary_with([])
-    with mock.patch.object(setup_module, "INSTALLED_SERVICES_FILE", str(manifest)):
+    with mock.patch.object(setup_module, "SUITE_ROOT", str(tmp_path)):
         setup_module._setup_record_installed_features(summary)
     got = set(json.loads(manifest.read_text())["features"])
     assert got == {"fcc", "repeaterbook", "forms"}
 
 
 def test_record_adds_only_successful_installs(tmp_path):
-    manifest = tmp_path / "installed-services.json"
-    manifest.write_text(json.dumps({"features": []}) + "\n")
+    manifest = _seed_manifest(tmp_path, {"features": []})
     summary = _summary_with([
         ("kiwix", SE.STATUS_INSTALLED),
         ("adsb", SE.STATUS_INSTALL_FAILED),
     ])
-    with mock.patch.object(setup_module, "INSTALLED_SERVICES_FILE", str(manifest)):
+    with mock.patch.object(setup_module, "SUITE_ROOT", str(tmp_path)):
         setup_module._setup_record_installed_features(summary)
     got = set(json.loads(manifest.read_text())["features"])
     assert got == {"kiwix"}
