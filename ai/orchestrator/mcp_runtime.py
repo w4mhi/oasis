@@ -11,6 +11,7 @@ streams, which is safe across tasks. Keeps the subprocess warm across requests
 """
 import asyncio
 import json
+import os
 import sys
 import threading
 
@@ -22,10 +23,20 @@ from ai import config
 _CALL_TIMEOUT = 30
 _START_TIMEOUT = 30
 
+# Suite root (…/ai/orchestrator/mcp_runtime.py → up two). The MCP server is
+# spawned as `python -m ai.server.mcp_server`, and the `ai` package is NOT
+# pip-installed, so it only imports when the suite root is the process CWD
+# (`python -m` prepends CWD to sys.path). gunicorn runs its worker with CWD set
+# to server/, where `import ai` fails and the subprocess dies — which surfaces
+# as an anyio ExceptionGroup out of stdio_client and "MCP not ready". Pinning
+# the child's cwd here makes the spawn independent of the parent's cwd.
+_SUITE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
 
 class AssistantRuntime:
-    def __init__(self, server_cmd, server_args, call_timeout=_CALL_TIMEOUT):
-        self._params = StdioServerParameters(command=server_cmd, args=list(server_args))
+    def __init__(self, server_cmd, server_args, call_timeout=_CALL_TIMEOUT, cwd=None):
+        self._params = StdioServerParameters(
+            command=server_cmd, args=list(server_args), cwd=cwd or _SUITE_ROOT)
         self._call_timeout = call_timeout
         self._loop = asyncio.new_event_loop()
         self._session = None

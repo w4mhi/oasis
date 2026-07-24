@@ -101,6 +101,33 @@ class TestExtractAndUnit(unittest.TestCase):
         self.assertTrue(os.access(server, os.X_OK))
         self.assertTrue(os.path.exists(os.path.join(bin_dir, "libfoo.so")))
 
+    def test_extract_preserves_versioned_so_symlink_chain(self):
+        # Regression: llama.cpp ships versioned libs as a symlink chain and links
+        # the binary against the .so.0 SONAME (itself a symlink). Extraction must
+        # keep the symlinks, or the loader reports "cannot open shared object
+        # file: libllama.so.0" at runtime even with LD_LIBRARY_PATH set.
+        tmp = tempfile.mkdtemp()
+        src = os.path.join(tmp, "src", "build", "bin")
+        os.makedirs(src)
+        with open(os.path.join(src, "llama-server"), "wb") as fh:
+            fh.write(b"\x7fELF")
+        with open(os.path.join(src, "libllama.so.0.0.0"), "wb") as fh:
+            fh.write(b"\x7fELFsofile")
+        os.symlink("libllama.so.0.0.0", os.path.join(src, "libllama.so.0"))  # SONAME
+        os.symlink("libllama.so.0", os.path.join(src, "libllama.so"))        # dev link
+        tarball = os.path.join(tmp, "a.tar.gz")
+        with tarfile.open(tarball, "w:gz") as tf:
+            tf.add(os.path.join(tmp, "src"), arcname="src")
+        bin_dir = os.path.join(tmp, "bin")
+        install.extract_llama(tarball, bin_dir)
+
+        soname = os.path.join(bin_dir, "libllama.so.0")
+        self.assertTrue(os.path.islink(soname))            # kept as a symlink
+        self.assertTrue(os.path.exists(soname))            # and it resolves
+        self.assertEqual(os.readlink(soname), "libllama.so.0.0.0")
+        with open(soname, "rb") as fh:                     # reads the real content
+            self.assertEqual(fh.read(), b"\x7fELFsofile")
+
     def test_build_unit_has_execstart_jinja_port_and_ld_path(self):
         unit = install.build_unit(binary="/opt/ai/bin/llama-server",
                                   model="/opt/ai/models/m.gguf",

@@ -118,25 +118,46 @@ def download_verified(url, dest, sha256, *, timeout=60):
         raise
 
 
+def _is_runtime_bit(base):
+    """The server binary or a shared library (versioned or not)."""
+    return base == "llama-server" or base.endswith(".so") or ".so." in base
+
+
 def extract_llama(tarball, bin_dir):
+    """Flatten the server binary and its shared libs into one bin_dir.
+
+    Preserves symlink members. llama.cpp's release ships versioned libraries as
+    a symlink chain (libfoo.so -> libfoo.so.0 -> libfoo.so.0.x.y) and links the
+    binary against the .so.0 SONAME, which IS a symlink. Copying only regular
+    files (member.isfile()) dropped those symlinks, so at runtime the loader
+    couldn't resolve libllama.so.0 & friends ("cannot open shared object file")
+    even with LD_LIBRARY_PATH set. Release symlink targets are same-dir relative
+    names, so pointing each link at its target basename keeps the chain intact
+    after flattening.
+    """
     os.makedirs(bin_dir, exist_ok=True)
     server_path = None
     with tarfile.open(tarball, "r:*") as tf:
         for member in tf.getmembers():
+            base = os.path.basename(member.name)
+            if not _is_runtime_bit(base):
+                continue
+            out_path = os.path.join(bin_dir, base)
+            if member.issym() or member.islnk():
+                if os.path.lexists(out_path):
+                    os.unlink(out_path)
+                os.symlink(os.path.basename(member.linkname), out_path)
+                continue
             if not member.isfile():
                 continue
-            base = os.path.basename(member.name)
-            # keep the runtime bits: the server binary and shared libs
-            if base == "llama-server" or base.endswith(".so") or ".so." in base:
-                src = tf.extractfile(member)
-                if src is None:
-                    continue
-                out_path = os.path.join(bin_dir, base)
-                with open(out_path, "wb") as dst:
-                    shutil.copyfileobj(src, dst)
-                if base == "llama-server":
-                    os.chmod(out_path, 0o755)
-                    server_path = out_path
+            src = tf.extractfile(member)
+            if src is None:
+                continue
+            with open(out_path, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            if base == "llama-server":
+                os.chmod(out_path, 0o755)
+                server_path = out_path
     if server_path is None:
         raise RuntimeError("llama-server not found in the archive")
     return server_path
