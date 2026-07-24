@@ -787,7 +787,7 @@ async function openInPropagation(box, mid) {
   if (!/<solar[\s>]/i.test(xml)) { toast("Couldn't read solar data from this message", "err"); return; }
   try { localStorage.setItem("oasis_solar_import", xml); }
   catch (e) { toast("Handoff failed (storage full?)", "err"); return; }
-  window.open("/static/solar.html?src=winlink", "_blank");
+  window.open("/tools/solar.html?src=winlink", "_blank");
 }
 
 // Reverse of ics-205.html's ics205Xml(): read the RMS_Express_Form <variables>
