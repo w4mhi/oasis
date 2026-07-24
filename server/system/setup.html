@@ -870,6 +870,9 @@ async function setupReadJson(r) {
   throw new Error(`server returned HTTP ${r.status} (not JSON)${body ? ': ' + body : ''}`);
 }
 
+let setupSkipUninstallConfirm = false;   // Factory reset does its own type-to-confirm.
+function uplanList(x) { return Array.isArray(x) ? x : []; }
+
 async function setupRunSelected() {
   const log = document.getElementById('setupLog');
   const stateEl = document.getElementById('setupJobState');
@@ -929,6 +932,34 @@ async function setupRunSelected() {
     return;
   }
   blockedEl.innerHTML = '<li>No blockers.</li>';
+
+  // Uninstall side of the plan (Plan 2's /api/setup/plan response).
+  const uplan = d.uninstall || { ordered: [], blocked: [] };
+  const uOrdered = uplanList(uplan.ordered);
+  const uBlocked = uplanList(uplan.blocked);
+  if (uOrdered.length || uBlocked.length) {
+    info.textContent += ` | uninstall: ${uOrdered.join(', ') || '(none)'}`;
+    appendLog(`[phase] uninstall order: ${uOrdered.join(', ') || '(none)'}`);
+  }
+  if (uBlocked.length) {
+    blockedEl.innerHTML += (uplan.blocked || [])
+      .map(b => `<li>uninstall ${escapeHtml(b.feature || '?')}: ${escapeHtml(b.reason_text || b.reason_code || 'blocked')}</li>`)
+      .join('');
+    appendLog(`[phase] uninstall blocked: ${JSON.stringify(uplan.blocked)}`);
+    stateEl.textContent = 'Uninstall blocked — resolve dependants first (see below)';
+    return;
+  }
+  if (uOrdered.length && !setupSkipUninstallConfirm) {
+    const proceed = confirm(
+      `Uninstall ${uOrdered.length} feature(s): ${uOrdered.join(', ')}?\n\n` +
+      `Services will stop and their OASIS config/files are removed. ` +
+      `Downloaded data (maps, ZIMs, FCC DB) is KEPT.`);
+    if (!proceed) {
+      stateEl.textContent = 'Cancelled — no changes made.';
+      appendLog('[phase] uninstall cancelled by operator');
+      return;
+    }
+  }
 
   appendLog('[phase] starting install job…');
   try {
