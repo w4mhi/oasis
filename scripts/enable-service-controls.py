@@ -53,6 +53,13 @@ UNITS   = ["graywolf", "graywolf-api", "pat", "pat-direwolf", "kiwix", "webssh",
 ACTIONS = ["start", "stop", "restart", "enable", "disable"]
 SUDOERS_PATH = "/etc/sudoers.d/oasis-service-controls"
 
+
+def removal_record(repo_root=None):
+    """Teardown record for the service-controls feature: just the sudoers rule
+    (see common/removal.py). The winlink-log group membership is left in place,
+    as install does."""
+    return {"files": [SUDOERS_PATH]}
+
 # Passive RTL-SDR → GrayWolf feed flow probe (dashboard "APRS SDR Feed" meter).
 # These MUST match server/app.py's _FEED_FLOW_ARGS / FEED_FLOW_PORT token-for-
 # token — the endpoint runs `sudo -n <tcpdump> <SNIFF_ARGS>` and sudo only

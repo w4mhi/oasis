@@ -36,6 +36,13 @@ PACKAGE   = "openwebrx"
 KEY_URL   = "https://luarvique.github.io/ppa/openwebrx-plus.gpg"
 KEYRING   = "/etc/apt/trusted.gpg.d/openwebrx-plus.gpg"
 LIST_PATH = "/etc/apt/sources.list.d/openwebrx-plus.list"
+
+
+def removal_record(repo_root=None):
+    """Teardown record for the openwebrx feature: stop/disable the service and
+    remove the OASIS-added apt repo (keyring + list). The apt-installed openwebrx
+    package itself is left in place, matching remove-oasis's leave-apt policy."""
+    return {"services": [PACKAGE], "files": [KEYRING, LIST_PATH]}
 BASE_URL  = "https://luarvique.github.io/ppa"
 
 # OpenWebRX+ repo path per Debian suite. bookworm confirmed; trixie assumed to

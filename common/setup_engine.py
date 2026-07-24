@@ -44,6 +44,11 @@ class FeatureSpec:
     # setup, C). None means "not removable yet". Same call/result contract as
     # install_fn: () -> {"ok": bool, ...}. No caller today.
     remove_fn: Optional[Callable[[], Dict[str, object]]] = None
+    # Returns this feature's removal record (see common/removal.py for the schema)
+    # from the installer's own constants. build_registry() wires it; install
+    # persists the record into installed-services.json (one source of truth).
+    # None for features excluded from removal (server, wikipedia).
+    removal_record_fn: Optional[Callable[[], Dict[str, object]]] = None
     enable_policy: str = "none"  # none|if_installed|manual_only
     requires_reboot: bool = False
     # True for features whose install_fn needs real root (writes /etc,

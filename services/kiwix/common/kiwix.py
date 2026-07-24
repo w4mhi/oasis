@@ -113,6 +113,16 @@ DEFAULT_VERSION = "3.8.2"
 DEFAULT_ZIM_DIR = os.path.join(target_user_home()[1], "oasis-offline", "zim")
 SERVICE_FILE = f"/etc/systemd/system/{SERVICE_NAME}.service"
 
+
+def removal_record(repo_root=None):
+    """Teardown record for the kiwix feature: the kiwix-serve unit and its two
+    /usr/local/bin helpers. ZIM files (potentially many GB, hard to re-download
+    offline) are advisory-only — never auto-deleted. Managing/upgrading ZIMs is a
+    separate concern (see the wikipedia carve-out in the design)."""
+    return {"services": [SERVICE_NAME],
+            "files": [INSTALL_BIN, KIWIX_START],
+            "data_paths": [DEFAULT_ZIM_DIR]}
+
 ARCH_MAP = {
     "aarch64": "aarch64",
     "arm64":   "aarch64",

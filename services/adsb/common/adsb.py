@@ -400,6 +400,14 @@ LIGHTTPD_CONFD  = "/etc/lighttpd/conf-enabled"
 LIGHTTPD_DROPIN = f"{LIGHTTPD_CONFD}/99-oasis-skyaware-port.conf"
 
 
+def removal_record(repo_root=None):
+    """Teardown record for the adsb feature: our adsb-api unit plus the two OASIS
+    drop-ins (dump1090-fa pull-in + SkyAware lighttpd port move). The apt-installed
+    dump1090-fa package itself is left in place, per remove-oasis policy."""
+    return {"services": [API_SERVICE],
+            "files": [DECODER_DROPIN_PATH, LIGHTTPD_DROPIN]}
+
+
 def _disable_skyaware_lighttpd():
     """FlightAware's dump1090-fa pulls in lighttpd + SkyAware, which serves on
     8080 (GrayWolf's port) and, on newer suites (Trixie), fails its own config
