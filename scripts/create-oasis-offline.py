@@ -306,13 +306,17 @@ def _req_ok_for_pyver(line, pyver):
     The builder therefore pre-filters requirements per target instead."""
     if ";" not in line:
         return True
-    m = _PYVER_MARKER_RE.search(line.split(";", 1)[1])
-    if not m:
+    comps = _PYVER_MARKER_RE.findall(line.split(";", 1)[1])
+    if not comps:
         return True
-    op, ver = m.group(1), m.group(2)
     a = tuple(int(x) for x in pyver.split("."))
-    b = tuple(int(x) for x in ver.split("."))
-    return {">=": a >= b, ">": a > b, "==": a == b, "<=": a <= b, "<": a < b}[op]
+    # AND every python_version comparison in the marker (e.g. a `>= "3.10" and
+    # < "3.14"` band); any unsatisfied constraint excludes the line.
+    for op, ver in comps:
+        b = tuple(int(x) for x in ver.split("."))
+        if not {">=": a >= b, ">": a > b, "==": a == b, "<=": a <= b, "<": a < b}[op]:
+            return False
+    return True
 
 
 def _requirements_for_pyver(pyver, tmp_dir):

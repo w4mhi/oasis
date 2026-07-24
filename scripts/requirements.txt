@@ -57,8 +57,13 @@ numpy>=1.26,<3
 # its transitive deps) — the AI feature is gated to Pi 5 / 8 GB (Bookworm 3.11 /
 # Trixie 3.13), so the floor is always met there. See scripts/offline-manifest.json
 # features.ai for the install-time gating; the base server install on a 3.9 box
-# must NOT pull these in — the `python_version >= "3.10"` markers enforce that, so
-# `pip download --python-version 3.9` cleanly skips them instead of failing to
-# resolve mcp (which publishes no 3.9-compatible release).
-mcp>=1.2,<2; python_version >= "3.10"
-httpx>=0.27,<1; python_version >= "3.10"
+# must NOT pull these in. The `python_version` markers enforce the band the AI
+# stack can actually be vendored for:
+#   - lower bound 3.10: mcp (and anyio) publish no 3.9-compatible release;
+#   - upper bound 3.14: mcp -> pydantic -> pydantic-core has no cp314 aarch64
+#     wheel yet, and no Pi OS ships 3.14 (Trixie is 3.13), so exclude it until
+#     upstream catches up — bump the cap then.
+# The builder pre-filters requirements per target (pip's --python-version does
+# not evaluate these markers), so 3.9 and 3.14 targets skip these cleanly.
+mcp>=1.2,<2; python_version >= "3.10" and python_version < "3.14"
+httpx>=0.27,<1; python_version >= "3.10" and python_version < "3.14"
