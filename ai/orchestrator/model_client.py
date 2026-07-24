@@ -25,8 +25,11 @@ class OpenAIChatModel:
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"
+        # Long read timeout (generation is slow on a Pi 5 CPU), short connect —
+        # a scalar timeout would apply 60s to the read and ReadTimeout mid-answer.
+        timeout = httpx.Timeout(self._cfg.model_timeout_s, connect=10.0)
         resp = httpx.post(self._cfg.model_base_url.rstrip("/") + "/chat/completions",
-                          json=body, timeout=self._cfg.request_timeout_s)
+                          json=body, timeout=timeout)
         resp.raise_for_status()
         msg = resp.json()["choices"][0]["message"]
         calls = []

@@ -52,7 +52,8 @@ class TestRunTurn(unittest.TestCase):
         messages = [{"role": "user", "content": "how many stations?"}]
         events = list(loop.run_turn(messages, mcp, model))
         types = [e["type"] for e in events]
-        self.assertEqual(types, ["tool", "tool_result", "final"])
+        # a "status" (Thinking…) precedes each model call — one per iteration
+        self.assertEqual(types, ["status", "tool", "tool_result", "status", "final"])
         self.assertEqual(events[-1]["content"], "There are 3 stations.")
         self.assertEqual(mcp.calls, [("aprs_stations", {})])
         # a tool message was appended so the model saw the result on turn 2
@@ -61,7 +62,7 @@ class TestRunTurn(unittest.TestCase):
     def test_immediate_final_no_tools(self):
         model = ScriptedModel([AssistantMessage(content="73!")])
         events = list(loop.run_turn([{"role": "user", "content": "hi"}], FakeMcp(), model))
-        self.assertEqual([e["type"] for e in events], ["final"])
+        self.assertEqual([e["type"] for e in events], ["status", "final"])
 
     def test_tool_error_is_surfaced_not_raised(self):
         class Boom(FakeMcp):

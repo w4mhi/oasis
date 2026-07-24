@@ -17,7 +17,7 @@ DEFAULTS = {
         "base_url": "http://127.0.0.1:8087/v1",
         "name": "qwen2.5-3b-instruct",
         "temperature": 0.2,
-        "max_tokens": 1024,
+        "max_tokens": 512,
     },
     "oasis_api_base": "http://127.0.0.1:8083",
     "system_prompt": (
@@ -28,6 +28,10 @@ DEFAULTS = {
     ),
     "max_tool_iterations": 5,
     "request_timeout_s": 60.0,
+    # Model generation is slow on a Pi 5 CPU (a few tokens/sec), so the chat
+    # completion gets its own long read timeout, kept separate from the short
+    # request_timeout_s used for the fast localhost tool GETs.
+    "model_timeout_s": 300.0,
     "auto_actions": [],
     "action_tools": ["service_control", "aprs_post_warning", "satellite_monitor"],
     "actions_enabled": True,
@@ -44,6 +48,7 @@ class Config:
     system_prompt: str
     max_tool_iterations: int
     request_timeout_s: float
+    model_timeout_s: float
     auto_actions: list[str]
     action_tools: list[str]
     actions_enabled: bool
@@ -59,6 +64,7 @@ def _build(model, data) -> Config:
         system_prompt=str(data["system_prompt"]),
         max_tool_iterations=int(data["max_tool_iterations"]),
         request_timeout_s=float(data["request_timeout_s"]),
+        model_timeout_s=float(data["model_timeout_s"]),
         auto_actions=list(data["auto_actions"]),
         action_tools=list(data["action_tools"]),
         actions_enabled=bool(data["actions_enabled"]),
@@ -76,7 +82,8 @@ def load(path: str | None = None) -> Config:
             if isinstance(raw.get("model"), dict):
                 model.update(raw["model"])
             for key in ("oasis_api_base", "system_prompt", "max_tool_iterations",
-                        "request_timeout_s", "auto_actions", "action_tools", "actions_enabled"):
+                        "request_timeout_s", "model_timeout_s", "auto_actions",
+                        "action_tools", "actions_enabled"):
                 if key in raw:
                     data[key] = raw[key]
     except (OSError, ValueError):

@@ -22,6 +22,10 @@ def _assistant_dict(msg):
 def run_turn(messages, mcp, complete, *, max_iterations=5, gate=None):
     tools = mcp.list_tools()
     for _ in range(max_iterations):
+        # Emitted before the (slow) model call so the SSE stream flushes an early
+        # signal — the UI shows "Thinking…" instead of a silent gap while the Pi
+        # generates. Repeats each iteration (e.g. after tool results come back).
+        yield {"type": "status", "content": "Thinking…"}
         msg = complete(messages, tools)
         if not msg.tool_calls:
             yield {"type": "final", "content": msg.content}

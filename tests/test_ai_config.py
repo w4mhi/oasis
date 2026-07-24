@@ -46,7 +46,7 @@ class TestConfig(unittest.TestCase):
         try:
             cfg = config.load(path)
             # unparseable max_tokens → whole load degrades to defaults
-            self.assertEqual(cfg.max_tokens, 1024)
+            self.assertEqual(cfg.max_tokens, 512)
         finally:
             os.unlink(path)
 

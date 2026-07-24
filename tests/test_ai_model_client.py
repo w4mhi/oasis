@@ -40,3 +40,15 @@ class TestModelClient(unittest.TestCase):
         self.assertEqual(tc.name, "fcc_lookup")
         self.assertEqual(tc.arguments, {"callsign": "W4MHI"})
         self.assertEqual(tc.id, "call_1")
+
+    def test_uses_long_read_timeout_not_scalar_request_timeout(self):
+        # Regression: a scalar 60s timeout hit the READ phase and ReadTimeout'd
+        # mid-generation on the Pi. The read leash must be model_timeout_s.
+        payload = {"choices": [{"message": {"role": "assistant", "content": "ok"}}]}
+        with mock.patch("ai.orchestrator.model_client.httpx.post",
+                        return_value=_resp(payload)) as post:
+            self.model.complete([{"role": "user", "content": "hi"}], [])
+        timeout = post.call_args.kwargs["timeout"]
+        self.assertEqual(timeout.read, self.cfg.model_timeout_s)      # long read leash
+        self.assertNotEqual(timeout.read, self.cfg.request_timeout_s)  # not the 60s tool timeout
+        self.assertEqual(timeout.connect, 10.0)
