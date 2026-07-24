@@ -127,6 +127,18 @@ def _portable_gate():
 
 
 @app.after_request
+def _no_store_api(resp):
+    # Dynamic state (the install ledger, health, live feeds) must never be served
+    # from the browser cache. /api/* responses carried no cache headers, so a
+    # browser could heuristically replay a stale /api/installed-services — making
+    # the setup page show already-removed features (e.g. graywolf) as still
+    # installed after a reboot. no-store forces a fresh fetch every time.
+    if (request.path or "/").startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.after_request
 def _inject_theme_toggle(resp):
     try:
         if resp.mimetype != "text/html":

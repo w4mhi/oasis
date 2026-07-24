@@ -464,7 +464,17 @@ async function setupAutoSelectInstalledFeatures() {
     const pairs = Object.entries(serviceMap);
     const probes = await Promise.all(pairs.map(([unit]) => chkService(unit)));
     probes.forEach((res, i) => {
-      if (res && res.installed) { installed.add(pairs[i][1]); returningBox = true; }
+      // Only an ACTIVE or ENABLED unit counts as installed here. A merely
+      // present-but-disabled unit is not a reliable signal: apt-backed features
+      // (graywolf, openwebrx, dump1090-fa) ship their unit in
+      // /usr/lib/systemd/system, which the leave-apt removal policy keeps — so
+      // it lingers as `disabled` forever and, under the old `res.installed`
+      // (== "unit file exists"), kept painting the feature installed after
+      // uninstall, blocking reinstall. The ledger stays authoritative for
+      // installed-but-stopped features (recorded at install time).
+      if (res && (res.active === 'active' || res.enabled === 'enabled')) {
+        installed.add(pairs[i][1]); returningBox = true;
+      }
     });
   } catch (_) {
     // Non-fatal: HTML defaults still apply.
