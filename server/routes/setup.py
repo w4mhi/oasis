@@ -300,6 +300,16 @@ def _setup_record_installed_features(summary):
     installed_services.add_installed(SUITE_ROOT, ok_keys, records)
 
 
+def _setup_record_removed_features(removed_keys):
+    """Drop successfully-removed features from installed-services.json (both the
+    features list and the removal map), so the dashboard hides their cards and the
+    box returns to factory-fresh. The deliberate, explicit removal path the
+    additive _setup_record_installed_features docstring anticipates."""
+    keys = {k for k in removed_keys if k}
+    if keys:
+        installed_services.remove_installed(SUITE_ROOT, keys)
+
+
 # ── Privileged installs: hand off to the out-of-process root worker ─────────────
 # The web server never runs as root and has no TTY/cached sudo credential, so a
 # privileged FeatureSpec's install_fn is NOT called in-process here. Instead we

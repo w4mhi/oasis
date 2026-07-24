@@ -601,3 +601,18 @@ class EnqueueRemoveShapeTest(unittest.TestCase):
         res = setup_module._setup_enqueue_and_wait_remove("server", job_id=None)
         self.assertFalse(res["ok"])
         self.assertEqual(res["reason_code"], "REMOVE_FAILED")
+
+
+class RecordRemovedTest(unittest.TestCase):
+    def test_removed_features_drop_from_manifest(self):
+        import tempfile
+        from common import installed_services, config_paths
+        root = tempfile.mkdtemp()
+        os.makedirs(config_paths.config_dir(root), exist_ok=True)
+        installed_services.write(root, {"kiwix", "graywolf"},
+                                 {"kiwix": {"services": ["kiwix"]},
+                                  "graywolf": {"services": ["graywolf"]}})
+        with mock.patch.object(setup_module, "SUITE_ROOT", root):
+            setup_module._setup_record_removed_features({"kiwix"})
+        self.assertEqual(installed_services.installed_features(root), {"graywolf"})
+        self.assertNotIn("kiwix", installed_services.removal_map(root))
