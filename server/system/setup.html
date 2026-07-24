@@ -313,9 +313,19 @@ async function chkService(name) {
   catch { return { ok: false, active: 'unknown', installed: false }; }
 }
 // ── Setup orchestrator panel ─────────────────────────────────────────────────
-function setupSelectedFeatures() {
+// Checked features that are NOT installed -> install this run.
+function setupInstallFeatures() {
   return [...document.querySelectorAll('input[data-feature]:checked')]
+    .filter(el => !el.closest('.setup-check').classList.contains('is-installed'))
     .map(el => el.getAttribute('data-feature'));
+}
+
+// Checked features that ARE installed (and removable) -> uninstall this run.
+function setupUninstallFeatures() {
+  return [...document.querySelectorAll('input[data-feature]:checked')]
+    .filter(el => el.closest('.setup-check').classList.contains('is-installed'))
+    .map(el => el.getAttribute('data-feature'))
+    .filter(key => !SETUP_NEVER_REMOVABLE.has(key));
 }
 
 function setupPayload() {
@@ -327,7 +337,8 @@ function setupPayload() {
   const pwInput = document.getElementById('setupWinlinkPassword');
   const winPw = setupWinlinkPasswordHasExisting && !setupWinlinkPasswordChanged ? '' : (pwInput.value || '');
   return {
-    selectedFeatures: setupSelectedFeatures(),
+    selectedFeatures: setupInstallFeatures(),
+    uninstallFeatures: setupUninstallFeatures(),
     station: {
       callsign: (document.getElementById('setupStationCallsign').value || '').trim().toUpperCase(),
       grid: (document.getElementById('setupStationGrid').value || '').trim().toUpperCase(),
