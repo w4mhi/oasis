@@ -64,9 +64,18 @@ SUDOERS_PATH  = "/etc/sudoers.d/oasis-wifi"
 
 def removal_record(repo_root=None):
     """Teardown record for the ap-fallback feature: the netwatch service, the two
-    /usr/local/bin helpers, and the Wi-Fi sudoers rule (see common/removal.py)."""
+    /usr/local/bin helpers, and the Wi-Fi sudoers rule (see common/removal.py).
+
+    The OASIS-AP NetworkManager profile is DELIBERATELY not removed: it is the
+    off-grid connectivity lifeline (a public EmComm hotspot, PSK 'oasis-emcomm' —
+    not a secret), and nothing recreates it (start-oasis.py has no Wi-Fi logic).
+    Deleting it could strand a box that boots with no known Wi-Fi. Left in place
+    with an advisory; the operator can drop it by hand if they want it gone."""
     return {"services": [NETWATCH_UNIT],
-            "files": [NETCTL_PATH, NETWATCH_PATH, SUDOERS_PATH]}
+            "files": [NETCTL_PATH, NETWATCH_PATH, SUDOERS_PATH],
+            "notes": [f"NetworkManager '{AP_CON}' hotspot profile kept so the box "
+                      f"stays reachable off-grid; `nmcli connection delete {AP_CON}` "
+                      "to remove it manually."]}
 
 # ── Privileged Wi-Fi helper (installed to NETCTL_PATH, invoked via `sudo -n`) ──
 # The dashboard's /api/wifi/* endpoints run exactly `sudo -n oasis-netctl <cmd>`;

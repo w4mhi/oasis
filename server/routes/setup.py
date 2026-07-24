@@ -23,6 +23,7 @@ from common import config_paths
 from common import gpsd_chrony
 from common import installed_services
 from common import removal_backfill
+from common import hardware
 from common import hardware_detect as HD_detect
 from common import setup_engine as SE
 from common import setup_registry as SETUP_REGISTRY
@@ -333,6 +334,17 @@ def _setup_run_uninstalls(job_id, uninstall_ordered):
                                    "status": "removed" if ok else "remove_failed",
                                    "reasonCode": None if ok else res.get("reason_code", "REMOVE_FAILED"),
                                    "reasonText": None if ok else res.get("reason_text", "remove failed")})
+    # Factory-reset finalizer: once no removable feature remains installed, the
+    # leftover hardware assignments (adsb/aprs/satellites -> dongle) are stale
+    # config that makes the dongles read as still set up. The assignment keys are
+    # service names, not feature keys, so we can't cleanly clear them per-feature
+    # — instead we finalize once the box is empty, keeping the detected inventory.
+    if removed:
+        reg = _setup_registry()
+        remaining = installed_services.installed_features(SUITE_ROOT)
+        removable_left = [f for f in remaining if reg.get(f) and SE._is_removable(reg[f])]
+        if not removable_left:
+            hardware.clear_assignments(SUITE_ROOT)
     return removed
 
 

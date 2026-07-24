@@ -150,6 +150,20 @@ def save(repo_root, inv):
     os.replace(tmp, path)
 
 
+def clear_assignments(repo_root):
+    """Drop all service->device assignments, keeping the detected device
+    inventory. Used by the factory-reset finalizer: once every feature is
+    uninstalled, the leftover assignments (adsb/aprs/satellites -> dongle) are
+    stale config that made the dongles read as still set up. Detection keeps the
+    hardware list; only the wiring is cleared. No-op when nothing is assigned."""
+    inv = load(repo_root)
+    if not inv.assignments:
+        return False
+    inv.assignments = {}
+    save(repo_root, inv)
+    return True
+
+
 def assignee(inv, device_id):
     """The FIRST service a device is assigned to, or None. rtl-sdr devices are
     a shared resource (§2) — several services may point at the same dongle;

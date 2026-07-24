@@ -69,6 +69,25 @@ class RemovalRecordCoverageTest(unittest.TestCase):
             rec = spec.removal_record_fn()
             self.assertTrue(rec, f"{key} removal record is empty")
 
+    def test_winlink_removes_credential_and_profiles(self):
+        # A factory reset must delete the Winlink password (pat/config.json) and
+        # the generated direwolf modem profiles — a credential is not kept data.
+        files = self.reg["winlink"].removal_record_fn().get("files", [])
+        self.assertTrue(any(f.endswith("/.config/pat/config.json") for f in files),
+                        f"winlink must remove pat/config.json (the password): {files}")
+        self.assertTrue(any("/.config/direwolf/" in f and f.endswith(".conf") for f in files),
+                        f"winlink must remove its direwolf profiles: {files}")
+
+    def test_ap_fallback_keeps_the_hotspot_profile(self):
+        # The OASIS-AP NetworkManager profile is the off-grid connectivity
+        # lifeline (public PSK) and nothing recreates it, so teardown must NOT
+        # delete it — it names no OASIS-AP file, and advises it's left in place.
+        rec = self.reg["ap-fallback"].removal_record_fn()
+        self.assertFalse(any("OASIS-AP" in f for f in rec.get("files", [])),
+                         "ap-fallback must not delete the OASIS-AP hotspot profile")
+        self.assertTrue(any("OASIS-AP" in n for n in rec.get("notes", [])),
+                        "ap-fallback should advise that OASIS-AP is left in place")
+
     def test_config_features_flag_reboot(self):
         # config.txt-touching removals must require a reboot to take effect.
         for key in ("rtc", "dra-pi-rx-led", "cm4stack", "gps-l76x"):

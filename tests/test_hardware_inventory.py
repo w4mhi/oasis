@@ -27,6 +27,19 @@ class InventoryLoadTest(unittest.TestCase):
         self.assertEqual(inv.assignments["adsb"], "sdr-adsb")
         self.assertEqual(inv.errors, [])
 
+    def test_clear_assignments_keeps_inventory(self):
+        # Factory-reset finalizer: assignments wiped, detected devices kept.
+        os.makedirs(os.path.join(self.dir, "configuration"))
+        with open(os.path.join(self.dir, "configuration", "hardware.json"), "w") as f:
+            f.write('''{"version": 1,
+                "devices": [{"id": "sdr-1", "kind": "rtl-sdr", "serial": "1"}],
+                "assignments": {"adsb": "sdr-1", "satellites": "sdr-1"}}''')
+        self.assertTrue(hardware.clear_assignments(self.dir))    # something cleared
+        after = hardware.load(self.dir)
+        self.assertEqual(after.assignments, {})                  # wiring gone
+        self.assertIn("sdr-1", after.devices)                    # inventory kept
+        self.assertFalse(hardware.clear_assignments(self.dir))   # idempotent no-op
+
     def test_duplicate_device_id_skipped_with_error(self):
         os.makedirs(os.path.join(self.dir, "configuration"))
         with open(os.path.join(self.dir, "configuration", "hardware.json"), "w") as f:

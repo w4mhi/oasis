@@ -38,6 +38,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from common import hardware  # noqa: E402
 from common import installed_services  # noqa: E402
 from common import removal  # noqa: E402
 from common import removal_backfill  # noqa: E402
@@ -161,6 +162,12 @@ def run(apply=False, check=False, only=None):
     # factory-fresh; a single --feature run drops just that feature.
     if apply:
         installed_services.remove_installed(root, {k for k, _ in items})
+        # Factory-reset finalizer — parity with the web uninstall path: a
+        # whole-suite reset clears the stale service->dongle assignments in
+        # hardware.json (keeping the detected inventory), so the dongles don't
+        # read as still set up.
+        if only is None and hardware.clear_assignments(root):
+            _ok("Cleared hardware device assignments (detected inventory kept).")
 
     _hr()
     if apply:

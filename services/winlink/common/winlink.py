@@ -96,8 +96,21 @@ MODEM_AGW_PORT     = 8000
 
 def removal_record(repo_root=None):
     """Teardown record for the winlink feature: the Pat service and its Direwolf
-    RF modem service (see common/removal.py)."""
-    return {"services": [SERVICE, MODEM_SERVICE]}
+    RF modem service (see common/removal.py), plus the operator config the
+    install wrote — Pat's config.json holds the WINLINK PASSWORD, so a factory
+    reset must delete it (a credential is not "kept data"), along with the two
+    generated direwolf modem profiles. The Pat mailbox (messages) is left
+    untouched."""
+    _user, home = target_user_home()
+    cfg = os.path.join(home, ".config")
+    return {
+        "services": [SERVICE, MODEM_SERVICE],
+        "files": [
+            os.path.join(cfg, "pat", "config.json"),
+            os.path.join(cfg, "direwolf", MODEM_DRA_CONF_NAME),
+            os.path.join(cfg, "direwolf", MODEM_DIGIRIG_CONF_NAME),
+        ],
+    }
 MODEM_KISS_PORT    = 8001
 MODEM_ADEVICE      = "plughw:audioinjectorpi,0"   # DRA WM8731 (name-based plughw)
 MODEM_PTT_BCM      = 12                            # BCM GPIO wired to the DIN8 PTT (DRA red-LED line)
