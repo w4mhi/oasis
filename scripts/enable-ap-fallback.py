@@ -61,6 +61,13 @@ NETWATCH_UNIT = "oasis-netwatch"
 NETWATCH_SVC  = f"/etc/systemd/system/{NETWATCH_UNIT}.service"
 SUDOERS_PATH  = "/etc/sudoers.d/oasis-wifi"
 
+
+def removal_record(repo_root=None):
+    """Teardown record for the ap-fallback feature: the netwatch service, the two
+    /usr/local/bin helpers, and the Wi-Fi sudoers rule (see common/removal.py)."""
+    return {"services": [NETWATCH_UNIT],
+            "files": [NETCTL_PATH, NETWATCH_PATH, SUDOERS_PATH]}
+
 # ── Privileged Wi-Fi helper (installed to NETCTL_PATH, invoked via `sudo -n`) ──
 # The dashboard's /api/wifi/* endpoints run exactly `sudo -n oasis-netctl <cmd>`;
 # the sudoers rule below authorises only this binary. `connect` reads the PSK from

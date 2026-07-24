@@ -72,6 +72,19 @@ def _station_freq():
 
 SERVICE_NAME = "aprs-sdr-feed.service"
 SERVICE_PATH = f"/etc/systemd/system/{SERVICE_NAME}"
+# DVB-driver blacklist the rtl-sdr install drops so the DVB modules don't grab the
+# dongle. Removing it lets the DVB driver reclaim the device (effective on reboot).
+RTLSDR_BLACKLIST = "/etc/modprobe.d/rtlsdr-blacklist.conf"
+
+
+def removal_record(repo_root=None):
+    """Teardown record for the rtl-sdr-feed chain feature: the aprs-sdr-feed
+    service and the DVB-driver blacklist. The apt-installed rtl-sdr tools are left
+    in place (leave-apt policy)."""
+    return {"services": [SERVICE_NAME.removesuffix(".service")],
+            "files": [RTLSDR_BLACKLIST],
+            "notes": ["rtl-sdr apt tools left installed; reboot to let the DVB "
+                      "driver reclaim the dongle once the blacklist is removed."]}
 SAMPLE_RATE  = 48000           # rtl_fm -s; must equal GrayWolf's sample_rate
 DATAGRAM     = 1920            # socat -b: one 20 ms audio chunk (960 samples x 2 B)
 DEFAULT_FIR  = 3               # rtl_fm -F down-sample FIR: low-passes before

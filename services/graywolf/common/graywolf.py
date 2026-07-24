@@ -38,6 +38,11 @@ PORT = 8080
 API_SERVICE = "graywolf-api"
 API_PORT = 8085
 
+
+def removal_record(repo_root=None):
+    """Teardown record for the graywolf feature (see common/removal.py)."""
+    return {"services": [SERVICE, API_SERVICE]}
+
 ARCH_MAP = {
     "aarch64": "arm64",
     "arm64":   "arm64",

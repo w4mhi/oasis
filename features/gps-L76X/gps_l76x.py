@@ -64,6 +64,17 @@ CONFIG_CANDIDATES  = ("/boot/firmware/config.txt", "/boot/config.txt")
 CMDLINE_CANDIDATES = ("/boot/firmware/cmdline.txt", "/boot/cmdline.txt")
 UART_PARAM   = "enable_uart=1"
 PPS_OVERLAY  = "dtoverlay=pps-gpio,gpiopin=4"    # vendor FAQ: wire pin 4 (Q1) -> GPIO4
+
+
+def removal_record(repo_root=None):
+    """Teardown record for the gps-L76X (UART) feature: strip the OASIS config.txt
+    lines it added (UART on, optional 1PPS overlay; a not-present overlay line is a
+    no-op to strip). The gpsd/chrony reconfig and the serial-console change are
+    SHARED and left in place (advisory). Reboot to drop the UART/overlay changes."""
+    return {"config_lines": [UART_PARAM, PPS_OVERLAY],
+            "notes": ["gpsd/chrony reconfig and the serial-console change are left "
+                      "in place (shared — no safe automatic undo)."],
+            "requires_reboot": True}
 SERIAL_GETTY_UNITS = ["serial-getty@ttyS0.service", "serial-getty@ttyAMA0.service",
                       "serial-getty@serial0.service"]
 DEVICE_CANDIDATES  = ["/dev/ttyS0", "/dev/serial0", "/dev/ttyAMA0"]

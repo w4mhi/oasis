@@ -42,6 +42,14 @@ SCRIPT_SRC   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rgb-coo
 INSTALL_DIR  = "/opt/rgb-cooling-hat"
 SCRIPT_DEST  = os.path.join(INSTALL_DIR, "rgb-cooling-hat.py")
 SERVICE_NAME = "rgb-cooling-hat.service"
+
+
+def removal_record(repo_root=None):
+    """Teardown record for the rgb-cooling-hat feature: the service and its
+    /opt install dir (see common/removal.py). SERVICE_NAME carries the .service
+    suffix; the runner adds it, so strip it here."""
+    return {"services": [SERVICE_NAME.removesuffix(".service")],
+            "dirs": [INSTALL_DIR]}
 SERVICE_PATH = "/etc/systemd/system/" + SERVICE_NAME
 APT_DEPS     = ["python3-pil", "python3-smbus", "i2c-tools"]
 I2C_BUS      = 1

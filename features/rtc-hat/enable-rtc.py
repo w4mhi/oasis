@@ -48,6 +48,15 @@ from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
 I2C_PARAM   = "dtparam=i2c_arm=on"
 HWCLOCK_SET = "/lib/udev/hwclock-set"
 
+
+def removal_record(repo_root=None):
+    """Teardown record for the rtc feature: strip the DS3231 overlay line and
+    restore /lib/udev/hwclock-set from the .oasis.bak the installer made. Leaves
+    dtparam=i2c_arm=on (shared with other I2C users). Reboot to drop the overlay."""
+    return {"config_lines": ["dtoverlay=i2c-rtc,ds3231"],
+            "restore": [[HWCLOCK_SET + ".oasis.bak", HWCLOCK_SET]],
+            "requires_reboot": True}
+
 # Per-board RTC facts. `i2c_arm` is True when the chip sits on the GPIO ARM bus
 # (i2c-1) and so needs dtparam=i2c_arm=on; False when it hangs off the DSI
 # ribbon's bus (i2c-10), where the overlay's own i2c_csi_dsi flag brings the bus

@@ -52,6 +52,13 @@
   font-size: .8em;
   color: var(--amber);
 }
+.setup-check.is-uninstall { color: var(--red); }
+.setup-check.is-uninstall input { accent-color: var(--red); }
+.setup-uninstall-hint {
+  margin-left: .4rem;
+  font-size: .8em;
+  color: var(--red);
+}
 .setup-group { margin-bottom: .65rem; border-top: 1px dashed var(--border); padding-top: .55rem; }
 .setup-group:first-child { border-top: 0; padding-top: 0; }
 .setup-group h4 { margin: 0 0 .3rem; font-size: var(--fs-label); color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
@@ -119,6 +126,7 @@
     <button class="setup-btn" id="setupCheckPerm">Re-check permissions</button>
     <button class="setup-btn primary" id="setupRun">Run selected</button>
     <button class="setup-btn danger" id="setupReboot">Reboot Pi</button>
+    <button class="setup-btn danger" id="setupFactoryReset">Factory reset</button>
   </div>
   <div class="setup-reboot-note" id="setupRebootNote" style="display:none;"></div>
 
@@ -306,9 +314,19 @@ async function chkService(name) {
   catch { return { ok: false, active: 'unknown', installed: false }; }
 }
 // ── Setup orchestrator panel ─────────────────────────────────────────────────
-function setupSelectedFeatures() {
+// Checked features that are NOT installed -> install this run.
+function setupInstallFeatures() {
   return [...document.querySelectorAll('input[data-feature]:checked')]
+    .filter(el => !el.closest('.setup-check').classList.contains('is-installed'))
     .map(el => el.getAttribute('data-feature'));
+}
+
+// Checked features that ARE installed (and removable) -> uninstall this run.
+function setupUninstallFeatures() {
+  return [...document.querySelectorAll('input[data-feature]:checked')]
+    .filter(el => el.closest('.setup-check').classList.contains('is-installed'))
+    .map(el => el.getAttribute('data-feature'))
+    .filter(key => !SETUP_NEVER_REMOVABLE.has(key));
 }
 
 function setupPayload() {
@@ -320,7 +338,8 @@ function setupPayload() {
   const pwInput = document.getElementById('setupWinlinkPassword');
   const winPw = setupWinlinkPasswordHasExisting && !setupWinlinkPasswordChanged ? '' : (pwInput.value || '');
   return {
-    selectedFeatures: setupSelectedFeatures(),
+    selectedFeatures: setupInstallFeatures(),
+    uninstallFeatures: setupUninstallFeatures(),
     station: {
       callsign: (document.getElementById('setupStationCallsign').value || '').trim().toUpperCase(),
       grid: (document.getElementById('setupStationGrid').value || '').trim().toUpperCase(),
@@ -413,11 +432,9 @@ function setupNormalizeFeatureKey(raw) {
   return SETUP_FEATURE_ALIASES[key] || key;
 }
 
-// Heavy features whose reinstall is expensive — call it out in the hint.
-const SETUP_HEAVY_REINSTALL = {
-  fcc: '~160 MB re-download',
-  wikipedia: '~447 MB re-download',
-};
+// Features that can never be uninstalled from the web (mirror of the backend
+// _UNREMOVABLE_WEB). server serves this page; wikipedia's ZIM lifecycle is separate.
+const SETUP_NEVER_REMOVABLE = new Set(['server', 'wikipedia']);
 
 async function setupAutoSelectInstalledFeatures() {
   if (setupAutoSelected) return;
@@ -456,7 +473,7 @@ async function setupAutoSelectInstalledFeatures() {
     const key = ch.getAttribute('data-feature');
     const label = ch.closest('.setup-check');
     if (installed.has(key)) {
-      // Installed: green + unticked. Ticking it again means "reinstall".
+      // Installed: green + unticked. Re-ticking a removable one means "uninstall".
       ch.checked = false;
       if (label) label.classList.add('is-installed');
       if (label && !label.querySelector('.setup-installed-badge')) {
@@ -477,6 +494,9 @@ async function setupAutoSelectInstalledFeatures() {
   setupAutoSelected = true;
 }
 
+// An installed feature (green) that gets re-ticked means UNINSTALL: the checkbox
+// and label go red and a "will uninstall" hint appears. Not-installed features
+// tick normally (install). Reinstall is not a toggle state — uninstall then install.
 function setupWireReinstallHints() {
   document.querySelectorAll('input[data-feature]').forEach(ch => {
     ch.addEventListener('change', () => {
@@ -490,16 +510,19 @@ function setupWireReinstallHints() {
       const label = ch.closest('.setup-check');
       if (!label) return;
       const key = ch.getAttribute('data-feature');
-      const reinstall = ch.checked && label.classList.contains('is-installed');
-      let hint = label.querySelector('.setup-reinstall-hint');
-      if (reinstall) {
+      const installed = label.classList.contains('is-installed');
+      const removable = installed && !SETUP_NEVER_REMOVABLE.has(key);
+      const uninstalling = ch.checked && removable;
+
+      label.classList.toggle('is-uninstall', uninstalling);
+      let hint = label.querySelector('.setup-uninstall-hint');
+      if (uninstalling) {
         if (!hint) {
           hint = document.createElement('span');
-          hint.className = 'setup-reinstall-hint';
+          hint.className = 'setup-uninstall-hint';
           label.appendChild(hint);
         }
-        const extra = SETUP_HEAVY_REINSTALL[key];
-        hint.textContent = extra ? `will reinstall — ${extra}` : 'will reinstall';
+        hint.textContent = 'will uninstall';
       } else if (hint) {
         hint.remove();
       }
@@ -848,6 +871,43 @@ async function setupReadJson(r) {
   throw new Error(`server returned HTTP ${r.status} (not JSON)${body ? ': ' + body : ''}`);
 }
 
+let setupSkipUninstallConfirm = false;   // Factory reset does its own type-to-confirm.
+function uplanList(x) { return Array.isArray(x) ? x : []; }
+
+// Uninstall EVERYTHING installed (except never-removable). Ticks all installed
+// removable features red, unticks the rest, then runs — behind a type-to-confirm.
+async function setupFactoryReset() {
+  const installed = [...document.querySelectorAll('input[data-feature]')]
+    .filter(el => el.closest('.setup-check').classList.contains('is-installed'))
+    .map(el => el.getAttribute('data-feature'))
+    .filter(key => !SETUP_NEVER_REMOVABLE.has(key));
+  if (!installed.length) { alert('Nothing installed to remove.'); return; }
+
+  const typed = prompt(
+    `Factory reset will UNINSTALL all ${installed.length} installed feature(s):\n` +
+    `${installed.join(', ')}\n\n` +
+    `Downloaded data (maps, ZIMs, FCC DB) is kept. Type REMOVE to confirm.`);
+  if (typed !== 'REMOVE') {
+    if (typed !== null) alert('Not confirmed — type REMOVE exactly. No changes made.');
+    return;
+  }
+
+  // Reflect the choice in the checkboxes (all installed-removable -> red uninstall,
+  // everything else off) so the shared run path picks them up, then run without a
+  // second confirm (the type-to-confirm above is the gate).
+  document.querySelectorAll('input[data-feature]').forEach(el => {
+    const key = el.getAttribute('data-feature');
+    el.checked = installed.includes(key);
+    el.dispatchEvent(new Event('change'));
+  });
+  setupSkipUninstallConfirm = true;
+  try {
+    await setupRunSelected();
+  } finally {
+    setupSkipUninstallConfirm = false;
+  }
+}
+
 async function setupRunSelected() {
   const log = document.getElementById('setupLog');
   const stateEl = document.getElementById('setupJobState');
@@ -907,6 +967,34 @@ async function setupRunSelected() {
     return;
   }
   blockedEl.innerHTML = '<li>No blockers.</li>';
+
+  // Uninstall side of the plan (Plan 2's /api/setup/plan response).
+  const uplan = d.uninstall || { ordered: [], blocked: [] };
+  const uOrdered = uplanList(uplan.ordered);
+  const uBlocked = uplanList(uplan.blocked);
+  if (uOrdered.length || uBlocked.length) {
+    info.textContent += ` | uninstall: ${uOrdered.join(', ') || '(none)'}`;
+    appendLog(`[phase] uninstall order: ${uOrdered.join(', ') || '(none)'}`);
+  }
+  if (uBlocked.length) {
+    blockedEl.innerHTML += (uplan.blocked || [])
+      .map(b => `<li>uninstall ${escapeHtml(b.feature || '?')}: ${escapeHtml(b.reason_text || b.reason_code || 'blocked')}</li>`)
+      .join('');
+    appendLog(`[phase] uninstall blocked: ${JSON.stringify(uplan.blocked)}`);
+    stateEl.textContent = 'Uninstall blocked — resolve dependants first (see below)';
+    return;
+  }
+  if (uOrdered.length && !setupSkipUninstallConfirm) {
+    const proceed = confirm(
+      `Uninstall ${uOrdered.length} feature(s): ${uOrdered.join(', ')}?\n\n` +
+      `Services will stop and their OASIS config/files are removed. ` +
+      `Downloaded data (maps, ZIMs, FCC DB) is KEPT.`);
+    if (!proceed) {
+      stateEl.textContent = 'Cancelled — no changes made.';
+      appendLog('[phase] uninstall cancelled by operator');
+      return;
+    }
+  }
 
   appendLog('[phase] starting install job…');
   try {
@@ -999,6 +1087,7 @@ function initSetupOrchestrator() {
   document.getElementById('setupCheckPerm').addEventListener('click', setupGetPermissions);
   document.getElementById('setupRun').addEventListener('click', setupRunSelected);
   document.getElementById('setupReboot').addEventListener('click', setupRebootPi);
+  document.getElementById('setupFactoryReset').addEventListener('click', setupFactoryReset);
   document.getElementById('setupWifiMode').addEventListener('change', setupWifiWarnRefresh);
   document.getElementById('setupWinlinkPasswordChange').addEventListener('click', setupEnableWinlinkPasswordEdit);
 

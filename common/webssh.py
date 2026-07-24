@@ -51,6 +51,12 @@ SERVICE_FILE = f"/etc/systemd/system/{SERVICE}.service"
 LOGIN_SCRIPT = "/usr/local/bin/oasis-webssh-login"
 INSTALL_BIN  = "/usr/local/bin/ttyd"
 
+
+def removal_record(repo_root=None):
+    """Teardown record for the webssh feature: the ttyd service, the ttyd static
+    binary, and the login-shell helper (see common/removal.py)."""
+    return {"services": [SERVICE], "files": [INSTALL_BIN, LOGIN_SCRIPT]}
+
 # ttyd is NOT in Debian/Raspberry Pi OS stable repos, so we install the
 # upstream prebuilt static binary (single self-contained file per arch —
 # no libwebsockets/libuv runtime deps). See github.com/tsl0922/ttyd/releases.

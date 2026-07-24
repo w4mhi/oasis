@@ -535,11 +535,20 @@ def _summary_with(features):
     return SimpleNamespace(features=[{"feature": k, "status": s} for k, s in features])
 
 
+def _seed_manifest(tmp_path, obj):
+    # The manifest now lives under <SUITE_ROOT>/configuration/ and is written by
+    # common/installed_services.py; tests patch SUITE_ROOT and seed there.
+    cfg = tmp_path / "configuration"
+    cfg.mkdir(exist_ok=True)
+    manifest = cfg / "installed-services.json"
+    manifest.write_text(json.dumps(obj) + "\n")
+    return manifest
+
+
 def test_record_keeps_unticked_installed_feature_additive(tmp_path):
-    manifest = tmp_path / "installed-services.json"
-    manifest.write_text(json.dumps({"features": ["fcc", "adsb"]}) + "\n")
+    manifest = _seed_manifest(tmp_path, {"features": ["fcc", "adsb"]})
     summary = _summary_with([("kiwix", SE.STATUS_INSTALLED)])
-    with mock.patch.object(setup_module, "INSTALLED_SERVICES_FILE", str(manifest)):
+    with mock.patch.object(setup_module, "SUITE_ROOT", str(tmp_path)):
         setup_module._setup_record_installed_features(summary)
     got = set(json.loads(manifest.read_text())["features"])
     # fcc was NOT ticked this run and is a former GATE_AUTHORITATIVE member, but
@@ -548,24 +557,94 @@ def test_record_keeps_unticked_installed_feature_additive(tmp_path):
 
 
 def test_record_does_not_drop_former_gate_authoritative_on_untick(tmp_path):
-    manifest = tmp_path / "installed-services.json"
-    manifest.write_text(json.dumps({"features": ["fcc", "repeaterbook", "forms"]}) + "\n")
+    manifest = _seed_manifest(tmp_path, {"features": ["fcc", "repeaterbook", "forms"]})
     # A run that installs nothing new and ticks none of the content gates.
     summary = _summary_with([])
-    with mock.patch.object(setup_module, "INSTALLED_SERVICES_FILE", str(manifest)):
+    with mock.patch.object(setup_module, "SUITE_ROOT", str(tmp_path)):
         setup_module._setup_record_installed_features(summary)
     got = set(json.loads(manifest.read_text())["features"])
     assert got == {"fcc", "repeaterbook", "forms"}
 
 
 def test_record_adds_only_successful_installs(tmp_path):
-    manifest = tmp_path / "installed-services.json"
-    manifest.write_text(json.dumps({"features": []}) + "\n")
+    manifest = _seed_manifest(tmp_path, {"features": []})
     summary = _summary_with([
         ("kiwix", SE.STATUS_INSTALLED),
         ("adsb", SE.STATUS_INSTALL_FAILED),
     ])
-    with mock.patch.object(setup_module, "INSTALLED_SERVICES_FILE", str(manifest)):
+    with mock.patch.object(setup_module, "SUITE_ROOT", str(tmp_path)):
         setup_module._setup_record_installed_features(summary)
     got = set(json.loads(manifest.read_text())["features"])
     assert got == {"kiwix"}
+
+
+class EnqueueRemoveShapeTest(unittest.TestCase):
+    # A TestCase so `unittest discover` (the CI runner) collects it. Verifies the
+    # remove variant hands the shared enqueue-and-wait helper a job body carrying
+    # action:"remove" for the right feature — without running the time/IO loop.
+    def test_remove_job_body_has_action(self):
+        captured = {}
+
+        def _fake_wait(body, key, job_id=None):
+            captured["body"] = body
+            captured["key"] = key
+            return {"ok": True}
+
+        with mock.patch.object(setup_module, "_setup_enqueue_and_wait", _fake_wait):
+            res = setup_module._setup_enqueue_and_wait_remove("kiwix", job_id=None)
+        self.assertTrue(res["ok"])
+        self.assertEqual(captured["key"], "kiwix")
+        self.assertEqual(captured["body"]["feature"], "kiwix")
+        self.assertEqual(captured["body"]["action"], "remove")
+
+    def test_remove_rejects_unremovable(self):
+        res = setup_module._setup_enqueue_and_wait_remove("server", job_id=None)
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["reason_code"], "REMOVE_FAILED")
+
+
+class RecordRemovedTest(unittest.TestCase):
+    def test_removed_features_drop_from_manifest(self):
+        import tempfile
+        from common import installed_services, config_paths
+        root = tempfile.mkdtemp()
+        os.makedirs(config_paths.config_dir(root), exist_ok=True)
+        installed_services.write(root, {"kiwix", "graywolf"},
+                                 {"kiwix": {"services": ["kiwix"]},
+                                  "graywolf": {"services": ["graywolf"]}})
+        with mock.patch.object(setup_module, "SUITE_ROOT", root):
+            setup_module._setup_record_removed_features({"kiwix"})
+        self.assertEqual(installed_services.installed_features(root), {"graywolf"})
+        self.assertNotIn("kiwix", installed_services.removal_map(root))
+
+
+class RunUninstallsTest(unittest.TestCase):
+    def _seed(self):
+        import tempfile
+        from common import installed_services, config_paths
+        root = tempfile.mkdtemp()
+        os.makedirs(config_paths.config_dir(root), exist_ok=True)
+        installed_services.write(root, {"kiwix"}, {"kiwix": {"services": ["kiwix"]}})
+        return root
+
+    def test_run_uninstalls_removes_on_success(self):
+        from common import installed_services
+        root = self._seed()
+        with mock.patch.object(setup_module, "SUITE_ROOT", root), \
+             mock.patch.object(setup_module, "_setup_enqueue_and_wait_remove",
+                               lambda key, job_id=None: {"ok": True, "advisory": []}), \
+             mock.patch.object(setup_module, "_setup_emit_event", lambda *a, **k: None):
+            removed = setup_module._setup_run_uninstalls("job-1", ["kiwix"])
+        self.assertEqual(removed, ["kiwix"])
+        self.assertEqual(installed_services.installed_features(root), set())
+
+    def test_run_uninstalls_keeps_feature_on_failure(self):
+        from common import installed_services
+        root = self._seed()
+        with mock.patch.object(setup_module, "SUITE_ROOT", root), \
+             mock.patch.object(setup_module, "_setup_enqueue_and_wait_remove",
+                               lambda key, job_id=None: {"ok": False, "reason_text": "boom"}), \
+             mock.patch.object(setup_module, "_setup_emit_event", lambda *a, **k: None):
+            removed = setup_module._setup_run_uninstalls("job-1", ["kiwix"])
+        self.assertEqual(removed, [])
+        self.assertEqual(installed_services.installed_features(root), {"kiwix"})

@@ -658,13 +658,14 @@ def record_installed(results, offered_gate=frozenset()):
 
     if merged == existing:
         return
-    payload = {"features": sorted(merged),
-               "updated": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    # Delegate the write to the schema module (single owner of the manifest).
+    # Removal records are attached by the installer worker / web path (Plan 1
+    # Task 7); the CLI relies on backfill to regenerate them on demand.
+    from common import installed_services
     try:
-        os.makedirs(config_paths.config_dir(REPO_ROOT), exist_ok=True)
-        with open(INSTALLED_MANIFEST, "w") as fh:
-            json.dump(payload, fh, indent=2)
-            fh.write("\n")
+        installed_services.add_installed(REPO_ROOT, merged - existing, {})
+        for k in existing - merged:          # gate untick → hide
+            installed_services.remove_installed(REPO_ROOT, {k})
         _ok(f"Recorded installed features → {os.path.basename(INSTALLED_MANIFEST)}")
     except OSError as e:
         _warn(f"Could not write {os.path.basename(INSTALLED_MANIFEST)}: {e}")

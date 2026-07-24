@@ -19,6 +19,13 @@ from common.oasis_lib import (
 
 SERVER_DIR = os.path.join(_REPO_ROOT, "server")
 DATA_DIR = os.path.join(_REPO_ROOT, "services", "fcc_database", "data")
+
+
+def removal_record(repo_root=None):
+    """Teardown record for the fcc feature. The FCC data + indexes are ~160 MB and
+    expensive to re-download offline, so they are advisory-only (never auto-deleted);
+    uninstalling just hides the dashboard's FCC lookup card."""
+    return {"data_paths": [DATA_DIR]}
 EN_DAT = os.path.join(DATA_DIR, "EN.dat")
 ZIP_CSV = os.path.join(DATA_DIR, "zipcodes.csv")
 EN_IDX = os.path.join(DATA_DIR, "EN.idx")

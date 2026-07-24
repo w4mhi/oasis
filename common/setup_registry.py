@@ -16,6 +16,8 @@ root (writes /etc, /usr/local/bin, apt/GPG, sudoers, systemd units, ...) — the
 in-process web server never has that (no TTY, no cached sudo credential).
 """
 
+import importlib
+import importlib.util
 import os
 import queue
 import subprocess
@@ -25,6 +27,64 @@ import time
 
 from common import setup_engine as SE
 from common import server as SERVER_SETUP
+
+
+# ── Per-feature removal records ───────────────────────────────────────────────
+# Each feature's removal_record() lives in its own installer module (sourced from
+# that module's constants) so removal never drifts from what install created — the
+# single-source-of-truth rule. build_registry() wires each spec's
+# removal_record_fn to load and call it; install persists the result into
+# installed-services.json (see common/installed_services.py).
+_REMOVAL_MODULE_CACHE = {}
+
+
+def _removal_module(repo_root, ref):
+    """Load the module hosting a feature's removal_record().
+
+    *ref* is either a dotted importable module name
+    ("services.graywolf.common.graywolf") or a repo-relative path to a hyphenated
+    script that cannot be imported normally ("scripts/enable-ap-fallback.py")."""
+    if ref in _REMOVAL_MODULE_CACHE:
+        return _REMOVAL_MODULE_CACHE[ref]
+    if ref.endswith(".py"):
+        path = os.path.join(repo_root, ref)
+        mod_name = "oasis_removal_" + ref[:-3].replace("/", "_").replace("-", "_")
+        spec = importlib.util.spec_from_file_location(mod_name, path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    else:
+        mod = importlib.import_module(ref)
+    _REMOVAL_MODULE_CACHE[ref] = mod
+    return mod
+
+
+def _removal_record(repo_root, ref):
+    return _removal_module(repo_root, ref).removal_record(repo_root)
+
+
+def _satellites_removal_record(repo_root):
+    """Satellites has no dedicated service; it installs the Skyfield/numpy stack
+    (venv, shared), the pass-alert voice (apt, shared), and a CelesTrak TLE cache.
+    Treated data-style: advise on the TLE cache, deregister from the manifest, and
+    leave the shared venv/apt stacks alone (per the design decision)."""
+    from common import config_paths as _cp
+    return {"data_paths": [_cp.tle_cache_dir(repo_root)]}
+
+
+# repeaterbook and forms are record-only features (no installer module to host a
+# removal_record); their teardown is "hide the card + advise on data", defined here
+# at their definition site.
+def _repeaterbook_removal_record(repo_root):
+    """RepeaterBook ships a single copyrighted CSV under static/repeaterbook/;
+    advisory-only (never auto-deleted). Uninstalling hides the dashboard card."""
+    return {"data_paths": [os.path.join(repo_root, "static", "repeaterbook")]}
+
+
+def _forms_removal_record(repo_root):
+    """ICS forms ship with the repo (not downloaded data); uninstalling only hides
+    the dashboard card. Any saved form instances are left untouched."""
+    return {"notes": ["ICS forms ship with the repo; uninstalling hides the "
+                      "dashboard card only. Saved form instances are left untouched."]}
 
 # Shared exit-code convention used by several install scripts (e.g.
 # features/dra-audio-interface/enable-dra-pi.py, displays/cm4stack/
@@ -290,6 +350,7 @@ def build_registry(repo_root, payload=None):
             key="webssh",
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "services/webssh/install.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "common.webssh"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -298,6 +359,7 @@ def build_registry(repo_root, payload=None):
             key="service-controls",
             dependencies=["server"],
             install_fn=lambda: _setup_service_controls_install(repo_root),
+            removal_record_fn=lambda: _removal_record(repo_root, "scripts/enable-service-controls.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -306,6 +368,7 @@ def build_registry(repo_root, payload=None):
             key="ap-fallback",
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "scripts/enable-ap-fallback.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "scripts/enable-ap-fallback.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -314,6 +377,7 @@ def build_registry(repo_root, payload=None):
             key="graywolf",
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "services/graywolf/install.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "services.graywolf.common.graywolf"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -322,6 +386,7 @@ def build_registry(repo_root, payload=None):
             key="winlink",
             dependencies=["server"],
             install_fn=lambda: _setup_winlink_install_fn(repo_root, payload),
+            removal_record_fn=lambda: _removal_record(repo_root, "services.winlink.common.winlink"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -330,6 +395,7 @@ def build_registry(repo_root, payload=None):
             key="kiwix",
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "services/kiwix/install.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "services.kiwix.common.kiwix"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -338,6 +404,7 @@ def build_registry(repo_root, payload=None):
             key="openwebrx",
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "services/openwebrx/install.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "services.openwebrx.common.openwebrx"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -346,6 +413,7 @@ def build_registry(repo_root, payload=None):
             key="adsb",
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "services/adsb/install.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "services.adsb.common.adsb"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -366,6 +434,7 @@ def build_registry(repo_root, payload=None):
                 {"script": "services/satellites/build-roster.py"},
                 {"script": "services/satellites/install-voice.py", "timeout": 600},
             ]),
+            removal_record_fn=lambda: _satellites_removal_record(repo_root),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -383,6 +452,7 @@ def build_registry(repo_root, payload=None):
                 # Operator-initiated start (enable --now) still survives reboots.
                 {"script": "features/rtl-sdr/enable-rtl-sdr.py", "args": ["--no-enable"]},
             ]),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/rtl-sdr/enable-rtl-sdr.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -391,6 +461,7 @@ def build_registry(repo_root, payload=None):
             key="gps",
             dependencies=[],
             install_fn=lambda: _setup_run_script(repo_root, "features/gps/install-gps.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "features.gps.gps"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -404,6 +475,7 @@ def build_registry(repo_root, payload=None):
             key="gps-l76x",
             dependencies=[],
             install_fn=lambda: _setup_run_script(repo_root, "features/gps-L76X/install-gps-l76x.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/gps-L76X/gps_l76x.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -415,6 +487,7 @@ def build_registry(repo_root, payload=None):
                 {"script": "features/dra-audio-interface/enable-dra-pi.py"},
                 {"script": "features/dra-audio-interface/enable-dra-rx-led.py"},
             ]),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/dra-audio-interface/enable-dra-pi.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -423,6 +496,7 @@ def build_registry(repo_root, payload=None):
             key="rtc",
             dependencies=[],
             install_fn=lambda: _setup_run_script(repo_root, "features/rtc-hat/enable-rtc.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/rtc-hat/enable-rtc.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -436,6 +510,7 @@ def build_registry(repo_root, payload=None):
             # cosmetic — the service was never installed, so the server never
             # came back up after a reboot.
             install_fn=lambda: _setup_run_script(repo_root, "scripts/enable-autostart-pi.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "scripts/enable-autostart-pi.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -444,6 +519,7 @@ def build_registry(repo_root, payload=None):
             key="pi-local-monitor",
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "scripts/enable-autostart-pi.py", ["--with-browser"]),
+            removal_record_fn=lambda: _removal_record(repo_root, "scripts/enable-autostart-pi.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             requires_reboot=True,
@@ -453,6 +529,7 @@ def build_registry(repo_root, payload=None):
             key="pi-small-screen-7",
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "scripts/enable-autostart-pi.py", ["--7inch"]),
+            removal_record_fn=lambda: _removal_record(repo_root, "small-screen/uninstall.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             requires_reboot=True,
@@ -462,6 +539,7 @@ def build_registry(repo_root, payload=None):
             key="cm4stack",
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "displays/cm4stack/install-cm4stack.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "displays/cm4stack/install-cm4stack.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             requires_reboot=True,
@@ -471,6 +549,7 @@ def build_registry(repo_root, payload=None):
             key="rgb-cooling-hat",
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "features/rgb-cooling-hat/install-rgb-cooling-hat.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/rgb-cooling-hat/install-rgb-cooling-hat.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
@@ -483,6 +562,7 @@ def build_registry(repo_root, payload=None):
             # tight on a slow connection or a Pi Zero doing the index build,
             # so give it a generous 20 minutes.
             install_fn=lambda: _setup_run_script(repo_root, "services/fcc_database/install.py", timeout=1200),
+            removal_record_fn=lambda: _removal_record(repo_root, "services.fcc_database.common.fcc_database"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
         ),
@@ -506,6 +586,7 @@ def build_registry(repo_root, payload=None):
             key="repeaterbook",
             dependencies=[],
             install_fn=lambda: _setup_record_only("repeaterbook"),
+            removal_record_fn=lambda: _repeaterbook_removal_record(repo_root),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
         ),
@@ -513,6 +594,7 @@ def build_registry(repo_root, payload=None):
             key="forms",
             dependencies=[],
             install_fn=lambda: _setup_record_only("forms"),
+            removal_record_fn=lambda: _forms_removal_record(repo_root),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
         ),

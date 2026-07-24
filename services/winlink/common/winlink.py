@@ -92,6 +92,12 @@ SERVICE_FILE = f"/etc/systemd/system/{SERVICE}.service"
 MODEM_SERVICE      = "pat-direwolf"
 MODEM_SERVICE_FILE = f"/etc/systemd/system/{MODEM_SERVICE}.service"
 MODEM_AGW_PORT     = 8000
+
+
+def removal_record(repo_root=None):
+    """Teardown record for the winlink feature: the Pat service and its Direwolf
+    RF modem service (see common/removal.py)."""
+    return {"services": [SERVICE, MODEM_SERVICE]}
 MODEM_KISS_PORT    = 8001
 MODEM_ADEVICE      = "plughw:audioinjectorpi,0"   # DRA WM8731 (name-based plughw)
 MODEM_PTT_BCM      = 12                            # BCM GPIO wired to the DIN8 PTT (DRA red-LED line)
