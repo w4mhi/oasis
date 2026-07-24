@@ -87,5 +87,45 @@ class RemovalRunnerTest(unittest.TestCase):
         self.assertTrue(out["ok"])
 
 
+class StripConfigTest(unittest.TestCase):
+    SAMPLE = (
+        "dtparam=audio=on\n"
+        "dtparam=i2c_arm=on\n"
+        "dtoverlay=i2c-rtc,ds3231\n"
+        "# --- OASIS DRA-Pi-Zero (managed by scripts/enable-dra-pi.py) ---\n"
+        "dtparam=audio=off\n"
+        "dtoverlay=audioinjector-wm8731-audio\n"
+        "# --- end OASIS DRA-Pi-Zero ---\n"
+        "# --- OASIS CM4Stack (managed by cm4stack/install-cm4stack.py) ---\n"
+        "dtoverlay=m5stack-cm4\n"
+        "# --- end OASIS CM4Stack ---\n"
+        "dtoverlay=vc4-kms-v3d\n"
+    )
+    BLOCKS = [
+        ("# --- OASIS DRA-Pi-Zero (managed by scripts/enable-dra-pi.py) ---",
+         "# --- end OASIS DRA-Pi-Zero ---"),
+        ("# --- OASIS CM4Stack (managed by cm4stack/install-cm4stack.py) ---",
+         "# --- end OASIS CM4Stack ---"),
+    ]
+    LINES = ["dtoverlay=i2c-rtc,ds3231"]
+
+    def test_removes_oasis_blocks_and_lines_only(self):
+        out, changes = removal.strip_config(self.SAMPLE, self.BLOCKS, self.LINES)
+        self.assertNotIn("audioinjector-wm8731-audio", out)
+        self.assertNotIn("m5stack-cm4", out)
+        self.assertNotIn("i2c-rtc,ds3231", out)
+        # preserved:
+        self.assertIn("dtparam=i2c_arm=on", out)
+        self.assertIn("dtparam=audio=on", out)
+        self.assertIn("dtoverlay=vc4-kms-v3d", out)
+        self.assertTrue(changes)
+
+    def test_idempotent_on_clean(self):
+        clean = "dtparam=i2c_arm=on\ndtoverlay=vc4-kms-v3d\n"
+        out, changes = removal.strip_config(clean, self.BLOCKS, self.LINES)
+        self.assertEqual(out.strip(), clean.strip())
+        self.assertEqual(changes, [])
+
+
 if __name__ == "__main__":
     unittest.main()

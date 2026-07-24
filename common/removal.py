@@ -26,7 +26,46 @@ anything. It never deletes data_paths, and never errors on absent files/units
 to re-run. config.txt edits are surfaced in the change list here but performed by
 scripts/remove-oasis.py's single aggregated config rewrite, not per-record.
 """
+import os
+
 from common.oasis_lib import _run as _default_run
+
+
+def config_path():
+    """Return the active Raspberry Pi config.txt path, or None off-Pi."""
+    for p in ("/boot/firmware/config.txt", "/boot/config.txt"):
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _strip_block(body, begin, end, changes):
+    """Remove one BEGIN..END managed block (inclusive) from *body*."""
+    if begin in body:
+        pre, _, rest = body.partition(begin)
+        _, _, post = rest.partition(end)
+        body = pre.rstrip("\n") + "\n" + post.lstrip("\n")
+        changes.append(f"removed managed block {begin!r}")
+    return body
+
+
+def strip_config(text, blocks, lines):
+    """Strip the given (begin, end) marker blocks and standalone lines from
+    config.txt *text*. Returns (new_text, changes). Idempotent: absent blocks/
+    lines are silently skipped. Unrelated lines are preserved."""
+    changes = []
+    body = text
+    for begin, end in blocks:
+        body = _strip_block(body, begin, end, changes)
+    lineset = {ln.strip() for ln in (lines or [])}
+    kept = []
+    for ln in body.splitlines():
+        if ln.strip() in lineset:
+            changes.append(f"removed {ln.strip()!r}")
+            continue
+        kept.append(ln)
+    out = "\n".join(kept).rstrip("\n")
+    return ((out + "\n") if out else ""), changes
 
 
 def apply(record, apply=False, run=_default_run):

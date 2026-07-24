@@ -1,280 +1,84 @@
 #!/usr/bin/env python3
 """
-remove-oasis.py — factory reset / uninstall
--------------------------------------------
-Undo everything the OASIS setup scripts install on a Raspberry Pi: stop/disable/
-remove services, delete OASIS-managed system files, and strip the OASIS-managed
-blocks from config.txt. Large downloaded data (maps / FCC DB / ZIMs / wheels) is
-NEVER auto-deleted — it is listed with sizes so you can remove it manually.
+remove-oasis.py — factory reset / per-feature uninstall (manifest-driven)
+-------------------------------------------------------------------------
+Undo what the OASIS setup installs, reading the plan from the single source of
+truth: installed-services.json. Each installed feature carries a removal record
+(written at install time from the installer's own constants — see
+common/installed_services.py and common/removal.py); this script runs the generic
+runner over each record, plus a single aggregated config.txt rewrite and residual
+system-teardown advisories.
+
+Large downloaded data (maps / FCC DB / ZIMs / wheels / GrayWolf data) is NEVER
+auto-deleted — it is surfaced as an advisory so you can remove it manually.
+
+Boxes whose manifest predates the removal map self-heal: the plan backfills each
+feature's record from the installers before running (no reinstall needed).
 
 Dry-run by default: prints exactly what it would do and changes nothing. Pass
---apply to actually perform the teardown. See docs/remove-oasis-design.md.
-
-What it removes (with --apply):
-  • Services : oasis, oasis-panel, graywolf, graywolf-api, pat, kiwix, webssh,
-               aprs-sdr-feed, openwebrx, rgb-cooling-hat
-  • Files    : sudoers rule, RTL-SDR blacklist, oasis-browser-launch, ttyd, kiwix-serve
-  • Dirs     : /opt/rgb-cooling-hat
-  • config.txt: the OASIS-managed DRA-Pi & CM4Stack blocks + the DS3231 RTC overlay
-  • hwclock-set: restored from the OASIS backup, if present
-
-What it deliberately does NOT do (printed as manual follow-ups):
-  • apt remove anything (chromium, lxde, rtl-sdr, gpsd, tcpdump … stay installed)
-  • delete maps / FCC DB / ZIMs / wheels (expensive to re-download offline)
-  • flip the boot target, touch i2c group membership, or reinstall fake-hwclock
+--apply to perform the teardown, or --feature KEY to uninstall a single feature.
 
 Usage:
-  python3 scripts/remove-oasis.py            # dry-run: print the plan, change nothing
-  python3 scripts/remove-oasis.py --apply    # perform the teardown, then: sudo reboot
-  python3 scripts/remove-oasis.py --check     # report present OASIS state; change nothing
+  python3 scripts/remove-oasis.py                 # dry-run: whole-suite plan
+  python3 scripts/remove-oasis.py --apply         # perform the full teardown
+  python3 scripts/remove-oasis.py --feature kiwix # dry-run one feature
+  python3 scripts/remove-oasis.py --feature kiwix --apply
+  python3 scripts/remove-oasis.py --check         # report installed state; change nothing
 
-Requires: Linux (Raspberry Pi OS), sudo.
+What it deliberately does NOT do (printed as manual follow-ups):
+  • apt remove anything (chromium, rtl-sdr, gpsd, tcpdump … stay installed)
+  • delete maps / FCC DB / ZIMs / wheels (expensive to re-download offline)
+  • undo shared gpsd/chrony reconfig (see per-feature advisories)
+
+Requires: Linux (Raspberry Pi OS), sudo, for --apply.
 """
 
 import argparse
-import importlib.util
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from common import config_paths  # noqa: E402
+from common import installed_services  # noqa: E402
+from common import removal  # noqa: E402
+from common import removal_backfill  # noqa: E402
 from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run  # noqa: E402
-
-# ── Inventory (source of truth — see docs/remove-oasis-design.md) ─────────────
-SERVICES = [
-    "oasis", "oasis-panel",
-    "graywolf", "graywolf-api", "pat", "kiwix", "webssh",
-    "aprs-sdr-feed", "openwebrx", "adsb-api", "rgb-cooling-hat",
-]
-FILES = [
-    "/etc/sudoers.d/oasis-service-controls",
-    "/etc/modprobe.d/rtlsdr-blacklist.conf",
-    # OASIS drop-in that pulls adsb-api in with dump1090-fa (services/adsb).
-    "/etc/systemd/system/dump1090-fa.service.d/oasis-adsb-api.conf",
-    # OASIS lighttpd drop-in that moves FlightAware SkyAware off GrayWolf's 8080.
-    "/etc/lighttpd/conf-enabled/99-oasis-skyaware-port.conf",
-    "/usr/local/bin/oasis-browser-launch",
-    "/usr/local/bin/ttyd",
-    "/usr/local/bin/kiwix-serve",
-]
-DIRS = [
-    "/opt/rgb-cooling-hat",
-]
-HWCLOCK_SET = "/lib/udev/hwclock-set"
-HWCLOCK_BAK = "/lib/udev/hwclock-set.oasis.bak"
-RTC_OVERLAY = "dtoverlay=i2c-rtc,ds3231"
 
 
 def repo_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-# Install state at the suite root (user-owned — removed without sudo).
-# installed-services.json is the feature manifest setup-oasis.py writes; the
-# dashboard reads it via /api/installed-services to hide cards for features that
-# were never installed. Leaving it behind makes the dashboard keep showing
-# torn-down services as if installed; deleting it returns the dashboard to its
-# default "show everything" state — i.e. factory-fresh.
-SUITE_FILES = [
-    config_paths.installed_services_json(repo_root()),
-]
+def plan(root, only=None):
+    """Return the ordered removal plan as [(feature_key, record)].
+
+    Backfills any missing removal records first (self-heal for legacy manifests),
+    then returns the records for every installed feature — or just *only*, when a
+    single feature is requested."""
+    installed = installed_services.installed_features(root)
+    removal_backfill.ensure(root, installed)
+    rmap = installed_services.removal_map(root)
+    keys = [only] if only else sorted(installed)
+    return [(k, rmap.get(k, {})) for k in keys if k in installed]
 
 
-# Large downloaded data — NEVER auto-deleted; probed for existence and sized.
-DATA_PATHS = [
-    "/var/lib/graywolf",
-    os.path.join(repo_root(), "maps"),
-    os.path.join(repo_root(), "services", "fcc_database", "data"),
-    os.path.join(repo_root(), "server", "wheels"),
-    os.path.join(repo_root(), "offline-packages"),
-]
-
-
-# ── Config.txt marker import (keep block definitions in sync with installers) ─
-def _import_markers(filename, names):
-    """Import named constants from a hyphenated sibling script (e.g. enable-dra-pi.py)."""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
-    mod_name = filename.replace("-", "_").replace(".py", "")
-    spec = importlib.util.spec_from_file_location(mod_name, path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return tuple(getattr(mod, n) for n in names)
-
-
-_DRA_BEGIN, _DRA_END = _import_markers("../features/dra-audio-interface/enable-dra-pi.py", ("BLOCK_BEGIN", "BLOCK_END"))
-_CM4_BEGIN, _CM4_END = _import_markers("../displays/cm4stack/install-cm4stack.py", ("BLOCK_BEGIN", "BLOCK_END"))
-
-
-def config_path():
-    for p in ("/boot/firmware/config.txt", "/boot/config.txt"):
-        if os.path.exists(p):
-            return p
-    return None
-
-
-def _strip_block(body, begin, end, label, changes):
-    if begin in body:
-        pre, _, rest = body.partition(begin)
-        _, _, post = rest.partition(end)
-        body = pre.rstrip("\n") + "\n" + post.lstrip("\n")
-        changes.append(f"removed the {label} managed block")
-    return body
-
-
-def strip_oasis_config(text):
-    """Return (new_text, changes) with the OASIS-managed config.txt edits removed.
-
-    Removes the DRA-Pi and CM4Stack managed blocks (by marker) and the standalone
-    DS3231 RTC overlay line. Leaves dtparam=i2c_arm=on and all unrelated lines.
-    """
-    changes = []
-    body = text
-    body = _strip_block(body, _DRA_BEGIN, _DRA_END, "DRA-Pi", changes)
-    body = _strip_block(body, _CM4_BEGIN, _CM4_END, "CM4Stack", changes)
-
-    kept = []
-    for ln in body.splitlines():
-        if ln.strip() == RTC_OVERLAY:
-            changes.append(f"removed '{RTC_OVERLAY}'")
-            continue
-        kept.append(ln)
-    out = "\n".join(kept).rstrip("\n")
-    return (out + "\n") if out else "", changes
-
-
-# ── Read-only reporting ───────────────────────────────────────────────────────
-def _dir_size_human(path):
-    total = 0
-    if os.path.isfile(path):
-        total = os.path.getsize(path)
-    else:
-        for root, _dirs, files in os.walk(path):
-            for f in files:
-                fp = os.path.join(root, f)
-                try:
-                    total += os.path.getsize(fp)
-                except OSError:
-                    pass
-    size = float(total)
-    for unit in ("B", "K", "M", "G", "T"):
-        if size < 1024 or unit == "T":
-            return f"{size:.0f}{unit}" if unit == "B" else f"{size:.1f}{unit}"
-        size /= 1024.0
-
-
-def data_advisory():
-    """List existing DATA_PATHS as (path, human_size). Read-only."""
-    out = []
-    for p in DATA_PATHS:
-        if os.path.exists(p):
-            out.append((p, _dir_size_human(p)))
-    return out
-
-
-def print_data_advisory():
-    adv = data_advisory()
-    _step(5, "Downloaded data — left in place (delete manually if you want a clean slate)")
-    if not adv:
-        _info("none found.")
-        return
-    for p, size in adv:
-        _info(f"{size:>8}  {p}")
-    _warn("These are expensive/impossible to re-download offline. To wipe them:")
-    for p, _ in adv:
-        _info(f"  sudo rm -rf {p}")
-
-
-def _svc_state(svc):
-    unit = f"/etc/systemd/system/{svc}.service"
-    r = _run(["systemctl", "is-active", svc], check=False, capture_output=True, text=True)
-    state = (getattr(r, "stdout", "") or "").strip() or "unknown"
-    return state, os.path.exists(unit)
-
-
-def report_status():
-    print("\n  OASIS — remove-oasis (status)")
-    _hr()
-    _step(1, "Services")
-    for svc in SERVICES:
-        state, has_unit = _svc_state(svc)
-        _info(f"{svc:<18} {state:<10} unit:{'present' if has_unit else 'absent'}")
-    _step(2, "Files / dirs")
-    for p in FILES + DIRS + SUITE_FILES:
-        _info(f"{'present' if os.path.exists(p) else 'absent':<8} {p}")
-    _step(3, "config.txt")
-    cfg = config_path()
-    if cfg:
-        with open(cfg, encoding="utf-8", errors="ignore") as fh:
-            _, changes = strip_oasis_config(fh.read())
-        _info(f"{cfg}: " + ("; ".join(changes) if changes else "no OASIS blocks present"))
-    else:
-        _info("config.txt not found (not a Pi?)")
-    _step(4, "hwclock-set backup")
-    _info((f"present: {HWCLOCK_BAK}") if os.path.exists(HWCLOCK_BAK) else "absent")
-    print_data_advisory()
-    print()
-
-
-# ── Teardown actions ──────────────────────────────────────────────────────────
-def remove_services(apply):
-    _step(1, "Services")
-    for svc in SERVICES:
-        unit = f"/etc/systemd/system/{svc}.service"
-        if not apply:
-            _info(f"would stop/disable/remove {svc} ({unit})")
-            continue
-        _run(["sudo", "systemctl", "stop", svc], check=False)
-        _run(["sudo", "systemctl", "disable", svc], check=False)
-        _run(["sudo", "rm", "-f", unit], check=False)
-        _ok(f"removed {svc}")
-    if apply:
-        _run(["sudo", "systemctl", "daemon-reload"], check=False)
-        _ok("systemctl daemon-reload")
-
-
-def remove_files(apply):
-    _step(2, "Files / dirs")
-    for p in FILES:
-        if not os.path.exists(p):
-            _info(f"absent: {p}")
-            continue
-        if not apply:
-            _info(f"would remove {p}")
-        else:
-            _run(["sudo", "rm", "-f", p], check=False)
-            _ok(f"removed {p}")
-    for d in DIRS:
-        if not os.path.exists(d):
-            _info(f"absent: {d}")
-            continue
-        if not apply:
-            _info(f"would remove {d}/")
-        else:
-            _run(["sudo", "rm", "-rf", d], check=False)
-            _ok(f"removed {d}/")
-    for p in SUITE_FILES:
-        if not os.path.exists(p):
-            _info(f"absent: {p}")
-            continue
-        if not apply:
-            _info(f"would remove {p} (dashboard reverts to default)")
-        else:
-            try:
-                os.remove(p)
-                _ok(f"removed {p}")
-            except OSError as e:
-                _warn(f"could not remove {p}: {e}")
-
-
-def remove_config(apply):
-    _step(3, "config.txt")
-    cfg = config_path()
+def _apply_config(items, apply):
+    """Aggregate every selected record's config.txt edits into ONE rewrite, so N
+    features don't rewrite config.txt N times."""
+    cfg = removal.config_path()
+    _step(2, "config.txt")
     if not cfg:
         _info("config.txt not found — skipping.")
         return
+    blocks, lines = [], []
+    for _key, rec in items:
+        blocks += [tuple(b) for b in rec.get("config_blocks", [])]
+        lines += rec.get("config_lines", [])
+    if not blocks and not lines:
+        _ok("no OASIS config.txt edits to remove.")
+        return
     with open(cfg, encoding="utf-8", errors="ignore") as fh:
         text = fh.read()
-    new_text, changes = strip_oasis_config(text)
+    new_text, changes = removal.strip_config(text, blocks, lines)
     if not changes:
         _ok("config.txt already clean.")
         return
@@ -290,51 +94,77 @@ def remove_config(apply):
     _info(f"backup: {bak}")
 
 
-def restore_hwclock(apply):
-    _step(4, "hwclock-set")
-    if not os.path.exists(HWCLOCK_BAK):
-        _info("no OASIS backup — nothing to restore.")
-        return
-    if not apply:
-        _info(f"would restore {HWCLOCK_SET} from {HWCLOCK_BAK}")
-        return
-    _run(["sudo", "cp", HWCLOCK_BAK, HWCLOCK_SET], check=False)
-    _ok(f"restored {HWCLOCK_SET}")
-
-
-def print_warnings():
-    _step(6, "Manual follow-ups")
+def _residual_warnings(reboot_needed):
+    """System-level follow-ups not owned by any single feature."""
+    _step(3, "Manual follow-ups")
     gd = _run(["systemctl", "get-default"], check=False, capture_output=True, text=True)
     if "multi-user.target" in (getattr(gd, "stdout", "") or ""):
         _warn("Boot target is multi-user.target (headless). To restore the desktop:")
         _info("  sudo systemctl set-default graphical.target")
-    _warn("fake-hwclock was removed by enable-rtc; reinstall online if you want it:")
-    _info("  sudo apt install fake-hwclock")
-    _info("apt packages (chromium, lxde, rtl-sdr, gpsd, tcpdump) left installed by design.")
-    _info("i2c group membership left as-is (harmless).")
-    _warn("REBOOT to drop the config.txt overlays:  sudo reboot")
+    _info("apt packages (chromium, rtl-sdr, gpsd, tcpdump …) left installed by design.")
+    if reboot_needed:
+        _warn("REBOOT to finish dropping config.txt overlays:  sudo reboot")
 
 
-# ── Orchestration ─────────────────────────────────────────────────────────────
-def run(apply=False, check=False):
+def _report_status(root):
+    print("\n  OASIS — remove-oasis (status)")
+    _hr()
+    items = plan(root)
+    _step(1, "Installed features (from installed-services.json)")
+    if not items:
+        _info("none recorded.")
+    for key, rec in items:
+        svcs = ",".join(rec.get("services", [])) or "-"
+        _info(f"{key:<18} services:{svcs}")
+    print()
+
+
+def run(apply=False, check=False, only=None):
     if sys.platform != "linux":
         _fail("remove-oasis targets Raspberry Pi OS (Linux) only.")
+    root = repo_root()
     if check:
-        report_status()
+        _report_status(root)
         return 0
-    print("\n  OASIS — remove-oasis  " + ("(APPLY)" if apply else "(DRY-RUN)"))
+
+    items = plan(root, only)
+    scope = f"feature '{only}'" if only else "whole suite"
+    print(f"\n  OASIS — remove-oasis  ({scope}, {'APPLY' if apply else 'DRY-RUN'})")
     _hr()
+    if only and not items:
+        _warn(f"'{only}' is not installed (nothing recorded in the manifest).")
+        return 0
     if not apply:
         _info("Dry-run: nothing will be changed. Re-run with --apply to perform it.")
-    remove_services(apply)
-    remove_files(apply)
-    remove_config(apply)
-    restore_hwclock(apply)
-    print_data_advisory()
-    print_warnings()
+
+    advisories = []
+    reboot_needed = False
+    _step(1, "Features")
+    for key, rec in items:
+        _info(f"— {key}")
+        res = removal.apply(rec, apply=apply)
+        reboot_needed = reboot_needed or res.get("requires_reboot")
+        for c in res["changes"]:
+            (_ok if apply else _info)(f"    {c}")
+        advisories += res["advisory"]
+
+    _apply_config(items, apply)
+
+    if advisories:
+        _step(4, "Left in place (delete manually if you want a clean slate)")
+        for a in advisories:
+            _warn(a)
+
+    _residual_warnings(reboot_needed)
+
+    # A whole-suite --apply also clears the manifest so the dashboard returns to
+    # factory-fresh; a single --feature run drops just that feature.
+    if apply:
+        installed_services.remove_installed(root, {k for k, _ in items})
+
     _hr()
     if apply:
-        print("\n  OASIS removed. Reboot to finish:  sudo reboot\n")
+        print("\n  OASIS removed. Reboot to finish if prompted above:  sudo reboot\n")
     else:
         print("\n  Dry-run complete. Re-run with --apply to perform the teardown.\n")
     return 0
@@ -342,20 +172,23 @@ def run(apply=False, check=False):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        description="Factory-reset a Raspberry Pi: remove all OASIS services, files, "
-                    "and config.txt blocks. Dry-run unless --apply.",
+        description="Factory-reset a Raspberry Pi or uninstall one feature, driven "
+                    "by installed-services.json. Dry-run unless --apply.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=("Examples:\n"
-                "  python3 scripts/remove-oasis.py            # dry-run plan\n"
-                "  python3 scripts/remove-oasis.py --apply    # perform teardown\n"
-                "  python3 scripts/remove-oasis.py --check     # status only\n"),
+                "  python3 scripts/remove-oasis.py                 # dry-run plan\n"
+                "  python3 scripts/remove-oasis.py --apply         # perform teardown\n"
+                "  python3 scripts/remove-oasis.py --feature kiwix # one feature (dry-run)\n"
+                "  python3 scripts/remove-oasis.py --check         # status only\n"),
     )
     ap.add_argument("--apply", action="store_true",
                     help="Perform the teardown (default is a dry-run).")
     ap.add_argument("--check", action="store_true",
-                    help="Report present OASIS state; change nothing.")
+                    help="Report installed OASIS features; change nothing.")
+    ap.add_argument("--feature", metavar="KEY", default=None,
+                    help="Uninstall a single feature instead of the whole suite.")
     args = ap.parse_args(argv)
-    return run(apply=args.apply, check=args.check)
+    return run(apply=args.apply, check=args.check, only=args.feature)
 
 
 if __name__ == "__main__":
