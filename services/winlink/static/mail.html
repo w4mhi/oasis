@@ -427,7 +427,14 @@ async function api(path, opts) {
     throw new Error(msg);
   }
   banner("");
-  if (!res.ok) throw new Error(`Pat error ${res.status}`);
+  if (!res.ok) {
+    // Surface Pat's own error text (it responds with plain-text like
+    // "Validation error: …" or "Missing date value"), not just the status —
+    // otherwise a 400 is undiagnosable.
+    let detail = "";
+    try { detail = (await res.clone().text()).trim(); } catch (_) {}
+    throw new Error(detail ? `Pat error ${res.status}: ${detail}` : `Pat error ${res.status}`);
+  }
   return res;
 }
 async function apiJson(path, opts) { return (await api(path, opts)).json(); }
