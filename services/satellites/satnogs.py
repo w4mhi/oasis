@@ -37,6 +37,26 @@ _DESC_LABELS = (("APRS", "APRS"), ("SSTV", "SSTV"))
 # signal, not the mode string.
 _WX_BAND_MHZ = (137.0, 138.0)
 
+# The amateur-satellite voice/transponder bands (2 m, 70 cm, 23 cm). The
+# "workable" labels below only mean an operator can actually USE the bird when
+# the downlink sits here — the same frequency-not-mode principle as WEATHER. A
+# `mode: FM`/`SSB` on a non-amateur service (SARSAT L-band 1544.5, weather DCP
+# 1703, military/telemetry on 400 MHz, GEO HRIT on 1.6-1.7 GHz) is NOT amateur
+# voice, so those must not earn VOICE/FM and surface as workable sats.
+_AMATEUR_BANDS_MHZ = ((144.0, 148.0), (420.0, 450.0), (1240.0, 1300.0))
+_WORKABLE_LABELS = frozenset(("VOICE", "FM", "SSTV", "LINEAR", "SSB"))
+
+
+def _out_of_amateur_band(dl):
+    """True ONLY when the downlink is KNOWN to be outside the amateur bands
+    (a frequency is present and matches none). A missing frequency is unknowable,
+    so it is not treated as out-of-band — we only strip a workable label when we
+    can prove the transmitter is non-amateur (e.g. Arktika's 1544.5/1703 MHz)."""
+    freq = (dl or {}).get("freq_mhz")
+    if freq is None:
+        return False
+    return not any(lo <= freq <= hi for lo, hi in _AMATEUR_BANDS_MHZ)
+
 
 def _mode_tokens(mode):
     return [tok for tok in re.split(r"[^A-Z0-9]+", (mode or "").upper()) if tok]
@@ -44,14 +64,24 @@ def _mode_tokens(mode):
 
 def _tx_labels(t):
     """Labels contributed by ONE transmitter (mode tokens + type + description)."""
-    tags = set()
+    dl = t.get("downlink")
+    # Labels inferred from the MODE STRING are the ambiguous ones: SatNOGS uses
+    # "FM"/"SSB" for the modulation of non-amateur services too (SARSAT, weather
+    # DCP, telemetry). They only mean a WORKABLE amateur channel in an amateur
+    # band, so gate them on the downlink frequency (same principle as WEATHER).
+    mode_tags = set()
     for tok in _mode_tokens(t.get("mode")):
-        tags.update(_MODE_LABELS.get(tok, ()))
+        mode_tags.update(_MODE_LABELS.get(tok, ()))
+    if _out_of_amateur_band(dl):
+        mode_tags -= _WORKABLE_LABELS
+    tags = mode_tags
+    # Type / description / band signals are reliable and NOT gated: a SatNOGS
+    # "Transponder" is an amateur linear transponder; APRS/SSTV intent lives in
+    # the description; 137-138 MHz is the meteorological WEATHER band.
     desc = (t.get("description") or "").upper()
     for kw, lab in _DESC_LABELS:
         if kw in desc:
             tags.add(lab)
-    dl = t.get("downlink")
     if dl and dl.get("freq_mhz") is not None \
             and _WX_BAND_MHZ[0] <= dl["freq_mhz"] <= _WX_BAND_MHZ[1]:
         tags.add("WEATHER")
@@ -136,13 +166,20 @@ def build_records(sats, txs, tle_index, prev_selected=None):
         transmitters = txs.get(norad)
         if not transmitters or norad not in tle_index:
             continue
+        labels = labels_for(transmitters, norad)
+        if not labels:
+            # No recognized service after amateur-band gating — e.g. an L-band
+            # weather/SAR bird or a defunct CW-beacon-only sat. Not actionable in
+            # this FM / SSB / data / weather roster, so it is excluded (which also
+            # keeps it out of the "in coverage" view even when it is overhead).
+            continue
         meta = sats[norad]
         records.append({
             "name": meta["name"],
             "norad": norad,
             "sat_id": meta["sat_id"],
             "status": meta["status"],
-            "labels": labels_for(transmitters, norad),
+            "labels": labels,
             "transmitters": transmitters,
             "selected": bool(prev_selected.get(norad, False)),
         })

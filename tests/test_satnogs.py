@@ -111,6 +111,39 @@ class LabelsTest(unittest.TestCase):
             [{"mode": "WEIRDMODE", "type": "Transmitter", "description": ""}], 12345),
             [])
 
+    def test_fm_out_of_amateur_band_is_not_voice(self):
+        # Arktika-M1's real transmitters: mode "FM" on L-band SARSAT / weather DCP.
+        # FM modulation != amateur FM voice — must NOT earn VOICE/FM.
+        for freq, desc in ((1544.5, "SARSAT L-Band"), (1703.0, "Mode L - DCP"),
+                           (400.328, "Mode U - military telemetry")):
+            labs = satnogs.labels_for(
+                [{"mode": "FM", "type": "Transmitter", "description": desc,
+                  "downlink": {"freq_mhz": freq, "freq_high_mhz": None}}], 47719)
+            self.assertNotIn("VOICE", labs, f"{freq} MHz must not be VOICE")
+            self.assertNotIn("FM", labs, f"{freq} MHz must not be FM")
+
+    def test_fm_in_amateur_band_is_voice(self):
+        for freq in (145.960, 436.795, 1260.0):     # 2 m, 70 cm, 23 cm
+            labs = satnogs.labels_for(
+                [{"mode": "FM", "type": "Transmitter", "description": "voice",
+                  "downlink": {"freq_mhz": freq, "freq_high_mhz": None}}], 43017)
+            self.assertIn("VOICE", labs)
+            self.assertIn("FM", labs)
+
+    def test_fm_without_frequency_is_not_stripped(self):
+        # Unknown band is unknowable — only a KNOWN out-of-band freq strips it.
+        labs = satnogs.labels_for(
+            [{"mode": "FM", "type": "Transceiver", "description": "voice"}], 43017)
+        self.assertIn("VOICE", labs)
+
+    def test_transponder_not_gated_by_band(self):
+        # A SatNOGS Transponder is an amateur linear transponder regardless of the
+        # frequency we happen to have — the type signal is reliable, not gated.
+        labs = satnogs.labels_for(
+            [{"mode": "SSB", "type": "Transponder", "description": "",
+              "downlink": {"freq_mhz": 2401.0, "freq_high_mhz": None}}], 44909)
+        self.assertIn("LINEAR", labs)
+
 
 class BuildTest(unittest.TestCase):
     def setUp(self):
@@ -151,6 +184,22 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(facet.get("WEATHER"), 1)    # NOAA 19
         self.assertEqual(facet.get("CREWED"), 1)     # ISS
         self.assertEqual(list(facet), [lab for lab in satnogs.LABELS if lab in facet])
+
+    def test_record_with_no_recognized_service_is_dropped(self):
+        # A bird whose only transmitter is an out-of-band "FM" (L-band weather/SAR)
+        # ends up with no label and must be EXCLUDED — otherwise it shows in the
+        # roster and "in coverage" (e.g. the Arktika-M1 bug) despite being unworkable.
+        sats = {700: {"name": "WX-BIRD", "norad": 700, "sat_id": "X", "status": "alive"},
+                701: {"name": "HAM-BIRD", "norad": 701, "sat_id": "Y", "status": "alive"}}
+        txs = {
+            700: [{"mode": "FM", "type": "Transmitter", "description": "SARSAT L-Band",
+                   "downlink": {"freq_mhz": 1544.5, "freq_high_mhz": None}, "uplink": None}],
+            701: [{"mode": "FM", "type": "Transmitter", "description": "voice",
+                   "downlink": {"freq_mhz": 145.8, "freq_high_mhz": None}, "uplink": None}],
+        }
+        tle = {700: ("WX", "1", "2"), 701: ("HAM", "1", "2")}
+        norads = sorted(r["norad"] for r in satnogs.build_records(sats, txs, tle)[0])
+        self.assertEqual(norads, [701])   # WX-BIRD dropped, HAM-BIRD kept
 
     def test_diff_added_removed_changed(self):
         old = [{"norad": 25544, "name": "ISS (ZARYA)", "status": "alive",
