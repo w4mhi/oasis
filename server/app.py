@@ -178,7 +178,6 @@ from routes.setup import bp as _setup_bp
 from routes.diagnostics import bp as _diag_bp
 from routes.aprs_freq import bp as _aprs_freq_bp
 from services.satellites.routes import bp as _sat_bp
-from ai.orchestrator.routes import bp as _assistant_bp
 
 app.register_blueprint(_adsb_bp)
 app.register_blueprint(_aprs_bp)
@@ -195,7 +194,6 @@ app.register_blueprint(_setup_bp)
 app.register_blueprint(_diag_bp)
 app.register_blueprint(_aprs_freq_bp)
 app.register_blueprint(_sat_bp)
-app.register_blueprint(_assistant_bp)
 
 
 @app.route("/")

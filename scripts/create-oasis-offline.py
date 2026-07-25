@@ -301,9 +301,10 @@ def _req_ok_for_pyver(line, pyver):
     """True if a requirements line's python_version marker (if any) admits *pyver*.
 
     pip's --python-version does NOT evaluate python_version markers against the
-    target — it uses the running interpreter — so a 3.10-only pin like `mcp` is
-    still resolved for the py3.9 targets and fails ("No matching distribution").
-    The builder therefore pre-filters requirements per target instead."""
+    target — it uses the running interpreter — so a version-marked pin (e.g.
+    `foo; python_version >= "3.10"`) is still resolved for the py3.9 targets and
+    fails ("No matching distribution"). The builder therefore pre-filters
+    requirements per target instead."""
     if ";" not in line:
         return True
     comps = _PYVER_MARKER_RE.findall(line.split(";", 1)[1])
@@ -896,54 +897,6 @@ def _file_sha256(path):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
-
-
-def phase_ai(bundle_root, update=False):
-    """Phase — AI assistant: vendor the llama-server binary + Qwen GGUF model so the
-    'ai' feature (Pi 5 / arm64) installs FULLY offline — the prime directive.
-
-    Output (read back by ai/runtime/install.py, which prefers these over the network):
-      offline-packages/ai-llama/<asset>.tar.gz   llama.cpp llama-server (github-release)
-      offline-packages/ai-model/<model>.gguf     Qwen GGUF (SHA-verified)
-
-    Large (~1.9 GB model): fetched only for the Pi bundle, never the Windows tools bundle.
-    """
-    _section("Phase — AI assistant (llama-server + Qwen GGUF)")
-
-    # llama-server binary (github-release, arm64 only).
-    llama = M.get_feature("ai-llama")
-    if llama:
-        llama_dir = M.bundle_dir(bundle_root, "ai-llama")
-        os.makedirs(llama_dir, exist_ok=True)
-        version = llama["version"]
-        for arch in M.feature_arches("ai-llama"):
-            asset = llama["asset_pattern"].format(version=version)
-            dest = os.path.join(llama_dir, asset)
-            if os.path.exists(dest):
-                _cp(f"{asset}  (up to date)")
-            else:
-                url = f"https://github.com/{llama['repo']}/releases/download/{version}/{asset}"
-                _dl(f"{asset}  ← {url}")
-                download_to(url, dest)
-            _write_resolved("ai-llama", None, arch, {"llama": version})
-        _ok(f"llama-server binary ready in {os.path.relpath(llama_dir)}/")
-
-    # Qwen GGUF model (url, SHA-verified).
-    model = M.get_feature("ai-model")
-    if model:
-        model_dir = M.bundle_dir(bundle_root, "ai-model")
-        os.makedirs(model_dir, exist_ok=True)
-        fname = os.path.basename(model["out"])
-        dest = os.path.join(model_dir, fname)
-        want_sha = model.get("sha256", "")
-        if os.path.exists(dest) and (not want_sha or _file_sha256(dest) == want_sha):
-            _cp(f"{fname}  (up to date, SHA ok)")
-        else:
-            _dl(f"{fname}  (~{model.get('size_bytes', 0) // 1024**2} MB)  ← {model['url']}")
-            download_to(model["url"], dest)
-            if want_sha and _file_sha256(dest) != want_sha:
-                _warn(f"{fname} SHA-256 mismatch — the bundled model may be corrupt.")
-        _ok(f"model ready in {os.path.relpath(model_dir)}/")
 
 
 # ── Phase 9: pmtiles CLI (MBTiles → PMTiles converter) ────────────────────────
@@ -1912,7 +1865,6 @@ def cmd_build(skip_windows, rebuild=False, all_platforms=False, profile="full"):
         phase_satellites_voice(pkg_root, update=True)
         phase_adsb(pkg_root, update=True)
         phase_cm4stack(pkg_root, update=True)
-        phase_ai(pkg_root, update=True)
         phase_wikipedia(os.path.join(out_dir, "zim"))
         phase_pmtiles(os.path.join(out_dir, "maps"), all_platforms=all_platforms)
 

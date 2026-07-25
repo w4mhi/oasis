@@ -342,52 +342,5 @@ class TestManifestSanity(unittest.TestCase):
         bw = M.bundle_dir("/bundle/offline-packages", "satellites-voice", suite="bookworm", m=self.m)
         self.assertNotEqual(p, bw)
 
-    def test_ai_pypi_group_present_and_synced_with_requirements(self):
-        import re
-        from pathlib import Path
-        ai = M.get_feature("ai", self.m)
-        self.assertEqual(ai["type"], "pypi")
-        pkgs = {p["name"].lower(): p["version"].replace(" ", "") for p in ai["packages"]}
-        self.assertEqual(set(pkgs), {"mcp", "httpx"})
-        # Parse the REAL pinned lines (skip blanks/comments): "name<spec>".
-        req_path = Path(__file__).resolve().parents[1] / "scripts" / "requirements.txt"
-        req = {}
-        for line in req_path.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            m = re.match(r"^([A-Za-z0-9_.\-]+)\s*(.*)$", line)
-            if m:
-                # Drop any environment marker (e.g. '; python_version >= "3.10"')
-                # so the version spec still matches the manifest pin.
-                spec = m.group(2).split(";", 1)[0]
-                req[m.group(1).lower()] = spec.replace(" ", "")
-        # Every ai package must be a real pinned requirement AND its spec must match
-        # (guards the bundle↔install sync gotcha AND version drift between the two).
-        for name, version in pkgs.items():
-            self.assertIn(name, req, f"{name} not a pinned line in requirements.txt")
-            self.assertEqual(req[name], version,
-                             f"{name} version drift: manifest {version!r} vs requirements {req[name]!r}")
-        # mcp needs py>=3.10 — the note must record the floor.
-        self.assertIn("3.10", ai.get("_note", ""))
-
-    def test_ai_llama_github_release_entry(self):
-        e = M.get_feature("ai-llama", self.m)
-        self.assertEqual(e["type"], "github-release")
-        self.assertEqual(e["repo"], "ggml-org/llama.cpp")
-        self.assertIn("arm64", e["asset_pattern"])
-        self.assertIn("arm64", e["arches"])
-
-    def test_ai_model_entry(self):
-        e = M.get_feature("ai-model", self.m)
-        # Now vendored into the offline bundle (phase_ai) so ai installs fully
-        # offline — it must NOT be marked online_only.
-        self.assertFalse(e.get("online_only"), "ai-model must be bundled, not online_only")
-        self.assertTrue(e["url"].endswith(".gguf"))
-        self.assertRegex(e["sha256"], r"^[0-9a-f]{64}$")
-        self.assertGreater(e["size_bytes"], 1_000_000_000)  # ~1.9 GB
-        self.assertTrue(e["out"].endswith(".gguf"))
-
-
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -51,19 +51,3 @@ colorama==0.4.6
 skyfield==1.54
 sgp4>=2.23,<3
 numpy>=1.26,<3
-
-# AI assistant (ai/): MCP SDK for tool-calling + the httpx client it depends on.
-# Both are pure none-any wheels. mcp requires Python >=3.10 (so does anyio, one of
-# its transitive deps) — the AI feature is gated to Pi 5 / 8 GB (Bookworm 3.11 /
-# Trixie 3.13), so the floor is always met there. See scripts/offline-manifest.json
-# features.ai for the install-time gating; the base server install on a 3.9 box
-# must NOT pull these in. The `python_version` markers enforce the band the AI
-# stack can actually be vendored for:
-#   - lower bound 3.10: mcp (and anyio) publish no 3.9-compatible release;
-#   - upper bound 3.14: mcp -> pydantic -> pydantic-core has no cp314 aarch64
-#     wheel yet, and no Pi OS ships 3.14 (Trixie is 3.13), so exclude it until
-#     upstream catches up — bump the cap then.
-# The builder pre-filters requirements per target (pip's --python-version does
-# not evaluate these markers), so 3.9 and 3.14 targets skip these cleanly.
-mcp>=1.2,<2; python_version >= "3.10" and python_version < "3.14"
-httpx>=0.27,<1; python_version >= "3.10" and python_version < "3.14"

@@ -17,7 +17,7 @@ bp = Blueprint("service_control", __name__)
 _OASIS_SERVICES = {
     "graywolf", "graywolf-api", "pat", "pat-direwolf", "kiwix", "webssh",
     "aprs-sdr-feed", "openwebrx", "gpsd", "oasis",
-    "dump1090-fa", "adsb-api", "oasis-ai",
+    "dump1090-fa", "adsb-api",
 }
 
 # Units the dashboard may start/stop/restart. Everything in _OASIS_SERVICES

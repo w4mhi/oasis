@@ -121,13 +121,6 @@ FEATURES = [
             "Aircraft tracking via dump1090-fa (RTL-SDR) + a local recorder/API on :8086, with a live layer on the offline map. Installed OFF by default — start it from the dashboard. Needs internet (apt).",
             "Server", default=False, needs=["server"], internet=True,
             recommend="ADS-B is OFF by default — start it from the dashboard (it stops GrayWolf + OpenWebRX + the SDR feed). Aircraft appear on the offline map."),
-    Feature("ai", "AI assistant (Pi 5 / 8 GB)", "ai/runtime/install.py",
-            "Local offline AI assistant: llama-server + a Qwen GGUF model behind the oasis-ai "
-            "systemd unit on :8087. Self-gated to a Pi 5 / 8 GB RAM / Python>=3.10 board — a "
-            "clean, non-fatal skip elsewhere. Needs internet for the one-time ~1.9 GB model "
-            "download.",
-            "Server", default=False, needs=["server"], internet=True,
-            recommend="AI assistant installed — check status: systemctl status oasis-ai"),
     Feature("service-controls", "Dashboard service controls", "enable-service-controls.py",
             "Grant a scoped sudoers rule so the dashboard start/stop buttons work (no passwords in the browser). Needed to start OpenWebRX (and stop GrayWolf/Kiwix/…) from the dashboard.",
             "Server", default=True, needs=["server"],

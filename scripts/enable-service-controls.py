@@ -47,7 +47,7 @@ from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
 # Must match server/app.py _CONTROLLABLE_SERVICES (everything OASIS-managed
 # except the web server itself).
 UNITS   = ["graywolf", "graywolf-api", "pat", "pat-direwolf", "kiwix", "webssh",
-           "aprs-sdr-feed", "openwebrx", "dump1090-fa", "adsb-api", "oasis-ai"]
+           "aprs-sdr-feed", "openwebrx", "dump1090-fa", "adsb-api"]
 # enable/disable included so boot-state-tracking units (e.g. OpenWebRX: enable on
 # start, disable on stop) work; the dashboard still only exposes start/stop/restart.
 ACTIONS = ["start", "stop", "restart", "enable", "disable"]

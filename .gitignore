@@ -125,7 +125,3 @@ docs/superpowers/*
 # Local Claude Code settings (private hooks/permissions)
 .claude/settings.local.json
 .superpowers/
-
-# AI assistant runtime artifacts (fetched at setup, never committed)
-ai/models/
-ai/runtime/bin/
