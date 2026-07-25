@@ -106,6 +106,12 @@ _CACHE_TTL_S = 6 * 3600   # recompute at most every 6 h (TLEs change ~every 3 da
 # then recomputed cold and the endpoint stayed stuck at 500. Each request now does
 # a bounded chunk and persists progress (see api_passes).
 _PASSES_BUDGET_S = 20
+# On a compute exception we retry the sat on later polls instead of caching it as
+# "no passes" — a transient SGP4/skyfield hiccup must not strand an otherwise good
+# bird as permanently disabled (a genuine no-pass returns [] WITHOUT raising, so it
+# still caches normally). After this many failed attempts we give up and cache [],
+# so a truly unpropagatable (decayed / far-past-epoch) TLE isn't retried forever.
+_MAX_PASS_RETRIES = 3
 
 
 def _cache_path(key):
@@ -166,14 +172,16 @@ def api_passes():
     # first, so the dashboards get their passes on the first poll; the remainder
     # fill in over the next couple of polls. A partial result still returns 200 —
     # never 500 — and progress is persisted so it completes across requests.
-    prior = {}
+    prior, prior_err = {}, {}
     if os.path.exists(cp):
         try:
             with open(cp, encoding="utf-8") as fh:
-                prior = (json.load(fh) or {}).get("passes", {})
+                cached = json.load(fh) or {}
+            prior = cached.get("passes", {})
+            prior_err = cached.get("errors", {})     # nk -> consecutive-failure count
         except (OSError, ValueError):
-            prior = {}
-    result = {"passes": dict(prior)}
+            prior, prior_err = {}, {}
+    result = {"passes": dict(prior), "errors": dict(prior_err)}
     deadline = time.monotonic() + _PASSES_BUDGET_S
     complete = True
     for norad, sat in _sats_by_norad(selected_first=True).items():
@@ -182,16 +190,26 @@ def api_passes():
             continue
         if nk in result["passes"]:
             continue                     # already computed (fresh or a prior chunk)
+        if result["errors"].get(nk, 0) >= _MAX_PASS_RETRIES:
+            result["passes"][nk] = []    # kept failing → treat as no-pass and stop retrying
+            result["errors"].pop(nk, None)
+            continue
         if time.monotonic() > deadline:
             complete = False             # out of budget — finish on the next poll
             break
         try:
             result["passes"][nk] = predict.compute_passes(
                 sat, st["lat"], st["lon"], start, hours=window, min_elev=10.0)
+            result["errors"].pop(nk, None)          # recovered — clear any prior failures
         except Exception:
             # A stale/decayed TLE can make SGP4 propagation blow up (e.g. far past
-            # epoch). One bad satellite must never 500 the whole response — skip it.
-            result["passes"][nk] = []
+            # epoch). One bad satellite must never 500 the whole response — but a
+            # TRANSIENT failure must not strand a good bird as permanently disabled,
+            # so DON'T cache [] here: count the failure, leave the bird out, and let
+            # a later poll retry it (up to _MAX_PASS_RETRIES) with the cache kept in
+            # fill mode. Only a persistent failure (cap reached, above) seals as [].
+            result["errors"][nk] = result["errors"].get(nk, 0) + 1
+            complete = False
     with open(cp, "w", encoding="utf-8") as fh:
         json.dump(result, fh)
     if not complete:
