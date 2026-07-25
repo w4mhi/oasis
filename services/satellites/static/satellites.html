@@ -210,7 +210,9 @@ html, body { height: 100%; margin: 0; }
 .poi      { fill: #c9d1d9; font: 8px monospace; text-anchor: middle; }
 /* Capability colour key, tucked behind a burger in the map's top-left corner.
    Built from the channel colours (buildLegend) so it never drifts from the map. */
-#sat-legend { position: absolute; top: 81px; left: .75rem; z-index: 5; font: 11px system-ui, sans-serif; }
+/* top is relative to #satmap (its positioned parent, already at viewport 73px),
+   so 8px sits it just under the header — level with the roster card opposite. */
+#sat-legend { position: absolute; top: 8px; left: .75rem; z-index: 5; font: 11px system-ui, sans-serif; }
 #sat-legend .leg-burger { background: var(--panel); color: var(--text); border: 1px solid var(--border);
   border-radius: 8px; width: 30px; height: 30px; cursor: pointer; font-size: 15px; line-height: 1;
   box-shadow: 0 6px 24px rgba(0,0,0,.45); }
@@ -286,7 +288,7 @@ html, body { height: 100%; margin: 0; }
   <div class="filters" id="sat-filters">
     <div class="f-group" id="view-modes">
       <button class="fchip" data-view="all" onclick="setView('all')">All</button>
-      <button class="fchip" data-view="monitored" onclick="setView('monitored')">Monitored</button>
+      <button class="fchip" data-view="monitored" onclick="setView('monitored')">Moni</button>
       <button class="fchip" data-view="soon" onclick="setView('soon')" title="Monitored birds with a pass in the next hour">Mon · 1h</button>
       <button class="fchip" data-view="soon-all" onclick="setView('soon-all')" title="Every bird passing over in the next hour — check one to start monitoring it">All · 1h</button>
       <button class="fchip clear-btn" onclick="clearAll()" title="Uncheck every monitored bird and clear all pass-alert bells">Clear</button>
