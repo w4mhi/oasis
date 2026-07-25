@@ -152,6 +152,9 @@ html, body { height: 100%; margin: 0; }
   cursor: pointer; padding: 1px 4px; margin-left: auto; }
 /* View mode: three independent, mutually-exclusive pills (All / Monitored / In 1h). */
 #view-modes .fchip { padding: 2px 9px; }
+/* Red "Clear" — wipes the whole monitored list + all pass alerts. */
+#view-modes .clear-btn { color: var(--red); border-color: var(--red); margin-left: .5rem; }
+#view-modes .clear-btn:hover { background: var(--red); color: #fff; }
 /* Downlink mode buttons (checked sat only). Freq is on the face; state comes
    from /listen/status. Two *disabled* looks that must not be confused: busy =
    solid grey ("wait"), unsupported = ghosted/dashed ("never"). */
@@ -286,6 +289,7 @@ html, body { height: 100%; margin: 0; }
       <button class="fchip" data-view="monitored" onclick="setView('monitored')">Monitored</button>
       <button class="fchip" data-view="soon" onclick="setView('soon')" title="Monitored birds with a pass in the next hour">Mon · 1h</button>
       <button class="fchip" data-view="soon-all" onclick="setView('soon-all')" title="Every bird passing over in the next hour — check one to start monitoring it">All · 1h</button>
+      <button class="fchip clear-btn" onclick="clearAll()" title="Uncheck every monitored bird and clear all pass-alert bells">Clear</button>
     </div>
     <input class="f-search" id="sat-search" type="search" placeholder="Search name…" autocomplete="off"
            oninput="setSearchFilter(this.value)">
@@ -858,6 +862,23 @@ async function onToggle(norad, checked) {
   }
   postSelect(norad, checked);          // persist to the shared server roster (kiosk reads it)
   renderRoster();
+}
+
+// Red "Clear" button — reset the whole watch list in one go: uncheck every
+// monitored bird AND disarm every pass-alert bell. Tells the server for each pick
+// (so the kiosk clears too), then drops the local selection, the plotted overlays
+// (tracks/footprints/markers), the bells and any scheduled chimes. Confirms first,
+// since it discards the operator's whole selection.
+function clearAll() {
+  const sel = Object.keys(_satSelected), bells = Object.keys(_satBells);
+  if (!sel.length && !bells.length) return;                 // nothing to clear
+  if (!confirm(`Clear all — uncheck ${sel.length} monitored bird(s) and disarm ${bells.length} alert(s)?`)) return;
+  sel.forEach(n => postSelect(n, false));                   // clear the shared roster (kiosk too)
+  _satSelected = {}; saveSelection();
+  Object.keys(PLOTTED).forEach(n => delete PLOTTED[n]);     // drop tracks/footprints/markers
+  _satBells = {}; localStorage.setItem('oasis_sat_bells', JSON.stringify(_satBells));
+  for (const k in _alertState) delete _alertState[k];       // cancel any scheduled chimes
+  redraw(); renderRoster();
 }
 
 async function plotSat(norad, pass) {
