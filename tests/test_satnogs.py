@@ -231,6 +231,21 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(rec["orbit"], "LEO")
         self.assertEqual(rec["name"], "ISS (ZARYA) [LEO]")
 
+    def test_geo_bird_is_dropped(self):
+        # GEO doesn't pass, so a GEO row would be a dead "no pass 24h" entry with
+        # no controls — exclude it. (The one amateur GEO, QO-100, is already out
+        # via the RTL-range filter; the GEO sats in range are weather telemetry.)
+        sats = {40000: {"name": "GOES-X", "norad": 40000, "sat_id": "G", "status": "alive"},
+                40001: {"name": "HAM-LEO", "norad": 40001, "sat_id": "H", "status": "alive"}}
+        txs = {40000: [{"mode": "GMSK", "type": "Transmitter", "description": "telemetry",
+                        "downlink": {"freq_mhz": 468.0, "freq_high_mhz": None}, "uplink": None}],
+               40001: [{"mode": "FM", "type": "Transmitter", "description": "voice",
+                        "downlink": {"freq_mhz": 145.8, "freq_high_mhz": None}, "uplink": None}]}
+        tle = {40000: ("GOES-X", "1", OrbitClassTest.GEO),
+               40001: ("HAM-LEO", "1", OrbitClassTest.LEO)}
+        norads = sorted(r["norad"] for r in satnogs.build_records(sats, txs, tle)[0])
+        self.assertEqual(norads, [40001])   # GEO dropped, LEO kept
+
     def test_diff_added_removed_changed(self):
         old = [{"norad": 25544, "name": "ISS (ZARYA)", "status": "alive",
                 "labels": ["CREWED"], "transmitters": []},

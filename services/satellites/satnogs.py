@@ -205,8 +205,19 @@ def build_records(sats, txs, tle_index, prev_selected=None):
             # this FM / SSB / data / weather roster, so it is excluded (which also
             # keeps it out of the "in coverage" view even when it is overhead).
             continue
-        meta = sats[norad]
         orbit = orbit_class(tle_index[norad][2])   # tle_index[norad] = (name, l1, l2)
+        if orbit == "GEO":
+            # GEO birds don't pass (fixed in the sky), so the whole pass-based
+            # feature — footprint, Doppler, LOS pills, pass alerts, listen-window
+            # — is meaningless for them and leaves dead "no pass 24h" rows. The
+            # GEO sats SatNOGS lists within RTL range are all non-amateur weather
+            # telemetry (GOES / Elektro / FENGYUN). The one amateur GEO worth
+            # working — QO-100 / Es'hail-2 — downlinks at 10.5 GHz and is already
+            # excluded by the RTL-range gate above; supporting it would be a
+            # dedicated fixed-target + LNB-downconversion feature, not a pass
+            # roster entry. So exclude GEO here.
+            continue
+        meta = sats[norad]
         name = f"{meta['name']} [{orbit}]" if orbit else meta["name"]
         records.append({
             "name": name,
