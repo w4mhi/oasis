@@ -1,6 +1,7 @@
 """Aggregate SatNOGS DB (identity + transmitters) into OASIS satellite records.
 PURE TRANSFORMS ONLY — no network here (build-roster.py does the fetching), so
 every function is unit-testable offline."""
+import math
 import re
 
 SAT_API = "https://db.satnogs.org/api/satellites/?format=json"
@@ -155,6 +156,37 @@ def parse_transmitters(raw):
     return out
 
 
+# Orbit class straight from the TLE — line 2 carries eccentricity (cols 27-33,
+# implied leading "0.") and mean motion (cols 53-63, rev/day), which give the
+# semi-major axis and apogee/perigee. No SGP4/skyfield dependency — this module
+# stays a pure transform. HEO = highly elliptical (Molniya-type dwell); GEO =
+# ~stationary; otherwise LEO/MEO by apogee altitude.
+_MU_KM3_S2 = 398600.4418      # Earth GM
+_EARTH_R_KM = 6378.137
+
+
+def orbit_class(tle_line2):
+    """'LEO' | 'MEO' | 'HEO' | 'GEO' from a TLE line 2, or None if unparseable."""
+    try:
+        ecc = float("0." + tle_line2[26:33].strip())
+        n_rev_day = float(tle_line2[52:63])
+    except (ValueError, IndexError, TypeError):
+        return None
+    if n_rev_day <= 0:
+        return None
+    n_rad_s = n_rev_day * 2 * math.pi / 86400.0
+    a = (_MU_KM3_S2 / (n_rad_s * n_rad_s)) ** (1 / 3)   # semi-major axis, km
+    apogee = a * (1 + ecc) - _EARTH_R_KM
+    perigee = a * (1 - ecc) - _EARTH_R_KM
+    if ecc >= 0.25:
+        return "HEO"
+    if perigee >= 35000:
+        return "GEO"
+    if apogee < 2000:
+        return "LEO"
+    return "MEO"
+
+
 def build_records(sats, txs, tle_index, prev_selected=None):
     """Intersect SatNOGS identity + active transmitters + CelesTrak TLE index
     into records. A bird is included iff it is alive (in `sats`), has >=1 active
@@ -174,12 +206,15 @@ def build_records(sats, txs, tle_index, prev_selected=None):
             # keeps it out of the "in coverage" view even when it is overhead).
             continue
         meta = sats[norad]
+        orbit = orbit_class(tle_index[norad][2])   # tle_index[norad] = (name, l1, l2)
+        name = f"{meta['name']} [{orbit}]" if orbit else meta["name"]
         records.append({
-            "name": meta["name"],
+            "name": name,
             "norad": norad,
             "sat_id": meta["sat_id"],
             "status": meta["status"],
             "labels": labels,
+            "orbit": orbit,
             "transmitters": transmitters,
             "selected": bool(prev_selected.get(norad, False)),
         })

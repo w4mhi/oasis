@@ -145,6 +145,25 @@ class LabelsTest(unittest.TestCase):
         self.assertIn("LINEAR", labs)
 
 
+class OrbitClassTest(unittest.TestCase):
+    # Real TLE line-2s (eccentricity cols 27-33, mean motion cols 53-63).
+    LEO = "2 43017  97.4665  71.9647 0148707 199.1160 160.4457 15.13166182471038"  # FOX-1B
+    MEO = "2 53109  70.1383 285.3666 0009174 281.6416  78.3214  6.42583383 94445"  # MTCube 2
+    HEO = "2 47719  63.2571  53.1467 7298516 270.0868  14.5016  2.00610215 39409"  # Arktika-M1 (e=0.73)
+    GEO = "2 99999   0.0500  90.0000 0001000   0.0000   0.0000  1.00270000    05"  # ~stationary
+
+    def test_classifies_each_regime(self):
+        self.assertEqual(satnogs.orbit_class(self.LEO), "LEO")
+        self.assertEqual(satnogs.orbit_class(self.MEO), "MEO")
+        self.assertEqual(satnogs.orbit_class(self.HEO), "HEO")   # eccentricity wins
+        self.assertEqual(satnogs.orbit_class(self.GEO), "GEO")
+
+    def test_unparseable_tle_is_none(self):
+        self.assertIsNone(satnogs.orbit_class("2 25544"))        # truncated
+        self.assertIsNone(satnogs.orbit_class(""))
+        self.assertIsNone(satnogs.orbit_class(None))
+
+
 class BuildTest(unittest.TestCase):
     def setUp(self):
         self.sats = satnogs.parse_satellites(_fx("satnogs-satellites.json"))
@@ -200,6 +219,17 @@ class BuildTest(unittest.TestCase):
         tle = {700: ("WX", "1", "2"), 701: ("HAM", "1", "2")}
         norads = sorted(r["norad"] for r in satnogs.build_records(sats, txs, tle)[0])
         self.assertEqual(norads, [701])   # WX-BIRD dropped, HAM-BIRD kept
+
+    def test_orbit_tag_appended_to_name(self):
+        # From a real TLE the record gains an `orbit` field AND the class is
+        # appended to the display name (the "ISS (ZARYA) [LEO]" form).
+        sats = {25544: {"name": "ISS (ZARYA)", "norad": 25544, "sat_id": "X", "status": "alive"}}
+        txs = {25544: [{"mode": "FM", "type": "Transceiver", "description": "voice",
+                        "downlink": {"freq_mhz": 145.8, "freq_high_mhz": None}, "uplink": None}]}
+        tle = {25544: ("ISS", "1 25544U", OrbitClassTest.LEO)}
+        rec = satnogs.build_records(sats, txs, tle)[0][0]
+        self.assertEqual(rec["orbit"], "LEO")
+        self.assertEqual(rec["name"], "ISS (ZARYA) [LEO]")
 
     def test_diff_added_removed_changed(self):
         old = [{"norad": 25544, "name": "ISS (ZARYA)", "status": "alive",
