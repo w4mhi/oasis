@@ -205,6 +205,20 @@ html, body { height: 100%; margin: 0; }
 .cmp      { fill: #7d8ea3; font: 9px monospace; text-anchor: middle; }
 .poi-dot  { stroke: #0d1117; stroke-width: 1; }
 .poi      { fill: #c9d1d9; font: 8px monospace; text-anchor: middle; }
+/* Capability colour key, tucked behind a burger in the map's top-left corner.
+   Built from the channel colours (buildLegend) so it never drifts from the map. */
+#sat-legend { position: absolute; top: 81px; left: .75rem; z-index: 5; font: 11px system-ui, sans-serif; }
+#sat-legend .leg-burger { background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; width: 30px; height: 30px; cursor: pointer; font-size: 15px; line-height: 1;
+  box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+#sat-legend .leg-burger:hover { border-color: var(--text-dim); }
+#sat-legend .leg-panel { display: none; margin-top: 6px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 11px; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+#sat-legend:not(.collapsed) .leg-panel { display: block; }
+#sat-legend .leg-title { color: var(--text-dim); font-weight: 600; margin-bottom: 5px; letter-spacing: .3px; text-transform: uppercase; font-size: 10px; }
+#sat-legend .leg-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; white-space: nowrap; color: var(--text); }
+#sat-legend .leg-sw { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+#sat-legend .leg-note { color: var(--text-dim); margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border); line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -213,6 +227,11 @@ html, body { height: 100%; margin: 0; }
   <svg id="world-svg" viewBox="0 0 720 360" preserveAspectRatio="xMidYMid meet">
     <g id="wg-base"></g><g id="wg-over"></g>
   </svg>
+  <!-- Capability colour key — burger toggle, top-left. Panel filled by buildLegend(). -->
+  <div id="sat-legend" class="collapsed">
+    <button class="leg-burger" onclick="toggleLegend()" title="Capability colour key" aria-label="Toggle capability colour key">☰</button>
+    <div class="leg-panel" id="leg-panel"></div>
+  </div>
 </div>
 <div id="sat-popup" class="sat-popup" hidden><button class="sp-close" onclick="hideSatPopup()" aria-label="Close">×</button><div class="pop-body"></div></div>
 <!-- Coverage wash: a green edge-glow over the map while a plotted satellite is
@@ -388,8 +407,48 @@ function renderFilterBar() {
 }
 // norad -> { color, pass, track, l1, l2 }   for each checked/plotted satellite.
 const PLOTTED = {};
-const PALETTE = ['#00d98b', '#58a6ff', '#ffb454', '#ff7b72', '#bc8cff', '#39d0d8', '#f778ba', '#7ee787'];
-const _freeColors = [...PALETTE];
+// Selection colour = an ADDITIVE RGB BLEND of the bird's real capabilities, so
+// the colour itself spells the set — no "primary family", no separate flag. Each
+// role drives one channel: Voice→green, Imaging→blue, APRS→red/orange. A bird
+// that only beacons telemetry (no real role) falls back to the Data-family
+// orange. The mixes fall out: Voice+Imaging = cyan, Voice+APRS = yellow,
+// Imaging+APRS = magenta, all three = white — so multi-capability birds (ISS, the
+// crewed stations) light up on their own. A bare telemetry beacon never blends
+// (it is on ~90/130 birds and would warm every colour); it only colours a bird
+// that does nothing else. Derived from labels at render, nothing stored. NOTE:
+// additive blending lives on the red-green axis, so this deliberately trades the
+// Okabe-Ito colourblind-safety for expressiveness (single-op station). Full
+// capability detail always lives in the roster labels + popup.
+const CH_VOICE   = [0, 200, 90];    // green  — VOICE/FM/LINEAR/SSB
+const CH_IMAGING = [0, 90, 230];    // blue   — WEATHER/SSTV
+const CH_DATA    = [230, 100, 0];   // orange — APRS, and the telemetry-only fallback
+const _has = (labs, ks) => ks.some(k => labs.has(k));
+// The blended colour for a bird, straight from its roster labels.
+function capabilityColor(norad) {
+  const s = ROSTER.find(x => x.norad === +norad);
+  const labs = new Set(s ? s.labels : []);
+  const v = _has(labs, ['VOICE', 'FM', 'LINEAR', 'SSB']);
+  const i = _has(labs, ['WEATHER', 'SSTV']);
+  const a = labs.has('APRS');
+  if (!(v || i || a)) return `rgb(${CH_DATA.join(' ')})`;   // telemetry only → Data orange
+  const mix = k => Math.min(255, (v ? CH_VOICE[k] : 0) + (i ? CH_IMAGING[k] : 0) + (a ? CH_DATA[k] : 0));
+  return `rgb(${mix(0)} ${mix(1)} ${mix(2)})`;
+}
+// Colour key (burger, map top-left). Built from the channel colours so it can
+// never drift from the map. Collapsed by default; the open/closed choice persists.
+function buildLegend() {
+  const p = document.getElementById('leg-panel'); if (!p) return;
+  const rows = [['Voice', CH_VOICE], ['Imaging', CH_IMAGING], ['Data / APRS', CH_DATA]].map(([name, c]) =>
+    `<div class="leg-row"><span class="leg-sw" style="background:rgb(${c.join(' ')})"></span>${name}</div>`).join('');
+  p.innerHTML = `<div class="leg-title">Capability · colours mix</div>${rows}`
+    + '<div class="leg-note">cyan = Voice+Imaging · yellow = Voice+APRS<br>magenta = Imaging+APRS · white = all three</div>';
+  let open = false; try { open = localStorage.getItem('oasis_sat_legend') === 'open'; } catch (e) { /* private mode */ }
+  document.getElementById('sat-legend').classList.toggle('collapsed', !open);
+}
+function toggleLegend() {
+  const open = document.getElementById('sat-legend').classList.toggle('collapsed') === false;
+  try { localStorage.setItem('oasis_sat_legend', open ? 'open' : 'closed'); } catch (e) { /* private mode */ }
+}
 // Persisted selection (norad -> colour). PLOTTED is the live subset (only sats
 // with an upcoming pass can be drawn); this is the operator's full choice, so it
 // survives refresh + server restart. Restored on boot (see restoreSelection),
@@ -412,13 +471,23 @@ function postSelect(norad, selected) {
 function reconcileSelection() {
   (ROSTER || []).forEach(s => {
     const has = s.norad in _satSelected;
-    if (s.selected && !has) _satSelected[s.norad] = _freeColors.shift() || PALETTE[0];
+    if (s.selected && !has) _satSelected[s.norad] = capabilityColor(s.norad);
     else if (has && !s.selected) postSelect(s.norad, true);
   });
   saveSelection();
 }
-// Claim already-chosen colours so a fresh selection doesn't collide with them.
-Object.values(_satSelected).forEach(c => { const i = _freeColors.indexOf(c); if (i >= 0) _freeColors.splice(i, 1); });
+// Re-derive every selected bird's blended colour from its current labels. Runs in
+// boot() after the roster loads (capabilityColor needs ROSTER.labels), so
+// selections made under an older colour scheme adopt this one. A selection whose
+// sat left the roster is kept untouched (can't classify it) and simply won't plot
+// until it returns.
+function recolorSelection() {
+  const next = {};
+  for (const norad in _satSelected) if (!ROSTER.some(s => s.norad === +norad)) next[norad] = _satSelected[norad];
+  ROSTER.filter(s => s.norad in _satSelected).forEach(s => { next[s.norad] = capabilityColor(s.norad); });
+  _satSelected = next;
+  saveSelection();
+}
 
 async function boot() {
   const meta = await (await fetch('/api/satellites')).json();
@@ -432,10 +501,12 @@ async function boot() {
   ['click', 'keydown', 'touchstart'].forEach(ev =>
     document.addEventListener(ev, _unlockAudio, { once: true }));
   initSatMap();
+  buildLegend();                                    // capability colour key (burger, top-left)
   startClock(); updateCpu(); setInterval(updateCpu, 8000);
   pollListen(); setInterval(pollListen, 3000);
   await refreshPasses();
   reconcileSelection();                             // sync local picks ↔ shared server roster (kiosk sees them)
+  recolorSelection();                               // colour every selected bird by its service class
   await restoreSelection();                         // re-plot the operator's saved satellite selection + bells
   setInterval(refreshPasses, 10 * 60 * 1000);      // keep the 24 h pass window fresh over long sessions
   updatePills();                                   // live workability colour
@@ -779,10 +850,10 @@ function updateCoverage() {
 /* ── Plot / unplot a satellite's next pass ─────────────────────────────── */
 async function onToggle(norad, checked) {
   if (checked) {
-    if (!(norad in _satSelected)) { _satSelected[norad] = _freeColors.shift() || PALETTE[0]; saveSelection(); }
+    if (!(norad in _satSelected)) { _satSelected[norad] = capabilityColor(norad); saveSelection(); }
     await plotSat(norad, nextPassOf(norad));
   } else {
-    if (norad in _satSelected) { _freeColors.unshift(_satSelected[norad]); delete _satSelected[norad]; saveSelection(); }
+    if (norad in _satSelected) { delete _satSelected[norad]; saveSelection(); }
     unplotSat(norad);
   }
   postSelect(norad, checked);          // persist to the shared server roster (kiosk reads it)
@@ -793,7 +864,7 @@ async function plotSat(norad, pass) {
   if (!pass) return;
   // Colour comes from the persisted selection (assigned in onToggle); fall back
   // for any direct caller so behaviour is unchanged when a sat isn't selected.
-  const color = _satSelected[norad] || (PLOTTED[norad] ? PLOTTED[norad].color : (_freeColors.shift() || PALETTE[0]));
+  const color = _satSelected[norad] || (PLOTTED[norad] ? PLOTTED[norad].color : capabilityColor(norad));
   const j = await (await fetch(
     `/api/satellites/track?sat=${norad}&from=${encodeURIComponent(pass.rise)}&to=${encodeURIComponent(pass.set)}`)).json();
   PLOTTED[norad] = { color, pass, track: j.track || [], l1: j.l1, l2: j.l2 };
