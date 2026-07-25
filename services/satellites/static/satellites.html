@@ -880,7 +880,8 @@ function clearAll() {
   Object.keys(PLOTTED).forEach(n => delete PLOTTED[n]);     // drop tracks/footprints/markers
   _satBells = {}; localStorage.setItem('oasis_sat_bells', JSON.stringify(_satBells));
   for (const k in _alertState) delete _alertState[k];       // cancel any scheduled chimes
-  redraw(); renderRoster();
+  redraw();
+  setView('all');   // show the full list again — a Monitored/1h view would now look empty
 }
 
 async function plotSat(norad, pass) {
