@@ -52,6 +52,22 @@ class PassesTest(unittest.TestCase):
         _close(first["rise"], p0["rise"])
         _close(first["set"], p0["set"])
 
+    def test_in_progress_pass_recovered_when_rise_predates_lookback(self):
+        # A long HEO/Molniya dwell can be HOURS into a pass, so its rise predates
+        # the normal lookback window and the builder drops it — the roster then
+        # shows the NEXT rise though the bird is overhead. The wide backsearch must
+        # recover it. Simulate the "rise outside the lookback" condition with
+        # lookback_min=0 so only the backsearch (not the normal window) can find it.
+        p0 = predict.compute_passes(self.sat, LAT, LON, START, hours=72, min_elev=10.0)[0]
+        rise = datetime.datetime.fromisoformat(p0["rise"])
+        sett = datetime.datetime.fromisoformat(p0["set"])
+        mid = rise + (sett - rise) / 2
+        passes = predict.compute_passes(self.sat, LAT, LON, mid, hours=72,
+                                        min_elev=10.0, lookback_min=0)
+        first = passes[0]
+        self.assertLessEqual(datetime.datetime.fromisoformat(first["rise"]), mid)
+        self.assertGreater(datetime.datetime.fromisoformat(first["set"]), mid)
+
     def test_pass_ended_before_start_is_excluded(self):
         # Backward-compat: the lookback window must not resurrect a pass that already
         # set before start_dt — every returned pass ends at or after start_dt.
