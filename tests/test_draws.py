@@ -2,7 +2,6 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if os.path.dirname(_HERE) not in sys.path:
