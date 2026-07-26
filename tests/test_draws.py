@@ -58,5 +58,23 @@ class DeviceProbeTest(unittest.TestCase):
         self.assertEqual(seen["path"], "/dev/pps0")
 
 
+class EnsureOverlayTest(unittest.TestCase):
+    def test_writes_line_and_reports_changed_then_idempotent(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = os.path.join(d, "config.txt")
+            with open(cfg, "w") as fh:
+                fh.write("dtparam=audio=on\n")
+            self.assertTrue(draws.ensure_overlay(cfg))          # first: changed
+            with open(cfg) as fh:
+                body = fh.read()
+            self.assertIn("dtoverlay=draws", body.splitlines())
+            self.assertFalse(draws.ensure_overlay(cfg))         # second: no-op
+
+    def test_raises_when_no_config(self):
+        with mock.patch.object(draws, "config_path", return_value=None):
+            with self.assertRaises(RuntimeError):
+                draws.ensure_overlay()
+
+
 if __name__ == "__main__":
     unittest.main()
