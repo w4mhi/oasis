@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if os.path.dirname(_HERE) not in sys.path:
@@ -36,6 +37,25 @@ class OverlayAvailableTest(unittest.TestCase):
     def test_false_when_absent(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertFalse(draws.overlay_available(d))
+
+
+class DeviceProbeTest(unittest.TestCase):
+    def test_gps_device_present_true(self):
+        with mock.patch("os.path.exists", return_value=True):
+            self.assertTrue(draws.gps_device_present("/dev/ttySC0"))
+
+    def test_gps_device_present_false(self):
+        with mock.patch("os.path.exists", return_value=False):
+            self.assertFalse(draws.gps_device_present("/dev/ttySC0"))
+
+    def test_pps_present_checks_pps0(self):
+        seen = {}
+        def fake_exists(p):
+            seen["path"] = p
+            return True
+        with mock.patch("os.path.exists", fake_exists):
+            self.assertTrue(draws.pps_present())
+        self.assertEqual(seen["path"], "/dev/pps0")
 
 
 if __name__ == "__main__":

@@ -23,3 +23,15 @@ def overlay_available(overlays_dir="/boot/firmware/overlays"):
     """True if the OS ships the DRAWS overlay (draws.dtbo). The clean-fail guard
     for an image too old to include it."""
     return os.path.exists(os.path.join(overlays_dir, "draws.dtbo"))
+
+
+def gps_device_present(dev="/dev/ttySC0"):
+    """True if the DRAWS GPS serial device (SC16IS752 UART) has enumerated. Only
+    appears after the overlay is loaded (i.e. after a reboot)."""
+    return os.path.exists(dev)
+
+
+def pps_present(dev="/dev/pps0"):
+    """True if a PPS device node exists — the 'this box has PPS' hint
+    common/gpsd_chrony.configure_chrony() keys its boot-safe SHM refclock on."""
+    return os.path.exists(dev)
