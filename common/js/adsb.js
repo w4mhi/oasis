@@ -25,8 +25,8 @@ function altColor(alt) {
     var ft = Number(alt);
     if (!isFinite(ft) || ft < 0) return '#B8C4D0'; 
 
-    if (ft <= 1500)  return '#4B0082'; // Indigo
-    if (ft <= 3000)  return '#0000FF'; // Blue
+    if (ft <= 1500)  return '#8d24d8'; // Indigo
+    if (ft <= 3000)  return '#3939f7'; // Blue
     if (ft <= 6000)  return '#0080FF'; // Light Blue
     if (ft <= 10000) return '#00FFFF'; // Cyan
     if (ft <= 14000) return '#00FF80'; // Teal
