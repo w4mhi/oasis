@@ -11,10 +11,10 @@ test('altColor bands (feet)', () => {
   assert.strictEqual(A.altColor(undefined), '#B8C4D0');   // both consumers rely on undefined->grey
   assert.strictEqual(A.altColor(NaN), '#B8C4D0');
   assert.strictEqual(A.altColor(-1), '#B8C4D0');          // negative -> grey
-  assert.strictEqual(A.altColor(1000), '#4B0082');        // <=1500  Indigo
-  assert.strictEqual(A.altColor(1500), '#4B0082');        // boundary
-  assert.strictEqual(A.altColor(1501), '#0000FF');        // <=3000  Blue
-  assert.strictEqual(A.altColor(3000), '#0000FF');
+  assert.strictEqual(A.altColor(1000), '#8d24d8');        // <=1500  Indigo (brighter)
+  assert.strictEqual(A.altColor(1500), '#8d24d8');        // boundary
+  assert.strictEqual(A.altColor(1501), '#3939f7');        // <=3000  Blue (brighter)
+  assert.strictEqual(A.altColor(3000), '#3939f7');
   assert.strictEqual(A.altColor(6000), '#0080FF');        // <=6000  Light Blue
   assert.strictEqual(A.altColor(10000), '#00FFFF');       // <=10000 Cyan
   assert.strictEqual(A.altColor(14000), '#00FF80');       // <=14000 Teal
@@ -45,4 +45,25 @@ test('recentHoursForAge maps Age <select> value', () => {
   assert.strictEqual(A.recentHoursForAge('1440'), 24);
   assert.strictEqual(A.recentHoursForAge('60'), 24);
   assert.strictEqual(A.recentHoursForAge('15'), 24);
+});
+
+test('hexIsMilitary — ICAO military address ranges', () => {
+  assert.strictEqual(A.hexIsMilitary('AE1234'), true);    // US mil block (ADF7C8–AFFFFF)
+  assert.strictEqual(A.hexIsMilitary('~AE1234'), true);   // TIS-B '~' prefix stripped
+  assert.strictEqual(A.hexIsMilitary('C21234'), true);    // Canada mil block
+  assert.strictEqual(A.hexIsMilitary('A12345'), false);   // US civil (below ADF7C8)
+  assert.strictEqual(A.hexIsMilitary('a2af23'), false);   // civil example from the live feed
+  assert.strictEqual(A.hexIsMilitary(''), false);
+  assert.strictEqual(A.hexIsMilitary(null), false);
+});
+
+test('acSymbol — class-aware aircraft symbol [table, code]', () => {
+  assert.deepStrictEqual(A.acSymbol({ category: 'A1' }), ['/', "'"]);   // small
+  assert.deepStrictEqual(A.acSymbol({ category: 'A2' }), ['/', "'"]);
+  assert.deepStrictEqual(A.acSymbol({}), ['/', "'"]);                   // unknown → small default
+  assert.deepStrictEqual(A.acSymbol({ category: 'A3' }), ['\\', '^']);  // large / heavy
+  assert.deepStrictEqual(A.acSymbol({ category: 'A5' }), ['\\', '^']);
+  assert.deepStrictEqual(A.acSymbol({ category: 'A7' }), ['\\', 'h']);  // heli
+  assert.deepStrictEqual(A.acSymbol({ category: 'B1' }), ['/', 'g']);   // glider
+  assert.deepStrictEqual(A.acSymbol({ hex: 'AE1234', category: 'A3' }), ['/', 'g']); // mil overrides class
 });

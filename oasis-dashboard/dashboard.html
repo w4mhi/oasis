@@ -23,6 +23,7 @@
 <script src="/common/js/units.js"></script>
 <script src="/common/js/geo.js"></script>
 <script src="/common/js/format.js"></script>
+<script src="/common/js/adsb.js"></script>
 
 <div class="kiosk" id="kiosk">
 
@@ -55,6 +56,11 @@
           <span class="svcpill" onclick="openOv('svc')" title="Open services"><span class="t">SERVICES</span><span class="cnt-up" id="k-svc-up">—</span><span class="cnt-sep">·</span><span class="cnt-warn" id="k-svc-warn">—</span><span class="cnt-sep">·</span><span class="cnt-down" id="k-svc-down">—</span></span>
           <div class="hwpills" id="devPills"><span class="hwempty">…</span></div>
         </div>
+      </div>
+      <!-- Wide-panel-only card (1920×1200): rotating "heard in the last 15s"
+           station detail. Shown via [data-res]; filled by updateHeardCard(). -->
+      <div class="dashcard">
+        <div class="hb" id="dashcardBody"><div class="hb-empty">…</div></div>
       </div>
       <div class="status-actions">
         <button class="ops" onclick="openOv('ops')">OPS ▸</button>
@@ -98,12 +104,15 @@
 
   <!-- ── FOOTER: area hazards first (priority), SDR flow meters after ─────────── -->
   <div class="footer">
-    <span class="alert fire" id="hz-fire">FIRES <b>0</b></span>
-    <span class="alert torn" id="hz-torn">TORNADOES <b>0</b></span>
-    <span class="alert emg"  id="hz-emg">EMERGENCY POI <b>0</b></span>
-    <span class="alert clear" id="hz-clear">✓ all clear</span>
+    <!-- Config-driven hazard pills (one per hazards.json type currently heard) +
+         emergency toggle chip (Public-safety ≤48h). Both tap to narrow the
+         traffic list, matching index.html. -->
+    <span class="hazard-pills" id="hazard-pills"></span>
+    <span class="emerg-chip" id="emerg-chip" role="button" tabindex="0"
+          onclick="toggleEmergencyOnly()"
+          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleEmergencyOnly();}">✓ No emergency POI</span>
     <!-- Blue = signal flowing, red = silent. Proves the RTL-SDRs are actually
-         receiving. Hidden the moment a hazard fires (emergencies own this bar). -->
+         receiving. Hidden the moment a hazard/emergency is present. -->
     <div class="feedmeters" id="feedmeters">
       <span class="feed-meter" id="fm-aprs" hidden>
         <span class="feed-meter-name">APRS</span>
@@ -495,11 +504,31 @@ function renderSats() {
   }).join('');
 }
 
-// ── Natural-hazard footer (symbol-matched; config: /hazards.json) ──────────────
+// ── Natural hazards + emergency (config: /hazards.json) — parity with index ────
+// Config-driven hazard pills (one per configured type currently heard) plus an
+// emergency toggle chip (Public-safety stations ≤48h). Both are tappable and
+// narrow the traffic list; they're mutually exclusive. Symbol table + classifiers
+// mirror index.html so the two dashboards agree on what counts as what.
 let _HAZARDS = [];
+let hazardFilter = null;        // active hazard key, or null
+let emergencyOnly = false;      // emergency-chip filter (mutually exclusive with hazardFilter)
+const _EMERGENCY_WINDOW_MS = 48 * 3600 * 1000;
+const _APRS_TYPES = {
+  '>':'Car','j':'Car','v':'Car','<':'Motorcycle','k':'Truck','u':'Truck',
+  'R':'RV','U':'Bus','=':'Train','b':'Bicycle',
+  "'":'Aircraft','^':'Aircraft','g':'Aircraft','X':'Helicopter','O':'Balloon',
+  's':'Boat','Y':'Boat','C':'Boat','[':'Person','p':'Person',
+  '_':'Weather','W':'Weather','#':'Digipeater','&':'Gateway',
+  'r':'Antenna','y':'Antenna','`':'Antenna','-':'Home',
+  '!':'Public safety','P':'Public safety','a':'Public safety','f':'Public safety',
+  'd':'Public safety','c':'Public safety','A':'Public safety','h':'Public safety',
+  'o':'Public safety','+':'Public safety',
+  '?':'Services','$':'Services',';':'Services','B':'Services','K':'Services',
+  ':':'Fire',
+};
 async function loadHazards() {
   try { const d = await (await fetch('/hazards.json', { cache:'no-store' })).json(); _HAZARDS = Array.isArray(d.hazards) ? d.hazards : []; } catch (_) { _HAZARDS = []; }
-  renderHazardFooter();
+  applyAprsFilter();   // repaint pills/chip through the main path
 }
 function _hazardKeyOf(s) {
   if (!s || !_HAZARDS.length) return null;
@@ -513,34 +542,73 @@ function _hazardKeyOf(s) {
   }
   return null;
 }
-function renderHazardFooter() {
-  const counts = {};
-  _allAprsStations.forEach(s => { const k = _hazardKeyOf(s); if (k) counts[k] = (counts[k]||0)+1; });
-  // Only show a hazard that's actually being heard (>0); hide the rest. When
-  // nothing is active, show a calm "all clear" instead of a row of zeros.
-  let active = false;
-  const set = (id, cls, label, n) => {
-    const el = document.getElementById(id); if (!el) return;
-    if (n > 0) { el.style.display = ''; el.className = 'alert on '+cls; el.innerHTML = label+' <b>'+n+'</b>'; active = true; }
-    else { el.style.display = 'none'; }
-  };
-  set('hz-fire','fire','FIRES', counts.fire||0);
-  set('hz-torn','torn','TORNADOES', counts.tornado||0);
-  set('hz-emg','emg','EMERGENCY POI', counts.emergency||0);
-  const clear = document.getElementById('hz-clear'); if (clear) clear.style.display = active ? 'none' : '';
-  // Hazards own the footer when active — hide the SDR meters until it's clear.
-  const fm = document.getElementById('feedmeters'); if (fm) fm.style.display = active ? 'none' : '';
+function aprsTypeLabel(s) { if (s && s.sym_code === '_') return 'Weather'; return (s && _APRS_TYPES[s.sym_code]) || 'Other'; }
+function _isEmergency(s) {
+  if (aprsTypeLabel(s) !== 'Public safety') return false;
+  const t = _lhEpoch(s.last_heard || s.timestamp || s.time);
+  return t > 0 && (Date.now() - t) <= _EMERGENCY_WINDOW_MS;
+}
+// A 100%-contained incident (fire) is treated as cleared — dropped from the list
+// and the hazard counts, matching the map. Self-restores on a <100% flare-up.
+function _containedIncident(s) {
+  const m = String((s && s.comment) || '').match(/Containment:\s*(\d+)\s*%/i);
+  return m != null && parseInt(m[1], 10) === 100;
+}
+function toggleHazardFilter(key) {
+  hazardFilter = (hazardFilter === key) ? null : key;
+  if (hazardFilter) emergencyOnly = false;   // one narrowing filter at a time
+  applyAprsFilter();
+}
+function toggleEmergencyOnly() {
+  const chip = document.getElementById('emerg-chip');
+  if (!chip || !chip.classList.contains('has-emerg')) return;   // calm — nothing to filter
+  emergencyOnly = !emergencyOnly;
+  if (emergencyOnly) hazardFilter = null;
+  applyAprsFilter();
+}
+function _renderHazardPills(counts) {
+  const box = document.getElementById('hazard-pills'); if (!box) return;
+  box.innerHTML = _HAZARDS.filter(h => counts[h.key]).map(h => {
+    const active = hazardFilter === h.key;
+    return '<span class="hazard-pill'+(active?' active':'')+'" role="button" tabindex="0"'
+      + ' style="--hz:'+esc(h.color||'#ff5c33')+'"'
+      + ' onclick="toggleHazardFilter(\''+esc(h.key)+'\')"'
+      + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleHazardFilter(\''+esc(h.key)+'\');}"'
+      + ' aria-pressed="'+(active?'true':'false')+'"'
+      + ' title="'+counts[h.key]+' '+esc(h.label||'')+(active?' — showing only these (tap to clear)':' — tap to show only these')+'">'
+      + esc(h.emoji||'⚠')+' '+counts[h.key]+' '+esc((h.label||'').toUpperCase())+'</span>';
+  }).join('');
+}
+function _renderEmergencyChip(count) {
+  const chip = document.getElementById('emerg-chip'); if (!chip) return;
+  chip.classList.toggle('has-emerg', count > 0);
+  chip.classList.toggle('active', emergencyOnly && count > 0);
+  chip.setAttribute('aria-pressed', (emergencyOnly && count > 0) ? 'true' : 'false');
+  chip.textContent = count > 0 ? ('⚠ ' + count + ' EMERGENCY POI') : '✓ No emergency POI';
 }
 
 // ── APRS + ADS-B live traffic ─────────────────────────────────────────────────
 let _allAprsStations = [];
 let _showRF = true, _showIS = true, _showAPRS = true, _showADSB = true;
 const MAX_ROWS = 25;
+let _homeLL = null;   // kept locally too, so the card can band DIST by raw km
 function loadHomeCoords() {
   fetch('/station.json').then(r => r.ok ? r.json() : null).then(d => {
-    if (!d || !d.lat || !d.lon) return; OasisGeo.setHomeCoords(d.lat, d.lon);
+    if (!d || !d.lat || !d.lon) return;
+    _homeLL = { lat: Number(d.lat), lon: Number(d.lon) };
+    OasisGeo.setHomeCoords(d.lat, d.lon);
     if (_allAprsStations.length) applyAprsFilter();
   }).catch(() => {});
+}
+// Distance-alert bands, mirroring the map's ADS-B alert card (red <2km · amber
+// <5km · green ≤15km · beyond → no colour). Applied to APRS + ADS-B alike.
+function _distBandColor(lat, lon) {
+  if (!_homeLL || lat == null || lon == null) return '';
+  const km = OasisGeo.haversineMi(_homeLL.lat, _homeLL.lon, lat, lon) * 1.60934;
+  if (km < 2)  return 'var(--down)';
+  if (km < 5)  return 'var(--warn)';
+  if (km <= 15) return 'var(--accent)';
+  return '';
 }
 function aprsSource(s) {
   const v = String(s.via||'').trim().toLowerCase();
@@ -580,15 +648,147 @@ function renderAprsRows(list) {
   body.appendChild(frag);
 }
 function applyAprsFilter() {
-  renderHazardFooter();
+  // Emergency chip (Public-safety ≤48h): count every pass, auto-clear if empty.
+  const emergCount = _allAprsStations.reduce((n, s) => n + (_isEmergency(s) ? 1 : 0), 0);
+  if (emergencyOnly && emergCount === 0) emergencyOnly = false;
+  _renderEmergencyChip(emergCount);
+  const emergActive = emergencyOnly && emergCount > 0;
+  // Hazard pills (config-driven, no age window — hazards persist): count, repaint,
+  // auto-clear the filter if its type emptied.
+  const hazardCounts = {};
+  _allAprsStations.forEach(s => { if (_containedIncident(s)) return; const k = _hazardKeyOf(s); if (k) hazardCounts[k] = (hazardCounts[k]||0)+1; });
+  if (hazardFilter && !hazardCounts[hazardFilter]) hazardFilter = null;
+  _renderHazardPills(hazardCounts);
+  const hazardActive = hazardFilter && hazardCounts[hazardFilter] > 0;
+  // Hazards/emergencies own the footer when present — hide the SDR meters.
+  const fm = document.getElementById('feedmeters');
+  if (fm) fm.style.display = (Object.keys(hazardCounts).length || emergCount) ? 'none' : '';
+
   let list = [];
   if (_showAPRS) list = list.concat(_allAprsStations);
   if (_showADSB) list = list.concat(_adsbListRows());
+  list = list.filter(s => {
+    if (_containedIncident(s)) return false;                 // cleared incident — never listed
+    if (hazardActive) return _hazardKeyOf(s) === hazardFilter;  // hazard filter supersedes
+    if (emergActive)  return _isEmergency(s);                   // else emergency filter
+    return true;
+  });
   if (!_showRF || !_showIS) list = list.filter(s => s._kind==='aircraft' || (aprsSource(s)==='is' ? _showIS : _showRF));
   const total = list.length;
   list.sort((a,b) => _lhEpoch(b.last_heard||b.timestamp||b.time) - _lhEpoch(a.last_heard||a.timestamp||a.time));
   const cEl = document.getElementById('k-aprs-count'); if (cEl) cEl.textContent = total;
   renderAprsRows(list.slice(0, MAX_ROWS));
+  // Wide-panel "heard now" card is fed from the FULL unified set (all sources,
+  // ignoring the filter chips), so "every station I hear" is literal.
+  updateHeardCard(_allAprsStations.concat(_adsbListRows())
+    .sort((a, b) => _lhEpoch(b.last_heard||b.timestamp||b.time) - _lhEpoch(a.last_heard||a.timestamp||a.time)));
+}
+
+// ── "Heard in the last 15s" rotating card (wide 1920×1200 panel only) ─────────
+// Each refresh (~15s) we take the stations whose last_heard is within the window
+// and rotate through them over 12s (12s/N each, oldest→newest), then hold the
+// most-recent (top of list) for the final ~3s until the next batch. N=0 → just
+// show the top of the list (most-recent overall). List is pre-sorted newest-first.
+const HB_WINDOW_MS = 15000, HB_ROTATE_MS = 12000, HB_MAX = 3;   // busy feeds heard ~11/15s → rotating all strobes; show the freshest few
+let _hbTimer = null;
+function updateHeardCard(sorted) {
+  clearTimeout(_hbTimer); _hbTimer = null;
+  if (document.documentElement.dataset.res !== '1920x1200') return;   // card hidden otherwise
+  const now = Date.now();
+  const inWindow = sorted.filter(s => now - _lhEpoch(s.last_heard||s.timestamp||s.time) <= HB_WINDOW_MS);
+  const total = inWindow.length;
+  const batch = inWindow.slice(0, HB_MAX);               // top N freshest (list is newest-first)
+  if (!batch.length) { renderHeardCard(sorted[0] || null, 0, 0, 0); return; }
+  const order = batch.slice().reverse();                 // oldest → newest (ends on the freshest)
+  const per = Math.max(1, Math.round(HB_ROTATE_MS / batch.length));   // ~4s each for a full batch of 3
+  let i = 0;
+  const step = () => {
+    renderHeardCard(order[i], i + 1, batch.length, total);
+    i += 1;
+    if (i < order.length) _hbTimer = setTimeout(step, per);
+    // else: hold the freshest until the next batch (~3s) resets us.
+  };
+  step();
+}
+// Scaled APRS symbol for the big card icon — percentage sprite so it stays crisp
+// at any size (16 cols × 6 rows sheet). Mirrors aprsIconHtml's cell math.
+function aprsIconBig(s) {
+  const table = s.sym_table || '/', code = s.sym_code || '-';
+  let idx = code.charCodeAt(0) - 33; if (idx < 0 || idx > 95) idx = 0;
+  const col = idx % 16, row = Math.floor(idx / 16), sheet = table === '/' ? 0 : 1;
+  const px = (col / 15) * 100, py = (row / 5) * 100;
+  return `<span class="hb-icon-img" style="background-image:url('/map-assets/aprs-symbols-64-${sheet}.png');background-size:1600% 600%;background-position:${px}% ${py}%"></span>`;
+}
+// ADS-B emitter category → human label; emergency squawks → alert text.
+const AC_CLASS = { A1:'Light', A2:'Small', A3:'Large', A4:'B757', A5:'Heavy', A6:'High-perf', A7:'Rotorcraft',
+  B1:'Glider', B2:'Balloon', B4:'Ultralight', B6:'UAV', C1:'Vehicle', C2:'Vehicle', C3:'Obstacle' };
+const _SQ_EMERG = { '7500':'HIJACK', '7600':'RADIO FAILURE', '7700':'GENERAL EMERGENCY' };
+function renderHeardCard(s, pos, shown, total) {
+  const el = document.getElementById('dashcardBody'); if (!el) return;
+  if (!s) { el.innerHTML = '<div class="hb-empty">No stations heard yet</div>'; return; }
+  const ac = s._kind === 'aircraft';
+  const src = ac ? 'air' : aprsSource(s);                 // rf | is | air
+  const srcTxt = ac ? 'ADS-B' : src.toUpperCase();
+  const ageSec = Math.floor((Date.now() - _lhEpoch(s.last_heard||s.timestamp||s.time)) / 1000);
+  const ageTxt = ageSec < 0 ? 'now' : ageSec < 60 ? ageSec + 's ago' : Math.floor(ageSec/60) + 'm ago';
+  const ageCls = ageSec <= 15 ? 'fresh' : ageSec < 1800 ? 'stale' : 'old';
+  const grid = gridSquare(s.lat, s.lon) || '—';
+  const posTxt = (s.lat != null && s.lon != null) ? (Number(s.lat).toFixed(3) + ', ' + Number(s.lon).toFixed(3)) : '—';
+  const alt = (s.alt_m != null) ? fmtAlt(s.alt_m) : '—';
+  // Colour the altitude value by band, same as index's list (common/js/adsb.js).
+  const altVal = (s.alt_m != null && typeof altColor === 'function')
+    ? `<span style="color:${altColor(s.alt_m * 3.28084)}">${esc(alt)}</span>` : esc(alt);
+  const spd = (s.speed_mph != null && s.speed_mph > 0) ? fmtSpeed(s.speed_mph) : '—';
+  const dist = distFromHome(s.lat, s.lon) || '—';
+  const distC = _distBandColor(s.lat, s.lon);
+  const distVal = distC ? `<span style="color:${distC}">${esc(dist)}</span>` : esc(dist);
+  // Sub-line: aircraft show class + vertical trend (+ amber emergency); APRS show
+  // the station type (Car / Digipeater / Weather / …) so both types share a skeleton.
+  let sub = '', emerg = '';   // sub is pre-escaped HTML (may contain a colour span)
+  if (ac) {
+    const parts = [];
+    const code = s.category ? String(s.category).toUpperCase() : '';
+    const label = AC_CLASS[code] || '';
+    let clsTxt = (label && code) ? (label + ' [' + code + ']') : (code ? ('[' + code + ']') : label);
+    const mil = (typeof hexIsMilitary === 'function' && hexIsMilitary(s.hex))
+      ? ' <span style="color:var(--warn)">[mil]</span>' : '';
+    let seg = esc(clsTxt);
+    if (mil) seg = seg ? (seg + mil) : mil.trim();
+    if (seg) parts.push(seg);
+    if (s.baro_rate != null) {
+      // Vertical-rate spectrum: descending → cyan, level → lime, ascending → vermillion.
+      let vert, vc;
+      if (s.baro_rate > 100)       { vert = '▲ climbing';   vc = '#ff5b4a'; }
+      else if (s.baro_rate < -100) { vert = '▼ descending'; vc = '#3dd6f5'; }
+      else                         { vert = '— level';      vc = '#b7e04a'; }
+      parts.push(`<span style="color:${vc}">${esc(vert)}</span>`);
+    }
+    sub = parts.join('&nbsp;');
+    const em = (s.emergency && s.emergency !== 'none') ? String(s.emergency).toUpperCase() : (_SQ_EMERG[s.squawk] || '');
+    if (em) emerg = '⚠ EMERGENCY — ' + em + (s.squawk ? ' (squawk ' + s.squawk + ')' : '');
+  } else {
+    const t = aprsTypeLabel(s);
+    sub = esc((t && t !== 'Other') ? t : 'Station');
+    if (s.is_object) sub += ' · object';
+  }
+  const cmt = ac ? (s.squawk ? 'squawk ' + s.squawk : '') : (s.comment || s.cmt || '');
+  const foot = total <= 0 ? 'last heard' : total > shown ? `${pos}/${shown} · ${total} in 15s` : `${pos}/${shown} · 15s`;
+  const pill = (k, v) => `<span class="hb-pill"><b>${k}</b> ${esc(v)}</span>`;
+  el.innerHTML =
+    `<div class="hb-top">
+       <span class="hb-icon">${aprsIconBig(s)}</span>
+       <div class="hb-topmain">
+         <div class="hb-head">
+           <span class="hb-call">${esc(s.callsign || s.c || '—')}</span>
+           <span class="hb-age ${ageCls}">${esc(ageTxt)}</span>
+         </div>` +
+         (sub ? `<div class="hb-sub">${sub}</div>` : '') +
+         (emerg ? `<div class="hb-emerg">${esc(emerg)}</div>` : '') +
+      `</div>
+     </div>
+     <div class="hb-pills"><span class="hb-pill via ${src}"><b>VIA</b> ${esc(srcTxt)}</span><span class="hb-pill"><b>DIST</b> ${distVal}</span>${pill('GRID', grid)}${pill('POS', posTxt)}${pill('SPEED', spd)}<span class="hb-pill"><b>ALT</b> ${altVal}</span></div>` +
+    (cmt ? `<div class="hb-cmt">${esc(cmt)}</div>` : '') +
+    `<div class="hb-foot"><span class="hb-count">${esc(foot)}</span></div>`;
 }
 // Coalesce re-renders to ≤ once / 15 s (three pollers feed one table).
 let _renderAt = 0, _renderTimer = null;
@@ -633,9 +833,13 @@ function _adsbListRows() {
   return _adsbForList().filter(a => (a.lat!=null && a.lon!=null) || !a._live).map(a => {
     const positioned = a.lat!=null && a.lon!=null;
     const altFt = (a.alt_baro==null||a.alt_baro==='ground') ? null : (isFinite(Number(a.alt_baro))?Number(a.alt_baro):null);
-    return { _kind:'aircraft', callsign:(a.flight||a.hex||'').trim()||(a.hex||'?'), sym_table:'/', sym_code:(a.category==='A7')?'X':"'",
+    const _sym = (typeof acSymbol === 'function') ? acSymbol(a) : ['/', a.category === 'A7' ? 'X' : "'"];
+    return { _kind:'aircraft', callsign:(a.flight||a.hex||'').trim()||(a.hex||'?'), sym_table:_sym[0], sym_code:_sym[1],
       lat:positioned?a.lat:null, lon:positioned?a.lon:null, speed_mph:(a.gs!=null)?Math.round(a.gs*1.15078):0, course:(a.track!=null)?a.track:null,
-      alt_m:(altFt!=null)?altFt/3.28084:null, last_heard:new Date(a._ts*1000).toISOString(), via:'adsb', comment:a.squawk?('sq '+a.squawk):'' };
+      alt_m:(altFt!=null)?altFt/3.28084:null, last_heard:new Date(a._ts*1000).toISOString(), via:'adsb', comment:a.squawk?('sq '+a.squawk):'',
+      // Aircraft-only extras for the heard-now card (absent on aged 'recent' rows).
+      hex:a.hex, emergency:a.emergency, category:a.category, squawk:a.squawk,
+      baro_rate:(a.baro_rate!=null?a.baro_rate:(a.geom_rate!=null?a.geom_rate:null)) };
   });
 }
 async function refreshAdsb() {

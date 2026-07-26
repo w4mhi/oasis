@@ -2833,10 +2833,11 @@ function _adsbListRows() {
     const bits = [];
     if (a.squawk) bits.push('sq ' + a.squawk);
     if (emerg) bits.push('⚠ ' + a.squawk);
+    const _sym = (typeof acSymbol === 'function') ? acSymbol(a) : ['/', a.category === 'A7' ? 'X' : "'"];   // class-aware symbol (shared); fallback keeps the list alive if adsb.js is stale
     return {
       _kind: 'aircraft',
       callsign: (a.flight || a.hex || '').trim() || (a.hex || '?'),
-      sym_table: '/', sym_code: (a.category === 'A7') ? 'X' : "'",
+      sym_table: _sym[0], sym_code: _sym[1],
       lat: positioned ? a.lat : null,
       lon: positioned ? a.lon : null,
       speed_mph: (a.gs != null) ? Math.round(a.gs * 1.15078) : 0,

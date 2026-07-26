@@ -70,6 +70,47 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .status{ flex:1 1 auto; flex-direction:row; gap:1rem; }
 .status-body{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
 .status-actions{ flex:0 0 auto; display:flex; flex-direction:column; gap:.4rem; align-items:stretch; }
+/* Wide-panel-only card: hidden by default, revealed on the 1920×1200 layout
+   (root [data-res] is stamped by the early <head> script). Same dim-grey border
+   + panel-2 fill + rounded corners as the pills. Placeholder for now. */
+.dashcard{ display:none; }
+/* Pills size to content and never shrink here, so their max-content grid can't
+   overflow into the card's left edge; the card takes the flexible middle space. */
+:root[data-res="1920x1200"] .status-body{ flex:0 0 auto; }
+:root[data-res="1920x1200"] .dashcard{
+  flex:1 1 auto; min-width:0; display:flex; align-items:stretch;
+  padding:.55rem .9rem; border:1px solid var(--border); border-radius:.9rem;
+  background:var(--panel-2); overflow:hidden;
+}
+
+/* ── "Heard in the last 15s" rotating station card ─────────────────────────── */
+.hb{ width:100%; height:100%; min-width:0; display:flex; flex-direction:column; gap:.5rem; text-align:left; }
+.hb-empty{ margin:auto; color:var(--dim); font-size:1.2rem; }
+/* Top band: big square icon (≈1/3 card height) + name/badges/age/aircraft sub. */
+.hb-top{ flex:0 0 34%; display:flex; gap:.8rem; align-items:stretch; min-height:0; }
+.hb-icon{ height:70%; aspect-ratio:1; flex:0 0 auto; display:block; align-self:flex-start; }
+.hb-icon-img{ display:block; width:100%; height:100%; background-repeat:no-repeat; }
+.hb-topmain{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:.25rem; justify-content:center; }
+.hb-head{ display:flex; align-items:baseline; gap:.55rem; min-width:0; }
+.hb-call{ flex:0 1 auto; min-width:0; font-weight:800; font-size:1.8rem; letter-spacing:.02em;
+          color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hb-age{ flex:0 0 auto; margin-left:auto; font-size:1.05rem; }
+.hb-age.fresh{ color:var(--accent); } .hb-age.stale{ color:var(--warn); } .hb-age.old{ color:var(--faint); }
+.hb-sub{ color:var(--dim); font-size:1.1rem; letter-spacing:.02em; }
+.hb-emerg{ color:var(--warn); font-weight:700; font-size:1.1rem; letter-spacing:.03em;
+           overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Info pills: GRID · POS · ALT · SPEED · DIST — dim-grey border like the others. */
+.hb-pills{ display:grid; grid-template-columns:1fr 1fr; gap:.4rem .5rem; justify-items:start; }
+.hb-pill{ display:inline-flex; align-items:baseline; gap:.4rem; font-size:1.05rem; padding:.22rem .75rem;
+          border-radius:999px; border:1px solid var(--border); background:var(--panel); color:var(--text); white-space:nowrap; }
+.hb-pill b{ color:var(--dim); font-weight:700; font-size:.82rem; letter-spacing:.06em; }
+.hb-pill.via.rf{  color:var(--accent); border-color:color-mix(in srgb,var(--accent) 45%,var(--border)); }
+.hb-pill.via.is{  color:var(--blue);   border-color:color-mix(in srgb,var(--blue) 45%,var(--border)); }
+.hb-pill.via.air{ color:var(--purple); border-color:color-mix(in srgb,var(--purple) 45%,var(--border)); }
+.hb-cmt{ color:var(--dim); font-size:1.02rem; font-style:italic;
+         overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hb-foot{ margin-top:auto; display:flex; justify-content:flex-end; }
+.hb-count{ color:var(--faint); font-size:.85rem; letter-spacing:.06em; }
 .callrow{ display:flex; align-items:center; gap:.8rem; margin-bottom:.5rem; }
 .callpill{ display:inline-flex; align-items:center; gap:.7rem; padding:.35rem 1.1rem; border-radius:999px;
            border:1px solid var(--border); background:var(--panel-2); font-size:1.25rem; cursor:pointer; }
@@ -216,6 +257,20 @@ body{ background:var(--bg); color:var(--text); font-family:var(--mono);
 .alert.on.fire{ color:var(--warn); border-color:rgba(246,168,33,.45); background:rgba(246,168,33,.08); }
 .alert.on.torn,.alert.on.emg{ color:var(--down); border-color:rgba(255,91,74,.45); background:rgba(255,91,74,.08); }
 .alert.clear{ color:var(--accent); border-color:rgba(53,208,160,.35); background:rgba(53,208,160,.06); }
+/* Config-driven hazard pills + emergency toggle chip (footer) — parity with
+   index.html. Both tappable; hazard colour comes from hazards.json via --hz. */
+.footer .hazard-pills{ display:inline-flex; align-items:center; gap:.5rem; }
+.hazard-pill{ display:inline-flex; align-items:center; gap:.4rem; font-size:1.1rem; font-weight:700;
+  letter-spacing:.04em; padding:.28rem .95rem; border-radius:999px; border:1px solid var(--hz);
+  color:var(--hz); background:transparent; cursor:pointer; user-select:none; }
+.hazard-pill:hover{ background:rgba(255,255,255,.06); }
+.hazard-pill.active{ color:var(--bg); background:var(--hz); border-color:var(--hz); }
+.emerg-chip{ display:inline-flex; align-items:center; font-size:1.1rem; font-weight:700; letter-spacing:.05em;
+  padding:.3rem 1.05rem; border-radius:999px; border:1px solid var(--border); color:var(--dim);
+  white-space:nowrap; user-select:none; cursor:default; }
+.emerg-chip.has-emerg{ color:var(--warn); border-color:rgba(246,168,33,.45); background:rgba(246,168,33,.08); cursor:pointer; }
+.emerg-chip.has-emerg:hover{ background:rgba(246,168,33,.16); }
+.emerg-chip.has-emerg.active{ color:var(--bg); background:var(--warn); border-color:var(--warn); }
 /* ── SDR flow meters (footer, shown when calm) ─────────────────────────────────
    Copied from the parent dashboard's APRS/ADS-B feed meters: blue fill = signal
    flowing, red = silent. Proves the RTL-SDRs are receiving, not just "unit up". */

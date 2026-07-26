@@ -2263,52 +2263,9 @@ const AC_CAT_SHAPE = {
   A1:'small', A2:'small', A3:'big', A4:'big', A5:'big', A7:'heli',
   B1:'glider', B2:'glider', C1:'ground', C2:'ground',
 };
-// Military ICAO-address blocks (24-bit hex, inclusive [lo, hi]), ordered by
-// address. Transcribed from wiedehopf/readsb `aircraft.c isMilRange()` (the
-// maintained upstream list) — 2026-07. readsb itself flags military from a
-// per-aircraft database (not offline-friendly); this allocation-range list is
-// the equivalent that needs no database. Append [lo, hi] pairs to extend.
-const MIL_HEX_RANGES = [
-  [0x010070, 0x01008F], // Egypt
-  [0x0A4000, 0x0A4FFF], // Algeria
-  [0x33FF00, 0x33FFFF], // Italy
-  [0x350000, 0x37FFFF], // Spain
-  [0x3AA000, 0x3AFFFF], // France
-  [0x3B7000, 0x3BFFFF], // France
-  [0x3EA000, 0x3EBFFF], // Germany
-  [0x3F4000, 0x3FBFFF], // Germany
-  [0x400000, 0x40003F], // United Kingdom
-  [0x43C000, 0x43CFFF], // United Kingdom
-  [0x444000, 0x446FFF], // Austria
-  [0x44F000, 0x44FFFF], // Belgium
-  [0x457000, 0x457FFF], // Bulgaria
-  [0x45F400, 0x45F4FF], // Denmark
-  [0x468000, 0x4683FF], // Greece
-  [0x473C00, 0x473C0F], // Hungary
-  [0x478100, 0x4781FF], // Norway
-  [0x480000, 0x480FFF], // Netherlands
-  [0x48D800, 0x48D87F], // Poland
-  [0x497C00, 0x497CFF], // Portugal
-  [0x498420, 0x49842F], // Czech Republic
-  [0x4B7000, 0x4B7FFF], // Switzerland
-  [0x4B8200, 0x4B82FF], // Turkey
-  [0x506F32, 0x506FFF], // Slovenia
-  [0x70C070, 0x70C07F], // Oman
-  [0x710258, 0x71028F], // Saudi Arabia
-  [0x710380, 0x71039F], // Saudi Arabia
-  [0x738A00, 0x738AFF], // Israel
-  [0x7CF800, 0x7CFAFF], // Australia
-  [0x800200, 0x8002FF], // India
-  [0xADF7C8, 0xAFFFFF], // United States
-  [0xC20000, 0xC3FFFF], // Canada
-  [0xE40000, 0xE41FFF], // Brazil
-  [0xE80600, 0xE806FF], // Chile
-];
-function hexIsMilitary(hex) {
-  if (!hex) return false;
-  const n = parseInt(String(hex).replace(/[^0-9a-fA-F]/g, ''), 16);   // strip '~' TIS-B prefix etc.
-  return isFinite(n) && MIL_HEX_RANGES.some(([lo, hi]) => n >= lo && n <= hi);
-}
+// hexIsMilitary() + its ICAO military-address table now live in the shared
+// common/js/adsb.js (loaded above), so the map and the dashboard card agree on
+// the same maintained list. suspectedMilitary() stays here — it's map-specific.
 // Fuzzy tier for the "no id at all" case: anonymous (no callsign AND no category)
 // plus one kinematic tell that doesn't fit GA. Deliberately conservative — this
 // is SUSPECTED (rendered hollow), never claimed as confirmed.
@@ -2574,6 +2531,7 @@ function _adsbListRows() {
       : (isFinite(Number(a.alt_baro)) ? Number(a.alt_baro) : null);
     const emerg = ['7500', '7600', '7700'].includes(a.squawk);
     const shp = acShapeFor(a);
+    const _sym = (typeof acSymbol === 'function') ? acSymbol(a) : ['/', adsbSymCode(a.category)];   // class-aware (shared); fallback keeps the list alive if adsb.js is stale
     const bits = [];
     if (a.squawk) bits.push('sq ' + a.squawk);
     if (emerg) bits.push('⚠ ' + a.squawk);
@@ -2582,7 +2540,7 @@ function _adsbListRows() {
       _kind: 'aircraft',
       hex: a.hex || '',
       callsign: (a.flight || a.hex || '').trim() || (a.hex || '?'),
-      sym_table: '/', sym_code: adsbSymCode(a.category),
+      sym_table: _sym[0], sym_code: _sym[1],
       lat: positioned ? a.lat : null,
       lon: positioned ? a.lon : null,
       speed_mph: (a.gs != null) ? Math.round(a.gs * 1.15078) : 0,

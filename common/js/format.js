@@ -17,6 +17,7 @@
     if (!iso) return { text: '—', cls: '' };
     var sec = Math.floor((Date.now() - new Date(iso)) / 1000);
     if (sec < 0) return { text: 'just now', cls: 'age-ok' };
+    if (sec < 60) return { text: sec + 's ago', cls: 'age-ok' };
     if (sec < 3600) {
       var m = Math.floor(sec / 60);
       return { text: m + 'm ago', cls: m < 30 ? 'age-ok' : 'age-warn' };
@@ -28,9 +29,9 @@
     if (!iso) return '—';
     var d = new Date(iso);
     if (isNaN(d)) return iso;
-    var utc = d.toISOString().replace('T', ' ').slice(0, 16) + 'Z';
+    var utc = d.toISOString().replace('T', ' ').slice(0, 19) + 'Z';
     var z = function (v) { return String(v).padStart(2, '0'); };
-    var local = z(d.getHours()) + ':' + z(d.getMinutes());
+    var local = z(d.getHours()) + ':' + z(d.getMinutes()) + ':' + z(d.getSeconds());
     return utc + ' <span style="color:var(--text-dim)">[' + local + ']</span>';
   }
   return { fmtAge: fmtAge, fmtLastHeard: fmtLastHeard };
