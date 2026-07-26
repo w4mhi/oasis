@@ -2894,7 +2894,7 @@ function aprsTypeLabel(s) {
 // `px` for inline use in a table cell. Primary table '/' → sheet 0; alternate
 // '\' and overlay tables → sheet 1. Served from /map-assets/ (fully offline).
 function aprsSymIcon(s, px) {
-  px = px || 16;
+  px = px || 20;
   const table = (s && s.sym_table) || '/';
   const code  = (s && s.sym_code)  || '-';
   let idx = code.charCodeAt(0) - 33;
