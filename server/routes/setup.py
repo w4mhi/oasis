@@ -329,9 +329,15 @@ def _setup_run_uninstalls(job_id, uninstall_ordered):
         if ok:
             _setup_record_removed_features({key})
             removed.append(key)
+        # Mirror the install path: a feature whose teardown only takes effect on
+        # next boot (pi-headless disables autostart but leaves oasis.service
+        # running) reports removed_needs_reboot so the UI prompts a reboot — the
+        # clean boundary that actually finishes a factory reset.
+        needs_reboot = ok and bool(res.get("requires_reboot"))
         _setup_emit_event(job_id, {"schemaVersion": "1.0", "event": "feature_terminal",
                                    "jobId": job_id, "ts": _setup_iso_now(), "feature": key,
-                                   "status": "removed" if ok else "remove_failed",
+                                   "status": ("removed_needs_reboot" if needs_reboot else "removed")
+                                             if ok else "remove_failed",
                                    "reasonCode": None if ok else res.get("reason_code", "REMOVE_FAILED"),
                                    "reasonText": None if ok else res.get("reason_text", "remove failed")})
     # Factory-reset finalizer: once no removable feature remains installed, the

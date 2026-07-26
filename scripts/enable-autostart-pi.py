@@ -63,9 +63,19 @@ SERVICE_FILE = f"/etc/systemd/system/{SERVICE}.service"
 def removal_record(repo_root):
     """Teardown record for the pi-headless / pi-local-monitor autostart features.
     Reuses this script's own --disable path (removes oasis.service + any browser
-    autostart entries). Only affects the next boot, not the running server."""
+    autostart entries). Only affects the next boot, not the running server.
+
+    installed_marker lets startup reconciliation self-heal the ledger: this
+    script hides its artifacts behind --disable (a `script` record exposes no
+    declarative services/files), so without the marker a teardown interrupted
+    after oasis.service was removed but before the ledger drop landed would leave
+    the feature reading as installed. The unit file is the sentinel — gone means
+    the autostart feature is gone."""
     import os as _os
-    return {"script": [_os.path.join(repo_root, "scripts", "enable-autostart-pi.py"), "--disable"]}
+    return {
+        "script": [_os.path.join(repo_root, "scripts", "enable-autostart-pi.py"), "--disable"],
+        "installed_marker": [SERVICE_FILE],
+    }
 BROWSER_BIN  = "/usr/local/bin/oasis-browser-launch"
 REPO_ROOT    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 START_SH     = os.path.join(REPO_ROOT, "scripts", "start-server.sh")

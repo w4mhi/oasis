@@ -196,6 +196,24 @@ app.register_blueprint(_aprs_freq_bp)
 app.register_blueprint(_sat_bp)
 
 
+# Self-heal the installed-services ledger on boot: a teardown interrupted after
+# its artifacts were removed but before the ledger drop landed (power cut, lost
+# worker result) would otherwise leave a feature reading as installed and block a
+# clean reinstall. reconcile() is Linux-only, conservative (drops only on
+# positive evidence of absence), and never raises — but guard it anyway so a
+# ledger hiccup can never stop the server booting.
+try:
+    from common import installed_services as _installed_services
+    _reconciled = _installed_services.reconcile(SUITE_ROOT)
+    if _reconciled:
+        app.logger.warning(
+            "installed-services ledger reconciled on boot; dropped stale features: %s",
+            ", ".join(_reconciled),
+        )
+except Exception:
+    app.logger.exception("installed-services reconcile failed on boot (ignored)")
+
+
 @app.route("/")
 def index():
     """Smart home: JS reads localStorage and redirects to the dashboard kiosk or index.html."""

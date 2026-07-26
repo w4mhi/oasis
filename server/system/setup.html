@@ -869,15 +869,25 @@ async function setupRefreshJob() {
         clearInterval(setupPollTimer);
         setupPollTimer = null;
         // Job finished — prompt for reboot if any feature came back needing one
-        // (i2c-enable, GPS, DRA-PI, the display HATs …).
-        const rebootFeats = (d.features || [])
+        // (i2c-enable, GPS, DRA-PI, the display HATs …) on install, or an
+        // autostart teardown (pi-headless) on removal, which only takes effect
+        // on next boot — the reboot is what actually finishes a factory reset.
+        const feats = d.features || [];
+        const installReboot = feats
           .filter(f => f && f.status === 'installed_needs_reboot')
           .map(f => f.feature);
+        const removeReboot = feats
+          .filter(f => f && f.status === 'removed_needs_reboot')
+          .map(f => f.feature);
+        const rebootFeats = installReboot.concat(removeReboot);
         const rb = document.getElementById('setupRebootNote');
         if (rb) {
           if (rebootFeats.length) {
-            rb.textContent = 'Reboot required to finish: ' + rebootFeats.join(', ')
-              + '. Click "Reboot Pi" above (or reboot later).';
+            rb.textContent = (removeReboot.length && !installReboot.length
+              ? 'Factory reset complete. Reboot required to finish (' + removeReboot.join(', ')
+                + '): the server keeps running until you reboot. Click "Reboot Pi" above.'
+              : 'Reboot required to finish: ' + rebootFeats.join(', ')
+                + '. Click "Reboot Pi" above (or reboot later).');
             rb.style.display = '';
             const btn = document.getElementById('setupReboot');
             if (btn) btn.classList.add('attn');

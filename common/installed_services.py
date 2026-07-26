@@ -11,6 +11,7 @@ crash mid-write can never leave a half-written manifest on the Pi.
 """
 import json
 import os
+import sys
 import time
 
 from common import config_paths
@@ -86,3 +87,65 @@ def remove_installed(repo_root, keys):
     if new_feats == feats and new_rmap == rmap:
         return
     write(repo_root, new_feats, new_rmap)
+
+
+def _reconcile_markers(record):
+    """Filesystem artifacts whose absence proves a feature's install is gone, or
+    None when the record exposes nothing we can trust to prove absence.
+
+    Only root-owned, stable-path signals qualify as *reliable*: each declarative
+    `services` entry maps to its /etc/systemd/system unit file, and a
+    script-record feature may declare an explicit `installed_marker` sentinel
+    (its own unit/file). A record with neither returns None — reconcile then
+    leaves the feature alone rather than guess. Declarative `files`/`dirs` are
+    added only as extra "still present" evidence (they may live in a login
+    user's home, which the server user can't always stat — never a sole basis
+    for dropping)."""
+    reliable = [f"/etc/systemd/system/{s}.service" for s in record.get("services", [])]
+    reliable += [p for p in record.get("installed_marker", []) if p]
+    if not reliable:
+        return None
+    extra = [p for p in record.get("files", []) if p] + [p for p in record.get("dirs", []) if p]
+    return reliable + extra
+
+
+def reconcile(repo_root):
+    """Self-heal the ledger: drop any feature whose install artifacts are all
+    gone from disk. This catches a teardown interrupted after the artifacts were
+    removed but before the ledger drop landed (power cut, lost worker result),
+    which would otherwise leave the feature reading as installed and block a
+    clean reinstall.
+
+    Linux-only (the markers are Linux paths) and deliberately conservative: a
+    feature is dropped only when its record exposes a reliable marker (see
+    _reconcile_markers) AND none of its markers still exist. Features with no
+    checkable marker are left untouched. Best-effort — never raises, so a
+    reconcile hiccup can't stop the server booting. Returns the sorted list of
+    dropped keys."""
+    if sys.platform != "linux":
+        return []
+    try:
+        rmap = removal_map(repo_root)
+        feats = installed_features(repo_root)
+    except Exception:
+        return []
+    dropped = []
+    for f in sorted(feats):
+        record = rmap.get(f)
+        if not isinstance(record, dict):
+            continue  # no record -> can't prove absence, keep it
+        markers = _reconcile_markers(record)
+        if not markers:
+            continue
+        try:
+            present = any(os.path.exists(p) for p in markers)
+        except Exception:
+            present = True  # any stat error -> assume present, never false-drop
+        if not present:
+            dropped.append(f)
+    if dropped:
+        try:
+            remove_installed(repo_root, set(dropped))
+        except Exception:
+            return []
+    return dropped
