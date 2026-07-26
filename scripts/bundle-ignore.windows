@@ -7,7 +7,7 @@
 
 # ── Pi-only hardware & display integrations ──
 displays/
-small-screen/
+oasis-dashboard/
 features/
 
 # ── large / Pi-only data sets ──

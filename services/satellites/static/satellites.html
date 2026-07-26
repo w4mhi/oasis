@@ -336,7 +336,7 @@ function bandOf(mhz) { return mhz < 300 ? 'VHF' : mhz < 1000 ? 'UHF' : 'L-band';
 function satBands(s) { return new Set((s.downlinks || []).map(d => bandOf(d.freq_mhz))); }
 // View mode is a separate axis from tag/band/search: 'all' (whole list),
 // 'monitored' (checked/plotted birds), 'soon' = "Mon · 1h" (monitored + a pass
-// within 1h, matching the kiosk index7 window: in-progress OR rise ≤ 60 min),
+// within 1h, matching the kiosk dashboard window: in-progress OR rise ≤ 60 min),
 // 'soon-all' = "All · 1h" (ANY roster bird passing in the next hour — discovery;
 // check one to start monitoring it). Both 1h views need whole-roster passes,
 // which the server fills incrementally, so they populate over the first polls.

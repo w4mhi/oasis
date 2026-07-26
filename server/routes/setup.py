@@ -125,7 +125,7 @@ def _setup_preflight_blockers(selected, payload, online):
         linux_only = {
             "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
             "openwebrx", "adsb", "rtl-sdr-feed", "gps", "dra-pi-rx-led", "rtc",
-            "pi-headless", "pi-local-monitor", "pi-small-screen-7", "cm4stack",
+            "pi-headless", "pi-local-monitor", "pi-oasis-dashboard", "cm4stack",
             "wikipedia",
         }
         for key in sorted(sel & linux_only):

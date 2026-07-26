@@ -37,7 +37,7 @@ SERVICES_GROUP = {
 # The hardware/config group delivered in Task 5.
 HARDWARE_GROUP = {
     "rtc", "dra-pi-rx-led", "cm4stack", "gps", "gps-l76x",
-    "pi-headless", "pi-local-monitor", "pi-small-screen-7",
+    "pi-headless", "pi-local-monitor", "pi-oasis-dashboard",
 }
 
 
@@ -103,7 +103,7 @@ class RemovalRecordCoverageTest(unittest.TestCase):
             self.assertTrue(rec.get("requires_reboot"), f"{key} should require reboot")
 
     def test_kiosk_features_use_script_hook(self):
-        for key in ("pi-headless", "pi-local-monitor", "pi-small-screen-7"):
+        for key in ("pi-headless", "pi-local-monitor", "pi-oasis-dashboard"):
             rec = self.reg[key].removal_record_fn()
             self.assertTrue(rec.get("script"), f"{key} should use a teardown script")
 

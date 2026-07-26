@@ -1,11 +1,25 @@
 <!doctype html>
 <meta charset="utf-8">
-<!-- Lives in /small-screen/ but every link/fetch targets site-root paths, so
+<!-- Lives in /oasis-dashboard/ but every link/fetch targets site-root paths, so
      resolve relative URLs from "/" rather than this folder. -->
 <base href="/">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OASIS — 7″ kiosk</title>
-<link rel="stylesheet" href="/small-screen/kiosk.css">
+<title>OASIS — Dashboard</title>
+<link rel="stylesheet" href="/oasis-dashboard/kiosk.css">
+<script>
+// ── Resolution mode (set before paint to avoid a layout flash) ─────────────────
+// Explicit flag, no viewport sniffing: the kiosk autostart launches us with
+// ?res=800x480|1920x1200. Fall back to the stored layout; the legacy "7inch"
+// value maps to 800x480. Applied as a [data-res] attribute (CSS targets it) and
+// persisted so ⌂ HOME links across the suite route back to this dashboard.
+(function () {
+  var VALID = { '800x480': '800x480', '1920x1200': '1920x1200', '7inch': '800x480' };
+  var q = new URLSearchParams(location.search).get('res');
+  var res = VALID[q] || VALID[localStorage.getItem('oasis_layout')] || '800x480';
+  document.documentElement.dataset.res = res;
+  localStorage.setItem('oasis_layout', res);
+})();
+</script>
 <script src="/common/js/units.js"></script>
 <script src="/common/js/geo.js"></script>
 <script src="/common/js/format.js"></script>
@@ -417,7 +431,7 @@ function renderGps(g) {
 }
 
 // ── Hardware device pills (device → service; assigned + installed only) ────────
-const HW_SVC_LABEL = { aprs:'APRS', adsb:'ADS-B', openwebrx:'OpenWebRX', winlink:'Winlink', graywolf:'GrayWolf' };
+const HW_SVC_LABEL = { aprs:'APRS', adsb:'ADS-B', openwebrx:'OpenWebRX', winlink:'Winlink', graywolf:'GrayWolf', satellites:'SAT' };
 async function fetchHardware() {
   const box = document.getElementById('devPills'); if (!box) return;
   try {
@@ -674,7 +688,7 @@ async function pollAdsbFlow() {
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
-(function () { localStorage.setItem('oasis_layout', '7inch'); })();
+// (Resolution mode + oasis_layout are set by the early <head> script.)
 loadConfig().then(loadInstalled).then(() => {
   buildTiles(); loadHazards();
   pingAll();                                   // one initial burst so the pill/tiles fill fast
@@ -688,7 +702,7 @@ loadConfig().then(loadInstalled).then(() => {
   setInterval(refreshAdsb,     15000);
   setInterval(refreshAdsbRecent, 60000);
   setInterval(fetchHardware,   30000);
-  setInterval(fetchSats,       60000);
+  setInterval(fetchSats,       30000);
   setInterval(pollFeedFlow,    FEED_FLOW_MS);
   setInterval(pollAdsbFlow,    FEED_FLOW_MS);
 });

@@ -1,12 +1,14 @@
 /* ============================================================
-   OASIS 7" kiosk (index7.html) — standalone stylesheet.
+   OASIS Dashboard kiosk (dashboard.html) — standalone stylesheet.
 
    A fluid landscape dashboard for the BigTreeTech 7" / any 800×480 touch panel,
    scaling to 1024×600 and 1920×1200: everything is sized in rem, and the root
    font-size tracks viewport height (clamp below), so the same 3-zone layout
    grows proportionally and the Traffic list simply shows more rows on bigger
-   screens. Detached from css/common.css on purpose — own dark palette, no
-   light/dark toggle (theme.js skips /small-screen/). Self-contained by design.
+   screens. The chosen resolution is exposed as [data-res] on <html> (800x480 |
+   1920x1200) for layout that must key off the panel size. Detached from
+   css/common.css on purpose — own dark palette, no light/dark toggle
+   (theme.js skips /oasis-dashboard/). Self-contained by design.
    ============================================================ */
 :root{
   --bg:#0a0e11; --panel:#10161b; --panel-2:#141c22; --raise:#18222a;

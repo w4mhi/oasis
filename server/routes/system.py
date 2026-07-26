@@ -259,12 +259,20 @@ def _gps_info():
                         info["alt_m"] = alt
                     have_tpv = True
                 elif msg.get("class") == "SKY":
-                    sats = msg.get("satellites", [])
-                    info["seen"] = msg.get("nSat", len(sats))
-                    info["used"] = msg.get("uSat", sum(1 for x in sats if x.get("used")))
                     if msg.get("hdop") is not None:
                         info["hdop"] = msg["hdop"]
-                    have_sky = True
+                    # gpsd emits several SKY messages per cycle, and most are
+                    # DOP-only (no nSat/uSat/satellites). Only a SKY that
+                    # actually carries satellite data is a valid sat-count
+                    # snapshot — treating a DOP-only SKY as complete captured
+                    # 0/0 and exited before the real satellite-bearing SKY
+                    # arrived. nSat present (even 0) or a non-empty satellites
+                    # list both count as real.
+                    sats = msg.get("satellites")
+                    if msg.get("nSat") is not None or sats:
+                        info["seen"] = msg.get("nSat", len(sats or []))
+                        info["used"] = msg.get("uSat", sum(1 for x in (sats or []) if x.get("used")))
+                        have_sky = True
     except OSError:
         pass
     finally:

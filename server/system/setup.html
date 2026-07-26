@@ -155,7 +155,11 @@
           <h4>Running Hardware</h4>
           <label class="setup-check"><input type="checkbox" data-feature="pi-headless"> pi-headless</label>
           <label class="setup-check"><input type="checkbox" data-feature="pi-local-monitor"> pi-local-monitor</label>
-          <label class="setup-check"><input type="checkbox" data-feature="pi-small-screen-7"> pi-small-screen-7</label>
+          <label class="setup-check"><input type="checkbox" data-feature="pi-oasis-dashboard"> pi-oasis-dashboard</label>
+          <select class="setup-input" id="setupDashboardRes" title="OASIS Dashboard kiosk resolution" style="margin:.15rem 0 .45rem 1.7rem; max-width:17rem;">
+            <option value="800x480" selected>800×480 — 7″ touchscreen</option>
+            <option value="1920x1200">1920×1200 — 10″ wide panel</option>
+          </select>
           <label class="setup-check"><input type="checkbox" data-feature="cm4stack"> cm4stack</label>
           <label class="setup-check"><input type="checkbox" data-feature="rgb-cooling-hat"> rgb-cooling-hat</label>
         </div>
@@ -351,6 +355,12 @@ function setupPayload() {
       callsign: (document.getElementById('setupStationCallsign').value || '').trim().toUpperCase(),
       password: winPw,
       locator: (document.getElementById('setupWinlinkLocator').value || '').trim().toUpperCase(),
+    },
+    // Resolution for the pi-oasis-dashboard kiosk (consumed by
+    // _setup_dashboard_install_fn → enable-autostart-pi.py --resolution).
+    // Always sent; only acted on when pi-oasis-dashboard is selected.
+    'oasis-dashboard': {
+      resolution: (document.getElementById('setupDashboardRes') || {}).value || '800x480',
     },
     wifi: {
       mode: wifiMode,

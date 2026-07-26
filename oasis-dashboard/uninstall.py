@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-small-screen/uninstall.py
--------------------------
-Thoroughly remove the 7" small-screen kiosk (the `pi-small-screen-7` feature that
-`scripts/enable-autostart-pi.py --7inch` installs).
+oasis-dashboard/uninstall.py
+----------------------------
+Thoroughly remove the OASIS Dashboard kiosk (the `pi-oasis-dashboard` feature that
+`scripts/enable-autostart-pi.py --resolution 800x480|1920x1200` installs). Also
+deregisters the legacy `pi-small-screen-7` key so pre-rebrand installs are cleaned.
 
 Why this exists: editing `configuration/installed-services.json` does NOT undo the
 kiosk. That file is only a cosmetic list the dashboard reads. The Pi keeps booting
-to `/small-screen/index7.html` because the Chromium kiosk AUTOSTART — and the URL
-baked into its launcher — live entirely outside that file. This script removes
+to `/oasis-dashboard/dashboard.html` because the Chromium kiosk AUTOSTART — and the
+URL baked into its launcher — live entirely outside that file. This script removes
 every artifact the installer created:
 
   1. Chromium kiosk launcher      /usr/local/bin/oasis-browser-launch   (root-owned)
@@ -16,12 +17,13 @@ every artifact the installer created:
   3. labwc/Wayland autostart line ~/.config/labwc/autostart             (the launcher line)
   4. wayfire autostart line       ~/.config/wayfire.ini                 (if present)
   5. Desktop icon                 ~/Desktop/OASIS.desktop
-  6. Deregisters `pi-small-screen-7` from configuration/installed-services.json
+  6. Deregisters `pi-oasis-dashboard` (and legacy `pi-small-screen-7`) from
+     configuration/installed-services.json
   7. (opt --remove-server)        the server autostart unit  oasis.service
-  8. (opt --clear-browser-layout) Chromium's stored 7" layout override
-     (localStorage `oasis_layout=7inch`), so opening `/` no longer redirects to index7
+  8. (opt --clear-browser-layout) Chromium's stored layout override
+     (localStorage `oasis_layout`), so opening `/` no longer redirects to the kiosk
 
-By default the OASIS *server* autostart (`oasis.service`) is KEPT — only the 7"
+By default the OASIS *server* autostart (`oasis.service`) is KEPT — only the
 kiosk browser is removed — so the Pi boots to a normal desktop with the server
 still running. Pass --remove-server to also stop auto-starting the server (the
 same effect as `enable-autostart-pi.py --disable`, but scoped and documented).
@@ -30,10 +32,10 @@ Idempotent and safe to re-run. Needs sudo for the root-owned bits.
 Raspberry Pi OS with Desktop.
 
 Usage:
-  python3 small-screen/uninstall.py
-  python3 small-screen/uninstall.py --remove-server
-  python3 small-screen/uninstall.py --clear-browser-layout
-  python3 small-screen/uninstall.py --dry-run
+  python3 oasis-dashboard/uninstall.py
+  python3 oasis-dashboard/uninstall.py --remove-server
+  python3 oasis-dashboard/uninstall.py --clear-browser-layout
+  python3 oasis-dashboard/uninstall.py --dry-run
 """
 import argparse
 import getpass
@@ -52,17 +54,18 @@ SERVICE = "oasis"
 SERVICE_FILE = f"/etc/systemd/system/{SERVICE}.service"
 BROWSER_BIN = "/usr/local/bin/oasis-browser-launch"
 DESKTOP_ICON_NAME = "OASIS.desktop"
-FEATURE_KEY = "pi-small-screen-7"
+FEATURE_KEY = "pi-oasis-dashboard"
+LEGACY_FEATURE_KEY = "pi-small-screen-7"   # pre-rebrand key; still deregistered
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DRY = False
 
 
 def removal_record(repo_root):
-    """Teardown record for the pi-small-screen-7 kiosk feature: run this very
-    script (its default keeps oasis.service — only the 7" kiosk browser is
-    removed). Reboot to confirm the Pi no longer opens the 7" layout."""
-    return {"script": [os.path.join(repo_root, "small-screen", "uninstall.py")],
+    """Teardown record for the pi-oasis-dashboard kiosk feature: run this very
+    script (its default keeps oasis.service — only the kiosk browser is
+    removed). Reboot to confirm the Pi no longer opens the dashboard layout."""
+    return {"script": [os.path.join(repo_root, "oasis-dashboard", "uninstall.py")],
             "requires_reboot": True}
 
 
@@ -160,7 +163,7 @@ def remove_server_autostart():
 
 
 def clear_browser_layout(home):
-    _step(3, 'Clearing Chromium\'s stored 7" layout (localStorage oasis_layout)')
+    _step(3, "Clearing Chromium's stored kiosk layout (localStorage oasis_layout)")
     # Chromium keeps localStorage in a leveldb that can't be edited surgically from
     # the CLI, so remove the profile's "Local Storage" folder (localStorage only —
     # not history or cookies). Harmless on a single-purpose OASIS kiosk.
@@ -184,7 +187,8 @@ def clear_browser_layout(home):
 
 
 def deregister():
-    _step(4, f"Deregistering {FEATURE_KEY} from installed-services.json")
+    keys = (FEATURE_KEY, LEGACY_FEATURE_KEY)
+    _step(4, f"Deregistering {' / '.join(keys)} from installed-services.json")
     path = os.path.join(REPO_ROOT, "configuration", "installed-services.json")
     if not os.path.exists(path):
         _info("installed-services.json not present")
@@ -196,13 +200,14 @@ def deregister():
         _warn(f"could not read {path}: {exc}")
         return
     feats = data.get("features", [])
-    if FEATURE_KEY not in feats:
-        _info(f"{FEATURE_KEY} not listed")
+    present = [k for k in keys if k in feats]
+    if not present:
+        _info(f"{' / '.join(keys)} not listed")
         return
-    _ok(f"remove {FEATURE_KEY} from features")
+    _ok(f"remove {' / '.join(present)} from features")
     if DRY:
         return
-    data["features"] = [f for f in feats if f != FEATURE_KEY]
+    data["features"] = [f for f in feats if f not in keys]
     with open(path, "w") as fh:
         json.dump(data, fh, indent=2)
         fh.write("\n")
@@ -210,18 +215,18 @@ def deregister():
 
 def main():
     global DRY
-    ap = argparse.ArgumentParser(description='Uninstall the 7" small-screen kiosk.')
+    ap = argparse.ArgumentParser(description="Uninstall the OASIS Dashboard kiosk.")
     ap.add_argument("--remove-server", action="store_true",
                     help="also stop auto-starting the OASIS server (removes oasis.service)")
     ap.add_argument("--clear-browser-layout", action="store_true",
-                    help='clear Chromium\'s stored 7" layout so opening / stops redirecting to index7')
+                    help="clear Chromium's stored layout so opening / stops redirecting to the kiosk")
     ap.add_argument("--dry-run", action="store_true",
                     help="print what would change, make no changes")
     args = ap.parse_args()
     DRY = args.dry_run
 
     _hr()
-    print('  OASIS — Uninstall small-screen (7" kiosk)')
+    print("  OASIS — Uninstall Dashboard kiosk")
     _hr()
     if DRY:
         _warn("DRY RUN — no changes will be made")
@@ -237,7 +242,7 @@ def main():
     if args.clear_browser_layout:
         clear_browser_layout(home)
     else:
-        _info("keeping browser data. If opening / still redirects to index7, re-run with --clear-browser-layout.")
+        _info("keeping browser data. If opening / still redirects to the dashboard, re-run with --clear-browser-layout.")
     deregister()
 
     _hr()

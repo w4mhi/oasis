@@ -1375,9 +1375,9 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 
 <script src="server/winlink/read-state.js"></script>
 <script>
-// Reaching the desktop dashboard clears any stored 7" layout preference, so the
-// "/" smart-redirect can never get stuck looping back to index7 (index7.html
-// stamps oasis_layout=7inch; nothing else ever cleared it). Self-healing hatch.
+// Reaching the desktop dashboard clears any stored kiosk layout preference, so the
+// "/" smart-redirect can never get stuck looping back to the dashboard (dashboard.html
+// stamps oasis_layout=<res>; nothing else ever cleared it). Self-healing hatch.
 try { localStorage.removeItem('oasis_layout'); } catch (e) {}
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -2192,10 +2192,15 @@ async function unitInstalled(id) {
     // features/gps/install-gps.py explicitly `systemctl enable gpsd`, so require
     // that deliberate boot-enable for the GPS card.
     if (id === 'gpsd') return d.enabled === 'enabled';
-    // Otherwise the OASIS-managed unit merely EXISTING (installed) is proof the
-    // operator installed it — keep the card visible even if it's currently
-    // stopped/disabled. Same "installed = unit file exists" the setup page uses.
-    return !!d.installed;
+    // Otherwise require a DELIBERATE enable (or a live run) before overriding the
+    // manifest gate. A unit that merely EXISTS but is disabled+inactive is NOT
+    // proof the operator set the service up via OASIS: OpenWebRX ships an apt
+    // `openwebrx.service` that can be present-but-disabled on a box where the
+    // OASIS feature was never installed — trusting "installed = unit file exists"
+    // there slipped a not-installed service past the gate and rendered it STOPPED
+    // instead of hidden. enabled-or-active still catches a service the operator
+    // turned on outside setup (this hatch's real purpose; see the note above).
+    return d.active === 'active' || d.enabled === 'enabled';
   } catch (_) { return false; }
 }
 
@@ -3558,11 +3563,15 @@ loadConfig().then(() => {
   fetchAPRS();
   loadHomeCoords();
   pollWifi();
-  // Service badges: round-robin one at a time (~30s per badge) instead of a
-  // 17-request burst every 30s (see pingNext). Hardware keeps its own 30s tick,
-  // decoupled from the pings so they no longer fire together.
+  // Service badges: round-robin one at a time — a full sweep of the active
+  // (visible) services every 16s, matching the OASIS Dashboard kiosk, instead of
+  // a 17-request burst (see pingNext). Dividing by the active count (not all
+  // SERVICES) keeps the full-sweep time fixed at 16s regardless of how many are
+  // hidden. Hardware keeps its own 30s tick, decoupled from the pings so they no
+  // longer fire together.
   setInterval(fetchHardware, 30_000);
-  setInterval(pingNext, Math.round(30_000 / SERVICES.length));
+  const _activeN = SERVICES.filter(s => !HIDDEN_SVCS.has(s.id)).length || 1;
+  setInterval(pingNext, Math.round(16_000 / _activeN));
   // Phase-offset the remaining 30s loops so they don't all land on the same
   // boundary — staggered startup delays, then steady 30s each.
   setTimeout(() => setInterval(fetchStats, 30_000),  4_000);

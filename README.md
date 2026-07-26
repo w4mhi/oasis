@@ -68,7 +68,7 @@ Each feature links to its full setup section. New here? Start with **[Quick star
 - **🌐 OpenWebRX** *(Pi)* — optional SDR receiver web UI for spectrum monitoring and multi-mode decoding. → [Setup](docs/SETUP.md#openwebrx-sigint)
 - **📻 RTL-SDR** *(Pi, Trixie)* — demodulate 2 m APRS from a USB dongle and feed it into GrayWolf (receive / iGate). → [Setup](docs/SETUP.md#rtl-sdr)
 - **📖 Offline Wikipedia** *(Pi)* — Kiwix serving a ZIM snapshot. → [Setup](docs/SETUP.md#kiwix--wikipedia)
-- **🖥️ Panel & cooling add-ons** *(Pi)* — on-device CM4Stack panel display, RGB Cooling HAT fan/OLED, and a compact small-screen/kiosk dashboard. → [Setup](docs/SETUP.md#cm4stack-panel-display)
+- **🖥️ Panel & cooling add-ons** *(Pi)* — on-device CM4Stack panel display, RGB Cooling HAT fan/OLED, and the OASIS Dashboard touch kiosk (800×480 / 1920×1200). → [Setup](docs/SETUP.md#cm4stack-panel-display)
 - **💾 Portable USB bundle** — package the whole suite into a self-contained folder that runs with no system Python on Windows (`--for-windows`), or Pi/Linux only (default). → [Setup](docs/SETUP.md#usb--portable-bundle)
 
 ---

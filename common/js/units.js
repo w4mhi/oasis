@@ -1,7 +1,7 @@
 /*
  * units.js — shared measurement-unit formatting for OASIS dashboards.
  *
- * Loaded as a classic <script> in index.html and small-screen/index7.html.
+ * Loaded as a classic <script> in index.html and oasis-dashboard/dashboard.html.
  * Owns the imperial/metric preference (localStorage 'oasis_units', default
  * imperial) so both dashboards agree, and exposes its formatters as bare
  * globals for the pages' existing inline call sites. Also requireable by
@@ -12,7 +12,7 @@
 (function (root, factory) {
   var api = factory();
   root.OasisUnits = api;
-  // Bare globals so index.html / index7.html call sites keep working unchanged.
+  // Bare globals so index.html / dashboard.html call sites keep working unchanged.
   root.isImperial = api.isImperial;
   root.fmtTemp = api.fmtTemp;
   root.fmtAlt = api.fmtAlt;

@@ -16,10 +16,11 @@ Configure OASIS to start automatically when the Raspberry Pi boots.
     (Bookworm/Trixie, Wayland) and the XDG ~/.config/autostart/*.desktop on
     LXDE/X11. Requires Raspberry Pi OS with Desktop (a live desktop session).
 
-  --7inch
-    Same as --with-browser but targets the 7″ touchscreen layout
-    (http://localhost:8083/small-screen/index7.html, 800×480).  Also enables touch
-    events and disables overscroll navigation in Chromium.
+  --resolution 800x480 | 1920x1200
+    Same as --with-browser but targets the OASIS Dashboard kiosk layout
+    (http://localhost:8083/oasis-dashboard/dashboard.html?res=<WxH>) sized to the
+    panel.  Also enables touch events and disables overscroll navigation in
+    Chromium.  (--7inch is a deprecated alias for --resolution 800x480.)
 
   --desktop-icon
     Create a clickable OASIS shortcut on the Raspberry Pi desktop
@@ -34,7 +35,7 @@ Configure OASIS to start automatically when the Raspberry Pi boots.
 Usage:
   python3 scripts/enable-autostart-pi.py
   python3 scripts/enable-autostart-pi.py --with-browser
-  python3 scripts/enable-autostart-pi.py --7inch
+  python3 scripts/enable-autostart-pi.py --resolution 1920x1200
   python3 scripts/enable-autostart-pi.py --desktop-icon
   python3 scripts/enable-autostart-pi.py --disable
 
@@ -228,7 +229,7 @@ def install_service(user):
 
 
 # ── Step 3: Chromium kiosk autostart ──────────────────────────────────────────
-def install_browser(user, home, url=None, seven_inch=False):
+def install_browser(user, home, url=None, resolution=None):
     _step(3, "Installing Chromium kiosk autostart")
 
     # Detect the Chromium binary name (Pi OS ships either variant).
@@ -280,11 +281,12 @@ def install_browser(user, home, url=None, seven_inch=False):
     # Offline: crash uploads go nowhere, so disabling breakpad stops
     # crashpad_handler from churning CPU writing minidumps on every renderer blip.
     flags.append("--disable-breakpad")
-    if seven_inch:
+    if resolution:
+        w, h = resolution.split("x")
         flags += [
             "--touch-events=enabled", "--overscroll-history-navigation=0",
-            "--window-size=800,480",
-            "--force-device-scale-factor=1",    # 800×480 native — no fractional-scale repaint
+            f"--window-size={w},{h}",
+            "--force-device-scale-factor=1",    # native panel size — no fractional-scale repaint
         ]
     flag_str = " ".join(flags)
     launcher = (
@@ -437,7 +439,8 @@ def main():
             "Examples:\n"
             "  python3 scripts/enable-autostart-pi.py                 # server only\n"
             "  python3 scripts/enable-autostart-pi.py --with-browser  # server + Chromium kiosk\n"
-            "  python3 scripts/enable-autostart-pi.py --7inch         # server + 7\u2033 touchscreen kiosk\n"
+            "  python3 scripts/enable-autostart-pi.py --resolution 800x480    # server + dashboard kiosk\n"
+            "  python3 scripts/enable-autostart-pi.py --resolution 1920x1200  # server + wide dashboard kiosk\n"
             "  python3 scripts/enable-autostart-pi.py --desktop-icon  # add desktop shortcut\n"
             "  python3 scripts/enable-autostart-pi.py --disable       # remove all\n"
         ),
@@ -451,12 +454,17 @@ def main():
         ),
     )
     parser.add_argument(
-        "--7inch", dest="seven_inch", action="store_true",
+        "--resolution", choices=["800x480", "1920x1200"], default=None,
         help=(
-            "Kiosk mode for the 7\u2033 touchscreen (800\u00d7480). "
-            "Opens small-screen/index7.html, enables touch events, sets window size. "
-            "Implies --with-browser."
+            "OASIS Dashboard kiosk at the given panel resolution. "
+            "Opens oasis-dashboard/dashboard.html with touch events enabled and the "
+            "window sized to match. Implies --with-browser. 800x480 = BigTreeTech 7\u2033 / "
+            "any 800\u00d7480 touchscreen; 1920x1200 = 10\u2033 wide panel."
         ),
+    )
+    parser.add_argument(
+        # Back-compat alias for the pre-rebrand 7" flag \u2192 800x480 dashboard.
+        "--7inch", dest="seven_inch", action="store_true", help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--desktop-icon", action="store_true",
@@ -481,17 +489,20 @@ def main():
         cmd_disable(home)
         return
 
-    # --7inch implies --with-browser
-    if args.seven_inch:
+    # --7inch is the deprecated alias for --resolution 800x480.
+    if args.seven_inch and not args.resolution:
+        args.resolution = "800x480"
+    # A dashboard resolution implies --with-browser.
+    if args.resolution:
         args.with_browser = True
 
     kiosk_url = (
         # Point each mode at an EXPLICIT page, never the "/" smart-redirect: "/"
-        # honors a stored localStorage oasis_layout=7inch (which the 7" page
-        # stamps), so a --with-browser kiosk that opened "/" would get hijacked
-        # back to index7 forever. Explicit URLs make the layout depend only on
-        # which feature you installed.
-        f"http://localhost:{PORT}/small-screen/index7.html" if args.seven_inch
+        # honors a stored localStorage oasis_layout (which the dashboard stamps),
+        # so a --with-browser kiosk that opened "/" would get hijacked back to the
+        # dashboard forever. Explicit URLs make the layout depend only on which
+        # feature you installed. ?res=<WxH> selects the dashboard's [data-res] mode.
+        f"http://localhost:{PORT}/oasis-dashboard/dashboard.html?res={args.resolution}" if args.resolution
         else f"http://localhost:{PORT}/index.html"
     )
 
@@ -499,8 +510,8 @@ def main():
     print("  OASIS — Enable autostart on Raspberry Pi")
     _hr()
     _info(f"User: {user}")
-    if args.seven_inch:
-        _info("Mode: server  +  Chromium kiosk  (7\u2033 touchscreen, 800\u00d7480)")
+    if args.resolution:
+        _info(f"Mode: server  +  Chromium kiosk  (OASIS Dashboard, {args.resolution})")
         _info(f"URL : {kiosk_url}")
     elif args.with_browser:
         _info("Mode: server  +  Chromium kiosk on desktop login")
@@ -508,12 +519,12 @@ def main():
         _info("Mode: server  +  desktop shortcut icon")
     else:
         _info("Mode: server only (no browser)")
-        _info("Tip:  Re-run with --with-browser, --7inch, or --desktop-icon to add browser access later")
+        _info("Tip:  Re-run with --with-browser, --resolution, or --desktop-icon to add browser access later")
 
     check_platform()
     install_service(user)
     if args.with_browser:
-        install_browser(user, home, url=kiosk_url, seven_inch=args.seven_inch)
+        install_browser(user, home, url=kiosk_url, resolution=args.resolution)
     if args.desktop_icon:
         install_desktop_icon(user, home)
 
@@ -523,8 +534,8 @@ def main():
     _info(f"Web interface : http://localhost:{PORT}")
     _info(f"Logs          : journalctl -u {SERVICE} -f")
     _info(f"Status        : systemctl status {SERVICE}")
-    if args.seven_inch:
-        _info(f"Browser       : opens {kiosk_url} in 7\u2033 kiosk mode on next desktop login")
+    if args.resolution:
+        _info(f"Browser       : opens {kiosk_url} in {args.resolution} kiosk mode on next desktop login")
     elif args.with_browser:
         _info("Browser       : opens in kiosk mode on next desktop login")
     if args.desktop_icon:

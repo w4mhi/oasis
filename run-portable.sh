@@ -45,8 +45,8 @@ _open_browser() {
     sleep 0.5
   done
   # Open the explicit desktop page, never the bare "/" smart-redirect: "/"
-  # honors a stored localStorage oasis_layout=7inch (which the 7" kiosk page
-  # stamps) and would hijack portable back to index7 forever. Landing on
+  # honors a stored localStorage oasis_layout (which the dashboard kiosk page
+  # stamps) and would hijack portable back to the dashboard forever. Landing on
   # index.html also runs its self-healing hatch, clearing a stale stamp. Mirrors
   # scripts/enable-autostart-pi.py, which points its kiosk browser the same way.
   local landing="$URL/index.html"

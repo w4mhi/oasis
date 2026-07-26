@@ -72,9 +72,9 @@ class RemovalRunnerTest(unittest.TestCase):
 
     def test_script_hook_accepts_bare_string(self):
         fr = FakeRun()
-        removal.apply({"script": "/repo/small-screen/uninstall.py"}, apply=True, run=fr)
+        removal.apply({"script": "/repo/oasis-dashboard/uninstall.py"}, apply=True, run=fr)
         flat = [" ".join(c) for c in fr.calls]
-        self.assertTrue(any("small-screen/uninstall.py" in c for c in flat))
+        self.assertTrue(any("oasis-dashboard/uninstall.py" in c for c in flat))
 
     def test_notes_surface_as_advisory(self):
         out = removal.apply({"notes": ["gpsd/chrony reconfig left in place"]}, apply=False)

@@ -111,5 +111,60 @@ class GpsInfoIntegrationTest(unittest.TestCase):
         self.assertEqual(info["otherDetected"], [])
 
 
+class _ScriptedSocket:
+    """Replays a queue of byte chunks over recv(), then EOF — one chunk per
+    read, so a message that lands in a *later* chunk is only seen if the read
+    loop keeps going."""
+    def __init__(self, chunks):
+        self._chunks = list(chunks)
+    def sendall(self, data):
+        pass
+    def settimeout(self, t):
+        pass
+    def recv(self, n):
+        return self._chunks.pop(0) if self._chunks else b""
+    def close(self):
+        pass
+
+
+class GpsInfoSkyParsingTest(unittest.TestCase):
+    """Regression: gpsd (u-blox on /dev/ttyACM0) emits several SKY messages per
+    cycle, most of them DOP-only (no nSat/uSat/satellites). The read loop must
+    not treat a DOP-only SKY as the satellite snapshot — doing so captured 0/0
+    and exited before the real satellite-bearing SKY arrived."""
+
+    def _run(self, chunks):
+        with mock.patch.object(system_routes.socket, "create_connection",
+                               return_value=_ScriptedSocket(chunks)), \
+             mock.patch.object(system_routes.gpsd_chrony, "configured_device", return_value=None), \
+             mock.patch.object(system_routes.os.path, "exists", return_value=False):
+            return system_routes._gps_info()
+
+    def test_dop_only_sky_then_full_sky_reports_real_counts(self):
+        # First read: a DOP-only SKY + the TPV (fix mode). Second read: the real
+        # satellite-bearing SKY. The buggy loop exited after read 1 with seen=0.
+        dop_only = b'{"class":"SKY","device":"/dev/ttyACM0","hdop":46.48}\n'
+        tpv = b'{"class":"TPV","mode":3,"lat":34.0,"lon":-84.0,"altMSL":300.0}\n'
+        full_sky = (b'{"class":"SKY","device":"/dev/ttyACM0","hdop":46.85,'
+                    b'"nSat":17,"uSat":3,"satellites":[{"PRN":15,"used":true},'
+                    b'{"PRN":18,"used":true},{"PRN":23,"used":true},'
+                    b'{"PRN":5,"used":false}]}\n')
+        info = self._run([dop_only + tpv, full_sky])
+        self.assertEqual(info["seen"], 17)
+        self.assertEqual(info["used"], 3)
+        self.assertEqual(info["mode"], 3)
+        self.assertAlmostEqual(info["hdop"], 46.85)
+
+    def test_fallback_counts_from_satellites_array_when_no_nsat(self):
+        # Older gpsd without nSat/uSat: counts derive from the satellites list.
+        tpv = b'{"class":"TPV","mode":3}\n'
+        dop_only = b'{"class":"SKY","hdop":9.9}\n'
+        sky = (b'{"class":"SKY","satellites":[{"PRN":1,"used":true},'
+               b'{"PRN":2,"used":true},{"PRN":3,"used":false}]}\n')
+        info = self._run([dop_only + tpv, sky])
+        self.assertEqual(info["seen"], 3)
+        self.assertEqual(info["used"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()

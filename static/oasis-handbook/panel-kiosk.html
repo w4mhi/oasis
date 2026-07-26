@@ -72,27 +72,30 @@
     </div>
     <div class="eyebrow">Hardware & Deployment</div>
     <h1>Panel &amp; Kiosk Displays</h1>
-    <p class="subtitle">On-device displays &mdash; the CM4Stack panel and a small-screen touch dashboard</p>
+    <p class="subtitle">On-device displays &mdash; the CM4Stack panel and the OASIS Dashboard touch kiosk</p>
     <p>
       OASIS is browser-served, so any device is a display &mdash; but for an all-in-one box you can
-      also drive an on-device screen: the M5Stack <strong>CM4Stack</strong> panel, or a compact
-      <strong>small-screen / touchscreen kiosk</strong>.
+      also drive an on-device screen: the M5Stack <strong>CM4Stack</strong> panel, or the
+      <strong>OASIS Dashboard / touchscreen kiosk</strong>.
     </p>
-    <h2>Small-screen / kiosk dashboard</h2>
+    <h2>OASIS Dashboard / kiosk</h2>
     <p>
-      <code>small-screen/index7.html</code> is a compact, touch-friendly dashboard tuned for
-      small panels (a 3.5&ndash;7&Prime; Pi screen or the CM4Stack panel), with large tap targets and a
-      condensed status strip. Configure the kiosk automatically:
+      <code>oasis-dashboard/dashboard.html</code> is a touch-friendly dashboard tuned for
+      dedicated panels, with large tap targets and a condensed status strip. It ships in two
+      resolutions &mdash; <strong>800&times;480</strong> (7&Prime; touchscreen) and
+      <strong>1920&times;1200</strong> (10&Prime; wide panel). Configure the kiosk automatically:
     </p>
-    <pre><code>python3 scripts/enable-autostart-pi.py --7inch</code></pre>
+    <pre><code>python3 scripts/enable-autostart-pi.py --resolution 800x480     # 7&Prime; touchscreen
+python3 scripts/enable-autostart-pi.py --resolution 1920x1200   # 10&Prime; wide panel</code></pre>
     <p>
-      <code>--7inch</code> implies <code>--with-browser</code>, sets the kiosk URL to
-      <code>http://localhost:8083/small-screen/index7.html</code>, enables touch, and sets the
-      window to 800&times;480.
+      <code>--resolution</code> implies <code>--with-browser</code>, sets the kiosk URL to
+      <code>http://localhost:8083/oasis-dashboard/dashboard.html?res=&lt;WxH&gt;</code>, enables
+      touch, and sizes the window to match. (The old <code>--7inch</code> flag still works as an
+      alias for <code>--resolution 800x480</code>.)
     </p>
     <figure class="figure">
-      <img src="img/small-screen.png" alt="The small-screen dashboard: UTC/local clocks, callsign, GPS, the services with their RTL-SDR assignments, system stats, a live traffic list, satellites, and a fire count" />
-      <figcaption>The small-screen dashboard &mdash; clocks, GPS, live services with their RTL-SDR device assignments, system stats, and a filterable APRS / ADS-B traffic list, all on one panel</figcaption>
+      <img src="img/small-screen.png" alt="The OASIS Dashboard: UTC/local clocks, callsign, GPS, the services with their RTL-SDR assignments, system stats, a live traffic list, satellites, and a fire count" />
+      <figcaption>The OASIS Dashboard &mdash; clocks, GPS, live services with their RTL-SDR device assignments, system stats, and a filterable APRS / ADS-B traffic list, all on one panel</figcaption>
     </figure>
     <p>
       The main screen packs the whole station onto one panel: dual clocks, call sign and
@@ -104,7 +107,7 @@
       <a href="winlink.html">Winlink</a>.
     </p>
     <figure class="figure">
-      <img src="img/small-screen-ops.png" alt="Small-screen OPS launcher: large tap targets for the map, FCC lookup, satellites, SSH, calculators, ICS forms, and Winlink" />
+      <img src="img/small-screen-ops.png" alt="OASIS Dashboard OPS launcher: large tap targets for the map, FCC lookup, satellites, SSH, calculators, ICS forms, and Winlink" />
       <figcaption>The OPS launcher &mdash; large tap targets for every tool, reachable in one touch from the main screen</figcaption>
     </figure>
     <h2>CM4Stack panel</h2>
@@ -127,7 +130,7 @@ python3 displays/cm4stack/install-cm4stack.py --dry-run    # preview config.txt 
       <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
       <tbody>
         <tr><td>The kiosk pins a CPU core / runs hot</td><td>Usually a Chromium crash-loop (watch for <code>crashpad_handler</code>). Launch with <code>--use-gl=egl --disable-breakpad</code> &mdash; it drops a stuck Pi kiosk from ~100% of one core to ~25%.</td></tr>
-        <tr><td>Blank or wrong-size screen</td><td>Display/rotation config. Check the kiosk service and the panel&rsquo;s resolution; the 7-inch view is <code>/small-screen/index7.html</code>.</td></tr>
+        <tr><td>Blank or wrong-size screen</td><td>Display/rotation config. Check the kiosk service and the panel&rsquo;s resolution; the dashboard view is <code>/oasis-dashboard/dashboard.html?res=&lt;WxH&gt;</code>.</td></tr>
         <tr><td>Touch doesn&rsquo;t register</td><td>The touchscreen overlay/driver isn&rsquo;t loaded for that panel &mdash; enable it in <code>config.txt</code> and reboot.</td></tr>
       </tbody>
     </table></div></div>

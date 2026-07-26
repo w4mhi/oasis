@@ -105,11 +105,11 @@ def _api_json_error_handler(exc):
 # Inject common/js/theme.js just before </head> on every owned HTML page, so the
 # sun/moon toggle (and the no-flash theme apply) appears everywhere without
 # editing each page. Pages that manage their own theming are skipped:
-#   • the 7" kiosk (/small-screen/)   • the live map (/server/map/)
+#   • the dashboard kiosk (/oasis-dashboard/)   • the live map (/server/map/)
 #   • the graywolf-handbook (/static/graywolf-handbook/)
 # theme.js is idempotent — it leaves a page's own toggle button (e.g. the
 # dashboard's) alone and only adds the floating one when none exists.
-_THEME_SKIP_PREFIXES = ("/small-screen/", "/server/map/", "/server/satellites/", "/static/graywolf-handbook/")
+_THEME_SKIP_PREFIXES = ("/oasis-dashboard/", "/server/map/", "/server/satellites/", "/static/graywolf-handbook/")
 _THEME_SNIPPET = '<script src="/common/js/theme.js"></script>'
 
 @app.before_request
@@ -198,12 +198,15 @@ app.register_blueprint(_sat_bp)
 
 @app.route("/")
 def index():
-    """Smart home: JS reads localStorage and redirects to the small-screen layout or index.html."""
+    """Smart home: JS reads localStorage and redirects to the dashboard kiosk or index.html."""
     return '''<!doctype html><meta charset="utf-8">
 <script>
-window.location.replace(
-  localStorage.getItem("oasis_layout") === "7inch" ? "/small-screen/index7.html" : "/index.html"
-);
+// Legacy "7inch" maps to 800x480; any dashboard resolution routes to the kiosk.
+(function () {
+  var RES = { "7inch": "800x480", "800x480": "800x480", "1920x1200": "1920x1200" };
+  var res = RES[localStorage.getItem("oasis_layout")];
+  window.location.replace(res ? "/oasis-dashboard/dashboard.html?res=" + res : "/index.html");
+})();
 </script>
 <noscript><meta http-equiv="refresh" content="0;url=/index.html"></noscript>''', 200, {'Content-Type': 'text/html; charset=utf-8'}
 
@@ -345,8 +348,8 @@ if __name__ == "__main__":
     print(f"\n  OASIS (dev server) — {url}\n")
     if not args.no_browser:
         # Open the explicit desktop page, not the bare "/" smart-redirect: "/"
-        # honors a stored localStorage oasis_layout=7inch (stamped by the 7" kiosk
-        # page) and would hijack the auto-open back to index7 forever. index.html
+        # honors a stored localStorage oasis_layout (stamped by the dashboard kiosk
+        # page) and would hijack the auto-open back to the dashboard forever. index.html
         # also runs its self-healing hatch to clear a stale stamp. Matches
         # run-portable.sh and scripts/enable-autostart-pi.py.
         threading.Timer(1.2, lambda: webbrowser.open(url + "index.html")).start()

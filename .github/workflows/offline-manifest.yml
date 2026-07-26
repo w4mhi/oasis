@@ -45,7 +45,7 @@ jobs:
         run: python3 tests/test_offline_manifest.py
 
       - name: Byte-compile all scripts
-        run: python3 -m py_compile $(git ls-files 'scripts/*.py' 'common/*.py' 'tests/*.py' 'setup-oasis.py' 'features/*/*.py' 'services/*/*.py' 'services/*/common/*.py' 'server/*.py' 'server/routes/*.py' 'small-screen/*.py' 'ai/*.py' 'ai/**/*.py')
+        run: python3 -m py_compile $(git ls-files 'scripts/*.py' 'common/*.py' 'tests/*.py' 'setup-oasis.py' 'features/*/*.py' 'services/*/*.py' 'services/*/common/*.py' 'server/*.py' 'server/routes/*.py' 'oasis-dashboard/*.py' 'ai/*.py' 'ai/**/*.py')
 
       # Dev/CI-only tool — never a runtime dependency; the offline wheel set
       # stays Flask-only. Rules and rationale live in ruff.toml.

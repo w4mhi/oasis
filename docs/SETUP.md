@@ -35,7 +35,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [File browser](#file-browser)
 - [CM4Stack panel display](#cm4stack-panel-display)
 - [RGB Cooling HAT](#rgb-cooling-hat)
-- [Small-screen / kiosk display](#small-screen--kiosk-display)
+- [OASIS Dashboard / kiosk display](#oasis-dashboard--kiosk-display)
 - [USB / Portable bundle](#usb--portable-bundle)
 - [Keeping data fresh](#keeping-data-fresh)
 - [Updating OASIS](#updating-oasis)
@@ -1660,20 +1660,24 @@ bundled `.deb`s first.
 
 ---
 
-## Small-screen / kiosk display
+## OASIS Dashboard / kiosk display
 
-`small-screen/index7.html` is a compact, touch-friendly dashboard tuned for small
-panels (e.g. a 3.5–7″ Pi screen or the CM4Stack panel). Use `--7inch` to configure
-the kiosk automatically:
+`oasis-dashboard/dashboard.html` is a touch-friendly dashboard tuned for
+dedicated panels. It ships in two resolutions — **800×480** (7″ touchscreen) and
+**1920×1200** (10″ wide panel). Use `--resolution` to configure the kiosk
+automatically:
 
 ```bash
-python3 scripts/enable-autostart-pi.py --7inch
+python3 scripts/enable-autostart-pi.py --resolution 800x480     # 7″ touchscreen
+python3 scripts/enable-autostart-pi.py --resolution 1920x1200   # 10″ wide panel
 ```
 
-`--7inch` implies `--with-browser` and sets the kiosk URL to
-`http://localhost:8083/small-screen/index7.html`, enables touch events, and sets
-the window size to 800×480. The layout uses `small-screen/kiosk.css` for large tap
-targets and a condensed status strip.
+`--resolution` implies `--with-browser` and sets the kiosk URL to
+`http://localhost:8083/oasis-dashboard/dashboard.html?res=<WxH>`, enables touch
+events, and sizes the window to match. The page applies the resolution as a
+`[data-res]` attribute and the layout uses `oasis-dashboard/kiosk.css` for large
+tap targets and a condensed status strip. (The old `--7inch` flag still works as
+an alias for `--resolution 800x480`.)
 
 ---
 

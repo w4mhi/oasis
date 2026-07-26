@@ -317,6 +317,16 @@ def _setup_winlink_install_fn(repo_root, payload):
     return _setup_run_script(repo_root, "services/winlink/install.py", args)
 
 
+def _setup_dashboard_install_fn(repo_root, payload):
+    """Install the OASIS Dashboard kiosk at the operator's chosen resolution.
+    Resolution rides in on the payload (defaults to the 800x480 panel)."""
+    dash = (payload or {}).get("oasis-dashboard", {})
+    res = (dash.get("resolution") or "800x480").strip()
+    if res not in ("800x480", "1920x1200"):
+        res = "800x480"
+    return _setup_run_script(repo_root, "scripts/enable-autostart-pi.py", ["--resolution", res])
+
+
 # Feature keys whose install_fn needs real root. Kept as one explicit list right
 # next to build_registry() (rather than inferred) so it's easy to audit — every
 # key here MUST have a corresponding install_fn that is safe to run as root
@@ -325,7 +335,7 @@ def _setup_winlink_install_fn(repo_root, payload):
 PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
     "openwebrx", "adsb", "satellites", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
-    "pi-headless", "pi-local-monitor", "pi-small-screen-7", "cm4stack", "rgb-cooling-hat",
+    "pi-headless", "pi-local-monitor", "pi-oasis-dashboard", "cm4stack", "rgb-cooling-hat",
 }
 
 
@@ -536,11 +546,11 @@ def build_registry(repo_root, payload=None):
             requires_reboot=True,
             privileged=True,
         ),
-        "pi-small-screen-7": SE.FeatureSpec(
-            key="pi-small-screen-7",
+        "pi-oasis-dashboard": SE.FeatureSpec(
+            key="pi-oasis-dashboard",
             dependencies=["server"],
-            install_fn=lambda: _setup_run_script(repo_root, "scripts/enable-autostart-pi.py", ["--7inch"]),
-            removal_record_fn=lambda: _removal_record(repo_root, "small-screen/uninstall.py"),
+            install_fn=lambda: _setup_dashboard_install_fn(repo_root, payload),
+            removal_record_fn=lambda: _removal_record(repo_root, "oasis-dashboard/uninstall.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             requires_reboot=True,
