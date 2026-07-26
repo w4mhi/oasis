@@ -530,6 +530,16 @@ _APRS_SPRITES = [
         "https://github.com/hessu/aprs-symbols/raw/master/png/aprs-symbols-24-1.png",
         "Alternate APRS symbol table (table '\\')",
     ),
+    (
+        "aprs-symbols-64-0.png",
+        "https://github.com/hessu/aprs-symbols/raw/master/png/aprs-symbols-64-0.png",
+        "Primary APRS symbol table, 64px (table '/')",
+    ),
+    (
+        "aprs-symbols-64-1.png",
+        "https://github.com/hessu/aprs-symbols/raw/master/png/aprs-symbols-64-1.png",
+        "Alternate APRS symbol table, 64px (table '\\')",
+    ),
 ]
 
 
