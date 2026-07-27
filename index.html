@@ -2204,6 +2204,21 @@ async function unitInstalled(id) {
   } catch (_) { return false; }
 }
 
+// True on a Linux/systemd host, where /api/health/service can actually report
+// unit state. On a non-systemd dev machine (macOS) the endpoint answers
+// supported:false — we can't tell installed from not-installed there, so a null
+// manifest must keep the old "show every card" behaviour. 'oasis' is always an
+// accepted service name and the check only reads the supported flag, so it works
+// whether or not oasis.service itself is present.
+async function hostHasSystemd() {
+  try {
+    const r = await fetch('/api/health/service?name=oasis', { cache: 'no-store' });
+    if (!r.ok) return false;
+    const d = await r.json();
+    return d.supported !== false;
+  } catch (_) { return false; }
+}
+
 async function loadInstalled() {
   let features = null;
   try {
@@ -2213,8 +2228,15 @@ async function loadInstalled() {
   if (_locked) _showHidden = false;              // locked build: never reveal hidden cards
   HIDDEN_SVCS.clear();
   _hiddenEls = [];
-  if (Array.isArray(features)) {                 // null/absent → show all
-    const installed = new Set(features);
+  // An explicit manifest list is authoritative. A NULL manifest means "no record
+  // yet": on a real systemd box (a freshly-imaged / factory-reset Pi that hasn't
+  // run any feature installs) that's "nothing installed", not "show everything" —
+  // gate every card and let the live unit probe below reveal anything actually
+  // running. Only a non-systemd dev host (macOS) keeps the old show-all fallback,
+  // since it can't probe units to tell the two apart.
+  let installed = Array.isArray(features) ? new Set(features) : null;
+  if (installed === null && await hostHasSystemd()) installed = new Set();
+  if (installed) {
     for (const [id, keys] of Object.entries(GATEABLE)) {
       if (!keys.some(k => installed.has(k))) {
         if (await unitInstalled(id)) continue;   // live unit enabled outside setup → keep visible
