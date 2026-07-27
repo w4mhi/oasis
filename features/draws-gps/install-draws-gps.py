@@ -21,7 +21,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from common import draws
 from common import gpsd_chrony
-from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail
+from common.oasis_lib import _section, _step, _ok, _info, _warn, _fail
 
 import importlib.util as _ilu
 _spec = _ilu.spec_from_file_location(
@@ -44,7 +44,7 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    _hr("DRAWS GPS-disciplined time")
+    _section("DRAWS GPS-disciplined time")
 
     if sys.platform != "linux":
         _fail("This installer requires Linux (Raspberry Pi).")
