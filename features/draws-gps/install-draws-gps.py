@@ -56,8 +56,9 @@ def main(argv=None):
 
     if args.check:
         _info("overlay dtbo: present")
+        _cfg = draws.config_path()
         _info("config.txt has dtoverlay=draws: %s"
-              % (draws.OVERLAY_LINE in open(draws.config_path()).read()))
+              % (bool(_cfg) and draws.OVERLAY_LINE in open(_cfg).read()))
         _info("GPS device %s present: %s" % (args.device, draws.gps_device_present(args.device)))
         _info("PPS (/dev/pps0) present: %s" % draws.pps_present())
         return 0
@@ -80,6 +81,7 @@ def main(argv=None):
     gpsd_chrony.install_packages()
     gpsd_chrony.configure_gpsd(args.device)
     gpsd_chrony.configure_chrony()
+    gpsd_chrony.restart_services()
 
     device_present = draws.gps_device_present(args.device)
     code = draws_gps.decide_exit_code(overlay_changed, device_present)
