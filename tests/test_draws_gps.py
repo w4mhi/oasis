@@ -14,6 +14,12 @@ _spec = importlib.util.spec_from_file_location(
 draws_gps = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(draws_gps)
 
+import importlib.util as _ilu
+_cli_spec = _ilu.spec_from_file_location(
+    "install_draws_gps",
+    os.path.join(os.path.dirname(_HERE), "features", "draws-gps", "install-draws-gps.py"),
+)
+
 
 class RemovalRecordTest(unittest.TestCase):
     def test_strips_overlay_line_and_flags_reboot(self):
@@ -32,6 +38,26 @@ class ExitCodeTest(unittest.TestCase):
 
     def test_zero_when_present_and_unchanged(self):
         self.assertEqual(draws_gps.decide_exit_code(False, True), 0)
+
+
+class ParserTest(unittest.TestCase):
+    def _load(self):
+        mod = _ilu.module_from_spec(_cli_spec)
+        _cli_spec.loader.exec_module(mod)
+        return mod
+
+    def test_defaults(self):
+        args = self._load().build_parser().parse_args([])
+        self.assertEqual(args.device, "/dev/ttySC0")
+        self.assertFalse(args.force)
+        self.assertFalse(args.check)
+        self.assertFalse(args.dry_run)
+
+    def test_flags(self):
+        args = self._load().build_parser().parse_args(
+            ["--device", "/dev/ttySC1", "--force", "--check", "--dry-run"])
+        self.assertEqual(args.device, "/dev/ttySC1")
+        self.assertTrue(args.force and args.check and args.dry_run)
 
 
 if __name__ == "__main__":
