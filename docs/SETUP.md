@@ -1674,10 +1674,10 @@ python3 scripts/enable-autostart-pi.py --resolution 1920x1200   # 10″ wide pan
 
 `--resolution` implies `--with-browser` and sets the kiosk URL to
 `http://localhost:8083/oasis-dashboard/dashboard.html?res=<WxH>`, enables touch
-events, and sizes the window to match. The page applies the resolution as a
-`[data-res]` attribute and the layout uses `oasis-dashboard/kiosk.css` for large
-tap targets and a condensed status strip. (The old `--7inch` flag still works as
-an alias for `--resolution 800x480`.)
+events, and sizes the window to match. The page persists the resolution to
+`localStorage.oasis_layout` (so ⌂ HOME across the suite routes back to the
+dashboard); the layout is fully fluid, scaling with viewport height. (The old
+`--7inch` flag still works as an alias for `--resolution 800x480`.)
 
 ---
 

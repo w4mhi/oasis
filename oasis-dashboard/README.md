@@ -12,17 +12,16 @@ The layout is **fluid** and ships in two panel resolutions:
 | `1920x1200` | 10″ wide panel | a 10″ 1920×1200 touchscreen |
 
 Everything is sized in rem and the root font-size tracks viewport height, so the
-same 3-zone layout grows proportionally between the two. The chosen resolution is
-an **explicit flag** (no viewport sniffing): the kiosk autostart launches Chromium
-with `?res=<WxH>`, which the page applies as a `[data-res]` attribute on `<html>`
-and persists to `localStorage.oasis_layout`.
+same 3-zone layout grows proportionally between the two — the layout is fully
+fluid, with no per-resolution `[data-res]` switching. The kiosk autostart launches
+Chromium with `?res=<WxH>`, which the page persists to `localStorage.oasis_layout`
+so ⌂ HOME links across the suite route back to this page (not the desktop dashboard).
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `dashboard.html` | The kiosk page. All logic is inline; loads `kiosk.css` and the shared `common/js` formatters (`units.js`, `geo.js`, `format.js`). |
-| `kiosk.css` | Standalone stylesheet — **intentionally detached** from `css/common.css` (own palette, never uses the light/dark theme toggle). |
+| `dashboard.html` | The kiosk page — **fully self-contained**: all styles *and* logic inline (its own dark palette, never the light/dark theme toggle), plus the shared `common/js` formatters (`units.js`, `geo.js`, `format.js`). |
 | `uninstall.py` | Removes the Chromium kiosk autostart and the stored layout override (and deregisters the legacy `pi-small-screen-7` key). |
 
 ## Install
@@ -62,9 +61,9 @@ kiosk layout — other panels won't have this RTC.
   site root, not this folder.
 - `theme.js` deliberately **skips `/oasis-dashboard/`** — the kiosk owns its palette.
 - An early `<head>` script resolves the resolution (`?res=` → `localStorage` →
-  default `800x480`, with legacy `"7inch"` mapping to `800x480`), sets
-  `[data-res]` before paint, and persists `localStorage.oasis_layout`, so ⌂ HOME
-  links across the suite route back to this page rather than the desktop dashboard.
+  default `800x480`, with legacy `"7inch"` mapping to `800x480`) and persists
+  `localStorage.oasis_layout`, so ⌂ HOME links across the suite route back to this
+  page rather than the desktop dashboard.
 - Poll cadences are deliberately conservative (coalesced APRS render, round-robin
   service pings, top-10 station cap) to keep Chromium CPU low on a Pi — see the
   bootstrap block at the bottom of `dashboard.html`.
