@@ -128,10 +128,11 @@ html, body { height: 100%; margin: 0; }
 @keyframes los-pulse { 50% { opacity: .35; } }
 /* Per-sat pass-alert bell (roster row) — armed rings; disarmed is dim/grey. Only
    rendered for a checked (plotted) satellite. */
-.sat-bell { background: none; border: none; cursor: pointer; font-size: var(--fs-small); padding: 0 2px; line-height: 1; opacity: .5; filter: grayscale(1); }
-.sat-bell.on { opacity: 1; filter: none; }
-/* Global pass-alert mute toggle (header). */
-.sat-mute { cursor: pointer; user-select: none; font-size: var(--fs-small); }
+.sat-bell { background: none; border: none; cursor: pointer; font-size: var(--fs-small); padding: 0 2px; line-height: 1; color: var(--text-dim); opacity: .9; }
+.sat-bell.on { color: var(--amber); opacity: 1; }
+/* Global pass-alert mute toggle (header) — amber when live, grey when muted. */
+.sat-mute { cursor: pointer; user-select: none; font-size: var(--fs-small); color: var(--amber); }
+.sat-mute.muted { color: var(--text-dim); }
 .sat-row .chips { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-top: .35rem; }
 .chip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim);
   border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
@@ -249,9 +250,7 @@ html, body { height: 100%; margin: 0; }
     <span class="track-sep">|</span>
     <span id="tle-age" class="badge" onclick="syncTle()" title="Click to rebuild the satellite list from SatNOGS + CelesTrak (needs internet)" style="cursor:pointer">loading…</span>
     <span class="track-sep">|</span>
-    <span class="win-lbl">24 h window</span>
-    <span class="track-sep">|</span>
-    <div class="f-group" id="tag-filters"></div>
+    <span class="win-lbl">24 h</span>
     <span class="track-sep">|</span>
     <span class="f-group" id="transport" title="Transport for the armed frequency — Rec to a WAV, Play live in the browser">
       <button class="tbtn" id="t-rec" onclick="transport('rec')">⏺ Rec</button>
@@ -262,7 +261,7 @@ html, body { height: 100%; margin: 0; }
     <span class="track-sep">|</span>
     <span id="coverage-badge"></span>
     <span style="flex:1"></span>
-    <span id="sat-mute" class="sat-mute" title="Mute / unmute pass-alert chimes" onclick="toggleSatMute()">🔔</span>
+    <span id="sat-mute" class="sat-mute" title="Mute / unmute pass-alert chimes" onclick="toggleSatMute()"></span>
     <span class="track-sep">|</span>
     <span id="crCpu" title="Pi CPU load · SoC temperature">—</span>
     <span class="track-sep">|</span>
@@ -273,6 +272,8 @@ html, body { height: 100%; margin: 0; }
       <span class="cr-lbl">Lat</span><span id="crLat" class="cr-val">—</span>
       <span class="cr-lbl">Lon</span><span id="crLon" class="cr-val">—</span>
     </div>
+    <span class="track-sep">|</span>
+    <div class="f-group" id="tag-filters"></div>
     <span style="flex:1"></span>
     <span id="clock">—</span>
   </div>
@@ -312,6 +313,11 @@ html, body { height: 100%; margin: 0; }
    popup with its labels, downlink, next passes, and az/el sky-plot.
    ───────────────────────────────────────────────────────────────────────── */
 const WINDOW_H = 24;                       // default prediction window
+// Chime glyphs as inline SVG (Material bell / bell-off) — the 🔔/🔕 emoji render
+// blank on Pi Chromium. 1em + currentColor so the .sat-bell / .sat-mute font-size,
+// colour, opacity and grayscale filter still apply.
+const BELL_ON  = `<svg viewBox="0 0 24 24" width="1.35em" height="1.35em" fill="currentColor" aria-hidden="true" style="vertical-align:-.15em"><path d="M12 2a2 2 0 0 0-2 2v.29C7.12 5.14 5 7.82 5 11v5l-2 2v1h18v-1l-2-2v-5c0-3.18-2.12-5.86-5-6.71V4a2 2 0 0 0-2-2Zm0 20a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2Z"/></svg>`;
+const BELL_OFF = `<svg viewBox="0 0 24 24" width="1.35em" height="1.35em" fill="currentColor" aria-hidden="true" style="vertical-align:-.15em"><path d="M20 18.69 7.84 6.14 5.27 3.49 4 4.76l2.8 2.8v.01c-.52.99-.8 2.16-.8 3.42v5l-2 2v1h13.73l2 2L21 19.72l-1-1.03zM12 22c1.11 0 2-.89 2-2h-4c0 1.11.89 2 2 2zm6-7.32V11c0-3.08-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68c-.15.03-.29.08-.42.13l7.92 7.87z"/></svg>`;
 let ROSTER = [], STATION = null, PASSES = {};
 
 // ── Roster filters ─────────────────────────────────────────────────────────
@@ -500,8 +506,9 @@ async function boot() {
   ROSTER = meta.satellites; STATION = meta.station;
   renderFilterBar();
   setTleBadge(meta.tle_age_days);
-  if (_satMuted) { const m = document.getElementById('sat-mute');
-    if (m) { m.textContent = '🔕'; m.title = 'Unmute pass-alert chimes'; } }
+  { const m = document.getElementById('sat-mute');
+    if (m) { m.innerHTML = _satMuted ? BELL_OFF : BELL_ON; m.classList.toggle('muted', _satMuted);
+      m.title = _satMuted ? 'Unmute pass-alert chimes' : 'Mute pass-alert chimes'; } }
   // Unlock Web Audio on the operator's first interaction, so a bell armed in a
   // prior session can still chime from the timer (browsers gate audio on gesture).
   ['click', 'keydown', 'touchstart'].forEach(ev =>
@@ -683,7 +690,7 @@ function passHint(p, norad) {
   const armedSoon = norad != null && bellArmed(norad) && !live && (rise - now) <= 600000 && (rise - now) > 0;
   const cls = 'ph-when' + (live ? ' live' : (armedSoon ? ' armed' : ''));
   return `<span class="ph-main">${fmt(p.rise)} · max ${p.max_el.toFixed(0)}°</span>`
-       + (when ? `<span class="${cls}">${armedSoon ? '🔔 ' : ''}${when}</span>` : '');
+       + (when ? `<span class="${cls}">${armedSoon ? BELL_ON + ' ' : ''}${when}</span>` : '');
 }
 // ── Pass alerts ──────────────────────────────────────────────────────────────
 // Per-sat "bell" arms a Web-Audio Morse-"V" (· · · —) chime for CHECKED (plotted)
@@ -710,7 +717,7 @@ function toggleSatMute() {
   _satMuted = !_satMuted;
   localStorage.setItem('oasis_sat_muted', _satMuted ? '1' : '0');
   const el = document.getElementById('sat-mute');
-  if (el) { el.textContent = _satMuted ? '🔕' : '🔔';
+  if (el) { el.innerHTML = _satMuted ? BELL_OFF : BELL_ON; el.classList.toggle('muted', _satMuted);
     el.title = (_satMuted ? 'Unmute' : 'Mute') + ' pass-alert chimes'; }
   renderRoster();   // re-render so each monitored sat's per-card bell reflects the mute
   _unlockAudio();
@@ -762,10 +769,10 @@ function bellBtnHTML(norad) {
   // The glyph reflects whether a chime will actually sound: an armed sat rings (🔔),
   // but while the global mute is on even armed sats show the crossed 🔕 — kept bright
   // via .on so it still reads as monitored (a disarmed sat shows a dim/grey 🔕).
-  const glyph = (on && !_satMuted) ? '🔔' : '🔕';
+  const glyph = (on && !_satMuted) ? BELL_ON : BELL_OFF;
   const title = on
     ? (_satMuted
-        ? 'Pass alerts armed, but chimes are muted globally (header 🔕). Click to disarm.'
+        ? 'Pass alerts armed, but chimes are muted globally (header mute). Click to disarm.'
         : 'Pass alerts armed — VVV chime at T-10 + T-5 min. Click to disarm.')
     : 'Arm pass alerts (VVV chime at T-10 + T-5 min before the pass)';
   return `<button class="sat-bell${on ? ' on' : ''}" onclick="toggleBell(${norad})" title="${title}">${glyph}</button>`;
@@ -969,6 +976,9 @@ function drawCountries(W, H) {
   }).join('')).join('');
 }
 
+// Satellite marker glyph — single path in a 122.88 viewBox (PD, by IonutNeagu).
+const SAT_ICON_PATH = "M5.49,79.09l37.86,37.86C66.37,99.1,36.69,54.35,5.49,79.09L5.49,79.09z M42.39,62.21l18.29,18.29c1.18,1.18,3.12,1.18,4.3,0l24.2-24.2c6.21-6.21,6.21-16.38,0-22.59v0c-6.21-6.21-16.38-6.21-22.59,0l-24.2,24.2c-1.19,1.19-1.19,3.12,0,4.3L42.39,62.21z M24.5,104.83L20.33,109c-1.48,1.48-3.89,1.48-5.38,0c-1.48-1.49-1.48-3.89,0-5.38l4.17-4.17l-17-17l0.01-0.01c-0.13-0.13-0.25-0.26-0.36-0.4C0.15,80,0.49,77.01,2.54,75.38c13.15-10.43,26.24-10.1,36.28-4.46c1.85,1.04,3.59,2.26,5.2,3.64l1.99-1.99l-6.99-6.99c-1.52-1.52-2.28-3.52-2.28-5.51c0-1.99,0.76-3.99,2.28-5.51l5.92-5.92l-5.11-5.11l-3.76,3.76h0c-1.22,1.22-2.83,1.84-4.44,1.84c-1.59,0-3.19-0.61-4.42-1.84l-0.01-0.01l-0.01,0.01h0L3.53,23.62c-1.22-1.22-1.84-2.83-1.84-4.44c0-1.59,0.62-3.19,1.85-4.43l-0.01-0.01L16.44,1.84l0,0c0.16-0.16,0.33-0.31,0.51-0.44C18.09,0.47,19.48,0,20.87,0c1.59,0,3.19,0.61,4.42,1.84l0.01,0.01l0.01-0.01l0,0L48.97,25.5v0c1.22,1.22,1.84,2.83,1.84,4.44c0,1.6-0.61,3.21-1.84,4.44v0l-3.77,3.77l5.11,5.11l12.91-12.91c4.03-4.03,9.35-6.05,14.66-6.05c5.31,0,10.62,2.02,14.66,6.05v0c4.03,4.03,6.05,9.35,6.05,14.66c0,5.31-2.02,10.62-6.05,14.66L79.63,72.56l5.11,5.11l3.77-3.76c1.22-1.22,2.83-1.84,4.44-1.84c1.6,0,3.21,0.61,4.44,1.84l23.66,23.66l0,0c1.22,1.22,1.84,2.83,1.84,4.44c0,1.6-0.61,3.21-1.84,4.44l0,0l-12.91,12.91c-1.22,1.22-2.83,1.84-4.44,1.84c-1.6,0-3.21-0.61-4.44-1.84L75.6,95.69c-1.22-1.22-1.84-2.83-1.84-4.44c0-1.59,0.61-3.19,1.84-4.42l0.01-0.01l-0.01-0.01l3.76-3.77l-5.11-5.11l-5.92,5.92c-1.52,1.52-3.52,2.28-5.51,2.28c-1.99,0-3.99-0.76-5.51-2.28l-5.92-5.92l-2.15,2.15c2.47,3.26,4.37,6.93,5.57,10.75c3.27,10.41,1.4,21.91-8.23,29.61c-1.86,1.73-4.78,1.68-6.59-0.13L24.5,104.83L24.5,104.83z M0.13,106.96c-0.53-1.89,0.57-3.86,2.47-4.39c1.89-0.53,3.86,0.57,4.39,2.47c1,3.53,2.38,6.2,4.16,7.99c1.6,1.61,3.6,2.53,6.03,2.73c1.96,0.16,3.42,1.88,3.26,3.85c-0.16,1.96-1.88,3.42-3.85,3.26c-4.17-0.36-7.65-1.98-10.48-4.83C3.45,115.38,1.47,111.67,0.13,106.96L0.13,106.96z";
+
 // Overlay — footprint + whole-orbit ground track (past-solid / future-dashed) +
 // clickable live marker for every plotted sat. Redrawn on plot/unplot + each tick.
 function redraw() {
@@ -992,9 +1002,15 @@ function redraw() {
       // non-scaling-stroke → constant pixel width regardless of the SVG's scale-up.
       out += `<path d="${d}" class="sat-track" data-norad="${norad}" fill="none" stroke="${s.color}" stroke-width="${dash ? 1 : 1.5}" vector-effect="non-scaling-stroke"${dash ? ' stroke-dasharray="3 2.5" opacity="0.5"' : ''}/>`; } };
     draw(past, false); draw(future, true);
-    // Live marker: just the 🛰️ glyph (its colour association comes from the track).
+    // Live marker: an inline-SVG satellite glyph — NOT the 🛰️ emoji, which renders
+    // blank inside SVG <text> on Pi Chromium (and needs the colour-emoji font). Icon
+    // is a single path (PD, by IonutNeagu) tinted by the sat's capability colour and
+    // scaled from its 122.88 box, centred on the sub-point. Clicks still resolve via
+    // data-norad on the group (svg 'click' uses closest('[data-norad]')).
     if (pos) { const q = satgeo.project(pos.lat, pos.lon, W, H);
-      out += `<text class="sat-glyph" data-norad="${norad}" x="${q.x.toFixed(1)}" y="${q.y.toFixed(1)}" text-anchor="middle" dominant-baseline="central">🛰️</text>`; }
+      out += `<g class="sat-glyph" data-norad="${norad}" fill="${s.color}" `
+        + `transform="translate(${q.x.toFixed(1)} ${q.y.toFixed(1)}) scale(0.09) translate(-61.44 -61.44)">`
+        + `<path d="${SAT_ICON_PATH}"/></g>`; }
   }
   g.innerHTML = out;
 }

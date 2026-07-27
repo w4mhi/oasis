@@ -278,14 +278,16 @@ def install_browser(user, home, url=None, resolution=None):
         "--disable-background-networking", "--disable-component-update",
         "--disable-sync", "--disable-domain-reliability",
     ]
-    # Perf on the Pi's VideoCore GPU: push rasterisation/compositing onto the GPU
-    # instead of software raster (the usual kiosk CPU hog); drop momentum scroll
-    # (needless repaints). If the driver proves flaky — watch for a busy
-    # crashpad_handler, the tell-tale of a renderer/GPU crash loop — swap
-    # `--use-gl=egl` for `--disable-gpu` (stable software path) or drop
-    # `--ignore-gpu-blocklist`.
+    # Perf on the Pi's GPU: push rasterisation/compositing onto the GPU instead of
+    # software raster (the usual kiosk CPU hog); drop momentum scroll (needless
+    # repaints). GL backend = ANGLE, not the raw `--use-gl=egl`: on newer Pi GPU
+    # drivers (vc4-kms-v3d) egl left MapLibre's WebGL context uninitialised, so the
+    # live map (server/map) rendered blank while its data still loaded — ANGLE gives
+    # a working WebGL context AND keeps GPU acceleration. If a renderer/GPU crash
+    # loop returns (busy crashpad_handler, one core pinned), fall back to
+    # `--disable-gpu` (software, stable) or try `--use-gl=egl`.
     flags += [
-        "--use-gl=egl", "--enable-gpu-rasterization", "--ignore-gpu-blocklist",
+        "--use-gl=angle", "--enable-gpu-rasterization", "--ignore-gpu-blocklist",
         "--enable-zero-copy", "--disable-smooth-scrolling",
     ]
     # Offline: crash uploads go nowhere, so disabling breakpad stops
