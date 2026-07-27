@@ -4,6 +4,18 @@
 <base href="/">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OASIS — DashboardX</title>
+<script>
+// Persist the kiosk layout so the suite's ⌂ HOME links ('/') route back to THIS
+// dashboard, not index.html. The kiosk autostart launches us with
+// ?res=800x480|1920x1200; fall back to the stored layout (legacy "7inch" → 800x480).
+// server/app.py's "/" redirect reads this same oasis_layout key.
+(function () {
+  var VALID = { '800x480': '800x480', '1920x1200': '1920x1200', '7inch': '800x480' };
+  var q = new URLSearchParams(location.search).get('res');
+  var res = VALID[q] || VALID[localStorage.getItem('oasis_layout')] || '800x480';
+  localStorage.setItem('oasis_layout', res);
+})();
+</script>
 <script src="/common/js/units.js"></script>
 <script src="/common/js/geo.js"></script>
 <script src="/common/js/format.js"></script>
@@ -74,7 +86,8 @@
   /* Services summary pill — counts only (no label): up · warn · down. */
   .svcpill{ display:inline-flex; align-items:baseline; gap:.45rem; padding:.3rem 1rem; border-radius:999px;
             border:1px solid var(--border); background:var(--panel-2); font-size:1.05rem;
-            letter-spacing:.04em; font-variant-numeric:tabular-nums; font-weight:700; }
+            letter-spacing:.04em; font-variant-numeric:tabular-nums; font-weight:700; cursor:pointer; }
+  .svcpill:hover{ border-color:var(--accent-dim, var(--border)); }
   .svcpill .cnt-lbl{ color:var(--text); letter-spacing:.12em; margin-right:.15rem; }
   .svcpill .cnt-up{ color:var(--accent); }
   .svcpill .cnt-warn{ color:var(--warn); }
@@ -262,6 +275,43 @@
   .hb-fire .ff .fv{ color:var(--text); }
   .hb-fire .ff.contain .fv{ color:var(--warn); font-weight:700; }
 
+  /* ── OPS overlay — full-screen launcher grid (ported from dashboard_old) ── */
+  .ov{ position:absolute; inset:0; background:rgba(7,11,14,.97); display:none; flex-direction:column; z-index:7; }
+  .ov.open{ display:flex; }
+  .ov-head{ display:flex; align-items:center; gap:1rem; height:3.6rem; padding:0 1.2rem;
+            border-bottom:1px solid var(--border); flex:0 0 auto; }
+  .ov-head .e{ color:var(--accent); font-weight:700; letter-spacing:.12em; font-size:1.3rem; }
+  .ov-head .st{ color:var(--dim); font-size:1.1rem; }
+  .ov-x{ margin-left:auto; width:3rem; height:3rem; display:grid; place-items:center; border:1px solid var(--border);
+         border-radius:.7rem; color:var(--text); cursor:pointer; font-size:1.4rem; }
+  .ov-x:hover{ border-color:var(--down); color:var(--down); }
+  .ov-body{ flex:1; overflow-y:auto; padding:1.2rem; }
+  .ops-sec{ margin-bottom:1rem; }
+  .ops-sec .lab{ color:var(--accent); font-size:1rem; letter-spacing:.14em; font-weight:700; margin:0 .2rem .6rem; }
+  .ops-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:.8rem; }
+  .ops-btn{ min-height:5rem; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:.2rem;
+            padding:0 1.2rem; background:var(--panel-2); border:1px solid var(--border); border-radius:var(--r);
+            color:var(--text); cursor:pointer; text-align:left; }
+  .ops-btn:hover{ border-color:var(--accent); }
+  .ops-btn .n{ font-size:1.2rem; font-weight:700; letter-spacing:.02em; line-height:1.15; }
+  .ops-btn .s{ font-size:1rem; color:var(--dim); line-height:1.15; }
+
+  /* ── Services detail (SRV pill → slide sheet): state-tinted rows, problems first ── */
+  .svc-sheet-hd{ color:var(--accent); font-weight:700; letter-spacing:.12em; font-size:1.2rem; margin-bottom:.7rem; }
+  .svc-sheet-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(15rem, 1fr)); gap:.5rem;
+    max-height:15rem; overflow-y:auto; padding-right:.3rem; }
+  .svc-srow{ display:flex; align-items:center; justify-content:space-between; gap:.6rem;
+    padding:.45rem .8rem; border-radius:.6rem; border:1px solid var(--border); background:var(--panel-2); }
+  .svc-srow .n{ font-weight:700; font-size:1.05rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .svc-srow .b{ flex:0 0 auto; font-size:.9rem; font-weight:700; letter-spacing:.06em; }
+  .svc-srow.up{   border-color:color-mix(in srgb,var(--accent) 45%,var(--border)); background:color-mix(in srgb,var(--accent) 7%,var(--panel-2)); }
+  .svc-srow.up .b{ color:var(--accent); }
+  .svc-srow.warn{ border-color:color-mix(in srgb,var(--warn) 45%,var(--border)); background:color-mix(in srgb,var(--warn) 7%,var(--panel-2)); }
+  .svc-srow.warn .b{ color:var(--warn); }
+  .svc-srow.down{ border-color:color-mix(in srgb,var(--down) 50%,var(--border)); background:color-mix(in srgb,var(--down) 8%,var(--panel-2)); }
+  .svc-srow.down .b{ color:var(--down); }
+  .svc-srow.unknown .b,.svc-srow.ni .b{ color:var(--dim); }
+
   /* ── OPS / REFRESH buttons — copied verbatim from kiosk.css ───────────── */
   .btnrow{ display:flex; gap:.6rem; }
   .ops{ font-family:var(--mono); font-size:1.2rem; font-weight:700; letter-spacing:.12em;
@@ -294,7 +344,7 @@
         <div class="gpspill nogps" id="k-gps"><span class="mode" id="k-gps-mode">GPS —</span><span class="sub" id="k-gps-sub"></span><span class="gdot" id="k-gps-dot"></span></div>
       </div>
       <!-- Services summary: up · warn · down · not-installed (no SERVICES label) -->
-      <span class="svcpill" id="svcpill" title="Services — up · warn · down · not-installed">—</span>
+      <span class="svcpill" id="svcpill" onclick="openSvcSheet()" role="button" tabindex="0" title="Services — tap for detail">—</span>
       <!-- RTL/SDR assignment pill: dot (hollow=unassigned, amber=rtl assigned, green=in use) -->
       <div class="svcbar" id="svcbar">
         <span class="s"><span class="dot" id="dot-aprs"></span>APRS</span>
@@ -369,11 +419,84 @@
     <div id="shBody"></div>
   </div>
 
+  <!-- OPS OVERLAY: full-screen launcher grid -->
+  <div class="ov" id="ov-ops">
+    <div class="ov-head"><span class="e">OPS</span><span class="st">tap to launch</span><span class="ov-x" onclick="closeOv('ops')" role="button" tabindex="0" aria-label="Close">✕</span></div>
+    <div class="ov-body" id="opsBody"></div>
+  </div>
+
 </div>
 
 <script>
-// OPS overlay isn't built on this dashboard yet — stub so the button is a no-op.
-function openOv(_which) { /* TODO: OPS overlay */ }
+// ── OPS overlay — full-screen launcher grid (ported from dashboard_old) ──────
+// Mirrors index.html's nav sections/cards. SSH Terminal + GrayWolf (web UI) are
+// go-box extras beyond index's set.
+const OPS = {
+  OASIS: [
+    { sub:'reference', label:'Handbook', url:'static/oasis-handbook/index.html' },
+    { sub:'configure', label:'Setup', url:'server/system/setup.html' },
+    { sub:'health', label:'Diagnostic', url:'server/system/diagnostic.html' },
+    { sub:'shell', label:'SSH Terminal', ext:()=>`${location.protocol}//${HOST}:${PORTS.webssh}/` },
+  ],
+  MONITOR: [
+    { sub:'live APRS · aircraft', label:'Traffic Map', url:'server/map/map.html' },
+    { sub:'passes · tracking', label:'Satellites', url:'server/satellites/' },
+  ],
+  'ICS Forms': [
+    { sub:'radio plan', label:'ICS-205', url:'static/ics-205/ics-205.html' },
+    { sub:'general message', label:'ICS-213', url:'static/ics-213/ics-213.html' },
+    { sub:'activity log', label:'ICS-214', url:'static/ics-214/ics-214.html' },
+    { sub:'comms log', label:'ICS-309', url:'static/ics-309/ics-309.html' },
+  ],
+  'Winlink & APRS': [
+    { sub:'mailbox', label:'Winlink Mail', url:'server/winlink/mail.html' },
+    { sub:'setup', label:'Radio Settings', url:'server/winlink/radio-settings.html' },
+    { sub:'web UI', label:'GrayWolf', ext:()=>`${location.protocol}//${HOST}:${PORTS.graywolf}/` },
+    { sub:'docs', label:'GrayWolf handbook', url:'static/graywolf-handbook/index.html' },
+  ],
+  Tools: [
+    { sub:'callsign', label:'FCC Lookup', url:'/lookup' },
+    { sub:'calculator', label:'Antenna Calculator', url:'tools/antenna-calc.html' },
+    { sub:'runtime calculator', label:'Power & Battery', url:'tools/power-calc.html' },
+    { sub:'HF · VHF · UHF', label:'Band Plan', url:'tools/band-plan/index.html' },
+    { sub:'band conditions', label:'Solar / Propagation', url:'tools/solar.html' },
+    { sub:'HF propagation', label:'Gray Line', url:'tools/grayline.html' },
+    { sub:'distance · heading', label:'Grid / Bearing', url:'tools/grid-calc.html' },
+    { sub:'user files', label:'File Browser', url:'server/system/browser.html' },
+  ],
+  'Radio Ref': [
+    { sub:'repeaters how-to', label:'Repeater Guide', url:'static/repeater-guide/index.html' },
+    { sub:'radio reference', label:'Radio Cards', url:'static/radio-cards/index.html' },
+    { sub:'repeaters', label:'Repeater Book', url:'static/repeaterbook/repeaterbook.html' },
+    { sub:'manuals', label:'Radio Manuals', url:'server/system/browser.html?path=static/radio-manuals' },
+    { sub:'offline', label:'Wikipedia', ext:()=>`${location.protocol}//${HOST}:${PORTS.kiwix}/` },
+  ],
+  Operation: [
+    { sub:'log', label:'Net Logger', url:'tools/net-log.html' },
+    { sub:'NATO reference', label:'NATO Phonetic', url:'static/quick-ref/phonetic.html' },
+    { sub:'q-codes', label:'Q-Codes', url:'static/quick-ref/qcodes.html' },
+    { sub:'procedure words', label:'Procedure Words', url:'static/quick-ref/prowords.html' },
+    { sub:'signal reporting', label:'RST', url:'static/quick-ref/rst.html' },
+    { sub:'call sign series', label:'ITU Prefixes', url:'static/quick-ref/itu-prefixes.html' },
+  ],
+};
+(function buildOps() {
+  const ob = document.getElementById('opsBody'); if (!ob) return;
+  Object.entries(OPS).forEach(([sec, items]) => {
+    const w = document.createElement('div'); w.className = 'ops-sec';
+    w.innerHTML = `<div class="lab">${esc(sec.toUpperCase())}</div>`;
+    const g = document.createElement('div'); g.className = 'ops-grid';
+    items.forEach(it => {
+      const b = document.createElement('button'); b.className = 'ops-btn';
+      b.innerHTML = `<span class="n">${esc(it.label)}</span>${it.sub?`<span class="s">${esc(it.sub)}</span>`:''}`;
+      b.addEventListener('click', () => { if (it.ext) window.open(it.ext(),'_blank'); else if (it.url) window.open(it.url,'_blank'); });
+      g.appendChild(b);
+    });
+    w.appendChild(g); ob.appendChild(w);
+  });
+})();
+function openOv(id) { const el = document.getElementById('ov-'+id); if (el) el.classList.add('open'); }
+function closeOv(id) { const el = document.getElementById('ov-'+id); if (el) el.classList.remove('open'); }
 
 // ── Travel clock — Local + UTC, each its own date ────────────────────────────
 function tick() {
@@ -930,6 +1053,20 @@ function openSheet(s) {
   document.getElementById('sheet').classList.add('open');
 }
 function closeSheet() { document.getElementById('sheet').classList.remove('open'); }
+// SRV pill → services list in the same slide sheet. Problems first (DN·WRN·UP·…·NI),
+// read-only. NI = install-gated (HIDDEN_SVCS); '…' = not pinged yet this cycle.
+const _SVC_ORDER = { down:0, warn:1, up:2, unknown:3, ni:4 };
+const _SVC_LBL   = { up:'UP', warn:'WRN', down:'DN', unknown:'…', ni:'NI' };
+function openSvcSheet() {
+  const rows = SERVICES.map(svc => ({
+    name: svc.name,
+    st: HIDDEN_SVCS.has(svc.id) ? 'ni' : (_svcStates[svc.id] || 'unknown'),
+  })).sort((a, b) => (_SVC_ORDER[a.st] - _SVC_ORDER[b.st]) || a.name.localeCompare(b.name));
+  const tiles = rows.map(r =>
+    `<div class="svc-srow ${r.st}"><span class="n">${esc(r.name)}</span><span class="b">${_SVC_LBL[r.st]}</span></div>`).join('');
+  document.getElementById('shBody').innerHTML = `<div class="svc-sheet-hd">SERVICES</div><div class="svc-sheet-grid">${tiles}</div>`;
+  document.getElementById('sheet').classList.add('open');
+}
 
 // ── Satellites (copied from dashboard_old) ───────────────────────────────────
 function azCompass(deg) { if (deg == null) return ''; return ['N','NE','E','SE','S','SW','W','NW'][Math.round((((deg%360)+360)%360)/45)%8]; }
