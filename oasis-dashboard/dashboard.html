@@ -49,6 +49,14 @@
   .face.utc .time{ color:var(--amber); }
   .face .time .s{ font-size:1.6rem; opacity:.62; }
   .face .date{ font-size:1.2rem; color:var(--dim); letter-spacing:.04em; margin-top:.25rem; }
+  /* Reload glyph in the UTC clock's top-right corner — blue, spins on tap. */
+  .clk-refresh{ position:absolute; top:.5rem; right:.8rem; z-index:2; background:transparent; border:0;
+    color:var(--blue); font-size:2.4rem; line-height:1; padding:.1rem .3rem; opacity:.7; cursor:pointer;
+    transition:opacity .15s ease, transform .1s ease; }
+  .clk-refresh:hover{ opacity:1; }
+  .clk-refresh:active{ transform:scale(.9); }
+  .clk-refresh.spinning{ pointer-events:none; opacity:1; animation:clk-spin .6s linear infinite; }
+  @keyframes clk-spin{ to{ transform:rotate(360deg); } }
 
   /* ── middle: station/grid + GPS + units pills, boxed to clock height ──── */
   .midcard{ flex:0 0 auto; display:flex; flex-direction:column;
@@ -63,6 +71,16 @@
   .callpill .cs{ color:var(--accent); font-weight:700; letter-spacing:.05em; }
   .callpill .sep{ color:var(--faint); } .callpill .gr{ color:var(--warn); font-weight:600; }
   .callrow{ display:flex; align-items:center; gap:.8rem; }
+  /* Services summary pill — counts only (no label): up · warn · down. */
+  .svcpill{ display:inline-flex; align-items:baseline; gap:.45rem; padding:.3rem 1rem; border-radius:999px;
+            border:1px solid var(--border); background:var(--panel-2); font-size:1.05rem;
+            letter-spacing:.04em; font-variant-numeric:tabular-nums; font-weight:700; }
+  .svcpill .cnt-lbl{ color:var(--text); letter-spacing:.12em; margin-right:.15rem; }
+  .svcpill .cnt-up{ color:var(--accent); }
+  .svcpill .cnt-warn{ color:var(--warn); }
+  .svcpill .cnt-down{ color:var(--down); }
+  .svcpill .cnt-ni{ color:var(--dim); }
+  .svcpill .cnt-sep{ color:var(--faint); font-weight:400; }
   .gpspill{ display:flex; align-items:center; gap:.5rem; padding:.3rem 1rem;
             border-radius:999px; border:1px solid var(--border); background:var(--panel-2); font-size:1.05rem; }
   .gpspill .mode{ font-weight:700; }
@@ -88,6 +106,8 @@
           border:1px solid var(--border); border-radius:.8rem;
           background:var(--panel-2); padding:.3rem 1.1rem; cursor:pointer; }
   .upill:hover{ border-color:var(--blue); color:var(--text); }
+  .upill.ops-pill{ color:var(--accent); }
+  .upill.ops-pill:hover{ border-color:var(--accent); }
   /* ── system bar — one pill, stats packed as CPU: 5% | RAM: 36% | … ─────── */
   .sysbar{ flex:1 1 auto; display:flex; flex-wrap:wrap; align-items:baseline;
     justify-content:flex-start; gap:.3rem .5rem;
@@ -96,7 +116,6 @@
     font-size:1rem; color:var(--text); font-variant-numeric:tabular-nums; }
   .sysbar .srow{ display:flex; align-items:baseline; gap:.3rem; }
   .sysbar .k{ color:var(--text); letter-spacing:.05em; }
-  .sysbar .k::after{ content:":"; color:var(--dim); }               /* CPU: */
   .sysbar .srow:not(:last-child)::after{ content:"|"; color:var(--faint); margin-left:.2rem; }
   .sysbar .v{ font-weight:700; }
   .sysbar .v.ok{ color:var(--accent); } .sysbar .v.warm{ color:var(--warn); } .sysbar .v.hot{ color:var(--down); }
@@ -176,16 +195,72 @@
   .pulse{ display:inline-block; width:.8rem; height:.8rem; border-radius:50%; background:var(--accent);
           box-shadow:0 0 .8rem 0 var(--accent); margin-right:.5rem; vertical-align:middle; }
 
+  /* ── FOOTER: hazard pills + emergency chip (priority) · SDR flow meters ── */
+  .footer{ flex:0 0 auto; display:flex; align-items:center; gap:.7rem; padding:.45rem 1rem;
+           background:var(--panel); border:1px solid var(--border); border-radius:var(--r); }
+  .footer .hazard-pills{ display:inline-flex; align-items:center; gap:.5rem; }
+  .hazard-pill{ display:inline-flex; align-items:center; font-size:1rem; line-height:1.5; font-weight:700;
+    letter-spacing:.05em; padding:.3rem 1.05rem; border-radius:999px; border:1px solid var(--hz);
+    color:var(--hz); background:transparent; cursor:pointer; user-select:none; }
+  .hazard-pill .hz-ico,.emerg-chip .em-ico{ display:inline-flex; align-items:center; justify-content:center;
+    height:1.5em; margin-right:.4rem; font-size:.95em; line-height:1; }   /* fixed box so the emoji glyph can't balloon the pill */
+  .hazard-pill:hover{ background:rgba(255,255,255,.06); }
+  .hazard-pill.active{ color:var(--bg); background:var(--hz); border-color:var(--hz); }
+  .emerg-chip{ display:inline-flex; align-items:center; font-size:1rem; line-height:1.5; font-weight:700; letter-spacing:.05em;
+    padding:.3rem 1.05rem; border-radius:999px; border:1px solid var(--border); color:var(--dim);
+    white-space:nowrap; user-select:none; cursor:default; }
+  .emerg-chip.has-emerg{ color:var(--warn); border-color:rgba(246,168,33,.45); background:rgba(246,168,33,.08); cursor:pointer; }
+  .emerg-chip.has-emerg:hover{ background:rgba(246,168,33,.16); }
+  .emerg-chip.has-emerg.active{ color:var(--bg); background:var(--warn); border-color:var(--warn); }
+  .feedmeters{ display:flex; align-items:center; gap:1.6rem; min-width:0; margin-left:auto; }
+  .feed-meter{ display:flex; align-items:center; gap:.5rem; }
+  .feed-meter[hidden]{ display:none; }
+  .feed-meter-name{ color:var(--text); font-weight:700; letter-spacing:.08em; font-size:1rem; }
+  .feed-meter-track{ width:5rem; height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+  .feed-meter-fill{ display:block; height:100%; width:0%; background:var(--blue); border-radius:3px;
+                    transition:width .25s ease, background .25s ease; }
+  .feed-meter.silent .feed-meter-fill{ background:var(--down); }   /* red = feed up but deaf */
+  .feed-meter.flowing .feed-meter-fill{ background:var(--blue); }
+  .feed-meter.off .feed-meter-fill{ background:var(--faint); }     /* dim = feed not running */
+  .feed-meter.off .feed-meter-name,.feed-meter.off .feed-meter-label{ color:var(--dim); }
+  .feed-meter-label{ color:var(--text); font-variant-numeric:tabular-nums; font-size:1rem; white-space:nowrap; }
+  /* Footer priority: pills win over meters when crowded — drop ADS-B at ≥5 pills, APRS too at ≥10. */
+  .feedmeters.hide-adsb #fm-adsb{ display:none; }
+  .feedmeters.hide-aprs #fm-aprs{ display:none; }
+
   /* ── detail sheet (row → full card) — copied verbatim from kiosk.css ──── */
   .sheet{ position:absolute; left:0; right:0; bottom:0; transform:translateY(110%); transition:transform .18s;
           background:var(--panel); border-top:1px solid var(--accent); border-radius:1.4rem 1.4rem 0 0; z-index:6; padding:1.4rem 1.6rem; }
   .sheet.open{ transform:translateY(0); }
-  .sheet .sh-head{ display:flex; align-items:center; gap:1rem; margin-bottom:.8rem; }
-  .sheet .sh-call{ color:var(--accent); font-weight:700; font-size:1.7rem; }
-  .sheet .sh-x{ margin-left:auto; color:var(--dim); cursor:pointer; font-size:1.8rem; }
-  .sheet .kv{ display:grid; grid-template-columns:repeat(2,1fr); gap:.6rem 1.8rem; font-size:1.2rem; }
-  .sheet .kv .k{ color:var(--dim); } .sheet .kv .v{ color:var(--text); }
-  .sheet .full{ margin-top:.8rem; color:var(--text); font-size:1.2rem; }
+  .sheet .sh-x{ position:absolute; top:1rem; right:1.3rem; z-index:2; color:var(--dim); cursor:pointer; font-size:1.8rem; line-height:1; }
+  .sheet .sh-x:hover{ color:var(--text); }
+  /* Rich station card (ported from dashboard_old's heard card) rendered on row click. */
+  .hb-top{ display:flex; gap:.9rem; align-items:flex-start; margin-bottom:.8rem; padding-right:2rem; }
+  .hb-icon{ flex:0 0 auto; width:4rem; height:4rem; }
+  .hb-icon-img{ display:block; width:100%; height:100%; background-repeat:no-repeat; }
+  .hb-topmain{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:.3rem; }
+  .hb-head{ display:flex; align-items:baseline; gap:.6rem; min-width:0; }
+  .hb-call{ flex:0 1 auto; min-width:0; font-weight:800; font-size:1.7rem; letter-spacing:.02em;
+            color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hb-age{ flex:0 0 auto; margin-left:auto; font-size:1.1rem; }
+  .hb-age.fresh{ color:var(--accent); } .hb-age.stale{ color:var(--warn); } .hb-age.old{ color:var(--faint); }
+  .hb-sub{ color:var(--dim); font-size:1.15rem; letter-spacing:.02em; }
+  .hb-emerg{ color:var(--warn); font-weight:700; font-size:1.15rem; letter-spacing:.03em; }
+  .hb-pills{ display:grid; grid-template-columns:1fr 1fr; gap:.45rem .5rem; justify-items:start; }
+  .hb-pill{ display:inline-flex; align-items:baseline; gap:.4rem; font-size:1.1rem; padding:.28rem .85rem;
+            border-radius:999px; border:1px solid var(--border); background:var(--panel-2); color:var(--text); white-space:nowrap; }
+  .hb-pill b{ color:var(--dim); font-weight:700; font-size:.75em; letter-spacing:.06em; }
+  .hb-pill.via.rf{  color:var(--accent); border-color:color-mix(in srgb,var(--accent) 45%,var(--border)); }
+  .hb-pill.via.is{  color:var(--blue);   border-color:color-mix(in srgb,var(--blue) 45%,var(--border)); }
+  .hb-pill.via.air{ color:var(--purple); border-color:color-mix(in srgb,var(--purple) 45%,var(--border)); }
+  .hb-cmt{ margin-top:.6rem; color:var(--dim); font-size:1.05rem; font-style:italic; word-break:break-word; }
+  /* Fire incident — structured comment fields (Cause · Size · Containment). */
+  .hb-fire{ display:flex; flex-wrap:wrap; gap:.45rem .5rem; margin-bottom:.7rem; }
+  .hb-fire .ff{ display:inline-flex; align-items:baseline; gap:.4rem; font-size:1.1rem; padding:.28rem .85rem;
+    border-radius:999px; border:1px solid color-mix(in srgb,var(--down) 40%,var(--border)); background:var(--panel-2); }
+  .hb-fire .ff b{ color:var(--dim); font-weight:700; font-size:.75em; letter-spacing:.06em; }
+  .hb-fire .ff .fv{ color:var(--text); }
+  .hb-fire .ff.contain .fv{ color:var(--warn); font-weight:700; }
 
   /* ── OPS / REFRESH buttons — copied verbatim from kiosk.css ───────────── */
   .btnrow{ display:flex; gap:.6rem; }
@@ -206,6 +281,7 @@
       <div class="date" id="loc-d">—</div>
     </div>
     <div class="face utc">
+      <button class="clk-refresh" id="clk-refresh" onclick="kioskRefresh()" title="Reload dashboard" aria-label="Reload dashboard">&#8635;</button>
       <div class="zn"><span class="z">UTC</span><span class="tz">Zulu</span></div>
       <div class="time" id="utc-t">--:--<span class="s">:--</span></div>
       <div class="date" id="utc-d">—</div>
@@ -217,16 +293,14 @@
         </span>
         <div class="gpspill nogps" id="k-gps"><span class="mode" id="k-gps-mode">GPS —</span><span class="sub" id="k-gps-sub"></span><span class="gdot" id="k-gps-dot"></span></div>
       </div>
+      <!-- Services summary: up · warn · down · not-installed (no SERVICES label) -->
+      <span class="svcpill" id="svcpill" title="Services — up · warn · down · not-installed">—</span>
       <!-- RTL/SDR assignment pill: dot (hollow=unassigned, amber=rtl assigned, green=in use) -->
       <div class="svcbar" id="svcbar">
         <span class="s"><span class="dot" id="dot-aprs"></span>APRS</span>
         <span class="s"><span class="dot" id="dot-adsb"></span>ADS-B</span>
         <span class="s"><span class="dot" id="dot-owrx"></span>ORX</span>
         <span class="s"><span class="dot" id="dot-sat"></span>SAT</span>
-      </div>
-      <div class="btnrow">
-        <button class="ops" onclick="openOv('ops')">OPS</button>
-        <button class="ops refresh-btn" onclick="location.reload()">REFRESH</button>
       </div>
     </div>
   </div>
@@ -242,6 +316,7 @@
       <div class="srow ip"><span class="k">IP</span><span class="v" id="k-ip">—</span></div>
     </div>
     <span class="upill" id="k-units" onclick="toggleUnits()" title="Toggle imperial / metric">IMPERIAL</span>
+    <span class="upill ops-pill" onclick="openOv('ops')" title="Open OPS">OPS</span>
   </div>
 
   <!-- ── BOTTOM: APRS/ADS-B traffic | satellites ────────────────────────── -->
@@ -268,18 +343,30 @@
 
   </div>
 
+  <!-- ── FOOTER: area hazards + emergency (priority) · SDR flow meters ───── -->
+  <div class="footer">
+    <span class="emerg-chip" id="emerg-chip" role="button" tabindex="0" title="No emergency POI"
+          onclick="toggleEmergencyOnly()"
+          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleEmergencyOnly();}"><span class="em-ico">✓</span></span>
+    <span class="hazard-pills" id="hazard-pills"></span>
+    <div class="feedmeters" id="feedmeters">
+      <span class="feed-meter" id="fm-aprs" hidden>
+        <span class="feed-meter-name">APRS</span>
+        <span class="feed-meter-track"><span class="feed-meter-fill" id="fm-aprs-fill"></span></span>
+        <span class="feed-meter-label" id="fm-aprs-rate"></span>
+      </span>
+      <span class="feed-meter" id="fm-adsb" hidden>
+        <span class="feed-meter-name">ADS-B</span>
+        <span class="feed-meter-track"><span class="feed-meter-fill" id="fm-adsb-fill"></span></span>
+        <span class="feed-meter-label" id="fm-adsb-rate"></span>
+      </span>
+    </div>
+  </div>
+
   <!-- DETAIL SHEET -->
   <div class="sheet" id="sheet">
-    <div class="sh-head"><span class="sh-call" id="shCall">—</span><span class="sh-x" onclick="closeSheet()">✕</span></div>
-    <div class="kv">
-      <span class="k">Last heard</span><span class="v" id="shHeard">—</span>
-      <span class="k">Age</span><span class="v" id="shAge">—</span>
-      <span class="k">Via</span><span class="v" id="shVia">—</span>
-      <span class="k">Speed</span><span class="v" id="shSpd">—</span>
-      <span class="k">Grid</span><span class="v" id="shGrid">—</span>
-      <span class="k">Dist</span><span class="v" id="shDist">—</span>
-    </div>
-    <div class="full" id="shCmt"></div>
+    <span class="sh-x" onclick="closeSheet()" role="button" tabindex="0" aria-label="Close">✕</span>
+    <div id="shBody"></div>
   </div>
 
 </div>
@@ -303,6 +390,11 @@ function tick() {
         txt('loc-tz', tz.split('/').pop().replace('_',' ')); } catch (_) {}
 }
 tick(); setInterval(tick, 1000);
+function kioskRefresh() {
+  const b = document.getElementById('clk-refresh');
+  if (b) b.classList.add('spinning');   // brief spin so the tap registers, then reload
+  setTimeout(() => location.reload(), 400);
+}
 
 // ── Callsign / Grid (copied from dashboard_old) ──────────────────────────────
 function loadCallsignGrid() {
@@ -439,9 +531,11 @@ fetchSdrStatus(); setInterval(fetchSdrStatus, 8000);
 
 // ── esc + home coords ────────────────────────────────────────────────────────
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+let _homeLL = null;   // also kept locally so the card can band DIST by raw km
 function loadHomeCoords() {
   fetch('/station.json').then(r => r.ok ? r.json() : null).then(d => {
     if (!d || !d.lat || !d.lon) return;
+    _homeLL = { lat: Number(d.lat), lon: Number(d.lon) };
     OasisGeo.setHomeCoords(d.lat, d.lon);
     if (_allAprsStations.length) applyAprsFilter();
   }).catch(() => {});
@@ -489,10 +583,199 @@ function renderAprsRows(list) {
   });
   body.appendChild(frag);
 }
+// ── Services health → summary count pill (ported from dashboard_old; tiles/overlay omitted) ──
+const HOST = location.hostname;
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082, openwebrx: 8073 };
+const SVC_PORTS = {
+  gw: () => PORTS.graywolf, winlink: () => PORTS.winlink, kiwix: () => PORTS.kiwix,
+  aprs: () => PORTS.aprs_api, webssh: () => PORTS.webssh, owrx: () => PORTS.openwebrx,
+};
+const _svcStates = {};
+function updateSvcCounts() {   // N UP · N WRN · N DN · N NI (not-installed) — no SERVICES label
+  const vals = Object.values(_svcStates);
+  const up = vals.filter(s => s === 'up').length;
+  const warn = vals.filter(s => s === 'warn').length;
+  const down = vals.filter(s => s === 'down').length;
+  const ni = HIDDEN_SVCS.size;
+  const el = document.getElementById('svcpill'); if (!el) return;
+  el.innerHTML =
+    `<span class="cnt-lbl">SRV</span>` +
+    `<span class="cnt-up">${up} UP</span><span class="cnt-sep">·</span>` +
+    `<span class="cnt-warn">${warn} WRN</span><span class="cnt-sep">·</span>` +
+    `<span class="cnt-down">${down} DN</span><span class="cnt-sep">·</span>` +
+    `<span class="cnt-ni">${ni} NI</span>`;
+}
+const SERVICES = [
+  { id:'flask', name:'Flask', check: async () => { const r = await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); return {up:true,badge:'UP',sub:`v${d.flask_version}`}; } },
+  { id:'wsgi', name:'Web Server', check: async () => { const r=await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); const g=d.wsgi==='gunicorn'; return {up:true,warn:!g,badge:g?'gunicorn':'werkzeug',sub:`v${d.wsgi_version}`}; } },
+  { id:'gw', name:'GrayWolf', check: async () => { await fetch(`http://${HOST}:${PORTS.graywolf}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.graywolf}`}; } },
+  { id:'winlink', name:'Winlink', check: async () => { const r=await fetch('/api/winlink/mailbox/in',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`:${PORTS.winlink}`}; return {up:true,badge:'UP',sub:`:${PORTS.winlink}`}; } },
+  { id:'kiwix', name:'Kiwix', check: async () => { await fetch(`http://${HOST}:${PORTS.kiwix}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.kiwix}`}; } },
+  { id:'aprs', name:'APRS Stats API', check: async () => { const r=await fetch('/api/aprs/health',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`:${PORTS.aprs_api}`}; const d=await r.json(); return {up:true,warn:!d.db_exists,badge:'UP',sub:d.db_exists?'DB found':'no DB'}; } },
+  { id:'feed', name:'APRS SDR Feed', check: async () => { const r=await fetch('/api/health/service?name=aprs-sdr-feed',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:'→ GrayWolf'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
+  { id:'gpsd', name:'GPS (gpsd)', check: async () => { const r=await fetch('/api/health/service?name=gpsd',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:':2947'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
+  { id:'fcc', name:'FCC Database', check: async () => { const r=await fetch('/health',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'server error'}; const d=await r.json(); return {up:true,warn:!d.index_present,badge:d.index_present?'UP':'WARN',sub:d.index_present?`${(d.callsign_count||0).toLocaleString()} calls`:'not indexed'}; } },
+  { id:'maps', name:'Offline Maps', check: async () => { const r=await fetch('/api/browse?path=maps',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'browse error'}; const d=await r.json(); const n=(d.entries||[]).filter(e=>e.name.endsWith('.pmtiles')).length; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} map${n===1?'':'s'}`:'no maps'}; } },
+  { id:'rb', name:'Repeater Book', check: async () => { const r=await fetch('static/repeaterbook/repeaterbook.csv',{method:'HEAD',cache:'no-store'}); return {up:r.ok,badge:r.ok?'UP':'DOWN',sub:r.ok?'CSV loaded':'CSV missing'}; } },
+  { id:'webssh', name:'SSH Terminal', check: async () => { await fetch(`http://${HOST}:${PORTS.webssh}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.webssh}`}; } },
+  { id:'owrx', name:'OpenWebRX', check: async () => { await fetch(`http://${HOST}:${PORTS.openwebrx}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.openwebrx}`}; } },
+  { id:'manuals', name:'Radio Manuals', check: async () => { const r=await fetch('/api/browse?path=static/radio-manuals',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'browse error'}; const d=await r.json(); const n=(d.entries||[]).filter(e=>e.type==='dir').length; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} radio${n===1?'':'s'}`:'no manuals'}; } },
+  { id:'wiki', name:'Wikipedia', check: async () => { const r=await fetch('/api/health/zim',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'check error'}; const d=await r.json(); const n=d.count||0; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} ZIM${n===1?'':'s'}`:'no ZIM'}; } },
+];
+// Gate out features the operator didn't install so they don't count as DOWN. A null
+// manifest (unconfigured box) counts everything, same as dashboard_old.
+const HIDDEN_SVCS = new Set();
+const GATEABLE = {
+  gw:['graywolf'], aprs:['graywolf'], feed:['rtl-sdr-feed','rtl-feed'], owrx:['openwebrx'], winlink:['winlink'],
+  gpsd:['gps'], kiwix:['kiwix'], webssh:['webssh'], fcc:['fcc'], wiki:['wikipedia'], rb:['repeaterbook'],
+};
+const SYSTEMD_GATED = { feed:'aprs-sdr-feed', gpsd:'gpsd' };
+async function unitInstalled(id) {
+  const unit = SYSTEMD_GATED[id]; if (!unit) return false;
+  try { const r = await fetch('/api/health/service?name='+unit,{cache:'no-store'}); if(!r.ok) return false; const d=await r.json();
+        if (id==='gpsd') return d.enabled==='enabled';
+        return d.active==='active' || d.enabled==='enabled'; } catch(_) { return false; }
+}
+async function loadInstalled() {
+  let features = null;
+  try { const r = await fetch('/api/installed-services',{cache:'no-store'}); if(r.ok){ const d=await r.json(); features=d.features; } } catch(_) {}
+  HIDDEN_SVCS.clear();
+  if (Array.isArray(features)) {
+    const installed = new Set(features);
+    for (const [id, keys] of Object.entries(GATEABLE)) {
+      if (!keys.some(k => installed.has(k))) { if (await unitInstalled(id)) continue; HIDDEN_SVCS.add(id); }
+    }
+  }
+}
+async function checkService(svc) {
+  try {
+    const result = await Promise.race([ svc.check(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),4000)) ]);
+    _svcStates[svc.id] = result.up ? (result.warn ? 'warn':'up') : 'down';
+  } catch (_) { _svcStates[svc.id] = 'down'; }
+  updateSvcCounts();
+}
+function pingAll() { SERVICES.forEach(svc => { if (!HIDDEN_SVCS.has(svc.id)) checkService(svc); }); }
+let _pingIdx = 0;
+function pingNext() {
+  const active = SERVICES.filter(svc => !HIDDEN_SVCS.has(svc.id));
+  if (!active.length) return;
+  checkService(active[_pingIdx % active.length]); _pingIdx = (_pingIdx + 1) % active.length;
+}
+
+// ── Natural hazards + emergency (config: /hazards.json) — parity with dashboard_old ──
+// Config-driven hazard pills (one per configured type currently heard) plus an
+// emergency toggle chip (Public-safety stations ≤48h). Both tappable, mutually
+// exclusive, and narrow the traffic list.
+let _HAZARDS = [];
+let hazardFilter = null;        // active hazard key, or null
+let emergencyOnly = false;      // emergency-chip filter (mutually exclusive with hazardFilter)
+const _EMERGENCY_WINDOW_MS = 48 * 3600 * 1000;
+const _APRS_TYPES = {
+  '>':'Car','j':'Car','v':'Car','<':'Motorcycle','k':'Truck','u':'Truck',
+  'R':'RV','U':'Bus','=':'Train','b':'Bicycle',
+  "'":'Aircraft','^':'Aircraft','g':'Aircraft','X':'Helicopter','O':'Balloon',
+  's':'Boat','Y':'Boat','C':'Boat','[':'Person','p':'Person',
+  '_':'Weather','W':'Weather','#':'Digipeater','&':'Gateway',
+  'r':'Antenna','y':'Antenna','`':'Antenna','-':'Home',
+  '!':'Public safety','P':'Public safety','a':'Public safety','f':'Public safety',
+  'd':'Public safety','c':'Public safety','A':'Public safety','h':'Public safety',
+  'o':'Public safety','+':'Public safety',
+  '?':'Services','$':'Services',';':'Services','B':'Services','K':'Services',
+  ':':'Fire',
+};
+function aprsTypeLabel(s) { if (s && s.sym_code === '_') return 'Weather'; return (s && _APRS_TYPES[s.sym_code]) || 'Other'; }
+async function loadHazards() {
+  try { const d = await (await fetch('/hazards.json', { cache:'no-store' })).json(); _HAZARDS = Array.isArray(d.hazards) ? d.hazards : []; } catch (_) { _HAZARDS = []; }
+  applyAprsFilter();
+}
+function _hazardKeyOf(s) {
+  if (!s || !_HAZARDS.length) return null;
+  const tbl = s.sym_table || '/', code = s.sym_code || '';
+  const text = (String(s.comment||'') + ' ' + String(s.callsign||'')).toUpperCase();
+  const vetoed = kw => kw && new RegExp('\\b'+kw.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b').test(text);
+  for (const h of _HAZARDS) {
+    if (!(h.symbols||[]).some(p => p[0]===tbl && p[1]===code)) continue;
+    if ((h.name_exclude||[]).some(vetoed)) continue;
+    return h.key;
+  }
+  return null;
+}
+function _isEmergency(s) {
+  if (aprsTypeLabel(s) !== 'Public safety') return false;
+  const t = _lhEpoch(s.last_heard || s.timestamp || s.time);
+  return t > 0 && (Date.now() - t) <= _EMERGENCY_WINDOW_MS;
+}
+// A 100%-contained incident (fire) is treated as cleared — dropped from the list
+// and the hazard counts. Self-restores on a <100% flare-up.
+function _containedIncident(s) {
+  const m = String((s && s.comment) || '').match(/Containment:\s*(\d+)\s*%/i);
+  return m != null && parseInt(m[1], 10) === 100;
+}
+function toggleHazardFilter(key) {
+  hazardFilter = (hazardFilter === key) ? null : key;
+  if (hazardFilter) emergencyOnly = false;
+  applyAprsFilter();
+}
+function toggleEmergencyOnly() {
+  const chip = document.getElementById('emerg-chip');
+  if (!chip || !chip.classList.contains('has-emerg')) return;   // calm — nothing to filter
+  emergencyOnly = !emergencyOnly;
+  if (emergencyOnly) hazardFilter = null;
+  applyAprsFilter();
+}
+function _renderHazardPills(counts) {
+  const box = document.getElementById('hazard-pills'); if (!box) return;
+  box.innerHTML = _HAZARDS.filter(h => counts[h.key]).map(h => {
+    const active = hazardFilter === h.key;
+    return '<span class="hazard-pill'+(active?' active':'')+'" role="button" tabindex="0"'
+      + ' style="--hz:'+esc(h.color||'#ff5c33')+'"'
+      + ' onclick="toggleHazardFilter(\''+esc(h.key)+'\')"'
+      + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleHazardFilter(\''+esc(h.key)+'\');}"'
+      + ' aria-pressed="'+(active?'true':'false')+'"'
+      + ' title="'+counts[h.key]+' '+esc(h.label||'')+(active?' — showing only these (tap to clear)':' — tap to show only these')+'">'
+      + '<span class="hz-ico">'+esc(h.emoji||'⚠')+'</span>'+counts[h.key]+'</span>';
+  }).join('');
+}
+function _renderEmergencyChip(count) {
+  const chip = document.getElementById('emerg-chip'); if (!chip) return;
+  chip.classList.toggle('has-emerg', count > 0);
+  chip.classList.toggle('active', emergencyOnly && count > 0);
+  chip.setAttribute('aria-pressed', (emergencyOnly && count > 0) ? 'true' : 'false');
+  chip.title = count > 0 ? (count + ' emergency POI (Public-safety ≤48h) — tap to show only these')
+                         : 'No emergency POI';
+  chip.innerHTML = count > 0 ? ('<span class="em-ico">⚠</span>' + count) : '<span class="em-ico">✓</span>';
+}
+
 function applyAprsFilter() {
+  // Emergency chip (Public-safety ≤48h): count every pass, auto-clear if empty.
+  const emergCount = _allAprsStations.reduce((n, s) => n + (_isEmergency(s) ? 1 : 0), 0);
+  if (emergencyOnly && emergCount === 0) emergencyOnly = false;
+  _renderEmergencyChip(emergCount);
+  const emergActive = emergencyOnly && emergCount > 0;
+  // Hazard pills (config-driven, no age window): count, repaint, auto-clear if emptied.
+  const hazardCounts = {};
+  _allAprsStations.forEach(s => { if (_containedIncident(s)) return; const k = _hazardKeyOf(s); if (k) hazardCounts[k] = (hazardCounts[k]||0)+1; });
+  if (hazardFilter && !hazardCounts[hazardFilter]) hazardFilter = null;
+  _renderHazardPills(hazardCounts);
+  const hazardActive = hazardFilter && hazardCounts[hazardFilter] > 0;
+  // Footer priority when crowded: count the always-on emergency chip + one per shown
+  // hazard pill; drop the ADS-B meter at ≥5 pills, and the APRS meter too at ≥10.
+  const pillCount = 1 + Object.keys(hazardCounts).length;
+  const fm = document.getElementById('feedmeters');
+  if (fm) {
+    fm.classList.toggle('hide-adsb', pillCount >= 5);
+    fm.classList.toggle('hide-aprs', pillCount >= 10);
+  }
+
   let list = [];
   if (_showAPRS) list = list.concat(_allAprsStations);
   if (_showADSB) list = list.concat(_adsbListRows());
+  list = list.filter(s => {
+    if (_containedIncident(s)) return false;                    // cleared incident — never listed
+    if (hazardActive) return _hazardKeyOf(s) === hazardFilter;  // hazard filter supersedes
+    if (emergActive)  return _isEmergency(s);                   // else emergency filter
+    return true;
+  });
   if (!_showRF || !_showIS) list = list.filter(s => s._kind==='aircraft' || (aprsSource(s)==='is' ? _showIS : _showRF));
   const total = list.length;
   list.sort((a,b) => _lhEpoch(b.last_heard||b.timestamp||b.time) - _lhEpoch(a.last_heard||a.timestamp||a.time));
@@ -541,7 +824,8 @@ function _adsbListRows() {
     const _sym = (typeof acSymbol === 'function') ? acSymbol(a) : ['/', a.category === 'A7' ? 'X' : "'"];
     return { _kind:'aircraft', callsign:(a.flight||a.hex||'').trim()||(a.hex||'?'), sym_table:_sym[0], sym_code:_sym[1],
       lat:positioned?a.lat:null, lon:positioned?a.lon:null, speed_mph:(a.gs!=null)?Math.round(a.gs*1.15078):0, course:(a.track!=null)?a.track:null,
-      alt_m:(altFt!=null)?altFt/3.28084:null, last_heard:new Date(a._ts*1000).toISOString(), via:'adsb', comment:a.squawk?('sq '+a.squawk):'' };
+      alt_m:(altFt!=null)?altFt/3.28084:null, last_heard:new Date(a._ts*1000).toISOString(), via:'adsb', comment:a.squawk?('sq '+a.squawk):'',
+      category:a.category, baro_rate:a.baro_rate, squawk:a.squawk, hex:a.hex, emergency:a.emergency };
   });
 }
 async function refreshAdsb() {
@@ -555,16 +839,94 @@ async function refreshAdsbRecent() {
 }
 
 // ── Detail sheet (row → full card) ───────────────────────────────────────────
+// ── Rich station card on row-click (ported from dashboard_old's heard card) ───
+const AC_CLASS = { A1:'Light', A2:'Small', A3:'Large', A4:'B757', A5:'Heavy', A6:'High-perf', A7:'Rotorcraft',
+  B1:'Glider', B2:'Balloon', B4:'Ultralight', B6:'UAV', C1:'Vehicle', C2:'Vehicle', C3:'Obstacle' };
+const _SQ_EMERG = { '7500':'HIJACK', '7600':'RADIO FAILURE', '7700':'GENERAL EMERGENCY' };
+// 64px APRS symbol as a percentage sprite so it stays crisp at any size (16×6 sheet).
+function aprsIconBig(s) {
+  const table = s.sym_table || '/', code = s.sym_code || '-';
+  let idx = code.charCodeAt(0) - 33; if (idx < 0 || idx > 95) idx = 0;
+  const col = idx % 16, row = Math.floor(idx / 16), sheet = table === '/' ? 0 : 1;
+  const px = (col / 15) * 100, py = (row / 5) * 100;
+  return `<span class="hb-icon-img" style="background-image:url('/map-assets/aprs-symbols-64-${sheet}.png');background-size:1600% 600%;background-position:${px}% ${py}%"></span>`;
+}
+// Distance-alert band, mirroring the map/index (red <2km · amber <5km · green ≤15km).
+function _distBandColor(lat, lon) {
+  if (!_homeLL || lat == null || lon == null) return '';
+  const km = OasisGeo.haversineMi(_homeLL.lat, _homeLL.lon, lat, lon) * 1.60934;
+  if (km < 2)   return 'var(--down)';
+  if (km < 5)   return 'var(--warn)';
+  if (km <= 15) return 'var(--accent)';
+  return '';
+}
+// Wildfire incident comments are pipe-delimited: "NAME Fire | Cause: X | Size: N Acres | Containment: N%".
+function _fireFields(s) {
+  const c = String((s && s.comment) || '');
+  if (_hazardKeyOf(s) !== 'fire' && !/Containment:/i.test(c)) return null;
+  const get = re => { const m = c.match(re); return m ? m[1].trim() : null; };
+  const cause = get(/Cause:\s*([^|]+)/i), size = get(/Size:\s*([^|]+)/i), contain = get(/Containment:\s*([^|]+)/i);
+  if (!cause && !size && !contain) return null;   // not the structured format
+  return { name: (c.split('|')[0] || '').trim(), cause, size, contain };
+}
+function _fireBlock(f) {
+  const ff = (k, v, cls) => v ? `<span class="ff ${cls||''}"><b>${k}</b> <span class="fv">${esc(v)}</span></span>` : '';
+  return `<div class="hb-fire">${ff('CAUSE', f.cause)}${ff('SIZE', f.size)}${ff('CONTAIN', f.contain, 'contain')}</div>`;
+}
+function renderStationCard(s) {
+  const ac = s._kind === 'aircraft';
+  const src = ac ? 'air' : aprsSource(s);
+  const srcTxt = ac ? 'ADS-B' : src.toUpperCase();
+  const ageSec = Math.floor((Date.now() - _lhEpoch(s.last_heard||s.timestamp||s.time)) / 1000);
+  const ageTxt = ageSec < 0 ? 'now' : ageSec < 60 ? ageSec + 's ago' : Math.floor(ageSec/60) + 'm ago';
+  const ageCls = ageSec <= 15 ? 'fresh' : ageSec < 1800 ? 'stale' : 'old';
+  const grid = gridSquare(s.lat, s.lon) || '—';
+  const posTxt = (s.lat != null && s.lon != null) ? (Number(s.lat).toFixed(3) + ', ' + Number(s.lon).toFixed(3)) : '—';
+  const alt = (s.alt_m != null) ? fmtAlt(s.alt_m) : '—';
+  const altVal = (s.alt_m != null && typeof altColor === 'function')
+    ? `<span style="color:${altColor(s.alt_m * 3.28084)}">${esc(alt)}</span>` : esc(alt);
+  const spd = (s.speed_mph != null && s.speed_mph > 0) ? fmtSpeed(s.speed_mph) : '—';
+  const dist = distFromHome(s.lat, s.lon) || '—';
+  const distC = _distBandColor(s.lat, s.lon);
+  const distVal = distC ? `<span style="color:${distC}">${esc(dist)}</span>` : esc(dist);
+  const gridVal = grid !== '—' ? `<span style="color:var(--warn)">${esc(grid)}</span>` : esc(grid);   // amber, like the callsign grid
+  const spdVal  = spd  !== '—' ? `<span style="color:var(--accent)">${esc(spd)}</span>` : esc(spd);   // green
+  const fire = ac ? null : _fireFields(s);
+  let sub = '', emerg = '';
+  if (ac) {
+    const parts = []; const code = s.category ? String(s.category).toUpperCase() : ''; const label = AC_CLASS[code] || '';
+    let clsTxt = (label && code) ? (label + ' [' + code + ']') : (code ? ('[' + code + ']') : label);
+    const mil = (typeof hexIsMilitary === 'function' && hexIsMilitary(s.hex)) ? ' <span style="color:var(--warn)">[mil]</span>' : '';
+    let seg = esc(clsTxt); if (mil) seg = seg ? (seg + mil) : mil.trim(); if (seg) parts.push(seg);
+    if (s.baro_rate != null) {
+      let vert, vc;
+      if (s.baro_rate > 100)       { vert = '▲ climbing';   vc = '#ff5b4a'; }
+      else if (s.baro_rate < -100) { vert = '▼ descending'; vc = '#3dd6f5'; }
+      else                         { vert = '— level';      vc = '#b7e04a'; }
+      parts.push(`<span style="color:${vc}">${esc(vert)}</span>`);
+    }
+    sub = parts.join('&nbsp;');
+    const em = (s.emergency && s.emergency !== 'none') ? String(s.emergency).toUpperCase() : (_SQ_EMERG[s.squawk] || '');
+    if (em) emerg = '⚠ EMERGENCY — ' + em + (s.squawk ? ' (squawk ' + s.squawk + ')' : '');
+  } else {
+    const t = aprsTypeLabel(s); sub = esc((t && t !== 'Other') ? t : 'Station'); if (s.is_object) sub += ' · object';
+  }
+  const title = fire ? fire.name : (s.callsign || s.c || '—');
+  const cmt = ac ? (s.squawk ? 'squawk ' + s.squawk : '') : (fire ? '' : (s.comment || s.cmt || ''));
+  const pill = (k, v) => `<span class="hb-pill"><b>${k}</b> ${esc(v)}</span>`;
+  return (
+    `<div class="hb-top"><span class="hb-icon">${aprsIconBig(s)}</span><div class="hb-topmain">` +
+      `<div class="hb-head"><span class="hb-call">${esc(title)}</span><span class="hb-age ${ageCls}">${esc(ageTxt)}</span></div>` +
+      (sub ? `<div class="hb-sub">${sub}</div>` : '') +
+      (emerg ? `<div class="hb-emerg">${esc(emerg)}</div>` : '') +
+    `</div></div>` +
+    (fire ? _fireBlock(fire) : '') +
+    `<div class="hb-pills"><span class="hb-pill via ${src}"><b>VIA</b> ${esc(srcTxt)}</span><span class="hb-pill"><b>DIST</b> ${distVal}</span><span class="hb-pill"><b>GRID</b> ${gridVal}</span>${pill('POS', posTxt)}<span class="hb-pill"><b>SPEED</b> ${spdVal}</span><span class="hb-pill"><b>ALT</b> ${altVal}</span></div>` +
+    (cmt ? `<div class="hb-cmt">${esc(cmt)}</div>` : '')
+  );
+}
 function openSheet(s) {
-  document.getElementById('shCall').textContent  = s.callsign || s.c || '—';
-  document.getElementById('shHeard').textContent = s.last_heard || s.h || '—';
-  const ageSec = s.last_heard ? Math.floor((Date.now()-_lhEpoch(s.last_heard))/1000) : null;
-  document.getElementById('shAge').textContent   = ageSec != null ? (ageSec<60?ageSec+'s ago':Math.floor(ageSec/60)+'m ago') : (s.a?s.a+' ago':'—');
-  document.getElementById('shVia').textContent   = (s._kind==='aircraft'?'ADS-B':aprsSource(s).toUpperCase());
-  document.getElementById('shSpd').textContent   = s.speed_mph != null ? fmtSpeed(s.speed_mph) : (s.sp||'—');
-  document.getElementById('shGrid').textContent  = gridSquare(s.lat,s.lon) || '—';
-  document.getElementById('shDist').textContent  = distFromHome(s.lat,s.lon) || '—';
-  document.getElementById('shCmt').textContent   = s.comment || s.cmt || '(no comment)';
+  document.getElementById('shBody').innerHTML = renderStationCard(s);
   document.getElementById('sheet').classList.add('open');
 }
 function closeSheet() { document.getElementById('sheet').classList.remove('open'); }
@@ -611,9 +973,60 @@ function renderSats() {
 }
 
 // ── Traffic + satellites init/timers ─────────────────────────────────────────
+// ── SDR flow meters (footer) ─────────────────────────────────────────────────
+// Blue bar = signal flowing, red = silent — proves the RTL-SDRs are truly
+// receiving, not just "unit up". Gentle cadence for the Pi Zero; the APRS probe
+// runs a ~1s tcpdump server-side, so it's gated on the feed unit being active.
+const FEED_FLOW_MS = 4000;
+const ADSB_NOMINAL_SAMPLES_PER_SEC = 2_000_000;   // ~RTL-SDR's 2.4 MSPS default
+// Both meters are ALWAYS shown: flowing (blue) when data moves, silent (red) when
+// the feed is up but deaf, off (dim) when the feed isn't running / not installed.
+function _meterOff(meter, fill, label) {
+  meter.hidden = false; meter.className = 'feed-meter off';
+  if (fill) fill.style.width = '0%'; if (label) label.textContent = 'off';
+}
+async function pollFeedFlow() {
+  if (document.visibilityState !== 'visible') return;
+  const meter = document.getElementById('fm-aprs'); if (!meter) return;
+  const fill = document.getElementById('fm-aprs-fill'), label = document.getElementById('fm-aprs-rate');
+  if (!(await isUnitActive('aprs-sdr-feed'))) { _meterOff(meter, fill, label); return; }
+  try {
+    const d = await (await fetch('/api/health/feed-flow', { cache:'no-store' })).json();
+    if (d.supported === false || d.ok === false) { _meterOff(meter, fill, label); return; }
+    meter.hidden = false;
+    const pct = Math.max(0, Math.min(100, (d.pps / (d.nominal_pps || 50)) * 100));
+    if (fill) fill.style.width = pct.toFixed(0) + '%';
+    meter.className = 'feed-meter ' + (d.flowing ? 'flowing' : 'silent');
+    if (label) label.textContent = Math.round(d.pps || 0) + ' pkt/s';
+  } catch (_) { /* transient — keep last state */ }
+}
+async function pollAdsbFlow() {
+  if (document.visibilityState !== 'visible') return;
+  const meter = document.getElementById('fm-adsb'); if (!meter) return;
+  const fill = document.getElementById('fm-adsb-fill'), label = document.getElementById('fm-adsb-rate');
+  try {
+    const d = await (await fetch('/api/adsb/health', { cache:'no-store' })).json();
+    if (d.ok === false || d.flowing === undefined) { _meterOff(meter, fill, label); return; }   // not installed
+    meter.hidden = false;
+    const pct = Math.max(0, Math.min(100, (d.samples_per_sec / ADSB_NOMINAL_SAMPLES_PER_SEC) * 100));
+    if (fill) fill.style.width = pct.toFixed(0) + '%';
+    meter.className = 'feed-meter ' + (d.flowing ? 'flowing' : 'silent');
+    if (label) label.textContent = Math.round(d.messages_per_min || 0) + ' msg/min';
+  } catch (_) { _meterOff(meter, fill, label); }
+}
+
 loadHomeCoords();
 fetchAPRS();          setInterval(fetchAPRS, 10000);
 refreshAdsb();        setInterval(refreshAdsb, 5000);
 refreshAdsbRecent();  setInterval(refreshAdsbRecent, 60000);
 fetchSats();          setInterval(fetchSats, 60000);
+loadHazards();
+pollFeedFlow();       setInterval(pollFeedFlow, FEED_FLOW_MS);
+pollAdsbFlow();       setInterval(pollAdsbFlow, FEED_FLOW_MS);
+// Gate not-installed services, then one fast burst + a gentle round-robin (≈16s cycle).
+loadInstalled().then(() => {
+  pingAll();
+  const activeN = SERVICES.filter(s => !HIDDEN_SVCS.has(s.id)).length || 1;
+  setInterval(pingNext, Math.round(16000 / activeN));
+});
 </script>
