@@ -595,8 +595,14 @@ async function syncTle() {
       // Pull the refreshed TLE lines into the roster + recompute pass predictions.
       const meta = await (await fetch('/api/satellites')).json();
       ROSTER = meta.satellites; STATION = meta.station;
-  renderFilterBar();
+      renderFilterBar();
+      // A first sync on an offline box flips the roster from bare (no labels →
+      // every bird telemetry-orange) to fully labelled. Mirror boot()'s post-roster
+      // sequence so the selection recolours + re-plots in place — without this the
+      // already-plotted birds keep their bare orange until a manual reload.
+      recolorSelection();
       await refreshPasses();
+      await restoreSelection();
     } else {
       flash(j.offline ? '⚠ no internet — try later' : '⚠ sync failed — try later');
     }
