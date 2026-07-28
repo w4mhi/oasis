@@ -1,5 +1,5 @@
 @echo off
-:: OASIS - Off-grid Amateur Station Information Suite — Windows launcher
+:: OASIS - Off-grid Amateur Station Integrated Suite — Windows launcher
 :: Double-click this file from the USB drive to start.
 
 setlocal enabledelayedexpansion

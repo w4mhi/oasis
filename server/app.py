@@ -2,7 +2,7 @@
 """
 app.py
 ------
-Off-grid Flask web server for OASIS - Off-grid Amateur Station Information Suite.
+Off-grid Flask web server for OASIS - Off-grid Amateur Station Integrated Suite.
 
 Serves the main index.html and all suite static files at the root, and wires
 up the route blueprints:

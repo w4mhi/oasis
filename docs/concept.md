@@ -2,7 +2,7 @@
 
 # OASIS — Concept
 
-### Off-grid Amateur Station Information Suite
+### Off-grid Amateur Station Integrated Suite
 
 > *Comms when the network's gone dark.*
 

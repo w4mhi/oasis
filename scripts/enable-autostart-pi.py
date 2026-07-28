@@ -200,7 +200,7 @@ def install_service(user):
 
     unit = (
         "[Unit]\n"
-        "Description=OASIS — Off-grid Amateur Station Information Suite\n"
+        "Description=OASIS — Off-grid Amateur Station Integrated Suite\n"
         "After=network.target\n"
         "Wants=network.target\n"
         "\n"
@@ -365,7 +365,7 @@ def install_desktop_icon(user, home):
         "Version=1.0\n"
         "Type=Application\n"
         "Name=OASIS\n"
-        "Comment=Off-grid Amateur Station Information Suite\n"
+        "Comment=Off-grid Amateur Station Integrated Suite\n"
         f"Exec=xdg-open http://localhost:{PORT}\n"
         "Icon=web-browser\n"
         "Terminal=false\n"
