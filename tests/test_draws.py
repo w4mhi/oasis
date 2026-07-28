@@ -58,6 +58,30 @@ class DeviceProbeTest(unittest.TestCase):
         self.assertEqual(seen["path"], "/dev/pps0")
 
 
+class SoundCardPresentTest(unittest.TestCase):
+    def _cards_file(self, body):
+        fd, path = tempfile.mkstemp(suffix=".cards")
+        with os.fdopen(fd, "w") as fh:
+            fh.write(body)
+        self.addCleanup(os.unlink, path)
+        return path
+
+    def test_true_when_card_listed(self):
+        path = self._cards_file(" 3 [draws          ]: simple-card - draws\n")
+        self.assertTrue(draws.sound_card_present("draws", path))
+
+    def test_false_when_absent(self):
+        path = self._cards_file(" 0 [vc4hdmi0       ]: vc4-hdmi - vc4-hdmi-0\n")
+        self.assertFalse(draws.sound_card_present("draws", path))
+
+    def test_false_when_cards_file_missing(self):
+        self.assertFalse(draws.sound_card_present("draws", "/no/such/cards"))
+
+    def test_match_is_case_insensitive(self):
+        path = self._cards_file(" 3 [DRAWS          ]: simple-card - DRAWS\n")
+        self.assertTrue(draws.sound_card_present("draws", path))
+
+
 class EnsureOverlayTest(unittest.TestCase):
     def test_writes_line_and_reports_changed_then_idempotent(self):
         with tempfile.TemporaryDirectory() as d:

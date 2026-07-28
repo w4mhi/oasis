@@ -39,6 +39,18 @@ def pps_present(dev="/dev/pps0"):
     return os.path.exists(dev)
 
 
+def sound_card_present(match="draws", cards_path="/proc/asound/cards"):
+    """True if the DRAWS ALSA card has enumerated. The plain `dtoverlay=draws`
+    registers a simple-card named `draws` (n7nix's `alsaname=udrc` rename is not
+    used here), so the default match is the card name `draws`. Only appears after
+    the overlay is loaded (i.e. after a reboot)."""
+    try:
+        with open(cards_path) as fh:
+            return match.lower() in fh.read().lower()
+    except OSError:
+        return False
+
+
 def config_path():
     return next((p for p in CONFIG_CANDIDATES if os.path.exists(p)), None)
 
