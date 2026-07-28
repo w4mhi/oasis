@@ -52,6 +52,7 @@ html, body { height: 100%; margin: 0; }
    currently above the horizon (in LOS), each in that satellite's track colour. */
 #coverage-badge { display: none; gap: 6px; align-items: center; }
 #coverage-badge.on { display: inline-flex; flex-wrap: wrap; }
+#coverage-badge:not(.on) + .cov-sep { display: none; }   /* no pills → no dangling separator before the clock */
 .cov-pill { padding: 2px 10px; border-radius: 12px; white-space: nowrap;
   border: 1px solid currentColor; background: rgba(255,255,255,.06);
   font: 700 var(--fs-small)/1.5 var(--mono); letter-spacing: .05em; }
@@ -145,7 +146,29 @@ html, body { height: 100%; margin: 0; }
 .fchip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim);
   background: none; border: 1px solid var(--border); border-radius: 4px; padding: 1px 7px; cursor: pointer; }
 .fchip .n { color: var(--text); font-weight: 700; margin-left: .3rem; }
-#tag-filters .fchip { border-color: rgba(255,255,255,.5); }   /* whiter border for the tag-count pills */
+/* Filters dropdown — a compact button (with an active-count badge, so a hidden
+   filter is never invisible) that reveals grouped, full-row-tappable checkboxes. */
+.f-dd { position: relative; }
+.f-dd-btn { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-dim); background: none; border: 1px solid var(--border); border-radius: 4px;
+  padding: 2px 9px; cursor: pointer; white-space: nowrap; }
+.f-dd-btn.on { color: var(--panel); background: var(--accent); border-color: var(--accent); }
+.f-dd-caret { font-size: .8em; margin-left: .15rem; }
+.f-dd-panel { position: absolute; top: calc(100% + 5px); left: 0; z-index: 50;
+  min-width: 200px; max-height: 66vh; overflow-y: auto; padding: .4rem;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 8px 22px rgba(0,0,0,.55); }
+.f-dd-sect { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-dim); opacity: .7; margin: .5rem .2rem .15rem; }
+.f-dd-sect:first-child { margin-top: 0; }
+.f-row { display: flex; align-items: center; gap: .55rem; padding: 6px 6px; border-radius: 4px;
+  cursor: pointer; font-size: var(--fs-small); color: var(--text); white-space: nowrap; }
+.f-row:hover { background: rgba(255,255,255,.06); }
+.f-row input { accent-color: var(--accent); width: 16px; height: 16px; flex: none; margin: 0; }
+.f-row .n { margin-left: auto; padding-left: 1.2rem; color: var(--text-dim); font-weight: 700; }
+.f-dd-clear { display: block; width: 100%; margin-top: .45rem; padding: 5px; text-align: center;
+  font-size: var(--fs-micro); color: var(--accent); background: none;
+  border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
 .fchip.active { color: var(--panel); background: var(--accent); border-color: var(--accent); }
 .fchip.active .n { color: var(--panel); opacity: 1; }         /* dark count on the amber active pill */
 .sat-row .dl-status .dv { color: var(--text); }               /* device value white; "device:" stays dim (index-consistent) */
@@ -174,7 +197,7 @@ html, body { height: 100%; margin: 0; }
 .tbtn { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em; padding: 2px 9px;
         border: 1px solid var(--border); border-radius: 999px; background: var(--panel-2);
         color: var(--text-dim); cursor: pointer; font-weight: 700; }
-.tbtn:disabled { opacity: .4; cursor: default; }
+.tbtn:disabled { opacity: .6; cursor: default; border-color: var(--text-dim); }
 .tbtn.active { opacity: 1; }   /* running state stays vivid even while non-interactive */
 #t-rec.active  { background: var(--red);   border-color: var(--red);   color: #fff;    animation: recpulse 1.2s infinite; }
 #t-play.active { background: var(--green); border-color: var(--green); color: #0d1117; animation: recpulse 1.2s infinite; }
@@ -258,8 +281,6 @@ html, body { height: 100%; margin: 0; }
       <button class="tbtn" id="t-stop" onclick="transport('stop')">⏹ Stop</button>
     </span>
     <span id="listen-status"><span class="rec-dot"></span><span id="listen-text"></span></span>
-    <span class="track-sep">|</span>
-    <span id="coverage-badge"></span>
     <span style="flex:1"></span>
     <span id="sat-mute" class="sat-mute" title="Mute / unmute pass-alert chimes" onclick="toggleSatMute()"></span>
     <span class="track-sep">|</span>
@@ -273,10 +294,15 @@ html, body { height: 100%; margin: 0; }
       <span class="cr-lbl">Lon</span><span id="crLon" class="cr-val">—</span>
     </div>
     <span class="track-sep">|</span>
-    <div class="f-group" id="tag-filters"></div>
-    <div class="f-group" id="band-filters"></div>
-    <div class="f-group" id="orbit-filters"></div>
+    <div class="f-dd" id="filter-dd">
+      <button class="f-dd-btn" id="filter-dd-btn" onclick="toggleFilterMenu(event)"
+              aria-expanded="false">Filters<span id="filter-dd-badge"></span><span class="f-dd-caret">▾</span></button>
+      <div class="f-dd-panel" id="filter-dd-panel" hidden></div>
+    </div>
+    <span class="track-sep">|</span>
     <span style="flex:1"></span>
+    <span id="coverage-badge"></span>
+    <span class="track-sep cov-sep">|</span>
     <span id="clock">—</span>
   </div>
 </div>
@@ -428,8 +454,9 @@ function clearFilters() {
   const box = document.getElementById('sat-search'); if (box) box.value = '';
   renderFilterBar(); renderRoster();
 }
-// Build the tag + band chips from what's actually present in the roster, each
-// with a count over the full roster (stable, so "WEATHER 6" always reads true).
+// Build the Filters dropdown from what's actually in the roster: grouped rows
+// (Capability / Band / Orbit), each with a stable count, plus an active-count
+// badge on the collapsed button so a hidden filter is never invisible.
 function renderFilterBar() {
   const box = document.getElementById('sat-search');
   if (box && box.value !== _filters.q) box.value = _filters.q;
@@ -440,23 +467,44 @@ function renderFilterBar() {
     const oc = orbitClass(s);
     if (oc) orbitCounts[oc] = (orbitCounts[oc] || 0) + 1;
   });
-  const chip = (val, count, on, fn) =>
-    `<button class="fchip ${on ? 'active' : ''}" onclick="${fn}('${val}')">${val}<span class="n">${count}</span></button>`;
-  const tags = TAG_ORDER.filter(t => tagCounts[t]);
-  const bands = BAND_ORDER.filter(b => bandCounts[b]);
-  const orbits = ORBIT_ORDER.filter(o => orbitCounts[o]);
-  const clear = filtersActive() ? '<button class="f-clear" onclick="clearFilters()">clear ✕</button>' : '';
-  document.getElementById('tag-filters').innerHTML = tags.length
-    ? tags.map(t => chip(t, tagCounts[t], _filters.tags.has(t), 'toggleTagFilter')).join('') + clear
-    : '';
-  document.getElementById('band-filters').innerHTML = bands.length
-    ? bands.map(b => chip(b, bandCounts[b], _filters.bands.has(b), 'toggleBandFilter')).join('')
-    : '';
-  document.getElementById('orbit-filters').innerHTML = orbits.length
-    ? orbits.map(o => chip(o, orbitCounts[o], _filters.orbit.has(o), 'toggleOrbitFilter')).join('')
-    : '';
+  const row = (val, count, on, fn) =>
+    `<label class="f-row"><input type="checkbox" ${on ? 'checked' : ''} onchange="${fn}('${val}')">`
+    + `<span>${val}</span><span class="n">${count}</span></label>`;
+  const section = (title, order, counts, active, fn) => {
+    const present = order.filter(v => counts[v]);
+    return present.length
+      ? `<div class="f-dd-sect">${title}</div>`
+        + present.map(v => row(v, counts[v], active.has(v), fn)).join('')
+      : '';
+  };
+  let html = section('Capability', TAG_ORDER, tagCounts, _filters.tags, 'toggleTagFilter')
+           + section('Band', BAND_ORDER, bandCounts, _filters.bands, 'toggleBandFilter')
+           + section('Orbit', ORBIT_ORDER, orbitCounts, _filters.orbit, 'toggleOrbitFilter');
+  if (!html) html = '<div class="f-dd-sect">No filters available</div>';
+  else if (filtersActive()) html += '<button class="f-dd-clear" onclick="clearFilters()">clear all ✕</button>';
+  document.getElementById('filter-dd-panel').innerHTML = html;
+  const n = _filters.tags.size + _filters.bands.size + _filters.orbit.size;   // active filters
+  document.getElementById('filter-dd-badge').textContent = n ? ' · ' + n : '';
+  document.getElementById('filter-dd-btn').classList.toggle('on', n > 0);
   applyViewButtons();
 }
+// Open/close the Filters dropdown; a document-level handler closes it on outside click.
+function toggleFilterMenu(e) {
+  if (e) e.stopPropagation();
+  const p = document.getElementById('filter-dd-panel');
+  const willOpen = p.hasAttribute('hidden');
+  p.toggleAttribute('hidden', !willOpen);
+  document.getElementById('filter-dd-btn').setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+}
+document.addEventListener('click', (e) => {
+  if (!document.contains(e.target)) return;          // target removed by a re-render — ignore
+  const dd = document.getElementById('filter-dd');
+  const p = document.getElementById('filter-dd-panel');
+  if (dd && p && !p.hasAttribute('hidden') && !dd.contains(e.target)) {
+    p.setAttribute('hidden', '');
+    document.getElementById('filter-dd-btn').setAttribute('aria-expanded', 'false');
+  }
+});
 // norad -> { color, pass, track, l1, l2 }   for each checked/plotted satellite.
 const PLOTTED = {};
 // Selection colour = an ADDITIVE RGB BLEND of the bird's real capabilities, so
