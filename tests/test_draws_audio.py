@@ -69,5 +69,31 @@ class ExitCodeTest(unittest.TestCase):
         self.assertEqual(draws_audio.decide_exit_code(False, True), 0)
 
 
+_cli_spec = _ilu.spec_from_file_location(
+    "install_draws_audio",
+    os.path.join(os.path.dirname(_HERE), "features", "draws-audio", "install-draws-audio.py"),
+)
+
+
+class ParserTest(unittest.TestCase):
+    def _load(self):
+        mod = _ilu.module_from_spec(_cli_spec)
+        _cli_spec.loader.exec_module(mod)
+        return mod
+
+    def test_defaults(self):
+        args = self._load().build_parser().parse_args([])
+        self.assertFalse(args.dry_run)
+        self.assertFalse(args.check)
+        self.assertFalse(args.config_only)
+        self.assertFalse(args.mixer_only)
+
+    def test_flags(self):
+        args = self._load().build_parser().parse_args(
+            ["--dry-run", "--check", "--config-only", "--mixer-only"])
+        self.assertTrue(args.dry_run and args.check
+                        and args.config_only and args.mixer_only)
+
+
 if __name__ == "__main__":
     unittest.main()
