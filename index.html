@@ -1249,39 +1249,8 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 
   <div class="nav-col">
 
-    <div class="nav-sec oasis">
-      <div class="nav-sec-title">OASIS</div>
-      <ul class="nav-links">
-      <li><a href="static/oasis-handbook/index.html">OASIS HANDBOOK <span class="nav-meta">reference</span></a></li>
-      <li><a href="server/system/setup.html" class="ext">OASIS Setup <span class="nav-meta">configure</span></a></li>
-      <li><a href="server/system/diagnostic.html" class="ext">OASIS Diagnostic <span class="nav-meta">health</span></a></li>
-      </ul>
-    </div>
-
     <div class="nav-sec">
-      <div class="nav-sec-title">MONITOR</div>
-      <ul class="nav-links">
-        <li><a id="nlink-aprs" href="server/map/map.html" target="_blank" rel="noopener">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
-        <li><a id="nlink-sat" href="server/satellites/" target="_blank" rel="noopener">Satellites World Map<span class="nav-meta">passes · tracking</span></a></li>
-      </ul>
-    </div>
-
-    <div class="nav-sec" id="navsec-forms">
-    <div class="nav-sec-title">ICS Forms</div>
-      <ul class="nav-links">
-        <li><a href="static/ics-205/ics-205.html">ICS-205 <span class="nav-meta">radio plan</span></a></li>
-        <li><a href="static/ics-213/ics-213.html">ICS-213 <span class="nav-meta">general message</span></a></li>
-        <li><a href="static/ics-214/ics-214.html">ICS-214 <span class="nav-meta">activity log</span></a></li>
-        <li><a href="static/ics-309/ics-309.html">ICS-309 <span class="nav-meta">comms log</span></a></li>
-      </ul>
-    </div>
-
-  </div>
-
-  <div class="nav-col">
-
-    <div class="nav-sec">
-      <div class="nav-sec-title">Winlink &amp; APRS</div>
+      <div class="nav-sec-title">Get on the air</div>
       <ul class="nav-links">
         <li><a id="nlink-winlink" href="server/winlink/mail.html">Winlink Mail <span class="nav-svc-badge" id="nsvc-winlink">—</span></a></li>
         <li><a id="nlink-wl-radio" href="server/winlink/radio-settings.html">Radio Settings <span class="nav-meta">setup</span></a></li>
@@ -1290,16 +1259,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     </div>
 
     <div class="nav-sec">
-      <div class="nav-sec-title">Tools</div>
+      <div class="nav-sec-title">See around you</div>
       <ul class="nav-links">
-        <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
-        <li><a href="tools/antenna-calc.html">Antenna Calculator <span class="nav-meta">calculator</span></a></li>
-        <li><a href="tools/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calculator</span></a></li>
-        <li><a href="tools/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
-        <li><a href="tools/solar.html">Solar / Propagation <span class="nav-meta">band conditions</span></a></li>
-        <li><a href="tools/grayline.html">Gray Line <span class="nav-meta">HF propagation</span></a></li>
-        <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
-        <li><a href="server/system/browser.html">File Browser <span class="nav-meta">user files</span></a></li>
+        <li><a id="nlink-aprs" href="server/map/map.html" target="_blank" rel="noopener">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
+        <li><a id="nlink-sat" href="server/satellites/" target="_blank" rel="noopener">Satellites World Map<span class="nav-meta">passes · tracking</span></a></li>
       </ul>
     </div>
 
@@ -1308,25 +1271,56 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   <div class="nav-col">
 
     <div class="nav-sec">
-      <div class="nav-sec-title">Radio Ref</div>
+      <div class="nav-sec-title">Know your stuff</div>
       <ul class="nav-links">
+        <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
+        <li><a href="tools/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
         <li><a href="static/repeater-guide/index.html">Repeater Guide <span class="nav-meta">radio repeaters how-to</span></a></li>
         <li><a href="static/radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
         <li><a id="nlink-rb" href="static/repeaterbook/repeaterbook.html" class="nav-link-svc">Repeater Book <span class="nav-svc-badge" id="nsvc-rb">—</span></a></li>
         <li><a id="nlink-manuals" href="server/system/browser.html?path=static/radio-manuals" class="nav-link-svc">Radio Manuals <span class="nav-svc-badge" id="nsvc-manuals">—</span></a></li>
         <li><a id="nlink-wiki" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-wiki">—</span></a></li>
-      </ul>
-    </div>
-
-    <div class="nav-sec">
-      <div class="nav-sec-title">Operation</div>
-      <ul class="nav-links">
-        <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>        
         <li><a href="static/quick-ref/phonetic.html">NATO Phonetic Alphabet <span class="nav-meta">NATO reference</span></a></li>
         <li><a href="static/quick-ref/qcodes.html">Q-Codes <span class="nav-meta">q-codes</span></a></li>
         <li><a href="static/quick-ref/prowords.html">Procedure Words <span class="nav-meta">procedure words</span></a></li>
         <li><a href="static/quick-ref/rst.html">RST Signal Reporting <span class="nav-meta">signal reporting</span></a></li>
         <li><a href="static/quick-ref/itu-prefixes.html">ITU Country Prefixes <span class="nav-meta">call sign series</span></a></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div class="nav-col">
+
+    <div class="nav-sec">
+      <div class="nav-sec-title">Run the numbers</div>
+      <ul class="nav-links">
+        <li><a href="tools/antenna-calc.html">Antenna Calculator <span class="nav-meta">calculator</span></a></li>
+        <li><a href="tools/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calculator</span></a></li>
+        <li><a href="tools/solar.html">Solar / Propagation <span class="nav-meta">band conditions</span></a></li>
+        <li><a href="tools/grayline.html">Gray Line <span class="nav-meta">HF propagation</span></a></li>
+        <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
+        <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>
+      </ul>
+    </div>
+
+    <details class="nav-sec" id="navsec-forms">
+      <summary class="nav-sec-title">Ready for the worst <span class="nav-meta">emergency · ICS</span></summary>
+      <ul class="nav-links">
+        <li><a href="static/ics-205/ics-205.html">ICS-205 <span class="nav-meta">radio plan</span></a></li>
+        <li><a href="static/ics-213/ics-213.html">ICS-213 <span class="nav-meta">general message</span></a></li>
+        <li><a href="static/ics-214/ics-214.html">ICS-214 <span class="nav-meta">activity log</span></a></li>
+        <li><a href="static/ics-309/ics-309.html">ICS-309 <span class="nav-meta">comms log</span></a></li>
+      </ul>
+    </details>
+
+    <div class="nav-sec oasis">
+      <div class="nav-sec-title">OASIS</div>
+      <ul class="nav-links">
+        <li><a href="static/oasis-handbook/index.html">OASIS HANDBOOK <span class="nav-meta">reference</span></a></li>
+        <li><a href="server/system/setup.html" class="ext">OASIS Setup <span class="nav-meta">configure</span></a></li>
+        <li><a href="server/system/diagnostic.html" class="ext">OASIS Diagnostic <span class="nav-meta">health</span></a></li>
+        <li><a href="server/system/browser.html">File Browser <span class="nav-meta">user files</span></a></li>
       </ul>
     </div>
 
