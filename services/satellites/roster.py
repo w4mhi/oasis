@@ -5,21 +5,48 @@ TLEs, so they live in the records build-roster.py writes."""
 import datetime
 import json
 import os
+import tempfile
 
 
 def _now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
+def _empty():
+    return {"updated": _now(), "source": None, "labels": {}, "satellites": []}
+
+
 def save(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
+    # Atomic write: json.dump straight to the target truncates it first, so a
+    # concurrent reader (gunicorn runs multiple threads; boot() fires several
+    # /select calls at once) can catch a half-written file, fail to parse it, and
+    # — via load()'s garbled path — persist an EMPTY roster over the real one.
+    # Write to a UNIQUE temp file (mkstemp — a per-PID name collides across
+    # threads and tears itself), fsync, then os.replace() so readers only ever see
+    # a complete roster, old or new, never a torn one. Last writer wins (a benign
+    # lost update on the `selected` flag); the roster itself is never truncated.
+    d = os.path.dirname(path)
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".satellites-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def load(path):
-    """Return the roster. When the file is missing or garbled, seed an empty
-    envelope (build-roster.py populates it on the first online run)."""
+    """Return the roster. Missing → seed an empty envelope (build-roster.py fills
+    it on the first online run). Present-but-garbled → return an empty view but
+    DO NOT overwrite: never clobber a roster that may be mid-write or recoverable
+    (with atomic save() a torn read is practically impossible; this is a guard)."""
     if os.path.exists(path):
         try:
             with open(path, encoding="utf-8") as fh:
@@ -28,8 +55,9 @@ def load(path):
                 return data
         except (ValueError, OSError):
             pass
-    data = {"updated": _now(), "source": None, "labels": {}, "satellites": []}
-    save(path, data)
+        return _empty()                     # garbled — read-only, leave the file alone
+    data = _empty()
+    save(path, data)                        # genuinely missing — seed it
     return data
 
 
