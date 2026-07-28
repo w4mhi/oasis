@@ -24,14 +24,30 @@ class RosterTest(unittest.TestCase):
             iss = json.load(open(p))["satellites"][0]
             self.assertTrue(iss["selected"])
 
-    def test_load_recovers_from_non_dict_json(self):
+    def test_load_recovers_in_memory_without_clobbering_garbled_file(self):
+        # A garbled read is usually a TRANSIENT mid-write (atomic save() makes even
+        # that impossible now). load() must recover IN-MEMORY, but must NEVER
+        # overwrite the file — doing so let a concurrent /select persist an empty
+        # roster over a full one and wipe the whole list.
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "satellites.json")
             with open(p, "w") as fh:
                 json.dump([1, 2, 3], fh)          # valid JSON, wrong shape
             data = roster.load(p)
-            self.assertEqual(data["satellites"], [])
-            self.assertIsInstance(json.load(open(p)), dict)   # reseeded as a dict
+            self.assertEqual(data["satellites"], [])          # recovered in-memory
+            with open(p) as fh:
+                self.assertEqual(json.load(fh), [1, 2, 3])    # file left INTACT, not clobbered
+
+    def test_save_is_atomic_no_temp_left_behind(self):
+        # save() writes a unique temp then os.replace()s it in; on success the dir
+        # holds exactly satellites.json and no leftover .satellites-*.tmp files.
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "satellites.json")
+            roster.save(p, {"updated": "x", "source": "t", "labels": {},
+                            "satellites": [{"norad": 25544, "selected": False}]})
+            self.assertEqual(os.listdir(d), ["satellites.json"])
+            with open(p) as fh:
+                self.assertEqual(json.load(fh)["satellites"][0]["norad"], 25544)
 
     def test_legacy_downlinks_flattens_transmitters(self):
         sat = {"transmitters": [

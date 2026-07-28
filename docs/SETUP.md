@@ -1315,8 +1315,13 @@ lists the roster, the next passes, and a live sky/footprint view.
      frequencies + modes.
    - **CelesTrak** — the TLEs (orbital elements) the propagator needs.
 
-   The list and TLEs go stale in a few days — refresh with the **age pill** on
-   the Satellites page, or re-run the script when you next have internet.
+   `create-oasis-offline` runs `build-roster` at **bundle-build time**, so a
+   fresh Pi ships with a populated roster — pass prediction works out of the box,
+   no first-run internet. The list and TLEs go stale in a few days — refresh with
+   the **age pill** on the Satellites page, or re-run the script when you next
+   have internet. (If a box ever boots with an *empty* roster, the page falls
+   back to the bare TLE cache so passes and tracks still work — you just don't see
+   the SatNOGS labels/downlinks until the first refresh.)
 2. **Pass prediction (offline, runtime).** `predict.py` uses **Skyfield** over
    the SGP4 propagator with a *builtin* timescale, so it never touches the
    network. `/api/satellites/passes` and `/api/satellites/track` return rise/set
@@ -1343,6 +1348,11 @@ still chime without it.
 
 ### Views & alerts
 
+- **Filters** — the **Filters** menu narrows the roster by **capability**
+  (Weather · Voice · FM · APRS · SSTV · Linear · SSB · Data · Crewed), **band**
+  (VHF · UHF · L-band), and **orbit class** (LEO · MEO · GEO · HEO). Orbit class
+  is derived from the TLE, so it works even on a bare roster before the SatNOGS
+  metadata arrives; an active-filter count shows on the collapsed button.
 - **Monitored·1h / All·1h** — the birds you've armed (🔔) versus *every* bird
   passing in the next hour, each sorted by next-pass time.
 - **Pass alerts** — a Morse-"V" chime at T-10 minutes; with the voice stack, a
@@ -1674,10 +1684,10 @@ python3 scripts/enable-autostart-pi.py --resolution 1920x1200   # 10″ wide pan
 
 `--resolution` implies `--with-browser` and sets the kiosk URL to
 `http://localhost:8083/oasis-dashboard/dashboard.html?res=<WxH>`, enables touch
-events, and sizes the window to match. The page applies the resolution as a
-`[data-res]` attribute and the layout uses `oasis-dashboard/kiosk.css` for large
-tap targets and a condensed status strip. (The old `--7inch` flag still works as
-an alias for `--resolution 800x480`.)
+events, and sizes the window to match. The page persists the resolution to
+`localStorage.oasis_layout` (so ⌂ HOME across the suite routes back to the
+dashboard); the layout is fully fluid, scaling with viewport height. (The old
+`--7inch` flag still works as an alias for `--resolution 800x480`.)
 
 ---
 

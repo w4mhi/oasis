@@ -51,7 +51,7 @@ Each feature links to its full setup section. New here? Start with **[Quick star
 
 - **📡 APRS** *(Pi)* — **GrayWolf** TNC / iGate / digipeater with a live station map (track history, auto-fly, sonar animations), APRS Stats API, and tactical messaging. Dashboard shows live station table with callsign, last-heard time, speed, altitude, and comment. → [Setup](docs/SETUP.md#graywolf-aprs)
 - **✈️ ADS-B aircraft** *(Pi)* — decode 1090 MHz aircraft locally with `dump1090-fa` and plot them live on the *same* offline map as APRS: altitude-coloured icons, airline decode from the flight callsign, and a 24 h history drawer. Emergency-squawk (7500 / 7600 / 7700) and station-proximity alerts. Shares the RTL-SDR dongle, so starting it stops the APRS feed / OpenWebRX. → [Setup](docs/SETUP.md#adsb-aircraft)
-- **🛰️ Satellite tracking** *(Pi)* — an offline pass predictor for the ham and weather birds. A roster aggregated from **SatNOGS** (downlink freqs + modes) and **CelesTrak** (TLEs); next-pass times, peak elevation, and a live sky/footprint view via **Skyfield/SGP4** — all computed on the Pi, no internet at runtime. **Monitored·1h / All·1h** views, Morse-"V" + spoken pass alerts, and **live SDR audio**: arm a downlink and Listen or Record it through the pass (FM/APRS · CW · SSB) straight in the browser. → [Setup](docs/SETUP.md#satellites)
+- **🛰️ Satellite tracking** *(Pi)* — an offline pass predictor for the ham and weather birds. A roster aggregated from **SatNOGS** (downlink freqs + modes) and **CelesTrak** (TLEs); next-pass times, peak elevation, and a live sky/footprint view via **Skyfield/SGP4** — all computed on the Pi, no internet at runtime. The roster is **baked into the offline bundle** at build time, so a fresh Pi predicts passes out of the box. **Monitored·1h / All·1h** views, a **Filters** menu (capability · band · **orbit class** LEO/MEO/GEO/HEO), Morse-"V" + spoken pass alerts, and **live SDR audio**: arm a downlink and Listen or Record it through the pass (FM/APRS · CW · SSB) straight in the browser. → [Setup](docs/SETUP.md#satellites)
 - **📧 Winlink** *(Pi)* — Pat client + web UI for store-and-forward email over radio. **Internet gateway (Telnet) works now. RF radio path is experimental** — see [Winlink setup](docs/SETUP.md#winlink-pat) for current status. → [Setup](docs/SETUP.md#winlink-pat)
 - **🛰️ GPS / GNSS & time sync** *(Pi)* — GPS-disciplined clock (`gpsd` + `chrony`) for accurate FT8/WSPR/SSTV timing with no internet, plus a live GPS card in the dashboard header: fix mode (3D/2D/no-fix), satellites, HDOP (colour-coded), altitude, lat/lon, and chrony clock-lock status. → [Setup](docs/SETUP.md#gps-time-sync-gpsd--chrony)
 - **🧮 Tools & calculators** — antenna, grid/distance/bearing, power & battery budget, gray-line propagation, band conditions, and a net check-in logger with CSV export. → [Setup](docs/SETUP.md#tools--calculators)
@@ -169,8 +169,9 @@ On a Pi, **`setup-oasis.py` is the front door** — it delegates to the individu
 
 | Menu item | Default | What it gives you |
 |---|:--:|---|
-| Kiosk mode (Chromium fullscreen) | ⬜ | Auto-start + fullscreen Chromium kiosk on the Pi's screen. |
-| Kiosk mode — 7″ touchscreen | ⬜ | 800×480 touchscreen layout in Chromium. |
+| Kiosk mode (Chromium fullscreen) | ⬜ | Auto-start + fullscreen Chromium kiosk of the desktop dashboard. |
+| Kiosk mode — OASIS Dashboard, 7″ (800×480) | ⬜ | Fullscreen kiosk of the touch-first OASIS Dashboard on a 7″ panel. |
+| Kiosk mode — OASIS Dashboard, 10″ wide (1920×1200) | ⬜ | The same OASIS Dashboard kiosk, tuned for a 10″ 1920×1200 panel. |
 | Desktop launcher icon | ⬜ | Clickable OASIS desktop shortcut. |
 
 **Audio** *(audio paths into GrayWolf)*
@@ -251,7 +252,7 @@ A single small **Flask** app serves the dashboard, the FCC lookup API, and the m
 | `install-cm4stack.py` | Configures the M5Stack CM4Stack panel display — **reboot required** | On a CM4Stack | Raspberry Pi (CM4) | ❌ offline |
 | `enable-autostart-pi.py` | Installs a **systemd service** so OASIS starts on boot; `--with-browser` adds a Chromium kiosk; `--desktop-icon` adds a clickable desktop shortcut; `--disable` removes all | After first successful manual run | Raspberry Pi OS (systemd) | ❌ offline |
 | `services/kiwix/download-wikipedia.py` | Downloads a Wikipedia ZIM snapshot for Kiwix | After `services/kiwix/install.py` | Pi (or prep + copy) | ✅ yes |
-| `create-oasis-offline.py` | Incrementally updates offline packages, then builds the USB bundle. `--rebuild` for a clean slate | Anytime; produces `oasis-offline/` | Any online host | ⚠️ Windows runtime only |
+| `create-oasis-offline.py` | Incrementally updates offline packages **and builds the satellite roster** (runs `build-roster` at build time, so a fresh Pi ships working pass prediction), then assembles the USB bundle. `--rebuild` for a clean slate | Anytime; produces `oasis-offline/` | Any online host | ✅ yes |
 | `enable-ap-fallback.py` | Installs a Wi-Fi AP fallback so the Pi hosts the `OASIS` hotspot when no known network is in range — includes the `oasis-netwatch` watcher service and `oasis-netctl` helper | On the Pi, for field / no-router deployments | Raspberry Pi OS (NetworkManager) | ❌ offline |
 | `enable-dra-rx-led.py` | Installs a daemon that pulses the DRA-Pi-Zero green RX LED (GPIO 16) on each decoded APRS packet — GrayWolf drives TX/PTT, this covers RX | After `enable-dra-pi.py`, reboot, and GrayWolf running | Raspberry Pi with DRA-Pi-Zero HAT | ❌ offline |
 | `doctor.py` | Headless health check — mirrors every check in the browser setup page; reports server, FCC index, maps, disk, and optional services; exits 0 if all core checks pass | Post-deploy or SSH verification | Any host running OASIS | ❌ offline |

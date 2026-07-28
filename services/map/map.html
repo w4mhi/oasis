@@ -1042,7 +1042,7 @@ function updateBasemapInfo(label, path) {
   if (path) html += '<span class="bm-path">' + _escHtml(path) + '</span>';
   el.innerHTML = html;
 }
-updateBasemapInfo(MAP_FILE, '/maps/' + MAP_FILE);
+updateBasemapInfo(MAP_FILE, '/maps/tiles/state/' + MAP_FILE);
 
 const pmtilesProtocol = new pmtiles.Protocol();
 maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile);
@@ -1054,6 +1054,22 @@ const map = new maplibregl.Map({
   zoom: (URL_ZOOM != null && Number.isFinite(URL_ZOOM)) ? URL_ZOOM : 9,
   attributionControl: false
 });
+
+// Surface otherwise-silent MapLibre failures (GL context / style / pmtiles source).
+// Without this, a failed load just leaves the map blank with "Connecting…" forever,
+// because fetchStations() (and the tile layers) only run inside map.on('load').
+map.on('error', (e) => {
+  const err = e && e.error;
+  console.error('[map] error:', err || e);
+  const msg = err && err.message ? err.message
+            : (e && e.sourceId ? 'source "' + e.sourceId + '" failed' : 'unknown');
+  if (typeof setStatus === 'function') setStatus('err', 'Map error: ' + msg);
+});
+setTimeout(() => {
+  if (!map.isStyleLoaded() && typeof setStatus === 'function') {
+    setStatus('err', 'Map style not loaded — likely WebGL/GPU (see console · chrome://gpu)');
+  }
+}, 10000);
 
 // Zoom readout — a small custom control stacked above the bottom-left
 // navigation buttons (added first so it sits at the top of that corner's stack).
@@ -1091,7 +1107,7 @@ function loadMapSource(sourceUrl, httpUrl, label, path) {
 // Swap to a bundled map in the suite's maps/ folder.
 function switchMap(filename) {
   MAP_FILE = filename;
-  loadMapSource(pmtilesSourceUrl(filename), pmtilesHttpUrl(filename), filename, '/maps/' + filename);
+  loadMapSource(pmtilesSourceUrl(filename), pmtilesHttpUrl(filename), filename, '/maps/tiles/state/' + filename);
 }
 
 // Load a .pmtiles from an arbitrary allowlisted path (Pi disk / USB / mount).

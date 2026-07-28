@@ -23,6 +23,12 @@ password right here in this terminal if it hasn't been granted yet — after
 that, the dashboard never needs a password again. Skipped entirely on
 non-Linux dev machines, where both scripts refuse to run anyway.
 
+It also makes sure WebSSH (the browser terminal, ttyd) is installed — the
+remote-admin lifeline a headless operator needs before they can do anything
+else, and what the Setup page's own permission instructions tell you to "run
+in". The install runs once (only when the unit is absent), then `webssh` is
+recorded in installed-services.json so the dashboard shows its card.
+
 Server output goes to oasis-server.log (repo root) since nothing stays
 attached to this process's stdout after it exits. Re-running restarts: any
 previous instance bound to the port is stopped first (same as before).
@@ -229,6 +235,49 @@ def ensure_permissions():
                         already_granted=os.path.exists(INSTALLER_PATH_UNIT))
 
 
+def ensure_webssh():
+    """Make sure the browser SSH terminal (ttyd) is installed — OASIS's
+    remote-admin lifeline. The Setup page's own permission-grant instructions
+    read "run in WebSSH: …", so a headless operator needs it before they can do
+    anything else remotely; on a freshly-imaged / factory-reset Pi it should be
+    there the first time the dashboard comes up, without a manual install step.
+
+    Idempotent: the ttyd install runs only when the unit file is absent (the
+    installer is offline-first — it uses the bundled binary when present). Either
+    way we then record `webssh` in installed-services.json (with its removal
+    record, so it stays uninstallable) — this also back-fills the ledger on a box
+    where the unit exists but was never recorded, which is exactly the
+    null-manifest state that makes the dashboard show every card. Linux/systemd
+    only and best-effort: a failure here must not stop the server from starting
+    (same tolerant style as ensure_permissions / free_port)."""
+    if sys.platform != "linux":
+        return
+    try:
+        from common import webssh as W
+        from common import installed_services
+    except Exception as e:                       # pragma: no cover - import guard
+        _warn(f"Could not load the WebSSH helpers ({e}) — skipping WebSSH bootstrap.")
+        return
+
+    if not os.path.exists(W.SERVICE_FILE):
+        script = os.path.join(REPO_ROOT, "services/webssh/install.py")
+        _info("Installing WebSSH (browser terminal) for remote admin "
+              "(may ask for your sudo password)...")
+        r = subprocess.run([sys.executable, script])
+        if r.returncode != 0:
+            _warn(f"WebSSH install did not complete (exit {r.returncode}) — "
+                  f"re-run it yourself later: python3 services/webssh/install.py")
+
+    if os.path.exists(W.SERVICE_FILE):
+        try:
+            installed_services.add_installed(
+                REPO_ROOT, {"webssh"}, {"webssh": W.removal_record(REPO_ROOT)})
+            _ok("WebSSH present and recorded in installed-services.json")
+        except Exception as e:
+            _warn(f"WebSSH is installed but could not be recorded in the ledger "
+                  f"({e}) — the dashboard card may stay hidden until Setup runs.")
+
+
 def main():
     print("\n  OASIS — start-oasis")
     _hr()
@@ -242,6 +291,7 @@ def main():
 
     ensure_scripts_executable(REPO_ROOT)
     ensure_permissions()
+    ensure_webssh()
 
     venv_python = ensure_venv()
     _ok(f"Using venv Python: {venv_python}")

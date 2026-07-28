@@ -14,6 +14,10 @@
   margin-bottom: 1rem;
 }
 .setup-row { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin: .4rem 0 .6rem; }
+/* Push the destructive controls (Reboot / Factory reset) to the right edge of the
+   panel, well clear of "Run selected" so they aren't fat-fingered. margin-left:auto
+   on the first one absorbs the free space; the row gap keeps the pair spaced. */
+.setup-btn.push-right { margin-left: auto; }
 .setup-btn {
   background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
   font-family: var(--mono); font-size: var(--fs-small); padding: .35rem .7rem;
@@ -126,7 +130,7 @@
     <button class="setup-btn" id="setupRefreshHw">Detect hardware</button>
     <button class="setup-btn" id="setupCheckPerm">Re-check permissions</button>
     <button class="setup-btn primary" id="setupRun">Run selected</button>
-    <button class="setup-btn danger" id="setupReboot">Reboot Pi</button>
+    <button class="setup-btn danger push-right" id="setupReboot">Reboot Pi</button>
     <button class="setup-btn danger" id="setupFactoryReset">Factory reset</button>
   </div>
   <div class="setup-reboot-note" id="setupRebootNote" style="display:none;"></div>
