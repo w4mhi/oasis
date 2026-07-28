@@ -55,6 +55,17 @@ def api_satellites():
         s["downlinks"] = [dict(d, **listen.mode_support(d.get("mode")))
                           for d in roster.legacy_downlinks(s)]
         sats.append(s)
+    # Fallback ONLY when the roster is empty: the offline bundle ships the TLE cache
+    # (so /api/satellites/passes predicts offline) but leaves satellites.json empty
+    # until the first ONLINE build-roster run (SatNOGS metadata + RTL-range filter).
+    # Without this the page is blank on a fresh box even though passes track 130+
+    # sats. Surface each cached sat as a bare record (name + NORAD from the TLE, no
+    # labels/downlinks). A POPULATED roster is authoritative and left untouched —
+    # never augmented with TLE sats build-roster deliberately filtered out.
+    if not sats:
+        for norad, (name, l1, l2) in sorted(by_norad.items(), key=lambda kv: kv[1][0]):
+            sats.append({"norad": norad, "name": name, "labels": [],
+                         "downlinks": [], "l1": l1, "l2": l2})
     return jsonify({
         "satellites": sats,
         "tle_age_days": tle.cache_age_days(config_paths.tle_cache_dir(SUITE_ROOT)),

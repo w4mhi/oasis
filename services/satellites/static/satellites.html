@@ -297,6 +297,7 @@ html, body { height: 100%; margin: 0; }
     <input class="f-search" id="sat-search" type="search" placeholder="Search name…" autocomplete="off"
            oninput="setSearchFilter(this.value)">
     <div class="f-group" id="band-filters"></div>
+    <div class="f-group" id="orbit-filters"></div>
   </div>
   <div id="roster"><p style="color:var(--text-dim);padding:.4rem">Loading roster…</p></div>
 </div>
@@ -326,20 +327,46 @@ let ROSTER = [], STATION = null, PASSES = {};
 // reload. Tag order follows the server's closed vocabulary.
 const TAG_ORDER = ['WEATHER', 'VOICE', 'FM', 'APRS', 'SSTV', 'LINEAR', 'SSB', 'DATA', 'CREWED'];
 const BAND_ORDER = ['VHF', 'UHF', 'L-band'];
+// Orbit class is a fourth, independent filter axis, derived from the TLE alone —
+// so it works fully offline and even for bare fallback sats (roster-less boxes).
+const ORBIT_ORDER = ['LEO', 'MEO', 'GEO', 'HEO'];
 let _filters = (() => {
   try {
     const f = JSON.parse(localStorage.getItem('oasis_sat_filters') || '{}');
-    return { q: f.q || '', tags: new Set(f.tags || []), bands: new Set(f.bands || []) };
-  } catch (e) { return { q: '', tags: new Set(), bands: new Set() }; }
+    return { q: f.q || '', tags: new Set(f.tags || []), bands: new Set(f.bands || []),
+             orbit: new Set(f.orbit || []) };
+  } catch (e) { return { q: '', tags: new Set(), bands: new Set(), orbit: new Set() }; }
 })();
 function saveFilters() {
   try {
     localStorage.setItem('oasis_sat_filters', JSON.stringify(
-      { q: _filters.q, tags: [..._filters.tags], bands: [..._filters.bands] }));
+      { q: _filters.q, tags: [..._filters.tags], bands: [..._filters.bands],
+        orbit: [..._filters.orbit] }));
   } catch (e) { /* private mode */ }
 }
 function bandOf(mhz) { return mhz < 300 ? 'VHF' : mhz < 1000 ? 'UHF' : 'L-band'; }
 function satBands(s) { return new Set((s.downlinks || []).map(d => bandOf(d.freq_mhz))); }
+// Orbit class straight from the two-line element: semi-major axis a from the mean
+// motion (Kepler), then LEO/MEO/GEO by mean altitude, HEO by eccentricity (Molniya-
+// type). Needs no SatNOGS metadata, so a bare fallback sat still gets a class.
+// Cached on the sat (._orbClass) — the TLE doesn't change between refreshes.
+function orbitClass(s) {
+  if (s._orbClass !== undefined) return s._orbClass;
+  let cls = null;
+  if (s.l1 && s.l2) {
+    try {
+      const rec = satellite.twoline2satrec(s.l1, s.l2);
+      const n = (rec.no || 0) / 60;                                    // rad/min → rad/s
+      if (n > 0) {
+        const a = Math.cbrt(398600.4418 / (n * n));                    // semi-major axis, km
+        const e = rec.ecco || 0, alt = a - 6378.137;                   // mean altitude, km
+        cls = e > 0.25 ? 'HEO' : alt < 2000 ? 'LEO' : alt < 30000 ? 'MEO' : 'GEO';
+      }
+    } catch (e) { /* unparseable TLE → unclassified */ }
+  }
+  s._orbClass = cls;
+  return cls;
+}
 // View mode is a separate axis from tag/band/search: 'all' (whole list),
 // 'monitored' (checked/plotted birds), 'soon' = "Mon · 1h" (monitored + a pass
 // within 1h, matching the kiosk dashboard window: in-progress OR rise ≤ 60 min),
@@ -376,9 +403,12 @@ function passesFilters(s) {
     const b = satBands(s);
     if (![..._filters.bands].some(x => b.has(x))) return false;
   }
+  if (_filters.orbit.size && !_filters.orbit.has(orbitClass(s))) return false;
   return true;
 }
-function filtersActive() { return !!_filters.q || _filters.tags.size > 0 || _filters.bands.size > 0; }
+function filtersActive() {
+  return !!_filters.q || _filters.tags.size > 0 || _filters.bands.size > 0 || _filters.orbit.size > 0;
+}
 function setSearchFilter(v) { _filters.q = v; saveFilters(); renderRoster(); }
 function toggleTagFilter(t) {
   _filters.tags.has(t) ? _filters.tags.delete(t) : _filters.tags.add(t);
@@ -388,8 +418,12 @@ function toggleBandFilter(b) {
   _filters.bands.has(b) ? _filters.bands.delete(b) : _filters.bands.add(b);
   saveFilters(); renderFilterBar(); renderRoster();
 }
+function toggleOrbitFilter(o) {
+  _filters.orbit.has(o) ? _filters.orbit.delete(o) : _filters.orbit.add(o);
+  saveFilters(); renderFilterBar(); renderRoster();
+}
 function clearFilters() {
-  _filters = { q: '', tags: new Set(), bands: new Set() };
+  _filters = { q: '', tags: new Set(), bands: new Set(), orbit: new Set() };
   saveFilters();
   const box = document.getElementById('sat-search'); if (box) box.value = '';
   renderFilterBar(); renderRoster();
@@ -399,21 +433,27 @@ function clearFilters() {
 function renderFilterBar() {
   const box = document.getElementById('sat-search');
   if (box && box.value !== _filters.q) box.value = _filters.q;
-  const tagCounts = {}, bandCounts = {};
+  const tagCounts = {}, bandCounts = {}, orbitCounts = {};
   (ROSTER || []).forEach(s => {
     new Set(s.labels || []).forEach(l => tagCounts[l] = (tagCounts[l] || 0) + 1);
     satBands(s).forEach(b => bandCounts[b] = (bandCounts[b] || 0) + 1);
+    const oc = orbitClass(s);
+    if (oc) orbitCounts[oc] = (orbitCounts[oc] || 0) + 1;
   });
   const chip = (val, count, on, fn) =>
     `<button class="fchip ${on ? 'active' : ''}" onclick="${fn}('${val}')">${val}<span class="n">${count}</span></button>`;
   const tags = TAG_ORDER.filter(t => tagCounts[t]);
   const bands = BAND_ORDER.filter(b => bandCounts[b]);
+  const orbits = ORBIT_ORDER.filter(o => orbitCounts[o]);
   const clear = filtersActive() ? '<button class="f-clear" onclick="clearFilters()">clear ✕</button>' : '';
   document.getElementById('tag-filters').innerHTML = tags.length
     ? tags.map(t => chip(t, tagCounts[t], _filters.tags.has(t), 'toggleTagFilter')).join('') + clear
     : '';
   document.getElementById('band-filters').innerHTML = bands.length
     ? bands.map(b => chip(b, bandCounts[b], _filters.bands.has(b), 'toggleBandFilter')).join('')
+    : '';
+  document.getElementById('orbit-filters').innerHTML = orbits.length
+    ? orbits.map(o => chip(o, orbitCounts[o], _filters.orbit.has(o), 'toggleOrbitFilter')).join('')
     : '';
   applyViewButtons();
 }

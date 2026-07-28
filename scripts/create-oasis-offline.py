@@ -807,6 +807,47 @@ def _fa_best_dump1090_record(suite, deb_arch):
     return best
 
 
+def phase_satellites_roster(bundle_root):
+    """Satellite roster: run build-roster.py into the bundle's configuration/.
+
+    The satellite map reads configuration/satellites.json — the curated roster with
+    per-sat labels + downlinks. It's a BUILD-TIME artifact: build-roster fetches
+    SatNOGS metadata + CelesTrak TLEs (needs internet HERE, on the build host) and
+    writes the roster + TLE cache the Pi then serves fully offline. Without this the
+    Pi ships an empty roster and the map degrades to bare, label-less TLE-only sats.
+
+    build-roster no-ops on ANY fetch failure (leaves existing data intact), so an
+    offline build is a warning — never a wipe. Writes straight into the bundle via
+    --config/--cache, so the maintainer's own repo configuration/ is left untouched.
+    """
+    _section("Phase — Satellite roster (SatNOGS + CelesTrak)")
+    cfg_dir     = os.path.join(bundle_root, "configuration")
+    roster_json = os.path.join(cfg_dir, "satellites.json")
+    tle_cache   = os.path.join(cfg_dir, "tle-cache")
+    _info("Source  : SatNOGS DB + CelesTrak TLE groups")
+    _info(f"Dest    : {os.path.relpath(roster_json)}  (+ tle-cache/)")
+    os.makedirs(tle_cache, exist_ok=True)
+
+    cmd = [sys.executable,
+           os.path.join(REPO_ROOT, "services", "satellites", "build-roster.py"),
+           "--config", roster_json, "--cache", tle_cache]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode == 0:
+        try:
+            with open(roster_json) as fh:
+                n = len(json.load(fh).get("satellites", []))
+        except Exception:
+            n = "?"
+        _ok(f"roster built — {n} satellites")
+    else:
+        tail = (result.stderr or result.stdout).strip().splitlines()
+        _warn("build-roster could not fetch (offline build?) — "
+              + (tail[-1] if tail else "existing roster left as-is"))
+        if not os.path.exists(roster_json):
+            _warn("no roster shipped — the Pi falls back to bare TLE-only sats "
+                  "until its first online refresh")
+
+
 def phase_adsb(bundle_root, update=False):
     """Phase 7a: Download dump1090-fa .deb per suite/arch into ADS-B bundle path."""
     feature = "dump1090-fa"
@@ -1873,6 +1914,7 @@ def cmd_build(skip_windows, rebuild=False, all_platforms=False, profile="full"):
         phase_pat(pkg_root, update=True)
         phase_direwolf(pkg_root, update=True)
         phase_satellites_voice(pkg_root, update=True)
+        phase_satellites_roster(out_dir)
         phase_adsb(pkg_root, update=True)
         phase_cm4stack(pkg_root, update=True)
         phase_wikipedia(os.path.join(out_dir, "zim"))
@@ -1944,6 +1986,7 @@ def cmd_update(target_dir, all_platforms=False):
     phase_pat(pkg_root, update=True)
     phase_direwolf(pkg_root, update=True)
     phase_satellites_voice(pkg_root, update=True)
+    phase_satellites_roster(target_dir)
     phase_adsb(pkg_root, update=True)
     phase_cm4stack(pkg_root, update=True)
     phase_wikipedia(os.path.join(target_dir, "zim"))
