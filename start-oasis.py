@@ -43,6 +43,7 @@ Usage:
 """
 
 import os
+import platform
 import socket
 import subprocess
 import sys
@@ -76,6 +77,41 @@ def _pkg_importable(venv_python, pkg):
                           capture_output=True).returncode == 0
 
 
+def _tail(text, n=6):
+    """Last n non-empty lines of captured output, for a diagnosable error."""
+    lines = [ln for ln in (text or "").splitlines() if ln.strip()]
+    return "\n".join(lines[-n:])
+
+
+def _platform_tag():
+    """Short 'os machine cpXY' tag for diagnostics. The usual cause of an offline
+    wheel-install failure is the bundle lacking a wheel for THIS platform/Python
+    (e.g. 32-bit ARM: 'linux armv7l cp311' — the bundle targets 64-bit Pi OS)."""
+    return (f"{sys.platform} {platform.machine()} "
+            f"cp{sys.version_info.major}{sys.version_info.minor}")
+
+
+def _wheel_failure_message(still_missing, stderr):
+    """Diagnostic shown when the offline wheel install fails: which packages,
+    the pip stderr tail, this box's platform tag, and the two ways out (rebuild
+    the bundle for this target, or install online)."""
+    lines = [
+        "Could not install required packages from server/wheels/: "
+        + ", ".join(still_missing),
+        f"  platform: {_platform_tag()}",
+    ]
+    tail = _tail(stderr)
+    if tail:
+        lines.append("  pip said:")
+        lines += [f"    {ln}" for ln in tail.splitlines()]
+    lines += [
+        "  The offline bundle may not include a wheel for this platform/Python.",
+        "  Fix: rebuild the bundle for this target, or (with internet) run:",
+        f"    .venv/bin/pip install {' '.join(still_missing)}",
+    ]
+    return "\n".join(lines)
+
+
 def ensure_venv():
     """Create .venv and install flask/gunicorn/psutil from bundled wheels if
     they aren't already present — mirrors scripts/start-server.sh's
@@ -93,11 +129,18 @@ def ensure_venv():
                if not _pkg_importable(venv_python, pkg)]
     if missing:
         _info(f"Installing missing packages from bundled wheels: {', '.join(missing)}")
-        subprocess.run(
-            [_venv_pip(), "install", "--quiet", "--no-index",
+        result = subprocess.run(
+            [_venv_pip(), "install", "--no-index",
              "--find-links", WHEELS_DIR, *missing],
-            capture_output=True,
+            capture_output=True, text=True,
         )
+        # Never swallow a failed install: verify the packages actually import now,
+        # and if not, surface pip's real error (with a platform hint) and stop —
+        # a silent failure here only resurfaces as a confusing crash at startup.
+        still_missing = [pkg for pkg in missing if not _pkg_importable(venv_python, pkg)]
+        if result.returncode != 0 or still_missing:
+            _fail(_wheel_failure_message(still_missing or missing, result.stderr or result.stdout))
+        _ok(f"Installed from bundled wheels: {', '.join(missing)}")
     return venv_python
 
 
