@@ -20,6 +20,10 @@
 <script src="/common/js/geo.js"></script>
 <script src="/common/js/format.js"></script>
 <script src="/common/js/adsb.js"></script>
+<script src="/common/js/service-registry.js"></script>
+<script src="/common/js/wifi-pill.js"></script>
+<link rel="stylesheet" href="/common/css/wifi-pill.css">
+
 <style>
   /* ── palette + font: copied verbatim from kiosk.css (dashboard_old) ───── */
   :root{
@@ -30,6 +34,9 @@
     --amber:#f4b64a; --blue:#5cb8ff; --purple:#b478ff;
     --r:.9rem;
     --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    /* Wi-Fi pill palette → shared /common/css/wifi-pill.css */
+    --wfp-blue:var(--blue); --wfp-green:var(--up); --wfp-amber:var(--warn);
+    --wfp-red:var(--down); --wfp-neutral:var(--dim); --wfp-fs:1.05rem;
   }
   *{ box-sizing:border-box; margin:0; padding:0; }
   html,body{ height:100%; }
@@ -94,6 +101,46 @@
   .svcpill .cnt-down{ color:var(--down); }
   .svcpill .cnt-ni{ color:var(--dim); }
   .svcpill .cnt-sep{ color:var(--faint); font-weight:400; }
+  /* Wi-Fi pill row (shares row 2 with the service counts). The pill itself is
+     styled by the shared /common/css/wifi-pill.css so it matches index.html. */
+  .pillrow{ display:flex; align-items:center; gap:.5rem; flex-wrap:nowrap; }
+  /* ── Wi-Fi sheet (ported from index.html; adapted to kiosk vars) ───────── */
+  .wifi-modal-backdrop{ position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,.6);
+                        display:flex; align-items:center; justify-content:center; padding:1rem; }
+  .wifi-modal{ width:min(460px,100%); max-height:82vh; overflow-y:auto; background:var(--panel);
+               border:1px solid var(--border); border-radius:10px; padding:1rem 1.1rem 1.15rem;
+               box-shadow:0 12px 40px rgba(0,0,0,.55); }
+  .wifi-modal-hdr{ display:flex; align-items:center; justify-content:space-between; margin-bottom:.5rem; }
+  .wifi-modal-title{ font-size:1.1rem; font-weight:700; color:var(--accent); letter-spacing:.1em; text-transform:uppercase; }
+  .wifi-x{ background:none; border:none; color:var(--dim); font-size:1.4rem; line-height:1; cursor:pointer; padding:0 .2rem; }
+  .wifi-x:hover{ color:var(--text); }
+  .wifi-modal-status{ font-size:.95rem; color:var(--dim); font-family:var(--mono); margin-bottom:.6rem; }
+  .wifi-modal-status .ok{ color:var(--accent); }
+  .wifi-modal-status .ap{ color:var(--blue); }
+  .wifi-list{ display:flex; flex-direction:column; gap:.3rem; }
+  .wifi-row{ display:flex; align-items:center; gap:.5rem; padding:.45rem .55rem; border:1px solid var(--border);
+             border-radius:7px; background:var(--panel-2); cursor:pointer; }
+  .wifi-row:hover,.wifi-row.current{ border-color:var(--accent); }
+  .wifi-row-name{ flex:1; font-weight:600; letter-spacing:.02em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wifi-row-meta{ font-size:.8rem; color:var(--dim); font-family:var(--mono); display:flex; align-items:center; gap:.45rem; }
+  .wifi-lock{ color:var(--dim); }
+  .wifi-cur-tag{ color:var(--accent); font-size:.8rem; }
+  .wifi-connect-form{ display:flex; flex-direction:column; gap:.45rem; padding:.55rem; margin-top:.25rem;
+                      border:1px solid var(--accent); border-radius:7px; background:var(--panel-2); }
+  .wifi-connect-form input{ padding:.45rem .55rem; border:1px solid var(--border); border-radius:6px;
+                            background:var(--bg); color:var(--text); font-family:var(--mono); font-size:.95rem; }
+  .wifi-connect-row{ display:flex; gap:.4rem; }
+  .wifi-connect-row .wifi-btn{ flex:1; }
+  .wifi-modal-note{ font-size:.8rem; color:var(--dim); line-height:1.4; margin:.7rem 0 .5rem; }
+  .wifi-modal-actions{ display:flex; justify-content:flex-end; gap:.5rem; }
+  .wifi-btn{ padding:.4rem .8rem; border:1px solid var(--border); border-radius:6px; background:var(--panel-2);
+             color:var(--text); font-size:.95rem; font-family:var(--mono); cursor:pointer; }
+  .wifi-btn:hover:not(:disabled){ border-color:var(--accent); background:var(--panel); }
+  .wifi-btn.primary{ border-color:var(--accent); color:var(--accent); }
+  .wifi-btn:disabled{ opacity:.5; cursor:default; }
+  .wifi-msg{ font-size:.8rem; font-family:var(--mono); }
+  .wifi-msg.err{ color:var(--down); }
+  .wifi-msg.ok{ color:var(--accent); }
   .gpspill{ display:flex; align-items:center; gap:.5rem; padding:.3rem 1rem;
             border-radius:999px; border:1px solid var(--border); background:var(--panel-2); font-size:1.05rem; }
   .gpspill .mode{ font-weight:700; }
@@ -343,8 +390,12 @@
         </span>
         <div class="gpspill nogps" id="k-gps"><span class="mode" id="k-gps-mode">GPS —</span><span class="sub" id="k-gps-sub"></span><span class="gdot" id="k-gps-dot"></span></div>
       </div>
-      <!-- Services summary: up · warn · down · not-installed (no SERVICES label) -->
-      <span class="svcpill" id="svcpill" onclick="openSvcSheet()" role="button" tabindex="0" title="Services — tap for detail">—</span>
+      <!-- Services summary (up · warn · down) + Wi-Fi pill, sharing one row -->
+      <div class="pillrow">
+        <span class="svcpill" id="svcpill" onclick="openSvcSheet()" role="button" tabindex="0" title="Services — tap for detail">—</span>
+        <span class="wifipill" id="wifipill" onclick="openWifiModal()" role="button" tabindex="0"
+              style="display:none" title="Wi-Fi — tap to scan / join / raise the OASIS AP">Wi-Fi</span>
+      </div>
       <!-- RTL/SDR assignment pill: dot (hollow=unassigned, amber=rtl assigned, green=in use) -->
       <div class="svcbar" id="svcbar">
         <span class="s"><span class="dot" id="dot-aprs"></span>APRS</span>
@@ -423,6 +474,28 @@
   <div class="ov" id="ov-ops">
     <div class="ov-head"><span class="e">OPS</span><span class="st">tap to launch</span><span class="ov-x" onclick="closeOv('ops')" role="button" tabindex="0" aria-label="Close">✕</span></div>
     <div class="ov-body" id="opsBody"></div>
+  </div>
+
+  <!-- WI-FI SHEET: scan / join / forget / raise-AP (logic ported from index.html) -->
+  <div class="wifi-modal-backdrop" id="wifi-modal" style="display:none"
+       onclick="if(event.target===this)closeWifiModal()">
+    <div class="wifi-modal" role="dialog" aria-label="Wi-Fi networks">
+      <div class="wifi-modal-hdr">
+        <span class="wifi-modal-title">Wi-Fi</span>
+        <button class="wifi-x" onclick="closeWifiModal()" aria-label="Close">&times;</button>
+      </div>
+      <div class="wifi-modal-status" id="wifi-modal-status">Checking…</div>
+      <div class="wifi-list" id="wifi-list"></div>
+      <div class="wifi-modal-note">
+        This device has a single radio, so joining a network takes the
+        <strong>OASIS</strong> access point offline — anyone connected to it will
+        need to reconnect via the new address shown on the dashboard.
+      </div>
+      <div class="wifi-modal-actions">
+        <button class="wifi-btn" id="wifi-forget" onclick="forgetWifi()" style="display:none">Forget network</button>
+        <button class="wifi-btn" id="wifi-rescan" onclick="scanWifi()">Rescan</button>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -636,11 +709,13 @@ async function satInUse() {
         return !!(d.recording || d.streaming); } catch (_) { return false; }
 }
 async function svcInUse(svc) { return svc.id === 'sat' ? satInUse() : isUnitActive(svc.unit); }
+let _hwServices = {};   // last /api/hardware/devices `services` map (device assignments)
 async function fetchSdrStatus() {
   let hw = {};
   try { const r = await fetch('/api/hardware/devices', { cache:'no-store' }); if (r.ok) hw = await r.json(); } catch (_) {}
   const byId = {}; (hw.devices || []).forEach(x => byId[x.id] = x);
   const services = hw.services || {};
+  _hwServices = services;   // shared with the wlrf (Winlink RF) health check
   await Promise.all(SDR_SVCS.map(async svc => {
     const dot = document.getElementById('dot-'+svc.id); if (!dot) return;
     const info = services[svc.hw];
@@ -714,25 +789,43 @@ const SVC_PORTS = {
   aprs: () => PORTS.aprs_api, webssh: () => PORTS.webssh, owrx: () => PORTS.openwebrx,
 };
 const _svcStates = {};
-function updateSvcCounts() {   // N UP · N WRN · N DN · N NI (not-installed) — no SERVICES label
-  const vals = Object.values(_svcStates);
-  const up = vals.filter(s => s === 'up').length;
-  const warn = vals.filter(s => s === 'warn').length;
-  const down = vals.filter(s => s === 'down').length;
-  const ni = HIDDEN_SVCS.size;
+function updateSvcCounts() {   // N UP · N WRN · N DN over the shared registry (label + NI dropped for the Wi-Fi pill)
+  // Count the canonical OASIS_SERVICES set (minus not-installed) so the kiosk tally
+  // matches index.html exactly. NI stays visible inside the services slide-sheet.
+  let up = 0, warn = 0, down = 0;
+  OASIS_SERVICES.forEach(s => {
+    if (HIDDEN_SVCS.has(s.id)) return;
+    const st = _svcStates[s.id];
+    if (st === 'up') up++; else if (st === 'warn') warn++; else if (st === 'down') down++;
+  });
   const el = document.getElementById('svcpill'); if (!el) return;
   el.innerHTML =
-    `<span class="cnt-lbl">SRV</span>` +
     `<span class="cnt-up">${up} UP</span><span class="cnt-sep">·</span>` +
     `<span class="cnt-warn">${warn} WRN</span><span class="cnt-sep">·</span>` +
-    `<span class="cnt-down">${down} DN</span><span class="cnt-sep">·</span>` +
-    `<span class="cnt-ni">${ni} NI</span>`;
+    `<span class="cnt-down">${down} DN</span>`;
 }
 const SERVICES = [
   { id:'flask', name:'Flask', check: async () => { const r = await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); return {up:true,badge:'UP',sub:`v${d.flask_version}`}; } },
   { id:'wsgi', name:'Web Server', check: async () => { const r=await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); const g=d.wsgi==='gunicorn'; return {up:true,warn:!g,badge:g?'gunicorn':'werkzeug',sub:`v${d.wsgi_version}`}; } },
   { id:'gw', name:'GrayWolf', check: async () => { await fetch(`http://${HOST}:${PORTS.graywolf}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.graywolf}`}; } },
   { id:'winlink', name:'Winlink', check: async () => { const r=await fetch('/api/winlink/mailbox/in',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`:${PORTS.winlink}`}; return {up:true,badge:'UP',sub:`:${PORTS.winlink}`}; } },
+  // Winlink RF = the Direwolf packet modem behind Pat (systemd pat-direwolf; no web
+  // port). Ported from index.html so the kiosk reflects a stopped RF modem instead of
+  // being blind to it: ON AIR when active; STOPPED (down) when inactive with a radio
+  // assigned; in telnet mode (no radio) it carries internet reachability instead.
+  { id:'wlrf', name:'Winlink RF', check: async () => {
+      const r=await fetch('/api/health/service?name=pat-direwolf',{cache:'no-store'});
+      if(!r.ok) return {up:false,sub:'status error'};
+      const d=await r.json();
+      if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'};
+      if(!d.installed) return {up:false,badge:'not installed',sub:'run services/winlink/install.py'};
+      if(d.active==='active') return {up:true,badge:'ON AIR',sub:'AGWPE :8000'};
+      const assigned = !!((_hwServices.winlink||{}).device_id);   // radio → RF mode
+      if(assigned) return {up:false,badge:'STOPPED',sub:'start for packet Winlink'};
+      return _wifiMode==='ap'
+        ? {up:true,warn:true,badge:'NO INTERNET',sub:'choose a device in setup'}
+        : {up:true,badge:'INTERNET',sub:'operational'};
+    } },
   { id:'kiwix', name:'Kiwix', check: async () => { await fetch(`http://${HOST}:${PORTS.kiwix}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.kiwix}`}; } },
   { id:'aprs', name:'APRS Stats API', check: async () => { const r=await fetch('/api/aprs/health',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`:${PORTS.aprs_api}`}; const d=await r.json(); return {up:true,warn:!d.db_exists,badge:'UP',sub:d.db_exists?'DB found':'no DB'}; } },
   { id:'feed', name:'APRS SDR Feed', check: async () => { const r=await fetch('/api/health/service?name=aprs-sdr-feed',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:'→ GrayWolf'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
@@ -742,34 +835,43 @@ const SERVICES = [
   { id:'rb', name:'Repeater Book', check: async () => { const r=await fetch('static/repeaterbook/repeaterbook.csv',{method:'HEAD',cache:'no-store'}); return {up:r.ok,badge:r.ok?'UP':'DOWN',sub:r.ok?'CSV loaded':'CSV missing'}; } },
   { id:'webssh', name:'SSH Terminal', check: async () => { await fetch(`http://${HOST}:${PORTS.webssh}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.webssh}`}; } },
   { id:'owrx', name:'OpenWebRX', check: async () => { await fetch(`http://${HOST}:${PORTS.openwebrx}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.openwebrx}`}; } },
+  // ADS-B: no web port — systemd dump1090-fa owns the RTL-SDR (same as index.html's
+  // health entry, so both dashboards count it). Surfaced live elsewhere (svcbar dot,
+  // flow meter); this entry just adds it to the health tally.
+  { id:'adsb', name:'ADS-B Aircraft', check: async () => { const r=await fetch('/api/health/service?name=dump1090-fa',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:'dump1090'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
   { id:'manuals', name:'Radio Manuals', check: async () => { const r=await fetch('/api/browse?path=static/radio-manuals',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'browse error'}; const d=await r.json(); const n=(d.entries||[]).filter(e=>e.type==='dir').length; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} radio${n===1?'':'s'}`:'no manuals'}; } },
   { id:'wiki', name:'Wikipedia', check: async () => { const r=await fetch('/api/health/zim',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'check error'}; const d=await r.json(); const n=d.count||0; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} ZIM${n===1?'':'s'}`:'no ZIM'}; } },
 ];
-// Gate out features the operator didn't install so they don't count as DOWN. A null
-// manifest (unconfigured box) counts everything, same as dashboard_old.
+// Gate out features the operator didn't install so they don't count as DOWN. The
+// canonical set + gate rules live in common/js/service-registry.js (shared with
+// index.html so the two dashboards can't drift). A null manifest (unconfigured
+// box) counts everything. `_kioskProbe` is the live-reality fallback: a unit the
+// operator enabled outside setup-oasis.py (e.g. webssh — running but not in the
+// manifest) keeps its service visible instead of hiding.
 const HIDDEN_SVCS = new Set();
-const GATEABLE = {
-  gw:['graywolf'], aprs:['graywolf'], feed:['rtl-sdr-feed','rtl-feed'], owrx:['openwebrx'], winlink:['winlink'],
-  gpsd:['gps'], kiwix:['kiwix'], webssh:['webssh'], fcc:['fcc'], wiki:['wikipedia'], rb:['repeaterbook'],
-};
-const SYSTEMD_GATED = { feed:'aprs-sdr-feed', gpsd:'gpsd' };
-async function unitInstalled(id) {
-  const unit = SYSTEMD_GATED[id]; if (!unit) return false;
-  try { const r = await fetch('/api/health/service?name='+unit,{cache:'no-store'}); if(!r.ok) return false; const d=await r.json();
-        if (id==='gpsd') return d.enabled==='enabled';
-        return d.active==='active' || d.enabled==='enabled'; } catch(_) { return false; }
+async function _kioskProbe(gate) {
+  if (gate.unit) {
+    try {
+      const r = await fetch('/api/health/service?name='+gate.unit,{cache:'no-store'});
+      if (r.ok) { const d = await r.json();
+        if (gate.enabledOnly) return d.enabled==='enabled';   // gpsd: deliberate boot-enable only
+        return d.active==='active' || d.enabled==='enabled'; }
+    } catch(_) {}
+  }
+  if (gate.port) {                                            // opaque reach = alive
+    try { await fetch(`http://${HOST}:${gate.port}/`,{cache:'no-store',mode:'no-cors'}); return true; } catch(_) {}
+  }
+  return false;
 }
 async function loadInstalled() {
   let features = null;
   try { const r = await fetch('/api/installed-services',{cache:'no-store'}); if(r.ok){ const d=await r.json(); features=d.features; } } catch(_) {}
+  const hidden = await oasisResolveHidden(features, _kioskProbe);
   HIDDEN_SVCS.clear();
-  if (Array.isArray(features)) {
-    const installed = new Set(features);
-    for (const [id, keys] of Object.entries(GATEABLE)) {
-      if (!keys.some(k => installed.has(k))) { if (await unitInstalled(id)) continue; HIDDEN_SVCS.add(id); }
-    }
-  }
+  hidden.forEach(id => HIDDEN_SVCS.add(id));
 }
+// Guard: every registry service must have a check here, or the count drifts.
+oasisAssertChecks(SERVICES.map(s => s.id));
 async function checkService(svc) {
   try {
     const result = await Promise.race([ svc.check(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),4000)) ]);
@@ -1153,6 +1255,201 @@ async function pollAdsbFlow() {
 }
 
 loadHomeCoords();
+// ── Wi-Fi pill + sheet (endpoints & sheet logic shared with index.html) ──────
+// Pill: no icon — SSID in white, signal % coloured by strength; the OASIS AP
+// shows blue; no link shows red. The signal % comes from the scan's in-use row
+// (nmcli SIGNAL 0–100), so the pill needs no change to the privileged helper.
+let _wifiCurrentSsid = null;
+let _wifiMode = null;   // 'ap' | 'client' | 'none' | null — also read by the wlrf (Winlink RF) check
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+async function refreshWifi() {
+  const pill = document.getElementById('wifipill');
+  if (!pill) return;
+  try {
+    const r = await fetch('/api/wifi/status', { cache: 'no-store' });
+    const d = await r.json().catch(() => ({}));
+    _wifiMode = (d && d.supported) ? (d.mode || 'none') : null;
+    // In-use signal (nmcli SIGNAL) — colours the SSID only; never shown as a number.
+    // A hosting radio can't scan, so this is fetched for a client link only.
+    let sig = null;
+    if (d && d.supported && d.mode === 'client') {
+      try {
+        const sr = await fetch('/api/wifi/scan', { cache: 'no-store' });
+        const s = await sr.json().catch(() => ({}));
+        sig = oasisWifiSignal(s, d.ssid);   // in_use flag, else match SSID by name
+      } catch (_) { /* leave sig null → SSID shows in neutral tone */ }
+    }
+    const p = oasisWifiPill(d, sig);          // shared with index.html
+    if (!p) { pill.style.display = 'none'; return; }   // non-Linux / helper absent
+    pill.style.display = '';
+    pill.className = 'wifipill wtone-' + p.tone;   // border + text tone (shared CSS)
+    pill.textContent = p.text;
+    pill.title = p.tone === 'ap'
+      ? 'Hosting the OASIS access point · http://' + (d.ap_ip || '10.42.0.1') + ':8083 · tap to change'
+      : p.tone === 'none'
+        ? 'Not connected · tap to join a network or raise the OASIS AP'
+        : 'Connected to ' + d.ssid + ' · tap to change network';
+  } catch (e) {
+    pill.style.display = 'none';
+  }
+}
+
+function openWifiModal() { document.getElementById('wifi-modal').style.display = 'flex'; scanWifi(); }
+function closeWifiModal() { document.getElementById('wifi-modal').style.display = 'none'; }
+
+function wifiSignalBars(sig) {
+  const n = sig >= 75 ? 4 : sig >= 50 ? 3 : sig >= 25 ? 2 : 1;
+  return '▂▄▆█'.slice(0, n) + '·'.repeat(4 - n);
+}
+
+async function scanWifi() {
+  const list   = document.getElementById('wifi-list');
+  const status = document.getElementById('wifi-modal-status');
+  const rescan = document.getElementById('wifi-rescan');
+  status.innerHTML = 'Scanning…';
+  list.innerHTML = '';
+  if (rescan) rescan.disabled = true;
+  try {
+    const [sr, cr] = await Promise.all([
+      fetch('/api/wifi/scan',   { cache: 'no-store' }),
+      fetch('/api/wifi/status', { cache: 'no-store' }),
+    ]);
+    const s = await sr.json().catch(() => ({}));
+    const c = await cr.json().catch(() => ({}));
+    const forgetBtn = document.getElementById('wifi-forget');
+    _wifiCurrentSsid = null;
+    if (c && c.supported) {
+      if (c.mode === 'ap') {
+        status.innerHTML = '<span class="ap">Hosting AP “OASIS”</span> · http://' + (c.ap_ip || '10.42.0.1') + ':8083';
+      } else if (c.mode === 'client' && c.ssid) {
+        _wifiCurrentSsid = c.ssid;
+        status.innerHTML = 'Connected to <span class="ok">' + escapeHtml(c.ssid) + '</span>';
+      } else {
+        status.textContent = 'Not connected to any network.';
+      }
+    } else {
+      status.textContent = '';
+    }
+    if (forgetBtn) forgetBtn.style.display = _wifiCurrentSsid ? '' : 'none';
+    if (!s || !s.ok) {
+      const reason = s && s.reason === 'no-privilege'
+        ? 'Wi-Fi controls not authorised — run scripts/enable-ap-fallback.py.'
+        : 'Could not scan for networks.';
+      list.innerHTML = '<div class="wifi-msg err">' + reason + '</div>';
+      return;
+    }
+    if (!s.networks.length) { list.innerHTML = '<div class="wifi-msg">No networks in range.</div>'; return; }
+    list.innerHTML = '';
+    s.networks.forEach(net => {
+      const row = document.createElement('div');
+      row.className = 'wifi-row' + (net.in_use ? ' current' : '');
+      row.innerHTML =
+        '<span class="wifi-row-name">' + escapeHtml(net.ssid) + '</span>' +
+        '<span class="wifi-row-meta">' +
+          (net.in_use ? '<span class="wifi-cur-tag">connected</span>' : '') +
+          (net.secure ? '<span class="wifi-lock">&#128274;</span>' : '') +
+          '<span title="' + net.signal + '%">' + wifiSignalBars(net.signal) + '</span>' +
+        '</span>';
+      row.onclick = () => showWifiConnectForm(row, net);
+      list.appendChild(row);
+    });
+  } catch (e) {
+    status.textContent = '';
+    list.innerHTML = '<div class="wifi-msg err">Scan failed: ' + escapeHtml(e.message) + '</div>';
+  } finally {
+    if (rescan) rescan.disabled = false;
+  }
+}
+
+function showWifiConnectForm(row, net) {
+  document.querySelectorAll('.wifi-connect-form').forEach(f => f.remove());
+  if (net.in_use) return;
+  const form = document.createElement('div');
+  form.className = 'wifi-connect-form';
+  form.innerHTML = net.secure
+    ? '<input type="password" id="wifi-pw" placeholder="Password (8–63 chars)" autocomplete="off" maxlength="63">' +
+      '<div class="wifi-connect-row">' +
+        '<button class="wifi-btn primary" id="wifi-go">Connect</button>' +
+        '<button class="wifi-btn" id="wifi-cancel">Cancel</button>' +
+      '</div>' +
+      '<div class="wifi-msg" id="wifi-form-msg"></div>'
+    : '<div class="wifi-msg err">Open networks aren’t supported — choose a secured network.</div>' +
+      '<div class="wifi-connect-row"><button class="wifi-btn" id="wifi-cancel">Close</button></div>';
+  row.insertAdjacentElement('afterend', form);
+  const cancel = form.querySelector('#wifi-cancel');
+  if (cancel) cancel.onclick = () => form.remove();
+  const go = form.querySelector('#wifi-go');
+  const pw = form.querySelector('#wifi-pw');
+  if (pw) pw.focus();
+  if (go) {
+    go.onclick = () => connectWifi(net.ssid, pw.value, form);
+    if (pw) pw.onkeydown = (e) => { if (e.key === 'Enter') connectWifi(net.ssid, pw.value, form); };
+  }
+}
+
+async function connectWifi(ssid, password, form) {
+  const msg = form.querySelector('#wifi-form-msg');
+  const go  = form.querySelector('#wifi-go');
+  if ((password || '').length < 8 || password.length > 63) {
+    if (msg) { msg.className = 'wifi-msg err'; msg.textContent = 'Password must be 8–63 characters.'; }
+    return;
+  }
+  if (msg) { msg.className = 'wifi-msg'; msg.textContent = 'Connecting… (the OASIS AP will drop)'; }
+  if (go) go.disabled = true;
+  try {
+    const r = await fetch('/api/wifi/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+      body: JSON.stringify({ ssid, password }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      if (msg) { msg.className = 'wifi-msg ok'; msg.textContent = 'Connected to ' + ssid + '.'; }
+      setTimeout(() => { refreshWifi(); scanWifi(); }, 1500);
+    } else {
+      if (msg) { msg.className = 'wifi-msg err'; msg.textContent = (d && d.error) || ('HTTP ' + r.status); }
+      if (go) go.disabled = false;
+    }
+  } catch (e) {
+    if (msg) { msg.className = 'wifi-msg'; msg.textContent =
+      'Request sent — if the page dropped, reconnect to “' + ssid + '” and reopen the dashboard.'; }
+  }
+}
+
+async function forgetWifi() {
+  const ssid = _wifiCurrentSsid;
+  if (!ssid) return;
+  if (!confirm('Forget “' + ssid + '”?\n\nThe device will disconnect from this network and raise the ' +
+               'OASIS access point. If you are viewing this page over that Wi-Fi, the connection will drop — ' +
+               'rejoin the OASIS AP.')) return;
+  const btn = document.getElementById('wifi-forget');
+  const status = document.getElementById('wifi-modal-status');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Forgetting “' + ssid + '”…';
+  try {
+    const r = await fetch('/api/wifi/forget', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      setTimeout(() => { refreshWifi(); scanWifi(); }, 2000);
+    } else {
+      if (status) status.textContent = '';
+      alert('Could not forget network:\n' + ((d && d.error) || ('HTTP ' + r.status)));
+      if (btn) btn.disabled = false;
+    }
+  } catch (e) {
+    setTimeout(() => { refreshWifi(); scanWifi(); }, 2500);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+refreshWifi();        setInterval(refreshWifi, 30000);
+
 fetchAPRS();          setInterval(fetchAPRS, 10000);
 refreshAdsb();        setInterval(refreshAdsb, 5000);
 refreshAdsbRecent();  setInterval(refreshAdsbRecent, 60000);

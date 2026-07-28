@@ -10,6 +10,7 @@
 </script>
 <title>OASIS - Off-grid Amateur Station Information Suite</title>
 <link rel="stylesheet" href="css/common.css">
+<link rel="stylesheet" href="/common/css/wifi-pill.css">
 <style>
 /* ── Layout override (full-bleed, no body padding) ───────────────────── */
 body {
@@ -590,24 +591,12 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 }
 .clock-uptime-lbl { color: var(--text-dim); letter-spacing: .06em; }
 .clock-uptime-val { color: var(--text); font-variant-numeric: tabular-nums; }
-.wifi-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: .4rem;
-  padding: .16rem .7rem;
-  border: 1px solid var(--accent-dim);
-  border-radius: 999px;
-  background: var(--panel-2);
-  color: var(--text);
-  font-size: var(--fs-label);
-  font-family: var(--mono);
-  cursor: pointer;
+/* The Wi-Fi pill itself is styled by the shared /common/css/wifi-pill.css so it
+   matches the kiosk exactly; this page only maps the palette + size below. */
+:root {
+  --wfp-blue: var(--blue); --wfp-green: var(--accent); --wfp-amber: var(--amber);
+  --wfp-red: var(--red); --wfp-neutral: var(--text-dim); --wfp-fs: var(--fs-label);
 }
-.wifi-pill:hover { background: var(--panel); border-color: var(--accent); }
-.wifi-pill.ap    { border-color: var(--amber); }
-.wifi-pill.ap .wifi-pill-txt     { color: var(--amber); }
-.wifi-pill.client .wifi-pill-txt { color: var(--accent); }
-.wifi-pill-txt { letter-spacing: .04em; }
 
 .wifi-modal-backdrop {
   position: fixed; inset: 0; z-index: 1000;
@@ -961,6 +950,8 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <script src="/common/js/format.js"></script>
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/adsb-operators.js"></script>
+<script src="/common/js/service-registry.js"></script>
+<script src="/common/js/wifi-pill.js"></script>
 </head>
 <body>
 
@@ -1547,15 +1538,16 @@ try { _showHidden = localStorage.getItem('oasis_show_hidden') === '1'; } catch (
 // the not-installed cards are hidden with no reveal escape hatch.
 let _locked = false;
 function updateSvcCounts() {
-  // Count only services that have a card (the 10 service cards) — exclude the
-  // OPS-only checks (maps/fcc/rb/manuals/wiki) that merely feed nav badges, and
-  // any not-installed service that's been hidden from the strip.
-  const states = Object.keys(_svcStates)
-    .filter(id => document.getElementById('card-' + id) && !HIDDEN_SVCS.has(id))
-    .map(id => _svcStates[id]);
-  const up   = states.filter(s => s === 'up').length;
-  const warn = states.filter(s => s === 'warn').length;
-  const down = states.filter(s => s === 'down').length;
+  // Count the canonical OASIS_SERVICES set (common/js/service-registry.js) minus
+  // not-installed — shared with the kiosk so the two health tallies match. This now
+  // INCLUDES the data-resource checks (fcc/maps/rb/manuals) that used to be excluded
+  // for lacking a card, so e.g. missing offline maps surfaces as WRN here too.
+  let up = 0, warn = 0, down = 0;
+  OASIS_SERVICES.forEach(s => {
+    if (HIDDEN_SVCS.has(s.id)) return;
+    const st = _svcStates[s.id];
+    if (st === 'up') up++; else if (st === 'warn') warn++; else if (st === 'down') down++;
+  });
   const el = document.getElementById('svc-counts');
   if (!el) return;
   el.innerHTML =
@@ -1851,6 +1843,9 @@ const SERVICES = [
     }
   },
 ];
+// Guard: every canonical registry service must have a check here, or index's
+// health tally drifts from the kiosk's (common/js/service-registry.js).
+oasisAssertChecks(SERVICES.map(s => s.id));
 
 async function checkService(svc) {
   const dot   = document.getElementById('dot-'   + svc.id);
@@ -3387,21 +3382,25 @@ async function pollWifi() {
     // waiting up to 30s for the next service poll.
     const wlrf = SERVICES.find(s => s.id === 'wlrf');
     if (wlrf) checkService(wlrf);
-    pill.style.display = '';
-    const txt  = document.getElementById('wifi-pill-txt');
-    pill.classList.remove('ap', 'client');
-    if (d.mode === 'ap') {
-      pill.classList.add('ap');
-      txt.textContent = 'AP: OASIS';
-      pill.title = 'Hosting the OASIS access point · http://' + (d.ap_ip || '10.42.0.1') + ':8083';
-    } else if (d.mode === 'client' && d.ssid) {
-      pill.classList.add('client');
-      txt.textContent = d.ssid;
-      pill.title = 'Connected to ' + d.ssid + ' · tap to change network';
-    } else {
-      txt.textContent = 'Wi-Fi';
-      pill.title = 'Not connected · tap to join a network';
+    // In-use signal (nmcli SIGNAL) colours the SSID — never shown as a number.
+    // A hosting radio can't scan, so this is fetched for a client link only.
+    let sig = null;
+    if (d.mode === 'client') {
+      try {
+        const sr = await fetch('/api/wifi/scan', { cache: 'no-store' });
+        const s = await sr.json().catch(() => ({}));
+        sig = oasisWifiSignal(s, d.ssid);   // in_use flag, else match SSID by name
+      } catch (_) { /* leave sig null → SSID shows in neutral tone */ }
     }
+    const p = oasisWifiPill(d, sig);          // shared with the kiosk
+    pill.style.display = '';
+    pill.className = 'wifi-pill wtone-' + p.tone;   // border + text tone (shared CSS)
+    document.getElementById('wifi-pill-txt').textContent = p.text;
+    pill.title = p.tone === 'ap'
+      ? 'Hosting the OASIS access point · http://' + (d.ap_ip || '10.42.0.1') + ':8083'
+      : p.tone === 'none'
+        ? 'Not connected · tap to join a network'
+        : 'Connected to ' + d.ssid + ' · tap to change network';
   } catch (e) {
     pill.style.display = 'none';
   }
