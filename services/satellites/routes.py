@@ -157,6 +157,17 @@ def _sats_by_norad(selected_first=False):
                 # A malformed/unparsable TLE must not take down the roster lookup —
                 # just skip that satellite.
                 continue
+    # Fallback when the roster yields nothing (never-synced offline box, empty
+    # satellites.json): predict straight from the TLE cache so /passes AND /track
+    # still work — otherwise selected sats plot with null l1/l2 and draw no orbit.
+    # Mirrors the same fallback in api_satellites; a populated roster is
+    # authoritative and never augmented with the TLE cache's filtered-out sats.
+    if not out:
+        for norad, (name, l1, l2) in by_norad.items():
+            try:
+                out[norad] = predict.make_satellite(name, l1, l2)
+            except Exception:
+                continue
     return out
 
 
