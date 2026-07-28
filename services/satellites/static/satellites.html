@@ -647,10 +647,15 @@ function renderRoster() {
     ? `${ROSTER.length} sats` : `${shown.length} of ${ROSTER.length} sats`;
   document.getElementById('roster-count').textContent = `${mon} monitored - ${tally}`;
   if (!shown.length) {
-    const msg = _view === 'soon' ? 'No monitored passes in the next hour.'
+    // No-data trumps every view: an empty ROSTER means the roster + TLE cache are
+    // both empty (a never-synced offline box), not a filter miss — point at the fix.
+    const msg = ROSTER.length === 0
+                ? 'No satellite data yet — tap the TLE badge above to build the list (needs a connection).'
+              : _view === 'soon' ? 'No monitored passes in the next hour.'
               : _view === 'soon-all' ? 'Nothing passing over in the next hour (or passes still computing…).'
               : _view === 'monitored' ? 'Nothing monitored — check a satellite to track it.'
-              : 'No satellites match the filters.';
+              : filtersActive() ? 'No satellites match the filters.'
+              : 'No satellites to show.';
     document.getElementById('roster').innerHTML =
       `<p style="color:var(--text-dim);padding:.5rem">${msg}</p>`;
     return;
