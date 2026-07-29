@@ -384,6 +384,19 @@
   .so-tog.frozen{ cursor:not-allowed; opacity:.6; }
   .so-hint.so-ok{ color:var(--accent); } .so-hint.so-warn{ color:var(--down); }
   .so-hint.so-lock{ color:var(--warn); } .so-hint.so-info{ color:var(--text); }
+  /* Resource-guardian countdown banner (fixed, always visible while armed) */
+  .so-guardian{ position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:60;
+    display:flex; align-items:center; gap:.8rem; background:var(--panel); border:1px solid var(--down);
+    border-radius:10px; padding:.6rem 1.1rem; box-shadow:0 10px 30px rgba(0,0,0,.4);
+    font-family:var(--mono); font-size:1.25rem; color:var(--down); max-width:94vw;
+    animation:so-gpulse 1.2s ease-out infinite; }
+  .so-guardian[hidden]{ display:none; }
+  .so-g-cancel{ background:var(--down); color:#fff; border:none; border-radius:8px; padding:.5rem 1.15rem;
+    cursor:pointer; font-family:var(--mono); font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+    font-size:1.05rem; min-height:44px; white-space:nowrap; }
+  .so-g-cancel:active{ filter:brightness(1.12); }
+  @keyframes so-gpulse{ 0%,100%{ box-shadow:0 0 0 0 color-mix(in srgb,var(--down) 55%,transparent); } 50%{ box-shadow:0 0 0 7px transparent; } }
+  @media (prefers-reduced-motion:reduce){ .so-guardian{ animation:none; } }
   .ops-sec{ margin-bottom:1rem; }
   .ops-sec .lab{ color:var(--accent); font-size:1rem; letter-spacing:.14em; font-weight:700; margin:0 .2rem .6rem; }
   .ops-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:.8rem; }
@@ -544,6 +557,12 @@
         <div class="so-mx" id="so-mx"></div>
       </div>
     </div>
+  </div>
+
+  <!-- Resource-guardian countdown (server-armed even with no browser open) -->
+  <div class="so-guardian" id="so-guardian" role="alert" hidden>
+    <span class="so-g-msg" id="so-g-msg"></span>
+    <button class="so-g-cancel" id="so-g-cancel" type="button">Cancel</button>
   </div>
 
   <!-- WI-FI SHEET: scan / join / forget / raise-AP (logic ported from index.html) -->
@@ -1623,6 +1642,33 @@ loadInstalled().then(() => {
   }
 
   if (stopAllBtn) stopAllBtn.onclick = function(){ oasisHwConsole.stopAll().then(function(){ message('■ STOP ALL — every service stopped', 'warn'); refresh(); }); };
+
+  // ── Resource guardian: a server-side thread arms the STOP-ALL countdown even
+  // with no browser open. Poll it (cheap, cached) and show the fixed banner +
+  // Cancel — independent of whether the SRV OPS card is open.
+  var gBanner = document.getElementById('so-guardian'), gMsg = document.getElementById('so-g-msg');
+  var gWasTripped = false;
+  var G_WHY = { temp_c: 'Overheating', cpu_pct: 'CPU overload', mem_pct: 'Memory critical' };
+  function renderGuardian(g){
+    if (g && g.mode === 'armed'){
+      gBanner.hidden = false;
+      var n = (g.seconds_left != null) ? g.seconds_left : 0;
+      gMsg.textContent = (G_WHY[g.reason] || 'Overload') + ' — STOP ALL in ' + n + 's';
+      gWasTripped = false;
+    } else {
+      gBanner.hidden = true;
+      if (g && g.mode === 'tripped' && !gWasTripped){ gWasTripped = true; message('■ Guardian stopped all services (' + (G_WHY[g.reason] || 'overload') + ')', 'warn'); }
+      if (!g || g.mode !== 'tripped') gWasTripped = false;
+    }
+  }
+  function pollGuardian(){ oasisHwConsole.guardianState().then(renderGuardian).catch(function(){}); }
+  if (gBanner){
+    document.getElementById('so-g-cancel').onclick = function(){
+      oasisHwConsole.guardianCancel().then(function(){ gBanner.hidden = true; message('Guardian countdown cancelled — you have the helm', 'info'); });
+    };
+    pollGuardian();
+    setInterval(pollGuardian, 2000);
+  }
 
   // Opened from the svcbar pill; fetch fresh on open and poll while visible.
   window.openSrvOps = function(){ openOv('srvops'); refresh(); };
