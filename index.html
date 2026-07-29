@@ -1113,6 +1113,12 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 .hsx-hdbtn.hsx-on{color:var(--accent); border-color:color-mix(in srgb,var(--accent) 40%,var(--border))}
 .hsx-stopall{color:var(--red); border-color:color-mix(in srgb,var(--red) 40%,var(--border)); font-size:var(--fs-micro); text-transform:uppercase; letter-spacing:.06em; font-weight:700}
 .hsx-stopall:hover{background:color-mix(in srgb,var(--red) 12%,transparent); color:var(--red)}
+.hsx-guardian{position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:60; display:flex; align-items:center; gap:.75rem; background:var(--panel); border:1px solid var(--red); border-radius:10px; padding:.5rem .8rem; box-shadow:0 10px 30px rgba(0,0,0,.4); font-family:var(--mono); font-size:var(--fs-small); color:var(--red); animation:hsx-pulse 1.2s ease-out infinite; max-width:94vw}
+.hsx-guardian[hidden]{display:none}
+.hsx-g-cancel{background:var(--red); color:#fff; border:none; border-radius:6px; padding:.3rem .7rem; cursor:pointer; font-family:var(--mono); font-weight:700; text-transform:uppercase; letter-spacing:.05em; font-size:var(--fs-micro); white-space:nowrap}
+.hsx-g-cancel:hover{filter:brightness(1.12)}
+.hsx-g-cancel:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.hsx-guardian{animation:none}}
 .hsx-msg{min-height:1.75rem; display:flex; align-items:center; gap:.4rem; padding:.25rem .8rem;
   border-bottom:1px solid var(--border); font-size:var(--fs-small); line-height:1.3;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
@@ -1324,6 +1330,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <div class="hsx-msg hsx-idle" id="hsx-msg" aria-live="polite"></div>
       <div class="hsx-scroll"><div class="hsx-matrix" id="hsx-matrix"></div></div>
     </div>
+  </div>
+  <div class="hsx-guardian" id="hsx-guardian" role="alert" hidden>
+    <span class="hsx-g-msg" id="hsx-g-msg"></span>
+    <button class="hsx-g-cancel" id="hsx-g-cancel" type="button">Cancel</button>
   </div>
 </div><!-- /.hsx-anchor -->
 
@@ -3820,9 +3830,33 @@ loadConfig().then(() => {
   document.getElementById('hsx-close').onclick=function(){ setOpen(false); };
   document.getElementById('hsx-stopall').onclick=function(){ post('/api/hardware/stop-all',{}).then(function(){ message('■ STOP ALL — every service stopped','warnc'); refresh(); }); };
   document.addEventListener('keydown',function(e){ if(e.key==='Escape') setOpen(false); });
-  render(); message(IDLE,'idle'); refresh();
+
+  // ── Resource guardian: server-side thread arms the countdown even with no
+  // browser open; here we just SHOW it and offer Cancel. Cheap cached endpoint.
+  var gBanner=document.getElementById('hsx-guardian'), gMsg=document.getElementById('hsx-g-msg');
+  var gWasTripped=false;
+  var G_WHY={temp_c:'Overheating',cpu_pct:'CPU overload',mem_pct:'Memory critical'};
+  function renderGuardian(g){
+    if(g && g.mode==='armed'){
+      gBanner.hidden=false;
+      var n=(g.seconds_left!=null)?g.seconds_left:0;
+      gMsg.textContent='⚠ '+(G_WHY[g.reason]||'Overload')+' — STOP ALL in '+n+'s';
+      gWasTripped=false;
+    } else {
+      gBanner.hidden=true;
+      if(g && g.mode==='tripped' && !gWasTripped){ gWasTripped=true; message('■ Guardian stopped all services ('+(G_WHY[g.reason]||'overload')+')','warnc'); }
+      if(!g || g.mode!=='tripped') gWasTripped=false;
+    }
+  }
+  function pollGuardian(){ fetch('/api/hardware/guardian').then(function(r){return r.json();}).then(renderGuardian).catch(function(){}); }
+  document.getElementById('hsx-g-cancel').onclick=function(){
+    post('/api/hardware/guardian/cancel',{}).then(function(){ gBanner.hidden=true; message('🔓 Guardian countdown cancelled — you have the helm','info'); });
+  };
+
+  render(); message(IDLE,'idle'); refresh(); pollGuardian();
   setInterval(function(){ if(pop.classList.contains('hsx-open')) refresh(); }, 5000);   // live while open
   setInterval(refresh, 20000);                                                          // rail heartbeat when closed
+  setInterval(pollGuardian, 2000);                                                      // guardian countdown (cheap, cached)
 })();
 </script>
 </body>
