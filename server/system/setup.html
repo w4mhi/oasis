@@ -258,13 +258,7 @@
         <div class="setup-hw-col">
           <div class="setup-hw-h">Radio port (Winlink)</div>
           <div id="hwRadioPorts"></div>
-          <div class="setup-hw-note">DigiRig (a lone CP210x) and DRA-Pi register automatically when present — then assign one to Winlink RF at right.</div>
-        </div>
-
-        <div class="setup-hw-col">
-          <div class="setup-hw-h">Assign to services</div>
-          <div id="hwAssignRows"></div>
-          <div class="setup-hw-msg" id="hwAssignMsg"></div>
+          <div class="setup-hw-note">DigiRig (a lone CP210x) and DRA-Pi register automatically when present. Assign devices to services from the dashboard HW/SRV matrix — Setup only detects them.</div>
         </div>
 
       </div>
@@ -1128,8 +1122,10 @@ function initSetupOrchestrator() {
   const webssh = document.getElementById('setupWebssh');
   webssh.href = `http://${HOST}:${PORTS.webssh}/`;
   document.getElementById('setupRefreshHw').addEventListener('click', setupDetectHardware);
-  // Hardware card: the assign dropdowns (SDRs + radio ports auto-declare, no form).
-  document.getElementById('hwAssignRows').addEventListener('change', (e) => {
+  // Assignment moved to the dashboard HW/SRV matrix (single source of truth);
+  // Setup only detects hardware. The rows element is gone, so guard the wiring.
+  const _assignRows = document.getElementById('hwAssignRows');
+  if (_assignRows) _assignRows.addEventListener('change', (e) => {
     const sel = e.target.closest('[data-assign-service]');
     if (sel) hwAssignChange(sel.dataset.assignService, sel.value);
   });

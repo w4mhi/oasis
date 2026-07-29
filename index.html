@@ -1262,16 +1262,9 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="svc-badge" id="badge-wlrf">—</span>
     </div>
   </div>
-  <div class="svc-card svc-card-gated" id="card-winlink">
-    <div class="svc-card-top">
-      <div class="svc-dot" id="dot-winlink"></div>
-      <div class="svc-card-info"><div class="svc-name">Winlink Classic Mail</div><div class="svc-sub" id="sub-winlink">—</div></div>
-    </div>
-    <div class="svc-card-bottom">
-      <button class="svc-open" id="open-winlink" onclick="svcOpenClick('winlink')" disabled>OPEN ↗</button>
-      <span class="svc-badge" id="badge-winlink">—</span>
-    </div>
-  </div>
+  <!-- Winlink Classic Mail card removed — classic (telnet/Pat web UI) is reached
+       via the "Use classic Winlink" button on the Winlink page. `winlink` stays a
+       counted, gated service; its status refresh no-ops without a card. -->
   <div class="svc-card svc-card-gated" id="card-kiwix">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-kiwix"></div>
@@ -2379,6 +2372,9 @@ const SVC_UNITS = { gw: 'graywolf', aprs: 'graywolf-api', feed: 'aprs-sdr-feed',
 // card's top row (top-right, alongside the name) so it stays clear of the
 // OPEN button + status badge in the bottom row.
 function powerBtn(svcId) {
+  // HW-backed services (adsb/wlrf/feed/owrx) are controlled from the HW/SRV
+  // matrix — the single source of truth. No per-card power button for them.
+  if (HW_SERVICE_FOR_CARD[svcId]) return null;
   const card = document.getElementById('card-' + svcId);
   if (!card) return null;
   let btn = card.querySelector('.svc-power');
@@ -2530,6 +2526,7 @@ async function togglePower(svcId) {
   const unit = SVC_UNITS[svcId];
   if (!unit) return;
   const btn = powerBtn(svcId);
+  if (!btn) return;   // HW-backed service — controlled from the matrix, not the card
   const running = _svcStates[svcId] === 'up' || _svcStates[svcId] === 'warn';
   const action  = running ? 'stop' : 'start';
   // Blocked START (no device, or telnet Winlink in AP mode) — no-op; the dimmed
