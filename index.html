@@ -24,8 +24,10 @@ body {
 /* ── Top bar ─────────────────────────────────────────────────────────── */
 .topbar {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .6rem;
   padding: .6rem 1.25rem;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
@@ -108,6 +110,84 @@ body {
 .gps-cell { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
 .gps-lbl { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .07em; color: var(--text-dim); }
 .gps-val { font-size: var(--fs-small); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── System cards (topbar row) — ported verbatim from
+   specs/2026-07-29-system-cards-mockup.html ─────────────────────── */
+.card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:.4rem .7rem;
+      display:flex;flex-direction:column;gap:.28rem;flex:1 1 auto}
+.card.up{border-color:var(--accent-dim);background:rgba(0,200,100,.06)}
+.card.warn{border-color:var(--amber-dim);background:rgba(255,180,84,.06)}
+.card.down{border-color:#7a1010;background:rgba(180,30,30,.08)}
+.card.roomy{gap:.55rem}
+.card-hdr{display:flex;align-items:center;gap:.45rem}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);flex-shrink:0}
+.dot.up{background:var(--accent)} .dot.warn{background:var(--amber)} .dot.down{background:var(--red)}
+.card-name{font-size:var(--fs-base);font-weight:700;color:var(--text);letter-spacing:.1em}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:.15rem .8rem}
+.cell{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+.lbl{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.07em;color:var(--text-dim)}
+.val{font-size:var(--fs-small);font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+.val.ok{color:var(--accent)} .val.warn{color:var(--amber)} .val.hot{color:var(--red)}
+
+/* ---- clock cards (dashboard style: left color bar + LOCAL/UTC), scaled to header ---- */
+.clk-card{position:relative;overflow:hidden;justify-content:center;min-width:158px;
+  padding:.4rem .7rem .4rem .95rem;background:linear-gradient(180deg,var(--panel-2),var(--panel))}
+.clk-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:.3rem}
+.clk-card.loc::before{background:var(--blue)} .clk-card.utc::before{background:var(--amber)}
+.clk-zn{display:flex;align-items:baseline;gap:.5rem}
+.clk-z{font-size:var(--fs-clock);letter-spacing:.16em;font-weight:700}
+.clk-card.loc .clk-z{color:var(--blue)} .clk-card.utc .clk-z{color:var(--amber)}
+.clk-tz{font-size:var(--fs-small);color:var(--text-dim)}
+.clk-time{font-size:2.25rem;line-height:1.04;font-weight:600;font-variant-numeric:tabular-nums;margin-top:.15rem}
+.clk-card.loc .clk-time{color:var(--blue)} .clk-card.utc .clk-time{color:var(--amber)}
+.clk-time .s{font-size:1.3rem;opacity:.6}
+.clk-d{font-size:var(--fs-small);color:var(--text-dim);letter-spacing:.04em;margin-top:.15rem}
+
+/* per-core bars */
+.zone-sep{border:none;border-top:1px dashed var(--border);margin:.12rem 0}
+.zone-lbl{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);margin:.05rem 0 0}
+.cpu-hdr{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;font-size:var(--fs-base);font-weight:700;letter-spacing:.08em}
+.cpu-hdr .k{color:var(--text-dim);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:var(--fs-base)}
+.cpu-hdr .val{font-size:var(--fs-base)}
+.cpu-hdr .sep{color:var(--border)}
+.core{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.5rem}
+.core-lbl{font-size:var(--fs-micro);color:var(--text-dim);letter-spacing:.05em}
+.core-track{height:7px;border-radius:4px;background:var(--panel-2);overflow:hidden;min-width:74px}
+.core-fill{height:100%;border-radius:4px;background:var(--accent)}
+.core-fill.busy{background:var(--amber)} .core-fill.hot{background:var(--red)}
+.core-pct{font-size:var(--fs-micro);font-weight:700;font-variant-numeric:tabular-nums;min-width:2.6em;text-align:right}
+.core-pct.busy{color:var(--amber)} .core-pct.hot{color:var(--red)}
+
+/* processes */
+.proc{display:grid;grid-template-columns:1fr auto auto;gap:.6rem;align-items:baseline;font-size:var(--fs-small)}
+.proc-name{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proc-cpu{font-weight:700;font-variant-numeric:tabular-nums;color:var(--accent);min-width:3em;text-align:right}
+.proc-cpu.busy{color:var(--amber)} .proc-cpu.hot{color:var(--red)}
+.proc-ram{font-variant-numeric:tabular-nums;color:var(--text-dim);min-width:3em;text-align:right}
+.proc-head{color:var(--text-dim);font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.06em}
+.proc-cols{margin-left:auto;display:flex;gap:.6rem}
+.proc-cols span{min-width:3em;text-align:right;font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim);font-weight:400}
+
+/* telemetry + services */
+.svc-pills{display:flex;flex-wrap:wrap;gap:.3rem;justify-content:flex-start}
+.spill{display:inline-flex;align-items:center;gap:.3rem;padding:.14rem .55rem;border-radius:999px;
+  border:1px solid var(--border);background:var(--panel-2);font-size:var(--fs-label);font-weight:700}
+.spill .n{font-variant-numeric:tabular-nums}
+.spill.up{border-color:var(--accent-dim);color:var(--accent)}
+.spill.warn{border-color:var(--amber-dim);color:var(--amber)}
+.spill.down{border-color:#7a1010;color:var(--red)}
+.spill.off{color:var(--text-dim)}
+.tel-line{display:flex;align-items:center;gap:.4rem;font-size:var(--fs-small);margin-left:auto}
+.tel-dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.tel-k{color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-size:var(--fs-small);font-weight:700}
+.tel-int{color:var(--text-dim);font-variant-numeric:tabular-nums}
+
+/* radio-assignment pill (from the dashboard svcbar) */
+.svcbar{display:flex;flex-wrap:wrap;align-items:center;gap:.55rem;justify-content:space-between;cursor:pointer}
+.svcbar .s{display:flex;align-items:center;gap:.35rem;font-size:var(--fs-small);font-weight:600}
+.adot{width:.72rem;height:.72rem;border-radius:50%;box-sizing:border-box;background:transparent;border:2px solid var(--text)}
+.adot.assigned{background:var(--amber);border-color:var(--amber)}
+.adot.inuse{background:var(--accent);border-color:var(--accent)}
 
 /* ── Kiosk refresh button (header pill) ──────────────────────── */
 .kiosk-refresh {
@@ -972,8 +1052,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 
 <!-- ── TOP BAR ─────────────────────────────────────────────────────────────── -->
 <div class="topbar">
-  <div style="display:flex;align-items:center;gap:2.0rem">
-  <div>
+  <div style="display:flex;flex-direction:column;justify-content:center;flex:0 0 auto">
     <div class="brand-name">OASIS <span class="brand-sub" style="color: var(--blue);">Off-grid Amateur Station Integrated Suite</span><span class="brand-ver" id="brand-ver"></span></div>
     <div class="brand-sub">An offline toolkit for amateur radio communications.</div>
     <div class="pill-row">
@@ -990,6 +1069,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
               title="Reload the dashboard" aria-label="Refresh dashboard">
         <span class="kr-icon">&#8635;</span>Refresh
       </button>
+      <button class="wifi-pill" id="wifi-pill" onclick="openWifiModal()" style="display:none"
+              title="View Wi-Fi / connect to a network">
+        <span class="wifi-pill-txt" id="wifi-pill-txt">Wi-Fi</span>
+      </button>
       <button class="units-pill" id="theme-toggle" onclick="toggleTheme()"
               title="Toggle light / dark theme" aria-label="Toggle light / dark theme">
         <span id="theme-glyph">&#9728;</span>
@@ -997,7 +1080,52 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     </div>
   </div>
 
-  <!-- GPS / GNSS receiver card (next to the title) -->
+  <div class="card clk-card loc">
+    <div class="clk-zn"><span class="clk-z">LOCAL</span><span class="clk-tz" id="clk-loc-tz">local</span></div>
+    <div class="clk-time" id="clk-loc-t">--:--<span class="s">:--</span></div>
+    <div class="clk-d" id="clk-loc-d">&mdash;</div>
+  </div>
+  <div class="card clk-card utc">
+    <div class="clk-zn"><span class="clk-z">UTC</span><span class="clk-tz">zulu</span></div>
+    <div class="clk-time" id="clk-utc-t">--:--<span class="s">:--</span></div>
+    <div class="clk-d" id="clk-utc-d">&mdash;</div>
+  </div>
+
+  <div class="card" id="cpu-card">
+    <div class="card-hdr">
+      <span class="dot" id="cpu-dot"></span>
+      <span class="cpu-hdr">
+        <span class="k">CPU</span><span class="val" id="cpu-pct">&mdash;</span>
+        <span class="sep">&middot;</span>
+        <span class="k">Temp</span><span class="val" id="cpu-temp">&mdash;</span>
+        <span class="sep">&middot;</span>
+        <span class="k">RAM</span><span class="val" id="cpu-ram">&mdash;</span>
+      </span>
+    </div>
+    <hr class="zone-sep">
+    <div id="cpu-cores"></div>
+  </div>
+
+  <div class="card roomy" id="proc-card">
+    <div class="card-hdr"><span class="dot up"></span><span class="card-name">PROCESSES</span><span class="proc-cols"><span>CPU</span><span>RAM</span></span></div>
+    <div id="proc-list"></div>
+  </div>
+
+  <div class="card roomy" id="status-card">
+    <div class="card-hdr">
+      <span class="dot" id="status-dot"></span><span class="card-name">STATUS</span>
+      <div class="tel-line"><span class="tel-dot"></span><span class="tel-k">Telemetry</span><span class="val" id="tel-state">&mdash;</span><span class="tel-int" id="tel-int"></span></div>
+    </div>
+    <div class="svc-pills" id="status-pills"></div>
+    <div class="svcbar" id="status-svcbar" role="button" tabindex="0" title="Open Service Operations (HW / SRV)">
+      <span class="s"><span class="adot" id="status-dot-aprs"></span>APRS</span>
+      <span class="s"><span class="adot" id="status-dot-adsb"></span>ADS-B</span>
+      <span class="s"><span class="adot" id="status-dot-owrx"></span>ORX</span>
+      <span class="s"><span class="adot" id="status-dot-sat"></span>SAT</span>
+    </div>
+  </div>
+
+  <!-- GPS / GNSS receiver card (last, right) -->
   <div class="gps-card down" id="gps-card" title="GNSS receiver + clock status">
     <div class="gps-card-hdr">
       <span class="gps-dot down" id="gps-dot"></span>
@@ -1014,73 +1142,6 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <div class="gps-cell"><span class="gps-lbl">Clock</span><span class="gps-val" id="gps-clock">n/a</span></div>
     </div>
   </div>
-  </div>
-
-  <div>
-    <div class="clock-utc-row">
-      <div class="clock-utc" id="utc-time">UTC --:--:--</div>
-      <div class="clock-date" id="utc-date">----·--·--</div>
-    </div>
-    <div class="clock-utc-row">
-      <div class="clock-local" id="local-time">LOC --:--:--</div>
-      <div class="clock-local-date" id="local-date">----·--·--</div>
-    </div>
-    <!-- Wi-Fi status / picker (pill hidden off-Pi) + uptime, to its right -->
-    <div class="wifi-pill-row" id="wifi-pill-row">
-      <button class="wifi-pill" id="wifi-pill" onclick="openWifiModal()"
-              style="display:none"
-              title="View Wi-Fi / connect to a network">
-        <span class="wifi-pill-txt" id="wifi-pill-txt">Wi-Fi</span>
-      </button>
-      <span class="clock-uptime" title="System uptime">
-        <span class="clock-uptime-lbl">UPTIME</span>
-        <span class="clock-uptime-val" id="s-uptime">—</span>
-      </span>
-    </div>
-  </div>
-</div>
-
-<!-- ── SYSTEM MONITOR ─────────────────────────────────────────────────────── -->
-<div class="stats-bar">
-  <div class="stat-item" style="padding-left:0;border-left:none;margin-right:.4rem">
-    <span class="section-hdr-title">SYSTEM</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">CPU</span>
-    <span class="stat-val" id="s-cpu">—</span>
-    <div class="mini-bar"><div class="mini-fill" id="b-cpu"></div></div>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">RAM</span>
-    <span class="stat-val" id="s-ram">—</span>
-    <div class="mini-bar"><div class="mini-fill" id="b-ram"></div></div>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">DISK</span>
-    <span class="stat-val" id="s-disk">—</span>
-    <div class="mini-bar"><div class="mini-fill" id="b-disk"></div></div>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">LOAD</span>
-    <span class="stat-val" id="s-load">—</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">TEMP</span>
-    <span class="stat-val" id="s-temp">—</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">AUDIO</span>
-    <span class="stat-val" id="s-audio">—</span>
-  </div>
-    <div class="stat-item">
-    <span class="stat-lbl">HOST</span>
-    <span class="stat-val" id="s-host" title="Server these stats are read from">—</span>
-  </div>
-  <div class="stat-item" id="item-throttle" style="display:none">
-    <span class="stat-lbl">PWR</span>
-    <span class="stat-val" id="s-throttle">—</span>
-  </div>
-  <span class="telemetry-badge" id="telemetry-badge">△ telemetry: offline</span>
 </div>
 
 <!-- ── SECTION HEADER ─────────────────────────────────────────────────────── -->
@@ -1510,17 +1571,18 @@ function go(port) {
 
 // ── UTC + Local clock (ticks every second) ────────────────────────────────────
 function tickClock() {
+  // NOTE: the topbar clock cards (#clk-loc-t/#clk-loc-tz/#clk-loc-d/#clk-utc-t/
+  // #clk-utc-d) are static shells as of this task — a later task wires their
+  // rendering. Guarded here only so this no-ops instead of throwing on the
+  // now-removed #utc-time/#utc-date/#local-time/#local-date ids.
   const n = new Date();
   const z = v => String(v).padStart(2, '0');
   const WD = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
-  document.getElementById('utc-time').textContent =
-    `UTC ${WD[n.getUTCDay()]} ${z(n.getUTCHours())}:${z(n.getUTCMinutes())}:${z(n.getUTCSeconds())}`;
-  document.getElementById('utc-date').textContent =
-    `${n.getUTCFullYear()}·${z(n.getUTCMonth()+1)}·${z(n.getUTCDate())}`;
-  document.getElementById('local-time').textContent =
-    `LOC ${WD[n.getDay()]} ${z(n.getHours())}:${z(n.getMinutes())}:${z(n.getSeconds())}`;
-  document.getElementById('local-date').textContent =
-    `${n.getFullYear()}·${z(n.getMonth()+1)}·${z(n.getDate())}`;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('utc-time', `UTC ${WD[n.getUTCDay()]} ${z(n.getUTCHours())}:${z(n.getUTCMinutes())}:${z(n.getUTCSeconds())}`);
+  set('utc-date', `${n.getUTCFullYear()}·${z(n.getUTCMonth()+1)}·${z(n.getUTCDate())}`);
+  set('local-time', `LOC ${WD[n.getDay()]} ${z(n.getHours())}:${z(n.getMinutes())}:${z(n.getSeconds())}`);
+  set('local-date', `${n.getFullYear()}·${z(n.getMonth()+1)}·${z(n.getDate())}`);
 }
 tickClock();
 setInterval(tickClock, 1000);
@@ -2636,6 +2698,7 @@ function valClass(pct, amber, red) {
 }
 function setStat(id, text, pct, amber, red) {
   const el = document.getElementById(id);
+  if (!el) return;   // e.g. 's-temp' — the SYSTEM stats-bar was removed; renderTemp() still calls this from applyUnits()
   el.textContent = text;
   el.className   = valClass(pct, amber, red);
 }
@@ -2822,102 +2885,9 @@ async function fetchStats() {
       gpsCard.title = t.length ? 'GNSS / clock — ' + t.join(' · ') : 'GNSS receiver + clock status';
     }
 
-
-    // Track which stats are valid vs n/a to colour the telemetry badge
-    let valid = 0, total = 0;
-    const track = (ok) => { total++; if (ok) valid++; };
-
-    // CPU %
-    track(d.cpu_pct != null);
-    if (d.cpu_pct != null) {
-      setStat('s-cpu', `${Math.round(d.cpu_pct)}%`, d.cpu_pct, 70, 90);
-      setBar('b-cpu', d.cpu_pct, 70, 90);
-      pushSpark('cpu', d.cpu_pct, 70, 90);
-    }
-    // Temperature (°C) — absent on Mac/Windows
-    track(d.cpu_temp_c != null);
-    _lastTempC = d.cpu_temp_c;
-    renderTemp();
-    pushSpark('temp', d.cpu_temp_c, 65, 80);
-    // RAM %
-    track(d.ram && d.ram.pct != null);
-    if (d.ram && d.ram.pct != null) {
-      setStat('s-ram', `${Math.round(d.ram.pct)}%`, d.ram.pct, 70, 90);
-      setBar('b-ram', d.ram.pct, 70, 90);
-    }
-    // Disk usage % — warn on high % used OR low absolute free space (SD-card
-    // aware: a near-full small card is critical even below the % threshold).
-    track(d.disk && !d.disk.error && d.disk.pct != null);
-    if (d.disk && !d.disk.error && d.disk.pct != null) {
-      const free = d.disk.free_gb;
-      let cls = valClass(d.disk.pct, 80, 92);
-      if (free != null) {
-        if (free < 1) cls = 'stat-val bad';
-        else if (free < 2 && cls === 'stat-val') cls = 'stat-val warn';
-      }
-      const el = document.getElementById('s-disk');
-      el.textContent = `${Math.round(d.disk.pct)}%`;
-      el.className   = cls;
-      el.title = free != null ? `${free} GB free of ${d.disk.total_gb} GB (${d.disk.label})` : '';
-      setBar('b-disk', d.disk.pct, 80, 92);
-    }
-    // Load (1-min avg) — coloured by load-vs-cores %, absent on Windows
-    track(d.load && d.load.avg1 != null);
-    if (d.load && d.load.avg1 != null) {
-      setStat('s-load', d.load.avg1.toFixed(2), d.load.pct, 75, 100);
-    } else {
-      setStat('s-load', 'n/a', null);
-    }
-    // Uptime — informational, no threshold colour
-    track(d.uptime_sec != null);
-    if (d.uptime_sec != null) {
-      const el = document.getElementById('s-uptime');
-      el.textContent = fmtUptime(d.uptime_sec);
-      el.className   = 'stat-val';
-    }
-    // Power/thermal throttling (Pi only) — hidden when unavailable, so it never
-    // shows n/a on non-Pi hosts. Not tracked in the telemetry badge (optional).
-    const throtItem = document.getElementById('item-throttle');
-    if (throtItem) {
-      if (d.throttle) {
-        throtItem.style.display = '';
-        const el = document.getElementById('s-throttle');
-        const names = { under_voltage: 'under-volt', freq_capped: 'freq-cap',
-                        throttled: 'throttled', soft_temp: 'temp-limit' };
-        if (d.throttle.now_any) {
-          const f = Object.keys(names).filter(k => d.throttle.now[k]).map(k => names[k]);
-          el.textContent = '⚠ ' + f.join(', ');
-          el.className   = 'stat-val bad';
-          el.title       = 'Active power/thermal limiting — ' + d.throttle.raw;
-        } else if (d.throttle.ever_any) {
-          const f = Object.keys(names).filter(k => d.throttle.ever[k]).map(k => names[k]);
-          el.textContent = f.join(', ') + ' (past)';
-          el.className   = 'stat-val warn';
-          el.title       = 'Occurred since boot, not active now — ' + d.throttle.raw;
-        } else {
-          el.textContent = 'OK';
-          el.className   = 'stat-val ok';
-          el.title       = 'No under-voltage or throttling — ' + d.throttle.raw;
-        }
-      } else {
-        throtItem.style.display = 'none';
-      }
-    }
-
-    // Telemetry badge: green = all valid, amber = some n/a, red = all n/a
-    const tb = document.getElementById('telemetry-badge');
-    if (tb) {
-      if (valid === total) {
-        tb.textContent = '✓ telemetry: live';
-        tb.className   = 'telemetry-badge live';
-      } else if (valid > 0) {
-        tb.textContent = '△ telemetry: live';
-        tb.className   = 'telemetry-badge warn';
-      } else {
-        tb.textContent = '✗ telemetry: offline';
-        tb.className   = 'telemetry-badge warn';
-      }
-    }
+    // NOTE: CPU/RAM/DISK/LOAD/uptime/throttle/telemetry-badge rendering (the old
+    // SYSTEM stats-bar) was removed with the topbar restructure. Tasks 3-4 wire
+    // the CPU/PROCESSES/STATUS cards; the GPS block above is untouched.
   } catch (_) {}
 }
 
@@ -2929,6 +2899,7 @@ async function fetchStats() {
 // Red when no audio source at all.
 async function fetchAudio() {
   const el = document.getElementById('s-audio');
+  if (!el) return;   // stats-bar removed with the topbar restructure; Audio is deferred
   try {
     const r = await fetch('/api/audio', { cache: 'no-store' });
     if (!r.ok) return;
