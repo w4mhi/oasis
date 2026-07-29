@@ -132,6 +132,28 @@ def _cache_path(key):
     return os.path.join(d, h + ".json")
 
 
+def _cache_plan(cached, now_ts, ttl):
+    """Decide how to use an on-disk passes cache: returns (action, base_ts).
+
+      'fresh'  — missing/garbled/legacy/older-than-ttl → discard prior and
+                 recompute from base_ts == now_ts.
+      'serve'  — fresh AND complete → return it as-is (base_ts == computed_at).
+      'resume' — fresh but incomplete → keep filling the same window
+                 (base_ts == computed_at, so resumed sats align with the rest).
+
+    Passes are ABSOLUTE-time predictions computed at `computed_at`. Once an entry
+    is older than the TTL its whole window has elapsed, so it MUST be recomputed —
+    reusing it (as the old 'fill only missing sats' path did for a complete cache)
+    freezes the window until every pass slides into the past and the roster goes
+    dark. Recomputing on staleness is what rolls the prediction window forward."""
+    computed_at = cached.get("computed_at") if isinstance(cached, dict) else None
+    if computed_at is None or (now_ts - computed_at) >= ttl:
+        return "fresh", now_ts
+    if cached.get("complete"):
+        return "serve", computed_at
+    return "resume", computed_at
+
+
 def _sats_by_norad(selected_first=False):
     """{norad: EarthSatellite} for roster entries present in the TLE cache,
     matched by NORAD id (not name — CelesTrak's names differ from the roster's,
@@ -185,25 +207,34 @@ def api_passes():
     tle_stamp = tle.cache_mtime(config_paths.tle_cache_dir(SUITE_ROOT))
     key = f"{st['lat']},{st['lon']},{window},{only},{int(tle_stamp) if tle_stamp else 0}"
     cp = _cache_path(key)
-    if os.path.exists(cp) and (datetime.datetime.now().timestamp() - os.path.getmtime(cp)) < _CACHE_TTL_S:
-        with open(cp, encoding="utf-8") as fh:
-            return jsonify(json.load(fh))
     start = datetime.datetime.now(datetime.timezone.utc)
-    # Resume from any prior (possibly partial) cache and compute only the missing
-    # sats, under a wall-clock budget below the worker timeout. Selected sats go
-    # first, so the dashboards get their passes on the first poll; the remainder
-    # fill in over the next couple of polls. A partial result still returns 200 —
-    # never 500 — and progress is persisted so it completes across requests.
-    prior, prior_err = {}, {}
+    now_ts = start.timestamp()
+
+    cached = {}
     if os.path.exists(cp):
         try:
             with open(cp, encoding="utf-8") as fh:
                 cached = json.load(fh) or {}
-            prior = cached.get("passes", {})
-            prior_err = cached.get("errors", {})     # nk -> consecutive-failure count
         except (OSError, ValueError):
-            prior, prior_err = {}, {}
-    result = {"passes": dict(prior), "errors": dict(prior_err)}
+            cached = {}
+    action, base_ts = _cache_plan(cached, now_ts, _CACHE_TTL_S)
+    if action == "serve":                # fresh + complete → hand back as-is
+        return jsonify(cached)
+
+    # Resume the same window (base_ts == its computed_at) or start a new one
+    # (base_ts == now). Compute only the sats not already present, under a
+    # wall-clock budget below the worker timeout. Selected sats go first, so the
+    # dashboards get their passes on the first poll; the remainder fill in over the
+    # next couple of polls. A partial result still returns 200 — never 500 — and
+    # progress is persisted (computed_at pins the window) so it completes across
+    # requests and, once older than the TTL, is recomputed rather than frozen.
+    if action == "resume":
+        prior = dict(cached.get("passes", {}))
+        prior_err = dict(cached.get("errors", {}))   # nk -> consecutive-failure count
+    else:                                # "fresh"
+        prior, prior_err = {}, {}
+    base = datetime.datetime.fromtimestamp(base_ts, datetime.timezone.utc)
+    result = {"passes": dict(prior), "errors": dict(prior_err), "computed_at": base_ts}
     deadline = time.monotonic() + _PASSES_BUDGET_S
     complete = True
     for norad, sat in _sats_by_norad(selected_first=True).items():
@@ -221,7 +252,7 @@ def api_passes():
             break
         try:
             result["passes"][nk] = predict.compute_passes(
-                sat, st["lat"], st["lon"], start, hours=window, min_elev=10.0)
+                sat, st["lat"], st["lon"], base, hours=window, min_elev=10.0)
             result["errors"].pop(nk, None)          # recovered — clear any prior failures
         except Exception:
             # A stale/decayed TLE can make SGP4 propagation blow up (e.g. far past
@@ -232,14 +263,9 @@ def api_passes():
             # fill mode. Only a persistent failure (cap reached, above) seals as [].
             result["errors"][nk] = result["errors"].get(nk, 0) + 1
             complete = False
+    result["complete"] = complete
     with open(cp, "w", encoding="utf-8") as fh:
         json.dump(result, fh)
-    if not complete:
-        # Persist progress so the next request resumes, but backdate the file so
-        # the freshness check treats it as stale and keeps filling the remainder
-        # rather than serving an incomplete set for the full TTL.
-        stale = datetime.datetime.now().timestamp() - _CACHE_TTL_S - 1
-        os.utime(cp, (stale, stale))
     return jsonify(result)
 
 

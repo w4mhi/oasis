@@ -127,5 +127,81 @@ class RoutesTest(unittest.TestCase):
         finally:
             self.routes._PASSES_BUDGET_S = orig_budget
 
+class CachePlanTest(unittest.TestCase):
+    """_cache_plan(cached, now_ts, ttl) -> (action, base_ts). Pure decision for
+    how to use an on-disk passes cache. Regression guard for the frozen-cache bug:
+    passes are ABSOLUTE times computed at `computed_at`; once the entry is older
+    than the TTL its whole window has elapsed, so it must be RECOMPUTED from now —
+    never served (the old code reused a stale-but-complete cache forever, so every
+    pass eventually slid into the past and the roster went dark)."""
+
+    def setUp(self):
+        from services.satellites import routes
+        self.routes = routes
+        self.TTL = routes._CACHE_TTL_S
+
+    def test_missing_cache_is_fresh_compute(self):
+        self.assertEqual(self.routes._cache_plan({}, 1000.0, self.TTL),
+                         ("fresh", 1000.0))
+
+    def test_fresh_complete_is_served(self):
+        c = {"computed_at": 1000.0, "complete": True}
+        self.assertEqual(self.routes._cache_plan(c, 1000.0 + self.TTL - 1, self.TTL),
+                         ("serve", 1000.0))
+
+    def test_stale_complete_is_recomputed_not_served(self):
+        # THE BUG: a complete cache older than the TTL describes an elapsed window.
+        c = {"computed_at": 1000.0, "complete": True}
+        now = 1000.0 + self.TTL + 1
+        self.assertEqual(self.routes._cache_plan(c, now, self.TTL), ("fresh", now))
+
+    def test_fresh_incomplete_resumes_from_original_start(self):
+        c = {"computed_at": 1000.0, "complete": False}
+        self.assertEqual(self.routes._cache_plan(c, 1000.0 + 5, self.TTL),
+                         ("resume", 1000.0))
+
+    def test_stale_incomplete_is_recomputed(self):
+        c = {"computed_at": 1000.0, "complete": False}
+        now = 1000.0 + self.TTL + 1
+        self.assertEqual(self.routes._cache_plan(c, now, self.TTL), ("fresh", now))
+
+    def test_legacy_cache_without_computed_at_is_recomputed(self):
+        # A pre-fix cache file (no computed_at) can't be trusted to be current.
+        c = {"passes": {"25544": []}}
+        self.assertEqual(self.routes._cache_plan(c, 1000.0, self.TTL),
+                         ("fresh", 1000.0))
+
+
+class PassesStalenessTest(RoutesTest):
+    """End-to-end guard: a stale complete cache on disk must trigger a real
+    recompute (compute_passes called again) rather than serving elapsed passes."""
+
+    def test_stale_cache_triggers_recompute(self):
+        # Prime the cache with a normal request, then backdate its computed_at
+        # past the TTL and confirm the next request recomputes instead of serving.
+        self.client.get("/api/satellites/passes?window=24")
+        # Locate the single cache file and age its computed_at beyond the TTL.
+        cache_root = os.path.join(self._tmp, "configuration", "tle-cache", "_passes")
+        files = [os.path.join(cache_root, f) for f in os.listdir(cache_root)]
+        self.assertTrue(files)
+        cf = files[0]
+        data = json.load(open(cf))
+        data["computed_at"] = data["computed_at"] - self.routes._CACHE_TTL_S - 60
+        json.dump(data, open(cf, "w"))
+
+        calls = []
+        orig = self.predict.compute_passes
+        def counting(*a, **k):
+            calls.append(1)
+            return orig(*a, **k)
+        self.predict.compute_passes = counting
+        try:
+            r = self.client.get("/api/satellites/passes?window=24")
+            self.assertEqual(r.status_code, 200)
+            self.assertGreater(len(calls), 0)   # stale window → recomputed, not served
+        finally:
+            self.predict.compute_passes = orig
+
+
 if __name__ == "__main__":
     unittest.main()
