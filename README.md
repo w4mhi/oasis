@@ -85,6 +85,7 @@ Each feature links to its full setup section. New here? Start with **[Quick star
 
 - **⚙️ System monitor** — live CPU%, RAM, disk, load, temperature, uptime, audio devices, network SSID/clients, and Pi power-throttle status — all colour-coded and updated every 30 s. → [Setup](docs/SETUP.md#server-setup)
 - **🔧 Service controls** — start/stop controllable services (GrayWolf, Winlink, Kiwix, Web SSH, OpenWebRX) directly from the dashboard service strip without SSH. → [Setup](docs/SETUP.md#service-controls-dashboard-power-buttons)
+- **🎛️ Service Operations console** — a device→service assignment matrix (the "mixer board") on both the dashboard and the touch kiosk: one-tap reroute an SDR or sound-card between APRS, ADS-B, OpenWebRX, satellites, and Winlink, per-device **lock** to protect an assignment, and a one-click **STOP ALL**. An opt-in **resource guardian** watches temperature/CPU/memory and auto-stops everything on a cancellable countdown if the Pi is about to overheat. → [API](docs/api.md#hardware-allocation-apihardware)
 - **💻 Web SSH terminal** *(Pi)* — a browser login shell (ttyd) on the Pi — no SSH client needed. → [Setup](docs/SETUP.md#webssh--browser-terminal)
 - **🕐 Hardware RTC** *(Pi)* — optional Witty Pi 3 (DS3231) battery-backed clock that keeps time across reboots and power loss. → [Setup](docs/SETUP.md#hardware-rtc-witty-pi-3)
 - **🖥️ Panel & cooling add-ons** *(Pi)* — on-device CM4Stack panel display, RGB Cooling HAT fan/OLED, and the OASIS Dashboard touch kiosk (800×480 / 1920×1200). → [Setup](docs/SETUP.md#cm4stack-panel-display)

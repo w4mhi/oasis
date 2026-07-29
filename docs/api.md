@@ -75,6 +75,7 @@ internet). Two mechanisms protect state-changing calls:
 `POST /api/wifi/connect` · `POST /api/wifi/forget` ·
 `POST /api/aprs/frequency` ·
 `POST /api/hardware/devices` · `/assign` · `/release` · `/burn-serial` ·
+`/route` · `/lock` · `/stop-all` · `/service-stop` · `/guardian/cancel` · `/guardian/config` ·
 `POST /api/setup/plan` · `/run` · `/cancel` · `/reboot` ·
 `POST /api/winlink/connect` · `POST /api/winlink/disconnect`.
 
@@ -168,6 +169,35 @@ advisory bookkeeping; a service claims a device exclusively only when it starts.
 Assignable services: `adsb`, `openwebrx`, `aprs` (all rtl-sdr), `winlink`
 (digirig / dra-pi). GrayWolf is intentionally absent (self-configured in its
 own UI).
+
+#### Service Operations console (`/api/hardware/console`, `/route`, …)
+
+The device→service assignment matrix (the "mixer board") behind the dashboard's
+HW/SRV console and the kiosk's SRV OPS card. Reroute is one decisive, silent
+action; a per-device lock is the only guardrail. Both front-ends share the same
+logic via `common/js/hw-console.js`.
+
+| Method | Path | Auth | Body | Description |
+|---|---|---|---|---|
+| GET | `/api/hardware/console` | — | — | Live matrix state: `{services:[{id, name, kinds:[…]}], devices:[{id, label, kind, serial, assigned, running, locked}], warnings:[…]}`. Devices is empty where no hardware is present (hardware-less dev box). |
+| POST | `/api/hardware/route` | **CSRF** | `{service, device_id}` | Exclusive reroute — assign `service` to `device_id` and start it, displacing whatever held the dongle. `409 {reason}` when the source or target is locked (the "unlock to move it" signal); `400` for an unknown/ineligible device. |
+| POST | `/api/hardware/service-stop` | **CSRF** | `{service}` | Stop a service's unit(s) without changing its assignment — the matrix toggle-off (the dongle stays assigned, just idle). `409 source-locked` if the device is locked. |
+| POST | `/api/hardware/lock` | **CSRF** | `{device_id, locked}` | Lock/unlock a device to its current assignment — protects it from any reroute (operator or auto-assign) until unlocked. |
+| POST | `/api/hardware/stop-all` | **CSRF** | — | Emergency **STOP ALL** — plain-stop every controllable service. Returns `{stopped:[…]}`. |
+
+#### Resource guardian (`/api/hardware/guardian*`)
+
+An opt-in, server-side safety valve (`server/routes/hardware.py` runner thread):
+when a monitored metric (SoC temperature, CPU %, memory %) breaches its
+threshold, it arms a cancellable countdown and then runs STOP ALL — even with no
+browser open. The dashboard and kiosk poll it (~2 s) and show a countdown banner
+with **Cancel**.
+
+| Method | Path | Auth | Body | Description |
+|---|---|---|---|---|
+| GET | `/api/hardware/guardian` | — | — | `{enabled, thresholds, mode: idle\|armed\|tripped, reason, seconds_left, stats}`. Cheap/cached — safe to poll for the banner. |
+| POST | `/api/hardware/guardian/cancel` | **CSRF** | — | Operator override — cancel the countdown or clear a tripped state. |
+| POST | `/api/hardware/guardian/config` | **CSRF** | `{enabled?, thresholds?}` | Enable/disable the guardian and tune thresholds (clamped to safe minimums). |
 
 ### Wi-Fi (`/api/wifi/*`, Linux + NetworkManager)
 

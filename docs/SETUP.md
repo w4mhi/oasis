@@ -375,6 +375,8 @@ The dashboard and home page poll these to show live status: a **System** stats b
 
 The stats bar leads with **HOST** — the hostname and LAN IP of the machine actually serving the page. The **HDOP** value is colour-coded across six steps from ideal (bright green, < 1) through excellent, good, moderate, fair, to poor (red, > 20). Service cards include **START/STOP** buttons for controllable services (GrayWolf, Winlink, Kiwix, Web SSH, OpenWebRX), so you never need to SSH in just to restart a service.
 
+Beyond simple start/stop, the **Service Operations** console (the mixer-board rail beside the service strip on the dashboard, or the APRS/ADS-B/ORX/SAT pill on the kiosk) opens a device→service matrix: reroute an SDR or sound-card between services with one tap, **lock** a device to protect its assignment, or **STOP ALL**. An opt-in **resource guardian** auto-stops everything on a cancellable countdown if temperature, CPU, or memory crosses a threshold. See [API — Hardware allocation](api.md#hardware-allocation-apihardware).
+
 ---
 
 ## FCC Callsign Lookup
