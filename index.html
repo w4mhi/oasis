@@ -2372,9 +2372,11 @@ const SVC_UNITS = { gw: 'graywolf', aprs: 'graywolf-api', feed: 'aprs-sdr-feed',
 // card's top row (top-right, alongside the name) so it stays clear of the
 // OPEN button + status badge in the bottom row.
 function powerBtn(svcId) {
-  // HW-backed services (adsb/wlrf/feed/owrx) are controlled from the HW/SRV
-  // matrix — the single source of truth. No per-card power button for them.
-  if (HW_SERVICE_FOR_CARD[svcId]) return null;
+  // HW-backed services controlled from the HW/SRV matrix get no per-card power
+  // button — EXCEPT OpenWebRX (owrx), which is self-configured (no engine unit,
+  // picks its own dongle in its own admin UI), so it stays card-controlled and
+  // is not shown in the matrix.
+  if (HW_SERVICE_FOR_CARD[svcId] && svcId !== 'owrx') return null;
   const card = document.getElementById('card-' + svcId);
   if (!card) return null;
   let btn = card.querySelector('.svc-power');

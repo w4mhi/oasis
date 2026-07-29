@@ -406,11 +406,23 @@ class AssignmentConsoleRoutesTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(mocked.called)
 
-    def test_stop_all_stops_every_controllable(self):
+    def test_stop_all_keeps_webssh_alive(self):
         with mock.patch.object(hardware_routes, "_systemctl_seq") as mocked:
             r = self.c.post("/api/hardware/stop-all", headers={"X-OASIS-Request": "1"})
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(mocked.call_count, len(hardware_routes._CONTROLLABLE_SERVICES))
+        stopped = [c.args[0] for c in mocked.call_args_list]
+        self.assertNotIn("webssh", stopped)      # never sever the remote connection
+        self.assertIn("graywolf", stopped)       # but the load IS stopped
+        self.assertEqual(mocked.call_count, len(hardware_routes._EMERGENCY_STOP))
+
+    def test_service_stop_refused_when_device_locked(self):
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "locked": True}},
+                           assignments={"adsb": "a"})
+        with mock.patch.object(HW, "load", return_value=inv):
+            r = self.c.post("/api/hardware/service-stop", json={"service": "adsb"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(json.loads(r.data)["reason"], "source-locked")
 
     def test_route_forbidden_without_header(self):
         r = self.c.post("/api/hardware/route", json={"service": "adsb", "device_id": "a"})
@@ -442,11 +454,12 @@ class GuardianRoutesTest(unittest.TestCase):
         for k in ("mode", "enabled", "thresholds", "seconds_left", "stats"):
             self.assertIn(k, b)
 
-    def test_guardian_cancel_disarms(self):
+    def test_guardian_cancel_goes_to_cooldown(self):
+        # Cancel sticks: cooldown (not idle) so it can't re-arm until recovery.
         hardware_routes._GUARD_STATE = {"mode": "armed", "deadline": 9e9, "reason": "temp_c"}
         r = self.c.post("/api/hardware/guardian/cancel", headers={"X-OASIS-Request": "1"})
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(hardware_routes._GUARD_STATE["mode"], "idle")
+        self.assertEqual(hardware_routes._GUARD_STATE["mode"], "cooldown")
 
     def test_guardian_cancel_forbidden_without_header(self):
         self.assertEqual(self.c.post("/api/hardware/guardian/cancel").status_code, 403)

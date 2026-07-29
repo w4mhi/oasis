@@ -70,6 +70,21 @@ class EvaluateTest(unittest.TestCase):
         self.assertEqual(s["mode"], "idle")
         self.assertIsNone(act)
 
-    def test_cancel_disarms(self):
+    def test_cancel_puts_it_in_cooldown_not_idle(self):
+        # Cancel must STICK: it moves to 'cooldown', not straight back to idle,
+        # so the very next tick can't re-arm while still over threshold.
         armed = {"mode": "armed", "deadline": 1030, "reason": "temp_c"}
-        self.assertEqual(guardian.cancel(armed)["mode"], "idle")
+        s = guardian.cancel(armed)
+        self.assertEqual(s["mode"], "cooldown")
+
+    def test_cooldown_does_not_rearm_while_still_over(self):
+        cd = {"mode": "cooldown", "deadline": None, "reason": "temp_c"}
+        s, act = guardian.evaluate({"temp_c": 85}, TH, cd, now=1040)
+        self.assertEqual(s["mode"], "cooldown")   # held — Cancel means Cancel
+        self.assertIsNone(act)
+
+    def test_cooldown_clears_to_idle_once_recovered(self):
+        cd = {"mode": "cooldown", "deadline": None, "reason": "temp_c"}
+        s, act = guardian.evaluate({"temp_c": 55}, TH, cd, now=1050)
+        self.assertEqual(s["mode"], "idle")       # recovered → armable again
+        self.assertIsNone(act)

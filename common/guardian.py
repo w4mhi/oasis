@@ -17,6 +17,7 @@ under threshold) or an operator cancel returns to idle from any state.
 IDLE = "idle"
 ARMED = "armed"
 TRIPPED = "tripped"
+COOLDOWN = "cooldown"   # operator cancelled — suppress re-arm until metrics recover
 
 # Conservative defaults — "something is genuinely wrong" levels, not everyday
 # load. 80 °C is near the Pi's own throttle point; sustained 95% CPU / 92% mem
@@ -62,6 +63,12 @@ def evaluate(stats, thresholds, state, now, countdown=COUNTDOWN_SEC):
             return _idle_state(), None                      # recovered — re-arm allowed
         return state, None                                  # already fired; don't loop
 
+    if mode == COOLDOWN:
+        if not over:
+            return _idle_state(), None                      # recovered — Cancel released
+        # still over, but the operator said "I've got it" — hold, do NOT re-arm
+        return {"mode": COOLDOWN, "deadline": None, "reason": state.get("reason") or over}, None
+
     # IDLE (or unknown)
     if over:
         return {"mode": ARMED, "deadline": now + countdown, "reason": over}, None
@@ -69,5 +76,7 @@ def evaluate(stats, thresholds, state, now, countdown=COUNTDOWN_SEC):
 
 
 def cancel(state):
-    """Operator override — disarm a countdown or clear a tripped state."""
-    return _idle_state()
+    """Operator override. Moves to COOLDOWN (not idle) so the next tick can't
+    immediately re-arm while the box is still over threshold — Cancel sticks
+    until metrics actually recover."""
+    return {"mode": COOLDOWN, "deadline": None, "reason": state.get("reason")}

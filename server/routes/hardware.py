@@ -25,6 +25,17 @@ SUITE_ROOT = appconfig.SUITE_ROOT
 
 bp = Blueprint("hardware", __name__)
 
+# Emergency STOP ALL / guardian target: every controllable service EXCEPT WebSSH.
+# Killing WebSSH would sever the operator's remote connection to the box at the
+# worst possible moment (an unattended overheat) — you must never lose the way
+# in. The core `oasis` server and `gpsd` are already outside
+# _CONTROLLABLE_SERVICES; WebSSH is the one more thing we keep alive.
+_EMERGENCY_STOP = _CONTROLLABLE_SERVICES - {"webssh"}
+
+# Guardian threshold floors — an authenticated operator can tune thresholds, but
+# not below sane minimums (a value under normal idle would arm perpetually).
+_THRESHOLD_MIN = {"temp_c": 45.0, "cpu_pct": 50.0, "mem_pct": 60.0}
+
 
 def _apply_hardware_async():
     """Best-effort: re-template every hardware-claiming service's device config
@@ -260,9 +271,11 @@ def api_hardware_burn_serial():
 # guarded by the per-device lock. Built on the tested engine primitives in
 # common/hardware.py (reroute/can_reroute/set_lock/warnings).
 
-# Column order + display labels for the matrix (real engine services only —
-# radio-live/RX is a future claimant, not yet a backend service).
-_CONSOLE_SERVICES = ["aprs", "adsb", "openwebrx", "winlink", "satellites"]
+# Column order + display labels for the matrix. Only services OASIS can actually
+# route + start/stop appear here: radio-live/RX is a future claimant, and
+# OpenWebRX is self-configured (no engine unit, picks its own dongle) so it's
+# controlled from its own service card, not the matrix.
+_CONSOLE_SERVICES = ["aprs", "adsb", "winlink", "satellites"]
 _SERVICE_DISPLAY = {"aprs": "APRS", "adsb": "ADS-B", "openwebrx": "ORX",
                     "winlink": "Winlink", "satellites": "SAT"}
 
@@ -355,9 +368,8 @@ def api_hardware_stop_all():
     resource guardian's countdown."""
     if request.headers.get("X-OASIS-Request") != "1":
         return jsonify({"ok": False, "error": "forbidden"}), 403
-    for unit in _CONTROLLABLE_SERVICES:
-        _systemctl_seq(unit, ["stop"])
-    return jsonify({"ok": True, "stopped": sorted(_CONTROLLABLE_SERVICES)})
+    _stop_all_units()
+    return jsonify({"ok": True, "stopped": sorted(_EMERGENCY_STOP)})
 
 
 @bp.route("/api/hardware/service-stop", methods=["POST"])
@@ -371,6 +383,9 @@ def api_hardware_service_stop():
     if service not in HW.SERVICE_UNITS:
         return jsonify({"ok": False, "error": "unknown service"}), 400
     inv = HW.load(SUITE_ROOT)
+    dev = inv.assignments.get(service)
+    if dev and HW.is_locked(inv, dev):     # lock protects from ANY displacement, incl. stop
+        return jsonify({"ok": False, "error": "source-locked", "reason": "source-locked"}), 409
     for unit in HW.service_units(inv, service):
         _systemctl_seq(unit, ["stop"])
     return jsonify({"ok": True})
@@ -438,7 +453,7 @@ def _read_stats(psutil):
 
 
 def _stop_all_units():
-    for unit in _CONTROLLABLE_SERVICES:
+    for unit in _EMERGENCY_STOP:      # every controllable service EXCEPT WebSSH
         _systemctl_seq(unit, ["stop"])
 
 
@@ -506,7 +521,8 @@ def api_hardware_guardian_config():
         for key in ("temp_c", "cpu_pct", "mem_pct"):
             if key in data["thresholds"]:
                 try:
-                    cfg["thresholds"][key] = float(data["thresholds"][key])
+                    cfg["thresholds"][key] = max(_THRESHOLD_MIN[key],
+                                                 float(data["thresholds"][key]))
                 except (TypeError, ValueError):
                     pass
     _save_guardian_config(cfg)
