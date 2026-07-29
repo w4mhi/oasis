@@ -1080,6 +1080,81 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 </div>
 
 <!-- ── SERVICE STATUS STRIP ───────────────────────────────────────────────── -->
+<style>
+/* HW/SRV assignment console — PROTOTYPE (mock data, unwired). All classes hsx- scoped. */
+.hsx-anchor{position:relative; display:flex; align-items:stretch; gap:.45rem; padding-right:1.25rem}
+.hsx-anchor .svc-strips-wrap{flex:1 1 auto; min-width:0}
+.hsx-rail{width:48px; min-height:104px; flex:0 0 auto; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:.5rem; margin:.5rem 0; background:var(--panel); border:1px solid var(--border);
+  border-radius:12px; cursor:pointer; color:var(--text-dim); transition:.12s; padding:.5rem .2rem; font-family:var(--mono)}
+.hsx-rail .hsx-bars{display:inline-flex; flex-direction:column; gap:3px}
+.hsx-rail .hsx-bars i{display:block; width:18px; height:2px; border-radius:2px; background:currentColor}
+.hsx-rail .hsx-cnt{font-size:var(--fs-small); font-weight:700; text-align:center; line-height:1.1}
+.hsx-rail.hsx-ok{color:var(--green); border-color:color-mix(in srgb,var(--green) 45%,var(--border))}
+.hsx-rail.hsx-warn{color:var(--amber); border-color:color-mix(in srgb,var(--amber) 55%,var(--border))}
+.hsx-rail.hsx-crit{color:var(--red); border-color:var(--red)}
+.hsx-rail:hover{filter:brightness(1.08)}
+.hsx-rail:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+@keyframes hsx-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--red) 55%,transparent)}50%{box-shadow:0 0 0 7px transparent}}
+.hsx-rail.hsx-crit{animation:hsx-pulse 1.4s ease-out infinite}
+@media (prefers-reduced-motion:reduce){.hsx-rail.hsx-crit{animation:none} .hsx-tog,.hsx-tog::after,.hsx-pop{transition:none}}
+.hsx-pop{position:absolute; top:0; right:1.25rem; z-index:40; width:min(560px,94vw);
+  opacity:0; transform:translateX(28px); pointer-events:none; transition:.18s ease}
+.hsx-pop.hsx-open{opacity:1; transform:translateX(0); pointer-events:auto}
+.hsx-card{width:100%; background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  overflow:hidden; box-shadow:0 14px 38px rgba(0,0,0,.30)}
+.hsx-card-hd{display:flex; align-items:center; gap:.4rem; padding:.55rem .75rem; border-bottom:1px solid var(--border)}
+.hsx-card-hd .hsx-ttl{font-size:var(--fs-label); text-transform:uppercase; letter-spacing:.07em; font-weight:600;
+  color:var(--text); display:flex; align-items:center; gap:.45rem; margin-right:auto}
+.hsx-hdbtn{background:transparent; border:1px solid transparent; border-radius:6px; cursor:pointer;
+  color:var(--text-dim); font-family:var(--mono); font-size:.9rem; line-height:1; padding:.25rem .4rem}
+.hsx-hdbtn:hover{color:var(--text); border-color:var(--border)}
+.hsx-hdbtn:focus-visible{outline:2px solid var(--blue); outline-offset:1px}
+.hsx-hdbtn.hsx-on{color:var(--accent); border-color:color-mix(in srgb,var(--accent) 40%,var(--border))}
+.hsx-msg{min-height:1.75rem; display:flex; align-items:center; gap:.4rem; padding:.25rem .8rem;
+  border-bottom:1px solid var(--border); font-size:var(--fs-small); line-height:1.3;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.hsx-msg.hsx-idle{color:var(--text-dim); opacity:.65}
+.hsx-msg.hsx-info{color:var(--text-dim)}
+.hsx-msg.hsx-okc{color:var(--accent)}
+.hsx-msg.hsx-lockc{color:var(--amber)}
+.hsx-msg.hsx-warnc{color:var(--red)}
+.hsx-scroll{overflow-x:auto}
+.hsx-matrix{display:grid; gap:0; min-width:480px; font-variant-numeric:tabular-nums}
+.hsx-mh{font-size:var(--fs-small); text-transform:uppercase; letter-spacing:.04em; color:var(--text-dim);
+  text-align:center; padding:.45rem .2rem .4rem; border-bottom:1px solid var(--border); white-space:nowrap}
+.hsx-mh.hsx-hw{text-align:left; padding-left:.8rem}
+.hsx-mc{display:flex; align-items:center; justify-content:center; padding:.3rem .2rem; border-bottom:1px solid var(--border)}
+.hsx-matrix .hsx-rlast .hsx-mc, .hsx-matrix .hsx-rlast .hsx-hwc{border-bottom:none}
+.hsx-hwc{display:flex; align-items:center; gap:.45rem; padding:.3rem .6rem .3rem .8rem; border-bottom:1px solid var(--border)}
+.hsx-hwc .hsx-nm{font-weight:600; font-size:var(--fs-base)}
+.hsx-hwc .hsx-sr{font-size:var(--fs-micro); color:var(--text-dim)}
+.hsx-hwc.hsx-off{background:color-mix(in srgb,var(--red) 12%,transparent)}
+.hsx-hwc.hsx-off .hsx-nm{color:var(--red)}
+.hsx-hwc .hsx-offtag{font-size:var(--fs-micro); color:var(--red); text-transform:uppercase; letter-spacing:.05em}
+.hsx-hwc .hsx-lk{margin-left:auto; line-height:0; cursor:pointer; border:none; background:transparent;
+  color:var(--amber); padding:.15rem; border-radius:4px; display:inline-flex; width:22px; height:22px;
+  align-items:center; justify-content:center}
+.hsx-hwc .hsx-lk svg{display:block; width:14px; height:14px}
+.hsx-hwc .hsx-lk:hover{opacity:.75}
+.hsx-hwc .hsx-lk:focus-visible{outline:2px solid var(--blue); outline-offset:1px}
+.hsx-hwc.hsx-locked{background:color-mix(in srgb,var(--red) 9%,transparent)}
+.hsx-hwc.hsx-locked .hsx-lk{color:var(--red)}
+.hsx-tog{position:relative; width:32px; height:17px; border-radius:999px; padding:0;
+  border:1px solid var(--border); background:var(--panel-2); cursor:pointer; transition:.15s}
+.hsx-tog::after{content:""; position:absolute; top:1px; left:1px; width:13px; height:13px; border-radius:50%;
+  background:var(--text-dim); transition:.15s}
+.hsx-tog.hsx-on{background:color-mix(in srgb,var(--accent) 32%,var(--panel-2)); border-color:var(--accent)}
+.hsx-tog.hsx-on::after{left:16px; background:var(--accent); box-shadow:0 0 5px var(--accent)}
+.hsx-tog.hsx-stopped{border-color:var(--amber-dim); background:color-mix(in srgb,var(--amber) 14%,var(--panel-2))}
+.hsx-tog.hsx-stopped::after{background:var(--amber)}
+.hsx-tog.hsx-frozen{cursor:not-allowed}
+.hsx-tog.hsx-dim{opacity:.35; cursor:not-allowed}
+.hsx-tog:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+.hsx-nax{color:var(--border)}
+</style>
+<!-- HW/SRV assignment console (prototype · mock data · unwired) -->
+<div class="hsx-anchor">
 <div class="svc-strips-wrap" id="svc-strips-wrap">
 <!-- Row 1: radio / RF services -->
 <div class="svc-strip">
@@ -1233,6 +1308,22 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   </div>
 </div>
 </div><!-- /.svc-strips-wrap -->
+  <button class="hsx-rail hsx-ok" id="hsx-rail" type="button" aria-expanded="false" aria-controls="hsx-pop" title="HW / SRV assignment">
+    <span class="hsx-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="hsx-cnt" id="hsx-cnt">&#10003;</span>
+  </button>
+  <div class="hsx-pop" id="hsx-pop" role="dialog" aria-label="HW / SRV assignment">
+    <div class="hsx-card">
+      <div class="hsx-card-hd">
+        <span class="hsx-ttl">&#127899; HW / SRV Matrix</span>
+        <button class="hsx-hdbtn" id="hsx-pin" type="button" title="Pin open" aria-pressed="false">&#128204;</button>
+        <button class="hsx-hdbtn" id="hsx-close" type="button" title="Collapse">&#10005;</button>
+      </div>
+      <div class="hsx-msg hsx-idle" id="hsx-msg" aria-live="polite"></div>
+      <div class="hsx-scroll"><div class="hsx-matrix" id="hsx-matrix"></div></div>
+    </div>
+  </div>
+</div><!-- /.hsx-anchor -->
 
 <!-- Device allocation (which dongle is busy / free / assigned) lives on the
      Setup → Hardware card now; each service card above shows its own device
@@ -3630,5 +3721,116 @@ loadConfig().then(() => {
   </div>
 </div>
 
+<script>
+/* HW/SRV assignment console — PROTOTYPE (mock data, unwired). Namespaced hsx-, IIFE (no globals). */
+(function(){
+  var services=[
+    {id:'aprs',name:'APRS',kinds:['rtl-sdr']},
+    {id:'adsb',name:'ADS-B',kinds:['rtl-sdr']},
+    {id:'openwebrx',name:'ORX',kinds:['rtl-sdr']},
+    {id:'winlink',name:'Winlink',kinds:['digirig','dra-pi']},
+    {id:'satellites',name:'SAT',kinds:['rtl-sdr']},
+    {id:'radiolive',name:'RX',kinds:['rtl-sdr']}
+  ];
+  function svcName(id){var s=services.find(function(x){return x.id===id;});return s?s.name:'—';}
+  var LOCK_CLOSED='<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.2" rx="1.3" fill="currentColor"/><path d="M5 7.2V5a3 3 0 0 1 6 0v2.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  var LOCK_OPEN='<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.2" rx="1.3" fill="currentColor"/><path d="M5 7.2V5a3 3 0 0 1 5.9-.55" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  var devices=[
+    {id:'rtl1',nm:'RTL1',kind:'rtl-sdr',sr:'a1',assigned:'aprs',running:true,locked:false,offline:false},
+    {id:'rtl2',nm:'RTL2',kind:'rtl-sdr',sr:'a2',assigned:'adsb',running:true,locked:true,offline:false},
+    {id:'digirig',nm:'DigiRig',kind:'digirig',sr:'usb-1',assigned:'winlink',running:true,locked:false,offline:false},
+    {id:'dra',nm:'DRA',kind:'dra-pi',sr:'spi-0',assigned:null,running:false,locked:false,offline:false}
+  ];
+  function cstate(dev,svc){
+    if(svc.kinds.indexOf(dev.kind)<0) return 'na';
+    if(dev.offline) return dev.assigned===svc.id?'dim':'na';
+    if(dev.assigned===svc.id) return dev.running?'on':'stopped';
+    return 'off';
+  }
+  var matrix=document.getElementById('hsx-matrix');
+  var msgEl=document.getElementById('hsx-msg'); var msgT;
+  var IDLE='Tap a toggle to route · lock a device to protect it';
+  function message(text,kind){
+    msgEl.textContent=text; msgEl.className='hsx-msg hsx-'+(kind||'info');
+    clearTimeout(msgT);
+    if(kind!=='idle') msgT=setTimeout(function(){ msgEl.className='hsx-msg hsx-idle'; msgEl.textContent=IDLE; },3400);
+  }
+  function flip(dev,svc){
+    var st=cstate(dev,svc);
+    if(st==='na') return;
+    if(dev.offline){ message('⚠ '+dev.nm+' is offline — reconnect the dongle.','warnc'); return; }
+    if(dev.locked){ message('🔒 '+dev.nm+' is locked on '+svcName(dev.assigned)+' — unlock it to move it.','warnc'); return; }
+    if(dev.assigned===svc.id){
+      dev.running=!dev.running;
+      message((dev.running?'▶ Started ':'■ Stopped ')+svc.name+' on '+dev.nm, dev.running?'okc':'info');
+      render(); return;
+    }
+    var holder=devices.find(function(d){return d!==dev && d.assigned===svc.id;});
+    if(holder && holder.locked){ message('🔒 '+svc.name+' is locked on '+holder.nm+' — unlock it to move it.','warnc'); return; }
+    if(holder){ holder.assigned=null; holder.running=false; }
+    dev.assigned=svc.id; dev.running=true;
+    message('▶ '+svc.name+' → '+dev.nm+(holder?' (moved from '+holder.nm+')':''),'okc');
+    render();
+  }
+  function toggleLock(dev){
+    if(dev.offline){ message('⚠ '+dev.nm+' is offline.','warnc'); return; }
+    if(!dev.assigned && !dev.locked){ message(dev.nm+' has nothing assigned to lock.','info'); return; }
+    dev.locked=!dev.locked; render();
+    message(dev.locked?'🔒 Locked '+dev.nm+' on '+svcName(dev.assigned):'🔓 Unlocked '+dev.nm,'lockc');
+  }
+  function health(){
+    var off=devices.filter(function(d){return d.offline;}).length;
+    if(off) return {lvl:'crit',glyph:'⚠',count:off};
+    var stopped=devices.filter(function(d){return d.assigned&&!d.running&&!d.offline;}).length;
+    if(stopped) return {lvl:'warn',glyph:'!',count:stopped};
+    return {lvl:'ok',glyph:'✓',count:0};
+  }
+  var rail=document.getElementById('hsx-rail'), railCnt=document.getElementById('hsx-cnt');
+  function renderRail(){
+    var h=health();
+    rail.className='hsx-rail hsx-'+h.lvl;
+    railCnt.innerHTML = h.count>0 ? h.glyph+'<br>'+h.count : h.glyph;
+    rail.title='HW / SRV — '+(h.lvl==='ok'?'all nominal':h.lvl==='warn'?h.count+' stopped':h.count+' offline');
+  }
+  function render(){
+    matrix.style.gridTemplateColumns='minmax(96px,auto) repeat('+services.length+',1fr)';
+    matrix.innerHTML='';
+    var hw=document.createElement('div'); hw.className='hsx-mh hsx-hw'; hw.textContent='HW'; matrix.appendChild(hw);
+    services.forEach(function(s){var h=document.createElement('div'); h.className='hsx-mh'; h.textContent=s.name; matrix.appendChild(h);});
+    devices.forEach(function(dev,i){
+      var last=i===devices.length-1?' hsx-rlast':'';
+      var cell=document.createElement('div'); cell.className='hsx-hwc'+last+(dev.locked?' hsx-locked':'')+(dev.offline?' hsx-off':'');
+      cell.innerHTML='<span class="hsx-nm">'+dev.nm+'</span><span class="hsx-sr">'+dev.sr+'</span>'+(dev.offline?'<span class="hsx-offtag">offline</span>':'');
+      var lk=document.createElement('button'); lk.className='hsx-lk'; lk.type='button';
+      lk.innerHTML=dev.locked?LOCK_CLOSED:LOCK_OPEN; lk.title=dev.locked?'Unlock '+dev.nm:'Lock '+dev.nm+' on its current service';
+      lk.setAttribute('aria-label',lk.title); lk.onclick=function(){ toggleLock(dev); }; cell.appendChild(lk); matrix.appendChild(cell);
+      services.forEach(function(svc){
+        var wrap=document.createElement('div'); wrap.className='hsx-mc'+last;
+        var st=cstate(dev,svc);
+        if(st==='na'){ wrap.innerHTML='<span class="hsx-nax">·</span>'; }
+        else{
+          var t=document.createElement('button'); t.type='button';
+          t.className='hsx-tog'+(st==='on'?' hsx-on':st==='stopped'?' hsx-stopped':st==='dim'?' hsx-dim':'')+(dev.locked&&st!=='dim'?' hsx-frozen':'');
+          var lab=svc.name+' on '+dev.nm+' — '+(st==='on'?'running':st==='stopped'?'assigned, stopped':st==='dim'?'offline':'off');
+          t.title=lab; t.setAttribute('aria-label',lab); t.setAttribute('role','switch'); t.setAttribute('aria-checked', st==='on'?'true':'false');
+          t.onclick=function(){ flip(dev,svc); }; wrap.appendChild(t);
+        }
+        matrix.appendChild(wrap);
+      });
+    });
+    renderRail();
+  }
+  var pop=document.getElementById('hsx-pop'); var pinned=false;
+  function setOpen(o){ pop.classList.toggle('hsx-open',o); rail.setAttribute('aria-expanded',o?'true':'false'); }
+  rail.onclick=function(e){ e.stopPropagation(); setOpen(!pop.classList.contains('hsx-open')); };
+  document.getElementById('hsx-close').onclick=function(){ setOpen(false); };
+  var pinBtn=document.getElementById('hsx-pin');
+  pinBtn.onclick=function(){ pinned=!pinned; pinBtn.classList.toggle('hsx-on',pinned); pinBtn.setAttribute('aria-pressed',pinned?'true':'false'); };
+  document.addEventListener('click',function(e){ if(pop.classList.contains('hsx-open')&&!pinned&&!pop.contains(e.target)&&!rail.contains(e.target)) setOpen(false); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&!pinned) setOpen(false); });
+  render();
+  message(IDLE,'idle');
+})();
+</script>
 </body>
 </html>
