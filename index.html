@@ -1104,6 +1104,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 .hsx-rail .hsx-bars{display:inline-flex; flex-direction:column; gap:3px}
 .hsx-rail .hsx-bars i{display:block; width:18px; height:2px; border-radius:2px; background:currentColor}
 .hsx-rail .hsx-cnt{font-size:var(--fs-small); font-weight:700; text-align:center; line-height:1.1}
+.hsx-rail .hsx-lbl{font-size:var(--fs-micro); font-weight:700; letter-spacing:.12em; text-align:center; line-height:1.25; text-transform:uppercase}
 .hsx-rail.hsx-ok{color:var(--green); border-color:color-mix(in srgb,var(--green) 45%,var(--border))}
 .hsx-rail.hsx-warn{color:var(--amber); border-color:color-mix(in srgb,var(--amber) 55%,var(--border))}
 .hsx-rail.hsx-crit{color:var(--red); border-color:var(--red)}
@@ -1324,7 +1325,8 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   </div>
 </div>
 </div><!-- /.svc-strips-wrap -->
-  <button class="hsx-rail hsx-ok" id="hsx-rail" type="button" aria-expanded="false" aria-controls="hsx-pop" title="HW / SRV assignment">
+  <button class="hsx-rail hsx-ok" id="hsx-rail" type="button" aria-expanded="false" aria-controls="hsx-pop" title="Service Operations — HW / SRV assignment">
+    <span class="hsx-lbl" aria-hidden="true">SRV<br>OPS</span>
     <span class="hsx-bars" aria-hidden="true"><i></i><i></i><i></i></span>
     <span class="hsx-cnt" id="hsx-cnt">&#10003;</span>
   </button>
