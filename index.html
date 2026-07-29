@@ -1316,8 +1316,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="hsx-card">
       <div class="hsx-card-hd">
         <span class="hsx-ttl">&#127899; HW / SRV Matrix</span>
-        <button class="hsx-hdbtn" id="hsx-pin" type="button" title="Pin open" aria-pressed="false">&#128204;</button>
-        <button class="hsx-hdbtn" id="hsx-close" type="button" title="Collapse">&#10005;</button>
+        <button class="hsx-hdbtn" id="hsx-close" type="button" title="Close">&#10005;</button>
       </div>
       <div class="hsx-msg hsx-idle" id="hsx-msg" aria-live="polite"></div>
       <div class="hsx-scroll"><div class="hsx-matrix" id="hsx-matrix"></div></div>
@@ -3820,14 +3819,13 @@ loadConfig().then(() => {
     });
     renderRail();
   }
-  var pop=document.getElementById('hsx-pop'); var pinned=false;
+  var pop=document.getElementById('hsx-pop');
   function setOpen(o){ pop.classList.toggle('hsx-open',o); rail.setAttribute('aria-expanded',o?'true':'false'); }
-  rail.onclick=function(e){ e.stopPropagation(); setOpen(!pop.classList.contains('hsx-open')); };
+  // Opens on rail click; stays open until the user explicitly closes it (rail toggle, close button, or Esc).
+  // No click-outside auto-dismiss — it is a persistent panel, not a transient popover.
+  rail.onclick=function(){ setOpen(!pop.classList.contains('hsx-open')); };
   document.getElementById('hsx-close').onclick=function(){ setOpen(false); };
-  var pinBtn=document.getElementById('hsx-pin');
-  pinBtn.onclick=function(){ pinned=!pinned; pinBtn.classList.toggle('hsx-on',pinned); pinBtn.setAttribute('aria-pressed',pinned?'true':'false'); };
-  document.addEventListener('click',function(e){ if(pop.classList.contains('hsx-open')&&!pinned&&!pop.contains(e.target)&&!rail.contains(e.target)) setOpen(false); });
-  document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&!pinned) setOpen(false); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') setOpen(false); });
   render();
   message(IDLE,'idle');
 })();
