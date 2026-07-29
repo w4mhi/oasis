@@ -243,6 +243,23 @@ def device_states(inv, is_active=_default_is_active):
     return out
 
 
+def warnings(inv, is_active=_default_is_active):
+    """Health warnings for the console + dashboard rail — the shared contract both
+    surfaces read. Pure function of the inventory and unit-active state. Each item
+    is {kind, device, service, severity, message} with severity in {"warn","crit"}.
+    An empty list means all nominal (green rail). Runtime warnings (crashes,
+    running-vs-assigned drift) are added as the console wiring needs them."""
+    out = []
+    for service, device_id in inv.assignments.items():
+        if device_id not in inv.devices:
+            out.append({
+                "kind": "device-missing", "device": device_id, "service": service,
+                "severity": "crit",
+                "message": f"{service} is assigned to a device that isn't present ({device_id})",
+            })
+    return out
+
+
 def can_start(inv, service, is_active=_default_is_active):
     """(ok, reason). reason in {"", "unassigned", "device-not-attached"}. Under
     exclusive allocation a device can never be held by ANOTHER service, so
@@ -360,6 +377,8 @@ def default_assign(repo_root, inv, service, allowed_kinds):
     for device_id, device in inv.devices.items():
         if device["kind"] not in allowed_kinds:
             continue
+        if is_locked(inv, device_id):
+            continue  # a locked dongle is protected — never auto-assign onto it
         # rtl-sdr is shared: a dongle already assigned to another service is
         # still a valid default here (all three RTL consumers converge on the
         # first dongle out of the box — the operator spreads them across

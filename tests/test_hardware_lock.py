@@ -132,3 +132,46 @@ class RerouteTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             hardware.reroute(self.dir, inv, "aprs", "sdr-1")
         self.assertEqual(inv.assignments.get("adsb"), "sdr-1")       # unchanged
+
+
+class AutoAssignLockTest(unittest.TestCase):
+    """Auto-assignment must never move onto a locked dongle (design 2026-07-28)."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def test_default_assign_skips_locked_device(self):
+        # sdr-1 (first) is locked protecting adsb; sdr-2 is free. A new service
+        # must land on sdr-2, not pile onto the locked sdr-1.
+        _write(self.dir, '{"version":1,"devices":['
+               '{"id":"sdr-1","kind":"rtl-sdr","serial":"1","locked":true},'
+               '{"id":"sdr-2","kind":"rtl-sdr","serial":"2"}],'
+               '"assignments":{"adsb":"sdr-1"}}')
+        inv = hardware.load(self.dir)
+        hardware.default_assign(self.dir, inv, "satellites", {"rtl-sdr"})
+        self.assertEqual(inv.assignments["satellites"], "sdr-2")
+
+
+class WarningsTest(unittest.TestCase):
+    """warnings(inv, is_active) — the shared health contract consumed by BOTH the
+    console and the dashboard rail pill. Pure function of (inventory, unit state);
+    returns a list of {kind, device, service, severity, message}. Empty == green."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def test_clean_inventory_has_no_warnings(self):
+        _write(self.dir, '{"version":1,"devices":['
+               '{"id":"sdr-1","kind":"rtl-sdr","serial":"1"}],'
+               '"assignments":{"adsb":"sdr-1"}}')
+        inv = hardware.load(self.dir)
+        self.assertEqual(hardware.warnings(inv, is_active=lambda u: False), [])
+
+    def test_warnings_flags_assignment_to_missing_device(self):
+        # Dongle unplugged: adsb is assigned to a device no longer in inventory.
+        _write(self.dir, '{"version":1,"devices":[],'
+               '"assignments":{"adsb":"ghost"}}')
+        inv = hardware.load(self.dir)
+        w = hardware.warnings(inv, is_active=lambda u: False)
+        self.assertTrue(any(x["kind"] == "device-missing" and x["service"] == "adsb"
+                            and x["severity"] == "crit" for x in w))
