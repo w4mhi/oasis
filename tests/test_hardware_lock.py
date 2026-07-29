@@ -79,3 +79,56 @@ class RerouteTest(unittest.TestCase):
         self.assertIn("dump1090-fa", stopped)                        # its unit stopped
         self.assertIn("aprs-sdr-feed", started)                      # aprs' rtl_fm feed started
         self.assertNotIn("adsb", hardware.load(self.dir).assignments)  # persisted
+
+    def test_reroute_moving_service_stops_it_on_old_device_first(self):
+        # ADS-B on sdr-1; move it to sdr-2. It must be stopped on sdr-1 before it
+        # starts on sdr-2, and sdr-1 is left free.
+        _write(self.dir, '{"version":1,"devices":['
+               '{"id":"sdr-1","kind":"rtl-sdr","serial":"1"},'
+               '{"id":"sdr-2","kind":"rtl-sdr","serial":"2"}],'
+               '"assignments":{"adsb":"sdr-1"}}')
+        inv = hardware.load(self.dir)
+        started, stopped = [], []
+        hardware.reroute(self.dir, inv, "adsb", "sdr-2",
+                         start_fn=started.append, stop_fn=stopped.append)
+        self.assertEqual(inv.assignments["adsb"], "sdr-2")           # moved
+        self.assertIn("dump1090-fa", stopped)                        # stopped on old
+        self.assertIn("dump1090-fa", started)                        # started on new
+        self.assertEqual(hardware.assignees(inv, "sdr-1"), [])       # old dongle freed
+
+    def test_can_reroute_refused_when_target_device_locked(self):
+        _write(self.dir, '{"version":1,"devices":['
+               '{"id":"sdr-1","kind":"rtl-sdr","serial":"1","locked":true}],'
+               '"assignments":{"adsb":"sdr-1"}}')
+        inv = hardware.load(self.dir)
+        ok, reason = hardware.can_reroute(inv, "aprs", "sdr-1")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "target-locked")
+
+    def test_can_reroute_refused_when_source_device_locked(self):
+        # Moving a service OFF a locked dongle is also a displacement of that
+        # locked dongle's assignment — refuse it.
+        _write(self.dir, '{"version":1,"devices":['
+               '{"id":"sdr-1","kind":"rtl-sdr","serial":"1","locked":true},'
+               '{"id":"sdr-2","kind":"rtl-sdr","serial":"2"}],'
+               '"assignments":{"adsb":"sdr-1"}}')
+        inv = hardware.load(self.dir)
+        ok, reason = hardware.can_reroute(inv, "adsb", "sdr-2")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "source-locked")
+
+    def test_can_reroute_allowed_when_unlocked(self):
+        _write(self.dir, '{"version":1,"devices":['
+               '{"id":"sdr-1","kind":"rtl-sdr","serial":"1"}],'
+               '"assignments":{}}')
+        inv = hardware.load(self.dir)
+        self.assertEqual(hardware.can_reroute(inv, "adsb", "sdr-1"), (True, ""))
+
+    def test_reroute_raises_when_locked(self):
+        _write(self.dir, '{"version":1,"devices":['
+               '{"id":"sdr-1","kind":"rtl-sdr","serial":"1","locked":true}],'
+               '"assignments":{"adsb":"sdr-1"}}')
+        inv = hardware.load(self.dir)
+        with self.assertRaises(ValueError):
+            hardware.reroute(self.dir, inv, "aprs", "sdr-1")
+        self.assertEqual(inv.assignments.get("adsb"), "sdr-1")       # unchanged

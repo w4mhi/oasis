@@ -301,12 +301,35 @@ def release(repo_root, inv, service, stop_fn=None):
     return inv
 
 
+def can_reroute(inv, service, device_id):
+    """(ok, reason). reason in {"", "target-locked", "source-locked"}. A locked
+    device protects its assignment from ANY displacement: you can neither claim a
+    locked target dongle nor move a service off a locked source dongle. Callers
+    check this first to show the two-step 'unlock it to move it' warning."""
+    if is_locked(inv, device_id):
+        return False, "target-locked"
+    old = inv.assignments.get(service)
+    if old is not None and old != device_id and is_locked(inv, old):
+        return False, "source-locked"
+    return True, ""
+
+
 def reroute(repo_root, inv, service, device_id, start_fn=None, stop_fn=None):
     """Console-enforced exclusive reroute: assign `service` to `device_id`, persist,
-    and start its unit(s). Displacement of whatever else was on the device, moving
-    the service off its old device, and lock guards are layered on in later slices.
+    and start its unit(s), displacing whatever else was on that dongle and stopping
+    the service on its old dongle first. Raises ValueError if can_reroute() refuses
+    (a lock) — callers should check can_reroute() first to report it cleanly.
     Units are started/stopped via injected callables (one unit name each) so the
     logic is testable without systemd."""
+    ok, reason = can_reroute(inv, service, device_id)
+    if not ok:
+        raise ValueError(f"cannot reroute {service!r} to {device_id!r}: {reason}")
+    # If the service is moving from a different device, stop it there first
+    # (units are computed against its OLD assignment before we reassign).
+    old_dev = inv.assignments.get(service)
+    if old_dev is not None and old_dev != device_id and stop_fn is not None:
+        for unit in service_units(inv, service):
+            stop_fn(unit)
     # Console-enforced exclusive: displace any OTHER service currently on the
     # target device (stop its units, unassign it) before claiming the dongle.
     for other in [s for s in assignees(inv, device_id) if s != service]:
