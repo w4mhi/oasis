@@ -15,7 +15,7 @@ from flask import Blueprint, jsonify, request
 import appconfig
 from common import hardware as HW
 from common import hardware_detect as HD_detect
-from routes.service_control import _systemctl_seq
+from routes.service_control import _CONTROLLABLE_SERVICES, _systemctl_seq
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 
@@ -248,5 +248,111 @@ def api_hardware_burn_serial():
     if r.returncode != 0:
         return jsonify({"ok": False, "error": (r.stderr or r.stdout or "").strip()[:200]}), 500
     return jsonify({"ok": True})
+
+
+# ── HW/SRV assignment console (design 2026-07-28) ────────────────────────────
+# The matrix console's live state + control endpoints. Console-enforced
+# exclusive: /route reassigns one service per dongle (stop old, start new),
+# guarded by the per-device lock. Built on the tested engine primitives in
+# common/hardware.py (reroute/can_reroute/set_lock/warnings).
+
+# Column order + display labels for the matrix (real engine services only —
+# radio-live/RX is a future claimant, not yet a backend service).
+_CONSOLE_SERVICES = ["aprs", "adsb", "openwebrx", "winlink", "satellites"]
+_SERVICE_DISPLAY = {"aprs": "APRS", "adsb": "ADS-B", "openwebrx": "ORX",
+                    "winlink": "Winlink", "satellites": "SAT"}
+
+
+def _console_state():
+    """Live matrix state: the service catalog (id/label/eligible kinds), each
+    device's single presented assignment + running + lock, and the health
+    warnings. 'assigned' collapses the engine's advisory multi-assign to one
+    service for the exclusive console view (the running one, else the first)."""
+    inv = HW.load(SUITE_ROOT)
+    services = [{"id": s, "name": _SERVICE_DISPLAY.get(s, s),
+                 "kinds": sorted(HW.DEVICE_KIND_FOR_SERVICE.get(s, []))}
+                for s in _CONSOLE_SERVICES]
+    devices = []
+    for did, d in inv.devices.items():
+        holders = HW.assignees(inv, did)
+        running = next((s for s in holders
+                        if any(HW._default_is_active(u) for u in HW.service_units(inv, s))),
+                       None)
+        assigned = running or (holders[0] if holders else None)
+        devices.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
+                        "serial": d.get("serial", ""), "locked": HW.is_locked(inv, did),
+                        "assigned": assigned, "running": running is not None})
+    return {"services": services, "devices": devices, "warnings": HW.warnings(inv)}
+
+
+@bp.route("/api/hardware/console")
+def api_hardware_console():
+    """Live state for the HW/SRV matrix console (rail + matrix + warnings)."""
+    return jsonify(_console_state())
+
+
+@bp.route("/api/hardware/route", methods=["POST"])
+def api_hardware_route():
+    """Console-enforced exclusive reroute: put `service` on `device_id`, starting
+    it and displacing whatever was on that dongle. 409 if a lock blocks it (the
+    two-step 'unlock to move it' signal); 400 for unknown/ineligible device."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    service = (data.get("service") or "").strip()
+    device_id = (data.get("device_id") or "").strip()
+    if service not in HW.SERVICE_UNITS:
+        return jsonify({"ok": False, "error": "unknown service"}), 400
+    inv = HW.load(SUITE_ROOT)
+    if device_id not in inv.devices:
+        return jsonify({"ok": False, "error": "unknown device"}), 400
+    allowed = HW.DEVICE_KIND_FOR_SERVICE.get(service)
+    if allowed is not None and inv.devices[device_id]["kind"] not in allowed:
+        return jsonify({"ok": False, "error": "wrong device kind for this service"}), 400
+    ok, reason = HW.can_reroute(inv, service, device_id)
+    if not ok:
+        return jsonify({"ok": False, "error": reason, "reason": reason}), 409
+
+    to_start = []
+
+    def _stop(unit):
+        _systemctl_seq(unit, ["stop"])
+
+    # reroute stops old/displaced units + reassigns (persisted); defer starts
+    # until AFTER apply writes the new device config for the moved service.
+    HW.reroute(SUITE_ROOT, inv, service, device_id,
+               start_fn=to_start.append, stop_fn=_stop)
+    _apply_hardware_async()                       # sync: re-template device config
+    for unit in to_start:
+        _systemctl_seq(unit, ["start"])
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/hardware/lock", methods=["POST"])
+def api_hardware_lock():
+    """Lock/unlock a device to its current assignment (protects it from any
+    reroute — operator or auto-assign — until unlocked)."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    device_id = (data.get("device_id") or "").strip()
+    locked = bool(data.get("locked"))
+    inv = HW.load(SUITE_ROOT)
+    if device_id not in inv.devices:
+        return jsonify({"ok": False, "error": "unknown device"}), 400
+    HW.set_lock(SUITE_ROOT, inv, device_id, locked)
+    return jsonify({"ok": True, "locked": locked})
+
+
+@bp.route("/api/hardware/stop-all", methods=["POST"])
+def api_hardware_stop_all():
+    """Emergency STOP ALL: stop every controllable service. Plain stop (no
+    disable) — boot state is untouched. Used by the matrix header button and the
+    resource guardian's countdown."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    for unit in _CONTROLLABLE_SERVICES:
+        _systemctl_seq(unit, ["stop"])
+    return jsonify({"ok": True, "stopped": sorted(_CONTROLLABLE_SERVICES)})
 
 
