@@ -965,6 +965,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/adsb-operators.js"></script>
 <script src="/common/js/service-registry.js"></script>
+<script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
 </head>
 <body>
@@ -3778,19 +3779,16 @@ loadConfig().then(() => {
 </div>
 
 <script>
-/* HW/SRV assignment console — LIVE (wired to /api/hardware/*). Namespaced hsx-, IIFE (no globals). */
+/* HW/SRV assignment console — LIVE, wired to /api/hardware/* via the shared
+   common/js/hw-console.js (logic + contract shared with the kiosk SRV OPS card,
+   so the two can't drift). Namespaced hsx-, IIFE (no globals). */
 (function(){
   var LOCK_CLOSED='<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.2" rx="1.3" fill="currentColor"/><path d="M5 7.2V5a3 3 0 0 1 6 0v2.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
   var LOCK_OPEN='<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.2" rx="1.3" fill="currentColor"/><path d="M5 7.2V5a3 3 0 0 1 5.9-.55" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
   var state={services:[],devices:[],warnings:[]};
   function svcNameOf(id){var s=state.services.find(function(x){return x.id===id;});return s?s.name:(id||'—');}
-  function post(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-OASIS-Request':'1'},body:JSON.stringify(body||{})});}
-  function refresh(){return fetch('/api/hardware/console').then(function(r){return r.json();}).then(function(s){state=s;render();}).catch(function(){});}
-  function cstate(dev,svc){
-    if(svc.kinds.indexOf(dev.kind)<0) return 'na';
-    if(dev.assigned===svc.id) return dev.running?'on':'stopped';
-    return 'off';
-  }
+  function refresh(){return oasisHwConsole.fetchState().then(function(s){state=s;render();}).catch(function(){});}
+  function cstate(dev,svc){ return oasisCstate(dev,svc); }
   var matrix=document.getElementById('hsx-matrix');
   var msgEl=document.getElementById('hsx-msg'); var msgT;
   var IDLE='Tap a toggle to route · lock a device to protect it';
@@ -3800,15 +3798,15 @@ loadConfig().then(() => {
     if(kind!=='idle') msgT=setTimeout(function(){ msgEl.className='hsx-msg hsx-idle'; msgEl.textContent=IDLE; },3400);
   }
   function flip(dev,svc){
-    var st=cstate(dev,svc);
-    if(st==='na') return;
-    if(dev.locked){ message(dev.label+' is locked on '+svcNameOf(dev.assigned)+' — unlock it to move it.','warnc'); return; }
-    if(st==='on'){    // running here → stop it (keeps the dongle assigned, just idle)
-      post('/api/hardware/service-stop',{service:svc.id}).then(function(){ message('■ Stopped '+svc.name+' on '+dev.label,'info'); refresh(); });
+    var plan=oasisFlipPlan(dev,svc);
+    if(plan.action==='none') return;
+    if(plan.action==='locked'){ message(dev.label+' is locked on '+svcNameOf(dev.assigned)+' — unlock it to move it.','warnc'); return; }
+    if(plan.action==='stop'){    // running here → stop it (keeps the dongle assigned, just idle)
+      oasisHwConsole.serviceStop(svc.id).then(function(){ message('■ Stopped '+svc.name+' on '+dev.label,'info'); refresh(); });
       return;
     }
     // off / stopped → route onto this dongle (assign + start, displacing what was there)
-    post('/api/hardware/route',{service:svc.id,device_id:dev.id}).then(function(res){
+    oasisHwConsole.route(svc.id,dev.id).then(function(res){
       if(res.status>=400){
         res.json().then(function(b){
           var loc=b.reason&&String(b.reason).indexOf('locked')>=0;
@@ -3821,17 +3819,12 @@ loadConfig().then(() => {
   function toggleLock(dev){
     if(!dev.assigned && !dev.locked){ message(dev.label+' has nothing assigned to lock.','info'); return; }
     var want=!dev.locked;
-    post('/api/hardware/lock',{device_id:dev.id,locked:want}).then(function(){
+    oasisHwConsole.lock(dev.id,want).then(function(){
       message(want?'Locked '+dev.label+' on '+svcNameOf(dev.assigned):'Unlocked '+dev.label,'lockc'); refresh();
     });
   }
   var rail=document.getElementById('hsx-rail'), railCnt=document.getElementById('hsx-cnt');
-  function railHealth(){
-    var w=state.warnings||[];
-    if(w.some(function(x){return x.severity==='crit';})) return {lvl:'crit',glyph:'⚠',count:w.length};
-    if(w.length) return {lvl:'warn',glyph:'!',count:w.length};
-    return {lvl:'ok',glyph:'✓',count:0};
-  }
+  function railHealth(){ return oasisRailHealth(state.warnings); }
   function renderRail(){
     var h=railHealth();
     rail.className='hsx-rail hsx-'+h.lvl;
@@ -3872,7 +3865,7 @@ loadConfig().then(() => {
   // Opens on rail click; stays open until the user explicitly closes it (rail toggle, close button, or Esc).
   rail.onclick=function(){ setOpen(!pop.classList.contains('hsx-open')); };
   document.getElementById('hsx-close').onclick=function(){ setOpen(false); };
-  document.getElementById('hsx-stopall').onclick=function(){ post('/api/hardware/stop-all',{}).then(function(){ message('■ STOP ALL — every service stopped','warnc'); refresh(); }); };
+  document.getElementById('hsx-stopall').onclick=function(){ oasisHwConsole.stopAll().then(function(){ message('■ STOP ALL — every service stopped','warnc'); refresh(); }); };
   document.addEventListener('keydown',function(e){ if(e.key==='Escape') setOpen(false); });
 
   // ── Resource guardian: server-side thread arms the countdown even with no
@@ -3892,9 +3885,9 @@ loadConfig().then(() => {
       if(!g || g.mode!=='tripped') gWasTripped=false;
     }
   }
-  function pollGuardian(){ fetch('/api/hardware/guardian').then(function(r){return r.json();}).then(renderGuardian).catch(function(){}); }
+  function pollGuardian(){ oasisHwConsole.guardianState().then(renderGuardian).catch(function(){}); }
   document.getElementById('hsx-g-cancel').onclick=function(){
-    post('/api/hardware/guardian/cancel',{}).then(function(){ gBanner.hidden=true; message('Guardian countdown cancelled — you have the helm','info'); });
+    oasisHwConsole.guardianCancel().then(function(){ gBanner.hidden=true; message('Guardian countdown cancelled — you have the helm','info'); });
   };
 
   render(); message(IDLE,'idle'); refresh(); pollGuardian();
