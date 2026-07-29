@@ -1623,7 +1623,7 @@ const SERVICES = [
       if (!r.ok) return { up: false, sub: 'status error' };
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
-      if (!d.installed) return { up: false, badge: 'not installed', sub: 'run services/winlink/install.py' };
+      if (!d.installed) return { up: false, badge: 'n/a', sub: 'run services/winlink/install.py' };
       if (d.active === 'active') return { up: true, badge: 'ON AIR', sub: 'AGWPE :8000 · APRS off' };
       // Stopped + radio assigned → RF mode: red, STOPPED, START present (gauntlet).
       if (_assignedDevice('wlrf')) return { up: false, badge: 'STOPPED', sub: 'start for packet Winlink' };
@@ -1663,7 +1663,7 @@ const SERVICES = [
         } catch (_) {}
         return { up: true, badge: 'UP', sub: `:${PORTS.kiwix}`, navSub };
       }
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+      return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
         sub: d.installed ? 'inactive' : 'run services/kiwix/install.py' };
     }
   },
@@ -1695,7 +1695,7 @@ const SERVICES = [
           return { up: true, warn: true, badge: 'SILENT', sub: 'no audio · check SDR/USB' };
         return { up: true, badge: 'UP', sub: '→ GrayWolf' };
       }
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+      return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
         sub: d.installed ? 'inactive' : 'run features/rtl-sdr/enable-rtl-sdr.py' };
     }
   },
@@ -1707,7 +1707,7 @@ const SERVICES = [
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (d.active === 'active') return { up: true, badge: 'UP', sub: ':2947' };
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+      return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
         sub: d.installed ? 'inactive (aprs)' : 'run features/gps/install-gps.py' };
     }
   },
@@ -1765,7 +1765,7 @@ const SERVICES = [
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (d.active === 'active') return { up: true, badge: 'UP', sub: `:${PORTS.openwebrx}` };
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+      return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
         sub: d.installed ? 'inactive (advanced)' : 'not installed' };
     }
   },
@@ -1807,7 +1807,7 @@ const SERVICES = [
         // This branch is only the genuine "your assigned dongle isn't attached".
         return { up: false, badge: 'NO FREE SDR', sub: 'assigned device not attached' };
       }
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+      return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
         sub: d.installed ? 'inactive (aircraft)' : 'run services/adsb/install.py' };
     }
   },
@@ -1947,6 +1947,11 @@ function renderDeviceLabels(data) {
     const row = document.getElementById('hwrow-' + cardId);
     const out = document.getElementById('hwdev-' + cardId);
     if (!row || !out) return;
+    // A not-installed service has no device to assign — showing an orphan
+    // "device: unassigned" here pushes the badge onto a second line and knocks
+    // the OPEN button out of the bottom-left corner other cards line up on.
+    // Hide the row so the bottom stays a clean [OPEN] ...... [badge].
+    if (HIDDEN_SVCS.has(cardId)) { row.hidden = true; return; }
     row.hidden = false;
     const deviceId = (services[hwService] || {}).device_id || '';
     const dev = deviceId ? byId[deviceId] : null;
