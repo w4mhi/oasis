@@ -1095,7 +1095,8 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 
 <!-- ── SERVICE STATUS STRIP ───────────────────────────────────────────────── -->
 <style>
-/* HW/SRV assignment console — PROTOTYPE (mock data, unwired). All classes hsx- scoped. */
+/* HW/SRV assignment console (Service Operations) — LIVE: polls /api/hardware/console,
+   guardian via /api/hardware/guardian. All classes hsx- scoped. */
 .hsx-anchor{position:relative; display:flex; align-items:stretch; gap:.45rem; padding-right:1.25rem}
 .hsx-anchor .svc-strips-wrap{flex:1 1 auto; min-width:0}
 .hsx-rail{width:48px; min-height:104px; flex:0 0 auto; display:flex; flex-direction:column; align-items:center;
@@ -1121,6 +1122,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 .hsx-card-hd{display:flex; align-items:center; gap:.4rem; padding:.55rem .75rem; border-bottom:1px solid var(--border)}
 .hsx-card-hd .hsx-ttl{font-size:var(--fs-label); text-transform:uppercase; letter-spacing:.07em; font-weight:600;
   color:var(--text); display:flex; align-items:center; gap:.45rem; margin-right:auto}
+.hsx-card-hd .hsx-ttl .hw-ic{width:1.1em; height:1.1em; flex:0 0 auto}
 .hsx-hdbtn{background:transparent; border:1px solid transparent; border-radius:6px; cursor:pointer;
   color:var(--text-dim); font-family:var(--mono); font-size:.9rem; line-height:1; padding:.25rem .4rem}
 .hsx-hdbtn:hover{color:var(--text); border-color:var(--border)}
@@ -1176,7 +1178,9 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 .hsx-tog:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
 .hsx-nax{color:var(--border)}
 </style>
-<!-- HW/SRV assignment console (prototype · mock data · unwired) -->
+<!-- HW/SRV assignment console (Service Operations) · LIVE — polls /api/hardware/console;
+     guardian countdown via /api/hardware/guardian. Renders empty where the console API
+     reports no devices (e.g. a hardware-less dev box). -->
 <div class="hsx-anchor">
 <div class="svc-strips-wrap" id="svc-strips-wrap">
 <!-- Row 1: radio / RF services -->
@@ -1333,7 +1337,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   <div class="hsx-pop" id="hsx-pop" role="dialog" aria-label="HW / SRV assignment">
     <div class="hsx-card">
       <div class="hsx-card-hd">
-        <span class="hsx-ttl">&#127899; HW / SRV Matrix</span>
+        <span class="hsx-ttl"><svg class="hw-ic" viewBox="0 0 16 16" aria-hidden="true"><g stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><line x1="2.5" y1="4" x2="13.5" y2="4"/><line x1="2.5" y1="8" x2="13.5" y2="8"/><line x1="2.5" y1="12" x2="13.5" y2="12"/></g><g fill="currentColor"><circle cx="6" cy="4" r="2"/><circle cx="10.5" cy="8" r="2"/><circle cx="5" cy="12" r="2"/></g></svg>HW / SRV Matrix</span>
         <button class="hsx-hdbtn hsx-stopall" id="hsx-stopall" type="button" title="Stop every service">Stop all</button>
         <button class="hsx-hdbtn" id="hsx-close" type="button" title="Close">&#10005;</button>
       </div>
@@ -3798,7 +3802,7 @@ loadConfig().then(() => {
   function flip(dev,svc){
     var st=cstate(dev,svc);
     if(st==='na') return;
-    if(dev.locked){ message('🔒 '+dev.label+' is locked on '+svcNameOf(dev.assigned)+' — unlock it to move it.','warnc'); return; }
+    if(dev.locked){ message(dev.label+' is locked on '+svcNameOf(dev.assigned)+' — unlock it to move it.','warnc'); return; }
     if(st==='on'){    // running here → stop it (keeps the dongle assigned, just idle)
       post('/api/hardware/service-stop',{service:svc.id}).then(function(){ message('■ Stopped '+svc.name+' on '+dev.label,'info'); refresh(); });
       return;
@@ -3808,7 +3812,7 @@ loadConfig().then(() => {
       if(res.status>=400){
         res.json().then(function(b){
           var loc=b.reason&&String(b.reason).indexOf('locked')>=0;
-          message(loc?'🔒 '+svc.name+' is locked — unlock it to move it.':'⚠ '+(b.error||'route failed'),'warnc');
+          message(loc?svc.name+' is locked — unlock it to move it.':'⚠ '+(b.error||'route failed'),'warnc');
         }); return;
       }
       message('▶ '+svc.name+' → '+dev.label,'okc'); refresh();
@@ -3818,7 +3822,7 @@ loadConfig().then(() => {
     if(!dev.assigned && !dev.locked){ message(dev.label+' has nothing assigned to lock.','info'); return; }
     var want=!dev.locked;
     post('/api/hardware/lock',{device_id:dev.id,locked:want}).then(function(){
-      message(want?'🔒 Locked '+dev.label+' on '+svcNameOf(dev.assigned):'🔓 Unlocked '+dev.label,'lockc'); refresh();
+      message(want?'Locked '+dev.label+' on '+svcNameOf(dev.assigned):'Unlocked '+dev.label,'lockc'); refresh();
     });
   }
   var rail=document.getElementById('hsx-rail'), railCnt=document.getElementById('hsx-cnt');
@@ -3890,7 +3894,7 @@ loadConfig().then(() => {
   }
   function pollGuardian(){ fetch('/api/hardware/guardian').then(function(r){return r.json();}).then(renderGuardian).catch(function(){}); }
   document.getElementById('hsx-g-cancel').onclick=function(){
-    post('/api/hardware/guardian/cancel',{}).then(function(){ gBanner.hidden=true; message('🔓 Guardian countdown cancelled — you have the helm','info'); });
+    post('/api/hardware/guardian/cancel',{}).then(function(){ gBanner.hidden=true; message('Guardian countdown cancelled — you have the helm','info'); });
   };
 
   render(); message(IDLE,'idle'); refresh(); pollGuardian();

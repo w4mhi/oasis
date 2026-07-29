@@ -21,6 +21,7 @@
 <script src="/common/js/format.js"></script>
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/service-registry.js"></script>
+<script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
 <link rel="stylesheet" href="/common/css/wifi-pill.css">
 
@@ -333,6 +334,56 @@
          border-radius:.7rem; color:var(--text); cursor:pointer; font-size:1.4rem; }
   .ov-x:hover{ border-color:var(--down); color:var(--down); }
   .ov-body{ flex:1; overflow-y:auto; padding:1.2rem; }
+
+  /* ── SRV OPS (HW/SRV matrix) — touch console. A floating CARD over the
+     dashboard (not a full-screen takeover), so it reads as a card on both the
+     800×480 and 1920×1200 kiosk. Controls sized for touch. ─────────────────── */
+  #ov-srvops.so-modal{ background:rgba(7,11,14,.62); align-items:center; justify-content:center; padding:2rem; }
+  #ov-srvops .so-card{ display:flex; flex-direction:column; width:min(880px,94vw); max-height:88vh;
+    background:var(--panel); border:1px solid color-mix(in srgb,var(--accent) 40%,var(--border));
+    border-radius:16px; overflow:hidden; box-shadow:0 22px 60px rgba(0,0,0,.55); }
+  .so-stopall{ font-family:var(--mono); font-weight:700; font-size:1.35rem;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--down); cursor:pointer;
+    border:1px solid color-mix(in srgb,var(--down) 45%,var(--border)); background:transparent;
+    border-radius:.6rem; padding:0 1rem; height:3rem; }
+  .so-stopall:active{ background:color-mix(in srgb,var(--down) 14%,transparent); }
+  /* SRV OPS header, scoped so the shared OPS overlay keeps its own sizing.
+     Title left, STOP ALL + ✕ clustered right (mirrors the index console). */
+  #ov-srvops .ov-head .e{ font-size:1.7rem; color:var(--text); text-transform:uppercase;
+    letter-spacing:.07em; font-weight:600; margin-right:auto; display:flex; align-items:center; gap:.55rem; }
+  #ov-srvops .ov-head .e .hw-ic{ width:1.3em; height:1.3em; flex:0 0 auto; }
+  #ov-srvops .ov-x{ margin-left:0; }
+  .so-hint{ font-size:1.2rem; color:var(--dim); padding:0 .2rem 1rem; }
+  .so-mx{ display:grid; grid-template-columns:13rem repeat(5,1fr);
+    border:1px solid var(--border); border-radius:.8rem; overflow:hidden; }
+  .so-mh{ font-size:1.35rem; text-transform:uppercase; letter-spacing:.04em; color:var(--dim);
+    text-align:center; padding:.6rem .2rem; border-bottom:1px solid var(--border); white-space:nowrap; }
+  .so-mh.hw{ text-align:left; padding-left:1rem; }
+  .so-hwc{ display:flex; align-items:center; gap:.5rem; min-height:64px; padding:0 .4rem 0 1rem;
+    border-bottom:1px solid var(--border); }
+  .so-hwc .nm{ font-weight:700; font-size:1.65rem; line-height:1.1; }
+  .so-hwc .sr{ font-size:1.05rem; color:var(--faint); }
+  .so-lk{ margin-left:auto; width:52px; height:52px; border:none; background:transparent;
+    color:var(--amber); cursor:pointer; display:flex; align-items:center; justify-content:center;
+    border-radius:.5rem; line-height:0; }
+  .so-lk svg{ display:block; width:30px; height:30px; }
+  .so-lk.locked{ color:var(--down); }
+  .so-lk:active{ background:var(--raise); }
+  .so-mc{ display:flex; align-items:center; justify-content:center; min-height:64px;
+    border-bottom:1px solid var(--border); }
+  .so-rlast{ border-bottom:none; }
+  .so-tog{ position:relative; width:56px; height:32px; border-radius:999px;
+    border:1px solid var(--border); background:var(--panel-2); cursor:pointer; }
+  .so-tog::after{ content:""; position:absolute; top:2px; left:2px; width:26px; height:26px;
+    border-radius:50%; background:var(--dim); transition:.15s; }
+  .so-tog.on.green{ background:color-mix(in srgb,var(--accent) 34%,var(--panel-2)); border-color:var(--accent); }
+  .so-tog.on.green::after{ left:26px; background:var(--accent); box-shadow:0 0 7px var(--accent); }
+  .so-tog.on.amber{ background:color-mix(in srgb,var(--warn) 30%,var(--panel-2)); border-color:var(--warn); }
+  .so-tog.on.amber::after{ left:26px; background:var(--warn); }
+  .so-na{ color:var(--faint); font-size:1.7rem; }
+  .so-tog.frozen{ cursor:not-allowed; opacity:.6; }
+  .so-hint.so-ok{ color:var(--accent); } .so-hint.so-warn{ color:var(--down); }
+  .so-hint.so-lock{ color:var(--warn); } .so-hint.so-info{ color:var(--text); }
   .ops-sec{ margin-bottom:1rem; }
   .ops-sec .lab{ color:var(--accent); font-size:1rem; letter-spacing:.14em; font-weight:700; margin:0 .2rem .6rem; }
   .ops-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:.8rem; }
@@ -397,7 +448,9 @@
               style="display:none" title="Wi-Fi — tap to scan / join / raise the OASIS AP">Wi-Fi</span>
       </div>
       <!-- RTL/SDR assignment pill: dot (hollow=unassigned, amber=rtl assigned, green=in use) -->
-      <div class="svcbar" id="svcbar">
+      <div class="svcbar" id="svcbar" onclick="openSrvOps()" role="button" tabindex="0"
+           style="cursor:pointer" title="Service Operations — HW / SRV matrix"
+           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openSrvOps();}">
         <span class="s"><span class="dot" id="dot-aprs"></span>APRS</span>
         <span class="s"><span class="dot" id="dot-adsb"></span>ADS-B</span>
         <span class="s"><span class="dot" id="dot-owrx"></span>ORX</span>
@@ -474,6 +527,23 @@
   <div class="ov" id="ov-ops">
     <div class="ov-head"><span class="e">OPS</span><span class="st">tap to launch</span><span class="ov-x" onclick="closeOv('ops')" role="button" tabindex="0" aria-label="Close">✕</span></div>
     <div class="ov-body" id="opsBody"></div>
+  </div>
+
+  <!-- SRV OPS — HW/SRV assignment matrix (touch console). MOCK: static rows for
+       design review; wire to /api/hardware/console after the layout is confirmed. -->
+  <div class="ov so-modal" id="ov-srvops" onclick="if(event.target===this)closeOv('srvops')">
+    <div class="so-card">
+      <div class="ov-head">
+        <span class="e"><svg class="hw-ic" viewBox="0 0 16 16" aria-hidden="true"><g stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><line x1="2.5" y1="4" x2="13.5" y2="4"/><line x1="2.5" y1="8" x2="13.5" y2="8"/><line x1="2.5" y1="12" x2="13.5" y2="12"/></g><g fill="currentColor"><circle cx="6" cy="4" r="2"/><circle cx="10.5" cy="8" r="2"/><circle cx="5" cy="12" r="2"/></g></svg>HW / SRV Matrix</span>
+        <button class="so-stopall" id="so-stopall" type="button" title="Stop every service">Stop all</button>
+        <span class="ov-x" onclick="closeOv('srvops')" role="button" tabindex="0" aria-label="Close">&#10005;</span>
+      </div>
+      <div class="ov-body">
+        <div class="so-hint" id="so-hint" aria-live="polite">Tap a toggle to route &middot; lock a device to protect it</div>
+        <!-- Matrix is rendered by the SRV OPS console script from /api/hardware/console -->
+        <div class="so-mx" id="so-mx"></div>
+      </div>
+    </div>
   </div>
 
   <!-- WI-FI SHEET: scan / join / forget / raise-AP (logic ported from index.html) -->
@@ -1463,4 +1533,100 @@ loadInstalled().then(() => {
   const activeN = SERVICES.filter(s => !HIDDEN_SVCS.has(s.id)).length || 1;
   setInterval(pingNext, Math.round(16000 / activeN));
 });
+</script>
+
+<script>
+/* SRV OPS — HW/SRV assignment matrix (touch console). Wired to
+   /api/hardware/console via the shared common/js/hw-console.js; the decision
+   logic (cstate/flip/rail health) and endpoint contract are shared with the
+   desktop console (index.html) so the two can't drift. Kiosk owns only its
+   touch-shaped render. */
+(function(){
+  var mx = document.getElementById('so-mx');
+  var hintEl = document.getElementById('so-hint');
+  var stopAllBtn = document.getElementById('so-stopall');
+  if (!mx || !hintEl) return;
+  // Padlock icons — identical SVGs to the index console (currentColor).
+  var LOCK_CLOSED = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.2" rx="1.3" fill="currentColor"/><path d="M5 7.2V5a3 3 0 0 1 6 0v2.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  var LOCK_OPEN = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.2" rx="1.3" fill="currentColor"/><path d="M5 7.2V5a3 3 0 0 1 5.9-.55" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  var state = { services: [], devices: [], warnings: [] };
+  var IDLE = 'Tap a toggle to route · lock a device to protect it';
+  var msgT;
+  function message(text, kind){
+    hintEl.textContent = text;
+    hintEl.className = 'so-hint so-' + (kind || 'info');
+    clearTimeout(msgT);
+    if (kind !== 'idle') msgT = setTimeout(function(){ hintEl.className = 'so-hint'; hintEl.textContent = IDLE; }, 3400);
+  }
+  function svcName(id){ var s = state.services.find(function(x){ return x.id === id; }); return s ? s.name : (id || '—'); }
+  function refresh(){ return oasisHwConsole.fetchState().then(function(s){ state = s; render(); }).catch(function(){}); }
+
+  function flip(dev, svc){
+    var plan = oasisFlipPlan(dev, svc);
+    if (plan.action === 'none') return;
+    if (plan.action === 'locked'){ message(dev.label + ' is locked on ' + svcName(dev.assigned) + ' — unlock to move it.', 'warn'); return; }
+    if (plan.action === 'stop'){
+      oasisHwConsole.serviceStop(svc.id).then(function(){ message('■ Stopped ' + svc.name + ' on ' + dev.label, 'info'); refresh(); });
+      return;
+    }
+    oasisHwConsole.route(svc.id, dev.id).then(function(res){
+      if (res.status >= 400){
+        res.json().then(function(b){
+          var loc = b.reason && String(b.reason).indexOf('locked') >= 0;
+          message(loc ? svc.name + ' is locked — unlock to move it.' : '⚠ ' + (b.error || 'route failed'), 'warn');
+        }); return;
+      }
+      message('▶ ' + svc.name + ' → ' + dev.label, 'ok'); refresh();
+    });
+  }
+  function toggleLock(dev){
+    if (!dev.assigned && !dev.locked){ message(dev.label + ' has nothing assigned to lock.', 'info'); return; }
+    var want = !dev.locked;
+    oasisHwConsole.lock(dev.id, want).then(function(){
+      message(want ? 'Locked ' + dev.label : 'Unlocked ' + dev.label, 'lock'); refresh();
+    });
+  }
+
+  function render(){
+    var services = state.services || [], devices = state.devices || [];
+    mx.style.gridTemplateColumns = '13rem repeat(' + (services.length || 1) + ',1fr)';
+    mx.innerHTML = '';
+    var hw = document.createElement('div'); hw.className = 'so-mh hw'; hw.textContent = 'HW'; mx.appendChild(hw);
+    services.forEach(function(s){ var h = document.createElement('div'); h.className = 'so-mh'; h.textContent = s.name; mx.appendChild(h); });
+    devices.forEach(function(dev, i){
+      var last = i === devices.length - 1 ? ' so-rlast' : '';
+      var cell = document.createElement('div'); cell.className = 'so-hwc' + last;
+      // Serial line only when it adds info — most labels already carry it (e.g. "RTL-SDR (00001000)").
+      var sub = (dev.serial && dev.label.indexOf(dev.serial) < 0) ? '<div class="sr">' + esc(dev.serial) + '</div>' : '';
+      cell.innerHTML = '<div><div class="nm">' + esc(dev.label) + '</div>' + sub + '</div>';
+      var lk = document.createElement('button'); lk.type = 'button'; lk.className = 'so-lk' + (dev.locked ? ' locked' : '');
+      lk.innerHTML = dev.locked ? LOCK_CLOSED : LOCK_OPEN;
+      lk.title = dev.locked ? 'Unlock ' + dev.label : 'Lock ' + dev.label + ' on its current service';
+      lk.setAttribute('aria-label', lk.title);
+      lk.onclick = function(){ toggleLock(dev); };
+      cell.appendChild(lk); mx.appendChild(cell);
+      services.forEach(function(svc){
+        var wrap = document.createElement('div'); wrap.className = 'so-mc' + last;
+        var st = oasisCstate(dev, svc);
+        if (st === 'na'){ wrap.innerHTML = '<span class="so-na">·</span>'; }
+        else {
+          var t = document.createElement('button'); t.type = 'button';
+          t.className = 'so-tog' + (st === 'on' ? ' on green' : st === 'stopped' ? ' on amber' : '') + (dev.locked ? ' frozen' : '');
+          var lab = svc.name + ' on ' + dev.label + ' — ' + (st === 'on' ? 'running' : st === 'stopped' ? 'assigned, stopped' : 'off');
+          t.title = lab; t.setAttribute('aria-label', lab); t.setAttribute('role', 'switch'); t.setAttribute('aria-checked', st === 'on' ? 'true' : 'false');
+          t.onclick = function(){ flip(dev, svc); };
+          wrap.appendChild(t);
+        }
+        mx.appendChild(wrap);
+      });
+    });
+  }
+
+  if (stopAllBtn) stopAllBtn.onclick = function(){ oasisHwConsole.stopAll().then(function(){ message('■ STOP ALL — every service stopped', 'warn'); refresh(); }); };
+
+  // Opened from the svcbar pill; fetch fresh on open and poll while visible.
+  window.openSrvOps = function(){ openOv('srvops'); refresh(); };
+  message(IDLE, 'idle');
+  setInterval(function(){ var ov = document.getElementById('ov-srvops'); if (ov && ov.classList.contains('open')) refresh(); }, 5000);
+})();
 </script>
