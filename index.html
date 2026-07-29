@@ -1111,6 +1111,8 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 .hsx-hdbtn:hover{color:var(--text); border-color:var(--border)}
 .hsx-hdbtn:focus-visible{outline:2px solid var(--blue); outline-offset:1px}
 .hsx-hdbtn.hsx-on{color:var(--accent); border-color:color-mix(in srgb,var(--accent) 40%,var(--border))}
+.hsx-stopall{color:var(--red); border-color:color-mix(in srgb,var(--red) 40%,var(--border)); font-size:var(--fs-micro); text-transform:uppercase; letter-spacing:.06em; font-weight:700}
+.hsx-stopall:hover{background:color-mix(in srgb,var(--red) 12%,transparent); color:var(--red)}
 .hsx-msg{min-height:1.75rem; display:flex; align-items:center; gap:.4rem; padding:.25rem .8rem;
   border-bottom:1px solid var(--border); font-size:var(--fs-small); line-height:1.3;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
@@ -1316,6 +1318,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="hsx-card">
       <div class="hsx-card-hd">
         <span class="hsx-ttl">&#127899; HW / SRV Matrix</span>
+        <button class="hsx-hdbtn hsx-stopall" id="hsx-stopall" type="button" title="Stop every service">Stop all</button>
         <button class="hsx-hdbtn" id="hsx-close" type="button" title="Close">&#10005;</button>
       </div>
       <div class="hsx-msg hsx-idle" id="hsx-msg" aria-live="polite"></div>
@@ -3721,28 +3724,16 @@ loadConfig().then(() => {
 </div>
 
 <script>
-/* HW/SRV assignment console — PROTOTYPE (mock data, unwired). Namespaced hsx-, IIFE (no globals). */
+/* HW/SRV assignment console — LIVE (wired to /api/hardware/*). Namespaced hsx-, IIFE (no globals). */
 (function(){
-  var services=[
-    {id:'aprs',name:'APRS',kinds:['rtl-sdr']},
-    {id:'adsb',name:'ADS-B',kinds:['rtl-sdr']},
-    {id:'openwebrx',name:'ORX',kinds:['rtl-sdr']},
-    {id:'winlink',name:'Winlink',kinds:['digirig','dra-pi']},
-    {id:'satellites',name:'SAT',kinds:['rtl-sdr']},
-    {id:'radiolive',name:'RX',kinds:['rtl-sdr']}
-  ];
-  function svcName(id){var s=services.find(function(x){return x.id===id;});return s?s.name:'—';}
   var LOCK_CLOSED='<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.2" rx="1.3" fill="currentColor"/><path d="M5 7.2V5a3 3 0 0 1 6 0v2.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
   var LOCK_OPEN='<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.2" rx="1.3" fill="currentColor"/><path d="M5 7.2V5a3 3 0 0 1 5.9-.55" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
-  var devices=[
-    {id:'rtl1',nm:'RTL1',kind:'rtl-sdr',sr:'a1',assigned:'aprs',running:true,locked:false,offline:false},
-    {id:'rtl2',nm:'RTL2',kind:'rtl-sdr',sr:'a2',assigned:'adsb',running:true,locked:true,offline:false},
-    {id:'digirig',nm:'DigiRig',kind:'digirig',sr:'usb-1',assigned:'winlink',running:true,locked:false,offline:false},
-    {id:'dra',nm:'DRA',kind:'dra-pi',sr:'spi-0',assigned:null,running:false,locked:false,offline:false}
-  ];
+  var state={services:[],devices:[],warnings:[]};
+  function svcNameOf(id){var s=state.services.find(function(x){return x.id===id;});return s?s.name:(id||'—');}
+  function post(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-OASIS-Request':'1'},body:JSON.stringify(body||{})});}
+  function refresh(){return fetch('/api/hardware/console').then(function(r){return r.json();}).then(function(s){state=s;render();}).catch(function(){});}
   function cstate(dev,svc){
     if(svc.kinds.indexOf(dev.kind)<0) return 'na';
-    if(dev.offline) return dev.assigned===svc.id?'dim':'na';
     if(dev.assigned===svc.id) return dev.running?'on':'stopped';
     return 'off';
   }
@@ -3757,51 +3748,54 @@ loadConfig().then(() => {
   function flip(dev,svc){
     var st=cstate(dev,svc);
     if(st==='na') return;
-    if(dev.offline){ message('⚠ '+dev.nm+' is offline — reconnect the dongle.','warnc'); return; }
-    if(dev.locked){ message('🔒 '+dev.nm+' is locked on '+svcName(dev.assigned)+' — unlock it to move it.','warnc'); return; }
-    if(dev.assigned===svc.id){
-      dev.running=!dev.running;
-      message((dev.running?'▶ Started ':'■ Stopped ')+svc.name+' on '+dev.nm, dev.running?'okc':'info');
-      render(); return;
+    if(dev.locked){ message('🔒 '+dev.label+' is locked on '+svcNameOf(dev.assigned)+' — unlock it to move it.','warnc'); return; }
+    if(st==='on'){    // running here → stop it (keeps the dongle assigned, just idle)
+      post('/api/hardware/service-stop',{service:svc.id}).then(function(){ message('■ Stopped '+svc.name+' on '+dev.label,'info'); refresh(); });
+      return;
     }
-    var holder=devices.find(function(d){return d!==dev && d.assigned===svc.id;});
-    if(holder && holder.locked){ message('🔒 '+svc.name+' is locked on '+holder.nm+' — unlock it to move it.','warnc'); return; }
-    if(holder){ holder.assigned=null; holder.running=false; }
-    dev.assigned=svc.id; dev.running=true;
-    message('▶ '+svc.name+' → '+dev.nm+(holder?' (moved from '+holder.nm+')':''),'okc');
-    render();
+    // off / stopped → route onto this dongle (assign + start, displacing what was there)
+    post('/api/hardware/route',{service:svc.id,device_id:dev.id}).then(function(res){
+      if(res.status>=400){
+        res.json().then(function(b){
+          var loc=b.reason&&String(b.reason).indexOf('locked')>=0;
+          message(loc?'🔒 '+svc.name+' is locked — unlock it to move it.':'⚠ '+(b.error||'route failed'),'warnc');
+        }); return;
+      }
+      message('▶ '+svc.name+' → '+dev.label,'okc'); refresh();
+    });
   }
   function toggleLock(dev){
-    if(dev.offline){ message('⚠ '+dev.nm+' is offline.','warnc'); return; }
-    if(!dev.assigned && !dev.locked){ message(dev.nm+' has nothing assigned to lock.','info'); return; }
-    dev.locked=!dev.locked; render();
-    message(dev.locked?'🔒 Locked '+dev.nm+' on '+svcName(dev.assigned):'🔓 Unlocked '+dev.nm,'lockc');
-  }
-  function health(){
-    var off=devices.filter(function(d){return d.offline;}).length;
-    if(off) return {lvl:'crit',glyph:'⚠',count:off};
-    var stopped=devices.filter(function(d){return d.assigned&&!d.running&&!d.offline;}).length;
-    if(stopped) return {lvl:'warn',glyph:'!',count:stopped};
-    return {lvl:'ok',glyph:'✓',count:0};
+    if(!dev.assigned && !dev.locked){ message(dev.label+' has nothing assigned to lock.','info'); return; }
+    var want=!dev.locked;
+    post('/api/hardware/lock',{device_id:dev.id,locked:want}).then(function(){
+      message(want?'🔒 Locked '+dev.label+' on '+svcNameOf(dev.assigned):'🔓 Unlocked '+dev.label,'lockc'); refresh();
+    });
   }
   var rail=document.getElementById('hsx-rail'), railCnt=document.getElementById('hsx-cnt');
+  function railHealth(){
+    var w=state.warnings||[];
+    if(w.some(function(x){return x.severity==='crit';})) return {lvl:'crit',glyph:'⚠',count:w.length};
+    if(w.length) return {lvl:'warn',glyph:'!',count:w.length};
+    return {lvl:'ok',glyph:'✓',count:0};
+  }
   function renderRail(){
-    var h=health();
+    var h=railHealth();
     rail.className='hsx-rail hsx-'+h.lvl;
     railCnt.innerHTML = h.count>0 ? h.glyph+'<br>'+h.count : h.glyph;
-    rail.title='HW / SRV — '+(h.lvl==='ok'?'all nominal':h.lvl==='warn'?h.count+' stopped':h.count+' offline');
+    rail.title='HW / SRV — '+(h.lvl==='ok'?'all nominal':h.count+' warning'+(h.count===1?'':'s'));
   }
   function render(){
-    matrix.style.gridTemplateColumns='minmax(96px,auto) repeat('+services.length+',1fr)';
+    var services=state.services||[], devices=state.devices||[];
+    matrix.style.gridTemplateColumns='minmax(96px,auto) repeat('+(services.length||1)+',1fr)';
     matrix.innerHTML='';
     var hw=document.createElement('div'); hw.className='hsx-mh hsx-hw'; hw.textContent='HW'; matrix.appendChild(hw);
     services.forEach(function(s){var h=document.createElement('div'); h.className='hsx-mh'; h.textContent=s.name; matrix.appendChild(h);});
     devices.forEach(function(dev,i){
       var last=i===devices.length-1?' hsx-rlast':'';
-      var cell=document.createElement('div'); cell.className='hsx-hwc'+last+(dev.locked?' hsx-locked':'')+(dev.offline?' hsx-off':'');
-      cell.innerHTML='<span class="hsx-nm">'+dev.nm+'</span><span class="hsx-sr">'+dev.sr+'</span>'+(dev.offline?'<span class="hsx-offtag">offline</span>':'');
+      var cell=document.createElement('div'); cell.className='hsx-hwc'+last+(dev.locked?' hsx-locked':'');
+      cell.innerHTML='<span class="hsx-nm">'+dev.label+'</span><span class="hsx-sr">'+(dev.serial||'')+'</span>';
       var lk=document.createElement('button'); lk.className='hsx-lk'; lk.type='button';
-      lk.innerHTML=dev.locked?LOCK_CLOSED:LOCK_OPEN; lk.title=dev.locked?'Unlock '+dev.nm:'Lock '+dev.nm+' on its current service';
+      lk.innerHTML=dev.locked?LOCK_CLOSED:LOCK_OPEN; lk.title=dev.locked?'Unlock '+dev.label:'Lock '+dev.label+' on its current service';
       lk.setAttribute('aria-label',lk.title); lk.onclick=function(){ toggleLock(dev); }; cell.appendChild(lk); matrix.appendChild(cell);
       services.forEach(function(svc){
         var wrap=document.createElement('div'); wrap.className='hsx-mc'+last;
@@ -3809,8 +3803,8 @@ loadConfig().then(() => {
         if(st==='na'){ wrap.innerHTML='<span class="hsx-nax">·</span>'; }
         else{
           var t=document.createElement('button'); t.type='button';
-          t.className='hsx-tog'+(st==='on'?' hsx-on':st==='stopped'?' hsx-stopped':st==='dim'?' hsx-dim':'')+(dev.locked&&st!=='dim'?' hsx-frozen':'');
-          var lab=svc.name+' on '+dev.nm+' — '+(st==='on'?'running':st==='stopped'?'assigned, stopped':st==='dim'?'offline':'off');
+          t.className='hsx-tog'+(st==='on'?' hsx-on':st==='stopped'?' hsx-stopped':'')+(dev.locked?' hsx-frozen':'');
+          var lab=svc.name+' on '+dev.label+' — '+(st==='on'?'running':st==='stopped'?'assigned, stopped':'off');
           t.title=lab; t.setAttribute('aria-label',lab); t.setAttribute('role','switch'); t.setAttribute('aria-checked', st==='on'?'true':'false');
           t.onclick=function(){ flip(dev,svc); }; wrap.appendChild(t);
         }
@@ -3820,14 +3814,15 @@ loadConfig().then(() => {
     renderRail();
   }
   var pop=document.getElementById('hsx-pop');
-  function setOpen(o){ pop.classList.toggle('hsx-open',o); rail.setAttribute('aria-expanded',o?'true':'false'); }
+  function setOpen(o){ pop.classList.toggle('hsx-open',o); rail.setAttribute('aria-expanded',o?'true':'false'); if(o) refresh(); }
   // Opens on rail click; stays open until the user explicitly closes it (rail toggle, close button, or Esc).
-  // No click-outside auto-dismiss — it is a persistent panel, not a transient popover.
   rail.onclick=function(){ setOpen(!pop.classList.contains('hsx-open')); };
   document.getElementById('hsx-close').onclick=function(){ setOpen(false); };
+  document.getElementById('hsx-stopall').onclick=function(){ post('/api/hardware/stop-all',{}).then(function(){ message('■ STOP ALL — every service stopped','warnc'); refresh(); }); };
   document.addEventListener('keydown',function(e){ if(e.key==='Escape') setOpen(false); });
-  render();
-  message(IDLE,'idle');
+  render(); message(IDLE,'idle'); refresh();
+  setInterval(function(){ if(pop.classList.contains('hsx-open')) refresh(); }, 5000);   // live while open
+  setInterval(refresh, 20000);                                                          // rail heartbeat when closed
 })();
 </script>
 </body>

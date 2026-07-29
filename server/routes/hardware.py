@@ -356,3 +356,19 @@ def api_hardware_stop_all():
     return jsonify({"ok": True, "stopped": sorted(_CONTROLLABLE_SERVICES)})
 
 
+@bp.route("/api/hardware/service-stop", methods=["POST"])
+def api_hardware_service_stop():
+    """Stop a single service's unit(s) without changing its assignment — the
+    matrix toggle-off (the dongle stays assigned to it, just idle)."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    service = (data.get("service") or "").strip()
+    if service not in HW.SERVICE_UNITS:
+        return jsonify({"ok": False, "error": "unknown service"}), 400
+    inv = HW.load(SUITE_ROOT)
+    for unit in HW.service_units(inv, service):
+        _systemctl_seq(unit, ["stop"])
+    return jsonify({"ok": True})
+
+

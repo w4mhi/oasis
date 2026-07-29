@@ -416,6 +416,17 @@ class AssignmentConsoleRoutesTest(unittest.TestCase):
         r = self.c.post("/api/hardware/route", json={"service": "adsb", "device_id": "a"})
         self.assertEqual(r.status_code, 403)
 
+    def test_service_stop_stops_units(self):
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr"}},
+                           assignments={"adsb": "a"})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(hardware_routes, "_systemctl_seq") as mocked:
+            r = self.c.post("/api/hardware/service-stop",
+                            json={"service": "adsb"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(mocked.called)   # dump1090-fa stopped, assignment untouched
+
 
 if __name__ == "__main__":
     unittest.main()
