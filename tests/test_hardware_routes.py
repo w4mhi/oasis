@@ -428,5 +428,38 @@ class AssignmentConsoleRoutesTest(unittest.TestCase):
         self.assertTrue(mocked.called)   # dump1090-fa stopped, assignment untouched
 
 
+class GuardianRoutesTest(unittest.TestCase):
+    """Resource-guardian endpoints (design 2026-07-28)."""
+
+    def setUp(self):
+        oasis_app.app.config["TESTING"] = True
+        self.c = oasis_app.app.test_client()
+
+    def test_guardian_state_shape(self):
+        r = self.c.get("/api/hardware/guardian")
+        self.assertEqual(r.status_code, 200)
+        b = json.loads(r.data)
+        for k in ("mode", "enabled", "thresholds", "seconds_left", "stats"):
+            self.assertIn(k, b)
+
+    def test_guardian_cancel_disarms(self):
+        hardware_routes._GUARD_STATE = {"mode": "armed", "deadline": 9e9, "reason": "temp_c"}
+        r = self.c.post("/api/hardware/guardian/cancel", headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(hardware_routes._GUARD_STATE["mode"], "idle")
+
+    def test_guardian_cancel_forbidden_without_header(self):
+        self.assertEqual(self.c.post("/api/hardware/guardian/cancel").status_code, 403)
+
+    def test_guardian_config_sets_enabled(self):
+        with mock.patch.object(hardware_routes, "_save_guardian_config") as saved:
+            r = self.c.post("/api/hardware/guardian/config",
+                            json={"enabled": False, "thresholds": {"temp_c": 75}},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(saved.called)
+        self.assertFalse(json.loads(r.data)["enabled"])
+
+
 if __name__ == "__main__":
     unittest.main()

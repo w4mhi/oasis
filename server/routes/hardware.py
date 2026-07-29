@@ -5,14 +5,18 @@ and the burn-serial flow. Extracted verbatim from server/app.py in the
 blueprint split; URLs unchanged.
 """
 
+import json
 import os
 import re
 import subprocess
 import threading
+import time
 
 from flask import Blueprint, jsonify, request
 
 import appconfig
+from common import config_paths
+from common import guardian as GUARD
 from common import hardware as HW
 from common import hardware_detect as HD_detect
 from routes.service_control import _CONTROLLABLE_SERVICES, _systemctl_seq
@@ -370,5 +374,142 @@ def api_hardware_service_stop():
     for unit in HW.service_units(inv, service):
         _systemctl_seq(unit, ["stop"])
     return jsonify({"ok": True})
+
+
+# ── Resource guardian (design 2026-07-28) ────────────────────────────────────
+# The one sanctioned autonomous action, SEPARATE from the observe-only assignment
+# monitor: a server-side background thread (so it protects an UNATTENDED box —
+# no browser needed) that arms a 30 s cancellable countdown on high temp/CPU/mem
+# and then STOP ALLs. The dashboard only displays the countdown + offers Cancel.
+# Pure decision logic lives in common/guardian.py (unit-tested); this is the shell.
+
+_GUARD_STATE = {"mode": GUARD.IDLE, "deadline": None, "reason": None}
+_GUARD_STATS = {"temp_c": None, "cpu_pct": None, "mem_pct": None}
+_GUARD_TICK = 3.0
+
+
+def _guardian_config_path():
+    return os.path.join(config_paths.config_dir(SUITE_ROOT), "guardian.json")
+
+
+def _load_guardian_config():
+    """Enabled flag + thresholds (defaults merged). Enabled by default with the
+    conservative DEFAULT_THRESHOLDS — the operator tunes/disables it."""
+    try:
+        with open(_guardian_config_path()) as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        raw = {}
+    thresholds = dict(GUARD.DEFAULT_THRESHOLDS)
+    thresholds.update(raw.get("thresholds") or {})
+    return {"enabled": raw.get("enabled", True), "thresholds": thresholds}
+
+
+def _save_guardian_config(cfg):
+    os.makedirs(config_paths.config_dir(SUITE_ROOT), exist_ok=True)
+    tmp = _guardian_config_path() + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(cfg, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, _guardian_config_path())
+
+
+def _read_stats(psutil):
+    stats = {"temp_c": None, "cpu_pct": None, "mem_pct": None}
+    if psutil is None:
+        return stats
+    try:
+        stats["cpu_pct"] = psutil.cpu_percent(interval=None)
+    except Exception:
+        pass
+    try:
+        stats["mem_pct"] = psutil.virtual_memory().percent
+    except Exception:
+        pass
+    try:
+        temps = psutil.sensors_temperatures()
+        for key in ("cpu_thermal", "cpu-thermal", "soc_thermal", "coretemp"):
+            if key in temps and temps[key]:
+                stats["temp_c"] = round(temps[key][0].current, 1)
+                break
+    except Exception:
+        pass
+    return stats
+
+
+def _stop_all_units():
+    for unit in _CONTROLLABLE_SERVICES:
+        _systemctl_seq(unit, ["stop"])
+
+
+def _guardian_runner():
+    try:
+        import psutil
+    except ImportError:
+        psutil = None
+    if psutil is not None:
+        try:
+            psutil.cpu_percent(interval=None)   # prime the rolling baseline
+        except Exception:
+            pass
+    global _GUARD_STATE, _GUARD_STATS
+    while True:
+        time.sleep(_GUARD_TICK)
+        cfg = _load_guardian_config()
+        if not cfg["enabled"]:
+            _GUARD_STATE = {"mode": GUARD.IDLE, "deadline": None, "reason": None}
+            continue
+        _GUARD_STATS = _read_stats(psutil)
+        _GUARD_STATE, action = GUARD.evaluate(_GUARD_STATS, cfg["thresholds"],
+                                              _GUARD_STATE, time.time())
+        if action == "fire":
+            _stop_all_units()
+
+
+threading.Thread(target=_guardian_runner, name="oasis-guardian", daemon=True).start()
+
+
+@bp.route("/api/hardware/guardian")
+def api_hardware_guardian():
+    """Guardian state for the dashboard: mode, live countdown, the tripping
+    metric, current stats, and the enabled/threshold config."""
+    cfg = _load_guardian_config()
+    st = _GUARD_STATE
+    seconds_left = None
+    if st.get("mode") == GUARD.ARMED and st.get("deadline"):
+        seconds_left = max(0, int(round(st["deadline"] - time.time())))
+    return jsonify({"enabled": cfg["enabled"], "thresholds": cfg["thresholds"],
+                    "mode": st.get("mode", GUARD.IDLE), "reason": st.get("reason"),
+                    "seconds_left": seconds_left, "stats": _GUARD_STATS})
+
+
+@bp.route("/api/hardware/guardian/cancel", methods=["POST"])
+def api_hardware_guardian_cancel():
+    """Operator override — cancel the countdown (or clear a tripped state)."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    global _GUARD_STATE
+    _GUARD_STATE = GUARD.cancel(_GUARD_STATE)
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/hardware/guardian/config", methods=["POST"])
+def api_hardware_guardian_config():
+    """Enable/disable the guardian and tune its thresholds."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    cfg = _load_guardian_config()
+    if "enabled" in data:
+        cfg["enabled"] = bool(data["enabled"])
+    if isinstance(data.get("thresholds"), dict):
+        for key in ("temp_c", "cpu_pct", "mem_pct"):
+            if key in data["thresholds"]:
+                try:
+                    cfg["thresholds"][key] = float(data["thresholds"][key])
+                except (TypeError, ValueError):
+                    pass
+    _save_guardian_config(cfg)
+    return jsonify({"ok": True, "enabled": cfg["enabled"], "thresholds": cfg["thresholds"]})
 
 
