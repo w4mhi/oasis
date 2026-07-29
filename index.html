@@ -226,6 +226,20 @@ body {
 .svc-badge.up   { color: var(--accent); }
 .svc-badge.down { color: var(--red); }
 .svc-badge.warn { color: var(--amber); }
+/* Unread-mail pill on the Winlink RF card top row (relocated from the old
+   "Winlink Mail" nav link). Sits to the right of the name; hidden when zero. */
+.wlrf-unread {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: var(--fs-small);
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim, #7a5200);
+  border-radius: 999px;
+  padding: .05rem .4rem;
+  white-space: nowrap;
+}
 /* Web Server card: gunicorn/werkzeug as a bordered pill in the top row (styled
    like the STOP control). Hooked on the id, not a class, because the generic
    renderer overwrites .svc-badge's className on every poll. */
@@ -1252,6 +1266,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-wlrf"></div>
       <div class="svc-card-info"><div class="svc-name">Winlink RF</div><div class="svc-sub" id="sub-wlrf">—</div></div>
+      <span class="wlrf-unread" id="wlrf-unread" hidden></span>
     </div>
     <div class="svc-card-bottom">
       <button class="svc-open" id="open-wlrf" onclick="svcOpenClick('wlrf')" disabled>OPEN ↗</button>
@@ -1344,79 +1359,84 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <div class="nav-grid">
 
   <div class="nav-col">
-
-    <div class="nav-sec">
-      <div class="nav-sec-title">Get on the air</div>
+    
+    <div class="nav-sec oasis">
+      <div class="nav-sec-title">SYSOP</div>
       <ul class="nav-links">
-        <li><a id="nlink-winlink" href="server/winlink/mail.html">Winlink Mail <span class="nav-svc-badge" id="nsvc-winlink">—</span></a></li>
-        <li><a id="nlink-wl-radio" href="server/winlink/radio-settings.html">Radio Settings <span class="nav-meta">setup</span></a></li>
-        <li><a href="static/graywolf-handbook/index.html">GrayWolf handbook <span class="nav-meta">docs</span></a></li>
+        <li><a href="server/system/setup.html" class="ext">OASIS Setup <span class="nav-meta">configure</span></a></li>
+        <li><a href="server/system/diagnostic.html" class="ext">OASIS Diagnostic <span class="nav-meta">health</span></a></li>
+        <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>
       </ul>
     </div>
 
     <div class="nav-sec">
-      <div class="nav-sec-title">See around you</div>
+      <div class="nav-sec-title">Monitor</div>
       <ul class="nav-links">
         <li><a id="nlink-aprs" href="server/map/map.html" target="_blank" rel="noopener">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
         <li><a id="nlink-sat" href="server/satellites/" target="_blank" rel="noopener">Satellites World Map<span class="nav-meta">passes · tracking</span></a></li>
       </ul>
     </div>
 
-  </div>
-
-  <div class="nav-col">
-
-    <div class="nav-sec">
-      <div class="nav-sec-title">Know your stuff</div>
-      <ul class="nav-links">
-        <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
-        <li><a href="tools/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
-        <li><a href="static/repeater-guide/index.html">Repeater Guide <span class="nav-meta">radio repeaters how-to</span></a></li>
-        <li><a href="static/radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
-        <li><a id="nlink-rb" href="static/repeaterbook/repeaterbook.html" class="nav-link-svc">Repeater Book <span class="nav-svc-badge" id="nsvc-rb">—</span></a></li>
-        <li><a id="nlink-manuals" href="server/system/browser.html?path=static/radio-manuals" class="nav-link-svc">Radio Manuals <span class="nav-svc-badge" id="nsvc-manuals">—</span></a></li>
-        <li><a id="nlink-wiki" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-wiki">—</span></a></li>
-        <li><a href="static/quick-ref/phonetic.html">NATO Phonetic Alphabet <span class="nav-meta">NATO reference</span></a></li>
-        <li><a href="static/quick-ref/qcodes.html">Q-Codes <span class="nav-meta">q-codes</span></a></li>
-        <li><a href="static/quick-ref/prowords.html">Procedure Words <span class="nav-meta">procedure words</span></a></li>
-        <li><a href="static/quick-ref/rst.html">RST Signal Reporting <span class="nav-meta">signal reporting</span></a></li>
-        <li><a href="static/quick-ref/itu-prefixes.html">ITU Country Prefixes <span class="nav-meta">call sign series</span></a></li>
-      </ul>
-    </div>
-
-  </div>
-
-  <div class="nav-col">
-
-    <div class="nav-sec">
-      <div class="nav-sec-title">Run the numbers</div>
-      <ul class="nav-links">
-        <li><a href="tools/antenna-calc.html">Antenna Calculator <span class="nav-meta">calculator</span></a></li>
-        <li><a href="tools/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calculator</span></a></li>
-        <li><a href="tools/solar.html">Solar / Propagation <span class="nav-meta">band conditions</span></a></li>
-        <li><a href="tools/grayline.html">Gray Line <span class="nav-meta">HF propagation</span></a></li>
-        <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
-        <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>
-      </ul>
-    </div>
-
-    <details class="nav-sec" id="navsec-forms">
-      <summary class="nav-sec-title">Ready for the worst <span class="nav-meta">emergency · ICS</span></summary>
+    <div class="nav-sec" id="navsec-forms">
+      <div class="nav-sec-title">ICS Forms</div>
       <ul class="nav-links">
         <li><a href="static/ics-205/ics-205.html">ICS-205 <span class="nav-meta">radio plan</span></a></li>
         <li><a href="static/ics-213/ics-213.html">ICS-213 <span class="nav-meta">general message</span></a></li>
         <li><a href="static/ics-214/ics-214.html">ICS-214 <span class="nav-meta">activity log</span></a></li>
         <li><a href="static/ics-309/ics-309.html">ICS-309 <span class="nav-meta">comms log</span></a></li>
       </ul>
-    </details>
+    </div>
 
-    <div class="nav-sec oasis">
-      <div class="nav-sec-title">OASIS</div>
+  </div>
+
+  <div class="nav-col">
+
+    <div class="nav-sec">
+      <div class="nav-sec-title">Lookup</div>
       <ul class="nav-links">
-        <li><a href="static/oasis-handbook/index.html">OASIS HANDBOOK <span class="nav-meta">reference</span></a></li>
-        <li><a href="server/system/setup.html" class="ext">OASIS Setup <span class="nav-meta">configure</span></a></li>
-        <li><a href="server/system/diagnostic.html" class="ext">OASIS Diagnostic <span class="nav-meta">health</span></a></li>
+        <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
+        <li><a id="nlink-rb" href="static/repeaterbook/repeaterbook.html" class="nav-link-svc">Repeater Book <span class="nav-svc-badge" id="nsvc-rb">—</span></a></li>
+        <li><a href="tools/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
+        <li><a href="static/radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
+      </ul>
+    </div>
+
+    <div class="nav-sec">
+      <div class="nav-sec-title">Library</div>
+      <ul class="nav-links">
+        <li><a id="nlink-manuals" href="server/system/browser.html?path=static/radio-manuals" class="nav-link-svc">Radio Manuals <span class="nav-svc-badge" id="nsvc-manuals">—</span></a></li>
+        <li><a href="static/graywolf-handbook/index.html">GrayWolf Handbook <span class="nav-meta">docs</span></a></li>
+        <li><a href="static/oasis-handbook/index.html">OASIS Handbook <span class="nav-meta">reference</span></a></li>
+        <li><a href="static/repeater-guide/index.html">Repeater Guide <span class="nav-meta">radio repeaters how-to</span></a></li>
+        <li><a id="nlink-wiki" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-wiki">—</span></a></li>
+        <li><a id="nlink-wl-radio" href="server/winlink/radio-settings.html">Winlink Radio Settings <span class="nav-meta">setup</span></a></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div class="nav-col">
+
+    <div class="nav-sec">
+      <div class="nav-sec-title">Tools</div>
+      <ul class="nav-links">
+        <li><a href="tools/antenna-calc.html">Antenna Calculator <span class="nav-meta">calculator</span></a></li>
+        <li><a href="tools/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calculator</span></a></li>
+        <li><a href="tools/solar.html">Solar / Propagation <span class="nav-meta">band conditions</span></a></li>
+        <li><a href="tools/grayline.html">Gray Line <span class="nav-meta">HF propagation</span></a></li>
+        <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
         <li><a href="server/system/browser.html">File Browser <span class="nav-meta">user files</span></a></li>
+      </ul>
+    </div>
+
+    <div class="nav-sec">
+      <div class="nav-sec-title">Operating Reference</div>
+      <ul class="nav-links">
+        <li><a href="static/quick-ref/phonetic.html">NATO Phonetic Alphabet <span class="nav-meta">NATO reference</span></a></li>
+        <li><a href="static/quick-ref/qcodes.html">Q-Codes <span class="nav-meta">q-codes</span></a></li>
+        <li><a href="static/quick-ref/prowords.html">Procedure Words <span class="nav-meta">procedure words</span></a></li>
+        <li><a href="static/quick-ref/rst.html">RST Signal Reporting <span class="nav-meta">signal reporting</span></a></li>
+        <li><a href="static/quick-ref/itu-prefixes.html">ITU Country Prefixes <span class="nav-meta">call sign series</span></a></li>
       </ul>
     </div>
 
@@ -1659,6 +1679,15 @@ function updateNavTitles() {
   });
 }
 
+// Set/clear the unread-mail pill on the Winlink RF card. Driven by the `winlink`
+// (Pat/telnet) service check, which owns the mailbox probe; the RF card is `wlrf`.
+function _setWlrfUnread(n) {
+  const pill = document.getElementById('wlrf-unread');
+  if (!pill) return;
+  if (n > 0) { pill.textContent = `${n} unread`; pill.hidden = false; }
+  else { pill.hidden = true; pill.textContent = ''; }
+}
+
 // ── Service checks ────────────────────────────────────────────────────────────
 const HOST = location.hostname;
 
@@ -1697,12 +1726,15 @@ const SERVICES = [
       // Same-origin via the Flask proxy: doubles as Pat's up/down probe and
       // seeds WinlinkRead so unread state is available to the mail pages.
       const r = await fetch('/api/winlink/mailbox/in', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: `:${PORTS.winlink}` };   // 503 = Pat down
+      if (!r.ok) { _setWlrfUnread(0); return { up: false, sub: `:${PORTS.winlink}` }; }   // 503 = Pat down
       let unread = 0;
       try {
         const msgs = await r.json();
         if (window.WinlinkRead) { WinlinkRead.seed(msgs); unread = WinlinkRead.unreadCount(msgs); }
       } catch (_) {}
+      // Surface unread on the Winlink RF card (the old "Winlink Mail" nav link
+      // that used to carry this is gone; the RF card is the single Winlink entry).
+      _setWlrfUnread(unread);
       const navSub = unread > 0 ? `${unread} unread` : 'no new mail';
       return { up: true, badge: 'UP', sub: `:${PORTS.winlink}`, navSub };
     }
@@ -1823,10 +1855,17 @@ const SERVICES = [
   {
     id: 'maps', name: 'Offline Maps',
     check: async () => {
-      const r = await fetch('/api/browse?path=maps', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'browse error' };
-      const d = await r.json();
-      const n = (d.entries||[]).filter(e => e.name.endsWith('.pmtiles')).length;
+      // Recursion lives in service-registry.js (shared with the kiosk dashboard);
+      // we just supply the same-origin browse. Maps are nested under maps/tiles/…,
+      // so a flat listing would false-WARN.
+      let n;
+      try {
+        n = await oasisCountPmtiles(async (p) => {
+          const r = await fetch('/api/browse?path=' + encodeURIComponent(p), { cache: 'no-store' });
+          if (!r.ok) throw new Error('browse');
+          return (await r.json()).entries || [];
+        }, 'maps');
+      } catch (_) { return { up: false, sub: 'browse error' }; }
       return { up: true, warn: n === 0,
         badge: n > 0 ? 'UP' : 'WARN',
         sub: n > 0 ? 'present' : 'not found',
