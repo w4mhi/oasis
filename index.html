@@ -1735,6 +1735,18 @@ function updateSvcCounts() {
     `<span class="cnt-warn">${warn} WRN</span>` +
     `<span class="cnt-sep">&#160;·&#160;</span>` +
     `<span class="cnt-down">${down} DN</span>`;
+
+  // STATUS card pills — same tally plus an "off" (hidden/not-installed) count.
+  let off = 0;
+  OASIS_SERVICES.forEach(s => { if (HIDDEN_SVCS.has(s.id)) off++; });
+  const sp = document.getElementById('status-pills');
+  if (sp) {
+    sp.innerHTML =
+      `<span class="spill up"><span class="n">${up}</span> UP</span>` +
+      `<span class="spill warn"><span class="n">${warn}</span> WRN</span>` +
+      `<span class="spill down"><span class="n">${down}</span> DN</span>` +
+      `<span class="spill off"><span class="n">${off}</span> off</span>`;
+  }
   updateNavTitles();
 }
 
@@ -2925,7 +2937,18 @@ async function fetchStats() {
              + `<span class="proc-ram">${Math.round(p.mem)}%</span></div>`;
       }).join('') || '<div class="proc"><span class="proc-name" style="color:var(--text-dim)">idle</span><span></span><span></span></div>';
     }
-  } catch (_) {}
+
+    // ── STATUS telemetry line ─────────────────────────────────────────────
+    const ok = [d.cpu_pct != null, d.ram && d.ram.pct != null, (d.cpu_cores||[]).length > 0];
+    const good = ok.filter(Boolean).length, tot = ok.length;
+    const ts = document.getElementById('tel-state'), ti = document.getElementById('tel-int');
+    if (ts) { ts.textContent = good === tot ? 'LIVE' : good > 0 ? 'PARTIAL' : 'OFFLINE';
+              ts.className = 'val' + (good === tot ? ' ok' : good > 0 ? ' warn' : ' hot'); }
+    if (ti) ti.textContent = '2s';
+  } catch (_) {
+    const ts = document.getElementById('tel-state');
+    if (ts) { ts.textContent = 'OFFLINE'; ts.className = 'val hot'; }
+  }
 }
 
 // ── Audio devices (sound cards) ───────────────────────────────────────────────
@@ -3731,15 +3754,58 @@ async function forgetWifi() {
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
+
+// Radio-assignment dots on the STATUS card. hollow = unassigned · amber = SDR
+// assigned · green = in use. (Ported from the kiosk svcbar.) Targets the
+// STATUS-card ids (status-dot-*) — NOT the SERVICES-grid dot-* ids, which are
+// separate elements owned by fetchHardware/renderAdsbDot etc.
+const SDR_SVCS = [
+  { id:'aprs', hw:'aprs',       unit:'aprs-sdr-feed' },
+  { id:'adsb', hw:'adsb',       unit:'dump1090-fa' },
+  { id:'owrx', hw:'openwebrx',  unit:null },
+  { id:'sat',  hw:'satellites', unit:'satellites-listen' },
+];
+async function _isUnitActive(unit) {
+  if (!unit) return false;
+  try { const r = await fetch('/api/health/service?name='+unit, { cache:'no-store' });
+        return r.ok && (await r.json()).active === 'active'; } catch (_) { return false; }
+}
+async function _satInUse() {
+  try { const r = await fetch('/api/satellites/listen/status', { cache:'no-store' });
+        if (!r.ok) return false; const d = await r.json();
+        return !!(d.recording || d.streaming); } catch (_) { return false; }
+}
+async function fetchSdrStatus() {
+  let hw = {};
+  try { const r = await fetch('/api/hardware/devices', { cache:'no-store' }); if (r.ok) hw = await r.json(); } catch (_) {}
+  const byId = {}; (hw.devices || []).forEach(x => byId[x.id] = x);
+  const services = hw.services || {};
+  await Promise.all(SDR_SVCS.map(async svc => {
+    const dot = document.getElementById('status-dot-'+svc.id); if (!dot) return;
+    const info = services[svc.hw];
+    const dev  = info && info.device_id ? byId[info.device_id] : null;
+    const assigned = !!(dev && dev.kind === 'rtl-sdr');
+    const inUse = svc.id === 'sat' ? await _satInUse() : await _isUnitActive(svc.unit);
+    dot.className = 'adot' + (inUse ? ' inuse' : assigned ? ' assigned' : '');
+  }));
+}
+
 loadConfig().then(() => {
   applyUnits();
   loadInstalled().then(async () => { await fetchHardware(); pingAll(); pollFeedFlow(); pollAdsbFlow(); });
   fetchStats();
   fetchAudio();
+  fetchSdrStatus();
   loadHazards();   // hazard-pill config (before/after the first APRS fetch — pills repaint on load)
   fetchAPRS();
   loadHomeCoords();
   pollWifi();
+  const _svcbar = document.getElementById('status-svcbar');
+  if (_svcbar) {
+    const _openOps = () => { const r = document.getElementById('hsx-rail'); if (r) r.click(); };
+    _svcbar.addEventListener('click', _openOps);
+    _svcbar.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _openOps(); } });
+  }
   // Service badges: round-robin one at a time — a full sweep of the active
   // (visible) services every 16s, matching the OASIS Dashboard kiosk, instead of
   // a 17-request burst (see pingNext). Dividing by the active count (not all
@@ -3754,6 +3820,7 @@ loadConfig().then(() => {
   setTimeout(() => setInterval(fetchStats, 30_000),  4_000);
   setTimeout(() => setInterval(fetchAudio, 30_000),  8_000);
   setTimeout(() => setInterval(pollWifi,   30_000), 12_000);
+  setTimeout(() => setInterval(fetchSdrStatus, 8_000), 6_000);
   setInterval(fetchAPRS,    15_000);
   setInterval(pollFeedFlow, FEED_FLOW_MS);
   setInterval(pollAdsbFlow, ADSB_FLOW_MS);
