@@ -1571,18 +1571,18 @@ function go(port) {
 
 // ── UTC + Local clock (ticks every second) ────────────────────────────────────
 function tickClock() {
-  // NOTE: the topbar clock cards (#clk-loc-t/#clk-loc-tz/#clk-loc-d/#clk-utc-t/
-  // #clk-utc-d) are static shells as of this task — a later task wires their
-  // rendering. Guarded here only so this no-ops instead of throwing on the
-  // now-removed #utc-time/#utc-date/#local-time/#local-date ids.
   const n = new Date();
   const z = v => String(v).padStart(2, '0');
   const WD = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  set('utc-time', `UTC ${WD[n.getUTCDay()]} ${z(n.getUTCHours())}:${z(n.getUTCMinutes())}:${z(n.getUTCSeconds())}`);
-  set('utc-date', `${n.getUTCFullYear()}·${z(n.getUTCMonth()+1)}·${z(n.getUTCDate())}`);
-  set('local-time', `LOC ${WD[n.getDay()]} ${z(n.getHours())}:${z(n.getMinutes())}:${z(n.getSeconds())}`);
-  set('local-date', `${n.getFullYear()}·${z(n.getMonth()+1)}·${z(n.getDate())}`);
+  const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+  const txt = (id, s)    => { const el = document.getElementById(id); if (el) el.textContent = s; };
+  set('clk-loc-t', `${z(n.getHours())}:${z(n.getMinutes())}<span class="s">:${z(n.getSeconds())}</span>`);
+  txt('clk-loc-d', `${WD[n.getDay()]} ${z(n.getDate())} ${MO[n.getMonth()]} ${n.getFullYear()}`);
+  set('clk-utc-t', `${z(n.getUTCHours())}:${z(n.getUTCMinutes())}<span class="s">:${z(n.getUTCSeconds())}</span>`);
+  txt('clk-utc-d', `${WD[n.getUTCDay()]} ${z(n.getUTCDate())} ${MO[n.getUTCMonth()]} ${n.getUTCFullYear()}`);
+  try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+        txt('clk-loc-tz', tz.split('/').pop().replace(/_/g,' ')); } catch (_) {}
 }
 tickClock();
 setInterval(tickClock, 1000);
@@ -2885,9 +2885,46 @@ async function fetchStats() {
       gpsCard.title = t.length ? 'GNSS / clock — ' + t.join(' · ') : 'GNSS receiver + clock status';
     }
 
-    // NOTE: CPU/RAM/DISK/LOAD/uptime/throttle/telemetry-badge rendering (the old
-    // SYSTEM stats-bar) was removed with the topbar restructure. Tasks 3-4 wire
-    // the CPU/PROCESSES/STATUS cards; the GPS block above is untouched.
+    // ── CPU card: inline readout + per-core bars ──────────────────────────
+    const setVal = (id, text, v, amber, red) => {
+      const el = document.getElementById(id); if (!el) return;
+      el.textContent = text;
+      el.className = 'val' + (v == null ? '' : v >= red ? ' hot' : v >= amber ? ' warn' : ' ok');
+    };
+    setVal('cpu-pct', d.cpu_pct != null ? `${Math.round(d.cpu_pct)}%` : 'n/a', d.cpu_pct, 70, 90);
+    setVal('cpu-temp', d.cpu_temp_c != null ? `${Math.round(d.cpu_temp_c)}°` : 'n/a', d.cpu_temp_c, 65, 80);
+    // RAM: high = bad, so colour like the others but neutral under threshold.
+    const ramPct = d.ram && d.ram.pct != null ? d.ram.pct : null;
+    setVal('cpu-ram', ramPct != null ? `${Math.round(ramPct)}%` : 'n/a', ramPct, 70, 90);
+    // CPU card status dot follows the worst of cpu/temp.
+    const cpuDot = document.getElementById('cpu-dot');
+    if (cpuDot) {
+      const worst = Math.max((d.cpu_pct||0) >= 90 ? 2 : (d.cpu_pct||0) >= 70 ? 1 : 0,
+                             (d.cpu_temp_c||0) >= 80 ? 2 : (d.cpu_temp_c||0) >= 65 ? 1 : 0);
+      cpuDot.className = 'dot ' + (worst === 2 ? 'down' : worst === 1 ? 'warn' : 'up');
+    }
+    const coresEl = document.getElementById('cpu-cores');
+    if (coresEl) {
+      const cores = d.cpu_cores || [];
+      coresEl.innerHTML = cores.map((c, i) => {
+        const cls = c >= 90 ? 'hot' : c >= 70 ? 'busy' : '';
+        return `<div class="core"><span class="core-lbl">C${i}</span>`
+             + `<span class="core-track"><span class="core-fill ${cls}" style="width:${Math.min(c,100)}%"></span></span>`
+             + `<span class="core-pct ${cls}">${Math.round(c)}%</span></div>`;
+      }).join('');
+    }
+
+    // ── PROCESSES card: top-3 ─────────────────────────────────────────────
+    const procEl = document.getElementById('proc-list');
+    if (procEl) {
+      const procs = d.top_procs || [];
+      procEl.innerHTML = procs.map(p => {
+        const cls = p.cpu >= 90 ? 'hot' : p.cpu >= 70 ? 'busy' : '';
+        return `<div class="proc"><span class="proc-name">${escapeHtml(p.name)}</span>`
+             + `<span class="proc-cpu ${cls}">${Math.round(p.cpu)}%</span>`
+             + `<span class="proc-ram">${Math.round(p.mem)}%</span></div>`;
+      }).join('') || '<div class="proc"><span class="proc-name" style="color:var(--text-dim)">idle</span><span></span><span></span></div>';
+    }
   } catch (_) {}
 }
 
