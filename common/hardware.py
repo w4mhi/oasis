@@ -187,6 +187,27 @@ def device_of(inv, service):
     return inv.assignments.get(service)
 
 
+def is_locked(inv, device_id):
+    """Whether a device is locked to its current assignment. A locked device is
+    protected from reassignment (operator or auto-assign) until unlocked. Absent
+    flag / unknown device -> unlocked."""
+    return bool(inv.devices.get(device_id, {}).get("locked", False))
+
+
+def set_lock(repo_root, inv, device_id, locked):
+    """Set or clear a device's lock and persist. Unlocking drops the key (absent
+    == unlocked keeps hardware.json clean). No-op for an unknown device."""
+    dev = inv.devices.get(device_id)
+    if dev is None:
+        return inv
+    if locked:
+        dev["locked"] = True
+    else:
+        dev.pop("locked", None)
+    save(repo_root, inv)
+    return inv
+
+
 def _default_is_active(unit):
     """systemctl is-active <unit>.service. Non-Linux or errors -> False."""
     if sys.platform != "linux":
