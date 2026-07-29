@@ -1728,8 +1728,7 @@ function updateSvcCounts() {
     if (st === 'up') up++; else if (st === 'warn') warn++; else if (st === 'down') down++;
   });
   const el = document.getElementById('svc-counts');
-  if (!el) return;
-  el.innerHTML =
+  if (el) el.innerHTML =
     `<span class="cnt-up">${up} UP</span>` +
     `<span class="cnt-sep">&#160;·&#160;</span>` +
     `<span class="cnt-warn">${warn} WRN</span>` +
