@@ -43,3 +43,39 @@ class DeviceLockTest(unittest.TestCase):
         self.assertTrue(hardware.is_locked(inv, "sdr-1"))          # starts locked
         hardware.set_lock(self.dir, inv, "sdr-1", False)
         self.assertFalse(hardware.is_locked(hardware.load(self.dir), "sdr-1"))
+
+
+class RerouteTest(unittest.TestCase):
+    """Console-enforced exclusive reroute (design 2026-07-28): flipping a matrix
+    toggle reassigns one service to a dongle + starts it, displacing whatever was
+    there. Units start/stop via injected fns so the logic is testable off-Pi."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def test_reroute_unassigned_service_assigns_and_starts(self):
+        _write(self.dir, '{"version":1,'
+               '"devices":[{"id":"sdr-1","kind":"rtl-sdr","serial":"1"}],'
+               '"assignments":{}}')
+        inv = hardware.load(self.dir)
+        started = []
+        hardware.reroute(self.dir, inv, "adsb", "sdr-1", start_fn=started.append)
+        self.assertEqual(inv.assignments["adsb"], "sdr-1")          # assigned
+        self.assertIn("dump1090-fa", started)                       # its unit started
+        self.assertEqual(hardware.load(self.dir).assignments["adsb"], "sdr-1")  # persisted
+
+    def test_reroute_displaces_other_service_on_target_device(self):
+        # sdr-1 is running ADS-B; routing APRS onto it must stop + unassign ADS-B
+        # (console-enforced exclusive: one service per dongle).
+        _write(self.dir, '{"version":1,'
+               '"devices":[{"id":"sdr-1","kind":"rtl-sdr","serial":"1"}],'
+               '"assignments":{"adsb":"sdr-1"}}')
+        inv = hardware.load(self.dir)
+        started, stopped = [], []
+        hardware.reroute(self.dir, inv, "aprs", "sdr-1",
+                         start_fn=started.append, stop_fn=stopped.append)
+        self.assertEqual(inv.assignments.get("aprs"), "sdr-1")       # new service on
+        self.assertNotIn("adsb", inv.assignments)                    # old one displaced
+        self.assertIn("dump1090-fa", stopped)                        # its unit stopped
+        self.assertIn("aprs-sdr-feed", started)                      # aprs' rtl_fm feed started
+        self.assertNotIn("adsb", hardware.load(self.dir).assignments)  # persisted

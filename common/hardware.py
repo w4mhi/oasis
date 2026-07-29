@@ -301,6 +301,27 @@ def release(repo_root, inv, service, stop_fn=None):
     return inv
 
 
+def reroute(repo_root, inv, service, device_id, start_fn=None, stop_fn=None):
+    """Console-enforced exclusive reroute: assign `service` to `device_id`, persist,
+    and start its unit(s). Displacement of whatever else was on the device, moving
+    the service off its old device, and lock guards are layered on in later slices.
+    Units are started/stopped via injected callables (one unit name each) so the
+    logic is testable without systemd."""
+    # Console-enforced exclusive: displace any OTHER service currently on the
+    # target device (stop its units, unassign it) before claiming the dongle.
+    for other in [s for s in assignees(inv, device_id) if s != service]:
+        if stop_fn is not None:
+            for unit in service_units(inv, other):
+                stop_fn(unit)
+        del inv.assignments[other]
+    inv.assignments[service] = device_id
+    save(repo_root, inv)
+    if start_fn is not None:
+        for unit in service_units(inv, service):
+            start_fn(unit)
+    return inv
+
+
 def default_assign(repo_root, inv, service, allowed_kinds):
     """If `service` has no assignment yet, assign it the first free declared
     device (in hardware.json declaration order) whose kind is in
