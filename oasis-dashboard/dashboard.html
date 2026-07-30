@@ -157,11 +157,14 @@
   #k-gps.nogps .gdot{ display:inline-block; background:var(--faint); }
   #k-gps.nofix .mode{ color:var(--down); }
   #k-gps.nofix .gdot{ display:inline-block; background:var(--down);
+                      box-shadow:0 0 .5rem 0 var(--down);   /* painted once; pulse below is opacity/scale only */
                       animation:gpspulse 1.1s ease-in-out infinite; }
   #k-gps.fix2d .mode,#k-gps.fix2d .sub{ color:var(--warn); }
   #k-gps.fix3d .mode,#k-gps.fix3d .sub{ color:var(--accent); }
-  @keyframes gpspulse{ 0%,100%{ opacity:1;  transform:scale(1);   box-shadow:0 0 .5rem 0 var(--down); }
-                       50%    { opacity:.35; transform:scale(.65); box-shadow:0 0 0 0 var(--down); } }
+  /* compositor-only pulse (opacity+transform) — no box-shadow here, so the layer
+     is painted once and animated on the GPU instead of repainting every frame */
+  @keyframes gpspulse{ 0%,100%{ opacity:1;  transform:scale(1);   }
+                       50%    { opacity:.35; transform:scale(.65); } }
 
   /* ── system stats pill + units toggle share one row, matched heights ──── */
   .sysrow{ display:flex; gap:.8rem; align-items:stretch; }
@@ -391,15 +394,12 @@
   .so-guardian{ position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:60;
     display:flex; align-items:center; gap:.8rem; background:var(--panel); border:1px solid var(--down);
     border-radius:10px; padding:.6rem 1.1rem; box-shadow:0 10px 30px rgba(0,0,0,.4);
-    font-family:var(--mono); font-size:1.25rem; color:var(--down); max-width:94vw;
-    animation:so-gpulse 1.2s ease-out infinite; }
+    font-family:var(--mono); font-size:1.25rem; color:var(--down); max-width:94vw; }
   .so-guardian[hidden]{ display:none; }
   .so-g-cancel{ background:var(--down); color:#fff; border:none; border-radius:8px; padding:.5rem 1.15rem;
     cursor:pointer; font-family:var(--mono); font-weight:700; text-transform:uppercase; letter-spacing:.05em;
     font-size:1.05rem; min-height:44px; white-space:nowrap; }
   .so-g-cancel:active{ filter:brightness(1.12); }
-  @keyframes so-gpulse{ 0%,100%{ box-shadow:0 0 0 0 color-mix(in srgb,var(--down) 55%,transparent); } 50%{ box-shadow:0 0 0 7px transparent; } }
-  @media (prefers-reduced-motion:reduce){ .so-guardian{ animation:none; } }
   .ops-sec{ margin-bottom:1rem; }
   .ops-sec .lab{ color:var(--accent); font-size:1rem; letter-spacing:.14em; font-weight:700; margin:0 .2rem .6rem; }
   .ops-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:.8rem; }
@@ -855,23 +855,60 @@ function aprsIconHtml(s) {
   const x = -((idx%16)*24), y = -(Math.floor(idx/16)*24), sheet = table==='/'?0:1;
   return `<span class="sym" style="background-image:url('/map-assets/aprs-symbols-24-${sheet}.png');background-position:${x}px ${y}px"></span>`;
 }
+// Keyed incremental reconciliation of the station/aircraft list. The list re-renders on
+// a 15s throttle (scheduleAprsRender) mostly just to re-stamp ages and re-sort by recency;
+// a full innerHTML teardown of up to MAX_ROWS×6 nodes each time is wasteful — a visible
+// main-thread CPU burst on weak Pis. Instead we keep a key→row map and touch only the rows
+// and fields that actually changed, reordering by MOVING existing nodes. When nothing
+// changed this does zero DOM writes, so it also subsumes a skip-if-unchanged guard.
+const _aprsRowMap = new Map();   // key -> { el, sig }
+function _aprsRowKey(s) {
+  return s._kind==='aircraft' ? 'ac:'+(s.hex||s.callsign||'?') : 'ap:'+(s.callsign||s.c||'—');
+}
 function renderAprsRows(list) {
   const body = document.getElementById('aprsScroll'); if (!body) return;
-  body.innerHTML = '';
-  if (!list.length) { body.innerHTML = '<div class="trow empty"><span style="grid-column:1/-1">No stations to show.</span></div>'; return; }
-  const frag = document.createDocumentFragment();
+  if (!list.length) {
+    if (_aprsRowMap.size || !body.querySelector('.trow.empty')) {
+      _aprsRowMap.clear();
+      body.innerHTML = '<div class="trow empty"><span style="grid-column:1/-1">No stations to show.</span></div>';
+    }
+    return;
+  }
+  const emptyEl = body.querySelector('.trow.empty'); if (emptyEl) emptyEl.remove();
+
+  const seen = new Set();
+  let ref = body.firstChild;
   list.forEach(s => {
+    const key = _aprsRowKey(s); seen.add(key);
     const call = s.callsign || s.c || '—';
     const ac = s._kind==='aircraft', src = ac ? 'air' : aprsSource(s);
     const age = fmtAge(s.last_heard||s.timestamp||s.time);
     const dist = distFromHome(s.lat, s.lon) || '';
     const grid = gridSquare(s.lat, s.lon) || '';
-    const r = document.createElement('div'); r.className = 'trow';
-    r.innerHTML = `<span class="call ${src}">${esc(call)}</span><span>${aprsIconHtml(s)}</span><span class="age ${age.cls}">${esc(age.text)}</span><span class="dist">${esc(dist)}</span><span class="grid">${esc(grid)}</span>`;
-    r.onclick = () => openSheet(s);
-    frag.appendChild(r);
+    const sig = [call, src, age.text, age.cls, dist, grid].join('\x1f');
+
+    let rec = _aprsRowMap.get(key), el;
+    if (!rec) {
+      el = document.createElement('div'); el.className = 'trow';
+      el.innerHTML = `<span class="call ${src}">${esc(call)}</span><span>${aprsIconHtml(s)}</span><span class="age ${age.cls}">${esc(age.text)}</span><span class="dist">${esc(dist)}</span><span class="grid">${esc(grid)}</span>`;
+      _aprsRowMap.set(key, rec = { el, sig });
+    } else {
+      el = rec.el;
+      if (rec.sig !== sig) {   // update only the mutable fields (icon is stable per key)
+        const k = el.children;   // [call, icon, age, dist, grid]
+        k[0].className = 'call ' + src; k[0].textContent = call;
+        k[2].className = 'age ' + age.cls; k[2].textContent = age.text;
+        k[3].textContent = dist;
+        k[4].textContent = grid;
+        rec.sig = sig;
+      }
+    }
+    el.onclick = () => openSheet(s);   // keep the click bound to the freshest record
+    if (el === ref) { ref = ref.nextSibling; }   // already in place
+    else { body.insertBefore(el, ref); }         // move/insert into position
   });
-  body.appendChild(frag);
+  // drop rows for stations no longer present (deleting during Map.forEach is safe)
+  _aprsRowMap.forEach((rec, key) => { if (!seen.has(key)) { rec.el.remove(); _aprsRowMap.delete(key); } });
 }
 // ── Services health → summary count pill (ported from dashboard_old; tiles/overlay omitted) ──
 const HOST = location.hostname;

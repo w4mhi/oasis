@@ -172,6 +172,7 @@ body {
 .proc-ram.busy{color:var(--amber)} .proc-ram.hot{color:var(--red)}
 .proc-head{color:var(--text-dim);font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.06em}
 .proc-head span:not(:first-child){min-width:3em;text-align:right}
+#proc-list{margin-top:-.2rem}   /* tighten the CPU/RAM header → values gap (card gap is .3rem) */
 
 /* telemetry + services */
 .svc-pills{display:flex;flex-wrap:wrap;gap:.3rem;justify-content:flex-start}
@@ -1199,9 +1200,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 .hsx-rail.hsx-crit{color:var(--red); border-color:var(--red)}
 .hsx-rail:hover{filter:brightness(1.08)}
 .hsx-rail:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
-@keyframes hsx-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--red) 55%,transparent)}50%{box-shadow:0 0 0 7px transparent}}
-.hsx-rail.hsx-crit{animation:hsx-pulse 1.4s ease-out infinite}
-@media (prefers-reduced-motion:reduce){.hsx-rail.hsx-crit{animation:none} .hsx-tog,.hsx-tog::after,.hsx-pop{transition:none}}
+@media (prefers-reduced-motion:reduce){.hsx-tog,.hsx-tog::after,.hsx-pop{transition:none}}
 .hsx-pop{position:absolute; top:0; right:1.25rem; z-index:40; width:min(560px,94vw);
   opacity:0; transform:translateX(28px); pointer-events:none; transition:.18s ease}
 .hsx-pop.hsx-open{opacity:1; transform:translateX(0); pointer-events:auto}
@@ -1218,7 +1217,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 .hsx-hdbtn.hsx-on{color:var(--accent); border-color:color-mix(in srgb,var(--accent) 40%,var(--border))}
 .hsx-stopall{color:var(--red); border-color:color-mix(in srgb,var(--red) 40%,var(--border)); font-size:var(--fs-micro); text-transform:uppercase; letter-spacing:.06em; font-weight:700}
 .hsx-stopall:hover{background:color-mix(in srgb,var(--red) 12%,transparent); color:var(--red)}
-.hsx-guardian{position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:60; display:flex; align-items:center; gap:.75rem; background:var(--panel); border:1px solid var(--red); border-radius:10px; padding:.5rem .8rem; box-shadow:0 10px 30px rgba(0,0,0,.4); font-family:var(--mono); font-size:var(--fs-small); color:var(--red); animation:hsx-pulse 1.2s ease-out infinite; max-width:94vw}
+.hsx-guardian{position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:60; display:flex; align-items:center; gap:.75rem; background:var(--panel); border:1px solid var(--red); border-radius:10px; padding:.5rem .8rem; box-shadow:0 10px 30px rgba(0,0,0,.4); font-family:var(--mono); font-size:var(--fs-small); color:var(--red); max-width:94vw}
 .hsx-guardian[hidden]{display:none}
 .hsx-g-cancel{background:var(--red); color:#fff; border:none; border-radius:6px; padding:.3rem .7rem; cursor:pointer; font-family:var(--mono); font-weight:700; text-transform:uppercase; letter-spacing:.05em; font-size:var(--fs-micro); white-space:nowrap}
 .hsx-g-cancel:hover{filter:brightness(1.12)}
@@ -2919,15 +2918,15 @@ async function fetchStats() {
     setVal('cpu-ram', ramPct != null ? `${Math.round(ramPct)}%` : 'n/a', ramPct, 70, 90);
     const diskPct = d.disk && !d.disk.error && d.disk.pct != null ? d.disk.pct : null;
     setVal('cpu-disk', diskPct != null ? `${Math.round(diskPct)}%` : 'n/a', diskPct, 80, 92);
-    // LOAD on the PROCESSES title (1-min average), coloured green/amber/red by
-    // load-vs-cores % (same thresholds as the old system bar: 75 / 100). The
-    // whole PROCESSES card border/tint tracks the same state (like GPS by fix):
-    // ok->up (green), warn->warn (amber), hot->down (red).
+    // LOAD (1-min average): the DOT and the LOAD value track load-vs-cores %
+    // (thresholds 75 / 100) — green/amber/red. But the PROCESSES card border/tint
+    // stays neutral green (aligned with STATUS): a brief load spike isn't a
+    // card-level fault, so the dot + coloured value carry the warning instead.
     const loadEl = document.getElementById('proc-load');
     const procCard = document.getElementById('proc-card');
     const lp = (d.load && d.load.avg1 != null) ? d.load.pct : null;
     const lstate = lp == null ? 'up' : lp >= 100 ? 'down' : lp >= 75 ? 'warn' : 'up';
-    if (procCard) procCard.className = 'card ' + lstate;
+    if (procCard) procCard.className = 'card up';
     const procDot = document.getElementById('proc-dot');
     if (procDot) procDot.className = 'dot ' + lstate;
     // STATUS card: uptime value on the title line (neutral, no label).
