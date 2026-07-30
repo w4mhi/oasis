@@ -85,8 +85,8 @@
     </div>
     <ol class="steps">
       <li><strong>Clone on your computer.</strong>
-        <pre><code>git clone https://github.com/W4MHI/oasis-emcomm
-cd oasis-emcomm</code></pre>
+        <pre><code>git clone https://github.com/W4MHI/oasis
+cd oasis</code></pre>
       </li>
       <li><strong>Build the offline USB bundle.</strong> This downloads every offline
         asset (Python wheels, GrayWolf, Kiwix, RTL-SDR, webssh, Pat, FCC database, map
@@ -95,10 +95,10 @@ cd oasis-emcomm</code></pre>
         Copy that whole folder onto a USB drive. See <a href="usb-bundle.html">USB Bundle</a> for details.
       </li>
       <li><strong>Copy the bundle to the Raspberry Pi.</strong> Plug the USB into the Pi
-        and copy the bundle into your home directory (e.g. <code>~/oasis-emcomm</code>).
+        and copy the bundle into your home directory (e.g. <code>~/oasis</code>).
       </li>
       <li><strong>Run the guided setup</strong> as your normal user &mdash; <em>not</em> with sudo:
-        <pre><code>cd ~/oasis-emcomm
+        <pre><code>cd ~/oasis
 python3 setup-oasis.py          # guided checkbox menu</code></pre>
         Tick the features you want; it runs the matching install scripts in order and
         asks for your password once. See <a href="setup-menu.html">The Setup Menu</a>.
@@ -109,7 +109,7 @@ python3 setup-oasis.py          # guided checkbox menu</code></pre>
       <li><strong>Connect.</strong> If you ticked <em>Auto-start on boot</em>, OASIS is
         already running &mdash; open <code>http://&lt;pi-ip&gt;:8083</code> from any device on
         the same network. Otherwise start it manually:
-        <pre><code>cd ~/oasis-emcomm
+        <pre><code>cd ~/oasis
 scripts/start-server.sh</code></pre>
       </li>
     </ol>

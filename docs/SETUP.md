@@ -144,11 +144,11 @@ sudo apt update && sudo apt install -y git
 ### 4. Clone OASIS
 
 ```bash
-git clone https://github.com/W4MHI/oasis-emcomm
-cd oasis-emcomm
+git clone https://github.com/W4MHI/oasis
+cd oasis
 ```
 
-> 💡 **Stay in this directory.** Every command in this guide assumes you are inside `oasis-emcomm/`. If you open a new terminal session or accidentally `cd` somewhere else, type `cd ~/oasis-emcomm` to get back.
+> 💡 **Stay in this directory.** Every command in this guide assumes you are inside `oasis/`. If you open a new terminal session or accidentally `cd` somewhere else, type `cd ~/oasis` to get back.
 
 Now continue to [Guided setup](#guided-setup-menu).
 
@@ -157,7 +157,7 @@ Now continue to [Guided setup](#guided-setup-menu).
 ## Project structure
 
 ```
-oasis-emcomm/
+oasis/
 ├── index.html                  ← Dashboard (start here)
 ├── css/common.css              ← Shared design system
 │
@@ -340,8 +340,8 @@ After=network.target
 
 [Service]
 User=YOUR_USERNAME
-WorkingDirectory=/home/YOUR_USERNAME/oasis-emcomm
-ExecStart=/home/YOUR_USERNAME/oasis-emcomm/.venv/bin/gunicorn --workers 1 --bind 0.0.0.0:8083 server.app:app
+WorkingDirectory=/home/YOUR_USERNAME/oasis
+ExecStart=/home/YOUR_USERNAME/oasis/.venv/bin/gunicorn --workers 1 --bind 0.0.0.0:8083 server.app:app
 Restart=on-failure
 
 [Install]
@@ -432,8 +432,8 @@ Files written to `services/fcc_database/data/`:
 
 ```bash
 # Mac / Linux laptop:
-scp -r services/fcc_database/data <username>@<hostname>.local:/home/<username>/oasis-emcomm/services/fcc_database/
-# e.g.  scp -r services/fcc_database/data w4mhi@oasis.local:/home/w4mhi/oasis-emcomm/services/fcc_database/
+scp -r services/fcc_database/data <username>@<hostname>.local:/home/<username>/oasis/services/fcc_database/
+# e.g.  scp -r services/fcc_database/data w4mhi@oasis.local:/home/w4mhi/oasis/services/fcc_database/
 ```
 
 > 💡 **Windows users:** PowerShell has `scp` built in (Windows 10 1809 or later). If it doesn't work, use [WinSCP](https://winscp.net/) (free GUI app) or [FileZilla](https://filezilla-project.org/) (SFTP mode) — connect to `<hostname>.local`, port 22, with your Pi username and password, then drag the `services/fcc_database/data/` folder to the same path on the Pi.
@@ -638,11 +638,11 @@ Place the `.pmtiles` file in `maps/`. The map opens at the archive's own center/
 
 ```bash
 # Run this on your laptop, replacing <username> and <hostname> with what you set in Imager:
-scp maps/<region>.pmtiles <username>@<hostname>.local:/home/<username>/oasis-emcomm/maps/
-# e.g.  scp maps/washington.pmtiles w4mhi@oasis.local:/home/w4mhi/oasis-emcomm/maps/
+scp maps/<region>.pmtiles <username>@<hostname>.local:/home/<username>/oasis/maps/
+# e.g.  scp maps/washington.pmtiles w4mhi@oasis.local:/home/w4mhi/oasis/maps/
 ```
 
-> 💡 **Windows users:** use WinSCP or FileZilla (SFTP, port 22) to drag the `.pmtiles` file into `/home/<username>/oasis-emcomm/maps/` on the Pi.
+> 💡 **Windows users:** use WinSCP or FileZilla (SFTP, port 22) to drag the `.pmtiles` file into `/home/<username>/oasis/maps/` on the Pi.
 
 Or skip copying entirely: keep `.pmtiles` files on a USB stick and use the **Load maps** button on the map page to browse and load them at runtime. The locations the browser may read from are controlled by the `OASIS_MAP_ROOTS` environment variable (default: `/media`, `/mnt`, `/run/media`, `/Volumes`, plus `maps/`).
 
@@ -1598,10 +1598,10 @@ so you download your own:
 
 ```bash
 # Mac / Linux laptop:
-scp /path/to/exported.csv <username>@<hostname>.local:/home/<username>/oasis-emcomm/static/repeaterbook/repeaterbook.csv
+scp /path/to/exported.csv <username>@<hostname>.local:/home/<username>/oasis/static/repeaterbook/repeaterbook.csv
 ```
 
-> 💡 **Windows users:** in WinSCP or FileZilla, navigate to `/home/<username>/oasis-emcomm/static/repeaterbook/` on the Pi and drag the file in, renaming it to `repeaterbook.csv`.
+> 💡 **Windows users:** in WinSCP or FileZilla, navigate to `/home/<username>/oasis/static/repeaterbook/` on the Pi and drag the file in, renaming it to `repeaterbook.csv`.
 
 The dashboard **Repeater Book** card turns green when the CSV is present, red when
 missing. **Export to Frequency Plan** writes the visible repeaters as CHIRP CSV to
@@ -1747,7 +1747,7 @@ The dashboard, ICS forms, FCC lookup, **offline maps**, calculators, and the ref
 To pull a new version of OASIS when a release comes out:
 
 ```bash
-cd ~/oasis-emcomm
+cd ~/oasis
 git pull                          # download the latest code
 python3 scripts/setup-server.py  # update server dependencies if requirements changed
 ```

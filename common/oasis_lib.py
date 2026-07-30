@@ -273,7 +273,7 @@ def download_to(url, dest_path):
     Stream *url* directly to *dest_path* with a progress bar.
     Raises on network or I/O error (caller decides how to handle).
     """
-    req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+    req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
     print("    Connecting...", end="", flush=True)
     with urllib.request.urlopen(req, timeout=120) as resp:
         total = int(resp.headers.get("Content-Length") or 0)
@@ -295,7 +295,7 @@ def download_bytes(url):
             (None, error_str) on failure.
     """
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+        req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
         with urllib.request.urlopen(req, timeout=120) as resp:
             total = int(resp.headers.get("Content-Length") or 0)
             prog  = Progress(total)
@@ -632,7 +632,7 @@ def graywolf_latest_release(pinned_version=None):
         url = f"{_GRAYWOLF_API}/latest"
         _info("Fetching latest GrayWolf release from GitHub ...")
 
-    req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+    req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
     last_exc = None
     for attempt in range(1, 4):
         try:
@@ -699,7 +699,7 @@ def pat_latest_release(pinned_version=None):
         url = f"{_PAT_API}/latest"
         _info("Fetching latest Pat release from GitHub ...")
 
-    req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+    req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
     last_exc = None
     for attempt in range(1, 4):
         try:
@@ -837,7 +837,7 @@ def debian_packages_index(arch, packages, suite=DEBIAN_SUITE):
     url = f"{DEBIAN_BASE}/dists/{suite}/main/binary-{arch}/Packages.gz"
     _info(f"Fetching Debian package index: {suite}/main/binary-{arch} ...")
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+        req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = gzip.decompress(resp.read())
     except Exception as exc:
@@ -952,7 +952,7 @@ def pmtiles_latest_version():
     """Latest go-pmtiles version string (no leading 'v'), or None on failure."""
     try:
         req = urllib.request.Request(
-            f"{_PMTILES_API}/latest", headers={"User-Agent": "oasis-emcomm"}
+            f"{_PMTILES_API}/latest", headers={"User-Agent": "oasis"}
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.load(resp)

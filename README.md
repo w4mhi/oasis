@@ -18,8 +18,8 @@ Forms · FCC lookup · offline maps · APRS · calculators · reference library 
 ![Backend](https://img.shields.io/badge/backend-Flask-000000)
 ![Client](https://img.shields.io/badge/client-zero%20install-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
-[![server-setup](https://github.com/W4MHI/oasis-emcomm/actions/workflows/offline-install.yml/badge.svg)](https://github.com/W4MHI/oasis-emcomm/actions/workflows/offline-install.yml)
-[![offline-manifest](https://github.com/W4MHI/oasis-emcomm/actions/workflows/offline-manifest.yml/badge.svg)](https://github.com/W4MHI/oasis-emcomm/actions/workflows/offline-manifest.yml)
+[![server-setup](https://github.com/W4MHI/oasis/actions/workflows/offline-install.yml/badge.svg)](https://github.com/W4MHI/oasis/actions/workflows/offline-install.yml)
+[![offline-manifest](https://github.com/W4MHI/oasis/actions/workflows/offline-manifest.yml/badge.svg)](https://github.com/W4MHI/oasis/actions/workflows/offline-manifest.yml)
 
 </div>
 
@@ -101,8 +101,8 @@ OASIS is **offline-first**, so the recommended path is to build a self-contained
 ### 1 · Clone on your computer
 
 ```bash
-git clone https://github.com/W4MHI/oasis-emcomm
-cd oasis-emcomm
+git clone https://github.com/W4MHI/oasis
+cd oasis
 ```
 
 ### 2 · Build the offline USB bundle
@@ -118,13 +118,13 @@ This downloads every offline asset (Python wheels · GrayWolf · Kiwix · RTL-SD
 Re-run the same command anytime — it's **incremental**, so it only fetches what changed. To refresh an existing copy in place (for example the one already on your USB), use `--update`:
 
 ```bash
-python3 scripts/create-oasis-offline.py --update                 # update ./oasis-offline in the oasis-emcomm folder
+python3 scripts/create-oasis-offline.py --update                 # update ./oasis-offline in the oasis folder
 python3 scripts/create-oasis-offline.py --update --dir /mnt/usb  # or update the USB drive directly
 ```
 
 ### 4 · Copy the bundle to the Raspberry Pi
 
-Plug the USB into the Pi and copy the bundle into your home directory (e.g. `~/oasis-emcomm`).
+Plug the USB into the Pi and copy the bundle into your home directory (e.g. `~/oasis`).
 
 > 🚫 **Don't `git clone` directly on the Pi for a full deployment.** A clone gives you code only — you'd still need internet on the Pi to pull GrayWolf, Kiwix, the FCC database, and the rest. And once the offline assets are generated, the working folder grows large (wheels, `.deb`s, tiles, ZIMs). Build the bundle on your computer and carry it over. *(A bare clone on the Pi is fine only if you want just the server + dashboard and nothing that needs downloads.)*
 
@@ -135,7 +135,7 @@ Plug the USB into the Pi and copy the bundle into your home directory (e.g. `~/o
 On the Pi, run the menu **as your normal user — not with sudo**:
 
 ```bash
-cd ~/oasis-emcomm
+cd ~/oasis
 python3 setup-oasis.py          # guided checkbox menu
 ```
 
@@ -151,7 +151,7 @@ After the Pi is back online:
 - Otherwise, start it manually, then open `http://<pi-ip>:8083`:
 
   ```bash
-  cd ~/oasis-emcomm
+  cd ~/oasis
   scripts/start-server.sh
   ```
 

@@ -125,7 +125,7 @@ def _download_ttyd(suffix, dest, version):
     _info(f"Downloading ttyd {version} ({suffix}) ...")
     _info(f"  {url}")
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+        req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
         with urllib.request.urlopen(req, timeout=60) as resp, open(dest, "wb") as fh:
             shutil.copyfileobj(resp, fh)
         return os.path.getsize(dest) > 0
