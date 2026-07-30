@@ -96,17 +96,17 @@ body {
 .gps-dot.up { background: var(--accent); }
 .gps-dot.warn { background: var(--amber); }
 .gps-dot.down { background: var(--red); }
-.gps-card-name { font-size: var(--fs-base); font-weight: 700; color: var(--text); letter-spacing: .1em; }
-.gps-card-badge { margin-left: auto; font-size: var(--fs-small); text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); font-weight: 700; }
+.gps-card-name { font-size: var(--fs-subtitle); font-weight: 700; color: var(--text); letter-spacing: .1em; }
+.gps-card-badge { margin-left: auto; font-size: var(--fs-subtitle); text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); font-weight: 700; }
 .gps-card-badge.up   { color: var(--accent); }
 .gps-card-badge.warn { color: var(--amber); }
 .gps-card-badge.down { color: var(--red); }
 .gps-iface {
-  font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .06em;
+  font-size: var(--fs-subtitle); text-transform: uppercase; letter-spacing: .06em;
   color: var(--text-dim); font-weight: 700; margin-left: auto;
 }
 .gps-iface[hidden] { display: none; }
-.gps-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .2rem .8rem; }
+.gps-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem .8rem; }
 .gps-cell { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
 .gps-lbl { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .07em; color: var(--text-dim); }
 .gps-val { font-size: var(--fs-small); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -114,15 +114,14 @@ body {
 /* ── System cards (topbar row) — ported verbatim from
    specs/2026-07-29-system-cards-mockup.html ─────────────────────── */
 .card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:.4rem .7rem;
-      display:flex;flex-direction:column;gap:.28rem;flex:1 1 auto}
+      display:flex;flex-direction:column;gap:.3rem;flex:1 1 auto}
 .card.up{border-color:var(--accent-dim);background:rgba(0,200,100,.06)}
 .card.warn{border-color:var(--amber-dim);background:rgba(255,180,84,.06)}
 .card.down{border-color:#7a1010;background:rgba(180,30,30,.08)}
-.card.roomy{gap:.55rem}
 .card-hdr{display:flex;align-items:center;gap:.45rem}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);flex-shrink:0}
 .dot.up{background:var(--accent)} .dot.warn{background:var(--amber)} .dot.down{background:var(--red)}
-.card-name{font-size:var(--fs-base);font-weight:700;color:var(--text);letter-spacing:.1em}
+.card-name{font-size:var(--fs-subtitle);font-weight:700;color:var(--text);letter-spacing:.1em}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:.15rem .8rem}
 .cell{display:flex;flex-direction:column;line-height:1.15;min-width:0}
 .lbl{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.07em;color:var(--text-dim)}
@@ -131,31 +130,37 @@ body {
 
 /* ---- clock cards (dashboard style: left color bar + LOCAL/UTC), scaled to header ---- */
 .clk-card{position:relative;overflow:hidden;justify-content:center;min-width:158px;
-  padding:.4rem .7rem .4rem .95rem;background:linear-gradient(180deg,var(--panel-2),var(--panel))}
+  padding:.4rem .7rem .4rem .95rem;background:var(--panel)}
 .clk-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:.3rem}
-.clk-card.loc::before{background:var(--blue)} .clk-card.utc::before{background:var(--amber)}
+.clk-card.loc::before{background:var(--blue)} .clk-card.utc::before{background:var(--text)}
+.clk-card.loc{border-color:var(--blue-dim);background:rgba(88,166,255,.06)}
+.clk-card.utc{border-color:var(--border);background:var(--panel)}
 .clk-zn{display:flex;align-items:baseline;gap:.5rem}
-.clk-z{font-size:var(--fs-clock);letter-spacing:.16em;font-weight:700}
-.clk-card.loc .clk-z{color:var(--blue)} .clk-card.utc .clk-z{color:var(--amber)}
-.clk-tz{font-size:var(--fs-small);color:var(--text-dim)}
+.clk-z{font-size:var(--fs-subtitle);letter-spacing:.16em;font-weight:700}
+.clk-card.loc .clk-z{color:var(--blue)} .clk-card.utc .clk-z{color:var(--text)}
+.clk-tz{font-size:var(--fs-subtitle);color:var(--text-dim)}
 .clk-time{font-size:2.25rem;line-height:1.04;font-weight:600;font-variant-numeric:tabular-nums;margin-top:.15rem}
-.clk-card.loc .clk-time{color:var(--blue)} .clk-card.utc .clk-time{color:var(--amber)}
+.clk-card.loc .clk-time{color:var(--blue)} .clk-card.utc .clk-time{color:var(--text)}
 .clk-time .s{font-size:1.3rem;opacity:.6}
-.clk-d{font-size:var(--fs-small);color:var(--text-dim);letter-spacing:.04em;margin-top:.15rem}
+.clk-d{font-size:var(--fs-subtitle);color:var(--text-dim);letter-spacing:.04em;margin-top:.15rem}
 
 /* per-core bars */
 .zone-sep{border:none;border-top:1px dashed var(--border);margin:.12rem 0}
 .zone-lbl{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);margin:.05rem 0 0}
-.cpu-hdr{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;font-size:var(--fs-base);font-weight:700;letter-spacing:.08em}
-.cpu-hdr .k{color:var(--text-dim);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:var(--fs-base)}
-.cpu-hdr .val{font-size:var(--fs-base)}
+.cpu-hdr{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;font-size:var(--fs-subtitle);font-weight:700;letter-spacing:.08em}
+.cpu-hdr .k{color:var(--text);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:var(--fs-subtitle)}
+.cpu-hdr .val{font-size:var(--fs-subtitle)}
 .cpu-hdr .sep{color:var(--border)}
+.cpu-rate,.status-uptime{margin-left:auto;font-size:var(--fs-subtitle);color:var(--text-dim);font-variant-numeric:tabular-nums;letter-spacing:.05em}
+.proc-load{margin-left:auto;display:inline-flex;align-items:baseline;gap:.35rem;font-size:var(--fs-subtitle);font-weight:700;letter-spacing:.08em;font-variant-numeric:tabular-nums}
+.proc-load .k{color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em}
+.proc-load .val{font-size:var(--fs-subtitle)}
 .core{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.5rem}
 .core-lbl{font-size:var(--fs-micro);color:var(--text-dim);letter-spacing:.05em}
-.core-track{height:7px;border-radius:4px;background:var(--panel-2);overflow:hidden;min-width:74px}
-.core-fill{height:100%;border-radius:4px;background:var(--accent)}
+.core-track{height:7px;border-radius:4px;background:var(--border);overflow:hidden;min-width:74px}
+.core-fill{display:block;height:100%;border-radius:4px;background:var(--accent)}
 .core-fill.busy{background:var(--amber)} .core-fill.hot{background:var(--red)}
-.core-pct{font-size:var(--fs-micro);font-weight:700;font-variant-numeric:tabular-nums;min-width:2.6em;text-align:right}
+.core-pct{font-size:var(--fs-small);font-weight:700;font-variant-numeric:tabular-nums;min-width:2.6em;text-align:right}
 .core-pct.busy{color:var(--amber)} .core-pct.hot{color:var(--red)}
 
 /* processes */
@@ -163,10 +168,10 @@ body {
 .proc-name{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .proc-cpu{font-weight:700;font-variant-numeric:tabular-nums;color:var(--accent);min-width:3em;text-align:right}
 .proc-cpu.busy{color:var(--amber)} .proc-cpu.hot{color:var(--red)}
-.proc-ram{font-variant-numeric:tabular-nums;color:var(--text-dim);min-width:3em;text-align:right}
+.proc-ram{font-variant-numeric:tabular-nums;color:var(--accent);min-width:3em;text-align:right}
+.proc-ram.busy{color:var(--amber)} .proc-ram.hot{color:var(--red)}
 .proc-head{color:var(--text-dim);font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.06em}
-.proc-cols{margin-left:auto;display:flex;gap:.6rem}
-.proc-cols span{min-width:3em;text-align:right;font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim);font-weight:400}
+.proc-head span:not(:first-child){min-width:3em;text-align:right}
 
 /* telemetry + services */
 .svc-pills{display:flex;flex-wrap:wrap;gap:.3rem;justify-content:flex-start}
@@ -180,11 +185,15 @@ body {
 .tel-line{display:flex;align-items:center;gap:.4rem;font-size:var(--fs-small);margin-left:auto}
 .tel-dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .tel-k{color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-size:var(--fs-small);font-weight:700}
-.tel-int{color:var(--text-dim);font-variant-numeric:tabular-nums}
 
 /* radio-assignment pill (from the dashboard svcbar) */
 .svcbar{display:flex;flex-wrap:wrap;align-items:center;gap:.55rem;justify-content:space-between;cursor:pointer}
 .svcbar .s{display:flex;align-items:center;gap:.35rem;font-size:var(--fs-small);font-weight:600}
+.st-row{display:flex;align-items:center;gap:.5rem;font-size:var(--fs-small)}
+.st-row .k{color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-size:var(--fs-small);min-width:3.5em}
+.st-row .svcbar{flex:1}
+.st-host{color:var(--text);font-weight:600}
+.st-host .sub{color:var(--text-dim);font-weight:400}
 .adot{width:.72rem;height:.72rem;border-radius:50%;box-sizing:border-box;background:transparent;border:2px solid var(--text)}
 .adot.assigned{background:var(--amber);border-color:var(--amber)}
 .adot.inuse{background:var(--accent);border-color:var(--accent)}
@@ -372,11 +381,11 @@ body {
 .feed-meter { display: flex; align-items: center; gap: .4rem; flex: 1; min-width: 0; }
 .feed-meter[hidden] { display: none; }
 .feed-meter-track {
-  flex: 1; min-width: 30px; max-width: 90px; height: 5px;
-  background: var(--border); border-radius: 3px; overflow: hidden;
+  flex: 1; min-width: 30px; height: 7px;
+  background: var(--border); border-radius: 4px; overflow: hidden;
 }
 .feed-meter-fill {
-  height: 100%; width: 0%; background: var(--blue); border-radius: 3px;
+  height: 100%; width: 0%; background: var(--blue); border-radius: 4px;
   transition: width .25s ease, background .25s ease;
 }
 .feed-meter.silent .feed-meter-fill { background: var(--red); }
@@ -1091,7 +1100,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="clk-d" id="clk-utc-d">&mdash;</div>
   </div>
 
-  <div class="card" id="cpu-card">
+  <div class="card up" id="cpu-card">
     <div class="card-hdr">
       <span class="dot" id="cpu-dot"></span>
       <span class="cpu-hdr">
@@ -1100,29 +1109,38 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
         <span class="k">Temp</span><span class="val" id="cpu-temp">&mdash;</span>
         <span class="sep">&middot;</span>
         <span class="k">RAM</span><span class="val" id="cpu-ram">&mdash;</span>
+        <span class="sep">&middot;</span>
+        <span class="k">Disk</span><span class="val" id="cpu-disk">&mdash;</span>
       </span>
+      <span class="cpu-rate" id="cpu-rate"></span>
     </div>
     <hr class="zone-sep">
     <div id="cpu-cores"></div>
   </div>
 
-  <div class="card roomy" id="proc-card">
-    <div class="card-hdr"><span class="dot up"></span><span class="card-name">PROCESSES</span><span class="proc-cols"><span>CPU</span><span>RAM</span></span></div>
+  <div class="card up" id="proc-card">
+    <div class="card-hdr"><span class="dot up" id="proc-dot"></span><span class="card-name">PROCESSES</span><span class="proc-load" id="proc-load"></span></div>
+    <hr class="zone-sep">
+    <div class="proc proc-head"><span></span><span>CPU</span><span>RAM</span></div>
     <div id="proc-list"></div>
   </div>
 
-  <div class="card roomy" id="status-card">
+  <div class="card up" id="status-card">
     <div class="card-hdr">
-      <span class="dot" id="status-dot"></span><span class="card-name">STATUS</span>
-      <div class="tel-line"><span class="tel-dot"></span><span class="tel-k">Telemetry</span><span class="val" id="tel-state">&mdash;</span><span class="tel-int" id="tel-int"></span></div>
+      <span class="dot" id="status-dot"></span><span class="card-name">STATUS</span><span class="status-uptime" id="status-uptime"></span>
     </div>
-    <div class="svc-pills" id="status-pills"></div>
-    <div class="svcbar" id="status-svcbar" role="button" tabindex="0" title="Open Service Operations (HW / SRV)">
-      <span class="s"><span class="adot" id="status-dot-aprs"></span>APRS</span>
-      <span class="s"><span class="adot" id="status-dot-adsb"></span>ADS-B</span>
-      <span class="s"><span class="adot" id="status-dot-owrx"></span>ORX</span>
-      <span class="s"><span class="adot" id="status-dot-sat"></span>SAT</span>
+    <hr class="zone-sep">
+    <div class="st-row"><span class="k">Power</span><span class="val" id="status-power">&mdash;</span></div>
+    <div class="st-row">
+      <span class="k">HW</span>
+      <div class="svcbar" id="status-svcbar" role="button" tabindex="0" title="Open Service Operations (HW / SRV)">
+        <span class="s"><span class="adot" id="status-dot-aprs"></span>APRS</span>
+        <span class="s"><span class="adot" id="status-dot-adsb"></span>ADS-B</span>
+        <span class="s"><span class="adot" id="status-dot-owrx"></span>ORX</span>
+        <span class="s"><span class="adot" id="status-dot-sat"></span>SAT</span>
+      </div>
     </div>
+    <div class="st-row"><span class="k">Host</span><span class="st-host" id="status-host">&mdash;</span></div>
   </div>
 
   <!-- GPS / GNSS receiver card (last, right) -->
@@ -1133,6 +1151,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="gps-iface" id="gps-iface" hidden></span>
       <span class="gps-card-badge down" id="gps-badge">NO FIX</span>
     </div>
+    <hr class="zone-sep">
     <div class="gps-card-grid">
       <div class="gps-cell"><span class="gps-lbl">Sats</span><span class="gps-val" id="gps-sats">n/a</span></div>
       <div class="gps-cell"><span class="gps-lbl">HDOP</span><span class="gps-val" id="gps-hdop">n/a</span></div>
@@ -1142,6 +1161,13 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <div class="gps-cell"><span class="gps-lbl">Clock</span><span class="gps-val" id="gps-clock">n/a</span></div>
     </div>
   </div>
+
+  <!-- SRV OPS burger — far right of the header, after GPS (opens #hsx-pop) -->
+  <button class="hsx-rail hsx-ok" id="hsx-rail" type="button" aria-expanded="false" aria-controls="hsx-pop" title="Service Operations — HW / SRV assignment">
+    <span class="hsx-lbl" aria-hidden="true">SRV<br>OPS</span>
+    <span class="hsx-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="hsx-cnt" id="hsx-cnt">&#10003;</span>
+  </button>
 </div>
 
 <!-- ── SECTION HEADER ─────────────────────────────────────────────────────── -->
@@ -1391,11 +1417,6 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   </div>
 </div>
 </div><!-- /.svc-strips-wrap -->
-  <button class="hsx-rail hsx-ok" id="hsx-rail" type="button" aria-expanded="false" aria-controls="hsx-pop" title="Service Operations — HW / SRV assignment">
-    <span class="hsx-lbl" aria-hidden="true">SRV<br>OPS</span>
-    <span class="hsx-bars" aria-hidden="true"><i></i><i></i><i></i></span>
-    <span class="hsx-cnt" id="hsx-cnt">&#10003;</span>
-  </button>
   <div class="hsx-pop" id="hsx-pop" role="dialog" aria-label="HW / SRV assignment">
     <div class="hsx-card">
       <div class="hsx-card-hd">
@@ -1466,6 +1487,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
         <li><a id="nlink-rb" href="static/repeaterbook/repeaterbook.html" class="nav-link-svc">Repeater Book <span class="nav-svc-badge" id="nsvc-rb">—</span></a></li>
         <li><a href="tools/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
         <li><a href="static/radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
+        <li><a href="static/quick-ref/itu-prefixes.html">ITU Country Prefixes <span class="nav-meta">call sign series</span></a></li>
       </ul>
     </div>
 
@@ -1504,7 +1526,6 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
         <li><a href="static/quick-ref/qcodes.html">Q-Codes <span class="nav-meta">q-codes</span></a></li>
         <li><a href="static/quick-ref/prowords.html">Procedure Words <span class="nav-meta">procedure words</span></a></li>
         <li><a href="static/quick-ref/rst.html">RST Signal Reporting <span class="nav-meta">signal reporting</span></a></li>
-        <li><a href="static/quick-ref/itu-prefixes.html">ITU Country Prefixes <span class="nav-meta">call sign series</span></a></li>
       </ul>
     </div>
 
@@ -1735,17 +1756,6 @@ function updateSvcCounts() {
     `<span class="cnt-sep">&#160;·&#160;</span>` +
     `<span class="cnt-down">${down} DN</span>`;
 
-  // STATUS card pills — same tally plus an "off" (hidden/not-installed) count.
-  let off = 0;
-  OASIS_SERVICES.forEach(s => { if (HIDDEN_SVCS.has(s.id)) off++; });
-  const sp = document.getElementById('status-pills');
-  if (sp) {
-    sp.innerHTML =
-      `<span class="spill up"><span class="n">${up}</span> UP</span>` +
-      `<span class="spill warn"><span class="n">${warn}</span> WRN</span>` +
-      `<span class="spill down"><span class="n">${down}</span> DN</span>` +
-      `<span class="spill off"><span class="n">${off}</span> off</span>`;
-  }
   updateNavTitles();
 }
 
@@ -2907,13 +2917,69 @@ async function fetchStats() {
     // RAM: high = bad, so colour like the others but neutral under threshold.
     const ramPct = d.ram && d.ram.pct != null ? d.ram.pct : null;
     setVal('cpu-ram', ramPct != null ? `${Math.round(ramPct)}%` : 'n/a', ramPct, 70, 90);
-    // CPU card status dot follows the worst of cpu/temp.
-    const cpuDot = document.getElementById('cpu-dot');
-    if (cpuDot) {
-      const worst = Math.max((d.cpu_pct||0) >= 90 ? 2 : (d.cpu_pct||0) >= 70 ? 1 : 0,
-                             (d.cpu_temp_c||0) >= 80 ? 2 : (d.cpu_temp_c||0) >= 65 ? 1 : 0);
-      cpuDot.className = 'dot ' + (worst === 2 ? 'down' : worst === 1 ? 'warn' : 'up');
+    const diskPct = d.disk && !d.disk.error && d.disk.pct != null ? d.disk.pct : null;
+    setVal('cpu-disk', diskPct != null ? `${Math.round(diskPct)}%` : 'n/a', diskPct, 80, 92);
+    // LOAD on the PROCESSES title (1-min average), coloured green/amber/red by
+    // load-vs-cores % (same thresholds as the old system bar: 75 / 100). The
+    // whole PROCESSES card border/tint tracks the same state (like GPS by fix):
+    // ok->up (green), warn->warn (amber), hot->down (red).
+    const loadEl = document.getElementById('proc-load');
+    const procCard = document.getElementById('proc-card');
+    const lp = (d.load && d.load.avg1 != null) ? d.load.pct : null;
+    const lstate = lp == null ? 'up' : lp >= 100 ? 'down' : lp >= 75 ? 'warn' : 'up';
+    if (procCard) procCard.className = 'card ' + lstate;
+    const procDot = document.getElementById('proc-dot');
+    if (procDot) procDot.className = 'dot ' + lstate;
+    // STATUS card: uptime value on the title line (neutral, no label).
+    const upEl = document.getElementById('status-uptime');
+    if (upEl) {
+      const u = d.uptime_sec;
+      if (u == null) { upEl.textContent = ''; }
+      else {
+        const dd = Math.floor(u / 86400), hh = Math.floor((u % 86400) / 3600), mm = Math.floor((u % 3600) / 60);
+        upEl.textContent = dd > 0 ? `${dd}d ${hh}h` : hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
+      }
     }
+    // STATUS card: Power drives the border/tint. Reflects the CURRENT throttle
+    // state each poll, so a cleared condition returns the card to clean next tick.
+    const powEl = document.getElementById('status-power');
+    let powState = 'up';
+    if (d.throttle && d.throttle.now_any) {
+      const pn = { under_voltage:'under-volt', freq_capped:'freq-cap', throttled:'throttled', soft_temp:'temp-limit' };
+      const active = Object.keys(pn).filter(k => d.throttle.now[k]).map(k => pn[k]);
+      powState = d.throttle.now.under_voltage ? 'down' : 'warn';
+      if (powEl) { powEl.textContent = active.join(', ') || 'throttled'; powEl.className = powState === 'down' ? 'val hot' : 'val warn'; }
+    } else if (d.throttle) {
+      if (powEl) { powEl.textContent = 'OK'; powEl.className = 'val ok'; }
+    } else if (powEl) { powEl.textContent = 'n/a'; powEl.className = 'val'; }
+    const statusCard = document.getElementById('status-card');
+    if (statusCard) statusCard.className = 'card ' + powState;
+    const statusDot = document.getElementById('status-dot');
+    if (statusDot) statusDot.className = 'dot ' + powState;
+    // Host / IP (neutral, third row).
+    const stHost = document.getElementById('status-host');
+    if (stHost) stHost.innerHTML = d.ip
+      ? `${escapeHtml(d.ip)}${d.hostname ? ` <span class="sub">&middot; ${escapeHtml(d.hostname)}</span>` : ''}`
+      : (d.hostname ? escapeHtml(d.hostname) : 'n/a');
+    if (loadEl) {
+      if (d.load && d.load.avg1 != null) {
+        const lcls = lp == null ? '' : lp >= 100 ? ' hot' : lp >= 75 ? ' warn' : ' ok';
+        loadEl.innerHTML = `<span class="k">LOAD</span><span class="val${lcls}">${d.load.avg1.toFixed(2)}</span>`;
+      } else {
+        loadEl.innerHTML = `<span class="k">LOAD</span><span class="val">n/a</span>`;
+      }
+    }
+    // CPU card border/tint + dot track the WORST of CPU / Temp / RAM — any one
+    // drives it (like GPS by fix), using the same thresholds as the values.
+    const cpuWorst = Math.max(
+      d.cpu_pct    == null ? 0 : d.cpu_pct    >= 90 ? 2 : d.cpu_pct    >= 70 ? 1 : 0,
+      d.cpu_temp_c == null ? 0 : d.cpu_temp_c >= 80 ? 2 : d.cpu_temp_c >= 65 ? 1 : 0,
+      ramPct       == null ? 0 : ramPct       >= 90 ? 2 : ramPct       >= 70 ? 1 : 0);
+    const cpuState = cpuWorst === 2 ? 'down' : cpuWorst === 1 ? 'warn' : 'up';
+    const cpuCard = document.getElementById('cpu-card');
+    if (cpuCard) cpuCard.className = 'card ' + cpuState;
+    const cpuDot = document.getElementById('cpu-dot');
+    if (cpuDot) cpuDot.className = 'dot ' + cpuState;
     const coresEl = document.getElementById('cpu-cores');
     if (coresEl) {
       const cores = d.cpu_cores || [];
@@ -2931,23 +2997,14 @@ async function fetchStats() {
       const procs = d.top_procs || [];
       procEl.innerHTML = procs.map(p => {
         const cls = p.cpu >= 90 ? 'hot' : p.cpu >= 70 ? 'busy' : '';
+        const mcls = p.mem >= 30 ? 'hot' : p.mem >= 15 ? 'busy' : '';
         return `<div class="proc"><span class="proc-name">${escapeHtml(p.name)}</span>`
              + `<span class="proc-cpu ${cls}">${Math.round(p.cpu)}%</span>`
-             + `<span class="proc-ram">${Math.round(p.mem)}%</span></div>`;
+             + `<span class="proc-ram ${mcls}">${Math.round(p.mem)}%</span></div>`;
       }).join('') || '<div class="proc"><span class="proc-name" style="color:var(--text-dim)">idle</span><span></span><span></span></div>';
     }
 
-    // ── STATUS telemetry line ─────────────────────────────────────────────
-    const ok = [d.cpu_pct != null, d.ram && d.ram.pct != null, (d.cpu_cores||[]).length > 0];
-    const good = ok.filter(Boolean).length, tot = ok.length;
-    const ts = document.getElementById('tel-state'), ti = document.getElementById('tel-int');
-    if (ts) { ts.textContent = good === tot ? 'LIVE' : good > 0 ? 'PARTIAL' : 'OFFLINE';
-              ts.className = 'val' + (good === tot ? ' ok' : good > 0 ? ' warn' : ' hot'); }
-    if (ti) ti.textContent = '2s';
-  } catch (_) {
-    const ts = document.getElementById('tel-state');
-    if (ts) { ts.textContent = 'OFFLINE'; ts.className = 'val hot'; }
-  }
+  } catch (_) {}
 }
 
 // ── Audio devices (sound cards) ───────────────────────────────────────────────
@@ -3814,9 +3871,15 @@ loadConfig().then(() => {
   setInterval(fetchHardware, 30_000);
   const _activeN = SERVICES.filter(s => !HIDDEN_SVCS.has(s.id)).length || 1;
   setInterval(pingNext, Math.round(16_000 / _activeN));
-  // Phase-offset the remaining 30s loops so they don't all land on the same
-  // boundary — staggered startup delays, then steady 30s each.
-  setTimeout(() => setInterval(fetchStats, 30_000),  4_000);
+  // Phase-offset the remaining loops so they don't all land on the same
+  // boundary — staggered startup delays, then steady each. fetchStats drives the
+  // CPU/PROCESSES cards; its payload is cheap (cached cores/procs + light /proc
+  // reads). The CPU card shows this interval (cpu-rate) so it's never a fake
+  // number — change one place and both the poll and the label move together.
+  const STATS_POLL_MS = 5_000;
+  const _cpuRate = document.getElementById('cpu-rate');
+  if (_cpuRate) _cpuRate.textContent = (STATS_POLL_MS / 1000) + 's';
+  setTimeout(() => setInterval(fetchStats, STATS_POLL_MS),  4_000);
   setTimeout(() => setInterval(fetchAudio, 30_000),  8_000);
   setTimeout(() => setInterval(pollWifi,   30_000), 12_000);
   setTimeout(() => setInterval(fetchSdrStatus, 8_000), 6_000);

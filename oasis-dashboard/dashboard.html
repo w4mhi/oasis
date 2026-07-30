@@ -57,16 +57,19 @@
   }
   .face::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:.4rem; }
   .face.loc::before{ background:var(--blue); }
-  .face.utc::before{ background:var(--amber); }
+  .face.utc::before{ background:var(--text); }
+  /* border + tint aligned with the index cards (blue LOCAL, amber UTC) */
+  .face.loc{ border-color:color-mix(in srgb,var(--blue) 45%,var(--border)); background:color-mix(in srgb,var(--blue) 8%,var(--panel)); }
+  .face.utc{ border-color:var(--border); background:var(--panel); }
   .face .zn{ display:flex; align-items:baseline; gap:.8rem; }
   .face .zn .z{ font-size:1.1rem; letter-spacing:.22em; font-weight:700; }
   .face.loc .z{ color:var(--blue); }
-  .face.utc .z{ color:var(--amber); }
+  .face.utc .z{ color:var(--text); }
   .face .zn .tz{ font-size:1.25rem; color:var(--dim); letter-spacing:.04em; }
   .face .time{ font-size:3.2rem; line-height:1.02; font-weight:600;
     letter-spacing:.01em; margin-top:.35rem; font-variant-numeric:tabular-nums; }
   .face.loc .time{ color:var(--blue); }
-  .face.utc .time{ color:var(--amber); }
+  .face.utc .time{ color:var(--text); }
   .face .time .s{ font-size:1.6rem; opacity:.62; }
   .face .date{ font-size:1.2rem; color:var(--dim); letter-spacing:.04em; margin-top:.25rem; }
   /* Reload glyph in the UTC clock's top-right corner — blue, spins on tap. */
@@ -81,8 +84,8 @@
   /* ── middle: station/grid + GPS + units pills, boxed to clock height ──── */
   .midcard{ flex:0 0 auto; display:flex; flex-direction:column;
             justify-content:center; align-items:center; gap:.6rem;
-            background:linear-gradient(180deg,var(--raise),var(--panel));
-            border:1px solid var(--border); border-radius:.8rem;
+            background:color-mix(in srgb,var(--accent) 8%,var(--panel));
+            border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border)); border-radius:.8rem;
             padding:.6rem .7rem; }
 
   /* ── callsign + GPS pills: copied verbatim from kiosk.css ─────────────── */
