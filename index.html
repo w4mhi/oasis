@@ -2444,6 +2444,20 @@ async function loadInstalled() {
     if (r.ok) { const d = await r.json(); features = d.features; _locked = !!d.locked; }
   } catch (_) {}
   if (_locked) _showHidden = false;              // locked build: never reveal hidden cards
+  // Portable profile (run-portable.sh / run-portable.bat set OASIS_FEATURES →
+  // server reports locked=true): hide the always-on station chrome that has no
+  // feature gate of its own — System (cpu-card), Processes (proc-card), Status
+  // (status-card) and the SRV OPS rail (hsx-rail). These are Pi-appliance
+  // monitoring/assignment surfaces that don't apply to a laptop tools-only run.
+  // (The topbar GPS card already hides via the gpsd service gate below.)
+  // Inline display is deliberate: fetchStats/renderRail rebuild these elements'
+  // className every poll, which would wipe a class — an inline style survives
+  // that, and this path (a plain JSON read) works even where /api/system 503s
+  // (e.g. Windows portable with no psutil).
+  ['cpu-card', 'proc-card', 'status-card', 'hsx-rail'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = _locked ? 'none' : '';
+  });
   HIDDEN_SVCS.clear();
   _hiddenEls = [];
   // An explicit manifest list is authoritative. A NULL manifest means "no record
