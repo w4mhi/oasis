@@ -365,18 +365,18 @@
       "resolved": {
         "bookworm": {
           "arm64": {
-            "dump1090-fa": "11.0~bpo12+1"
+            "dump1090-fa": "11.1~bpo12+1"
           },
           "armhf": {
-            "dump1090-fa": "11.0~bpo12+1"
+            "dump1090-fa": "11.1~bpo12+1"
           }
         },
         "trixie": {
           "arm64": {
-            "dump1090-fa": "11.0"
+            "dump1090-fa": "11.1"
           },
           "armhf": {
-            "dump1090-fa": "11.0"
+            "dump1090-fa": "11.1"
           }
         }
       }
