@@ -83,9 +83,10 @@ Each feature links to its full setup section. New here? Start with **[Quick star
 
 #### 🔧 Under the hood
 
-- **⚙️ System monitor** — live CPU%, RAM, disk, load, temperature, uptime, audio devices, network SSID/clients, and Pi power-throttle status — all colour-coded and updated every 30 s. → [Setup](docs/SETUP.md#server-setup)
+- **⚙️ System monitor** — a header row of live cards, polled every 5 s: **local + UTC clocks**, a **CPU card** (usage, SoC temp, RAM, disk, plus per-core usage bars), a **PROCESSES card** (top 3 by CPU, 1-min load average), and a **STATUS card** (uptime, Pi power/throttle state, host/LAN IP, and the HW radio-assignment dots below). Everything is colour-coded green/amber/red by threshold. Deeper diagnostics (ALSA audio devices, per-platform health checks) live on the Setup/health-check page. → [Setup](docs/SETUP.md#server-setup)
+- **📶 Wi-Fi status pill** — one glance at how the Pi is reaching the network: `OASIS` in blue when hosting the AP fallback, the connected SSID coloured green/amber/red by signal strength when on a client network, dim when disconnected. Shared between the dashboard and the touch kiosk. → [Setup](docs/SETUP.md#using-oasis-in-the-field-no-internet)
 - **🔧 Service controls** — start/stop controllable services (GrayWolf, Winlink, Kiwix, Web SSH, OpenWebRX) directly from the dashboard service strip without SSH. → [Setup](docs/SETUP.md#service-controls-dashboard-power-buttons)
-- **🎛️ Service Operations console** — a device→service assignment matrix (the "mixer board") on both the dashboard and the touch kiosk: one-tap reroute an SDR or sound-card between APRS, ADS-B, OpenWebRX, satellites, and Winlink, per-device **lock** to protect an assignment, and a one-click **STOP ALL**. An opt-in **resource guardian** watches temperature/CPU/memory and auto-stops everything on a cancellable countdown if the Pi is about to overheat. → [API](docs/api.md#hardware-allocation-apihardware)
+- **🎛️ Service Operations console** — a device→service assignment matrix (the "mixer board") on both the dashboard and the touch kiosk: one-tap reroute an SDR or sound-card between APRS, ADS-B, OpenWebRX, satellites, and Winlink, per-device **lock** to protect an assignment, and a one-click **STOP ALL**. An opt-in **resource guardian** runs as a background thread on the server — independent of any browser tab — and watches temperature/CPU/memory; if one crosses its threshold (80 °C / 95 % / 92 % by default, operator-tunable) it arms a 30-second cancellable countdown, shown as a banner on whatever's open, then auto-runs STOP ALL if nobody cancels. **Web SSH is always left running** so a tripped guardian can never lock you out of the box. → [API](docs/api.md#hardware-allocation-apihardware)
 - **💻 Web SSH terminal** *(Pi)* — a browser login shell (ttyd) on the Pi — no SSH client needed. → [Setup](docs/SETUP.md#webssh--browser-terminal)
 - **🕐 Hardware RTC** *(Pi)* — optional Witty Pi 3 (DS3231) battery-backed clock that keeps time across reboots and power loss. → [Setup](docs/SETUP.md#hardware-rtc-witty-pi-3)
 - **🖥️ Panel & cooling add-ons** *(Pi)* — on-device CM4Stack panel display, RGB Cooling HAT fan/OLED, and the OASIS Dashboard touch kiosk (800×480 / 1920×1200). → [Setup](docs/SETUP.md#cm4stack-panel-display)
@@ -416,6 +417,20 @@ The server and everything else run on Raspberry Pi OS **Bookworm** (3.11) and **
 OASIS is released under the **[MIT License](LICENSE)** © 2026 W4MHI — free to use, modify, and distribute.
 
 > ℹ️ **Third-party data and services keep their own licenses/terms.** OpenStreetMap map data is **ODbL**; **RepeaterBook** CSV exports are **not redistributable** (download your own); satellite transmitter data from **SatNOGS** (CC BY-SA) and **CelesTrak** TLEs are fetched at build time and go stale in days; radio manuals are copyright their manufacturers; and the companion services (GrayWolf, Pat, Kiwix, ttyd, OpenWebRX, dump1090-fa) ship under their respective upstream licenses.
+
+---
+
+## 🤖 How OASIS Is Built
+
+OASIS is a two-person team: **W4MHI** (design calls, radio-domain judgment, the Pi that everything ships to) and **Claude** (Anthropic's Claude Code) as the day-to-day build partner.
+
+- **Every change is human-reviewed before it ships.** Claude writes and edits code; W4MHI decides what ships, tests it against real hardware (GrayWolf, RTL-SDR dongles, DRA-Pi, satellite passes), and is the one who signs off. Nothing merges to `main` unverified.
+- **Plan first, then build.** Non-trivial changes get a written plan and a confirm step before code moves — same discipline the [design principles](docs/concept.md#design-principles) apply to the product itself.
+- **The same gates apply to every change, AI-authored or not.** `scripts/run-tests.sh` for the unit suite, a preflight pass (manifest validation, byte-compile, lint) mirroring CI, and `doctor.py` for a live health check — all before anything is called done.
+- **Offline-first constrains the AI too.** No dependency, library, or pattern gets suggested if it assumes a network connection, a CDN, or a database engine — the [prime directive](docs/concept.md) governs Claude's suggestions exactly like a human contributor's.
+- **Small scope, real hardware.** This isn't a multi-contributor project with bots triaging issues — it's one maintainer and one AI teammate iterating directly against a Raspberry Pi Zero 2 W, a stack of SDR dongles, and an actual radio bench.
+
+Commits carry a `Team: W4MHI/Claude` trailer when Claude did the drafting — a record of who built what, not a disclaimer.
 
 ---
 
