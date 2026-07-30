@@ -78,6 +78,27 @@ Package-provided units (installed via `apt`/`.deb`, so they live under `/lib/sys
 
 > Features without their own unit: FCC lookup, offline maps and ICS/tools are served by `oasis.service`; the DRA-Pi sound card (ALSA config) and the Witty Pi 3 RTC (device-tree overlay + `hwclock`) configure the OS directly and register no systemd service.
 
+### Checking any service (works for every unit above)
+
+Every feature in the tables above runs as a **systemd service** — a background program the Pi keeps alive. Three commands answer "is it working / why isn't it" for *any* unit name in the tables, so learn them once and reuse them everywhere below. Replace `<unit>` with a name from the tables (e.g. `graywolf`, `dump1090-fa`, `gpsd`):
+
+```bash
+systemctl status <unit>        # is it running?
+```
+Healthy = a green **`active (running)`** line. Trouble signs: **`inactive (dead)`** (never started), **`failed`** (crashed), or **`activating (auto-restart)`** flipping over and over (a *crash loop* — it keeps dying and restarting).
+
+```bash
+journalctl -u <unit> -f        # watch its log live — press Ctrl+C to stop watching
+```
+This is the single most useful debug tool: it prints new log lines as they happen. Do the thing that should work (send a packet, wait for a GPS fix) and watch for the service to react.
+
+```bash
+journalctl -u <unit> -e        # jump to the end of the recent log (for a crash that already happened)
+sudo systemctl restart <unit>  # clean stop + start — fixes most "stuck" states
+```
+
+> 💡 **When in doubt, run the doctor first.** `python3 scripts/doctor.py` checks the whole station in one shot and prints a ✓/✗ per feature — see [Health check (doctor)](#health-check-doctor). Start there, then point the three commands above at whatever it flags red.
+
 ---
 
 ## Before you begin (Raspberry Pi)
@@ -328,6 +349,8 @@ The script creates `/etc/systemd/system/oasis.service` and runs `systemctl enabl
 > ℹ️ **Auto-start vs `scripts/start-server.sh`:** once auto-start is enabled, the server starts on
 > every boot without you doing anything. You do **not** need to run the launcher anymore.
 > Run `scripts/start-server.sh` only if you want to test the server manually without enabling auto-start.
+
+> **If the auto-started server doesn't come up after a reboot:** `sudo systemctl status oasis` (want `active (running)`), then `journalctl -u oasis -e` for the reason. `systemctl is-enabled oasis` should print `enabled`; if not, re-run `python3 scripts/enable-autostart-pi.py`.
 
 <details><summary>Manual service file (if you prefer not to use the script)</summary>
 
@@ -859,6 +882,23 @@ The **Live Map** plots stations heard over RF and via iGate with layer toggles a
 
 ![GrayWolf — Tactical chat in use](images/file22.png)
 
+### Debug — I configured everything but nothing decodes
+
+Work through these in order — most common cause first:
+
+1. **Is GrayWolf running, and did you restart it after config changes?** GrayWolf only reads channel/device config at startup:
+   ```bash
+   systemctl status graywolf          # want active (running)
+   sudo systemctl restart graywolf    # after ANY device or channel change
+   ```
+2. **Watch the audio meter while a packet should arrive.** On the web **Dashboard** the **audio-level meter** should *bounce* when the radio passes audio. A flat meter = no audio is reaching GrayWolf (radio volume up? squelch open? cable seated?). Watch the log at the same time: `journalctl -u graywolf -f`.
+3. **Is the RX counter climbing?** Dashboard → packet **RX** count, or the **Logs** view. On a live APRS frequency expect a packet every minute or two. Zero for 10+ minutes on a known-busy band points to audio/antenna, not config.
+4. **Right sound card selected?** The channel's Input/Output device must match the card you added under Settings → Audio Devices. `aplay -l` lists the cards the Pi actually sees.
+5. **Is another radio consumer holding the device?** If you're feeding GrayWolf from an SDR, only one SDR mode runs at a time — see [who owns the RTL-SDR](#rtl-sdr). For a sound-card TNC, make sure OpenWebRX/ADS-B didn't grab the dongle.
+6. **Radio basics:** tuned to **144.390 MHz** (North America), volume ~⅓ up, squelch open enough to pass packet audio. APRS is bursty digital "braaap", not a steady tone.
+
+> **Audio levels:** aim for clean decodes with the meter mid-scale. Pinned/clipping = too hot (turn it down); barely moving = too low (turn it up). Same idea as the [DigiRig level tuning](#2-set-the-usb-card-audio-levels-alsamixer).
+
 ---
 
 ## Winlink (Pat)
@@ -902,6 +942,11 @@ first setup step). See [Winlink RF via DigiRig](#winlink-rf-via-digirig) to wire
 up a DigiRig, including audio-level tuning and debugging. Skip the modem entirely
 with `--no-modem` (Telnet-only Winlink).
 
+**Debug:**
+
+- Page at `:8082` won't load → `systemctl status pat` (want `active (running)`), then `journalctl -u pat -f`.
+- **Telnet connect test** (needs internet): compose a message, then *Action → Connect → telnet*. A **successful** connect authenticates and reports how many messages were exchanged. A **timeout / auth error** = no internet reaching the Pi, or a wrong Winlink password — re-enter it with `pat configure`. (OASIS surfaces the real reason on a failed connect rather than a bare error code.)
+
 > Plain HTTP, and `config.json` holds your Winlink password — keep this on your
 > trusted LAN, not the open internet.
 
@@ -930,6 +975,13 @@ It runs in two phases, auto-detected by whether the card is present yet:
 > **Run `--dry-run` first** to review the `config.txt` diff before it writes —
 > this edits a boot file. The full hardware writeup is in
 > [`graywolf-dra-pi.md`](graywolf-dra-pi.md).
+
+**After the reboot, confirm the codec appeared:**
+
+```bash
+aplay -l | grep -i wm8731     # the DRA-Pi card should now be listed; no output = overlay didn't load
+```
+If it's absent, the overlay didn't take — re-check the `config.txt` block and that the HAT is firmly seated. Once it lists, `amixer -c <card-number>` should show **`Input Mux`** set to **`Mic`** (the critical capture route the script sets); if it drifted, re-run `enable-dra-pi.py`.
 
 ---
 
@@ -1146,6 +1198,32 @@ rtl_fm -f 144.390M -M fm -s 48000 - | aplay -r 48000 -f S16_LE -t raw -c 1   # r
 > **Note:** a reboot may be required for the kernel module blacklist to take full effect.
 > Use `-s 48000` directly (set the output rate) — this `rtl_fm` build ignores `-r`.
 
+**Reading `rtl_test -t` (what good vs bad looks like):**
+
+```
+Found 1 device(s):
+  0:  Realtek, RTL2838UHIDIR, SN: 00000001
+Found Rafael Micro R828D tuner       ← R828D = a V4 dongle; R820T2 = a V3
+```
+- **`Found 1 device(s)`** + a tuner line = the dongle is seen and usable. Good.
+- **`No supported devices found`** = not plugged in, a dead USB cable, **or** the TV driver stole it (next check).
+- A flood of **`lost samples`** / the test stalling = USB power problem (undervoltage) — use a good power supply and a short, quality USB cable; check `vcgencmd get_throttled` returns `throttled=0x0`.
+
+**The #1 RTL-SDR failure — the TV driver grabbed the dongle.** Linux ships a DVB-T television driver that claims the dongle before SDR tools can. The install blacklists it, but a reboot may be needed. Confirm it's gone:
+
+```bash
+lsmod | grep dvb_usb_rtl28xxu     # want NO output (empty). Any output = TV driver still holding the dongle → reboot
+```
+
+**What the audio test should sound like.** The `rtl_fm … | aplay` pipe on 144.390 plays **open-squelch hiss with occasional short digital "braaap" bursts** (those bursts are APRS packets). Continuous static with *no* bursts on a busy band, or dead silence, = no antenna / wrong device, not "it's working." Press Ctrl+C to stop.
+
+**Who's using the RTL-SDR right now?** The dongle is shared — the APRS feed, ADS-B, OpenWebRX, and satellite listening each need it exclusively, so only one runs at a time. To see the current owner:
+
+```bash
+systemctl is-active aprs-sdr-feed dump1090-fa openwebrx    # whichever prints "active" holds the dongle
+```
+(Satellite live-audio also grabs it while a bird is armed — the Satellites page header shows which one.) If a mode reports "no device / busy", stop the active one first.
+
 **Enable the dongle as a GrayWolf receive-only APRS feed:**
 
 ```bash
@@ -1160,6 +1238,23 @@ enables `aprs-sdr-feed.service` (`rtl_fm … | socat -u -b 1920 - UDP-SENDTO:127
 inspects GrayWolf's journal, and prints the browser steps to add the `sdr_udp`
 device and AFSK/RX channel. Receive-only — an RTL-SDR cannot transmit. Full
 writeup and troubleshooting: [`graywolf-rtl-sdr.md`](graywolf-rtl-sdr.md).
+
+**Debug the APRS SDR feed:**
+
+The pipeline is `rtl_fm` (RX audio) → `socat` (sends it as UDP to port 7355) → GrayWolf (decodes it). Check it end to end:
+
+```bash
+systemctl status aprs-sdr-feed        # active (running) = good; auto-restart loop = the dongle is busy or gone
+journalctl -u aprs-sdr-feed -f        # watch it start and hold the device (Ctrl+C to stop)
+```
+
+Confirm audio is actually reaching GrayWolf on 7355 (packets are sporadic — leave it running through a couple of beacons):
+
+```bash
+sudo tcpdump -ni lo udp port 7355     # a line every so often = audio is flowing to GrayWolf; Ctrl+C to stop
+```
+
+Then the proof it decoded: GrayWolf's **Dashboard RX counter** climbs and packets appear in **Logs**. RX stuck at 0 on a live band with UDP flowing = a gain/antenna issue (raise `--gain`, check the antenna) or GrayWolf's channel isn't pointed at the `sdr_udp` device — see [GrayWolf debug](#debug--i-configured-everything-but-nothing-decodes).
 
 ---
 
@@ -1226,6 +1321,16 @@ internet, discipline it from GPS (`gpsd` + `chrony`) backed by the RTC — see t
 time-sync setup. The dashboard's clock indicator (when present) tells you when
 timing is trustworthy.
 
+### Debug — waterfall frozen or "no SDR device"
+
+- **Working looks like:** open `:8073`, pick a profile, and the **waterfall scrolls** with audio when tuned to an active frequency. A **frozen or black waterfall** = the SDR isn't delivering samples.
+- **"No SDR device" / black waterfall** almost always means another service is holding the dongle. OpenWebRX's **Start** button is *supposed* to stop the APRS stack, but confirm nothing else grabbed it — see [who owns the RTL-SDR](#rtl-sdr):
+  ```bash
+  systemctl is-active aprs-sdr-feed dump1090-fa openwebrx   # only openwebrx should be active
+  journalctl -u openwebrx -f                                # watch it try to open the device
+  ```
+- **Decoders (FT8/FT4/WSPR) spot nothing** even with a good signal: this is almost always the **clock**. Confirm GPS/chrony is disciplined — see [GPS debug](#debug--do-i-have-a-fix-and-is-it-steering-the-clock).
+
 ---
 
 ## ADS-B Aircraft
@@ -1285,6 +1390,53 @@ The recorder watches every observation for:
 Every observation is persisted to a local SQLite database at
 `/var/lib/adsb/adsb-history.db` (WAL mode), mirroring GrayWolf's history-DB
 pattern — nothing heard is lost, even between dashboard sessions.
+
+### Debug — am I actually hearing planes?
+
+"The service is running" and "I'm decoding aircraft" are different things — the decoder can run flawlessly while hearing nothing (bad antenna, interference, wrong dongle). Here's how to tell them apart.
+
+**The one-command health read** (from the Pi, or any device on the LAN):
+
+```bash
+curl -s http://<pi-ip>:8083/api/adsb/health
+```
+```jsonc
+{
+  "flowing": true,            // dump1090 is producing fresh data
+  "aircraft_count": 7,        // planes seen right now  → >0 = hearing traffic
+  "messages_per_min": 643,    // decoded messages/min → climbing over ~30s = healthy
+  "signal_dbfs": -14.7,       // strongest signal level
+  "noise_dbfs": -25.3         // noise floor (see below)
+}
+```
+- **`aircraft_count > 0`** with **`messages_per_min`** climbing = you're hearing planes. Done.
+- **`aircraft_count: 0`, `messages_per_min: 0`** for minutes with an antenna up = running but deaf → keep reading.
+
+> ⚠️ **`/api/adsb/recent` will fool you** — it lists the *last* aircraft heard, possibly hours ago. For "am I hearing planes *right now*", use `messages_per_min` from `/health` (or `aircraft.json` below), never `/recent`.
+
+**Look at the raw live data:**
+
+```bash
+cat /run/dump1090-fa/aircraft.json    # "aircraft":[ … ] populated = live; "aircraft":[] = nothing this moment
+```
+
+**Is it the antenna, not the software?** The noise floor is the tell:
+
+```bash
+grep -oE '"noise":[-0-9.]+|"accepted":\[[0-9,]+\]|"strong_signals":[0-9]+' /run/dump1090-fa/stats.json
+```
+- **Healthy:** `noise` around **−25 to −45**, and `accepted` (CRC-valid messages) greater than 0.
+- **RF front-end problem:** `noise` **near 0** (e.g. `-2.4`) with **`accepted:[0,0]`**, and `journalctl -u dump1090-fa` repeating **`available dynamic range … < required dynamic range`** = the input is a wall of broadband noise, **not** aircraft. No software change fixes a saturated front end. Causes, in order: a **loose or disconnected antenna coax**, **missing ferrite chokes** on the cable, the dongle next to an **EMI source** (USB hub, charger, the Pi itself), or the **wrong dongle/antenna**. Reseat the coax and move the dongle away from noise — the noise floor should drop ~20 dB and messages start flowing within seconds.
+
+**Service-level checks:**
+
+```bash
+systemctl status dump1090-fa      # the decoder — must be active (running)
+systemctl status adsb-api         # the recorder + API on :8086
+journalctl -u dump1090-fa -e      # shows which dongle it opened + its gain/noise history
+```
+
+> 📡 **Antenna placement beats everything.** 1090 MHz is line-of-sight — the stock whip indoors may hear nothing while the same dongle near a window or on an outdoor antenna sees dozens of planes. Rule out placement before suspecting software.
 
 ### Env overrides (for off-Pi testing)
 
@@ -1378,6 +1530,16 @@ Like ADS-B and OpenWebRX, listening **owns the RTL-SDR** — the APRS SDR feed (
 any other SDR mode) must be stopped first. The transport is global (one dongle,
 one capture at a time) and the header shows which bird currently holds it.
 
+### Debug — passes, clock, and live audio
+
+- **Roster shows but every pass is blank:** the Skyfield predictor isn't installed or is erroring. Confirm the endpoint directly:
+  ```bash
+  curl -s http://<pi-ip>:8083/api/satellites/passes | head -c 200
+  # JSON with rise/set times = working; an error / HTTP 500 = run install-predict.py (Skyfield missing)
+  ```
+- **Every bird says "no pass in 24h" but the roster looks healthy:** suspect the **clock or your station location**, not the satellites — predictions need the correct time *and* your lat/lon. Confirm the clock is GPS-disciplined ([GPS debug](#debug--do-i-have-a-fix-and-is-it-steering-the-clock)) and that your coordinates in `station.json` are right.
+- **Live audio: hit Listen and hear nothing?** First, [who owns the RTL-SDR](#rtl-sdr) — listening needs sole use of the dongle, so stop the APRS feed / ADS-B first. Then confirm the bird is actually above the horizon (the header shows AOS/LOS). For a NOAA weather bird you should hear the steady **tick-tick** of the APT carrier while it's overhead.
+
 > Satellites is served by the main OASIS server on **:8083** — no separate port.
 > Pass prediction is Pi-cheap; the live-audio capture needs an RTL-SDR (Pi/Linux
 > only) and momentary sole use of the dongle.
@@ -1410,6 +1572,54 @@ The script installs `gpsd` and `chrony`, points `gpsd` at the receiver (with
 
 > 📡 **Keep it exercised.** GPS satellite almanac data (the "Keplerian elements" that help the receiver find satellites quickly) ages out after weeks without a sky view. Power the Pi with the GPS connected and take it outdoors for a few minutes every few weeks — treat it like any emergency radio: test before deployment, not on arrival.
 
+### Debug — do I have a fix, and is it steering the clock?
+
+Two separate questions: **(a)** is the receiver seeing satellites, and **(b)** is chrony actually using it to set the clock. Check them in that order.
+
+**(a) Is the GPS locked?**
+
+```bash
+cgps -s      # live GPS screen — press 'q' or Ctrl+C to quit
+```
+Read the top-left of the screen:
+- **`Status: 3D FIX`**, **`Used: 6`** (or more satellites), **`HDOP`** around **1–2** = a solid fix. This is what you want before trusting the clock or beaconing your position.
+- **`Status: NO FIX`** / **`Used: 0`** = powered but not locked. Go outside with a clear view of the sky and wait 1–5 minutes (cold start); indoors it may never lock.
+- **Blank screen / "connection refused" / "no gpsd"** = gpsd isn't running or isn't pointed at the receiver → `systemctl status gpsd`.
+
+Prefer raw numbers to the full screen?
+
+```bash
+gpspipe -w -n 10 | grep -oE '"mode":[0-9]|"uSat":[0-9]+|"hdop":[0-9.]+'
+# "mode":3 = 3D fix (good) · "mode":2 = 2D (marginal) · "mode":1 = no fix
+# "uSat" = satellites used · "hdop" < 2 = good geometry, > 5 = poor
+```
+
+**(b) Is chrony disciplining the clock from GPS?**
+
+```bash
+chronyc sources
+```
+Find the **`GPS`** line and read the **first two characters**:
+```
+MS Name/IP address    Stratum Poll Reach LastRx Last sample
+#* GPS                     0    4   377    21   +12us[ +12us] +/- 200us   ← GPS IS the clock (GOOD)
+#? GPS                     0    4     0     -     +0ns[  +0ns] +/-   0ns   ← unreachable: gpsd down / no fix yet
+#x GPS                     0    4   377    18  +357ms[+357ms] +/- 200ms   ← seen but REJECTED as wrong
+```
+- **`#*`** = GPS is the **selected** source — the clock is being set from GPS. This is the goal for an offline field station.
+- **`#?`** = chrony can't reach the GPS (gpsd down, or no fix yet).
+- **`#x`** = "falseticker": chrony sees GPS but thinks it's wrong and ignores it — often because a *better* source (internet NTP) is present. With the internet unplugged in the field, a healthy GPS should promote itself to `#*`.
+
+Then confirm the clock is genuinely synced:
+
+```bash
+chronyc tracking
+```
+- **`Leap status : Normal`** with a tiny **`System time`** offset (micro/milliseconds) = clock is disciplined and trustworthy.
+- **`Leap status : Not synchronised`** = the clock is free-running; FT8/WSPR/SSTV timing and timestamps are not reliable yet.
+
+> On the dashboard, the **GPS card** tells the same story without a terminal: a **3D** fix, a healthy satellite count, HDOP in green, and a chrony "locked" indicator mean you're good. If the card is blank, run `systemctl status gpsd` first, then `cgps -s`.
+
 ---
 
 ## Hardware RTC (Witty Pi 3)
@@ -1436,6 +1646,13 @@ NTP sync), write it to the RTC once:
 ```bash
 sudo hwclock -w        # set the RTC from the system clock
 sudo hwclock -r        # read it back to confirm
+```
+
+**Confirm the RTC hardware is really there** (after the reboot):
+
+```bash
+ls -l /dev/rtc0        # the device must exist — missing = overlay didn't load, re-check config.txt + reboot
+sudo hwclock -r        # must print a SANE current date — a 1970/2000 date = overlay failed or the coin cell is dead
 ```
 
 > ℹ️ Any DS3231-based RTC HAT works with the same overlay; the script is tuned
