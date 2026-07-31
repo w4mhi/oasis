@@ -583,7 +583,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 #basemap-info .bm-path{display:block;color:var(--text-dim);font-size:var(--fs-small);opacity:.85;margin-top:1px;max-width:52ch;overflow:hidden;text-overflow:ellipsis;}
 
 /* Leading cell shared by both rows so the first separator lines up vertically */
-.lead-cell{display:flex;align-items:center;gap:.7rem;width:215px;flex-shrink:0;}
+.lead-cell{display:flex;align-items:center;gap:.7rem;min-width:215px;flex-shrink:0;}
 #coordReadout{
   font-family:var(--mono);font-size:var(--fs-small);color:var(--text-dim);
   white-space:nowrap;display:flex;align-items:center;gap:6px;
@@ -667,7 +667,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
   <!-- Row 1 — system status & RF overlays -->
   <div class="topbar-row">
     <div class="lead-cell">
-      <h1 onclick="location.reload()" title="Reload the map" style="cursor:pointer;">APRS/ADS-B Traffic</h1>
+      <h1 onclick="location.reload()" title="Reload the map" style="cursor:pointer;">Traffic Map</h1>
       <div id="statusDot"></div>
       <span id="stationCount"></span>
       <span class="track-sep">|</span>
@@ -2941,6 +2941,7 @@ loadConfig().then(() => {
     loadStationCfg(); // resolve local station position → render the home node
     _syncPathChips(); // reflect any persisted RF/IS path-filter state on the chips
     _syncSrcColFromChips(); // and on the drawer's Src dropdown
+    document.getElementById('autoPathBtn').classList.toggle('on', autoPath); // reflect persisted Auto-path state (default on)
     refreshAdsb();
     setInterval(refreshAdsb, 2000);
     refreshAdsbRecent();
@@ -3045,7 +3046,7 @@ let autoFly = false;
 let _focusHandled = false;
 let activePath = null;     // callsign whose RF path is currently drawn
 let _pathStatusMsg = '';   // persists across refreshes for popup re-show
-let autoPath = false;      // when on, auto-draw the latest-heard station's path
+let autoPath = localStorage.getItem('oasis_auto_path') !== '0';  // default on; auto-draw the latest-heard station's path
 // Auto-path source filters (chip toggles atop the "Last heard" panel). RF gates
 // purple digipeated chains + green direct-to-home lines; IS gates blue direct
 // lines. Default on; persisted so the choice survives reloads.
@@ -3075,6 +3076,7 @@ function toggleAutoFly() {
 // each refresh. Turning it off clears the path.
 function toggleAutoPath() {
   autoPath = !autoPath;
+  localStorage.setItem('oasis_auto_path', autoPath ? '1' : '0');
   document.getElementById('autoPathBtn').classList.toggle('on', autoPath);
   if (autoPath) {
     // Auto-path and Coverage are mutually exclusive
