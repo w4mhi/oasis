@@ -329,7 +329,7 @@ html, body { height: 100%; margin: 0; }
 </div>
 
 <!-- Satellites uses a lightweight SVG world map (no MapLibre/WebGL/tiles) — a
-     memory win on the Pi Zero, and the whole-globe view is what pass tracks need. -->
+     memory win on the Pi, and the whole-globe view is what pass tracks need. -->
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
 <script>
@@ -1026,7 +1026,7 @@ async function restoreSelection() {
 // A static base layer (dark countries + graticule + station house) rendered once,
 // plus a dynamic overlay (footprint + ground tracks + live markers) redrawn each
 // tick. The whole-globe equirectangular view is what pass tracks want, and it
-// costs a fraction of MapLibre's memory on the Pi Zero.
+// costs a fraction of MapLibre's memory on the Pi.
 let COUNTRIES = null;
 async function loadCountries() {
   if (COUNTRIES) return COUNTRIES;

@@ -513,7 +513,7 @@ async function loadBox(box) {
 }
 
 // Background-fetch message bodies into _bodyCache so search can match them.
-// Sequential (Pi-Zero-friendly) and cancellable: a newer box load bumps
+// Sequential (light on the Pi) and cancellable: a newer box load bumps
 // _prefetchGen and this run bails. Re-renders live only while the user is
 // actually searching, so it's silent otherwise.
 async function prefetchBodies(box, msgs, gen) {

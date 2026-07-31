@@ -71,7 +71,7 @@ def api_hardware_devices():
     scan is gated behind a cheap lsusb presence count: it runs only when more
     dongles are present than declared (first run / newly plugged), so once
     every dongle is declared the per-poll cost is just lsusb — a real concern
-    on a Pi Zero 2 W, where running rtl_test constantly would also contend with
+    on a low-power Pi, where running rtl_test constantly would also contend with
     whatever's actively using a dongle. Same-serial duplicates (factory
     00000001) are left for the burn-serial flow to disambiguate."""
     inv = HW.load(SUITE_ROOT)

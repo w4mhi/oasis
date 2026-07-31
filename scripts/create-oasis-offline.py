@@ -1205,14 +1205,14 @@ def phase_wikipedia(zim_dir):
 def phase_fcc(fcc_dir):
     """
     Phase 4: Download l_amat.zip, extract EN.dat/HD.dat, AND prebuild the search
-    indexes on this (capable) build host, so a 512 MB Pi Zero never has to run
-    the RAM-heavy sort that OOMs it — nor the extraction it can't afford either.
+    indexes on this (capable) build host, so the Pi never has to run the
+    RAM-heavy sort — nor the extraction it can't afford either.
 
     The bundle ships the raw EN.dat + HD.dat + EN.idx / EN_name.idx / EN_grid.idx
     + zipcodes.csv + EN.idx.meta, and DROPS l_amat.zip. The zip only ever existed
     to carry EN.dat to a machine capable of unpacking it; since we've already done
     the extraction and indexing here, the target uses the shipped files as-is.
-    Copying a ~175 MB zip to a Pi Zero just to delete it on first setup is waste.
+    Copying a ~175 MB zip to the Pi just to delete it on first setup is waste.
     The zip is dropped IF AND ONLY IF the prebuilt indexes verify against the
     shipped EN.dat; otherwise it is kept as a recovery copy.
     """
@@ -1263,7 +1263,7 @@ def phase_fcc(fcc_dir):
             fcc_build_index(fcc_dir, server_dir)   # EN.idx + EN_name.idx + EN_grid.idx + meta
         except SystemExit:
             _warn("Could not prebuild FCC indexes — the target will build them on")
-            _warn("first setup (may OOM a 512 MB Pi). Re-run this script online.")
+            _warn("first setup (RAM-heavy on the Pi). Re-run this script online.")
             return
         if not fcc_indexes_ready(fcc_dir):
             _warn("Index prebuild incomplete — shipping the zip as a fallback; the")

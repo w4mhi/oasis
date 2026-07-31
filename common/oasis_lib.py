@@ -422,7 +422,7 @@ FCC_INDEX_META  = "EN.idx.meta"
 
 
 def _fcc_sha256(path):
-    """Streaming SHA-256 of a file — constant memory, safe on a Pi Zero."""
+    """Streaming SHA-256 of a file — constant memory, safe on a low-power Pi."""
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
@@ -454,7 +454,7 @@ def fcc_indexes_ready(data_dir):
 
     Requires all three index files plus EN.idx.meta whose recorded size and
     SHA-256 match EN.dat. Used to skip the memory-heavy rebuild when an offline
-    bundle already shipped the indexes (the build that OOMs a 512 MB Pi Zero).
+    bundle already shipped the indexes (avoids the RAM-heavy build on the Pi).
     Size is compared first (cheap); the SHA-256 is only computed on a size match.
     """
     en_path   = os.path.join(data_dir, "EN.dat")
@@ -540,7 +540,7 @@ def fcc_build_index(data_dir, server_dir):
     # Fingerprint the EN.dat these indexes were built against, so an offline
     # bundle can ship prebuilt indexes and the target can verify they match its
     # own EN.dat (identical bytes → the byte offsets stay valid) and skip the
-    # RAM-heavy rebuild — the build that OOMs a 512 MB Pi Zero.
+    # RAM-heavy rebuild we avoid running on the Pi.
     _fcc_write_index_meta(data_dir)
 
 

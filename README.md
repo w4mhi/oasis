@@ -392,7 +392,7 @@ OASIS is built for a **trusted off-grid LAN or hotspot**. It binds to `0.0.0.0` 
 
 ## 💻 Platform support & hardware
 
-Reference build: **Raspberry Pi 3/4/5**, 32 GB SD card, Raspberry Pi OS Lite 64-bit, on a local hotspot/LAN — no internet. Also runs on any Linux/macOS/Windows host.
+**Minimum hardware: Raspberry Pi 3 (2 GB) or better.** Reference build: **Raspberry Pi 3/4/5**, 32 GB SD card, Raspberry Pi OS Lite 64-bit, on a local hotspot/LAN — no internet. Also runs on any Linux/macOS/Windows host.
 
 <details>
 <summary>Offline-install matrix (verified with <code>create-oasis-offline.py --check</code>)</summary>
@@ -441,7 +441,7 @@ OASIS is a two-person team: **W4MHI** (design calls, radio-domain judgment, the 
 - **Plan first, then build.** Non-trivial changes get a written plan and a confirm step before code moves — same discipline the [design principles](docs/concept.md#design-principles) apply to the product itself.
 - **The same gates apply to every change, AI-authored or not.** `scripts/run-tests.sh` for the unit suite, a preflight pass (manifest validation, byte-compile, lint) mirroring CI, and `doctor.py` for a live health check — all before anything is called done.
 - **Offline-first constrains the AI too.** No dependency, library, or pattern gets suggested if it assumes a network connection, a CDN, or a database engine — the [prime directive](docs/concept.md) governs Claude's suggestions exactly like a human contributor's.
-- **Small scope, real hardware.** This isn't a multi-contributor project with bots triaging issues — it's one maintainer and one AI teammate iterating directly against a Raspberry Pi Zero 2 W, a stack of SDR dongles, and an actual radio bench.
+- **Small scope, real hardware.** This isn't a multi-contributor project with bots triaging issues — it's one maintainer and one AI teammate iterating directly against a Raspberry Pi 3, a stack of SDR dongles, and an actual radio bench.
 
 Commits carry a `Team: W4MHI/Claude` trailer when Claude did the drafting — a record of who built what, not a disclaimer.
 
@@ -452,7 +452,7 @@ Commits carry a `Team: W4MHI/Claude` trailer when Claude did the drafting — a 
 OASIS is a personal project by **W4MHI**, built directly on the work of **Jason, KM4ACK** (see [Acknowledgments](#-acknowledgments) below). Contributions that respect the **offline-first prime directive** — no runtime internet, no CDNs, no build step — are welcome:
 
 - **Open an issue** for bugs, hardware reports (radios, SDRs, HATs), or feature ideas.
-- **Send a pull request** for fixes and additions. Keep the front-end vanilla JS and the backend minimal so it still runs on a Raspberry Pi Zero 2 W.
+- **Send a pull request** for fixes and additions. Keep the front-end vanilla JS and the backend minimal so it still runs on a Raspberry Pi 3 (2 GB).
 - **Run the tests** with the one-command runner (uses the `.venv` Python — the
   system Python has no Flask — and buffers noisy test output so the `OK`/`FAILED`
   verdict is the last line):

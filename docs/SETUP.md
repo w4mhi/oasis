@@ -103,6 +103,8 @@ sudo systemctl restart <unit>  # clean stop + start — fixes most "stuck" state
 
 ## Before you begin (Raspberry Pi)
 
+**Minimum hardware: Raspberry Pi 3 (2 GB) or better** (Pi 4/5 recommended). Older or smaller boards are not supported.
+
 If you are setting up a **fresh Raspberry Pi** for the first time, complete these steps before anything else. If you already have a Pi booted with SSH access and `git` installed, skip to [Guided setup](#guided-setup-menu).
 
 ### 1. Flash Raspberry Pi OS
@@ -116,7 +118,7 @@ Download and install **[Raspberry Pi Imager](https://www.raspberrypi.com/softwar
 | Planning to use an **RTL-SDR dongle** for APRS receive | **Raspberry Pi OS Lite (64-bit) — Trixie** |
 | Everything else (no RTL-SDR, or using DigiRig/DRA-Pi) | **Raspberry Pi OS Lite (64-bit) — Bookworm** |
 
-**Lite vs. Desktop:** Lite has no graphical desktop — it boots to a command line and uses less memory (important on a Pi Zero 2 W or Pi 3). If you want to plug in a monitor and use a mouse/keyboard with a desktop environment, choose "Raspberry Pi OS (64-bit)" (without "Lite") instead. The kiosk/browser option (`--with-browser`) works on Desktop; on Lite, a browser can still run on a separate attached display if configured.
+**Lite vs. Desktop:** Lite has no graphical desktop — it boots to a command line and uses less memory (important on a Pi 3). If you want to plug in a monitor and use a mouse/keyboard with a desktop environment, choose "Raspberry Pi OS (64-bit)" (without "Lite") instead. The kiosk/browser option (`--with-browser`) works on Desktop; on Lite, a browser can still run on a separate attached display if configured.
 
 Use Imager to write your chosen image to a microSD card (32 GB minimum). Before clicking **Write**, open **Advanced Options** (gear icon ⚙️ or Ctrl+Shift+X) and:
 - Set a **hostname** (e.g. `oasis`)
@@ -492,7 +494,7 @@ This installs `avahi-daemon` (so the dashboard resolves at `oasis.local`), creat
 
 Once the AP is up, other devices connect to the `OASIS` Wi-Fi (password `oasis-emcomm`) and open `http://10.42.0.1:8083` (or `http://oasis.local:8083`).
 
-**Joining a Wi-Fi network from the dashboard:** tap the **Wi-Fi** button under the clock, pick a network, and enter its password. Because the Pi Zero 2 W has a single radio, joining a network takes the OASIS AP offline — any device connected to the AP must reconnect via the Pi's new address.
+**Joining a Wi-Fi network from the dashboard:** tap the **Wi-Fi** button under the clock, pick a network, and enter its password. Because the Pi has a single Wi-Fi radio, joining a network takes the OASIS AP offline — any device connected to the AP must reconnect via the Pi's new address.
 
 > 💡 The Wi-Fi pill under the clock shows the current SSID or `AP: OASIS`. The System Monitor **IP** row shows the address to reach the dashboard on (e.g. `10.42.0.1` when hosting the AP).
 
@@ -509,7 +511,7 @@ sudo nmcli device wifi hotspot ssid OASIS password oasis-emcomm
   journalctl -u oasis-netwatch -f
   ```
 - **`/usr/local/bin/oasis-netctl`** — a pinned privileged helper (scan / connect / forget / ap-up) the dashboard calls via a scoped `sudo` rule (`/etc/sudoers.d/oasis-wifi`); no password touches the web layer.
-- **Single radio:** the Pi Zero 2 W has one Wi-Fi radio, so it is **either** a client **or** the AP, never both. Joining or forgetting a network from the dashboard therefore drops the AP; reconnecting to a known network after an AP fallback happens on the next reboot or via the dashboard.
+- **Single radio:** the Pi has one Wi-Fi radio, so it is **either** a client **or** the AP, never both. Joining or forgetting a network from the dashboard therefore drops the AP; reconnecting to a known network after an AP fallback happens on the next reboot or via the dashboard.
 
 Check status any time:
 
@@ -519,7 +521,7 @@ python3 scripts/enable-ap-fallback.py --check
 
 ### Troubleshooting the access point
 
-These are the real issues seen bringing the AP up on a Pi Zero 2 W (Broadcom `brcmfmac` radio), in the order to check them.
+These are the real issues seen bringing the AP up on the Pi (Broadcom `brcmfmac` radio), in the order to check them.
 
 **1. The `OASIS` network doesn't broadcast at all.** NetworkManager can report the AP as "up" while the radio isn't actually beaconing. The two usual causes are a soft-blocked radio and an unset Wi-Fi regulatory domain (`country 00`), which suppresses 2.4 GHz beaconing.
 
@@ -1451,8 +1453,7 @@ journalctl -u dump1090-fa -e      # shows which dongle it opened + its gain/nois
 Set these to point at a local JSON file and a writable DB path to run the
 recorder/API on a dev machine without `dump1090-fa` installed.
 
-> Like GrayWolf and OpenWebRX, ADS-B is Pi/Linux only. Pi 3/4/5 is the
-> target; Pi Zero is not.
+> Like GrayWolf and OpenWebRX, ADS-B is Pi/Linux only. Pi 3/4/5 is the target.
 
 ---
 

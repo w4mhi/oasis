@@ -580,7 +580,7 @@ def build_registry(repo_root, payload=None):
             dependencies=["server"],
             # Downloads ~160 MB from the FCC then builds 3 binary-search
             # indexes over it — the default 300s script timeout can be too
-            # tight on a slow connection or a Pi Zero doing the index build,
+            # tight on a slow connection or a low-power Pi doing the index build,
             # so give it a generous 20 minutes.
             install_fn=lambda: _setup_run_script(repo_root, "services/fcc_database/install.py", timeout=1200),
             removal_record_fn=lambda: _removal_record(repo_root, "services.fcc_database.common.fcc_database"),
@@ -596,7 +596,7 @@ def build_registry(repo_root, payload=None):
             # Simple-English edition (~447 MB), a sane default for a small SD
             # card; operators can fetch a larger one later from the CLI. The
             # generous timeout covers the download on a slow field link (the
-            # default 300s can't finish ~447 MB on a Pi Zero's connection).
+            # default 300s can't finish ~447 MB on the Pi's connection).
             install_fn=lambda: _setup_run_script(
                 repo_root, "services/kiwix/download-wikipedia.py",
                 ["--edition", "top-mini"], timeout=1800),

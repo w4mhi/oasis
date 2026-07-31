@@ -2119,7 +2119,7 @@ function pingAll() {
 }
 
 // Round-robin health check — one service per tick instead of pingAll's burst of
-// all 17 at once. On a Pi Zero 2 W the synchronized 30s burst woke many gunicorn
+// all 17 at once. On a low-power Pi the synchronized 30s burst woke many gunicorn
 // workers together; trickling one request per tick keeps each badge on the same
 // ~30s refresh with no burst. Same hidden/show-all filter as pingAll.
 let _pingIdx = 0;

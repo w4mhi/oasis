@@ -387,7 +387,7 @@ def _sampler():
     i = 0
     while True:
         if psutil:
-            # Sample processes only every ~6s to bound /proc churn on the Pi Zero.
+            # Sample processes only every ~6s to bound /proc churn on the Pi.
             # Prime cpu_percent on PERSISTENT Process objects just before the 2s
             # block, then read the delta after — process_iter() yields fresh
             # objects each call, so the same instances must be held across the wait.

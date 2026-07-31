@@ -87,7 +87,7 @@ bump for that reason.
   refactoring (service logic under `services/<name>/`, maps under
   `services/map/`) as the new baseline. Behaviour-preserving, so a minor rather
   than major bump.
-- **Dashboard polling de-bursted (Pi Zero).** `index.html` fired a synchronized
+- **Dashboard polling de-bursted.** `index.html` fired a synchronized
   herd every 30 s — `pingAll` bursting all 17 service health checks at once plus
   the hardware/stats/audio/wifi loops on the same boundary — and ~100 requests per
   start/stop toggle. Now a round-robin `pingNext` (one check per ~1.8 s, same ~30 s

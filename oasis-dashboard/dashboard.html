@@ -1343,7 +1343,7 @@ function renderSats() {
 // ── Traffic + satellites init/timers ─────────────────────────────────────────
 // ── SDR flow meters (footer) ─────────────────────────────────────────────────
 // Blue bar = signal flowing, red = silent — proves the RTL-SDRs are truly
-// receiving, not just "unit up". Gentle cadence for the Pi Zero; the APRS probe
+// receiving, not just "unit up". Gentle cadence for the Pi; the APRS probe
 // runs a ~1s tcpdump server-side, so it's gated on the feed unit being active.
 const FEED_FLOW_MS = 4000;
 const ADSB_NOMINAL_SAMPLES_PER_SEC = 2_000_000;   // ~RTL-SDR's 2.4 MSPS default

@@ -1048,7 +1048,7 @@ def check_gps(ctx):
 
 def check_cooling_hat(ctx):
     """SYSTEM group / POWER capability, not critical -- cooling is a nice-to-
-    have on a Pi Zero 2 W, not something that blocks a capability. Signal:
+    have, not something that blocks a capability. Signal:
     systemd unit rgb-cooling-hat.service (features/rgb-cooling-hat)."""
     svc = _svc_status("rgb-cooling-hat")
     if svc["active"] == "active":
