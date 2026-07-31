@@ -49,47 +49,53 @@ Forms · FCC lookup · offline maps · APRS · calculators · reference library 
 
 ## ✨ Features
 
-Each feature links to its full setup section. New here? Start with **[Quick start](#-quick-start)** below — the server alone gives you the dashboard, FCC lookup, maps, forms, calculators, and the reference library.
+Each feature links to its full setup section, and the grouping **mirrors the dashboard** (`index.html`) so the README and the live station read the same. New here? Start with **[Quick start](#-quick-start)** — the server alone gives you the dashboard, FCC lookup, maps, forms, calculators, and the reference library.
 
-#### 🎙 Get on the air
+### 📊 Dashboard header — system monitor
 
-- **📡 APRS** *(Pi)* — **GrayWolf** TNC / iGate / digipeater with a live station map (track history, auto-fly, sonar animations), APRS Stats API, and tactical messaging. Dashboard shows live station table with callsign, last-heard time, speed, altitude, and comment. → [Setup](docs/SETUP.md#graywolf-aprs)
-- **📧 Winlink** *(Pi)* — Pat client + web UI for store-and-forward email over radio. **Internet gateway (Telnet) works now. RF radio path is experimental** — see [Winlink setup](docs/SETUP.md#winlink-pat) for current status. → [Setup](docs/SETUP.md#winlink-pat)
+- **⚙️ System monitor** — a header row of live cards, polled every 5 s: **local + UTC clocks**, a **CPU card** (usage, SoC temp, RAM, disk, plus per-core usage bars), a **PROCESSES card** (top 3 by CPU, 1-min load average), and a **STATUS card** (uptime, Pi power/throttle state, host/LAN IP, and the HW radio-assignment dots). Colour-coded green/amber/red by threshold; deeper diagnostics (ALSA audio, per-platform checks) live on the Setup/health-check page. → [Setup](docs/SETUP.md#server-setup)
+- **🛰️ GPS / GNSS & time sync** *(Pi)* — GPS-disciplined clock (`gpsd` + `chrony`) for accurate FT8/WSPR/SSTV timing with no internet, plus a live GPS card in the header: fix mode (3D/2D/no-fix), satellites, HDOP (colour-coded), altitude, lat/lon, and chrony clock-lock status. → [Setup](docs/SETUP.md#gps-time-sync-gpsd--chrony)
+- **📶 Wi-Fi status pill** — one glance at how the Pi reaches the network: `OASIS` in blue when hosting the AP fallback, the connected SSID coloured green/amber/red by signal on a client network, dim when disconnected. Shared between dashboard and touch kiosk. → [Setup](docs/SETUP.md#using-oasis-in-the-field-no-internet)
+- **📐 Units toggle** — switch all measured values (temperature, altitude, speed) between imperial and metric from one pill; preference persisted per browser. → [Setup](docs/SETUP.md#tools--calculators)
+
+### 📡 Traffic — the live map
+
+- **✈️ APRS + ADS-B live map** *(Pi)* — the central panel plots **GrayWolf APRS stations** and **`dump1090-fa` aircraft** together on one offline map: altitude-coloured icons, airline decode from the flight callsign, track history, auto-fly, sonar animations, a 24 h history drawer, and emergency-squawk (7500/7600/7700) + station-proximity alerts. Fed by the radio services below. → [ADS-B](docs/SETUP.md#ads-b-aircraft) · [APRS](docs/SETUP.md#graywolf-aprs)
+- **🗺️ Offline maps** — OpenStreetMap vector tiles via MapLibre GL + PMTiles, streamed from the host with HTTP range reads. Multi-region, switchable layers, not a single tile from the internet. Load maps at runtime off a USB stick or the GrayWolf tiles directory — no copying into the repo. → [Setup](docs/SETUP.md#offline-maps)
+
+### 🛰 Services — infrastructure · radio
+
+The daemon-backed cards in the dashboard **SERVICES** strip. Once **[service controls](docs/SETUP.md#service-controls-dashboard-power-buttons)** are enabled you start/stop each straight from the strip — no SSH.
+
+- **🌐 Web server** — Flask + gunicorn serving the dashboard, FCC lookup, map tiles, forms, and the API. The foundation everything else rides on. → [Setup](docs/SETUP.md#server-setup)
+- **📡 APRS** *(Pi)* — **GrayWolf** TNC / iGate / digipeater with a live station map (track history, auto-fly, sonar) and tactical messaging, plus the **APRS Stats API** that feeds the dashboard and map. → [Setup](docs/SETUP.md#graywolf-aprs)
+- **📻 APRS SDR feed** *(Pi, Trixie)* — demodulate 2 m APRS from a USB RTL-SDR dongle and feed it into GrayWolf (receive / iGate). → [Setup](docs/SETUP.md#rtl-sdr)
+- **✈️ ADS-B aircraft** *(Pi)* — decode 1090 MHz aircraft locally with `dump1090-fa`; positions plot on the Traffic map above. Shares the RTL-SDR dongle, so starting it stops the APRS feed / OpenWebRX. → [Setup](docs/SETUP.md#ads-b-aircraft)
+- **📧 Winlink RF** *(Pi)* — Pat client + web UI for store-and-forward email over radio. **Internet gateway (Telnet) works now; the RF radio path is experimental** — see [Winlink setup](docs/SETUP.md#winlink-pat) for status. → [Setup](docs/SETUP.md#winlink-pat)
 - **🌐 OpenWebRX** *(Pi)* — optional SDR receiver web UI for spectrum monitoring and multi-mode decoding. → [Setup](docs/SETUP.md#openwebrx-sigint)
-- **📻 RTL-SDR** *(Pi, Trixie)* — demodulate 2 m APRS from a USB dongle and feed it into GrayWolf (receive / iGate). → [Setup](docs/SETUP.md#rtl-sdr)
-- **📻 Repeater Book** — load a CHIRP-format CSV from RepeaterBook, browse with instant search/filters, and export the visible set as a ready-to-import frequency plan. → [Setup](docs/SETUP.md#repeater-book)
+- **📚 Wiki Kiwix** *(Pi)* — Kiwix serving an offline Wikipedia ZIM snapshot. → [Setup](docs/SETUP.md#kiwix--wikipedia)
+- **💻 Web SSH** *(Pi)* — a browser login shell (ttyd) on the Pi — no SSH client needed. → [Setup](docs/SETUP.md#webssh--browser-terminal)
+- **🎛️ HW / SRV matrix** — the **Service Operations console** (the "mixer board"): a device→service assignment matrix to reroute an SDR or sound-card between APRS, ADS-B, OpenWebRX, satellites, and Winlink with one tap, per-device **lock** to protect an assignment, and a one-click **STOP ALL**. An opt-in **resource guardian** thread watches temperature/CPU/memory and, on a threshold trip (80 °C / 95 % / 92 % by default, tunable), arms a 30 s cancellable STOP ALL — always leaving **Web SSH** running so it can't lock you out. → [API](docs/api.md#hardware-allocation-apihardware)
 
-#### 🗺 See around you
+### 🧭 Ops — utilities · forms · reference
 
-- **✈️ ADS-B aircraft** *(Pi)* — decode 1090 MHz aircraft locally with `dump1090-fa` and plot them live on the *same* offline map as APRS: altitude-coloured icons, airline decode from the flight callsign, and a 24 h history drawer. Emergency-squawk (7500 / 7600 / 7700) and station-proximity alerts. Shares the RTL-SDR dongle, so starting it stops the APRS feed / OpenWebRX. → [Setup](docs/SETUP.md#adsb-aircraft)
-- **🛰️ Satellite tracking** *(Pi)* — an offline pass predictor for the ham and weather birds. A roster aggregated from **SatNOGS** (downlink freqs + modes) and **CelesTrak** (TLEs); next-pass times, peak elevation, and a live sky/footprint view via **Skyfield/SGP4** — all computed on the Pi, no internet at runtime. The roster is **baked into the offline bundle** at build time, so a fresh Pi predicts passes out of the box. **Monitored·1h / All·1h** views, a **Filters** menu (capability · band · **orbit class** LEO/MEO/GEO/HEO), Morse-"V" + spoken pass alerts, and **live SDR audio**: arm a downlink and Listen or Record it through the pass (FM/APRS · CW · SSB) straight in the browser. → [Setup](docs/SETUP.md#satellites)
-- **🛰️ GPS / GNSS & time sync** *(Pi)* — GPS-disciplined clock (`gpsd` + `chrony`) for accurate FT8/WSPR/SSTV timing with no internet, plus a live GPS card in the dashboard header: fix mode (3D/2D/no-fix), satellites, HDOP (colour-coded), altitude, lat/lon, and chrony clock-lock status. → [Setup](docs/SETUP.md#gps-time-sync-gpsd--chrony)
-- **🗺️ Offline maps** — OpenStreetMap vector tiles via MapLibre GL + PMTiles, streamed from the host with HTTP range reads. Multi-region, switchable layers, not a single tile from the internet. Load maps at runtime straight off a USB stick or the GrayWolf tiles directory — no copying into the repo. → [Setup](docs/SETUP.md#offline-maps)
+The dashboard **OPS** grid, in the same sub-groups:
 
-#### 📚 Know your stuff
+- **🛠 SYSOP** — **OASIS Setup** (visual health check) · **OASIS Diagnostics** · **Net Logger** (net check-in log with callsign/name/location/traffic and CSV export). → [Setup](docs/SETUP.md#server-setup)
+- **🗺 Monitor** — **Traffic Map** (the live map above) · **🛰️ Satellites** *(Pi)*: an offline pass predictor for the ham and weather birds — a roster from **SatNOGS** (downlink freqs + modes) and **CelesTrak** (TLEs), next-pass times, peak elevation, and a live sky/footprint view via **Skyfield/SGP4**, all computed on the Pi. Baked into the offline bundle at build time. **Monitored·1h / All·1h** views, a **Filters** menu (capability · band · orbit class LEO/MEO/GEO/HEO), Morse-"V" + spoken pass alerts, and **live SDR audio** (arm a downlink → Listen or Record through the pass: FM/APRS · CW · SSB). → [Setup](docs/SETUP.md#satellites)
+- **📋 ICS Forms** — ICS **205 · 213 · 214 · 309** on official FEMA AcroForm PDF templates. Import/export CSV, auto-save to localStorage, import frequencies from CHIRP. → [Setup](docs/SETUP.md#ics-forms)
+- **🔎 Lookup** — **FCC callsign lookup** (sub-millisecond binary search over a local copy of the FCC amateur DB by **callsign** exact/prefix, **name**, or **Maidenhead grid**) · **Repeater Book** · **Band Plan** · **Radio Cards** · **ITU country prefixes**. → [FCC](docs/SETUP.md#fcc-callsign-lookup) · [Repeater Book](docs/SETUP.md#repeater-book)
+- **📚 Library** — **Radio Manuals** (drop your own PDFs into `static/radio-manuals/`) · **GrayWolf Handbook** · **OASIS Handbook** · **Repeater Guide** · **Wikipedia** · **Winlink Radio Settings**. → [Setup](docs/SETUP.md#reference-library)
+- **🧮 Tools** — **Antenna Calculator** · **Power & Battery Budget** · **Solar / Propagation** · **Gray Line** · **Grid / Bearing** · **File Browser**. → [Setup](docs/SETUP.md#tools--calculators)
+- **📖 Operating Reference** — U.S. band plan, Q-codes, NATO phonetics, procedure words (with the ICS plain-language substitution table), RST, ITU prefixes, and per-radio cheat-sheets. → [Setup](docs/SETUP.md#reference-library)
 
-- **🔎 FCC callsign lookup** — sub-millisecond binary search over a local copy of the FCC amateur database. Search by **callsign** (exact or prefix wildcard), **name** (last name + optional first name), or **Maidenhead grid** (2–6 char prefix). Returns callsign, name, city, state, grid, lat/lon. No database engine; three sorted flat-file indexes. → [Setup](docs/SETUP.md#fcc-callsign-lookup)
-- **📚 Reference library** — U.S. band plan, Q-codes, phonetics, procedure words (including ICS plain-language substitution table), RST, ITU prefixes, per-radio cheat-sheets, CHIRP guides, GrayWolf handbook. Drop your own PDFs into `static/radio-manuals/`. → [Setup](docs/SETUP.md#reference-library)
-- **📖 Offline Wikipedia** *(Pi)* — Kiwix serving a ZIM snapshot. → [Setup](docs/SETUP.md#kiwix--wikipedia)
+### 🔩 Deployment & hardware add-ons
 
-#### 🧮 Run the numbers
+Field-deployment and on-device extras (not dashboard cards):
 
-- **🧮 Tools & calculators** — antenna, grid/distance/bearing, power & battery budget, gray-line propagation, band conditions, and a net check-in logger with CSV export. → [Setup](docs/SETUP.md#tools--calculators)
-- **📐 Units toggle** — switch all measured values (temperature, altitude, speed) between imperial and metric from a single pill button; preference persisted per browser. → [Setup](docs/SETUP.md#tools--calculators)
-
-#### 🆘 Ready for the worst
-
-- **📋 Emergency forms** — ICS **205 · 213 · 214 · 309** on official FEMA PDF templates. Import/export CSV, auto-save, import frequencies from CHIRP. → [Setup](docs/SETUP.md#ics-forms)
-
-#### 🔧 Under the hood
-
-- **⚙️ System monitor** — a header row of live cards, polled every 5 s: **local + UTC clocks**, a **CPU card** (usage, SoC temp, RAM, disk, plus per-core usage bars), a **PROCESSES card** (top 3 by CPU, 1-min load average), and a **STATUS card** (uptime, Pi power/throttle state, host/LAN IP, and the HW radio-assignment dots below). Everything is colour-coded green/amber/red by threshold. Deeper diagnostics (ALSA audio devices, per-platform health checks) live on the Setup/health-check page. → [Setup](docs/SETUP.md#server-setup)
-- **📶 Wi-Fi status pill** — one glance at how the Pi is reaching the network: `OASIS` in blue when hosting the AP fallback, the connected SSID coloured green/amber/red by signal strength when on a client network, dim when disconnected. Shared between the dashboard and the touch kiosk. → [Setup](docs/SETUP.md#using-oasis-in-the-field-no-internet)
-- **🔧 Service controls** — start/stop controllable services (GrayWolf, Winlink, Kiwix, Web SSH, OpenWebRX) directly from the dashboard service strip without SSH. → [Setup](docs/SETUP.md#service-controls-dashboard-power-buttons)
-- **🎛️ Service Operations console** — a device→service assignment matrix (the "mixer board") on both the dashboard and the touch kiosk: one-tap reroute an SDR or sound-card between APRS, ADS-B, OpenWebRX, satellites, and Winlink, per-device **lock** to protect an assignment, and a one-click **STOP ALL**. An opt-in **resource guardian** runs as a background thread on the server — independent of any browser tab — and watches temperature/CPU/memory; if one crosses its threshold (80 °C / 95 % / 92 % by default, operator-tunable) it arms a 30-second cancellable countdown, shown as a banner on whatever's open, then auto-runs STOP ALL if nobody cancels. **Web SSH is always left running** so a tripped guardian can never lock you out of the box. → [API](docs/api.md#hardware-allocation-apihardware)
-- **💻 Web SSH terminal** *(Pi)* — a browser login shell (ttyd) on the Pi — no SSH client needed. → [Setup](docs/SETUP.md#webssh--browser-terminal)
-- **🕐 Hardware RTC** *(Pi)* — optional Witty Pi 3 (DS3231) battery-backed clock that keeps time across reboots and power loss. → [Setup](docs/SETUP.md#hardware-rtc-witty-pi-3)
-- **🖥️ Panel & cooling add-ons** *(Pi)* — on-device CM4Stack panel display, RGB Cooling HAT fan/OLED, and the OASIS Dashboard touch kiosk (800×480 / 1920×1200). → [Setup](docs/SETUP.md#cm4stack-panel-display)
+- **📶 Wi-Fi AP fallback** *(Pi)* — the Pi hosts the `OASIS` hotspot automatically when no known network is in range, so other devices connect with no router. → [Setup](docs/SETUP.md#using-oasis-in-the-field-no-internet)
+- **🕐 Hardware RTC** *(Pi)* — optional Witty Pi 3 (DS3231) battery-backed clock that keeps time across reboots and total power loss. → [Setup](docs/SETUP.md#hardware-rtc-witty-pi-3)
+- **🖥️ Panel & cooling** *(Pi)* — on-device CM4Stack panel display, RGB Cooling HAT fan/OLED, and the OASIS Dashboard touch kiosk (800×480 / 1920×1200). → [Setup](docs/SETUP.md#cm4stack-panel-display)
 - **💾 Portable USB bundle** — package the whole suite into a self-contained folder that runs with no system Python on Windows (`--for-windows`), or Pi/Linux only (default). → [Setup](docs/SETUP.md#usb--portable-bundle)
 
 ---
