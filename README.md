@@ -285,6 +285,13 @@ A single small **Flask** app serves the dashboard, the FCC lookup API, and the m
 
 Building and updating the bundle is covered in **[Quick start](#-quick-start)** (steps 2–3). In short: `create-oasis-offline.py` updates all offline packages (wheels · GrayWolf · Kiwix · RTL-SDR · webssh · Pat · FCC database · map tools) and produces the self-contained `oasis-offline/` folder. Default builds target Linux/macOS (Pi); add `--for-windows` to also bundle the embedded Python runtime that `scripts/start-server.bat` needs on Windows.
 
+**Running the bundle on Linux.** `run-portable.sh` (and `scripts/start-server.sh`) build a Python virtualenv from the bundled wheels on first run. Two host requirements catch people out:
+
+- **`python3` *and* its venv module.** Debian/Ubuntu/Raspberry Pi OS ship `python3` **without** the venv builder — install it once with `sudo apt install python3-venv` (Fedora/Arch already include it). Without it the first run fails and leaves a broken `_runtime/linux/.venv`.
+- **A native Linux filesystem (ext4/btrfs/xfs).** A virtualenv needs symlinks, which **FAT32 / exFAT / NTFS USB sticks don't support** (`operation not permitted: …/.venv/lib64`). Copy the `oasis-offline/` folder onto the machine's disk — e.g. `cp -r oasis-offline ~/oasis-offline` — and run it from there rather than straight off the stick.
+
+> 🔧 If a first run failed and left a stub venv, delete it before retrying: `rm -rf oasis-offline/_runtime/linux/.venv` (prefix `sudo` if the stub is root-owned), then re-run **as your normal user** (not `sudo`).
+
 ---
 
 ## 📻 Repeater Book

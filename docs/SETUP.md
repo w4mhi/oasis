@@ -1957,6 +1957,19 @@ oasis-offline/
 
 The dashboard, ICS forms, FCC lookup, **offline maps**, calculators, and the reference library all work from the USB bundle — maps included, since they're served by the core OASIS app. Only the separate Pi companion services — GrayWolf APRS (8080), Kiwix (8081), and the APRS history API (8085) — show as DOWN, because they run as their own services on the Pi.
 
+### Running the bundle on Linux
+
+On Windows the bundle runs from the embedded Python (`start-server.bat`, `--for-windows` build). On **Linux/macOS** it builds a Python virtualenv from the bundled wheels on first run — `run-portable.sh` (tools-only profile) and `scripts/start-server.sh` both do this. That needs two things from the host, and getting either wrong produces a confusing error:
+
+| Symptom on first run | Cause | Fix |
+|---|---|---|
+| `…/_runtime/linux/.venv/bin/python: no such file or directory` | `python3` is installed but its **venv module** isn't — Debian/Ubuntu/Raspberry Pi OS split it into a separate package, so `python3 -m venv` fails and leaves a stub `.venv` with no interpreter | `sudo apt install python3-venv` (match your version if apt asks, e.g. `python3.11-venv`). Fedora/Arch already include it. |
+| `operation not permitted: …/.venv/lib64` | The bundle is on a **FAT32 / exFAT / NTFS** USB stick, which can't hold the symlinks a virtualenv needs (`lib64 → lib`, `bin/python`) | Copy the bundle onto a **native Linux filesystem** and run it there: `cp -r oasis-offline ~/oasis-offline && cd ~/oasis-offline && ./run-portable.sh` |
+
+Confirm the filesystem type with `df -T .` from inside the bundle (`vfat`/`exfat`/`ntfs`/`fuseblk` = the USB case; `ext4`/`btrfs`/`xfs` = native, fine).
+
+> 🔧 **A failed first run leaves a broken `_runtime/linux/.venv`** that later runs skip over (they only check the directory exists). Delete it before retrying — `rm -rf _runtime/linux/.venv` (prefix `sudo` if the stub is root-owned) — then re-run **as your normal user**, never with `sudo`.
+
 ---
 
 ## Updating OASIS
