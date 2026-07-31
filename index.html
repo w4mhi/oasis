@@ -81,7 +81,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: .3rem;
-  min-width: 232px;
+  min-width: 200px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -129,11 +129,11 @@ body {
 .val.ok{color:var(--accent)} .val.warn{color:var(--amber)} .val.hot{color:var(--red)}
 
 /* ---- clock cards (dashboard style: left color bar + LOCAL/UTC), scaled to header ---- */
-.clk-card{position:relative;overflow:hidden;justify-content:center;min-width:158px;
+.clk-card{position:relative;overflow:hidden;justify-content:center;min-width:200px;
   padding:.4rem .7rem .4rem .95rem;background:var(--panel)}
 .clk-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:.3rem}
 .clk-card.loc::before{background:var(--blue)} .clk-card.utc::before{background:var(--text)}
-.clk-card.loc{border-color:var(--blue-dim);background:rgba(88,166,255,.06)}
+.clk-card.loc{border-color:var(--blue-dim)}
 .clk-card.utc{border-color:var(--border);background:var(--panel)}
 .clk-zn{display:flex;align-items:baseline;gap:.5rem}
 .clk-z{font-size:var(--fs-subtitle);letter-spacing:.16em;font-weight:700}
@@ -162,6 +162,13 @@ body {
 .core-fill.busy{background:var(--amber)} .core-fill.hot{background:var(--red)}
 .core-pct{font-size:var(--fs-small);font-weight:700;font-variant-numeric:tabular-nums;min-width:2.6em;text-align:right}
 .core-pct.busy{color:var(--amber)} .core-pct.hot{color:var(--red)}
+/* CPU card body: RAM/DISK stacked at left, vertical separator, cores at right */
+.cpu-body{display:flex;align-items:stretch;gap:.7rem}
+.cpu-mem{display:flex;flex-direction:column;justify-content:center;gap:.35rem;flex:0 0 auto}
+.cpu-mem .mem-row{display:flex;flex-direction:column;align-items:center;gap:.05rem}
+.cpu-mem .mem-sep{border:none;border-top:1px solid var(--border);margin:0;width:100%}
+.cpu-body #cpu-cores{flex:1 1 auto;display:flex;flex-direction:column;gap:.25rem;
+  border-left:1px solid var(--border);padding-left:.7rem}
 
 /* processes */
 .proc{display:grid;grid-template-columns:1fr auto auto;gap:.6rem;align-items:baseline;font-size:var(--fs-small)}
@@ -663,6 +670,66 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   font-size: var(--fs-label);
   letter-spacing: .04em;
 }
+.svc-pill .pill-k { color: var(--text-dim); font-weight: 700; letter-spacing: .08em; }
+.svc-pill .pill-v { color: var(--text); font-variant-numeric: tabular-nums; }
+/* Fixed-width track so host + power align under the pill-row above.
+   Tune --host-row-w to match (host + refresh + wifi + theme) width. */
+.host-row {
+  --host-row-w: 500px; 
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  margin-top: .35rem;
+  width: var(--host-row-w);
+  max-width: 100%;
+}
+.host-pill { flex: 0 0 auto; }
+.pwr-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  min-width: 0;                /* allow the value to shrink + ellipsize */
+  flex: 1 1 auto;
+  padding: .18rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: var(--fs-label);
+  font-family: var(--mono);
+  letter-spacing: .03em;
+}
+.pwr-lbl { color: var(--text-dim); font-weight: 700; letter-spacing: .08em; flex: 0 0 auto; }
+.pwr-val {
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pwr-pill.ok   .pwr-val { color: var(--accent); }
+.pwr-pill.warn { border-color: var(--amber-dim); }
+.pwr-pill.warn .pwr-val { color: var(--amber); }
+.pwr-pill.crit { border-color: var(--red-dim, #7a1010); }
+.pwr-pill.crit .pwr-val { color: var(--red); }
+.host-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .18rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: var(--fs-label);
+  font-family: var(--mono);
+  letter-spacing: .03em;
+}
+.host-lbl  { color: var(--text-dim); font-weight: 700; letter-spacing: .08em; }
+.host-ip   { font-weight: 700; color: var(--text); }   /* IP — white, primary */
+.host-name { color: var(--text-dim); }                  /* hostname — grey */
+/* Shared round separator dot (host pill + callsign pill) */
+/* Shared middot separator — same U+00B7 character as the Band Plan (HF · VHF · UHF). */
+.sep-dot { color: var(--text-dim); flex: 0 0 auto; }
+.sep-dot::before { content: "\00B7"; }
 .cs-call { font-weight: 700; color: var(--accent); letter-spacing: .08em; }
 .cs-grid { color: var(--amber); }
 .cs-sep  { color: var(--border); }
@@ -1068,7 +1135,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="pill-row">
       <button class="callsign-pill" onclick="editCallsignGrid()" title="Edit callsign &amp; grid">
         <span class="cs-call" id="my-callsign">N0CALL</span>
-        <span class="cs-sep">&middot;</span>
+        <span class="sep-dot"></span>
         <span class="cs-grid" id="my-grid">&mdash;</span>
       </button>
       <button class="units-pill" id="units-pill" onclick="toggleUnits()"
@@ -1088,6 +1155,18 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
         <span id="theme-glyph">&#9728;</span>
       </button>
     </div>
+    <div class="host-row">
+      <span class="host-pill" id="host-pill" title="This station's LAN address and hostname">
+        <span class="host-lbl">HOST</span>
+        <span class="host-ip" id="host-ip">&mdash;</span>
+        <span class="sep-dot" id="host-sep" hidden></span>
+        <span class="host-name" id="host-name"></span>
+      </span>
+      <span class="pwr-pill" id="pwr-pill" title="Power / throttle status">
+        <span class="pwr-lbl">POWER</span>
+        <span class="pwr-val" id="pwr-val">&mdash;</span>
+      </span>
+    </div>
   </div>
 
   <div class="card clk-card loc">
@@ -1101,50 +1180,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="clk-d" id="clk-utc-d">&mdash;</div>
   </div>
 
-  <div class="card up" id="cpu-card">
-    <div class="card-hdr">
-      <span class="dot" id="cpu-dot"></span>
-      <span class="cpu-hdr">
-        <span class="k">CPU</span><span class="val" id="cpu-pct">&mdash;</span>
-        <span class="sep">&middot;</span>
-        <span class="k">Temp</span><span class="val" id="cpu-temp">&mdash;</span>
-        <span class="sep">&middot;</span>
-        <span class="k">RAM</span><span class="val" id="cpu-ram">&mdash;</span>
-        <span class="sep">&middot;</span>
-        <span class="k">Disk</span><span class="val" id="cpu-disk">&mdash;</span>
-      </span>
-      <span class="cpu-rate" id="cpu-rate"></span>
-    </div>
-    <hr class="zone-sep">
-    <div id="cpu-cores"></div>
-  </div>
-
-  <div class="card up" id="proc-card">
-    <div class="card-hdr"><span class="dot up" id="proc-dot"></span><span class="card-name">PROCESSES</span><span class="proc-load" id="proc-load"></span></div>
-    <hr class="zone-sep">
-    <div class="proc proc-head"><span></span><span>CPU</span><span>RAM</span></div>
-    <div id="proc-list"></div>
-  </div>
-
-  <div class="card up" id="status-card">
-    <div class="card-hdr">
-      <span class="dot" id="status-dot"></span><span class="card-name">STATUS</span><span class="status-uptime" id="status-uptime"></span>
-    </div>
-    <hr class="zone-sep">
-    <div class="st-row"><span class="k">Power</span><span class="val" id="status-power">&mdash;</span></div>
-    <div class="st-row">
-      <span class="k">HW</span>
-      <div class="svcbar" id="status-svcbar" role="button" tabindex="0" title="Open Service Operations (HW / SRV)">
-        <span class="s"><span class="adot" id="status-dot-aprs"></span>APRS</span>
-        <span class="s"><span class="adot" id="status-dot-adsb"></span>ADS-B</span>
-        <span class="s"><span class="adot" id="status-dot-owrx"></span>ORX</span>
-        <span class="s"><span class="adot" id="status-dot-sat"></span>SAT</span>
-      </div>
-    </div>
-    <div class="st-row"><span class="k">Host</span><span class="st-host" id="status-host">&mdash;</span></div>
-  </div>
-
-  <!-- GPS / GNSS receiver card (last, right) -->
+  <!-- GPS / GNSS receiver card (immediately after the zulu clock) -->
   <div class="gps-card down" id="gps-card" title="GNSS receiver + clock status">
     <div class="gps-card-hdr">
       <span class="gps-dot down" id="gps-dot"></span>
@@ -1163,7 +1199,35 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     </div>
   </div>
 
-  <!-- SRV OPS burger — far right of the header, after GPS (opens #hsx-pop) -->
+  <div class="card up" id="cpu-card">
+    <div class="card-hdr">
+      <span class="dot" id="cpu-dot"></span>
+      <span class="cpu-hdr">
+        <span class="k">CPU</span><span class="val" id="cpu-pct">&mdash;</span>
+        <span class="sep">&middot;</span>
+        <span class="k">Temp</span><span class="val" id="cpu-temp">&mdash;</span>
+      </span>
+      <span class="cpu-rate" id="cpu-rate"></span>
+    </div>
+    <hr class="zone-sep">
+    <div class="cpu-body">
+      <div class="cpu-mem">
+        <div class="mem-row"><span class="core-lbl">RAM</span><span class="val" id="cpu-ram">&mdash;</span></div>
+        <hr class="mem-sep">
+        <div class="mem-row"><span class="core-lbl">DISK</span><span class="val" id="cpu-disk">&mdash;</span></div>
+      </div>
+      <div id="cpu-cores"></div>
+    </div>
+  </div>
+
+  <div class="card up" id="proc-card">
+    <div class="card-hdr"><span class="dot up" id="proc-dot"></span><span class="card-name">PROCESSES</span><span class="proc-load" id="proc-load"></span></div>
+    <hr class="zone-sep">
+    <div class="proc proc-head"><span></span><span>CPU</span><span>RAM</span></div>
+    <div id="proc-list"></div>
+  </div>
+
+  <!-- SRV OPS burger — far right of the header (opens #hsx-pop) -->
   <button class="hsx-rail hsx-ok" id="hsx-rail" type="button" aria-expanded="false" aria-controls="hsx-pop" title="Service Operations — HW / SRV assignment">
     <span class="hsx-lbl" aria-hidden="true">SRV<br>OPS</span>
     <span class="hsx-bars" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -1442,6 +1506,12 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   <span class="section-hdr-title clickable" onclick="toggleNavGrid()" title="Collapse utility cards">OPS</span>
   <span class="section-hdr-sub">utilities · forms · reference</span>
   <button class="svc-collapse-btn" id="nav-collapse-btn" title="Collapse utility cards" onclick="toggleNavGrid()">&#9660;</button>
+  <span class="section-hdr-right">
+    <span class="svc-pill" id="ops-uptime-pill" title="System uptime">
+      <span class="pill-k">UPTIME</span>
+      <span class="pill-v" id="ops-uptime">&mdash;</span>
+    </span>
+  </span>
 </div>
 <div class="nav-grid-wrap" id="nav-grid-wrap">
 <div class="nav-grid">
@@ -2813,6 +2883,17 @@ async function fetchStats() {
       hostEl.innerHTML = `${d.hostname}`
         + (d.ip ? ` <span class="host-ip">· ${d.ip}</span>` : '');
     }
+    // Host/IP pill in the title section (last line, under callsign/units/wifi).
+    const hpNm = document.getElementById('host-name');
+    if (hpNm) {
+      const hp  = document.getElementById('host-pill');
+      const hip = document.getElementById('host-ip');
+      const hsep = document.getElementById('host-sep');
+      if (hip)  hip.textContent = d.ip || 'n/a';
+      hpNm.textContent = d.hostname || '';
+      if (hsep) hsep.hidden = !(d.ip && d.hostname);
+      if (hp)   hp.classList.toggle('up', !!d.ip);
+    }
 
     // GPS card (topbar centre) — ALWAYS shown. Every field defaults to n/a and
     // fills in as the receiver gets a fix. Fuses gpsd fix/sats/position with
@@ -2944,15 +3025,16 @@ async function fetchStats() {
     const procDot = document.getElementById('proc-dot');
     if (procDot) procDot.className = 'dot ' + lstate;
     // STATUS card: uptime value on the title line (neutral, no label).
-    const upEl = document.getElementById('status-uptime');
-    if (upEl) {
-      const u = d.uptime_sec;
-      if (u == null) { upEl.textContent = ''; }
-      else {
-        const dd = Math.floor(u / 86400), hh = Math.floor((u % 86400) / 3600), mm = Math.floor((u % 3600) / 60);
-        upEl.textContent = dd > 0 ? `${dd}d ${hh}h` : hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
-      }
+    const u = d.uptime_sec;
+    let upStr = '';
+    if (u != null) {
+      const dd = Math.floor(u / 86400), hh = Math.floor((u % 86400) / 3600), mm = Math.floor((u % 3600) / 60);
+      upStr = dd > 0 ? `${dd}d ${hh}h` : hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
     }
+    const upEl = document.getElementById('status-uptime');
+    if (upEl) upEl.textContent = upStr;
+    const opsUp = document.getElementById('ops-uptime');
+    if (opsUp) opsUp.textContent = upStr || '—';
     // STATUS card: Power drives the border/tint. Reflects the CURRENT throttle
     // state each poll, so a cleared condition returns the card to clean next tick.
     const powEl = document.getElementById('status-power');
@@ -2965,6 +3047,28 @@ async function fetchStats() {
     } else if (d.throttle) {
       if (powEl) { powEl.textContent = 'OK'; powEl.className = 'val ok'; }
     } else if (powEl) { powEl.textContent = 'n/a'; powEl.className = 'val'; }
+    // Power pill (title section, inline with host). Mirrors the STATUS→Power
+    // state: green OK / amber warn / red under-volt. Full condition list lives
+    // in the value (ellipsized) and the tooltip so a long message never breaks
+    // the fixed-width row.
+    const pwrPill = document.getElementById('pwr-pill');
+    const pwrVal  = document.getElementById('pwr-val');
+    if (pwrVal) {
+      let pTxt = 'n/a', pCls = '';
+      if (d.throttle && d.throttle.now_any) {
+        const pn = { under_voltage:'under-volt', freq_capped:'freq-cap', throttled:'throttled', soft_temp:'temp-limit' };
+        const active = Object.keys(pn).filter(k => d.throttle.now[k]).map(k => pn[k]);
+        pTxt = active.join(', ') || 'throttled';
+        pCls = d.throttle.now.under_voltage ? 'crit' : 'warn';
+      } else if (d.throttle) {
+        pTxt = 'OK'; pCls = 'ok';
+      }
+      pwrVal.textContent = pTxt;
+      if (pwrPill) {
+        pwrPill.className = 'pwr-pill' + (pCls ? ' ' + pCls : '');
+        pwrPill.title = 'Power / throttle status — ' + pTxt;
+      }
+    }
     const statusCard = document.getElementById('status-card');
     if (statusCard) statusCard.className = 'card ' + powState;
     const statusDot = document.getElementById('status-dot');

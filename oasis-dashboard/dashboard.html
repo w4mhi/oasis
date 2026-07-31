@@ -58,8 +58,8 @@
   .face::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:.4rem; }
   .face.loc::before{ background:var(--blue); }
   .face.utc::before{ background:var(--text); }
-  /* border + tint aligned with the index cards (blue LOCAL, amber UTC) */
-  .face.loc{ border-color:color-mix(in srgb,var(--blue) 45%,var(--border)); background:color-mix(in srgb,var(--blue) 8%,var(--panel)); }
+  /* border aligned with the index cards (blue LOCAL, plain UTC) — no fill tint */
+  .face.loc{ border-color:color-mix(in srgb,var(--blue) 45%,var(--border)); background:var(--panel); }
   .face.utc{ border-color:var(--border); background:var(--panel); }
   .face .zn{ display:flex; align-items:baseline; gap:.8rem; }
   .face .zn .z{ font-size:1.1rem; letter-spacing:.22em; font-weight:700; }
