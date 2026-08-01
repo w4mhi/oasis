@@ -35,6 +35,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [File browser](#file-browser)
 - [CM4Stack panel display](#cm4stack-panel-display)
 - [RGB Cooling HAT](#rgb-cooling-hat)
+- [Argon ONE case (fan control)](#argon-one-case-fan-control)
 - [OASIS Dashboard / kiosk display](#oasis-dashboard--kiosk-display)
 - [USB / Portable bundle](#usb--portable-bundle)
 - [Keeping data fresh](#keeping-data-fresh)
@@ -63,6 +64,7 @@ Units OASIS writes itself live under `/etc/systemd/system/`:
 | RTL-SDR APRS feed | `/etc/systemd/system/aprs-sdr-feed.service` |
 | ADS-B recorder + history API | `/etc/systemd/system/adsb-api.service` |
 | RGB Cooling HAT | `/etc/systemd/system/rgb-cooling-hat.service` |
+| Argon ONE fan | `/etc/systemd/system/argon-fan.service` |
 | DRA-Pi RX LED | `/etc/systemd/system/dra-rx-led.service` |
 | Wi-Fi AP fallback | `/etc/systemd/system/oasis-netwatch.service` |
 
@@ -1889,6 +1891,47 @@ and installs the daemon (`rgb-cooling-hat/rgb-cooling-hat.py`) to `/opt` as a
 systemd service. The daemon itself needs **no internet** (it has an inlined SSD1306
 driver); on a fully offline box, install the three apt deps from your apt cache or
 bundled `.deb`s first.
+
+---
+
+## Argon ONE case (fan control)
+
+For an **Argon ONE** case (v2 / v3 / M.2), this installs a small daemon that drives
+the case fan from CPU temperature over I²C — **without** the vendor `argononed`
+daemon:
+
+```bash
+python3 features/argon-fan/install-argon-fan.py            # install + enable the service
+python3 features/argon-fan/install-argon-fan.py --user pi  # run the service as 'pi'
+python3 features/argon-fan/install-argon-fan.py --check    # report status
+python3 features/argon-fan/install-argon-fan.py --disable  # remove the service; unmask argononed
+```
+
+It enables I²C, installs the apt deps (`python3-smbus`, `i2c-tools`), confirms the
+fan MCU is on the bus (`0x1a`), and installs the daemon (`features/argon-fan/argon-fan.py`)
+to `/opt` as `argon-fan.service`. The fan MCU takes a **single byte = speed percent**
+(`sudo i2cset -y 1 0x1a 100` = full, `0` = off) — that's the whole protocol. The
+daemon needs **no internet**.
+
+> ⚠️ **Why not the vendor daemon? The GPIO4 conflict.** Argon's `argononed` monitors
+> **BCM GPIO4** for the case's soft power button. GPIO4 is *also* where the Waveshare
+> **L76X GPS HAT** routes its **1PPS** wire (`dtoverlay=pps-gpio,gpiopin=4`). With
+> `argononed` running, one PPS pulse per second reads as a stream of power-button
+> presses, so the Pi **reboots and then shuts down** the moment the GPS/DRA HAT is
+> seated. This installer stops, disables, and **masks** `argononed` to free GPIO4;
+> `argon-fan` never touches it. (Masked, not removed — restore the power button with
+> `sudo systemctl unmask argononed`, or remove the vendor package entirely with
+> `sudo /etc/argon/argon-uninstall.sh`, which leaves the `config.txt` UART/I²C edits.)
+
+> ⚠️ **I²C `0x1a` collision with the DRA-Pi.** The Wolfson **WM8731** codec on the
+> MastersComm **DRA-Pi** *also* defaults to `0x1a` — the same address as the Argon
+> fan MCU. If both share a bus, fan writes and the codec fight for the address. Strap
+> the WM8731 **CSB** pin to `0x1b`, or don't stack both. `--check` warns when the
+> WM8731 overlay is present in `config.txt`.
+
+The CPU/temp card on the dashboard shows a fan blade that spins when the fan is
+running and the CPU is ≥ ~55 °C (green → amber → red by temperature); it's hidden
+when no cooling daemon is installed.
 
 ---
 
