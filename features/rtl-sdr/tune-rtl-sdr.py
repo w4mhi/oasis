@@ -8,6 +8,8 @@ Wraps  rtl_fm | sox | direwolf  and lets you live-adjust gain, sox volume, ppm,
 the audio sample rate (24k/48k), and rtl_fm's -F down-sample FIR (0–9) while
 watching Direwolf's 46(6/6) audio-level
 feedback as a banded bar graph, plus a rolling decode count and recent callsigns.
+The header names the exact dongle in use (index, model, serial) and its USB port
+(1-1, 2-1, …) so it's unambiguous which of several dongles the bench is driving.
 Press 's' to auto-sweep gain then ppm; 'w' to save the known-good settings and
 emit the exact GrayWolf feed command. Receive-only — an RTL-SDR cannot transmit.
 
@@ -188,6 +190,12 @@ def build_argparser():
                         "9 = 9-tap low-leakage filter — heavier). Tune live with t/T.")
     p.add_argument("--conf", default=None,
                    help="Reuse an existing Direwolf conf instead of generating one.")
+    p.add_argument("--device", default=None,
+                   help="Which RTL-SDR to use when several are attached: a "
+                        "device index (0, 1, …) or a dongle serial. Omitted = "
+                        "index 0. Run `rtl_test` to list dongles + serials; use "
+                        "this to target a free dongle while another (e.g. "
+                        "dump1090-fa on device 0) keeps running.")
     return p
 
 
@@ -202,18 +210,91 @@ def write_conf(logdir):
     return conf_path
 
 
-def probe_device():
-    """Run `rtl_test -t` once up front. Return (error_reason, gains) where
-    error_reason is "busy"/"absent"/None and gains is the supported gain list
-    (static R820T fallback when the dongle can't be queried)."""
+def probe_device(device=None):
+    """Run `rtl_test -t` once up front against the SELECTED dongle (device: an
+    rtl_test -d index/serial, or None for index 0). Must target the same dongle
+    the pipeline will, or a busy device 0 would abort a launch aimed at a free
+    device 1. Return (error_reason, gains) where error_reason is
+    "busy"/"absent"/None and gains is the supported gain list (static R820T
+    fallback when the dongle can't be queried)."""
+    cmd = ["rtl_test", "-t"] + (["-d", str(device)] if device is not None else [])
     try:
-        out = subprocess.run(["rtl_test", "-t"], capture_output=True, text=True,
+        out = subprocess.run(cmd, capture_output=True, text=True,
                              timeout=6).stderr
     except Exception:
         return None, list(S.STATIC_R820T_GAINS)   # can't probe — don't block launch
     reason = S.device_error(out)
     gains = S.parse_gains(out) or list(S.STATIC_R820T_GAINS)
     return reason, gains
+
+
+def list_devices():
+    """Enumerate every attached dongle for the picker. rtl_test's 'Found N
+    device(s)' header lists all dongles before it opens device 0, so this works
+    even while another (busy) dongle is in use. Returns [] when rtl_test is
+    missing or nothing enumerates — the caller then falls back to the plain
+    single-device path."""
+    try:
+        out = subprocess.run(["rtl_test", "-t"], capture_output=True, text=True,
+                             timeout=6)
+    except Exception:
+        return []
+    return S.parse_devices((out.stderr or "") + "\n" + (out.stdout or ""))
+
+
+def read_usb_devices(root="/sys/bus/usb/devices"):
+    """Snapshot every USB device from sysfs as
+    [{"port","vid","pid","serial","name"}]. The sysfs directory name IS the USB
+    port path (e.g. "1-1.4"), which is exactly the "1-1 / 2-1" label the operator
+    wants. Skips interface nodes ("1-1.4:1.0", they carry a colon) and root hubs
+    ("usb1"). Returns [] off-Linux or when sysfs is unreadable — the caller then
+    renders the port as "?"."""
+    records = []
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return records
+
+    def _read(devdir, fname):
+        try:
+            with open(os.path.join(devdir, fname)) as fh:
+                return fh.read().strip()
+        except OSError:
+            return ""
+
+    for entry in names:
+        if ":" in entry or entry.startswith("usb"):
+            continue                       # interface node or root hub — not a port
+        devdir = os.path.join(root, entry)
+        vid = _read(devdir, "idVendor")
+        if not vid:                        # no idVendor → not a real USB device dir
+            continue
+        records.append({
+            "port": entry,
+            "vid": vid,
+            "pid": _read(devdir, "idProduct"),
+            "serial": _read(devdir, "serial"),
+            "name": _read(devdir, "product"),
+        })
+    return records
+
+
+def select_device(devices):
+    """Interactive dongle picker (plain stdin, shown before curses takes the
+    screen). Returns the chosen index as a string for -d, or None to accept the
+    default (first dongle / no -d)."""
+    print(S.format_device_menu(devices))
+    hi = devices[-1]["index"]
+    prompt = f"Choose a dongle [0-{hi}] (Enter = {devices[0]['index']}): "
+    while True:
+        try:
+            raw = input(prompt)
+        except EOFError:                       # non-interactive stdin: take default
+            return None
+        idx = S.parse_menu_choice(raw, devices)
+        if idx is not None:
+            return str(idx)
+        print("  Not a listed dongle — enter one of the numbers above.")
 
 
 class State:
@@ -227,6 +308,8 @@ class State:
         self.vol = float(args.vol)
         self.rate = args.rate
         self.fir = args.fir
+        self.device = args.device
+        self.dongle = getattr(args, "dongle", "")   # header identity line
 
     @property
     def gain(self):
@@ -235,7 +318,7 @@ class State:
     def command(self):
         return S.build_pipeline(self.freq, f"{self.gain:.1f}", self.ppm,
                                 f"{self.vol:.2f}", self.rate, self.conf,
-                                self.fir)
+                                self.fir, self.device)
 
 
 def respawn(runner, state):
@@ -293,17 +376,19 @@ def run_tui(stdscr, args, conf_path, gains):
             band = S.level_band(last_level.level)
 
             stdscr.erase()
+            h, _w = stdscr.getmaxyx()
             stdscr.addstr(0, 1, f"APRS Tune — {state.freq}    "
                                 f"gain {state.gain:.1f}  vol {state.vol:.2f}  "
                                 f"ppm {state.ppm}  rate {state.rate // 1000}k  "
                                 f"fir {state.fir}")
-            stdscr.addstr(1, 1, "─" * 60)
+            stdscr.addstr(1, 1, f"dongle {state.dongle}"[:_w - 2])
+            stdscr.addstr(2, 1, "─" * 60)
             bar = S.format_bar(last_level.level)
-            stdscr.addstr(2, 1, f"level {last_level.level:3d}  ")
-            stdscr.addstr(2, 12, bar, band_attr[band])
-            stdscr.addstr(2, 12 + len(bar) + 2,
+            stdscr.addstr(3, 1, f"level {last_level.level:3d}  ")
+            stdscr.addstr(3, 12, bar, band_attr[band])
+            stdscr.addstr(3, 12 + len(bar) + 2,
                           f"{band:5s}  ({last_level.lo}/{last_level.hi} demod)")
-            stdscr.addstr(3, 8, "0        25        50        75       100")
+            stdscr.addstr(4, 8, "0        25        50        75       100")
             # Audio-flow heartbeat from Direwolf -a 2 (proves the RF/USB/audio
             # path is alive independent of decodes — the bench's pkt/s-equivalent).
             alive = runner.alive()
@@ -320,32 +405,31 @@ def run_tui(stdscr, args, conf_path, gains):
             else:
                 audio_txt = "audio: —  (pipeline down)"
                 audio_attr = 0
-            stdscr.addstr(4, 1, audio_txt, audio_attr)
+            stdscr.addstr(5, 1, audio_txt, audio_attr)
             rate = decodes / WINDOW_SECS
             last_calls = "  ".join(d.src for d in list(recent)[-2:]) or "-"
-            stdscr.addstr(5, 1, f"decodes  {decodes} in {WINDOW_SECS}s   "
+            stdscr.addstr(6, 1, f"decodes  {decodes} in {WINDOW_SECS}s   "
                                 f"({rate:.2f}/s)      last: {last_calls}")
-            stdscr.addstr(6, 1, "─" * 60)
-            stdscr.addstr(7, 1, "recent packets:")
+            stdscr.addstr(7, 1, "─" * 60)
+            stdscr.addstr(8, 1, "recent packets:")
             for i, d in enumerate(list(recent)[-3:]):
-                stdscr.addstr(8 + i, 3, f"{d.src}>{d.dest}: {d.payload}"[:56])
-            h, _w = stdscr.getmaxyx()
-            stdscr.addstr(11, 1, "─" * 60)
-            if h > 12:
-                stdscr.addstr(12, 1, "g/G gain  v/V vol  p/P ppm  t/T fir  "
+                stdscr.addstr(9 + i, 3, f"{d.src}>{d.dest}: {d.payload}"[:56])
+            stdscr.addstr(12, 1, "─" * 60)
+            if h > 13:
+                stdscr.addstr(13, 1, "g/G gain  v/V vol  p/P ppm  t/T fir  "
                                      "r rate  f freq  s sweep  w save  q quit")
-            if not runner.alive() and h > 13:
+            if not runner.alive() and h > 14:
                 rc = runner.returncode()
-                stdscr.addstr(13, 1,
+                stdscr.addstr(14, 1,
                               f"PIPELINE EXITED (exit {rc}) — check rtl_fm/dongle "
                               "(is aprs-sdr-feed.service running?)",
                               curses.color_pair(2))
                 # Show the last raw lines so the operator can see the actual
                 # rtl_fm/sox/direwolf error instead of guessing.
                 tail = [t for t in runner.tail() if t.strip()]
-                for i, t in enumerate(tail[-(h - 15):]):
-                    if 14 + i < h:
-                        stdscr.addstr(14 + i, 3, t[:_w - 4],
+                for i, t in enumerate(tail[-(h - 16):]):
+                    if 15 + i < h:
+                        stdscr.addstr(15 + i, 3, t[:_w - 4],
                                       curses.color_pair(3))
             stdscr.refresh()
 
@@ -403,7 +487,25 @@ def main(argv=None):
         print(S.deps_message(missing))
         return 1
 
-    reason, gains = probe_device()
+    # Pick a dongle up front. An explicit --device wins; otherwise offer the
+    # picker only when there's a genuine choice (2+ dongles). A single dongle
+    # (or an un-enumerable rtl_test) takes the plain default path unchanged.
+    devices = list_devices()
+    target = args.device
+    if target is None and len(devices) > 1:
+        target = select_device(devices)
+    args.device = target        # carry the resolved choice into State.command()
+
+    # Resolve which dongle this is and where it sits on USB, so the operator can
+    # see the exact hardware the bench is driving (which of several dongles + the
+    # USB port like 1-1 / 2-1). Both degrade gracefully: unresolved entry falls
+    # back to "index 0 default", unknown port renders as "USB ?".
+    entry = S.resolve_device(devices, target)
+    port = S.match_usb_port(read_usb_devices(), entry["serial"]) if entry else None
+    args.dongle = S.format_dongle(entry, port)
+    print(f"Using dongle {args.dongle}")
+
+    reason, gains = probe_device(target)
     if reason:
         print(S.device_help(reason))
         return 1

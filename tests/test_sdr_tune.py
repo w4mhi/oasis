@@ -44,6 +44,25 @@ class BuildPipelineTests(unittest.TestCase):
         self.assertIn("-F 9", cmd)
         self.assertNotIn("-F 0", cmd)
 
+    def test_build_pipeline_device_omitted_by_default(self):
+        # default (device=None) must be byte-identical to the pre-selector
+        # single-dongle command — no -d leaks in.
+        cmd = S.build_pipeline("144.390M", "32.8", 0, "0.50", 24000, "/tmp/sdr.conf")
+        self.assertTrue(cmd.startswith("rtl_fm -M fm "))
+        self.assertNotIn(" -d ", cmd)
+
+    def test_build_pipeline_device_selects_by_index(self):
+        cmd = S.build_pipeline("144.390M", "32.8", 0, "0.50", 24000,
+                               "/tmp/sdr.conf", device="1")
+        # -d rides on rtl_fm only (the sole hardware-opening stage).
+        self.assertTrue(cmd.startswith("rtl_fm -d 1 -M fm "))
+        self.assertEqual(cmd.count(" -d "), 1)
+
+    def test_build_pipeline_device_accepts_serial(self):
+        cmd = S.build_pipeline("144.390M", "32.8", 0, "0.50", 24000,
+                               "/tmp/sdr.conf", device="00000001")
+        self.assertIn("rtl_fm -d 00000001 -M fm ", cmd)
+
 
 class ParseLineTests(unittest.TestCase):
     def test_parse_audio_level(self):
@@ -216,8 +235,170 @@ class DeviceProbeTests(unittest.TestCase):
         self.assertIn("aprs-sdr-feed.service", msg)
         self.assertIn("dvb_usb_rtl28xxu", msg)
 
+    def test_device_help_busy_points_at_second_dongle(self):
+        # the busy path must advertise the --device escape hatch and name the
+        # ADS-B holder (the real single-box collision), not just the APRS feed.
+        msg = S.device_help("busy")
+        self.assertIn("--device", msg)
+        self.assertIn("dump1090-fa", msg)
+
     def test_device_help_absent(self):
         self.assertIn("No RTL-SDR dongle", S.device_help("absent"))
+
+
+class DeviceMenuTests(unittest.TestCase):
+    TWO = ("Found 2 device(s):\n"
+           "  0:  Realtek, RTL2832U, SN: 00001000\n"
+           "  1:  RTLSDRBlog, Blog V4, SN: 00000001\n"
+           "Using device 0: Generic RTL2832U\n"
+           "usb_claim_interface error -6\n")
+
+    def test_parse_devices_two_with_serials(self):
+        devs = S.parse_devices(self.TWO)
+        self.assertEqual(devs, [
+            {"index": 0, "name": "Realtek, RTL2832U", "serial": "00001000"},
+            {"index": 1, "name": "RTLSDRBlog, Blog V4", "serial": "00000001"},
+        ])
+
+    def test_parse_devices_without_serial(self):
+        devs = S.parse_devices("Found 1 device(s):\n  0:  Realtek, RTL2838UHIDIR\n")
+        self.assertEqual(devs, [{"index": 0, "name": "Realtek, RTL2838UHIDIR",
+                                 "serial": ""}])
+
+    def test_parse_devices_ignores_noise_lines(self):
+        # "Found …", "Using …", and gain lines must never look like a device row.
+        noise = ("Found 1 device(s):\n"
+                 "Using device 0: Generic RTL2832U OEM\n"
+                 "Supported gain values (29): 0.0 0.9 1.4\n")
+        self.assertEqual(S.parse_devices(noise), [])
+
+    def test_parse_devices_empty(self):
+        self.assertEqual(S.parse_devices("No supported devices found.\n"), [])
+
+    def test_format_device_menu_lists_index_and_serial(self):
+        menu = S.format_device_menu(S.parse_devices(self.TWO))
+        self.assertIn("[0]", menu)
+        self.assertIn("[1]", menu)
+        self.assertIn("Blog V4", menu)
+        self.assertIn("SN 00000001", menu)
+
+    def test_menu_choice_empty_defaults_to_first(self):
+        self.assertEqual(S.parse_menu_choice("", S.parse_devices(self.TWO)), 0)
+
+    def test_menu_choice_valid_index(self):
+        self.assertEqual(S.parse_menu_choice("1", S.parse_devices(self.TWO)), 1)
+
+    def test_menu_choice_out_of_range_returns_none(self):
+        self.assertIsNone(S.parse_menu_choice("5", S.parse_devices(self.TWO)))
+
+    def test_menu_choice_non_numeric_returns_none(self):
+        self.assertIsNone(S.parse_menu_choice("x", S.parse_devices(self.TWO)))
+
+
+class ResolveDeviceTests(unittest.TestCase):
+    DEVS = [
+        {"index": 0, "name": "Realtek, RTL2832U", "serial": "00001000"},
+        {"index": 1, "name": "RTLSDRBlog, Blog V4", "serial": "00000001"},
+    ]
+
+    def test_default_target_picks_first(self):
+        self.assertEqual(S.resolve_device(self.DEVS, None), self.DEVS[0])
+
+    def test_target_by_index_string(self):
+        self.assertEqual(S.resolve_device(self.DEVS, "1"), self.DEVS[1])
+
+    def test_target_by_serial(self):
+        self.assertEqual(S.resolve_device(self.DEVS, "00000001"), self.DEVS[1])
+
+    def test_unknown_target_returns_none(self):
+        self.assertIsNone(S.resolve_device(self.DEVS, "nope"))
+
+    def test_no_devices_returns_none(self):
+        self.assertIsNone(S.resolve_device([], None))
+
+
+class UsbPortTests(unittest.TestCase):
+    RECORDS = [
+        {"port": "1-1", "vid": "1d6b", "pid": "0002", "serial": "", "name": "xHCI"},
+        {"port": "1-1.4", "vid": "0bda", "pid": "2838", "serial": "00000001",
+         "name": "Blog V4"},
+        {"port": "3-1", "vid": "0bda", "pid": "2832", "serial": "00001000",
+         "name": "RTL2832U"},
+    ]
+
+    def test_is_rtl_usb_by_vid_pid(self):
+        self.assertTrue(S.is_rtl_usb("0bda", "2838"))
+        self.assertTrue(S.is_rtl_usb("0BDA", "2832"))     # case-insensitive
+        self.assertFalse(S.is_rtl_usb("1d6b", "0002"))    # a USB hub
+
+    def test_is_rtl_usb_by_name(self):
+        self.assertTrue(S.is_rtl_usb("1234", "5678", "Generic RTL2832U OEM"))
+
+    def test_match_port_by_serial(self):
+        self.assertEqual(S.match_usb_port(self.RECORDS, "00000001"), "1-1.4")
+        self.assertEqual(S.match_usb_port(self.RECORDS, "00001000"), "3-1")
+
+    def test_match_port_blank_serial_returns_none(self):
+        self.assertIsNone(S.match_usb_port(self.RECORDS, ""))
+        self.assertIsNone(S.match_usb_port(self.RECORDS, None))
+
+    def test_match_port_duplicate_serial_returns_none(self):
+        dupes = [
+            {"port": "1-1.1", "vid": "0bda", "pid": "2838", "serial": "00000001",
+             "name": "RTL2838"},
+            {"port": "1-1.2", "vid": "0bda", "pid": "2838", "serial": "00000001",
+             "name": "RTL2838"},
+        ]
+        self.assertIsNone(S.match_usb_port(dupes, "00000001"))
+
+    def test_match_port_no_match_returns_none(self):
+        self.assertIsNone(S.match_usb_port(self.RECORDS, "deadbeef"))
+
+
+class FormatDongleTests(unittest.TestCase):
+    ENTRY = {"index": 1, "name": "RTLSDRBlog, Blog V4", "serial": "00000001"}
+
+    def test_full_line_with_port(self):
+        line = S.format_dongle(self.ENTRY, "1-1.4")
+        self.assertIn("[1]", line)
+        self.assertIn("RTLSDRBlog, Blog V4", line)
+        self.assertIn("SN 00000001", line)
+        self.assertIn("USB 1-1.4", line)
+
+    def test_unknown_port_shows_question_mark(self):
+        self.assertIn("USB ?", S.format_dongle(self.ENTRY, None))
+
+    def test_missing_serial_shows_dash(self):
+        entry = {"index": 0, "name": "Realtek, RTL2838UHIDIR", "serial": ""}
+        self.assertIn("SN —", S.format_dongle(entry, "2-1"))
+
+    def test_no_entry_falls_back_to_default(self):
+        line = S.format_dongle(None, None)
+        self.assertIn("[0]", line)
+        self.assertIn("USB ?", line)
+
+
+class ReadUsbDevicesTests(unittest.TestCase):
+    def test_reads_and_skips_interfaces_and_hubs(self):
+        with tempfile.TemporaryDirectory() as root:
+            # A real dongle at port 1-1.4 …
+            dev = os.path.join(root, "1-1.4")
+            os.mkdir(dev)
+            for f, v in (("idVendor", "0bda"), ("idProduct", "2838"),
+                         ("serial", "00000001"), ("product", "Blog V4")):
+                with open(os.path.join(dev, f), "w") as fh:
+                    fh.write(v + "\n")
+            # … an interface dir (has ':') and a root hub ('usb1') must be skipped.
+            os.mkdir(os.path.join(root, "1-1.4:1.0"))
+            os.mkdir(os.path.join(root, "usb1"))
+            recs = tune.read_usb_devices(root)
+        self.assertEqual(len(recs), 1)
+        self.assertEqual(recs[0], {"port": "1-1.4", "vid": "0bda",
+                                   "pid": "2838", "serial": "00000001",
+                                   "name": "Blog V4"})
+
+    def test_missing_root_returns_empty(self):
+        self.assertEqual(tune.read_usb_devices("/no/such/sysfs"), [])
 
 
 class PipelineRunnerTests(unittest.TestCase):
