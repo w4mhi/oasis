@@ -351,6 +351,32 @@ _THROTTLE = None  # cached _pi_throttled(); None on non-Pi
 _NET      = None  # cached _wifi_info();    None when unavailable
 _GPS      = None  # cached _gps_info();    None when gpsd unreachable
 _CHRONY   = None  # cached _chrony_state(); clock state, independent of GPS
+_COOLING  = None  # cached _cooling_status(); which fan daemon is present, or None
+
+
+# Which OASIS fan daemon feeds the CPU-card fan blade, in priority order.
+_COOLING_UNITS = (("argon", "argon-fan.service"), ("rgb", "rgb-cooling-hat.service"))
+
+
+def _cooling_status():
+    """Which OASIS cooling-fan daemon is installed, and whether it's running —
+    for the CPU card's fan blade. Returns e.g. {"kind":"argon","installed":True,
+    "running":True}, or None when neither daemon is present. Cheap (one
+    `systemctl show` per unit) and run on the sampler's slow tick, never in the
+    request path. `systemctl show` exits 0 even for an absent unit (LoadState=
+    not-found), so a missing daemon just doesn't match."""
+    for kind, unit in _COOLING_UNITS:
+        try:
+            out = subprocess.run(
+                ["systemctl", "show", unit, "-p", "LoadState", "-p", "ActiveState"],
+                capture_output=True, text=True, timeout=3).stdout
+        except Exception:
+            continue
+        props = dict(ln.split("=", 1) for ln in out.strip().splitlines() if "=" in ln)
+        if props.get("LoadState") == "loaded":
+            return {"kind": kind, "installed": True,
+                    "running": props.get("ActiveState") == "active"}
+    return None
 
 def _read_top_procs(procmap, limit=3):
     """Top `limit` processes by CPU% over the last sample window. `procmap` is a
@@ -381,7 +407,7 @@ def _sampler():
         import psutil
     except ImportError:
         psutil = None
-    global _CPU_PCT, _CPU_CORES, _TOP_PROCS, _THROTTLE, _NET, _GPS, _CHRONY
+    global _CPU_PCT, _CPU_CORES, _TOP_PROCS, _THROTTLE, _NET, _GPS, _CHRONY, _COOLING
     if psutil:
         psutil.cpu_percent(interval=None)              # prime overall baseline
     i = 0
@@ -412,6 +438,7 @@ def _sampler():
             _NET      = _wifi_info()
             _GPS      = _gps_info()
             _CHRONY   = _chrony_state()
+            _COOLING  = _cooling_status()
         i += 1
 
 threading.Thread(target=_sampler, name="oasis-sampler", daemon=True).start()
@@ -551,6 +578,7 @@ def api_system():
         "net":         _NET,
         "gps":         _GPS,
         "chrony":      _CHRONY,
+        "cooling":     _COOLING,
     })
 
 

@@ -31,7 +31,7 @@ EXCLUDED = {"server", "wikipedia"}
 # The services group delivered in Task 4 (satellites is data-style: advisory only).
 SERVICES_GROUP = {
     "graywolf", "winlink", "kiwix", "openwebrx", "adsb",
-    "webssh", "service-controls", "ap-fallback", "rgb-cooling-hat",
+    "webssh", "service-controls", "ap-fallback", "rgb-cooling-hat", "argon-fan",
 }
 
 # The hardware/config group delivered in Task 5.

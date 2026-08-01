@@ -127,6 +127,17 @@ body {
 .lbl{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.07em;color:var(--text-dim)}
 .val{font-size:var(--fs-small);font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
 .val.ok{color:var(--accent)} .val.warn{color:var(--amber)} .val.hot{color:var(--red)}
+/* CPU-card fan blade: sits inline after Temp, inherits the temp colour (ok/warn/
+   hot). Hidden unless a cooling daemon is installed; spins only when the fan is
+   actually moving air, dims to a "static/idle" look otherwise. Transform-only
+   animation (compositor-cheap — see the box-shadow-anim CPU lesson). */
+.cpu-fan{display:none;width:1.35em;height:1.35em;margin-left:.36em;vertical-align:-.22em;color:var(--text-dim);transform-origin:50% 50%}
+.cpu-fan.show{display:inline-block}
+.cpu-fan.ok{color:var(--accent)} .cpu-fan.warn{color:var(--amber)} .cpu-fan.hot{color:var(--red)}
+.cpu-fan.static{opacity:.6}
+.cpu-fan.spin{animation:cpu-fan-spin 1.3s linear infinite}
+@keyframes cpu-fan-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.cpu-fan.spin{animation:none}}
 
 /* ---- clock cards (dashboard style: left color bar + LOCAL/UTC), scaled to header ---- */
 .clk-card{position:relative;overflow:hidden;justify-content:center;min-width:200px;
@@ -1205,7 +1216,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="cpu-hdr">
         <span class="k">CPU</span><span class="val" id="cpu-pct">&mdash;</span>
         <span class="sep">&middot;</span>
-        <span class="k">Temp</span><span class="val" id="cpu-temp">&mdash;</span>
+        <span class="k">Temp</span><span class="val" id="cpu-temp">&mdash;</span><svg class="cpu-fan" id="cpu-fan" viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(0 8 8)"/><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(120 8 8)"/><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(240 8 8)"/></g><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg>
       </span>
       <span class="cpu-rate" id="cpu-rate"></span>
     </div>
@@ -2825,7 +2836,17 @@ function loadHomeCoords() {
     .catch(() => {});
 }
 
-function renderTemp()   { setStat('s-temp', fmtTemp(_lastTempC), _lastTempC, 65, 80); }
+// CPU temp: text obeys the global imperial/metric toggle via fmtTemp (which
+// appends the °F/°C suffix); colour thresholds stay in °C (65/80). Re-run from
+// applyUnits() so flipping units updates the reading without waiting for the
+// next /api/system poll.
+function renderTemp() {
+  const el = document.getElementById('cpu-temp');
+  if (!el) return;
+  const c = _lastTempC;
+  el.textContent = c != null ? fmtTemp(Math.round(c)) : 'n/a';
+  el.className   = 'val' + (c == null ? '' : c >= 80 ? ' hot' : c >= 65 ? ' warn' : ' ok');
+}
 function renderGpsAlt() {
   const el = document.getElementById('gps-alt');
   if (el) el.textContent = _lastGpsAltM != null ? fmtAlt(_lastGpsAltM) : 'n/a';
@@ -3007,7 +3028,30 @@ async function fetchStats() {
       el.className = 'val' + (v == null ? '' : v >= red ? ' hot' : v >= amber ? ' warn' : ' ok');
     };
     setVal('cpu-pct', d.cpu_pct != null ? `${Math.round(d.cpu_pct)}%` : 'n/a', d.cpu_pct, 70, 90);
-    setVal('cpu-temp', d.cpu_temp_c != null ? `${Math.round(d.cpu_temp_c)}°` : 'n/a', d.cpu_temp_c, 65, 80);
+    _lastTempC = d.cpu_temp_c;   // remember for unit-toggle re-render
+    renderTemp();                // obeys imperial/metric toggle + shows °F/°C suffix
+    // Fan blade: colour tracks the temp (same 65/80 tones); spins only when a
+    // cooling daemon is running AND the CPU is at/above the ~55°C turn-on (i.e.
+    // the fan is actually moving air) — otherwise it shows static/dimmed. Hidden
+    // entirely when no cooling daemon (argon-fan / rgb-cooling-hat) is installed.
+    const fan = document.getElementById('cpu-fan');
+    if (fan) {
+      const cool = d.cooling, t = d.cpu_temp_c;
+      // NB: #cpu-fan is an SVG element — its .className is a read-only
+      // SVGAnimatedString, not a string, so `el.className = '...'` silently
+      // no-ops. Use setAttribute('class', …), which works on SVG and HTML alike.
+      if (!cool || !cool.installed) {
+        fan.setAttribute('class', 'cpu-fan');    // no .show → hidden
+      } else {
+        const tone = t == null ? '' : t >= 80 ? ' hot' : t >= 65 ? ' warn' : ' ok';
+        const spinning = cool.running && t != null && t >= 55;
+        fan.setAttribute('class', 'cpu-fan show' + tone + (spinning ? ' spin' : ' static'));
+        fan.setAttribute('title', !cool.running
+          ? `Cooling fan (${cool.kind}) installed — service stopped`
+          : spinning ? `Cooling fan (${cool.kind}) running`
+          : `Cooling fan (${cool.kind}) idle — CPU below ~55°C`);
+      }
+    }
     // RAM: high = bad, so colour like the others but neutral under threshold.
     const ramPct = d.ram && d.ram.pct != null ? d.ram.pct : null;
     setVal('cpu-ram', ramPct != null ? `${Math.round(ramPct)}%` : 'n/a', ramPct, 70, 90);

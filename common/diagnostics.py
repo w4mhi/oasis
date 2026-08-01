@@ -1048,17 +1048,24 @@ def check_gps(ctx):
 
 def check_cooling_hat(ctx):
     """SYSTEM group / POWER capability, not critical -- cooling is a nice-to-
-    have, not something that blocks a capability. Signal:
-    systemd unit rgb-cooling-hat.service (features/rgb-cooling-hat)."""
-    svc = _svc_status("rgb-cooling-hat")
-    if svc["active"] == "active":
-        return _result("cooling_hat", "SYSTEM", "RGB Cooling HAT", "ok", "UP",
-                        f"rgb-cooling-hat service {_svc_word(svc)}.")
-    if svc["installed"]:
-        return _result("cooling_hat", "SYSTEM", "RGB Cooling HAT", "warn", "OFF",
-                        f"Installed but not running (rgb-cooling-hat is {svc['active']}).")
-    return _result("cooling_hat", "SYSTEM", "RGB Cooling HAT", "warn", "N/A",
-                    "rgb-cooling-hat service not installed.")
+    have, not something that blocks a capability. Signal: an OASIS fan daemon
+    systemd unit -- rgb-cooling-hat.service (features/rgb-cooling-hat) or
+    argon-fan.service (features/argon-fan). Whichever is present wins."""
+    label = "Cooling fan"
+    installed = None
+    for name in ("rgb-cooling-hat", "argon-fan"):
+        svc = _svc_status(name)
+        if svc["active"] == "active":
+            return _result("cooling_hat", "SYSTEM", label, "ok", "UP",
+                            f"{name} service {_svc_word(svc)}.")
+        if svc["installed"] and installed is None:
+            installed = (name, svc)
+    if installed:
+        name, svc = installed
+        return _result("cooling_hat", "SYSTEM", label, "warn", "OFF",
+                        f"Installed but not running ({name} is {svc['active']}).")
+    return _result("cooling_hat", "SYSTEM", label, "warn", "N/A",
+                    "No OASIS fan daemon installed (rgb-cooling-hat / argon-fan).")
 
 
 def check_aprs_feed(ctx):
@@ -1281,7 +1288,7 @@ REGISTRY.extend([
           capability="APRS_RX", critical=False, tier="v1", fn=check_dra_pi),
     Check(id="gps", group="HARDWARE", label="GPS",
           capability="POSITION", critical=True, tier="v1", fn=check_gps),
-    Check(id="cooling_hat", group="SYSTEM", label="RGB Cooling HAT",
+    Check(id="cooling_hat", group="SYSTEM", label="Cooling fan",
           capability="POWER", critical=False, tier="v1", fn=check_cooling_hat),
     Check(id="aprs_feed", group="SERVICES", label="APRS Feed",
           capability="APRS_RX", critical=True, tier="v1", fn=check_aprs_feed),

@@ -336,6 +336,7 @@ PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
     "openwebrx", "adsb", "satellites", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
     "pi-headless", "pi-local-monitor", "pi-oasis-dashboard", "cm4stack", "rgb-cooling-hat",
+    "argon-fan",
 }
 
 
@@ -571,6 +572,15 @@ def build_registry(repo_root, payload=None):
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "features/rgb-cooling-hat/install-rgb-cooling-hat.py"),
             removal_record_fn=lambda: _removal_record(repo_root, "features/rgb-cooling-hat/install-rgb-cooling-hat.py"),
+            verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
+        "argon-fan": SE.FeatureSpec(
+            key="argon-fan",
+            dependencies=["server"],
+            install_fn=lambda: _setup_run_script(repo_root, "features/argon-fan/install-argon-fan.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/argon-fan/install-argon-fan.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
