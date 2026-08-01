@@ -26,8 +26,12 @@ service (see features/argon-fan/README.md).
 
 CAVEAT — I2C 0x1a is also the default address of the Wolfson WM8731 codec on the
 MastersComm DRA-Pi. If that HAT is stacked, the fan MCU and the codec collide on
-0x1a and fan writes land on the codec (or vice-versa). Strap the WM8731 CSB pin
-to move it to 0x1b, or don't run both on one bus. The installer's --check warns.
+0x1a: once the codec's driver claims the address at boot, fan writes here return
+EBUSY (harmless but the fan is uncontrolled), and a fan write that races the
+codec's init can corrupt its TX audio and break Winlink RF. Strap the WM8731 CSB
+pin to move it to 0x1b, or don't run both on one bus. Because of this, the
+installer leaves this service DISABLED when the WM8731 overlay is present unless
+run with --force.
 """
 
 import argparse

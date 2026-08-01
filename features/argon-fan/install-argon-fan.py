@@ -17,9 +17,14 @@ Idempotent and version-aware — safe to re-run. Steps:
   2. Install the apt dependencies (python3-smbus, i2c-tools).
   3. Add the service user to the 'i2c' group.
   4. Neutralize the vendor argononed daemon (stop, disable, mask) if present.
-  5. Check the fan MCU is on the bus (i2cdetect → 0x1a) and warn on a WM8731
+  5. Check the fan MCU is on the bus (i2cdetect → 0x1a) and detect a WM8731
      (DRA-Pi) 0x1a collision.
-  6. Install the daemon to /opt and enable the service.
+  6. Install the daemon to /opt and enable the service — UNLESS the WM8731 codec
+     shares 0x1a, in which case the service is installed DISABLED: the fan can't
+     be software-controlled on a shared bus (the codec's driver claims 0x1a and
+     userspace writes return EBUSY), and a boot-time write racing the codec's
+     init can corrupt its TX audio path and kill Winlink RF. Override with --force
+     (only after moving the codec off 0x1a — strap WM8731 CSB to 0x1b).
 
 Offline-first: the daemon needs no internet. The two apt deps are common base
 packages; on a fully offline box, install them from your apt cache first.
@@ -30,6 +35,7 @@ Usage:
   python3 features/argon-fan/install-argon-fan.py --no-enable
   python3 features/argon-fan/install-argon-fan.py --check    # report status
   python3 features/argon-fan/install-argon-fan.py --disable  # remove + unmask argononed
+  python3 features/argon-fan/install-argon-fan.py --force     # enable despite a WM8731 0x1a collision
 
 Requires: Linux, systemd, sudo.
 """
@@ -54,6 +60,7 @@ VENDOR_SVC   = "argononed.service"     # the GPIO4 power-button daemon we replac
 APT_DEPS     = ["python3-smbus", "i2c-tools"]
 I2C_BUS      = 1
 FAN_ADDR     = "1a"    # Argon fan MCU — ALSO the WM8731 (DRA-Pi) default address
+CONFIG_TXT_PATHS = ("/boot/firmware/config.txt", "/boot/config.txt")
 
 
 def removal_record(repo_root=None):
@@ -174,29 +181,58 @@ def detect_fan():
     _warn_wm8731_collision()
 
 
-def _warn_wm8731_collision():
-    """The WM8731 codec on the DRA-Pi ALSO answers at 0x1a. If its overlay is in
-    config.txt, warn — fan writes and the codec will fight on the same address."""
-    for cfg in ("/boot/firmware/config.txt", "/boot/config.txt"):
+def _wm8731_overlay_present(config_paths=CONFIG_TXT_PATHS):
+    """True if a DRA-Pi WM8731 codec overlay is in the first readable boot config.
+
+    The WM8731 answers at I2C 0x1a — the same address as the Argon fan MCU — so
+    its presence means the two collide on the bus. Pure/injectable (config_paths)
+    so it's unit-testable off-Pi. Only the first readable file decides, matching
+    how the boot firmware reads a single config.txt."""
+    for cfg in config_paths:
         try:
             with open(cfg) as f:
                 text = f.read()
         except OSError:
             continue
-        if "wm8731" in text.lower():
-            _warn("DRA-Pi WM8731 overlay found in config.txt — the codec and the "
-                  "Argon fan MCU both use I2C 0x1a and will collide. Strap the "
-                  "WM8731 CSB pin to 0x1b, or don't run both on one bus.")
-        return
+        return "wm8731" in text.lower()
+    return False
+
+
+def _warn_wm8731_collision():
+    """Warn when the WM8731 codec shares 0x1a with the fan MCU (see the predicate)."""
+    if _wm8731_overlay_present():
+        _warn("DRA-Pi WM8731 overlay found in config.txt — the codec and the Argon "
+              "fan MCU both use I2C 0x1a. The codec's driver claims 0x1a at boot, so "
+              "the fan cannot be software-controlled while the DRA-Pi is seated "
+              "(writes return EBUSY), and a boot-race write can corrupt the codec's "
+              "TX audio. Strap the WM8731 CSB pin to 0x1b, or don't run both on one bus.")
 
 
 # ── Step 6: Daemon + service ──────────────────────────────────────────────────
+def enable_decision(no_enable, force, collision):
+    """Whether to enable+start the service after install.
+
+    Returns (enable, blocked_by_collision). When the WM8731 codec shares 0x1a
+    (collision) we install the unit but leave it DISABLED unless --force, because
+    the fan can't be controlled on a shared bus and a boot-time write can corrupt
+    the codec's TX audio (breaks Winlink RF). An explicit --no-enable always wins."""
+    if no_enable:
+        return False, False
+    if collision and not force:
+        return False, True
+    return True, False
+
+
 def build_unit(user):
     return (
         "[Unit]\n"
         "Description=Argon ONE fan control (I2C 0x1a, GPIO4-free)\n"
         f"Conflicts={VENDOR_SVC}\n"
-        "After=multi-user.target\n"
+        # Order after the sound subsystem: if a WM8731 codec shares 0x1a (a
+        # --force install), starting only once its driver has claimed the address
+        # and alsa-restore has run keeps our first fan write from racing — and
+        # corrupting — the codec's init. Harmless ordering on a fan-only Pi.
+        "After=multi-user.target sound.target alsa-restore.service\n"
         "\n"
         "[Service]\n"
         "Type=simple\n"
@@ -227,7 +263,7 @@ def install_service(user, enable):
     _run(["sudo", "systemctl", "daemon-reload"], check=False)
 
     if not enable:
-        _info(f"--no-enable: not starting. Later: "
+        _info(f"Service installed but not enabled. Enable later with: "
               f"sudo systemctl enable --now {SERVICE_NAME}")
         return
     _run(["sudo", "systemctl", "enable", "--now", SERVICE_NAME], check=False)
@@ -306,7 +342,18 @@ def run(args):
     add_i2c_group(user)
     neutralize_vendor()
     detect_fan()
-    install_service(user, enable=not args.no_enable)
+    collision = _wm8731_overlay_present()
+    enable, blocked = enable_decision(args.no_enable, args.force, collision)
+    if blocked:
+        _warn("Refusing to auto-start the fan service: the DRA-Pi WM8731 codec owns "
+              "I2C 0x1a on this Pi. A boot-time fan write can land on the codec and "
+              "kill your Winlink RF TX audio, and the fan can't be controlled while "
+              "the codec holds the address anyway. Installing the service DISABLED.")
+        _info("The fan runs on its hardware default (on) meanwhile — thermally safe.")
+        _info("To software-control the fan, move the codec off 0x1a (strap WM8731 CSB "
+              "to 0x1b), then re-run. To override now: "
+              "python3 features/argon-fan/install-argon-fan.py --force")
+    install_service(user, enable=enable)
 
     _hr()
     print(f"\n  Argon fan installed (service '{SERVICE_NAME}', user '{user}').")
@@ -331,12 +378,16 @@ def main():
                 "  python3 features/argon-fan/install-argon-fan.py --user pi\n"
                 "  python3 features/argon-fan/install-argon-fan.py --no-enable\n"
                 "  python3 features/argon-fan/install-argon-fan.py --check\n"
-                "  python3 features/argon-fan/install-argon-fan.py --disable\n"),
+                "  python3 features/argon-fan/install-argon-fan.py --disable\n"
+                "  python3 features/argon-fan/install-argon-fan.py --force\n"),
     )
     ap.add_argument("--user", help="User the service runs as (default: $SUDO_USER or current user).")
     ap.add_argument("--no-enable", action="store_true", help="Install but don't enable/start the service.")
     ap.add_argument("--check", action="store_true", help="Report install status.")
     ap.add_argument("--disable", action="store_true", help="Stop, disable, and remove the service + daemon; unmask argononed.")
+    ap.add_argument("--force", action="store_true",
+                    help="Enable the service even if the DRA-Pi WM8731 codec shares I2C 0x1a "
+                         "(only after moving the codec off 0x1a — strap WM8731 CSB to 0x1b).")
     run(ap.parse_args())
 
 

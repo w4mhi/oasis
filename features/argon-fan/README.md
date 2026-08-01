@@ -56,9 +56,25 @@ of the script. On exit it fails the fan to **100%** so a crash can't cook the Pi
 ## ⚠ I²C `0x1a` collision with the DRA-Pi
 
 The Wolfson **WM8731** codec on the MastersComm **DRA-Pi** *also* defaults to
-`0x1a`. If both are on one bus, fan writes and the codec fight for the address.
-Strap the WM8731 **CSB** pin to move it to `0x1b`, or don't run both on one bus.
-`--check` warns when the WM8731 overlay is present in `config.txt`.
+`0x1a`. If both are on one bus they collide, with two consequences:
+
+- Once the codec's ALSA driver claims `0x1a` at boot, the fan daemon's writes
+  return **`EBUSY`** and are silently dropped — the fan is left on its hardware
+  default (on) and **cannot be software-controlled**.
+- A fan write that **races the codec's init at boot** lands on the raw codec and
+  corrupts its TX-audio path — **silently breaking Winlink RF** (the radio still
+  keys PTT, but the transmitted AFSK is unintelligible, so no gateway answers).
+
+Because software fan control is impossible on a shared bus *and* the boot race is
+destructive, **the installer refuses to enable the service when the WM8731 overlay
+is present in `config.txt`** — it installs it *disabled* and prints why. The fan
+still runs (hardware default), so the Pi stays cool.
+
+To actually control the fan alongside a DRA-Pi, **strap the WM8731 `CSB` pin to
+move the codec to `0x1b`** (freeing `0x1a` for the fan), then re-run the installer
+— or pass **`--force`** to enable despite the overlay. `--check` reports the
+collision. The unit is also ordered `After=sound.target alsa-restore.service` so a
+forced install starts only after the codec is initialised.
 
 ## Requirements
 
