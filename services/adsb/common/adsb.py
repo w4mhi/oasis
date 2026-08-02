@@ -31,7 +31,7 @@ POLL_SECS   = float(os.environ.get("ADSB_POLL_SECS", "1.0"))
 # per poll; unbounded, that grew to millions of rows (a month = ~0.6 GB) and made
 # the old /recent scan pathologically slow. recent() no longer scans observations,
 # but /history still does, so keep the table bounded. 0 disables pruning.
-RETAIN_HOURS  = float(os.environ.get("ADSB_RETAIN_HOURS", "48"))
+RETAIN_HOURS  = float(os.environ.get("ADSB_RETAIN_HOURS", "120"))   # 5 days
 PRUNE_EVERY_S = float(os.environ.get("ADSB_PRUNE_EVERY_S", "600"))
 
 _live = {"now": 0.0, "aircraft": [], "stats": None}      # last-seen snapshot

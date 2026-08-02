@@ -8,6 +8,41 @@ release bumps `version.json` and this file **together**, and the release commit
 on `main` is tagged `v.<version>` (e.g. `v.2.8.0`) — the `v.`-prefixed format
 used since `v.2.7.5`.
 
+## v.2.8.1 — 2026-08-02
+
+Small maintenance release on 2.8.0: a hardware-robustness fix, longer ADS-B
+history, header readability tweaks, and a per-clock colour picker on both the
+dashboard and the kiosk. No breaking changes — in-place upgrade is a code pull
+(plus an `adsb-api` restart to pick up the new retention window).
+
+### Added
+- **Per-clock colour cycle (index + kiosk).** Click/tap the LOCAL or UTC clock to
+  cycle its colour — blue → white → amber → green → chartreuse → orange. Per-clock
+  and mutually exclusive (the two clocks can't share a colour), saved to
+  `localStorage`, theme-aware. Shared six-colour set + storage keys across
+  `index.html` and `oasis-dashboard/dashboard.html`; chartreuse/orange are toned
+  down in the light theme for contrast.
+
+### Changed
+- **ADS-B detailed-track retention 48h → 120h (5 days).** `ADSB_RETAIN_HOURS`
+  default raised so `/history` reaches back five days (still env-overridable;
+  ~100 MB of observations at the new window).
+- **Dashboard header readability.** Processes and GPS cards moved off the smallest
+  type tier onto the primary reading size; GPS label→value gap made explicit and
+  the GPS grid row/column gaps trimmed 30%.
+
+### Fixed
+- **RGB Cooling HAT survives a missing OLED.** The daemon no longer crash-loops
+  when the SSD1306 panel is absent (or wedged) — the OLED is now optional, so the
+  thermally-critical fan + RGB control keep running. The installer distinguishes
+  the required fan/RGB MCU (0x0d) from the optional OLED (0x3c). Added a unit test
+  for the degrade path.
+
+### Removed
+- **Orphaned `draws-audio` / `draws-gps` feature stubs.** Empty leftovers from the
+  abandoned DRAWS go-box (incompatible with the Trixie-based stack); never wired
+  into the setup registry, removed to stop confusing users.
+
 ## v.2.8.0 — 2026-07-22
 
 Feature + fix release on the 2.7.5 baseline: the services refactoring, the

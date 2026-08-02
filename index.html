@@ -106,10 +106,10 @@ body {
   color: var(--text-dim); font-weight: 700; margin-left: auto;
 }
 .gps-iface[hidden] { display: none; }
-.gps-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem .8rem; }
-.gps-cell { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
-.gps-lbl { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .07em; color: var(--text-dim); }
-.gps-val { font-size: var(--fs-small); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gps-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .35rem .56rem; }  /* row/col gaps trimmed 30% (.5/.8 → .35/.56) */
+.gps-cell { display: flex; flex-direction: column; line-height: 1.1; gap: .1rem; min-width: 0; }  /* label → value gap matches the Processes header→values .1rem */
+.gps-lbl { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .07em; color: var(--text-dim); }
+.gps-val { font-size: var(--fs-base); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── System cards (topbar row) — ported verbatim from
    specs/2026-07-29-system-cards-mockup.html ─────────────────────── */
@@ -142,16 +142,24 @@ body {
 /* ---- clock cards (dashboard style: left color bar + LOCAL/UTC), scaled to header ---- */
 .clk-card{position:relative;overflow:hidden;justify-content:center;min-width:200px;
   padding:.15rem .7rem .15rem .95rem;background:var(--panel)}
-.clk-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:.3rem}
-.clk-card.loc::before{background:var(--blue)} .clk-card.utc::before{background:var(--text)}
-.clk-card.loc{border-color:var(--blue-dim)}
-.clk-card.utc{border-color:var(--border);background:var(--panel)}
+.clk-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:.3rem;background:var(--clk)}
+.clk-card{border-color:var(--border)}
+.clk-card.utc{background:var(--panel)}
+/* per-clock colour: loc/utc set the pre-JS default; .clk-c-* (set by click-to-cycle) win on tie via source order */
+.clk-card.loc{--clk:var(--blue)}
+.clk-card.utc{--clk:var(--text)}
+.clk-card.clk-c-blue{--clk:var(--blue)}
+.clk-card.clk-c-white{--clk:var(--text)}
+.clk-card.clk-c-amber{--clk:var(--amber)}
+.clk-card.clk-c-green{--clk:var(--accent)}
+.clk-card.clk-c-chartreuse{--clk:var(--chartreuse)}
+.clk-card.clk-c-orange{--clk:var(--orange)}
 .clk-zn{display:flex;align-items:baseline;gap:.5rem}
 .clk-z{font-size:var(--fs-subtitle);letter-spacing:.16em;font-weight:700}
-.clk-card.loc .clk-z{color:var(--blue)} .clk-card.utc .clk-z{color:var(--text)}
+.clk-card .clk-z{color:var(--clk)}
 .clk-tz{font-size:var(--fs-subtitle);color:var(--text-dim)}
 .clk-time{font-size:3.5rem;line-height:1.0;font-weight:600;font-variant-numeric:tabular-nums;margin-top:.1rem}
-.clk-card.loc .clk-time{color:var(--blue)} .clk-card.utc .clk-time{color:var(--text)}
+.clk-card .clk-time{color:var(--clk)}
 .clk-time .s{font-size:1.95rem;opacity:.6}
 .clk-d{font-size:var(--fs-subtitle);color:var(--text-dim);letter-spacing:.04em;margin-top:.15rem}
 
@@ -182,13 +190,13 @@ body {
   border-left:1px solid var(--border);padding-left:.7rem}
 
 /* processes */
-.proc{display:grid;grid-template-columns:1fr auto auto;gap:.6rem;align-items:baseline;font-size:var(--fs-small)}
+.proc{display:grid;grid-template-columns:1fr auto auto;gap:.6rem;align-items:baseline;font-size:var(--fs-base)}
 .proc-name{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .proc-cpu{font-weight:700;font-variant-numeric:tabular-nums;color:var(--accent);min-width:3em;text-align:right}
 .proc-cpu.busy{color:var(--amber)} .proc-cpu.hot{color:var(--red)}
 .proc-ram{font-variant-numeric:tabular-nums;color:var(--accent);min-width:3em;text-align:right}
 .proc-ram.busy{color:var(--amber)} .proc-ram.hot{color:var(--red)}
-.proc-head{color:var(--text-dim);font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.06em}
+.proc-head{color:var(--text-dim);font-size:var(--fs-label);text-transform:uppercase;letter-spacing:.06em}
 .proc-head span:not(:first-child){min-width:3em;text-align:right}
 #proc-list{margin-top:-.2rem}   /* tighten the CPU/RAM header → values gap (card gap is .3rem) */
 
@@ -1688,6 +1696,54 @@ function tickClock() {
 tickClock();
 setInterval(tickClock, 1000);
 document.getElementById('footer-ts').textContent = new Date().toLocaleString();
+
+// ── Clock colour: click a clock to cycle its colour (per-clock, saved) ─────────
+// Drives the card's --clk custom property via a .clk-c-<name> class; the name
+// (not a hex) is stored so the colour stays theme-aware. The two clocks are
+// mutually exclusive — cycling one skips whatever colour the other is showing,
+// so they can never share a colour. Order: blue → white → amber → green →
+// chartreuse → orange → wrap.
+(function () {
+  var COLORS = ['blue', 'white', 'amber', 'green', 'chartreuse', 'orange'];
+  var loc = { el: document.querySelector('.clk-card.loc'), key: 'oasis.clock.loc.color', def: 'blue'  };
+  var utc = { el: document.querySelector('.clk-card.utc'), key: 'oasis.clock.utc.color', def: 'white' };
+  if (!loc.el || !utc.el) return;
+
+  function saved(clk) {
+    var v = null;
+    try { v = localStorage.getItem(clk.key); } catch (e) {}
+    return COLORS.indexOf(v) >= 0 ? v : clk.def;
+  }
+  function apply(clk, name) {
+    COLORS.forEach(function (c) { clk.el.classList.remove('clk-c-' + c); });
+    clk.el.classList.add('clk-c-' + name);
+    clk.color = name;
+    try { localStorage.setItem(clk.key, name); } catch (e) {}
+  }
+  // Next colour after `from`, skipping `blocked` (the other clock's colour) so
+  // the two stay distinct. Always advances ≥1 step → a click always changes.
+  function nextFree(from, blocked) {
+    var i = COLORS.indexOf(from);
+    do { i = (i + 1) % COLORS.length; } while (COLORS[i] === blocked);
+    return COLORS[i];
+  }
+
+  // Resolve initial colours, enforcing exclusivity for any pre-existing state
+  // where both had been saved to the same colour.
+  var a = saved(loc), b = saved(utc);
+  if (b === a) b = nextFree(b, a);
+  apply(loc, a);
+  apply(utc, b);
+
+  [loc, utc].forEach(function (clk) {
+    var other = clk === loc ? utc : loc;
+    clk.el.style.cursor = 'pointer';
+    clk.el.title = 'Click to change clock colour';
+    clk.el.addEventListener('click', function () {
+      apply(clk, nextFree(clk.color, other.color));
+    });
+  });
+})();
 
 // Kiosk manual refresh — spin the icon briefly, then reload the dashboard.
 function kioskRefresh() {
