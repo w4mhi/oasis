@@ -3,10 +3,17 @@
 All notable changes to OASIS are recorded here, newest first.
 
 **Versioning rules.** The suite version lives in `version.json` (single source of
-truth — the dashboard, `/api/server-info`, and `doctor.py` all read it). Every
-release bumps `version.json` and this file **together**, and the release commit
-on `main` is tagged `v.<version>` (e.g. `v.2.8.0`) — the `v.`-prefixed format
-used since `v.2.7.5`.
+truth — the dashboard, `/api/server-info`, and `doctor.py` all read it).
+
+**Per-commit SemVer (adopted 2026-08-02): every commit bumps `version.json`.**
+- regular commit (`fix`/`chore`/`docs`/`style`/`refactor`/`perf`/`test`/…) → **patch +1** (`2.8.1 → 2.8.2`)
+- feature / major modification (`feat`) → **minor +1, patch → 0** (`2.8.2 → 2.9.0`)
+- breaking change → **major +1, minor/patch → 0**
+
+Use `scripts/bump-version.py <patch|minor|major>` (or `--type <feat|fix|…>`) to
+compute it. Tagged commits use the `v<version>` form — **no dot** after `v`
+(e.g. `v2.8.1`), matching `v2.8.0`. Not every commit needs a tag or a CHANGELOG
+entry, but notable releases still bump this file alongside `version.json`.
 
 ## v.2.8.1 — 2026-08-02
 
