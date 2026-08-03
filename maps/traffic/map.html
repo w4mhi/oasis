@@ -645,6 +645,55 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 /* Coverage → teal */
 #coverage-body::-webkit-scrollbar-thumb{background-color:#1c7d72;}
 #coverage-body::-webkit-scrollbar-thumb:hover{background-color:#2dd4bf;}
+/* ── Map download (US states) ──────────────────────────────────────────────── */
+#dl-exit{
+  position:absolute;top:46px;left:50%;transform:translateX(-50%);z-index:200;
+  background:var(--panel);color:var(--text);border:1px solid var(--accent-dim);
+  border-radius:5px;padding:4px 12px;font-family:var(--mono);font-size:var(--fs-small);
+  cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+#dl-exit:hover{border-color:var(--accent);}
+#dl-label{
+  position:absolute;z-index:200;pointer-events:none;display:none;
+  background:rgba(13,17,23,.9);color:var(--text);border:1px solid var(--border);
+  border-radius:4px;padding:2px 7px;font-family:var(--mono);font-size:var(--fs-small);white-space:nowrap;
+}
+.dl-mode .maplibregl-marker{opacity:.22;pointer-events:none;}
+.dl-overlay{
+  position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.6);
+}
+.dl-dialog{
+  background:var(--panel);border:1px solid var(--border);border-radius:9px;
+  box-shadow:0 6px 30px rgba(0,0,0,.6);padding:16px 18px;min-width:320px;max-width:90vw;
+  font-family:var(--mono);color:var(--text);
+}
+.dl-dialog-wide{width:640px;max-width:92vw;}
+.dl-msg{font-size:13px;line-height:1.5;margin-bottom:14px;}
+.dl-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.dl-title{font-weight:700;color:var(--accent);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dl-elapsed{color:var(--text-dim);font-size:var(--fs-small);}
+.dl-spinner{
+  width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);
+  border-radius:50%;animation:dl-spin .8s linear infinite;flex-shrink:0;
+}
+@keyframes dl-spin{to{transform:rotate(360deg);}}
+.dl-log{
+  background:#0b0f16;border:1px solid var(--border);border-radius:5px;
+  color:var(--text-dim);font-size:var(--fs-small);line-height:1.4;
+  height:260px;max-height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  padding:8px 10px;margin:0;
+}
+.dl-status{margin-top:10px;font-size:var(--fs-small);min-height:1.2em;}
+.dl-status.ok{color:var(--accent);font-weight:700;}
+.dl-status.err{color:var(--red);}
+.dl-buttons{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;}
+.dl-btn{
+  background:var(--panel-2);color:var(--text);border:1px solid var(--border);
+  border-radius:5px;padding:5px 14px;font-family:var(--mono);font-size:var(--fs-small);cursor:pointer;
+}
+.dl-btn:hover{border-color:var(--accent-dim);}
+.dl-btn-go{border-color:var(--accent);color:var(--accent);font-weight:700;}
 </style>
 </head>
 <body>
@@ -745,6 +794,31 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 <div id="measure-panel">
   <div id="measure-readout">Click the map to add points</div>
   <div id="measure-hint">Double-click or Esc to clear · click <b>Measure</b> again to exit</div>
+</div>
+
+<!-- Map download (US states): exit chip · hover label · confirm dialog · progress modal -->
+<button id="dl-exit" onclick="exitDownloadMode()" style="display:none">✕ Exit map download</button>
+<div id="dl-label"></div>
+<div id="dl-confirm" class="dl-overlay" style="display:none">
+  <div class="dl-dialog">
+    <div id="dl-confirm-msg" class="dl-msg"></div>
+    <div class="dl-buttons">
+      <button class="dl-btn dl-btn-go" onclick="_dlConfirmOk()">OK</button>
+      <button class="dl-btn" onclick="_dlConfirmCancel()">Cancel</button>
+    </div>
+  </div>
+</div>
+<div id="dl-modal" class="dl-overlay" style="display:none">
+  <div class="dl-dialog dl-dialog-wide">
+    <div class="dl-head">
+      <span id="dl-spinner" class="dl-spinner"></span>
+      <span id="dl-title" class="dl-title"></span>
+      <span id="dl-elapsed" class="dl-elapsed">0:00</span>
+    </div>
+    <pre id="dl-log" class="dl-log"></pre>
+    <div id="dl-status" class="dl-status"></div>
+    <div id="dl-buttons" class="dl-buttons"></div>
+  </div>
 </div>
 
 <!-- Right-side stacked panels: recent-heard (stations) + map layers -->
@@ -1092,6 +1166,12 @@ function switchMap(filename) {
 // lists (and a browse entry) get added here next. Selecting a bundled entry
 // swaps the base map via switchMap (setUrl swap — overlays survive).
 function onMapSelect(file) {
+  const sel = document.getElementById('mapSelect');
+  if (file === '__download__') {           // "Get more maps…" — not a real archive
+    if (sel) sel.value = MAP_FILE;          // reset; the dropdown isn't a mode indicator
+    enterDownloadMode();
+    return;
+  }
   if (file) switchMap(file);
 }
 (function seedMapSelect() {
@@ -1102,7 +1182,202 @@ function onMapSelect(file) {
   opt.textContent = MAP_FILE.replace(/\.pmtiles$/i, '');
   sel.appendChild(opt);
   sel.value = MAP_FILE;
+  const sep = document.createElement('option');
+  sep.disabled = true; sep.textContent = '──────────';
+  sel.appendChild(sep);
+  const more = document.createElement('option');
+  more.value = '__download__'; more.textContent = 'Get more maps…';
+  sel.appendChild(more);
 })();
+
+// ── Map download (US states) ─────────────────────────────────────────────────
+// "Get more maps…" enters download mode: us-states.geojson is drawn over the map
+// as blue (already in maps/tiles/state) / grey (absent) fills; APRS/ADS-B overlays
+// dim. Click a grey state → confirm → a blocking modal streams the download.
+let _dlPresent   = [];      // state names already downloaded
+let _dlStatesGeo = null;    // cached us-states.geojson
+let _dlSavedPaint = null;   // overlay opacities saved while dimmed
+let _dlMode = false;
+let _dlConfirmName = null;
+let _dlActiveState = null;
+let _dlCancelling  = false;
+let _dlTimer = null;
+
+function enterDownloadMode() {
+  if (_dlMode) return;
+  _dlMode = true;
+  document.getElementById('map').classList.add('dl-mode');
+  document.getElementById('dl-exit').style.display = '';
+  Promise.all([
+    fetch('/api/maps', { cache: 'no-store' }).then(r => r.json()).catch(() => ({ present: [] })),
+    _dlStatesGeo ? Promise.resolve(_dlStatesGeo)
+                 : fetch('/maps/us-states.geojson', { cache: 'no-store' }).then(r => r.json())
+  ]).then(([inv, geo]) => {
+    _dlPresent = inv.present || [];
+    _dlStatesGeo = geo;
+    _dlAddStateLayers();
+    _dlDimOverlays(true);
+  }).catch(e => { exitDownloadMode(); setStatus('err', 'Coverage load failed: ' + e.message); });
+}
+
+function exitDownloadMode() {
+  if (!_dlMode) return;
+  _dlMode = false;
+  _dlDimOverlays(false);
+  ['states-have', 'states-get', 'states-outline'].forEach(id => { if (map.getLayer(id)) map.removeLayer(id); });
+  if (map.getSource('us-states')) map.removeSource('us-states');
+  document.getElementById('map').classList.remove('dl-mode');
+  document.getElementById('dl-exit').style.display = 'none';
+  document.getElementById('dl-label').style.display = 'none';
+}
+
+function _dlHaveExpr() { return ['in', ['get', 'name'], ['literal', _dlPresent]]; }
+
+function _dlAddStateLayers() {
+  if (!map.getSource('us-states')) map.addSource('us-states', { type: 'geojson', data: _dlStatesGeo });
+  if (!map.getLayer('states-have'))
+    map.addLayer({ id: 'states-have', type: 'fill', source: 'us-states',
+      filter: _dlHaveExpr(), paint: { 'fill-color': '#1f7a4d', 'fill-opacity': 0.35 } });
+  if (!map.getLayer('states-get'))
+    map.addLayer({ id: 'states-get', type: 'fill', source: 'us-states',
+      filter: ['!', _dlHaveExpr()], paint: { 'fill-color': '#5a6472', 'fill-opacity': 0.35 } });
+  if (!map.getLayer('states-outline'))
+    map.addLayer({ id: 'states-outline', type: 'line', source: 'us-states',
+      paint: { 'line-color': '#8b97a6', 'line-width': 0.6 } });
+}
+
+function _dlRefreshStateFills() {
+  if (map.getLayer('states-have')) map.setFilter('states-have', _dlHaveExpr());
+  if (map.getLayer('states-get'))  map.setFilter('states-get', ['!', _dlHaveExpr()]);
+}
+
+// Dim every overlay layer (non-basemap, non-states) while in download mode,
+// saving/restoring the original paint value so data-driven opacities survive.
+function _dlDimOverlays(on) {
+  if (on) {
+    _dlSavedPaint = [];
+    const baseIds = new Set(Object.values(LAYER_GROUPS).flat().concat(['background', 'earth']));
+    (map.getStyle().layers || []).forEach(l => {
+      if (l.id.startsWith('states-') || baseIds.has(l.id)) return;
+      const props = l.type === 'symbol' ? ['icon-opacity', 'text-opacity']
+                  : l.type === 'line'   ? ['line-opacity']
+                  : l.type === 'circle' ? ['circle-opacity']
+                  : l.type === 'fill'   ? ['fill-opacity'] : [];
+      props.forEach(p => {
+        try { _dlSavedPaint.push([l.id, p, map.getPaintProperty(l.id, p)]);
+              map.setPaintProperty(l.id, p, 0.22); } catch (e) {}
+      });
+    });
+  } else if (_dlSavedPaint) {
+    _dlSavedPaint.forEach(([id, p, v]) => { try { map.setPaintProperty(id, p, v); } catch (e) {} });
+    _dlSavedPaint = null;
+  }
+}
+
+// Hover label + click, registered once (fire only when the states layers exist).
+function _dlLabel(e, downloadable) {
+  const el = document.getElementById('dl-label');
+  el.textContent = e.features[0].properties.name + (downloadable ? '  ·  click to download' : '  ·  in library');
+  el.style.left = (e.point.x + 14) + 'px';
+  el.style.top  = (e.point.y + 14) + 'px';
+  el.style.display = '';
+}
+map.on('mousemove', 'states-get',  e => { if (_dlMode) { map.getCanvas().style.cursor = 'pointer'; _dlLabel(e, true); } });
+map.on('mouseleave', 'states-get', () => { map.getCanvas().style.cursor = ''; document.getElementById('dl-label').style.display = 'none'; });
+map.on('mousemove', 'states-have', e => { if (_dlMode) { map.getCanvas().style.cursor = 'pointer'; _dlLabel(e, false); } });
+map.on('mouseleave', 'states-have', () => { map.getCanvas().style.cursor = ''; document.getElementById('dl-label').style.display = 'none'; });
+map.on('click', 'states-get',  e => { if (_dlMode) confirmDownload(e.features[0].properties.name); });
+map.on('click', 'states-have', e => { if (_dlMode) { exitDownloadMode(); switchMap(e.features[0].properties.name + '.pmtiles'); } });
+
+function confirmDownload(name) {
+  _dlConfirmName = name;
+  document.getElementById('dl-confirm-msg').textContent =
+    name + ' is not present locally. Download to maps/tiles/state/' + name + '.pmtiles?';
+  document.getElementById('dl-confirm').style.display = 'flex';
+}
+function _dlConfirmCancel() { document.getElementById('dl-confirm').style.display = 'none'; _dlConfirmName = null; }
+function _dlConfirmOk() { const n = _dlConfirmName; document.getElementById('dl-confirm').style.display = 'none'; if (n) startDownload(n); }
+
+function _fmtElapsed(ms) {
+  const s = Math.floor(ms / 1000);
+  return (Math.floor(s / 60)) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function _dlButtons(html) { document.getElementById('dl-buttons').innerHTML = html; }
+
+async function startDownload(name) {
+  _dlActiveState = name; _dlCancelling = false;
+  const modal = document.getElementById('dl-modal'), log = document.getElementById('dl-log');
+  document.getElementById('dl-title').textContent = 'Downloading ' + name + '…';
+  document.getElementById('dl-status').textContent = '';
+  document.getElementById('dl-status').className = 'dl-status';
+  document.getElementById('dl-spinner').style.display = '';
+  log.textContent = '';
+  _dlButtons('<button class="dl-btn" onclick="_dlCancel()">Cancel</button>');
+  modal.style.display = 'flex';
+  const t0 = Date.now();
+  document.getElementById('dl-elapsed').textContent = '0:00';
+  _dlTimer = setInterval(() => { document.getElementById('dl-elapsed').textContent = _fmtElapsed(Date.now() - t0); }, 1000);
+
+  if (!navigator.onLine) { _dlFinish(name, false, 'No internet connection — map downloads need a connection.'); return; }
+  try {
+    const res = await fetch('/api/maps/extract', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: name })
+    });
+    if (!res.ok) { let msg = 'HTTP ' + res.status; try { msg = (await res.json()).error || msg; } catch (_) {} _dlFinish(name, false, msg); return; }
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      log.textContent = buf; log.scrollTop = log.scrollHeight;
+    }
+    const ok = buf.includes('[extract complete]') && !buf.includes('[extract failed]');
+    _dlFinish(name, ok, ok ? null : (_dlCancelling ? 'Download cancelled.' : 'Download failed — see the log above.'));
+  } catch (e) { _dlFinish(name, false, e.message); }
+}
+
+function _dlFinish(name, ok, errMsg) {
+  clearInterval(_dlTimer); _dlTimer = null;
+  document.getElementById('dl-spinner').style.display = 'none';
+  const status = document.getElementById('dl-status');
+  if (ok) {
+    status.textContent = name + ' ready.'; status.className = 'dl-status ok';
+    if (!_dlPresent.includes(name)) _dlPresent.push(name);
+    _dlRefreshStateFills();
+    _dlReseedSelect();
+    _dlButtons('<button class="dl-btn dl-btn-go" onclick="_dlSwitchTo(\'' + name + '\')">Switch to ' + name + '</button>'
+             + '<button class="dl-btn" onclick="_dlClose()">Close</button>');
+  } else {
+    status.textContent = errMsg || 'Download failed.'; status.className = 'dl-status err';
+    const retry = _dlCancelling ? '' : '<button class="dl-btn" onclick="startDownload(\'' + name + '\')">Retry</button>';
+    _dlButtons(retry + '<button class="dl-btn" onclick="_dlClose()">Close</button>');
+  }
+  _dlActiveState = null;
+}
+
+function _dlCancel() {
+  if (_dlCancelling) return;
+  _dlCancelling = true;
+  document.getElementById('dl-status').textContent = 'Cancelling…';
+  fetch('/api/maps/extract/cancel', { method: 'POST' }).catch(() => {});
+}
+function _dlClose() { document.getElementById('dl-modal').style.display = 'none'; }
+function _dlSwitchTo(name) { _dlClose(); exitDownloadMode(); switchMap(name + '.pmtiles'); }
+
+function _dlReseedSelect() {
+  const sel = document.getElementById('mapSelect'); if (!sel) return;
+  const sep = [...sel.options].find(o => o.disabled) || null;
+  _dlPresent.forEach(name => {
+    const val = name + '.pmtiles';
+    if ([...sel.options].some(o => o.value === val)) return;
+    const opt = document.createElement('option'); opt.value = val; opt.textContent = name;
+    sel.insertBefore(opt, sep);
+  });
+  sel.value = MAP_FILE;
+}
 
 // Load a .pmtiles from an arbitrary allowlisted path (Pi disk / USB / mount).
 function loadExternalMap(absPath) {
