@@ -190,8 +190,31 @@ def _clean_note(value):
     return str(value or "").replace("\n", " ").replace("\r", " ").strip()[:_WARN_NOTE_MAX]
 
 
+def _maybe_reconcile():
+    """Fire a throttled, non-blocking reconcile when broadcast warnings exist."""
+    b = _get_broadcaster()
+    if b is None:
+        return
+    now = time.time()
+    with _reconcile_lock:
+        if now - _last_reconcile[0] < _RECONCILE_MIN_INTERVAL:
+            return
+        _last_reconcile[0] = now
+    warnings = _load_warnings()
+    if not any(w.get("broadcast") for w in warnings):
+        return
+
+    def _run():
+        try:
+            b.reconcile(warnings)
+        except Exception:  # noqa: BLE001
+            pass
+    _threading.Thread(target=_run, daemon=True).start()
+
+
 @bp.route("/api/aprs/warnings", methods=["GET"])
 def api_aprs_warnings_list():
+    _maybe_reconcile()
     return jsonify({"ok": True, "warnings": _load_warnings()})
 
 

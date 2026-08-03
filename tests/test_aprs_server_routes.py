@@ -119,5 +119,34 @@ class WarningBroadcastRouteTest(unittest.TestCase):
         self.assertIn(("gw-1", "road washed out"), self.pushed["comments"])
 
 
+class ReconcileTriggerTest(unittest.TestCase):
+    def setUp(self):
+        self.client = app_module.app.test_client()
+        self._orig_wf = aprs_routes.WARNINGS_FILE
+        self._tmp = os.path.join(_HERE, "_warns_recon.json")
+        aprs_routes.WARNINGS_FILE = self._tmp
+        with open(self._tmp, "w") as fh:
+            _json.dump([{"id": "a1", "type": "flood", "lat": 1, "lon": 2,
+                         "note": "", "ts": 0, "broadcast": True,
+                         "gw_beacon_id": "x", "aprs_name": "Wa1"}], fh)
+        self.hits = []
+        class FakeB:
+            def reconcile(_s, ws): self.hits.append(len(ws)); return {}
+        aprs_routes._TEST_BROADCASTER = FakeB()
+        aprs_routes._last_reconcile[0] = 0.0
+
+    def tearDown(self):
+        aprs_routes._TEST_BROADCASTER = None
+        aprs_routes.WARNINGS_FILE = self._orig_wf
+        if os.path.exists(self._tmp): os.remove(self._tmp)
+
+    def test_get_triggers_reconcile_once_then_throttles(self):
+        import time as _t
+        self.client.get("/api/aprs/warnings")
+        self.client.get("/api/aprs/warnings")   # throttled
+        _t.sleep(0.2)                            # let the daemon thread run
+        self.assertEqual(self.hits, [1])         # exactly one reconcile
+
+
 if __name__ == "__main__":
     unittest.main()
