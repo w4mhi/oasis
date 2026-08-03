@@ -81,7 +81,15 @@ function oasisBaseMapStyle(sourceUrl, options) {
         filter: ['match', ['get', 'kind'], ['aerodrome', 'airfield'], true, false],
         paint: { 'fill-color': '#1c2130', 'fill-opacity': 0.7 } },
 
+      // Keep oceans (kind!=water) and real lakes/basins/reservoirs, but drop the
+      // riverbank / floodplain polygons — kind_detail river/canal/stream/drain
+      // plus the generic untagged water that otherwise "floods" blue along river
+      // valleys. Rivers still read via the thin `waterways-line` below. Note the
+      // schema tags some valley reservoirs as `lake`, so those (real lakes) stay.
       { id: 'water', type: 'fill', source: 'basemap', 'source-layer': 'water',
+        filter: ['any',
+          ['!=', ['get', 'kind'], 'water'],
+          ['match', ['get', 'kind_detail'], ['lake', 'basin'], true, false]],
         paint: { 'fill-color': '#12314f' } },
 
       // Water sub-kinds — tinted over the base fill so harbours, reservoirs,
