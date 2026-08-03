@@ -49,14 +49,23 @@ class WarningBroadcastRouteTest(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
         # isolate the warnings file per test
+        self._orig_wf = aprs_routes.WARNINGS_FILE
         self._tmp = os.path.join(_HERE, "_warns_test.json")
         aprs_routes.WARNINGS_FILE = self._tmp
         if os.path.exists(self._tmp):
             os.remove(self._tmp)
         # fake broadcaster records calls
         calls = {"adv": [], "unadv": []}
+        pushed = {"comments": []}
+
+        class FakeC:
+            def update_beacon(self, bid, payload):
+                pushed["comments"].append((bid, payload.get("comment")))
 
         class FakeB:
+            def __init__(self):
+                self.c = FakeC()
+
             def advertise(self, w):
                 calls["adv"].append(w["id"])
                 return "gw-1"
@@ -67,10 +76,12 @@ class WarningBroadcastRouteTest(unittest.TestCase):
             def reconcile(self, ws):
                 return {"created": 0, "killed": 0}
         self.calls = calls
+        self.pushed = pushed
         aprs_routes._TEST_BROADCASTER = FakeB()
 
     def tearDown(self):
         aprs_routes._TEST_BROADCASTER = None
+        aprs_routes.WARNINGS_FILE = self._orig_wf
         if os.path.exists(self._tmp):
             os.remove(self._tmp)
 
@@ -100,6 +111,12 @@ class WarningBroadcastRouteTest(unittest.TestCase):
         w = self._add(False)
         self.client.patch("/api/aprs/warnings/" + w["id"], json={"broadcast": True})
         self.assertEqual(self.calls["adv"], [w["id"]])
+
+    def test_patch_note_with_broadcast_true_pushes_comment(self):
+        w = self._add(True)                      # already broadcasting, gw_beacon_id="gw-1"
+        self.client.patch("/api/aprs/warnings/" + w["id"],
+                          json={"note": "road washed out", "broadcast": True})
+        self.assertIn(("gw-1", "road washed out"), self.pushed["comments"])
 
 
 if __name__ == "__main__":

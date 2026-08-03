@@ -252,18 +252,24 @@ def api_aprs_warnings_update(wid):
         if has_note:
             found["note"] = note
         b = _get_broadcaster()
+        transitioned = False
         if has_bcast:
             want = bool(body.get("broadcast"))
             if want and not found.get("broadcast"):
                 found["broadcast"] = True
                 found["gw_beacon_id"] = b.advertise(found) if b else None
+                transitioned = True
             elif not want and found.get("broadcast"):
                 if b:
                     b.unadvertise(found)
                 found["broadcast"] = False
                 found["gw_beacon_id"] = None
-        elif has_note and found.get("broadcast") and found.get("gw_beacon_id") and b:
-            # push note change to the live beacon's comment
+                transitioned = True
+        # Push a note edit to the live beacon comment when the warning stays
+        # broadcast (advertise already carried the note, so skip if we just
+        # transitioned).
+        if (has_note and not transitioned and found.get("broadcast")
+                and found.get("gw_beacon_id") and b):
             try:
                 b.c.update_beacon(found["gw_beacon_id"], {"comment": found["note"]})
             except Exception:  # noqa: BLE001
