@@ -116,7 +116,7 @@
       style: current ? offlineStyle(current) : onlineStyle(),
       center: opts.center || [-98.35, 39.5],
       zoom: opts.zoom != null ? opts.zoom : 3.2,
-      attributionControl: opts.attributionControl !== false,
+      attributionControl: false,   // added below, positioned, so the corner is ours to place
     });
     // Bottom-left stack, top → bottom (matches OASIS): zoom readout, zoom +/-
     // buttons, then the imperial (miles) distance scale. Added in that order so
@@ -124,6 +124,12 @@
     if (opts.zoomReadout !== false) map.addControl(zoomReadoutControl(map), "bottom-left");
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-left");
     if (opts.scale !== false) map.addControl(new maplibregl.ScaleControl({ unit: "imperial", maxWidth: 120 }), "bottom-left");
+    // Map-data credit (OSM/Protomaps) — a licensing requirement, always shown.
+    // Reads each source's `attribution`; it's a corner control, not a map layer.
+    if (opts.attribution !== false) {
+      map.addControl(new maplibregl.AttributionControl({ compact: false }),
+                     opts.attributionPosition || "bottom-right");
+    }
     map.on("error", function (e) { console.error("[mapengine] error:", (e && e.error) || e); });
 
     // Dashboards/panels can finish laying out the container after the map is

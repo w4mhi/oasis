@@ -575,6 +575,9 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
   border:1px solid var(--border);border-radius:4px;
   font-family:var(--mono);font-size:var(--fs-small);
   padding:2px 6px;cursor:pointer;
+  /* Size to the font, not the widest option — long state names truncate in the
+     closed box (the full name still shows in the open list). */
+  max-width:18ch;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;
 }
 #mapSelect:hover{border-color:var(--accent-dim);}
 
@@ -645,21 +648,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 /* Coverage → teal */
 #coverage-body::-webkit-scrollbar-thumb{background-color:#1c7d72;}
 #coverage-body::-webkit-scrollbar-thumb:hover{background-color:#2dd4bf;}
-/* ── Map download (US states) ──────────────────────────────────────────────── */
-#dl-exit{
-  position:absolute;top:46px;left:50%;transform:translateX(-50%);z-index:200;
-  display:flex;align-items:center;gap:12px;
-  background:var(--panel);color:var(--text);border:1px solid var(--border);
-  border-radius:6px;padding:5px 8px 5px 12px;font-family:var(--mono);font-size:var(--fs-small);
-  box-shadow:0 2px 10px rgba(0,0,0,.5);
-}
-#dl-exit .dl-hint{color:var(--text-dim);white-space:nowrap;}
-#dl-label{
-  position:absolute;z-index:200;pointer-events:none;display:none;
-  background:rgba(13,17,23,.9);color:var(--text);border:1px solid var(--border);
-  border-radius:4px;padding:2px 7px;font-family:var(--mono);font-size:var(--fs-small);white-space:nowrap;
-}
-.dl-mode .maplibregl-marker{opacity:.22;pointer-events:none;}
+/* ── Map download (US states): confirm dialog + progress modal ──────────────── */
 .dl-overlay{
   position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
   background:rgba(0,0,0,.6);
@@ -797,12 +786,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
   <div id="measure-hint">Double-click or Esc to clear · click <b>Measure</b> again to exit</div>
 </div>
 
-<!-- Map download (US states): exit chip · hover label · confirm dialog · progress modal -->
-<div id="dl-exit" style="display:none">
-  <span class="dl-hint">blue = downloaded · grey = click to download</span>
-  <button class="dl-btn" onclick="exitDownloadMode()">✕ Exit</button>
-</div>
-<div id="dl-label"></div>
+<!-- Map download (US states): confirm dialog · progress modal (state picked from the base-map dropdown) -->
 <div id="dl-confirm" class="dl-overlay" style="display:none">
   <div class="dl-dialog">
     <div id="dl-confirm-msg" class="dl-msg"></div>
@@ -1117,7 +1101,6 @@ const engine = MapEngine.create({
   style: (sourceUrl) => oasisBaseMapStyle(sourceUrl),  // OASIS's OpenMapTiles style, unchanged
   center: (URL_CENTER && URL_CENTER.length === 2 && URL_CENTER.every(Number.isFinite)) ? URL_CENTER : [-122.1, 47.6],
   zoom: (URL_ZOOM != null && Number.isFinite(URL_ZOOM)) ? URL_ZOOM : 9,
-  attributionControl: false,
   layerCard: false,                                    // OASIS keeps its own #layer-panel
 });
 const map = engine.map;
@@ -1142,12 +1125,23 @@ setTimeout(() => {
 // (bottom-left stack). No inline controls here.
 
 // ── Base-map switching (click the bottom-right label to load a different map) ──
-// Fly to an archive's native center/zoom (best-effort). httpUrl is the plain
+// Frame an archive's full extent (best-effort). httpUrl is the plain
 // (non-protocol) URL the PMTiles reader uses to fetch the archive header.
+// Prefer fitBounds over the header's center/centerZoom: state extracts often
+// carry centerZoom=0, and the bounds-center can sit offshore (Florida's is in
+// the Gulf), so flying there at a fixed zoom leaves the state shoved to one edge.
+// Fitting the bounds centers and frames the whole state regardless of shape.
 async function flyToArchive(httpUrl, duration) {
   try {
     const hdr = await new pmtiles.PMTiles(httpUrl).getHeader();
-    if (hdr && Number.isFinite(hdr.centerLon) && Number.isFinite(hdr.centerLat)) {
+    if (!hdr) return;
+    const { minLon, minLat, maxLon, maxLat } = hdr;
+    const bounded = [minLon, minLat, maxLon, maxLat].every(Number.isFinite)
+      && maxLon > minLon && maxLat > minLat
+      && (maxLon - minLon) < 355 && (maxLat - minLat) < 175;  // skip whole-planet archives
+    if (bounded) {
+      map.fitBounds([[minLon, minLat], [maxLon, maxLat]], { padding: 24, duration });
+    } else if (Number.isFinite(hdr.centerLon) && Number.isFinite(hdr.centerLat)) {
       map.flyTo({ center: [hdr.centerLon, hdr.centerLat], zoom: hdr.centerZoom || 9, duration });
     }
   } catch (e) { /* centering is best-effort */ }
@@ -1166,145 +1160,69 @@ function switchMap(filename) {
 }
 
 // ── Base-map dropdown (topbar, after Moving) ─────────────────────────────────
-// Scaffold: seeded with the active archive only. Per-state / per-country map
-// lists (and a browse entry) get added here next. Selecting a bundled entry
-// swaps the base map via switchMap (setUrl swap — overlays survive).
-function onMapSelect(file) {
-  const sel = document.getElementById('mapSelect');
-  if (file === '__download__') {           // "Get more maps…" — not a real archive
-    if (sel) sel.value = MAP_FILE;          // reset; the dropdown isn't a mode indicator
-    enterDownloadMode();
-    return;
-  }
-  if (file) switchMap(file);
-}
-(function seedMapSelect() {
-  const sel = document.getElementById('mapSelect');
-  if (!sel) return;
-  const opt = document.createElement('option');
-  opt.value = MAP_FILE;
-  opt.textContent = MAP_FILE.replace(/\.pmtiles$/i, '');
-  sel.appendChild(opt);
-  sel.value = MAP_FILE;
-  const sep = document.createElement('option');
-  sep.disabled = true; sep.textContent = '──────────';
-  sel.appendChild(sep);
-  const more = document.createElement('option');
-  more.value = '__download__'; more.textContent = 'Get more maps…';
-  sel.appendChild(more);
-})();
-
-// ── Map download (US states) ─────────────────────────────────────────────────
-// "Get more maps…" enters download mode: us-states.geojson is drawn over the map
-// as blue (already in maps/tiles/state) / grey (absent) fills; APRS/ADS-B overlays
-// dim. Click a grey state → confirm → a blocking modal streams the download.
-let _dlPresent   = [];      // state names already downloaded
-let _dlStatesGeo = null;    // cached us-states.geojson
-let _dlSavedPaint = null;   // overlay opacities saved while dimmed
-let _dlMode = false;
+// One flat list, no US map: downloaded archives up top (active first), then a
+// separated group of every other US state. Picking a downloaded entry swaps the
+// base map (setUrl — overlays survive); picking an undownloaded state opens the
+// download confirm/progress modal (same mechanism as before), the base map
+// never moves.
+let _dlPresent = [];        // state names already downloaded (from /api/maps)
+let _dlStates  = [];        // every state in us-states.geojson (from /api/maps)
 let _dlConfirmName = null;
 let _dlActiveState = null;
 let _dlCancelling  = false;
 let _dlTimer = null;
-let _dlPrevView = null;     // camera to restore when leaving download mode
 
-function enterDownloadMode() {
-  if (_dlMode) return;
-  _dlMode = true;
-  _dlPrevView = { center: map.getCenter(), zoom: map.getZoom() };
-  document.getElementById('map').classList.add('dl-mode');
-  document.getElementById('dl-exit').style.display = '';
-  Promise.all([
-    fetch('/api/maps', { cache: 'no-store' }).then(r => r.json()).catch(() => ({ present: [] })),
-    _dlStatesGeo ? Promise.resolve(_dlStatesGeo)
-                 : fetch('/maps/us-states.geojson', { cache: 'no-store' }).then(r => r.json())
-  ]).then(([inv, geo]) => {
-    _dlPresent = inv.present || [];
-    _dlStatesGeo = geo;
-    _dlAddStateLayers();
-    _dlDimOverlays(true);
-    // Frame the lower-48 so every state is on screen to pick from (pan for AK/HI).
-    map.fitBounds([[-125, 24.5], [-66.5, 49.5]], { padding: 30, duration: 700 });
-  }).catch(e => { exitDownloadMode(); setStatus('err', 'Coverage load failed: ' + e.message); });
-}
+const _DL_PREFIX = '__dl__:';  // marks an "download this state" option value
 
-function exitDownloadMode() {
-  if (!_dlMode) return;
-  _dlMode = false;
-  _dlDimOverlays(false);
-  ['states-have', 'states-get', 'states-outline'].forEach(id => { if (map.getLayer(id)) map.removeLayer(id); });
-  if (map.getSource('us-states')) map.removeSource('us-states');
-  document.getElementById('map').classList.remove('dl-mode');
-  document.getElementById('dl-exit').style.display = 'none';
-  document.getElementById('dl-label').style.display = 'none';
-  if (_dlPrevView) { map.flyTo({ center: _dlPrevView.center, zoom: _dlPrevView.zoom, duration: 500 }); _dlPrevView = null; }
-}
-
-// Legacy in / !in filters (key + values) — supported across all MapLibre
-// versions; the newer ["in", ["get",…], ["literal",…]] expression needs a
-// recent build and silently renders nothing on older ones.
-function _dlFilters() {
-  const present = _dlPresent.slice();
-  return { have: ['in', 'name'].concat(present), get: ['!in', 'name'].concat(present) };
-}
-
-function _dlAddStateLayers() {
-  const f = _dlFilters();
-  if (!map.getSource('us-states')) map.addSource('us-states', { type: 'geojson', data: _dlStatesGeo });
-  if (!map.getLayer('states-get'))
-    map.addLayer({ id: 'states-get', type: 'fill', source: 'us-states',
-      filter: f.get, paint: { 'fill-color': '#6b7686', 'fill-opacity': 0.45 } });   // grey = absent
-  if (!map.getLayer('states-have'))
-    map.addLayer({ id: 'states-have', type: 'fill', source: 'us-states',
-      filter: f.have, paint: { 'fill-color': '#2f80ed', 'fill-opacity': 0.45 } });  // blue = present
-  if (!map.getLayer('states-outline'))
-    map.addLayer({ id: 'states-outline', type: 'line', source: 'us-states',
-      paint: { 'line-color': '#aab6c6', 'line-width': 0.8 } });
-}
-
-function _dlRefreshStateFills() {
-  const f = _dlFilters();
-  if (map.getLayer('states-have')) map.setFilter('states-have', f.have);
-  if (map.getLayer('states-get'))  map.setFilter('states-get', f.get);
-}
-
-// Dim every overlay layer (non-basemap, non-states) while in download mode,
-// saving/restoring the original paint value so data-driven opacities survive.
-function _dlDimOverlays(on) {
-  if (on) {
-    _dlSavedPaint = [];
-    const baseIds = new Set(Object.values(LAYER_GROUPS).flat().concat(['background', 'earth']));
-    (map.getStyle().layers || []).forEach(l => {
-      if (l.id.startsWith('states-') || baseIds.has(l.id)) return;
-      const props = l.type === 'symbol' ? ['icon-opacity', 'text-opacity']
-                  : l.type === 'line'   ? ['line-opacity']
-                  : l.type === 'circle' ? ['circle-opacity']
-                  : l.type === 'fill'   ? ['fill-opacity'] : [];
-      props.forEach(p => {
-        try { _dlSavedPaint.push([l.id, p, map.getPaintProperty(l.id, p)]);
-              map.setPaintProperty(l.id, p, 0.22); } catch (e) {}
-      });
-    });
-  } else if (_dlSavedPaint) {
-    _dlSavedPaint.forEach(([id, p, v]) => { try { map.setPaintProperty(id, p, v); } catch (e) {} });
-    _dlSavedPaint = null;
+function onMapSelect(value) {
+  const sel = document.getElementById('mapSelect');
+  if (value && value.indexOf(_DL_PREFIX) === 0) {   // a download request, not a base-map change
+    if (sel) sel.value = MAP_FILE;                  // reset — the dropdown isn't a mode indicator
+    confirmDownload(value.slice(_DL_PREFIX.length));
+    return;
   }
+  if (value) switchMap(value);
 }
 
-// Hover label + click, registered once (fire only when the states layers exist).
-function _dlLabel(e, downloadable) {
-  const el = document.getElementById('dl-label');
-  el.textContent = e.features[0].properties.name + (downloadable ? '  ·  click to download' : '  ·  in library');
-  el.style.left = (e.point.x + 14) + 'px';
-  el.style.top  = (e.point.y + 14) + 'px';
-  el.style.display = '';
+// Rebuild the dropdown from the cached inventory. Downloaded group first (active
+// archive at the top), then an "Download a state…" group of the absent states.
+function _rebuildMapSelect() {
+  const sel = document.getElementById('mapSelect'); if (!sel) return;
+  const activeName = MAP_FILE.replace(/\.pmtiles$/i, '');
+  const present = _dlPresent.slice().sort();
+  const have = present.filter(n => n !== activeName);
+  have.unshift(activeName);                         // active archive always first
+  const absent = _dlStates.filter(s => !present.includes(s)).sort();
+
+  sel.innerHTML = '';
+  const gHave = document.createElement('optgroup'); gHave.label = 'Downloaded';
+  have.forEach(name => {
+    const o = document.createElement('option');
+    o.value = name + '.pmtiles'; o.textContent = name;
+    gHave.appendChild(o);
+  });
+  sel.appendChild(gHave);
+  if (absent.length) {
+    const gGet = document.createElement('optgroup'); gGet.label = 'Download a state…';
+    absent.forEach(name => {
+      const o = document.createElement('option');
+      o.value = _DL_PREFIX + name; o.textContent = name;
+      gGet.appendChild(o);
+    });
+    sel.appendChild(gGet);
+  }
+  sel.value = MAP_FILE;
 }
-map.on('mousemove', 'states-get',  e => { if (_dlMode) { map.getCanvas().style.cursor = 'pointer'; _dlLabel(e, true); } });
-map.on('mouseleave', 'states-get', () => { map.getCanvas().style.cursor = ''; document.getElementById('dl-label').style.display = 'none'; });
-map.on('mousemove', 'states-have', e => { if (_dlMode) { map.getCanvas().style.cursor = 'pointer'; _dlLabel(e, false); } });
-map.on('mouseleave', 'states-have', () => { map.getCanvas().style.cursor = ''; document.getElementById('dl-label').style.display = 'none'; });
-map.on('click', 'states-get',  e => { if (_dlMode) confirmDownload(e.features[0].properties.name); });
-map.on('click', 'states-have', e => { if (_dlMode) { exitDownloadMode(); switchMap(e.features[0].properties.name + '.pmtiles'); } });
+
+function _loadMapInventory() {
+  return fetch('/api/maps', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(inv => { _dlPresent = inv.present || []; _dlStates = inv.states || []; })
+    .catch(() => {})
+    .then(_rebuildMapSelect);
+}
+_rebuildMapSelect();   // immediate: at least the active archive shows
+_loadMapInventory();   // then fill both groups from /api/maps
 
 function confirmDownload(name) {
   _dlConfirmName = name;
@@ -1363,8 +1281,7 @@ function _dlFinish(name, ok, errMsg) {
   if (ok) {
     status.textContent = name + ' ready.'; status.className = 'dl-status ok';
     if (!_dlPresent.includes(name)) _dlPresent.push(name);
-    _dlRefreshStateFills();
-    _dlReseedSelect();
+    _rebuildMapSelect();   // moves it from "Download a state…" up into "Downloaded"
     _dlButtons('<button class="dl-btn dl-btn-go" onclick="_dlSwitchTo(\'' + name + '\')">Switch to ' + name + '</button>'
              + '<button class="dl-btn" onclick="_dlClose()">Close</button>');
   } else {
@@ -1382,19 +1299,7 @@ function _dlCancel() {
   fetch('/api/maps/extract/cancel', { method: 'POST' }).catch(() => {});
 }
 function _dlClose() { document.getElementById('dl-modal').style.display = 'none'; }
-function _dlSwitchTo(name) { _dlClose(); exitDownloadMode(); switchMap(name + '.pmtiles'); }
-
-function _dlReseedSelect() {
-  const sel = document.getElementById('mapSelect'); if (!sel) return;
-  const sep = [...sel.options].find(o => o.disabled) || null;
-  _dlPresent.forEach(name => {
-    const val = name + '.pmtiles';
-    if ([...sel.options].some(o => o.value === val)) return;
-    const opt = document.createElement('option'); opt.value = val; opt.textContent = name;
-    sel.insertBefore(opt, sep);
-  });
-  sel.value = MAP_FILE;
-}
+function _dlSwitchTo(name) { _dlClose(); switchMap(name + '.pmtiles'); }
 
 // Load a .pmtiles from an arbitrary allowlisted path (Pi disk / USB / mount).
 function loadExternalMap(absPath) {

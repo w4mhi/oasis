@@ -36,7 +36,9 @@ function oasisBaseMapStyle(sourceUrl, options) {
     version: 8,
     glyphs: origin + '/maps/mapengine/fonts/{fontstack}/{range}.pbf',
     sources: {
-      basemap: { type: 'vector', url: sourceUrl }
+      // `attribution` feeds MapLibre's AttributionControl (the corner credit).
+      // Archives are Protomaps builds of OpenStreetMap data — credit both.
+      basemap: { type: 'vector', url: sourceUrl, attribution: '© OpenStreetMap · Protomaps' }
     },
     layers: [
       { id: 'background', type: 'background',

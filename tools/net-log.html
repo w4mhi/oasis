@@ -739,7 +739,7 @@ OasisFormBackup.attach({
     return {
       version: 8,
       glyphs: origin + '/maps/mapengine/fonts/{fontstack}/{range}.pbf',
-      sources: { map: { type: 'vector', url: tilesUrl } },
+      sources: { map: { type: 'vector', url: tilesUrl, attribution: '© OpenStreetMap · Protomaps' } },
       layers: [
         { id: 'background', type: 'background', paint: { 'background-color': '#1a1f2e' } },
         { id: 'water-poly', type: 'fill', source: 'map', 'source-layer': 'water',
@@ -787,9 +787,10 @@ OasisFormBackup.attach({
       style: buildStyle(file),
       zoom: 4,
       center: [-98, 38],
-      attributionControl: false
+      attributionControl: false   // added below so it's compact-off and bottom-right
     });
     netMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    netMap.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-right');
     netMap.on('load', () => { plotRows(window._netRows || []); });
   }
 

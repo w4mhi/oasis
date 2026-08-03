@@ -205,6 +205,7 @@ def extract(maps_dir, *, name, source=None, state=None, bbox=None, region=None,
         args.append("--maxzoom=%d" % maxzoom)
     if minzoom is not None:
         args.append("--minzoom=%d" % minzoom)
+    ok = False
     try:
         if os.path.exists(out_path):
             os.remove(out_path)
@@ -218,6 +219,7 @@ def extract(maps_dir, *, name, source=None, state=None, bbox=None, region=None,
             yield line
         proc.wait()
         if proc.returncode == 0:
+            ok = True
             yield "\n[extract complete] saved %s.pmtiles\n" % name
         else:
             yield "\n[extract failed] exit %d\n" % proc.returncode
@@ -225,6 +227,15 @@ def extract(maps_dir, *, name, source=None, state=None, bbox=None, region=None,
         if tmp:
             try:
                 os.remove(tmp)
+            except OSError:
+                pass
+        # Cancel (SIGTERM -> non-zero), a failed run, or a mid-stream abort all
+        # leave a half-written archive. Drop it — a partial .pmtiles reads as a
+        # complete download (blue on the coverage map, listed in the base-map
+        # dropdown) but is corrupt. Only a clean exit keeps its output.
+        if not ok:
+            try:
+                os.remove(out_path)
             except OSError:
                 pass
 

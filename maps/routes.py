@@ -95,7 +95,8 @@ def maps_extract():
 @bp.post("/api/maps/extract/cancel")
 def maps_extract_cancel():
     """Terminate the running go-pmtiles subprocess (the stream then ends with a
-    non-zero '[extract failed]'; mapctl removes the partial on the next run)."""
+    non-zero '[extract failed]' and mapctl.extract drops the half-written
+    archive as its run unwinds — no partial is left on disk)."""
     proc = _current_proc
     if proc is None:
         return jsonify({"cancelled": False, "reason": "nothing running"})
