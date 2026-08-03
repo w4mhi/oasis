@@ -4236,7 +4236,7 @@ async function warnToggleBroadcast(id, on) {
   } catch (_) {}
   // reflect immediately; server list refresh on popup close finalizes gw id
   const w = warnings.find(x => x.id === id);
-  if (w) { w.broadcast = on; if (!on) w.gw_beacon_id = null; }
+  if (w) { w.broadcast = on; }
   const el = document.querySelector('.warn-status[data-wid="' + id + '"]');
   if (el && w) el.textContent = warnStatusText(w);
 }
