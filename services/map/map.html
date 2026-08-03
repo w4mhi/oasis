@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OASIS - APRS/ADS-B Traffic</title>
-<link rel="stylesheet" href="/map-assets/maplibre-gl.css">
-<link rel="stylesheet" href="/map-assets/map-engine.css">
+<link rel="stylesheet" href="/maps/mapengine/maplibre-gl.css">
+<link rel="stylesheet" href="/maps/mapengine/map-engine.css">
 <link rel="stylesheet" href="../../css/common.css">
 <style>
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);}
@@ -859,10 +859,10 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 
 </div>
 
-<script src="/map-assets/maplibre-gl.js"></script>
-<script src="/map-assets/pmtiles.js"></script>
-<script src="/map-assets/basemap-style.js"></script>
-<script src="/map-assets/map-engine.js"></script>
+<script src="/maps/mapengine/maplibre-gl.js"></script>
+<script src="/maps/mapengine/pmtiles.js"></script>
+<script src="/maps/mapengine/basemap-style.js"></script>
+<script src="/maps/mapengine/map-engine.js"></script>
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/adsb-operators.js"></script>
 <script>
@@ -1028,7 +1028,7 @@ function updateBasemapInfo(label, path) {
   el.innerHTML = html;
 }
 
-// Shared render engine (services/map/map-assets/map-engine.js). It owns map
+// Shared render engine (maps/mapengine/map-engine.js). It owns map
 // creation, the pmtiles:// protocol, the bottom-left control stack (zoom readout
 // + nav + imperial scale) and a ResizeObserver. OASIS keeps its own base-map
 // swap (setUrl, so overlays survive), #layer-panel, and all overlays below.

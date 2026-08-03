@@ -7,7 +7,7 @@
 // The station's map archives are Protomaps builds (extracted from a Protomaps
 // planet with the map-download tool), so this style targets the Protomaps
 // schema (earth/water/roads/places/pois/…), NOT OpenMapTiles. Glyphs are the
-// vendored Open Sans faces served locally from /map-assets/fonts/.
+// vendored Open Sans faces served locally from /maps/mapengine/fonts/.
 //
 // Usage:
 //   const map = new maplibregl.Map({
@@ -34,7 +34,7 @@ function oasisBaseMapStyle(sourceUrl, options) {
 
   return {
     version: 8,
-    glyphs: origin + '/map-assets/fonts/{fontstack}/{range}.pbf',
+    glyphs: origin + '/maps/mapengine/fonts/{fontstack}/{range}.pbf',
     sources: {
       basemap: { type: 'vector', url: sourceUrl }
     },
