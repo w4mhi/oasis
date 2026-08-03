@@ -763,9 +763,8 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
       <label class="layer-toggle"><input type="checkbox" data-group="boundaries" checked> <span>Boundaries</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="buildings" checked> <span>Buildings</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="landuse" checked> <span>Land use</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="peaks" checked> <span>Mt peaks</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="parks" checked> <span>Parks / Nature</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="pois" checked> <span>POIs / Places</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="places" checked> <span>POIs / Places</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="transit" checked> <span>Rail &amp; ferry</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="roads" checked> <span>Roads</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="water" checked> <span>Water bodies</span></label>
@@ -1004,7 +1003,7 @@ const origin    = location.origin;
 // Deep-link params (parity with the offline maps viewer):
 //   ?file=<archive.pmtiles>  ?center=<lon,lat>  ?zoom=<z>
 const _params    = new URLSearchParams(location.search);
-let   MAP_FILE   = _params.get('file') || 'washington.pmtiles';
+let   MAP_FILE   = _params.get('file') || 'Washington.pmtiles';
 const _pc        = _params.get('center');
 const _pz        = _params.get('zoom');
 const URL_CENTER = _pc ? _pc.split(',').map(Number) : null;
@@ -1168,17 +1167,16 @@ document.getElementById('fs-list').addEventListener('click', (e) => {
 // Group the shared base-map layer ids (from basemap-style.js) into the toggles
 // shown in the collapsible "Map layers" panel. Mirrors maps/map.html.
 const LAYER_GROUPS = {
-  roads:      ['road-minor', 'road-secondary', 'road-primary', 'road-motorway', 'road-labels'],
+  roads:      ['road-minor', 'road-medium', 'road-major', 'road-highway', 'road-labels'],
   transit:    ['railways', 'ferry-line'],
   waterways:  ['waterways-line'],
-  water:      ['water-poly-fill'],
-  buildings:  ['buildings-fill'],
+  water:      ['water', 'water-basin', 'water-dock', 'water-reef', 'water-pool', 'water-labels'],
+  buildings:  ['buildings'],
   parks:      ['landuse-park'],
-  landuse:    ['landcover-wood', 'landcover-grass', 'landuse-residential', 'landuse-commercial', 'landuse-industrial'],
-  pois:       ['place-labels', 'pois-circle'],
+  landuse:    ['landcover', 'landuse-residential', 'landuse-commercial', 'landuse-industrial', 'landuse-institution'],
+  places:     ['place-locality', 'place-region', 'pois-label'],
   airports:   ['airport-area', 'airport-runway', 'airport-label'],
   boundaries: ['boundaries'],
-  peaks:      ['mountain-peak'],
 };
 
 function toggleLayerPanel() {
@@ -2960,11 +2958,12 @@ map.on('load', _updateReadout);
 // Station icons live in the WebGL canvas now (symbol layer), so a click can hit
 // both a station and an OSM feature. The measure tool owns clicks while active.
 const OSM_INSPECT_LAYERS = [
-  'water-poly-fill', 'waterways-line',
-  'landcover-wood', 'landcover-grass', 'landuse-park',
-  'landuse-residential', 'landuse-commercial', 'landuse-industrial',
-  'road-minor', 'road-secondary', 'road-primary', 'road-motorway',
-  'buildings-fill', 'place-labels', 'pois-circle', 'mountain-peak',
+  'water', 'waterways-line',
+  'landcover', 'landuse-park',
+  'landuse-residential', 'landuse-commercial', 'landuse-industrial', 'landuse-institution',
+  'airport-area',
+  'road-minor', 'road-medium', 'road-major', 'road-highway',
+  'buildings', 'boundaries', 'place-locality',
 ];
 map.on('click', (e) => {
   if (measureOn || placingWarning) return;

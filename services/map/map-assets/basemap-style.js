@@ -1,28 +1,32 @@
-// OASIS shared offline base-map style.
+// OASIS shared offline base-map style — Protomaps Basemap v4 schema.
 //
-// Single source of truth for the MapLibre GL vector style used by both the
-// offline map viewer (maps/map.html) and the live APRS station map
-// (server/map/map.html). Served from /map-assets/basemap-style.js so any page can
-// load it with an absolute path, no build step, no CDN.
+// Single source of truth for the MapLibre GL vector style used by the live
+// traffic map (server/map/map.html). Served from /map-assets/basemap-style.js
+// so any page can load it with an absolute path — no build step, no CDN.
+//
+// The station's map archives are Protomaps builds (extracted from a Protomaps
+// planet with the map-download tool), so this style targets the Protomaps
+// schema (earth/water/roads/places/pois/…), NOT OpenMapTiles. Glyphs are the
+// vendored Open Sans faces served locally from /map-assets/fonts/.
 //
 // Usage:
 //   const map = new maplibregl.Map({
 //     container: 'map',
 //     style: oasisBaseMapStyle('pmtiles://' + location.origin + '/maps/foo.pmtiles'),
-//     center: [...], zoom: ...
 //   });
 //
 // The vector source is always registered under the id 'basemap'. To swap the
 // underlying archive at runtime, call: map.getSource('basemap').setUrl(newUrl).
 //
-// Layer ids (stable — relied on by maps/map.html for click-inspect + toggles):
-//   background, water-poly-fill, waterways-line,
-//   landcover-wood, landcover-grass, landuse-park,
-//   landuse-residential, landuse-commercial, landuse-industrial,
-//   road-minor, road-secondary, road-primary, road-motorway,
-//   railways, ferry-line, airport-area, airport-runway, airport-label,
-//   boundaries, buildings-fill, road-labels, place-labels, pois-circle,
-//   mountain-peak
+// Layer ids (stable — relied on by map.html for click-inspect + layer toggles):
+//   background, earth, landcover,
+//   landuse-park, landuse-residential, landuse-commercial, landuse-industrial,
+//   landuse-institution, airport-area,
+//   water, water-basin, water-dock, water-reef, water-pool, waterways-line,
+//   water-labels,
+//   road-minor, road-medium, road-major, road-highway, railways, ferry-line,
+//   buildings, boundaries, airport-runway, road-labels, airport-label,
+//   place-locality, place-region, pois-label
 
 function oasisBaseMapStyle(sourceUrl, options) {
   options = options || {};
@@ -35,223 +39,163 @@ function oasisBaseMapStyle(sourceUrl, options) {
       basemap: { type: 'vector', url: sourceUrl }
     },
     layers: [
-
-      // ── Background ────────────────────────────────────────────────────────
       { id: 'background', type: 'background',
-        paint: { 'background-color': '#111827' } },
+        paint: { 'background-color': '#0e141c' } },
 
-      // ── Water bodies ──────────────────────────────────────────────────────
-      { id: 'water-poly-fill', type: 'fill',
-        source: 'basemap', 'source-layer': 'water',
-        paint: { 'fill-color': '#1a3a5c' } },
+      // Land vs water
+      { id: 'earth', type: 'fill', source: 'basemap', 'source-layer': 'earth',
+        paint: { 'fill-color': '#171d26' } },
 
-      // ── Waterways ─────────────────────────────────────────────────────────
-      { id: 'waterways-line', type: 'line',
-        source: 'basemap', 'source-layer': 'waterway',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
+      { id: 'landcover', type: 'fill', source: 'basemap', 'source-layer': 'landcover',
         paint: {
-          'line-color': '#1a4a7a',
-          'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 14, 4]
-        }
-      },
+          'fill-color': ['match', ['get', 'kind'],
+            ['forest', 'wood'], '#16241a',
+            ['grassland', 'scrub', 'farmland'], '#182219',
+            ['glacier', 'snow'], '#20262e',
+            '#171d26'],
+          'fill-opacity': 0.7 } },
 
-      // ── Land cover ────────────────────────────────────────────────────────
-      { id: 'landcover-wood', type: 'fill',
-        source: 'basemap', 'source-layer': 'landcover',
-        filter: ['==', ['get', 'class'], 'wood'],
-        paint: { 'fill-color': '#1a2e1a', 'fill-opacity': 0.8 } },
+      { id: 'landuse-park', type: 'fill', source: 'basemap', 'source-layer': 'landuse',
+        filter: ['match', ['get', 'kind'],
+          ['park', 'national_park', 'nature_reserve', 'recreation_ground', 'cemetery', 'forest'], true, false],
+        paint: { 'fill-color': '#15241a', 'fill-opacity': 0.6 } },
 
-      { id: 'landcover-grass', type: 'fill',
-        source: 'basemap', 'source-layer': 'landcover',
-        filter: ['match', ['get', 'class'], ['grass', 'crop', 'scrub'], true, false],
-        paint: { 'fill-color': '#1e2e18', 'fill-opacity': 0.6 } },
+      // Developed land use (from the landuse layer) — subtle tinted fills.
+      { id: 'landuse-residential', type: 'fill', source: 'basemap', 'source-layer': 'landuse',
+        filter: ['==', ['get', 'kind'], 'residential'],
+        paint: { 'fill-color': '#191b28', 'fill-opacity': 0.5 } },
+      { id: 'landuse-commercial', type: 'fill', source: 'basemap', 'source-layer': 'landuse',
+        filter: ['match', ['get', 'kind'], ['commercial', 'retail'], true, false],
+        paint: { 'fill-color': '#201a26', 'fill-opacity': 0.5 } },
+      { id: 'landuse-industrial', type: 'fill', source: 'basemap', 'source-layer': 'landuse',
+        filter: ['match', ['get', 'kind'], ['industrial', 'railway', 'quarry'], true, false],
+        paint: { 'fill-color': '#1b1f24', 'fill-opacity': 0.5 } },
+      { id: 'landuse-institution', type: 'fill', source: 'basemap', 'source-layer': 'landuse',
+        filter: ['match', ['get', 'kind'], ['hospital', 'school', 'university', 'college', 'kindergarten'], true, false],
+        paint: { 'fill-color': '#241a1e', 'fill-opacity': 0.45 } },
 
-      // ── Parks / nature ────────────────────────────────────────────────────
-      { id: 'landuse-park', type: 'fill',
-        source: 'basemap', 'source-layer': 'landuse',
-        filter: ['match', ['get', 'class'], ['park', 'national_park', 'nature_reserve'], true, false],
-        paint: { 'fill-color': '#162616', 'fill-opacity': 0.7 } },
-
-      // ── Land use ──────────────────────────────────────────────────────────
-      { id: 'landuse-residential', type: 'fill',
-        source: 'basemap', 'source-layer': 'landuse',
-        filter: ['==', ['get', 'class'], 'residential'],
-        paint: { 'fill-color': '#1a1a2a', 'fill-opacity': 0.5 } },
-
-      { id: 'landuse-commercial', type: 'fill',
-        source: 'basemap', 'source-layer': 'landuse',
-        filter: ['match', ['get', 'class'], ['commercial', 'retail'], true, false],
-        paint: { 'fill-color': '#1e1a22', 'fill-opacity': 0.5 } },
-
-      { id: 'landuse-industrial', type: 'fill',
-        source: 'basemap', 'source-layer': 'landuse',
-        filter: ['==', ['get', 'class'], 'industrial'],
-        paint: { 'fill-color': '#1a1e22', 'fill-opacity': 0.5 } },
-
-      // ── Airport grounds (aprons / aerodrome polygons) ─────────────────────
-      { id: 'airport-area', type: 'fill',
-        source: 'basemap', 'source-layer': 'aeroway',
-        filter: ['match', ['get', 'class'], ['aerodrome', 'apron'], true, false],
+      // Airport grounds (aerodrome/airfield areas)
+      { id: 'airport-area', type: 'fill', source: 'basemap', 'source-layer': 'landuse',
+        filter: ['match', ['get', 'kind'], ['aerodrome', 'airfield'], true, false],
         paint: { 'fill-color': '#1c2130', 'fill-opacity': 0.7 } },
 
-      // ── Roads — minor / service / track / path ────────────────────────────
-      { id: 'road-minor', type: 'line',
-        source: 'basemap', 'source-layer': 'transportation',
-        filter: ['match', ['get', 'class'], ['minor', 'service', 'track', 'path'], true, false],
+      { id: 'water', type: 'fill', source: 'basemap', 'source-layer': 'water',
+        paint: { 'fill-color': '#12314f' } },
+
+      // Water sub-kinds — tinted over the base fill so harbours, reservoirs,
+      // reefs and pools read distinctly.
+      { id: 'water-basin', type: 'fill', source: 'basemap', 'source-layer': 'water',
+        filter: ['==', ['get', 'kind'], 'basin'],
+        paint: { 'fill-color': '#16405f' } },
+      { id: 'water-dock', type: 'fill', source: 'basemap', 'source-layer': 'water',
+        filter: ['==', ['get', 'kind'], 'dock'],
+        paint: { 'fill-color': '#123f5a' } },
+      { id: 'water-reef', type: 'fill', source: 'basemap', 'source-layer': 'water',
+        filter: ['==', ['get', 'kind'], 'reef'],
+        paint: { 'fill-color': '#1a5f5a', 'fill-opacity': 0.8 } },
+      { id: 'water-pool', type: 'fill', source: 'basemap', 'source-layer': 'water',
+        filter: ['==', ['get', 'kind'], 'swimming_pool'], minzoom: 14,
+        paint: { 'fill-color': '#1e73b8' } },
+
+      // Waterways — rivers/canals/streams carried as lines in the water layer.
+      { id: 'waterways-line', type: 'line', source: 'basemap', 'source-layer': 'water',
+        filter: ['match', ['get', 'kind'], ['river', 'canal', 'stream'], true, false],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#1a4a7a', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 14, 3] } },
+
+      { id: 'water-labels', type: 'symbol', source: 'basemap', 'source-layer': 'water',
+        minzoom: 9,
+        layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
+                  'text-size': 11 },
+        paint: { 'text-color': '#5b86ad', 'text-halo-color': '#08131f', 'text-halo-width': 1 } },
+
+      // Roads, drawn thin -> thick by class
+      { id: 'road-minor', type: 'line', source: 'basemap', 'source-layer': 'roads',
+        filter: ['match', ['get', 'kind'], ['minor_road', 'other', 'path'], true, false],
         minzoom: 12,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#2a2a3a', 'line-width': 1 } },
+        paint: { 'line-color': '#2a2f3b', 'line-width': 1 } },
 
-      // ── Roads — secondary / tertiary ──────────────────────────────────────
-      { id: 'road-secondary', type: 'line',
-        source: 'basemap', 'source-layer': 'transportation',
-        filter: ['match', ['get', 'class'], ['secondary', 'tertiary'], true, false],
-        minzoom: 9,
+      { id: 'road-medium', type: 'line', source: 'basemap', 'source-layer': 'roads',
+        filter: ['==', ['get', 'kind'], 'medium_road'], minzoom: 9,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#3a3a4e', 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1, 14, 3] } },
+        paint: { 'line-color': '#3a4051', 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1, 15, 4] } },
 
-      // ── Roads — primary ───────────────────────────────────────────────────
-      { id: 'road-primary', type: 'line',
-        source: 'basemap', 'source-layer': 'transportation',
-        filter: ['==', ['get', 'class'], 'primary'],
-        minzoom: 7,
+      { id: 'road-major', type: 'line', source: 'basemap', 'source-layer': 'roads',
+        filter: ['==', ['get', 'kind'], 'major_road'], minzoom: 7,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#4a4a20', 'line-width': ['interpolate', ['linear'], ['zoom'], 7, 1, 14, 4] } },
+        paint: { 'line-color': '#565d33', 'line-width': ['interpolate', ['linear'], ['zoom'], 7, 1, 15, 5] } },
 
-      // ── Roads — motorway / trunk ──────────────────────────────────────────
-      { id: 'road-motorway', type: 'line',
-        source: 'basemap', 'source-layer': 'transportation',
-        filter: ['match', ['get', 'class'], ['motorway', 'trunk'], true, false],
+      { id: 'road-highway', type: 'line', source: 'basemap', 'source-layer': 'roads',
+        filter: ['==', ['get', 'kind'], 'highway'],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#8b5a00', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 14, 6] } },
+        paint: { 'line-color': '#9a6410', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 15, 7] } },
 
-      // ── Railways (rail / transit) ─────────────────────────────────────────
-      { id: 'railways', type: 'line',
-        source: 'basemap', 'source-layer': 'transportation',
-        filter: ['match', ['get', 'class'], ['rail', 'transit'], true, false],
-        minzoom: 9,
+      // Railways (rail) and ferry routes — the remaining roads-layer kinds.
+      { id: 'railways', type: 'line', source: 'basemap', 'source-layer': 'roads',
+        filter: ['==', ['get', 'kind'], 'rail'], minzoom: 9,
         paint: { 'line-color': '#4a4f5e', 'line-dasharray': [3, 3],
                  'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.6, 15, 2] } },
-
-      // ── Ferry routes ──────────────────────────────────────────────────────
-      { id: 'ferry-line', type: 'line',
-        source: 'basemap', 'source-layer': 'transportation',
-        filter: ['==', ['get', 'class'], 'ferry'],
+      { id: 'ferry-line', type: 'line', source: 'basemap', 'source-layer': 'roads',
+        filter: ['==', ['get', 'kind'], 'ferry'],
         paint: { 'line-color': '#2f5f86', 'line-dasharray': [2, 4], 'line-width': 1 } },
 
-      // ── Airport runways / taxiways ────────────────────────────────────────
-      { id: 'airport-runway', type: 'line',
-        source: 'basemap', 'source-layer': 'aeroway',
-        filter: ['match', ['get', 'class'], ['runway', 'taxiway'], true, false],
-        layout: { 'line-cap': 'butt', 'line-join': 'round' },
-        paint: { 'line-color': '#5a6472', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1, 15, 5] } },
+      { id: 'buildings', type: 'fill', source: 'basemap', 'source-layer': 'buildings',
+        minzoom: 13,
+        paint: { 'fill-color': '#1d2130',
+                 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.4, 16, 0.85] } },
 
-      // ── Buildings ─────────────────────────────────────────────────────────
-      { id: 'buildings-fill', type: 'fill',
-        source: 'basemap', 'source-layer': 'building',
-        minzoom: 12,
-        paint: {
-          'fill-color': '#1e2030',
-          'fill-outline-color': '#2a2a4a',
-          'fill-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 15, 0.9]
-        }
-      },
-
-      // ── Administrative boundaries (country / state) ───────────────────────
-      { id: 'boundaries', type: 'line',
-        source: 'basemap', 'source-layer': 'boundary',
-        filter: ['all', ['<=', ['get', 'admin_level'], 4], ['!=', ['get', 'maritime'], 1]],
+      { id: 'boundaries', type: 'line', source: 'basemap', 'source-layer': 'boundaries',
         layout: { 'line-join': 'round' },
         paint: { 'line-color': '#3b4a5a', 'line-dasharray': [2, 2], 'line-width': 1 } },
 
-      // ── Road labels ───────────────────────────────────────────────────────
-      { id: 'road-labels', type: 'symbol',
-        source: 'basemap', 'source-layer': 'transportation_name',
+      // Airport runways/taxiways (aeroway lines in the roads layer)
+      { id: 'airport-runway', type: 'line', source: 'basemap', 'source-layer': 'roads',
+        filter: ['==', ['get', 'kind'], 'aeroway'],
+        layout: { 'line-cap': 'butt', 'line-join': 'round' },
+        paint: { 'line-color': '#5a6472', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1, 15, 5] } },
+
+      // Road name labels (Protomaps carries names on the roads layer itself)
+      { id: 'road-labels', type: 'symbol', source: 'basemap', 'source-layer': 'roads',
         minzoom: 13,
-        layout: {
-          'symbol-placement':  'line',
-          'symbol-spacing':    250,
-          'text-field':        ['get', 'name'],
-          'text-font':         ['Open Sans Regular'],
-          'text-size':         ['interpolate', ['linear'], ['zoom'], 13, 10, 17, 13],
-          'text-max-angle':    30,
-          'text-padding':      5,
-          'text-allow-overlap': false
-        },
-        paint: {
-          'text-color':      '#e8e8ff',
-          'text-halo-color': '#080810',
-          'text-halo-width': 1.5
-        }
-      },
+        layout: { 'symbol-placement': 'line', 'symbol-spacing': 250,
+                  'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
+                  'text-size': ['interpolate', ['linear'], ['zoom'], 13, 10, 17, 13] },
+        paint: { 'text-color': '#dfe4f2', 'text-halo-color': '#080c12', 'text-halo-width': 1.4 } },
 
-      // ── Place labels — cities / towns ─────────────────────────────────────
-      { id: 'place-labels', type: 'symbol',
-        source: 'basemap', 'source-layer': 'place',
-        filter: ['match', ['get', 'class'], ['city', 'town'], true, false],
-        layout: {
-          'text-field':        ['get', 'name'],
-          'text-font':         ['Open Sans Regular'],
-          'text-size':         ['interpolate', ['linear'], ['zoom'], 5, 10, 12, 14],
-          'text-anchor':       'center',
-          'text-padding':      6,
-          'text-max-width':    8,
-          'text-allow-overlap': false
-        },
-        paint: {
-          'text-color':      '#e0e0e0',
-          'text-halo-color': '#080810',
-          'text-halo-width': 1.5
-        }
-      },
-
-      // ── POIs — villages, suburbs, neighbourhoods ──────────────────────────
-      { id: 'pois-circle', type: 'symbol',
-        source: 'basemap', 'source-layer': 'place',
-        filter: ['match', ['get', 'class'], ['village', 'suburb', 'hamlet', 'neighbourhood', 'quarter'], true, false],
-        minzoom: 9,
-        layout: {
-          'text-field':        ['get', 'name'],
-          'text-font':         ['Open Sans Regular'],
-          'text-size':         ['interpolate', ['linear'], ['zoom'], 9, 10, 14, 13],
-          'text-anchor':       'center',
-          'text-padding':      4,
-          'text-allow-overlap': false
-        },
-        paint: {
-          'text-color':      '#b0b0c0',
-          'text-halo-color': '#080810',
-          'text-halo-width': 1.2
-        }
-      },
-
-      // ── Mountain peaks ────────────────────────────────────────────────────
-      // ── Airport labels ────────────────────────────────────────────────────
-      { id: 'airport-label', type: 'symbol',
-        source: 'basemap', 'source-layer': 'aerodrome_label',
-        minzoom: 10,
+      // Airport labels (aerodrome points in the pois layer)
+      { id: 'airport-label', type: 'symbol', source: 'basemap', 'source-layer': 'pois',
+        filter: ['==', ['get', 'kind'], 'aerodrome'], minzoom: 10,
         layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
                   'text-size': 11, 'text-anchor': 'top', 'text-offset': [0, 0.4] },
-        paint: { 'text-color': '#9fb2c9', 'text-halo-color': '#080810', 'text-halo-width': 1.2 } },
+        paint: { 'text-color': '#9fb2c9', 'text-halo-color': '#080c12', 'text-halo-width': 1.2 } },
 
-      // ── Mountain peaks ────────────────────────────────────────────────────
-      { id: 'mountain-peak', type: 'symbol',
-        source: 'basemap', 'source-layer': 'mountain_peak',
-        minzoom: 9,
-        layout: {
-          'text-field':   ['concat', ['get', 'name'], '\n', ['get', 'ele_ft'], 'ft'],
-          'text-font':    ['Open Sans Regular'],
-          'text-size':    10,
-          'text-anchor':  'top',
-          'text-offset':  [0, 0.3]
-        },
-        paint: {
-          'text-color':      '#a0c0a0',
-          'text-halo-color': '#080810',
-          'text-halo-width': 1
-        }
-      }
+      // Place labels — cities/towns, then regions
+      { id: 'place-locality', type: 'symbol', source: 'basemap', 'source-layer': 'places',
+        filter: ['==', ['get', 'kind'], 'locality'],
+        layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
+                  'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10, 12, 16],
+                  'text-max-width': 8 },
+        paint: { 'text-color': '#eef0f6', 'text-halo-color': '#080c12', 'text-halo-width': 1.5 } },
 
+      { id: 'place-region', type: 'symbol', source: 'basemap', 'source-layer': 'places',
+        filter: ['==', ['get', 'kind'], 'region'], maxzoom: 8,
+        layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
+                  'text-size': 12, 'text-transform': 'uppercase', 'text-letter-spacing': 0.1 },
+        paint: { 'text-color': '#8a93a6', 'text-halo-color': '#080c12', 'text-halo-width': 1.2 } },
+
+      // Amenity POI labels (from the pois layer) — a curated set so the map
+      // isn't buried in labels; named features only, at street zoom.
+      { id: 'pois-label', type: 'symbol', source: 'basemap', 'source-layer': 'pois',
+        filter: ['all', ['has', 'name'],
+          ['match', ['get', 'kind'],
+            ['hotel', 'marina', 'attraction', 'camp_site', 'caravan_site', 'sports_centre',
+             'golf_course', 'hospital', 'reservoir'], true, false]],
+        minzoom: 13,
+        layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
+                  'text-size': 10, 'text-anchor': 'top', 'text-offset': [0, 0.4],
+                  'text-max-width': 8 },
+        paint: { 'text-color': '#9aa6b6', 'text-halo-color': '#080c12', 'text-halo-width': 1 } }
     ]
   };
 }
