@@ -49,5 +49,81 @@ class FormatTest(unittest.TestCase):
         self.assertEqual(p["send_path"], "both")
 
 
+class FakeClient:
+    def __init__(self, healthy=True):
+        self.healthy = healthy
+        self.beacons = {}      # id -> payload
+        self.sent = []         # beacon ids that got send_now
+        self._n = 0
+    def health(self): return self.healthy
+    def create_beacon(self, payload):
+        if not self.healthy: raise wb.GraywolfError("down")
+        self._n += 1; bid = str(self._n)
+        rec = dict(payload); rec["id"] = bid; self.beacons[bid] = rec
+        # object_name is echoed for object beacons
+        return bid
+    def update_beacon(self, bid, payload):
+        if bid in self.beacons: self.beacons[bid].update(payload)
+    def delete_beacon(self, bid): self.beacons.pop(bid, None)
+    def send_now(self, bid): self.sent.append(bid)
+    def list_beacons(self): return list(self.beacons.values())
+
+
+SYMS = {"flood": ("\\", "w"), "fire": ("/", ":")}
+
+
+class BroadcasterTest(unittest.TestCase):
+    def _w(self, wid="3f9a1b2cdead", typ="flood", broadcast=True, gw=None):
+        return {"id": wid, "type": typ, "lat": 47.5, "lon": -122.0,
+                "note": "x", "broadcast": broadcast, "gw_beacon_id": gw}
+
+    def test_advertise_creates_object_beacon(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        bid = b.advertise(self._w())
+        self.assertEqual(bid, "1")
+        self.assertEqual(c.beacons["1"]["type"], "object")
+        self.assertEqual(c.beacons["1"]["symbol"], "w")
+
+    def test_advertise_unknown_type_uses_fallback_symbol(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        b.advertise(self._w(typ="mystery"))
+        self.assertEqual(c.beacons["1"]["symbol_table"], "\\")
+        self.assertEqual(c.beacons["1"]["symbol"], "!")
+
+    def test_advertise_returns_none_when_down(self):
+        c = FakeClient(healthy=False); b = wb.WarningBroadcaster(c, SYMS)
+        self.assertIsNone(b.advertise(self._w()))
+
+    def test_unadvertise_deletes_and_sends_kill(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS, kill_repeat=3)
+        w = self._w(); w["gw_beacon_id"] = b.advertise(w)
+        b.unadvertise(w)
+        # object beacon gone; a custom kill beacon was created + sent 3× + removed
+        self.assertNotIn("1", c.beacons)
+        self.assertEqual(len(c.sent), 3)
+        self.assertEqual(c.beacons, {})   # transient kill beacon cleaned up
+
+    def test_reconcile_creates_missing_and_kills_orphans(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        # pre-existing OASIS-owned orphan object with no matching warning
+        c.beacons["99"] = {"id": "99", "type": "object",
+                           "object_name": "Wdeadbeef"}
+        # one broadcast warning not yet advertised, one non-broadcast (ignored)
+        warnings = [self._w(wid="11111111aaaa", broadcast=True, gw=None),
+                    self._w(wid="22222222bbbb", broadcast=False, gw=None)]
+        out = b.reconcile(warnings)
+        self.assertEqual(out["created"], 1)
+        self.assertEqual(out["killed"], 1)
+        self.assertNotIn("99", c.beacons)                    # orphan removed
+        names = [x.get("object_name") for x in c.beacons.values()]
+        self.assertIn("W11111111", names)                    # missing created
+
+    def test_reconcile_ignores_non_oasis_beacons(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        c.beacons["7"] = {"id": "7", "type": "object", "object_name": "REPEATER1"}
+        b.reconcile([])                                      # no broadcast warnings
+        self.assertIn("7", c.beacons)                        # operator beacon untouched
+
+
 if __name__ == "__main__":
     unittest.main()
