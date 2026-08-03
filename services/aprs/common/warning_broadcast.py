@@ -8,8 +8,6 @@ current broadcast warnings.
 import re
 import time
 
-from .graywolf_client import GraywolfError
-
 SYMBOL_FALLBACK = ("\\", "!")
 _NAME_RE = re.compile(r"^W[0-9a-f]{8}$")   # OASIS-owned object-name convention
 
