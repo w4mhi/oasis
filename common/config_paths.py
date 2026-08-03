@@ -36,5 +36,8 @@ def tle_cache_dir(repo_root):
 def hardware_json(repo_root):
     return os.path.join(config_dir(repo_root), "hardware.json")
 
+def graywolf_api_json(repo_root):
+    return os.path.join(config_dir(repo_root), "graywolf_api.json")
+
 def installer_queue_dir(repo_root):
     return os.path.join(config_dir(repo_root), "installer-queue")
