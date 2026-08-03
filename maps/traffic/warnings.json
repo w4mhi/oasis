@@ -5,6 +5,7 @@
   { "id": "first_aid",      "label": "First Aid",      "icon": "➕", "symbol_table": "/",  "symbol": "+" },
   { "id": "flood",          "label": "Flood",          "icon": "🌊", "symbol_table": "\\", "symbol": "w" },
   { "id": "hazmat",         "label": "Hazmat",         "icon": "☣️", "symbol_table": "\\", "symbol": "!" },
+  { "id": "wind",           "label": "High Wind",      "icon": "🌬️", "symbol_table": "\\", "symbol": "g" },
   { "id": "ice",            "label": "Ice / Snow",     "icon": "🧊", "symbol_table": "\\", "symbol": "*" },
   { "id": "medical",        "label": "Medical",        "icon": "🚑", "symbol_table": "/",  "symbol": "a" },
   { "id": "power",          "label": "Power Outage",   "icon": "⚡", "symbol_table": "\\", "symbol": "J" },
@@ -12,6 +13,5 @@
   { "id": "shelter",        "label": "Shelter",        "icon": "⛺", "symbol_table": "\\", "symbol": "z" },
   { "id": "storm",          "label": "Storm",          "icon": "⛈️", "symbol_table": "\\", "symbol": "T" },
   { "id": "tornado",        "label": "Tornado",        "icon": "🌪️", "symbol_table": "\\", "symbol": "t" },
-  { "id": "water",          "label": "Water Point",    "icon": "🚰", "symbol_table": "/",  "symbol": "w" },
-  { "id": "wind",           "label": "High Wind",      "icon": "🌬️", "symbol_table": "\\", "symbol": "g" }
+  { "id": "water",          "label": "Water Point",    "icon": "🚰", "symbol_table": "/",  "symbol": "w" }
 ]
