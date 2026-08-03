@@ -116,8 +116,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #clearTrackBtn{display:none;}
 .track-sep{color:var(--border);font-size:var(--fs-small);}
 #trackMsg{font-size:var(--fs-small);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;display:none;}
-#autoFlyBtn{opacity:1;transition:opacity .2s;white-space:nowrap;}
-#autoFlyBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
 #autoPathBtn{white-space:nowrap;}
 #autoPathBtn.on{opacity:1;color:#b478ff;border-color:#b478ff;}
 
@@ -416,7 +414,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .alert-dismissed-note a{color:var(--blue);text-decoration:none;}
 .alert-dismissed-note a:hover{color:var(--accent);}
 
-/* Active state for the Grid / Measure toggles (mirrors #autoFlyBtn.on) */
+/* Active state for the Grid / Measure toggles */
 #gridBtn.on,#measureBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
 /* Station-list toggle — floating hamburger glyph at the map's top-left corner */
 #listBtn{
@@ -670,7 +668,6 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
     <button id="gridBtn" class="sbtn" onclick="toggleGrid()" title="Toggle Maidenhead grid overlay + distance/bearing measure">Grid</button>
     <span class="track-sep">|</span>
     <button id="movingBtn" class="sbtn" onclick="toggleMoving()" title="Show only stations currently moving (speed > 0)">Moving</button>
-    <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">Auto-fly</button>
     <span style="flex:1"></span>
     <span id="crCpu" class="cr-val" title="Pi CPU load (whole system, ~5s sample)">—</span>
     <span class="track-sep">|</span>
@@ -2171,7 +2168,7 @@ async function fetchStations() {
     allStations.forEach(s => { nextPrev[s.callsign] = s.last_heard; });
     _prevHeard = nextPrev;
     // ── Latest station + recent-heard panel ──────────────────────────────
-    // Both are map-oriented (auto-fly target + "newly heard" pings), so they
+    // Both are map-oriented (fly-to-latest target + "newly heard" pings), so they
     // consider only stations that carry a position; position-less stations
     // (status/message/telemetry) still appear in the bottom station list.
     _latestStation = allStations.reduce((best, s) => {
@@ -2190,7 +2187,7 @@ async function fetchStations() {
     refreshGridColFilter();      // rebuild the drawer Grid dropdown options
     applyFilter();
     setStatus('ok', '');   // green dot = OK; the header clock shows the time
-    // Refresh active track data (updates trail + auto-fly if enabled)
+    // Refresh active track data (updates the trail)
     if (activeTrack) _loadTrack(activeTrack);
     // Auto-path: draw paths only for stations heard THIS cycle, so previous
     // cycles' paths don't persist. Manual single-path persists when auto is off.
@@ -3028,7 +3025,6 @@ map.on('mouseleave', 'adsb-icon', () => { map.getCanvas().style.cursor = ''; });
 // ── Track rendering ──────────────────────────────────────────────────────────
 let activeTrack = null;
 let _trackStatusMsg = '';  // persists across refreshes so popup can re-show it
-let autoFly = false;
 let _focusHandled = false;
 let activePath = null;     // callsign whose RF path is currently drawn
 let _pathStatusMsg = '';   // persists across refreshes for popup re-show
@@ -3052,11 +3048,6 @@ let pathMarkers = [];      // glowing DOM markers for path receiver node(s)
 let coverageOn = false;    // when on, draw the filter-aware reach-fan
 let covMarkers = [];       // glowing DOM markers for coverage receiver node(s)
 const covRxState = {};     // iGate callsign -> enabled (Coverage panel checkboxes)
-
-function toggleAutoFly() {
-  autoFly = !autoFly;
-  document.getElementById('autoFlyBtn').classList.toggle('on', autoFly);
-}
 
 // Auto-path: keep the RF path of the most-recently-heard station drawn, updating
 // each refresh. Turning it off clears the path.
@@ -3506,7 +3497,6 @@ async function _loadTrack(callsign) {
       return;
     }
     const coords = data.points.map(p => [p.lon, p.lat]);
-    const last = data.points[data.points.length - 1];
     const features = [
       { type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} },
       ...data.points.map((p, i) => ({
@@ -3517,9 +3507,6 @@ async function _loadTrack(callsign) {
       }))
     ];
     map.getSource('aprs-track').setData({ type: 'FeatureCollection', features });
-    if (autoFly && last) {
-      map.flyTo({ center: [last.lon, last.lat], zoom: Math.max(map.getZoom(), 12), speed: 1.4, essential: true });
-    }
     setTrackMsg(callsign + ': ' + data.count + ' pts', 'blue');
     _setPopupTrackStatus(callsign, data.count + ' pts · ' + parseInt(document.getElementById('trackWindow').value || 60) + ' min window');
   } catch (e) {
