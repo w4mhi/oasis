@@ -544,6 +544,12 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 .warn-row.armed{background:rgba(255,40,40,.16);outline:1px solid var(--red);}
 .warn-row .warn-ico{font-size:16px;line-height:1;width:20px;text-align:center;flex-shrink:0;}
 .warn-hint{padding:2px 4px 6px;color:var(--text-dim);font-size:var(--fs-micro);}
+.warn-mode{display:flex;flex-direction:column;gap:2px;padding:2px 4px 6px;font-size:var(--fs-micro);color:var(--text-dim);}
+.warn-mode input{margin-right:5px;}
+.warn-bcast{display:block;margin-top:6px;font-size:var(--fs-small);cursor:pointer;}
+.warn-bcast input{margin-right:5px;}
+.warn-status{margin-top:4px;font-size:var(--fs-micro);color:var(--text-dim);}
+.warn-marker.warn-broadcasting{box-shadow:0 0 9px 4px rgba(80,180,255,.7),0 0 8px 4px rgba(255,40,40,.45);}
 /* Crosshair while arming a warning placement */
 #map.placing-warning .maplibregl-canvas{cursor:crosshair;}
 /* Operator warning marker — icon with a persistent red glow (static, GPU-cheap) */
@@ -4113,11 +4119,21 @@ async function loadWarningCatalog() {
 function buildWarningsPanel() {
   const body = document.getElementById('warnings-body');
   if (!body) return;
-  let html = '<div class="warn-hint">Click a type, then click the map to place it.</div>';
-  html += WARN_CATALOG.map(w =>
+  const cat = WARN_CATALOG.slice().sort((a, b) => a.label.localeCompare(b.label));
+  let html = '<div class="warn-hint">Pick a mode, click a type, then click the map.</div>';
+  html += '<div class="warn-mode">' +
+    '<label><input type="radio" name="warnmode" value="local" checked> Local map only</label>' +
+    '<label><input type="radio" name="warnmode" value="broadcast"> Broadcast on APRS (RF+IS)</label>' +
+    '</div>';
+  html += cat.map(w =>
     '<div class="warn-row" data-warn="' + _escHtml(w.id) + '"><span class="warn-ico">' +
     _escHtml(w.icon) + '</span><span>' + _escHtml(w.label) + '</span></div>').join('');
   body.innerHTML = html;
+}
+
+function warnPlacementMode() {
+  const el = document.querySelector('input[name="warnmode"]:checked');
+  return el && el.value === 'broadcast';
 }
 
 document.getElementById('warnings-body').addEventListener('click', (e) => {
@@ -4149,7 +4165,8 @@ async function placeWarningClick(e) {
   try {
     const r = await fetch('/api/aprs/warnings', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, lon: e.lngLat.lng, lat: e.lngLat.lat, note: '' })
+      body: JSON.stringify({ type, lon: e.lngLat.lng, lat: e.lngLat.lat,
+                             note: '', broadcast: warnPlacementMode() })
     });
     const d = await r.json();
     if (d.ok) await loadWarnings();
@@ -4174,7 +4191,7 @@ function renderWarnings() {
   warnings.forEach(w => {
     const cat = WARN_BY_ID[w.type] || { icon: '⚠️', label: w.type };
     const el = document.createElement('div');
-    el.className = 'warn-marker';
+    el.className = 'warn-marker' + (w.broadcast ? ' warn-broadcasting' : '');
     el.textContent = cat.icon;
     el.title = cat.label + (w.note ? ' — ' + w.note : '');
     const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '240px' });
@@ -4185,12 +4202,35 @@ function renderWarnings() {
   });
 }
 
+function warnStatusText(w) {
+  if (!w.broadcast) return 'Local map only';
+  if (w.gw_beacon_id) return 'On air (APRS RF+IS)';
+  return 'Broadcast pending — will retry';
+}
+
 function warnPopupHtml(w) {
   const cat = WARN_BY_ID[w.type] || { icon: '⚠️', label: w.type };
   return '<div class="pop-call">' + cat.icon + ' ' + _escHtml(cat.label) + '</div>' +
     '<input class="warn-input" maxlength="50" placeholder="note (max 50 chars)" value="' +
       _escHtml(w.note || '') + '" oninput="warnSaveNote(\'' + w.id + '\', this.value)">' +
+    '<label class="warn-bcast"><input type="checkbox" ' + (w.broadcast ? 'checked' : '') +
+      ' onchange="warnToggleBroadcast(\'' + w.id + '\', this.checked)"> Broadcast on APRS (RF+IS)</label>' +
+    '<div class="warn-status" data-wid="' + w.id + '">' + _escHtml(warnStatusText(w)) + '</div>' +
     '<button class="warn-remove" onclick="warnRemove(\'' + w.id + '\')">✕ Remove warning</button>';
+}
+
+async function warnToggleBroadcast(id, on) {
+  try {
+    await fetch('/api/aprs/warnings/' + id, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ broadcast: on })
+    });
+  } catch (_) {}
+  // reflect immediately; server list refresh on popup close finalizes gw id
+  const w = warnings.find(x => x.id === id);
+  if (w) { w.broadcast = on; if (!on) w.gw_beacon_id = null; }
+  const el = document.querySelector('.warn-status[data-wid="' + id + '"]');
+  if (el && w) el.textContent = warnStatusText(w);
 }
 
 let _warnSaveTimer = null;
