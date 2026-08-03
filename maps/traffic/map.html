@@ -4189,7 +4189,7 @@ function renderWarnings() {
   if (_warnEditing) return; // don't disrupt an open note editor
   clearWarnMarkers();
   warnings.forEach(w => {
-    const cat = WARN_BY_ID[w.type] || { icon: '⚠️', label: w.type };
+    const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
     const el = document.createElement('div');
     el.className = 'warn-marker' + (w.broadcast ? ' warn-broadcasting' : '');
     el.textContent = cat.icon;
