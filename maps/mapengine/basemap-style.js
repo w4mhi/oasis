@@ -1,7 +1,7 @@
 // OASIS shared offline base-map style — Protomaps Basemap v4 schema.
 //
 // Single source of truth for the MapLibre GL vector style used by the live
-// traffic map (server/map/map.html). Served from /map-assets/basemap-style.js
+// traffic map (server/map/map.html). Served from /maps/mapengine/basemap-style.js
 // so any page can load it with an absolute path — no build step, no CDN.
 //
 // The station's map archives are Protomaps builds (extracted from a Protomaps
