@@ -550,6 +550,8 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 .warn-bcast input{margin-right:5px;}
 .warn-status{margin-top:4px;font-size:var(--fs-micro);color:var(--text-dim);}
 .warn-marker.warn-broadcasting{box-shadow:0 0 9px 4px rgba(80,180,255,.7),0 0 8px 4px rgba(255,40,40,.45);}
+/* Kill-pending halo: tombstoned or un-advertising warnings still on air — static ring, no animation (Pi kiosk CPU) */
+.warn-marker.warn-kill-pending{box-shadow:0 0 0 3px rgba(255,176,32,.95),0 0 10px 5px rgba(255,176,32,.55);}
 /* Crosshair while arming a warning placement */
 #map.placing-warning .maplibregl-canvas{cursor:crosshair;}
 /* Operator warning marker — icon with a persistent red glow (static, GPU-cheap) */
@@ -3132,6 +3134,7 @@ loadConfig().then(() => {
     startClock();
     loadHazards();    // shared natural-hazard catalog (hazards.json) — pills/age-exempt/dismiss
     fetchStations();
+    if (!window._warnPollTimer) window._warnPollTimer = setInterval(loadWarnings, 20000); // resolve kill-pending states
     loadStationCfg(); // resolve local station position → render the home node
     _syncPathChips(); // reflect any persisted RF/IS path-filter state on the chips
     _syncSrcColFromChips(); // and on the drawer's Src dropdown
@@ -4191,7 +4194,9 @@ function renderWarnings() {
   warnings.forEach(w => {
     const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
     const el = document.createElement('div');
-    el.className = 'warn-marker' + (w.broadcast ? ' warn-broadcasting' : '');
+    el.className = 'warn-marker'
+      + (w.broadcast ? ' warn-broadcasting' : '')
+      + (warnKillPending(w) ? ' warn-kill-pending' : '');
     el.textContent = cat.icon;
     el.title = cat.label + (w.note ? ' — ' + w.note : '');
     const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '240px' });
@@ -4203,10 +4208,13 @@ function renderWarnings() {
 }
 
 function warnStatusText(w) {
+  if (w.pending_delete) return 'Removing — on air until confirmed';
+  if (!w.broadcast && w.gw_beacon_id) return 'Un-advertising — still on air';
   if (!w.broadcast) return 'Local map only';
   if (w.gw_beacon_id) return 'On air (APRS RF+IS)';
-  return 'Broadcast pending — will retry';
+  return 'Broadcast pending';
 }
+function warnKillPending(w) { return !!(w.pending_delete || (!w.broadcast && w.gw_beacon_id)); }
 
 function warnPopupHtml(w) {
   const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
