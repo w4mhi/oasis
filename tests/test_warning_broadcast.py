@@ -124,6 +124,13 @@ class BroadcasterTest(unittest.TestCase):
         b.reconcile([])                                      # no broadcast warnings
         self.assertIn("7", c.beacons)                        # operator beacon untouched
 
+    def test_reconcile_sets_gw_beacon_id_on_created(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        w = self._w(wid="11111111aaaa", broadcast=True, gw=None)
+        out = b.reconcile([w])
+        self.assertEqual(out["created"], 1)
+        self.assertIsNotNone(w["gw_beacon_id"])
+
     def test_reconcile_orphan_delete_failure_not_counted(self):
         c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
         c.beacons["99"] = {"id": "99", "type": "object", "object_name": "Wdeadbeef"}

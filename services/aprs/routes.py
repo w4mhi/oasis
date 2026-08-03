@@ -7,7 +7,6 @@ server/app.py in the blueprint split; URLs unchanged.
 import json
 import os
 import threading
-import threading as _threading
 import time
 import uuid
 
@@ -17,7 +16,7 @@ import appconfig
 from common import config_paths
 from services.aprs.common import warning_catalog
 from services.aprs.common.graywolf_client import GraywolfClient
-from services.aprs.common.warning_broadcast import WarningBroadcaster
+from services.aprs.common.warning_broadcast import WarningBroadcaster, object_name
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 
@@ -31,8 +30,8 @@ _warnings_lock = threading.Lock()
 
 _TEST_BROADCASTER = None          # tests inject a fake here
 _broadcaster_cache = None
-_broadcaster_lock = _threading.Lock()
-_reconcile_lock = _threading.Lock()
+_broadcaster_lock = threading.Lock()
+_reconcile_lock = threading.Lock()
 _last_reconcile = [0.0]
 _RECONCILE_MIN_INTERVAL = 120     # seconds
 
@@ -191,7 +190,9 @@ def _clean_note(value):
 
 
 def _maybe_reconcile():
-    """Fire a throttled, non-blocking reconcile when broadcast warnings exist."""
+    """Fire a throttled, non-blocking reconcile whenever a broadcaster is
+    configured — even with zero broadcast warnings on disk, so an orphan
+    object beacon (e.g. from a failed delete) still gets killed."""
     b = _get_broadcaster()
     if b is None:
         return
@@ -201,15 +202,29 @@ def _maybe_reconcile():
             return
         _last_reconcile[0] = now
     warnings = _load_warnings()
-    if not any(w.get("broadcast") for w in warnings):
-        return
 
     def _run():
         try:
-            b.reconcile(warnings)
+            result = b.reconcile(warnings)
         except Exception:  # noqa: BLE001
-            pass
-    _threading.Thread(target=_run, daemon=True).start()
+            return
+        if result and result.get("created"):
+            try:
+                with _warnings_lock:
+                    disk = _load_warnings()
+                    assigned = {w["id"]: w.get("gw_beacon_id")
+                                for w in warnings if w.get("gw_beacon_id")}
+                    changed = False
+                    for d in disk:
+                        gid = assigned.get(d.get("id"))
+                        if gid and not d.get("gw_beacon_id"):
+                            d["gw_beacon_id"] = gid
+                            changed = True
+                    if changed:
+                        _save_warnings(disk)
+            except Exception:  # noqa: BLE001
+                pass
+    threading.Thread(target=_run, daemon=True).start()
 
 
 @bp.route("/api/aprs/warnings", methods=["GET"])
@@ -246,8 +261,7 @@ def api_aprs_warnings_add():
             "broadcast": bool(body.get("broadcast")),
             "gw_beacon_id": None,
         }
-        from services.aprs.common.warning_broadcast import object_name as _obj_name
-        item["aprs_name"] = _obj_name(item["id"]).strip()
+        item["aprs_name"] = object_name(item["id"]).strip()
         if item["broadcast"]:
             b = _get_broadcaster()
             if b is not None:

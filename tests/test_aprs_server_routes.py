@@ -148,5 +148,38 @@ class ReconcileTriggerTest(unittest.TestCase):
         self.assertEqual(self.hits, [1])         # exactly one reconcile
 
 
+class ReconcileTriggerNoBroadcastTest(unittest.TestCase):
+    """Fix A: reconcile must run even with zero broadcast warnings on disk —
+    otherwise an orphan object beacon (failed delete) re-beacons forever."""
+
+    def setUp(self):
+        self.client = app_module.app.test_client()
+        self._orig_wf = aprs_routes.WARNINGS_FILE
+        self._tmp = os.path.join(_HERE, "_warns_recon_empty.json")
+        aprs_routes.WARNINGS_FILE = self._tmp
+        with open(self._tmp, "w") as fh:
+            _json.dump([], fh)   # zero broadcast (zero) warnings on disk
+        self.hits = []
+
+        class FakeB:
+            def reconcile(_s, ws):
+                self.hits.append(len(ws))
+                return {}
+        aprs_routes._TEST_BROADCASTER = FakeB()
+        aprs_routes._last_reconcile[0] = 0.0
+
+    def tearDown(self):
+        aprs_routes._TEST_BROADCASTER = None
+        aprs_routes.WARNINGS_FILE = self._orig_wf
+        if os.path.exists(self._tmp):
+            os.remove(self._tmp)
+
+    def test_get_triggers_reconcile_with_zero_broadcast_warnings(self):
+        import time as _t
+        self.client.get("/api/aprs/warnings")
+        _t.sleep(0.2)                            # let the daemon thread run
+        self.assertEqual(self.hits, [0])         # reconcile still ran, with 0 warnings
+
+
 if __name__ == "__main__":
     unittest.main()

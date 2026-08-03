@@ -118,7 +118,7 @@ class WarningBroadcaster:
             try:
                 self.c.send_now(kid)
             except GraywolfError:
-                break
+                continue
         try:
             self.c.delete_beacon(kid)
         except GraywolfError:
@@ -142,7 +142,9 @@ class WarningBroadcaster:
         # create missing
         for nm, w in wanted.items():
             if nm not in on_air:
-                if self.advertise(w) is not None:
+                gw_id = self.advertise(w)
+                if gw_id is not None:
+                    w["gw_beacon_id"] = gw_id
                     out["created"] += 1
         # kill orphans (on the air but no matching broadcast warning)
         for nm, b in on_air.items():
