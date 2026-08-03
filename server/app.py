@@ -168,6 +168,7 @@ from services.aprs.routes import bp as _aprs_bp
 from services.winlink.routes import bp as _winlink_bp
 from services.fcc_database.routes import bp as _fcc_bp
 from maps.traffic.routes import bp as _map_bp
+from maps.routes import bp as _mapdata_bp
 from routes.files import bp as _files_bp
 from routes.service_control import bp as _service_bp
 from routes.hardware import bp as _hardware_bp
@@ -184,6 +185,7 @@ app.register_blueprint(_aprs_bp)
 app.register_blueprint(_winlink_bp)
 app.register_blueprint(_fcc_bp)
 app.register_blueprint(_map_bp)
+app.register_blueprint(_mapdata_bp)
 app.register_blueprint(_files_bp)
 app.register_blueprint(_service_bp)
 app.register_blueprint(_health_bp)
