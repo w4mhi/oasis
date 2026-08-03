@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OASIS - APRS/ADS-B Traffic</title>
 <link rel="stylesheet" href="/map-assets/maplibre-gl.css">
+<link rel="stylesheet" href="/map-assets/map-engine.css">
 <link rel="stylesheet" href="../../css/common.css">
 <style>
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);}
@@ -593,16 +594,6 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 #coordReadout #crLat{width:9ch;}
 #coordReadout #crLon{width:10ch;}
 #coordReadout .cr-sep{color:var(--border);}
-/* Zoom readout — stacked just above the bottom-left zoom/compass control */
-.zoom-readout{
-  background:rgba(13,17,23,.72);border:1px solid var(--border);border-radius:4px;
-  font-family:var(--mono);font-size:var(--fs-small);color:var(--text-dim);
-  padding:2px 7px;display:flex;align-items:center;gap:6px;white-space:nowrap;
-  pointer-events:none;
-}
-.zoom-readout .cr-lbl{color:var(--text-dim);}
-.zoom-readout #crZoom{color:var(--amber);font-weight:600;}
-
 /* Base-map loader modal (click bottom-right label → browse Pi / USB for .pmtiles) */
 #fs-modal{
   position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;
@@ -877,6 +868,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 <script src="/map-assets/maplibre-gl.js"></script>
 <script src="/map-assets/pmtiles.js"></script>
 <script src="/map-assets/basemap-style.js"></script>
+<script src="/map-assets/map-engine.js"></script>
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/adsb-operators.js"></script>
 <script>
@@ -1044,16 +1036,21 @@ function updateBasemapInfo(label, path) {
 }
 updateBasemapInfo(MAP_FILE, '/maps/tiles/state/' + MAP_FILE);
 
-const pmtilesProtocol = new pmtiles.Protocol();
-maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile);
-
-const map = new maplibregl.Map({
+// Shared render engine (services/map/map-assets/map-engine.js). It owns map
+// creation, the pmtiles:// protocol, the bottom-left control stack (zoom readout
+// + nav + imperial scale) and a ResizeObserver. OASIS keeps its own base-map
+// swap (setUrl, so overlays survive), #layer-panel, and all overlays below.
+const engine = MapEngine.create({
   container: 'map',
-  style: oasisBaseMapStyle(tilesUrl),
+  basemap: MAP_FILE,                                   // boot straight onto the local archive (offline-first)
+  tileUrl: (file) => 'pmtiles://' + origin + '/maps/tiles/state/' + file,
+  style: (sourceUrl) => oasisBaseMapStyle(sourceUrl),  // OASIS's OpenMapTiles style, unchanged
   center: (URL_CENTER && URL_CENTER.length === 2 && URL_CENTER.every(Number.isFinite)) ? URL_CENTER : [-122.1, 47.6],
   zoom: (URL_ZOOM != null && Number.isFinite(URL_ZOOM)) ? URL_ZOOM : 9,
-  attributionControl: false
+  attributionControl: false,
+  layerCard: false,                                    // OASIS keeps its own #layer-panel
 });
+const map = engine.map;
 
 // Surface otherwise-silent MapLibre failures (GL context / style / pmtiles source).
 // Without this, a failed load just leaves the map blank with "Connecting…" forever,
@@ -1071,20 +1068,8 @@ setTimeout(() => {
   }
 }, 10000);
 
-// Zoom readout — a small custom control stacked above the bottom-left
-// navigation buttons (added first so it sits at the top of that corner's stack).
-const zoomReadoutControl = {
-  onAdd() {
-    const el = document.createElement('div');
-    el.className = 'maplibregl-ctrl zoom-readout';
-    el.innerHTML = '<span class="cr-lbl">zoom</span><span id="crZoom" class="cr-val">—</span>';
-    this._el = el;
-    return el;
-  },
-  onRemove() { this._el.remove(); }
-};
-map.addControl(zoomReadoutControl, 'bottom-left');
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
+// Zoom readout + navigation buttons + imperial scale are added by MapEngine
+// (bottom-left stack). No inline controls here.
 
 // ── Base-map switching (click the bottom-right label to load a different map) ──
 // Fly to an archive's native center/zoom (best-effort). httpUrl is the plain
@@ -2949,15 +2934,13 @@ loadConfig().then(() => {
   });
 });
 
-map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 120 }), 'bottom-left');
-
 // ── Cursor coordinate + zoom readout (parity with the offline maps viewer) ──
 const _crLat  = document.getElementById('crLat');
 const _crLon  = document.getElementById('crLon');
-const _crZoom = document.getElementById('crZoom');
 let   _lastLngLat = null;
 function _updateReadout() {
-  _crZoom.textContent = map.getZoom().toFixed(1);
+  // zoom is shown by the engine's bottom-left zoom readout; here we own the
+  // topbar cursor lat/lon only.
   _crLat.textContent = _lastLngLat ? _lastLngLat.lat.toFixed(5) : '—';
   _crLon.textContent = _lastLngLat ? _lastLngLat.lng.toFixed(5) : '—';
 }
