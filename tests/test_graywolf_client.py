@@ -77,6 +77,7 @@ class GraywolfClientTest(unittest.TestCase):
 
     def tearDown(self):
         self.srv.shutdown()
+        self.srv.server_close()
 
     def test_health_true(self):
         self.assertTrue(self.client.health())
