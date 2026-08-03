@@ -164,14 +164,18 @@ def _provision_api_config(repo_root):
         "password": "",
         "send_path": "both",
     }
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        _json.dump(cfg, fh, indent=2)
-    os.replace(tmp, path)
-    _info("Wrote GrayWolf API config stub: " + path)
-    _info("  -> set username/password to the GrayWolf web-UI login to enable "
-          "APRS warning broadcast.")
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            _json.dump(cfg, fh, indent=2)
+        os.replace(tmp, path)
+        _info("Wrote GrayWolf API config stub: " + path)
+        _info("  -> set username/password to the GrayWolf web-UI login to enable "
+              "APRS warning broadcast.")
+    except OSError as e:
+        _warn(f"Failed to write GrayWolf API config: {e}")
+        return
 
 
 def run(pinned_version=None, repo_root=None):
