@@ -90,14 +90,20 @@ class WarningBroadcaster:
             return None
 
     def unadvertise(self, w):
-        """Stop the object beacon and tell receivers to remove it (kill)."""
+        """Stop the object beacon and tell receivers to remove it (kill).
+
+        Returns True iff the beacon delete succeeded (or there was nothing
+        to delete). The kill broadcast is always attempted, best-effort.
+        """
+        ok = True
         bid = w.get("gw_beacon_id")
         if bid:
             try:
                 self.c.delete_beacon(bid)
             except GraywolfError:
-                pass
+                ok = False
         self._send_kill(w)
+        return ok
 
     def _send_kill(self, w):
         table, code = self._sym(w.get("type"))
@@ -144,6 +150,6 @@ class WarningBroadcaster:
                 fake = {"id": nm[1:], "lat": b.get("latitude", 0.0),
                         "lon": b.get("longitude", 0.0), "type": None,
                         "gw_beacon_id": b.get("id")}
-                self.unadvertise(fake)
-                out["killed"] += 1
+                if self.unadvertise(fake):
+                    out["killed"] += 1
         return out

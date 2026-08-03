@@ -124,6 +124,19 @@ class BroadcasterTest(unittest.TestCase):
         b.reconcile([])                                      # no broadcast warnings
         self.assertIn("7", c.beacons)                        # operator beacon untouched
 
+    def test_reconcile_orphan_delete_failure_not_counted(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        c.beacons["99"] = {"id": "99", "type": "object", "object_name": "Wdeadbeef"}
+        orig_delete = c.delete_beacon
+        def boom(bid):
+            if bid == "99":
+                raise wb.GraywolfError("down")
+            orig_delete(bid)
+        c.delete_beacon = boom
+        out = b.reconcile([])            # orphan present, no broadcast warnings
+        self.assertEqual(out["killed"], 0)   # delete failed -> not counted
+        self.assertIn("99", c.beacons)       # still on air
+
 
 if __name__ == "__main__":
     unittest.main()
