@@ -334,7 +334,7 @@ def _setup_dashboard_install_fn(repo_root, payload):
 # caller is already root).
 PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
-    "openwebrx", "adsb", "satellites", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
+    "openwebrx", "adsb", "satellites", "rtl-sdr", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
     "pi-headless", "pi-local-monitor", "pi-oasis-dashboard", "cm4stack", "rgb-cooling-hat",
     "argon-fan",
 }
@@ -456,20 +456,27 @@ def build_registry(repo_root, payload=None):
             enable_policy="none",
             privileged=True,
         ),
+        # RTL-SDR driver + tools (librtlsdr / rtl_fm / socat + the DVB blacklist).
+        # Its own feature so ADS-B, OpenWebRX and the APRS feed share one detection
+        # layer instead of each re-installing it; owns the blacklist teardown.
+        "rtl-sdr": SE.FeatureSpec(
+            key="rtl-sdr",
+            dependencies=[],
+            install_fn=lambda: _setup_run_script(repo_root, "features/rtl-sdr/install-rtl-sdr.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/rtl-sdr/rtl_sdr.py"),
+            verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
+        # APRS SDR audio feed (rtl_fm -> UDP -> GrayWolf sdr_udp). Depends on the
+        # rtl-sdr tools; installed with --no-enable (off by default, started from
+        # the dashboard). In setup.html its checkbox sits before adsb so a single
+        # setup run probes the feed's dongle before dump1090-fa claims one.
         "rtl-sdr-feed": SE.FeatureSpec(
             key="rtl-sdr-feed",
-            dependencies=[],
-            install_fn=lambda: _setup_run_chain(repo_root, [
-                {"script": "features/rtl-sdr/install-rtl-sdr.py"},
-                # --no-enable: install the feed unit but leave it stopped and
-                # disabled after setup, like every other OASIS service (off by
-                # default; the operator starts it from the dashboard). Without
-                # it, enable-rtl-sdr.py runs `systemctl enable --now`, which both
-                # starts the feed immediately and auto-starts it on every boot.
-                # Operator-initiated start (enable --now) still survives reboots.
-                {"script": "features/rtl-sdr/enable-rtl-sdr.py", "args": ["--no-enable"]},
-            ]),
-            removal_record_fn=lambda: _removal_record(repo_root, "features/rtl-sdr/enable-rtl-sdr.py"),
+            dependencies=["rtl-sdr"],
+            install_fn=lambda: _setup_run_script(repo_root, "services/rtl-feed/install.py", ["--no-enable"]),
+            removal_record_fn=lambda: _removal_record(repo_root, "services/rtl-feed/common/feed.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,

@@ -4,7 +4,7 @@ import os
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_FEED_PATH = os.path.join(os.path.dirname(_HERE), "features", "rtl-sdr", "enable-rtl-sdr.py")
+_FEED_PATH = os.path.join(os.path.dirname(_HERE), "services", "rtl-feed", "common", "feed.py")
 
 _feed_spec = importlib.util.spec_from_file_location("enable_rtl_sdr", _FEED_PATH)
 mod = importlib.util.module_from_spec(_feed_spec)

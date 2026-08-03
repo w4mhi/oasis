@@ -525,7 +525,7 @@ def _parse_ts(val):
 def _aprs_feed_freq():
     """Best-effort tuned frequency, read from the running aprs-sdr-feed
     unit's ExecStart line -- specifically rtl_fm's `-f <freq>` flag (see
-    features/rtl-sdr/enable-rtl-sdr.py's build_unit(), which embeds
+    services/rtl-feed/common/feed.py's build_unit(), which embeds
     "rtl_fm -f <freq> -M fm ..." verbatim). Returns the raw token (e.g.
     "144.390M") or None on non-Linux, missing systemctl, an absent/
     unrecognized unit, or any other failure. Never raises."""
@@ -831,7 +831,7 @@ def check_rtl_sdr(ctx):
         )
         feed_ok = False
     else:
-        lines.append("Feed not enabled. Run: python3 features/rtl-sdr/enable-rtl-sdr.py")
+        lines.append("Feed not enabled. Run: python3 services/rtl-feed/install.py")
         feed_ok = False
 
     tools_ok = bool(rtl_fm and socat and blk)

@@ -140,7 +140,7 @@ def api_health_service():
 # tcpdump (libpcap copies datagrams; it never steals them from GrayWolf's reader).
 # socat emits ~50 datagrams/s (one per 20 ms audio chunk), so a short capture
 # either fills fast (healthy) or times out empty (silent/dead feed).
-FEED_FLOW_PORT     = 7355     # matches features/rtl-sdr/enable-rtl-sdr.py default + the sudoers rule
+FEED_FLOW_PORT     = 7355     # matches services/rtl-feed/common/feed.py default + the sudoers rule
 _FEED_FLOW_NPKTS   = 10       # capture up to N packets, then tcpdump exits
 _FEED_FLOW_TIMEOUT = 1.0      # hard cap (s): bounds a dead feed's response time
 _FEED_FLOW_NOMINAL = 50       # pkt/s at full feed — the UI scales the bar to this

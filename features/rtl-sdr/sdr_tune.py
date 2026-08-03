@@ -153,7 +153,7 @@ def format_bar(level, width=27):
     return "█" * filled + "░" * (width - filled)
 
 
-# Matches features/rtl-sdr/enable-rtl-sdr.py: SAMPLE_RATE 48000, DATAGRAM 1920, port 7355.
+# Matches services/rtl-feed/common/feed.py: SAMPLE_RATE 48000, DATAGRAM 1920, port 7355.
 def build_feed_command(freq, gain, ppm, fir=0, port=7355):
     """The GrayWolf feed command as it belongs in aprs-sdr-feed.service.
     Always -s 48000 (GrayWolf's sample_rate) and no sox — only gain/ppm/fir

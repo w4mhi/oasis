@@ -13,7 +13,7 @@ POST /api/aprs/frequency  → validate + persist the chosen frequency to
                             to rewrite the unit's ExecStart and restart it.
 
 Persist-then-apply mirrors the hardware assignment flow: the choice sticks in
-station.json even when the feed isn't installed yet (enable-rtl-sdr.py reads it
+station.json even when the feed isn't installed yet (services/rtl-feed/common/feed.py reads it
 back as its default), so re-enabling the feed keeps the operator on-frequency.
 """
 
@@ -117,7 +117,7 @@ def api_set_aprs_frequency():
     except OSError as exc:
         return jsonify({"ok": False, "error": f"could not save frequency: {exc}"}), 500
 
-    # Not installed (or not Linux): the choice is saved and enable-rtl-sdr.py will
+    # Not installed (or not Linux): the choice is saved and services/rtl-feed/common/feed.py will
     # pick it up — nothing to restart now.
     if not os.path.exists(FEED_UNIT_PATH) or sys.platform != "linux":
         return jsonify({"ok": True, "freq": freq, "applied": False,

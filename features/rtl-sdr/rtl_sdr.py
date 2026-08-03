@@ -14,14 +14,14 @@ What this does:
      (same offline-first / apt logic) — socat carries the SDR audio into GrayWolf,
      tcpdump verifies it, and multimon-ng bench-tests decoding independently of
      GrayWolf (docs/graywolf-rtl-sdr.md). Pi OS ships with none. Used by
-     features/rtl-sdr/enable-rtl-sdr.py and the SDR debug section.
+     services/rtl-feed/install.py and the SDR debug section.
   4. Blacklists the dvb_usb_rtl28xxu kernel module that conflicts with RTL-SDR
   5. Verifies the install with rtl_test --help
 
 After install, plug in your RTL-SDR dongle and run:
   rtl_test -t            # verify device is found
   rtl_fm -f 144.390M ... # receive APRS/FM audio
-  python3 features/rtl-sdr/enable-rtl-sdr.py   # wire the dongle into GrayWolf (RX-only)
+  python3 services/rtl-feed/install.py   # wire the dongle into GrayWolf (RX-only)
 
 Supported hardware: RTL2832U-based USB dongles (RTL-SDR Blog V3/V4, Nooelec, etc.)
 
@@ -69,6 +69,15 @@ blacklist rtl2830
 """
 
 
+def removal_record(repo_root=None):
+    """Teardown record for the rtl-sdr tools feature: the DVB-driver blacklist the
+    installer drops. The apt-installed RTL-SDR tools are left in place (leave-apt
+    policy) — reboot lets the DVB driver reclaim the dongle once the blacklist is
+    gone. The APRS feed unit itself is owned by the separate rtl-feed service
+    (services/rtl-feed/common/feed.py)."""
+    return {"files": [BLACKLIST_FILE],
+            "notes": ["rtl-sdr apt tools left installed (leave-apt); reboot to let "
+                      "the DVB driver reclaim the dongle once the blacklist is removed."]}
 
 
 # ── Step 1: Platform check ─────────────────────────────────────────────────────
@@ -138,7 +147,7 @@ REQUIRED_DEBS = {
     "librtlsdr":    ["librtlsdr0_", "librtlsdr2_"],
 }
 
-# Feed tools for the RTL-SDR → GrayWolf sdr_udp path (see features/rtl-sdr/enable-rtl-sdr.py and
+# Feed tools for the RTL-SDR → GrayWolf sdr_udp path (see services/rtl-feed/common/feed.py and
 # docs/graywolf-rtl-sdr.md). socat carries the audio; tcpdump verifies it. Their
 # not-always-present shared-lib deps are bundled so the offline install resolves.
 FEED_DEBS = {
@@ -570,5 +579,5 @@ def run():
     print("\n  RTL-SDR install complete.")
     _info("Plug in your dongle and run:  rtl_test -t")
     _info("For APRS receive:  rtl_fm -f 144.390M -M fm -s 48000 - | aplay -r 48000 -f S16_LE -t raw -c 1")
-    _info("Wire it into GrayWolf:  python3 features/rtl-sdr/enable-rtl-sdr.py")
+    _info("Wire it into GrayWolf:  python3 services/rtl-feed/install.py")
     print()

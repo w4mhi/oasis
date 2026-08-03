@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-enable-rtl-sdr.py
------------------
+services/rtl-feed/common/feed.py
+--------------------------------
 Bring an installed RTL-SDR online as a GrayWolf APRS receive source.
 
 Pairs with features/rtl-sdr/install-rtl-sdr.py: that one installs the tools, this one tests the
@@ -28,11 +28,11 @@ import, so the channel/device must be created in the browser. See
 docs/sdr-to-graywolf.md for the full writeup and troubleshooting table.
 
 Usage:
-  python3 features/rtl-sdr/enable-rtl-sdr.py                 # test + enable + instructions
-  python3 features/rtl-sdr/enable-rtl-sdr.py --freq 144.800M # EU APRS
-  python3 features/rtl-sdr/enable-rtl-sdr.py --gain 28 --ppm 12
-  python3 features/rtl-sdr/enable-rtl-sdr.py --check         # test only, no service changes
-  python3 features/rtl-sdr/enable-rtl-sdr.py --no-enable     # write the unit but don't start it
+  python3 services/rtl-feed/install.py                 # test + enable + instructions
+  python3 services/rtl-feed/install.py --freq 144.800M # EU APRS
+  python3 services/rtl-feed/install.py --gain 28 --ppm 12
+  python3 services/rtl-feed/install.py --check         # test only, no service changes
+  python3 services/rtl-feed/install.py --no-enable     # write the unit but don't start it
 
 Requires: Linux, systemd, sudo. rtl_fm + socat + tcpdump — all installed by
 features/rtl-sdr/install-rtl-sdr.py (run that first). A dongle and 2 m antenna plugged in. Stop
@@ -50,7 +50,7 @@ import tempfile
 import time
 
 # ── Shared library ─────────────────────────────────────────────────────
-_SUITE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
+_SUITE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..')
 sys.path.insert(0, _SUITE_ROOT)
 from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
 from common import config_paths
@@ -74,19 +74,13 @@ def _station_freq():
 
 SERVICE_NAME = "aprs-sdr-feed.service"
 SERVICE_PATH = f"/etc/systemd/system/{SERVICE_NAME}"
-# DVB-driver blacklist the rtl-sdr install drops so the DVB modules don't grab the
-# dongle. Removing it lets the DVB driver reclaim the device (effective on reboot).
-RTLSDR_BLACKLIST = "/etc/modprobe.d/rtlsdr-blacklist.conf"
 
 
 def removal_record(repo_root=None):
-    """Teardown record for the rtl-sdr-feed chain feature: the aprs-sdr-feed
-    service and the DVB-driver blacklist. The apt-installed rtl-sdr tools are left
-    in place (leave-apt policy)."""
-    return {"services": [SERVICE_NAME.removesuffix(".service")],
-            "files": [RTLSDR_BLACKLIST],
-            "notes": ["rtl-sdr apt tools left installed; reboot to let the DVB "
-                      "driver reclaim the dongle once the blacklist is removed."]}
+    """Teardown record for the rtl-feed service: just the aprs-sdr-feed unit. The
+    RTL-SDR apt tools and the DVB-driver blacklist belong to the separate
+    `rtl-sdr` tools feature (features/rtl-sdr/rtl_sdr.py) and are removed with it."""
+    return {"services": [SERVICE_NAME.removesuffix(".service")]}
 SAMPLE_RATE  = 48000           # rtl_fm -s; must equal GrayWolf's sample_rate
 DATAGRAM     = 1920            # socat -b: one 20 ms audio chunk (960 samples x 2 B)
 DEFAULT_FIR  = 3               # rtl_fm -F down-sample FIR: low-passes before
@@ -256,7 +250,7 @@ def test_sdr(rtl_fm, freq, gain, ppm, seconds, repo_root=None):
               "Skipping the audio test; the feed service is still installed and "
               "enabled, and starts automatically once the dongle appears "
               "(Restart=always). Verify reception later with:\n"
-              "       python3 features/rtl-sdr/enable-rtl-sdr.py --check")
+              "       python3 services/rtl-feed/install.py --check")
         return False
 
     inv = hardware.load(repo_root or _SUITE_ROOT)
@@ -485,9 +479,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python3 features/rtl-sdr/enable-rtl-sdr.py\n"
-            "  python3 features/rtl-sdr/enable-rtl-sdr.py --freq 144.800M --gain 28 --ppm 12\n"
-            "  python3 features/rtl-sdr/enable-rtl-sdr.py --check       # test only\n"
+            "  python3 services/rtl-feed/install.py\n"
+            "  python3 services/rtl-feed/install.py --freq 144.800M --gain 28 --ppm 12\n"
+            "  python3 services/rtl-feed/install.py --check       # test only\n"
         ),
     )
     parser.add_argument("--freq", default=_station_freq(),
@@ -510,7 +504,7 @@ def main():
                         help="Write the service unit but don't enable/start it.")
     args = parser.parse_args()
 
-    print("\n  OASIS — enable-rtl-sdr")
+    print("\n  OASIS — rtl-feed")
     _hr()
     _info("Tests the RTL-SDR and wires it into GrayWolf as a receive-only APRS feed.")
     _info("Receive-only — an RTL-SDR cannot transmit. For TX use the DRA-Pi-Zero.")

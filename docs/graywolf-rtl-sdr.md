@@ -57,15 +57,15 @@ So GrayWolf accepts the SDR audio directly. No loopback device in between.
 
 ---
 
-## Quick path: `features/rtl-sdr/enable-rtl-sdr.py`
+## Quick path: `services/rtl-feed/install.py`
 
-[`features/rtl-sdr/enable-rtl-sdr.py`](../features/rtl-sdr/enable-rtl-sdr.py) automates everything
+[`services/rtl-feed/install.py`](../services/rtl-feed/install.py) automates everything
 below except the browser steps: it tests the dongle, installs + enables
 `aprs-sdr-feed.service`, checks GrayWolf's journal, and prints the web-UI steps.
 
 ```bash
-python3 features/rtl-sdr/enable-rtl-sdr.py            # test + enable + instructions
-python3 features/rtl-sdr/enable-rtl-sdr.py --check    # test the SDR only, no changes
+python3 services/rtl-feed/install.py            # test + enable + instructions
+python3 services/rtl-feed/install.py --check    # test the SDR only, no changes
 ```
 
 The rest of this doc explains what it does and how to do it by hand.
@@ -341,7 +341,7 @@ done
 Whichever gain decodes the most wins. Lock it in permanently:
 
 ```bash
-python3 features/rtl-sdr/enable-rtl-sdr.py --gain <best> --ppm <best>
+python3 services/rtl-feed/install.py --gain <best> --ppm <best>
 ```
 
 ### 5. Range is mostly the antenna, not the tuner

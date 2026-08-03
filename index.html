@@ -2050,7 +2050,7 @@ const SERVICES = [
         return { up: true, badge: 'UP', sub: '→ GrayWolf' };
       }
       return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
-        sub: d.installed ? 'inactive' : 'run features/rtl-sdr/enable-rtl-sdr.py' };
+        sub: d.installed ? 'inactive' : 'run services/rtl-feed/install.py' };
     }
   },
   {
@@ -2519,7 +2519,7 @@ function _gateEls(id) {
 }
 
 // A manifest-gated service can still be live if it was enabled outside
-// setup-oasis.py — e.g. running features/rtl-sdr/enable-rtl-sdr.py / features/gps/install-gps.py directly, as
+// setup-oasis.py — e.g. running services/rtl-feed/install.py / features/gps/install-gps.py directly, as
 // the docs show. Those scripts enable the systemd unit but never write
 // installed-services.json, so the card would wrongly hide (it flashes in on load,
 // then vanishes once loadInstalled resolves). For the systemd-backed cards we

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Device-aware SDR probe selection in features/rtl-sdr/enable-rtl-sdr.py.
+"""Device-aware SDR probe selection in services/rtl-feed/common/feed.py.
 
 Covers the "add an SDR after ADS-B" bug: with two dongles present, the APRS
 audio test must probe the free dongle first and never hard-grab dump1090's
@@ -9,7 +9,7 @@ import os
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_FEED_PATH = os.path.join(os.path.dirname(_HERE), "features", "rtl-sdr", "enable-rtl-sdr.py")
+_FEED_PATH = os.path.join(os.path.dirname(_HERE), "services", "rtl-feed", "common", "feed.py")
 
 _spec = importlib.util.spec_from_file_location("enable_rtl_sdr", _FEED_PATH)
 mod = importlib.util.module_from_spec(_spec)

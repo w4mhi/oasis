@@ -1231,10 +1231,10 @@ systemctl is-active aprs-sdr-feed dump1090-fa openwebrx    # whichever prints "a
 **Enable the dongle as a GrayWolf receive-only APRS feed:**
 
 ```bash
-python3 features/rtl-sdr/enable-rtl-sdr.py                 # test SDR, install the feed service, print GrayWolf steps
-python3 features/rtl-sdr/enable-rtl-sdr.py --check         # test the SDR only, no system changes
-python3 features/rtl-sdr/enable-rtl-sdr.py --freq 144.800M --gain 28 --ppm 12
-python3 features/rtl-sdr/enable-rtl-sdr.py --help
+python3 services/rtl-feed/install.py                 # test SDR, install the feed service, print GrayWolf steps
+python3 services/rtl-feed/install.py --check         # test the SDR only, no system changes
+python3 services/rtl-feed/install.py --freq 144.800M --gain 28 --ppm 12
+python3 services/rtl-feed/install.py --help
 ```
 
 This tests the dongle (measures live audio at the APRS frequency), installs and

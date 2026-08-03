@@ -152,6 +152,7 @@
           <label class="setup-check"><input type="checkbox" data-feature="winlink"> winlink (+ direwolf)</label>
           <label class="setup-check"><input type="checkbox" data-feature="kiwix"> kiwix</label>
           <label class="setup-check"><input type="checkbox" data-feature="openwebrx"> openwebrx</label>
+          <label class="setup-check"><input type="checkbox" data-feature="rtl-sdr-feed"> rtl-feed (APRS SDR &rarr; GrayWolf)</label>
           <label class="setup-check"><input type="checkbox" data-feature="adsb"> adsb</label>
           <label class="setup-check"><input type="checkbox" data-feature="satellites"> satellites (+ TLE cache + pass-alert voice)</label>
         </div>
@@ -170,7 +171,7 @@
         </div>
         <div class="setup-group">
           <h4>Radio Interfaces</h4>
-          <label class="setup-check"><input type="checkbox" data-feature="rtl-sdr-feed"> rtl-sdr + rtl-feed</label>
+          <label class="setup-check"><input type="checkbox" data-feature="rtl-sdr"> rtl-sdr (driver + tools)</label>
           <label class="setup-check"><input type="checkbox" data-feature="gps"> gps (USB / autodetect)</label>
           <label class="setup-check"><input type="checkbox" data-feature="gps-l76x"> gps-L76X (UART / GPIO HAT)</label>
           <label class="setup-check"><input type="checkbox" data-feature="dra-pi-rx-led"> dra-pi + dra-rx-led</label>
@@ -283,7 +284,6 @@ let setupWinlinkPasswordChanged = false;
 const SETUP_FEATURE_ALIASES = {
   'graywolf-api': 'graywolf',
   'pat': 'winlink',
-  'rtl-sdr': 'rtl-sdr-feed',
   'rtl-feed': 'rtl-sdr-feed',
   'dra-pi': 'dra-pi-rx-led',
   'dra-rx-led': 'dra-pi-rx-led',
