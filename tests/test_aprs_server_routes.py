@@ -40,5 +40,67 @@ class MapSubsystemLayoutTest(unittest.TestCase):
         self.assertEqual(client.get("/server/aprs/map.html").status_code, 404)
 
 
+import json as _json
+
+from services.aprs import routes as aprs_routes
+
+
+class WarningBroadcastRouteTest(unittest.TestCase):
+    def setUp(self):
+        self.client = app_module.app.test_client()
+        # isolate the warnings file per test
+        self._tmp = os.path.join(_HERE, "_warns_test.json")
+        aprs_routes.WARNINGS_FILE = self._tmp
+        if os.path.exists(self._tmp):
+            os.remove(self._tmp)
+        # fake broadcaster records calls
+        calls = {"adv": [], "unadv": []}
+
+        class FakeB:
+            def advertise(self, w):
+                calls["adv"].append(w["id"])
+                return "gw-1"
+
+            def unadvertise(self, w):
+                calls["unadv"].append(w["id"])
+
+            def reconcile(self, ws):
+                return {"created": 0, "killed": 0}
+        self.calls = calls
+        aprs_routes._TEST_BROADCASTER = FakeB()
+
+    def tearDown(self):
+        aprs_routes._TEST_BROADCASTER = None
+        if os.path.exists(self._tmp):
+            os.remove(self._tmp)
+
+    def _add(self, broadcast):
+        r = self.client.post("/api/aprs/warnings", json={
+            "type": "flood", "lon": -122.0, "lat": 47.5, "broadcast": broadcast})
+        return _json.loads(r.data)["warning"]
+
+    def test_local_only_does_not_advertise(self):
+        w = self._add(False)
+        self.assertFalse(w["broadcast"])
+        self.assertIsNone(w["gw_beacon_id"])
+        self.assertEqual(self.calls["adv"], [])
+        self.assertTrue(w["aprs_name"].startswith("W"))
+
+    def test_broadcast_advertises_and_stores_id(self):
+        w = self._add(True)
+        self.assertEqual(self.calls["adv"], [w["id"]])
+        self.assertEqual(w["gw_beacon_id"], "gw-1")
+
+    def test_delete_broadcast_unadvertises(self):
+        w = self._add(True)
+        self.client.delete("/api/aprs/warnings/" + w["id"])
+        self.assertEqual(self.calls["unadv"], [w["id"]])
+
+    def test_patch_toggle_on_advertises(self):
+        w = self._add(False)
+        self.client.patch("/api/aprs/warnings/" + w["id"], json={"broadcast": True})
+        self.assertEqual(self.calls["adv"], [w["id"]])
+
+
 if __name__ == "__main__":
     unittest.main()

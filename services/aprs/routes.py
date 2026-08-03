@@ -7,12 +7,17 @@ server/app.py in the blueprint split; URLs unchanged.
 import json
 import os
 import threading
+import threading as _threading
 import time
 import uuid
 
 from flask import Blueprint, Response, jsonify, request
 
 import appconfig
+from common import config_paths
+from services.aprs.common import warning_catalog
+from services.aprs.common.graywolf_client import GraywolfClient
+from services.aprs.common.warning_broadcast import WarningBroadcaster
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 
@@ -23,6 +28,39 @@ bp = Blueprint("aprs", __name__)
 # Runtime state, not repo content — gitignored.
 WARNINGS_FILE = os.path.join(SUITE_ROOT, "aprs-warnings.json")
 _warnings_lock = threading.Lock()
+
+_TEST_BROADCASTER = None          # tests inject a fake here
+_broadcaster_cache = None
+_broadcaster_lock = _threading.Lock()
+_reconcile_lock = _threading.Lock()
+_last_reconcile = [0.0]
+_RECONCILE_MIN_INTERVAL = 120     # seconds
+
+
+def _get_broadcaster():
+    """Return a cached WarningBroadcaster, or None when unconfigured/unavailable."""
+    if _TEST_BROADCASTER is not None:
+        return _TEST_BROADCASTER
+    global _broadcaster_cache
+    with _broadcaster_lock:
+        if _broadcaster_cache is not None:
+            return _broadcaster_cache
+        cfg_path = config_paths.graywolf_api_json(SUITE_ROOT)
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as fh:
+                cfg = json.load(fh)
+        except (OSError, ValueError):
+            return None
+        base = cfg.get("base_url") or "http://127.0.0.1:8080"
+        user = cfg.get("username")
+        pw = cfg.get("password")
+        if not user or not pw:
+            return None
+        send_path = cfg.get("send_path") or "both"
+        client = GraywolfClient(base, user, pw)
+        symbols = warning_catalog.load_symbol_map(SUITE_ROOT)
+        _broadcaster_cache = WarningBroadcaster(client, symbols, send_path=send_path)
+        return _broadcaster_cache
 
 @bp.route("/api/aprs/health")
 def api_aprs_health_proxy():
@@ -182,7 +220,15 @@ def api_aprs_warnings_add():
             "lat":  lat,
             "note": note,
             "ts":   int(time.time()),
+            "broadcast": bool(body.get("broadcast")),
+            "gw_beacon_id": None,
         }
+        from services.aprs.common.warning_broadcast import object_name as _obj_name
+        item["aprs_name"] = _obj_name(item["id"]).strip()
+        if item["broadcast"]:
+            b = _get_broadcaster()
+            if b is not None:
+                item["gw_beacon_id"] = b.advertise(item)
         warnings.append(item)
         _save_warnings(warnings)
     return jsonify({"ok": True, "warning": item})
@@ -191,17 +237,37 @@ def api_aprs_warnings_add():
 @bp.route("/api/aprs/warnings/<wid>", methods=["PATCH"])
 def api_aprs_warnings_update(wid):
     body = request.get_json(silent=True) or {}
-    note = _clean_note(body.get("note"))
+    has_note = "note" in body
+    has_bcast = "broadcast" in body
+    note = _clean_note(body.get("note")) if has_note else None
     with _warnings_lock:
         warnings = _load_warnings()
         found = None
         for w in warnings:
             if w.get("id") == wid:
-                w["note"] = note
                 found = w
                 break
         if found is None:
             return jsonify({"ok": False, "error": "not found"}), 404
+        if has_note:
+            found["note"] = note
+        b = _get_broadcaster()
+        if has_bcast:
+            want = bool(body.get("broadcast"))
+            if want and not found.get("broadcast"):
+                found["broadcast"] = True
+                found["gw_beacon_id"] = b.advertise(found) if b else None
+            elif not want and found.get("broadcast"):
+                if b:
+                    b.unadvertise(found)
+                found["broadcast"] = False
+                found["gw_beacon_id"] = None
+        elif has_note and found.get("broadcast") and found.get("gw_beacon_id") and b:
+            # push note change to the live beacon's comment
+            try:
+                b.c.update_beacon(found["gw_beacon_id"], {"comment": found["note"]})
+            except Exception:  # noqa: BLE001
+                pass
         _save_warnings(warnings)
     return jsonify({"ok": True, "warning": found})
 
@@ -210,9 +276,14 @@ def api_aprs_warnings_update(wid):
 def api_aprs_warnings_delete(wid):
     with _warnings_lock:
         warnings = _load_warnings()
-        kept = [w for w in warnings if w.get("id") != wid]
-        if len(kept) == len(warnings):
+        victim = next((w for w in warnings if w.get("id") == wid), None)
+        if victim is None:
             return jsonify({"ok": False, "error": "not found"}), 404
+        if victim.get("broadcast"):
+            b = _get_broadcaster()
+            if b:
+                b.unadvertise(victim)
+        kept = [w for w in warnings if w.get("id") != wid]
         _save_warnings(kept)
     return jsonify({"ok": True})
 
