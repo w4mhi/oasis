@@ -1014,7 +1014,6 @@ const _pc        = _params.get('center');
 const _pz        = _params.get('zoom');
 const URL_CENTER = _pc ? _pc.split(',').map(Number) : null;
 const URL_ZOOM   = (_pz != null && _pz !== '') ? Number(_pz) : null;
-const tilesUrl  = 'pmtiles://' + origin + '/maps/tiles/state/' + MAP_FILE;
 
 const pmtilesHttpUrl   = (file) => origin + '/maps/tiles/state/' + file;
 const pmtilesSourceUrl = (file) => 'pmtiles://' + pmtilesHttpUrl(file);
