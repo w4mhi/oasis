@@ -20,7 +20,9 @@
 //   landcover-wood, landcover-grass, landuse-park,
 //   landuse-residential, landuse-commercial, landuse-industrial,
 //   road-minor, road-secondary, road-primary, road-motorway,
-//   buildings-fill, road-labels, place-labels, pois-circle, mountain-peak
+//   railways, ferry-line, airport-area, airport-runway, airport-label,
+//   boundaries, buildings-fill, road-labels, place-labels, pois-circle,
+//   mountain-peak
 
 function oasisBaseMapStyle(sourceUrl, options) {
   options = options || {};
@@ -86,6 +88,12 @@ function oasisBaseMapStyle(sourceUrl, options) {
         filter: ['==', ['get', 'class'], 'industrial'],
         paint: { 'fill-color': '#1a1e22', 'fill-opacity': 0.5 } },
 
+      // ── Airport grounds (aprons / aerodrome polygons) ─────────────────────
+      { id: 'airport-area', type: 'fill',
+        source: 'basemap', 'source-layer': 'aeroway',
+        filter: ['match', ['get', 'class'], ['aerodrome', 'apron'], true, false],
+        paint: { 'fill-color': '#1c2130', 'fill-opacity': 0.7 } },
+
       // ── Roads — minor / service / track / path ────────────────────────────
       { id: 'road-minor', type: 'line',
         source: 'basemap', 'source-layer': 'transportation',
@@ -117,6 +125,27 @@ function oasisBaseMapStyle(sourceUrl, options) {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#8b5a00', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 14, 6] } },
 
+      // ── Railways (rail / transit) ─────────────────────────────────────────
+      { id: 'railways', type: 'line',
+        source: 'basemap', 'source-layer': 'transportation',
+        filter: ['match', ['get', 'class'], ['rail', 'transit'], true, false],
+        minzoom: 9,
+        paint: { 'line-color': '#4a4f5e', 'line-dasharray': [3, 3],
+                 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.6, 15, 2] } },
+
+      // ── Ferry routes ──────────────────────────────────────────────────────
+      { id: 'ferry-line', type: 'line',
+        source: 'basemap', 'source-layer': 'transportation',
+        filter: ['==', ['get', 'class'], 'ferry'],
+        paint: { 'line-color': '#2f5f86', 'line-dasharray': [2, 4], 'line-width': 1 } },
+
+      // ── Airport runways / taxiways ────────────────────────────────────────
+      { id: 'airport-runway', type: 'line',
+        source: 'basemap', 'source-layer': 'aeroway',
+        filter: ['match', ['get', 'class'], ['runway', 'taxiway'], true, false],
+        layout: { 'line-cap': 'butt', 'line-join': 'round' },
+        paint: { 'line-color': '#5a6472', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1, 15, 5] } },
+
       // ── Buildings ─────────────────────────────────────────────────────────
       { id: 'buildings-fill', type: 'fill',
         source: 'basemap', 'source-layer': 'building',
@@ -127,6 +156,13 @@ function oasisBaseMapStyle(sourceUrl, options) {
           'fill-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 15, 0.9]
         }
       },
+
+      // ── Administrative boundaries (country / state) ───────────────────────
+      { id: 'boundaries', type: 'line',
+        source: 'basemap', 'source-layer': 'boundary',
+        filter: ['all', ['<=', ['get', 'admin_level'], 4], ['!=', ['get', 'maritime'], 1]],
+        layout: { 'line-join': 'round' },
+        paint: { 'line-color': '#3b4a5a', 'line-dasharray': [2, 2], 'line-width': 1 } },
 
       // ── Road labels ───────────────────────────────────────────────────────
       { id: 'road-labels', type: 'symbol',
@@ -188,6 +224,15 @@ function oasisBaseMapStyle(sourceUrl, options) {
           'text-halo-width': 1.2
         }
       },
+
+      // ── Mountain peaks ────────────────────────────────────────────────────
+      // ── Airport labels ────────────────────────────────────────────────────
+      { id: 'airport-label', type: 'symbol',
+        source: 'basemap', 'source-layer': 'aerodrome_label',
+        minzoom: 10,
+        layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
+                  'text-size': 11, 'text-anchor': 'top', 'text-offset': [0, 0.4] },
+        paint: { 'text-color': '#9fb2c9', 'text-halo-color': '#080810', 'text-halo-width': 1.2 } },
 
       // ── Mountain peaks ────────────────────────────────────────────────────
       { id: 'mountain-peak', type: 'symbol',

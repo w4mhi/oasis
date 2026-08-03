@@ -766,15 +766,17 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
       <span id="layer-title">Map Layers</span>
     </div>
     <div id="layer-body">
-      <label class="layer-toggle"><input type="checkbox" data-group="roads" checked> <span>Roads</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="waterways" checked> <span>Waterways</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="water" checked> <span>Water bodies</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="airports" checked> <span>Airports</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="boundaries" checked> <span>Boundaries</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="buildings" checked> <span>Buildings</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="parks" checked> <span>Parks / Nature</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="landuse" checked> <span>Land use</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="pois" checked> <span>POIs / Places</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="peaks" checked> <span>Mt peaks</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="aircraft" checked> <span>Aircraft</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="parks" checked> <span>Parks / Nature</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="pois" checked> <span>POIs / Places</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="transit" checked> <span>Rail &amp; ferry</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="roads" checked> <span>Roads</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="water" checked> <span>Water bodies</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="waterways" checked> <span>Waterways</span></label>
     </div>
   </div>
 
@@ -1161,15 +1163,17 @@ document.getElementById('fs-list').addEventListener('click', (e) => {
 // Group the shared base-map layer ids (from basemap-style.js) into the toggles
 // shown in the collapsible "Map layers" panel. Mirrors maps/map.html.
 const LAYER_GROUPS = {
-  roads:     ['road-minor', 'road-secondary', 'road-primary', 'road-motorway', 'road-labels'],
-  waterways: ['waterways-line'],
-  water:     ['water-poly-fill'],
-  buildings: ['buildings-fill'],
-  parks:     ['landuse-park'],
-  landuse:   ['landcover-wood', 'landcover-grass', 'landuse-residential', 'landuse-commercial', 'landuse-industrial'],
-  pois:      ['place-labels', 'pois-circle'],
-  peaks:     ['mountain-peak'],
-  aircraft:  ['adsb-icon'],
+  roads:      ['road-minor', 'road-secondary', 'road-primary', 'road-motorway', 'road-labels'],
+  transit:    ['railways', 'ferry-line'],
+  waterways:  ['waterways-line'],
+  water:      ['water-poly-fill'],
+  buildings:  ['buildings-fill'],
+  parks:      ['landuse-park'],
+  landuse:    ['landcover-wood', 'landcover-grass', 'landuse-residential', 'landuse-commercial', 'landuse-industrial'],
+  pois:       ['place-labels', 'pois-circle'],
+  airports:   ['airport-area', 'airport-runway', 'airport-label'],
+  boundaries: ['boundaries'],
+  peaks:      ['mountain-peak'],
 };
 
 function toggleLayerPanel() {
