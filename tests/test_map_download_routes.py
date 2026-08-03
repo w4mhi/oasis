@@ -35,10 +35,31 @@ class MapDownloadRoutesTest(unittest.TestCase):
             r = self.client.post("/api/maps/extract", json={"state": "Nowhere"})
         self.assertEqual(r.status_code, 400)
 
-    def test_extract_missing_binary_400(self):
-        with mock.patch.object(mapdata.mapctl, "resolve_pmtiles", return_value=None):
+    def test_extract_no_downloader_and_unsupported_400(self):
+        # Binary missing AND no prebuilt for this platform -> 400 (nothing to install).
+        with mock.patch.object(mapdata.mapctl, "resolve_pmtiles", return_value=None), \
+             mock.patch.object(mapdata.mapctl, "pmtiles_asset", return_value=None):
             r = self.client.post("/api/maps/extract", json={"state": "Alabama"})
         self.assertEqual(r.status_code, 400)
+
+    def test_extract_auto_installs_when_missing(self):
+        # Binary missing but a prebuilt exists -> the stream installs it, then extracts.
+        seen = []
+        def fake_resolve(_):
+            seen.append(1)
+            return None if len(seen) == 1 else "/fake/pmtiles"
+        with mock.patch.object(mapdata.mapctl, "resolve_pmtiles", side_effect=fake_resolve), \
+             mock.patch.object(mapdata.mapctl, "pmtiles_asset", return_value={"url": "x", "kind": "tar.gz"}), \
+             mock.patch.object(mapdata.mapctl, "install_pmtiles",
+                               return_value=iter(["fetching\n", "[install complete] ok\n"])), \
+             mock.patch.object(mapdata.mapctl, "extract",
+                               return_value=iter(["extracting\n", "[extract complete] saved Alabama.pmtiles\n"])):
+            r = self.client.post("/api/maps/extract", json={"state": "Alabama"})
+            self.assertEqual(r.status_code, 200)
+            body = r.get_data(as_text=True)
+        self.assertIn("installing the map downloader", body)
+        self.assertIn("[install complete]", body)
+        self.assertIn("[extract complete]", body)
 
     def test_extract_busy_409(self):
         # Binary stubbed present + a held lock → busy 409 (in real use a held lock

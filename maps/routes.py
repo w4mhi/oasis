@@ -50,8 +50,13 @@ def maps_extract():
     state = (request.get_json(silent=True) or {}).get("state")
 
     # Pre-checks so callers get a proper 400/409 (can't set status mid-stream).
-    if mapctl.resolve_pmtiles(STATE_DIR) is None:
-        return jsonify({"error": "map downloader not installed — re-run setup"}), 400
+    # First download self-provisions: if the go-pmtiles binary is missing we
+    # install it in-stream (below) — unless there's no prebuilt for this platform,
+    # in which case there's nothing to do and we fail up front.
+    need_install = mapctl.resolve_pmtiles(STATE_DIR) is None
+    if need_install and mapctl.pmtiles_asset() is None:
+        return jsonify({"error": "map downloader not installed and no prebuilt "
+                        "go-pmtiles for this platform — install it manually"}), 400
     if state not in mapctl.load_states(STATE_DIR, states_geojson=STATES_JSON):
         return jsonify({"error": "unknown state: %r" % state}), 400
     if not _extract_lock.acquire(blocking=False):
@@ -66,11 +71,19 @@ def maps_extract():
     def run():
         global _current_proc
         try:
+            if need_install:                    # first-ever download: fetch go-pmtiles first
+                yield "[installing the map downloader (go-pmtiles)...]\n"
+                for line in mapctl.install_pmtiles(STATE_DIR):
+                    yield line
+                if mapctl.resolve_pmtiles(STATE_DIR) is None:
+                    yield "\n[extract failed] could not install the map downloader\n"
+                    return
+                yield "\n"
             for line in mapctl.extract(STATE_DIR, name=state, state=state,
                                        source=_source(), states_geojson=STATES_JSON,
                                        on_start=_capture):
                 yield line
-        except mapctl.MapctlError as exc:
+        except Exception as exc:                # install (urllib) or extract failure -> the log
             yield "\n[extract failed] %s\n" % exc
         finally:
             _current_proc = None

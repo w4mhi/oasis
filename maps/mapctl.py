@@ -247,7 +247,7 @@ def _cmd_list(args):
     print("\ndownloaded (%d):" % len(maps))
     for m in maps:
         print("  %-24s %6.1f MB" % (m["name"], m["bytes"] / (1024 * 1024)))
-    states = sorted(load_states(md).keys())
+    states = sorted(load_states(md, getattr(args, "states_geojson", None)).keys())
     print("\nstates available to download (%d):" % len(states))
     print("  " + ", ".join(states) if states else "  (us-states.geojson not found)")
     return 0
@@ -259,22 +259,35 @@ def _cmd_download(args):
         raise SystemExit("--name is required with --bbox / --region")
     for line in extract(args.maps_dir, name=name, source=args.source,
                         state=args.state, bbox=args.bbox, region=args.region,
-                        maxzoom=args.maxzoom, minzoom=args.minzoom):
+                        maxzoom=args.maxzoom, minzoom=args.minzoom,
+                        states_geojson=getattr(args, "states_geojson", None)):
         sys.stdout.write(line)
         sys.stdout.flush()
     return 0
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="mapctl", description=__doc__.splitlines()[0])
-    p.add_argument("--maps-dir", default=default_maps_dir(),
-                   help="folder holding the .pmtiles archives (default: the module's tiles/)")
+    # --maps-dir / --states-geojson are accepted in EITHER position (before OR
+    # after the subcommand) via a shared parent parser. SUPPRESS defaults so the
+    # subparser's copy never clobbers a value given before the subcommand; the
+    # real defaults are filled in after parsing.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--maps-dir", dest="maps_dir", default=argparse.SUPPRESS,
+                        help="folder holding the .pmtiles archives (default: the module's tiles/)")
+    common.add_argument("--states-geojson", dest="states_geojson", default=argparse.SUPPRESS,
+                        help="path to us-states.geojson (default: <maps-dir>/us-states.geojson)")
+
+    p = argparse.ArgumentParser(prog="mapctl", description=__doc__.splitlines()[0],
+                                parents=[common])
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("install", help="download the pmtiles CLI into <maps-dir>/.bin")
-    sub.add_parser("list", help="list downloaded maps and available states")
+    sub.add_parser("install", parents=[common],
+                   help="download the pmtiles CLI into <maps-dir>/.bin")
+    sub.add_parser("list", parents=[common],
+                   help="list downloaded maps and available states")
 
-    d = sub.add_parser("download", help="extract a region into <maps-dir>/<name>.pmtiles")
+    d = sub.add_parser("download", parents=[common],
+                       help="extract a region into <maps-dir>/<name>.pmtiles")
     area = d.add_mutually_exclusive_group(required=True)
     area.add_argument("--state", help="US state name (from us-states.geojson)")
     area.add_argument("--bbox", help="min_lon,min_lat,max_lon,max_lat")
@@ -285,6 +298,10 @@ def main(argv=None):
     d.add_argument("--minzoom", type=int, default=None)
 
     args = p.parse_args(argv)
+    if not getattr(args, "maps_dir", None):
+        args.maps_dir = default_maps_dir()
+    if not getattr(args, "states_geojson", None):
+        args.states_geojson = None
     try:
         return {"install": _cmd_install, "list": _cmd_list,
                 "download": _cmd_download}[args.cmd](args)
