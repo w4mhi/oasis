@@ -1414,7 +1414,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="svc-badge" id="badge-owrx">—</span>
     </div>
   </div>
-  <div class="svc-card svc-card-gated" id="card-adsb" data-href="server/map/map.html" data-target="_blank">
+  <div class="svc-card svc-card-gated" id="card-adsb" data-href="maps/traffic/map.html" data-target="_blank">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-adsb"></div>
       <div class="svc-card-info">
@@ -1549,7 +1549,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="nav-sec">
       <div class="nav-sec-title">Monitor</div>
       <ul class="nav-links">
-        <li><a id="nlink-aprs" href="server/map/map.html" target="_blank" rel="noopener">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
+        <li><a id="nlink-aprs" href="maps/traffic/map.html" target="_blank" rel="noopener">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
         <li><a id="nlink-sat" href="server/satellites/" target="_blank" rel="noopener">Satellites World Map<span class="nav-meta">passes · tracking</span></a></li>
       </ul>
     </div>
@@ -3337,7 +3337,7 @@ function aprsSource(s) {
   return (hay.includes('TCPIP') || hay.includes('IGATE') || /\bQA[A-Z]/.test(hay)) ? 'is' : 'rf';
 }
 
-// APRS symbol code → human "type" label. Mirrors _OBJ_CATS in server/map/map.html
+// APRS symbol code → human "type" label. Mirrors _OBJ_CATS in maps/traffic/map.html
 // so the dashboard list and the map list name station types identically.
 const _APRS_TYPES = {
   '>':'Car','j':'Car','v':'Car','<':'Motorcycle','k':'Truck','u':'Truck',
@@ -3370,7 +3370,7 @@ function aprsSymIcon(s, px) {
   const col = idx % 16, row = Math.floor(idx / 16);
   const sheet = table === '/' ? 0 : 1;
   return `<span class="aprs-sym" style="width:${px}px;height:${px}px;`
-    + `background-image:url('/map-assets/aprs-symbols-24-${sheet}.png');`
+    + `background-image:url('/maps/traffic/assets/aprs-symbols-24-${sheet}.png');`
     + `background-size:${16 * px}px ${6 * px}px;`
     + `background-position:${-col * px}px ${-row * px}px"></span>`;
 }
@@ -3405,8 +3405,8 @@ function renderAprsTable(stations) {
     const opTag = ac && operatorTag(s.callsign)
       ? ` <span style="color:var(--text-dim);font-weight:400;font-size:var(--fs-small)">[${escapeHtml(operatorTag(s.callsign))}]</span>` : '';
     const callCell = ac
-      ? `<a href="server/map/map.html" target="_blank" style="color:inherit;text-decoration:none">${escapeHtml(s.callsign)}</a>${opTag}`
-      : `<a href="server/map/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a>`;
+      ? `<a href="maps/traffic/map.html" target="_blank" style="color:inherit;text-decoration:none">${escapeHtml(s.callsign)}</a>${opTag}`
+      : `<a href="maps/traffic/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a>`;
     return `<tr${rowCls}>
       <td style="color:${callColor};font-weight:700">${callCell}</td>
       <td style="color:var(--text-dim);white-space:nowrap">${aprsSymIcon(s)}${aprsTypeLabel(s)}</td>

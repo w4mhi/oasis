@@ -167,7 +167,7 @@ from services.adsb.routes import bp as _adsb_bp
 from services.aprs.routes import bp as _aprs_bp
 from services.winlink.routes import bp as _winlink_bp
 from services.fcc_database.routes import bp as _fcc_bp
-from services.map.routes import bp as _map_bp
+from maps.traffic.routes import bp as _map_bp
 from routes.files import bp as _files_bp
 from routes.service_control import bp as _service_bp
 from routes.hardware import bp as _hardware_bp

@@ -1,32 +1,44 @@
 import os
 import sys
+import unittest
 
-# Keep imports consistent with other server tests: load server/app.py directly
-# by adding server/ to sys.path rather than treating server as a package.
+# Load server/app.py and the maps package by putting the repo root and server/
+# on sys.path (rather than treating them as installed packages).
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_SERVER = os.path.join(os.path.dirname(_HERE), "server")
-if _SERVER not in sys.path:
-    sys.path.insert(0, _SERVER)
+_ROOT = os.path.dirname(_HERE)
+_SERVER = os.path.join(_ROOT, "server")
+for _p in (_ROOT, _SERVER):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 import app as app_module
-from services.map import routes as map_routes
+from maps.traffic import routes as map_routes
 
 
-def test_map_assets_and_ui_live_under_services_map():
-    # The live map UI + shared assets moved out of services/aprs/ (the page now
-    # serves both APRS and ADS-B) into the service-neutral services/map/.
-    assert map_routes.MAP_ASSETS.endswith("services/map/map-assets")
-    assert map_routes.MAP_DIR.endswith("services/map")
+class MapSubsystemLayoutTest(unittest.TestCase):
+    """The map subsystem is consolidated under maps/: the traffic app
+    (maps/traffic), the render engine (maps/mapengine) and the tiles
+    (maps/tiles). The blueprint now only carries the /api/fs/* PMTiles browser."""
+
+    def test_blueprint_and_maps_dir(self):
+        self.assertTrue(map_routes.MAPS_DIR.endswith("maps"))
+        self.assertEqual(map_routes.bp.name, "map")
+
+    def test_ui_and_assets_served_under_maps(self):
+        client = app_module.app.test_client()
+        # Traffic app + warnings catalog: static files under maps/traffic/.
+        self.assertEqual(client.get("/maps/traffic/map.html").status_code, 200)
+        self.assertEqual(client.get("/maps/traffic/warnings.json").status_code, 200)
+        # Render engine: consolidated under maps/mapengine/.
+        self.assertEqual(client.get("/maps/mapengine/basemap-style.js").status_code, 200)
+        # APRS sprite sheets moved with the app to maps/traffic/assets/.
+        self.assertEqual(client.get("/maps/traffic/assets/aprs-symbols-24-0.png").status_code, 200)
+
+    def test_old_static_routes_are_gone(self):
+        client = app_module.app.test_client()
+        self.assertEqual(client.get("/server/map/map.html").status_code, 404)
+        self.assertEqual(client.get("/server/aprs/map.html").status_code, 404)
 
 
-def test_map_ui_served_at_server_map_not_server_aprs():
-    client = app_module.app.test_client()
-    # New home: the map UI + its warnings catalog answer under /server/map/.
-    assert client.get("/server/map/map.html").status_code == 200
-    assert client.get("/server/map/warnings.json").status_code == 200
-    # The render engine now lives under /maps/mapengine/ (consolidated there).
-    assert client.get("/maps/mapengine/basemap-style.js").status_code == 200
-    # The app-specific APRS sprite sheets still answer under /map-assets/.
-    assert client.get("/map-assets/aprs-symbols-24-0.png").status_code == 200
-    # The old /server/aprs/ static route is gone.
-    assert client.get("/server/aprs/map.html").status_code == 404
+if __name__ == "__main__":
+    unittest.main()

@@ -905,8 +905,8 @@ const ALT_TABLE = String.fromCharCode(92); // backslash
 const spriteImgs = {};
 spriteImgs['/']        = new Image();
 spriteImgs[ALT_TABLE]  = new Image();
-spriteImgs['/'].src        = '/map-assets/aprs-symbols-24-0.png';
-spriteImgs[ALT_TABLE].src  = '/map-assets/aprs-symbols-24-1.png';
+spriteImgs['/'].src        = '/maps/traffic/assets/aprs-symbols-24-0.png';
+spriteImgs[ALT_TABLE].src  = '/maps/traffic/assets/aprs-symbols-24-1.png';
 
 // If the sprite sheets finish loading after the first station plot, the symbol
 // images couldn't be registered yet — re-render once they're ready so icons fill in.
@@ -1261,7 +1261,7 @@ function aprsSymIcon(s, px) {
   const col = idx % SPRITE_COLS, row = Math.floor(idx / SPRITE_COLS);
   const sheet = table === '/' ? 0 : 1;
   return '<span class="aprs-sym" style="width:' + px + 'px;height:' + px + 'px;'
-    + "background-image:url('/map-assets/aprs-symbols-24-" + sheet + ".png');"
+    + "background-image:url('/maps/traffic/assets/aprs-symbols-24-" + sheet + ".png');"
     + 'background-size:' + (SPRITE_COLS * px) + 'px ' + (6 * px) + 'px;'
     + 'background-position:' + (-col * px) + 'px ' + (-row * px) + 'px"></span>';
 }
@@ -3889,7 +3889,7 @@ function drawGrid() {
 
 // ── Operator warnings (shared, persisted) ────────────────────────────────────
 // Flood/fire/etc. markers an operator drops on the map. The catalog of icons is
-// /server/map/warnings.json; placed warnings live server-side (/api/aprs/warnings) so
+// /maps/traffic/warnings.json; placed warnings live server-side (/api/aprs/warnings) so
 // every device sees the same set. Markers are DOM (few, user-placed) with a
 // persistent red glow, so the 15s station refresh never touches them.
 let WARN_CATALOG  = [];
@@ -3906,7 +3906,7 @@ function toggleWarningsPanel() {
 
 async function loadWarningCatalog() {
   try {
-    const r = await fetch('/server/map/warnings.json', { cache: 'no-store' });
+    const r = await fetch('/maps/traffic/warnings.json', { cache: 'no-store' });
     WARN_CATALOG = await r.json();
   } catch (_) { WARN_CATALOG = []; }
   WARN_CATALOG.forEach(w => { WARN_BY_ID[w.id] = w; });
