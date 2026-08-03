@@ -124,34 +124,61 @@ class WarningBroadcaster:
         except GraywolfError:
             pass
 
+    def _ensure_killed(self, w, beacon):
+        """Delete the object beacon + send kill frames. True iff confirmed gone."""
+        bid = (beacon or {}).get("id") or w.get("gw_beacon_id")
+        if bid:
+            try:
+                self.c.delete_beacon(bid)
+            except GraywolfError:
+                return False
+        self._send_kill(w)
+        return True
+
     def reconcile(self, warnings):
-        """Make GrayWolf's OASIS-owned object beacons == broadcast warnings."""
-        out = {"created": 0, "killed": 0}
-        broadcast = [w for w in warnings if w.get("broadcast")]
-        wanted = {object_name(w["id"]).strip(): w for w in broadcast}
+        """Drive GrayWolf's OASIS-owned object beacons to match `warnings`.
+
+        Advertises broadcast-on warnings with no beacon yet, adopts an
+        already-on-air beacon id when the local id was lost, kills
+        broadcast-off warnings that still have a live beacon, kills+confirms
+        pending_delete warnings (reporting confirmed ids in "removed"), and
+        kills orphaned OASIS-owned beacons with no matching warning.
+        """
+        out = {"created": 0, "killed": 0, "removed": []}
         try:
             existing = self.c.list_beacons()
         except GraywolfError:
             return out
         # index OASIS-owned beacons on the air by object name
         on_air = {}
-        for b in existing:
-            nm = str(b.get("object_name") or "").strip()
+        for beac in existing:
+            nm = str(beac.get("object_name") or "").strip()
             if _NAME_RE.match(nm):
-                on_air[nm] = b
-        # create missing
-        for nm, w in wanted.items():
-            if nm not in on_air:
-                gw_id = self.advertise(w)
-                if gw_id is not None:
-                    w["gw_beacon_id"] = gw_id
-                    out["created"] += 1
-        # kill orphans (on the air but no matching broadcast warning)
-        for nm, b in on_air.items():
-            if nm not in wanted:
-                fake = {"id": nm[1:], "lat": b.get("latitude", 0.0),
-                        "lon": b.get("longitude", 0.0), "type": None,
-                        "gw_beacon_id": b.get("id")}
-                if self.unadvertise(fake):
+                on_air[nm] = beac
+        known = set()
+        for w in warnings:
+            nm = object_name(w["id"]).strip()
+            known.add(nm)
+            if w.get("pending_delete"):
+                if self._ensure_killed(w, on_air.get(nm)):
+                    out["removed"].append(w["id"]); out["killed"] += 1
+            elif w.get("broadcast"):
+                if nm not in on_air:
+                    gw_id = self.advertise(w)
+                    if gw_id is not None:
+                        w["gw_beacon_id"] = gw_id; out["created"] += 1
+                elif not w.get("gw_beacon_id"):
+                    w["gw_beacon_id"] = on_air[nm].get("id")   # adopt, no dupe
+            else:
+                if nm in on_air or w.get("gw_beacon_id"):
+                    if self._ensure_killed(w, on_air.get(nm)):
+                        w["gw_beacon_id"] = None; out["killed"] += 1
+        # kill orphans (on the air but no matching warning at all)
+        for nm, beac in on_air.items():
+            if nm not in known:
+                fake = {"id": nm[1:], "lat": beac.get("latitude", 0.0),
+                        "lon": beac.get("longitude", 0.0), "type": None,
+                        "gw_beacon_id": beac.get("id")}
+                if self._ensure_killed(fake, beac):
                     out["killed"] += 1
         return out

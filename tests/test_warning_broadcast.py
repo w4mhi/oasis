@@ -145,5 +145,55 @@ class BroadcasterTest(unittest.TestCase):
         self.assertIn("99", c.beacons)       # still on air
 
 
+class ReconcileDriverTest(unittest.TestCase):
+    def _w(self, wid, **kw):
+        base = {"id": wid, "type": "flood", "lat": 47.5, "lon": -122.0,
+                "note": "", "broadcast": False, "gw_beacon_id": None}
+        base.update(kw); return base
+
+    def test_pending_delete_killed_then_removed_on_confirm(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        w = self._w("11111111aaaa", broadcast=True); w["gw_beacon_id"] = b.advertise(w)
+        w["pending_delete"] = True; w["broadcast"] = False
+        out = b.reconcile([w])
+        self.assertIn("11111111aaaa", out["removed"])   # confirmed kill -> removable
+        self.assertNotIn(w["gw_beacon_id"], c.beacons)  # object beacon deleted
+
+    def test_pending_delete_not_removed_when_kill_fails(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        w = self._w("22222222bbbb", broadcast=True); w["gw_beacon_id"] = b.advertise(w)
+        w["pending_delete"] = True; w["broadcast"] = False
+        orig = c.delete_beacon
+        c.delete_beacon = lambda bid: (_ for _ in ()).throw(wb.GraywolfError("down")) if bid == w["gw_beacon_id"] else orig(bid)
+        out = b.reconcile([w])
+        self.assertNotIn("22222222bbbb", out["removed"])  # kill failed -> tombstone stays
+
+    def test_broadcast_off_kills_and_clears_id(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        w = self._w("33333333cccc", broadcast=True); w["gw_beacon_id"] = b.advertise(w)
+        w["broadcast"] = False                      # off, id still set -> kill pending
+        out = b.reconcile([w])
+        self.assertIsNone(w["gw_beacon_id"])        # cleared after confirmed kill
+        self.assertGreaterEqual(out["killed"], 1)
+
+    def test_broadcast_on_no_id_advertises_and_sets_id(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        w = self._w("44444444dddd", broadcast=True)  # on, no id
+        out = b.reconcile([w])
+        self.assertIsNotNone(w["gw_beacon_id"]); self.assertEqual(out["created"], 1)
+
+    def test_on_air_no_id_adopts_existing_beacon_id(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        w = self._w("55555555eeee", broadcast=True); bid = b.advertise(w)
+        w["gw_beacon_id"] = None                      # id lost locally but beacon still on air
+        b.reconcile([w])
+        self.assertEqual(w["gw_beacon_id"], bid)      # re-adopted, no duplicate advertise
+
+    def test_orphan_still_killed(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        c.beacons["99"] = {"id": "99", "type": "object", "object_name": "Wdeadbeef"}
+        out = b.reconcile([]); self.assertNotIn("99", c.beacons); self.assertGreaterEqual(out["killed"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
