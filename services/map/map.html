@@ -569,17 +569,14 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 #measure-readout b{color:var(--accent);}
 #measure-hint{font-size:var(--fs-micro);color:var(--text-dim);margin-top:3px;}
 
-/* Base-map attribution label (bottom-right) — click to load a different map */
-#basemap-info{
-  position:fixed;right:10px;bottom:6px;z-index:150;
-  background:rgba(13,17,23,.72);border:1px solid var(--border);border-radius:4px;
-  font-family:var(--mono);font-size:var(--fs-small);color:var(--text-dim);
-  padding:2px 7px;pointer-events:auto;white-space:nowrap;cursor:pointer;
+/* Base-map dropdown (topbar, after Moving) */
+#mapSelect{
+  background:rgba(13,17,23,.72);color:var(--text);
+  border:1px solid var(--border);border-radius:4px;
+  font-family:var(--mono);font-size:var(--fs-small);
+  padding:2px 6px;cursor:pointer;
 }
-#basemap-info:hover{border-color:var(--accent-dim);color:var(--text);}
-#basemap-info b{color:var(--accent);font-weight:700;}
-#basemap-info .bm-caret{color:var(--text-dim);margin-left:4px;}
-#basemap-info .bm-path{display:block;color:var(--text-dim);font-size:var(--fs-small);opacity:.85;margin-top:1px;max-width:52ch;overflow:hidden;text-overflow:ellipsis;}
+#mapSelect:hover{border-color:var(--accent-dim);}
 
 /* Leading cell shared by both rows so the first separator lines up vertically */
 .lead-cell{display:flex;align-items:center;gap:.7rem;min-width:215px;flex-shrink:0;}
@@ -668,6 +665,8 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
     <button id="gridBtn" class="sbtn" onclick="toggleGrid()" title="Toggle Maidenhead grid overlay + distance/bearing measure">Grid</button>
     <span class="track-sep">|</span>
     <button id="movingBtn" class="sbtn" onclick="toggleMoving()" title="Show only stations currently moving (speed > 0)">Moving</button>
+    <span class="track-sep">|</span>
+    <select id="mapSelect" title="Base map" onchange="onMapSelect(this.value)"></select>
     <span style="flex:1"></span>
     <span id="crCpu" class="cr-val" title="Pi CPU load (whole system, ~5s sample)">—</span>
     <span class="track-sep">|</span>
@@ -729,10 +728,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
   </div>
 </div>
 
-<!-- Base map attribution (bottom-right) — click to load a different .pmtiles -->
-<div id="basemap-info" title="Click to load a different offline base map (.pmtiles on the Pi or a USB drive)"></div>
-
-<!-- Filesystem map browser (click base-map label → browse Pi / USB for .pmtiles) -->
+<!-- Filesystem map browser (dormant: base-map switching lives in the topbar dropdown) -->
 <div id="fs-modal" class="fs-hidden">
   <div id="fs-dialog">
     <div id="fs-head">
@@ -1032,7 +1028,6 @@ function updateBasemapInfo(label, path) {
   if (path) html += '<span class="bm-path">' + _escHtml(path) + '</span>';
   el.innerHTML = html;
 }
-updateBasemapInfo(MAP_FILE, '/maps/tiles/state/' + MAP_FILE);
 
 // Shared render engine (services/map/map-assets/map-engine.js). It owns map
 // creation, the pmtiles:// protocol, the bottom-left control stack (zoom readout
@@ -1093,6 +1088,23 @@ function switchMap(filename) {
   loadMapSource(pmtilesSourceUrl(filename), pmtilesHttpUrl(filename), filename, '/maps/tiles/state/' + filename);
 }
 
+// ── Base-map dropdown (topbar, after Moving) ─────────────────────────────────
+// Scaffold: seeded with the active archive only. Per-state / per-country map
+// lists (and a browse entry) get added here next. Selecting a bundled entry
+// swaps the base map via switchMap (setUrl swap — overlays survive).
+function onMapSelect(file) {
+  if (file) switchMap(file);
+}
+(function seedMapSelect() {
+  const sel = document.getElementById('mapSelect');
+  if (!sel) return;
+  const opt = document.createElement('option');
+  opt.value = MAP_FILE;
+  opt.textContent = MAP_FILE.replace(/\.pmtiles$/i, '');
+  sel.appendChild(opt);
+  sel.value = MAP_FILE;
+})();
+
 // Load a .pmtiles from an arbitrary allowlisted path (Pi disk / USB / mount).
 function loadExternalMap(absPath) {
   const httpUrl = origin + '/api/fs/pmtiles?path=' + encodeURIComponent(absPath);
@@ -1139,10 +1151,6 @@ async function openFsBrowser(path) {
   }
 }
 
-document.getElementById('basemap-info').addEventListener('click', () => {
-  _fsModal.classList.remove('fs-hidden');
-  openFsBrowser('');
-});
 document.getElementById('fs-close').addEventListener('click', () => _fsModal.classList.add('fs-hidden'));
 _fsModal.addEventListener('click', (e) => { if (e.target === _fsModal) _fsModal.classList.add('fs-hidden'); });
 document.getElementById('fs-list').addEventListener('click', (e) => {
