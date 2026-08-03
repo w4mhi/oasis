@@ -34,6 +34,8 @@ _broadcaster_lock = threading.Lock()
 _reconcile_lock = threading.Lock()
 _last_reconcile = [0.0]
 _RECONCILE_MIN_INTERVAL = 120     # seconds
+_reconcile_active = [False]       # single-flight: a reconcile thread is running
+_reconcile_dirty = [False]        # a kick arrived while one was already running
 
 
 def _get_broadcaster():
@@ -189,42 +191,77 @@ def _clean_note(value):
     return str(value or "").replace("\n", " ").replace("\r", " ").strip()[:_WARN_NOTE_MAX]
 
 
-def _maybe_reconcile():
-    """Fire a throttled, non-blocking reconcile whenever a broadcaster is
-    configured — even with zero broadcast warnings on disk, so an orphan
-    object beacon (e.g. from a failed delete) still gets killed."""
+def _run_reconcile(b, warnings):
+    """Run one reconcile pass against `warnings`, then write back the
+    resulting `gw_beacon_id`s and drop confirmed-removed tombstones.
+
+    The reconciler owns `gw_beacon_id`; this write-back never touches
+    operator-intent fields (broadcast/pending_delete/note). Best-effort —
+    never raises, so a hung/broken GrayWolf never surfaces here.
+    """
+    try:
+        result = b.reconcile(warnings)
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        removed = set(result.get("removed") or [])
+        snap = {w["id"]: w for w in warnings}
+        with _warnings_lock:
+            disk = _load_warnings()
+            kept = []
+            for d in disk:
+                if d.get("id") in removed:
+                    continue
+                s = snap.get(d.get("id"))
+                if s is not None:
+                    d["gw_beacon_id"] = s.get("gw_beacon_id")
+                kept.append(d)
+            _save_warnings(kept)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _kick_reconcile():
+    """Single-flight, non-throttled reconcile trigger. Safe to call often
+    (e.g. after every mutation) — if a reconcile is already running, this
+    just marks it dirty so it loops again rather than piling up threads."""
     b = _get_broadcaster()
     if b is None:
+        return
+    with _reconcile_lock:
+        if _reconcile_active[0]:
+            _reconcile_dirty[0] = True
+            return
+        _reconcile_active[0] = True
+
+    def _loop():
+        try:
+            while True:
+                _run_reconcile(b, _load_warnings())
+                with _reconcile_lock:
+                    if _reconcile_dirty[0]:
+                        _reconcile_dirty[0] = False
+                        continue
+                    _reconcile_active[0] = False
+                    return
+        except Exception:  # noqa: BLE001
+            with _reconcile_lock:
+                _reconcile_active[0] = False
+    threading.Thread(target=_loop, daemon=True).start()
+
+
+def _maybe_reconcile():
+    """Throttled backstop reconcile for the GET path — even with zero
+    broadcast warnings on disk, so an orphan object beacon (e.g. from a
+    failed delete) still gets killed."""
+    if _get_broadcaster() is None:
         return
     now = time.time()
     with _reconcile_lock:
         if now - _last_reconcile[0] < _RECONCILE_MIN_INTERVAL:
             return
         _last_reconcile[0] = now
-    warnings = _load_warnings()
-
-    def _run():
-        try:
-            result = b.reconcile(warnings)
-        except Exception:  # noqa: BLE001
-            return
-        if result and result.get("created"):
-            try:
-                with _warnings_lock:
-                    disk = _load_warnings()
-                    assigned = {w["id"]: w.get("gw_beacon_id")
-                                for w in warnings if w.get("gw_beacon_id")}
-                    changed = False
-                    for d in disk:
-                        gid = assigned.get(d.get("id"))
-                        if gid and not d.get("gw_beacon_id"):
-                            d["gw_beacon_id"] = gid
-                            changed = True
-                    if changed:
-                        _save_warnings(disk)
-            except Exception:  # noqa: BLE001
-                pass
-    threading.Thread(target=_run, daemon=True).start()
+    _kick_reconcile()
 
 
 @bp.route("/api/aprs/warnings", methods=["GET"])
@@ -262,21 +299,25 @@ def api_aprs_warnings_add():
             "gw_beacon_id": None,
         }
         item["aprs_name"] = object_name(item["id"]).strip()
-        if item["broadcast"]:
-            b = _get_broadcaster()
-            if b is not None:
-                item["gw_beacon_id"] = b.advertise(item)
         warnings.append(item)
         _save_warnings(warnings)
+    if item["broadcast"]:
+        _kick_reconcile()
     return jsonify({"ok": True, "warning": item})
 
 
 @bp.route("/api/aprs/warnings/<wid>", methods=["PATCH"])
 def api_aprs_warnings_update(wid):
+    """Intent-only: record the note/broadcast toggle locally and return
+    immediately. No GrayWolf calls happen while `_warnings_lock` is held —
+    a broadcast-flag change kicks the reconcile driver, and a note edit on
+    an already-on-air warning best-effort-pushes the new comment from a
+    detached daemon thread, outside the lock."""
     body = request.get_json(silent=True) or {}
     has_note = "note" in body
     has_bcast = "broadcast" in body
     note = _clean_note(body.get("note")) if has_note else None
+    bcast_changed = False
     with _warnings_lock:
         warnings = _load_warnings()
         found = None
@@ -288,46 +329,51 @@ def api_aprs_warnings_update(wid):
             return jsonify({"ok": False, "error": "not found"}), 404
         if has_note:
             found["note"] = note
-        b = _get_broadcaster()
-        transitioned = False
         if has_bcast:
             want = bool(body.get("broadcast"))
-            if want and not found.get("broadcast"):
-                found["broadcast"] = True
-                found["gw_beacon_id"] = b.advertise(found) if b else None
-                transitioned = True
-            elif not want and found.get("broadcast"):
-                if b:
-                    b.unadvertise(found)
-                found["broadcast"] = False
-                found["gw_beacon_id"] = None
-                transitioned = True
-        # Push a note edit to the live beacon comment when the warning stays
-        # broadcast (advertise already carried the note, so skip if we just
-        # transitioned).
-        if (has_note and not transitioned and found.get("broadcast")
-                and found.get("gw_beacon_id") and b):
-            try:
-                b.c.update_beacon(found["gw_beacon_id"], {"comment": found["note"]})
-            except Exception:  # noqa: BLE001
-                pass
+            if want != bool(found.get("broadcast")):
+                # Toggling off does NOT clear gw_beacon_id here — leaving it
+                # set is the signal the reconciler uses to kill the beacon.
+                found["broadcast"] = want
+                bcast_changed = True
         _save_warnings(warnings)
-    return jsonify({"ok": True, "warning": found})
+        result = dict(found)
+    if bcast_changed:
+        _kick_reconcile()
+    elif has_note and result.get("broadcast") and result.get("gw_beacon_id"):
+        b = _get_broadcaster()
+        if b is not None:
+            gw_id = result["gw_beacon_id"]
+            new_note = result["note"]
+
+            def _push():
+                try:
+                    b.c.update_beacon(gw_id, {"comment": new_note})
+                except Exception:  # noqa: BLE001
+                    pass
+            threading.Thread(target=_push, daemon=True).start()
+    return jsonify({"ok": True, "warning": result})
 
 
 @bp.route("/api/aprs/warnings/<wid>", methods=["DELETE"])
 def api_aprs_warnings_delete(wid):
+    """Intent-only: a warning that may be on air (has a beacon id, is
+    broadcast, or is already tombstoned) is marked `pending_delete` and
+    KEPT — the reconciler removes it from disk only once GrayWolf confirms
+    the beacon is killed (delete succeeded, or nothing to delete). A
+    local-only warning (never broadcast) is removed immediately."""
     with _warnings_lock:
         warnings = _load_warnings()
         victim = next((w for w in warnings if w.get("id") == wid), None)
         if victim is None:
             return jsonify({"ok": False, "error": "not found"}), 404
-        if victim.get("broadcast"):
-            b = _get_broadcaster()
-            if b:
-                b.unadvertise(victim)
-        kept = [w for w in warnings if w.get("id") != wid]
-        _save_warnings(kept)
+        if victim.get("gw_beacon_id") or victim.get("broadcast") or victim.get("pending_delete"):
+            victim["pending_delete"] = True
+            _save_warnings(warnings)
+        else:
+            kept = [w for w in warnings if w.get("id") != wid]
+            _save_warnings(kept)
+    _kick_reconcile()
     return jsonify({"ok": True})
 
 

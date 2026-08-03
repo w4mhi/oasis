@@ -46,6 +46,14 @@ from services.aprs import routes as aprs_routes
 
 
 class WarningBroadcastRouteTest(unittest.TestCase):
+    """NOTE (intent model / Task R2): handlers no longer call GrayWolf
+    inline — advertise/unadvertise only ever happen inside the background
+    reconcile driver. These tests were updated from asserting synchronous
+    advertise/unadvertise to asserting the recorded intent (broadcast flag,
+    tombstoning) and that a reconcile gets kicked; the actual
+    advertise/unadvertise wiring is exercised by WarningBroadcaster tests
+    (R1) and by the reconcile-driven write-back covered elsewhere."""
+
     def setUp(self):
         self.client = app_module.app.test_client()
         # isolate the warnings file per test
@@ -55,7 +63,7 @@ class WarningBroadcastRouteTest(unittest.TestCase):
         if os.path.exists(self._tmp):
             os.remove(self._tmp)
         # fake broadcaster records calls
-        calls = {"adv": [], "unadv": []}
+        calls = {"adv": [], "unadv": [], "reconcile": 0}
         pushed = {"comments": []}
 
         class FakeC:
@@ -74,10 +82,12 @@ class WarningBroadcastRouteTest(unittest.TestCase):
                 calls["unadv"].append(w["id"])
 
             def reconcile(self, ws):
-                return {"created": 0, "killed": 0}
+                calls["reconcile"] += 1
+                return {"created": 0, "killed": 0, "removed": []}
         self.calls = calls
         self.pushed = pushed
         aprs_routes._TEST_BROADCASTER = FakeB()
+        aprs_routes._last_reconcile[0] = 0.0
 
     def tearDown(self):
         aprs_routes._TEST_BROADCASTER = None
@@ -97,25 +107,45 @@ class WarningBroadcastRouteTest(unittest.TestCase):
         self.assertEqual(self.calls["adv"], [])
         self.assertTrue(w["aprs_name"].startswith("W"))
 
-    def test_broadcast_advertises_and_stores_id(self):
+    def test_broadcast_records_intent_without_inline_advertise(self):
         w = self._add(True)
-        self.assertEqual(self.calls["adv"], [w["id"]])
-        self.assertEqual(w["gw_beacon_id"], "gw-1")
+        # No inline GrayWolf call: the handler only records intent, the
+        # background reconciler is the one that would call advertise().
+        self.assertEqual(self.calls["adv"], [])
+        self.assertTrue(w["broadcast"])
+        self.assertIsNone(w["gw_beacon_id"])
 
-    def test_delete_broadcast_unadvertises(self):
+    def test_delete_broadcast_tombstones_without_inline_unadvertise(self):
+        import time as _t
         w = self._add(True)
         self.client.delete("/api/aprs/warnings/" + w["id"])
-        self.assertEqual(self.calls["unadv"], [w["id"]])
+        # No inline GrayWolf call on the request path.
+        self.assertEqual(self.calls["unadv"], [])
+        _t.sleep(0.2)
+        after = _json.loads(open(self._tmp).read())
+        self.assertEqual(len(after), 1)
+        self.assertTrue(after[0].get("pending_delete"))
 
-    def test_patch_toggle_on_advertises(self):
+    def test_patch_toggle_on_records_intent_without_inline_advertise(self):
         w = self._add(False)
-        self.client.patch("/api/aprs/warnings/" + w["id"], json={"broadcast": True})
-        self.assertEqual(self.calls["adv"], [w["id"]])
+        r = self.client.patch("/api/aprs/warnings/" + w["id"], json={"broadcast": True})
+        self.assertEqual(self.calls["adv"], [])
+        updated = _json.loads(r.data)["warning"]
+        self.assertTrue(updated["broadcast"])
 
-    def test_patch_note_with_broadcast_true_pushes_comment(self):
-        w = self._add(True)                      # already broadcasting, gw_beacon_id="gw-1"
-        self.client.patch("/api/aprs/warnings/" + w["id"],
+    def test_patch_note_on_air_pushes_comment_from_background_thread(self):
+        import time as _t
+        # Construct the on-air warning directly on disk (bypassing POST) so
+        # no competing reconcile kick is in flight to race the write-back
+        # against this fixture's gw_beacon_id.
+        item = {"id": "w1", "type": "flood", "lon": -122.0, "lat": 47.5,
+                "note": "", "ts": 0, "broadcast": True, "gw_beacon_id": "gw-1",
+                "aprs_name": "Ww1"}
+        with open(self._tmp, "w") as fh:
+            _json.dump([item], fh)
+        self.client.patch("/api/aprs/warnings/" + item["id"],
                           json={"note": "road washed out", "broadcast": True})
+        _t.sleep(0.2)
         self.assertIn(("gw-1", "road washed out"), self.pushed["comments"])
 
 
@@ -179,6 +209,57 @@ class ReconcileTriggerNoBroadcastTest(unittest.TestCase):
         self.client.get("/api/aprs/warnings")
         _t.sleep(0.2)                            # let the daemon thread run
         self.assertEqual(self.hits, [0])         # reconcile still ran, with 0 warnings
+
+
+class IntentModelRouteTest(unittest.TestCase):
+    def setUp(self):
+        self.client = app_module.app.test_client()
+        self._orig_wf = aprs_routes.WARNINGS_FILE
+        self._tmp = os.path.join(_HERE, "_warns_intent.json")
+        aprs_routes.WARNINGS_FILE = self._tmp
+        if os.path.exists(self._tmp): os.remove(self._tmp)
+        calls = {"reconcile": 0}
+        class FakeB:
+            def reconcile(_s, ws): calls["reconcile"] += 1; return {"created":0,"killed":0,"removed":[]}
+        self.calls = calls
+        aprs_routes._TEST_BROADCASTER = FakeB()
+        aprs_routes._last_reconcile[0] = 0.0
+
+    def tearDown(self):
+        aprs_routes._TEST_BROADCASTER = None
+        aprs_routes.WARNINGS_FILE = self._orig_wf
+        if os.path.exists(self._tmp): os.remove(self._tmp)
+
+    def _add(self, broadcast):
+        import json as _j
+        r = self.client.post("/api/aprs/warnings", json={"type":"flood","lon":-122.0,"lat":47.5,"broadcast":broadcast})
+        return _j.loads(r.data)["warning"]
+
+    def test_post_broadcast_is_pending_not_advertised_inline(self):
+        w = self._add(True)
+        self.assertTrue(w["broadcast"]); self.assertIsNone(w["gw_beacon_id"])   # no inline advertise
+
+    def test_delete_broadcast_tombstones_not_removed(self):
+        import time as _t, json as _j
+        w = self._add(True)
+        # simulate it went on air
+        data = _j.load(open(self._tmp)); data[0]["gw_beacon_id"] = "gw-1"; _j.dump(data, open(self._tmp,"w"))
+        self.client.delete("/api/aprs/warnings/" + w["id"])
+        _t.sleep(0.2)
+        after = _j.load(open(self._tmp))
+        self.assertEqual(len(after), 1)                 # still on disk (tombstone)
+        self.assertTrue(after[0].get("pending_delete"))
+
+    def test_delete_local_only_removed_immediately(self):
+        import json as _j
+        w = self._add(False)
+        self.client.delete("/api/aprs/warnings/" + w["id"])
+        self.assertEqual(_j.load(open(self._tmp)), [])   # gone at once, no tombstone
+
+    def test_mutations_kick_reconcile(self):
+        import time as _t
+        self._add(True); _t.sleep(0.2)
+        self.assertGreaterEqual(self.calls["reconcile"], 1)
 
 
 if __name__ == "__main__":
