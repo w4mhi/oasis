@@ -3,6 +3,19 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "server"))
 
+# Probe the optional pass-prediction dep (skyfield/numpy/sgp4). The server boots
+# without it (routes.py lazy-imports predict), so the route tests that exercise
+# prediction skip cleanly when it's absent — e.g. the minimal CI server-setup job.
+# CachePlanTest below is predict-free and always runs.
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "services", "satellites"))
+    import predict as _predict_probe  # noqa: F401,E402
+    _HAS_PREDICT = True
+except Exception:  # noqa: BLE001
+    _HAS_PREDICT = False
+
+
+@unittest.skipUnless(_HAS_PREDICT, "skyfield/predict not installed")
 class RoutesTest(unittest.TestCase):
     def setUp(self):
         # Dotted import (not bare `import routes`) — the repo already has a
