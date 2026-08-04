@@ -549,21 +549,52 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 .warn-bcast{display:block;margin-top:6px;font-size:var(--fs-small);cursor:pointer;}
 .warn-bcast input{margin-right:5px;}
 .warn-status{margin-top:4px;font-size:var(--fs-micro);color:var(--text-dim);}
-.warn-marker.warn-broadcasting{box-shadow:0 0 9px 4px rgba(80,180,255,.7),0 0 8px 4px rgba(255,40,40,.45);}
 /* Kill-pending halo: tombstoned or un-advertising warnings still on air — static ring, no animation (Pi kiosk CPU) */
-.warn-marker.warn-kill-pending{box-shadow:0 0 0 3px rgba(255,176,32,.95),0 0 10px 5px rgba(255,176,32,.55);}
+.warn-marker.warn-kill-pending{box-shadow:0 0 0 4px rgba(255,176,32,.95),0 0 10px 5px rgba(255,176,32,.55);}
 /* Crosshair while arming a warning placement */
 #map.placing-warning .maplibregl-canvas{cursor:crosshair;}
-/* Operator warning marker — icon with a persistent red glow (static, GPU-cheap) */
+/* Operator warning marker — solid bright red ring, always-on, no animation (Pi kiosk CPU) */
 .warn-marker{
-  width:26px;height:26px;border-radius:50%;text-align:center;line-height:26px;
-  font-size:18px;cursor:pointer;background:rgba(13,17,23,.55);
-  box-shadow:0 0 8px 4px rgba(255,40,40,.55);
+  width:26px;height:26px;border-radius:50%;text-align:center;line-height:22px;
+  font-size:16px;cursor:pointer;background:rgba(13,17,23,.78);
+  border:2.5px solid #ff2b2b;box-shadow:0 0 6px 2px rgba(255,40,40,.6);
 }
 .warn-note{margin-top:4px;color:var(--amber);}
 .warn-input{width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:var(--fs-small);padding:3px 5px;border-radius:4px;margin-top:5px;}
 .warn-remove{display:block;margin-top:6px;color:var(--red);background:none;border:none;font-family:var(--mono);cursor:pointer;text-align:left;padding-left:0;}
 .warn-remove:hover{color:#fff;}
+
+/* Capability-gate: greyed Broadcast option/toggle when GrayWolf isn't configured */
+.warn-mode label.warn-mode-disabled{color:var(--text-dim);opacity:.55;cursor:not-allowed;}
+.warn-bcast.warn-bcast-disabled{color:var(--text-dim);opacity:.55;}
+.warn-mode-reason{padding:2px 4px 5px;color:var(--text-dim);font-size:var(--fs-micro);font-style:italic;}
+
+/* Placed-alerts list — one row per warning currently on the map */
+#warn-list{margin-top:6px;border-top:1px solid var(--border);padding-top:4px;}
+.warn-list-empty{padding:4px 2px;color:var(--text-dim);font-size:var(--fs-micro);}
+.warn-item{display:flex;align-items:center;gap:.4rem;padding:4px;border-radius:4px;cursor:pointer;}
+.warn-item:hover{background:var(--panel-2);}
+.warn-item .warn-ico{font-size:15px;line-height:1;width:18px;text-align:center;flex-shrink:0;}
+.warn-item-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;overflow:hidden;}
+.warn-item-note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.warn-item-status{font-size:var(--fs-micro);}
+.warn-item-actions{display:flex;gap:2px;flex-shrink:0;}
+.warn-item-actions button{background:none;border:none;color:var(--text-dim);cursor:pointer;font-family:var(--mono);font-size:var(--fs-small);padding:1px 4px;}
+.warn-item-actions button:hover{color:var(--text);}
+.warn-item-actions .warn-item-del:hover{color:var(--red);}
+.ws-onair{color:var(--green);}
+.ws-pending{color:var(--amber);}
+.ws-kill{color:#ffb020;}
+.ws-local{color:var(--text-dim);}
+
+/* Success toast — static opacity fade only, no animation/@keyframes (Pi kiosk CPU) */
+.warn-toast{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:500;
+  background:var(--panel);border:1px solid var(--green);color:var(--text);
+  font-family:var(--mono);font-size:var(--fs-small);padding:7px 14px;border-radius:7px;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);opacity:0;transition:opacity .4s ease;pointer-events:none;
+}
+.warn-toast.show{opacity:1;}
 
 /* Measure readout panel (bottom-center) */
 #measure-panel{
@@ -4105,6 +4136,9 @@ let warnMarkers   = [];       // DOM markers, parallel to warnings
 let pendingWarn   = null;     // type id being placed, or null
 let placingWarning = false;
 let _warnEditing  = false;    // an open warning popup → don't rebuild markers
+let broadcastAvailable = true;  // from list response broadcast_available; gates the Broadcast UI
+const _warnPrevBeacon = {};     // id -> last-seen gw_beacon_id, for null->set on-air toast
+let _warnToastTimer = null;
 
 function toggleWarningsPanel() {
   document.getElementById('warnings-panel').classList.toggle('collapsed');
@@ -4126,20 +4160,37 @@ function buildWarningsPanel() {
   let html = '<div class="warn-hint">Pick a mode, click a type, then click the map.</div>';
   html += '<div class="warn-mode">' +
     '<label><input type="radio" name="warnmode" value="local" checked> Local map only</label>' +
-    '<label><input type="radio" name="warnmode" value="broadcast"> Broadcast on APRS (RF+IS)</label>' +
+    '<label class="' + (broadcastAvailable ? '' : 'warn-mode-disabled') + '">' +
+    '<input type="radio" name="warnmode" value="broadcast"' + (broadcastAvailable ? '' : ' disabled') +
+    '> Broadcast on APRS (RF+IS)</label>' +
     '</div>';
+  if (!broadcastAvailable) {
+    html += '<div class="warn-mode-reason">APRS broadcast unavailable — GrayWolf not configured</div>';
+  }
   html += cat.map(w =>
     '<div class="warn-row" data-warn="' + _escHtml(w.id) + '"><span class="warn-ico">' +
     _escHtml(w.icon) + '</span><span>' + _escHtml(w.label) + '</span></div>').join('');
+  html += '<div id="warn-list"></div>';
   body.innerHTML = html;
+  renderWarnList();
 }
 
 function warnPlacementMode() {
+  if (!broadcastAvailable) return false;
   const el = document.querySelector('input[name="warnmode"]:checked');
   return el && el.value === 'broadcast';
 }
 
 document.getElementById('warnings-body').addEventListener('click', (e) => {
+  const actBtn = e.target.closest('.warn-item-actions button');
+  if (actBtn) {
+    e.stopPropagation();
+    if (actBtn.dataset.act === 'del') warnRemove(actBtn.dataset.wid);
+    else warnFlyTo(actBtn.dataset.wid);
+    return;
+  }
+  const item = e.target.closest('.warn-item');
+  if (item) { warnFlyTo(item.dataset.wid); return; }
   const row = e.target.closest('.warn-row');
   if (!row) return;
   armWarning(row.dataset.warn);
@@ -4180,7 +4231,13 @@ async function loadWarnings() {
   try {
     const r = await fetch('/api/aprs/warnings', { cache: 'no-store' });
     const d = await r.json();
-    if (d.ok) { warnings = d.warnings || []; renderWarnings(); }
+    if (d.ok) {
+      warnings = d.warnings || [];
+      const avail = !!d.broadcast_available;
+      if (avail !== broadcastAvailable) { broadcastAvailable = avail; buildWarningsPanel(); }
+      _checkWarnOnAirTransitions(warnings);
+      renderWarnings();
+    }
   } catch (_) { /* leave existing markers */ }
 }
 
@@ -4189,14 +4246,13 @@ function clearWarnMarkers() { warnMarkers.forEach(m => m.remove()); warnMarkers 
 function renderWarnings() {
   const cnt = document.getElementById('warnings-count');
   if (cnt) cnt.textContent = warnings.length ? String(warnings.length) : '';
+  renderWarnList();
   if (_warnEditing) return; // don't disrupt an open note editor
   clearWarnMarkers();
   warnings.forEach(w => {
     const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
     const el = document.createElement('div');
-    el.className = 'warn-marker'
-      + (w.broadcast ? ' warn-broadcasting' : '')
-      + (warnKillPending(w) ? ' warn-kill-pending' : '');
+    el.className = 'warn-marker' + (warnKillPending(w) ? ' warn-kill-pending' : '');
     el.textContent = cat.icon;
     el.title = cat.label + (w.note ? ' — ' + w.note : '');
     const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '240px' });
@@ -4207,23 +4263,102 @@ function renderWarnings() {
   });
 }
 
-function warnStatusText(w) {
-  if (w.pending_delete) return 'Removing — on air until confirmed';
-  if (!w.broadcast && w.gw_beacon_id) return 'Un-advertising — still on air';
-  if (!w.broadcast) return 'Local map only';
-  if (w.gw_beacon_id) return 'On air (APRS RF+IS)';
-  return 'Broadcast pending';
+// Placed-alerts list — one row per warning currently placed, newest last.
+function renderWarnList() {
+  const list = document.getElementById('warn-list');
+  if (!list) return;
+  if (!warnings.length) {
+    list.innerHTML = '<div class="warn-list-empty">No alerts placed.</div>';
+    return;
+  }
+  list.innerHTML = warnings.map(w => {
+    const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
+    const st = warnStatus(w);
+    const text = w.note || w.aprs_name || cat.label;
+    return '<div class="warn-item" data-wid="' + _escHtml(w.id) + '">' +
+      '<span class="warn-ico">' + _escHtml(cat.icon) + '</span>' +
+      '<span class="warn-item-main">' +
+        '<span class="warn-item-note">' + _escHtml(text) + '</span>' +
+        '<span class="warn-item-status ' + st.cls + '">' + _escHtml(st.label) + '</span>' +
+      '</span>' +
+      '<span class="warn-item-actions">' +
+        '<button type="button" class="warn-item-fly" data-act="fly" data-wid="' + _escHtml(w.id) +
+          '" title="Fly to">&#8857;</button>' +
+        '<button type="button" class="warn-item-del" data-act="del" data-wid="' + _escHtml(w.id) +
+          '" title="Remove">&#10005;</button>' +
+      '</span>' +
+    '</div>';
+  }).join('');
 }
-function warnKillPending(w) { return !!(w.pending_delete || (!w.broadcast && w.gw_beacon_id)); }
+
+function warnFlyTo(id) {
+  const w = warnings.find(x => x.id === id);
+  if (!w) return;
+  map.flyTo({ center: [w.lon, w.lat], zoom: Math.max(map.getZoom(), 11), speed: 1.4, essential: true });
+}
+
+// Single source of truth for placed-warning status (marker halo, list badge, popup line).
+function warnStatus(w) {
+  if (w.pending_delete) return { label: 'Removing…', cls: 'ws-kill' };
+  if (!w.broadcast && w.gw_beacon_id) return { label: 'Kill pending', cls: 'ws-kill' };
+  if (!w.broadcast) return { label: 'Local', cls: 'ws-local' };
+  if (w.gw_beacon_id) return { label: '✓ On air', cls: 'ws-onair' };
+  return { label: 'Pending…', cls: 'ws-pending' };
+}
+const _WARN_STATUS_LONG = {
+  'Removing…':   'Removing — on air until confirmed',
+  'Kill pending': 'Un-advertising — still on air',
+  'Local':        'Local map only',
+  '✓ On air':     'On air (APRS RF+IS)',
+  'Pending…':     'Broadcast pending',
+};
+function warnStatusText(w) {
+  const s = warnStatus(w);
+  return _WARN_STATUS_LONG[s.label] || s.label;
+}
+function warnKillPending(w) { return warnStatus(w).cls === 'ws-kill'; }
+
+// Success toast — fires on a gw_beacon_id null -> set transition (i.e. the
+// beacon actually went live). Purely a DOM/opacity fade, no CSS animation.
+function _checkWarnOnAirTransitions(list) {
+  list.forEach(w => {
+    const seen = Object.prototype.hasOwnProperty.call(_warnPrevBeacon, w.id);
+    const prev = _warnPrevBeacon[w.id];
+    if (seen && !prev && w.gw_beacon_id) warnToast('On air: ' + (w.aprs_name || w.type));
+    _warnPrevBeacon[w.id] = w.gw_beacon_id || null;
+  });
+  const ids = new Set(list.map(w => w.id));
+  Object.keys(_warnPrevBeacon).forEach(id => { if (!ids.has(id)) delete _warnPrevBeacon[id]; });
+}
+
+function warnToast(msg) {
+  let el = document.getElementById('warn-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'warn-toast';
+    el.className = 'warn-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.remove('show');
+  void el.offsetWidth; // restart the opacity transition
+  el.classList.add('show');
+  clearTimeout(_warnToastTimer);
+  _warnToastTimer = setTimeout(() => { el.classList.remove('show'); }, 3500);
+}
 
 function warnPopupHtml(w) {
   const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
+  const gated = !broadcastAvailable;
+  const st = warnStatus(w);
   return '<div class="pop-call">' + cat.icon + ' ' + _escHtml(cat.label) + '</div>' +
     '<input class="warn-input" maxlength="50" placeholder="note (max 50 chars)" value="' +
       _escHtml(w.note || '') + '" oninput="warnSaveNote(\'' + w.id + '\', this.value)">' +
-    '<label class="warn-bcast"><input type="checkbox" ' + (w.broadcast ? 'checked' : '') +
-      ' onchange="warnToggleBroadcast(\'' + w.id + '\', this.checked)"> Broadcast on APRS (RF+IS)</label>' +
-    '<div class="warn-status" data-wid="' + w.id + '">' + _escHtml(warnStatusText(w)) + '</div>' +
+    '<label class="warn-bcast' + (gated ? ' warn-bcast-disabled' : '') + '"><input type="checkbox" ' +
+      (w.broadcast ? 'checked ' : '') + (gated ? 'disabled ' : '') +
+      'onchange="warnToggleBroadcast(\'' + w.id + '\', this.checked)"> Broadcast on APRS (RF+IS)</label>' +
+    (gated ? '<div class="warn-mode-reason">APRS broadcast unavailable — GrayWolf not configured</div>' : '') +
+    '<div class="warn-status ' + st.cls + '" data-wid="' + w.id + '">' + _escHtml(warnStatusText(w)) + '</div>' +
     '<button class="warn-remove" onclick="warnRemove(\'' + w.id + '\')">✕ Remove warning</button>';
 }
 
@@ -4238,7 +4373,7 @@ async function warnToggleBroadcast(id, on) {
   const w = warnings.find(x => x.id === id);
   if (w) { w.broadcast = on; }
   const el = document.querySelector('.warn-status[data-wid="' + id + '"]');
-  if (el && w) el.textContent = warnStatusText(w);
+  if (el && w) { el.textContent = warnStatusText(w); el.className = 'warn-status ' + warnStatus(w).cls; }
 }
 
 let _warnSaveTimer = null;
