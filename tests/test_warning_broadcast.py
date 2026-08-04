@@ -65,6 +65,12 @@ class FormatTest(unittest.TestCase):
         p = wb.kill_payload("AID01", 1.0, 2.0, "/", "o", "both", ts, "W4MHI-1")
         self.assertEqual(p["callsign"], "W4MHI-1")
 
+    def test_clean_send_path(self):
+        self.assertEqual(wb.clean_send_path("is_only", "both"), "is_only")
+        self.assertEqual(wb.clean_send_path("rf", "both"), "rf")
+        self.assertEqual(wb.clean_send_path("bogus", "both"), "both")   # invalid -> default
+        self.assertEqual(wb.clean_send_path(None, "is_only"), "is_only")
+
     def test_tactical_name_sequence(self):
         self.assertEqual(wb.tactical_name("AID", set()), "AID01")
         self.assertEqual(wb.tactical_name("FLOOD", {"FLOOD01"}), "FLOOD02")
@@ -91,12 +97,14 @@ class FakeClient:
         self.healthy = healthy
         self.beacons = {}      # id -> payload
         self.sent = []         # beacon ids that got send_now
+        self._created = []     # every payload passed to create_beacon (incl. deleted ones)
         self._n = 0
     def health(self): return self.healthy
     def create_beacon(self, payload):
         if not self.healthy: raise wb.GraywolfError("down")
         self._n += 1; bid = str(self._n)
         rec = dict(payload); rec["id"] = bid; self.beacons[bid] = rec
+        self._created.append(dict(rec))
         # object_name is echoed for object beacons
         return bid
     def update_beacon(self, bid, payload):
@@ -205,6 +213,21 @@ class BroadcasterTest(unittest.TestCase):
         c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS, source_callsign="W4MHI-1")
         bid = b.advertise(self._w(aprs_name="AID01"))
         self.assertEqual(c.beacons[bid]["callsign"], "W4MHI-1")
+
+    def test_advertise_uses_per_warning_send_path(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS, source_callsign="W4MHI-1", send_path="both")
+        w = {"id":"x","aprs_name":"AID01","type":"first_aid","lat":47.5,"lon":-122.0,
+             "note":"","broadcast":True,"gw_beacon_id":None,"send_path":"is_only"}
+        b.advertise(w)
+        self.assertEqual(next(iter(c.beacons.values()))["send_path"], "is_only")   # not the "both" default
+
+    def test_kill_uses_per_warning_send_path(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS, source_callsign="W4MHI-1", send_path="both")
+        w = {"id":"y","aprs_name":"AID02","type":"first_aid","lat":47.5,"lon":-122.0,
+             "note":"","gw_beacon_id":None,"send_path":"rf"}
+        b._send_kill(w)
+        # the transient custom (kill) beacon created carried send_path "rf"
+        self.assertTrue(any(bc.get("type")=="custom" and bc.get("send_path")=="rf" for bc in c._created))
 
     def test_reconcile_matches_warning_by_stored_aprs_name(self):
         c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS, source_callsign="W4MHI-1")

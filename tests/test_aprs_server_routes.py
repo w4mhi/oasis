@@ -297,6 +297,16 @@ class IntentModelRouteTest(unittest.TestCase):
         self.client.delete("/api/aprs/warnings/" + w["id"])
         self.assertEqual(_json.load(open(self._tmp)), [])   # removed, NOT tombstoned
 
+    def test_post_stores_send_path(self):
+        r = self.client.post("/api/aprs/warnings", json={"type":"flood","lon":-122.0,"lat":47.5,
+                                                         "broadcast":True,"send_path":"is_only"})
+        self.assertEqual(_json.loads(r.data)["warning"]["send_path"], "is_only")
+
+    def test_post_invalid_send_path_falls_back(self):
+        r = self.client.post("/api/aprs/warnings", json={"type":"flood","lon":-122.0,"lat":47.5,
+                                                         "broadcast":True,"send_path":"garbage"})
+        self.assertIn(_json.loads(r.data)["warning"]["send_path"], ("both","is_only","rf"))
+
 
 if __name__ == "__main__":
     unittest.main()

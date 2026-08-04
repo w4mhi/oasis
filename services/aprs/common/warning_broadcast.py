@@ -13,6 +13,15 @@ from .graywolf_client import GraywolfError
 SYMBOL_FALLBACK = ("\\", "!")
 _NAME_RE = re.compile(r"^W[0-9a-f]{8}$")   # OASIS-owned object-name convention
 
+# GrayWolf's own send_path enum: IS-only (no radio needed), RF-only (uses the
+# configured channel), or both.
+VALID_SEND_PATHS = {"is_only", "both", "rf"}
+
+
+def clean_send_path(value, default):
+    """Return `value` if it's one of VALID_SEND_PATHS, else `default`."""
+    return value if value in VALID_SEND_PATHS else default
+
 
 def object_name(warning_id):
     """Stable ≤9-char APRS object name: 'W' + first 8 chars of the id."""
@@ -110,7 +119,8 @@ class WarningBroadcaster:
     def advertise(self, w):
         """Create the live object beacon. Returns gw_beacon_id or None."""
         table, code = self._sym(w.get("type"))
-        payload = object_payload(w, table, code, self.send_path, self.interval,
+        send_path = clean_send_path(w.get("send_path"), self.send_path)
+        payload = object_payload(w, table, code, send_path, self.interval,
                                   self.source_callsign)
         try:
             return self.c.create_beacon(payload)
@@ -136,8 +146,9 @@ class WarningBroadcaster:
     def _send_kill(self, w):
         table, code = self._sym(w.get("type"))
         name9 = str(w.get("aprs_name") or object_name(w["id"]))[:9]
+        send_path = clean_send_path(w.get("send_path"), self.send_path)
         payload = kill_payload(name9, float(w["lat"]), float(w["lon"]),
-                               table, code, self.send_path, time.gmtime(),
+                               table, code, send_path, time.gmtime(),
                                self.source_callsign)
         try:
             kid = self.c.create_beacon(payload)

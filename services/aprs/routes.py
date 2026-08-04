@@ -16,7 +16,11 @@ import appconfig
 from common import config_paths
 from services.aprs.common import warning_catalog
 from services.aprs.common.graywolf_client import GraywolfClient
-from services.aprs.common.warning_broadcast import WarningBroadcaster, tactical_name
+from services.aprs.common.warning_broadcast import (
+    WarningBroadcaster,
+    clean_send_path,
+    tactical_name,
+)
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 
@@ -36,6 +40,18 @@ _last_reconcile = [0.0]
 _RECONCILE_MIN_INTERVAL = 120     # seconds
 _reconcile_active = [False]       # single-flight: a reconcile thread is running
 _reconcile_dirty = [False]        # a kick arrived while one was already running
+
+
+def _broadcaster_send_path():
+    """Best-effort read of the configured default send_path from
+    graywolf_api.json (`"both"` fallback, absent/unreadable file included)."""
+    cfg_path = config_paths.graywolf_api_json(SUITE_ROOT)
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as fh:
+            cfg = json.load(fh)
+    except (OSError, ValueError):
+        return "both"
+    return cfg.get("send_path") or "both"
 
 
 def _get_broadcaster():
@@ -305,6 +321,7 @@ def api_aprs_warnings_add():
         aprs_name = tactical_name(abbr, existing_names)
         if not note:
             note = f"{aprs_name} inserted by {src}" if src else aprs_name
+        send_path = clean_send_path(body.get("send_path"), _broadcaster_send_path())
         item = {
             "id":   uuid.uuid4().hex,
             "type": wtype,
@@ -315,6 +332,7 @@ def api_aprs_warnings_add():
             "broadcast": bool(body.get("broadcast")),
             "gw_beacon_id": None,
             "aprs_name": aprs_name,
+            "send_path": send_path,
         }
         warnings.append(item)
         _save_warnings(warnings)
