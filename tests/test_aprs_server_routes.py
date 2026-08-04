@@ -286,6 +286,17 @@ class IntentModelRouteTest(unittest.TestCase):
         self._add(True); _t.sleep(0.2)
         self.assertGreaterEqual(self.calls["reconcile"], 1)
 
+    def test_warnings_response_reports_broadcast_available(self):
+        # _TEST_BROADCASTER is set in setUp -> available True
+        r = self.client.get("/api/aprs/warnings")
+        self.assertTrue(_json.loads(r.data)["broadcast_available"])
+
+    def test_delete_broadcast_removes_immediately_when_no_broadcaster(self):
+        aprs_routes._TEST_BROADCASTER = None            # simulate no GrayWolf configured
+        w = self._add(True)                              # broadcast intent, gw_beacon_id None
+        self.client.delete("/api/aprs/warnings/" + w["id"])
+        self.assertEqual(_json.load(open(self._tmp)), [])   # removed, NOT tombstoned
+
 
 if __name__ == "__main__":
     unittest.main()

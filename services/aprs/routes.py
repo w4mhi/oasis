@@ -275,7 +275,8 @@ def _maybe_reconcile():
 @bp.route("/api/aprs/warnings", methods=["GET"])
 def api_aprs_warnings_list():
     _maybe_reconcile()
-    return jsonify({"ok": True, "warnings": _load_warnings()})
+    return jsonify({"ok": True, "warnings": _load_warnings(),
+                    "broadcast_available": _get_broadcaster() is not None})
 
 
 @bp.route("/api/aprs/warnings", methods=["POST"])
@@ -373,17 +374,20 @@ def api_aprs_warnings_update(wid):
 
 @bp.route("/api/aprs/warnings/<wid>", methods=["DELETE"])
 def api_aprs_warnings_delete(wid):
-    """Intent-only: a warning that may be on air (has a beacon id, is
-    broadcast, or is already tombstoned) is marked `pending_delete` and
-    KEPT — the reconciler removes it from disk only once GrayWolf confirms
-    the beacon is killed (delete succeeded, or nothing to delete). A
-    local-only warning (never broadcast) is removed immediately."""
+    """Intent-only: a warning that is actually killable (has a beacon id,
+    or is broadcast-intent with a broadcaster configured) is marked
+    `pending_delete` and KEPT — the reconciler removes it from disk only
+    once GrayWolf confirms the beacon is killed (delete succeeded, or
+    nothing to delete). A local-only warning, or a broadcast warning on a
+    GrayWolf-less box (nothing to kill), is removed immediately."""
     with _warnings_lock:
         warnings = _load_warnings()
         victim = next((w for w in warnings if w.get("id") == wid), None)
         if victim is None:
             return jsonify({"ok": False, "error": "not found"}), 404
-        if victim.get("gw_beacon_id") or victim.get("broadcast") or victim.get("pending_delete"):
+        killable = bool(victim.get("gw_beacon_id")) or (
+            bool(victim.get("broadcast")) and _get_broadcaster() is not None)
+        if killable or victim.get("pending_delete"):
             victim["pending_delete"] = True
             _save_warnings(warnings)
         else:
