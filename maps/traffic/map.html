@@ -71,6 +71,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 }
 .maplibregl-popup-close-button:hover{color:var(--accent)!important;background:transparent!important;}
 /* Zoom +/- buttons: default MapLibre look (no dark override), matching the satellites map. */
+/* Map credit (bottom-right) — drop MapLibre's grey band; let light, subtle text
+   sit directly on the dark map, with a shadow so it reads over water/parks too. */
+.maplibregl-ctrl-attrib{background:transparent!important;padding:0 4px!important;}
+.maplibregl-ctrl-attrib,.maplibregl-ctrl-attrib a{
+  color:var(--text-dim)!important;text-shadow:0 1px 2px rgba(0,0,0,.85);
+}
+
 /* Distance scale bar (bottom-left) — themed to match our boxes */
 .maplibregl-ctrl-scale{
   background:rgba(13,17,23,.72)!important;
@@ -846,12 +853,14 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
       <label class="layer-toggle"><input type="checkbox" data-group="airports" checked> <span>Airports</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="boundaries" checked> <span>Boundaries</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="buildings" checked> <span>Buildings</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="citytown" checked> <span>Cities &amp; towns</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="landuse" checked> <span>Forests &amp; land use</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="parks" checked> <span>Parks &amp; protected</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="exits" checked> <span>Highway exits</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="peaks" checked> <span>Mountain peaks</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="places" checked> <span>Cities &amp; POIs</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="parks" checked> <span>Parks &amp; protected</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="transit" checked> <span>Rail &amp; ferry</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="roads" checked> <span>Roads</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="villages" checked> <span>Villages &amp; suburbs</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="water" checked> <span>Water bodies</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="waterways" checked> <span>Waterways</span></label>
     </div>
@@ -1326,7 +1335,9 @@ const LAYER_GROUPS = {
   buildings:  ['buildings-fill'],
   parks:      ['landuse-park', 'gr-park-fill', 'gr-park-outline', 'gr-park-label'],
   landuse:    ['landcover-wood', 'landcover-grass', 'landuse-residential', 'landuse-commercial', 'landuse-industrial'],
-  places:     ['place-labels', 'pois-circle', 'gr-poi-label'],
+  citytown:   ['place-labels'],
+  villages:   ['pois-circle'],
+  exits:      ['exit-numbers'],
   peaks:      ['mountain-peak'],
   airports:   ['airport-area', 'airport-runway', 'airport-label'],
   boundaries: ['boundaries'],

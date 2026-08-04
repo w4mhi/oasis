@@ -33,7 +33,7 @@
 //   road-minor, road-secondary, road-primary, road-motorway,
 //   railways, ferry-line, airport-runway, buildings-fill, boundaries,
 //   road-labels, place-labels, pois-circle, airport-label, mountain-peak,
-//   gr-park-label, gr-water-label, gr-poi-label
+//   gr-park-label, gr-water-label, exit-numbers
 
 function oasisBaseMapStyle(sourceUrl, options) {
   options = options || {};
@@ -219,7 +219,8 @@ function oasisBaseMapStyle(sourceUrl, options) {
         layout: {
           'text-field':        ['get', 'name'],
           'text-font':         ['Open Sans Regular'],
-          'text-size':         ['interpolate', ['linear'], ['zoom'], 5, 12, 10, 16, 14, 20],
+          'text-size':         ['interpolate', ['linear'], ['zoom'], 5, 12, 10, 15, 14, 18],
+          'text-letter-spacing': 0.05,
           'text-anchor':       'center',
           'text-padding':      6,
           'text-max-width':    8,
@@ -305,15 +306,26 @@ function oasisBaseMapStyle(sourceUrl, options) {
         },
         paint: { 'text-color': 'hsl(205, 55%, 68%)', 'text-halo-color': '#04101c', 'text-halo-width': 1.3 } },
 
-      // Sparse POIs (notable named points) for texture at street zoom
-      { id: 'gr-poi-label', type: 'symbol',
-        source: 'basemap', 'source-layer': 'poi', minzoom: 13,
-        filter: ['<=', ['coalesce', ['get', 'rank'], 99], 6],
+      // (POI-name labels intentionally omitted — see memory poi-labels-blank-tile:
+      // a `poi`-layer symbol layer blanked whole tiles in dense retail areas.)
+
+      // Highway exit numbers — OMT motorway-junction points carry the exit `ref`.
+      // High-zoom only (navigation detail); white-on-green to read like an exit sign.
+      { id: 'exit-numbers', type: 'symbol',
+        source: 'basemap', 'source-layer': 'transportation_name',
+        filter: ['all', ['==', ['get', 'subclass'], 'junction'], ['has', 'ref']],
+        minzoom: 13,
         layout: {
-          'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'],
-          'text-size': 10, 'text-anchor': 'top', 'text-offset': [0, 0.4], 'text-max-width': 7
+          'text-field': ['concat', 'Exit ', ['get', 'ref']],
+          'text-font': ['Open Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 13, 10, 16, 12],
+          'text-anchor': 'center', 'text-padding': 4,
+          // Exits are navigation-critical — always draw them, even over street
+          // labels. This layer is last (top z-order), so "Exit N" wins visually;
+          // its green halo keeps it legible above whatever's beneath.
+          'text-allow-overlap': true, 'text-ignore-placement': true
         },
-        paint: { 'text-color': 'hsl(40, 25%, 62%)', 'text-halo-color': '#100c04', 'text-halo-width': 1 } }
+        paint: { 'text-color': '#ffffff', 'text-halo-color': 'hsl(130, 55%, 20%)', 'text-halo-width': 2.2 } }
     ]
   };
 }
