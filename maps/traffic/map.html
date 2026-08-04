@@ -29,7 +29,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 /* CPU readout sits outside #coordReadout — size it to match #statusMsg */
 #crCpuLbl,#crCpu{font-size:var(--fs-small);}
 #crCpu{font-weight:600;}
-#stationCount{font-size:var(--fs-small);color:var(--amber);white-space:nowrap;}
 #countdown{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;width:7ch;flex-shrink:0;text-align:left;transition:color .4s;overflow:visible;cursor:pointer;user-select:none;}
 #countdown:hover{filter:brightness(1.25);}
 #countdown.green{color:#3fb950;}
@@ -461,6 +460,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 /* Match index.html's .aprs-section-title / .aprs-section-meta for consistency. */
 #aprs-list-head .title{color:var(--accent);font-size:var(--fs-base);font-weight:700;text-transform:uppercase;letter-spacing:.13em;white-space:nowrap;}
 #aprs-list-head .count{color:var(--text-dim);font-size:var(--fs-small);}
+#aprs-list-head #srcBreak{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;}
 #aprs-list-head .spacer{flex:1;}
 #aprs-list-close{
   background:var(--bg);border:1px solid var(--border);color:var(--text-dim);
@@ -694,7 +694,6 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
     <div class="lead-cell">
       <h1 onclick="location.reload()" title="Reload the map" style="cursor:pointer;">Traffic Map</h1>
       <div id="statusDot"></div>
-      <span id="stationCount"></span>
       <span class="track-sep">|</span>
       <span id="countdown" onclick="toggleRefresh()" title="Auto-refresh on/off — click to pause/resume"></span>
     </div>
@@ -751,6 +750,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
   <div id="aprs-list-head">
     <span class="title">TRAFFIC LIVE</span>
     <span class="count" id="aprs-list-count">0</span>
+    <span id="srcBreak"></span>
     <span class="spacer"></span>
     <button id="aprs-list-close" onclick="toggleAprsList(false)" title="Close list">✕</button>
   </div>
@@ -2282,11 +2282,6 @@ function applyFilter() {
   // hidden — otherwise an RF/IS line lingers for a filtered-out station.
   if (autoPath) _refreshAutoPaths();
   else if (activePath && !filtered.some(s => s.callsign === activePath)) clearPath();
-  const total = allStations.length;
-  const shown = filtered.length;
-  const scEl = document.getElementById('stationCount');
-  scEl.textContent = shown + '/' + total;
-  scEl.title = shown + ' shown of ' + total + ' station' + (total !== 1 ? 's' : '');
 }
 
 function setStatus(state, msg) {
@@ -3438,6 +3433,40 @@ function _stationSource(s) {
   return isIS ? 'is' : 'rf';
 }
 
+// Per-cycle source breakdown in the station-list drawer head — mirrors the
+// dashboard (index.html): how many stations we heard on each transport in the
+// LAST refresh cycle (RF green / IS blue / ADS-B purple), then the freshness of
+// the newest packet. Only stations whose last_heard falls inside the cycle window
+// count, so it's a live "what came in just now" readout, not the aged list total.
+// Counts ignore the column filters. Window padded past the 15 s refresh to absorb
+// fetch/clock jitter. Refreshed every cycle via renderAprsList.
+const _HEARD_WINDOW_MS = 20 * 1000;
+function renderSourceBreakdown() {
+  const el = document.getElementById('srcBreak');
+  if (!el) return;
+  const now = Date.now();
+  const fresh = s => { const t = _lhEpoch(s.last_heard); return t > 0 && (now - t) <= _HEARD_WINDOW_MS; };
+  const adsbRows = _adsbListRows();
+  let rf = 0, is = 0;
+  for (const s of allStations) { if (!fresh(s)) continue; if (_stationSource(s) === 'rf') rf++; else is++; }
+  const adsb = adsbRows.filter(fresh).length;
+  // Freshness of the newest packet across everything we track (APRS + ADS-B).
+  const times = allStations.concat(adsbRows).map(s => _lhEpoch(s.last_heard)).filter(t => t > 0);
+  let tail = '';
+  if (times.length) {
+    const ageMins = Math.round((now - Math.max(...times)) / 60000);
+    const txt = ageMins < 2 ? 'just now' : ageMins < 60 ? ageMins + 'm ago' : Math.round(ageMins / 60) + 'h ago';
+    const col = ageMins < 30 ? 'var(--accent)' : ageMins < 360 ? 'var(--amber)' : 'var(--red)';
+    tail = ' &mdash; <span style="color:' + col + '">' + txt + '</span>';
+  }
+  if (!rf && !is && !adsb && !tail) { el.innerHTML = ''; return; }
+  el.innerHTML =
+    ' · <span style="color:var(--accent)">' + rf + ' RF</span>'
+    + ' / <span style="color:var(--blue)">' + is + ' IS</span>'
+    + ' / <span style="color:#b478ff">' + adsb + ' ADS-B</span>'
+    + tail;
+}
+
 // Compact age formatter: <60s → "Ns", <60m → "Nm Ns", else → "Nh Nm".
 function fmtAge(sec) {
   if (sec < 60) return sec + 's';
@@ -3574,6 +3603,7 @@ function renderAprsList(stations) {
   const countEl = document.getElementById('aprs-list-count');
   if (!tbody) return;
   countEl.textContent = stations.length + ' shown';
+  renderSourceBreakdown();
   if (!stations.length) {
     tbody.innerHTML = '<tr><td colspan="10" class="al-empty">No stations match the current filters.</td></tr>';
     return;
