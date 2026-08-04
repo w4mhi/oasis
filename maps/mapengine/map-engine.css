@@ -1,0 +1,74 @@
+/* mapengine controls — zoom readout, imperial (miles) scale bar, and the
+   floating layer card. Styling mirrors OASIS's map (services/map/map.html):
+   same colors, sizes, borders, and alignment. Self-contained and themeable —
+   colors come from --me-* custom properties whose defaults are OASIS's dark
+   palette, so a host can restyle without touching this file. */
+
+:root {
+  --me-bg: #0d1117;
+  --me-panel: #161b22;
+  --me-panel-2: #1c2330;
+  --me-border: #2a3441;
+  --me-accent: #00d98b;
+  --me-amber: #ffb454;
+  --me-text: #d7e0ea;
+  --me-text-dim: #8b97a6;
+  --me-mono: var(--mono, ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace);
+  /* Absolute px so the host's root font-size can't rescale us: OASIS renders its
+     --fs-small (0.7rem) / --fs-micro (0.65rem) against a 16px root. */
+  --me-fs-small: 11.2px;
+  --me-fs-micro: 10.4px;
+}
+
+/* ── Zoom readout (bottom-left, top of the stack) ──────────────────────────── */
+.me-zoom {
+  display: flex; align-items: center; gap: 6px;
+  padding: 2px 7px; white-space: nowrap; pointer-events: none;
+  font-family: var(--me-mono); font-size: var(--me-fs-small);
+  background: rgba(13, 17, 23, .72);
+  border: 1px solid var(--me-border); border-radius: 4px;
+  color: var(--me-text-dim);
+}
+.me-zoom-lbl { color: var(--me-text-dim); }
+.me-zoom-val { color: var(--me-amber); font-weight: 600; }
+
+/* ── Imperial distance scale bar (bottom-left, bottom of the stack) ─────────── */
+.maplibregl-ctrl-scale {
+  background: rgba(13, 17, 23, .72) !important;
+  border: 2px solid var(--me-border) !important;
+  border-top: none !important;
+  color: var(--me-amber) !important;
+  font-family: var(--me-mono) !important;
+  font-size: var(--me-fs-small) !important;
+  line-height: 1.4; padding: 0 5px 1px;
+}
+
+/* ── Floating layer card (top-right) ───────────────────────────────────────── */
+.me-layercard {
+  position: absolute; top: 10px; right: 10px; z-index: 2;
+  min-width: 170px; max-width: 220px;
+  font-family: var(--me-mono); font-size: var(--me-fs-small);
+  background: var(--me-panel);
+  border: 1px solid var(--me-border); border-radius: 7px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .5);
+}
+.me-lc-head {
+  display: flex; align-items: center; gap: .5rem;
+  padding: 6px 10px; cursor: pointer; user-select: none; border-radius: 7px;
+}
+.me-lc-head:hover { background: var(--me-panel-2); }
+.me-lc-arrow { font-size: 10px; color: var(--me-text-dim); transition: transform .2s; flex-shrink: 0; }
+.me-layercard.collapsed .me-lc-arrow { transform: rotate(-90deg); }
+.me-lc-title { color: var(--me-accent); font-weight: 700; flex: 1; white-space: nowrap; letter-spacing: .04em; }
+.me-lc-body { border-top: 1px solid var(--me-border); padding: 7px 10px; }
+.me-layercard.collapsed .me-lc-body { display: none; }
+.me-lc-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; cursor: pointer; user-select: none; }
+.me-lc-row:last-child { margin-bottom: 0; }
+/* Reset the checkbox to its native box — a host may style bare `input`
+   (e.g. width:100%) which would otherwise blow the checkbox up to fill the row. */
+.me-lc-row input[type="checkbox"] {
+  flex: 0 0 auto; width: auto; margin: 0; padding: 0;
+  background: none; border: none; border-radius: 0;
+  accent-color: var(--me-accent); cursor: pointer;
+}
+.me-lc-row span { color: var(--me-text); white-space: nowrap; }

@@ -105,11 +105,13 @@ def _api_json_error_handler(exc):
 # Inject common/js/theme.js just before </head> on every owned HTML page, so the
 # sun/moon toggle (and the no-flash theme apply) appears everywhere without
 # editing each page. Pages that manage their own theming are skipped:
-#   • the dashboard kiosk (/oasis-dashboard/)   • the live map (/server/map/)
+#   • the dashboard kiosk (/oasis-dashboard/)   • the traffic map (/maps/traffic/)
 #   • the graywolf-handbook (/static/graywolf-handbook/)
 # theme.js is idempotent — it leaves a page's own toggle button (e.g. the
-# dashboard's) alone and only adds the floating one when none exists.
-_THEME_SKIP_PREFIXES = ("/oasis-dashboard/", "/server/map/", "/server/satellites/", "/static/graywolf-handbook/")
+# dashboard's) alone and only adds the floating one when none exists. The traffic
+# map is always dark and owns its theming; skipping it also keeps the floating
+# toggle from landing on top of the topbar HOME button.
+_THEME_SKIP_PREFIXES = ("/oasis-dashboard/", "/maps/traffic/", "/server/satellites/", "/static/graywolf-handbook/")
 _THEME_SNIPPET = '<script src="/common/js/theme.js"></script>'
 
 @app.before_request
@@ -167,7 +169,8 @@ from services.adsb.routes import bp as _adsb_bp
 from services.aprs.routes import bp as _aprs_bp
 from services.winlink.routes import bp as _winlink_bp
 from services.fcc_database.routes import bp as _fcc_bp
-from services.map.routes import bp as _map_bp
+from maps.traffic.routes import bp as _map_bp
+from maps.routes import bp as _mapdata_bp
 from routes.files import bp as _files_bp
 from routes.service_control import bp as _service_bp
 from routes.hardware import bp as _hardware_bp
@@ -184,6 +187,7 @@ app.register_blueprint(_aprs_bp)
 app.register_blueprint(_winlink_bp)
 app.register_blueprint(_fcc_bp)
 app.register_blueprint(_map_bp)
+app.register_blueprint(_mapdata_bp)
 app.register_blueprint(_files_bp)
 app.register_blueprint(_service_bp)
 app.register_blueprint(_health_bp)

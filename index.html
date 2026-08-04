@@ -1006,6 +1006,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 .aprs-section-title.live    { color: var(--accent); }
 .aprs-section-title.offline { color: var(--amber); }
 .aprs-section-meta { font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; }
+#aprs-count { color: var(--amber); font-weight: 700; }
 /* Emergency chip — right-aligned in the header. Calm (dim, non-interactive) when
    no Fire/Public-safety station has been heard in 48h; amber alert when some are;
    filled/inverted while the list is narrowed to them. */
@@ -1414,7 +1415,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="svc-badge" id="badge-owrx">—</span>
     </div>
   </div>
-  <div class="svc-card svc-card-gated" id="card-adsb" data-href="server/map/map.html" data-target="_blank">
+  <div class="svc-card svc-card-gated" id="card-adsb" data-href="maps/traffic/map.html" data-target="_blank">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-adsb"></div>
       <div class="svc-card-info">
@@ -1549,7 +1550,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="nav-sec">
       <div class="nav-sec-title">Monitor</div>
       <ul class="nav-links">
-        <li><a id="nlink-aprs" href="server/map/map.html" target="_blank" rel="noopener">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
+        <li><a id="nlink-aprs" href="maps/traffic/map.html" target="_blank" rel="noopener">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
         <li><a id="nlink-sat" href="server/satellites/" target="_blank" rel="noopener">Satellites World Map<span class="nav-meta">passes · tracking</span></a></li>
       </ul>
     </div>
@@ -1627,7 +1628,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   <div class="aprs-card">
     <div class="aprs-section-hdr">
       <span class="aprs-section-title" id="aprs-title">TRAFFIC LIVE</span>
-      <span class="aprs-section-meta">stations — <span id="aprs-count">—</span> &nbsp;·&nbsp; last packet — <span id="aprs-last">—</span></span>
+      <span class="aprs-section-meta">stations — <span id="aprs-count">—</span><span id="aprs-srcbreak" class="aprs-srcbreak"></span> &mdash; <span id="aprs-last">—</span></span>
       <!-- Hazard pills (per natural-hazard type, config-driven) + Emergency chip.
            Hazards persist (no age window — they're incident objects); the Emergency
            chip is Public-safety stations heard in the last 48h. Both narrow the list. -->
@@ -3319,6 +3320,33 @@ function _adsbListRows() {
   });
 }
 
+// Source breakdown for the header: how many stations we heard on each transport
+// in the LAST poll cycle — RF (off-air APRS) / IS (APRS-IS) / ADS-B (aircraft).
+// Only stations whose last_heard falls inside the cycle window count, so this is
+// a live "what came in just now" readout, not the aged 24 h list total. Counts
+// ignore the active column filters. Refreshed on every 15 s poll (see line ~4121)
+// via applyAprsFilter; the window is padded past 15 s to absorb fetch/clock jitter.
+const _HEARD_WINDOW_MS = 20 * 1000;
+function renderSourceBreakdown() {
+  const el = document.getElementById('aprs-srcbreak');
+  if (!el) return;
+  const now = Date.now();
+  const fresh = s => {
+    const t = _lhEpoch(s.last_heard || s.timestamp || s.time);
+    return t > 0 && (now - t) <= _HEARD_WINDOW_MS;
+  };
+  let rf = 0, is = 0;
+  for (const s of _allAprsStations) { if (!fresh(s)) continue; if (aprsSource(s) === 'rf') rf++; else is++; }
+  const adsb = _adsbListRows().filter(fresh).length;
+  if (!rf && !is && !adsb) { el.innerHTML = ''; return; }
+  // Colours mirror the callsign source scheme (see the callColor line): RF green
+  // (--accent), IS blue (--blue), ADS-B purple (#b478ff).
+  el.innerHTML =
+    ' · <span style="color:var(--accent)">' + rf + ' RF</span>'
+    + ' / <span style="color:var(--blue)">' + is + ' IS</span>'
+    + ' / <span style="color:#b478ff">' + adsb + ' ADS-B</span>';
+}
+
 // VIA column filter — source (RF / APRS-IS). Static options; 'All' shows both.
 function onViaFilterChange() {
   const sel = document.getElementById('aprs-col-via');
@@ -3337,7 +3365,7 @@ function aprsSource(s) {
   return (hay.includes('TCPIP') || hay.includes('IGATE') || /\bQA[A-Z]/.test(hay)) ? 'is' : 'rf';
 }
 
-// APRS symbol code → human "type" label. Mirrors _OBJ_CATS in server/map/map.html
+// APRS symbol code → human "type" label. Mirrors _OBJ_CATS in maps/traffic/map.html
 // so the dashboard list and the map list name station types identically.
 const _APRS_TYPES = {
   '>':'Car','j':'Car','v':'Car','<':'Motorcycle','k':'Truck','u':'Truck',
@@ -3370,7 +3398,7 @@ function aprsSymIcon(s, px) {
   const col = idx % 16, row = Math.floor(idx / 16);
   const sheet = table === '/' ? 0 : 1;
   return `<span class="aprs-sym" style="width:${px}px;height:${px}px;`
-    + `background-image:url('/map-assets/aprs-symbols-24-${sheet}.png');`
+    + `background-image:url('/maps/traffic/assets/aprs-symbols-24-${sheet}.png');`
     + `background-size:${16 * px}px ${6 * px}px;`
     + `background-position:${-col * px}px ${-row * px}px"></span>`;
 }
@@ -3405,8 +3433,8 @@ function renderAprsTable(stations) {
     const opTag = ac && operatorTag(s.callsign)
       ? ` <span style="color:var(--text-dim);font-weight:400;font-size:var(--fs-small)">[${escapeHtml(operatorTag(s.callsign))}]</span>` : '';
     const callCell = ac
-      ? `<a href="server/map/map.html" target="_blank" style="color:inherit;text-decoration:none">${escapeHtml(s.callsign)}</a>${opTag}`
-      : `<a href="server/map/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a>`;
+      ? `<a href="maps/traffic/map.html" target="_blank" style="color:inherit;text-decoration:none">${escapeHtml(s.callsign)}</a>${opTag}`
+      : `<a href="maps/traffic/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a>`;
     return `<tr${rowCls}>
       <td style="color:${callColor};font-weight:700">${callCell}</td>
       <td style="color:var(--text-dim);white-space:nowrap">${aprsSymIcon(s)}${aprsTypeLabel(s)}</td>
@@ -3594,6 +3622,11 @@ function applyAprsFilter() {
   // station shouldn't outrank a fresher packet just for its symbol).
   rows.sort((a, b) => _lhEpoch(b.last_heard) - _lhEpoch(a.last_heard));
   renderAprsTable(rows);
+  // "stations — N" = rows actually shown, i.e. after the column filters and with
+  // ADS-B aircraft folded in — not the raw unfiltered APRS-only API count.
+  const cntEl = document.getElementById('aprs-count');
+  if (cntEl) cntEl.textContent = rows.length;
+  renderSourceBreakdown();
 }
 
 // Rebuild the TYPE column dropdown from the categories present in the current
@@ -3761,11 +3794,13 @@ async function fetchAPRS() {
       const lastElErr = document.getElementById('aprs-last');
       lastElErr.textContent = '—';
       lastElErr.className = '';
+      document.getElementById('aprs-srcbreak').textContent = '';
       setTitle(false);
       return;
     }
 
-    document.getElementById('aprs-count').textContent = d.count ?? d.stations.length;
+    // "stations — N" is set from the filtered row count in applyAprsFilter (below)
+    // so it counts what's actually shown, ADS-B included — not this raw APRS total.
 
     // ADS-B was already fetched up-front (so it survives an APRS outage); it
     // folds into the same table via applyAprsFilter → _adsbListRows().
@@ -3774,6 +3809,7 @@ async function fetchAPRS() {
       const lastElIdle = document.getElementById('aprs-last');
       lastElIdle.textContent = '—';
       lastElIdle.className = '';
+      document.getElementById('aprs-srcbreak').textContent = '';
       setTitle(false);
       return;
     }
@@ -3801,6 +3837,7 @@ async function fetchAPRS() {
   } catch (e) {
     if (haveAircraft) { renderAircraftOnly(); return; }   // APRS unreachable, but aircraft are live
     setTitle(false);
+    document.getElementById('aprs-srcbreak').textContent = '';
     if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="color:var(--text-dim)">APRS feed offline — no packets to show. &#9658; Start APRS Stats API to populate the live station table.</td></tr>`;
   }
 }

@@ -321,6 +321,56 @@ def ensure_webssh():
                   f"({e}) — the dashboard card may stay hidden until Setup runs.")
 
 
+def ensure_map_downloader():
+    """Make sure the go-pmtiles binary is present for the map-download feature
+    (maps/routes.py: "Get more maps…"). Prefer a bundled binary from
+    oasis-offline/maps/ for this platform; on a platform without one, fall back
+    to fetching it (mapctl.install_pmtiles) when online. Idempotent and
+    best-effort — never blocks the launch; if it can't be placed, the feature
+    just reports "re-run setup" when an operator tries to download a state."""
+    try:
+        from maps import mapctl                      # stdlib-only module
+    except Exception as e:                           # pragma: no cover - import guard
+        _warn(f"Could not load mapctl ({e}) — skipping the map-downloader check.")
+        return
+
+    state_dir = os.path.join(REPO_ROOT, "maps", "tiles", "state")
+    if mapctl.resolve_pmtiles(state_dir) is not None:
+        return                                       # already installed / on PATH
+
+    dest = mapctl.local_pmtiles(state_dir)           # maps/tiles/state/.bin/pmtiles
+    bundled = {
+        ("Linux", "aarch64"): "pmtiles-linux-arm64",
+        ("Linux", "arm64"):   "pmtiles-linux-arm64",
+        ("Linux", "x86_64"):  "pmtiles-linux-x86_64",
+    }.get((platform.system(), platform.machine()))
+    if bundled:
+        src = os.path.join(REPO_ROOT, "oasis-offline", "maps", bundled)
+        if os.path.isfile(src):
+            try:
+                import shutil
+                import stat
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                shutil.copy2(src, dest)
+                os.chmod(dest, os.stat(dest).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+                _ok(f"Map downloader ready (go-pmtiles) at {dest}")
+                return
+            except Exception as e:
+                _warn(f"Could not place the bundled go-pmtiles binary ({e}).")
+
+    # No bundled binary for this platform (e.g. macOS dev box) — try an online fetch.
+    try:
+        for _ in mapctl.install_pmtiles(state_dir):
+            pass
+        if mapctl.resolve_pmtiles(state_dir) is not None:
+            _ok("Map downloader (go-pmtiles) fetched online.")
+            return
+    except Exception:
+        pass
+    _info("Map downloader (go-pmtiles) not installed — 'Get more maps' will be "
+          "unavailable until it's bundled for this platform or fetched online.")
+
+
 def main():
     print("\n  OASIS — start-oasis")
     _hr()
@@ -335,6 +385,7 @@ def main():
     ensure_scripts_executable(REPO_ROOT)
     ensure_permissions()
     ensure_webssh()
+    ensure_map_downloader()
 
     venv_python = ensure_venv()
     _ok(f"Using venv Python: {venv_python}")

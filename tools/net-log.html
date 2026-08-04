@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OASIS - Net Log</title>
-<link rel="stylesheet" href="/map-assets/maplibre-gl.css">
+<link rel="stylesheet" href="/maps/mapengine/maplibre-gl.css">
 <link rel="stylesheet" href="../../css/common.css">
 <style>
 /* Header */
@@ -680,8 +680,8 @@ document.querySelectorAll('.ltab').forEach(tab => {
 });
 </script>
 
-<script src="/map-assets/maplibre-gl.js"></script>
-<script src="/map-assets/pmtiles.js"></script>
+<script src="/maps/mapengine/maplibre-gl.js"></script>
+<script src="/maps/mapengine/pmtiles.js"></script>
 <script src="/common/js/maidenhead.js"></script>
 <script src="/common/js/form-backup.js"></script>
 <script>
@@ -738,8 +738,8 @@ OasisFormBackup.attach({
     const tilesUrl = 'pmtiles://' + origin + '/maps/' + file;
     return {
       version: 8,
-      glyphs: origin + '/map-assets/fonts/{fontstack}/{range}.pbf',
-      sources: { map: { type: 'vector', url: tilesUrl } },
+      glyphs: origin + '/maps/mapengine/fonts/{fontstack}/{range}.pbf',
+      sources: { map: { type: 'vector', url: tilesUrl, attribution: '© OpenStreetMap · Protomaps' } },
       layers: [
         { id: 'background', type: 'background', paint: { 'background-color': '#1a1f2e' } },
         { id: 'water-poly', type: 'fill', source: 'map', 'source-layer': 'water',
@@ -787,9 +787,10 @@ OasisFormBackup.attach({
       style: buildStyle(file),
       zoom: 4,
       center: [-98, 38],
-      attributionControl: false
+      attributionControl: false   // added below so it's compact-off and bottom-right
     });
     netMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    netMap.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-right');
     netMap.on('load', () => { plotRows(window._netRows || []); });
   }
 
