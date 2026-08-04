@@ -4158,11 +4158,16 @@ function buildWarningsPanel() {
   if (!body) return;
   const cat = WARN_CATALOG.slice().sort((a, b) => a.label.localeCompare(b.label));
   let html = '<div class="warn-hint">Pick a mode, click a type, then click the map.</div>';
+  const bDis = broadcastAvailable ? '' : ' disabled';
+  const bCls = broadcastAvailable ? '' : ' warn-mode-disabled';
   html += '<div class="warn-mode">' +
-    '<label><input type="radio" name="warnmode" value="local" checked> Local map only</label>' +
-    '<label class="' + (broadcastAvailable ? '' : 'warn-mode-disabled') + '">' +
-    '<input type="radio" name="warnmode" value="broadcast"' + (broadcastAvailable ? '' : ' disabled') +
-    '> Broadcast on APRS (RF+IS)</label>' +
+    '<label><input type="radio" name="warnmode" value="" checked> Local map only</label>' +
+    '<label class="' + bCls + '"><input type="radio" name="warnmode" value="is_only"' + bDis +
+    '> Broadcast — IS only</label>' +
+    '<label class="' + bCls + '"><input type="radio" name="warnmode" value="both"' + bDis +
+    '> Broadcast — RF + IS</label>' +
+    '<label class="' + bCls + '"><input type="radio" name="warnmode" value="rf"' + bDis +
+    '> Broadcast — RF only</label>' +
     '</div>';
   if (!broadcastAvailable) {
     html += '<div class="warn-mode-reason">APRS broadcast unavailable — GrayWolf not configured</div>';
@@ -4176,9 +4181,10 @@ function buildWarningsPanel() {
 }
 
 function warnPlacementMode() {
-  if (!broadcastAvailable) return false;
+  if (!broadcastAvailable) return { broadcast: false, send_path: null };
   const el = document.querySelector('input[name="warnmode"]:checked');
-  return el && el.value === 'broadcast';
+  const v = el ? el.value : '';
+  return v ? { broadcast: true, send_path: v } : { broadcast: false, send_path: null };
 }
 
 document.getElementById('warnings-body').addEventListener('click', (e) => {
@@ -4216,14 +4222,20 @@ async function placeWarningClick(e) {
   const type = pendingWarn;
   disarmWarning();
   if (!type) return;
+  const mode = warnPlacementMode();
   try {
     const r = await fetch('/api/aprs/warnings', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, lon: e.lngLat.lng, lat: e.lngLat.lat,
-                             note: '', broadcast: warnPlacementMode() })
+      body: JSON.stringify({ type, lon: e.lngLat.lng, lat: e.lngLat.lat, note: '',
+                             broadcast: mode.broadcast, send_path: mode.send_path })
     });
     const d = await r.json();
-    if (d.ok) await loadWarnings();
+    if (d.ok) {
+      if (mode.broadcast && mode.send_path) {
+        try { localStorage.setItem('oasisWarnSendPath', mode.send_path); } catch (_) { /* storage unavailable */ }
+      }
+      await loadWarnings();
+    }
   } catch (_) { /* offline / server down — ignore */ }
 }
 
@@ -4274,12 +4286,14 @@ function renderWarnList() {
   list.innerHTML = warnings.map(w => {
     const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
     const st = warnStatus(w);
+    const dest = warnDest(w);
     const text = w.note || w.aprs_name || cat.label;
     return '<div class="warn-item" data-wid="' + _escHtml(w.id) + '">' +
       '<span class="warn-ico">' + _escHtml(cat.icon) + '</span>' +
       '<span class="warn-item-main">' +
         '<span class="warn-item-note">' + _escHtml(text) + '</span>' +
-        '<span class="warn-item-status ' + st.cls + '">' + _escHtml(st.label) + '</span>' +
+        '<span class="warn-item-status ' + st.cls + '">' + _escHtml(st.label) +
+          (dest ? ' · ' + _escHtml(dest) : '') + '</span>' +
       '</span>' +
       '<span class="warn-item-actions">' +
         '<button type="button" class="warn-item-fly" data-act="fly" data-wid="' + _escHtml(w.id) +
@@ -4309,12 +4323,20 @@ const _WARN_STATUS_LONG = {
   'Removing…':   'Removing — on air until confirmed',
   'Kill pending': 'Un-advertising — still on air',
   'Local':        'Local map only',
-  '✓ On air':     'On air (APRS RF+IS)',
+  '✓ On air':     'On air',
   'Pending…':     'Broadcast pending',
 };
+// Destination tag for a broadcast warning, derived from its send_path
+// (empty for local-only warnings). is_only -> IS, both -> RF+IS, rf -> RF.
+function warnDest(w) {
+  if (!w.broadcast) return '';
+  return { is_only: 'IS', both: 'RF+IS', rf: 'RF' }[w.send_path] || '';
+}
 function warnStatusText(w) {
   const s = warnStatus(w);
-  return _WARN_STATUS_LONG[s.label] || s.label;
+  const base = _WARN_STATUS_LONG[s.label] || s.label;
+  const dest = warnDest(w);
+  return dest ? base + ' · ' + dest : base;
 }
 function warnKillPending(w) { return warnStatus(w).cls === 'ws-kill'; }
 
@@ -4356,7 +4378,7 @@ function warnPopupHtml(w) {
       _escHtml(w.note || '') + '" oninput="warnSaveNote(\'' + w.id + '\', this.value)">' +
     '<label class="warn-bcast' + (gated ? ' warn-bcast-disabled' : '') + '"><input type="checkbox" ' +
       (w.broadcast ? 'checked ' : '') + (gated ? 'disabled ' : '') +
-      'onchange="warnToggleBroadcast(\'' + w.id + '\', this.checked)"> Broadcast on APRS (RF+IS)</label>' +
+      'onchange="warnToggleBroadcast(\'' + w.id + '\', this.checked)"> Broadcast on APRS</label>' +
     (gated ? '<div class="warn-mode-reason">APRS broadcast unavailable — GrayWolf not configured</div>' : '') +
     '<div class="warn-status ' + st.cls + '" data-wid="' + w.id + '">' + _escHtml(warnStatusText(w)) + '</div>' +
     '<button class="warn-remove" onclick="warnRemove(\'' + w.id + '\')">✕ Remove warning</button>';
