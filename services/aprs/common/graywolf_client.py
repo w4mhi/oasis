@@ -14,6 +14,11 @@ class GraywolfError(Exception):
     pass
 
 
+# GrayWolf's REST API lives under this base path (Swagger 2.0 `basePath`);
+# the bare paths (e.g. /beacons) serve the web-UI SPA, not the API.
+_API_BASE = "/api"
+
+
 class GraywolfClient:
     def __init__(self, base_url, username, password, timeout=4.0):
         self.base = base_url.rstrip("/")
@@ -27,7 +32,7 @@ class GraywolfClient:
 
     # ── low-level ────────────────────────────────────────────────────────────
     def _raw(self, method, path, body=None):
-        url = self.base + path
+        url = self.base + _API_BASE + path
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(url, data=data, method=method)
         if data is not None:
@@ -64,10 +69,14 @@ class GraywolfClient:
 
     # ── public API ───────────────────────────────────────────────────────────
     def health(self):
+        """Reachability probe: any HTTP response (even 401 when the API is
+        auth-gated) means GrayWolf is up; only a connection error is 'down'."""
         try:
-            code, _ = self._call("GET", "/health", auth=False)
-            return code == 200
-        except GraywolfError:
+            self._raw("GET", "/health")
+            return True
+        except urllib.error.HTTPError:
+            return True
+        except (urllib.error.URLError, OSError, ValueError):
             return False
 
     def create_beacon(self, payload):

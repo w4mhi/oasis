@@ -10,7 +10,7 @@ from services.aprs.common.graywolf_client import GraywolfClient, GraywolfError
 
 class _Handler(BaseHTTPRequestHandler):
     # class-level scratch shared with the test
-    state = {"logged_in": False, "beacons": {}, "next_id": 1, "require_auth": True}
+    state = {"logged_in": False, "beacons": {}, "next_id": 1, "require_auth": True, "paths": []}
 
     def log_message(self, *a):  # silence
         pass
@@ -27,10 +27,21 @@ class _Handler(BaseHTTPRequestHandler):
     def _authed(self):
         return (not self.state["require_auth"]) or ("gwsession=abc" in self.headers.get("Cookie", ""))
 
+    def _route(self):
+        """Record the raw path and return it stripped of the required /api base,
+        or None if the client didn't use /api (bare paths serve the SPA, not the API)."""
+        self.state["paths"].append(self.path)
+        if not self.path.startswith("/api/"):
+            return None
+        return self.path[len("/api"):]
+
     def do_GET(self):
-        if self.path == "/health":
+        p = self._route()
+        if p is None:
+            return self._send(404, {"error": "not the API (missing /api base)"})
+        if p == "/health":
             return self._send(200, {"ok": True})
-        if self.path == "/beacons":
+        if p == "/beacons":
             if not self._authed():
                 return self._send(401, {"error": "unauthorized"})
             return self._send(200, {"beacons": list(self.state["beacons"].values())})
@@ -39,37 +50,46 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(n) if n else b"{}"
-        if self.path == "/auth/login":
+        p = self._route()
+        if p is None:
+            return self._send(404, {"error": "not the API (missing /api base)"})
+        if p == "/auth/login":
             self.state["logged_in"] = True
             return self._send(200, {"ok": True}, cookie=True)
         if not self._authed():
             return self._send(401, {"error": "unauthorized"})
-        if self.path == "/beacons":
+        if p == "/beacons":
             bid = str(self.state["next_id"]); self.state["next_id"] += 1
             rec = json.loads(raw); rec["id"] = bid
             self.state["beacons"][bid] = rec
             return self._send(200, {"id": bid})
-        if self.path.endswith("/send"):
+        if p.endswith("/send"):
             return self._send(200, {"ok": True})
         return self._send(404, {"error": "nope"})
 
     def do_PUT(self):
         n = int(self.headers.get("Content-Length", 0)); self.rfile.read(n) if n else None
+        p = self._route()
+        if p is None:
+            return self._send(404, {"error": "not the API (missing /api base)"})
         if not self._authed():
             return self._send(401, {"error": "unauthorized"})
         return self._send(200, {"ok": True})
 
     def do_DELETE(self):
+        p = self._route()
+        if p is None:
+            return self._send(404, {"error": "not the API (missing /api base)"})
         if not self._authed():
             return self._send(401, {"error": "unauthorized"})
-        bid = self.path.rsplit("/", 1)[-1]
+        bid = p.rsplit("/", 1)[-1]
         self.state["beacons"].pop(bid, None)
         return self._send(200, {"ok": True})
 
 
 class GraywolfClientTest(unittest.TestCase):
     def setUp(self):
-        _Handler.state = {"logged_in": False, "beacons": {}, "next_id": 1, "require_auth": True}
+        _Handler.state = {"logged_in": False, "beacons": {}, "next_id": 1, "require_auth": True, "paths": []}
         self.srv = HTTPServer(("127.0.0.1", 0), _Handler)
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
         host, port = self.srv.server_address
@@ -101,6 +121,19 @@ class GraywolfClientTest(unittest.TestCase):
         bad = GraywolfClient("http://127.0.0.1:1", "u", "p", timeout=1)
         with self.assertRaises(GraywolfError):
             bad.create_beacon({"type": "object"})
+
+    def test_uses_api_base_path(self):
+        # GrayWolf's REST API is under /api; bare paths hit the SPA. Every request
+        # the client makes MUST carry the /api base (login + beacon CRUD).
+        bid = self.client.create_beacon({"type": "object"})
+        self.client.list_beacons()
+        self.client.delete_beacon(bid)
+        paths = _Handler.state["paths"]
+        self.assertTrue(paths)
+        self.assertTrue(all(p.startswith("/api/") for p in paths),
+                        f"non-/api path(s): {[p for p in paths if not p.startswith('/api/')]}")
+        self.assertIn("/api/auth/login", paths)
+        self.assertIn("/api/beacons", paths)
 
 
 if __name__ == "__main__":
