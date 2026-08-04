@@ -57,11 +57,16 @@ def _get_broadcaster():
         pw = cfg.get("password")
         if not user or not pw:
             return None
+        call = warning_catalog.station_callsign(SUITE_ROOT)
+        if not call:
+            # APRS requires a real callsign; without one there's no valid
+            # source_callsign to own beacons under, so broadcasting is
+            # simply unavailable (no None-fallback broadcaster).
+            return None
         send_path = cfg.get("send_path") or "both"
         client = GraywolfClient(base, user, pw)
         symbols = warning_catalog.load_symbol_map(SUITE_ROOT)
-        call = warning_catalog.station_callsign(SUITE_ROOT)
-        source_callsign = f"{call}-1" if call else None
+        source_callsign = f"{call}-1"
         _broadcaster_cache = WarningBroadcaster(client, symbols, send_path=send_path,
                                                  source_callsign=source_callsign)
         return _broadcaster_cache
@@ -288,7 +293,8 @@ def api_aprs_warnings_add():
         return jsonify({"ok": False, "error": "type required"}), 400
     note = _clean_note(body.get("note"))
     abbr_map = warning_catalog.load_abbr_map(SUITE_ROOT)
-    source_call = warning_catalog.station_callsign(SUITE_ROOT)
+    call = warning_catalog.station_callsign(SUITE_ROOT)
+    src = f"{call}-1" if call else None
     with _warnings_lock:
         warnings = _load_warnings()
         if len(warnings) >= _WARN_MAX:
@@ -297,7 +303,7 @@ def api_aprs_warnings_add():
         abbr = abbr_map.get(wtype) or wtype[:7].upper()
         aprs_name = tactical_name(abbr, existing_names)
         if not note:
-            note = f"{aprs_name} inserted by {source_call}" if source_call else aprs_name
+            note = f"{aprs_name} inserted by {src}" if src else aprs_name
         item = {
             "id":   uuid.uuid4().hex,
             "type": wtype,

@@ -35,14 +35,16 @@ def format_lon(lon):
     return f"{deg:03d}{minutes:05.2f}{hemi}"
 
 
-def tactical_name(abbr, existing_names):
-    """Smallest '<ABBR><NN>' (<=9 chars) whose name is not in existing_names."""
-    n = 1
-    while True:
-        name = f"{abbr}{n:02d}"[:9]
+def tactical_name(abbr, existing_names, limit=1000):
+    """Smallest-unused tactical APRS object name <=9 chars: ABBR + zero-padded
+    sequence, trimming ABBR as the counter widens so it always fits."""
+    for n in range(1, limit):
+        digits = f"{n:02d}"                 # 2 digits for 1..99, then 3+ for 100..
+        name = abbr[:9 - len(digits)] + digits
         if name not in existing_names:
             return name
-        n += 1
+    # Unreachable in practice (_WARN_MAX caps total warnings); never loop forever.
+    return (abbr[:5] + "ZZZZ")[:9]
 
 
 def object_payload(w, symbol_table, symbol, send_path, interval, source_callsign=None):

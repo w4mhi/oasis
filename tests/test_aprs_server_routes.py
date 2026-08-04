@@ -115,11 +115,15 @@ class WarningBroadcastRouteTest(unittest.TestCase):
         self.assertEqual(w2["aprs_name"], "FLOOD02")
 
     def test_blank_note_defaults_to_tactical_name_and_station_callsign(self):
-        from services.aprs.common import warning_catalog as wc
-        w = self._add(False)
-        call = wc.station_callsign(aprs_routes.SUITE_ROOT)
-        expected = f"{w['aprs_name']} inserted by {call}" if call else w["aprs_name"]
-        self.assertEqual(w["note"], expected)
+        # Pin a station callsign so the default note is deterministic
+        # regardless of this machine's configuration/station.json.
+        orig = aprs_routes.warning_catalog.station_callsign
+        aprs_routes.warning_catalog.station_callsign = lambda root: "W4MHI"
+        try:
+            w = self._add(False)
+        finally:
+            aprs_routes.warning_catalog.station_callsign = orig
+        self.assertEqual(w["note"], f"{w['aprs_name']} inserted by W4MHI-1")
 
     def test_explicit_note_is_kept_verbatim(self):
         r = self.client.post("/api/aprs/warnings", json={

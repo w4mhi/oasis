@@ -75,6 +75,16 @@ class FormatTest(unittest.TestCase):
         self.assertEqual(len(wb.tactical_name("ROADBLK", set())), 9)
         self.assertEqual(wb.tactical_name("ROADBLK", set()), "ROADBLK01")
 
+    def test_tactical_name_bounded_past_99(self):
+        # generate 120 sequential names, all unique and <=9 chars
+        names = {wb.tactical_name("ROADBLK", set())}  # seed: ROADBLK01
+        for _ in range(119):
+            nm = wb.tactical_name("ROADBLK", names)
+            self.assertLessEqual(len(nm), 9)
+            self.assertNotIn(nm, names)
+            names.add(nm)
+        self.assertEqual(len(names), 120)   # no collisions across the 99->100 boundary
+
 
 class FakeClient:
     def __init__(self, healthy=True):
