@@ -71,6 +71,11 @@ class FormatTest(unittest.TestCase):
         self.assertEqual(wb.clean_send_path("bogus", "both"), "both")   # invalid -> default
         self.assertEqual(wb.clean_send_path(None, "is_only"), "is_only")
 
+    def test_clean_send_path_non_string_falls_back(self):
+        self.assertEqual(wb.clean_send_path(["x"], "both"), "both")     # list -> default, no crash
+        self.assertEqual(wb.clean_send_path({"a": 1}, "rf"), "rf")      # dict -> default
+        self.assertEqual(wb.clean_send_path(123, "is_only"), "is_only") # int -> default
+
     def test_tactical_name_sequence(self):
         self.assertEqual(wb.tactical_name("AID", set()), "AID01")
         self.assertEqual(wb.tactical_name("FLOOD", {"FLOOD01"}), "FLOOD02")

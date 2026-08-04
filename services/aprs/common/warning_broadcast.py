@@ -20,7 +20,7 @@ VALID_SEND_PATHS = {"is_only", "both", "rf"}
 
 def clean_send_path(value, default):
     """Return `value` if it's one of VALID_SEND_PATHS, else `default`."""
-    return value if value in VALID_SEND_PATHS else default
+    return value if (isinstance(value, str) and value in VALID_SEND_PATHS) else default
 
 
 def object_name(warning_id):
