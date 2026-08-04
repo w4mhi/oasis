@@ -1,8 +1,8 @@
 name: js-tests
 
-# Runs the pure-function JS unit tests (node --test, built in — no npm/build).
-# These guard the shared front-end helpers in common/js/ against drift.
-# Node is a dev/CI tool only; the Pi never runs it.
+# Runs the pure-function JS unit tests (node --test, built in — no npm/build) and
+# lints the map front-end (syntax + HTML curly-quote hygiene). Node is a dev/CI
+# tool only; the Pi never runs it.
 
 on:
   push:
@@ -11,6 +11,9 @@ on:
       - "tests/js/**"
       - "index.html"
       - "oasis-dashboard/**"
+      - "maps/**/*.js"
+      - "maps/**/*.html"
+      - "maps/**/*.css"
       - ".github/workflows/js-tests.yml"
   pull_request:
     paths:
@@ -18,6 +21,9 @@ on:
       - "tests/js/**"
       - "index.html"
       - "oasis-dashboard/**"
+      - "maps/**/*.js"
+      - "maps/**/*.html"
+      - "maps/**/*.css"
       - ".github/workflows/js-tests.yml"
   workflow_dispatch:
 
@@ -31,3 +37,16 @@ jobs:
           node-version: "24"
       - name: Run JS unit tests
         run: node --test 'tests/js/**/*.test.js'
+      - name: Map front-end — JS syntax + HTML curly-quote lint
+        run: |
+          # Syntax-check our authored map JS (vendored maplibre-gl/pmtiles skipped).
+          mapfile -t mapjs < <(git ls-files maps/ | grep -E '\.js$' | grep -vE '/(maplibre-gl|pmtiles)\.js$')
+          for f in "${mapjs[@]}"; do echo "node --check $f"; node --check "$f"; done
+          # Smart/curly quotes silently break HTML attributes and node --check only
+          # parses <script>, so it misses them. Fail on any in the map HTML.
+          python3 -c "
+          import subprocess, sys
+          bad=[f for f in subprocess.check_output(['git','ls-files','maps/']).decode().split() if f.endswith('.html') and any(0x2018<=ord(c)<=0x201d for c in open(f,encoding='utf-8').read())]
+          if bad: sys.exit('::error::curly/smart quotes in maps HTML (break attributes): '+', '.join(bad))
+          print('maps HTML curly-quote check: clean')
+          "
