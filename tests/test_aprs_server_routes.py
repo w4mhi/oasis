@@ -1,5 +1,7 @@
 import os
 import sys
+import tempfile
+import time
 import unittest
 
 # Load server/app.py and the maps package by putting the repo root and server/
@@ -45,6 +47,23 @@ import json as _json
 from services.aprs import routes as aprs_routes
 
 
+def _wait_reconcile_idle(timeout=2.0):
+    """Block until any in-flight background reconcile thread (kicked by a
+    previous test) has fully finished.
+
+    `_load_warnings`/`_save_warnings` read the module global `WARNINGS_FILE`
+    at call time, not a value captured when the thread was spawned. Merely
+    resetting `_reconcile_active[0]` to False does NOT stop a thread that is
+    still mid-flight — it just lies about its state, so that thread can go on
+    to write into whatever `WARNINGS_FILE` a *later* test has since pointed
+    the global at. Callers must wait for real quiescence before repointing
+    `WARNINGS_FILE` (setUp) and before restoring/deleting it (tearDown).
+    """
+    deadline = time.time() + timeout
+    while aprs_routes._reconcile_active[0] and time.time() < deadline:
+        time.sleep(0.005)
+
+
 class WarningBroadcastRouteTest(unittest.TestCase):
     """NOTE (intent model / Task R2): handlers no longer call GrayWolf
     inline — advertise/unadvertise only ever happen inside the background
@@ -56,12 +75,20 @@ class WarningBroadcastRouteTest(unittest.TestCase):
 
     def setUp(self):
         self.client = app_module.app.test_client()
-        # isolate the warnings file per test
+        # isolate the warnings file per test: a unique temp filename so a
+        # stray daemon reconcile thread from a prior test can never write
+        # into this test's file.
         self._orig_wf = aprs_routes.WARNINGS_FILE
-        self._tmp = os.path.join(_HERE, "_warns_test.json")
+        fd, self._tmp = tempfile.mkstemp(prefix="warns_", suffix=".json", dir=_HERE)
+        os.close(fd)
+        os.remove(self._tmp)
+        # wait for any leftover reconcile thread from a prior test before
+        # repointing the module global at this test's file.
+        _wait_reconcile_idle()
         aprs_routes.WARNINGS_FILE = self._tmp
-        if os.path.exists(self._tmp):
-            os.remove(self._tmp)
+        aprs_routes._reconcile_active[0] = False
+        aprs_routes._reconcile_dirty[0] = False
+        aprs_routes._last_reconcile[0] = 0.0
         # fake broadcaster records calls
         calls = {"adv": [], "unadv": [], "reconcile": 0}
         pushed = {"comments": []}
@@ -87,11 +114,16 @@ class WarningBroadcastRouteTest(unittest.TestCase):
         self.calls = calls
         self.pushed = pushed
         aprs_routes._TEST_BROADCASTER = FakeB()
-        aprs_routes._last_reconcile[0] = 0.0
 
     def tearDown(self):
+        # wait for any reconcile thread this test kicked to finish before
+        # repointing/deleting WARNINGS_FILE out from under it.
+        _wait_reconcile_idle()
         aprs_routes._TEST_BROADCASTER = None
         aprs_routes.WARNINGS_FILE = self._orig_wf
+        aprs_routes._reconcile_active[0] = False
+        aprs_routes._reconcile_dirty[0] = False
+        aprs_routes._last_reconcile[0] = 0.0
         if os.path.exists(self._tmp):
             os.remove(self._tmp)
 
@@ -178,8 +210,15 @@ class ReconcileTriggerTest(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
         self._orig_wf = aprs_routes.WARNINGS_FILE
-        self._tmp = os.path.join(_HERE, "_warns_recon.json")
+        fd, self._tmp = tempfile.mkstemp(prefix="warns_", suffix=".json", dir=_HERE)
+        os.close(fd)
+        # wait for any leftover reconcile thread from a prior test before
+        # repointing the module global at this test's file.
+        _wait_reconcile_idle()
         aprs_routes.WARNINGS_FILE = self._tmp
+        aprs_routes._reconcile_active[0] = False
+        aprs_routes._reconcile_dirty[0] = False
+        aprs_routes._last_reconcile[0] = 0.0
         with open(self._tmp, "w") as fh:
             _json.dump([{"id": "a1", "type": "flood", "lat": 1, "lon": 2,
                          "note": "", "ts": 0, "broadcast": True,
@@ -188,11 +227,16 @@ class ReconcileTriggerTest(unittest.TestCase):
         class FakeB:
             def reconcile(_s, ws): self.hits.append(len(ws)); return {}
         aprs_routes._TEST_BROADCASTER = FakeB()
-        aprs_routes._last_reconcile[0] = 0.0
 
     def tearDown(self):
+        # wait for any reconcile thread this test kicked to finish before
+        # repointing/deleting WARNINGS_FILE out from under it.
+        _wait_reconcile_idle()
         aprs_routes._TEST_BROADCASTER = None
         aprs_routes.WARNINGS_FILE = self._orig_wf
+        aprs_routes._reconcile_active[0] = False
+        aprs_routes._reconcile_dirty[0] = False
+        aprs_routes._last_reconcile[0] = 0.0
         if os.path.exists(self._tmp): os.remove(self._tmp)
 
     def test_get_triggers_reconcile_once_then_throttles(self):
@@ -210,8 +254,15 @@ class ReconcileTriggerNoBroadcastTest(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
         self._orig_wf = aprs_routes.WARNINGS_FILE
-        self._tmp = os.path.join(_HERE, "_warns_recon_empty.json")
+        fd, self._tmp = tempfile.mkstemp(prefix="warns_", suffix=".json", dir=_HERE)
+        os.close(fd)
+        # wait for any leftover reconcile thread from a prior test before
+        # repointing the module global at this test's file.
+        _wait_reconcile_idle()
         aprs_routes.WARNINGS_FILE = self._tmp
+        aprs_routes._reconcile_active[0] = False
+        aprs_routes._reconcile_dirty[0] = False
+        aprs_routes._last_reconcile[0] = 0.0
         with open(self._tmp, "w") as fh:
             _json.dump([], fh)   # zero broadcast (zero) warnings on disk
         self.hits = []
@@ -221,11 +272,16 @@ class ReconcileTriggerNoBroadcastTest(unittest.TestCase):
                 self.hits.append(len(ws))
                 return {}
         aprs_routes._TEST_BROADCASTER = FakeB()
-        aprs_routes._last_reconcile[0] = 0.0
 
     def tearDown(self):
+        # wait for any reconcile thread this test kicked to finish before
+        # repointing/deleting WARNINGS_FILE out from under it.
+        _wait_reconcile_idle()
         aprs_routes._TEST_BROADCASTER = None
         aprs_routes.WARNINGS_FILE = self._orig_wf
+        aprs_routes._reconcile_active[0] = False
+        aprs_routes._reconcile_dirty[0] = False
+        aprs_routes._last_reconcile[0] = 0.0
         if os.path.exists(self._tmp):
             os.remove(self._tmp)
 
@@ -240,19 +296,31 @@ class IntentModelRouteTest(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
         self._orig_wf = aprs_routes.WARNINGS_FILE
-        self._tmp = os.path.join(_HERE, "_warns_intent.json")
+        fd, self._tmp = tempfile.mkstemp(prefix="warns_", suffix=".json", dir=_HERE)
+        os.close(fd)
+        os.remove(self._tmp)
+        # wait for any leftover reconcile thread from a prior test before
+        # repointing the module global at this test's file.
+        _wait_reconcile_idle()
         aprs_routes.WARNINGS_FILE = self._tmp
-        if os.path.exists(self._tmp): os.remove(self._tmp)
+        aprs_routes._reconcile_active[0] = False
+        aprs_routes._reconcile_dirty[0] = False
+        aprs_routes._last_reconcile[0] = 0.0
         calls = {"reconcile": 0}
         class FakeB:
             def reconcile(_s, ws): calls["reconcile"] += 1; return {"created":0,"killed":0,"removed":[]}
         self.calls = calls
         aprs_routes._TEST_BROADCASTER = FakeB()
-        aprs_routes._last_reconcile[0] = 0.0
 
     def tearDown(self):
+        # wait for any reconcile thread this test kicked to finish before
+        # repointing/deleting WARNINGS_FILE out from under it.
+        _wait_reconcile_idle()
         aprs_routes._TEST_BROADCASTER = None
         aprs_routes.WARNINGS_FILE = self._orig_wf
+        aprs_routes._reconcile_active[0] = False
+        aprs_routes._reconcile_dirty[0] = False
+        aprs_routes._last_reconcile[0] = 0.0
         if os.path.exists(self._tmp): os.remove(self._tmp)
 
     def _add(self, broadcast):
@@ -267,6 +335,15 @@ class IntentModelRouteTest(unittest.TestCase):
     def test_delete_broadcast_tombstones_not_removed(self):
         import time as _t, json as _j
         w = self._add(True)
+        # The POST above kicks a background reconcile thread (a broadcaster
+        # is configured). Wait for it to go fully idle before hand-editing
+        # the file directly below: that raw write bypasses _warnings_lock,
+        # so racing it against the reconcile thread's own lock-protected
+        # read/write-back can catch the file mid-write and truncate it.
+        for _ in range(200):
+            if not aprs_routes._reconcile_active[0]:
+                break
+            _t.sleep(0.01)
         # simulate it went on air
         data = _j.load(open(self._tmp)); data[0]["gw_beacon_id"] = "gw-1"; _j.dump(data, open(self._tmp,"w"))
         self.client.delete("/api/aprs/warnings/" + w["id"])
