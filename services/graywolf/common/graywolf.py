@@ -22,6 +22,7 @@ from common.oasis_lib import (
     deb_field, dpkg_installed_version, version_decision,
 )
 from common import manifest as M
+from common import config_paths
 
 
 def _feature():
@@ -145,6 +146,38 @@ def enable_api_service(repo_root):
     _run([sys.executable, api_enabler], check=False)
 
 
+def _provision_api_config(repo_root):
+    """Write configuration/graywolf_api.json once (idempotent).
+
+    GrayWolf's first-run user is created interactively in its web UI; we record
+    the base URL + a placeholder the operator fills in. If the file already
+    exists we leave it untouched (never downgrade/clobber a real credential).
+    """
+    import json as _json
+    path = config_paths.graywolf_api_json(repo_root)
+    if os.path.exists(path):
+        _info(f"GrayWolf API config already present: {path}")
+        return
+    cfg = {
+        "base_url": f"http://127.0.0.1:{PORT}",
+        "username": "",
+        "password": "",
+        "send_path": "both",
+    }
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            _json.dump(cfg, fh, indent=2)
+        os.replace(tmp, path)
+        _info("Wrote GrayWolf API config stub: " + path)
+        _info("  -> set username/password to the GrayWolf web-UI login to enable "
+              "APRS warning broadcast.")
+    except OSError as e:
+        _warn(f"Failed to write GrayWolf API config: {e}")
+        return
+
+
 def run(pinned_version=None, repo_root=None):
     """Full install sequence. Called by the thin CLI wrapper."""
     if repo_root is None:
@@ -177,6 +210,7 @@ def run(pinned_version=None, repo_root=None):
 
     enable_service()
     enable_api_service(repo_root)
+    _provision_api_config(repo_root)
 
     print()
     print("  OASIS -- GrayWolf install complete.")
