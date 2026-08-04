@@ -4136,7 +4136,7 @@ let warnMarkers   = [];       // DOM markers, parallel to warnings
 let pendingWarn   = null;     // type id being placed, or null
 let placingWarning = false;
 let _warnEditing  = false;    // an open warning popup → don't rebuild markers
-let broadcastAvailable = true;  // from list response broadcast_available; gates the Broadcast UI
+let broadcastAvailable = false;  // from list response broadcast_available; gates the Broadcast UI
 const _warnPrevBeacon = {};     // id -> last-seen gw_beacon_id, for null->set on-air toast
 let _warnToastTimer = null;
 
