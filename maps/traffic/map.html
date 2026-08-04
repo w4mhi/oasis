@@ -212,7 +212,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 /* Recent-heard panel */
 #recent-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #recent-header{
@@ -254,7 +254,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
    the aircraft label color used elsewhere on the page. */
 #adsb-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #adsb-header{
@@ -278,7 +278,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 /* Map-layer toggle panel (collapsible, stacked beneath the stations panel) */
 #layer-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #layer-header{
@@ -299,7 +299,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 /* APRS objects filter panel (dynamic, collapsible) */
 #objects-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #objects-header{
@@ -330,7 +330,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 /* Coverage iGate panel — mirrors the objects panel, teal accent */
 #coverage-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #coverage-header{
@@ -352,7 +352,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
    via .obj-name[data-objcat="fire"]. */
 #emergencies-panel{
   background:var(--panel);border:1px solid var(--amber);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #emergencies-header{
@@ -375,7 +375,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
    Same chrome as the ADS-B / APRS Alerts panels; purple title to match ADS-B. */
 #adsb-alerts-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #adsb-alerts-header{display:flex;align-items:center;gap:.5rem;padding:6px 10px;cursor:pointer;user-select:none;border-radius:7px;}
@@ -459,7 +459,8 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 }
 /* Match index.html's .aprs-section-title / .aprs-section-meta for consistency. */
 #aprs-list-head .title{color:var(--accent);font-size:var(--fs-base);font-weight:700;text-transform:uppercase;letter-spacing:.13em;white-space:nowrap;}
-#aprs-list-head .count{color:var(--text-dim);font-size:var(--fs-small);}
+#aprs-list-head .count-lbl{color:var(--text-dim);font-size:var(--fs-small);}
+#aprs-list-head .count{color:var(--amber);font-weight:700;font-size:var(--fs-small);}
 #aprs-list-head #srcBreak{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;}
 #aprs-list-head .spacer{flex:1;}
 #aprs-list-close{
@@ -528,7 +529,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 /* Warnings panel (operator-placed flood/fire/etc.) — red accent twin of coverage */
 #warnings-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #warnings-header{display:flex;align-items:center;gap:.5rem;padding:6px 10px;cursor:pointer;user-select:none;border-radius:7px;}
@@ -788,6 +789,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
   <div id="aprs-list-resize" title="Drag to resize"></div>
   <div id="aprs-list-head">
     <span class="title">TRAFFIC LIVE</span>
+    <span class="count-lbl">stations —</span>
     <span class="count" id="aprs-list-count">0</span>
     <span id="srcBreak"></span>
     <span class="spacer"></span>
@@ -825,28 +827,9 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
   <div id="measure-hint">Double-click or Esc to clear · click <b>Measure</b> again to exit</div>
 </div>
 
-<!-- Map download (US states): confirm dialog · progress modal (state picked from the base-map dropdown) -->
-<div id="dl-confirm" class="dl-overlay" style="display:none">
-  <div class="dl-dialog">
-    <div id="dl-confirm-msg" class="dl-msg"></div>
-    <div class="dl-buttons">
-      <button class="dl-btn dl-btn-go" onclick="_dlConfirmOk()">OK</button>
-      <button class="dl-btn" onclick="_dlConfirmCancel()">Cancel</button>
-    </div>
-  </div>
-</div>
-<div id="dl-modal" class="dl-overlay" style="display:none">
-  <div class="dl-dialog dl-dialog-wide">
-    <div class="dl-head">
-      <span id="dl-spinner" class="dl-spinner"></span>
-      <span id="dl-title" class="dl-title"></span>
-      <span id="dl-elapsed" class="dl-elapsed">0:00</span>
-    </div>
-    <pre id="dl-log" class="dl-log"></pre>
-    <div id="dl-status" class="dl-status"></div>
-    <div id="dl-buttons" class="dl-buttons"></div>
-  </div>
-</div>
+<!-- Map tiles come from GrayWolf's offline store (Maps → Offline Maps, inside
+     GrayWolf). OASIS's own state-download UI was removed — GrayWolf is the map
+     source; the base-map dropdown lists whatever GrayWolf has downloaded. -->
 
 <!-- Right-side stacked panels: recent-heard (stations) + map layers -->
 <div id="right-stack">
@@ -863,9 +846,10 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
       <label class="layer-toggle"><input type="checkbox" data-group="airports" checked> <span>Airports</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="boundaries" checked> <span>Boundaries</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="buildings" checked> <span>Buildings</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="landuse" checked> <span>Land use</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="parks" checked> <span>Parks / Nature</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="places" checked> <span>POIs / Places</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="landuse" checked> <span>Forests &amp; land use</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="parks" checked> <span>Parks &amp; protected</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="peaks" checked> <span>Mountain peaks</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="places" checked> <span>Cities &amp; POIs</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="transit" checked> <span>Rail &amp; ferry</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="roads" checked> <span>Roads</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="water" checked> <span>Water bodies</span></label>
@@ -1104,13 +1088,18 @@ const origin    = location.origin;
 // Deep-link params (parity with the offline maps viewer):
 //   ?file=<archive.pmtiles>  ?center=<lon,lat>  ?zoom=<z>
 const _params    = new URLSearchParams(location.search);
-let   MAP_FILE   = _params.get('file') || 'Washington.pmtiles';
+let   MAP_FILE   = _params.get('file') || 'washington.pmtiles';
 const _pc        = _params.get('center');
 const _pz        = _params.get('zoom');
 const URL_CENTER = _pc ? _pc.split(',').map(Number) : null;
 const URL_ZOOM   = (_pz != null && _pz !== '') ? Number(_pz) : null;
 
-const pmtilesHttpUrl   = (file) => origin + '/maps/tiles/state/' + file;
+// GrayWolf's downloaded OMT tiles, served via OASIS's allowlisted fs-pmtiles
+// route (maps/traffic/routes.py MAP_ROOTS includes /var/lib/graywolf/tiles).
+// OASIS no longer ships its own tiles — GrayWolf (registration-gated) is the
+// single source of maps.
+const GW_TILES_DIR     = '/var/lib/graywolf/tiles/state/';
+const pmtilesHttpUrl   = (file) => origin + '/api/fs/pmtiles?path=' + encodeURIComponent(GW_TILES_DIR + file);
 const pmtilesSourceUrl = (file) => 'pmtiles://' + pmtilesHttpUrl(file);
 
 // HTML-escape helper (used by the base-map label and the fs browser).
@@ -1136,8 +1125,8 @@ function updateBasemapInfo(label, path) {
 const engine = MapEngine.create({
   container: 'map',
   basemap: MAP_FILE,                                   // boot straight onto the local archive (offline-first)
-  tileUrl: (file) => 'pmtiles://' + origin + '/maps/tiles/state/' + file,
-  style: (sourceUrl) => oasisBaseMapStyle(sourceUrl),  // OASIS's OpenMapTiles style, unchanged
+  tileUrl: (file) => pmtilesSourceUrl(file),           // GrayWolf tiles via /api/fs/pmtiles
+  style: (sourceUrl) => oasisBaseMapStyle(sourceUrl),  // OASIS OMT dark + rich style
   center: (URL_CENTER && URL_CENTER.length === 2 && URL_CENTER.every(Number.isFinite)) ? URL_CENTER : [-122.1, 47.6],
   zoom: (URL_ZOOM != null && Number.isFinite(URL_ZOOM)) ? URL_ZOOM : 9,
   layerCard: false,                                    // OASIS keeps its own #layer-panel
@@ -1154,11 +1143,13 @@ map.on('error', (e) => {
             : (e && e.sourceId ? 'source "' + e.sourceId + '" failed' : 'unknown');
   if (typeof setStatus === 'function') setStatus('err', 'Map error: ' + msg);
 });
+// GrayWolf's regional archives are large (a US state is ~300 MB), so first paint
+// over a slow link can take a while — give it 20 s before crying WebGL/GPU.
 setTimeout(() => {
   if (!map.isStyleLoaded() && typeof setStatus === 'function') {
-    setStatus('err', 'Map style not loaded — likely WebGL/GPU (see console · chrome://gpu)');
+    setStatus('err', 'Map still loading — large GrayWolf tile, or WebGL/GPU (see console · chrome://gpu)');
   }
-}, 10000);
+}, 20000);
 
 // Zoom readout + navigation buttons + imperial scale are added by MapEngine
 // (bottom-left stack). No inline controls here.
@@ -1195,150 +1186,75 @@ function loadMapSource(sourceUrl, httpUrl, label, path) {
 // Swap to a bundled map in the suite's maps/ folder.
 function switchMap(filename) {
   MAP_FILE = filename;
-  loadMapSource(pmtilesSourceUrl(filename), pmtilesHttpUrl(filename), filename, '/maps/tiles/state/' + filename);
+  loadMapSource(pmtilesSourceUrl(filename), pmtilesHttpUrl(filename), filename, GW_TILES_DIR + filename);
 }
 
 // ── Base-map dropdown (topbar, after Moving) ─────────────────────────────────
-// One flat list, no US map: downloaded archives up top (active first), then a
-// separated group of every other US state. Picking a downloaded entry swaps the
-// base map (setUrl — overlays survive); picking an undownloaded state opens the
-// download confirm/progress modal (same mechanism as before), the base map
-// never moves.
-let _dlPresent = [];        // state names already downloaded (from /api/maps)
-let _dlStates  = [];        // every state in us-states.geojson (from /api/maps)
-let _dlConfirmName = null;
-let _dlActiveState = null;
-let _dlCancelling  = false;
-let _dlTimer = null;
-
-const _DL_PREFIX = '__dl__:';  // marks an "download this state" option value
+// OASIS no longer ships or downloads tiles — maps come from GrayWolf's offline
+// store (/var/lib/graywolf/tiles/state, downloaded inside GrayWolf under a
+// registered callsign). The dropdown lists whatever GrayWolf archives are
+// present; when none are, we show a "download in GrayWolf" empty state.
+let _dlPresent = [];        // GrayWolf archive names present (from /api/maps)
 
 function onMapSelect(value) {
-  const sel = document.getElementById('mapSelect');
-  if (value && value.indexOf(_DL_PREFIX) === 0) {   // a download request, not a base-map change
-    if (sel) sel.value = MAP_FILE;                  // reset — the dropdown isn't a mode indicator
-    confirmDownload(value.slice(_DL_PREFIX.length));
-    return;
-  }
   if (value) switchMap(value);
 }
 
-// Rebuild the dropdown from the cached inventory. Downloaded group first (active
-// archive at the top), then an "Download a state…" group of the absent states.
+// Rebuild the dropdown from GrayWolf's present archives (active first).
 function _rebuildMapSelect() {
   const sel = document.getElementById('mapSelect'); if (!sel) return;
-  const activeName = MAP_FILE.replace(/\.pmtiles$/i, '');
+  const activeName = MAP_FILE.replace(/\.pmtiles$/i, '').toLowerCase();
   const present = _dlPresent.slice().sort();
-  const have = present.filter(n => n !== activeName);
-  have.unshift(activeName);                         // active archive always first
-  const absent = _dlStates.filter(s => !present.includes(s)).sort();
+  const active  = present.filter(n => n.toLowerCase() === activeName);
+  const rest    = present.filter(n => n.toLowerCase() !== activeName);
+  const have    = active.concat(rest);              // active archive first, if present
 
   sel.innerHTML = '';
-  const gHave = document.createElement('optgroup'); gHave.label = 'Downloaded';
+  if (!have.length) {                               // nothing downloaded in GrayWolf
+    const o = document.createElement('option');
+    o.value = ''; o.textContent = 'No map — download in GrayWolf';
+    sel.appendChild(o); sel.value = '';
+    return;
+  }
+  const g = document.createElement('optgroup'); g.label = 'GrayWolf maps';
   have.forEach(name => {
     const o = document.createElement('option');
     o.value = name + '.pmtiles'; o.textContent = name;
-    gHave.appendChild(o);
+    g.appendChild(o);
   });
-  sel.appendChild(gHave);
-  if (absent.length) {
-    const gGet = document.createElement('optgroup'); gGet.label = 'Download a state…';
-    absent.forEach(name => {
-      const o = document.createElement('option');
-      o.value = _DL_PREFIX + name; o.textContent = name;
-      gGet.appendChild(o);
-    });
-    sel.appendChild(gGet);
-  }
+  sel.appendChild(g);
   sel.value = MAP_FILE;
 }
 
 function _loadMapInventory() {
   return fetch('/api/maps', { cache: 'no-store' })
     .then(r => r.json())
-    .then(inv => { _dlPresent = inv.present || []; _dlStates = inv.states || []; })
+    .then(inv => { _dlPresent = inv.present || []; })
     .catch(() => {})
-    .then(_rebuildMapSelect);
+    .then(() => { _rebuildMapSelect(); _updateNoMapState(); });
 }
 _rebuildMapSelect();   // immediate: at least the active archive shows
-_loadMapInventory();   // then fill both groups from /api/maps
+_loadMapInventory();   // then fill from /api/maps (GrayWolf inventory)
 
-function confirmDownload(name) {
-  _dlConfirmName = name;
-  document.getElementById('dl-confirm-msg').textContent =
-    name + ' is not present locally. Download to maps/tiles/state/' + name + '.pmtiles?';
-  document.getElementById('dl-confirm').style.display = 'flex';
-}
-function _dlConfirmCancel() { document.getElementById('dl-confirm').style.display = 'none'; _dlConfirmName = null; }
-function _dlConfirmOk() { const n = _dlConfirmName; document.getElementById('dl-confirm').style.display = 'none'; if (n) startDownload(n); }
-
-function _fmtElapsed(ms) {
-  const s = Math.floor(ms / 1000);
-  return (Math.floor(s / 60)) + ':' + String(s % 60).padStart(2, '0');
-}
-
-function _dlButtons(html) { document.getElementById('dl-buttons').innerHTML = html; }
-
-async function startDownload(name) {
-  _dlActiveState = name; _dlCancelling = false;
-  const modal = document.getElementById('dl-modal'), log = document.getElementById('dl-log');
-  document.getElementById('dl-title').textContent = 'Downloading ' + name + '…';
-  document.getElementById('dl-status').textContent = '';
-  document.getElementById('dl-status').className = 'dl-status';
-  document.getElementById('dl-spinner').style.display = '';
-  log.textContent = '';
-  _dlButtons('<button class="dl-btn" onclick="_dlCancel()">Cancel</button>');
-  modal.style.display = 'flex';
-  const t0 = Date.now();
-  document.getElementById('dl-elapsed').textContent = '0:00';
-  _dlTimer = setInterval(() => { document.getElementById('dl-elapsed').textContent = _fmtElapsed(Date.now() - t0); }, 1000);
-
-  if (!navigator.onLine) { _dlFinish(name, false, 'No internet connection — map downloads need a connection.'); return; }
-  try {
-    const res = await fetch('/api/maps/extract', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state: name })
-    });
-    if (!res.ok) { let msg = 'HTTP ' + res.status; try { msg = (await res.json()).error || msg; } catch (_) {} _dlFinish(name, false, msg); return; }
-    const reader = res.body.getReader(), dec = new TextDecoder();
-    let buf = '';
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      log.textContent = buf; log.scrollTop = log.scrollHeight;
-    }
-    const ok = buf.includes('[extract complete]') && !buf.includes('[extract failed]');
-    _dlFinish(name, ok, ok ? null : (_dlCancelling ? 'Download cancelled.' : 'Download failed — see the log above.'));
-  } catch (e) { _dlFinish(name, false, e.message); }
-}
-
-function _dlFinish(name, ok, errMsg) {
-  clearInterval(_dlTimer); _dlTimer = null;
-  document.getElementById('dl-spinner').style.display = 'none';
-  const status = document.getElementById('dl-status');
-  if (ok) {
-    status.textContent = name + ' ready.'; status.className = 'dl-status ok';
-    if (!_dlPresent.includes(name)) _dlPresent.push(name);
-    _rebuildMapSelect();   // moves it from "Download a state…" up into "Downloaded"
-    _dlButtons('<button class="dl-btn dl-btn-go" onclick="_dlSwitchTo(\'' + name + '\')">Switch to ' + name + '</button>'
-             + '<button class="dl-btn" onclick="_dlClose()">Close</button>');
-  } else {
-    status.textContent = errMsg || 'Download failed.'; status.className = 'dl-status err';
-    const retry = _dlCancelling ? '' : '<button class="dl-btn" onclick="startDownload(\'' + name + '\')">Retry</button>';
-    _dlButtons(retry + '<button class="dl-btn" onclick="_dlClose()">Close</button>');
+// Empty-state overlay — when GrayWolf has no offline tiles, point the operator at
+// where maps come from instead of leaving a blank canvas.
+function _updateNoMapState() {
+  const none = !_dlPresent.length;
+  let el = document.getElementById('no-map-msg');
+  if (none && !el) {
+    el = document.createElement('div');
+    el.id = 'no-map-msg';
+    el.style.cssText = 'position:fixed;top:50%;left:calc(50% - 90px);transform:translate(-50%,-50%);' +
+      'z-index:600;max-width:320px;background:rgba(14,20,28,.94);border:1px solid #2a3a4a;' +
+      'border-radius:10px;padding:16px 18px;color:#cfe0f0;font-size:13px;line-height:1.55;text-align:center;';
+    el.innerHTML = '<b>No map available</b><br>Download a region in <b>GrayWolf</b> ' +
+      '(Maps → Offline Maps) — it needs a one-time callsign registration. ' +
+      'OASIS then reads the GrayWolf tiles automatically.';
+    document.body.appendChild(el);
+  } else if (!none && el) {
+    el.remove();
   }
-  _dlActiveState = null;
 }
-
-function _dlCancel() {
-  if (_dlCancelling) return;
-  _dlCancelling = true;
-  document.getElementById('dl-status').textContent = 'Cancelling…';
-  fetch('/api/maps/extract/cancel', { method: 'POST' }).catch(() => {});
-}
-function _dlClose() { document.getElementById('dl-modal').style.display = 'none'; }
-function _dlSwitchTo(name) { _dlClose(); switchMap(name + '.pmtiles'); }
 
 // Load a .pmtiles from an arbitrary allowlisted path (Pi disk / USB / mount).
 function loadExternalMap(absPath) {
@@ -1403,14 +1319,15 @@ document.getElementById('fs-list').addEventListener('click', (e) => {
 // Group the shared base-map layer ids (from basemap-style.js) into the toggles
 // shown in the collapsible "Map layers" panel. Mirrors maps/map.html.
 const LAYER_GROUPS = {
-  roads:      ['road-minor', 'road-medium', 'road-major', 'road-highway', 'road-labels'],
+  roads:      ['road-minor', 'road-secondary', 'road-primary', 'road-motorway', 'road-labels'],
   transit:    ['railways', 'ferry-line'],
   waterways:  ['waterways-line'],
-  water:      ['water', 'water-basin', 'water-dock', 'water-reef', 'water-pool', 'water-labels'],
-  buildings:  ['buildings'],
-  parks:      ['landuse-park'],
-  landuse:    ['landcover', 'landuse-residential', 'landuse-commercial', 'landuse-industrial', 'landuse-institution'],
-  places:     ['place-locality', 'place-region', 'pois-label'],
+  water:      ['water-poly-fill', 'gr-water-label'],
+  buildings:  ['buildings-fill'],
+  parks:      ['landuse-park', 'gr-park-fill', 'gr-park-outline', 'gr-park-label'],
+  landuse:    ['landcover-wood', 'landcover-grass', 'landuse-residential', 'landuse-commercial', 'landuse-industrial'],
+  places:     ['place-labels', 'pois-circle', 'gr-poi-label'],
+  peaks:      ['mountain-peak'],
   airports:   ['airport-area', 'airport-runway', 'airport-label'],
   boundaries: ['boundaries'],
 };
@@ -3190,12 +3107,12 @@ map.on('load', _updateReadout);
 // Station icons live in the WebGL canvas now (symbol layer), so a click can hit
 // both a station and an OSM feature. The measure tool owns clicks while active.
 const OSM_INSPECT_LAYERS = [
-  'water', 'waterways-line',
-  'landcover', 'landuse-park',
-  'landuse-residential', 'landuse-commercial', 'landuse-industrial', 'landuse-institution',
+  'water-poly-fill', 'waterways-line',
+  'landcover-wood', 'landcover-grass', 'landuse-park', 'gr-park-fill',
+  'landuse-residential', 'landuse-commercial', 'landuse-industrial',
   'airport-area',
-  'road-minor', 'road-medium', 'road-major', 'road-highway',
-  'buildings', 'boundaries', 'place-locality',
+  'road-minor', 'road-secondary', 'road-primary', 'road-motorway',
+  'buildings-fill', 'boundaries', 'place-labels',
 ];
 map.on('click', (e) => {
   if (measureOn || placingWarning) return;
@@ -3642,7 +3559,7 @@ function renderAprsList(stations) {
   const tbody = document.getElementById('aprs-list-tbody');
   const countEl = document.getElementById('aprs-list-count');
   if (!tbody) return;
-  countEl.textContent = stations.length + ' shown';
+  countEl.textContent = stations.length;
   renderSourceBreakdown();
   if (!stations.length) {
     tbody.innerHTML = '<tr><td colspan="10" class="al-empty">No stations match the current filters.</td></tr>';
@@ -4166,6 +4083,7 @@ let warnMarkers   = [];       // DOM markers, parallel to warnings
 let pendingWarn   = null;     // type id being placed, or null
 let placingWarning = false;
 let _warnEditing  = false;    // an open warning popup → don't rebuild markers
+let _warnOpenOnRender = null; // id of a just-placed alert → open its card after markers rebuild
 let broadcastAvailable = false;  // from list response broadcast_available; gates the Broadcast UI
 const _warnPrevBeacon = {};     // id -> last-seen gw_beacon_id, for null->set on-air toast
 let _warnToastTimer = null;
@@ -4187,39 +4105,15 @@ function buildWarningsPanel() {
   const body = document.getElementById('warnings-body');
   if (!body) return;
   const cat = WARN_CATALOG.slice().sort((a, b) => a.label.localeCompare(b.label));
-  let html = '<div class="warn-hint">Pick a mode, click a type, then click the map.</div>';
-  const bDis = broadcastAvailable ? '' : ' disabled';
-  const bCls = broadcastAvailable ? '' : ' warn-mode-disabled';
-
-  let remembered = '';
-  try { remembered = localStorage.getItem('oasisWarnSendPath') || ''; } catch (_) {}
-  if (!broadcastAvailable) remembered = '';   // can't broadcast -> fall back to Local
-
-  html += '<div class="warn-mode">' +
-    '<label><input type="radio" name="warnmode" value=""' + (remembered === '' ? ' checked' : '') + '> Local map only</label>' +
-    '<label class="' + bCls + '"><input type="radio" name="warnmode" value="is_only"' + (remembered === 'is_only' ? ' checked' : '') + bDis +
-    '> Broadcast — IS only</label>' +
-    '<label class="' + bCls + '"><input type="radio" name="warnmode" value="both"' + (remembered === 'both' ? ' checked' : '') + bDis +
-    '> Broadcast — RF + IS</label>' +
-    '<label class="' + bCls + '"><input type="radio" name="warnmode" value="rf"' + (remembered === 'rf' ? ' checked' : '') + bDis +
-    '> Broadcast — RF only</label>' +
-    '</div>';
-  if (!broadcastAvailable) {
-    html += '<div class="warn-mode-reason">APRS broadcast unavailable — GrayWolf not configured</div>';
-  }
+  // Broadcast destination is now chosen on the alert's own card (opened right
+  // after placement), not here — the panel is just types + the placed list.
+  let html = '<div class="warn-hint">Click on an alert.<br>Click on the map to add</div>';
   html += cat.map(w =>
     '<div class="warn-row" data-warn="' + _escHtml(w.id) + '"><span class="warn-ico">' +
     _escHtml(w.icon) + '</span><span>' + _escHtml(w.label) + '</span></div>').join('');
   html += '<div id="warn-list"></div>';
   body.innerHTML = html;
   renderWarnList();
-}
-
-function warnPlacementMode() {
-  if (!broadcastAvailable) return { broadcast: false, send_path: null };
-  const el = document.querySelector('input[name="warnmode"]:checked');
-  const v = el ? el.value : '';
-  return v ? { broadcast: true, send_path: v } : { broadcast: false, send_path: null };
 }
 
 document.getElementById('warnings-body').addEventListener('click', (e) => {
@@ -4257,16 +4151,17 @@ async function placeWarningClick(e) {
   const type = pendingWarn;
   disarmWarning();
   if (!type) return;
-  const mode = warnPlacementMode();
   try {
+    // Always placed LOCAL first; the operator picks the broadcast on the card
+    // that opens next (see _warnOpenOnRender in renderWarnings).
     const r = await fetch('/api/aprs/warnings', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type, lon: e.lngLat.lng, lat: e.lngLat.lat, note: '',
-                             broadcast: mode.broadcast, send_path: mode.send_path })
+                             broadcast: false })
     });
     const d = await r.json();
-    if (d.ok) {
-      try { localStorage.setItem('oasisWarnSendPath', mode.send_path || ''); } catch (_) { /* storage unavailable */ }
+    if (d.ok && d.warning) {
+      _warnOpenOnRender = d.warning.id;   // auto-open its object card after markers rebuild
       await loadWarnings();
     }
   } catch (_) { /* offline / server down — ignore */ }
@@ -4294,18 +4189,24 @@ function renderWarnings() {
   renderWarnList();
   if (_warnEditing) return; // don't disrupt an open note editor
   clearWarnMarkers();
+  let openMarker = null;
   warnings.forEach(w => {
     const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
     const el = document.createElement('div');
     el.className = 'warn-marker' + (warnKillPending(w) ? ' warn-kill-pending' : '');
     el.textContent = cat.icon;
     el.title = cat.label + (w.note ? ' — ' + w.note : '');
-    const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '240px' });
+    const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '260px' });
     popup.on('open', () => { _warnEditing = true; popup.setHTML(warnPopupHtml(w)); });
     popup.on('close', () => { _warnEditing = false; loadWarnings(); });
-    warnMarkers.push(new maplibregl.Marker({ element: el, anchor: 'center' })
-      .setLngLat([w.lon, w.lat]).setPopup(popup).addTo(map));
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([w.lon, w.lat]).setPopup(popup).addTo(map);
+    warnMarkers.push(marker);
+    if (_warnOpenOnRender && w.id === _warnOpenOnRender) openMarker = marker;
   });
+  // Auto-open the just-placed alert's card so the operator picks the broadcast.
+  if (openMarker) openMarker.togglePopup();
+  _warnOpenOnRender = null;
 }
 
 // Placed-alerts list — one row per warning currently placed, newest last.
@@ -4406,27 +4307,44 @@ function warnPopupHtml(w) {
   const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
   const gated = !broadcastAvailable;
   const st = warnStatus(w);
+  // Current destination: '' = local, else the send_path (is_only / rf / both).
+  const cur = w.broadcast ? (w.send_path || 'both') : '';
+  const opt = (val, label) => {
+    const off = gated && val;   // broadcast options are disabled when GrayWolf isn't configured
+    return '<label' + (off ? ' class="warn-mode-disabled"' : '') + '>' +
+      '<input type="radio" name="warndest-' + w.id + '" value="' + val + '"' +
+      (cur === val ? ' checked' : '') + (off ? ' disabled' : '') +
+      ' onchange="warnSetDest(\'' + w.id + '\', \'' + val + '\')"> ' + label + '</label>';
+  };
   return '<div class="pop-call">' + cat.icon + ' ' + _escHtml(cat.label) + '</div>' +
     '<input class="warn-input" maxlength="50" placeholder="note (max 50 chars)" value="' +
       _escHtml(w.note || '') + '" oninput="warnSaveNote(\'' + w.id + '\', this.value)">' +
-    '<label class="warn-bcast' + (gated ? ' warn-bcast-disabled' : '') + '"><input type="checkbox" ' +
-      (w.broadcast ? 'checked ' : '') + (gated ? 'disabled ' : '') +
-      'onchange="warnToggleBroadcast(\'' + w.id + '\', this.checked)"> Broadcast on APRS</label>' +
+    '<div class="warn-mode" style="font-size:var(--fs-small);gap:3px;margin-top:4px">' +
+      opt('', 'Only local') +
+      opt('is_only', 'IS broadcast') +
+      opt('rf', 'RF broadcast') +
+      opt('both', 'RF + IS broadcast') +
+    '</div>' +
     (gated ? '<div class="warn-mode-reason">APRS broadcast unavailable — GrayWolf not configured</div>' : '') +
     '<div class="warn-status ' + st.cls + '" data-wid="' + w.id + '">' + _escHtml(warnStatusText(w)) + '</div>' +
     '<button class="warn-remove" onclick="warnRemove(\'' + w.id + '\')">✕ Remove warning</button>';
 }
 
-async function warnToggleBroadcast(id, on) {
+// Set an alert's broadcast destination from its card. '' = local (broadcast off);
+// otherwise broadcast on with that send_path. The reconciler re-advertises if the
+// destination changed while already on air.
+async function warnSetDest(id, value) {
+  const broadcast = value !== '';
+  const payload = broadcast ? { broadcast: true, send_path: value } : { broadcast: false };
   try {
     await fetch('/api/aprs/warnings/' + id, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ broadcast: on })
+      body: JSON.stringify(payload)
     });
   } catch (_) {}
   // reflect immediately; server list refresh on popup close finalizes gw id
   const w = warnings.find(x => x.id === id);
-  if (w) { w.broadcast = on; }
+  if (w) { w.broadcast = broadcast; if (broadcast) w.send_path = value; }
   const el = document.querySelector('.warn-status[data-wid="' + id + '"]');
   if (el && w) { el.textContent = warnStatusText(w); el.className = 'warn-status ' + warnStatus(w).cls; }
 }

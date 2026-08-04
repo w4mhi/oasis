@@ -190,6 +190,27 @@ class WarningBroadcastRouteTest(unittest.TestCase):
         updated = _json.loads(r.data)["warning"]
         self.assertTrue(updated["broadcast"])
 
+    def test_patch_send_path_sets_destination_from_card(self):
+        # The object card picks the destination: local -> RF broadcast.
+        w = self._add(False)
+        r = self.client.patch("/api/aprs/warnings/" + w["id"],
+                              json={"broadcast": True, "send_path": "rf"})
+        updated = _json.loads(r.data)["warning"]
+        self.assertTrue(updated["broadcast"])
+        self.assertEqual(updated["send_path"], "rf")
+
+    def test_patch_send_path_only_change_persists(self):
+        # Changing just the destination (IS -> RF) on an already-broadcast alert
+        # is recorded; the reconciler re-advertises on the new path.
+        r = self.client.post("/api/aprs/warnings", json={
+            "type": "flood", "lon": -122.0, "lat": 47.5,
+            "broadcast": True, "send_path": "is_only"})
+        w = _json.loads(r.data)["warning"]
+        self.assertEqual(w["send_path"], "is_only")
+        self.client.patch("/api/aprs/warnings/" + w["id"], json={"send_path": "rf"})
+        after = _json.loads(open(self._tmp).read())
+        self.assertEqual(after[0]["send_path"], "rf")
+
     def test_patch_note_on_air_pushes_comment_from_background_thread(self):
         import time as _t
         # Construct the on-air warning directly on disk (bypassing POST) so

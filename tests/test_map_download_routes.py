@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -14,7 +15,10 @@ import app as app_module
 from maps import routes as mapdata
 
 
-class MapDownloadRoutesTest(unittest.TestCase):
+class MapInventoryRoutesTest(unittest.TestCase):
+    """OASIS reads GrayWolf's offline tiles; /api/maps just reports what's present.
+    (The old planet-extract downloader was removed — GrayWolf is the map source.)"""
+
     def setUp(self):
         self.client = app_module.app.test_client()
 
@@ -22,60 +26,35 @@ class MapDownloadRoutesTest(unittest.TestCase):
         r = self.client.get("/api/maps")
         self.assertEqual(r.status_code, 200)
         j = r.get_json()
-        for k in ("states", "present", "source", "pmtiles_available", "extracting"):
+        for k in ("present", "source", "graywolf_dir", "have_maps"):
             self.assertIn(k, j)
-        # us-states.geojson lists all 50 states + DC + PR.
-        self.assertIn("Alabama", j["states"])
         self.assertIsInstance(j["present"], list)
+        self.assertEqual(j["source"], "graywolf")
 
-    def test_extract_unknown_state_400(self):
-        # Stub the binary present so we exercise the unknown-state pre-check,
-        # not the missing-binary one (this box may lack go-pmtiles).
-        with mock.patch.object(mapdata.mapctl, "resolve_pmtiles", return_value="/fake/pmtiles"):
-            r = self.client.post("/api/maps/extract", json={"state": "Nowhere"})
-        self.assertEqual(r.status_code, 400)
+    def test_inventory_lists_graywolf_pmtiles(self):
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "washington.pmtiles"), "wb").close()
+            open(os.path.join(d, "oregon.pmtiles"), "wb").close()
+            open(os.path.join(d, "notes.txt"), "wb").close()   # ignored (not .pmtiles)
+            with mock.patch.object(mapdata, "GW_STATE_DIR", d):
+                r = self.client.get("/api/maps")
+        j = r.get_json()
+        self.assertEqual(j["present"], ["oregon", "washington"])
+        self.assertTrue(j["have_maps"])
 
-    def test_extract_no_downloader_and_unsupported_400(self):
-        # Binary missing AND no prebuilt for this platform -> 400 (nothing to install).
-        with mock.patch.object(mapdata.mapctl, "resolve_pmtiles", return_value=None), \
-             mock.patch.object(mapdata.mapctl, "pmtiles_asset", return_value=None):
-            r = self.client.post("/api/maps/extract", json={"state": "Alabama"})
-        self.assertEqual(r.status_code, 400)
+    def test_inventory_empty_when_dir_missing(self):
+        with mock.patch.object(mapdata, "GW_STATE_DIR", "/no/such/graywolf/dir"):
+            r = self.client.get("/api/maps")
+        j = r.get_json()
+        self.assertEqual(j["present"], [])
+        self.assertFalse(j["have_maps"])
 
-    def test_extract_auto_installs_when_missing(self):
-        # Binary missing but a prebuilt exists -> the stream installs it, then extracts.
-        seen = []
-        def fake_resolve(_):
-            seen.append(1)
-            return None if len(seen) == 1 else "/fake/pmtiles"
-        with mock.patch.object(mapdata.mapctl, "resolve_pmtiles", side_effect=fake_resolve), \
-             mock.patch.object(mapdata.mapctl, "pmtiles_asset", return_value={"url": "x", "kind": "tar.gz"}), \
-             mock.patch.object(mapdata.mapctl, "install_pmtiles",
-                               return_value=iter(["fetching\n", "[install complete] ok\n"])), \
-             mock.patch.object(mapdata.mapctl, "extract",
-                               return_value=iter(["extracting\n", "[extract complete] saved Alabama.pmtiles\n"])):
-            r = self.client.post("/api/maps/extract", json={"state": "Alabama"})
-            self.assertEqual(r.status_code, 200)
-            body = r.get_data(as_text=True)
-        self.assertIn("installing the map downloader", body)
-        self.assertIn("[install complete]", body)
-        self.assertIn("[extract complete]", body)
-
-    def test_extract_busy_409(self):
-        # Binary stubbed present + a held lock → busy 409 (in real use a held lock
-        # implies the binary is present, so this ordering matches production).
-        mapdata._extract_lock.acquire()
-        try:
-            with mock.patch.object(mapdata.mapctl, "resolve_pmtiles", return_value="/fake/pmtiles"):
-                r = self.client.post("/api/maps/extract", json={"state": "Alabama"})
-            self.assertEqual(r.status_code, 409)
-        finally:
-            mapdata._extract_lock.release()
-
-    def test_cancel_when_idle(self):
-        r = self.client.post("/api/maps/extract/cancel")
-        self.assertEqual(r.status_code, 200)
-        self.assertFalse(r.get_json()["cancelled"])
+    def test_extract_routes_removed(self):
+        # The planet-extract downloader is gone: no POST handler remains. (The root
+        # static handler matches the path for GET only, so a POST yields 404 or 405
+        # — either way, no extract endpoint answers it.)
+        self.assertIn(self.client.post("/api/maps/extract", json={"state": "Alabama"}).status_code, (404, 405))
+        self.assertIn(self.client.post("/api/maps/extract/cancel").status_code, (404, 405))
 
 
 if __name__ == "__main__":

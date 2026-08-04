@@ -1,6 +1,6 @@
 [
   { "id": "animal_shelter", "label": "Animal Shelter", "icon": "🐾", "symbol_table": "/",  "symbol": "p", "abbr": "ANSHLT" },
-  { "id": "eoc",            "label": "EOC",            "icon": "🏢", "symbol_table": "/",  "symbol": "o", "abbr": "EOC" },
+  { "id": "eoc",            "label": "EOC",            "icon": "🏠", "symbol_table": "/",  "symbol": "o", "abbr": "EOC" },
   { "id": "fire",           "label": "Fire",           "icon": "🔥", "symbol_table": "/",  "symbol": ":", "abbr": "FIRE" },
   { "id": "first_aid",      "label": "First Aid",      "icon": "➕", "symbol_table": "/",  "symbol": "+", "abbr": "AID" },
   { "id": "flood",          "label": "Flood",          "icon": "🌊", "symbol_table": "\\", "symbol": "w", "abbr": "FLOOD" },

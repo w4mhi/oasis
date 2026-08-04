@@ -1,107 +1,41 @@
 """
-Map-data HTTP layer — US-state inventory + streaming region download (extract),
-a thin web wrapper over maps/mapctl.py.
+Map-data HTTP layer — base-map inventory.
 
-The traffic-map app (page, assets, /api/fs browser) lives in maps/traffic/; this
-blueprint owns the *data* side: which states are downloaded, and cutting a new
-state's Protomaps tiles out of a planet build with the go-pmtiles binary.
+OASIS no longer ships or downloads its own tiles. Maps come from GrayWolf's
+offline store at /var/lib/graywolf/tiles/state (downloaded inside GrayWolf under a
+registered callsign); this blueprint just reports which GrayWolf archives are
+present so the traffic-map dropdown can list them. The archives themselves are
+streamed by maps/traffic/routes.py's allowlisted /api/fs/pmtiles route.
 """
 
 import os
-import threading
 
-from flask import Blueprint, jsonify, request, Response, stream_with_context
-
-import appconfig
-from maps import mapctl
+from flask import Blueprint, jsonify
 
 bp = Blueprint("mapdata", __name__)
 
-SUITE_ROOT  = appconfig.SUITE_ROOT
-STATE_DIR   = os.path.join(SUITE_ROOT, "maps", "tiles", "state")   # <State>.pmtiles + .bin/pmtiles
-STATES_JSON = os.path.join(SUITE_ROOT, "maps", "us-states.geojson")
-
-# One download at a time — a second request gets 409 rather than clobbering the
-# shared output. _current_proc holds the running go-pmtiles Popen, for cancel.
-_extract_lock = threading.Lock()
-_current_proc = None
+# GrayWolf's offline-tiles directory (per-region <name>.pmtiles). OASIS reads it
+# directly; overridable via env for tests / non-standard installs.
+GW_STATE_DIR = os.environ.get("OASIS_GRAYWOLF_TILES", "/var/lib/graywolf/tiles/state")
 
 
-def _source():
-    return mapctl.default_source()
+def _present():
+    """Sorted archive names (sans .pmtiles) present in GrayWolf's tiles dir."""
+    try:
+        names = os.listdir(GW_STATE_DIR)
+    except OSError:
+        return []
+    out = [fn[: -len(".pmtiles")] for fn in names if fn.endswith(".pmtiles")]
+    out.sort()
+    return out
 
 
 @bp.get("/api/maps")
 def maps_inventory():
-    states = sorted(mapctl.load_states(STATE_DIR, states_geojson=STATES_JSON).keys())
-    present = [m["name"] for m in mapctl.available_maps(STATE_DIR)]
+    present = _present()
     return jsonify({
-        "states": states,
-        "present": present,
-        "source": _source(),
-        "pmtiles_available": mapctl.resolve_pmtiles(STATE_DIR) is not None,
-        "extracting": _extract_lock.locked(),
+        "present": present,          # GrayWolf archives available to the dropdown
+        "source": "graywolf",
+        "graywolf_dir": GW_STATE_DIR,
+        "have_maps": bool(present),  # false -> front-end shows the "download in GrayWolf" state
     })
-
-
-@bp.post("/api/maps/extract")
-def maps_extract():
-    global _current_proc
-    state = (request.get_json(silent=True) or {}).get("state")
-
-    # Pre-checks so callers get a proper 400/409 (can't set status mid-stream).
-    # First download self-provisions: if the go-pmtiles binary is missing we
-    # install it in-stream (below) — unless there's no prebuilt for this platform,
-    # in which case there's nothing to do and we fail up front.
-    need_install = mapctl.resolve_pmtiles(STATE_DIR) is None
-    if need_install and mapctl.pmtiles_asset() is None:
-        return jsonify({"error": "map downloader not installed and no prebuilt "
-                        "go-pmtiles for this platform — install it manually"}), 400
-    if state not in mapctl.load_states(STATE_DIR, states_geojson=STATES_JSON):
-        return jsonify({"error": "unknown state: %r" % state}), 400
-    if not _extract_lock.acquire(blocking=False):
-        return jsonify({"error": "a download is already running"}), 409
-
-    os.makedirs(STATE_DIR, exist_ok=True)
-
-    def _capture(proc):
-        global _current_proc
-        _current_proc = proc
-
-    def run():
-        global _current_proc
-        try:
-            if need_install:                    # first-ever download: fetch go-pmtiles first
-                yield "[installing the map downloader (go-pmtiles)...]\n"
-                for line in mapctl.install_pmtiles(STATE_DIR):
-                    yield line
-                if mapctl.resolve_pmtiles(STATE_DIR) is None:
-                    yield "\n[extract failed] could not install the map downloader\n"
-                    return
-                yield "\n"
-            for line in mapctl.extract(STATE_DIR, name=state, state=state,
-                                       source=_source(), states_geojson=STATES_JSON,
-                                       on_start=_capture):
-                yield line
-        except Exception as exc:                # install (urllib) or extract failure -> the log
-            yield "\n[extract failed] %s\n" % exc
-        finally:
-            _current_proc = None
-            _extract_lock.release()
-
-    return Response(stream_with_context(run()), mimetype="text/plain")
-
-
-@bp.post("/api/maps/extract/cancel")
-def maps_extract_cancel():
-    """Terminate the running go-pmtiles subprocess (the stream then ends with a
-    non-zero '[extract failed]' and mapctl.extract drops the half-written
-    archive as its run unwinds — no partial is left on disk)."""
-    proc = _current_proc
-    if proc is None:
-        return jsonify({"cancelled": False, "reason": "nothing running"})
-    try:
-        proc.terminate()
-    except Exception:
-        pass
-    return jsonify({"cancelled": True})

@@ -239,6 +239,7 @@ def _run_reconcile(b, warnings):
                 s = snap.get(d.get("id"))
                 if s is not None:
                     d["gw_beacon_id"] = s.get("gw_beacon_id")
+                    d["gw_send_path"] = s.get("gw_send_path")   # reconciler-owned
                 kept.append(d)
             _save_warnings(kept)
     except Exception:  # noqa: BLE001
@@ -351,8 +352,10 @@ def api_aprs_warnings_update(wid):
     body = request.get_json(silent=True) or {}
     has_note = "note" in body
     has_bcast = "broadcast" in body
+    has_path = "send_path" in body
     note = _clean_note(body.get("note")) if has_note else None
     bcast_changed = False
+    path_changed = False
     with _warnings_lock:
         warnings = _load_warnings()
         found = None
@@ -364,6 +367,13 @@ def api_aprs_warnings_update(wid):
             return jsonify({"ok": False, "error": "not found"}), 404
         if has_note:
             found["note"] = note
+        if has_path:
+            # Destination change (IS/RF/both). The reconciler compares this to
+            # the on-air send_path (gw_send_path) and re-advertises if it moved.
+            new_path = clean_send_path(body.get("send_path"), _broadcaster_send_path())
+            if new_path != found.get("send_path"):
+                found["send_path"] = new_path
+                path_changed = True
         if has_bcast:
             want = bool(body.get("broadcast"))
             if want != bool(found.get("broadcast")):
@@ -373,7 +383,7 @@ def api_aprs_warnings_update(wid):
                 bcast_changed = True
         _save_warnings(warnings)
         result = dict(found)
-    if bcast_changed:
+    if bcast_changed or path_changed:
         _kick_reconcile()
     elif has_note and result.get("broadcast") and result.get("gw_beacon_id"):
         b = _get_broadcaster()

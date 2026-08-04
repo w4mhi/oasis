@@ -173,6 +173,24 @@ class BroadcasterTest(unittest.TestCase):
         names = [x.get("object_name") for x in c.beacons.values()]
         self.assertIn("W11111111", names)                    # missing created
 
+    def test_reconcile_readvertises_on_send_path_change(self):
+        # Change a live alert's destination (IS -> RF): the reconciler kills the
+        # old beacon and re-advertises on the new path.
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
+        w = self._w(wid="33333333cccc", broadcast=True, gw=None)
+        w["send_path"] = "is_only"
+        b.reconcile([w])                                     # first advertise
+        first_id = w["gw_beacon_id"]
+        self.assertIsNotNone(first_id)
+        self.assertEqual(w["gw_send_path"], "is_only")
+        w["send_path"] = "rf"                                # operator switches
+        b.reconcile([w])
+        self.assertEqual(w["gw_send_path"], "rf")
+        self.assertNotEqual(w["gw_beacon_id"], first_id)     # a fresh beacon
+        live = [x for x in c.beacons.values() if x.get("type") == "object"]
+        self.assertEqual(len(live), 1)                       # no duplicate on air
+        self.assertEqual(live[0]["send_path"], "rf")         # on the new path
+
     def test_reconcile_ignores_non_oasis_beacons(self):
         c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
         c.beacons["7"] = {"id": "7", "type": "object", "object_name": "REPEATER1"}

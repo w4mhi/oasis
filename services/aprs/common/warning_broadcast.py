@@ -219,12 +219,26 @@ class WarningBroadcaster:
                 if self._ensure_killed(w, on_air.get(nm)):
                     out["removed"].append(w["id"]); out["killed"] += 1
             elif w.get("broadcast"):
+                desired_path = clean_send_path(w.get("send_path"), self.send_path)
                 if nm not in on_air:
                     gw_id = self.advertise(w)
                     if gw_id is not None:
-                        w["gw_beacon_id"] = gw_id; out["created"] += 1
+                        w["gw_beacon_id"] = gw_id
+                        w["gw_send_path"] = desired_path
+                        out["created"] += 1
+                elif w.get("gw_send_path") and w.get("gw_send_path") != desired_path:
+                    # Destination changed on an on-air warning (e.g. IS -> RF):
+                    # kill the old beacon, then re-advertise on the new path.
+                    self._ensure_killed(w, on_air.get(nm))
+                    gw_id = self.advertise(w)
+                    if gw_id is not None:
+                        w["gw_beacon_id"] = gw_id
+                        w["gw_send_path"] = desired_path
+                        out["created"] += 1
+                        out["killed"] += 1
                 elif not w.get("gw_beacon_id"):
                     w["gw_beacon_id"] = on_air[nm].get("id")   # adopt, no dupe
+                    w["gw_send_path"] = desired_path
             else:
                 if nm in on_air or w.get("gw_beacon_id"):
                     if self._ensure_killed(w, on_air.get(nm)):
