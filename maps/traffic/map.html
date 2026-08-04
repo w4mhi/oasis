@@ -4160,13 +4160,18 @@ function buildWarningsPanel() {
   let html = '<div class="warn-hint">Pick a mode, click a type, then click the map.</div>';
   const bDis = broadcastAvailable ? '' : ' disabled';
   const bCls = broadcastAvailable ? '' : ' warn-mode-disabled';
+
+  let remembered = '';
+  try { remembered = localStorage.getItem('oasisWarnSendPath') || ''; } catch (_) {}
+  if (!broadcastAvailable) remembered = '';   // can't broadcast -> fall back to Local
+
   html += '<div class="warn-mode">' +
-    '<label><input type="radio" name="warnmode" value="" checked> Local map only</label>' +
-    '<label class="' + bCls + '"><input type="radio" name="warnmode" value="is_only"' + bDis +
+    '<label><input type="radio" name="warnmode" value=""' + (remembered === '' ? ' checked' : '') + '> Local map only</label>' +
+    '<label class="' + bCls + '"><input type="radio" name="warnmode" value="is_only"' + (remembered === 'is_only' ? ' checked' : '') + bDis +
     '> Broadcast — IS only</label>' +
-    '<label class="' + bCls + '"><input type="radio" name="warnmode" value="both"' + bDis +
+    '<label class="' + bCls + '"><input type="radio" name="warnmode" value="both"' + (remembered === 'both' ? ' checked' : '') + bDis +
     '> Broadcast — RF + IS</label>' +
-    '<label class="' + bCls + '"><input type="radio" name="warnmode" value="rf"' + bDis +
+    '<label class="' + bCls + '"><input type="radio" name="warnmode" value="rf"' + (remembered === 'rf' ? ' checked' : '') + bDis +
     '> Broadcast — RF only</label>' +
     '</div>';
   if (!broadcastAvailable) {
@@ -4231,9 +4236,7 @@ async function placeWarningClick(e) {
     });
     const d = await r.json();
     if (d.ok) {
-      if (mode.broadcast && mode.send_path) {
-        try { localStorage.setItem('oasisWarnSendPath', mode.send_path); } catch (_) { /* storage unavailable */ }
-      }
+      try { localStorage.setItem('oasisWarnSendPath', mode.send_path || ''); } catch (_) { /* storage unavailable */ }
       await loadWarnings();
     }
   } catch (_) { /* offline / server down — ignore */ }
