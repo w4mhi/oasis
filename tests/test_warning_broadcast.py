@@ -20,16 +20,27 @@ class FormatTest(unittest.TestCase):
         self.assertEqual(wb.format_lon(5.5), "00530.00E")
 
     def test_object_payload_shape(self):
-        w = {"id": "3f9a1b2cdeadbeef", "lat": 47.5495, "lon": -122.0298, "note": "road out"}
+        # Object name now comes from the STORED tactical aprs_name, not the id.
+        w = {"id": "3f9a1b2cdeadbeef", "aprs_name": "FLOOD01",
+             "lat": 47.5495, "lon": -122.0298, "note": "road out"}
         p = wb.object_payload(w, "\\", "w", "both", 1800)
         self.assertEqual(p["type"], "object")
-        self.assertEqual(p["object_name"], "W3f9a1b2c")
+        self.assertEqual(p["object_name"], "FLOOD01")
         self.assertEqual(p["symbol_table"], "\\")
         self.assertEqual(p["symbol"], "w")
         self.assertEqual(p["send_path"], "both")
         self.assertEqual(p["interval"], 1800)
         self.assertEqual(p["comment"], "road out")
         self.assertAlmostEqual(p["latitude"], 47.5495)
+        self.assertNotIn("callsign", p)   # no source_callsign given -> omitted
+
+    def test_object_payload_uses_stored_name_and_source_call(self):
+        w = {"id": "x", "aprs_name": "AID01", "lat": 47.5, "lon": -122.0,
+             "note": "AID01 inserted by W4MHI-1"}
+        p = wb.object_payload(w, "/", "+", "both", 1800, "W4MHI-1")
+        self.assertEqual(p["object_name"], "AID01")
+        self.assertEqual(p["callsign"], "W4MHI-1")
+        self.assertEqual(p["comment"], "AID01 inserted by W4MHI-1")
 
     def test_kill_info_has_underscore_and_name(self):
         ts = time.struct_time((2026, 8, 3, 18, 30, 0, 0, 0, 0))
@@ -47,6 +58,22 @@ class FormatTest(unittest.TestCase):
         self.assertEqual(p["type"], "custom")
         self.assertTrue(p["custom_info"].startswith(";W3f9a1b2c_"))
         self.assertEqual(p["send_path"], "both")
+        self.assertNotIn("callsign", p)   # no source_callsign given -> omitted
+
+    def test_kill_payload_sets_source_callsign(self):
+        ts = time.gmtime(0)
+        p = wb.kill_payload("AID01", 1.0, 2.0, "/", "o", "both", ts, "W4MHI-1")
+        self.assertEqual(p["callsign"], "W4MHI-1")
+
+    def test_tactical_name_sequence(self):
+        self.assertEqual(wb.tactical_name("AID", set()), "AID01")
+        self.assertEqual(wb.tactical_name("FLOOD", {"FLOOD01"}), "FLOOD02")
+        self.assertEqual(wb.tactical_name("FLOOD", {"FLOOD01", "FLOOD02"}), "FLOOD03")
+
+    def test_tactical_name_truncated_to_nine_chars(self):
+        # 7-char abbr + 2-digit suffix = 9 chars exactly; never exceeds 9.
+        self.assertEqual(len(wb.tactical_name("ROADBLK", set())), 9)
+        self.assertEqual(wb.tactical_name("ROADBLK", set()), "ROADBLK01")
 
 
 class FakeClient:
@@ -73,9 +100,14 @@ SYMS = {"flood": ("\\", "w"), "fire": ("/", ":")}
 
 
 class BroadcasterTest(unittest.TestCase):
-    def _w(self, wid="3f9a1b2cdead", typ="flood", broadcast=True, gw=None):
+    def _w(self, wid="3f9a1b2cdead", typ="flood", broadcast=True, gw=None,
+           aprs_name=None):
+        # aprs_name defaults to the legacy 'W'+id[:8] shape so tests that
+        # don't care about tactical naming (and rely on the source_callsign=None
+        # fallback ownership path) keep matching the old on-air names.
         return {"id": wid, "type": typ, "lat": 47.5, "lon": -122.0,
-                "note": "x", "broadcast": broadcast, "gw_beacon_id": gw}
+                "note": "x", "broadcast": broadcast, "gw_beacon_id": gw,
+                "aprs_name": aprs_name or ("W" + str(wid)[:8])}
 
     def test_advertise_creates_object_beacon(self):
         c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS)
@@ -144,11 +176,42 @@ class BroadcasterTest(unittest.TestCase):
         self.assertEqual(out["killed"], 0)   # delete failed -> not counted
         self.assertIn("99", c.beacons)       # still on air
 
+    def test_reconcile_ownership_by_source_callsign(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS, source_callsign="W4MHI-1")
+        # operator beacon (different callsign) must be untouched even with an
+        # OASIS-looking name -- structurally unreachable by the kill/orphan path.
+        c.beacons["op"] = {"id": "op", "type": "object", "object_name": "FLOOD09",
+                            "callsign": "W4MHI"}
+        b.reconcile([])
+        self.assertIn("op", c.beacons)                 # not OASIS-owned -> untouched
+        # OASIS orphan (our callsign, no matching warning) -> killed
+        c.beacons["ours"] = {"id": "ours", "type": "object", "object_name": "AID01",
+                              "callsign": "W4MHI-1"}
+        b.reconcile([])
+        self.assertNotIn("ours", c.beacons)
+        self.assertIn("op", c.beacons)                 # still untouched
+
+    def test_advertise_sets_source_callsign_on_beacon(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS, source_callsign="W4MHI-1")
+        bid = b.advertise(self._w(aprs_name="AID01"))
+        self.assertEqual(c.beacons[bid]["callsign"], "W4MHI-1")
+
+    def test_reconcile_matches_warning_by_stored_aprs_name(self):
+        c = FakeClient(); b = wb.WarningBroadcaster(c, SYMS, source_callsign="W4MHI-1")
+        w = self._w(wid="anything", aprs_name="AID07", broadcast=True)
+        out = b.reconcile([w])
+        self.assertEqual(out["created"], 1)
+        self.assertEqual(c.beacons[w["gw_beacon_id"]]["object_name"], "AID07")
+        # re-running reconcile with the same warning must not re-advertise
+        out2 = b.reconcile([w])
+        self.assertEqual(out2["created"], 0)
+
 
 class ReconcileDriverTest(unittest.TestCase):
     def _w(self, wid, **kw):
         base = {"id": wid, "type": "flood", "lat": 47.5, "lon": -122.0,
-                "note": "", "broadcast": False, "gw_beacon_id": None}
+                "note": "", "broadcast": False, "gw_beacon_id": None,
+                "aprs_name": "W" + str(wid)[:8]}
         base.update(kw); return base
 
     def test_pending_delete_killed_then_removed_on_confirm(self):

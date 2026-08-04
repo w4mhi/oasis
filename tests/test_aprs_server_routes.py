@@ -105,7 +105,28 @@ class WarningBroadcastRouteTest(unittest.TestCase):
         self.assertFalse(w["broadcast"])
         self.assertIsNone(w["gw_beacon_id"])
         self.assertEqual(self.calls["adv"], [])
-        self.assertTrue(w["aprs_name"].startswith("W"))
+        # Tactical name: catalog abbr for "flood" is "FLOOD", first slot "01".
+        self.assertEqual(w["aprs_name"], "FLOOD01")
+
+    def test_second_warning_of_same_type_gets_next_tactical_slot(self):
+        w1 = self._add(False)
+        w2 = self._add(False)
+        self.assertEqual(w1["aprs_name"], "FLOOD01")
+        self.assertEqual(w2["aprs_name"], "FLOOD02")
+
+    def test_blank_note_defaults_to_tactical_name_and_station_callsign(self):
+        from services.aprs.common import warning_catalog as wc
+        w = self._add(False)
+        call = wc.station_callsign(aprs_routes.SUITE_ROOT)
+        expected = f"{w['aprs_name']} inserted by {call}" if call else w["aprs_name"]
+        self.assertEqual(w["note"], expected)
+
+    def test_explicit_note_is_kept_verbatim(self):
+        r = self.client.post("/api/aprs/warnings", json={
+            "type": "flood", "lon": -122.0, "lat": 47.5, "broadcast": False,
+            "note": "custom note text"})
+        w = _json.loads(r.data)["warning"]
+        self.assertEqual(w["note"], "custom note text")
 
     def test_broadcast_records_intent_without_inline_advertise(self):
         w = self._add(True)

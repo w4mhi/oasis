@@ -35,11 +35,25 @@ def format_lon(lon):
     return f"{deg:03d}{minutes:05.2f}{hemi}"
 
 
-def object_payload(w, symbol_table, symbol, send_path, interval):
-    """dto.BeaconRequest for a live APRS object beacon (GrayWolf re-beacons it)."""
-    return {
+def tactical_name(abbr, existing_names):
+    """Smallest '<ABBR><NN>' (<=9 chars) whose name is not in existing_names."""
+    n = 1
+    while True:
+        name = f"{abbr}{n:02d}"[:9]
+        if name not in existing_names:
+            return name
+        n += 1
+
+
+def object_payload(w, symbol_table, symbol, send_path, interval, source_callsign=None):
+    """dto.BeaconRequest for a live APRS object beacon (GrayWolf re-beacons it).
+
+    object_name comes from the warning's own stored tactical aprs_name (set
+    once at creation time via tactical_name), not derived from the id.
+    """
+    payload = {
         "type": "object",
-        "object_name": object_name(w["id"]).strip(),   # GrayWolf pads to 9
+        "object_name": str(w["aprs_name"]),
         "latitude": float(w["lat"]),
         "longitude": float(w["lon"]),
         "symbol_table": symbol_table,
@@ -49,6 +63,9 @@ def object_payload(w, symbol_table, symbol, send_path, interval):
         "interval": interval,
         "enabled": True,
     }
+    if source_callsign:
+        payload["callsign"] = source_callsign
+    return payload
 
 
 def kill_info(name9, lat, lon, symbol_table, symbol, ts_utc):
@@ -58,24 +75,32 @@ def kill_info(name9, lat, lon, symbol_table, symbol, ts_utc):
             format_lat(lat) + symbol_table + format_lon(lon) + symbol)
 
 
-def kill_payload(name9, lat, lon, symbol_table, symbol, send_path, ts_utc):
+def kill_payload(name9, lat, lon, symbol_table, symbol, send_path, ts_utc,
+                  source_callsign=None):
     """dto.BeaconRequest for a one-shot custom beacon carrying the kill frame."""
-    return {
+    payload = {
         "type": "custom",
         "custom_info": kill_info(name9, lat, lon, symbol_table, symbol, ts_utc),
         "send_path": send_path,
         "enabled": True,
     }
+    if source_callsign:
+        payload["callsign"] = source_callsign
+    return payload
 
 
 class WarningBroadcaster:
     def __init__(self, client, symbol_map, send_path="both", interval=1800,
-                 kill_repeat=3):
+                 kill_repeat=3, source_callsign=None):
         self.c = client
         self.symbols = symbol_map
         self.send_path = send_path
         self.interval = interval
         self.kill_repeat = kill_repeat
+        # e.g. "W4MHI-1" — used as the beacon's `callsign` field, and as the
+        # ownership marker reconcile() uses to find OASIS-owned beacons
+        # (never touches the operator's own/main-station beacons).
+        self.source_callsign = source_callsign
 
     def _sym(self, wtype):
         return self.symbols.get(wtype, SYMBOL_FALLBACK)
@@ -83,7 +108,8 @@ class WarningBroadcaster:
     def advertise(self, w):
         """Create the live object beacon. Returns gw_beacon_id or None."""
         table, code = self._sym(w.get("type"))
-        payload = object_payload(w, table, code, self.send_path, self.interval)
+        payload = object_payload(w, table, code, self.send_path, self.interval,
+                                  self.source_callsign)
         try:
             return self.c.create_beacon(payload)
         except GraywolfError:
@@ -107,9 +133,10 @@ class WarningBroadcaster:
 
     def _send_kill(self, w):
         table, code = self._sym(w.get("type"))
-        name9 = object_name(w["id"])
+        name9 = str(w.get("aprs_name") or object_name(w["id"]))[:9]
         payload = kill_payload(name9, float(w["lat"]), float(w["lon"]),
-                               table, code, self.send_path, time.gmtime())
+                               table, code, self.send_path, time.gmtime(),
+                               self.source_callsign)
         try:
             kid = self.c.create_beacon(payload)
         except GraywolfError:
@@ -143,21 +170,37 @@ class WarningBroadcaster:
         broadcast-off warnings that still have a live beacon, kills+confirms
         pending_delete warnings (reporting confirmed ids in "removed"), and
         kills orphaned OASIS-owned beacons with no matching warning.
+
+        Ownership: an on-air beacon is OASIS-owned iff its `callsign` equals
+        self.source_callsign (the `<station>-1` marker). This is the ONLY
+        path considered when source_callsign is set, so a beacon under any
+        other callsign (the operator's own/main-station beacon, even one
+        with an OASIS-looking name) is structurally unreachable by the
+        kill/orphan logic below. When source_callsign is None (unconfigured
+        callsign), fall back to the legacy object-name-pattern check.
         """
         out = {"created": 0, "killed": 0, "removed": []}
         try:
             existing = self.c.list_beacons()
         except GraywolfError:
             return out
-        # index OASIS-owned beacons on the air by object name
+        # index OASIS-owned beacons on the air, keyed by object name
         on_air = {}
         for beac in existing:
             nm = str(beac.get("object_name") or "").strip()
-            if _NAME_RE.match(nm):
+            if not nm:
+                continue
+            if self.source_callsign:
+                owned = str(beac.get("callsign") or "") == self.source_callsign
+            else:
+                owned = bool(_NAME_RE.match(nm))
+            if owned:
                 on_air[nm] = beac
         known = set()
         for w in warnings:
-            nm = object_name(w["id"]).strip()
+            nm = str(w.get("aprs_name") or "").strip()
+            if not nm:
+                continue
             known.add(nm)
             if w.get("pending_delete"):
                 if self._ensure_killed(w, on_air.get(nm)):
@@ -176,7 +219,8 @@ class WarningBroadcaster:
         # kill orphans (on the air but no matching warning at all)
         for nm, beac in on_air.items():
             if nm not in known:
-                fake = {"id": nm[1:], "lat": beac.get("latitude", 0.0),
+                fake = {"id": nm, "aprs_name": nm,
+                        "lat": beac.get("latitude", 0.0),
                         "lon": beac.get("longitude", 0.0), "type": None,
                         "gw_beacon_id": beac.get("id")}
                 if self._ensure_killed(fake, beac):

@@ -16,7 +16,7 @@ import appconfig
 from common import config_paths
 from services.aprs.common import warning_catalog
 from services.aprs.common.graywolf_client import GraywolfClient
-from services.aprs.common.warning_broadcast import WarningBroadcaster, object_name
+from services.aprs.common.warning_broadcast import WarningBroadcaster, tactical_name
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 
@@ -60,7 +60,10 @@ def _get_broadcaster():
         send_path = cfg.get("send_path") or "both"
         client = GraywolfClient(base, user, pw)
         symbols = warning_catalog.load_symbol_map(SUITE_ROOT)
-        _broadcaster_cache = WarningBroadcaster(client, symbols, send_path=send_path)
+        call = warning_catalog.station_callsign(SUITE_ROOT)
+        source_callsign = f"{call}-1" if call else None
+        _broadcaster_cache = WarningBroadcaster(client, symbols, send_path=send_path,
+                                                 source_callsign=source_callsign)
         return _broadcaster_cache
 
 @bp.route("/api/aprs/health")
@@ -284,10 +287,17 @@ def api_aprs_warnings_add():
     if not wtype:
         return jsonify({"ok": False, "error": "type required"}), 400
     note = _clean_note(body.get("note"))
+    abbr_map = warning_catalog.load_abbr_map(SUITE_ROOT)
+    source_call = warning_catalog.station_callsign(SUITE_ROOT)
     with _warnings_lock:
         warnings = _load_warnings()
         if len(warnings) >= _WARN_MAX:
             return jsonify({"ok": False, "error": "warning limit reached"}), 409
+        existing_names = {w.get("aprs_name") for w in warnings}
+        abbr = abbr_map.get(wtype) or wtype[:7].upper()
+        aprs_name = tactical_name(abbr, existing_names)
+        if not note:
+            note = f"{aprs_name} inserted by {source_call}" if source_call else aprs_name
         item = {
             "id":   uuid.uuid4().hex,
             "type": wtype,
@@ -297,8 +307,8 @@ def api_aprs_warnings_add():
             "ts":   int(time.time()),
             "broadcast": bool(body.get("broadcast")),
             "gw_beacon_id": None,
+            "aprs_name": aprs_name,
         }
-        item["aprs_name"] = object_name(item["id"]).strip()
         warnings.append(item)
         _save_warnings(warnings)
     if item["broadcast"]:
