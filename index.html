@@ -81,7 +81,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: .3rem;
-  min-width: 200px;
+  min-width: 250px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -111,10 +111,15 @@ body {
 .gps-lbl { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .07em; color: var(--text-dim); }
 .gps-val { font-size: var(--fs-base); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ── System cards (topbar row) — ported verbatim from
-   specs/2026-07-29-system-cards-mockup.html ─────────────────────── */
+/* Explicit flex-basis (not auto): .topbar wraps, and a wrap container breaks lines
+   on the hypothetical main size (basis clamped by min/max) BEFORE any shrinking.
+   With basis:auto that size is the card's max-content width, which overflows 1920
+   and pushes Processes onto a second row -- and lowering min-width does NOT help,
+   since it only floors a size the basis already exceeds. The basis below is the
+   real knob: sum(basis) + brand block + gps + rail + gaps must stay under the
+   viewport or the row wraps again. flex-grow hands the surplus back afterwards. */
 .card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:.4rem .7rem;
-      display:flex;flex-direction:column;gap:.3rem;flex:1 1 auto}
+      display:flex;flex-direction:column;gap:.3rem;flex:1 1 350px}
 .card.up{border-color:var(--accent-dim);background:rgba(0,200,100,.06)}
 .card.warn{border-color:var(--amber-dim);background:rgba(255,180,84,.06)}
 .card.down{border-color:#7a1010;background:rgba(180,30,30,.08)}
@@ -140,7 +145,7 @@ body {
 @media (prefers-reduced-motion:reduce){.cpu-fan.spin{animation:none}}
 
 /* ---- clock cards (dashboard style: left color bar + LOCAL/UTC), scaled to header ---- */
-.clk-card{position:relative;overflow:hidden;justify-content:center;min-width:200px;
+.clk-card{position:relative;overflow:hidden;justify-content:center;min-width:250px;
   padding:.15rem .7rem .15rem .95rem;background:var(--panel)}
 .clk-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:.3rem;background:var(--clk)}
 .clk-card{border-color:var(--border)}
@@ -691,10 +696,14 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 }
 .svc-pill .pill-k { color: var(--text-dim); font-weight: 700; letter-spacing: .08em; }
 .svc-pill .pill-v { color: var(--text); font-variant-numeric: tabular-nums; }
-/* Fixed-width track so host + power align under the pill-row above.
-   Tune --host-row-w to match (host + refresh + wifi + theme) width. */
+/* Fixed-width track so host + power + theme align under the pill-row
+   above. This track is the brand block's widest line, so it sets the block's
+   width in the topbar -- keep it only as wide as the row's content needs, or it
+   steals room from the cards and wraps the header. HOST and the theme pill are
+   fixed-size, so every extra pixel here lands on POWER (the only flex:1 item):
+   this var is the POWER pill's width knob. */
 .host-row {
-  --host-row-w: 500px; 
+  --host-row-w: 460px;
   display: flex;
   align-items: center;
   gap: .45rem;
@@ -703,6 +712,9 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   max-width: 100%;
 }
 .host-pill { flex: 0 0 auto; }
+/* version lives in the zulu clock card's top row (see .clk-zn) -- margin-auto
+   pushes it to the card's upper-right corner, baseline-aligned with UTC/zulu */
+.clk-card .brand-ver { margin-left: auto; flex: 0 0 auto; white-space: nowrap; }
 .pwr-pill {
   display: inline-flex;
   align-items: center;
@@ -1150,7 +1162,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <!-- ── TOP BAR ─────────────────────────────────────────────────────────────── -->
 <div class="topbar">
   <div style="display:flex;flex-direction:column;justify-content:center;flex:0 0 auto">
-    <div class="brand-name">OASIS <span class="brand-sub" style="color: var(--blue);">Off-grid Amateur Station Integrated Suite</span><span class="brand-ver" id="brand-ver"></span></div>
+    <div class="brand-name">OASIS <span class="brand-sub" style="color: var(--blue);">Off-grid Amateur Station Integrated Suite</span></div>
     <div class="brand-sub">An offline toolkit for amateur radio communications.</div>
     <div class="pill-row">
       <button class="callsign-pill" onclick="editCallsignGrid()" title="Edit callsign &amp; grid">
@@ -1170,10 +1182,6 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
               title="View Wi-Fi / connect to a network">
         <span class="wifi-pill-txt" id="wifi-pill-txt">Wi-Fi</span>
       </button>
-      <button class="units-pill" id="theme-toggle" onclick="toggleTheme()"
-              title="Toggle light / dark theme" aria-label="Toggle light / dark theme">
-        <span id="theme-glyph">&#9728;</span>
-      </button>
     </div>
     <div class="host-row">
       <span class="host-pill" id="host-pill" title="This station's LAN address and hostname">
@@ -1186,6 +1194,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
         <span class="pwr-lbl">POWER</span>
         <span class="pwr-val" id="pwr-val">&mdash;</span>
       </span>
+      <button class="units-pill" id="theme-toggle" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme">
+        <span id="theme-glyph">&#9728;</span>
+      </button>
     </div>
   </div>
 
@@ -1195,7 +1207,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="clk-d" id="clk-loc-d">&mdash;</div>
   </div>
   <div class="card clk-card utc">
-    <div class="clk-zn"><span class="clk-z">UTC</span><span class="clk-tz">zulu</span></div>
+    <div class="clk-zn"><span class="clk-z">UTC</span><span class="clk-tz">zulu</span><span class="brand-ver" id="brand-ver"></span></div>
     <div class="clk-time" id="clk-utc-t">--:--<span class="s">:--</span></div>
     <div class="clk-d" id="clk-utc-d">&mdash;</div>
   </div>
