@@ -21,7 +21,22 @@ class MixerCommandsTest(unittest.TestCase):
         # one vector per control, all targeting `-c draws` via amixer sset
         self.assertEqual(len(cmds), len(draws_audio.MIXER))
         for (ctrl, val), cmd in zip(draws_audio.MIXER, cmds):
-            self.assertEqual(cmd, ["amixer", "-c", "draws", "sset", ctrl, val])
+            self.assertEqual(cmd, ["amixer", "-c", "draws", "sset", "--", ctrl, val])
+
+    def test_end_of_options_marker_precedes_the_control(self):
+        """Bench regression (2026-08-06): without `--`, amixer parses a negative
+        dB value like `-25.0dB,-25.0dB` as a command-line switch and fails with
+        'Invalid switch or option'. That silently left PCM at +0.5dB instead of
+        -25.0dB — ~25dB too hot into the radio. The marker must come before the
+        control name so ctrl/val stay the last two argv slots."""
+        for cmd in draws_audio.build_mixer_commands():
+            self.assertEqual(cmd[4], "--")
+            self.assertEqual(len(cmd), 7)
+
+    def test_negative_db_values_survive_as_their_own_argv_slot(self):
+        cmds = dict((cmd[-2], cmd[-1]) for cmd in draws_audio.build_mixer_commands())
+        self.assertEqual(cmds["PCM"], "-25.0dB,-25.0dB")
+        self.assertEqual(cmds["LO Driver Gain"], "-6.0dB,-6.0dB")
 
     def test_card_is_overridable(self):
         cmds = draws_audio.build_mixer_commands("udrc")

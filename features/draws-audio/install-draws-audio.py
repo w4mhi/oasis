@@ -66,7 +66,7 @@ def apply_mixer():
 
     failures = 0
     for cmd in draws_audio.build_mixer_commands():
-        ctrl, val = cmd[4], cmd[5]
+        ctrl, val = cmd[-2], cmd[-1]
         r = subprocess.run(cmd, capture_output=True, text=True)
         if r.returncode == 0:
             _ok("%s = %s" % (ctrl, val))
@@ -87,7 +87,10 @@ def apply_mixer():
         _ok("DRAWS audio mixer applied.")
     print()
     ptt_reminder()
-    return 0
+    # A control that did not apply means the radio audio path is misconfigured —
+    # exactly how the 2026-08-06 negative-dB bug hid behind a green exit code
+    # while TX sat 25dB hot. Report it as a failure, not a warning.
+    return 1 if failures else 0
 
 
 def main(argv=None):

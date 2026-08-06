@@ -49,8 +49,16 @@ PORTS = [
 
 def build_mixer_commands(card=CARD):
     """Return the `amixer sset` argv vectors that apply the known-good routing to
-    `card`. Pure — no subprocess here so it unit-tests off-Pi."""
-    return [["amixer", "-c", card, "sset", ctrl, val] for ctrl, val in MIXER]
+    `card`. Pure — no subprocess here so it unit-tests off-Pi.
+
+    The `--` end-of-options marker is REQUIRED, not cosmetic: two of the controls
+    take negative dB values (`-25.0dB,-25.0dB`, `-6.0dB,-6.0dB`) and amixer's
+    getopt parses a leading `-` as a switch, failing with "Invalid switch or
+    option". Caught on the bench 2026-08-06 — the two TX-level controls silently
+    stayed at their defaults (PCM at +0.5dB instead of -25.0dB, ~25dB too hot into
+    the radio) while the other nine applied. The marker goes before the control
+    name so the control and value remain the final two argv slots."""
+    return [["amixer", "-c", card, "sset", "--", ctrl, val] for ctrl, val in MIXER]
 
 
 def removal_record(repo_root=None):
