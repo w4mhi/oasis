@@ -25,6 +25,15 @@ CARD_MATCH = "draws"    # substring used to detect it in /proc/asound/cards
 # channels set symmetrically via the codec's `L,R` value syntax. (control, value)
 MIXER = [
     # TX path
+    # Like the ADC mutes below, the line-output DAC path powers up MUTED. Routing
+    # the DAC into the output mixer (LOL/LOR Output Mixer L_DAC/R_DAC) is not
+    # enough on its own — without this the mDin6 pins stay silent, PTT keys, the
+    # radio transmits an unmodulated carrier, and no station decodes anything.
+    # Bench 2026-08-06: zero decodes across a -25dB..-5dB sweep at multiple
+    # receiving stations; with this line, all packets decoded at the -25dB
+    # baseline. HP DAC is deliberately left alone — the headphone output is not
+    # used for radio audio.
+    ("LO DAC",                                "on"),
     ("PCM",                                   "-25.0dB,-25.0dB"),
     ("LO Driver Gain",                        "-6.0dB,-6.0dB"),
     ("DAC Left Playback PowerTune",           "P3"),

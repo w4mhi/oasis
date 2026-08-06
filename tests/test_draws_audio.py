@@ -51,6 +51,23 @@ class MixerCommandsTest(unittest.TestCase):
         self.assertIn("LOL Output Mixer L_DAC", controls)
         self.assertIn("LOR Output Mixer R_DAC", controls)
 
+    def test_line_output_dac_is_unmuted(self):
+        """Bench regression (2026-08-06): the line-output DAC path powers up
+        muted. Routing the DAC into the output mixer is not sufficient — with
+        `LO DAC` off, PTT keys and the radio transmits an unmodulated carrier, so
+        nothing decodes anywhere. Zero decodes across a -25dB..-5dB PCM sweep at
+        several receiving stations; all decoded once this was on."""
+        self.assertEqual(dict(draws_audio.MIXER)["LO DAC"], "on")
+
+    def test_both_codec_power_on_mutes_are_cleared(self):
+        """The two bugs that made this feature non-functional in both directions
+        were the same class: codec defaults that mute the path. Guard them
+        together so neither is dropped from the baseline again."""
+        mixer = dict(draws_audio.MIXER)
+        self.assertEqual(mixer["LO DAC"], "on")               # TX
+        self.assertEqual(mixer["ADCFGA Left Mute"], "off")    # RX
+        self.assertEqual(mixer["ADCFGA Right Mute"], "off")   # RX
+
     def test_adc_channel_mutes_are_cleared(self):
         """Bench regression (2026-08-06): the ADCFGA mutes are the codec's
         power-on default and the driver declares them uninverted, so `on` means
