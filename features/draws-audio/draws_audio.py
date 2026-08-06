@@ -24,6 +24,17 @@ CARD_MATCH = "draws"    # substring used to detect it in /proc/asound/cards
 # Keeps PipeWire/PulseAudio off the radio codec — see build_acp_ignore_rule().
 ACP_IGNORE_RULE = "/etc/udev/rules.d/89-draws-radio-audio.rules"
 
+# RX input level. Radio-specific, so this ships NW Digital Radio's baseline and
+# the operator trims (see --rx-level). Bench 2026-08-06: the baseline measured
+# too hot on BOTH test radios — one clipped outright (direwolf's reported level
+# FELL as gain rose, the tell for clipping), the other read 142 against
+# direwolf's target of ~50, i.e. about 9dB hot. Named constants because the
+# reinstall-preserve check compares live hardware against RX_LEVEL_BASELINE;
+# if that drifted from the MIXER entry, every reinstall would mistake the
+# baseline for a customised value and skip it.
+RX_LEVEL_CONTROL  = "ADC Level"
+RX_LEVEL_BASELINE = "0.0dB,0.0dB"
+
 # NW Digital Radio known-good baseline (n7nix bin/setalsa-default.sh). Both
 # channels set symmetrically via the codec's `L,R` value syntax. (control, value)
 MIXER = [
@@ -51,7 +62,7 @@ MIXER = [
     # RX was silent on both channels with a radio attached and squelch open.
     ("ADCFGA Left Mute",                      "off"),
     ("ADCFGA Right Mute",                     "off"),
-    ("ADC Level",                             "0.0dB,0.0dB"),
+    (RX_LEVEL_CONTROL,                        RX_LEVEL_BASELINE),
     ("IN1_L to Left Mixer Positive Resistor", "Off"),
     ("IN1_R to Right Mixer Positive Resistor", "Off"),
     ("IN2_L to Left Mixer Positive Resistor", "10 kOhm"),
@@ -155,6 +166,48 @@ def build_livetest_frame(callsign, channel=0, comment=LIVETEST_COMMENT):
     callsign first, so a typo fails before anything touches the radio."""
     call, ssid = parse_callsign(callsign)
     return kiss_wrap(build_ax25_ui_frame(call, ssid, comment), channel)
+
+
+def parse_rx_level(text):
+    """Normalise an operator-supplied RX level into the codec's `L,R` form.
+
+    Accepts "-9", "-9.0dB" or an explicit "-9.0dB,-9.0dB". Raises ValueError on
+    anything else rather than handing amixer a string it will misread — a bad
+    level is a silently degraded receiver, not a loud failure."""
+    raw = (text or "").strip()
+    if not raw:
+        raise ValueError("empty RX level — expected e.g. -9.0dB")
+    if "," in raw:
+        left, _, right = raw.partition(",")
+        if parse_rx_level(left) != parse_rx_level(right):
+            raise ValueError("asymmetric RX level %r — both channels must match" % raw)
+        return parse_rx_level(left)
+    body = raw[:-2] if raw.lower().endswith("db") else raw
+    try:
+        value = float(body)
+    except ValueError:
+        raise ValueError(
+            "invalid RX level %r — expected a dB value, e.g. -9.0dB" % text) from None
+    return "{0:.1f}dB,{0:.1f}dB".format(value)
+
+
+def build_rx_level_command(value, card=CARD):
+    """argv applying an RX level. The `--` marker is required for the same
+    reason as the mixer list: amixer reads a leading `-` as a switch."""
+    return ["amixer", "-c", card, "sset", "--", RX_LEVEL_CONTROL, value]
+
+
+def rx_level_is_customised(current):
+    """Has the operator tuned the RX level away from the shipped baseline?
+
+    `current` is what amixer reports for one channel (e.g. "-9.00dB"). A fresh
+    board sits at the baseline, so a first install never skips. Unreadable input
+    counts as NOT customised — re-applying the known-good baseline is safer than
+    skipping on garbage."""
+    try:
+        return parse_rx_level(current) != parse_rx_level(RX_LEVEL_BASELINE)
+    except ValueError:
+        return False
 
 
 def build_mixer_commands(card=CARD):

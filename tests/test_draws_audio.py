@@ -251,6 +251,18 @@ class ParserTest(unittest.TestCase):
         self.assertFalse(args.config_only)
         self.assertFalse(args.mixer_only)
 
+    def test_rx_level_accepts_the_documented_equals_form(self):
+        """Bench 2026-08-06: `--rx-level -9.0dB` FAILS — argparse reads the
+        leading '-' as a switch, exactly like the amixer trap. The printed hint
+        used to tell operators the broken form. Only '=' (or a bare number,
+        which argparse's negative-number heuristic allows) works."""
+        args = self._load().build_parser().parse_args(["--rx-level=-9.0dB"])
+        self.assertEqual(args.rx_level, "-9.0dB")
+
+    def test_rx_level_accepts_a_bare_negative_number(self):
+        args = self._load().build_parser().parse_args(["--rx-level", "-9.0"])
+        self.assertEqual(args.rx_level, "-9.0")
+
     def test_flags(self):
         args = self._load().build_parser().parse_args(
             ["--dry-run", "--check", "--config-only", "--mixer-only"])
@@ -300,6 +312,58 @@ class ProfileNamingTest(unittest.TestCase):
         u = draws_audio.build_tnc_service("pi", "/home/pi", 524, 535)
         self.assertIn(draws_audio.TNC_PROFILE_APRS, u)
         self.assertIn(draws_audio.TNC_PROFILE_WINLINK, u)
+
+
+
+class RxLevelTest(unittest.TestCase):
+    """Bench 2026-08-06: the n7nix 0dB baseline measured too hot on BOTH test
+    radios -- one clipped (direwolf's level fell as gain rose), the other read
+    142 against direwolf's target of ~50. RX level is radio-specific, so the
+    installer keeps shipping the baseline on a fresh board but must (a) offer a
+    first-class way to trim and (b) never clobber a trim on reinstall."""
+
+    def test_baseline_matches_the_mixer_entry(self):
+        """The preserve check compares against this, so drift would silently
+        make every reinstall look like a customised value."""
+        self.assertEqual(dict(draws_audio.MIXER)[draws_audio.RX_LEVEL_CONTROL],
+                         draws_audio.RX_LEVEL_BASELINE)
+
+    def test_parses_a_db_string(self):
+        self.assertEqual(draws_audio.parse_rx_level("-9.0dB"), "-9.0dB,-9.0dB")
+
+    def test_parses_a_bare_number(self):
+        self.assertEqual(draws_audio.parse_rx_level("-9"), "-9.0dB,-9.0dB")
+        self.assertEqual(draws_audio.parse_rx_level("0"), "0.0dB,0.0dB")
+
+    def test_accepts_an_explicit_stereo_pair(self):
+        self.assertEqual(draws_audio.parse_rx_level("-9.0dB,-9.0dB"),
+                         "-9.0dB,-9.0dB")
+
+    def test_rejects_nonsense(self):
+        for bad in ("", "loud", "9dBm", "--9"):
+            self.assertRaises(ValueError, draws_audio.parse_rx_level, bad)
+
+    def test_command_uses_the_end_of_options_marker(self):
+        """Same negative-dB trap as the mixer list -- amixer would read -9.0dB
+        as a switch."""
+        cmd = draws_audio.build_rx_level_command("-9.0dB,-9.0dB")
+        self.assertEqual(cmd[:5], ["amixer", "-c", "draws", "sset", "--"])
+        self.assertEqual(cmd[-2:], [draws_audio.RX_LEVEL_CONTROL, "-9.0dB,-9.0dB"])
+
+    def test_detects_a_customised_level(self):
+        self.assertTrue(draws_audio.rx_level_is_customised("-9.00dB"))
+        self.assertTrue(draws_audio.rx_level_is_customised("-12.00dB"))
+
+    def test_baseline_reads_as_not_customised(self):
+        """A fresh board sits at the baseline, so nothing is skipped on a first
+        install."""
+        self.assertFalse(draws_audio.rx_level_is_customised("0.00dB"))
+        self.assertFalse(draws_audio.rx_level_is_customised("0.0dB"))
+
+    def test_unreadable_level_is_not_treated_as_customised(self):
+        """Better to re-apply the known-good baseline than to skip on garbage."""
+        self.assertFalse(draws_audio.rx_level_is_customised(""))
+        self.assertFalse(draws_audio.rx_level_is_customised(None))
 
 
 if __name__ == "__main__":

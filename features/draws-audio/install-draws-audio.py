@@ -18,6 +18,12 @@ Usage:
   python3 features/draws-audio/install-draws-audio.py --dry-run     # preview config.txt change
   python3 features/draws-audio/install-draws-audio.py --config-only # force the overlay phase
   python3 features/draws-audio/install-draws-audio.py --mixer-only  # force the mixer phase
+  python3 features/draws-audio/install-draws-audio.py --rx-level=-9.0dB
+                                                    # trim + persist RX level
+                                                    # NOTE the '=' — argparse
+                                                    # reads a bare -9.0dB as a
+                                                    # switch. "--rx-level -9.0"
+                                                    # (no unit) also works.
   python3 features/draws-audio/install-draws-audio.py --livetest W4MHI-6
                                                     # TRANSMIT one test packet
   python3 features/draws-audio/install-draws-audio.py --livetest W4MHI-6 --channel 1
@@ -57,6 +63,11 @@ def build_parser():
                    help="only do the overlay phase (force)")
     p.add_argument("--mixer-only", action="store_true",
                    help="only do the ALSA mixer phase (force)")
+    p.add_argument("--rx-level", metavar="dB",
+                   help="set + persist the RX input level, e.g. "
+                        "--rx-level=-9.0dB (the '=' is required for a negative "
+                        "value). Radio-specific; aim for a direwolf audio "
+                        "level near 50")
     p.add_argument("--tnc", action="store_true",
                    help="(re)install the shared 2-channel direwolf TNC service")
     p.add_argument("--callsign", help="callsign for the TNC config "
@@ -123,6 +134,57 @@ def run_livetest(args):
     return 0
 
 
+def read_rx_level():
+    """The card's current RX level for one channel (e.g. "-9.00dB"), or "" if it
+    cannot be read (no card, non-Linux)."""
+    r = subprocess.run(["amixer", "-c", draws_audio.CARD, "sget",
+                        draws_audio.RX_LEVEL_CONTROL],
+                       capture_output=True, text=True)
+    for line in r.stdout.splitlines():
+        if "Front Left:" in line or line.strip().startswith("Mono:"):
+            start = line.find("[")
+            while start != -1:
+                end = line.find("]", start)
+                token = line[start + 1:end]
+                if token.lower().endswith("db"):
+                    return token
+                start = line.find("[", end)
+    return ""
+
+
+def set_rx_level(value):
+    """Apply and persist an RX level. Returns the exit code for the CLI."""
+    _step(1, "Set the DRAWS RX input level")
+    try:
+        normalised = draws_audio.parse_rx_level(value)
+    except ValueError as exc:
+        _fail(str(exc))
+        return 1
+    if not draws.sound_card_present(draws_audio.CARD_MATCH):
+        _fail("Sound card '%s' not detected — run the mixer phase first."
+              % draws_audio.CARD)
+        return 1
+
+    before = read_rx_level()
+    r = subprocess.run(draws_audio.build_rx_level_command(normalised),
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        tail = (r.stderr.strip().splitlines() or ["control not found"])[-1]
+        _fail("Could not set %s: %s" % (draws_audio.RX_LEVEL_CONTROL, tail))
+        return 1
+    _ok("%s: %s -> %s" % (draws_audio.RX_LEVEL_CONTROL, before or "?",
+                          read_rx_level()))
+
+    if subprocess.run(["sudo", "alsactl", "store"]).returncode == 0:
+        _ok("Persisted (survives reboot, and reinstalls keep it).")
+    else:
+        _warn("alsactl store failed — the level will not survive a reboot.")
+    print()
+    _info("Verify: watch `audio level` on received packets in direwolf; aim "
+          "near 50.")
+    return 0
+
+
 def rx_level_hint():
     """RX input level is radio-dependent, so the installer ships NW Digital
     Radio's known-good baseline and leaves the trim to the operator — the same
@@ -132,10 +194,10 @@ def rx_level_hint():
     _info("RX level is per-radio — the baseline above may need trimming:")
     _info("  • watch `audio level` on received packets in direwolf; aim near 50")
     _info("  • falling level as you raise gain means you are clipping — back off")
-    _info("  • trim:  amixer -c %s sset -- \"ADC Level\" -12.0dB,-12.0dB"
-          % draws_audio.CARD)
-    _info("  • keep it: sudo alsactl store")
-    _info("  (the -- is required; amixer reads a leading - as a switch)")
+    _info("  • trim:  python3 features/draws-audio/install-draws-audio.py "
+          "--rx-level=-9.0dB")
+    _info("    (the '=' is required — argparse reads a leading - as a switch)")
+    _info("  • it is persisted, and a reinstall will KEEP it")
 
 
 def ptt_reminder():
@@ -292,9 +354,20 @@ def apply_mixer():
 
     ensure_acp_ignore()
 
+    # Never clobber an RX level the operator has already tuned: it is
+    # radio-specific and the shipped baseline measured too hot on real radios,
+    # so re-running the installer (or a Setup reinstall) would silently undo a
+    # correct receiver. A fresh board reads the baseline, so nothing is skipped
+    # on a first install.
+    keep_rx = draws_audio.rx_level_is_customised(read_rx_level())
+
     failures = 0
     for cmd in draws_audio.build_mixer_commands():
         ctrl, val = cmd[-2], cmd[-1]
+        if ctrl == draws_audio.RX_LEVEL_CONTROL and keep_rx:
+            _info("%s = %s (kept — tuned for this radio; --rx-level to change)"
+                  % (ctrl, read_rx_level()))
+            continue
         r = subprocess.run(cmd, capture_output=True, text=True)
         if r.returncode == 0:
             _ok("%s = %s" % (ctrl, val))
@@ -332,6 +405,12 @@ def main(argv=None):
     # so it also works from a laptop pointed at the go-box with --kiss-host.
     if args.livetest:
         return run_livetest(args)
+
+    if args.rx_level:
+        if sys.platform != "linux":
+            _fail("This installer requires Linux (Raspberry Pi).")
+            return 1
+        return set_rx_level(args.rx_level)
 
     if args.tnc:
         if sys.platform != "linux":
