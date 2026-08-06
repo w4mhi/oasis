@@ -124,8 +124,12 @@ MODEM_DRAWS_ADEVICE = "plughw:draws,0"
 # pat-direwolf service points at the selected one (default DRA). DigiRig Mobile
 # is a USB sound card + a CP210x USB-serial bridge whose RTS line keys PTT — no
 # GPIO, no boot overlay — so its service carries no GPIO unexport.
-MODEM_DRA_CONF_NAME       = "oasis-winlink.conf"          # DRA-Pi (I²S WM8731 + GPIO PTT)
-MODEM_DIGIRIG_CONF_NAME   = "oasis-winlink-digirig.conf"  # DigiRig (USB audio + CP210x RTS PTT)
+# Config names say WHICH INTERFACE they drive — scheme: oasis-<interface>-<service>.
+# A name that only says "winlink" is impossible to place on a box with more than
+# one radio interface, and a copy pointing at a card the box does not have
+# crash-loops direwolf in a way that reads like a Winlink fault.
+MODEM_DRA_CONF_NAME       = "oasis-dra-pi-winlink.conf"   # DRA-Pi (I²S WM8731 + GPIO PTT)
+MODEM_DIGIRIG_CONF_NAME   = "oasis-digirig-winlink.conf"  # DigiRig (USB audio + CP210x RTS PTT)
 MODEM_DIGIRIG_ADEVICE     = "plughw:CARD=Device,DEV=0"    # generic USB-audio fallback; autodetect overrides
 MODEM_DIGIRIG_SERIAL_GLOB = "/dev/serial/by-id/usb-Silicon_Labs_CP210*-if00-port0"
 # Broader by-id match (some CP2102N units report a serial-number suffix or a

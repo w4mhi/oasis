@@ -104,7 +104,7 @@ FEATURES = [
             "Server", default=False, needs=["winlink"],
             args=["--modem-interface", "digirig", "--modem-only"],
             recommend="pat-direwolf now uses the DigiRig. Verify PTT keys the radio: "
-                      "direwolf -c ~/.config/direwolf/oasis-winlink-digirig.conf -x"),
+                      "direwolf -c ~/.config/direwolf/oasis-digirig-winlink.conf -x"),
     Feature("kiwix", "Kiwix (offline content server)", "services/kiwix/install.py",
             "kiwix-serve on :8081 to browse ZIM content. (Add content below.)",
             "Server", default=False, internet=True,

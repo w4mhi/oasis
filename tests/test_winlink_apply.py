@@ -149,5 +149,16 @@ class DrawsApplySideEffectsTest(unittest.TestCase):
         self.assertNotIn("direwolf.conf", flat)
 
 
+
+class ConfNamingTest(unittest.TestCase):
+    def test_names_state_the_interface_and_the_service(self):
+        self.assertEqual(winlink.MODEM_DRA_CONF_NAME, "oasis-dra-pi-winlink.conf")
+        self.assertEqual(winlink.MODEM_DIGIRIG_CONF_NAME, "oasis-digirig-winlink.conf")
+
+    def test_no_ambiguous_legacy_names_remain(self):
+        for name in (winlink.MODEM_DRA_CONF_NAME, winlink.MODEM_DIGIRIG_CONF_NAME):
+            self.assertNotEqual(name, "oasis-winlink.conf")
+
+
 if __name__ == "__main__":
     unittest.main()

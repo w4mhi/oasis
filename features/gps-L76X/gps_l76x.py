@@ -43,22 +43,25 @@ Requires: Linux (Raspberry Pi OS), sudo. Steps 4-5's apt installs need
 internet (or a local apt cache/mirror).
 """
 
-import errno
-import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
-import time
-from shutil import which
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # repo root
-from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run, sudo_apt_cmd
+from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
 from common.gpsd_chrony import (install_packages as install_gpsd_chrony_packages,
                           configure_gpsd, configure_chrony, restart_services,
                           verify as verify_gpsd_chrony, check_exclusive,
                           configured_device)
+# The NMEA/gpsd verification layer is shared with features/draws-gps — see
+# common/nmea.py. Re-exported here so this module's public surface is unchanged.
+from common.nmea import (nmea_checksum_ok, parse_gprmc, parse_gpgga,  # noqa: F401
+                         summarize_nmea, device_mismatch, read_nmea_lines,
+                         gpsd_active, verify_via_gpsd, install_pyserial,
+                         pyserial_importable, DEFAULT_BAUD)
+import common.nmea as nmea
 
 CONFIG_CANDIDATES  = ("/boot/firmware/config.txt", "/boot/config.txt")
 CMDLINE_CANDIDATES = ("/boot/firmware/cmdline.txt", "/boot/cmdline.txt")
@@ -78,8 +81,10 @@ def removal_record(repo_root=None):
 SERIAL_GETTY_UNITS = ["serial-getty@ttyS0.service", "serial-getty@ttyAMA0.service",
                       "serial-getty@serial0.service"]
 DEVICE_CANDIDATES  = ["/dev/ttyS0", "/dev/serial0", "/dev/ttyAMA0"]
-DEFAULT_BAUD = 9600
 REBOOT_EXIT  = 10
+NO_DATA_HINT = ("Check wiring (TX->RxD, RX->TxD, 5V, GND), that the console is "
+                "disabled (needs a reboot after enabling), and that no other "
+                "process (gpsd) already has the port open.")
 
 
 # ── config.txt / cmdline.txt — pure transforms (unit-testable, no I/O) ──────────
@@ -124,74 +129,6 @@ def transform_cmdline_txt(text):
     new_text, n = CONSOLE_TOKEN_RE.subn("", text)
     new_text = re.sub(r"[ \t]+", " ", new_text).strip() + "\n"
     return new_text, n > 0
-
-
-# ── NMEA parsing — pure, no hardware ─────────────────────────────────────────────
-
-def nmea_checksum_ok(sentence):
-    """Validate the trailing `*hh` XOR checksum over everything between $ and *."""
-    s = sentence.strip()
-    m = re.match(r"^\$([^*]*)\*([0-9A-Fa-f]{2})$", s)
-    if not m:
-        return False
-    body, expected = m.group(1), m.group(2)
-    got = 0
-    for ch in body:
-        got ^= ord(ch)
-    return f"{got:02X}" == expected.upper()
-
-
-def _nmea_coord_to_decimal(value, hemi):
-    """NMEA ddmm.mmmm (or dddmm.mmmm) -> signed decimal degrees."""
-    if not value:
-        return None
-    dot = value.find(".")
-    deg_len = dot - 2 if dot != -1 else len(value) - 2
-    degrees = float(value[:deg_len])
-    minutes = float(value[deg_len:])
-    decimal = degrees + minutes / 60.0
-    return -decimal if hemi in ("S", "W") else decimal
-
-
-def parse_gprmc(sentence):
-    """$--RMC,time,status(A/V),lat,N/S,lon,E/W,speed,track,date,... -> dict or None."""
-    f = sentence.strip().split("*")[0].split(",")
-    if len(f) < 10 or not f[0].endswith("RMC"):
-        return None
-    return {
-        "time": f[1],
-        "fix": f[2] == "A",
-        "lat": _nmea_coord_to_decimal(f[3], f[4]),
-        "lon": _nmea_coord_to_decimal(f[5], f[6]),
-        "speed_knots": float(f[7]) if f[7] else None,
-        "date": f[9],
-    }
-
-
-def parse_gpgga(sentence):
-    """$--GGA,time,lat,N/S,lon,E/W,quality,numsats,hdop,alt,... -> dict or None."""
-    f = sentence.strip().split("*")[0].split(",")
-    if len(f) < 10 or not f[0].endswith("GGA"):
-        return None
-    return {
-        "time": f[1],
-        "lat": _nmea_coord_to_decimal(f[2], f[3]),
-        "lon": _nmea_coord_to_decimal(f[4], f[5]),
-        "fix_quality": int(f[6]) if f[6] else 0,
-        "num_sats": int(f[7]) if f[7] else 0,
-        "altitude_m": float(f[9]) if f[9] else None,
-    }
-
-
-def device_mismatch(configured, target):
-    """True if gpsd is configured for a *different* serial device than the one
-    this feature targets — the exact trap that silently breaks the L76X when a
-    previous GPS feature (e.g. features/gps on /dev/ttyUSB0) already claimed
-    gpsd. Pure/os.path-only so it's unit-testable. Symlinks are resolved so
-    /dev/serial0 and /dev/ttyS0 are treated as the same device."""
-    if not configured or not target:
-        return False
-    return os.path.realpath(configured) != os.path.realpath(target)
 
 
 # ── Platform / paths ─────────────────────────────────────────────────────────────
@@ -311,154 +248,12 @@ def detect_device(preferred):
     return "/dev/ttyS0"
 
 
-def _pyserial_importable():
-    return subprocess.run([sys.executable, "-c", "import serial"],
-                          capture_output=True).returncode == 0
-
-
-def install_pyserial():
-    if _pyserial_importable():
-        _ok("python3-serial already present.")
-        return
-    _run(sudo_apt_cmd("apt", "update", "-qq"), check=False)
-    if _run(sudo_apt_cmd("apt", "install", "-y", "python3-serial"),
-           check=False).returncode != 0 or not _pyserial_importable():
-        _warn("Could not install python3-serial (needs internet / apt cache). "
-              "NMEA verification will be skipped; the rest of the setup still applies.")
-        return
-    _ok("Installed python3-serial.")
-
-
-def read_nmea_lines(device, baud=DEFAULT_BAUD, timeout=5.0):
-    """Read raw NMEA lines off `device` for up to `timeout` seconds.
-    Returns a list of decoded lines (possibly empty). Needs pyserial;
-    returns [] (with a warning) if it isn't importable."""
-    try:
-        import serial
-    except ImportError:
-        _warn("pyserial not available — install python3-serial to verify NMEA output.")
-        return []
-    lines = []
-    try:
-        with serial.Serial(device, baudrate=baud, timeout=1) as ser:
-            deadline = time.time() + timeout
-            while time.time() < deadline:
-                raw = ser.readline()
-                if raw:
-                    try:
-                        lines.append(raw.decode("ascii", errors="replace").strip())
-                    except Exception:
-                        pass
-    except Exception as exc:
-        if getattr(exc, "errno", None) == errno.EACCES or "Permission denied" in str(exc):
-            _warn(f"Permission denied opening {device} — your user isn't in the "
-                  "'dialout' group, so this check can't read the raw port. Add it "
-                  'with:  sudo usermod -aG dialout "$USER"   then log out/in (or '
-                  "re-run with sudo). This is a check-only limitation: gpsd runs as "
-                  "its own user and is unaffected.")
-        else:
-            _warn(f"Could not open {device} at {baud} baud: {exc}")
-    return lines
-
-
-def gpsd_active():
-    return _run(["systemctl", "is-active", "--quiet", "gpsd"],
-                check=False).returncode == 0
-
-
-def verify_via_gpsd(device, timeout=8.0):
-    """Read NMEA *through* gpsd (gpspipe) rather than opening the raw serial
-    device gpsd already holds. Returns True if it reported a result (a fix, a
-    satellites-but-no-fix state, or a "gpsd running but no data" warning),
-    False only if gpspipe isn't installed so the caller can fall back."""
-    if which("gpspipe") is None:
-        return False
-    _info(f"gpsd is active — reading through gpsd (gpspipe) for up to {timeout:.0f}s ...")
-    out = ""
-    try:
-        r = _run(["gpspipe", "-w", "-n", "60"], check=False,
-                 capture_output=True, text=True, timeout=timeout)
-        out = getattr(r, "stdout", "") or ""
-    except subprocess.TimeoutExpired as exc:
-        partial = exc.stdout or ""
-        out = partial.decode("ascii", "replace") if isinstance(partial, bytes) else partial
-
-    fix = None
-    saw_sky = False
-    sats_used = 0
-    for line in out.splitlines():
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            obj = json.loads(line)
-        except ValueError:
-            continue
-        cls = obj.get("class")
-        if cls == "SKY":
-            saw_sky = True
-            sats_used = sum(1 for s in obj.get("satellites", []) if s.get("used"))
-        elif cls == "TPV" and obj.get("lat") is not None:
-            fix = obj
-
-    if fix:
-        _ok(f"gpsd has a fix — mode={fix.get('mode')}  lat={fix.get('lat')}  "
-            f"lon={fix.get('lon')}  time={fix.get('time')}")
-        return True
-    if saw_sky:
-        _info(f"gpsd sees satellites ({sats_used} in use) but no position fix yet — "
-              "give the antenna a clear sky view for a minute, then re-check.")
-        return True
-    _warn("gpsd is running but produced no TPV/SKY data — it's likely pointed at "
-          "the wrong device or getting no NMEA. Check:  gpspipe -w -n 20   and   "
-          "sudo journalctl -u gpsd -n 40")
-    return True
-
-
 def verify(device, baud=DEFAULT_BAUD, timeout=5.0):
-    if not os.path.exists(device):
-        _warn(f"{device} does not exist yet — reboot, then re-run with --check.")
-        return
-    # The trap that silently breaks this HAT: a previous GPS feature (e.g.
-    # features/gps on a USB dongle) already claimed gpsd, so gpsd polls the
-    # wrong port and cgps shows nothing. Surface it in one line.
-    target = configured_device()
-    if device_mismatch(target, device):
-        _warn(f"gpsd is configured for {target}, NOT this L76X device ({device}). "
-              "gpsd is reading the wrong port, so cgps sees no data. Re-run the "
-              f"installer with --force to retarget gpsd/chrony at {device}.")
-    # Once gpsd owns the port, ask gpsd for data (gpspipe) instead of fighting
-    # it for the raw device — trying to open it directly typically fails with
-    # a permission/busy error and produces a misleading "no data" result.
-    if gpsd_active():
-        if verify_via_gpsd(device, max(timeout, 8.0)):
-            return
-        _info("gpspipe unavailable — falling back to a raw serial read "
-              "(stop gpsd first if this reports the port busy).")
-    if not _pyserial_importable():
-        _warn("python3-serial not installed — run this script once without --check "
-              "first, or `sudo apt install python3-serial`.")
-        return
-    _info(f"Listening on {device} at {baud} baud for {timeout:.0f}s ...")
-    lines = read_nmea_lines(device, baud, timeout)
-    if not lines:
-        _warn("No data received. Check wiring (TX->RxD, RX->TxD, 5V, GND), that "
-              "the console is disabled (needs a reboot after enabling), and that "
-              "no other process (gpsd) already has the port open.")
-        return
-    nmea = [ln for ln in lines if ln.startswith("$")]
-    _ok(f"Received {len(lines)} line(s), {len(nmea)} NMEA sentence(s).")
-    rmc = next((parse_gprmc(ln) for ln in reversed(nmea) if "RMC" in ln[:6]), None)
-    gga = next((parse_gpgga(ln) for ln in reversed(nmea) if "GGA" in ln[:6]), None)
-    if gga:
-        _info(f"Fix quality={gga['fix_quality']}  satellites={gga['num_sats']}  "
-              f"altitude={gga['altitude_m']}m")
-    if rmc:
-        fix = "A (active)" if rmc["fix"] else "V (void — no fix yet)"
-        _info(f"Status={fix}  lat={rmc['lat']}  lon={rmc['lon']}  time={rmc['time']}")
-    if not gga and not rmc:
-        _warn("Got NMEA traffic but no RMC/GGA sentence parsed yet — give it a "
-              "clear sky view and try again (cold fix can take a couple of minutes).")
+    """Is the L76X talking, and does it have a fix? Shared with features/draws-gps
+    via common/nmea.py; the L76X-specific part is only the wiring hint and the
+    gpsd-already-claimed-by-another-GPS-feature check."""
+    nmea.verify(device, baud=baud, timeout=timeout, no_data_hint=NO_DATA_HINT,
+                configured_device=configured_device())
 
 
 def run(device=None, baud=DEFAULT_BAUD, pps=False, keep_console=False,

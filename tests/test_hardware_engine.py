@@ -359,10 +359,10 @@ class DrawsDeviceModelTest(unittest.TestCase):
         hardware.auto_declare_draws(self.dir, inv, True)
         self.assertEqual(inv.devices["draws-left"],
                          {"id": "draws-left", "kind": "draws", "ptt": "gpio12",
-                          "alsa": "draws", "channel": 0, "label": "DRAWS left (APRS)"})
+                          "alsa": "draws", "channel": 0, "label": "oasis-draws-aprs (left, ch0)"})
         self.assertEqual(inv.devices["draws-right"],
                          {"id": "draws-right", "kind": "draws", "ptt": "gpio23",
-                          "alsa": "draws", "channel": 1, "label": "DRAWS right (Winlink)"})
+                          "alsa": "draws", "channel": 1, "label": "oasis-draws-winlink (right, ch1)"})
 
     def test_absent_declares_nothing(self):
         inv = _inv()

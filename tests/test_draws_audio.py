@@ -250,6 +250,50 @@ class ParserTest(unittest.TestCase):
                         and args.config_only and args.mixer_only)
 
 
+
+class ProfileNamingTest(unittest.TestCase):
+    """Config/profile names must say WHICH interface and WHICH service they
+    drive. A bare "oasis-winlink.conf" was unplaceable on a box with two radio
+    interfaces, and a stale one aimed at an absent card crash-looped direwolf in
+    a way that read like a Winlink fault."""
+
+    def test_draws_conf_is_oasis_named(self):
+        self.assertEqual(draws_audio.TNC_CONF_NAME, "oasis-draws.conf")
+
+    def test_profile_names(self):
+        self.assertEqual(draws_audio.TNC_PROFILE_APRS, "oasis-draws-aprs")
+        self.assertEqual(draws_audio.TNC_PROFILE_WINLINK, "oasis-draws-winlink")
+
+    def test_conf_labels_both_profiles_next_to_their_channel(self):
+        """Each banner must sit immediately above the CHANNEL it names. Compare
+        DIRECTIVE lines only — the header block mentions both channels too."""
+        lines = draws_audio.build_tnc_conf("W4MHI", 524, 535).splitlines()
+
+        def line_of(pred):
+            return next(i for i, ln in enumerate(lines) if pred(ln))
+
+        ch0 = line_of(lambda ln: ln.strip() == "CHANNEL 0")
+        ch1 = line_of(lambda ln: ln.strip() == "CHANNEL 1")
+        aprs = line_of(lambda ln: ln.startswith("# ──")
+                       and draws_audio.TNC_PROFILE_APRS in ln)
+        winl = line_of(lambda ln: ln.startswith("# ──")
+                       and draws_audio.TNC_PROFILE_WINLINK in ln)
+        self.assertLess(aprs, ch0)
+        self.assertLess(ch0, winl)
+        self.assertLess(winl, ch1)
+
+    def test_conf_explains_why_it_is_one_file(self):
+        """Someone WILL look for oasis-draws-winlink.conf on disk."""
+        c = draws_audio.build_tnc_conf("W4MHI", 524, 535)
+        self.assertIn("device busy", c)
+        self.assertIn("PROFILES", c)
+
+    def test_unit_description_carries_both_profiles(self):
+        u = draws_audio.build_tnc_service("pi", "/home/pi", 524, 535)
+        self.assertIn(draws_audio.TNC_PROFILE_APRS, u)
+        self.assertIn(draws_audio.TNC_PROFILE_WINLINK, u)
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -292,7 +336,7 @@ class TncConfTest(unittest.TestCase):
 
     def test_forces_ax25_v20(self):
         """RMS gateways mishandle the v2.2 XID teardown and leave direwolf
-        key-locked retransmitting DISC/XID -- matches oasis-winlink.conf."""
+        key-locked retransmitting DISC/XID -- matches oasis-dra-pi-winlink.conf."""
         self.assertIn("MAXV22 0", self._conf())
 
     def test_unresolved_ptt_is_refused(self):

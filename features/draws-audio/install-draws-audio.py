@@ -104,7 +104,7 @@ def run_livetest(args):
         # follow-up _info() here would be unreachable.
         _fail("Nothing listening on %s:%d — direwolf is not running (or has no "
               "KISSPORT).\n  Start it first, e.g.:\n"
-              "    direwolf -t 0 -c ~/.config/direwolf/direwolf-draws.conf"
+              "    direwolf -t 0 -c ~/.config/direwolf/oasis-draws.conf"
               % (args.kiss_host, args.kiss_port))
         return 1
     except OSError as exc:

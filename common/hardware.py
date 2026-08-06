@@ -21,11 +21,14 @@ VALID_KINDS = {"rtl-sdr", "digirig", "dra-pi", "draws"}
 # right AT THE SAME TIME — no non-exclusive special case anywhere in the engine.
 # PTT GPIOs are swapped relative to the UDRC II; `channel` is the Direwolf
 # channel that owns the port in the shared 2-channel TNC config.
+# Labels carry the TNC profile names (features/draws-audio/draws_audio.py) so a
+# port reads the same in the assignment console, in oasis-draws.conf, and in the
+# unit description.
 DRAWS_PORTS = (
     {"id": "draws-left",  "kind": "draws", "ptt": "gpio12", "alsa": "draws",
-     "channel": 0, "label": "DRAWS left (APRS)"},
+     "channel": 0, "label": "oasis-draws-aprs (left, ch0)"},
     {"id": "draws-right", "kind": "draws", "ptt": "gpio23", "alsa": "draws",
-     "channel": 1, "label": "DRAWS right (Winlink)"},
+     "channel": 1, "label": "oasis-draws-winlink (right, ch1)"},
 )
 
 # Logical service -> the systemd unit(s) it starts. One unit per service in
