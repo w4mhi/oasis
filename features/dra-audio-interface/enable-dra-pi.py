@@ -34,7 +34,6 @@ Requires: Linux (Raspberry Pi), sudo.
 import argparse
 import difflib
 import os
-import re
 import subprocess
 import sys
 
@@ -78,7 +77,6 @@ def _config_subs():
             [VC4_NOAUDIO, VC4_BASE]]
 BLOCK_LINES = [
     "dtparam=i2c_arm=on",                    # WM8731 control interface (I2C)
-    "dtparam=audio=off",                     # free the I2S bus from PWM/HDMI audio
     "dtoverlay=i2s-mmap",                    # mmap DMA on I2S (harmless if unused)
     "dtoverlay=audioinjector-wm8731-audio",  # THE card: loads + clocks the codec
 ]
@@ -147,27 +145,15 @@ def transform_config(text):
     """Return (new_text, changes). Neutralises conflicting Pi defaults and upserts
     the OASIS-managed overlay block. Idempotent."""
     changes = []
-    out = []
-    vc4_base = VC4_BASE
-    for ln in text.splitlines():
-        s = ln.strip()
-        indent = ln[: len(ln) - len(ln.lstrip())]
-
-        # 1) Disable the default on-board audio so it can't grab the I2S bus.
-        if re.match(r"^dtparam=audio=on\b", s):
-            out.append(f"{indent}{AUDIO_OFF_COMMENT}")
-            changes.append("commented 'dtparam=audio=on'")
-            continue
-
-        # 2) Ensure the KMS graphics overlay has ',noaudio' (frees I2S / drops vc4hdmi).
-        if (s == vc4_base or s.startswith(vc4_base + ",")) and "noaudio" not in s:
-            out.append(f"{indent}{s},noaudio")
-            changes.append("added ',noaudio' to vc4-kms-v3d")
-            continue
-
-        out.append(ln)
-
-    body = "\n".join(out)
+    # Stock lines are left ALONE. Earlier versions commented out
+    # `dtparam=audio=on` and appended `,noaudio` to the KMS overlay, on the
+    # premise that they had to be silenced to "free the I2S bus". That premise
+    # is wrong: on-board audio is PWM/headphone and HDMI audio goes out HDMI —
+    # neither contends for I2S. Bench 2026-08-06: a DRAWS I2S codec, the
+    # on-board card and both HDMI cards coexist with `dtparam=audio=on`. The
+    # edits also could not be undone by a block strip, so uninstalling the
+    # feature left the Pi with no sound cards at all.
+    body = text
 
     # 3) Upsert the managed block (replace any existing one).
     if BLOCK_BEGIN in body:
