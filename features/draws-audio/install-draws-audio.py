@@ -10,7 +10,7 @@ with `alsactl store`, exiting 0. On a box that already ran draws-gps the overlay
 present and the card is live, so a single run goes straight to the mixer.
 
 PTT is a GPIO the TNC (Direwolf/GrayWolf) keys, not set here — the installer prints
-the port→service→GPIO map (left=APRS=GPIO12, right=Winlink=GPIO23).
+the port→service→GPIO map (left=Winlink=GPIO12, right=APRS=GPIO23).
 
 Usage:
   python3 features/draws-audio/install-draws-audio.py               # autodetect phase
@@ -21,7 +21,7 @@ Usage:
   python3 features/draws-audio/install-draws-audio.py --livetest W4MHI-6
                                                     # TRANSMIT one test packet
   python3 features/draws-audio/install-draws-audio.py --livetest W4MHI-6 --channel 1
-                                                    # ... out the right/Winlink port
+                                                    # ... out the right/APRS port
 
 --livetest proves the whole TX chain (PTT + codec + mixer + cable + radio) by
 putting one APRS status packet reading "OASIS DRAWS TEST" on the air through a
@@ -65,8 +65,8 @@ def build_parser():
                    help="TRANSMIT one APRS test packet as CALLSIGN (e.g. W4MHI-6) "
                         "through a running direwolf, then exit")
     p.add_argument("--channel", type=int, default=0, choices=(0, 1),
-                   help="radio port for --livetest: 0 = left/APRS (default), "
-                        "1 = right/Winlink")
+                   help="radio port for --livetest: 0 = left/Winlink (default), "
+                        "1 = right/APRS")
     p.add_argument("--kiss-host", default=draws_audio.KISS_HOST,
                    help="direwolf KISS host (default: 127.0.0.1)")
     p.add_argument("--kiss-port", type=int, default=draws_audio.KISS_PORT,
@@ -86,8 +86,10 @@ def run_livetest(args):
         return 1
     display = call if ssid == 0 else "%s-%d" % (call, ssid)
 
-    port = next((p for p in draws_audio.PORTS
-                 if p["port"] == ("left" if args.channel == 0 else "right")), None)
+    try:
+        port = draws_audio.port_for_channel(args.channel)
+    except ValueError:
+        port = None
     _info("callsign : %s" % display)
     _info("comment  : %s" % draws_audio.LIVETEST_COMMENT)
     if port:
@@ -224,8 +226,8 @@ def install_tnc(callsign_override=None):
         return False
     _ok("%s enabled and started (AGW :%d, KISS :%d)."
         % (draws_audio.TNC_UNIT_NAME, draws_audio.TNC_AGW_PORT, draws_audio.TNC_KISS_PORT))
-    _info("Channel 0 = left/APRS · channel 1 = right/Winlink "
-          "(pat uses agwpe.radio_port 1).")
+    _info("Channel 0 = left/Winlink · channel 1 = right/APRS "
+          "(pat uses agwpe.radio_port 0 — the only port it can use).")
     return True
 
 

@@ -154,15 +154,23 @@ class LiveTestFrameTest(unittest.TestCase):
 
 
 class PortsTest(unittest.TestCase):
-    def test_left_is_aprs_on_gpio12(self):
-        left = next(p for p in draws_audio.PORTS if p["port"] == "left")
+    def test_left_is_winlink_on_gpio12_channel0(self):
+        """Winlink MUST be channel 0: pat 1.0.0 / wl2k-go v1.0.1 panic on any
+        AGW port but 0, and direwolf's channel-to-audio mapping is fixed by the
+        codec, so channel 0 is the left connector."""
+        left = draws_audio.port_for_channel(0)
+        self.assertEqual(left["port"], "left")
         self.assertEqual(left["gpio"], 12)
-        self.assertEqual(left["service"], "APRS")
+        self.assertEqual(left["service"], "Winlink")
 
-    def test_right_is_winlink_on_gpio23(self):
-        right = next(p for p in draws_audio.PORTS if p["port"] == "right")
+    def test_right_is_aprs_on_gpio23_channel1(self):
+        right = draws_audio.port_for_channel(1)
+        self.assertEqual(right["port"], "right")
         self.assertEqual(right["gpio"], 23)
-        self.assertEqual(right["service"], "Winlink")
+        self.assertEqual(right["service"], "APRS")
+
+    def test_unknown_channel_raises(self):
+        self.assertRaises(ValueError, draws_audio.port_for_channel, 2)
 
 
 class AcpIgnoreRuleTest(unittest.TestCase):
@@ -278,9 +286,9 @@ class ProfileNamingTest(unittest.TestCase):
                        and draws_audio.TNC_PROFILE_APRS in ln)
         winl = line_of(lambda ln: ln.startswith("# ──")
                        and draws_audio.TNC_PROFILE_WINLINK in ln)
-        self.assertLess(aprs, ch0)
-        self.assertLess(ch0, winl)
-        self.assertLess(winl, ch1)
+        self.assertLess(winl, ch0)      # winlink banner heads CHANNEL 0
+        self.assertLess(ch0, aprs)
+        self.assertLess(aprs, ch1)      # aprs banner heads CHANNEL 1
 
     def test_conf_explains_why_it_is_one_file(self):
         """Someone WILL look for oasis-draws-winlink.conf on disk."""
@@ -319,6 +327,12 @@ class TncConfTest(unittest.TestCase):
         c = self._conf(ptt_left=524, ptt_right=535)
         self.assertIn("PTT GPIO 524", c)
         self.assertIn("PTT GPIO 535", c)
+
+    def test_winlink_channel_owns_the_left_ptt_line(self):
+        """Guards the swap: channel 0 (Winlink) must key BCM 12 -> 524."""
+        lines = self._conf(ptt_left=524, ptt_right=535).splitlines()
+        i = next(n for n, ln in enumerate(lines) if ln.strip() == "CHANNEL 0")
+        self.assertIn("PTT GPIO 524", "\n".join(lines[i:i + 5]))
 
     def test_channel_zero_precedes_channel_one(self):
         """Channel order defines the port mapping: 0=left/APRS, 1=right/Winlink."""

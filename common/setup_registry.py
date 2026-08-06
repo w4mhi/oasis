@@ -521,7 +521,7 @@ def build_registry(repo_root, payload=None):
             privileged=True,
         ),
         # DRAWS radio audio: TLV320AIC3204 mixer routing for BOTH mDin6 ports
-        # (left/APRS, right/Winlink) plus the udev rule that keeps PipeWire off
+        # (left/Winlink, right/APRS) plus the udev rule that keeps PipeWire off
         # the codec. Mutually exclusive with 'dra-pi-rx-led' in the UI — two
         # radio-interface HATs cannot both own the 40-pin audio/PTT lines.
         "draws-audio": SE.FeatureSpec(

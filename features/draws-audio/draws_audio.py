@@ -15,8 +15,8 @@ Per-radio deviation tuning is an on-air adjustment left to the operator, exactly
 as with the DRA-Pi WM8731.
 
 PTT is a GPIO the TNC (Direwolf/GrayWolf) keys, not something this installer sets
-— see PORTS for the reminder. DRAWS swaps the left/right PTT GPIOs relative to the
-UDRC II."""
+— see PORTS for the reminder and for the port↔channel↔service mapping. DRAWS
+swaps the left/right PTT GPIOs relative to the UDRC II."""
 
 CARD = "draws"          # ALSA card name once dtoverlay=draws loads
 CARD_MATCH = "draws"    # substring used to detect it in /proc/asound/cards
@@ -58,12 +58,32 @@ MIXER = [
     ("IN2_R to Right Mixer Positive Resistor", "10 kOhm"),
 ]
 
-# DRAWS PTT is GPIO the TNC keys (DRAWS swaps left/right vs UDRC II). Assigned to
-# OASIS services: left connector = APRS, right connector = Winlink.
+# DRAWS PTT is GPIO the TNC keys (DRAWS swaps left/right vs UDRC II).
+#
+# WINLINK IS ON THE LEFT PORT (direwolf channel 0) and that is FORCED: pat 1.0.0
+# / wl2k-go v1.0.1 panic ("incorrect port in frame") on any AGW port but 0, and
+# direwolf's channel↔audio mapping is fixed by the codec, so channel 0 is the
+# left connector. Bench 2026-08-06: radio_port 0 connects, 1 panics, 2 is out of
+# range. APRS takes the right port — GrayWolf does not use that library.
+#
+# This list is the single source of truth for the port↔channel↔service mapping:
+# the TNC config, the installer's reminder, and the assignment-console labels in
+# common/hardware.DRAWS_PORTS all follow it.
 PORTS = [
-    {"port": "left",  "gpio": 12, "service": "APRS"},
-    {"port": "right", "gpio": 23, "service": "Winlink"},
+    {"port": "left",  "gpio": 12, "channel": 0, "service": "Winlink",
+     "profile": "oasis-draws-winlink"},
+    {"port": "right", "gpio": 23, "channel": 1, "service": "APRS",
+     "profile": "oasis-draws-aprs"},
 ]
+
+
+def port_for_channel(channel):
+    """The PORTS entry owning a direwolf channel. Raises on an unknown channel
+    rather than defaulting — a wrong port silently keys the wrong radio."""
+    for p in PORTS:
+        if p["channel"] == channel:
+            return p
+    raise ValueError("no DRAWS port for channel %r" % (channel,))
 
 
 # --- live transmit test -----------------------------------------------------
@@ -117,7 +137,8 @@ def build_ax25_ui_frame(call, ssid, comment=LIVETEST_COMMENT, dest=LIVETEST_DEST
 
 def kiss_wrap(frame, channel=0):
     """KISS-encapsulate `frame` for TNC port `channel` (data command 0). The
-    channel picks the radio port: 0 = left/APRS, 1 = right/Winlink."""
+    channel picks the radio port: 0 = left/Winlink, 1 = right/APRS (see PORTS —
+    Winlink must be channel 0, the only AGW port pat can use)."""
     body = bytearray()
     for b in frame:
         if b == _FEND:
@@ -153,7 +174,7 @@ def build_mixer_commands(card=CARD):
 # --- shared 2-channel TNC ---------------------------------------------------
 # DRAWS is ONE stereo PCM device, so two direwolf processes cannot both open it
 # (the second dies with "device busy"). Both radio ports therefore live in a
-# single always-on instance: channel 0 = left/APRS, channel 1 = right/Winlink,
+# single always-on instance: channel 0 = left/Winlink, channel 1 = right/APRS,
 # sharing AGW :8000 / KISS :8001. Apps pick a port by channel number — pat via
 # agwpe.radio_port, GrayWolf by attaching to AGW channel 0 instead of spawning
 # its own direwolf. See specs/2026-07-28-draws-gobox-p2-tnc-wiring-design.md.
@@ -163,8 +184,8 @@ TNC_CONF_NAME = "oasis-draws.conf"
 # direwolf on the same PCM dies with "device busy". These names appear as the
 # channel banners in the conf, as the device labels in the assignment console,
 # and in the unit description — so a given port is identifiable everywhere.
-TNC_PROFILE_APRS    = "oasis-draws-aprs"      # CHANNEL 0, left mDin6
-TNC_PROFILE_WINLINK = "oasis-draws-winlink"   # CHANNEL 1, right mDin6
+TNC_PROFILE_WINLINK = "oasis-draws-winlink"   # CHANNEL 0, left mDin6  (see PORTS)
+TNC_PROFILE_APRS    = "oasis-draws-aprs"      # CHANNEL 1, right mDin6
 TNC_UNIT_NAME = "direwolf-draws.service"
 TNC_UNIT_PATH = "/etc/systemd/system/" + TNC_UNIT_NAME
 TNC_AGW_PORT  = 8000
@@ -183,6 +204,17 @@ def build_tnc_conf(callsign, ptt_left, ptt_right):
             "unresolved PTT gpio (left=%r right=%r) — could not find the 40-pin "
             "gpiochip bank; pass the sysfs numbers explicitly" % (ptt_left, ptt_right))
     call = (callsign or "N0CALL").strip().upper()
+    ptt_for = {0: ptt_left, 1: ptt_right}
+    chans = "".join(
+        "\n# ── {profile} ── {port} mDin6 ── {service} "
+        "──────────\n"
+        "CHANNEL {channel}\nMYCALL {call}\nMODEM 1200\nPTT GPIO {ptt}\n".format(
+            call=call, ptt=ptt_for[p["channel"]], **p)
+        for p in sorted(PORTS, key=lambda p: p["channel"]))
+    rows = "\n".join(
+        "#   {profile:<20} CHANNEL {channel}  {port:<5} mDin6  PTT BCM {gpio:<2} "
+        "(sysfs {ptt})".format(ptt=ptt_for[p["channel"]], **p)
+        for p in sorted(PORTS, key=lambda p: p["channel"]))
     return """\
 # OASIS DRAWS go-box TNC — BOTH radio ports in ONE direwolf instance.
 # Generated by features/draws-audio/install-draws-audio.py — edits are lost on
@@ -192,29 +224,21 @@ def build_tnc_conf(callsign, ptt_left, ptt_right):
 # PCM ({adevice}); a second direwolf on it dies with "device busy". So each
 # radio port is a CHANNEL of this one instance:
 #
-#   {p_aprs:<20} CHANNEL 0  LEFT  mDin6  PTT BCM 12 (sysfs {ptt_left})
-#   {p_winlink:<20} CHANNEL 1  RIGHT mDin6  PTT BCM 23 (sysfs {ptt_right})
+{rows}
 #
 # Apps attach over the shared AGW/KISS ports and pick a profile by channel:
-#   APRS / GrayWolf -> AGW 127.0.0.1:{agw}  radio_port 0
-#   Winlink / pat   -> AGW 127.0.0.1:{agw}  radio_port 1
+#   Winlink / pat   -> AGW 127.0.0.1:{agw}  radio_port 0
+#   APRS / GrayWolf -> AGW 127.0.0.1:{agw}  radio_port 1
+#
+# WINLINK IS ON CHANNEL 0 BY NECESSITY, not preference: pat 1.0.0 / wl2k-go
+# v1.0.1 panic ("incorrect port in frame") on any AGW port but 0, and direwolf's
+# channel-to-audio mapping is fixed by the codec, so channel 0 is the LEFT
+# connector. Put the Winlink radio on the LEFT mDin6.
 
 ADEVICE   {adevice}
 ARATE     48000
 ACHANNELS 2
-
-# ── {p_aprs} ── left mDin6 ── APRS ──────────────────────
-CHANNEL 0
-MYCALL {call}
-MODEM 1200
-PTT GPIO {ptt_left}
-
-# ── {p_winlink} ── right mDin6 ── Winlink ───────────
-CHANNEL 1
-MYCALL {call}
-MODEM 1200
-PTT GPIO {ptt_right}
-
+{chans}
 AGWPORT {agw}
 KISSPORT {kiss}
 
@@ -222,9 +246,8 @@ KISSPORT {kiss}
 # key-locked retransmitting DISC/XID for ~30s after a QSO. Force v2.0 (matches
 # oasis-dra-pi-winlink.conf). Per-station opt-out: 'V20 <call>'.
 MAXV22 0
-""".format(adevice=TNC_ADEVICE, call=call, ptt_left=ptt_left,
-           ptt_right=ptt_right, agw=TNC_AGW_PORT, kiss=TNC_KISS_PORT,
-           p_aprs=TNC_PROFILE_APRS, p_winlink=TNC_PROFILE_WINLINK)
+""".format(adevice=TNC_ADEVICE, agw=TNC_AGW_PORT, kiss=TNC_KISS_PORT,
+           rows=rows, chans=chans)
 
 
 def build_tnc_service(user, home, ptt_left, ptt_right):

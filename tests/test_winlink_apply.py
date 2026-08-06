@@ -160,5 +160,27 @@ class ConfNamingTest(unittest.TestCase):
             self.assertNotEqual(name, "oasis-winlink.conf")
 
 
+
+class PatCannotUseNonZeroAgwPortTest(unittest.TestCase):
+    """pat 1.0.0 / wl2k-go v1.0.1 PANIC ("incorrect port in frame") on any AGW
+    port but 0 -- reproduced 3/3 on the bench, while port 0 connects cleanly.
+    Winlink therefore has to live on direwolf channel 0, which the codec fixes
+    to the LEFT connector. If someone ever moves Winlink to the right port,
+    these fail loudly instead of shipping a panic."""
+
+    def test_winlink_on_the_left_port_yields_radio_port_zero(self):
+        from common import hardware as HW
+        left = next(p for p in HW.DRAWS_PORTS if p["id"] == "draws-left")
+        self.assertEqual(left["channel"], 0)
+        self.assertEqual(winlink.pat_radio_port(left), 0)
+
+    def test_the_winlink_labelled_port_is_channel_zero(self):
+        from common import hardware as HW
+        winl = [p for p in HW.DRAWS_PORTS if "winlink" in p["label"]]
+        self.assertEqual(len(winl), 1)
+        self.assertEqual(winl[0]["channel"], 0,
+                         "pat can only use AGW port 0")
+
+
 if __name__ == "__main__":
     unittest.main()

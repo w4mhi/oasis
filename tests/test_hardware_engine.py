@@ -359,10 +359,10 @@ class DrawsDeviceModelTest(unittest.TestCase):
         hardware.auto_declare_draws(self.dir, inv, True)
         self.assertEqual(inv.devices["draws-left"],
                          {"id": "draws-left", "kind": "draws", "ptt": "gpio12",
-                          "alsa": "draws", "channel": 0, "label": "oasis-draws-aprs (left, ch0)"})
+                          "alsa": "draws", "channel": 0, "label": "oasis-draws-winlink (left, ch0)"})
         self.assertEqual(inv.devices["draws-right"],
                          {"id": "draws-right", "kind": "draws", "ptt": "gpio23",
-                          "alsa": "draws", "channel": 1, "label": "oasis-draws-winlink (right, ch1)"})
+                          "alsa": "draws", "channel": 1, "label": "oasis-draws-aprs (right, ch1)"})
 
     def test_absent_declares_nothing(self):
         inv = _inv()
@@ -518,9 +518,9 @@ class DrawsLabelRefreshTest(unittest.TestCase):
             assignments={"winlink": "draws-right"})
         hardware.auto_declare_draws(self.dir, inv, True)
         self.assertEqual(inv.devices["draws-left"]["label"],
-                         "oasis-draws-aprs (left, ch0)")
+                         "oasis-draws-winlink (left, ch0)")
         self.assertEqual(inv.devices["draws-right"]["label"],
-                         "oasis-draws-winlink (right, ch1)")
+                         "oasis-draws-aprs (right, ch1)")
 
     def test_refresh_preserves_assignments(self):
         inv = _inv(devices={"draws-right": {"id": "draws-right", "kind": "draws",

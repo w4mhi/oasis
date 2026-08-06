@@ -24,11 +24,18 @@ VALID_KINDS = {"rtl-sdr", "digirig", "dra-pi", "draws"}
 # Labels carry the TNC profile names (features/draws-audio/draws_audio.py) so a
 # port reads the same in the assignment console, in oasis-draws.conf, and in the
 # unit description.
+#
+# WINLINK IS ON THE LEFT PORT (channel 0), and that is forced, not a preference:
+# pat 1.0.0 / wl2k-go v1.0.1 PANIC ("incorrect port in frame") on any AGW port
+# other than 0, so Winlink can only ride channel 0 — and direwolf's channel↔audio
+# mapping is fixed by the codec, so channel 0 IS the left connector. Bench
+# 2026-08-06: radio_port 0 connects, 1 panics (3/3), 2 is out of range. APRS
+# takes the right port; GrayWolf is not affected by that library.
 DRAWS_PORTS = (
     {"id": "draws-left",  "kind": "draws", "ptt": "gpio12", "alsa": "draws",
-     "channel": 0, "label": "oasis-draws-aprs (left, ch0)"},
+     "channel": 0, "label": "oasis-draws-winlink (left, ch0)"},
     {"id": "draws-right", "kind": "draws", "ptt": "gpio23", "alsa": "draws",
-     "channel": 1, "label": "oasis-draws-winlink (right, ch1)"},
+     "channel": 1, "label": "oasis-draws-aprs (right, ch1)"},
 )
 
 # Logical service -> the systemd unit(s) it starts. One unit per service in
