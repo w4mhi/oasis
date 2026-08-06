@@ -658,8 +658,8 @@ const HW_ASSIGN_SERVICES = [
   { service: 'adsb',       label: 'ADS-B',       kinds: ['rtl-sdr'] },
   { service: 'openwebrx',  label: 'OpenWebRX',   kinds: ['rtl-sdr'] },
   { service: 'aprs',       label: 'APRS Feed',   kinds: ['rtl-sdr'] },
-  { service: 'satellites', label: 'Satellites',  kinds: ['rtl-sdr'] },
-  { service: 'winlink',    label: 'Winlink RF',  kinds: ['digirig', 'dra-pi'] },
+  { service: 'satellites', label: 'Satellites',  kinds: ['rtl-sdr', 'draws'] },
+  { service: 'winlink',    label: 'Winlink RF',  kinds: ['digirig', 'dra-pi', 'draws'] },
 ];
 
 // setupDetectHardware is the card's single refresh entry point (wired to the
@@ -741,7 +741,12 @@ function hwRenderAssignRows(devices) {
   // dropdown locks then, so a live unit never has its device pulled (v2 §5).
   const running = new Set(declared.filter(d => d.running).map(d => d.assignee));
   box.innerHTML = HW_ASSIGN_SERVICES.map(svc => {
-    const compatible = declared.filter(d => svc.kinds.includes(d.kind));
+    // Prefer the server's per-DEVICE `eligible` list: kind alone cannot say
+    // that the DRAWS channel-1 port is off-limits to Winlink (pat can only use
+    // AGW port 0). Fall back to the kind list when the field is absent.
+    const compatible = declared.filter(d => Array.isArray(d.eligible)
+      ? d.eligible.includes(svc.service) && svc.kinds.includes(d.kind)
+      : svc.kinds.includes(d.kind));
     const current = (services[svc.service] || {}).device_id || '';
     const isRunning = running.has(svc.service);
     // Winlink RF with no radio isn't "unassigned" — it falls back to telnet.
