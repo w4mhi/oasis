@@ -49,6 +49,21 @@ def build_parser():
     return p
 
 
+def rx_level_hint():
+    """RX input level is radio-dependent, so the installer ships NW Digital
+    Radio's known-good baseline and leaves the trim to the operator — the same
+    convention TX deviation already follows. Print how to do it, because the
+    baseline clips on a radio with a hot audio output and the failure is not
+    obvious: it still decodes, just with degraded margin."""
+    _info("RX level is per-radio — the baseline above may need trimming:")
+    _info("  • watch `audio level` on received packets in direwolf; aim near 50")
+    _info("  • falling level as you raise gain means you are clipping — back off")
+    _info("  • trim:  amixer -c %s sset -- \"ADC Level\" -12.0dB,-12.0dB"
+          % draws_audio.CARD)
+    _info("  • keep it: sudo alsactl store")
+    _info("  (the -- is required; amixer reads a leading - as a switch)")
+
+
 def ptt_reminder():
     _info("PTT is Direwolf/GrayWolf-side (a GPIO the TNC keys), not set here:")
     for port in draws_audio.PORTS:
@@ -85,6 +100,8 @@ def apply_mixer():
               "`amixer -c %s scontrols`." % (failures, draws_audio.CARD))
     else:
         _ok("DRAWS audio mixer applied.")
+    print()
+    rx_level_hint()
     print()
     ptt_reminder()
     # A control that did not apply means the radio audio path is misconfigured —
