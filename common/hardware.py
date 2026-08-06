@@ -70,16 +70,31 @@ DEVICE_KIND_FOR_SERVICE = {
 # no-op gate. Same reasoning as GrayWolf above.
 APRS_FEED_UNIT = "aprs-sdr-feed"
 
+# On a DRAWS box ONE always-on 2-channel direwolf owns the stereo card and
+# serves both radio ports over AGW/KISS. pat-direwolf must never run there: it
+# would try to open the same PCM, and templated for a DRA-Pi card the box does
+# not have it simply crash-loops ("Cannot get card index for audioinjectorpi").
+DRAWS_TNC_UNIT = "direwolf-draws"
+
+
+def _assigned_kind(inv, service):
+    dev_id = inv.assignments.get(service)
+    dev = inv.devices.get(dev_id) if dev_id else None
+    return (dev or {}).get("kind")
+
 
 def service_units(inv, service):
     """The systemd unit(s) implementing `service` given the current inventory.
-    Only `aprs` is mode-dependent: an rtl-sdr assignment prepends the RX feed."""
+
+    Two services are mode-dependent: `aprs` prepends the RX feed on an rtl-sdr
+    assignment, and `winlink` SWAPS pat-direwolf for the shared DRAWS TNC when
+    its assigned port lives on the DRAWS HAT."""
     base = list(SERVICE_UNITS.get(service, []))
     if service == "aprs":
-        dev_id = inv.assignments.get("aprs")
-        dev = inv.devices.get(dev_id) if dev_id else None
-        if dev and dev.get("kind") == "rtl-sdr":
+        if _assigned_kind(inv, "aprs") == "rtl-sdr":
             return [APRS_FEED_UNIT] + base
+    if service == "winlink" and _assigned_kind(inv, "winlink") == "draws":
+        return [DRAWS_TNC_UNIT]
     return base
 
 

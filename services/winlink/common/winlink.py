@@ -940,12 +940,20 @@ def apply(repo_root, device):
     adevice, ptt = radio_port_config(device)
     callsign = station_callsign(repo_root) or ""
     if kind == "draws":
-        # DRAWS deliberately does NOT template pat-direwolf here. Both ports are
-        # channels of one shared TNC that also serves APRS, so writing a
-        # single-channel config would fight the other service for the card. The
-        # shared direwolf-draws service owns it; all that is bound here is pat's
-        # AGW channel. See specs/2026-07-28-draws-gobox-p2-tnc-wiring-design.md.
+        # DRAWS deliberately does NOT template pat-direwolf. Both ports are
+        # channels of one shared TNC that also serves APRS, so a single-channel
+        # config would fight it for the card. See
+        # specs/2026-07-28-draws-gobox-p2-tnc-wiring-design.md.
+        #
+        # Skipping the template is not enough on its own, though: an already
+        # running pat-direwolf keeps its OLD config (a DRA-Pi card this box may
+        # not even have) and crash-loops against the shared TNC. Stop and
+        # disable it, then restart pat so it re-reads the AGW channel — pat
+        # loads config.json once at startup, so writing the file under a running
+        # pat silently changes nothing.
         set_pat_radio_port(repo_root, pat_radio_port(device))
+        _run(["sudo", "systemctl", "disable", "--now", MODEM_SERVICE], check=False)
+        _run(["sudo", "systemctl", "restart", SERVICE], check=False)
         return
     if kind == "dra-pi":
         write_direwolf_config(callsign, adevice, ptt)

@@ -101,5 +101,53 @@ class PatRadioPortTest(unittest.TestCase):
             {"kind": "draws", "channel": 0}), 0)
 
 
+
+class DrawsApplySideEffectsTest(unittest.TestCase):
+    """Bench 2026-08-06: assigning winlink to a DRAWS port left pat-direwolf
+    RUNNING with its old DRA-Pi config, so two direwolf instances fought over
+    the card and the pat one crash-looped ("Cannot get card index for
+    audioinjectorpi"). And pat reads config.json only at startup, so writing
+    radio_port under a running pat changed nothing -- every frame still went
+    out channel 0."""
+
+    def setUp(self):
+        self.calls = []
+        self._real_run = winlink._run
+        winlink._run = lambda cmd, **kw: self.calls.append(list(cmd))
+        self._real_set = winlink.set_pat_radio_port
+        winlink.set_pat_radio_port = lambda root, port: self.calls.append(
+            ["set_pat_radio_port", str(port)])
+        self._real_platform = sys.platform
+
+    def tearDown(self):
+        winlink._run = self._real_run
+        winlink.set_pat_radio_port = self._real_set
+
+    def _apply_as_linux(self, device):
+        real = winlink.sys.platform
+        try:
+            winlink.sys.platform = "linux"
+            winlink.apply("/tmp/x", device)
+        finally:
+            winlink.sys.platform = real
+
+    def test_binds_channel_stops_modem_and_restarts_pat(self):
+        self._apply_as_linux({"id": "draws-right", "kind": "draws",
+                              "ptt": "gpio23", "channel": 1})
+        flat = [" ".join(c) for c in self.calls]
+        self.assertIn("set_pat_radio_port 1", flat)
+        self.assertTrue(any(winlink.MODEM_SERVICE in c and "disable" in c for c in flat),
+                        "pat-direwolf must be stopped+disabled on a DRAWS box: %s" % flat)
+        self.assertTrue(any("restart" in c and c.endswith(winlink.SERVICE) for c in flat),
+                        "pat must be restarted to re-read radio_port: %s" % flat)
+
+    def test_does_not_template_pat_direwolf(self):
+        """Writing a single-channel config would fight the shared TNC."""
+        self._apply_as_linux({"id": "draws-right", "kind": "draws",
+                              "ptt": "gpio23", "channel": 1})
+        flat = " ".join(" ".join(c) for c in self.calls)
+        self.assertNotIn("direwolf.conf", flat)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -419,3 +419,30 @@ class DrawsDeviceModelTest(unittest.TestCase):
 
     def test_draws_is_a_valid_kind(self):
         self.assertIn("draws", hardware.VALID_KINDS)
+
+
+class DrawsServiceUnitsTest(unittest.TestCase):
+    """On a DRAWS box the shared 2-channel direwolf-draws IS the radio stack for
+    winlink -- pat-direwolf must never run, because it would open the same card
+    (and, templated for a DRA-Pi it cannot see, just crash-loops). service_units
+    is already mode-dependent for aprs; winlink now works the same way."""
+
+    def test_winlink_on_draws_uses_the_shared_tnc(self):
+        inv = _inv(devices={"draws-right": _dev("draws-right", "draws", channel=1)},
+                   assignments={"winlink": "draws-right"})
+        self.assertEqual(hardware.service_units(inv, "winlink"),
+                         [hardware.DRAWS_TNC_UNIT])
+
+    def test_winlink_on_dra_pi_still_uses_pat_direwolf(self):
+        inv = _inv(devices={"dra-pi": _dev("dra-pi", "dra-pi")},
+                   assignments={"winlink": "dra-pi"})
+        self.assertEqual(hardware.service_units(inv, "winlink"), ["pat-direwolf"])
+
+    def test_winlink_unassigned_still_uses_pat_direwolf(self):
+        self.assertEqual(hardware.service_units(_inv(), "winlink"), ["pat-direwolf"])
+
+    def test_aprs_on_draws_is_soundcard_only(self):
+        """A draws port is a radio port, not an SDR, so no rtl feed unit."""
+        inv = _inv(devices={"draws-left": _dev("draws-left", "draws", channel=0)},
+                   assignments={"aprs": "draws-left"})
+        self.assertNotIn(hardware.APRS_FEED_UNIT, hardware.service_units(inv, "aprs"))
