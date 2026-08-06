@@ -102,3 +102,38 @@ class EnsureOverlayTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SysfsGpioTest(unittest.TestCase):
+    """Direwolf's `PTT GPIO n` is a sysfs GLOBAL number = gpiochip base + BCM.
+    Modern kernels base the 40-pin bank at a non-zero offset (512 on the bench
+    Pi 4), so 12 and 23 must become 524 and 535."""
+
+    def _chip(self, d, name, base, ngpio, label):
+        p = os.path.join(d, name)
+        os.makedirs(p)
+        for f, v in (("base", base), ("ngpio", ngpio), ("label", label)):
+            with open(os.path.join(p, f), "w") as fh:
+                fh.write(str(v) + "\n")
+
+    def test_finds_the_40pin_bank_and_adds_the_bcm(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._chip(d, "gpiochip512", 512, 58, "pinctrl-bcm2711")
+            self._chip(d, "gpiochip570", 570, 8, "raspberrypi-exp-gpio")
+            self.assertEqual(draws.sysfs_gpio(12, d), 524)
+            self.assertEqual(draws.sysfs_gpio(23, d), 535)
+
+    def test_ignores_small_expander_chips(self):
+        """An 8-line expander must never be mistaken for the header bank."""
+        with tempfile.TemporaryDirectory() as d:
+            self._chip(d, "gpiochip570", 570, 8, "raspberrypi-exp-gpio")
+            self.assertIsNone(draws.sysfs_gpio(12, d))
+
+    def test_none_when_no_chips(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(draws.sysfs_gpio(12, d))
+
+    def test_base_zero_is_honoured(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._chip(d, "gpiochip0", 0, 54, "pinctrl-bcm2835")
+            self.assertEqual(draws.sysfs_gpio(23, d), 23)

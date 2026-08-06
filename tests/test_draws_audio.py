@@ -198,6 +198,13 @@ class RemovalRecordTest(unittest.TestCase):
         self.assertTrue(any("ALSA" in n for n in rec["notes"]))
         self.assertTrue(any("shared" in n for n in rec["notes"]))
 
+    def test_stops_and_removes_the_shared_tnc_service(self):
+        """The TNC service is ours and owns the sound card — uninstall must stop
+        and remove it, or a dead feature keeps holding the codec at boot."""
+        rec = draws_audio.removal_record()
+        self.assertIn(draws_audio.TNC_UNIT_NAME, rec["services"])
+        self.assertIn(draws_audio.TNC_UNIT_PATH, rec["files"])
+
     def test_removes_the_acp_ignore_udev_rule(self):
         """The rule is ours alone (unlike the shared overlay line), so uninstall
         must take it with us — otherwise the card stays hidden from the desktop
@@ -245,3 +252,81 @@ class ParserTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TncConfTest(unittest.TestCase):
+    """One 2-channel Direwolf owns the stereo card: two processes cannot open
+    the same PCM, so both mDin6 ports must live in ONE config."""
+
+    def _conf(self, **kw):
+        kw.setdefault("callsign", "W4MHI")
+        kw.setdefault("ptt_left", 524)
+        kw.setdefault("ptt_right", 535)
+        return draws_audio.build_tnc_conf(**kw)
+
+    def test_single_stereo_device_with_two_channels(self):
+        c = self._conf()
+        self.assertIn("ADEVICE   %s" % draws_audio.TNC_ADEVICE, c)
+        self.assertIn("ACHANNELS 2", c)
+        self.assertIn("CHANNEL 0", c)
+        self.assertIn("CHANNEL 1", c)
+
+    def test_ptt_lines_are_sysfs_globals_per_channel(self):
+        c = self._conf(ptt_left=524, ptt_right=535)
+        self.assertIn("PTT GPIO 524", c)
+        self.assertIn("PTT GPIO 535", c)
+
+    def test_channel_zero_precedes_channel_one(self):
+        """Channel order defines the port mapping: 0=left/APRS, 1=right/Winlink."""
+        c = self._conf()
+        self.assertLess(c.index("CHANNEL 0"), c.index("CHANNEL 1"))
+        self.assertLess(c.index("PTT GPIO 524"), c.index("PTT GPIO 535"))
+
+    def test_callsign_is_used_for_both_channels(self):
+        self.assertEqual(self._conf(callsign="W4MHI").count("MYCALL W4MHI"), 2)
+
+    def test_serves_shared_agw_and_kiss_ports(self):
+        c = self._conf()
+        self.assertIn("AGWPORT %d" % draws_audio.TNC_AGW_PORT, c)
+        self.assertIn("KISSPORT %d" % draws_audio.TNC_KISS_PORT, c)
+
+    def test_forces_ax25_v20(self):
+        """RMS gateways mishandle the v2.2 XID teardown and leave direwolf
+        key-locked retransmitting DISC/XID -- matches oasis-winlink.conf."""
+        self.assertIn("MAXV22 0", self._conf())
+
+    def test_unresolved_ptt_is_refused(self):
+        """Guessing a PTT number would key the wrong line; fail loudly instead."""
+        self.assertRaises(ValueError, draws_audio.build_tnc_conf,
+                          callsign="W4MHI", ptt_left=None, ptt_right=535)
+
+
+class TncServiceTest(unittest.TestCase):
+    def _unit(self, **kw):
+        kw.setdefault("user", "mihaim")
+        kw.setdefault("home", "/home/mihaim")
+        kw.setdefault("ptt_left", 524)
+        kw.setdefault("ptt_right", 535)
+        return draws_audio.build_tnc_service(**kw)
+
+    def test_runs_direwolf_with_the_shared_conf(self):
+        u = self._unit()
+        self.assertIn("/usr/bin/direwolf", u)
+        self.assertIn(draws_audio.TNC_CONF_NAME, u)
+
+    def test_runs_as_the_target_user(self):
+        u = self._unit(user="pi", home="/home/pi")
+        self.assertIn("User=pi", u)
+        self.assertIn("Environment=HOME=/home/pi", u)
+
+    def test_unexports_both_ptt_lines_on_stop(self):
+        """A restart must be able to re-claim both lines; leaking either one
+        leaves the next start unable to key that port."""
+        u = self._unit(ptt_left=524, ptt_right=535)
+        self.assertIn("ExecStopPost", u)
+        stop = [ln for ln in u.splitlines() if ln.startswith("ExecStopPost")][0]
+        self.assertIn("524", stop)
+        self.assertIn("535", stop)
+
+    def test_enabled_at_boot(self):
+        self.assertIn("WantedBy=multi-user.target", self._unit())

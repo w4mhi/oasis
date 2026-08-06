@@ -2,6 +2,7 @@
 audio). Owns the board-level `dtoverlay=draws` line and the device probes each
 subsystem installer uses. Pure transforms do no I/O so they unit-test off-Pi;
 the thin I/O wrappers are exercised on the Pi."""
+import glob
 import os
 import subprocess
 import tempfile
@@ -49,6 +50,34 @@ def sound_card_present(match="draws", cards_path="/proc/asound/cards"):
             return match.lower() in fh.read().lower()
     except OSError:
         return False
+
+
+def sysfs_gpio(bcm, chips_dir="/sys/class/gpio"):
+    """Translate a BCM pin number into the sysfs GLOBAL gpio number Direwolf's
+    `PTT GPIO n` wants — gpiochip base + BCM.
+
+    Modern kernels base the 40-pin bank at a non-zero offset (512 on a Pi 4
+    running 6.x), so BCM 12/23 become 524/535. Picks the widest bank whose label
+    looks like the SoC pin controller, which excludes the small expanders
+    (raspberrypi-exp-gpio = 8 lines, and the SC16IS752's own 8-line chip that
+    the DRAWS overlay itself registers). Returns None when no bank matches —
+    the caller must then ask the operator rather than guess.
+
+    (services/winlink has its own equivalent with override/warning semantics for
+    the DRA-Pi path; this is the DRAWS-side copy so features/ does not have to
+    import from services/.)"""
+    best = None                      # (base, ngpio)
+    for chip in sorted(glob.glob(os.path.join(chips_dir, "gpiochip*"))):
+        try:
+            base = int(open(os.path.join(chip, "base")).read().strip())
+            ngpio = int(open(os.path.join(chip, "ngpio")).read().strip())
+            label = open(os.path.join(chip, "label")).read().strip().lower()
+        except (OSError, ValueError):
+            continue
+        if ("bcm" in label or "rp1" in label or "pinctrl" in label) and 40 <= ngpio <= 80:
+            if best is None or ngpio > best[1]:
+                best = (base, ngpio)
+    return None if best is None else best[0] + bcm
 
 
 def config_path():

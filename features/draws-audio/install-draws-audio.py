@@ -32,6 +32,7 @@ Exit codes: 0 = done · 10 = done, reboot required · 1 = error.
 Requires: Linux (Raspberry Pi), sudo."""
 import argparse
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -56,6 +57,10 @@ def build_parser():
                    help="only do the overlay phase (force)")
     p.add_argument("--mixer-only", action="store_true",
                    help="only do the ALSA mixer phase (force)")
+    p.add_argument("--tnc", action="store_true",
+                   help="(re)install the shared 2-channel direwolf TNC service")
+    p.add_argument("--callsign", help="callsign for the TNC config "
+                                      "(default: the station callsign)")
     p.add_argument("--livetest", metavar="CALLSIGN",
                    help="TRANSMIT one APRS test packet as CALLSIGN (e.g. W4MHI-6) "
                         "through a running direwolf, then exit")
@@ -136,6 +141,92 @@ def ptt_reminder():
     for port in draws_audio.PORTS:
         _info("  • %-5s connector → %-7s → PTT GPIO %d"
               % (port["port"], port["service"], port["gpio"]))
+
+
+def _target_user_home():
+    """The invoking (non-root) operator and their home — the TNC runs as them,
+    not root, so direwolf's config lives in their ~/.config. Mirrors what the
+    winlink installer does with SUDO_USER."""
+    user = os.environ.get("SUDO_USER") or os.environ.get("USER") or "pi"
+    home = os.path.expanduser("~" + user)
+    if not os.path.isdir(home):
+        home = "/home/" + user
+    return user, home
+
+
+def station_callsign():
+    """Operator callsign from the suite-root station.json, or None."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))))
+        from common import config_paths
+        import json
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))))
+        with open(config_paths.station_json(repo_root)) as fh:
+            call = json.load(fh).get("callsign")
+        return (str(call or "").strip().upper()) or None
+    except Exception:                              # noqa: BLE001 - optional
+        return None
+
+
+def install_tnc(callsign_override=None):
+    """Install + enable the shared 2-channel direwolf TNC that owns the card."""
+    _step(3, "Install the shared DRAWS TNC (direwolf, both ports)")
+
+    if not shutil.which("direwolf"):
+        _warn("direwolf is not installed — skipping the TNC service.")
+        _info("Install it first:  sudo apt-get install -y direwolf")
+        return False
+
+    left = draws.sysfs_gpio(draws_audio.PORTS[0]["gpio"])
+    right = draws.sysfs_gpio(draws_audio.PORTS[1]["gpio"])
+    if left is None or right is None:
+        _warn("Could not resolve the sysfs PTT numbers (no 40-pin gpiochip "
+              "bank found) — skipping the TNC service.")
+        return False
+    _ok("PTT lines: left BCM %d -> %d, right BCM %d -> %d"
+        % (draws_audio.PORTS[0]["gpio"], left, draws_audio.PORTS[1]["gpio"], right))
+
+    callsign = callsign_override or station_callsign()
+    if not callsign:
+        _warn("No station callsign set — writing the TNC config with N0CALL.")
+        _info("Set it in Setup (station step), then re-run with --tnc.")
+
+    user, home = _target_user_home()
+    conf_dir = os.path.join(home, ".config", "direwolf")
+    conf_path = os.path.join(conf_dir, draws_audio.TNC_CONF_NAME)
+    try:
+        os.makedirs(conf_dir, exist_ok=True)
+        with open(conf_path, "w") as fh:
+            fh.write(draws_audio.build_tnc_conf(callsign, left, right))
+    except (OSError, ValueError) as exc:
+        _warn("Could not write %s (%s) — skipping the TNC service." % (conf_path, exc))
+        return False
+    _ok("Wrote %s" % conf_path)
+
+    try:
+        draws._write_text(draws_audio.TNC_UNIT_PATH,
+                          draws_audio.build_tnc_service(user, home, left, right))
+        subprocess.run(["sudo", "chmod", "0644", draws_audio.TNC_UNIT_PATH],
+                       capture_output=True)
+    except Exception as exc:                       # noqa: BLE001 - advisory only
+        _warn("Could not write %s (%s)." % (draws_audio.TNC_UNIT_PATH, exc))
+        return False
+    _ok("Wrote %s" % draws_audio.TNC_UNIT_PATH)
+
+    subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True)
+    r = subprocess.run(["sudo", "systemctl", "enable", "--now",
+                        draws_audio.TNC_UNIT_NAME], capture_output=True, text=True)
+    if r.returncode != 0:
+        _warn("Could not enable %s: %s"
+              % (draws_audio.TNC_UNIT_NAME, (r.stderr or "").strip().splitlines()[-1:]))
+        return False
+    _ok("%s enabled and started (AGW :%d, KISS :%d)."
+        % (draws_audio.TNC_UNIT_NAME, draws_audio.TNC_AGW_PORT, draws_audio.TNC_KISS_PORT))
+    _info("Channel 0 = left/APRS · channel 1 = right/Winlink "
+          "(pat uses agwpe.radio_port 1).")
+    return True
 
 
 def ensure_acp_ignore():
@@ -220,6 +311,7 @@ def apply_mixer():
               "`amixer -c %s scontrols`." % (failures, draws_audio.CARD))
     else:
         _ok("DRAWS audio mixer applied.")
+    install_tnc()
     print()
     rx_level_hint()
     print()
@@ -238,6 +330,12 @@ def main(argv=None):
     # so it also works from a laptop pointed at the go-box with --kiss-host.
     if args.livetest:
         return run_livetest(args)
+
+    if args.tnc:
+        if sys.platform != "linux":
+            _fail("This installer requires Linux (Raspberry Pi).")
+            return 1
+        return 0 if install_tnc(args.callsign) else 1
 
     if sys.platform != "linux":
         _fail("This installer requires Linux (Raspberry Pi).")
