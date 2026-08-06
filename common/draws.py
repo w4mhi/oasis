@@ -27,6 +27,20 @@ BLOCK_END   = "# --- end OASIS DRAWS ---"
 BLOCK_LINES = ["dtoverlay=", OVERLAY_LINE, "force_turbo=1"]
 
 
+DRA_PI_OVERLAY = "dtoverlay=audioinjector-wm8731-audio"
+
+
+def conflicting_overlay(text):
+    """True if config.txt already loads the DRA-Pi HAT.
+
+    The two boards want the same 40-pin header and the same I2S bus, so they
+    cannot coexist. The Setup page keeps the checkboxes mutually exclusive, but
+    nothing stops a direct run of a draws installer — which is how this bench
+    box ended up carrying both and losing every sound card. A commented-out
+    line does not count."""
+    return any(ln.strip() == DRA_PI_OVERLAY for ln in text.splitlines())
+
+
 def add_overlay_block(text):
     """Return (new_text, changed): ensure the managed DRAWS block is present.
     Idempotent — an existing block is left byte-identical."""

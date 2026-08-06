@@ -71,6 +71,17 @@ VC4_BASE            = "dtoverlay=vc4-kms-v3d"
 VC4_NOAUDIO         = f"{VC4_BASE},noaudio"
 
 
+def conflicting_overlay(text):
+    """True if config.txt already loads the DRAWS HAT.
+
+    The two boards want the same 40-pin header and the same I2S bus, so they
+    cannot coexist — and installing this one over DRAWS is how the bench box
+    ended up with no sound cards at all. The Setup page keeps the checkboxes
+    mutually exclusive, but nothing stops a direct run of this script, so the
+    installer checks for itself. A commented-out line does not count."""
+    return any(ln.strip() == "dtoverlay=draws" for ln in text.splitlines())
+
+
 def _config_subs():
     """(from, to) pairs restoring the stock lines transform_config() rewrote."""
     return [[AUDIO_OFF_COMMENT, AUDIO_ON_LINE],
@@ -185,6 +196,12 @@ def do_config_phase(dry_run):
     _info(f"Boot config: {path}")
 
     text = read_text(path)
+    if conflicting_overlay(text):
+        _fail("This box already loads the DRAWS HAT (dtoverlay=draws). The "
+              "DRA-Pi and DRAWS are different boards for the same 40-pin "
+              "header and the same I2S bus — installing both leaves the Pi "
+              "with no working sound card.\n  Remove the DRAWS features first "
+              "(Setup, or scripts/remove-oasis.py), reboot, then re-run this.")
     new_text, changes = transform_config(text)
 
     if new_text == text:

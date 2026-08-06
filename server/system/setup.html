@@ -522,9 +522,24 @@ async function setupAutoSelectInstalledFeatures() {
 // Feature keys that cannot be selected together — see the comment in the change
 // handler below. Order within a group is irrelevant; ticking any member clears
 // the rest.
+// A feature may appear in MORE THAN ONE group — the handler applies every group
+// it belongs to, so draws-gps is cleared both by another gpsd source and by the
+// DRA-Pi.
 const SETUP_EXCLUSIVE_GROUPS = [
+  // gpsd sources: all three repoint gpsd at a different device.
   ['gps', 'gps-l76x', 'draws-gps'],
+  // Radio-interface HATs. Every draws-* feature needs the DRAWS board, and the
+  // DRA-Pi is a different board for the same 40-pin header and the same I2S
+  // bus — you cannot fit or drive both. Bench 2026-08-06: installing DRA-Pi on
+  // a DRAWS box left the Pi with NO sound cards at all, and the wreckage read
+  // as "DRAWS is broken" rather than "two HATs cannot coexist".
+  //
+  // Written as PAIRS, not one ['dra-pi-rx-led','draws-audio','draws-gps']
+  // group: a group is all-pairs-exclusive, which would also make the two
+  // draws-* features exclude EACH OTHER — and they are the same board, so they
+  // are meant to be installed together.
   ['dra-pi-rx-led', 'draws-audio'],
+  ['dra-pi-rx-led', 'draws-gps'],
 ];
 
 function setupWireReinstallHints() {

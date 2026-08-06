@@ -88,3 +88,23 @@ class RoundTripTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConflictingHatGuardTest(unittest.TestCase):
+    """The Setup checkbox exclusion cannot stop a DIRECT installer run — which
+    is exactly how this bench box ended up carrying both HATs. Each installer
+    refuses when the other's overlay is already active."""
+
+    def test_detects_the_draws_overlay(self):
+        self.assertTrue(dra.conflicting_overlay("dtoverlay=draws\n"))
+        self.assertTrue(dra.conflicting_overlay("x\ndtoverlay=draws\ny\n"))
+
+    def test_ignores_a_commented_out_overlay(self):
+        self.assertFalse(dra.conflicting_overlay("# dtoverlay=draws\n"))
+
+    def test_clean_config_is_fine(self):
+        self.assertFalse(dra.conflicting_overlay("dtparam=audio=on\n"))
+
+    def test_ignores_a_similarly_named_overlay(self):
+        """A substring match would false-positive on an unrelated overlay."""
+        self.assertFalse(dra.conflicting_overlay("dtoverlay=drawsomething\n"))

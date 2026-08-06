@@ -184,3 +184,24 @@ class ManagedBlockTest(unittest.TestCase):
         back, _ = removal.strip_config(installed,
                                        [[draws.BLOCK_BEGIN, draws.BLOCK_END]], [])
         self.assertEqual(back.strip(), orig.strip())
+
+
+class ConflictingHatGuardTest(unittest.TestCase):
+    """Mirror of the DRA-Pi guard: the Setup checkboxes cannot stop a direct
+    installer run, which is how the bench box ended up carrying both HATs."""
+
+    def test_detects_the_dra_pi_overlay(self):
+        self.assertTrue(draws.conflicting_overlay(
+            "dtoverlay=audioinjector-wm8731-audio\n"))
+
+    def test_ignores_a_commented_out_overlay(self):
+        self.assertFalse(draws.conflicting_overlay(
+            "# dtoverlay=audioinjector-wm8731-audio\n"))
+
+    def test_clean_config_is_fine(self):
+        self.assertFalse(draws.conflicting_overlay("dtparam=audio=on\n"))
+
+    def test_guard_is_symmetric_with_the_dra_pi_side(self):
+        """Each installer refuses the OTHER board's overlay — neither refuses
+        its own, which would make it uninstallable."""
+        self.assertFalse(draws.conflicting_overlay("dtoverlay=draws\n"))

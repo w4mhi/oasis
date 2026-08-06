@@ -482,6 +482,15 @@ def main(argv=None):
         return apply_mixer()
 
     _step(1, "Enable the DRAWS overlay")
+    _cfg = draws.config_path()
+    if _cfg and draws.conflicting_overlay(open(_cfg).read()):
+        _fail("This box already loads the DRA-Pi HAT (%s). The DRA-Pi and "
+              "DRAWS are different boards for the same 40-pin header and the "
+              "same I2S bus — installing both leaves the Pi with no working "
+              "sound card.\n  Remove the dra-pi feature first (Setup, or "
+              "scripts/remove-oasis.py), reboot, then re-run this."
+              % draws.DRA_PI_OVERLAY)
+        return 1
     overlay_changed = draws.ensure_overlay()
     _ok("dtoverlay=draws %s" % ("added" if overlay_changed else "already present"))
 
