@@ -583,3 +583,42 @@ class WinlinkDrawsChannelGuardTest(unittest.TestCase):
         self.assertIn("winlink", hardware.eligible_services(self.inv, "draws-left"))
         self.assertNotIn("winlink", hardware.eligible_services(self.inv, "draws-right"))
         self.assertIn("aprs", hardware.eligible_services(self.inv, "draws-right"))
+
+
+class SatellitesDrawsChannelTest(unittest.TestCase):
+    """Satellite RX rides the DRAWS channel-1 port: channel 0 is Winlink's (pat
+    can only use AGW port 0), so the two never contend for the same connector."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+        self.inv = _inv()
+        hardware.auto_declare_draws(self.dir, self.inv, True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_satellites_may_take_the_channel1_port(self):
+        ok, _ = hardware.can_assign(self.inv, "satellites", "draws-right")
+        self.assertTrue(ok)
+
+    def test_satellites_is_refused_the_channel0_port(self):
+        ok, _ = hardware.can_assign(self.inv, "satellites", "draws-left")
+        self.assertFalse(ok, "channel 0 belongs to Winlink")
+
+    def test_the_two_ports_carry_different_services(self):
+        self.assertIn("winlink", hardware.eligible_services(self.inv, "draws-left"))
+        self.assertNotIn("satellites", hardware.eligible_services(self.inv, "draws-left"))
+        self.assertIn("satellites", hardware.eligible_services(self.inv, "draws-right"))
+        self.assertNotIn("winlink", hardware.eligible_services(self.inv, "draws-right"))
+
+    def test_satellites_still_takes_an_sdr(self):
+        inv = _inv(devices={"d": _dev("d", "rtl-sdr")})
+        ok, _ = hardware.can_assign(inv, "satellites", "d")
+        self.assertTrue(ok)
+
+    def test_winlink_and_satellites_hold_both_ports_at_once(self):
+        self.inv.assignments["winlink"] = "draws-left"
+        ok, holder = hardware.can_assign(self.inv, "satellites", "draws-right")
+        self.assertTrue(ok)
+        self.assertIsNone(holder)

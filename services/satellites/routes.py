@@ -346,15 +346,27 @@ def _prep_capture(norad, req_freq):
     import listen
     from common import hardware
     inv = hardware.load(SUITE_ROOT)
-    pre = listen.preconditions(inv=inv)
-    if pre["missing_deps"]:
-        raise _CaptureError("missing tools: " + ", ".join(pre["missing_deps"])
-                            + " — run features/rtl-sdr/install-rtl-sdr.py", 400)
-    if not pre["dongle_present"]:
-        raise _CaptureError("no RTL-SDR dongle detected", 400)
-    if pre["busy"]:
-        raise _CaptureError(f"the dongle is in use by {pre['holder'] or 'another service'}"
-                            " — stop it first", 409)
+    dev = inv.devices.get(inv.assignments.get("satellites")) or {}
+    # A radio port is a different SOURCE with different prerequisites: arecord +
+    # the sound card, NOT rtl_fm + a free dongle. Branch before the SDR checks
+    # rather than making them lie about a box that has no dongle at all.
+    on_radio = dev.get("kind") == "draws"
+    if on_radio:
+        rpre = listen.radio_preconditions()
+        if rpre["missing_deps"]:
+            raise _CaptureError("missing tools: " + ", ".join(rpre["missing_deps"]), 400)
+        if not rpre["card_present"]:
+            raise _CaptureError("the DRAWS sound card is not present", 400)
+    else:
+        pre = listen.preconditions(inv=inv)
+        if pre["missing_deps"]:
+            raise _CaptureError("missing tools: " + ", ".join(pre["missing_deps"])
+                                + " — run features/rtl-sdr/install-rtl-sdr.py", 400)
+        if not pre["dongle_present"]:
+            raise _CaptureError("no RTL-SDR dongle detected", 400)
+        if pre["busy"]:
+            raise _CaptureError(f"the dongle is in use by {pre['holder'] or 'another service'}"
+                                " — stop it first", 409)
     if listen.is_capturing():
         raise _CaptureError("already capturing", 409)
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
@@ -375,9 +387,9 @@ def _prep_capture(norad, req_freq):
     if not support["supported"]:
         raise _CaptureError(f"{dl.get('mode')} not supported yet — {support['blurb']}", 400)
     freq_hz = listen.mhz_to_hz(dl["freq_mhz"])
-    dev = inv.devices.get(inv.assignments.get("satellites"))
-    device_serial = (dev or {}).get("serial") or None
-    return entry, freq_hz, device_serial, dl.get("mode")
+    device_serial = dev.get("serial") or None
+    radio_channel = int(dev.get("channel") or 0) if on_radio else None
+    return entry, freq_hz, device_serial, dl.get("mode"), radio_channel
 
 
 @bp.route("/api/satellites/listen", methods=["POST"])
@@ -389,14 +401,16 @@ def api_listen():
     except (TypeError, ValueError, KeyError):
         return jsonify({"error": "bad or missing norad"}), 400
     try:
-        entry, freq_hz, device_serial, dmode = _prep_capture(norad, body.get("freq_mhz"))
+        entry, freq_hz, device_serial, dmode, radio_channel = _prep_capture(
+            norad, body.get("freq_mhz"))
     except _CaptureError as e:
         return jsonify({"error": str(e)}), e.code
     safe = "".join(c if c.isalnum() else "_" for c in entry["name"]).strip("_")
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = os.path.join(listen.recordings_dir(SUITE_ROOT), f"{safe}_{ts}.wav")
     try:
-        return jsonify(listen.start(freq_hz, norad, out, device_serial=device_serial, dmode=dmode))
+        return jsonify(listen.start(freq_hz, norad, out, device_serial=device_serial,
+                                    dmode=dmode, radio_channel=radio_channel))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -414,7 +428,8 @@ def api_listen_stream():
     except (TypeError, ValueError):
         return jsonify({"error": "bad or missing norad"}), 400
     try:
-        _entry, freq_hz, device_serial, dmode = _prep_capture(norad, request.args.get("freq_mhz"))
+        _entry, freq_hz, device_serial, dmode, _rch = _prep_capture(
+            norad, request.args.get("freq_mhz"))
     except _CaptureError as e:
         return jsonify({"error": str(e)}), e.code
     try:

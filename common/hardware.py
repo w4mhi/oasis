@@ -65,7 +65,10 @@ DEVICE_KIND_FOR_SERVICE = {
     "winlink":   {"digirig", "dra-pi", "draws"},
     "adsb":      {"rtl-sdr"},
     "openwebrx": {"rtl-sdr"},
-    "satellites": {"rtl-sdr"},
+    # satellites also accepts a DRAWS radio port: the operator tunes the radio
+    # by hand (no CAT on this HAT) and OASIS records the audio. Restricted to
+    # channel 1 by _device_ok_for_service — channel 0 is Winlink's.
+    "satellites": {"rtl-sdr", "draws"},
 }
 
 # aprs runs an extra RX feed unit (rtl_fm -> UDP -> GrayWolf) ONLY when assigned
@@ -291,7 +294,11 @@ def device_states(inv, is_active=_default_is_active):
              if any(is_active(u) for u in service_units(inv, svc))),
             None)
         label = ", ".join(services) if services else None   # all assignees, not just the running one
+        # `eligible` is per-DEVICE, unlike the per-kind DEVICE_KIND_FOR_SERVICE:
+        # a DRAWS channel-1 port is a valid winlink KIND but an impossible target
+        # (pat cannot use AGW port 1). UIs must filter on this, not on kind.
         out.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
+                    "eligible": eligible_services(inv, did),
                     "serial": d.get("serial", ""), "ptt": d.get("ptt", ""),
                     "assignee": label, "running": running_svc is not None})
     return out
@@ -333,8 +340,12 @@ def _device_ok_for_service(device, service):
     panics on any AGW port but 0, so the channel-1 port could never work. Offer
     it and the operator picks a combination that can only fail — so it is
     refused here and hidden in the console (see eligible_services)."""
-    if service == "winlink" and device.get("kind") == "draws":
-        return int(device.get("channel") or 0) == 0
+    if device.get("kind") == "draws":
+        if service == "winlink":
+            return int(device.get("channel") or 0) == 0
+        if service == "satellites":
+            # Channel 0 is Winlink's; satellite RX rides the other port.
+            return int(device.get("channel") or 0) == 1
     return True
 
 
