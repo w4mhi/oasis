@@ -1,5 +1,5 @@
 /* ============================================================
-   OASIS - Off-grid Amateur Station Information Suite – shared design system
+   OASIS - Off-grid Amateur Station Integrated Suite – shared design system
    Reference: ICS form pages (dark mono, amber labels, green accent)
    ============================================================ */
 
@@ -48,6 +48,8 @@
   --blue-dim:   #1f4e8c;
   --text:       #d7e0ea;
   --text-dim:   #8b97a6;
+  --chartreuse: #80ff00;   /* clock colour — neon, matches the ADS-B altitude ramp */
+  --orange:     #ff8000;   /* clock colour — neon, matches the ADS-B altitude ramp */
   --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
   --emoji: "NotoEmoji","Noto Color Emoji","Apple Color Emoji","Segoe UI Emoji",sans-serif;
 
@@ -81,6 +83,8 @@
   --blue-dim:   #a8c7f0;   /* soft sky */
   --text:       #1c2430;   /* near-black charcoal */
   --text-dim:   #5b6672;   /* slate grey */
+  --chartreuse: #4f7a00;   /* toned for contrast on the off-white light bg */
+  --orange:     #b45309;   /* toned for contrast on the off-white light bg */
 }
 
 /* ─── Reset ─────────────────────────────────────────────── */

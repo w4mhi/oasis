@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Band Plan</title>
+<title>OASIS - Band Plan</title>
 <link rel="stylesheet" href="../../css/common.css">
 <style>
 .wrap { max-width: 1400px; }
@@ -187,7 +187,7 @@ async function init() {
     return;
   }
 
-  document.title = `${band.name} Band Plan`;
+  document.title = `OASIS - ${band.name} Band Plan`;
   document.getElementById('pg-title').textContent = `${band.name} — Band Plan`;
   document.getElementById('pg-sub').textContent =
     `${band.range[0]}–${band.range[1]} ${band.unit} · ${band.license} · ${band.allocation} allocation`;

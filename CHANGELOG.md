@@ -3,10 +3,52 @@
 All notable changes to OASIS are recorded here, newest first.
 
 **Versioning rules.** The suite version lives in `version.json` (single source of
-truth — the dashboard, `/api/server-info`, and `doctor.py` all read it). Every
-release bumps `version.json` and this file **together**, and the release commit
-on `main` is tagged `v.<version>` (e.g. `v.2.8.0`) — the `v.`-prefixed format
-used since `v.2.7.5`.
+truth — the dashboard, `/api/server-info`, and `doctor.py` all read it).
+
+**Per-commit SemVer (adopted 2026-08-02): every commit bumps `version.json`.**
+- regular commit (`fix`/`chore`/`docs`/`style`/`refactor`/`perf`/`test`/…) → **patch +1** (`2.8.1 → 2.8.2`)
+- feature / major modification (`feat`) → **minor +1, patch → 0** (`2.8.2 → 2.9.0`)
+- breaking change → **major +1, minor/patch → 0**
+
+Use `scripts/bump-version.py <patch|minor|major>` (or `--type <feat|fix|…>`) to
+compute it. Tagged commits use the `v<version>` form — **no dot** after `v`
+(e.g. `v2.8.1`), matching `v2.8.0`. Not every commit needs a tag or a CHANGELOG
+entry, but notable releases still bump this file alongside `version.json`.
+
+## v.2.8.1 — 2026-08-02
+
+Small maintenance release on 2.8.0: a hardware-robustness fix, longer ADS-B
+history, header readability tweaks, and a per-clock colour picker on both the
+dashboard and the kiosk. No breaking changes — in-place upgrade is a code pull
+(plus an `adsb-api` restart to pick up the new retention window).
+
+### Added
+- **Per-clock colour cycle (index + kiosk).** Click/tap the LOCAL or UTC clock to
+  cycle its colour — blue → white → amber → green → chartreuse → orange. Per-clock
+  and mutually exclusive (the two clocks can't share a colour), saved to
+  `localStorage`, theme-aware. Shared six-colour set + storage keys across
+  `index.html` and `oasis-dashboard/dashboard.html`; chartreuse/orange are toned
+  down in the light theme for contrast.
+
+### Changed
+- **ADS-B detailed-track retention 48h → 120h (5 days).** `ADSB_RETAIN_HOURS`
+  default raised so `/history` reaches back five days (still env-overridable;
+  ~100 MB of observations at the new window).
+- **Dashboard header readability.** Processes and GPS cards moved off the smallest
+  type tier onto the primary reading size; GPS label→value gap made explicit and
+  the GPS grid row/column gaps trimmed 30%.
+
+### Fixed
+- **RGB Cooling HAT survives a missing OLED.** The daemon no longer crash-loops
+  when the SSD1306 panel is absent (or wedged) — the OLED is now optional, so the
+  thermally-critical fan + RGB control keep running. The installer distinguishes
+  the required fan/RGB MCU (0x0d) from the optional OLED (0x3c). Added a unit test
+  for the degrade path.
+
+### Removed
+- **Orphaned `draws-audio` / `draws-gps` feature stubs.** Empty leftovers from the
+  abandoned DRAWS go-box (incompatible with the Trixie-based stack); never wired
+  into the setup registry, removed to stop confusing users.
 
 ## v.2.8.0 — 2026-07-22
 
@@ -87,7 +129,7 @@ bump for that reason.
   refactoring (service logic under `services/<name>/`, maps under
   `services/map/`) as the new baseline. Behaviour-preserving, so a minor rather
   than major bump.
-- **Dashboard polling de-bursted (Pi Zero).** `index.html` fired a synchronized
+- **Dashboard polling de-bursted.** `index.html` fired a synchronized
   herd every 30 s — `pingAll` bursting all 17 service health checks at once plus
   the hardware/stats/audio/wifi loops on the same boundary — and ~100 requests per
   start/stop toggle. Now a round-robin `pingNext` (one check per ~1.8 s, same ~30 s

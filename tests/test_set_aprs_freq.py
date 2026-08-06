@@ -13,7 +13,7 @@ _spec = importlib.util.spec_from_file_location(
 saf = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(saf)
 
-# A representative unit, exactly as enable-rtl-sdr.py's build_unit() emits it.
+# A representative unit, exactly as services/rtl-feed/common/feed.py's build_unit() emits it.
 UNIT = (
     "[Unit]\n"
     "Description=RTL-SDR APRS audio feed -> GrayWolf (sdr_udp)\n"

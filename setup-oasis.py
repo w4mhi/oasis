@@ -159,7 +159,7 @@ FEATURES = [
             "rtl_test/rtl_fm + socat/tcpdump and the DVB-driver blacklist.",
             "Audio", default=False,
             recommend="RTL-SDR Blog V4 needs Pi OS Trixie (librtlsdr >= 2.0). Verify the dongle: rtl_test -t"),
-    Feature("rtl-feed", "RTL-SDR → GrayWolf APRS feed", "features/rtl-sdr/enable-rtl-sdr.py",
+    Feature("rtl-feed", "RTL-SDR → GrayWolf APRS feed", "services/rtl-feed/install.py",
             "Stream demodulated APRS audio into GrayWolf (sdr_udp). Needs the dongle plugged in.",
             "Audio", default=False, needs=["rtl-sdr"],
             recommend="In GrayWolf add the sdr_udp device + an AFSK1200 channel, then RESTART it: sudo systemctl restart graywolf"),

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Panel & Kiosk — OASIS Handbook</title>
+  <title>OASIS - Panel & Kiosk (Handbook)</title>
   <link rel="stylesheet" href="handbook.css" />
   <link rel="icon" href="img/oasis-logo.svg" />
 </head>
@@ -129,7 +129,7 @@ python3 displays/cm4stack/install-cm4stack.py --dry-run    # preview config.txt 
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
       <tbody>
-        <tr><td>The kiosk pins a CPU core / runs hot</td><td>Usually a Chromium crash-loop (watch for <code>crashpad_handler</code>). Launch with <code>--use-gl=egl --disable-breakpad</code> &mdash; it drops a stuck Pi kiosk from ~100% of one core to ~25%.</td></tr>
+        <tr><td>The kiosk pins a CPU core / runs hot</td><td>Usually a Chromium crash-loop (watch for <code>crashpad_handler</code>). The kiosk already launches with <code>--use-gl=angle --disable-breakpad</code>, which keeps a stuck Pi kiosk down from ~100% of one core to ~25%. If a crash-loop returns, fall back to <code>--disable-gpu</code> (software rendering, stable). Don&rsquo;t use <code>--use-gl=egl</code> on newer Pi GPU drivers (vc4-kms-v3d) &mdash; it leaves MapLibre&rsquo;s WebGL context uninitialised and the live map renders blank.</td></tr>
         <tr><td>Blank or wrong-size screen</td><td>Display/rotation config. Check the kiosk service and the panel&rsquo;s resolution; the dashboard view is <code>/oasis-dashboard/dashboard.html?res=&lt;WxH&gt;</code>.</td></tr>
         <tr><td>Touch doesn&rsquo;t register</td><td>The touchscreen overlay/driver isn&rsquo;t loaded for that panel &mdash; enable it in <code>config.txt</code> and reboot.</td></tr>
       </tbody>

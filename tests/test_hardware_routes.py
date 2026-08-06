@@ -341,5 +341,138 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertEqual(body["device"]["label"], "sdr-2")
 
 
+class AssignmentConsoleRoutesTest(unittest.TestCase):
+    """The HW/SRV matrix console endpoints (design 2026-07-28)."""
+
+    def setUp(self):
+        oasis_app.app.config["TESTING"] = True
+        self.c = oasis_app.app.test_client()
+
+    def test_console_state_shape(self):
+        inv = HW.Inventory(
+            devices={"a": {"id": "a", "kind": "rtl-sdr", "serial": "1",
+                           "label": "RTL1", "locked": True}},
+            assignments={"adsb": "a"})
+        with mock.patch.object(HW, "load", return_value=inv):
+            r = self.c.get("/api/hardware/console")
+        self.assertEqual(r.status_code, 200)
+        body = json.loads(r.data)
+        self.assertTrue(any(s["id"] == "adsb" for s in body["services"]))
+        dev = body["devices"][0]
+        self.assertEqual(dev["id"], "a")
+        self.assertTrue(dev["locked"])
+        self.assertEqual(dev["assigned"], "adsb")
+        self.assertIn("warnings", body)
+
+    def test_route_success_calls_reroute(self):
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "serial": "1"}},
+                           assignments={})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "reroute") as mocked, \
+             mock.patch.object(hardware_routes, "_apply_hardware_async"), \
+             mock.patch.object(hardware_routes, "_systemctl_seq"):
+            r = self.c.post("/api/hardware/route",
+                            json={"service": "adsb", "device_id": "a"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(mocked.called)
+
+    def test_route_locked_returns_409_with_reason(self):
+        inv = HW.Inventory(
+            devices={"a": {"id": "a", "kind": "rtl-sdr", "locked": True}},
+            assignments={"adsb": "a"})
+        with mock.patch.object(HW, "load", return_value=inv):
+            r = self.c.post("/api/hardware/route",
+                            json={"service": "aprs", "device_id": "a"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(json.loads(r.data)["reason"], "target-locked")
+
+    def test_route_wrong_kind_400(self):
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr"}}, assignments={})
+        with mock.patch.object(HW, "load", return_value=inv):
+            r = self.c.post("/api/hardware/route",
+                            json={"service": "winlink", "device_id": "a"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 400)
+
+    def test_lock_toggle_calls_set_lock(self):
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr"}}, assignments={})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "set_lock") as mocked:
+            r = self.c.post("/api/hardware/lock",
+                            json={"device_id": "a", "locked": True},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(mocked.called)
+
+    def test_stop_all_keeps_webssh_alive(self):
+        with mock.patch.object(hardware_routes, "_systemctl_seq") as mocked:
+            r = self.c.post("/api/hardware/stop-all", headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        stopped = [c.args[0] for c in mocked.call_args_list]
+        self.assertNotIn("webssh", stopped)      # never sever the remote connection
+        self.assertIn("graywolf", stopped)       # but the load IS stopped
+        self.assertEqual(mocked.call_count, len(hardware_routes._EMERGENCY_STOP))
+
+    def test_service_stop_refused_when_device_locked(self):
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "locked": True}},
+                           assignments={"adsb": "a"})
+        with mock.patch.object(HW, "load", return_value=inv):
+            r = self.c.post("/api/hardware/service-stop", json={"service": "adsb"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(json.loads(r.data)["reason"], "source-locked")
+
+    def test_route_forbidden_without_header(self):
+        r = self.c.post("/api/hardware/route", json={"service": "adsb", "device_id": "a"})
+        self.assertEqual(r.status_code, 403)
+
+    def test_service_stop_stops_units(self):
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr"}},
+                           assignments={"adsb": "a"})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(hardware_routes, "_systemctl_seq") as mocked:
+            r = self.c.post("/api/hardware/service-stop",
+                            json={"service": "adsb"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(mocked.called)   # dump1090-fa stopped, assignment untouched
+
+
+class GuardianRoutesTest(unittest.TestCase):
+    """Resource-guardian endpoints (design 2026-07-28)."""
+
+    def setUp(self):
+        oasis_app.app.config["TESTING"] = True
+        self.c = oasis_app.app.test_client()
+
+    def test_guardian_state_shape(self):
+        r = self.c.get("/api/hardware/guardian")
+        self.assertEqual(r.status_code, 200)
+        b = json.loads(r.data)
+        for k in ("mode", "enabled", "thresholds", "seconds_left", "stats"):
+            self.assertIn(k, b)
+
+    def test_guardian_cancel_goes_to_cooldown(self):
+        # Cancel sticks: cooldown (not idle) so it can't re-arm until recovery.
+        hardware_routes._GUARD_STATE = {"mode": "armed", "deadline": 9e9, "reason": "temp_c"}
+        r = self.c.post("/api/hardware/guardian/cancel", headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(hardware_routes._GUARD_STATE["mode"], "cooldown")
+
+    def test_guardian_cancel_forbidden_without_header(self):
+        self.assertEqual(self.c.post("/api/hardware/guardian/cancel").status_code, 403)
+
+    def test_guardian_config_sets_enabled(self):
+        with mock.patch.object(hardware_routes, "_save_guardian_config") as saved:
+            r = self.c.post("/api/hardware/guardian/config",
+                            json={"enabled": False, "thresholds": {"temp_c": 75}},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(saved.called)
+        self.assertFalse(json.loads(r.data)["enabled"])
+
+
 if __name__ == "__main__":
     unittest.main()

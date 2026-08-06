@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Browse</title>
+<title>OASIS - File Browser</title>
 <link rel="stylesheet" href="../../css/common.css">
 <style>
 .breadcrumb {
@@ -61,7 +61,7 @@
             title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
     <a class="home-link" href="/">⌂ HOME</a>
   </div>
-  <h1 id="page-title">Browse</h1>
+  <h1 id="page-title">File Browser</h1>
   <p id="page-sub"></p>
 </header>
 
@@ -112,7 +112,7 @@ function load(path) {
   const title = rootPath.split('/').filter(Boolean).pop() || 'File Browser';
   document.getElementById('page-title').textContent = title;
   document.getElementById('page-sub').textContent = path || 'Browse user files';
-  document.title = 'Browse — ' + title;
+  document.title = 'OASIS - ' + title;
 
   buildBreadcrumb(path);
   document.getElementById('status').textContent = 'Loading…';

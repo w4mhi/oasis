@@ -133,15 +133,24 @@ def detect_hat():
     out = subprocess.run(["sudo", "i2cdetect", "-y", str(I2C_BUS)],
                          capture_output=True, text=True).stdout or ""
     found_hat, found_oled = HAT_ADDR in out, OLED_ADDR in out
-    if found_hat and found_oled:
-        _ok(f"Found fan/RGB MCU (0x{HAT_ADDR}) and OLED (0x{OLED_ADDR}) on i2c-{I2C_BUS}.")
-        return
-    missing = ([f"0x{HAT_ADDR} (fan/RGB)"] if not found_hat else []) \
-            + ([f"0x{OLED_ADDR} (OLED)"]  if not found_oled else [])
-    _warn(f"Not detected on i2c-{I2C_BUS}: " + ", ".join(missing))
-    _info("If the HAT's LEDs are lit but nothing shows, a boot under-voltage can "
-          "wedge the MCU — full power-off cold boot on a 5V/2.5A+ supply, then "
-          "re-run. (The service is still installed below.)")
+
+    # The fan/RGB MCU (0x0d) is the part that matters — without it the fan can't
+    # be driven. The OLED (0x3c) is optional: the daemon runs fan + RGB without a
+    # display fitted, so its absence is a note, not a warning.
+    if found_hat:
+        _ok(f"Found fan/RGB MCU (0x{HAT_ADDR}) on i2c-{I2C_BUS}.")
+    else:
+        _warn(f"Fan/RGB MCU (0x{HAT_ADDR}) not detected on i2c-{I2C_BUS} — the fan "
+              f"won't be controllable.")
+        _info("If the HAT's LEDs are lit but the MCU is invisible, a boot "
+              "under-voltage can wedge it — full power-off cold boot on a 5V/2.5A+ "
+              "supply, then re-run.")
+
+    if found_oled:
+        _ok(f"Found status OLED (0x{OLED_ADDR}).")
+    else:
+        _info(f"No OLED (0x{OLED_ADDR}) on the bus — that's fine, it's optional. "
+              f"The daemon runs fan + RGB without a display.")
 
 
 # ── Step 5: Daemon + service ──────────────────────────────────────────────────

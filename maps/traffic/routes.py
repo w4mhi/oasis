@@ -1,23 +1,21 @@
 """
-Map route blueprint — the live map UI (/server/map/), the shared map assets
-(/map-assets/), the maps/ static dir, and the allowlisted filesystem PMTiles
-browser (/api/fs/*). Extracted verbatim from server/app.py in the blueprint
-split; URLs unchanged.
+Map app blueprint — the allowlisted filesystem PMTiles browser (/api/fs/*) for
+loading .pmtiles off USB sticks / external mounts at runtime.
+
+Everything else the traffic map needs — the page (maps/traffic/map.html), its
+warnings catalog, the render engine (maps/mapengine/), the sprite assets
+(maps/traffic/assets/) and the bundled tiles (maps/tiles/) — is a plain file
+under maps/ and is served by the root static handler (static_folder=SUITE_ROOT),
+so no static route lives here anymore.
 """
 
 import os
 
-from flask import Blueprint, jsonify, request, send_file, send_from_directory
+from flask import Blueprint, jsonify, request, send_file
 
 import appconfig
 
 SUITE_ROOT = appconfig.SUITE_ROOT
-# The live map UI (APRS + ADS-B) and its shared assets are service-neutral —
-# they live under services/map/, not services/aprs/, since one page now serves
-# both. map-assets keeps its own top-level /map-assets/ URL (widely referenced,
-# incl. the CM4 display sprite readers), independent of /server/map/.
-MAP_DIR    = os.path.join(SUITE_ROOT, "services", "map")
-MAP_ASSETS = os.path.join(MAP_DIR, "map-assets")
 MAPS_DIR   = os.path.join(SUITE_ROOT, "maps")
 
 bp = Blueprint("map", __name__)
@@ -35,40 +33,6 @@ MAP_ROOTS = [
                     "/var/lib/graywolf/tiles", MAPS_DIR])
     if p.strip()
 ]
-
-@bp.route("/map-assets/<path:filename>")
-def map_assets(filename):
-    """Serve shared map assets (MapLibre, PMTiles, basemap style, APRS sprites).
-    Top-level URL kept stable — referenced across the suite and by the display
-    sprite readers — even though the files now live under services/map/."""
-    return send_from_directory(MAP_ASSETS, filename)
-
-
-@bp.route("/server/map/<path:filename>")
-def map_static(filename):
-    """Serve the live map UI (map.html + warnings.json) — APRS + ADS-B — from
-    the service-neutral services/map/ directory."""
-    return send_from_directory(MAP_DIR, filename)
-
-
-@bp.route("/maps/<filename>")
-def serve_map(filename):
-    """
-    Serve static files from the maps/ directory (HTML, GeoJSON, .pmtiles, etc.).
-    PMTiles archives are read client-side via HTTP range requests; send_file
-    (conditional) is used so those Range requests are honoured.
-    """
-    filepath = os.path.join(MAPS_DIR, filename)
-    if not os.path.isfile(filepath):
-        from flask import abort
-        abort(404)
-    if filename.endswith(".pmtiles"):
-        # Range-streamed for the client-side PMTiles reader (the same-origin map
-        # UI). No Access-Control-Allow-Origin: cross-origin browser reads aren't
-        # needed and the wildcard only widened exposure. (Python display clients
-        # aren't affected — CORS is browser-enforced only.)
-        return send_file(filepath, mimetype="application/octet-stream", conditional=True)
-    return send_from_directory(MAPS_DIR, filename)
 
 
 # ── Filesystem map browser (PMTiles on USB / external mounts) ─────────────────
@@ -148,7 +112,5 @@ def api_fs_pmtiles():
 
     # conditional=True → Werkzeug honours Range/If-Range and returns 206 with
     # Accept-Ranges, streaming the file rather than loading it into memory.
-    # Same-origin map UI only — no Access-Control-Allow-Origin (see /maps/ above).
+    # Same-origin map UI only — no Access-Control-Allow-Origin.
     return send_file(target, mimetype="application/octet-stream", conditional=True)
-
-

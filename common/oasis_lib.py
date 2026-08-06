@@ -273,7 +273,7 @@ def download_to(url, dest_path):
     Stream *url* directly to *dest_path* with a progress bar.
     Raises on network or I/O error (caller decides how to handle).
     """
-    req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+    req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
     print("    Connecting...", end="", flush=True)
     with urllib.request.urlopen(req, timeout=120) as resp:
         total = int(resp.headers.get("Content-Length") or 0)
@@ -295,7 +295,7 @@ def download_bytes(url):
             (None, error_str) on failure.
     """
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+        req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
         with urllib.request.urlopen(req, timeout=120) as resp:
             total = int(resp.headers.get("Content-Length") or 0)
             prog  = Progress(total)
@@ -422,7 +422,7 @@ FCC_INDEX_META  = "EN.idx.meta"
 
 
 def _fcc_sha256(path):
-    """Streaming SHA-256 of a file — constant memory, safe on a Pi Zero."""
+    """Streaming SHA-256 of a file — constant memory, safe on a low-power Pi."""
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
@@ -454,7 +454,7 @@ def fcc_indexes_ready(data_dir):
 
     Requires all three index files plus EN.idx.meta whose recorded size and
     SHA-256 match EN.dat. Used to skip the memory-heavy rebuild when an offline
-    bundle already shipped the indexes (the build that OOMs a 512 MB Pi Zero).
+    bundle already shipped the indexes (avoids the RAM-heavy build on the Pi).
     Size is compared first (cheap); the SHA-256 is only computed on a size match.
     """
     en_path   = os.path.join(data_dir, "EN.dat")
@@ -540,7 +540,7 @@ def fcc_build_index(data_dir, server_dir):
     # Fingerprint the EN.dat these indexes were built against, so an offline
     # bundle can ship prebuilt indexes and the target can verify they match its
     # own EN.dat (identical bytes → the byte offsets stay valid) and skip the
-    # RAM-heavy rebuild — the build that OOMs a 512 MB Pi Zero.
+    # RAM-heavy rebuild we avoid running on the Pi.
     _fcc_write_index_meta(data_dir)
 
 
@@ -632,7 +632,7 @@ def graywolf_latest_release(pinned_version=None):
         url = f"{_GRAYWOLF_API}/latest"
         _info("Fetching latest GrayWolf release from GitHub ...")
 
-    req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+    req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
     last_exc = None
     for attempt in range(1, 4):
         try:
@@ -699,7 +699,7 @@ def pat_latest_release(pinned_version=None):
         url = f"{_PAT_API}/latest"
         _info("Fetching latest Pat release from GitHub ...")
 
-    req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+    req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
     last_exc = None
     for attempt in range(1, 4):
         try:
@@ -837,7 +837,7 @@ def debian_packages_index(arch, packages, suite=DEBIAN_SUITE):
     url = f"{DEBIAN_BASE}/dists/{suite}/main/binary-{arch}/Packages.gz"
     _info(f"Fetching Debian package index: {suite}/main/binary-{arch} ...")
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+        req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = gzip.decompress(resp.read())
     except Exception as exc:
@@ -952,7 +952,7 @@ def pmtiles_latest_version():
     """Latest go-pmtiles version string (no leading 'v'), or None on failure."""
     try:
         req = urllib.request.Request(
-            f"{_PMTILES_API}/latest", headers={"User-Agent": "oasis-emcomm"}
+            f"{_PMTILES_API}/latest", headers={"User-Agent": "oasis"}
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.load(resp)

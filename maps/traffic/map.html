@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>APRS Station Map</title>
-<link rel="stylesheet" href="/map-assets/maplibre-gl.css">
+<title>OASIS - APRS/ADS-B Traffic</title>
+<link rel="stylesheet" href="/maps/mapengine/maplibre-gl.css">
+<link rel="stylesheet" href="/maps/mapengine/map-engine.css">
 <link rel="stylesheet" href="../../css/common.css">
 <style>
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);}
@@ -28,7 +29,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 /* CPU readout sits outside #coordReadout — size it to match #statusMsg */
 #crCpuLbl,#crCpu{font-size:var(--fs-small);}
 #crCpu{font-weight:600;}
-#stationCount{font-size:var(--fs-small);color:var(--amber);white-space:nowrap;}
 #countdown{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;width:7ch;flex-shrink:0;text-align:left;transition:color .4s;overflow:visible;cursor:pointer;user-select:none;}
 #countdown:hover{filter:brightness(1.25);}
 #countdown.green{color:#3fb950;}
@@ -71,6 +71,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 }
 .maplibregl-popup-close-button:hover{color:var(--accent)!important;background:transparent!important;}
 /* Zoom +/- buttons: default MapLibre look (no dark override), matching the satellites map. */
+/* Map credit (bottom-right) — drop MapLibre's grey band; let light, subtle text
+   sit directly on the dark map, with a shadow so it reads over water/parks too. */
+.maplibregl-ctrl-attrib{background:transparent!important;padding:0 4px!important;}
+.maplibregl-ctrl-attrib,.maplibregl-ctrl-attrib a{
+  color:var(--text-dim)!important;text-shadow:0 1px 2px rgba(0,0,0,.85);
+}
+
 /* Distance scale bar (bottom-left) — themed to match our boxes */
 .maplibregl-ctrl-scale{
   background:rgba(13,17,23,.72)!important;
@@ -115,8 +122,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #clearTrackBtn{display:none;}
 .track-sep{color:var(--border);font-size:var(--fs-small);}
 #trackMsg{font-size:var(--fs-small);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;display:none;}
-#autoFlyBtn{opacity:1;transition:opacity .2s;white-space:nowrap;}
-#autoFlyBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
 #autoPathBtn{white-space:nowrap;}
 #autoPathBtn.on{opacity:1;color:#b478ff;border-color:#b478ff;}
 
@@ -214,7 +219,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 /* Recent-heard panel */
 #recent-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #recent-header{
@@ -256,7 +261,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
    the aircraft label color used elsewhere on the page. */
 #adsb-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #adsb-header{
@@ -280,7 +285,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 /* Map-layer toggle panel (collapsible, stacked beneath the stations panel) */
 #layer-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #layer-header{
@@ -301,7 +306,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 /* APRS objects filter panel (dynamic, collapsible) */
 #objects-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #objects-header{
@@ -332,7 +337,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 /* Coverage iGate panel — mirrors the objects panel, teal accent */
 #coverage-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #coverage-header{
@@ -354,7 +359,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
    via .obj-name[data-objcat="fire"]. */
 #emergencies-panel{
   background:var(--panel);border:1px solid var(--amber);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #emergencies-header{
@@ -377,7 +382,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
    Same chrome as the ADS-B / APRS Alerts panels; purple title to match ADS-B. */
 #adsb-alerts-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #adsb-alerts-header{display:flex;align-items:center;gap:.5rem;padding:6px 10px;cursor:pointer;user-select:none;border-radius:7px;}
@@ -415,7 +420,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .alert-dismissed-note a{color:var(--blue);text-decoration:none;}
 .alert-dismissed-note a:hover{color:var(--accent);}
 
-/* Active state for the Grid / Measure toggles (mirrors #autoFlyBtn.on) */
+/* Active state for the Grid / Measure toggles */
 #gridBtn.on,#measureBtn.on{opacity:1;color:var(--accent);border-color:var(--accent-dim);}
 /* Station-list toggle — floating hamburger glyph at the map's top-left corner */
 #listBtn{
@@ -461,7 +466,9 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 }
 /* Match index.html's .aprs-section-title / .aprs-section-meta for consistency. */
 #aprs-list-head .title{color:var(--accent);font-size:var(--fs-base);font-weight:700;text-transform:uppercase;letter-spacing:.13em;white-space:nowrap;}
-#aprs-list-head .count{color:var(--text-dim);font-size:var(--fs-small);}
+#aprs-list-head .count-lbl{color:var(--text-dim);font-size:var(--fs-small);}
+#aprs-list-head .count{color:var(--amber);font-weight:700;font-size:var(--fs-small);}
+#aprs-list-head #srcBreak{font-size:var(--fs-small);color:var(--text-dim);white-space:nowrap;}
 #aprs-list-head .spacer{flex:1;}
 #aprs-list-close{
   background:var(--bg);border:1px solid var(--border);color:var(--text-dim);
@@ -529,7 +536,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 /* Warnings panel (operator-placed flood/fire/etc.) — red accent twin of coverage */
 #warnings-panel{
   background:var(--panel);border:1px solid var(--border);border-radius:7px;
-  font-family:var(--mono);font-size:var(--fs-small);min-width:170px;max-width:220px;
+  font-family:var(--mono);font-size:var(--fs-small);min-width:190px;max-width:240px;
   box-shadow:0 2px 8px rgba(0,0,0,.5);
 }
 #warnings-header{display:flex;align-items:center;gap:.5rem;padding:6px 10px;cursor:pointer;user-select:none;border-radius:7px;}
@@ -545,18 +552,57 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 .warn-row.armed{background:rgba(255,40,40,.16);outline:1px solid var(--red);}
 .warn-row .warn-ico{font-size:16px;line-height:1;width:20px;text-align:center;flex-shrink:0;}
 .warn-hint{padding:2px 4px 6px;color:var(--text-dim);font-size:var(--fs-micro);}
+.warn-mode{display:flex;flex-direction:column;gap:2px;padding:2px 4px 6px;font-size:var(--fs-micro);color:var(--text-dim);}
+.warn-mode input{margin-right:5px;}
+.warn-bcast{display:block;margin-top:6px;font-size:var(--fs-small);cursor:pointer;}
+.warn-bcast input{margin-right:5px;}
+.warn-status{margin-top:4px;font-size:var(--fs-micro);color:var(--text-dim);}
+/* Kill-pending halo: tombstoned or un-advertising warnings still on air — static ring, no animation (Pi kiosk CPU) */
+.warn-marker.warn-kill-pending{box-shadow:0 0 0 4px rgba(255,176,32,.95),0 0 10px 5px rgba(255,176,32,.55);}
 /* Crosshair while arming a warning placement */
 #map.placing-warning .maplibregl-canvas{cursor:crosshair;}
-/* Operator warning marker — icon with a persistent red glow (static, GPU-cheap) */
+/* Operator warning marker — solid bright red ring, always-on, no animation (Pi kiosk CPU) */
 .warn-marker{
-  width:26px;height:26px;border-radius:50%;text-align:center;line-height:26px;
-  font-size:18px;cursor:pointer;background:rgba(13,17,23,.55);
-  box-shadow:0 0 8px 4px rgba(255,40,40,.55);
+  width:26px;height:26px;border-radius:50%;text-align:center;line-height:22px;
+  font-size:16px;cursor:pointer;background:rgba(13,17,23,.78);
+  border:2.5px solid #ff2b2b;box-shadow:0 0 6px 2px rgba(255,40,40,.6);
 }
 .warn-note{margin-top:4px;color:var(--amber);}
 .warn-input{width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:var(--fs-small);padding:3px 5px;border-radius:4px;margin-top:5px;}
 .warn-remove{display:block;margin-top:6px;color:var(--red);background:none;border:none;font-family:var(--mono);cursor:pointer;text-align:left;padding-left:0;}
 .warn-remove:hover{color:#fff;}
+
+/* Capability-gate: greyed Broadcast option/toggle when GrayWolf isn't configured */
+.warn-mode label.warn-mode-disabled{color:var(--text-dim);opacity:.55;cursor:not-allowed;}
+.warn-bcast.warn-bcast-disabled{color:var(--text-dim);opacity:.55;}
+.warn-mode-reason{padding:2px 4px 5px;color:var(--text-dim);font-size:var(--fs-micro);font-style:italic;}
+
+/* Placed-alerts list — one row per warning currently on the map */
+#warn-list{margin-top:6px;border-top:1px solid var(--border);padding-top:4px;}
+.warn-list-empty{padding:4px 2px;color:var(--text-dim);font-size:var(--fs-micro);}
+.warn-item{display:flex;align-items:center;gap:.4rem;padding:4px;border-radius:4px;cursor:pointer;}
+.warn-item:hover{background:var(--panel-2);}
+.warn-item .warn-ico{font-size:15px;line-height:1;width:18px;text-align:center;flex-shrink:0;}
+.warn-item-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;overflow:hidden;}
+.warn-item-note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.warn-item-status{font-size:var(--fs-micro);}
+.warn-item-actions{display:flex;gap:2px;flex-shrink:0;}
+.warn-item-actions button{background:none;border:none;color:var(--text-dim);cursor:pointer;font-family:var(--mono);font-size:var(--fs-small);padding:1px 4px;}
+.warn-item-actions button:hover{color:var(--text);}
+.warn-item-actions .warn-item-del:hover{color:var(--red);}
+.ws-onair{color:var(--green);}
+.ws-pending{color:var(--amber);}
+.ws-kill{color:#ffb020;}
+.ws-local{color:var(--text-dim);}
+
+/* Success toast — static opacity fade only, no animation/@keyframes (Pi kiosk CPU) */
+.warn-toast{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:500;
+  background:var(--panel);border:1px solid var(--green);color:var(--text);
+  font-family:var(--mono);font-size:var(--fs-small);padding:7px 14px;border-radius:7px;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);opacity:0;transition:opacity .4s ease;pointer-events:none;
+}
+.warn-toast.show{opacity:1;}
 
 /* Measure readout panel (bottom-center) */
 #measure-panel{
@@ -570,20 +616,20 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 #measure-readout b{color:var(--accent);}
 #measure-hint{font-size:var(--fs-micro);color:var(--text-dim);margin-top:3px;}
 
-/* Base-map attribution label (bottom-right) — click to load a different map */
-#basemap-info{
-  position:fixed;right:10px;bottom:6px;z-index:150;
-  background:rgba(13,17,23,.72);border:1px solid var(--border);border-radius:4px;
-  font-family:var(--mono);font-size:var(--fs-small);color:var(--text-dim);
-  padding:2px 7px;pointer-events:auto;white-space:nowrap;cursor:pointer;
+/* Base-map dropdown (topbar, after Moving) */
+#mapSelect{
+  background:rgba(13,17,23,.72);color:var(--text);
+  border:1px solid var(--border);border-radius:4px;
+  font-family:var(--mono);font-size:var(--fs-small);
+  padding:2px 6px;cursor:pointer;
+  /* Size to the font, not the widest option — long state names truncate in the
+     closed box (the full name still shows in the open list). */
+  max-width:18ch;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;
 }
-#basemap-info:hover{border-color:var(--accent-dim);color:var(--text);}
-#basemap-info b{color:var(--accent);font-weight:700;}
-#basemap-info .bm-caret{color:var(--text-dim);margin-left:4px;}
-#basemap-info .bm-path{display:block;color:var(--text-dim);font-size:var(--fs-small);opacity:.85;margin-top:1px;max-width:52ch;overflow:hidden;text-overflow:ellipsis;}
+#mapSelect:hover{border-color:var(--accent-dim);}
 
 /* Leading cell shared by both rows so the first separator lines up vertically */
-.lead-cell{display:flex;align-items:center;gap:.7rem;width:215px;flex-shrink:0;}
+.lead-cell{display:flex;align-items:center;gap:.7rem;min-width:215px;flex-shrink:0;}
 #coordReadout{
   font-family:var(--mono);font-size:var(--fs-small);color:var(--text-dim);
   white-space:nowrap;display:flex;align-items:center;gap:6px;
@@ -593,16 +639,6 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 #coordReadout #crLat{width:9ch;}
 #coordReadout #crLon{width:10ch;}
 #coordReadout .cr-sep{color:var(--border);}
-/* Zoom readout — stacked just above the bottom-left zoom/compass control */
-.zoom-readout{
-  background:rgba(13,17,23,.72);border:1px solid var(--border);border-radius:4px;
-  font-family:var(--mono);font-size:var(--fs-small);color:var(--text-dim);
-  padding:2px 7px;display:flex;align-items:center;gap:6px;white-space:nowrap;
-  pointer-events:none;
-}
-.zoom-readout .cr-lbl{color:var(--text-dim);}
-.zoom-readout #crZoom{color:var(--amber);font-weight:600;}
-
 /* Base-map loader modal (click bottom-right label → browse Pi / USB for .pmtiles) */
 #fs-modal{
   position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;
@@ -659,6 +695,42 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 /* Coverage → teal */
 #coverage-body::-webkit-scrollbar-thumb{background-color:#1c7d72;}
 #coverage-body::-webkit-scrollbar-thumb:hover{background-color:#2dd4bf;}
+/* ── Map download (US states): confirm dialog + progress modal ──────────────── */
+.dl-overlay{
+  position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.6);
+}
+.dl-dialog{
+  background:var(--panel);border:1px solid var(--border);border-radius:9px;
+  box-shadow:0 6px 30px rgba(0,0,0,.6);padding:16px 18px;min-width:320px;max-width:90vw;
+  font-family:var(--mono);color:var(--text);
+}
+.dl-dialog-wide{width:640px;max-width:92vw;}
+.dl-msg{font-size:13px;line-height:1.5;margin-bottom:14px;}
+.dl-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.dl-title{font-weight:700;color:var(--accent);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dl-elapsed{color:var(--text-dim);font-size:var(--fs-small);}
+.dl-spinner{
+  width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);
+  border-radius:50%;animation:dl-spin .8s linear infinite;flex-shrink:0;
+}
+@keyframes dl-spin{to{transform:rotate(360deg);}}
+.dl-log{
+  background:#0b0f16;border:1px solid var(--border);border-radius:5px;
+  color:var(--text-dim);font-size:var(--fs-small);line-height:1.4;
+  height:260px;max-height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  padding:8px 10px;margin:0;
+}
+.dl-status{margin-top:10px;font-size:var(--fs-small);min-height:1.2em;}
+.dl-status.ok{color:var(--accent);font-weight:700;}
+.dl-status.err{color:var(--red);}
+.dl-buttons{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;}
+.dl-btn{
+  background:var(--panel-2);color:var(--text);border:1px solid var(--border);
+  border-radius:5px;padding:5px 14px;font-family:var(--mono);font-size:var(--fs-small);cursor:pointer;
+}
+.dl-btn:hover{border-color:var(--accent-dim);}
+.dl-btn-go{border-color:var(--accent);color:var(--accent);font-weight:700;}
 </style>
 </head>
 <body>
@@ -667,9 +739,8 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
   <!-- Row 1 — system status & RF overlays -->
   <div class="topbar-row">
     <div class="lead-cell">
-      <h1 onclick="location.reload()" title="Reload the map" style="cursor:pointer;">APRS Map</h1>
+      <h1 onclick="location.reload()" title="Reload the map" style="cursor:pointer;">Traffic Map</h1>
       <div id="statusDot"></div>
-      <span id="stationCount"></span>
       <span class="track-sep">|</span>
       <span id="countdown" onclick="toggleRefresh()" title="Auto-refresh on/off — click to pause/resume"></span>
     </div>
@@ -679,7 +750,8 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
     <button id="gridBtn" class="sbtn" onclick="toggleGrid()" title="Toggle Maidenhead grid overlay + distance/bearing measure">Grid</button>
     <span class="track-sep">|</span>
     <button id="movingBtn" class="sbtn" onclick="toggleMoving()" title="Show only stations currently moving (speed > 0)">Moving</button>
-    <button id="autoFlyBtn" class="sbtn" onclick="toggleAutoFly()" style="margin-left:.35rem;" title="Auto-fly to latest position when track loads">Auto-fly</button>
+    <span class="track-sep">|</span>
+    <select id="mapSelect" title="Base map" onchange="onMapSelect(this.value)"></select>
     <span style="flex:1"></span>
     <span id="crCpu" class="cr-val" title="Pi CPU load (whole system, ~5s sample)">—</span>
     <span class="track-sep">|</span>
@@ -724,7 +796,9 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
   <div id="aprs-list-resize" title="Drag to resize"></div>
   <div id="aprs-list-head">
     <span class="title">TRAFFIC LIVE</span>
+    <span class="count-lbl">stations —</span>
     <span class="count" id="aprs-list-count">0</span>
+    <span id="srcBreak"></span>
     <span class="spacer"></span>
     <button id="aprs-list-close" onclick="toggleAprsList(false)" title="Close list">✕</button>
   </div>
@@ -741,10 +815,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
   </div>
 </div>
 
-<!-- Base map attribution (bottom-right) — click to load a different .pmtiles -->
-<div id="basemap-info" title="Click to load a different offline base map (.pmtiles on the Pi or a USB drive)"></div>
-
-<!-- Filesystem map browser (click base-map label → browse Pi / USB for .pmtiles) -->
+<!-- Filesystem map browser (dormant: base-map switching lives in the topbar dropdown) -->
 <div id="fs-modal" class="fs-hidden">
   <div id="fs-dialog">
     <div id="fs-head">
@@ -763,6 +834,10 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
   <div id="measure-hint">Double-click or Esc to clear · click <b>Measure</b> again to exit</div>
 </div>
 
+<!-- Map tiles come from GrayWolf's offline store (Maps → Offline Maps, inside
+     GrayWolf). OASIS's own state-download UI was removed — GrayWolf is the map
+     source; the base-map dropdown lists whatever GrayWolf has downloaded. -->
+
 <!-- Right-side stacked panels: recent-heard (stations) + map layers -->
 <div id="right-stack">
   <!-- Card order (top → bottom): Map Layers · Gate Coverage · APRS Info ·
@@ -775,15 +850,19 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
       <span id="layer-title">Map Layers</span>
     </div>
     <div id="layer-body">
-      <label class="layer-toggle"><input type="checkbox" data-group="roads" checked> <span>Roads</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="waterways" checked> <span>Waterways</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="water" checked> <span>Water bodies</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="airports" checked> <span>Airports</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="boundaries" checked> <span>Boundaries</span></label>
       <label class="layer-toggle"><input type="checkbox" data-group="buildings" checked> <span>Buildings</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="parks" checked> <span>Parks / Nature</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="landuse" checked> <span>Land use</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="pois" checked> <span>POIs / Places</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="peaks" checked> <span>Mt peaks</span></label>
-      <label class="layer-toggle"><input type="checkbox" data-group="aircraft" checked> <span>Aircraft</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="citytown" checked> <span>Cities &amp; towns</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="landuse" checked> <span>Forests &amp; land use</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="exits" checked> <span>Highway exits</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="peaks" checked> <span>Mountain peaks</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="parks" checked> <span>Parks &amp; protected</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="transit" checked> <span>Rail &amp; ferry</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="roads" checked> <span>Roads</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="villages" checked> <span>Villages &amp; suburbs</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="water" checked> <span>Water bodies</span></label>
+      <label class="layer-toggle"><input type="checkbox" data-group="waterways" checked> <span>Waterways</span></label>
     </div>
   </div>
 
@@ -874,9 +953,10 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 
 </div>
 
-<script src="/map-assets/maplibre-gl.js"></script>
-<script src="/map-assets/pmtiles.js"></script>
-<script src="/map-assets/basemap-style.js"></script>
+<script src="/maps/mapengine/maplibre-gl.js"></script>
+<script src="/maps/mapengine/pmtiles.js"></script>
+<script src="/maps/mapengine/basemap-style.js"></script>
+<script src="/maps/mapengine/map-engine.js"></script>
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/adsb-operators.js"></script>
 <script>
@@ -919,8 +999,8 @@ const ALT_TABLE = String.fromCharCode(92); // backslash
 const spriteImgs = {};
 spriteImgs['/']        = new Image();
 spriteImgs[ALT_TABLE]  = new Image();
-spriteImgs['/'].src        = '/map-assets/aprs-symbols-24-0.png';
-spriteImgs[ALT_TABLE].src  = '/map-assets/aprs-symbols-24-1.png';
+spriteImgs['/'].src        = '/maps/traffic/assets/aprs-symbols-24-0.png';
+spriteImgs[ALT_TABLE].src  = '/maps/traffic/assets/aprs-symbols-24-1.png';
 
 // If the sprite sheets finish loading after the first station plot, the symbol
 // images couldn't be registered yet — re-render once they're ready so icons fill in.
@@ -1022,9 +1102,13 @@ const _pc        = _params.get('center');
 const _pz        = _params.get('zoom');
 const URL_CENTER = _pc ? _pc.split(',').map(Number) : null;
 const URL_ZOOM   = (_pz != null && _pz !== '') ? Number(_pz) : null;
-const tilesUrl  = 'pmtiles://' + origin + '/maps/tiles/state/' + MAP_FILE;
 
-const pmtilesHttpUrl   = (file) => origin + '/maps/tiles/state/' + file;
+// GrayWolf's downloaded OMT tiles, served via OASIS's allowlisted fs-pmtiles
+// route (maps/traffic/routes.py MAP_ROOTS includes /var/lib/graywolf/tiles).
+// OASIS no longer ships its own tiles — GrayWolf (registration-gated) is the
+// single source of maps.
+const GW_TILES_DIR     = '/var/lib/graywolf/tiles/state/';
+const pmtilesHttpUrl   = (file) => origin + '/api/fs/pmtiles?path=' + encodeURIComponent(GW_TILES_DIR + file);
 const pmtilesSourceUrl = (file) => 'pmtiles://' + pmtilesHttpUrl(file);
 
 // HTML-escape helper (used by the base-map label and the fs browser).
@@ -1042,18 +1126,21 @@ function updateBasemapInfo(label, path) {
   if (path) html += '<span class="bm-path">' + _escHtml(path) + '</span>';
   el.innerHTML = html;
 }
-updateBasemapInfo(MAP_FILE, '/maps/tiles/state/' + MAP_FILE);
 
-const pmtilesProtocol = new pmtiles.Protocol();
-maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile);
-
-const map = new maplibregl.Map({
+// Shared render engine (maps/mapengine/map-engine.js). It owns map
+// creation, the pmtiles:// protocol, the bottom-left control stack (zoom readout
+// + nav + imperial scale) and a ResizeObserver. OASIS keeps its own base-map
+// swap (setUrl, so overlays survive), #layer-panel, and all overlays below.
+const engine = MapEngine.create({
   container: 'map',
-  style: oasisBaseMapStyle(tilesUrl),
+  basemap: MAP_FILE,                                   // boot straight onto the local archive (offline-first)
+  tileUrl: (file) => pmtilesSourceUrl(file),           // GrayWolf tiles via /api/fs/pmtiles
+  style: (sourceUrl) => oasisBaseMapStyle(sourceUrl),  // OASIS OMT dark + rich style
   center: (URL_CENTER && URL_CENTER.length === 2 && URL_CENTER.every(Number.isFinite)) ? URL_CENTER : [-122.1, 47.6],
   zoom: (URL_ZOOM != null && Number.isFinite(URL_ZOOM)) ? URL_ZOOM : 9,
-  attributionControl: false
+  layerCard: false,                                    // OASIS keeps its own #layer-panel
 });
+const map = engine.map;
 
 // Surface otherwise-silent MapLibre failures (GL context / style / pmtiles source).
 // Without this, a failed load just leaves the map blank with "Connecting…" forever,
@@ -1065,34 +1152,35 @@ map.on('error', (e) => {
             : (e && e.sourceId ? 'source "' + e.sourceId + '" failed' : 'unknown');
   if (typeof setStatus === 'function') setStatus('err', 'Map error: ' + msg);
 });
+// GrayWolf's regional archives are large (a US state is ~300 MB), so first paint
+// over a slow link can take a while — give it 20 s before crying WebGL/GPU.
 setTimeout(() => {
   if (!map.isStyleLoaded() && typeof setStatus === 'function') {
-    setStatus('err', 'Map style not loaded — likely WebGL/GPU (see console · chrome://gpu)');
+    setStatus('err', 'Map still loading — large GrayWolf tile, or WebGL/GPU (see console · chrome://gpu)');
   }
-}, 10000);
+}, 20000);
 
-// Zoom readout — a small custom control stacked above the bottom-left
-// navigation buttons (added first so it sits at the top of that corner's stack).
-const zoomReadoutControl = {
-  onAdd() {
-    const el = document.createElement('div');
-    el.className = 'maplibregl-ctrl zoom-readout';
-    el.innerHTML = '<span class="cr-lbl">zoom</span><span id="crZoom" class="cr-val">—</span>';
-    this._el = el;
-    return el;
-  },
-  onRemove() { this._el.remove(); }
-};
-map.addControl(zoomReadoutControl, 'bottom-left');
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
+// Zoom readout + navigation buttons + imperial scale are added by MapEngine
+// (bottom-left stack). No inline controls here.
 
 // ── Base-map switching (click the bottom-right label to load a different map) ──
-// Fly to an archive's native center/zoom (best-effort). httpUrl is the plain
+// Frame an archive's full extent (best-effort). httpUrl is the plain
 // (non-protocol) URL the PMTiles reader uses to fetch the archive header.
+// Prefer fitBounds over the header's center/centerZoom: state extracts often
+// carry centerZoom=0, and the bounds-center can sit offshore (Florida's is in
+// the Gulf), so flying there at a fixed zoom leaves the state shoved to one edge.
+// Fitting the bounds centers and frames the whole state regardless of shape.
 async function flyToArchive(httpUrl, duration) {
   try {
     const hdr = await new pmtiles.PMTiles(httpUrl).getHeader();
-    if (hdr && Number.isFinite(hdr.centerLon) && Number.isFinite(hdr.centerLat)) {
+    if (!hdr) return;
+    const { minLon, minLat, maxLon, maxLat } = hdr;
+    const bounded = [minLon, minLat, maxLon, maxLat].every(Number.isFinite)
+      && maxLon > minLon && maxLat > minLat
+      && (maxLon - minLon) < 355 && (maxLat - minLat) < 175;  // skip whole-planet archives
+    if (bounded) {
+      map.fitBounds([[minLon, minLat], [maxLon, maxLat]], { padding: 24, duration });
+    } else if (Number.isFinite(hdr.centerLon) && Number.isFinite(hdr.centerLat)) {
       map.flyTo({ center: [hdr.centerLon, hdr.centerLat], zoom: hdr.centerZoom || 9, duration });
     }
   } catch (e) { /* centering is best-effort */ }
@@ -1107,7 +1195,74 @@ function loadMapSource(sourceUrl, httpUrl, label, path) {
 // Swap to a bundled map in the suite's maps/ folder.
 function switchMap(filename) {
   MAP_FILE = filename;
-  loadMapSource(pmtilesSourceUrl(filename), pmtilesHttpUrl(filename), filename, '/maps/tiles/state/' + filename);
+  loadMapSource(pmtilesSourceUrl(filename), pmtilesHttpUrl(filename), filename, GW_TILES_DIR + filename);
+}
+
+// ── Base-map dropdown (topbar, after Moving) ─────────────────────────────────
+// OASIS no longer ships or downloads tiles — maps come from GrayWolf's offline
+// store (/var/lib/graywolf/tiles/state, downloaded inside GrayWolf under a
+// registered callsign). The dropdown lists whatever GrayWolf archives are
+// present; when none are, we show a "download in GrayWolf" empty state.
+let _dlPresent = [];        // GrayWolf archive names present (from /api/maps)
+
+function onMapSelect(value) {
+  if (value) switchMap(value);
+}
+
+// Rebuild the dropdown from GrayWolf's present archives (active first).
+function _rebuildMapSelect() {
+  const sel = document.getElementById('mapSelect'); if (!sel) return;
+  const activeName = MAP_FILE.replace(/\.pmtiles$/i, '').toLowerCase();
+  const present = _dlPresent.slice().sort();
+  const active  = present.filter(n => n.toLowerCase() === activeName);
+  const rest    = present.filter(n => n.toLowerCase() !== activeName);
+  const have    = active.concat(rest);              // active archive first, if present
+
+  sel.innerHTML = '';
+  if (!have.length) {                               // nothing downloaded in GrayWolf
+    const o = document.createElement('option');
+    o.value = ''; o.textContent = 'No map — download in GrayWolf';
+    sel.appendChild(o); sel.value = '';
+    return;
+  }
+  const g = document.createElement('optgroup'); g.label = 'GrayWolf maps';
+  have.forEach(name => {
+    const o = document.createElement('option');
+    o.value = name + '.pmtiles'; o.textContent = name;
+    g.appendChild(o);
+  });
+  sel.appendChild(g);
+  sel.value = MAP_FILE;
+}
+
+function _loadMapInventory() {
+  return fetch('/api/maps', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(inv => { _dlPresent = inv.present || []; })
+    .catch(() => {})
+    .then(() => { _rebuildMapSelect(); _updateNoMapState(); });
+}
+_rebuildMapSelect();   // immediate: at least the active archive shows
+_loadMapInventory();   // then fill from /api/maps (GrayWolf inventory)
+
+// Empty-state overlay — when GrayWolf has no offline tiles, point the operator at
+// where maps come from instead of leaving a blank canvas.
+function _updateNoMapState() {
+  const none = !_dlPresent.length;
+  let el = document.getElementById('no-map-msg');
+  if (none && !el) {
+    el = document.createElement('div');
+    el.id = 'no-map-msg';
+    el.style.cssText = 'position:fixed;top:50%;left:calc(50% - 90px);transform:translate(-50%,-50%);' +
+      'z-index:600;max-width:320px;background:rgba(14,20,28,.94);border:1px solid #2a3a4a;' +
+      'border-radius:10px;padding:16px 18px;color:#cfe0f0;font-size:13px;line-height:1.55;text-align:center;';
+    el.innerHTML = '<b>No map available</b><br>Download a region in <b>GrayWolf</b> ' +
+      '(Maps → Offline Maps) — it needs a one-time callsign registration. ' +
+      'OASIS then reads the GrayWolf tiles automatically.';
+    document.body.appendChild(el);
+  } else if (!none && el) {
+    el.remove();
+  }
 }
 
 // Load a .pmtiles from an arbitrary allowlisted path (Pi disk / USB / mount).
@@ -1156,10 +1311,6 @@ async function openFsBrowser(path) {
   }
 }
 
-document.getElementById('basemap-info').addEventListener('click', () => {
-  _fsModal.classList.remove('fs-hidden');
-  openFsBrowser('');
-});
 document.getElementById('fs-close').addEventListener('click', () => _fsModal.classList.add('fs-hidden'));
 _fsModal.addEventListener('click', (e) => { if (e.target === _fsModal) _fsModal.classList.add('fs-hidden'); });
 document.getElementById('fs-list').addEventListener('click', (e) => {
@@ -1177,15 +1328,19 @@ document.getElementById('fs-list').addEventListener('click', (e) => {
 // Group the shared base-map layer ids (from basemap-style.js) into the toggles
 // shown in the collapsible "Map layers" panel. Mirrors maps/map.html.
 const LAYER_GROUPS = {
-  roads:     ['road-minor', 'road-secondary', 'road-primary', 'road-motorway', 'road-labels'],
-  waterways: ['waterways-line'],
-  water:     ['water-poly-fill'],
-  buildings: ['buildings-fill'],
-  parks:     ['landuse-park'],
-  landuse:   ['landcover-wood', 'landcover-grass', 'landuse-residential', 'landuse-commercial', 'landuse-industrial'],
-  pois:      ['place-labels', 'pois-circle'],
-  peaks:     ['mountain-peak'],
-  aircraft:  ['adsb-icon'],
+  roads:      ['road-minor', 'road-secondary', 'road-primary', 'road-motorway', 'road-labels'],
+  transit:    ['railways', 'ferry-line'],
+  waterways:  ['waterways-line'],
+  water:      ['water-poly-fill', 'gr-water-label'],
+  buildings:  ['buildings-fill'],
+  parks:      ['landuse-park', 'gr-park-fill', 'gr-park-outline', 'gr-park-label'],
+  landuse:    ['landcover-wood', 'landcover-grass', 'landuse-residential', 'landuse-commercial', 'landuse-industrial'],
+  citytown:   ['place-labels'],
+  villages:   ['pois-circle'],
+  exits:      ['exit-numbers'],
+  peaks:      ['mountain-peak'],
+  airports:   ['airport-area', 'airport-runway', 'airport-label'],
+  boundaries: ['boundaries'],
 };
 
 function toggleLayerPanel() {
@@ -1270,7 +1425,7 @@ function aprsSymIcon(s, px) {
   const col = idx % SPRITE_COLS, row = Math.floor(idx / SPRITE_COLS);
   const sheet = table === '/' ? 0 : 1;
   return '<span class="aprs-sym" style="width:' + px + 'px;height:' + px + 'px;'
-    + "background-image:url('/map-assets/aprs-symbols-24-" + sheet + ".png');"
+    + "background-image:url('/maps/traffic/assets/aprs-symbols-24-" + sheet + ".png');"
     + 'background-size:' + (SPRITE_COLS * px) + 'px ' + (6 * px) + 'px;'
     + 'background-position:' + (-col * px) + 'px ' + (-row * px) + 'px"></span>';
 }
@@ -2094,11 +2249,6 @@ function applyFilter() {
   // hidden — otherwise an RF/IS line lingers for a filtered-out station.
   if (autoPath) _refreshAutoPaths();
   else if (activePath && !filtered.some(s => s.callsign === activePath)) clearPath();
-  const total = allStations.length;
-  const shown = filtered.length;
-  const scEl = document.getElementById('stationCount');
-  scEl.textContent = shown + '/' + total;
-  scEl.title = shown + ' shown of ' + total + ' station' + (total !== 1 ? 's' : '');
 }
 
 function setStatus(state, msg) {
@@ -2183,7 +2333,7 @@ async function fetchStations() {
     allStations.forEach(s => { nextPrev[s.callsign] = s.last_heard; });
     _prevHeard = nextPrev;
     // ── Latest station + recent-heard panel ──────────────────────────────
-    // Both are map-oriented (auto-fly target + "newly heard" pings), so they
+    // Both are map-oriented (fly-to-latest target + "newly heard" pings), so they
     // consider only stations that carry a position; position-less stations
     // (status/message/telemetry) still appear in the bottom station list.
     _latestStation = allStations.reduce((best, s) => {
@@ -2202,7 +2352,7 @@ async function fetchStations() {
     refreshGridColFilter();      // rebuild the drawer Grid dropdown options
     applyFilter();
     setStatus('ok', '');   // green dot = OK; the header clock shows the time
-    // Refresh active track data (updates trail + auto-fly if enabled)
+    // Refresh active track data (updates the trail)
     if (activeTrack) _loadTrack(activeTrack);
     // Auto-path: draw paths only for stations heard THIS cycle, so previous
     // cycles' paths don't persist. Manual single-path persists when auto is off.
@@ -2252,7 +2402,7 @@ function adsbCategoryKey(a) {
 // the way they're flying). One SVG path per emitter-category shape; the marker
 // is filled in the altitude colour (same colour drives its label). Icons are
 // rasterised to a canvas ON DEMAND and cached by shape+colour, so only the
-// combos actually in view cost anything — a Pi Zero concern.
+// combos actually in view cost anything — a low-power-Pi concern.
 // Each shape carries its own square viewBox size (`vb`) so shapes drawn in
 // different coordinate spaces can coexist — most are 24-unit, but A5/B1 are the
 // graphic-designer's preferred 100-unit paths.
@@ -2922,9 +3072,11 @@ loadConfig().then(() => {
     // Home QTH as a symbol layer placed BELOW the aircraft ('adsb-icon'). A DOM
     // marker sits above the map canvas and hid planes passing over the station;
     // a symbol layer participates in canvas draw order, so aircraft render on top.
-    const homeImg = new Image(34, 41);
+    // Rasterised at 2x and declared pixelRatio:2 — the marker is a thin outline
+    // now, and a 1x raster of 2px strokes reads mushy on a HiDPI kiosk display.
+    const homeImg = new Image(48, 46);
     homeImg.onload = () => {
-      if (!map.hasImage('home-qth')) map.addImage('home-qth', homeImg);
+      if (!map.hasImage('home-qth')) map.addImage('home-qth', homeImg, { pixelRatio: 2 });
       if (!map.getSource('home')) map.addSource('home', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       if (!map.getLayer('home-qth')) map.addLayer({
         id: 'home-qth', type: 'symbol', source: 'home',
@@ -2938,9 +3090,11 @@ loadConfig().then(() => {
     startClock();
     loadHazards();    // shared natural-hazard catalog (hazards.json) — pills/age-exempt/dismiss
     fetchStations();
+    if (!window._warnPollTimer) window._warnPollTimer = setInterval(loadWarnings, 20000); // resolve kill-pending states
     loadStationCfg(); // resolve local station position → render the home node
     _syncPathChips(); // reflect any persisted RF/IS path-filter state on the chips
     _syncSrcColFromChips(); // and on the drawer's Src dropdown
+    document.getElementById('autoPathBtn').classList.toggle('on', autoPath); // reflect persisted Auto-path state (default on)
     refreshAdsb();
     setInterval(refreshAdsb, 2000);
     refreshAdsbRecent();
@@ -2948,15 +3102,13 @@ loadConfig().then(() => {
   });
 });
 
-map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 120 }), 'bottom-left');
-
 // ── Cursor coordinate + zoom readout (parity with the offline maps viewer) ──
 const _crLat  = document.getElementById('crLat');
 const _crLon  = document.getElementById('crLon');
-const _crZoom = document.getElementById('crZoom');
 let   _lastLngLat = null;
 function _updateReadout() {
-  _crZoom.textContent = map.getZoom().toFixed(1);
+  // zoom is shown by the engine's bottom-left zoom readout; here we own the
+  // topbar cursor lat/lon only.
   _crLat.textContent = _lastLngLat ? _lastLngLat.lat.toFixed(5) : '—';
   _crLon.textContent = _lastLngLat ? _lastLngLat.lng.toFixed(5) : '—';
 }
@@ -2969,10 +3121,11 @@ map.on('load', _updateReadout);
 // both a station and an OSM feature. The measure tool owns clicks while active.
 const OSM_INSPECT_LAYERS = [
   'water-poly-fill', 'waterways-line',
-  'landcover-wood', 'landcover-grass', 'landuse-park',
+  'landcover-wood', 'landcover-grass', 'landuse-park', 'gr-park-fill',
   'landuse-residential', 'landuse-commercial', 'landuse-industrial',
+  'airport-area',
   'road-minor', 'road-secondary', 'road-primary', 'road-motorway',
-  'buildings-fill', 'place-labels', 'pois-circle', 'mountain-peak',
+  'buildings-fill', 'boundaries', 'place-labels',
 ];
 map.on('click', (e) => {
   if (measureOn || placingWarning) return;
@@ -3041,11 +3194,10 @@ map.on('mouseleave', 'adsb-icon', () => { map.getCanvas().style.cursor = ''; });
 // ── Track rendering ──────────────────────────────────────────────────────────
 let activeTrack = null;
 let _trackStatusMsg = '';  // persists across refreshes so popup can re-show it
-let autoFly = false;
 let _focusHandled = false;
 let activePath = null;     // callsign whose RF path is currently drawn
 let _pathStatusMsg = '';   // persists across refreshes for popup re-show
-let autoPath = false;      // when on, auto-draw the latest-heard station's path
+let autoPath = localStorage.getItem('oasis_auto_path') !== '0';  // default on; auto-draw the latest-heard station's path
 // Auto-path source filters (chip toggles atop the "Last heard" panel). RF gates
 // purple digipeated chains + green direct-to-home lines; IS gates blue direct
 // lines. Default on; persisted so the choice survives reloads.
@@ -3066,15 +3218,11 @@ let coverageOn = false;    // when on, draw the filter-aware reach-fan
 let covMarkers = [];       // glowing DOM markers for coverage receiver node(s)
 const covRxState = {};     // iGate callsign -> enabled (Coverage panel checkboxes)
 
-function toggleAutoFly() {
-  autoFly = !autoFly;
-  document.getElementById('autoFlyBtn').classList.toggle('on', autoFly);
-}
-
 // Auto-path: keep the RF path of the most-recently-heard station drawn, updating
 // each refresh. Turning it off clears the path.
 function toggleAutoPath() {
   autoPath = !autoPath;
+  localStorage.setItem('oasis_auto_path', autoPath ? '1' : '0');
   document.getElementById('autoPathBtn').classList.toggle('on', autoPath);
   if (autoPath) {
     // Auto-path and Coverage are mutually exclusive
@@ -3255,6 +3403,40 @@ function _stationSource(s) {
   return isIS ? 'is' : 'rf';
 }
 
+// Per-cycle source breakdown in the station-list drawer head — mirrors the
+// dashboard (index.html): how many stations we heard on each transport in the
+// LAST refresh cycle (RF green / IS blue / ADS-B purple), then the freshness of
+// the newest packet. Only stations whose last_heard falls inside the cycle window
+// count, so it's a live "what came in just now" readout, not the aged list total.
+// Counts ignore the column filters. Window padded past the 15 s refresh to absorb
+// fetch/clock jitter. Refreshed every cycle via renderAprsList.
+const _HEARD_WINDOW_MS = 20 * 1000;
+function renderSourceBreakdown() {
+  const el = document.getElementById('srcBreak');
+  if (!el) return;
+  const now = Date.now();
+  const fresh = s => { const t = _lhEpoch(s.last_heard); return t > 0 && (now - t) <= _HEARD_WINDOW_MS; };
+  const adsbRows = _adsbListRows();
+  let rf = 0, is = 0;
+  for (const s of allStations) { if (!fresh(s)) continue; if (_stationSource(s) === 'rf') rf++; else is++; }
+  const adsb = adsbRows.filter(fresh).length;
+  // Freshness of the newest packet across everything we track (APRS + ADS-B).
+  const times = allStations.concat(adsbRows).map(s => _lhEpoch(s.last_heard)).filter(t => t > 0);
+  let tail = '';
+  if (times.length) {
+    const ageMins = Math.round((now - Math.max(...times)) / 60000);
+    const txt = ageMins < 2 ? 'just now' : ageMins < 60 ? ageMins + 'm ago' : Math.round(ageMins / 60) + 'h ago';
+    const col = ageMins < 30 ? 'var(--accent)' : ageMins < 360 ? 'var(--amber)' : 'var(--red)';
+    tail = ' &mdash; <span style="color:' + col + '">' + txt + '</span>';
+  }
+  if (!rf && !is && !adsb && !tail) { el.innerHTML = ''; return; }
+  el.innerHTML =
+    ' · <span style="color:var(--accent)">' + rf + ' RF</span>'
+    + ' / <span style="color:var(--blue)">' + is + ' IS</span>'
+    + ' / <span style="color:#b478ff">' + adsb + ' ADS-B</span>'
+    + tail;
+}
+
 // Compact age formatter: <60s → "Ns", <60m → "Nm Ns", else → "Nh Nm".
 function fmtAge(sec) {
   if (sec < 60) return sec + 's';
@@ -3390,7 +3572,8 @@ function renderAprsList(stations) {
   const tbody = document.getElementById('aprs-list-tbody');
   const countEl = document.getElementById('aprs-list-count');
   if (!tbody) return;
-  countEl.textContent = stations.length + ' shown';
+  countEl.textContent = stations.length;
+  renderSourceBreakdown();
   if (!stations.length) {
     tbody.innerHTML = '<tr><td colspan="10" class="al-empty">No stations match the current filters.</td></tr>';
     return;
@@ -3518,7 +3701,6 @@ async function _loadTrack(callsign) {
       return;
     }
     const coords = data.points.map(p => [p.lon, p.lat]);
-    const last = data.points[data.points.length - 1];
     const features = [
       { type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} },
       ...data.points.map((p, i) => ({
@@ -3529,9 +3711,6 @@ async function _loadTrack(callsign) {
       }))
     ];
     map.getSource('aprs-track').setData({ type: 'FeatureCollection', features });
-    if (autoFly && last) {
-      map.flyTo({ center: [last.lon, last.lat], zoom: Math.max(map.getZoom(), 12), speed: 1.4, essential: true });
-    }
     setTrackMsg(callsign + ': ' + data.count + ' pts', 'blue');
     _setPopupTrackStatus(callsign, data.count + ' pts · ' + parseInt(document.getElementById('trackWindow').value || 60) + ' min window');
   } catch (e) {
@@ -3624,17 +3803,19 @@ function refreshMyPosition() {
   renderHomeMarker();
 }
 
-// Shared "home QTH" marker — a gold house with an antenna + signal arcs. Bottom-
-// anchored, so the house base sits exactly on the station coordinate (identical
-// marker on the satellites map).
-const HOME_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-16 -30 32 39" width="34" height="41" aria-hidden="true">
-  <path d="M-12 -3 L0 -14 L12 -3 Z" fill="#ffb454" stroke="#0d1117" stroke-width="1.4" stroke-linejoin="round"/>
-  <rect x="-9" y="-3" width="18" height="12" rx="1.5" fill="#ffd257" stroke="#0d1117" stroke-width="1.4"/>
-  <rect x="-2.2" y="2" width="4.4" height="7" fill="#0d1117"/>
-  <line x1="6" y1="-9" x2="6" y2="-24" stroke="#ffd257" stroke-width="1.8"/>
-  <circle cx="6" cy="-25" r="2" fill="#ffd257"/>
-  <path d="M10 -25 A6 6 0 0 1 10 -18" fill="none" stroke="#ffd257" stroke-width="1.5"/>
-  <path d="M13 -27 A10 10 0 0 1 13 -15" fill="none" stroke="#ffd257" stroke-width="1.3" opacity="0.7"/>
+// Shared "home QTH" marker — the ⌂ house outline from the HOME nav link, drawn
+// in gold. Deliberately *unfilled*: the old solid house + antenna blanked out
+// whatever it sat on (roads, a station, an aircraft), so the outline keeps the
+// basemap readable straight through it. The dark under-stroke is a halo, not a
+// fill, so it stays legible on both light and dark tiles. Bottom-anchored, so
+// the house base sits exactly on the station coordinate (identical marker on
+// the satellites map — services/satellites/static/satellites.html).
+const HOME_PATH = 'M-8.5 -1.2 L-8.5 -11.5 L0 -19.5 L8.5 -11.5 L8.5 -1.2 Z';
+const HOME_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12 -22 24 23" width="48" height="46" aria-hidden="true">
+  <g fill="none" stroke-linejoin="round" stroke-linecap="round">
+    <path d="${HOME_PATH}" stroke="#0d1117" stroke-width="4.2" opacity="0.85"/>
+    <path d="${HOME_PATH}" stroke="#ffd257" stroke-width="2.2"/>
+  </g>
 </svg>`;
 
 function renderHomeMarker() {
@@ -3907,7 +4088,7 @@ function drawGrid() {
 
 // ── Operator warnings (shared, persisted) ────────────────────────────────────
 // Flood/fire/etc. markers an operator drops on the map. The catalog of icons is
-// /server/map/warnings.json; placed warnings live server-side (/api/aprs/warnings) so
+// /maps/traffic/warnings.json; placed warnings live server-side (/api/aprs/warnings) so
 // every device sees the same set. Markers are DOM (few, user-placed) with a
 // persistent red glow, so the 15s station refresh never touches them.
 let WARN_CATALOG  = [];
@@ -3917,6 +4098,10 @@ let warnMarkers   = [];       // DOM markers, parallel to warnings
 let pendingWarn   = null;     // type id being placed, or null
 let placingWarning = false;
 let _warnEditing  = false;    // an open warning popup → don't rebuild markers
+let _warnOpenOnRender = null; // id of a just-placed alert → open its card after markers rebuild
+let broadcastAvailable = false;  // from list response broadcast_available; gates the Broadcast UI
+const _warnPrevBeacon = {};     // id -> last-seen gw_beacon_id, for null->set on-air toast
+let _warnToastTimer = null;
 
 function toggleWarningsPanel() {
   document.getElementById('warnings-panel').classList.toggle('collapsed');
@@ -3924,7 +4109,7 @@ function toggleWarningsPanel() {
 
 async function loadWarningCatalog() {
   try {
-    const r = await fetch('/server/map/warnings.json', { cache: 'no-store' });
+    const r = await fetch('/maps/traffic/warnings.json', { cache: 'no-store' });
     WARN_CATALOG = await r.json();
   } catch (_) { WARN_CATALOG = []; }
   WARN_CATALOG.forEach(w => { WARN_BY_ID[w.id] = w; });
@@ -3934,14 +4119,28 @@ async function loadWarningCatalog() {
 function buildWarningsPanel() {
   const body = document.getElementById('warnings-body');
   if (!body) return;
-  let html = '<div class="warn-hint">Click a type, then click the map to place it.</div>';
-  html += WARN_CATALOG.map(w =>
+  const cat = WARN_CATALOG.slice().sort((a, b) => a.label.localeCompare(b.label));
+  // Broadcast destination is now chosen on the alert's own card (opened right
+  // after placement), not here — the panel is just types + the placed list.
+  let html = '<div class="warn-hint">Click on an alert.<br>Click on the map to add</div>';
+  html += cat.map(w =>
     '<div class="warn-row" data-warn="' + _escHtml(w.id) + '"><span class="warn-ico">' +
     _escHtml(w.icon) + '</span><span>' + _escHtml(w.label) + '</span></div>').join('');
+  html += '<div id="warn-list"></div>';
   body.innerHTML = html;
+  renderWarnList();
 }
 
 document.getElementById('warnings-body').addEventListener('click', (e) => {
+  const actBtn = e.target.closest('.warn-item-actions button');
+  if (actBtn) {
+    e.stopPropagation();
+    if (actBtn.dataset.act === 'del') warnRemove(actBtn.dataset.wid);
+    else warnFlyTo(actBtn.dataset.wid);
+    return;
+  }
+  const item = e.target.closest('.warn-item');
+  if (item) { warnFlyTo(item.dataset.wid); return; }
   const row = e.target.closest('.warn-row');
   if (!row) return;
   armWarning(row.dataset.warn);
@@ -3968,12 +4167,18 @@ async function placeWarningClick(e) {
   disarmWarning();
   if (!type) return;
   try {
+    // Always placed LOCAL first; the operator picks the broadcast on the card
+    // that opens next (see _warnOpenOnRender in renderWarnings).
     const r = await fetch('/api/aprs/warnings', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, lon: e.lngLat.lng, lat: e.lngLat.lat, note: '' })
+      body: JSON.stringify({ type, lon: e.lngLat.lng, lat: e.lngLat.lat, note: '',
+                             broadcast: false })
     });
     const d = await r.json();
-    if (d.ok) await loadWarnings();
+    if (d.ok && d.warning) {
+      _warnOpenOnRender = d.warning.id;   // auto-open its object card after markers rebuild
+      await loadWarnings();
+    }
   } catch (_) { /* offline / server down — ignore */ }
 }
 
@@ -3981,7 +4186,13 @@ async function loadWarnings() {
   try {
     const r = await fetch('/api/aprs/warnings', { cache: 'no-store' });
     const d = await r.json();
-    if (d.ok) { warnings = d.warnings || []; renderWarnings(); }
+    if (d.ok) {
+      warnings = d.warnings || [];
+      const avail = !!d.broadcast_available;
+      if (avail !== broadcastAvailable) { broadcastAvailable = avail; buildWarningsPanel(); }
+      _checkWarnOnAirTransitions(warnings);
+      renderWarnings();
+    }
   } catch (_) { /* leave existing markers */ }
 }
 
@@ -3990,28 +4201,167 @@ function clearWarnMarkers() { warnMarkers.forEach(m => m.remove()); warnMarkers 
 function renderWarnings() {
   const cnt = document.getElementById('warnings-count');
   if (cnt) cnt.textContent = warnings.length ? String(warnings.length) : '';
+  renderWarnList();
   if (_warnEditing) return; // don't disrupt an open note editor
   clearWarnMarkers();
+  let openMarker = null;
   warnings.forEach(w => {
-    const cat = WARN_BY_ID[w.type] || { icon: '⚠️', label: w.type };
+    const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
     const el = document.createElement('div');
-    el.className = 'warn-marker';
+    el.className = 'warn-marker' + (warnKillPending(w) ? ' warn-kill-pending' : '');
     el.textContent = cat.icon;
     el.title = cat.label + (w.note ? ' — ' + w.note : '');
-    const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '240px' });
+    const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '260px' });
     popup.on('open', () => { _warnEditing = true; popup.setHTML(warnPopupHtml(w)); });
     popup.on('close', () => { _warnEditing = false; loadWarnings(); });
-    warnMarkers.push(new maplibregl.Marker({ element: el, anchor: 'center' })
-      .setLngLat([w.lon, w.lat]).setPopup(popup).addTo(map));
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([w.lon, w.lat]).setPopup(popup).addTo(map);
+    warnMarkers.push(marker);
+    if (_warnOpenOnRender && w.id === _warnOpenOnRender) openMarker = marker;
   });
+  // Auto-open the just-placed alert's card so the operator picks the broadcast.
+  if (openMarker) openMarker.togglePopup();
+  _warnOpenOnRender = null;
+}
+
+// Placed-alerts list — one row per warning currently placed, newest last.
+function renderWarnList() {
+  const list = document.getElementById('warn-list');
+  if (!list) return;
+  if (!warnings.length) {
+    list.innerHTML = '<div class="warn-list-empty">No alerts placed.</div>';
+    return;
+  }
+  list.innerHTML = warnings.map(w => {
+    const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
+    const st = warnStatus(w);
+    const dest = warnDest(w);
+    const text = w.note || w.aprs_name || cat.label;
+    return '<div class="warn-item" data-wid="' + _escHtml(w.id) + '">' +
+      '<span class="warn-ico">' + _escHtml(cat.icon) + '</span>' +
+      '<span class="warn-item-main">' +
+        '<span class="warn-item-note">' + _escHtml(text) + '</span>' +
+        '<span class="warn-item-status ' + st.cls + '">' + _escHtml(st.label) +
+          (dest ? ' · ' + _escHtml(dest) : '') + '</span>' +
+      '</span>' +
+      '<span class="warn-item-actions">' +
+        '<button type="button" class="warn-item-fly" data-act="fly" data-wid="' + _escHtml(w.id) +
+          '" title="Fly to">&#8857;</button>' +
+        '<button type="button" class="warn-item-del" data-act="del" data-wid="' + _escHtml(w.id) +
+          '" title="Remove">&#10005;</button>' +
+      '</span>' +
+    '</div>';
+  }).join('');
+}
+
+function warnFlyTo(id) {
+  const w = warnings.find(x => x.id === id);
+  if (!w) return;
+  map.flyTo({ center: [w.lon, w.lat], zoom: Math.max(map.getZoom(), 11), speed: 1.4, essential: true });
+}
+
+// Single source of truth for placed-warning status (marker halo, list badge, popup line).
+function warnStatus(w) {
+  if (w.pending_delete) return { label: 'Removing…', cls: 'ws-kill' };
+  if (!w.broadcast && w.gw_beacon_id) return { label: 'Kill pending', cls: 'ws-kill' };
+  if (!w.broadcast) return { label: 'Local', cls: 'ws-local' };
+  if (w.gw_beacon_id) return { label: '✓ On air', cls: 'ws-onair' };
+  return { label: 'Pending…', cls: 'ws-pending' };
+}
+const _WARN_STATUS_LONG = {
+  'Removing…':   'Removing — on air until confirmed',
+  'Kill pending': 'Un-advertising — still on air',
+  'Local':        'Local map only',
+  '✓ On air':     'On air',
+  'Pending…':     'Broadcast pending',
+};
+// Destination tag for a broadcast warning, derived from its send_path
+// (empty for local-only warnings). is_only -> IS, both -> RF+IS, rf -> RF.
+function warnDest(w) {
+  if (!w.broadcast) return '';
+  return { is_only: 'IS', both: 'RF+IS', rf: 'RF' }[w.send_path] || '';
+}
+function warnStatusText(w) {
+  const s = warnStatus(w);
+  const base = _WARN_STATUS_LONG[s.label] || s.label;
+  const dest = warnDest(w);
+  return dest ? base + ' · ' + dest : base;
+}
+function warnKillPending(w) { return warnStatus(w).cls === 'ws-kill'; }
+
+// Success toast — fires on a gw_beacon_id null -> set transition (i.e. the
+// beacon actually went live). Purely a DOM/opacity fade, no CSS animation.
+function _checkWarnOnAirTransitions(list) {
+  list.forEach(w => {
+    const seen = Object.prototype.hasOwnProperty.call(_warnPrevBeacon, w.id);
+    const prev = _warnPrevBeacon[w.id];
+    if (seen && !prev && w.gw_beacon_id) warnToast('On air: ' + (w.aprs_name || w.type));
+    _warnPrevBeacon[w.id] = w.gw_beacon_id || null;
+  });
+  const ids = new Set(list.map(w => w.id));
+  Object.keys(_warnPrevBeacon).forEach(id => { if (!ids.has(id)) delete _warnPrevBeacon[id]; });
+}
+
+function warnToast(msg) {
+  let el = document.getElementById('warn-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'warn-toast';
+    el.className = 'warn-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.remove('show');
+  void el.offsetWidth; // restart the opacity transition
+  el.classList.add('show');
+  clearTimeout(_warnToastTimer);
+  _warnToastTimer = setTimeout(() => { el.classList.remove('show'); }, 3500);
 }
 
 function warnPopupHtml(w) {
-  const cat = WARN_BY_ID[w.type] || { icon: '⚠️', label: w.type };
+  const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
+  const gated = !broadcastAvailable;
+  const st = warnStatus(w);
+  // Current destination: '' = local, else the send_path (is_only / rf / both).
+  const cur = w.broadcast ? (w.send_path || 'both') : '';
+  const opt = (val, label) => {
+    const off = gated && val;   // broadcast options are disabled when GrayWolf isn't configured
+    return '<label' + (off ? ' class="warn-mode-disabled"' : '') + '>' +
+      '<input type="radio" name="warndest-' + w.id + '" value="' + val + '"' +
+      (cur === val ? ' checked' : '') + (off ? ' disabled' : '') +
+      ' onchange="warnSetDest(\'' + w.id + '\', \'' + val + '\')"> ' + label + '</label>';
+  };
   return '<div class="pop-call">' + cat.icon + ' ' + _escHtml(cat.label) + '</div>' +
     '<input class="warn-input" maxlength="50" placeholder="note (max 50 chars)" value="' +
       _escHtml(w.note || '') + '" oninput="warnSaveNote(\'' + w.id + '\', this.value)">' +
+    '<div class="warn-mode" style="font-size:var(--fs-small);gap:3px;margin-top:4px">' +
+      opt('', 'Only local') +
+      opt('is_only', 'IS broadcast') +
+      opt('rf', 'RF broadcast') +
+      opt('both', 'RF + IS broadcast') +
+    '</div>' +
+    (gated ? '<div class="warn-mode-reason">APRS broadcast unavailable — GrayWolf not configured</div>' : '') +
+    '<div class="warn-status ' + st.cls + '" data-wid="' + w.id + '">' + _escHtml(warnStatusText(w)) + '</div>' +
     '<button class="warn-remove" onclick="warnRemove(\'' + w.id + '\')">✕ Remove warning</button>';
+}
+
+// Set an alert's broadcast destination from its card. '' = local (broadcast off);
+// otherwise broadcast on with that send_path. The reconciler re-advertises if the
+// destination changed while already on air.
+async function warnSetDest(id, value) {
+  const broadcast = value !== '';
+  const payload = broadcast ? { broadcast: true, send_path: value } : { broadcast: false };
+  try {
+    await fetch('/api/aprs/warnings/' + id, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (_) {}
+  // reflect immediately; server list refresh on popup close finalizes gw id
+  const w = warnings.find(x => x.id === id);
+  if (w) { w.broadcast = broadcast; if (broadcast) w.send_path = value; }
+  const el = document.querySelector('.warn-status[data-wid="' + id + '"]');
+  if (el && w) { el.textContent = warnStatusText(w); el.className = 'warn-status ' + warnStatus(w).cls; }
 }
 
 let _warnSaveTimer = null;

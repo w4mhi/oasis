@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Feeding APRS — OASIS Handbook</title>
+  <title>OASIS - Feeding APRS (Handbook)</title>
   <link rel="stylesheet" href="handbook.css" />
   <link rel="icon" href="img/oasis-logo.svg" />
 </head>
@@ -82,7 +82,7 @@
     <h2>RTL-SDR &rarr; GrayWolf</h2>
     <p>Tick <strong>RTL-SDR tools</strong> and <strong>RTL-SDR &rarr; GrayWolf APRS feed</strong> in the setup menu, or run:</p>
     <pre><code>python3 features/rtl-sdr/install-rtl-sdr.py      # RTL-SDR driver + tools
-python3 features/rtl-sdr/enable-rtl-sdr.py       # test the dongle, start the audio feed</code></pre>
+python3 services/rtl-feed/install.py       # test the dongle, start the audio feed</code></pre>
     <p>
       This demodulates 2&nbsp;m APRS and streams the audio to <code>127.0.0.1:7355</code> over
       UDP. Finish the wiring in the GrayWolf web UI (<code>:8080</code>):

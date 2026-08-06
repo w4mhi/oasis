@@ -1,0 +1,46 @@
+/* wifi-pill.css
+ * ---------------------------------------------------------------------------
+ * The Wi-Fi status pill, styled identically for index.html and the OASIS
+ * Dashboard kiosk. Loaded by both so the pill can't drift in look; the tone
+ * (border + text colour) is set by common/js/wifi-pill.js via a .wtone-* class.
+ *
+ * Each page supplies its own palette + size through these vars (see each :root):
+ *   --wfp-blue --wfp-green --wfp-amber --wfp-red --wfp-neutral   (tone colours)
+ *   --wfp-fs                                                     (font size)
+ * --panel-2 and --mono are defined the same on both pages, so they're used directly.
+ */
+.wifi-pill,
+.wifipill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: .35rem;
+  padding: .28em .8em;
+  border-radius: 999px;
+  border: 1px solid var(--wfp-neutral, #7e8d99);
+  background: var(--panel-2, #12161c);
+  color: var(--wfp-neutral, #7e8d99);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: var(--wfp-fs, 1rem);
+  font-weight: 700;
+  letter-spacing: .04em;
+  line-height: 1.15;
+  white-space: nowrap;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.wifi-pill:hover,
+.wifipill:hover { filter: brightness(1.18); }
+
+/* Signal scale: AP = blue; client link degrades green → amber → red; a bad or
+   non-existent link is red; a connected link with no signal reading is neutral.
+   Both border and text take the tone. */
+.wifi-pill.wtone-ap,      .wifipill.wtone-ap      { border-color: var(--wfp-blue,   #58a6ff); color: var(--wfp-blue,   #58a6ff); }
+.wifi-pill.wtone-strong,  .wifipill.wtone-strong  { border-color: var(--wfp-green,  #2ee6a6); color: var(--wfp-green,  #2ee6a6); }
+.wifi-pill.wtone-med,     .wifipill.wtone-med     { border-color: var(--wfp-amber,  #ffb454); color: var(--wfp-amber,  #ffb454); }
+.wifi-pill.wtone-weak,    .wifipill.wtone-weak    { border-color: var(--wfp-red,    #ff6b6b); color: var(--wfp-red,    #ff6b6b); }
+.wifi-pill.wtone-none,    .wifipill.wtone-none    { border-color: var(--wfp-red,    #ff6b6b); color: var(--wfp-red,    #ff6b6b); }
+.wifi-pill.wtone-unknown, .wifipill.wtone-unknown { border-color: var(--wfp-neutral,#7e8d99); color: var(--wfp-neutral,#7e8d99); }
+
+/* Child label (index wraps the text in a span) inherits the pill's tone colour. */
+.wifi-pill-txt { letter-spacing: .04em; color: inherit; }

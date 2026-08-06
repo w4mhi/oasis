@@ -177,7 +177,7 @@ def api_winlink_rmslist():
     Pat's /api/rmslist?mode=X returns the gateways PLUS a per-gateway VOACAP
     propagation report whose raw text is ~95% of the (multi-MB) payload. We
     strip that — keeping the link_quality score — so the browser caches a lean
-    snapshot (essential on the Pi Zero). The data is sourced from Pat's web API,
+    snapshot (essential on the Pi). The data is sourced from Pat's web API,
     so it needs connectivity at download time; the client caches it for offline
     use. Generous timeout because Pat computes the predictions live.
     """

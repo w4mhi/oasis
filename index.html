@@ -8,8 +8,9 @@
   try { if (localStorage.getItem('oasis_theme') === 'light')
           document.documentElement.dataset.theme = 'light'; } catch (e) {}
 </script>
-<title>OASIS - Off-grid Amateur Station Information Suite</title>
+<title>OASIS - Off-grid Amateur Station Integrated Suite</title>
 <link rel="stylesheet" href="css/common.css">
+<link rel="stylesheet" href="/common/css/wifi-pill.css">
 <style>
 /* ── Layout override (full-bleed, no body padding) ───────────────────── */
 body {
@@ -23,8 +24,10 @@ body {
 /* ── Top bar ─────────────────────────────────────────────────────────── */
 .topbar {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .6rem;
   padding: .6rem 1.25rem;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
@@ -78,7 +81,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: .3rem;
-  min-width: 232px;
+  min-width: 250px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -93,20 +96,139 @@ body {
 .gps-dot.up { background: var(--accent); }
 .gps-dot.warn { background: var(--amber); }
 .gps-dot.down { background: var(--red); }
-.gps-card-name { font-size: var(--fs-base); font-weight: 700; color: var(--text); letter-spacing: .1em; }
-.gps-card-badge { margin-left: auto; font-size: var(--fs-small); text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); font-weight: 700; }
+.gps-card-name { font-size: var(--fs-subtitle); font-weight: 700; color: var(--text); letter-spacing: .1em; }
+.gps-card-badge { margin-left: auto; font-size: var(--fs-subtitle); text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); font-weight: 700; }
 .gps-card-badge.up   { color: var(--accent); }
 .gps-card-badge.warn { color: var(--amber); }
 .gps-card-badge.down { color: var(--red); }
 .gps-iface {
-  font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .06em;
+  font-size: var(--fs-subtitle); text-transform: uppercase; letter-spacing: .06em;
   color: var(--text-dim); font-weight: 700; margin-left: auto;
 }
 .gps-iface[hidden] { display: none; }
-.gps-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .2rem .8rem; }
-.gps-cell { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
-.gps-lbl { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .07em; color: var(--text-dim); }
-.gps-val { font-size: var(--fs-small); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gps-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .35rem .56rem; }  /* row/col gaps trimmed 30% (.5/.8 → .35/.56) */
+.gps-cell { display: flex; flex-direction: column; line-height: 1.1; gap: .1rem; min-width: 0; }  /* label → value gap matches the Processes header→values .1rem */
+.gps-lbl { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .07em; color: var(--text-dim); }
+.gps-val { font-size: var(--fs-base); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Explicit flex-basis (not auto): .topbar wraps, and a wrap container breaks lines
+   on the hypothetical main size (basis clamped by min/max) BEFORE any shrinking.
+   With basis:auto that size is the card's max-content width, which overflows 1920
+   and pushes Processes onto a second row -- and lowering min-width does NOT help,
+   since it only floors a size the basis already exceeds. The basis below is the
+   real knob: sum(basis) + brand block + gps + rail + gaps must stay under the
+   viewport or the row wraps again. flex-grow hands the surplus back afterwards. */
+.card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:.4rem .7rem;
+      display:flex;flex-direction:column;gap:.3rem;flex:1 1 350px}
+.card.up{border-color:var(--accent-dim);background:rgba(0,200,100,.06)}
+.card.warn{border-color:var(--amber-dim);background:rgba(255,180,84,.06)}
+.card.down{border-color:#7a1010;background:rgba(180,30,30,.08)}
+.card-hdr{display:flex;align-items:center;gap:.45rem}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);flex-shrink:0}
+.dot.up{background:var(--accent)} .dot.warn{background:var(--amber)} .dot.down{background:var(--red)}
+.card-name{font-size:var(--fs-subtitle);font-weight:700;color:var(--text);letter-spacing:.1em}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:.15rem .8rem}
+.cell{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+.lbl{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.07em;color:var(--text-dim)}
+.val{font-size:var(--fs-small);font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+.val.ok{color:var(--accent)} .val.warn{color:var(--amber)} .val.hot{color:var(--red)}
+/* CPU-card fan blade: sits inline after Temp, inherits the temp colour (ok/warn/
+   hot). Hidden unless a cooling daemon is installed; spins only when the fan is
+   actually moving air, dims to a "static/idle" look otherwise. Transform-only
+   animation (compositor-cheap — see the box-shadow-anim CPU lesson). */
+.cpu-fan{display:none;width:1.35em;height:1.35em;margin-left:.36em;vertical-align:-.22em;color:var(--text-dim);transform-origin:50% 50%}
+.cpu-fan.show{display:inline-block}
+.cpu-fan.ok{color:var(--accent)} .cpu-fan.warn{color:var(--amber)} .cpu-fan.hot{color:var(--red)}
+.cpu-fan.static{opacity:.6}
+.cpu-fan.spin{animation:cpu-fan-spin 1.3s linear infinite}
+@keyframes cpu-fan-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.cpu-fan.spin{animation:none}}
+
+/* ---- clock cards (dashboard style: left color bar + LOCAL/UTC), scaled to header ---- */
+.clk-card{position:relative;overflow:hidden;justify-content:center;min-width:250px;
+  padding:.15rem .7rem .15rem .95rem;background:var(--panel)}
+.clk-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:.3rem;background:var(--clk)}
+.clk-card{border-color:var(--border)}
+.clk-card.utc{background:var(--panel)}
+/* per-clock colour: loc/utc set the pre-JS default; .clk-c-* (set by click-to-cycle) win on tie via source order */
+.clk-card.loc{--clk:var(--blue)}
+.clk-card.utc{--clk:var(--text)}
+.clk-card.clk-c-blue{--clk:var(--blue)}
+.clk-card.clk-c-white{--clk:var(--text)}
+.clk-card.clk-c-amber{--clk:var(--amber)}
+.clk-card.clk-c-green{--clk:var(--accent)}
+.clk-card.clk-c-chartreuse{--clk:var(--chartreuse)}
+.clk-card.clk-c-orange{--clk:var(--orange)}
+.clk-zn{display:flex;align-items:baseline;gap:.5rem}
+.clk-z{font-size:var(--fs-subtitle);letter-spacing:.16em;font-weight:700}
+.clk-card .clk-z{color:var(--clk)}
+.clk-tz{font-size:var(--fs-subtitle);color:var(--text-dim)}
+.clk-time{font-size:3.5rem;line-height:1.0;font-weight:600;font-variant-numeric:tabular-nums;margin-top:.1rem}
+.clk-card .clk-time{color:var(--clk)}
+.clk-time .s{font-size:1.95rem;opacity:.6}
+.clk-d{font-size:var(--fs-subtitle);color:var(--text-dim);letter-spacing:.04em;margin-top:.15rem}
+
+/* per-core bars */
+.zone-sep{border:none;border-top:1px dashed var(--border);margin:.12rem 0}
+.zone-lbl{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);margin:.05rem 0 0}
+.cpu-hdr{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;font-size:var(--fs-subtitle);font-weight:700;letter-spacing:.08em}
+.cpu-hdr .k{color:var(--text);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:var(--fs-subtitle)}
+.cpu-hdr .val{font-size:var(--fs-subtitle)}
+.cpu-hdr .sep{color:var(--border)}
+.cpu-rate,.status-uptime{margin-left:auto;font-size:var(--fs-subtitle);color:var(--text-dim);font-variant-numeric:tabular-nums;letter-spacing:.05em}
+.proc-load{margin-left:auto;display:inline-flex;align-items:baseline;gap:.35rem;font-size:var(--fs-subtitle);font-weight:700;letter-spacing:.08em;font-variant-numeric:tabular-nums}
+.proc-load .k{color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em}
+.proc-load .val{font-size:var(--fs-subtitle)}
+.core{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.5rem}
+.core-lbl{font-size:var(--fs-micro);color:var(--text-dim);letter-spacing:.05em}
+.core-track{height:7px;border-radius:4px;background:var(--border);overflow:hidden;min-width:74px}
+.core-fill{display:block;height:100%;border-radius:4px;background:var(--accent)}
+.core-fill.busy{background:var(--amber)} .core-fill.hot{background:var(--red)}
+.core-pct{font-size:var(--fs-small);font-weight:700;font-variant-numeric:tabular-nums;min-width:2.6em;text-align:right}
+.core-pct.busy{color:var(--amber)} .core-pct.hot{color:var(--red)}
+/* CPU card body: RAM/DISK stacked at left, vertical separator, cores at right */
+.cpu-body{display:flex;align-items:stretch;gap:.7rem}
+.cpu-mem{display:flex;flex-direction:column;justify-content:center;gap:.35rem;flex:0 0 auto}
+.cpu-mem .mem-row{display:flex;flex-direction:column;align-items:center;gap:.05rem}
+.cpu-mem .mem-sep{border:none;border-top:1px solid var(--border);margin:0;width:100%}
+.cpu-body #cpu-cores{flex:1 1 auto;display:flex;flex-direction:column;gap:.25rem;
+  border-left:1px solid var(--border);padding-left:.7rem}
+
+/* processes */
+.proc{display:grid;grid-template-columns:1fr auto auto;gap:.6rem;align-items:baseline;font-size:var(--fs-base)}
+.proc-name{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proc-cpu{font-weight:700;font-variant-numeric:tabular-nums;color:var(--accent);min-width:3em;text-align:right}
+.proc-cpu.busy{color:var(--amber)} .proc-cpu.hot{color:var(--red)}
+.proc-ram{font-variant-numeric:tabular-nums;color:var(--accent);min-width:3em;text-align:right}
+.proc-ram.busy{color:var(--amber)} .proc-ram.hot{color:var(--red)}
+.proc-head{color:var(--text-dim);font-size:var(--fs-label);text-transform:uppercase;letter-spacing:.06em}
+.proc-head span:not(:first-child){min-width:3em;text-align:right}
+#proc-list{margin-top:-.2rem}   /* tighten the CPU/RAM header → values gap (card gap is .3rem) */
+
+/* telemetry + services */
+.svc-pills{display:flex;flex-wrap:wrap;gap:.3rem;justify-content:flex-start}
+.spill{display:inline-flex;align-items:center;gap:.3rem;padding:.14rem .55rem;border-radius:999px;
+  border:1px solid var(--border);background:var(--panel-2);font-size:var(--fs-label);font-weight:700}
+.spill .n{font-variant-numeric:tabular-nums}
+.spill.up{border-color:var(--accent-dim);color:var(--accent)}
+.spill.warn{border-color:var(--amber-dim);color:var(--amber)}
+.spill.down{border-color:#7a1010;color:var(--red)}
+.spill.off{color:var(--text-dim)}
+.tel-line{display:flex;align-items:center;gap:.4rem;font-size:var(--fs-small);margin-left:auto}
+.tel-dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.tel-k{color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-size:var(--fs-small);font-weight:700}
+
+/* radio-assignment pill (from the dashboard svcbar) */
+.svcbar{display:flex;flex-wrap:wrap;align-items:center;gap:.55rem;justify-content:space-between;cursor:pointer}
+.svcbar .s{display:flex;align-items:center;gap:.35rem;font-size:var(--fs-small);font-weight:600}
+.st-row{display:flex;align-items:center;gap:.5rem;font-size:var(--fs-small)}
+.st-row .k{color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-size:var(--fs-small);min-width:3.5em}
+.st-row .svcbar{flex:1}
+.st-host{color:var(--text);font-weight:600}
+.st-host .sub{color:var(--text-dim);font-weight:400}
+.adot{width:.72rem;height:.72rem;border-radius:50%;box-sizing:border-box;background:transparent;border:2px solid var(--text)}
+.adot.assigned{background:var(--amber);border-color:var(--amber)}
+.adot.inuse{background:var(--accent);border-color:var(--accent)}
 
 /* ── Kiosk refresh button (header pill) ──────────────────────── */
 .kiosk-refresh {
@@ -225,6 +347,20 @@ body {
 .svc-badge.up   { color: var(--accent); }
 .svc-badge.down { color: var(--red); }
 .svc-badge.warn { color: var(--amber); }
+/* Unread-mail pill on the Winlink RF card top row (relocated from the old
+   "Winlink Mail" nav link). Sits to the right of the name; hidden when zero. */
+.wlrf-unread {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: var(--fs-small);
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim, #7a5200);
+  border-radius: 999px;
+  padding: .05rem .4rem;
+  white-space: nowrap;
+}
 /* Web Server card: gunicorn/werkzeug as a bordered pill in the top row (styled
    like the STOP control). Hooked on the id, not a class, because the generic
    renderer overwrites .svc-badge's className on every poll. */
@@ -277,11 +413,11 @@ body {
 .feed-meter { display: flex; align-items: center; gap: .4rem; flex: 1; min-width: 0; }
 .feed-meter[hidden] { display: none; }
 .feed-meter-track {
-  flex: 1; min-width: 30px; max-width: 90px; height: 5px;
-  background: var(--border); border-radius: 3px; overflow: hidden;
+  flex: 1; min-width: 30px; height: 7px;
+  background: var(--border); border-radius: 4px; overflow: hidden;
 }
 .feed-meter-fill {
-  height: 100%; width: 0%; background: var(--blue); border-radius: 3px;
+  height: 100%; width: 0%; background: var(--blue); border-radius: 4px;
   transition: width .25s ease, background .25s ease;
 }
 .feed-meter.silent .feed-meter-fill { background: var(--red); }
@@ -558,6 +694,73 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
   font-size: var(--fs-label);
   letter-spacing: .04em;
 }
+.svc-pill .pill-k { color: var(--text-dim); font-weight: 700; letter-spacing: .08em; }
+.svc-pill .pill-v { color: var(--text); font-variant-numeric: tabular-nums; }
+/* Fixed-width track so host + power + theme align under the pill-row
+   above. This track is the brand block's widest line, so it sets the block's
+   width in the topbar -- keep it only as wide as the row's content needs, or it
+   steals room from the cards and wraps the header. HOST and the theme pill are
+   fixed-size, so every extra pixel here lands on POWER (the only flex:1 item):
+   this var is the POWER pill's width knob. */
+.host-row {
+  --host-row-w: 460px;
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  margin-top: .35rem;
+  width: var(--host-row-w);
+  max-width: 100%;
+}
+.host-pill { flex: 0 0 auto; }
+/* version lives in the zulu clock card's top row (see .clk-zn) -- margin-auto
+   pushes it to the card's upper-right corner, baseline-aligned with UTC/zulu */
+.clk-card .brand-ver { margin-left: auto; flex: 0 0 auto; white-space: nowrap; }
+.pwr-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  min-width: 0;                /* allow the value to shrink + ellipsize */
+  flex: 1 1 auto;
+  padding: .18rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: var(--fs-label);
+  font-family: var(--mono);
+  letter-spacing: .03em;
+}
+.pwr-lbl { color: var(--text-dim); font-weight: 700; letter-spacing: .08em; flex: 0 0 auto; }
+.pwr-val {
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pwr-pill.ok   .pwr-val { color: var(--accent); }
+.pwr-pill.warn { border-color: var(--amber-dim); }
+.pwr-pill.warn .pwr-val { color: var(--amber); }
+.pwr-pill.crit { border-color: var(--red-dim, #7a1010); }
+.pwr-pill.crit .pwr-val { color: var(--red); }
+.host-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .18rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: var(--fs-label);
+  font-family: var(--mono);
+  letter-spacing: .03em;
+}
+.host-lbl  { color: var(--text-dim); font-weight: 700; letter-spacing: .08em; }
+.host-ip   { font-weight: 700; color: var(--text); }   /* IP — white, primary */
+.host-name { color: var(--text-dim); }                  /* hostname — grey */
+/* Shared round separator dot (host pill + callsign pill) */
+/* Shared middot separator — same U+00B7 character as the Band Plan (HF · VHF · UHF). */
+.sep-dot { color: var(--text-dim); flex: 0 0 auto; }
+.sep-dot::before { content: "\00B7"; }
 .cs-call { font-weight: 700; color: var(--accent); letter-spacing: .08em; }
 .cs-grid { color: var(--amber); }
 .cs-sep  { color: var(--border); }
@@ -590,24 +793,12 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 }
 .clock-uptime-lbl { color: var(--text-dim); letter-spacing: .06em; }
 .clock-uptime-val { color: var(--text); font-variant-numeric: tabular-nums; }
-.wifi-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: .4rem;
-  padding: .16rem .7rem;
-  border: 1px solid var(--accent-dim);
-  border-radius: 999px;
-  background: var(--panel-2);
-  color: var(--text);
-  font-size: var(--fs-label);
-  font-family: var(--mono);
-  cursor: pointer;
+/* The Wi-Fi pill itself is styled by the shared /common/css/wifi-pill.css so it
+   matches the kiosk exactly; this page only maps the palette + size below. */
+:root {
+  --wfp-blue: var(--blue); --wfp-green: var(--accent); --wfp-amber: var(--amber);
+  --wfp-red: var(--red); --wfp-neutral: var(--text-dim); --wfp-fs: var(--fs-label);
 }
-.wifi-pill:hover { background: var(--panel); border-color: var(--accent); }
-.wifi-pill.ap    { border-color: var(--amber); }
-.wifi-pill.ap .wifi-pill-txt     { color: var(--amber); }
-.wifi-pill.client .wifi-pill-txt { color: var(--accent); }
-.wifi-pill-txt { letter-spacing: .04em; }
 
 .wifi-modal-backdrop {
   position: fixed; inset: 0; z-index: 1000;
@@ -827,6 +1018,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 .aprs-section-title.live    { color: var(--accent); }
 .aprs-section-title.offline { color: var(--amber); }
 .aprs-section-meta { font-size: var(--fs-small); color: var(--text-dim); white-space: nowrap; }
+#aprs-count { color: var(--amber); font-weight: 700; }
 /* Emergency chip — right-aligned in the header. Calm (dim, non-interactive) when
    no Fire/Public-safety station has been heard in 48h; amber alert when some are;
    filled/inverted while the list is narrowed to them. */
@@ -961,19 +1153,21 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <script src="/common/js/format.js"></script>
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/adsb-operators.js"></script>
+<script src="/common/js/service-registry.js"></script>
+<script src="/common/js/hw-console.js"></script>
+<script src="/common/js/wifi-pill.js"></script>
 </head>
 <body>
 
 <!-- ── TOP BAR ─────────────────────────────────────────────────────────────── -->
 <div class="topbar">
-  <div style="display:flex;align-items:center;gap:2.0rem">
-  <div>
-    <div class="brand-name">OASIS <span class="brand-sub" style="color: var(--blue);">Off-grid Amateur Station Information Suite</span><span class="brand-ver" id="brand-ver"></span></div>
-    <div class="brand-sub">An offline toolkit for amateur radio emergency communications.</div>
+  <div style="display:flex;flex-direction:column;justify-content:center;flex:0 0 auto">
+    <div class="brand-name">OASIS <span class="brand-sub" style="color: var(--blue);">Off-grid Amateur Station Integrated Suite</span></div>
+    <div class="brand-sub">An offline toolkit for amateur radio communications.</div>
     <div class="pill-row">
       <button class="callsign-pill" onclick="editCallsignGrid()" title="Edit callsign &amp; grid">
         <span class="cs-call" id="my-callsign">N0CALL</span>
-        <span class="cs-sep">&middot;</span>
+        <span class="sep-dot"></span>
         <span class="cs-grid" id="my-grid">&mdash;</span>
       </button>
       <button class="units-pill" id="units-pill" onclick="toggleUnits()"
@@ -984,6 +1178,22 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
               title="Reload the dashboard" aria-label="Refresh dashboard">
         <span class="kr-icon">&#8635;</span>Refresh
       </button>
+      <button class="wifi-pill" id="wifi-pill" onclick="openWifiModal()" style="display:none"
+              title="View Wi-Fi / connect to a network">
+        <span class="wifi-pill-txt" id="wifi-pill-txt">Wi-Fi</span>
+      </button>
+    </div>
+    <div class="host-row">
+      <span class="host-pill" id="host-pill" title="This station's LAN address and hostname">
+        <span class="host-lbl">HOST</span>
+        <span class="host-ip" id="host-ip">&mdash;</span>
+        <span class="sep-dot" id="host-sep" hidden></span>
+        <span class="host-name" id="host-name"></span>
+      </span>
+      <span class="pwr-pill" id="pwr-pill" title="Power / throttle status">
+        <span class="pwr-lbl">POWER</span>
+        <span class="pwr-val" id="pwr-val">&mdash;</span>
+      </span>
       <button class="units-pill" id="theme-toggle" onclick="toggleTheme()"
               title="Toggle light / dark theme" aria-label="Toggle light / dark theme">
         <span id="theme-glyph">&#9728;</span>
@@ -991,7 +1201,18 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     </div>
   </div>
 
-  <!-- GPS / GNSS receiver card (next to the title) -->
+  <div class="card clk-card loc">
+    <div class="clk-zn"><span class="clk-z">LOCAL</span><span class="clk-tz" id="clk-loc-tz">local</span></div>
+    <div class="clk-time" id="clk-loc-t">--:--<span class="s">:--</span></div>
+    <div class="clk-d" id="clk-loc-d">&mdash;</div>
+  </div>
+  <div class="card clk-card utc">
+    <div class="clk-zn"><span class="clk-z">UTC</span><span class="clk-tz">zulu</span><span class="brand-ver" id="brand-ver"></span></div>
+    <div class="clk-time" id="clk-utc-t">--:--<span class="s">:--</span></div>
+    <div class="clk-d" id="clk-utc-d">&mdash;</div>
+  </div>
+
+  <!-- GPS / GNSS receiver card (immediately after the zulu clock) -->
   <div class="gps-card down" id="gps-card" title="GNSS receiver + clock status">
     <div class="gps-card-hdr">
       <span class="gps-dot down" id="gps-dot"></span>
@@ -999,6 +1220,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="gps-iface" id="gps-iface" hidden></span>
       <span class="gps-card-badge down" id="gps-badge">NO FIX</span>
     </div>
+    <hr class="zone-sep">
     <div class="gps-card-grid">
       <div class="gps-cell"><span class="gps-lbl">Sats</span><span class="gps-val" id="gps-sats">n/a</span></div>
       <div class="gps-cell"><span class="gps-lbl">HDOP</span><span class="gps-val" id="gps-hdop">n/a</span></div>
@@ -1008,73 +1230,41 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <div class="gps-cell"><span class="gps-lbl">Clock</span><span class="gps-val" id="gps-clock">n/a</span></div>
     </div>
   </div>
-  </div>
 
-  <div>
-    <div class="clock-utc-row">
-      <div class="clock-utc" id="utc-time">UTC --:--:--</div>
-      <div class="clock-date" id="utc-date">----·--·--</div>
-    </div>
-    <div class="clock-utc-row">
-      <div class="clock-local" id="local-time">LOC --:--:--</div>
-      <div class="clock-local-date" id="local-date">----·--·--</div>
-    </div>
-    <!-- Wi-Fi status / picker (pill hidden off-Pi) + uptime, to its right -->
-    <div class="wifi-pill-row" id="wifi-pill-row">
-      <button class="wifi-pill" id="wifi-pill" onclick="openWifiModal()"
-              style="display:none"
-              title="View Wi-Fi / connect to a network">
-        <span class="wifi-pill-txt" id="wifi-pill-txt">Wi-Fi</span>
-      </button>
-      <span class="clock-uptime" title="System uptime">
-        <span class="clock-uptime-lbl">UPTIME</span>
-        <span class="clock-uptime-val" id="s-uptime">—</span>
+  <div class="card up" id="cpu-card">
+    <div class="card-hdr">
+      <span class="dot" id="cpu-dot"></span>
+      <span class="cpu-hdr">
+        <span class="k">CPU</span><span class="val" id="cpu-pct">&mdash;</span>
+        <span class="sep">&middot;</span>
+        <span class="k">Temp</span><span class="val" id="cpu-temp">&mdash;</span><svg class="cpu-fan" id="cpu-fan" viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(0 8 8)"/><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(120 8 8)"/><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(240 8 8)"/></g><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg>
       </span>
+      <span class="cpu-rate" id="cpu-rate"></span>
+    </div>
+    <hr class="zone-sep">
+    <div class="cpu-body">
+      <div class="cpu-mem">
+        <div class="mem-row"><span class="core-lbl">RAM</span><span class="val" id="cpu-ram">&mdash;</span></div>
+        <hr class="mem-sep">
+        <div class="mem-row"><span class="core-lbl">DISK</span><span class="val" id="cpu-disk">&mdash;</span></div>
+      </div>
+      <div id="cpu-cores"></div>
     </div>
   </div>
-</div>
 
-<!-- ── SYSTEM MONITOR ─────────────────────────────────────────────────────── -->
-<div class="stats-bar">
-  <div class="stat-item" style="padding-left:0;border-left:none;margin-right:.4rem">
-    <span class="section-hdr-title">SYSTEM</span>
+  <div class="card up" id="proc-card">
+    <div class="card-hdr"><span class="dot up" id="proc-dot"></span><span class="card-name">PROCESSES</span><span class="proc-load" id="proc-load"></span></div>
+    <hr class="zone-sep">
+    <div class="proc proc-head"><span></span><span>CPU</span><span>RAM</span></div>
+    <div id="proc-list"></div>
   </div>
-  <div class="stat-item">
-    <span class="stat-lbl">CPU</span>
-    <span class="stat-val" id="s-cpu">—</span>
-    <div class="mini-bar"><div class="mini-fill" id="b-cpu"></div></div>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">RAM</span>
-    <span class="stat-val" id="s-ram">—</span>
-    <div class="mini-bar"><div class="mini-fill" id="b-ram"></div></div>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">DISK</span>
-    <span class="stat-val" id="s-disk">—</span>
-    <div class="mini-bar"><div class="mini-fill" id="b-disk"></div></div>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">LOAD</span>
-    <span class="stat-val" id="s-load">—</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">TEMP</span>
-    <span class="stat-val" id="s-temp">—</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-lbl">AUDIO</span>
-    <span class="stat-val" id="s-audio">—</span>
-  </div>
-    <div class="stat-item">
-    <span class="stat-lbl">HOST</span>
-    <span class="stat-val" id="s-host" title="Server these stats are read from">—</span>
-  </div>
-  <div class="stat-item" id="item-throttle" style="display:none">
-    <span class="stat-lbl">PWR</span>
-    <span class="stat-val" id="s-throttle">—</span>
-  </div>
-  <span class="telemetry-badge" id="telemetry-badge">△ telemetry: offline</span>
+
+  <!-- SRV OPS burger — far right of the header (opens #hsx-pop) -->
+  <button class="hsx-rail hsx-ok" id="hsx-rail" type="button" aria-expanded="false" aria-controls="hsx-pop" title="Service Operations — HW / SRV assignment">
+    <span class="hsx-lbl" aria-hidden="true">SRV<br>OPS</span>
+    <span class="hsx-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="hsx-cnt" id="hsx-cnt">&#10003;</span>
+  </button>
 </div>
 
 <!-- ── SECTION HEADER ─────────────────────────────────────────────────────── -->
@@ -1089,6 +1279,92 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 </div>
 
 <!-- ── SERVICE STATUS STRIP ───────────────────────────────────────────────── -->
+<style>
+/* HW/SRV assignment console (Service Operations) — LIVE: polls /api/hardware/console,
+   guardian via /api/hardware/guardian. All classes hsx- scoped. */
+.hsx-anchor{position:relative; display:flex; align-items:stretch; gap:.45rem; padding-right:1.25rem}
+.hsx-anchor .svc-strips-wrap{flex:1 1 auto; min-width:0}
+.hsx-rail{width:48px; min-height:104px; flex:0 0 auto; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:.5rem; margin:.5rem 0; background:var(--panel); border:1px solid var(--border);
+  border-radius:12px; cursor:pointer; color:var(--text-dim); transition:.12s; padding:.5rem .2rem; font-family:var(--mono)}
+.hsx-rail .hsx-bars{display:inline-flex; flex-direction:column; gap:3px}
+.hsx-rail .hsx-bars i{display:block; width:18px; height:2px; border-radius:2px; background:currentColor}
+.hsx-rail .hsx-cnt{font-size:var(--fs-small); font-weight:700; text-align:center; line-height:1.1}
+.hsx-rail .hsx-lbl{font-size:var(--fs-micro); font-weight:700; letter-spacing:.12em; text-align:center; line-height:1.25; text-transform:uppercase}
+.hsx-rail.hsx-ok{color:var(--green); border-color:color-mix(in srgb,var(--green) 45%,var(--border))}
+.hsx-rail.hsx-warn{color:var(--amber); border-color:color-mix(in srgb,var(--amber) 55%,var(--border))}
+.hsx-rail.hsx-crit{color:var(--red); border-color:var(--red)}
+.hsx-rail:hover{filter:brightness(1.08)}
+.hsx-rail:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.hsx-tog,.hsx-tog::after,.hsx-pop{transition:none}}
+.hsx-pop{position:absolute; top:0; right:1.25rem; z-index:40; width:min(560px,94vw);
+  opacity:0; transform:translateX(28px); pointer-events:none; transition:.18s ease}
+.hsx-pop.hsx-open{opacity:1; transform:translateX(0); pointer-events:auto}
+.hsx-card{width:100%; background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  overflow:hidden; box-shadow:0 14px 38px rgba(0,0,0,.30)}
+.hsx-card-hd{display:flex; align-items:center; gap:.4rem; padding:.55rem .75rem; border-bottom:1px solid var(--border)}
+.hsx-card-hd .hsx-ttl{font-size:var(--fs-label); text-transform:uppercase; letter-spacing:.07em; font-weight:600;
+  color:var(--text); display:flex; align-items:center; gap:.45rem; margin-right:auto}
+.hsx-card-hd .hsx-ttl .hw-ic{width:1.1em; height:1.1em; flex:0 0 auto}
+.hsx-hdbtn{background:transparent; border:1px solid transparent; border-radius:6px; cursor:pointer;
+  color:var(--text-dim); font-family:var(--mono); font-size:.9rem; line-height:1; padding:.25rem .4rem}
+.hsx-hdbtn:hover{color:var(--text); border-color:var(--border)}
+.hsx-hdbtn:focus-visible{outline:2px solid var(--blue); outline-offset:1px}
+.hsx-hdbtn.hsx-on{color:var(--accent); border-color:color-mix(in srgb,var(--accent) 40%,var(--border))}
+.hsx-stopall{color:var(--red); border-color:color-mix(in srgb,var(--red) 40%,var(--border)); font-size:var(--fs-micro); text-transform:uppercase; letter-spacing:.06em; font-weight:700}
+.hsx-stopall:hover{background:color-mix(in srgb,var(--red) 12%,transparent); color:var(--red)}
+.hsx-guardian{position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:60; display:flex; align-items:center; gap:.75rem; background:var(--panel); border:1px solid var(--red); border-radius:10px; padding:.5rem .8rem; box-shadow:0 10px 30px rgba(0,0,0,.4); font-family:var(--mono); font-size:var(--fs-small); color:var(--red); max-width:94vw}
+.hsx-guardian[hidden]{display:none}
+.hsx-g-cancel{background:var(--red); color:#fff; border:none; border-radius:6px; padding:.3rem .7rem; cursor:pointer; font-family:var(--mono); font-weight:700; text-transform:uppercase; letter-spacing:.05em; font-size:var(--fs-micro); white-space:nowrap}
+.hsx-g-cancel:hover{filter:brightness(1.12)}
+.hsx-g-cancel:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.hsx-guardian{animation:none}}
+.hsx-msg{min-height:1.75rem; display:flex; align-items:center; gap:.4rem; padding:.25rem .8rem;
+  border-bottom:1px solid var(--border); font-size:var(--fs-small); line-height:1.3;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.hsx-msg.hsx-idle{color:var(--text-dim); opacity:.65}
+.hsx-msg.hsx-info{color:var(--text-dim)}
+.hsx-msg.hsx-okc{color:var(--accent)}
+.hsx-msg.hsx-lockc{color:var(--amber)}
+.hsx-msg.hsx-warnc{color:var(--red)}
+.hsx-scroll{overflow-x:auto}
+.hsx-matrix{display:grid; gap:0; min-width:480px; font-variant-numeric:tabular-nums}
+.hsx-mh{font-size:var(--fs-small); text-transform:uppercase; letter-spacing:.04em; color:var(--text-dim);
+  text-align:center; padding:.45rem .2rem .4rem; border-bottom:1px solid var(--border); white-space:nowrap}
+.hsx-mh.hsx-hw{text-align:left; padding-left:.8rem}
+.hsx-mc{display:flex; align-items:center; justify-content:center; padding:.3rem .2rem; border-bottom:1px solid var(--border)}
+.hsx-matrix .hsx-rlast .hsx-mc, .hsx-matrix .hsx-rlast .hsx-hwc{border-bottom:none}
+.hsx-hwc{display:flex; align-items:center; gap:.45rem; padding:.3rem .6rem .3rem .8rem; border-bottom:1px solid var(--border)}
+.hsx-hwc .hsx-nm{font-weight:600; font-size:var(--fs-base)}
+.hsx-hwc .hsx-sr{font-size:var(--fs-micro); color:var(--text-dim)}
+.hsx-hwc.hsx-off{background:color-mix(in srgb,var(--red) 12%,transparent)}
+.hsx-hwc.hsx-off .hsx-nm{color:var(--red)}
+.hsx-hwc .hsx-offtag{font-size:var(--fs-micro); color:var(--red); text-transform:uppercase; letter-spacing:.05em}
+.hsx-hwc .hsx-lk{margin-left:auto; line-height:0; cursor:pointer; border:none; background:transparent;
+  color:var(--amber); padding:.15rem; border-radius:4px; display:inline-flex; width:22px; height:22px;
+  align-items:center; justify-content:center}
+.hsx-hwc .hsx-lk svg{display:block; width:14px; height:14px}
+.hsx-hwc .hsx-lk:hover{opacity:.75}
+.hsx-hwc .hsx-lk:focus-visible{outline:2px solid var(--blue); outline-offset:1px}
+.hsx-hwc.hsx-locked{background:color-mix(in srgb,var(--red) 9%,transparent)}
+.hsx-hwc.hsx-locked .hsx-lk{color:var(--red)}
+.hsx-tog{position:relative; width:32px; height:17px; border-radius:999px; padding:0;
+  border:1px solid var(--border); background:var(--panel-2); cursor:pointer; transition:.15s}
+.hsx-tog::after{content:""; position:absolute; top:1px; left:1px; width:13px; height:13px; border-radius:50%;
+  background:var(--text-dim); transition:.15s}
+.hsx-tog.hsx-on{background:color-mix(in srgb,var(--accent) 32%,var(--panel-2)); border-color:var(--accent)}
+.hsx-tog.hsx-on::after{left:16px; background:var(--accent); box-shadow:0 0 5px var(--accent)}
+.hsx-tog.hsx-stopped{border-color:var(--amber-dim); background:color-mix(in srgb,var(--amber) 14%,var(--panel-2))}
+.hsx-tog.hsx-stopped::after{background:var(--amber)}
+.hsx-tog.hsx-frozen{cursor:not-allowed}
+.hsx-tog.hsx-dim{opacity:.35; cursor:not-allowed}
+.hsx-tog:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+.hsx-nax{color:var(--border)}
+</style>
+<!-- HW/SRV assignment console (Service Operations) · LIVE — polls /api/hardware/console;
+     guardian countdown via /api/hardware/guardian. Renders empty where the console API
+     reports no devices (e.g. a hardware-less dev box). -->
+<div class="hsx-anchor">
 <div class="svc-strips-wrap" id="svc-strips-wrap">
 <!-- Row 1: radio / RF services -->
 <div class="svc-strip">
@@ -1151,7 +1427,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="svc-badge" id="badge-owrx">—</span>
     </div>
   </div>
-  <div class="svc-card svc-card-gated" id="card-adsb" data-href="server/map/map.html" data-target="_blank">
+  <div class="svc-card svc-card-gated" id="card-adsb" data-href="maps/traffic/map.html" data-target="_blank">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-adsb"></div>
       <div class="svc-card-info">
@@ -1178,6 +1454,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-wlrf"></div>
       <div class="svc-card-info"><div class="svc-name">Winlink RF</div><div class="svc-sub" id="sub-wlrf">—</div></div>
+      <span class="wlrf-unread" id="wlrf-unread" hidden></span>
     </div>
     <div class="svc-card-bottom">
       <button class="svc-open" id="open-wlrf" onclick="svcOpenClick('wlrf')" disabled>OPEN ↗</button>
@@ -1188,16 +1465,9 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="svc-badge" id="badge-wlrf">—</span>
     </div>
   </div>
-  <div class="svc-card svc-card-gated" id="card-winlink">
-    <div class="svc-card-top">
-      <div class="svc-dot" id="dot-winlink"></div>
-      <div class="svc-card-info"><div class="svc-name">Winlink Classic Mail</div><div class="svc-sub" id="sub-winlink">—</div></div>
-    </div>
-    <div class="svc-card-bottom">
-      <button class="svc-open" id="open-winlink" onclick="svcOpenClick('winlink')" disabled>OPEN ↗</button>
-      <span class="svc-badge" id="badge-winlink">—</span>
-    </div>
-  </div>
+  <!-- Winlink Classic Mail card removed — classic (telnet/Pat web UI) is reached
+       via the "Use classic Winlink" button on the Winlink page. `winlink` stays a
+       counted, gated service; its status refresh no-ops without a card. -->
   <div class="svc-card svc-card-gated" id="card-kiwix">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-kiwix"></div>
@@ -1242,6 +1512,22 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   </div>
 </div>
 </div><!-- /.svc-strips-wrap -->
+  <div class="hsx-pop" id="hsx-pop" role="dialog" aria-label="HW / SRV assignment">
+    <div class="hsx-card">
+      <div class="hsx-card-hd">
+        <span class="hsx-ttl"><svg class="hw-ic" viewBox="0 0 16 16" aria-hidden="true"><g stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><line x1="2.5" y1="4" x2="13.5" y2="4"/><line x1="2.5" y1="8" x2="13.5" y2="8"/><line x1="2.5" y1="12" x2="13.5" y2="12"/></g><g fill="currentColor"><circle cx="6" cy="4" r="2"/><circle cx="10.5" cy="8" r="2"/><circle cx="5" cy="12" r="2"/></g></svg>HW / SRV Matrix</span>
+        <button class="hsx-hdbtn hsx-stopall" id="hsx-stopall" type="button" title="Stop every service">Stop all</button>
+        <button class="hsx-hdbtn" id="hsx-close" type="button" title="Close">&#10005;</button>
+      </div>
+      <div class="hsx-msg hsx-idle" id="hsx-msg" aria-live="polite"></div>
+      <div class="hsx-scroll"><div class="hsx-matrix" id="hsx-matrix"></div></div>
+    </div>
+  </div>
+  <div class="hsx-guardian" id="hsx-guardian" role="alert" hidden>
+    <span class="hsx-g-msg" id="hsx-g-msg"></span>
+    <button class="hsx-g-cancel" id="hsx-g-cancel" type="button">Cancel</button>
+  </div>
+</div><!-- /.hsx-anchor -->
 
 <!-- Device allocation (which dongle is busy / free / assigned) lives on the
      Setup → Hardware card now; each service card above shows its own device
@@ -1252,31 +1538,37 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   <span class="section-hdr-title clickable" onclick="toggleNavGrid()" title="Collapse utility cards">OPS</span>
   <span class="section-hdr-sub">utilities · forms · reference</span>
   <button class="svc-collapse-btn" id="nav-collapse-btn" title="Collapse utility cards" onclick="toggleNavGrid()">&#9660;</button>
+  <span class="section-hdr-right">
+    <span class="svc-pill" id="ops-uptime-pill" title="System uptime">
+      <span class="pill-k">UPTIME</span>
+      <span class="pill-v" id="ops-uptime">&mdash;</span>
+    </span>
+  </span>
 </div>
 <div class="nav-grid-wrap" id="nav-grid-wrap">
 <div class="nav-grid">
 
   <div class="nav-col">
-
+    
     <div class="nav-sec oasis">
-      <div class="nav-sec-title">OASIS</div>
+      <div class="nav-sec-title">SYSOP</div>
       <ul class="nav-links">
-      <li><a href="static/oasis-handbook/index.html">OASIS HANDBOOK <span class="nav-meta">reference</span></a></li>
-      <li><a href="server/system/setup.html" class="ext">OASIS Setup <span class="nav-meta">configure</span></a></li>
-      <li><a href="server/system/diagnostic.html" class="ext">OASIS Diagnostic <span class="nav-meta">health</span></a></li>
+        <li><a href="server/system/setup.html" class="ext">OASIS Setup <span class="nav-meta">configure</span></a></li>
+        <li><a href="server/system/diagnostic.html" class="ext">OASIS Diagnostic <span class="nav-meta">health</span></a></li>
+        <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>
       </ul>
     </div>
 
     <div class="nav-sec">
-      <div class="nav-sec-title">MONITOR</div>
+      <div class="nav-sec-title">Monitor</div>
       <ul class="nav-links">
-        <li><a id="nlink-aprs" href="server/map/map.html" target="_blank" rel="noopener">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
+        <li><a id="nlink-aprs" href="maps/traffic/map.html" target="_blank" rel="noopener">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
         <li><a id="nlink-sat" href="server/satellites/" target="_blank" rel="noopener">Satellites World Map<span class="nav-meta">passes · tracking</span></a></li>
       </ul>
     </div>
 
     <div class="nav-sec" id="navsec-forms">
-    <div class="nav-sec-title">ICS Forms</div>
+      <div class="nav-sec-title">ICS Forms</div>
       <ul class="nav-links">
         <li><a href="static/ics-205/ics-205.html">ICS-205 <span class="nav-meta">radio plan</span></a></li>
         <li><a href="static/ics-213/ics-213.html">ICS-213 <span class="nav-meta">general message</span></a></li>
@@ -1290,25 +1582,25 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   <div class="nav-col">
 
     <div class="nav-sec">
-      <div class="nav-sec-title">Winlink &amp; APRS</div>
+      <div class="nav-sec-title">Lookup</div>
       <ul class="nav-links">
-        <li><a id="nlink-winlink" href="server/winlink/mail.html">Winlink Mail <span class="nav-svc-badge" id="nsvc-winlink">—</span></a></li>
-        <li><a id="nlink-wl-radio" href="server/winlink/radio-settings.html">Radio Settings <span class="nav-meta">setup</span></a></li>
-        <li><a href="static/graywolf-handbook/index.html">GrayWolf handbook <span class="nav-meta">docs</span></a></li>
+        <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
+        <li><a id="nlink-rb" href="static/repeaterbook/repeaterbook.html" class="nav-link-svc">Repeater Book <span class="nav-svc-badge" id="nsvc-rb">—</span></a></li>
+        <li><a href="tools/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
+        <li><a href="static/radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
+        <li><a href="static/quick-ref/itu-prefixes.html">ITU Country Prefixes <span class="nav-meta">call sign series</span></a></li>
       </ul>
     </div>
 
     <div class="nav-sec">
-      <div class="nav-sec-title">Tools</div>
+      <div class="nav-sec-title">Library</div>
       <ul class="nav-links">
-        <li><a id="nlink-fcc" href="/lookup" class="nav-link-svc">FCC Lookup <span class="nav-svc-badge" id="nsvc-fcc">—</span></a></li>
-        <li><a href="tools/antenna-calc.html">Antenna Calculator <span class="nav-meta">calculator</span></a></li>
-        <li><a href="tools/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calculator</span></a></li>
-        <li><a href="tools/band-plan/index.html">Band Plan <span class="nav-meta">HF · VHF · UHF</span></a></li>
-        <li><a href="tools/solar.html">Solar / Propagation <span class="nav-meta">band conditions</span></a></li>
-        <li><a href="tools/grayline.html">Gray Line <span class="nav-meta">HF propagation</span></a></li>
-        <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
-        <li><a href="server/system/browser.html">File Browser <span class="nav-meta">user files</span></a></li>
+        <li><a id="nlink-manuals" href="server/system/browser.html?path=static/radio-manuals" class="nav-link-svc">Radio Manuals <span class="nav-svc-badge" id="nsvc-manuals">—</span></a></li>
+        <li><a href="static/graywolf-handbook/index.html">GrayWolf Handbook <span class="nav-meta">docs</span></a></li>
+        <li><a href="static/oasis-handbook/index.html">OASIS Handbook <span class="nav-meta">reference</span></a></li>
+        <li><a href="static/repeater-guide/index.html">Repeater Guide <span class="nav-meta">radio repeaters how-to</span></a></li>
+        <li><a id="nlink-wiki" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-wiki">—</span></a></li>
+        <li><a id="nlink-wl-radio" href="server/winlink/radio-settings.html">Winlink Radio Settings <span class="nav-meta">setup</span></a></li>
       </ul>
     </div>
 
@@ -1317,25 +1609,24 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   <div class="nav-col">
 
     <div class="nav-sec">
-      <div class="nav-sec-title">Radio Ref</div>
+      <div class="nav-sec-title">Tools</div>
       <ul class="nav-links">
-        <li><a href="static/repeater-guide/index.html">Repeater Guide <span class="nav-meta">radio repeaters how-to</span></a></li>
-        <li><a href="static/radio-cards/index.html">Radio Cards <span class="nav-meta">radio reference</span></a></li>
-        <li><a id="nlink-rb" href="static/repeaterbook/repeaterbook.html" class="nav-link-svc">Repeater Book <span class="nav-svc-badge" id="nsvc-rb">—</span></a></li>
-        <li><a id="nlink-manuals" href="server/system/browser.html?path=static/radio-manuals" class="nav-link-svc">Radio Manuals <span class="nav-svc-badge" id="nsvc-manuals">—</span></a></li>
-        <li><a id="nlink-wiki" href="#" class="nav-link-svc" onclick="window.open(`${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,'_blank');return false;">Wikipedia <span class="nav-svc-badge" id="nsvc-wiki">—</span></a></li>
+        <li><a href="tools/antenna-calc.html">Antenna Calculator <span class="nav-meta">calculator</span></a></li>
+        <li><a href="tools/power-calc.html">Power &amp; Battery <span class="nav-meta">runtime calculator</span></a></li>
+        <li><a href="tools/solar.html">Solar / Propagation <span class="nav-meta">band conditions</span></a></li>
+        <li><a href="tools/grayline.html">Gray Line <span class="nav-meta">HF propagation</span></a></li>
+        <li><a href="tools/grid-calc.html">Grid / Bearing <span class="nav-meta">distance · heading</span></a></li>
+        <li><a href="server/system/browser.html">File Browser <span class="nav-meta">user files</span></a></li>
       </ul>
     </div>
 
     <div class="nav-sec">
-      <div class="nav-sec-title">Operation</div>
+      <div class="nav-sec-title">Operating Reference</div>
       <ul class="nav-links">
-        <li><a href="tools/net-log.html">Net Logger <span class="nav-meta">log</span></a></li>        
         <li><a href="static/quick-ref/phonetic.html">NATO Phonetic Alphabet <span class="nav-meta">NATO reference</span></a></li>
         <li><a href="static/quick-ref/qcodes.html">Q-Codes <span class="nav-meta">q-codes</span></a></li>
         <li><a href="static/quick-ref/prowords.html">Procedure Words <span class="nav-meta">procedure words</span></a></li>
         <li><a href="static/quick-ref/rst.html">RST Signal Reporting <span class="nav-meta">signal reporting</span></a></li>
-        <li><a href="static/quick-ref/itu-prefixes.html">ITU Country Prefixes <span class="nav-meta">call sign series</span></a></li>
       </ul>
     </div>
 
@@ -1349,7 +1640,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   <div class="aprs-card">
     <div class="aprs-section-hdr">
       <span class="aprs-section-title" id="aprs-title">TRAFFIC LIVE</span>
-      <span class="aprs-section-meta">stations — <span id="aprs-count">—</span> &nbsp;·&nbsp; last packet — <span id="aprs-last">—</span></span>
+      <span class="aprs-section-meta">stations — <span id="aprs-count">—</span><span id="aprs-srcbreak" class="aprs-srcbreak"></span> &mdash; <span id="aprs-last">—</span></span>
       <!-- Hazard pills (per natural-hazard type, config-driven) + Emergency chip.
            Hazards persist (no age window — they're incident objects); the Emergency
            chip is Public-safety stations heard in the last 48h. Both narrow the list. -->
@@ -1405,18 +1696,67 @@ function tickClock() {
   const n = new Date();
   const z = v => String(v).padStart(2, '0');
   const WD = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
-  document.getElementById('utc-time').textContent =
-    `UTC ${WD[n.getUTCDay()]} ${z(n.getUTCHours())}:${z(n.getUTCMinutes())}:${z(n.getUTCSeconds())}`;
-  document.getElementById('utc-date').textContent =
-    `${n.getUTCFullYear()}·${z(n.getUTCMonth()+1)}·${z(n.getUTCDate())}`;
-  document.getElementById('local-time').textContent =
-    `LOC ${WD[n.getDay()]} ${z(n.getHours())}:${z(n.getMinutes())}:${z(n.getSeconds())}`;
-  document.getElementById('local-date').textContent =
-    `${n.getFullYear()}·${z(n.getMonth()+1)}·${z(n.getDate())}`;
+  const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+  const txt = (id, s)    => { const el = document.getElementById(id); if (el) el.textContent = s; };
+  set('clk-loc-t', `${z(n.getHours())}:${z(n.getMinutes())}<span class="s">:${z(n.getSeconds())}</span>`);
+  txt('clk-loc-d', `${WD[n.getDay()]} ${z(n.getDate())} ${MO[n.getMonth()]} ${n.getFullYear()}`);
+  set('clk-utc-t', `${z(n.getUTCHours())}:${z(n.getUTCMinutes())}<span class="s">:${z(n.getUTCSeconds())}</span>`);
+  txt('clk-utc-d', `${WD[n.getUTCDay()]} ${z(n.getUTCDate())} ${MO[n.getUTCMonth()]} ${n.getUTCFullYear()}`);
+  try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+        txt('clk-loc-tz', tz.split('/').pop().replace(/_/g,' ')); } catch (_) {}
 }
 tickClock();
 setInterval(tickClock, 1000);
 document.getElementById('footer-ts').textContent = new Date().toLocaleString();
+
+// ── Clock colour: click a clock to cycle its colour (per-clock, saved) ─────────
+// Drives the card's --clk custom property via a .clk-c-<name> class; the name
+// (not a hex) is stored so the colour stays theme-aware. The two clocks are
+// mutually exclusive — cycling one skips whatever colour the other is showing,
+// so they can never share a colour. Order: blue → white → amber → green →
+// chartreuse → orange → wrap.
+(function () {
+  var COLORS = ['blue', 'white', 'amber', 'green', 'chartreuse', 'orange'];
+  var loc = { el: document.querySelector('.clk-card.loc'), key: 'oasis.clock.loc.color', def: 'blue'  };
+  var utc = { el: document.querySelector('.clk-card.utc'), key: 'oasis.clock.utc.color', def: 'white' };
+  if (!loc.el || !utc.el) return;
+
+  function saved(clk) {
+    var v = null;
+    try { v = localStorage.getItem(clk.key); } catch (e) {}
+    return COLORS.indexOf(v) >= 0 ? v : clk.def;
+  }
+  function apply(clk, name) {
+    COLORS.forEach(function (c) { clk.el.classList.remove('clk-c-' + c); });
+    clk.el.classList.add('clk-c-' + name);
+    clk.color = name;
+    try { localStorage.setItem(clk.key, name); } catch (e) {}
+  }
+  // Next colour after `from`, skipping `blocked` (the other clock's colour) so
+  // the two stay distinct. Always advances ≥1 step → a click always changes.
+  function nextFree(from, blocked) {
+    var i = COLORS.indexOf(from);
+    do { i = (i + 1) % COLORS.length; } while (COLORS[i] === blocked);
+    return COLORS[i];
+  }
+
+  // Resolve initial colours, enforcing exclusivity for any pre-existing state
+  // where both had been saved to the same colour.
+  var a = saved(loc), b = saved(utc);
+  if (b === a) b = nextFree(b, a);
+  apply(loc, a);
+  apply(utc, b);
+
+  [loc, utc].forEach(function (clk) {
+    var other = clk === loc ? utc : loc;
+    clk.el.style.cursor = 'pointer';
+    clk.el.title = 'Click to change clock colour';
+    clk.el.addEventListener('click', function () {
+      apply(clk, nextFree(clk.color, other.color));
+    });
+  });
+})();
 
 // Kiosk manual refresh — spin the icon briefly, then reload the dashboard.
 function kioskRefresh() {
@@ -1547,23 +1887,24 @@ try { _showHidden = localStorage.getItem('oasis_show_hidden') === '1'; } catch (
 // the not-installed cards are hidden with no reveal escape hatch.
 let _locked = false;
 function updateSvcCounts() {
-  // Count only services that have a card (the 10 service cards) — exclude the
-  // OPS-only checks (maps/fcc/rb/manuals/wiki) that merely feed nav badges, and
-  // any not-installed service that's been hidden from the strip.
-  const states = Object.keys(_svcStates)
-    .filter(id => document.getElementById('card-' + id) && !HIDDEN_SVCS.has(id))
-    .map(id => _svcStates[id]);
-  const up   = states.filter(s => s === 'up').length;
-  const warn = states.filter(s => s === 'warn').length;
-  const down = states.filter(s => s === 'down').length;
+  // Count the canonical OASIS_SERVICES set (common/js/service-registry.js) minus
+  // not-installed — shared with the kiosk so the two health tallies match. This now
+  // INCLUDES the data-resource checks (fcc/maps/rb/manuals) that used to be excluded
+  // for lacking a card, so e.g. missing offline maps surfaces as WRN here too.
+  let up = 0, warn = 0, down = 0;
+  OASIS_SERVICES.forEach(s => {
+    if (HIDDEN_SVCS.has(s.id)) return;
+    const st = _svcStates[s.id];
+    if (st === 'up') up++; else if (st === 'warn') warn++; else if (st === 'down') down++;
+  });
   const el = document.getElementById('svc-counts');
-  if (!el) return;
-  el.innerHTML =
+  if (el) el.innerHTML =
     `<span class="cnt-up">${up} UP</span>` +
     `<span class="cnt-sep">&#160;·&#160;</span>` +
     `<span class="cnt-warn">${warn} WRN</span>` +
     `<span class="cnt-sep">&#160;·&#160;</span>` +
     `<span class="cnt-down">${down} DN</span>`;
+
   updateNavTitles();
 }
 
@@ -1575,6 +1916,15 @@ function updateNavTitles() {
     el.classList.toggle('offline', offline);
     el.textContent = offline ? el.dataset.label + ' · UNAVAILABLE' : el.dataset.label;
   });
+}
+
+// Set/clear the unread-mail pill on the Winlink RF card. Driven by the `winlink`
+// (Pat/telnet) service check, which owns the mailbox probe; the RF card is `wlrf`.
+function _setWlrfUnread(n) {
+  const pill = document.getElementById('wlrf-unread');
+  if (!pill) return;
+  if (n > 0) { pill.textContent = `${n} unread`; pill.hidden = false; }
+  else { pill.hidden = true; pill.textContent = ''; }
 }
 
 // ── Service checks ────────────────────────────────────────────────────────────
@@ -1615,12 +1965,15 @@ const SERVICES = [
       // Same-origin via the Flask proxy: doubles as Pat's up/down probe and
       // seeds WinlinkRead so unread state is available to the mail pages.
       const r = await fetch('/api/winlink/mailbox/in', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: `:${PORTS.winlink}` };   // 503 = Pat down
+      if (!r.ok) { _setWlrfUnread(0); return { up: false, sub: `:${PORTS.winlink}` }; }   // 503 = Pat down
       let unread = 0;
       try {
         const msgs = await r.json();
         if (window.WinlinkRead) { WinlinkRead.seed(msgs); unread = WinlinkRead.unreadCount(msgs); }
       } catch (_) {}
+      // Surface unread on the Winlink RF card (the old "Winlink Mail" nav link
+      // that used to carry this is gone; the RF card is the single Winlink entry).
+      _setWlrfUnread(unread);
       const navSub = unread > 0 ? `${unread} unread` : 'no new mail';
       return { up: true, badge: 'UP', sub: `:${PORTS.winlink}`, navSub };
     }
@@ -1637,7 +1990,7 @@ const SERVICES = [
       if (!r.ok) return { up: false, sub: 'status error' };
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
-      if (!d.installed) return { up: false, badge: 'not installed', sub: 'run services/winlink/install.py' };
+      if (!d.installed) return { up: false, badge: 'n/a', sub: 'run services/winlink/install.py' };
       if (d.active === 'active') return { up: true, badge: 'ON AIR', sub: 'AGWPE :8000 · APRS off' };
       // Stopped + radio assigned → RF mode: red, STOPPED, START present (gauntlet).
       if (_assignedDevice('wlrf')) return { up: false, badge: 'STOPPED', sub: 'start for packet Winlink' };
@@ -1677,7 +2030,7 @@ const SERVICES = [
         } catch (_) {}
         return { up: true, badge: 'UP', sub: `:${PORTS.kiwix}`, navSub };
       }
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+      return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
         sub: d.installed ? 'inactive' : 'run services/kiwix/install.py' };
     }
   },
@@ -1709,8 +2062,8 @@ const SERVICES = [
           return { up: true, warn: true, badge: 'SILENT', sub: 'no audio · check SDR/USB' };
         return { up: true, badge: 'UP', sub: '→ GrayWolf' };
       }
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
-        sub: d.installed ? 'inactive' : 'run features/rtl-sdr/enable-rtl-sdr.py' };
+      return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
+        sub: d.installed ? 'inactive' : 'run services/rtl-feed/install.py' };
     }
   },
   {
@@ -1721,7 +2074,7 @@ const SERVICES = [
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (d.active === 'active') return { up: true, badge: 'UP', sub: ':2947' };
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+      return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
         sub: d.installed ? 'inactive (aprs)' : 'run features/gps/install-gps.py' };
     }
   },
@@ -1741,10 +2094,17 @@ const SERVICES = [
   {
     id: 'maps', name: 'Offline Maps',
     check: async () => {
-      const r = await fetch('/api/browse?path=maps', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'browse error' };
-      const d = await r.json();
-      const n = (d.entries||[]).filter(e => e.name.endsWith('.pmtiles')).length;
+      // Recursion lives in service-registry.js (shared with the kiosk dashboard);
+      // we just supply the same-origin browse. Maps are nested under maps/tiles/…,
+      // so a flat listing would false-WARN.
+      let n;
+      try {
+        n = await oasisCountPmtiles(async (p) => {
+          const r = await fetch('/api/browse?path=' + encodeURIComponent(p), { cache: 'no-store' });
+          if (!r.ok) throw new Error('browse');
+          return (await r.json()).entries || [];
+        }, 'maps');
+      } catch (_) { return { up: false, sub: 'browse error' }; }
       return { up: true, warn: n === 0,
         badge: n > 0 ? 'UP' : 'WARN',
         sub: n > 0 ? 'present' : 'not found',
@@ -1779,7 +2139,7 @@ const SERVICES = [
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (d.active === 'active') return { up: true, badge: 'UP', sub: `:${PORTS.openwebrx}` };
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+      return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
         sub: d.installed ? 'inactive (advanced)' : 'not installed' };
     }
   },
@@ -1821,7 +2181,7 @@ const SERVICES = [
         // This branch is only the genuine "your assigned dongle isn't attached".
         return { up: false, badge: 'NO FREE SDR', sub: 'assigned device not attached' };
       }
-      return { up: false, badge: d.installed ? 'STOPPED' : 'not installed',
+      return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
         sub: d.installed ? 'inactive (aircraft)' : 'run services/adsb/install.py' };
     }
   },
@@ -1851,6 +2211,9 @@ const SERVICES = [
     }
   },
 ];
+// Guard: every canonical registry service must have a check here, or index's
+// health tally drifts from the kiosk's (common/js/service-registry.js).
+oasisAssertChecks(SERVICES.map(s => s.id));
 
 async function checkService(svc) {
   const dot   = document.getElementById('dot-'   + svc.id);
@@ -1906,7 +2269,7 @@ function pingAll() {
 }
 
 // Round-robin health check — one service per tick instead of pingAll's burst of
-// all 17 at once. On a Pi Zero 2 W the synchronized 30s burst woke many gunicorn
+// all 17 at once. On a low-power Pi the synchronized 30s burst woke many gunicorn
 // workers together; trickling one request per tick keeps each badge on the same
 // ~30s refresh with no burst. Same hidden/show-all filter as pingAll.
 let _pingIdx = 0;
@@ -1958,6 +2321,11 @@ function renderDeviceLabels(data) {
     const row = document.getElementById('hwrow-' + cardId);
     const out = document.getElementById('hwdev-' + cardId);
     if (!row || !out) return;
+    // A not-installed service has no device to assign — showing an orphan
+    // "device: unassigned" here pushes the badge onto a second line and knocks
+    // the OPEN button out of the bottom-left corner other cards line up on.
+    // Hide the row so the bottom stays a clean [OPEN] ...... [badge].
+    if (HIDDEN_SVCS.has(cardId)) { row.hidden = true; return; }
     row.hidden = false;
     const deviceId = (services[hwService] || {}).device_id || '';
     const dev = deviceId ? byId[deviceId] : null;
@@ -2164,7 +2532,7 @@ function _gateEls(id) {
 }
 
 // A manifest-gated service can still be live if it was enabled outside
-// setup-oasis.py — e.g. running features/rtl-sdr/enable-rtl-sdr.py / features/gps/install-gps.py directly, as
+// setup-oasis.py — e.g. running services/rtl-feed/install.py / features/gps/install-gps.py directly, as
 // the docs show. Those scripts enable the systemd unit but never write
 // installed-services.json, so the card would wrongly hide (it flashes in on load,
 // then vanishes once loadInstalled resolves). For the systemd-backed cards we
@@ -2226,6 +2594,20 @@ async function loadInstalled() {
     if (r.ok) { const d = await r.json(); features = d.features; _locked = !!d.locked; }
   } catch (_) {}
   if (_locked) _showHidden = false;              // locked build: never reveal hidden cards
+  // Portable profile (run-portable.sh / run-portable.bat set OASIS_FEATURES →
+  // server reports locked=true): hide the always-on station chrome that has no
+  // feature gate of its own — System (cpu-card), Processes (proc-card), Status
+  // (status-card) and the SRV OPS rail (hsx-rail). These are Pi-appliance
+  // monitoring/assignment surfaces that don't apply to a laptop tools-only run.
+  // (The topbar GPS card already hides via the gpsd service gate below.)
+  // Inline display is deliberate: fetchStats/renderRail rebuild these elements'
+  // className every poll, which would wipe a class — an inline style survives
+  // that, and this path (a plain JSON read) works even where /api/system 503s
+  // (e.g. Windows portable with no psutil).
+  ['cpu-card', 'proc-card', 'status-card', 'hsx-rail'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = _locked ? 'none' : '';
+  });
   HIDDEN_SVCS.clear();
   _hiddenEls = [];
   // An explicit manifest list is authoritative. A NULL manifest means "no record
@@ -2282,6 +2664,11 @@ const SVC_UNITS = { gw: 'graywolf', aprs: 'graywolf-api', feed: 'aprs-sdr-feed',
 // card's top row (top-right, alongside the name) so it stays clear of the
 // OPEN button + status badge in the bottom row.
 function powerBtn(svcId) {
+  // HW-backed services controlled from the HW/SRV matrix get no per-card power
+  // button — EXCEPT OpenWebRX (owrx), which is self-configured (no engine unit,
+  // picks its own dongle in its own admin UI), so it stays card-controlled and
+  // is not shown in the matrix.
+  if (HW_SERVICE_FOR_CARD[svcId] && svcId !== 'owrx') return null;
   const card = document.getElementById('card-' + svcId);
   if (!card) return null;
   let btn = card.querySelector('.svc-power');
@@ -2433,6 +2820,7 @@ async function togglePower(svcId) {
   const unit = SVC_UNITS[svcId];
   if (!unit) return;
   const btn = powerBtn(svcId);
+  if (!btn) return;   // HW-backed service — controlled from the matrix, not the card
   const running = _svcStates[svcId] === 'up' || _svcStates[svcId] === 'warn';
   const action  = running ? 'stop' : 'start';
   // Blocked START (no device, or telnet Winlink in AP mode) — no-op; the dimmed
@@ -2494,6 +2882,7 @@ function valClass(pct, amber, red) {
 }
 function setStat(id, text, pct, amber, red) {
   const el = document.getElementById(id);
+  if (!el) return;   // e.g. 's-temp' — the SYSTEM stats-bar was removed; renderTemp() still calls this from applyUnits()
   el.textContent = text;
   el.className   = valClass(pct, amber, red);
 }
@@ -2516,7 +2905,17 @@ function loadHomeCoords() {
     .catch(() => {});
 }
 
-function renderTemp()   { setStat('s-temp', fmtTemp(_lastTempC), _lastTempC, 65, 80); }
+// CPU temp: text obeys the global imperial/metric toggle via fmtTemp (which
+// appends the °F/°C suffix); colour thresholds stay in °C (65/80). Re-run from
+// applyUnits() so flipping units updates the reading without waiting for the
+// next /api/system poll.
+function renderTemp() {
+  const el = document.getElementById('cpu-temp');
+  if (!el) return;
+  const c = _lastTempC;
+  el.textContent = c != null ? fmtTemp(Math.round(c)) : 'n/a';
+  el.className   = 'val' + (c == null ? '' : c >= 80 ? ' hot' : c >= 65 ? ' warn' : ' ok');
+}
 function renderGpsAlt() {
   const el = document.getElementById('gps-alt');
   if (el) el.textContent = _lastGpsAltM != null ? fmtAlt(_lastGpsAltM) : 'n/a';
@@ -2573,6 +2972,17 @@ async function fetchStats() {
     if (hostEl && d.hostname) {
       hostEl.innerHTML = `${d.hostname}`
         + (d.ip ? ` <span class="host-ip">· ${d.ip}</span>` : '');
+    }
+    // Host/IP pill in the title section (last line, under callsign/units/wifi).
+    const hpNm = document.getElementById('host-name');
+    if (hpNm) {
+      const hp  = document.getElementById('host-pill');
+      const hip = document.getElementById('host-ip');
+      const hsep = document.getElementById('host-sep');
+      if (hip)  hip.textContent = d.ip || 'n/a';
+      hpNm.textContent = d.hostname || '';
+      if (hsep) hsep.hidden = !(d.ip && d.hostname);
+      if (hp)   hp.classList.toggle('up', !!d.ip);
     }
 
     // GPS card (topbar centre) — ALWAYS shown. Every field defaults to n/a and
@@ -2680,102 +3090,150 @@ async function fetchStats() {
       gpsCard.title = t.length ? 'GNSS / clock — ' + t.join(' · ') : 'GNSS receiver + clock status';
     }
 
-
-    // Track which stats are valid vs n/a to colour the telemetry badge
-    let valid = 0, total = 0;
-    const track = (ok) => { total++; if (ok) valid++; };
-
-    // CPU %
-    track(d.cpu_pct != null);
-    if (d.cpu_pct != null) {
-      setStat('s-cpu', `${Math.round(d.cpu_pct)}%`, d.cpu_pct, 70, 90);
-      setBar('b-cpu', d.cpu_pct, 70, 90);
-      pushSpark('cpu', d.cpu_pct, 70, 90);
-    }
-    // Temperature (°C) — absent on Mac/Windows
-    track(d.cpu_temp_c != null);
-    _lastTempC = d.cpu_temp_c;
-    renderTemp();
-    pushSpark('temp', d.cpu_temp_c, 65, 80);
-    // RAM %
-    track(d.ram && d.ram.pct != null);
-    if (d.ram && d.ram.pct != null) {
-      setStat('s-ram', `${Math.round(d.ram.pct)}%`, d.ram.pct, 70, 90);
-      setBar('b-ram', d.ram.pct, 70, 90);
-    }
-    // Disk usage % — warn on high % used OR low absolute free space (SD-card
-    // aware: a near-full small card is critical even below the % threshold).
-    track(d.disk && !d.disk.error && d.disk.pct != null);
-    if (d.disk && !d.disk.error && d.disk.pct != null) {
-      const free = d.disk.free_gb;
-      let cls = valClass(d.disk.pct, 80, 92);
-      if (free != null) {
-        if (free < 1) cls = 'stat-val bad';
-        else if (free < 2 && cls === 'stat-val') cls = 'stat-val warn';
-      }
-      const el = document.getElementById('s-disk');
-      el.textContent = `${Math.round(d.disk.pct)}%`;
-      el.className   = cls;
-      el.title = free != null ? `${free} GB free of ${d.disk.total_gb} GB (${d.disk.label})` : '';
-      setBar('b-disk', d.disk.pct, 80, 92);
-    }
-    // Load (1-min avg) — coloured by load-vs-cores %, absent on Windows
-    track(d.load && d.load.avg1 != null);
-    if (d.load && d.load.avg1 != null) {
-      setStat('s-load', d.load.avg1.toFixed(2), d.load.pct, 75, 100);
-    } else {
-      setStat('s-load', 'n/a', null);
-    }
-    // Uptime — informational, no threshold colour
-    track(d.uptime_sec != null);
-    if (d.uptime_sec != null) {
-      const el = document.getElementById('s-uptime');
-      el.textContent = fmtUptime(d.uptime_sec);
-      el.className   = 'stat-val';
-    }
-    // Power/thermal throttling (Pi only) — hidden when unavailable, so it never
-    // shows n/a on non-Pi hosts. Not tracked in the telemetry badge (optional).
-    const throtItem = document.getElementById('item-throttle');
-    if (throtItem) {
-      if (d.throttle) {
-        throtItem.style.display = '';
-        const el = document.getElementById('s-throttle');
-        const names = { under_voltage: 'under-volt', freq_capped: 'freq-cap',
-                        throttled: 'throttled', soft_temp: 'temp-limit' };
-        if (d.throttle.now_any) {
-          const f = Object.keys(names).filter(k => d.throttle.now[k]).map(k => names[k]);
-          el.textContent = '⚠ ' + f.join(', ');
-          el.className   = 'stat-val bad';
-          el.title       = 'Active power/thermal limiting — ' + d.throttle.raw;
-        } else if (d.throttle.ever_any) {
-          const f = Object.keys(names).filter(k => d.throttle.ever[k]).map(k => names[k]);
-          el.textContent = f.join(', ') + ' (past)';
-          el.className   = 'stat-val warn';
-          el.title       = 'Occurred since boot, not active now — ' + d.throttle.raw;
-        } else {
-          el.textContent = 'OK';
-          el.className   = 'stat-val ok';
-          el.title       = 'No under-voltage or throttling — ' + d.throttle.raw;
-        }
+    // ── CPU card: inline readout + per-core bars ──────────────────────────
+    const setVal = (id, text, v, amber, red) => {
+      const el = document.getElementById(id); if (!el) return;
+      el.textContent = text;
+      el.className = 'val' + (v == null ? '' : v >= red ? ' hot' : v >= amber ? ' warn' : ' ok');
+    };
+    setVal('cpu-pct', d.cpu_pct != null ? `${Math.round(d.cpu_pct)}%` : 'n/a', d.cpu_pct, 70, 90);
+    _lastTempC = d.cpu_temp_c;   // remember for unit-toggle re-render
+    renderTemp();                // obeys imperial/metric toggle + shows °F/°C suffix
+    // Fan blade: colour tracks the temp (same 65/80 tones); spins only when a
+    // cooling daemon is running AND the CPU is at/above the ~55°C turn-on (i.e.
+    // the fan is actually moving air) — otherwise it shows static/dimmed. Hidden
+    // entirely when no cooling daemon (argon-fan / rgb-cooling-hat) is installed.
+    const fan = document.getElementById('cpu-fan');
+    if (fan) {
+      const cool = d.cooling, t = d.cpu_temp_c;
+      // NB: #cpu-fan is an SVG element — its .className is a read-only
+      // SVGAnimatedString, not a string, so `el.className = '...'` silently
+      // no-ops. Use setAttribute('class', …), which works on SVG and HTML alike.
+      if (!cool || !cool.installed) {
+        fan.setAttribute('class', 'cpu-fan');    // no .show → hidden
       } else {
-        throtItem.style.display = 'none';
+        const tone = t == null ? '' : t >= 80 ? ' hot' : t >= 65 ? ' warn' : ' ok';
+        const spinning = cool.running && t != null && t >= 55;
+        fan.setAttribute('class', 'cpu-fan show' + tone + (spinning ? ' spin' : ' static'));
+        fan.setAttribute('title', !cool.running
+          ? `Cooling fan (${cool.kind}) installed — service stopped`
+          : spinning ? `Cooling fan (${cool.kind}) running`
+          : `Cooling fan (${cool.kind}) idle — CPU below ~55°C`);
       }
+    }
+    // RAM: high = bad, so colour like the others but neutral under threshold.
+    const ramPct = d.ram && d.ram.pct != null ? d.ram.pct : null;
+    setVal('cpu-ram', ramPct != null ? `${Math.round(ramPct)}%` : 'n/a', ramPct, 70, 90);
+    const diskPct = d.disk && !d.disk.error && d.disk.pct != null ? d.disk.pct : null;
+    setVal('cpu-disk', diskPct != null ? `${Math.round(diskPct)}%` : 'n/a', diskPct, 80, 92);
+    // LOAD (1-min average): the DOT and the LOAD value track load-vs-cores %
+    // (thresholds 75 / 100) — green/amber/red. But the PROCESSES card border/tint
+    // stays neutral green (aligned with STATUS): a brief load spike isn't a
+    // card-level fault, so the dot + coloured value carry the warning instead.
+    const loadEl = document.getElementById('proc-load');
+    const procCard = document.getElementById('proc-card');
+    const lp = (d.load && d.load.avg1 != null) ? d.load.pct : null;
+    const lstate = lp == null ? 'up' : lp >= 100 ? 'down' : lp >= 75 ? 'warn' : 'up';
+    if (procCard) procCard.className = 'card up';
+    const procDot = document.getElementById('proc-dot');
+    if (procDot) procDot.className = 'dot ' + lstate;
+    // STATUS card: uptime value on the title line (neutral, no label).
+    const u = d.uptime_sec;
+    let upStr = '';
+    if (u != null) {
+      const dd = Math.floor(u / 86400), hh = Math.floor((u % 86400) / 3600), mm = Math.floor((u % 3600) / 60);
+      upStr = dd > 0 ? `${dd}d ${hh}h` : hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
+    }
+    const upEl = document.getElementById('status-uptime');
+    if (upEl) upEl.textContent = upStr;
+    const opsUp = document.getElementById('ops-uptime');
+    if (opsUp) opsUp.textContent = upStr || '—';
+    // STATUS card: Power drives the border/tint. Reflects the CURRENT throttle
+    // state each poll, so a cleared condition returns the card to clean next tick.
+    const powEl = document.getElementById('status-power');
+    let powState = 'up';
+    if (d.throttle && d.throttle.now_any) {
+      const pn = { under_voltage:'under-volt', freq_capped:'freq-cap', throttled:'throttled', soft_temp:'temp-limit' };
+      const active = Object.keys(pn).filter(k => d.throttle.now[k]).map(k => pn[k]);
+      powState = d.throttle.now.under_voltage ? 'down' : 'warn';
+      if (powEl) { powEl.textContent = active.join(', ') || 'throttled'; powEl.className = powState === 'down' ? 'val hot' : 'val warn'; }
+    } else if (d.throttle) {
+      if (powEl) { powEl.textContent = 'OK'; powEl.className = 'val ok'; }
+    } else if (powEl) { powEl.textContent = 'n/a'; powEl.className = 'val'; }
+    // Power pill (title section, inline with host). Mirrors the STATUS→Power
+    // state: green OK / amber warn / red under-volt. Full condition list lives
+    // in the value (ellipsized) and the tooltip so a long message never breaks
+    // the fixed-width row.
+    const pwrPill = document.getElementById('pwr-pill');
+    const pwrVal  = document.getElementById('pwr-val');
+    if (pwrVal) {
+      let pTxt = 'n/a', pCls = '';
+      if (d.throttle && d.throttle.now_any) {
+        const pn = { under_voltage:'under-volt', freq_capped:'freq-cap', throttled:'throttled', soft_temp:'temp-limit' };
+        const active = Object.keys(pn).filter(k => d.throttle.now[k]).map(k => pn[k]);
+        pTxt = active.join(', ') || 'throttled';
+        pCls = d.throttle.now.under_voltage ? 'crit' : 'warn';
+      } else if (d.throttle) {
+        pTxt = 'OK'; pCls = 'ok';
+      }
+      pwrVal.textContent = pTxt;
+      if (pwrPill) {
+        pwrPill.className = 'pwr-pill' + (pCls ? ' ' + pCls : '');
+        pwrPill.title = 'Power / throttle status — ' + pTxt;
+      }
+    }
+    const statusCard = document.getElementById('status-card');
+    if (statusCard) statusCard.className = 'card ' + powState;
+    const statusDot = document.getElementById('status-dot');
+    if (statusDot) statusDot.className = 'dot ' + powState;
+    // Host / IP (neutral, third row).
+    const stHost = document.getElementById('status-host');
+    if (stHost) stHost.innerHTML = d.ip
+      ? `${escapeHtml(d.ip)}${d.hostname ? ` <span class="sub">&middot; ${escapeHtml(d.hostname)}</span>` : ''}`
+      : (d.hostname ? escapeHtml(d.hostname) : 'n/a');
+    if (loadEl) {
+      if (d.load && d.load.avg1 != null) {
+        const lcls = lp == null ? '' : lp >= 100 ? ' hot' : lp >= 75 ? ' warn' : ' ok';
+        loadEl.innerHTML = `<span class="k">LOAD</span><span class="val${lcls}">${d.load.avg1.toFixed(2)}</span>`;
+      } else {
+        loadEl.innerHTML = `<span class="k">LOAD</span><span class="val">n/a</span>`;
+      }
+    }
+    // CPU card border/tint + dot track the WORST of CPU / Temp / RAM — any one
+    // drives it (like GPS by fix), using the same thresholds as the values.
+    const cpuWorst = Math.max(
+      d.cpu_pct    == null ? 0 : d.cpu_pct    >= 90 ? 2 : d.cpu_pct    >= 70 ? 1 : 0,
+      d.cpu_temp_c == null ? 0 : d.cpu_temp_c >= 80 ? 2 : d.cpu_temp_c >= 65 ? 1 : 0,
+      ramPct       == null ? 0 : ramPct       >= 90 ? 2 : ramPct       >= 70 ? 1 : 0);
+    const cpuState = cpuWorst === 2 ? 'down' : cpuWorst === 1 ? 'warn' : 'up';
+    const cpuCard = document.getElementById('cpu-card');
+    if (cpuCard) cpuCard.className = 'card ' + cpuState;
+    const cpuDot = document.getElementById('cpu-dot');
+    if (cpuDot) cpuDot.className = 'dot ' + cpuState;
+    const coresEl = document.getElementById('cpu-cores');
+    if (coresEl) {
+      const cores = d.cpu_cores || [];
+      coresEl.innerHTML = cores.map((c, i) => {
+        const cls = c >= 90 ? 'hot' : c >= 70 ? 'busy' : '';
+        return `<div class="core"><span class="core-lbl">C${i}</span>`
+             + `<span class="core-track"><span class="core-fill ${cls}" style="width:${Math.min(c,100)}%"></span></span>`
+             + `<span class="core-pct ${cls}">${Math.round(c)}%</span></div>`;
+      }).join('');
     }
 
-    // Telemetry badge: green = all valid, amber = some n/a, red = all n/a
-    const tb = document.getElementById('telemetry-badge');
-    if (tb) {
-      if (valid === total) {
-        tb.textContent = '✓ telemetry: live';
-        tb.className   = 'telemetry-badge live';
-      } else if (valid > 0) {
-        tb.textContent = '△ telemetry: live';
-        tb.className   = 'telemetry-badge warn';
-      } else {
-        tb.textContent = '✗ telemetry: offline';
-        tb.className   = 'telemetry-badge warn';
-      }
+    // ── PROCESSES card: top-3 ─────────────────────────────────────────────
+    const procEl = document.getElementById('proc-list');
+    if (procEl) {
+      const procs = d.top_procs || [];
+      procEl.innerHTML = procs.map(p => {
+        const cls = p.cpu >= 90 ? 'hot' : p.cpu >= 70 ? 'busy' : '';
+        const mcls = p.mem >= 30 ? 'hot' : p.mem >= 15 ? 'busy' : '';
+        return `<div class="proc"><span class="proc-name">${escapeHtml(p.name)}</span>`
+             + `<span class="proc-cpu ${cls}">${Math.round(p.cpu)}%</span>`
+             + `<span class="proc-ram ${mcls}">${Math.round(p.mem)}%</span></div>`;
+      }).join('') || '<div class="proc"><span class="proc-name" style="color:var(--text-dim)">idle</span><span></span><span></span></div>';
     }
+
   } catch (_) {}
 }
 
@@ -2787,6 +3245,7 @@ async function fetchStats() {
 // Red when no audio source at all.
 async function fetchAudio() {
   const el = document.getElementById('s-audio');
+  if (!el) return;   // stats-bar removed with the topbar restructure; Audio is deferred
   try {
     const r = await fetch('/api/audio', { cache: 'no-store' });
     if (!r.ok) return;
@@ -2873,6 +3332,33 @@ function _adsbListRows() {
   });
 }
 
+// Source breakdown for the header: how many stations we heard on each transport
+// in the LAST poll cycle — RF (off-air APRS) / IS (APRS-IS) / ADS-B (aircraft).
+// Only stations whose last_heard falls inside the cycle window count, so this is
+// a live "what came in just now" readout, not the aged 24 h list total. Counts
+// ignore the active column filters. Refreshed on every 15 s poll (see line ~4121)
+// via applyAprsFilter; the window is padded past 15 s to absorb fetch/clock jitter.
+const _HEARD_WINDOW_MS = 20 * 1000;
+function renderSourceBreakdown() {
+  const el = document.getElementById('aprs-srcbreak');
+  if (!el) return;
+  const now = Date.now();
+  const fresh = s => {
+    const t = _lhEpoch(s.last_heard || s.timestamp || s.time);
+    return t > 0 && (now - t) <= _HEARD_WINDOW_MS;
+  };
+  let rf = 0, is = 0;
+  for (const s of _allAprsStations) { if (!fresh(s)) continue; if (aprsSource(s) === 'rf') rf++; else is++; }
+  const adsb = _adsbListRows().filter(fresh).length;
+  if (!rf && !is && !adsb) { el.innerHTML = ''; return; }
+  // Colours mirror the callsign source scheme (see the callColor line): RF green
+  // (--accent), IS blue (--blue), ADS-B purple (#b478ff).
+  el.innerHTML =
+    ' · <span style="color:var(--accent)">' + rf + ' RF</span>'
+    + ' / <span style="color:var(--blue)">' + is + ' IS</span>'
+    + ' / <span style="color:#b478ff">' + adsb + ' ADS-B</span>';
+}
+
 // VIA column filter — source (RF / APRS-IS). Static options; 'All' shows both.
 function onViaFilterChange() {
   const sel = document.getElementById('aprs-col-via');
@@ -2891,7 +3377,7 @@ function aprsSource(s) {
   return (hay.includes('TCPIP') || hay.includes('IGATE') || /\bQA[A-Z]/.test(hay)) ? 'is' : 'rf';
 }
 
-// APRS symbol code → human "type" label. Mirrors _OBJ_CATS in server/map/map.html
+// APRS symbol code → human "type" label. Mirrors _OBJ_CATS in maps/traffic/map.html
 // so the dashboard list and the map list name station types identically.
 const _APRS_TYPES = {
   '>':'Car','j':'Car','v':'Car','<':'Motorcycle','k':'Truck','u':'Truck',
@@ -2924,7 +3410,7 @@ function aprsSymIcon(s, px) {
   const col = idx % 16, row = Math.floor(idx / 16);
   const sheet = table === '/' ? 0 : 1;
   return `<span class="aprs-sym" style="width:${px}px;height:${px}px;`
-    + `background-image:url('/map-assets/aprs-symbols-24-${sheet}.png');`
+    + `background-image:url('/maps/traffic/assets/aprs-symbols-24-${sheet}.png');`
     + `background-size:${16 * px}px ${6 * px}px;`
     + `background-position:${-col * px}px ${-row * px}px"></span>`;
 }
@@ -2959,8 +3445,8 @@ function renderAprsTable(stations) {
     const opTag = ac && operatorTag(s.callsign)
       ? ` <span style="color:var(--text-dim);font-weight:400;font-size:var(--fs-small)">[${escapeHtml(operatorTag(s.callsign))}]</span>` : '';
     const callCell = ac
-      ? `<a href="server/map/map.html" target="_blank" style="color:inherit;text-decoration:none">${escapeHtml(s.callsign)}</a>${opTag}`
-      : `<a href="server/map/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a>`;
+      ? `<a href="maps/traffic/map.html" target="_blank" style="color:inherit;text-decoration:none">${escapeHtml(s.callsign)}</a>${opTag}`
+      : `<a href="maps/traffic/map.html?focus=${encodeURIComponent(s.callsign)}" target="_blank" style="color:inherit;text-decoration:none">${s.callsign}${s.is_object ? ' <span style="color:var(--amber);font-size:var(--fs-small)">[obj]</span>' : ''}</a>`;
     return `<tr${rowCls}>
       <td style="color:${callColor};font-weight:700">${callCell}</td>
       <td style="color:var(--text-dim);white-space:nowrap">${aprsSymIcon(s)}${aprsTypeLabel(s)}</td>
@@ -3148,6 +3634,11 @@ function applyAprsFilter() {
   // station shouldn't outrank a fresher packet just for its symbol).
   rows.sort((a, b) => _lhEpoch(b.last_heard) - _lhEpoch(a.last_heard));
   renderAprsTable(rows);
+  // "stations — N" = rows actually shown, i.e. after the column filters and with
+  // ADS-B aircraft folded in — not the raw unfiltered APRS-only API count.
+  const cntEl = document.getElementById('aprs-count');
+  if (cntEl) cntEl.textContent = rows.length;
+  renderSourceBreakdown();
 }
 
 // Rebuild the TYPE column dropdown from the categories present in the current
@@ -3315,11 +3806,13 @@ async function fetchAPRS() {
       const lastElErr = document.getElementById('aprs-last');
       lastElErr.textContent = '—';
       lastElErr.className = '';
+      document.getElementById('aprs-srcbreak').textContent = '';
       setTitle(false);
       return;
     }
 
-    document.getElementById('aprs-count').textContent = d.count ?? d.stations.length;
+    // "stations — N" is set from the filtered row count in applyAprsFilter (below)
+    // so it counts what's actually shown, ADS-B included — not this raw APRS total.
 
     // ADS-B was already fetched up-front (so it survives an APRS outage); it
     // folds into the same table via applyAprsFilter → _adsbListRows().
@@ -3328,6 +3821,7 @@ async function fetchAPRS() {
       const lastElIdle = document.getElementById('aprs-last');
       lastElIdle.textContent = '—';
       lastElIdle.className = '';
+      document.getElementById('aprs-srcbreak').textContent = '';
       setTitle(false);
       return;
     }
@@ -3355,6 +3849,7 @@ async function fetchAPRS() {
   } catch (e) {
     if (haveAircraft) { renderAircraftOnly(); return; }   // APRS unreachable, but aircraft are live
     setTitle(false);
+    document.getElementById('aprs-srcbreak').textContent = '';
     if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="color:var(--text-dim)">APRS feed offline — no packets to show. &#9658; Start APRS Stats API to populate the live station table.</td></tr>`;
   }
 }
@@ -3387,21 +3882,25 @@ async function pollWifi() {
     // waiting up to 30s for the next service poll.
     const wlrf = SERVICES.find(s => s.id === 'wlrf');
     if (wlrf) checkService(wlrf);
-    pill.style.display = '';
-    const txt  = document.getElementById('wifi-pill-txt');
-    pill.classList.remove('ap', 'client');
-    if (d.mode === 'ap') {
-      pill.classList.add('ap');
-      txt.textContent = 'AP: OASIS';
-      pill.title = 'Hosting the OASIS access point · http://' + (d.ap_ip || '10.42.0.1') + ':8083';
-    } else if (d.mode === 'client' && d.ssid) {
-      pill.classList.add('client');
-      txt.textContent = d.ssid;
-      pill.title = 'Connected to ' + d.ssid + ' · tap to change network';
-    } else {
-      txt.textContent = 'Wi-Fi';
-      pill.title = 'Not connected · tap to join a network';
+    // In-use signal (nmcli SIGNAL) colours the SSID — never shown as a number.
+    // A hosting radio can't scan, so this is fetched for a client link only.
+    let sig = null;
+    if (d.mode === 'client') {
+      try {
+        const sr = await fetch('/api/wifi/scan', { cache: 'no-store' });
+        const s = await sr.json().catch(() => ({}));
+        sig = oasisWifiSignal(s, d.ssid);   // in_use flag, else match SSID by name
+      } catch (_) { /* leave sig null → SSID shows in neutral tone */ }
     }
+    const p = oasisWifiPill(d, sig);          // shared with the kiosk
+    pill.style.display = '';
+    pill.className = 'wifi-pill wtone-' + p.tone;   // border + text tone (shared CSS)
+    document.getElementById('wifi-pill-txt').textContent = p.text;
+    pill.title = p.tone === 'ap'
+      ? 'Hosting the OASIS access point · http://' + (d.ap_ip || '10.42.0.1') + ':8083'
+      : p.tone === 'none'
+        ? 'Not connected · tap to join a network'
+        : 'Connected to ' + d.ssid + ' · tap to change network';
   } catch (e) {
     pill.style.display = 'none';
   }
@@ -3577,15 +4076,58 @@ async function forgetWifi() {
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
+
+// Radio-assignment dots on the STATUS card. hollow = unassigned · amber = SDR
+// assigned · green = in use. (Ported from the kiosk svcbar.) Targets the
+// STATUS-card ids (status-dot-*) — NOT the SERVICES-grid dot-* ids, which are
+// separate elements owned by fetchHardware/renderAdsbDot etc.
+const SDR_SVCS = [
+  { id:'aprs', hw:'aprs',       unit:'aprs-sdr-feed' },
+  { id:'adsb', hw:'adsb',       unit:'dump1090-fa' },
+  { id:'owrx', hw:'openwebrx',  unit:null },
+  { id:'sat',  hw:'satellites', unit:'satellites-listen' },
+];
+async function _isUnitActive(unit) {
+  if (!unit) return false;
+  try { const r = await fetch('/api/health/service?name='+unit, { cache:'no-store' });
+        return r.ok && (await r.json()).active === 'active'; } catch (_) { return false; }
+}
+async function _satInUse() {
+  try { const r = await fetch('/api/satellites/listen/status', { cache:'no-store' });
+        if (!r.ok) return false; const d = await r.json();
+        return !!(d.recording || d.streaming); } catch (_) { return false; }
+}
+async function fetchSdrStatus() {
+  let hw = {};
+  try { const r = await fetch('/api/hardware/devices', { cache:'no-store' }); if (r.ok) hw = await r.json(); } catch (_) {}
+  const byId = {}; (hw.devices || []).forEach(x => byId[x.id] = x);
+  const services = hw.services || {};
+  await Promise.all(SDR_SVCS.map(async svc => {
+    const dot = document.getElementById('status-dot-'+svc.id); if (!dot) return;
+    const info = services[svc.hw];
+    const dev  = info && info.device_id ? byId[info.device_id] : null;
+    const assigned = !!(dev && dev.kind === 'rtl-sdr');
+    const inUse = svc.id === 'sat' ? await _satInUse() : await _isUnitActive(svc.unit);
+    dot.className = 'adot' + (inUse ? ' inuse' : assigned ? ' assigned' : '');
+  }));
+}
+
 loadConfig().then(() => {
   applyUnits();
   loadInstalled().then(async () => { await fetchHardware(); pingAll(); pollFeedFlow(); pollAdsbFlow(); });
   fetchStats();
   fetchAudio();
+  fetchSdrStatus();
   loadHazards();   // hazard-pill config (before/after the first APRS fetch — pills repaint on load)
   fetchAPRS();
   loadHomeCoords();
   pollWifi();
+  const _svcbar = document.getElementById('status-svcbar');
+  if (_svcbar) {
+    const _openOps = () => { const r = document.getElementById('hsx-rail'); if (r) r.click(); };
+    _svcbar.addEventListener('click', _openOps);
+    _svcbar.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _openOps(); } });
+  }
   // Service badges: round-robin one at a time — a full sweep of the active
   // (visible) services every 16s, matching the OASIS Dashboard kiosk, instead of
   // a 17-request burst (see pingNext). Dividing by the active count (not all
@@ -3595,11 +4137,18 @@ loadConfig().then(() => {
   setInterval(fetchHardware, 30_000);
   const _activeN = SERVICES.filter(s => !HIDDEN_SVCS.has(s.id)).length || 1;
   setInterval(pingNext, Math.round(16_000 / _activeN));
-  // Phase-offset the remaining 30s loops so they don't all land on the same
-  // boundary — staggered startup delays, then steady 30s each.
-  setTimeout(() => setInterval(fetchStats, 30_000),  4_000);
+  // Phase-offset the remaining loops so they don't all land on the same
+  // boundary — staggered startup delays, then steady each. fetchStats drives the
+  // CPU/PROCESSES cards; its payload is cheap (cached cores/procs + light /proc
+  // reads). The CPU card shows this interval (cpu-rate) so it's never a fake
+  // number — change one place and both the poll and the label move together.
+  const STATS_POLL_MS = 5_000;
+  const _cpuRate = document.getElementById('cpu-rate');
+  if (_cpuRate) _cpuRate.textContent = (STATS_POLL_MS / 1000) + 's';
+  setTimeout(() => setInterval(fetchStats, STATS_POLL_MS),  4_000);
   setTimeout(() => setInterval(fetchAudio, 30_000),  8_000);
   setTimeout(() => setInterval(pollWifi,   30_000), 12_000);
+  setTimeout(() => setInterval(fetchSdrStatus, 8_000), 6_000);
   setInterval(fetchAPRS,    15_000);
   setInterval(pollFeedFlow, FEED_FLOW_MS);
   setInterval(pollAdsbFlow, ADSB_FLOW_MS);
@@ -3632,5 +4181,123 @@ loadConfig().then(() => {
   </div>
 </div>
 
+<script>
+/* HW/SRV assignment console — LIVE, wired to /api/hardware/* via the shared
+   common/js/hw-console.js (logic + contract shared with the kiosk SRV OPS card,
+   so the two can't drift). Namespaced hsx-, IIFE (no globals). */
+(function(){
+  var LOCK_CLOSED='<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.2" rx="1.3" fill="currentColor"/><path d="M5 7.2V5a3 3 0 0 1 6 0v2.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  var LOCK_OPEN='<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.2" rx="1.3" fill="currentColor"/><path d="M5 7.2V5a3 3 0 0 1 5.9-.55" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  var state={services:[],devices:[],warnings:[]};
+  function svcNameOf(id){var s=state.services.find(function(x){return x.id===id;});return s?s.name:(id||'—');}
+  function refresh(){return oasisHwConsole.fetchState().then(function(s){state=s;render();}).catch(function(){});}
+  function cstate(dev,svc){ return oasisCstate(dev,svc); }
+  var matrix=document.getElementById('hsx-matrix');
+  var msgEl=document.getElementById('hsx-msg'); var msgT;
+  var IDLE='Tap a toggle to route · lock a device to protect it';
+  function message(text,kind){
+    msgEl.textContent=text; msgEl.className='hsx-msg hsx-'+(kind||'info');
+    clearTimeout(msgT);
+    if(kind!=='idle') msgT=setTimeout(function(){ msgEl.className='hsx-msg hsx-idle'; msgEl.textContent=IDLE; },3400);
+  }
+  function flip(dev,svc){
+    var plan=oasisFlipPlan(dev,svc);
+    if(plan.action==='none') return;
+    if(plan.action==='locked'){ message(dev.label+' is locked on '+svcNameOf(dev.assigned)+' — unlock it to move it.','warnc'); return; }
+    if(plan.action==='stop'){    // running here → stop it (keeps the dongle assigned, just idle)
+      oasisHwConsole.serviceStop(svc.id).then(function(){ message('■ Stopped '+svc.name+' on '+dev.label,'info'); refresh(); });
+      return;
+    }
+    // off / stopped → route onto this dongle (assign + start, displacing what was there)
+    oasisHwConsole.route(svc.id,dev.id).then(function(res){
+      if(res.status>=400){
+        res.json().then(function(b){
+          var loc=b.reason&&String(b.reason).indexOf('locked')>=0;
+          message(loc?svc.name+' is locked — unlock it to move it.':'⚠ '+(b.error||'route failed'),'warnc');
+        }); return;
+      }
+      message('▶ '+svc.name+' → '+dev.label,'okc'); refresh();
+    });
+  }
+  function toggleLock(dev){
+    if(!dev.assigned && !dev.locked){ message(dev.label+' has nothing assigned to lock.','info'); return; }
+    var want=!dev.locked;
+    oasisHwConsole.lock(dev.id,want).then(function(){
+      message(want?'Locked '+dev.label+' on '+svcNameOf(dev.assigned):'Unlocked '+dev.label,'lockc'); refresh();
+    });
+  }
+  var rail=document.getElementById('hsx-rail'), railCnt=document.getElementById('hsx-cnt');
+  function railHealth(){ return oasisRailHealth(state.warnings); }
+  function renderRail(){
+    var h=railHealth();
+    rail.className='hsx-rail hsx-'+h.lvl;
+    railCnt.innerHTML = h.count>0 ? h.glyph+'<br>'+h.count : h.glyph;
+    rail.title='HW / SRV — '+(h.lvl==='ok'?'all nominal':h.count+' warning'+(h.count===1?'':'s'));
+  }
+  function render(){
+    var services=state.services||[], devices=state.devices||[];
+    matrix.style.gridTemplateColumns='minmax(96px,auto) repeat('+(services.length||1)+',1fr)';
+    matrix.innerHTML='';
+    var hw=document.createElement('div'); hw.className='hsx-mh hsx-hw'; hw.textContent='HW'; matrix.appendChild(hw);
+    services.forEach(function(s){var h=document.createElement('div'); h.className='hsx-mh'; h.textContent=s.name; matrix.appendChild(h);});
+    devices.forEach(function(dev,i){
+      var last=i===devices.length-1?' hsx-rlast':'';
+      var cell=document.createElement('div'); cell.className='hsx-hwc'+last+(dev.locked?' hsx-locked':'');
+      cell.innerHTML='<span class="hsx-nm">'+dev.label+'</span><span class="hsx-sr">'+(dev.serial||'')+'</span>';
+      var lk=document.createElement('button'); lk.className='hsx-lk'; lk.type='button';
+      lk.innerHTML=dev.locked?LOCK_CLOSED:LOCK_OPEN; lk.title=dev.locked?'Unlock '+dev.label:'Lock '+dev.label+' on its current service';
+      lk.setAttribute('aria-label',lk.title); lk.onclick=function(){ toggleLock(dev); }; cell.appendChild(lk); matrix.appendChild(cell);
+      services.forEach(function(svc){
+        var wrap=document.createElement('div'); wrap.className='hsx-mc'+last;
+        var st=cstate(dev,svc);
+        if(st==='na'){ wrap.innerHTML='<span class="hsx-nax">·</span>'; }
+        else{
+          var t=document.createElement('button'); t.type='button';
+          t.className='hsx-tog'+(st==='on'?' hsx-on':st==='stopped'?' hsx-stopped':'')+(dev.locked?' hsx-frozen':'');
+          var lab=svc.name+' on '+dev.label+' — '+(st==='on'?'running':st==='stopped'?'assigned, stopped':'off');
+          t.title=lab; t.setAttribute('aria-label',lab); t.setAttribute('role','switch'); t.setAttribute('aria-checked', st==='on'?'true':'false');
+          t.onclick=function(){ flip(dev,svc); }; wrap.appendChild(t);
+        }
+        matrix.appendChild(wrap);
+      });
+    });
+    renderRail();
+  }
+  var pop=document.getElementById('hsx-pop');
+  function setOpen(o){ pop.classList.toggle('hsx-open',o); rail.setAttribute('aria-expanded',o?'true':'false'); if(o) refresh(); }
+  // Opens on rail click; stays open until the user explicitly closes it (rail toggle, close button, or Esc).
+  rail.onclick=function(){ setOpen(!pop.classList.contains('hsx-open')); };
+  document.getElementById('hsx-close').onclick=function(){ setOpen(false); };
+  document.getElementById('hsx-stopall').onclick=function(){ oasisHwConsole.stopAll().then(function(){ message('■ STOP ALL — every service stopped','warnc'); refresh(); }); };
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') setOpen(false); });
+
+  // ── Resource guardian: server-side thread arms the countdown even with no
+  // browser open; here we just SHOW it and offer Cancel. Cheap cached endpoint.
+  var gBanner=document.getElementById('hsx-guardian'), gMsg=document.getElementById('hsx-g-msg');
+  var gWasTripped=false;
+  var G_WHY={temp_c:'Overheating',cpu_pct:'CPU overload',mem_pct:'Memory critical'};
+  function renderGuardian(g){
+    if(g && g.mode==='armed'){
+      gBanner.hidden=false;
+      var n=(g.seconds_left!=null)?g.seconds_left:0;
+      gMsg.textContent='⚠ '+(G_WHY[g.reason]||'Overload')+' — STOP ALL in '+n+'s';
+      gWasTripped=false;
+    } else {
+      gBanner.hidden=true;
+      if(g && g.mode==='tripped' && !gWasTripped){ gWasTripped=true; message('■ Guardian stopped all services ('+(G_WHY[g.reason]||'overload')+')','warnc'); }
+      if(!g || g.mode!=='tripped') gWasTripped=false;
+    }
+  }
+  function pollGuardian(){ oasisHwConsole.guardianState().then(renderGuardian).catch(function(){}); }
+  document.getElementById('hsx-g-cancel').onclick=function(){
+    oasisHwConsole.guardianCancel().then(function(){ gBanner.hidden=true; message('Guardian countdown cancelled — you have the helm','info'); });
+  };
+
+  render(); message(IDLE,'idle'); refresh(); pollGuardian();
+  setInterval(function(){ if(pop.classList.contains('hsx-open')) refresh(); }, 5000);   // live while open
+  setInterval(refresh, 20000);                                                          // rail heartbeat when closed
+  setInterval(pollGuardian, 2000);                                                      // guardian countdown (cheap, cached)
+})();
+</script>
 </body>
 </html>

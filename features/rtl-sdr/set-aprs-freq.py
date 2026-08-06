@@ -8,7 +8,7 @@ ExecStart (leaving gain / ppm / sample-rate / socat port untouched), reloads
 systemd, and restarts the feed so the change is live.
 
 The chosen frequency is *persisted* separately in configuration/station.json by
-the (unprivileged) web layer, and enable-rtl-sdr.py reads it back as its default,
+the (unprivileged) web layer, and services/rtl-feed/common/feed.py reads it back as its default,
 so this applier only ever touches the live unit — it does not own the setting.
 
 Usage:  set-aprs-freq.py <freq>      e.g. set-aprs-freq.py 144.800M

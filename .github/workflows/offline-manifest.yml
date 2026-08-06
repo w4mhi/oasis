@@ -11,6 +11,7 @@ on:
     paths:
       - "scripts/**"
       - "tests/**"
+      - "maps/**/*.py"
       - "features/**"
       - "common/**"
       - "server/**"
@@ -22,6 +23,7 @@ on:
     paths:
       - "scripts/**"
       - "tests/**"
+      - "maps/**/*.py"
       - "common/**"
       - "server/**"
       - "services/**"

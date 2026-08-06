@@ -35,6 +35,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [File browser](#file-browser)
 - [CM4Stack panel display](#cm4stack-panel-display)
 - [RGB Cooling HAT](#rgb-cooling-hat)
+- [Argon ONE case (fan control)](#argon-one-case-fan-control)
 - [OASIS Dashboard / kiosk display](#oasis-dashboard--kiosk-display)
 - [USB / Portable bundle](#usb--portable-bundle)
 - [Keeping data fresh](#keeping-data-fresh)
@@ -63,6 +64,7 @@ Units OASIS writes itself live under `/etc/systemd/system/`:
 | RTL-SDR APRS feed | `/etc/systemd/system/aprs-sdr-feed.service` |
 | ADS-B recorder + history API | `/etc/systemd/system/adsb-api.service` |
 | RGB Cooling HAT | `/etc/systemd/system/rgb-cooling-hat.service` |
+| Argon ONE fan | `/etc/systemd/system/argon-fan.service` |
 | DRA-Pi RX LED | `/etc/systemd/system/dra-rx-led.service` |
 | Wi-Fi AP fallback | `/etc/systemd/system/oasis-netwatch.service` |
 
@@ -78,9 +80,32 @@ Package-provided units (installed via `apt`/`.deb`, so they live under `/lib/sys
 
 > Features without their own unit: FCC lookup, offline maps and ICS/tools are served by `oasis.service`; the DRA-Pi sound card (ALSA config) and the Witty Pi 3 RTC (device-tree overlay + `hwclock`) configure the OS directly and register no systemd service.
 
+### Checking any service (works for every unit above)
+
+Every feature in the tables above runs as a **systemd service** — a background program the Pi keeps alive. Three commands answer "is it working / why isn't it" for *any* unit name in the tables, so learn them once and reuse them everywhere below. Replace `<unit>` with a name from the tables (e.g. `graywolf`, `dump1090-fa`, `gpsd`):
+
+```bash
+systemctl status <unit>        # is it running?
+```
+Healthy = a green **`active (running)`** line. Trouble signs: **`inactive (dead)`** (never started), **`failed`** (crashed), or **`activating (auto-restart)`** flipping over and over (a *crash loop* — it keeps dying and restarting).
+
+```bash
+journalctl -u <unit> -f        # watch its log live — press Ctrl+C to stop watching
+```
+This is the single most useful debug tool: it prints new log lines as they happen. Do the thing that should work (send a packet, wait for a GPS fix) and watch for the service to react.
+
+```bash
+journalctl -u <unit> -e        # jump to the end of the recent log (for a crash that already happened)
+sudo systemctl restart <unit>  # clean stop + start — fixes most "stuck" states
+```
+
+> 💡 **When in doubt, run the doctor first.** `python3 scripts/doctor.py` checks the whole station in one shot and prints a ✓/✗ per feature — see [Health check (doctor)](#health-check-doctor). Start there, then point the three commands above at whatever it flags red.
+
 ---
 
 ## Before you begin (Raspberry Pi)
+
+**Minimum hardware: Raspberry Pi 3 (2 GB) or better** (Pi 4/5 recommended). Older or smaller boards are not supported.
 
 If you are setting up a **fresh Raspberry Pi** for the first time, complete these steps before anything else. If you already have a Pi booted with SSH access and `git` installed, skip to [Guided setup](#guided-setup-menu).
 
@@ -95,7 +120,7 @@ Download and install **[Raspberry Pi Imager](https://www.raspberrypi.com/softwar
 | Planning to use an **RTL-SDR dongle** for APRS receive | **Raspberry Pi OS Lite (64-bit) — Trixie** |
 | Everything else (no RTL-SDR, or using DigiRig/DRA-Pi) | **Raspberry Pi OS Lite (64-bit) — Bookworm** |
 
-**Lite vs. Desktop:** Lite has no graphical desktop — it boots to a command line and uses less memory (important on a Pi Zero 2 W or Pi 3). If you want to plug in a monitor and use a mouse/keyboard with a desktop environment, choose "Raspberry Pi OS (64-bit)" (without "Lite") instead. The kiosk/browser option (`--with-browser`) works on Desktop; on Lite, a browser can still run on a separate attached display if configured.
+**Lite vs. Desktop:** Lite has no graphical desktop — it boots to a command line and uses less memory (important on a Pi 3). If you want to plug in a monitor and use a mouse/keyboard with a desktop environment, choose "Raspberry Pi OS (64-bit)" (without "Lite") instead. The kiosk/browser option (`--with-browser`) works on Desktop; on Lite, a browser can still run on a separate attached display if configured.
 
 Use Imager to write your chosen image to a microSD card (32 GB minimum). Before clicking **Write**, open **Advanced Options** (gear icon ⚙️ or Ctrl+Shift+X) and:
 - Set a **hostname** (e.g. `oasis`)
@@ -144,11 +169,11 @@ sudo apt update && sudo apt install -y git
 ### 4. Clone OASIS
 
 ```bash
-git clone https://github.com/W4MHI/oasis-emcomm
-cd oasis-emcomm
+git clone https://github.com/W4MHI/oasis
+cd oasis
 ```
 
-> 💡 **Stay in this directory.** Every command in this guide assumes you are inside `oasis-emcomm/`. If you open a new terminal session or accidentally `cd` somewhere else, type `cd ~/oasis-emcomm` to get back.
+> 💡 **Stay in this directory.** Every command in this guide assumes you are inside `oasis/`. If you open a new terminal session or accidentally `cd` somewhere else, type `cd ~/oasis` to get back.
 
 Now continue to [Guided setup](#guided-setup-menu).
 
@@ -157,7 +182,7 @@ Now continue to [Guided setup](#guided-setup-menu).
 ## Project structure
 
 ```
-oasis-emcomm/
+oasis/
 ├── index.html                  ← Dashboard (start here)
 ├── css/common.css              ← Shared design system
 │
@@ -206,6 +231,8 @@ oasis-emcomm/
 ```
 
 > **Which script do I run, and when?** See the [Scripts matrix in the README](../README.md#-scripts--what-to-run-when--why). In short: `setup-server.py` is the only required one; the rest are opt-in per feature. Large data (FCC database, full map regions, PDF manuals, Wikipedia) is downloaded or generated by those scripts — it is not stored in the repo.
+
+> **Working on this code?** OASIS is built by W4MHI with Claude Code as the day-to-day dev partner — plan first, human review before anything merges, same offline-first constraints apply to AI-suggested code as to anyone's. See [How OASIS Is Built](../README.md#-how-oasis-is-built) in the README.
 
 ---
 
@@ -327,6 +354,8 @@ The script creates `/etc/systemd/system/oasis.service` and runs `systemctl enabl
 > every boot without you doing anything. You do **not** need to run the launcher anymore.
 > Run `scripts/start-server.sh` only if you want to test the server manually without enabling auto-start.
 
+> **If the auto-started server doesn't come up after a reboot:** `sudo systemctl status oasis` (want `active (running)`), then `journalctl -u oasis -e` for the reason. `systemctl is-enabled oasis` should print `enabled`; if not, re-run `python3 scripts/enable-autostart-pi.py`.
+
 <details><summary>Manual service file (if you prefer not to use the script)</summary>
 
 Create `/etc/systemd/system/oasis.service`, replacing `YOUR_USERNAME` with your actual login name (run `whoami` if unsure):
@@ -338,8 +367,8 @@ After=network.target
 
 [Service]
 User=YOUR_USERNAME
-WorkingDirectory=/home/YOUR_USERNAME/oasis-emcomm
-ExecStart=/home/YOUR_USERNAME/oasis-emcomm/.venv/bin/gunicorn --workers 1 --bind 0.0.0.0:8083 server.app:app
+WorkingDirectory=/home/YOUR_USERNAME/oasis
+ExecStart=/home/YOUR_USERNAME/oasis/.venv/bin/gunicorn --workers 1 --bind 0.0.0.0:8083 server.app:app
 Restart=on-failure
 
 [Install]
@@ -371,9 +400,11 @@ sudo systemctl enable --now oasis
 | `GET /api/service` (POST) | Start/stop a controllable service (graywolf, kiwix, webssh, etc.) |
 | `GET /server-ports.json` | Port map consumed by dashboard JS |
 
-The dashboard and home page poll these to show live status: a **System** stats bar (Host/CPU/Temp/RAM/Disk/Load/Uptime, colour-coded green/amber/red by threshold), an **Audio Devices** panel, a **Web SSH** card, and a **GPS card** in the header showing fix mode, satellites, HDOP, lat/lon, altitude, and chrony clock-lock status. A **Units** pill (Imperial/Metric) toggles all displayed measurements (temperature, altitude, speed) in one tap — preference is persisted per browser.
+`/api/system` drives a row of header cards, polled every 5 seconds: **local + UTC clocks**, a **CPU card** (usage / SoC temp / RAM / disk inline, plus a per-core usage bar for each core), a **PROCESSES card** (top 3 processes by CPU, 1-min load average), a **STATUS card** (uptime, Pi power/throttle state, the HW radio-assignment dots described below, and host/LAN IP), and a **GPS card** showing fix mode, satellites, HDOP, lat/lon, altitude, and chrony clock-lock status. Everything is colour-coded green/amber/red by threshold. A **Units** pill (Imperial/Metric) toggles all displayed measurements (temperature, altitude, speed) in one tap — preference is persisted per browser. `/api/audio` (ALSA sound card list) is served but not rendered on the main dashboard; it's deferred to the Setup/health-check page.
 
-The stats bar leads with **HOST** — the hostname and LAN IP of the machine actually serving the page. The **HDOP** value is colour-coded across six steps from ideal (bright green, < 1) through excellent, good, moderate, fair, to poor (red, > 20). Service cards include **START/STOP** buttons for controllable services (GrayWolf, Winlink, Kiwix, Web SSH, OpenWebRX), so you never need to SSH in just to restart a service.
+The **STATUS** card's Host row is the hostname and LAN IP of the machine actually serving the page. The **HDOP** value on the GPS card is colour-coded across six steps from ideal (bright green, < 1) through excellent, good, moderate, fair, to poor (red, > 20). Service cards include **START/STOP** buttons for controllable services (GrayWolf, Winlink, Kiwix, Web SSH, OpenWebRX), so you never need to SSH in just to restart a service.
+
+Beyond simple start/stop, the **Service Operations** console (the mixer-board rail beside the service strip on the dashboard, or the APRS/ADS-B/ORX/SAT pill on the kiosk) opens a device→service matrix: reroute an SDR or sound-card between services with one tap, **lock** a device to protect its assignment, or **STOP ALL**. An opt-in **resource guardian** — a background thread on the server, running independent of any open browser tab — watches SoC temperature, CPU, and memory; crossing a threshold (80 °C / 95 % / 92 % by default, tunable down to a safe floor) arms a 30-second cancellable countdown, shown as a banner on any dashboard or kiosk currently open, before auto-running STOP ALL if nobody cancels. Both the manual STOP ALL and the guardian's always exclude **Web SSH**, so a tripped guardian can never lock the operator out of the box. See [API — Hardware allocation](api.md#hardware-allocation-apihardware).
 
 ---
 
@@ -428,8 +459,8 @@ Files written to `services/fcc_database/data/`:
 
 ```bash
 # Mac / Linux laptop:
-scp -r services/fcc_database/data <username>@<hostname>.local:/home/<username>/oasis-emcomm/services/fcc_database/
-# e.g.  scp -r services/fcc_database/data w4mhi@oasis.local:/home/w4mhi/oasis-emcomm/services/fcc_database/
+scp -r services/fcc_database/data <username>@<hostname>.local:/home/<username>/oasis/services/fcc_database/
+# e.g.  scp -r services/fcc_database/data w4mhi@oasis.local:/home/w4mhi/oasis/services/fcc_database/
 ```
 
 > 💡 **Windows users:** PowerShell has `scp` built in (Windows 10 1809 or later). If it doesn't work, use [WinSCP](https://winscp.net/) (free GUI app) or [FileZilla](https://filezilla-project.org/) (SFTP mode) — connect to `<hostname>.local`, port 22, with your Pi username and password, then drag the `services/fcc_database/data/` folder to the same path on the Pi.
@@ -465,7 +496,7 @@ This installs `avahi-daemon` (so the dashboard resolves at `oasis.local`), creat
 
 Once the AP is up, other devices connect to the `OASIS` Wi-Fi (password `oasis-emcomm`) and open `http://10.42.0.1:8083` (or `http://oasis.local:8083`).
 
-**Joining a Wi-Fi network from the dashboard:** tap the **Wi-Fi** button under the clock, pick a network, and enter its password. Because the Pi Zero 2 W has a single radio, joining a network takes the OASIS AP offline — any device connected to the AP must reconnect via the Pi's new address.
+**Joining a Wi-Fi network from the dashboard:** tap the **Wi-Fi** button under the clock, pick a network, and enter its password. Because the Pi has a single Wi-Fi radio, joining a network takes the OASIS AP offline — any device connected to the AP must reconnect via the Pi's new address.
 
 > 💡 The Wi-Fi pill under the clock shows the current SSID or `AP: OASIS`. The System Monitor **IP** row shows the address to reach the dashboard on (e.g. `10.42.0.1` when hosting the AP).
 
@@ -482,7 +513,7 @@ sudo nmcli device wifi hotspot ssid OASIS password oasis-emcomm
   journalctl -u oasis-netwatch -f
   ```
 - **`/usr/local/bin/oasis-netctl`** — a pinned privileged helper (scan / connect / forget / ap-up) the dashboard calls via a scoped `sudo` rule (`/etc/sudoers.d/oasis-wifi`); no password touches the web layer.
-- **Single radio:** the Pi Zero 2 W has one Wi-Fi radio, so it is **either** a client **or** the AP, never both. Joining or forgetting a network from the dashboard therefore drops the AP; reconnecting to a known network after an AP fallback happens on the next reboot or via the dashboard.
+- **Single radio:** the Pi has one Wi-Fi radio, so it is **either** a client **or** the AP, never both. Joining or forgetting a network from the dashboard therefore drops the AP; reconnecting to a known network after an AP fallback happens on the next reboot or via the dashboard.
 
 Check status any time:
 
@@ -492,7 +523,7 @@ python3 scripts/enable-ap-fallback.py --check
 
 ### Troubleshooting the access point
 
-These are the real issues seen bringing the AP up on a Pi Zero 2 W (Broadcom `brcmfmac` radio), in the order to check them.
+These are the real issues seen bringing the AP up on the Pi (Broadcom `brcmfmac` radio), in the order to check them.
 
 **1. The `OASIS` network doesn't broadcast at all.** NetworkManager can report the AP as "up" while the radio isn't actually beaconing. The two usual causes are a soft-blocked radio and an unset Wi-Fi regulatory domain (`country 00`), which suppresses 2.4 GHz beaconing.
 
@@ -634,11 +665,11 @@ Place the `.pmtiles` file in `maps/`. The map opens at the archive's own center/
 
 ```bash
 # Run this on your laptop, replacing <username> and <hostname> with what you set in Imager:
-scp maps/<region>.pmtiles <username>@<hostname>.local:/home/<username>/oasis-emcomm/maps/
-# e.g.  scp maps/washington.pmtiles w4mhi@oasis.local:/home/w4mhi/oasis-emcomm/maps/
+scp maps/<region>.pmtiles <username>@<hostname>.local:/home/<username>/oasis/maps/
+# e.g.  scp maps/washington.pmtiles w4mhi@oasis.local:/home/w4mhi/oasis/maps/
 ```
 
-> 💡 **Windows users:** use WinSCP or FileZilla (SFTP, port 22) to drag the `.pmtiles` file into `/home/<username>/oasis-emcomm/maps/` on the Pi.
+> 💡 **Windows users:** use WinSCP or FileZilla (SFTP, port 22) to drag the `.pmtiles` file into `/home/<username>/oasis/maps/` on the Pi.
 
 Or skip copying entirely: keep `.pmtiles` files on a USB stick and use the **Load maps** button on the map page to browse and load them at runtime. The locations the browser may read from are controlled by the `OASIS_MAP_ROOTS` environment variable (default: `/media`, `/mnt`, `/run/media`, `/Volumes`, plus `maps/`).
 
@@ -855,6 +886,23 @@ The **Live Map** plots stations heard over RF and via iGate with layer toggles a
 
 ![GrayWolf — Tactical chat in use](images/file22.png)
 
+### Debug — I configured everything but nothing decodes
+
+Work through these in order — most common cause first:
+
+1. **Is GrayWolf running, and did you restart it after config changes?** GrayWolf only reads channel/device config at startup:
+   ```bash
+   systemctl status graywolf          # want active (running)
+   sudo systemctl restart graywolf    # after ANY device or channel change
+   ```
+2. **Watch the audio meter while a packet should arrive.** On the web **Dashboard** the **audio-level meter** should *bounce* when the radio passes audio. A flat meter = no audio is reaching GrayWolf (radio volume up? squelch open? cable seated?). Watch the log at the same time: `journalctl -u graywolf -f`.
+3. **Is the RX counter climbing?** Dashboard → packet **RX** count, or the **Logs** view. On a live APRS frequency expect a packet every minute or two. Zero for 10+ minutes on a known-busy band points to audio/antenna, not config.
+4. **Right sound card selected?** The channel's Input/Output device must match the card you added under Settings → Audio Devices. `aplay -l` lists the cards the Pi actually sees.
+5. **Is another radio consumer holding the device?** If you're feeding GrayWolf from an SDR, only one SDR mode runs at a time — see [who owns the RTL-SDR](#rtl-sdr). For a sound-card TNC, make sure OpenWebRX/ADS-B didn't grab the dongle.
+6. **Radio basics:** tuned to **144.390 MHz** (North America), volume ~⅓ up, squelch open enough to pass packet audio. APRS is bursty digital "braaap", not a steady tone.
+
+> **Audio levels:** aim for clean decodes with the meter mid-scale. Pinned/clipping = too hot (turn it down); barely moving = too low (turn it up). Same idea as the [DigiRig level tuning](#2-set-the-usb-card-audio-levels-alsamixer).
+
 ---
 
 ## Winlink (Pat)
@@ -898,6 +946,11 @@ first setup step). See [Winlink RF via DigiRig](#winlink-rf-via-digirig) to wire
 up a DigiRig, including audio-level tuning and debugging. Skip the modem entirely
 with `--no-modem` (Telnet-only Winlink).
 
+**Debug:**
+
+- Page at `:8082` won't load → `systemctl status pat` (want `active (running)`), then `journalctl -u pat -f`.
+- **Telnet connect test** (needs internet): compose a message, then *Action → Connect → telnet*. A **successful** connect authenticates and reports how many messages were exchanged. A **timeout / auth error** = no internet reaching the Pi, or a wrong Winlink password — re-enter it with `pat configure`. (OASIS surfaces the real reason on a failed connect rather than a bare error code.)
+
 > Plain HTTP, and `config.json` holds your Winlink password — keep this on your
 > trusted LAN, not the open internet.
 
@@ -926,6 +979,13 @@ It runs in two phases, auto-detected by whether the card is present yet:
 > **Run `--dry-run` first** to review the `config.txt` diff before it writes —
 > this edits a boot file. The full hardware writeup is in
 > [`graywolf-dra-pi.md`](graywolf-dra-pi.md).
+
+**After the reboot, confirm the codec appeared:**
+
+```bash
+aplay -l | grep -i wm8731     # the DRA-Pi card should now be listed; no output = overlay didn't load
+```
+If it's absent, the overlay didn't take — re-check the `config.txt` block and that the HAT is firmly seated. Once it lists, `amixer -c <card-number>` should show **`Input Mux`** set to **`Mic`** (the critical capture route the script sets); if it drifted, re-run `enable-dra-pi.py`.
 
 ---
 
@@ -1142,13 +1202,39 @@ rtl_fm -f 144.390M -M fm -s 48000 - | aplay -r 48000 -f S16_LE -t raw -c 1   # r
 > **Note:** a reboot may be required for the kernel module blacklist to take full effect.
 > Use `-s 48000` directly (set the output rate) — this `rtl_fm` build ignores `-r`.
 
+**Reading `rtl_test -t` (what good vs bad looks like):**
+
+```
+Found 1 device(s):
+  0:  Realtek, RTL2838UHIDIR, SN: 00000001
+Found Rafael Micro R828D tuner       ← R828D = a V4 dongle; R820T2 = a V3
+```
+- **`Found 1 device(s)`** + a tuner line = the dongle is seen and usable. Good.
+- **`No supported devices found`** = not plugged in, a dead USB cable, **or** the TV driver stole it (next check).
+- A flood of **`lost samples`** / the test stalling = USB power problem (undervoltage) — use a good power supply and a short, quality USB cable; check `vcgencmd get_throttled` returns `throttled=0x0`.
+
+**The #1 RTL-SDR failure — the TV driver grabbed the dongle.** Linux ships a DVB-T television driver that claims the dongle before SDR tools can. The install blacklists it, but a reboot may be needed. Confirm it's gone:
+
+```bash
+lsmod | grep dvb_usb_rtl28xxu     # want NO output (empty). Any output = TV driver still holding the dongle → reboot
+```
+
+**What the audio test should sound like.** The `rtl_fm … | aplay` pipe on 144.390 plays **open-squelch hiss with occasional short digital "braaap" bursts** (those bursts are APRS packets). Continuous static with *no* bursts on a busy band, or dead silence, = no antenna / wrong device, not "it's working." Press Ctrl+C to stop.
+
+**Who's using the RTL-SDR right now?** The dongle is shared — the APRS feed, ADS-B, OpenWebRX, and satellite listening each need it exclusively, so only one runs at a time. To see the current owner:
+
+```bash
+systemctl is-active aprs-sdr-feed dump1090-fa openwebrx    # whichever prints "active" holds the dongle
+```
+(Satellite live-audio also grabs it while a bird is armed — the Satellites page header shows which one.) If a mode reports "no device / busy", stop the active one first.
+
 **Enable the dongle as a GrayWolf receive-only APRS feed:**
 
 ```bash
-python3 features/rtl-sdr/enable-rtl-sdr.py                 # test SDR, install the feed service, print GrayWolf steps
-python3 features/rtl-sdr/enable-rtl-sdr.py --check         # test the SDR only, no system changes
-python3 features/rtl-sdr/enable-rtl-sdr.py --freq 144.800M --gain 28 --ppm 12
-python3 features/rtl-sdr/enable-rtl-sdr.py --help
+python3 services/rtl-feed/install.py                 # test SDR, install the feed service, print GrayWolf steps
+python3 services/rtl-feed/install.py --check         # test the SDR only, no system changes
+python3 services/rtl-feed/install.py --freq 144.800M --gain 28 --ppm 12
+python3 services/rtl-feed/install.py --help
 ```
 
 This tests the dongle (measures live audio at the APRS frequency), installs and
@@ -1156,6 +1242,23 @@ enables `aprs-sdr-feed.service` (`rtl_fm … | socat -u -b 1920 - UDP-SENDTO:127
 inspects GrayWolf's journal, and prints the browser steps to add the `sdr_udp`
 device and AFSK/RX channel. Receive-only — an RTL-SDR cannot transmit. Full
 writeup and troubleshooting: [`graywolf-rtl-sdr.md`](graywolf-rtl-sdr.md).
+
+**Debug the APRS SDR feed:**
+
+The pipeline is `rtl_fm` (RX audio) → `socat` (sends it as UDP to port 7355) → GrayWolf (decodes it). Check it end to end:
+
+```bash
+systemctl status aprs-sdr-feed        # active (running) = good; auto-restart loop = the dongle is busy or gone
+journalctl -u aprs-sdr-feed -f        # watch it start and hold the device (Ctrl+C to stop)
+```
+
+Confirm audio is actually reaching GrayWolf on 7355 (packets are sporadic — leave it running through a couple of beacons):
+
+```bash
+sudo tcpdump -ni lo udp port 7355     # a line every so often = audio is flowing to GrayWolf; Ctrl+C to stop
+```
+
+Then the proof it decoded: GrayWolf's **Dashboard RX counter** climbs and packets appear in **Logs**. RX stuck at 0 on a live band with UDP flowing = a gain/antenna issue (raise `--gain`, check the antenna) or GrayWolf's channel isn't pointed at the `sdr_udp` device — see [GrayWolf debug](#debug--i-configured-everything-but-nothing-decodes).
 
 ---
 
@@ -1222,6 +1325,16 @@ internet, discipline it from GPS (`gpsd` + `chrony`) backed by the RTC — see t
 time-sync setup. The dashboard's clock indicator (when present) tells you when
 timing is trustworthy.
 
+### Debug — waterfall frozen or "no SDR device"
+
+- **Working looks like:** open `:8073`, pick a profile, and the **waterfall scrolls** with audio when tuned to an active frequency. A **frozen or black waterfall** = the SDR isn't delivering samples.
+- **"No SDR device" / black waterfall** almost always means another service is holding the dongle. OpenWebRX's **Start** button is *supposed* to stop the APRS stack, but confirm nothing else grabbed it — see [who owns the RTL-SDR](#rtl-sdr):
+  ```bash
+  systemctl is-active aprs-sdr-feed dump1090-fa openwebrx   # only openwebrx should be active
+  journalctl -u openwebrx -f                                # watch it try to open the device
+  ```
+- **Decoders (FT8/FT4/WSPR) spot nothing** even with a good signal: this is almost always the **clock**. Confirm GPS/chrony is disciplined — see [GPS debug](#debug--do-i-have-a-fix-and-is-it-steering-the-clock).
+
 ---
 
 ## ADS-B Aircraft
@@ -1282,6 +1395,53 @@ Every observation is persisted to a local SQLite database at
 `/var/lib/adsb/adsb-history.db` (WAL mode), mirroring GrayWolf's history-DB
 pattern — nothing heard is lost, even between dashboard sessions.
 
+### Debug — am I actually hearing planes?
+
+"The service is running" and "I'm decoding aircraft" are different things — the decoder can run flawlessly while hearing nothing (bad antenna, interference, wrong dongle). Here's how to tell them apart.
+
+**The one-command health read** (from the Pi, or any device on the LAN):
+
+```bash
+curl -s http://<pi-ip>:8083/api/adsb/health
+```
+```jsonc
+{
+  "flowing": true,            // dump1090 is producing fresh data
+  "aircraft_count": 7,        // planes seen right now  → >0 = hearing traffic
+  "messages_per_min": 643,    // decoded messages/min → climbing over ~30s = healthy
+  "signal_dbfs": -14.7,       // strongest signal level
+  "noise_dbfs": -25.3         // noise floor (see below)
+}
+```
+- **`aircraft_count > 0`** with **`messages_per_min`** climbing = you're hearing planes. Done.
+- **`aircraft_count: 0`, `messages_per_min: 0`** for minutes with an antenna up = running but deaf → keep reading.
+
+> ⚠️ **`/api/adsb/recent` will fool you** — it lists the *last* aircraft heard, possibly hours ago. For "am I hearing planes *right now*", use `messages_per_min` from `/health` (or `aircraft.json` below), never `/recent`.
+
+**Look at the raw live data:**
+
+```bash
+cat /run/dump1090-fa/aircraft.json    # "aircraft":[ … ] populated = live; "aircraft":[] = nothing this moment
+```
+
+**Is it the antenna, not the software?** The noise floor is the tell:
+
+```bash
+grep -oE '"noise":[-0-9.]+|"accepted":\[[0-9,]+\]|"strong_signals":[0-9]+' /run/dump1090-fa/stats.json
+```
+- **Healthy:** `noise` around **−25 to −45**, and `accepted` (CRC-valid messages) greater than 0.
+- **RF front-end problem:** `noise` **near 0** (e.g. `-2.4`) with **`accepted:[0,0]`**, and `journalctl -u dump1090-fa` repeating **`available dynamic range … < required dynamic range`** = the input is a wall of broadband noise, **not** aircraft. No software change fixes a saturated front end. Causes, in order: a **loose or disconnected antenna coax**, **missing ferrite chokes** on the cable, the dongle next to an **EMI source** (USB hub, charger, the Pi itself), or the **wrong dongle/antenna**. Reseat the coax and move the dongle away from noise — the noise floor should drop ~20 dB and messages start flowing within seconds.
+
+**Service-level checks:**
+
+```bash
+systemctl status dump1090-fa      # the decoder — must be active (running)
+systemctl status adsb-api         # the recorder + API on :8086
+journalctl -u dump1090-fa -e      # shows which dongle it opened + its gain/noise history
+```
+
+> 📡 **Antenna placement beats everything.** 1090 MHz is line-of-sight — the stock whip indoors may hear nothing while the same dongle near a window or on an outdoor antenna sees dozens of planes. Rule out placement before suspecting software.
+
 ### Env overrides (for off-Pi testing)
 
 | Variable | Default | Purpose |
@@ -1295,8 +1455,7 @@ pattern — nothing heard is lost, even between dashboard sessions.
 Set these to point at a local JSON file and a writable DB path to run the
 recorder/API on a dev machine without `dump1090-fa` installed.
 
-> Like GrayWolf and OpenWebRX, ADS-B is Pi/Linux only. Pi 3/4/5 is the
-> target; Pi Zero is not.
+> Like GrayWolf and OpenWebRX, ADS-B is Pi/Linux only. Pi 3/4/5 is the target.
 
 ---
 
@@ -1374,6 +1533,16 @@ Like ADS-B and OpenWebRX, listening **owns the RTL-SDR** — the APRS SDR feed (
 any other SDR mode) must be stopped first. The transport is global (one dongle,
 one capture at a time) and the header shows which bird currently holds it.
 
+### Debug — passes, clock, and live audio
+
+- **Roster shows but every pass is blank:** the Skyfield predictor isn't installed or is erroring. Confirm the endpoint directly:
+  ```bash
+  curl -s http://<pi-ip>:8083/api/satellites/passes | head -c 200
+  # JSON with rise/set times = working; an error / HTTP 500 = run install-predict.py (Skyfield missing)
+  ```
+- **Every bird says "no pass in 24h" but the roster looks healthy:** suspect the **clock or your station location**, not the satellites — predictions need the correct time *and* your lat/lon. Confirm the clock is GPS-disciplined ([GPS debug](#debug--do-i-have-a-fix-and-is-it-steering-the-clock)) and that your coordinates in `station.json` are right.
+- **Live audio: hit Listen and hear nothing?** First, [who owns the RTL-SDR](#rtl-sdr) — listening needs sole use of the dongle, so stop the APRS feed / ADS-B first. Then confirm the bird is actually above the horizon (the header shows AOS/LOS). For a NOAA weather bird you should hear the steady **tick-tick** of the APT carrier while it's overhead.
+
 > Satellites is served by the main OASIS server on **:8083** — no separate port.
 > Pass prediction is Pi-cheap; the live-audio capture needs an RTL-SDR (Pi/Linux
 > only) and momentary sole use of the dongle.
@@ -1406,6 +1575,54 @@ The script installs `gpsd` and `chrony`, points `gpsd` at the receiver (with
 
 > 📡 **Keep it exercised.** GPS satellite almanac data (the "Keplerian elements" that help the receiver find satellites quickly) ages out after weeks without a sky view. Power the Pi with the GPS connected and take it outdoors for a few minutes every few weeks — treat it like any emergency radio: test before deployment, not on arrival.
 
+### Debug — do I have a fix, and is it steering the clock?
+
+Two separate questions: **(a)** is the receiver seeing satellites, and **(b)** is chrony actually using it to set the clock. Check them in that order.
+
+**(a) Is the GPS locked?**
+
+```bash
+cgps -s      # live GPS screen — press 'q' or Ctrl+C to quit
+```
+Read the top-left of the screen:
+- **`Status: 3D FIX`**, **`Used: 6`** (or more satellites), **`HDOP`** around **1–2** = a solid fix. This is what you want before trusting the clock or beaconing your position.
+- **`Status: NO FIX`** / **`Used: 0`** = powered but not locked. Go outside with a clear view of the sky and wait 1–5 minutes (cold start); indoors it may never lock.
+- **Blank screen / "connection refused" / "no gpsd"** = gpsd isn't running or isn't pointed at the receiver → `systemctl status gpsd`.
+
+Prefer raw numbers to the full screen?
+
+```bash
+gpspipe -w -n 10 | grep -oE '"mode":[0-9]|"uSat":[0-9]+|"hdop":[0-9.]+'
+# "mode":3 = 3D fix (good) · "mode":2 = 2D (marginal) · "mode":1 = no fix
+# "uSat" = satellites used · "hdop" < 2 = good geometry, > 5 = poor
+```
+
+**(b) Is chrony disciplining the clock from GPS?**
+
+```bash
+chronyc sources
+```
+Find the **`GPS`** line and read the **first two characters**:
+```
+MS Name/IP address    Stratum Poll Reach LastRx Last sample
+#* GPS                     0    4   377    21   +12us[ +12us] +/- 200us   ← GPS IS the clock (GOOD)
+#? GPS                     0    4     0     -     +0ns[  +0ns] +/-   0ns   ← unreachable: gpsd down / no fix yet
+#x GPS                     0    4   377    18  +357ms[+357ms] +/- 200ms   ← seen but REJECTED as wrong
+```
+- **`#*`** = GPS is the **selected** source — the clock is being set from GPS. This is the goal for an offline field station.
+- **`#?`** = chrony can't reach the GPS (gpsd down, or no fix yet).
+- **`#x`** = "falseticker": chrony sees GPS but thinks it's wrong and ignores it — often because a *better* source (internet NTP) is present. With the internet unplugged in the field, a healthy GPS should promote itself to `#*`.
+
+Then confirm the clock is genuinely synced:
+
+```bash
+chronyc tracking
+```
+- **`Leap status : Normal`** with a tiny **`System time`** offset (micro/milliseconds) = clock is disciplined and trustworthy.
+- **`Leap status : Not synchronised`** = the clock is free-running; FT8/WSPR/SSTV timing and timestamps are not reliable yet.
+
+> On the dashboard, the **GPS card** tells the same story without a terminal: a **3D** fix, a healthy satellite count, HDOP in green, and a chrony "locked" indicator mean you're good. If the card is blank, run `systemctl status gpsd` first, then `cgps -s`.
+
 ---
 
 ## Hardware RTC (Witty Pi 3)
@@ -1432,6 +1649,13 @@ NTP sync), write it to the RTC once:
 ```bash
 sudo hwclock -w        # set the RTC from the system clock
 sudo hwclock -r        # read it back to confirm
+```
+
+**Confirm the RTC hardware is really there** (after the reboot):
+
+```bash
+ls -l /dev/rtc0        # the device must exist — missing = overlay didn't load, re-check config.txt + reboot
+sudo hwclock -r        # must print a SANE current date — a 1970/2000 date = overlay failed or the coin cell is dead
 ```
 
 > ℹ️ Any DS3231-based RTC HAT works with the same overlay; the script is tuned
@@ -1594,10 +1818,10 @@ so you download your own:
 
 ```bash
 # Mac / Linux laptop:
-scp /path/to/exported.csv <username>@<hostname>.local:/home/<username>/oasis-emcomm/static/repeaterbook/repeaterbook.csv
+scp /path/to/exported.csv <username>@<hostname>.local:/home/<username>/oasis/static/repeaterbook/repeaterbook.csv
 ```
 
-> 💡 **Windows users:** in WinSCP or FileZilla, navigate to `/home/<username>/oasis-emcomm/static/repeaterbook/` on the Pi and drag the file in, renaming it to `repeaterbook.csv`.
+> 💡 **Windows users:** in WinSCP or FileZilla, navigate to `/home/<username>/oasis/static/repeaterbook/` on the Pi and drag the file in, renaming it to `repeaterbook.csv`.
 
 The dashboard **Repeater Book** card turns green when the CSV is present, red when
 missing. **Export to Frequency Plan** writes the visible repeaters as CHIRP CSV to
@@ -1670,6 +1894,47 @@ bundled `.deb`s first.
 
 ---
 
+## Argon ONE case (fan control)
+
+For an **Argon ONE** case (v2 / v3 / M.2), this installs a small daemon that drives
+the case fan from CPU temperature over I²C — **without** the vendor `argononed`
+daemon:
+
+```bash
+python3 features/argon-fan/install-argon-fan.py            # install + enable the service
+python3 features/argon-fan/install-argon-fan.py --user pi  # run the service as 'pi'
+python3 features/argon-fan/install-argon-fan.py --check    # report status
+python3 features/argon-fan/install-argon-fan.py --disable  # remove the service; unmask argononed
+```
+
+It enables I²C, installs the apt deps (`python3-smbus`, `i2c-tools`), confirms the
+fan MCU is on the bus (`0x1a`), and installs the daemon (`features/argon-fan/argon-fan.py`)
+to `/opt` as `argon-fan.service`. The fan MCU takes a **single byte = speed percent**
+(`sudo i2cset -y 1 0x1a 100` = full, `0` = off) — that's the whole protocol. The
+daemon needs **no internet**.
+
+> ⚠️ **Why not the vendor daemon? The GPIO4 conflict.** Argon's `argononed` monitors
+> **BCM GPIO4** for the case's soft power button. GPIO4 is *also* where the Waveshare
+> **L76X GPS HAT** routes its **1PPS** wire (`dtoverlay=pps-gpio,gpiopin=4`). With
+> `argononed` running, one PPS pulse per second reads as a stream of power-button
+> presses, so the Pi **reboots and then shuts down** the moment the GPS/DRA HAT is
+> seated. This installer stops, disables, and **masks** `argononed` to free GPIO4;
+> `argon-fan` never touches it. (Masked, not removed — restore the power button with
+> `sudo systemctl unmask argononed`, or remove the vendor package entirely with
+> `sudo /etc/argon/argon-uninstall.sh`, which leaves the `config.txt` UART/I²C edits.)
+
+> ⚠️ **I²C `0x1a` collision with the DRA-Pi.** The Wolfson **WM8731** codec on the
+> MastersComm **DRA-Pi** *also* defaults to `0x1a` — the same address as the Argon
+> fan MCU. If both share a bus, fan writes and the codec fight for the address. Strap
+> the WM8731 **CSB** pin to `0x1b`, or don't stack both. `--check` warns when the
+> WM8731 overlay is present in `config.txt`.
+
+The CPU/temp card on the dashboard shows a fan blade that spins when the fan is
+running and the CPU is ≥ ~55 °C (green → amber → red by temperature); it's hidden
+when no cooling daemon is installed.
+
+---
+
 ## OASIS Dashboard / kiosk display
 
 `oasis-dashboard/dashboard.html` is a touch-friendly dashboard tuned for
@@ -1736,6 +2001,19 @@ oasis-offline/
 
 The dashboard, ICS forms, FCC lookup, **offline maps**, calculators, and the reference library all work from the USB bundle — maps included, since they're served by the core OASIS app. Only the separate Pi companion services — GrayWolf APRS (8080), Kiwix (8081), and the APRS history API (8085) — show as DOWN, because they run as their own services on the Pi.
 
+### Running the bundle on Linux
+
+On Windows the bundle runs from the embedded Python (`start-server.bat`, `--for-windows` build). On **Linux/macOS** it builds a Python virtualenv from the bundled wheels on first run — `run-portable.sh` (tools-only profile) and `scripts/start-server.sh` both do this. That needs two things from the host, and getting either wrong produces a confusing error:
+
+| Symptom on first run | Cause | Fix |
+|---|---|---|
+| `…/_runtime/linux/.venv/bin/python: no such file or directory` | `python3` is installed but its **venv module** isn't — Debian/Ubuntu/Raspberry Pi OS split it into a separate package, so `python3 -m venv` fails and leaves a stub `.venv` with no interpreter | `sudo apt install python3-venv` (match your version if apt asks, e.g. `python3.11-venv`). Fedora/Arch already include it. |
+| `operation not permitted: …/.venv/lib64` | The bundle is on a **FAT32 / exFAT / NTFS** USB stick, which can't hold the symlinks a virtualenv needs (`lib64 → lib`, `bin/python`) | Copy the bundle onto a **native Linux filesystem** and run it there: `cp -r oasis-offline ~/oasis-offline && cd ~/oasis-offline && ./run-portable.sh` |
+
+Confirm the filesystem type with `df -T .` from inside the bundle (`vfat`/`exfat`/`ntfs`/`fuseblk` = the USB case; `ext4`/`btrfs`/`xfs` = native, fine).
+
+> 🔧 **A failed first run leaves a broken `_runtime/linux/.venv`** that later runs skip over (they only check the directory exists). Delete it before retrying — `rm -rf _runtime/linux/.venv` (prefix `sudo` if the stub is root-owned) — then re-run **as your normal user**, never with `sudo`.
+
 ---
 
 ## Updating OASIS
@@ -1743,7 +2021,7 @@ The dashboard, ICS forms, FCC lookup, **offline maps**, calculators, and the ref
 To pull a new version of OASIS when a release comes out:
 
 ```bash
-cd ~/oasis-emcomm
+cd ~/oasis
 git pull                          # download the latest code
 python3 scripts/setup-server.py  # update server dependencies if requirements changed
 ```

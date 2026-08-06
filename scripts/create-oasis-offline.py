@@ -1205,14 +1205,14 @@ def phase_wikipedia(zim_dir):
 def phase_fcc(fcc_dir):
     """
     Phase 4: Download l_amat.zip, extract EN.dat/HD.dat, AND prebuild the search
-    indexes on this (capable) build host, so a 512 MB Pi Zero never has to run
-    the RAM-heavy sort that OOMs it — nor the extraction it can't afford either.
+    indexes on this (capable) build host, so the Pi never has to run the
+    RAM-heavy sort — nor the extraction it can't afford either.
 
     The bundle ships the raw EN.dat + HD.dat + EN.idx / EN_name.idx / EN_grid.idx
     + zipcodes.csv + EN.idx.meta, and DROPS l_amat.zip. The zip only ever existed
     to carry EN.dat to a machine capable of unpacking it; since we've already done
     the extraction and indexing here, the target uses the shipped files as-is.
-    Copying a ~175 MB zip to a Pi Zero just to delete it on first setup is waste.
+    Copying a ~175 MB zip to the Pi just to delete it on first setup is waste.
     The zip is dropped IF AND ONLY IF the prebuilt indexes verify against the
     shipped EN.dat; otherwise it is kept as a recovery copy.
     """
@@ -1263,7 +1263,7 @@ def phase_fcc(fcc_dir):
             fcc_build_index(fcc_dir, server_dir)   # EN.idx + EN_name.idx + EN_grid.idx + meta
         except SystemExit:
             _warn("Could not prebuild FCC indexes — the target will build them on")
-            _warn("first setup (may OOM a 512 MB Pi). Re-run this script online.")
+            _warn("first setup (RAM-heavy on the Pi). Re-run this script online.")
             return
         if not fcc_indexes_ready(fcc_dir):
             _warn("Index prebuild incomplete — shipping the zip as a fallback; the")
@@ -1648,28 +1648,61 @@ def build_launchers(dest, profile="full"):
             'WHEELS="$DIR/server/wheels"\n'
             "cd \"$DIR\"\n"
             + (f'export OASIS_FEATURES="{PORTABLE_FEATURES}"\n' if profile == "windows" else "")
-            + "\n"
-            "if ! command -v python3 &>/dev/null; then\n"
-            '  echo "ERROR: python3 not found. Install it with your package manager."\n'
-            "  exit 1\n"
-            "fi\n"
-            "\n"
-            'if [ ! -d "$VENV" ]; then\n'
-            '  echo "First run — setting up Python environment from bundled wheels (offline) ..."\n'
-            '  python3 -m venv "$VENV"\n'
-            # Install the FULL base requirements, not a hand-picked subset — a
-            # stale subset here silently starved the runtime venv of skyfield/
-            # numpy/sgp4 (the satellites feature), so /passes 500'd even though
-            # the wheels were bundled. requirements.txt is the single source; new
-            # base deps now flow in automatically.
-            '  "$VENV/bin/pip" install --quiet --no-index --find-links "$WHEELS" -r "$DIR/scripts/requirements.txt"\n'
-            '  echo "Done."\n'
-            "fi\n"
-            "\n"
-            'echo "Starting OASIS — open http://localhost:8083 in your browser"\n'
-            '# app.py prefers gunicorn when installed, else the Flask dev server\n'
-            '# (see server/app.py __main__). The launcher stays dumb on purpose.\n'
-            'exec "$VENV/bin/python" server/app.py\n'
+            # The requirements install below pulls the FULL base requirements, not
+            # a hand-picked subset — a stale subset once starved the runtime venv
+            # of skyfield/numpy/sgp4 (satellites), so /passes 500'd though the
+            # wheels shipped. requirements.txt is the single source.
+            + r'''
+if ! command -v python3 &>/dev/null; then
+  echo "ERROR: python3 not found. Install it with your package manager."
+  exit 1
+fi
+
+# Rebuild the venv when its interpreter is missing (check bin/python, NOT just
+# the directory). A failed first run — no python3 venv module, or a filesystem
+# that can't hold symlinks — leaves a stub dir with no bin/python; the old
+# launcher skipped it and then tried to exec the interpreter that never existed.
+if [ ! -x "$VENV/bin/python" ]; then
+  echo "First run - setting up Python environment from bundled wheels (offline) ..."
+  rm -rf "$VENV"
+  if ! venv_err="$(python3 -m venv "$VENV" 2>&1)"; then
+    echo ""
+    echo "ERROR: could not create the Python environment ($VENV)."
+    if [ -n "$venv_err" ]; then printf '%s\n' "$venv_err" | sed 's/^/    /'; fi
+    echo ""
+    case "$venv_err" in
+      *ensurepip*|*python3-venv*|*"No module named venv"*)
+        echo "  Cause: python3 is installed but its venv module is not."
+        echo "  Fix:   Debian / Ubuntu / Raspberry Pi OS ->  sudo apt install python3-venv"
+        echo "         (Fedora and Arch already include it.)" ;;
+      *"not permitted"*|*"Read-only file system"*)
+        echo "  Cause: this filesystem cannot hold a virtualenv's symlinks"
+        echo "         (FAT32 / exFAT / NTFS USB sticks cannot)."
+        echo "  Fix:   copy the bundle onto the machine's disk and run it from there:"
+        echo "           cp -r \"$DIR\" ~/oasis-offline && cd ~/oasis-offline && ./run-portable.sh" ;;
+      *)
+        echo "  Debian/Ubuntu:  sudo apt install python3-venv"
+        echo "  On a FAT/exFAT/NTFS USB stick:  copy the bundle to disk (ext4) first." ;;
+    esac
+    rm -rf "$VENV"
+    exit 1
+  fi
+  if ! "$VENV/bin/pip" install --quiet --no-index --find-links "$WHEELS" -r "$DIR/scripts/requirements.txt"; then
+    echo ""
+    echo "ERROR: installing the bundled dependencies failed."
+    echo "  Your python3: $(python3 --version 2>&1)"
+    echo "  Bundled wheels cover Python 3.9-3.14 - retry with a python3 in that range."
+    rm -rf "$VENV"
+    exit 1
+  fi
+  echo "Done."
+fi
+
+echo "Starting OASIS - open http://localhost:8083 in your browser"
+# app.py prefers gunicorn when installed, else the Flask dev server
+# (see server/app.py __main__). The launcher stays dumb on purpose.
+exec "$VENV/bin/python" server/app.py
+'''
         )
     st = os.stat(sh)
     os.chmod(sh, st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)

@@ -33,7 +33,7 @@ _SERVICE_ACTIONS = {"start", "stop", "restart"}
 #
 # This is exactly the set of RTL-SDR consumers that share the one dongle
 # advisorily (aprs-sdr-feed / dump1090-fa / openwebrx — see HW_SERVICE_FOR_CARD
-# in index.html). They're all installed OFF (e.g. setup passes enable-rtl-sdr.py
+# in index.html). They're all installed OFF (e.g. setup passes services/rtl-feed/install.py
 # --no-enable), so nothing auto-starts after install or reboot. But the operator
 # hands the dongle between them from the dashboard — stop the APRS feed, start
 # ADS-B — and that choice must survive a reboot: the one they started comes back

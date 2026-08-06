@@ -187,6 +187,27 @@ def device_of(inv, service):
     return inv.assignments.get(service)
 
 
+def is_locked(inv, device_id):
+    """Whether a device is locked to its current assignment. A locked device is
+    protected from reassignment (operator or auto-assign) until unlocked. Absent
+    flag / unknown device -> unlocked."""
+    return bool(inv.devices.get(device_id, {}).get("locked", False))
+
+
+def set_lock(repo_root, inv, device_id, locked):
+    """Set or clear a device's lock and persist. Unlocking drops the key (absent
+    == unlocked keeps hardware.json clean). No-op for an unknown device."""
+    dev = inv.devices.get(device_id)
+    if dev is None:
+        return inv
+    if locked:
+        dev["locked"] = True
+    else:
+        dev.pop("locked", None)
+    save(repo_root, inv)
+    return inv
+
+
 def _default_is_active(unit):
     """systemctl is-active <unit>.service. Non-Linux or errors -> False."""
     if sys.platform != "linux":
@@ -219,6 +240,23 @@ def device_states(inv, is_active=_default_is_active):
         out.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
                     "serial": d.get("serial", ""), "ptt": d.get("ptt", ""),
                     "assignee": label, "running": running_svc is not None})
+    return out
+
+
+def warnings(inv, is_active=_default_is_active):
+    """Health warnings for the console + dashboard rail — the shared contract both
+    surfaces read. Pure function of the inventory and unit-active state. Each item
+    is {kind, device, service, severity, message} with severity in {"warn","crit"}.
+    An empty list means all nominal (green rail). Runtime warnings (crashes,
+    running-vs-assigned drift) are added as the console wiring needs them."""
+    out = []
+    for service, device_id in inv.assignments.items():
+        if device_id not in inv.devices:
+            out.append({
+                "kind": "device-missing", "device": device_id, "service": service,
+                "severity": "crit",
+                "message": f"{service} is assigned to a device that isn't present ({device_id})",
+            })
     return out
 
 
@@ -280,6 +318,50 @@ def release(repo_root, inv, service, stop_fn=None):
     return inv
 
 
+def can_reroute(inv, service, device_id):
+    """(ok, reason). reason in {"", "target-locked", "source-locked"}. A locked
+    device protects its assignment from ANY displacement: you can neither claim a
+    locked target dongle nor move a service off a locked source dongle. Callers
+    check this first to show the two-step 'unlock it to move it' warning."""
+    if is_locked(inv, device_id):
+        return False, "target-locked"
+    old = inv.assignments.get(service)
+    if old is not None and old != device_id and is_locked(inv, old):
+        return False, "source-locked"
+    return True, ""
+
+
+def reroute(repo_root, inv, service, device_id, start_fn=None, stop_fn=None):
+    """Console-enforced exclusive reroute: assign `service` to `device_id`, persist,
+    and start its unit(s), displacing whatever else was on that dongle and stopping
+    the service on its old dongle first. Raises ValueError if can_reroute() refuses
+    (a lock) — callers should check can_reroute() first to report it cleanly.
+    Units are started/stopped via injected callables (one unit name each) so the
+    logic is testable without systemd."""
+    ok, reason = can_reroute(inv, service, device_id)
+    if not ok:
+        raise ValueError(f"cannot reroute {service!r} to {device_id!r}: {reason}")
+    # If the service is moving from a different device, stop it there first
+    # (units are computed against its OLD assignment before we reassign).
+    old_dev = inv.assignments.get(service)
+    if old_dev is not None and old_dev != device_id and stop_fn is not None:
+        for unit in service_units(inv, service):
+            stop_fn(unit)
+    # Console-enforced exclusive: displace any OTHER service currently on the
+    # target device (stop its units, unassign it) before claiming the dongle.
+    for other in [s for s in assignees(inv, device_id) if s != service]:
+        if stop_fn is not None:
+            for unit in service_units(inv, other):
+                stop_fn(unit)
+        del inv.assignments[other]
+    inv.assignments[service] = device_id
+    save(repo_root, inv)
+    if start_fn is not None:
+        for unit in service_units(inv, service):
+            start_fn(unit)
+    return inv
+
+
 def default_assign(repo_root, inv, service, allowed_kinds):
     """If `service` has no assignment yet, assign it the first free declared
     device (in hardware.json declaration order) whose kind is in
@@ -295,6 +377,8 @@ def default_assign(repo_root, inv, service, allowed_kinds):
     for device_id, device in inv.devices.items():
         if device["kind"] not in allowed_kinds:
             continue
+        if is_locked(inv, device_id):
+            continue  # a locked dongle is protected — never auto-assign onto it
         # rtl-sdr is shared: a dongle already assigned to another service is
         # still a valid default here (all three RTL consumers converge on the
         # first dongle out of the box — the operator spreads them across

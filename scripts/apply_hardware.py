@@ -20,13 +20,13 @@ from common import hardware as HW
 from services.adsb.common import adsb as _adsb
 from services.winlink.common import winlink as _winlink
 
-# Import the APRS feed module (hyphenated filename: enable-rtl-sdr.py)
-_feed_path = os.path.join(_REPO_ROOT, "features", "rtl-sdr")
+# Import the APRS feed module (hyphenated dir + filename: services/rtl-feed/common/feed.py)
+_feed_path = os.path.join(_REPO_ROOT, "services", "rtl-feed", "common")
 if _feed_path not in sys.path:
     sys.path.insert(0, _feed_path)
 _aprs_feed_spec = importlib.util.spec_from_file_location(
-    "enable_rtl_sdr",
-    os.path.join(_feed_path, "enable-rtl-sdr.py"))
+    "rtl_feed",
+    os.path.join(_feed_path, "feed.py"))
 _aprs_feed = importlib.util.module_from_spec(_aprs_feed_spec)
 _aprs_feed_spec.loader.exec_module(_aprs_feed)
 

@@ -54,7 +54,7 @@ SELF         = os.path.abspath(__file__)
 DB_PATH          = os.environ.get("APRS_DB_PATH", "/var/lib/graywolf/graywolf-history.db")
 LED_GPIO_DEFAULT = 16     # BCM GPIO 16 = header pin 36 = green CD/RX LED
 PULSE_SEC        = 0.12   # how long each RX blink stays lit
-POLL_SEC         = 0.3    # DB poll cadence — responsive but light on a Pi Zero
+POLL_SEC         = 0.3    # DB poll cadence — responsive but light on the Pi
 RECONNECT_SEC    = 3      # wait before retrying when the DB is missing/locked
 
 

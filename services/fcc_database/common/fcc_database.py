@@ -93,7 +93,7 @@ def run(index_only=False, full_zip=False):
     if not index_only and not full_zip and fcc_indexes_ready(DATA_DIR):
         _step(2, "Prebuilt indexes detected")
         _ok("Valid EN.idx / EN_name.idx / EN_grid.idx shipped with this bundle —")
-        _ok("skipping the index build (no OOM risk on a Pi Zero).")
+        _ok("skipping the index build (no OOM risk on the Pi).")
         _info("Force a rebuild with --index-only (or delete EN.idx.meta).")
         _drop_bundle_zip()
         print()

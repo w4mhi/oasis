@@ -280,8 +280,8 @@ def grid_square(lat, lon):
 SPRITE_CELL = 24
 SPRITE_COLS = 16
 SPRITE_URLS = {
-    "/":  BASE_URL + "/map-assets/aprs-symbols-24-0.png",   # primary table
-    "\\": BASE_URL + "/map-assets/aprs-symbols-24-1.png",   # alternate table
+    "/":  BASE_URL + "/maps/traffic/assets/aprs-symbols-24-0.png",   # primary table
+    "\\": BASE_URL + "/maps/traffic/assets/aprs-symbols-24-1.png",   # alternate table
 }
 _sprites   = {}   # table char -> PIL.Image (RGBA) or False once a fetch failed
 _sym_cache = {}   # (table, code) -> rendered 24×24 RGBA cell

@@ -2,7 +2,11 @@ import os, sys, datetime, unittest
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "services", "satellites"))
-import predict  # noqa: E402
+try:
+    import predict  # noqa: E402  — needs skyfield/numpy/sgp4 (an optional satellites dep)
+    _HAS_PREDICT = True
+except Exception:  # noqa: BLE001  — absent in the minimal CI server-setup job -> skip
+    _HAS_PREDICT = False
 
 # Fixed ISS TLE + a start near its epoch → deterministic, propagator-accurate.
 ISS_L1 = "1 25544U 98067A   24010.51782528 -.00002182  00000-0 -24984-4 0  9990"
@@ -10,6 +14,7 @@ ISS_L2 = "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50120818435204"
 LAT, LON = 47.5495, -122.0298          # Issaquah, WA
 START = datetime.datetime(2024, 1, 10, 12, 0, tzinfo=datetime.timezone.utc)
 
+@unittest.skipUnless(_HAS_PREDICT, "skyfield/predict not installed")
 class PassesTest(unittest.TestCase):
     def setUp(self):
         self.sat = predict.make_satellite("ISS (ZARYA)", ISS_L1, ISS_L2)
@@ -77,6 +82,7 @@ class PassesTest(unittest.TestCase):
         for p in passes:
             self.assertGreater(datetime.datetime.fromisoformat(p["set"]), after)
 
+@unittest.skipUnless(_HAS_PREDICT, "skyfield/predict not installed")
 class TrackTest(unittest.TestCase):
     def setUp(self):
         self.sat = predict.make_satellite("ISS (ZARYA)", ISS_L1, ISS_L2)

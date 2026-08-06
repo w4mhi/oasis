@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Radio Card</title>
+<title>OASIS - Radio Card</title>
 <link rel="stylesheet" href="../../css/common.css">
 <style>
 .wrap { max-width: 1280px; }
@@ -228,7 +228,7 @@ function renderRadio(rows, radioName) {
   const cardType = subtitleParts.join(' · ') || 'Radio reference card';
 
   // Update page title and header
-  document.title = radioName;
+  document.title = 'OASIS - ' + radioName;
   const titleEl    = document.getElementById('radio-title');
   const subtitleEl = document.getElementById('radio-subtitle');
   titleEl.textContent    = radioName;
@@ -271,7 +271,7 @@ function savePage() {
   const blob = new Blob([html], { type: 'text/html' });
   const a    = document.createElement('a');
   a.href     = URL.createObjectURL(blob);
-  a.download = document.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.html';
+  a.download = radioName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.html';
   a.click();
   URL.revokeObjectURL(a.href);
 }

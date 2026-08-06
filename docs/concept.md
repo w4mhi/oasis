@@ -2,7 +2,7 @@
 
 # OASIS — Concept
 
-### Off-grid Amateur Station Information Suite
+### Off-grid Amateur Station Integrated Suite
 
 > *Comms when the network's gone dark.*
 
@@ -12,9 +12,9 @@
 
 ## The one-line idea
 
-**OASIS turns a Raspberry Pi (or any laptop) into a self-contained emergency-communications station that every phone, tablet, and laptop on a local network can use through a web browser — with no internet, no cloud account, and nothing to install on the client.**
+**OASIS turns a Raspberry Pi (or any laptop) into a self-contained amateur-radio station that every phone, tablet, and laptop on a local network can use through a web browser — with no internet, no cloud account, and nothing to install on the client.**
 
-When the grid is up, it's a convenient ham-radio toolkit. When the grid is down — the moment it was built for — it keeps working exactly the same.
+It's a complete ham station whether the grid is up or down. Grid-down operation — emergency comms, field days, remote deployments — is simply the mode where offline-first stops being a nicety and becomes the whole point.
 
 ---
 
@@ -24,7 +24,7 @@ Modern amateur-radio operating quietly depends on the internet. Callsign lookups
 
 In the exact scenario amateur radio exists to serve — a disaster, a grid-down event, a remote deployment with no cell coverage — **all of that disappears at once.** The operator is left with a radio and a paper logbook, having lost every digital tool the moment the network did.
 
-EmComm tooling that needs the network has it backwards.
+Amateur radio works when nothing else does. Software for it that needs the network has it backwards. OASIS is a complete ham station that runs entirely offline — at the bench, in the field, and when the grid goes dark.
 
 ---
 

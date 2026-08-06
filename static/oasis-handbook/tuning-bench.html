@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RTL-SDR Tuning Bench — OASIS Handbook</title>
+  <title>OASIS - RTL-SDR Tuning Bench (Handbook)</title>
   <link rel="stylesheet" href="handbook.css" />
   <link rel="icon" href="img/oasis-logo.svg" />
 </head>
@@ -216,7 +216,7 @@ g/G gain  v/V vol  p/P ppm  r rate  f freq  s sweep  w save  q quit</code></pre>
         <tr><td><code>audio: STALLED</code></td>
             <td>Pipeline alive but no samples arriving &mdash; a USB glitch or the dongle was pulled. Re-seat the dongle; the bench recovers on the next respawn.</td></tr>
         <tr><td>Heartbeat rate sags (e.g. <code>~43k</code> at 48k, shown yellow)</td>
-            <td>The Pi can&rsquo;t keep up with the audio throughput. On a Pi Zero&nbsp;2&nbsp;W, bench at <code>--rate 24000</code>; gain/PPM still carry over to the 48k GrayWolf feed unchanged.</td></tr>
+            <td>The Pi can&rsquo;t keep up with the audio throughput. On a low-power Pi, bench at <code>--rate 24000</code>; gain/PPM still carry over to the 48k GrayWolf feed unchanged.</td></tr>
         <tr><td>Healthy heartbeat, zero decodes</td>
             <td>Quiet band, wrong frequency, or antenna. Confirm <code>144.390M</code> (or <code>144.800M</code> in the EU) and check the 2&nbsp;m antenna.</td></tr>
       </tbody>

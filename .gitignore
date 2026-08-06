@@ -22,6 +22,10 @@ configuration/tle-cache/
 
 # Satellite pass recordings (WAV) from the RTL-SDR listen feature; runtime data.
 configuration/sat-recordings/
+
+# GrayWolf API credentials written by setup-oasis.py.
+configuration/graywolf_api.json
+
 # ...and any WAV copied out for inspection (e.g. to the repo root) — never commit audio.
 *.wav
 
@@ -71,6 +75,7 @@ temp/
 # USB bundle output — built by scripts/create-oasis-offline.py
 oasis-offline/
 oasis-offline-windows/
+overlays/
 
 # Python wheels — downloaded by scripts/create-oasis-offline.py.
 # Never checked in; populated at bundle-build time.

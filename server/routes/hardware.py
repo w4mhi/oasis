@@ -5,21 +5,36 @@ and the burn-serial flow. Extracted verbatim from server/app.py in the
 blueprint split; URLs unchanged.
 """
 
+import json
 import os
 import re
 import subprocess
 import threading
+import time
 
 from flask import Blueprint, jsonify, request
 
 import appconfig
+from common import config_paths
+from common import guardian as GUARD
 from common import hardware as HW
 from common import hardware_detect as HD_detect
-from routes.service_control import _systemctl_seq
+from routes.service_control import _CONTROLLABLE_SERVICES, _systemctl_seq
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 
 bp = Blueprint("hardware", __name__)
+
+# Emergency STOP ALL / guardian target: every controllable service EXCEPT WebSSH.
+# Killing WebSSH would sever the operator's remote connection to the box at the
+# worst possible moment (an unattended overheat) — you must never lose the way
+# in. The core `oasis` server and `gpsd` are already outside
+# _CONTROLLABLE_SERVICES; WebSSH is the one more thing we keep alive.
+_EMERGENCY_STOP = _CONTROLLABLE_SERVICES - {"webssh"}
+
+# Guardian threshold floors — an authenticated operator can tune thresholds, but
+# not below sane minimums (a value under normal idle would arm perpetually).
+_THRESHOLD_MIN = {"temp_c": 45.0, "cpu_pct": 50.0, "mem_pct": 60.0}
 
 
 def _apply_hardware_async():
@@ -56,7 +71,7 @@ def api_hardware_devices():
     scan is gated behind a cheap lsusb presence count: it runs only when more
     dongles are present than declared (first run / newly plugged), so once
     every dongle is declared the per-poll cost is just lsusb — a real concern
-    on a Pi Zero 2 W, where running rtl_test constantly would also contend with
+    on a low-power Pi, where running rtl_test constantly would also contend with
     whatever's actively using a dongle. Same-serial duplicates (factory
     00000001) are left for the burn-serial flow to disambiguate."""
     inv = HW.load(SUITE_ROOT)
@@ -248,5 +263,269 @@ def api_hardware_burn_serial():
     if r.returncode != 0:
         return jsonify({"ok": False, "error": (r.stderr or r.stdout or "").strip()[:200]}), 500
     return jsonify({"ok": True})
+
+
+# ── HW/SRV assignment console (design 2026-07-28) ────────────────────────────
+# The matrix console's live state + control endpoints. Console-enforced
+# exclusive: /route reassigns one service per dongle (stop old, start new),
+# guarded by the per-device lock. Built on the tested engine primitives in
+# common/hardware.py (reroute/can_reroute/set_lock/warnings).
+
+# Column order + display labels for the matrix. Only services OASIS can actually
+# route + start/stop appear here: radio-live/RX is a future claimant, and
+# OpenWebRX is self-configured (no engine unit, picks its own dongle) so it's
+# controlled from its own service card, not the matrix.
+_CONSOLE_SERVICES = ["aprs", "adsb", "winlink", "satellites"]
+_SERVICE_DISPLAY = {"aprs": "APRS", "adsb": "ADS-B", "openwebrx": "ORX",
+                    "winlink": "Winlink", "satellites": "SAT"}
+
+
+def _console_state():
+    """Live matrix state: the service catalog (id/label/eligible kinds), each
+    device's single presented assignment + running + lock, and the health
+    warnings. 'assigned' collapses the engine's advisory multi-assign to one
+    service for the exclusive console view (the running one, else the first)."""
+    inv = HW.load(SUITE_ROOT)
+    services = [{"id": s, "name": _SERVICE_DISPLAY.get(s, s),
+                 "kinds": sorted(HW.DEVICE_KIND_FOR_SERVICE.get(s, []))}
+                for s in _CONSOLE_SERVICES]
+    devices = []
+    for did, d in inv.devices.items():
+        holders = HW.assignees(inv, did)
+        running = next((s for s in holders
+                        if any(HW._default_is_active(u) for u in HW.service_units(inv, s))),
+                       None)
+        assigned = running or (holders[0] if holders else None)
+        devices.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
+                        "serial": d.get("serial", ""), "locked": HW.is_locked(inv, did),
+                        "assigned": assigned, "running": running is not None})
+    return {"services": services, "devices": devices, "warnings": HW.warnings(inv)}
+
+
+@bp.route("/api/hardware/console")
+def api_hardware_console():
+    """Live state for the HW/SRV matrix console (rail + matrix + warnings)."""
+    return jsonify(_console_state())
+
+
+@bp.route("/api/hardware/route", methods=["POST"])
+def api_hardware_route():
+    """Console-enforced exclusive reroute: put `service` on `device_id`, starting
+    it and displacing whatever was on that dongle. 409 if a lock blocks it (the
+    two-step 'unlock to move it' signal); 400 for unknown/ineligible device."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    service = (data.get("service") or "").strip()
+    device_id = (data.get("device_id") or "").strip()
+    if service not in HW.SERVICE_UNITS:
+        return jsonify({"ok": False, "error": "unknown service"}), 400
+    inv = HW.load(SUITE_ROOT)
+    if device_id not in inv.devices:
+        return jsonify({"ok": False, "error": "unknown device"}), 400
+    allowed = HW.DEVICE_KIND_FOR_SERVICE.get(service)
+    if allowed is not None and inv.devices[device_id]["kind"] not in allowed:
+        return jsonify({"ok": False, "error": "wrong device kind for this service"}), 400
+    ok, reason = HW.can_reroute(inv, service, device_id)
+    if not ok:
+        return jsonify({"ok": False, "error": reason, "reason": reason}), 409
+
+    to_start = []
+
+    def _stop(unit):
+        _systemctl_seq(unit, ["stop"])
+
+    # reroute stops old/displaced units + reassigns (persisted); defer starts
+    # until AFTER apply writes the new device config for the moved service.
+    HW.reroute(SUITE_ROOT, inv, service, device_id,
+               start_fn=to_start.append, stop_fn=_stop)
+    _apply_hardware_async()                       # sync: re-template device config
+    for unit in to_start:
+        _systemctl_seq(unit, ["start"])
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/hardware/lock", methods=["POST"])
+def api_hardware_lock():
+    """Lock/unlock a device to its current assignment (protects it from any
+    reroute — operator or auto-assign — until unlocked)."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    device_id = (data.get("device_id") or "").strip()
+    locked = bool(data.get("locked"))
+    inv = HW.load(SUITE_ROOT)
+    if device_id not in inv.devices:
+        return jsonify({"ok": False, "error": "unknown device"}), 400
+    HW.set_lock(SUITE_ROOT, inv, device_id, locked)
+    return jsonify({"ok": True, "locked": locked})
+
+
+@bp.route("/api/hardware/stop-all", methods=["POST"])
+def api_hardware_stop_all():
+    """Emergency STOP ALL: stop every controllable service. Plain stop (no
+    disable) — boot state is untouched. Used by the matrix header button and the
+    resource guardian's countdown."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    _stop_all_units()
+    return jsonify({"ok": True, "stopped": sorted(_EMERGENCY_STOP)})
+
+
+@bp.route("/api/hardware/service-stop", methods=["POST"])
+def api_hardware_service_stop():
+    """Stop a single service's unit(s) without changing its assignment — the
+    matrix toggle-off (the dongle stays assigned to it, just idle)."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    service = (data.get("service") or "").strip()
+    if service not in HW.SERVICE_UNITS:
+        return jsonify({"ok": False, "error": "unknown service"}), 400
+    inv = HW.load(SUITE_ROOT)
+    dev = inv.assignments.get(service)
+    if dev and HW.is_locked(inv, dev):     # lock protects from ANY displacement, incl. stop
+        return jsonify({"ok": False, "error": "source-locked", "reason": "source-locked"}), 409
+    for unit in HW.service_units(inv, service):
+        _systemctl_seq(unit, ["stop"])
+    return jsonify({"ok": True})
+
+
+# ── Resource guardian (design 2026-07-28) ────────────────────────────────────
+# The one sanctioned autonomous action, SEPARATE from the observe-only assignment
+# monitor: a server-side background thread (so it protects an UNATTENDED box —
+# no browser needed) that arms a 30 s cancellable countdown on high temp/CPU/mem
+# and then STOP ALLs. The dashboard only displays the countdown + offers Cancel.
+# Pure decision logic lives in common/guardian.py (unit-tested); this is the shell.
+
+_GUARD_STATE = {"mode": GUARD.IDLE, "deadline": None, "reason": None}
+_GUARD_STATS = {"temp_c": None, "cpu_pct": None, "mem_pct": None}
+_GUARD_TICK = 3.0
+
+
+def _guardian_config_path():
+    return os.path.join(config_paths.config_dir(SUITE_ROOT), "guardian.json")
+
+
+def _load_guardian_config():
+    """Enabled flag + thresholds (defaults merged). Enabled by default with the
+    conservative DEFAULT_THRESHOLDS — the operator tunes/disables it."""
+    try:
+        with open(_guardian_config_path()) as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        raw = {}
+    thresholds = dict(GUARD.DEFAULT_THRESHOLDS)
+    thresholds.update(raw.get("thresholds") or {})
+    return {"enabled": raw.get("enabled", True), "thresholds": thresholds}
+
+
+def _save_guardian_config(cfg):
+    os.makedirs(config_paths.config_dir(SUITE_ROOT), exist_ok=True)
+    tmp = _guardian_config_path() + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(cfg, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, _guardian_config_path())
+
+
+def _read_stats(psutil):
+    stats = {"temp_c": None, "cpu_pct": None, "mem_pct": None}
+    if psutil is None:
+        return stats
+    try:
+        stats["cpu_pct"] = psutil.cpu_percent(interval=None)
+    except Exception:
+        pass
+    try:
+        stats["mem_pct"] = psutil.virtual_memory().percent
+    except Exception:
+        pass
+    try:
+        temps = psutil.sensors_temperatures()
+        for key in ("cpu_thermal", "cpu-thermal", "soc_thermal", "coretemp"):
+            if key in temps and temps[key]:
+                stats["temp_c"] = round(temps[key][0].current, 1)
+                break
+    except Exception:
+        pass
+    return stats
+
+
+def _stop_all_units():
+    for unit in _EMERGENCY_STOP:      # every controllable service EXCEPT WebSSH
+        _systemctl_seq(unit, ["stop"])
+
+
+def _guardian_runner():
+    try:
+        import psutil
+    except ImportError:
+        psutil = None
+    if psutil is not None:
+        try:
+            psutil.cpu_percent(interval=None)   # prime the rolling baseline
+        except Exception:
+            pass
+    global _GUARD_STATE, _GUARD_STATS
+    while True:
+        time.sleep(_GUARD_TICK)
+        cfg = _load_guardian_config()
+        if not cfg["enabled"]:
+            _GUARD_STATE = {"mode": GUARD.IDLE, "deadline": None, "reason": None}
+            continue
+        _GUARD_STATS = _read_stats(psutil)
+        _GUARD_STATE, action = GUARD.evaluate(_GUARD_STATS, cfg["thresholds"],
+                                              _GUARD_STATE, time.time())
+        if action == "fire":
+            _stop_all_units()
+
+
+threading.Thread(target=_guardian_runner, name="oasis-guardian", daemon=True).start()
+
+
+@bp.route("/api/hardware/guardian")
+def api_hardware_guardian():
+    """Guardian state for the dashboard: mode, live countdown, the tripping
+    metric, current stats, and the enabled/threshold config."""
+    cfg = _load_guardian_config()
+    st = _GUARD_STATE
+    seconds_left = None
+    if st.get("mode") == GUARD.ARMED and st.get("deadline"):
+        seconds_left = max(0, int(round(st["deadline"] - time.time())))
+    return jsonify({"enabled": cfg["enabled"], "thresholds": cfg["thresholds"],
+                    "mode": st.get("mode", GUARD.IDLE), "reason": st.get("reason"),
+                    "seconds_left": seconds_left, "stats": _GUARD_STATS})
+
+
+@bp.route("/api/hardware/guardian/cancel", methods=["POST"])
+def api_hardware_guardian_cancel():
+    """Operator override — cancel the countdown (or clear a tripped state)."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    global _GUARD_STATE
+    _GUARD_STATE = GUARD.cancel(_GUARD_STATE)
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/hardware/guardian/config", methods=["POST"])
+def api_hardware_guardian_config():
+    """Enable/disable the guardian and tune its thresholds."""
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    cfg = _load_guardian_config()
+    if "enabled" in data:
+        cfg["enabled"] = bool(data["enabled"])
+    if isinstance(data.get("thresholds"), dict):
+        for key in ("temp_c", "cpu_pct", "mem_pct"):
+            if key in data["thresholds"]:
+                try:
+                    cfg["thresholds"][key] = max(_THRESHOLD_MIN[key],
+                                                 float(data["thresholds"][key]))
+                except (TypeError, ValueError):
+                    pass
+    _save_guardian_config(cfg)
+    return jsonify({"ok": True, "enabled": cfg["enabled"], "thresholds": cfg["thresholds"]})
 
 

@@ -35,8 +35,10 @@ import sys
 import time
 import signal
 
-from PIL import Image, ImageDraw, ImageFont
-import smbus
+# NB: `smbus` and Pillow (`PIL`) are Pi-only apt packages, so they're imported
+# lazily inside the functions that touch hardware. That keeps this module
+# importable off-Pi — the pure logic (fan_decision, init_oled's degrade path)
+# is unit-tested there.
 
 # ── Config ───────────────────────────────────────────────────────────────────
 I2C_BUS       = 1
@@ -95,6 +97,7 @@ class SSD1306:
             self.bus.write_i2c_block_data(self.addr, 0x40, buf[i:i + 16])
 
     def clear(self):
+        from PIL import Image
         self.display(Image.new("1", (OLED_W, OLED_H), 0))
 
 
@@ -181,18 +184,41 @@ def local_ip():
         s.close()
 
 # ── Daemon loop ───────────────────────────────────────────────────────────────
+def init_oled(bus):
+    """Bring up the SSD1306, or return None when the panel is absent/unwritable.
+
+    The OLED is optional: a HAT with no display fitted (the operator pulled it
+    for space) — or a wedged panel — must still get fan + RGB control, which is
+    the thermally important half. The init sequence writes to 0x3c, so a missing
+    panel raises OSError(EIO) here; catching it (best-effort, like every other
+    I2C write in this daemon) is what keeps the fan alive instead of the service
+    crash-looping."""
+    try:
+        return SSD1306(bus)
+    except Exception as e:                     # noqa: BLE001 — bus is best-effort
+        print(f"rgb-cooling-hat: OLED not responding ({e}); "
+              f"running fan + RGB without the display.", file=sys.stderr)
+        return None
+
+
 def run_daemon():
+    import smbus
+    from PIL import Image, ImageDraw, ImageFont
     bus  = smbus.SMBus(I2C_BUS)
-    oled = SSD1306(bus)
-    oled.clear()
+    oled = init_oled(bus)          # None when no panel is fitted — fan runs anyway
+    if oled:
+        try: oled.clear()
+        except Exception: oled = None
     font = ImageFont.load_default()
     host = socket.gethostname()
     fan_on = None              # unknown until the first reading forces a known state
     cpu_pct()  # prime the /proc/stat baseline
 
     def shutdown(*_):
-        # Fail-safe on exit: leave the fan running and blank the screen.
-        try: set_fan(bus, True); oled.clear()
+        # Fail-safe on exit: leave the fan running and blank the screen (if any).
+        try:
+            set_fan(bus, True)
+            if oled: oled.clear()
         except Exception: pass
         sys.exit(0)
     signal.signal(signal.SIGTERM, shutdown)
@@ -216,16 +242,17 @@ def run_daemon():
             try: set_rgb(bus, *scale(rgb, BRIGHTNESS))
             except Exception: pass
 
-        used, total = ram_mb()
-        img  = Image.new("1", (OLED_W, OLED_H), 0)
-        draw = ImageDraw.Draw(img)
-        # Two lines (128x32 is too cramped for four). Kept compact to fit ~21
-        # default-font chars per line: line 1 = CPU% · temp · RAM, line 2 = host:ip.
-        draw.text((0,  4), f"CPU {cpu_pct():>3d}% {t:>2.0f}C {used}/{total}M",
-                  font=font, fill=1)
-        draw.text((0, 18), f"{host}:{local_ip()}", font=font, fill=1)
-        try: oled.display(img)
-        except Exception: pass
+        if oled:
+            used, total = ram_mb()
+            img  = Image.new("1", (OLED_W, OLED_H), 0)
+            draw = ImageDraw.Draw(img)
+            # Two lines (128x32 is too cramped for four). Kept compact to fit ~21
+            # default-font chars/line: line 1 = CPU% · temp · RAM, line 2 = host:ip.
+            draw.text((0,  4), f"CPU {cpu_pct():>3d}% {t:>2.0f}C {used}/{total}M",
+                      font=font, fill=1)
+            draw.text((0, 18), f"{host}:{local_ip()}", font=font, fill=1)
+            try: oled.display(img)
+            except Exception: pass
 
         time.sleep(REFRESH_S)
 
@@ -233,6 +260,7 @@ def run_daemon():
 # ── One-shot LED control (CLI) ────────────────────────────────────────────────
 def apply_led_cli(args):
     """Set colour/brightness (or turn LEDs off) once, then exit."""
+    import smbus
     led = LED_ALL if args.led == "all" else int(args.led)
     bus = smbus.SMBus(I2C_BUS)
     if args.off:

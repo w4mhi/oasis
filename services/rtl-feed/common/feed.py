@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-enable-rtl-sdr.py
------------------
+services/rtl-feed/common/feed.py
+--------------------------------
 Bring an installed RTL-SDR online as a GrayWolf APRS receive source.
 
 Pairs with features/rtl-sdr/install-rtl-sdr.py: that one installs the tools, this one tests the
@@ -28,11 +28,11 @@ import, so the channel/device must be created in the browser. See
 docs/sdr-to-graywolf.md for the full writeup and troubleshooting table.
 
 Usage:
-  python3 features/rtl-sdr/enable-rtl-sdr.py                 # test + enable + instructions
-  python3 features/rtl-sdr/enable-rtl-sdr.py --freq 144.800M # EU APRS
-  python3 features/rtl-sdr/enable-rtl-sdr.py --gain 28 --ppm 12
-  python3 features/rtl-sdr/enable-rtl-sdr.py --check         # test only, no service changes
-  python3 features/rtl-sdr/enable-rtl-sdr.py --no-enable     # write the unit but don't start it
+  python3 services/rtl-feed/install.py                 # test + enable + instructions
+  python3 services/rtl-feed/install.py --freq 144.800M # EU APRS
+  python3 services/rtl-feed/install.py --gain 28 --ppm 12
+  python3 services/rtl-feed/install.py --check         # test only, no service changes
+  python3 services/rtl-feed/install.py --no-enable     # write the unit but don't start it
 
 Requires: Linux, systemd, sudo. rtl_fm + socat + tcpdump — all installed by
 features/rtl-sdr/install-rtl-sdr.py (run that first). A dongle and 2 m antenna plugged in. Stop
@@ -50,10 +50,12 @@ import tempfile
 import time
 
 # ── Shared library ─────────────────────────────────────────────────────
-_SUITE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
+_SUITE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..')
 sys.path.insert(0, _SUITE_ROOT)
 from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
 from common import config_paths
+from common import hardware
+from common.hardware_detect import parse_rtl_test_devices
 
 DEFAULT_FREQ = "144.390M"           # NA 2 m APRS, used when station.json has none
 
@@ -72,19 +74,13 @@ def _station_freq():
 
 SERVICE_NAME = "aprs-sdr-feed.service"
 SERVICE_PATH = f"/etc/systemd/system/{SERVICE_NAME}"
-# DVB-driver blacklist the rtl-sdr install drops so the DVB modules don't grab the
-# dongle. Removing it lets the DVB driver reclaim the device (effective on reboot).
-RTLSDR_BLACKLIST = "/etc/modprobe.d/rtlsdr-blacklist.conf"
 
 
 def removal_record(repo_root=None):
-    """Teardown record for the rtl-sdr-feed chain feature: the aprs-sdr-feed
-    service and the DVB-driver blacklist. The apt-installed rtl-sdr tools are left
-    in place (leave-apt policy)."""
-    return {"services": [SERVICE_NAME.removesuffix(".service")],
-            "files": [RTLSDR_BLACKLIST],
-            "notes": ["rtl-sdr apt tools left installed; reboot to let the DVB "
-                      "driver reclaim the dongle once the blacklist is removed."]}
+    """Teardown record for the rtl-feed service: just the aprs-sdr-feed unit. The
+    RTL-SDR apt tools and the DVB-driver blacklist belong to the separate
+    `rtl-sdr` tools feature (features/rtl-sdr/rtl_sdr.py) and are removed with it."""
+    return {"services": [SERVICE_NAME.removesuffix(".service")]}
 SAMPLE_RATE  = 48000           # rtl_fm -s; must equal GrayWolf's sample_rate
 DATAGRAM     = 1920            # socat -b: one 20 ms audio chunk (960 samples x 2 B)
 DEFAULT_FIR  = 3               # rtl_fm -F down-sample FIR: low-passes before
@@ -132,8 +128,10 @@ def check_prereqs():
 
 # ── Step 2: Test the SDR ────────────────────────────────────────────────────────
 def rtl_test_present():
-    """Return True if rtl_test reports a device, False if none is plugged in.
-    The R820T '-t' abort is expected and still counts as present."""
+    """Return (present, devices): whether rtl_test reports a dongle, and its
+    parsed [{"index": int, "serial": str}, ...] enumeration (for device-aware
+    probing when several dongles are plugged in). The R820T '-t' abort is
+    expected and still counts as present."""
     try:
         # errors="replace": rtl_test can emit non-UTF-8 bytes (e.g. 0x83 from the
         # R820T -t probe); without it text-mode decoding raises UnicodeDecodeError
@@ -146,11 +144,11 @@ def rtl_test_present():
         # -t normally exits on its own; a timeout still means a device responded.
         out = (e.stdout or b"")
         out = out.decode(errors="replace") if isinstance(out, bytes) else (out or "")
-        return "Found" in out and "device" in out
+        return ("Found" in out and "device" in out), parse_rtl_test_devices(out)
 
     out = r.stdout + r.stderr
     if "No supported devices found" in out or "usb_open error" in out:
-        return False   # no dongle enumerated — caller decides (defer vs. report)
+        return False, []   # no dongle enumerated — caller decides (defer vs. report)
     # 'No E4000 tuner found, aborting' + 'PLL not locked!' are EXPECTED on R820T.
     for line in out.splitlines():
         if "Found" in line and "device" in line:
@@ -159,13 +157,19 @@ def rtl_test_present():
             _info(line.strip())
     _info("('PLL not locked' + 'No E4000 tuner found, aborting' is expected on "
           "R820T — that's just the E4000-specific -t probe bailing out.)")
-    return True
+    return True, parse_rtl_test_devices(out)
 
 
-def capture_rms(rtl_fm, freq, gain, ppm, seconds):
-    """Run rtl_fm for *seconds* and measure the audio. Returns (peak, floor, chunks, stderr)."""
+def capture_rms(rtl_fm, freq, gain, ppm, seconds, device_index=None):
+    """Run rtl_fm for *seconds* and measure the audio. Returns (peak, floor, chunks, stderr).
+    device_index pins rtl_fm to a specific dongle via `-d <index>` (needed when
+    several dongles are present so we don't grab another service's device 0);
+    None keeps rtl_fm's default index-0 pick for a lone dongle."""
     cmd = [rtl_fm, "-f", freq, "-M", "fm", "-s", str(SAMPLE_RATE),
-           "-g", str(gain), "-p", str(ppm), "-"]
+           "-g", str(gain), "-p", str(ppm)]
+    if device_index is not None:
+        cmd += ["-d", str(device_index)]
+    cmd += ["-"]
     _info("Capturing: " + " ".join(cmd))
     errfile = tempfile.TemporaryFile()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errfile)
@@ -197,48 +201,119 @@ def capture_rms(rtl_fm, freq, gain, ppm, seconds):
     return peak, floor, chunks, err
 
 
-def test_sdr(rtl_fm, freq, gain, ppm, seconds):
-    """Return True if live demodulated audio was verified, False if no RTL-SDR is
-    present. A False result is not fatal — the caller installs the feed service
-    anyway (it's deferred and starts when the dongle appears)."""
+# Other SDR services that can hold a dongle open. When an operator plugs in a
+# new dongle for APRS *after* installing ADS-B (or OpenWebRX / satellites), the
+# audio test must not fight those services for the device they've been assigned:
+# rtl_fm with no -d grabs index 0, which is dump1090's dongle — hence the
+# `usb_claim_interface error -6` install failure. We probe the free dongle(s)
+# first and only fall back to an assigned one if every free dongle failed.
+_OTHER_SDR_SERVICES = ("adsb", "satellites", "openwebrx")
+
+
+def test_candidates(devices, inv):
+    """Pure: order rtl_test devices for probing — dongles already assigned to
+    another SDR service (adsb/satellites/openwebrx) sink to the end, free ones
+    first. `devices` is parse_rtl_test_devices() output; `inv` is a
+    hardware.Inventory. Returns (ordered_devices, claimed_serials)."""
+    claimed = set()
+    for svc in _OTHER_SDR_SERVICES:
+        dev_id = inv.assignments.get(svc)
+        dev = inv.devices.get(dev_id) if dev_id else None
+        serial = dev.get("serial") if dev else None
+        if serial:
+            claimed.add(serial)
+    free = [d for d in devices if d.get("serial") not in claimed]
+    busy = [d for d in devices if d.get("serial") in claimed]
+    return free + busy, claimed
+
+
+def _device_busy(err):
+    """True if rtl_fm's stderr shows the dongle was already open elsewhere
+    (another OASIS SDR service, or a manual 'rtl_fm | socat')."""
+    return ("usb_claim_interface error" in err
+            or "Failed to open rtlsdr device" in err)
+
+
+def test_sdr(rtl_fm, freq, gain, ppm, seconds, repo_root=None):
+    """Return True if live demodulated audio was verified on some available
+    dongle, False if no RTL-SDR is present. With several dongles plugged in,
+    probes every dongle NOT already assigned to another SDR service first (so a
+    dongle added after ADS-B is tried before dump1090's), skipping any a running
+    service still holds open. A False result is not fatal — the caller installs
+    the feed service anyway (it's deferred and starts when the dongle appears)."""
     _step(2, "Testing the SDR")
-    if not rtl_test_present():
+    present, devices = rtl_test_present()
+    if not present:
         _warn("No RTL-SDR present.")
         _info("No dongle is plugged in (or it hasn't enumerated yet — a reboot "
               "applies the DVB-driver blacklist if you just installed the tools). "
               "Skipping the audio test; the feed service is still installed and "
               "enabled, and starts automatically once the dongle appears "
               "(Restart=always). Verify reception later with:\n"
-              "       python3 features/rtl-sdr/enable-rtl-sdr.py --check")
+              "       python3 services/rtl-feed/install.py --check")
         return False
+
+    inv = hardware.load(repo_root or _SUITE_ROOT)
+    candidates, claimed = test_candidates(devices, inv)
+    multi = len(devices) > 1
+    if multi:
+        _info(f"{len(devices)} dongles present — probing the free one(s) first; a "
+              "dongle assigned to ADS-B/OpenWebRX/satellites is tried last.")
 
     _info(f"Listening on {freq} for {seconds}s (hardware tunes ~252 kHz higher — "
           "that offset is normal)...")
-    peak, floor, chunks, err = capture_rms(rtl_fm, freq, gain, ppm, seconds)
 
-    if "Output at" in err:
-        for line in err.splitlines():
-            if "Output at" in line or "Tuned to" in line:
-                _info(line.strip())
-        if f"Output at {SAMPLE_RATE} Hz" not in err:
-            _warn(f"Expected 'Output at {SAMPLE_RATE} Hz' — check the rate.")
+    busy, weak, last_err = [], [], ""
+    for dev in candidates:
+        idx, serial = dev["index"], dev.get("serial", "?")
+        # Only pin -d when there's a choice; a lone dongle keeps the old
+        # index-less path (some minimal rtl_fm builds are fussy about -d).
+        sel_index = idx if multi else None
+        if multi:
+            tag = "  [assigned to another service]" if serial in claimed else ""
+            _info(f"Probing device {idx} (SN {serial}){tag} ...")
+        peak, floor, chunks, err = capture_rms(rtl_fm, freq, gain, ppm, seconds,
+                                               device_index=sel_index)
+        last_err = err
 
-    if chunks == 0 or peak == 0:
-        _warn("No audio samples captured. rtl_fm said:")
-        for line in err.strip().splitlines()[-8:]:
-            _info(line)
-        _fail("SDR test failed — no audio. Common causes: another process owns "
-              "the dongle (stop any manual 'rtl_fm | socat'), gain too low, or no "
-              "antenna.")
+        if "Output at" in err:
+            for line in err.splitlines():
+                if "Output at" in line or "Tuned to" in line:
+                    _info(line.strip())
+            if f"Output at {SAMPLE_RATE} Hz" not in err:
+                _warn(f"Expected 'Output at {SAMPLE_RATE} Hz' — check the rate.")
 
-    _info(f"RMS floor {floor:.0f}, peak {peak:.0f}  (S16 full scale 32768)")
-    if peak >= 30000:
-        _warn(f"Peak {peak:.0f} is near clipping — lower --gain (try {max(0, gain-12)}).")
-    elif peak < 10:
-        _fail(f"Audio level ~0 (peak {peak:.0f}). Check antenna and --gain.")
+        if _device_busy(err):
+            busy.append((idx, serial))
+            _info("   dongle is busy — another process owns it"
+                  + ("; trying the next dongle." if multi else "."))
+            continue
+        if chunks == 0 or peak == 0 or peak < 10:
+            weak.append((idx, serial, peak))
+            _info("   no usable audio on this dongle"
+                  + ("; trying the next." if multi else "."))
+            continue
 
-    _ok("SDR OK — live demodulated audio at the APRS frequency.")
-    return True
+        # Good audio — this dongle is the one to use.
+        if multi:
+            _ok(f"Using device {idx} (SN {serial}).")
+        _info(f"RMS floor {floor:.0f}, peak {peak:.0f}  (S16 full scale 32768)")
+        if peak >= 30000:
+            _warn(f"Peak {peak:.0f} is near clipping — lower --gain (try {max(0, gain-12)}).")
+        _ok("SDR OK — live demodulated audio at the APRS frequency.")
+        return True
+
+    # No candidate produced usable audio. Report why, then fail.
+    _warn("No audio captured on any available dongle. rtl_fm said:")
+    for line in last_err.strip().splitlines()[-8:]:
+        _info(line)
+    if busy and not weak:
+        listing = ", ".join(f"device {i} (SN {s})" for i, s in busy)
+        _fail(f"Every candidate dongle was busy — {listing} already owned by "
+              "ADS-B/OpenWebRX/satellites (or a manual 'rtl_fm | socat'). Assign a "
+              "free dongle to APRS, or stop the service holding it, then rerun.")
+    _fail("SDR test failed — no audio. Common causes: another process owns the "
+          "dongle (stop any manual 'rtl_fm | socat'), gain too low, or no antenna.")
 
 
 # ── Step 3: Install + enable the feed service ────────────────────────────────────
@@ -404,9 +479,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python3 features/rtl-sdr/enable-rtl-sdr.py\n"
-            "  python3 features/rtl-sdr/enable-rtl-sdr.py --freq 144.800M --gain 28 --ppm 12\n"
-            "  python3 features/rtl-sdr/enable-rtl-sdr.py --check       # test only\n"
+            "  python3 services/rtl-feed/install.py\n"
+            "  python3 services/rtl-feed/install.py --freq 144.800M --gain 28 --ppm 12\n"
+            "  python3 services/rtl-feed/install.py --check       # test only\n"
         ),
     )
     parser.add_argument("--freq", default=_station_freq(),
@@ -429,7 +504,7 @@ def main():
                         help="Write the service unit but don't enable/start it.")
     args = parser.parse_args()
 
-    print("\n  OASIS — enable-rtl-sdr")
+    print("\n  OASIS — rtl-feed")
     _hr()
     _info("Tests the RTL-SDR and wires it into GrayWolf as a receive-only APRS feed.")
     _info("Receive-only — an RTL-SDR cannot transmit. For TX use the DRA-Pi-Zero.")

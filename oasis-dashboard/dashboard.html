@@ -3,7 +3,7 @@
 <!-- Lives in /oasis-dashboard/ but link/fetch targets are site-root paths. -->
 <base href="/">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OASIS — Dashboard</title>
+<title>OASIS - Dashboard</title>
 <script>
 // Persist the kiosk layout so the suite's ⌂ HOME links ('/') route back to THIS
 // dashboard, not index.html. The kiosk autostart launches us with
@@ -20,6 +20,11 @@
 <script src="/common/js/geo.js"></script>
 <script src="/common/js/format.js"></script>
 <script src="/common/js/adsb.js"></script>
+<script src="/common/js/service-registry.js"></script>
+<script src="/common/js/hw-console.js"></script>
+<script src="/common/js/wifi-pill.js"></script>
+<link rel="stylesheet" href="/common/css/wifi-pill.css">
+
 <style>
   /* ── palette + font: copied verbatim from kiosk.css (dashboard_old) ───── */
   :root{
@@ -28,8 +33,12 @@
     --text:#cdd8e0; --dim:#7e8d99; --faint:#4c5b66;
     --accent:#35d0a0; --up:#35d0a0; --warn:#f6a821; --down:#ff5b4a;
     --amber:#f4b64a; --blue:#5cb8ff; --purple:#b478ff;
+    --chartreuse:#80ff00; --orange:#ff8000;   /* clock-cycle colours (match index) */
     --r:.9rem;
     --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    /* Wi-Fi pill palette → shared /common/css/wifi-pill.css */
+    --wfp-blue:var(--blue); --wfp-green:var(--up); --wfp-amber:var(--warn);
+    --wfp-red:var(--down); --wfp-neutral:var(--dim); --wfp-fs:1.05rem;
   }
   *{ box-sizing:border-box; margin:0; padding:0; }
   html,body{ height:100%; }
@@ -47,18 +56,24 @@
     border:1px solid var(--border); border-radius:.8rem;
     padding:1.1rem 1.3rem 1rem 1.6rem;
   }
-  .face::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:.4rem; }
-  .face.loc::before{ background:var(--blue); }
-  .face.utc::before{ background:var(--amber); }
+  .face::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:.4rem; background:var(--clk); }
+  /* clock colour: loc/utc set the pre-JS default; .clk-c-* (tap-to-cycle) win on tie via source order. Bar, label, digits + border all key off one --clk. */
+  .face.loc{ --clk:var(--blue); }
+  .face.utc{ --clk:var(--text); }
+  .face.clk-c-blue{ --clk:var(--blue); }
+  .face.clk-c-white{ --clk:var(--text); }
+  .face.clk-c-amber{ --clk:var(--amber); }
+  .face.clk-c-green{ --clk:var(--accent); }
+  .face.clk-c-chartreuse{ --clk:var(--chartreuse); }
+  .face.clk-c-orange{ --clk:var(--orange); }
+  .face{ border-color:color-mix(in srgb,var(--clk) 45%,var(--border)); background:var(--panel); }
   .face .zn{ display:flex; align-items:baseline; gap:.8rem; }
   .face .zn .z{ font-size:1.1rem; letter-spacing:.22em; font-weight:700; }
-  .face.loc .z{ color:var(--blue); }
-  .face.utc .z{ color:var(--amber); }
+  .face .z{ color:var(--clk); }
   .face .zn .tz{ font-size:1.25rem; color:var(--dim); letter-spacing:.04em; }
   .face .time{ font-size:3.2rem; line-height:1.02; font-weight:600;
     letter-spacing:.01em; margin-top:.35rem; font-variant-numeric:tabular-nums; }
-  .face.loc .time{ color:var(--blue); }
-  .face.utc .time{ color:var(--amber); }
+  .face .time{ color:var(--clk); }
   .face .time .s{ font-size:1.6rem; opacity:.62; }
   .face .date{ font-size:1.2rem; color:var(--dim); letter-spacing:.04em; margin-top:.25rem; }
   /* Reload glyph in the UTC clock's top-right corner — blue, spins on tap. */
@@ -73,12 +88,12 @@
   /* ── middle: station/grid + GPS + units pills, boxed to clock height ──── */
   .midcard{ flex:0 0 auto; display:flex; flex-direction:column;
             justify-content:center; align-items:center; gap:.6rem;
-            background:linear-gradient(180deg,var(--raise),var(--panel));
-            border:1px solid var(--border); border-radius:.8rem;
+            background:color-mix(in srgb,var(--accent) 8%,var(--panel));
+            border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border)); border-radius:.8rem;
             padding:.6rem .7rem; }
 
   /* ── callsign + GPS pills: copied verbatim from kiosk.css ─────────────── */
-  .callpill{ display:inline-flex; align-items:center; gap:.7rem; padding:.35rem 1.1rem; border-radius:999px;
+  .callpill{ display:inline-flex; align-items:center; gap:.5rem; padding:.35rem 1.1rem; border-radius:999px;
              border:1px solid var(--border); background:var(--panel-2); font-size:1.05rem; cursor:pointer; }
   .callpill .cs{ color:var(--accent); font-weight:700; letter-spacing:.05em; }
   .callpill .sep{ color:var(--faint); } .callpill .gr{ color:var(--warn); font-weight:600; }
@@ -94,6 +109,46 @@
   .svcpill .cnt-down{ color:var(--down); }
   .svcpill .cnt-ni{ color:var(--dim); }
   .svcpill .cnt-sep{ color:var(--faint); font-weight:400; }
+  /* Wi-Fi pill row (shares row 2 with the service counts). The pill itself is
+     styled by the shared /common/css/wifi-pill.css so it matches index.html. */
+  .pillrow{ display:flex; align-items:center; gap:.5rem; flex-wrap:nowrap; }
+  /* ── Wi-Fi sheet (ported from index.html; adapted to kiosk vars) ───────── */
+  .wifi-modal-backdrop{ position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,.6);
+                        display:flex; align-items:center; justify-content:center; padding:1rem; }
+  .wifi-modal{ width:min(460px,100%); max-height:82vh; overflow-y:auto; background:var(--panel);
+               border:1px solid var(--border); border-radius:10px; padding:1rem 1.1rem 1.15rem;
+               box-shadow:0 12px 40px rgba(0,0,0,.55); }
+  .wifi-modal-hdr{ display:flex; align-items:center; justify-content:space-between; margin-bottom:.5rem; }
+  .wifi-modal-title{ font-size:1.1rem; font-weight:700; color:var(--accent); letter-spacing:.1em; text-transform:uppercase; }
+  .wifi-x{ background:none; border:none; color:var(--dim); font-size:1.4rem; line-height:1; cursor:pointer; padding:0 .2rem; }
+  .wifi-x:hover{ color:var(--text); }
+  .wifi-modal-status{ font-size:.95rem; color:var(--dim); font-family:var(--mono); margin-bottom:.6rem; }
+  .wifi-modal-status .ok{ color:var(--accent); }
+  .wifi-modal-status .ap{ color:var(--blue); }
+  .wifi-list{ display:flex; flex-direction:column; gap:.3rem; }
+  .wifi-row{ display:flex; align-items:center; gap:.5rem; padding:.45rem .55rem; border:1px solid var(--border);
+             border-radius:7px; background:var(--panel-2); cursor:pointer; }
+  .wifi-row:hover,.wifi-row.current{ border-color:var(--accent); }
+  .wifi-row-name{ flex:1; font-weight:600; letter-spacing:.02em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wifi-row-meta{ font-size:.8rem; color:var(--dim); font-family:var(--mono); display:flex; align-items:center; gap:.45rem; }
+  .wifi-lock{ color:var(--dim); }
+  .wifi-cur-tag{ color:var(--accent); font-size:.8rem; }
+  .wifi-connect-form{ display:flex; flex-direction:column; gap:.45rem; padding:.55rem; margin-top:.25rem;
+                      border:1px solid var(--accent); border-radius:7px; background:var(--panel-2); }
+  .wifi-connect-form input{ padding:.45rem .55rem; border:1px solid var(--border); border-radius:6px;
+                            background:var(--bg); color:var(--text); font-family:var(--mono); font-size:.95rem; }
+  .wifi-connect-row{ display:flex; gap:.4rem; }
+  .wifi-connect-row .wifi-btn{ flex:1; }
+  .wifi-modal-note{ font-size:.8rem; color:var(--dim); line-height:1.4; margin:.7rem 0 .5rem; }
+  .wifi-modal-actions{ display:flex; justify-content:flex-end; gap:.5rem; }
+  .wifi-btn{ padding:.4rem .8rem; border:1px solid var(--border); border-radius:6px; background:var(--panel-2);
+             color:var(--text); font-size:.95rem; font-family:var(--mono); cursor:pointer; }
+  .wifi-btn:hover:not(:disabled){ border-color:var(--accent); background:var(--panel); }
+  .wifi-btn.primary{ border-color:var(--accent); color:var(--accent); }
+  .wifi-btn:disabled{ opacity:.5; cursor:default; }
+  .wifi-msg{ font-size:.8rem; font-family:var(--mono); }
+  .wifi-msg.err{ color:var(--down); }
+  .wifi-msg.ok{ color:var(--accent); }
   .gpspill{ display:flex; align-items:center; gap:.5rem; padding:.3rem 1rem;
             border-radius:999px; border:1px solid var(--border); background:var(--panel-2); font-size:1.05rem; }
   .gpspill .mode{ font-weight:700; }
@@ -106,11 +161,14 @@
   #k-gps.nogps .gdot{ display:inline-block; background:var(--faint); }
   #k-gps.nofix .mode{ color:var(--down); }
   #k-gps.nofix .gdot{ display:inline-block; background:var(--down);
+                      box-shadow:0 0 .5rem 0 var(--down);   /* painted once; pulse below is opacity/scale only */
                       animation:gpspulse 1.1s ease-in-out infinite; }
   #k-gps.fix2d .mode,#k-gps.fix2d .sub{ color:var(--warn); }
   #k-gps.fix3d .mode,#k-gps.fix3d .sub{ color:var(--accent); }
-  @keyframes gpspulse{ 0%,100%{ opacity:1;  transform:scale(1);   box-shadow:0 0 .5rem 0 var(--down); }
-                       50%    { opacity:.35; transform:scale(.65); box-shadow:0 0 0 0 var(--down); } }
+  /* compositor-only pulse (opacity+transform) — no box-shadow here, so the layer
+     is painted once and animated on the GPU instead of repainting every frame */
+  @keyframes gpspulse{ 0%,100%{ opacity:1;  transform:scale(1);   }
+                       50%    { opacity:.35; transform:scale(.65); } }
 
   /* ── system stats pill + units toggle share one row, matched heights ──── */
   .sysrow{ display:flex; gap:.8rem; align-items:stretch; }
@@ -133,6 +191,14 @@
   .sysbar .v{ font-weight:700; }
   .sysbar .v.ok{ color:var(--accent); } .sysbar .v.warm{ color:var(--warn); } .sysbar .v.hot{ color:var(--down); }
   .sysbar .srow.ip .v{ color:var(--dim); font-weight:400; }
+  /* cooling-fan blade next to TEMP (mirrors index) — colour by temp, spins when the fan is moving air */
+  .sysbar .cpu-fan{ display:none; width:1.25em; height:1.25em; align-self:center; color:var(--dim); transform-origin:50% 50%; }
+  .sysbar .cpu-fan.show{ display:inline-block; }
+  .sysbar .cpu-fan.ok{ color:var(--accent); } .sysbar .cpu-fan.warn{ color:var(--warn); } .sysbar .cpu-fan.hot{ color:var(--down); }
+  .sysbar .cpu-fan.static{ opacity:.55; }
+  .sysbar .cpu-fan.spin{ animation:cpu-fan-spin 1.3s linear infinite; }
+  @keyframes cpu-fan-spin{ to{ transform:rotate(360deg); } }
+  @media (prefers-reduced-motion:reduce){ .sysbar .cpu-fan.spin{ animation:none; } }
 
   /* ── SDR service bar — dot + label per RTL consumer, side to side ─────── */
   .svcbar{ display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
@@ -286,6 +352,66 @@
          border-radius:.7rem; color:var(--text); cursor:pointer; font-size:1.4rem; }
   .ov-x:hover{ border-color:var(--down); color:var(--down); }
   .ov-body{ flex:1; overflow-y:auto; padding:1.2rem; }
+
+  /* ── SRV OPS (HW/SRV matrix) — touch console. A floating CARD over the
+     dashboard (not a full-screen takeover), so it reads as a card on both the
+     800×480 and 1920×1200 kiosk. Controls sized for touch. ─────────────────── */
+  #ov-srvops.so-modal{ background:rgba(7,11,14,.62); align-items:center; justify-content:center; padding:2rem; }
+  #ov-srvops .so-card{ display:flex; flex-direction:column; width:min(880px,94vw); max-height:88vh;
+    background:var(--panel); border:1px solid color-mix(in srgb,var(--accent) 40%,var(--border));
+    border-radius:16px; overflow:hidden; box-shadow:0 22px 60px rgba(0,0,0,.55); }
+  .so-stopall{ font-family:var(--mono); font-weight:700; font-size:1.35rem;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--down); cursor:pointer;
+    border:1px solid color-mix(in srgb,var(--down) 45%,var(--border)); background:transparent;
+    border-radius:.6rem; padding:0 1rem; height:3rem; }
+  .so-stopall:active{ background:color-mix(in srgb,var(--down) 14%,transparent); }
+  /* SRV OPS header, scoped so the shared OPS overlay keeps its own sizing.
+     Title left, STOP ALL + ✕ clustered right (mirrors the index console). */
+  #ov-srvops .ov-head .e{ font-size:1.7rem; color:var(--text); text-transform:uppercase;
+    letter-spacing:.07em; font-weight:600; margin-right:auto; display:flex; align-items:center; gap:.55rem; }
+  #ov-srvops .ov-head .e .hw-ic{ width:1.3em; height:1.3em; flex:0 0 auto; }
+  #ov-srvops .ov-x{ margin-left:0; }
+  .so-hint{ font-size:1.2rem; color:var(--dim); padding:0 .2rem 1rem; }
+  .so-mx{ display:grid; grid-template-columns:13rem repeat(5,1fr);
+    border:1px solid var(--border); border-radius:.8rem; overflow:hidden; }
+  .so-mh{ font-size:1.35rem; text-transform:uppercase; letter-spacing:.04em; color:var(--dim);
+    text-align:center; padding:.6rem .2rem; border-bottom:1px solid var(--border); white-space:nowrap; }
+  .so-mh.hw{ text-align:left; padding-left:1rem; }
+  .so-hwc{ display:flex; align-items:center; gap:.5rem; min-height:64px; padding:0 .4rem 0 1rem;
+    border-bottom:1px solid var(--border); }
+  .so-hwc .nm{ font-weight:700; font-size:1.65rem; line-height:1.1; }
+  .so-hwc .sr{ font-size:1.05rem; color:var(--faint); }
+  .so-lk{ margin-left:auto; width:52px; height:52px; border:none; background:transparent;
+    color:var(--amber); cursor:pointer; display:flex; align-items:center; justify-content:center;
+    border-radius:.5rem; line-height:0; }
+  .so-lk svg{ display:block; width:30px; height:30px; }
+  .so-lk.locked{ color:var(--down); }
+  .so-lk:active{ background:var(--raise); }
+  .so-mc{ display:flex; align-items:center; justify-content:center; min-height:64px;
+    border-bottom:1px solid var(--border); }
+  .so-rlast{ border-bottom:none; }
+  .so-tog{ position:relative; width:56px; height:32px; border-radius:999px;
+    border:1px solid var(--border); background:var(--panel-2); cursor:pointer; }
+  .so-tog::after{ content:""; position:absolute; top:2px; left:2px; width:26px; height:26px;
+    border-radius:50%; background:var(--dim); transition:.15s; }
+  .so-tog.on.green{ background:color-mix(in srgb,var(--accent) 34%,var(--panel-2)); border-color:var(--accent); }
+  .so-tog.on.green::after{ left:26px; background:var(--accent); box-shadow:0 0 7px var(--accent); }
+  .so-tog.on.amber{ background:color-mix(in srgb,var(--warn) 30%,var(--panel-2)); border-color:var(--warn); }
+  .so-tog.on.amber::after{ left:26px; background:var(--warn); }
+  .so-na{ color:var(--faint); font-size:1.7rem; }
+  .so-tog.frozen{ cursor:not-allowed; opacity:.6; }
+  .so-hint.so-ok{ color:var(--accent); } .so-hint.so-warn{ color:var(--down); }
+  .so-hint.so-lock{ color:var(--warn); } .so-hint.so-info{ color:var(--text); }
+  /* Resource-guardian countdown banner (fixed, always visible while armed) */
+  .so-guardian{ position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:60;
+    display:flex; align-items:center; gap:.8rem; background:var(--panel); border:1px solid var(--down);
+    border-radius:10px; padding:.6rem 1.1rem; box-shadow:0 10px 30px rgba(0,0,0,.4);
+    font-family:var(--mono); font-size:1.25rem; color:var(--down); max-width:94vw; }
+  .so-guardian[hidden]{ display:none; }
+  .so-g-cancel{ background:var(--down); color:#fff; border:none; border-radius:8px; padding:.5rem 1.15rem;
+    cursor:pointer; font-family:var(--mono); font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+    font-size:1.05rem; min-height:44px; white-space:nowrap; }
+  .so-g-cancel:active{ filter:brightness(1.12); }
   .ops-sec{ margin-bottom:1rem; }
   .ops-sec .lab{ color:var(--accent); font-size:1rem; letter-spacing:.14em; font-weight:700; margin:0 .2rem .6rem; }
   .ops-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:.8rem; }
@@ -343,10 +469,16 @@
         </span>
         <div class="gpspill nogps" id="k-gps"><span class="mode" id="k-gps-mode">GPS —</span><span class="sub" id="k-gps-sub"></span><span class="gdot" id="k-gps-dot"></span></div>
       </div>
-      <!-- Services summary: up · warn · down · not-installed (no SERVICES label) -->
-      <span class="svcpill" id="svcpill" onclick="openSvcSheet()" role="button" tabindex="0" title="Services — tap for detail">—</span>
+      <!-- Services summary (up · warn · down) + Wi-Fi pill, sharing one row -->
+      <div class="pillrow">
+        <span class="svcpill" id="svcpill" onclick="openSvcSheet()" role="button" tabindex="0" title="Services — tap for detail">—</span>
+        <span class="wifipill" id="wifipill" onclick="openWifiModal()" role="button" tabindex="0"
+              style="display:none" title="Wi-Fi — tap to scan / join / raise the OASIS AP">Wi-Fi</span>
+      </div>
       <!-- RTL/SDR assignment pill: dot (hollow=unassigned, amber=rtl assigned, green=in use) -->
-      <div class="svcbar" id="svcbar">
+      <div class="svcbar" id="svcbar" onclick="openSrvOps()" role="button" tabindex="0"
+           style="cursor:pointer" title="Service Operations — HW / SRV matrix"
+           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openSrvOps();}">
         <span class="s"><span class="dot" id="dot-aprs"></span>APRS</span>
         <span class="s"><span class="dot" id="dot-adsb"></span>ADS-B</span>
         <span class="s"><span class="dot" id="dot-owrx"></span>ORX</span>
@@ -361,7 +493,7 @@
       <div class="srow"><span class="k">CPU</span><span class="v" id="k-cpu">—</span></div>
       <div class="srow"><span class="k">RAM</span><span class="v" id="k-ram">—</span></div>
       <div class="srow"><span class="k">LOAD</span><span class="v" id="k-load">—</span></div>
-      <div class="srow"><span class="k">TEMP</span><span class="v" id="k-temp" style="cursor:pointer" title="Tap to toggle °C / °F">—</span></div>
+      <div class="srow"><span class="k">TEMP</span><span class="v" id="k-temp" style="cursor:pointer" title="Tap to toggle °C / °F">—</span><svg class="cpu-fan" id="cpu-fan" viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(0 8 8)"/><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(120 8 8)"/><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(240 8 8)"/></g><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg></div>
       <div class="srow"><span class="k">DISK</span><span class="v" id="k-disk">—</span></div>
       <div class="srow ip"><span class="k">IP</span><span class="v" id="k-ip">—</span></div>
     </div>
@@ -425,6 +557,51 @@
     <div class="ov-body" id="opsBody"></div>
   </div>
 
+  <!-- SRV OPS — HW/SRV assignment matrix (touch console). MOCK: static rows for
+       design review; wire to /api/hardware/console after the layout is confirmed. -->
+  <div class="ov so-modal" id="ov-srvops" onclick="if(event.target===this)closeOv('srvops')">
+    <div class="so-card">
+      <div class="ov-head">
+        <span class="e"><svg class="hw-ic" viewBox="0 0 16 16" aria-hidden="true"><g stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><line x1="2.5" y1="4" x2="13.5" y2="4"/><line x1="2.5" y1="8" x2="13.5" y2="8"/><line x1="2.5" y1="12" x2="13.5" y2="12"/></g><g fill="currentColor"><circle cx="6" cy="4" r="2"/><circle cx="10.5" cy="8" r="2"/><circle cx="5" cy="12" r="2"/></g></svg>HW / SRV Matrix</span>
+        <button class="so-stopall" id="so-stopall" type="button" title="Stop every service">Stop all</button>
+        <span class="ov-x" onclick="closeOv('srvops')" role="button" tabindex="0" aria-label="Close">&#10005;</span>
+      </div>
+      <div class="ov-body">
+        <div class="so-hint" id="so-hint" aria-live="polite">Tap a toggle to route &middot; lock a device to protect it</div>
+        <!-- Matrix is rendered by the SRV OPS console script from /api/hardware/console -->
+        <div class="so-mx" id="so-mx"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resource-guardian countdown (server-armed even with no browser open) -->
+  <div class="so-guardian" id="so-guardian" role="alert" hidden>
+    <span class="so-g-msg" id="so-g-msg"></span>
+    <button class="so-g-cancel" id="so-g-cancel" type="button">Cancel</button>
+  </div>
+
+  <!-- WI-FI SHEET: scan / join / forget / raise-AP (logic ported from index.html) -->
+  <div class="wifi-modal-backdrop" id="wifi-modal" style="display:none"
+       onclick="if(event.target===this)closeWifiModal()">
+    <div class="wifi-modal" role="dialog" aria-label="Wi-Fi networks">
+      <div class="wifi-modal-hdr">
+        <span class="wifi-modal-title">Wi-Fi</span>
+        <button class="wifi-x" onclick="closeWifiModal()" aria-label="Close">&times;</button>
+      </div>
+      <div class="wifi-modal-status" id="wifi-modal-status">Checking…</div>
+      <div class="wifi-list" id="wifi-list"></div>
+      <div class="wifi-modal-note">
+        This device has a single radio, so joining a network takes the
+        <strong>OASIS</strong> access point offline — anyone connected to it will
+        need to reconnect via the new address shown on the dashboard.
+      </div>
+      <div class="wifi-modal-actions">
+        <button class="wifi-btn" id="wifi-forget" onclick="forgetWifi()" style="display:none">Forget network</button>
+        <button class="wifi-btn" id="wifi-rescan" onclick="scanWifi()">Rescan</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -439,7 +616,7 @@ const OPS = {
     { sub:'shell', label:'SSH Terminal', ext:()=>`${location.protocol}//${HOST}:${PORTS.webssh}/` },
   ],
   MONITOR: [
-    { sub:'live APRS · aircraft', label:'Traffic Map', url:'server/map/map.html' },
+    { sub:'live APRS · aircraft', label:'Traffic Map', url:'maps/traffic/map.html' },
     { sub:'passes · tracking', label:'Satellites', url:'server/satellites/' },
   ],
   'ICS Forms': [
@@ -513,6 +690,46 @@ function tick() {
         txt('loc-tz', tz.split('/').pop().replace('_',' ')); } catch (_) {}
 }
 tick(); setInterval(tick, 1000);
+
+// ── Clock colour: tap a clock to cycle its colour (per-clock, saved, mutually
+// exclusive). Same six colours + localStorage keys as index.html, so the two
+// pages agree. Each face keys all its colour off one --clk custom property.
+(function () {
+  var COLORS = ['blue', 'white', 'amber', 'green', 'chartreuse', 'orange'];
+  var loc = { el: document.querySelector('.face.loc'), key: 'oasis.clock.loc.color', def: 'blue'  };
+  var utc = { el: document.querySelector('.face.utc'), key: 'oasis.clock.utc.color', def: 'white' };
+  if (!loc.el || !utc.el) return;
+  function saved(clk) {
+    var v = null;
+    try { v = localStorage.getItem(clk.key); } catch (e) {}
+    return COLORS.indexOf(v) >= 0 ? v : clk.def;
+  }
+  function apply(clk, name) {
+    COLORS.forEach(function (c) { clk.el.classList.remove('clk-c-' + c); });
+    clk.el.classList.add('clk-c-' + name);
+    clk.color = name;
+    try { localStorage.setItem(clk.key, name); } catch (e) {}
+  }
+  function nextFree(from, blocked) {          // skip the other clock's colour
+    var i = COLORS.indexOf(from);
+    do { i = (i + 1) % COLORS.length; } while (COLORS[i] === blocked);
+    return COLORS[i];
+  }
+  var a = saved(loc), b = saved(utc);
+  if (b === a) b = nextFree(b, a);            // enforce exclusivity on stale/equal state
+  apply(loc, a);
+  apply(utc, b);
+  [loc, utc].forEach(function (clk) {
+    var other = clk === loc ? utc : loc;
+    clk.el.style.cursor = 'pointer';
+    clk.el.title = 'Tap to change clock colour';
+    clk.el.addEventListener('click', function (ev) {
+      if (ev.target.closest('.clk-refresh')) return;   // let the reload button do its job
+      apply(clk, nextFree(clk.color, other.color));
+    });
+  });
+})();
+
 function kioskRefresh() {
   const b = document.getElementById('clk-refresh');
   if (b) b.classList.add('spinning');   // brief spin so the tap registers, then reload
@@ -607,6 +824,25 @@ async function fetchStats() {
     renderGps(d.gps);
     if (d.cpu_pct != null) setKStat('k-cpu', `${Math.round(d.cpu_pct)}%`, d.cpu_pct>=90?'hot':d.cpu_pct>=70?'warm':'ok');
     _lastTempC = d.cpu_temp_c; renderTemp();
+    // Cooling-fan blade next to TEMP — colour tracks temp (65/80 tones); spins only
+    // when a cooling daemon is running AND the CPU is at/above the ~55°C turn-on.
+    // Hidden when no cooling daemon (argon-fan / rgb-cooling-hat) is installed.
+    // NB: #cpu-fan is an SVG element — .className is read-only, so setAttribute.
+    const fan = document.getElementById('cpu-fan');
+    if (fan) {
+      const cool = d.cooling, t = d.cpu_temp_c;
+      if (!cool || !cool.installed) {
+        fan.setAttribute('class', 'cpu-fan');    // no .show → hidden
+      } else {
+        const tone = t == null ? '' : t >= 80 ? ' hot' : t >= 65 ? ' warn' : ' ok';
+        const spinning = cool.running && t != null && t >= 55;
+        fan.setAttribute('class', 'cpu-fan show' + tone + (spinning ? ' spin' : ' static'));
+        fan.setAttribute('title', !cool.running
+          ? `Cooling fan (${cool.kind}) installed — service stopped`
+          : spinning ? `Cooling fan (${cool.kind}) running`
+          : `Cooling fan (${cool.kind}) idle — CPU below ~55°C`);
+      }
+    }
     if (d.ram?.pct != null) setKStat('k-ram', `${Math.round(d.ram.pct)}%`, d.ram.pct>=90?'hot':d.ram.pct>=70?'warm':'ok');
     if (d.disk?.pct != null && !d.disk.error) setKStat('k-disk', `${Math.round(d.disk.pct)}%`, d.disk.pct>=90?'hot':d.disk.pct>=70?'warm':'ok');
     setKStat('k-load', d.load?.avg1 != null ? d.load.avg1.toFixed(2) : 'n/a', d.load?.pct!=null?(d.load.pct>=100?'hot':d.load.pct>=75?'warm':'ok'):'');
@@ -636,11 +872,13 @@ async function satInUse() {
         return !!(d.recording || d.streaming); } catch (_) { return false; }
 }
 async function svcInUse(svc) { return svc.id === 'sat' ? satInUse() : isUnitActive(svc.unit); }
+let _hwServices = {};   // last /api/hardware/devices `services` map (device assignments)
 async function fetchSdrStatus() {
   let hw = {};
   try { const r = await fetch('/api/hardware/devices', { cache:'no-store' }); if (r.ok) hw = await r.json(); } catch (_) {}
   const byId = {}; (hw.devices || []).forEach(x => byId[x.id] = x);
   const services = hw.services || {};
+  _hwServices = services;   // shared with the wlrf (Winlink RF) health check
   await Promise.all(SDR_SVCS.map(async svc => {
     const dot = document.getElementById('dot-'+svc.id); if (!dot) return;
     const info = services[svc.hw];
@@ -686,25 +924,62 @@ function aprsIconHtml(s) {
   const table = s.sym_table||'/', code = s.sym_code||'-';
   let idx = code.charCodeAt(0)-33; if (idx<0||idx>95) idx=0;
   const x = -((idx%16)*24), y = -(Math.floor(idx/16)*24), sheet = table==='/'?0:1;
-  return `<span class="sym" style="background-image:url('/map-assets/aprs-symbols-24-${sheet}.png');background-position:${x}px ${y}px"></span>`;
+  return `<span class="sym" style="background-image:url('/maps/traffic/assets/aprs-symbols-24-${sheet}.png');background-position:${x}px ${y}px"></span>`;
+}
+// Keyed incremental reconciliation of the station/aircraft list. The list re-renders on
+// a 15s throttle (scheduleAprsRender) mostly just to re-stamp ages and re-sort by recency;
+// a full innerHTML teardown of up to MAX_ROWS×6 nodes each time is wasteful — a visible
+// main-thread CPU burst on weak Pis. Instead we keep a key→row map and touch only the rows
+// and fields that actually changed, reordering by MOVING existing nodes. When nothing
+// changed this does zero DOM writes, so it also subsumes a skip-if-unchanged guard.
+const _aprsRowMap = new Map();   // key -> { el, sig }
+function _aprsRowKey(s) {
+  return s._kind==='aircraft' ? 'ac:'+(s.hex||s.callsign||'?') : 'ap:'+(s.callsign||s.c||'—');
 }
 function renderAprsRows(list) {
   const body = document.getElementById('aprsScroll'); if (!body) return;
-  body.innerHTML = '';
-  if (!list.length) { body.innerHTML = '<div class="trow empty"><span style="grid-column:1/-1">No stations to show.</span></div>'; return; }
-  const frag = document.createDocumentFragment();
+  if (!list.length) {
+    if (_aprsRowMap.size || !body.querySelector('.trow.empty')) {
+      _aprsRowMap.clear();
+      body.innerHTML = '<div class="trow empty"><span style="grid-column:1/-1">No stations to show.</span></div>';
+    }
+    return;
+  }
+  const emptyEl = body.querySelector('.trow.empty'); if (emptyEl) emptyEl.remove();
+
+  const seen = new Set();
+  let ref = body.firstChild;
   list.forEach(s => {
+    const key = _aprsRowKey(s); seen.add(key);
     const call = s.callsign || s.c || '—';
     const ac = s._kind==='aircraft', src = ac ? 'air' : aprsSource(s);
     const age = fmtAge(s.last_heard||s.timestamp||s.time);
     const dist = distFromHome(s.lat, s.lon) || '';
     const grid = gridSquare(s.lat, s.lon) || '';
-    const r = document.createElement('div'); r.className = 'trow';
-    r.innerHTML = `<span class="call ${src}">${esc(call)}</span><span>${aprsIconHtml(s)}</span><span class="age ${age.cls}">${esc(age.text)}</span><span class="dist">${esc(dist)}</span><span class="grid">${esc(grid)}</span>`;
-    r.onclick = () => openSheet(s);
-    frag.appendChild(r);
+    const sig = [call, src, age.text, age.cls, dist, grid].join('\x1f');
+
+    let rec = _aprsRowMap.get(key), el;
+    if (!rec) {
+      el = document.createElement('div'); el.className = 'trow';
+      el.innerHTML = `<span class="call ${src}">${esc(call)}</span><span>${aprsIconHtml(s)}</span><span class="age ${age.cls}">${esc(age.text)}</span><span class="dist">${esc(dist)}</span><span class="grid">${esc(grid)}</span>`;
+      _aprsRowMap.set(key, rec = { el, sig });
+    } else {
+      el = rec.el;
+      if (rec.sig !== sig) {   // update only the mutable fields (icon is stable per key)
+        const k = el.children;   // [call, icon, age, dist, grid]
+        k[0].className = 'call ' + src; k[0].textContent = call;
+        k[2].className = 'age ' + age.cls; k[2].textContent = age.text;
+        k[3].textContent = dist;
+        k[4].textContent = grid;
+        rec.sig = sig;
+      }
+    }
+    el.onclick = () => openSheet(s);   // keep the click bound to the freshest record
+    if (el === ref) { ref = ref.nextSibling; }   // already in place
+    else { body.insertBefore(el, ref); }         // move/insert into position
   });
-  body.appendChild(frag);
+  // drop rows for stations no longer present (deleting during Map.forEach is safe)
+  _aprsRowMap.forEach((rec, key) => { if (!seen.has(key)) { rec.el.remove(); _aprsRowMap.delete(key); } });
 }
 // ── Services health → summary count pill (ported from dashboard_old; tiles/overlay omitted) ──
 const HOST = location.hostname;
@@ -714,62 +989,89 @@ const SVC_PORTS = {
   aprs: () => PORTS.aprs_api, webssh: () => PORTS.webssh, owrx: () => PORTS.openwebrx,
 };
 const _svcStates = {};
-function updateSvcCounts() {   // N UP · N WRN · N DN · N NI (not-installed) — no SERVICES label
-  const vals = Object.values(_svcStates);
-  const up = vals.filter(s => s === 'up').length;
-  const warn = vals.filter(s => s === 'warn').length;
-  const down = vals.filter(s => s === 'down').length;
-  const ni = HIDDEN_SVCS.size;
+function updateSvcCounts() {   // N UP · N WRN · N DN over the shared registry (label + NI dropped for the Wi-Fi pill)
+  // Count the canonical OASIS_SERVICES set (minus not-installed) so the kiosk tally
+  // matches index.html exactly. NI stays visible inside the services slide-sheet.
+  let up = 0, warn = 0, down = 0;
+  OASIS_SERVICES.forEach(s => {
+    if (HIDDEN_SVCS.has(s.id)) return;
+    const st = _svcStates[s.id];
+    if (st === 'up') up++; else if (st === 'warn') warn++; else if (st === 'down') down++;
+  });
   const el = document.getElementById('svcpill'); if (!el) return;
   el.innerHTML =
-    `<span class="cnt-lbl">SRV</span>` +
     `<span class="cnt-up">${up} UP</span><span class="cnt-sep">·</span>` +
     `<span class="cnt-warn">${warn} WRN</span><span class="cnt-sep">·</span>` +
-    `<span class="cnt-down">${down} DN</span><span class="cnt-sep">·</span>` +
-    `<span class="cnt-ni">${ni} NI</span>`;
+    `<span class="cnt-down">${down} DN</span>`;
 }
 const SERVICES = [
   { id:'flask', name:'Flask', check: async () => { const r = await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); return {up:true,badge:'UP',sub:`v${d.flask_version}`}; } },
   { id:'wsgi', name:'Web Server', check: async () => { const r=await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); const g=d.wsgi==='gunicorn'; return {up:true,warn:!g,badge:g?'gunicorn':'werkzeug',sub:`v${d.wsgi_version}`}; } },
   { id:'gw', name:'GrayWolf', check: async () => { await fetch(`http://${HOST}:${PORTS.graywolf}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.graywolf}`}; } },
   { id:'winlink', name:'Winlink', check: async () => { const r=await fetch('/api/winlink/mailbox/in',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`:${PORTS.winlink}`}; return {up:true,badge:'UP',sub:`:${PORTS.winlink}`}; } },
+  // Winlink RF = the Direwolf packet modem behind Pat (systemd pat-direwolf; no web
+  // port). Ported from index.html so the kiosk reflects a stopped RF modem instead of
+  // being blind to it: ON AIR when active; STOPPED (down) when inactive with a radio
+  // assigned; in telnet mode (no radio) it carries internet reachability instead.
+  { id:'wlrf', name:'Winlink RF', check: async () => {
+      const r=await fetch('/api/health/service?name=pat-direwolf',{cache:'no-store'});
+      if(!r.ok) return {up:false,sub:'status error'};
+      const d=await r.json();
+      if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'};
+      if(!d.installed) return {up:false,badge:'not installed',sub:'run services/winlink/install.py'};
+      if(d.active==='active') return {up:true,badge:'ON AIR',sub:'AGWPE :8000'};
+      const assigned = !!((_hwServices.winlink||{}).device_id);   // radio → RF mode
+      if(assigned) return {up:false,badge:'STOPPED',sub:'start for packet Winlink'};
+      return _wifiMode==='ap'
+        ? {up:true,warn:true,badge:'NO INTERNET',sub:'choose a device in setup'}
+        : {up:true,badge:'INTERNET',sub:'operational'};
+    } },
   { id:'kiwix', name:'Kiwix', check: async () => { await fetch(`http://${HOST}:${PORTS.kiwix}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.kiwix}`}; } },
   { id:'aprs', name:'APRS Stats API', check: async () => { const r=await fetch('/api/aprs/health',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`:${PORTS.aprs_api}`}; const d=await r.json(); return {up:true,warn:!d.db_exists,badge:'UP',sub:d.db_exists?'DB found':'no DB'}; } },
   { id:'feed', name:'APRS SDR Feed', check: async () => { const r=await fetch('/api/health/service?name=aprs-sdr-feed',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:'→ GrayWolf'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
   { id:'gpsd', name:'GPS (gpsd)', check: async () => { const r=await fetch('/api/health/service?name=gpsd',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:':2947'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
   { id:'fcc', name:'FCC Database', check: async () => { const r=await fetch('/health',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'server error'}; const d=await r.json(); return {up:true,warn:!d.index_present,badge:d.index_present?'UP':'WARN',sub:d.index_present?`${(d.callsign_count||0).toLocaleString()} calls`:'not indexed'}; } },
-  { id:'maps', name:'Offline Maps', check: async () => { const r=await fetch('/api/browse?path=maps',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'browse error'}; const d=await r.json(); const n=(d.entries||[]).filter(e=>e.name.endsWith('.pmtiles')).length; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} map${n===1?'':'s'}`:'no maps'}; } },
+  { id:'maps', name:'Offline Maps', check: async () => { let n; try { n = await oasisCountPmtiles(async (p)=>{ const r=await fetch('/api/browse?path='+encodeURIComponent(p),{cache:'no-store'}); if(!r.ok) throw new Error('browse'); return (await r.json()).entries||[]; }, 'maps'); } catch(_) { return {up:false,sub:'browse error'}; } return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} map${n===1?'':'s'}`:'no maps'}; } },
   { id:'rb', name:'Repeater Book', check: async () => { const r=await fetch('static/repeaterbook/repeaterbook.csv',{method:'HEAD',cache:'no-store'}); return {up:r.ok,badge:r.ok?'UP':'DOWN',sub:r.ok?'CSV loaded':'CSV missing'}; } },
   { id:'webssh', name:'SSH Terminal', check: async () => { await fetch(`http://${HOST}:${PORTS.webssh}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.webssh}`}; } },
   { id:'owrx', name:'OpenWebRX', check: async () => { await fetch(`http://${HOST}:${PORTS.openwebrx}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.openwebrx}`}; } },
+  // ADS-B: no web port — systemd dump1090-fa owns the RTL-SDR (same as index.html's
+  // health entry, so both dashboards count it). Surfaced live elsewhere (svcbar dot,
+  // flow meter); this entry just adds it to the health tally.
+  { id:'adsb', name:'ADS-B Aircraft', check: async () => { const r=await fetch('/api/health/service?name=dump1090-fa',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:'dump1090'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
   { id:'manuals', name:'Radio Manuals', check: async () => { const r=await fetch('/api/browse?path=static/radio-manuals',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'browse error'}; const d=await r.json(); const n=(d.entries||[]).filter(e=>e.type==='dir').length; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} radio${n===1?'':'s'}`:'no manuals'}; } },
   { id:'wiki', name:'Wikipedia', check: async () => { const r=await fetch('/api/health/zim',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'check error'}; const d=await r.json(); const n=d.count||0; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} ZIM${n===1?'':'s'}`:'no ZIM'}; } },
 ];
-// Gate out features the operator didn't install so they don't count as DOWN. A null
-// manifest (unconfigured box) counts everything, same as dashboard_old.
+// Gate out features the operator didn't install so they don't count as DOWN. The
+// canonical set + gate rules live in common/js/service-registry.js (shared with
+// index.html so the two dashboards can't drift). A null manifest (unconfigured
+// box) counts everything. `_kioskProbe` is the live-reality fallback: a unit the
+// operator enabled outside setup-oasis.py (e.g. webssh — running but not in the
+// manifest) keeps its service visible instead of hiding.
 const HIDDEN_SVCS = new Set();
-const GATEABLE = {
-  gw:['graywolf'], aprs:['graywolf'], feed:['rtl-sdr-feed','rtl-feed'], owrx:['openwebrx'], winlink:['winlink'],
-  gpsd:['gps'], kiwix:['kiwix'], webssh:['webssh'], fcc:['fcc'], wiki:['wikipedia'], rb:['repeaterbook'],
-};
-const SYSTEMD_GATED = { feed:'aprs-sdr-feed', gpsd:'gpsd' };
-async function unitInstalled(id) {
-  const unit = SYSTEMD_GATED[id]; if (!unit) return false;
-  try { const r = await fetch('/api/health/service?name='+unit,{cache:'no-store'}); if(!r.ok) return false; const d=await r.json();
-        if (id==='gpsd') return d.enabled==='enabled';
-        return d.active==='active' || d.enabled==='enabled'; } catch(_) { return false; }
+async function _kioskProbe(gate) {
+  if (gate.unit) {
+    try {
+      const r = await fetch('/api/health/service?name='+gate.unit,{cache:'no-store'});
+      if (r.ok) { const d = await r.json();
+        if (gate.enabledOnly) return d.enabled==='enabled';   // gpsd: deliberate boot-enable only
+        return d.active==='active' || d.enabled==='enabled'; }
+    } catch(_) {}
+  }
+  if (gate.port) {                                            // opaque reach = alive
+    try { await fetch(`http://${HOST}:${gate.port}/`,{cache:'no-store',mode:'no-cors'}); return true; } catch(_) {}
+  }
+  return false;
 }
 async function loadInstalled() {
   let features = null;
   try { const r = await fetch('/api/installed-services',{cache:'no-store'}); if(r.ok){ const d=await r.json(); features=d.features; } } catch(_) {}
+  const hidden = await oasisResolveHidden(features, _kioskProbe);
   HIDDEN_SVCS.clear();
-  if (Array.isArray(features)) {
-    const installed = new Set(features);
-    for (const [id, keys] of Object.entries(GATEABLE)) {
-      if (!keys.some(k => installed.has(k))) { if (await unitInstalled(id)) continue; HIDDEN_SVCS.add(id); }
-    }
-  }
+  hidden.forEach(id => HIDDEN_SVCS.add(id));
 }
+// Guard: every registry service must have a check here, or the count drifts.
+oasisAssertChecks(SERVICES.map(s => s.id));
 async function checkService(svc) {
   try {
     const result = await Promise.race([ svc.check(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),4000)) ]);
@@ -972,7 +1274,7 @@ function aprsIconBig(s) {
   let idx = code.charCodeAt(0) - 33; if (idx < 0 || idx > 95) idx = 0;
   const col = idx % 16, row = Math.floor(idx / 16), sheet = table === '/' ? 0 : 1;
   const px = (col / 15) * 100, py = (row / 5) * 100;
-  return `<span class="hb-icon-img" style="background-image:url('/map-assets/aprs-symbols-64-${sheet}.png');background-size:1600% 600%;background-position:${px}% ${py}%"></span>`;
+  return `<span class="hb-icon-img" style="background-image:url('/maps/traffic/assets/aprs-symbols-64-${sheet}.png');background-size:1600% 600%;background-position:${px}% ${py}%"></span>`;
 }
 // Distance-alert band, mirroring the map/index (red <2km · amber <5km · green ≤15km).
 function _distBandColor(lat, lon) {
@@ -1112,7 +1414,7 @@ function renderSats() {
 // ── Traffic + satellites init/timers ─────────────────────────────────────────
 // ── SDR flow meters (footer) ─────────────────────────────────────────────────
 // Blue bar = signal flowing, red = silent — proves the RTL-SDRs are truly
-// receiving, not just "unit up". Gentle cadence for the Pi Zero; the APRS probe
+// receiving, not just "unit up". Gentle cadence for the Pi; the APRS probe
 // runs a ~1s tcpdump server-side, so it's gated on the feed unit being active.
 const FEED_FLOW_MS = 4000;
 const ADSB_NOMINAL_SAMPLES_PER_SEC = 2_000_000;   // ~RTL-SDR's 2.4 MSPS default
@@ -1153,6 +1455,201 @@ async function pollAdsbFlow() {
 }
 
 loadHomeCoords();
+// ── Wi-Fi pill + sheet (endpoints & sheet logic shared with index.html) ──────
+// Pill: no icon — SSID in white, signal % coloured by strength; the OASIS AP
+// shows blue; no link shows red. The signal % comes from the scan's in-use row
+// (nmcli SIGNAL 0–100), so the pill needs no change to the privileged helper.
+let _wifiCurrentSsid = null;
+let _wifiMode = null;   // 'ap' | 'client' | 'none' | null — also read by the wlrf (Winlink RF) check
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+async function refreshWifi() {
+  const pill = document.getElementById('wifipill');
+  if (!pill) return;
+  try {
+    const r = await fetch('/api/wifi/status', { cache: 'no-store' });
+    const d = await r.json().catch(() => ({}));
+    _wifiMode = (d && d.supported) ? (d.mode || 'none') : null;
+    // In-use signal (nmcli SIGNAL) — colours the SSID only; never shown as a number.
+    // A hosting radio can't scan, so this is fetched for a client link only.
+    let sig = null;
+    if (d && d.supported && d.mode === 'client') {
+      try {
+        const sr = await fetch('/api/wifi/scan', { cache: 'no-store' });
+        const s = await sr.json().catch(() => ({}));
+        sig = oasisWifiSignal(s, d.ssid);   // in_use flag, else match SSID by name
+      } catch (_) { /* leave sig null → SSID shows in neutral tone */ }
+    }
+    const p = oasisWifiPill(d, sig);          // shared with index.html
+    if (!p) { pill.style.display = 'none'; return; }   // non-Linux / helper absent
+    pill.style.display = '';
+    pill.className = 'wifipill wtone-' + p.tone;   // border + text tone (shared CSS)
+    pill.textContent = p.text;
+    pill.title = p.tone === 'ap'
+      ? 'Hosting the OASIS access point · http://' + (d.ap_ip || '10.42.0.1') + ':8083 · tap to change'
+      : p.tone === 'none'
+        ? 'Not connected · tap to join a network or raise the OASIS AP'
+        : 'Connected to ' + d.ssid + ' · tap to change network';
+  } catch (e) {
+    pill.style.display = 'none';
+  }
+}
+
+function openWifiModal() { document.getElementById('wifi-modal').style.display = 'flex'; scanWifi(); }
+function closeWifiModal() { document.getElementById('wifi-modal').style.display = 'none'; }
+
+function wifiSignalBars(sig) {
+  const n = sig >= 75 ? 4 : sig >= 50 ? 3 : sig >= 25 ? 2 : 1;
+  return '▂▄▆█'.slice(0, n) + '·'.repeat(4 - n);
+}
+
+async function scanWifi() {
+  const list   = document.getElementById('wifi-list');
+  const status = document.getElementById('wifi-modal-status');
+  const rescan = document.getElementById('wifi-rescan');
+  status.innerHTML = 'Scanning…';
+  list.innerHTML = '';
+  if (rescan) rescan.disabled = true;
+  try {
+    const [sr, cr] = await Promise.all([
+      fetch('/api/wifi/scan',   { cache: 'no-store' }),
+      fetch('/api/wifi/status', { cache: 'no-store' }),
+    ]);
+    const s = await sr.json().catch(() => ({}));
+    const c = await cr.json().catch(() => ({}));
+    const forgetBtn = document.getElementById('wifi-forget');
+    _wifiCurrentSsid = null;
+    if (c && c.supported) {
+      if (c.mode === 'ap') {
+        status.innerHTML = '<span class="ap">Hosting AP “OASIS”</span> · http://' + (c.ap_ip || '10.42.0.1') + ':8083';
+      } else if (c.mode === 'client' && c.ssid) {
+        _wifiCurrentSsid = c.ssid;
+        status.innerHTML = 'Connected to <span class="ok">' + escapeHtml(c.ssid) + '</span>';
+      } else {
+        status.textContent = 'Not connected to any network.';
+      }
+    } else {
+      status.textContent = '';
+    }
+    if (forgetBtn) forgetBtn.style.display = _wifiCurrentSsid ? '' : 'none';
+    if (!s || !s.ok) {
+      const reason = s && s.reason === 'no-privilege'
+        ? 'Wi-Fi controls not authorised — run scripts/enable-ap-fallback.py.'
+        : 'Could not scan for networks.';
+      list.innerHTML = '<div class="wifi-msg err">' + reason + '</div>';
+      return;
+    }
+    if (!s.networks.length) { list.innerHTML = '<div class="wifi-msg">No networks in range.</div>'; return; }
+    list.innerHTML = '';
+    s.networks.forEach(net => {
+      const row = document.createElement('div');
+      row.className = 'wifi-row' + (net.in_use ? ' current' : '');
+      row.innerHTML =
+        '<span class="wifi-row-name">' + escapeHtml(net.ssid) + '</span>' +
+        '<span class="wifi-row-meta">' +
+          (net.in_use ? '<span class="wifi-cur-tag">connected</span>' : '') +
+          (net.secure ? '<span class="wifi-lock">&#128274;</span>' : '') +
+          '<span title="' + net.signal + '%">' + wifiSignalBars(net.signal) + '</span>' +
+        '</span>';
+      row.onclick = () => showWifiConnectForm(row, net);
+      list.appendChild(row);
+    });
+  } catch (e) {
+    status.textContent = '';
+    list.innerHTML = '<div class="wifi-msg err">Scan failed: ' + escapeHtml(e.message) + '</div>';
+  } finally {
+    if (rescan) rescan.disabled = false;
+  }
+}
+
+function showWifiConnectForm(row, net) {
+  document.querySelectorAll('.wifi-connect-form').forEach(f => f.remove());
+  if (net.in_use) return;
+  const form = document.createElement('div');
+  form.className = 'wifi-connect-form';
+  form.innerHTML = net.secure
+    ? '<input type="password" id="wifi-pw" placeholder="Password (8–63 chars)" autocomplete="off" maxlength="63">' +
+      '<div class="wifi-connect-row">' +
+        '<button class="wifi-btn primary" id="wifi-go">Connect</button>' +
+        '<button class="wifi-btn" id="wifi-cancel">Cancel</button>' +
+      '</div>' +
+      '<div class="wifi-msg" id="wifi-form-msg"></div>'
+    : '<div class="wifi-msg err">Open networks aren’t supported — choose a secured network.</div>' +
+      '<div class="wifi-connect-row"><button class="wifi-btn" id="wifi-cancel">Close</button></div>';
+  row.insertAdjacentElement('afterend', form);
+  const cancel = form.querySelector('#wifi-cancel');
+  if (cancel) cancel.onclick = () => form.remove();
+  const go = form.querySelector('#wifi-go');
+  const pw = form.querySelector('#wifi-pw');
+  if (pw) pw.focus();
+  if (go) {
+    go.onclick = () => connectWifi(net.ssid, pw.value, form);
+    if (pw) pw.onkeydown = (e) => { if (e.key === 'Enter') connectWifi(net.ssid, pw.value, form); };
+  }
+}
+
+async function connectWifi(ssid, password, form) {
+  const msg = form.querySelector('#wifi-form-msg');
+  const go  = form.querySelector('#wifi-go');
+  if ((password || '').length < 8 || password.length > 63) {
+    if (msg) { msg.className = 'wifi-msg err'; msg.textContent = 'Password must be 8–63 characters.'; }
+    return;
+  }
+  if (msg) { msg.className = 'wifi-msg'; msg.textContent = 'Connecting… (the OASIS AP will drop)'; }
+  if (go) go.disabled = true;
+  try {
+    const r = await fetch('/api/wifi/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+      body: JSON.stringify({ ssid, password }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      if (msg) { msg.className = 'wifi-msg ok'; msg.textContent = 'Connected to ' + ssid + '.'; }
+      setTimeout(() => { refreshWifi(); scanWifi(); }, 1500);
+    } else {
+      if (msg) { msg.className = 'wifi-msg err'; msg.textContent = (d && d.error) || ('HTTP ' + r.status); }
+      if (go) go.disabled = false;
+    }
+  } catch (e) {
+    if (msg) { msg.className = 'wifi-msg'; msg.textContent =
+      'Request sent — if the page dropped, reconnect to “' + ssid + '” and reopen the dashboard.'; }
+  }
+}
+
+async function forgetWifi() {
+  const ssid = _wifiCurrentSsid;
+  if (!ssid) return;
+  if (!confirm('Forget “' + ssid + '”?\n\nThe device will disconnect from this network and raise the ' +
+               'OASIS access point. If you are viewing this page over that Wi-Fi, the connection will drop — ' +
+               'rejoin the OASIS AP.')) return;
+  const btn = document.getElementById('wifi-forget');
+  const status = document.getElementById('wifi-modal-status');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Forgetting “' + ssid + '”…';
+  try {
+    const r = await fetch('/api/wifi/forget', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      setTimeout(() => { refreshWifi(); scanWifi(); }, 2000);
+    } else {
+      if (status) status.textContent = '';
+      alert('Could not forget network:\n' + ((d && d.error) || ('HTTP ' + r.status)));
+      if (btn) btn.disabled = false;
+    }
+  } catch (e) {
+    setTimeout(() => { refreshWifi(); scanWifi(); }, 2500);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+refreshWifi();        setInterval(refreshWifi, 30000);
+
 fetchAPRS();          setInterval(fetchAPRS, 10000);
 refreshAdsb();        setInterval(refreshAdsb, 5000);
 refreshAdsbRecent();  setInterval(refreshAdsbRecent, 60000);
@@ -1166,4 +1663,127 @@ loadInstalled().then(() => {
   const activeN = SERVICES.filter(s => !HIDDEN_SVCS.has(s.id)).length || 1;
   setInterval(pingNext, Math.round(16000 / activeN));
 });
+</script>
+
+<script>
+/* SRV OPS — HW/SRV assignment matrix (touch console). Wired to
+   /api/hardware/console via the shared common/js/hw-console.js; the decision
+   logic (cstate/flip/rail health) and endpoint contract are shared with the
+   desktop console (index.html) so the two can't drift. Kiosk owns only its
+   touch-shaped render. */
+(function(){
+  var mx = document.getElementById('so-mx');
+  var hintEl = document.getElementById('so-hint');
+  var stopAllBtn = document.getElementById('so-stopall');
+  if (!mx || !hintEl) return;
+  // Padlock icons — identical SVGs to the index console (currentColor).
+  var LOCK_CLOSED = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.2" rx="1.3" fill="currentColor"/><path d="M5 7.2V5a3 3 0 0 1 6 0v2.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  var LOCK_OPEN = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.2" rx="1.3" fill="currentColor"/><path d="M5 7.2V5a3 3 0 0 1 5.9-.55" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  var state = { services: [], devices: [], warnings: [] };
+  var IDLE = 'Tap a toggle to route · lock a device to protect it';
+  var msgT;
+  function message(text, kind){
+    hintEl.textContent = text;
+    hintEl.className = 'so-hint so-' + (kind || 'info');
+    clearTimeout(msgT);
+    if (kind !== 'idle') msgT = setTimeout(function(){ hintEl.className = 'so-hint'; hintEl.textContent = IDLE; }, 3400);
+  }
+  function svcName(id){ var s = state.services.find(function(x){ return x.id === id; }); return s ? s.name : (id || '—'); }
+  function refresh(){ return oasisHwConsole.fetchState().then(function(s){ state = s; render(); }).catch(function(){}); }
+
+  function flip(dev, svc){
+    var plan = oasisFlipPlan(dev, svc);
+    if (plan.action === 'none') return;
+    if (plan.action === 'locked'){ message(dev.label + ' is locked on ' + svcName(dev.assigned) + ' — unlock to move it.', 'warn'); return; }
+    if (plan.action === 'stop'){
+      oasisHwConsole.serviceStop(svc.id).then(function(){ message('■ Stopped ' + svc.name + ' on ' + dev.label, 'info'); refresh(); });
+      return;
+    }
+    oasisHwConsole.route(svc.id, dev.id).then(function(res){
+      if (res.status >= 400){
+        res.json().then(function(b){
+          var loc = b.reason && String(b.reason).indexOf('locked') >= 0;
+          message(loc ? svc.name + ' is locked — unlock to move it.' : '⚠ ' + (b.error || 'route failed'), 'warn');
+        }); return;
+      }
+      message('▶ ' + svc.name + ' → ' + dev.label, 'ok'); refresh();
+    });
+  }
+  function toggleLock(dev){
+    if (!dev.assigned && !dev.locked){ message(dev.label + ' has nothing assigned to lock.', 'info'); return; }
+    var want = !dev.locked;
+    oasisHwConsole.lock(dev.id, want).then(function(){
+      message(want ? 'Locked ' + dev.label : 'Unlocked ' + dev.label, 'lock'); refresh();
+    });
+  }
+
+  function render(){
+    var services = state.services || [], devices = state.devices || [];
+    mx.style.gridTemplateColumns = '13rem repeat(' + (services.length || 1) + ',1fr)';
+    mx.innerHTML = '';
+    var hw = document.createElement('div'); hw.className = 'so-mh hw'; hw.textContent = 'HW'; mx.appendChild(hw);
+    services.forEach(function(s){ var h = document.createElement('div'); h.className = 'so-mh'; h.textContent = s.name; mx.appendChild(h); });
+    devices.forEach(function(dev, i){
+      var last = i === devices.length - 1 ? ' so-rlast' : '';
+      var cell = document.createElement('div'); cell.className = 'so-hwc' + last;
+      // Serial line only when it adds info — most labels already carry it (e.g. "RTL-SDR (00001000)").
+      var sub = (dev.serial && dev.label.indexOf(dev.serial) < 0) ? '<div class="sr">' + esc(dev.serial) + '</div>' : '';
+      cell.innerHTML = '<div><div class="nm">' + esc(dev.label) + '</div>' + sub + '</div>';
+      var lk = document.createElement('button'); lk.type = 'button'; lk.className = 'so-lk' + (dev.locked ? ' locked' : '');
+      lk.innerHTML = dev.locked ? LOCK_CLOSED : LOCK_OPEN;
+      lk.title = dev.locked ? 'Unlock ' + dev.label : 'Lock ' + dev.label + ' on its current service';
+      lk.setAttribute('aria-label', lk.title);
+      lk.onclick = function(){ toggleLock(dev); };
+      cell.appendChild(lk); mx.appendChild(cell);
+      services.forEach(function(svc){
+        var wrap = document.createElement('div'); wrap.className = 'so-mc' + last;
+        var st = oasisCstate(dev, svc);
+        if (st === 'na'){ wrap.innerHTML = '<span class="so-na">·</span>'; }
+        else {
+          var t = document.createElement('button'); t.type = 'button';
+          t.className = 'so-tog' + (st === 'on' ? ' on green' : st === 'stopped' ? ' on amber' : '') + (dev.locked ? ' frozen' : '');
+          var lab = svc.name + ' on ' + dev.label + ' — ' + (st === 'on' ? 'running' : st === 'stopped' ? 'assigned, stopped' : 'off');
+          t.title = lab; t.setAttribute('aria-label', lab); t.setAttribute('role', 'switch'); t.setAttribute('aria-checked', st === 'on' ? 'true' : 'false');
+          t.onclick = function(){ flip(dev, svc); };
+          wrap.appendChild(t);
+        }
+        mx.appendChild(wrap);
+      });
+    });
+  }
+
+  if (stopAllBtn) stopAllBtn.onclick = function(){ oasisHwConsole.stopAll().then(function(){ message('■ STOP ALL — every service stopped', 'warn'); refresh(); }); };
+
+  // ── Resource guardian: a server-side thread arms the STOP-ALL countdown even
+  // with no browser open. Poll it (cheap, cached) and show the fixed banner +
+  // Cancel — independent of whether the SRV OPS card is open.
+  var gBanner = document.getElementById('so-guardian'), gMsg = document.getElementById('so-g-msg');
+  var gWasTripped = false;
+  var G_WHY = { temp_c: 'Overheating', cpu_pct: 'CPU overload', mem_pct: 'Memory critical' };
+  function renderGuardian(g){
+    if (g && g.mode === 'armed'){
+      gBanner.hidden = false;
+      var n = (g.seconds_left != null) ? g.seconds_left : 0;
+      gMsg.textContent = (G_WHY[g.reason] || 'Overload') + ' — STOP ALL in ' + n + 's';
+      gWasTripped = false;
+    } else {
+      gBanner.hidden = true;
+      if (g && g.mode === 'tripped' && !gWasTripped){ gWasTripped = true; message('■ Guardian stopped all services (' + (G_WHY[g.reason] || 'overload') + ')', 'warn'); }
+      if (!g || g.mode !== 'tripped') gWasTripped = false;
+    }
+  }
+  function pollGuardian(){ oasisHwConsole.guardianState().then(renderGuardian).catch(function(){}); }
+  if (gBanner){
+    document.getElementById('so-g-cancel').onclick = function(){
+      oasisHwConsole.guardianCancel().then(function(){ gBanner.hidden = true; message('Guardian countdown cancelled — you have the helm', 'info'); });
+    };
+    pollGuardian();
+    setInterval(pollGuardian, 2000);
+  }
+
+  // Opened from the svcbar pill; fetch fresh on open and poll while visible.
+  window.openSrvOps = function(){ openOv('srvops'); refresh(); };
+  message(IDLE, 'idle');
+  setInterval(function(){ var ov = document.getElementById('ov-srvops'); if (ov && ov.classList.contains('open')) refresh(); }, 5000);
+})();
 </script>

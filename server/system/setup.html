@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OASIS Setup</title>
+<title>OASIS - Setup</title>
 <link rel="stylesheet" href="../../css/common.css">
 <style>
 .setup-panel {
@@ -119,7 +119,7 @@
             title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
     <a class="home-link" href="/">⌂ HOME</a>
   </div>
-  <h1>OASIS Setup</h1>
+  <h1>Setup</h1>
   <p>Install and configure OASIS features.</p>
 </header>
 
@@ -152,6 +152,7 @@
           <label class="setup-check"><input type="checkbox" data-feature="winlink"> winlink (+ direwolf)</label>
           <label class="setup-check"><input type="checkbox" data-feature="kiwix"> kiwix</label>
           <label class="setup-check"><input type="checkbox" data-feature="openwebrx"> openwebrx</label>
+          <label class="setup-check"><input type="checkbox" data-feature="rtl-sdr-feed"> rtl-feed (APRS SDR &rarr; GrayWolf)</label>
           <label class="setup-check"><input type="checkbox" data-feature="adsb"> adsb</label>
           <label class="setup-check"><input type="checkbox" data-feature="satellites"> satellites (+ TLE cache + pass-alert voice)</label>
         </div>
@@ -166,10 +167,11 @@
           </select>
           <label class="setup-check"><input type="checkbox" data-feature="cm4stack"> cm4stack</label>
           <label class="setup-check"><input type="checkbox" data-feature="rgb-cooling-hat"> rgb-cooling-hat</label>
+          <label class="setup-check"><input type="checkbox" data-feature="argon-fan"> argon-fan (Argon ONE, GPIO4-free)</label>
         </div>
         <div class="setup-group">
           <h4>Radio Interfaces</h4>
-          <label class="setup-check"><input type="checkbox" data-feature="rtl-sdr-feed"> rtl-sdr + rtl-feed</label>
+          <label class="setup-check"><input type="checkbox" data-feature="rtl-sdr"> rtl-sdr (driver + tools)</label>
           <label class="setup-check"><input type="checkbox" data-feature="gps"> gps (USB / autodetect)</label>
           <label class="setup-check"><input type="checkbox" data-feature="gps-l76x"> gps-L76X (UART / GPIO HAT)</label>
           <label class="setup-check"><input type="checkbox" data-feature="dra-pi-rx-led"> dra-pi + dra-rx-led</label>
@@ -258,13 +260,7 @@
         <div class="setup-hw-col">
           <div class="setup-hw-h">Radio port (Winlink)</div>
           <div id="hwRadioPorts"></div>
-          <div class="setup-hw-note">DigiRig (a lone CP210x) and DRA-Pi register automatically when present — then assign one to Winlink RF at right.</div>
-        </div>
-
-        <div class="setup-hw-col">
-          <div class="setup-hw-h">Assign to services</div>
-          <div id="hwAssignRows"></div>
-          <div class="setup-hw-msg" id="hwAssignMsg"></div>
+          <div class="setup-hw-note">DigiRig (a lone CP210x) and DRA-Pi register automatically when present. Assign devices to services from the dashboard HW/SRV matrix — Setup only detects them.</div>
         </div>
 
       </div>
@@ -288,7 +284,6 @@ let setupWinlinkPasswordChanged = false;
 const SETUP_FEATURE_ALIASES = {
   'graywolf-api': 'graywolf',
   'pat': 'winlink',
-  'rtl-sdr': 'rtl-sdr-feed',
   'rtl-feed': 'rtl-sdr-feed',
   'dra-pi': 'dra-pi-rx-led',
   'dra-rx-led': 'dra-pi-rx-led',
@@ -1128,8 +1123,10 @@ function initSetupOrchestrator() {
   const webssh = document.getElementById('setupWebssh');
   webssh.href = `http://${HOST}:${PORTS.webssh}/`;
   document.getElementById('setupRefreshHw').addEventListener('click', setupDetectHardware);
-  // Hardware card: the assign dropdowns (SDRs + radio ports auto-declare, no form).
-  document.getElementById('hwAssignRows').addEventListener('change', (e) => {
+  // Assignment moved to the dashboard HW/SRV matrix (single source of truth);
+  // Setup only detects hardware. The rows element is gone, so guard the wiring.
+  const _assignRows = document.getElementById('hwAssignRows');
+  if (_assignRows) _assignRows.addEventListener('change', (e) => {
     const sel = e.target.closest('[data-assign-service]');
     if (sel) hwAssignChange(sel.dataset.assignService, sel.value);
   });

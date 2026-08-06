@@ -345,30 +345,100 @@ def _chrony_state():
 # values agree across repeated polls. (Under gunicorn each worker samples its
 # own; they track closely since both average the same window.)
 _CPU_PCT  = None  # most recent rolling CPU%; None until the first sample lands
+_CPU_CORES = []   # most recent per-core CPU%; [] until the first sample
+_TOP_PROCS = []   # most recent top-3 procs [{name, cpu, mem}]; [] until sampled
 _THROTTLE = None  # cached _pi_throttled(); None on non-Pi
 _NET      = None  # cached _wifi_info();    None when unavailable
 _GPS      = None  # cached _gps_info();    None when gpsd unreachable
 _CHRONY   = None  # cached _chrony_state(); clock state, independent of GPS
+_COOLING  = None  # cached _cooling_status(); which fan daemon is present, or None
+
+
+# Which OASIS fan daemon feeds the CPU-card fan blade, in priority order.
+_COOLING_UNITS = (("argon", "argon-fan.service"), ("rgb", "rgb-cooling-hat.service"))
+
+
+def _cooling_status():
+    """Which OASIS cooling-fan daemon is installed, and whether it's running —
+    for the CPU card's fan blade. Returns e.g. {"kind":"argon","installed":True,
+    "running":True}, or None when neither daemon is present. Cheap (one
+    `systemctl show` per unit) and run on the sampler's slow tick, never in the
+    request path. `systemctl show` exits 0 even for an absent unit (LoadState=
+    not-found), so a missing daemon just doesn't match."""
+    for kind, unit in _COOLING_UNITS:
+        try:
+            out = subprocess.run(
+                ["systemctl", "show", unit, "-p", "LoadState", "-p", "ActiveState"],
+                capture_output=True, text=True, timeout=3).stdout
+        except Exception:
+            continue
+        props = dict(ln.split("=", 1) for ln in out.strip().splitlines() if "=" in ln)
+        if props.get("LoadState") == "loaded":
+            return {"kind": kind, "installed": True,
+                    "running": props.get("ActiveState") == "active"}
+    return None
+
+def _read_top_procs(procmap, limit=3):
+    """Top `limit` processes by CPU% over the last sample window. `procmap` is a
+    {pid: psutil.Process} whose cpu_percent() was primed one interval earlier
+    (the sampler primes before its blocking window), so cpu_percent(None) here
+    returns the delta. Best-effort: dead/denied procs are skipped. CPU% is the
+    psutil convention (can exceed 100 on multi-core, matching syscore.py)."""
+    procs = []
+    for p in procmap.values():
+        try:
+            cpu = p.cpu_percent(None) or 0.0
+            if cpu <= 0.0:
+                continue
+            with p.oneshot():
+                procs.append({
+                    "name": (p.name() or "?")[:20],
+                    "cpu":  round(cpu, 1),
+                    "mem":  round(p.memory_percent() or 0.0, 1),
+                })
+        except Exception:
+            continue
+    procs.sort(key=lambda x: x["cpu"], reverse=True)
+    return procs[:limit]
+
 
 def _sampler():
     try:
         import psutil
     except ImportError:
         psutil = None
-    global _CPU_PCT, _THROTTLE, _NET, _GPS, _CHRONY
+    global _CPU_PCT, _CPU_CORES, _TOP_PROCS, _THROTTLE, _NET, _GPS, _CHRONY, _COOLING
     if psutil:
-        psutil.cpu_percent(interval=None)          # prime the baseline
+        psutil.cpu_percent(interval=None)              # prime overall baseline
     i = 0
     while True:
         if psutil:
-            _CPU_PCT = psutil.cpu_percent(interval=2.0)  # blocks ~2s
+            # Sample processes only every ~6s to bound /proc churn on the Pi.
+            # Prime cpu_percent on PERSISTENT Process objects just before the 2s
+            # block, then read the delta after — process_iter() yields fresh
+            # objects each call, so the same instances must be held across the wait.
+            sample_procs = (i % 3 == 0)
+            procmap = {}
+            if sample_procs:
+                for p in psutil.process_iter():
+                    try:
+                        p.cpu_percent(None)
+                        procmap[p.pid] = p
+                    except Exception:
+                        pass
+            cores = psutil.cpu_percent(interval=2.0, percpu=True)   # blocks ~2s
+            _CPU_CORES = [round(c, 1) for c in cores]
+            _CPU_PCT   = round(sum(cores) / len(cores), 1) if cores else None
+            if sample_procs:
+                _TOP_PROCS = _read_top_procs(procmap)
         else:
             time.sleep(2.0)
-        if i % 5 == 0:                              # refresh ~every 10s
+        if i % 5 == 0:                                  # refresh ~every 10s
             _THROTTLE = _pi_throttled()
             _NET      = _wifi_info()
             _GPS      = _gps_info()
             _CHRONY   = _chrony_state()
+            _COOLING  = _cooling_status()
         i += 1
 
 threading.Thread(target=_sampler, name="oasis-sampler", daemon=True).start()
@@ -495,6 +565,8 @@ def api_system():
         "ip":          _lan_ip(),
         "cpu_pct":     cpu_pct,
         "cpu_count":   cpu_count,
+        "cpu_cores":   _CPU_CORES,
+        "top_procs":   _TOP_PROCS,
         "cpu_temp_c":  temp,
         "ram":         ram_info,
         "disk":        disk_info,
@@ -506,6 +578,7 @@ def api_system():
         "net":         _NET,
         "gps":         _GPS,
         "chrony":      _CHRONY,
+        "cooling":     _COOLING,
     })
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# OASIS - Off-grid Amateur Station Information Suite — launcher for Linux and macOS (terminal)
+# OASIS - Off-grid Amateur Station Integrated Suite — launcher for Linux and macOS (terminal)
 set -e
 
 # ── Resolve the suite root (this script lives in scripts/, root is one up) ────

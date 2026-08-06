@@ -27,6 +27,12 @@ STATS_PATH  = os.environ.get("ADSB_STATS_PATH", "/run/dump1090-fa/stats.json")
 API_PORT    = int(os.environ.get("ADSB_API_PORT", "8086"))
 RADIUS_KM   = float(os.environ.get("ADSB_ALERT_RADIUS_KM", "50"))
 POLL_SECS   = float(os.environ.get("ADSB_POLL_SECS", "1.0"))
+# Detailed-track retention. The poller inserts one observations row per aircraft
+# per poll; unbounded, that grew to millions of rows (a month = ~0.6 GB) and made
+# the old /recent scan pathologically slow. recent() no longer scans observations,
+# but /history still does, so keep the table bounded. 0 disables pruning.
+RETAIN_HOURS  = float(os.environ.get("ADSB_RETAIN_HOURS", "120"))   # 5 days
+PRUNE_EVERY_S = float(os.environ.get("ADSB_PRUNE_EVERY_S", "600"))
 
 _live = {"now": 0.0, "aircraft": [], "stats": None}      # last-seen snapshot
 _alerts = []                              # in-memory ring (most recent last)
@@ -47,6 +53,7 @@ def _poller():
     station = _load_station()
     writer = history.open_writer(DB_PATH)
     seen_alert = {}   # (icao, kind) -> ts, for dedupe within 300s
+    next_prune = 0.0  # prune on the first pass, then every PRUNE_EVERY_S
     while True:
         try:
             with open(JSON_PATH) as f:
@@ -85,6 +92,14 @@ def _poller():
             pass    # decoder not running yet, or too old to write stats.json
         except Exception:
             pass
+
+        if RETAIN_HOURS > 0 and time.time() >= next_prune:
+            try:
+                history.prune(writer, time.time() - RETAIN_HOURS * 3600)
+            except Exception:
+                pass
+            next_prune = time.time() + PRUNE_EVERY_S
+
         time.sleep(POLL_SECS)
 
 

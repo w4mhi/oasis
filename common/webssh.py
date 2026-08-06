@@ -61,7 +61,7 @@ def removal_record(repo_root=None):
 # upstream prebuilt static binary (single self-contained file per arch —
 # no libwebsockets/libuv runtime deps). See github.com/tsl0922/ttyd/releases.
 TTYD_ARCH = {
-    "aarch64": "aarch64",   # Pi 3/4/5, Zero 2 W (64-bit OS)
+    "aarch64": "aarch64",   # Pi 3/4/5 (64-bit OS)
     "arm64":   "aarch64",
     "armv7l":  "armhf",     # Pi 2/3/4 (32-bit OS)
     "armhf":   "armhf",
@@ -125,7 +125,7 @@ def _download_ttyd(suffix, dest, version):
     _info(f"Downloading ttyd {version} ({suffix}) ...")
     _info(f"  {url}")
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "oasis-emcomm"})
+        req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
         with urllib.request.urlopen(req, timeout=60) as resp, open(dest, "wb") as fh:
             shutil.copyfileobj(resp, fh)
         return os.path.getsize(dest) > 0
