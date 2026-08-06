@@ -53,3 +53,26 @@ test('hwConsole: exposes the console action contract', () => {
   ['fetchState', 'route', 'serviceStop', 'lock', 'stopAll', 'guardianState', 'guardianCancel']
     .forEach(k => assert.strictEqual(typeof R.oasisHwConsole[k], 'function', k + ' is a function'));
 });
+
+test('cstate: per-device eligible list overrides the kind rule', () => {
+  // A DRAWS channel-1 port is a valid 'draws' kind for winlink but an
+  // impossible target (pat cannot use AGW port 1), so it must read 'na'.
+  const svc = { id: 'winlink', kinds: ['draws'] };
+  const right = { id: 'draws-right', kind: 'draws', eligible: ['aprs'] };
+  const left = { id: 'draws-left', kind: 'draws', eligible: ['aprs', 'winlink'] };
+  assert.equal(R.oasisCstate(right, svc), 'na');
+  assert.equal(R.oasisCstate(left, svc), 'off');
+});
+
+test('cstate: falls back to the kind rule when eligible is absent', () => {
+  const svc = { id: 'winlink', kinds: ['dra-pi'] };
+  assert.equal(R.oasisCstate({ id: 'd', kind: 'dra-pi' }, svc), 'off');
+  assert.equal(R.oasisCstate({ id: 'r', kind: 'rtl-sdr' }, svc), 'na');
+});
+
+test('cstate: eligible still yields on/stopped for an assigned device', () => {
+  const svc = { id: 'winlink', kinds: ['draws'] };
+  const dev = { id: 'draws-left', kind: 'draws', eligible: ['winlink'], assigned: 'winlink' };
+  assert.equal(R.oasisCstate({ ...dev, running: true }, svc), 'on');
+  assert.equal(R.oasisCstate({ ...dev, running: false }, svc), 'stopped');
+});

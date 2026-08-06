@@ -301,7 +301,12 @@ def _console_state():
                         if any(HW._default_is_active(u) for u in HW.service_units(inv, s))),
                        None)
         assigned = running or (holders[0] if holders else None)
+        # `eligible` is per-DEVICE, unlike the per-kind `services[].kinds`: the
+        # DRAWS channel-1 port is a valid winlink KIND but an impossible target
+        # (pat cannot use AGW port 1), and the matrix must not offer a cell that
+        # could only fail.
         devices.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
+                        "eligible": HW.eligible_services(inv, did),
                         "serial": d.get("serial", ""), "locked": HW.is_locked(inv, did),
                         "assigned": assigned, "running": running is not None})
     return {"services": services, "devices": devices, "warnings": HW.warnings(inv)}

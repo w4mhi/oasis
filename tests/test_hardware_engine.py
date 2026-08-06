@@ -393,14 +393,15 @@ class DrawsDeviceModelTest(unittest.TestCase):
         self.assertIn("draws-right", inv.devices)
 
     def test_aprs_and_winlink_hold_different_ports_at_once(self):
-        """The whole point of the two-device model."""
+        """The whole point of the two-device model. Roles are fixed by the pat
+        AGW-port-0 limitation: winlink on the LEFT (ch0), aprs on the RIGHT."""
         inv = _inv()
         hardware.auto_declare_draws(self.dir, inv, True)
-        ok, _ = hardware.can_assign(inv, "aprs", "draws-left")
+        ok, _ = hardware.can_assign(inv, "winlink", "draws-left")
         self.assertTrue(ok)
-        inv.assignments["aprs"] = "draws-left"
-        ok, holder = hardware.can_assign(inv, "winlink", "draws-right")
-        self.assertTrue(ok, "winlink must be able to hold the right port while aprs holds the left")
+        inv.assignments["winlink"] = "draws-left"
+        ok, holder = hardware.can_assign(inv, "aprs", "draws-right")
+        self.assertTrue(ok, "aprs must be able to hold the right port while winlink holds the left")
         self.assertIsNone(holder)
 
     def test_a_single_port_is_still_exclusive(self):
@@ -536,3 +537,48 @@ class DrawsLabelRefreshTest(unittest.TestCase):
                    assignments={})
         hardware.auto_declare_draws(self.dir, inv, True)
         self.assertTrue(inv.devices["draws-right"].get("locked"))
+
+
+class WinlinkDrawsChannelGuardTest(unittest.TestCase):
+    """pat (wl2k-go v1.0.1) PANICS on any AGW port but 0, so Winlink is only
+    ever valid on the DRAWS channel-0 port. Offering the other one lets an
+    operator pick a combination that can only fail — refuse it in the engine and
+    hide it in the console."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+        self.inv = _inv()
+        hardware.auto_declare_draws(self.dir, self.inv, True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_winlink_may_take_the_channel0_port(self):
+        ok, _ = hardware.can_assign(self.inv, "winlink", "draws-left")
+        self.assertTrue(ok)
+
+    def test_winlink_is_refused_the_channel1_port(self):
+        ok, holder = hardware.can_assign(self.inv, "winlink", "draws-right")
+        self.assertFalse(ok, "pat cannot use AGW port 1 — must not be offered")
+        self.assertIsNone(holder)
+
+    def test_aprs_may_still_take_either_port(self):
+        for did in ("draws-left", "draws-right"):
+            ok, _ = hardware.can_assign(self.inv, "aprs", did)
+            self.assertTrue(ok, did)
+
+    def test_assign_raises_for_the_channel1_port(self):
+        self.assertRaises(ValueError, hardware.assign,
+                          self.dir, self.inv, "winlink", "draws-right")
+
+    def test_other_kinds_are_unaffected(self):
+        inv = _inv(devices={"dg": _dev("dg", "digirig"), "dp": _dev("dp", "dra-pi")})
+        for did in ("dg", "dp"):
+            ok, _ = hardware.can_assign(inv, "winlink", did)
+            self.assertTrue(ok, did)
+
+    def test_eligible_services_exclude_winlink_on_channel1(self):
+        self.assertIn("winlink", hardware.eligible_services(self.inv, "draws-left"))
+        self.assertNotIn("winlink", hardware.eligible_services(self.inv, "draws-right"))
+        self.assertIn("aprs", hardware.eligible_services(self.inv, "draws-right"))

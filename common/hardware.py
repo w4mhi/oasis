@@ -326,6 +326,28 @@ def can_start(inv, service, is_active=_default_is_active):
     return True, ""
 
 
+def _device_ok_for_service(device, service):
+    """Per-DEVICE eligibility, beyond the per-kind rule.
+
+    Winlink on DRAWS is only valid on the channel-0 port: pat (wl2k-go v1.0.1)
+    panics on any AGW port but 0, so the channel-1 port could never work. Offer
+    it and the operator picks a combination that can only fail — so it is
+    refused here and hidden in the console (see eligible_services)."""
+    if service == "winlink" and device.get("kind") == "draws":
+        return int(device.get("channel") or 0) == 0
+    return True
+
+
+def eligible_services(inv, device_id):
+    """Which services may be assigned this device — kind rule AND the
+    per-device rules above. Drives the console matrix so an impossible cell is
+    never offered."""
+    device = inv.devices.get(device_id) or {}
+    kind = device.get("kind")
+    return [s for s, kinds in DEVICE_KIND_FOR_SERVICE.items()
+            if kind in kinds and _device_ok_for_service(device, s)]
+
+
 def can_assign(inv, service, device_id):
     """(ok, holder). holder is the blocking service's name, or None. Refuses the
     wrong kind, and — for exclusive (digirig/dra-pi) devices only — a device
@@ -336,6 +358,8 @@ def can_assign(inv, service, device_id):
     kind = inv.devices[device_id]["kind"]
     allowed_kinds = DEVICE_KIND_FOR_SERVICE.get(service)
     if allowed_kinds is not None and kind not in allowed_kinds:
+        return False, None
+    if not _device_ok_for_service(inv.devices[device_id], service):
         return False, None
     # rtl-sdr is a SHARED resource: aprs/adsb/openwebrx may all be assigned the
     # same dongle (advisory bookkeeping — §2). Exclusivity is acquired at start
