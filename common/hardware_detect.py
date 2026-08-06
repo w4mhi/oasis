@@ -135,6 +135,16 @@ def dra_pi_present(alsa_cards):
                for c in alsa_cards)
 
 
+def draws_present(alsa_cards):
+    """True if `aplay -l` shows the DRAWS HAT's ALSA card. Like the DRA-Pi this
+    is an I2C-controlled HAT (TLV320AIC3204), never visible in lsusb; the plain
+    `dtoverlay=draws` registers a simple-card named exactly "draws", which is
+    the reliable "HAT wired up and overlay loaded" signal. Matched on the card
+    ID as a whole word-ish token so an unrelated card whose description merely
+    mentions the word cannot trigger a false positive."""
+    return any((c.get("id") or "").strip().lower() == "draws" for c in alsa_cards)
+
+
 _TTY_SERIAL_RE = re.compile(r'^(ttyUSB\d+|ttyACM\d+|ttyAMA\d+|ttyS\d+|serial0|serial1)$')
 _TTY_USB_RE = re.compile(r'^(ttyUSB|ttyACM)')
 
@@ -256,6 +266,16 @@ def detect_dra_pi():
     if sys.platform != "linux":
         return False
     return dra_pi_present(parse_aplay_cards(_run_text(["aplay", "-l"])))
+
+
+def detect_draws():
+    """True if the DRAWS HAT is present — its `draws` ALSA card shows, i.e. the
+    overlay is loaded. Deterministic like the DRA-Pi (card present ⇒ fixed ALSA
+    name + fixed PTT GPIOs on both ports), so a boolean is all auto-declare
+    needs; it then declares BOTH ports. Linux only."""
+    if sys.platform != "linux":
+        return False
+    return draws_present(parse_aplay_cards(_run_text(["aplay", "-l"])))
 
 
 def scan():

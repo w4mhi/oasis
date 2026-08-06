@@ -114,6 +114,11 @@ def removal_record(repo_root=None):
 MODEM_KISS_PORT    = 8001
 MODEM_ADEVICE      = "plughw:audioinjectorpi,0"   # DRA WM8731 (name-based plughw)
 MODEM_PTT_BCM      = 12                            # BCM GPIO wired to the DIN8 PTT (DRA red-LED line)
+# DRAWS HAT: one stereo codec, addressed as a single ALSA card. Both mDin6 ports
+# live on it as the two channels of ONE Direwolf instance (two processes cannot
+# open the same PCM), so the ADEVICE is identical for both — the port is chosen
+# by Direwolf channel / pat's agwpe.radio_port, not by a different card.
+MODEM_DRAWS_ADEVICE = "plughw:draws,0"
 
 # Two RF interfaces are supported; BOTH config files are written to disk and the
 # pat-direwolf service points at the selected one (default DRA). DigiRig Mobile
@@ -481,16 +486,32 @@ def install_direwolf(repo_root=None):
     return True
 
 
-def compute_ptt_gpio(override=None):
-    """Return the sysfs global GPIO number for the PTT line (BCM 12).
+def ptt_bcm(device):
+    """The BCM GPIO number a radio-port device keys, from its `ptt` field.
+
+    Devices record PTT as a `gpioNN` token (DRA-Pi `gpio12`; DRAWS `gpio12` for
+    the left port and `gpio23` for the right — the HAT swaps them relative to
+    the UDRC II). Anything else (a DigiRig's serial by-id path, missing) falls
+    back to the historical default so existing callers are unaffected. Pure."""
+    token = ((device or {}).get("ptt") or "").strip().lower()
+    if token.startswith("gpio") and token[4:].isdigit():
+        return int(token[4:])
+    return MODEM_PTT_BCM
+
+
+def compute_ptt_gpio(override=None, bcm=None):
+    """Return the sysfs global GPIO number for a PTT line (default BCM 12).
 
     Modern kernels base the SoC gpiochip at a non-zero offset (e.g. 512), so the
-    sysfs number Direwolf must export is base + 12, not 12. Auto-detect the 40-pin
-    header bank and add 12. An explicit override wins. Returns None when it can't
-    be determined (non-Pi, or no matching chip) — the caller warns and the
-    operator sets --ptt-gpio."""
+    sysfs number Direwolf must export is base + BCM, not BCM. Auto-detect the
+    40-pin header bank and add it. `bcm` selects the line — needed since DRAWS
+    puts its two ports on BCM 12 and 23. An explicit override wins. Returns None
+    when it can't be determined (non-Pi, or no matching chip) — the caller warns
+    and the operator sets --ptt-gpio."""
     if override is not None:
         return override
+    if bcm is None:
+        bcm = MODEM_PTT_BCM
     best = None  # (base, ngpio, label)
     for chip in sorted(glob.glob("/sys/class/gpio/gpiochip*")):
         try:
@@ -506,7 +527,7 @@ def compute_ptt_gpio(override=None):
                 best = (base, ngpio, label)
     if best is None:
         return None
-    return best[0] + MODEM_PTT_BCM
+    return best[0] + bcm
 
 
 def _sync_ptt_line(cfg_path, ptt_gpio, user):
@@ -845,11 +866,56 @@ def radio_port_config(device):
     kind = device.get("kind")
     if kind == "dra-pi":
         return (MODEM_ADEVICE, compute_ptt_gpio())
+    if kind == "draws":
+        # Same card for both ports; the PTT line is what differs (left BCM 12,
+        # right BCM 23). Which channel pat talks to is pat_radio_port()'s job.
+        return (MODEM_DRAWS_ADEVICE, compute_ptt_gpio(bcm=ptt_bcm(device)))
     if kind == "digirig":
         adevice = device.get("alsa") or detect_usb_adevice()
         ptt = device.get("ptt") or detect_digirig_serial()
         return (adevice, ptt)
     return (None, None)
+
+
+def pat_config_path():
+    """Path to pat's config.json for the target user (no I/O beyond the lookup)."""
+    _user, home = target_user_home()
+    return os.path.join(home, ".config", "pat", "config.json")
+
+
+def set_pat_radio_port(repo_root, radio_port):
+    """Point pat's AGWPE transport at `radio_port`, leaving the rest of the
+    operator's config alone. Returns True if the file changed.
+
+    Surgical on purpose: pat's config carries the Winlink password, so this
+    reads/edits/writes rather than regenerating. A missing or unparseable config
+    is left untouched — install writes it, this only retargets the channel."""
+    path = pat_config_path()
+    try:
+        with open(path) as fh:
+            cfg = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    agwpe = cfg.setdefault("agwpe", {})
+    if not isinstance(agwpe, dict) or agwpe.get("radio_port") == radio_port:
+        return False
+    agwpe["radio_port"] = radio_port
+    if not agwpe.get("addr"):
+        agwpe["addr"] = f"127.0.0.1:{MODEM_AGW_PORT}"
+    user, _home = target_user_home()
+    _save_config(path, cfg, user)
+    return True
+
+
+def pat_radio_port(device):
+    """pat's `agwpe.radio_port` — the AGW channel Winlink transmits on.
+
+    Everything except DRAWS is a single-port modem on channel 0. On DRAWS the
+    two mDin6 connectors are two channels of one Direwolf, so Winlink rides
+    whichever channel its assigned port owns (right = 1). Pure."""
+    if (device or {}).get("kind") == "draws":
+        return int(device.get("channel") or 0)
+    return 0
 
 
 def apply(repo_root, device):
@@ -869,10 +935,18 @@ def apply(repo_root, device):
     if not device:
         return
     kind = device.get("kind")
-    if kind not in ("dra-pi", "digirig"):
+    if kind not in ("dra-pi", "digirig", "draws"):
         return  # not a radio port (e.g. rtl-sdr) — nothing to bind
     adevice, ptt = radio_port_config(device)
     callsign = station_callsign(repo_root) or ""
+    if kind == "draws":
+        # DRAWS deliberately does NOT template pat-direwolf here. Both ports are
+        # channels of one shared TNC that also serves APRS, so writing a
+        # single-channel config would fight the other service for the card. The
+        # shared direwolf-draws service owns it; all that is bound here is pat's
+        # AGW channel. See specs/2026-07-28-draws-gobox-p2-tnc-wiring-design.md.
+        set_pat_radio_port(repo_root, pat_radio_port(device))
+        return
     if kind == "dra-pi":
         write_direwolf_config(callsign, adevice, ptt)
     else:

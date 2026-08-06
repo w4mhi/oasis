@@ -112,6 +112,11 @@ def api_hardware_devices():
     dra_present = HD_detect.detect_dra_pi()
     HW.reconcile_dra_pi(SUITE_ROOT, inv, dra_present)
     HW.auto_declare_dra_pi(SUITE_ROOT, inv, dra_present)
+    # DRAWS declares BOTH mDin6 ports as separate devices (see HW.DRAWS_PORTS),
+    # so aprs can hold the left while winlink holds the right.
+    draws_present = HD_detect.detect_draws()
+    HW.reconcile_draws(SUITE_ROOT, inv, draws_present)
+    HW.auto_declare_draws(SUITE_ROOT, inv, draws_present)
     # Re-template direwolf only when winlink's assigned device actually changed
     # (a reconcile-release when its dongle is unplugged) — merely declaring a
     # newly-plugged device no longer assigns it, so declaration alone is a no-op.

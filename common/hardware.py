@@ -13,7 +13,20 @@ import sys
 
 from common import config_paths
 
-VALID_KINDS = {"rtl-sdr", "digirig", "dra-pi"}
+VALID_KINDS = {"rtl-sdr", "digirig", "dra-pi", "draws"}
+
+# The DRAWS HAT is a single stereo codec exposing TWO independent radio ports.
+# It is declared as TWO devices, not one, so the existing per-device exclusivity
+# rule (see can_assign) lets aprs hold the left port while winlink holds the
+# right AT THE SAME TIME — no non-exclusive special case anywhere in the engine.
+# PTT GPIOs are swapped relative to the UDRC II; `channel` is the Direwolf
+# channel that owns the port in the shared 2-channel TNC config.
+DRAWS_PORTS = (
+    {"id": "draws-left",  "kind": "draws", "ptt": "gpio12", "alsa": "draws",
+     "channel": 0, "label": "DRAWS left (APRS)"},
+    {"id": "draws-right", "kind": "draws", "ptt": "gpio23", "alsa": "draws",
+     "channel": 1, "label": "DRAWS right (Winlink)"},
+)
 
 # Logical service -> the systemd unit(s) it starts. One unit per service in
 # Slice 1; dual-mode selection (aprs's SDR-vs-radio-port TNC modes) and
@@ -38,8 +51,8 @@ SERVICE_UNITS = {
 
 # Which device kind(s) each logical service may be assigned.
 DEVICE_KIND_FOR_SERVICE = {
-    "aprs":      {"rtl-sdr", "digirig", "dra-pi"},
-    "winlink":   {"digirig", "dra-pi"},
+    "aprs":      {"rtl-sdr", "digirig", "dra-pi", "draws"},
+    "winlink":   {"digirig", "dra-pi", "draws"},
     "adsb":      {"rtl-sdr"},
     "openwebrx": {"rtl-sdr"},
     "satellites": {"rtl-sdr"},
@@ -517,6 +530,37 @@ def auto_declare_dra_pi(repo_root, inv, present):
         return inv
     inv.devices["dra-pi"] = {"id": "dra-pi", "kind": "dra-pi", "ptt": "gpio12",
                              "alsa": "audioinjectorpi", "label": "DRA-Pi"}
+    save(repo_root, inv)
+    return inv
+
+
+def auto_declare_draws(repo_root, inv, present):
+    """Declare BOTH DRAWS radio ports when the `draws` ALSA card is present.
+
+    Deterministic like the DRA-Pi (fixed ALSA card + fixed PTT GPIOs), so no
+    detection ambiguity — but two records instead of one, because the HAT has
+    two independent mDin6 connectors sharing one stereo codec. Idempotent."""
+    if not present:
+        return inv
+    if any(d.get("kind") == "draws" for d in inv.devices.values()):
+        return inv
+    for port in DRAWS_PORTS:
+        inv.devices[port["id"]] = dict(port)
+    save(repo_root, inv)
+    return inv
+
+
+def reconcile_draws(repo_root, inv, present):
+    """Undeclare both DRAWS ports when the card is gone (overlay unloaded / HAT
+    removed) — the analogue of reconcile_dra_pi. Assignments are left dangling
+    so a re-detect revalidates them."""
+    if present:
+        return inv
+    removed = [did for did, d in inv.devices.items() if d.get("kind") == "draws"]
+    if not removed:
+        return inv
+    for did in removed:
+        del inv.devices[did]
     save(repo_root, inv)
     return inv
 

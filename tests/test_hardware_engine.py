@@ -339,3 +339,83 @@ class DraPiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DrawsDeviceModelTest(unittest.TestCase):
+    """The DRAWS HAT has TWO independent radio ports on one stereo codec, so it
+    is declared as TWO device records rather than one. That is what lets APRS
+    hold the left port while Winlink holds the right SIMULTANEOUSLY, under the
+    existing per-device exclusivity rule — no special non-exclusive branch."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_declares_both_ports(self):
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, True)
+        self.assertEqual(inv.devices["draws-left"],
+                         {"id": "draws-left", "kind": "draws", "ptt": "gpio12",
+                          "alsa": "draws", "channel": 0, "label": "DRAWS left (APRS)"})
+        self.assertEqual(inv.devices["draws-right"],
+                         {"id": "draws-right", "kind": "draws", "ptt": "gpio23",
+                          "alsa": "draws", "channel": 1, "label": "DRAWS right (Winlink)"})
+
+    def test_absent_declares_nothing(self):
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, False)
+        self.assertEqual(inv.devices, {})
+
+    def test_declaration_is_idempotent(self):
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, True)
+        hardware.auto_declare_draws(self.dir, inv, True)
+        self.assertEqual(len([d for d in inv.devices.values()
+                              if d.get("kind") == "draws"]), 2)
+
+    def test_reconcile_removes_both_ports_when_card_gone(self):
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, True)
+        inv.assignments["winlink"] = "draws-right"
+        hardware.reconcile_draws(self.dir, inv, False)
+        self.assertNotIn("draws-left", inv.devices)
+        self.assertNotIn("draws-right", inv.devices)
+        self.assertEqual(inv.assignments.get("winlink"), "draws-right")  # dangles
+
+    def test_reconcile_keeps_ports_when_card_present(self):
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, True)
+        hardware.reconcile_draws(self.dir, inv, True)
+        self.assertIn("draws-left", inv.devices)
+        self.assertIn("draws-right", inv.devices)
+
+    def test_aprs_and_winlink_hold_different_ports_at_once(self):
+        """The whole point of the two-device model."""
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, True)
+        ok, _ = hardware.can_assign(inv, "aprs", "draws-left")
+        self.assertTrue(ok)
+        inv.assignments["aprs"] = "draws-left"
+        ok, holder = hardware.can_assign(inv, "winlink", "draws-right")
+        self.assertTrue(ok, "winlink must be able to hold the right port while aprs holds the left")
+        self.assertIsNone(holder)
+
+    def test_a_single_port_is_still_exclusive(self):
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, True)
+        inv.assignments["aprs"] = "draws-left"
+        ok, holder = hardware.can_assign(inv, "winlink", "draws-left")
+        self.assertFalse(ok)
+        self.assertEqual(holder, "aprs")
+
+    def test_winlink_accepts_the_draws_kind(self):
+        self.assertIn("draws", hardware.DEVICE_KIND_FOR_SERVICE["winlink"])
+
+    def test_aprs_accepts_the_draws_kind(self):
+        self.assertIn("draws", hardware.DEVICE_KIND_FOR_SERVICE["aprs"])
+
+    def test_draws_is_a_valid_kind(self):
+        self.assertIn("draws", hardware.VALID_KINDS)
