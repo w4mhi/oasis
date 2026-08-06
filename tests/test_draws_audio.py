@@ -165,6 +165,31 @@ class PortsTest(unittest.TestCase):
         self.assertEqual(right["service"], "Winlink")
 
 
+class AcpIgnoreRuleTest(unittest.TestCase):
+    """Bench 2026-08-06: WirePlumber adopts the DRAWS codec as a desktop sound
+    card and re-applies its own volume after alsactl restores at boot, so PCM
+    silently reverted to the codec default (+0.5dB, ~25dB hot) on every power
+    cycle while the other 44 controls survived. ACP_IGNORE keeps it out."""
+
+    def test_rule_matches_the_card_by_alsa_id(self):
+        rule = draws_audio.build_acp_ignore_rule()
+        self.assertIn('SUBSYSTEM=="sound"', rule)
+        self.assertIn('ATTR{id}=="draws"', rule)
+
+    def test_rule_sets_acp_ignore(self):
+        self.assertIn('ENV{ACP_IGNORE}="1"', draws_audio.build_acp_ignore_rule())
+
+    def test_card_is_overridable(self):
+        self.assertIn('ATTR{id}=="udrc"', draws_audio.build_acp_ignore_rule("udrc"))
+
+    def test_rule_explains_itself(self):
+        """This one is non-obvious enough that a bare rule would look like
+        cruft to the next person reading /etc/udev/rules.d."""
+        rule = draws_audio.build_acp_ignore_rule()
+        self.assertTrue(rule.lstrip().startswith("#"))
+        self.assertIn("OASIS", rule)
+
+
 class RemovalRecordTest(unittest.TestCase):
     def test_strips_shared_overlay_and_flags_reboot(self):
         rec = draws_audio.removal_record()
@@ -172,6 +197,13 @@ class RemovalRecordTest(unittest.TestCase):
         self.assertTrue(rec["requires_reboot"])
         self.assertTrue(any("ALSA" in n for n in rec["notes"]))
         self.assertTrue(any("shared" in n for n in rec["notes"]))
+
+    def test_removes_the_acp_ignore_udev_rule(self):
+        """The rule is ours alone (unlike the shared overlay line), so uninstall
+        must take it with us — otherwise the card stays hidden from the desktop
+        audio stack after the feature is gone."""
+        rec = draws_audio.removal_record()
+        self.assertIn(draws_audio.ACP_IGNORE_RULE, rec["files"])
 
 
 class ExitCodeTest(unittest.TestCase):

@@ -21,6 +21,9 @@ UDRC II."""
 CARD = "draws"          # ALSA card name once dtoverlay=draws loads
 CARD_MATCH = "draws"    # substring used to detect it in /proc/asound/cards
 
+# Keeps PipeWire/PulseAudio off the radio codec — see build_acp_ignore_rule().
+ACP_IGNORE_RULE = "/etc/udev/rules.d/89-draws-radio-audio.rules"
+
 # NW Digital Radio known-good baseline (n7nix bin/setalsa-default.sh). Both
 # channels set symmetrically via the codec's `L,R` value syntax. (control, value)
 MIXER = [
@@ -147,13 +150,35 @@ def build_mixer_commands(card=CARD):
     return [["amixer", "-c", card, "sset", "--", ctrl, val] for ctrl, val in MIXER]
 
 
+def build_acp_ignore_rule(card=CARD):
+    """udev rule keeping the radio codec out of the desktop audio stack.
+
+    PipeWire/WirePlumber otherwise adopt the card as an ordinary sound device
+    and manage its volume, re-applying their own level AFTER alsactl restores
+    at boot. Only `PCM` regresses — the routing enums and mutes are left alone —
+    so TX deviation silently returns to the codec default (+0.5dB, ~25dB hot)
+    on every power cycle while everything else looks correct. `ACP_IGNORE` is
+    the standard opt-out and is honoured by both PipeWire and PulseAudio."""
+    return (
+        "# OASIS - keep the %s radio codec out of the desktop audio stack.\n"
+        "#\n"
+        "# Without this, PipeWire/WirePlumber claim the card and re-apply their\n"
+        "# own volume after alsactl restores it at boot, silently resetting TX\n"
+        "# deviation to the codec default (~25dB hot). Installed by\n"
+        "# features/draws-audio/install-draws-audio.py.\n"
+        'SUBSYSTEM=="sound", KERNEL=="card*", ATTR{id}=="%s", ENV{ACP_IGNORE}="1"\n'
+        % (card, card))
+
+
 def removal_record(repo_root=None):
     """Teardown record (declarative — see common/removal.py). Strip the shared
-    DRAWS overlay line; leave the persisted ALSA mixer state in place with an
-    advisory (it is shared board state — no safe automatic undo). Reboot to drop
-    the overlay. NOTE (P2): once draws-gps/draws-audio coexist, this strip must
-    become ref-safe (strip only when the last DRAWS feature is removed)."""
+    DRAWS overlay line and take our own udev rule with us; leave the persisted
+    ALSA mixer state in place with an advisory (it is shared board state — no
+    safe automatic undo). Reboot to drop the overlay. NOTE (P2): once
+    draws-gps/draws-audio coexist, this strip must become ref-safe (strip only
+    when the last DRAWS feature is removed)."""
     return {"config_lines": ["dtoverlay=draws"],
+            "files": [ACP_IGNORE_RULE],
             "notes": ["ALSA mixer state left in place (shared board state — no "
                       "safe automatic undo)."],
             "requires_reboot": True}

@@ -138,6 +138,57 @@ def ptt_reminder():
               % (port["port"], port["service"], port["gpio"]))
 
 
+def ensure_acp_ignore():
+    """Install the udev rule that keeps PipeWire/PulseAudio off the radio codec.
+
+    Idempotent; returns True when the file changed. Must run BEFORE the mixer is
+    stored, because a sound server holding the card will overwrite PCM again on
+    the next boot no matter what alsactl saved."""
+    want = draws_audio.build_acp_ignore_rule(draws_audio.CARD)
+    path = draws_audio.ACP_IGNORE_RULE
+    try:
+        with open(path) as fh:
+            if fh.read() == want:
+                _ok("Desktop audio stack already excluded (%s)." % path)
+                return False
+    except OSError:
+        pass
+
+    try:
+        draws._write_text(path, want)
+        # _write_text stages through mkstemp (0600) and `sudo cp`, which carries
+        # that mode onto a NEW file. A root-only udev rule still works, but it is
+        # wrong for /etc/udev/rules.d and makes the idempotency check above
+        # unreadable as a normal user — so every run would rewrite and
+        # re-trigger udev. Force the conventional mode.
+        subprocess.run(["sudo", "chmod", "0644", path], capture_output=True)
+    except Exception as exc:                       # noqa: BLE001 - advisory only
+        _warn("Could not write %s (%s)." % (path, exc))
+        _warn("PipeWire may reclaim the card and reset PCM on the next boot.")
+        return False
+
+    _ok("Excluded the card from PipeWire/PulseAudio (%s)." % path)
+    for cmd in (["sudo", "udevadm", "control", "--reload-rules"],
+                ["sudo", "udevadm", "trigger", "--action=add",
+                 "/sys/class/sound/card%s" % _card_index()]):
+        subprocess.run(cmd, capture_output=True)
+    _info("A reboot makes the exclusion fully effective.")
+    return True
+
+
+def _card_index():
+    """Index of the DRAWS card in /proc/asound/cards, for the udev re-trigger.
+    Falls back to a wildcard-ish empty match rather than guessing wrong."""
+    try:
+        with open("/proc/asound/cards") as fh:
+            for line in fh:
+                if draws_audio.CARD_MATCH in line.lower():
+                    return line.strip().split()[0]
+    except OSError:
+        pass
+    return ""
+
+
 def apply_mixer():
     _step(2, "Apply the DRAWS ALSA mixer routing")
     if not draws.sound_card_present(draws_audio.CARD_MATCH):
@@ -145,6 +196,8 @@ def apply_mixer():
         _info("Run the overlay phase first and reboot, then re-run to apply the mixer:")
         _info("  python3 features/draws-audio/install-draws-audio.py --config-only")
         return 1
+
+    ensure_acp_ignore()
 
     failures = 0
     for cmd in draws_audio.build_mixer_commands():
