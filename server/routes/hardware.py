@@ -391,7 +391,7 @@ def api_hardware_service_stop():
     dev = inv.assignments.get(service)
     if dev and HW.is_locked(inv, dev):     # lock protects from ANY displacement, incl. stop
         return jsonify({"ok": False, "error": "source-locked", "reason": "source-locked"}), 409
-    for unit in HW.service_units(inv, service):
+    for unit in HW.stoppable_units(inv, service):
         _systemctl_seq(unit, ["stop"])
     return jsonify({"ok": True})
 

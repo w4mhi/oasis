@@ -446,3 +446,93 @@ class DrawsServiceUnitsTest(unittest.TestCase):
         inv = _inv(devices={"draws-left": _dev("draws-left", "draws", channel=0)},
                    assignments={"aprs": "draws-left"})
         self.assertNotIn(hardware.APRS_FEED_UNIT, hardware.service_units(inv, "aprs"))
+
+
+class SharedInfrastructureUnitTest(unittest.TestCase):
+    """Regression 2026-08-06: making direwolf-draws winlink's unit let the
+    service-control STOP path stop it -- which also killed APRS (both ports are
+    channels of that one TNC) and left the Winlink card reading STOPPED. The
+    unit must still report STATUS for winlink (so an up TNC reads ON AIR) but
+    must never be stopped on a per-service action."""
+
+    def _inv_draws(self):
+        return _inv(devices={"draws-right": _dev("draws-right", "draws", channel=1),
+                             "draws-left": _dev("draws-left", "draws", channel=0)},
+                    assignments={"winlink": "draws-right"})
+
+    def test_status_still_sees_the_tnc(self):
+        self.assertEqual(hardware.service_units(self._inv_draws(), "winlink"),
+                         [hardware.DRAWS_TNC_UNIT])
+
+    def test_stoppable_units_excludes_the_shared_tnc(self):
+        self.assertEqual(hardware.stoppable_units(self._inv_draws(), "winlink"), [])
+
+    def test_stoppable_units_is_unchanged_for_ordinary_services(self):
+        inv = _inv(devices={"dra-pi": _dev("dra-pi", "dra-pi")},
+                   assignments={"winlink": "dra-pi"})
+        self.assertEqual(hardware.stoppable_units(inv, "winlink"), ["pat-direwolf"])
+
+    def test_release_does_not_stop_the_shared_tnc(self):
+        stopped = []
+        inv = self._inv_draws()
+        hardware.release(self.dir, inv, "winlink", stop_fn=stopped.append)
+        self.assertEqual(stopped, [],
+                         "unassigning winlink must not stop the shared TNC")
+
+    def test_reroute_away_does_not_stop_the_shared_tnc(self):
+        stopped = []
+        inv = self._inv_draws()
+        inv.devices["dra-pi"] = _dev("dra-pi", "dra-pi")
+        hardware.reroute(self.dir, inv, "winlink", "dra-pi",
+                         start_fn=lambda u: None, stop_fn=stopped.append)
+        self.assertNotIn(hardware.DRAWS_TNC_UNIT, stopped)
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+
+class DrawsLabelRefreshTest(unittest.TestCase):
+    """auto_declare only fires when NO draws device exists, so a box declared
+    before a label/field change keeps the stale record forever. Refresh the
+    static fields in place, without disturbing assignments or locks."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_refreshes_stale_labels_in_place(self):
+        inv = _inv(devices={
+            "draws-left": {"id": "draws-left", "kind": "draws", "ptt": "gpio12",
+                           "alsa": "draws", "channel": 0,
+                           "label": "DRAWS left (APRS)"},
+            "draws-right": {"id": "draws-right", "kind": "draws", "ptt": "gpio23",
+                            "alsa": "draws", "channel": 1,
+                            "label": "DRAWS right (Winlink)"}},
+            assignments={"winlink": "draws-right"})
+        hardware.auto_declare_draws(self.dir, inv, True)
+        self.assertEqual(inv.devices["draws-left"]["label"],
+                         "oasis-draws-aprs (left, ch0)")
+        self.assertEqual(inv.devices["draws-right"]["label"],
+                         "oasis-draws-winlink (right, ch1)")
+
+    def test_refresh_preserves_assignments(self):
+        inv = _inv(devices={"draws-right": {"id": "draws-right", "kind": "draws",
+                                            "label": "old"}},
+                   assignments={"winlink": "draws-right"})
+        hardware.auto_declare_draws(self.dir, inv, True)
+        self.assertEqual(inv.assignments.get("winlink"), "draws-right")
+
+    def test_refresh_preserves_a_lock(self):
+        """A refresh must not silently unlock a device the operator pinned."""
+        inv = _inv(devices={"draws-right": {"id": "draws-right", "kind": "draws",
+                                            "label": "old", "locked": True}},
+                   assignments={})
+        hardware.auto_declare_draws(self.dir, inv, True)
+        self.assertTrue(inv.devices["draws-right"].get("locked"))

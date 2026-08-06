@@ -79,6 +79,22 @@ APRS_FEED_UNIT = "aprs-sdr-feed"
 # not have it simply crash-loops ("Cannot get card index for audioinjectorpi").
 DRAWS_TNC_UNIT = "direwolf-draws"
 
+# Units that report STATUS for a service but must never be stopped by a
+# per-service action. The DRAWS TNC is shared infrastructure: it carries APRS on
+# channel 0 and Winlink on channel 1, so stopping it "for winlink" silently
+# takes APRS down too — and, since it is also winlink's status unit, leaves the
+# Winlink card reading STOPPED with no way back short of a manual start. It is
+# enabled at boot and meant to stay up, like the sound card it owns.
+NEVER_STOP_UNITS = frozenset({DRAWS_TNC_UNIT})
+
+
+def stoppable_units(inv, service):
+    """service_units() minus shared infrastructure — what a per-service STOP may
+    actually stop. Use this for any stop/displace path; use service_units() for
+    status, since an always-on shared unit is still the honest 'is this service
+    on air?' signal."""
+    return [u for u in service_units(inv, service) if u not in NEVER_STOP_UNITS]
+
 
 def _assigned_kind(inv, service):
     dev_id = inv.assignments.get(service)
@@ -342,7 +358,12 @@ def release(repo_root, inv, service, stop_fn=None):
     is cleared — no auto-restart of anything else."""
     if service in inv.assignments:
         if stop_fn is not None:
-            for unit in SERVICE_UNITS.get(service, []):
+            # Resolve units against the CURRENT assignment, before it is cleared:
+            # they are mode-dependent (aprs's SDR feed, winlink's DRAWS TNC), so
+            # the raw SERVICE_UNITS dict would stop the wrong thing — and after
+            # the delete the mode is gone. stoppable_units keeps shared
+            # infrastructure (the DRAWS TNC) out of it.
+            for unit in stoppable_units(inv, service):
                 stop_fn(unit)
         del inv.assignments[service]
         save(repo_root, inv)
@@ -376,13 +397,13 @@ def reroute(repo_root, inv, service, device_id, start_fn=None, stop_fn=None):
     # (units are computed against its OLD assignment before we reassign).
     old_dev = inv.assignments.get(service)
     if old_dev is not None and old_dev != device_id and stop_fn is not None:
-        for unit in service_units(inv, service):
+        for unit in stoppable_units(inv, service):
             stop_fn(unit)
     # Console-enforced exclusive: displace any OTHER service currently on the
     # target device (stop its units, unassign it) before claiming the dongle.
     for other in [s for s in assignees(inv, device_id) if s != service]:
         if stop_fn is not None:
-            for unit in service_units(inv, other):
+            for unit in stoppable_units(inv, other):
                 stop_fn(unit)
         del inv.assignments[other]
     inv.assignments[service] = device_id
@@ -560,7 +581,26 @@ def auto_declare_draws(repo_root, inv, present):
     two independent mDin6 connectors sharing one stereo codec. Idempotent."""
     if not present:
         return inv
-    if any(d.get("kind") == "draws" for d in inv.devices.values()):
+    existing = [d for d in inv.devices.values() if d.get("kind") == "draws"]
+    if existing:
+        # Already declared — but refresh the STATIC fields, because this function
+        # only ever fires on a box with no draws device, so a record written
+        # before a label/channel change would otherwise keep the stale value
+        # forever. Merge into the existing dict so operator/runtime state
+        # (assignments live elsewhere; `locked` lives here) survives.
+        changed = False
+        for port in DRAWS_PORTS:
+            dev = inv.devices.get(port["id"])
+            if dev is None:
+                inv.devices[port["id"]] = dict(port)
+                changed = True
+                continue
+            for key, value in port.items():
+                if dev.get(key) != value:
+                    dev[key] = value
+                    changed = True
+        if changed:
+            save(repo_root, inv)
         return inv
     for port in DRAWS_PORTS:
         inv.devices[port["id"]] = dict(port)
