@@ -175,6 +175,8 @@
           <label class="setup-check"><input type="checkbox" data-feature="gps"> gps (USB / autodetect)</label>
           <label class="setup-check"><input type="checkbox" data-feature="gps-l76x"> gps-L76X (UART / GPIO HAT)</label>
           <label class="setup-check"><input type="checkbox" data-feature="dra-pi-rx-led"> dra-pi + dra-rx-led</label>
+          <label class="setup-check"><input type="checkbox" data-feature="draws-gps"> draws-gps (DRAWS HAT GPS/PPS)</label>
+          <label class="setup-check"><input type="checkbox" data-feature="draws-audio"> draws-audio (DRAWS HAT radio audio, 2 ports)</label>
           <label class="setup-check"><input type="checkbox" data-feature="rtc"> rtc-hat Witty module</label>
         </div>
         <div class="setup-group">
@@ -517,16 +519,32 @@ async function setupAutoSelectInstalledFeatures() {
 // An installed feature (green) that gets re-ticked means UNINSTALL: the checkbox
 // and label go red and a "will uninstall" hint appears. Not-installed features
 // tick normally (install). Reinstall is not a toggle state — uninstall then install.
+// Feature keys that cannot be selected together — see the comment in the change
+// handler below. Order within a group is irrelevant; ticking any member clears
+// the rest.
+const SETUP_EXCLUSIVE_GROUPS = [
+  ['gps', 'gps-l76x', 'draws-gps'],
+  ['dra-pi-rx-led', 'draws-audio'],
+];
+
 function setupWireReinstallHints() {
   document.querySelectorAll('input[data-feature]').forEach(ch => {
     ch.addEventListener('change', () => {
-      // gps (USB) and gps-l76x (UART) both drive gpsd — keep them mutually
-      // exclusive so a plan never configures two gpsd device targets at once.
-      if (ch.checked && (ch.dataset.feature === 'gps' || ch.dataset.feature === 'gps-l76x')) {
-        const otherKey = ch.dataset.feature === 'gps' ? 'gps-l76x' : 'gps';
-        const other = document.querySelector(`input[data-feature="${otherKey}"]`);
-        if (other && other.checked) { other.checked = false; other.dispatchEvent(new Event('change')); }
-      }
+      // Mutually exclusive feature groups. Ticking one unticks its rivals so a
+      // plan can never configure two conflicting targets at once. Each group is
+      // enforced again at install time by the installer's own check (the UI is
+      // convenience, the installer is the backstop).
+      //   gpsd   — gps (USB), gps-l76x (UART HAT) and draws-gps (DRAWS HAT) all
+      //            repoint gpsd at a different device.
+      //   radio  — dra-pi and draws-audio are two radio-interface HATs; they
+      //            cannot both own the 40-pin audio/PTT lines.
+      SETUP_EXCLUSIVE_GROUPS.forEach(group => {
+        if (!ch.checked || !group.includes(ch.dataset.feature)) return;
+        group.filter(k => k !== ch.dataset.feature).forEach(otherKey => {
+          const other = document.querySelector(`input[data-feature="${otherKey}"]`);
+          if (other && other.checked) { other.checked = false; other.dispatchEvent(new Event('change')); }
+        });
+      });
       const label = ch.closest('.setup-check');
       if (!label) return;
       const key = ch.getAttribute('data-feature');

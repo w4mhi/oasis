@@ -335,6 +335,7 @@ def _setup_dashboard_install_fn(repo_root, payload):
 PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
     "openwebrx", "adsb", "satellites", "rtl-sdr", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
+    "draws-gps", "draws-audio",
     "pi-headless", "pi-local-monitor", "pi-oasis-dashboard", "cm4stack", "rgb-cooling-hat",
     "argon-fan",
 }
@@ -500,6 +501,34 @@ def build_registry(repo_root, payload=None):
             dependencies=[],
             install_fn=lambda: _setup_run_script(repo_root, "features/gps-L76X/install-gps-l76x.py"),
             removal_record_fn=lambda: _removal_record(repo_root, "features/gps-L76X/gps_l76x.py"),
+            verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
+        # NW Digital Radio DRAWS HAT — on-board GPS/PPS on the SC16IS752's
+        # /dev/ttySC0. Third member of the gpsd mutual-exclusion group with
+        # 'gps' (USB) and 'gps-l76x' (UART): all three repoint gpsd, so the UI
+        # unchecks the others and install-draws-gps.py's check_exclusive is the
+        # runtime backstop. No dependency on draws-audio — the shared
+        # `dtoverlay=draws` line is written idempotently by whichever runs first.
+        "draws-gps": SE.FeatureSpec(
+            key="draws-gps",
+            dependencies=[],
+            install_fn=lambda: _setup_run_script(repo_root, "features/draws-gps/install-draws-gps.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/draws-gps/draws_gps.py"),
+            verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
+        # DRAWS radio audio: TLV320AIC3204 mixer routing for BOTH mDin6 ports
+        # (left/APRS, right/Winlink) plus the udev rule that keeps PipeWire off
+        # the codec. Mutually exclusive with 'dra-pi-rx-led' in the UI — two
+        # radio-interface HATs cannot both own the 40-pin audio/PTT lines.
+        "draws-audio": SE.FeatureSpec(
+            key="draws-audio",
+            dependencies=[],
+            install_fn=lambda: _setup_run_script(repo_root, "features/draws-audio/install-draws-audio.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/draws-audio/draws_audio.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,

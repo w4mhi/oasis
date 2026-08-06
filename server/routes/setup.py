@@ -155,7 +155,9 @@ def _setup_preflight_blockers(selected, payload, online):
 
     internet_required = {
         "graywolf", "winlink", "kiwix", "openwebrx", "adsb", "satellites",
-        "gps", "cm4stack", "wikipedia",
+        # draws-gps apt-installs gpsd + chrony, exactly like 'gps'. draws-audio
+        # is config-only (amixer + a udev rule) and works fully offline.
+        "gps", "draws-gps", "cm4stack", "wikipedia",
     }
     if not online:
         for key in sorted(sel & internet_required):
