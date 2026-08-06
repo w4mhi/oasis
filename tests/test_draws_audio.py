@@ -51,6 +51,16 @@ class MixerCommandsTest(unittest.TestCase):
         self.assertIn("LOL Output Mixer L_DAC", controls)
         self.assertIn("LOR Output Mixer R_DAC", controls)
 
+    def test_adc_channel_mutes_are_cleared(self):
+        """Bench regression (2026-08-06): the ADCFGA mutes are the codec's
+        power-on default and the driver declares them uninverted, so `on` means
+        muted. Leaving them alone gave a RUNNING capture stream that delivered
+        perfect digital zeros on both channels with a live radio and open
+        squelch. RX simply never worked without these."""
+        mixer = dict(draws_audio.MIXER)
+        self.assertEqual(mixer["ADCFGA Left Mute"], "off")
+        self.assertEqual(mixer["ADCFGA Right Mute"], "off")
+
 
 class PortsTest(unittest.TestCase):
     def test_left_is_aprs_on_gpio12(self):

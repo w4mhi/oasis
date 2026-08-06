@@ -32,6 +32,13 @@ MIXER = [
     ("LOL Output Mixer L_DAC",                "on"),
     ("LOR Output Mixer R_DAC",                "on"),
     # RX path
+    # The ADC channel mutes are the codec's POWER-ON DEFAULT and must be cleared
+    # explicitly. The aic32x4 driver declares these uninverted, so the control
+    # reading `on` means "mute engaged" — a capture stream then runs normally and
+    # delivers perfect digital zeros. Bench 2026-08-06: without these two lines
+    # RX was silent on both channels with a radio attached and squelch open.
+    ("ADCFGA Left Mute",                      "off"),
+    ("ADCFGA Right Mute",                     "off"),
     ("ADC Level",                             "0.0dB,0.0dB"),
     ("IN1_L to Left Mixer Positive Resistor", "Off"),
     ("IN1_R to Right Mixer Positive Resistor", "Off"),
