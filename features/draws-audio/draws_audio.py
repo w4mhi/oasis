@@ -63,6 +63,76 @@ PORTS = [
 ]
 
 
+# --- live transmit test -----------------------------------------------------
+# Proves the whole TX chain end to end (PTT + codec + mixer + radio) by putting
+# one real packet on the air through a running Direwolf. Frames are built here
+# rather than shelled out to `kissutil` so the check works with nothing but the
+# standard library — no extra package on a go-box, and the frame construction
+# unit-tests off-Pi.
+LIVETEST_COMMENT = "OASIS DRAWS TEST"
+LIVETEST_DEST = "APDW17"        # Direwolf's tocall — it is the TNC on the air
+KISS_HOST = "127.0.0.1"
+KISS_PORT = 8001                # matches KISSPORT in the direwolf-draws conf
+
+_FEND, _FESC, _TFEND, _TFESC = 0xC0, 0xDB, 0xDC, 0xDD
+
+
+def parse_callsign(text):
+    """Split "W4MHI-6" into ("W4MHI", 6). Raises ValueError on anything AX.25
+    cannot carry: a 1-6 character alphanumeric base and an SSID of 0-15."""
+    text = (text or "").strip().upper()
+    base, _, ssid_text = text.partition("-")
+    if not base or len(base) > 6 or not base.isalnum():
+        raise ValueError(
+            "invalid callsign %r — expected 1-6 alphanumerics, e.g. W4MHI-6" % text)
+    ssid = 0
+    if ssid_text:
+        if not ssid_text.isdigit() or int(ssid_text) > 15:
+            raise ValueError("invalid SSID in %r — expected 0-15" % text)
+        ssid = int(ssid_text)
+    return base, ssid
+
+
+def _ax25_address(call, ssid, last):
+    """One 7-byte AX.25 address: the callsign padded to six characters and
+    shifted left a bit, then an SSID byte whose bit 0 marks the final address."""
+    shifted = bytes(ord(c) << 1 for c in call.ljust(6))
+    return shifted + bytes([0x60 | (ssid << 1) | (1 if last else 0)])
+
+
+def build_ax25_ui_frame(call, ssid, comment=LIVETEST_COMMENT, dest=LIVETEST_DEST):
+    """A bare AX.25 UI frame carrying an APRS *status* report (`>`).
+
+    Deliberately a status and not a position: a bench test must not invent
+    coordinates for a station that has none. There is also no digipeater path —
+    direct RF only, so a test packet is never relayed across the network."""
+    return (_ax25_address(dest, 0, False)
+            + _ax25_address(call, ssid, True)
+            + bytes([0x03, 0xF0])            # UI, no layer 3
+            + (">" + comment).encode("ascii"))
+
+
+def kiss_wrap(frame, channel=0):
+    """KISS-encapsulate `frame` for TNC port `channel` (data command 0). The
+    channel picks the radio port: 0 = left/APRS, 1 = right/Winlink."""
+    body = bytearray()
+    for b in frame:
+        if b == _FEND:
+            body += bytes([_FESC, _TFEND])
+        elif b == _FESC:
+            body += bytes([_FESC, _TFESC])
+        else:
+            body.append(b)
+    return bytes([_FEND, (channel << 4) & 0xF0]) + bytes(body) + bytes([_FEND])
+
+
+def build_livetest_frame(callsign, channel=0, comment=LIVETEST_COMMENT):
+    """The complete KISS frame for one on-air test packet. Validates the
+    callsign first, so a typo fails before anything touches the radio."""
+    call, ssid = parse_callsign(callsign)
+    return kiss_wrap(build_ax25_ui_frame(call, ssid, comment), channel)
+
+
 def build_mixer_commands(card=CARD):
     """Return the `amixer sset` argv vectors that apply the known-good routing to
     `card`. Pure — no subprocess here so it unit-tests off-Pi.

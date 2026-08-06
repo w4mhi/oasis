@@ -79,6 +79,80 @@ class MixerCommandsTest(unittest.TestCase):
         self.assertEqual(mixer["ADCFGA Right Mute"], "off")
 
 
+class CallsignTest(unittest.TestCase):
+    def test_parses_bare_callsign(self):
+        self.assertEqual(draws_audio.parse_callsign("W4MHI"), ("W4MHI", 0))
+
+    def test_parses_ssid(self):
+        self.assertEqual(draws_audio.parse_callsign("W4MHI-6"), ("W4MHI", 6))
+
+    def test_upcases_and_strips(self):
+        self.assertEqual(draws_audio.parse_callsign("  w4mhi-6 "), ("W4MHI", 6))
+
+    def test_rejects_empty(self):
+        self.assertRaises(ValueError, draws_audio.parse_callsign, "")
+
+    def test_rejects_overlong_base(self):
+        self.assertRaises(ValueError, draws_audio.parse_callsign, "W4MHIXYZ")
+
+    def test_rejects_out_of_range_ssid(self):
+        self.assertRaises(ValueError, draws_audio.parse_callsign, "W4MHI-16")
+
+    def test_rejects_non_numeric_ssid(self):
+        self.assertRaises(ValueError, draws_audio.parse_callsign, "W4MHI-x")
+
+
+class Ax25FrameTest(unittest.TestCase):
+    def test_addresses_are_shifted_left_one_bit(self):
+        f = draws_audio.build_ax25_ui_frame("W4MHI", 6)
+        self.assertEqual(f[0:6], bytes(c << 1 for c in b"APDW17"))
+        self.assertEqual(f[7:13], bytes(c << 1 for c in b"W4MHI "))
+
+    def test_source_is_flagged_last_and_carries_ssid(self):
+        f = draws_audio.build_ax25_ui_frame("W4MHI", 6)
+        self.assertEqual(f[6] & 0x01, 0)            # dest: not last
+        self.assertEqual(f[13] & 0x01, 1)           # source: last address
+        self.assertEqual((f[13] >> 1) & 0x0F, 6)    # ssid
+
+    def test_is_a_ui_frame_with_no_layer_3(self):
+        f = draws_audio.build_ax25_ui_frame("W4MHI", 0)
+        self.assertEqual(f[14], 0x03)               # UI
+        self.assertEqual(f[15], 0xF0)               # no layer 3
+
+    def test_payload_is_a_status_report_carrying_the_comment(self):
+        """A status report (`>`), deliberately NOT a position — the test must
+        never invent coordinates for a station that has none."""
+        f = draws_audio.build_ax25_ui_frame("W4MHI", 0)
+        self.assertEqual(f[16:17], b">")
+        self.assertEqual(f[17:], draws_audio.LIVETEST_COMMENT.encode())
+
+
+class KissTest(unittest.TestCase):
+    def test_wraps_in_fend_with_channel_in_high_nibble(self):
+        out = draws_audio.kiss_wrap(b"\x01\x02", channel=1)
+        self.assertEqual(out[0], 0xC0)
+        self.assertEqual(out[-1], 0xC0)
+        self.assertEqual(out[1], 0x10)              # ch 1, data command 0
+
+    def test_channel_zero_is_the_default(self):
+        self.assertEqual(draws_audio.kiss_wrap(b"\x01")[1], 0x00)
+
+    def test_escapes_fend_and_fesc_in_payload(self):
+        self.assertEqual(draws_audio.kiss_wrap(b"\xc0\xdb"),
+                         b"\xc0\x00\xdb\xdc\xdb\xdd\xc0")
+
+
+class LiveTestFrameTest(unittest.TestCase):
+    def test_builds_a_sendable_kiss_frame(self):
+        f = draws_audio.build_livetest_frame("W4MHI-6", channel=1)
+        self.assertEqual(f[0], 0xC0)
+        self.assertEqual(f[1], 0x10)
+        self.assertIn(draws_audio.LIVETEST_COMMENT.encode(), f)
+
+    def test_bad_callsign_raises_before_any_io(self):
+        self.assertRaises(ValueError, draws_audio.build_livetest_frame, "nope-99")
+
+
 class PortsTest(unittest.TestCase):
     def test_left_is_aprs_on_gpio12(self):
         left = next(p for p in draws_audio.PORTS if p["port"] == "left")

@@ -18,11 +18,21 @@ Usage:
   python3 features/draws-audio/install-draws-audio.py --dry-run     # preview config.txt change
   python3 features/draws-audio/install-draws-audio.py --config-only # force the overlay phase
   python3 features/draws-audio/install-draws-audio.py --mixer-only  # force the mixer phase
+  python3 features/draws-audio/install-draws-audio.py --livetest W4MHI-6
+                                                    # TRANSMIT one test packet
+  python3 features/draws-audio/install-draws-audio.py --livetest W4MHI-6 --channel 1
+                                                    # ... out the right/Winlink port
+
+--livetest proves the whole TX chain (PTT + codec + mixer + cable + radio) by
+putting one APRS status packet reading "OASIS DRAWS TEST" on the air through a
+running direwolf. It KEYS THE TRANSMITTER. Frames are built in-process, so it
+needs no kissutil — only a reachable KISS port.
 
 Exit codes: 0 = done · 10 = done, reboot required · 1 = error.
 Requires: Linux (Raspberry Pi), sudo."""
 import argparse
 import os
+import socket
 import subprocess
 import sys
 
@@ -46,7 +56,64 @@ def build_parser():
                    help="only do the overlay phase (force)")
     p.add_argument("--mixer-only", action="store_true",
                    help="only do the ALSA mixer phase (force)")
+    p.add_argument("--livetest", metavar="CALLSIGN",
+                   help="TRANSMIT one APRS test packet as CALLSIGN (e.g. W4MHI-6) "
+                        "through a running direwolf, then exit")
+    p.add_argument("--channel", type=int, default=0, choices=(0, 1),
+                   help="radio port for --livetest: 0 = left/APRS (default), "
+                        "1 = right/Winlink")
+    p.add_argument("--kiss-host", default=draws_audio.KISS_HOST,
+                   help="direwolf KISS host (default: 127.0.0.1)")
+    p.add_argument("--kiss-port", type=int, default=draws_audio.KISS_PORT,
+                   help="direwolf KISS port (default: 8001)")
     return p
+
+
+def run_livetest(args):
+    """Put one real packet on the air to prove the whole TX chain — PTT, codec,
+    mixer, cable, radio — in a single command. This KEYS THE TRANSMITTER."""
+    _step(1, "Transmit an APRS test packet")
+    try:
+        call, ssid = draws_audio.parse_callsign(args.livetest)
+        frame = draws_audio.build_livetest_frame(args.livetest, args.channel)
+    except ValueError as exc:
+        _fail(str(exc))
+        return 1
+    display = call if ssid == 0 else "%s-%d" % (call, ssid)
+
+    port = next((p for p in draws_audio.PORTS
+                 if p["port"] == ("left" if args.channel == 0 else "right")), None)
+    _info("callsign : %s" % display)
+    _info("comment  : %s" % draws_audio.LIVETEST_COMMENT)
+    if port:
+        _info("port     : channel %d → %s connector → %s → PTT GPIO %d"
+              % (args.channel, port["port"], port["service"], port["gpio"]))
+    _warn("This keys the transmitter — make sure the radio is on a frequency you "
+          "are licensed to transmit on.")
+
+    try:
+        with socket.create_connection((args.kiss_host, args.kiss_port), timeout=5) as sock:
+            sock.sendall(frame)
+    except ConnectionRefusedError:
+        # _fail() exits, so the remedy has to travel inside the message — a
+        # follow-up _info() here would be unreachable.
+        _fail("Nothing listening on %s:%d — direwolf is not running (or has no "
+              "KISSPORT).\n  Start it first, e.g.:\n"
+              "    direwolf -t 0 -c ~/.config/direwolf/direwolf-draws.conf"
+              % (args.kiss_host, args.kiss_port))
+        return 1
+    except OSError as exc:
+        _fail("Could not reach the TNC on %s:%d — %s"
+              % (args.kiss_host, args.kiss_port, exc))
+        return 1
+
+    _ok("Sent %d bytes to the TNC." % len(frame))
+    print()
+    _info("Confirm on another station: look for %s with the status text %r."
+          % (display, draws_audio.LIVETEST_COMMENT))
+    _info("No digipeater path is used, so it is direct RF only — a receiving "
+          "station must be in simplex range.")
+    return 0
 
 
 def rx_level_hint():
@@ -113,6 +180,11 @@ def apply_mixer():
 def main(argv=None):
     args = build_parser().parse_args(argv)
     _section("DRAWS radio audio")
+
+    # Before the platform/overlay guards: --livetest only needs to reach a TNC,
+    # so it also works from a laptop pointed at the go-box with --kiss-host.
+    if args.livetest:
+        return run_livetest(args)
 
     if sys.platform != "linux":
         _fail("This installer requires Linux (Raspberry Pi).")
