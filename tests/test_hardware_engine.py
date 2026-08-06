@@ -24,6 +24,7 @@ class DeviceStatesTest(unittest.TestCase):
                    assignments={"adsb": "a"})
         states = hardware.device_states(inv, is_active=lambda u: u == "dump1090-fa")
         self.assertEqual(states, [{"id": "a", "label": "ADS-B dongle", "kind": "rtl-sdr",
+                                   "eligible": ["aprs", "adsb", "openwebrx", "satellites"],
                                    "serial": "", "ptt": "", "assignee": "adsb", "running": True}])
 
     def test_includes_serial_for_usb_port_join(self):

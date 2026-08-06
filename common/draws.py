@@ -10,6 +10,36 @@ import tempfile
 OVERLAY_LINE = "dtoverlay=draws"
 CONFIG_CANDIDATES = ("/boot/firmware/config.txt", "/boot/config.txt")
 
+# NW Digital Radio's DRAWS config.txt block is THREE lines, not one:
+#   dtoverlay=      resets overlay PARAMETER SCOPE, so the draws params that
+#                   follow apply to draws and not to whatever overlay came before
+#   dtoverlay=draws loads the card
+#   force_turbo=1   pins the core clock the codec's sample clock derives from;
+#                   without it the audio rate drifts as the CPU scales
+#
+# They live inside BEGIN/END markers so install and uninstall are exactly
+# symmetric — insert the block, remove the block. That matters more than it
+# sounds: a bare `dtoverlay=` is a legal stock line that can already exist (this
+# bench board had one), so managing it as a loose line would risk deleting
+# someone else's on uninstall. Inside markers, ours is unambiguously ours.
+BLOCK_BEGIN = "# --- OASIS DRAWS (managed by features/draws-audio) ---"
+BLOCK_END   = "# --- end OASIS DRAWS ---"
+BLOCK_LINES = ["dtoverlay=", OVERLAY_LINE, "force_turbo=1"]
+
+
+def add_overlay_block(text):
+    """Return (new_text, changed): ensure the managed DRAWS block is present.
+    Idempotent — an existing block is left byte-identical."""
+    if BLOCK_BEGIN in text:
+        return text, False
+    block = "\n".join([BLOCK_BEGIN, *BLOCK_LINES, BLOCK_END])
+    return text.rstrip("\n") + "\n\n" + block + "\n", True
+
+
+def removal_config_blocks():
+    """The (begin, end) pair a DRAWS feature's removal record should strip."""
+    return [[BLOCK_BEGIN, BLOCK_END]]
+
 
 def add_overlay_line(text):
     """Return (new_text, changed): ensure an active `dtoverlay=draws` line is
@@ -101,15 +131,15 @@ def _write_text(path, content):
 
 
 def ensure_overlay(cfg_path=None):
-    """Idempotently add `dtoverlay=draws` to config.txt. Returns True if the file
-    changed (reboot needed to load the overlay), False if it was already present.
-    Raises RuntimeError if no config.txt exists."""
+    """Idempotently add the managed DRAWS block (see BLOCK_LINES) to config.txt.
+    Returns True if the file changed (reboot needed to load the overlay), False
+    if it was already present. Raises RuntimeError if no config.txt exists."""
     cfg = cfg_path or config_path()
     if not cfg:
         raise RuntimeError("no config.txt found (looked in %s)" % (CONFIG_CANDIDATES,))
     with open(cfg) as fh:
         text = fh.read()
-    new_text, changed = add_overlay_line(text)
+    new_text, changed = add_overlay_block(text)
     if changed:
         _write_text(cfg, new_text)
     return changed

@@ -5,6 +5,12 @@ service config and common/nmea.py for the 'is it actually working?' check. GPS i
 on the SC16IS752's /dev/ttySC0 (not the primary UART), so there is no
 serial-console eviction — unlike gps-L76X."""
 
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(
+    _os.path.dirname(_os.path.abspath(__file__)))))
+from common import draws as _draws          # shared DRAWS config.txt block
+
 GPS_DEVICE = "/dev/ttySC0"
 # Bench-confirmed on pi4draws (2026-08-06): the on-board receiver reports
 # NMEA0183 at 9600. Overridable with --baud in case a board ships reconfigured.
@@ -28,7 +34,7 @@ def removal_record(repo_root=None):
     the overlay. NOTE (P2): once draws-rtc/draws-audio also rely on
     dtoverlay=draws, this strip must become ref-safe (strip only when the last
     DRAWS feature is removed)."""
-    return {"config_lines": ["dtoverlay=draws"],
+    return {"config_blocks": _draws.removal_config_blocks(),
             "notes": ["gpsd/chrony reconfig left in place (shared — no safe "
                       "automatic undo)."],
             "requires_reboot": True}

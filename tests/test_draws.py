@@ -137,3 +137,50 @@ class SysfsGpioTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self._chip(d, "gpiochip0", 0, 54, "pinctrl-bcm2835")
             self.assertEqual(draws.sysfs_gpio(23, d), 23)
+
+
+class ManagedBlockTest(unittest.TestCase):
+    """NW Digital Radio's DRAWS config.txt block is THREE lines, not one: the
+    bare `dtoverlay=` resets overlay parameter scope, `dtoverlay=draws` loads the
+    card, and `force_turbo=1` pins the core clock the codec derives from. We used
+    to insert only the middle one, so install and uninstall were asymmetric —
+    and a bare `dtoverlay=` left behind by something else sat next to ours with
+    nothing owning it."""
+
+    def test_block_carries_all_three_lines(self):
+        self.assertEqual(draws.BLOCK_LINES,
+                         ["dtoverlay=", "dtoverlay=draws", "force_turbo=1"])
+
+    def test_apply_inserts_a_marked_block(self):
+        new, changed = draws.add_overlay_block("dtparam=audio=on\n")
+        self.assertTrue(changed)
+        self.assertIn(draws.BLOCK_BEGIN, new)
+        self.assertIn(draws.BLOCK_END, new)
+        for ln in draws.BLOCK_LINES:
+            self.assertIn(ln, new.splitlines())
+
+    def test_apply_is_idempotent(self):
+        once, _ = draws.add_overlay_block("dtparam=audio=on\n")
+        twice, changed = draws.add_overlay_block(once)
+        self.assertFalse(changed)
+        self.assertEqual(once, twice)
+        self.assertEqual(twice.count(draws.BLOCK_BEGIN), 1)
+
+    def test_round_trips_back_to_the_original(self):
+        """Install then uninstall must leave config.txt exactly as found."""
+        from common import removal
+        orig = "dtparam=audio=on\ndtoverlay=vc4-kms-v3d\n"
+        installed, _ = draws.add_overlay_block(orig)
+        back, _ = removal.strip_config(installed,
+                                       [[draws.BLOCK_BEGIN, draws.BLOCK_END]], [])
+        self.assertEqual(back.strip(), orig.strip())
+
+    def test_a_preexisting_bare_dtoverlay_is_left_alone(self):
+        """Ours lives inside markers, so an unrelated bare `dtoverlay=` (this
+        board had one) is neither adopted nor removed."""
+        from common import removal
+        orig = "[all]\ndtoverlay=\nforce_turbo=1\n"
+        installed, _ = draws.add_overlay_block(orig)
+        back, _ = removal.strip_config(installed,
+                                       [[draws.BLOCK_BEGIN, draws.BLOCK_END]], [])
+        self.assertEqual(back.strip(), orig.strip())

@@ -2,6 +2,8 @@ import os
 import sys
 import unittest
 
+from common import draws as draws_mod
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if os.path.dirname(_HERE) not in sys.path:
     sys.path.insert(0, os.path.dirname(_HERE))
@@ -201,7 +203,8 @@ class AcpIgnoreRuleTest(unittest.TestCase):
 class RemovalRecordTest(unittest.TestCase):
     def test_strips_shared_overlay_and_flags_reboot(self):
         rec = draws_audio.removal_record()
-        self.assertEqual(rec["config_lines"], ["dtoverlay=draws"])
+        self.assertEqual(rec["config_blocks"],
+                         [[draws_mod.BLOCK_BEGIN, draws_mod.BLOCK_END]])
         self.assertTrue(rec["requires_reboot"])
         self.assertTrue(any("ALSA" in n for n in rec["notes"]))
         self.assertTrue(any("shared" in n for n in rec["notes"]))

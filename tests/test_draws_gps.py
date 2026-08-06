@@ -1,6 +1,8 @@
 import os
 import sys
 import unittest
+
+from common import draws as draws_mod
 from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -25,7 +27,8 @@ _cli_spec = _ilu.spec_from_file_location(
 class RemovalRecordTest(unittest.TestCase):
     def test_strips_overlay_line_and_flags_reboot(self):
         rec = draws_gps.removal_record()
-        self.assertEqual(rec["config_lines"], ["dtoverlay=draws"])
+        self.assertEqual(rec["config_blocks"],
+                         [[draws_mod.BLOCK_BEGIN, draws_mod.BLOCK_END]])
         self.assertTrue(rec["requires_reboot"])
         self.assertTrue(any("shared" in n for n in rec["notes"]))
 

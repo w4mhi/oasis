@@ -12,6 +12,8 @@ Record schema (all keys optional):
       "dirs": [str],           # sudo rm -rf
       "config_blocks": [[begin, end]],  # marker pairs to strip from config.txt
       "config_lines": [str],   # standalone lines to strip from config.txt
+      "config_subs": [[from, to]],  # restore a stock config.txt line the
+                               #   installer mutated (see strip_config)
       "restore": [[src, dst]], # sudo cp src dst (e.g. hwclock-set backup)
       "script": [str],         # argv (abs path + flags) for a bespoke teardown script,
                                #   run instead of the declarative fields above
@@ -49,19 +51,35 @@ def _strip_block(body, begin, end, changes):
     return body
 
 
-def strip_config(text, blocks, lines):
+def strip_config(text, blocks, lines, subs=None):
     """Strip the given (begin, end) marker blocks and standalone lines from
-    config.txt *text*. Returns (new_text, changes). Idempotent: absent blocks/
-    lines are silently skipped. Unrelated lines are preserved."""
+    config.txt *text*, and apply any (from, to) line substitutions. Returns
+    (new_text, changes). Idempotent: absent blocks/lines/subs are silently
+    skipped. Unrelated lines are preserved.
+
+    *subs* is the REVERSAL primitive for installers that mutate lines they do
+    not own. An installer confined to its own BEGIN/END block is undone by
+    `blocks` alone — but one that edits a stock line (the DRA-Pi feature
+    comments out `dtparam=audio=on` and appends `,noaudio` to the vc4 overlay)
+    leaves damage no block removal can reach. Uninstalling it left the Pi with
+    no sound cards at all. Each pair restores one such edit; indentation is
+    preserved so the rewrite stays diff-clean."""
     changes = []
     body = text
     for begin, end in blocks:
         body = _strip_block(body, begin, end, changes)
     lineset = {ln.strip() for ln in (lines or [])}
+    submap = {str(a).strip(): str(b) for a, b in (subs or [])}
     kept = []
     for ln in body.splitlines():
         if ln.strip() in lineset:
             changes.append(f"removed {ln.strip()!r}")
+            continue
+        replacement = submap.get(ln.strip())
+        if replacement is not None:
+            indent = ln[: len(ln) - len(ln.lstrip())]
+            changes.append(f"restored {replacement!r}")
+            kept.append(indent + replacement)
             continue
         kept.append(ln)
     out = "\n".join(kept).rstrip("\n")
@@ -126,6 +144,8 @@ def apply(record, apply=False, run=_default_run):
         changes.append(f"strip config.txt block starting {begin!r}")
     for ln in record.get("config_lines", []):
         changes.append(f"strip config.txt line {ln!r}")
+    for pair in record.get("config_subs", []):
+        changes.append(f"restore config.txt line {pair[1]!r}")
 
     for p in record.get("data_paths", []):
         advisory.append(f"left in place (delete manually to reclaim space): {p}")

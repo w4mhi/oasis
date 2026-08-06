@@ -55,8 +55,27 @@ def removal_record(repo_root=None):
     config.txt block and remove the dra-rx-led service (installed by the chain's
     enable-dra-rx-led.py). Reboot to drop the sound-card overlay."""
     return {"config_blocks": [[BLOCK_BEGIN, BLOCK_END]],
+            "config_subs": _config_subs(),
             "services": ["dra-rx-led"],
             "requires_reboot": True}
+
+
+# The two config.txt lines this feature mutates that are NOT its own: the stock
+# on-board audio param and the KMS overlay. Stripping the managed block cannot
+# undo either (they live outside the markers), and leaving them behind kills
+# EVERY sound card on the box — including a DRAWS HAT installed afterwards,
+# which then looks broken for no visible reason (bench 2026-08-06). Derived from
+# the same constants transform_config() uses so the pair can never drift.
+AUDIO_ON_LINE       = "dtparam=audio=on"
+AUDIO_OFF_COMMENT   = f"# {AUDIO_ON_LINE}   # disabled by OASIS DRA-Pi"
+VC4_BASE            = "dtoverlay=vc4-kms-v3d"
+VC4_NOAUDIO         = f"{VC4_BASE},noaudio"
+
+
+def _config_subs():
+    """(from, to) pairs restoring the stock lines transform_config() rewrote."""
+    return [[AUDIO_OFF_COMMENT, AUDIO_ON_LINE],
+            [VC4_NOAUDIO, VC4_BASE]]
 BLOCK_LINES = [
     "dtparam=i2c_arm=on",                    # WM8731 control interface (I2C)
     "dtparam=audio=off",                     # free the I2S bus from PWM/HDMI audio
@@ -129,14 +148,14 @@ def transform_config(text):
     the OASIS-managed overlay block. Idempotent."""
     changes = []
     out = []
-    vc4_base = "dtoverlay=vc4-kms-v3d"
+    vc4_base = VC4_BASE
     for ln in text.splitlines():
         s = ln.strip()
         indent = ln[: len(ln) - len(ln.lstrip())]
 
         # 1) Disable the default on-board audio so it can't grab the I2S bus.
         if re.match(r"^dtparam=audio=on\b", s):
-            out.append(f"{indent}# {s}   # disabled by OASIS DRA-Pi")
+            out.append(f"{indent}{AUDIO_OFF_COMMENT}")
             changes.append("commented 'dtparam=audio=on'")
             continue
 

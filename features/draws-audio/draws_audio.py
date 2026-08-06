@@ -18,6 +18,12 @@ PTT is a GPIO the TNC (Direwolf/GrayWolf) keys, not something this installer set
 — see PORTS for the reminder and for the port↔channel↔service mapping. DRAWS
 swaps the left/right PTT GPIOs relative to the UDRC II."""
 
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(
+    _os.path.dirname(_os.path.abspath(__file__)))))
+from common import draws as _draws          # shared DRAWS config.txt block
+
 CARD = "draws"          # ALSA card name once dtoverlay=draws loads
 CARD_MATCH = "draws"    # substring used to detect it in /proc/asound/cards
 
@@ -399,7 +405,7 @@ def removal_record(repo_root=None):
     safe automatic undo). Reboot to drop the overlay. NOTE (P2): once
     draws-gps/draws-audio coexist, this strip must become ref-safe (strip only
     when the last DRAWS feature is removed)."""
-    return {"config_lines": ["dtoverlay=draws"],
+    return {"config_blocks": _draws.removal_config_blocks(),
             "services": [TNC_UNIT_NAME],
             "files": [ACP_IGNORE_RULE, TNC_UNIT_PATH, ALSA_CONF_PATH],
             "notes": ["ALSA mixer state left in place (shared board state — no "
