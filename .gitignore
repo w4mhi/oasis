@@ -75,6 +75,7 @@ temp/
 # USB bundle output — built by scripts/create-oasis-offline.py
 oasis-offline/
 oasis-offline-windows/
+overlays/
 
 # Python wheels — downloaded by scripts/create-oasis-offline.py.
 # Never checked in; populated at bundle-build time.
