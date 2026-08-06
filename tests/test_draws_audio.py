@@ -313,6 +313,16 @@ class ProfileNamingTest(unittest.TestCase):
         self.assertIn(draws_audio.TNC_PROFILE_APRS, u)
         self.assertIn(draws_audio.TNC_PROFILE_WINLINK, u)
 
+    def test_unit_description_states_the_CURRENT_channel_mapping(self):
+        """Regression: the description was hardcoded "aprs (ch0) + winlink
+        (ch1)" and survived the channel swap, misreporting the mapping in
+        systemctl status. It is now derived from PORTS."""
+        desc = next(ln for ln in
+                    draws_audio.build_tnc_service("pi", "/home/pi", 524, 535)
+                    .splitlines() if ln.startswith("Description="))
+        for p in draws_audio.PORTS:
+            self.assertIn("%s (ch%d)" % (p["profile"], p["channel"]), desc)
+
 
 
 class RxLevelTest(unittest.TestCase):
@@ -364,6 +374,49 @@ class RxLevelTest(unittest.TestCase):
         """Better to re-apply the known-good baseline than to skip on garbage."""
         self.assertFalse(draws_audio.rx_level_is_customised(""))
         self.assertFalse(draws_audio.rx_level_is_customised(None))
+
+
+
+class SharedCaptureTest(unittest.TestCase):
+    """Bench 2026-08-06: the TNC held plughw:draws,0 exclusively, so nothing else
+    could capture -- GrayWolf's modem could not even ENUMERATE the card
+    ("Device or resource busy"), and a satellite recorder on the other channel
+    was impossible. dsnoop shares one capture stream between processes; verified
+    with two concurrent readers seeing identical audio, a capture running while
+    the TNC was live AND keying, PTT unaffected."""
+
+    def test_tnc_captures_via_the_shared_pcm_and_transmits_direct(self):
+        """Split device: shared input, raw output. Only the TNC ever keys, and a
+        direct playback stream keeps dmix off the timing-critical TX path."""
+        self.assertEqual(draws_audio.TNC_ADEVICE,
+                         "%s %s" % (draws_audio.SHARED_CAPTURE_PCM,
+                                    draws_audio.TNC_PLAYBACK))
+
+    def test_conf_carries_both_devices_on_the_adevice_line(self):
+        line = next(ln for ln in draws_audio.build_tnc_conf("W4MHI", 524, 535)
+                    .splitlines() if ln.startswith("ADEVICE"))
+        self.assertIn(draws_audio.SHARED_CAPTURE_PCM, line)
+        self.assertIn(draws_audio.TNC_PLAYBACK, line)
+
+    def test_alsa_conf_defines_the_named_pcm(self):
+        conf = draws_audio.build_alsa_shared_conf()
+        self.assertIn("pcm.%s {" % draws_audio.SHARED_CAPTURE_PCM, conf)
+
+    def test_alsa_conf_wraps_dsnoop_in_plug(self):
+        """Both layers are required: dsnoop to share, plug for the format
+        conversion dsnoop cannot do (codec is S32_LE, apps ask S16_LE)."""
+        conf = draws_audio.build_alsa_shared_conf()
+        self.assertIn("type plug", conf)
+        self.assertIn("dsnoop:CARD=draws,DEV=0", conf)
+
+    def test_alsa_conf_is_removed_on_uninstall(self):
+        self.assertIn(draws_audio.ALSA_CONF_PATH,
+                      draws_audio.removal_record()["files"])
+
+    def test_card_is_overridable_in_the_alsa_conf(self):
+        conf = draws_audio.build_alsa_shared_conf(card="udrc", pcm="udrc_in")
+        self.assertIn("pcm.udrc_in {", conf)
+        self.assertIn("dsnoop:CARD=udrc,DEV=0", conf)
 
 
 if __name__ == "__main__":

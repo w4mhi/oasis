@@ -231,7 +231,23 @@ def build_mixer_commands(card=CARD):
 # sharing AGW :8000 / KISS :8001. Apps pick a port by channel number — pat via
 # agwpe.radio_port, GrayWolf by attaching to AGW channel 0 instead of spawning
 # its own direwolf. See specs/2026-07-28-draws-gobox-p2-tnc-wiring-design.md.
-TNC_ADEVICE   = "plughw:draws,0"
+# Capture goes through a SHARED ALSA pcm so the TNC is not the only thing that
+# can hear the radios: dsnoop lets several processes read one capture stream, so
+# a satellite recorder (or anything else) can take channel 1 while the TNC works
+# channel 0. Transmit stays on the raw device — only the TNC ever keys, and a
+# direct playback stream avoids dmix's extra buffering on the timing-critical
+# path. Bench-proven 2026-08-06: two concurrent readers saw identical audio, a
+# capture ran while the TNC was live AND while it was keying, PTT unaffected.
+#
+# The plug wrapper is REQUIRED: dsnoop is a direct-mode plugin with no format
+# conversion, and this codec is S32_LE native while apps ask for S16_LE
+# ("Sample format non available", only S32_LE offered). It also cannot be
+# written inline as plug:dsnoop:CARD=draws — that breaks ALSA's argument parser
+# ("Unknown parameter dsnoop:CARD") — hence a named pcm in a conf.d drop-in.
+SHARED_CAPTURE_PCM = "draws_shared_in"
+ALSA_CONF_PATH     = "/etc/alsa/conf.d/99-draws-shared.conf"
+TNC_PLAYBACK       = "plughw:draws,0"
+TNC_ADEVICE        = "%s %s" % (SHARED_CAPTURE_PCM, TNC_PLAYBACK)
 TNC_CONF_NAME = "oasis-draws.conf"
 # The two ports are PROFILES inside that one file, not separate configs: a second
 # direwolf on the same PCM dies with "device busy". These names appear as the
@@ -311,9 +327,14 @@ def build_tnc_service(user, home, ptt_left, ptt_right):
     sysfs lines so a restart can re-claim them — leaking either leaves the next
     start unable to key that port."""
     conf = "%s/.config/direwolf/%s" % (home.rstrip("/"), TNC_CONF_NAME)
+    # Derived from PORTS, not hardcoded: an earlier hardcoded "aprs (ch0) +
+    # winlink (ch1)" survived the channel swap and misreported the mapping in
+    # `systemctl status` — the exact drift PORTS-as-source-of-truth prevents.
+    profiles = " + ".join("%s (ch%d)" % (p["profile"], p["channel"])
+                          for p in sorted(PORTS, key=lambda p: p["channel"]))
     return """\
 [Unit]
-Description=OASIS DRAWS TNC — {p_aprs} (ch0) + {p_winlink} (ch1)
+Description=OASIS DRAWS TNC — {profiles}
 Documentation=file://{conf}
 After=network.target sound.target
 Wants=sound.target
@@ -330,8 +351,25 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 """.format(conf=conf, user=user, home=home.rstrip("/"),
-           ptt_left=ptt_left, ptt_right=ptt_right,
-           p_aprs=TNC_PROFILE_APRS, p_winlink=TNC_PROFILE_WINLINK)
+           ptt_left=ptt_left, ptt_right=ptt_right, profiles=profiles)
+
+
+def build_alsa_shared_conf(card=CARD, pcm=SHARED_CAPTURE_PCM):
+    """ALSA drop-in defining the shared capture pcm. See SHARED_CAPTURE_PCM for
+    why both the dsnoop and the plug wrapper are needed."""
+    return (
+        "# OASIS — shared capture for the %s codec.\n"
+        "#\n"
+        "# dsnoop lets SEVERAL processes read the same capture stream, so the TNC\n"
+        "# does not have to be the only thing that can hear the radios (e.g. a\n"
+        "# satellite recorder on the other channel). The plug wrapper supplies the\n"
+        "# format conversion dsnoop itself cannot do: this codec is S32_LE native\n"
+        "# while apps ask for S16_LE. Installed by\n"
+        "# features/draws-audio/install-draws-audio.py.\n"
+        "pcm.%s {\n"
+        "    type plug\n"
+        "    slave.pcm \"dsnoop:CARD=%s,DEV=0\"\n"
+        "}\n" % (card, pcm, card))
 
 
 def build_acp_ignore_rule(card=CARD):
@@ -363,7 +401,7 @@ def removal_record(repo_root=None):
     when the last DRAWS feature is removed)."""
     return {"config_lines": ["dtoverlay=draws"],
             "services": [TNC_UNIT_NAME],
-            "files": [ACP_IGNORE_RULE, TNC_UNIT_PATH],
+            "files": [ACP_IGNORE_RULE, TNC_UNIT_PATH, ALSA_CONF_PATH],
             "notes": ["ALSA mixer state left in place (shared board state — no "
                       "safe automatic undo).",
                       "The direwolf config in ~/.config/direwolf/%s is left in "

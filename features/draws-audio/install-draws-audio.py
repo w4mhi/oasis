@@ -243,6 +243,8 @@ def install_tnc(callsign_override=None):
         _info("Install it first:  sudo apt-get install -y direwolf")
         return False
 
+    ensure_alsa_shared_pcm()
+
     left = draws.sysfs_gpio(draws_audio.PORTS[0]["gpio"])
     right = draws.sysfs_gpio(draws_audio.PORTS[1]["gpio"])
     if left is None or right is None:
@@ -290,6 +292,38 @@ def install_tnc(callsign_override=None):
         % (draws_audio.TNC_UNIT_NAME, draws_audio.TNC_AGW_PORT, draws_audio.TNC_KISS_PORT))
     _info("Channel 0 = left/Winlink · channel 1 = right/APRS "
           "(pat uses agwpe.radio_port 0 — the only port it can use).")
+    return True
+
+
+def ensure_alsa_shared_pcm():
+    """Install the ALSA drop-in defining the shared capture pcm. Idempotent;
+    returns True when the file changed. Must exist BEFORE the TNC starts —
+    direwolf's ADEVICE names it."""
+    want = draws_audio.build_alsa_shared_conf()
+    path = draws_audio.ALSA_CONF_PATH
+    try:
+        with open(path) as fh:
+            if fh.read() == want:
+                _ok("Shared capture pcm already defined (%s)." % path)
+                return False
+    except OSError:
+        pass
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    except OSError:
+        pass
+    try:
+        draws._write_text(path, want)
+        subprocess.run(["sudo", "chmod", "0644", path], capture_output=True)
+    except Exception as exc:                       # noqa: BLE001 - advisory only
+        _warn("Could not write %s (%s)." % (path, exc))
+        _warn("The TNC will fail to open '%s'."
+              % draws_audio.SHARED_CAPTURE_PCM)
+        return False
+    _ok("Shared capture pcm '%s' defined (%s)."
+        % (draws_audio.SHARED_CAPTURE_PCM, path))
+    _info("Other processes (e.g. a satellite recorder) can now capture the "
+          "radios while the TNC runs.")
     return True
 
 
