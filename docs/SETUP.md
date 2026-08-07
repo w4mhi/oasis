@@ -25,7 +25,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [ADS-B Aircraft](#adsb-aircraft)
 - [Satellites](#satellites)
 - [GPS time sync (gpsd + chrony)](#gps-time-sync-gpsd--chrony)
-- [Hardware RTC (Witty Pi 3)](#hardware-rtc-witty-pi-3)
+- [Hardware RTC (Witty Pi 3 · BigTreeTech 7″)](#hardware-rtc-witty-pi-3--bigtreetech-7)
 - [webssh / Browser Terminal](#webssh--browser-terminal)
 - [Service controls (dashboard power buttons)](#service-controls-dashboard-power-buttons)
 - [ICS Forms](#ics-forms)
@@ -78,7 +78,7 @@ Package-provided units (installed via `apt`/`.deb`, so they live under `/lib/sys
 | GPS time sync — gpsd | `/lib/systemd/system/gpsd.service` |
 | GPS time sync — chrony | `/lib/systemd/system/chrony.service` |
 
-> Features without their own unit: FCC lookup, offline maps and ICS/tools are served by `oasis.service`; the DRA-Pi sound card (ALSA config) and the Witty Pi 3 RTC (device-tree overlay + `hwclock`) configure the OS directly and register no systemd service.
+> Features without their own unit: FCC lookup, offline maps and ICS/tools are served by `oasis.service`; the DRA-Pi sound card (ALSA config) and both hardware RTCs (device-tree overlay + `hwclock`) configure the OS directly and register no systemd service.
 
 ### Checking any service (works for every unit above)
 
@@ -1638,23 +1638,58 @@ chronyc tracking
 
 ---
 
-## Hardware RTC (Witty Pi 3)
+## Hardware RTC (Witty Pi 3 · BigTreeTech 7″)
 
 Without GPS lock or internet, a Pi has **no idea what time it is** after a reboot
 (it has no battery-backed clock). A hardware real-time clock keeps accurate time
 across reboots and total power loss — the steady baseline that GPS/chrony then
-fine-tune. OASIS supports the **UUGear Witty Pi 3** (DS3231SN RTC on I²C `0x68`):
+fine-tune. OASIS supports two boards, one feature each — tick either (or both) in
+**Setup**, or run its CLI:
+
+| Board | Chip | Bus | Feature | CLI |
+|---|---|---|---|---|
+| UUGear **Witty Pi 3** (Rev1/Rev2) | DS3231SN @ `0x68` | GPIO ARM, `i2c-1` | `rtc` | `features/rtc-hat/enable-rtc.py` |
+| **BigTreeTech 7″** touchscreen (Raspad) | PCF8563 @ `0x51` | DSI ribbon, `i2c-10` | `rtc-raspad` | `features/rtc-raspad/enable-rtc.py` |
 
 ```bash
-python3 features/rtc-hat/enable-rtc.py                  # configure the DS3231 RTC overlay
-python3 features/rtc-hat/enable-rtc.py --check          # report status, change nothing
+python3 features/rtc-hat/enable-rtc.py               # Witty Pi 3 (DS3231)
+python3 features/rtc-raspad/enable-rtc.py            # BigTreeTech 7" (PCF8563)
+python3 features/rtc-raspad/enable-rtc.py --check    # report status, change nothing
 ```
 
-The script is idempotent and **requires a reboot**. It enables I²C, adds the
-`i2c-rtc,ds3231` overlay (so `/dev/rtc0` appears at boot), removes
-`fake-hwclock` (which would otherwise overwrite the real RTC), and neutralises
-the `--systz` block in `/lib/udev/hwclock-set` (the classic DS3231 boot-reset
-fix).
+Each script is idempotent and **requires a reboot**. It writes its board's
+`config.txt` lines, removes `fake-hwclock` (which would otherwise overwrite the
+real RTC), and neutralises the `--systz` block in `/lib/udev/hwclock-set` (the
+classic i2c-rtc boot-reset fix). The lines per board:
+
+```ini
+# rtc (Witty Pi 3)
+dtparam=i2c_arm=on
+dtoverlay=i2c-rtc,ds3231
+
+# rtc-raspad (BigTreeTech 7")
+dtoverlay=vc4-kms-dsi-7inch,dsi1
+dtoverlay=i2c-rtc,pcf8563,i2c_csi_dsi
+```
+
+> ⚠️ **The installer only owns what it added.** Every line goes inside that
+> feature's own `# --- OASIS RTC <board> ---` block in `config.txt`, and a line
+> already active elsewhere in the file is *left where it is* rather than copied
+> into the block. That matters most for `dtoverlay=vc4-kms-dsi-7inch,dsi1`, which
+> a working Raspad already carries next to the stock `vc4-kms-v3d` line: because
+> it stays outside the block, **uninstalling `rtc-raspad` cannot delete your
+> display overlay** and blank the screen. Same reasoning keeps a shared
+> `dtparam=i2c_arm=on` safe. Both boards may be installed on one Pi — the blocks
+> are per-board, so removing one never touches the other.
+
+The PCF8563 sits on the **DSI ribbon's** I²C bus, not the GPIO header — which is
+why it never appears on `i2cdetect -y 1`. Use `i2cdetect -y 10` (the chip shows
+as `UU` at `0x51`), or just read the driver name:
+
+```bash
+cat /sys/class/rtc/rtc0/name     # rtc-pcf8563 10-0051   (BigTreeTech 7")
+                                 # rtc-ds3231  1-0068    (Witty Pi 3)
+```
 
 **After the reboot**, once the system clock is correct (from GPS or a one-time
 NTP sync), write it to the RTC once:
@@ -2112,7 +2147,7 @@ python3 scripts/doctor.py --json | python3 -c "import json,sys; d=json.load(sys.
 
 To undo everything the setup scripts installed — stop, disable, and remove all
 OASIS services, delete OASIS-managed system files, and strip the OASIS blocks from
-`config.txt` (DRA-Pi, CM4Stack, and the DS3231 RTC overlay):
+`config.txt` (DRA-Pi, CM4Stack, and the RTC overlays):
 
 ```bash
 # Dry-run first — shows exactly what would be removed, changes nothing:

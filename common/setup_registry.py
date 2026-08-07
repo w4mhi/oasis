@@ -335,6 +335,7 @@ def _setup_dashboard_install_fn(repo_root, payload):
 PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
     "openwebrx", "adsb", "satellites", "rtl-sdr", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
+    "rtc-raspad",
     "pi-headless", "pi-local-monitor", "pi-oasis-dashboard", "cm4stack", "rgb-cooling-hat",
     "argon-fan",
 }
@@ -521,6 +522,19 @@ def build_registry(repo_root, payload=None):
             dependencies=[],
             install_fn=lambda: _setup_run_script(repo_root, "features/rtc-hat/enable-rtc.py"),
             removal_record_fn=lambda: _removal_record(repo_root, "features/rtc-hat/enable-rtc.py"),
+            verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
+        # Second RTC board, not a variant of the first: the BigTreeTech 7" panel's
+        # PCF8563 hangs off the DSI ribbon's i2c-10 bus, so it needs a different
+        # overlay and a different config.txt block than the Witty Pi's GPIO-bus
+        # DS3231. Both may be ticked on one box; each owns only its own block.
+        "rtc-raspad": SE.FeatureSpec(
+            key="rtc-raspad",
+            dependencies=[],
+            install_fn=lambda: _setup_run_script(repo_root, "features/rtc-raspad/enable-rtc.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/rtc-raspad/enable-rtc.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,

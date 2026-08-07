@@ -175,7 +175,8 @@
           <label class="setup-check"><input type="checkbox" data-feature="gps"> gps (USB / autodetect)</label>
           <label class="setup-check"><input type="checkbox" data-feature="gps-l76x"> gps-L76X (UART / GPIO HAT)</label>
           <label class="setup-check"><input type="checkbox" data-feature="dra-pi-rx-led"> dra-pi + dra-rx-led</label>
-          <label class="setup-check"><input type="checkbox" data-feature="rtc"> rtc-hat Witty module</label>
+          <label class="setup-check"><input type="checkbox" data-feature="rtc"> rtc-hat Witty Pi 3 (DS3231)</label>
+          <label class="setup-check"><input type="checkbox" data-feature="rtc-raspad"> rtc-raspad BigTreeTech 7&quot; (PCF8563)</label>
         </div>
         <div class="setup-group">
           <h4>Content</h4>
@@ -289,6 +290,7 @@ const SETUP_FEATURE_ALIASES = {
   'dra-rx-led': 'dra-pi-rx-led',
   'satellites-tle': 'satellites',
   'satellites-voice': 'satellites',
+  'rtc-7inch': 'rtc-raspad',   // pre-features/rtc-raspad CLI key
 };
 
 function escapeHtml(s) {

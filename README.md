@@ -94,7 +94,7 @@ The dashboard **OPS** grid, in the same sub-groups:
 Field-deployment and on-device extras (not dashboard cards):
 
 - **📶 Wi-Fi AP fallback** *(Pi)* — the Pi hosts the `OASIS` hotspot automatically when no known network is in range, so other devices connect with no router. → [Setup](docs/SETUP.md#using-oasis-in-the-field-no-internet)
-- **🕐 Hardware RTC** *(Pi)* — optional Witty Pi 3 (DS3231) battery-backed clock that keeps time across reboots and total power loss. → [Setup](docs/SETUP.md#hardware-rtc-witty-pi-3)
+- **🕐 Hardware RTC** *(Pi)* — optional battery-backed clock that keeps time across reboots and total power loss: Witty Pi 3 (DS3231) or the BigTreeTech 7″ panel's onboard PCF8563. → [Setup](docs/SETUP.md#hardware-rtc-witty-pi-3--bigtreetech-7)
 - **🖥️ Panel & cooling** *(Pi)* — on-device CM4Stack panel display, RGB Cooling HAT fan/OLED, and the OASIS Dashboard touch kiosk (800×480 / 1920×1200). → [Setup](docs/SETUP.md#cm4stack-panel-display)
 - **💾 Portable USB bundle** — package the whole suite into a self-contained folder that runs with no system Python on Windows (`--for-windows`), or Pi/Linux only (default). → [Setup](docs/SETUP.md#usb--portable-bundle)
 
@@ -271,7 +271,8 @@ A single small **Flask** app serves the dashboard, the FCC lookup API, and the m
 | `services/satellites/install-predict.py` | Installs the **Skyfield** + numpy pass-prediction stack into the server venv (required for passes/track) | When enabling Satellites | Any host running OASIS | ⚠️ bundled wheels if present, else online |
 | `services/satellites/install-voice.py` | Installs the TTS stack (speech-dispatcher + espeak-ng) for spoken pass alerts | Optional, with Satellites | Raspberry Pi / Debian | ⚠️ apt step online |
 | `features/gps/install-gps.py` | Sets up GPS-disciplined time (`gpsd` + `chrony`) for offline FT8/WSPR/SSTV timing | On the Pi, with a USB GPS | Raspberry Pi / Debian | ⚠️ apt step online |
-| `enable-rtc.py` | Configures a hardware RTC — Witty Pi 3 DS3231 (default) or `--board bigtreetech-7in` PCF8563 on the DSI bus — **reboot required** | On a Pi with the RTC | Raspberry Pi | ❌ offline |
+| `features/rtc-hat/enable-rtc.py` | Configures the Witty Pi 3 DS3231 RTC (GPIO `i2c-1`) — **reboot required** | On a Pi with the Witty Pi 3 | Raspberry Pi | ❌ offline |
+| `features/rtc-raspad/enable-rtc.py` | Configures the BigTreeTech 7″ PCF8563 RTC (DSI `i2c_csi_dsi` bus) — **reboot required** | On a Pi with the 7″ panel | Raspberry Pi | ❌ offline |
 | `enable-dra-pi.py` | Configures the DRA-Pi-Zero (WM8731) sound card for GrayWolf — **reboot required** | On a Pi with the DRA-Pi-Zero HAT | Raspberry Pi | ❌ offline |
 | `services/webssh/install.py` | Installs **ttyd** browser SSH terminal on :7681 | On the Pi, for a web shell | Raspberry Pi / Debian | ⚠️ bundled binary if present, else downloads |
 | `enable-service-controls.py` | Grants a narrow sudoers rule so the dashboard can start/stop services | To enable dashboard power buttons | Raspberry Pi / Linux (systemd) | ❌ offline |
