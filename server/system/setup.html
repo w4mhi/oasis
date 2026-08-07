@@ -470,18 +470,30 @@ async function setupAutoSelectInstalledFeatures() {
       graywolf: 'graywolf', pat: 'winlink', kiwix: 'kiwix',
       openwebrx: 'openwebrx', 'adsb-api': 'adsb', webssh: 'webssh',
     };
+    // Units apt ships in /usr/lib/systemd/system, which the leave-apt removal
+    // policy keeps on the box forever. For these, `enabled` is NOT evidence of
+    // an OASIS install either: the Debian package enables its own unit from
+    // postinst, so the enablement symlink in multi-user.target.wants outlives an
+    // OASIS uninstall exactly like the unit file does. Only a RUNNING unit
+    // counts here — which is the whole point of the probe ("started outside
+    // setup") — and the ledger covers installed-but-stopped.
+    const SETUP_APT_SHIPPED_UNITS = new Set(['graywolf', 'openwebrx']);
     const pairs = Object.entries(serviceMap);
     const probes = await Promise.all(pairs.map(([unit]) => chkService(unit)));
     probes.forEach((res, i) => {
-      // Only an ACTIVE or ENABLED unit counts as installed here. A merely
-      // present-but-disabled unit is not a reliable signal: apt-backed features
-      // (graywolf, openwebrx, dump1090-fa) ship their unit in
-      // /usr/lib/systemd/system, which the leave-apt removal policy keeps — so
-      // it lingers as `disabled` forever and, under the old `res.installed`
+      // Only an ACTIVE (or, for OASIS-written units, ENABLED) unit counts as
+      // installed here. A merely present-but-disabled unit is not a reliable
+      // signal: apt-backed features (graywolf, openwebrx, dump1090-fa) ship
+      // their unit in /usr/lib/systemd/system, which the leave-apt removal
+      // policy keeps — so it lingers forever and, under the old `res.installed`
       // (== "unit file exists"), kept painting the feature installed after
-      // uninstall, blocking reinstall. The ledger stays authoritative for
-      // installed-but-stopped features (recorded at install time).
-      if (res && (res.active === 'active' || res.enabled === 'enabled')) {
+      // uninstall, blocking reinstall. `enabled` is the same trap one level up:
+      // a leftover boot-enable made openwebrx render green+"installed" after an
+      // uninstall, so ticking it submitted an UNINSTALL instead of an install
+      // and the reinstall silently did nothing. The ledger stays authoritative
+      // for installed-but-stopped features (recorded at install time).
+      const trustEnabled = !SETUP_APT_SHIPPED_UNITS.has(pairs[i][0]);
+      if (res && (res.active === 'active' || (trustEnabled && res.enabled === 'enabled'))) {
         installed.add(pairs[i][1]); returningBox = true;
       }
     });
