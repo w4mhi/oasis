@@ -26,6 +26,11 @@ configuration/sat-recordings/
 # GrayWolf API credentials written by setup-oasis.py.
 configuration/graywolf_api.json
 
+# Device inventory + service assignments (dongle serials, USB ports) written by
+# common/hardware.py as devices are detected and assigned. Describes one
+# physical box, so committing it would push another machine's hardware layout.
+configuration/hardware.json
+
 # Per-boot stamp written by the hardware boot reconciler (server/routes/
 # hardware.py): holds the kernel boot_id so a Flask restart is not mistaken
 # for a reboot. Machine-local runtime state, never shared.
