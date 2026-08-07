@@ -86,13 +86,19 @@ function altColor(alt) {
   }
 
   // Class-aware APRS symbol [table, code] for an aircraft, keyed on ADS-B category:
-  // small /' · large-heavy \^ · heli \h · glider /g · military → glider (the [mil]
+  // small /' · large-heavy \^ · heli /X · glider /g · military → glider (the [mil]
   // badge distinguishes it). Single source shared by the dashboard, index + map lists.
+  //
+  // Helicopters are /X — the APRS primary table's Helicopter symbol, and what
+  // aprs-types.js maps to ['heli','Helicopter']. They used to return \h, which is
+  // the alternate table's *Public safety* symbol, so every ADS-B helicopter drew
+  // the wrong sprite and landed in the wrong Type filter bucket. It also
+  // contradicted adsbSymCode() below, which returned 'X' for A7 all along.
   function acSymbol(a) {
     if (a && hexIsMilitary(a.hex)) return ['/', 'g'];
     var c = a && a.category;
     if (c === 'B1' || c === 'B2') return ['/', 'g'];               // glider
-    if (c === 'A7') return ['\\', 'h'];                            // helicopter
+    if (c === 'A7') return ['/', 'X'];                             // helicopter
     if (c === 'A3' || c === 'A4' || c === 'A5') return ['\\', '^']; // large / heavy
     return ['/', "'"];                                             // small / default
   }

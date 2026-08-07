@@ -63,7 +63,36 @@ test('acSymbol — class-aware aircraft symbol [table, code]', () => {
   assert.deepStrictEqual(A.acSymbol({}), ['/', "'"]);                   // unknown → small default
   assert.deepStrictEqual(A.acSymbol({ category: 'A3' }), ['\\', '^']);  // large / heavy
   assert.deepStrictEqual(A.acSymbol({ category: 'A5' }), ['\\', '^']);
-  assert.deepStrictEqual(A.acSymbol({ category: 'A7' }), ['\\', 'h']);  // heli
+  assert.deepStrictEqual(A.acSymbol({ category: 'A7' }), ['/', 'X']);    // heli
   assert.deepStrictEqual(A.acSymbol({ category: 'B1' }), ['/', 'g']);   // glider
   assert.deepStrictEqual(A.acSymbol({ hex: 'AE1234', category: 'A3' }), ['/', 'g']); // mil overrides class
+});
+
+// Helicopters: /X is the APRS primary-table Helicopter symbol. The old \h is the
+// alternate table's Public safety symbol, so A7 aircraft drew the wrong sprite
+// and fell into the wrong Type-filter bucket. These pin the two functions to each
+// other — they disagreed for as long as both existed.
+test('acSymbol — A7 is the Helicopter symbol, not Public safety', () => {
+  const T = require('../../common/js/aprs-types.js');
+  const [table, code] = A.acSymbol({ category: 'A7' });
+  assert.strictEqual(table, '/');
+  assert.strictEqual(code, 'X');
+  // Resolve it the way the list and map do: as a station's sym_code.
+  assert.strictEqual(T.categoryOf({ sym_code: code }).key, 'heli');
+  assert.strictEqual(T.labelOf({ sym_code: code }), 'Helicopter');
+  // The old value resolved here, which is the bug in one line.
+  assert.strictEqual(T.categoryOf({ sym_code: 'h' }).key, 'safety');
+});
+
+test('acSymbol and adsbSymCode agree on the A7 code', () => {
+  assert.strictEqual(A.acSymbol({ category: 'A7' })[1], A.adsbSymCode('A7'));
+});
+
+test('acSymbol — no aircraft class resolves to Public safety', () => {
+  const T = require('../../common/js/aprs-types.js');
+  for (const cat of ['A1', 'A2', 'A3', 'A4', 'A5', 'A7', 'B1', 'B2', undefined]) {
+    const code = A.acSymbol({ category: cat })[1];
+    assert.notStrictEqual(T.categoryOf({ sym_code: code }).key, 'safety',
+      `category ${cat} mapped to a public-safety symbol`);
+  }
 });
