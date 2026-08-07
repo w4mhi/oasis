@@ -307,10 +307,32 @@ def api_track():
 @bp.route("/api/satellites/select", methods=["POST"])
 @require_oasis_request
 def api_select():
-    body = request.get_json(force=True)
+    """Set which satellites are monitored — the roster is the single source of truth.
+
+    Two accepted shapes:
+
+        {"norad": 25544, "selected": true}                  one toggle
+        {"selections": {"25544": true, "43017": false}}      a whole set, one write
+
+    Use the bulk shape for anything touching more than one bird. The client used
+    to fan a set out into one fire-and-forget request per satellite, which raced
+    itself and lost most of them; the single-toggle shape is kept so a stale
+    cached page keeps working.
+    """
+    body = request.get_json(force=True) or {}
+    if "selections" in body:
+        selections = body.get("selections") or {}
+        if not isinstance(selections, dict):
+            return jsonify({"ok": False, "error": "selections must be an object of "
+                                                  "{norad: bool}"}), 400
+    else:
+        try:
+            selections = {int(body["norad"]): bool(body["selected"])}
+        except (KeyError, TypeError, ValueError):
+            return jsonify({"ok": False, "error": "expected {norad, selected} or "
+                                                  "{selections:{norad: bool}}"}), 400
     try:
-        data = roster.set_selected(config_paths.satellites_json(SUITE_ROOT),
-                                   int(body["norad"]), bool(body["selected"]))
+        data = roster.set_selected_many(config_paths.satellites_json(SUITE_ROOT), selections)
     except OSError as exc:
         # Almost always a permissions problem: satellites.json left root-owned by
         # the privileged installer worker, so the non-root server can't rewrite it.

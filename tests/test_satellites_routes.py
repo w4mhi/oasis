@@ -87,6 +87,50 @@ class RoutesTest(unittest.TestCase):
         iss = [s for s in r.get_json()["satellites"] if s["norad"] == 25544][0]
         self.assertFalse(iss["selected"])
 
+    # ── Selection: both request shapes, one write ─────────────────────────────
+    def test_select_bulk_applies_the_whole_set(self):
+        r = self.client.post("/api/satellites/select",
+                             json={"selections": {"25544": True}})
+        self.assertEqual(r.status_code, 200)
+        iss = [s for s in r.get_json()["satellites"] if s["norad"] == 25544][0]
+        self.assertTrue(iss["selected"])
+
+    def test_select_bulk_is_a_single_write(self):
+        # The whole point: a burst of N single-toggle requests raced itself and
+        # lost most of them. One request must mean one load-modify-save.
+        import roster as roster_mod
+
+        calls = []
+        original = roster_mod.save
+        roster_mod.save = lambda p, d: calls.append(p) or original(p, d)
+        try:
+            self.client.post("/api/satellites/select",
+                             json={"selections": {"25544": True, "43017": False}})
+        finally:
+            roster_mod.save = original
+        self.assertEqual(len(calls), 1)
+
+    def test_select_single_shape_still_works(self):
+        # A cached page from before the bulk endpoint must keep working.
+        r = self.client.post("/api/satellites/select",
+                             json={"norad": 25544, "selected": True})
+        self.assertEqual(r.status_code, 200)
+        iss = [s for s in r.get_json()["satellites"] if s["norad"] == 25544][0]
+        self.assertTrue(iss["selected"])
+
+    def test_select_rejects_a_malformed_body(self):
+        for body in ({}, {"norad": "nope", "selected": True}, {"selections": [1, 2]}):
+            r = self.client.post("/api/satellites/select", json=body)
+            self.assertEqual(r.status_code, 400, body)
+            self.assertIn("error", r.get_json())
+
+    def test_select_cannot_add_satellites_to_the_roster(self):
+        before = len(self.client.get("/api/satellites").get_json()["satellites"])
+        self.client.post("/api/satellites/select", json={"selections": {"999999": True}})
+        after = self.client.get("/api/satellites").get_json()["satellites"]
+        self.assertEqual(len(after), before)
+        self.assertNotIn(999999, [s["norad"] for s in after])
+
     def test_listen_status_shape(self):
         r = self.client.get("/api/satellites/listen/status")
         self.assertEqual(r.status_code, 200)

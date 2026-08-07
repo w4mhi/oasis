@@ -6,6 +6,21 @@ import datetime
 import json
 import os
 import tempfile
+import threading
+
+# Serializes the read-modify-write in set_selected/set_selected_many. Atomic
+# save() prevents a TORN file; it does nothing about a LOST UPDATE — two threads
+# both load the roster, each flips its own satellite, and the second write erases
+# the first. The client fires a burst (reconcileSelection pushes every local-only
+# pick on load; clearAll pushes every deselect), and gunicorn serves them on
+# --threads 4, so selecting 20 birds landed 1-2 of them and the kiosk showed a
+# fraction of what the operator had picked.
+#
+# A threading.Lock is the right tool *here specifically* because start-oasis.py
+# pins gunicorn to --workers 1: one process, several threads. If this ever grows
+# to multiple worker processes, this needs a file lock (fcntl.flock) instead —
+# separate processes do not share a threading.Lock.
+_write_lock = threading.RLock()
 
 
 def _now():
@@ -62,13 +77,38 @@ def load(path):
 
 
 def set_selected(path, norad, selected):
-    data = load(path)
-    for s in data["satellites"]:
-        if s["norad"] == norad:
-            s["selected"] = bool(selected)
-    data["updated"] = _now()
-    save(path, data)
-    return data
+    """Set one satellite's monitored flag. Serialized against other writers."""
+    return set_selected_many(path, {norad: selected})
+
+
+def set_selected_many(path, selections):
+    """Apply a whole `{norad: bool}` set in ONE load-modify-save.
+
+    This is what the client should use for anything touching more than one bird.
+    Sending N separate requests is not just N times slower — before the lock it
+    silently dropped most of them, and even with the lock it leaves the roster
+    observable in N intermediate states while a burst is in flight (the kiosk
+    polls /api/satellites every 60 s and can sample the middle of one).
+
+    JSON object keys are strings, so norads are coerced. Unknown norads are
+    ignored rather than invented — the roster's membership is owned by
+    build-roster.py, and a stale client must never be able to add rows to it.
+    """
+    wanted = {}
+    for norad, value in (selections or {}).items():
+        try:
+            wanted[int(norad)] = bool(value)
+        except (TypeError, ValueError):
+            continue                      # unparseable key — skip, don't fail the batch
+    with _write_lock:
+        data = load(path)
+        if wanted:
+            for s in data["satellites"]:
+                if s["norad"] in wanted:
+                    s["selected"] = wanted[s["norad"]]
+            data["updated"] = _now()
+            save(path, data)
+        return data
 
 
 def _display_mode(t):

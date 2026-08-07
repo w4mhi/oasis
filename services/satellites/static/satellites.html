@@ -144,6 +144,9 @@ html, body { height: 100%; margin: 0; }
 .sat-row .chips { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-top: .35rem; }
 .chip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim);
   border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
+/* A monitored bird with no TLE in the cache can never compute a pass, so it would
+   otherwise sit checked and silently never plot. */
+.chip-warn { color: var(--amber); border-color: var(--amber); }
 /* Roster filter bar: name search + toggleable tag/band chips (OR within a group,
    AND across groups). Filter state lives in _filters and persists to localStorage. */
 .filters { padding: .45rem .5rem .15rem; display: flex; flex-direction: column; gap: .4rem; }
@@ -427,7 +430,7 @@ function withinHour(s) {
 function passesFilters(s) {
   // Two independent axes: monitored-only ('monitored','soon') and passing-in-1h
   // ('soon','soon-all'). 'all' = neither; 'soon-all' = any bird passing over now.
-  if ((_view === 'monitored' || _view === 'soon') && !PLOTTED[s.norad]) return false;
+  if ((_view === 'monitored' || _view === 'soon') && !isMonitored(s.norad)) return false;
   if ((_view === 'soon' || _view === 'soon-all') && !withinHour(s)) return false;
   const q = _filters.q.trim().toLowerCase();
   if (q && !s.name.toLowerCase().includes(q)) return false;
@@ -558,31 +561,49 @@ function toggleLegend() {
 }
 // Persisted selection (norad -> colour). PLOTTED is the live subset (only sats
 // with an upcoming pass can be drawn); this is the operator's full choice, so it
-// survives refresh + server restart. Restored on boot (see restoreSelection),
+// survives refresh + server restart. Redrawn on boot and every pass refresh (see syncPlotted),
 // which also re-shows each sat's bell — bells already persist (oasis_sat_bells)
 // but only render on a plotted sat, so they vanished with the lost selection.
 let _satSelected = (() => { try { return JSON.parse(localStorage.getItem('oasis_sat_selected') || '{}'); } catch (e) { return {}; } })();
 function saveSelection() { try { localStorage.setItem('oasis_sat_selected', JSON.stringify(_satSelected)); } catch (e) { /* private mode */ } }
-// Persist a selection toggle to the SHARED server roster (configuration/
-// satellites.json) so other clients — notably the 7" kiosk, which reads the
-// roster's `selected` flag — see the same picks. Fire-and-forget; localStorage
-// stays this browser's per-sat colour store.
-function postSelect(norad, selected) {
-  fetch('/api/satellites/select', { method: 'POST',
+// Is this bird MONITORED? That is _satSelected (the operator's choice, mirrored to
+// the server roster), NOT PLOTTED. PLOTTED is only what can be drawn right now —
+// plotSat() bails without an upcoming pass — so keying the row state off it made a
+// selected bird with no computed pass render unchecked, uncoloured and belled-off,
+// as if the pick had been lost. Monitoring is a standing choice; drawing is a
+// property of the next few hours.
+function isMonitored(norad) { return norad in _satSelected; }
+// Persist selection to the SHARED server roster (configuration/satellites.json),
+// the single source of truth — the 7" kiosk reads its `selected` flag, and
+// localStorage keeps only this browser's per-sat colour.
+//
+// ALWAYS send a set, never a request per satellite. Fanning a set out into one
+// fire-and-forget fetch per bird raced itself on the server: each request was a
+// load-modify-save of the whole roster, so 20 picks landed 1-2 of them and the
+// kiosk showed a fraction of what was monitored here. One request = one atomic
+// write server-side (roster.set_selected_many).
+function postSelections(map) {
+  const selections = {};
+  for (const norad in map) selections[+norad] = !!map[norad];
+  if (!Object.keys(selections).length) return Promise.resolve();
+  return fetch('/api/satellites/select', { method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
-    body: JSON.stringify({ norad: +norad, selected: !!selected }) }).catch(() => {});
+    body: JSON.stringify({ selections }) }).catch(() => {});
 }
+function postSelect(norad, selected) { return postSelections({ [norad]: selected }); }
 // Reconcile this browser's selection with the shared server roster on load, so
 // the map and the kiosk agree: adopt any sat the roster marks selected (a pick
 // made on another device — e.g. the laptop — shows here too), and push up any
 // local-only picks so the server (and kiosk) learn them. Union — nothing dropped.
 function reconcileSelection() {
+  const push = {};                       // local-only picks the server hasn't got
   (ROSTER || []).forEach(s => {
     const has = s.norad in _satSelected;
     if (s.selected && !has) _satSelected[s.norad] = capabilityColor(s.norad);
-    else if (has && !s.selected) postSelect(s.norad, true);
+    else if (has && !s.selected) push[s.norad] = true;
   });
   saveSelection();
+  postSelections(push);                  // ONE request — see postSelections
 }
 // Re-derive every selected bird's blended colour from its current labels. Runs in
 // boot() after the roster loads (capabilityColor needs ROSTER.labels), so
@@ -616,7 +637,7 @@ async function boot() {
   await refreshPasses();
   reconcileSelection();                             // sync local picks ↔ shared server roster (kiosk sees them)
   recolorSelection();                               // colour every selected bird by its service class
-  await restoreSelection();                         // re-plot the operator's saved satellite selection + bells
+  await syncPlotted(); renderRoster();               // draw the saved selection + its bells
   setInterval(refreshPasses, 10 * 60 * 1000);      // keep the 24 h pass window fresh over long sessions
   updatePills();                                   // live workability colour
   // In the "In 1h" view, re-render the roster each tick so birds enter/leave the
@@ -657,8 +678,7 @@ async function syncTle() {
       // sequence so the selection recolours + re-plots in place — without this the
       // already-plotted birds keep their bare orange until a manual reload.
       recolorSelection();
-      await refreshPasses();
-      await restoreSelection();
+      await refreshPasses();                        // recomputes passes AND re-syncs the plots
     } else {
       flash(j.offline ? '⚠ no internet — try later' : '⚠ sync failed — try later');
     }
@@ -674,7 +694,25 @@ async function refreshPasses() {
   try {
     PASSES = (await (await fetch(`/api/satellites/passes?window=${WINDOW_H}`)).json()).passes || {};
   } catch (e) { /* keep last-good passes */ }
+  await syncPlotted();
   renderRoster();
+}
+
+// Bring the drawn set in line with the selection + the passes we now hold.
+// /passes is computed under a wall-clock budget and deliberately returns partial
+// results that fill in over later polls, but the boot-time re-plot only ran once,
+// so a bird whose pass arrived on the second poll stayed undrawn for the whole
+// session. Runs on every refresh: plot what became drawable, drop what aged out.
+// Nothing here touches the selection itself.
+async function syncPlotted() {
+  for (const norad in _satSelected) {
+    const n = +norad;
+    if (!ROSTER.some(s => s.norad === n)) continue;    // no longer in the roster
+    const pass = nextPassOf(n);
+    if (pass && !PLOTTED[n]) await plotSat(n, pass);
+    else if (!pass && PLOTTED[n]) unplotSat(n);
+  }
+  for (const norad in PLOTTED) if (!isMonitored(+norad)) unplotSat(+norad);
 }
 
 // The current-or-next pass: skip any whose set time is already past, so a row
@@ -704,7 +742,7 @@ function renderRoster() {
     ? (a, b) => (riseMs(a) - riseMs(b)) || byName(a, b)
     : byName;
   const shown = ROSTER.filter(passesFilters).sort(sorter);
-  const mon = Object.keys(PLOTTED).length;
+  const mon = ROSTER.filter(s => isMonitored(s.norad)).length;   // matches the kiosk's roster count
   const tally = shown.length === ROSTER.length
     ? `${ROSTER.length} sats` : `${shown.length} of ${ROSTER.length} sats`;
   document.getElementById('roster-count').textContent = `${mon} monitored - ${tally}`;
@@ -724,16 +762,20 @@ function renderRoster() {
   }
   document.getElementById('roster').innerHTML = shown.map(s => {
     const p = nextPassOf(s.norad);
-    const color = PLOTTED[s.norad] ? PLOTTED[s.norad].color : 'transparent';
-    return `<div class="sat-row ${PLOTTED[s.norad] ? 'on' : ''} ${p ? '' : 'no-pass'}" style="border-left-color:${color}">
-      <label><input type="checkbox" ${PLOTTED[s.norad] ? 'checked' : ''}
-          ${p ? '' : 'disabled'} onchange="onToggle(${s.norad}, this.checked)">
+    const mon = isMonitored(s.norad);       // the pick — survives having no pass
+    const noTle = !s.l1;                    // absent from the TLE cache: never plots
+    // Colour lives with the selection, so a monitored bird keeps its identity
+    // between passes instead of going transparent whenever it can't be drawn.
+    const color = mon ? (_satSelected[s.norad] || 'transparent') : 'transparent';
+    return `<div class="sat-row ${mon ? 'on' : ''} ${p ? '' : 'no-pass'}" style="border-left-color:${color}">
+      <label><input type="checkbox" ${mon ? 'checked' : ''}
+          onchange="onToggle(${s.norad}, this.checked)">
         <span class="nm">${s.name}</span><span class="pass-hint" data-norad="${s.norad}">${passHint(p, s.norad)}</span></label>
-      <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}<span class="sat-elev" data-norad="${s.norad}"></span>${PLOTTED[s.norad] ? bellBtnHTML(s.norad) : ''}</div>
-      ${!p ? '<div class="no-pass-hint">— no upcoming pass · no SDR controls —</div>'
-           : (PLOTTED[s.norad] ? `<div class="dlbtns">${dlBtnsHTML(s)}</div>` : '')}
+      <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}${noTle ? '<span class="chip chip-warn" title="This satellite is monitored but has no TLE in the cache, so no pass can be computed and it will never plot. Sync TLEs (tap the badge above) while online.">no TLE</span>' : ''}<span class="sat-elev" data-norad="${s.norad}"></span>${mon ? bellBtnHTML(s.norad) : ''}</div>
+      ${!p ? `<div class="no-pass-hint">— ${noTle ? 'no TLE in cache' : 'no upcoming pass'} · no SDR controls —</div>`
+           : (mon ? `<div class="dlbtns">${dlBtnsHTML(s)}</div>` : '')}
       <div class="sat-bottom">
-        ${PLOTTED[s.norad] ? `<span class="dl-status" data-norad="${s.norad}"></span>` : '<span></span>'}
+        ${mon ? `<span class="dl-status" data-norad="${s.norad}"></span>` : '<span></span>'}
         <span class="sat-meter" data-norad="${s.norad}">${'<span class="seg"></span>'.repeat(5)}</span></div>
     </div>`;
   }).join('');
@@ -990,7 +1032,7 @@ function clearAll() {
   const sel = Object.keys(_satSelected), bells = Object.keys(_satBells);
   if (!sel.length && !bells.length) return;                 // nothing to clear
   if (!confirm(`Clear all — uncheck ${sel.length} monitored bird(s) and disarm ${bells.length} alert(s)?`)) return;
-  sel.forEach(n => postSelect(n, false));                   // clear the shared roster (kiosk too)
+  postSelections(Object.fromEntries(sel.map(n => [n, false])));   // one write, kiosk too
   _satSelected = {}; saveSelection();
   Object.keys(PLOTTED).forEach(n => delete PLOTTED[n]);     // drop tracks/footprints/markers
   _satBells = {}; localStorage.setItem('oasis_sat_bells', JSON.stringify(_satBells));
@@ -1018,18 +1060,6 @@ function unplotSat(norad) {
   redraw();
 }
 
-// Re-plot the operator's saved selection after the roster + passes are loaded.
-// Sats without an upcoming pass right now stay selected (persisted) and re-draw
-// when they next have one — nothing is silently dropped.
-async function restoreSelection() {
-  for (const norad in _satSelected) {
-    const n = +norad;
-    if (!ROSTER.some(s => s.norad === n)) continue;   // dropped from the roster
-    const pass = nextPassOf(n);
-    if (pass) await plotSat(n, pass);
-  }
-  renderRoster();
-}
 
 /* ── Map — lightweight SVG world map (no MapLibre/WebGL/tiles) ─────────────── */
 // A static base layer (dark countries + graticule + station house) rendered once,
