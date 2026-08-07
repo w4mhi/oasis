@@ -1154,6 +1154,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <script src="/common/js/geo.js"></script>
 <script src="/common/js/format.js"></script>
 <script src="/common/js/aprs-types.js"></script>
+  <script src="/common/js/incident-icons.js"></script>
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/adsb-operators.js"></script>
 <script src="/common/js/traffic-list.js"></script>
@@ -3554,7 +3555,7 @@ function _renderHazardPills(counts) {
       + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleHazardFilter(\'' + escapeHtml(h.key) + '\');}"'
       + ' aria-pressed="' + (active ? 'true' : 'false') + '"'
       + ' title="' + counts[h.key] + ' ' + escapeHtml(h.label) + (active ? ' — showing only these (click to clear)' : ' — click to show only these') + '">'
-      + escapeHtml(h.emoji || '⚠') + ' ' + counts[h.key] + ' ' + escapeHtml((h.label || '').toUpperCase()) + '</span>';
+      + incidentIconSvg(h.key) + ' ' + counts[h.key] + ' ' + escapeHtml((h.label || '').toUpperCase()) + '</span>';
   }).join('');
 }
 

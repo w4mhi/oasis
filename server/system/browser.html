@@ -28,7 +28,10 @@
 .entry-list li:last-child { border-bottom: none; }
 .entry-list li:hover { background: var(--panel); border-radius: 5px; }
 
-.entry-icon { font-size: var(--fs-subtitle); flex-shrink: 0; width: 1.2rem; text-align: center; }
+.entry-icon { flex-shrink: 0; width: 1.2rem; display: inline-flex;
+              align-items: center; justify-content: center; color: var(--text-dim); }
+.entry-dir .entry-icon { color: var(--blue); }
+.breadcrumb svg { vertical-align: -2px; }
 .entry-name { flex: 1; }
 .entry-name a { color: var(--text); text-decoration: none; }
 .entry-name a:hover { color: var(--accent); }
@@ -96,7 +99,7 @@ function fmtDate(ts) {
 function buildBreadcrumb(path) {
   const bc = document.getElementById('breadcrumb');
   const parts = path ? path.split('/').filter(Boolean) : [];
-  let html = `<a href="browser.html?path=${encodeURIComponent(rootPath)}&browse=${encodeURIComponent(rootPath)}">📁 ${rootPath || '/'}</a>`;
+  let html = `<a href="browser.html?path=${encodeURIComponent(rootPath)}&browse=${encodeURIComponent(rootPath)}">${icon('folder')} ${rootPath || '/'}</a>`;
   let built = rootPath;
   parts.slice(rootPath.split('/').filter(Boolean).length).forEach((p, i) => {
     built += '/' + p;
@@ -130,7 +133,7 @@ function load(path) {
       if (path !== rootPath) {
         const parent = path.substring(0, path.lastIndexOf('/')) || rootPath;
         const li = document.createElement('li');
-        li.innerHTML = `<span class="entry-icon">⬆️</span><span class="entry-name"><a href="#" data-nav="${parent}">.. (up)</a></span>`;
+        li.innerHTML = `<span class="entry-icon">${icon('up')}</span><span class="entry-name"><a href="#" data-nav="${parent}">.. (up)</a></span>`;
         list.appendChild(li);
       }
 
@@ -149,7 +152,7 @@ function load(path) {
         if (isDir) {
           li.className = 'entry-dir';
           li.innerHTML = `
-            <span class="entry-icon">📁</span>
+            <span class="entry-icon">${icon('folder')}</span>
             <span class="entry-name"><a href="#" data-nav="${entryPath}">${e.name}/</a></span>
             <span class="entry-meta"></span>`;
         } else {
@@ -174,15 +177,38 @@ function load(path) {
     .catch(() => { document.getElementById('status').textContent = 'Failed to load directory.'; });
 }
 
+// ── Icons ─────────────────────────────────────────────────────────────────────
+// Inline SVG, stroked in currentColor — NOT emoji. Raspberry Pi OS ships no
+// emoji font, so every emoji here rendered as a tofu box on the device this page
+// exists to browse. 16x16, so they line up with the text baseline in .entry-icon.
+const SVG = {
+  folder: '<path d="M1.5 3.5h4l1.5 2h7.5v8h-13z"/>',
+  up:     '<path d="M8 13V3.5"/><path d="M4 7.5L8 3.5l4 4"/>',
+  file:   '<path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M9.5 1.5v3h3"/>',
+  image:  '<rect x="1.5" y="2.5" width="13" height="11" rx="1"/><circle cx="5.5" cy="6" r="1.2"/><path d="M2 11.5l3.5-3 3 2.5 2.5-2 3 3"/>',
+  audio:  '<path d="M9.5 2.5v8"/><circle cx="7" cy="11" r="2.2"/><path d="M9.5 2.5l4 1.2v2.2l-4-1.2z"/>',
+  video:  '<rect x="1.5" y="3.5" width="9" height="9" rx="1"/><path d="M10.5 7l4-2.5v7l-4-2.5z"/>',
+  archive:'<rect x="2.5" y="2.5" width="11" height="11" rx="1"/><path d="M7 2.5v3M9 5.5v3M7 8.5v3"/>',
+  web:    '<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2.2 2 9.8 0 12M8 2C6 4.2 6 11.8 8 14"/>',
+  text:   '<path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M5.5 7.5h5M5.5 10h5"/>',
+  data:   '<path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M5.5 11.5v-2M8 11.5v-4M10.5 11.5v-3"/>',
+};
+
+function icon(key) {
+  return '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" ' +
+         'stroke="currentColor" stroke-width="1.3" stroke-linecap="round" ' +
+         'stroke-linejoin="round" aria-hidden="true">' + (SVG[key] || SVG.file) + '</svg>';
+}
+
 function fileIcon(name) {
   const ext = name.split('.').pop().toLowerCase();
-  const map = { pdf:'📄', png:'🖼️', jpg:'🖼️', jpeg:'🖼️', gif:'🖼️', svg:'🖼️',
-                mp3:'🎵', wav:'🎵', ogg:'🎵',
-                mp4:'🎬', avi:'🎬', mkv:'🎬',
-                zip:'🗜️', gz:'🗜️', tar:'🗜️',
-                html:'🌐', htm:'🌐',
-                txt:'📝', md:'📝', csv:'📊', json:'📊', xml:'📊' };
-  return map[ext] || '📎';
+  const map = { pdf:'text', png:'image', jpg:'image', jpeg:'image', gif:'image', svg:'image',
+                mp3:'audio', wav:'audio', ogg:'audio',
+                mp4:'video', avi:'video', mkv:'video',
+                zip:'archive', gz:'archive', tar:'archive',
+                html:'web', htm:'web',
+                txt:'text', md:'text', csv:'data', json:'data', xml:'data' };
+  return icon(map[ext] || 'file');
 }
 
 // ── Filter ────────────────────────────────────────────────────────────────────

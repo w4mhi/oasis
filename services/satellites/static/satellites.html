@@ -347,7 +347,7 @@ html, body { height: 100%; margin: 0; }
    popup with its labels, downlink, next passes, and az/el sky-plot.
    ───────────────────────────────────────────────────────────────────────── */
 const WINDOW_H = 24;                       // default prediction window
-// Chime glyphs as inline SVG (Material bell / bell-off) — the 🔔/🔕 emoji render
+// Chime glyphs as inline SVG (Material bell / bell-off) — the bell / bell-with-slash emoji render
 // blank on Pi Chromium. 1em + currentColor so the .sat-bell / .sat-mute font-size,
 // colour, opacity and grayscale filter still apply.
 const BELL_ON  = `<svg viewBox="0 0 24 24" width="1.35em" height="1.35em" fill="currentColor" aria-hidden="true" style="vertical-align:-.15em"><path d="M12 2a2 2 0 0 0-2 2v.29C7.12 5.14 5 7.82 5 11v5l-2 2v1h18v-1l-2-2v-5c0-3.18-2.12-5.86-5-6.71V4a2 2 0 0 0-2-2Zm0 20a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2Z"/></svg>`;
@@ -873,9 +873,10 @@ function speak(text) {
 // Bell control for a roster row (only rendered for a plotted sat).
 function bellBtnHTML(norad) {
   const on = bellArmed(norad);
-  // The glyph reflects whether a chime will actually sound: an armed sat rings (🔔),
-  // but while the global mute is on even armed sats show the crossed 🔕 — kept bright
-  // via .on so it still reads as monitored (a disarmed sat shows a dim/grey 🔕).
+  // The glyph reflects whether a chime will actually sound: an armed sat shows the
+  // ringing bell, but while the global mute is on even armed sats show the crossed
+  // bell — kept bright via .on so it still reads as monitored (a disarmed sat shows
+  // a dim/grey crossed bell).
   const glyph = (on && !_satMuted) ? BELL_ON : BELL_OFF;
   const title = on
     ? (_satMuted
@@ -1113,7 +1114,7 @@ function redraw() {
       // non-scaling-stroke → constant pixel width regardless of the SVG's scale-up.
       out += `<path d="${d}" class="sat-track" data-norad="${norad}" fill="none" stroke="${s.color}" stroke-width="${dash ? 1 : 1.5}" vector-effect="non-scaling-stroke"${dash ? ' stroke-dasharray="3 2.5" opacity="0.5"' : ''}/>`; } };
     draw(past, false); draw(future, true);
-    // Live marker: an inline-SVG satellite glyph — NOT the 🛰️ emoji, which renders
+    // Live marker: an inline-SVG satellite glyph — NOT the satellite emoji, which renders
     // blank inside SVG <text> on Pi Chromium (and needs the colour-emoji font). Icon
     // is a single path (PD, by IonutNeagu) tinted by the sat's capability colour and
     // scaled from its 122.88 box, centred on the sub-point. Clicks still resolve via

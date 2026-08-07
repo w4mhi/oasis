@@ -162,10 +162,10 @@ tr.row-overflow td input{color:var(--text-dim);}
             <th class="c-func">Function</th>
             <th class="c-name">Channel Name / Talkgroup</th>
             <th class="c-assign">Assignment</th>
-            <th class="c-freq" id="th-rxfreq"><div class="th-lock" id="th-rxfreq-lock">🔒 locked</div>RX Freq (N/W)</th>
-            <th class="c-tone" id="th-rxtone"><div class="th-lock" id="th-rxtone-lock">🔒 locked</div>RX Tone/NAC</th>
-            <th class="c-freq" id="th-txfreq"><div class="th-lock" id="th-txfreq-lock">🔒 locked</div>TX Freq (N/W)</th>
-            <th class="c-tone" id="th-txtone"><div class="th-lock" id="th-txtone-lock">🔒 locked</div>TX Tone/NAC</th>
+            <th class="c-freq" id="th-rxfreq"><div class="th-lock" id="th-rxfreq-lock"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg> locked</div>RX Freq (N/W)</th>
+            <th class="c-tone" id="th-rxtone"><div class="th-lock" id="th-rxtone-lock"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg> locked</div>RX Tone/NAC</th>
+            <th class="c-freq" id="th-txfreq"><div class="th-lock" id="th-txfreq-lock"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg> locked</div>TX Freq (N/W)</th>
+            <th class="c-tone" id="th-txtone"><div class="th-lock" id="th-txtone-lock"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg> locked</div>TX Tone/NAC</th>
             <th class="c-mode">Mode</th>
             <th class="c-rem">Remarks</th>
             <th class="cd"></th>
@@ -257,7 +257,7 @@ tr.row-overflow td input{color:var(--text-dim);}
     </div>
     <div class="load-list" id="chirp-list"></div>
     <div class="load-foot">
-      <button class="sbtn" onclick="loadChirpFromFile()" title="Load a CHIRP CSV from this device instead of the server">📂 Browse device file…</button>
+      <button class="sbtn" onclick="loadChirpFromFile()" title="Load a CHIRP CSV from this device instead of the server"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><path d="M1.5 3.5h4l1.5 2h7.5v8h-13z"/></svg> Browse device file…</button>
     </div>
   </div>
 </div>
@@ -1255,7 +1255,7 @@ async function openLoadDialog(){
     return;
   }
   if(!files.length){
-    list.innerHTML='<div class="load-empty">No saved plans yet. Use 💾 Save first.</div>';
+    list.innerHTML='<div class="load-empty">No saved plans yet. Use <svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><path d="M2.5 2.5h8.5l2.5 2.5v8.5h-11z"/><path d="M5 2.5v4h5v-4"/><rect x="4.5" y="9" width="7" height="4.5"/></svg> Save first.</div>';
     return;
   }
   list.innerHTML='';

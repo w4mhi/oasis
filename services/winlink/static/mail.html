@@ -229,7 +229,7 @@
       <select id="connSel" title="Connection (saved + recent)"
               onchange="onConnSelChange()"></select>
       <button id="forgetBtn" class="sbtn" style="display:none" onclick="forgetConn()"
-              title="Remove this connection from the list">🗑</button>
+              title="Remove this connection from the list"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><path d="M2.5 4.5h11"/><path d="M6.5 4.5V3h3v1.5"/><path d="M4 4.5l.7 9h6.6l.7-9"/><path d="M6.5 7v4M9.5 7v4"/></svg></button>
       <!-- Structured builder — inline, shown only when "New connection…" is picked -->
       <span id="connBuild" class="conn-build" style="display:none">
         <select id="bTransport" title="Transport / mode" onchange="onTransportChange()">
@@ -680,7 +680,7 @@ async function openMessage(box, mid) {
         `<a class="attach-dl" href="${url}?download=1" title="Download">⬇</a>` +
       `</div>`;
     }).join("");
-    attachHtml = `<div class="attach"><div class="attach-label">📎 Attachments</div>${rows}</div>`;
+    attachHtml = `<div class="attach"><div class="attach-label"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><path d="M10.5 5.5L6 10a2.1 2.1 0 003 3l4.5-4.5a3.5 3.5 0 00-5-5L4 8a5 5 0 007 7l3.5-3.5"/></svg> Attachments</div>${rows}</div>`;
   }
   // Detect a received ICS-205 (Feature A) so we can offer to open it in the
   // OASIS ICS-205 form. Strongest signal is the RMS_Express_Form XML attachment;
@@ -695,7 +695,7 @@ async function openMessage(box, mid) {
                    || /ICS205-\s*v|BASIC RADIO CHANNEL USE/i.test(_bodyRaw);
   const ics205BtnHtml = isIcs205
     ? `<button class="sbtn primary" onclick="openInIcs205('${box}','${esc(mid)}')" ` +
-      `title="Open this ICS-205 in the OASIS form to edit, print, or Save PDF">📻 Open in ICS-205 form</button>`
+      `title="Open this ICS-205 in the OASIS form to edit, print, or Save PDF"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="1.5" y="6.5" width="13" height="7.5" rx="1"/><path d="M4.5 6.5l7-4.5"/><circle cx="5" cy="10.5" r="1.8"/><path d="M9.5 9h3.5M9.5 11.5h3.5"/></svg> Open in ICS-205 form</button>`
     : "";
   // Detect a SailDocs propagation reply: it comes from query-reply@saildocs.com
   // with the HAMQSL solar XML attached as "solarrss.php". Offer to parse+render it
@@ -716,7 +716,7 @@ async function openMessage(box, mid) {
   if (pos) {
     mapHtml = `<div class="msg-map"><a class="sbtn" target="_blank" rel="noopener" ` +
       `href="../aprs/map.html?center=${pos.lon},${pos.lat}&zoom=12">` +
-      `📍 Show on map (${pos.lat.toFixed(4)}, ${pos.lon.toFixed(4)})</a></div>`;
+      `<svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><path d="M8 14.5s5-4.6 5-8a5 5 0 10-10 0c0 3.4 5 8 5 8z"/><circle cx="8" cy="6.5" r="1.8"/></svg> Show on map (${pos.lat.toFixed(4)}, ${pos.lon.toFixed(4)})</a></div>`;
   }
   pane.className = "reader";
   pane.innerHTML =
@@ -730,7 +730,7 @@ async function openMessage(box, mid) {
       propBtnHtml +
       `<button id="readToggle" class="sbtn" data-mid="${esc(mid)}" onclick="toggleRead('${box}','${esc(mid)}')">` +
         `${WinlinkRead.isUnread(mid) ? "Mark read" : "Mark unread"}</button>` +
-      `<button class="sbtn danger" onclick="deleteMessage('${box}','${esc(mid)}')">🗑 Delete</button>` +
+      `<button class="sbtn danger" onclick="deleteMessage('${box}','${esc(mid)}')"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><path d="M2.5 4.5h11"/><path d="M6.5 4.5V3h3v1.5"/><path d="M4 4.5l.7 9h6.6l.7-9"/><path d="M6.5 7v4M9.5 7v4"/></svg> Delete</button>` +
     `</div>` +
     `<h2>${subject}</h2>` +
     `<div class="hdr"><strong>From:</strong> ${from}</div>` +
@@ -1047,7 +1047,7 @@ function replyTo(mode) {
 
 function _attachRowsHtml() {
   return _composeAttachments.map((a, i) =>
-    `<div class="attach" data-att="${i}"><span class="attach-label">📎 Attachment</span> ${esc(a.name)}` +
+    `<div class="attach" data-att="${i}"><span class="attach-label"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><path d="M10.5 5.5L6 10a2.1 2.1 0 003 3l4.5-4.5a3.5 3.5 0 00-5-5L4 8a5 5 0 007 7l3.5-3.5"/></svg> Attachment</span> ${esc(a.name)}` +
     ` <button class="sbtn" onclick="dropComposeAttachment(${i})" title="Remove attachment">✕</button></div>`).join("");
 }
 

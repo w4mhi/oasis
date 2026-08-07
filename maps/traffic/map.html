@@ -406,7 +406,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .alert-empty{color:var(--text-dim);font-size:var(--fs-micro);}
 /* Per-hazard rows in the APRS Alerts card — one coloured row per hazard type
    present (colour from the hazard catalog via the inline --hz custom property).
-   Each row is a click-to-isolate control: click 🔥 Fire to show only fires on the
+   Each row is a click-to-isolate control: click the Fire row to show only fires on the
    map (solo that category), click the soloed row again to restore all. */
 .hazard-alert-row{display:flex;align-items:baseline;gap:.5rem;padding:3px 4px;cursor:pointer;border-radius:3px;}
 .hazard-alert-row:hover{background:color-mix(in srgb,var(--hz) 14%,transparent);}
@@ -966,6 +966,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 <script src="/common/js/geo.js"></script>
 <script src="/common/js/format.js"></script>
 <script src="/common/js/aprs-types.js"></script>
+  <script src="/common/js/incident-icons.js"></script>
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/adsb-operators.js"></script>
 <script src="/common/js/traffic-list.js"></script>
@@ -1412,14 +1413,15 @@ const _CAT_ICON = {
   fire:['/',':'], other:['/','/'],
 };
 function catIconEl(key) {
-  // Hazard categories draw their catalog emoji (🔥🌊🌀…) instead of an APRS
+  // Hazard categories draw an inline-SVG glyph keyed on the hazard (see
   // sprite — most hazards have no representative primary-table glyph anyway.
   const hz = _HAZARDS.find(h => h.key === key);
   if (hz) {
     const e = document.createElement('span');
     e.className = 'cat-icon';
-    e.textContent = hz.emoji || '⚠';
-    e.style.cssText = 'width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;';
+    e.innerHTML = incidentIconSvg(hz.key, { size: '13px' });
+    e.style.cssText = 'width:16px;height:16px;display:inline-flex;align-items:center;'
+      + 'justify-content:center;color:' + (hz.color || 'currentColor') + ';';
     return e;
   }
   const sym = _CAT_ICON[key] || ['/', '/'];
@@ -1443,7 +1445,7 @@ function _pinnedCats() { return _HAZARDS.map(h => h.key).concat(['safety']); }
 // age filter (an incident stays on the map until it stops being reported) and are
 // cleared by hand (dismissedHazard), not by aging out. Seeded with a Fire default
 // so it works even before the config fetch resolves / if it fails.
-let _HAZARDS = [{ key: 'fire', label: 'Fire', emoji: '🔥', color: '#ff5c33',
+let _HAZARDS = [{ key: 'fire', label: 'Fire', color: '#ff5c33',
                  symbols: [['/', ':']], name_match: ['FIRE', 'WILDFIRE'] }];
 async function loadHazards() {
   try {
@@ -1532,7 +1534,8 @@ function toggleEmergenciesPanel() {
 
 // Dedicated APRS Alerts card: a per-hazard-type rollup driven by the shared
 // hazard catalog (_HAZARDS / hazards.json) — one coloured row per hazard present
-// (🔥 Fire 34, 🌊 Flood 2, …), counts excluding EOC-dismissed stations, with a
+// (Fire 34, Flood 2, … each with its hazard glyph), counts excluding
+// EOC-dismissed stations, with a
 // "N dismissed · restore" footer. Stays visible showing "0 / No alerts" when
 // quiet; auto-expands the first time a hazard appears (a manual collapse then
 // sticks until they clear and return). APRS-only — ADS-B aircraft alerts live in
@@ -1578,7 +1581,7 @@ function updateEmergenciesPanel() {
       ' data-objcat="' + _escHtml(h.key) + '" role="button" tabindex="0"' +
       ' aria-pressed="' + (solo ? 'true' : 'false') + '"' +
       ' title="' + (solo ? 'Showing only ' + label + ' — click to restore all' : 'Click to show only ' + label + ' on the map') + '">' +
-      '<span class="hazard-alert-label">' + _escHtml(h.emoji || '⚠') + ' ' + label + '</span>' +
+      '<span class="hazard-alert-label">' + incidentIconSvg(h.key) + ' ' + label + '</span>' +
       '<span class="hazard-alert-count">' + counts[h.key] + '</span></div>';
   }).join('') + footer;
   panel.hidden = false;
@@ -4080,7 +4083,7 @@ function buildWarningsPanel() {
   let html = '<div class="warn-hint">Click on an alert.<br>Click on the map to add</div>';
   html += cat.map(w =>
     '<div class="warn-row" data-warn="' + _escHtml(w.id) + '"><span class="warn-ico">' +
-    _escHtml(w.icon) + '</span><span>' + _escHtml(w.label) + '</span></div>').join('');
+    incidentIconSvg(w.id) + '</span><span>' + _escHtml(w.label) + '</span></div>').join('');
   html += '<div id="warn-list"></div>';
   body.innerHTML = html;
   renderWarnList();
@@ -4164,7 +4167,7 @@ function renderWarnings() {
     const cat = WARN_BY_ID[w.type] || { icon: '⚠', label: w.type };
     const el = document.createElement('div');
     el.className = 'warn-marker' + (warnKillPending(w) ? ' warn-kill-pending' : '');
-    el.textContent = cat.icon;
+    el.innerHTML = incidentIconSvg(cat.id, { size: '100%' });
     el.title = cat.label + (w.note ? ' — ' + w.note : '');
     const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '260px' });
     popup.on('open', () => { _warnEditing = true; popup.setHTML(warnPopupHtml(w)); });
@@ -4193,7 +4196,7 @@ function renderWarnList() {
     const dest = warnDest(w);
     const text = w.note || w.aprs_name || cat.label;
     return '<div class="warn-item" data-wid="' + _escHtml(w.id) + '">' +
-      '<span class="warn-ico">' + _escHtml(cat.icon) + '</span>' +
+      '<span class="warn-ico">' + incidentIconSvg(cat.id) + '</span>' +
       '<span class="warn-item-main">' +
         '<span class="warn-item-note">' + _escHtml(text) + '</span>' +
         '<span class="warn-item-status ' + st.cls + '">' + _escHtml(st.label) +
@@ -4286,7 +4289,7 @@ function warnPopupHtml(w) {
       (cur === val ? ' checked' : '') + (off ? ' disabled' : '') +
       ' onchange="warnSetDest(\'' + w.id + '\', \'' + val + '\')"> ' + label + '</label>';
   };
-  return '<div class="pop-call">' + cat.icon + ' ' + _escHtml(cat.label) + '</div>' +
+  return '<div class="pop-call">' + incidentIconSvg(cat.id) + ' ' + _escHtml(cat.label) + '</div>' +
     '<input class="warn-input" maxlength="50" placeholder="note (max 50 chars)" value="' +
       _escHtml(w.note || '') + '" oninput="warnSaveNote(\'' + w.id + '\', this.value)">' +
     '<div class="warn-mode" style="font-size:var(--fs-small);gap:3px;margin-top:4px">' +

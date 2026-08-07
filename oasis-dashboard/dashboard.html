@@ -20,6 +20,7 @@
 <script src="/common/js/geo.js"></script>
 <script src="/common/js/format.js"></script>
 <script src="/common/js/adsb.js"></script>
+<script src="/common/js/incident-icons.js"></script>
 <script src="/common/js/service-registry.js"></script>
 <script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
@@ -282,7 +283,7 @@
     letter-spacing:.05em; padding:.3rem 1.05rem; border-radius:999px; border:1px solid var(--hz);
     color:var(--hz); background:transparent; cursor:pointer; user-select:none; }
   .hazard-pill .hz-ico,.emerg-chip .em-ico{ display:inline-flex; align-items:center; justify-content:center;
-    height:1.5em; margin-right:.4rem; font-size:.95em; line-height:1; }   /* fixed box so the emoji glyph can't balloon the pill */
+    height:1.5em; margin-right:.4rem; font-size:.95em; line-height:1; }   /* fixed box so the glyph can't balloon the pill */
   .hazard-pill:hover{ background:rgba(255,255,255,.06); }
   .hazard-pill.active{ color:var(--bg); background:var(--hz); border-color:var(--hz); }
   .emerg-chip{ display:inline-flex; align-items:center; font-size:1rem; line-height:1.5; font-weight:700; letter-spacing:.05em;
@@ -1158,7 +1159,7 @@ function _renderHazardPills(counts) {
       + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleHazardFilter(\''+esc(h.key)+'\');}"'
       + ' aria-pressed="'+(active?'true':'false')+'"'
       + ' title="'+counts[h.key]+' '+esc(h.label||'')+(active?' — showing only these (tap to clear)':' — tap to show only these')+'">'
-      + '<span class="hz-ico">'+esc(h.emoji||'⚠')+'</span>'+counts[h.key]+'</span>';
+      + '<span class="hz-ico">'+incidentIconSvg(h.key)+'</span>'+counts[h.key]+'</span>';
   }).join('');
 }
 function _renderEmergencyChip(count) {

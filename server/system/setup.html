@@ -689,11 +689,14 @@ function hwRenderRadioPorts(devices) {
   if (list.length === 0) { box.innerHTML = '<div class="setup-hw-msg">None detected.</div>'; return; }
   box.innerHTML = list.map(d => {
     const ptt = d.ptt ? escapeHtml(d.ptt.replace(/^.*\//, '')) : 'auto';
-    const svc = d.assignee ? (d.running ? `🔴 ${d.assignee}` : `🟢 ${d.assignee}`) : '⚪ unassigned';
+    // ● is a plain BMP glyph — the coloured-circle emoji render as tofu on
+    // Raspberry Pi OS, which ships no emoji font. Colour carries the state.
+    const svcColor = d.assignee ? (d.running ? 'var(--red)' : 'var(--green)') : 'var(--text-dim)';
+    const svcText  = d.assignee || 'unassigned';
     return `<div class="setup-dongle">
       <div class="setup-dongle-top">
         <span class="d-serial">${escapeHtml(d.label || d.kind)}</span>
-        <span class="d-svc">${escapeHtml(svc)}</span>
+        <span class="d-svc" style="color:${svcColor}">● ${escapeHtml(svcText)}</span>
       </div>
       <div class="d-port" title="${d.ptt ? escapeHtml(d.ptt) : ''}">PTT ${ptt}</div>
     </div>`;
@@ -702,8 +705,9 @@ function hwRenderRadioPorts(devices) {
 
 // One row per registered SDR dongle: serial · USB port · service(s). Plug/unplug
 // is automatic (server-side auto-declare + unplug-reconcile), so there's no
-// manual "declare" for SDRs. 🔴 busy = a service is running on it; 🟢 =
-// assigned-but-idle (shared); ⚪ = unassigned.
+// manual "declare" for SDRs. The ● dot is coloured, not an emoji (Pi OS has
+// no emoji font): red = a service is running on it; green = assigned-but-idle
+// (shared); dim = unassigned.
 function hwRenderDongles(devices) {
   const box = document.getElementById('hwDonglesList');
   if (!box) return;
@@ -717,7 +721,7 @@ function hwRenderDongles(devices) {
     const port = d.usb_port ? `USB ${escapeHtml(d.usb_port)}` : '(port n/a)';
     const svcText = busy ? `busy — ${d.assignee}` : (d.assignee || 'unassigned');
     const color = busy ? 'var(--red)' : (d.assignee ? 'var(--green)' : 'var(--text-dim)');
-    const dot = busy ? '🔴' : (d.assignee ? '🟢' : '⚪');
+    const dot = '●';   // colour (above) carries the state, not the glyph
     return `<div class="setup-dongle">
       <div class="setup-dongle-top">
         <span class="d-serial">${escapeHtml(d.serial || d.label)}</span>
