@@ -26,7 +26,7 @@ import sys
 from flask import Blueprint, jsonify, request
 
 import appconfig
-from common import config_paths
+from common import atomic_json, config_paths
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 FEED_UNIT_PATH = "/etc/systemd/system/aprs-sdr-feed.service"
@@ -58,24 +58,25 @@ def _load_presets():
         return []
 
 
-def _read_station():
-    try:
-        with open(config_paths.station_json(SUITE_ROOT), "r", encoding="utf-8") as fh:
-            return json.load(fh) or {}
-    except Exception:
-        return {}
+def _read_station(strict=False):
+    return atomic_json.read_json(config_paths.station_json(SUITE_ROOT), strict=strict)
 
 
 def _persist_freq(freq):
-    """Write aprs_freq into station.json, preserving every other key."""
+    """Write aprs_freq into station.json, preserving every other key.
+
+    Atomic: the old truncating write let a concurrent reader (gunicorn serves
+    this with `--threads 4`) catch an empty station.json, substitute {}, and
+    persist a file with no callsign, grid, lat or lon — offline, the operator
+    can't re-fetch any of that. `strict` refuses the same way when the file
+    exists but won't parse, rather than replacing it with just aprs_freq.
+    """
     path = config_paths.station_json(SUITE_ROOT)
     os.makedirs(config_paths.config_dir(SUITE_ROOT), exist_ok=True)
-    body = _read_station()
+    body = _read_station(strict=True)
     body["aprs_freq"] = freq
     body["updated"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(body, fh, indent=2)
-        fh.write("\n")
+    atomic_json.write_json(path, body)
 
 
 def _apply_freq(freq):
@@ -114,6 +115,12 @@ def api_set_aprs_frequency():
 
     try:
         _persist_freq(freq)
+    except ValueError:
+        # station.json exists but won't parse. Refusing beats replacing it with
+        # just the frequency and losing the callsign/grid/position.
+        return jsonify({"ok": False, "error": (
+            "configuration/station.json is unreadable — the frequency was NOT saved "
+            "(refusing to overwrite it). Fix or remove the file and retry.")}), 500
     except OSError as exc:
         return jsonify({"ok": False, "error": f"could not save frequency: {exc}"}), 500
 

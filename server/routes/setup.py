@@ -19,6 +19,7 @@ import uuid
 from flask import Blueprint, jsonify, request
 
 import appconfig
+from common import atomic_json
 from common import config_paths
 from common import gpsd_chrony
 from common import installed_services
@@ -219,12 +220,17 @@ def _setup_write_station(payload):
     lon = st.get("lon")
     dst = config_paths.station_json(SUITE_ROOT)
     os.makedirs(config_paths.config_dir(SUITE_ROOT), exist_ok=True)
-    existing = {}
+    # strict: this is a read-modify-write, so a file that exists but won't parse
+    # must abort the save rather than be silently replaced by the subset of keys
+    # this function owns — that path is how an operator loses their callsign.
+    # The caller turns this into a WRITE_FAILED blocker, so say something useful.
     try:
-        with open(dst, "r", encoding="utf-8") as fh:
-            existing = json.load(fh) or {}
-    except Exception:
-        existing = {}
+        existing = atomic_json.read_json(dst, strict=True)
+    except ValueError:
+        raise ValueError(
+            "configuration/station.json exists but is not valid JSON — refusing to "
+            "overwrite it. Fix or remove the file, then save the station again."
+        ) from None
 
     # Preserve existing values when a field is omitted in setup payload.
     if not callsign:
@@ -250,9 +256,7 @@ def _setup_write_station(payload):
     # Setup control / endpoint, not the station form) so a station save can't drop it.
     if existing.get("aprs_freq"):
         body["aprs_freq"] = existing["aprs_freq"]
-    with open(dst, "w", encoding="utf-8") as fh:
-        json.dump(body, fh, indent=2)
-        fh.write("\n")
+    atomic_json.write_json(dst, body)
 
 
 def _setup_pat_password_set():
