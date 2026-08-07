@@ -203,6 +203,25 @@ header::after { content: ''; display: table; clear: both; }
 .theme-toggle:hover { color: var(--accent); border-color: var(--accent-dim); }
 @media print { .home-bar { display: none; } }
 
+/* Source pills — RF / IS / ADS-B, one per receive path, coloured to match the
+   callsign scheme (RF green, IS blue, ADS-B purple) via the inline --src custom
+   property. Same select-to-narrow interaction as the hazard pills above (filled
+   = selected), except the selection is additive: clicking a second pill adds its
+   source instead of replacing the first, so "RF + IS, no aircraft" is one extra
+   click. No pill selected = no narrowing, so the neutral state is all-outline. */
+/* Gap matches the Fire-pill → Emergency-chip spacing on this same header row:
+   .aprs-section-hdr's .8rem flex gap + .emerg-chip's .4rem margin-left. Kept as
+   one literal so the three pill groups sit on a consistent rhythm. */
+.src-pills { display: inline-flex; align-items: center; gap: 1.2rem; flex-shrink: 0; margin-left: .5rem; }
+.src-pill {
+  font-size: var(--fs-small); font-weight: 700; letter-spacing: .03em;
+  padding: .12rem .5rem; border-radius: 999px;
+  border: 1px solid var(--src); color: var(--src); background: transparent;
+  white-space: nowrap; user-select: none; cursor: pointer;
+}
+.src-pill:hover { background: rgba(255, 255, 255, 0.06); }
+.src-pill.active { color: #0d1117; background: var(--src); border-color: var(--src); }
+
 /* ─── Section / panel block ─────────────────────────────── */
 .sec {
   border: 1px solid var(--border);

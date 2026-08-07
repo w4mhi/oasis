@@ -1034,7 +1034,7 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
    custom property; click narrows the list to that hazard. Right-aligned as a
    group with the emergency chip; the container's margin-left:auto right-aligns
    the whole cluster even when no hazard is present (empty container). */
-.hazard-pills { margin-left: auto; display: inline-flex; align-items: center; gap: .3rem; flex-shrink: 0; }
+.hazard-pills { margin-left: auto; display: inline-flex; align-items: center; gap: 1.2rem; flex-shrink: 0; }
 .hazard-pill {
   font-size: var(--fs-small); font-weight: 700; letter-spacing: .03em;
   padding: .12rem .5rem; border-radius: 999px;
@@ -1043,6 +1043,8 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 }
 .hazard-pill:hover { background: rgba(255, 255, 255, 0.06); }
 .hazard-pill.active { color: #0d1117; background: var(--hz); border-color: var(--hz); }
+/* Source pills (.src-pills/.src-pill) live in css/common.css — shared with
+   the traffic map's list drawer, which uses the same three filters. */
 .emerg-chip.has-emerg {
   color: var(--amber); border-color: var(--amber-dim);
   background: rgba(255, 180, 84, 0.08); cursor: pointer;
@@ -1151,8 +1153,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <script src="/common/js/units.js"></script>
 <script src="/common/js/geo.js"></script>
 <script src="/common/js/format.js"></script>
+<script src="/common/js/aprs-types.js"></script>
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/adsb-operators.js"></script>
+<script src="/common/js/traffic-list.js"></script>
 <script src="/common/js/service-registry.js"></script>
 <script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
@@ -1641,6 +1645,10 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     <div class="aprs-section-hdr">
       <span class="aprs-section-title" id="aprs-title">TRAFFIC LIVE</span>
       <span class="aprs-section-meta">stations — <span id="aprs-count">—</span><span id="aprs-srcbreak" class="aprs-srcbreak"></span> &mdash; <span id="aprs-last">—</span></span>
+      <!-- Source pills — independent RF / IS / ADS-B row filters. They narrow the
+           same rows the Via column does, but multi-select, so they compose where
+           Via (single-select) cannot. Both stay active and AND together. -->
+      <span id="src-pills" class="src-pills"></span>
       <!-- Hazard pills (per natural-hazard type, config-driven) + Emergency chip.
            Hazards persist (no age window — they're incident objects); the Emergency
            chip is Public-safety stations heard in the last 48h. Both narrow the list. -->
@@ -1651,7 +1659,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
     </div>
     <div class="aprs-tbl-wrap">
       <table>
-        <thead><tr><th class="aprs-col-filterable">Callsign<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by callsign">&#9660;</button><input id="aprs-col-call" class="aprs-col-inp" type="text" placeholder="all" autocomplete="off" spellcheck="false" oninput="onCallFilterChange()" title="Filter by callsign prefix (e.g. K7 matches all K7…)"></th><th class="aprs-col-filterable">Type<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by type">&#9660;</button><select id="aprs-col-type" class="aprs-col-sel" onchange="onTypeFilterChange()" title="Filter by type"><option value="All">All</option></select></th><th>Last Heard</th><th class="aprs-col-filterable">Age<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by age">&#9660;</button><select id="aprs-col-age" class="aprs-col-sel" onchange="onAgeFilterChange()" title="Filter by age (time since last heard)"><option value="0">All</option><option value="15">≤ 15m</option><option value="30">≤ 30m</option><option value="60">≤ 60m</option><option value="1440" selected>≤ 24h</option></select></th><th>Speed</th><th>Altitude</th><th class="aprs-col-filterable">Grid<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by grid">&#9660;</button><select id="aprs-col-grid" class="aprs-col-sel" onchange="onGridFilterChange()" title="Filter by grid field"><option value="All">All</option></select></th><th>Dist</th><th class="aprs-col-filterable">Via<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by source (RF / APRS-IS)">&#9660;</button><select id="aprs-col-via" class="aprs-col-sel" onchange="onViaFilterChange()" title="Filter by source"><option value="All">All</option><option value="rf">RF</option><option value="is">IS</option><option value="adsb">ADS-B</option></select></th><th>Comment</th></tr></thead>
+        <thead><tr><th class="aprs-col-filterable">Callsign<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by callsign">&#9660;</button><input id="aprs-col-call" class="aprs-col-inp" type="text" placeholder="all" autocomplete="off" spellcheck="false" oninput="onCallFilterChange()" title="Prefix (K7 matches all K7…) or * wildcard (K7*9)"></th><th class="aprs-col-filterable">Type<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by type">&#9660;</button><select id="aprs-col-type" class="aprs-col-sel" onchange="onTypeFilterChange()" title="Filter by type"><option value="All">All</option></select></th><th>Last Heard</th><th class="aprs-col-filterable">Age<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by age">&#9660;</button><select id="aprs-col-age" class="aprs-col-sel" onchange="onAgeFilterChange()" title="Filter by age (time since last heard)"><option value="0">All</option><option value="15">≤ 15m</option><option value="30">≤ 30m</option><option value="60">≤ 60m</option><option value="1440" selected>≤ 24h</option></select></th><th>Speed</th><th>Altitude</th><th class="aprs-col-filterable">Grid<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by grid">&#9660;</button><select id="aprs-col-grid" class="aprs-col-sel" onchange="onGridFilterChange()" title="Filter by grid field"><option value="All">All</option></select></th><th>Dist</th><th class="aprs-col-filterable">Via<button type="button" class="aprs-col-toggle" onclick="toggleColFilter(this)" title="Filter by source (RF / APRS-IS)">&#9660;</button><select id="aprs-col-via" class="aprs-col-sel" onchange="onViaFilterChange()" title="Filter by source"><option value="All">All</option><option value="rf">RF</option><option value="is">IS</option><option value="adsb">ADS-B</option></select></th><th>Comment</th></tr></thead>
         <tbody id="aprs-tbody"><tr><td colspan="10" style="color:var(--text-dim)">Loading…</td></tr></tbody>
       </table>
     </div>
@@ -3275,62 +3283,18 @@ let _adsbRecent = [];     // last /api/adsb/recent poll: latest obs per aircraft
 let _adsbRecentAt = 0;    // ms of the last /recent fetch — throttles the DB scan
 let _adsbRecentHours = 24;   // window last fetched; Feature 3 refetches when it changes
 
-// Normalize the last-polled aircraft into station-shaped rows the APRS table's
-// renderAprsTable + column filters already understand: APRS aircraft/heli symbol
-// (so aprsSymIcon/aprsTypeLabel + the Type filter fold them in), gs→mph and
-// alt(ft)→m for the shared unit-aware formatters, and `seen`→an absolute ISO
-// last_heard for the Age column. Position-less aircraft (heard but not yet
-// fixed) keep lat/lon null → blank Grid/Dist and a greyed row: an SDR-reception
-// readout of how many contacts we hear vs. can actually place.
-// Live aircraft ∪ last-24 h history, keyed by hex (live wins). Each entry gets an
-// absolute epoch `_ts`: a live target from its poll clock (`_adsbNow − seen`), a
-// history-only target from its stored observation `ts` — so both age identically
-// through the shared last_heard/Age path.
-function _adsbForList() {
-  const byHex = {};
-  // _live distinguishes currently-tracked aircraft from 24 h-history-only ones
-  // (out of range / landed) — the list keeps the latter so they age like APRS.
-  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts: a.ts, _live: false }); });
-  _adsbAircraft.forEach(a => {
-    const seenSec = (typeof a.seen === 'number') ? a.seen : 0;
-    byHex[a.hex] = Object.assign({}, a, { _ts: _adsbNow - seenSec, _live: true });   // live wins
+// Aircraft -> station-shaped list rows. The merge (live UNION 24h history,
+// keyed by hex) and the row shaping are shared with the traffic map via
+// common/js/traffic-list.js; only the module-level poll state is local.
+function _adsbListRows() {
+  return OasisTrafficList.aircraftRows({
+    live: _adsbAircraft, recent: _adsbRecent, now: _adsbNow
   });
-  return Object.values(byHex);
 }
 
-function _adsbListRows() {
-  // Drop LIVE aircraft with no position (heard-but-no-fix — many, and they
-  // clutter). But KEEP aged/out-of-range aircraft (24 h history) even when their
-  // last observation was position-less, so a plane that disappears ages 1m/2m…
-  // in the table like an APRS station instead of vanishing.
-  return _adsbForList().filter(a => (a.lat != null && a.lon != null) || !a._live).map(a => {
-    const positioned = a.lat != null && a.lon != null;
-    // alt_baro is null when the aircraft sends no barometric altitude (unknown,
-    // not 0) — guard it before Number(), since Number(null) === 0 would otherwise
-    // render a no-altitude aircraft as a (red) "0 ft".
-    const altFt = (a.alt_baro == null || a.alt_baro === 'ground') ? null
-      : (isFinite(Number(a.alt_baro)) ? Number(a.alt_baro) : null);
-    const emerg = ['7500', '7600', '7700'].includes(a.squawk);
-    const bits = [];
-    if (a.squawk) bits.push('sq ' + a.squawk);
-    if (emerg) bits.push('⚠ ' + a.squawk);
-    const _sym = (typeof acSymbol === 'function') ? acSymbol(a) : ['/', a.category === 'A7' ? 'X' : "'"];   // class-aware symbol (shared); fallback keeps the list alive if adsb.js is stale
-    return {
-      _kind: 'aircraft',
-      callsign: (a.flight || a.hex || '').trim() || (a.hex || '?'),
-      sym_table: _sym[0], sym_code: _sym[1],
-      lat: positioned ? a.lat : null,
-      lon: positioned ? a.lon : null,
-      speed_mph: (a.gs != null) ? Math.round(a.gs * 1.15078) : 0,
-      course: (a.track != null) ? a.track : null,
-      alt_m: (altFt != null) ? altFt / 3.28084 : null,
-      last_heard: new Date(a._ts * 1000).toISOString(),
-      via: 'adsb',
-      comment: bits.join(' · '),
-      _positioned: positioned
-    };
-  });
-}
+// Shared with the traffic map (common/js/traffic-list.js).
+const _lhEpoch = lastHeardEpoch;
+const aprsSource = OasisTrafficList.stationSource;
 
 // Source breakdown for the header: how many stations we heard on each transport
 // in the LAST poll cycle — RF (off-air APRS) / IS (APRS-IS) / ADS-B (aircraft).
@@ -3339,17 +3303,21 @@ function _adsbListRows() {
 // ignore the active column filters. Refreshed on every 15 s poll (see line ~4121)
 // via applyAprsFilter; the window is padded past 15 s to absorb fetch/clock jitter.
 const _HEARD_WINDOW_MS = 20 * 1000;
-function renderSourceBreakdown() {
+// `acRows` is the caller's already-built _adsbListRows() result. Building it is
+// not free — it hashes the 24 h history by hex and allocates a Date +
+// toISOString per aircraft — and applyAprsFilter has one in hand, so it passes
+// it down rather than making this recompute an identical list on every poll.
+function renderSourceBreakdown(acRows) {
   const el = document.getElementById('aprs-srcbreak');
   if (!el) return;
   const now = Date.now();
   const fresh = s => {
-    const t = _lhEpoch(s.last_heard || s.timestamp || s.time);
+    const t = _lhEpoch(s.last_heard);
     return t > 0 && (now - t) <= _HEARD_WINDOW_MS;
   };
   let rf = 0, is = 0;
   for (const s of _allAprsStations) { if (!fresh(s)) continue; if (aprsSource(s) === 'rf') rf++; else is++; }
-  const adsb = _adsbListRows().filter(fresh).length;
+  const adsb = (acRows || _adsbListRows()).filter(fresh).length;
   if (!rf && !is && !adsb) { el.innerHTML = ''; return; }
   // Colours mirror the callsign source scheme (see the callColor line): RF green
   // (--accent), IS blue (--blue), ADS-B purple (#b478ff).
@@ -3366,36 +3334,14 @@ function onViaFilterChange() {
   applyAprsFilter();
 }
 
-// Heard-via source. GrayWolf stores the packet's transport in `via`: 'rf' (off
-// the air) or 'is' (APRS-IS/internet). Trust it; fall back to sniffing the path
-// for a q-construct/igate marker only when `via` is missing/unrecognised.
-function aprsSource(s) {
-  const v = String(s.via || '').trim().toLowerCase();
-  if (v === 'rf') return 'rf';
-  if (v === 'is') return 'is';
-  const hay = (v + ' ' + ((s.path || []).join(' '))).toUpperCase();
-  return (hay.includes('TCPIP') || hay.includes('IGATE') || /\bQA[A-Z]/.test(hay)) ? 'is' : 'rf';
-}
 
-// APRS symbol code → human "type" label. Mirrors _OBJ_CATS in maps/traffic/map.html
-// so the dashboard list and the map list name station types identically.
-const _APRS_TYPES = {
-  '>':'Car','j':'Car','v':'Car','<':'Motorcycle','k':'Truck','u':'Truck',
-  'R':'RV','U':'Bus','=':'Train','b':'Bicycle',
-  "'":'Aircraft','^':'Aircraft','g':'Aircraft','X':'Helicopter','O':'Balloon',
-  's':'Boat','Y':'Boat','C':'Boat','[':'Person','p':'Person',
-  '_':'Weather','W':'Weather','#':'Digipeater','&':'Gateway',
-  'r':'Antenna','y':'Antenna','`':'Antenna','-':'Home',
-  '!':'Public safety','P':'Public safety','a':'Public safety','f':'Public safety',
-  'd':'Public safety','c':'Public safety','A':'Public safety','h':'Public safety',
-  'o':'Public safety','+':'Public safety',
-  '?':'Services','$':'Services',';':'Services','B':'Services','K':'Services',
-  // Emergency / incidents
-  ':':'Fire',
-};
+// APRS symbol code → human "type" label. The table itself lives in
+// common/js/aprs-types.js — a single canonical set shared with the traffic
+// map, which used to keep its own hand-mirrored 44-entry copy (_OBJ_CATS).
+// The dashboard deliberately does NOT apply the map's hazard override here:
+// hazards get their own pills, so the Type column stays the plain symbol type.
 function aprsTypeLabel(s) {
-  if (s && s.sym_code === '_') return 'Weather';
-  return (s && _APRS_TYPES[s.sym_code]) || 'Other';
+  return aprsLabelOf(s);
 }
 
 // APRS symbol icon from the shared sprite sheets (24px/16-col cells), scaled to
@@ -3418,16 +3364,14 @@ function aprsSymIcon(s, px) {
 function renderAprsTable(stations) {
   const tbody = document.getElementById('aprs-tbody');
   if (!stations.length) {
-    tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text-dim)">No stations match the selected time filter.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text-dim)">'
+      + 'No stations match the selected filters.</td></tr>';
     return;
   }
   tbody.innerHTML = stations.map(s => {
     const age = fmtAge(s.last_heard);
     const speed = s.speed_mph > 0 ? fmtSpeed(s.speed_mph) : '';
-    const courseNum = s.course != null ? Math.round(s.course) : null;
-    const courseFmt = courseNum != null && s.speed_mph > 0
-      ? ` <span style="display:inline-block;transform:rotate(${courseNum}deg)">↑</span> ${['N','NE','E','SE','S','SW','W','NW'][Math.round(courseNum/45)%8]} ${courseNum}°`
-      : '';
+    const courseFmt = OasisTrafficList.courseHtml(s.course, s.speed_mph);
     const alt  = s.alt_m != null ? fmtAlt(s.alt_m) : '';
     const grid = gridSquare(s.lat, s.lon);
     const dist = distFromHome(s.lat, s.lon);
@@ -3435,7 +3379,7 @@ function renderAprsTable(stations) {
     const altCell = (ac && s.alt_m != null)
       ? '<span style="color:' + altColor(s.alt_m * 3.28084) + '">' + alt + '</span>'
       : alt;
-    const srcTxt = ac ? 'ADS-B' : aprsSource(s).toUpperCase();
+    const srcTxt = OasisTrafficList.sourceLabel(s);
     // Aircraft accent purple; stations green (RF) / blue (IS).
     const callColor = ac ? '#b478ff' : (aprsSource(s) === 'is' ? 'var(--blue)' : 'var(--accent)');
     // Aircraft Call links to the map (no per-aircraft focus target); heard-but-
@@ -3462,17 +3406,6 @@ function renderAprsTable(stations) {
   }).join('');
 }
 
-// last_heard → epoch ms, parsing BOTH GrayWolf's "YYYY-MM-DD HH:MM:SS.fff…±HH:MM"
-// (space separator, nanoseconds, local tz) and aircraft ISO "…T…Z". Normalize
-// space→T and clamp the fraction to ms so every browser's Date() parses it the
-// same; unparseable → 0. Replaces a localeCompare that string-compared the two
-// different formats (space+local-tz vs T+Z) — never a valid chronological order.
-function _lhEpoch(s) {
-  if (!s) return 0;
-  const norm = String(s).replace('Z', '+00:00').replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1');
-  const t = new Date(norm).getTime();
-  return isNaN(t) ? 0 : t;
-}
 
 // Emergency chip state + membership. The set = Public-safety POIs (EOC / first-aid
 // / emergency-service stations) heard within 48h; older ones expire from it. The
@@ -3483,7 +3416,7 @@ let emergencyOnly = false;
 const _EMERGENCY_WINDOW_MS = 48 * 3600 * 1000;
 function _isEmergency(s) {
   if (aprsTypeLabel(s) !== 'Public safety') return false;
-  const t = _lhEpoch(s.last_heard || s.timestamp || s.time);
+  const t = _lhEpoch(s.last_heard);
   return t > 0 && (Date.now() - t) <= _EMERGENCY_WINDOW_MS;
 }
 
@@ -3527,6 +3460,76 @@ function toggleHazardFilter(key) {
   if (hazardFilter) emergencyOnly = false;   // one narrowing filter at a time
   applyAprsFilter();
 }
+// ── Source pills (RF / IS / ADS-B) ───────────────────────────────────────────
+// SELECT-to-narrow, matching the hazard pills above: clicking a pill shows only
+// that source, clicking it again clears back to everything. Unlike the hazard
+// pills the selection is ADDITIVE — a second pill adds its source rather than
+// replacing the first — because receive path is the one axis where combining is
+// the point: "RF + IS, no aircraft" is the whole reason these exist, and the
+// single-select Via dropdown cannot say it.
+//
+// Empty selection means NO narrowing (show everything), so selecting all three
+// and selecting none are the same view and there is no dead all-hidden state to
+// climb out of. These AND with the Via dropdown, which is left in place.
+const _SRC_PILLS = [
+  { key: 'rf',   label: 'RF',    color: 'var(--accent)', title: 'APRS heard off the air' },
+  { key: 'is',   label: 'IS',    color: 'var(--blue)',   title: 'APRS heard via APRS-IS (internet)' },
+  { key: 'adsb', label: 'ADS-B', color: '#b478ff',       title: 'Aircraft heard via ADS-B' }
+];
+const _SRC_PILL_LS = 'oasis.traffic.srcPills';
+let srcSelected = [];          // selected source keys; [] = all (no narrowing)
+try {
+  const saved = JSON.parse(localStorage.getItem(_SRC_PILL_LS) || 'null');
+  // Keep only keys we actually render — a stale or hand-edited value must never
+  // be able to narrow the list to something with no pill to undo it.
+  if (Array.isArray(saved)) srcSelected = saved.filter(k => _SRC_PILLS.some(p => p.key === k));
+} catch (_) { /* unreadable storage — keep the show-everything default */ }
+
+// Row → which pill owns it. Aircraft are always 'adsb'; APRS stations carry
+// their transport in `via`. Shared with the map via traffic-list.js.
+const _srcKeyOf = OasisTrafficList.sourceKey;
+
+// True when the row passes the pill selection. Empty selection = everything.
+function _srcSelectedPass(s) {
+  return srcSelected.length === 0 || srcSelected.indexOf(_srcKeyOf(s)) !== -1;
+}
+
+function toggleSourceFilter(key) {
+  if (!_SRC_PILLS.some(p => p.key === key)) return;
+  const i = srcSelected.indexOf(key);
+  if (i === -1) srcSelected.push(key); else srcSelected.splice(i, 1);
+  // Selecting every source is the same view as selecting none — normalize to
+  // none so the pills return to their neutral "no filter" look.
+  if (srcSelected.length === _SRC_PILLS.length) srcSelected = [];
+  try { localStorage.setItem(_SRC_PILL_LS, JSON.stringify(srcSelected)); } catch (_) {}
+  applyAprsFilter();
+}
+
+// `counts` = rows per source that pass every OTHER filter, so a pill shows what
+// selecting it would give you — including a source not currently selected.
+// Pills are always rendered (unlike the hazard pills, which appear only when
+// heard): a source at 0 must stay clickable, or a selection could strand the
+// list with no visible way back.
+function _renderSourcePills(counts) {
+  const box = document.getElementById('src-pills');
+  if (!box) return;
+  const narrowed = srcSelected.length > 0;
+  box.innerHTML = _SRC_PILLS.map(p => {
+    const on = srcSelected.indexOf(p.key) !== -1;
+    const n = counts[p.key] || 0;
+    const tip = p.title + ' — ' + n + ' row' + (n === 1 ? '' : 's')
+      + (on ? ' (showing; click to clear)'
+            : narrowed ? ' (click to add to the view)' : ' (click to show only these)');
+    return '<span class="src-pill' + (on ? ' active' : '') + '" role="button" tabindex="0"'
+      + ' style="--src:' + p.color + '"'
+      + ' onclick="toggleSourceFilter(\'' + p.key + '\')"'
+      + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleSourceFilter(\'' + p.key + '\');}"'
+      + ' aria-pressed="' + (on ? 'true' : 'false') + '"'
+      + ' title="' + escapeHtml(tip) + '">'
+      + p.label + ' ' + n + '</span>';
+  }).join('');
+}
+
 function _renderHazardPills(counts) {
   const box = document.getElementById('hazard-pills');
   if (!box) return;
@@ -3570,6 +3573,19 @@ function toggleEmergencyOnly() {
   applyAprsFilter();
 }
 
+// Callsign filter match: plain prefix, or a `*` wildcard anchored at both ends
+// (K7*9 matches K7ABC9). Every regex metacharacter except `*` is escaped, so an
+// operator typing "K7(" gets no matches rather than a thrown SyntaxError.
+function _callMatches(callsign, q) {
+  if (!q) return true;
+  const cs = String(callsign || '').toUpperCase();
+  if (q.indexOf('*') !== -1) {
+    const re = new RegExp('^' + q.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+    return re.test(cs);
+  }
+  return cs.startsWith(q);
+}
+
 function applyAprsFilter() {
   const minutes    = parseInt(document.getElementById('aprs-col-age')?.value || '0');
   const typeCat    = document.getElementById('aprs-col-type')?.value || 'All';
@@ -3603,16 +3619,19 @@ function applyAprsFilter() {
     } else if (emergActive) {
       if (!_isEmergency(s)) return false;
     } else {
-      // AGE — case-insensitive on last_heard/timestamp/time.
+      // AGE — the API always emits last_heard (it coalesces server-side), so
+      // there is no alternate timestamp field to fall back to.
       if (cutoff) {
-        const t = new Date(s.last_heard || s.timestamp || s.time);
-        if (isNaN(t) || t < cutoff) return false;
+        const t = lastHeardEpoch(s.last_heard);
+        if (!t || t < cutoff) return false;
       }
       // TYPE — match the APRS symbol category (aircraft carry aircraft/heli syms).
       if (typeCat !== 'All' && aprsTypeLabel(s) !== typeCat) return false;
     }
-    // CALLSIGN — case-insensitive prefix (K7 → all K7…, incl. SSIDs).
-    if (callPrefix && !String(s.callsign || '').toUpperCase().startsWith(callPrefix)) return false;
+    // CALLSIGN — case-insensitive prefix (K7 → all K7…, incl. SSIDs), or a
+    // `*` wildcard pattern (K7*9). Parity with the map drawer, which has
+    // supported the wildcard form all along.
+    if (!_callMatches(s.callsign, callPrefix)) return false;
     // GRID — 4-char Maidenhead field, or 'No fix' for position-less rows.
     if (gridSel !== 'All') {
       const g = gridSquare(s.lat, s.lon);
@@ -3627,18 +3646,30 @@ function applyAprsFilter() {
     }
     return true;
   };
-  const rows = _allAprsStations.filter(pred).concat(_adsbListRows().filter(pred));
+  // Built once per pass and shared with renderSourceBreakdown below — it used to
+  // build its own identical copy, doubling the hash + Date work every 15 s poll.
+  const acRows = _adsbListRows();
+  // Everything EXCEPT the source pills, so each pill can be labelled with the
+  // rows it would contribute — including a source currently switched off (its
+  // count is what turning it back on would add). Applying the pills afterwards
+  // is also what keeps a pill clickable at 0: they are never data-driven away.
+  const preRows = _allAprsStations.filter(pred).concat(acRows.filter(pred));
+  const srcCounts = { rf: 0, is: 0, adsb: 0 };
+  for (const s of preRows) { const k = _srcKeyOf(s); if (k in srcCounts) srcCounts[k]++; }
+  _renderSourcePills(srcCounts);
+  const rows = preRows.filter(_srcSelectedPass);
   // Pure newest-first by real time (numeric epoch, both timestamp formats) —
   // stations and aircraft interleaved by their actual last_heard. Matches the
   // map's station list; no type grouping / emergency float (an EOC-symbol club
   // station shouldn't outrank a fresher packet just for its symbol).
-  rows.sort((a, b) => _lhEpoch(b.last_heard) - _lhEpoch(a.last_heard));
-  renderAprsTable(rows);
+  //
+  const sorted = OasisTrafficList.sortByRecency(rows);
+  renderAprsTable(sorted);
   // "stations — N" = rows actually shown, i.e. after the column filters and with
   // ADS-B aircraft folded in — not the raw unfiltered APRS-only API count.
   const cntEl = document.getElementById('aprs-count');
-  if (cntEl) cntEl.textContent = rows.length;
-  renderSourceBreakdown();
+  if (cntEl) cntEl.textContent = sorted.length;
+  renderSourceBreakdown(acRows);
 }
 
 // Rebuild the TYPE column dropdown from the categories present in the current
@@ -3831,11 +3862,16 @@ async function fetchAPRS() {
     _allAprsStations = d.stations;
     refreshTypeFilter();               // rebuild the TYPE column dropdown options
     refreshGridFilter();               // rebuild the GRID column dropdown options
-    const times = d.stations
-      .map(s => s.last_heard || s.timestamp || s.time)
-      .filter(Boolean).map(t => new Date(t)).filter(t => !isNaN(t));
+    // Newest packet across EVERYTHING the list shows — APRS stations and ADS-B
+    // aircraft alike. Aircraft used to be excluded here while the adjacent
+    // "stations — N" counted them, so a busy ADS-B feed with a quiet APRS one
+    // showed "20m ago" next to a live row count. Reduce rather than Math.max(...)
+    // so a large history can't blow the argument limit.
+    const times = _allAprsStations.concat(_adsbListRows())
+      .map(s => lastHeardEpoch(s.last_heard)).filter(t => t > 0);
     if (times.length) {
-      const ageMins = Math.round((Date.now() - Math.max(...times)) / 60000);
+      const newest = times.reduce((a, b) => (b > a ? b : a), 0);
+      const ageMins = Math.round((Date.now() - newest) / 60000);
       const lastEl = document.getElementById('aprs-last');
       lastEl.textContent =
         ageMins < 2  ? 'just now'         :

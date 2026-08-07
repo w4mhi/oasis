@@ -461,7 +461,7 @@ body.list-open #aprs-list-drawer{display:flex;}
 body.list-resizing{cursor:ns-resize;user-select:none;}
 body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 #aprs-list-head{
-  display:flex;align-items:center;gap:.6rem;padding:5px 12px;
+  display:flex;align-items:center;gap:.8rem;padding:5px 12px;
   border-bottom:1px solid var(--border);flex-shrink:0;
 }
 /* Match index.html's .aprs-section-title / .aprs-section-meta for consistency. */
@@ -799,6 +799,11 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
     <span class="count-lbl">stations —</span>
     <span class="count" id="aprs-list-count">0</span>
     <span id="srcBreak"></span>
+    <!-- Source pills — RF / IS / ADS-B. Same control as the dashboard's, wired to
+         this page's existing pathRF/pathIS/showADSB state, so they stay in step
+         with the Src column dropdown and the Last-heard panel's RF/IS chips —
+         and, like that state has always done, they gate the MAP markers too. -->
+    <span id="src-pills" class="src-pills"></span>
     <span class="spacer"></span>
     <button id="aprs-list-close" onclick="toggleAprsList(false)" title="Close list">✕</button>
   </div>
@@ -957,8 +962,10 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 <script src="/maps/mapengine/pmtiles.js"></script>
 <script src="/maps/mapengine/basemap-style.js"></script>
 <script src="/maps/mapengine/map-engine.js"></script>
+<script src="/common/js/aprs-types.js"></script>
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/adsb-operators.js"></script>
+<script src="/common/js/traffic-list.js"></script>
 <script>
 'use strict';
 
@@ -1361,56 +1368,19 @@ document.querySelectorAll('.layer-toggle input').forEach(cb => {
 // its icon and, by extension, its type. We classify by symbol code into coarse,
 // human-friendly categories. Unknown symbols fall back to "Other". The filter
 // panel is built dynamically from whatever categories are actually on the map.
-// Singular labels — shared canonical set with index.html's _APRS_TYPES so the
-// station list and the APRS info panel name types identically (Person, Car…).
-const _OBJ_CATS = {
-  // Land vehicles
-  '>':['car','Car'], 'j':['car','Car'], 'v':['car','Car'],
-  '<':['motorcycle','Motorcycle'],
-  'k':['truck','Truck'], 'u':['truck','Truck'],
-  'R':['rv','RV'],
-  'U':['bus','Bus'],
-  '=':['train','Train'],
-  'b':['bicycle','Bicycle'],
-  // Air
-  "'":['aircraft','Aircraft'], '^':['aircraft','Aircraft'], 'g':['aircraft','Aircraft'],
-  'X':['heli','Helicopter'], 'O':['balloon','Balloon'],
-  // Marine
-  's':['marine','Boat'], 'Y':['marine','Boat'], 'C':['marine','Boat'],
-  // People
-  '[':['pedestrian','Person'], 'p':['pedestrian','Person'],
-  // Weather
-  '_':['wx','Weather'], 'W':['wx','Weather'],
-  // RF infrastructure
-  '#':['digi','Digipeater'], '&':['igate','Gateway'],
-  'r':['antenna','Antenna'], 'y':['antenna','Antenna'], '`':['antenna','Antenna'],
-  // Fixed locations
-  '-':['home','Home'],
-  // Public safety / emergency
-  '!':['safety','Public safety'], 'P':['safety','Public safety'], 'a':['safety','Public safety'],
-  'f':['safety','Public safety'], 'd':['safety','Public safety'], 'c':['safety','Public safety'],
-  'A':['safety','Public safety'], 'h':['safety','Public safety'], 'o':['safety','Public safety'],
-  '+':['safety','Public safety'],
-  // Services / places
-  '?':['services','Services'], '$':['services','Services'],
-  ';':['services','Services'], 'B':['services','Services'],
-  'K':['services','Services'],
-  // Emergency / incidents — the primary-table Fire symbol ('/' + ':') is used
-  // by wildfire-incident objects gated into APRS-IS.
-  ':':['fire','Fire'],
-};
+// Symbol → type table now lives in common/js/aprs-types.js, shared with the
+// dashboard (index.html), which used to keep its own hand-mirrored copy.
+// aprsCategory below keeps the map-only policy layered on top of it.
 
 function aprsCategory(s) {
   // Configured natural hazards win — keyed on (sym_table, sym_code) + name, the
   // same match the hazard pills + alert card use. This is what pulls alternate-
   // table hazards (hurricane \@, flood \w, emergency \!) out of the "Other"
-  // bucket into their own legend row. _OBJ_CATS below is sym_code-only.
+  // bucket into their own legend row. The shared table is sym_code-only.
   const hz = _hazardOf(s);
   if (hz) return { key: hz.key, label: hz.label };
-  // Weather stations use '_' on both the primary and alternate tables.
-  if (s && s.sym_code === '_') return { key:'wx', label:'Weather' };
-  const hit = s ? _OBJ_CATS[s.sym_code] : null;
-  return hit ? { key:hit[0], label:hit[1] } : { key:'other', label:'Other' };
+  // Plain symbol lookup (incl. the '_' weather special case) is shared.
+  return aprsCategoryOf(s);
 }
 
 // APRS symbol icon (HTML string) for the station-list Type cell — the sprite
@@ -2194,7 +2164,8 @@ function _syncSrcColFromChips() {
 // The active column filters as a single predicate, applied identically to APRS
 // stations (for the map + list) and to ADS-B aircraft rows (list only). Built
 // once per pass so live control values are captured together.
-function _columnFilterPredicate() {
+function _columnFilterPredicate(opts) {
+  const skipSource = !!(opts && opts.skipSource);
   const minutes = parseInt(document.getElementById('filterSel').value);
   const cutoff = minutes > 0 ? Date.now() - minutes * 60 * 1000 : 0;
   const gridSel = document.getElementById('aprs-col-grid')?.value || 'All';
@@ -2213,10 +2184,12 @@ function _columnFilterPredicate() {
     // Callsign filter (prefix / * wildcard) + movers-only toggle.
     if (!callMatches(s.callsign) || (movingOnly && !(s.speed_mph > 0))) return false;
     // SRC — aircraft follow showADSB; APRS stations follow their heard-via source
-    // (pathRF/pathIS). Single-select in the dropdown, so sources stay exclusive —
-    // parity with index.html.
-    if (s._kind === 'aircraft') { if (!showADSB) return false; }
-    else if (_stationSource(s) === 'is' ? !pathIS : !pathRF) return false;
+    // (pathRF/pathIS). Skipped when the caller is counting rows per source for
+    // the pills, which must show what selecting a source WOULD give.
+    if (!skipSource) {
+      if (s._kind === 'aircraft') { if (!showADSB) return false; }
+      else if (_stationSource(s) === 'is' ? !pathIS : !pathRF) return false;
+    }
     // GRID column filter — 4-char Maidenhead field, or 'No fix' (position-less).
     if (gridSel !== 'All') {
       const g = _listGrid(s.lat, s.lon);
@@ -2235,7 +2208,23 @@ function _renderDrawer(pred, aprsFiltered) {
   if (!aprsListOpen) return;
   pred = pred || _columnFilterPredicate();
   aprsFiltered = aprsFiltered || allStations.filter(pred);
-  renderAprsList(aprsFiltered.concat(_adsbListRows().filter(pred)));
+  // Built once and threaded down: the drawer body wants the FILTERED aircraft,
+  // renderSourceBreakdown wants the UNFILTERED ones (its counts ignore the
+  // column filters), so pass the whole list along instead of letting the
+  // breakdown rebuild an identical copy on every refresh cycle.
+  const acRows = _adsbListRows();
+  // Pill counts: rows per source passing every filter EXCEPT the source one, so
+  // a pill shows what selecting it would yield — including a source currently
+  // filtered out. Same convention as the dashboard.
+  const predNoSrc = _columnFilterPredicate({ skipSource: true });
+  const srcCounts = { rf: 0, is: 0, adsb: 0 };
+  for (const row of allStations.concat(acRows)) {
+    if (!predNoSrc(row)) continue;
+    const k = OasisTrafficList.sourceKey(row);
+    if (k in srcCounts) srcCounts[k]++;
+  }
+  _renderSourcePills(srcCounts);
+  renderAprsList(aprsFiltered.concat(acRows.filter(pred)), acRows);
 }
 
 function applyFilter() {
@@ -2385,11 +2374,8 @@ async function fetchStations() {
 // unknown/not-yet-received) defaults to the generic aircraft glyph — same
 // two icons APRS already uses for its own 'Aircraft'/'Helicopter' symbols
 // (primary table codes "'" and 'X'), so no new sprite assets are needed.
-function adsbSymCode(category) {
-  return category === 'A7' ? 'X' : "'";
-}
 
-// Which objects-panel category (see _OBJ_CATS/aprsCategory) an aircraft
+// Which objects-panel category (see aprsCategory) an aircraft
 // belongs to — same key space APRS stations use, so ADS-B aircraft fold
 // into the SAME 'aircraft'/'heli' legend rows and their checkboxes, instead
 // of needing a parallel filter system.
@@ -2425,32 +2411,9 @@ const AC_SHAPES = {
   // Military / unidentified — stealth arrowhead (flying-wing delta, no fuselage).
   mil:   {vb:24, d:"M12 2.5 20.5 20 12 15.5 3.5 20Z"},
 };
-const AC_CAT_SHAPE = {
-  A1:'small', A2:'small', A3:'big', A4:'big', A5:'big', A7:'heli',
-  B1:'glider', B2:'glider', C1:'ground', C2:'ground',
-};
-// hexIsMilitary() + its ICAO military-address table now live in the shared
-// common/js/adsb.js (loaded above), so the map and the dashboard card agree on
-// the same maintained list. suspectedMilitary() stays here — it's map-specific.
-// Fuzzy tier for the "no id at all" case: anonymous (no callsign AND no category)
-// plus one kinematic tell that doesn't fit GA. Deliberately conservative — this
-// is SUSPECTED (rendered hollow), never claimed as confirmed.
-function suspectedMilitary(a) {
-  const anon = !(a.flight && a.flight.trim()) && !a.category;
-  const fast = a.gs != null && a.gs > 350;                     // knots
-  const high = a.alt_baro !== 'ground' && Number(a.alt_baro) > 40000;   // ft
-  return anon && (fast || high);
-}
-// Pick the icon shape + fill state for an aircraft. Known category always wins
-// (a tagged military transport still looks like its type); only the otherwise-
-// generic fallback becomes military-aware: confirmed (filled arrowhead) via hex,
-// suspected (hollow arrowhead) via the fuzzy tell, else the plain big jet.
-function acShapeFor(a) {
-  if (AC_CAT_SHAPE[a.category]) return { key: AC_CAT_SHAPE[a.category], filled: true };
-  if (hexIsMilitary(a.hex))     return { key: 'mil', filled: true };
-  if (suspectedMilitary(a))     return { key: 'mil', filled: false };
-  return { key: 'big', filled: true };   // unknown-category fallback
-}
+// Aircraft icon shape/fill (AC_CAT_SHAPE, suspectedMilitary, acShapeFor) and
+// adsbSymCode now live in the shared common/js/adsb.js, so the map markers and
+// the traffic list classify aircraft from one source. hexIsMilitary is there too.
 
 const AC_ICON_PX = 36;   // on-map size; rasterised at 2× for crispness - aircraft size
 function ensureAircraftImage(shapeKey, color, filled) {
@@ -2660,63 +2623,12 @@ async function refreshAdsbRecent() {
   } catch (e) { /* ignore — retry next cycle */ }
 }
 
-// Normalize the last-polled aircraft into station-shaped rows the drawer's
-// renderAprsList/column-filters already understand: APRS aircraft/heli symbol
-// (so aprsCategory/aprsSymIcon + the Type filter fold them in), gs→mph and
-// alt(ft)→m so the shared unit-aware formatters render them, and `seen`→an
-// absolute ISO last_heard so recency sort + Age colouring work. Position-less
-// aircraft (heard but not yet fixed) keep lat/lon null → blank Grid/Dist and a
-// greyed row, off the map but present as an SDR-reception readout.
-// Live aircraft ∪ last-24 h history, keyed by hex (live wins). Each entry gets an
-// absolute epoch `_ts`: a live target from its poll clock (`_adsbNow − seen`), a
-// history-only target from its stored observation `ts` — so both age identically
-// through the shared last_heard/Age path. List-only: does not touch map markers.
-function _adsbForList() {
-  const byHex = {};
-  // _live distinguishes currently-tracked aircraft from 24 h-history-only ones
-  // (out of range / landed) — the list keeps the latter so they age like APRS.
-  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts: a.ts, _live: false }); });
-  _adsbAircraft.forEach(a => {
-    const seenSec = (typeof a.seen === 'number') ? a.seen : 0;
-    byHex[a.hex] = Object.assign({}, a, { _ts: _adsbNow - seenSec, _live: true });   // live wins
-  });
-  return Object.values(byHex);
-}
-
+// Aircraft -> station-shaped list rows. The merge (live UNION 24h history,
+// keyed by hex) and the row shaping are shared with the dashboard via
+// common/js/traffic-list.js; only the module-level poll state is local.
 function _adsbListRows() {
-  // Drop LIVE aircraft with no position (heard-but-no-fix — many, and they
-  // clutter). But KEEP aged/out-of-range aircraft (24 h history) even when their
-  // last observation was position-less, so a plane that disappears ages 1m/2m…
-  // in the list like an APRS station instead of vanishing.
-  return _adsbForList().filter(a => (a.lat != null && a.lon != null) || !a._live).map(a => {
-    const positioned = a.lat != null && a.lon != null;
-    // alt_baro is null when the aircraft sends no barometric altitude (unknown,
-    // not 0) — guard it before Number(), since Number(null) === 0 would otherwise
-    // render a no-altitude aircraft as a (red) "0 ft".
-    const altFt = (a.alt_baro == null || a.alt_baro === 'ground') ? null
-      : (isFinite(Number(a.alt_baro)) ? Number(a.alt_baro) : null);
-    const emerg = ['7500', '7600', '7700'].includes(a.squawk);
-    const shp = acShapeFor(a);
-    const _sym = (typeof acSymbol === 'function') ? acSymbol(a) : ['/', adsbSymCode(a.category)];   // class-aware (shared); fallback keeps the list alive if adsb.js is stale
-    const bits = [];
-    if (a.squawk) bits.push('sq ' + a.squawk);
-    if (emerg) bits.push('⚠ ' + a.squawk);
-    if (shp.key === 'mil') bits.push(shp.filled ? 'military' : 'susp. mil');
-    return {
-      _kind: 'aircraft',
-      hex: a.hex || '',
-      callsign: (a.flight || a.hex || '').trim() || (a.hex || '?'),
-      sym_table: _sym[0], sym_code: _sym[1],
-      lat: positioned ? a.lat : null,
-      lon: positioned ? a.lon : null,
-      speed_mph: (a.gs != null) ? Math.round(a.gs * 1.15078) : 0,
-      course: (a.track != null) ? a.track : null,
-      alt_m: (altFt != null) ? altFt / 3.28084 : null,
-      last_heard: new Date(a._ts * 1000).toISOString(),
-      via: 'adsb',
-      comment: bits.join(' · '),
-      _positioned: positioned
-    };
+  return OasisTrafficList.aircraftRows({
+    live: _adsbAircraft, recent: _adsbRecent, now: _adsbNow
   });
 }
 
@@ -3246,6 +3158,77 @@ function togglePathFilter(src) {
   if (autoPath) _refreshAutoPaths();
 }
 
+// ── Source pills (RF / IS / ADS-B) in the list-drawer head ───────────────────
+// A third view onto the SAME pathRF/pathIS/showADSB state that the Src column
+// dropdown and the Last-heard panel's RF/IS chips already drive — never a
+// parallel filter, or the map and the list would disagree. Interaction matches
+// the dashboard: click a pill to show only that source, click again to clear,
+// and the selection is additive so "RF + IS, no aircraft" is one extra click.
+// Because this state also gates map markers and auto-path lines, these pills
+// narrow the MAP as well as the list — that has always been true of these three
+// booleans, and the drawer is a view of the map.
+const _SRC_PILLS = [
+  { key: 'rf',   label: 'RF',    color: 'var(--accent)', title: 'APRS heard off the air' },
+  { key: 'is',   label: 'IS',    color: 'var(--blue)',   title: 'APRS heard via APRS-IS (internet)' },
+  { key: 'adsb', label: 'ADS-B', color: '#b478ff',       title: 'Aircraft heard via ADS-B' }
+];
+
+// Derive the pill selection from the booleans. All three on = "everything",
+// which renders as no selection (neutral), exactly like the dashboard.
+function _srcPillsSelected() {
+  if (pathRF && pathIS && showADSB) return [];
+  const sel = [];
+  if (pathRF) sel.push('rf');
+  if (pathIS) sel.push('is');
+  if (showADSB) sel.push('adsb');
+  return sel;
+}
+
+function toggleSourceFilter(key) {
+  if (!_SRC_PILLS.some(p => p.key === key)) return;
+  const sel = _srcPillsSelected();
+  const i = sel.indexOf(key);
+  if (i === -1) sel.push(key); else sel.splice(i, 1);
+  // Empty or complete selection both mean "show everything" — so clearing the
+  // last pill returns to all sources rather than to an empty map.
+  const all = sel.length === 0 || sel.length === _SRC_PILLS.length;
+  pathRF   = all || sel.indexOf('rf') !== -1;
+  pathIS   = all || sel.indexOf('is') !== -1;
+  showADSB = all || sel.indexOf('adsb') !== -1;
+  localStorage.setItem('oasis_path_rf', pathRF ? '1' : '0');
+  localStorage.setItem('oasis_path_is', pathIS ? '1' : '0');
+  localStorage.setItem('oasis_show_adsb', showADSB ? '1' : '0');
+  _syncPathChips();
+  _syncSrcColFromChips();
+  applyFilter();               // stations on the map + the drawer rows
+  applyAdsbFilter();           // aircraft markers on the map
+  if (autoPath) _refreshAutoPaths();
+}
+
+// `counts` = rows per source passing every OTHER filter, so a pill shows what
+// selecting it would give. Always rendered, even at 0: a source with no rows
+// must stay clickable or a selection could strand the view with no way back.
+function _renderSourcePills(counts) {
+  const box = document.getElementById('src-pills');
+  if (!box) return;
+  const sel = _srcPillsSelected();
+  const narrowed = sel.length > 0;
+  box.innerHTML = _SRC_PILLS.map(p => {
+    const on = sel.indexOf(p.key) !== -1;
+    const n = (counts && counts[p.key]) || 0;
+    const tip = p.title + ' — ' + n + ' row' + (n === 1 ? '' : 's')
+      + (on ? ' (showing; click to clear)'
+            : narrowed ? ' (click to add to the view)' : ' (click to show only these)');
+    return '<span class="src-pill' + (on ? ' active' : '') + '" role="button" tabindex="0"'
+      + ' style="--src:' + p.color + '"'
+      + ' onclick="toggleSourceFilter(\'' + p.key + '\')"'
+      + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleSourceFilter(\'' + p.key + '\');}"'
+      + ' aria-pressed="' + (on ? 'true' : 'false') + '"'
+      + ' title="' + _escHtml(tip) + '">'
+      + p.label + ' ' + n + '</span>';
+  }).join('');
+}
+
 // Reflect pathRF/pathIS on the chip toggles atop the Last-heard panel — full
 // colour when on, dimmed (.off) when filtered out.
 function _syncPathChips() {
@@ -3390,18 +3373,6 @@ function toggleRecentPanel() {
   document.getElementById('recent-panel').classList.toggle('collapsed');
 }
 
-// Heard-via source. GrayWolf classifies each packet's transport authoritatively
-// in `via`: 'rf' = decoded off the air, 'is' = received from APRS-IS (internet).
-// Trust it when present. Only if `via` is missing/unrecognised do we fall back
-// to sniffing the path for a q-construct/igate marker (TCPIP / IGATE / qAR…).
-function _stationSource(s) {
-  const v = String(s.via || '').trim().toLowerCase();
-  if (v === 'rf') return 'rf';
-  if (v === 'is') return 'is';
-  const hay = (v + ' ' + (s.path || []).join(' ')).toUpperCase();
-  const isIS = hay.includes('TCPIP') || hay.includes('IGATE') || /\bQA[A-Z]/.test(hay);
-  return isIS ? 'is' : 'rf';
-}
 
 // Per-cycle source breakdown in the station-list drawer head — mirrors the
 // dashboard (index.html): how many stations we heard on each transport in the
@@ -3410,13 +3381,18 @@ function _stationSource(s) {
 // count, so it's a live "what came in just now" readout, not the aged list total.
 // Counts ignore the column filters. Window padded past the 15 s refresh to absorb
 // fetch/clock jitter. Refreshed every cycle via renderAprsList.
+// Heard-via source (rf/is). Shared with the dashboard via traffic-list.js.
+const _stationSource = OasisTrafficList.stationSource;
+
 const _HEARD_WINDOW_MS = 20 * 1000;
-function renderSourceBreakdown() {
+// `acRows` is the caller's already-built _adsbListRows() result (see
+// _renderDrawer); falls back to building its own if called bare.
+function renderSourceBreakdown(acRows) {
   const el = document.getElementById('srcBreak');
   if (!el) return;
   const now = Date.now();
   const fresh = s => { const t = _lhEpoch(s.last_heard); return t > 0 && (now - t) <= _HEARD_WINDOW_MS; };
-  const adsbRows = _adsbListRows();
+  const adsbRows = acRows || _adsbListRows();
   let rf = 0, is = 0;
   for (const s of allStations) { if (!fresh(s)) continue; if (_stationSource(s) === 'rf') rf++; else is++; }
   const adsb = adsbRows.filter(fresh).length;
@@ -3554,45 +3530,32 @@ function _listLastHeard(iso) {
   return utc + ' <span class="al-dim">[' + z(d.getHours()) + ':' + z(d.getMinutes()) + ']</span>';
 }
 
-// Render the drawer table from a station list (already filtered by applyFilter).
-// last_heard → epoch ms, parsing BOTH GrayWolf's "YYYY-MM-DD HH:MM:SS.fff…±HH:MM"
-// (space separator, nanoseconds, local tz) and aircraft ISO "…T…Z". Normalize
-// space→T and clamp the fraction to ms so every browser's Date() parses it the
-// same; unparseable → 0 (sorts last). Replaces the old localeCompare, which
-// string-compared the two different formats (space+local-tz vs T+Z) — never a
-// valid chronological order across a station and an aircraft.
-function _lhEpoch(s) {
-  if (!s) return 0;
-  const norm = String(s).replace('Z', '+00:00').replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1');
-  const t = new Date(norm).getTime();
-  return isNaN(t) ? 0 : t;
-}
 
-function renderAprsList(stations) {
+// `acRows` = the unfiltered aircraft list _renderDrawer already built, forwarded
+// to renderSourceBreakdown so it doesn't rebuild one.
+// last_heard -> epoch ms. Shared with the dashboard via common/js/traffic-list.js.
+const _lhEpoch = lastHeardEpoch;
+
+function renderAprsList(stations, acRows) {
   const tbody = document.getElementById('aprs-list-tbody');
   const countEl = document.getElementById('aprs-list-count');
   if (!tbody) return;
   countEl.textContent = stations.length;
-  renderSourceBreakdown();
+  renderSourceBreakdown(acRows);
   if (!stations.length) {
     tbody.innerHTML = '<tr><td colspan="10" class="al-empty">No stations match the current filters.</td></tr>';
     return;
   }
   // Pure newest-first by real time — stations and aircraft interleaved by their
-  // actual last_heard (numeric epoch, both formats). No type grouping.
-  const sorted = [...stations].sort((a, b) =>
-    _lhEpoch(b.last_heard) - _lhEpoch(a.last_heard));
+  // actual last_heard (numeric epoch, both wire formats). No type grouping.
+  const sorted = OasisTrafficList.sortByRecency(stations);
   tbody.innerHTML = sorted.map(s => {
     const ac = s._kind === 'aircraft';
     // ADS-B carries its own source ("ADS-B"); stations use their heard-via.
-    const src = ac ? 'adsb' : _stationSource(s);
-    const srcTxt = ac ? 'ADS-B' : src.toUpperCase();
+    const src = OasisTrafficList.sourceKey(s);
+    const srcTxt = OasisTrafficList.sourceLabel(s);
     const age = _listAge(s.last_heard);
-    const courseNum = (s.course != null && s.speed_mph > 0) ? Math.round(s.course) : null;
-    const courseFmt = courseNum != null
-      ? ' <span style="display:inline-block;transform:rotate(' + courseNum + 'deg)">↑</span> '
-        + ['N','NE','E','SE','S','SW','W','NW'][Math.round(courseNum / 45) % 8] + ' ' + courseNum + '°'
-      : '';
+    const courseFmt = OasisTrafficList.courseHtml(s.course, s.speed_mph);
     // Row class: aircraft heard-but-unlocated grey out; stations highlight the
     // active track. Aircraft click flies to the fixed ones; the rest are inert.
     const cls = ac

@@ -16,6 +16,10 @@
   root.recentHoursForAge = api.recentHoursForAge;
   root.hexIsMilitary = api.hexIsMilitary;
   root.acSymbol = api.acSymbol;
+  root.AC_CAT_SHAPE = api.AC_CAT_SHAPE;
+  root.suspectedMilitary = api.suspectedMilitary;
+  root.acShapeFor = api.acShapeFor;
+  root.adsbSymCode = api.adsbSymCode;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   'use strict';
@@ -93,7 +97,45 @@ function altColor(alt) {
     return ['/', "'"];                                             // small / default
   }
 
+
+  // ── Aircraft icon shape / symbol classification ────────────────────────────
+  // Moved here from maps/traffic/map.html so the traffic list (common/js/
+  // traffic-list.js) can classify aircraft identically to the map markers.
+  // All four are pure.
+  var AC_CAT_SHAPE = {
+    A1: 'small', A2: 'small', A3: 'big', A4: 'big', A5: 'big', A7: 'heli',
+    B1: 'glider', B2: 'glider', C1: 'ground', C2: 'ground'
+  };
+
+  // Fuzzy tier for the "no id at all" case: anonymous (no callsign AND no
+  // category) plus one kinematic tell that doesn't fit GA. Deliberately
+  // conservative — this is SUSPECTED (rendered hollow), never claimed confirmed.
+  function suspectedMilitary(a) {
+    var anon = !(a.flight && a.flight.trim()) && !a.category;
+    var fast = a.gs != null && a.gs > 350;                                  // knots
+    var high = a.alt_baro !== 'ground' && Number(a.alt_baro) > 40000;       // ft
+    return anon && (fast || high);
+  }
+
+  // Icon shape + fill state. Known category always wins (a tagged military
+  // transport still looks like its type); only the otherwise-generic fallback
+  // becomes military-aware: confirmed (filled) via hex, suspected (hollow) via
+  // the fuzzy tell, else the plain big jet.
+  function acShapeFor(a) {
+    if (AC_CAT_SHAPE[a.category]) return { key: AC_CAT_SHAPE[a.category], filled: true };
+    if (hexIsMilitary(a.hex))     return { key: 'mil', filled: true };
+    if (suspectedMilitary(a))     return { key: 'mil', filled: false };
+    return { key: 'big', filled: true };   // unknown-category fallback
+  }
+
+  // APRS symbol code an aircraft borrows for the shared sprite sheet.
+  function adsbSymCode(category) {
+    return category === 'A7' ? 'X' : "'";
+  }
+
   return { altColor: altColor, operatorTag: operatorTag,
            recentHoursForAge: recentHoursForAge, RECENT_ALL_HOURS: RECENT_ALL_HOURS,
-           hexIsMilitary: hexIsMilitary, MIL_HEX_RANGES: MIL_HEX_RANGES, acSymbol: acSymbol };
+           hexIsMilitary: hexIsMilitary, MIL_HEX_RANGES: MIL_HEX_RANGES, acSymbol: acSymbol,
+           AC_CAT_SHAPE: AC_CAT_SHAPE, suspectedMilitary: suspectedMilitary,
+           acShapeFor: acShapeFor, adsbSymCode: adsbSymCode };
 });
