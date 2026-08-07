@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, request, send_from_directory  # noqa: F401
 
 import appconfig
 from common import config_paths
+from common.web_guard import require_oasis_request
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 import sys
@@ -74,6 +75,7 @@ def api_satellites():
 
 
 @bp.route("/api/satellites/refresh", methods=["POST"])
+@require_oasis_request
 def api_refresh():
     """Rebuild the satellite list from SatNOGS + CelesTrak on demand — backs the
     age pill. ONLINE-ONLY, the one operator-triggered exception to "runtime never
@@ -303,6 +305,7 @@ def api_track():
 
 
 @bp.route("/api/satellites/select", methods=["POST"])
+@require_oasis_request
 def api_select():
     body = request.get_json(force=True)
     try:
@@ -381,6 +384,7 @@ def _prep_capture(norad, req_freq):
 
 
 @bp.route("/api/satellites/listen", methods=["POST"])
+@require_oasis_request
 def api_listen():
     import listen
     body = request.get_json(force=True)
@@ -427,6 +431,7 @@ def api_listen_stream():
 
 
 @bp.route("/api/satellites/listen/stop", methods=["POST"])
+@require_oasis_request
 def api_listen_stop():
     import listen
     return jsonify(listen.stop())

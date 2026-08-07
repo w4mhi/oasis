@@ -9,7 +9,7 @@ import unittest
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 _SERVER = os.path.join(_ROOT, "server")
-for _p in (_ROOT, _SERVER):
+for _p in (_ROOT, _SERVER, _HERE):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -74,7 +74,8 @@ class WarningBroadcastRouteTest(unittest.TestCase):
     (R1) and by the reconcile-driven write-back covered elsewhere."""
 
     def setUp(self):
-        self.client = app_module.app.test_client()
+        from oasis_testclient import csrf_client
+        self.client = csrf_client(app_module.app)
         # isolate the warnings file per test: a unique temp filename so a
         # stray daemon reconcile thread from a prior test can never write
         # into this test's file.
@@ -229,7 +230,8 @@ class WarningBroadcastRouteTest(unittest.TestCase):
 
 class ReconcileTriggerTest(unittest.TestCase):
     def setUp(self):
-        self.client = app_module.app.test_client()
+        from oasis_testclient import csrf_client
+        self.client = csrf_client(app_module.app)
         self._orig_wf = aprs_routes.WARNINGS_FILE
         fd, self._tmp = tempfile.mkstemp(prefix="warns_", suffix=".json", dir=_HERE)
         os.close(fd)
@@ -273,7 +275,8 @@ class ReconcileTriggerNoBroadcastTest(unittest.TestCase):
     otherwise an orphan object beacon (failed delete) re-beacons forever."""
 
     def setUp(self):
-        self.client = app_module.app.test_client()
+        from oasis_testclient import csrf_client
+        self.client = csrf_client(app_module.app)
         self._orig_wf = aprs_routes.WARNINGS_FILE
         fd, self._tmp = tempfile.mkstemp(prefix="warns_", suffix=".json", dir=_HERE)
         os.close(fd)
@@ -315,7 +318,8 @@ class ReconcileTriggerNoBroadcastTest(unittest.TestCase):
 
 class IntentModelRouteTest(unittest.TestCase):
     def setUp(self):
-        self.client = app_module.app.test_client()
+        from oasis_testclient import csrf_client
+        self.client = csrf_client(app_module.app)
         self._orig_wf = aprs_routes.WARNINGS_FILE
         fd, self._tmp = tempfile.mkstemp(prefix="warns_", suffix=".json", dir=_HERE)
         os.close(fd)

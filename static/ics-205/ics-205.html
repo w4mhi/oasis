@@ -1228,7 +1228,7 @@ async function saveToServer(){
   try{
     const res=await fetch('/api/save-ics205',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','X-OASIS-Request':'1'},
       body:JSON.stringify({filename,content:JSON.stringify(data,null,2)}),
     });
     const j=await res.json().catch(()=>({}));

@@ -1,6 +1,7 @@
 import json, os, sys, tempfile, unittest
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
+sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "server"))
 
 # Probe the optional pass-prediction dep (skyfield/numpy/sgp4). The server boots
@@ -36,7 +37,9 @@ class RoutesTest(unittest.TestCase):
         from flask import Flask
         app = Flask(__name__)
         app.register_blueprint(routes.bp)
-        self.client = app.test_client()
+        from oasis_testclient import bare_client, csrf_client
+        self.client = csrf_client(app)
+        self.bare = bare_client(app)      # no CSRF header — proves the guard
 
         # Redirect config + cache to a temp dir seeded from the fixture.
         self._tmp = tempfile.mkdtemp()
@@ -105,6 +108,49 @@ class RoutesTest(unittest.TestCase):
                              json={"norad": 25544, "freq_mhz": 999.0})
         self.assertIn(r.status_code, (400, 409))
         self.assertIn("error", r.get_json())
+
+    # ── CSRF ──────────────────────────────────────────────────────────────────
+    # These routes parse with get_json(force=True), so a text/plain body needs no
+    # CORS preflight: before the guard, any page the operator visited could seize
+    # the RTL-SDR and start a capture, or rewrite the shared roster. Built with a
+    # PLAIN client so the suite-wide header default can't mask a missing guard.
+    def test_listen_without_csrf_header_is_forbidden_and_starts_nothing(self):
+        import listen
+
+        started = []
+        original = listen.start
+        listen.start = lambda *a, **k: started.append(a) or {}
+        try:
+            r = self.bare.post("/api/satellites/listen", json={"norad": 25544})
+        finally:
+            listen.start = original
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.get_json(), {"ok": False, "error": "forbidden"})
+        self.assertEqual(started, [], "capture started despite a rejected request")
+
+    def test_listen_rejects_a_simple_cross_origin_post(self):
+        # The exact shape that dodges a preflight: text/plain body, JSON content.
+        r = self.bare.post("/api/satellites/listen",
+                           data='{"norad": 25544}', content_type="text/plain")
+        self.assertEqual(r.status_code, 403)
+
+    def test_select_without_csrf_header_leaves_the_roster_untouched(self):
+        before = self.client.get("/api/satellites").get_json()["satellites"]
+        r = self.bare.post("/api/satellites/select",
+                           data='{"norad": 25544, "selected": false}',
+                           content_type="text/plain")
+        self.assertEqual(r.status_code, 403)
+        after = self.client.get("/api/satellites").get_json()["satellites"]
+        self.assertEqual([s["selected"] for s in before], [s["selected"] for s in after])
+
+    def test_refresh_and_listen_stop_are_guarded(self):
+        self.assertEqual(self.bare.post("/api/satellites/refresh").status_code, 403)
+        self.assertEqual(self.bare.post("/api/satellites/listen/stop").status_code, 403)
+
+    def test_reads_stay_open_without_the_header(self):
+        # The guard must not touch GETs — the dashboard polls these unauthenticated.
+        for path in ("/api/satellites", "/api/satellites/listen/status"):
+            self.assertEqual(self.bare.get(path).status_code, 200, path)
 
     def test_passes_cache_reused(self):
         calls = []

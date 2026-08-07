@@ -55,7 +55,7 @@
   async function save(kind, filename, contentStr) {
     var res = await fetch('/api/forms/save', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
       body: JSON.stringify({ kind: kind, filename: filename, content: contentStr })
     });
     var j = await res.json().catch(function () { return {}; });

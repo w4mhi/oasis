@@ -14,6 +14,7 @@ from flask import Blueprint, Response, jsonify, request
 
 import appconfig
 from common import config_paths
+from common.web_guard import require_oasis_request
 from services.aprs.common import warning_catalog
 from services.aprs.common.graywolf_client import GraywolfClient
 from services.aprs.common.warning_broadcast import (
@@ -297,6 +298,7 @@ def api_aprs_warnings_list():
 
 
 @bp.route("/api/aprs/warnings", methods=["POST"])
+@require_oasis_request
 def api_aprs_warnings_add():
     body = request.get_json(silent=True) or {}
     try:
@@ -343,6 +345,7 @@ def api_aprs_warnings_add():
 
 
 @bp.route("/api/aprs/warnings/<wid>", methods=["PATCH"])
+@require_oasis_request
 def api_aprs_warnings_update(wid):
     """Intent-only: record the note/broadcast toggle locally and return
     immediately. No GrayWolf calls happen while `_warnings_lock` is held —
@@ -401,6 +404,7 @@ def api_aprs_warnings_update(wid):
 
 
 @bp.route("/api/aprs/warnings/<wid>", methods=["DELETE"])
+@require_oasis_request
 def api_aprs_warnings_delete(wid):
     """Intent-only: a warning that is actually killable (has a beacon id,
     or is broadcast-intent with a broadcaster configured) is marked

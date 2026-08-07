@@ -10,6 +10,7 @@ import os
 from flask import Blueprint, jsonify, request
 
 import appconfig
+from common.web_guard import require_oasis_request
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 
@@ -125,6 +126,7 @@ def api_browse():
 
 
 @bp.route("/api/save-chirp", methods=["POST"])
+@require_oasis_request
 def api_save_chirp():
     """Save a CHIRP CSV file directly into the suite's static/chirp/ folder.
 
@@ -155,6 +157,7 @@ def api_save_chirp():
 
 
 @bp.route("/api/forms/save", methods=["POST"])
+@require_oasis_request
 def api_forms_save():
     """Save a client form/log snapshot as JSON under static/<kind>/saved/ so it
     survives a cleared browser cache or a swapped device.
@@ -177,6 +180,7 @@ def api_forms_list():
 
 
 @bp.route("/api/save-ics205", methods=["POST"])
+@require_oasis_request
 def api_save_ics205():
     """Back-compat alias for the ICS-205 page — delegates to the shared form
     store (static/ics-205/saved/). Body: { filename, content }."""

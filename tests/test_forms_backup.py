@@ -12,6 +12,7 @@ from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "server"))
+sys.path.insert(0, _HERE)
 
 import app as oasis_app          # noqa: E402
 from routes import files as files_mod  # noqa: E402
@@ -20,7 +21,8 @@ from routes import files as files_mod  # noqa: E402
 class FormsBackupTest(unittest.TestCase):
     def setUp(self):
         oasis_app.app.config["TESTING"] = True
-        self.c = oasis_app.app.test_client()
+        from oasis_testclient import csrf_client
+        self.c = csrf_client(oasis_app.app)
         self._tmp = tempfile.TemporaryDirectory()
         self._patch = mock.patch.object(files_mod, "SUITE_ROOT", self._tmp.name)
         self._patch.start()

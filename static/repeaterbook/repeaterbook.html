@@ -329,7 +329,7 @@ function exportChirp() {
   // Fall back to a browser download if the server is unreachable.
   fetch('/api/save-chirp', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
     body: JSON.stringify({ filename: name, content: csv }),
   })
   .then(r => r.json())

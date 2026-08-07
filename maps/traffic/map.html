@@ -4125,7 +4125,7 @@ async function placeWarningClick(e) {
     // Always placed LOCAL first; the operator picks the broadcast on the card
     // that opens next (see _warnOpenOnRender in renderWarnings).
     const r = await fetch('/api/aprs/warnings', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
       body: JSON.stringify({ type, lon: e.lngLat.lng, lat: e.lngLat.lat, note: '',
                              broadcast: false })
     });
@@ -4308,7 +4308,7 @@ async function warnSetDest(id, value) {
   const payload = broadcast ? { broadcast: true, send_path: value } : { broadcast: false };
   try {
     await fetch('/api/aprs/warnings/' + id, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
       body: JSON.stringify(payload)
     });
   } catch (_) {}
@@ -4324,14 +4324,14 @@ function warnSaveNote(id, value) {
   clearTimeout(_warnSaveTimer);
   _warnSaveTimer = setTimeout(() => {
     fetch('/api/aprs/warnings/' + id, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
       body: JSON.stringify({ note: value })
     }).catch(() => {});
   }, 300);
 }
 
 async function warnRemove(id) {
-  try { await fetch('/api/aprs/warnings/' + id, { method: 'DELETE' }); } catch (_) {}
+  try { await fetch('/api/aprs/warnings/' + id, { method: 'DELETE', headers: { 'X-OASIS-Request': '1' } }); } catch (_) {}
   _warnEditing = false;
   await loadWarnings();
 }

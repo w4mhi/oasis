@@ -568,7 +568,8 @@ function saveSelection() { try { localStorage.setItem('oasis_sat_selected', JSON
 // roster's `selected` flag — see the same picks. Fire-and-forget; localStorage
 // stays this browser's per-sat colour store.
 function postSelect(norad, selected) {
-  fetch('/api/satellites/select', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  fetch('/api/satellites/select', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
     body: JSON.stringify({ norad: +norad, selected: !!selected }) }).catch(() => {});
 }
 // Reconcile this browser's selection with the shared server roster on load, so
@@ -644,7 +645,7 @@ async function syncTle() {
   const flash = msg => { badge.textContent = msg; badge.className = 'badge warn';
     setTimeout(() => { badge.textContent = prev.text; badge.className = prev.cls; }, 5000); };
   try {
-    const j = await (await fetch('/api/satellites/refresh', { method: 'POST' })).json();
+    const j = await (await fetch('/api/satellites/refresh', { method: 'POST', headers: { 'X-OASIS-Request': '1' } })).json();
     if (j.ok) {
       setTleBadge(j.tle_age_days);
       // Pull the refreshed TLE lines into the roster + recompute pass predictions.
@@ -1392,7 +1393,7 @@ function stopStream() {
   // Also force the server-side teardown: a browser disconnect often isn't noticed
   // by gunicorn, so the rtl_fm pipeline (and the streaming flag) would otherwise
   // linger and keep every downlink button greyed out.
-  fetch('/api/satellites/listen/stop', { method: 'POST' }).catch(() => {});
+  fetch('/api/satellites/listen/stop', { method: 'POST', headers: { 'X-OASIS-Request': '1' } }).catch(() => {});
   pollListen();
 }
 // Header transport buttons act on the armed frequency.
@@ -1464,14 +1465,16 @@ async function startListen(norad, freqMhz) {
   if (freqMhz != null) body.freq_mhz = freqMhz;
   try {
     const r = await fetch('/api/satellites/listen', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+      body: JSON.stringify(body) });
     const d = await r.json();
     if (!r.ok) { _listenErrNorad = norad; LISTEN._err = d.error || 'listen failed'; }
   } catch (e) { _listenErrNorad = norad; LISTEN._err = 'listen request failed'; }
   await pollListen(); updateListenUI();
 }
 async function stopListen() {
-  try { await fetch('/api/satellites/listen/stop', { method: 'POST' }); } catch (e) { /* ignore */ }
+  try { await fetch('/api/satellites/listen/stop', { method: 'POST',
+    headers: { 'X-OASIS-Request': '1' } }); } catch (e) { /* ignore */ }
   _listenErrNorad = null;
   await pollListen(); updateListenUI();
 }

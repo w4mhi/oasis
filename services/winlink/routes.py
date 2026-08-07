@@ -9,6 +9,7 @@ import os
 from flask import Blueprint, Response, jsonify, request, send_from_directory
 
 import appconfig
+from common.web_guard import require_oasis_request_for
 
 WINLINK_DIR = os.path.join(appconfig.SUITE_ROOT, "services", "winlink", "static")
 
@@ -79,6 +80,7 @@ def api_winlink_mailbox_list(box):
 
 
 @bp.route("/api/winlink/mailbox/<box>/<mid>", methods=["GET", "DELETE"])
+@require_oasis_request_for("DELETE")
 def api_winlink_message(box, mid):
     """Read or delete a single Pat message."""
     if box not in WINLINK_BOXES:

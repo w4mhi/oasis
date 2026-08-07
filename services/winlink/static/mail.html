@@ -428,6 +428,17 @@ function parsePosition(text) {
 }
 
 async function api(path, opts) {
+  // Mutating calls carry the X-OASIS-Request CSRF header the server requires
+  // (common/web_guard.py). Injected here rather than at each call site so a new
+  // mutation can't silently ship without it — a cross-origin page cannot set a
+  // custom header without a preflight this server never grants.
+  opts = opts || {};
+  const method = (opts.method || "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") {
+    opts = Object.assign({}, opts, {
+      headers: Object.assign({}, opts.headers, { "X-OASIS-Request": "1" }),
+    });
+  }
   const res = await fetch(API + path, opts);
   if (res.status === 503) {
     let msg = "Pat (Winlink) service unreachable.";
