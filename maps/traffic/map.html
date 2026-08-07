@@ -901,11 +901,11 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
     <div id="warnings-body"></div>
   </div>
 
-  <!-- APRS heard — recent-heard stations -->
+  <!-- APRS plotted — stations heard AND positioned this cycle -->
   <div id="recent-panel" class="collapsed">
     <div id="recent-header" onclick="toggleRecentPanel()">
       <span id="recent-arrow">▾</span>
-      <span id="recent-count">APRS 0 heard</span>
+      <span id="recent-count">APRS 0 plotted</span>
     </div>
     <!-- Auto-path source filters — chip toggles matching the RF/IS row chips
          below. Gate which lines auto-path draws (RF: purple+green · IS: blue). -->
@@ -3448,7 +3448,12 @@ let _recentAutoExpanded = false, _adsbAutoExpanded = false;
 function updateRecentPanel(newStations) {
   const count = document.getElementById('recent-count');
   const body  = document.getElementById('recent-body');
-  count.textContent = 'APRS ' + newStations.length + ' heard';
+  // "plotted", not "heard": this panel counts only stations that carry a
+  // POSITION (it drives fly-to and the map pings), over RECENT_MAX_AGE_SEC.
+  // The drawer's source breakdown counts every station heard on each transport
+  // — including status/message/telemetry with no fix — over a slightly wider
+  // window, so the two numbers legitimately differ and used to look wrong.
+  count.textContent = 'APRS ' + newStations.length + ' plotted';
   if (!newStations.length) {
     body.innerHTML = '<div style="padding:6px 10px;color:var(--text-dim)">None this cycle</div>';
     return;
