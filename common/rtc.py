@@ -19,13 +19,16 @@ What a board install does (idempotent · REQUIRES A REBOOT):
      `util-linux` into `util-linux-extra`, so `hwclock -w/-r` are otherwise
      "command not found" on a minimal Pi OS image
 
-CONFIG.TXT POLICY: everything this installer adds goes inside its own per-board
-BEGIN/END block, and a line already present ANYWHERE ELSE in config.txt is never
-duplicated into the block — so it stays outside our boundary and teardown cannot
-reach it. This matters for the BigTreeTech board, whose DSI display overlay
-(dtoverlay=vc4-kms-dsi-7inch,dsi1) is usually already in config.txt next to the
-stock vc4-kms-v3d line: adding it to our block would let an uninstall delete the
-Pi's screen. See docs/SETUP.md and the removal_record() docstring.
+CONFIG.TXT POLICY: an RTC feature owns exactly ONE line — its i2c-rtc overlay,
+written inside its own per-board BEGIN/END block, which teardown strips. Every
+other line the board needs is a PREREQUISITE: added when missing, but always
+outside the block and never removed. Prerequisites belong to hardware that
+outlives the clock — dtoverlay=vc4-kms-dsi-7inch,dsi1 IS the Raspad's screen, and
+dtparam=i2c_arm=on is the GPIO I²C bus every other I²C user shares. Removing
+either on uninstall would break something this feature never owned (the classic
+version of this mistake left a Pi with no sound cards). A wanted line already
+present in config.txt is never duplicated, in or out of the block. See
+docs/SETUP.md and the removal_record() docstring.
 
 After the reboot, once the system clock is correct (from GPS/NTP), write it to
 the RTC once:   sudo hwclock -w     (read it back with: sudo hwclock -r)
@@ -43,12 +46,16 @@ I2C_PARAM   = "dtparam=i2c_arm=on"
 HWCLOCK_SET = "/lib/udev/hwclock-set"
 
 # Per-board RTC facts.
-#   overlay   — the i2c-rtc dtoverlay line that creates /dev/rtc0 at boot.
-#   extras    — additional config.txt lines the board needs. `i2c_arm=on` for
-#               chips on the GPIO ARM bus (i2c-1); for the DSI-ribbon boards the
-#               overlay's own i2c_csi_dsi flag stands up i2c-10, so enabling the
-#               GPIO bus would just clutter config.txt with an unused bus — what
-#               they need instead is the DSI display overlay.
+#   overlay   — the i2c-rtc dtoverlay line that creates /dev/rtc0 at boot. The
+#               ONLY line this installer owns (inside its block, removable).
+#   prereqs   — config.txt lines the board's RTC needs but that this feature must
+#               never own, because they belong to hardware that outlives the
+#               clock. Added when missing, always OUTSIDE the block, never
+#               removed. `i2c_arm=on` is the shared GPIO I²C bus (every other
+#               I²C user needs it too); `vc4-kms-dsi-7inch,dsi1` IS the Raspad's
+#               screen — removing it on uninstall would blank the display. (The
+#               DSI-ribbon boards don't want i2c_arm at all: the RTC overlay's own
+#               i2c_csi_dsi flag stands up i2c-10.)
 #   bus/addr  — verify hint only (`i2cdetect -y <bus>` shows the chip as UU).
 #   feature   — the OASIS feature key that owns this board (block marker + docs).
 BOARDS = {
@@ -58,7 +65,7 @@ BOARDS = {
         "addr":    "0x68",
         "bus":     1,
         "overlay": "dtoverlay=i2c-rtc,ds3231",
-        "extras":  [I2C_PARAM],
+        "prereqs": [I2C_PARAM],
         "feature": "rtc",
         "script":  "features/rtc-hat/enable-rtc.py",
     },
@@ -68,7 +75,7 @@ BOARDS = {
         "addr":    "0x51",
         "bus":     10,
         "overlay": "dtoverlay=i2c-rtc,pcf8563,i2c_csi_dsi",
-        "extras":  ["dtoverlay=vc4-kms-dsi-7inch,dsi1"],
+        "prereqs": ["dtoverlay=vc4-kms-dsi-7inch,dsi1"],
         "feature": "rtc-raspad",
         "script":  "features/rtc-raspad/enable-rtc.py",
     },
@@ -89,12 +96,13 @@ def removal_record(repo_root=None, board_id=DEFAULT_BOARD):
     """Teardown record for an RTC feature: drop this board's config.txt block and
     restore /lib/udev/hwclock-set from the .oasis.bak the installer made.
 
-    The block IS the boundary — a line the installer found already present
-    elsewhere in config.txt was never copied into the block, so teardown cannot
-    remove it. That's what keeps an uninstall from deleting a pre-existing DSI
-    display overlay (dtoverlay=vc4-kms-dsi-7inch,dsi1) and blanking the screen,
-    or a dtparam=i2c_arm=on shared with other I²C users. Reboot to drop the
-    overlay."""
+    The block IS the boundary, and only the i2c-rtc overlay is ever inside it.
+    The board's prerequisites live outside by construction — whether they were
+    already in config.txt or this installer added them — so teardown cannot reach
+    them however the box got set up. That's what keeps an uninstall from deleting
+    the DSI display overlay (dtoverlay=vc4-kms-dsi-7inch,dsi1) and blanking the
+    Raspad's screen, or a dtparam=i2c_arm=on shared with other I²C users. Reboot
+    to drop the overlay."""
     begin, end = block_markers(board_id)
     return {"config_blocks": [[begin, end]],
             "restore": [[HWCLOCK_SET + ".oasis.bak", HWCLOCK_SET]],
@@ -148,32 +156,54 @@ def strip_block(text, begin, end):
 
 
 def plan_lines(text, board_id):
-    """Which of this board's lines belong inside our block, given config.txt
-    *text*. A line already active ANYWHERE outside our own block is left where it
-    is — not duplicated into the block, and so never ours to remove. Returns
-    (owned, foreign): lines to write, and lines we deliberately left alone."""
+    """Sort this board's config.txt lines into three buckets, given *text*.
+
+      owned      — goes INSIDE our block, and so is removed on uninstall. Only
+                   ever the i2c-rtc overlay: the one line that exists purely
+                   because this feature is installed.
+      prereq_add — a prereq missing from config.txt: appended OUTSIDE the block,
+                   where no teardown can reach it. The RTC needs it, but it
+                   belongs to hardware that outlives the clock (the DSI panel;
+                   the shared GPIO I²C bus), so removing it later would break
+                   something this feature never owned.
+      present    — a wanted line already active elsewhere in config.txt. Left
+                   exactly where it is; never duplicated into the block.
+
+    Comparison is by _overlay_key(), so a tuned variant of a line counts as
+    present."""
     board = BOARDS[board_id]
     begin, end = block_markers(board_id)
     outside = {_overlay_key(s) for s in _active_lines(strip_block(text, begin, end))}
-    wanted = [*board["extras"], board["overlay"]]
-    owned = [ln for ln in wanted if _overlay_key(ln) not in outside]
-    foreign = [ln for ln in wanted if _overlay_key(ln) in outside]
-    return owned, foreign
+    owned = [board["overlay"]] if _overlay_key(board["overlay"]) not in outside else []
+    prereq_add = [ln for ln in board["prereqs"] if _overlay_key(ln) not in outside]
+    present = [ln for ln in [*board["prereqs"], board["overlay"]]
+               if _overlay_key(ln) in outside]
+    return owned, prereq_add, present
 
 
 def render_config(text, board_id):
-    """Return (new_text, owned, foreign) with this board's block rewritten to
-    exactly the lines it should own. Idempotent: re-rendering unchanged input
-    returns identical text."""
+    """Return (new_text, owned, prereq_add, present) with this board's prereqs
+    ensured outside the block and the block rewritten to exactly the lines it
+    owns. Idempotent: re-rendering unchanged input returns identical text."""
+    board = BOARDS[board_id]
     begin, end = block_markers(board_id)
-    owned, foreign = plan_lines(text, board_id)
+    owned, prereq_add, present = plan_lines(text, board_id)
     body = strip_block(text, begin, end).rstrip("\n")
+
+    if prereq_add:
+        # Deliberately outside the block, with a note saying why — teardown
+        # strips only the block, so these survive every uninstall.
+        note = (f"# {board['feature']} prerequisite (added by {board['script']}; "
+                "NOT removed on uninstall — it belongs to the hardware, not the clock)")
+        added = "\n".join([note, *prereq_add])
+        body = f"{body}\n{added}" if body else added
+
     if not owned:
-        # Nothing to own (every line already lives outside our block) — leave no
-        # empty block behind.
-        return ((body + "\n") if body else ""), owned, foreign
+        # Nothing to own (the RTC overlay already lives outside our block) —
+        # leave no empty block behind.
+        return ((body + "\n") if body else ""), owned, prereq_add, present
     block = "\n".join([begin, *owned, end])
-    return (f"{body}\n{block}\n" if body else f"{block}\n"), owned, foreign
+    return (f"{body}\n{block}\n" if body else f"{block}\n"), owned, prereq_add, present
 
 
 # ── Install steps ─────────────────────────────────────────────────────────────
@@ -195,10 +225,9 @@ def write_config(cfg, board_id):
     except OSError:
         _fail(f"Could not read {cfg}.")
         return
-    new_text, owned, foreign = render_config(text, board_id)
-    for ln in foreign:
-        _info(f"'{ln}' already in {cfg} outside our block — leaving it there "
-              "(so uninstalling this feature can never remove it).")
+    new_text, owned, prereq_add, present = render_config(text, board_id)
+    for ln in present:
+        _info(f"'{ln}' already in {cfg} — leaving it exactly where it is.")
     if new_text == text:
         _ok(f"config.txt already correct for {BOARDS[board_id]['label']}.")
         return
@@ -209,6 +238,9 @@ def write_config(cfg, board_id):
     if getattr(r, "returncode", 1) != 0:
         _fail(f"Could not write to {cfg}.")
         return
+    for ln in prereq_add:
+        _ok(f"Added prerequisite '{ln}' to {cfg} (outside the OASIS block — "
+            "uninstalling this feature will NOT remove it).")
     for ln in owned:
         _ok(f"Added '{ln}' to the OASIS RTC block in {cfg}.")
     _info(f"backup: {bak}")
@@ -333,12 +365,14 @@ def run(check_only=False, board_id=DEFAULT_BOARD):
                 text = fh.read()
         except OSError:
             text = ""
-        owned, foreign = plan_lines(text, board_id)
-        _info("RTC overlay : " + ("yes" if board["overlay"] not in owned else "no"))
-        for ln in foreign:
-            _info(f"present outside our block (not ours to remove): {ln}")
+        owned, prereq_add, present = plan_lines(text, board_id)
+        _info("RTC overlay : " + ("no" if owned else "yes"))
+        for ln in present:
+            _info(f"already present, left alone: {ln}")
+        for ln in prereq_add:
+            _info(f"missing, would add as a prerequisite (never removed): {ln}")
         for ln in owned:
-            _info(f"missing, would add: {ln}")
+            _info(f"missing, would add to our block (removed on uninstall): {ln}")
         verify(board)
         print()
         return

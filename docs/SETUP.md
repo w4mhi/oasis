@@ -1660,7 +1660,8 @@ python3 features/rtc-raspad/enable-rtc.py --check    # report status, change not
 Each script is idempotent and **requires a reboot**. It writes its board's
 `config.txt` lines, removes `fake-hwclock` (which would otherwise overwrite the
 real RTC), and neutralises the `--systz` block in `/lib/udev/hwclock-set` (the
-classic i2c-rtc boot-reset fix). The lines per board:
+classic i2c-rtc boot-reset fix). The lines per board — the `i2c-rtc` one is the
+feature's own, the other is a prerequisite it will add but never remove:
 
 ```ini
 # rtc (Witty Pi 3)
@@ -1672,15 +1673,26 @@ dtoverlay=vc4-kms-dsi-7inch,dsi1
 dtoverlay=i2c-rtc,pcf8563,i2c_csi_dsi
 ```
 
-> ⚠️ **The installer only owns what it added.** Every line goes inside that
-> feature's own `# --- OASIS RTC <board> ---` block in `config.txt`, and a line
-> already active elsewhere in the file is *left where it is* rather than copied
-> into the block. That matters most for `dtoverlay=vc4-kms-dsi-7inch,dsi1`, which
-> a working Raspad already carries next to the stock `vc4-kms-v3d` line: because
-> it stays outside the block, **uninstalling `rtc-raspad` cannot delete your
-> display overlay** and blank the screen. Same reasoning keeps a shared
-> `dtparam=i2c_arm=on` safe. Both boards may be installed on one Pi — the blocks
-> are per-board, so removing one never touches the other.
+> ⚠️ **The installer owns exactly one line: its `i2c-rtc` overlay.** That line
+> goes inside the feature's own `# --- OASIS RTC <board> ---` block, which is all
+> an uninstall strips. Everything else is a **prerequisite** — added when missing,
+> but always written *outside* the block and **never removed**, because it belongs
+> to hardware that outlives the clock. `dtoverlay=vc4-kms-dsi-7inch,dsi1` *is* the
+> Raspad's screen, so no uninstall path may ever take it out — whether it was
+> already in `config.txt` (the usual case, next to the stock `vc4-kms-v3d` line)
+> or this installer added it. Same reasoning for `dtparam=i2c_arm=on`, shared with
+> every other I²C user. Both boards may be installed on one Pi — the blocks are
+> per-board, so removing one never touches the other.
+>
+> After installing on a box that needed the display overlay, `config.txt` reads:
+>
+> ```ini
+> # rtc-raspad prerequisite (added by features/rtc-raspad/enable-rtc.py; NOT removed on uninstall — it belongs to the hardware, not the clock)
+> dtoverlay=vc4-kms-dsi-7inch,dsi1
+> # --- OASIS RTC bigtreetech-7in (managed by features/rtc-raspad/enable-rtc.py) ---
+> dtoverlay=i2c-rtc,pcf8563,i2c_csi_dsi
+> # --- end OASIS RTC bigtreetech-7in ---
+> ```
 
 The PCF8563 sits on the **DSI ribbon's** I²C bus, not the GPIO header — which is
 why it never appears on `i2cdetect -y 1`. Use `i2cdetect -y 10` (the chip shows
