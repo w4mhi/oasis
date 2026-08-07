@@ -1298,15 +1298,47 @@ offline bundling is a future task). Targets Debian/Raspberry Pi OS **bookworm/tr
 ### Running it — RTL-SDR is exclusive
 
 OpenWebRX is installed **off by default** (disabled at boot) because it grabs the
-RTL-SDR exclusively — the same dongle the **APRS SDR feed → GrayWolf** path uses.
-Manage it from the dashboard **OpenWebRX** card:
+RTL-SDR exclusively — the same dongle the **APRS SDR feed** and **ADS-B** use.
+Manage it from the **START / STOP** button on the dashboard's **OpenWebRX** card:
 
-- **Start** → stops + disables `aprs-sdr-feed` and `graywolf`, then enables + starts
-  `openwebrx` (so it survives a reboot).
-- **Stop** → disables + stops `openwebrx`, then re-enables + starts the APRS stack.
+- **START is gated on a dongle** — and there is currently **no UI to make that
+  assignment**. Until an RTL-SDR is assigned to `openwebrx` the button stays
+  blocked, and its tooltip ("Assign an SDR dongle in Setup before starting")
+  points at UI that no longer exists: the Setup page's Hardware card only
+  *detects* devices, and ORX has no column in the HW/SRV matrix (see below). Until
+  ORX joins the matrix, assign it over the API:
 
-So exactly one consumer of the radio is ever active, at runtime *and* after a
-reboot. The card's **title** links to the OpenWebRX UI (`:8073`) in a new tab.
+  ```bash
+  # device ids come from configuration/hardware.json -> devices[].id
+  curl -s -X POST http://localhost:8083/api/hardware/assign \
+    -H 'Content-Type: application/json' -H 'X-OASIS-Request: 1' \
+    -d '{"service":"openwebrx","device_id":"rtl-sdr-00000031"}'
+  ```
+
+  The card's `device:` row then shows the dongle and START unblocks.
+- **Same-dongle conflicts are resolved at click time.** If the APRS SDR feed or
+  ADS-B is already running *on that same dongle*, START asks first — **OK** stops
+  the other one (click START again once it's down), **Cancel** tries anyway and
+  will fail on the shared dongle. A different dongle is no conflict: nothing is
+  asked and both keep running.
+- **Boot state is left untouched.** START/STOP are plain runtime actions on
+  `openwebrx`, so it stays disabled at boot however you leave it — deliberate,
+  since it would otherwise seize the dongle on every boot. If you do want it back
+  automatically: `sudo systemctl enable openwebrx`. (The APRS feed and ADS-B are
+  the opposite — starting one *enables* it and stopping it *disables* it, so their
+  choice does survive a reboot. That's why stopping the feed via the conflict
+  prompt also takes it off boot.)
+- **Stopping ORX does not restart anything.** The APRS stack is not brought back
+  for you — start the feed again from its own card when you want it.
+- **ORX is not in the SRV OPS matrix.** APRS, ADS-B, Winlink and SAT are routed
+  there; OpenWebRX is not, because OASIS cannot tell it which dongle to use — that
+  is picked inside ORX's own **Admin → SDR profiles**. The OASIS assignment is
+  advisory bookkeeping so the conflict check above knows which dongle ORX wants —
+  which is also why it has to be made by hand today.
+- **STOP ALL** (matrix header, and the resource guardian's countdown) *does* stop
+  `openwebrx`.
+
+The card's **OPEN ↗** button opens the OpenWebRX UI (`:8073`) in a new tab.
 Requires `scripts/enable-service-controls.py` (grants the scoped systemctl rule).
 
 ### Recommended monitoring profiles (band presets)
@@ -1341,7 +1373,7 @@ timing is trustworthy.
 ### Debug — waterfall frozen or "no SDR device"
 
 - **Working looks like:** open `:8073`, pick a profile, and the **waterfall scrolls** with audio when tuned to an active frequency. A **frozen or black waterfall** = the SDR isn't delivering samples.
-- **"No SDR device" / black waterfall** almost always means another service is holding the dongle. OpenWebRX's **Start** button is *supposed* to stop the APRS stack, but confirm nothing else grabbed it — see [who owns the RTL-SDR](#rtl-sdr):
+- **"No SDR device" / black waterfall** almost always means another service is holding the dongle. START only offers to stop a *same-dongle* holder, and only if you confirm — so a consumer on a different dongle, or one you told it to leave running ("Cancel — try anyway"), is still there. Check who owns it — see [who owns the RTL-SDR](#rtl-sdr):
   ```bash
   systemctl is-active aprs-sdr-feed dump1090-fa openwebrx   # only openwebrx should be active
   journalctl -u openwebrx -f                                # watch it try to open the device
@@ -1360,11 +1392,17 @@ offline-first prime directive.
 ### Hardware — shares the RTL-SDR
 
 ADS-B uses the same RTL-SDR dongle as the APRS SDR feed (`aprs-sdr-feed`) and
-OpenWebRX, so only one of those SDR modes can run at a time. **Starting ADS-B
-stops** `aprs-sdr-feed`, `graywolf`, and `openwebrx` — but **stopping ADS-B
-does not auto-restart** any of them; bring the next mode up by hand from the
-dashboard. GrayWolf running on a Digirig sound-card TNC (no SDR involved) is
-unaffected either way.
+OpenWebRX, so only one of those SDR modes can run at a time. When you START one
+of the three and another is already running **on that same dongle**, the dashboard
+asks first: **OK** stops the other one (then click START again once it's down),
+**Cancel** starts anyway and fails on the shared dongle. Nothing is stopped
+without your say-so, and **stopping a mode does not auto-restart** any of the
+others — bring the next one up by hand from its card. On a multi-dongle box,
+consumers assigned to *different* dongles never conflict and no prompt appears.
+
+`graywolf` itself is never touched by this: GrayWolf opens no dongle (only
+`aprs-sdr-feed` does), so it is unaffected either way — including when it runs on
+a Digirig sound-card TNC with no SDR involved.
 
 ### Units
 
@@ -1791,8 +1829,9 @@ password ever touches the web layer**.
 > would kill the dashboard with no way to bring it back from the browser. The
 > rule is opt-in and fully reversible with `--disable`.
 
-> ℹ️ OpenWebRX's dashboard card needs this rule, because Start/Stop there also
-> flips the APRS stack on/off (the RTL-SDR can only feed one consumer at a time).
+> ℹ️ OpenWebRX's dashboard card needs this rule for its own START/STOP, and again
+> when you accept its offer to stop a conflicting RTL-SDR consumer — both go
+> through `systemctl`, so without the rule the card can only report state.
 
 ---
 
