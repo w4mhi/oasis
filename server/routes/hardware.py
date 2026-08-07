@@ -548,6 +548,18 @@ def _unit_is_active(unit):
         return False
 
 
+def _boot_log(msg):
+    """One line to stdout, which oasis.service routes to the journal
+    (StandardOutput=journal). This ran completely silently at first, and when it
+    failed on a real box there was nothing to diagnose from: no record that it
+    had run, what it planned, or whether a start took. Cheap insurance —
+    a handful of lines once per boot."""
+    try:
+        print("[oasis-hw-boot] " + msg, flush=True)
+    except Exception:
+        pass
+
+
 def _boot_reconcile_runner():
     boot_id = _current_boot_id()
     if boot_id is None:
@@ -556,24 +568,47 @@ def _boot_reconcile_runner():
         return                            # switched off by the operator
     if _boot_already_applied(boot_id):
         return                            # already done this boot; a Flask restart is not a reboot
-    # Claim the boot BEFORE starting anything: if a start hangs or the server is
-    # restarted mid-run, we must not replay the whole plan and fight the
-    # operator. Anything missed is one console click away.
-    _mark_boot_applied(boot_id)
     try:
         inv = HW.load(SUITE_ROOT)
         plan = HW.boot_start_plan(inv)
-    except Exception:
+    except Exception as exc:
+        _boot_log("could not read assignments: %s" % exc)
         return
     if not plan:
         return
+    _boot_log("assigned services to start: %s (settle %ss, stagger %ss)"
+              % (", ".join(plan), _BOOT_SETTLE_S, _BOOT_STAGGER_S))
     time.sleep(_BOOT_SETTLE_S)
+
+    # Claim the boot HERE — immediately before acting, not before the sleep.
+    #
+    # scripts/start-server.sh runs `python server/app.py`, which imports this
+    # module (starting this thread) and THEN os.execv()s into gunicorn. execv
+    # replaces the process image and destroys every thread, so this first
+    # reconciler is killed a second or two into the settle sleep. Claiming up
+    # front meant that doomed thread consumed the boot: the gunicorn worker
+    # imported the module moments later, saw the boot as handled, and did
+    # nothing — services never started. Claiming late means a process that does
+    # not survive the settle simply never claims, and the survivor does the work.
+    #
+    # Re-check first: whoever claims immediately before starting wins, and a
+    # replay would be harmless anyway (already-active units are skipped and
+    # `systemctl start` on a running unit is a no-op).
+    if _boot_already_applied(boot_id):
+        return
+    _mark_boot_applied(boot_id)
+
     for i, unit in enumerate(plan):
         if i:
             time.sleep(_BOOT_STAGGER_S)   # gap between services, not before the first
         if _unit_is_active(unit):
-            continue                      # already up (e.g. still `enable`d from a card start)
+            _boot_log("%s already active — leaving it alone" % unit)
+            continue
         _systemctl_seq(unit, ["start"])
+        # _systemctl_seq deliberately swallows failures, so confirm rather than
+        # assume: a denied sudo rule or a unit that refuses to start would
+        # otherwise be invisible until the operator noticed the service missing.
+        _boot_log("started %s -> %s" % (unit, "active" if _unit_is_active(unit) else "NOT active"))
 
 
 threading.Thread(target=_boot_reconcile_runner, name="oasis-hw-boot", daemon=True).start()

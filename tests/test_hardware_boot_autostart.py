@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "server"))
@@ -130,6 +131,91 @@ class BootIdStampTest(unittest.TestCase):
             # A dev box has no /proc/sys/kernel/random/boot_id; the reconciler
             # must quietly do nothing rather than raise on import.
             self.assertIsNone(got)
+
+
+
+class ClaimTimingTest(unittest.TestCase):
+    """The claim must be taken when the plan is ACTED ON, not before the settle
+    sleep.
+
+    scripts/start-server.sh runs `python server/app.py`, which imports the whole
+    route tree -- starting this thread -- and then os.execv()s into gunicorn.
+    execv replaces the process image and destroys every thread, so the first
+    reconciler is killed a second or two into its settle sleep. If it has
+    already written the stamp, the gunicorn worker that imports the module next
+    sees the boot as handled and does nothing: observed on pi4oasis, where the
+    stamp was written at 21:43:09.889 and gunicorn only started at 21:43:11.
+    """
+
+    def setUp(self):
+        from routes import hardware as HWROUTE
+        self.HW = HWROUTE
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        os.makedirs(os.path.join(self.tmp.name, "configuration"), exist_ok=True)
+        import json
+        with open(os.path.join(self.tmp.name, "configuration", "hardware.json"), "w") as fh:
+            json.dump({"devices": [{"id": "r1", "kind": "rtl-sdr"}],
+                       "assignments": {"adsb": "r1"}}, fh)
+        self.stamp = os.path.join(self.tmp.name, "configuration", ".hw-boot-applied")
+
+    def _patches(self, sleep, started):
+        return [
+            mock.patch.object(self.HW, "SUITE_ROOT", self.tmp.name),
+            mock.patch.object(self.HW, "_BOOT_STAMP", self.stamp),
+            mock.patch.object(self.HW, "_current_boot_id", lambda: "boot-A"),
+            mock.patch.object(self.HW, "_unit_is_active", lambda u: False),
+            mock.patch.object(self.HW, "_systemctl_seq",
+                              lambda u, v: started.append(u)),
+            mock.patch.object(self.HW.time, "sleep", sleep),
+        ]
+
+    def test_process_killed_during_settle_does_not_consume_the_claim(self):
+        started = []
+
+        def die_during_settle(_s):
+            raise SystemExit("os.execv() replaced the process image")
+
+        ctxs = self._patches(die_during_settle, started)
+        for c in ctxs:
+            c.start()
+        try:
+            with self.assertRaises(SystemExit):
+                self.HW._boot_reconcile_runner()
+        finally:
+            for c in ctxs:
+                c.stop()
+
+        self.assertEqual(started, [], "nothing started, as expected")
+        self.assertFalse(os.path.exists(self.stamp),
+                         "a process that died during settle must NOT have claimed the boot")
+
+        # The surviving process must therefore still do the work.
+        started2 = []
+        ctxs = self._patches(lambda _s: None, started2)
+        for c in ctxs:
+            c.start()
+        try:
+            self.HW._boot_reconcile_runner()
+        finally:
+            for c in ctxs:
+                c.stop()
+        self.assertEqual(started2, ["dump1090-fa"])
+        self.assertTrue(os.path.exists(self.stamp))
+
+    def test_second_run_in_the_same_boot_still_does_nothing(self):
+        # The once-per-boot guarantee must survive the timing change.
+        for expected in (["dump1090-fa"], []):
+            started = []
+            ctxs = self._patches(lambda _s: None, started)
+            for c in ctxs:
+                c.start()
+            try:
+                self.HW._boot_reconcile_runner()
+            finally:
+                for c in ctxs:
+                    c.stop()
+            self.assertEqual(started, expected)
 
 
 if __name__ == "__main__":
