@@ -48,6 +48,18 @@ _SERVICE_ACTIONS = {"start", "stop", "restart"}
 _PERSIST_BOOT_STATE = {"aprs-sdr-feed", "dump1090-fa"}
 
 
+def _with_sudoers_hint(err):
+    """Append the fix-it hint when systemctl failed for lack of permission.
+    The sudoers rule is per-unit AND per-verb (see scripts/enable-service-
+    controls.py UNITS/ACTIONS), so a rule written before a unit was installed
+    authorizes start but not enable — which is exactly how a boot-state step
+    fails while the action itself succeeds."""
+    low = (err or "").lower()
+    if "password" in low or "a terminal is required" in low or "not allowed" in low:
+        return err + " — run: python3 scripts/enable-service-controls.py (grants permission)"
+    return err
+
+
 def _systemctl_seq(unit, verbs):
     """Best-effort `sudo -n systemctl <verb> <unit>.service` for each verb in
     order (used for conflict services — failures are tolerated/ignored)."""
@@ -108,13 +120,20 @@ def api_service():
     else:
         steps = ["restart"]
 
+    # Every step's result is kept, not just the primary verb's. A failed
+    # enable/disable used to be discarded, so a box whose sudoers rule predated
+    # these units reported a clean "started" while silently never persisting the
+    # boot state — the operator only found out at the next reboot.
     result = None
+    boot_step = None          # (verb, CompletedProcess) for a FAILED enable/disable
     try:
         for verb in steps:
             r = subprocess.run(["sudo", "-n", "systemctl", verb, f"{unit}.service"],
                                capture_output=True, text=True, timeout=30)
             if verb == action:        # the primary verb (start/stop/restart)
                 result = r
+            elif r.returncode != 0 and boot_step is None:
+                boot_step = (verb, r)
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc), "affected": affected}), 500
 
@@ -126,15 +145,26 @@ def api_service():
         active = "unknown"
 
     if result is None or result.returncode != 0:
-        err = (result.stderr or result.stdout or "").strip() if result else "no command run"
-        low = err.lower()
-        if "password" in low or "a terminal is required" in low or "not allowed" in low:
-            err += " — run: python3 scripts/enable-service-controls.py (grants permission)"
+        err = _with_sudoers_hint((result.stderr or result.stdout or "").strip()
+                                 if result else "no command run")
         return jsonify({"ok": False, "service": unit, "action": action,
                         "active": active or "unknown", "affected": affected,
                         "error": err or "systemctl failed"}), 500
 
-    return jsonify({"ok": True, "service": unit, "action": action,
-                    "active": active or "unknown", "affected": affected})
+    # The action itself worked. If its boot-state companion did not, say so
+    # rather than returning a bare success: the service is running (or stopped)
+    # NOW, but that state was not persisted, so a reboot will contradict it.
+    payload = {"ok": True, "service": unit, "action": action,
+               "active": active or "unknown", "affected": affected}
+    if boot_step is not None:
+        verb, r = boot_step
+        detail = _with_sudoers_hint((r.stderr or r.stdout or "").strip()
+                                    or f"systemctl {verb} failed")
+        payload["warning"] = (f"{unit} was {action}ed, but could not be {verb}d for boot "
+                              f"— this will not survive a reboot: {detail}")
+        payload["boot_state_persisted"] = False
+    elif persist:
+        payload["boot_state_persisted"] = True
+    return jsonify(payload)
 
 

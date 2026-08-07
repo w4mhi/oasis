@@ -2848,6 +2848,10 @@ async function togglePower(svcId) {
     const d = await r.json().catch(() => ({}));
     ok = r.ok && d.ok;
     if (!ok) alert(`Could not ${action} ${unit}:\n${(d && d.error) || ('HTTP ' + r.status)}`);
+    // The action succeeded but its boot-state step (enable/disable) did not, so
+    // the change won't survive a reboot. Worth interrupting for: it is silent
+    // otherwise, and the operator only discovers it after the next power cycle.
+    else if (d && d.warning) alert(d.warning);
   } catch (e) {
     alert(`Could not ${action} ${unit}:\n${e.message}`);
   } finally {
