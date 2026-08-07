@@ -1282,6 +1282,19 @@ This adds the **OpenWebRX+** (`luarvique`) upstream apt repo and installs the
 is **not** vendored into the offline bundle (install it on a connected build/host;
 offline bundling is a future task). Targets Debian/Raspberry Pi OS **bookworm/trixie**.
 
+> **If you see `dpkg returned an error code (1)` on `dump1090-fa-minimal`** — that's
+> expected on a box that already has **ADS-B** installed, and OpenWebRX is fine. The
+> OpenWebRX+ repo *recommends* `dump1090-fa-minimal`, whose only binary is
+> `/usr/bin/dump1090-fa` — the same path FlightAware's real `dump1090-fa` owns, with
+> no `Conflicts:` declared either way, so dpkg refuses the overwrite. The installer
+> now vetoes that recommends when `dump1090-fa` is present, and no longer aborts on
+> it. OpenWebRX's ADS-B mode uses the real decoder instead. Confirm with:
+>
+> ```bash
+> dpkg-query -W -f='${Version}\n' openwebrx   # a version = installed
+> systemctl is-enabled openwebrx              # must print "disabled"
+> ```
+
 ### Running it — RTL-SDR is exclusive
 
 OpenWebRX is installed **off by default** (disabled at boot) because it grabs the

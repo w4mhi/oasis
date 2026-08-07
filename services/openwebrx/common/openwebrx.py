@@ -33,6 +33,11 @@ from common.oasis_lib import (_hr, _step, _ok, _info, _warn, _fail, _run,
                         dpkg_installed_version, has_internet, sudo_apt_cmd)
 
 PACKAGE   = "openwebrx"
+# OASIS blesses FlightAware's dump1090-fa (services/adsb) as THE Mode S decoder;
+# the OpenWebRX+ repo's own dump1090-fa-minimal collides with it. See
+# _apt_install_argv().
+BLESSED_DUMP1090      = "dump1090-fa"
+CONFLICTING_RECOMMENDS = "dump1090-fa-minimal"
 KEY_URL   = "https://luarvique.github.io/ppa/openwebrx-plus.gpg"
 KEYRING   = "/etc/apt/trusted.gpg.d/openwebrx-plus.gpg"
 LIST_PATH = "/etc/apt/sources.list.d/openwebrx-plus.list"
@@ -109,18 +114,60 @@ def add_repo(suite):
     _ok(f"Repository added: {BASE_URL}/{repo_path}")
 
 
+def _apt_install_argv():
+    """Build the apt argv that installs openwebrx, vetoing a broken recommends.
+
+    OpenWebRX+ *Recommends* dump1090-fa-minimal — a 2023 PPA build that ships
+    /usr/bin/dump1090-fa and declares no Conflicts/Replaces/Provides against
+    FlightAware's real dump1090-fa, which OASIS's ADS-B feature installs and
+    which owns that exact path. dpkg therefore refuses the unpack ("trying to
+    overwrite '/usr/bin/dump1090-fa', which is also in package dump1090-fa")
+    and apt exits non-zero, taking a perfectly good OpenWebRX install down over
+    one optional decoder. When the blessed dump1090-fa is already present, veto
+    the minimal variant with apt's trailing-'-' syntax; OpenWebRX shells out to
+    /usr/bin/dump1090-fa by path, so the real package serves its ADS-B mode.
+
+    Mirror of services/adsb/common/adsb.py::_remove_conflicting_dump1090_minimal(),
+    which guards the same collision from the other install order.
+    """
+    argv = list(sudo_apt_cmd("apt", "install", "-y", PACKAGE))
+    if dpkg_installed_version(BLESSED_DUMP1090):
+        _info(f"{BLESSED_DUMP1090} already installed — vetoing the conflicting "
+              f"{CONFLICTING_RECOMMENDS} recommends.")
+        argv.append(f"{CONFLICTING_RECOMMENDS}-")
+    return argv
+
+
 def install():
     _run(sudo_apt_cmd("apt", "update", "-qq"), check=False)
-    if _run(sudo_apt_cmd("apt", "install", "-y", PACKAGE), check=False).returncode != 0:
-        _fail("apt could not install openwebrx — check the repo entry and internet.")
+    if _run(_apt_install_argv(), check=False).returncode != 0:
+        # apt exits non-zero when ANY package in the transaction fails — including
+        # an optional Recommends that OpenWebRX runs fine without. Don't abort the
+        # whole installer in that case: bailing here skips set_default_disabled()
+        # below and leaves openwebrx ENABLED at boot, where it seizes the RTL-SDR
+        # away from GrayWolf / the APRS feed / ADS-B on every reboot.
+        if not dpkg_installed_version(PACKAGE):
+            _fail("apt could not install openwebrx — check the repo entry and internet.")
+        _warn("apt reported an error, but openwebrx itself installed — one of its "
+              "optional decoders (Recommends) failed. Continuing.")
+        return
     _ok("openwebrx installed.")
 
 
 def set_default_disabled():
-    # OASIS policy: OpenWebRX is OFF by default (exclusive RTL-SDR use). Start it
-    # on demand from the dashboard, which stops GrayWolf + the SDR feed first.
+    # OASIS policy: OpenWebRX is OFF by default (exclusive RTL-SDR use) — the
+    # operator enables it on demand from the dashboard, which stops GrayWolf +
+    # the SDR feed first. Verify the disable actually took: reporting success
+    # while ORX stays boot-enabled is how it ends up fighting for the dongle.
     _run(["sudo", "systemctl", "disable", "--now", "openwebrx"], check=False)
-    _ok("openwebrx set OFF by default (start it from the dashboard when needed).")
+    state = _run(["systemctl", "is-enabled", "openwebrx.service"],
+                 check=False, capture_output=True, text=True)
+    if (getattr(state, "stdout", "") or "").strip() == "enabled":
+        _warn("openwebrx is STILL enabled at boot — disable it by hand "
+              "(`sudo systemctl disable --now openwebrx`) or it will grab the "
+              "RTL-SDR at every boot.")
+        return
+    _ok("openwebrx set OFF by default (enable it from the dashboard when needed).")
 
 
 def verify():

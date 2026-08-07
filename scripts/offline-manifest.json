@@ -384,8 +384,9 @@
     "openwebrx": {
       "type": "apt",
       "bundle_group": "openwebrx",
-      "description": "OpenWebRX+ — browser-based, receive-only SDR receiver/decoder (SIGINT/monitoring) on :8073. Installed online from the OpenWebRX+ upstream apt repo (third-party); NOT vendored into the offline bundle. Off by default (exclusive RTL-SDR use; start from the dashboard).",
+      "description": "OpenWebRX+ — browser-based, receive-only SDR receiver/decoder (SIGINT/monitoring) on :8073. Installed online from the OpenWebRX+ upstream apt repo (third-party); NOT vendored into the offline bundle. Off by default (exclusive RTL-SDR use; enable from the dashboard).",
       "online_only": true,
+      "_note": "GOTCHA: openwebrx Recommends dump1090-fa-minimal (PPA build 8.2-1, from 2023), which ships /usr/bin/dump1090-fa with NO Conflicts/Replaces against FlightAware's dump1090-fa — the package the adsb feature installs, which owns that same path. dpkg refuses the overwrite and apt exits non-zero even though openwebrx itself installed fine. services/openwebrx/common/openwebrx.py vetoes the recommends (apt 'dump1090-fa-minimal-') when dump1090-fa is present, and no longer aborts the installer when apt fails on an optional Recommends — aborting used to skip the off-by-default step and leave ORX enabled at boot, seizing the RTL-SDR from GrayWolf/APRS/ADS-B. services/adsb guards the same collision from the other install order.",
       "third_party_repo": {
         "key_url": "https://luarvique.github.io/ppa/openwebrx-plus.gpg",
         "base_url": "https://luarvique.github.io/ppa",
