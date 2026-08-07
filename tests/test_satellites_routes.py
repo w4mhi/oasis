@@ -152,6 +152,61 @@ class RoutesTest(unittest.TestCase):
         for path in ("/api/satellites", "/api/satellites/listen/status"):
             self.assertEqual(self.bare.get(path).status_code, 200, path)
 
+    # ── Disk budget ───────────────────────────────────────────────────────────
+    # A dev box has no rtl_fm and no dongle, so _prep_capture rejects long before
+    # the disk budget would matter. Stub it out to reach the code under test.
+    def _allow_capture(self):
+        entry = {"name": "ISS (ZARYA)"}
+        self._orig_prep = self.routes._prep_capture
+        self.routes._prep_capture = lambda norad, freq_mhz=None: (entry, 145_800_000, None, "fm")
+        self.addCleanup(lambda: setattr(self.routes, "_prep_capture", self._orig_prep))
+
+    def test_listen_refuses_when_the_card_is_full(self):
+        import listen
+
+        self._allow_capture()
+        started = []
+        orig_start, orig_check = listen.start, listen.check_free_space
+        listen.start = lambda *a, **k: started.append(a) or {}
+        listen.check_free_space = lambda *a, **k: (False, "not enough disk space to record: 12 MB free")
+        try:
+            r = self.client.post("/api/satellites/listen", json={"norad": 25544})
+        finally:
+            listen.start, listen.check_free_space = orig_start, orig_check
+        self.assertEqual(r.status_code, 507)
+        self.assertIn("disk space", r.get_json()["error"])
+        self.assertEqual(started, [], "capture started with no room for it")
+
+    def test_listen_prunes_before_starting(self):
+        import listen
+
+        self._allow_capture()
+        calls = []
+        orig_prune, orig_start = listen.prune_recordings, listen.start
+        listen.prune_recordings = lambda d, **k: calls.append(d) or {
+            "deleted": [], "bytes_freed": 0, "total_bytes": 0}
+        listen.start = lambda *a, **k: {"recording": True}
+        try:
+            self.client.post("/api/satellites/listen", json={"norad": 25544})
+        finally:
+            listen.prune_recordings, listen.start = orig_prune, orig_start
+        self.assertEqual(calls, [listen.recordings_dir(self.routes.SUITE_ROOT)])
+
+    def test_stop_prunes_after_the_file_is_closed(self):
+        import listen
+
+        calls = []
+        orig_prune, orig_stop = listen.prune_recordings, listen.stop
+        listen.prune_recordings = lambda d, **k: calls.append(d) or {
+            "deleted": [], "bytes_freed": 0, "total_bytes": 0}
+        listen.stop = lambda: {"recording": False}
+        try:
+            r = self.client.post("/api/satellites/listen/stop")
+        finally:
+            listen.prune_recordings, listen.stop = orig_prune, orig_stop
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(calls, [listen.recordings_dir(self.routes.SUITE_ROOT)])
+
     def test_passes_cache_reused(self):
         calls = []
         orig = self.predict.compute_passes

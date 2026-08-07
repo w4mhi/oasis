@@ -398,7 +398,15 @@ def api_listen():
         return jsonify({"error": str(e)}), e.code
     safe = "".join(c if c.isalnum() else "_" for c in entry["name"]).strip("_")
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    out = os.path.join(listen.recordings_dir(SUITE_ROOT), f"{safe}_{ts}.wav")
+    rec_dir = listen.recordings_dir(SUITE_ROOT)
+    out = os.path.join(rec_dir, f"{safe}_{ts}.wav")
+    # Make room before keying the capture, then refuse outright if the card still
+    # can't take a 20-minute worst case. Filling the root filesystem mid-pass
+    # doesn't break one feature on a field station — it takes the station down.
+    listen.prune_recordings(rec_dir)
+    space_ok, space_err = listen.check_free_space(rec_dir)
+    if not space_ok:
+        return jsonify({"error": space_err}), 507
     try:
         return jsonify(listen.start(freq_hz, norad, out, device_serial=device_serial, dmode=dmode))
     except Exception as e:
@@ -434,7 +442,11 @@ def api_listen_stream():
 @require_oasis_request
 def api_listen_stop():
     import listen
-    return jsonify(listen.stop())
+    result = listen.stop()
+    # Sweep after the file is closed and its final size is known. The recording
+    # just made is protected inside prune_recordings (newest is always kept).
+    listen.prune_recordings(listen.recordings_dir(SUITE_ROOT))
+    return jsonify(result)
 
 
 @bp.route("/api/satellites/listen/recordings")

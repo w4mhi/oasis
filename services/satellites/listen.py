@@ -32,10 +32,123 @@ MAX_SECONDS = 20 * 60     # safety cap: a forgotten recording can't run forever
 DEFAULT_GAIN = "40"
 DEFAULT_PPM = "0"
 
+# ── Disk budget for configuration/sat-recordings/ ────────────────────────────
+# 48 kHz / 16-bit / mono = 96 KB/s, so MAX_SECONDS is ~115 MB and a typical
+# 10-minute LEO pass ~58 MB. Nothing used to delete these. On a field station a
+# full root filesystem doesn't degrade one feature — it takes the station down.
+#
+# The budget is size-primary on purpose. Age alone bounds nothing here: this
+# writer has no fixed rate (unlike the ADS-B poller and its RETAIN_HOURS), so
+# auto-record over three NOAA birds plus Meteor is >1 GB/day that a 72h rule
+# would never touch. 2 GB holds ~35 typical passes and is ~6% of the smallest
+# card we support.
+MAX_TOTAL_BYTES = int(os.environ.get("SAT_RECORD_MAX_BYTES", 2 * 1024 ** 3))
+# Refuse to *start* rather than fill the card mid-incident.
+MIN_FREE_BYTES = int(os.environ.get("SAT_RECORD_MIN_FREE_BYTES", 1024 ** 3))
+# Secondary age sweep, OFF by default (0). Enabling it deletes when there is no
+# space pressure at all, which is pure data loss — the one clean Meteor pass goes
+# while the card sits 95% empty. Set to 259200 for 72h if you want the tidiness.
+MAX_AGE_SECONDS = float(os.environ.get("SAT_RECORD_MAX_AGE_S", "0"))
+
 
 def recordings_dir(repo_root):
     """Where pass recordings are written (per-machine runtime data, gitignored)."""
     return os.path.join(repo_root, "configuration", "sat-recordings")
+
+
+def _recordings(directory):
+    """[(path, name, size, mtime)] for .wav files, oldest first. Never raises."""
+    out = []
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return out
+    for name in names:
+        if not name.endswith(".wav"):
+            continue
+        path = os.path.join(directory, name)
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        out.append((path, name, st.st_size, st.st_mtime))
+    out.sort(key=lambda r: r[3])
+    return out
+
+
+def prune_recordings(directory, max_bytes=None, max_age_seconds=None,
+                     exclude=None, now=None):
+    """Delete oldest recordings until the directory fits its byte budget.
+
+    `exclude` is a path that must survive (the in-flight capture's own file).
+    The newest recording is also always kept, so a mis-set budget can't eat the
+    pass that was just captured. Returns
+    {"deleted": [names], "bytes_freed": n, "total_bytes": n}.
+
+    Best-effort by design: a delete that fails is skipped, never raised. Losing
+    an old WAV must not fail the capture the operator is trying to start.
+    """
+    max_bytes = MAX_TOTAL_BYTES if max_bytes is None else max_bytes
+    max_age_seconds = MAX_AGE_SECONDS if max_age_seconds is None else max_age_seconds
+    now = time.time() if now is None else now
+    exclude = os.path.abspath(exclude) if exclude else None
+
+    files = _recordings(directory)
+    keep_newest = files[-1][0] if files else None
+    deleted, freed = [], 0
+
+    def _protected(path):
+        return path == keep_newest or (exclude is not None and os.path.abspath(path) == exclude)
+
+    def _remove(path, name, size):
+        nonlocal freed
+        try:
+            os.remove(path)
+        except OSError:
+            return False
+        deleted.append(name)
+        freed += size
+        return True
+
+    remaining = []
+    for path, name, size, mtime in files:
+        if (max_age_seconds and (now - mtime) > max_age_seconds
+                and not _protected(path) and _remove(path, name, size)):
+            continue
+        remaining.append((path, name, size, mtime))
+
+    total = sum(r[2] for r in remaining)
+    for path, name, size, _mtime in list(remaining):
+        if total <= max_bytes:
+            break
+        if _protected(path):
+            continue
+        if _remove(path, name, size):
+            total -= size
+
+    return {"deleted": deleted, "bytes_freed": freed, "total_bytes": total}
+
+
+def check_free_space(directory, min_free_bytes=None, usage=None):
+    """(ok, message) — is there room to record? Refuses BEFORE starting.
+
+    A filesystem we can't stat returns ok: a broken probe must not block the
+    operator from recording a pass that is happening right now.
+    """
+    min_free_bytes = MIN_FREE_BYTES if min_free_bytes is None else min_free_bytes
+    usage = shutil.disk_usage if usage is None else usage
+    probe = directory if os.path.isdir(directory) else os.path.dirname(directory) or "."
+    try:
+        _total, _used, free = usage(probe)
+    except OSError:
+        return True, ""
+    if free >= min_free_bytes:
+        return True, ""
+    return False, (
+        f"not enough disk space to record: {free // (1024 ** 2)} MB free, "
+        f"{min_free_bytes // (1024 ** 2)} MB required. "
+        "Delete old recordings from configuration/sat-recordings/."
+    )
 
 
 def mhz_to_hz(freq_mhz):

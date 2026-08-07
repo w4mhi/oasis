@@ -1584,6 +1584,21 @@ Like ADS-B and OpenWebRX, listening **owns the RTL-SDR** — the APRS SDR feed (
 any other SDR mode) must be stopped first. The transport is global (one dongle,
 one capture at a time) and the header shows which bird currently holds it.
 
+**Recordings have a disk budget.** At 48 kHz/16-bit mono a pass costs ~5.8 MB per
+minute (a 10-minute pass ≈ 58 MB; the 20-minute cap ≈ 115 MB), so
+`configuration/sat-recordings/` is swept oldest-first before each capture and
+after each stop. Defaults, overridable as environment variables on the server:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SAT_RECORD_MAX_BYTES` | `2147483648` (2 GB) | Total budget for the directory — roughly 35 typical passes. Oldest go first. |
+| `SAT_RECORD_MIN_FREE_BYTES` | `1073741824` (1 GB) | Free space required to *start*. Below it, Record returns 507 rather than risk filling the card mid-pass. |
+| `SAT_RECORD_MAX_AGE_S` | `0` (off) | Optional age sweep. Set to `259200` for 72h. Off by default because deleting under no space pressure is pure data loss. |
+
+The newest recording is never pruned, so a mis-set budget can't delete the pass
+you just captured. There is no delete button yet — clear space by hand with
+`rm configuration/sat-recordings/*.wav` if you need to.
+
 ### Debug — passes, clock, and live audio
 
 - **Roster shows but every pass is blank:** the Skyfield predictor isn't installed or is erroring. Confirm the endpoint directly:
