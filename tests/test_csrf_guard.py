@@ -176,5 +176,28 @@ class MutatingRouteCoverageTest(unittest.TestCase):
                          "force-parsed request bodies with no CSRF guard: " + ", ".join(offenders))
 
 
+class NoWildcardCorsTest(unittest.TestCase):
+    """The CSRF header only works because we never grant a cross-origin preflight.
+
+    A wildcard `Access-Control-Allow-Origin` undoes that reasoning wherever it
+    appears. All three OASIS HTTP surfaces (Flask on :8083, the APRS daemon and
+    the GrayWolf shim on :8085) are reached same-origin or through a local proxy,
+    so none of them needs one.
+    """
+
+    def test_no_service_sets_a_wildcard_allow_origin(self):
+        offenders = []
+        for path in _source_files():
+            with open(path, encoding="utf-8") as fh:
+                for i, line in enumerate(fh, 1):
+                    stripped = line.strip()
+                    if stripped.startswith("#"):
+                        continue          # comments explaining the removal are fine
+                    if "Access-Control-Allow-Origin" in line and "*" in line:
+                        offenders.append(f"{os.path.relpath(path, _ROOT)}:{i}")
+        self.assertEqual(offenders, [],
+                         "wildcard CORS re-added: " + ", ".join(offenders))
+
+
 if __name__ == "__main__":
     unittest.main()

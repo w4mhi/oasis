@@ -352,11 +352,13 @@ def _build_app():
 
     app = Flask(__name__)
 
-    @app.after_request
-    def cors(response):
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        return response
+    # No CORS headers — same reasoning as services/aprs/common/aprs.py, which is
+    # the other half of this daemon pair. Port 8085 is reached only by the main
+    # OASIS server's same-origin proxy routes (services/aprs/routes.py →
+    # 127.0.0.1:8085); the shipped dashboards and map fetch /api/aprs/* on :8083
+    # and use PORTS.aprs_api only as a display label. The old
+    # "Access-Control-Allow-Origin: *" let any page on any origin read the
+    # station positions and host system stats for no benefit to the actual UI.
 
     @app.route("/api/aprs/stations")
     def api_stations():

@@ -70,17 +70,30 @@ internet). Two mechanisms protect state-changing calls:
    header **`X-OASIS-Request: 1`**, which a cross-origin page cannot set without
    a preflight these endpoints never grant. Missing/incorrect → `403 forbidden`.
 
-**Endpoints requiring `X-OASIS-Request: 1`:**
+**Every mutating `/api/*` endpoint requires it.** The guard lives in
+`common/web_guard.py` as `@require_oasis_request` (and
+`@require_oasis_request_for("DELETE")` for rules that serve an open `GET`
+alongside a guarded mutation). `tests/test_csrf_guard.py` sweeps the source and
+fails the build if a mutating route ships without one, so the list below cannot
+silently drift again:
+
 `POST /api/service` ·
 `POST /api/wifi/connect` · `POST /api/wifi/forget` ·
 `POST /api/aprs/frequency` ·
 `POST /api/hardware/devices` · `/assign` · `/release` · `/burn-serial` ·
 `/route` · `/lock` · `/stop-all` · `/service-stop` · `/guardian/cancel` · `/guardian/config` ·
 `POST /api/setup/plan` · `/run` · `/cancel` · `/reboot` ·
-`POST /api/winlink/connect` · `POST /api/winlink/disconnect`.
+`POST /api/winlink/connect` · `POST /api/winlink/disconnect` ·
+`DELETE /api/winlink/mailbox/<box>/<mid>` ·
+`POST /api/aprs/warnings` · `PATCH`/`DELETE /api/aprs/warnings/<wid>` ·
+`POST /api/satellites/select` · `/refresh` · `/listen` · `/listen/stop` ·
+`POST /api/forms/save` · `POST /api/save-ics205` · `POST /api/save-chirp`.
 
-(Other POSTs — APRS warnings, Winlink compose, satellite select/listen/sync —
-are not header-guarded; they mutate only local files or a scoped device.)
+> The last three groups were **unguarded until 2.39.4**. Two of them were
+> genuinely reachable cross-origin: the satellite routes parse with
+> `get_json(force=True)`, so a `text/plain` POST is a *simple* request needing no
+> preflight. A route that force-parses has none of the accidental protection a
+> JSON content type provides — it needs the header most.
 
 ---
 
@@ -232,8 +245,10 @@ Drives the web installer: plan → run → poll job → stream log.
 | GET | `/api/browse` | — | `path` | List a directory under the suite root (sandboxed; traversal rejected). |
 | GET | `/api/list-chirp` | — | — | CHIRP CSVs in `static/chirp/`, newest first. |
 | GET | `/api/list-ics205` | — | — | Saved ICS-205 plans in `static/ics-205/saved/`. |
-| POST | `/api/save-chirp` | — | `{filename, content}` | Save a CHIRP CSV into `static/chirp/`. |
-| POST | `/api/save-ics205` | — | `{filename, …}` | Save an ICS-205 plan JSON. |
+| POST | `/api/save-chirp` | **CSRF** | `{filename, content}` | Save a CHIRP CSV into `static/chirp/`. |
+| POST | `/api/save-ics205` | **CSRF** | `{filename, …}` | Save an ICS-205 plan JSON. Alias for `/api/forms/save` with `kind=ics-205`. |
+| GET | `/api/forms/list` | — | `kind` | Saved snapshots for one form kind, newest first. Files themselves are fetched as static assets from `/static/<kind>/saved/<name>`. |
+| POST | `/api/forms/save` | **CSRF** | `{kind, filename, content}` | Save a client form/net-log snapshot under `static/<kind>/saved/`, so a cleared browser cache or a swapped tablet doesn't lose it. `kind ∈ {ics-205, ics-213, ics-214, ics-309, net-log}` (whitelisted; traversal rejected). |
 
 ### APRS frequency
 
@@ -263,12 +278,15 @@ The Flask `/api/aprs/*` routes are **same-origin proxies** to **graywolf-api**
 Operator-placed map markers (flood/fire/etc.), persisted to a shared JSON so
 every device sees them.
 
-| Method | Path | Body | Description |
-|---|---|---|---|
-| GET | `/api/aprs/warnings` | — | `{ok, warnings:[…]}`. |
-| POST | `/api/aprs/warnings` | `{lon, lat, type, note?}` | Add a warning (capped count → `409`). |
-| PATCH | `/api/aprs/warnings/<wid>` | `{…}` | Update a warning. |
-| DELETE | `/api/aprs/warnings/<wid>` | — | Remove a warning. |
+| Method | Path | Auth | Body | Description |
+|---|---|---|---|---|
+| GET | `/api/aprs/warnings` | — | — | `{ok, warnings:[…], broadcast_available}`. |
+| POST | `/api/aprs/warnings` | **CSRF** | `{lon, lat, type, note?}` | Add a warning (capped count → `409`). |
+| PATCH | `/api/aprs/warnings/<wid>` | **CSRF** | `{…}` | Update a warning. |
+| DELETE | `/api/aprs/warnings/<wid>` | **CSRF** | — | Remove a warning. |
+
+Warning categories come from `maps/traffic/warnings.json`; their marker glyphs
+come from the entry's `id` via `common/js/incident-icons.js`, not from the JSON.
 
 ---
 
@@ -364,18 +382,27 @@ No altitude alert.
 Pass prediction + tracks (Skyfield/sgp4), roster, and RTL-SDR pass recording.
 Hardware-free routes are always available; listen routes need a dongle.
 
-| Method | Path | Params/Body | Description |
-|---|---|---|---|
-| GET | `/api/satellites` | — | Roster with per-sat TLE lines + `{satellites, tle_age_days, station}`. |
-| GET | `/api/satellites/passes` | `window` (h, default 48), `sat?` | Predicted passes `{passes:{norad:[{rise, peak, set, max_elev, …}]}}`. Disk-cached (6 h TTL, keyed by TLE mtime). |
-| GET | `/api/satellites/track` | `sat`, `from`, `to` (ISO) | Ground track + `{track, l1, l2}`. |
-| POST | `/api/satellites/select` | `{norad, selected}` | Toggle a satellite in the roster. |
-| POST | `/api/satellites/refresh` | — | **Online-only** rebuild of the satellite list from SatNOGS (freqs/modes) + CelesTrak (TLEs). Offline → `{ok:false, offline:true}` (HTTP 200, never fails). Returns `{ok, tle_age_days, count, labels, changes}`. |
-| GET | `/api/satellites/listen/status` | — | Recorder state + dongle preconditions. |
-| POST | `/api/satellites/listen` | `{norad, freq_mhz?}` | Start recording a pass to WAV (pins `rtl_fm` to the assigned dongle by serial). Errors: `400` deps/downlink, `409` busy/already recording. |
-| POST | `/api/satellites/listen/stop` | — | Stop recording. |
-| GET | `/api/satellites/listen/recordings` | — | List recorded WAVs. |
-| GET | `/api/satellites/listen/recording/<filename>` | — | Download a WAV. |
+| Method | Path | Auth | Params/Body | Description |
+|---|---|---|---|---|
+| GET | `/api/satellites` | — | — | Roster with per-sat TLE lines + `{satellites, tle_age_days, station}`. |
+| GET | `/api/satellites/passes` | — | `window` (h, default 48), `sat?` | Predicted passes `{passes:{norad:[{rise, peak, set, max_elev, …}]}}`. Disk-cached (6 h TTL, keyed by TLE mtime). |
+| GET | `/api/satellites/track` | — | `sat`, `from`, `to` (ISO) | Ground track + `{track, l1, l2}`. |
+| POST | `/api/satellites/select` | **CSRF** | `{norad, selected}` | Toggle a satellite in the roster. |
+| POST | `/api/satellites/refresh` | **CSRF** | — | **Online-only** rebuild of the satellite list from SatNOGS (freqs/modes) + CelesTrak (TLEs). Offline → `{ok:false, offline:true}` (HTTP 200, never fails). Returns `{ok, tle_age_days, count, labels, changes}`. |
+| GET | `/api/satellites/listen/status` | — | — | Recorder state + dongle preconditions. |
+| POST | `/api/satellites/listen` | **CSRF** | `{norad, freq_mhz?}` | Start recording a pass to WAV (pins `rtl_fm` to the assigned dongle by serial). Errors: `400` deps/downlink, `409` busy/already recording, `507` not enough disk space. |
+| POST | `/api/satellites/listen/stop` | **CSRF** | — | Stop recording. |
+| GET | `/api/satellites/listen/stream` | — | `norad`, `freq_mhz?` | Live pass audio as a chunked MP3 for a browser `<audio>` element. `GET` so a plain `<audio src=…>` works; holds the dongle for the connection and tears the pipeline down on disconnect. Mutually exclusive with recording. |
+| GET | `/api/satellites/listen/recordings` | — | — | List recorded WAVs (`{recordings:[{name, bytes, mtime}]}`). |
+| GET | `/api/satellites/listen/recording/<filename>` | — | — | Download a WAV. |
+
+**Recording disk budget.** `configuration/sat-recordings/` is swept oldest-first
+before each capture and after each stop — a pass costs ~5.8 MB/min at
+48 kHz/16-bit mono. `SAT_RECORD_MAX_BYTES` (default 2 GB) caps the directory,
+`SAT_RECORD_MIN_FREE_BYTES` (default 1 GB) is the free space required to start
+(below it, `POST /listen` returns `507`), and `SAT_RECORD_MAX_AGE_S` (default
+`0`, off) is an optional age sweep. The newest recording is never pruned. See
+`docs/SETUP.md` for the rationale.
 
 ---
 
