@@ -484,6 +484,101 @@ def _guardian_runner():
 threading.Thread(target=_guardian_runner, name="oasis-guardian", daemon=True).start()
 
 
+# ── Boot reconciler: assigned hardware comes back after a reboot ─────────────
+# The assignment console persists WHAT a dongle is for (configuration/
+# hardware.json) but its /route only issues a plain `systemctl start` — no
+# `enable` — so before this, an assignment survived a reboot while the running
+# service did not, and the operator had to re-enable everything by hand.
+#
+# Rather than sprinkle `enable` around (which would also make every assigned
+# service race for USB simultaneously at boot), this reconciles once per boot
+# from the persisted assignments: it reads hardware.json, asks
+# HW.boot_start_plan what that implies, and starts those units one at a time
+# with a gap between them.
+#
+# ONCE PER BOOT, not once per Flask start: `./start.sh` restarts the server
+# often, and a service the operator deliberately stopped must not come back
+# just because the web app was restarted. The kernel's boot_id changes on every
+# boot, so a stamp file holding it tells the two cases apart exactly — no
+# reliance on /tmp or /run being cleared.
+_BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id"
+_BOOT_STAMP = os.path.join(SUITE_ROOT, "configuration", ".hw-boot-applied")
+# Seconds to wait before the FIRST start (USB enumeration can lag the web app
+# at boot), then between each subsequent unit. Both overridable for slow or
+# crowded boxes; set OASIS_HW_BOOT_AUTOSTART=0 to switch the reconciler off.
+_BOOT_AUTOSTART = os.environ.get("OASIS_HW_BOOT_AUTOSTART", "1") != "0"
+_BOOT_SETTLE_S = int(os.environ.get("OASIS_HW_BOOT_SETTLE", "20"))
+_BOOT_STAGGER_S = int(os.environ.get("OASIS_HW_BOOT_STAGGER", "8"))
+
+
+def _current_boot_id():
+    """This boot's kernel boot_id, or None off Linux / if unreadable."""
+    try:
+        with open(_BOOT_ID_PATH, "r") as fh:
+            return fh.read().strip() or None
+    except Exception:
+        return None
+
+
+def _boot_already_applied(boot_id):
+    try:
+        with open(_BOOT_STAMP, "r") as fh:
+            return fh.read().strip() == boot_id
+    except Exception:
+        return False
+
+
+def _mark_boot_applied(boot_id):
+    try:
+        os.makedirs(os.path.dirname(_BOOT_STAMP), exist_ok=True)
+        tmp = _BOOT_STAMP + ".tmp"
+        with open(tmp, "w") as fh:
+            fh.write(boot_id + "\n")
+        os.replace(tmp, _BOOT_STAMP)      # atomic, like every other config write
+    except Exception:
+        pass                              # best-effort; worst case we re-run next start
+
+
+def _unit_is_active(unit):
+    try:
+        r = subprocess.run(["systemctl", "is-active", f"{unit}.service"],
+                           capture_output=True, text=True, timeout=5)
+        return r.stdout.strip() == "active"
+    except Exception:
+        return False
+
+
+def _boot_reconcile_runner():
+    boot_id = _current_boot_id()
+    if boot_id is None:
+        return                            # not Linux (dev box) — nothing to reconcile
+    if not _BOOT_AUTOSTART:
+        return                            # switched off by the operator
+    if _boot_already_applied(boot_id):
+        return                            # already done this boot; a Flask restart is not a reboot
+    # Claim the boot BEFORE starting anything: if a start hangs or the server is
+    # restarted mid-run, we must not replay the whole plan and fight the
+    # operator. Anything missed is one console click away.
+    _mark_boot_applied(boot_id)
+    try:
+        inv = HW.load(SUITE_ROOT)
+        plan = HW.boot_start_plan(inv)
+    except Exception:
+        return
+    if not plan:
+        return
+    time.sleep(_BOOT_SETTLE_S)
+    for i, unit in enumerate(plan):
+        if i:
+            time.sleep(_BOOT_STAGGER_S)   # gap between services, not before the first
+        if _unit_is_active(unit):
+            continue                      # already up (e.g. still `enable`d from a card start)
+        _systemctl_seq(unit, ["start"])
+
+
+threading.Thread(target=_boot_reconcile_runner, name="oasis-hw-boot", daemon=True).start()
+
+
 @bp.route("/api/hardware/guardian")
 def api_hardware_guardian():
     """Guardian state for the dashboard: mode, live countdown, the tripping

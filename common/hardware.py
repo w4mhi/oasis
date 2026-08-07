@@ -57,6 +57,40 @@ DEVICE_KIND_FOR_SERVICE = {
 # no-op gate. Same reasoning as GrayWolf above.
 APRS_FEED_UNIT = "aprs-sdr-feed"
 
+# Tokens that appear in SERVICE_UNITS but are NOT real systemd units — they must
+# never be handed to systemctl. "satellites-listen" is the ad-hoc rtl_fm
+# subprocess Flask runs itself (see SERVICE_UNITS above).
+SYNTHETIC_UNITS = {"satellites-listen"}
+
+
+def boot_start_plan(inv):
+    """The systemd units to start at boot, given the persisted assignments.
+
+    An assignment is the operator's statement of intent — "this dongle is for
+    ADS-B" — so at boot we start whatever each assigned service needs. Returns
+    a de-duplicated, deterministically ordered list (SERVICE_UNITS declaration
+    order, which puts APRS ahead of ADS-B), skipping:
+
+      * services with no device assigned,
+      * services whose unit list is empty (advisory-only assignments such as
+        openwebrx, or APRS on a soundcard where GrayWolf owns the device), and
+      * synthetic non-units (see SYNTHETIC_UNITS).
+
+    Pure: it decides, it does not act. The caller starts these with whatever
+    pacing it wants — see server/routes/hardware.py's boot reconciler, which
+    staggers them so several SDR consumers don't all grab USB at once.
+    """
+    plan = []
+    for service in SERVICE_UNITS:
+        if not inv.assignments.get(service):
+            continue
+        for unit in service_units(inv, service):
+            if unit in SYNTHETIC_UNITS:
+                continue
+            if unit not in plan:
+                plan.append(unit)
+    return plan
+
 
 def service_units(inv, service):
     """The systemd unit(s) implementing `service` given the current inventory.

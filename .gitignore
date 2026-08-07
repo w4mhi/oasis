@@ -26,6 +26,11 @@ configuration/sat-recordings/
 # GrayWolf API credentials written by setup-oasis.py.
 configuration/graywolf_api.json
 
+# Per-boot stamp written by the hardware boot reconciler (server/routes/
+# hardware.py): holds the kernel boot_id so a Flask restart is not mistaken
+# for a reboot. Machine-local runtime state, never shared.
+configuration/.hw-boot-applied
+
 # ...and any WAV copied out for inspection (e.g. to the repo root) — never commit audio.
 *.wav
 
