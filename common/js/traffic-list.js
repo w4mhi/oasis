@@ -15,15 +15,24 @@
  *   courseHtml       course + speed -> the rotated-arrow compass cell fragment
  *   altColorFor      row -> altitude colour (aircraft only) or null
  *   isUnlocated      row -> heard-but-unpositioned aircraft
+ *   filters.*        composable predicate factories (age/callsign/grid/sources)
+ *   sourceBreakdown  per-cycle counts by receive path + newest-packet freshness
  *
- * What is deliberately NOT here: the filter predicates and the <tr> builders.
- * The two lists have different jobs — the map drawer is a view OF THE MAP, so
- * it inherits map-only filters (objects-panel categories, movers-only, hazard
- * dismissal, hazards exempt from ageing) and its rows fly-to a track; the
+ * The filter ENGINE is shared; the filter SET is not. Each page composes
+ * filters.all(...) from these factories plus its own extras, because the two
+ * lists have different jobs: the map drawer is a view OF THE MAP, so it
+ * inherits map-only filters (objects-panel categories, movers-only, hazard
+ * dismissal, hazards exempt from ageing) and its rows fly to a track; the
  * dashboard list is standalone, so it owns filters the map has no use for
- * (emergency chip, hazard pills) and its rows link out. Forcing those together
- * would mean giving the dashboard controls it can't drive, or making the drawer
- * stop matching its own map.
+ * (emergency chip, hazard pills) and its rows link out. Forcing the SETS
+ * together would mean giving the dashboard controls it can't drive, or making
+ * the drawer stop matching its own map.
+ *
+ * Likewise sourceBreakdown returns data, not markup — the pages paint the same
+ * numbers into different elements with different colour conventions.
+ *
+ * Still page-local by design: the <tr> builders (different ids, different row
+ * click behaviour) and the per-page filter sets above.
  *
  * Depends on common/js/adsb.js (acSymbol / acShapeFor / adsbSymCode / altColor).
  *
@@ -194,6 +203,119 @@
     return !!(s && s._kind === 'aircraft' && !s._positioned);
   }
 
+
+  // ── Filter engine ──────────────────────────────────────────────────────────
+  // Small predicate factories the two lists compose themselves. Sharing the
+  // ENGINE, not the filter SET: the pages legitimately filter on different
+  // things (the map drawer inherits objects-panel categories, movers-only and
+  // hazard dismissal from the map; the dashboard has an emergency chip and
+  // hazard pills the map has no use for), so each composes these with its own
+  // extras via filters.all(...).
+
+  // Age cutoff. `cutoffMs` of 0 disables it. `isExempt` lets a page keep rows
+  // that must never age out (the map holds active hazard incidents on screen
+  // regardless of staleness — they are cleared by hand, not by time).
+  function fAge(cutoffMs, isExempt) {
+    if (!cutoffMs) return function () { return true; };
+    return function (s) {
+      if (isExempt && isExempt(s)) return true;
+      var t = lastHeardEpoch(s && s.last_heard);
+      return t > 0 && t >= cutoffMs;
+    };
+  }
+
+  // Callsign: case-insensitive prefix (K7 catches every K7… incl. SSIDs), or a
+  // `*` wildcard anchored at both ends (K7*9). Every regex metacharacter except
+  // `*` is escaped, so an operator typing "K7(" gets no matches rather than a
+  // thrown SyntaxError. An invalid pattern still yields a match-nothing
+  // predicate rather than taking the render down.
+  function fCallsign(query) {
+    var q = String(query || '').trim().toUpperCase();
+    if (!q) return function () { return true; };
+    if (q.indexOf('*') === -1) {
+      return function (s) { return String((s && s.callsign) || '').toUpperCase().indexOf(q) === 0; };
+    }
+    var re;
+    try {
+      re = new RegExp('^' + q.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+    } catch (_) {
+      return function () { return false; };
+    }
+    return function (s) { return re.test(String((s && s.callsign) || '').toUpperCase()); };
+  }
+
+  // Grid: 'All', a 4-char Maidenhead field, or '__nofix' for position-less rows.
+  // `gridOf` is injected so a page can supply its own locator function.
+  function fGrid(sel, gridOf) {
+    if (!sel || sel === 'All') return function () { return true; };
+    return function (s) {
+      var g = gridOf(s && s.lat, s && s.lon);
+      if (sel === '__nofix') return !g;
+      return String(g || '').slice(0, 4) === sel;
+    };
+  }
+
+  // Source: an empty/absent/complete selection means everything, so clearing the
+  // last pill returns to all sources rather than to an empty list.
+  function fSources(selected) {
+    if (!selected || !selected.length || selected.length >= 3) return function () { return true; };
+    return function (s) { return selected.indexOf(sourceKey(s)) !== -1; };
+  }
+
+  // Compose: every predicate must pass. Nulls are ignored so a page can build
+  // its list conditionally without filtering them out first.
+  function fAll() {
+    var preds = Array.prototype.slice.call(arguments).filter(Boolean);
+    return function (s) {
+      for (var i = 0; i < preds.length; i++) { if (!preds[i](s)) return false; }
+      return true;
+    };
+  }
+
+  // ── Source breakdown ───────────────────────────────────────────────────────
+  // Per-cycle counts by receive path plus the freshness of the newest packet
+  // across EVERYTHING tracked. Returns data only — the two pages paint it
+  // differently (the dashboard into its own element with CSS classes, the map
+  // appended to the breakdown with an inline colour), so the DOM stays local
+  // while the arithmetic is shared.
+  //
+  // `windowMs` bounds the "heard this cycle" counts; it is padded past the
+  // refresh interval to absorb fetch/clock jitter. Counts deliberately ignore
+  // the active column filters — this is a live "what is arriving" readout.
+  function sourceBreakdown(opts) {
+    opts = opts || {};
+    var now = opts.now || Date.now();
+    var windowMs = opts.windowMs || 20000;
+    var stations = opts.stations || [];
+    var aircraft = opts.aircraft || [];
+    var counts = { rf: 0, is: 0, adsb: 0 };
+    var newest = 0;
+    function tally(rows) {
+      for (var i = 0; i < rows.length; i++) {
+        var t = lastHeardEpoch(rows[i].last_heard);
+        if (t > newest) newest = t;
+        if (t > 0 && (now - t) <= windowMs) {
+          var k = sourceKey(rows[i]);
+          if (k in counts) counts[k]++;
+        }
+      }
+    }
+    tally(stations);
+    tally(aircraft);
+    var out = { rf: counts.rf, is: counts.is, adsb: counts.adsb, newest: newest,
+                ageMins: null, freshText: '', tone: '' };
+    if (newest > 0) {
+      var ageMins = Math.round((now - newest) / 60000);
+      out.ageMins = ageMins;
+      out.freshText = ageMins < 2 ? 'just now'
+        : ageMins < 60 ? ageMins + 'm ago'
+        : Math.round(ageMins / 60) + 'h ago';
+      // Tone, not colour: each page maps it to its own palette.
+      out.tone = ageMins < 30 ? 'ok' : ageMins < 360 ? 'warn' : 'stale';
+    }
+    return out;
+  }
+
   return {
     lastHeardEpoch: lastHeardEpoch,
     stationSource: stationSource,
@@ -204,6 +326,8 @@
     courseHtml: courseHtml,
     altColorFor: altColorFor,
     isUnlocated: isUnlocated,
-    EMERGENCY_SQUAWKS: EMERGENCY_SQUAWKS
+    EMERGENCY_SQUAWKS: EMERGENCY_SQUAWKS,
+    sourceBreakdown: sourceBreakdown,
+    filters: { age: fAge, callsign: fCallsign, grid: fGrid, sources: fSources, all: fAll }
   };
 });

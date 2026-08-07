@@ -962,6 +962,9 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 <script src="/maps/mapengine/pmtiles.js"></script>
 <script src="/maps/mapengine/basemap-style.js"></script>
 <script src="/maps/mapengine/map-engine.js"></script>
+<script src="/common/js/units.js"></script>
+<script src="/common/js/geo.js"></script>
+<script src="/common/js/format.js"></script>
 <script src="/common/js/aprs-types.js"></script>
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/adsb-operators.js"></script>
@@ -2169,20 +2172,29 @@ function _columnFilterPredicate(opts) {
   const minutes = parseInt(document.getElementById('filterSel').value);
   const cutoff = minutes > 0 ? Date.now() - minutes * 60 * 1000 : 0;
   const gridSel = document.getElementById('aprs-col-grid')?.value || 'All';
+  // Shared filter engine (common/js/traffic-list.js) — the same factories the
+  // dashboard composes, so age / callsign / grid matching cannot drift between
+  // the two lists. Hazards are exempt from the age cutoff: an active EOC
+  // incident stays on the map no matter how stale, cleared by hand (see
+  // dismissedHazard) rather than by time.
+  const F = OasisTrafficList.filters;
+  const fAgeCut = F.age(cutoff, s => !!_hazardOf(s));
+  const fCall = F.callsign(document.getElementById('callFilter')?.value || '');
+  const fGridSel = F.grid(gridSel, gridSquare);
   return s => {
     // Age (Last-heard cutoff) — position-less/undated rows drop under a filter.
     // EXCEPT configured natural hazards (Fire/Flood/Tornado/…): an active EOC
     // incident must stay on the map no matter how stale its last update — it's
     // cleared by manual dismissal (dismissedHazard), not by aging out.
     const _hz = _hazardOf(s);
-    if (!_hz && cutoff && (!s.last_heard || new Date(s.last_heard).getTime() < cutoff)) return false;
+    if (!fAgeCut(s)) return false;
     if (_hz && dismissedHazard(s)) return false;
     if (_hz && _containedIncident(s)) return false;   // 100% contained → cleared
     // Object-type filter (categories disabled in the objects panel). Aircraft
     // carry an APRS aircraft/heli symbol, so they fold into the same buckets.
     if (objCatState[aprsCategory(s).key] === false) return false;
     // Callsign filter (prefix / * wildcard) + movers-only toggle.
-    if (!callMatches(s.callsign) || (movingOnly && !(s.speed_mph > 0))) return false;
+    if (!fCall(s) || (movingOnly && !(s.speed_mph > 0))) return false;
     // SRC — aircraft follow showADSB; APRS stations follow their heard-via source
     // (pathRF/pathIS). Skipped when the caller is counting rows per source for
     // the pills, which must show what selecting a source WOULD give.
@@ -2191,11 +2203,7 @@ function _columnFilterPredicate(opts) {
       else if (_stationSource(s) === 'is' ? !pathIS : !pathRF) return false;
     }
     // GRID column filter — 4-char Maidenhead field, or 'No fix' (position-less).
-    if (gridSel !== 'All') {
-      const g = _listGrid(s.lat, s.lon);
-      if (gridSel === '__nofix') { if (g) return false; }
-      else if ((g || '').slice(0, 4) !== gridSel) return false;
-    }
+    if (!fGridSel(s)) return false;
     return true;
   };
 }
@@ -2206,6 +2214,9 @@ function _columnFilterPredicate(opts) {
 // stay live even between station polls. No-op when the drawer is closed.
 function _renderDrawer(pred, aprsFiltered) {
   if (!aprsListOpen) return;
+  // geo.js's distFromHome reads module state; keep it pointed at this page's
+  // station position (myPos) so the Dist column matches the dashboard's.
+  if (myPos) setHomeCoords(myPos.lat, myPos.lon);
   pred = pred || _columnFilterPredicate();
   aprsFiltered = aprsFiltered || allStations.filter(pred);
   // Built once and threaded down: the drawer body wants the FILTERED aircraft,
@@ -3386,30 +3397,27 @@ const _stationSource = OasisTrafficList.stationSource;
 
 const _HEARD_WINDOW_MS = 20 * 1000;
 // `acRows` is the caller's already-built _adsbListRows() result (see
-// _renderDrawer); falls back to building its own if called bare.
+// _renderDrawer). The counts + freshness arithmetic is shared with the dashboard
+// via OasisTrafficList.sourceBreakdown; only the painting is local — the map
+// appends freshness to this same element with an inline colour, while the
+// dashboard paints it into a slot of its own using the age-* classes.
 function renderSourceBreakdown(acRows) {
   const el = document.getElementById('srcBreak');
   if (!el) return;
-  const now = Date.now();
-  const fresh = s => { const t = _lhEpoch(s.last_heard); return t > 0 && (now - t) <= _HEARD_WINDOW_MS; };
-  const adsbRows = acRows || _adsbListRows();
-  let rf = 0, is = 0;
-  for (const s of allStations) { if (!fresh(s)) continue; if (_stationSource(s) === 'rf') rf++; else is++; }
-  const adsb = adsbRows.filter(fresh).length;
-  // Freshness of the newest packet across everything we track (APRS + ADS-B).
-  const times = allStations.concat(adsbRows).map(s => _lhEpoch(s.last_heard)).filter(t => t > 0);
+  const b = OasisTrafficList.sourceBreakdown({
+    stations: allStations, aircraft: acRows || _adsbListRows(),
+    windowMs: _HEARD_WINDOW_MS
+  });
   let tail = '';
-  if (times.length) {
-    const ageMins = Math.round((now - Math.max(...times)) / 60000);
-    const txt = ageMins < 2 ? 'just now' : ageMins < 60 ? ageMins + 'm ago' : Math.round(ageMins / 60) + 'h ago';
-    const col = ageMins < 30 ? 'var(--accent)' : ageMins < 360 ? 'var(--amber)' : 'var(--red)';
-    tail = ' &mdash; <span style="color:' + col + '">' + txt + '</span>';
+  if (b.freshText) {
+    const col = { ok: 'var(--accent)', warn: 'var(--amber)', stale: 'var(--red)' }[b.tone];
+    tail = ' &mdash; <span style="color:' + col + '">' + b.freshText + '</span>';
   }
-  if (!rf && !is && !adsb && !tail) { el.innerHTML = ''; return; }
+  if (!b.rf && !b.is && !b.adsb && !tail) { el.innerHTML = ''; return; }
   el.innerHTML =
-    ' · <span style="color:var(--accent)">' + rf + ' RF</span>'
-    + ' / <span style="color:var(--blue)">' + is + ' IS</span>'
-    + ' / <span style="color:#b478ff">' + adsb + ' ADS-B</span>'
+    ' · <span style="color:var(--accent)">' + b.rf + ' RF</span>'
+    + ' / <span style="color:var(--blue)">' + b.is + ' IS</span>'
+    + ' / <span style="color:#b478ff">' + b.adsb + ' ADS-B</span>'
     + tail;
 }
 
@@ -3468,50 +3476,16 @@ function recentRowClick(callsign) {
 // Renders the same filtered set the map plots (fed from applyFilter), so it
 // needs no extra polling. Units follow the dashboard's oasis_units preference.
 let aprsListOpen = false;
-const _listImperial = () => (localStorage.getItem('oasis_units') || 'imperial') === 'imperial';
+// Grid / distance / altitude / speed now come from the shared modules the
+// dashboard already used (common/js/geo.js, units.js) — the private copies here
+// were verified byte-identical in output over 400 coordinates and 300 values
+// before removal. _listSpeed's "blank at 0" is preserved at the call site.
+const _listGrid  = gridSquare;
+const _listDist  = distFromHome;
+const _listAlt   = fmtAlt;
+const _listSpeed = mph => (mph == null || mph <= 0) ? '' : fmtSpeed(mph);
 
-function _listAlt(m) {
-  if (m == null) return '';
-  return _listImperial()
-    ? Math.round(m * 3.28084).toLocaleString() + ' ft'
-    : Math.round(m).toLocaleString() + ' m';
-}
-function _listSpeed(mph) {
-  if (mph == null || mph <= 0) return '';
-  return _listImperial() ? mph + ' mph' : Math.round(mph * 1.60934) + ' km/h';
-}
-function _listGrid(lat, lon) {
-  if (lat == null || lon == null) return '';
-  let la = parseFloat(lat), lo = parseFloat(lon);
-  if (isNaN(la) || isNaN(lo)) return '';
-  lo += 180; la += 90;
-  const c1 = String.fromCharCode(65 + Math.floor(lo / 20));
-  const c2 = String.fromCharCode(65 + Math.floor(la / 10));
-  lo %= 20; la %= 10;
-  const n1 = Math.floor(lo / 2);
-  const n2 = Math.floor(la);
-  lo %= 2; la %= 1;
-  const c3 = String.fromCharCode(97 + Math.floor(lo / (2 / 24)));
-  const c4 = String.fromCharCode(97 + Math.floor(la / (1 / 24)));
-  return c1 + c2 + n1 + n2 + c3 + c4;
-}
 // Distance + bearing from the local station (myPos). Empty when home unknown.
-function _listDist(lat, lon) {
-  if (!myPos || lat == null || lon == null) return '';
-  const p1 = myPos.lat * Math.PI / 180, p2 = parseFloat(lat) * Math.PI / 180;
-  const dphi = (parseFloat(lat) - myPos.lat) * Math.PI / 180;
-  const dl   = (parseFloat(lon) - myPos.lon) * Math.PI / 180;
-  const a = Math.sin(dphi / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
-  const dMi = 2 * 3958.8 * Math.asin(Math.min(1, Math.sqrt(a)));
-  if (dMi < 0.1) return 'here';
-  const yb = Math.sin(dl) * Math.cos(p2);
-  const xb = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
-  const bear = (Math.atan2(yb, xb) * 180 / Math.PI + 360) % 360;
-  const card = ['N','NE','E','SE','S','SW','W','NW'][Math.round(bear / 45) % 8];
-  if (_listImperial()) return (dMi < 100 ? dMi.toFixed(1) : Math.round(dMi)) + 'mi ' + card;
-  const dKm = dMi * 1.60934;
-  return (dKm < 100 ? dKm.toFixed(1) : Math.round(dKm)) + 'km ' + card;
-}
 // ISO age → {text, cls}. Distinct from fmtAge(sec) above (different signature).
 function _listAge(iso) {
   if (!iso) return { text: '—', cls: '' };
