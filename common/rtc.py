@@ -116,6 +116,21 @@ def _active_lines(text):
             if s and not s.startswith("#")]
 
 
+def _overlay_key(line):
+    """Identity of a config.txt line for "is this already configured?" purposes:
+    the overlay name plus its FIRST parameter, ignoring any extra ones.
+
+    Exact-string matching is too strict — `dtoverlay=vc4-kms-dsi-7inch,dsi1` and
+    `dtoverlay=vc4-kms-dsi-7inch,dsi1,rotate=180` are the same overlay on the same
+    port, and appending our plain version next to a tuned one would load the
+    overlay twice with conflicting parameters. Matching on the bare name alone is
+    too loose in the other direction: `dtoverlay=i2c-rtc,ds3231` and
+    `dtoverlay=i2c-rtc,pcf8563` share the name but are different chips, and
+    treating one as satisfying the other would silently skip the RTC overlay. The
+    first parameter is the discriminator in both cases (chip name; DSI port)."""
+    return ",".join(line.split(",")[:2]).strip()
+
+
 def strip_block(text, begin, end):
     """Remove one BEGIN/END block (inclusive) from *text*. Idempotent."""
     out, inside = [], False
@@ -139,10 +154,10 @@ def plan_lines(text, board_id):
     (owned, foreign): lines to write, and lines we deliberately left alone."""
     board = BOARDS[board_id]
     begin, end = block_markers(board_id)
-    outside = set(_active_lines(strip_block(text, begin, end)))
+    outside = {_overlay_key(s) for s in _active_lines(strip_block(text, begin, end))}
     wanted = [*board["extras"], board["overlay"]]
-    owned = [ln for ln in wanted if ln not in outside]
-    foreign = [ln for ln in wanted if ln in outside]
+    owned = [ln for ln in wanted if _overlay_key(ln) not in outside]
+    foreign = [ln for ln in wanted if _overlay_key(ln) in outside]
     return owned, foreign
 
 

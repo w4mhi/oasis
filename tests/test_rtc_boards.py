@@ -73,6 +73,28 @@ class PlanLinesTest(unittest.TestCase):
         owned, _ = rtc.plan_lines(cfg, "bigtreetech-7in")
         self.assertIn("dtoverlay=vc4-kms-dsi-7inch,dsi1", owned)
 
+    def test_parameterised_display_overlay_counts_as_present(self):
+        # A tuned display line is the SAME overlay on the same DSI port; appending
+        # our plain version would load vc4-kms-dsi-7inch twice with conflicting
+        # parameters.
+        cfg = "dtoverlay=vc4-kms-dsi-7inch,dsi1,rotate=180\n"
+        owned, foreign = rtc.plan_lines(cfg, "bigtreetech-7in")
+        self.assertEqual(foreign, ["dtoverlay=vc4-kms-dsi-7inch,dsi1"])
+        self.assertEqual(owned, ["dtoverlay=i2c-rtc,pcf8563,i2c_csi_dsi"])
+
+    def test_other_boards_rtc_overlay_is_not_mistaken_for_ours(self):
+        # Same overlay name, different chip: the Witty Pi's line must NOT satisfy
+        # the BigTreeTech requirement, or the RTC overlay is silently skipped.
+        cfg = "dtoverlay=i2c-rtc,ds3231\n"
+        owned, foreign = rtc.plan_lines(cfg, "bigtreetech-7in")
+        self.assertIn("dtoverlay=i2c-rtc,pcf8563,i2c_csi_dsi", owned)
+        self.assertNotIn("dtoverlay=i2c-rtc,pcf8563,i2c_csi_dsi", foreign)
+
+    def test_a_different_dsi_port_is_not_a_match(self):
+        cfg = "dtoverlay=vc4-kms-dsi-7inch,dsi0\n"
+        owned, _ = rtc.plan_lines(cfg, "bigtreetech-7in")
+        self.assertIn("dtoverlay=vc4-kms-dsi-7inch,dsi1", owned)
+
 
 class RenderConfigTest(unittest.TestCase):
     def test_writes_only_the_rtc_overlay_on_a_raspad(self):
