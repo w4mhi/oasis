@@ -1983,6 +1983,13 @@ let countdown = REFRESH_SEC;
 let timer = null;
 let autoRefresh = true;     // Refresh button toggles the 15s auto-refresh loop
 let allStations = []; // full unfiltered station list
+// When allStations was last refreshed. The per-cycle source breakdown is
+// anchored to THIS instant rather than to render-time wall clock: the drawer is
+// re-rendered every 2 s by the ADS-B poll (refreshAdsb -> _renderDrawer) while
+// the station snapshot only changes every REFRESH_SEC, so a wall-clock window
+// made the counts decay to zero between polls with no new data involved.
+let _aprsFetchedAtMs = 0;
+let _adsbFetchedAtMs = 0;   // same, for the (much faster) aircraft poll
 let _prevHeard = {};  // callsign → last_heard string from previous fetch
 let _newCallsigns = new Set(); // callsigns new/updated in latest fetch
 let _latestStation = null; // station object with most recent last_heard
@@ -2319,6 +2326,7 @@ async function fetchStations() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'API error');
     allStations = data.stations;
+    _aprsFetchedAtMs = Date.now();
     refreshMyPosition(); // resolve/upgrade the home node (e.g. own live beacon)
     // ── Detect new/updated stations (B + A) ──────────────────────────────
     _newCallsigns = new Set();
@@ -2610,6 +2618,7 @@ async function refreshAdsb() {
     const j = await r.json();
     _adsbAircraft = j.aircraft || [];
     _adsbNow = (typeof j.now === 'number') ? j.now : (Date.now() / 1000);
+    _adsbFetchedAtMs = Date.now();
     applyAdsbFilter();
     _adsbTrailUpdate();     // grow live trails + start fades for aircraft gone silent
     updateAdsbPanel();
@@ -3406,6 +3415,10 @@ function renderSourceBreakdown(acRows) {
   if (!el) return;
   const b = OasisTrafficList.sourceBreakdown({
     stations: allStations, aircraft: acRows || _adsbListRows(),
+    // Anchored to each snapshot's own fetch, NOT Date.now() — see
+    // _aprsFetchedAtMs. Aircraft poll every 2 s, stations every REFRESH_SEC.
+    now: _aprsFetchedAtMs || Date.now(),
+    aircraftNow: _adsbFetchedAtMs || Date.now(),
     windowMs: _HEARD_WINDOW_MS
   });
   let tail = '';

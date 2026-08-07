@@ -282,26 +282,35 @@
   // `windowMs` bounds the "heard this cycle" counts; it is padded past the
   // refresh interval to absorb fetch/clock jitter. Counts deliberately ignore
   // the active column filters — this is a live "what is arriving" readout.
+  //
+  // `now` must be the instant the STATION snapshot was fetched, not render-time
+  // wall clock: callers re-render far more often than they re-poll (the map
+  // redraws the drawer every 2 s on the ADS-B poll), and a moving clock over a
+  // fixed snapshot made these counts decay toward zero between polls with no
+  // new data involved. `aircraftNow` is the same for the aircraft snapshot,
+  // which on the map is polled on a much faster cadence; it defaults to `now`
+  // for callers that fetch both together.
   function sourceBreakdown(opts) {
     opts = opts || {};
     var now = opts.now || Date.now();
+    var acNow = opts.aircraftNow || now;
     var windowMs = opts.windowMs || 20000;
     var stations = opts.stations || [];
     var aircraft = opts.aircraft || [];
     var counts = { rf: 0, is: 0, adsb: 0 };
     var newest = 0;
-    function tally(rows) {
+    function tally(rows, anchor) {
       for (var i = 0; i < rows.length; i++) {
         var t = lastHeardEpoch(rows[i].last_heard);
         if (t > newest) newest = t;
-        if (t > 0 && (now - t) <= windowMs) {
+        if (t > 0 && (anchor - t) <= windowMs) {
           var k = sourceKey(rows[i]);
           if (k in counts) counts[k]++;
         }
       }
     }
-    tally(stations);
-    tally(aircraft);
+    tally(stations, now);
+    tally(aircraft, acNow);
     var out = { rf: counts.rf, is: counts.is, adsb: counts.adsb, newest: newest,
                 ageMins: null, freshText: '', tone: '' };
     if (newest > 0) {

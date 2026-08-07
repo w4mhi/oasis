@@ -243,3 +243,55 @@ test('neither page reimplements the filter engine or the breakdown', () => {
     assert.ok(!/function\s+_callMatches\s*\(/.test(src), rel + ' kept a local callsign matcher');
   }
 });
+
+test('sourceBreakdown is anchored to the snapshot, not to render time', () => {
+  // The regression: callers re-render far more often than they re-poll (the map
+  // redraws the drawer every 2s on the ADS-B poll while stations refresh every
+  // 15s). With a wall-clock window the SAME snapshot yielded ever-smaller counts
+  // between polls, so the breakdown disagreed with every other "heard" readout.
+  const poll = Date.UTC(2026, 7, 6, 12, 0, 0);
+  const stations = [];
+  for (let i = 0; i < 13; i++) {
+    stations.push({ via: i < 2 ? 'rf' : 'is',
+                    last_heard: new Date(poll - i * 1100).toISOString() });
+  }
+  const at = now => {
+    const b = T.sourceBreakdown({ stations, now, windowMs: 20000 });
+    return b.rf + b.is;
+  };
+  // Anchored to the poll, the count is stable no matter when we render.
+  assert.strictEqual(at(poll), 13);
+  assert.strictEqual(at(poll), 13, 're-render with the same anchor must not change');
+  // Advancing the anchor (i.e. a genuinely newer snapshot) is what may drop rows.
+  assert.ok(at(poll + 14000) < 13, 'a later anchor legitimately ages rows out');
+});
+
+test('sourceBreakdown ages aircraft against their own poll', () => {
+  // Stations and aircraft are fetched on different cadences; one shared clock
+  // would age the fresher snapshot against the staler one's timestamp.
+  const stationPoll = Date.UTC(2026, 7, 6, 12, 0, 0);
+  const aircraftPoll = stationPoll + 14000;          // aircraft polled much later
+  const b = T.sourceBreakdown({
+    now: stationPoll,
+    aircraftNow: aircraftPoll,
+    windowMs: 20000,
+    stations: [{ via: 'rf', last_heard: new Date(stationPoll - 5000).toISOString() }],
+    aircraft: [{ _kind: 'aircraft', last_heard: new Date(aircraftPoll - 1000).toISOString() }]
+  });
+  assert.strictEqual(b.rf, 1);
+  assert.strictEqual(b.adsb, 1, 'a 1s-old aircraft must count as heard');
+  // aircraftNow defaults to now, so single-fetch callers need not pass it.
+  const single = T.sourceBreakdown({
+    now: stationPoll, windowMs: 20000, stations: [],
+    aircraft: [{ _kind: 'aircraft', last_heard: new Date(stationPoll - 1000).toISOString() }]
+  });
+  assert.strictEqual(single.adsb, 1);
+});
+
+test('both pages anchor the breakdown to the fetch instant', () => {
+  for (const rel of ['index.html', 'maps/traffic/map.html']) {
+    const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    assert.ok(src.includes('_aprsFetchedAtMs'), rel + ' does not record the fetch instant');
+    assert.ok(/now:\s*_aprsFetchedAtMs/.test(src), rel + ' does not anchor the breakdown to it');
+  }
+});

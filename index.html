@@ -3279,6 +3279,11 @@ async function fetchAudio() {
 
 // ── APRS live station table ───────────────────────────────────────────────────
 let _allAprsStations = [];
+// When _allAprsStations was last refreshed. The per-cycle source breakdown is
+// anchored to this instant, not to render-time wall clock: applyAprsFilter also
+// runs on every filter change, and a wall-clock window made the counts shrink
+// as the operator poked at filters, with no new data involved.
+let _aprsFetchedAtMs = 0;
 let _adsbAircraft = [];   // last /api/adsb/aircraft poll (empty when service off)
 let _adsbNow = 0;         // that poll's dump1090 clock, so `seen` → absolute time
 let _adsbRecent = [];     // last /api/adsb/recent poll: latest obs per aircraft over
@@ -3316,6 +3321,8 @@ function renderSourceBreakdown(acRows) {
   if (!el) return;
   const b = OasisTrafficList.sourceBreakdown({
     stations: _allAprsStations, aircraft: acRows || _adsbListRows(),
+    // Anchored to the station fetch, NOT Date.now() — see _aprsFetchedAtMs.
+    now: _aprsFetchedAtMs || Date.now(),
     windowMs: _HEARD_WINDOW_MS
   });
   // "Last heard" — same computation the map appends to its own breakdown, but
@@ -3850,6 +3857,7 @@ async function fetchAPRS() {
     // Last-packet time for the header
     setTitle(true);
     _allAprsStations = d.stations;
+    _aprsFetchedAtMs = Date.now();
     refreshTypeFilter();               // rebuild the TYPE column dropdown options
     refreshGridFilter();               // rebuild the GRID column dropdown options
     // "Last heard" is painted by renderSourceBreakdown (via applyAprsFilter
