@@ -352,6 +352,7 @@ html, body { height: 100%; margin: 0; }
 
 <!-- Satellites uses a lightweight SVG world map (no MapLibre/WebGL/tiles) — a
      memory win on the Pi, and the whole-globe view is what pass tracks need. -->
+<script src="/common/js/sat-bells.js"></script>
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
 <script>
@@ -574,8 +575,8 @@ function toggleLegend() {
 // Persisted selection (norad -> colour). PLOTTED is the live subset (only sats
 // with an upcoming pass can be drawn); this is the operator's full choice, so it
 // survives refresh + server restart. Redrawn on boot and every pass refresh (see syncPlotted),
-// which also re-shows each sat's bell — bells already persist (oasis_sat_bells)
-// but only render on a plotted sat, so they vanished with the lost selection.
+// which also re-shows each sat's bell — bells persist in the shared roster but
+// only render on a plotted sat, so they vanished with the lost selection.
 let _satSelected = (() => { try { return JSON.parse(localStorage.getItem('oasis_sat_selected') || '{}'); } catch (e) { return {}; } })();
 function saveSelection() { try { localStorage.setItem('oasis_sat_selected', JSON.stringify(_satSelected)); } catch (e) { /* private mode */ } }
 // Is this bird MONITORED? That is _satSelected (the operator's choice, mirrored to
@@ -648,6 +649,7 @@ async function boot() {
   pollListen(); setInterval(pollListen, 3000);
   await refreshPasses();
   reconcileSelection();                             // sync local picks ↔ shared server roster (kiosk sees them)
+  await reconcileBells();                           // one-time migration up, then the roster wins
   recolorSelection();                               // colour every selected bird by its service class
   await syncPlotted(); renderRoster();               // draw the saved selection + its bells
   setInterval(refreshPasses, 10 * 60 * 1000);      // keep the 24 h pass window fresh over long sessions
@@ -857,10 +859,72 @@ function passHint(p, norad) {
 // Per-sat "bell" arms a Web-Audio Morse-"V" (· · · —) chime for CHECKED (plotted)
 // satellites: "VVV" at T-10 min, then "VVV" again at T-5 min — enough lead to get
 // the rig on frequency (no AOS chime; by then it's too late to react). Fully
-// client-side + offline (synthesised, no audio file). Bell (per-NORAD) and the
-// global mute persist in localStorage. Fire-once-per-pass; re-arms next pass.
+// client-side + offline (synthesised, no audio file). Fire-once-per-pass;
+// re-arms next pass.
+// The bell is a property of the BIRD, so it lives in the shared server roster
+// (`bell`, beside `selected`) — not in this browser. It used to be localStorage
+// only, which meant the shack kiosk could never know which passes should wake
+// it: you armed a bell on the laptop and the Pi stayed silent. This map is a
+// local MIRROR of the roster for instant paint; the server is authoritative and
+// re-adopted on every load.
 let _satBells = (() => { try { return JSON.parse(localStorage.getItem('oasis_sat_bells') || '{}'); } catch (e) { return {}; } })();
+function saveBells() { try { localStorage.setItem('oasis_sat_bells', JSON.stringify(_satBells)); } catch (e) { /* private mode */ } }
+// MUTE stays local on purpose. It is a property of the DEVICE, not the bird:
+// the shack kiosk should be silenceable overnight while this laptop still
+// chimes. Putting it in the roster would silence every screen at once.
 let _satMuted = localStorage.getItem('oasis_sat_muted') === '1';
+// Push a `{norad: bool}` set in ONE request — same rule as postSelections. A set
+// fanned out into one request per bird raced itself on the server and landed 1-2
+// of 20.
+function postBells(map) {
+  const bells = {};
+  for (const norad in map) bells[+norad] = !!map[norad];
+  if (!Object.keys(bells).length) return Promise.resolve(null);
+  return fetch('/api/satellites/bells', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+    body: JSON.stringify({ bells }) }).then(r => r.json()).catch(() => null);
+}
+// Adopt the server's armed set as the truth for this browser.
+function adoptBells(armed) {
+  _satBells = {};
+  (armed || []).forEach(n => { _satBells[n] = true; });
+  saveBells();
+}
+// Reconcile this browser's bells with the shared roster on load.
+//
+// Deliberately NOT a permanent union, unlike reconcileSelection: a union can
+// never carry a DISARM across devices — turn a noisy bird off on the laptop and
+// the next device to load would re-arm it from its own stale copy and push it
+// back up, so the bell could never be switched off for good. Instead the local
+// bells are migrated up exactly ONCE (so nothing armed before this change is
+// lost), after which the server simply wins.
+const BELLS_MIGRATED = 'oasis_sat_bells_migrated';
+function _markBellsMigrated() {
+  try { localStorage.setItem(BELLS_MIGRATED, '1'); } catch (e) { /* private mode */ }
+}
+async function reconcileBells() {
+  let migrated = false;
+  try { migrated = localStorage.getItem(BELLS_MIGRATED) === '1'; } catch (e) { /* private mode */ }
+  // The decision itself is common/js/sat-bells.js — pure and unit-tested,
+  // because every way it can go wrong loses the operator's alerts silently.
+  const plan = oasisBellPlan(
+    Object.keys(_satBells).filter(n => _satBells[n]).map(Number),
+    (ROSTER || []).filter(s => s.bell).map(s => s.norad),
+    migrated);
+  if (plan.action === 'migrate') {
+    const res = await postBells(Object.fromEntries(plan.push.map(n => [n, true])));
+    if (res && res.ok && Array.isArray(res.bells)) {
+      _markBellsMigrated();          // only now — see the note in sat-bells.js
+      adoptBells(res.bells);
+    }
+    // Push failed (server down, roster not writable): leave the local mirror
+    // alone and retry next load. Better to keep chiming from a stale local bell
+    // than to silently disarm the operator.
+    return;
+  }
+  if (plan.markMigrated) _markBellsMigrated();
+  adoptBells(plan.adopt);
+}
 const _alertState = {};   // norad -> { key: pass.rise, t10, t5 }
 let _audioCtx = null;
 function bellArmed(norad) { return !!_satBells[norad]; }
@@ -869,10 +933,20 @@ function _unlockAudio() {   // must be called from a user gesture (bell/mute cli
     if (_audioCtx.state === 'suspended') _audioCtx.resume(); } catch (e) { /* no audio */ }
 }
 function toggleBell(norad) {
-  if (_satBells[norad]) delete _satBells[norad]; else _satBells[norad] = true;
-  localStorage.setItem('oasis_sat_bells', JSON.stringify(_satBells));
+  const on = !_satBells[norad];
+  if (on) _satBells[norad] = true; else delete _satBells[norad];
+  saveBells();
   _unlockAudio();   // this click unlocks the AudioContext so later chimes can play
-  renderRoster();
+  renderRoster();   // paint immediately — the write is confirmed below
+  // Write through to the shared roster so the kiosk learns about it. Optimistic:
+  // the glyph already moved, so on failure we put it back rather than leave the
+  // operator believing an alert is armed when the Pi never heard about it.
+  postBells({ [norad]: on }).then(res => {
+    if (res && res.ok) return;
+    if (on) delete _satBells[norad]; else _satBells[norad] = true;
+    saveBells();
+    renderRoster();
+  });
 }
 function toggleSatMute() {
   _satMuted = !_satMuted;
@@ -1045,9 +1119,10 @@ function clearAll() {
   if (!sel.length && !bells.length) return;                 // nothing to clear
   if (!confirm(`Clear all — uncheck ${sel.length} monitored bird(s) and disarm ${bells.length} alert(s)?`)) return;
   postSelections(Object.fromEntries(sel.map(n => [n, false])));   // one write, kiosk too
+  postBells(Object.fromEntries(bells.map(n => [n, false])));      // one write, kiosk too
   _satSelected = {}; saveSelection();
   Object.keys(PLOTTED).forEach(n => delete PLOTTED[n]);     // drop tracks/footprints/markers
-  _satBells = {}; localStorage.setItem('oasis_sat_bells', JSON.stringify(_satBells));
+  _satBells = {}; saveBells();
   for (const k in _alertState) delete _alertState[k];       // cancel any scheduled chimes
   redraw();
   setView('all');   // show the full list again — a Monitored/1h view would now look empty
