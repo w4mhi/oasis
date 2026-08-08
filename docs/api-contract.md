@@ -179,7 +179,18 @@ Genuinely non-JSON responders (`send_file`, `send_from_directory`, streamed
 
 ## 11 · Exit criterion — a functional harness
 
-**Owed at the end of the migration, before the major version ships.**
+**DELIVERED** — `scripts/api-probe.py`. Run it against a running station:
+
+```bash
+python3 scripts/api-probe.py --host 192.168.1.28 --out station-a.txt
+diff station-a.txt station-b.txt      # shapes must match; data need not
+```
+
+Safe by default; `--mutate` adds endpoints that change state or seize
+hardware; `--danger` adds the ones that transmit, reboot, install or delete.
+Exits non-zero on any contract violation, so it is a gate and not just a
+dump. **On its first run it found 17 violations the static gate cannot see**
+— §3 error codes and §4 list bounds exist only in a real response.
 
 `tests/test_api_contract.py` reads the *source*; it proves what we wrote, not what
 the server actually puts on the wire. The unit and end-to-end suites cover the
