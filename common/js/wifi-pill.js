@@ -27,8 +27,11 @@
   // would otherwise blank the signal and flicker the pill to the neutral tone even
   // though the link is fine. `ssid` is the connected SSID from /api/wifi/status.
   // Returns the signal (0–100) or null when it genuinely can't be determined.
+  // `scanned` (not `ok`) is the gate: /api/wifi/scan now answers ok:true even
+  // when the radio could not look, because "the request failed" and "we could
+  // not scan" are different facts. An unscanned reply carries networks: [].
   function oasisWifiSignal(scan, ssid) {
-    if (!scan || !scan.ok || !Array.isArray(scan.networks)) return null;
+    if (!scan || !scan.scanned || !Array.isArray(scan.networks)) return null;
     var cur = scan.networks.find(function (n) { return n.in_use; });
     if (!cur && ssid) cur = scan.networks.find(function (n) { return n.ssid === ssid; });
     return cur && typeof cur.signal === 'number' ? cur.signal : null;

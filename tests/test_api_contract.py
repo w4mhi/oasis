@@ -38,7 +38,7 @@ from api_contract_scan import scan_tree  # noqa: E402
 _OK_FALSE_200 = frozenset({
     # /api/health/{probe,service,feed-flow} graduated 2026-08-08 — the cluster
     # this rule was written for. See tests/test_health_contract.py.
-    "/api/wifi/scan", "/api/wifi/connect", "/api/wifi/forget",
+    # /api/wifi/{scan,connect,forget} graduated 2026-08-08.
     "/api/satellites/refresh", "/api/service", "/api/setup/reboot",
     "/api/winlink/log",
 })
@@ -60,7 +60,7 @@ _NO_ENVELOPE = frozenset({
 # non-conformance. Migrating one means building the envelope inline at the return.
 _UNVERIFIABLE = frozenset({
     # graduated 2026-08-07: /api/adsb/{alerts,aircraft,recent,health}
-    "/api/adsb/history",     "/api/config", "/api/diagnostics", "/api/forms/list", "/api/forms/save",
+    "/api/adsb/history",     "/api/diagnostics", "/api/forms/list", "/api/forms/save",
     "/api/hardware/console", "/api/hardware/detect",
     # /api/system left this list on the SURFACE FIX, not on a migration: its own
     # return site was always a literal dict. It was listed because the scan
@@ -264,7 +264,7 @@ class AllowlistHygieneTest(unittest.TestCase):
         remaining = len(_OK_FALSE_200 | _NO_ENVELOPE | _UNVERIFIABLE)
         # A ratchet: this is the migration debt and may only go DOWN. Lower it
         # as endpoints graduate; never raise it to make something pass.
-        self.assertLessEqual(remaining, 37,
+        self.assertLessEqual(remaining, 33,
                              f"the allowlists grew to {remaining} — they may only shrink")
         self.assertGreater(total, remaining)
 

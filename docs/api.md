@@ -225,10 +225,16 @@ and kiosk poll it (~2 s) and show a countdown banner with **Cancel**.
 
 | Method | Path | Auth | Body | Description |
 |---|---|---|---|---|
-| GET | `/api/wifi/status` | — | — | Mode (`ap`/`client`/`none`), SSID, whether AP-fallback controls are wired. |
-| GET | `/api/wifi/scan` | — | — | Networks in range. |
-| POST | `/api/wifi/connect` | **CSRF** | `{ssid, password}` | Join a WPA2 network (password 8–63 chars). |
-| POST | `/api/wifi/forget` | **CSRF** | — | Delete the current network's saved profile (radio falls back to the OASIS AP). |
+| GET | `/api/wifi/status` | — | — | Mode (`ap`/`client`/`none`), SSID, whether AP-fallback controls are wired. `{supported, mode, ssid, ap_ip, reason}` — one key set on every host. |
+| GET | `/api/wifi/scan` | — | — | Networks in range. `{supported, scanned, networks, count, reason, detail}`. **`scanned` is the flag to branch on, not `ok`** — a host with no sudo grant returns `scanned:false, networks:[]`, which is not the same fact as "scanned and found nothing". |
+| POST | `/api/wifi/connect` | **CSRF** | `{ssid, password}` | Join a WPA2 network (password 8–63 chars). An ACTION, so a refused join is `ok:false` — with **502** `WIFI_CONNECT_FAILED`, never HTTP 200. `503` `WIFI_NO_PRIVILEGE` / `WIFI_CONTROLS_UNAVAILABLE`; `400` `SSID_REQUIRED` / `INVALID_PASSWORD`. |
+| POST | `/api/wifi/forget` | **CSRF** | — | Delete the current network's saved profile (radio falls back to the OASIS AP). Same status/code scheme; failure is `502` `WIFI_FORGET_FAILED`. |
+
+> **Probes vs actions.** `status` and `scan` are probes: "could not scan" is an
+> answer, so they are always `ok:true` with `supported`/`scanned` carrying it.
+> `connect` and `forget` are actions: they either happened or they did not, so
+> `ok:false` is right — what was wrong was serving it with HTTP 200, which made a
+> refused join look like a successful call to anything checking the status first.
 
 ### Setup orchestrator (`/api/setup/*`)
 

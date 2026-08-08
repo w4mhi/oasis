@@ -1551,7 +1551,7 @@ async function scanWifi() {
       status.textContent = '';
     }
     if (forgetBtn) forgetBtn.style.display = _wifiCurrentSsid ? '' : 'none';
-    if (!s || !s.ok) {
+    if (!s || !s.scanned) {
       const reason = s && s.reason === 'no-privilege'
         ? 'Wi-Fi controls not authorised — run scripts/enable-ap-fallback.py.'
         : 'Could not scan for networks.';

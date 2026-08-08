@@ -33,7 +33,7 @@ test('pill: client mode → SSID coloured by signal (no number in text)', () => 
 });
 
 test('signal: prefers the in_use row', () => {
-  const scan = { ok: true, networks: [
+  const scan = { ok: true, scanned: true, networks: [
     { ssid: 'A', signal: 50, in_use: false },
     { ssid: 'MH-500', signal: 85, in_use: true },
   ] };
@@ -42,17 +42,22 @@ test('signal: prefers the in_use row', () => {
 
 test('signal: falls back to SSID match when nmcli tags no in_use row', () => {
   // The real bug: connected to MH-500 but every row is in_use:false.
-  const scan = { ok: true, networks: [
+  const scan = { ok: true, scanned: true, networks: [
     { ssid: 'MH-070', signal: 90, in_use: false },
     { ssid: 'MH-500', signal: 85, in_use: false },
   ] };
   assert.strictEqual(W.oasisWifiSignal(scan, 'MH-500'), 85, 'matches by SSID → no gray flicker');
 });
 
-test('signal: null when scan failed or SSID absent', () => {
-  assert.strictEqual(W.oasisWifiSignal({ ok: false }, 'MH-500'), null);
+test('signal: null when the scan could not run, or the SSID is absent', () => {
+  // The gate is `scanned`, not `ok`: /api/wifi/scan answers ok:true even when
+  // the radio could not look (no sudo grant, no helper, not Linux), because
+  // "the request failed" and "we could not scan" are different facts. Such a
+  // reply still carries networks: [], so keying on `ok` would silently treat
+  // "could not scan" as "scanned and found nothing".
+  assert.strictEqual(W.oasisWifiSignal({ ok: true, scanned: false, networks: [], reason: 'no-privilege' }, 'MH-500'), null);
   assert.strictEqual(W.oasisWifiSignal(null, 'MH-500'), null);
-  assert.strictEqual(W.oasisWifiSignal({ ok: true, networks: [{ ssid: 'X', signal: 40, in_use: false }] }, 'MH-500'), null);
+  assert.strictEqual(W.oasisWifiSignal({ ok: true, scanned: true, networks: [{ ssid: 'X', signal: 40, in_use: false }] }, 'MH-500'), null);
 });
 
 test('pill: not connected → Wi-Fi / none', () => {

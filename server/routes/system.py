@@ -63,12 +63,13 @@ def server_info():
     })
 
 
-@bp.route("/api/config")
-def api_config():
-    """Return runtime configuration (port, feature flags) so HTML pages need
-    not hardcode any values.  The PORT global is updated by __main__ before
-    the server starts, so this always reflects the actual listening port."""
-    payload = {
+def _config_payload():
+    """The service-discovery document, shared by /api/config and its alias.
+
+    One builder, two routes — the alias must not be able to drift from the
+    canonical doc, and every HTML page reads its port numbers from here rather
+    than hardcoding them."""
+    return {
         "ok": True,
         "port": appconfig.PORT,
         "ports": {
@@ -81,14 +82,27 @@ def api_config():
             "openwebrx": 8073,
         },
     }
-    return jsonify(payload)
+
+
+@bp.route("/api/config")
+def api_config():
+    """Return runtime configuration (port, feature flags) so HTML pages need
+    not hardcode any values.  The PORT global is updated by __main__ before
+    the server starts, so this always reflects the actual listening port.
+
+    §10: the envelope is spelled out at the return site. This was
+    `jsonify(payload)`, which is unreviewable and unverifiable — one of the 17
+    routes that passed every other check purely by being unreadable."""
+    cfg = _config_payload()
+    return jsonify({"ok": True, "port": cfg["port"], "ports": cfg["ports"]})
 
 
 @bp.route("/server-ports.json")
 def server_ports():
     """Alias for /api/config — canonical service-discovery endpoint.
     HTML pages fetch this on load so no port numbers need to be hardcoded."""
-    return api_config()
+    cfg = _config_payload()
+    return jsonify({"ok": True, "port": cfg["port"], "ports": cfg["ports"]})
 
 
 @bp.route("/api/installed-services")

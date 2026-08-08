@@ -76,14 +76,29 @@ def _current_ssid():
     return None
 
 
+def _no_privilege(err):
+    """True when the helper failed because the sudoers grant is missing, rather
+    than because the operation itself did not work. Worth telling apart: one is
+    fixed by running scripts/enable-ap-fallback.py, the other is not."""
+    low = (err or "").lower()
+    return ("password" in low or "not allowed" in low
+            or "a terminal is required" in low)
+
+
 @bp.route("/api/wifi/status")
 def api_wifi_status():
     """Report Wi-Fi mode (ap | client | none), SSID and whether the AP-fallback
-    controls are wired up. Linux + NetworkManager only; degrades elsewhere."""
+    controls are wired up. Linux + NetworkManager only; degrades elsewhere.
+
+    §5: this returned three different key sets — two keys off-Linux, three when
+    the helper was absent, five when it worked. Now one shape, with null for
+    what could not be determined."""
     if sys.platform != "linux":
-        return jsonify({"ok": True, "supported": False})
+        return jsonify({"ok": True, "supported": False, "mode": None,
+                        "ssid": None, "ap_ip": None, "reason": "not-linux"})
     if not os.path.exists(NETCTL_PATH):
-        return jsonify({"ok": True, "supported": False,
+        return jsonify({"ok": True, "supported": False, "mode": None,
+                        "ssid": None, "ap_ip": None,
                         "reason": "controls-not-installed"})
     ok, out, _ = _netctl("status")
     mode, ssid = "none", None
@@ -100,44 +115,62 @@ def api_wifi_status():
                 # Prefer the live SSID over the NM profile name (netplan-wlan-*).
                 mode, ssid = "client", _current_ssid() or name
     return jsonify({"ok": True, "supported": True, "mode": mode,
-                    "ssid": ssid, "ap_ip": "10.42.0.1"})
+                    "ssid": ssid, "ap_ip": "10.42.0.1", "reason": None})
 
 
 @bp.route("/api/wifi/scan")
 def api_wifi_scan():
-    """List Wi-Fi networks in range (via NetworkManager). Linux only."""
+    """List Wi-Fi networks in range (via NetworkManager). Linux only.
+
+    §2: a scan that could not run is not a failed REQUEST — same shape as
+    /api/health/feed-flow, which has exactly this problem. `scanned` says
+    whether the radio actually looked, so an empty `networks` on a host with
+    no sudo grant cannot be misread as "no networks in range".
+
+    §5: one key set for all five outcomes. It had four."""
+    supported = sys.platform == "linux" and os.path.exists(NETCTL_PATH)
+    reason = None
+    nets = None
+    detail = None
     if sys.platform != "linux":
-        return jsonify({"ok": False, "supported": False}), 200
-    if not os.path.exists(NETCTL_PATH):
-        return jsonify({"ok": False, "supported": False,
-                        "reason": "controls-not-installed"}), 200
-    ok, out, err = _netctl("scan")
-    if not ok:
-        low = (err or "").lower()
-        reason = "no-privilege" if ("password" in low or "not allowed" in low) else "scan-failed"
-        return jsonify({"ok": False, "supported": True, "reason": reason,
-                        "error": (err or "").strip()[:200]}), 200
-    seen, nets = set(), []
-    for line in out.splitlines():
-        cols = _split_terse(line)
-        if len(cols) < 4:
-            continue
-        in_use, ssid, signal, security = cols[0], cols[1], cols[2], cols[3]
-        if not ssid or ssid in seen:            # skip hidden/blank + de-dup by SSID
-            continue
-        seen.add(ssid)
-        try:
-            sig = int(signal)
-        except ValueError:
-            sig = 0
-        nets.append({
-            "ssid":     ssid,
-            "signal":   sig,
-            "secure":   bool(security and security != "--"),
-            "in_use":   in_use.strip() in ("*", "yes"),
-        })
-    nets.sort(key=lambda n: n["signal"], reverse=True)
-    return jsonify({"ok": True, "supported": True, "networks": nets})
+        reason = "not-linux"
+    elif not supported:
+        reason = "controls-not-installed"
+    else:
+        ok, out, err = _netctl("scan")
+        if not ok:
+            reason = "no-privilege" if _no_privilege(err) else "scan-failed"
+            detail = (err or "").strip()[:200] or None
+        else:
+            seen, nets = set(), []
+            for line in out.splitlines():
+                cols = _split_terse(line)
+                if len(cols) < 4:
+                    continue
+                in_use, ssid, signal, security = cols[0], cols[1], cols[2], cols[3]
+                if not ssid or ssid in seen:    # skip hidden/blank + de-dup by SSID
+                    continue
+                seen.add(ssid)
+                try:
+                    sig = int(signal)
+                except ValueError:
+                    sig = 0
+                nets.append({
+                    "ssid":     ssid,
+                    "signal":   sig,
+                    "secure":   bool(security and security != "--"),
+                    "in_use":   in_use.strip() in ("*", "yes"),
+                })
+            nets.sort(key=lambda n: n["signal"], reverse=True)
+    return jsonify({
+        "ok":        True,
+        "supported": supported,
+        "scanned":   nets is not None,
+        "networks":  nets if nets is not None else [],
+        "count":     len(nets) if nets is not None else 0,
+        "reason":    reason,
+        "detail":    detail,
+    })
 
 
 @bp.route("/api/wifi/connect", methods=["POST"])
@@ -150,34 +183,48 @@ def api_wifi_connect():
     blocked by the same custom-header requirement as /api/service.
     """
     if request.headers.get("X-OASIS-Request") != "1":
-        return jsonify({"ok": False, "error": "forbidden"}), 403
+        return jsonify({"ok": False, "error": "forbidden",
+                        "code": "FORBIDDEN"}), 403
+    # §2: unlike the probes, this is an ACTION — "join this network" either
+    # happened or it did not, so ok:false is right here. What was wrong was
+    # serving it with HTTP 200, which made a refused join look like a
+    # successful call to anything that checks the status first.
     if sys.platform != "linux":
-        return jsonify({"ok": False, "supported": False,
-                        "error": "NetworkManager not available"}), 200
+        return jsonify({"ok": False, "error": "NetworkManager not available",
+                        "code": "WIFI_CONTROLS_UNAVAILABLE"}), 503
     if not os.path.exists(NETCTL_PATH):
-        return jsonify({"ok": False, "supported": False,
+        return jsonify({"ok": False,
                         "error": "Wi-Fi controls not installed — run "
-                                 "scripts/enable-ap-fallback.py"}), 200
+                                 "scripts/enable-ap-fallback.py",
+                        "code": "WIFI_CONTROLS_UNAVAILABLE"}), 503
 
     data = request.get_json(silent=True) or {}
     ssid = (data.get("ssid") or "").strip()
     psk  = data.get("password") or ""
     if not ssid:
-        return jsonify({"ok": False, "error": "SSID required"}), 400
+        return jsonify({"ok": False, "error": "SSID required",
+                        "code": "SSID_REQUIRED"}), 400
     if not (8 <= len(psk) <= 63):
-        return jsonify({"ok": False, "error": "WPA2 password must be 8–63 characters"}), 400
+        return jsonify({"ok": False,
+                        "error": "WPA2 password must be 8–63 characters",
+                        "code": "INVALID_PASSWORD"}), 400
 
     # Trailing newline so the helper's `read` sees a complete line (without it,
     # `read` hits EOF, returns non-zero, and the password would be dropped).
     ok, out, err = _netctl("connect", ssid, stdin=psk + "\n", timeout=60)
     if not ok:
         msg = (err or out or "").strip() or "connection failed"
-        low = msg.lower()
-        if "password" in low and "authoriz" not in low:
-            # Distinguish a missing sudo grant from a wrong Wi-Fi password.
-            if "not allowed" in low or "a terminal is required" in low:
-                msg += " — run: python3 scripts/enable-ap-fallback.py"
-        return jsonify({"ok": False, "ssid": ssid, "error": msg[:300]}), 200
+        if _no_privilege(err or out):
+            # A missing sudo grant is a different problem from a wrong Wi-Fi
+            # password, and only one of them is fixed by re-running a script.
+            return jsonify({"ok": False, "ssid": ssid,
+                            "error": msg[:300] + " — run: python3 "
+                                                 "scripts/enable-ap-fallback.py",
+                            "code": "WIFI_NO_PRIVILEGE"}), 503
+        # 502: the helper was reached and reported failure — the same shape the
+        # contract already uses when a backing daemon answers with bad news.
+        return jsonify({"ok": False, "ssid": ssid, "error": msg[:300],
+                        "code": "WIFI_CONNECT_FAILED"}), 502
     return jsonify({"ok": True, "ssid": ssid})
 
 
@@ -187,22 +234,27 @@ def api_wifi_forget():
     disconnects and stops auto-rejoining. The AP-fallback watcher then raises the
     OASIS access point. Linux only; CSRF-guarded like /api/service."""
     if request.headers.get("X-OASIS-Request") != "1":
-        return jsonify({"ok": False, "error": "forbidden"}), 403
+        return jsonify({"ok": False, "error": "forbidden",
+                        "code": "FORBIDDEN"}), 403
     if sys.platform != "linux":
-        return jsonify({"ok": False, "supported": False,
-                        "error": "NetworkManager not available"}), 200
+        return jsonify({"ok": False, "error": "NetworkManager not available",
+                        "code": "WIFI_CONTROLS_UNAVAILABLE"}), 503
     if not os.path.exists(NETCTL_PATH):
-        return jsonify({"ok": False, "supported": False,
+        return jsonify({"ok": False,
                         "error": "Wi-Fi controls not installed — run "
-                                 "scripts/enable-ap-fallback.py"}), 200
+                                 "scripts/enable-ap-fallback.py",
+                        "code": "WIFI_CONTROLS_UNAVAILABLE"}), 503
 
     ok, out, err = _netctl("forget", timeout=30)
     if not ok:
         msg = (err or out or "").strip() or "could not forget network"
-        low = msg.lower()
-        if "not allowed" in low or "a terminal is required" in low or "password is required" in low:
-            msg += " — run: python3 scripts/enable-ap-fallback.py"
-        return jsonify({"ok": False, "error": msg[:300]}), 200
+        if _no_privilege(err or out):
+            return jsonify({"ok": False,
+                            "error": msg[:300] + " — run: python3 "
+                                                 "scripts/enable-ap-fallback.py",
+                            "code": "WIFI_NO_PRIVILEGE"}), 503
+        return jsonify({"ok": False, "error": msg[:300],
+                        "code": "WIFI_FORGET_FAILED"}), 502
     return jsonify({"ok": True})
 
 
