@@ -5,6 +5,7 @@ the serial/gpspipe I/O wrappers are exercised on the Pi."""
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from common import nmea
@@ -105,16 +106,69 @@ class SummarizeGpsdTests(unittest.TestCase):
         s = nmea.summarize_gpsd_json(self.SKY_NO_FIX)
         self.assertIsNone(s["fix"])
         self.assertTrue(s["saw_sky"])
+        self.assertEqual(s["sats_seen"], 2)
+        self.assertEqual(s["sats_used"], 1)
+
+    def test_empty_sky_is_zero_seen_not_just_zero_used(self):
+        """The distinction this whole split exists for: a SKY report with an
+        empty satellite list means the receiver hears NOTHING (antenna fault),
+        which counting only `used` made indistinguishable from acquiring."""
+        s = nmea.summarize_gpsd_json('{"class":"SKY","satellites":[]}')
+        self.assertTrue(s["saw_sky"])
+        self.assertEqual(s["sats_seen"], 0)
+        self.assertEqual(s["sats_used"], 0)
+
+    def test_sky_without_a_satellites_key_does_not_crash(self):
+        s = nmea.summarize_gpsd_json('{"class":"SKY"}')
+        self.assertTrue(s["saw_sky"])
+        self.assertEqual(s["sats_seen"], 0)
+
+    def test_counts_are_the_max_across_reports_not_the_last(self):
+        """A warming-up receiver's counts wobble; a low final sample must not
+        erase the fact that it saw satellites a moment earlier."""
+        s = nmea.summarize_gpsd_json(self.SKY_NO_FIX + "\n"
+                                     + '{"class":"SKY","satellites":[]}')
+        self.assertEqual(s["sats_seen"], 2)
         self.assertEqual(s["sats_used"], 1)
 
     def test_no_data_is_neither(self):
         s = nmea.summarize_gpsd_json("")
         self.assertIsNone(s["fix"])
         self.assertFalse(s["saw_sky"])
+        self.assertEqual(s["sats_seen"], 0)
 
     def test_ignores_non_json_noise(self):
         s = nmea.summarize_gpsd_json("gpspipe: warning\n" + self.TPV_FIX + "\n{bad")
         self.assertIsNotNone(s["fix"])
+
+
+class ReportSkyTests(unittest.TestCase):
+    """_report_sky() routes the operator to one of three DIFFERENT places, so
+    what matters is which severity fires — a hardware fault must not be narrated
+    as 'give it a minute'."""
+
+    def _say(self, seen, used):
+        said = []
+        with mock.patch.object(nmea, "_warn", lambda m: said.append(("warn", m))), \
+             mock.patch.object(nmea, "_info", lambda m: said.append(("info", m))):
+            nmea._report_sky(seen, used)
+        self.assertEqual(len(said), 1)
+        return said[0]
+
+    def test_nothing_in_view_warns_about_the_antenna(self):
+        level, msg = self._say(0, 0)
+        self.assertEqual(level, "warn")
+        self.assertIn("antenna", msg.lower())
+
+    def test_seen_but_unused_is_informational_acquiring(self):
+        level, msg = self._say(6, 0)
+        self.assertEqual(level, "info")
+        self.assertIn("6", msg)
+
+    def test_partial_use_says_it_needs_four(self):
+        level, msg = self._say(6, 3)
+        self.assertEqual(level, "info")
+        self.assertIn("4", msg)
 
 
 if __name__ == "__main__":

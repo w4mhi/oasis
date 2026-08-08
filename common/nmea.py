@@ -120,12 +120,22 @@ def summarize_nmea(lines):
 
 
 def summarize_gpsd_json(text):
-    """Reduce a gpspipe -w stream to {fix, saw_sky, sats_used}. A TPV with a lat
-    is a fix; SKY without one means 'receiving, but no sky view yet' — the
-    distinction between a broken chain and a bad antenna position. Pure; skips
-    any non-JSON noise gpspipe emits."""
+    """Reduce a gpspipe -w stream to {fix, saw_sky, sats_seen, sats_used}. A TPV
+    with a lat is a fix; SKY without one means 'receiving, but no sky view yet' —
+    the distinction between a broken chain and a bad antenna position. Pure; skips
+    any non-JSON noise gpspipe emits.
+
+    `sats_seen` matters as much as `sats_used`: a SKY report carrying an EMPTY
+    satellite list is the receiver saying it hears nothing at all — an antenna
+    fault (disconnected, indoors, or an active antenna with no bias power), not
+    something waiting will fix. Counting only `used` made both look identical.
+
+    Both are the MAX across the sampled reports, not the last one: a warming-up
+    receiver's counts wobble, and the question being asked is "did it ever see
+    anything", which a low final sample would answer wrongly."""
     fix = None
     saw_sky = False
+    sats_seen = 0
     sats_used = 0
     for line in (text or "").splitlines():
         line = line.strip()
@@ -138,10 +148,13 @@ def summarize_gpsd_json(text):
         cls = obj.get("class")
         if cls == "SKY":
             saw_sky = True
-            sats_used = sum(1 for s in obj.get("satellites", []) if s.get("used"))
+            sats = obj.get("satellites") or []
+            sats_seen = max(sats_seen, len(sats))
+            sats_used = max(sats_used, sum(1 for s in sats if s.get("used")))
         elif cls == "TPV" and obj.get("lat") is not None:
             fix = obj
-    return {"fix": fix, "saw_sky": saw_sky, "sats_used": sats_used}
+    return {"fix": fix, "saw_sky": saw_sky,
+            "sats_seen": sats_seen, "sats_used": sats_used}
 
 
 def device_mismatch(configured, target):
@@ -212,6 +225,28 @@ def gpsd_active():
                 check=False).returncode == 0
 
 
+def _report_sky(seen, used):
+    """Narrate a SKY-but-no-fix state. Split out so the wording is testable
+    without gpsd: the whole point of these three branches is that they send the
+    operator somewhere DIFFERENT, and a single 'wait a minute' line sent everyone
+    to the same wrong place."""
+    if seen == 0:
+        _warn("gpsd is talking to the receiver, but the receiver reports ZERO "
+              "satellites in view — it is hearing nothing at all. That is the "
+              "antenna, not the sky: check it is seated in the GPS (not the "
+              "radio) jack, that an ACTIVE antenna is getting bias power, and "
+              "that it is outdoors or at a window. Waiting will not fix this.")
+        return
+    if used == 0:
+        _info(f"Receiver sees {seen} satellite(s) but is using none yet — the "
+              "chain works and it is still acquiring. A cold receiver needs "
+              "several minutes to download the almanac. Re-check in ~5 min; if "
+              f"{seen} never rises above 3, the antenna needs a clearer view.")
+        return
+    _info(f"Receiver sees {seen} satellite(s), {used} in use, but no position "
+          "fix yet — it needs 4 for a 3D fix. Nearly there; give it a minute.")
+
+
 def verify_via_gpsd(device, timeout=8.0):
     """Read NMEA *through* gpsd (gpspipe) rather than opening the raw serial
     device gpsd already holds. Returns True if it reported a result (a fix, a
@@ -236,8 +271,7 @@ def verify_via_gpsd(device, timeout=8.0):
             f"lon={fix.get('lon')}  time={fix.get('time')}")
         return True
     if s["saw_sky"]:
-        _info(f"gpsd sees satellites ({s['sats_used']} in use) but no position fix yet — "
-              "give the antenna a clear sky view for a minute, then re-check.")
+        _report_sky(s["sats_seen"], s["sats_used"])
         return True
     _warn("gpsd is running but produced no TPV/SKY data — it's likely pointed at "
           "the wrong device or getting no NMEA. Check:  gpspipe -w -n 20   and   "
