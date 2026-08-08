@@ -89,9 +89,12 @@
   @keyframes clk-spin{ to{ transform:rotate(360deg); } }
 
   /* ── middle: station/grid + GPS + units pills, boxed to clock height ──── */
+  /* No fill: the card holds pills that carry their own colour (callsign, GPS,
+     services, Wi-Fi, the SDR dots), and an accent-tinted panel behind them
+     competed with every one of them. The accent border still marks it out. */
   .midcard{ flex:0 0 auto; display:flex; flex-direction:column;
             justify-content:center; align-items:center; gap:.6rem;
-            background:color-mix(in srgb,var(--accent) 8%,var(--panel));
+            background:transparent;
             border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border)); border-radius:.8rem;
             padding:.6rem .7rem; }
 
