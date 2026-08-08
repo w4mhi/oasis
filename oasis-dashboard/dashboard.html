@@ -21,6 +21,7 @@
 <script src="/common/js/format.js"></script>
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/incident-icons.js"></script>
+<script src="/common/js/traffic-list.js"></script>
 <script src="/common/js/service-registry.js"></script>
 <script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
@@ -234,7 +235,6 @@
           border:1px solid var(--border); background:var(--panel-2); cursor:pointer; }
   .fchip.rf{ color:var(--accent); border-color:rgba(53,208,160,.45); }
   .fchip.is{ color:var(--blue); border-color:rgba(92,184,255,.45); }
-  .fchip.aprs{ color:var(--text); border-color:rgba(205,216,224,.45); }
   .fchip.adsb{ color:var(--purple); border-color:rgba(180,120,255,.45); }
   .fchip.off{ color:var(--faint); border-color:var(--border); background:transparent; opacity:.55; }
   .tbl{ display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
@@ -529,10 +529,12 @@
       <div class="hd">
         <span class="livebadge ok" id="k-aprs-live"><span class="lvd">●</span><span class="lvtxt">LIVE</span></span>
         <span class="heard" id="k-aprs-count">—</span>
-        <span class="fchip rf"   id="f-rf"   onclick="toggleFilter('rf')"   title="RF stations">RF</span>
-        <span class="fchip is"   id="f-is"   onclick="toggleFilter('is')"   title="Internet (APRS-IS) stations">IS</span>
-        <span class="fchip aprs" id="f-aprs" onclick="toggleFilter('aprs')" title="APRS stations">APRS</span>
-        <span class="fchip adsb" id="f-adsb" onclick="toggleFilter('adsb')" title="ADS-B aircraft">ADS-B</span>
+        <!-- One chip per RECEIVE PATH, the same three index.html shows. Counts
+             are filled in by _renderSrcChipCounts. There is no APRS chip: RF and
+             IS are the APRS rows. -->
+        <span class="fchip rf"   id="f-rf"   onclick="toggleFilter('rf')"   title="APRS heard off the air">RF</span>
+        <span class="fchip is"   id="f-is"   onclick="toggleFilter('is')"   title="APRS heard via APRS-IS (internet)">IS</span>
+        <span class="fchip adsb" id="f-adsb" onclick="toggleFilter('adsb')" title="Aircraft heard via ADS-B">ADS-B</span>
       </div>
       <div class="tbl">
         <div class="tscroll" id="aprsScroll"></div>
@@ -928,21 +930,34 @@ function loadHomeCoords() {
 
 // ── APRS + ADS-B live traffic (copied from dashboard_old, trimmed to the list) ─
 let _allAprsStations = [];
-let _showRF = true, _showIS = true, _showAPRS = true, _showADSB = true;
+let _showRF = true, _showIS = true, _showADSB = true;
 const MAX_ROWS = 60;   // more vertical room on this layout → show more records
 let _renderAt = 0, _renderTimer = null;
-function aprsSource(s) {
-  const v = String(s.via||'').trim().toLowerCase();
-  if (v==='rf') return 'rf'; if (v==='is') return 'is';
-  const hay = (v+' '+((s.path||[]).join(' '))).toUpperCase();
-  return (hay.includes('TCPIP')||hay.includes('IGATE')||/\bQA[A-Z]/.test(hay)) ? 'is' : 'rf';
-}
+// Receive-path classification comes from the SHARED module, the same one
+// index.html's source pills use. It was a byte-identical copy here, which is
+// how two screens end up disagreeing about what "RF" means after one of them is
+// edited. `s._kind === 'aircraft'` → 'adsb'.
+const _srcKeyOf = OasisTrafficList.sourceKey;
+function aprsSource(s) { return OasisTrafficList.stationSource(s); }
+// There is no APRS chip: RF and IS ARE the APRS rows, so it duplicated
+// "switch both of those off" and could contradict them (APRS off + RF on).
+// Three chips, one per receive path — the same set index.html shows.
 function toggleFilter(which) {
   if (which==='rf') _showRF=!_showRF; else if (which==='is') _showIS=!_showIS;
-  else if (which==='aprs') _showAPRS=!_showAPRS; else if (which==='adsb') _showADSB=!_showADSB;
-  const states = { rf:_showRF, is:_showIS, aprs:_showAPRS, adsb:_showADSB };
+  else if (which==='adsb') _showADSB=!_showADSB;
+  const states = { rf:_showRF, is:_showIS, adsb:_showADSB };
   Object.entries(states).forEach(([k,on]) => { const el = document.getElementById('f-'+k); if (el) el.classList.toggle('off', !on); });
   applyAprsFilter();
+}
+// Chip label = name + how many rows that path is carrying. Counted BEFORE the
+// chips are applied — matching index — so a switched-off chip advertises what
+// turning it back on would add, and a path at 0 stays visible and clickable
+// rather than silently vanishing with no way back.
+function _renderSrcChipCounts(counts) {
+  [['rf','RF'], ['is','IS'], ['adsb','ADS-B']].forEach(([k, label]) => {
+    const el = document.getElementById('f-'+k);
+    if (el) el.textContent = label + ' ' + (counts[k] || 0);
+  });
 }
 function aprsIconHtml(s) {
   const table = s.sym_table||'/', code = s.sym_code||'-';
@@ -1219,16 +1234,20 @@ function applyAprsFilter() {
     fm.classList.toggle('hide-aprs', pillCount >= 10);
   }
 
-  let list = [];
-  if (_showAPRS) list = list.concat(_allAprsStations);
-  if (_showADSB) list = list.concat(_adsbListRows());
-  list = list.filter(s => {
+  // Everything EXCEPT the source chips, so each chip can be labelled with the
+  // rows it would contribute — including a path currently switched off. Same
+  // ordering index uses for its source pills.
+  const preRows = _allAprsStations.concat(_adsbListRows()).filter(s => {
     if (_containedIncident(s)) return false;                    // cleared incident — never listed
     if (hazardActive) return _hazardKeyOf(s) === hazardFilter;  // hazard filter supersedes
     if (emergActive)  return _isEmergency(s);                   // else emergency filter
     return true;
   });
-  if (!_showRF || !_showIS) list = list.filter(s => s._kind==='aircraft' || (aprsSource(s)==='is' ? _showIS : _showRF));
+  const srcCounts = { rf: 0, is: 0, adsb: 0 };
+  for (const s of preRows) { const k = _srcKeyOf(s); if (k in srcCounts) srcCounts[k]++; }
+  _renderSrcChipCounts(srcCounts);
+  const _srcOn = { rf: _showRF, is: _showIS, adsb: _showADSB };
+  const list = preRows.filter(s => _srcOn[_srcKeyOf(s)] !== false);
   const total = list.length;
   list.sort((a,b) => _lhEpoch(b.last_heard||b.timestamp||b.time) - _lhEpoch(a.last_heard||a.timestamp||a.time));
   const cEl = document.getElementById('k-aprs-count'); if (cEl) cEl.textContent = total;
