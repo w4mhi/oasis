@@ -1411,6 +1411,13 @@ function openSvcSheet() {
 
 // ── Satellites (copied from dashboard_old) ───────────────────────────────────
 function azCompass(deg) { if (deg == null) return ''; return ['N','NE','E','SE','S','SW','W','NW'][Math.round((((deg%360)+360)%360)/45)%8]; }
+// Roster names carry an orbit-class suffix from build-roster.py ("NOAA 19 [LEO]").
+// Useful when you are choosing birds on the Satellites page; on the 7" panel it
+// is just the thing that wraps the row onto a second line, and every bird in the
+// roster is LEO or MEO anyway — the suffix distinguishes almost nothing here.
+// Kiosk-only: the Satellites page keeps the full name.
+// Anchored at the END so a bracket inside a real name is left alone.
+function satShortName(name) { return String(name || '').replace(/\s*\[[^\]]*\]\s*$/, ''); }
 let _satSel = [], _satPasses = {};
 
 // ── Pass alerts on the KIOSK ─────────────────────────────────────────────────
@@ -1452,7 +1459,9 @@ function _armedBirds() {
     const passes = _satPasses[norad] || _satPasses[String(norad)] || [];
     const p = passes.map(x => ({ ...x, _r:new Date(x.rise).getTime() }))
                     .filter(x => x._r > now).sort((a,b) => a._r - b._r)[0];
-    if (p) out.push({ norad, name:s.name || ('#'+norad), rise:p.rise, max_el:p.max_el });
+    // Shortened here too, so the spoken alert says "NOAA 19" and not
+    // "NOAA 19 bracket L E O".
+    if (p) out.push({ norad, name:satShortName(s.name) || ('#'+norad), rise:p.rise, max_el:p.max_el });
   });
   return out;
 }
@@ -1484,7 +1493,7 @@ function renderSats() {
     const inPass = p._r <= now && now < p._s;
     const mins = Math.round((p._r - now)/60000);
     if (!inPass && mins > 60) return;                 // 1 h window
-    items.push({ name:s.name || ('#'+norad), p, inPass, mins, bell:!!s.bell,
+    items.push({ name:satShortName(s.name) || ('#'+norad), p, inPass, mins, bell:!!s.bell,
                  dl:(s.downlinks && s.downlinks[0]) });
   });
   items.sort((a,b) => (b.inPass?1:0)-(a.inPass?1:0) || a.p._r - b.p._r);
