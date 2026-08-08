@@ -275,13 +275,16 @@
      for; the pseudo-element is immune and matches how .face already does it. */
   .sat::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:.35rem;
                 background:var(--cap,transparent); }
-  /* Capability glyphs, own line between the name and the rise detail. Coloured
-     per channel INLINE from common/js/sat-capability.js — the silhouette says
-     which capability, the colour reinforces it, and neither competes with the
-     row's now/soon state colours the way coloured NAME text would. */
-  .sat .caps{ display:flex; align-items:center; gap:.5rem; margin-top:.3rem; line-height:0; }
-  .sat .caps .cap{ line-height:0; }
-  .sat .caps svg{ width:1.15rem; height:1.15rem; display:block; }
+  /* Capability chips, own line between the name and the rise detail. Same
+     vocabulary as the Satellites page's roster cards (WX / LIN abbreviated to
+     fit), coloured per channel INLINE from common/js/sat-capability.js. Chips
+     rather than coloured NAME text because capability and urgency would
+     otherwise fight for the same channel — a voice bird overhead would be
+     green-on-green. */
+  .sat .caps{ display:flex; flex-wrap:wrap; align-items:center; gap:.35rem; margin-top:.35rem; }
+  .sat .caps .cap{ font-size:.92rem; font-weight:700; letter-spacing:.08em;
+                   padding:.05rem .45rem; border-radius:.35rem;
+                   border:1px solid var(--border); color:var(--dim); white-space:nowrap; }
   .sat:last-child{ margin-bottom:0; }
   .sat .l1{ display:flex; align-items:baseline; gap:.8rem; font-size:1.35rem; }
   .sat .nm{ font-weight:700; color:var(--text); min-width:6.6rem; }
@@ -1553,7 +1556,7 @@ function renderSats() {
       : '';
     // Line 2: what the bird can DO. Line 3 stays the rise/elevation detail.
     // The rail carries the map's blended colour for the same bird.
-    const caps = `<div class="caps">${oasisSatCapabilityGlyphs(it.labels)}</div>`;
+    const caps = `<div class="caps">${oasisSatCapabilityChips(it.labels)}</div>`;
     const rail = ` style="--cap:${oasisSatCapabilityColor(it.labels)}"`;
     if (it.inPass) {
       const arc = `${esc(azCompass(it.p.rise_az))}→${esc(azCompass(it.p.set_az))}`;

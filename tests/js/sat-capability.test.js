@@ -65,16 +65,66 @@ test('missing/garbage input degrades to telemetry rather than throwing', () => {
   assert.strictEqual(C.oasisSatCapabilityColor(undefined), 'rgb(230 100 0)');
 });
 
-test('glyph markup carries one inline colour per channel and no emoji', () => {
-  const html = C.oasisSatCapabilityGlyphs(['FM', 'APRS']);
-  assert.match(html, /color:rgb\(0 200 90\)/);
-  assert.match(html, /color:rgb\(230 100 0\)/);
-  assert.strictEqual((html.match(/<svg/g) || []).length, 2);
-  // The Pi has no emoji font — anything above the BMP renders as tofu.
-  assert.ok(![...html].some(ch => ch.codePointAt(0) >= 0x1F000), 'no emoji in glyph markup');
+// ── Row chips — the roster's own labels, as the Satellites page shows them ───
+const chips = labels => C.oasisSatLabelChips(labels).map(c => c.text);
+
+test('chips use the roster vocabulary, abbreviated only where needed', () => {
+  assert.deepStrictEqual(chips(['WEATHER']), ['WX']);
+  assert.deepStrictEqual(chips(['LINEAR']), ['LIN']);
+  assert.deepStrictEqual(chips(['APRS']), ['APRS']);
+  assert.deepStrictEqual(chips(['SSTV']), ['SSTV']);
 });
 
-test('every channel has a distinct glyph path', () => {
-  const paths = C.OASIS_SAT_CHANNELS.map(c => c.glyph).concat(C.OASIS_SAT_TELEMETRY.glyph);
-  assert.strictEqual(new Set(paths).size, paths.length);
+test('VOICE is dropped when FM is present — the aggregator always emits both', () => {
+  // satnogs._MODE_LABELS maps FM/FMN/NFM to (VOICE, FM), so VOICE never appears
+  // alone. Printing both on a 7" row is duplication, not detail.
+  assert.deepStrictEqual(chips(['VOICE', 'FM']), ['FM']);
+});
+
+test('SSB is dropped when LINEAR is present — likewise always emitted together', () => {
+  // From an SSB mode or a Transponder type, both labels land as a set.
+  assert.deepStrictEqual(chips(['LINEAR', 'SSB']), ['LIN']);
+});
+
+test('a lone half of a redundant pair still shows', () => {
+  // Defensive: if the aggregator ever emits one without the other, the row must
+  // not silently lose the capability.
+  assert.deepStrictEqual(chips(['VOICE']), ['VOICE']);
+  assert.deepStrictEqual(chips(['SSB']), ['SSB']);
+});
+
+test('chips keep the roster order, not the order labels arrived in', () => {
+  assert.deepStrictEqual(chips(['CREWED', 'APRS', 'FM', 'SSTV']),
+                         ['FM', 'APRS', 'SSTV', 'CREW']);
+});
+
+test('the ISS case stays short enough for a row', () => {
+  assert.deepStrictEqual(chips(['VOICE', 'FM', 'APRS', 'SSTV', 'CREWED']),
+                         ['FM', 'APRS', 'SSTV', 'CREW']);
+});
+
+test('CREWED is neutral — it is a fact about the bird, not something to work', () => {
+  const crew = C.oasisSatLabelChips(['CREWED'])[0];
+  assert.strictEqual(crew.color, null);
+});
+
+test('each chip takes its channel colour', () => {
+  const byText = Object.fromEntries(
+    C.oasisSatLabelChips(['FM', 'WEATHER', 'APRS']).map(c => [c.text, c.color]));
+  assert.strictEqual(byText.FM, 'rgb(0 200 90)');
+  assert.strictEqual(byText.WX, 'rgb(0 90 230)');
+  assert.strictEqual(byText.APRS, 'rgb(230 100 0)');
+});
+
+test('chip markup carries inline colour and no emoji', () => {
+  const html = C.oasisSatCapabilityChips(['FM', 'APRS']);
+  assert.match(html, /color:rgb\(0 200 90\)/);
+  assert.match(html, /color:rgb\(230 100 0\)/);
+  // The Pi has no emoji font — anything above the BMP renders as tofu.
+  assert.ok(![...html].some(ch => ch.codePointAt(0) >= 0x1F000), 'no emoji in chip markup');
+});
+
+test('no chips for an unlabelled bird, and nothing throws', () => {
+  assert.deepStrictEqual(chips([]), []);
+  assert.deepStrictEqual(chips(undefined), []);
 });

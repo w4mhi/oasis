@@ -28,31 +28,61 @@
 (function (root) {
   'use strict';
 
-  // Inline SVG, never emoji — the Pi has no emoji font and would render tofu.
-  // Chosen for SILHOUETTE: these are read at a couple of metres on a 7" panel,
-  // so what matters is that mic / camera / packet are distinguishable in
-  // outline, before any detail or colour resolves.
-  var MIC = 'M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-4.08A7 7 0 0 0 19 11h-2Z';
-  var CAM = 'M9 3 7.17 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.17L15 3H9Zm3 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z';
-  var PKT = 'M6 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2Zm2 4h10v2H8V8Zm0 4h7v2H8v-2Z';
-  var TLM = 'M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12Zm0 2.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z';
-
   // Label sets are the roster's closed vocabulary (see satnogs.LABELS).
   var CHANNELS = [
     { key: 'voice',   label: 'Voice',       rgb: [0, 200, 90],
-      labels: ['VOICE', 'FM', 'LINEAR', 'SSB'], glyph: MIC,
+      labels: ['VOICE', 'FM', 'LINEAR', 'SSB'],
       title: 'Voice — FM / linear / SSB' },
     { key: 'imaging', label: 'Imaging',     rgb: [0, 90, 230],
-      labels: ['WEATHER', 'SSTV'], glyph: CAM,
+      labels: ['WEATHER', 'SSTV'],
       title: 'Imaging — weather APT/LRPT or SSTV' },
     { key: 'data',    label: 'Data / APRS', rgb: [230, 100, 0],
-      labels: ['APRS'], glyph: PKT,
+      labels: ['APRS'],
       title: 'Data — APRS packet' },
   ];
-  // Telemetry-only birds borrow the Data colour (as on the map) but a distinct
-  // ring glyph, so "beacons only" never looks like "passes packet".
+  // Telemetry-only birds borrow the Data colour, as on the map.
   var TELEMETRY = { key: 'telemetry', label: 'Telemetry only', rgb: [230, 100, 0],
-                    glyph: TLM, title: 'Telemetry beacon only — nothing to work' };
+                    title: 'Telemetry beacon only — nothing to work' };
+
+  // ── Row chips: the roster's OWN labels, abbreviated ────────────────────────
+  // The kiosk shows the same vocabulary as the Satellites page's roster cards
+  // rather than a reduced icon set. Collapsing nine labels into three channels
+  // reads tidily but throws away the distinction an operator actually acts on:
+  // FM and LINEAR are both "voice", and they need different radios.
+  //
+  // Shortened only where the full word does not fit a 7" row.
+  var ABBREV = { WEATHER: 'WX', LINEAR: 'LIN', CREWED: 'CREW' };
+  // Pairs the aggregator always emits TOGETHER, so showing both is duplication,
+  // not detail. VOICE is produced only by FM/FMN/NFM, and LINEAR+SSB come as a
+  // set from an SSB mode or a Transponder type (see satnogs._tx_labels). The
+  // page prints both because it has the width; a kiosk row does not.
+  var IMPLIED_BY = { VOICE: 'FM', SSB: 'LINEAR' };
+  // Which channel colours a given label. CREWED is deliberately absent — it is
+  // a fact about the bird, not a capability, so it stays neutral instead of
+  // claiming a channel it cannot be worked on.
+  function _colorFor(label) {
+    for (var i = 0; i < CHANNELS.length; i++) {
+      if (CHANNELS[i].labels.indexOf(label) !== -1) return rgbCss(CHANNELS[i].rgb);
+    }
+    if (label === 'DATA') return rgbCss(TELEMETRY.rgb);
+    return null;                       // neutral — the page's own chip colour
+  }
+  var CHIP_ORDER = ['WEATHER', 'VOICE', 'FM', 'APRS', 'SSTV', 'LINEAR', 'SSB',
+                    'DATA', 'CREWED'];   // == satnogs.LABELS, the stable order
+
+  // labels[] -> [{label, text, color}] for the row, deduped and abbreviated.
+  function oasisSatLabelChips(labels) {
+    var ls = (labels || []).map(function (l) { return String(l).toUpperCase(); });
+    var out = [];
+    for (var i = 0; i < CHIP_ORDER.length; i++) {
+      var l = CHIP_ORDER[i];
+      if (ls.indexOf(l) === -1) continue;
+      // Drop the half of a redundant pair whose partner is also present.
+      if (IMPLIED_BY[l] && ls.indexOf(IMPLIED_BY[l]) !== -1) continue;
+      out.push({ label: l, text: ABBREV[l] || l, color: _colorFor(l) });
+    }
+    return out;
+  }
 
   function rgbCss(rgb) { return 'rgb(' + rgb[0] + ' ' + rgb[1] + ' ' + rgb[2] + ')'; }
 
@@ -86,16 +116,14 @@
     return rgbCss(mixed);
   }
 
-  // labels[] -> one <span> per channel, each carrying its own colour inline.
-  // Inline rather than a CSS class per channel so the colours have exactly ONE
-  // definition (above) — a stylesheet copy is how the map and the kiosk would
-  // start disagreeing about which green means voice.
-  function oasisSatCapabilityGlyphs(labels) {
-    return oasisSatChannels(labels).map(function (c) {
-      return '<span class="cap cap-' + c.key + '" title="' + c.title + '"'
-        + ' style="color:' + rgbCss(c.rgb) + '">'
-        + '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
-        + '<path d="' + c.glyph + '"/></svg></span>';
+  // labels[] -> the row's chip markup. Colours are emitted INLINE from the
+  // definitions above rather than as a CSS class per label, so they have exactly
+  // one definition — a stylesheet copy is how the map and the kiosk would start
+  // disagreeing about which green means voice.
+  function oasisSatCapabilityChips(labels) {
+    return oasisSatLabelChips(labels).map(function (c) {
+      var style = c.color ? ' style="color:' + c.color + ';border-color:' + c.color + '"' : '';
+      return '<span class="cap" title="' + c.label + '"' + style + '>' + c.text + '</span>';
     }).join('');
   }
 
@@ -104,5 +132,6 @@
   root.oasisSatRgbCss = rgbCss;
   root.oasisSatChannels = oasisSatChannels;
   root.oasisSatCapabilityColor = oasisSatCapabilityColor;
-  root.oasisSatCapabilityGlyphs = oasisSatCapabilityGlyphs;
+  root.oasisSatLabelChips = oasisSatLabelChips;
+  root.oasisSatCapabilityChips = oasisSatCapabilityChips;
 })(typeof window !== 'undefined' ? window : this);
