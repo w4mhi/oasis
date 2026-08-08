@@ -151,9 +151,24 @@ The contract is versioned with the product. A breaking change to any endpoint is
 There is no in-band update mechanism for a deployed station, so the version number
 is the only signal a consumer gets — treat it as the announcement.
 
-## 10 · Migration status
+## 10 · The envelope must be visible where it is returned
+
+`return jsonify(payload)` — where `payload` is a variable built elsewhere — is not
+acceptable. It hides the response shape from review, and from the conformance
+test: 17 routes were silently satisfying every other rule purely because their
+shape could not be inspected at the return site.
+
+Build the response dict inline at the `return`, even when the body comes from a
+helper:
+
+```python
+return jsonify({"ok": True, **summary}), 200        # RIGHT — envelope is visible
+return jsonify(summary)                             # WRONG — shape decided elsewhere
+```
+
+## 11 · Migration status
 
 Enforced by `tests/test_api_contract.py`. Endpoints not yet migrated are listed in
-that test's `_NOT_YET_MIGRATED` set, which may only ever **shrink** — the test
+that test's three allowlists (`_OK_FALSE_200`, `_NO_ENVELOPE`, `_UNVERIFIABLE`), which may only ever **shrink** — the test
 fails both when a conforming endpoint regresses *and* when an endpoint on the list
 starts conforming without being removed from it, so the list cannot rot.

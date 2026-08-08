@@ -51,6 +51,19 @@ _NO_ENVELOPE = frozenset({
     "/api/satellites/listen/recordings",
 })
 
+# §1 — `jsonify(<variable>)`: the envelope is decided elsewhere, so the shape
+# cannot be verified at the return site. Migrating one means making the envelope
+# explicit where it is returned, which is what we want anyway.
+_UNVERIFIABLE = frozenset({
+    "/api/config", "/api/diagnostics", "/api/forms/list", "/api/forms/save",
+    "/api/hardware/console", "/api/hardware/detect", "/api/health/file",
+    "/api/list-ics205", "/api/save-ics205", "/api/service", "/api/system",
+    "/api/setup/jobs/<job_id>",
+    "/api/satellites/passes", "/api/satellites/select",
+    "/api/satellites/listen", "/api/satellites/listen/status",
+    "/api/satellites/listen/stop",
+})
+
 
 def _routes():
     return scan_tree(_ROOT)
@@ -78,7 +91,8 @@ class EnvelopeTest(unittest.TestCase):
                 continue
             # ALL returns must carry it. A route whose POST envelopes and whose
             # GET does not is precisely the inconsistency this contract removes.
-            missing = [(rel, f) for rel, f in entries if not f["has_ok"]]
+            missing = [(rel, f) for rel, f in entries
+                       if not f["opaque"] and not f["has_ok"]]
             if missing:
                 rel, f = missing[0]
                 offenders.append(f"{rule}  ({rel}:{f['line']})")
@@ -110,12 +124,25 @@ class OkMeansRequestSucceededTest(unittest.TestCase):
                          + "\n  ".join(sorted(offenders)))
 
 
+class VerifiableShapeTest(unittest.TestCase):
+    def test_no_route_returns_an_unverifiable_shape(self):
+        """`jsonify(payload)` hides the envelope from review AND from this gate.
+        17 routes were silently passing every other check for exactly this reason."""
+        offenders = sorted({f"{rule}  ({rel}:{f['line']})"
+                            for rule, entries in _by_rule().items()
+                            if rule not in _UNVERIFIABLE
+                            for rel, f in entries if f["opaque"]})
+        self.assertEqual(offenders, [],
+                         "responses whose shape is not visible at the return site "
+                         "(contract §1) — build the dict inline:\n  " + "\n  ".join(offenders))
+
+
 class AllowlistHygieneTest(unittest.TestCase):
     """The lists may only shrink, and may not reference routes that are gone."""
 
     def test_no_ghost_entries(self):
         rules = {r for r, _, _, _, _ in _routes()}
-        ghosts = sorted((_OK_FALSE_200 | _NO_ENVELOPE) - rules)
+        ghosts = sorted((_OK_FALSE_200 | _NO_ENVELOPE | _UNVERIFIABLE) - rules)
         self.assertEqual(ghosts, [],
                          "allowlists reference routes that no longer exist — remove them:\n  "
                          + "\n  ".join(ghosts))
@@ -140,11 +167,24 @@ class AllowlistHygieneTest(unittest.TestCase):
                          "these now carry an `ok` envelope — remove them from "
                          "_NO_ENVELOPE:\n  " + "\n  ".join(graduated))
 
+    def test_unverifiable_list_only_shrinks(self):
+        by_rule = _by_rule()
+        graduated = sorted(
+            rule for rule in _UNVERIFIABLE
+            if rule in by_rule and by_rule[rule]
+            and not any(f["opaque"] for _, f in by_rule[rule]))
+        self.assertEqual(graduated, [],
+                         "these now build their response inline — remove them from "
+                         "_UNVERIFIABLE:\n  " + "\n  ".join(graduated))
+
     def test_migration_progress_is_visible(self):
         """Prints the remaining debt so the number is in front of us every run."""
         total = len({r for r, _, _, _, _ in _routes()})
-        remaining = len(_OK_FALSE_200 | _NO_ENVELOPE)
-        self.assertLessEqual(remaining, 18, "the allowlists grew — they may only shrink")
+        remaining = len(_OK_FALSE_200 | _NO_ENVELOPE | _UNVERIFIABLE)
+        # A ratchet: this is the migration debt and may only go DOWN. Lower it
+        # as endpoints graduate; never raise it to make something pass.
+        self.assertLessEqual(remaining, 32,
+                             f"the allowlists grew to {remaining} — they may only shrink")
         self.assertGreater(total, remaining)
 
 
