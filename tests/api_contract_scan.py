@@ -150,14 +150,52 @@ def returns_of(fn):
     return facts
 
 
+def _nested_function_ids(tree):
+    """ids of every function defined INSIDE another function.
+
+    This is how the scan tells the OASIS API apart from the internal daemons,
+    and it is not cosmetic: three separate HTTP servers live in this repo —
+    the Flask app on :8083, graywolf-api on :8085 (services/aprs/common/aprs.py)
+    and the copy its installer writes out. Two of them serve a route literally
+    named `/api/system`, and `/api/aprs/{stations,track}` exist on both the
+    daemon and the Flask proxy in front of it.
+
+    Keying facts by rule string alone merged all three into one bucket, so a
+    conforming Flask route was held hostage by a same-named daemon route — the
+    reason /api/system sat in _UNVERIFIABLE while its own return site was fine.
+
+    The discriminator is structural rather than a hand-kept path list: every
+    OASIS route is a module-level function decorated with a module-level
+    Blueprint (or, for three routes, server/app.py's real app), while both
+    daemons build `Flask(__name__)` inside a factory and decorate functions
+    nested in it. tests/test_api_contract.py pins the resulting daemon set, so
+    a third server (or an OASIS route moved into a factory) fails loudly
+    instead of silently reclassifying itself out of the contract.
+    """
+    nested = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for inner in ast.walk(node):
+            if (isinstance(inner, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and inner is not node):
+                nested.add(id(inner))
+    return nested
+
+
 def scan_file(path):
-    """[(rule, relpath, funcname, lineno, [return-facts])] for one module."""
+    """[(rule, relpath, funcname, lineno, surface, [return-facts])] for one module.
+
+    `surface` is "oasis" for the Flask API this contract governs, or "daemon"
+    for a route on one of the internal single-purpose servers.
+    """
     with open(path, encoding="utf-8") as fh:
         src = fh.read()
     try:
         tree = ast.parse(src)
     except SyntaxError:
         return []
+    nested = _nested_function_ids(tree)
     out = []
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -166,12 +204,16 @@ def scan_file(path):
         if not rules:
             continue
         facts = returns_of(node)
+        surface = "daemon" if id(node) in nested else "oasis"
         for rule in rules:
-            out.append((rule, path, node.name, node.lineno, facts))
+            out.append((rule, path, node.name, node.lineno, surface, facts))
     return out
 
 
 def scan_tree(root, subdirs=("server", "services", "maps")):
+    """Every `/api/*` route in the repo, across all three of its HTTP servers.
+    Filter on the `surface` element to get just the OASIS API — see
+    _nested_function_ids() for why that distinction has to exist."""
     results = []
     for sub in subdirs:
         base = os.path.join(root, sub)

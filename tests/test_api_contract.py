@@ -61,7 +61,11 @@ _UNVERIFIABLE = frozenset({
     # graduated 2026-08-07: /api/adsb/{alerts,aircraft,recent,health}
     "/api/adsb/history",     "/api/config", "/api/diagnostics", "/api/forms/list", "/api/forms/save",
     "/api/hardware/console", "/api/hardware/detect", "/api/health/file",
-    "/api/list-ics205", "/api/save-ics205", "/api/service", "/api/system",
+    # /api/system left this list on the SURFACE FIX, not on a migration: its own
+    # return site was always a literal dict. It was listed because the scan
+    # merged it with graywolf-api's same-named opaque route. Counting that as
+    # progress would be lying to the ratchet.
+    "/api/list-ics205", "/api/save-ics205", "/api/service",
     "/api/setup/jobs/<job_id>",
     "/api/satellites/passes", "/api/satellites/select",
     "/api/satellites/listen", "/api/satellites/listen/status",
@@ -75,22 +79,68 @@ _UNVERIFIABLE = frozenset({
 })
 
 
+# Routes on the internal daemons are NOT the OASIS API — see _DAEMON_MODULES.
 def _routes():
-    return scan_tree(_ROOT)
+    return [r for r in scan_tree(_ROOT) if r[4] == "oasis"]
+
+
+def _daemon_routes():
+    return [r for r in scan_tree(_ROOT) if r[4] == "daemon"]
 
 
 def _by_rule():
     out = {}
-    for rule, path, fname, lineno, facts in _routes():
+    for rule, path, fname, lineno, surface, facts in _routes():
         out.setdefault(rule, []).extend(
             [(os.path.relpath(path, _ROOT), f) for f in facts])
     return out
 
 
+# The only two modules allowed to serve routes that this contract does not
+# govern. Both build their own Flask app inside a factory and listen on their
+# own port; the Flask route in front of each is the contract boundary (§10).
+_DAEMON_MODULES = frozenset({
+    "services/aprs/common/aprs.py",              # graywolf-api, :8085
+    "services/graywolf/enable-graywolf-api.py",  # the copy its installer writes
+})
+
+
 class ScanSanityTest(unittest.TestCase):
     def test_the_scan_sees_the_whole_api(self):
-        rules = {r for r, _, _, _, _ in _routes()}
+        rules = {r for r, _, _, _, _, _ in _routes()}
         self.assertGreater(len(rules), 60, "route scan drifted — layout or decorators changed?")
+
+    def test_the_daemon_surface_is_exactly_the_two_known_servers(self):
+        """The oasis/daemon split is inferred structurally (a route nested in a
+        factory function), which is only safe if it cannot drift silently. A new
+        internal server, or an OASIS route moved inside a factory, would quietly
+        exempt itself from the whole contract — so pin the set.
+
+        This split is not bookkeeping. Three servers in this repo serve a route
+        called `/api/system`; merging them by rule string held the conforming
+        Flask one hostage to the daemon's opaque `jsonify(gather_system())`.
+        """
+        got = {os.path.relpath(path, _ROOT) for _, path, _, _, _, _ in _daemon_routes()}
+        self.assertEqual(got, _DAEMON_MODULES,
+                         "the set of internal daemon modules changed — if this is a "
+                         "new server, decide deliberately whether the contract governs "
+                         "it; if an OASIS route moved into a factory, it just left the "
+                         "contract by accident")
+
+    def test_daemon_routes_still_carry_an_envelope(self):
+        """Internal, but not unexamined. The full contract is aimed at the
+        surface a browser and a model actually see, so daemons are held to the
+        one rule that keeps their proxies honest: every response says `ok`.
+        `/api/system` is the one exception — its shape is built in
+        gather_system(), and services/aprs/routes.py re-normalises it anyway."""
+        offenders = sorted({
+            f"{rule}  ({os.path.relpath(path, _ROOT)}:{f['line']})"
+            for rule, path, _, _, _, facts in _daemon_routes()
+            if rule != "/api/system"
+            for f in facts if not f["opaque"] and not f["has_ok"]})
+        self.assertEqual(offenders, [],
+                         "internal daemon responses with no `ok` envelope:\n  "
+                         + "\n  ".join(offenders))
 
 
 class EnvelopeTest(unittest.TestCase):
@@ -151,7 +201,7 @@ class AllowlistHygieneTest(unittest.TestCase):
     """The lists may only shrink, and may not reference routes that are gone."""
 
     def test_no_ghost_entries(self):
-        rules = {r for r, _, _, _, _ in _routes()}
+        rules = {r for r, _, _, _, _, _ in _routes()}
         ghosts = sorted((_OK_FALSE_200 | _NO_ENVELOPE | _UNVERIFIABLE) - rules)
         self.assertEqual(ghosts, [],
                          "allowlists reference routes that no longer exist — remove them:\n  "
@@ -189,11 +239,11 @@ class AllowlistHygieneTest(unittest.TestCase):
 
     def test_migration_progress_is_visible(self):
         """Prints the remaining debt so the number is in front of us every run."""
-        total = len({r for r, _, _, _, _ in _routes()})
+        total = len({r for r, _, _, _, _, _ in _routes()})
         remaining = len(_OK_FALSE_200 | _NO_ENVELOPE | _UNVERIFIABLE)
         # A ratchet: this is the migration debt and may only go DOWN. Lower it
         # as endpoints graduate; never raise it to make something pass.
-        self.assertLessEqual(remaining, 42,
+        self.assertLessEqual(remaining, 41,
                              f"the allowlists grew to {remaining} — they may only shrink")
         self.assertGreater(total, remaining)
 
