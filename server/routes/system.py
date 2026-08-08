@@ -17,6 +17,7 @@ from flask import Blueprint, jsonify
 
 import appconfig
 from common import gpsd_chrony
+from common.api_shape import iso_utc
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 VERSION_FILE = appconfig.VERSION_FILE
@@ -146,7 +147,11 @@ def _pi_throttled():
 
 def _wifi_info():
     """Best-effort Wi-Fi SSID + associated-station count (for Pi access-point
-    use). Returns None when the tools/interface are absent (e.g. on a Mac)."""
+    use). Returns None when the tools/interface are absent (e.g. on a Mac).
+
+    Contract §5: null means "no Wi-Fi information at all"; a dict always carries
+    BOTH keys. Omitting `clients` when only the SSID was readable would make
+    "no stations associated" and "we couldn't ask" the same answer."""
     info = {}
     try:
         out = subprocess.run(["iwgetid", "-r"], capture_output=True, text=True, timeout=2)
@@ -163,7 +168,9 @@ def _wifi_info():
         if out.returncode == 0 and "Station " in out.stdout:
             info["clients"] = out.stdout.count("Station ")
             break
-    return info or None
+    if not info:
+        return None
+    return {"ssid": info.get("ssid"), "clients": info.get("clients")}
 
 
 def _gps_interface(device_path):
@@ -280,7 +287,19 @@ def _gps_info():
             s.close()
         except OSError:
             pass
-    result = info or {"mode": 0}
+    # Contract §5: every key present, null when unknown. gpsd omits lat/lon/hdop
+    # until it has them, so an acquiring receiver used to return a DIFFERENT SET
+    # OF KEYS from a fixed one — a consumer could not tell "no position yet"
+    # from "this field doesn't exist on this build".
+    result = {
+        "mode":     info.get("mode", 0),
+        "lat":      info.get("lat"),
+        "lon":      info.get("lon"),
+        "alt_m":    info.get("alt_m"),
+        "hdop":     info.get("hdop"),
+        "seen":     info.get("seen"),
+        "used":     info.get("used"),
+    }
     result.update(_gps_presence_status())
     return result
 
@@ -294,7 +313,18 @@ def _chrony_state():
     can't reach chronyd's command socket, so we also try forcing the localhost
     UDP path, and degrade to {running, queryable:False} if neither works.
     CSV: field 1 = reference name ('GPS' for the refclock, else an NTP host),
-    field 4 = system-time offset (s), last field = leap status."""
+    field 4 = system-time offset (s), last field = leap status.
+
+    Contract §5: this returned three DIFFERENT SHAPES ({running}, {running,
+    queryable}, and the full detail). It now always returns the same six keys
+    with null for what could not be determined, so `chrony.synced === null`
+    ("couldn't ask") is distinguishable from `false` ("asked; not synced")."""
+    def _state(**kw):
+        base = {"running": False, "queryable": False, "synced": None,
+                "source": None, "gps": None, "offset_s": None}
+        base.update(kw)
+        return base
+
     active = ""
     for unit in ("chrony", "chronyd"):
         try:
@@ -305,7 +335,7 @@ def _chrony_state():
         if active == "active":
             break
     if active != "active":
-        return {"running": False}
+        return _state(running=False)
 
     out = None
     for cmd in (["chronyc", "-c", "tracking"],
@@ -318,24 +348,24 @@ def _chrony_state():
             out = r.stdout.strip()
             break
     if out is None:
-        return {"running": True, "queryable": False}   # daemon up, can't read detail
+        return _state(running=True)                    # daemon up, can't read detail
 
     f = out.split(",")
     if len(f) < 5:
-        return {"running": True, "queryable": False}
+        return _state(running=True)
     leap = f[-1].strip()
-    res = {
-        "running":   True,
-        "queryable": True,
-        "synced":    leap in ("Normal", "Insert second", "Delete second"),
-        "source":    f[1],
-        "gps":       "GPS" in f[1].upper(),
-    }
     try:
-        res["offset_s"] = float(f[4])
+        offset = float(f[4])
     except ValueError:
-        pass
-    return res
+        offset = None
+    return _state(
+        running=True,
+        queryable=True,
+        synced=leap in ("Normal", "Insert second", "Delete second"),
+        source=f[1],
+        gps="GPS" in f[1].upper(),
+        offset_s=offset,
+    )
 
 
 # ── Background sampler ─────────────────────────────────────────────────────────
@@ -478,12 +508,23 @@ def _lan_ip():
 
 @bp.route("/api/system")
 def api_system():
-    """System resource stats (CPU, RAM, disk, temp, load, uptime).
-    Gracefully degrades on platforms where some metrics are unavailable."""
+    """System resource stats (CPU, RAM, disk, temp, load, uptime) — on the
+    contract, docs/api-contract.md.
+
+    Every key is always present; null means "not measurable here" (§5). A
+    top-level block is null only when the whole subsystem is absent — no gpsd,
+    no Wi-Fi tooling, no Pi throttle registers — and when a block IS a dict it
+    always carries its full key set. That distinction is the whole point: a
+    caller can tell "this machine has no GPS" from "the GPS has no fix yet"
+    without knowing anything about OASIS."""
     try:
         import psutil
     except ImportError:
-        return jsonify({"ok": False, "error": "psutil not installed"}), 503
+        # §2/§3: a real failure, so NOT 200. psutil is what this endpoint is
+        # made of — unlike a stopped optional service, there is no answer to
+        # give. Windows bundles without psutil land here.
+        return jsonify({"ok": False, "error": "psutil not installed",
+                        "code": "SYSTEM_METRICS_UNAVAILABLE"}), 503
 
     # Disk — auto-detect: SSD → eMMC → system root
     disk_info = None
@@ -502,7 +543,11 @@ def api_system():
         except Exception:
             continue
     if disk_info is None:
-        disk_info = {"error": "unavailable"}
+        # §5: NOT {"error": "unavailable"}. Switching a metrics block to an
+        # error block gave `disk` two incompatible shapes, which is why both
+        # dashboards had to guard on `!d.disk.error` before reading `d.disk.pct`.
+        disk_info = {"label": None, "total_gb": None, "used_gb": None,
+                     "free_gb": None, "pct": None}
 
     # CPU — use the cached rolling sample; fall back to a quick snapshot only
     # during the brief window before the background sampler produces its first.
@@ -518,8 +563,8 @@ def api_system():
         "pct":      ram.percent,
     }
 
-    # Load average (Linux/macOS only)
-    load_info = None
+    # Load average (Linux/macOS only). §5: always the same three keys — `cores`
+    # is knowable even on Windows, where the average itself is not.
     try:
         load1, _, _ = psutil.getloadavg()
         load_info = {
@@ -528,12 +573,13 @@ def api_system():
             "pct":   round((load1 / cpu_count) * 100, 1),
         }
     except AttributeError:
-        pass
+        load_info = {"avg1": None, "cores": cpu_count, "pct": None}
 
-    # Boot time / uptime
-    boot_ts    = psutil.boot_time()
-    uptime_sec = int(time.time() - boot_ts)
-    boot_str   = time.strftime("%a %b %d %H:%M", time.localtime(boot_ts))
+    # Boot time / uptime. §6: the old `boot_str` was "Fri Aug 07 19:29" — no
+    # year, no zone, unparseable by anything that isn't a human reading a card.
+    boot_ts   = psutil.boot_time()
+    uptime_s  = int(time.time() - boot_ts)
+    boot_time = iso_utc(boot_ts)
 
     # CPU temperature (Pi-specific; absent on macOS/Windows)
     temp = None
@@ -546,39 +592,42 @@ def api_system():
     except Exception:
         pass
 
-    # FCC DB last modified
-    fcc_db_mtime = None
+    # FCC DB last modified. §6: an ISO instant, not the local calendar date the
+    # old `fcc_db_date` reported — "2026-08-04" means a different thing either
+    # side of midnight depending on where the reader is.
+    fcc_db_updated = None
     fcc_db_candidates = [
         os.path.join(SUITE_ROOT, "services", "fcc_database", "data", "EN.dat"),
         "/mnt/ssd/Documents/reference/fcc-offline-database/data/EN.dat",
     ]
     for path in fcc_db_candidates:
         try:
-            fcc_db_mtime = time.strftime("%Y-%m-%d", time.localtime(os.path.getmtime(path)))
+            fcc_db_updated = iso_utc(os.path.getmtime(path))
             break
         except Exception:
             continue
 
     return jsonify({
-        "ok":          True,
-        "hostname":    socket.gethostname(),
-        "ip":          _lan_ip(),
-        "cpu_pct":     cpu_pct,
-        "cpu_count":   cpu_count,
-        "cpu_cores":   _CPU_CORES,
-        "top_procs":   _TOP_PROCS,
-        "cpu_temp_c":  temp,
-        "ram":         ram_info,
-        "disk":        disk_info,
-        "load":        load_info,
-        "uptime_sec":  uptime_sec,
-        "boot_str":    boot_str,
-        "fcc_db_date": fcc_db_mtime,
-        "throttle":    _THROTTLE,
-        "net":         _NET,
-        "gps":         _GPS,
-        "chrony":      _CHRONY,
-        "cooling":     _COOLING,
+        "ok":             True,
+        "hostname":       socket.gethostname(),
+        "ip":             _lan_ip(),
+        "cpu_pct":        cpu_pct,
+        "cpu_count":      cpu_count,
+        "cpu_cores":      _CPU_CORES,
+        "top_procs":      _TOP_PROCS,
+        "cpu_temp_c":     temp,
+        "ram":            ram_info,
+        "disk":           disk_info,
+        "load":           load_info,
+        "uptime_s":       uptime_s,
+        "boot_time":      boot_time,
+        "fcc_db_updated": fcc_db_updated,
+        # null = subsystem absent on this machine; a dict always has every key.
+        "throttle":       _THROTTLE,
+        "net":            _NET,
+        "gps":            _GPS,
+        "chrony":         _CHRONY,
+        "cooling":        _COOLING,
     })
 
 

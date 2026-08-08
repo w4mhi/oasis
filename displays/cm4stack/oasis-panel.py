@@ -9,7 +9,7 @@ normally /dev/fb0). No SPI/display library.
 Data comes from the SAME same-origin Flask app the web dashboard uses, on
 127.0.0.1:8083 — so the panel and the website always agree:
     /api/aprs/stations -> {ok, count, stations:[{callsign,last_heard,speed_mph,via,...}]}
-    /api/system        -> {hostname, ip, cpu_pct, cpu_temp_c, ram{pct}, disk{pct}, uptime_sec}
+    /api/system        -> {hostname, ip, cpu_pct, cpu_temp_c, ram{pct}, disk{pct}, uptime_s}
 
 APRS "feed offline" mirrors the dashboard: shown when the endpoint is
 unreachable OR returns ok:false. Empty station list = live-but-idle, NOT offline.
@@ -362,7 +362,7 @@ def render(w, h, aprs, system, view="list"):
     # APRS, so the old "APRS" label is gone; the row now carries three markers.
     stations = aprs or []                 # aprs is None (unreachable) or a list
     live = bool(stations)                 # packets present (used by sections below)
-    up_txt = fmt_uptime(system.get("uptime_sec")) if system else "\u2014"
+    up_txt = fmt_uptime(system.get("uptime_s")) if system else "\u2014"
 
     # Most-recent station — drives freshness here and the LAST HEARD card below.
     newest, best = None, None
@@ -673,7 +673,7 @@ _MOCK_STATION = {
 }
 _MOCK_SYSTEM = {
     "cpu_pct": 23, "cpu_temp_c": 47, "ram": {"pct": 41}, "disk": {"pct": 55},
-    "ip": "192.168.1.42", "uptime_sec": 90000, "hostname": os.uname().nodename,
+    "ip": "192.168.1.42", "uptime_s": 90000, "hostname": os.uname().nodename,
 }
 
 def preview(out_path, mock=False, view="card", size=(240, 320)):

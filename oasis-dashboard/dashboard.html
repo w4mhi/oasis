@@ -845,7 +845,7 @@ async function fetchStats() {
       }
     }
     if (d.ram?.pct != null) setKStat('k-ram', `${Math.round(d.ram.pct)}%`, d.ram.pct>=90?'hot':d.ram.pct>=70?'warm':'ok');
-    if (d.disk?.pct != null && !d.disk.error) setKStat('k-disk', `${Math.round(d.disk.pct)}%`, d.disk.pct>=90?'hot':d.disk.pct>=70?'warm':'ok');
+    if (d.disk?.pct != null) setKStat('k-disk', `${Math.round(d.disk.pct)}%`, d.disk.pct>=90?'hot':d.disk.pct>=70?'warm':'ok');
     setKStat('k-load', d.load?.avg1 != null ? d.load.avg1.toFixed(2) : 'n/a', d.load?.pct!=null?(d.load.pct>=100?'hot':d.load.pct>=75?'warm':'ok'):'');
   } catch (_) {}
 }

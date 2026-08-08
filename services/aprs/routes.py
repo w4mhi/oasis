@@ -312,7 +312,11 @@ def api_aprs_system():
         "uptime_s": payload.get("uptime_sec"),
         # boot_str was "Fri Aug 07 19:29" — no year, no zone, unparseable (§6).
         "boot_time": iso_utc_from_text(payload.get("boot_time")) or _boot_time_iso(payload),
-        "fcc_db_date": payload.get("fcc_db_date"),
+        # `fcc_db_date` is deliberately NOT forwarded. It duplicated a fact
+        # /api/system now reports properly as `fcc_db_updated` (an ISO instant),
+        # and the daemon only has a zone-less local calendar date — so keeping it
+        # would put two differently-named, differently-shaped fields for the same
+        # fact in front of a caller. Same host, same file: ask /api/system.
     }), 200
 
 

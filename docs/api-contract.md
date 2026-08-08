@@ -217,3 +217,29 @@ Enforced by `tests/test_api_contract.py`. Endpoints not yet migrated are listed 
 that test's three allowlists (`_OK_FALSE_200`, `_NO_ENVELOPE`, `_UNVERIFIABLE`), which may only ever **shrink** — the test
 fails both when a conforming endpoint regresses *and* when an endpoint on the list
 starts conforming without being removed from it, so the list cannot rot.
+
+### Which API the contract governs
+
+Three Flask apps live in this repo: the OASIS API on `:8083`, `graywolf-api` on
+`:8085` (`services/aprs/common/aprs.py`), and the copy `enable-graywolf-api.py`
+writes out at install time. **The contract governs the OASIS API** — the surface a
+browser, an MCP server, or a model actually talks to. The internal daemons bind
+loopback and are reached only through the Flask route in front of them, which is
+the contract boundary (§10) and re-normalises everything they emit.
+
+The scan tells them apart structurally: every OASIS route is a module-level
+function on a module-level Blueprint, while both daemons build `Flask(__name__)`
+inside a factory and nest their routes in it. That inference is pinned by a test,
+because two of these servers serve a route literally named `/api/system` and a
+third named `/api/aprs/stations` — keying facts by rule string alone let a
+conforming route be held hostage by a same-named route on a different server.
+
+Daemon routes are still required to carry an `ok` envelope; they are exempt from
+the rest.
+
+### Shared helpers
+
+`common/api_shape.py` holds the one implementation of §4 and §6 — `iso_utc()`,
+`iso_utc_from_text()`, `clamp_limit()`. Endpoints import them rather than growing
+private copies; two copies of a timestamp formatter is how an API ends up with two
+timestamp formats.

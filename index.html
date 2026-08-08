@@ -3143,7 +3143,7 @@ async function fetchStats() {
     // RAM: high = bad, so colour like the others but neutral under threshold.
     const ramPct = d.ram && d.ram.pct != null ? d.ram.pct : null;
     setVal('cpu-ram', ramPct != null ? `${Math.round(ramPct)}%` : 'n/a', ramPct, 70, 90);
-    const diskPct = d.disk && !d.disk.error && d.disk.pct != null ? d.disk.pct : null;
+    const diskPct = d.disk && d.disk.pct != null ? d.disk.pct : null;
     setVal('cpu-disk', diskPct != null ? `${Math.round(diskPct)}%` : 'n/a', diskPct, 80, 92);
     // LOAD (1-min average): the DOT and the LOAD value track load-vs-cores %
     // (thresholds 75 / 100) — green/amber/red. But the PROCESSES card border/tint
@@ -3157,7 +3157,7 @@ async function fetchStats() {
     const procDot = document.getElementById('proc-dot');
     if (procDot) procDot.className = 'dot ' + lstate;
     // STATUS card: uptime value on the title line (neutral, no label).
-    const u = d.uptime_sec;
+    const u = d.uptime_s;
     let upStr = '';
     if (u != null) {
       const dd = Math.floor(u / 86400), hh = Math.floor((u % 86400) / 3600), mm = Math.floor((u % 3600) / 60);

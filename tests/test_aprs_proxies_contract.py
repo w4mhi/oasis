@@ -142,6 +142,15 @@ class SystemTest(_Base):
         d = self.get("/api/aprs/system", self.S).get_json()
         self.assertEqual(d["uptime_s"], 3600)
 
+    def test_the_duplicate_fcc_field_is_not_forwarded(self):
+        """Same host, same file: /api/system reports this properly as an ISO
+        `fcc_db_updated`. The daemon only has a zone-less local date, so
+        forwarding it would give a caller two differently-named,
+        differently-shaped fields for one fact."""
+        d = self.get("/api/aprs/system", dict(self.S, fcc_db_date="2026-08-04")).get_json()
+        self.assertNotIn("fcc_db_date", d)
+        self.assertNotIn("fcc_db_updated", d)
+
     def test_daemon_down_is_503(self):
         r = self.get_down("/api/aprs/system")
         self.assertEqual(r.status_code, 503)

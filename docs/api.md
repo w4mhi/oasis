@@ -132,7 +132,7 @@ Canonical machine-readable map: **`GET /server-ports.json`**.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/system` | CPU %, RAM, disk, SoC temp, load, uptime + GPS fix (gpsd), Wi-Fi SSID/clients, Pi throttling (`vcgencmd`), chrony clock offset. Degrades gracefully (`ok:false`, `503` if `psutil` absent). |
+| GET | `/api/system` | CPU %, RAM, disk, SoC temp, load, `uptime_s`, `boot_time` (ISO-8601 UTC) + GPS fix (gpsd), Wi-Fi SSID/clients, Pi throttling (`vcgencmd`), chrony clock offset. On the contract: every key always present; a **null** block means that subsystem is absent on this machine, a **dict** always carries its full key set. `503` + `code:"SYSTEM_METRICS_UNAVAILABLE"` if `psutil` is absent. |
 | GET | `/api/audio` | ALSA sound cards with capture(RX)/playback(TX) capability — for choosing a GrayWolf/Winlink audio device. `supported:false` off-Linux. |
 
 ### Diagnostics
