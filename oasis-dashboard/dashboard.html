@@ -275,20 +275,23 @@
   .satempty{ color:var(--faint); font-size:1.15rem; padding:.4rem .2rem; }
   /* Global mute for the shack. Sized for a FINGER, not a mouse pointer: it gets
      used at bedtime, in the dark, on a 7" panel — the icon is 1.3rem but the hit
-     area is ~2.75rem. Muted state is held deliberately BRIGHT (amber), because a
-     forgotten mute is a silent failure: the kiosk just says nothing next morning
-     and there is no other symptom. */
+     area is ~2.75rem.
+     Colour follows the Satellites page (.sat-mute): AMBER while alerts are live,
+     dim once muted. Live-is-amber reads as "this control is doing something";
+     live-is-grey read as disabled, which is what it looked like. The muted state
+     is still unmistakable because the GLYPH changes to a crossed bell, not just
+     the colour. */
   .satmute{ background:none; border:0; padding:.5rem .6rem; margin:-.5rem .1rem -.5rem .5rem;
             min-width:2.75rem; min-height:2.75rem; line-height:0; cursor:pointer;
-            color:var(--faint); -webkit-tap-highlight-color:transparent; }
+            color:var(--warn); -webkit-tap-highlight-color:transparent; }
   .satmute svg{ width:1.3rem; height:1.3rem; display:block; }
-  .satmute.muted{ color:var(--warn); }
+  .satmute.muted{ color:var(--faint); }
   /* The per-row bell is INFORMATIONAL here — arming happens on the Satellites
-     page, this only shows which passes will actually wake the shack. */
-  .sat .bell{ color:var(--accent); margin-left:.4rem; line-height:0; display:inline-block; vertical-align:-.15em; }
+     page, this only shows which passes will actually wake the shack. Amber for
+     the same reason the page uses it on an armed bird (.sat-bell.on), and it
+     stays amber in every row state so "armed" never reads as a state colour. */
+  .sat .bell{ color:var(--warn); margin-left:.4rem; line-height:0; display:inline-block; vertical-align:-.15em; }
   .sat .bell svg{ width:1rem; height:1rem; display:block; }
-  .sat.now .bell{ color:var(--accent); }
-  .sat.soon .bell{ color:var(--warn); }
   .pulse{ display:inline-block; width:.8rem; height:.8rem; border-radius:50%; background:var(--accent);
           box-shadow:0 0 .8rem 0 var(--accent); margin-right:.5rem; vertical-align:middle; }
 
