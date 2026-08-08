@@ -58,7 +58,8 @@ _NO_ENVELOPE = frozenset({
 # helper (`return _adsb_proxy(...)`). Both are unverifiable and both hid real
 # non-conformance. Migrating one means building the envelope inline at the return.
 _UNVERIFIABLE = frozenset({
-    "/api/adsb/aircraft", "/api/adsb/alerts", "/api/adsb/health",
+    # /api/adsb/alerts graduated 2026-08-07 — first endpoint on the contract.
+    "/api/adsb/aircraft", "/api/adsb/health",
     "/api/adsb/history", "/api/adsb/recent",
     "/api/config", "/api/diagnostics", "/api/forms/list", "/api/forms/save",
     "/api/hardware/console", "/api/hardware/detect", "/api/health/file",
@@ -191,7 +192,7 @@ class AllowlistHygieneTest(unittest.TestCase):
         remaining = len(_OK_FALSE_200 | _NO_ENVELOPE | _UNVERIFIABLE)
         # A ratchet: this is the migration debt and may only go DOWN. Lower it
         # as endpoints graduate; never raise it to make something pass.
-        self.assertLessEqual(remaining, 44,
+        self.assertLessEqual(remaining, 43,
                              f"the allowlists grew to {remaining} — they may only shrink")
         self.assertGreater(total, remaining)
 
