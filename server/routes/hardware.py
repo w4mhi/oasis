@@ -112,6 +112,11 @@ def api_hardware_devices():
     dra_present = HD_detect.detect_dra_pi()
     HW.reconcile_dra_pi(SUITE_ROOT, inv, dra_present)
     HW.auto_declare_dra_pi(SUITE_ROOT, inv, dra_present)
+    # DRAWS declares BOTH mDin6 ports as separate devices (see HW.DRAWS_PORTS),
+    # so aprs can hold the left while winlink holds the right.
+    draws_present = HD_detect.detect_draws()
+    HW.reconcile_draws(SUITE_ROOT, inv, draws_present)
+    HW.auto_declare_draws(SUITE_ROOT, inv, draws_present)
     # Re-template direwolf only when winlink's assigned device actually changed
     # (a reconcile-release when its dongle is unplugged) — merely declaring a
     # newly-plugged device no longer assigns it, so declaration alone is a no-op.
@@ -353,7 +358,12 @@ def _console_state():
                         if any(is_active(u) for u in HW.service_units(inv, s))),
                        None)
         assigned = running or (holders[0] if holders else None)
+        # `eligible` is per-DEVICE, unlike the per-kind `services[].kinds`: the
+        # DRAWS channel-1 port is a valid winlink KIND but an impossible target
+        # (pat cannot use AGW port 1), and the matrix must not offer a cell that
+        # could only fail.
         devices.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
+                        "eligible": HW.eligible_services(inv, did),
                         "serial": d.get("serial", ""), "locked": HW.is_locked(inv, did),
                         "assigned": assigned, "running": running is not None})
     return {"services": services, "devices": devices, "warnings": HW.warnings(inv)}
@@ -445,7 +455,11 @@ def api_hardware_service_stop():
     dev = inv.assignments.get(service)
     if dev and HW.is_locked(inv, dev):     # lock protects from ANY displacement, incl. stop
         return jsonify({"ok": False, "error": "source-locked", "reason": "source-locked"}), 409
-    for unit in HW.service_units(inv, service):
+    # Both rules apply. stoppable_units() drops shared infrastructure that must
+    # never be stopped for one service (direwolf-draws carries BOTH radio
+    # ports), and a SYNTHETIC unit surviving that filter is not a systemd unit
+    # at all, so it goes to its owner rather than to systemctl.
+    for unit in HW.stoppable_units(inv, service):
         if unit in HW.SYNTHETIC_UNITS:
             _stop_synthetic(unit)          # not a systemd unit — ask its owner
             continue

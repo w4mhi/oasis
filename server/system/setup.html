@@ -175,6 +175,8 @@
           <label class="setup-check"><input type="checkbox" data-feature="gps"> gps (USB / autodetect)</label>
           <label class="setup-check"><input type="checkbox" data-feature="gps-l76x"> gps-L76X (UART / GPIO HAT)</label>
           <label class="setup-check"><input type="checkbox" data-feature="dra-pi-rx-led"> dra-pi + dra-rx-led</label>
+          <label class="setup-check"><input type="checkbox" data-feature="draws-gps"> draws-gps (DRAWS HAT GPS/PPS)</label>
+          <label class="setup-check"><input type="checkbox" data-feature="draws-audio"> draws-audio (DRAWS HAT radio audio, 2 ports)</label>
           <label class="setup-check"><input type="checkbox" data-feature="rtc"> rtc-hat Witty Pi 3 (DS3231)</label>
           <label class="setup-check"><input type="checkbox" data-feature="rtc-raspad"> rtc-raspad BigTreeTech 7&quot; (PCF8563)</label>
         </div>
@@ -531,16 +533,47 @@ async function setupAutoSelectInstalledFeatures() {
 // An installed feature (green) that gets re-ticked means UNINSTALL: the checkbox
 // and label go red and a "will uninstall" hint appears. Not-installed features
 // tick normally (install). Reinstall is not a toggle state — uninstall then install.
+// Feature keys that cannot be selected together — see the comment in the change
+// handler below. Order within a group is irrelevant; ticking any member clears
+// the rest.
+// A feature may appear in MORE THAN ONE group — the handler applies every group
+// it belongs to, so draws-gps is cleared both by another gpsd source and by the
+// DRA-Pi.
+const SETUP_EXCLUSIVE_GROUPS = [
+  // gpsd sources: all three repoint gpsd at a different device.
+  ['gps', 'gps-l76x', 'draws-gps'],
+  // Radio-interface HATs. Every draws-* feature needs the DRAWS board, and the
+  // DRA-Pi is a different board for the same 40-pin header and the same I2S
+  // bus — you cannot fit or drive both. Bench 2026-08-06: installing DRA-Pi on
+  // a DRAWS box left the Pi with NO sound cards at all, and the wreckage read
+  // as "DRAWS is broken" rather than "two HATs cannot coexist".
+  //
+  // Written as PAIRS, not one ['dra-pi-rx-led','draws-audio','draws-gps']
+  // group: a group is all-pairs-exclusive, which would also make the two
+  // draws-* features exclude EACH OTHER — and they are the same board, so they
+  // are meant to be installed together.
+  ['dra-pi-rx-led', 'draws-audio'],
+  ['dra-pi-rx-led', 'draws-gps'],
+];
+
 function setupWireReinstallHints() {
   document.querySelectorAll('input[data-feature]').forEach(ch => {
     ch.addEventListener('change', () => {
-      // gps (USB) and gps-l76x (UART) both drive gpsd — keep them mutually
-      // exclusive so a plan never configures two gpsd device targets at once.
-      if (ch.checked && (ch.dataset.feature === 'gps' || ch.dataset.feature === 'gps-l76x')) {
-        const otherKey = ch.dataset.feature === 'gps' ? 'gps-l76x' : 'gps';
-        const other = document.querySelector(`input[data-feature="${otherKey}"]`);
-        if (other && other.checked) { other.checked = false; other.dispatchEvent(new Event('change')); }
-      }
+      // Mutually exclusive feature groups. Ticking one unticks its rivals so a
+      // plan can never configure two conflicting targets at once. Each group is
+      // enforced again at install time by the installer's own check (the UI is
+      // convenience, the installer is the backstop).
+      //   gpsd   — gps (USB), gps-l76x (UART HAT) and draws-gps (DRAWS HAT) all
+      //            repoint gpsd at a different device.
+      //   radio  — dra-pi and draws-audio are two radio-interface HATs; they
+      //            cannot both own the 40-pin audio/PTT lines.
+      SETUP_EXCLUSIVE_GROUPS.forEach(group => {
+        if (!ch.checked || !group.includes(ch.dataset.feature)) return;
+        group.filter(k => k !== ch.dataset.feature).forEach(otherKey => {
+          const other = document.querySelector(`input[data-feature="${otherKey}"]`);
+          if (other && other.checked) { other.checked = false; other.dispatchEvent(new Event('change')); }
+        });
+      });
       const label = ch.closest('.setup-check');
       if (!label) return;
       const key = ch.getAttribute('data-feature');
@@ -654,8 +687,8 @@ const HW_ASSIGN_SERVICES = [
   { service: 'adsb',       label: 'ADS-B',       kinds: ['rtl-sdr'] },
   { service: 'openwebrx',  label: 'OpenWebRX',   kinds: ['rtl-sdr'] },
   { service: 'aprs',       label: 'APRS Feed',   kinds: ['rtl-sdr'] },
-  { service: 'satellites', label: 'Satellites',  kinds: ['rtl-sdr'] },
-  { service: 'winlink',    label: 'Winlink RF',  kinds: ['digirig', 'dra-pi'] },
+  { service: 'satellites', label: 'Satellites',  kinds: ['rtl-sdr', 'draws'] },
+  { service: 'winlink',    label: 'Winlink RF',  kinds: ['digirig', 'dra-pi', 'draws'] },
 ];
 
 // setupDetectHardware is the card's single refresh entry point (wired to the
@@ -741,7 +774,12 @@ function hwRenderAssignRows(devices) {
   // dropdown locks then, so a live unit never has its device pulled (v2 §5).
   const running = new Set(declared.filter(d => d.running).map(d => d.assignee));
   box.innerHTML = HW_ASSIGN_SERVICES.map(svc => {
-    const compatible = declared.filter(d => svc.kinds.includes(d.kind));
+    // Prefer the server's per-DEVICE `eligible` list: kind alone cannot say
+    // that the DRAWS channel-1 port is off-limits to Winlink (pat can only use
+    // AGW port 0). Fall back to the kind list when the field is absent.
+    const compatible = declared.filter(d => Array.isArray(d.eligible)
+      ? d.eligible.includes(svc.service) && svc.kinds.includes(d.kind)
+      : svc.kinds.includes(d.kind));
     const current = (services[svc.service] || {}).device_id || '';
     const isRunning = running.has(svc.service);
     // Winlink RF with no radio isn't "unassigned" — it falls back to telnet.

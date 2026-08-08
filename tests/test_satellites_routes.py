@@ -203,7 +203,11 @@ class RoutesTest(unittest.TestCase):
     def _allow_capture(self):
         entry = {"name": "ISS (ZARYA)"}
         self._orig_prep = self.routes._prep_capture
-        self.routes._prep_capture = lambda norad, freq_mhz=None: (entry, 145_800_000, None, "fm")
+        # 5-tuple since DRAWS: the last slot is the radio channel, None on an
+        # RTL-SDR capture. A 4-tuple stub makes the real view raise ValueError
+        # into its generic handler, turning every refusal into a 500.
+        self.routes._prep_capture = (
+            lambda norad, freq_mhz=None: (entry, 145_800_000, None, "fm", None))
         self.addCleanup(lambda: setattr(self.routes, "_prep_capture", self._orig_prep))
 
     def test_listen_refuses_when_the_card_is_full(self):

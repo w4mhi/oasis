@@ -144,3 +144,27 @@ class DetectDraPiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DrawsPresentTest(unittest.TestCase):
+    def test_true_for_the_draws_card(self):
+        self.assertTrue(HD.draws_present(
+            [{"id": "draws", "description": "simple-card"}]))
+
+    def test_false_without_it(self):
+        self.assertFalse(HD.draws_present(
+            [{"id": "vc4hdmi0", "description": "vc4-hdmi-0"},
+             {"id": "Headphones", "description": "bcm2835 Headphones"}]))
+
+    def test_dra_pi_card_is_not_draws(self):
+        """The two HATs are different features and must never cross-detect."""
+        self.assertFalse(HD.draws_present(
+            [{"id": "audioinjectorpi", "description": "AudioInjector Pi"}]))
+
+    def test_draws_card_is_not_dra_pi(self):
+        self.assertFalse(HD.dra_pi_present(
+            [{"id": "draws", "description": "simple-card"}]))
+
+    def test_unrelated_card_merely_mentioning_draws_is_ignored(self):
+        self.assertFalse(HD.draws_present(
+            [{"id": "USB", "description": "a draws-compatible thing"}]))

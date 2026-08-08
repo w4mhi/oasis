@@ -129,3 +129,52 @@ class StripConfigTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfigSubsTest(unittest.TestCase):
+    """Bench 2026-08-06: the DRA-Pi installer MUTATES stock config.txt lines it
+    does not own — it comments out `dtparam=audio=on` and appends `,noaudio` to
+    the vc4 overlay. Neither sits inside its BEGIN/END markers, so config_blocks
+    removal cannot undo them: uninstalling left the Pi with NO sound cards at
+    all, which read as "DRAWS is broken". config_subs is the reversal primitive
+    those installers were missing."""
+
+    def test_substitutes_a_line(self):
+        text = "a\n# dtparam=audio=on   # disabled by OASIS DRA-Pi\nb\n"
+        out, changes = removal.strip_config(
+            text, [], [],
+            subs=[["# dtparam=audio=on   # disabled by OASIS DRA-Pi",
+                   "dtparam=audio=on"]])
+        self.assertIn("dtparam=audio=on", out.splitlines())
+        self.assertNotIn("# dtparam=audio=on   # disabled by OASIS DRA-Pi",
+                         out.splitlines())
+        self.assertTrue(changes)
+
+    def test_absent_line_is_a_no_op(self):
+        text = "a\nb\n"
+        out, changes = removal.strip_config(text, [], [], subs=[["x", "y"]])
+        self.assertEqual(out, text)
+        self.assertEqual(changes, [])
+
+    def test_is_idempotent(self):
+        subs = [["dtoverlay=vc4-kms-v3d,noaudio", "dtoverlay=vc4-kms-v3d"]]
+        text = "dtoverlay=vc4-kms-v3d,noaudio\n"
+        once, _ = removal.strip_config(text, [], [], subs=subs)
+        twice, changes = removal.strip_config(once, [], [], subs=subs)
+        self.assertEqual(once, twice)
+        self.assertEqual(changes, [])
+
+    def test_preserves_indentation(self):
+        out, _ = removal.strip_config("   dtoverlay=vc4-kms-v3d,noaudio\n", [], [],
+                                      subs=[["dtoverlay=vc4-kms-v3d,noaudio",
+                                             "dtoverlay=vc4-kms-v3d"]])
+        self.assertEqual(out, "   dtoverlay=vc4-kms-v3d\n")
+
+    def test_subs_run_alongside_blocks_and_lines(self):
+        text = ("dtparam=audio=off\n"
+                "# --- B ---\ninner\n# --- E ---\n"
+                "dtoverlay=vc4-kms-v3d,noaudio\n")
+        out, _ = removal.strip_config(
+            text, [["# --- B ---", "# --- E ---"]], ["dtparam=audio=off"],
+            subs=[["dtoverlay=vc4-kms-v3d,noaudio", "dtoverlay=vc4-kms-v3d"]])
+        self.assertEqual(out.strip(), "dtoverlay=vc4-kms-v3d")

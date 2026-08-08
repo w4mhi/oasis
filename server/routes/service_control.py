@@ -18,6 +18,10 @@ _OASIS_SERVICES = {
     "graywolf", "graywolf-api", "pat", "pat-direwolf", "kiwix", "webssh",
     "aprs-sdr-feed", "openwebrx", "gpsd", "oasis",
     "dump1090-fa", "adsb-api",
+    # The shared DRAWS TNC. Present so the Winlink card can report its status on
+    # a DRAWS box (where pat-direwolf is deliberately never run); it carries BOTH
+    # radio ports, so stopping it takes APRS down with Winlink.
+    "direwolf-draws",
 }
 
 # Units the dashboard may start/stop/restart. Everything in _OASIS_SERVICES

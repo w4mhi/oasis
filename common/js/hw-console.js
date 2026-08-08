@@ -29,7 +29,14 @@
   // finished state. An older server that doesn't send the flag keeps the old
   // behaviour, since only an explicit `false` selects the new state.
   function oasisCstate(dev, svc) {
-    if ((svc.kinds || []).indexOf(dev.kind) < 0) return 'na';
+    // Per-DEVICE eligibility wins over the per-kind list when the server sends
+    // it: a DRAWS channel-1 port is a valid 'draws' kind for winlink but an
+    // impossible target (pat cannot use AGW port 1), so the cell must read 'na'
+    // rather than offer a toggle that can only fail. Falls back to the kind
+    // rule when absent, so an older payload still renders.
+    if (Array.isArray(dev.eligible)) {
+      if (dev.eligible.indexOf(svc.id) < 0) return 'na';
+    } else if ((svc.kinds || []).indexOf(dev.kind) < 0) return 'na';
     if (dev.assigned !== svc.id) return 'off';
     if (dev.running) return 'on';
     return svc.startable === false ? 'ready' : 'stopped';

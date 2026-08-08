@@ -70,16 +70,17 @@ def _apply_config(items, apply):
     if not cfg:
         _info("config.txt not found — skipping.")
         return
-    blocks, lines = [], []
+    blocks, lines, subs = [], [], []
     for _key, rec in items:
         blocks += [tuple(b) for b in rec.get("config_blocks", [])]
         lines += rec.get("config_lines", [])
-    if not blocks and not lines:
+        subs += [list(x) for x in rec.get("config_subs", [])]
+    if not blocks and not lines and not subs:
         _ok("no OASIS config.txt edits to remove.")
         return
     with open(cfg, encoding="utf-8", errors="ignore") as fh:
         text = fh.read()
-    new_text, changes = removal.strip_config(text, blocks, lines)
+    new_text, changes = removal.strip_config(text, blocks, lines, subs)
     if not changes:
         _ok("config.txt already clean.")
         return

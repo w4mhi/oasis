@@ -215,6 +215,44 @@ def record_command(freq_hz, out_wav, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM,
     return f"{rtl} | {sox}"
 
 
+# ── radio-port capture (DRAWS) ───────────────────────────────────────────────
+# An SDR retunes itself; a radio does not. The DRAWS carries audio and PTT only
+# — no CAT — so Doppler across a pass is the OPERATOR's to chase: they park the
+# radio on the downlink and OASIS just records what comes out of it. That is the
+# whole difference from the rtl_fm path, and why there is no tuning here.
+RADIO_PCM = "draws_shared_in"      # shared capture pcm (features/draws-audio)
+
+
+def radio_record_command(out_wav, channel=1, pcm=RADIO_PCM, srate=SAMPLE_RATE,
+                         max_seconds=MAX_SECONDS):
+    """The `arecord | sox` pipeline recording ONE channel of the radio card to a
+    mono WAV. Mirrors record_command's shape (timeout-bounded, piped to sox) so
+    start()/stop() handle both sources identically.
+
+    `channel` is the direwolf channel index (0 = left, 1 = right); sox's remix
+    is 1-based, hence the +1. Capture goes through the SHARED pcm, so the TNC
+    keeps working the other port while a pass records."""
+    remix = int(channel) + 1
+    arecord = (f"timeout {int(max_seconds)} arecord -D {shlex.quote(pcm)} "
+               f"-c 2 -f S16_LE -r {int(srate)} -t raw -")
+    sox = (f"sox -t raw -r {int(srate)} -e signed-integer -b 16 -c 2 - "
+           f"{shlex.quote(out_wav)} remix {remix}")
+    return f"{arecord} | {sox}"
+
+
+def radio_preconditions(cards_path="/proc/asound/cards", which=shutil.which):
+    """Deps/hardware check for the radio path — the SDR ones (rtl_fm, dongle
+    present, dongle busy) do not apply. Returns the same shape as
+    preconditions() so the route can branch without special-casing keys."""
+    missing = [t for t in ("arecord", "sox") if not which(t)]
+    try:
+        with open(cards_path) as fh:
+            card = "draws" in fh.read().lower()
+    except OSError:
+        card = False
+    return {"missing_deps": missing, "card_present": card}
+
+
 def stream_encoder(srate, which=shutil.which):
     """(encoder_shell, mime) that turns rtl_fm's raw s16le mono into a
     browser-playable stream on stdout. Chromium plays MP3; prefer ffmpeg
@@ -390,17 +428,26 @@ def status():
 
 
 def start(freq_hz, norad, out_wav, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM,
-          srate=None, device_serial=None, dmode="fm"):
+          srate=None, device_serial=None, dmode="fm", radio_channel=None):
     """Begin recording to out_wav. Raises RuntimeError if already recording. The
     caller verifies deps/dongle/feed first (see preconditions). device_serial
     pins rtl_fm to the dongle assigned to satellites; dmode selects the demod
-    (see record_command / demod_params)."""
+    (see record_command / demod_params).
+
+    `radio_channel` switches the SOURCE: given a channel index, audio is taken
+    from that channel of the radio card instead of an SDR (see
+    radio_record_command). freq_hz is then only metadata — the operator has
+    tuned the radio by hand, since the DRAWS has no CAT."""
     with _lock:
         if is_recording():
             raise RuntimeError("already recording")
         os.makedirs(os.path.dirname(out_wav), exist_ok=True)
+        cmd = (radio_record_command(out_wav, radio_channel, srate=srate or SAMPLE_RATE)
+               if radio_channel is not None
+               else record_command(freq_hz, out_wav, gain, ppm, srate,
+                                   device_serial=device_serial, dmode=dmode))
         proc = subprocess.Popen(
-            record_command(freq_hz, out_wav, gain, ppm, srate, device_serial=device_serial, dmode=dmode),
+            cmd,
             shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             preexec_fn=os.setsid)   # own process group so stop() kills the whole pipe
         _state.update(proc=proc, norad=norad, path=out_wav,

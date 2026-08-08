@@ -94,6 +94,19 @@ def api_health_binary():
                     "path": path or None})
 
 
+def _winlink_modem_unit():
+    """The systemd unit actually carrying RF Winlink for the current assignment.
+    Falls back to pat-direwolf on any error — the historical behaviour, and the
+    right answer on every non-DRAWS box."""
+    try:
+        from common import hardware as HW
+        from app import SUITE_ROOT
+        units = HW.service_units(HW.load(SUITE_ROOT), "winlink")
+        return units[0] if units else "pat-direwolf"
+    except Exception:                              # noqa: BLE001 - status only
+        return "pat-direwolf"
+
+
 @bp.route("/api/health/service")
 def api_health_service():
     """Report systemd status for a known OASIS service (Linux only).
@@ -102,6 +115,13 @@ def api_health_service():
     import sys as _sys
 
     name = request.args.get("name", "")
+    # The Winlink modem is mode-dependent: pat-direwolf normally, but the shared
+    # 2-channel direwolf-draws on a DRAWS box (where pat-direwolf is deliberately
+    # stopped and disabled, so asking about it always reports STOPPED no matter
+    # how healthy the real TNC is). Resolve the logical name here rather than
+    # teaching the dashboard the hardware model.
+    if name == "winlink-modem":
+        name = _winlink_modem_unit()
     if name not in _OASIS_SERVICES:
         return jsonify({"ok": False, "error": "unknown service",
                         "code": "UNKNOWN_SERVICE"}), 400

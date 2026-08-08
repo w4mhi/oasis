@@ -24,6 +24,7 @@ class DeviceStatesTest(unittest.TestCase):
                    assignments={"adsb": "a"})
         states = hardware.device_states(inv, is_active=lambda u: u == "dump1090-fa")
         self.assertEqual(states, [{"id": "a", "label": "ADS-B dongle", "kind": "rtl-sdr",
+                                   "eligible": ["aprs", "adsb", "openwebrx", "satellites"],
                                    "serial": "", "ptt": "", "assignee": "adsb", "running": True}])
 
     def test_includes_serial_for_usb_port_join(self):
@@ -339,3 +340,285 @@ class DraPiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DrawsDeviceModelTest(unittest.TestCase):
+    """The DRAWS HAT has TWO independent radio ports on one stereo codec, so it
+    is declared as TWO device records rather than one. That is what lets APRS
+    hold the left port while Winlink holds the right SIMULTANEOUSLY, under the
+    existing per-device exclusivity rule — no special non-exclusive branch."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_declares_both_ports(self):
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, True)
+        self.assertEqual(inv.devices["draws-left"],
+                         {"id": "draws-left", "kind": "draws", "ptt": "gpio12",
+                          "alsa": "draws", "channel": 0, "label": "oasis-draws-winlink (left, ch0)"})
+        self.assertEqual(inv.devices["draws-right"],
+                         {"id": "draws-right", "kind": "draws", "ptt": "gpio23",
+                          "alsa": "draws", "channel": 1, "label": "oasis-draws-aprs (right, ch1)"})
+
+    def test_absent_declares_nothing(self):
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, False)
+        self.assertEqual(inv.devices, {})
+
+    def test_declaration_is_idempotent(self):
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, True)
+        hardware.auto_declare_draws(self.dir, inv, True)
+        self.assertEqual(len([d for d in inv.devices.values()
+                              if d.get("kind") == "draws"]), 2)
+
+    def test_reconcile_removes_both_ports_when_card_gone(self):
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, True)
+        inv.assignments["winlink"] = "draws-right"
+        hardware.reconcile_draws(self.dir, inv, False)
+        self.assertNotIn("draws-left", inv.devices)
+        self.assertNotIn("draws-right", inv.devices)
+        self.assertEqual(inv.assignments.get("winlink"), "draws-right")  # dangles
+
+    def test_reconcile_keeps_ports_when_card_present(self):
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, True)
+        hardware.reconcile_draws(self.dir, inv, True)
+        self.assertIn("draws-left", inv.devices)
+        self.assertIn("draws-right", inv.devices)
+
+    def test_aprs_and_winlink_hold_different_ports_at_once(self):
+        """The whole point of the two-device model. Roles are fixed by the pat
+        AGW-port-0 limitation: winlink on the LEFT (ch0), aprs on the RIGHT."""
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, True)
+        ok, _ = hardware.can_assign(inv, "winlink", "draws-left")
+        self.assertTrue(ok)
+        inv.assignments["winlink"] = "draws-left"
+        ok, holder = hardware.can_assign(inv, "aprs", "draws-right")
+        self.assertTrue(ok, "aprs must be able to hold the right port while winlink holds the left")
+        self.assertIsNone(holder)
+
+    def test_a_single_port_is_still_exclusive(self):
+        inv = _inv()
+        hardware.auto_declare_draws(self.dir, inv, True)
+        inv.assignments["aprs"] = "draws-left"
+        ok, holder = hardware.can_assign(inv, "winlink", "draws-left")
+        self.assertFalse(ok)
+        self.assertEqual(holder, "aprs")
+
+    def test_winlink_accepts_the_draws_kind(self):
+        self.assertIn("draws", hardware.DEVICE_KIND_FOR_SERVICE["winlink"])
+
+    def test_aprs_accepts_the_draws_kind(self):
+        self.assertIn("draws", hardware.DEVICE_KIND_FOR_SERVICE["aprs"])
+
+    def test_draws_is_a_valid_kind(self):
+        self.assertIn("draws", hardware.VALID_KINDS)
+
+
+class DrawsServiceUnitsTest(unittest.TestCase):
+    """On a DRAWS box the shared 2-channel direwolf-draws IS the radio stack for
+    winlink -- pat-direwolf must never run, because it would open the same card
+    (and, templated for a DRA-Pi it cannot see, just crash-loops). service_units
+    is already mode-dependent for aprs; winlink now works the same way."""
+
+    def test_winlink_on_draws_uses_the_shared_tnc(self):
+        inv = _inv(devices={"draws-right": _dev("draws-right", "draws", channel=1)},
+                   assignments={"winlink": "draws-right"})
+        self.assertEqual(hardware.service_units(inv, "winlink"),
+                         [hardware.DRAWS_TNC_UNIT])
+
+    def test_winlink_on_dra_pi_still_uses_pat_direwolf(self):
+        inv = _inv(devices={"dra-pi": _dev("dra-pi", "dra-pi")},
+                   assignments={"winlink": "dra-pi"})
+        self.assertEqual(hardware.service_units(inv, "winlink"), ["pat-direwolf"])
+
+    def test_winlink_unassigned_still_uses_pat_direwolf(self):
+        self.assertEqual(hardware.service_units(_inv(), "winlink"), ["pat-direwolf"])
+
+    def test_aprs_on_draws_is_soundcard_only(self):
+        """A draws port is a radio port, not an SDR, so no rtl feed unit."""
+        inv = _inv(devices={"draws-left": _dev("draws-left", "draws", channel=0)},
+                   assignments={"aprs": "draws-left"})
+        self.assertNotIn(hardware.APRS_FEED_UNIT, hardware.service_units(inv, "aprs"))
+
+
+class SharedInfrastructureUnitTest(unittest.TestCase):
+    """Regression 2026-08-06: making direwolf-draws winlink's unit let the
+    service-control STOP path stop it -- which also killed APRS (both ports are
+    channels of that one TNC) and left the Winlink card reading STOPPED. The
+    unit must still report STATUS for winlink (so an up TNC reads ON AIR) but
+    must never be stopped on a per-service action."""
+
+    def _inv_draws(self):
+        return _inv(devices={"draws-right": _dev("draws-right", "draws", channel=1),
+                             "draws-left": _dev("draws-left", "draws", channel=0)},
+                    assignments={"winlink": "draws-right"})
+
+    def test_status_still_sees_the_tnc(self):
+        self.assertEqual(hardware.service_units(self._inv_draws(), "winlink"),
+                         [hardware.DRAWS_TNC_UNIT])
+
+    def test_stoppable_units_excludes_the_shared_tnc(self):
+        self.assertEqual(hardware.stoppable_units(self._inv_draws(), "winlink"), [])
+
+    def test_stoppable_units_is_unchanged_for_ordinary_services(self):
+        inv = _inv(devices={"dra-pi": _dev("dra-pi", "dra-pi")},
+                   assignments={"winlink": "dra-pi"})
+        self.assertEqual(hardware.stoppable_units(inv, "winlink"), ["pat-direwolf"])
+
+    def test_release_does_not_stop_the_shared_tnc(self):
+        stopped = []
+        inv = self._inv_draws()
+        hardware.release(self.dir, inv, "winlink", stop_fn=stopped.append)
+        self.assertEqual(stopped, [],
+                         "unassigning winlink must not stop the shared TNC")
+
+    def test_reroute_away_does_not_stop_the_shared_tnc(self):
+        stopped = []
+        inv = self._inv_draws()
+        inv.devices["dra-pi"] = _dev("dra-pi", "dra-pi")
+        hardware.reroute(self.dir, inv, "winlink", "dra-pi",
+                         start_fn=lambda u: None, stop_fn=stopped.append)
+        self.assertNotIn(hardware.DRAWS_TNC_UNIT, stopped)
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+
+class DrawsLabelRefreshTest(unittest.TestCase):
+    """auto_declare only fires when NO draws device exists, so a box declared
+    before a label/field change keeps the stale record forever. Refresh the
+    static fields in place, without disturbing assignments or locks."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_refreshes_stale_labels_in_place(self):
+        inv = _inv(devices={
+            "draws-left": {"id": "draws-left", "kind": "draws", "ptt": "gpio12",
+                           "alsa": "draws", "channel": 0,
+                           "label": "DRAWS left (APRS)"},
+            "draws-right": {"id": "draws-right", "kind": "draws", "ptt": "gpio23",
+                            "alsa": "draws", "channel": 1,
+                            "label": "DRAWS right (Winlink)"}},
+            assignments={"winlink": "draws-right"})
+        hardware.auto_declare_draws(self.dir, inv, True)
+        self.assertEqual(inv.devices["draws-left"]["label"],
+                         "oasis-draws-winlink (left, ch0)")
+        self.assertEqual(inv.devices["draws-right"]["label"],
+                         "oasis-draws-aprs (right, ch1)")
+
+    def test_refresh_preserves_assignments(self):
+        inv = _inv(devices={"draws-right": {"id": "draws-right", "kind": "draws",
+                                            "label": "old"}},
+                   assignments={"winlink": "draws-right"})
+        hardware.auto_declare_draws(self.dir, inv, True)
+        self.assertEqual(inv.assignments.get("winlink"), "draws-right")
+
+    def test_refresh_preserves_a_lock(self):
+        """A refresh must not silently unlock a device the operator pinned."""
+        inv = _inv(devices={"draws-right": {"id": "draws-right", "kind": "draws",
+                                            "label": "old", "locked": True}},
+                   assignments={})
+        hardware.auto_declare_draws(self.dir, inv, True)
+        self.assertTrue(inv.devices["draws-right"].get("locked"))
+
+
+class WinlinkDrawsChannelGuardTest(unittest.TestCase):
+    """pat (wl2k-go v1.0.1) PANICS on any AGW port but 0, so Winlink is only
+    ever valid on the DRAWS channel-0 port. Offering the other one lets an
+    operator pick a combination that can only fail — refuse it in the engine and
+    hide it in the console."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+        self.inv = _inv()
+        hardware.auto_declare_draws(self.dir, self.inv, True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_winlink_may_take_the_channel0_port(self):
+        ok, _ = hardware.can_assign(self.inv, "winlink", "draws-left")
+        self.assertTrue(ok)
+
+    def test_winlink_is_refused_the_channel1_port(self):
+        ok, holder = hardware.can_assign(self.inv, "winlink", "draws-right")
+        self.assertFalse(ok, "pat cannot use AGW port 1 — must not be offered")
+        self.assertIsNone(holder)
+
+    def test_aprs_may_still_take_either_port(self):
+        for did in ("draws-left", "draws-right"):
+            ok, _ = hardware.can_assign(self.inv, "aprs", did)
+            self.assertTrue(ok, did)
+
+    def test_assign_raises_for_the_channel1_port(self):
+        self.assertRaises(ValueError, hardware.assign,
+                          self.dir, self.inv, "winlink", "draws-right")
+
+    def test_other_kinds_are_unaffected(self):
+        inv = _inv(devices={"dg": _dev("dg", "digirig"), "dp": _dev("dp", "dra-pi")})
+        for did in ("dg", "dp"):
+            ok, _ = hardware.can_assign(inv, "winlink", did)
+            self.assertTrue(ok, did)
+
+    def test_eligible_services_exclude_winlink_on_channel1(self):
+        self.assertIn("winlink", hardware.eligible_services(self.inv, "draws-left"))
+        self.assertNotIn("winlink", hardware.eligible_services(self.inv, "draws-right"))
+        self.assertIn("aprs", hardware.eligible_services(self.inv, "draws-right"))
+
+
+class SatellitesDrawsChannelTest(unittest.TestCase):
+    """Satellite RX rides the DRAWS channel-1 port: channel 0 is Winlink's (pat
+    can only use AGW port 0), so the two never contend for the same connector."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+        self.inv = _inv()
+        hardware.auto_declare_draws(self.dir, self.inv, True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_satellites_may_take_the_channel1_port(self):
+        ok, _ = hardware.can_assign(self.inv, "satellites", "draws-right")
+        self.assertTrue(ok)
+
+    def test_satellites_is_refused_the_channel0_port(self):
+        ok, _ = hardware.can_assign(self.inv, "satellites", "draws-left")
+        self.assertFalse(ok, "channel 0 belongs to Winlink")
+
+    def test_the_two_ports_carry_different_services(self):
+        self.assertIn("winlink", hardware.eligible_services(self.inv, "draws-left"))
+        self.assertNotIn("satellites", hardware.eligible_services(self.inv, "draws-left"))
+        self.assertIn("satellites", hardware.eligible_services(self.inv, "draws-right"))
+        self.assertNotIn("winlink", hardware.eligible_services(self.inv, "draws-right"))
+
+    def test_satellites_still_takes_an_sdr(self):
+        inv = _inv(devices={"d": _dev("d", "rtl-sdr")})
+        ok, _ = hardware.can_assign(inv, "satellites", "d")
+        self.assertTrue(ok)
+
+    def test_winlink_and_satellites_hold_both_ports_at_once(self):
+        self.inv.assignments["winlink"] = "draws-left"
+        ok, holder = hardware.can_assign(self.inv, "satellites", "draws-right")
+        self.assertTrue(ok)
+        self.assertIsNone(holder)

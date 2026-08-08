@@ -34,7 +34,6 @@ Requires: Linux (Raspberry Pi), sudo.
 import argparse
 import difflib
 import os
-import re
 import subprocess
 import sys
 
@@ -55,11 +54,40 @@ def removal_record(repo_root=None):
     config.txt block and remove the dra-rx-led service (installed by the chain's
     enable-dra-rx-led.py). Reboot to drop the sound-card overlay."""
     return {"config_blocks": [[BLOCK_BEGIN, BLOCK_END]],
+            "config_subs": _config_subs(),
             "services": ["dra-rx-led"],
             "requires_reboot": True}
+
+
+# The two config.txt lines this feature mutates that are NOT its own: the stock
+# on-board audio param and the KMS overlay. Stripping the managed block cannot
+# undo either (they live outside the markers), and leaving them behind kills
+# EVERY sound card on the box — including a DRAWS HAT installed afterwards,
+# which then looks broken for no visible reason (bench 2026-08-06). Derived from
+# the same constants transform_config() uses so the pair can never drift.
+AUDIO_ON_LINE       = "dtparam=audio=on"
+AUDIO_OFF_COMMENT   = f"# {AUDIO_ON_LINE}   # disabled by OASIS DRA-Pi"
+VC4_BASE            = "dtoverlay=vc4-kms-v3d"
+VC4_NOAUDIO         = f"{VC4_BASE},noaudio"
+
+
+def conflicting_overlay(text):
+    """True if config.txt already loads the DRAWS HAT.
+
+    The two boards want the same 40-pin header and the same I2S bus, so they
+    cannot coexist — and installing this one over DRAWS is how the bench box
+    ended up with no sound cards at all. The Setup page keeps the checkboxes
+    mutually exclusive, but nothing stops a direct run of this script, so the
+    installer checks for itself. A commented-out line does not count."""
+    return any(ln.strip() == "dtoverlay=draws" for ln in text.splitlines())
+
+
+def _config_subs():
+    """(from, to) pairs restoring the stock lines transform_config() rewrote."""
+    return [[AUDIO_OFF_COMMENT, AUDIO_ON_LINE],
+            [VC4_NOAUDIO, VC4_BASE]]
 BLOCK_LINES = [
     "dtparam=i2c_arm=on",                    # WM8731 control interface (I2C)
-    "dtparam=audio=off",                     # free the I2S bus from PWM/HDMI audio
     "dtoverlay=i2s-mmap",                    # mmap DMA on I2S (harmless if unused)
     "dtoverlay=audioinjector-wm8731-audio",  # THE card: loads + clocks the codec
 ]
@@ -128,27 +156,15 @@ def transform_config(text):
     """Return (new_text, changes). Neutralises conflicting Pi defaults and upserts
     the OASIS-managed overlay block. Idempotent."""
     changes = []
-    out = []
-    vc4_base = "dtoverlay=vc4-kms-v3d"
-    for ln in text.splitlines():
-        s = ln.strip()
-        indent = ln[: len(ln) - len(ln.lstrip())]
-
-        # 1) Disable the default on-board audio so it can't grab the I2S bus.
-        if re.match(r"^dtparam=audio=on\b", s):
-            out.append(f"{indent}# {s}   # disabled by OASIS DRA-Pi")
-            changes.append("commented 'dtparam=audio=on'")
-            continue
-
-        # 2) Ensure the KMS graphics overlay has ',noaudio' (frees I2S / drops vc4hdmi).
-        if (s == vc4_base or s.startswith(vc4_base + ",")) and "noaudio" not in s:
-            out.append(f"{indent}{s},noaudio")
-            changes.append("added ',noaudio' to vc4-kms-v3d")
-            continue
-
-        out.append(ln)
-
-    body = "\n".join(out)
+    # Stock lines are left ALONE. Earlier versions commented out
+    # `dtparam=audio=on` and appended `,noaudio` to the KMS overlay, on the
+    # premise that they had to be silenced to "free the I2S bus". That premise
+    # is wrong: on-board audio is PWM/headphone and HDMI audio goes out HDMI —
+    # neither contends for I2S. Bench 2026-08-06: a DRAWS I2S codec, the
+    # on-board card and both HDMI cards coexist with `dtparam=audio=on`. The
+    # edits also could not be undone by a block strip, so uninstalling the
+    # feature left the Pi with no sound cards at all.
+    body = text
 
     # 3) Upsert the managed block (replace any existing one).
     if BLOCK_BEGIN in body:
@@ -180,6 +196,12 @@ def do_config_phase(dry_run):
     _info(f"Boot config: {path}")
 
     text = read_text(path)
+    if conflicting_overlay(text):
+        _fail("This box already loads the DRAWS HAT (dtoverlay=draws). The "
+              "DRA-Pi and DRAWS are different boards for the same 40-pin "
+              "header and the same I2S bus — installing both leaves the Pi "
+              "with no working sound card.\n  Remove the DRAWS features first "
+              "(Setup, or scripts/remove-oasis.py), reboot, then re-run this.")
     new_text, changes = transform_config(text)
 
     if new_text == text:

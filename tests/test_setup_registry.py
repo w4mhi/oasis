@@ -42,5 +42,35 @@ class PrivilegedAllowlistSyncTest(unittest.TestCase):
         self.assertTrue(reg["gps-l76x"].privileged)
 
 
+class DrawsFeaturesTest(unittest.TestCase):
+    """The two DRAWS HAT features (P2 wiring). Both write /boot config and
+    touch system services, so both go through the privileged worker."""
+
+    def setUp(self):
+        self.reg = R.build_registry("/tmp/oasis-test-repo")
+
+    def test_both_features_are_registered(self):
+        self.assertIn("draws-gps", self.reg)
+        self.assertIn("draws-audio", self.reg)
+
+    def test_both_are_privileged_and_allowlisted(self):
+        for key in ("draws-gps", "draws-audio"):
+            self.assertTrue(self.reg[key].privileged, key)
+            self.assertIn(key, R.PRIVILEGED_FEATURES, key)
+
+    def test_neither_auto_enables_a_service(self):
+        """Config-only hardware features, like gps/gps-l76x/dra-pi — there is no
+        unit to enable, and the exit-10 reboot convention drives the rest."""
+        for key in ("draws-gps", "draws-audio"):
+            self.assertEqual(self.reg[key].enable_policy, "none", key)
+
+    def test_no_dependencies(self):
+        """draws-audio must NOT depend on draws-gps: the shared dtoverlay=draws
+        line is written idempotently by whichever installs first, so either can
+        be installed alone."""
+        for key in ("draws-gps", "draws-audio"):
+            self.assertEqual(self.reg[key].dependencies, [], key)
+
+
 if __name__ == "__main__":
     unittest.main()

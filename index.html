@@ -1995,7 +1995,13 @@ const SERVICES = [
       //   • radio assigned → RF/packet: START runs the modem (red/STOPPED until ON AIR)
       //   • no radio        → telnet: nothing to start, so the power control is hidden
       //                       and the card reflects internet reachability instead.
-      const r = await fetch('/api/health/service?name=pat-direwolf', { cache: 'no-store' });
+      // 'winlink-modem' is a LOGICAL name the server resolves to whichever unit
+      // actually carries RF Winlink for the current assignment: pat-direwolf
+      // normally, or the shared 2-channel direwolf-draws on a DRAWS box. Asking
+      // for pat-direwolf by name there always reported STOPPED, because that
+      // unit is deliberately stopped and disabled when the DRAWS TNC owns the
+      // card — the card read STOPPED no matter how healthy the radio was.
+      const r = await fetch('/api/health/service?name=winlink-modem', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: 'status error' };
       const d = await r.json();
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };

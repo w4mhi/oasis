@@ -13,7 +13,30 @@ import sys
 
 from common import config_paths
 
-VALID_KINDS = {"rtl-sdr", "digirig", "dra-pi"}
+VALID_KINDS = {"rtl-sdr", "digirig", "dra-pi", "draws"}
+
+# The DRAWS HAT is a single stereo codec exposing TWO independent radio ports.
+# It is declared as TWO devices, not one, so the existing per-device exclusivity
+# rule (see can_assign) lets aprs hold the left port while winlink holds the
+# right AT THE SAME TIME — no non-exclusive special case anywhere in the engine.
+# PTT GPIOs are swapped relative to the UDRC II; `channel` is the Direwolf
+# channel that owns the port in the shared 2-channel TNC config.
+# Labels carry the TNC profile names (features/draws-audio/draws_audio.py) so a
+# port reads the same in the assignment console, in oasis-draws.conf, and in the
+# unit description.
+#
+# WINLINK IS ON THE LEFT PORT (channel 0), and that is forced, not a preference:
+# pat 1.0.0 / wl2k-go v1.0.1 PANIC ("incorrect port in frame") on any AGW port
+# other than 0, so Winlink can only ride channel 0 — and direwolf's channel↔audio
+# mapping is fixed by the codec, so channel 0 IS the left connector. Bench
+# 2026-08-06: radio_port 0 connects, 1 panics (3/3), 2 is out of range. APRS
+# takes the right port; GrayWolf is not affected by that library.
+DRAWS_PORTS = (
+    {"id": "draws-left",  "kind": "draws", "ptt": "gpio12", "alsa": "draws",
+     "channel": 0, "label": "oasis-draws-winlink (left, ch0)"},
+    {"id": "draws-right", "kind": "draws", "ptt": "gpio23", "alsa": "draws",
+     "channel": 1, "label": "oasis-draws-aprs (right, ch1)"},
+)
 
 # Logical service -> the systemd unit(s) it starts. One unit per service in
 # Slice 1; dual-mode selection (aprs's SDR-vs-radio-port TNC modes) and
@@ -38,11 +61,14 @@ SERVICE_UNITS = {
 
 # Which device kind(s) each logical service may be assigned.
 DEVICE_KIND_FOR_SERVICE = {
-    "aprs":      {"rtl-sdr", "digirig", "dra-pi"},
-    "winlink":   {"digirig", "dra-pi"},
+    "aprs":      {"rtl-sdr", "digirig", "dra-pi", "draws"},
+    "winlink":   {"digirig", "dra-pi", "draws"},
     "adsb":      {"rtl-sdr"},
     "openwebrx": {"rtl-sdr"},
-    "satellites": {"rtl-sdr"},
+    # satellites also accepts a DRAWS radio port: the operator tunes the radio
+    # by hand (no CAT on this HAT) and OASIS records the audio. Restricted to
+    # channel 1 by _device_ok_for_service — channel 0 is Winlink's.
+    "satellites": {"rtl-sdr", "draws"},
 }
 
 # aprs runs an extra RX feed unit (rtl_fm -> UDP -> GrayWolf) ONLY when assigned
@@ -106,16 +132,47 @@ def boot_start_plan(inv):
                 plan.append(unit)
     return plan
 
+# On a DRAWS box ONE always-on 2-channel direwolf owns the stereo card and
+# serves both radio ports over AGW/KISS. pat-direwolf must never run there: it
+# would try to open the same PCM, and templated for a DRA-Pi card the box does
+# not have it simply crash-loops ("Cannot get card index for audioinjectorpi").
+DRAWS_TNC_UNIT = "direwolf-draws"
+
+# Units that report STATUS for a service but must never be stopped by a
+# per-service action. The DRAWS TNC is shared infrastructure: it carries APRS on
+# channel 0 and Winlink on channel 1, so stopping it "for winlink" silently
+# takes APRS down too — and, since it is also winlink's status unit, leaves the
+# Winlink card reading STOPPED with no way back short of a manual start. It is
+# enabled at boot and meant to stay up, like the sound card it owns.
+NEVER_STOP_UNITS = frozenset({DRAWS_TNC_UNIT})
+
+
+def stoppable_units(inv, service):
+    """service_units() minus shared infrastructure — what a per-service STOP may
+    actually stop. Use this for any stop/displace path; use service_units() for
+    status, since an always-on shared unit is still the honest 'is this service
+    on air?' signal."""
+    return [u for u in service_units(inv, service) if u not in NEVER_STOP_UNITS]
+
+
+def _assigned_kind(inv, service):
+    dev_id = inv.assignments.get(service)
+    dev = inv.devices.get(dev_id) if dev_id else None
+    return (dev or {}).get("kind")
+
 
 def service_units(inv, service):
     """The systemd unit(s) implementing `service` given the current inventory.
-    Only `aprs` is mode-dependent: an rtl-sdr assignment prepends the RX feed."""
+
+    Two services are mode-dependent: `aprs` prepends the RX feed on an rtl-sdr
+    assignment, and `winlink` SWAPS pat-direwolf for the shared DRAWS TNC when
+    its assigned port lives on the DRAWS HAT."""
     base = list(SERVICE_UNITS.get(service, []))
     if service == "aprs":
-        dev_id = inv.assignments.get("aprs")
-        dev = inv.devices.get(dev_id) if dev_id else None
-        if dev and dev.get("kind") == "rtl-sdr":
+        if _assigned_kind(inv, "aprs") == "rtl-sdr":
             return [APRS_FEED_UNIT] + base
+    if service == "winlink" and _assigned_kind(inv, "winlink") == "draws":
+        return [DRAWS_TNC_UNIT]
     return base
 
 
@@ -286,7 +343,11 @@ def device_states(inv, is_active=_default_is_active):
              if any(is_active(u) for u in service_units(inv, svc))),
             None)
         label = ", ".join(services) if services else None   # all assignees, not just the running one
+        # `eligible` is per-DEVICE, unlike the per-kind DEVICE_KIND_FOR_SERVICE:
+        # a DRAWS channel-1 port is a valid winlink KIND but an impossible target
+        # (pat cannot use AGW port 1). UIs must filter on this, not on kind.
         out.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
+                    "eligible": eligible_services(inv, did),
                     "serial": d.get("serial", ""), "ptt": d.get("ptt", ""),
                     "assignee": label, "running": running_svc is not None})
     return out
@@ -321,6 +382,32 @@ def can_start(inv, service, is_active=_default_is_active):
     return True, ""
 
 
+def _device_ok_for_service(device, service):
+    """Per-DEVICE eligibility, beyond the per-kind rule.
+
+    Winlink on DRAWS is only valid on the channel-0 port: pat (wl2k-go v1.0.1)
+    panics on any AGW port but 0, so the channel-1 port could never work. Offer
+    it and the operator picks a combination that can only fail — so it is
+    refused here and hidden in the console (see eligible_services)."""
+    if device.get("kind") == "draws":
+        if service == "winlink":
+            return int(device.get("channel") or 0) == 0
+        if service == "satellites":
+            # Channel 0 is Winlink's; satellite RX rides the other port.
+            return int(device.get("channel") or 0) == 1
+    return True
+
+
+def eligible_services(inv, device_id):
+    """Which services may be assigned this device — kind rule AND the
+    per-device rules above. Drives the console matrix so an impossible cell is
+    never offered."""
+    device = inv.devices.get(device_id) or {}
+    kind = device.get("kind")
+    return [s for s, kinds in DEVICE_KIND_FOR_SERVICE.items()
+            if kind in kinds and _device_ok_for_service(device, s)]
+
+
 def can_assign(inv, service, device_id):
     """(ok, holder). holder is the blocking service's name, or None. Refuses the
     wrong kind, and — for exclusive (digirig/dra-pi) devices only — a device
@@ -331,6 +418,8 @@ def can_assign(inv, service, device_id):
     kind = inv.devices[device_id]["kind"]
     allowed_kinds = DEVICE_KIND_FOR_SERVICE.get(service)
     if allowed_kinds is not None and kind not in allowed_kinds:
+        return False, None
+    if not _device_ok_for_service(inv.devices[device_id], service):
         return False, None
     # rtl-sdr is a SHARED resource: aprs/adsb/openwebrx may all be assigned the
     # same dongle (advisory bookkeeping — §2). Exclusivity is acquired at start
@@ -360,7 +449,12 @@ def release(repo_root, inv, service, stop_fn=None):
     is cleared — no auto-restart of anything else."""
     if service in inv.assignments:
         if stop_fn is not None:
-            for unit in SERVICE_UNITS.get(service, []):
+            # Resolve units against the CURRENT assignment, before it is cleared:
+            # they are mode-dependent (aprs's SDR feed, winlink's DRAWS TNC), so
+            # the raw SERVICE_UNITS dict would stop the wrong thing — and after
+            # the delete the mode is gone. stoppable_units keeps shared
+            # infrastructure (the DRAWS TNC) out of it.
+            for unit in stoppable_units(inv, service):
                 stop_fn(unit)
         del inv.assignments[service]
         save(repo_root, inv)
@@ -394,13 +488,13 @@ def reroute(repo_root, inv, service, device_id, start_fn=None, stop_fn=None):
     # (units are computed against its OLD assignment before we reassign).
     old_dev = inv.assignments.get(service)
     if old_dev is not None and old_dev != device_id and stop_fn is not None:
-        for unit in service_units(inv, service):
+        for unit in stoppable_units(inv, service):
             stop_fn(unit)
     # Console-enforced exclusive: displace any OTHER service currently on the
     # target device (stop its units, unassign it) before claiming the dongle.
     for other in [s for s in assignees(inv, device_id) if s != service]:
         if stop_fn is not None:
-            for unit in service_units(inv, other):
+            for unit in stoppable_units(inv, other):
                 stop_fn(unit)
         del inv.assignments[other]
     inv.assignments[service] = device_id
@@ -566,6 +660,56 @@ def auto_declare_dra_pi(repo_root, inv, present):
         return inv
     inv.devices["dra-pi"] = {"id": "dra-pi", "kind": "dra-pi", "ptt": "gpio12",
                              "alsa": "audioinjectorpi", "label": "DRA-Pi"}
+    save(repo_root, inv)
+    return inv
+
+
+def auto_declare_draws(repo_root, inv, present):
+    """Declare BOTH DRAWS radio ports when the `draws` ALSA card is present.
+
+    Deterministic like the DRA-Pi (fixed ALSA card + fixed PTT GPIOs), so no
+    detection ambiguity — but two records instead of one, because the HAT has
+    two independent mDin6 connectors sharing one stereo codec. Idempotent."""
+    if not present:
+        return inv
+    existing = [d for d in inv.devices.values() if d.get("kind") == "draws"]
+    if existing:
+        # Already declared — but refresh the STATIC fields, because this function
+        # only ever fires on a box with no draws device, so a record written
+        # before a label/channel change would otherwise keep the stale value
+        # forever. Merge into the existing dict so operator/runtime state
+        # (assignments live elsewhere; `locked` lives here) survives.
+        changed = False
+        for port in DRAWS_PORTS:
+            dev = inv.devices.get(port["id"])
+            if dev is None:
+                inv.devices[port["id"]] = dict(port)
+                changed = True
+                continue
+            for key, value in port.items():
+                if dev.get(key) != value:
+                    dev[key] = value
+                    changed = True
+        if changed:
+            save(repo_root, inv)
+        return inv
+    for port in DRAWS_PORTS:
+        inv.devices[port["id"]] = dict(port)
+    save(repo_root, inv)
+    return inv
+
+
+def reconcile_draws(repo_root, inv, present):
+    """Undeclare both DRAWS ports when the card is gone (overlay unloaded / HAT
+    removed) — the analogue of reconcile_dra_pi. Assignments are left dangling
+    so a re-detect revalidates them."""
+    if present:
+        return inv
+    removed = [did for did, d in inv.devices.items() if d.get("kind") == "draws"]
+    if not removed:
+        return inv
+    for did in removed:
+        del inv.devices[did]
     save(repo_root, inv)
     return inv
 

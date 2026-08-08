@@ -165,3 +165,63 @@ class ListenTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RadioCaptureTest(unittest.TestCase):
+    """Satellite RX on a DRAWS radio port. An SDR retunes itself; a radio does
+    not, and the DRAWS has no CAT — so the operator parks the radio on the
+    downlink and OASIS just records the audio. Capture rides the SHARED pcm so
+    the TNC keeps working the other port during a pass."""
+
+    def test_records_one_channel_to_mono(self):
+        cmd = listen.radio_record_command("/tmp/pass.wav", channel=1,
+                                          srate=48000, max_seconds=600)
+        self.assertIn("arecord -D draws_shared_in", cmd)
+        self.assertIn("-c 2 -f S16_LE -r 48000", cmd)   # capture stereo...
+        self.assertIn("remix 2", cmd)                    # ...keep the RIGHT one
+
+    def test_channel_index_maps_to_one_based_remix(self):
+        """direwolf channels are 0-based, sox remix is 1-based — off by one here
+        silently records the WRONG radio."""
+        self.assertIn("remix 1", listen.radio_record_command("/o.wav", channel=0))
+        self.assertIn("remix 2", listen.radio_record_command("/o.wav", channel=1))
+
+    def test_run_is_time_bounded_like_the_sdr_path(self):
+        cmd = listen.radio_record_command("/tmp/a.wav", max_seconds=900)
+        self.assertIn("timeout 900 arecord", cmd)
+
+    def test_quotes_paths_with_spaces(self):
+        self.assertIn("'/tmp/a b.wav'", listen.radio_record_command("/tmp/a b.wav"))
+
+    def test_uses_the_shared_pcm_not_the_raw_device(self):
+        """plughw:draws,0 would take the card exclusively and kill the TNC."""
+        cmd = listen.radio_record_command("/tmp/a.wav")
+        self.assertIn(listen.RADIO_PCM, cmd)
+        self.assertNotIn("plughw:draws", cmd)
+
+
+class RadioPreconditionsTest(unittest.TestCase):
+    def test_reports_missing_tools(self):
+        pre = listen.radio_preconditions(which=lambda t: None)
+        self.assertEqual(sorted(pre["missing_deps"]), ["arecord", "sox"])
+
+    def test_does_not_require_rtl_sdr_tools(self):
+        """The SDR checks (rtl_fm, dongle present/busy) do not apply here."""
+        pre = listen.radio_preconditions(which=lambda t: "/usr/bin/" + t)
+        self.assertEqual(pre["missing_deps"], [])
+        self.assertNotIn("dongle_present", pre)
+
+    def test_detects_the_card(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
+            fh.write(" 3 [draws          ]: simple-card - draws\n")
+            path = fh.name
+        pre = listen.radio_preconditions(cards_path=path,
+                                         which=lambda t: "/usr/bin/" + t)
+        self.assertTrue(pre["card_present"])
+        os.unlink(path)
+
+    def test_absent_card_is_reported_not_raised(self):
+        pre = listen.radio_preconditions(cards_path="/nonexistent",
+                                         which=lambda t: "/usr/bin/" + t)
+        self.assertFalse(pre["card_present"])
