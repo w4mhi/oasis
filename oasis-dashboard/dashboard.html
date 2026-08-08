@@ -537,7 +537,10 @@
     </div>
 
     <div class="card sats">
-      <div class="hd"><span class="lvd">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="meta" id="k-sat-meta">—</span></div>
+      <!-- Same treatment as the traffic card's LIVE badge (green accent, 1rem,
+           700, .1em tracking). Reusing that class rather than copying its values
+           is deliberate: the two headers sit side by side, so any drift shows. -->
+      <div class="hd"><span class="livebadge ok">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="meta" id="k-sat-meta">—</span></div>
       <div class="satscroll" id="satBody"><div class="satempty">…</div></div>
     </div>
 
@@ -1482,7 +1485,9 @@ function renderSats() {
                  dl:(s.downlinks && s.downlinks[0]) });
   });
   items.sort((a,b) => (b.inPass?1:0)-(a.inPass?1:0) || a.p._r - b.p._r);
-  if (meta) meta.textContent = _satSel.length + ' monitored · ' + items.length + ' in 1h';
+  // "moni", not "monitored": the header now carries a mute button too, and the
+  // full word pushed the count off the edge of the 7" panel.
+  if (meta) meta.textContent = _satSel.length + ' moni · ' + items.length + ' in 1h';
   if (!items.length) { body.innerHTML = '<div class="satempty">no monitored passes in the next hour</div>'; return; }
   const hm = t => { const d = new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
   body.innerHTML = items.map(it => {
