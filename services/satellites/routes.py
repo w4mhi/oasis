@@ -26,6 +26,10 @@ bp = Blueprint("satellites", __name__)
 # them, so these bound the response rather than paginate it.
 _ROSTER_DEFAULT_LIMIT = 2000
 _ROSTER_MAX_LIMIT = 5000
+# Recordings are size-capped on disk (2 GB budget, see listen.prune_recordings),
+# so the list is short by construction; the bound is belt-and-braces.
+_RECORDINGS_DEFAULT_LIMIT = 500
+_RECORDINGS_MAX_LIMIT = 2000
 
 
 def _station():
@@ -445,15 +449,38 @@ def api_listen_status():
     from common import hardware
     inv = hardware.load(SUITE_ROOT)
     st = listen.status()
-    st.update(listen.preconditions(inv=inv))   # busy/holder scoped to our dongle
-    return jsonify(st)
+    pre = listen.preconditions(inv=inv)         # busy/holder scoped to our dongle
+    # §10 built inline rather than `jsonify(st)` after a dict.update(): the union
+    # of two helpers' keys is not a shape anyone could read off the return site,
+    # and this endpoint is polled by three pages plus the assistant.
+    return jsonify({
+        "ok":             True,
+        # Capture state.
+        "recording":      st["recording"],
+        "streaming":      st["streaming"],
+        "mode":           st["mode"],
+        "norad":          st["norad"],
+        "file":           st["file"],
+        "seconds":        st["seconds"],
+        "freq_hz":        st["freq_hz"],
+        # Whether a capture is possible at all right now.
+        "missing_deps":   pre["missing_deps"],
+        "dongle_present": pre["dongle_present"],
+        "assigned":       pre["assigned"],
+        "device":         pre["device"],
+        "busy":           pre["busy"],
+        "holder":         pre["holder"],
+    })
 
 
 class _CaptureError(Exception):
-    """A validation failure while preparing an SDR capture; carries an HTTP code."""
-    def __init__(self, msg, code):
+    """A validation failure while preparing an SDR capture; carries an HTTP
+    status AND a stable §3 slug, so a caller can branch on the cause without
+    matching on prose that is written for a human."""
+    def __init__(self, msg, code, slug):
         super().__init__(msg)
         self.code = code
+        self.slug = slug
 
 
 def _prep_capture(norad, req_freq):
@@ -469,31 +496,35 @@ def _prep_capture(norad, req_freq):
     pre = listen.preconditions(inv=inv)
     if pre["missing_deps"]:
         raise _CaptureError("missing tools: " + ", ".join(pre["missing_deps"])
-                            + " — run features/rtl-sdr/install-rtl-sdr.py", 400)
+                            + " — run features/rtl-sdr/install-rtl-sdr.py",
+                            400, "SDR_TOOLS_MISSING")
     if not pre["dongle_present"]:
-        raise _CaptureError("no RTL-SDR dongle detected", 400)
+        raise _CaptureError("no RTL-SDR dongle detected", 400, "NO_DONGLE")
     if pre["busy"]:
         raise _CaptureError(f"the dongle is in use by {pre['holder'] or 'another service'}"
-                            " — stop it first", 409)
+                            " — stop it first", 409, "DONGLE_BUSY")
     if listen.is_capturing():
-        raise _CaptureError("already capturing", 409)
+        raise _CaptureError("already capturing", 409, "ALREADY_CAPTURING")
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     entry = next((s for s in data["satellites"] if s["norad"] == norad), None)
     downlinks = roster.legacy_downlinks(entry) if entry else []
     if not downlinks:
-        raise _CaptureError("no downlink frequency for this satellite", 400)
+        raise _CaptureError("no downlink frequency for this satellite",
+                            400, "NO_DOWNLINK")
     dl = downlinks[0]
     if req_freq is not None:
         try:
             req = float(req_freq)
         except (TypeError, ValueError):
-            raise _CaptureError("bad freq_mhz", 400)
+            raise _CaptureError("bad freq_mhz", 400, "INVALID_FREQ")
         dl = next((d for d in downlinks if abs(float(d["freq_mhz"]) - req) < 1e-6), None)
         if dl is None:
-            raise _CaptureError("frequency is not a downlink of this satellite", 400)
+            raise _CaptureError("frequency is not a downlink of this satellite",
+                                400, "FREQ_NOT_A_DOWNLINK")
     support = listen.mode_support(dl.get("mode"))
     if not support["supported"]:
-        raise _CaptureError(f"{dl.get('mode')} not supported yet — {support['blurb']}", 400)
+        raise _CaptureError(f"{dl.get('mode')} not supported yet — {support['blurb']}",
+                            400, "MODE_UNSUPPORTED")
     freq_hz = listen.mhz_to_hz(dl["freq_mhz"])
     dev = inv.devices.get(inv.assignments.get("satellites"))
     device_serial = (dev or {}).get("serial") or None
@@ -508,11 +539,12 @@ def api_listen():
     try:
         norad = int(body["norad"])
     except (TypeError, ValueError, KeyError):
-        return jsonify({"error": "bad or missing norad"}), 400
+        return jsonify({"ok": False, "error": "bad or missing norad",
+                        "code": "INVALID_NORAD"}), 400
     try:
         entry, freq_hz, device_serial, dmode = _prep_capture(norad, body.get("freq_mhz"))
     except _CaptureError as e:
-        return jsonify({"error": str(e)}), e.code
+        return jsonify({"ok": False, "error": str(e), "code": e.slug}), e.code
     safe = "".join(c if c.isalnum() else "_" for c in entry["name"]).strip("_")
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     rec_dir = listen.recordings_dir(SUITE_ROOT)
@@ -523,11 +555,26 @@ def api_listen():
     listen.prune_recordings(rec_dir)
     space_ok, space_err = listen.check_free_space(rec_dir)
     if not space_ok:
-        return jsonify({"error": space_err}), 507
+        return jsonify({"ok": False, "error": space_err,
+                        "code": "INSUFFICIENT_STORAGE"}), 507
     try:
-        return jsonify(listen.start(freq_hz, norad, out, device_serial=device_serial, dmode=dmode))
+        started = listen.start(freq_hz, norad, out,
+                               device_serial=device_serial, dmode=dmode)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": False, "error": str(e),
+                        "code": "CAPTURE_START_FAILED"}), 500
+    # Same capture-state keys as /listen/status, so a caller that starts a
+    # recording and one that polls for it read the same shape.
+    return jsonify({
+        "ok":        True,
+        "recording": started["recording"],
+        "streaming": started["streaming"],
+        "mode":      started["mode"],
+        "norad":     started["norad"],
+        "file":      started["file"],
+        "seconds":   started["seconds"],
+        "freq_hz":   started["freq_hz"],
+    })
 
 
 @bp.route("/api/satellites/listen/stream")
@@ -541,15 +588,19 @@ def api_listen_stream():
     try:
         norad = int(request.args.get("norad"))
     except (TypeError, ValueError):
-        return jsonify({"error": "bad or missing norad"}), 400
+        return jsonify({"ok": False, "error": "bad or missing norad",
+                        "code": "INVALID_NORAD"}), 400
     try:
         _entry, freq_hz, device_serial, dmode = _prep_capture(norad, request.args.get("freq_mhz"))
     except _CaptureError as e:
-        return jsonify({"error": str(e)}), e.code
+        return jsonify({"ok": False, "error": str(e), "code": e.slug}), e.code
     try:
         gen, mime = listen.stream(freq_hz, norad, device_serial=device_serial, dmode=dmode)
     except RuntimeError as e:
-        return jsonify({"error": str(e)}), (409 if "busy" in str(e) else 400)
+        busy = "busy" in str(e)
+        return jsonify({"ok": False, "error": str(e),
+                        "code": "DONGLE_BUSY" if busy else "STREAM_START_FAILED"}), \
+            (409 if busy else 400)
     resp = Response(stream_with_context(gen), mimetype=mime)
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -563,7 +614,9 @@ def api_listen_stop():
     # Sweep after the file is closed and its final size is known. The recording
     # just made is protected inside prune_recordings (newest is always kept).
     listen.prune_recordings(listen.recordings_dir(SUITE_ROOT))
-    return jsonify(result)
+    # Idempotent: stopping an idle capture is a success, not an error — the
+    # caller asked for "not recording" and that is the state they got.
+    return jsonify({"ok": True, "recording": result["recording"]})
 
 
 @bp.route("/api/satellites/listen/recordings")
@@ -575,9 +628,24 @@ def api_listen_recordings():
         for fn in sorted(os.listdir(d), reverse=True):
             if fn.endswith(".wav"):
                 p = os.path.join(d, fn)
-                files.append({"name": fn, "bytes": os.path.getsize(p),
-                              "mtime": os.path.getmtime(p)})
-    return jsonify({"recordings": files})
+                try:
+                    files.append({"name": fn, "bytes": os.path.getsize(p),
+                                  # §6: was a raw epoch float.
+                                  "recorded_at": iso_utc(os.path.getmtime(p))})
+                except OSError:
+                    # Pruned between listdir and stat — skip rather than 500.
+                    continue
+    limit = clamp_limit(request.args.get("limit"), _RECORDINGS_DEFAULT_LIMIT,
+                        _RECORDINGS_MAX_LIMIT)
+    shown = files[:limit]
+    return jsonify({
+        "ok": True,
+        "recordings": shown,
+        "total": len(files),
+        "count": len(shown),
+        "truncated": len(files) > len(shown),
+        "limit": limit,
+    })
 
 
 @bp.route("/api/satellites/listen/recording/<path:filename>")

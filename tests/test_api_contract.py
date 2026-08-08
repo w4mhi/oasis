@@ -50,10 +50,8 @@ _NO_ENVELOPE = frozenset({
     # /api/adsb/alerts graduated 2026-08-07 — the first endpoint migrated to the
     # contract. See services/adsb/routes.py and tests/test_adsb_alerts_contract.py.
     "/api/hardware/devices", "/api/hardware/guardian",
-    # /api/satellites/{,passes,track} graduated 2026-08-08 with the roster and
-    # prediction surface; the listen/* SDR routes below are the second half.
-    "/api/satellites/listen", "/api/satellites/listen/stream",
-    "/api/satellites/listen/recordings",
+    # /api/satellites/* graduated 2026-08-08 — roster + prediction first, then
+    # the listen/* SDR routes.
 })
 
 # §1/§10 — the response shape is not visible at the return site, either because
@@ -70,8 +68,6 @@ _UNVERIFIABLE = frozenset({
     # progress would be lying to the ratchet.
     "/api/list-ics205", "/api/save-ics205", "/api/service",
     "/api/setup/jobs/<job_id>",
-    "/api/satellites/listen", "/api/satellites/listen/status",
-    "/api/satellites/listen/stop",
     "/api/winlink/aliases", "/api/winlink/connect", "/api/winlink/disconnect",
     "/api/winlink/mailbox/<box>", "/api/winlink/mailbox/<box>/<mid>",
     "/api/winlink/mailbox/out", "/api/winlink/status",
@@ -79,6 +75,15 @@ _UNVERIFIABLE = frozenset({
     # from a streamed one — they were never conforming, only unseen.
     "/api/winlink/rmslist", "/api/winlink/mailbox/<box>/<mid>/<path:attachment>",
 })
+
+
+# Routes whose ok:false status is COMPUTED, so the AST scan cannot read it (see
+# ScanSanityTest). Not debt — each is covered by a runtime test asserting the
+# real status. This list exists so the gate cannot go quiet by accident.
+_DYNAMIC_ERROR_STATUS = [
+    "/api/satellites/listen",          # _CaptureError carries status + slug
+    "/api/satellites/listen/stream",   # 409 busy / 400 otherwise
+]
 
 
 # Routes on the internal daemons are NOT the OASIS API — see _DAEMON_MODULES.
@@ -193,6 +198,23 @@ class OkMeansRequestSucceededTest(unittest.TestCase):
                          "state its own typed field and make `ok` a literal:\n  "
                          + "\n  ".join(offenders))
 
+    def test_a_dynamic_error_status_is_covered_by_a_runtime_test(self):
+        """Some routes compute their status — `return jsonify(…), e.code`, where
+        the exception carries it. That is good code (one handler, eight causes),
+        but this scan cannot read the value, so the ok:false-with-200 rule above
+        skips those returns rather than guessing.
+
+        Skipping silently would be a hole, so the routes that do it are listed
+        here and each one has a runtime test asserting the real status. Keep the
+        two in step: if a route joins this list, it needs those tests."""
+        dynamic = sorted({rule for rule, entries in _by_rule().items()
+                          for _, f in entries
+                          if f["status_dynamic"] and f["ok_value"] is False})
+        self.assertEqual(dynamic, _DYNAMIC_ERROR_STATUS,
+                         "a route's error status became (un)computed — see "
+                         "tests/test_satellites_listen_contract.py for the "
+                         "runtime coverage this list stands in for")
+
     def test_no_ok_false_served_with_http_200(self):
         """The worst ambiguity for a model: a failed call and a successful report
         of bad news become indistinguishable."""
@@ -200,7 +222,8 @@ class OkMeansRequestSucceededTest(unittest.TestCase):
                      for rule, entries in _by_rule().items()
                      if rule not in _OK_FALSE_200
                      for rel, f in entries
-                     if f["ok_value"] is False and f["status"] == 200]
+                     if f["ok_value"] is False and f["status"] == 200
+                     and not f["status_dynamic"]]
         self.assertEqual(offenders, [],
                          "`ok: false` served with HTTP 200 (contract §2):\n  "
                          + "\n  ".join(sorted(offenders)))
@@ -265,7 +288,7 @@ class AllowlistHygieneTest(unittest.TestCase):
         remaining = len(_OK_FALSE_200 | _NO_ENVELOPE | _UNVERIFIABLE)
         # A ratchet: this is the migration debt and may only go DOWN. Lower it
         # as endpoints graduate; never raise it to make something pass.
-        self.assertLessEqual(remaining, 28,
+        self.assertLessEqual(remaining, 23,
                              f"the allowlists grew to {remaining} — they may only shrink")
         self.assertGreater(total, remaining)
 

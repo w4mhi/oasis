@@ -93,9 +93,11 @@ def _const(node):
 def returns_of(fn):
     """Every `return` in `fn` (excluding nested defs) as a fact dict.
 
-    {"line", "status", "opaque", "has_ok", "ok_value", "ok_computed",
-     "has_error", "keys"}
+    {"line", "status", "status_dynamic", "opaque", "has_ok", "ok_value",
+     "ok_computed", "has_error", "keys"}
     `status` is the literal HTTP status, or 200 when the return is a bare value.
+    `status_dynamic` marks a computed status the scan could not read, so rules
+    that depend on knowing it can skip rather than guess.
     """
     facts = []
     nested = {n for d in ast.walk(fn) if isinstance(d, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -103,11 +105,19 @@ def returns_of(fn):
     for node in ast.walk(fn):
         if not isinstance(node, ast.Return) or node in nested or node.value is None:
             continue
-        value, status = node.value, 200
+        value, status, status_dynamic = node.value, 200, False
         if isinstance(value, ast.Tuple) and len(value.elts) >= 2:
             maybe = _const(value.elts[1])
             if isinstance(maybe, int):
                 status = maybe
+            else:
+                # `return jsonify(...), e.code` or `…, (409 if busy else 400)`.
+                # The status is computed, so this scan CANNOT know it. Recording
+                # it as 200 would invent a §2 violation; recording it as
+                # non-200 would invent a clearance. Say "unknown" instead and
+                # let a runtime test cover it — a static gate that guesses is
+                # worse than one that admits its limit.
+                status_dynamic = True
             value = value.elts[0]
         is_jsonify, d = _jsonify_arg(value)
         if not is_jsonify:
@@ -126,16 +136,18 @@ def returns_of(fn):
                     nm = "Response"
                 if nm and nm not in _NON_JSON_RESPONDERS:
                     facts.append({
-                        "line": node.lineno, "status": status, "opaque": True,
+                        "line": node.lineno, "status": status,
+                        "status_dynamic": status_dynamic, "opaque": True,
                         "delegated_to": nm, "has_ok": False, "ok_value": None,
                         "ok_computed": False, "has_error": False, "keys": [],
                     })
             continue
         if d is None:                      # jsonify(<variable>) — shape not visible here
             facts.append({
-                "line": node.lineno, "status": status, "opaque": True, "delegated_to": None,
-                "has_ok": False, "ok_value": None, "ok_computed": False,
-                "has_error": False, "keys": [],
+                "line": node.lineno, "status": status,
+                "status_dynamic": status_dynamic, "opaque": True,
+                "delegated_to": None, "has_ok": False, "ok_value": None,
+                "ok_computed": False, "has_error": False, "keys": [],
             })
             continue
         items = _dict_lookup(d)
@@ -148,6 +160,7 @@ def returns_of(fn):
         facts.append({
             "line": node.lineno,
             "status": status,
+            "status_dynamic": status_dynamic,
             "opaque": False,
             "delegated_to": None,
             "has_ok": "ok" in items,

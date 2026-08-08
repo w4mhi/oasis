@@ -237,6 +237,21 @@ conforming route be held hostage by a same-named route on a different server.
 Daemon routes are still required to carry an `ok` envelope; they are exempt from
 the rest.
 
+### When the gate cannot see a status
+
+Some routes compute their HTTP status — `return jsonify(...), e.code`, where an
+exception carries both the status and the slug. That is better code than eight
+literal branches, but `tests/api_contract_scan.py` parses source, so it cannot
+read the value. It marks those returns `status_dynamic` and the
+ok:false-with-200 rule **skips** them rather than guessing: recording an unknown
+status as 200 would invent a violation, recording it as non-200 would invent a
+clearance.
+
+Skipping silently would be a hole, so the routes that do it are pinned in
+`_DYNAMIC_ERROR_STATUS` and each is covered by a runtime test asserting the real
+status (`tests/test_satellites_listen_contract.py`). A static gate that admits
+its limit and hands off is worth more than one that guesses.
+
 ### Shared helpers
 
 `common/api_shape.py` holds the one implementation of §4 and §6 — `iso_utc()`,
