@@ -4,7 +4,6 @@ plus the operator-placed map warnings store. Extracted verbatim from
 server/app.py in the blueprint split; URLs unchanged.
 """
 
-import datetime
 import json
 import urllib.parse
 import os
@@ -16,6 +15,7 @@ from flask import Blueprint, jsonify, request
 
 import appconfig
 from common import config_paths
+from common.api_shape import clamp_limit, iso_utc, iso_utc_from_text
 from common.web_guard import require_oasis_request
 from services.aprs.common import warning_catalog
 from services.aprs.common.graywolf_client import GraywolfClient
@@ -135,46 +135,13 @@ _STATION_FIELDS = ("lat", "lon", "sym_table", "sym_code", "via", "comment",
                    "speed_mph", "course", "alt_m", "is_object")
 
 
-def _iso_utc(value):
-    """Any GrayWolf timestamp -> ISO-8601 UTC 'Z' (contract §6), or None.
-
-    GrayWolf emits Go's format: '2026-08-07 20:08:04.45893926-07:00' — space
-    separated, nanosecond precision, local offset. That is why
-    common/js/traffic-list.js's lastHeardEpoch() runs three string replaces plus a
-    Date parse PER ROW, over ~1600 rows on every render. Doing it once here
-    deletes that work from every consumer and gives one timestamp format across
-    the whole API.
-    """
-    if not isinstance(value, str) or not value.strip():
-        return None
-    text = value.strip().replace(" ", "T")
-    # Python's fromisoformat handles at most microseconds; GrayWolf sends nanos.
-    if "." in text:
-        head, _, tail = text.partition(".")
-        digits = ""
-        for ch in tail:
-            if ch.isdigit():
-                digits += ch
-            else:
-                break
-        text = head + tail[len(digits):]        # drop sub-second entirely
-    try:
-        dt = datetime.datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=datetime.timezone.utc)
-    return dt.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def _boot_time_iso(payload):
     """Derive boot time from uptime — GrayWolf's boot_str has no year or zone."""
     try:
         up = float(payload.get("uptime_sec"))
     except (TypeError, ValueError):
         return None
-    boot = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=up)
-    return boot.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return iso_utc(time.time() - up)
 
 
 def _round_coord(value):
@@ -195,16 +162,11 @@ def _station_record(rec):
     out["lon"] = _round_coord(rec.get("lon"))
     path = rec.get("path")
     out["path"] = path if isinstance(path, list) else []
-    out["last_heard"] = _iso_utc(rec.get("last_heard"))
+    out["last_heard"] = iso_utc_from_text(rec.get("last_heard"))
     return out
 
 
-def _clamp_limit(raw, default, maximum):
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return default
-    return default if value < 1 else min(value, maximum)
+
 
 
 def _graywolf_json(path, timeout=10):
@@ -249,7 +211,7 @@ def api_aprs_stations():
             "error": str(payload.get("error") or "APRS stations unavailable."),
         }), 503
 
-    limit = _clamp_limit(request.args.get("limit"),
+    limit = clamp_limit(request.args.get("limit"),
                          _STATIONS_DEFAULT_LIMIT, _STATIONS_MAX_LIMIT)
     raw = [s for s in (payload.get("stations") or [])
            if isinstance(s, dict) and s.get("callsign")]
@@ -293,7 +255,7 @@ def api_aprs_track():
     except (TypeError, ValueError):
         minutes = _TRACK_DEFAULT_MINUTES
     minutes = min(minutes, _TRACK_MAX_MINUTES)
-    limit = _clamp_limit(request.args.get("limit"),
+    limit = clamp_limit(request.args.get("limit"),
                          _TRACK_DEFAULT_LIMIT, _TRACK_MAX_LIMIT)
 
     qs = urllib.parse.urlencode({"callsign": callsign, "minutes": minutes})
@@ -308,7 +270,7 @@ def api_aprs_track():
     points = []
     for rec in raw:
         points.append({
-            "time": _iso_utc(rec.get("timestamp")),
+            "time": iso_utc_from_text(rec.get("timestamp")),
             "lat": _round_coord(rec.get("lat")),
             "lon": _round_coord(rec.get("lon")),
             "alt_m": rec.get("alt_m"),
@@ -349,7 +311,7 @@ def api_aprs_system():
         "load": payload.get("load"),
         "uptime_s": payload.get("uptime_sec"),
         # boot_str was "Fri Aug 07 19:29" — no year, no zone, unparseable (§6).
-        "boot_time": _iso_utc(payload.get("boot_time")) or _boot_time_iso(payload),
+        "boot_time": iso_utc_from_text(payload.get("boot_time")) or _boot_time_iso(payload),
         "fcc_db_date": payload.get("fcc_db_date"),
     }), 200
 

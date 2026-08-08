@@ -14,11 +14,12 @@ passes the daemon's body through untouched and is listed in
 tests/test_api_contract.py.
 """
 
-import datetime
 import json
 import time
 
 from flask import Blueprint, Response, jsonify, request
+
+from common.api_shape import clamp_limit, iso_utc
 
 bp = Blueprint("adsb", __name__)
 
@@ -26,26 +27,6 @@ bp = Blueprint("adsb", __name__)
 _ALERTS_DEFAULT_LIMIT = 50
 _ALERTS_MAX_LIMIT = 200
 
-
-def _iso(epoch):
-    """Epoch seconds -> ISO-8601 UTC (contract §6). None for an unusable value."""
-    try:
-        return datetime.datetime.fromtimestamp(
-            float(epoch), datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    except (TypeError, ValueError, OSError):
-        return None
-
-
-def _clamp_limit(raw, default, maximum):
-    """Contract §4: a nonsense `limit` must degrade to the default, never 500 and
-    never quietly return everything."""
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return default
-    if value < 1:
-        return default
-    return min(value, maximum)
 
 
 def _adsb_json(path, timeout=10):
@@ -190,7 +171,7 @@ def _aircraft_record(rec, last_seen_epoch, now):
         if isinstance(value, str):
             value = value.strip() or None
         out[key] = value
-    out["last_seen"] = _iso(last_seen_epoch) if last_seen_epoch is not None else None
+    out["last_seen"] = iso_utc(last_seen_epoch) if last_seen_epoch is not None else None
     out["age_s"] = (int(now - last_seen_epoch)
                     if last_seen_epoch is not None else None)
     return out
@@ -209,7 +190,7 @@ def api_adsb_aircraft():
     if error:
         return error
 
-    limit = _clamp_limit(request.args.get("limit"),
+    limit = clamp_limit(request.args.get("limit"),
                          _AIRCRAFT_DEFAULT_LIMIT, _AIRCRAFT_MAX_LIMIT)
     raw = [a for a in (payload.get("aircraft") or [])
            if isinstance(a, dict) and a.get("hex")]
@@ -244,7 +225,7 @@ def api_adsb_aircraft():
         "total": len(raw),
         "truncated": len(raw) > len(aircraft),
         "limit": limit,
-        "time": _iso(decoder_now),
+        "time": iso_utc(decoder_now),
     }), 200
 
 
@@ -270,7 +251,7 @@ def api_adsb_recent():
     except (TypeError, ValueError):
         hours = _RECENT_DEFAULT_HOURS
     hours = min(hours, _RECENT_MAX_HOURS)
-    limit = _clamp_limit(request.args.get("limit"),
+    limit = clamp_limit(request.args.get("limit"),
                          _RECENT_DEFAULT_LIMIT, _RECENT_MAX_LIMIT)
 
     payload, error = _adsb_json(f"/recent?hours={hours}")
@@ -324,7 +305,7 @@ def api_adsb_alerts():
     if error:
         return error
 
-    limit = _clamp_limit(request.args.get("limit"),
+    limit = clamp_limit(request.args.get("limit"),
                          _ALERTS_DEFAULT_LIMIT, _ALERTS_MAX_LIMIT)
     raw = payload.get("alerts") or []
     now = time.time()
@@ -339,7 +320,7 @@ def api_adsb_alerts():
     alerts = []
     for rec in ordered[:limit]:
         ts = rec.get("ts")
-        iso = _iso(ts)
+        iso = iso_utc(ts)
         alerts.append({
             "time": iso,
             "age_s": int(now - float(ts)) if iso else None,
