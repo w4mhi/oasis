@@ -166,7 +166,41 @@ return jsonify({"ok": True, **summary}), 200        # RIGHT — envelope is visi
 return jsonify(summary)                             # WRONG — shape decided elsewhere
 ```
 
-## 11 · Migration status
+## 11 · Exit criterion — a functional harness
+
+**Owed at the end of the migration, before the major version ships.**
+
+`tests/test_api_contract.py` reads the *source*; it proves what we wrote, not what
+the server actually puts on the wire. The unit and end-to-end suites cover the
+logic. What is missing is one script that calls every `/api/*` endpoint against a
+**running station** and writes each request and its response to a file for a human
+to read.
+
+Requirements:
+
+- **Python, stdlib only**, runnable against any host: `python3 scripts/api-probe.py
+  --host 192.168.1.28`. It must work from a Mac against a Pi, and on the Pi itself.
+- **Re-runnable, in different environments.** The point is comparing a dev box, a
+  Pi with no SDR, and a fully-populated station — the shapes must match even when
+  the data does not.
+- **Output is for inspection and for diffing**: one record per call (method, path,
+  params, status, elapsed, body) with **sorted keys and stable formatting**, so two
+  environments can be diffed directly. Volatile fields (timestamps, uptimes, load)
+  are recorded but listed separately so they do not swamp a diff.
+- **Safe by default.** It will encounter `/api/setup/reboot`, `/api/service`,
+  `/api/hardware/burn-serial` and `/api/aprs/warnings`. Read-only endpoints are
+  called by default; mutating ones are **skipped unless explicitly opted in**, and
+  the ones that key a transmitter or reboot the host stay behind a second, separate
+  flag. A probe that reboots the station it is probing is not a probe.
+- **Fails loudly on a contract violation**, so it doubles as the runtime half of
+  the gate: envelope present, `ok` matching the status class, lists carrying
+  `total`/`truncated`/`limit`, timestamps ISO-8601.
+
+This is the artifact that answers "did the migration actually land?" in a way a
+static test cannot, and it stays useful afterwards as the thing you run against a
+box before an event.
+
+## 12 · Migration status
 
 Enforced by `tests/test_api_contract.py`. Endpoints not yet migrated are listed in
 that test's three allowlists (`_OK_FALSE_200`, `_NO_ENVELOPE`, `_UNVERIFIABLE`), which may only ever **shrink** — the test
