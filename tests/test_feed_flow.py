@@ -56,6 +56,7 @@ class TestFeedFlow(unittest.TestCase):
                                return_value=_completed(stdout=lines, rc=0)):
             d = self.client.get("/api/health/feed-flow").get_json()
         self.assertTrue(d["ok"])
+        self.assertTrue(d["probed"])
         self.assertTrue(d["flowing"])
         self.assertEqual(d["packets"], health_routes._FEED_FLOW_NPKTS)
         self.assertGreater(d["pps"], 0)
@@ -68,6 +69,7 @@ class TestFeedFlow(unittest.TestCase):
         with mock.patch.object(health_routes.subprocess, "run", side_effect=exc):
             d = self.client.get("/api/health/feed-flow").get_json()
         self.assertTrue(d["ok"])            # a valid result, not a fault
+        self.assertTrue(d["probed"], "we DID listen; there was simply nothing")
         self.assertFalse(d["flowing"])
         self.assertEqual(d["packets"], 0)
         self.assertEqual(d["pps"], 0)
@@ -75,21 +77,27 @@ class TestFeedFlow(unittest.TestCase):
     def test_missing_tcpdump(self):
         with mock.patch.object(health_routes, "_resolve_tcpdump", return_value=None):
             d = self.client.get("/api/health/feed-flow").get_json()
-        self.assertFalse(d["ok"])
+        # §2: the REQUEST succeeded; we just could not run the capture.
+        self.assertTrue(d["ok"])
+        self.assertFalse(d["probed"])
+        self.assertIsNone(d["flowing"], "never listened is not 'the feed is dead'")
         self.assertEqual(d["reason"], "tcpdump-missing")
 
     def test_missing_sudo_grant_is_distinguished(self):
         denied = _completed(stdout="", stderr="sudo: a password is required", rc=1)
         with mock.patch.object(health_routes.subprocess, "run", return_value=denied):
             d = self.client.get("/api/health/feed-flow").get_json()
-        self.assertFalse(d["ok"])
+        self.assertTrue(d["ok"])
+        self.assertFalse(d["probed"])
+        self.assertIsNone(d["flowing"])
         self.assertEqual(d["reason"], "no-privilege")
 
     def test_non_linux_unsupported(self):
         with mock.patch.object(oasis_app.sys, "platform", "darwin"):
             d = self.client.get("/api/health/feed-flow").get_json()
-        self.assertFalse(d["ok"])
+        self.assertTrue(d["ok"])
         self.assertFalse(d["supported"])
+        self.assertFalse(d["probed"])
         self.assertEqual(d["reason"], "not-linux")
 
     def test_argv_is_pinned_and_injection_free(self):

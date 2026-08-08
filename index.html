@@ -2070,7 +2070,7 @@ const SERVICES = [
         // silent. If the flow probe last saw no packets, surface SILENT here too
         // so the 30s refresh doesn't flash green over a dead feed (pollFeedFlow
         // refines this every ~2s; see below).
-        if (_feedFlow && _feedFlow.ok !== false && _feedFlow.supported !== false
+        if (_feedFlow && _feedFlow.probed && _feedFlow.supported !== false
             && _feedFlow.flowing === false)
           return { up: true, warn: true, badge: 'SILENT', sub: 'no audio · check SDR/USB' };
         return { up: true, badge: 'UP', sub: '→ GrayWolf' };
@@ -2404,7 +2404,7 @@ async function pollFeedFlow() {
     const d = await r.json();
     _feedFlow = d;
     meter.hidden = false;
-    if (d.supported === false || d.ok === false) {
+    if (d.supported === false || !d.probed) {
       // Degraded probe — show a muted note, don't scare the tile into SILENT.
       meter.className = 'feed-meter';
       if (fill) fill.style.width = '0%';

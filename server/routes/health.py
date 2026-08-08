@@ -32,13 +32,16 @@ def api_health_probe():
     try:
         port = int(request.args.get("port", "0"))
     except ValueError:
-        return jsonify({"ok": False, "error": "invalid port"}), 400
+        return jsonify({"ok": False, "error": "invalid port",
+                        "code": "INVALID_PORT"}), 400
 
     ALLOWED = {"graywolf", "kiwix", "webssh", "aprs_api", "winlink", "openwebrx"}
     if service not in ALLOWED:
-        return jsonify({"ok": False, "error": "unknown service"}), 400
+        return jsonify({"ok": False, "error": "unknown service",
+                        "code": "UNKNOWN_SERVICE"}), 400
     if not (1 <= port <= 65535):
-        return jsonify({"ok": False, "error": "port out of range"}), 400
+        return jsonify({"ok": False, "error": "port out of range",
+                        "code": "PORT_OUT_OF_RANGE"}), 400
 
     url = f"http://127.0.0.1:{port}/"
     try:
@@ -46,13 +49,21 @@ def api_health_probe():
         req.add_header("User-Agent", "OASIS-HealthProbe/1.0")
         with urllib.request.urlopen(req, timeout=3) as resp:
             status = resp.status
-        return jsonify({"ok": True, "service": service, "port": port, "status": status})
+        return jsonify({"ok": True, "service": service, "port": port,
+                        "reachable": True, "status": status, "detail": None})
     except urllib.error.HTTPError as e:
         # Service replied with an HTTP error — it IS running, just returning
         # an error code (e.g. 404 on / is still "up" for our purposes).
-        return jsonify({"ok": True, "service": service, "port": port, "status": e.code})
+        return jsonify({"ok": True, "service": service, "port": port,
+                        "reachable": True, "status": e.code, "detail": None})
     except Exception as e:
-        return jsonify({"ok": False, "service": service, "port": port, "error": str(e)})
+        # §2: the PROBE SUCCEEDED — it connected, or tried to and learned the
+        # service is not listening. "Nothing is on port 8080" is the answer,
+        # not a failure to answer. `reachable` carries it.
+        # NOT `error` — §2 reserves that for a failed request, and this one
+        # succeeded. `detail` is the same word /api/adsb/health settled on.
+        return jsonify({"ok": True, "service": service, "port": port,
+                        "reachable": False, "status": None, "detail": str(e)})
 
 
 @bp.route("/api/health/binary")
@@ -67,7 +78,8 @@ def api_health_binary():
     import shutil
     name = request.args.get("name", "")
     if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_\-]{0,63}$', name):
-        return jsonify({"ok": False, "error": "invalid binary name"}), 400
+        return jsonify({"ok": False, "error": "invalid binary name",
+                        "code": "INVALID_BINARY_NAME"}), 400
     path = shutil.which(name)
     if not path:
         for d in ("/usr/local/sbin", "/usr/local/bin", "/usr/sbin",
@@ -76,7 +88,10 @@ def api_health_binary():
             if os.path.isfile(cand) and os.access(cand, os.X_OK):
                 path = cand
                 break
-    return jsonify({"ok": bool(path), "binary": name, "path": path})
+    # §2: `ok` was `bool(path)` — "we looked and it isn't installed" reported as
+    # a failed request. The lookup always succeeds; `present` is the finding.
+    return jsonify({"ok": True, "binary": name, "present": bool(path),
+                    "path": path or None})
 
 
 @bp.route("/api/health/service")
@@ -88,10 +103,15 @@ def api_health_service():
 
     name = request.args.get("name", "")
     if name not in _OASIS_SERVICES:
-        return jsonify({"ok": False, "error": "unknown service"}), 400
+        return jsonify({"ok": False, "error": "unknown service",
+                        "code": "UNKNOWN_SERVICE"}), 400
     if _sys.platform != "linux":
-        return jsonify({"ok": False, "supported": False,
-                        "service": name, "error": "systemd not available"})
+        # §2: asking a Mac about systemd and being told "no systemd here" is a
+        # successful answer. §5: same key set as the Linux path, nulls for what
+        # cannot be known — not a shorter dict.
+        return jsonify({"ok": True, "service": name, "supported": False,
+                        "active": None, "enabled": None,
+                        "installed": False, "running": False})
 
     def _q(verb):
         try:
@@ -119,8 +139,14 @@ def api_health_service():
             pass
 
     return jsonify({
-        "ok":        active == "active",
+        # §2: `ok` was `active == "active"`, so a cleanly-reported STOPPED
+        # service was indistinguishable from a failed request. Every consumer
+        # already branched on `active`/`installed`/`enabled` and none read `ok`,
+        # which is the tell that it was never carrying real information here.
+        "ok":        True,
         "service":   name,
+        "supported": True,
+        "running":   active == "active",
         "active":    active or "unknown",
         "enabled":   enabled or "not-found",
         # Installed = the unit file exists in any real state (enabled/disabled/
@@ -171,52 +197,74 @@ def _resolve_tcpdump():
 def api_health_feed_flow():
     """Report whether UDP datagrams are actually flowing on the RTL-SDR feed port
     (a data-flow health check the systemd is-active probe can't give). Returns
-    packet rate over a short passive capture. Linux + scoped sudo (tcpdump) only."""
-    if sys.platform != "linux":
-        return jsonify({"ok": False, "supported": False, "reason": "not-linux"})
+    packet rate over a short passive capture. Linux + scoped sudo (tcpdump) only.
 
-    tcpdump = _resolve_tcpdump()
-    if not tcpdump:
-        return jsonify({"ok": False, "supported": True, "reason": "tcpdump-missing"})
+    §2/§5: this had FIVE returns, four of them `ok:false` with HTTP 200 and each
+    with a different key set, so "the probe couldn't run" and "the request
+    failed" were the same value and the shape depended on which one you hit.
+    Now one exit with one key set: `supported` (can this host probe at all),
+    `probed` (did the capture actually run), `flowing` (the finding), and
+    `reason` naming the obstacle when there was one.
 
-    argv = ["sudo", "-n", tcpdump, *_FEED_FLOW_ARGS]
-    t0 = time.monotonic()
-    out = ""
-    err = ""
-    rc = None
-    timed_out = False
-    try:
-        r = subprocess.run(argv, capture_output=True, text=True,
-                           timeout=_FEED_FLOW_TIMEOUT)
-        out, err, rc = r.stdout, r.stderr, r.returncode
-    except subprocess.TimeoutExpired as e:
-        # Healthy feeds exit on -c N before this; a timeout means the feed is slow
-        # or dead. Partial stdout (any trickle captured) is still on the exception.
-        out = e.stdout if isinstance(e.stdout, str) else (e.stdout or b"").decode("utf-8", "replace")
-        err = e.stderr if isinstance(e.stderr, str) else (e.stderr or b"").decode("utf-8", "replace")
-        timed_out = True
-    except Exception as e:
-        return jsonify({"ok": False, "supported": True, "reason": "probe-error",
-                        "error": str(e)})
-    elapsed = max(time.monotonic() - t0, 1e-3)
+    `flowing` is null when nothing was measured — reporting false there would
+    say "the feed is dead" when the truth is "we never listened", and that
+    distinction is the entire value of this probe."""
+    supported = sys.platform == "linux"
+    reason = None if supported else "not-linux"
+    tcpdump = _resolve_tcpdump() if supported else None
+    if supported and not tcpdump:
+        reason = "tcpdump-missing"
 
-    packets = sum(1 for ln in out.splitlines() if ln.strip())
+    packets = None
+    elapsed = None
+    detail = None
+    if supported and tcpdump:
+        argv = ["sudo", "-n", tcpdump, *_FEED_FLOW_ARGS]
+        t0 = time.monotonic()
+        out = err = ""
+        rc = None
+        timed_out = False
+        try:
+            r = subprocess.run(argv, capture_output=True, text=True,
+                               timeout=_FEED_FLOW_TIMEOUT)
+            out, err, rc = r.stdout, r.stderr, r.returncode
+        except subprocess.TimeoutExpired as e:
+            # Healthy feeds exit on -c N before this; a timeout means the feed is
+            # slow or dead. Partial stdout (any trickle) is still on the exception.
+            out = e.stdout if isinstance(e.stdout, str) else (e.stdout or b"").decode("utf-8", "replace")
+            err = e.stderr if isinstance(e.stderr, str) else (e.stderr or b"").decode("utf-8", "replace")
+            timed_out = True
+        except Exception as e:
+            reason, detail = "probe-error", str(e)
+        if reason is None:
+            elapsed = max(time.monotonic() - t0, 1e-3)
+            captured = sum(1 for ln in out.splitlines() if ln.strip())
+            # No packets AND tcpdump itself failed (not merely an empty capture)
+            # → say whether it's a missing sudo grant or some other tcpdump error.
+            if captured == 0 and not timed_out and rc not in (0, None):
+                low = (err or "").lower()
+                if ("password is required" in low or "not allowed to execute" in low
+                        or "a terminal is required" in low):
+                    reason = "no-privilege"
+                else:
+                    reason, detail = "probe-error", (err or "").strip()[:200]
+                elapsed = None
+            else:
+                packets = captured
 
-    # No packets AND tcpdump itself failed (not just an empty capture) → tell the
-    # operator whether it's a missing sudo grant vs. some other tcpdump error.
-    if packets == 0 and not timed_out and rc not in (0, None):
-        low = (err or "").lower()
-        if "password is required" in low or "not allowed to execute" in low or "a terminal is required" in low:
-            return jsonify({"ok": False, "supported": True, "reason": "no-privilege"})
-        return jsonify({"ok": False, "supported": True, "reason": "probe-error",
-                        "error": (err or "").strip()[:200]})
-
-    pps = round(packets / elapsed, 1)
+    probed = packets is not None
     return jsonify({
-        "ok": True, "supported": True, "port": FEED_FLOW_PORT,
-        "packets": packets, "elapsed_ms": round(elapsed * 1000),
-        "pps": pps, "nominal_pps": _FEED_FLOW_NOMINAL,
-        "flowing": packets > 0,
+        "ok":          True,
+        "supported":   supported,
+        "probed":      probed,
+        "flowing":     (packets > 0) if probed else None,
+        "port":        FEED_FLOW_PORT,
+        "packets":     packets,
+        "elapsed_ms":  round(elapsed * 1000) if elapsed is not None else None,
+        "pps":         round(packets / elapsed, 1) if probed else None,
+        "nominal_pps": _FEED_FLOW_NOMINAL,
+        "reason":      reason,
+        "detail":      detail,
     })
 
 
@@ -261,7 +309,10 @@ def api_health_rtc():
     import sys as _sys
     base = "/sys/class/rtc/rtc0"
     if _sys.platform != "linux" or not os.path.isdir(base):
-        return jsonify({"ok": True, "present": False})
+        # §5: same keys as the present path. A two-key dict here and a five-key
+        # dict below meant the caller had to know which world it was in first.
+        return jsonify({"ok": True, "present": False, "name": None,
+                        "hctosys": None, "drift_s": None})
 
     def _read(name):
         try:
@@ -281,7 +332,7 @@ def api_health_rtc():
         except (ValueError, OverflowError):
             pass
 
-    return jsonify({"ok": True, "present": True, "name": _read("name"),
+    return jsonify({"ok": True, "present": True, "name": _read("name") or None,
                     "hctosys": _read("hctosys") == "1", "drift_s": drift})
 
 
@@ -302,20 +353,28 @@ def api_health_file():
     key  = request.args.get("key", "")
     path = _health_paths().get(key)
     if not path:
-        return jsonify({"ok": False, "error": "unknown key"}), 400
+        return jsonify({"ok": False, "error": "unknown key",
+                        "code": "UNKNOWN_KEY"}), 400
 
     exists = os.path.isfile(path)
-    info = {"ok": exists, "key": key, "exists": exists}
+    # §5: these two were added only for an existing, readable pat_config, so
+    # "no Winlink password" and "not a pat_config" and "the file is corrupt"
+    # were all the same absent key. null means unknown; false means we looked.
+    callsign_set = password_set = None
     if key == "pat_config" and exists:
         try:
             import json as _json
             with open(path) as fh:
                 cfg = _json.load(fh)
-            info["callsign_set"] = bool(cfg.get("mycall"))
-            info["password_set"] = bool(cfg.get("secure_login_password"))
+            callsign_set = bool(cfg.get("mycall"))
+            password_set = bool(cfg.get("secure_login_password"))
         except Exception:
             pass
-    return jsonify(info)
+    # §2: `ok` was `exists`, so a correct report of "not configured yet" read as
+    # a failed request. §10: built inline — this was `jsonify(info)`, one of the
+    # returns whose shape no reviewer and no gate could see.
+    return jsonify({"ok": True, "key": key, "exists": exists,
+                    "callsign_set": callsign_set, "password_set": password_set})
 
 
 def _pat_config_path():

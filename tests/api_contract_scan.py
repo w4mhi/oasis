@@ -93,7 +93,8 @@ def _const(node):
 def returns_of(fn):
     """Every `return` in `fn` (excluding nested defs) as a fact dict.
 
-    {"line", "status", "opaque", "has_ok", "ok_value", "has_error", "keys"}
+    {"line", "status", "opaque", "has_ok", "ok_value", "ok_computed",
+     "has_error", "keys"}
     `status` is the literal HTTP status, or 200 when the return is a bare value.
     """
     facts = []
@@ -127,23 +128,31 @@ def returns_of(fn):
                     facts.append({
                         "line": node.lineno, "status": status, "opaque": True,
                         "delegated_to": nm, "has_ok": False, "ok_value": None,
-                        "has_error": False, "keys": [],
+                        "ok_computed": False, "has_error": False, "keys": [],
                     })
             continue
         if d is None:                      # jsonify(<variable>) — shape not visible here
             facts.append({
-                "line": node.lineno, "status": status, "opaque": True,
-                "delegated_to": None, "has_ok": False, "ok_value": None, "has_error": False, "keys": [],
+                "line": node.lineno, "status": status, "opaque": True, "delegated_to": None,
+                "has_ok": False, "ok_value": None, "ok_computed": False,
+                "has_error": False, "keys": [],
             })
             continue
         items = _dict_lookup(d)
+        # `ok` bound to an EXPRESSION rather than a literal — `ok: bool(path)`,
+        # `ok: active == "active"`. Invisible to the ok:false-with-200 check
+        # (there is no constant to compare), and always a §2 violation: the
+        # value is being computed FROM DOMAIN STATE, which is the exact thing
+        # `ok` must not mean. Reported as its own class.
+        ok_node = items.get("ok")
         facts.append({
             "line": node.lineno,
             "status": status,
             "opaque": False,
             "delegated_to": None,
             "has_ok": "ok" in items,
-            "ok_value": _const(items["ok"]) if "ok" in items else None,
+            "ok_value": _const(ok_node) if ok_node is not None else None,
+            "ok_computed": ok_node is not None and not isinstance(ok_node, ast.Constant),
             "has_error": "error" in items,
             "keys": sorted(items),
         })

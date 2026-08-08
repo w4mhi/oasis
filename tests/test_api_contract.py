@@ -36,7 +36,8 @@ from api_contract_scan import scan_tree  # noqa: E402
 # §2 — `ok: false` served with HTTP 200. These use `ok` to mean "the news is bad"
 # rather than "the request failed", which makes the two indistinguishable.
 _OK_FALSE_200 = frozenset({
-    "/api/health/probe", "/api/health/service", "/api/health/feed-flow",
+    # /api/health/{probe,service,feed-flow} graduated 2026-08-08 — the cluster
+    # this rule was written for. See tests/test_health_contract.py.
     "/api/wifi/scan", "/api/wifi/connect", "/api/wifi/forget",
     "/api/satellites/refresh", "/api/service", "/api/setup/reboot",
     "/api/winlink/log",
@@ -60,7 +61,7 @@ _NO_ENVELOPE = frozenset({
 _UNVERIFIABLE = frozenset({
     # graduated 2026-08-07: /api/adsb/{alerts,aircraft,recent,health}
     "/api/adsb/history",     "/api/config", "/api/diagnostics", "/api/forms/list", "/api/forms/save",
-    "/api/hardware/console", "/api/hardware/detect", "/api/health/file",
+    "/api/hardware/console", "/api/hardware/detect",
     # /api/system left this list on the SURFACE FIX, not on a migration: its own
     # return site was always a literal dict. It was listed because the scan
     # merged it with graywolf-api's same-named opaque route. Counting that as
@@ -171,6 +172,26 @@ class EnvelopeTest(unittest.TestCase):
 
 
 class OkMeansRequestSucceededTest(unittest.TestCase):
+    def test_ok_is_never_computed_from_domain_state(self):
+        """`ok: bool(path)`, `ok: active == "active"`, `ok: exists`.
+
+        These slipped past the ok:false-with-200 check for a structural reason:
+        there is no constant to compare, so the scan recorded ok_value=None and
+        every rule that looks for `False` found nothing. Yet a computed `ok` is
+        ALWAYS the §2 defect in its purest form — the value is being derived
+        from what the answer says rather than from whether answering worked.
+
+        No allowlist. Nothing in the repo does this any more, and a new one
+        should be caught the day it is written rather than negotiated.
+        """
+        offenders = sorted({f"{rule}  ({rel}:{f['line']})"
+                            for rule, entries in _by_rule().items()
+                            for rel, f in entries if f["ok_computed"]})
+        self.assertEqual(offenders, [],
+                         "`ok` computed from domain state (contract §2) — give the "
+                         "state its own typed field and make `ok` a literal:\n  "
+                         + "\n  ".join(offenders))
+
     def test_no_ok_false_served_with_http_200(self):
         """The worst ambiguity for a model: a failed call and a successful report
         of bad news become indistinguishable."""
@@ -243,7 +264,7 @@ class AllowlistHygieneTest(unittest.TestCase):
         remaining = len(_OK_FALSE_200 | _NO_ENVELOPE | _UNVERIFIABLE)
         # A ratchet: this is the migration debt and may only go DOWN. Lower it
         # as endpoints graduate; never raise it to make something pass.
-        self.assertLessEqual(remaining, 41,
+        self.assertLessEqual(remaining, 37,
                              f"the allowlists grew to {remaining} — they may only shrink")
         self.assertGreater(total, remaining)
 

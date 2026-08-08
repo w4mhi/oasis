@@ -1447,7 +1447,7 @@ async function pollFeedFlow() {
   if (!(await isUnitActive('aprs-sdr-feed'))) { _meterOff(meter, fill, label); return; }
   try {
     const d = await (await fetch('/api/health/feed-flow', { cache:'no-store' })).json();
-    if (d.supported === false || d.ok === false) { _meterOff(meter, fill, label); return; }
+    if (d.supported === false || !d.probed) { _meterOff(meter, fill, label); return; }
     meter.hidden = false;
     const pct = Math.max(0, Math.min(100, (d.pps / (d.nominal_pps || 50)) * 100));
     if (fill) fill.style.width = pct.toFixed(0) + '%';

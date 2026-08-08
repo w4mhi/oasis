@@ -145,15 +145,22 @@ Canonical machine-readable map: **`GET /server-ports.json`**.
 
 Cheap, targeted checks used by dashboard cards.
 
+**All of these are on the contract.** `ok` means the PROBE RAN — it is never
+`false` because the thing being probed is down. A stopped service, an absent
+binary, an unconfigured Pat, an unreachable port: all are `ok:true` with the
+finding in a typed field (`running`, `present`, `exists`, `reachable`). Only a
+bad request is `ok:false`, and then with HTTP 4xx and a `code`. Key sets do not
+change with the answer.
+
 | Method | Path | Params | Description |
 |---|---|---|---|
-| GET | `/api/health/probe` | `service`, `port` | Server-side reachability check of a known local service (returns real HTTP status vs opaque no-cors). |
-| GET | `/api/health/service` | `name` | systemd status for a known unit (`graywolf`, `graywolf-api`, `pat`, `pat-direwolf`, `kiwix`, `webssh`, `aprs-sdr-feed`, `openwebrx`, `dump1090-fa`, `adsb-api`, `gpsd`, `oasis`). `supported:false` off-Linux. |
-| GET | `/api/health/binary` | `name` | Whether a named system binary (e.g. `rtl_test`) is on `PATH`/standard dirs. |
-| GET | `/api/health/feed-flow` | — | Whether UDP datagrams are actually flowing on the RTL-SDR feed port (passive `tcpdump` sample; needs scoped sudo). Reasons: `not-linux`, `tcpdump-missing`, `no-privilege`, `probe-error`. |
+| GET | `/api/health/probe` | `service`, `port` | Server-side reachability check of a known local service (returns real HTTP status vs opaque no-cors). `{reachable, status, detail}`. |
+| GET | `/api/health/service` | `name` | systemd status for a known unit (`graywolf`, `graywolf-api`, `pat`, `pat-direwolf`, `kiwix`, `webssh`, `aprs-sdr-feed`, `openwebrx`, `dump1090-fa`, `adsb-api`, `gpsd`, `oasis`). `{running, active, enabled, installed, supported}`; `supported:false` off-Linux, same keys. |
+| GET | `/api/health/binary` | `name` | Whether a named system binary (e.g. `rtl_test`) is on `PATH`/standard dirs. `{present, path}`. |
+| GET | `/api/health/feed-flow` | — | Whether UDP datagrams are actually flowing on the RTL-SDR feed port (passive `tcpdump` sample; needs scoped sudo). `{supported, probed, flowing, pps, reason, detail}`. `flowing` is **null** when nothing was measured — "we never listened" is not "the feed is dead". Reasons: `not-linux`, `tcpdump-missing`, `no-privilege`, `probe-error`. |
 | GET | `/api/health/zim` | — | Offline Wikipedia/ZIM presence + count for the Kiwix card. |
-| GET | `/api/health/rtc` | — | Hardware-RTC status from sysfs (presence, driver — e.g. Witty Pi DS3231). |
-| GET | `/api/health/file` | `name` | Existence of a known OASIS config artifact (allowlisted names only, no arbitrary paths). |
+| GET | `/api/health/rtc` | — | Hardware-RTC status from sysfs (presence, driver — e.g. Witty Pi DS3231). `{present, name, hctosys, drift_s}`. |
+| GET | `/api/health/file` | `key` | Existence of a known OASIS config artifact (allowlisted keys only, no arbitrary paths). `{exists, callsign_set, password_set}` — booleans only, never the values; **null** means unreadable/not applicable. |
 
 ### Service control
 
