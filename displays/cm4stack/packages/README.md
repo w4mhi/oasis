@@ -1,14 +1,14 @@
 # Feature-local vendored packages — CM4Stack panel
 
-`create-oasis-offline.py` downloads **`m5stack-cm4.dtbo`** (the panel's device-tree
-overlay) here, co-located with the feature so removing `displays/cm4stack/` removes
-it — nothing left behind in the shared `offline-packages/` tree.
+**The panel's device-tree overlay no longer lives here.** It moved to the repo
+root's tracked `overlays/`, where every overlay OASIS ships is found and
+installed by one mechanism (`common/overlays.py`). Provenance and the rebuild /
+refetch rules are in `overlays/SOURCE.md`.
 
-```
-packages/m5stack-cm4.dtbo    # single arch-independent overlay (no suite/arch split)
-```
+`common/overlays.py` still SEARCHES this directory, so a bundle built before that
+change keeps working — but `scripts/create-oasis-offline.py` now writes
+`m5stack-cm4.dtbo` into `overlays/`, and nothing new should be dropped here.
 
-The `.dtbo` is gitignored (`displays/*/packages/**/*.dtbo`) but bundled into the
-offline image by the build's tree-walk. `install-cm4stack.py` looks for it here
-first (`VENDORED_M5_OVERLAY_CANDIDATES`), then in `overlays/` / the feature root as
-manual-drop fallbacks.
+This directory is kept for any future feature-local package that is genuinely
+not an overlay (a `.deb`, a wheel), following the same
+`features/*/packages/` convention.

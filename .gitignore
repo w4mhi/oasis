@@ -97,9 +97,10 @@ server/wheels/*.whl
 # Kept in the feature dir for clean removal; bundled into the offline image, not git.
 features/*/wheels/*.whl
 
-# Feature-local vendored packages (e.g. features/rtl-sdr/packages/{rtl-sdr,direwolf}/<suite>/*.deb,
-# displays/cm4stack/packages/m5stack-cm4.dtbo). Co-located with the feature for
-# clean removal; bundled into the offline image, not git.
+# Feature-local vendored packages (e.g. features/rtl-sdr/packages/{rtl-sdr,direwolf}/<suite>/*.deb).
+# Co-located with the feature for clean removal; bundled into the offline image,
+# not git. Device-tree overlays are NOT in this scheme any more — they live in
+# the tracked overlays/ at the repo root.
 features/*/packages/**/*.deb
 displays/*/packages/**/*.dtbo
 
@@ -112,7 +113,10 @@ services/*/packages/**/*.deb
 offline-packages/
 maps/tiles/
 
-# M5Stack CM4Stack overlay — fetched at build time / dropped manually, never committed.
+# Legacy per-feature overlay drop points. The canonical home is the tracked
+# overlays/ at the repo root (see overlays/SOURCE.md); these paths are still
+# SEARCHED by common/overlays.py so a bundle built before the unification, or an
+# operator's manual drop, keeps working — but nothing new should land here.
 displays/cm4stack/overlays/*.dtbo
 
 # RepeaterBook data .

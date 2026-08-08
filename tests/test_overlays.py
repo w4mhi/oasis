@@ -239,3 +239,42 @@ class BackupAndRestoreTest(unittest.TestCase):
         self.assertEqual(why, "no-vendored-copy")
         with open(dest, "rb") as fh:
             self.assertEqual(fh.read(), b"NEW-KERNEL-OVERLAY")
+
+
+class BundleDropPointTest(unittest.TestCase):
+    """The build writes overlays where the installer looks for them.
+
+    These are two files that must agree and have no other connection:
+    scripts/create-oasis-offline.py chooses a download destination, and
+    common/overlays.py chooses a search order. They were out of step by
+    construction before the unification — the build dropped the panel overlay in
+    displays/cm4stack/packages/ while nothing else knew that path — so pin the
+    agreement rather than trusting two comments to stay true.
+    """
+
+    def _build_script(self):
+        path = os.path.join(overlays.REPO_ROOT, "scripts", "create-oasis-offline.py")
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_the_panel_overlay_is_fetched_into_the_canonical_directory(self):
+        src = self._build_script()
+        start = src.index("def phase_cm4stack")
+        body = src[start:start + 2000]
+        self.assertIn('"overlays"', body,
+                      "create-oasis-offline must drop m5stack-cm4.dtbo into "
+                      "overlays/, the directory common/overlays.py searches first")
+        self.assertNotIn('"displays", "cm4stack", "packages"', body,
+                         "the panel overlay's old feature-local drop point is "
+                         "no longer where the installer looks")
+
+    def test_the_bundle_preserves_the_overlays_directory(self):
+        """An incremental rebuild must not wipe the vendored blobs."""
+        self.assertIn('"overlays",', self._build_script(),
+                      "overlays/ must be in PRESERVE_IN_DEST")
+
+    def test_the_canonical_directory_is_searched_first(self):
+        """Order matters: a stale copy in a legacy path must never shadow the
+        tracked one."""
+        dirs = overlays._vendor_dirs("/repo")
+        self.assertEqual(dirs[0], os.path.join("/repo", "overlays"))

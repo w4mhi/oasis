@@ -1129,9 +1129,11 @@ def _resolve_wiki_url():
 
 
 # M5Stack CM4Stack panel overlay — a prebuilt, kernel-portable device-tree blob.
-# Fetched at build time (not redistributed in the OASIS repo) and installed on the
-# target by displays/cm4stack/install-cm4stack.py. aw88xx.dtbo is intentionally NOT fetched
-# (no working arm64 driver — see displays/cm4stack/cm4stack-oasis-panel.md §7).
+# Lands in the bundle's overlays/ alongside the DRAWS blobs, so every overlay
+# OASIS ships has ONE home and one installer (common/overlays.py). Installed on
+# the target by displays/cm4stack/install-cm4stack.py. aw88xx.dtbo is
+# intentionally NOT fetched (no working arm64 driver — see
+# displays/cm4stack/cm4stack-oasis-panel.md §7).
 M5STACK_OVERLAY_URL = (
     "https://raw.githubusercontent.com/m5stack/m5stack-linux-dtoverlays/"
     "main/overlays/cm4stack/bin/m5stack-cm4.dtbo"
@@ -1139,14 +1141,18 @@ M5STACK_OVERLAY_URL = (
 
 
 def phase_cm4stack(bundle_root, update=False):
-    """Download m5stack-cm4.dtbo into displays/cm4stack/packages/ for offline install.
+    """Ensure m5stack-cm4.dtbo is in the bundle's overlays/ for offline install.
 
     Single arch-independent file (a device-tree overlay), so no suite/arch split.
-    Incremental: skips if already present; a clean --rebuild re-fetches it.
-    Feature-local: kept inside displays/cm4stack/ so removing the feature dir removes
-    it. bundle_root is <out>/offline-packages, so go up one to the bundle root.
+
+    It lands in overlays/ rather than displays/cm4stack/packages/ because every
+    overlay OASIS ships now has one home and one installer (common/overlays.py).
+    The repo already tracks a copy, so on a normal build this phase finds it and
+    does nothing — the download is the path for a tree where the blob was
+    deliberately removed, and the way to refresh it is to delete it and rebuild.
+    bundle_root is <out>/offline-packages, so go up one to the bundle root.
     """
-    dest_dir = os.path.join(os.path.dirname(bundle_root), "displays", "cm4stack", "packages")
+    dest_dir = os.path.join(os.path.dirname(bundle_root), "overlays")
     dest     = os.path.join(dest_dir, "m5stack-cm4.dtbo")
 
     _section("Phase — CM4Stack panel overlay")
