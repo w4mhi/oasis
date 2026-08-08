@@ -108,8 +108,19 @@
       byHex[a.hex] = Object.assign({}, a, { _ts: a.ts, _live: false });
     });
     (live || []).forEach(function (a) {
-      var seenSec = (typeof a.seen === 'number') ? a.seen : 0;
-      byHex[a.hex] = Object.assign({}, a, { _ts: now - seenSec, _live: true });
+      // /api/adsb/aircraft now resolves the decoder clock server-side and sends
+      // an absolute `last_seen` (ISO) plus `age_s`, so the client no longer has
+      // to reconcile dump1090's clock with its own. The `now - seen` path stays
+      // for /api/adsb/recent, which has not been migrated yet — remove it when
+      // that endpoint lands on the contract.
+      var ts;
+      if (a.last_seen) {
+        ts = Date.parse(a.last_seen) / 1000;
+      } else {
+        var seenSec = (typeof a.seen === 'number') ? a.seen : 0;
+        ts = now - seenSec;
+      }
+      byHex[a.hex] = Object.assign({}, a, { _ts: ts, _live: true });
     });
     return Object.values(byHex);
   }

@@ -3804,8 +3804,11 @@ async function fetchAPRS() {
     const ar = await fetch('/api/adsb/aircraft', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
     if (ar.ok) {
       const aj = await ar.json();
-      _adsbAircraft = aj.aircraft || [];
-      _adsbNow = (typeof aj.now === 'number') ? aj.now : (Date.now() / 1000);
+      // Contract envelope: {ok, aircraft, total, truncated, limit, time}.
+      // Aircraft carry an absolute `last_seen`, so _adsbNow is only the local
+      // fallback for un-migrated /api/adsb/recent rows.
+      _adsbAircraft = (aj.ok && Array.isArray(aj.aircraft)) ? aj.aircraft : [];
+      _adsbNow = Date.now() / 1000;
     } else { _adsbAircraft = []; }
   } catch (_) { _adsbAircraft = []; }
   await pollAdsbRecent(false);

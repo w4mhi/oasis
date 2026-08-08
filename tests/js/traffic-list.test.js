@@ -295,3 +295,25 @@ test('both pages anchor the breakdown to the fetch instant', () => {
     assert.ok(/now:\s*_aprsFetchedAtMs/.test(src), rel + ' does not anchor the breakdown to it');
   }
 });
+
+// /api/adsb/aircraft resolves dump1090's clock server-side and sends an absolute
+// `last_seen`, so the client no longer subtracts `now - seen`. The old path stays
+// only for /api/adsb/recent, which has not been migrated yet.
+test('aircraftRows: prefers the server-resolved last_seen over now - seen', () => {
+  const iso = '2025-07-31T22:12:38Z';
+  const rows = T.aircraftRows({
+    now: 999999,                       // a deliberately wrong client clock
+    recent: [],
+    live: [{ hex: 'aaa', seen: 42, last_seen: iso, lat: 1, lon: 1 }],
+  });
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(new Date(rows[0].last_heard).toISOString().replace('.000', ''), iso);
+});
+
+test('aircraftRows: falls back to now - seen when last_seen is absent', () => {
+  // /api/adsb/recent rows still arrive without it.
+  const rows = T.aircraftRows({
+    now: 1000, recent: [], live: [{ hex: 'bbb', seen: 100, lat: 1, lon: 1 }],
+  });
+  assert.strictEqual(Math.round(new Date(rows[0].last_heard).getTime() / 1000), 900);
+});

@@ -1257,7 +1257,10 @@ function _adsbListRows() {
 async function refreshAdsb() {
   try { const r = await fetch('/api/adsb/aircraft', { cache:'no-store', signal: AbortSignal.timeout(5000) });
         if (!r.ok) { _adsbAircraft=[]; scheduleAprsRender(); return; }
-        const j = await r.json(); _adsbAircraft = j.aircraft||[]; _adsbNow = (typeof j.now==='number')?j.now:(Date.now()/1000); scheduleAprsRender(); } catch (_) {}
+        const j = await r.json();
+        // Contract envelope; aircraft carry an absolute `last_seen`.
+        _adsbAircraft = (j.ok && Array.isArray(j.aircraft)) ? j.aircraft : [];
+        _adsbNow = Date.now()/1000; scheduleAprsRender(); } catch (_) {}
 }
 async function refreshAdsbRecent() {
   try { const r = await fetch('/api/adsb/recent?hours=24', { cache:'no-store', signal: AbortSignal.timeout(8000) });

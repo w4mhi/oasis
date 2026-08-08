@@ -111,9 +111,77 @@ def api_adsb_health_proxy():
     return _adsb_proxy("/health", timeout=3)
 
 
+# The map needs every aircraft it can see, so this bound exists to stop an
+# unbounded response, not to trim normal operation — a busy station shows a few
+# hundred. The assistant asks for a small `limit` explicitly.
+_AIRCRAFT_DEFAULT_LIMIT = 500
+_AIRCRAFT_MAX_LIMIT = 2000
+
+# Fields the front-end renders. Listed explicitly so a record that is missing one
+# still carries the key as null (§5) instead of the key vanishing — a model reads a
+# missing key as a different world, and the UI's `a.alt_baro` would be undefined.
+# NOTE: these keep dump1090's names. Renaming to altitude_ft / ground_speed_kt
+# (§7) is a separate pass across the whole ADS-B surface.
+_AIRCRAFT_FIELDS = ("flight", "lat", "lon", "alt_baro", "gs", "track",
+                    "category", "squawk", "emergency", "baro_rate")
+
+
 @bp.route("/api/adsb/aircraft")
-def api_adsb_aircraft_proxy():
-    return _adsb_proxy("/aircraft")
+def api_adsb_aircraft():
+    """Live aircraft, most recently heard first. Conforms to docs/api-contract.md.
+
+    Resolves dump1090's `now` + per-aircraft `seen` into an absolute `last_seen`
+    here rather than shipping the decoder's epoch clock and making every client
+    subtract. That removes an epoch float from the wire (§6) and, more usefully,
+    stops three separate pages depending on a clock they cannot verify.
+    """
+    payload, error = _adsb_json("/aircraft")
+    if error:
+        return error
+
+    limit = _clamp_limit(request.args.get("limit"),
+                         _AIRCRAFT_DEFAULT_LIMIT, _AIRCRAFT_MAX_LIMIT)
+    raw = [a for a in (payload.get("aircraft") or [])
+           if isinstance(a, dict) and a.get("hex")]
+
+    try:
+        decoder_now = float(payload.get("now"))
+    except (TypeError, ValueError):
+        decoder_now = time.time()
+
+    def _seen(rec):
+        try:
+            return float(rec.get("seen"))
+        except (TypeError, ValueError):
+            return None
+
+    # Most recently heard first; hex breaks ties so the order is TOTAL and two
+    # identical polls can never come back differently (§4). Unknown age sorts last.
+    ordered = sorted(
+        raw, key=lambda r: (_seen(r) if _seen(r) is not None else float("inf"),
+                            str(r.get("hex") or "")))
+
+    aircraft = []
+    for rec in ordered[:limit]:
+        seen = _seen(rec)
+        out = {"hex": rec.get("hex")}
+        for key in _AIRCRAFT_FIELDS:
+            value = rec.get(key)
+            out[key] = value.strip() if isinstance(value, str) else value
+            if out[key] == "":
+                out[key] = None
+        out["last_seen"] = _iso(decoder_now - seen) if seen is not None else None
+        out["age_s"] = int(seen) if seen is not None else None
+        aircraft.append(out)
+
+    return jsonify({
+        "ok": True,
+        "aircraft": aircraft,
+        "total": len(raw),
+        "truncated": len(raw) > len(aircraft),
+        "limit": limit,
+        "time": _iso(decoder_now),
+    }), 200
 
 
 @bp.route("/api/adsb/history")

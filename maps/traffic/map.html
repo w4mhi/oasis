@@ -2619,8 +2619,11 @@ async function refreshAdsb() {
     const r = await fetch('/api/adsb/aircraft');
     if (!r.ok) return;
     const j = await r.json();
-    _adsbAircraft = j.aircraft || [];
-    _adsbNow = (typeof j.now === 'number') ? j.now : (Date.now() / 1000);
+    // Contract envelope: {ok, aircraft, total, truncated, limit, time}. Aircraft
+    // carry an absolute `last_seen`, so _adsbNow is only the local fallback for
+    // un-migrated /api/adsb/recent rows.
+    _adsbAircraft = (j.ok && Array.isArray(j.aircraft)) ? j.aircraft : [];
+    _adsbNow = Date.now() / 1000;
     _adsbFetchedAtMs = Date.now();
     applyAdsbFilter();
     _adsbTrailUpdate();     // grow live trails + start fades for aircraft gone silent
