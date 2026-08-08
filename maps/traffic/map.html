@@ -3668,7 +3668,7 @@ async function _loadTrack(callsign) {
       ...data.points.map((p, i) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
-        properties: { timestamp: p.timestamp, speed_mph: p.speed_mph,
+        properties: { timestamp: p.time, speed_mph: p.speed_mph,
                       latest: i === data.points.length - 1 }
       }))
     ];

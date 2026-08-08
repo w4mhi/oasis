@@ -2049,6 +2049,10 @@ const SERVICES = [
       const r = await fetch('/api/aprs/health', { cache: 'no-store' });
       if (!r.ok) return { up: false, sub: `:${PORTS.aprs_api}` };
       const d = await r.json();
+      // `ok` now means the PROBE ran; `running` is whether graywolf-api is up.
+      // The endpoint answers 200 even when it is down, so branching on the HTTP
+      // status alone would report a stopped service as UP.
+      if (!d.running) return { up: false, sub: `:${PORTS.aprs_api}` };
       return { up: true, warn: !d.db_exists, badge: 'UP',
         sub: d.db_exists ? `DB :${PORTS.aprs_api}` : `no DB :${PORTS.aprs_api}` };
     }

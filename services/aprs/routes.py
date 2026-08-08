@@ -6,12 +6,13 @@ server/app.py in the blueprint split; URLs unchanged.
 
 import datetime
 import json
+import urllib.parse
 import os
 import threading
 import time
 import uuid
 
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, jsonify, request
 
 import appconfig
 from common import config_paths
@@ -90,23 +91,29 @@ def _get_broadcaster():
         return _broadcaster_cache
 
 @bp.route("/api/aprs/health")
-def api_aprs_health_proxy():
-    """Proxy health check for the graywolf-api (port 8085).
-    Same-origin so the browser doesn’t need to make a cross-origin request."""
-    import urllib.request
-    import urllib.error
-    url = "http://127.0.0.1:8085/health"
-    try:
-        with urllib.request.urlopen(url, timeout=3) as resp:
-            return Response(resp.read(), status=200,
-                            content_type="application/json")
-    except urllib.error.HTTPError as e:
-        return Response(e.read(), status=e.code,
-                        content_type="application/json")
-    except urllib.error.URLError as e:
-        reason = getattr(e, "reason", str(e))
-        return jsonify({"ok": False, "graywolf_reachable": False,
-                        "error": str(reason)}), 503
+def api_aprs_health():
+    """Is the APRS stats API up, and does it have its history DB?
+
+    Contract §2: `ok` means the PROBE ran, not that the news is good. A stopped
+    graywolf-api is an answer, not a failed request, so this is always 200 and
+    `running` carries the state. Consumers must branch on `running`, not on the
+    HTTP status — see index.html / dashboard.html service pills.
+    """
+    payload, error = _graywolf_json("/health", timeout=3)
+    detail = None
+    if error:
+        detail = str((error[0].get_json() or {}).get("error") or "APRS API unavailable.")
+        payload = None
+    elif payload.get("ok") is False:
+        detail = str(payload.get("error") or "APRS API reported a failure.")
+        payload = None
+    return jsonify({
+        "ok": True,
+        "running": payload is not None,
+        "db_exists": bool(payload.get("db_exists")) if payload else False,
+        "db": payload.get("db") if payload else None,
+        "detail": detail,
+    }), 200
 
 
 
@@ -115,6 +122,10 @@ def api_aprs_health_proxy():
 # as its own systemd unit, is not restarted in lockstep with Flask, and emits
 # GrayWolf's native shapes. Normalising here means the contract holds regardless
 # of which daemon build is installed, and puts the envelope where it can be read.
+_TRACK_DEFAULT_MINUTES = 60.0
+_TRACK_MAX_MINUTES = 60.0 * 24 * 30
+_TRACK_DEFAULT_LIMIT = 5000
+_TRACK_MAX_LIMIT = 20000
 _STATIONS_DEFAULT_LIMIT = 5000
 _STATIONS_MAX_LIMIT = 20000
 
@@ -154,6 +165,16 @@ def _iso_utc(value):
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=datetime.timezone.utc)
     return dt.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _boot_time_iso(payload):
+    """Derive boot time from uptime — GrayWolf's boot_str has no year or zone."""
+    try:
+        up = float(payload.get("uptime_sec"))
+    except (TypeError, ValueError):
+        return None
+    boot = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=up)
+    return boot.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _round_coord(value):
@@ -254,51 +275,83 @@ def api_aprs_stations():
 
 
 @bp.route("/api/aprs/track")
-def api_aprs_track_proxy():
-    """Proxy station position history from the graywolf-api (port 8085).
-    Forwards ?callsign= and ?minutes= query params verbatim."""
-    import urllib.request
-    import urllib.error
-    import urllib.parse
-    qs = urllib.parse.urlencode({k: v for k, v in request.args.items()})
-    url = f"http://127.0.0.1:8085/api/aprs/track?{qs}"
+def api_aprs_track():
+    """Position history for one station, oldest-first (a path is a sequence).
+
+    Unlike every other list here the order is ASCENDING: these points are drawn
+    as a polyline, so chronological order is the useful one and reversing it
+    would silently draw the track backwards.
+    """
+    callsign = (request.args.get("callsign") or "").strip().upper()
+    if not callsign:
+        return jsonify({"ok": False, "code": "MISSING_CALLSIGN",
+                        "error": "callsign parameter required"}), 400
     try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            return Response(resp.read(), status=200,
-                            content_type="application/json")
-    except urllib.error.HTTPError as e:
-        return Response(e.read(), status=e.code,
-                        content_type="application/json")
-    except urllib.error.URLError as e:
-        reason = getattr(e, "reason", str(e))
-        return jsonify({"ok": False,
-                        "error": f"APRS API unavailable ({reason})."}), 503
-    except TimeoutError:
-        return jsonify({"ok": False,
-                        "error": "APRS API timed out."}), 503
+        minutes = float(request.args.get("minutes"))
+        if minutes <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        minutes = _TRACK_DEFAULT_MINUTES
+    minutes = min(minutes, _TRACK_MAX_MINUTES)
+    limit = _clamp_limit(request.args.get("limit"),
+                         _TRACK_DEFAULT_LIMIT, _TRACK_MAX_LIMIT)
+
+    qs = urllib.parse.urlencode({"callsign": callsign, "minutes": minutes})
+    payload, error = _graywolf_json(f"/api/aprs/track?{qs}")
+    if error:
+        return error
+    if payload.get("ok") is False:
+        return jsonify({"ok": False, "code": "APRS_TRACK_UNAVAILABLE",
+                        "error": str(payload.get("error") or "track unavailable.")}), 503
+
+    raw = [p for p in (payload.get("points") or []) if isinstance(p, dict)]
+    points = []
+    for rec in raw:
+        points.append({
+            "time": _iso_utc(rec.get("timestamp")),
+            "lat": _round_coord(rec.get("lat")),
+            "lon": _round_coord(rec.get("lon")),
+            "alt_m": rec.get("alt_m"),
+            "speed_mph": rec.get("speed_mph"),
+            "course": rec.get("course"),
+        })
+    points.sort(key=lambda p: (p["time"] is None, p["time"] or ""))
+    shown = points[:limit]
+
+    return jsonify({
+        "ok": True,
+        "callsign": callsign,
+        "points": shown,
+        "total": len(raw),
+        "count": len(raw),          # legacy alias — map.html branches on it
+        "truncated": len(raw) > len(shown),
+        "limit": limit,
+        "minutes": minutes,
+    }), 200
 
 
 @bp.route("/api/aprs/system")
-def api_aprs_system_proxy():
-    """Proxy system stats (CPU/RAM/temp) from the graywolf-api (port 8085).
-    The value is server-cached (5 s sampler) so this is a cheap, fast read."""
-    import urllib.request
-    import urllib.error
-    url = "http://127.0.0.1:8085/api/system"
-    try:
-        with urllib.request.urlopen(url, timeout=5) as resp:
-            return Response(resp.read(), status=200,
-                            content_type="application/json")
-    except urllib.error.HTTPError as e:
-        return Response(e.read(), status=e.code,
-                        content_type="application/json")
-    except urllib.error.URLError as e:
-        reason = getattr(e, "reason", str(e))
-        return jsonify({"ok": False,
-                        "error": f"APRS API unavailable ({reason})."}), 503
-    except TimeoutError:
-        return jsonify({"ok": False,
-                        "error": "APRS API timed out."}), 503
+def api_aprs_system():
+    """Host stats from the graywolf-api (5 s server-side cache, cheap to poll)."""
+    payload, error = _graywolf_json("/api/system", timeout=5)
+    if error:
+        return error
+    if payload.get("ok") is False:
+        return jsonify({"ok": False, "code": "APRS_SYSTEM_UNAVAILABLE",
+                        "error": str(payload.get("error") or "system stats unavailable.")}), 503
+    return jsonify({
+        "ok": True,
+        "cpu_pct": payload.get("cpu_pct"),
+        "cpu_temp_c": payload.get("cpu_temp_c"),
+        "cpu_count": payload.get("cpu_count"),
+        "ram": payload.get("ram"),
+        "disk": payload.get("disk"),
+        "load": payload.get("load"),
+        "uptime_s": payload.get("uptime_sec"),
+        # boot_str was "Fri Aug 07 19:29" — no year, no zone, unparseable (§6).
+        "boot_time": _iso_utc(payload.get("boot_time")) or _boot_time_iso(payload),
+        "fcc_db_date": payload.get("fcc_db_date"),
+    }), 200
 
 
 # ── Operator map warnings (shared, persisted) ─────────────────────────────────

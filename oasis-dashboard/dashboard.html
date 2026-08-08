@@ -1028,7 +1028,10 @@ const SERVICES = [
         : {up:true,badge:'INTERNET',sub:'operational'};
     } },
   { id:'kiwix', name:'Kiwix', check: async () => { await fetch(`http://${HOST}:${PORTS.kiwix}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.kiwix}`}; } },
-  { id:'aprs', name:'APRS Stats API', check: async () => { const r=await fetch('/api/aprs/health',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`:${PORTS.aprs_api}`}; const d=await r.json(); return {up:true,warn:!d.db_exists,badge:'UP',sub:d.db_exists?'DB found':'no DB'}; } },
+  { id:'aprs', name:'APRS Stats API', check: async () => { const r=await fetch('/api/aprs/health',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`:${PORTS.aprs_api}`}; const d=await r.json();
+      // 200 even when graywolf-api is down — `running` carries that, not the status.
+      if(!d.running) return {up:false,sub:`:${PORTS.aprs_api}`};
+      return {up:true,warn:!d.db_exists,badge:'UP',sub:d.db_exists?'DB found':'no DB'}; } },
   { id:'feed', name:'APRS SDR Feed', check: async () => { const r=await fetch('/api/health/service?name=aprs-sdr-feed',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:'→ GrayWolf'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
   { id:'gpsd', name:'GPS (gpsd)', check: async () => { const r=await fetch('/api/health/service?name=gpsd',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:':2947'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
   { id:'fcc', name:'FCC Database', check: async () => { const r=await fetch('/health',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'server error'}; const d=await r.json(); return {up:true,warn:!d.index_present,badge:d.index_present?'UP':'WARN',sub:d.index_present?`${(d.callsign_count||0).toLocaleString()} calls`:'not indexed'}; } },
