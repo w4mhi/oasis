@@ -148,7 +148,8 @@ PRESERVE_IN_DEST = {
     "offline-packages",      # graywolf / kiwix / webssh / pat (shared central tree)
     "features/rtl-sdr/packages",  # feature-local: rtl-sdr + direwolf .debs (bundle_base)
     "services/satellites/packages",  # feature-local: satellites-voice .debs (phase_satellites_voice)
-    "displays/cm4stack/packages", # feature-local: m5stack-cm4.dtbo
+    "overlays",                  # vendored .dtbo blobs (see overlays/SOURCE.md)
+    "displays/cm4stack/packages", # legacy m5stack-cm4.dtbo drop point
     "server/wheels",         # phase_wheels
     "services/map/map-assets",  # phase_aprs_sprites
     "services/fcc_database/data",  # phase_fcc

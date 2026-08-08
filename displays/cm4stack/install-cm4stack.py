@@ -43,6 +43,7 @@ import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail
+from common import overlays
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -96,19 +97,18 @@ PANEL_SCRIPT = os.path.join(REPO_ROOT, "displays", "cm4stack", "oasis-panel.py")
 # downloads it into this feature's own displays/cm4stack/packages/ (not committed
 # to the repo) — feature-local, so removing displays/cm4stack/ removes it; the other
 # paths are manual-drop fallbacks. Checked in order.
-VENDORED_M5_OVERLAY_CANDIDATES = (
-    os.path.join(REPO_ROOT, "displays", "cm4stack", "packages", "m5stack-cm4.dtbo"),
-    os.path.join(REPO_ROOT, "displays", "cm4stack", "overlays", "m5stack-cm4.dtbo"),
-    os.path.join(REPO_ROOT, "displays", "cm4stack", "m5stack-cm4.dtbo"),
-)
-
-
 def vendored_m5_overlay():
-    """Path to the vendored m5stack-cm4.dtbo, or None if it isn't shipped yet."""
-    for p in VENDORED_M5_OVERLAY_CANDIDATES:
-        if os.path.exists(p):
-            return p
-    return None
+    """Path to the vendored m5stack-cm4.dtbo, or None if it isn't shipped yet.
+
+    Resolution moved to common/overlays.py so every OASIS overlay (DRAWS's
+    draws/udrc, this panel) is found the same way, from the same directory. A
+    .dtbo is compiled data — architecture-independent and portable across kernel
+    versions — so one binary is safe and durable, unlike the arch/kernel-locked
+    aw882xx .ko (§7). The stock Pi image does not include this overlay and a
+    kernel/firmware update can wipe a hand-copied one, so installing on every
+    run covers both, fully offline. create-oasis-offline downloads it at BUILD
+    time; see overlays/SOURCE.md."""
+    return overlays.vendored_path("m5stack-cm4", REPO_ROOT)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

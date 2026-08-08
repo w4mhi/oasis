@@ -45,6 +45,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from common import draws
+from common import overlays
 from common.oasis_lib import _section, _step, _ok, _info, _warn, _fail
 
 import importlib.util as _ilu
@@ -455,6 +456,16 @@ def main(argv=None):
     if sys.platform != "linux":
         _fail("This installer requires Linux (Raspberry Pi).")
         return 1
+    # Put OASIS's vendored draws.dtbo in place first. Pi OS Trixie ships one that
+    # does not bring the HAT up on kernel 6.18.34 (neither the codec at 0x18 nor
+    # the SC16IS752 binds), and a firmware update can wipe a hand-copied file, so
+    # this runs on EVERY install rather than only when the overlay is missing.
+    for _ov in ("draws", "udrc"):
+        _changed, _why = overlays.install(_ov)
+        if _changed:
+            _ok("installed %s.dtbo (%s)" % (_ov, _why))
+        elif _why not in ("already-current", "no-vendored-copy"):
+            _warn("could not install %s.dtbo: %s" % (_ov, _why))
     if not draws.overlay_available():
         _fail("draws.dtbo not found in /boot/firmware/overlays — update Raspberry "
               "Pi OS; this image is too old to drive the DRAWS HAT.")

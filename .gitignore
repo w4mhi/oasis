@@ -85,7 +85,9 @@ temp/
 # USB bundle output — built by scripts/create-oasis-offline.py
 oasis-offline/
 oasis-offline-windows/
-overlays/
+# overlays/ is TRACKED — vendored .dtbo blobs OASIS ships because the stock
+# Pi OS image has none that works (see overlays/SOURCE.md for provenance +
+# rebuild steps). Only the m5stack panel overlay is fetched at build time.
 
 # Python wheels — downloaded by scripts/create-oasis-offline.py.
 # Never checked in; populated at bundle-build time.
