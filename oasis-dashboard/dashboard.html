@@ -186,6 +186,13 @@
   .upill:hover{ border-color:var(--blue); color:var(--text); }
   .upill.ops-pill{ color:var(--accent); }
   .upill.ops-pill:hover{ border-color:var(--accent); }
+  /* Units pill carries its mode as colour — green imperial / blue metric, on
+     both the text and the border, matching index.html. Declared AFTER the
+     :hover rule on purpose: `.upill.u-metric` and `.upill:hover` have equal
+     specificity, so source order is what decides, and the mode must not be
+     repainted by a stray hover. */
+  .upill.u-imperial{ color:var(--accent); border-color:var(--accent); }
+  .upill.u-metric{ color:var(--blue); border-color:var(--blue); }
   /* ── system bar — one pill, stats packed as CPU: 5% | RAM: 36% | … ─────── */
   .sysbar{ flex:1 1 auto; display:flex; flex-wrap:wrap; align-items:baseline;
     justify-content:flex-start; gap:.3rem .5rem;
@@ -815,7 +822,14 @@ async function seedCallsignGrid() {
 loadCallsignGrid(); seedCallsignGrid();
 
 // ── Units toggle (copied from dashboard_old, trimmed to the units pill) ──────
-function renderUnits() { const el = document.getElementById('k-units'); if (el) el.textContent = isImperial() ? 'IMPERIAL' : 'METRIC'; }
+function renderUnits() {
+  const el = document.getElementById('k-units'); if (!el) return;
+  const imp = isImperial();
+  el.textContent = imp ? 'IMPERIAL' : 'METRIC';
+  // Colour says which system without reading the word — see .upill.u-*.
+  el.classList.toggle('u-imperial', imp);
+  el.classList.toggle('u-metric', !imp);
+}
 function toggleUnits() { OasisUnits.toggleUnits(); renderUnits(); renderTemp(); applyAprsFilter(); }
 renderUnits();
 

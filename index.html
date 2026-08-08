@@ -273,8 +273,17 @@ body {
   flex-shrink: 0;
   transition: background .15s, border-color .15s, color .15s;
 }
-.units-pill:hover { background: var(--panel); border-color: var(--accent); }
+.units-pill:hover { background: var(--panel); }
+/* The VALUE carries the mode — green for imperial, blue for metric, on both the
+   word and the pill border, so which system you are reading is legible without
+   parsing the word. The "Units" label itself stays dim: it is a caption, not a
+   state. Hover no longer repaints the border, which used to flash accent green
+   while the pill was showing METRIC. */
 .units-pill .units-val { color: var(--accent); }
+.units-pill.u-imperial { border-color: var(--accent); }
+.units-pill.u-imperial .units-val { color: var(--accent); }
+.units-pill.u-metric { border-color: var(--blue); }
+.units-pill.u-metric .units-val { color: var(--blue); }
 
 /* ── Service strip ───────────────────────────────────────────────────── */
 .svc-strip {
@@ -2946,8 +2955,13 @@ function renderGpsAlt() {
   if (el) el.textContent = _lastGpsAltM != null ? fmtAlt(_lastGpsAltM) : 'n/a';
 }
 function applyUnits() {
+  const imp = isImperial();
   const v = document.getElementById('units-val');
-  if (v) v.textContent = isImperial() ? 'IMPERIAL' : 'METRIC';
+  if (v) v.textContent = imp ? 'IMPERIAL' : 'METRIC';
+  // Mode class drives the pill's colour (green imperial / blue metric) — see
+  // .units-pill.u-imperial / .u-metric.
+  const pill = document.getElementById('units-pill');
+  if (pill) { pill.classList.toggle('u-imperial', imp); pill.classList.toggle('u-metric', !imp); }
   renderTemp();
   renderGpsAlt();
   if (_allAprsStations.length) applyAprsFilter();   // re-render table in new units
