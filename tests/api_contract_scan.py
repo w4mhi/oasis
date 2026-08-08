@@ -54,6 +54,12 @@ def _jsonify_arg(node):
     return True, (arg if isinstance(arg, ast.Dict) else None)
 
 
+# Legitimately not a JSON response: streamed bytes, file downloads, redirects.
+# The contract governs JSON shapes, so these are out of scope rather than debt.
+_NON_JSON_RESPONDERS = {"send_from_directory", "send_file", "Response", "redirect",
+                        "abort", "make_response", "stream_with_context"}
+
+
 def _dict_lookup(d):
     """{literal-str-key: value-node} for a Dict node."""
     out = {}
@@ -87,11 +93,24 @@ def returns_of(fn):
             value = value.elts[0]
         is_jsonify, d = _jsonify_arg(value)
         if not is_jsonify:
+            # `return _some_helper(...)` delegates the whole response elsewhere, so
+            # the shape is invisible here too — the same problem as jsonify(<var>),
+            # and how /api/adsb/* and /api/winlink/* escaped every check. Genuine
+            # non-JSON responders are excluded rather than counted as debt.
+            if isinstance(value, ast.Call):
+                fn = value.func
+                nm = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", None)
+                if nm and nm not in _NON_JSON_RESPONDERS:
+                    facts.append({
+                        "line": node.lineno, "status": status, "opaque": True,
+                        "delegated_to": nm, "has_ok": False, "ok_value": None,
+                        "has_error": False, "keys": [],
+                    })
             continue
         if d is None:                      # jsonify(<variable>) — shape not visible here
             facts.append({
                 "line": node.lineno, "status": status, "opaque": True,
-                "has_ok": False, "ok_value": None, "has_error": False, "keys": [],
+                "delegated_to": None, "has_ok": False, "ok_value": None, "has_error": False, "keys": [],
             })
             continue
         items = _dict_lookup(d)
@@ -99,6 +118,7 @@ def returns_of(fn):
             "line": node.lineno,
             "status": status,
             "opaque": False,
+            "delegated_to": None,
             "has_ok": "ok" in items,
             "ok_value": _const(items["ok"]) if "ok" in items else None,
             "has_error": "error" in items,

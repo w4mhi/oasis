@@ -158,13 +158,24 @@ acceptable. It hides the response shape from review, and from the conformance
 test: 17 routes were silently satisfying every other rule purely because their
 shape could not be inspected at the return site.
 
-Build the response dict inline at the `return`, even when the body comes from a
-helper:
+The same applies to delegating the whole response to a helper. `return
+_adsb_proxy("/alerts")` hands the shape to a pass-through that copies the upstream
+daemon's bytes — the OASIS response is then whatever an internal service happened
+to emit, which is not a contract at all.
 
 ```python
 return jsonify({"ok": True, **summary}), 200        # RIGHT — envelope is visible
 return jsonify(summary)                             # WRONG — shape decided elsewhere
+return _some_proxy("/upstream")                     # WRONG — shape is upstream's
 ```
+
+**A proxy route is a contract boundary, not a pipe.** Parse the upstream response
+and build ours. That is what keeps the contract true even when the upstream daemon
+ships as its own systemd unit and is not restarted in lockstep with the web server
+— which is exactly the case for `adsb-api` and `graywolf-api`.
+
+Genuinely non-JSON responders (`send_file`, `send_from_directory`, streamed
+`Response`) are out of scope: this contract governs JSON shapes.
 
 ## 11 · Exit criterion — a functional harness
 
