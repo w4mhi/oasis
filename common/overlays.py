@@ -39,8 +39,14 @@ REPO_ROOT = os.path.dirname(_HERE)
 def _vendor_dirs(repo_root):
     return (
         os.path.join(repo_root, "overlays"),
+        os.path.join(repo_root, "features", "cm4stack", "packages"),
+        os.path.join(repo_root, "features", "cm4stack", "overlays"),
+        os.path.join(repo_root, "features", "cm4stack"),
+        # cm4stack lived under displays/ until 2026-08-08. Those .dtbo paths were
+        # GITIGNORED, so an in-place `git pull` leaves the old file sitting there
+        # untracked — searched last so a stale blob can never shadow the tracked
+        # one, but found rather than silently missed.
         os.path.join(repo_root, "displays", "cm4stack", "packages"),
-        os.path.join(repo_root, "displays", "cm4stack", "overlays"),
         os.path.join(repo_root, "displays", "cm4stack"),
     )
 

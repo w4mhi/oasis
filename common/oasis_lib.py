@@ -115,7 +115,7 @@ def ensure_scripts_executable(repo_root):
     runnable script without +x, which breaks running it directly (./path/foo.py),
     doc steps, and systemd ExecStarts that call the file by path. We walk the
     whole repo (not just scripts/) so entry points under common/, features/*/,
-    displays/*/, tests/, etc. are covered too. Only files whose first two bytes
+    services/*/, tests/, etc. are covered too. Only files whose first two bytes
     are '#!' are touched — import-only libraries (common/oasis_lib.py, the
     pure-logic feature modules) and package markers (__init__.py) have no shebang
     and stay non-executable. No git dependency (works from a zip). Idempotent.

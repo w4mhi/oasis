@@ -14,18 +14,18 @@ Two phases, auto-detected by whether the ST7789 panel framebuffer is live:
 
   Phase 2 — panel live (after reboot):
     Build + install the GT911 touch-fix overlay (resolves the i2c0 mux issue
-    described in §4 of displays/cm4stack/cm4stack-oasis-panel.md), append it to the
+    described in §4 of features/cm4stack/cm4stack-oasis-panel.md), append it to the
     OASIS block in config.txt, install + enable the oasis-panel.service systemd
     unit. Exits 10 if a second reboot is needed for the touch fix, else 0.
 
-Reference: displays/cm4stack/cm4stack-oasis-panel.md
+Reference: features/cm4stack/cm4stack-oasis-panel.md
 
 Usage:
-  python3 displays/cm4stack/install-cm4stack.py                # auto-detect phase
-  python3 displays/cm4stack/install-cm4stack.py --dry-run       # preview config.txt changes
-  python3 displays/cm4stack/install-cm4stack.py --config-only   # only config.txt + headless
-  python3 displays/cm4stack/install-cm4stack.py --service-only  # only install the service
-  python3 displays/cm4stack/install-cm4stack.py --no-enable     # write the unit, don't start
+  python3 features/cm4stack/install-cm4stack.py                # auto-detect phase
+  python3 features/cm4stack/install-cm4stack.py --dry-run       # preview config.txt changes
+  python3 features/cm4stack/install-cm4stack.py --config-only   # only config.txt + headless
+  python3 features/cm4stack/install-cm4stack.py --service-only  # only install the service
+  python3 features/cm4stack/install-cm4stack.py --no-enable     # write the unit, don't start
 
 Exit codes: 0 = done · 10 = reboot required · 1 = error.
 Requires: Linux (Raspberry Pi OS), sudo.
@@ -85,7 +85,7 @@ def removal_record(repo_root=None):
             "config_blocks": [[BLOCK_BEGIN, BLOCK_END]],
             "requires_reboot": True}
 
-# oasis-panel.py lives in the repo's displays/cm4stack/ dir (sibling of this installer)
+# oasis-panel.py lives in the repo's features/cm4stack/ dir (sibling of this installer)
 REPO_ROOT  = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PANEL_SCRIPT = os.path.join(REPO_ROOT, "displays", "cm4stack", "oasis-panel.py")
 
@@ -94,8 +94,8 @@ PANEL_SCRIPT = os.path.join(REPO_ROOT, "displays", "cm4stack", "oasis-panel.py")
 # aw882xx .ko, §7) — so one binary is safe and durable. The stock Pi image does
 # not include it, and a kernel/firmware update can wipe a hand-copied one;
 # installing from here on every run covers both, fully offline. create-oasis-offline
-# downloads it into this feature's own displays/cm4stack/packages/ (not committed
-# to the repo) — feature-local, so removing displays/cm4stack/ removes it; the other
+# downloads it into this feature's own features/cm4stack/packages/ (not committed
+# to the repo) — feature-local, so removing features/cm4stack/ removes it; the other
 # paths are manual-drop fallbacks. Checked in order.
 def vendored_m5_overlay():
     """Path to the vendored m5stack-cm4.dtbo, or None if it isn't shipped yet.
@@ -314,8 +314,8 @@ def step_check_overlays(overlay_dir):
         else:
             _fail(
                 f"m5stack-cm4.dtbo not found in {overlay_dir}, {other_dir}, or\n"
-                f"  vendored in displays/cm4stack/. OASIS ships this overlay — if it's missing,\n"
-                "  drop the built binary at displays/cm4stack/overlays/m5stack-cm4.dtbo, or\n"
+                f"  vendored in features/cm4stack/. OASIS ships this overlay — if it's missing,\n"
+                "  drop the built binary at features/cm4stack/overlays/m5stack-cm4.dtbo, or\n"
                 "  rebuild it and install manually, then re-run this script:\n\n"
                 "    git clone https://github.com/m5stack/m5stack-linux-dtoverlays\n"
                 "    cd m5stack-linux-dtoverlays\n"
@@ -517,7 +517,7 @@ Description=OASIS panel display (ST7789V2 CM4Stack)
 After=multi-user.target network.target
 
 [Service]
-# Rotate the panel 180°: set to 1 (or run displays/cm4stack/install-cm4stack.py --flip), then
+# Rotate the panel 180°: set to 1 (or run features/cm4stack/install-cm4stack.py --flip), then
 # `sudo systemctl restart oasis-panel`. 0 = normal orientation.
 Environment=OASIS_PANEL_FLIP={flip_val}
 ExecStart=/usr/bin/python3 {PANEL_SCRIPT}
@@ -607,7 +607,7 @@ def do_phase1(dry_run):
 
     _warn("Reboot required — the ST7789V panel framebuffer only appears after a reboot.")
     _info("After rebooting, re-run this script to complete the installation:")
-    _info("  python3 displays/cm4stack/install-cm4stack.py")
+    _info("  python3 features/cm4stack/install-cm4stack.py")
     return REBOOT_EXIT
 
 
@@ -675,9 +675,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python3 displays/cm4stack/install-cm4stack.py             # auto-detect phase\n"
-            "  python3 displays/cm4stack/install-cm4stack.py --dry-run   # preview config.txt edits\n"
-            "  python3 displays/cm4stack/install-cm4stack.py --service-only  # install service only\n"
+            "  python3 features/cm4stack/install-cm4stack.py             # auto-detect phase\n"
+            "  python3 features/cm4stack/install-cm4stack.py --dry-run   # preview config.txt edits\n"
+            "  python3 features/cm4stack/install-cm4stack.py --service-only  # install service only\n"
         ),
     )
     parser.add_argument("--dry-run", action="store_true",
@@ -697,7 +697,7 @@ def main():
     print()
     print("  OASIS — install-cm4stack")
     _hr()
-    print("  Reference: displays/cm4stack/cm4stack-oasis-panel.md")
+    print("  Reference: features/cm4stack/cm4stack-oasis-panel.md")
     print()
 
     if sys.platform != "linux":

@@ -149,7 +149,7 @@ PRESERVE_IN_DEST = {
     "features/rtl-sdr/packages",  # feature-local: rtl-sdr + direwolf .debs (bundle_base)
     "services/satellites/packages",  # feature-local: satellites-voice .debs (phase_satellites_voice)
     "overlays",                  # vendored .dtbo blobs (see overlays/SOURCE.md)
-    "displays/cm4stack/packages", # legacy m5stack-cm4.dtbo drop point
+    "features/cm4stack/packages", # legacy m5stack-cm4.dtbo drop point
     "server/wheels",         # phase_wheels
     "services/map/map-assets",  # phase_aprs_sprites
     "services/fcc_database/data",  # phase_fcc
@@ -1131,9 +1131,9 @@ def _resolve_wiki_url():
 # M5Stack CM4Stack panel overlay — a prebuilt, kernel-portable device-tree blob.
 # Lands in the bundle's overlays/ alongside the DRAWS blobs, so every overlay
 # OASIS ships has ONE home and one installer (common/overlays.py). Installed on
-# the target by displays/cm4stack/install-cm4stack.py. aw88xx.dtbo is
+# the target by features/cm4stack/install-cm4stack.py. aw88xx.dtbo is
 # intentionally NOT fetched (no working arm64 driver — see
-# displays/cm4stack/cm4stack-oasis-panel.md §7).
+# features/cm4stack/cm4stack-oasis-panel.md §7).
 M5STACK_OVERLAY_URL = (
     "https://raw.githubusercontent.com/m5stack/m5stack-linux-dtoverlays/"
     "main/overlays/cm4stack/bin/m5stack-cm4.dtbo"
@@ -1145,7 +1145,7 @@ def phase_cm4stack(bundle_root, update=False):
 
     Single arch-independent file (a device-tree overlay), so no suite/arch split.
 
-    It lands in overlays/ rather than displays/cm4stack/packages/ because every
+    It lands in overlays/ rather than features/cm4stack/packages/ because every
     overlay OASIS ships now has one home and one installer (common/overlays.py).
     The repo already tracks a copy, so on a normal build this phase finds it and
     does nothing — the download is the path for a tree where the blob was

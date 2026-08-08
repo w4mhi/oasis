@@ -102,7 +102,7 @@ features/*/wheels/*.whl
 # not git. Device-tree overlays are NOT in this scheme any more — they live in
 # the tracked overlays/ at the repo root.
 features/*/packages/**/*.deb
-displays/*/packages/**/*.dtbo
+features/*/packages/**/*.dtbo
 
 # Service-local vendored packages (e.g. services/adsb/packages/dump1090-fa/<suite>/*.deb).
 # Same pattern as features/*/packages above, for services/.
@@ -117,7 +117,7 @@ maps/tiles/
 # overlays/ at the repo root (see overlays/SOURCE.md); these paths are still
 # SEARCHED by common/overlays.py so a bundle built before the unification, or an
 # operator's manual drop, keeps working — but nothing new should land here.
-displays/cm4stack/overlays/*.dtbo
+features/cm4stack/overlays/*.dtbo
 
 # RepeaterBook data .
 static/repeaterbook/*.csv

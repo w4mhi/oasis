@@ -1966,10 +1966,10 @@ panel, GT911 touch, and GPIO fan, this configures the on-device OASIS panel
 display:
 
 ```bash
-python3 displays/cm4stack/install-cm4stack.py             # auto-detect the setup phase
-python3 displays/cm4stack/install-cm4stack.py --dry-run    # preview config.txt changes
-python3 displays/cm4stack/install-cm4stack.py --config-only # only config.txt + headless boot
-python3 displays/cm4stack/install-cm4stack.py --service-only # only install the panel service
+python3 features/cm4stack/install-cm4stack.py             # auto-detect the setup phase
+python3 features/cm4stack/install-cm4stack.py --dry-run    # preview config.txt changes
+python3 features/cm4stack/install-cm4stack.py --config-only # only config.txt + headless boot
+python3 features/cm4stack/install-cm4stack.py --service-only # only install the panel service
 ```
 
 It runs in **two phases** (auto-detected) and **requires a reboot** between them:
@@ -1982,7 +1982,7 @@ It runs in **two phases** (auto-detected) and **requires a reboot** between them
    reboot is needed for the touch fix.
 
 Exit codes: `0` = done · `10` = reboot required · `1` = error. Full hardware
-writeup: [`displays/cm4stack/cm4stack-oasis-panel.md`](../displays/cm4stack/cm4stack-oasis-panel.md).
+writeup: [`features/cm4stack/cm4stack-oasis-panel.md`](../features/cm4stack/cm4stack-oasis-panel.md).
 
 ---
 

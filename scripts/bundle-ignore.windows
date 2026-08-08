@@ -3,10 +3,12 @@
 #
 # The Windows bundle ships only the standalone tools (FCC lookup, ICS forms,
 # RepeaterBook, net logger, radio references, handbook, calculators) — no Pi
-# hardware, no displays, no APRS/Winlink daemons, no offline maps, no Wikipedia.
+# hardware, no panels or displays, no APRS/Winlink daemons, no offline maps,
+# no Wikipedia.
 
-# ── Pi-only hardware & display integrations ──
-displays/
+# ── Pi-only hardware, panel and display integrations ──
+# features/ covers every hardware add-on, panels included (the CM4Stack panel
+# lives at features/cm4stack).
 oasis-dashboard/
 features/
 

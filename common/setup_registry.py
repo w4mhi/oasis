@@ -87,7 +87,7 @@ def _forms_removal_record(repo_root):
                       "dashboard card only. Saved form instances are left untouched."]}
 
 # Shared exit-code convention used by several install scripts (e.g.
-# features/dra-audio-interface/enable-dra-pi.py, displays/cm4stack/
+# features/dra-audio-interface/enable-dra-pi.py, features/cm4stack/
 # install-cm4stack.py, features/gps-L76X/
 # gps_l76x.py) to mean "config written successfully, but a reboot is needed
 # before the next phase/effect can proceed" — NOT a real failure.
@@ -610,8 +610,8 @@ def build_registry(repo_root, payload=None):
         "cm4stack": SE.FeatureSpec(
             key="cm4stack",
             dependencies=["server"],
-            install_fn=lambda: _setup_run_script(repo_root, "displays/cm4stack/install-cm4stack.py"),
-            removal_record_fn=lambda: _removal_record(repo_root, "displays/cm4stack/install-cm4stack.py"),
+            install_fn=lambda: _setup_run_script(repo_root, "features/cm4stack/install-cm4stack.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/cm4stack/install-cm4stack.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             requires_reboot=True,

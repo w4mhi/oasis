@@ -57,7 +57,7 @@ class VendoredLookupTest(unittest.TestCase):
 
     def test_the_legacy_feature_local_path_still_resolves(self):
         """A bundle built before the unification put the panel overlay under
-        displays/cm4stack/packages/. It must keep working."""
+        features/cm4stack/packages/. It must keep working."""
         t = _Tree(self.stack)
         legacy = os.path.join(t.root, "displays", "cm4stack", "packages")
         os.makedirs(legacy)
@@ -248,7 +248,7 @@ class BundleDropPointTest(unittest.TestCase):
     scripts/create-oasis-offline.py chooses a download destination, and
     common/overlays.py chooses a search order. They were out of step by
     construction before the unification — the build dropped the panel overlay in
-    displays/cm4stack/packages/ while nothing else knew that path — so pin the
+    features/cm4stack/packages/ while nothing else knew that path — so pin the
     agreement rather than trusting two comments to stay true.
     """
 
@@ -278,3 +278,69 @@ class BundleDropPointTest(unittest.TestCase):
         tracked one."""
         dirs = overlays._vendor_dirs("/repo")
         self.assertEqual(dirs[0], os.path.join("/repo", "overlays"))
+
+
+class NoStaleDisplaysPathTest(unittest.TestCase):
+    """`displays/cm4stack` became `features/cm4stack` on 2026-08-08.
+
+    Most references to it fail loudly. Two would NOT have: the CI workflow's
+    `displays/**` path filters (which would simply stop triggering builds) and
+    scripts/bundle-ignore.windows (which would start shipping Pi-only panel code
+    into the Windows tools bundle). Neither shows up as a test failure or an
+    error message — they just quietly do the wrong thing — so they are pinned
+    here instead.
+    """
+
+    _ALLOWED = (
+        # Vendored third-party and prose that use the WORD, never the path.
+        "static/graywolf-handbook/",
+        "tools/antenna-calc.html",
+        "CHANGELOG.md",
+        # The one deliberate mention: overlays.py searches the pre-move location
+        # last, because those .dtbo paths were gitignored and an in-place pull
+        # leaves the old file behind untracked.
+        "common/overlays.py",
+        # This test.
+        "tests/test_overlays.py",
+    )
+
+    def test_no_source_file_still_points_at_the_old_layout(self):
+        import subprocess
+        out = subprocess.run(["git", "grep", "-nI", "displays/"],
+                             cwd=overlays.REPO_ROOT, capture_output=True,
+                             text=True).stdout.splitlines()
+        offenders = [ln for ln in out
+                     if not any(ln.startswith(a) for a in self._ALLOWED)]
+        self.assertEqual(offenders, [],
+                         "these still reference the pre-move layout:\n  "
+                         + "\n  ".join(offenders))
+
+    def test_the_feature_directory_is_where_the_registry_says_it_is(self):
+        """cm4stack was ALWAYS registered as a feature — a FeatureSpec in
+        common/setup_registry.py and a Feature() in setup-oasis.py, next to
+        rgb-cooling-hat. Only its directory disagreed. Pin the agreement."""
+        script = os.path.join(overlays.REPO_ROOT, "features", "cm4stack",
+                              "install-cm4stack.py")
+        self.assertTrue(os.path.isfile(script), "the installer moved with it")
+        for rel in ("common/setup_registry.py", "setup-oasis.py"):
+            with open(os.path.join(overlays.REPO_ROOT, rel), encoding="utf-8") as fh:
+                text = fh.read()
+            self.assertIn("features/cm4stack/install-cm4stack.py", text, rel)
+
+    def test_the_windows_bundle_still_excludes_the_panel(self):
+        """It was excluded via `displays/`; it must now be excluded via
+        `features/`, or Pi-only panel code ships to Windows."""
+        with open(os.path.join(overlays.REPO_ROOT, "scripts",
+                               "bundle-ignore.windows"), encoding="utf-8") as fh:
+            lines = [ln.strip() for ln in fh if ln.strip()
+                     and not ln.strip().startswith("#")]
+        self.assertIn("features/", lines)
+
+    def test_ci_still_builds_when_the_panel_changes(self):
+        """The workflow watched `displays/**`. Dropping that is only safe
+        because `features/**` covers the new location."""
+        with open(os.path.join(overlays.REPO_ROOT, ".github", "workflows",
+                               "offline-manifest.yml"), encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn('- "features/**"', text)
+        self.assertNotIn('- "displays/**"', text)

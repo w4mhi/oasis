@@ -16,7 +16,6 @@ on:
       - "common/**"
       - "server/**"
       - "services/**"
-      - "displays/**"
       - "ruff.toml"
       - ".github/workflows/offline-manifest.yml"
   pull_request:
@@ -27,7 +26,6 @@ on:
       - "common/**"
       - "server/**"
       - "services/**"
-      - "displays/**"
       - "ruff.toml"
   workflow_dispatch:
 

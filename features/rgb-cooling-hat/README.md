@@ -101,7 +101,7 @@ on the next refresh — for a colour that sticks, set `RGB_MODE="static"` +
 - **Empty `i2cdetect`?** If `0d`/`3c` don't show even though the HAT's LEDs are
   lit, it's usually a boot under-voltage wedging the controller — full power-off
   cold boot on a solid 5 V/2.5 A+ supply, then re-scan. (That was the fix here.)
-- **Possible OASIS-aware upgrade:** like `displays/cm4stack/oasis-panel.py`, the OLED
+- **Possible OASIS-aware upgrade:** like `features/cm4stack/oasis-panel.py`, the OLED
   could pull `/api/system` + `/api/aprs/stations` (and the new
   `/api/health/feed-flow` pkt/s) from the local Flask app to show live APRS
   status instead of just host stats. Not wired up yet — local stats only.

@@ -147,7 +147,7 @@ FEATURES = [
             "Auto-start the server and add a clickable OASIS desktop shortcut. Raspberry Pi OS with Desktop.",
             "Display", default=False, needs=["server"], args=["--desktop-icon"],
             recommend="Desktop icon added — double-click it to open OASIS."),
-    Feature("cm4stack", "CM4Stack panel (ST7789 + touch)", "displays/cm4stack/install-cm4stack.py",
+    Feature("cm4stack", "CM4Stack panel (ST7789 + touch)", "features/cm4stack/install-cm4stack.py",
             "Set up a Raspberry Pi CM4 / M5Stack CM4Stack as a standalone OASIS panel: "
             "ST7789V2 SPI display + GT911 touch + GPIO fan (headless boot + oasis-panel.service). "
             "REQUIRES A REBOOT (a second reboot may be needed for the GT911 touch fix).",
