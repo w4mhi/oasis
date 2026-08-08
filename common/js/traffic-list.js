@@ -122,6 +122,18 @@
     return Object.values(byHex);
   }
 
+  // A row with an unusable timestamp must render as "unknown age", NOT throw.
+  // new Date(NaN).toISOString() raises RangeError, and because this runs inside a
+  // .map() that single bad record used to abort aircraftRows entirely — taking the
+  // APRS stations down with it, since renderAprsList never reached its tbody
+  // write. A rendering path must degrade, never die.
+  function _isoOrNull(tsSeconds) {
+    var ms = Number(tsSeconds) * 1000;
+    if (!isFinite(ms)) return null;
+    var d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
   var EMERGENCY_SQUAWKS = ['7500', '7600', '7700'];
 
   // Normalize aircraft into station-shaped rows the list already understands:
@@ -165,7 +177,7 @@
         speed_mph: (a.gs != null) ? Math.round(a.gs * 1.15078) : 0,
         course: (a.track != null) ? a.track : null,
         alt_m: (altFt != null) ? altFt / 3.28084 : null,
-        last_heard: new Date(a._ts * 1000).toISOString(),
+        last_heard: _isoOrNull(a._ts),
         via: 'adsb',
         comment: bits.join(' · '),
         _positioned: positioned

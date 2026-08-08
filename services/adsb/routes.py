@@ -168,8 +168,11 @@ _AIRCRAFT_FIELDS = ("flight", "lat", "lon", "alt_baro", "gs", "track",
 # History windows are a DB scan on a Pi; an unbounded one is an unbounded scan.
 _RECENT_DEFAULT_HOURS = 24.0
 _RECENT_MAX_HOURS = 24.0 * 30
-_RECENT_DEFAULT_LIMIT = 500
-_RECENT_MAX_LIMIT = 2000
+# The map's list wants the WHOLE 24 h history — 500 silently dropped ~290 of 791
+# aircraft on a real station. The bound exists to stop an unbounded response, not
+# to trim the consumer that needs all of it; the assistant passes a small limit.
+_RECENT_DEFAULT_LIMIT = 5000
+_RECENT_MAX_LIMIT = 20000
 
 
 def _aircraft_record(rec, last_seen_epoch, now):

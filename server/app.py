@@ -140,6 +140,27 @@ def _no_store_api(resp):
     return resp
 
 
+# App assets the browser must REVALIDATE, so a cached copy can never be paired
+# with a newer server. `no-cache` still allows caching — it just forces an
+# If-None-Match round trip, which on a LAN answers 304 and costs nothing.
+#
+# This is not hypothetical. After /api/adsb/recent stopped sending the epoch `ts`
+# field, a browser holding a cached pre-migration common/js/traffic-list.js read
+# `ts` as undefined, produced new Date(NaN).toISOString(), and threw — blanking
+# the entire traffic list, APRS stations included, on a Pi whose server files were
+# all correct. There is no in-band update mechanism for a deployed station, so the
+# browser cache is the one place version skew can hide.
+_REVALIDATE_PREFIXES = ("/common/js/", "/common/css/", "/maps/mapengine/")
+
+
+@app.after_request
+def _revalidate_app_assets(resp):
+    path = request.path or "/"
+    if path.startswith(_REVALIDATE_PREFIXES) or resp.mimetype == "text/html":
+        resp.headers.setdefault("Cache-Control", "no-cache")
+    return resp
+
+
 @app.after_request
 def _inject_theme_toggle(resp):
     try:

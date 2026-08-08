@@ -326,3 +326,38 @@ test('aircraftRows: still degrades sanely for a record with neither field', () =
   });
   assert.strictEqual(Math.round(new Date(rows[0].last_heard).getTime() / 1000), 900);
 });
+
+// Regression: a record with an unusable timestamp used to throw RangeError from
+// new Date(NaN).toISOString() inside the .map(), aborting aircraftRows entirely.
+// Because the map page builds its list as APRS-rows CONCAT aircraft-rows, that
+// one bad record blanked the whole list — APRS stations included. Triggered live
+// by a browser running a cached pre-migration traffic-list.js (which read the
+// removed `ts` field) against the migrated API.
+test('aircraftRows: a bad timestamp yields null last_heard, never a throw', () => {
+  const cases = [
+    { hex: 'a', lat: 1, lon: 1 },                                  // nothing at all
+    { hex: 'b', lat: 1, lon: 1, ts: undefined },                   // the exact skew case
+    { hex: 'c', lat: 1, lon: 1, last_seen: 'not-a-date' },
+    { hex: 'd', lat: 1, lon: 1, last_seen: '' },
+    { hex: 'e', lat: 1, lon: 1, ts: NaN },
+    { hex: 'f', lat: 1, lon: 1, ts: Infinity },
+    { hex: 'g', lat: 1, lon: 1, ts: 1e18 },                        // out of Date range
+  ];
+  let rows;
+  assert.doesNotThrow(() => { rows = T.aircraftRows({ live: cases, recent: [], now: NaN }); });
+  assert.strictEqual(rows.length, cases.length);
+  for (const r of rows) {
+    assert.ok(r.last_heard === null || !isNaN(Date.parse(r.last_heard)),
+      `last_heard must be null or valid, got ${r.last_heard}`);
+  }
+});
+
+test('aircraftRows: one bad record does not lose the good ones', () => {
+  const rows = T.aircraftRows({
+    now: 1000, recent: [],
+    live: [{ hex: 'bad', lat: 1, lon: 1, last_seen: 'garbage' },
+           { hex: 'good', lat: 2, lon: 2, last_seen: '2025-07-31T22:12:38Z' }],
+  });
+  assert.strictEqual(rows.length, 2);
+  assert.ok(rows.find(r => r.hex === 'good').last_heard.startsWith('2025-07-31'));
+});
