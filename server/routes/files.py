@@ -40,20 +40,20 @@ def _save_form_json(kind, filename, content):
     saved/ dir. Returns (payload, http_status)."""
     saved_dir = _form_saved_dir(kind)
     if saved_dir is None:
-        return {"ok": False, "error": "Unknown form kind"}, 400
+        return {"ok": False, "error": "Unknown form kind", "code": "UNKNOWN_FORM_KIND"}, 400
     filename = (filename or "").strip()
     # No path traversal, .json only — same rule as the original save-ics205.
     if not filename or os.sep in filename or "/" in filename or not filename.endswith(".json"):
-        return {"ok": False, "error": "Invalid filename"}, 400
+        return {"ok": False, "error": "Invalid filename", "code": "INVALID_FILENAME"}, 400
     os.makedirs(saved_dir, exist_ok=True)
     dest = os.path.realpath(os.path.join(saved_dir, filename))
     if not dest.startswith(os.path.realpath(saved_dir) + os.sep):
-        return {"ok": False, "error": "Path traversal rejected"}, 403
+        return {"ok": False, "error": "Path traversal rejected", "code": "PATH_TRAVERSAL"}, 403
     try:
         with open(dest, "w", encoding="utf-8") as fh:
             fh.write(content if isinstance(content, str) else "")
     except OSError as exc:
-        return {"ok": False, "error": str(exc)}, 500
+        return {"ok": False, "error": str(exc), "code": "FORM_WRITE_FAILED"}, 500
     return {"ok": True, "saved": os.path.join("static", kind, "saved", filename)}, 200
 
 
@@ -63,7 +63,7 @@ def _list_form_json(kind):
     (/static/<kind>/saved/<name>); this only enumerates them."""
     saved_dir = _form_saved_dir(kind)
     if saved_dir is None:
-        return {"ok": False, "error": "Unknown form kind"}, 400
+        return {"ok": False, "error": "Unknown form kind", "code": "UNKNOWN_FORM_KIND"}, 400
     files = []
     if os.path.isdir(saved_dir):
         for name in os.listdir(saved_dir):
@@ -166,17 +166,25 @@ def api_forms_save():
             "content": "<json text>" }.
     """
     data = request.get_json(silent=True) or {}
-    payload, status = _save_form_json(
+    result, status = _save_form_json(
         data.get("kind"), data.get("filename"), data.get("content", ""))
-    return jsonify(payload), status
+    if not result["ok"]:
+        return jsonify({"ok": False, "error": result["error"],
+                        "code": result["code"]}), status
+    return jsonify({"ok": True, "saved": result["saved"]}), status
 
 
 @bp.route("/api/forms/list")
 def api_forms_list():
     """List saved snapshots for ?kind=<kind>, newest first. The files themselves
     are fetched directly as static assets (/static/<kind>/saved/<name>)."""
-    payload, status = _list_form_json(request.args.get("kind"))
-    return jsonify(payload), status
+    result, status = _list_form_json(request.args.get("kind"))
+    if not result["ok"]:
+        return jsonify({"ok": False, "error": result["error"],
+                        "code": result["code"]}), status
+    files = result["files"]
+    return jsonify({"ok": True, "files": files, "total": len(files),
+                    "count": len(files), "truncated": False}), status
 
 
 @bp.route("/api/save-ics205", methods=["POST"])
@@ -185,16 +193,25 @@ def api_save_ics205():
     """Back-compat alias for the ICS-205 page — delegates to the shared form
     store (static/ics-205/saved/). Body: { filename, content }."""
     data = request.get_json(silent=True) or {}
-    payload, status = _save_form_json("ics-205", data.get("filename"), data.get("content", ""))
-    return jsonify(payload), status
+    result, status = _save_form_json("ics-205", data.get("filename"),
+                                     data.get("content", ""))
+    if not result["ok"]:
+        return jsonify({"ok": False, "error": result["error"],
+                        "code": result["code"]}), status
+    return jsonify({"ok": True, "saved": result["saved"]}), status
 
 
 @bp.route("/api/list-ics205")
 def api_list_ics205():
     """Back-compat alias for the ICS-205 page — delegates to the shared form
     store. Files are fetched as static assets (/static/ics-205/saved/<name>)."""
-    payload, status = _list_form_json("ics-205")
-    return jsonify(payload), status
+    result, status = _list_form_json("ics-205")
+    if not result["ok"]:
+        return jsonify({"ok": False, "error": result["error"],
+                        "code": result["code"]}), status
+    files = result["files"]
+    return jsonify({"ok": True, "files": files, "total": len(files),
+                    "count": len(files), "truncated": False}), status
 
 
 @bp.route("/api/list-chirp")

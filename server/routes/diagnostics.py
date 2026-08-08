@@ -22,8 +22,21 @@ bp = Blueprint("diagnostics", __name__)
 
 @bp.route("/api/diagnostics")
 def api_diagnostics():
-    """Run the full diagnostics sweep and return the aggregated result."""
+    """Run the full diagnostics sweep and return the aggregated result.
+
+    §10: run_all()'s five keys are named here rather than splatted, so the
+    response shape is readable at the return site. `ok` is the REQUEST — a
+    sweep that finds failures still succeeded; the findings live in `summary`."""
     try:
-        return jsonify(run_all("127.0.0.1", appconfig.PORT))
+        report = run_all("127.0.0.1", appconfig.PORT)
     except Exception:
-        return jsonify({"ok": False, "error": "diagnostics failed"}), 500
+        return jsonify({"ok": False, "error": "diagnostics failed",
+                        "code": "DIAGNOSTICS_FAILED"}), 500
+    return jsonify({
+        "ok": True,
+        "ran_at": report.get("ran_at"),
+        "summary": report.get("summary") or {},
+        "capabilities": report.get("capabilities") or [],
+        "groups": report.get("groups") or [],
+        "fix_now": report.get("fix_now"),
+    })

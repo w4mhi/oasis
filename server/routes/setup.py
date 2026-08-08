@@ -861,25 +861,23 @@ def api_setup_job(job_id):
             if k in job["featureStates"]:
                 features.append(job["featureStates"][k])
         summary = job.get("summary") or {"green": 0, "amber": 0, "red": 0, "gray": len(features)}
-        payload = {
-            "ok": True,
-            "job": {
-                "id": job["id"],
-                "status": job["status"],
-                "currentFeature": job.get("currentFeature"),
-                "currentStage": job.get("currentStage"),
-                "startedAt": job.get("startedAt"),
-                "updatedAt": job.get("updatedAt"),
-            },
-            "features": features,
-            "summary": {
-                "green": int(summary.get("green", 0)),
-                "amber": int(summary.get("amber", 0)),
-                "red": int(summary.get("red", 0)),
-                "gray": int(summary.get("gray", 0)),
-            },
+        job_view = {
+            "id": job["id"],
+            "status": job["status"],
+            "currentFeature": job.get("currentFeature"),
+            "currentStage": job.get("currentStage"),
+            "startedAt": job.get("startedAt"),
+            "updatedAt": job.get("updatedAt"),
         }
-    return jsonify(payload)
+        counts = {
+            "green": int(summary.get("green", 0)),
+            "amber": int(summary.get("amber", 0)),
+            "red": int(summary.get("red", 0)),
+            "gray": int(summary.get("gray", 0)),
+        }
+    # §10: assembled under the lock, returned as a visible literal outside it.
+    return jsonify({"ok": True, "job": job_view, "features": features,
+                    "summary": counts, "count": len(features)})
 
 
 @bp.route("/api/setup/jobs/<job_id>/log")

@@ -213,10 +213,22 @@ box before an event.
 
 ## 12 · Migration status
 
-Enforced by `tests/test_api_contract.py`. Endpoints not yet migrated are listed in
-that test's three allowlists (`_OK_FALSE_200`, `_NO_ENVELOPE`, `_UNVERIFIABLE`), which may only ever **shrink** — the test
-fails both when a conforming endpoint regresses *and* when an endpoint on the list
-starts conforming without being removed from it, so the list cannot rot.
+**COMPLETE as of 2026-08-08.** All three allowlists (`_OK_FALSE_200`,
+`_NO_ENVELOPE`, `_UNVERIFIABLE`) are EMPTY: every `/api/*` route on the OASIS
+surface carries the envelope, means "the request succeeded" by `ok`, and builds
+its response where a reader can see it.
+
+The lists stay in `tests/test_api_contract.py` and the ratchet now asserts
+**zero**. That is deliberate — the migration being finished is exactly when an
+exemption becomes tempting. A new entry is not debt to pay down later; it is a
+regression of a rule the API is built on, and the test says so.
+
+Still owed, and tracked honestly rather than pretended away:
+
+- **§7 field renames.** ADS-B keeps dump1090's `alt_baro`/`gs`; Winlink passes
+  Pat's inner objects through (see *Bounded migrations* above). Both are named
+  in the code where they occur.
+- **§11 functional probe harness** — `scripts/api-probe.py`, below.
 
 ### Which API the contract governs
 

@@ -132,7 +132,8 @@ def api_hardware_devices():
     ports = HD_detect.rtl_sdr_usb_ports()
     for d in devices:
         d["usb_port"] = ports.get(d.get("serial", ""), "")
-    return jsonify({"devices": devices, "errors": inv.errors, "services": services})
+    return jsonify({"ok": True, "devices": devices, "errors": inv.errors,
+                    "services": services, "count": len(devices)})
 
 
 _DEVICE_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,32}$')
@@ -183,8 +184,19 @@ def api_hardware_declare_device():
 def api_hardware_detect():
     """Enumerate attached hardware (RTL-SDRs, ALSA cards, serial devices) as
     candidates for the assignment editor. Read-only — never writes
-    hardware.json (spec §6)."""
-    return jsonify(HD_detect.scan())
+    hardware.json (spec §6).
+
+    §10: the five candidate lists are named at the return site rather than
+    splatted from scan(), so the response shape is readable here."""
+    found = HD_detect.scan()
+    return jsonify({
+        "ok": True,
+        "rtl_sdr": found.get("rtl_sdr", []),
+        "alsa": found.get("alsa", []),
+        "serial": found.get("serial", []),
+        "usb": found.get("usb", []),
+        "serial_ports": found.get("serial_ports", []),
+    })
 
 
 @bp.route("/api/hardware/assign", methods=["POST"])
@@ -350,7 +362,9 @@ def _console_state():
 @bp.route("/api/hardware/console")
 def api_hardware_console():
     """Live state for the HW/SRV matrix console (rail + matrix + warnings)."""
-    return jsonify(_console_state())
+    state = _console_state()
+    return jsonify({"ok": True, "services": state["services"],
+                    "devices": state["devices"], "warnings": state["warnings"]})
 
 
 @bp.route("/api/hardware/route", methods=["POST"])
@@ -671,7 +685,8 @@ def api_hardware_guardian():
     seconds_left = None
     if st.get("mode") == GUARD.ARMED and st.get("deadline"):
         seconds_left = max(0, int(round(st["deadline"] - time.time())))
-    return jsonify({"enabled": cfg["enabled"], "thresholds": cfg["thresholds"],
+    return jsonify({"ok": True,
+                    "enabled": cfg["enabled"], "thresholds": cfg["thresholds"],
                     "mode": st.get("mode", GUARD.IDLE), "reason": st.get("reason"),
                     "seconds_left": seconds_left, "stats": _GUARD_STATS})
 

@@ -47,28 +47,19 @@ _OK_FALSE_200 = frozenset()
 _NO_ENVELOPE = frozenset({
     # /api/adsb/alerts graduated 2026-08-07 — the first endpoint migrated to the
     # contract. See services/adsb/routes.py and tests/test_adsb_alerts_contract.py.
-    "/api/hardware/devices", "/api/hardware/guardian",
-    # /api/satellites/* graduated 2026-08-08 — roster + prediction first, then
-    # the listen/* SDR routes.
+    # /api/satellites/* and /api/hardware/{devices,guardian} graduated
+    # 2026-08-08.
 })
 
 # §1/§10 — the response shape is not visible at the return site, either because
 # it is `jsonify(<variable>)` or because the whole response is delegated to a
 # helper (`return _adsb_proxy(...)`). Both are unverifiable and both hid real
 # non-conformance. Migrating one means building the envelope inline at the return.
-_UNVERIFIABLE = frozenset({
-    # graduated 2026-08-07: /api/adsb/{alerts,aircraft,recent,health}
-    "/api/adsb/history",     "/api/diagnostics", "/api/forms/list", "/api/forms/save",
-    "/api/hardware/console", "/api/hardware/detect",
-    # /api/system left this list on the SURFACE FIX, not on a migration: its own
-    # return site was always a literal dict. It was listed because the scan
-    # merged it with graywolf-api's same-named opaque route. Counting that as
-    # progress would be lying to the ratchet.
-    "/api/list-ics205", "/api/save-ics205",
-    "/api/setup/jobs/<job_id>",
-    # All ten /api/winlink/* graduated 2026-08-08 (envelope-only migration —
-    # Pat's INNER fields still pass through, recorded as §7 debt below).
-})
+# EMPTY as of 2026-08-08. Every /api/* route now builds its envelope where a
+# reader can see it. NOTE: /api/system left this list on the SURFACE FIX rather
+# than a migration — its return site was always a literal dict, and it was only
+# listed because the scan merged it with graywolf-api's same-named opaque route.
+_UNVERIFIABLE = frozenset()
 
 
 # Routes whose ok:false status is COMPUTED, so the AST scan cannot read it (see
@@ -82,6 +73,10 @@ _DYNAMIC_ERROR_STATUS = [
     # tests/test_winlink_contract.py.
     "/api/winlink/mailbox/<box>/<mid>/<path:attachment>",
     "/api/winlink/rmslist",
+    # The shared form store returns (payload, status); the four routes forward
+    # it. Covered at runtime in tests/test_forms_backup.py.
+    "/api/forms/save", "/api/forms/list",
+    "/api/save-ics205", "/api/list-ics205",
 ]
 
 
@@ -204,15 +199,17 @@ class OkMeansRequestSucceededTest(unittest.TestCase):
         skips those returns rather than guessing.
 
         Skipping silently would be a hole, so the routes that do it are listed
-        here and each one has a runtime test asserting the real status. Keep the
-        two in step: if a route joins this list, it needs those tests."""
+        here and each one has a runtime test asserting the real status
+        (tests/test_satellites_listen_contract.py, test_winlink_contract.py,
+        test_forms_backup.py). Keep the two in step: if a route joins this
+        list, it needs those tests."""
         dynamic = sorted({rule for rule, entries in _by_rule().items()
                           for _, f in entries
                           if f["status_dynamic"] and f["ok_value"] is False})
-        self.assertEqual(dynamic, _DYNAMIC_ERROR_STATUS,
-                         "a route's error status became (un)computed — see "
-                         "tests/test_satellites_listen_contract.py for the "
-                         "runtime coverage this list stands in for")
+        self.assertEqual(dynamic, sorted(_DYNAMIC_ERROR_STATUS),
+                         "a route's error status became (un)computed — a listed "
+                         "route needs a runtime test asserting its real status; "
+                         "an unlisted one must use a literal")
 
     def test_no_ok_false_served_with_http_200(self):
         """The worst ambiguity for a model: a failed call and a successful report
@@ -285,11 +282,16 @@ class AllowlistHygieneTest(unittest.TestCase):
         """Prints the remaining debt so the number is in front of us every run."""
         total = len({r for r, _, _, _, _, _ in _routes()})
         remaining = len(_OK_FALSE_200 | _NO_ENVELOPE | _UNVERIFIABLE)
-        # A ratchet: this is the migration debt and may only go DOWN. Lower it
-        # as endpoints graduate; never raise it to make something pass.
-        self.assertLessEqual(remaining, 11,
-                             f"the allowlists grew to {remaining} — they may only shrink")
-        self.assertGreater(total, remaining)
+        # A ratchet: this was the migration debt and may only go DOWN. It has
+        # reached ZERO — every /api/* route on the OASIS surface conforms. The
+        # bound stays as an assertion rather than being deleted, because the
+        # lists are the only thing standing between "conforming" and "someone
+        # added an exemption to make a build green".
+        self.assertEqual(remaining, 0,
+                         f"the allowlists grew to {remaining} — the migration is "
+                         f"COMPLETE, so a new entry is a regression, not debt. "
+                         f"Make the endpoint conform instead.")
+        self.assertGreater(total, 60)
 
 
 class ContractDocTest(unittest.TestCase):

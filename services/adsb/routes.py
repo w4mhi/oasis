@@ -9,15 +9,15 @@ contract holds even against a daemon from an older bundle. It also puts the
 envelope where a reader can see it (contract §10) instead of hiding it inside a
 pass-through of opaque bytes.
 
-Migrated: /api/adsb/{alerts,aircraft,recent,health}. /api/adsb/history still
-passes the daemon's body through untouched and is listed in
-tests/test_api_contract.py.
+Every route here is on the contract. The daemon speaks icao/callsign/alt/speed
+and epoch timestamps; none of that reaches the wire.
 """
 
 import json
 import time
+import urllib.parse
 
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, jsonify, request
 
 from common.api_shape import clamp_limit, iso_utc
 
@@ -26,14 +26,17 @@ bp = Blueprint("adsb", __name__)
 # Contract §4: a default limit is mandatory. The daemon's ring holds at most 200.
 _ALERTS_DEFAULT_LIMIT = 50
 _ALERTS_MAX_LIMIT = 200
+# History is a track, not a list of aircraft: many points per airframe.
+_HISTORY_DEFAULT_LIMIT = 5000
+_HISTORY_MAX_LIMIT = 20000
 
 
 
 def _adsb_json(path, timeout=10):
     """(payload, error_response) — fetch and PARSE the daemon's JSON.
 
-    Unlike _adsb_proxy this reads the body, because a contract-bearing route has
-    to reshape it. Exactly one of the two return slots is ever non-None.
+    Every route reshapes the daemon's body, so this parses rather than copying
+    bytes. Exactly one of the two return slots is ever non-None.
     """
     import urllib.error
     import urllib.request
@@ -69,23 +72,6 @@ def _adsb_json(path, timeout=10):
             "error": "ADS-B API returned a malformed response.",
             "code": "ADSB_API_BAD_RESPONSE",
         }), 502)
-
-
-def _adsb_proxy(path, timeout=10):
-    import urllib.request, urllib.error
-    url = f"http://127.0.0.1:8086{path}"
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            return Response(resp.read(), status=200, content_type="application/json")
-    except urllib.error.HTTPError as e:
-        return Response(e.read(), status=e.code, content_type="application/json")
-    except urllib.error.URLError as e:
-        reason = getattr(e, "reason", str(e))
-        return jsonify({"ok": False,
-                        "error": f"ADS-B API unavailable ({reason}). "
-                                 "Is the adsb-api service running?"}), 503
-    except TimeoutError:
-        return jsonify({"ok": False, "error": "ADS-B API timed out."}), 503
 
 
 @bp.route("/api/adsb/health")
@@ -154,6 +140,18 @@ _RECENT_MAX_HOURS = 24.0 * 30
 # to trim the consumer that needs all of it; the assistant passes a small limit.
 _RECENT_DEFAULT_LIMIT = 5000
 _RECENT_MAX_LIMIT = 20000
+
+
+def _clamp_hours(raw):
+    """§4 for a time window. An unbounded window is an unbounded DB scan on a
+    Pi, and a nonsense one must degrade to the default rather than 500."""
+    try:
+        hours = float(raw)
+    except (TypeError, ValueError):
+        return _RECENT_DEFAULT_HOURS
+    if hours <= 0:
+        return _RECENT_DEFAULT_HOURS
+    return min(hours, _RECENT_MAX_HOURS)
 
 
 def _aircraft_record(rec, last_seen_epoch, now):
@@ -230,10 +228,61 @@ def api_adsb_aircraft():
 
 
 @bp.route("/api/adsb/history")
-def api_adsb_history_proxy():
-    import urllib.parse
-    qs = urllib.parse.urlencode({k: v for k, v in request.args.items()})
-    return _adsb_proxy(f"/history?{qs}")
+def api_adsb_history():
+    """Position observations over a window — the per-aircraft track behind the
+    live list. Optional `hex` narrows it to one airframe.
+
+    Records are shaped like /api/adsb/aircraft's, deliberately: an observation
+    and a live aircraft describe the same thing at different times, and a
+    consumer that has learned one should not have to learn the other. The daemon
+    speaks `icao`/`callsign`/`alt`/`speed` and an epoch `ts`; none of that
+    reaches the wire (§6/§7)."""
+    hours = _clamp_hours(request.args.get("hours"))
+    limit = clamp_limit(request.args.get("limit"), _HISTORY_DEFAULT_LIMIT,
+                        _HISTORY_MAX_LIMIT)
+    hex_filter = (request.args.get("hex") or "").strip().lower()
+    since = time.time() - hours * 3600.0
+    query = f"/history?since={since:.0f}"
+    if hex_filter:
+        query += f"&icao={urllib.parse.quote(hex_filter)}"
+    payload, error = _adsb_json(query, timeout=20)
+    if error:
+        return error
+    if payload.get("ok") is False:
+        return jsonify({"ok": False, "code": "ADSB_HISTORY_UNAVAILABLE",
+                        "error": str(payload.get("error")
+                                     or "history unavailable.")}), 503
+    rows = payload.get("observations")
+    observations = []
+    for row in (rows if isinstance(rows, list) else []):
+        icao = (row.get("icao") or "").strip().lower()
+        if not icao:
+            continue                       # nothing to key an observation to
+        observations.append({
+            "hex": icao,
+            "flight": (row.get("callsign") or "").strip() or None,
+            "time": iso_utc(row.get("ts")),
+            "lat": row.get("lat"),
+            "lon": row.get("lon"),
+            "alt_baro": row.get("alt"),
+            "gs": row.get("speed"),
+            "track": row.get("track"),
+            "squawk": (row.get("squawk") or "").strip() or None,
+        })
+    # ASCENDING, like /api/aprs/track: these are points on a path, and the
+    # daemon already returns them oldest-first. Reversing them would silently
+    # draw every track backwards.
+    shown = observations[:limit]
+    return jsonify({
+        "ok": True,
+        "observations": shown,
+        "total": len(observations),
+        "count": len(shown),
+        "truncated": len(observations) > len(shown),
+        "limit": limit,
+        "hours": hours,
+        "hex": hex_filter or None,
+    }), 200
 
 
 @bp.route("/api/adsb/recent")
@@ -244,13 +293,7 @@ def api_adsb_recent():
     single aged list, and shipping two shapes for one concept meant two code paths
     client-side and two schemas for a model to learn.
     """
-    try:
-        hours = float(request.args.get("hours"))
-        if hours <= 0:
-            raise ValueError
-    except (TypeError, ValueError):
-        hours = _RECENT_DEFAULT_HOURS
-    hours = min(hours, _RECENT_MAX_HOURS)
+    hours = _clamp_hours(request.args.get("hours"))
     limit = clamp_limit(request.args.get("limit"),
                          _RECENT_DEFAULT_LIMIT, _RECENT_MAX_LIMIT)
 

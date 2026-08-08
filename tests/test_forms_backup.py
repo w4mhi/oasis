@@ -77,3 +77,44 @@ class FormsBackupTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RefusalStatusTest(unittest.TestCase):
+    """Runtime cover for tests/test_api_contract.py's _DYNAMIC_ERROR_STATUS.
+
+    The four form routes forward `(payload, status)` from the shared store, so
+    the AST scan cannot read the status literal and its ok:false-with-200 rule
+    skips them. These assertions are what that skip is traded for: no refusal
+    from any of the four is ever served with HTTP 200.
+    """
+
+    def setUp(self):
+        oasis_app.app.config["TESTING"] = True
+        self.c = oasis_app.app.test_client()
+
+    def test_no_refusal_is_served_with_http_200(self):
+        cases = [
+            ("post", "/api/forms/save", {"kind": "passwords", "filename": "a.json",
+                                         "content": "{}"}),
+            ("post", "/api/forms/save", {"kind": "ics-205", "filename": "../esc.json",
+                                         "content": "{}"}),
+            ("post", "/api/save-ics205", {"filename": "../esc.json", "content": "{}"}),
+        ]
+        for method, url, body in cases:
+            r = getattr(self.c, method)(url, json=body,
+                                        headers={"X-OASIS-Request": "1"})
+            self.assertNotEqual(r.status_code, 200, url)
+            self.assertIs(r.get_json()["ok"], False, url)
+            self.assertTrue(r.get_json()["code"], f"{url} needs a stable §3 code")
+
+        for url in ("/api/forms/list?kind=passwords",):
+            r = self.c.get(url)
+            self.assertNotEqual(r.status_code, 200, url)
+            self.assertIs(r.get_json()["ok"], False, url)
+            self.assertTrue(r.get_json()["code"], url)
+
+    def test_a_successful_list_carries_the_list_envelope(self):
+        d = self.c.get("/api/list-ics205").get_json()
+        self.assertIs(d["ok"], True)
+        for key in ("files", "total", "count", "truncated"):
+            self.assertIn(key, d)
