@@ -35,13 +35,12 @@ from api_contract_scan import scan_tree  # noqa: E402
 
 # §2 — `ok: false` served with HTTP 200. These use `ok` to mean "the news is bad"
 # rather than "the request failed", which makes the two indistinguishable.
-_OK_FALSE_200 = frozenset({
-    # /api/health/{probe,service,feed-flow} graduated 2026-08-08 — the cluster
-    # this rule was written for. See tests/test_health_contract.py.
-    # /api/wifi/{scan,connect,forget} + /api/satellites/refresh graduated
-    # 2026-08-08.
-    "/api/service", "/api/setup/reboot",
-})
+# EMPTY as of 2026-08-08, and it must stay that way. Every endpoint that once
+# served `ok: false` with HTTP 200 — the ambiguity this whole contract was
+# written for — now says whether the REQUEST succeeded, with domain state in a
+# typed field. A new entry here is not debt to pay down later; it is a
+# regression of the rule the API is built on.
+_OK_FALSE_200 = frozenset()
 
 # §1 — no `ok` envelope at all; the client cannot branch without knowing the
 # endpoint's private shape.
@@ -65,7 +64,7 @@ _UNVERIFIABLE = frozenset({
     # return site was always a literal dict. It was listed because the scan
     # merged it with graywolf-api's same-named opaque route. Counting that as
     # progress would be lying to the ratchet.
-    "/api/list-ics205", "/api/save-ics205", "/api/service",
+    "/api/list-ics205", "/api/save-ics205",
     "/api/setup/jobs/<job_id>",
     # All ten /api/winlink/* graduated 2026-08-08 (envelope-only migration —
     # Pat's INNER fields still pass through, recorded as §7 debt below).
@@ -288,7 +287,7 @@ class AllowlistHygieneTest(unittest.TestCase):
         remaining = len(_OK_FALSE_200 | _NO_ENVELOPE | _UNVERIFIABLE)
         # A ratchet: this is the migration debt and may only go DOWN. Lower it
         # as endpoints graduate; never raise it to make something pass.
-        self.assertLessEqual(remaining, 13,
+        self.assertLessEqual(remaining, 11,
                              f"the allowlists grew to {remaining} — they may only shrink")
         self.assertGreater(total, remaining)
 

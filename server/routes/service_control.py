@@ -93,12 +93,16 @@ def api_service():
     action = (data.get("action") or "").strip()
 
     if unit not in _CONTROLLABLE_SERVICES:
-        return jsonify({"ok": False, "error": "unknown or protected service"}), 403
+        return jsonify({"ok": False, "error": "unknown or protected service",
+                        "code": "UNKNOWN_SERVICE"}), 403
     if action not in _SERVICE_ACTIONS:
-        return jsonify({"ok": False, "error": "invalid action"}), 400
+        return jsonify({"ok": False, "error": "invalid action",
+                        "code": "INVALID_ACTION"}), 400
     if _sys.platform != "linux":
-        return jsonify({"ok": False, "supported": False,
-                        "error": "systemd not available"}), 200
+        # §2: an ACTION that cannot happen here is not a 200. Unlike a probe,
+        # there is no answer to give — nothing was started or stopped.
+        return jsonify({"ok": False, "error": "systemd not available",
+                        "code": "SYSTEMD_UNAVAILABLE"}), 503
 
     # No hardware start-gate: "never refuse a start" is the end state for every
     # hardware-bound service (spec 2026-07-15-hardware-conflict-resolution-v2 §4).
@@ -135,7 +139,8 @@ def api_service():
             elif r.returncode != 0 and boot_step is None:
                 boot_step = (verb, r)
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc), "affected": affected}), 500
+        return jsonify({"ok": False, "error": str(exc), "affected": affected,
+                        "code": "SERVICE_ACTION_FAILED"}), 500
 
     # Re-query state regardless of rc so the UI can refresh from the truth.
     try:
@@ -149,22 +154,40 @@ def api_service():
                                  if result else "no command run")
         return jsonify({"ok": False, "service": unit, "action": action,
                         "active": active or "unknown", "affected": affected,
-                        "error": err or "systemctl failed"}), 500
+                        "error": err or "systemctl failed",
+                        "code": "SERVICE_ACTION_FAILED"}), 500
 
     # The action itself worked. If its boot-state companion did not, say so
     # rather than returning a bare success: the service is running (or stopped)
     # NOW, but that state was not persisted, so a reboot will contradict it.
-    payload = {"ok": True, "service": unit, "action": action,
-               "active": active or "unknown", "affected": affected}
+    # §5: `warning` and `boot_state_persisted` were added CONDITIONALLY, so
+    # "the boot state persisted", "it did not", and "this unit doesn't track
+    # boot state" were one absent key. Always present now — null means the
+    # question doesn't apply to this unit.
+    warning = None
+    # Derived from whether a boot-state verb ACTUALLY RAN, not from whether the
+    # unit tracks boot state. `persist` alone claimed `boot_state_persisted:
+    # True` on a RESTART — which runs only ["restart"] and never enables or
+    # disables anything. That was a persistence guarantee we had not performed.
+    boot_verbs = [v for v in steps if v in ("enable", "disable")]
+    persisted = None if not boot_verbs else (boot_step is None)
     if boot_step is not None:
         verb, r = boot_step
         detail = _with_sudoers_hint((r.stderr or r.stdout or "").strip()
                                     or f"systemctl {verb} failed")
-        payload["warning"] = (f"{unit} was {action}ed, but could not be {verb}d for boot "
-                              f"— this will not survive a reboot: {detail}")
-        payload["boot_state_persisted"] = False
-    elif persist:
-        payload["boot_state_persisted"] = True
-    return jsonify(payload)
+        warning = (f"{unit} was {action}ed, but could not be {verb}d for boot "
+                   f"— this will not survive a reboot: {detail}")
+        persisted = False
+    # §10: built inline. This was `jsonify(payload)` — a dict assembled over 12
+    # lines of branches, so no reader (and no gate) could see its shape.
+    return jsonify({
+        "ok": True,
+        "service": unit,
+        "action": action,
+        "active": active or "unknown",
+        "affected": affected,
+        "boot_state_persisted": persisted,
+        "warning": warning,
+    })
 
 

@@ -89,7 +89,9 @@ class BootStateStepTest(unittest.TestCase):
         self.assertEqual(calls, ["enable", "start"])
         self.assertTrue(d["ok"])
         self.assertTrue(d["boot_state_persisted"])
-        self.assertNotIn("warning", d)
+        # §5: always present. null/None is "the question does not apply",
+        # which is a different fact from "nothing went wrong".
+        self.assertIsNone(d["warning"])
 
     def test_failed_primary_verb_still_fails_the_request(self):
         # A broken enable must not mask a broken start, and vice versa.
@@ -111,13 +113,19 @@ class BootStateStepTest(unittest.TestCase):
         d = r.get_json()
         self.assertEqual(calls, ["start"])
         self.assertTrue(d["ok"])
-        self.assertNotIn("boot_state_persisted", d)
-        self.assertNotIn("warning", d)
+        self.assertIsNone(d["boot_state_persisted"], "nothing to persist")
+        self.assertIsNone(d["warning"])
 
     def test_restart_never_touches_boot_state(self):
         r, d, calls = self._post("restart", {})
         self.assertEqual(calls, ["restart"])
-        self.assertNotIn("warning", d)
+        self.assertIsNone(d["warning"])
+        # dump1090-fa IS a boot-state-tracking unit, but a RESTART runs only
+        # ["restart"] — no enable, no disable. Reporting True here (as it did)
+        # claimed a persistence guarantee that was never performed. The old
+        # assertion only checked `warning`, so the false claim went unseen.
+        self.assertIsNone(d["boot_state_persisted"],
+                          "restart touches no boot state, so it must claim none")
 
 
 class SudoersHintTest(unittest.TestCase):

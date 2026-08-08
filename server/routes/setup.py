@@ -937,7 +937,9 @@ def api_setup_reboot():
     if request.headers.get("X-OASIS-Request") != "1":
         return jsonify({"ok": False, "error": "forbidden"}), 403
     if sys.platform != "linux":
-        return jsonify({"ok": False, "supported": False, "error": "reboot unavailable"}), 200
+        # §2: an ACTION, so 503 — nothing rebooted, and this host never will.
+        return jsonify({"ok": False, "error": "reboot unavailable on this host",
+                        "code": "REBOOT_UNAVAILABLE"}), 503
     # Debian/Raspberry Pi OS convention; BENCH-VERIFY on real hardware — not
     # confirmed in this dev environment. MUST match the OASIS_REBOOT Cmnd_Alias
     # in scripts/enable-service-controls.py token-for-token, or `sudo -n` denies it.
@@ -945,7 +947,8 @@ def api_setup_reboot():
     try:
         subprocess.run(["sudo", "-n", reboot_bin], capture_output=True, text=True, timeout=5)
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
-    return jsonify({"ok": True, "message": "reboot requested"})
+        return jsonify({"ok": False, "error": str(exc),
+                        "code": "REBOOT_FAILED"}), 500
+    return jsonify({"ok": True, "requested": True, "message": "reboot requested"})
 
 
