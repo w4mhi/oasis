@@ -680,7 +680,7 @@ async function syncTle() {
       recolorSelection();
       await refreshPasses();                        // recomputes passes AND re-syncs the plots
     } else {
-      flash(j.offline ? '⚠ no internet — try later' : '⚠ sync failed — try later');
+      flash(j.code === 'OFFLINE' ? '⚠ no internet — try later' : '⚠ sync failed — try later');
     }
   } catch (e) {
     flash('⚠ sync failed — try later');

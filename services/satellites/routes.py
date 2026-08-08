@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, request, send_from_directory  # noqa: F401
 
 import appconfig
 from common import config_paths
+from common.api_shape import clamp_limit, iso_utc
 from common.web_guard import require_oasis_request
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -20,6 +21,11 @@ SUITE_ROOT = appconfig.SUITE_ROOT
 STATIC_DIR = os.path.join(_HERE, "static")
 
 bp = Blueprint("satellites", __name__)
+
+# Contract §4. A real roster is ~150 birds and every consumer renders all of
+# them, so these bound the response rather than paginate it.
+_ROSTER_DEFAULT_LIMIT = 2000
+_ROSTER_MAX_LIMIT = 5000
 
 
 def _station():
@@ -67,8 +73,19 @@ def api_satellites():
         for norad, (name, l1, l2) in sorted(by_norad.items(), key=lambda kv: kv[1][0]):
             sats.append({"norad": norad, "name": name, "labels": [],
                          "downlinks": [], "l1": l1, "l2": l2})
+    # §4: the roster is ~150 birds and every consumer wants all of them, so the
+    # default is far above any real roster — the bound exists so the response
+    # cannot become unbounded, not to paginate.
+    limit = clamp_limit(request.args.get("limit"), _ROSTER_DEFAULT_LIMIT,
+                        _ROSTER_MAX_LIMIT)
+    shown = sats[:limit]
     return jsonify({
-        "satellites": sats,
+        "ok": True,
+        "satellites": shown,
+        "total": len(sats),
+        "count": len(shown),
+        "truncated": len(sats) > len(shown),
+        "limit": limit,
         "tle_age_days": tle.cache_age_days(config_paths.tle_cache_dir(SUITE_ROOT)),
         "station": _station(),
     })
@@ -79,33 +96,44 @@ def api_satellites():
 def api_refresh():
     """Rebuild the satellite list from SatNOGS + CelesTrak on demand — backs the
     age pill. ONLINE-ONLY, the one operator-triggered exception to "runtime never
-    fetches". Offline → {ok:false, offline:true} (HTTP 200) so the UI can say
-    'try again later' rather than error."""
+    fetches".
+
+    §2: this is an ACTION, so ok:false is right when the rebuild does not happen
+    — but it must not be HTTP 200. Being offline is not a bug in the request, so
+    it is 503 (the host cannot do this now) rather than a 4xx, and the `code`
+    tells the three failures apart: OFFLINE is "try later", REFRESH_FAILED is
+    "something upstream broke", REFRESH_TIMED_OUT is "it is still slow"."""
     import subprocess
     from common.oasis_lib import has_internet
     cache_dir = config_paths.tle_cache_dir(SUITE_ROOT)
     if not has_internet():
-        return jsonify({"ok": False, "offline": True,
-                        "tle_age_days": tle.cache_age_days(cache_dir)}), 200
+        return jsonify({"ok": False, "error": "no internet connection",
+                        "code": "OFFLINE",
+                        "tle_age_days": tle.cache_age_days(cache_dir)}), 503
     script = os.path.join(_HERE, "build-roster.py")
     try:
         p = subprocess.run([sys.executable, script],
                            capture_output=True, text=True, timeout=180)
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "refresh timed out",
-                        "tle_age_days": tle.cache_age_days(cache_dir)}), 200
+                        "code": "REFRESH_TIMED_OUT",
+                        "tle_age_days": tle.cache_age_days(cache_dir)}), 504
     if p.returncode != 0:
         # A mid-download failure (e.g. CelesTrak unreachable despite DNS) must not
         # 500 — surface it as a handled error the pill can show.
         return jsonify({"ok": False,
                         "error": (p.stderr or p.stdout or "refresh failed").strip()[-300:],
-                        "tle_age_days": tle.cache_age_days(cache_dir)}), 200
+                        "code": "REFRESH_FAILED",
+                        "tle_age_days": tle.cache_age_days(cache_dir)}), 502
     try:
         summary = json.loads(p.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
         summary = {}
+    # §5: build-roster's summary is NESTED, not spread. Splatting it put keys
+    # nobody declared into the envelope, so the response shape depended on a
+    # subprocess's stdout — unknowable to a caller and to this file's reader.
     return jsonify({"ok": True, "tle_age_days": tle.cache_age_days(cache_dir),
-                    **summary})
+                    "summary": summary if isinstance(summary, dict) else {}})
 
 
 import datetime
@@ -204,7 +232,14 @@ def api_passes():
         window = 48
     st = _station()
     if st["lat"] is None:
-        return jsonify({"passes": {}, "error": "no station location"}), 200
+        # §2: a station with no location configured is a STATE, not a failed
+        # request — nothing about the call was wrong. `computed:false` says the
+        # prediction never ran, so an empty `passes` cannot be misread as
+        # "nothing is overhead for the next 48 hours".
+        return jsonify({"ok": True, "passes": {}, "computed": False,
+                        "complete": False, "computed_at": None,
+                        "window_h": window, "count": 0,
+                        "reason": "no-station-location"}), 200
     only = request.args.get("sat")
     tle_stamp = tle.cache_mtime(config_paths.tle_cache_dir(SUITE_ROOT))
     key = f"{st['lat']},{st['lon']},{window},{only},{int(tle_stamp) if tle_stamp else 0}"
@@ -220,55 +255,78 @@ def api_passes():
         except (OSError, ValueError):
             cached = {}
     action, base_ts = _cache_plan(cached, now_ts, _CACHE_TTL_S)
-    if action == "serve":                # fresh + complete → hand back as-is
-        return jsonify(cached)
+    if action == "serve":                # fresh + complete → hand back the cache
+        result = cached
+    else:
+        # Resume the same window (base_ts == its computed_at) or start a new one
+        # (base_ts == now). Compute only the sats not already present, under a
+        # wall-clock budget below the worker timeout. Selected sats go first, so the
+        # dashboards get their passes on the first poll; the remainder fill in over the
+        # next couple of polls. A partial result still returns 200 — never 500 — and
+        # progress is persisted (computed_at pins the window) so it completes across
+        # requests and, once older than the TTL, is recomputed rather than frozen.
+        if action == "resume":
+            prior = dict(cached.get("passes", {}))
+            prior_err = dict(cached.get("errors", {}))   # nk -> consecutive-failure count
+        else:                                # "fresh"
+            prior, prior_err = {}, {}
+        base = datetime.datetime.fromtimestamp(base_ts, datetime.timezone.utc)
+        result = {"passes": dict(prior), "errors": dict(prior_err), "computed_at": base_ts}
+        deadline = time.monotonic() + _PASSES_BUDGET_S
+        complete = True
+        for norad, sat in _sats_by_norad(selected_first=True).items():
+            nk = str(norad)
+            if only and nk != str(only):
+                continue
+            if nk in result["passes"]:
+                continue                 # already computed (fresh or a prior chunk)
+            if result["errors"].get(nk, 0) >= _MAX_PASS_RETRIES:
+                result["passes"][nk] = []  # kept failing → treat as no-pass, stop retrying
+                result["errors"].pop(nk, None)
+                continue
+            if time.monotonic() > deadline:
+                complete = False         # out of budget — finish on the next poll
+                break
+            try:
+                result["passes"][nk] = predict.compute_passes(
+                    sat, st["lat"], st["lon"], base, hours=window, min_elev=10.0)
+                result["errors"].pop(nk, None)      # recovered — clear prior failures
+            except Exception:
+                # A stale/decayed TLE can make SGP4 propagation blow up (e.g. far past
+                # epoch). One bad satellite must never 500 the whole response — but a
+                # TRANSIENT failure must not strand a good bird as permanently disabled,
+                # so DON'T cache [] here: count the failure, leave the bird out, and let
+                # a later poll retry it (up to _MAX_PASS_RETRIES) with the cache kept in
+                # fill mode. Only a persistent failure (cap reached, above) seals as [].
+                result["errors"][nk] = result["errors"].get(nk, 0) + 1
+                complete = False
+        result["complete"] = complete
+        with open(cp, "w", encoding="utf-8") as fh:
+            json.dump(result, fh)
 
-    # Resume the same window (base_ts == its computed_at) or start a new one
-    # (base_ts == now). Compute only the sats not already present, under a
-    # wall-clock budget below the worker timeout. Selected sats go first, so the
-    # dashboards get their passes on the first poll; the remainder fill in over the
-    # next couple of polls. A partial result still returns 200 — never 500 — and
-    # progress is persisted (computed_at pins the window) so it completes across
-    # requests and, once older than the TTL, is recomputed rather than frozen.
-    if action == "resume":
-        prior = dict(cached.get("passes", {}))
-        prior_err = dict(cached.get("errors", {}))   # nk -> consecutive-failure count
-    else:                                # "fresh"
-        prior, prior_err = {}, {}
-    base = datetime.datetime.fromtimestamp(base_ts, datetime.timezone.utc)
-    result = {"passes": dict(prior), "errors": dict(prior_err), "computed_at": base_ts}
-    deadline = time.monotonic() + _PASSES_BUDGET_S
-    complete = True
-    for norad, sat in _sats_by_norad(selected_first=True).items():
-        nk = str(norad)
-        if only and nk != str(only):
-            continue
-        if nk in result["passes"]:
-            continue                     # already computed (fresh or a prior chunk)
-        if result["errors"].get(nk, 0) >= _MAX_PASS_RETRIES:
-            result["passes"][nk] = []    # kept failing → treat as no-pass and stop retrying
-            result["errors"].pop(nk, None)
-            continue
-        if time.monotonic() > deadline:
-            complete = False             # out of budget — finish on the next poll
-            break
-        try:
-            result["passes"][nk] = predict.compute_passes(
-                sat, st["lat"], st["lon"], base, hours=window, min_elev=10.0)
-            result["errors"].pop(nk, None)          # recovered — clear any prior failures
-        except Exception:
-            # A stale/decayed TLE can make SGP4 propagation blow up (e.g. far past
-            # epoch). One bad satellite must never 500 the whole response — but a
-            # TRANSIENT failure must not strand a good bird as permanently disabled,
-            # so DON'T cache [] here: count the failure, leave the bird out, and let
-            # a later poll retry it (up to _MAX_PASS_RETRIES) with the cache kept in
-            # fill mode. Only a persistent failure (cap reached, above) seals as [].
-            result["errors"][nk] = result["errors"].get(nk, 0) + 1
-            complete = False
-    result["complete"] = complete
-    with open(cp, "w", encoding="utf-8") as fh:
-        json.dump(result, fh)
-    return jsonify(result)
+    # ONE exit, one literal dict — the serve and compute paths converge here so
+    # the two cannot drift, and §10 is satisfied at the return site rather than
+    # inside a helper (`jsonify(_helper(...))` is exactly as invisible to a
+    # reader, and to this repo's gate, as `jsonify(<variable>)`).
+    #
+    # Two things deliberately do NOT leave the cache file. `errors` is retry
+    # bookkeeping — a per-satellite consecutive-failure counter used to decide
+    # when to stop retrying a decayed TLE — and means nothing to a caller.
+    # `computed_at` is stored as an epoch because _cache_plan does arithmetic on
+    # it, but the wire gets ISO-8601 UTC (§6).
+    passes = result.get("passes") or {}
+    return jsonify({
+        "ok": True,
+        "passes": passes,
+        "count": len(passes),
+        "computed": True,
+        # False while a budgeted run is still filling the roster across polls —
+        # the result is usable, just not finished.
+        "complete": bool(result.get("complete")),
+        "computed_at": iso_utc(result.get("computed_at")),
+        "window_h": window,
+        "reason": None,
+    })
 
 
 @bp.route("/api/satellites/track")
@@ -280,11 +338,34 @@ def api_track():
         norad_i = int(norad) if norad else None
     except (TypeError, ValueError):
         norad_i = None
+    # `from`/`to` were read as request.args["from"] and parsed unguarded, so a
+    # missing param raised KeyError and a malformed one ValueError — both a bare
+    # HTTP 500 on what is plainly a bad request. Validate BEFORE the work.
+    try:
+        frm = datetime.datetime.fromisoformat(request.args["from"])
+        to = datetime.datetime.fromisoformat(request.args["to"])
+    except KeyError:
+        return jsonify({"ok": False, "error": "from and to are required "
+                                              "(ISO-8601)",
+                        "code": "MISSING_TIME_RANGE"}), 400
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "from and to must be ISO-8601",
+                        "code": "INVALID_TIME_RANGE"}), 400
+    if to <= frm:
+        return jsonify({"ok": False, "error": "to must be after from",
+                        "code": "INVALID_TIME_RANGE"}), 400
     sat = _sats_by_norad().get(norad_i) if norad_i is not None else None
-    if sat is None or st["lat"] is None:
-        return jsonify({"track": [], "error": "unknown sat or no station"}), 200
-    frm = datetime.datetime.fromisoformat(request.args["from"])
-    to = datetime.datetime.fromisoformat(request.args["to"])
+    if st["lat"] is None:
+        # A state, not a bad request — same as /passes.
+        return jsonify({"ok": True, "track": [], "count": 0, "norad": norad_i,
+                        "l1": None, "l2": None,
+                        "reason": "no-station-location"}), 200
+    if sat is None:
+        # This one IS the caller's fault: they named a satellite that is not in
+        # the roster or the TLE cache. Distinguishing it from the above is the
+        # whole point — one is fixed in Setup, the other by asking differently.
+        return jsonify({"ok": False, "error": "unknown satellite",
+                        "code": "UNKNOWN_SATELLITE"}), 404
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     entry = next((s for s in data["satellites"] if s["norad"] == norad_i), None)
     dls = roster.legacy_downlinks(entry) if entry else []
@@ -298,9 +379,13 @@ def api_track():
     by_norad = tle.index_by_norad(tle.load_cache(config_paths.tle_cache_dir(SUITE_ROOT)))
     tle_lines = by_norad.get(norad_i)   # (name, l1, l2), matched by NORAD id
     return jsonify({
+        "ok": True,
         "track": track,
+        "count": len(track),
+        "norad": norad_i,
         "l1": tle_lines[1] if tle_lines else None,
         "l2": tle_lines[2] if tle_lines else None,
+        "reason": None,
     })
 
 
@@ -324,13 +409,15 @@ def api_select():
         selections = body.get("selections") or {}
         if not isinstance(selections, dict):
             return jsonify({"ok": False, "error": "selections must be an object of "
-                                                  "{norad: bool}"}), 400
+                                                  "{norad: bool}",
+                            "code": "INVALID_SELECTIONS"}), 400
     else:
         try:
             selections = {int(body["norad"]): bool(body["selected"])}
         except (KeyError, TypeError, ValueError):
             return jsonify({"ok": False, "error": "expected {norad, selected} or "
-                                                  "{selections:{norad: bool}}"}), 400
+                                                  "{selections:{norad: bool}}",
+                            "code": "INVALID_SELECTIONS"}), 400
     try:
         data = roster.set_selected_many(config_paths.satellites_json(SUITE_ROOT), selections)
     except OSError as exc:
@@ -339,8 +426,16 @@ def api_select():
         # Surface the cause instead of a blank 500 (build-roster now chowns it to
         # the operator; this guards a stale file from an older bundle).
         return jsonify({"ok": False, "error": f"could not save selection: {exc} — is "
-                        "configuration/satellites.json writable by the server user?"}), 500
-    return jsonify(data)
+                        "configuration/satellites.json writable by the server user?",
+                        "code": "ROSTER_NOT_WRITABLE"}), 500
+    # This was `jsonify(data)` — the ENTIRE roster, ~150 birds with TLE lines,
+    # echoed back for a single checkbox. The client discards it, so the only
+    # thing it ever did was cost a Pi its bandwidth. Return what a caller
+    # actually needs to confirm the write: which birds are now monitored.
+    selected = sorted(s["norad"] for s in data.get("satellites", [])
+                      if s.get("selected"))
+    return jsonify({"ok": True, "selected": selected, "count": len(selected),
+                    "applied": len(selections)})
 
 
 # ── Phase 2: RTL-SDR listen (record a pass to a WAV) ─────────────────────────

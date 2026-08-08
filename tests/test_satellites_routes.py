@@ -84,16 +84,18 @@ class RoutesTest(unittest.TestCase):
     def test_select_toggles(self):
         r = self.client.post("/api/satellites/select", json={"norad": 25544, "selected": False})
         self.assertEqual(r.status_code, 200)
-        iss = [s for s in r.get_json()["satellites"] if s["norad"] == 25544][0]
-        self.assertFalse(iss["selected"])
+        # The response is the monitored set, not the whole roster echoed back:
+        # a single checkbox used to return ~150 birds with their TLE lines.
+        self.assertNotIn(25544, r.get_json()["selected"])
 
     # ── Selection: both request shapes, one write ─────────────────────────────
     def test_select_bulk_applies_the_whole_set(self):
         r = self.client.post("/api/satellites/select",
                              json={"selections": {"25544": True}})
         self.assertEqual(r.status_code, 200)
-        iss = [s for s in r.get_json()["satellites"] if s["norad"] == 25544][0]
-        self.assertTrue(iss["selected"])
+        d = r.get_json()
+        self.assertIn(25544, d["selected"])
+        self.assertEqual(d["applied"], 1)
 
     def test_select_bulk_is_a_single_write(self):
         # The whole point: a burst of N single-toggle requests raced itself and
@@ -115,8 +117,7 @@ class RoutesTest(unittest.TestCase):
         r = self.client.post("/api/satellites/select",
                              json={"norad": 25544, "selected": True})
         self.assertEqual(r.status_code, 200)
-        iss = [s for s in r.get_json()["satellites"] if s["norad"] == 25544][0]
-        self.assertTrue(iss["selected"])
+        self.assertIn(25544, r.get_json()["selected"])
 
     def test_select_rejects_a_malformed_body(self):
         for body in ({}, {"norad": "nope", "selected": True}, {"selections": [1, 2]}):

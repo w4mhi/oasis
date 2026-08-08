@@ -38,8 +38,9 @@ from api_contract_scan import scan_tree  # noqa: E402
 _OK_FALSE_200 = frozenset({
     # /api/health/{probe,service,feed-flow} graduated 2026-08-08 — the cluster
     # this rule was written for. See tests/test_health_contract.py.
-    # /api/wifi/{scan,connect,forget} graduated 2026-08-08.
-    "/api/satellites/refresh", "/api/service", "/api/setup/reboot",
+    # /api/wifi/{scan,connect,forget} + /api/satellites/refresh graduated
+    # 2026-08-08.
+    "/api/service", "/api/setup/reboot",
     "/api/winlink/log",
 })
 
@@ -49,7 +50,8 @@ _NO_ENVELOPE = frozenset({
     # /api/adsb/alerts graduated 2026-08-07 — the first endpoint migrated to the
     # contract. See services/adsb/routes.py and tests/test_adsb_alerts_contract.py.
     "/api/hardware/devices", "/api/hardware/guardian",
-    "/api/satellites", "/api/satellites/passes", "/api/satellites/track",
+    # /api/satellites/{,passes,track} graduated 2026-08-08 with the roster and
+    # prediction surface; the listen/* SDR routes below are the second half.
     "/api/satellites/listen", "/api/satellites/listen/stream",
     "/api/satellites/listen/recordings",
 })
@@ -68,7 +70,6 @@ _UNVERIFIABLE = frozenset({
     # progress would be lying to the ratchet.
     "/api/list-ics205", "/api/save-ics205", "/api/service",
     "/api/setup/jobs/<job_id>",
-    "/api/satellites/passes", "/api/satellites/select",
     "/api/satellites/listen", "/api/satellites/listen/status",
     "/api/satellites/listen/stop",
     "/api/winlink/aliases", "/api/winlink/connect", "/api/winlink/disconnect",
@@ -264,7 +265,7 @@ class AllowlistHygieneTest(unittest.TestCase):
         remaining = len(_OK_FALSE_200 | _NO_ENVELOPE | _UNVERIFIABLE)
         # A ratchet: this is the migration debt and may only go DOWN. Lower it
         # as endpoints graduate; never raise it to make something pass.
-        self.assertLessEqual(remaining, 33,
+        self.assertLessEqual(remaining, 28,
                              f"the allowlists grew to {remaining} — they may only shrink")
         self.assertGreater(total, remaining)
 
