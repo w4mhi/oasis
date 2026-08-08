@@ -310,10 +310,19 @@ test('aircraftRows: prefers the server-resolved last_seen over now - seen', () =
   assert.strictEqual(new Date(rows[0].last_heard).toISOString().replace('.000', ''), iso);
 });
 
-test('aircraftRows: falls back to now - seen when last_seen is absent', () => {
-  // /api/adsb/recent rows still arrive without it.
+test('aircraftRows: history rows use last_seen too — one path, no epoch ts', () => {
+  // /api/adsb/recent now sends the same schema as /aircraft.
+  const iso = '2025-07-31T21:13:20Z';
   const rows = T.aircraftRows({
-    now: 1000, recent: [], live: [{ hex: 'bbb', seen: 100, lat: 1, lon: 1 }],
+    now: 999999, live: [],
+    recent: [{ hex: 'bbb', last_seen: iso, lat: 1, lon: 1 }],
+  });
+  assert.strictEqual(new Date(rows[0].last_heard).toISOString().replace('.000', ''), iso);
+});
+
+test('aircraftRows: still degrades sanely for a record with neither field', () => {
+  const rows = T.aircraftRows({
+    now: 1000, recent: [], live: [{ hex: 'ccc', seen: 100, lat: 1, lon: 1 }],
   });
   assert.strictEqual(Math.round(new Date(rows[0].last_heard).getTime() / 1000), 900);
 });

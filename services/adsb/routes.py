@@ -125,6 +125,33 @@ _AIRCRAFT_MAX_LIMIT = 2000
 _AIRCRAFT_FIELDS = ("flight", "lat", "lon", "alt_baro", "gs", "track",
                     "category", "squawk", "emergency", "baro_rate")
 
+# History windows are a DB scan on a Pi; an unbounded one is an unbounded scan.
+_RECENT_DEFAULT_HOURS = 24.0
+_RECENT_MAX_HOURS = 24.0 * 30
+_RECENT_DEFAULT_LIMIT = 500
+_RECENT_MAX_LIMIT = 2000
+
+
+def _aircraft_record(rec, last_seen_epoch, now):
+    """One aircraft, in the single schema shared by live and history rows.
+
+    Live (/aircraft) and history (/recent) describe the same thing and are merged
+    into one list by the front-end, so they must not have different schemas — and
+    a model must not have to learn two shapes for "an aircraft". Every key is
+    always present, null when unknown (§5); SQL's '' for an unknown callsign is
+    unknown, not an empty callsign.
+    """
+    out = {"hex": rec.get("hex")}
+    for key in _AIRCRAFT_FIELDS:
+        value = rec.get(key)
+        if isinstance(value, str):
+            value = value.strip() or None
+        out[key] = value
+    out["last_seen"] = _iso(last_seen_epoch) if last_seen_epoch is not None else None
+    out["age_s"] = (int(now - last_seen_epoch)
+                    if last_seen_epoch is not None else None)
+    return out
+
 
 @bp.route("/api/adsb/aircraft")
 def api_adsb_aircraft():
@@ -161,18 +188,12 @@ def api_adsb_aircraft():
         raw, key=lambda r: (_seen(r) if _seen(r) is not None else float("inf"),
                             str(r.get("hex") or "")))
 
-    aircraft = []
-    for rec in ordered[:limit]:
-        seen = _seen(rec)
-        out = {"hex": rec.get("hex")}
-        for key in _AIRCRAFT_FIELDS:
-            value = rec.get(key)
-            out[key] = value.strip() if isinstance(value, str) else value
-            if out[key] == "":
-                out[key] = None
-        out["last_seen"] = _iso(decoder_now - seen) if seen is not None else None
-        out["age_s"] = int(seen) if seen is not None else None
-        aircraft.append(out)
+    aircraft = [
+        _aircraft_record(rec,
+                         (decoder_now - _seen(rec)) if _seen(rec) is not None else None,
+                         decoder_now)
+        for rec in ordered[:limit]
+    ]
 
     return jsonify({
         "ok": True,
@@ -192,10 +213,58 @@ def api_adsb_history_proxy():
 
 
 @bp.route("/api/adsb/recent")
-def api_adsb_recent_proxy():
-    import urllib.parse
-    qs = urllib.parse.urlencode({k: v for k, v in request.args.items()})
-    return _adsb_proxy(f"/recent?{qs}")
+def api_adsb_recent():
+    """Latest position per aircraft over the last `hours`. Contract-conforming.
+
+    Same record schema as /api/adsb/aircraft: the front-end merges the two into a
+    single aged list, and shipping two shapes for one concept meant two code paths
+    client-side and two schemas for a model to learn.
+    """
+    try:
+        hours = float(request.args.get("hours"))
+        if hours <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        hours = _RECENT_DEFAULT_HOURS
+    hours = min(hours, _RECENT_MAX_HOURS)
+    limit = _clamp_limit(request.args.get("limit"),
+                         _RECENT_DEFAULT_LIMIT, _RECENT_MAX_LIMIT)
+
+    payload, error = _adsb_json(f"/recent?hours={hours}")
+    if error:
+        return error
+    # The daemon reports an unreadable history DB as {"ok": false, …}; that must
+    # surface as a failure, not as ok:true with an empty list.
+    if payload.get("ok") is False:
+        return jsonify({
+            "ok": False,
+            "error": str(payload.get("error") or "ADS-B history unavailable."),
+            "code": "ADSB_HISTORY_UNAVAILABLE",
+        }), 503
+
+    raw = [r for r in (payload.get("aircraft") or [])
+           if isinstance(r, dict) and r.get("hex")]
+    now = time.time()
+
+    def _ts(rec):
+        try:
+            return float(rec.get("ts"))
+        except (TypeError, ValueError):
+            return None
+
+    ordered = sorted(
+        raw, key=lambda r: (-(_ts(r) if _ts(r) is not None else float("-inf")),
+                            str(r.get("hex") or "")))
+    aircraft = [_aircraft_record(rec, _ts(rec), now) for rec in ordered[:limit]]
+
+    return jsonify({
+        "ok": True,
+        "aircraft": aircraft,
+        "total": len(raw),
+        "truncated": len(raw) > len(aircraft),
+        "limit": limit,
+        "hours": hours,
+    }), 200
 
 
 @bp.route("/api/adsb/alerts")

@@ -1238,9 +1238,15 @@ async function fetchAPRS() {
 let _adsbAircraft = [], _adsbRecent = [], _adsbNow = 0;
 function _lhEpoch(s) { if (!s) return 0; const norm = String(s).replace('Z','+00:00').replace(' ','T').replace(/(\.\d{3})\d+/,'$1'); const t = new Date(norm).getTime(); return isNaN(t)?0:t; }
 function _adsbForList() {
+  // Both ADS-B feeds now send an absolute `last_seen` (ISO) resolved server-side,
+  // so live and history rows share one schema and one timestamp path — no epoch
+  // `ts`, no reconciling dump1090's clock with the browser's.
   const byHex = {};
-  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts:a.ts, _live:false }); });
-  _adsbAircraft.forEach(a => { const seen = (typeof a.seen==='number')?a.seen:0; byHex[a.hex] = Object.assign({}, a, { _ts:_adsbNow-seen, _live:true }); });
+  const _tsOf = a => a.last_seen ? Date.parse(a.last_seen)/1000
+                   : (typeof a.ts === 'number' ? a.ts
+                   : _adsbNow - ((typeof a.seen==='number')?a.seen:0));
+  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts:_tsOf(a), _live:false }); });
+  _adsbAircraft.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts:_tsOf(a), _live:true }); });
   return Object.values(byHex);
 }
 function _adsbListRows() {
@@ -1264,7 +1270,10 @@ async function refreshAdsb() {
 }
 async function refreshAdsbRecent() {
   try { const r = await fetch('/api/adsb/recent?hours=24', { cache:'no-store', signal: AbortSignal.timeout(8000) });
-        if (!r.ok) return; _adsbRecent = (await r.json()).aircraft||[]; scheduleAprsRender(); } catch (_) {}
+        if (!r.ok) return;
+        const j = await r.json();
+        _adsbRecent = (j.ok && Array.isArray(j.aircraft)) ? j.aircraft : [];
+        scheduleAprsRender(); } catch (_) {}
 }
 
 // ── Detail sheet (row → full card) ───────────────────────────────────────────

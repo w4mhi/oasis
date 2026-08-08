@@ -104,23 +104,20 @@
     var byHex = {};
     // _live distinguishes currently-tracked aircraft from 24h-history-only ones
     // (out of range / landed) — the list keeps the latter so they age like APRS.
+    // Both feeds now send an absolute `last_seen` (ISO) resolved server-side, so
+    // there is ONE path: no epoch `ts`, and no reconciling dump1090's clock with
+    // the browser's. `now` is kept only as the fallback for a record that somehow
+    // arrives without it.
+    function _tsOf(a) {
+      if (a.last_seen) return Date.parse(a.last_seen) / 1000;
+      if (typeof a.ts === 'number') return a.ts;
+      return now - ((typeof a.seen === 'number') ? a.seen : 0);
+    }
     (recent || []).forEach(function (a) {
-      byHex[a.hex] = Object.assign({}, a, { _ts: a.ts, _live: false });
+      byHex[a.hex] = Object.assign({}, a, { _ts: _tsOf(a), _live: false });
     });
     (live || []).forEach(function (a) {
-      // /api/adsb/aircraft now resolves the decoder clock server-side and sends
-      // an absolute `last_seen` (ISO) plus `age_s`, so the client no longer has
-      // to reconcile dump1090's clock with its own. The `now - seen` path stays
-      // for /api/adsb/recent, which has not been migrated yet — remove it when
-      // that endpoint lands on the contract.
-      var ts;
-      if (a.last_seen) {
-        ts = Date.parse(a.last_seen) / 1000;
-      } else {
-        var seenSec = (typeof a.seen === 'number') ? a.seen : 0;
-        ts = now - seenSec;
-      }
-      byHex[a.hex] = Object.assign({}, a, { _ts: ts, _live: true });
+      byHex[a.hex] = Object.assign({}, a, { _ts: _tsOf(a), _live: true });
     });
     return Object.values(byHex);
   }

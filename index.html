@@ -3737,7 +3737,10 @@ async function pollAdsbRecent(force) {
                            { cache: 'no-store', signal: AbortSignal.timeout(8000) });
     // Mark the window loaded only on success, so a failed ALL fetch retries on
     // the next cycle (matches map.html's refreshAdsbRecent) instead of sticking.
-    if (rr.ok) { _adsbRecent = (await rr.json()).aircraft || []; _adsbRecentHours = hours; }
+    if (rr.ok) {
+      const rj = await rr.json();
+      if (rj.ok && Array.isArray(rj.aircraft)) { _adsbRecent = rj.aircraft; _adsbRecentHours = hours; }
+    }
   } catch (_) { /* keep the last good history until the next cycle */ }
   _adsbRecentAt = Date.now();
 }

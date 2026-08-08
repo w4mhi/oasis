@@ -2643,7 +2643,8 @@ async function refreshAdsbRecent() {
     const r = await fetch('/api/adsb/recent?hours=' + hours);
     if (!r.ok) return;
     const j = await r.json();
-    _adsbRecent = j.aircraft || [];
+    if (!j.ok || !Array.isArray(j.aircraft)) return;   // keep the last good history
+    _adsbRecent = j.aircraft;
     _adsbRecentHours = hours;
     _renderDrawer();
   } catch (e) { /* ignore — retry next cycle */ }
