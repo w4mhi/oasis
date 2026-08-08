@@ -259,7 +259,12 @@
   .trow.empty{ color:var(--faint); cursor:default; }
   .trow.empty:hover{ background:none; }
 
-  .sats{ flex:none; width:28rem; min-width:0; }
+  /* +100px taken from the traffic card, to make room for a capability marker on
+     each satellite row. Traffic is flex:1 1 auto so it simply gives the space
+     up, and its columns are fr-based with an ellipsised callsign — they
+     compress rather than break. calc() keeps the borrowed width honest if the
+     base ever changes. */
+  .sats{ flex:none; width:calc(28rem + 100px); min-width:0; }
   .satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.6rem; padding-right:10px; }
   .sat{ padding:.6rem .9rem .7rem; border:1px solid var(--border); border-radius:.8rem; margin-bottom:.5rem; }
   .sat:last-child{ margin-bottom:0; }
