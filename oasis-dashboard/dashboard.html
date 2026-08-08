@@ -24,6 +24,7 @@
 <script src="/common/js/service-registry.js"></script>
 <script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
+<script src="/common/js/sat-alerts.js"></script>
 <link rel="stylesheet" href="/common/css/wifi-pill.css">
 
 <style>
@@ -272,6 +273,22 @@
   .sat.soon .cd,.sat.soon .l2{ color:var(--warn); }
   .sat.soon .pulse{ background:var(--warn); box-shadow:0 0 .8rem 0 var(--warn); }
   .satempty{ color:var(--faint); font-size:1.15rem; padding:.4rem .2rem; }
+  /* Global mute for the shack. Sized for a FINGER, not a mouse pointer: it gets
+     used at bedtime, in the dark, on a 7" panel — the icon is 1.3rem but the hit
+     area is ~2.75rem. Muted state is held deliberately BRIGHT (amber), because a
+     forgotten mute is a silent failure: the kiosk just says nothing next morning
+     and there is no other symptom. */
+  .satmute{ background:none; border:0; padding:.5rem .6rem; margin:-.5rem .1rem -.5rem .5rem;
+            min-width:2.75rem; min-height:2.75rem; line-height:0; cursor:pointer;
+            color:var(--faint); -webkit-tap-highlight-color:transparent; }
+  .satmute svg{ width:1.3rem; height:1.3rem; display:block; }
+  .satmute.muted{ color:var(--warn); }
+  /* The per-row bell is INFORMATIONAL here — arming happens on the Satellites
+     page, this only shows which passes will actually wake the shack. */
+  .sat .bell{ color:var(--accent); margin-left:.4rem; line-height:0; display:inline-block; vertical-align:-.15em; }
+  .sat .bell svg{ width:1rem; height:1rem; display:block; }
+  .sat.now .bell{ color:var(--accent); }
+  .sat.soon .bell{ color:var(--warn); }
   .pulse{ display:inline-block; width:.8rem; height:.8rem; border-radius:50%; background:var(--accent);
           box-shadow:0 0 .8rem 0 var(--accent); margin-right:.5rem; vertical-align:middle; }
 
@@ -520,7 +537,7 @@
     </div>
 
     <div class="card sats">
-      <div class="hd"><span class="lbl">SATELLITES</span><span class="meta" id="k-sat-meta">—</span></div>
+      <div class="hd"><span class="lvd">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="meta" id="k-sat-meta">—</span></div>
       <div class="satscroll" id="satBody"><div class="satempty">…</div></div>
     </div>
 
@@ -1389,6 +1406,59 @@ function openSvcSheet() {
 // ── Satellites (copied from dashboard_old) ───────────────────────────────────
 function azCompass(deg) { if (deg == null) return ''; return ['N','NE','E','SE','S','SW','W','NW'][Math.round((((deg%360)+360)%360)/45)%8]; }
 let _satSel = [], _satPasses = {};
+
+// ── Pass alerts on the KIOSK ─────────────────────────────────────────────────
+// The whole point: the shack should hear a pass coming without a laptop being
+// open. Which birds alert is the roster's `bell` flag — armed from the
+// Satellites page on any device, so this screen needs no per-bird controls of
+// its own. The engine is common/js/sat-alerts.js, shared with that page, so the
+// two can never drift into alerting at different times.
+//
+// MUTE is per-DEVICE and stays in localStorage: silencing the shack overnight
+// must not silence a laptop elsewhere. Same key as the Satellites page, which is
+// the same origin — so muting here also quietens that page ON THIS PI, which is
+// what "this device is quiet" should mean.
+const BELL_ON  = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a2 2 0 0 0-2 2v.29C7.12 5.14 5 7.82 5 11v5l-2 2v1h18v-1l-2-2v-5c0-3.18-2.12-5.86-5-6.71V4a2 2 0 0 0-2-2Zm0 20a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2Z"/></svg>`;
+const BELL_OFF = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 18.69 7.84 6.14 5.27 3.49 4 4.76l2.8 2.8v.01c-.52.99-.8 2.16-.8 3.42v5l-2 2v1h13.73l2 2L21 19.72l-1-1.03zM12 22c1.11 0 2-.89 2-2h-4c0 1.11.89 2 2 2zm6-7.32V11c0-3.08-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68c-.15.03-.29.08-.42.13l7.92 7.87z"/></svg>`;
+let _satMuted = localStorage.getItem('oasis_sat_muted') === '1';
+const _satAlertState = {};        // norad -> {key, t10, t5}; fire-once per pass
+function renderSatMute() {
+  const el = document.getElementById('k-sat-mute');
+  if (!el) return;
+  el.innerHTML = _satMuted ? BELL_OFF : BELL_ON;
+  el.classList.toggle('muted', _satMuted);
+  el.title = _satMuted ? 'Pass alerts MUTED on this device — tap to unmute'
+                       : 'Mute pass-alert chimes on this device';
+}
+function toggleSatMute() {
+  _satMuted = !_satMuted;
+  try { localStorage.setItem('oasis_sat_muted', _satMuted ? '1' : '0'); } catch (e) { /* private mode */ }
+  renderSatMute();
+  oasisSatAudioUnlock();   // this tap is also the gesture that unlocks audio
+}
+// Every armed bird with a known next pass. The 1-hour render window does NOT
+// apply here — an alert is about what is coming, not about what is listed.
+function _armedBirds() {
+  const now = Date.now(), out = [];
+  _satSel.forEach(s => {
+    if (!s.bell) return;
+    const norad = s.norad || s.id;
+    const passes = _satPasses[norad] || _satPasses[String(norad)] || [];
+    const p = passes.map(x => ({ ...x, _r:new Date(x.rise).getTime() }))
+                    .filter(x => x._r > now).sort((a,b) => a._r - b._r)[0];
+    if (p) out.push({ norad, name:s.name || ('#'+norad), rise:p.rise, max_el:p.max_el });
+  });
+  return out;
+}
+function runSatAlerts() {
+  const due = oasisSatAlertsDue(_armedBirds(), Date.now(), _satAlertState);
+  if (_satMuted) return;   // state still advanced above, so unmuting mid-pass
+                           // does not replay warnings that already elapsed
+  if (due.fire) oasisSatChime(3, due.freq);
+  if (due.announce.length) setTimeout(() => {
+    due.announce.forEach(b => oasisSatSpeak(oasisSatSpeech(b)));
+  }, OASIS_SAT_CHIME_3_MS);   // let the chime finish before the voice starts
+}
 async function fetchSats() {
   try { const m = await (await fetch('/api/satellites', { cache:'no-store' })).json(); _satSel = (m.satellites||[]).filter(s => s.selected); } catch (_) { _satSel = []; }
   try { _satPasses = (await (await fetch('/api/satellites/passes?window=24', { cache:'no-store' })).json()).passes || {}; } catch (_) {}
@@ -1408,7 +1478,8 @@ function renderSats() {
     const inPass = p._r <= now && now < p._s;
     const mins = Math.round((p._r - now)/60000);
     if (!inPass && mins > 60) return;                 // 1 h window
-    items.push({ name:s.name || ('#'+norad), p, inPass, mins, dl:(s.downlinks && s.downlinks[0]) });
+    items.push({ name:s.name || ('#'+norad), p, inPass, mins, bell:!!s.bell,
+                 dl:(s.downlinks && s.downlinks[0]) });
   });
   items.sort((a,b) => (b.inPass?1:0)-(a.inPass?1:0) || a.p._r - b.p._r);
   if (meta) meta.textContent = _satSel.length + ' monitored · ' + items.length + ' in 1h';
@@ -1416,12 +1487,17 @@ function renderSats() {
   const hm = t => { const d = new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
   body.innerHTML = items.map(it => {
     const el = Math.round(it.p.max_el || 0), dir = azCompass(it.p.rise_az);
+    // Informational only — armed on the Satellites page. A crossed bell while
+    // muted, so the row tells the truth about whether it will actually sound.
+    const bell = it.bell
+      ? `<span class="bell" title="${_satMuted ? 'Pass alert armed, but this device is muted' : 'Pass alert armed'}">${_satMuted ? BELL_OFF : BELL_ON}</span>`
+      : '';
     if (it.inPass) {
       const arc = `${esc(azCompass(it.p.rise_az))}→${esc(azCompass(it.p.set_az))}`;
-      return `<div class="sat now"><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}</span><span class="aos">overhead</span><span class="cd">NOW</span></div><div class="l2">el ${el}° ↗ · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
+      return `<div class="sat now"><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${bell}</span><span class="aos">overhead</span><span class="cd">NOW</span></div><div class="l2">el ${el}° ↗ · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
     }
     const soon = it.mins <= 10;
-    const nm = soon ? `<span class="nm"><span class="pulse"></span>${esc(it.name)}</span>` : `<span class="nm">${esc(it.name)}</span>`;
+    const nm = soon ? `<span class="nm"><span class="pulse"></span>${esc(it.name)}${bell}</span>` : `<span class="nm">${esc(it.name)}${bell}</span>`;
     const l2 = soon ? `rise ${esc(dir)} · ${el}° max · get ready` : `rise ${esc(dir)} · ${el}° max`;
     return `<div class="sat${soon?' soon':''}"><div class="l1">${nm}<span class="aos">${hm(it.p._r)}</span><span class="cd">↑ ${it.mins}m</span></div><div class="l2">${l2}</div></div>`;
   }).join('');
@@ -1671,6 +1747,15 @@ fetchAPRS();          setInterval(fetchAPRS, 10000);
 refreshAdsb();        setInterval(refreshAdsb, 5000);
 refreshAdsbRecent();  setInterval(refreshAdsbRecent, 60000);
 fetchSats();          setInterval(fetchSats, 60000);
+// Pass alerts tick far faster than the roster refresh: the T-10 edge has to be
+// caught within a couple of seconds of crossing, but the pass DATA only changes
+// every 60 s. Cheap — it walks the armed birds already in memory.
+renderSatMute();      setInterval(runSatAlerts, 2000);
+// Unlock Web Audio on the first touch, for the case where someone IS at the
+// panel. An untouched kiosk never gets a gesture at all, which is what
+// --autoplay-policy=no-user-gesture-required covers (scripts/enable-autostart-pi.py).
+['click', 'touchstart', 'keydown'].forEach(ev =>
+  document.addEventListener(ev, oasisSatAudioUnlock, { once: true }));
 loadHazards();
 pollFeedFlow();       setInterval(pollFeedFlow, FEED_FLOW_MS);
 pollAdsbFlow();       setInterval(pollAdsbFlow, FEED_FLOW_MS);

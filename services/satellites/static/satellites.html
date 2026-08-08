@@ -353,6 +353,7 @@ html, body { height: 100%; margin: 0; }
 <!-- Satellites uses a lightweight SVG world map (no MapLibre/WebGL/tiles) — a
      memory win on the Pi, and the whole-globe view is what pass tracks need. -->
 <script src="/common/js/sat-bells.js"></script>
+<script src="/common/js/sat-alerts.js"></script>
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
 <script>
@@ -926,12 +927,10 @@ async function reconcileBells() {
   adoptBells(plan.adopt);
 }
 const _alertState = {};   // norad -> { key: pass.rise, t10, t5 }
-let _audioCtx = null;
+// The AudioContext itself lives in common/js/sat-alerts.js (one per page); this
+// is just the local name the page's gesture handlers already use.
+const _unlockAudio = () => oasisSatAudioUnlock();
 function bellArmed(norad) { return !!_satBells[norad]; }
-function _unlockAudio() {   // must be called from a user gesture (bell/mute click) first
-  try { if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (_audioCtx.state === 'suspended') _audioCtx.resume(); } catch (e) { /* no audio */ }
-}
 function toggleBell(norad) {
   const on = !_satBells[norad];
   if (on) _satBells[norad] = true; else delete _satBells[norad];
@@ -957,46 +956,19 @@ function toggleSatMute() {
   renderRoster();   // re-render so each monitored sat's per-card bell reflects the mute
   _unlockAudio();
 }
-// Morse "V" = dit dit dit dah, `reps` times, `freq` Hz. dah = 3× dit; 1-unit gaps.
+// The chime and the voice now live in common/js/sat-alerts.js, shared with the
+// kiosk dashboard so the shack hears the same thing whichever screen is awake.
+// Both wrappers honour the global (per-DEVICE) mute.
 function playMorseV(reps, freq) {
   if (_satMuted) return;
-  _unlockAudio();
-  const ctx = _audioCtx; if (!ctx) return;
-  const unit = 0.075, pattern = [1, 1, 1, 3];
-  let t = ctx.currentTime + 0.03;
-  for (let r = 0; r < (reps || 1); r++) {
-    for (const n of pattern) {
-      const dur = n * unit;
-      const osc = ctx.createOscillator(); osc.type = 'sine'; osc.frequency.value = freq || 660;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.3, t + 0.006);
-      g.gain.setValueAtTime(0.3, t + dur - 0.008);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      osc.connect(g); g.connect(ctx.destination);
-      osc.start(t); osc.stop(t + dur + 0.02);
-      t += dur + unit;
-    }
-    t += unit * 3;   // gap between repeated V's
-  }
+  oasisSatChime(reps, freq);
 }
 // Spoken heads-up at T-10 (after the Vs) — says which sat is coming + how good the
-// pass is. Browser speech synthesis; silently no-ops if no voice is installed, so
-// the VVV chime always carries the alert regardless. Honours the global mute.
-let _voices = [];
-function _loadVoices() { try { _voices = speechSynthesis.getVoices() || []; } catch (e) { _voices = []; } }
-if (window.speechSynthesis) { _loadVoices(); speechSynthesis.onvoiceschanged = _loadVoices; }
+// pass is. Silently no-ops if no voice is installed, so the VVV chime always
+// carries the alert regardless.
 function speak(text) {
-  if (_satMuted || !window.speechSynthesis) return;
-  if (!_voices.length) _loadVoices();
-  if (!_voices.length) return;   // no TTS voice on this box — the chime already fired
-  try {
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.9; u.pitch = 1.0; u.volume = 1.0;
-    const en = _voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
-    if (en) u.voice = en;
-    speechSynthesis.speak(u);
-  } catch (e) { /* ignore */ }
+  if (_satMuted) return;
+  oasisSatSpeak(text);
 }
 // Bell control for a roster row (only rendered for a plotted sat).
 function bellBtnHTML(norad) {
@@ -1013,31 +985,23 @@ function bellBtnHTML(norad) {
     : 'Arm pass alerts (VVV chime at T-10 + T-5 min before the pass)';
   return `<button class="sat-bell${on ? ' on' : ''}" onclick="toggleBell(${norad})" title="${title}">${glyph}</button>`;
 }
-// Ridden by updatePills every 2 s: fire the T-10 and T-5 "VVV" chimes, deduped to
-// one per tick. Per-sat+pass flags prevent re-firing; T-5 uses a higher pitch.
+// Ridden by updatePills every 2 s. The threshold logic is the shared, tested
+// oasisSatAlertsDue (common/js/sat-alerts.js) — identical to the kiosk's, so the
+// two screens can never drift into alerting at different times.
 function _runPassAlerts() {
-  let fire = false, freq = 620;
-  const t10 = [];   // sats crossing T-10 this tick → spoken heads-up after the Vs
-  const now = Date.now();
+  const birds = [];
   for (const norad in PLOTTED) {
     if (!bellArmed(norad)) continue;
     const p = nextPassOf(+norad);
-    if (!p) continue;
-    const rise = new Date(p.rise).getTime();
-    let st = _alertState[norad];
-    if (!st || st.key !== p.rise) st = _alertState[norad] = { key: p.rise, t10: false, t5: false };
-    const tMinus = rise - now;
-    if (!st.t10 && tMinus <= 600000 && tMinus > 0) { st.t10 = true; fire = true; t10.push({ norad: +norad, p }); }
-    if (!st.t5  && tMinus <= 300000 && tMinus > 0) { st.t5  = true; fire = true; freq = 780; }  // closer → higher/urgent
+    const sat = ROSTER.find(s => s.norad === +norad);
+    if (p && sat) birds.push({ norad: +norad, name: sat.name, rise: p.rise, max_el: p.max_el });
   }
-  if (fire) playMorseV(3, freq);   // VVV — T-10 (620 Hz), then T-5 (780 Hz)
+  const due = oasisSatAlertsDue(birds, Date.now(), _alertState);
+  if (due.fire) playMorseV(3, due.freq);   // VVV — T-10 (620 Hz), then T-5 (780 Hz)
   // T-10 only: once the Vs finish, speak which sat is coming + the pass quality.
-  if (t10.length) setTimeout(() => {
-    for (const { norad, p } of t10) {
-      const sat = ROSTER.find(s => s.norad === norad);
-      if (sat) speak(`${sat.name}, in ten minutes, maximum elevation ${Math.round(p.max_el)} degrees`);
-    }
-  }, 2600);   // ~length of the VVV chime, so the voice follows it, not overlaps
+  if (due.announce.length) setTimeout(() => {
+    due.announce.forEach(b => speak(oasisSatSpeech(b)));
+  }, OASIS_SAT_CHIME_3_MS);   // let the chime finish first, don't talk over it
 }
 
 function updatePills() {

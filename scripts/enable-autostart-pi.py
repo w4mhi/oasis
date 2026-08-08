@@ -267,9 +267,17 @@ def install_browser(user, home, url=None, resolution=None):
     # espeak-ng installed (services/satellites/install-voice.py).
     kiosk_url = url or f"http://localhost:{PORT}/index.html"   # explicit page, not the "/" redirect
     # ── Chromium flags ────────────────────────────────────────────────────────
+    # --autoplay-policy=no-user-gesture-required: browsers start an AudioContext
+    # SUSPENDED until the operator clicks or taps something. On a laptop that's
+    # invisible — you interacted with the page to arm the bell in the first place.
+    # On a kiosk that boots unattended and is never touched, no gesture ever
+    # arrives, so the context stays suspended and the satellite pass chime NEVER
+    # SOUNDS, with nothing on screen to say why. This is what makes the shack
+    # audible; the pages also unlock on first touch, for when someone is there.
     flags = [
         "--kiosk", "--noerrdialogs", "--disable-infobars",
         "--enable-speech-dispatcher",           # Web Speech for Satellites voice
+        "--autoplay-policy=no-user-gesture-required",   # chime on an untouched kiosk
         "--password-store=basic",               # avoid keyring unlock prompt
     ]
     # Offline box: Chromium's background phone-home tasks only ever time out here,
