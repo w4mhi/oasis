@@ -13,17 +13,23 @@ import subprocess
 import threading
 import time
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 import appconfig
 from common import gpsd_chrony
-from common.api_shape import iso_utc
+from common.api_shape import clamp_limit, iso_utc
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 VERSION_FILE = appconfig.VERSION_FILE
 INSTALLED_SERVICES_FILE = appconfig.INSTALLED_SERVICES_FILE
 
 bp = Blueprint("system", __name__)
+
+# §4 bounds for the naturally-small lists this blueprint serves. Generous
+# enough that `truncated` is always false in practice — the point is that the
+# response CANNOT become unbounded, and that every list reads the same way.
+_CARD_DEFAULT_LIMIT = 100
+_FEATURE_DEFAULT_LIMIT = 200
 
 
 @bp.route("/api/server-info")
@@ -118,20 +124,30 @@ def api_installed_services():
     returns exactly that list with locked=True, so the dashboard shows only
     these cards and hides the reveal button. Nothing is written to disk."""
     if appconfig.PORTABLE_FEATURES is not None:
-        return jsonify({"ok": True, "locked": True,
-                        "features": appconfig.PORTABLE_FEATURES})
+        feats = list(appconfig.PORTABLE_FEATURES)
+        shown = feats[:_FEATURE_DEFAULT_LIMIT]
+        return jsonify({"ok": True, "locked": True, "features": shown,
+                        "total": len(feats), "count": len(shown),
+                        "truncated": len(feats) > len(shown),
+                        "limit": _FEATURE_DEFAULT_LIMIT})
     try:
         with open(INSTALLED_SERVICES_FILE) as fh:
             data = json.load(fh)
         feats = data.get("features")
         if isinstance(feats, list):
-            return jsonify({"ok": True,
-                            "features": sorted({str(k) for k in feats})})
+            names = sorted({str(k) for k in feats})
+            shown = names[:_FEATURE_DEFAULT_LIMIT]
+            return jsonify({"ok": True, "features": shown,
+                            "total": len(names), "count": len(shown),
+                            "truncated": len(names) > len(shown),
+                            "limit": _FEATURE_DEFAULT_LIMIT})
     except FileNotFoundError:
         pass
     except (ValueError, OSError):
         pass
-    return jsonify({"ok": True, "features": None})
+    return jsonify({"ok": True, "features": None, "total": None,
+                    "count": None, "truncated": False,
+                    "limit": _FEATURE_DEFAULT_LIMIT})
 
 
 # ── Raspberry Pi power/thermal + Wi-Fi helpers ────────────────────────────────
@@ -661,7 +677,9 @@ def api_audio():
     # macOS have no procfs sound nodes, so report unsupported rather than
     # erroring — the cross-platform bundle keeps working and the UI shows "n/a".
     if not sys.platform.startswith("linux") or not os.path.exists("/proc/asound/cards"):
-        return jsonify({"ok": True, "supported": False, "cards": []})
+        return jsonify({"ok": True, "supported": False, "cards": [],
+                        "total": 0, "count": 0, "truncated": False,
+                        "limit": _CARD_DEFAULT_LIMIT})
 
     try:
         with open("/proc/asound/cards") as fh:
@@ -726,6 +744,10 @@ def api_audio():
     except Exception:
         pass
 
-    return jsonify({"ok": True, "supported": True, "cards": cards})
+    limit = clamp_limit(request.args.get("limit"), _CARD_DEFAULT_LIMIT, 500)
+    shown = cards[:limit]
+    return jsonify({"ok": True, "supported": True, "cards": shown,
+                    "total": len(cards), "count": len(shown),
+                    "truncated": len(cards) > len(shown), "limit": limit})
 
 

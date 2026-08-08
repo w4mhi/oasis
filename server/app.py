@@ -63,6 +63,17 @@ _PORTABLE_BLOCK = {
 app = Flask(__name__, static_folder=SUITE_ROOT, static_url_path="")
 
 
+# Stable §3 slugs for errors that no route authored — raised by Flask/werkzeug
+# itself. Anything unmapped becomes HTTP_<status>, which is still stable.
+_HTTP_CODES = {
+    400: "BAD_REQUEST", 401: "UNAUTHORIZED", 403: "FORBIDDEN",
+    404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED", 409: "CONFLICT",
+    413: "PAYLOAD_TOO_LARGE", 415: "UNSUPPORTED_MEDIA_TYPE",
+    500: "INTERNAL_ERROR", 502: "BAD_GATEWAY", 503: "SERVICE_UNAVAILABLE",
+    504: "GATEWAY_TIMEOUT", 507: "INSUFFICIENT_STORAGE",
+}
+
+
 @app.errorhandler(Exception)
 def _api_json_error_handler(exc):
     """Return JSON (with the real error text) for any unhandled exception on an
@@ -89,7 +100,12 @@ def _api_json_error_handler(exc):
             # specific cause already catch and return it themselves.
             app.logger.exception("Unhandled exception on %s", request.path)
             message = "Internal server error"
-        return jsonify({"ok": False, "error": message, "status": status}), status
+        # §3: every error carries a stable machine-readable slug, including the
+        # ones NO route wrote — a 404 from send_from_directory, an abort(403)
+        # from a guard. Those reach a client as an error like any other, and a
+        # caller that must branch on prose has no contract at all.
+        return jsonify({"ok": False, "error": message, "status": status,
+                        "code": _HTTP_CODES.get(status, f"HTTP_{status}")}), status
     # Non-API routes: preserve Flask's default behavior (HTTPExceptions are
     # valid responses; re-raise anything else so the framework renders its 500).
     if is_http:

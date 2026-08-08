@@ -14,6 +14,8 @@ import time
 
 from flask import Blueprint, jsonify, request
 
+from common.api_shape import clamp_limit
+
 from routes.service_control import _OASIS_SERVICES
 
 bp = Blueprint("health", __name__)
@@ -314,11 +316,17 @@ def api_health_zim():
                     total += os.path.getsize(os.path.join(d, f))
                 except OSError:
                     pass
-            return jsonify({"ok": True, "count": len(zims), "dir": d,
+            names = [os.path.splitext(f)[0] for f in sorted(zims)]
+            limit = clamp_limit(request.args.get("limit"), 500, 2000)
+            shown = names[:limit]
+            return jsonify({"ok": True, "count": len(shown), "dir": d,
                             "total_gb": round(total / 1e9, 1),
-                            "names": [os.path.splitext(f)[0] for f in sorted(zims)]})
+                            "names": shown, "total": len(names),
+                            "truncated": len(names) > len(shown),
+                            "limit": limit})
     return jsonify({"ok": True, "count": 0, "dir": candidates[0],
-                    "total_gb": 0, "names": []})
+                    "total_gb": 0, "names": [], "total": 0,
+                    "truncated": False, "limit": 500})
 
 
 @bp.route("/api/health/rtc")

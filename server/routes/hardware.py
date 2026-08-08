@@ -19,11 +19,16 @@ from common import config_paths
 from common import guardian as GUARD
 from common import hardware as HW
 from common import hardware_detect as HD_detect
+from common.api_shape import clamp_limit
 from routes.service_control import _CONTROLLABLE_SERVICES, _systemctl_seq
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 
 bp = Blueprint("hardware", __name__)
+
+# §4 bound for the device lists. A station has a handful of radios; this
+# exists so the response cannot be unbounded, not to paginate.
+_DEVICE_LIMIT = 200
 
 # Emergency STOP ALL / guardian target: every controllable service EXCEPT WebSSH.
 # Killing WebSSH would sever the operator's remote connection to the box at the
@@ -137,8 +142,12 @@ def api_hardware_devices():
     ports = HD_detect.rtl_sdr_usb_ports()
     for d in devices:
         d["usb_port"] = ports.get(d.get("serial", ""), "")
-    return jsonify({"ok": True, "devices": devices, "errors": inv.errors,
-                    "services": services, "count": len(devices)})
+    limit = clamp_limit(request.args.get("limit"), _DEVICE_LIMIT, 500)
+    shown = devices[:limit]
+    return jsonify({"ok": True, "devices": shown, "errors": inv.errors,
+                    "services": services, "total": len(devices),
+                    "count": len(shown),
+                    "truncated": len(devices) > len(shown), "limit": limit})
 
 
 _DEVICE_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,32}$')
@@ -373,8 +382,13 @@ def _console_state():
 def api_hardware_console():
     """Live state for the HW/SRV matrix console (rail + matrix + warnings)."""
     state = _console_state()
+    devs = state["devices"]
+    limit = clamp_limit(request.args.get("limit"), _DEVICE_LIMIT, 500)
+    shown = devs[:limit]
     return jsonify({"ok": True, "services": state["services"],
-                    "devices": state["devices"], "warnings": state["warnings"]})
+                    "devices": shown, "warnings": state["warnings"],
+                    "total": len(devs), "count": len(shown),
+                    "truncated": len(devs) > len(shown), "limit": limit})
 
 
 @bp.route("/api/hardware/route", methods=["POST"])

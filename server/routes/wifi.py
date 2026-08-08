@@ -11,6 +11,8 @@ import sys
 
 from flask import Blueprint, jsonify, request
 
+from common.api_shape import clamp_limit
+
 bp = Blueprint("wifi", __name__)
 
 # ── Wi-Fi controls (scan / join known networks; AP fallback) ──────────────────
@@ -162,12 +164,18 @@ def api_wifi_scan():
                     "in_use":   in_use.strip() in ("*", "yes"),
                 })
             nets.sort(key=lambda n: n["signal"], reverse=True)
+    found = nets if nets is not None else []
+    limit = clamp_limit(request.args.get("limit"), 200, 1000)
+    shown = found[:limit]
     return jsonify({
         "ok":        True,
         "supported": supported,
         "scanned":   nets is not None,
-        "networks":  nets if nets is not None else [],
-        "count":     len(nets) if nets is not None else 0,
+        "networks":  shown,
+        "total":     len(found),
+        "count":     len(shown),
+        "truncated": len(found) > len(shown),
+        "limit":     limit,
         "reason":    reason,
         "detail":    detail,
     })

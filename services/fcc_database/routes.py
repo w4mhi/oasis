@@ -34,19 +34,19 @@ def api_lookup():
     """
     callsign = (request.args.get("callsign") or "").strip()
     if not callsign:
-        return jsonify({"ok": False, "error": "Please enter a call sign."}), 400
+        return jsonify({"ok": False, "error": "Please enter a call sign.", "code": "CALLSIGN_REQUIRED"}), 400
 
     # Wildcard / prefix search when the query ends with '*'.
     if callsign.endswith("*"):
         prefix = callsign.rstrip("*").strip()
         if not prefix:
-            return jsonify({"ok": False, "error": "Please enter a call sign prefix."}), 400
+            return jsonify({"ok": False, "error": "Please enter a call sign prefix.", "code": "PREFIX_REQUIRED"}), 400
         if len(prefix) < 2:
-            return jsonify({"ok": False, "error": "Prefix must be at least 2 characters."}), 400
+            return jsonify({"ok": False, "error": "Prefix must be at least 2 characters.", "code": "PREFIX_TOO_SHORT"}), 400
         try:
             results = lookup.lookup_prefix(prefix, ZIP_TABLE)
         except FileNotFoundError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 503
+            return jsonify({"ok": False, "error": str(exc), "code": "FCC_INDEX_UNAVAILABLE"}), 503
         return jsonify({"ok": True, "prefix": True, "query": prefix.upper(),
                         "count": len(results), "results": results})
 
@@ -55,7 +55,7 @@ def api_lookup():
         result = lookup.lookup(callsign, ZIP_TABLE)
     except FileNotFoundError as exc:
         # Index/data not present yet.
-        return jsonify({"ok": False, "error": str(exc)}), 503
+        return jsonify({"ok": False, "error": str(exc), "code": "FCC_INDEX_UNAVAILABLE"}), 503
 
     if result is None:
         return jsonify({
@@ -77,14 +77,14 @@ def api_lookup_prefix():
     raw_qs = (request.args.get("callsign") or "").strip()
     prefix = raw_qs.rstrip("*").strip()
     if not prefix:
-        return jsonify({"ok": False, "error": "Please enter a call sign prefix."}), 400
+        return jsonify({"ok": False, "error": "Please enter a call sign prefix.", "code": "PREFIX_REQUIRED"}), 400
     if len(prefix) < 2:
-        return jsonify({"ok": False, "error": "Prefix must be at least 2 characters."}), 400
+        return jsonify({"ok": False, "error": "Prefix must be at least 2 characters.", "code": "PREFIX_TOO_SHORT"}), 400
 
     try:
         results = lookup.lookup_prefix(prefix, ZIP_TABLE)
     except FileNotFoundError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 503
+        return jsonify({"ok": False, "error": str(exc), "code": "FCC_INDEX_UNAVAILABLE"}), 503
 
     return jsonify({"ok": True, "prefix": prefix.upper(), "count": len(results), "results": results})
 
@@ -100,13 +100,13 @@ def api_lookup_name():
     last  = (request.args.get("last")  or "").strip()
     first = (request.args.get("first") or "").strip()
     if not last:
-        return jsonify({"ok": False, "error": "Please enter a last name."}), 400
+        return jsonify({"ok": False, "error": "Please enter a last name.", "code": "NAME_REQUIRED"}), 400
     if len(last) < 2:
-        return jsonify({"ok": False, "error": "Last name must be at least 2 characters."}), 400
+        return jsonify({"ok": False, "error": "Last name must be at least 2 characters.", "code": "NAME_TOO_SHORT"}), 400
     try:
         results = lookup.lookup_by_name(last, first or None, zip_table=ZIP_TABLE)
     except FileNotFoundError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 503
+        return jsonify({"ok": False, "error": str(exc), "code": "FCC_INDEX_UNAVAILABLE"}), 503
     return jsonify({"ok": True, "count": len(results), "results": results,
                     "query": {"last": last.upper(), "first": first.upper() or None}})
 
@@ -121,13 +121,13 @@ def api_lookup_grid():
     """
     grid = (request.args.get("grid") or "").strip()
     if not grid:
-        return jsonify({"ok": False, "error": "Please enter a grid square (e.g. CN87)."}), 400
+        return jsonify({"ok": False, "error": "Please enter a grid square (e.g. CN87).", "code": "GRID_REQUIRED"}), 400
     if len(grid) < 2:
-        return jsonify({"ok": False, "error": "Grid prefix must be at least 2 characters."}), 400
+        return jsonify({"ok": False, "error": "Grid prefix must be at least 2 characters.", "code": "GRID_TOO_SHORT"}), 400
     try:
         results = lookup.lookup_by_grid(grid, zip_table=ZIP_TABLE)
     except FileNotFoundError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 503
+        return jsonify({"ok": False, "error": str(exc), "code": "FCC_INDEX_UNAVAILABLE"}), 503
     return jsonify({"ok": True, "count": len(results), "results": results,
                     "query": {"grid": grid.upper()}})
 

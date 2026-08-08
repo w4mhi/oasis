@@ -10,11 +10,16 @@ import os
 from flask import Blueprint, jsonify, request
 
 import appconfig
+from common.api_shape import clamp_limit
 from common.web_guard import require_oasis_request
 
 SUITE_ROOT = appconfig.SUITE_ROOT
 
 bp = Blueprint("files", __name__)
+
+# §4 bound for saved-snapshot listings. These are operator files and DO grow,
+# unlike a hardware list — this is a real bound, not a formality.
+_FILE_LIMIT = 500
 
 
 # ── Client-data backup ("save to server") ────────────────────────────────────
@@ -183,8 +188,11 @@ def api_forms_list():
         return jsonify({"ok": False, "error": result["error"],
                         "code": result["code"]}), status
     files = result["files"]
-    return jsonify({"ok": True, "files": files, "total": len(files),
-                    "count": len(files), "truncated": False}), status
+    limit = clamp_limit(request.args.get("limit"), _FILE_LIMIT, 2000)
+    shown = files[:limit]
+    return jsonify({"ok": True, "files": shown, "total": len(files),
+                    "count": len(shown),
+                    "truncated": len(files) > len(shown), "limit": limit}), status
 
 
 @bp.route("/api/save-ics205", methods=["POST"])
@@ -210,8 +218,11 @@ def api_list_ics205():
         return jsonify({"ok": False, "error": result["error"],
                         "code": result["code"]}), status
     files = result["files"]
-    return jsonify({"ok": True, "files": files, "total": len(files),
-                    "count": len(files), "truncated": False}), status
+    limit = clamp_limit(request.args.get("limit"), _FILE_LIMIT, 2000)
+    shown = files[:limit]
+    return jsonify({"ok": True, "files": shown, "total": len(files),
+                    "count": len(shown),
+                    "truncated": len(files) > len(shown), "limit": limit}), status
 
 
 @bp.route("/api/list-chirp")
@@ -233,6 +244,10 @@ def api_list_chirp():
                 continue
             files.append({"name": name, "size": st.st_size, "mtime": int(st.st_mtime)})
     files.sort(key=lambda f: f["mtime"], reverse=True)
-    return jsonify({"ok": True, "files": files})
+    limit = clamp_limit(request.args.get("limit"), _FILE_LIMIT, 2000)
+    shown = files[:limit]
+    return jsonify({"ok": True, "files": shown, "total": len(files),
+                    "count": len(shown),
+                    "truncated": len(files) > len(shown), "limit": limit})
 
 

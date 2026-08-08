@@ -857,7 +857,7 @@ def api_setup_job(job_id):
     with _setup_lock:
         job = _setup_jobs.get(job_id)
         if not job:
-            return jsonify({"ok": False, "error": "unknown job"}), 404
+            return jsonify({"ok": False, "error": "unknown job", "code": "UNKNOWN_JOB"}), 404
         features = []
         for k in job.get("orderedFeatures", []):
             if k in job["featureStates"]:
@@ -892,7 +892,7 @@ def api_setup_job_log(job_id):
     with _setup_lock:
         job = _setup_jobs.get(job_id)
         if not job:
-            return jsonify({"ok": False, "error": "unknown job"}), 404
+            return jsonify({"ok": False, "error": "unknown job", "code": "UNKNOWN_JOB"}), 404
         lines = job.get("events", [])[cursor:]
         next_cursor = cursor + len(lines)
         eof = job.get("status") in {"completed", "failed", "canceled"}
@@ -911,7 +911,7 @@ def api_setup_cancel():
             return jsonify({"ok": False, "error": "no active setup job"}), 409
         job = _setup_jobs.get(job_id)
         if not job:
-            return jsonify({"ok": False, "error": "unknown job"}), 404
+            return jsonify({"ok": False, "error": "unknown job", "code": "UNKNOWN_JOB"}), 404
         if job.get("status") in {"completed", "failed", "canceled"}:
             return jsonify({"ok": True, "jobId": job_id, "status": job.get("status"), "alreadyTerminal": True})
         _setup_cancel_requests.add(job_id)

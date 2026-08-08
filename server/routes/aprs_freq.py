@@ -25,6 +25,8 @@ import sys
 
 from flask import Blueprint, jsonify, request
 
+from common.api_shape import clamp_limit
+
 import appconfig
 from common import atomic_json, config_paths
 
@@ -93,10 +95,17 @@ def _apply_freq(freq):
 
 @bp.route("/api/aprs/frequency")
 def api_get_aprs_frequency():
+    presets = _load_presets()
+    limit = clamp_limit(request.args.get("limit"), 200, 1000)
+    shown = presets[:limit]
     return jsonify({
         "ok": True,
         "current": (_read_station().get("aprs_freq") or DEFAULT_FREQ),
-        "presets": _load_presets(),
+        "presets": shown,
+        "total": len(presets),
+        "count": len(shown),
+        "truncated": len(presets) > len(shown),
+        "limit": limit,
         "feed_installed": os.path.exists(FEED_UNIT_PATH),
     })
 

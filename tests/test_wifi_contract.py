@@ -93,7 +93,8 @@ class StatusTest(_Base):
 
 
 class ScanTest(_Base):
-    _KEYS = {"ok", "supported", "scanned", "networks", "count", "reason", "detail"}
+    _KEYS = {"ok", "supported", "scanned", "networks", "total", "count",
+             "truncated", "limit", "reason", "detail"}
 
     def test_successful_scan(self):
         r = self.call("/api/wifi/scan", out=_SCAN_OUT)
