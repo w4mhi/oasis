@@ -57,6 +57,23 @@ DEVICE_KIND_FOR_SERVICE = {
 # no-op gate. Same reasoning as GrayWolf above.
 APRS_FEED_UNIT = "aprs-sdr-feed"
 
+# Unit names that exist ONLY as a token for the exclusivity check — there is no
+# systemd service behind them, so `systemctl start/stop` is a no-op and
+# `is-active` always answers no. Anything that asks systemd about one of these
+# gets a wrong answer with no error, which is exactly how the assignment console
+# came to show satellites as permanently "stopped" even mid-recording.
+SYNTHETIC_UNITS = frozenset({"satellites-listen"})
+
+
+def startable_units(inv, service):
+    """The units a generic starter (the console) can actually act on.
+
+    Distinct from service_units(): a service whose only unit is synthetic has
+    NOTHING to start from outside — for satellites the recorder is an ad-hoc
+    rtl_fm subprocess launched from the satellites page. For such a service the
+    assignment itself is the finished state, not a step before starting."""
+    return [u for u in service_units(inv, service) if u not in SYNTHETIC_UNITS]
+
 # Tokens that appear in SERVICE_UNITS but are NOT real systemd units — they must
 # never be handed to systemctl. "satellites-listen" is the ad-hoc rtl_fm
 # subprocess Flask runs itself (see SERVICE_UNITS above).

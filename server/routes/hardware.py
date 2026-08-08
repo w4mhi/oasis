@@ -280,20 +280,65 @@ _SERVICE_DISPLAY = {"aprs": "APRS", "adsb": "ADS-B", "openwebrx": "ORX",
                     "winlink": "Winlink", "satellites": "SAT"}
 
 
+def _console_is_active():
+    """systemd is-active, with SYNTHETIC units answered by whoever owns them.
+
+    The console used HW._default_is_active directly, which asks systemd about
+    `satellites-listen` — a unit that deliberately does not exist. systemd
+    always answers no, so satellites could NEVER read as running here, not even
+    with a capture in progress; the cell sat on "assigned, stopped" forever and
+    tapping it tried to `systemctl start` a unit that isn't there.
+
+    common/hardware.py says callers that care must wrap is_active; this is that
+    wrapper. Degrades to the raw check when satellites isn't installed.
+
+    The BARE `import listen` is deliberate and load-bearing.
+    services/satellites/routes.py puts its own directory on sys.path and imports
+    the recorder as a top-level `listen`, so that is where the live capture
+    state lives. Importing it as `services.satellites.listen` here would create a
+    SECOND module object with its own `_state` — `is_capturing()` would always
+    say False and `stop()` would act on an empty state. Same file, same code,
+    different globals: the fix would look right and do nothing."""
+    try:
+        import listen                      # noqa: PLC0415 — see above
+    except Exception:
+        return HW._default_is_active
+    return listen.is_active_wrapper()
+
+
+def _stop_synthetic(unit):
+    """Stop the thing behind a SYNTHETIC unit. `systemctl stop satellites-listen`
+    exits fine and does nothing, so a console STOP on a running capture used to
+    report success while rtl_fm kept the dongle. Best-effort: a missing feature
+    or a failed stop must not 500 the console."""
+    if unit != "satellites-listen":
+        return
+    try:
+        import listen                      # bare — see _console_is_active()
+        listen.stop()
+    except Exception:
+        pass
+
+
 def _console_state():
-    """Live matrix state: the service catalog (id/label/eligible kinds), each
-    device's single presented assignment + running + lock, and the health
-    warnings. 'assigned' collapses the engine's advisory multi-assign to one
-    service for the exclusive console view (the running one, else the first)."""
+    """Live matrix state: the service catalog (id/label/eligible kinds/whether
+    the console can start it), each device's single presented assignment +
+    running + lock, and the health warnings. 'assigned' collapses the engine's
+    advisory multi-assign to one service for the exclusive console view (the
+    running one, else the first)."""
     inv = HW.load(SUITE_ROOT)
     services = [{"id": s, "name": _SERVICE_DISPLAY.get(s, s),
-                 "kinds": sorted(HW.DEVICE_KIND_FOR_SERVICE.get(s, []))}
+                 "kinds": sorted(HW.DEVICE_KIND_FOR_SERVICE.get(s, [])),
+                 # False → this service has no unit the console can launch, so
+                 # an idle assignment is READY, not "failed to start".
+                 "startable": bool(HW.startable_units(inv, s))}
                 for s in _CONSOLE_SERVICES]
+    is_active = _console_is_active()
     devices = []
     for did, d in inv.devices.items():
         holders = HW.assignees(inv, did)
         running = next((s for s in holders
-                        if any(HW._default_is_active(u) for u in HW.service_units(inv, s))),
+                        if any(is_active(u) for u in HW.service_units(inv, s))),
                        None)
         assigned = running or (holders[0] if holders else None)
         devices.append({"id": did, "label": d.get("label", did), "kind": d["kind"],
@@ -387,6 +432,9 @@ def api_hardware_service_stop():
     if dev and HW.is_locked(inv, dev):     # lock protects from ANY displacement, incl. stop
         return jsonify({"ok": False, "error": "source-locked", "reason": "source-locked"}), 409
     for unit in HW.service_units(inv, service):
+        if unit in HW.SYNTHETIC_UNITS:
+            _stop_synthetic(unit)          # not a systemd unit — ask its owner
+            continue
         _systemctl_seq(unit, ["stop"])
     return jsonify({"ok": True})
 

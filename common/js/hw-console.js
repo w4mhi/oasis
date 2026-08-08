@@ -13,27 +13,42 @@
 (function (root) {
   'use strict';
 
-  // Cell state for a device×service pair: 'na' | 'on' | 'stopped' | 'off'.
+  // Cell state for a device×service pair: 'na' | 'on' | 'ready' | 'stopped' | 'off'.
   //   na      — this device kind can't serve this service (no toggle, just a dot)
   //   on      — assigned here AND running
-  //   stopped — assigned here but not running (idle claim)
+  //   ready   — assigned here, and there is NOTHING for the console to start
+  //   stopped — assigned here but its unit isn't running (idle claim)
   //   off     — not assigned here
+  //
+  // `ready` exists because 'stopped' was a lie for satellites. Its recorder is
+  // an ad-hoc rtl_fm subprocess launched from the satellites page, not a systemd
+  // unit, so the console has nothing to launch and the cell stayed amber
+  // forever — reading as "this failed to start" when the truth is "this is
+  // assigned and waiting for a pass". Services flagged `startable: false` by
+  // /api/hardware/console (satellites, openwebrx) treat the ASSIGNMENT as the
+  // finished state. An older server that doesn't send the flag keeps the old
+  // behaviour, since only an explicit `false` selects the new state.
   function oasisCstate(dev, svc) {
     if ((svc.kinds || []).indexOf(dev.kind) < 0) return 'na';
-    if (dev.assigned === svc.id) return dev.running ? 'on' : 'stopped';
-    return 'off';
+    if (dev.assigned !== svc.id) return 'off';
+    if (dev.running) return 'on';
+    return svc.startable === false ? 'ready' : 'stopped';
   }
 
   // What tapping a cell should do — the decision only, no DOM, no network:
-  //   { action: 'none' }   — na cell, ignore
-  //   { action: 'locked' } — device locked, refuse and warn
-  //   { action: 'stop' }   — running here → stop it (device stays assigned, idle)
-  //   { action: 'route' }  — off/stopped → assign + start here (displacing others)
+  //   { action: 'none' }    — na cell, ignore
+  //   { action: 'locked' }  — device locked, refuse and warn
+  //   { action: 'stop' }    — running here → stop it (device stays assigned, idle)
+  //   { action: 'release' } — ready → nothing to stop, so free the device
+  //   { action: 'route' }   — off/stopped → assign + start here (displacing others)
   function oasisFlipPlan(dev, svc) {
     var st = oasisCstate(dev, svc);
     if (st === 'na') return { action: 'none' };
     if (dev.locked) return { action: 'locked' };
     if (st === 'on') return { action: 'stop' };
+    // Tap still toggles the claim, which is the habit every other cell teaches;
+    // there is simply no unit to stop first.
+    if (st === 'ready') return { action: 'release' };
     return { action: 'route' };
   }
 
@@ -59,6 +74,7 @@
     fetchState:     function () { return root.fetch('/api/hardware/console', { cache: 'no-store' }).then(function (r) { return r.json(); }); },
     route:          function (service, deviceId) { return _post('/api/hardware/route', { service: service, device_id: deviceId }); },
     serviceStop:    function (service) { return _post('/api/hardware/service-stop', { service: service }); },
+    release:        function (service) { return _post('/api/hardware/release', { service: service }); },
     lock:           function (deviceId, locked) { return _post('/api/hardware/lock', { device_id: deviceId, locked: locked }); },
     stopAll:        function () { return _post('/api/hardware/stop-all', {}); },
     guardianState:  function () { return root.fetch('/api/hardware/guardian', { cache: 'no-store' }).then(function (r) { return r.json(); }); },

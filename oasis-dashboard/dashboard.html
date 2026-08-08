@@ -1716,6 +1716,10 @@ loadInstalled().then(() => {
       oasisHwConsole.serviceStop(svc.id).then(function(){ message('■ Stopped ' + svc.name + ' on ' + dev.label, 'info'); refresh(); });
       return;
     }
+    if (plan.action === 'release'){
+      oasisHwConsole.release(svc.id).then(function(){ message('Released ' + dev.label + ' from ' + svc.name, 'info'); refresh(); });
+      return;
+    }
     oasisHwConsole.route(svc.id, dev.id).then(function(res){
       if (res.status >= 400){
         res.json().then(function(b){
@@ -1758,8 +1762,8 @@ loadInstalled().then(() => {
         if (st === 'na'){ wrap.innerHTML = '<span class="so-na">·</span>'; }
         else {
           var t = document.createElement('button'); t.type = 'button';
-          t.className = 'so-tog' + (st === 'on' ? ' on green' : st === 'stopped' ? ' on amber' : '') + (dev.locked ? ' frozen' : '');
-          var lab = svc.name + ' on ' + dev.label + ' — ' + (st === 'on' ? 'running' : st === 'stopped' ? 'assigned, stopped' : 'off');
+          t.className = 'so-tog' + (st === 'on' || st === 'ready' ? ' on green' : st === 'stopped' ? ' on amber' : '') + (dev.locked ? ' frozen' : '');
+          var lab = svc.name + ' on ' + dev.label + ' — ' + (st === 'on' ? 'running' : st === 'ready' ? 'assigned, ready — start it on its own page' : st === 'stopped' ? 'assigned, stopped' : 'off');
           t.title = lab; t.setAttribute('aria-label', lab); t.setAttribute('role', 'switch'); t.setAttribute('aria-checked', st === 'on' ? 'true' : 'false');
           t.onclick = function(){ flip(dev, svc); };
           wrap.appendChild(t);

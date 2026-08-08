@@ -4239,6 +4239,10 @@ loadConfig().then(() => {
       oasisHwConsole.serviceStop(svc.id).then(function(){ message('■ Stopped '+svc.name+' on '+dev.label,'info'); refresh(); });
       return;
     }
+    if(plan.action==='release'){ // assigned + nothing to start here → free the dongle
+      oasisHwConsole.release(svc.id).then(function(){ message('Released '+dev.label+' from '+svc.name,'info'); refresh(); });
+      return;
+    }
     // off / stopped → route onto this dongle (assign + start, displacing what was there)
     oasisHwConsole.route(svc.id,dev.id).then(function(res){
       if(res.status>=400){
@@ -4284,8 +4288,8 @@ loadConfig().then(() => {
         if(st==='na'){ wrap.innerHTML='<span class="hsx-nax">·</span>'; }
         else{
           var t=document.createElement('button'); t.type='button';
-          t.className='hsx-tog'+(st==='on'?' hsx-on':st==='stopped'?' hsx-stopped':'')+(dev.locked?' hsx-frozen':'');
-          var lab=svc.name+' on '+dev.label+' — '+(st==='on'?'running':st==='stopped'?'assigned, stopped':'off');
+          t.className='hsx-tog'+(st==='on'||st==='ready'?' hsx-on':st==='stopped'?' hsx-stopped':'')+(dev.locked?' hsx-frozen':'');
+          var lab=svc.name+' on '+dev.label+' — '+(st==='on'?'running':st==='ready'?'assigned, ready — start it on its own page':st==='stopped'?'assigned, stopped':'off');
           t.title=lab; t.setAttribute('aria-label',lab); t.setAttribute('role','switch'); t.setAttribute('aria-checked', st==='on'?'true':'false');
           t.onclick=function(){ flip(dev,svc); }; wrap.appendChild(t);
         }
