@@ -354,6 +354,7 @@ html, body { height: 100%; margin: 0; }
      memory win on the Pi, and the whole-globe view is what pass tracks need. -->
 <script src="/common/js/sat-bells.js"></script>
 <script src="/common/js/sat-alerts.js"></script>
+<script src="/common/js/sat-capability.js"></script>
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
 <script>
@@ -543,27 +544,23 @@ const PLOTTED = {};
 // additive blending lives on the red-green axis, so this deliberately trades the
 // Okabe-Ito colourblind-safety for expressiveness (single-op station). Full
 // capability detail always lives in the roster labels + popup.
-const CH_VOICE   = [0, 200, 90];    // green  — VOICE/FM/LINEAR/SSB
-const CH_IMAGING = [0, 90, 230];    // blue   — WEATHER/SSTV
-const CH_DATA    = [230, 100, 0];   // orange — APRS, and the telemetry-only fallback
-const _has = (labs, ks) => ks.some(k => labs.has(k));
+// The channel definitions and the blend now live in common/js/sat-capability.js,
+// shared with the kiosk — which paints the same blend as each satellite row's
+// edge rail, and decomposes the channels into glyphs because a list row has room
+// a map dot does not. Two renderings, one definition of what a bird can do.
 // The blended colour for a bird, straight from its roster labels.
 function capabilityColor(norad) {
   const s = ROSTER.find(x => x.norad === +norad);
-  const labs = new Set(s ? s.labels : []);
-  const v = _has(labs, ['VOICE', 'FM', 'LINEAR', 'SSB']);
-  const i = _has(labs, ['WEATHER', 'SSTV']);
-  const a = labs.has('APRS');
-  if (!(v || i || a)) return `rgb(${CH_DATA.join(' ')})`;   // telemetry only → Data orange
-  const mix = k => Math.min(255, (v ? CH_VOICE[k] : 0) + (i ? CH_IMAGING[k] : 0) + (a ? CH_DATA[k] : 0));
-  return `rgb(${mix(0)} ${mix(1)} ${mix(2)})`;
+  return oasisSatCapabilityColor(s ? s.labels : []);
 }
 // Colour key (burger, map top-left). Built from the channel colours so it can
 // never drift from the map. Collapsed by default; the open/closed choice persists.
 function buildLegend() {
   const p = document.getElementById('leg-panel'); if (!p) return;
-  const rows = [['Voice', CH_VOICE], ['Imaging', CH_IMAGING], ['Data / APRS', CH_DATA]].map(([name, c]) =>
-    `<div class="leg-row"><span class="leg-sw" style="background:rgb(${c.join(' ')})"></span>${name}</div>`).join('');
+  // Built by walking the shared channel list, so a channel added or recoloured
+  // there shows up here without anyone remembering to update a second copy.
+  const rows = OASIS_SAT_CHANNELS.map(c =>
+    `<div class="leg-row"><span class="leg-sw" style="background:${oasisSatRgbCss(c.rgb)}"></span>${c.label}</div>`).join('');
   p.innerHTML = `<div class="leg-title">Capability · colours mix</div>${rows}`
     + '<div class="leg-note">cyan = Voice+Imaging · yellow = Voice+APRS<br>magenta = Imaging+APRS · white = all three</div>';
   let open = false; try { open = localStorage.getItem('oasis_sat_legend') === 'open'; } catch (e) { /* private mode */ }

@@ -26,6 +26,7 @@
 <script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
 <script src="/common/js/sat-alerts.js"></script>
+<script src="/common/js/sat-capability.js"></script>
 <link rel="stylesheet" href="/common/css/wifi-pill.css">
 
 <style>
@@ -266,7 +267,21 @@
      base ever changes. */
   .sats{ flex:none; width:calc(28rem + 100px); min-width:0; }
   .satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.6rem; padding-right:10px; }
-  .sat{ padding:.6rem .9rem .7rem; border:1px solid var(--border); border-radius:.8rem; margin-bottom:.5rem; }
+  .sat{ position:relative; overflow:hidden;
+        padding:.6rem .9rem .7rem 1.15rem; border:1px solid var(--border); border-radius:.8rem; margin-bottom:.5rem; }
+  /* Capability rail — the MAP's blended colour for this bird, so the two agree
+     at a glance. A ::before rather than border-left because .sat.now/.sat.soon
+     set `border:` shorthand, which would reset any left-border width we asked
+     for; the pseudo-element is immune and matches how .face already does it. */
+  .sat::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:.35rem;
+                background:var(--cap,transparent); }
+  /* Capability glyphs, own line between the name and the rise detail. Coloured
+     per channel INLINE from common/js/sat-capability.js — the silhouette says
+     which capability, the colour reinforces it, and neither competes with the
+     row's now/soon state colours the way coloured NAME text would. */
+  .sat .caps{ display:flex; align-items:center; gap:.5rem; margin-top:.3rem; line-height:0; }
+  .sat .caps .cap{ line-height:0; }
+  .sat .caps svg{ width:1.15rem; height:1.15rem; display:block; }
   .sat:last-child{ margin-bottom:0; }
   .sat .l1{ display:flex; align-items:baseline; gap:.8rem; font-size:1.35rem; }
   .sat .nm{ font-weight:700; color:var(--text); min-width:6.6rem; }
@@ -1521,7 +1536,7 @@ function renderSats() {
     const mins = Math.round((p._r - now)/60000);
     if (!inPass && mins > 60) return;                 // 1 h window
     items.push({ name:satShortName(s.name) || ('#'+norad), p, inPass, mins, bell:!!s.bell,
-                 dl:(s.downlinks && s.downlinks[0]) });
+                 labels:s.labels || [], dl:(s.downlinks && s.downlinks[0]) });
   });
   items.sort((a,b) => (b.inPass?1:0)-(a.inPass?1:0) || a.p._r - b.p._r);
   // "moni", not "monitored": the header now carries a mute button too, and the
@@ -1536,14 +1551,18 @@ function renderSats() {
     const bell = it.bell
       ? `<span class="bell" title="${_satMuted ? 'Pass alert armed, but this device is muted' : 'Pass alert armed'}">${_satMuted ? BELL_OFF : BELL_ON}</span>`
       : '';
+    // Line 2: what the bird can DO. Line 3 stays the rise/elevation detail.
+    // The rail carries the map's blended colour for the same bird.
+    const caps = `<div class="caps">${oasisSatCapabilityGlyphs(it.labels)}</div>`;
+    const rail = ` style="--cap:${oasisSatCapabilityColor(it.labels)}"`;
     if (it.inPass) {
       const arc = `${esc(azCompass(it.p.rise_az))}→${esc(azCompass(it.p.set_az))}`;
-      return `<div class="sat now"><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${bell}</span><span class="aos">overhead</span><span class="cd">NOW</span></div><div class="l2">el ${el}° ↗ · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
+      return `<div class="sat now"${rail}><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${bell}</span><span class="aos">overhead</span><span class="cd">NOW</span></div>${caps}<div class="l2">el ${el}° ↗ · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
     }
     const soon = it.mins <= 10;
     const nm = soon ? `<span class="nm"><span class="pulse"></span>${esc(it.name)}${bell}</span>` : `<span class="nm">${esc(it.name)}${bell}</span>`;
     const l2 = soon ? `rise ${esc(dir)} · ${el}° max · get ready` : `rise ${esc(dir)} · ${el}° max`;
-    return `<div class="sat${soon?' soon':''}"><div class="l1">${nm}<span class="aos">${hm(it.p._r)}</span><span class="cd">↑ ${it.mins}m</span></div><div class="l2">${l2}</div></div>`;
+    return `<div class="sat${soon?' soon':''}"${rail}><div class="l1">${nm}<span class="aos">${hm(it.p._r)}</span><span class="cd">↑ ${it.mins}m</span></div>${caps}<div class="l2">${l2}</div></div>`;
   }).join('');
 }
 
