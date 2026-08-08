@@ -1,29 +1,26 @@
 name: js-tests
 
-# Runs the pure-function JS unit tests (node --test, built in — no npm/build) and
-# lints the map front-end (syntax + HTML curly-quote hygiene). Node is a dev/CI
-# tool only; the Pi never runs it.
+# Front-end gate: pure-function unit tests plus a syntax/hygiene sweep over EVERY
+# tracked HTML/JS asset (tests/js/front-end-gate.test.js). Node is a dev/CI tool
+# only; the Pi never runs it.
+#
+# The path filter deliberately matches any .html/.js/.css in the tree. It used to
+# list `index.html`, `oasis-dashboard/**` and `maps/**` only, which meant a change
+# to services/, static/, server/system/ or tools/ did not even start this workflow
+# — the gate existed but never ran for most of the front-end.
 
 on:
   push:
     paths:
-      - "common/js/**"
-      - "tests/js/**"
-      - "index.html"
-      - "oasis-dashboard/**"
-      - "maps/**/*.js"
-      - "maps/**/*.html"
-      - "maps/**/*.css"
+      - "**/*.html"
+      - "**/*.js"
+      - "**/*.css"
       - ".github/workflows/js-tests.yml"
   pull_request:
     paths:
-      - "common/js/**"
-      - "tests/js/**"
-      - "index.html"
-      - "oasis-dashboard/**"
-      - "maps/**/*.js"
-      - "maps/**/*.html"
-      - "maps/**/*.css"
+      - "**/*.html"
+      - "**/*.js"
+      - "**/*.css"
       - ".github/workflows/js-tests.yml"
   workflow_dispatch:
 
@@ -35,18 +32,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - name: Run JS unit tests
+      # Covers both the pure-function suites and front-end-gate.test.js, which
+      # syntax-checks every inline <script> block and every authored .js file, and
+      # rejects curly quotes inside a tag. Deliberately one mechanism rather than a
+      # separate YAML step, so `/preflight` runs the identical gate before a push.
+      - name: JS unit tests + front-end syntax/hygiene gate
         run: node --test 'tests/js/**/*.test.js'
-      - name: Map front-end — JS syntax + HTML curly-quote lint
-        run: |
-          # Syntax-check our authored map JS (vendored maplibre-gl/pmtiles skipped).
-          mapfile -t mapjs < <(git ls-files maps/ | grep -E '\.js$' | grep -vE '/(maplibre-gl|pmtiles)\.js$')
-          for f in "${mapjs[@]}"; do echo "node --check $f"; node --check "$f"; done
-          # Smart/curly quotes silently break HTML attributes and node --check only
-          # parses <script>, so it misses them. Fail on any in the map HTML.
-          python3 -c "
-          import subprocess, sys
-          bad=[f for f in subprocess.check_output(['git','ls-files','maps/']).decode().split() if f.endswith('.html') and any(0x2018<=ord(c)<=0x201d for c in open(f,encoding='utf-8').read())]
-          if bad: sys.exit('::error::curly/smart quotes in maps HTML (break attributes): '+', '.join(bad))
-          print('maps HTML curly-quote check: clean')
-          "
