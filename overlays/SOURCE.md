@@ -12,6 +12,23 @@ Committing binaries is against this repo's grain, so each one states below where
 it came from and how to rebuild it. **If you cannot rebuild it from what is
 written here, that is a bug in this file.**
 
+## How these are applied, and how to stop applying them
+
+`common/overlays.py` copies each blob into `/boot/firmware/overlays` on **every**
+install run, replacing the OS's own file when the bytes differ — an "is it
+already there?" check would skip the copy in exactly the case that matters, since
+Pi OS ships a `draws.dtbo` that does not work on kernel 6.18.34.
+
+Whatever is displaced is kept beside it as `<name>.dtbo.oasis-orig`, and
+`overlays.restore()` puts it back. Overwriting a stock file with no record of it
+is how a `config.txt` edit once left a Pi with no sound cards after an uninstall.
+
+**To stop overriding an overlay, delete its `.dtbo` from this directory.** The
+installer then reports "none vendored — using the OS copy" and leaves the
+system's own file alone. That is the intended path once Raspberry Pi OS ships a
+kernel whose overlays work: drop ours, and boxes fall back on the next install.
+Already-overridden boxes are restored from the `.oasis-orig` backup.
+
 ---
 
 ## `draws.dtbo`, `udrc.dtbo` — DRAWS HAT (NW Digital Radio)
@@ -59,15 +76,15 @@ by the shallow clone; no OASIS patch is applied.
 
 ## `m5stack-cm4.dtbo` — M5Stack CM4Stack panel
 
-**NOT committed.** Upstream publishes a working binary, so
-`scripts/create-oasis-offline.py` downloads it at **bundle-build time** (build
-needs network; runtime never does) from:
+**Why vendored:** the stock Pi image does not ship it at all, and a bundle built
+without network would otherwise have no copy. Upstream publishes a working
+binary, so `scripts/create-oasis-offline.py` also downloads it at
+**bundle-build time** (build may use the network; runtime never does) from:
 
     github.com/m5stack/m5stack-linux-dtoverlays — overlays/cm4stack/bin/
 
-It lands in this directory and is then found by the same
-`common/overlays.py` lookup as the DRAWS blobs. Drop it here manually if you are
-building without network.
+Committed here so a from-scratch install works with no network at any point.
+The build-time fetch refreshes it; deleting the file falls back to that fetch,
+and deleting both falls back to whatever the OS provides.
 
-The distinction is deliberate: vendor a binary only when there is no upstream to
-fetch. DRAWS has none for this kernel; the panel does.
+**Rebuild:** not built by us — take the published binary from the URL above.

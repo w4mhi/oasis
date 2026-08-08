@@ -462,9 +462,17 @@ def main(argv=None):
     # this runs on EVERY install rather than only when the overlay is missing.
     for _ov in ("draws", "udrc"):
         _changed, _why = overlays.install(_ov)
-        if _changed:
-            _ok("installed %s.dtbo (%s)" % (_ov, _why))
-        elif _why not in ("already-current", "no-vendored-copy"):
+        if _changed and _why == "replaced":
+            _ok("%s.dtbo: replaced the OS copy (original kept as "
+                "%s.dtbo%s)" % (_ov, _ov, overlays.BACKUP_SUFFIX))
+        elif _changed:
+            _ok("%s.dtbo: installed" % _ov)
+        elif _why == "no-vendored-copy":
+            # The deliberate off-switch: no vendored blob, so the OS's own
+            # overlay is used. Say so — silence here is what makes "why is the
+            # HAT not coming up" unanswerable six months from now.
+            _info("%s.dtbo: none vendored — using the OS copy" % _ov)
+        elif _why != "already-current":
             _warn("could not install %s.dtbo: %s" % (_ov, _why))
     if not draws.overlay_available():
         _fail("draws.dtbo not found in /boot/firmware/overlays — update Raspberry "

@@ -97,18 +97,36 @@ def _same_bytes(a, b):
         return False
 
 
+# What we rename the OS's own overlay to before overwriting it. See install().
+BACKUP_SUFFIX = ".oasis-orig"
+
+
 def install(name, overlays_dir=None, repo_root=None, copy=shutil.copy2):
     """Put OASIS's vendored overlay in the boot overlay directory.
 
     Returns (changed, reason):
-      (False, "no-vendored-copy")  we ship nothing for this name
+      (False, "no-vendored-copy")  we ship nothing for this name — the OS's own
+                                   overlay is left alone and used. This is the
+                                   deliberate OFF SWITCH: delete the .dtbo from
+                                   overlays/ and OASIS stops overriding.
       (False, "already-current")   the target is byte-identical — nothing to do
       (False, "<error text>")      the copy failed (read-only /boot, no root…)
       (True,  "installed")         it was missing
       (True,  "replaced")          it differed and was overwritten
 
-    A kernel or firmware update can wipe a hand-copied overlay, so installers
-    call this on EVERY run rather than only when the file is absent.
+    The check is byte-equality, NOT existence: the whole reason this exists is
+    that Pi OS ships a draws.dtbo which does not work on kernel 6.18.34, so an
+    "is it there?" guard would skip the copy exactly when it is needed most.
+
+    A kernel or firmware update can also wipe a hand-copied overlay, so
+    installers call this on EVERY run rather than only when the file is absent.
+
+    **Whatever we overwrite is kept** as `<name>.dtbo.oasis-orig`. Overwriting a
+    stock file with no record of it is how a config.txt edit once left a Pi with
+    no sound cards after uninstall — and it matters twice over here: when a
+    future Pi OS ships a FIXED overlay, ours replaces it silently, and without
+    the backup that box cannot fall back even after the vendored copy is deleted
+    from overlays/. Restoring is then a rename, not a firmware reinstall.
     """
     src = vendored_path(name, repo_root)
     if not src:
@@ -120,7 +138,32 @@ def install(name, overlays_dir=None, repo_root=None, copy=shutil.copy2):
         return False, "already-current"
     try:
         os.makedirs(dest_dir, exist_ok=True)
+        if existed:
+            # Keep the newest thing we displaced, not the oldest: the useful
+            # backup is whatever the OS had immediately before this overwrite.
+            copy(dest, dest + BACKUP_SUFFIX)
         copy(src, dest)
     except (OSError, PermissionError) as exc:
         return False, str(exc)
     return True, ("replaced" if existed else "installed")
+
+
+def restore(name, overlays_dir=None, copy=shutil.copy2):
+    """Put back the OS's overlay that install() displaced, if we kept one.
+
+    Returns (changed, reason). This is what makes the override reversible: an
+    uninstall, or a future OS whose own overlay is the better one, can undo it
+    without reinstalling the firmware package.
+    """
+    filename = name if name.endswith(".dtbo") else name + ".dtbo"
+    dest_dir = overlays_dir or boot_dir()
+    dest = os.path.join(dest_dir, filename)
+    backup = dest + BACKUP_SUFFIX
+    if not os.path.exists(backup):
+        return False, "no-backup"
+    try:
+        copy(backup, dest)
+        os.remove(backup)
+    except (OSError, PermissionError) as exc:
+        return False, str(exc)
+    return True, "restored"

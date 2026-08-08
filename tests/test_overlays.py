@@ -178,3 +178,64 @@ class BootDirTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BackupAndRestoreTest(unittest.TestCase):
+    """Overwriting a stock file with no record of it is how a config.txt edit
+    once left a Pi with no sound cards after uninstall. The same risk applies
+    here twice: a future Pi OS may ship a FIXED overlay that ours then silently
+    replaces, and without the backup that box cannot fall back even after the
+    vendored copy is deleted from overlays/."""
+
+    def setUp(self):
+        import contextlib
+        self.stack = contextlib.ExitStack()
+        self.addCleanup(self.stack.close)
+
+    def test_the_displaced_os_overlay_is_kept(self):
+        t = _Tree(self.stack, [("draws.dtbo", b"OASIS")])
+        dest = os.path.join(t.boot, "draws.dtbo")
+        with open(dest, "wb") as fh:
+            fh.write(b"OS-ORIGINAL")
+        overlays.install("draws", t.boot, t.root)
+        with open(dest + overlays.BACKUP_SUFFIX, "rb") as fh:
+            self.assertEqual(fh.read(), b"OS-ORIGINAL")
+
+    def test_a_first_install_leaves_no_backup(self):
+        """Nothing was displaced, so there is nothing to keep — and a bogus
+        backup would later 'restore' a file the OS never had."""
+        t = _Tree(self.stack, [("draws.dtbo", b"OASIS")])
+        overlays.install("draws", t.boot, t.root)
+        self.assertFalse(os.path.exists(
+            os.path.join(t.boot, "draws.dtbo" + overlays.BACKUP_SUFFIX)))
+
+    def test_restore_undoes_the_override(self):
+        t = _Tree(self.stack, [("draws.dtbo", b"OASIS")])
+        dest = os.path.join(t.boot, "draws.dtbo")
+        with open(dest, "wb") as fh:
+            fh.write(b"OS-ORIGINAL")
+        overlays.install("draws", t.boot, t.root)
+        changed, why = overlays.restore("draws", t.boot)
+        self.assertTrue(changed)
+        self.assertEqual(why, "restored")
+        with open(dest, "rb") as fh:
+            self.assertEqual(fh.read(), b"OS-ORIGINAL")
+        self.assertFalse(os.path.exists(dest + overlays.BACKUP_SUFFIX),
+                         "a consumed backup must not linger and re-restore")
+
+    def test_restore_with_nothing_to_restore_is_not_an_error(self):
+        t = _Tree(self.stack)
+        self.assertEqual(overlays.restore("draws", t.boot), (False, "no-backup"))
+
+    def test_the_off_switch_leaves_the_os_file_untouched(self):
+        """Deleting the .dtbo from overlays/ is how we stop overriding. The OS's
+        own overlay must survive that verbatim."""
+        t = _Tree(self.stack)                     # nothing vendored
+        dest = os.path.join(t.boot, "draws.dtbo")
+        with open(dest, "wb") as fh:
+            fh.write(b"NEW-KERNEL-OVERLAY")
+        changed, why = overlays.install("draws", t.boot, t.root)
+        self.assertFalse(changed)
+        self.assertEqual(why, "no-vendored-copy")
+        with open(dest, "rb") as fh:
+            self.assertEqual(fh.read(), b"NEW-KERNEL-OVERLAY")
