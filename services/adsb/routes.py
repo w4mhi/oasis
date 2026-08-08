@@ -9,8 +9,9 @@ contract holds even against a daemon from an older bundle. It also puts the
 envelope where a reader can see it (contract §10) instead of hiding it inside a
 pass-through of opaque bytes.
 
-Migrated so far: /api/adsb/alerts. The remaining routes still pass the daemon's
-body through untouched and are listed in tests/test_api_contract.py.
+Migrated: /api/adsb/{alerts,aircraft,recent,health}. /api/adsb/history still
+passes the daemon's body through untouched and is listed in
+tests/test_api_contract.py.
 """
 
 import datetime
@@ -107,8 +108,47 @@ def _adsb_proxy(path, timeout=10):
 
 
 @bp.route("/api/adsb/health")
-def api_adsb_health_proxy():
-    return _adsb_proxy("/health", timeout=3)
+def api_adsb_health():
+    """Is ADS-B running, and is data flowing? Conforms to docs/api-contract.md.
+
+    Contract §2 in its purest form. `ok` used to mean "the adsb-api daemon
+    answered", so both consumers read `ok === false` as "ADS-B isn't installed" —
+    the request-success flag carrying domain state, which makes "the call failed"
+    and "the call worked and ADS-B is off" indistinguishable.
+
+    Now `ok` is true whenever we managed to look, and the news lives in typed
+    fields. A probe reporting "not running" has SUCCEEDED: ADS-B is an optional
+    service, and 503 for a service the operator chose not to install would be
+    telling the caller its own request was broken.
+
+    `flowing` is deliberately tri-state. null means "we don't know" — dump1090
+    writes stats.json a little after it starts — and false would claim no signal
+    when we simply have not been told yet.
+    """
+    payload, error = _adsb_json("/health", timeout=3)
+    detail = None
+    if error:
+        # error is (response, status) — recover its message for `detail` instead
+        # of surfacing an unreachable optional service as a failed request.
+        detail = str((error[0].get_json() or {}).get("error") or "ADS-B API unavailable.")
+        payload = None
+    elif payload.get("ok") is False:
+        detail = str(payload.get("error") or "ADS-B API reported a failure.")
+        payload = None
+
+    # One exit, one literal dict: the envelope is visible at the return site (§10)
+    # and the key list cannot drift between the up and down paths.
+    return jsonify({
+        "ok": True,
+        "running": payload is not None,
+        "flowing": payload.get("flowing") if payload and "flowing" in payload else None,
+        "aircraft_count": payload.get("aircraft_count") if payload else None,
+        "positioned": payload.get("positioned") if payload else None,
+        "last_json_age_s": payload.get("last_json_age_s") if payload else None,
+        "messages_per_min": payload.get("messages_per_min") if payload else None,
+        "samples_per_sec": payload.get("samples_per_sec") if payload else None,
+        "detail": detail,
+    }), 200
 
 
 # The map needs every aircraft it can see, so this bound exists to stop an

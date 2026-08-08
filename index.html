@@ -2471,9 +2471,11 @@ async function pollAdsbFlow() {
     const r = await fetch('/api/adsb/health', { cache: 'no-store' });
     const d = await r.json();
     _adsbFlow = d;
-    if (d.ok === false || d.flowing === undefined) {
-      // adsb-api unreachable, or dump1090-fa hasn't written stats.json yet
-      // (e.g. just started) — muted note, don't scare the tile into SILENT.
+    if (!d.running || d.flowing === null) {
+      // `ok` no longer carries domain state: it is true whenever the probe ran.
+      // running=false means adsb-api is unreachable; flowing=null means
+      // dump1090-fa hasn't written stats.json yet (e.g. just started) — a muted
+      // note either way, don't scare the tile into SILENT.
       meter.hidden = false;
       meter.className = 'feed-meter';
       if (fill) fill.style.width = '0%';
