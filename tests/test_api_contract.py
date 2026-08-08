@@ -41,7 +41,6 @@ _OK_FALSE_200 = frozenset({
     # /api/wifi/{scan,connect,forget} + /api/satellites/refresh graduated
     # 2026-08-08.
     "/api/service", "/api/setup/reboot",
-    "/api/winlink/log",
 })
 
 # §1 — no `ok` envelope at all; the client cannot branch without knowing the
@@ -68,12 +67,8 @@ _UNVERIFIABLE = frozenset({
     # progress would be lying to the ratchet.
     "/api/list-ics205", "/api/save-ics205", "/api/service",
     "/api/setup/jobs/<job_id>",
-    "/api/winlink/aliases", "/api/winlink/connect", "/api/winlink/disconnect",
-    "/api/winlink/mailbox/<box>", "/api/winlink/mailbox/<box>/<mid>",
-    "/api/winlink/mailbox/out", "/api/winlink/status",
-    # Newly visible once the scanner learned to tell a JSON Response()
-    # from a streamed one — they were never conforming, only unseen.
-    "/api/winlink/rmslist", "/api/winlink/mailbox/<box>/<mid>/<path:attachment>",
+    # All ten /api/winlink/* graduated 2026-08-08 (envelope-only migration —
+    # Pat's INNER fields still pass through, recorded as §7 debt below).
 })
 
 
@@ -83,6 +78,11 @@ _UNVERIFIABLE = frozenset({
 _DYNAMIC_ERROR_STATUS = [
     "/api/satellites/listen",          # _CaptureError carries status + slug
     "/api/satellites/listen/stream",   # 409 busy / 400 otherwise
+    # Pat's own refusal status is forwarded (a 400 from Pat really is the
+    # caller's fault), so the literal is Pat's, not ours. Covered at runtime in
+    # tests/test_winlink_contract.py.
+    "/api/winlink/mailbox/<box>/<mid>/<path:attachment>",
+    "/api/winlink/rmslist",
 ]
 
 
@@ -288,7 +288,7 @@ class AllowlistHygieneTest(unittest.TestCase):
         remaining = len(_OK_FALSE_200 | _NO_ENVELOPE | _UNVERIFIABLE)
         # A ratchet: this is the migration debt and may only go DOWN. Lower it
         # as endpoints graduate; never raise it to make something pass.
-        self.assertLessEqual(remaining, 23,
+        self.assertLessEqual(remaining, 13,
                              f"the allowlists grew to {remaining} — they may only shrink")
         self.assertGreater(total, remaining)
 

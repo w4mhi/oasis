@@ -487,8 +487,8 @@ function renderFolders(counts) {
 // badges). Returns {total, unread} or null if Pat is unreachable.
 async function fetchBoxStats(box) {
   try {
-    const msgs = await apiJson(`/mailbox/${box}`);
-    const list = Array.isArray(msgs) ? msgs : [];
+    const d = await apiJson(`/mailbox/${box}`);
+    const list = Array.isArray(d && d.messages) ? d.messages : [];
     WinlinkRead.seed(list);
     return { total: list.length, unread: WinlinkRead.unreadCount(list) };
   } catch (_) { return null; }
@@ -515,7 +515,7 @@ async function selectBox(box) {
 async function loadBox(box) {
   const empty = document.getElementById("listEmpty");
   let msgs;
-  try { msgs = await apiJson(`/mailbox/${box}`); }
+  try { const d = await apiJson(`/mailbox/${box}`); msgs = (d && d.messages) || []; }
   catch (e) {
     _currentMsgs = [];
     document.getElementById("msgList").innerHTML = "";
@@ -541,7 +541,7 @@ async function prefetchBodies(box, msgs, gen) {
     const mid = pick(m, "MID", "Mid", "mid");
     if (mid == null || _bodyCache.has(mid)) continue;
     let full;
-    try { full = await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`); }
+    try { full = (await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`)).message; }
     catch (_) { continue; }                            // skip on error, keep going
     if (gen !== _prefetchGen) { return; }
     _bodyCache.set(mid, pick(full, "Body", "body") || "");
@@ -654,7 +654,7 @@ async function openMessage(box, mid) {
   pane.innerHTML = `<div class="pane-empty">Loading…</div>`;
   scheduleReadDwell(box, mid);
   let m;
-  try { m = await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`); }
+  try { m = (await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`)).message; }
   catch (e) { pane.innerHTML = `<div class="pane-empty">Could not load message.</div>`; return; }
   _openMsg = m;   // remembered for reply / reply-all / forward
   _bodyCache.set(mid, pick(m, "Body", "body") || "");   // warm the search cache
@@ -748,7 +748,7 @@ async function openMessage(box, mid) {
 async function openInIcs205(box, mid) {
   let m = _openMsg;
   if (!m || String(pick(m, "MID", "Mid", "mid")) !== String(mid)) {
-    try { m = await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`); }
+    try { m = (await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`)).message; }
     catch (e) { toast("Could not load message", "err"); return; }
   }
   const files = pick(m, "Files", "files", "Attachments");
@@ -784,7 +784,7 @@ function planHasContent(p) {
 async function openInPropagation(box, mid) {
   let m = _openMsg;
   if (!m || String(pick(m, "MID", "Mid", "mid")) !== String(mid)) {
-    try { m = await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`); }
+    try { m = (await apiJson(`/mailbox/${box}/${encodeURIComponent(mid)}`)).message; }
     catch (e) { toast("Could not load message", "err"); return; }
   }
   const files = pick(m, "Files", "files", "Attachments");
@@ -1138,9 +1138,9 @@ function saveLast(l) { try { localStorage.setItem(LASTCONN_KEY, JSON.stringify(l
 
 async function loadAliases() {
   try {
+    // The server normalises Pat's list-or-object into one list of names.
     const data = await apiJson("/aliases");
-    _aliases = Array.isArray(data) ? data.map(a => [a, a])
-             : (data && typeof data === "object") ? Object.entries(data) : [];
+    _aliases = ((data && data.aliases) || []).map(a => [a, a]);
   } catch (_) { _aliases = []; }
   buildConnSel();
 }
@@ -1243,9 +1243,10 @@ function startConnect(target, label) {
 
 async function pollStatus() {
   try {
+    // `connected`/`dialing` are lifted out of Pat's varying casing server-side.
     const s = await apiJson("/status");
-    const connected = !!pick(s, "Connected", "connected");
-    const dialing   = !!pick(s, "Dialing", "dialing");
+    const connected = !!s.connected;
+    const dialing   = !!s.dialing;
     if (connected)     setDot("up",   "connected");
     else if (dialing)  setDot("busy", "dialing…");
     else               setDot("down", "idle");
@@ -1283,14 +1284,14 @@ async function pollSessionLog() {
   try {
     const r = await fetch(`${API}/log?lines=60`, { cache: "no-store" });
     const d = await r.json();
-    if (d && d.ok && Array.isArray(d.lines) && d.lines.length) {
+    if (d && d.read && Array.isArray(d.lines) && d.lines.length) {
       const c = document.getElementById("console");
       c.textContent = d.lines.join("\n");
       c.scrollTop = c.scrollHeight;                       // stick to newest
       document.getElementById("consoleWrap").style.display = "";
-    } else if (d && d.ok === false && d.error && !_logWarned) {
+    } else if (d && d.read === false && d.detail && !_logWarned) {
       _logWarned = true;                                  // explain once, don't spam
-      logLine("(journald log unavailable: " + d.error + ")");
+      logLine("(journald log unavailable: " + d.detail + ")");
     }
   } catch (_) { /* keep whatever's shown */ }
 }

@@ -252,6 +252,21 @@ Skipping silently would be a hole, so the routes that do it are pinned in
 status (`tests/test_satellites_listen_contract.py`). A static gate that admits
 its limit and hands off is worth more than one that guesses.
 
+### Bounded migrations: third-party upstreams
+
+`/api/winlink/*` fronts **Pat**, a third-party Go binary whose payload shape we
+neither own nor can pin — `read-state.js` copes with `MID`/`Mid`/`mid` and
+`Unread`/`unread` because the casing varies by version.
+
+For an upstream like that the migration is deliberately **envelope-only**: OASIS
+owns `ok`, the named container key, the list bounds and the error codes, and the
+upstream's INNER objects pass through untouched. Renaming fields we cannot verify
+against a live instance would break the client on a version nobody tested.
+
+That is a real §7 gap and it is recorded as debt, not pretended away. The rule:
+**wrap what you own, pass through what you cannot verify, and say which is
+which** — never guess at a shape and call it a contract.
+
 ### Shared helpers
 
 `common/api_shape.py` holds the one implementation of §4 and §6 — `iso_utc()`,

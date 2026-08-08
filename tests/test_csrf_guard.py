@@ -9,8 +9,8 @@ sweeps the source and fails when a mutating /api route is guarded by neither the
 decorator nor an inline header check.
 """
 
+import ast
 import os
-import re
 import sys
 import unittest
 
@@ -100,7 +100,6 @@ class HeaderProbeTest(unittest.TestCase):
 
 # ── Repo-wide coverage net ───────────────────────────────────────────────────
 
-_ROUTE_RE = re.compile(r'@(?:bp|app)\.route\(\s*["\']([^"\']+)["\']')
 _MUTATING = ("POST", "PUT", "PATCH", "DELETE")
 
 # Route rules whose mutating methods are deliberately open. Keep this empty
@@ -119,22 +118,50 @@ def _source_files():
 
 
 def _mutating_routes():
-    """Yield (relpath, rule, guarded) for every mutating /api route in the tree."""
+    """Yield (relpath, rule, guarded) for every mutating /api route in the tree.
+
+    AST, not a line window. The window version read 45 lines from the route
+    decorator and asked whether the guard appeared ANYWHERE in them — so a long
+    view pushed its own body out of range while a NEIGHBOURING route's inline
+    check drifted in. That is how POST /api/winlink/mailbox/out (queues outbound
+    radio email) sat unguarded behind a passing test: the sweep was reading the
+    next function's guard. A security gate that reports by proximity is worse
+    than no gate, because it is believed.
+    """
     for path in _source_files():
         with open(path, encoding="utf-8") as fh:
-            lines = fh.read().split("\n")
-        for i, line in enumerate(lines):
-            m = _ROUTE_RE.search(line)
-            if not m or not m.group(1).startswith("/api/"):
+            src = fh.read()
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+        rel = os.path.relpath(path, _ROOT)
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            decorator = "\n".join(lines[i:i + 3])
-            if not any(v in decorator for v in _MUTATING):
+            rules, mutating, decorated = [], False, False
+            for dec in node.decorator_list:
+                # @require_oasis_request / @require_oasis_request_for("DELETE")
+                target = dec.func if isinstance(dec, ast.Call) else dec
+                name = getattr(target, "attr", None) or getattr(target, "id", None)
+                if name and name.startswith("require_oasis_request"):
+                    decorated = True
+                if not (isinstance(dec, ast.Call)
+                        and getattr(dec.func, "attr", None) == "route"):
+                    continue
+                if dec.args and isinstance(dec.args[0], ast.Constant):
+                    rules.append(dec.args[0].value)
+                for kw in dec.keywords:
+                    if kw.arg == "methods":
+                        text = ast.dump(kw.value)
+                        mutating = mutating or any(v in text for v in _MUTATING)
+            rules = [r for r in rules if isinstance(r, str) and r.startswith("/api/")]
+            if not rules or not mutating:
                 continue
-            # Decorators sit between the route and the def; the inline check sits
-            # in the first statements of the body. One window covers both.
-            body = "\n".join(lines[i:i + 45])
-            guarded = ("require_oasis_request" in body) or (HEADER in body)
-            yield os.path.relpath(path, _ROOT), m.group(1), guarded
+            # THIS function's own body only — never a neighbour's.
+            inline = HEADER in ast.dump(node)
+            for rule in rules:
+                yield rel, rule, (decorated or inline)
 
 
 class MutatingRouteCoverageTest(unittest.TestCase):

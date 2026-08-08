@@ -71,14 +71,20 @@ class WinlinkProxyTest(unittest.TestCase):
         self.client = oasis_app.app.test_client()
 
     # ── Mailbox listing ──────────────────────────────────────────────────────
-    def test_mailbox_list_passes_pat_json_through(self):
+    def test_mailbox_list_wraps_pats_array_and_forwards_correctly(self):
+        """No longer a byte pass-through: OASIS owns the envelope (a bare array
+        violates contract §1) while Pat's message objects pass through as-is.
+        See tests/test_winlink_contract.py for the full shape."""
         payload = b'[{"MID":"ABC","Subject":"Net check-in"}]'
         cap = {}
         with _patch_urlopen(body=payload, status=200, capture=cap):
             resp = self.client.get("/api/winlink/mailbox/in")
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data, payload)
+        body = resp.get_json()
+        self.assertIs(body["ok"], True)
+        self.assertEqual(body["messages"], [{"MID": "ABC", "Subject": "Net check-in"}])
         self.assertIn("application/json", resp.content_type)
+        # The part this test really guards: WHICH Pat URL we call.
         self.assertIn("127.0.0.1:8082", cap["url"])
         self.assertTrue(cap["url"].endswith("/api/mailbox/in"))
 
@@ -135,14 +141,25 @@ class WinlinkProxyTest(unittest.TestCase):
     # ── Compose / queue ───────────────────────────────────────────────────────
     def test_compose_posts_to_outbox(self):
         cap = {}
-        with _patch_urlopen(body=b"OK", status=200, capture=cap):
+        # Compose queues OUTBOUND RADIO EMAIL and is now CSRF-guarded, so the
+        # header is required (mail.html's api() has always sent it on non-GET).
+        with _patch_urlopen(body=b"{}", status=200, capture=cap):
             resp = self.client.post(
                 "/api/winlink/mailbox/out",
                 data={"to": "W4ABC", "subject": "Test", "body": "hi"},
+                headers={"X-OASIS-Request": "1"},
             )
         self.assertEqual(resp.status_code, 200)
+        self.assertIs(resp.get_json()["queued"], True)
         self.assertTrue(cap["url"].endswith("/api/mailbox/out"))
         self.assertEqual(cap["method"], "POST")
+
+    def test_compose_without_the_csrf_header_is_refused(self):
+        """It was UNGUARDED until 2026-08-08: the coverage sweep's 45-line
+        window was catching a neighbouring route's inline check."""
+        resp = self.client.post("/api/winlink/mailbox/out",
+                                data={"to": "W4ABC", "subject": "x", "body": "y"})
+        self.assertEqual(resp.status_code, 403)
 
     # ── Attachments ───────────────────────────────────────────────────────────
     def test_attachment_passes_through_pats_content_type(self):
