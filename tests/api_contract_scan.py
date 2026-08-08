@@ -54,10 +54,27 @@ def _jsonify_arg(node):
     return True, (arg if isinstance(arg, ast.Dict) else None)
 
 
-# Legitimately not a JSON response: streamed bytes, file downloads, redirects.
+# Legitimately not a JSON response: file downloads, redirects, streamed bytes.
 # The contract governs JSON shapes, so these are out of scope rather than debt.
-_NON_JSON_RESPONDERS = {"send_from_directory", "send_file", "Response", "redirect",
-                        "abort", "make_response", "stream_with_context"}
+#
+# `Response` is NOT in this set unconditionally. It is used both for genuinely
+# binary streaming (map tiles, attachments) AND for JSON pass-throughs like
+# `Response(resp.read(), content_type="application/json")`. Treating every
+# Response as out-of-scope hid 7 JSON endpoints from the gate, including the
+# 306 KB /api/aprs/stations. _is_json_response() below tells them apart by
+# reading the content_type/mimetype keyword.
+_NON_JSON_RESPONDERS = {"send_from_directory", "send_file", "redirect",
+                        "abort", "stream_with_context"}
+
+
+def _is_json_response(node):
+    """True when a `Response(...)` call declares a JSON content type."""
+    for kw in getattr(node, "keywords", []):
+        if kw.arg in ("content_type", "mimetype"):
+            value = kw.value
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                return "json" in value.value.lower()
+    return False
 
 
 def _dict_lookup(d):
@@ -100,6 +117,12 @@ def returns_of(fn):
             if isinstance(value, ast.Call):
                 fn = value.func
                 nm = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", None)
+                if nm == "Response" or nm == "make_response":
+                    # Only a JSON-typed Response is in scope; a streamed/binary
+                    # one is not something this contract governs.
+                    if not _is_json_response(value):
+                        continue
+                    nm = "Response"
                 if nm and nm not in _NON_JSON_RESPONDERS:
                     facts.append({
                         "line": node.lineno, "status": status, "opaque": True,

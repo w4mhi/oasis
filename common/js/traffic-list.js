@@ -69,7 +69,18 @@
   // (space+offset vs T+Z) — never a valid chronological order.
   function lastHeardEpoch(s) {
     if (!s) return 0;
-    var norm = String(s).replace('Z', '+00:00').replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1');
+    var str = String(s);
+    // Fast path: the API emits ISO-8601 UTC 'Z' everywhere now (contract §6), and
+    // Date.parse handles that natively. This runs for EVERY row on every list
+    // render — ~1600 rows on a busy station — so skipping three string
+    // allocations per row is worth the branch.
+    if (str.charCodeAt(str.length - 1) === 90 /* 'Z' */ && str.indexOf(' ') === -1) {
+      var fast = Date.parse(str);
+      if (!isNaN(fast)) return fast;
+    }
+    // Slow path for anything not yet normalised — e.g. GrayWolf's native Go
+    // format '2026-08-07 20:08:04.45893926-07:00' from an older daemon build.
+    var norm = str.replace('Z', '+00:00').replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1');
     var t = new Date(norm).getTime();
     return isNaN(t) ? 0 : t;
   }

@@ -361,3 +361,30 @@ test('aircraftRows: one bad record does not lose the good ones', () => {
   assert.strictEqual(rows.length, 2);
   assert.ok(rows.find(r => r.hex === 'good').last_heard.startsWith('2025-07-31'));
 });
+
+// lastHeardEpoch runs per row on every render (~1600 rows on a busy station), so
+// it takes a fast path for the ISO-8601 UTC form the API now emits everywhere.
+// The slow path must still handle GrayWolf's native Go format from an older
+// daemon build, and both must agree to the second.
+test('lastHeardEpoch: fast and slow paths agree', () => {
+  const iso = '2026-08-08T03:09:56Z';
+  const go  = '2026-08-07 20:09:56.45893926-07:00';   // same instant, -07:00
+  assert.strictEqual(T.lastHeardEpoch(iso), Date.parse(iso));
+  // To the SECOND: the normalised ISO form drops GrayWolf's sub-second noise
+  // (.45893926), so the slow path legitimately lands 458 ms later.
+  assert.strictEqual(Math.floor(T.lastHeardEpoch(go) / 1000),
+                     Math.floor(Date.parse(iso) / 1000));
+});
+
+test('lastHeardEpoch: junk and empties are 0, never NaN', () => {
+  for (const bad of [null, undefined, '', 'not-a-date', 'Z', 0, false]) {
+    const v = T.lastHeardEpoch(bad);
+    assert.strictEqual(v, 0, `${JSON.stringify(bad)} -> ${v}`);
+  }
+});
+
+test('lastHeardEpoch: a space-separated value never takes the fast path', () => {
+  // Ends in Z but is not ISO — must fall through, not mis-parse.
+  const v = T.lastHeardEpoch('2026-08-08 03:09:56Z');
+  assert.ok(v > 0 && !isNaN(v));
+});

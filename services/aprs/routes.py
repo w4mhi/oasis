@@ -4,6 +4,7 @@ plus the operator-placed map warnings store. Extracted verbatim from
 server/app.py in the blueprint split; URLs unchanged.
 """
 
+import datetime
 import json
 import os
 import threading
@@ -108,31 +109,148 @@ def api_aprs_health_proxy():
                         "error": str(reason)}), 503
 
 
-@bp.route("/api/aprs/stations")
-def api_aprs_stations_proxy():
-    """Proxy APRS station list from the graywolf-api (port 8085).
-    Keeps the browser on the same origin — no cross-origin fetch needed.
-    Timeout must exceed graywolf-api's own inner timeout (3 s) + overhead."""
-    import urllib.request
-    import urllib.error
-    url = "http://127.0.0.1:8085/api/aprs/stations"
+
+# ── Contract boundary (docs/api-contract.md) ─────────────────────────────────
+# The graywolf-api daemon on :8085 is an internal implementation detail: it ships
+# as its own systemd unit, is not restarted in lockstep with Flask, and emits
+# GrayWolf's native shapes. Normalising here means the contract holds regardless
+# of which daemon build is installed, and puts the envelope where it can be read.
+_STATIONS_DEFAULT_LIMIT = 5000
+_STATIONS_MAX_LIMIT = 20000
+
+# Fields the three consuming pages render. Listed so a sparse record still
+# carries every key as null (§5) rather than the key vanishing.
+_STATION_FIELDS = ("lat", "lon", "sym_table", "sym_code", "via", "comment",
+                   "speed_mph", "course", "alt_m", "is_object")
+
+
+def _iso_utc(value):
+    """Any GrayWolf timestamp -> ISO-8601 UTC 'Z' (contract §6), or None.
+
+    GrayWolf emits Go's format: '2026-08-07 20:08:04.45893926-07:00' — space
+    separated, nanosecond precision, local offset. That is why
+    common/js/traffic-list.js's lastHeardEpoch() runs three string replaces plus a
+    Date parse PER ROW, over ~1600 rows on every render. Doing it once here
+    deletes that work from every consumer and gives one timestamp format across
+    the whole API.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip().replace(" ", "T")
+    # Python's fromisoformat handles at most microseconds; GrayWolf sends nanos.
+    if "." in text:
+        head, _, tail = text.partition(".")
+        digits = ""
+        for ch in tail:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        text = head + tail[len(digits):]        # drop sub-second entirely
     try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            return Response(resp.read(), status=200,
-                            content_type="application/json")
+        dt = datetime.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return dt.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _round_coord(value):
+    """5 dp is ~1 m — far finer than APRS reports, and ~18 bytes/station smaller
+    than the 17 significant digits GrayWolf sends. Over 1100 stations that is
+    real weight on a response three pages fetch every 15 s."""
+    try:
+        return round(float(value), 5)
+    except (TypeError, ValueError):
+        return None
+
+
+def _station_record(rec):
+    out = {"callsign": rec.get("callsign")}
+    for key in _STATION_FIELDS:
+        out[key] = rec.get(key)
+    out["lat"] = _round_coord(rec.get("lat"))
+    out["lon"] = _round_coord(rec.get("lon"))
+    path = rec.get("path")
+    out["path"] = path if isinstance(path, list) else []
+    out["last_heard"] = _iso_utc(rec.get("last_heard"))
+    return out
+
+
+def _clamp_limit(raw, default, maximum):
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return default if value < 1 else min(value, maximum)
+
+
+def _graywolf_json(path, timeout=10):
+    """(payload, error_response) — fetch and PARSE the daemon's JSON."""
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:8085{path}", timeout=timeout) as resp:
+            raw = resp.read()
     except urllib.error.HTTPError as e:
-        # graywolf-api is running but returned an error (e.g. DB not found).
-        # Pass through its JSON body verbatim so the UI gets the real message.
-        return Response(e.read(), status=e.code,
-                        content_type="application/json")
+        return None, (jsonify({"ok": False, "code": "APRS_API_ERROR",
+                               "error": f"APRS API returned HTTP {e.code}."}), 502)
     except urllib.error.URLError as e:
-        reason = getattr(e, "reason", str(e))
-        return jsonify({"ok": False,
-                        "error": f"APRS API unavailable ({reason}). "
-                                 "Is the graywolf-api service running?"}), 503
+        return None, (jsonify({
+            "ok": False, "code": "APRS_API_UNAVAILABLE",
+            "error": f"APRS API unavailable ({getattr(e, 'reason', e)}). "
+                     "Is the graywolf-api service running?"}), 503)
     except TimeoutError:
-        return jsonify({"ok": False,
-                        "error": "APRS API timed out — graywolf-api slow or GrayWolf unreachable."}), 503
+        return None, (jsonify({"ok": False, "code": "APRS_API_TIMEOUT",
+                               "error": "APRS API timed out."}), 503)
+    try:
+        return json.loads(raw), None
+    except (ValueError, TypeError):
+        return None, (jsonify({"ok": False, "code": "APRS_API_BAD_RESPONSE",
+                               "error": "APRS API returned a malformed response."}), 502)
+
+
+@bp.route("/api/aprs/stations")
+def api_aprs_stations():
+    """Heard APRS stations, most recently heard first. Contract-conforming.
+
+    The heaviest response OASIS serves — ~1100 stations, fetched every 15 s by
+    index.html, maps/traffic/map.html and the kiosk dashboard.
+    """
+    payload, error = _graywolf_json("/api/aprs/stations")
+    if error:
+        return error
+    if payload.get("ok") is False:
+        return jsonify({
+            "ok": False, "code": "APRS_STATIONS_UNAVAILABLE",
+            "error": str(payload.get("error") or "APRS stations unavailable."),
+        }), 503
+
+    limit = _clamp_limit(request.args.get("limit"),
+                         _STATIONS_DEFAULT_LIMIT, _STATIONS_MAX_LIMIT)
+    raw = [s for s in (payload.get("stations") or [])
+           if isinstance(s, dict) and s.get("callsign")]
+    records = [_station_record(s) for s in raw]
+    # Most recently heard first; callsign breaks ties so the order is TOTAL and
+    # two identical polls cannot come back differently (§4). Undated sorts last.
+    # Three stable passes, applied in reverse priority order: callsign ASCENDING
+    # as the tie-break, then time DESCENDING, then undated last. A single
+    # reverse=True sort would have flipped the callsign order too.
+    records.sort(key=lambda s: str(s["callsign"]))
+    records.sort(key=lambda s: s["last_heard"] or "", reverse=True)
+    records.sort(key=lambda s: s["last_heard"] is None)
+    shown = records[:limit]
+
+    return jsonify({
+        "ok": True,
+        "stations": shown,
+        "total": len(raw),
+        "count": len(raw),          # legacy alias — three pages still read it
+        "truncated": len(raw) > len(shown),
+        "limit": limit,
+    }), 200
 
 
 @bp.route("/api/aprs/track")
