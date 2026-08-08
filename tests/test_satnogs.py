@@ -194,9 +194,40 @@ class BuildTest(unittest.TestCase):
 
     def test_selected_carried_over(self):
         records, _ = satnogs.build_records(
-            self.sats, self.txs, self.tle, prev_selected={25544: True})
+            self.sats, self.txs, self.tle, {25544: {"selected": True}})
         iss = next(r for r in records if r["norad"] == 25544)
         self.assertTrue(iss["selected"])
+
+    def test_every_operator_field_survives_a_rebuild(self):
+        """THE regression test for this whole mechanism.
+
+        build_records() writes each record from a FIXED key set, so an operator
+        field that isn't threaded through survives until the next roster rebuild
+        and then vanishes — presenting, weeks later, as "the kiosk forgot my
+        bells". Adding a name to roster.OPERATOR_FIELDS without carrying it must
+        fail HERE, not in the field."""
+        import roster
+        prev = {25544: {f: True for f in roster.OPERATOR_FIELDS}}
+        records, _ = satnogs.build_records(self.sats, self.txs, self.tle, prev)
+        iss = next(r for r in records if r["norad"] == 25544)
+        for f in roster.OPERATOR_FIELDS:
+            self.assertIs(iss.get(f), True, f"operator field {f!r} lost on rebuild")
+        # A bird with no prior state is off, not missing — consumers read a fixed
+        # key set (contract §5).
+        noaa = next(r for r in records if r["norad"] == 33591)
+        for f in roster.OPERATOR_FIELDS:
+            self.assertIs(noaa.get(f), False, f"operator field {f!r} missing on a new bird")
+
+    def test_derived_fields_are_not_carried_from_the_previous_roster(self):
+        """The other half of the contract: build-roster.py OWNS the derived
+        fields. A stale name/label set must be overwritten, never preserved."""
+        import roster
+        prev = {25544: dict({f: True for f in roster.OPERATOR_FIELDS},
+                            name="STALE NAME", labels=["BOGUS"])}
+        records, _ = satnogs.build_records(self.sats, self.txs, self.tle, prev)
+        iss = next(r for r in records if r["norad"] == 25544)
+        self.assertNotEqual(iss["name"], "STALE NAME")
+        self.assertNotIn("BOGUS", iss["labels"])
 
     def test_facet_counts_in_vocab_order(self):
         records, facet = satnogs.build_records(self.sats, self.txs, self.tle)

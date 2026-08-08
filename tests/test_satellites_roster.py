@@ -75,5 +75,89 @@ class RosterTest(unittest.TestCase):
             {"mode": "SSTV", "freq_mhz": 145.8}])
 
 
+class OperatorFieldsTest(unittest.TestCase):
+    """The bell is per-BIRD and lives in the roster, so the kiosk can see a bell
+    armed from a laptop. Muting stays per-DEVICE in the browser and must never
+    appear here."""
+
+    def _seed(self, d, sats):
+        p = os.path.join(d, "satellites.json")
+        json.dump({"updated": "x", "labels": {}, "satellites": sats}, open(p, "w"))
+        return p
+
+    def test_set_bell_persists(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._seed(d, [{"norad": 25544, "selected": True, "transmitters": []}])
+            roster.set_bell(p, 25544, True)
+            self.assertTrue(json.load(open(p))["satellites"][0]["bell"])
+
+    def test_bells_and_selection_are_independent(self):
+        """Disarming a bell must not un-monitor the bird, and vice versa — they
+        are separate standing choices that happen to live in the same record."""
+        with tempfile.TemporaryDirectory() as d:
+            p = self._seed(d, [{"norad": 25544, "selected": True, "bell": True,
+                                "transmitters": []}])
+            roster.set_bells_many(p, {25544: False})
+            iss = json.load(open(p))["satellites"][0]
+            self.assertTrue(iss["selected"])
+            self.assertFalse(iss["bell"])
+
+    def test_bulk_bells_are_one_write(self):
+        """The lesson /select paid for: a set must land as ONE load-modify-save,
+        never one request per bird."""
+        with tempfile.TemporaryDirectory() as d:
+            p = self._seed(d, [{"norad": n, "transmitters": []} for n in (25544, 33591, 43017)])
+            writes = []
+            real_save = roster.save
+            try:
+                roster.save = lambda path, data: (writes.append(1), real_save(path, data))[1]
+                roster.set_bells_many(p, {25544: True, 33591: True, 43017: False})
+            finally:
+                roster.save = real_save
+            self.assertEqual(len(writes), 1)
+            armed = {s["norad"]: s["bell"] for s in json.load(open(p))["satellites"]}
+            self.assertEqual(armed, {25544: True, 33591: True, 43017: False})
+
+    def test_unknown_norads_cannot_add_rows(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._seed(d, [{"norad": 25544, "transmitters": []}])
+            roster.set_bells_many(p, {999999: True})
+            self.assertEqual([s["norad"] for s in json.load(open(p))["satellites"]], [25544])
+
+    def test_unparseable_key_skips_without_failing_the_batch(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._seed(d, [{"norad": 25544, "transmitters": []}])
+            roster.set_bells_many(p, {"nope": True, "25544": True})
+            self.assertTrue(json.load(open(p))["satellites"][0]["bell"])
+
+    def test_a_non_operator_field_is_refused(self):
+        """Guards the typo that would write a junk key the aggregator then drops
+        on the next rebuild — a bug that only surfaces weeks later."""
+        with tempfile.TemporaryDirectory() as d:
+            p = self._seed(d, [{"norad": 25544, "transmitters": []}])
+            with self.assertRaises(ValueError):
+                roster._set_flag_many(p, {25544: True}, "name")
+
+    def test_operator_state_reports_every_field_defaulting_off(self):
+        state = roster.operator_state({"satellites": [
+            {"norad": 25544, "selected": True, "bell": True},
+            {"norad": 33591},                       # pre-bell roster row
+        ]})
+        self.assertEqual(state[25544], {"selected": True, "bell": True})
+        self.assertEqual(state[33591], {f: False for f in roster.OPERATOR_FIELDS})
+
+    def test_operator_state_skips_rows_with_no_usable_norad(self):
+        state = roster.operator_state({"satellites": [{"selected": True},
+                                                      {"norad": None}]})
+        self.assertEqual(state, {})
+
+    def test_muting_is_not_an_operator_field(self):
+        """Muting is per-DEVICE (localStorage) so the shack kiosk can be silent
+        overnight while a laptop still chimes. Persisting it per-bird here would
+        silence every screen at once."""
+        self.assertNotIn("muted", roster.OPERATOR_FIELDS)
+        self.assertNotIn("mute", roster.OPERATOR_FIELDS)
+
+
 if __name__ == "__main__":
     unittest.main()

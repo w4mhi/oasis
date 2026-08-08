@@ -46,7 +46,7 @@ REPO_ROOT = os.path.dirname(_HERE)
 
 MUTATE = {
     "/api/forms/save", "/api/save-ics205", "/api/save-chirp",
-    "/api/satellites/select", "/api/satellites/refresh",
+    "/api/satellites/select", "/api/satellites/bells", "/api/satellites/refresh",
     "/api/hardware/guardian/cancel", "/api/hardware/guardian/config",
     # GETs that are NOT read-only in effect: both run an exclusive `rtl_test -t`
     # scan, which takes the dongle away from whatever is using it.

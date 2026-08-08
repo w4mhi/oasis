@@ -4,6 +4,12 @@ every function is unit-testable offline."""
 import math
 import re
 
+# The one declaration of which record fields belong to the operator. Imported for
+# a CONSTANT only — no I/O happens here, so the "pure transforms" rule above
+# still holds. Re-declaring the list locally is what the carry-over bug is made
+# of: the two copies drift and a rebuild quietly drops the newer field.
+import roster
+
 SAT_API = "https://db.satnogs.org/api/satellites/?format=json"
 TX_API = "https://db.satnogs.org/api/transmitters/?format=json"
 
@@ -187,12 +193,21 @@ def orbit_class(tle_line2):
     return "MEO"
 
 
-def build_records(sats, txs, tle_index, prev_selected=None):
+def build_records(sats, txs, tle_index, prev_state=None):
     """Intersect SatNOGS identity + active transmitters + CelesTrak TLE index
     into records. A bird is included iff it is alive (in `sats`), has >=1 active
     transmitter (in `txs`), AND has a TLE (in `tle_index`) — no TLE means no
-    pass prediction, so the record would be useless. Returns (records, facet)."""
-    prev_selected = prev_selected or {}
+    pass prediction, so the record would be useless. Returns (records, facet).
+
+    `prev_state` is roster.operator_state(previous_roster) — `{norad: {field:
+    bool}}`. Every record is rebuilt from a FIXED key set, so anything not
+    carried here is DESTROYED on the next rebuild: this is the only path by which
+    a standing operator choice survives a re-aggregation. It takes the whole
+    state map rather than one flag because the previous single-purpose
+    `prev_selected` parameter meant the second operator field (the pass-alert
+    bell) would have been silently dropped, showing up much later as "the kiosk
+    forgot my bells"."""
+    prev_state = prev_state or {}
     records = []
     for norad in sorted(sats):
         transmitters = txs.get(norad)
@@ -219,7 +234,7 @@ def build_records(sats, txs, tle_index, prev_selected=None):
             continue
         meta = sats[norad]
         name = f"{meta['name']} [{orbit}]" if orbit else meta["name"]
-        records.append({
+        record = {
             "name": name,
             "norad": norad,
             "sat_id": meta["sat_id"],
@@ -227,8 +242,14 @@ def build_records(sats, txs, tle_index, prev_selected=None):
             "labels": labels,
             "orbit": orbit,
             "transmitters": transmitters,
-            "selected": bool(prev_selected.get(norad, False)),
-        })
+        }
+        # Carry the operator's flags across the rebuild — every one of them, from
+        # the single declaration, so adding a field there is all it takes. A bird
+        # with no prior state (new to the roster) defaults to off.
+        carried = prev_state.get(norad) or {}
+        for f in roster.OPERATOR_FIELDS:
+            record[f] = bool(carried.get(f, False))
+        records.append(record)
     counts = {}
     for r in records:
         for lab in r["labels"]:

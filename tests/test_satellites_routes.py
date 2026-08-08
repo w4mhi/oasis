@@ -132,6 +132,72 @@ class RoutesTest(unittest.TestCase):
         self.assertEqual(len(after), before)
         self.assertNotIn(999999, [s["norad"] for s in after])
 
+    def test_bells_toggle_and_echo_the_armed_set(self):
+        r = self.client.post("/api/satellites/bells", json={"norad": 25544, "bell": True})
+        self.assertEqual(r.status_code, 200)
+        d = r.get_json()
+        self.assertTrue(d["ok"])
+        self.assertIn(25544, d["bells"])
+        self.assertEqual(d["applied"], 1)
+
+    def test_bells_bulk_is_a_single_write(self):
+        import roster as roster_mod
+
+        calls = []
+        original = roster_mod.save
+        roster_mod.save = lambda p, d: calls.append(p) or original(p, d)
+        try:
+            self.client.post("/api/satellites/bells",
+                             json={"bells": {"25544": True, "43017": True}})
+        finally:
+            roster_mod.save = original
+        self.assertEqual(len(calls), 1)
+
+    def test_bells_reach_the_roster_the_kiosk_reads(self):
+        """The whole point of moving the bell off localStorage: a bell armed
+        from one browser has to be visible to the kiosk, which only ever sees
+        GET /api/satellites."""
+        self.client.post("/api/satellites/bells", json={"bells": {"25544": True}})
+        sats = self.client.get("/api/satellites").get_json()["satellites"]
+        iss = next(s for s in sats if s["norad"] == 25544)
+        self.assertTrue(iss["bell"])
+
+    def test_every_satellite_reports_the_full_operator_key_set(self):
+        """Contract §5: a roster written before bells existed has no `bell` key,
+        and a consumer must not have to tell "off" apart from "unsupported"."""
+        import roster as roster_mod
+        sats = self.client.get("/api/satellites").get_json()["satellites"]
+        self.assertTrue(sats)
+        for s in sats:
+            for f in roster_mod.OPERATOR_FIELDS:
+                self.assertIn(f, s)
+
+    def test_bells_do_not_disturb_the_monitored_set(self):
+        self.client.post("/api/satellites/select", json={"selections": {"25544": True}})
+        self.client.post("/api/satellites/bells", json={"bells": {"25544": False}})
+        sats = self.client.get("/api/satellites").get_json()["satellites"]
+        iss = next(s for s in sats if s["norad"] == 25544)
+        self.assertTrue(iss["selected"])
+        self.assertFalse(iss["bell"])
+
+    def test_bells_reject_a_malformed_body(self):
+        for body in ({}, {"norad": "nope", "bell": True}, {"bells": [1, 2]}):
+            r = self.client.post("/api/satellites/bells", json=body)
+            self.assertEqual(r.status_code, 400, body)
+            self.assertEqual(r.get_json()["code"], "INVALID_BELLS")
+
+    def test_bells_cannot_add_satellites_to_the_roster(self):
+        before = len(self.client.get("/api/satellites").get_json()["satellites"])
+        self.client.post("/api/satellites/bells", json={"bells": {"999999": True}})
+        after = self.client.get("/api/satellites").get_json()["satellites"]
+        self.assertEqual(len(after), before)
+
+    def test_bells_without_csrf_header_are_refused(self):
+        r = self.bare.post("/api/satellites/bells", json={"norad": 25544, "bell": True})
+        self.assertEqual(r.status_code, 403)
+        sats = self.client.get("/api/satellites").get_json()["satellites"]
+        self.assertFalse(next(s for s in sats if s["norad"] == 25544)["bell"])
+
     def test_listen_status_shape(self):
         r = self.client.get("/api/satellites/listen/status")
         self.assertEqual(r.status_code, 200)

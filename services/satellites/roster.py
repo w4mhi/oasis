@@ -1,12 +1,31 @@
 """Satellite roster persisted to configuration/satellites.json. The list is
 built by build-roster.py (SatNOGS + CelesTrak aggregation); this module only
-loads/saves it and persists per-satellite selection. Labels/freqs are not in
-TLEs, so they live in the records build-roster.py writes."""
+loads/saves it and persists the operator's per-satellite flags. Labels/freqs are
+not in TLEs, so they live in the records build-roster.py writes."""
 import datetime
 import json
 import os
 import tempfile
 import threading
+
+# The fields the OPERATOR owns. Everything else in a record is DERIVED —
+# build-roster.py rebuilds it from SatNOGS + CelesTrak and is entitled to
+# overwrite it. These are the operator's intent about a bird, and a rebuild must
+# carry them across or it silently discards a standing choice.
+#
+# This list is the contract between the two halves: build_records() stamps every
+# name here onto each record, and a test fails if one goes unthreaded. Adding a
+# field here is all it should take — the trap is that build_records() builds each
+# record from a FIXED key set, so a field added anywhere else survives until the
+# next roster rebuild and then vanishes, which reads as "the kiosk forgot".
+#
+#   selected — monitored: plotted on the map, listed on the kiosk, alerted on.
+#   bell     — armed for pass alerts (VVV chime at T-10/T-5, spoken heads-up).
+#
+# Both are per-BIRD and therefore shared across devices. Muting is deliberately
+# NOT here: it is per-DEVICE (localStorage), so the shack kiosk can be silent
+# overnight while a laptop still chimes.
+OPERATOR_FIELDS = ("selected", "bell")
 
 # Serializes the read-modify-write in set_selected/set_selected_many. Atomic
 # save() prevents a TORN file; it does nothing about a LOST UPDATE — two threads
@@ -76,13 +95,50 @@ def load(path):
     return data
 
 
+def operator_state(data):
+    """`{norad: {field: bool}}` for every OPERATOR_FIELD in a loaded roster.
+
+    What build-roster.py must carry across a rebuild. Reading it here — rather
+    than having the aggregator reach into record keys itself — keeps the set of
+    operator-owned fields declared in exactly one place."""
+    out = {}
+    for s in (data or {}).get("satellites") or []:
+        try:
+            norad = int(s["norad"])
+        except (KeyError, TypeError, ValueError):
+            continue                      # unusable row — nothing to carry
+        out[norad] = {f: bool(s.get(f, False)) for f in OPERATOR_FIELDS}
+    return out
+
+
 def set_selected(path, norad, selected):
     """Set one satellite's monitored flag. Serialized against other writers."""
     return set_selected_many(path, {norad: selected})
 
 
 def set_selected_many(path, selections):
-    """Apply a whole `{norad: bool}` set in ONE load-modify-save.
+    """Apply a whole `{norad: bool}` monitored set in ONE load-modify-save."""
+    return _set_flag_many(path, selections, "selected")
+
+
+def set_bell(path, norad, bell):
+    """Arm/disarm one satellite's pass alert. Serialized against other writers."""
+    return set_bells_many(path, {norad: bell})
+
+
+def set_bells_many(path, bells):
+    """Apply a whole `{norad: bool}` pass-alert set in ONE load-modify-save.
+
+    The bell lives here rather than in the browser because it is a property of
+    the BIRD, not of the screen you happened to arm it from: the kiosk has to
+    know which passes should wake the shack, and it never sees another device's
+    localStorage."""
+    return _set_flag_many(path, bells, "bell")
+
+
+def _set_flag_many(path, values, field):
+    """Apply a whole `{norad: bool}` set for one operator field in ONE
+    load-modify-save.
 
     This is what the client should use for anything touching more than one bird.
     Sending N separate requests is not just N times slower — before the lock it
@@ -94,8 +150,12 @@ def set_selected_many(path, selections):
     ignored rather than invented — the roster's membership is owned by
     build-roster.py, and a stale client must never be able to add rows to it.
     """
+    if field not in OPERATOR_FIELDS:
+        # Defensive: a typo here would write a junk key that build-roster.py
+        # then drops on the next rebuild — a bug that only shows up weeks later.
+        raise ValueError(f"{field!r} is not an operator-owned roster field")
     wanted = {}
-    for norad, value in (selections or {}).items():
+    for norad, value in (values or {}).items():
         try:
             wanted[int(norad)] = bool(value)
         except (TypeError, ValueError):
@@ -105,7 +165,7 @@ def set_selected_many(path, selections):
         if wanted:
             for s in data["satellites"]:
                 if s["norad"] in wanted:
-                    s["selected"] = wanted[s["norad"]]
+                    s[field] = wanted[s["norad"]]
             data["updated"] = _now()
             save(path, data)
         return data

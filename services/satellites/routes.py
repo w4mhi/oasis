@@ -77,6 +77,12 @@ def api_satellites():
         for norad, (name, l1, l2) in sorted(by_norad.items(), key=lambda kv: kv[1][0]):
             sats.append({"norad": norad, "name": name, "labels": [],
                          "downlinks": [], "l1": l1, "l2": l2})
+    # §5, fixed key set: a roster written before an operator field existed has no
+    # such key, so every consumer would have to guess whether a missing `bell`
+    # meant "off" or "this build doesn't have bells". It means off.
+    for s in sats:
+        for f in roster.OPERATOR_FIELDS:
+            s.setdefault(f, False)
     # §4: the roster is ~150 birds and every consumer wants all of them, so the
     # default is far above any real roster — the bound exists so the response
     # cannot become unbounded, not to paginate.
@@ -440,6 +446,54 @@ def api_select():
                       if s.get("selected"))
     return jsonify({"ok": True, "selected": selected, "count": len(selected),
                     "applied": len(selections)})
+
+
+@bp.route("/api/satellites/bells", methods=["POST"])
+@require_oasis_request
+def api_bells():
+    """Arm/disarm pass alerts per satellite — the roster is the single source of
+    truth, so a bell armed on a laptop reaches the shack kiosk.
+
+    Two accepted shapes, mirroring /api/satellites/select:
+
+        {"norad": 25544, "bell": true}                  one toggle
+        {"bells": {"25544": true, "43017": false}}      a whole set, one write
+
+    Use the bulk shape for anything touching more than one bird — the same rule
+    that /select learned the hard way, where a set fanned out into one request
+    per satellite raced itself and landed 1-2 of 20.
+
+    The bell is per-BIRD and therefore shared. MUTING is not here: it is
+    per-DEVICE and stays in the browser, so silencing the kiosk overnight does
+    not silence a laptop (and vice versa).
+    """
+    body = request.get_json(force=True) or {}
+    if "bells" in body:
+        bells = body.get("bells") or {}
+        if not isinstance(bells, dict):
+            return jsonify({"ok": False, "error": "bells must be an object of "
+                                                  "{norad: bool}",
+                            "code": "INVALID_BELLS"}), 400
+    else:
+        try:
+            bells = {int(body["norad"]): bool(body["bell"])}
+        except (KeyError, TypeError, ValueError):
+            return jsonify({"ok": False, "error": "expected {norad, bell} or "
+                                                  "{bells:{norad: bool}}",
+                            "code": "INVALID_BELLS"}), 400
+    try:
+        data = roster.set_bells_many(config_paths.satellites_json(SUITE_ROOT), bells)
+    except OSError as exc:
+        # Same failure as /select: satellites.json left root-owned by the
+        # privileged installer worker, so the non-root server can't rewrite it.
+        return jsonify({"ok": False, "error": f"could not save bells: {exc} — is "
+                        "configuration/satellites.json writable by the server user?",
+                        "code": "ROSTER_NOT_WRITABLE"}), 500
+    # Echo the armed set, not the roster — /select's lesson: returning the whole
+    # ~150-bird roster for one checkbox cost a Pi its bandwidth for nothing.
+    armed = sorted(s["norad"] for s in data.get("satellites", []) if s.get("bell"))
+    return jsonify({"ok": True, "bells": armed, "count": len(armed),
+                    "applied": len(bells)})
 
 
 # ── Phase 2: RTL-SDR listen (record a pass to a WAV) ─────────────────────────

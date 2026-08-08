@@ -111,9 +111,11 @@ def main():
     txs = satnogs.parse_transmitters(txs_raw)
 
     prev = roster.load(args.config)
-    prev_selected = {s["norad"]: s.get("selected", False)
-                     for s in prev.get("satellites", [])}
-    records, facet = satnogs.build_records(sats, txs, tle_index, prev_selected)
+    # Everything the OPERATOR owns (monitored + pass-alert bell), carried across
+    # the rebuild as a set. build_records() writes each record from a fixed key
+    # set, so a flag that isn't in here is gone the moment this script runs.
+    records, facet = satnogs.build_records(sats, txs, tle_index,
+                                           roster.operator_state(prev))
     diff = satnogs.diff_rosters(prev.get("satellites", []), records)
 
     data = {"updated": roster._now(), "source": "satnogs+celestrak",
