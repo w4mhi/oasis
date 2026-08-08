@@ -388,3 +388,54 @@ class LicenceDisclosureTest(unittest.TestCase):
         path = os.path.join(overlays.REPO_ROOT, "LICENSE")
         self.assertTrue(os.path.isfile(path),
                         "README links to ./LICENSE — a badge is not a licence")
+
+
+class DrawsInstallersInstallTheBlobTest(unittest.TestCase):
+    """Every DRAWS feature that enables `dtoverlay=draws` must first install the
+    vendored .dtbo.
+
+    draws-audio did; draws-gps did NOT. On a GPS-first install that mattered:
+    Pi OS Trixie SHIPS a draws.dtbo, so `overlay_available()` returned True and
+    the guard passed — but that overlay does not bring the HAT up on kernel
+    6.18.34. The box would enable the broken overlay, take no backup (our
+    installer never ran), and fail at runtime looking like a wiring or
+    SC16IS752 bind fault rather than a packaging one.
+
+    The file merely EXISTING is not the same as it working, which is why the
+    rule is "install ours before enabling the line", not "check and hope".
+    """
+
+    _INSTALLERS = (
+        "features/draws-gps/install-draws-gps.py",
+        "features/draws-audio/install-draws-audio.py",
+    )
+
+    def _src(self, rel):
+        with open(os.path.join(overlays.REPO_ROOT, rel), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_every_installer_that_enables_the_overlay_installs_the_blob(self):
+        for rel in self._INSTALLERS:
+            src = self._src(rel)
+            self.assertIn("ensure_overlay()", src, f"{rel} should enable the line")
+            self.assertIn("ensure_overlay_blobs()", src,
+                          f"{rel} enables dtoverlay=draws without installing the "
+                          f"vendored .dtbo first")
+
+    def test_the_blob_install_comes_before_the_availability_guard(self):
+        """Order is the whole point: the guard asks whether the file is there,
+        and ours must already be the one that is."""
+        for rel in self._INSTALLERS:
+            src = self._src(rel)
+            self.assertLess(src.index("ensure_overlay_blobs()"),
+                            src.index("overlay_available()"), rel)
+
+    def test_the_helper_covers_both_board_overlays(self):
+        from common import draws
+        self.assertEqual(tuple(draws.OVERLAY_BLOBS), ("draws", "udrc"))
+
+    def test_the_guard_no_longer_blames_the_operating_system(self):
+        """It used to say 'update Raspberry Pi OS', which produces no working
+        overlay — the very reason we vendor one."""
+        for rel in self._INSTALLERS:
+            self.assertNotIn("update Raspberry", self._src(rel), rel)

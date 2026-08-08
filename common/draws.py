@@ -144,6 +144,30 @@ def _write_text(path, content):
         os.unlink(tmp)
 
 
+# The .dtbo blobs OASIS vendors for this board. `udrc` is the DRAWS's
+# predecessor and ships alongside it; both are installed together because the
+# overlay line can reference either depending on the board revision.
+OVERLAY_BLOBS = ("draws", "udrc")
+
+
+def ensure_overlay_blobs():
+    """Put OASIS's vendored draws/udrc .dtbo in the boot overlay directory.
+
+    MUST run before anything writes `dtoverlay=draws`, and every DRAWS feature
+    has to call it — not just the one that happens to need the sound card.
+    Pi OS Trixie ships a draws.dtbo that does NOT bring the HAT up on kernel
+    6.18.34, so the file merely EXISTING is not enough: a feature that enables
+    the overlay line without installing ours boots into the broken one, and the
+    failure looks like a wiring or bind fault rather than a packaging one.
+
+    Returns [(name, changed, reason)] for the caller to report. Never raises —
+    see common/overlays.install(); whatever it displaces is kept as
+    <name>.dtbo.oasis-orig and can be put back with overlays.restore().
+    """
+    from common import overlays
+    return [(name, *overlays.install(name)) for name in OVERLAY_BLOBS]
+
+
 def ensure_overlay(cfg_path=None):
     """Idempotently add the managed DRAWS block (see BLOCK_LINES) to config.txt.
     Returns True if the file changed (reboot needed to load the overlay), False

@@ -31,6 +31,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from common import draws
+from common import overlays
 from common import gpsd_chrony
 from common import nmea
 from common.oasis_lib import _section, _step, _ok, _info, _warn, _fail
@@ -75,9 +76,24 @@ def main(argv=None):
     if sys.platform != "linux":
         _fail("This installer requires Linux (Raspberry Pi).")
         return 1
+    # Install OASIS's vendored overlay FIRST. Pi OS Trixie ships a draws.dtbo
+    # that does not bring the HAT up on kernel 6.18.34, so the guard below
+    # passing is not the same as the overlay working — and enabling
+    # dtoverlay=draws against the OS's broken copy fails later as what looks
+    # like a wiring or SC16IS752 bind fault.
+    for _name, _changed, _why in draws.ensure_overlay_blobs():
+        if _changed and _why == "replaced":
+            _ok("%s.dtbo: replaced the OS copy (original kept as "
+                "%s.dtbo%s)" % (_name, _name, overlays.BACKUP_SUFFIX))
+        elif _changed:
+            _ok("%s.dtbo: installed" % _name)
+        elif _why == "no-vendored-copy":
+            _info("%s.dtbo: none vendored — using the OS copy" % _name)
+        elif _why != "already-current":
+            _warn("could not install %s.dtbo: %s" % (_name, _why))
     if not draws.overlay_available():
-        _fail("draws.dtbo not found in /boot/firmware/overlays — update Raspberry "
-              "Pi OS; this image is too old to drive the DRAWS HAT.")
+        _fail("draws.dtbo is not in /boot/firmware/overlays and OASIS has none "
+              "vendored to install. See overlays/SOURCE.md for how to build one.")
         return 1
 
     if args.check:

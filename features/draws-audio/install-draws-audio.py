@@ -460,8 +460,7 @@ def main(argv=None):
     # does not bring the HAT up on kernel 6.18.34 (neither the codec at 0x18 nor
     # the SC16IS752 binds), and a firmware update can wipe a hand-copied file, so
     # this runs on EVERY install rather than only when the overlay is missing.
-    for _ov in ("draws", "udrc"):
-        _changed, _why = overlays.install(_ov)
+    for _ov, _changed, _why in draws.ensure_overlay_blobs():
         if _changed and _why == "replaced":
             _ok("%s.dtbo: replaced the OS copy (original kept as "
                 "%s.dtbo%s)" % (_ov, _ov, overlays.BACKUP_SUFFIX))
@@ -475,8 +474,8 @@ def main(argv=None):
         elif _why != "already-current":
             _warn("could not install %s.dtbo: %s" % (_ov, _why))
     if not draws.overlay_available():
-        _fail("draws.dtbo not found in /boot/firmware/overlays — update Raspberry "
-              "Pi OS; this image is too old to drive the DRAWS HAT.")
+        _fail("draws.dtbo is not in /boot/firmware/overlays and OASIS has none "
+              "vendored to install. See overlays/SOURCE.md for how to build one.")
         return 1
     if args.config_only and args.mixer_only:
         _fail("--config-only and --mixer-only are mutually exclusive.")
