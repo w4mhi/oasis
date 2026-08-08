@@ -76,20 +76,19 @@ def main(argv=None):
     if sys.platform != "linux":
         _fail("This installer requires Linux (Raspberry Pi).")
         return 1
-    # Install OASIS's vendored overlay FIRST. Pi OS Trixie ships a draws.dtbo
-    # that does not bring the HAT up on kernel 6.18.34, so the guard below
-    # passing is not the same as the overlay working — and enabling
-    # dtoverlay=draws against the OS's broken copy fails later as what looks
-    # like a wiring or SC16IS752 bind fault.
-    for _name, _changed, _why in draws.ensure_overlay_blobs():
-        if _changed and _why == "replaced":
-            _ok("%s.dtbo: replaced the OS copy (original kept as "
-                "%s.dtbo%s)" % (_name, _name, overlays.BACKUP_SUFFIX))
-        elif _changed:
-            _ok("%s.dtbo: installed" % _name)
+    # Fill a GAP only. If the OS ships an overlay we leave it alone: Raspberry Pi
+    # OS ships a working draws.dtbo on Pi 5 (verified, 6.18.39+rpt-rpi-2712), and
+    # replacing it with our Pi-4-built copy would be a downgrade for nothing. If
+    # the one that loads turns out NOT to bring the HAT up, the repair happens
+    # further down, on evidence rather than on assumption.
+    for _name, _changed, _why in draws.install_missing_overlays():
+        if _changed:
+            _ok("%s.dtbo: installed (the OS ships none)" % _name)
+        elif _why == "os-provides":
+            _info("%s.dtbo: using the OS copy" % _name)
         elif _why == "no-vendored-copy":
-            _info("%s.dtbo: none vendored — using the OS copy" % _name)
-        elif _why != "already-current":
+            _info("%s.dtbo: not shipped by the OS and none vendored" % _name)
+        else:
             _warn("could not install %s.dtbo: %s" % (_name, _why))
     if not draws.overlay_available():
         _fail("draws.dtbo is not in /boot/firmware/overlays and OASIS has none "
@@ -138,6 +137,24 @@ def main(argv=None):
     device_present = draws.gps_device_present(args.device)
     code = draws_gps.decide_exit_code(overlay_changed, device_present)
     if code == 10:
+        # The box has already booted with dtoverlay=draws and the UART still is
+        # not there: the overlay that loads is the suspect, so swap in ours.
+        if draws.overlay_fallback_needed(overlay_changed, device_present):
+            repaired = [r for r in draws.replace_overlays() if r[1]]
+            if repaired:
+                for _name, _changed, _why in repaired:
+                    _warn("%s.dtbo did not bring the HAT up — installed OASIS's "
+                          "known-good overlay (%s; original kept as %s.dtbo%s)."
+                          % (_name, _why, _name, overlays.BACKUP_SUFFIX))
+                _info("Reboot once more and re-run; if it still does not "
+                      "enumerate, the overlay is not the problem.")
+                return code
+            # Ours is already in place and it STILL did not enumerate, so the
+            # overlay is not the fault. Say so instead of asking for another
+            # reboot that will change nothing.
+            _warn("The DRAWS overlay is already OASIS's and the UART still has "
+                  "not enumerated, so this is not an overlay problem.")
+            _info(draws_gps.NO_DATA_HINT)
         _warn("Reboot required: the GPS device appears only after the overlay loads.")
         _info("After rebooting:  python3 features/draws-gps/install-draws-gps.py --check")
         return code

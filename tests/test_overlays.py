@@ -13,6 +13,7 @@ this EVERY time), it replaces a stale copy, and it NEVER raises — a read-only
 /boot must degrade to a reported reason, not kill the installer mid-run.
 """
 
+import ast
 import os
 import sys
 import tempfile
@@ -390,19 +391,22 @@ class LicenceDisclosureTest(unittest.TestCase):
                         "README links to ./LICENSE — a badge is not a licence")
 
 
-class DrawsInstallersInstallTheBlobTest(unittest.TestCase):
-    """Every DRAWS feature that enables `dtoverlay=draws` must first install the
-    vendored .dtbo.
+class DrawsOverlayPolicyTest(unittest.TestCase):
+    """When OASIS overrides the OS's device-tree overlay, and when it stands aside.
 
-    draws-audio did; draws-gps did NOT. On a GPS-first install that mattered:
-    Pi OS Trixie SHIPS a draws.dtbo, so `overlay_available()` returned True and
-    the guard passed — but that overlay does not bring the HAT up on kernel
-    6.18.34. The box would enable the broken overlay, take no backup (our
-    installer never ran), and fail at runtime looking like a wiring or
-    SC16IS752 bind fault rather than a packaging one.
+    History: the DRAWS HAT would not come up on a Pi 4 running kernel 6.18.34 —
+    neither the codec at 0x18 nor the SC16IS752 bound — so a self-compiled
+    overlay was vendored. The first implementation then overrode on EVERY box.
 
-    The file merely EXISTING is not the same as it working, which is why the
-    rule is "install ours before enabling the line", not "check and hope".
+    That turned out to be wrong. Raspberry Pi OS ships a working draws.dtbo on
+    Pi 5 (verified on 6.18.39+rpt-rpi-2712), so overriding would replace a newer
+    vendor overlay with our Pi-4-built one for no gain — a silent downgrade on
+    hardware it was not built for.
+
+    The rule is therefore: fill a GAP up front, and only REPLACE on evidence
+    that the loaded overlay did not bring the hardware up. A uname/board guard
+    was the obvious alternative and is worse — it freezes today's snapshot into
+    code and goes stale silently the day the Pi 4 overlay is fixed upstream.
     """
 
     _INSTALLERS = (
@@ -414,28 +418,78 @@ class DrawsInstallersInstallTheBlobTest(unittest.TestCase):
         with open(os.path.join(overlays.REPO_ROOT, rel), encoding="utf-8") as fh:
             return fh.read()
 
-    def test_every_installer_that_enables_the_overlay_installs_the_blob(self):
+    def test_installers_fill_a_gap_but_do_not_pre_emptively_replace(self):
         for rel in self._INSTALLERS:
             src = self._src(rel)
-            self.assertIn("ensure_overlay()", src, f"{rel} should enable the line")
-            self.assertIn("ensure_overlay_blobs()", src,
-                          f"{rel} enables dtoverlay=draws without installing the "
-                          f"vendored .dtbo first")
+            self.assertIn("install_missing_overlays()", src, rel)
+            self.assertNotIn("ensure_overlay_blobs()", src,
+                             f"{rel} still overrides unconditionally")
 
-    def test_the_blob_install_comes_before_the_availability_guard(self):
-        """Order is the whole point: the guard asks whether the file is there,
-        and ours must already be the one that is."""
+    def test_the_repair_path_is_gated_on_evidence(self):
         for rel in self._INSTALLERS:
             src = self._src(rel)
-            self.assertLess(src.index("ensure_overlay_blobs()"),
-                            src.index("overlay_available()"), rel)
+            self.assertIn("overlay_fallback_needed(", src, rel)
+            self.assertIn("replace_overlays()", src, rel)
+            self.assertLess(src.index("overlay_fallback_needed("),
+                            src.index("replace_overlays()"),
+                            f"{rel} must check the evidence BEFORE replacing")
 
-    def test_the_helper_covers_both_board_overlays(self):
+    def test_no_installer_branches_on_board_or_kernel(self):
+        """The signal is 'did the hardware come up', never 'which Pi is this'.
+
+        Checks for the board/kernel probes themselves, not for the strings — a
+        COMMENT naming the verified kernel is documentation, and banning the
+        substring would forbid explaining why the policy exists.
+        """
+        probes = ("os.uname", "platform.uname", "platform.machine",
+                  "device-tree/model", "/proc/cpuinfo")
+        for rel in self._INSTALLERS:
+            code = ast.dump(ast.parse(self._src(rel)))   # comments already gone
+            for probe in probes:
+                self.assertNotIn(probe, code,
+                                 f"{rel} branches on {probe} — the policy must "
+                                 f"key on whether the hardware enumerated")
+
+
+class OverlayPolicyLogicTest(unittest.TestCase):
+    def setUp(self):
         from common import draws
-        self.assertEqual(tuple(draws.OVERLAY_BLOBS), ("draws", "udrc"))
+        self.draws = draws
 
-    def test_the_guard_no_longer_blames_the_operating_system(self):
-        """It used to say 'update Raspberry Pi OS', which produces no working
-        overlay — the very reason we vendor one."""
-        for rel in self._INSTALLERS:
-            self.assertNotIn("update Raspberry", self._src(rel), rel)
+    def test_fallback_only_after_a_boot_with_the_overlay_enabled(self):
+        d = self.draws
+        # Just wrote dtoverlay=draws this run: absence is EXPECTED, not evidence.
+        self.assertFalse(d.overlay_fallback_needed(True, False))
+        # Already enabled before this run, hardware still absent → the overlay
+        # that loads is the suspect.
+        self.assertTrue(d.overlay_fallback_needed(False, False))
+
+    def test_working_hardware_never_triggers_a_replacement(self):
+        d = self.draws
+        self.assertFalse(d.overlay_fallback_needed(False, True))
+        self.assertFalse(d.overlay_fallback_needed(True, True))
+
+    def test_a_present_os_overlay_is_left_alone(self):
+        """The Pi 5 case: the OS ships one, so we stand aside entirely."""
+        import contextlib
+        from unittest import mock
+        from common import draws
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(overlays, "installed",
+                                                  return_value=True))
+            inst = stack.enter_context(mock.patch.object(overlays, "install"))
+            out = draws.install_missing_overlays()
+        inst.assert_not_called()
+        self.assertTrue(all(why == "os-provides" for _n, _c, why in out))
+
+    def test_a_missing_os_overlay_is_filled(self):
+        from unittest import mock
+        from common import draws
+        with mock.patch.object(overlays, "installed", return_value=False), \
+             mock.patch.object(overlays, "install",
+                               return_value=(True, "installed")) as inst:
+            out = draws.install_missing_overlays()
+        self.assertEqual(inst.call_count, len(draws.OVERLAY_BLOBS))
+        self.assertTrue(all(changed for _n, changed, _w in out))
+
+

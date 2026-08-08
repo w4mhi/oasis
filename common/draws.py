@@ -145,24 +145,60 @@ def _write_text(path, content):
 
 
 # The .dtbo blobs OASIS vendors for this board. `udrc` is the DRAWS's
-# predecessor and ships alongside it; both are installed together because the
+# predecessor and ships alongside it; both are handled together because the
 # overlay line can reference either depending on the board revision.
 OVERLAY_BLOBS = ("draws", "udrc")
 
 
-def ensure_overlay_blobs():
-    """Put OASIS's vendored draws/udrc .dtbo in the boot overlay directory.
+def install_missing_overlays():
+    """Install ONLY the blobs the OS does not ship at all.
 
-    MUST run before anything writes `dtoverlay=draws`, and every DRAWS feature
-    has to call it — not just the one that happens to need the sound card.
-    Pi OS Trixie ships a draws.dtbo that does NOT bring the HAT up on kernel
-    6.18.34, so the file merely EXISTING is not enough: a feature that enables
-    the overlay line without installing ours boots into the broken one, and the
-    failure looks like a wiring or bind fault rather than a packaging one.
+    Never displaces an overlay that is already there. Raspberry Pi OS ships a
+    working draws.dtbo on Pi 5 (verified on 6.18.39+rpt-rpi-2712), and replacing
+    a newer vendor overlay with our August build — compiled from a Pi 4 config —
+    would be a downgrade with nothing to gain.
 
-    Returns [(name, changed, reason)] for the caller to report. Never raises —
-    see common/overlays.install(); whatever it displaces is kept as
-    <name>.dtbo.oasis-orig and can be put back with overlays.restore().
+    Returns [(name, changed, reason)]; "os-provides" means we deliberately
+    stood aside.
+    """
+    from common import overlays
+    out = []
+    for name in OVERLAY_BLOBS:
+        if overlays.installed(name):
+            out.append((name, False, "os-provides"))
+        else:
+            out.append((name, *overlays.install(name)))
+    return out
+
+
+def overlay_fallback_needed(overlay_changed, device_present):
+    """True when the loaded overlay has DEMONSTRABLY failed to bring the HAT up.
+
+    Evidence, not a hardware table. `overlay_changed` False means
+    `dtoverlay=draws` was already in config.txt when this run started, so the
+    box has booted with it at least once; `device_present` False means the HAT
+    still did not enumerate. Together those two facts indict the overlay that is
+    actually loaded.
+
+    A uname/board guard was the obvious alternative and is worse: it freezes
+    today's snapshot into code. The day Raspberry Pi fixes the Pi 4 overlay —
+    same source tree — the guard would keep overriding it forever and nobody
+    would notice, because our overlay works too. This asks the only question
+    that stays true: did the hardware come up?
+    """
+    return (not overlay_changed) and (not device_present)
+
+
+def replace_overlays():
+    """Force OASIS's blobs in, keeping whatever they displace.
+
+    ONLY after overlay_fallback_needed() — this is the repair path for a board
+    whose shipped overlay does not work (Pi 4 on kernel 6.18.34 is the case that
+    prompted vendoring them). Whatever is displaced is kept as
+    <name>.dtbo.oasis-orig; see common/overlays.restore().
+
+    A caller that gets no `changed` back has already tried ours and it did not
+    help — it must NOT ask for another reboot, or the install loops.
     """
     from common import overlays
     return [(name, *overlays.install(name)) for name in OVERLAY_BLOBS]

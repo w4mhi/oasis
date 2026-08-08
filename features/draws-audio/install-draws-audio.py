@@ -456,22 +456,18 @@ def main(argv=None):
     if sys.platform != "linux":
         _fail("This installer requires Linux (Raspberry Pi).")
         return 1
-    # Put OASIS's vendored draws.dtbo in place first. Pi OS Trixie ships one that
-    # does not bring the HAT up on kernel 6.18.34 (neither the codec at 0x18 nor
-    # the SC16IS752 binds), and a firmware update can wipe a hand-copied file, so
-    # this runs on EVERY install rather than only when the overlay is missing.
-    for _ov, _changed, _why in draws.ensure_overlay_blobs():
-        if _changed and _why == "replaced":
-            _ok("%s.dtbo: replaced the OS copy (original kept as "
-                "%s.dtbo%s)" % (_ov, _ov, overlays.BACKUP_SUFFIX))
-        elif _changed:
-            _ok("%s.dtbo: installed" % _ov)
+    # Fill a GAP only. Raspberry Pi OS ships a working draws.dtbo on Pi 5
+    # (verified, 6.18.39+rpt-rpi-2712); replacing it with our Pi-4-built copy
+    # would be a downgrade for nothing. If the overlay that loads turns out not
+    # to bring the card up, the repair happens below — on evidence.
+    for _ov, _changed, _why in draws.install_missing_overlays():
+        if _changed:
+            _ok("%s.dtbo: installed (the OS ships none)" % _ov)
+        elif _why == "os-provides":
+            _info("%s.dtbo: using the OS copy" % _ov)
         elif _why == "no-vendored-copy":
-            # The deliberate off-switch: no vendored blob, so the OS's own
-            # overlay is used. Say so — silence here is what makes "why is the
-            # HAT not coming up" unanswerable six months from now.
-            _info("%s.dtbo: none vendored — using the OS copy" % _ov)
-        elif _why != "already-current":
+            _info("%s.dtbo: not shipped by the OS and none vendored" % _ov)
+        else:
             _warn("could not install %s.dtbo: %s" % (_ov, _why))
     if not draws.overlay_available():
         _fail("draws.dtbo is not in /boot/firmware/overlays and OASIS has none "
@@ -519,6 +515,21 @@ def main(argv=None):
     card_present = draws.sound_card_present(draws_audio.CARD_MATCH)
     code = draws_audio.decide_exit_code(overlay_changed, card_present)
     if code == 10:
+        # Already booted with dtoverlay=draws and the codec still is not there:
+        # the overlay that loads is the suspect, so swap in ours.
+        if draws.overlay_fallback_needed(overlay_changed, card_present):
+            repaired = [r for r in draws.replace_overlays() if r[1]]
+            if repaired:
+                for _ov, _changed, _why in repaired:
+                    _warn("%s.dtbo did not bring the card up — installed OASIS's "
+                          "known-good overlay (%s; original kept as %s.dtbo%s)."
+                          % (_ov, _why, _ov, overlays.BACKUP_SUFFIX))
+                _info("Reboot once more and re-run to apply the ALSA mixer routing.")
+                print()
+                ptt_reminder()
+                return code
+            _warn("The DRAWS overlay is already OASIS's and the codec still has "
+                  "not enumerated, so this is not an overlay problem.")
         _warn("Reboot required: the sound card appears only after the overlay loads.")
         _info("After rebooting, re-run this script to apply the ALSA mixer routing.")
         print()
