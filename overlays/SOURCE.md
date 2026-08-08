@@ -68,9 +68,10 @@ find arch -name 'draws.dtbo' -o -name 'udrc.dtbo'
 Copy the two files into this directory to re-vendor them. The installer puts
 them in place; you do not copy them to `/boot` by hand.
 
-**Licence:** these overlays are built from the Raspberry Pi Linux kernel source
-(GPL-2.0). The sources are the upstream tree named above at the commit produced
-by the shallow clone; no OASIS patch is applied.
+**Licence: GPL-2.0 — NOT OASIS's MIT licence.** See the offer at the end of this
+file. `draws.dtbo` and `udrc.dtbo` are compiled from the device-tree sources in
+the Raspberry Pi Linux kernel tree and carry that tree's licence. **No OASIS
+patch is applied** — they are the upstream sources, built unmodified.
 
 ---
 
@@ -88,3 +89,36 @@ The build-time fetch refreshes it; deleting the file falls back to that fetch,
 and deleting both falls back to whatever the OS provides.
 
 **Rebuild:** not built by us — take the published binary from the URL above.
+
+**Licence:** redistributed as published by M5Stack, unmodified. Its terms are
+whatever that repository states; OASIS asserts nothing about them and adds no
+licence of its own. **Confirm the upstream terms before relying on
+redistribution** — this file records what we know, not a legal opinion.
+
+---
+
+## Written offer for corresponding source (GPL-2.0)
+
+This applies to `draws.dtbo` and `udrc.dtbo`. They are **not** covered by the MIT
+licence OASIS itself uses: they are compiled from GPL-2.0 device-tree sources in
+the Raspberry Pi Linux kernel, and redistributing a binary built from that source
+carries an obligation to make the corresponding source available.
+
+**The corresponding source** is the Raspberry Pi Linux kernel tree at
+<https://github.com/raspberrypi/linux>, unmodified. OASIS applies no patch of any
+kind; the exact procedure that produced these binaries — tools, clone, defconfig,
+`make dtbs` — is written out above, so anyone can reproduce them from that public
+tree.
+
+**On request**, the OASIS maintainer will supply the complete corresponding
+source for these binaries, on a medium customarily used for software interchange,
+for no more than the cost of physically performing the distribution. Ask via the
+project's issue tracker.
+
+**If you would rather not receive them at all:** delete the `.dtbo` files from
+this directory. The installer then reports "none vendored — using the OS copy"
+and leaves the system's own overlays alone, and any box already overridden is
+restored from its `.oasis-orig` backup. Nothing about OASIS requires you to use
+the blobs we ship.
+
+*(This is a plain-language statement of intent and practice, not legal advice.)*

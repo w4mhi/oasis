@@ -432,6 +432,14 @@ OASIS is released under the **[MIT License](LICENSE)** © 2026 W4MHI — free to
 
 > ℹ️ **Third-party data and services keep their own licenses/terms.** OpenStreetMap map data is **ODbL**; **RepeaterBook** CSV exports are **not redistributable** (download your own); satellite transmitter data from **SatNOGS** (CC BY-SA) and **CelesTrak** TLEs are fetched at build time and go stale in days; radio manuals are copyright their manufacturers; and the companion services (GrayWolf, Pat, Kiwix, ttyd, OpenWebRX, dump1090-fa) ship under their respective upstream licenses.
 
+> ⚠️ **`overlays/` ships compiled binaries under a different licence.** The DRAWS
+> device-tree overlays (`draws.dtbo`, `udrc.dtbo`) are built from the Raspberry Pi
+> Linux kernel sources and are **GPL-2.0, not MIT** — Pi OS ships versions that do
+> not bring the HAT up on kernel 6.18.34, so OASIS vendors working ones to keep a
+> from-scratch install offline. Provenance, the full rebuild recipe, and a written
+> offer for the corresponding source are in **[`overlays/SOURCE.md`](overlays/SOURCE.md)**.
+> Deleting those files falls back to whatever the OS provides.
+
 ---
 
 ## 🤖 How OASIS Is Built

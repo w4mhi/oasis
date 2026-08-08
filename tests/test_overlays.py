@@ -344,3 +344,47 @@ class NoStaleDisplaysPathTest(unittest.TestCase):
             text = fh.read()
         self.assertIn('- "features/**"', text)
         self.assertNotIn('- "displays/**"', text)
+
+
+class LicenceDisclosureTest(unittest.TestCase):
+    """OASIS is MIT, but overlays/ ships GPL-2.0-derived binaries.
+
+    Redistributing a binary built from GPL source carries an obligation to make
+    the corresponding source available. The position is clean — unmodified
+    upstream, publicly available, reproducible from the recipe above — but only
+    if it is actually WRITTEN DOWN. A committed binary whose licence nobody
+    stated is the failure mode; these assertions make it a build failure rather
+    than something discovered by a downstream packager.
+    """
+
+    def _doc(self):
+        with open(os.path.join(overlays.REPO_ROOT, "overlays", "SOURCE.md"),
+                  encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_the_gpl_binaries_carry_a_written_offer(self):
+        text = self._doc()
+        self.assertIn("GPL-2.0", text)
+        self.assertIn("corresponding source", text.lower())
+        self.assertIn("github.com/raspberrypi/linux", text,
+                      "the offer must name the tree the source comes from")
+
+    def test_it_says_these_are_not_under_the_project_licence(self):
+        """The dangerous assumption is that everything in an MIT repo is MIT."""
+        text = self._doc()
+        self.assertIn("not", text.lower())
+        self.assertIn("MIT", text, "SOURCE.md must say these are NOT MIT")
+
+    def test_the_readme_points_at_the_offer(self):
+        """Nobody reads overlays/SOURCE.md unprompted; the licence section of the
+        README is where a packager or contributor actually looks."""
+        with open(os.path.join(overlays.REPO_ROOT, "README.md"),
+                  encoding="utf-8") as fh:
+            readme = fh.read()
+        self.assertIn("overlays/SOURCE.md", readme)
+        self.assertIn("GPL-2.0", readme)
+
+    def test_the_project_licence_file_the_readme_links_to_exists(self):
+        path = os.path.join(overlays.REPO_ROOT, "LICENSE")
+        self.assertTrue(os.path.isfile(path),
+                        "README links to ./LICENSE — a badge is not a licence")
