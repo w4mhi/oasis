@@ -82,7 +82,7 @@ The daemon-backed cards in the dashboard **SERVICES** strip. Once **[service con
 The dashboard **OPS** grid, in the same sub-groups:
 
 - **🛠 SYSOP** — **OASIS Setup** (visual health check) · **OASIS Diagnostics** · **Net Logger** (net check-in log with callsign/name/location/traffic and CSV export). → [Setup](docs/SETUP.md#server-setup)
-- **🗺 Monitor** — **Traffic Map** (the live map above) · **🛰️ Satellites** *(Pi)*: an offline pass predictor for the ham and weather birds — a roster from **SatNOGS** (downlink freqs + modes) and **CelesTrak** (TLEs), next-pass times, peak elevation, and a live sky/footprint view via **Skyfield/SGP4**, all computed on the Pi. Baked into the offline bundle at build time. **Monitored·1h / All·1h** views, a **Filters** menu (capability · band · orbit class LEO/MEO/GEO/HEO), Morse-"V" + spoken pass alerts, and **live SDR audio** (arm a downlink → Listen or Record through the pass: FM/APRS · CW · SSB). → [Setup](docs/SETUP.md#satellites)
+- **🗺 Monitor** — **Traffic Map** (the live map above) · **🛰️ Satellites** *(Pi)*: an offline pass predictor for the ham and weather birds — a roster from **SatNOGS** (downlink freqs + modes) and **CelesTrak** (TLEs), next-pass times, peak elevation, and a live sky/footprint view via **Skyfield/SGP4**, all computed on the Pi. Baked into the offline bundle at build time. **Monitored·1h / All·1h** views, a **Filters** menu (capability · band · orbit class LEO/MEO/GEO/HEO), Morse-"V" + spoken pass alerts at T-10/T-5 that **the touch kiosk sounds too** (bells live in the shared roster, so arming one on a laptop wakes the shack; muting is per-screen), and **live SDR audio** (arm a downlink → Listen or Record through the pass: FM/APRS · CW · SSB). → [Setup](docs/SETUP.md#satellites)
 - **📋 ICS Forms** — ICS **205 · 213 · 214 · 309** on official FEMA AcroForm PDF templates. Import/export CSV, auto-save to localStorage, import frequencies from CHIRP. → [Setup](docs/SETUP.md#ics-forms)
 - **🔎 Lookup** — **FCC callsign lookup** (sub-millisecond binary search over a local copy of the FCC amateur DB by **callsign** exact/prefix, **name**, or **Maidenhead grid**) · **Repeater Book** · **Band Plan** · **Radio Cards** · **ITU country prefixes**. → [FCC](docs/SETUP.md#fcc-callsign-lookup) · [Repeater Book](docs/SETUP.md#repeater-book)
 - **📚 Library** — **Radio Manuals** (drop your own PDFs into `static/radio-manuals/`) · **GrayWolf Handbook** · **OASIS Handbook** · **Repeater Guide** · **Wikipedia** · **Winlink Radio Settings**. → [Setup](docs/SETUP.md#reference-library)
@@ -197,7 +197,7 @@ On a Pi, **`setup-oasis.py` is the front door** — it delegates to the individu
 | Menu item | Default | What it gives you |
 |---|:--:|---|
 | Kiosk mode (Chromium fullscreen) | ⬜ | Auto-start + fullscreen Chromium kiosk of the desktop dashboard. |
-| Kiosk mode — OASIS Dashboard, 7″ (800×480) | ⬜ | Fullscreen kiosk of the touch-first OASIS Dashboard on a 7″ panel. |
+| Kiosk mode — OASIS Dashboard, 7″ (800×480) | ⬜ | Fullscreen kiosk of the touch-first OASIS Dashboard on a 7″ panel. Sounds satellite pass alerts on the Pi itself. |
 | Kiosk mode — OASIS Dashboard, 10″ wide (1920×1200) | ⬜ | The same OASIS Dashboard kiosk, tuned for a 10″ 1920×1200 panel. |
 | Desktop launcher icon | ⬜ | Clickable OASIS desktop shortcut. |
 

@@ -22,7 +22,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [Kiwix / Wikipedia](#kiwix--wikipedia)
 - [RTL-SDR](#rtl-sdr)
 - [OpenWebRX (SIGINT)](#openwebrx-sigint)
-- [ADS-B Aircraft](#adsb-aircraft)
+- [ADS-B Aircraft](#ads-b-aircraft)
 - [Satellites](#satellites)
 - [GPS time sync (gpsd + chrony)](#gps-time-sync-gpsd--chrony)
 - [Hardware RTC (Witty Pi 3 · BigTreeTech 7″)](#hardware-rtc-witty-pi-3--bigtreetech-7)
@@ -1565,10 +1565,85 @@ still chime without it.
   metadata arrives; an active-filter count shows on the collapsed button.
 - **Monitored·1h / All·1h** — the birds you've armed (🔔) versus *every* bird
   passing in the next hour, each sorted by next-pass time.
-- **Pass alerts** — a Morse-"V" chime at T-10 minutes; with the voice stack, a
-  spoken announcement of which bird is coming and its peak elevation.
+- **Pass alerts** — a Morse-"V" chime at T-10 minutes and again (higher-pitched)
+  at T-5; with the voice stack, a spoken announcement of which bird is coming and
+  its peak elevation. There is deliberately no alert at AOS — by the time the
+  bird is over the horizon it's too late to get the rig on frequency.
+  **The bell is stored in the shared roster, not in your browser**, so a bell
+  armed on a laptop reaches every screen, including the kiosk (see below).
+  **Muting is per-device** — silencing the shack kiosk overnight leaves a laptop
+  chiming, and vice versa.
 - **Sky / footprint** — a live footprint drawn from 15 min before AOS through
   LOS, brightening with elevation.
+
+### Pass alerts on the kiosk (the shack hears them)
+
+The Chromium kiosk chimes and speaks pass alerts itself, so the shack gets a
+warning without a laptop being open. It alerts on **whatever bells are armed in
+the roster** — arm them from the Satellites page on any device — and shows a bell
+on each armed row. The **bell glyph beside the SATELLITES title mutes this
+screen** (amber = alerts live, dim + crossed bell = muted); that mute is local to
+the Pi, so it doesn't quieten anything else.
+
+Two things must be in place, and **both fail silently**:
+
+```bash
+# 1. The kiosk launcher must pass --autoplay-policy=no-user-gesture-required.
+#    Re-run the installer if your kiosk predates it, then reboot:
+python3 scripts/enable-autostart-pi.py --with-browser
+
+# 2. Optional, for the SPOKEN part (the chime works without it):
+python3 services/satellites/install-voice.py
+```
+
+> ⚠️ **Why the flag matters.** Browsers keep an audio context *suspended* until
+> someone clicks or taps. On a laptop that's invisible — you interacted with the
+> page to arm the bell. A kiosk boots unattended and is never touched, so no
+> gesture ever arrives and **no chime ever sounds**, with nothing on screen to say
+> why. The launcher only gets rewritten when you re-run the command above, so an
+> existing kiosk keeps its old flags until you do.
+
+### Debug — the kiosk makes no sound
+
+Work down this list; each step rules out one layer.
+
+```bash
+# 1. Does the launcher carry the flag? (empty output = this is your problem)
+grep -o 'autoplay-policy=[^ ]*' /usr/local/bin/oasis-browser-launch
+
+# 2. Is a bell actually armed? (the roster is the source of truth, not the browser)
+curl -s http://localhost:8083/api/satellites | python3 -c "
+import json,sys
+armed = [s for s in json.load(sys.stdin)['satellites'] if s.get('bell')]
+print('\n'.join(f\"{s['norad']} {s['name']}\" for s in armed)
+      or 'NO BELLS ARMED — arm one on the Satellites page')"
+
+# 3. Can the Pi make ANY sound, and out of which device?
+aplay -l                                   # list playback devices
+speaker-test -c2 -t sine -f 660 -l1        # should be audible; Ctrl+C to stop
+
+# 4. Is a TTS voice installed? (chime works without one; the voice does not)
+spd-say "test" && echo "speech-dispatcher OK"
+```
+
+- **Flag present, bell armed, `speaker-test` audible, still silent:** check the
+  kiosk isn't muted — the bell beside the SATELLITES title should be **amber**, not
+  dim. That mute persists across reboots.
+- **`speaker-test` is audible but the chime isn't:** the default ALSA sink may be
+  the **radio codec** (DRAWS / DRA), not a speaker — the sound is going into the
+  transmit audio path. Check which card `aplay -l` lists first, and set the
+  desired one as default in `/etc/asound.conf` or `~/.asoundrc`.
+- **Chime sounds but nothing is spoken:** the voice stack is missing or Chromium
+  was started without `--enable-speech-dispatcher`. Run `install-voice.py`, then
+  re-run the kiosk installer and reboot. Alerts are designed to degrade to
+  chime-only, so this is cosmetic, not broken.
+- **Nothing at all, and you're testing from a laptop browser:** that's expected on
+  a page you haven't clicked yet. Click anywhere on the page once, then wait for
+  the next alert — the flag only covers the kiosk.
+
+To test without waiting for a real pass, arm a bell on a bird rising in ~15
+minutes and leave the kiosk up: you should get a 620 Hz "VVV" at T-10, the spoken
+name, then a higher 780 Hz "VVV" at T-5.
 
 ### Live SDR audio (RTL-SDR)
 
@@ -1652,15 +1727,32 @@ cgps -s      # live GPS screen — press 'q' or Ctrl+C to quit
 ```
 Read the top-left of the screen:
 - **`Status: 3D FIX`**, **`Used: 6`** (or more satellites), **`HDOP`** around **1–2** = a solid fix. This is what you want before trusting the clock or beaconing your position.
-- **`Status: NO FIX`** / **`Used: 0`** = powered but not locked. Go outside with a clear view of the sky and wait 1–5 minutes (cold start); indoors it may never lock.
+- **`Status: NO FIX`** but the satellite table on the right lists birds (any SNR at all) = the chain works and it's **acquiring**. Go outside with a clear view of the sky; a cold receiver needs 1–5 minutes to download the almanac, and indoors it may never lock.
+- **`Status: NO FIX` and the satellite table is EMPTY** = the receiver hears *nothing*. That's the **antenna, not the sky**, and waiting will not fix it: check it's in the GPS jack (a combo board has more than one SMA), that an *active* antenna is getting bias power, and that the cable isn't damaged.
 - **Blank screen / "connection refused" / "no gpsd"** = gpsd isn't running or isn't pointed at the receiver → `systemctl status gpsd`.
+
+> **Seen vs. used is the fork that matters.** "0 satellites in use" is the same
+> reading whether the antenna is unplugged or the receiver is simply warming up,
+> and those need opposite responses. The count of satellites *in view* is what
+> tells them apart — which is why the feature `--check` scripts now report both.
 
 Prefer raw numbers to the full screen?
 
 ```bash
-gpspipe -w -n 10 | grep -oE '"mode":[0-9]|"uSat":[0-9]+|"hdop":[0-9.]+'
+gpspipe -w -n 10 | grep -oE '"mode":[0-9]|"uSat":[0-9]+|"nSat":[0-9]+|"hdop":[0-9.]+'
 # "mode":3 = 3D fix (good) · "mode":2 = 2D (marginal) · "mode":1 = no fix
-# "uSat" = satellites used · "hdop" < 2 = good geometry, > 5 = poor
+# "nSat" = satellites SEEN · "uSat" = used · "hdop" < 2 = good geometry, > 5 = poor
+# nSat 0 = antenna fault (see above). nSat high + uSat 0 = still acquiring.
+```
+
+Or let the feature script do the interpreting for you — it reports device nodes,
+whether the receiver is talking, how many satellites it sees versus uses, and
+whether gpsd and chrony are steering:
+
+```bash
+python3 features/gps/install-gps.py --check          # USB / serial GPS
+python3 features/gps-L76X/install-gps-l76x.py --check
+python3 features/draws-gps/install-draws-gps.py --check
 ```
 
 **(b) Is chrony disciplining the clock from GPS?**
