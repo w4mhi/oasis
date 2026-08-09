@@ -942,6 +942,101 @@ def phase_webssh(bundle_root, update=False):
         _warn("No ttyd binaries downloaded — webssh offline install will not work.")
 
 
+# ── Phase 5d: Piper neural voice (Satellites pass alert) ──────────────────────
+def _fetch_to(url, dest, label):
+    """Stream *url* to *dest* (atomic via .part). True on success.
+
+    Streamed, not read into memory: the voice model is ~60 MB and the build
+    machine may be the same Pi that will run it.
+    """
+    tmp = dest + ".part"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "oasis"})
+        with urllib.request.urlopen(req, timeout=120) as resp, open(tmp, "wb") as out:
+            shutil.copyfileobj(resp, out, 1 << 20)
+        os.replace(tmp, dest)
+        _cp(f"{label}  ({os.path.getsize(dest) // (1 << 20)} MB)")
+        return True
+    except Exception as e:
+        for p in (tmp,):
+            if os.path.exists(p):
+                os.remove(p)
+        _warn(f"{label}: {e}")
+        return False
+
+
+def phase_satellites_piper(bundle_root, update=False):
+    """Phase 5d: the Piper TTS engine tarballs and the voice model.
+
+    Engine and voice share one bundle_group, so both land in
+    M.bundle_dir(bundle_root, 'satellites-piper') — NOT suite-scoped, because
+    these are raw upstream tarballs rather than .debs.
+
+    OASIS ships neither file. This runs on the OPERATOR's connected build
+    machine while they prepare their own USB/SD, exactly as the Wikipedia ZIM
+    and FCC database do — which is also what keeps OASIS out of the business of
+    redistributing a voice model under someone else's licence.
+
+    Optional throughout: a failure here warns and continues, because a bundle
+    without Piper still installs a station whose pass alerts speak (espeak
+    +Steph2, via the voice ladder in common/js/sat-alerts.js).
+    """
+    feature = "satellites-piper"
+    piper_dir = M.bundle_dir(bundle_root, feature)
+    feat = M.get_feature(feature)
+    version = feat.get("version")
+    arches = M.feature_arches(feature)
+
+    voice_feat = M.get_feature("satellites-piper-voice")
+    voice = voice_feat["voice"]
+
+    _section("Phase 5d — Piper neural voice (Satellites pass alert)")
+    _info(f"Version : piper {version}")
+    _info(f"Targets : {', '.join(arches)}")
+    _info(f"Voice   : {voice}")
+    os.makedirs(piper_dir, exist_ok=True)
+
+    got = 0
+    for arch in arches:
+        asset = feat["asset_pattern"].format(arch=arch, version=version)
+        dest = os.path.join(piper_dir, asset)
+        if os.path.exists(dest):
+            _cp(f"{asset}  (up to date)")
+            got += 1
+            _write_resolved(feature, None, arch, {"piper": version})
+            continue
+        url = f"https://github.com/{feat['repo']}/releases/download/{version}/{asset}"
+        if _fetch_to(url, dest, asset):
+            got += 1
+            _write_resolved(feature, None, arch, {"piper": version})
+
+    # The .onnx is useless without its .onnx.json sidecar (sample rate, phoneme
+    # map) — Piper refuses to load a half voice, and the Pi that discovers this
+    # has no internet left to fix it. Count them together for that reason.
+    voices = 0
+    for pattern in voice_feat["files"]:
+        name = pattern.format(voice=voice)
+        dest = os.path.join(piper_dir, name)
+        if os.path.exists(dest):
+            _cp(f"{name}  (up to date)")
+            voices += 1
+            continue
+        url = f"{voice_feat['base_url']}/{voice_feat['voice_dir']}/{name}"
+        if _fetch_to(url, dest, name):
+            voices += 1
+
+    if got and voices == len(voice_feat["files"]):
+        _ok(f"Piper ready in {os.path.relpath(piper_dir)}/ "
+            f"({got}/{len(arches)} engines, voice {voice})")
+    elif voices and not got:
+        _warn("Voice model downloaded but no engine — install will fall back to espeak.")
+    elif got and not voices:
+        _warn(f"Engine downloaded but voice {voice} is incomplete — Piper will not "
+              "load a voice missing its .onnx.json sidecar.")
+    else:
+        _warn("Piper not bundled — pass alerts will still speak, using espeak +Steph2.")
+
+
 def _file_sha256(path):
     """SHA-256 of a (possibly large) file, streamed in 1 MiB chunks."""
     h = hashlib.sha256()
@@ -1954,6 +2049,7 @@ def cmd_build(skip_windows, rebuild=False, all_platforms=False, profile="full"):
         phase_pat(pkg_root, update=True)
         phase_direwolf(pkg_root, update=True)
         phase_satellites_voice(pkg_root, update=True)
+        phase_satellites_piper(pkg_root, update=True)
         phase_satellites_roster(out_dir)
         phase_adsb(pkg_root, update=True)
         phase_cm4stack(pkg_root, update=True)
@@ -2026,6 +2122,7 @@ def cmd_update(target_dir, all_platforms=False):
     phase_pat(pkg_root, update=True)
     phase_direwolf(pkg_root, update=True)
     phase_satellites_voice(pkg_root, update=True)
+    phase_satellites_piper(pkg_root, update=True)
     phase_satellites_roster(target_dir)
     phase_adsb(pkg_root, update=True)
     phase_cm4stack(pkg_root, update=True)

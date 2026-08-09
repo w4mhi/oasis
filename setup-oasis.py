@@ -130,6 +130,11 @@ FEATURES = [
             "Server", default=True, needs=["server"],
             recommend="AP fallback armed — the Pi hosts the OASIS Wi-Fi (password oasis-emcomm) when no known network is in range."),
 
+    Feature("satellites-piper", "Natural pass-alert voice (Piper)", "services/satellites/install-piper.py",
+            "Swap the robotic espeak pass-alert voice for Piper, a neural voice trained on recorded speech. Optional — without it alerts still speak, using espeak's female variant. Needs the engine and voice model in your offline bundle: build it on a connected machine with scripts/create-oasis-offline.py, which downloads ~60 MB from upstream. Runs on any Pi (32- and 64-bit); a Pi 3 takes a few seconds per sentence, which is fine for an alert that fires ten minutes ahead.",
+            "Display", default=False, needs=["satellites"],
+            recommend="Piper voice installed — restart the browser, then the next pass alert speaks in the neural voice."),
+
     # ── Display: local screen — Chromium kiosk / desktop launcher ──────────────
     Feature("kiosk", "Kiosk mode (Chromium fullscreen)", "enable-autostart-pi.py",
             "Auto-start the server and launch a fullscreen Chromium kiosk on the Pi's screen. Raspberry Pi OS with Desktop.",

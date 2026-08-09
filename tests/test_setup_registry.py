@@ -74,3 +74,39 @@ class DrawsFeaturesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PiperVoiceFeatureTest(unittest.TestCase):
+    """The Piper voice is an OPT-IN upgrade to the pass alert, not a requirement.
+
+    The contract worth pinning is the fallback: a station whose bundle carries no
+    engine or no voice model must still install cleanly and simply keep speaking
+    with espeak's +Steph2 variant. Nothing here may make satellites depend on
+    Piper — that would turn an optional enhancement into an install failure on
+    every box built without a 60 MB download.
+    """
+
+    def setUp(self):
+        self.reg = R.build_registry("/tmp/oasis-test-repo")
+
+    def test_piper_depends_on_satellites_not_the_reverse(self):
+        # satellites installs speech-dispatcher, which Piper plugs into as a
+        # generic output module. The reverse dependency would make the voice
+        # mandatory.
+        self.assertIn("satellites", self.reg["satellites-piper"].dependencies)
+        self.assertNotIn("satellites-piper", self.reg["satellites"].dependencies)
+
+    def test_piper_is_privileged_and_allowlisted(self):
+        # Writes /etc/speech-dispatcher/* and /opt — root, so it must be routed
+        # to the installer worker rather than run in-process.
+        self.assertTrue(self.reg["satellites-piper"].privileged)
+        self.assertIn("satellites-piper", R.PRIVILEGED_FEATURES)
+
+    def test_piper_removal_record_uninstalls_rather_than_deleting_paths(self):
+        """Removal must run the script's own --uninstall, not rm a path list: the
+        module has to be deregistered from speechd.conf, and only the script
+        knows which lines it wrote."""
+        rec = self.reg["satellites-piper"].removal_record_fn()
+        self.assertIn("script", rec)
+        self.assertIn("--uninstall", rec["script"])
+        self.assertTrue(rec["script"][0].endswith("install-piper.py"))

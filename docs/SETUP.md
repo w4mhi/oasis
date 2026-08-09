@@ -1637,6 +1637,46 @@ spd-say "test" && echo "speech-dispatcher OK"
   was started without `--enable-speech-dispatcher`. Run `install-voice.py`, then
   re-run the kiosk installer and reboot. Alerts are designed to degrade to
   chime-only, so this is cosmetic, not broken.
+
+  Note the flag lives in a **generated** launcher, `/usr/local/bin/oasis-browser-launch`.
+  Adding a flag to `scripts/enable-autostart-pi.py` does not update a Pi that was
+  set up earlier — nothing re-runs the installer on upgrade. A kiosk installed
+  before the flag existed is silently mute:
+
+  ```bash
+  pgrep -af chromium | grep -o -- '--enable-speech-dispatcher' || echo "FLAG ABSENT"
+  ```
+
+  Healthy: prints the flag. Broken: `FLAG ABSENT` — re-run the kiosk installer
+  (`--resolution 800x480` or `1920x1200` for the dashboard kiosk; plain
+  `--with-browser` gives the index.html kiosk instead) and restart the session.
+- **The voice sounds robotic and male:** that's espeak-ng, and it is the expected
+  floor. `speech-dispatcher` publishes ~14,800 voices (every espeak variant crossed
+  with every language), so the page picks deliberately rather than taking whatever
+  sorts first — see the ladder in `common/js/sat-alerts.js`. Check what it chose:
+
+  ```bash
+  # in the kiosk browser console
+  oasisSatPickVoice(speechSynthesis.getVoices()).name
+  ```
+
+  Healthy: `jenny-piper` (Piper installed) or `English (America)+Steph2` (espeak
+  female, the free fallback). Broken: a male variant such as `+Adam`, meaning
+  neither preference matched — confirm `install-voice.py` has run.
+- **"No ONNX voice" when installing Piper:** the offline bundle has no voice model,
+  or it is missing its `.onnx.json` sidecar (Piper will not load half a voice).
+  OASIS ships neither file by design — rebuild the bundle on a connected machine
+  with `scripts/create-oasis-offline.py`, which downloads them from upstream.
+  Install continues either way; alerts fall back to espeak `+Steph2`.
+
+  ```bash
+  spd-say -o oasis-piper 'pass alert test'
+  ```
+
+  Healthy: you hear the neural voice. Broken: silence or an unknown-module error —
+  check `/etc/speech-dispatcher/modules/oasis-piper.conf` exists and that
+  `speechd.conf` carries the `AddModule "oasis-piper"` line between the
+  `# BEGIN OASIS piper` markers.
 - **Nothing at all, and you're testing from a laptop browser:** that's expected on
   a page you haven't clicked yet. Click anywhere on the page once, then wait for
   the next alert — the flag only covers the kiosk.

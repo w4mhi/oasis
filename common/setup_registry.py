@@ -334,7 +334,8 @@ def _setup_dashboard_install_fn(repo_root, payload):
 # caller is already root).
 PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
-    "openwebrx", "adsb", "satellites", "rtl-sdr", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
+    "openwebrx", "adsb", "satellites", "satellites-piper",
+    "rtl-sdr", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
     "rtc-raspad",
     "draws-gps", "draws-audio",
     "pi-headless", "pi-local-monitor", "pi-oasis-dashboard", "cm4stack", "rgb-cooling-hat",
@@ -454,6 +455,25 @@ def build_registry(repo_root, payload=None):
                 {"script": "services/satellites/install-voice.py", "timeout": 600},
             ]),
             removal_record_fn=lambda: _satellites_removal_record(repo_root),
+            verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
+        # Optional upgrade to the pass-alert voice: Piper (neural) instead of
+        # espeak's formant synthesis. Depends on `satellites` because that is what
+        # installs speech-dispatcher — Piper reaches Chromium through it, as a
+        # generic output module. Self-guards when the bundle has no engine or no
+        # voice, so a station built without them installs cleanly and simply keeps
+        # the espeak fallback.
+        "satellites-piper": SE.FeatureSpec(
+            key="satellites-piper",
+            dependencies=["satellites"],
+            install_fn=lambda: _setup_run_script(
+                repo_root, "services/satellites/install-piper.py", timeout=600),
+            removal_record_fn=lambda: {
+                "script": [os.path.join(repo_root, "services/satellites/install-piper.py"),
+                           "--uninstall"],
+            },
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
