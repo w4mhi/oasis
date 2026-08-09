@@ -465,6 +465,54 @@
         }
       }
     },
+    "satellites-piper": {
+      "type": "github-release",
+      "bundle_group": "satellites-piper",
+      "bundle_base": "services/satellites/packages",
+      "description": "Piper neural text-to-speech engine for the Satellites pass alert — a natural voice instead of espeak-ng's formant synthesis. Optional and OPT-IN: without it the alert still speaks, using the espeak female variant (+Steph2) the voice ladder falls back to. Self-contained release tarball (carries its own espeak-ng-data), so no Python wheels and no 32-bit gap.",
+      "_note": "The tarball is the ENGINE ONLY and contains no voice. The .onnx model is a separate manifest feature (satellites-piper-voice) that shares this bundle_group, so both land in one directory for the installer.",
+      "_note_espeak": "Piper embeds espeak-ng but does NOT use it to make sound — only to turn text into phonemes. The audio comes from the neural model. The espeak variants shipped inside the tarball (Belinda, Steph2, …) are dead weight here and have no effect on Piper's output.",
+      "_note_armv7l": "Arch strings are the UPSTREAM asset names (aarch64/armv7l), not Debian arches (arm64/armhf) — this is a raw tarball, not a .deb. armv7l is why the binary is used instead of the piper-tts PyPI package, which needs onnxruntime and has no 32-bit ARM wheels.",
+      "repo": "rhasspy/piper",
+      "version": "2023.11.14-2",
+      "asset_pattern": "piper_linux_{arch}.tar.gz",
+      "arches": [
+        "aarch64",
+        "armv7l"
+      ],
+      "resolved": {
+        "_": {
+          "aarch64": {
+            "piper": "2023.11.14-2"
+          },
+          "armv7l": {
+            "piper": "2023.11.14-2"
+          }
+        }
+      }
+    },
+    "satellites-piper-voice": {
+      "type": "url",
+      "bundle_group": "satellites-piper",
+      "bundle_base": "services/satellites/packages",
+      "description": "Voice model for the Piper pass-alert engine: en_GB-jenny_dioco-medium, chosen by ear against amy and lessac. Two files — the .onnx (~60 MB) and its .onnx.json sidecar (sample rate, phoneme map); Piper will not load one without the other. Arch-independent.",
+      "_note_redistribution": "OASIS SHIPS NEITHER FILE. The operator's own create-oasis-offline.py run downloads them from upstream while building their USB/SD before an event — the same posture as the Wikipedia ZIM and the FCC database. That is deliberate: it keeps a large binary out of the repo AND leaves the model's licence between the operator and upstream rather than making OASIS a redistributor.",
+      "_note_quality": "'medium' is the quality sweet spot on a Pi: measured RTF 0.21 on a Pi 5 (0.92 s inference for 4.38 s of audio, plus a 0.37 s model load). A Pi 3 is roughly 5-8x slower, so ~5-8 s per sentence — still fine, because the alert fires ten minutes ahead and the chime has already carried it. 'high' costs more for no gain on a kiosk speaker.",
+      "base_url": "https://huggingface.co/rhasspy/piper-voices/resolve/main",
+      "voice": "en_GB-jenny_dioco-medium",
+      "voice_dir": "en/en_GB/jenny_dioco/medium",
+      "files": [
+        "{voice}.onnx",
+        "{voice}.onnx.json"
+      ],
+      "resolved": {
+        "_": {
+          "any": {
+            "en_GB-jenny_dioco-medium": "main"
+          }
+        }
+      }
+    },
     "satellites": {
       "type": "pypi",
       "bundle_group": "server",

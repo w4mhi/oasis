@@ -331,6 +331,46 @@ class TestManifestSanity(unittest.TestCase):
                 pkgs = M.apt_packages("satellites-voice", suite=suite, m=self.m)
                 self.assertIn("speech-dispatcher-audio-plugins", pkgs)
 
+    def test_satellites_piper_is_github_release(self):
+        self.assertEqual(M.source_type("satellites-piper", self.m), "github-release")
+
+    def test_satellites_piper_covers_32_bit_arm(self):
+        """armv7l is the whole reason the standalone binary is used instead of
+        the piper-tts PyPI package: onnxruntime publishes no 32-bit ARM wheels,
+        so a wheel-based Piper would silently exclude every 32-bit Pi. Losing
+        this arch would reintroduce that gap without any test going red."""
+        arches = M.get_feature("satellites-piper", self.m)["arches"]
+        self.assertIn("armv7l", arches)
+        self.assertIn("aarch64", arches)
+
+    def test_satellites_piper_arches_are_upstream_asset_names(self):
+        """These are raw release tarballs, so the arch strings must match the
+        UPSTREAM asset names (aarch64/armv7l), not Debian's arm64/armhf. Using
+        the Debian spelling would 404 at bundle time."""
+        arches = M.get_feature("satellites-piper", self.m)["arches"]
+        self.assertNotIn("arm64", arches)
+        self.assertNotIn("armhf", arches)
+
+    def test_piper_engine_and_voice_land_in_one_directory(self):
+        """The tarball carries NO voice and the .onnx is useless without the
+        binary, so the two features share a bundle_group — the installer reads
+        one directory. If they ever diverge, the installer finds half a stack."""
+        self.assertEqual(M.bundle_group("satellites-piper", self.m), "satellites-piper")
+        self.assertEqual(M.bundle_group("satellites-piper-voice", self.m), "satellites-piper")
+        engine = M.bundle_dir("/bundle/offline-packages", "satellites-piper", m=self.m)
+        voice = M.bundle_dir("/bundle/offline-packages", "satellites-piper-voice", m=self.m)
+        self.assertEqual(engine, voice)
+        self.assertEqual(
+            engine, os.path.join("/bundle", "services/satellites/packages", "satellites-piper"))
+
+    def test_satellites_piper_voice_ships_both_files(self):
+        """Piper will not load an .onnx without its .onnx.json sidecar (sample
+        rate, phoneme map). Bundling one without the other yields a voice that
+        fails at synthesis time, on a box with no internet to fetch the rest."""
+        files = M.get_feature("satellites-piper-voice", self.m)["files"]
+        self.assertIn("{voice}.onnx", files)
+        self.assertIn("{voice}.onnx.json", files)
+
     def test_satellites_is_pypi(self):
         """The pass-prediction stack is a pypi group (distinct from the apt
         'satellites-voice' group)."""
