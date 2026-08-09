@@ -36,6 +36,13 @@ class PlayerProbeTest(unittest.TestCase):
         with mock.patch("shutil.which", side_effect=which):
             self.assertEqual(speech_play.player(), "/usr/bin/aplay")
 
+    def test_paplay_wins_over_aplay(self):
+        # The middle of a three-step order is the step that silently rots.
+        def which(name):
+            return None if name == "pw-play" else f"/usr/bin/{name}"
+        with mock.patch("shutil.which", side_effect=which):
+            self.assertEqual(speech_play.player(), "/usr/bin/paplay")
+
     def test_no_player_at_all_is_none_not_a_crash(self):
         with mock.patch("shutil.which", return_value=None):
             self.assertIsNone(speech_play.player())
@@ -92,8 +99,13 @@ class PlayTest(unittest.TestCase):
         self.assertTrue(seen["kwargs"].get("timeout"))
 
     def test_a_nonzero_exit_is_false(self):
+        # stderr MUST be set on the mock. mock.Mock(returncode=1) auto-vivifies
+        # stderr as a child Mock, which is truthy and whose .decode() returns
+        # another Mock — so the error-logging line raises TypeError and the
+        # production code gets blamed for an under-specified test.
         with mock.patch("shutil.which", side_effect=lambda n: f"/usr/bin/{n}"), \
-             mock.patch("subprocess.run", return_value=mock.Mock(returncode=1)):
+             mock.patch("subprocess.run",
+                        return_value=mock.Mock(returncode=1, stderr=b"boom")):
             self.assertFalse(speech_play.play("/tmp/x.wav"))
 
     def test_a_second_call_is_dropped_while_one_is_already_speaking(self):

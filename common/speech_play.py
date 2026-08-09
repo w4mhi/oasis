@@ -63,9 +63,8 @@ def play(path, timeout_s=PLAY_TIMEOUT_S, wait_s=_DEFAULT_WAIT_S):
         r = subprocess.run([exe, path], env=child_env(), capture_output=True,
                            timeout=timeout_s)
         if r.returncode != 0:
-            stderr = r.stderr if isinstance(r.stderr, bytes) else b""
             log.warning("speech: %s exited %s: %s", exe, r.returncode,
-                        stderr.decode("utf-8", "replace").strip()[:200])
+                        (r.stderr or b"").decode("utf-8", "replace").strip()[:200])
         return r.returncode == 0
     except (OSError, subprocess.SubprocessError) as e:
         log.warning("speech: %s failed: %s", exe, e)
