@@ -19,13 +19,23 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 
 from common import config_paths as CP
 
 MAX_TEXT_CHARS = 300
 CACHE_BUDGET_BYTES = 50 * 1024 * 1024      # ~100 KB per phrase → thousands of them
 SYNTH_TIMEOUT_S = 120                      # generous: a Pi 3 is ~5-8x a Pi 5
+SYNTH_WAIT_S = 30                          # how long a caller waits for the lock
 PARAMS_VERSION = "1"                       # bump to invalidate every cached WAV
+
+# gunicorn runs this app with --workers 1 --threads 4 (start-oasis.py,
+# scripts/start-server.sh), so concurrency here is threads within ONE process
+# — a plain threading.Lock is enough. It serialises cache-miss synthesis so N
+# simultaneous requests for N distinct phrases cannot spawn N concurrent piper
+# subprocesses, each loading onnxruntime plus a ~60 MB model: exactly the
+# memory the subprocess design exists to keep off a 2 GB Pi 3.
+_SYNTH_LOCK = threading.Lock()
 
 # Everything except tab (09), newline (0a) and carriage return (0d).
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -108,7 +118,17 @@ def _python(repo_root):
     return cand if os.path.isfile(cand) else sys.executable
 
 
-def synthesize(repo_root, text):
+def _cached(cache, out):
+    if os.path.isfile(out) and os.path.getsize(out) > 0:
+        try:
+            os.utime(out, None)          # touch: prune evicts by age, keep hot entries
+        except OSError:
+            pass
+        return out
+    return None
+
+
+def synthesize(repo_root, text, *, wait_s=SYNTH_WAIT_S):
     """text -> absolute path to a WAV. Raises SpeechRejected / SpeechUnavailable."""
     text = validate(text)
     model = voice_model_path(repo_root)
@@ -117,42 +137,49 @@ def synthesize(repo_root, text):
 
     cache = CP.speech_cache_dir(repo_root)
     out = os.path.join(cache, cache_key(text, os.path.basename(model)) + ".wav")
-    if os.path.isfile(out) and os.path.getsize(out) > 0:
-        try:
-            os.utime(out, None)          # touch: prune evicts by age, keep hot entries
-        except OSError:
-            pass
-        return out
+    hit = _cached(cache, out)
+    if hit:
+        return hit
 
-    tmp = None
+    if not _SYNTH_LOCK.acquire(timeout=wait_s):
+        raise SpeechUnavailable("speech engine is busy, try again shortly")
     try:
-        os.makedirs(cache, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=cache, suffix=".wav.part")
-        os.close(fd)
-        argv = [_python(repo_root), "-m", "piper", "-m", model, "-f", tmp]
-        r = subprocess.run(argv, input=text, text=True, capture_output=True,
-                           timeout=SYNTH_TIMEOUT_S)
-        if r.returncode != 0:
-            raise SpeechUnavailable(
-                f"piper exited {r.returncode}: {(r.stderr or '').strip()[:200]}")
-        if os.path.getsize(tmp) == 0:
-            raise SpeechUnavailable("piper produced an empty file")
-        os.replace(tmp, out)             # atomic: a reader never sees a half WAV
-    except subprocess.TimeoutExpired:
-        raise SpeechUnavailable(f"piper timed out after {SYNTH_TIMEOUT_S}s")
-    except FileNotFoundError as e:
-        raise SpeechUnavailable(f"piper is not installed: {e}")
-    except OSError as e:
-        raise SpeechUnavailable(f"speech cache unavailable: {e}")
-    finally:
-        if tmp and os.path.exists(tmp):
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
+        # Someone may have synthesised this exact phrase while we waited.
+        hit = _cached(cache, out)
+        if hit:
+            return hit
 
-    prune(repo_root)
-    return out
+        tmp = None
+        try:
+            os.makedirs(cache, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=cache, suffix=".wav.part")
+            os.close(fd)
+            argv = [_python(repo_root), "-m", "piper", "-m", model, "-f", tmp]
+            r = subprocess.run(argv, input=text, text=True, capture_output=True,
+                               timeout=SYNTH_TIMEOUT_S)
+            if r.returncode != 0:
+                raise SpeechUnavailable(
+                    f"piper exited {r.returncode}: {(r.stderr or '').strip()[:200]}")
+            if os.path.getsize(tmp) == 0:
+                raise SpeechUnavailable("piper produced an empty file")
+            os.replace(tmp, out)         # atomic: a reader never sees a half WAV
+        except subprocess.TimeoutExpired:
+            raise SpeechUnavailable(f"piper timed out after {SYNTH_TIMEOUT_S}s")
+        except FileNotFoundError as e:
+            raise SpeechUnavailable(f"piper is not installed: {e}")
+        except OSError as e:
+            raise SpeechUnavailable(f"speech cache unavailable: {e}")
+        finally:
+            if tmp and os.path.exists(tmp):
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+
+        prune(repo_root)
+        return out
+    finally:
+        _SYNTH_LOCK.release()
 
 
 def _entries(repo_root):

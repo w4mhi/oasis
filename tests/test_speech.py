@@ -9,6 +9,7 @@ not a comment.
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -215,6 +216,92 @@ class SubprocessShapeTest(unittest.TestCase):
             # the temp file is called <x>.wav.part, so excluding that suffix
             # leaves it asserting only that no finished .wav was produced.
             self.assertEqual(leftovers, [])
+
+
+class SynthesizeConcurrencyTest(unittest.TestCase):
+    """GET /api/speech/say (ec8ee05) made synthesize()'s cache-miss path
+    reachable from anything on the LAN. Without a lock, N simultaneous
+    requests for N distinct uncached phrases spawn N concurrent piper
+    subprocesses, each loading onnxruntime plus a ~60 MB model — exactly the
+    memory the subprocess design exists to keep off a 2 GB Pi 3."""
+
+    @staticmethod
+    def _write_wav_fake_run(argv, **kwargs):
+        out = argv[argv.index("-f") + 1]
+        with open(out, "wb") as fh:
+            fh.write(b"RIFF....WAVEfake")
+        return mock.Mock(returncode=0, stdout="", stderr="")
+
+    def test_two_concurrent_callers_for_the_same_text_synthesize_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, _ = _root_with_model(tmp)
+            calls = []
+            calls_lock = threading.Lock()
+
+            entered = {"n": 0}
+            entered_lock = threading.Lock()
+            both_in_flight = threading.Event()
+
+            def mark_in_flight():
+                with entered_lock:
+                    entered["n"] += 1
+                    if entered["n"] >= 2:
+                        both_in_flight.set()
+
+            def fake_run(argv, **kwargs):
+                # Don't let synthesis proceed until BOTH callers are
+                # demonstrably in flight — otherwise this could pass just
+                # because the two calls happened to run one after another.
+                if not both_in_flight.wait(timeout=5):
+                    raise AssertionError("second caller never became in-flight")
+                with calls_lock:
+                    calls.append(argv)
+                return self._write_wav_fake_run(argv, **kwargs)
+
+            results = {}
+
+            def worker(name):
+                mark_in_flight()
+                try:
+                    results[name] = speech.synthesize(root, "ISS, in ten minutes")
+                except Exception as e:                       # noqa: BLE001
+                    results[name] = e
+
+            with mock.patch("subprocess.run", side_effect=fake_run):
+                t_a = threading.Thread(target=worker, args=("a",))
+                t_b = threading.Thread(target=worker, args=("b",))
+                t_a.start()
+                t_b.start()
+                t_a.join(timeout=10)
+                t_b.join(timeout=10)
+
+            self.assertNotIsInstance(results.get("a"), Exception, results.get("a"))
+            self.assertNotIsInstance(results.get("b"), Exception, results.get("b"))
+            self.assertEqual(results["a"], results["b"])
+            self.assertEqual(len(calls), 1)
+
+    def test_a_cache_hit_does_not_take_the_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, _ = _root_with_model(tmp)
+            with mock.patch("subprocess.run", side_effect=self._write_wav_fake_run):
+                cached_path = speech.synthesize(root, "already cached")
+
+            self.assertTrue(speech._SYNTH_LOCK.acquire(timeout=0))
+            try:
+                result = speech.synthesize(root, "already cached")
+            finally:
+                speech._SYNTH_LOCK.release()
+            self.assertEqual(result, cached_path)
+
+    def test_lock_held_and_text_uncached_raises_speech_unavailable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, _ = _root_with_model(tmp)
+            speech._SYNTH_LOCK.acquire()
+            try:
+                with self.assertRaises(speech.SpeechUnavailable):
+                    speech.synthesize(root, "never synthesized before", wait_s=0.05)
+            finally:
+                speech._SYNTH_LOCK.release()
 
 
 class PruneTest(unittest.TestCase):
