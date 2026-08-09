@@ -57,6 +57,41 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(speech.validate("ISS, in ten minutes"), "ISS, in ten minutes")
 
 
+class PlatformSupportedTest(unittest.TestCase):
+    """The single source of truth features/speech/install.py's early gate and
+    common/setup_registry.py's verify_fn both read, so a Pi Zero 2 W operator
+    sees the SAME verdict from the CLI (features/speech/install.py, exit 0)
+    and the web Setup Orchestrator (verify_fn) instead of the installer
+    politely declining while the registry reports a red 'verify failed'."""
+
+    def test_supported_platform_reports_no_reason(self):
+        with mock.patch.object(sys, "version_info", (3, 11, 0)), \
+             mock.patch("platform.machine", return_value="x86_64"):
+            self.assertEqual(speech.platform_supported(), (True, None))
+
+    def test_python_below_311_is_unsupported(self):
+        with mock.patch.object(sys, "version_info", (3, 10, 0)), \
+             mock.patch("platform.machine", return_value="x86_64"):
+            supported, reason = speech.platform_supported()
+            self.assertFalse(supported)
+            self.assertTrue(reason)
+
+    def test_32bit_arm_is_unsupported(self):
+        with mock.patch.object(sys, "version_info", (3, 11, 0)):
+            for machine in ("armv7l", "armv6l"):
+                with self.subTest(machine=machine):
+                    with mock.patch("platform.machine", return_value=machine):
+                        supported, reason = speech.platform_supported()
+                        self.assertFalse(supported)
+                        self.assertTrue(reason)
+
+    def test_64bit_arm_is_supported(self):
+        # The Pi 4/5 case — must not be swept up by the 32-bit ARM check.
+        with mock.patch.object(sys, "version_info", (3, 11, 0)), \
+             mock.patch("platform.machine", return_value="aarch64"):
+            self.assertEqual(speech.platform_supported(), (True, None))
+
+
 class AvailabilityTest(unittest.TestCase):
     def test_no_model_means_unavailable(self):
         with tempfile.TemporaryDirectory() as tmp:

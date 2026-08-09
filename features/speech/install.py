@@ -36,11 +36,11 @@ Usage:
 
 import argparse
 import os
-import platform
 import shutil
 import sys
 
-# features/speech/install.py -> repo root is two levels up.
+# features/speech/install.py -> repo root is three dirname() calls up
+# (features/speech/install.py -> features/speech -> features -> repo root).
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, REPO_ROOT)
 from common import server as S  # noqa: E402
@@ -130,13 +130,16 @@ def run():
     # Refuse early and cleanly on a platform Piper cannot serve, before
     # touching pip: an unsupported platform is a correct outcome, not a
     # failed install, and it must leave the existing espeak-ng voice alone.
-    if sys.version_info < (3, 11):
-        _warn("Piper needs Python 3.11+ (onnxruntime publishes no older wheels). "
+    # SPEECH.platform_supported() is the single source of truth for this —
+    # common/setup_registry.py's verify_fn reads the same function, so the
+    # Setup Orchestrator and this script never again disagree about the same
+    # box the way they did before (installer declines and exits 0; the
+    # registry still called available(), also False here, and reported a red
+    # "verify failed" right after this printed "nothing was changed").
+    supported, reason = SPEECH.platform_supported()
+    if not supported:
+        _warn(f"Piper is not supported on this platform: {reason}. "
               "The espeak-ng voice stays in place; nothing was changed.")
-        return 0
-    if platform.machine() in ("armv7l", "armv6l"):
-        _warn("32-bit Pi: onnxruntime ships no armv7l wheel, so Piper cannot run "
-              "here. The espeak-ng voice stays in place; nothing was changed.")
         return 0
 
     venv_dir = os.path.join(REPO_ROOT, ".venv")
@@ -188,6 +191,10 @@ def cmd_uninstall():
     venv_dir = os.path.join(REPO_ROOT, ".venv")
     pip = S._venv_bin(venv_dir, "pip")
     if os.path.exists(pip):
+        # Deliberately leaves onnxruntime (piper-tts's dependency, and the
+        # large half of the install) in the venv — pip uninstall doesn't
+        # cascade to dependencies, and removing it ourselves risks pulling
+        # out something else in the venv still relies on.
         r = S._pip([pip, "uninstall", "--yes", "piper-tts"])
         if r.returncode == 0:
             _ok("piper-tts removed from the venv (no-op if it wasn't installed).")

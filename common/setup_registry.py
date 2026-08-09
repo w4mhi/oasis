@@ -63,6 +63,21 @@ def _removal_record(repo_root, ref):
     return _removal_module(repo_root, ref).removal_record(repo_root)
 
 
+def _speech_verify(repo_root):
+    """A platform Piper cannot serve (no onnxruntime wheel) is a correct,
+    declined outcome — features/speech/install.py exits 0 and leaves the
+    espeak-ng voice in place. SPEECH.available(repo_root) is also False
+    there, so calling it directly (as this verify_fn used to) reported that
+    same declined platform as STATUS_VERIFY_FAILED: a red "verify failed"
+    right after the installer explained that nothing was changed. Reads
+    SPEECH.platform_supported() — the same single source of truth the
+    installer's own early gate reads — so the two can no longer disagree."""
+    supported, reason = SPEECH.platform_supported()
+    if not supported:
+        return {"ok": True, "reason_text": reason}
+    return {"ok": SPEECH.available(repo_root)}
+
+
 def _satellites_removal_record(repo_root):
     """Satellites has no dedicated service; it installs the Skyfield/numpy stack
     (venv, shared), the pass-alert voice (apt, shared), and a CelesTrak TLE cache.
@@ -461,8 +476,10 @@ def build_registry(repo_root, payload=None):
             privileged=True,
         ),
         # Station-wide speech service (Piper neural TTS): pass alerts today,
-        # guardian and Winlink announcements next — so no `dependencies` on
-        # `satellites`, unlike the speech-dispatcher-era feature this replaces.
+        # guardian and Winlink announcements next — so no dependency on
+        # `satellites`, unlike the speech-dispatcher-era feature this
+        # replaces (it depends on `server` instead: its installer pip-installs
+        # piper-tts into the server venv, and fails outright without one).
         # Not privileged: nothing needs root now that /etc/speech-dispatcher is
         # out of the picture (see common/speech.py — a subprocess piped to a
         # cached WAV, no system TTS daemon involved). Self-guards on an
@@ -471,14 +488,14 @@ def build_registry(repo_root, payload=None):
         # fallback.
         "speech": SE.FeatureSpec(
             key="speech",
-            dependencies=[],                 # guardian and Winlink want it too
+            dependencies=["server"],         # guardian and Winlink want it too
             install_fn=lambda: _setup_run_script(
                 repo_root, "features/speech/install.py", timeout=900),
             removal_record_fn=lambda: {
                 "script": [os.path.join(repo_root, "features/speech/install.py"),
                            "--uninstall"],
             },
-            verify_fn=lambda: {"ok": SPEECH.available(repo_root)},
+            verify_fn=lambda: _speech_verify(repo_root),
             enable_policy="none",
             privileged=False,
         ),

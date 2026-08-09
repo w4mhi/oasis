@@ -82,17 +82,21 @@ class SpeechFeatureTest(unittest.TestCase):
     requirement: every announcement still speaks through the espeak-ng
     fallback when SPEECH.available() is False.
 
-    The contract worth pinning: no `satellites` dependency (guardian and
-    Winlink want this feature too, and neither installs satellites), and not
-    privileged (a subprocess piped to a cached WAV needs no root, unlike the
-    /etc/speech-dispatcher config the old feature wrote).
+    The contract worth pinning: it depends on `server` (its installer
+    pip-installs piper-tts into the server venv and fails outright without
+    one — a regression once shipped: `needs=[]` was meant to mean "not
+    dependent on `satellites`", not "no dependencies at all"), but not on
+    `satellites` itself (guardian and Winlink want this feature too, and
+    neither installs satellites); and not privileged (a subprocess piped to a
+    cached WAV needs no root, unlike the /etc/speech-dispatcher config the
+    old feature wrote).
     """
 
     def setUp(self):
         self.reg = R.build_registry("/tmp/oasis-test-repo")
 
-    def test_speech_has_no_dependencies(self):
-        self.assertEqual(self.reg["speech"].dependencies, [])
+    def test_speech_depends_on_server_but_not_satellites(self):
+        self.assertEqual(self.reg["speech"].dependencies, ["server"])
 
     def test_speech_is_not_privileged_or_allowlisted(self):
         self.assertFalse(self.reg["speech"].privileged)
@@ -105,3 +109,23 @@ class SpeechFeatureTest(unittest.TestCase):
         self.assertIn("script", rec)
         self.assertIn("--uninstall", rec["script"])
         self.assertTrue(rec["script"][0].endswith("features/speech/install.py"))
+
+    def test_verify_reports_ok_on_an_unsupported_platform(self):
+        """The regression this pins: an unsupported platform (32-bit ARM, no
+        onnxruntime wheel) used to verify as ok:False, which setup_engine.py
+        turns into STATUS_VERIFY_FAILED — a red "verify failed" shown to an
+        operator right after the installer explained that nothing was
+        changed, because it correctly declined rather than failed."""
+        from unittest import mock
+        with mock.patch("platform.machine", return_value="armv7l"):
+            res = self.reg["speech"].verify_fn()
+        self.assertTrue(res["ok"])
+        self.assertTrue(res.get("reason_text"))
+
+    def test_verify_falls_through_to_available_on_a_supported_platform(self):
+        from unittest import mock
+        with mock.patch.object(sys, "version_info", (3, 11, 0)), \
+             mock.patch("platform.machine", return_value="x86_64"), \
+             mock.patch.object(R.SPEECH, "available", return_value=False):
+            res = self.reg["speech"].verify_fn()
+        self.assertFalse(res["ok"])

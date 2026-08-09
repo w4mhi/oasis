@@ -132,7 +132,7 @@ FEATURES = [
 
     Feature("speech", "Spoken announcements (Piper voice)", "features/speech/install.py",
             "Neural text-to-speech (Piper) for spoken announcements — pass alerts today, guardian and Winlink next. Optional — without it, announcements still speak, using the espeak-ng fallback voice. Needs Python 3.11+ (not 32-bit ARM) and the engine + voice model in your offline bundle: build it on a connected machine with scripts/create-oasis-offline.py, which downloads ~60 MB from upstream.",
-            "Display", default=False,
+            "Display", default=False, needs=["server"],
             recommend="Piper voice installed — restart the browser, then the next announcement speaks in the neural voice."),
 
     # ── Display: local screen — Chromium kiosk / desktop launcher ──────────────

@@ -15,6 +15,7 @@ placed in argv, there is no quoting to get right — which is exactly what the
 """
 import hashlib
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -62,6 +63,26 @@ def validate(text):
     if _CONTROL_RE.search(text):
         raise SpeechRejected("text contains control characters", "INVALID_TEXT")
     return text
+
+
+def platform_supported():
+    """Whether THIS platform can run Piper at all, regardless of whether the
+    engine or a voice model is actually installed — the single source of
+    truth for both features/speech/install.py's early gate and the setup
+    registry's verify_fn, so the two never drift the way they did before
+    (installer declines and exits 0; the Setup Orchestrator's verify_fn still
+    called `available()`, which is also False on a declined platform, and
+    reported it as a red "verify failed").
+
+    Returns (True, None) when supported, or (False, reason) with a short
+    human string when not — onnxruntime, Piper's own dependency, publishes no
+    wheel for Python < 3.11 or for 32-bit ARM.
+    """
+    if sys.version_info < (3, 11):
+        return False, "needs Python 3.11+"
+    if platform.machine() in ("armv7l", "armv6l"):
+        return False, "no onnxruntime wheel for 32-bit ARM"
+    return True, None
 
 
 def voice_model_path(repo_root):
