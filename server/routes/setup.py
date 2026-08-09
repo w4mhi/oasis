@@ -387,6 +387,43 @@ def _installer_daemon_enabled():
     return sys.platform == "linux" and os.path.exists(INSTALLER_PATH_UNIT_FILE)
 
 
+# Any unit from scripts/enable-service-controls.py's UNITS list; the grant is
+# written as one rule, so one unit answers for all of them. Pinned by a drift
+# test against that list.
+_PERM_PROBE_UNIT = "graywolf.service"
+
+
+def _service_controls_granted():
+    """Whether the dashboard's service buttons will actually work.
+
+    NOT os.path.exists("/etc/sudoers.d/oasis-service-controls"). That probe
+    cannot work from this process: the directory is 0750 root:root on Debian and
+    Pi OS, and OASIS runs as the operator (enable-autostart-pi.py sets User=),
+    so os.path.exists() returns False when it merely lacks permission to look —
+    it does not distinguish "absent" from "not allowed". Measured on pi5draws:
+    `sudo test -f` confirmed the file, `sudo -l` listed every granted unit, and
+    the setup page still reported "Permissions: missing" and told the operator
+    to re-run a grant that was already in place. The installer half of the same
+    banner was correct only because ITS artifact lives in /etc/systemd/system,
+    which is world-traversable.
+
+    So ask sudo the question the operator actually has — may the dashboard run
+    these commands — rather than a proxy for it. `sudo -n -l <cmd>` is a policy
+    lookup: exit 0 means permitted, non-zero means not, and -n guarantees it
+    never prompts or hangs. A box whose operator already has blanket NOPASSWD
+    sudo answers yes, which is the correct answer: the buttons work and there is
+    nothing left to grant."""
+    if sys.platform != "linux":
+        return False
+    systemctl = shutil.which("systemctl") or "/usr/bin/systemctl"
+    try:
+        r = subprocess.run(["sudo", "-n", "-l", systemctl, "restart", _PERM_PROBE_UNIT],
+                           capture_output=True, text=True, timeout=5)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 # Features never removable from the web (see the design carve-outs). The worker
 # re-validates this too (defense in depth).
 _UNREMOVABLE_WEB = {"server", "wikipedia"}
@@ -677,7 +714,7 @@ def _setup_run_job(job_id, plan_obj, payload, uninstall_ordered=None):
 
 @bp.route("/api/setup/permissions")
 def api_setup_permissions():
-    granted = bool(sys.platform == "linux" and os.path.exists("/etc/sudoers.d/oasis-service-controls"))
+    granted = _service_controls_granted()
     installer_active = _installer_daemon_enabled()
     return jsonify({
         "ok": True,

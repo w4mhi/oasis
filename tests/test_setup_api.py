@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import json
+import subprocess
 import tempfile
 from unittest import mock
 
@@ -648,3 +649,78 @@ class RunUninstallsTest(unittest.TestCase):
             removed = setup_module._setup_run_uninstalls("job-1", ["kiwix"])
         self.assertEqual(removed, [])
         self.assertEqual(installed_services.installed_features(root), {"kiwix"})
+
+
+class ServiceControlsGrantedTest(unittest.TestCase):
+    """/api/setup/permissions — asking sudo, not the filesystem.
+
+    The bug: `granted` was os.path.exists("/etc/sudoers.d/oasis-service-controls").
+    /etc/sudoers.d is 0750 root:root and OASIS runs as the operator, so that call
+    returns False when it merely lacks permission to LOOK — it cannot tell
+    "absent" from "not allowed". Measured on pi5draws: the rule was installed and
+    in effect (sudo -l listed every unit) while the setup page told the operator
+    to go re-run the grant. The installer half of the same banner was right only
+    because its artifact sits in world-traversable /etc/systemd/system.
+    """
+
+    def _run(self, returncode=0, side_effect=None):
+        kw = {"side_effect": side_effect} if side_effect else {
+            "return_value": subprocess.CompletedProcess(args=[], returncode=returncode,
+                                                        stdout="", stderr="")}
+        with mock.patch.object(setup_module.sys, "platform", "linux"), \
+             mock.patch.object(setup_module.subprocess, "run", **kw):
+            return setup_module._service_controls_granted()
+
+    def test_permitted_command_means_granted(self):
+        self.assertTrue(self._run(returncode=0))
+
+    def test_refused_command_means_not_granted(self):
+        self.assertFalse(self._run(returncode=1))
+
+    def test_an_unreadable_sudoers_file_no_longer_reports_missing(self):
+        # The regression itself: sudo permits the command while the sudoers path
+        # is unreadable/absent to this process. The old probe said False here.
+        with mock.patch.object(setup_module.os.path, "exists", return_value=False):
+            self.assertTrue(self._run(returncode=0))
+
+    def test_missing_sudo_is_false_not_a_crash(self):
+        self.assertFalse(self._run(side_effect=FileNotFoundError("no sudo")))
+
+    def test_a_hung_sudo_is_false_not_a_hang(self):
+        self.assertFalse(self._run(
+            side_effect=subprocess.TimeoutExpired(cmd="sudo", timeout=5)))
+
+    def test_never_prompts(self):
+        # -n is what keeps a probe from blocking the setup page forever.
+        seen = {}
+
+        def fake_run(argv, **kwargs):
+            seen["argv"] = argv
+            seen["timeout"] = kwargs.get("timeout")
+            return subprocess.CompletedProcess(args=argv, returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(setup_module.sys, "platform", "linux"), \
+             mock.patch.object(setup_module.subprocess, "run", side_effect=fake_run):
+            setup_module._service_controls_granted()
+        self.assertEqual(seen["argv"][:3], ["sudo", "-n", "-l"])
+        self.assertTrue(seen["timeout"])
+
+    def test_off_linux_is_false_without_running_anything(self):
+        with mock.patch.object(setup_module.sys, "platform", "darwin"), \
+             mock.patch.object(setup_module.subprocess, "run") as run:
+            self.assertFalse(setup_module._service_controls_granted())
+            run.assert_not_called()
+
+    def test_probe_unit_is_one_the_grant_actually_covers(self):
+        # Drift guard: if UNITS is reordered or graywolf is dropped, the probe
+        # would ask about a command the rule never granted and report a false
+        # "missing" — the same class of bug, one layer over.
+        import importlib.util
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "scripts", "enable-service-controls.py")
+        spec = importlib.util.spec_from_file_location("enable_service_controls", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        unit = setup_module._PERM_PROBE_UNIT
+        self.assertTrue(unit.endswith(".service"))
+        self.assertIn(unit[: -len(".service")], mod.UNITS)
