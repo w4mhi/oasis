@@ -25,6 +25,7 @@
 <script src="/common/js/service-registry.js"></script>
 <script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
+<script src="/common/js/speech.js"></script>
 <script src="/common/js/sat-alerts.js"></script>
 <script src="/common/js/sat-capability.js"></script>
 <link rel="stylesheet" href="/common/css/wifi-pill.css">
@@ -1567,7 +1568,7 @@ function runSatAlerts() {
                            // does not replay warnings that already elapsed
   if (due.fire) oasisSatChime(3, due.freq);
   if (due.announce.length) setTimeout(() => {
-    due.announce.forEach(b => oasisSatSpeak(oasisSatSpeech(b)));
+    due.announce.forEach(b => oasisSpeak(oasisSatSpeech(b)));
   }, OASIS_SAT_CHIME_3_MS);   // let the chime finish before the voice starts
 }
 async function fetchSats() {

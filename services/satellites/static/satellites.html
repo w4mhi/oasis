@@ -357,6 +357,7 @@ html, body { height: 100%; margin: 0; }
 <!-- Satellites uses a lightweight SVG world map (no MapLibre/WebGL/tiles) — a
      memory win on the Pi, and the whole-globe view is what pass tracks need. -->
 <script src="/common/js/sat-bells.js"></script>
+<script src="/common/js/speech.js"></script>
 <script src="/common/js/sat-alerts.js"></script>
 <script src="/common/js/sat-capability.js"></script>
 <script src="/server/satellites/sat-geometry.js"></script>
@@ -972,7 +973,7 @@ function playMorseV(reps, freq) {
 // carries the alert regardless.
 function speak(text) {
   if (_satMuted) return;
-  oasisSatSpeak(text);
+  oasisSpeak(text);
 }
 // Bell control for a roster row (only rendered for a plotted sat).
 function bellBtnHTML(norad) {
