@@ -30,13 +30,13 @@
 
   // Label sets are the roster's closed vocabulary (see satnogs.LABELS).
   var CHANNELS = [
-    { key: 'voice',   label: 'Voice',       rgb: [0, 200, 90],
+    { key: 'voice',   label: 'Voice',       short: 'Voice',   rgb: [0, 200, 90],
       labels: ['VOICE', 'FM', 'LINEAR', 'SSB'],
       title: 'Voice — FM / linear / SSB' },
-    { key: 'imaging', label: 'Imaging',     rgb: [0, 90, 230],
+    { key: 'imaging', label: 'Imaging',     short: 'Imaging', rgb: [0, 90, 230],
       labels: ['WEATHER', 'SSTV'],
       title: 'Imaging — weather APT/LRPT or SSTV' },
-    { key: 'data',    label: 'Data / APRS', rgb: [230, 100, 0],
+    { key: 'data',    label: 'Data / APRS', short: 'APRS',    rgb: [230, 100, 0],
       labels: ['APRS'],
       title: 'Data — APRS packet' },
   ];
@@ -127,7 +127,38 @@
     }).join('');
   }
 
+  // Every colour the map can actually draw, as legend rows: the three channels,
+  // then every mix of them.
+  //
+  // The mixes are COMPUTED through the same blend the map uses, never named by
+  // hand. Writing "cyan = Voice+Imaging" in prose was a promise the legend had no
+  // way to keep — recolour a channel and the words keep insisting on cyan while
+  // the map draws something else. A swatch that is literally the blend cannot
+  // lie, and it also spares the reader having to agree with us about where cyan
+  // ends and teal begins.
+  //
+  // Telemetry-only is deliberately NOT a row: it takes the Data colour, so a
+  // second orange swatch would read as a bug rather than as information. The
+  // caller explains it in a note instead.
+  function oasisSatLegendRows() {
+    var rows = CHANNELS.map(function (c) {
+      return { label: c.label, color: rgbCss(c.rgb), keys: [c.key] };
+    });
+    var combos = [[0, 1], [0, 2], [1, 2], [0, 1, 2]];
+    combos.forEach(function (idx) {
+      var mixed = [0, 0, 0], names = [], keys = [];
+      idx.forEach(function (i) {
+        for (var k = 0; k < 3; k++) mixed[k] = Math.min(255, mixed[k] + CHANNELS[i].rgb[k]);
+        names.push(CHANNELS[i].short);
+        keys.push(CHANNELS[i].key);
+      });
+      rows.push({ label: names.join(' + '), color: rgbCss(mixed), keys: keys });
+    });
+    return rows;
+  }
+
   root.OASIS_SAT_CHANNELS = CHANNELS;
+  root.oasisSatLegendRows = oasisSatLegendRows;
   root.OASIS_SAT_TELEMETRY = TELEMETRY;
   root.oasisSatRgbCss = rgbCss;
   root.oasisSatChannels = oasisSatChannels;

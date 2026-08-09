@@ -269,6 +269,10 @@ html, body { height: 100%; margin: 0; }
 #sat-legend .leg-title { color: var(--text-dim); font-weight: 600; margin-bottom: 5px; letter-spacing: .3px; text-transform: uppercase; font-size: 10px; }
 #sat-legend .leg-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; white-space: nowrap; color: var(--text); }
 #sat-legend .leg-sw { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+/* Break between the three channels and their mixes, so the key reads as
+   "primaries, then combinations" rather than one flat list of seven. */
+#sat-legend .leg-row:not(.mix) + .leg-row.mix { margin-top: 6px; padding-top: 6px;
+  border-top: 1px solid var(--border); }
 #sat-legend .leg-note { color: var(--text-dim); margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border); line-height: 1.5; }
 </style>
 </head>
@@ -557,12 +561,15 @@ function capabilityColor(norad) {
 // never drift from the map. Collapsed by default; the open/closed choice persists.
 function buildLegend() {
   const p = document.getElementById('leg-panel'); if (!p) return;
-  // Built by walking the shared channel list, so a channel added or recoloured
-  // there shows up here without anyone remembering to update a second copy.
-  const rows = OASIS_SAT_CHANNELS.map(c =>
-    `<div class="leg-row"><span class="leg-sw" style="background:${oasisSatRgbCss(c.rgb)}"></span>${c.label}</div>`).join('');
+  // Every colour the map can draw gets a swatch — the three channels AND their
+  // mixes. The mixes used to be prose ("cyan = Voice+Imaging"), which asked the
+  // reader to agree with us about where cyan ends and teal begins, and would
+  // have gone quietly wrong the first time a channel was recoloured. Each swatch
+  // is now the blend itself, computed by the shared module.
+  const rows = oasisSatLegendRows().map(r =>
+    `<div class="leg-row${r.keys.length > 1 ? ' mix' : ''}"><span class="leg-sw" style="background:${r.color}"></span>${r.label}</div>`).join('');
   p.innerHTML = `<div class="leg-title">Capability · colours mix</div>${rows}`
-    + '<div class="leg-note">cyan = Voice+Imaging · yellow = Voice+APRS<br>magenta = Imaging+APRS · white = all three</div>';
+    + '<div class="leg-note">A bird that only beacons telemetry takes the Data colour.</div>';
   let open = false; try { open = localStorage.getItem('oasis_sat_legend') === 'open'; } catch (e) { /* private mode */ }
   document.getElementById('sat-legend').classList.toggle('collapsed', !open);
 }

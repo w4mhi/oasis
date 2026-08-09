@@ -65,6 +65,39 @@ test('missing/garbage input degrades to telemetry rather than throwing', () => {
   assert.strictEqual(C.oasisSatCapabilityColor(undefined), 'rgb(230 100 0)');
 });
 
+// ── Legend rows ──────────────────────────────────────────────────────────────
+test('the legend covers every colour the map can draw', () => {
+  // Three channels plus all four of their mixes — nothing the map can render
+  // should be missing from the key.
+  assert.deepStrictEqual(C.oasisSatLegendRows().map(r => r.label), [
+    'Voice', 'Imaging', 'Data / APRS',
+    'Voice + Imaging', 'Voice + APRS', 'Imaging + APRS', 'Voice + Imaging + APRS',
+  ]);
+});
+
+test('every legend swatch is the blend the map actually paints', () => {
+  // The point of computing them: a hand-written swatch (or a prose colour name)
+  // silently stops matching the first time a channel is recoloured.
+  const byLabel = Object.fromEntries(C.oasisSatLegendRows().map(r => [r.label, r.color]));
+  assert.strictEqual(byLabel['Voice + Imaging'], C.oasisSatCapabilityColor(['FM', 'SSTV']));
+  assert.strictEqual(byLabel['Voice + APRS'], C.oasisSatCapabilityColor(['FM', 'APRS']));
+  assert.strictEqual(byLabel['Imaging + APRS'], C.oasisSatCapabilityColor(['SSTV', 'APRS']));
+  assert.strictEqual(byLabel['Voice + Imaging + APRS'],
+                     C.oasisSatCapabilityColor(['FM', 'SSTV', 'APRS']));
+});
+
+test('the old prose was wrong about Imaging + APRS, which is why it is computed', () => {
+  // The legend used to call it "magenta". Blue + orange is rgb(230 190 230) —
+  // a pale mauve. Nobody would have noticed the words drifting from the map.
+  const row = C.oasisSatLegendRows().find(r => r.label === 'Imaging + APRS');
+  assert.strictEqual(row.color, 'rgb(230 190 230)');
+});
+
+test('legend rows name which channels they combine', () => {
+  const row = C.oasisSatLegendRows().find(r => r.label === 'Voice + APRS');
+  assert.deepStrictEqual(row.keys, ['voice', 'data']);
+});
+
 // ── Row chips — the roster's own labels, as the Satellites page shows them ───
 const chips = labels => C.oasisSatLabelChips(labels).map(c => c.text);
 
