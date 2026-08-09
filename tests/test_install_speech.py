@@ -131,3 +131,45 @@ class GreetingTest(unittest.TestCase):
         from common import speech as S
         self.assertLessEqual(len(self._greeting_for("en_GB-jenny_dioco-medium")),
                              S.MAX_TEXT_CHARS)
+
+
+class AttributionTest(unittest.TestCase):
+    """The Jenny dataset's licence requires attribution from any interface that
+    generates audio on user action — which is what OASIS is. It asks that the
+    voice be called "Jenny" and, where at all practical, "Jenny (Dioco)".
+
+    It is NOT CC-BY. These assertions exist because the wrong licence name was
+    the starting assumption, and describing it as CC-BY would state obligations
+    (a licence URL, a statement of changes) that this licence does not impose
+    while omitting the naming requirement that it does.
+    """
+
+    def test_uses_the_required_name_form(self):
+        self.assertIn("Jenny (Dioco)", install_speech.ATTRIBUTION)
+
+    def test_credits_the_engine_and_its_licence(self):
+        text = install_speech.ATTRIBUTION
+        self.assertIn("Piper", text)
+        self.assertIn("GPL-3.0", text)
+        self.assertIn("OHF-voice/piper1-gpl", text)
+
+    def test_points_at_the_dataset_that_carries_the_terms(self):
+        self.assertIn("dioco-group/jenny-tts-dataset", install_speech.ATTRIBUTION)
+
+    def test_does_not_call_it_cc_by(self):
+        self.assertNotIn("CC-BY", install_speech.ATTRIBUTION.upper().replace(" ", ""))
+
+    def test_it_is_written_beside_the_model(self):
+        # A credit in a README is no use once the .onnx has been copied onto
+        # someone else's SD card; the notice has to travel with the file.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            install_speech._write_attribution(tmp)
+            path = os.path.join(tmp, "ATTRIBUTION.txt")
+            self.assertTrue(os.path.isfile(path))
+            with open(path, encoding="utf-8") as fh:
+                self.assertIn("Jenny (Dioco)", fh.read())
+
+    def test_an_unwritable_dir_does_not_fail_the_install(self):
+        with mock.patch("builtins.open", side_effect=OSError("read-only")):
+            install_speech._write_attribution("/nowhere")   # must not raise

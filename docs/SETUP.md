@@ -1728,6 +1728,18 @@ next. **Optional and opt-in.** Without it, alerts still speak, just with the
 espeak-ng fallback voice (see [Satellites → pass alerts](#satellites)) — a
 station that never installs this feature behaves exactly as it always has.
 
+> **Credits.** The voice is **Jenny (Dioco)** (`en_GB-jenny_dioco-medium`, from
+> the [Jenny TTS dataset](https://github.com/dioco-group/jenny-tts-dataset)),
+> and the engine is [Piper](https://github.com/OHF-voice/piper1-gpl)
+> (Open Home Foundation, GPL-3.0), which embeds espeak-ng as a phonemiser only.
+> The dataset's licence is a **custom attribution licence — not CC-BY** — and it
+> asks that any interface generating audio from the voice credit it as "Jenny",
+> and where practical "Jenny (Dioco)". OASIS ships neither the engine nor the
+> model: your own `create-oasis-offline.py` run fetches both from upstream. The
+> installer writes the full notice to `features/speech/voices/ATTRIBUTION.txt`
+> so it travels with the model — **pass it along if you hand this station or its
+> USB image to someone else.**
+
 Piper runs as a **subprocess per request**, not an in-process library: keeping
 a ~60 MB model resident in every gunicorn worker is the difference between
 comfortable and swapping on a 2 GB Pi 3. The cost — a real synthesis — is paid

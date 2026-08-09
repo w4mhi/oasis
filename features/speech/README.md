@@ -1,6 +1,7 @@
 # Speech (Piper neural voice)
 
-Station-wide text-to-speech, backed by [Piper](https://github.com/rhasspy/piper) —
+Station-wide text-to-speech, backed by
+[Piper](https://github.com/OHF-voice/piper1-gpl) —
 pass alerts today, guardian and Winlink announcements next. Optional and
 **opt-in**: without this feature, everything that speaks still speaks, using
 the espeak-ng fallback voice the voice ladder in `common/js/sat-alerts.js`
@@ -108,3 +109,38 @@ Python 3.11+, 64-bit ARM/x86 (or macOS/Windows for dev). `piper-tts` from
 PyPI or the offline bundle. The voice model has no online fallback at
 install time — OASIS does not download it itself; it must already be in the
 offline bundle (`scripts/create-oasis-offline.py`, ~60 MB from upstream).
+
+## Credits and licences
+
+OASIS **ships neither the engine nor the voice**. Both are fetched from upstream
+by the operator's own `scripts/create-oasis-offline.py` run — the same posture as
+the Wikipedia ZIM and the FCC database. That is deliberate: it keeps large
+binaries out of the repo and leaves each licence between the operator and
+upstream rather than making OASIS a redistributor.
+
+**Voice — Jenny (Dioco)**
+`en_GB-jenny_dioco-medium`, from the [Jenny TTS
+dataset](https://github.com/dioco-group/jenny-tts-dataset), packaged by
+[piper-voices](https://huggingface.co/rhasspy/piper-voices).
+
+The dataset carries a **custom attribution licence**, not CC-BY — do not
+describe it as CC-BY, as there is no licence URL to reproduce and no
+statement-of-changes requirement. It asks that any software or interface
+generating audio from the voice credit it, calling it **"Jenny"** and, where at
+all practical, **"Jenny (Dioco)"**. A voice interface that speaks on user action
+is exactly the case the licence names, so OASIS is in scope. Commercial use is
+permitted and ownership is not claimed. Attribution is *not* required when
+distributing generated audio clips — so a recorded pass alert needs no notice,
+but the station that produced it does.
+
+`install.py` writes `voices/ATTRIBUTION.txt` alongside the model, so the credit
+travels with the file onto whatever SD card it is copied to. `ATTRIBUTION` in
+`install.py` is the single source of that text.
+
+**Engine — Piper**, Open Home Foundation, **GPL-3.0**:
+<https://github.com/OHF-voice/piper1-gpl>. It embeds **espeak-ng** (GPL) purely
+as a phonemiser — text to phonemes; the audio itself comes from the neural
+model. Note that the older `rhasspy/piper` repository is superseded.
+
+If you hand this station, or a USB image built from it, to someone else, pass
+the attribution along with it.

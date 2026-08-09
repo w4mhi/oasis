@@ -118,8 +118,54 @@ def _place_voice():
     os.makedirs(dest_dir, exist_ok=True)
     for name, src in zip(names, srcs):
         shutil.copy2(src, os.path.join(dest_dir, name))
+    _write_attribution(dest_dir)
     _ok(f"Voice installed: {voice}")
     return 0
+
+
+# The Jenny dataset's licence requires attribution from "software/websites/
+# projects/interfaces (including voice interfaces) that generate audio in
+# response to user action" — which is exactly what OASIS is. It asks that the
+# voice be called "Jenny", and "where at all practical, 'Jenny (Dioco)'".
+# It is NOT CC-BY: there is no licence URL to reproduce and no
+# statement-of-changes requirement, so do not describe it as one.
+ATTRIBUTION = """\
+OASIS speech — credits
+
+Voice: Jenny (Dioco)
+  en_GB-jenny_dioco-medium, from the Jenny TTS dataset.
+  https://github.com/dioco-group/jenny-tts-dataset
+  Custom attribution licence: any software or interface that generates audio
+  from this voice must credit it, calling it "Jenny" and, where at all
+  practical, "Jenny (Dioco)". Commercial use is permitted; ownership of the
+  dataset is not claimed. Attribution is not required when distributing
+  generated audio clips.
+  Model packaged by the Piper voices project:
+  https://huggingface.co/rhasspy/piper-voices
+
+Engine: Piper (Open Home Foundation), GPL-3.0
+  https://github.com/OHF-voice/piper1-gpl
+  Embeds espeak-ng (GPL) as a phonemiser only; the audio itself comes from the
+  neural model above.
+
+OASIS ships neither the engine nor the voice. Both are fetched from upstream by
+the operator's own scripts/create-oasis-offline.py run. If you pass this station
+or its USB image to someone else, pass this file with it.
+"""
+
+
+def _write_attribution(dest_dir):
+    """Drop the credits beside the model so they travel with it.
+
+    A line in a README is not much use once a 63 MB .onnx has been copied onto
+    somebody's SD card. The licence obligation follows the voice, so the notice
+    lives next to the voice."""
+    try:
+        with open(os.path.join(dest_dir, "ATTRIBUTION.txt"), "w",
+                  encoding="utf-8") as fh:
+            fh.write(ATTRIBUTION)
+    except OSError as e:                      # never fail an install over a note
+        _warn(f"Could not write ATTRIBUTION.txt: {e}")
 
 
 def _greeting():

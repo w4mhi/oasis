@@ -489,7 +489,8 @@
             "en_GB-jenny_dioco-medium": "main"
           }
         }
-      }
+      },
+      "_note_licence": "Jenny TTS dataset (https://github.com/dioco-group/jenny-tts-dataset): a CUSTOM ATTRIBUTION LICENCE, NOT CC-BY - do not describe it as CC-BY, it imposes no licence-URL or statement-of-changes requirement and does impose a naming one. Any software or interface that generates audio from this voice must credit it as 'Jenny' and, where at all practical, 'Jenny (Dioco)'. Commercial use permitted, ownership not claimed, no attribution needed when distributing generated audio clips. features/speech/install.py writes the full notice to features/speech/voices/ATTRIBUTION.txt so it travels with the model."
     },
     "speech": {
       "type": "pypi",
