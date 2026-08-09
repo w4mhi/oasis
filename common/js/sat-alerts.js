@@ -10,9 +10,9 @@
 // of the warning. The T-10 chime is followed by a spoken heads-up naming the bird
 // and its maximum elevation.
 //
-// Everything here is synthesised or spoken by the browser — no audio file, no
-// network, nothing to install beyond the TTS voice itself
-// (services/satellites/install-voice.py). Offline by construction.
+// The chime is synthesised right here. The spoken heads-up goes through the
+// station's own speech service (common/js/speech.js) — the AudioContext and
+// the voice ladder live there now, since neither was ever satellite-specific.
 //
 // The decision half is pure and unit-tested because its failures are silent: a
 // missed edge means the operator simply never hears the pass, and a re-fire
@@ -70,19 +70,25 @@
   }
 
   // ── Audio (browser only) ───────────────────────────────────────────────────
-  // One AudioContext per page, created lazily. Browsers start it SUSPENDED until
-  // a user gesture, which is fine on a laptop but useless on a kiosk that boots
-  // unattended and is never touched — that case is handled by launching Chromium
-  // with --autoplay-policy=no-user-gesture-required (scripts/enable-autostart-pi.py).
-  // Both paths are needed: the flag for the untouched kiosk, the gesture unlock
-  // for an ordinary browser.
-  var _ctx = null;
+  // The AudioContext and the speaking itself live in common/js/speech.js —
+  // both are generic, and guardian and Winlink will want them too. Resolved at
+  // CALL time so load order between the two files cannot matter.
+  function speechApi() {
+    if (root.oasisSpeak) return root;
+    if (typeof require === 'function') { try { return require('./speech.js'); } catch (_) { /* browser */ } }
+    return null;
+  }
+
   function oasisSatAudioUnlock() {
-    try {
-      if (!_ctx) _ctx = new (root.AudioContext || root.webkitAudioContext)();
-      if (_ctx.state === 'suspended') _ctx.resume();
-    } catch (e) { /* no Web Audio here — the page still works, silently */ }
-    return _ctx;
+    var api = speechApi();
+    return api ? api.oasisAudioContext() : null;
+  }
+
+  // Kept as an alias so pages and tests that predate the speech service keep
+  // working; new callers should use oasisSpeak directly.
+  function oasisSatSpeak(text) {
+    var api = speechApi();
+    return api ? api.oasisSpeak(text) : false;
   }
 
   // Morse "V" = dit dit dit dah, `reps` times at `freq` Hz. dah = 3 x dit.
@@ -117,85 +123,6 @@
   // chime instead of talking over it.
   var CHIME_3_MS = 2600;
 
-  // Which voice, in order of preference. Taking whatever the engine listed FIRST
-  // is not a choice, it's a lottery: speech-dispatcher reports every espeak-ng
-  // variant crossed with every language — 14,805 entries on a stock Pi — so the
-  // winner was whatever sorted first, which is a male formant preset that reads
-  // as a 1985 answering machine. macOS happened to sort a good voice first and
-  // hid the problem for a long time.
-  //
-  // Matched as a lower-cased SUBSTRING of the voice name, first hit wins, and
-  // only ever against English voices:
-  //   piper/jenny — a Piper neural voice if the operator installed one (opt-in,
-  //                 not shipped: see specs/2026-08-08-piper-voice-design.md)
-  //   samantha    — macOS's recorded voice, so a dev box sounds like it always did
-  //   +steph2     — espeak-ng's female variant. Still a formant synth, but the
-  //                 floor every Pi has for free once install-voice.py has run.
-  //                 Chromium names it "English (America)+Steph2" — CAPITALISED,
-  //                 and espeak's own `-v en-us+steph2` form is lower case, hence
-  //                 the case-insensitive compare.
-  // Falls through to the first English voice, then to the engine default.
-  var VOICE_PREFS = ['piper', 'jenny', 'samantha', '+steph2'];
-
-  // (voices) → the voice to speak with, or null to let the engine decide.
-  // Pure, so the ladder is unit-testable without a speech engine.
-  function oasisSatPickVoice(voices) {
-    var english = [], i, j;
-    for (i = 0; i < (voices || []).length; i++) {
-      var lang = voices[i] && voices[i].lang;
-      if (lang && String(lang).toLowerCase().indexOf('en') === 0) english.push(voices[i]);
-    }
-    for (i = 0; i < VOICE_PREFS.length; i++) {
-      for (j = 0; j < english.length; j++) {
-        var name = String(english[j].name || '').toLowerCase();
-        if (name.indexOf(VOICE_PREFS[i]) !== -1) return english[j];
-      }
-    }
-    return english[0] || null;
-  }
-
-  // Speak a line, if this box has a voice at all. Chromium on Pi OS exposes none
-  // unless speech-dispatcher + espeak-ng are installed
-  // (services/satellites/install-voice.py) AND it was launched with
-  // --enable-speech-dispatcher. Absent either, this no-ops and the chime still
-  // carries the alert — the voice is an enhancement, never the whole signal.
-  function oasisSatSpeak(text) {
-    if (!text || !root.speechSynthesis || !root.SpeechSynthesisUtterance) return false;
-    try {
-      var u = new root.SpeechSynthesisUtterance(text);
-      u.rate = 0.9; u.pitch = 1.0; u.volume = 1.0;
-      // An EMPTY voice list is not proof there is no voice. Chromium on Linux
-      // enumerates through speech-dispatcher asynchronously and can still report
-      // [] when speak() would work perfectly well — so this used to bail and say
-      // nothing, on a box that had espeak-ng installed and the flag set. Now the
-      // list is only consulted to PREFER a voice; with none listed we speak
-      // anyway and let the engine pick its default. If there genuinely is no
-      // TTS, speak() is a harmless no-op and the chime has already carried the
-      // alert.
-      var picked = oasisSatPickVoice(root.speechSynthesis.getVoices());
-      if (picked) u.voice = picked;
-      root.speechSynthesis.speak(u);
-      return true;
-    } catch (e) { return false; }
-  }
-
-  // Chromium builds its voice list ASYNCHRONOUSLY: the first getVoices() call
-  // returns [] and only populates once the engine has enumerated. Touching it at
-  // load — and again on the change event — means the first pass alert of the
-  // session isn't the one that discovers there are no voices yet and stays
-  // silent. addEventListener, not onvoiceschanged, so this never stomps a
-  // handler a page has set for its own reasons.
-  try {
-    if (root.speechSynthesis) {
-      root.speechSynthesis.getVoices();
-      if (root.speechSynthesis.addEventListener) {
-        root.speechSynthesis.addEventListener('voiceschanged', function () {
-          root.speechSynthesis.getVoices();
-        });
-      }
-    }
-  } catch (e) { /* no speech synthesis here — chime-only, by design */ }
-
   root.OASIS_SAT_T10_MS = T10_MS;
   root.OASIS_SAT_T5_MS = T5_MS;
   root.OASIS_SAT_CHIME_3_MS = CHIME_3_MS;
@@ -204,5 +131,4 @@
   root.oasisSatAudioUnlock = oasisSatAudioUnlock;
   root.oasisSatChime = oasisSatChime;
   root.oasisSatSpeak = oasisSatSpeak;
-  root.oasisSatPickVoice = oasisSatPickVoice;
 })(typeof window !== 'undefined' ? window : this);
