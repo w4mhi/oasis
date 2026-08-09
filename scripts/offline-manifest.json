@@ -417,9 +417,11 @@
       "bundle_base": "services/satellites/packages",
       "description": "Text-to-speech stack for the Satellites page's spoken pass alert — speech-dispatcher + espeak-ng, so Chromium's Web Speech API exposes a voice. Optional: without it, pass alerts still chime. The installer is offline-first (bundled .debs, else apt) and no-ops off-Linux.",
       "_note": "The bundler downloads only the packages named below (no dep-closure resolution). speech-dispatcher's runtime deps (libspeechd2, libsonic0, libdotconf0, and the espeak-ng data/libs — names can differ bookworm vs trixie under the t64 transition) must be curated into by_suite when bundling on the connected build machine, so a fully-offline `apt install ./*.deb` resolves. Several are already on a stock Pi OS Desktop image.",
+      "_note_audio_plugins": "speech-dispatcher-audio-plugins is REQUIRED here and must not be trimmed as redundant. speech-dispatcher declares `Depends: speech-dispatcher-audio-plugins (= <its own exact version>)`, and Raspberry Pi OS publishes its own rebuild of that package (e.g. 0.12.0-5+rpt1) which can NEVER satisfy a strict `= 0.12.0-5`. Shipping Debian's speech-dispatcher without its matching audio-plugins therefore produces an unresolvable install on a Pi ('held broken packages'), whatever apt is told to do. Bundle the pair together so the set is internally consistent whichever archive the build machine pulled from.",
       "packages": {
         "common": [
           "speech-dispatcher",
+          "speech-dispatcher-audio-plugins",
           "speech-dispatcher-espeak-ng",
           "espeak-ng"
         ],

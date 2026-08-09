@@ -39,7 +39,20 @@ from common.oasis_lib import (  # noqa: E402
     deb_field, dpkg_installed_version, version_decision,
 )
 
-PACKAGES = ["speech-dispatcher", "speech-dispatcher-espeak-ng", "espeak-ng"]
+# speech-dispatcher-audio-plugins is NOT optional padding: speech-dispatcher
+# declares `Depends: speech-dispatcher-audio-plugins (= <its own version>)` —
+# a STRICT equality. Raspberry Pi OS ships its own rebuild of that package
+# (0.12.0-5+rpt1), and "+rpt1" can never satisfy "= 0.12.0-5", so a bundle
+# carrying Debian's speech-dispatcher without its matching audio-plugins is
+# unresolvable on a Pi no matter what apt does:
+#
+#   speech-dispatcher : Depends: speech-dispatcher-audio-plugins (= 0.12.0-5)
+#                       but 0.12.0-5+rpt1 is to be installed
+#
+# Bundling the pair together is what keeps the set internally consistent,
+# whichever archive the build machine pulled from.
+PACKAGES = ["speech-dispatcher", "speech-dispatcher-audio-plugins",
+            "speech-dispatcher-espeak-ng", "espeak-ng"]
 FEATURE = "satellites-voice"
 
 # platform.machine() → Debian .deb arch used in the bundle filenames.
@@ -93,11 +106,32 @@ def _install_offline(deb_paths):
     _info("Installing from the offline bundle:")
     for p in to_install:
         _info(f"  {os.path.basename(p)}")
+    # Captured rather than inherited so the failure can be CLASSIFIED below —
+    # apt's own output is echoed back either way, so nothing is hidden from the
+    # operator.
     rc = _run(sudo_apt_cmd("apt", "install", "--no-install-recommends", "-y", *to_install),
-              check=False)
+              check=False, capture_output=True, text=True)
     if rc.returncode == 0:
         return True
-    _warn("Offline .deb install failed (likely a missing dependency). Try:  sudo apt-get install -f")
+    err = (rc.stderr or "") + (rc.stdout or "")
+    for line in err.strip().splitlines():
+        _info("  " + line)
+    _warn("Offline .deb install failed — a dependency could not be satisfied.")
+    if "+rpt" in err or "audio-plugins" in err:
+        # The specific, confusing one: our bundled speech-dispatcher wants an
+        # EXACT version of speech-dispatcher-audio-plugins, and Pi OS only
+        # publishes its own "+rpt" rebuild of it. No apt incantation fixes that;
+        # the bundle has to carry the matching pair, or apt has to supply the
+        # whole set from the Pi's own archive.
+        _warn("Cause: the bundled speech-dispatcher needs the EXACT matching "
+              "speech-dispatcher-audio-plugins, but Raspberry Pi OS publishes a "
+              "'+rpt' rebuild of it, which cannot satisfy a strict '=' dependency.")
+        _info("Fix (online, takes the whole set from the Pi's own archive):")
+        _info("  sudo apt-get install -y " + " ".join(PACKAGES))
+        _info("Or rebuild the offline bundle so it carries "
+              "speech-dispatcher-audio-plugins alongside speech-dispatcher.")
+    else:
+        _info("Try:  sudo apt-get install -f")
     return False
 
 

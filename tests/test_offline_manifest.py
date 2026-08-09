@@ -313,6 +313,24 @@ class TestManifestSanity(unittest.TestCase):
                 self.assertIn("speech-dispatcher-espeak-ng", pkgs)
                 self.assertIn("espeak-ng", pkgs)
 
+    def test_satellites_voice_bundles_the_audio_plugins_it_pins(self):
+        """speech-dispatcher declares `Depends: speech-dispatcher-audio-plugins
+        (= <its own exact version>)`. Raspberry Pi OS ships its OWN rebuild of
+        that package (0.12.0-5+rpt1), and '+rpt1' can never satisfy a strict
+        '= 0.12.0-5' — so a bundle carrying Debian's speech-dispatcher without
+        the matching audio-plugins is unresolvable on a Pi, whatever apt is
+        told to do:
+
+            speech-dispatcher : Depends: speech-dispatcher-audio-plugins
+                                (= 0.12.0-5) but 0.12.0-5+rpt1 is to be installed
+
+        It looks like a redundant transitive dep, which is exactly why it went
+        missing. The pair must be bundled together."""
+        for suite in ("bookworm", "trixie"):
+            with self.subTest(suite=suite):
+                pkgs = M.apt_packages("satellites-voice", suite=suite, m=self.m)
+                self.assertIn("speech-dispatcher-audio-plugins", pkgs)
+
     def test_satellites_is_pypi(self):
         """The pass-prediction stack is a pypi group (distinct from the apt
         'satellites-voice' group)."""
