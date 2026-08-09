@@ -24,6 +24,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [OpenWebRX (SIGINT)](#openwebrx-sigint)
 - [ADS-B Aircraft](#ads-b-aircraft)
 - [Satellites](#satellites)
+- [Speech (Piper voice)](#speech-piper-voice)
 - [GPS time sync (gpsd + chrony)](#gps-time-sync-gpsd--chrony)
 - [Hardware RTC (Witty Pi 3 · BigTreeTech 7″)](#hardware-rtc-witty-pi-3--bigtreetech-7)
 - [webssh / Browser Terminal](#webssh--browser-terminal)
@@ -1650,35 +1651,21 @@ spd-say "test" && echo "speech-dispatcher OK"
   Healthy: prints the flag. Broken: `FLAG ABSENT` — re-run the kiosk installer
   (`--resolution 800x480` or `1920x1200` for the dashboard kiosk; plain
   `--with-browser` gives the index.html kiosk instead) and restart the session.
-- **The voice sounds robotic and male:** that's espeak-ng, and it is the expected
-  floor. `speech-dispatcher` publishes ~14,800 voices (every espeak variant crossed
-  with every language), so the page picks deliberately rather than taking whatever
-  sorts first — see the ladder in `common/js/sat-alerts.js`. Check what it chose:
+- **Chime sounds, but the spoken part is a robotic male voice, not the neural
+  one:** the station is speaking through the **fallback** ladder, not Piper.
+  Check what the fallback picked (this only runs when the primary path — the
+  station's own Piper voice via `/api/speech/say` — failed or isn't installed):
 
   ```bash
   # in the kiosk browser console
-  oasisSatPickVoice(speechSynthesis.getVoices()).name
+  oasisPickVoice(speechSynthesis.getVoices()).name
   ```
 
-  Healthy: `jenny-piper` (Piper installed) or `English (America)+Steph2` (espeak
-  female, the free fallback). Broken: a male variant such as `+Adam`, meaning
-  neither preference matched — confirm `install-voice.py` has run.
-- **"No ONNX voice" when installing Piper:** the offline bundle has no voice model,
-  or it is missing its `.onnx.json` sidecar (Piper will not load half a voice).
-  OASIS ships neither file by design — rebuild the bundle on a connected machine
-  with `scripts/create-oasis-offline.py`, which downloads them from upstream.
-  Install continues either way; alerts fall back to espeak `+Steph2`.
-
-  ```bash
-  pkill -u $USER -f speech-dispatcher      # -f is required: pkill matches only
-                                           # 15 chars and the name is 17 long
-  spd-say -o oasis-piper 'pass alert test'
-  ```
-
-  Healthy: you hear the neural voice. Broken: silence or an unknown-module error —
-  check `/etc/speech-dispatcher/modules/oasis-piper.conf` exists and that
-  `speechd.conf` carries the `AddModule "oasis-piper"` line between the
-  `# BEGIN OASIS piper` markers.
+  Healthy: `English (America)+Steph2` (espeak female, the free floor) — a male
+  variant such as `+Adam` means neither preference matched; confirm
+  `install-voice.py` has run. But first confirm Piper itself is installed and
+  reachable — that's the primary path and takes priority over this fallback —
+  see [Speech (Piper voice)](#speech-piper-voice) for install + debug.
 - **Nothing at all, and you're testing from a laptop browser:** that's expected on
   a page you haven't clicked yet. Click anywhere on the page once, then wait for
   the next alert — the flag only covers the kiosk.
@@ -1729,6 +1716,110 @@ you just captured. There is no delete button yet — clear space by hand with
 > Satellites is served by the main OASIS server on **:8083** — no separate port.
 > Pass prediction is Pi-cheap; the live-audio capture needs an RTL-SDR (Pi/Linux
 > only) and momentary sole use of the dongle.
+
+---
+
+## Speech (Piper voice)
+
+A station-wide text-to-speech service: any subsystem asks `common/speech.py`
+(or `GET /api/speech/say`) to speak a sentence and gets back a WAV. Satellite
+pass alerts are the first consumer — guardian and Winlink announcements are
+next. **Optional and opt-in.** Without it, alerts still speak, just with the
+espeak-ng fallback voice (see [Satellites → pass alerts](#satellites)) — a
+station that never installs this feature behaves exactly as it always has.
+
+Piper runs as a **subprocess per request**, not an in-process library: keeping
+a ~60 MB model resident in every gunicorn worker is the difference between
+comfortable and swapping on a 2 GB Pi 3. The cost — a real synthesis — is paid
+once per distinct sentence; results are cached by content hash under
+`features/speech/cache/` (50 MB budget, oldest evicted first, the newest entry
+never pruned).
+
+```bash
+# menu: tick "Spoken announcements (Piper voice)"
+python3 setup-oasis.py
+
+# or directly:
+python3 features/speech/install.py
+python3 features/speech/install.py --uninstall
+```
+
+Needs **Python 3.11+** (onnxruntime publishes no older wheels) and is skipped
+cleanly — leaving the espeak-ng voice in place, nothing changed — on 32-bit ARM
+(`armv7l`/`armv6l`, no onnxruntime wheel there). The ~60 MB voice model has
+**no online fallback**: `scripts/create-oasis-offline.py` fetches it at
+bundle-build time on a connected machine; OASIS itself never downloads it at
+install time. A bundle built without the engine or the voice installs cleanly
+and simply reports what's missing.
+
+### Debug — is it installed, and can this box actually hear it?
+
+"The wheel installed" and "this station can speak" are different things, and
+so are "the server can speak" and "the Pi's own speaker makes sound." Four
+commands separate all of it:
+
+```bash
+curl -s localhost:8083/api/speech/status              # available, voice, player
+curl -s -o /tmp/t.wav -w '%{http_code} %{size_download}\n' \
+     'localhost:8083/api/speech/say?text=test'        # 200 and a non-zero size
+pw-play /tmp/t.wav                                    # does this box make sound at all
+ls -la features/speech/voices/                        # .onnx AND .onnx.json, both
+```
+
+1. **`/api/speech/status` says `available:false`, but the wheel is installed.**
+   This is the finding that costs the most time. Piper will not load a voice
+   model without its **`.onnx.json` sidecar** — a `.onnx` sitting alone in
+   `features/speech/voices/` is invisible to it, and the station reports no
+   voice even though the 60 MB model is right there:
+   ```bash
+   ls -la features/speech/voices/
+   ```
+   Healthy: a matched pair, e.g. `jenny.onnx` and `jenny.onnx.json`. Broken: a
+   `.onnx` with no matching `.onnx.json` (or vice versa) — rebuild the offline
+   bundle on a connected machine (`scripts/create-oasis-offline.py`) so both
+   files ship together, or re-run `features/speech/install.py`.
+
+2. **`/api/speech/say` returns `200` and real bytes, but the Pi's own speaker
+   stays silent — and the same page in a browser is fine.** That last part is
+   the tell: the audio itself is good, so this is **`XDG_RUNTIME_DIR`, not the
+   sound card**. `oasis.service` is a *system* unit running as the operator's
+   user (`scripts/enable-autostart-pi.py`) — right UID, no session environment.
+   PipeWire's socket lives at `$XDG_RUNTIME_DIR/pipewire-0`, owned by that same
+   UID, so a player the server spawns can't find a PipeWire it's entitled to
+   use. `common/speech_play.py` already falls back to `/run/user/<uid>` when
+   the variable is unset and that directory exists; if playback still fails,
+   confirm the socket is actually there for that UID:
+   ```bash
+   ls /run/user/$(id -u)/pipewire-0
+   ```
+   Healthy: the socket exists. Broken: no such file — that user's systemd/
+   PipeWire session hasn't started yet at boot (it normally starts at login).
+   `loginctl enable-linger $(whoami)` keeps it running from boot without a
+   login and is the usual fix for a headless/kiosk box.
+
+3. **No player found at all.** `common/speech_play.py` probes `pw-play`,
+   `paplay`, `aplay`, in that order:
+   ```bash
+   which pw-play paplay aplay
+   ```
+   Healthy: at least one resolves. Broken: none do — a headless box legitimately
+   has nowhere to play a local test utterance, and that's fine: `/api/speech/say`
+   still serves browsers on the LAN either way; only the Pi's own speaker is
+   affected.
+
+4. **Text gets rejected outright.** `/say` validates before ever calling Piper:
+   ```bash
+   curl -s 'localhost:8083/api/speech/say?text='
+   ```
+   `400 {"ok":false,"code":"EMPTY_TEXT",...}` is working as designed (also
+   `TEXT_TOO_LONG` past 300 characters, `INVALID_TEXT` for control characters)
+   — satellite names and message subjects are not text OASIS authored, so
+   `/say` never trusts them blindly.
+
+> Browser playback and the Pi's own local playback are two *different* things
+> this service does. A healthy `curl` with a silent Pi speaker is a normal
+> state to see while debugging, not proof the feature is broken — the kiosk and
+> any laptop on the LAN still hear the same voice.
 
 ---
 

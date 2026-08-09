@@ -419,7 +419,25 @@ before each capture and after each stop — a pass costs ~5.8 MB/min at
 
 ---
 
-## 8. Winlink APIs (`/api/winlink/*`)
+## 8. Speech APIs (`/api/speech/*`)
+
+Station-wide text-to-speech, synthesised server-side with Piper and cached by
+content hash under `features/speech/cache/`. Satellite pass alerts are the
+first caller; server-side callers (guardian, Winlink) use `common/speech.py`
+directly rather than round-tripping through HTTP. **`/say` is the one endpoint
+in this document that does not return JSON** — it returns the audio itself.
+
+| Method | Path | Params | Description |
+|---|---|---|---|
+| GET | `/api/speech/status` | — | What this station can say, and with what: `{ok, available, voice, model, sample_rate_hz, player, cache_entries, cache_bytes, cache_budget_bytes}`. Always `ok:true` — `available:false` (no Piper voice installed) is a normal, successful answer, not a failure. It's the signal a caller uses to decide whether to offer speech at all, the same posture as `supported:false` elsewhere in this document. |
+| GET | `/api/speech/say` | `text` | Synthesise `text` and return it as **`audio/wav`** (not JSON), with `conditional=True` so a repeated phrase costs one `304`. Errors ARE JSON: `400 {ok:false, error, code}` for rejected text (`EMPTY_TEXT`, `TEXT_TOO_LONG` past 300 chars, `INVALID_TEXT` for control characters), `503 {ok:false, error, code:"SPEECH_UNAVAILABLE"}` when no engine/voice is installed — the engine's own stderr is never forwarded to the browser. |
+
+No `POST` exists yet — nothing needs to trigger speech remotely, and adding one
+would pull in the CSRF guard for no benefit.
+
+---
+
+## 9. Winlink APIs (`/api/winlink/*`)
 
 Same-origin proxies to **Pat** (`:8082`). Two transports: RF (Direwolf, unit
 `pat-direwolf`) and telnet (the Winlink Mail card).
@@ -440,7 +458,7 @@ Same-origin proxies to **Pat** (`:8082`). Two transports: RF (Direwolf, unit
 
 ---
 
-## 9. FCC callsign database (`/api/lookup*`)
+## 10. FCC callsign database (`/api/lookup*`)
 
 Binary-search over the offline FCC amateur license index (no DB engine).
 
@@ -455,7 +473,7 @@ Binary-search over the offline FCC amateur license index (no DB engine).
 
 ---
 
-## 10. Map & tiles (`/server/map/*`, `/maps/*`)
+## 11. Map & tiles (`/server/map/*`, `/maps/*`)
 
 | Method | Path | Params | Description |
 |---|---|---|---|
@@ -469,7 +487,7 @@ Map tile roots include `/var/lib/graywolf/tiles` and the suite `maps/` dir.
 
 ---
 
-## 11. UI page-serving routes
+## 12. UI page-serving routes
 
 Static HTML served per service (not JSON APIs, listed for completeness):
 
@@ -482,7 +500,7 @@ Static HTML served per service (not JSON APIs, listed for completeness):
 
 ---
 
-## 12. External services (not OASIS APIs)
+## 13. External services (not OASIS APIs)
 
 Run their own web servers; OASIS links out and/or health-checks them.
 
@@ -497,7 +515,7 @@ Run their own web servers; OASIS links out and/or health-checks them.
 
 ---
 
-## 13. Data stores
+## 14. Data stores
 
 | Store | Path | Owner | Used by |
 |---|---|---|---|
@@ -510,6 +528,8 @@ Run their own web servers; OASIS links out and/or health-checks them.
 | Installed features | `configuration/installed-services.json` | setup-oasis / `/api/setup/*` | `/api/installed-services` |
 | Map warnings | warnings JSON (suite) | `/api/aprs/warnings` | map "Insert Alerts" |
 | TLE cache | `configuration/tle-cache/` | `build-roster.py` / `/api/satellites/refresh` | satellites |
+| Speech voice model | `features/speech/voices/` | `features/speech/install.py` | `/api/speech/*` |
+| Speech synth cache | `features/speech/cache/` | `common/speech.py` | `/api/speech/say` |
 
 ---
 
