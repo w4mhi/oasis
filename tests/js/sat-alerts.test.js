@@ -124,3 +124,45 @@ test('thresholds are exported so callers cannot re-declare them differently', ()
   assert.strictEqual(A.OASIS_SAT_T10_MS, 600000);
   assert.strictEqual(A.OASIS_SAT_T5_MS, 300000);
 });
+
+// ── Speaking ─────────────────────────────────────────────────────────────────
+// The module binds to `root`, which under node IS module.exports — so a fake
+// speech engine can be attached to the required object and exercised for real.
+function withSynth(voices, fn) {
+  const spoken = [];
+  A.speechSynthesis = { getVoices: () => voices, speak: u => spoken.push(u) };
+  A.SpeechSynthesisUtterance = function (text) { this.text = text; this.voice = null; };
+  try { fn(spoken); } finally {
+    delete A.speechSynthesis;
+    delete A.SpeechSynthesisUtterance;
+  }
+}
+
+test('an EMPTY voice list still speaks — it is not proof there is no voice', () => {
+  // The bug this pins: Chromium on Linux enumerates through speech-dispatcher
+  // asynchronously and can report [] while speak() works fine. Bailing here left
+  // a Pi with espeak-ng installed and the flag set completely silent, with the
+  // chime firing normally so nothing looked wrong.
+  withSynth([], spoken => {
+    assert.strictEqual(A.oasisSatSpeak('ISS, in ten minutes'), true);
+    assert.strictEqual(spoken.length, 1);
+    assert.strictEqual(spoken[0].text, 'ISS, in ten minutes');
+    assert.strictEqual(spoken[0].voice, null);   // engine picks its default
+  });
+});
+
+test('an English voice is preferred when one is listed', () => {
+  const en = { lang: 'en-GB' }, de = { lang: 'de-DE' };
+  withSynth([de, en], spoken => {
+    A.oasisSatSpeak('hello');
+    assert.strictEqual(spoken[0].voice, en);
+  });
+});
+
+test('empty text and a missing engine are both no-ops, never throws', () => {
+  withSynth([], spoken => {
+    assert.strictEqual(A.oasisSatSpeak(''), false);
+    assert.strictEqual(spoken.length, 0);
+  });
+  assert.strictEqual(A.oasisSatSpeak('anything'), false);   // no engine attached
+});

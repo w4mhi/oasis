@@ -123,12 +123,19 @@
   // --enable-speech-dispatcher. Absent either, this no-ops and the chime still
   // carries the alert — the voice is an enhancement, never the whole signal.
   function oasisSatSpeak(text) {
-    if (!text || !root.speechSynthesis) return false;
+    if (!text || !root.speechSynthesis || !root.SpeechSynthesisUtterance) return false;
     try {
-      var voices = root.speechSynthesis.getVoices() || [];
-      if (!voices.length) return false;
       var u = new root.SpeechSynthesisUtterance(text);
       u.rate = 0.9; u.pitch = 1.0; u.volume = 1.0;
+      // An EMPTY voice list is not proof there is no voice. Chromium on Linux
+      // enumerates through speech-dispatcher asynchronously and can still report
+      // [] when speak() would work perfectly well — so this used to bail and say
+      // nothing, on a box that had espeak-ng installed and the flag set. Now the
+      // list is only consulted to PREFER an English voice; with none listed we
+      // speak anyway and let the engine pick its default. If there genuinely is
+      // no TTS, speak() is a harmless no-op and the chime has already carried
+      // the alert.
+      var voices = root.speechSynthesis.getVoices() || [];
       for (var i = 0; i < voices.length; i++) {
         if (voices[i].lang && voices[i].lang.toLowerCase().indexOf('en') === 0) {
           u.voice = voices[i];
