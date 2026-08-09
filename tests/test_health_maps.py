@@ -144,3 +144,71 @@ class MapsCacheTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MapsRootTests(unittest.TestCase):
+    """WHICH directory the endpoint counts — the part that has been wrong twice.
+
+    Tiles are downloaded inside GrayWolf, under a registered callsign, and land
+    in its offline store (maps/routes.py's GW_STATE_DIR). OASIS does not stage
+    them under <suite>/maps any more. Counting the suite tree returns 0 on every
+    real station, which the dashboards render as WARN "no maps" on a box that
+    has them — a false alarm that looks exactly like a missing download.
+
+    The walker tests above pass a root in directly, so none of them could catch
+    the endpoint pointing at the wrong one. These do.
+    """
+
+    def setUp(self):
+        import app as oasis_app
+        oasis_app.app.config["TESTING"] = True
+        self.c = oasis_app.app.test_client()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.gw = os.path.join(self.tmp.name, "graywolf", "tiles", "state")
+        os.makedirs(self.gw)
+        health._MAPS_CACHE["sig"] = None      # module-level cache: never leak between tests
+        health._MAPS_CACHE["count"] = 0
+
+    def tearDown(self):
+        health._MAPS_CACHE["sig"] = None
+        health._MAPS_CACHE["count"] = 0
+        self.tmp.cleanup()
+
+    def _get(self):
+        from unittest import mock
+        import maps.routes as mr
+        with mock.patch.object(mr, "GW_STATE_DIR", self.gw):
+            return self.c.get("/api/health/maps").get_json()
+
+    def test_counts_graywolfs_store(self):
+        _touch(os.path.join(self.gw, "Washington.pmtiles"))
+        _touch(os.path.join(self.gw, "Oregon.pmtiles"))
+        body = self._get()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["count"], 2)
+
+    def test_reports_the_directory_it_actually_read(self):
+        # So "why does it say no maps?" is answerable from one curl.
+        self.assertEqual(self._get()["dir"], self.gw)
+
+    def test_an_empty_store_is_zero_and_still_ok(self):
+        # §2: having no maps is the ANSWER, not a failed request.
+        body = self._get()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["count"], 0)
+
+    def test_does_not_count_the_suite_maps_tree(self):
+        # The regression this class exists for. A .pmtiles under <suite>/maps
+        # must NOT be counted: that tree is not where downloads land, and
+        # counting it hid the real store being empty.
+        import app as oasis_app
+        suite_maps = os.path.join(oasis_app.SUITE_ROOT, "maps", "tiles", "state")
+        decoy = os.path.join(suite_maps, "NotAReal.pmtiles")
+        made = not os.path.exists(decoy)
+        if made:
+            _touch(decoy)
+        try:
+            self.assertEqual(self._get()["count"], 0)
+        finally:
+            if made:
+                os.remove(decoy)

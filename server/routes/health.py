@@ -343,6 +343,12 @@ def api_health_zim():
 # parent's mtime, and a brand-new subdirectory bumps ITS parent's, so a new map
 # always dirties the cache — which is the whole requirement. The warm path is
 # one stat() per directory and no directory reads at all.
+#
+# The store being counted (GrayWolf's, see api_health_maps) is flat today, so
+# the recursion is doing nothing on a real box. It is kept because the depth
+# cost is one stat on an empty subdirectory list and because a country tier has
+# been discussed — a walk that already handles nesting cannot silently
+# undercount the day one appears.
 _MAPS_MAX_DEPTH = 3
 _MAPS_SKIP = frozenset({"__pycache__", "node_modules", "wheels"})
 _MAPS_CACHE = {"sig": None, "count": 0}
@@ -405,18 +411,25 @@ def api_health_maps():
     Replaces the per-directory /api/browse walk the dashboards used to do. See
     the cache note above: `cached` reports whether this answer came from the
     cache, which is what makes "did my new map show up?" debuggable in one
-    curl."""
-    from app import SUITE_ROOT
-    root = os.path.join(SUITE_ROOT, "maps")
+    curl.
+
+    Counts GrayWolf's offline store, NOT <suite>/maps. OASIS no longer stages
+    tiles in its own tree — they are downloaded inside GrayWolf, under a
+    registered callsign, and land in /var/lib/graywolf/tiles/state. Counting the
+    suite's maps/ folder returns 0 on every real station, which reads as WARN
+    "no maps" on a box that has them. The directory comes from maps/routes.py so
+    this and /api/maps can never point at different places and disagree about
+    the same question."""
+    from maps.routes import GW_STATE_DIR as root
     with _MAPS_CACHE_LOCK:
         if _maps_sig_fresh(_MAPS_CACHE["sig"]):
             return jsonify({"ok": True, "count": _MAPS_CACHE["count"],
-                            "dir": "maps", "cached": True})
+                            "dir": root, "cached": True})
     count, sig = _maps_walk(root)
     with _MAPS_CACHE_LOCK:
         _MAPS_CACHE["sig"] = sig
         _MAPS_CACHE["count"] = count
-    return jsonify({"ok": True, "count": count, "dir": "maps", "cached": False})
+    return jsonify({"ok": True, "count": count, "dir": root, "cached": False})
 
 
 @bp.route("/api/health/rtc")
