@@ -124,3 +124,44 @@ test('thresholds are exported so callers cannot re-declare them differently', ()
   assert.strictEqual(A.OASIS_SAT_T10_MS, 600000);
   assert.strictEqual(A.OASIS_SAT_T5_MS, 300000);
 });
+
+// ── The fire-once key ────────────────────────────────────────────────────────
+// /api/satellites/passes returns rise times with MICROSECOND precision, from
+// Skyfield's root-finder. Recomputing the same pass (cache refresh, TLE update,
+// a different search window) shifts the trailing digits. The guard used to key
+// on the raw string, so that read as a brand-new pass and the bird was
+// announced a second time — the kiosk saying the same satellite twice.
+test('a re-computed rise time is the SAME pass, not a new one', () => {
+  const st = {};
+  // Exactly the shape /api/satellites/passes returns, microseconds and all.
+  const first  = new Date(RISE).toISOString().replace('.000Z', '.349112+00:00');
+  const second = new Date(RISE).toISOString().replace('.000Z', '.349835+00:00');
+  const at = (rise) => ({ norad: 25544, name: 'ISS', rise, max_el: 62.4 });
+
+  const a = A.oasisSatAlertsDue([at(first)], tMinus(9), st);
+  assert.deepStrictEqual(a.announce.map(b => b.norad), [25544]);
+
+  // Same pass, microseconds apart — must NOT speak again.
+  const b = A.oasisSatAlertsDue([at(second)], tMinus(8), st);
+  assert.strictEqual(b.fire, false);
+  assert.deepStrictEqual(b.announce, []);
+});
+
+test('a rise that moves by seconds within the same minute is still one pass', () => {
+  const st = {};
+  const at = (ms) => ({ norad: 25544, name: 'ISS', rise: ms, max_el: 10 });
+  A.oasisSatAlertsDue([at(RISE)], tMinus(9), st);
+  const again = A.oasisSatAlertsDue([at(RISE + 900)], tMinus(9) + 1000, st);
+  assert.strictEqual(again.fire, false);
+  assert.deepStrictEqual(again.announce, []);
+});
+
+test('a genuinely different pass still re-arms', () => {
+  // The guard must not become so coarse that the NEXT pass is swallowed.
+  const st = {};
+  A.oasisSatAlertsDue([bird()], tMinus(9), st);
+  const next = RISE + 90 * MIN;
+  const r = A.oasisSatAlertsDue([bird({}, next)], next - 9 * MIN, st);
+  assert.strictEqual(r.fire, true);
+  assert.deepStrictEqual(r.announce.map(b => b.norad), [25544]);
+});

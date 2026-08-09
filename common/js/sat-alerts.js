@@ -46,7 +46,17 @@
       if (!b || b.rise == null || b.norad == null) return;
       var rise = typeof b.rise === 'number' ? b.rise : Date.parse(b.rise);
       if (!isFinite(rise)) return;
-      var key = String(b.rise);
+      // Key on the rise MINUTE, not the raw value. /api/satellites/passes
+      // returns microsecond precision straight from Skyfield's root-finder
+      // ("2026-08-09T22:05:10.349112+00:00"), and recomputing the same pass —
+      // a cache refresh, a TLE update, a different search window — shifts the
+      // trailing digits. Keyed on the raw string, that reads as a DIFFERENT
+      // pass: the flags reset and the bird is announced a second time. The
+      // dashboard re-fetches passes every 60 s, so it only takes one recompute
+      // landing inside the ten-minute window.
+      // A minute is safe granularity: successive passes of the same satellite
+      // are ~90 minutes apart, never within one minute of each other.
+      var key = String(Math.round(rise / 60000));
       var st = state[b.norad];
       if (!st || st.key !== key) st = state[b.norad] = { key: key, t10: false, t5: false };
       var tMinus = rise - nowMs;
