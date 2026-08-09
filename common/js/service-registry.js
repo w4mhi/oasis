@@ -86,32 +86,22 @@
     return missing;
   }
 
-  // Count .pmtiles archives anywhere under `startPath`, recursing into
-  // subdirectories — maps live nested (maps/tiles/state, maps/tiles/country, …),
-  // not at the flat top, so a single listing false-WARNs even when a map exists.
-  // Shared by both dashboards so the "N maps present" logic can't drift. `browse`
-  // is an async (path) => entries[] the page supplies (same-origin /api/browse),
-  // keeping this network-free and node-testable, mirroring oasisResolveHidden's
-  // injected `probe`. Depth-capped (default 3) so a stray deep tree can't fan out
-  // on the Pi. Entries use { name, type: 'dir'|'file' } from /api/browse.
-  async function oasisCountPmtiles(browse, startPath, maxDepth) {
-    var depth = (maxDepth == null) ? 3 : maxDepth;
-    async function walk(path, d) {
-      var entries = await browse(path);
-      var n = 0, subdirs = [];
-      for (var i = 0; i < (entries || []).length; i++) {
-        var e = entries[i];
-        if (e.type === 'file' && /\.pmtiles$/.test(e.name)) n++;
-        else if (e.type === 'dir' && d > 0) subdirs.push(path + '/' + e.name);
-      }
-      for (var j = 0; j < subdirs.length; j++) n += await walk(subdirs[j], d - 1);
-      return n;
-    }
-    return walk(startPath, depth);
+  // Count the base maps available to the traffic map. OASIS no longer stages
+  // tiles in its own maps/ tree — they live in GrayWolf's offline store
+  // (/var/lib/graywolf/tiles/state), outside SUITE_ROOT, so the old /api/browse
+  // crawl could never see them and every box false-WARNed "no maps". /api/maps
+  // is the same inventory the map page's dropdown and empty state read, so the
+  // health pill can't disagree with what the operator sees there. `getMaps` is
+  // an async () => the /api/maps payload the page supplies, keeping this
+  // network-free and node-testable (mirrors oasisResolveHidden's `probe`).
+  async function oasisCountMaps(getMaps) {
+    var inv = await getMaps() || {};
+    if (Array.isArray(inv.present)) return inv.present.length;
+    return inv.have_maps ? 1 : 0;   // older payload shape: presence only
   }
 
   root.OASIS_SERVICES = OASIS_SERVICES;
   root.oasisResolveHidden = oasisResolveHidden;
   root.oasisAssertChecks = oasisAssertChecks;
-  root.oasisCountPmtiles = oasisCountPmtiles;
+  root.oasisCountMaps = oasisCountMaps;
 })(typeof window !== 'undefined' ? window : this);

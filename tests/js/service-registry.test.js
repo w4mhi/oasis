@@ -50,49 +50,30 @@ test('assertChecks: reports registry ids a page failed to implement', () => {
   assert.deepStrictEqual(R.oasisAssertChecks(all.filter(id => id !== 'adsb')), ['adsb']);
 });
 
-// Build a browse(path) => entries over an in-memory tree keyed by dir path.
-// Each dir maps to its /api/browse-shaped entries; also tallies visited paths.
-function fakeBrowse(tree, visited) {
-  return async (path) => {
-    if (visited) visited.push(path);
-    if (!(path in tree)) throw new Error('no such dir: ' + path);
-    return tree[path];
-  };
+// Build a getMaps() over a canned /api/maps payload.
+function fakeMaps(payload) {
+  return async () => payload;
 }
 
-test('countPmtiles: finds a map nested under tiles/state (the real-Pi layout)', async () => {
-  // This is exactly the case the old flat check missed → false WARN.
-  const tree = {
-    'maps': [{ name: 'tiles', type: 'dir' }, { name: 'us-states.geojson', type: 'file' }],
-    'maps/tiles': [{ name: 'country', type: 'dir' }, { name: 'state', type: 'dir' }],
-    'maps/tiles/country': [],
-    'maps/tiles/state': [{ name: 'washington.pmtiles', type: 'file' }],
-  };
-  assert.strictEqual(await R.oasisCountPmtiles(fakeBrowse(tree), 'maps'), 1);
+test('countMaps: counts the GrayWolf archives /api/maps reports', async () => {
+  // The real-Pi case the old /api/browse crawl of maps/ could never see: the
+  // tiles live in GrayWolf's store, outside SUITE_ROOT → permanent false WARN.
+  const inv = { present: ['washington', 'oregon'], source: 'graywolf',
+                graywolf_dir: '/var/lib/graywolf/tiles/state', have_maps: true };
+  assert.strictEqual(await R.oasisCountMaps(fakeMaps(inv)), 2);
 });
 
-test('countPmtiles: an empty maps tree counts zero (legit WARN)', async () => {
-  const tree = { 'maps': [{ name: 'convert-mbtiles.py', type: 'file' }] };
-  assert.strictEqual(await R.oasisCountPmtiles(fakeBrowse(tree), 'maps'), 0);
+test('countMaps: an empty GrayWolf store counts zero (legit WARN)', async () => {
+  const inv = { present: [], source: 'graywolf', have_maps: false };
+  assert.strictEqual(await R.oasisCountMaps(fakeMaps(inv)), 0);
 });
 
-test('countPmtiles: counts .pmtiles across several nested dirs', async () => {
-  const tree = {
-    'maps': [{ name: 'a.pmtiles', type: 'file' }, { name: 'tiles', type: 'dir' }],
-    'maps/tiles': [{ name: 'state', type: 'dir' }],
-    'maps/tiles/state': [{ name: 'wa.pmtiles', type: 'file' }, { name: 'or.pmtiles', type: 'file' }],
-  };
-  assert.strictEqual(await R.oasisCountPmtiles(fakeBrowse(tree), 'maps'), 3);
+test('countMaps: falls back to have_maps when present is absent', async () => {
+  assert.strictEqual(await R.oasisCountMaps(fakeMaps({ have_maps: true })), 1);
+  assert.strictEqual(await R.oasisCountMaps(fakeMaps({ have_maps: false })), 0);
+  assert.strictEqual(await R.oasisCountMaps(fakeMaps(null)), 0);
 });
 
-test('countPmtiles: depth cap stops descent and never visits too deep', async () => {
-  const tree = {
-    'maps': [{ name: 'd1', type: 'dir' }],
-    'maps/d1': [{ name: 'd2', type: 'dir' }],
-    'maps/d1/d2': [{ name: 'deep.pmtiles', type: 'file' }],
-  };
-  const visited = [];
-  // depth 1: visits maps + maps/d1, but not maps/d1/d2 → deep map not counted.
-  assert.strictEqual(await R.oasisCountPmtiles(fakeBrowse(tree, visited), 'maps', 1), 0);
-  assert.ok(!visited.includes('maps/d1/d2'), 'depth cap prevents the deep listing');
+test('countMaps: a failing inventory fetch propagates (page shows the error state)', async () => {
+  await assert.rejects(R.oasisCountMaps(async () => { throw new Error('maps'); }));
 });

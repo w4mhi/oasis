@@ -2122,20 +2122,20 @@ const SERVICES = [
   {
     id: 'maps', name: 'Offline Maps',
     check: async () => {
-      // Recursion lives in service-registry.js (shared with the kiosk dashboard);
-      // we just supply the same-origin browse. Maps are nested under maps/tiles/…,
-      // so a flat listing would false-WARN.
+      // Counting lives in service-registry.js (shared with the kiosk dashboard);
+      // we just supply the same-origin fetch. Tiles come from GrayWolf's offline
+      // store, not the suite's maps/ folder — /api/maps is that inventory.
       let n;
       try {
-        n = await oasisCountPmtiles(async (p) => {
-          const r = await fetch('/api/browse?path=' + encodeURIComponent(p), { cache: 'no-store' });
-          if (!r.ok) throw new Error('browse');
-          return (await r.json()).entries || [];
-        }, 'maps');
-      } catch (_) { return { up: false, sub: 'browse error' }; }
+        n = await oasisCountMaps(async () => {
+          const r = await fetch('/api/maps', { cache: 'no-store' });
+          if (!r.ok) throw new Error('maps');
+          return await r.json();
+        });
+      } catch (_) { return { up: false, sub: 'inventory error' }; }
       return { up: true, warn: n === 0,
         badge: n > 0 ? 'UP' : 'WARN',
-        sub: n > 0 ? 'present' : 'not found',
+        sub: n > 0 ? 'present' : 'none in GrayWolf',
         navSub: n > 0 ? `${n} ${n === 1 ? 'map' : 'maps'}` : 'no maps' };
     }
   },
