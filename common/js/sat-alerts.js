@@ -74,7 +74,7 @@
   // both are generic, and guardian and Winlink will want them too. Resolved at
   // CALL time so load order between the two files cannot matter.
   function speechApi() {
-    if (root.oasisSpeak) return root;
+    if (typeof root.oasisSpeak === 'function') return root;
     if (typeof require === 'function') { try { return require('./speech.js'); } catch (_) { /* browser */ } }
     return null;
   }

@@ -41,6 +41,7 @@ test('the Chromium capitalisation of the espeak variant still matches', () => {
 });
 
 test('no voices at all is null, not a throw', () => {
+  assert.strictEqual(S.oasisPickVoice([{ lang: 'af', name: 'Afrikaans' }]), null);
   assert.strictEqual(S.oasisPickVoice([]), null);
   assert.strictEqual(S.oasisPickVoice(undefined), null);
 });
@@ -50,6 +51,23 @@ test('an EMPTY voice list still speaks — it is not proof there is no voice', (
     assert.strictEqual(S.oasisSpeakFallback('ISS, in ten minutes'), true);
     assert.strictEqual(spoken.length, 1);
     assert.strictEqual(spoken[0].voice, null);   // engine picks its default
+  });
+});
+
+test('the picked voice is actually assigned to the utterance — Piper wins', () => {
+  withSynth([{ lang: 'en-US', name: 'Albert' },
+             { lang: 'en-GB', name: 'piper-jenny' }], spoken => {
+    assert.strictEqual(S.oasisSpeakFallback('ISS, in ten minutes'), true);
+    assert.strictEqual(spoken.length, 1);
+    assert.strictEqual(spoken[0].voice.name, 'piper-jenny');
+  });
+});
+
+test('the picked voice is actually assigned to the utterance — espeak floor only', () => {
+  withSynth([{ lang: 'en-US', name: 'English (America)+Steph2' }], spoken => {
+    assert.strictEqual(S.oasisSpeakFallback('ISS, in ten minutes'), true);
+    assert.strictEqual(spoken.length, 1);
+    assert.strictEqual(spoken[0].voice.name, 'English (America)+Steph2');
   });
 });
 

@@ -66,6 +66,24 @@
     return english[0] || null;
   }
 
+  // Chromium builds its voice list ASYNCHRONOUSLY: the first getVoices() call
+  // returns [] and only populates once the engine has enumerated. Touching it at
+  // load — and again on the change event — means the first spoken announcement of
+  // the session isn't the one that discovers there are no voices yet and falls
+  // past the whole ladder to the engine's raw default. addEventListener, not
+  // onvoiceschanged, so this never stomps a handler a page has set for its own
+  // reasons.
+  try {
+    if (root.speechSynthesis) {
+      root.speechSynthesis.getVoices();
+      if (root.speechSynthesis.addEventListener) {
+        root.speechSynthesis.addEventListener('voiceschanged', function () {
+          root.speechSynthesis.getVoices();
+        });
+      }
+    }
+  } catch (e) { /* no speech synthesis here — pages still work, silently */ }
+
   function oasisSpeakFallback(text) {
     if (!text || !root.speechSynthesis || !root.SpeechSynthesisUtterance) return false;
     try {
