@@ -216,6 +216,21 @@ def run():
         _warn("Not Linux — Piper needs a Pi/Debian speech-dispatcher stack. Nothing to do.")
         return 0
 
+    # A manifest without these keys means the copy on this box predates the Piper
+    # feature — typically services/ and common/ were copied to the Pi but
+    # scripts/offline-manifest.json was not. That is a stale-copy problem, not a
+    # broken install, and this feature is optional: say what is missing in one
+    # line and exit 0, rather than dumping a KeyError traceback over an
+    # enhancement the station does not need.
+    have = set(M.features())
+    missing = [f for f in (FEATURE, VOICE_FEATURE) if f not in have]
+    if missing:
+        _warn(f"scripts/offline-manifest.json has no {', '.join(missing)} entry — "
+              "this copy of OASIS predates the Piper voice.")
+        _info("Copy scripts/offline-manifest.json across too, alongside services/ and common/.")
+        _info("Pass alerts still speak, using espeak +Steph2.")
+        return 0
+
     bundle = _bundle_dir()
     engine, arch = _find_engine(bundle)
     if arch is None:
