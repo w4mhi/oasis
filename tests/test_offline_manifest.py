@@ -31,6 +31,8 @@ for _p in (_ROOT, _COMMON):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+REPO_ROOT = _ROOT
+
 import manifest as M   # common/manifest.py
 
 
@@ -331,45 +333,33 @@ class TestManifestSanity(unittest.TestCase):
                 pkgs = M.apt_packages("satellites-voice", suite=suite, m=self.m)
                 self.assertIn("speech-dispatcher-audio-plugins", pkgs)
 
-    def test_satellites_piper_is_github_release(self):
-        self.assertEqual(M.source_type("satellites-piper", self.m), "github-release")
+    def test_speech_is_its_own_wheel_set_not_the_server_one(self):
+        # onnxruntime has no wheels for Python 3.9/3.10 and none for macOS-x86_64.
+        # Putting piper-tts in scripts/requirements.txt would break the bundle
+        # build for EVERY operator, including those who never wanted speech.
+        f = M.get_feature("speech")
+        self.assertEqual(f["type"], "pypi")
+        self.assertNotEqual(M.bundle_group("speech"), "server")
+        with open(os.path.join(REPO_ROOT, "scripts", "requirements.txt")) as fh:
+            self.assertNotIn("piper", fh.read().lower())
 
-    def test_satellites_piper_covers_32_bit_arm(self):
-        """armv7l is the whole reason the standalone binary is used instead of
-        the piper-tts PyPI package: onnxruntime publishes no 32-bit ARM wheels,
-        so a wheel-based Piper would silently exclude every 32-bit Pi. Losing
-        this arch would reintroduce that gap without any test going red."""
-        arches = M.get_feature("satellites-piper", self.m)["arches"]
-        self.assertIn("armv7l", arches)
-        self.assertIn("aarch64", arches)
+    def test_speech_names_piper_tts_with_an_exact_pin(self):
+        names = {p["name"].lower(): p["version"] for p in M.pypi_packages("speech")}
+        self.assertIn("piper-tts", names)
+        self.assertEqual(names["piper-tts"], "1.6.0")
 
-    def test_satellites_piper_arches_are_upstream_asset_names(self):
-        """These are raw release tarballs, so the arch strings must match the
-        UPSTREAM asset names (aarch64/armv7l), not Debian's arm64/armhf. Using
-        the Debian spelling would 404 at bundle time."""
-        arches = M.get_feature("satellites-piper", self.m)["arches"]
-        self.assertNotIn("arm64", arches)
-        self.assertNotIn("armhf", arches)
+    def test_speech_voice_ships_both_the_model_and_its_sidecar(self):
+        files = M.get_feature("speech-voice")["files"]
+        self.assertTrue(any(f.endswith(".onnx") for f in files))
+        self.assertTrue(any(f.endswith(".onnx.json") for f in files))
 
-    def test_piper_engine_and_voice_land_in_one_directory(self):
-        """The tarball carries NO voice and the .onnx is useless without the
-        binary, so the two features share a bundle_group — the installer reads
-        one directory. If they ever diverge, the installer finds half a stack."""
-        self.assertEqual(M.bundle_group("satellites-piper", self.m), "satellites-piper")
-        self.assertEqual(M.bundle_group("satellites-piper-voice", self.m), "satellites-piper")
-        engine = M.bundle_dir("/bundle/offline-packages", "satellites-piper", m=self.m)
-        voice = M.bundle_dir("/bundle/offline-packages", "satellites-piper-voice", m=self.m)
-        self.assertEqual(engine, voice)
-        self.assertEqual(
-            engine, os.path.join("/bundle", "services/satellites/packages", "satellites-piper"))
+    def test_speech_and_its_voice_land_in_one_directory(self):
+        self.assertEqual(M.bundle_group("speech"), M.bundle_group("speech-voice"))
+        self.assertEqual(M.bundle_base("speech"), M.bundle_base("speech-voice"))
 
-    def test_satellites_piper_voice_ships_both_files(self):
-        """Piper will not load an .onnx without its .onnx.json sidecar (sample
-        rate, phoneme map). Bundling one without the other yields a voice that
-        fails at synthesis time, on a box with no internet to fetch the rest."""
-        files = M.get_feature("satellites-piper-voice", self.m)["files"]
-        self.assertIn("{voice}.onnx", files)
-        self.assertIn("{voice}.onnx.json", files)
+    def test_the_speech_dispatcher_era_features_are_gone(self):
+        self.assertNotIn("satellites-piper", M.features())
+        self.assertNotIn("satellites-piper-voice", M.features())
 
     def test_satellites_is_pypi(self):
         """The pass-prediction stack is a pypi group (distinct from the apt

@@ -1,0 +1,16 @@
+# OASIS — optional speech engine (features/speech).
+#
+# NOT in requirements.txt on purpose. scripts/create-oasis-offline.py's
+# phase_wheels downloads requirements.txt for all seven TARGETS, and
+# onnxruntime — piper-tts's one real dependency — publishes NOTHING for
+# Python 3.9/3.10 and nothing for macOS-x86_64. Adding it there would break
+# the offline bundle build for every operator, including those who never
+# wanted a voice.
+#
+# Bundled by phase_speech into features/speech/packages/wheels/ over a
+# narrowed target matrix, and installed only when the operator opts in.
+#
+# The wheel is cp39-abi3 — ONE per platform, valid on any Python >= 3.9 — so a
+# Pi OS Python upgrade does not invalidate a bundle built last month. The 3.11
+# floor comes from onnxruntime, not from piper.
+piper-tts==1.6.0
