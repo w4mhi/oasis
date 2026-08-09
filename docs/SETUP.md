@@ -1670,6 +1670,8 @@ spd-say "test" && echo "speech-dispatcher OK"
   Install continues either way; alerts fall back to espeak `+Steph2`.
 
   ```bash
+  pkill -u $USER -f speech-dispatcher      # -f is required: pkill matches only
+                                           # 15 chars and the name is 17 long
   spd-say -o oasis-piper 'pass alert test'
   ```
 

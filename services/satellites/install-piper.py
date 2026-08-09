@@ -294,7 +294,11 @@ def run():
     _ok("Registered the module in speechd.conf")
 
     _info("Restart speech-dispatcher and the browser to pick it up:")
-    _info("  pkill -u $USER speech-dispatcher   # it respawns on demand")
+    # -f (match the full command line), NOT a bare name: pkill compares only the
+    # first 15 characters of a process name and "speech-dispatcher" is 17, so the
+    # bare form refuses to run at all ("pattern ... longer than 15 characters
+    # will result in zero matches").
+    _info("  pkill -u $USER -f speech-dispatcher   # it respawns on demand")
     _info("Verify:  spd-say -o oasis-piper 'pass alert test'")
     _info("In the kiosk console, the voice ladder should now choose it:")
     _info("  oasisSatPickVoice(speechSynthesis.getVoices()).name")
