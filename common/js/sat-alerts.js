@@ -117,6 +117,43 @@
   // chime instead of talking over it.
   var CHIME_3_MS = 2600;
 
+  // Which voice, in order of preference. Taking whatever the engine listed FIRST
+  // is not a choice, it's a lottery: speech-dispatcher reports every espeak-ng
+  // variant crossed with every language — 14,805 entries on a stock Pi — so the
+  // winner was whatever sorted first, which is a male formant preset that reads
+  // as a 1985 answering machine. macOS happened to sort a good voice first and
+  // hid the problem for a long time.
+  //
+  // Matched as a lower-cased SUBSTRING of the voice name, first hit wins, and
+  // only ever against English voices:
+  //   piper/jenny — a Piper neural voice if the operator installed one (opt-in,
+  //                 not shipped: see specs/2026-08-08-piper-voice-design.md)
+  //   samantha    — macOS's recorded voice, so a dev box sounds like it always did
+  //   +steph2     — espeak-ng's female variant. Still a formant synth, but the
+  //                 floor every Pi has for free once install-voice.py has run.
+  //                 Chromium names it "English (America)+Steph2" — CAPITALISED,
+  //                 and espeak's own `-v en-us+steph2` form is lower case, hence
+  //                 the case-insensitive compare.
+  // Falls through to the first English voice, then to the engine default.
+  var VOICE_PREFS = ['piper', 'jenny', 'samantha', '+steph2'];
+
+  // (voices) → the voice to speak with, or null to let the engine decide.
+  // Pure, so the ladder is unit-testable without a speech engine.
+  function oasisSatPickVoice(voices) {
+    var english = [], i, j;
+    for (i = 0; i < (voices || []).length; i++) {
+      var lang = voices[i] && voices[i].lang;
+      if (lang && String(lang).toLowerCase().indexOf('en') === 0) english.push(voices[i]);
+    }
+    for (i = 0; i < VOICE_PREFS.length; i++) {
+      for (j = 0; j < english.length; j++) {
+        var name = String(english[j].name || '').toLowerCase();
+        if (name.indexOf(VOICE_PREFS[i]) !== -1) return english[j];
+      }
+    }
+    return english[0] || null;
+  }
+
   // Speak a line, if this box has a voice at all. Chromium on Pi OS exposes none
   // unless speech-dispatcher + espeak-ng are installed
   // (services/satellites/install-voice.py) AND it was launched with
@@ -131,17 +168,12 @@
       // enumerates through speech-dispatcher asynchronously and can still report
       // [] when speak() would work perfectly well — so this used to bail and say
       // nothing, on a box that had espeak-ng installed and the flag set. Now the
-      // list is only consulted to PREFER an English voice; with none listed we
-      // speak anyway and let the engine pick its default. If there genuinely is
-      // no TTS, speak() is a harmless no-op and the chime has already carried
-      // the alert.
-      var voices = root.speechSynthesis.getVoices() || [];
-      for (var i = 0; i < voices.length; i++) {
-        if (voices[i].lang && voices[i].lang.toLowerCase().indexOf('en') === 0) {
-          u.voice = voices[i];
-          break;
-        }
-      }
+      // list is only consulted to PREFER a voice; with none listed we speak
+      // anyway and let the engine pick its default. If there genuinely is no
+      // TTS, speak() is a harmless no-op and the chime has already carried the
+      // alert.
+      var picked = oasisSatPickVoice(root.speechSynthesis.getVoices());
+      if (picked) u.voice = picked;
       root.speechSynthesis.speak(u);
       return true;
     } catch (e) { return false; }
@@ -172,4 +204,5 @@
   root.oasisSatAudioUnlock = oasisSatAudioUnlock;
   root.oasisSatChime = oasisSatChime;
   root.oasisSatSpeak = oasisSatSpeak;
+  root.oasisSatPickVoice = oasisSatPickVoice;
 })(typeof window !== 'undefined' ? window : this);

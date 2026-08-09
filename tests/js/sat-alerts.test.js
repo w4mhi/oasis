@@ -159,6 +159,55 @@ test('an English voice is preferred when one is listed', () => {
   });
 });
 
+// ── Voice choice ─────────────────────────────────────────────────────────────
+// The bug these pin: taking the FIRST English voice is a lottery. speech-dispatcher
+// reports every espeak variant crossed with every language (14,805 entries on a
+// stock Pi), so the winner was whichever sorted first — a male formant preset.
+const V = (name, lang) => ({ name, lang: lang || 'en-US' });
+
+test('a Piper voice wins over everything else when the operator installed one', () => {
+  const voices = [V('English (America)+Adam'), V('Samantha'),
+                  V('English (America)+Steph2'), V('Jenny (Piper)', 'en-GB')];
+  assert.strictEqual(A.oasisSatPickVoice(voices).name, 'Jenny (Piper)');
+});
+
+test('macOS keeps Samantha — a dev box sounds like it always did', () => {
+  const voices = [V('Albert'), V('Alice', 'it-IT'), V('Samantha')];
+  assert.strictEqual(A.oasisSatPickVoice(voices).name, 'Samantha');
+});
+
+test('a Pi with no Piper falls to the female espeak variant, not the first listed', () => {
+  // Alphabetical order is exactly what put the robot in front on the kiosk.
+  const voices = [V('English (America)+Adam'), V('English (America)+Belinda'),
+                  V('English (America)+Steph2')];
+  assert.strictEqual(A.oasisSatPickVoice(voices).name, 'English (America)+Steph2');
+});
+
+test('the +steph2 match is case-insensitive — Chromium capitalises the variant', () => {
+  // espeak's own form is `en-us+steph2`; speech-dispatcher displays `+Steph2`.
+  assert.strictEqual(A.oasisSatPickVoice([V('English (America)+Steph2')]).name,
+                     'English (America)+Steph2');
+});
+
+test('no preferred voice present → first English, never a non-English one', () => {
+  const voices = [V('Afrikaans+Adam', 'af'), V('Deutsch', 'de-DE'), V('English (Scotland)')];
+  assert.strictEqual(A.oasisSatPickVoice(voices).name, 'English (Scotland)');
+});
+
+test('no English voice at all → null, so the engine picks its own default', () => {
+  assert.strictEqual(A.oasisSatPickVoice([V('Afrikaans', 'af')]), null);
+  assert.strictEqual(A.oasisSatPickVoice([]), null);
+  assert.strictEqual(A.oasisSatPickVoice(undefined), null);
+});
+
+test('the ladder is what speak() actually uses', () => {
+  const steph = V('English (America)+Steph2');
+  withSynth([V('English (America)+Adam'), steph], spoken => {
+    A.oasisSatSpeak('ISS, in ten minutes');
+    assert.strictEqual(spoken[0].voice, steph);
+  });
+});
+
 test('empty text and a missing engine are both no-ops, never throws', () => {
   withSynth([], spoken => {
     assert.strictEqual(A.oasisSatSpeak(''), false);
