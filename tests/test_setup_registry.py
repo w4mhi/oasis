@@ -3,6 +3,7 @@ import sys
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, os.path.dirname(_HERE))
 
 from common import setup_registry as R
@@ -129,3 +130,38 @@ class SpeechFeatureTest(unittest.TestCase):
              mock.patch.object(R.SPEECH, "available", return_value=False):
             res = self.reg["speech"].verify_fn()
         self.assertFalse(res["ok"])
+
+
+class SpeechOfferedOnBothSurfacesTest(unittest.TestCase):
+    """The feature must be tickable wherever an operator actually sets up a box.
+
+    OASIS has TWO hand-maintained feature lists: setup-oasis.py's FEATURES (the
+    CLI wizard) and server/system/setup.html's data-feature checkboxes (the web
+    Setup page). Nothing links them. `speech` was added to the CLI and the
+    registry but not to the web page, so on a fresh station the operator could
+    not tick it at all — the code, the wheels and the 63 MB model were all on
+    disk and unreachable. Found on pi5draws during a from-scratch install, not
+    by any test.
+    """
+
+    def test_speech_is_in_the_registry(self):
+        reg = R.build_registry(_ROOT)
+        self.assertIn("speech", reg)
+
+    def test_speech_is_offered_by_the_cli_wizard(self):
+        import importlib.util
+        path = os.path.join(_ROOT, "setup-oasis.py")
+        spec = importlib.util.spec_from_file_location("setup_oasis_wizard", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        self.assertIn("speech", {f.key for f in mod.FEATURES})
+
+    def test_speech_is_offered_by_the_web_setup_page(self):
+        import re
+        with open(os.path.join(_ROOT, "server", "system", "setup.html"),
+                  encoding="utf-8") as fh:
+            html = fh.read()
+        offered = set(re.findall(r'data-feature="([^"]+)"', html))
+        self.assertIn("speech", offered,
+                      "speech has no checkbox in server/system/setup.html, so it "
+                      "cannot be installed from the browser")
