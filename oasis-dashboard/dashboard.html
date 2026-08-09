@@ -1123,7 +1123,17 @@ const SERVICES = [
   { id:'flask', name:'Flask', check: async () => { const r = await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); return {up:true,badge:'UP',sub:`v${d.flask_version}`}; } },
   { id:'wsgi', name:'Web Server', check: async () => { const r=await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); const g=d.wsgi==='gunicorn'; return {up:true,warn:!g,badge:g?'gunicorn':'werkzeug',sub:`v${d.wsgi_version}`}; } },
   { id:'gw', name:'GrayWolf', check: async () => { await fetch(`http://${HOST}:${PORTS.graywolf}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.graywolf}`}; } },
-  { id:'winlink', name:'Winlink', check: async () => { const r=await fetch('/api/winlink/mailbox/in',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`:${PORTS.winlink}`}; return {up:true,badge:'UP',sub:`:${PORTS.winlink}`}; } },
+  // HEAD, not GET, and no badge/sub: checkService keeps only up/warn/down, so
+  // everything else this check could return is discarded. Reading the mailbox
+  // body cost 2 MiB of /dev/shm per probe — Chromium backs every readable
+  // response body with a shared-memory data pipe and holds it as long as the
+  // Response object lives, which on a page that never navigates is forever.
+  // At one probe per 16 s round-robin that was ~500 MB/h, and the kiosk ran
+  // itself out of memory in under a day. HEAD tests the same path with the
+  // same "503 = Pat down" meaning and no body at all. If the kiosk ever grows
+  // a mail-waiting pill, take the count from a count-only endpoint — do not
+  // bring the inbox listing back here.
+  { id:'winlink', name:'Winlink', check: async () => { const r=await fetch('/api/winlink/mailbox/in',{method:'HEAD',cache:'no-store'}); return {up:r.ok}; } },
   // Winlink RF = the Direwolf packet modem behind Pat (systemd pat-direwolf; no web
   // port). Ported from index.html so the kiosk reflects a stopped RF modem instead of
   // being blind to it: ON AIR when active; STOPPED (down) when inactive with a radio
