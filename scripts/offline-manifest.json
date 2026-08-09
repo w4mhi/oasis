@@ -442,11 +442,13 @@
         "bookworm": {
           "arm64": {
             "speech-dispatcher": "0.11.4-2",
+            "speech-dispatcher-audio-plugins": "0.11.4-2",
             "speech-dispatcher-espeak-ng": "0.11.4-2",
             "espeak-ng": "1.51+dfsg-10+deb12u2"
           },
           "armhf": {
             "speech-dispatcher": "0.11.4-2",
+            "speech-dispatcher-audio-plugins": "0.11.4-2",
             "speech-dispatcher-espeak-ng": "0.11.4-2",
             "espeak-ng": "1.51+dfsg-10+deb12u2"
           }
@@ -454,11 +456,13 @@
         "trixie": {
           "arm64": {
             "speech-dispatcher": "0.12.0-5",
+            "speech-dispatcher-audio-plugins": "0.12.0-5",
             "speech-dispatcher-espeak-ng": "0.12.0-5",
             "espeak-ng": "1.52.0+dfsg-5"
           },
           "armhf": {
             "speech-dispatcher": "0.12.0-5",
+            "speech-dispatcher-audio-plugins": "0.12.0-5",
             "speech-dispatcher-espeak-ng": "0.12.0-5",
             "espeak-ng": "1.52.0+dfsg-5"
           }
@@ -493,14 +497,15 @@
       "bundle_base": "features/speech/packages",
       "description": "Piper neural text-to-speech (piper-tts on PyPI) for the OASIS speech service — pass alerts today, guardian and Winlink announcements next. Optional and OPT-IN: without it every announcement still speaks, using the espeak-ng female variant (+Steph2) the voice ladder falls back to.",
       "_note_own_wheel_set": "Deliberately NOT in the shared 'server' wheel set. phase_wheels downloads scripts/requirements.txt for all seven TARGETS; onnxruntime publishes no wheels for Python 3.9/3.10 and none for macOS-x86_64, so putting piper-tts there would break the bundle build for every operator. Its wheels come from scripts/requirements-speech.txt over a narrowed matrix instead.",
-      "_note_platforms": "onnxruntime requires Python >= 3.11 and ships NO armv7l wheel. A 32-bit Pi and an Intel Mac therefore keep the espeak fallback permanently — the installer says so rather than failing inside pip.",
+      "_note_platforms": "onnxruntime sets every platform constraint here, not piper: it requires Python >= 3.11, ships NO armv7l wheel and no macOS-x86_64 wheel at all, and its current builds sit on a glibc 2.28 baseline (manylinux_2_28), NOT the manylinux2014 that TARGETS uses for numpy. A 32-bit Pi and an Intel Mac therefore keep the espeak fallback permanently - the installer says so rather than failing inside pip.",
       "packages": [
         {
           "name": "piper-tts",
           "version": "1.6.0"
         }
       ],
-      "resolved": {}
+      "resolved": {},
+      "_note_manylinux2014_trap": "Do not 'restore' manylinux2014 tags to SPEECH_TARGETS. onnxruntime publishes manylinux2014 aarch64/x86_64 wheels for cp311 ONLY, frozen at 1.16.3 (2023). That tag fails outright on cp312+ AND silently resolves the 2023 build on cp311, which is worse because the bundle then looks healthy. Verified against the PyPI inventory 2026-08-09."
     },
     "satellites": {
       "type": "pypi",

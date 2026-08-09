@@ -969,16 +969,30 @@ def _fetch_to(url, dest, label):
         return False
 
 
-# The target matrix here is NARROWER than TARGETS on purpose: onnxruntime needs
-# Python >= 3.11 and publishes no macOS-x86_64 wheel at all. Speech is opt-in,
-# so a platform it cannot serve is skipped with a note rather than failing the
-# whole bundle.
+# The target matrix here is NARROWER than TARGETS on purpose, and its platform
+# tags are DIFFERENT from TARGETS' on purpose too. TARGETS is shaped by numpy;
+# this one is shaped by onnxruntime, whose wheels sit on a completely different
+# baseline (inventory read off PyPI 2026-08-09):
+#
+#   manylinux2014_* (glibc 2.17) — cp311 ONLY, and frozen at onnxruntime 1.16.3
+#                                  (a 2023 build). Nothing at all for cp312+.
+#   manylinux_2_28_*             — cp311-cp314, current (1.28.0). What we use.
+#   macosx_11_0_arm64            — same trap as manylinux2014: cp311 only, 1.16.3.
+#   macosx_14_0_arm64            — cp311-cp314, current. What we use.
+#   macOS x86_64                 — nothing, ever. Intel Macs cannot run Piper.
+#
+# Copying TARGETS' manylinux2014-for-3.11-3.13 shape here did two bad things: it
+# FAILED outright on py3.12+ ("No matching distribution"), and on py3.11 it
+# silently "succeeded" by resolving that 2023 onnxruntime — the worse of the two,
+# because it looks like a working bundle. Pi OS Bookworm is glibc 2.36 and Trixie
+# 2.41, so manylinux_2_28 is satisfied on every Pi that can run this at all.
+#
+# Speech is opt-in, so a platform this cannot serve is skipped with a note rather
+# than failing the whole bundle.
 SPEECH_TARGETS = [
-    ("manylinux2014_aarch64",  ["3.11", "3.12", "3.13"]),
-    ("manylinux_2_28_aarch64", ["3.14"]),
-    ("manylinux2014_x86_64",   ["3.11", "3.12", "3.13"]),
-    ("manylinux_2_28_x86_64",  ["3.14"]),
-    ("macosx_11_0_arm64",      ["3.11", "3.12", "3.13", "3.14"]),
+    ("manylinux_2_28_aarch64", ["3.11", "3.12", "3.13", "3.14"]),
+    ("manylinux_2_28_x86_64",  ["3.11", "3.12", "3.13", "3.14"]),
+    ("macosx_14_0_arm64",      ["3.11", "3.12", "3.13", "3.14"]),
     ("win_amd64",              ["3.11", "3.12", "3.13", "3.14"]),
 ]
 

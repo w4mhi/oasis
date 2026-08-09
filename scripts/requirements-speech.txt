@@ -10,7 +10,18 @@
 # Bundled by phase_speech into features/speech/packages/wheels/ over a
 # narrowed target matrix, and installed only when the operator opts in.
 #
-# The wheel is cp39-abi3 — ONE per platform, valid on any Python >= 3.9 — so a
-# Pi OS Python upgrade does not invalidate a bundle built last month. The 3.11
-# floor comes from onnxruntime, not from piper.
+# Read the two halves separately — they are NOT alike, and conflating them is
+# what broke the first build of this phase:
+#
+#   piper-tts    cp39-abi3: ONE wheel per platform, valid on any Python >= 3.9.
+#   onnxruntime  a distinct wheel per interpreter per platform, on a glibc 2.28
+#                baseline. It is the source of every constraint here — the 3.11
+#                floor, the absent armv7l, the absent macOS-x86_64, and the
+#                manylinux_2_28 (not manylinux2014) tags in SPEECH_TARGETS.
+#
+# manylinux2014 aarch64/x86_64 wheels for onnxruntime exist ONLY for cp311 and
+# stop at 1.16.3 (2023). Asking for that tag does not merely fail on cp312+ —
+# on cp311 it silently resolves the 2023 build, which is the worse outcome
+# because the bundle then looks fine. Every Pi that can run this at all is well
+# past glibc 2.28 (Bookworm 2.36, Trixie 2.41).
 piper-tts==1.6.0

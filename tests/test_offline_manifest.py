@@ -390,5 +390,52 @@ class TestManifestSanity(unittest.TestCase):
         bw = M.bundle_dir("/bundle/offline-packages", "satellites-voice", suite="bookworm", m=self.m)
         self.assertNotEqual(p, bw)
 
+class SpeechTargetsTest(unittest.TestCase):
+    """SPEECH_TARGETS is shaped by onnxruntime, NOT by numpy like TARGETS is.
+
+    The first build of this phase copied TARGETS' manylinux2014-for-3.11-3.13
+    shape and produced two different failures at once: "No matching
+    distribution" on py3.12+, and — worse — a SILENT success on py3.11 that
+    resolved onnxruntime 1.16.3 from 2023, because manylinux2014 wheels exist
+    for cp311 only and stopped there. A bundle built that way looks healthy.
+    These assertions exist so nobody re-aligns the two matrices for tidiness.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        path = os.path.join(_ROOT, "scripts", "create-oasis-offline.py")
+        spec = importlib.util.spec_from_file_location("create_oasis_offline", path)
+        cls.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.mod)
+
+    def test_no_manylinux2014_and_no_macosx_11(self):
+        # Both tags cap onnxruntime at cp311/1.16.3. See the module comment on
+        # SPEECH_TARGETS for the PyPI inventory this is drawn from.
+        for plat, _ in self.mod.SPEECH_TARGETS:
+            self.assertNotIn("manylinux2014", plat)
+            self.assertNotEqual(plat, "macosx_11_0_arm64")
+
+    def test_every_target_is_python_311_or_newer(self):
+        # onnxruntime publishes nothing for 3.9/3.10 on any platform.
+        for plat, pyvers in self.mod.SPEECH_TARGETS:
+            for pyver in pyvers:
+                major, minor = (int(x) for x in pyver.split("."))
+                self.assertGreaterEqual((major, minor), (3, 11), f"{plat} {pyver}")
+
+    def test_no_macos_x86_64_target(self):
+        # onnxruntime has never published a macOS-x86_64 wheel; an Intel Mac
+        # keeps the espeak fallback permanently.
+        for plat, _ in self.mod.SPEECH_TARGETS:
+            self.assertNotIn("macosx_10", plat)
+
+    def test_the_pi_is_actually_covered(self):
+        # The whole point: 64-bit Pi OS, every Python it ships.
+        aarch64 = {p: set(v) for p, v in self.mod.SPEECH_TARGETS if "aarch64" in p}
+        self.assertTrue(aarch64, "no aarch64 target — the Pi is the primary target")
+        covered = set().union(*aarch64.values())
+        self.assertTrue({"3.11", "3.12", "3.13"}.issubset(covered))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
