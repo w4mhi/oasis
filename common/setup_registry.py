@@ -488,7 +488,10 @@ def build_registry(repo_root, payload=None):
         # fallback.
         "speech": SE.FeatureSpec(
             key="speech",
-            dependencies=["server"],         # guardian and Winlink want it too
+            # server only: the wheels go into its venv. Deliberately NOT
+            # satellites — pass alerts are the first consumer, not the only
+            # one; guardian and Winlink want a voice too.
+            dependencies=["server"],
             install_fn=lambda: _setup_run_script(
                 repo_root, "features/speech/install.py", timeout=900),
             removal_record_fn=lambda: {
