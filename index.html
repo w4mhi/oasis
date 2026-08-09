@@ -2122,17 +2122,16 @@ const SERVICES = [
   {
     id: 'maps', name: 'Offline Maps',
     check: async () => {
-      // Recursion lives in service-registry.js (shared with the kiosk dashboard);
-      // we just supply the same-origin browse. Maps are nested under maps/tiles/…,
-      // so a flat listing would false-WARN.
+      // One cached server-side count. Maps are nested under maps/tiles/…, so a
+      // flat listing would false-WARN — but the recursion belongs on the server:
+      // walking it from here cost one /api/browse request PER DIRECTORY, on
+      // every round-robin pass, from every open dashboard.
       let n;
       try {
-        n = await oasisCountPmtiles(async (p) => {
-          const r = await fetch('/api/browse?path=' + encodeURIComponent(p), { cache: 'no-store' });
-          if (!r.ok) throw new Error('browse');
-          return (await r.json()).entries || [];
-        }, 'maps');
-      } catch (_) { return { up: false, sub: 'browse error' }; }
+        const r = await fetch('/api/health/maps', { cache: 'no-store' });
+        if (!r.ok) throw new Error('maps');
+        n = (await r.json()).count || 0;
+      } catch (_) { return { up: false, sub: 'maps error' }; }
       return { up: true, warn: n === 0,
         badge: n > 0 ? 'UP' : 'WARN',
         sub: n > 0 ? 'present' : 'not found',

@@ -159,6 +159,7 @@ change with the answer.
 | GET | `/api/health/binary` | `name` | Whether a named system binary (e.g. `rtl_test`) is on `PATH`/standard dirs. `{present, path}`. |
 | GET | `/api/health/feed-flow` | — | Whether UDP datagrams are actually flowing on the RTL-SDR feed port (passive `tcpdump` sample; needs scoped sudo). `{supported, probed, flowing, pps, reason, detail}`. `flowing` is **null** when nothing was measured — "we never listened" is not "the feed is dead". Reasons: `not-linux`, `tcpdump-missing`, `no-privilege`, `probe-error`. |
 | GET | `/api/health/zim` | — | Offline Wikipedia/ZIM presence + count for the Kiwix card. |
+| GET | `/api/health/maps` | — | Offline `.pmtiles` map count for the Offline Maps card. `{count, dir, cached}`. Recurses `maps/` server-side (depth 3) and caches the result, re-counting only when a directory in the tree changes mtime — so a map you just copied in shows up on the next call. Replaced a client-side walk that issued one `/api/browse` request **per directory, per dashboard, per pass**. |
 | GET | `/api/health/rtc` | — | Hardware-RTC status from sysfs (presence, driver — e.g. Witty Pi DS3231). `{present, name, hctosys, drift_s}`. |
 | GET | `/api/health/file` | `key` | Existence of a known OASIS config artifact (allowlisted keys only, no arbitrary paths). `{exists, callsign_set, password_set}` — booleans only, never the values; **null** means unreadable/not applicable. |
 

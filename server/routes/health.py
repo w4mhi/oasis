@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 
 from flask import Blueprint, jsonify, request
@@ -327,6 +328,95 @@ def api_health_zim():
     return jsonify({"ok": True, "count": 0, "dir": candidates[0],
                     "total_gb": 0, "names": [], "total": 0,
                     "truncated": False, "limit": 500})
+
+
+# ── Offline-map count ────────────────────────────────────────────────────────
+# Every dashboard asks "are there maps?" on every health round-robin pass. The
+# answer used to be a RECURSIVE CLIENT-SIDE WALK over /api/browse — one HTTP
+# request per directory, per dashboard, forever (measured on a live station:
+# ~8 requests per pass from the kiosk and ~38/min from a second browser, making
+# /api/browse the busiest endpoint on the box). This answers it in one request.
+#
+# The walk itself is cheap; what is not cheap is repeating it. So the count is
+# cached and re-derived only when the tree actually changed. Validity is the
+# mtime of EVERY directory in the tree: dropping in a .pmtiles bumps its
+# parent's mtime, and a brand-new subdirectory bumps ITS parent's, so a new map
+# always dirties the cache — which is the whole requirement. The warm path is
+# one stat() per directory and no directory reads at all.
+_MAPS_MAX_DEPTH = 3
+_MAPS_SKIP = frozenset({"__pycache__", "node_modules", "wheels"})
+_MAPS_CACHE = {"sig": None, "count": 0}
+_MAPS_CACHE_LOCK = threading.Lock()
+
+
+def _maps_walk(root, max_depth=_MAPS_MAX_DEPTH):
+    """(count of *.pmtiles, {dir: mtime_ns}) for the visible tree under `root`.
+
+    A directory read while it is being written can hand back entries that do not
+    match the mtime we record, which would cache a wrong count behind a
+    signature that never invalidates. So each directory is stat'd before AND
+    after its read, and a directory that moved under us records -1 — a value no
+    real st_mtime_ns can equal, so the next request is guaranteed to rescan."""
+    count = 0
+    sig = {}
+    stack = [(root, max_depth)]
+    while stack:
+        path, depth = stack.pop()
+        try:
+            before = os.stat(path).st_mtime_ns
+            entries = list(os.scandir(path))
+            after = os.stat(path).st_mtime_ns
+        except OSError:
+            continue
+        sig[path] = before if before == after else -1
+        for entry in entries:
+            name = entry.name
+            if name.startswith(".") or name in _MAPS_SKIP:
+                continue
+            try:
+                is_dir = entry.is_dir()
+            except OSError:
+                continue
+            if is_dir:
+                if depth > 0:
+                    stack.append((os.path.join(path, name), depth - 1))
+            elif name.endswith(".pmtiles"):
+                count += 1
+    return count, sig
+
+
+def _maps_sig_fresh(sig):
+    """True only if every directory in `sig` still exists at the same mtime."""
+    if not sig:
+        return False
+    for path, mtime in sig.items():
+        try:
+            if os.stat(path).st_mtime_ns != mtime:
+                return False
+        except OSError:
+            return False
+    return True
+
+
+@bp.route("/api/health/maps")
+def api_health_maps():
+    """How many offline .pmtiles map archives the station has.
+
+    Replaces the per-directory /api/browse walk the dashboards used to do. See
+    the cache note above: `cached` reports whether this answer came from the
+    cache, which is what makes "did my new map show up?" debuggable in one
+    curl."""
+    from app import SUITE_ROOT
+    root = os.path.join(SUITE_ROOT, "maps")
+    with _MAPS_CACHE_LOCK:
+        if _maps_sig_fresh(_MAPS_CACHE["sig"]):
+            return jsonify({"ok": True, "count": _MAPS_CACHE["count"],
+                            "dir": "maps", "cached": True})
+    count, sig = _maps_walk(root)
+    with _MAPS_CACHE_LOCK:
+        _MAPS_CACHE["sig"] = sig
+        _MAPS_CACHE["count"] = count
+    return jsonify({"ok": True, "count": count, "dir": "maps", "cached": False})
 
 
 @bp.route("/api/health/rtc")
