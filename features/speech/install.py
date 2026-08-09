@@ -122,6 +122,33 @@ def _place_voice():
     return 0
 
 
+def _greeting():
+    """The sentence the new voice says on a successful install.
+
+    It doubles as the verification utterance, so it has to be worth listening
+    to: the operator has just installed a voice and this is the first and often
+    only thing they will hear it say. It names itself and says what it is for,
+    so "did it work?" and "what does it do?" are answered in one line.
+
+    The name is DERIVED from the installed model rather than hardcoded. The
+    voice is configurable — any .onnx in features/speech/voices/ — and a
+    greeting that introduces itself as Jenny on a station running lessac is a
+    small lie the operator cannot correct. en_GB-jenny_dioco-medium yields
+    "Jenny"; anything unparseable simply drops the name rather than guessing.
+
+    Deliberately not "your assistant": OASIS has a real assistant feature (a
+    local LLM on its own page), and this is a text-to-speech voice. Borrowing
+    that word here would promise something this does not do.
+    """
+    model = (SPEECH.voice_info(REPO_ROOT).get("name") or "")
+    parts = model.split("-")
+    who = parts[1].split("_")[0].capitalize() if len(parts) > 1 and parts[1] else ""
+    if who:
+        return (f"Hello, I am {who}. I will read your satellite pass alerts "
+                "and station announcements.")
+    return "Hello. I will read your satellite pass alerts and station announcements."
+
+
 def run():
     _hr()
     print("  ▶  Speech (Piper neural voice)")
@@ -157,7 +184,7 @@ def run():
 
     # Verification is real, and it is the only thing allowed to print success.
     try:
-        wav = SPEECH.synthesize(REPO_ROOT, "Speech is installed.")
+        wav = SPEECH.synthesize(REPO_ROOT, _greeting())
     except Exception as e:
         _warn(f"Piper installed but could not synthesise: {e}")
         return 1

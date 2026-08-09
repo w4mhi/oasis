@@ -91,3 +91,43 @@ class VerificationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GreetingTest(unittest.TestCase):
+    """The install utterance names the voice that is actually installed.
+
+    Hardcoding "Jenny" would be a lie on a station running a different .onnx,
+    and the operator has no way to correct what the machine says about itself.
+    """
+
+    def _greeting_for(self, model_name):
+        with mock.patch.object(install_speech.SPEECH, "voice_info",
+                               return_value={"name": model_name, "model": "/x.onnx",
+                                             "sample_rate_hz": 22050}):
+            return install_speech._greeting()
+
+    def test_names_jenny_for_the_jenny_model(self):
+        g = self._greeting_for("en_GB-jenny_dioco-medium")
+        self.assertIn("Jenny", g)
+
+    def test_names_the_other_voice_when_a_different_model_is_installed(self):
+        g = self._greeting_for("en_US-lessac-medium")
+        self.assertIn("Lessac", g)
+        self.assertNotIn("Jenny", g)
+
+    def test_an_unparseable_model_name_drops_the_name_rather_than_guessing(self):
+        for odd in ("", "weird", None):
+            with self.subTest(model=odd):
+                g = self._greeting_for(odd)
+                self.assertTrue(g.strip())
+                self.assertIn("announcements", g)
+
+    def test_it_says_what_the_voice_is_for(self):
+        # It doubles as the verification utterance; a bare hello leaves the
+        # operator knowing it works but not what it does.
+        self.assertIn("pass alerts", self._greeting_for("en_GB-jenny_dioco-medium"))
+
+    def test_it_is_within_the_synthesiser_length_cap(self):
+        from common import speech as S
+        self.assertLessEqual(len(self._greeting_for("en_GB-jenny_dioco-medium")),
+                             S.MAX_TEXT_CHARS)
