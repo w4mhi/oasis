@@ -2432,6 +2432,46 @@ For scripted / CI use:
 python3 scripts/doctor.py --json | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d['core_ok'] else 1)"
 ```
 
+### Keep logs across reboots (worth doing before you need them)
+
+Pi OS ships journald with `Storage=auto`, which keeps the journal in RAM unless
+`/var/log/journal` exists. On a station that reboots — or that gets rebooted *by*
+the fault you are trying to explain — that means the evidence dies with the boot:
+
+```bash
+journalctl --list-boots        # only one entry, however many times it has rebooted
+```
+
+An OASIS box is exactly the case where you want the previous boot: a crash, a
+brownout, an out-of-memory kill, or a HAT that stopped enumerating all look
+identical after the reboot that hid them. Make it persistent, with a cap so it
+cannot eat the SD card:
+
+```bash
+sudo mkdir -p /etc/systemd/journald.conf.d
+sudo tee /etc/systemd/journald.conf.d/oasis-persistent.conf >/dev/null <<'EOF'
+[Journal]
+Storage=persistent
+SystemMaxUse=64M
+SystemMaxFileSize=8M
+MaxRetentionSec=2week
+EOF
+sudo systemctl restart systemd-journald
+```
+
+**Healthy:** `journalctl --list-boots` gains an entry per reboot, and
+`journalctl -b -1 -p err` reads the *previous* boot's errors.
+
+**The trade-off, honestly:** this writes the journal to the SD card. The 64 MB cap
+and 8 MB file size keep the write volume small — far below what the ADS-B recorder
+already does — but on a card you care about, or a read-only-root deployment, leave
+it off and accept that post-mortems stop at the reboot.
+
+**One gotcha:** a Pi with no RTC sets its clock late in boot, so the first entries
+of each boot are stamped with the *last known* time and can appear weeks in the
+past. Sort by boot (`-b -1`), not by timestamp. See
+[Hardware RTC](#hardware-rtc--witty-pi-3--bigtreetech-7) if the timestamps matter.
+
 ---
 
 ## Factory reset / uninstall
