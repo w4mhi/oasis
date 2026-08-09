@@ -136,3 +136,95 @@ test('empty text never calls the endpoint', async () => {
     assert.strictEqual(called, false);
   } finally { delete S.fetch; }
 });
+
+// Regression: on main, every oasisSpeak call ended in speechSynthesis.speak(),
+// and the Web Speech API queues utterances for free. The Piper/audio path has
+// no queue of its own — three birds crossing T-10 on the same tick used to
+// play on top of each other, mush an operator could not parse. oasisSpeak
+// must serialise announcements so each one starts only after the previous
+// has actually finished playing (onended), not merely been started.
+test('two oasisSpeak calls play in order, not on top of each other', async () => {
+  const events = [];
+  let fetchCalls = 0;
+  S.fetch = function () {
+    const n = ++fetchCalls;
+    events.push('fetch:' + n);
+    return Promise.resolve({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+    });
+  };
+  S.AudioContext = function () {
+    return {
+      state: 'running',
+      resume: function () {},
+      destination: {},
+      decodeAudioData: function (buf, resolve) { resolve({}); },
+      createBufferSource: function () {
+        const n = fetchCalls;   // the call currently being serviced
+        const src = { onended: null, connect: function () {} };
+        src.start = function () {
+          events.push('play-start:' + n);
+          // The FIRST call takes longer to finish than the second — if the
+          // two calls were not serialised, 'play-start:2' would appear
+          // before 'play-end:1' below.
+          setTimeout(function () {
+            events.push('play-end:' + n);
+            if (src.onended) src.onended();
+          }, n === 1 ? 20 : 1);
+        };
+        return src;
+      },
+    };
+  };
+  try {
+    const p1 = S.oasisSpeak('one');
+    const p2 = S.oasisSpeak('two');
+    assert.deepStrictEqual(await Promise.all([p1, p2]), [true, true]);
+    assert.deepStrictEqual(events, [
+      'fetch:1', 'play-start:1', 'play-end:1',
+      'fetch:2', 'play-start:2', 'play-end:2',
+    ]);
+  } finally {
+    delete S.fetch; delete S.AudioContext;
+  }
+});
+
+test('a failing first announcement still lets the second one speak', async () => {
+  // Both calls fall back to speechSynthesis (fetch always rejects). The
+  // FIRST attempt to speak() throws (simulating a busy/broken engine); the
+  // SECOND succeeds. If a rejected step ever wedged the queue, 'fetch:2'
+  // would never be logged and the second utterance would never be spoken.
+  const events = [];
+  let fetchCalls = 0;
+  S.fetch = function () {
+    events.push('fetch:' + (++fetchCalls));
+    return Promise.reject(new Error('offline'));
+  };
+  const spoken = [];
+  let speakCalls = 0;
+  S.speechSynthesis = {
+    getVoices: () => [{ lang: 'en-US', name: 'Samantha' }],
+    speak: function (u) {
+      const n = ++speakCalls;
+      events.push('speak:' + n);
+      if (n === 1) throw new Error('device busy');
+      spoken.push(u);
+    },
+  };
+  S.SpeechSynthesisUtterance = function (text) { this.text = text; this.voice = null; };
+  try {
+    const results = await Promise.all([
+      S.oasisSpeak('first, fails everywhere'),
+      S.oasisSpeak('second, should still speak'),
+    ]);
+    assert.deepStrictEqual(results, [false, true]);
+    assert.strictEqual(spoken.length, 1);
+    assert.strictEqual(spoken[0].text, 'second, should still speak');
+    // Proves ordering, not just outcome: call 2's fetch must not fire until
+    // call 1 has fully settled (fetch -> fallback -> speak throw).
+    assert.deepStrictEqual(events, ['fetch:1', 'speak:1', 'fetch:2', 'speak:2']);
+  } finally {
+    delete S.fetch; delete S.speechSynthesis; delete S.SpeechSynthesisUtterance;
+  }
+});

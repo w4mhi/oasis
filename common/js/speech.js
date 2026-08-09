@@ -100,9 +100,9 @@
   }
 
   // Say it with the station's own voice, falling back to the browser's.
-  // Resolves true if SOMETHING spoke.
-  function oasisSpeak(text) {
-    if (!text) return Promise.resolve(false);
+  // Resolves true if SOMETHING spoke. This is the UNSERIALISED worker —
+  // oasisSpeak (below) is the public entry point and queues calls to this.
+  function oasisSpeakOne(text) {
     // Only `fetch` is checked here. Web Audio is checked INSIDE, where a
     // missing context throws into the same catch as every other failure — if
     // this bailed early on no-AudioContext, the fetch path would be skipped
@@ -122,14 +122,44 @@
           // implements the callbacks.
           ctx.decodeAudioData(buf, resolve, reject);
         }).then(function (audio) {
-          var src = ctx.createBufferSource();
-          src.buffer = audio;
-          src.connect(ctx.destination);
-          src.start();
-          return true;
+          return new Promise(function (resolve) {
+            var src = ctx.createBufferSource();
+            src.buffer = audio;
+            src.connect(ctx.destination);
+            // Resolve on `onended`, not on `start()`: the whole point of
+            // oasisSpeak's queue below is that the NEXT announcement must
+            // not begin until THIS one has actually finished playing, not
+            // merely been handed to the audio graph.
+            src.onended = function () { resolve(true); };
+            src.start();
+          });
         });
       })
+      // speechSynthesis's own queue means this branch, unlike the audio one
+      // above, is allowed to resolve immediately rather than waiting for the
+      // utterance to finish — the browser will not start it early. That
+      // asymmetry is deliberate, not an oversight.
       .catch(function () { return oasisSpeakFallback(text); });
+  }
+
+  // Announcements are SERIALISED behind this module-level chain so that
+  // several birds crossing their T-10 threshold on the same tick do not play
+  // on top of each other. On `main` this fell out for free: every call ended
+  // in speechSynthesis.speak(), and the Web Speech API queues utterances. The
+  // Piper path has no queue of its own — each call starts playing as soon as
+  // its own decode resolves — so without this, N simultaneous announcements
+  // become N-part mush. common/speech_play.py serialises the Pi's own
+  // speaker for exactly the same reason.
+  var _queue = Promise.resolve();
+
+  function oasisSpeak(text) {
+    if (!text) return Promise.resolve(false);
+    var result = _queue.then(function () { return oasisSpeakOne(text); });
+    // Reset the chain on EITHER outcome. If a step were ever left to reject
+    // through, every announcement queued behind it would wait on a promise
+    // that never resolves and would simply never speak.
+    _queue = result.then(function () {}, function () {});
+    return result;
   }
 
   root.oasisAudioContext = oasisAudioContext;
