@@ -124,11 +124,12 @@ def synthesize(repo_root, text):
             pass
         return out
 
-    os.makedirs(cache, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=cache, suffix=".wav.part")
-    os.close(fd)
-    argv = [_python(repo_root), "-m", "piper", "-m", model, "-f", tmp]
+    tmp = None
     try:
+        os.makedirs(cache, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=cache, suffix=".wav.part")
+        os.close(fd)
+        argv = [_python(repo_root), "-m", "piper", "-m", model, "-f", tmp]
         r = subprocess.run(argv, input=text, text=True, capture_output=True,
                            timeout=SYNTH_TIMEOUT_S)
         if r.returncode != 0:
@@ -141,8 +142,10 @@ def synthesize(repo_root, text):
         raise SpeechUnavailable(f"piper timed out after {SYNTH_TIMEOUT_S}s")
     except FileNotFoundError as e:
         raise SpeechUnavailable(f"piper is not installed: {e}")
+    except OSError as e:
+        raise SpeechUnavailable(f"speech cache unavailable: {e}")
     finally:
-        if os.path.exists(tmp):
+        if tmp and os.path.exists(tmp):
             try:
                 os.unlink(tmp)
             except OSError:

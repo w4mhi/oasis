@@ -81,6 +81,35 @@ class AvailabilityTest(unittest.TestCase):
                 speech.synthesize(tmp, "ISS, in ten minutes")
 
 
+class VoiceInfoTest(unittest.TestCase):
+    def test_with_a_model_present_reports_name_path_and_rate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, model = _root_with_model(tmp)
+            info = speech.voice_info(root)
+            self.assertEqual(info["name"], "en_GB-jenny_dioco-medium")
+            self.assertEqual(info["model"], model)
+            self.assertEqual(info["sample_rate_hz"], 22050)
+
+    def test_with_no_model_every_key_is_present_but_none(self):
+        # The point: a caller reads the same three keys either way, never
+        # needing to know in advance which world it is in.
+        with tempfile.TemporaryDirectory() as tmp:
+            info = speech.voice_info(tmp)
+            self.assertEqual(set(info.keys()), {"name", "model", "sample_rate_hz"})
+            self.assertIsNone(info["name"])
+            self.assertIsNone(info["model"])
+            self.assertIsNone(info["sample_rate_hz"])
+
+    def test_a_malformed_sidecar_yields_a_null_rate_not_a_raise(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, model = _root_with_model(tmp)
+            with open(model + ".json", "w", encoding="utf-8") as fh:
+                fh.write("not json")
+            info = speech.voice_info(root)
+            self.assertEqual(set(info.keys()), {"name", "model", "sample_rate_hz"})
+            self.assertIsNone(info["sample_rate_hz"])
+
+
 class CacheKeyTest(unittest.TestCase):
     def test_same_text_and_voice_give_the_same_key(self):
         self.assertEqual(speech.cache_key("ISS", "jenny"), speech.cache_key("ISS", "jenny"))
@@ -144,6 +173,16 @@ class SubprocessShapeTest(unittest.TestCase):
             with self.assertRaises(speech.SpeechUnavailable):
                 self._synth(tmp, "ISS", wav=b"")
 
+    def test_a_failing_mkstemp_surfaces_as_speech_unavailable(self):
+        # A full disk or a permissions problem must not escape as a bare
+        # OSError — synthesize()'s contract is SpeechRejected/SpeechUnavailable
+        # only, since a caller turns the latter into a 503.
+        with tempfile.TemporaryDirectory() as tmp:
+            root, _ = _root_with_model(tmp)
+            with mock.patch("tempfile.mkstemp", side_effect=OSError("no space left on device")):
+                with self.assertRaises(speech.SpeechUnavailable):
+                    speech.synthesize(root, "ISS")
+
     def test_a_second_call_hits_the_cache_and_does_not_respawn(self):
         with tempfile.TemporaryDirectory() as tmp:
             root, _ = _root_with_model(tmp)
@@ -171,7 +210,11 @@ class SubprocessShapeTest(unittest.TestCase):
                     speech.synthesize(root, "ISS")
             cache = os.path.join(root, "features", "speech", "cache")
             leftovers = os.listdir(cache) if os.path.isdir(cache) else []
-            self.assertEqual([f for f in leftovers if not f.endswith(".part")], [])
+            # Assert the directory is EMPTY. Filtering out *.part here would
+            # make this test unable to detect the very thing it is named for:
+            # the temp file is called <x>.wav.part, so excluding that suffix
+            # leaves it asserting only that no finished .wav was produced.
+            self.assertEqual(leftovers, [])
 
 
 class PruneTest(unittest.TestCase):
