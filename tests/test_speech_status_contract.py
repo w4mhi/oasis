@@ -89,5 +89,59 @@ class SayTest(_Base):
             os.unlink(path)
 
 
+class EtagTest(_Base):
+    """The ETag Werkzeug derives by default is (mtime, size, filename), and
+    SPEECH.synthesize()'s cache-HIT path touches the file's mtime on every
+    call (an LRU touch — see common/speech.py's _cached, prune() evicts by
+    age). Left at the default, that would change the ETag on every request
+    and a conditional GET would never get its 304 — confirmed against the
+    running app before this fix. The route must pass an explicit,
+    content-derived ETag instead, so it stays stable across the touch."""
+
+    def _repo_with_model(self, tmp):
+        voices = os.path.join(tmp, "features", "speech", "voices")
+        os.makedirs(voices)
+        model = os.path.join(voices, "en_GB-jenny_dioco-medium.onnx")
+        with open(model, "wb") as fh:
+            fh.write(b"not a real model")
+        with open(model + ".json", "w", encoding="utf-8") as fh:
+            fh.write('{"audio": {"sample_rate": 22050}}')
+        return tmp
+
+    @staticmethod
+    def _fake_run(argv, **kwargs):
+        out = argv[argv.index("-f") + 1]
+        with open(out, "wb") as fh:
+            fh.write(b"RIFF....WAVEfake")
+        return mock.Mock(returncode=0, stdout="", stderr="")
+
+    def test_repeated_requests_for_the_same_text_get_the_same_etag(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo_with_model(tmp)
+            with mock.patch.object(oasis_app, "SUITE_ROOT", root), \
+                 mock.patch("subprocess.run", side_effect=self._fake_run):
+                r1 = self.c.get("/api/speech/say?text=ISS")
+                # A cache HIT: synthesize()'s _cached() touches the file's
+                # mtime right here — exactly what used to change the ETag.
+                r2 = self.c.get("/api/speech/say?text=ISS")
+            self.assertEqual(r1.status_code, 200)
+            self.assertEqual(r2.status_code, 200)
+            self.assertIsNotNone(r1.headers.get("ETag"))
+            self.assertEqual(r1.headers.get("ETag"), r2.headers.get("ETag"))
+
+    def test_a_conditional_request_gets_a_304(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo_with_model(tmp)
+            with mock.patch.object(oasis_app, "SUITE_ROOT", root), \
+                 mock.patch("subprocess.run", side_effect=self._fake_run):
+                first = self.c.get("/api/speech/say?text=ISS")
+                etag = first.headers.get("ETag")
+                second = self.c.get("/api/speech/say?text=ISS",
+                                    headers={"If-None-Match": etag})
+            self.assertEqual(second.status_code, 304)
+
+
 if __name__ == "__main__":
     unittest.main()

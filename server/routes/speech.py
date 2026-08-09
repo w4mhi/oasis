@@ -9,6 +9,8 @@ no POST here because nothing needs to trigger speech remotely yet, and adding
 one would pull in the CSRF guard for no benefit.
 """
 
+import os
+
 from flask import Blueprint, jsonify, request, send_file
 
 from common import speech as SPEECH
@@ -45,7 +47,15 @@ def api_speech_say():
     """Synthesise `text` and return the WAV.
 
     Cached server-side by content hash, and `conditional=True` gives the
-    browser an ETag so a repeated phrase costs one 304."""
+    browser an ETag so a repeated phrase costs one 304 — but only because we
+    pass an EXPLICIT etag here. Left to its default, Werkzeug derives the
+    ETag from (mtime, size, filename), and SPEECH.synthesize()'s cache-hit
+    path touches the file's mtime on every request (an LRU touch, so pruning
+    keeps hot entries) — which would change the ETag on every request and
+    defeat conditional requests entirely. The cache key already IS the
+    content hash, and it's the WAV's basename without the extension, so
+    reusing it costs nothing extra and is stable regardless of the touch.
+    """
     from app import SUITE_ROOT
 
     try:
@@ -57,4 +67,5 @@ def api_speech_say():
         return jsonify({"ok": False,
                         "error": "this station has no speech engine installed",
                         "code": "SPEECH_UNAVAILABLE"}), 503
-    return send_file(path, mimetype="audio/wav", conditional=True)
+    etag = os.path.splitext(os.path.basename(path))[0]
+    return send_file(path, mimetype="audio/wav", conditional=True, etag=etag)

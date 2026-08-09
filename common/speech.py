@@ -118,7 +118,7 @@ def _python(repo_root):
     return cand if os.path.isfile(cand) else sys.executable
 
 
-def _cached(cache, out):
+def _cached(out):
     if os.path.isfile(out) and os.path.getsize(out) > 0:
         try:
             os.utime(out, None)          # touch: prune evicts by age, keep hot entries
@@ -137,7 +137,7 @@ def synthesize(repo_root, text, *, wait_s=SYNTH_WAIT_S):
 
     cache = CP.speech_cache_dir(repo_root)
     out = os.path.join(cache, cache_key(text, os.path.basename(model)) + ".wav")
-    hit = _cached(cache, out)
+    hit = _cached(out)
     if hit:
         return hit
 
@@ -145,7 +145,7 @@ def synthesize(repo_root, text, *, wait_s=SYNTH_WAIT_S):
         raise SpeechUnavailable("speech engine is busy, try again shortly")
     try:
         # Someone may have synthesised this exact phrase while we waited.
-        hit = _cached(cache, out)
+        hit = _cached(out)
         if hit:
             return hit
 
