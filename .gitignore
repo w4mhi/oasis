@@ -146,3 +146,7 @@ docs/superpowers/*
 # Local Claude Code settings (private hooks/permissions)
 .claude/settings.local.json
 .superpowers/
+
+features/speech/voices/
+features/speech/cache/
+features/speech/packages/

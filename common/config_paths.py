@@ -41,3 +41,12 @@ def graywolf_api_json(repo_root):
 
 def installer_queue_dir(repo_root):
     return os.path.join(config_dir(repo_root), "installer-queue")
+
+def speech_dir(repo_root):
+    return os.path.join(repo_root, "features", "speech")
+
+def speech_voices_dir(repo_root):
+    return os.path.join(speech_dir(repo_root), "voices")
+
+def speech_cache_dir(repo_root):
+    return os.path.join(speech_dir(repo_root), "cache")
