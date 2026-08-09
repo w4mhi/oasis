@@ -27,6 +27,7 @@ import time
 
 from common import setup_engine as SE
 from common import server as SERVER_SETUP
+from common import speech as SPEECH
 
 
 # ── Per-feature removal records ───────────────────────────────────────────────
@@ -334,7 +335,7 @@ def _setup_dashboard_install_fn(repo_root, payload):
 # caller is already root).
 PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
-    "openwebrx", "adsb", "satellites", "satellites-piper",
+    "openwebrx", "adsb", "satellites",
     "rtl-sdr", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
     "rtc-raspad",
     "draws-gps", "draws-audio",
@@ -459,24 +460,27 @@ def build_registry(repo_root, payload=None):
             enable_policy="none",
             privileged=True,
         ),
-        # Optional upgrade to the pass-alert voice: Piper (neural) instead of
-        # espeak's formant synthesis. Depends on `satellites` because that is what
-        # installs speech-dispatcher — Piper reaches Chromium through it, as a
-        # generic output module. Self-guards when the bundle has no engine or no
-        # voice, so a station built without them installs cleanly and simply keeps
-        # the espeak fallback.
-        "satellites-piper": SE.FeatureSpec(
-            key="satellites-piper",
-            dependencies=["satellites"],
+        # Station-wide speech service (Piper neural TTS): pass alerts today,
+        # guardian and Winlink announcements next — so no `dependencies` on
+        # `satellites`, unlike the speech-dispatcher-era feature this replaces.
+        # Not privileged: nothing needs root now that /etc/speech-dispatcher is
+        # out of the picture (see common/speech.py — a subprocess piped to a
+        # cached WAV, no system TTS daemon involved). Self-guards on an
+        # unsupported platform or a bundle with no engine/voice, so a station
+        # built without them installs cleanly and simply keeps the espeak
+        # fallback.
+        "speech": SE.FeatureSpec(
+            key="speech",
+            dependencies=[],                 # guardian and Winlink want it too
             install_fn=lambda: _setup_run_script(
-                repo_root, "services/satellites/install-piper.py", timeout=600),
+                repo_root, "features/speech/install.py", timeout=900),
             removal_record_fn=lambda: {
-                "script": [os.path.join(repo_root, "services/satellites/install-piper.py"),
+                "script": [os.path.join(repo_root, "features/speech/install.py"),
                            "--uninstall"],
             },
-            verify_fn=lambda: {"ok": True},
+            verify_fn=lambda: {"ok": SPEECH.available(repo_root)},
             enable_policy="none",
-            privileged=True,
+            privileged=False,
         ),
         # RTL-SDR driver + tools (librtlsdr / rtl_fm / socat + the DVB blacklist).
         # Its own feature so ADS-B, OpenWebRX and the APRS feed share one detection

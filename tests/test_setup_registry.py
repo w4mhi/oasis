@@ -76,37 +76,32 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class PiperVoiceFeatureTest(unittest.TestCase):
-    """The Piper voice is an OPT-IN upgrade to the pass alert, not a requirement.
+class SpeechFeatureTest(unittest.TestCase):
+    """Station-wide speech (Piper neural TTS via common/speech.py) replaces the
+    speech-dispatcher-era 'satellites-piper' feature. It is OPT-IN, not a
+    requirement: every announcement still speaks through the espeak-ng
+    fallback when SPEECH.available() is False.
 
-    The contract worth pinning is the fallback: a station whose bundle carries no
-    engine or no voice model must still install cleanly and simply keep speaking
-    with espeak's +Steph2 variant. Nothing here may make satellites depend on
-    Piper — that would turn an optional enhancement into an install failure on
-    every box built without a 60 MB download.
+    The contract worth pinning: no `satellites` dependency (guardian and
+    Winlink want this feature too, and neither installs satellites), and not
+    privileged (a subprocess piped to a cached WAV needs no root, unlike the
+    /etc/speech-dispatcher config the old feature wrote).
     """
 
     def setUp(self):
         self.reg = R.build_registry("/tmp/oasis-test-repo")
 
-    def test_piper_depends_on_satellites_not_the_reverse(self):
-        # satellites installs speech-dispatcher, which Piper plugs into as a
-        # generic output module. The reverse dependency would make the voice
-        # mandatory.
-        self.assertIn("satellites", self.reg["satellites-piper"].dependencies)
-        self.assertNotIn("satellites-piper", self.reg["satellites"].dependencies)
+    def test_speech_has_no_dependencies(self):
+        self.assertEqual(self.reg["speech"].dependencies, [])
 
-    def test_piper_is_privileged_and_allowlisted(self):
-        # Writes /etc/speech-dispatcher/* and /opt — root, so it must be routed
-        # to the installer worker rather than run in-process.
-        self.assertTrue(self.reg["satellites-piper"].privileged)
-        self.assertIn("satellites-piper", R.PRIVILEGED_FEATURES)
+    def test_speech_is_not_privileged_or_allowlisted(self):
+        self.assertFalse(self.reg["speech"].privileged)
+        self.assertNotIn("speech", R.PRIVILEGED_FEATURES)
 
-    def test_piper_removal_record_uninstalls_rather_than_deleting_paths(self):
-        """Removal must run the script's own --uninstall, not rm a path list: the
-        module has to be deregistered from speechd.conf, and only the script
-        knows which lines it wrote."""
-        rec = self.reg["satellites-piper"].removal_record_fn()
+    def test_speech_removal_record_uninstalls_rather_than_deleting_paths(self):
+        """Removal must run the script's own --uninstall, not rm a path list —
+        matches the honesty contract in features/speech/install.py."""
+        rec = self.reg["speech"].removal_record_fn()
         self.assertIn("script", rec)
         self.assertIn("--uninstall", rec["script"])
-        self.assertTrue(rec["script"][0].endswith("install-piper.py"))
+        self.assertTrue(rec["script"][0].endswith("features/speech/install.py"))
