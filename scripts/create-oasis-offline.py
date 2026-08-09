@@ -946,7 +946,7 @@ def phase_webssh(bundle_root, update=False):
         _warn("No ttyd binaries downloaded — webssh offline install will not work.")
 
 
-# ── Phase 5d: Piper neural voice (Satellites pass alert) ──────────────────────
+# ── Phase 5d: Piper neural voice (station-wide speech service) ────────────────
 def _fetch_to(url, dest, label):
     """Stream *url* to *dest* (atomic via .part). True on success.
 
