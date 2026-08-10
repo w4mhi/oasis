@@ -617,7 +617,50 @@ class _CaptureError(Exception):
         self.slug = slug
 
 
-def _prep_capture(norad, req_freq):
+def _resolve_downlink(downlinks, req_freq, req_mode=None):
+    """Which downlink a capture request means. Pure — no hardware, no roster I/O.
+
+    A FREQUENCY IS NOT A CHANNEL. 88 frequencies in the roster carry modes that
+    need different demodulators: NORAD 31130 has FM and CW on 435.245, and CW is
+    tuned 700 Hz low so its carrier lands as an audible tone. Resolving on
+    frequency alone took whichever entry sorted first, so asking for CW could
+    capture with FM demod — a WAV of silence, and nothing to say why. It looked
+    correct only because the case that comes up most, the ISS on 437.800, has
+    three modes that all demodulate to `fm`.
+
+    With `req_mode` the pair is matched exactly, and a mode that is not on that
+    frequency is refused rather than silently substituted. Without it the first
+    entry at the frequency is used, which is the historical behaviour and what an
+    older cached page will still ask for — a guess, and the reason `mode` exists.
+
+    Lives apart from _prep_capture because it is the only part of that function
+    with an interesting answer, and mocking a dongle to test it would prove
+    nothing about this."""
+    if not downlinks:
+        raise _CaptureError("no downlink frequency for this satellite",
+                            400, "NO_DOWNLINK")
+    if req_freq is None:
+        return downlinks[0]
+    try:
+        req = float(req_freq)
+    except (TypeError, ValueError):
+        raise _CaptureError("bad freq_mhz", 400, "INVALID_FREQ")
+    at_freq = [d for d in downlinks if abs(float(d["freq_mhz"]) - req) < 1e-6]
+    if not at_freq:
+        raise _CaptureError("frequency is not a downlink of this satellite",
+                            400, "FREQ_NOT_A_DOWNLINK")
+    if not req_mode:
+        return at_freq[0]
+    want = req_mode.strip().lower()
+    dl = next((d for d in at_freq if (d.get("mode") or "").strip().lower() == want), None)
+    if dl is None:
+        raise _CaptureError(
+            f"{req_mode} is not a downlink mode on {req} MHz for this satellite",
+            400, "MODE_NOT_ON_FREQ")
+    return dl
+
+
+def _prep_capture(norad, req_freq, req_mode=None):
     """Shared validation for /listen (record) and /listen/stream: deps, dongle,
     exclusivity, and resolving the requested downlink + mode. Returns
     (entry, freq_hz, device_serial) or raises _CaptureError(msg, http_code).
@@ -656,19 +699,7 @@ def _prep_capture(norad, req_freq):
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     entry = next((s for s in data["satellites"] if s["norad"] == norad), None)
     downlinks = roster.legacy_downlinks(entry) if entry else []
-    if not downlinks:
-        raise _CaptureError("no downlink frequency for this satellite",
-                            400, "NO_DOWNLINK")
-    dl = downlinks[0]
-    if req_freq is not None:
-        try:
-            req = float(req_freq)
-        except (TypeError, ValueError):
-            raise _CaptureError("bad freq_mhz", 400, "INVALID_FREQ")
-        dl = next((d for d in downlinks if abs(float(d["freq_mhz"]) - req) < 1e-6), None)
-        if dl is None:
-            raise _CaptureError("frequency is not a downlink of this satellite",
-                                400, "FREQ_NOT_A_DOWNLINK")
+    dl = _resolve_downlink(downlinks, req_freq, req_mode)
     support = listen.mode_support(dl.get("mode"))
     if not support["supported"]:
         raise _CaptureError(f"{dl.get('mode')} not supported yet — {support['blurb']}",
@@ -691,7 +722,7 @@ def api_listen():
                         "code": "INVALID_NORAD"}), 400
     try:
         entry, freq_hz, device_serial, dmode, radio_channel = _prep_capture(
-            norad, body.get("freq_mhz"))
+            norad, body.get("freq_mhz"), body.get("mode"))
     except _CaptureError as e:
         return jsonify({"ok": False, "error": str(e), "code": e.slug}), e.code
     safe = "".join(c if c.isalnum() else "_" for c in entry["name"]).strip("_")
@@ -742,7 +773,7 @@ def api_listen_stream():
                         "code": "INVALID_NORAD"}), 400
     try:
         _entry, freq_hz, device_serial, dmode, _rch = _prep_capture(
-            norad, request.args.get("freq_mhz"))
+            norad, request.args.get("freq_mhz"), request.args.get("mode"))
     except _CaptureError as e:
         return jsonify({"ok": False, "error": str(e), "code": e.slug}), e.code
     try:

@@ -281,8 +281,11 @@ class RoutesTest(unittest.TestCase):
         # 5-tuple since DRAWS: the last slot is the radio channel, None on an
         # RTL-SDR capture. A 4-tuple stub makes the real view raise ValueError
         # into its generic handler, turning every refusal into a 500.
+        # `mode` since a frequency stopped being enough to name a channel — the
+        # views pass it now, and a stub that does not accept it turns every
+        # refusal into a 500 the same way.
         self.routes._prep_capture = (
-            lambda norad, freq_mhz=None: (entry, 145_800_000, None, "fm", None))
+            lambda norad, freq_mhz=None, mode=None: (entry, 145_800_000, None, "fm", None))
         self.addCleanup(lambda: setattr(self.routes, "_prep_capture", self._orig_prep))
 
     def test_listen_refuses_when_the_card_is_full(self):
@@ -439,6 +442,72 @@ class PassesStalenessTest(RoutesTest):
             self.assertGreater(len(calls), 0)   # stale window → recomputed, not served
         finally:
             self.predict.compute_passes = orig
+
+
+class ResolveDownlinkTest(unittest.TestCase):
+    """A FREQUENCY IS NOT A CHANNEL.
+
+    88 frequencies in the roster carry modes needing different demodulators.
+    Resolving on frequency alone took whichever entry sorted first, so asking for
+    CW on 435.245 could capture with FM demod — a WAV of silence with nothing to
+    explain it. Pure function, so no dongle is mocked to prove it."""
+
+    def setUp(self):
+        from services.satellites import routes
+        self.routes = routes
+        self.CaptureError = routes._CaptureError
+        # NORAD 31130's real shape: one frequency, two demodulators.
+        self.mixed = [{"mode": "FM", "freq_mhz": 435.245},
+                      {"mode": "CW", "freq_mhz": 435.245}]
+
+    def test_the_named_mode_wins_not_the_first_at_that_frequency(self):
+        got = self.routes._resolve_downlink(self.mixed, 435.245, "CW")
+        self.assertEqual(got["mode"], "CW")
+
+    def test_the_other_one_too(self):
+        # Guards against "returns the last" being mistaken for a fix.
+        got = self.routes._resolve_downlink(self.mixed, 435.245, "FM")
+        self.assertEqual(got["mode"], "FM")
+
+    def test_mode_matching_ignores_case_and_padding(self):
+        self.assertEqual(
+            self.routes._resolve_downlink(self.mixed, 435.245, "  cw ")["mode"], "CW")
+
+    def test_a_mode_not_on_that_frequency_is_refused_not_substituted(self):
+        # Silently handing back FM is exactly the bug; a wrong capture is worse
+        # than a refused one because it looks like the radio failed.
+        with self.assertRaises(self.CaptureError) as e:
+            self.routes._resolve_downlink(self.mixed, 435.245, "SSTV")
+        self.assertEqual(e.exception.slug, "MODE_NOT_ON_FREQ")
+        self.assertEqual(e.exception.code, 400)
+
+    def test_no_mode_keeps_the_historical_first_match(self):
+        # An older cached page sends only a frequency. It must still work.
+        self.assertEqual(
+            self.routes._resolve_downlink(self.mixed, 435.245, None)["mode"], "FM")
+
+    def test_a_frequency_two_kilohertz_away_is_a_different_channel(self):
+        # 31130 also has 435.247. The tolerance must not merge them.
+        near = self.mixed + [{"mode": "CW", "freq_mhz": 435.247}]
+        with self.assertRaises(self.CaptureError) as e:
+            self.routes._resolve_downlink(near, 435.246, "CW")
+        self.assertEqual(e.exception.slug, "FREQ_NOT_A_DOWNLINK")
+
+    def test_unknown_frequency_and_empty_roster_keep_their_own_slugs(self):
+        with self.assertRaises(self.CaptureError) as e:
+            self.routes._resolve_downlink(self.mixed, 999.0, None)
+        self.assertEqual(e.exception.slug, "FREQ_NOT_A_DOWNLINK")
+        with self.assertRaises(self.CaptureError) as e:
+            self.routes._resolve_downlink([], 435.245, None)
+        self.assertEqual(e.exception.slug, "NO_DOWNLINK")
+
+    def test_a_nonsense_frequency_is_INVALID_FREQ(self):
+        with self.assertRaises(self.CaptureError) as e:
+            self.routes._resolve_downlink(self.mixed, "abc", None)
+        self.assertEqual(e.exception.slug, "INVALID_FREQ")
+
+    def test_no_frequency_at_all_takes_the_first_downlink(self):
+        self.assertEqual(self.routes._resolve_downlink(self.mixed, None, None)["mode"], "FM")
 
 
 class MinElevConfigTest(RoutesTest):

@@ -1478,7 +1478,10 @@ function dlPickerHTML(s) {
     // data-unsup survives the tick: updateListenUI also disables options when no
     // device is assigned, and needs to know which ones must STAY disabled once
     // one is.
-    return `<option value="${d.freq_mhz}" data-unsup="${d.supported ? 0 : 1}"
+    // value is "freq|mode", not the bare frequency: after grouping, two entries
+    // can still share a frequency when they need DIFFERENT demodulators (FM and
+    // CW on 435.245), and a frequency alone cannot say which one you picked.
+    return `<option value="${d.freq_mhz}|${d.mode}" data-unsup="${d.supported ? 0 : 1}"
       ${d.supported ? '' : 'disabled'} title="${t}"
       >${dlLabel(d)} · ${d.freq_mhz} MHz${d.supported ? '' : ' — not supported'}</option>`;
   }).join('');
@@ -1532,7 +1535,7 @@ function updateListenUI() {
     // adopted from the server on load (see pollListen), and the roster re-renders
     // on every tick, so the DOM must be told what is armed, not asked.
     const armedHere = !!_armed && String(_armed.norad) === String(norad);
-    sel.value = armedHere ? String(_armed.freq) : '';
+    sel.value = armedHere ? `${_armed.freq}|${_armed.mode}` : '';
     sel.classList.remove('armed', 'rec', 'live');
     if (armedHere && _capturingFreq(norad, _armed.freq)) {
       sel.classList.add(LISTEN.streaming ? 'live' : 'rec');
@@ -1608,11 +1611,13 @@ function _satAudio() {
   }
   return a;
 }
-function startStream(norad, freqMhz) {
+function startStream(norad, freqMhz, mode) {
   _listenErrNorad = null;
   _streamNorad = norad; _streamFreq = freqMhz;
   const a = _satAudio();
-  a.src = `/api/satellites/listen/stream?norad=${norad}` + (freqMhz != null ? `&freq_mhz=${freqMhz}` : '');
+  a.src = `/api/satellites/listen/stream?norad=${norad}`
+        + (freqMhz != null ? `&freq_mhz=${freqMhz}` : '')
+        + (mode ? `&mode=${encodeURIComponent(mode)}` : '');   // same ambiguity as record
   a.play().catch(() => {});   // the click IS the user gesture autoplay needs
   updateListenUI();
 }
@@ -1633,8 +1638,8 @@ function transport(action) {
     return;
   }
   if (!_armed || _capturing()) return;
-  if (action === 'rec') startListen(_armed.norad, _armed.freq);       // → WAV
-  else if (action === 'play') startStream(_armed.norad, _armed.freq); // → browser
+  if (action === 'rec') startListen(_armed.norad, _armed.freq, _armed.mode);       // → WAV
+  else if (action === 'play') startStream(_armed.norad, _armed.freq, _armed.mode); // → browser
 }
 function updateTransport() {
   const rec = document.getElementById('t-rec'), play = document.getElementById('t-play'),
@@ -1664,8 +1669,9 @@ function onDownlinkSelect(norad, value) {
   // still have live options, and the rule belongs where the state changes, not
   // only in the markup that happens to express it.
   if (!LISTEN.assigned && value !== '') { updateListenUI(); return; }
-  const freq = parseFloat(value);
-  _armed = value === '' || !isFinite(freq) ? null : { norad, freq };
+  const [f, mode] = String(value).split('|');
+  const freq = parseFloat(f);
+  _armed = value === '' || !isFinite(freq) ? null : { norad, freq, mode: mode || null };
   updateListenUI();
   updateTransport();          // Rec/Play enable off the new armed state at once
 }
@@ -1685,7 +1691,15 @@ async function pollListen() {
   // Reflect an in-progress capture (e.g. after a reload) as the armed frequency,
   // so the transport + card show the running pass rather than an empty selection.
   if (_capturing() && !_armed && LISTEN.norad != null && LISTEN.freq_hz) {
-    _armed = { norad: LISTEN.norad, freq: LISTEN.freq_hz / 1e6 };
+    const freq = LISTEN.freq_hz / 1e6;
+    // The mode has to be recovered from the ROSTER, not from LISTEN.mode — that
+    // field is the capture KIND ("record" / "stream"), and sending it as a
+    // downlink mode would be rejected as not-on-this-frequency. Only adopt one
+    // when the frequency names exactly one channel; where two share it, no mode
+    // is honest, and the server falls back to its historical first-match.
+    const sat = ROSTER.find(s => String(s.norad) === String(LISTEN.norad));
+    const at = ((sat || {}).downlinks || []).filter(d => Math.abs(d.freq_mhz - freq) < 1e-6);
+    _armed = { norad: LISTEN.norad, freq, mode: at.length === 1 ? at[0].mode : null };
   }
   const el = document.getElementById('listen-status');
   if (el) {
@@ -1700,10 +1714,14 @@ async function pollListen() {
   }
   updateListenUI();
 }
-async function startListen(norad, freqMhz) {
+async function startListen(norad, freqMhz, mode) {
   _listenErrNorad = null;
   const body = { norad };
   if (freqMhz != null) body.freq_mhz = freqMhz;
+  // Name the MODE too. A frequency alone is ambiguous where two channels share
+  // it with different demodulators, and the server would otherwise take the
+  // first — capturing FM when you asked for CW.
+  if (mode) body.mode = mode;
   try {
     const r = await fetch('/api/satellites/listen', { method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
