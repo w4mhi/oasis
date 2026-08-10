@@ -1090,6 +1090,18 @@ function updateCoverage() {
   for (const norad in PLOTTED) {
     const s = ROSTER.find(x => x.norad === +norad);
     if (!s) continue;
+    // Only during a pass we actually TOLD the operator about. This used to fire
+    // on live elevation alone, so a bird making a transit the server never
+    // called a pass — /passes discards any culminating below min_elev — lit the
+    // pill and the map wash with no card, no 1 h entry and nothing to click.
+    // METEOR M2-3 at 5 degrees was the reproduction: pill up, roster empty, and
+    // no way to tell which one was lying. The footprint drawing has always
+    // gated on this window; the pill simply never did, so the two disagreed on
+    // the same screen at the same instant.
+    // The per-row chip is deliberately NOT gated: "this bird is at 5 degrees
+    // right now" is a true, locally-scoped statement about one row. The pill is
+    // the global claim "you have coverage", and that is the one that misled.
+    if (!inFootprintWindow(norad)) continue;
     const look = lookAt(s);
     const e = look ? look.el : null;
     if (e != null && e >= 0) {
