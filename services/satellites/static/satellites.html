@@ -200,14 +200,25 @@ html, body { height: 100%; margin: 0; }
 /* Downlink mode buttons (checked sat only). Freq is on the face; state comes
    from /listen/status. Two *disabled* looks that must not be confused: busy =
    solid grey ("wait"), unsupported = ghosted/dashed ("never"). */
-.dlbtns { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .4rem; }
-.dlbtn { font-family: var(--mono); font-size: var(--fs-small); font-weight: 700; white-space: nowrap;
-  border: 1px solid var(--border); border-radius: 5px; padding: 2px 8px; cursor: pointer;
-  background: var(--panel); color: var(--text); transition: background .3s ease, color .3s ease, border-color .3s ease; }
-.dlbtn.free { border-color: var(--green); color: var(--green); }
-.dlbtn.free:hover { background: var(--green); color: #0d1117; }
-.dlbtn.rec { border-color: var(--red); background: var(--red); color: #fff; animation: recpulse 1.2s infinite; }
-.dlbtn.live { border-color: var(--green); background: var(--green); color: #0d1117; animation: recpulse 1.2s infinite; }
+.dlpick { margin-top: .4rem; }
+/* One dropdown instead of a row of buttons. A bird with several downlinks used
+   to wrap two or three lines of chips; the select is one line whatever the count,
+   which is the space the rest of the card needed.
+   ALWAYS enabled, including with no SDR assigned: choosing which frequency you
+   care about is reading, not transmitting, and the operator should be able to see
+   what a bird offers on a laptop with no dongle at all. Whether that armed
+   frequency can actually be captured is the transport's business, and it says so
+   itself (see updateTransport's armHint). */
+.dlsel { font-family: var(--mono); font-size: var(--fs-small); font-weight: 700;
+  width: 100%; padding: 3px 6px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--panel); color: var(--text);
+  transition: border-color .3s ease, color .3s ease; }
+.dlsel:focus { outline: none; border-color: var(--accent); }
+.dlsel.armed { border-color: var(--accent); color: var(--accent); }
+.dlsel.rec { border-color: var(--red); color: var(--red); animation: recpulse 1.2s infinite; }
+.dlsel.live { border-color: var(--green); color: var(--green); animation: recpulse 1.2s infinite; }
+.dlsel option:disabled { color: var(--text-dim); }
 #listen-status.live .rec-dot { background: var(--green); }
 /* Capture-mode pills follow the studio convention: REC red, LISTEN green. */
 /* Transport cluster (⏺ Rec / ▶ Play / ⏹ Stop) — one dongle, so one global set.
@@ -218,8 +229,8 @@ html, body { height: 100%; margin: 0; }
 .tbtn:disabled { opacity: .45; cursor: default; border-color: var(--text-dim); }
 .tbtn.active { opacity: 1; }   /* running state stays vivid even while non-interactive */
 /* READY (armed, in window, not yet running) — coloured outline on a transparent
-   fill; pressing fills it in. Same idiom as .dlbtn.free -> .dlbtn.armed above,
-   so the transport and the frequency buttons read as one system.
+   fill; pressing fills it in. Same idiom as .dlsel -> .dlsel.armed above, so
+   the transport and the frequency picker read as one system.
    Without this the ONLY difference between "you can press this" and "you can't"
    was opacity .6 vs 1 on an already-grey button, which reads as disabled in both
    states — the operator sees a dead transport and assumes the SDR never armed. */
@@ -232,12 +243,6 @@ html, body { height: 100%; margin: 0; }
 #t-rec.active  { background: var(--red);   border-color: var(--red);   color: #fff;    animation: recpulse 1.2s infinite; }
 #t-play.active { background: var(--green); border-color: var(--green); color: #0d1117; animation: recpulse 1.2s infinite; }
 #t-stop.active { background: #3b82f6;      border-color: #3b82f6;      color: #fff; }
-/* Armed frequency = steady accent highlight (selected, not yet capturing). */
-.dlbtn.armed { border-color: var(--accent); background: var(--accent); color: #0d1117; }
-.dlbtn.busy { border-color: var(--border); color: var(--text-dim); background: var(--panel-2);
-  cursor: not-allowed; opacity: .7; }
-.dlbtn.unsupported { border-style: dashed; border-color: var(--border); color: var(--text-dim);
-  background: transparent; cursor: not-allowed; opacity: .5; }
 @keyframes recpulse { 50% { opacity: .5; } }
 .sat-row .dl-status { font-size: var(--fs-small); color: var(--text-dim); }
 .sat-row .dl-status.rec { color: var(--red); font-weight: 700; }
@@ -818,7 +823,7 @@ function renderRoster() {
         <span class="nmwrap"><span class="nm">${bareName}</span>${subName ? `<span class="desig">${subName}</span>` : ''}</span><span class="pass-hint" data-norad="${s.norad}">${passHint(p, s.norad)}</span></label>
       <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}${noTle ? '<span class="chip chip-warn" title="This satellite is monitored but has no TLE in the cache, so no pass can be computed and it will never plot. Sync TLEs (tap the badge above) while online.">no TLE</span>' : ''}<span class="sat-elev" data-norad="${s.norad}"></span>${mon ? bellBtnHTML(s.norad) : ''}</div>
       ${!p ? `<div class="no-pass-hint">— ${noTle ? 'no TLE in cache' : 'no upcoming pass'} · no SDR controls —</div>`
-           : (mon ? `<div class="dlbtns">${dlBtnsHTML(s)}</div>` : '')}
+           : (mon ? `<div class="dlpick">${dlPickerHTML(s)}</div>` : '')}
       <div class="sat-bottom">
         ${mon ? `<span class="dl-status" data-norad="${s.norad}"></span>` : '<span></span>'}
         <span class="sat-meter" data-norad="${s.norad}">${'<span class="seg"></span>'.repeat(5)}</span></div>
@@ -1436,13 +1441,31 @@ let LISTEN = { recording: false };
 let _listenErrNorad = null;   // norad whose last start attempt errored (shown in its status line)
 
 // One button per downlink of a checked sat: "mode · freq", state set live below.
-function dlBtnsHTML(s) {
-  return (s.downlinks || []).map(d => {
-    const sup = d.supported ? 1 : 0;
-    return `<button class="dlbtn" data-norad="${s.norad}" data-freq="${d.freq_mhz}" data-supported="${sup}"
-      ${sup ? `onclick="onDownlinkClick(${s.norad}, ${d.freq_mhz})"` : 'disabled'}
-      title="${(d.modes || [d.mode]).join(' / ')} on ${d.freq_mhz} MHz${d.blurb ? ' — ' + d.blurb : ''}">${(d.modes || [d.mode]).join(' · ')} · ${d.freq_mhz}</button>`;
+// The modes on one frequency, alphabetically: "FM/FSK/SSTV". The server already
+// sorts `modes`; the join is the only presentation choice here.
+function dlLabel(d) { return (d.modes || [d.mode]).join('/'); }
+
+// Downlinks as ONE dropdown. Sorted by label, then by frequency — the label is
+// what an operator scans for ("where's the FM?"), and the frequency only breaks
+// ties, which is exactly the case a bird with APRS on both 145.825 and 437.825
+// creates.
+function dlPickerHTML(s) {
+  const dls = (s.downlinks || []).slice().sort((a, b) =>
+    dlLabel(a).localeCompare(dlLabel(b), undefined, { sensitivity: 'base' })
+    || a.freq_mhz - b.freq_mhz);
+  if (!dls.length) return '';
+  const opts = dls.map(d => {
+    const t = `${dlLabel(d)} · ${d.freq_mhz} MHz${d.blurb ? ' — ' + d.blurb : ''}`;
+    // Unsupported modes stay VISIBLE and unselectable: "we cannot demodulate
+    // this yet" is information about the bird, and hiding the row would leave an
+    // operator wondering where the beacon went.
+    return `<option value="${d.freq_mhz}" ${d.supported ? '' : 'disabled'} title="${t}"
+      >${dlLabel(d)} · ${d.freq_mhz} MHz${d.supported ? '' : ' — not supported'}</option>`;
   }).join('');
+  return `<select class="dlsel" data-norad="${s.norad}"
+      onchange="onDownlinkSelect(${s.norad}, this.value)"
+      title="Pick the downlink to arm — Rec / Play act on it">`
+    + `<option value="">— pick a downlink —</option>${opts}</select>`;
 }
 function _busyReason() {
   if ((LISTEN.missing_deps || []).length) return 'SDR tools not installed';
@@ -1473,25 +1496,30 @@ function _dongleStatus(norad) {
 }
 // Set every rendered downlink button + status line from the latest LISTEN state.
 function updateListenUI() {
-  document.querySelectorAll('.dlbtn[data-norad]').forEach(btn => {
-    const norad = +btn.dataset.norad, freq = parseFloat(btn.dataset.freq);
-    const supported = btn.dataset.supported === '1';
-    const dl = (ROSTER.find(s => s.norad === norad) || { downlinks: [] }).downlinks
-      .find(d => Math.abs(d.freq_mhz - freq) < 1e-6);
-    btn.classList.remove('free', 'armed', 'rec', 'live', 'busy', 'unsupported');
-    if (!supported) { btn.classList.add('unsupported'); btn.disabled = true;
-      btn.title = dl ? dl.blurb : 'not supported'; return; }
-    if (_capturingFreq(norad, freq)) {                    // this one is live → pulse in capture colour
-      btn.classList.add(LISTEN.streaming ? 'live' : 'rec'); btn.disabled = true;
-      btn.title = LISTEN.streaming ? 'listening — Stop in the header' : 'recording — Stop in the header'; return; }
-    if (_capturing()) { btn.classList.add('busy'); btn.disabled = true; btn.title = _busyReason(); return; }
-    if (!_dongleFree()) { btn.classList.add('busy'); btn.disabled = true; btn.title = _busyReason(); return; }
-    if (!inCaptureWindow(norad)) { btn.classList.add('busy'); btn.disabled = true;
-      btn.title = 'not in range yet — armable ~5 min before the pass'; return; }
-    if (_isArmed(norad, freq)) { btn.classList.add('armed'); btn.disabled = false;
-      btn.title = 'armed — use Rec / Play'; }
-    else { btn.classList.add('free'); btn.disabled = false;
-      btn.title = `arm ${dl ? dl.mode : ''} ${freq} MHz`; }
+  document.querySelectorAll('.dlsel[data-norad]').forEach(sel => {
+    const norad = +sel.dataset.norad;
+    // The select mirrors the armed state rather than owning it: a capture can be
+    // adopted from the server on load (see pollListen), and the roster re-renders
+    // on every tick, so the DOM must be told what is armed, not asked.
+    const armedHere = !!_armed && String(_armed.norad) === String(norad);
+    sel.value = armedHere ? String(_armed.freq) : '';
+    sel.classList.remove('armed', 'rec', 'live');
+    if (armedHere && _capturingFreq(norad, _armed.freq)) {
+      sel.classList.add(LISTEN.streaming ? 'live' : 'rec');
+      sel.title = LISTEN.streaming ? 'listening — Stop in the header'
+                                   : 'recording — Stop in the header';
+    } else if (armedHere) {
+      sel.classList.add('armed');
+      // Say WHY it can't be used yet, right where the choice was made. The
+      // dropdown stays open for business either way — arming is free, capturing
+      // is what needs a dongle and a pass.
+      sel.title = _capturing() ? _busyReason()
+                : !_dongleFree() ? _busyReason()
+                : !inCaptureWindow(norad) ? 'armed — not in range yet (capture opens ~5 min before the pass)'
+                : 'armed — use Rec / Play';
+    } else {
+      sel.title = 'Pick the downlink to arm — Rec / Play act on it';
+    }
   });
   document.querySelectorAll('.dl-status[data-norad]').forEach(el => {
     const st = _dongleStatus(+el.dataset.norad);
@@ -1593,10 +1621,16 @@ function updateTransport() {
   play.title = LISTEN.streaming ? 'listening — press Stop' : (canStart ? 'listen live to the armed pass' : armHint);
 }
 // A frequency button ARMS its downlink (toggles); the transport does the rest.
-function onDownlinkClick(norad, freqMhz) {
-  if (_capturing()) return;   // buttons locked while a capture runs — use Stop
-  _armed = _isArmed(norad, freqMhz) ? null : { norad, freq: freqMhz };
+function onDownlinkSelect(norad, value) {
+  // Locked while a capture runs — changing the armed frequency mid-record would
+  // silently disagree with what the dongle is actually doing. updateListenUI
+  // puts the select back where it was, so the revert is visible rather than the
+  // change being swallowed.
+  if (_capturing()) { updateListenUI(); return; }
+  const freq = parseFloat(value);
+  _armed = value === '' || !isFinite(freq) ? null : { norad, freq };
   updateListenUI();
+  updateTransport();          // Rec/Play enable off the new armed state at once
 }
 async function pollListen() {
   const err = LISTEN._err;   // preserve a just-set error across the refresh
