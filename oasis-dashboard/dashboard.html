@@ -89,6 +89,9 @@
            --jenny:79,224,200;
            overflow:hidden; background:var(--panel);
            border:1px solid rgba(var(--jenny),.30); border-radius:.8rem;
+           /* A press held on a touch panel otherwise raises the selection
+              handles and the callout menu over her face. */
+           user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
            transition:filter .4s ease, box-shadow .4s ease; }
   html[data-res="1920x1200"] .avatar.ready{ display:block; cursor:pointer; }
   .avatar video{ width:100%; height:100%; object-fit:cover; display:block; }
@@ -1722,12 +1725,87 @@ function jennyReady() {
       _jennyHello = jennyGreeting(d.voice);
       c.classList.add('ready');
       c.title = 'Tap to wake Jenny';
+      // Hold her, and she reads what the station has to say. Deliberately
+      // undocumented in the title — it is meant to be found, not advertised.
+      c.addEventListener('pointerdown', () => {
+        _heldFired = false;
+        clearTimeout(_holdTimer);
+        _holdTimer = setTimeout(() => { _heldFired = true; reciteStart(); }, RECITE_HOLD_MS);
+      });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(
+        ev => c.addEventListener(ev, () => clearTimeout(_holdTimer)));
+      c.addEventListener('contextmenu', e => e.preventDefault());
       // Tap to wake her. Deliberately NOT gated on _satMuted: that mutes
-      // unsolicited pass alerts, and this is the operator asking directly.
-      c.addEventListener('click', () => { if (!_jennyBusy) jennySpeak(_jennyHello); });
+      // unsolicited pass alerts, and this is the operator asking directly. The
+      // same reasoning covers the long press, which is even more deliberate.
+      c.addEventListener('click', () => {
+        // The click that ENDS a long press must not also count as a tap.
+        if (_heldFired) { _heldFired = false; return; }
+        if (reciteStop()) return;        // a tap is how you stop her
+        if (!_jennyBusy) jennySpeak(_jennyHello);
+      });
     })
     .catch(() => {});
 }
+// ── Held, she reads ──────────────────────────────────────────────────────────
+// A press held on Jenny recites configuration/ee.md, a line at a time. A tap
+// stops her. Absent that file — which is every station that has not written one
+// — nothing happens at all, which is the correct behaviour for something meant
+// to be discovered rather than announced.
+const RECITE_PATH = '/configuration/ee.md';
+const RECITE_HOLD_MS = 1200;   // long enough that no ordinary tap reaches it
+const RECITE_BEAT_MS = 800;    // measured by ear, out loud, before any of this existed
+let _reciteOn = false, _holdTimer = null, _heldFired = false;
+
+// Blank lines are the SCRIPT'S OWN TIMING: every line gets one beat, and each
+// blank line after it adds another. The rhythm is tuned by editing prose rather
+// than by editing this file. Horizontal rules are dropped — read aloud, "---"
+// becomes "dash dash dash".
+function reciteScript(text) {
+  const out = [];
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) { if (out.length) out[out.length - 1].beats++; continue; }
+    if (/^-{3,}$/.test(line)) continue;
+    out.push({ line, beats: 0 });
+  }
+  return out;
+}
+
+async function reciteStart() {
+  if (_reciteOn) return;
+  let script;
+  try {
+    const r = await fetch(RECITE_PATH, { cache: 'no-store' });
+    if (!r.ok) return;
+    script = reciteScript(await r.text());
+  } catch (_) { return; }
+  if (!script.length) return;
+  _reciteOn = true;
+  // Warm every line BEFORE speaking any. An uncached line costs seconds of
+  // Piper, and the silence would land between the lines — so the pauses would
+  // be synthesis latency on the first run and absent on the second, instead of
+  // the rhythm the script actually asks for.
+  script.forEach(s => { try { oasisSpeakWarm(s.line); } catch (_) {} });
+  for (const s of script) {
+    if (!_reciteOn) return;            // stopped mid-piece
+    await jennySpeak(s.line);
+    if (!_reciteOn) return;
+    await new Promise(res => setTimeout(res, RECITE_BEAT_MS * Math.max(1, s.beats)));
+  }
+  _reciteOn = false;
+}
+
+// Returns whether it actually stopped anything, so the click handler can tell a
+// stop from a plain tap without asking twice.
+function reciteStop() {
+  if (!_reciteOn) return false;
+  _reciteOn = false;
+  try { oasisSpeakStop(); } catch (_) {}   // cuts the line playing AND the queue
+  jennyRest();
+  return true;
+}
+
 function jennyWake() {
   const c = document.getElementById('avatarCard'), v = document.getElementById('avatarVid');
   if (!c || !c.classList.contains('ready')) return;
@@ -1758,7 +1836,9 @@ function jennySpeak(text) {
   // NOTE: on a station without Piper, oasisSpeak falls back to speechSynthesis
   // and resolves immediately rather than when the utterance ends — but the card
   // is only .ready when Piper IS installed, so that path never animates.
-  Promise.resolve(oasisSpeak(text, { onstart: jennyWake })).then(done, done);
+  // RETURNS the promise: a caller reciting several lines in sequence has to know
+  // when one has finished before timing the pause after it.
+  return Promise.resolve(oasisSpeak(text, { onstart: jennyWake })).then(done, done);
 }
 
 // ── The hour bell ────────────────────────────────────────────────────────────
