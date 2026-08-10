@@ -30,6 +30,43 @@ class PassesTest(unittest.TestCase):
             self.assertTrue(0.0 <= p["rise_az"] < 360.0)
             self.assertGreater(p["duration_s"], 0.0)
 
+    def test_every_pass_reports_where_it_peaks(self):
+        """max_el alone cannot tell a workable pass from a blocked one: 41 degrees
+        over the hill to the north is unusable and 41 over open water is a good
+        pass. rise_az/set_az do not answer it either — a pass rising NNE and
+        setting SSW peaks somewhere the operator would have to guess."""
+        passes = predict.compute_passes(self.sat, LAT, LON, START, hours=72, min_elev=0.0)
+        self.assertGreater(len(passes), 0)
+        for p in passes:
+            self.assertIn("peak_az", p)
+            self.assertTrue(0.0 <= p["peak_az"] < 360.0, p["peak_az"])
+
+    def test_the_peak_azimuth_is_the_azimuth_AT_the_peak(self):
+        """Guards the indexing: _altaz returns (elevation, azimuth) and the peak
+        used to keep only [0]. Taking the wrong half would still yield a
+        plausible 0-360 number, so bounds alone would not catch it."""
+        passes = predict.compute_passes(self.sat, LAT, LON, START, hours=48, min_elev=20.0)
+        self.assertGreater(len(passes), 0)
+        for p in passes:
+            track = predict.compute_track(
+                self.sat, LAT, LON,
+                datetime.datetime.fromisoformat(p["peak"]) - datetime.timedelta(seconds=5),
+                datetime.datetime.fromisoformat(p["peak"]) + datetime.timedelta(seconds=5),
+                step_s=5)
+            # The sample nearest the culmination is the highest one in the window.
+            top = max(track, key=lambda q: q["el"])
+            self.assertAlmostEqual(p["max_el"], top["el"], delta=0.05)
+            d = abs(p["peak_az"] - top["az"]) % 360.0
+            self.assertLess(min(d, 360.0 - d), 1.0,
+                            f"peak_az {p['peak_az']} disagrees with the track's {top['az']}")
+
+    def test_a_pass_peaking_north_is_distinguishable_from_one_peaking_south(self):
+        # The whole point: two passes with a similar max_el must be separable by
+        # where they culminate, or the field buys nothing.
+        passes = predict.compute_passes(self.sat, LAT, LON, START, hours=72, min_elev=0.0)
+        azs = {round(p["peak_az"] / 45.0) % 8 for p in passes}
+        self.assertGreater(len(azs), 1, "every pass peaked in the same octant — suspicious")
+
     def test_min_elev_filter_reduces_count(self):
         all_p = predict.compute_passes(self.sat, LAT, LON, START, hours=72, min_elev=0.0)
         hi_p = predict.compute_passes(self.sat, LAT, LON, START, hours=72, min_elev=10.0)

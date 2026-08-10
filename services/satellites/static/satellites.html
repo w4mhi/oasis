@@ -884,8 +884,19 @@ function passHint(p, norad) {
   // Armed bell + inside the T-10 window → amber emphasis + a bell glyph on the pill.
   const armedSoon = norad != null && bellArmed(norad) && !live && (rise - now) <= 600000 && (rise - now) > 0;
   const cls = 'ph-when' + (live ? ' live' : (armedSoon ? ' armed' : ''));
-  return `<span class="ph-main">${fmt(p.rise)} · max ${p.max_el.toFixed(0)}°</span>`
+  // "max 41° NW" — WHERE it peaks decides whether 41° is workable. Compass
+  // point, not degrees: you know your skyline by direction, not by bearing, and
+  // the hint has room for two characters, not five. Guarded because a pass
+  // cached before peak_az existed has none (see _PASS_SCHEMA).
+  const peak = p.peak_az != null ? ' ' + azCompass(p.peak_az) : '';
+  return `<span class="ph-main">${fmt(p.rise)} · max ${p.max_el.toFixed(0)}°${peak}</span>`
        + (when ? `<span class="${cls}">${armedSoon ? BELL_ON + ' ' : ''}${when}</span>` : '');
+}
+// 8-point compass. Shared vocabulary with the kiosk (dashboard.html azCompass) so
+// "NW" means the same thing on both screens.
+function azCompass(deg) {
+  if (deg == null) return '';
+  return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 }
 // ── Pass alerts ──────────────────────────────────────────────────────────────
 // Per-sat "bell" arms a Web-Audio Morse-"V" (· · · —) chime for CHECKED (plotted)
@@ -1349,7 +1360,8 @@ function popupHTML(sat) {
   const passes = (PASSES[sat.norad] || []).slice(0, 4).map(p => {
     const active = plotted && plotted.pass.rise === p.rise ? 'active' : '';
     return `<div class="pop-pass ${active}" onclick="pickPass(${sat.norad}, '${p.rise}', '${p.set}')">
-      ${fmt(p.rise)}–${fmt(p.set)} · max ${p.max_el.toFixed(0)}° · rise ${p.rise_az.toFixed(0)}°</div>`;
+      ${fmt(p.rise)}–${fmt(p.set)} · max ${p.max_el.toFixed(0)}°${p.peak_az != null
+        ? ` ${azCompass(p.peak_az)} ${p.peak_az.toFixed(0)}°` : ''} · rise ${p.rise_az.toFixed(0)}°</div>`;
   }).join('') || '<div class="pop-row"><span class="pop-val">No passes in 24 h.</span></div>';
   const polar = (plotted && plotted.track.length) ? skyPlotSVG(plotted.track, plotted.color) : '';
   return `<div class="pop-call">${sat.name}</div>

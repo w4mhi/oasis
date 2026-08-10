@@ -41,7 +41,14 @@ def _passes_from_events(sat, observer, times, events, start_dt, min_elev):
             cur = {"rise": t.utc_datetime(), "rise_az": _altaz(sat, observer, t)[1]}
         elif e == 1 and "rise" in cur:  # culminate
             cur["peak"] = t.utc_datetime()
-            cur["max_el"] = _altaz(sat, observer, t)[0]
+            # Both halves of the same look, where only the elevation was kept.
+            # WHERE a pass peaks decides whether you can work it: 40 degrees over
+            # the hill to the north is unusable and 40 degrees over open water is
+            # a good pass, and rise_az/set_az cannot tell them apart — a pass
+            # rising NNE and setting SSW peaks somewhere the operator has to
+            # guess. This is the cheap 80% of a horizon mask: no config, no new
+            # maths, and the operator knows their own skyline.
+            cur["max_el"], cur["peak_az"] = _altaz(sat, observer, t)
         elif e == 2 and "rise" in cur and "peak" in cur:  # set
             cur["set"] = t.utc_datetime()
             cur["set_az"] = _altaz(sat, observer, t)[1]
@@ -51,6 +58,7 @@ def _passes_from_events(sat, observer, times, events, start_dt, min_elev):
                     "rise_az": cur["rise_az"],
                     "peak": cur["peak"].isoformat(),
                     "max_el": cur["max_el"],
+                    "peak_az": cur["peak_az"],
                     "set": cur["set"].isoformat(),
                     "set_az": cur["set_az"],
                     "duration_s": (cur["set"] - cur["rise"]).total_seconds(),

@@ -192,6 +192,12 @@ import hashlib
 import time
 
 _CACHE_TTL_S = 6 * 3600   # recompute at most every 6 h (TLEs change ~every 3 days)
+# Shape version of one pass record from predict.compute_passes. Part of the cache
+# key, so a field addition invalidates on-disk entries instead of serving records
+# that predate it. Bump on any change to what compute_passes returns.
+#   1 → rise/rise_az/peak/max_el/set/set_az/duration_s
+#   2 → + peak_az (where the pass culminates, for judging a blocked horizon)
+_PASS_SCHEMA = 2
 # Wall-clock budget for one /passes request. Kept well under gunicorn's default
 # 30 s worker timeout: a full-roster propagation (150+ sats) cold used to overrun
 # it, so the worker was killed at 500 before the cache was written — every retry
@@ -306,8 +312,14 @@ def api_passes():
     # min_elev is PART OF THE KEY: it changes which passes exist, so a cache
     # written under the old floor is not an answer to the new question. Without
     # it, editing station.json would appear to do nothing for up to the 6 h TTL.
+    #
+    # _PASS_SCHEMA likewise. A pass record that gained a field is a different
+    # shape, and an entry written before it is not a partial answer — it is an
+    # answer to an older question. Without this, adding peak_az deployed cleanly
+    # and then showed nothing for six hours, which reads as a broken feature
+    # rather than a warm cache. Bump it whenever compute_passes' output changes.
     key = (f"{st['lat']},{st['lon']},{window},{only},"
-           f"{int(tle_stamp) if tle_stamp else 0},{min_elev}")
+           f"{int(tle_stamp) if tle_stamp else 0},{min_elev},v{_PASS_SCHEMA}")
     cp = _cache_path(key)
     start = datetime.datetime.now(datetime.timezone.utc)
     now_ts = start.timestamp()
