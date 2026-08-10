@@ -873,6 +873,9 @@ function passHint(p, norad) {
 // it: you armed a bell on the laptop and the Pi stayed silent. This map is a
 // local MIRROR of the roster for instant paint; the server is authoritative and
 // re-adopted on every load.
+// Monitoring a bird arms this (see onToggle), so the bell is no longer a gate the
+// operator has to find — it is the EXCEPTION, for the bird you want on the map
+// without being woken by it.
 let _satBells = (() => { try { return JSON.parse(localStorage.getItem('oasis_sat_bells') || '{}'); } catch (e) { return {}; } })();
 function saveBells() { try { localStorage.setItem('oasis_sat_bells', JSON.stringify(_satBells)); } catch (e) { /* private mode */ } }
 // MUTE stays local on purpose. It is a property of the DEVICE, not the bird:
@@ -991,7 +994,9 @@ function bellBtnHTML(norad) {
     ? (_satMuted
         ? 'Pass alerts armed, but chimes are muted globally (header mute). Click to disarm.'
         : 'Pass alerts armed — VVV chime at T-10 + T-5 min. Click to disarm.')
-    : 'Arm pass alerts (VVV chime at T-10 + T-5 min before the pass)';
+    // Monitoring arms the bell, so OFF is now something the operator chose: say
+    // so, rather than describing it as a switch they still have to find.
+    : 'Alerts OFF for this bird — monitored, but it will not wake the shack. Click to re-arm.';
   return `<button class="sat-bell${on ? ' on' : ''}" onclick="toggleBell(${norad})" title="${title}">${glyph}</button>`;
 }
 // Ridden by updatePills every 2 s. The threshold logic is the shared, tested
@@ -1070,15 +1075,32 @@ function updateCoverage() {
 }
 
 /* ── Plot / unplot a satellite's next pass ─────────────────────────────── */
+// Monitoring a bird ARMS its pass alert, and un-monitoring disarms it. Deciding
+// to watch a satellite is deciding you want to be told it is coming; making that
+// a second, separate switch meant the pass arrived in silence with nothing on
+// screen to explain it — and on the kiosk, which shows the row bell but cannot
+// arm it, with no way to put it right on the screen you were looking at.
+// The row bell survives as the EXCEPTION: monitor the weather birds for the map
+// and coverage, then disarm the ones you don't want waking the shack tonight.
 async function onToggle(norad, checked) {
   if (checked) {
     if (!(norad in _satSelected)) { _satSelected[norad] = capabilityColor(norad); saveSelection(); }
+    if (!_satBells[norad]) { _satBells[norad] = true; saveBells(); }
     await plotSat(norad, nextPassOf(norad));
   } else {
     if (norad in _satSelected) { delete _satSelected[norad]; saveSelection(); }
+    // Cleared, not left behind: an orphan bell on an unmonitored bird is inert
+    // (both alert paths walk the monitored set), so it would sit there unseen
+    // and then fire months later when the bird was re-selected — a ghost with no
+    // visible cause.
+    if (_satBells[norad]) { delete _satBells[norad]; saveBells(); }
     unplotSat(norad);
   }
+  // Two writes, not one: `selected` and `bell` are separate operator fields and
+  // the kiosk reads both. Fired together so the roster never sits in a state
+  // where a bird is monitored but unarmed — which is the state this removes.
   postSelect(norad, checked);          // persist to the shared server roster (kiosk reads it)
+  postBells({ [norad]: checked });
   renderRoster();
 }
 

@@ -158,6 +158,77 @@ class OperatorFieldsTest(unittest.TestCase):
         self.assertNotIn("muted", roster.OPERATOR_FIELDS)
         self.assertNotIn("mute", roster.OPERATOR_FIELDS)
 
+    # ── The one-shot "monitoring arms the bell" backfill ─────────────────────
+    # Selecting a bird now arms its pass alert. These cover the rosters written
+    # before that rule, where every monitored bird sits at bell=false and would
+    # otherwise stay silent forever — the exact silent failure the change was
+    # made to remove.
+
+    def test_bell_default_arms_every_monitored_bird_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self._seed(d, [{"norad": 25544, "selected": True, "transmitters": []},
+                               {"norad": 33591, "selected": True, "transmitters": []},
+                               {"norad": 43017, "selected": False, "transmitters": []}])
+            roster.apply_bell_default_once(p)
+            got = {s["norad"]: s.get("bell") for s in json.load(open(p))["satellites"]}
+            self.assertEqual(got[25544], True)
+            self.assertEqual(got[33591], True)
+            # An unmonitored bird is not armed: the rule is that MONITORING arms
+            # the bell, not that every bird in the roster rings.
+            self.assertNotEqual(got[43017], True)
+
+    def test_a_disarm_after_the_backfill_is_never_undone(self):
+        """The one that matters. Run twice, this would re-arm every bird the
+        operator had deliberately disarmed — and they would only find out at
+        03:00, from the other side of the house."""
+        with tempfile.TemporaryDirectory() as d:
+            p = self._seed(d, [{"norad": 25544, "selected": True, "transmitters": []}])
+            roster.apply_bell_default_once(p)
+            roster.set_bells_many(p, {25544: False})      # "not this one, thanks"
+            roster.apply_bell_default_once(p)
+            self.assertFalse(json.load(open(p))["satellites"][0]["bell"])
+
+    def test_the_backfill_is_recorded_even_with_nothing_to_migrate(self):
+        """A fresh box has an empty roster (build-roster.py fills it later). If
+        the flag were only stamped when something was armed, this would stay
+        un-migrated and then fire against a roster the operator had since
+        curated — arming birds they had turned off."""
+        with tempfile.TemporaryDirectory() as d:
+            p = self._seed(d, [])
+            roster.apply_bell_default_once(p)
+            self.assertTrue(json.load(open(p))[roster.BELL_DEFAULT_KEY])
+
+    def test_an_explicit_bell_write_settles_the_migration(self):
+        """The ordering hazard. The backfill runs on the roster READ, so a disarm
+        that lands before the first read would be silently undone — and the
+        operator would have no way to tell that their choice never took."""
+        with tempfile.TemporaryDirectory() as d:
+            p = self._seed(d, [{"norad": 25544, "selected": True, "transmitters": []}])
+            roster.set_bells_many(p, {25544: False})     # lands before any read
+            roster.apply_bell_default_once(p)
+            self.assertFalse(json.load(open(p))["satellites"][0]["bell"])
+
+    def test_selecting_does_not_settle_the_migration(self):
+        """Only a BELL write counts. A station still running an older client
+        posts selections without bells, and stamping on those would strand every
+        bird it monitors at bell=false — the silent pass this all exists to fix."""
+        with tempfile.TemporaryDirectory() as d:
+            p = self._seed(d, [{"norad": 25544, "transmitters": []}])
+            roster.set_selected_many(p, {25544: True})
+            self.assertNotIn(roster.BELL_DEFAULT_KEY, json.load(open(p)))
+            roster.apply_bell_default_once(p)
+            self.assertTrue(json.load(open(p))["satellites"][0]["bell"])
+
+    def test_the_backfill_flag_survives_a_roster_rebuild(self):
+        """A SOURCE tripwire, not a behaviour test: build-roster.py's output dict
+        is a fixed top-level key set, so a flag not named there is dropped on the
+        next rebuild — and the backfill would re-run and undo every disarm. The
+        assembly lives inside main(), behind two network fetches, so this checks
+        the one thing that can silently go missing."""
+        src = os.path.join(os.path.dirname(_HERE), "services", "satellites", "build-roster.py")
+        with open(src, encoding="utf-8") as fh:
+            self.assertIn("BELL_DEFAULT_KEY", fh.read())
+
 
 if __name__ == "__main__":
     unittest.main()

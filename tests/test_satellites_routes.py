@@ -193,10 +193,19 @@ class RoutesTest(unittest.TestCase):
         self.assertEqual(len(after), before)
 
     def test_bells_without_csrf_header_are_refused(self):
-        r = self.bare.post("/api/satellites/bells", json={"norad": 25544, "bell": True})
+        # Read FIRST, so the one-shot "monitoring arms the bell" backfill has
+        # already settled: the fixture is a pre-migration roster (ISS monitored,
+        # no bell key), so asserting a bare `False` afterwards would be measuring
+        # the default, not the CSRF guard. The refused write then tries to CHANGE
+        # the settled state, which is the only version of this that can fail for
+        # the reason the test is named after.
+        def bell():
+            sats = self.client.get("/api/satellites").get_json()["satellites"]
+            return next(s for s in sats if s["norad"] == 25544)["bell"]
+        self.assertTrue(bell())
+        r = self.bare.post("/api/satellites/bells", json={"norad": 25544, "bell": False})
         self.assertEqual(r.status_code, 403)
-        sats = self.client.get("/api/satellites").get_json()["satellites"]
-        self.assertFalse(next(s for s in sats if s["norad"] == 25544)["bell"])
+        self.assertTrue(bell())
 
     def test_listen_status_shape(self):
         r = self.client.get("/api/satellites/listen/status")

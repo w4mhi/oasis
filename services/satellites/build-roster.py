@@ -120,6 +120,12 @@ def main():
 
     data = {"updated": roster._now(), "source": "satnogs+celestrak",
             "labels": facet, "satellites": records}
+    # Same trap as the operator fields above, one level up: this dict is a FIXED
+    # top-level key set, so a flag not carried here is gone the moment this runs.
+    # Dropping this one would re-run the one-shot bell backfill on the next page
+    # load and silently re-arm every bird the operator had deliberately disarmed.
+    if prev.get(roster.BELL_DEFAULT_KEY):
+        data[roster.BELL_DEFAULT_KEY] = True
     os.makedirs(os.path.dirname(args.config), exist_ok=True)
     _atomic_write(args.config, json.dumps(data, indent=2))
     _match_dir_owner(args.config)   # server must rewrite this on /select — not root-owned

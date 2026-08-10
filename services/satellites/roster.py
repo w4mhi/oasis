@@ -22,10 +22,26 @@ import threading
 #   selected — monitored: plotted on the map, listed on the kiosk, alerted on.
 #   bell     — armed for pass alerts (VVV chime at T-10/T-5, spoken heads-up).
 #
+# Selecting a bird ARMS its bell (the client does it in one go; a roster from
+# before that rule is migrated once by apply_bell_default_once below). The two
+# are still separate fields because the bell is the exception the operator keeps:
+# monitor the weather birds for the map, disarm the ones that would wake the
+# shack at 03:00. They are independent at THIS layer on purpose — the coupling is
+# a default, not an invariant, and set_bells_many must be able to break it.
+#
 # Both are per-BIRD and therefore shared across devices. Muting is deliberately
 # NOT here: it is per-DEVICE (localStorage), so the shack kiosk can be silent
 # overnight while a laptop still chimes.
 OPERATOR_FIELDS = ("selected", "bell")
+
+# Stamped once the "monitoring a bird arms its bell" default has been settled for
+# a roster — either by migrating one written under the old rules
+# (apply_bell_default_once) or by the operator making any explicit bell choice,
+# which means `false` has stopped meaning "never armed". Top-level rather than
+# per-record because it is a property of the FILE, not of any bird — and it must
+# be carried across a rebuild by build-roster.py, which writes a fixed top-level
+# key set (the same trap OPERATOR_FIELDS exists for, one level up).
+BELL_DEFAULT_KEY = "bell_follows_selection"
 
 # Serializes the read-modify-write in set_selected/set_selected_many. Atomic
 # save() prevents a TORN file; it does nothing about a LOST UPDATE — two threads
@@ -132,11 +148,17 @@ def set_bells_many(path, bells):
     The bell lives here rather than in the browser because it is a property of
     the BIRD, not of the screen you happened to arm it from: the kiosk has to
     know which passes should wake the shack, and it never sees another device's
-    localStorage."""
-    return _set_flag_many(path, bells, "bell")
+    localStorage.
+
+    Any explicit bell write also settles the migration flag. Without that, the
+    one-shot backfill could still be pending when a disarm lands — the backfill
+    runs on the roster READ, so a client that posted before its first GET would
+    have its choice quietly overwritten. Once the operator has expressed a bell
+    decision, `false` is a decision, and the backfill has no business running."""
+    return _set_flag_many(path, bells, "bell", stamp=BELL_DEFAULT_KEY)
 
 
-def _set_flag_many(path, values, field):
+def _set_flag_many(path, values, field, stamp=None):
     """Apply a whole `{norad: bool}` set for one operator field in ONE
     load-modify-save.
 
@@ -166,8 +188,48 @@ def _set_flag_many(path, values, field):
             for s in data["satellites"]:
                 if s["norad"] in wanted:
                     s[field] = wanted[s["norad"]]
+            if stamp:
+                data[stamp] = True     # same write, not a second one
             data["updated"] = _now()
             save(path, data)
+        return data
+
+
+def apply_bell_default_once(path):
+    """Arm the pass alert on every bird the operator already monitors. Once.
+
+    Selecting a bird used to leave it silent until its row bell was ALSO armed,
+    which is a silent failure of the worst kind: the pass comes, nothing sounds,
+    and nothing anywhere says why. Selection now arms the bell, and the row bell
+    became the exception — "this one, not tonight".
+
+    That only helps birds selected from here on. A roster written under the old
+    rules holds `bell: false` on every monitored bird, where false was the
+    DEFAULT and therefore meant "never armed", not "deliberately silenced" — the
+    two states were indistinguishable, which is exactly why this backfill is safe
+    to run and why it must never run twice. After this, false means the operator
+    chose it.
+
+    Recorded in the ROSTER, not in a browser: the kiosk never opens the
+    Satellites page, and it is the screen that most needs the alerts. A
+    per-browser flag would also re-arm, on the next device to load, a bird just
+    disarmed on this one — the permanent-union bug sat-bells.js was written to
+    avoid.
+
+    Stamped even when nothing is selected (a fresh box, or one whose roster
+    build-roster.py has not filled yet): there is nothing to migrate then, and
+    recording that keeps this from re-running against a roster the operator has
+    since curated."""
+    with _write_lock:
+        data = load(path)
+        if data.get(BELL_DEFAULT_KEY):
+            return data
+        for s in data.get("satellites") or []:
+            if s.get("selected"):
+                s["bell"] = True
+        data[BELL_DEFAULT_KEY] = True
+        data["updated"] = _now()
+        save(path, data)
         return data
 
 

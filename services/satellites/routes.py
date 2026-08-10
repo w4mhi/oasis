@@ -50,7 +50,12 @@ def satellites_static(filename="satellites.html"):
 @bp.route("/api/satellites")
 def api_satellites():
     import listen
-    data = roster.load(config_paths.satellites_json(SUITE_ROOT))
+    # One-shot, here rather than at boot because the service has no init hook and
+    # this is the read EVERY screen makes — including the kiosk, which never opens
+    # the Satellites page and is the one that most needs its alerts armed. It is a
+    # no-op on all but the first call (a flag in the roster), and it takes the same
+    # write lock as /select, so a burst on load cannot race it.
+    data = roster.apply_bell_default_once(config_paths.satellites_json(SUITE_ROOT))
     # Attach each roster entry's TLE lines (matched by NORAD id) so the client
     # can propagate live look-angles itself (satellite.js) for the workability
     # pill — no per-satellite server round-trip. None when not in the cache.
