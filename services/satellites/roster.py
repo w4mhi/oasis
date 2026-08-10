@@ -8,6 +8,8 @@ import os
 import tempfile
 import threading
 
+import bands
+
 # The fields the OPERATOR owns. Everything else in a record is DERIVED —
 # build-roster.py rebuilds it from SatNOGS + CelesTrak and is entitled to
 # overwrite it. These are the operator's intent about a bird, and a rebuild must
@@ -249,11 +251,21 @@ def legacy_downlinks(sat):
     Transmitters with no downlink leg are skipped. De-duplicated by (mode, freq):
     SatNOGS often lists several active transmitters at the same downlink freq+mode
     (e.g. ISS's FM voice), which would otherwise render as duplicate buttons.
-    Phase 2 migrates consumers to `transmitters`/uplink and this helper goes away."""
+    Phase 2 migrates consumers to `transmitters`/uplink and this helper goes away.
+
+    Downlinks this station cannot use are dropped — see bands.usable_downlink.
+    The RECORD keeps them; only the view loses them. That split is deliberate:
+    `labels_for` decides roster membership from the record, and 345 birds are in
+    the roster solely on the strength of an out-of-band telemetry downlink, so
+    filtering any earlier would delete them as a side effect of tidying a card.
+    The policy lives in bands.py rather than here because this function is a
+    phase-1 shim scheduled for deletion, and the policy must outlive it."""
     out, seen = [], set()
     for t in sat.get("transmitters", []):
         dl = t.get("downlink")
         if not (dl and dl.get("freq_mhz") is not None):
+            continue
+        if not bands.usable_downlink(dl["freq_mhz"]):
             continue
         mode = _display_mode(t)
         key = ((mode or "").strip().lower(), round(float(dl["freq_mhz"]), 6))
@@ -261,4 +273,61 @@ def legacy_downlinks(sat):
             continue
         seen.add(key)
         out.append({"mode": mode, "freq_mhz": dl["freq_mhz"]})
+    return out
+
+
+def group_downlinks(entries):
+    """Collapse downlinks that are the SAME ACTION into one card entry.
+
+    Takes entries already decorated with listen.mode_support (so they carry
+    `demod`), and groups on (frequency, demod) — not on frequency alone.
+
+    The ISS lists three active transmitters on 437.800: FM voice repeater, SSTV,
+    and IORS telemetry. "Active" in SatNOGS means *a valid configuration*, not
+    *on air now* — it is one radio, reconfigured over time, and the three are
+    mutually exclusive. They also produce a byte-identical capture command
+    (`rtl_fm -M fm`, 48 kHz, no offset), so three buttons offered a choice that
+    did not exist. Physically right too: SSTV on 437.800 IS FM audio.
+
+    Frequency alone would be the wrong key. Roster-wide, 88 frequencies carry
+    modes needing DIFFERENT demodulators — NORAD 31130 has FM and CW on 435.245,
+    and CW is tuned 700 Hz low so the carrier lands as an audible tone.
+    Collapsing those would break the capture. Two entries are the same entry
+    exactly when they would run the same command.
+
+    Grouping collapses the ACTION, never the INFORMATION: the merged entry keeps
+    every mode in `modes` and every distinct blurb, so a card that says
+    "437.800 FM SSTV FSK" has already told the operator that listening for the
+    repeater may yield SSTV warble instead — the spacecraft chooses, not them.
+    A merged entry labelled just "FM 437.800" would be the blindness this exists
+    to prevent.
+
+    `mode` stays a single token for consumers that drive the demodulator from it
+    (the listen route). Any member is correct — they share a demod by
+    construction — so it is the alphabetically first, which is deterministic
+    across rebuilds rather than dependent on SatNOGS ordering."""
+    groups, order = {}, []
+    for e in entries:
+        freq = e.get("freq_mhz")
+        key = (round(float(freq), 6) if freq is not None else None, e.get("demod"))
+        if key not in groups:
+            groups[key] = dict(e)
+            groups[key]["modes"] = []
+            groups[key]["blurbs"] = []
+            order.append(key)
+        g = groups[key]
+        mode = (e.get("mode") or "").strip()
+        if mode and mode not in g["modes"]:
+            g["modes"].append(mode)
+        blurb = (e.get("blurb") or "").strip()
+        if blurb and blurb not in g["blurbs"]:
+            g["blurbs"].append(blurb)
+    out = []
+    for key in order:
+        g = groups[key]
+        g["modes"] = sorted(g["modes"])
+        if g["modes"]:
+            g["mode"] = g["modes"][0]
+        g["blurb"] = " · ".join(g.pop("blurbs"))
+        out.append(g)
     return out

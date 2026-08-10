@@ -1440,7 +1440,8 @@ function dlBtnsHTML(s) {
   return (s.downlinks || []).map(d => {
     const sup = d.supported ? 1 : 0;
     return `<button class="dlbtn" data-norad="${s.norad}" data-freq="${d.freq_mhz}" data-supported="${sup}"
-      ${sup ? `onclick="onDownlinkClick(${s.norad}, ${d.freq_mhz})"` : 'disabled'}>${d.mode} · ${d.freq_mhz}</button>`;
+      ${sup ? `onclick="onDownlinkClick(${s.norad}, ${d.freq_mhz})"` : 'disabled'}
+      title="${(d.modes || [d.mode]).join(' / ')} on ${d.freq_mhz} MHz${d.blurb ? ' — ' + d.blurb : ''}">${(d.modes || [d.mode]).join(' · ')} · ${d.freq_mhz}</button>`;
   }).join('');
 }
 function _busyReason() {

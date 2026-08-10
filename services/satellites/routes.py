@@ -100,8 +100,12 @@ def api_satellites():
         s = dict(s)
         s["l1"] = entry[1] if entry else None
         s["l2"] = entry[2] if entry else None
-        s["downlinks"] = [dict(d, **listen.mode_support(d.get("mode")))
-                          for d in roster.legacy_downlinks(s)]
+        # Decorate with mode support FIRST, then group: the grouping key is
+        # (frequency, demod), and `demod` is what mode_support resolves. Grouping
+        # earlier would have to guess which modes capture identically.
+        s["downlinks"] = roster.group_downlinks(
+            [dict(d, **listen.mode_support(d.get("mode")))
+             for d in roster.legacy_downlinks(s)])
         sats.append(s)
     # Fallback ONLY when the roster is empty: the offline bundle ships the TLE cache
     # (so /api/satellites/passes predicts offline) but leaves satellites.json empty

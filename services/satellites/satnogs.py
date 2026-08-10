@@ -8,6 +8,7 @@ import re
 # a CONSTANT only — no I/O happens here, so the "pure transforms" rule above
 # still holds. Re-declaring the list locally is what the carry-over bug is made
 # of: the two copies drift and a rebuild quietly drops the newer field.
+import bands
 import roster
 
 SAT_API = "https://db.satnogs.org/api/satellites/?format=json"
@@ -42,15 +43,19 @@ _DESC_LABELS = (("APRS", "APRS"), ("SSTV", "SSTV"))
 # METEOR LRPT, Direct Sounder Broadcast). SatNOGS labels these downlinks with
 # assorted modes (APT/DSB/FSK/FM), so the frequency is the reliable WEATHER
 # signal, not the mode string.
-_WX_BAND_MHZ = (137.0, 138.0)
-
-# The amateur-satellite voice/transponder bands (2 m, 70 cm, 23 cm). The
-# "workable" labels below only mean an operator can actually USE the bird when
-# the downlink sits here — the same frequency-not-mode principle as WEATHER. A
-# `mode: FM`/`SSB` on a non-amateur service (SARSAT L-band 1544.5, weather DCP
-# 1703, military/telemetry on 400 MHz, GEO HRIT on 1.6-1.7 GHz) is NOT amateur
-# voice, so those must not earn VOICE/FM and surface as workable sats.
-_AMATEUR_BANDS_MHZ = ((144.0, 148.0), (420.0, 450.0), (1240.0, 1300.0))
+#
+# The amateur bands (2 m, 70 cm, 23 cm) gate the "workable" labels below: they
+# only mean an operator can USE the bird when the downlink sits there — the same
+# frequency-not-mode principle as WEATHER. A `mode: FM`/`SSB` on a non-amateur
+# service (SARSAT L-band 1544.5, weather DCP 1703, military/telemetry on 400 MHz,
+# GEO HRIT on 1.6-1.7 GHz) is NOT amateur voice, so those must not earn VOICE/FM
+# and surface as workable sats.
+#
+# Both live in bands.py so the card's filter and this label gate cannot drift
+# apart — they are the same question asked by two modules that may not import
+# each other (see bands.py).
+_WX_BAND_MHZ = bands.WX_BAND_MHZ
+_AMATEUR_BANDS_MHZ = bands.AMATEUR_BANDS_MHZ
 _WORKABLE_LABELS = frozenset(("VOICE", "FM", "SSTV", "LINEAR", "SSB"))
 
 
