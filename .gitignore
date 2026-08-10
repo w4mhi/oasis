@@ -150,3 +150,10 @@ docs/superpowers/*
 features/speech/voices/
 features/speech/cache/
 features/speech/packages/
+
+# The recitation SOURCE. The shipped asset is oasis-dashboard/jenny.spk, which is
+# this file base64-encoded — spoiler protection, not security. If the plaintext
+# ever lands in the repo the encoding is pointless, so it is ignored here rather
+# than left to discipline. Regenerate the asset after editing:
+#   python3 -c "import base64,sys;sys.stdout.write(base64.b64encode(open('configuration/ee.md','rb').read()).decode())" > oasis-dashboard/jenny.spk
+configuration/ee.md

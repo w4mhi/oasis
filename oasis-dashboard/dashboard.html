@@ -1752,10 +1752,29 @@ function jennyReady() {
 // stops her. Absent that file — which is every station that has not written one
 // — nothing happens at all, which is the correct behaviour for something meant
 // to be discovered rather than announced.
-const RECITE_PATH = '/configuration/ee.md';
+// The script ships base64 beside her video. NOT security — anyone reading this
+// line wins — but spoiler protection, which is the actual threat model: GitHub
+// code search, an idle grep, the file sitting open in an editor. Plain text lost
+// to all three. Encoded, the egg can ship to every station without spoiling it,
+// which is the whole reason it is worth doing.
+//
+// Regenerate after editing the source (which is NOT in the repo):
+//   python3 -c "import base64,sys;sys.stdout.write(base64.b64encode(open('configuration/ee.md','rb').read()).decode())" > oasis-dashboard/jenny.spk
+const RECITE_PATH = '/oasis-dashboard/jenny.spk';
 const RECITE_HOLD_MS = 1200;   // long enough that no ordinary tap reaches it
 const RECITE_BEAT_MS = 800;    // measured by ear, out loud, before any of this existed
 let _reciteOn = false, _holdTimer = null, _heldFired = false;
+
+// atob() alone is WRONG here: it yields a binary string, so any character above
+// ASCII comes back mojibake — a curly apostrophe in "somebody's" decodes to
+// "â€™" and she reads it aloud. Bytes first, then UTF-8. The whitespace strip is
+// for the encoders that wrap at 76 columns.
+function reciteDecode(b64) {
+  const clean = String(b64 || '').replace(/\s+/g, '');
+  if (!clean) return '';
+  const bytes = Uint8Array.from(atob(clean), c => c.charCodeAt(0));
+  return new TextDecoder('utf-8').decode(bytes);
+}
 
 // Blank lines are the SCRIPT'S OWN TIMING: every line gets one beat, and each
 // blank line after it adds another. The rhythm is tuned by editing prose rather
@@ -1778,8 +1797,8 @@ async function reciteStart() {
   try {
     const r = await fetch(RECITE_PATH, { cache: 'no-store' });
     if (!r.ok) return;
-    script = reciteScript(await r.text());
-  } catch (_) { return; }
+    script = reciteScript(reciteDecode(await r.text()));
+  } catch (_) { return; }   // missing, or not decodable: she simply stays quiet
   if (!script.length) return;
   _reciteOn = true;
   // Warm every line BEFORE speaking any. An uncached line costs seconds of
