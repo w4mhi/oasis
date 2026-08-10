@@ -1891,7 +1891,18 @@ function renderSats() {
     const inPass = p._r <= now && now < p._s;
     const mins = Math.round((p._r - now)/60000);
     if (!inPass && mins > 60) return;                 // 1 h window
-    items.push({ name:satShortName(s.name) || ('#'+norad), p, inPass, mins, bell:!!s.bell,
+    // Catalogue name, then the amateur designator the operator actually knows it
+    // by: "DOSAAF-85 [RS-44]". One line rather than the Satellites page's two —
+    // these rows are 1.35rem on a 7" panel and a stacked name would cost a row
+    // of the six the card can show.
+    // The [LEO] that satShortName strips is NOT put back: the kiosk shows only
+    // birds passing within the hour, so every one of them is in low orbit and
+    // the tag would be three characters saying nothing.
+    // DISPLAY ONLY. _armedBirds builds the spoken name separately, and must keep
+    // doing so, or Jenny reads out "bracket R S forty-four".
+    const short = satShortName(s.name) || ('#'+norad);
+    items.push({ name:(s.designator ? `${short} [${s.designator}]` : short),
+                 p, inPass, mins, bell:!!s.bell,
                  labels:s.labels || [], dl:(s.downlinks && s.downlinks[0]),
                  norad, l1:s.l1, l2:s.l2 });
   });
