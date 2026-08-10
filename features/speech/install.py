@@ -183,16 +183,20 @@ def _greeting():
     "Jenny"; anything unparseable simply drops the name rather than guessing.
 
     Deliberately not "your assistant": OASIS has a real assistant feature (a
-    local LLM on its own page), and this is a text-to-speech voice. Borrowing
-    that word here would promise something this does not do.
+    local LLM on its own page), and this is a text-to-speech voice. "Neural
+    voice" is what it is — Piper is a neural synthesiser — and it promises
+    nothing this does not do.
+
+    "Station announcements" covers the pass alerts too, and does not go stale
+    the first time something other than satellites needs to speak.
     """
     model = (SPEECH.voice_info(REPO_ROOT).get("name") or "")
     parts = model.split("-")
     who = parts[1].split("_")[0].capitalize() if len(parts) > 1 and parts[1] else ""
     if who:
-        return (f"Hello, I am {who}. I will read your satellite pass alerts "
-                "and station announcements.")
-    return "Hello. I will read your satellite pass alerts and station announcements."
+        return (f"Hello, I'm {who}, neural voice of OASIS. "
+                "I will read your station announcements.")
+    return "Hello, I'm the neural voice of OASIS. I will read your station announcements."
 
 
 def run():

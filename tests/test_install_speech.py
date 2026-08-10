@@ -124,8 +124,25 @@ class GreetingTest(unittest.TestCase):
 
     def test_it_says_what_the_voice_is_for(self):
         # It doubles as the verification utterance; a bare hello leaves the
-        # operator knowing it works but not what it does.
-        self.assertIn("pass alerts", self._greeting_for("en_GB-jenny_dioco-medium"))
+        # operator knowing it works but not what it does. "Station
+        # announcements" rather than "pass alerts" on purpose — it covers the
+        # passes and does not go stale the first time something else speaks.
+        self.assertIn("station announcements",
+                      self._greeting_for("en_GB-jenny_dioco-medium"))
+
+    def test_the_two_copies_of_the_greeting_still_match(self):
+        """The kiosk avatar card carries its own copy (jennyGreeting in
+        dashboard.html) so that tapping Jenny is a cache HIT on the WAV the
+        installer already synthesised. Let the two drift and the tap silently
+        becomes a fresh render on the Pi — and the two surfaces introduce the
+        voice differently."""
+        dash = os.path.join(REPO_ROOT, "oasis-dashboard", "dashboard.html")
+        with open(dash, encoding="utf-8") as fh:
+            html = fh.read()
+        spoken = self._greeting_for("en_GB-jenny_dioco-medium")
+        # The JS builds the name by interpolation, so compare around it.
+        head, tail = spoken.split("Jenny", 1)
+        self.assertIn(head + "${who}" + tail, html)
 
     def test_it_is_within_the_synthesiser_length_cap(self):
         from common import speech as S

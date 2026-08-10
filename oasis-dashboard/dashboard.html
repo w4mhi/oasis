@@ -1640,9 +1640,12 @@ function jennyGreeting(model) {
   const parts = String(model || '').split('-');
   const who = (parts.length > 1 && parts[1])
     ? parts[1].split('_')[0].replace(/^./, c => c.toUpperCase()) : '';
+  // Double quotes on the fallback, not single: the sentence contains an
+  // apostrophe, and a single-quoted literal would end at "I" and take the whole
+  // inline block down with it.
   return who
-    ? `Hello, I am ${who}. I will read your satellite pass alerts and station announcements.`
-    : 'Hello. I will read your satellite pass alerts and station announcements.';
+    ? `Hello, I'm ${who}, neural voice of OASIS. I will read your station announcements.`
+    : "Hello, I'm the neural voice of OASIS. I will read your station announcements.";
 }
 function jennyReady() {
   // No engine installed, no card. An empty square that never animates is worse
