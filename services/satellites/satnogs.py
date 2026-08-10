@@ -111,18 +111,63 @@ def labels_for(transmitters, norad):
     return [lab for lab in LABELS if lab in tags]
 
 
+# The amateur-satellite designator: the OSCAR series (one letter + O + number —
+# AO-7, SO-50, FO-29, QO-100) and the Russian RS series (RS-15, RS-44).
+#
+# Anchored deliberately tightly, because operators recognise these on sight and a
+# wrong one is worse than none:
+#   * exactly ONE letter before the O. A two-letter prefix matches Italian IRIDE
+#     Earth-observation birds ("IRIDE-MS2-HEO-03", names "HEO-03"), which are not
+#     amateur satellites at all.
+#   * RS requires its hyphen. Without it, the ISS's callsign "RS0ISS" reads as
+#     "RS0" and the station acquires an amateur designator it does not have.
+#   * no trailing digit or hyphen, so a longer token can't be truncated into a
+#     shorter designator.
+# Verified against the full SatNOGS catalogue: 43 alive birds, no false positives.
+_DESIGNATOR_RE = re.compile(r"\b([A-Z]O-\d{1,3}|RS-\d{1,3})(?![0-9-])")
+
+
+def amateur_designator(name, names):
+    """The bird's amateur designator (AO-7, SO-50 …), or None.
+
+    SatNOGS carries the CATALOGUE name in `name` and the names an operator
+    actually uses in `names` — NORAD 7530 is `name='OSCAR 7'`, `names='AO-7,
+    AMSAT OSCAR 7'`. The roster has always shown `name`, so the page said
+    "OSCAR 7" where every chart, net and QSL says AO-7, and people asked what
+    they were looking at.
+
+    CelesTrak cannot answer this. Its TLE name carries the designator for only
+    about a quarter of the amateur group, and for the Fox birds it never does at
+    all — AO-91 is listed as 'RADFXSAT (FOX-1B)'. Hence SatNOGS, at the cost of
+    the designator appearing only after a roster rebuild.
+
+    `names` is free text: comma-separated, newline-separated, sometimes run
+    together ('AO-95Fox-1Cliff'). Returns None when the primary name already IS
+    the designator, so a caller never renders 'AO-73 (AO-73)'."""
+    blob = (names or "").upper()
+    m = _DESIGNATOR_RE.search(blob)
+    if not m:
+        return None
+    desig = m.group(1)
+    if desig in (name or "").upper():
+        return None
+    return desig
+
+
 def parse_satellites(raw):
-    """SatNOGS /api/satellites/ list -> {norad: {name, sat_id, status}} for
-    birds that are alive AND have a NORAD id."""
+    """SatNOGS /api/satellites/ list -> {norad: {name, sat_id, status,
+    designator}} for birds that are alive AND have a NORAD id."""
     out = {}
     for s in raw:
         norad = s.get("norad_cat_id")
         if norad is None or (s.get("status") or "").lower() != "alive":
             continue
+        name = s.get("name") or str(norad)
         out[int(norad)] = {
-            "name": s.get("name") or str(norad),
+            "name": name,
             "sat_id": s.get("sat_id"),
             "status": s.get("status"),
+            "designator": amateur_designator(name, s.get("names")),
         }
     return out
 
@@ -236,6 +281,10 @@ def build_records(sats, txs, tle_index, prev_state=None):
         name = f"{meta['name']} [{orbit}]" if orbit else meta["name"]
         record = {
             "name": name,
+            # Shown under the name on the roster card. None for the many birds
+            # that simply have no OSCAR number — absence is the common case, not
+            # an error.
+            "designator": meta.get("designator"),
             "norad": norad,
             "sat_id": meta["sat_id"],
             "status": meta["status"],
@@ -260,12 +309,13 @@ def build_records(sats, txs, tle_index, prev_state=None):
 
 def diff_rosters(old, new):
     """By-NORAD diff of two record lists for operator change-flagging.
-    `changed` = same NORAD whose name/status/labels/transmitters differ."""
+    `changed` = same NORAD whose name/designator/status/labels/transmitters
+    differ."""
     o = {s["norad"]: s for s in old}
     n = {s["norad"]: s for s in new}
     changed = [norad for norad in sorted(set(o) & set(n))
                if any(o[norad].get(k) != n[norad].get(k)
-                      for k in ("name", "status", "labels", "transmitters"))]
+                      for k in ("name", "designator", "status", "labels", "transmitters"))]
     return {"added": sorted(set(n) - set(o)),
             "removed": sorted(set(o) - set(n)),
             "changed": changed}

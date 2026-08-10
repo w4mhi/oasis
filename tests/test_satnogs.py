@@ -302,6 +302,73 @@ class GapfillConfigTest(unittest.TestCase):
         self.assertIn("CATNR={}", tle.CATNR_URL)
 
 
+class AmateurDesignatorTest(unittest.TestCase):
+    """The roster showed SatNOGS's catalogue name — "OSCAR 7", "SAUDISAT 1C" —
+    where operators expect AO-7 and SO-50. Every string below is real: taken from
+    the live SatNOGS catalogue when this was written, including the malformed
+    ones, which is the point. A designator that is WRONG is worse than absent,
+    because an operator will act on it."""
+
+    def test_the_designator_operators_actually_use(self):
+        cases = [
+            ("OSCAR 7", "AO-7, AMSAT OSCAR 7", "AO-7"),
+            ("SAUDISAT 1C", "SO-50", "SO-50"),
+            ("FOX-1B", "AO-91, RADFXSAT", "AO-91"),
+            ("JAS-2", "FO-29", "FO-29"),
+            ("Es'hail 2", "QO-100", "QO-100"),
+            ("RADIO ROSTO", "RS-15", "RS-15"),
+            ("Phase 3-B", "AO-10\r OSCAR-10", "AO-10"),      # newline-separated
+            ("TECHSAT 1B", "GO-32 TechSat, Gurwin-II", "GO-32"),
+        ]
+        for name, names, want in cases:
+            with self.subTest(name=name):
+                self.assertEqual(satnogs.amateur_designator(name, names), want)
+
+    def test_run_together_names_still_yield_the_designator(self):
+        # Real SatNOGS data for AO-95: no separator at all between the
+        # designator and the next name. A trailing \b would miss this.
+        self.assertEqual(satnogs.amateur_designator("FOX-1C", "AO-95Fox-1Cliff"), "AO-95")
+
+    def test_iss_callsign_is_not_mistaken_for_a_designator(self):
+        # 'RS0ISS' is the ISS packet callsign. A loose RS pattern reads it as
+        # "RS0" and hands the station a designator it has never had.
+        self.assertIsNone(satnogs.amateur_designator("ISS", "ZARYA, RS0ISS, NA1SS"))
+
+    def test_three_letter_prefix_is_not_an_oscar_number(self):
+        # IRIDE-MS2-HEO-03 is an Italian Earth-observation bird, not an amateur
+        # satellite. Allowing a two-letter prefix before the O matched six of them.
+        self.assertIsNone(
+            satnogs.amateur_designator("IRIDE-MS2-HEO-03", "HEO-03 (a.k.a Furio)"))
+
+    def test_no_designator_when_there_is_nothing_to_say(self):
+        self.assertIsNone(satnogs.amateur_designator("NOAA 19", None))
+        self.assertIsNone(satnogs.amateur_designator("NOAA 19", ""))
+        self.assertIsNone(satnogs.amateur_designator("SWISSCUBE", "SwissCube-1"))
+
+    def test_designator_already_in_the_name_is_not_repeated(self):
+        # Otherwise the card reads "RS-44" with "RS-44" underneath it.
+        self.assertIsNone(satnogs.amateur_designator("RS-44", "RS-44"))
+        self.assertIsNone(satnogs.amateur_designator("AO-73", "AO-73, FUNcube-1"))
+
+    def test_parse_satellites_carries_the_designator(self):
+        raw = [{"norad_cat_id": 7530, "name": "OSCAR 7", "names": "AO-7, AMSAT OSCAR 7",
+                "status": "alive", "sat_id": "XYZ"},
+               {"norad_cat_id": 33591, "name": "NOAA 19", "names": None,
+                "status": "alive", "sat_id": "ABC"}]
+        out = satnogs.parse_satellites(raw)
+        self.assertEqual(out[7530]["designator"], "AO-7")
+        self.assertIsNone(out[33591]["designator"])
+        # The catalogue name is still what the TLE cache matches on — not replaced.
+        self.assertEqual(out[7530]["name"], "OSCAR 7")
+
+    def test_designator_change_counts_as_a_roster_change(self):
+        old = [{"norad": 7530, "name": "OSCAR 7", "designator": None,
+                "status": "alive", "labels": [], "transmitters": []}]
+        new = [{"norad": 7530, "name": "OSCAR 7", "designator": "AO-7",
+                "status": "alive", "labels": [], "transmitters": []}]
+        self.assertIn(7530, satnogs.diff_rosters(old, new)["changed"])
+
+
 class BuildRosterCliTest(unittest.TestCase):
     def test_help_runs(self):
         import subprocess
