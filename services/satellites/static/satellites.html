@@ -128,11 +128,11 @@ html, body { height: 100%; margin: 0; }
 .sat-row .sat-elev { font-size: var(--fs-base); font-weight: 700; color: var(--text);
   margin-left: auto; white-space: nowrap; }
 .sat-row .nm { font-weight: 700; }
-/* The catalogue name sits on top, the amateur designator under it. SatNOGS calls
-   AO-7 "OSCAR 7" and SO-50 "SAUDISAT 1C", which is correct and unrecognisable:
-   every chart, net and QSL card uses the designator, and operators were asking
-   what they were looking at. Both are shown because the catalogue name is what
-   matches CelesTrak, GPredict and the TLE file. */
+/* The catalogue name sits on top, the amateur designator and the orbit class
+   under it. SatNOGS calls AO-7 "OSCAR 7" and SO-50 "SAUDISAT 1C", which is
+   correct and unrecognisable: every chart, net and QSL card uses the designator,
+   and operators were asking what they were looking at. Both are shown because the
+   catalogue name is what matches CelesTrak, GPredict and the TLE file. */
 .sat-row .nmwrap { display: flex; flex-direction: column; gap: 0; line-height: 1.2; }
 .sat-row .desig { font-size: var(--fs-small); font-weight: 700; color: var(--accent);
   letter-spacing: .06em; }
@@ -793,13 +793,24 @@ function renderRoster() {
     const p = nextPassOf(s.norad);
     const mon = isMonitored(s.norad);       // the pick — survives having no pass
     const noTle = !s.l1;                    // absent from the TLE cache: never plots
+    // The orbit class rides with the MOST SPECIFIC identifier, so it reads as
+    // "RS-44 is a LEO bird" rather than splitting the identity across two lines:
+    //   DOSAAF-85            not   DOSAAF-85 [LEO]
+    //   RS-44 [LEO]                RS-44
+    // Taken off the end of the name rather than from s.orbit, because a roster
+    // built before that field existed still carries the tag in the name — and a
+    // bird with no designator keeps its single line, which matters when most of
+    // a 150-row scrolling list has no OSCAR number to show.
+    const tagged = s.name.match(/^(.*?)\s*(\[[^\]]*\])\s*$/);
+    const bareName = tagged ? tagged[1] : s.name;
+    const orbitTag = tagged ? tagged[2] : (s.orbit ? `[${s.orbit}]` : '');
     // Colour lives with the selection, so a monitored bird keeps its identity
     // between passes instead of going transparent whenever it can't be drawn.
     const color = mon ? (_satSelected[s.norad] || 'transparent') : 'transparent';
     return `<div class="sat-row ${mon ? 'on' : ''} ${p ? '' : 'no-pass'}" style="border-left-color:${color}">
       <label><input type="checkbox" ${mon ? 'checked' : ''}
           onchange="onToggle(${s.norad}, this.checked)">
-        <span class="nmwrap"><span class="nm">${s.name}</span>${s.designator ? `<span class="desig">${s.designator}</span>` : ''}</span><span class="pass-hint" data-norad="${s.norad}">${passHint(p, s.norad)}</span></label>
+        <span class="nmwrap"><span class="nm">${s.designator ? bareName : s.name}</span>${s.designator ? `<span class="desig">${[s.designator, orbitTag].filter(Boolean).join(' ')}</span>` : ''}</span><span class="pass-hint" data-norad="${s.norad}">${passHint(p, s.norad)}</span></label>
       <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}${noTle ? '<span class="chip chip-warn" title="This satellite is monitored but has no TLE in the cache, so no pass can be computed and it will never plot. Sync TLEs (tap the badge above) while online.">no TLE</span>' : ''}<span class="sat-elev" data-norad="${s.norad}"></span>${mon ? bellBtnHTML(s.norad) : ''}</div>
       ${!p ? `<div class="no-pass-hint">— ${noTle ? 'no TLE in cache' : 'no upcoming pass'} · no SDR controls —</div>`
            : (mon ? `<div class="dlbtns">${dlBtnsHTML(s)}</div>` : '')}
