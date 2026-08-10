@@ -219,6 +219,10 @@ html, body { height: 100%; margin: 0; }
 .dlsel.rec { border-color: var(--red); color: var(--red); animation: recpulse 1.2s infinite; }
 .dlsel.live { border-color: var(--green); color: var(--green); animation: recpulse 1.2s infinite; }
 .dlsel option:disabled { color: var(--text-dim); }
+/* Readable, not actionable: dimmed so "you can look but not arm" is visible
+   without opening the list, since a select that merely refuses on click reads as
+   broken. */
+.dlsel.unassigned { color: var(--text-dim); border-style: dashed; }
 #listen-status.live .rec-dot { background: var(--green); }
 /* Capture-mode pills follow the studio convention: REC red, LISTEN green. */
 /* Transport cluster (⏺ Rec / ▶ Play / ⏹ Stop) — one dongle, so one global set.
@@ -1459,7 +1463,11 @@ function dlPickerHTML(s) {
     // Unsupported modes stay VISIBLE and unselectable: "we cannot demodulate
     // this yet" is information about the bird, and hiding the row would leave an
     // operator wondering where the beacon went.
-    return `<option value="${d.freq_mhz}" ${d.supported ? '' : 'disabled'} title="${t}"
+    // data-unsup survives the tick: updateListenUI also disables options when no
+    // device is assigned, and needs to know which ones must STAY disabled once
+    // one is.
+    return `<option value="${d.freq_mhz}" data-unsup="${d.supported ? 0 : 1}"
+      ${d.supported ? '' : 'disabled'} title="${t}"
       >${dlLabel(d)} · ${d.freq_mhz} MHz${d.supported ? '' : ' — not supported'}</option>`;
   }).join('');
   return `<select class="dlsel" data-norad="${s.norad}"
@@ -1498,6 +1506,16 @@ function _dongleStatus(norad) {
 function updateListenUI() {
   document.querySelectorAll('.dlsel[data-norad]').forEach(sel => {
     const norad = +sel.dataset.norad;
+    // The list stays READABLE with no SDR assigned — you can open it and see what
+    // the bird offers on a laptop with no dongle — but nothing is SELECTABLE.
+    // Arming a frequency the station has no radio for is a choice that cannot go
+    // anywhere, and the disabled options say so before the transport has to.
+    const assigned = !!LISTEN.assigned;
+    [...sel.options].forEach(o => {
+      if (o.value === '') return;                    // the placeholder always disarms
+      o.disabled = !assigned || o.dataset.unsup === '1';
+    });
+    sel.classList.toggle('unassigned', !assigned);
     // The select mirrors the armed state rather than owning it: a capture can be
     // adopted from the server on load (see pollListen), and the roster re-renders
     // on every tick, so the DOM must be told what is armed, not asked.
@@ -1518,7 +1536,9 @@ function updateListenUI() {
                 : !inCaptureWindow(norad) ? 'armed — not in range yet (capture opens ~5 min before the pass)'
                 : 'armed — use Rec / Play';
     } else {
-      sel.title = 'Pick the downlink to arm — Rec / Play act on it';
+      sel.title = assigned ? 'Pick the downlink to arm — Rec / Play act on it'
+                           : 'no device assigned — set one in Setup → Hardware '
+                             + '(the list is readable, but nothing can be armed)';
     }
   });
   document.querySelectorAll('.dl-status[data-norad]').forEach(el => {
@@ -1627,6 +1647,11 @@ function onDownlinkSelect(norad, value) {
   // puts the select back where it was, so the revert is visible rather than the
   // change being swallowed.
   if (_capturing()) { updateListenUI(); return; }
+  // The options are disabled when no device is assigned, so this should be
+  // unreachable — but a page rendered before the device was unassigned would
+  // still have live options, and the rule belongs where the state changes, not
+  // only in the markup that happens to express it.
+  if (!LISTEN.assigned && value !== '') { updateListenUI(); return; }
   const freq = parseFloat(value);
   _armed = value === '' || !isFinite(freq) ? null : { norad, freq };
   updateListenUI();
