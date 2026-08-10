@@ -864,7 +864,7 @@ function meterLevel(elev) {
 const BAR_COLORS = ['hsl(0, 85%, 57%)', 'hsl(322, 75%, 60%)', 'hsl(285, 65%, 62%)',
                     'hsl(258, 72%, 64%)', 'hsl(235, 85%, 62%)'];
 // Roster hint: rise time + pass PEAK elevation + a live countdown, so the
-// number can't be mistaken for the current elevation (that's the ↗nn° chip).
+// number can't be mistaken for the current elevation (that's the nn°↗ chip).
 function passHint(p, norad) {
   if (!p) return 'no pass 24h';
   const rise = new Date(p.rise), set = new Date(p.set), now = new Date();
@@ -1064,7 +1064,11 @@ function updatePills() {
       // have committed to, and the All view would otherwise put a second number
       // on every row that happens to be overhead.
       const mon = s.norad in _satSelected;
-      et.textContent = !up ? '' : `${arrow}${elev.toFixed(0)}°${mon ? ' · ' + fmtKm(look.rangeKm) : ''}`;
+      // Arrow AFTER the value: it qualifies the number it follows, and reading
+      // "42° rising" beats "rising 42°". Conditional space so a bird with no
+      // trend yet does not leave "42°  · 1 240 km" with a hole in it.
+      et.textContent = !up ? '' : `${elev.toFixed(0)}°${arrow ? ' ' + arrow : ''}`
+        + (mon ? ' · ' + fmtKm(look.rangeKm) : '');
       et.title = !up ? '' : `${arrow === '↘' ? 'Setting' : arrow === '↗' ? 'Rising' : 'Elevation'} `
         + `${elev.toFixed(1)}°${mon ? ' · slant range ' + fmtKm(look.rangeKm) : ''}`;
     }
@@ -1105,7 +1109,8 @@ function updateCoverage() {
       pill.className = 'cov-pill';
       pill.style.color = s.color;                       // border + text in the sat's colour
       // Same readout as the roster chip, so the two agree on sight.
-      pill.textContent = `${s.name} ${s.arrow}${s.elev.toFixed(0)}° · ${fmtKm(s.rangeKm)}`;
+      pill.textContent = `${s.name} ${s.elev.toFixed(0)}°${s.arrow ? ' ' + s.arrow : ''}`
+        + ` · ${fmtKm(s.rangeKm)}`;
       pill.title = `${s.name} — ${s.arrow === '↘' ? 'setting' : s.arrow === '↗' ? 'rising' : 'elevation'} `
         + `${s.elev.toFixed(1)}° · slant range ${fmtKm(s.rangeKm)}`;
       return pill;

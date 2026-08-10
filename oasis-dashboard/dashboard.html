@@ -1914,7 +1914,10 @@ async function fetchSats() {
 function satLiveText(norad, l1, l2, maxEl) {
   const look = (typeof currentLook === 'function') ? currentLook(l1, l2, _satStation) : null;
   if (!look) return `el ${maxEl}° max`;
-  return `el ${trendArrow(elevTrend(norad, look.el))}${Math.round(look.el)}° · ${fmtKm(look.rangeKm)}`;
+  // Arrow AFTER the value, matching the Satellites page: it qualifies the number
+  // it follows. Conditional space so a bird with no trend yet leaves no hole.
+  const arrow = trendArrow(elevTrend(norad, look.el));
+  return `el ${Math.round(look.el)}°${arrow ? ' ' + arrow : ''} · ${fmtKm(look.rangeKm)}`;
 }
 // Ridden by the existing 2 s sat-alert tick: patch text, touch no structure.
 function updateSatLive() {
