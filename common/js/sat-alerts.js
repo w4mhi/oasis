@@ -101,12 +101,22 @@
     return api ? api.oasisSpeak(text) : false;
   }
 
+  // Every element scheduled but not yet finished — {osc, gain, until}. A whole
+  // VVV is committed to the audio graph in one pass, up to ~2.6 s ahead of the
+  // speaker, so without these handles nothing can call it back: the mute bell
+  // stopped the NEXT alert and let the current one play out in full.
+  var _ringing = [];
+
   // Morse "V" = dit dit dit dah, `reps` times at `freq` Hz. dah = 3 x dit.
   function oasisSatChime(reps, freq) {
     var ctx = oasisSatAudioUnlock();
     if (!ctx) return false;
     var unit = 0.075, pattern = [1, 1, 1, 3];
     var t = ctx.currentTime + 0.03;
+    // Elements from an earlier chime that have already sounded are dead weight:
+    // dropped here rather than on a timer, because a kiosk runs for weeks and an
+    // unbounded list of spent oscillators is a leak nobody would ever see.
+    _ringing = _ringing.filter(function (n) { return n.until > ctx.currentTime; });
     for (var r = 0; r < (reps || 1); r++) {
       for (var i = 0; i < pattern.length; i++) {
         var dur = pattern[i] * unit;
@@ -122,10 +132,38 @@
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
         osc.connect(g); g.connect(ctx.destination);
         osc.start(t); osc.stop(t + dur + 0.02);
+        _ringing.push({ osc: osc, gain: g, until: t + dur + 0.02 });
         t += dur + unit;
       }
       t += unit * 3;                       // gap between repeated V's
     }
+    return true;
+  }
+
+  // Cut the chime off wherever it is. An element still waiting its turn is
+  // cancelled outright — stop() at a time before its own start() means it never
+  // sounds at all — and one mid-dit is truncated.
+  function oasisSatChimeStop() {
+    var live = _ringing;
+    _ringing = [];
+    live.forEach(function (n) {
+      try { n.osc.stop(0); } catch (e) { /* already finished */ }
+      // Disconnect too: stopping a sine mid-cycle steps the output to zero,
+      // which is a click. The gain ramp is what shapes the element, and it is
+      // still scheduled, so drop the node out of the graph rather than let it
+      // finish ramping into a destination nobody is listening to.
+      try { n.gain.disconnect(); } catch (e) { /* already gone */ }
+    });
+    return true;
+  }
+
+  // What the mute bell calls. The bell is ONE control, so it owes the operator
+  // one outcome: nothing audible. Stopping the Vs while the voice reads out
+  // three birds is not silence.
+  function oasisSatSilence() {
+    oasisSatChimeStop();
+    var api = speechApi();
+    if (api && typeof api.oasisSpeakStop === 'function') api.oasisSpeakStop();
     return true;
   }
 
@@ -140,5 +178,7 @@
   root.oasisSatSpeech = oasisSatSpeech;
   root.oasisSatAudioUnlock = oasisSatAudioUnlock;
   root.oasisSatChime = oasisSatChime;
+  root.oasisSatChimeStop = oasisSatChimeStop;
+  root.oasisSatSilence = oasisSatSilence;
   root.oasisSatSpeak = oasisSatSpeak;
 })(typeof window !== 'undefined' ? window : this);

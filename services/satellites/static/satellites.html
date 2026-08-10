@@ -959,7 +959,11 @@ function toggleSatMute() {
   if (el) { el.innerHTML = _satMuted ? BELL_OFF : BELL_ON; el.classList.toggle('muted', _satMuted);
     el.title = (_satMuted ? 'Unmute' : 'Mute') + ' pass-alert chimes'; }
   renderRoster();   // re-render so each monitored sat's per-card bell reflects the mute
-  _unlockAudio();
+  // Not just policy for the NEXT alert: cut whatever is sounding right now. The
+  // whole VVV goes into the audio graph in one call, so muting mid-chime used to
+  // buy silence 2.6 s later — long after the tap that asked for it.
+  if (_satMuted) oasisSatSilence();
+  else _unlockAudio();
 }
 // The chime and the voice now live in common/js/sat-alerts.js, shared with the
 // kiosk dashboard so the shack hears the same thing whichever screen is awake.

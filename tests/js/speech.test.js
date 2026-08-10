@@ -190,6 +190,112 @@ test('two oasisSpeak calls play in order, not on top of each other', async () =>
   }
 });
 
+// ── Silencing ────────────────────────────────────────────────────────────────
+// Regression: the mute bell was a POLICY switch — it stopped the next alert from
+// starting, and did nothing to the one already talking. Tap it while Jenny is
+// mid-sentence, which is exactly when an operator reaches for it, and she
+// finished the sentence and then read out every bird still queued behind her.
+// Silence has to mean silence.
+
+// speech.js caches its AudioContext for the life of the module, so these tests
+// take a FRESH copy each time. Reusing `S` would hand them the fake context an
+// earlier test built, and every source they think they are watching would report
+// into that test's log instead.
+function freshSpeech() {
+  delete require.cache[require.resolve('../../common/js/speech.js')];
+  return require('../../common/js/speech.js');
+}
+
+// A fake AudioContext whose sources report when they were stopped. `stop()` does
+// NOT fire onended here on purpose: a browser that skips the event must not wedge
+// the queue, so oasisSpeakStop has to settle the promise itself.
+function installAudio(S, log) {
+  S.fetch = function () {
+    return Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
+  };
+  S.AudioContext = function () {
+    return {
+      state: 'running',
+      resume: function () {},
+      destination: {},
+      decodeAudioData: function (buf, resolve) { resolve({}); },
+      createBufferSource: function () {
+        const src = { onended: null, connect: function () {} };
+        src.start = function () { log.push('start'); };
+        src.stop = function () { log.push('stop'); };
+        return src;
+      },
+    };
+  };
+}
+
+test('oasisSpeakStop stops what is playing and settles it — no wedged queue', async () => {
+  const log = [], S = freshSpeech();
+  installAudio(S, log);
+  try {
+    // Never resolves on its own: this source's onended is never fired, so if
+    // stop() did not settle the promise the await below would hang forever.
+    const playing = S.oasisSpeak('ISS, in ten minutes');
+    await new Promise(r => setTimeout(r, 5));   // let fetch + decode land
+    assert.deepStrictEqual(log, ['start']);
+    S.oasisSpeakStop();
+    assert.deepStrictEqual(log, ['start', 'stop']);
+    assert.strictEqual(await playing, false);   // it did not finish, it was cut off
+  } finally { delete S.fetch; delete S.AudioContext; }
+});
+
+test('an announcement queued behind another never speaks after a stop', async () => {
+  // The case that hurts most: three birds cross T-10 together, the operator hits
+  // the bell during the first, and the other two are still queued. Nothing
+  // waiting its turn may start once the station has been silenced.
+  const log = [], S = freshSpeech();
+  installAudio(S, log);
+  try {
+    const first = S.oasisSpeak('ISS');
+    const second = S.oasisSpeak('NOAA 19');
+    await new Promise(r => setTimeout(r, 5));
+    assert.deepStrictEqual(log, ['start']);     // second is still queued
+    S.oasisSpeakStop();
+    assert.deepStrictEqual(await Promise.all([first, second]), [false, false]);
+    // One start, one stop: the queued announcement never reached the audio graph.
+    assert.deepStrictEqual(log, ['start', 'stop']);
+  } finally { delete S.fetch; delete S.AudioContext; }
+});
+
+test('oasisSpeakStop also silences the fallback engine', async () => {
+  // A station without Piper speaks through speechSynthesis, which has its own
+  // queue. Stopping only our side would leave the browser reading the backlog.
+  let cancelled = 0;
+  const S = freshSpeech();
+  S.speechSynthesis = {
+    getVoices: () => [{ lang: 'en-US', name: 'Samantha' }],
+    speak: function () {},
+    cancel: function () { cancelled++; },
+  };
+  S.SpeechSynthesisUtterance = function (text) { this.text = text; this.voice = null; };
+  try {
+    assert.strictEqual(S.oasisSpeakStop(), true);
+    assert.strictEqual(cancelled, 1);
+  } finally { delete S.speechSynthesis; delete S.SpeechSynthesisUtterance; }
+});
+
+test('a stop does not deafen the station — the next announcement still speaks', async () => {
+  // Unmuting has to work. If the generation guard were checked against the value
+  // captured at stop time rather than at enqueue time, the page would go quiet
+  // for good and the only symptom would be silence.
+  const log = [], S = freshSpeech();
+  installAudio(S, log);
+  try {
+    S.oasisSpeak('ISS');
+    await new Promise(r => setTimeout(r, 5));
+    S.oasisSpeakStop();
+    log.length = 0;
+    S.oasisSpeak('NOAA 19');
+    await new Promise(r => setTimeout(r, 5));
+    assert.deepStrictEqual(log, ['start']);
+  } finally { delete S.fetch; delete S.AudioContext; }
+});
+
 test('a failing first announcement still lets the second one speak', async () => {
   // Both calls fall back to speechSynthesis (fetch always rejects). The
   // FIRST attempt to speak() throws (simulating a busy/broken engine); the

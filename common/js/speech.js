@@ -23,6 +23,15 @@
   var SAY_URL = '/api/speech/say?text=';
 
   var _ctx = null;
+  // What is sounding right now, so the mute bell can cut it off mid-sentence —
+  // {src, settle}. A mute that only stops the NEXT announcement is not a mute:
+  // the operator taps it because of the noise they can hear.
+  var _playing = null;
+  // Bumped by oasisSpeakStop. Every announcement carries the generation it was
+  // QUEUED in, and a step whose generation is stale drops itself instead of
+  // playing. That is what stops the two birds still queued behind the one being
+  // silenced, and the fetch/decode already in flight for them.
+  var _gen = 0;
   // One AudioContext per page, created lazily. Browsers start it SUSPENDED
   // until a user gesture; the kiosk boots unattended and is never touched,
   // which is why enable-autostart-pi.py passes the autoplay flag. Both paths
@@ -84,6 +93,30 @@
     }
   } catch (e) { /* no speech synthesis here — pages still work, silently */ }
 
+  // Stop talking, now, and drop everything queued behind it. Returns true so a
+  // caller can chain it; there is no failure mode worth reporting — a station
+  // with nothing playing is already in the state being asked for.
+  function oasisSpeakStop() {
+    _gen++;
+    var p = _playing;
+    _playing = null;
+    if (p) {
+      // stop() normally fires `ended` on its own, which would settle the promise
+      // for us. Settling it explicitly as well is what keeps a browser that
+      // skips the event from wedging the queue — and with it jennySpeak's busy
+      // counter, which would leave the avatar animating at nobody forever.
+      try { p.src.stop(); } catch (e) { /* never started, or already stopped */ }
+      p.settle();
+    }
+    // The fallback engine keeps a queue of its own. Leaving it running would
+    // silence Piper and let espeak read the backlog, which is a worse mute than
+    // no mute at all.
+    try {
+      if (root.speechSynthesis && root.speechSynthesis.cancel) root.speechSynthesis.cancel();
+    } catch (e) { /* no speech synthesis here */ }
+    return true;
+  }
+
   function oasisSpeakFallback(text) {
     if (!text || !root.speechSynthesis || !root.SpeechSynthesisUtterance) return false;
     try {
@@ -102,13 +135,13 @@
   // Say it with the station's own voice, falling back to the browser's.
   // Resolves true if SOMETHING spoke. This is the UNSERIALISED worker —
   // oasisSpeak (below) is the public entry point and queues calls to this.
-  function oasisSpeakOne(text) {
+  function oasisSpeakOne(text, gen) {
     // Only `fetch` is checked here. Web Audio is checked INSIDE, where a
     // missing context throws into the same catch as every other failure — if
     // this bailed early on no-AudioContext, the fetch path would be skipped
     // wholesale in any environment without Web Audio, including the test
     // harness, and the fallback tests would pass without ever exercising it.
-    if (!root.fetch) return Promise.resolve(oasisSpeakFallback(text));
+    if (!root.fetch) return Promise.resolve(gen === _gen && oasisSpeakFallback(text));
     return root.fetch(SAY_URL + encodeURIComponent(text))
       .then(function (res) {
         if (!res.ok) throw new Error('speech ' + res.status);
@@ -122,16 +155,30 @@
           // implements the callbacks.
           ctx.decodeAudioData(buf, resolve, reject);
         }).then(function (audio) {
+          // Silenced while this was still fetching or decoding. Returning here
+          // rather than throwing keeps it out of the catch below, which would
+          // otherwise "recover" by speaking the same words through the fallback
+          // engine — the one thing a mute must never do.
+          if (gen !== _gen) return false;
           return new Promise(function (resolve) {
             var src = ctx.createBufferSource();
             src.buffer = audio;
             src.connect(ctx.destination);
+            var settled = false;
             // Resolve on `onended`, not on `start()`: the whole point of
             // oasisSpeak's queue below is that the NEXT announcement must
             // not begin until THIS one has actually finished playing, not
-            // merely been handed to the audio graph.
-            src.onended = function () { resolve(true); };
+            // merely been handed to the audio graph. `done` reports whether it
+            // was allowed to finish — false means oasisSpeakStop cut it off.
+            var settle = function (done) {
+              if (settled) return;
+              settled = true;
+              if (_playing && _playing.src === src) _playing = null;
+              resolve(!!done);
+            };
+            src.onended = function () { settle(true); };
             src.start();
+            _playing = { src: src, settle: function () { settle(false); } };
           });
         });
       })
@@ -139,7 +186,7 @@
       // above, is allowed to resolve immediately rather than waiting for the
       // utterance to finish — the browser will not start it early. That
       // asymmetry is deliberate, not an oversight.
-      .catch(function () { return oasisSpeakFallback(text); });
+      .catch(function () { return gen === _gen && oasisSpeakFallback(text); });
   }
 
   // Announcements are SERIALISED behind this module-level chain so that
@@ -154,7 +201,15 @@
 
   function oasisSpeak(text) {
     if (!text) return Promise.resolve(false);
-    var result = _queue.then(function () { return oasisSpeakOne(text); });
+    // Captured HERE, at enqueue time, not inside oasisSpeakOne. Read when the
+    // queue finally reaches it, the generation would already have caught up with
+    // the stop and the announcement would speak anyway — which is precisely the
+    // bug: the birds queued behind the one being silenced are the loudest part.
+    var gen = _gen;
+    var result = _queue.then(function () {
+      if (gen !== _gen) return false;
+      return oasisSpeakOne(text, gen);
+    });
     // Reset the chain on EITHER outcome. If a step were ever left to reject
     // through, every announcement queued behind it would wait on a promise
     // that never resolves and would simply never speak.
@@ -166,5 +221,6 @@
   root.oasisPickVoice = oasisPickVoice;
   root.oasisSpeakFallback = oasisSpeakFallback;
   root.oasisSpeak = oasisSpeak;
+  root.oasisSpeakStop = oasisSpeakStop;
   if (typeof module !== 'undefined' && module.exports) module.exports = root;
 })(typeof window !== 'undefined' ? window : this);

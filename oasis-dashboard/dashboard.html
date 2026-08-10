@@ -1596,7 +1596,14 @@ function toggleSatMute() {
   _satMuted = !_satMuted;
   try { localStorage.setItem('oasis_sat_muted', _satMuted ? '1' : '0'); } catch (e) { /* private mode */ }
   renderSatMute();
-  oasisSatAudioUnlock();   // this tap is also the gesture that unlocks audio
+  // Silence means silence, and it means NOW. The bell used to be pure policy —
+  // it stopped the next alert and left the current one running to the end, which
+  // is the opposite of what the tap meant: nobody reaches for it except because
+  // of the noise they can hear. This cuts the VVV mid-element and drops Jenny
+  // along with every bird still queued behind her. Her greeting goes too; it is
+  // one bell, and it owes one outcome.
+  if (_satMuted) oasisSatSilence();
+  else oasisSatAudioUnlock();   // unmuting is also the gesture that unlocks audio
 }
 // Every armed bird with a known next pass. The 1-hour render window does NOT
 // apply here — an alert is about what is coming, not about what is listed.
@@ -1679,6 +1686,13 @@ function runSatAlerts() {
                            // does not replay warnings that already elapsed
   if (due.fire) oasisSatChime(3, due.freq);
   if (due.announce.length) setTimeout(() => {
+    // Re-checked HERE, not only above: the voice is scheduled 2.6 s out, and the
+    // bell gets tapped during the chime — which is the whole window this timer
+    // occupies. Gated only on entry, muting mid-VVV still let Jenny read the
+    // pass out afterwards, and the tap looked like it had done nothing at all.
+    // (The Satellites page has always re-checked, inside its speak() wrapper;
+    // the kiosk lost that when it grew jennySpeak.)
+    if (_satMuted) return;
     due.announce.forEach(b => jennySpeak(oasisSatSpeech(b)));
   }, OASIS_SAT_CHIME_3_MS);   // let the chime finish before the voice starts
 }

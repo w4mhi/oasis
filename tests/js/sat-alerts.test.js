@@ -165,3 +165,93 @@ test('a genuinely different pass still re-arms', () => {
   assert.strictEqual(r.fire, true);
   assert.deepStrictEqual(r.announce.map(b => b.norad), [25544]);
 });
+
+// ── Silencing the chime ──────────────────────────────────────────────────────
+// oasisSatChime schedules all twelve elements of "VVV" up to ~2.6 s into the
+// future in one go. Until this, it kept no handle to any of them: the mute bell
+// could stop the NEXT alert but not the one already sounding, so tapping it as
+// the chime started bought silence 2.6 s later, and only for the chime.
+
+// A fake AudioContext that records every oscillator it hands out. Shared by both
+// modules — sat-alerts gets its context from speech.js, so the fake has to be
+// installed there.
+function withAudio(fn) {
+  const S = (() => {
+    delete require.cache[require.resolve('../../common/js/speech.js')];
+    return require('../../common/js/speech.js');
+  })();
+  const oscs = [];
+  S.AudioContext = function () {
+    return {
+      state: 'running',
+      currentTime: 0,
+      resume: function () {},
+      destination: {},
+      createGain: function () {
+        return { gain: { setValueAtTime: function () {}, exponentialRampToValueAtTime: function () {} },
+                 connect: function () {}, disconnect: function () {} };
+      },
+      createOscillator: function () {
+        const o = { type: '', frequency: { value: 0 }, started: null, stopped: null,
+                    connect: function () {} };
+        o.start = function (t) { o.started = t; };
+        o.stop = function (t) { o.stopped = t; };
+        oscs.push(o);
+        return o;
+      },
+    };
+  };
+  try { return fn(oscs, S); } finally { delete S.AudioContext; }
+}
+
+test('oasisSatChimeStop stops every element the chime scheduled', () => {
+  withAudio((oscs) => {
+    assert.strictEqual(A.oasisSatChime(3, 620), true);
+    assert.strictEqual(oscs.length, 12);            // 3 reps x (dit dit dit dah)
+    // Each was scheduled with an END time already; that is exactly why they keep
+    // sounding through a mute. Re-stopping at 0 is what actually cancels them.
+    assert.ok(oscs.every(o => o.stopped > 0));
+    assert.strictEqual(A.oasisSatChimeStop(), true);
+    assert.ok(oscs.every(o => o.stopped === 0));
+  });
+});
+
+test('a stopped chime is forgotten — the next stop touches nothing', () => {
+  // Without clearing the list, every mute tap would re-stop every oscillator the
+  // page had ever scheduled, an unbounded leak on a kiosk that runs for weeks.
+  withAudio((oscs) => {
+    A.oasisSatChime(1, 620);
+    A.oasisSatChimeStop();
+    const marks = oscs.map(o => o.stopped);
+    A.oasisSatChimeStop();
+    assert.deepStrictEqual(oscs.map(o => o.stopped), marks);
+  });
+});
+
+test('a finished chime does not keep its oscillators alive forever', () => {
+  // Same leak from the other side: chiming repeatedly without ever muting must
+  // not grow the list without bound.
+  withAudio((oscs, S) => {
+    A.oasisSatChime(1, 620);
+    S.oasisAudioContext().currentTime = 60;   // that chime is long over
+    A.oasisSatChime(1, 620);
+    A.oasisSatChimeStop();
+    // Only the second chime's four elements were still live to be stopped.
+    assert.strictEqual(oscs.filter(o => o.stopped === 0).length, 4);
+  });
+});
+
+test('oasisSatSilence cuts the chime AND the voice', () => {
+  // The bell is one control. Stopping the Vs while Jenny reads out three birds
+  // is not silence.
+  withAudio((oscs, S) => {
+    let cancelled = 0;
+    S.speechSynthesis = { getVoices: () => [], speak: function () {}, cancel: function () { cancelled++; } };
+    try {
+      A.oasisSatChime(3, 620);
+      assert.strictEqual(A.oasisSatSilence(), true);
+      assert.ok(oscs.every(o => o.stopped === 0));
+      assert.strictEqual(cancelled, 1);
+    } finally { delete S.speechSynthesis; }
+  });
+});
