@@ -34,6 +34,12 @@
 <script src="/common/js/sat-alerts.js"></script>
 <script src="/common/js/clock-chime.js"></script>
 <script src="/common/js/sat-capability.js"></script>
+<!-- SGP4 propagator (22 KB) + the shared look-angle readout. The kiosk had no
+     propagator at all and showed each pass's PEAK elevation on an overhead bird;
+     with these it shows where the bird actually is, in the same words as the
+     Satellites page. sat-look.js reads the `satellite` global, so order matters. -->
+<script src="/server/satellites/satellite.min.js"></script>
+<script src="/common/js/sat-look.js"></script>
 <link rel="stylesheet" href="/common/css/wifi-pill.css">
 
 <style>
@@ -329,8 +335,14 @@
 
   /* Back to 28rem. The +100px was borrowed from traffic to fit a capability
      marker; the deduped label chips (VOICE folded into FM, SSB into LINEAR) sit
-     on their own line and fit without it, so traffic keeps its width. */
-  .sats{ flex:none; width:28rem; min-width:0; }
+     on their own line and fit without it, so traffic keeps its width.
+     +50px again for the live elevation/range readout on an overhead bird. In px,
+     not rem: the root font-size is clamp(13px, 1.9vh, 24px), so a rem here would
+     grow the card by ~4rem-worth on a big panel and by nothing on the 7" one,
+     while the text it has to fit is what it is. Traffic is flex:1 1 auto and
+     yields the width automatically. Measured headroom is 100px — this spends
+     half, leaving the rest for the next thing. */
+  .sats{ flex:none; width:calc(28rem + 50px); min-width:0; }
   .satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.6rem; padding-right:10px; }
   .sat{ position:relative; overflow:hidden;
         padding:.6rem .9rem .7rem 1.15rem; border:1px solid var(--border); border-radius:.8rem; margin-bottom:.5rem; }
@@ -1591,6 +1603,12 @@ function azCompass(deg) { if (deg == null) return ''; return ['N','NE','E','SE',
 // Anchored at the END so a bracket inside a real name is left alone.
 function satShortName(name) { return String(name || '').replace(/\s*\[[^\]]*\]\s*$/, ''); }
 let _satSel = [], _satPasses = {};
+// Station fix + the TLEs of the birds currently overhead. /api/satellites already
+// returns both (routes.py attaches l1/l2 per entry precisely so a client can
+// propagate its own look angles) — the kiosk just used to throw them away.
+// _satLive is rebuilt by renderSats and read by the 2 s tick, so the readout
+// stays live without re-rendering the whole card.
+let _satStation = null, _satLive = {};
 
 // ── Pass alerts on the KIOSK ─────────────────────────────────────────────────
 // The whole point: the shack should hear a pass coming without a laptop being
@@ -1830,13 +1848,38 @@ function runSatAlerts() {
   }, OASIS_SAT_CHIME_3_MS);   // let the chime finish before the voice starts
 }
 async function fetchSats() {
-  try { const m = await (await fetch('/api/satellites', { cache:'no-store' })).json(); _satSel = (m.satellites||[]).filter(s => s.selected); } catch (_) { _satSel = []; }
+  try { const m = await (await fetch('/api/satellites', { cache:'no-store' })).json();
+        _satSel = (m.satellites||[]).filter(s => s.selected);
+        if (m.station && m.station.lat != null) _satStation = m.station; } catch (_) { _satSel = []; }
   try { _satPasses = (await (await fetch('/api/satellites/passes?window=24', { cache:'no-store' })).json()).passes || {}; } catch (_) {}
   renderSats();
+}
+// Where an overhead bird actually is, in the same words the Satellites page uses:
+// a measured rising/setting arrow, the live elevation, and the slant range.
+//
+// The fallback matters. This row used to print the pass's PEAK elevation as plain
+// "el nn°", so a bird that had just cleared the horizon at 6° read "el 42° ↗" —
+// and the arrow was hardcoded, so a bird on its way down still claimed to be
+// climbing. When there is no TLE (or no station fix) we are back to only knowing
+// the peak, so we say "max" and mean it rather than passing it off as live.
+function satLiveText(norad, l1, l2, maxEl) {
+  const look = (typeof currentLook === 'function') ? currentLook(l1, l2, _satStation) : null;
+  if (!look) return `el ${maxEl}° max`;
+  return `${trendArrow(elevTrend(norad, look.el))}${Math.round(look.el)}° · ${fmtKm(look.rangeKm)}`;
+}
+// Ridden by the existing 2 s sat-alert tick: patch text, touch no structure.
+function updateSatLive() {
+  for (const norad in _satLive) {
+    const sp = document.querySelector(`.sat .live[data-norad="${norad}"]`);
+    if (!sp) continue;
+    const it = _satLive[norad];
+    sp.textContent = satLiveText(norad, it.l1, it.l2, it.maxEl);
+  }
 }
 function renderSats() {
   const body = document.getElementById('satBody'), meta = document.getElementById('k-sat-meta');
   if (!body) return;
+  _satLive = {};        // rebuilt below; a bird whose pass ended must stop ticking
   const now = Date.now();
   const items = [];
   _satSel.forEach(s => {
@@ -1849,7 +1892,8 @@ function renderSats() {
     const mins = Math.round((p._r - now)/60000);
     if (!inPass && mins > 60) return;                 // 1 h window
     items.push({ name:satShortName(s.name) || ('#'+norad), p, inPass, mins, bell:!!s.bell,
-                 labels:s.labels || [], dl:(s.downlinks && s.downlinks[0]) });
+                 labels:s.labels || [], dl:(s.downlinks && s.downlinks[0]),
+                 norad, l1:s.l1, l2:s.l2 });
   });
   items.sort((a,b) => (b.inPass?1:0)-(a.inPass?1:0) || a.p._r - b.p._r);
   // "moni", not "monitored": the header now carries a mute button too, and the
@@ -1870,7 +1914,11 @@ function renderSats() {
     const rail = ` style="--cap:${oasisSatCapabilityColor(it.labels)}"`;
     if (it.inPass) {
       const arc = `${esc(azCompass(it.p.rise_az))}→${esc(azCompass(it.p.set_az))}`;
-      return `<div class="sat now"${rail}><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${bell}</span><span class="aos">overhead</span><span class="cd">NOW</span></div>${caps}<div class="l2">el ${el}° ↗ · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
+      // The live half sits in its own span so the 2 s tick can patch it without
+      // rebuilding the card — innerHTML every 2 s on a Pi 3 kiosk is exactly the
+      // sort of churn that shows up later as "why is Chromium at 90%".
+      _satLive[it.norad] = { l1:it.l1, l2:it.l2, maxEl:el };
+      return `<div class="sat now"${rail}><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${bell}</span><span class="aos">overhead</span><span class="cd">NOW</span></div>${caps}<div class="l2"><span class="live" data-norad="${it.norad}">${satLiveText(it.norad, it.l1, it.l2, el)}</span> · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
     }
     const soon = it.mins <= 10;
     const nm = soon ? `<span class="nm"><span class="pulse"></span>${esc(it.name)}${bell}</span>` : `<span class="nm">${esc(it.name)}${bell}</span>`;
@@ -2126,7 +2174,7 @@ fetchSats();          setInterval(fetchSats, 60000);
 // Pass alerts tick far faster than the roster refresh: the T-10 edge has to be
 // caught within a couple of seconds of crossing, but the pass DATA only changes
 // every 60 s. Cheap — it walks the armed birds already in memory.
-renderSatMute();      setInterval(runSatAlerts, 2000);   jennyReady();
+renderSatMute();      setInterval(() => { runSatAlerts(); updateSatLive(); }, 2000);   jennyReady();
 // Its own 1 s interval rather than a call from tick(): tick() first runs while
 // this block's `let`/`const` are still in the temporal dead zone, so reaching
 // the hour bell from there throws before the page has finished loading. 1 s so

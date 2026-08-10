@@ -362,6 +362,7 @@ html, body { height: 100%; margin: 0; }
 <script src="/common/js/sat-capability.js"></script>
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
+<script src="/common/js/sat-look.js"></script>
 <script>
 /* ─────────────────────────────────────────────────────────────────────────
    Roster-driven satellite map. Check a satellite → plot its NEXT pass ground
@@ -812,35 +813,10 @@ function fmt(iso) { return new Date(iso).toLocaleTimeString([], {hour:'2-digit',
    and glowing near the zenith (its "hit". PILL_CAP_DEG is where it reads fully
    hot — tune to taste. */
 const PILL_CAP_DEG = 50;
-// Look angles from the station to a satellite, right now. el is degrees (<0 =
-// below the horizon); rangeKm is the SLANT range — the straight line to the
-// bird, not the distance across the ground to its sub-point.
-function currentLook(l1, l2) {
-  if (!l1 || !l2 || !STATION || STATION.lat == null || typeof satellite === 'undefined') return null;
-  try {
-    const now = new Date();
-    const pv = satellite.propagate(satellite.twoline2satrec(l1, l2), now);
-    if (!pv || !pv.position) return null;
-    const ecf = satellite.eciToEcf(pv.position, satellite.gstime(now));
-    const obs = { longitude: STATION.lon * Math.PI / 180,
-                  latitude: STATION.lat * Math.PI / 180, height: 0 };
-    const la = satellite.ecfToLookAngles(obs, ecf);
-    return { el: la.elevation * 180 / Math.PI, rangeKm: la.rangeSat };
-  } catch (e) { return null; }
-}
-function currentElev(l1, l2) { const l = currentLook(l1, l2); return l ? l.el : null; }
-// Thousands-separated km, e.g. 1 240 km. Space, not a locale separator — a
-// comma reads as a decimal point to half the planet and toLocaleString would
-// make the readout depend on the browser's locale.
-//
-// DELIBERATELY not routed through common/js/units.js. Everything on this page is
-// metric, always, whatever 'oasis_units' says: satellite and amateur-radio work
-// is metric worldwide (we speak of the 2 m band, not the 6.6 ft band), and
-// converting a slant range to miles here would put OASIS at odds with every
-// other tool an operator has open. units.js is for terrestrial readouts —
-// aircraft altitude, ground speed, temperature — where the preference is real.
-// If you are here to "fix the inconsistency" with fmtAlt: don't.
-function fmtKm(km) { return Math.round(km).toString().replace(/\B(?=(\d{3})+$)/g, ' ') + ' km'; }
+// currentLook / fmtKm / elevTrend / trendArrow come from common/js/sat-look.js,
+// shared with the kiosk dashboard so the wall and the desk cannot disagree
+// about where a bird is. Station is this page's STATION global.
+const lookAt = (s) => currentLook(s.l1, s.l2, STATION);
 function pillColor(elev) {
   if (elev == null || elev < 0)
     return { css: 'var(--border)', glow: 'none', title: 'below horizon' };
@@ -864,7 +840,7 @@ function meterLevel(elev) {
 const BAR_COLORS = ['hsl(0, 85%, 57%)', 'hsl(322, 75%, 60%)', 'hsl(285, 65%, 62%)',
                     'hsl(258, 72%, 64%)', 'hsl(235, 85%, 62%)'];
 // Roster hint: rise time + pass PEAK elevation + a live countdown, so the
-// number can't be mistaken for the current elevation (that's the ↑nn° text).
+// number can't be mistaken for the current elevation (that's the ↗nn° chip).
 function passHint(p, norad) {
   if (!p) return 'no pass 24h';
   const rise = new Date(p.rise), set = new Date(p.set), now = new Date();
@@ -1042,7 +1018,7 @@ function _runPassAlerts() {
 
 function updatePills() {
   ROSTER.forEach(s => {
-    const look = currentLook(s.l1, s.l2);
+    const look = lookAt(s);
     const elev = look ? look.el : null;
     const up = elev != null && elev >= 0;
     const pc = pillColor(elev), lvl = meterLevel(elev);
@@ -1055,15 +1031,18 @@ function updatePills() {
         seg.style.boxShadow = (on && i === lvl - 1) ? `0 0 6px ${BAR_COLORS[i]}` : 'none';   // glow the peak bar
       });
     }
+    // Sampled for EVERY bird, up or not, so the arrow is already right on the
+    // first tick a bird clears the horizon instead of blank for two seconds.
+    const arrow = trendArrow(elevTrend(s.norad, elev));
     const et = document.querySelector(`.sat-elev[data-norad="${s.norad}"]`);
     if (et) {
       // Range only for monitored birds: it is working detail for a pass you
       // have committed to, and the All view would otherwise put a second number
       // on every row that happens to be overhead.
       const mon = s.norad in _satSelected;
-      et.textContent = !up ? '' : `↑${elev.toFixed(0)}°${mon ? ' · ' + fmtKm(look.rangeKm) : ''}`;
-      et.title = !up ? '' : mon ? `Elevation ${elev.toFixed(1)}° · slant range ${fmtKm(look.rangeKm)}`
-                                : `Elevation ${elev.toFixed(1)}°`;
+      et.textContent = !up ? '' : `${arrow}${elev.toFixed(0)}°${mon ? ' · ' + fmtKm(look.rangeKm) : ''}`;
+      et.title = !up ? '' : `${arrow === '↘' ? 'Setting' : arrow === '↗' ? 'Rising' : 'Elevation'} `
+        + `${elev.toFixed(1)}°${mon ? ' · slant range ' + fmtKm(look.rangeKm) : ''}`;
     }
     const ph = document.querySelector(`.pass-hint[data-norad="${s.norad}"]`);
     if (ph) ph.innerHTML = passHint(nextPassOf(s.norad), s.norad);
@@ -1083,10 +1062,11 @@ function updateCoverage() {
   for (const norad in PLOTTED) {
     const s = ROSTER.find(x => x.norad === +norad);
     if (!s) continue;
-    const look = currentLook(s.l1, s.l2);
+    const look = lookAt(s);
     const e = look ? look.el : null;
     if (e != null && e >= 0) {
-      inLOS.push({ name: s.name, elev: e, rangeKm: look.rangeKm, color: PLOTTED[norad].color });
+      inLOS.push({ name: s.name, elev: e, rangeKm: look.rangeKm,
+                   arrow: trendArrow(elevTrend(s.norad, e)), color: PLOTTED[norad].color });
       if (e > maxElev) maxElev = e;
     }
   }
@@ -1101,8 +1081,9 @@ function updateCoverage() {
       pill.className = 'cov-pill';
       pill.style.color = s.color;                       // border + text in the sat's colour
       // Same readout as the roster chip, so the two agree on sight.
-      pill.textContent = `${s.name} ↑${s.elev.toFixed(0)}° · ${fmtKm(s.rangeKm)}`;
-      pill.title = `${s.name} — elevation ${s.elev.toFixed(1)}° · slant range ${fmtKm(s.rangeKm)}`;
+      pill.textContent = `${s.name} ${s.arrow}${s.elev.toFixed(0)}° · ${fmtKm(s.rangeKm)}`;
+      pill.title = `${s.name} — ${s.arrow === '↘' ? 'setting' : s.arrow === '↗' ? 'rising' : 'elevation'} `
+        + `${s.elev.toFixed(1)}° · slant range ${fmtKm(s.rangeKm)}`;
       return pill;
     }));
   }
