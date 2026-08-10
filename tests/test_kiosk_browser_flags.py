@@ -93,5 +93,118 @@ class LauncherFlagsTest(unittest.TestCase):
         self.assertIn("--force-device-scale-factor=1", launcher)
 
 
+class SingleAutostartTest(unittest.TestCase):
+    """One autostart mechanism per station, or the kiosk starts twice.
+
+    The original code wrote the XDG entry unconditionally and ADDED the labwc
+    line when labwc was present, believing labwc ignored the XDG one. Pi OS
+    Trixie honours both, so every Wayland kiosk came up twice: two fullscreen
+    Chromiums stacked on one screen. Nothing about that is visible — the top
+    window looks entirely normal — but the two browsers hold separate page
+    state, so muting the pass alerts on the window you can see leaves the one
+    behind it chiming with no control that can reach it.
+    """
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp()
+        self._real_write = autostart._sudo_write
+        self._real_run = autostart._run
+        self._real_chown = autostart._chown_to
+        self._real_comp = autostart._running_compositor
+        autostart._sudo_write = lambda path, content: None
+        autostart._chown_to = lambda path, user: None
+
+        class _R:
+            returncode = 0
+        autostart._run = lambda *a, **k: _R()
+
+    def tearDown(self):
+        autostart._sudo_write = self._real_write
+        autostart._run = self._real_run
+        autostart._chown_to = self._real_chown
+        autostart._running_compositor = self._real_comp
+
+    def _install(self, compositor):
+        autostart._running_compositor = lambda: compositor
+        autostart.install_browser("pi", self.home)
+        labwc = autostart._labwc_autostart(self.home)
+        line = ""
+        if os.path.exists(labwc):
+            with open(labwc, encoding="utf-8") as f:
+                line = f.read()
+        return (autostart.BROWSER_BIN in line,
+                os.path.exists(autostart._xdg_autostart(self.home)))
+
+    def test_labwc_gets_the_labwc_line_and_no_xdg_entry(self):
+        in_labwc, has_xdg = self._install("labwc")
+        self.assertTrue(in_labwc)
+        self.assertFalse(has_xdg, "labwc honours the XDG entry too — writing "
+                                  "both is what starts two kiosks")
+
+    def test_x11_gets_the_xdg_entry_and_no_labwc_line(self):
+        in_labwc, has_xdg = self._install("openbox")
+        self.assertTrue(has_xdg)
+        self.assertFalse(in_labwc)
+
+    def test_wayfire_keeps_the_xdg_entry_or_nothing_starts(self):
+        """wayfire needs a manual wayfire.ini edit, so the XDG entry is the only
+        thing that will actually launch the kiosk. Treating wayfire as its own
+        kind and dropping XDG would leave the station with no kiosk at all."""
+        _, has_xdg = self._install("wayfire")
+        self.assertTrue(has_xdg)
+
+    def test_re_running_repairs_a_station_that_has_both(self):
+        """The repair path, and the reason this removes rather than merely
+        declines to write: every Pi installed by an earlier version already has
+        both entries, and they are only reachable by running this again."""
+        os.makedirs(os.path.join(self.home, ".config", "autostart"))
+        with open(autostart._xdg_autostart(self.home), "w") as f:
+            f.write(f"[Desktop Entry]\nExec={autostart.BROWSER_BIN}\n")
+        in_labwc, has_xdg = self._install("labwc")
+        self.assertTrue(in_labwc)
+        self.assertFalse(has_xdg)
+
+    def test_removing_the_labwc_line_leaves_the_rest_of_the_file(self):
+        """That file is the operator's, not ours — it can hold their own
+        startup commands, and this must never be the reason those stop running."""
+        os.makedirs(os.path.join(self.home, ".config", "labwc"))
+        path = autostart._labwc_autostart(self.home)
+        with open(path, "w") as f:
+            f.write(f"pcmanfm --desktop &\n{autostart.BROWSER_BIN} &\nkanshi &\n")
+        self.assertTrue(autostart._remove_labwc_line(self.home))
+        with open(path, encoding="utf-8") as f:
+            rest = f.read()
+        self.assertIn("pcmanfm --desktop &", rest)
+        self.assertIn("kanshi &", rest)
+        self.assertNotIn(autostart.BROWSER_BIN, rest)
+
+    def test_disable_removes_both_whichever_was_installed(self):
+        """--disable that leaves one behind has not disabled anything: the
+        kiosk still comes up on next login."""
+        os.makedirs(os.path.join(self.home, ".config", "autostart"))
+        os.makedirs(os.path.join(self.home, ".config", "labwc"))
+        with open(autostart._xdg_autostart(self.home), "w") as f:
+            f.write("[Desktop Entry]\n")
+        with open(autostart._labwc_autostart(self.home), "w") as f:
+            f.write(f"{autostart.BROWSER_BIN} &\n")
+        self.assertTrue(autostart._remove_xdg_autostart(self.home))
+        self.assertTrue(autostart._remove_labwc_line(self.home))
+        self.assertFalse(os.path.exists(autostart._xdg_autostart(self.home)))
+        with open(autostart._labwc_autostart(self.home), encoding="utf-8") as f:
+            self.assertNotIn(autostart.BROWSER_BIN, f.read())
+
+    def test_the_compositor_is_read_from_the_process_table(self):
+        """Not from the OS release. "Trixie means labwc" is the inference that
+        caused this bug; a Pi can boot X11 on Trixie."""
+        autostart._running_compositor = self._real_comp
+        calls = []
+
+        class _R:
+            returncode = 1
+        autostart._run = lambda cmd, **k: (calls.append(cmd), _R())[1]
+        autostart._running_compositor()
+        self.assertTrue(any(c[:2] == ["pgrep", "-x"] for c in calls))
+
+
 if __name__ == "__main__":
     unittest.main()

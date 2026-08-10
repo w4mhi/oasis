@@ -11,10 +11,12 @@ Configure OASIS to start automatically when the Raspberry Pi boots.
 
   --with-browser
     Also installs a desktop autostart entry that opens Chromium in kiosk mode
-    (http://localhost:8083) after the server is ready. Writes the mechanism the
-    running compositor honors — ~/.config/labwc/autostart on modern Pi OS
-    (Bookworm/Trixie, Wayland) and the XDG ~/.config/autostart/*.desktop on
-    LXDE/X11. Requires Raspberry Pi OS with Desktop (a live desktop session).
+    (http://localhost:8083) after the server is ready. Writes EXACTLY ONE
+    mechanism, chosen from the compositor actually running, and removes the
+    other — ~/.config/labwc/autostart on modern Pi OS (Bookworm/Trixie,
+    Wayland), the XDG ~/.config/autostart/*.desktop on LXDE/X11. labwc honours
+    both, so a station carrying both entries starts two stacked kiosks; re-run
+    this to repair one. Requires Raspberry Pi OS with Desktop.
 
   --resolution 800x480 | 1920x1200
     Same as --with-browser but targets the OASIS Dashboard kiosk layout
@@ -179,6 +181,76 @@ def _wayfire_ini(home):
     return os.path.join(home, ".config", "wayfire.ini")
 
 
+def _running_compositor():
+    """Which compositor is ACTUALLY running, asked of the process table.
+
+    Deliberately not inferred from the OS release. "Trixie means labwc" is
+    exactly the kind of reasoning that produced the bug _autostart_kind exists
+    to prevent — a Pi can boot X11 on Trixie, or run a compositor no release
+    note mentions. Returns None when nothing is up, which is the normal case for
+    an install over SSH before the first desktop login."""
+    for name in ("labwc", "wayfire", "openbox", "mutter", "kwin_wayland"):
+        if _run(["pgrep", "-x", name], check=False,
+                capture_output=True).returncode == 0:
+            return name
+    return None
+
+
+def _autostart_kind(home):
+    """Exactly ONE of "labwc" or "xdg". Never both — that is the whole point.
+
+    This script used to write the XDG entry unconditionally and ADD the labwc
+    line whenever labwc was present, on the assumption stated in its own
+    comment: that labwc "IGNORES the XDG ~/.config/autostart/*.desktop ... so
+    there's no double launch".
+
+    Pi OS Trixie's labwc session honours BOTH. Every Wayland kiosk therefore
+    came up TWICE — two independent fullscreen Chromiums stacked on one screen,
+    doubling CPU, GPU, RAM and every API poll on the machine least able to
+    afford it. Worse, each browser keeps its own page state, so the visible
+    window's controls look broken: mute the satellite alerts on the window you
+    can see and the one behind it chimes on, unreachable, with the bell on
+    screen showing muted the whole time.
+
+    Wayfire maps to "xdg" on purpose. It needs a manual wayfire.ini edit (warned
+    about at the call site), so the XDG entry is the only thing that will
+    actually start the kiosk there — picking "wayfire" and dropping XDG would
+    leave the station with no kiosk at all."""
+    comp = _running_compositor()
+    if comp:
+        return "labwc" if comp == "labwc" else "xdg"
+    # Nothing running — a pre-login install. Fall back to on-disk evidence,
+    # which is weaker but is all such an install has to go on.
+    if os.path.isdir(os.path.join(home, ".config", "labwc")) or shutil.which("labwc"):
+        return "labwc"
+    return "xdg"
+
+
+def _remove_xdg_autostart(home):
+    """Delete the LXDE/X11 entry. True if one was actually there."""
+    path = _xdg_autostart(home)
+    if not os.path.exists(path):
+        return False
+    os.remove(path)
+    return True
+
+
+def _remove_labwc_line(home):
+    """Strip the OASIS launcher line from the labwc autostart, leaving anything
+    else in the file alone. True if a line was actually removed."""
+    path = _labwc_autostart(home)
+    if not os.path.exists(path):
+        return False
+    with open(path, encoding="utf-8", errors="replace") as f:
+        lines = f.readlines()
+    kept = [ln for ln in lines if BROWSER_BIN not in ln]
+    if len(kept) == len(lines):
+        return False
+    with open(path, "w") as f:
+        f.writelines(kept)
+    return True
+
+
 # ── Step 1: Platform check ─────────────────────────────────────────────────────
 def check_platform():
     _step(1, "Checking platform")
@@ -324,28 +396,34 @@ def install_browser(user, home, url=None, resolution=None):
     _run(["sudo", "chmod", "+x", BROWSER_BIN])
     _ok(f"Wrote {BROWSER_BIN}  (executable)")
 
-    # Autostart — write the mechanism the running desktop actually honors.
-    # Modern Pi OS (Bookworm/Trixie) defaults to labwc (Wayland), which runs
-    # ~/.config/labwc/autostart (a shell script) and IGNORES the XDG
-    # ~/.config/autostart/*.desktop that LXDE/X11 used. Write whichever apply —
-    # each desktop honors only its own, so there's no double launch. Files go in
-    # the login user's home (resolved above) and are chowned to them.
-    xdg = _xdg_autostart(home)
-    _user_write(xdg, (
-        "[Desktop Entry]\n"
-        "Type=Application\n"
-        "Name=OASIS Browser\n"
-        "Comment=Open OASIS in Chromium kiosk mode on desktop login\n"
-        f"Exec={BROWSER_BIN}\n"
-        "Hidden=false\n"
-        "X-GNOME-Autostart-enabled=true\n"
-    ), user)
-    _ok(f"Autostart (LXDE/X11): {xdg}")
-
-    if os.path.isdir(os.path.join(home, ".config", "labwc")) or shutil.which("labwc"):
+    # Autostart — ONE mechanism, and the other actively removed. Writing both
+    # started two kiosks on labwc (see _autostart_kind); removing rather than
+    # merely not-writing is what repairs a station installed by an earlier
+    # version, which is most of them. Files go in the login user's home
+    # (resolved above) and are chowned to them.
+    kind = _autostart_kind(home)
+    if kind == "labwc":
         labwc = _labwc_autostart(home)
         _append_line_once(labwc, f"{BROWSER_BIN} &", user, mode=0o755)
         _ok(f"Autostart (labwc/Wayland): {labwc}")
+        if _remove_xdg_autostart(home):
+            _ok(f"Removed {_xdg_autostart(home)} — labwc honours it too, "
+                "and two entries start two kiosks")
+    else:
+        xdg = _xdg_autostart(home)
+        _user_write(xdg, (
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=OASIS Browser\n"
+            "Comment=Open OASIS in Chromium kiosk mode on desktop login\n"
+            f"Exec={BROWSER_BIN}\n"
+            "Hidden=false\n"
+            "X-GNOME-Autostart-enabled=true\n"
+        ), user)
+        _ok(f"Autostart (LXDE/X11): {xdg}")
+        if _remove_labwc_line(home):
+            _ok(f"Removed the OASIS line from {_labwc_autostart(home)} — "
+                "one autostart per station, or the kiosk starts twice")
 
     if os.path.exists(_wayfire_ini(home)):
         _warn("wayfire detected — add this under [autostart] in "
@@ -417,22 +495,15 @@ def cmd_disable(home):
         _run(["sudo", "rm", BROWSER_BIN])
         _ok(f"Removed {BROWSER_BIN}")
         removed_any = True
-    desktop_file = _xdg_autostart(home)
-    if os.path.exists(desktop_file):
-        os.remove(desktop_file)
-        _ok(f"Removed {desktop_file}")
+    # Both, unconditionally — install picks one, but a station set up by an
+    # earlier version may carry the other, and --disable that leaves a kiosk
+    # starting on next login has not disabled anything.
+    if _remove_xdg_autostart(home):
+        _ok(f"Removed {_xdg_autostart(home)}")
         removed_any = True
-    # labwc/Wayland: strip the oasis launcher line from ~/.config/labwc/autostart
-    labwc = _labwc_autostart(home)
-    if os.path.exists(labwc):
-        with open(labwc, encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
-        kept = [ln for ln in lines if BROWSER_BIN not in ln]
-        if len(kept) != len(lines):
-            with open(labwc, "w") as f:
-                f.writelines(kept)
-            _ok(f"Removed OASIS line from {labwc}")
-            removed_any = True
+    if _remove_labwc_line(home):
+        _ok(f"Removed OASIS line from {_labwc_autostart(home)}")
+        removed_any = True
     if not removed_any:
         _info("Browser autostart not found — nothing to remove")
 
