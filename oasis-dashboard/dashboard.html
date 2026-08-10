@@ -365,6 +365,16 @@
   .sat:last-child{ margin-bottom:0; }
   .sat .l1{ display:flex; align-items:baseline; gap:.8rem; font-size:1.35rem; }
   .sat .nm{ font-weight:700; color:var(--text); min-width:6.6rem; }
+  /* The amateur designator: the name an operator recognises, but the CATALOGUE
+     name is the heading — so this is styled down, not up. Smaller and dim keeps
+     it from crowding the name on a 7" panel; em (not rem) so it tracks the name.
+     The nowrap lives on the WRAPPER, not on .alt, so the bell keeps the row's own
+     font context — its glyph is sized in rem and aligned in em, and nesting it
+     inside the .8em span shifted it off the baseline. At full size the bell was
+     being pushed onto a line of its own, which read as a second bird. */
+  .sat .nm .altwrap{ white-space:nowrap; }
+  .sat .nm .alt{ font-size:.8em; font-weight:400; color:var(--dim);
+                 letter-spacing:.03em; margin-left:.35rem; }
   .sat .aos{ color:var(--dim); font-variant-numeric:tabular-nums; }
   .sat .cd{ margin-left:auto; color:var(--accent); font-weight:700; font-variant-numeric:tabular-nums; }
   .sat .l2{ font-size:1.1rem; color:var(--faint); margin-top:.2rem; letter-spacing:.02em; }
@@ -1900,8 +1910,9 @@ function renderSats() {
     // the tag would be three characters saying nothing.
     // DISPLAY ONLY. _armedBirds builds the spoken name separately, and must keep
     // doing so, or Jenny reads out "bracket R S forty-four".
-    const short = satShortName(s.name) || ('#'+norad);
-    items.push({ name:(s.designator ? `${short} [${s.designator}]` : short),
+    // Kept as two fields, not one string: the designator is styled down (smaller
+    // and dim) so it cannot crowd the name, and the bell has to sit AFTER it.
+    items.push({ name:satShortName(s.name) || ('#'+norad), desig:s.designator || null,
                  p, inPass, mins, bell:!!s.bell,
                  labels:s.labels || [], dl:(s.downlinks && s.downlinks[0]),
                  norad, l1:s.l1, l2:s.l2 });
@@ -1923,16 +1934,22 @@ function renderSats() {
     // The rail carries the map's blended colour for the same bird.
     const caps = `<div class="caps">${oasisSatCapabilityChips(it.labels)}</div>`;
     const rail = ` style="--cap:${oasisSatCapabilityColor(it.labels)}"`;
+    // Name, then the designator, then the bell — in that order, and the
+    // designator+bell tied together with nowrap so the bell can no longer be
+    // orphaned onto its own line when the designator makes the name long.
+    const alt = it.desig
+      ? `<span class="altwrap"><span class="alt">[${esc(it.desig)}]</span>${bell}</span>`
+      : bell;
     if (it.inPass) {
       const arc = `${esc(azCompass(it.p.rise_az))}→${esc(azCompass(it.p.set_az))}`;
       // The live half sits in its own span so the 2 s tick can patch it without
       // rebuilding the card — innerHTML every 2 s on a Pi 3 kiosk is exactly the
       // sort of churn that shows up later as "why is Chromium at 90%".
       _satLive[it.norad] = { l1:it.l1, l2:it.l2, maxEl:el };
-      return `<div class="sat now"${rail}><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${bell}</span><span class="aos">overhead</span><span class="cd">NOW</span></div>${caps}<div class="l2"><span class="live" data-norad="${it.norad}">${satLiveText(it.norad, it.l1, it.l2, el)}</span> · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
+      return `<div class="sat now"${rail}><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${alt}</span><span class="aos">overhead</span><span class="cd">NOW</span></div>${caps}<div class="l2"><span class="live" data-norad="${it.norad}">${satLiveText(it.norad, it.l1, it.l2, el)}</span> · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
     }
     const soon = it.mins <= 10;
-    const nm = soon ? `<span class="nm"><span class="pulse"></span>${esc(it.name)}${bell}</span>` : `<span class="nm">${esc(it.name)}${bell}</span>`;
+    const nm = soon ? `<span class="nm"><span class="pulse"></span>${esc(it.name)}${alt}</span>` : `<span class="nm">${esc(it.name)}${alt}</span>`;
     const l2 = soon ? `rise ${esc(dir)} · ${el}° max · get ready` : `rise ${esc(dir)} · ${el}° max`;
     return `<div class="sat${soon?' soon':''}"${rail}><div class="l1">${nm}<span class="aos">${hm(it.p._r)}</span><span class="cd">↑ ${it.mins}m</span></div>${caps}<div class="l2">${l2}</div></div>`;
   }).join('');
