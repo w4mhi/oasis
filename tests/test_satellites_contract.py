@@ -73,7 +73,7 @@ class RosterTest(_Base):
 
 class PassesTest(_Base):
     _KEYS = {"ok", "passes", "count", "computed", "complete", "computed_at",
-             "window_h", "reason"}
+             "window_h", "min_elev", "reason"}
 
     def test_unconfigured_station_is_a_state_not_an_error(self):
         """§2: nothing about the request was wrong. `computed:false` is what
@@ -263,8 +263,12 @@ class NoEpochOnTheWireTest(_Base):
         with self._station(), \
              mock.patch.object(sat_routes, "_sats_by_norad", return_value={}):
             d = self.c.get("/api/satellites/passes").get_json()
+        # The guard is "an unexplained float on the wire is probably an epoch".
+        # These are the explained ones: counts and a window in hours, plus
+        # min_elev, which is DEGREES and legitimately fractional — a horizon mask
+        # of 12.5 is a normal thing for an operator to want.
         for key, value in d.items():
-            if key in ("count", "window_h"):
+            if key in ("count", "window_h", "min_elev"):
                 continue
             self.assertNotIsInstance(value, float,
                                      f"`{key}` looks like a raw epoch (§6)")

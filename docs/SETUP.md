@@ -1710,7 +1710,28 @@ you just captured. There is no delete button yet — clear space by hand with
   curl -s http://<pi-ip>:8083/api/satellites/passes | head -c 200
   # JSON with rise/set times = working; an error / HTTP 500 = run install-predict.py (Skyfield missing)
   ```
-- **Every bird says "no pass in 24h" but the roster looks healthy:** suspect the **clock or your station location**, not the satellites — predictions need the correct time *and* your lat/lon. Confirm the clock is GPS-disciplined ([GPS debug](#debug--do-i-have-a-fix-and-is-it-steering-the-clock)) and that your coordinates in `station.json` are right.
+- **Every bird says "no pass in 24h" but the roster looks healthy:** suspect the **clock or your station location**, not the satellites — predictions need the correct time *and* your lat/lon. Confirm the clock is GPS-disciplined ([GPS debug](#debug--do-i-have-a-fix-and-is-it-steering-the-clock)) and that your coordinates in `station.json` are right. Then check the **pass floor** — a high `min_elev` empties the list in a way that looks identical to a broken predictor:
+  ```bash
+  curl -s http://<pi-ip>:8083/api/satellites/passes | python3 -c 'import json,sys; print("min_elev:", json.load(sys.stdin)["min_elev"])'
+  # 10.0 = the default; a large number means station.json is filtering your passes out
+  ```
+
+**Pass floor (`min_elev`).** A pass is listed only if its *culmination* reaches this
+many degrees; lower ones never appear in the roster, the 1 h views or the alerts.
+The right value is a property of **your horizon**, not of the satellites — treeline,
+roofline, the hill to the north-east — so it lives in `configuration/station.json`
+and defaults to `10`:
+
+```json
+{ "lat": 35.1234, "lon": -80.5678, "min_elev": 10 }
+```
+
+Raise it if low passes are unworkable from your site (a valley, dense trees);
+drop it toward `0` if you look out over water. Out-of-range or non-numeric values
+fall back to `10` rather than emptying the list. It is one number for a horizon
+that is not a circle — you may see 5° south over water and nothing under 20° to
+the north — so set it to your *worst* useful direction and judge individual
+passes from the `max NN°` on each card.
 - **Live audio: hit Listen and hear nothing?** First, [who owns the RTL-SDR](#rtl-sdr) — listening needs sole use of the dongle, so stop the APRS feed / ADS-B first. Then confirm the bird is actually above the horizon (the header shows AOS/LOS). For a NOAA weather bird you should hear the steady **tick-tick** of the APT carrier while it's overhead.
 
 > Satellites is served by the main OASIS server on **:8083** — no separate port.

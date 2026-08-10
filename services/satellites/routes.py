@@ -41,6 +41,38 @@ def _station():
         return {"lat": None, "lon": None}
 
 
+# Minimum culmination for a pass to be LISTED at all, in degrees.
+#
+# Site-specific by nature, which is why it cannot be right in the source: what
+# makes a low pass unworkable is the OPERATOR'S horizon — treeline, roofline, the
+# hill to the north-east — not anything about the satellite. A station looking out
+# over water can drop this; one in a valley must raise it. 10 degrees is the
+# long-standing default and stays the default, so an untouched install behaves
+# exactly as before.
+#
+# Set "min_elev" in configuration/station.json. Note this is one number for a
+# horizon that is not a circle — you may see 5 degrees to the south over water
+# and nothing under 20 to the north. A real azimuth-dependent mask is a much
+# larger feature; this gets most of the value.
+_DEFAULT_MIN_ELEV_DEG = 10.0
+_MAX_MIN_ELEV_DEG = 89.0
+
+
+def _min_elev():
+    """The pass-listing floor from station.json, or the default.
+
+    Anything missing, unreadable, non-numeric or out of range falls back rather
+    than raising. A typo in a config file must not take the pass list down — and
+    a floor of 89 (or -5) would silently empty it, which on screen is
+    indistinguishable from a broken predictor."""
+    try:
+        with open(config_paths.station_json(SUITE_ROOT), encoding="utf-8") as fh:
+            v = float(json.load(fh)["min_elev"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return _DEFAULT_MIN_ELEV_DEG
+    return v if 0.0 <= v <= _MAX_MIN_ELEV_DEG else _DEFAULT_MIN_ELEV_DEG
+
+
 @bp.route("/server/satellites/")
 @bp.route("/server/satellites/<path:filename>")
 def satellites_static(filename="satellites.html"):
@@ -246,6 +278,10 @@ def api_passes():
     except (TypeError, ValueError):
         window = 48
     st = _station()
+    # Resolved before the early return so the floor is reported on BOTH paths —
+    # one response shape, and the operator can read back what the config did
+    # without having to infer it from how many passes appeared.
+    min_elev = _min_elev()
     if st["lat"] is None:
         # §2: a station with no location configured is a STATE, not a failed
         # request — nothing about the call was wrong. `computed:false` says the
@@ -254,10 +290,15 @@ def api_passes():
         return jsonify({"ok": True, "passes": {}, "computed": False,
                         "complete": False, "computed_at": None,
                         "window_h": window, "count": 0,
+                        "min_elev": min_elev,
                         "reason": "no-station-location"}), 200
     only = request.args.get("sat")
     tle_stamp = tle.cache_mtime(config_paths.tle_cache_dir(SUITE_ROOT))
-    key = f"{st['lat']},{st['lon']},{window},{only},{int(tle_stamp) if tle_stamp else 0}"
+    # min_elev is PART OF THE KEY: it changes which passes exist, so a cache
+    # written under the old floor is not an answer to the new question. Without
+    # it, editing station.json would appear to do nothing for up to the 6 h TTL.
+    key = (f"{st['lat']},{st['lon']},{window},{only},"
+           f"{int(tle_stamp) if tle_stamp else 0},{min_elev}")
     cp = _cache_path(key)
     start = datetime.datetime.now(datetime.timezone.utc)
     now_ts = start.timestamp()
@@ -304,7 +345,7 @@ def api_passes():
                 break
             try:
                 result["passes"][nk] = predict.compute_passes(
-                    sat, st["lat"], st["lon"], base, hours=window, min_elev=10.0)
+                    sat, st["lat"], st["lon"], base, hours=window, min_elev=min_elev)
                 result["errors"].pop(nk, None)      # recovered — clear prior failures
             except Exception:
                 # A stale/decayed TLE can make SGP4 propagation blow up (e.g. far past
@@ -340,6 +381,10 @@ def api_passes():
         "complete": bool(result.get("complete")),
         "computed_at": iso_utc(result.get("computed_at")),
         "window_h": window,
+        # The floor these passes were computed under. On the wire because "no
+        # pass in 24 h" and "no pass ABOVE 25 DEGREES in 24 h" are different
+        # statements, and only one of them is a reason to check the antenna.
+        "min_elev": min_elev,
         "reason": None,
     })
 

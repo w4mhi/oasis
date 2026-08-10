@@ -441,5 +441,83 @@ class PassesStalenessTest(RoutesTest):
             self.predict.compute_passes = orig
 
 
+class MinElevConfigTest(RoutesTest):
+    """The pass-listing floor is site-specific — what makes a low pass unworkable
+    is the operator's horizon, not the satellite — so it lives in station.json.
+    A bad value must FALL BACK, never empty the pass list: an empty roster looks
+    exactly like a broken predictor, and the operator would go check the antenna."""
+
+    def _write_station(self, **extra):
+        p = os.path.join(self._tmp, "configuration", "station.json")
+        with open(p, "w", encoding="utf-8") as fh:
+            json.dump(dict({"lat": 47.5495, "lon": -122.0298}, **extra), fh)
+
+    def test_absent_key_keeps_the_long_standing_default(self):
+        self._write_station()
+        self.assertEqual(self.routes._min_elev(), 10.0)
+
+    def test_configured_value_is_used(self):
+        self._write_station(min_elev=25)
+        self.assertEqual(self.routes._min_elev(), 25.0)
+
+    def test_zero_is_legal_for_a_clear_sea_horizon(self):
+        self._write_station(min_elev=0)
+        self.assertEqual(self.routes._min_elev(), 0.0)
+
+    def test_nonsense_falls_back_instead_of_emptying_the_list(self):
+        for bad in ("abc", None, -5, 90, 1e9, [12]):
+            with self.subTest(bad=bad):
+                self._write_station(min_elev=bad)
+                self.assertEqual(self.routes._min_elev(), 10.0)
+
+    def test_unreadable_station_json_falls_back(self):
+        p = os.path.join(self._tmp, "configuration", "station.json")
+        open(p, "w").write("{not json")
+        self.assertEqual(self.routes._min_elev(), 10.0)
+
+    def test_the_floor_reaches_compute_passes(self):
+        self._write_station(min_elev=30)
+        seen = []
+        orig = self.predict.compute_passes
+        def spy(*a, **k):
+            seen.append(k.get("min_elev"))
+            return orig(*a, **k)
+        self.predict.compute_passes = spy
+        try:
+            self.client.get("/api/satellites/passes?window=24")
+        finally:
+            self.predict.compute_passes = orig
+        self.assertTrue(seen, "compute_passes was never called")
+        self.assertEqual(set(seen), {30.0})
+
+    def test_the_floor_is_on_the_wire(self):
+        self._write_station(min_elev=22)
+        d = self.client.get("/api/satellites/passes?window=24").get_json()
+        # "no pass in 24 h" and "no pass above 22 degrees in 24 h" are different
+        # statements, and only one of them is a reason to check the antenna.
+        self.assertEqual(d["min_elev"], 22.0)
+
+    def test_changing_the_floor_does_not_serve_the_old_cache(self):
+        """The cache key must include the floor. It changes WHICH PASSES EXIST, so
+        a cache written under the old value is not an answer to the new question —
+        and without this, editing station.json appears to do nothing until the
+        6 h TTL expires."""
+        self._write_station(min_elev=5)
+        self.client.get("/api/satellites/passes?window=24")
+        self._write_station(min_elev=45)
+        calls = []
+        orig = self.predict.compute_passes
+        def counting(*a, **k):
+            calls.append(k.get("min_elev"))
+            return orig(*a, **k)
+        self.predict.compute_passes = counting
+        try:
+            self.client.get("/api/satellites/passes?window=24")
+        finally:
+            self.predict.compute_passes = orig
+        self.assertTrue(calls, "the new floor was served from the old cache")
+        self.assertEqual(set(calls), {45.0})
+
+
 if __name__ == "__main__":
     unittest.main()

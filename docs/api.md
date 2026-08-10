@@ -399,7 +399,7 @@ Hardware-free routes are always available; listen routes need a dongle.
 | Method | Path | Auth | Params/Body | Description |
 |---|---|---|---|---|
 | GET | `/api/satellites` | — | — | Roster with per-sat TLE lines + `{satellites, tle_age_days, station}`. |
-| GET | `/api/satellites/passes` | — | `window` (h, default 48), `sat?` | Predicted passes `{passes:{norad:[{rise, peak, set, max_elev, …}]}}`. Disk-cached (6 h TTL, keyed by TLE mtime). |
+| GET | `/api/satellites/passes` | — | `window` (h, default 48), `sat?` | Predicted passes `{passes:{norad:[{rise, peak, set, max_elev, …}]}}`, plus `min_elev` — the culmination floor these passes were computed under. Only passes culminating at or above it exist at all, so "no pass in 24 h" and "no pass above 25° in 24 h" are different statements and the response says which. Disk-cached (6 h TTL, keyed by TLE mtime **and** `min_elev`). |
 | GET | `/api/satellites/track` | — | `sat`, `from`, `to` (ISO) | Ground track + `{track, l1, l2}`. |
 | POST | `/api/satellites/select` | **CSRF** | `{norad, selected}` **or** `{selections:{norad:bool}}` | Set which satellites are monitored. The roster is the single source of truth — the kiosk reads its `selected` flag. **Use the bulk shape for more than one bird:** each request is a whole-roster read-modify-write, so fanning a set out into one request per satellite raced itself and lost most of them (20 picks landed 1–2). The single-toggle shape is retained for stale cached pages. |
 | POST | `/api/satellites/refresh` | **CSRF** | — | **Online-only** rebuild of the satellite list from SatNOGS (freqs/modes) + CelesTrak (TLEs). Offline → `{ok:false, offline:true}` (HTTP 200, never fails). Returns `{ok, tle_age_days, count, labels, changes}`. |
