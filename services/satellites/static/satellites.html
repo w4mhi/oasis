@@ -134,6 +134,13 @@ html, body { height: 100%; margin: 0; }
    and operators were asking what they were looking at. Both are shown because the
    catalogue name is what matches CelesTrak, GPredict and the TLE file. */
 .sat-row .nmwrap { display: flex; flex-direction: column; gap: 0; line-height: 1.2; }
+/* Sub-line: identity then the pass window, on ONE row. The name row could not
+   hold a long name, a clock time AND a countdown without pushing the card wider
+   than its column, and these two belong together anyway — what the bird is, and
+   when it is up. The countdown stays upstairs: it answers a different question. */
+.sat-row .subline { display: flex; align-items: baseline; gap: .4rem; flex-wrap: wrap; }
+.sat-row .passwin { font-size: var(--fs-small); color: var(--text-dim);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sat-row .desig { font-size: var(--fs-small); font-weight: 700; color: var(--accent);
   letter-spacing: .06em; }
 .sat-row .pass-hint { display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
@@ -824,7 +831,7 @@ function renderRoster() {
     return `<div class="sat-row ${mon ? 'on' : ''} ${p ? '' : 'no-pass'}" style="border-left-color:${color}">
       <label><input type="checkbox" ${mon ? 'checked' : ''}
           onchange="onToggle(${s.norad}, this.checked)">
-        <span class="nmwrap"><span class="nm">${bareName}</span>${subName ? `<span class="desig">${subName}</span>` : ''}</span><span class="pass-hint" data-norad="${s.norad}">${passHint(p, s.norad)}</span></label>
+        <span class="nmwrap"><span class="nm">${bareName}</span><span class="subline">${subName ? `<span class="desig">${subName}</span>` : ''}<span class="passwin" data-norad="${s.norad}">${passWindow(p)}</span></span></span><span class="pass-hint" data-norad="${s.norad}">${passHint(p, s.norad)}</span></label>
       <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}${noTle ? '<span class="chip chip-warn" title="This satellite is monitored but has no TLE in the cache, so no pass can be computed and it will never plot. Sync TLEs (tap the badge above) while online.">no TLE</span>' : ''}<span class="sat-elev" data-norad="${s.norad}"></span>${mon ? bellBtnHTML(s.norad) : ''}</div>
       ${!p ? `<div class="no-pass-hint">— ${noTle ? 'no TLE in cache' : 'no upcoming pass'} · no SDR controls —</div>`
            : (mon ? `<div class="dlpick">${dlPickerHTML(s)}</div>` : '')}
@@ -837,7 +844,14 @@ function renderRoster() {
   updateListenUI();    // colour the downlink buttons from the latest listen status
 }
 
-function fmt(iso) { return new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+// Local time, 24 h, ALWAYS. toLocaleTimeString renders "4:00 PM" on a US-locale
+// browser, which is the wrong register for a station log — and it made the page
+// depend on whichever locale the kiosk happened to boot with, the same trap that
+// keeps fmtKm off toLocaleString. Built by hand so it cannot drift.
+function fmt(iso) {
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
 
 /* ── Workability pill ──────────────────────────────────────────────────────
    Pure geometry (satellite.js), no SDR. Below the horizon the pill is grey —
@@ -884,13 +898,31 @@ function passHint(p, norad) {
   // Armed bell + inside the T-10 window → amber emphasis + a bell glyph on the pill.
   const armedSoon = norad != null && bellArmed(norad) && !live && (rise - now) <= 600000 && (rise - now) > 0;
   const cls = 'ph-when' + (live ? ' live' : (armedSoon ? ' armed' : ''));
-  // "max 41° NW" — WHERE it peaks decides whether 41° is workable. Compass
-  // point, not degrees: you know your skyline by direction, not by bearing, and
-  // the hint has room for two characters, not five. Guarded because a pass
-  // cached before peak_az existed has none (see _PASS_SCHEMA).
+  // RELATIVE time only — "in 45m", "LOS 4m". The absolute window moved down to
+  // the sub-line (passWindow): this row also holds the satellite name, and a long
+  // name plus a clock time plus a countdown pushed the card wider than the column.
+  // The split is also the honest one — one of these answers "when", the other
+  // answers "how long have I got", and they were competing for the same corner.
+  return when ? `<span class="${cls}">${armedSoon ? BELL_ON + ' ' : ''}${when}</span>` : '';
+}
+
+// The pass itself, on the sub-line beside the designator and orbit class:
+// "16:00–16:17 · max 17° SW".
+//
+// A RANGE, not a single time. It used to read "16:00 · max 17°", which binds the
+// two halves together — the natural reading is "at 16:00 it reaches 17 degrees",
+// and it does not: 16:00 is AOS and the peak comes minutes later. On AO-7, nine
+// of them. The range cannot be misread, and it answers the question that follows
+// anyway, since a 19-minute AO-7 pass and a 10-minute ISS pass looked identical.
+// Matches the popup, which has always shown a range.
+//
+// peak_az is guarded because a pass cached before that field existed has none
+// (see _PASS_SCHEMA). Compass point rather than bearing: you know your skyline by
+// direction, and WHERE it peaks decides whether 17 degrees is workable at all.
+function passWindow(p) {
+  if (!p) return '';
   const peak = p.peak_az != null ? ' ' + azCompass(p.peak_az) : '';
-  return `<span class="ph-main">${fmt(p.rise)} · max ${p.max_el.toFixed(0)}°${peak}</span>`
-       + (when ? `<span class="${cls}">${armedSoon ? BELL_ON + ' ' : ''}${when}</span>` : '');
+  return `${fmt(p.rise)}–${fmt(p.set)} · max ${p.max_el.toFixed(0)}°${peak}`;
 }
 // 8-point compass. Shared vocabulary with the kiosk (dashboard.html azCompass) so
 // "NW" means the same thing on both screens.
@@ -1092,8 +1124,14 @@ function updatePills() {
       et.title = !up ? '' : `${arrow === '↘' ? 'Setting' : arrow === '↗' ? 'Rising' : 'Elevation'} `
         + `${elev.toFixed(1)}°${mon ? ' · slant range ' + fmtKm(look.rangeKm) : ''}`;
     }
+    const p = nextPassOf(s.norad);
     const ph = document.querySelector(`.pass-hint[data-norad="${s.norad}"]`);
-    if (ph) ph.innerHTML = passHint(nextPassOf(s.norad), s.norad);
+    if (ph) ph.innerHTML = passHint(p, s.norad);
+    // The window is on the tick too, not just the render: outside the 1 h views
+    // renderRoster does not run, so a card whose pass rolled over would keep
+    // showing the one that already ended.
+    const pw = document.querySelector(`.passwin[data-norad="${s.norad}"]`);
+    if (pw) pw.textContent = passWindow(p);
   });
   _runPassAlerts();
   updateCoverage();
