@@ -32,6 +32,7 @@
 <script src="/common/js/wifi-pill.js"></script>
 <script src="/common/js/speech.js"></script>
 <script src="/common/js/sat-alerts.js"></script>
+<script src="/common/js/clock-chime.js"></script>
 <script src="/common/js/sat-capability.js"></script>
 <link rel="stylesheet" href="/common/css/wifi-pill.css">
 
@@ -117,6 +118,18 @@
   .face .time .s{ font-size:1.6rem; opacity:.62; }
   .face .date{ font-size:1.2rem; color:var(--dim); letter-spacing:.04em; margin-top:.25rem; }
   /* Reload glyph in the UTC clock's top-right corner — blue, spins on tap. */
+  /* Hour bell — bottom-right of the Zulu card, opposite the reload button.
+     Sized for a FINGER like the satellite mute: the icon is 1.3rem, the hit area
+     ~2.75rem, because this gets used in the dark on the way to bed. Amber while
+     it will actually sound, dim when it will not — and "will not" includes an
+     armed bell sitting inside quiet hours, so the glyph never claims the shack
+     is about to be woken when it isn't. */
+  .clk-bell{ position:absolute; bottom:.4rem; right:.6rem; z-index:2; background:transparent;
+    border:0; padding:.5rem .6rem; min-width:2.75rem; min-height:2.75rem; line-height:0;
+    color:var(--warn); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .clk-bell svg{ width:1.3rem; height:1.3rem; display:block; }
+  .clk-bell.wide svg{ width:1.75rem; }      /* the bell+voice glyph is 32 wide, not 24 */
+  .clk-bell.off, .clk-bell.quiet{ color:var(--faint); }
   .clk-refresh{ position:absolute; top:.5rem; right:.8rem; z-index:2; background:transparent; border:0;
     color:var(--blue); font-size:2.4rem; line-height:1; padding:.1rem .3rem; opacity:.7; cursor:pointer;
     transition:opacity .15s ease, transform .1s ease; }
@@ -563,6 +576,7 @@
       <div class="zn"><span class="z">UTC</span><span class="tz">Zulu</span></div>
       <div class="time" id="utc-t">--:--<span class="s">:--</span></div>
       <div class="date" id="utc-d">—</div>
+      <button class="clk-bell off" id="k-clk-bell" onclick="cycleClockBell(event)"></button>
     </div>
     <div class="midcard">
       <div class="callrow">
@@ -831,7 +845,11 @@ tick(); setInterval(tick, 1000);
     clk.el.style.cursor = 'pointer';
     clk.el.title = 'Tap to change clock colour';
     clk.el.addEventListener('click', function (ev) {
-      if (ev.target.closest('.clk-refresh')) return;   // let the reload button do its job
+      // Let the buttons that live INSIDE a face do their own job. The whole card
+      // is a colour-cycle target, so without this every tap on the hour bell
+      // would also repaint the clock — the control would appear to do two
+      // unrelated things at once.
+      if (ev.target.closest('.clk-refresh, .clk-bell')) return;
       apply(clk, nextFree(clk.color, other.color));
     });
   });
@@ -1631,6 +1649,9 @@ function _armedBirds() {
 // words change without re-rendering the video. All this does is start the
 // picture when she starts talking and stop it when she stops.
 let _jennyBusy = 0, _jennyHello = '';
+// Until when a satellite pass alert owns the speaker — set by runSatAlerts,
+// read by runClockChime so the hour never strikes over a pass.
+let _satAlertUntil = 0;
 // Same sentence, and the same way of arriving at it, as features/speech/
 // install.py's _greeting(): the name is DERIVED from the installed model, so a
 // station running a different .onnx does not have its voice introduce itself
@@ -1688,10 +1709,100 @@ function jennySpeak(text) {
   Promise.resolve(oasisSpeak(text)).then(done, done);
 }
 
+// ── The hour bell ────────────────────────────────────────────────────────────
+// Independent of the satellite mute on purpose: that bell is scoped to the
+// SATELLITES card and says so. This one belongs to the Zulu clock, and the two
+// are separate standing choices — silencing the passes for an afternoon should
+// not also stop the station keeping time.
+//
+// Per-DEVICE (localStorage), same reasoning as the satellite mute: the shack
+// kiosk striking the hour is a property of that screen in that room.
+const CLK_MODE_KEY = 'oasis_clock_mode', CLK_OVR_KEY = 'oasis_clock_override';
+// Glyphs, in the three states the one control cycles through. The voice glyph is
+// the same bell with two arcs beside it, on a 32-wide viewBox — a second icon
+// entirely would read as a second, unrelated control.
+const CLK_BELL_OFF = BELL_OFF;
+const CLK_BELL_CHIME = BELL_ON;
+const CLK_BELL_VOICE = `<svg viewBox="0 0 32 24" fill="currentColor" aria-hidden="true"><path d="M12 2a2 2 0 0 0-2 2v.29C7.12 5.14 5 7.82 5 11v5l-2 2v1h18v-1l-2-2v-5c0-3.18-2.12-5.86-5-6.71V4a2 2 0 0 0-2-2Zm0 20a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2Z"/><path d="M24 8a5 5 0 0 1 0 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M27.5 4.5a10 10 0 0 1 0 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+let _clkMode = 'off', _clkOverride = 0;
+try { _clkMode = localStorage.getItem(CLK_MODE_KEY) || 'off'; } catch (e) { /* private mode */ }
+try { _clkOverride = Number(localStorage.getItem(CLK_OVR_KEY)) || 0; } catch (e) { /* private mode */ }
+if (OASIS_CLOCK_MODES.indexOf(_clkMode) < 0) _clkMode = 'off';
+const _clkState = {};             // { key } — the hour already struck
+let _clkPainted = '';             // last rendered signature; tick() runs every second
+
+function renderClockBell() {
+  const el = document.getElementById('k-clk-bell');
+  if (!el) return;
+  const now = new Date();
+  const quiet = oasisClockQuiet(now.getHours());
+  const overridden = oasisClockOverrideActive(now.getTime(), _clkOverride);
+  const suppressed = quiet && !overridden;
+  // Only touch the DOM when something actually changed: this is called from the
+  // 1 s clock tick, and rewriting innerHTML every second would repaint the card
+  // forever for nothing — the same class of waste as the box-shadow animation
+  // that pinned a Pi renderer at 60 fps.
+  const sig = _clkMode + (suppressed ? '|q' : '') + (overridden ? '|o' : '');
+  if (sig === _clkPainted) return;
+  _clkPainted = sig;
+  el.innerHTML = _clkMode === 'voice' ? CLK_BELL_VOICE
+               : _clkMode === 'chime' ? CLK_BELL_CHIME : CLK_BELL_OFF;
+  el.classList.toggle('wide', _clkMode === 'voice');
+  el.classList.toggle('off', _clkMode === 'off');
+  el.classList.toggle('quiet', suppressed);
+  el.title = _clkMode === 'off'
+    ? 'Hour bell off — tap to strike the hour'
+    : (_clkMode === 'chime'
+        ? 'Strikes the hour — tap to add the spoken time'
+        : 'Strikes and speaks the hour — tap to turn off')
+      + (suppressed ? '. Quiet until 07:00 — tap to override for tonight'
+         : overridden ? '. Overridden until 07:00' : '');
+}
+
+function cycleClockBell(ev) {
+  if (ev) ev.stopPropagation();          // not a vote on the clock's colour
+  _clkMode = oasisClockNextMode(_clkMode);
+  const now = new Date();
+  // Arming DURING quiet hours is the contest case: it means "tonight", not "from
+  // now on". The override carries to the next 07:00 and then lapses on its own,
+  // so the operator never has to remember to put the shack back to quiet.
+  // Turning the bell off clears it — otherwise a stale override would sit
+  // waiting to surprise whoever arms the bell again before morning.
+  if (_clkMode === 'off') _clkOverride = 0;
+  else if (oasisClockQuiet(now.getHours())) _clkOverride = oasisClockOverrideUntil(now);
+  try {
+    localStorage.setItem(CLK_MODE_KEY, _clkMode);
+    localStorage.setItem(CLK_OVR_KEY, String(_clkOverride));
+  } catch (e) { /* private mode */ }
+  _clkPainted = '';                      // force the repaint the signature would skip
+  renderClockBell();
+  oasisSatAudioUnlock();                 // this tap is also the gesture that unlocks audio
+}
+
+function runClockChime() {
+  const now = new Date(), ms = now.getTime();
+  const due = oasisClockDue(ms, oasisClockParts(now), _clkMode, _clkOverride, _clkState);
+  if (!due.chime) return;
+  // Yield to a satellite pass, always. A pass alert is actionable and its
+  // window is closing; the hour is neither, and it will come round again. Note
+  // this DROPS the hour rather than queueing it — oasisSpeak would otherwise
+  // hold the pass announcement behind a sentence about what time it is.
+  if (_jennyBusy || ms < _satAlertUntil) return;
+  oasisClockChime(2);
+  if (due.speak) setTimeout(() => jennySpeak(due.speak), OASIS_CLOCK_CHIME_2_MS);
+}
+
 function runSatAlerts() {
   const due = oasisSatAlertsDue(_armedBirds(), Date.now(), _satAlertState);
   if (_satMuted) return;   // state still advanced above, so unmuting mid-pass
                            // does not replay warnings that already elapsed
+  // Claim the audio for the whole alert, chime AND the voice that follows it.
+  // _jennyBusy alone would not cover the 2.6 s gap between the two, which is
+  // precisely where the top of the hour could land and strike over a pass that
+  // has already started announcing itself.
+  if (due.fire || due.announce.length) {
+    _satAlertUntil = Date.now() + OASIS_SAT_CHIME_3_MS + 1000;
+  }
   if (due.fire) oasisSatChime(3, due.freq);
   if (due.announce.length) setTimeout(() => {
     // Re-checked HERE, not only above: the voice is scheduled 2.6 s out, and the
@@ -2002,6 +2113,11 @@ fetchSats();          setInterval(fetchSats, 60000);
 // caught within a couple of seconds of crossing, but the pass DATA only changes
 // every 60 s. Cheap — it walks the armed birds already in memory.
 renderSatMute();      setInterval(runSatAlerts, 2000);   jennyReady();
+// Its own 1 s interval rather than a call from tick(): tick() first runs while
+// this block's `let`/`const` are still in the temporal dead zone, so reaching
+// the hour bell from there throws before the page has finished loading. 1 s so
+// the strike lands within a second of the digits rolling over.
+renderClockBell();    setInterval(() => { runClockChime(); renderClockBell(); }, 1000);
 // Unlock Web Audio on the first touch, for the case where someone IS at the
 // panel. An untouched kiosk never gets a gesture at all, which is what
 // --autoplay-policy=no-user-gesture-required covers (scripts/enable-autostart-pi.py).
