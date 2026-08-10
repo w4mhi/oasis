@@ -293,6 +293,21 @@
   .hd{ display:flex; align-items:center; gap:.8rem; margin-bottom:.6rem; }
   .hd .lbl{ font-size:1.05rem; letter-spacing:.16em; color:var(--dim); font-weight:700; }
   .hd .meta{ margin-left:auto; font-size:1.1rem; color:var(--faint); font-variant-numeric:tabular-nums; }
+  /* Refresh countdown, same vocabulary as the traffic map's #countdown: glyph +
+     seconds, green fading to red as the data ages. It answers the question a
+     wall display always raises — "is this thing still alive, or frozen?" — which
+     a static list cannot.
+     It takes the margin-left:auto so it and the meta float right TOGETHER; the
+     #id override below beats .hd .meta's own auto, which would otherwise split
+     the free space and push the two apart.
+     Unlike the map's, this one is NOT clickable. Pausing auto-refresh on a
+     display nobody is sitting at means a screen that looks live and is not. */
+  .hd .satcd{ margin-left:auto; font-size:1.1rem; white-space:nowrap;
+              font-variant-numeric:tabular-nums; color:var(--faint); transition:color .4s; }
+  .hd .satcd.green{ color:var(--accent); }
+  .hd .satcd.yellow{ color:var(--warn); }
+  .hd .satcd.red{ color:var(--down); }
+  #k-sat-meta{ margin-left:.55rem; }
 
   .traffic{ flex:1 1 auto; min-width:0; }
   .traffic .hd{ flex-wrap:wrap; row-gap:.4rem; border-bottom:1px solid var(--border); padding-bottom:.5rem; }
@@ -662,7 +677,7 @@
       <!-- Same treatment as the traffic card's LIVE badge (green accent, 1rem,
            700, .1em tracking). Reusing that class rather than copying its values
            is deliberate: the two headers sit side by side, so any drift shows. -->
-      <div class="hd"><span class="livebadge ok">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="meta" id="k-sat-meta">—</span></div>
+      <div class="hd"><span class="livebadge ok">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span><span class="meta" id="k-sat-meta">—</span></div>
       <div class="satscroll" id="satBody"><div class="satempty">…</div></div>
     </div>
 
@@ -1857,7 +1872,31 @@ function runSatAlerts() {
     due.announce.forEach(b => jennySpeak(oasisSatSpeech(b)));
   }, OASIS_SAT_CHIME_3_MS);   // let the chime finish before the voice starts
 }
+// Seconds between pass-list refetches — must track the setInterval below, which
+// is the thing the countdown is actually counting down to.
+const SAT_REFRESH_SEC = 60;
+let _satCd = SAT_REFRESH_SEC;
+// Same vocabulary as the traffic map's #countdown (maps/traffic/map.html): a
+// glyph, the seconds, and a colour that ages green -> amber -> red. On a wall
+// display this is the only thing that distinguishes "nothing is passing over"
+// from "this page froze an hour ago".
+function renderSatCountdown() {
+  const el = document.getElementById('k-sat-cd');
+  if (!el) return;
+  el.textContent = '↻ ' + _satCd + 's';
+  el.className = 'satcd ' + (_satCd >= 10 ? 'green' : _satCd >= 5 ? 'yellow' : 'red');
+}
+// Floors at 0 rather than going negative: if a refetch hangs, a countdown parked
+// at 0s is itself the symptom, where -47s would just look like a bug in the clock.
+function satCountdownTick() {
+  if (_satCd > 0) _satCd--;
+  renderSatCountdown();
+}
 async function fetchSats() {
+  // Reset here, not on completion: setInterval fires on a fixed cadence, so the
+  // next refetch is SAT_REFRESH_SEC from now regardless of how long this takes.
+  _satCd = SAT_REFRESH_SEC;
+  renderSatCountdown();
   try { const m = await (await fetch('/api/satellites', { cache:'no-store' })).json();
         _satSel = (m.satellites||[]).filter(s => s.selected);
         if (m.station && m.station.lat != null) _satStation = m.station; } catch (_) { _satSel = []; }
@@ -2198,7 +2237,8 @@ refreshWifi();        setInterval(refreshWifi, 30000);
 fetchAPRS();          setInterval(fetchAPRS, 10000);
 refreshAdsb();        setInterval(refreshAdsb, 5000);
 refreshAdsbRecent();  setInterval(refreshAdsbRecent, 60000);
-fetchSats();          setInterval(fetchSats, 60000);
+fetchSats();          setInterval(fetchSats, SAT_REFRESH_SEC * 1000);
+                      setInterval(satCountdownTick, 1000);
 // Pass alerts tick far faster than the roster refresh: the T-10 edge has to be
 // caught within a couple of seconds of crossing, but the pass DATA only changes
 // every 60 s. Cheap — it walks the armed birds already in memory.
