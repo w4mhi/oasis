@@ -1011,6 +1011,11 @@ function _runPassAlerts() {
     if (p && sat) birds.push({ norad: +norad, name: sat.name, rise: p.rise, max_el: p.max_el });
   }
   const due = oasisSatAlertsDue(birds, Date.now(), _alertState);
+  // T-11: have the station synthesise the sentence a minute early, so the voice
+  // follows the chime instead of the ~3.6 s Piper takes on a cache miss — and
+  // the elevation in the wording makes nearly every pass a miss. Skipped while
+  // muted: nothing will say it, so warming it would burn CPU for silence.
+  if (!_satMuted) due.prewarm.forEach(b => oasisSpeakWarm(oasisSatSpeech(b)));
   if (due.fire) playMorseV(3, due.freq);   // VVV — T-10 (620 Hz), then T-5 (780 Hz)
   // T-10 only: once the Vs finish, speak which sat is coming + the pass quality.
   if (due.announce.length) setTimeout(() => {

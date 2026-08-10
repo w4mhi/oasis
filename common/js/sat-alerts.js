@@ -22,6 +22,12 @@
 
   var T10_MS = 10 * 60 * 1000;
   var T5_MS = 5 * 60 * 1000;
+  // A minute ahead of the announcement, purely to get it synthesised. The
+  // sentence names the bird AND its elevation, so it is a different string for
+  // nearly every pass and nearly always a cache MISS: 3.6 s of Piper on a Pi 5,
+  // during which the kiosk avatar used to mouth at silence. One minute is far
+  // more headroom than that needs and costs nothing if it is already cached.
+  var T11_MS = 11 * 60 * 1000;
   var FREQ_T10 = 620;          // first warning
   var FREQ_T5 = 780;           // closer → higher, reads as more urgent
 
@@ -34,13 +40,15 @@
   //           the rise time, so a new pass resets the flags on its own.
   //
   // Returns fire=true if anything crossed a threshold (the caller chimes once for
-  // the whole tick, not once per bird), the pitch to use, and the birds that just
-  // crossed T-10 and therefore get spoken.
+  // the whole tick, not once per bird), the pitch to use, the birds that just
+  // crossed T-10 and therefore get spoken, and the birds that just crossed T-11
+  // and whose sentence should be synthesised NOW so it is ready when it is asked
+  // for a minute later.
   //
   // A bird already risen (tMinus <= 0) never fires: catching up on a warning for
   // a pass in progress would be noise, not information.
   function oasisSatAlertsDue(birds, nowMs, state) {
-    var fire = false, freq = FREQ_T10, announce = [];
+    var fire = false, freq = FREQ_T10, announce = [], prewarm = [];
     state = state || {};
     (birds || []).forEach(function (b) {
       if (!b || b.rise == null || b.norad == null) return;
@@ -58,16 +66,29 @@
       // are ~90 minutes apart, never within one minute of each other.
       var key = String(Math.round(rise / 60000));
       var st = state[b.norad];
-      if (!st || st.key !== key) st = state[b.norad] = { key: key, t10: false, t5: false };
+      if (!st || st.key !== key) {
+        st = state[b.norad] = { key: key, t10: false, t5: false, warm: false };
+      }
       var tMinus = rise - nowMs;
       if (tMinus <= 0) return;
-      if (!st.t10 && tMinus <= T10_MS) { st.t10 = true; fire = true; announce.push(b); }
+      var announcing = false;
+      if (!st.t10 && tMinus <= T10_MS) {
+        st.t10 = true; fire = true; announce.push(b); announcing = true;
+      }
+      // Checked AFTER T-10, and skipped when this same tick is already
+      // announcing: a page opened at T-10.5 crosses both thresholds at once, and
+      // prewarming a sentence we are about to request anyway would have the
+      // station synthesise it twice, concurrently, for nothing.
+      if (!st.warm && tMinus <= T11_MS) {
+        st.warm = true;
+        if (!announcing) prewarm.push(b);
+      }
       // Not an `else`: a page opened inside the last 5 minutes crosses BOTH
       // thresholds on its first tick and should get the urgent pitch, not the
       // relaxed one it already missed.
       if (!st.t5 && tMinus <= T5_MS) { st.t5 = true; fire = true; freq = FREQ_T5; }
     });
-    return { fire: fire, freq: freq, announce: announce };
+    return { fire: fire, freq: freq, announce: announce, prewarm: prewarm };
   }
 
   // The spoken heads-up. Shared so both screens say the same sentence — and so

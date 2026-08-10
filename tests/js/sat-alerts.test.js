@@ -255,3 +255,49 @@ test('oasisSatSilence cuts the chime AND the voice', () => {
     } finally { delete S.speechSynthesis; }
   });
 });
+
+// ── Prewarming the announcement ──────────────────────────────────────────────
+// The spoken line names the bird AND its elevation, so it is a different string
+// for nearly every pass and nearly always a cache MISS — 3.6 s of Piper on a
+// Pi 5, measured. That silence sat between the chime and the voice, and the
+// kiosk avatar mouthed its way through it. T-11 exists to have the sentence
+// already synthesised by the time T-10 asks for it.
+
+test('a bird crossing T-11 is prewarmed, once', () => {
+  const st = {};
+  const r = A.oasisSatAlertsDue([bird()], tMinus(10.5), st);
+  assert.deepStrictEqual(r.prewarm.map(b => b.norad), [25544]);
+  assert.strictEqual(r.fire, false, 'T-11 must not chime — it is not an alert');
+  const again = A.oasisSatAlertsDue([bird()], tMinus(10.4), st);
+  assert.deepStrictEqual(again.prewarm, []);
+});
+
+test('nothing is prewarmed while the pass is further out than T-11', () => {
+  assert.deepStrictEqual(A.oasisSatAlertsDue([bird()], tMinus(12), {}).prewarm, []);
+});
+
+test('a page opened inside T-10 does not prewarm what it is already announcing', () => {
+  // Both thresholds cross on the first tick. Prewarming here would have the
+  // station synthesise the same sentence twice, concurrently, for nothing.
+  const r = A.oasisSatAlertsDue([bird()], tMinus(9), {});
+  assert.deepStrictEqual(r.announce.map(b => b.norad), [25544]);
+  assert.deepStrictEqual(r.prewarm, []);
+});
+
+test('the prewarm re-arms for the next pass', () => {
+  // Keyed on the rise like the other thresholds: miss this and the second pass
+  // of the day is announced cold every time.
+  const st = {};
+  A.oasisSatAlertsDue([bird()], tMinus(10.5), st);
+  const next = RISE + 90 * MIN;
+  const r = A.oasisSatAlertsDue([bird({}, next)], next - 10.5 * MIN, st);
+  assert.deepStrictEqual(r.prewarm.map(b => b.norad), [25544]);
+});
+
+test('prewarm is always an array, even on the quiet ticks', () => {
+  // Callers .forEach it unguarded; undefined here would throw every 2 s.
+  [A.oasisSatAlertsDue([], T0, {}), A.oasisSatAlertsDue(null, T0, {}),
+   A.oasisSatAlertsDue([bird()], tMinus(30), {})].forEach(r => {
+    assert.ok(Array.isArray(r.prewarm));
+  });
+});

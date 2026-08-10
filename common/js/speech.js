@@ -93,6 +93,13 @@
     }
   } catch (e) { /* no speech synthesis here — pages still work, silently */ }
 
+  // A caller's onstart must never be able to silence the station: a throw here
+  // would land in oasisSpeakOne's catch and be "recovered" by speaking the same
+  // words again through the fallback engine.
+  function _fire(fn) {
+    try { fn(); } catch (e) { /* the caller's problem, not the voice's */ }
+  }
+
   // Stop talking, now, and drop everything queued behind it. Returns true so a
   // caller can chain it; there is no failure mode worth reporting — a station
   // with nothing playing is already in the state being asked for.
@@ -117,11 +124,27 @@
     return true;
   }
 
-  function oasisSpeakFallback(text) {
+  // Synthesise `text` on the station NOW and keep nothing — the point is the
+  // server-side cache it leaves behind, so the real request moments later is a
+  // hit instead of a wait. On a Pi 5 that is the difference between 3.6 s and
+  // 1.5 ms, which is the difference between an avatar that mouths at silence
+  // and one that starts talking when the sound does.
+  //
+  // HEAD, not GET, and not negotiable: a fetch() whose body is never read pins a
+  // 2 MiB /dev/shm data pipe per request for the life of the page. That leak
+  // cost ~500 MB/h on a kiosk once already.
+  function oasisSpeakWarm(text) {
+    if (!text || !root.fetch) return Promise.resolve(false);
+    return root.fetch(SAY_URL + encodeURIComponent(text), { method: 'HEAD' })
+      .then(function (res) { return !!(res && res.ok); }, function () { return false; });
+  }
+
+  function oasisSpeakFallback(text, onstart) {
     if (!text || !root.speechSynthesis || !root.SpeechSynthesisUtterance) return false;
     try {
       var u = new root.SpeechSynthesisUtterance(text);
       u.rate = 0.9; u.pitch = 1.0; u.volume = 1.0;
+      if (onstart) u.onstart = function () { _fire(onstart); };
       // An EMPTY voice list is not proof there is no voice: Chromium on Linux
       // enumerates asynchronously and can report [] while speak() works fine.
       // Bailing here once left a Pi with espeak installed completely silent.
@@ -135,13 +158,13 @@
   // Say it with the station's own voice, falling back to the browser's.
   // Resolves true if SOMETHING spoke. This is the UNSERIALISED worker —
   // oasisSpeak (below) is the public entry point and queues calls to this.
-  function oasisSpeakOne(text, gen) {
+  function oasisSpeakOne(text, gen, onstart) {
     // Only `fetch` is checked here. Web Audio is checked INSIDE, where a
     // missing context throws into the same catch as every other failure — if
     // this bailed early on no-AudioContext, the fetch path would be skipped
     // wholesale in any environment without Web Audio, including the test
     // harness, and the fallback tests would pass without ever exercising it.
-    if (!root.fetch) return Promise.resolve(gen === _gen && oasisSpeakFallback(text));
+    if (!root.fetch) return Promise.resolve(gen === _gen && oasisSpeakFallback(text, onstart));
     return root.fetch(SAY_URL + encodeURIComponent(text))
       .then(function (res) {
         if (!res.ok) throw new Error('speech ' + res.status);
@@ -177,6 +200,11 @@
               resolve(!!done);
             };
             src.onended = function () { settle(true); };
+            // Fired HERE, one statement before the first sample, not when the
+            // announcement was requested. jennySpeak used to wake the avatar at
+            // call time and then wait out the synthesis: on a cache miss that is
+            // 3.6 s of a mouth moving at silence, which reads as broken.
+            if (onstart) _fire(onstart);
             src.start();
             _playing = { src: src, settle: function () { settle(false); } };
           });
@@ -186,7 +214,7 @@
       // above, is allowed to resolve immediately rather than waiting for the
       // utterance to finish — the browser will not start it early. That
       // asymmetry is deliberate, not an oversight.
-      .catch(function () { return gen === _gen && oasisSpeakFallback(text); });
+      .catch(function () { return gen === _gen && oasisSpeakFallback(text, onstart); });
   }
 
   // Announcements are SERIALISED behind this module-level chain so that
@@ -199,8 +227,13 @@
   // speaker for exactly the same reason.
   var _queue = Promise.resolve();
 
-  function oasisSpeak(text) {
+  // opts.onstart — called once, immediately before the first sample, and NOT at
+  // all if the announcement is silenced or fails before reaching the speaker.
+  // Anything that has to look like it is talking hangs off this rather than off
+  // the call, because between the two sits a synthesis that can take seconds.
+  function oasisSpeak(text, opts) {
     if (!text) return Promise.resolve(false);
+    var onstart = opts && opts.onstart;
     // Captured HERE, at enqueue time, not inside oasisSpeakOne. Read when the
     // queue finally reaches it, the generation would already have caught up with
     // the stop and the announcement would speak anyway — which is precisely the
@@ -208,7 +241,7 @@
     var gen = _gen;
     var result = _queue.then(function () {
       if (gen !== _gen) return false;
-      return oasisSpeakOne(text, gen);
+      return oasisSpeakOne(text, gen, onstart);
     });
     // Reset the chain on EITHER outcome. If a step were ever left to reject
     // through, every announcement queued behind it would wait on a promise
@@ -222,5 +255,6 @@
   root.oasisSpeakFallback = oasisSpeakFallback;
   root.oasisSpeak = oasisSpeak;
   root.oasisSpeakStop = oasisSpeakStop;
+  root.oasisSpeakWarm = oasisSpeakWarm;
   if (typeof module !== 'undefined' && module.exports) module.exports = root;
 })(typeof window !== 'undefined' ? window : this);

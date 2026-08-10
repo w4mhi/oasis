@@ -1688,6 +1688,10 @@ function jennyReady() {
 function jennyWake() {
   const c = document.getElementById('avatarCard'), v = document.getElementById('avatarVid');
   if (!c || !c.classList.contains('ready')) return;
+  // Idempotent: this now fires once per UTTERANCE, and a run of three birds is
+  // one continuous piece of speech. Restarting the clip between them would jump
+  // her back to the closed-mouth frame mid-sentence.
+  if (c.classList.contains('live')) return;
   c.classList.remove('dormant'); c.classList.add('live');
   try { v.currentTime = 0; v.play(); } catch (_) {}
 }
@@ -1701,12 +1705,17 @@ function jennyRest() {
 // utterances (oasisSpeak serialises them), and the picture should run once
 // across the whole run rather than flicker between them.
 function jennySpeak(text) {
-  if (!_jennyBusy++) jennyWake();
+  _jennyBusy++;
   const done = () => { if (!--_jennyBusy) jennyRest(); };
+  // Woken by onstart, NOT here. The gap between asking for a sentence and
+  // hearing it is a Piper synthesis — measured at 3.6 s on a Pi 5 for an
+  // uncached line — and the pass announcements name an elevation, so they are a
+  // different string almost every pass and almost always uncached. Waking on the
+  // call meant her mouth ran for those 3.6 s with nothing coming out.
   // NOTE: on a station without Piper, oasisSpeak falls back to speechSynthesis
   // and resolves immediately rather than when the utterance ends — but the card
   // is only .ready when Piper IS installed, so that path never animates.
-  Promise.resolve(oasisSpeak(text)).then(done, done);
+  Promise.resolve(oasisSpeak(text, { onstart: jennyWake })).then(done, done);
 }
 
 // ── The hour bell ────────────────────────────────────────────────────────────
@@ -1796,6 +1805,11 @@ function runSatAlerts() {
   const due = oasisSatAlertsDue(_armedBirds(), Date.now(), _satAlertState);
   if (_satMuted) return;   // state still advanced above, so unmuting mid-pass
                            // does not replay warnings that already elapsed
+  // T-11: get the sentence synthesised a minute before it is wanted, so the
+  // voice starts on the chime's heels instead of after 3.6 s of Piper. After the
+  // mute check on purpose — a muted screen will never say it, and warming the
+  // cache for it would spend the Pi's CPU on silence.
+  due.prewarm.forEach(b => oasisSpeakWarm(oasisSatSpeech(b)));
   // Claim the audio for the whole alert, chime AND the voice that follows it.
   // _jennyBusy alone would not cover the 2.6 s gap between the two, which is
   // precisely where the top of the hour could land and strike over a pass that

@@ -334,3 +334,92 @@ test('a failing first announcement still lets the second one speak', async () =>
     delete S.fetch; delete S.speechSynthesis; delete S.SpeechSynthesisUtterance;
   }
 });
+
+// ── onstart: the avatar must not mouth at silence ────────────────────────────
+// jennySpeak used to wake the avatar when the announcement was REQUESTED. On a
+// cache miss the station then spent 3.6 s synthesising (measured on a Pi 5),
+// and her mouth ran through all of it with nothing coming out. onstart fires one
+// statement before the first sample instead.
+
+test('onstart fires immediately before playback, not when asked', async () => {
+  const log = [], S = freshSpeech();
+  installAudio(S, log);
+  try {
+    const p = S.oasisSpeak('ISS', { onstart: () => log.push('wake') });
+    assert.deepStrictEqual(log, [], 'nothing has played yet — nothing should have woken');
+    await new Promise(r => setTimeout(r, 5));
+    assert.deepStrictEqual(log, ['wake', 'start'], 'wake, then the first sample');
+    S.oasisSpeakStop();
+    await p;
+  } finally { delete S.fetch; delete S.AudioContext; }
+});
+
+test('a silenced announcement never wakes anything', async () => {
+  // The avatar would otherwise be left animating at an utterance that was
+  // dropped before it reached the speaker — and nothing would ever rest it.
+  const log = [], S = freshSpeech();
+  installAudio(S, log);
+  try {
+    const first = S.oasisSpeak('ISS', { onstart: () => log.push('wake:1') });
+    const second = S.oasisSpeak('NOAA 19', { onstart: () => log.push('wake:2') });
+    await new Promise(r => setTimeout(r, 5));
+    S.oasisSpeakStop();
+    await Promise.all([first, second]);
+    assert.ok(!log.includes('wake:2'), 'the queued one never played, so it never woke');
+  } finally { delete S.fetch; delete S.AudioContext; }
+});
+
+test('a throwing onstart cannot silence the station', async () => {
+  // It runs inside the audio path's try/catch reach: an unguarded throw would be
+  // "recovered" by speaking the whole line again through the fallback engine.
+  const log = [], S = freshSpeech();
+  installAudio(S, log);
+  const spoken = [];
+  S.speechSynthesis = { getVoices: () => [], speak: u => spoken.push(u), cancel: () => {} };
+  S.SpeechSynthesisUtterance = function (t) { this.text = t; this.voice = null; };
+  try {
+    const p = S.oasisSpeak('ISS', { onstart: () => { throw new Error('caller bug'); } });
+    await new Promise(r => setTimeout(r, 5));
+    assert.deepStrictEqual(log, ['start'], 'it still played');
+    assert.deepStrictEqual(spoken, [], 'and did NOT double up through the fallback');
+    S.oasisSpeakStop();
+    await p;
+  } finally {
+    delete S.fetch; delete S.AudioContext;
+    delete S.speechSynthesis; delete S.SpeechSynthesisUtterance;
+  }
+});
+
+test('oasisSpeak still works with no options at all', async () => {
+  const log = [], S = freshSpeech();
+  installAudio(S, log);
+  try {
+    S.oasisSpeak('ISS');
+    await new Promise(r => setTimeout(r, 5));
+    assert.deepStrictEqual(log, ['start']);
+  } finally { delete S.fetch; delete S.AudioContext; }
+});
+
+test('oasisSpeakWarm asks with HEAD and reads no body', async () => {
+  // GET here would be a regression to a real leak: a fetch() body that is never
+  // read pins a 2 MiB /dev/shm data pipe per request, ~500 MB/h on a kiosk.
+  const S = freshSpeech();
+  let seen = null;
+  S.fetch = (url, opts) => { seen = { url, opts }; return Promise.resolve({ ok: true }); };
+  try {
+    assert.strictEqual(await S.oasisSpeakWarm('ISS, in ten minutes'), true);
+    assert.strictEqual(seen.opts.method, 'HEAD');
+    assert.match(seen.url, /^\/api\/speech\/say\?text=ISS%2C%20in%20ten%20minutes$/);
+  } finally { delete S.fetch; }
+});
+
+test('a prewarm that fails is not an error anyone hears about', async () => {
+  // It is an optimisation. A station with no speech engine 503s every one of
+  // these, and that must stay silent rather than surfacing as a broken promise.
+  const S = freshSpeech();
+  S.fetch = () => Promise.reject(new Error('offline'));
+  try {
+    assert.strictEqual(await S.oasisSpeakWarm('ISS'), false);
+  } finally { delete S.fetch; }
+  assert.strictEqual(await S.oasisSpeakWarm(''), false);
+});
