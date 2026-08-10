@@ -111,8 +111,17 @@ html, body { height: 100%; margin: 0; }
 .sat-row { position: relative; border: 1px solid var(--border); border-left-width: 4px; border-radius: 6px;
   background: var(--panel-2); padding: .5rem .6rem; }
 .sat-row.on { border-color: var(--accent-dim); }
-.sat-row label { display: flex; align-items: center; gap: .5rem; cursor: pointer; font-size: var(--fs-base); }
-.sat-row label input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+/* BASELINE, not center. The name block grew a second line (designator, orbit,
+   pass window), and centring floated the "in 39m / LOS 11m" countdown between
+   the two lines instead of sitting on the name it belongs to. Baseline pins it
+   to the name's own baseline whatever the sub-line does, and both sides are flex
+   columns whose baseline comes from their FIRST line — the name and the
+   countdown. */
+.sat-row label { display: flex; align-items: baseline; gap: .5rem; cursor: pointer; font-size: var(--fs-base); }
+/* The checkbox is exempt: it has no text baseline worth aligning to, and letting
+   it sit on one drops it below the row. */
+.sat-row label input[type="checkbox"] { accent-color: var(--accent); cursor: pointer;
+  align-self: center; }
 /* Workability meter — signal-strength bars. More bars + more vivid red as the
    satellite climbs; all bars dim when below the horizon. */
 .sat-bottom { display: flex; align-items: flex-end; justify-content: space-between; margin-top: .25rem; }
