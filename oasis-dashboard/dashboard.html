@@ -74,17 +74,22 @@
      it would take ~15% of the width from three cards that need it more.
      Also hidden until /api/speech/status says a voice is actually installed:
      no engine, no Jenny, no dead square. */
+  /* --jenny is sampled from the clip itself (the glow averages #227e71, hue
+     ~172 - cyan toward green), NOT var(--accent), which is lime at hue ~95 and
+     reads as a different character sitting next to her. If the artwork is ever
+     re-rendered in another palette, this one variable is what to change. */
   .avatar{ display:none; flex:0 0 8.9rem; align-self:stretch; position:relative;
+           --jenny:79,224,200;
            overflow:hidden; background:var(--panel);
-           border:1px solid var(--border); border-radius:.8rem;
+           border:1px solid rgba(var(--jenny),.30); border-radius:.8rem;
            transition:filter .4s ease, box-shadow .4s ease; }
-  html[data-res="1920x1200"] .avatar.ready{ display:block; }
+  html[data-res="1920x1200"] .avatar.ready{ display:block; cursor:pointer; }
   .avatar video{ width:100%; height:100%; object-fit:cover; display:block; }
   /* Dormant is the resting state: dimmed, paused, nothing running. She lights
      up only while speaking — which is also what keeps this clear of the
      always-animating trap that pinned the compositor at 60fps (see gpspulse). */
   .avatar.dormant{ filter:brightness(.4) saturate(.55); }
-  .avatar.live{ box-shadow:0 0 0 1px rgba(127,220,79,.5), 0 0 22px rgba(127,220,79,.22); }
+  .avatar.live{ box-shadow:0 0 0 1px rgba(var(--jenny),.55), 0 0 22px rgba(var(--jenny),.25); }
   .face{
     flex:1 1 0; position:relative; overflow:hidden;
     background:linear-gradient(180deg,var(--raise),var(--panel));
@@ -1613,13 +1618,35 @@ function _armedBirds() {
 // The clip carries no audio: speech still comes from /api/speech/say, so the
 // words change without re-rendering the video. All this does is start the
 // picture when she starts talking and stop it when she stops.
-let _jennyBusy = 0;
+let _jennyBusy = 0, _jennyHello = '';
+// Same sentence, and the same way of arriving at it, as features/speech/
+// install.py's _greeting(): the name is DERIVED from the installed model, so a
+// station running a different .onnx does not have its voice introduce itself
+// under the wrong name. Asking for it again is free - the installer already
+// synthesised this exact string, so it is a cache hit, not a new render.
+function jennyGreeting(model) {
+  const parts = String(model || '').split('-');
+  const who = (parts.length > 1 && parts[1])
+    ? parts[1].split('_')[0].replace(/^./, c => c.toUpperCase()) : '';
+  return who
+    ? `Hello, I am ${who}. I will read your satellite pass alerts and station announcements.`
+    : 'Hello. I will read your satellite pass alerts and station announcements.';
+}
 function jennyReady() {
   // No engine installed, no card. An empty square that never animates is worse
   // than no square, and the espeak fallback voice has no face to go with it.
   fetch('/api/speech/status', { cache:'no-store' })
     .then(r => r.ok ? r.json() : null)
-    .then(d => { if (d && d.available) document.getElementById('avatarCard').classList.add('ready'); })
+    .then(d => {
+      if (!d || !d.available) return;
+      const c = document.getElementById('avatarCard');
+      _jennyHello = jennyGreeting(d.voice);
+      c.classList.add('ready');
+      c.title = 'Tap to wake Jenny';
+      // Tap to wake her. Deliberately NOT gated on _satMuted: that mutes
+      // unsolicited pass alerts, and this is the operator asking directly.
+      c.addEventListener('click', () => { if (!_jennyBusy) jennySpeak(_jennyHello); });
+    })
     .catch(() => {});
 }
 function jennyWake() {
