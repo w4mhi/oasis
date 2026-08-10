@@ -272,7 +272,12 @@ def _sats_by_norad(selected_first=False):
 
 @bp.route("/api/satellites/passes")
 def api_passes():
-    import predict
+    # `import predict` (skyfield/numpy) is deferred to the point of ACTUAL USE,
+    # deep in the compute loop below — not here. It is an optional dependency: a
+    # box that has not run install-predict.py still serves this endpoint, and the
+    # paths that never propagate (no station configured, a fresh cache hit, an
+    # empty roster) must honour the contract rather than 500 on an import for
+    # work they were never going to do.
     try:
         window = int(request.args.get("window", 48))
     except (TypeError, ValueError):
@@ -344,6 +349,7 @@ def api_passes():
                 complete = False         # out of budget — finish on the next poll
                 break
             try:
+                import predict   # optional dep — see the note at the top of this view
                 result["passes"][nk] = predict.compute_passes(
                     sat, st["lat"], st["lon"], base, hours=window, min_elev=min_elev)
                 result["errors"].pop(nk, None)      # recovered — clear prior failures
@@ -391,7 +397,10 @@ def api_passes():
 
 @bp.route("/api/satellites/track")
 def api_track():
-    import predict
+    # Deferred for the same reason as /passes: this view's whole point is that it
+    # validates BEFORE it works, and importing an optional dependency on entry
+    # threw that away — on a box without skyfield, a malformed date range came
+    # back 500 where the contract says 400.
     st = _station()
     norad = request.args.get("sat")
     try:
@@ -414,12 +423,16 @@ def api_track():
     if to <= frm:
         return jsonify({"ok": False, "error": "to must be after from",
                         "code": "INVALID_TIME_RANGE"}), 400
-    sat = _sats_by_norad().get(norad_i) if norad_i is not None else None
     if st["lat"] is None:
-        # A state, not a bad request — same as /passes.
+        # A state, not a bad request — same as /passes. Checked BEFORE the roster
+        # lookup below: precedence is unchanged (no-station already outranked
+        # unknown-satellite), but there is no reason to load the roster and the
+        # whole TLE cache — which needs the predictor — to answer a request we
+        # are about to decline anyway.
         return jsonify({"ok": True, "track": [], "count": 0, "norad": norad_i,
                         "l1": None, "l2": None,
                         "reason": "no-station-location"}), 200
+    sat = _sats_by_norad().get(norad_i) if norad_i is not None else None
     if sat is None:
         # This one IS the caller's fault: they named a satellite that is not in
         # the roster or the TLE cache. Distinguishing it from the above is the
@@ -431,6 +444,7 @@ def api_track():
     dls = roster.legacy_downlinks(entry) if entry else []
     dl = int(dls[0]["freq_mhz"] * 1_000_000) if dls else None
     try:
+        import predict   # optional dep — see the note at the top of this view
         track = predict.compute_track(sat, st["lat"], st["lon"], frm, to,
                                        step_s=10, downlink_hz=dl)
     except Exception:

@@ -34,6 +34,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "server"))
 import app as oasis_app                        # noqa: E402
 from services.satellites import routes as sat_routes  # noqa: E402
 
+# Probe the optional pass-prediction dep, same as tests/test_satellites_routes.py.
+# Almost every contract test here runs WITHOUT it — that is the point, and it is
+# what routes.py's deferred `import predict` now guarantees: a box that has not
+# run install-predict.py must still honour the contract on every path that does
+# not actually propagate (bad date range -> 400, no station -> 200, unknown
+# satellite -> 404). Only a test that patches predict itself needs the real
+# module, and only that one skips.
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "services", "satellites"))
+    import predict as _predict_probe  # noqa: F401,E402
+    _HAS_PREDICT = True
+except Exception:  # noqa: BLE001
+    _HAS_PREDICT = False
+
 _HDR = {"X-OASIS-Request": "1"}
 _ISO = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 
@@ -169,7 +183,11 @@ class TrackTest(_Base):
         self.assertEqual(d["track"], [])
         self.assertEqual(d["reason"], "no-station-location")
 
+    @unittest.skipUnless(_HAS_PREDICT, "skyfield/predict not installed")
     def test_a_real_track_carries_the_envelope(self):
+        # The only test in this file that needs the real module: it patches
+        # predict.compute_track, and you cannot patch an attribute on a module
+        # that will not import.
         fake = object()
         with self._station(), \
              mock.patch.object(sat_routes, "_sats_by_norad", return_value={25544: fake}), \
