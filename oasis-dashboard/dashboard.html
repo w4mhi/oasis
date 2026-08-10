@@ -14,6 +14,11 @@
   var q = new URLSearchParams(location.search).get('res');
   var res = VALID[q] || VALID[localStorage.getItem('oasis_layout')] || '800x480';
   localStorage.setItem('oasis_layout', res);
+  // Expose the layout to CSS. The dashboard is otherwise fluid (clamp on the
+  // root font size), so this is only for the few things that genuinely cannot
+  // be one design at both sizes — currently just the avatar card, which costs
+  // 15% of the width on a 800x480 panel and almost nothing on 1920x1200.
+  document.documentElement.setAttribute('data-res', res);
 })();
 </script>
 <script src="/common/js/units.js"></script>
@@ -55,6 +60,31 @@
 
   /* ── TOP: travel clock — LOCAL (left) · UTC · midcard (right) ─────────── */
   .clock{ display:flex; gap:1rem; align-items:stretch; }
+  /* ── Jenny: the avatar card ────────────────────────────────────────────────
+     Width is fixed in REM and the height comes from align-self:stretch, so the
+     card is square without either dimension depending on the other.
+     8.9rem is the measured clock-row height expressed in root ems: the root is
+     clamp(13px, 1.9vh, 24px), giving 203px at 1920x1200 and 116px at 800x480 —
+     within a pixel of the row at both sizes, and it tracks the clamp for free.
+     Do NOT go back to aspect-ratio:1 here. That looks cleaner and is a feedback
+     loop: the card takes its height from the row, its width squeezes the clock
+     faces, their text wraps, the row grows taller, the card grows wider. It
+     settles about three times too large.
+     Hidden by default and shown only on the wide layout — on the 7-inch panel
+     it would take ~15% of the width from three cards that need it more.
+     Also hidden until /api/speech/status says a voice is actually installed:
+     no engine, no Jenny, no dead square. */
+  .avatar{ display:none; flex:0 0 8.9rem; align-self:stretch; position:relative;
+           overflow:hidden; background:var(--panel);
+           border:1px solid var(--border); border-radius:.8rem;
+           transition:filter .4s ease, box-shadow .4s ease; }
+  html[data-res="1920x1200"] .avatar.ready{ display:block; }
+  .avatar video{ width:100%; height:100%; object-fit:cover; display:block; }
+  /* Dormant is the resting state: dimmed, paused, nothing running. She lights
+     up only while speaking — which is also what keeps this clear of the
+     always-animating trap that pinned the compositor at 60fps (see gpspulse). */
+  .avatar.dormant{ filter:brightness(.4) saturate(.55); }
+  .avatar.live{ box-shadow:0 0 0 1px rgba(127,220,79,.5), 0 0 22px rgba(127,220,79,.22); }
   .face{
     flex:1 1 0; position:relative; overflow:hidden;
     background:linear-gradient(180deg,var(--raise),var(--panel));
@@ -510,6 +540,9 @@
 
   <!-- ── TOP: travel clock — LOCAL (left) · UTC · midcard (right) ───────── -->
   <div class="clock">
+    <div class="avatar dormant" id="avatarCard">
+      <video id="avatarVid" src="/oasis-dashboard/jenny.mp4" muted playsinline preload="auto" loop></video>
+    </div>
     <div class="face loc">
       <div class="zn"><span class="z">LOCAL</span><span class="tz" id="loc-tz">local</span></div>
       <div class="time" id="loc-t">--:--<span class="s">:--</span></div>
@@ -1576,13 +1609,50 @@ function _armedBirds() {
   });
   return out;
 }
+// ── Jenny, the avatar card ───────────────────────────────────────────────────
+// The clip carries no audio: speech still comes from /api/speech/say, so the
+// words change without re-rendering the video. All this does is start the
+// picture when she starts talking and stop it when she stops.
+let _jennyBusy = 0;
+function jennyReady() {
+  // No engine installed, no card. An empty square that never animates is worse
+  // than no square, and the espeak fallback voice has no face to go with it.
+  fetch('/api/speech/status', { cache:'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { if (d && d.available) document.getElementById('avatarCard').classList.add('ready'); })
+    .catch(() => {});
+}
+function jennyWake() {
+  const c = document.getElementById('avatarCard'), v = document.getElementById('avatarVid');
+  if (!c || !c.classList.contains('ready')) return;
+  c.classList.remove('dormant'); c.classList.add('live');
+  try { v.currentTime = 0; v.play(); } catch (_) {}
+}
+function jennyRest() {
+  const c = document.getElementById('avatarCard'), v = document.getElementById('avatarVid');
+  if (!c) return;
+  c.classList.add('dormant'); c.classList.remove('live');
+  try { v.pause(); v.currentTime = 0; } catch (_) {}   // back to the closed-mouth frame
+}
+// Counted, not boolean: several birds crossing T-10 on one tick queue several
+// utterances (oasisSpeak serialises them), and the picture should run once
+// across the whole run rather than flicker between them.
+function jennySpeak(text) {
+  if (!_jennyBusy++) jennyWake();
+  const done = () => { if (!--_jennyBusy) jennyRest(); };
+  // NOTE: on a station without Piper, oasisSpeak falls back to speechSynthesis
+  // and resolves immediately rather than when the utterance ends — but the card
+  // is only .ready when Piper IS installed, so that path never animates.
+  Promise.resolve(oasisSpeak(text)).then(done, done);
+}
+
 function runSatAlerts() {
   const due = oasisSatAlertsDue(_armedBirds(), Date.now(), _satAlertState);
   if (_satMuted) return;   // state still advanced above, so unmuting mid-pass
                            // does not replay warnings that already elapsed
   if (due.fire) oasisSatChime(3, due.freq);
   if (due.announce.length) setTimeout(() => {
-    due.announce.forEach(b => oasisSpeak(oasisSatSpeech(b)));
+    due.announce.forEach(b => jennySpeak(oasisSatSpeech(b)));
   }, OASIS_SAT_CHIME_3_MS);   // let the chime finish before the voice starts
 }
 async function fetchSats() {
@@ -1882,7 +1952,7 @@ fetchSats();          setInterval(fetchSats, 60000);
 // Pass alerts tick far faster than the roster refresh: the T-10 edge has to be
 // caught within a couple of seconds of crossing, but the pass DATA only changes
 // every 60 s. Cheap — it walks the armed birds already in memory.
-renderSatMute();      setInterval(runSatAlerts, 2000);
+renderSatMute();      setInterval(runSatAlerts, 2000);   jennyReady();
 // Unlock Web Audio on the first touch, for the case where someone IS at the
 // panel. An untouched kiosk never gets a gesture at all, which is what
 // --autoplay-policy=no-user-gesture-required covers (scripts/enable-autostart-pi.py).
