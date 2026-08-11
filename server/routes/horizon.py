@@ -17,10 +17,11 @@ import os
 
 from flask import Blueprint, jsonify, request
 
+import appconfig
 from common import atomic_json, config_paths
 from common.web_guard import require_oasis_request
 
-SUITE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SUITE_ROOT = appconfig.SUITE_ROOT
 
 bp = Blueprint("horizon", __name__)
 
@@ -82,7 +83,7 @@ def _persist(horizon):
 def api_set_horizon():
     data = request.get_json(silent=True) or {}
     try:
-        horizon = normalise(data.get("horizon"))
+        horizon = normalise(data.get("horizon") if isinstance(data, dict) else None)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 

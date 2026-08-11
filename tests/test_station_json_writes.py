@@ -1,10 +1,11 @@
 """
 station.json read-modify-write safety, at the route level.
 
-Two blueprints own writes to configuration/station.json — the Setup station form
-and the APRS frequency selector. Both must preserve keys they don't own, write
-atomically, and refuse rather than clobber a file they couldn't read. Losing a
-callsign/grid/position on an offline station is not recoverable from the box.
+Three blueprints own writes to configuration/station.json — the Setup station
+form, the APRS frequency selector, and the satellite horizon mask. All three
+must preserve keys they don't own, write atomically, and refuse rather than
+clobber a file they couldn't read. Losing a callsign/grid/position on an
+offline station is not recoverable from the box.
 """
 
 import json
@@ -115,7 +116,7 @@ class SetupWriteStationTest(_StationCase):
 
 
 class NoTruncatingWritersRemainTest(unittest.TestCase):
-    """station.json has exactly two writers; neither may truncate in place."""
+    """station.json has exactly three writers; none may truncate in place."""
 
     def test_no_route_opens_station_json_for_truncating_write(self):
         offenders = []

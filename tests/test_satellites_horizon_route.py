@@ -125,6 +125,27 @@ class HorizonRoute(unittest.TestCase):
         self.assertEqual(r.status_code, 403)
         self.assertNotIn("horizon", json.load(open(self.path)))
 
+    def test_a_json_array_body_is_rejected_not_a_500(self):
+        # A syntactically valid body that isn't an object must take the same
+        # 400 path as any other invalid mask, not fall through to data.get()
+        # on a list and blow up with a 500.
+        self._seed({"lat": 47.5, "lon": -122.0})
+        r = self._post([1, 2, 3])
+        self.assertEqual(r.status_code, 400)
+        self.assertNotIn("horizon", json.load(open(self.path)))
+
+    def test_a_json_string_body_is_rejected_not_a_500(self):
+        self._seed({"lat": 47.5, "lon": -122.0})
+        r = self._post("just a string")
+        self.assertEqual(r.status_code, 400)
+        self.assertNotIn("horizon", json.load(open(self.path)))
+
+    def test_a_json_number_body_is_rejected_not_a_500(self):
+        self._seed({"lat": 47.5, "lon": -122.0})
+        r = self._post(42)
+        self.assertEqual(r.status_code, 400)
+        self.assertNotIn("horizon", json.load(open(self.path)))
+
     def test_a_garbled_station_json_is_not_clobbered(self):
         with open(self.path, "w", encoding="utf-8") as fh:
             fh.write("{ this is not json")
