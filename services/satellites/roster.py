@@ -5,6 +5,7 @@ not in TLEs, so they live in the records build-roster.py writes."""
 import datetime
 import json
 import os
+import re
 import tempfile
 import threading
 
@@ -245,12 +246,63 @@ def _display_mode(t):
     return t.get("mode")
 
 
+# CTCSS lives in the SatNOGS free-text description ("Mode V/U FM - Voice Repeater
+# CTCSS 67.0 Hz"), never in a field of its own. It is the difference between
+# working the ISS repeater and hearing nothing, so it is worth extracting — but
+# only from an unambiguous form, and anything else yields None. No tone shown is
+# a correct answer; a wrong tone is worse than none.
+#
+# Bounded to the standard CTCSS range so a stray number in prose ("CTCSS 1 of 2")
+# cannot become a tone.
+_CTCSS_RE = re.compile(r"\bCTCSS\s+(\d{2,3}(?:\.\d)?)\s*(?:Hz)?", re.I)
+_CTCSS_MIN_HZ, _CTCSS_MAX_HZ = 60.0, 260.0
+
+
+def _ctcss_hz(description):
+    m = _CTCSS_RE.search(description or "")
+    if not m:
+        return None
+    try:
+        v = float(m.group(1))
+    except ValueError:
+        return None
+    return v if _CTCSS_MIN_HZ <= v <= _CTCSS_MAX_HZ else None
+
+
+def _uplink_view(t):
+    """The uplink leg of ONE transmitter, shaped for display, or None.
+
+    Measured against the live catalogue: 87 of 807 card-visible transmitters
+    carry an uplink, and every one of them is typed Transponder or Transceiver.
+    An uplink is not a generic extra field — it is the signal that this bird can
+    be worked two ways, which is why 720 entries render no uplink line at all and
+    the enriched popup does not become the crowded card again.
+
+    `simplex` (uplink == downlink) is a digipeater and worth saying out loud:
+    rendering it as two identical legs reads like a mistake."""
+    up = t.get("uplink")
+    if not (up and up.get("freq_mhz") is not None):
+        return None
+    dl = t.get("downlink") or {}
+    return {
+        "freq_mhz": up["freq_mhz"],
+        "freq_high_mhz": up.get("freq_high_mhz"),
+        "invert": bool(t.get("invert")),
+        "ctcss_hz": _ctcss_hz(t.get("description")),
+        "simplex": up["freq_mhz"] == dl.get("freq_mhz"),
+    }
+
+
 def legacy_downlinks(sat):
     """Phase-1 compat view: flatten the on-disk `transmitters` list into the old
     `downlinks` shape [{"mode","freq_mhz"}] that routes/listen/UI still read.
-    Transmitters with no downlink leg are skipped. De-duplicated by (mode, freq):
-    SatNOGS often lists several active transmitters at the same downlink freq+mode
-    (e.g. ISS's FM voice), which would otherwise render as duplicate buttons.
+    Transmitters with no downlink leg are skipped.
+
+    De-duplicated by (mode, freq): SatNOGS often lists several active
+    transmitters at the same downlink freq+mode (e.g. ISS's FM voice), which
+    would otherwise render as duplicate buttons. The first one at a key also
+    supplies that entry's uplink — the duplicates are the same radio, so any of
+    them is correct and "first" is deterministic across rebuilds.
     Phase 2 migrates consumers to `transmitters`/uplink and this helper goes away.
 
     Downlinks this station cannot use are dropped — see bands.usable_downlink.
@@ -272,7 +324,8 @@ def legacy_downlinks(sat):
         if key in seen:
             continue
         seen.add(key)
-        out.append({"mode": mode, "freq_mhz": dl["freq_mhz"]})
+        out.append({"mode": mode, "freq_mhz": dl["freq_mhz"],
+                    "uplink": _uplink_view(t)})
     return out
 
 
@@ -302,6 +355,10 @@ def group_downlinks(entries):
     A merged entry labelled just "FM 437.800" would be the blindness this exists
     to prevent.
 
+    An uplink belongs to a TRANSMITTER, not to a frequency, so a grouped entry
+    keeps `uplinks` as a list: the ISS's 437.800 groups FM, SSTV and FSK, and
+    only the FM member can be transmitted to.
+
     `mode` stays a single token for consumers that drive the demodulator from it
     (the listen route). Any member is correct — they share a demod by
     construction — so it is the alphabetically first, which is deterministic
@@ -314,6 +371,7 @@ def group_downlinks(entries):
             groups[key] = dict(e)
             groups[key]["modes"] = []
             groups[key]["blurbs"] = []
+            groups[key]["uplinks"] = []
             order.append(key)
         g = groups[key]
         mode = (e.get("mode") or "").strip()
@@ -322,6 +380,11 @@ def group_downlinks(entries):
         blurb = (e.get("blurb") or "").strip()
         if blurb and blurb not in g["blurbs"]:
             g["blurbs"].append(blurb)
+        up = e.get("uplink")
+        if up:
+            u = dict(up, mode=mode)
+            if u not in g["uplinks"]:
+                g["uplinks"].append(u)
     out = []
     for key in order:
         g = groups[key]
@@ -329,5 +392,10 @@ def group_downlinks(entries):
         if g["modes"]:
             g["mode"] = g["modes"][0]
         g["blurb"] = " · ".join(g.pop("blurbs"))
+        # Sorted for a stable render, and the singular key dropped: the group was
+        # seeded from its FIRST member, so leaving `uplink` behind would leave two
+        # sources of truth disagreeing whenever a later member owns the uplink.
+        g["uplinks"].sort(key=lambda u: (u["freq_mhz"], u["mode"] or ""))
+        g.pop("uplink", None)
         out.append(g)
     return out

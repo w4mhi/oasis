@@ -3,6 +3,17 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "services", "satellites"))
 import roster  # noqa: E402
+import satnogs  # noqa: E402
+
+_FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+
+
+def _real_txs():
+    """Real captured SatNOGS records through the real parser — the uplink shape
+    is the thing under test, and a hand-written fixture would let us assert a
+    shape SatNOGS does not actually emit."""
+    with open(os.path.join(_FIXTURES, "satnogs-transmitters.json"), encoding="utf-8") as fh:
+        return satnogs.parse_transmitters(json.load(fh))
 
 
 class RosterTest(unittest.TestCase):
@@ -58,8 +69,11 @@ class RosterTest(unittest.TestCase):
             {"mode": "BEACONONLYUP", "downlink": None,
              "uplink": {"freq_mhz": 435.0, "freq_high_mhz": None}}]}
         dls = roster.legacy_downlinks(sat)
-        self.assertEqual(dls, [{"mode": "FM", "freq_mhz": 145.8},
-                               {"mode": "APRS", "freq_mhz": 145.825}])
+        self.assertEqual(dls, [
+            {"mode": "FM", "freq_mhz": 145.8,
+             "uplink": {"freq_mhz": 145.99, "freq_high_mhz": None,
+                        "invert": False, "ctcss_hz": None, "simplex": False}},
+            {"mode": "APRS", "freq_mhz": 145.825, "uplink": None}])
 
     def test_legacy_downlinks_dedup_and_aprs_naming(self):
         sat = {"transmitters": [
@@ -70,9 +84,9 @@ class RosterTest(unittest.TestCase):
             {"mode": "SSTV", "description": "SSTV", "downlink": {"freq_mhz": 145.8}}]}
         dls = roster.legacy_downlinks(sat)
         self.assertEqual(dls, [
-            {"mode": "APRS", "freq_mhz": 145.825},   # AFSK + APRS-in-description → APRS
-            {"mode": "FM", "freq_mhz": 437.8},       # dup collapsed
-            {"mode": "SSTV", "freq_mhz": 145.8}])
+            {"mode": "APRS", "freq_mhz": 145.825, "uplink": None},   # AFSK + APRS-in-description → APRS
+            {"mode": "FM", "freq_mhz": 437.8, "uplink": None},       # dup collapsed
+            {"mode": "SSTV", "freq_mhz": 145.8, "uplink": None}])
 
 
 class OperatorFieldsTest(unittest.TestCase):
@@ -228,6 +242,53 @@ class OperatorFieldsTest(unittest.TestCase):
         src = os.path.join(os.path.dirname(_HERE), "services", "satellites", "build-roster.py")
         with open(src, encoding="utf-8") as fh:
             self.assertIn("BELL_DEFAULT_KEY", fh.read())
+
+
+class UplinkView(unittest.TestCase):
+    def _grouped(self, norad):
+        import listen
+        txs = _real_txs()[norad]
+        entries = [dict(d, **listen.mode_support(d.get("mode")))
+                   for d in roster.legacy_downlinks({"transmitters": txs})]
+        return {round(g["freq_mhz"], 6): g for g in roster.group_downlinks(entries)}
+
+    def test_grouped_entry_attributes_its_uplink_to_the_right_mode(self):
+        # 437.800 groups FM + FSK + SSTV (one radio, reconfigured). Only the FM
+        # member has an uplink; naming it is what stops the card implying you can
+        # transmit to the SSTV or telemetry service.
+        g = self._grouped(25544)[437.8]
+        self.assertEqual(sorted(g["modes"]), ["FM", "FSK", "SSTV"])
+        self.assertEqual(len(g["uplinks"]), 1)
+        self.assertEqual(g["uplinks"][0]["freq_mhz"], 145.99)
+        self.assertEqual(g["uplinks"][0]["mode"], "FM")
+
+    def test_ctcss_is_extracted_from_the_description(self):
+        self.assertEqual(self._grouped(25544)[437.8]["uplinks"][0]["ctcss_hz"], 67.0)
+
+    def test_no_ctcss_in_the_description_yields_none_not_a_guess(self):
+        # 145.800 FM's description carries no tone. None is the correct answer;
+        # a wrong tone is worse than no tone.
+        self.assertIsNone(self._grouped(25544)[145.8]["uplinks"][0]["ctcss_hz"])
+
+    def test_uplink_equal_to_downlink_is_flagged_simplex(self):
+        g = self._grouped(25544)[145.825]
+        self.assertEqual(g["uplinks"][0]["freq_mhz"], 145.825)
+        self.assertTrue(g["uplinks"][0]["simplex"])
+
+    def test_linear_transponder_keeps_its_passband_and_inversion(self):
+        g = self._grouped(7530)[145.925]
+        up = g["uplinks"][0]
+        self.assertEqual((up["freq_mhz"], up["freq_high_mhz"]), (432.125, 432.175))
+        self.assertTrue(up["invert"])
+
+    def test_an_entry_with_no_uplink_carries_an_empty_list(self):
+        # NOAA 19 APT: receive-only. Empty list, never a missing key — the client
+        # renders `uplinks.length` and an undefined would throw.
+        self.assertEqual(self._grouped(33591)[137.1]["uplinks"], [])
+
+    def test_grouped_entries_drop_the_singular_uplink_key(self):
+        for g in self._grouped(25544).values():
+            self.assertNotIn("uplink", g)
 
 
 if __name__ == "__main__":

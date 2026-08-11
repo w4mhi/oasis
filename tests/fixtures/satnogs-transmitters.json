@@ -26,5 +26,57 @@
   {"norad_cat_id": 55555, "status": "active", "type": "Transmitter", "mode": "GMSK USP",
    "description": "Telemetry", "invert": false, "baud": 9600,
    "downlink_low": 435500000, "downlink_high": null,
-   "uplink_low": null, "uplink_high": null}
+   "uplink_low": null, "uplink_high": null},
+  {
+    "norad_cat_id": 25544,
+    "status": "active",
+    "type": "Transceiver",
+    "mode": "FM",
+    "description": "Mode V/U FM - Voice Repeater CTCSS 67.0 Hz",
+    "invert": false,
+    "baud": null,
+    "downlink_low": 437800000,
+    "downlink_high": null,
+    "uplink_low": 145990000,
+    "uplink_high": null
+  },
+  {
+    "norad_cat_id": 25544,
+    "status": "active",
+    "type": "Transmitter",
+    "mode": "SSTV",
+    "description": "Mode U - SSTV",
+    "invert": false,
+    "baud": null,
+    "downlink_low": 437800000,
+    "downlink_high": null,
+    "uplink_low": null,
+    "uplink_high": null
+  },
+  {
+    "norad_cat_id": 25544,
+    "status": "active",
+    "type": "Transmitter",
+    "mode": "FSK",
+    "description": "IORS Telemetry",
+    "invert": false,
+    "baud": 9600.0,
+    "downlink_low": 437800000,
+    "downlink_high": null,
+    "uplink_low": null,
+    "uplink_high": null
+  },
+  {
+    "norad_cat_id": 7530,
+    "status": "active",
+    "type": "Transponder",
+    "mode": "USB",
+    "description": "Mode U/V (B) Lin",
+    "invert": true,
+    "baud": 0.0,
+    "downlink_low": 145925000,
+    "downlink_high": 145975000,
+    "uplink_low": 432125000,
+    "uplink_high": 432175000
+  }
 ]

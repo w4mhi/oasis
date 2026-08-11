@@ -26,7 +26,7 @@ class ParseTest(unittest.TestCase):
         iss = self.txs[25544]
         modes = sorted(t["mode"] for t in iss)
         # inactive FM dropped; 15 GHz Ku QPSK dropped (out of RTL range)
-        self.assertEqual(modes, ["AFSK", "FM"])
+        self.assertEqual(modes, ["AFSK", "FM", "FM", "FSK", "SSTV"])
 
     def test_out_of_range_downlink_dropped(self):
         self.assertTrue(all(t["downlink"]["freq_mhz"] <= 1766
@@ -186,8 +186,11 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(iss["status"], "alive")
         self.assertIn("CREWED", iss["labels"])
         self.assertIn("APRS", iss["labels"])         # from AFSK "Mode V APRS"
-        self.assertNotIn("DATA", iss["labels"])      # APRS suppressed generic DATA
-        self.assertEqual(len(iss["transmitters"]), 2)  # Ku + inactive dropped
+        # DATA suppression is per-transmitter: the AFSK/APRS transmitter's own
+        # DATA is discarded, but the FSK "IORS Telemetry" transmitter carries no
+        # APRS keyword, so its DATA survives into the satellite-level union.
+        self.assertIn("DATA", iss["labels"])
+        self.assertEqual(len(iss["transmitters"]), 5)  # Ku + inactive dropped
         fm = next(t for t in iss["transmitters"] if t["mode"] == "FM")
         self.assertEqual(fm["uplink"]["freq_mhz"], 145.99)
         self.assertFalse(iss["selected"])            # default off
