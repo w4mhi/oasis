@@ -78,6 +78,30 @@
     return elDeg < floorAt(horizon, azDeg, minElev);
   }
 
+  /* Contiguous runs of the track that clear the mask, as {from, to} built from
+     each run's first and last sample `t`. THE MASK IS NOT A CIRCLE, so a pass
+     can clear a low-floor sector, sweep behind a tall one mid-pass, and clear
+     again before it sets — the clearing samples are then non-contiguous, and a
+     caller that reports first-clear-to-last-clear as one span is claiming the
+     satellite is workable through the middle stretch when it is actually
+     behind the trees. This returns one entry per run instead, so the gap
+     stays visible.
+
+     Empty track, empty horizon ({}), and "nothing clears" all return [] alike;
+     the caller tells those apart by checking track/horizon emptiness itself
+     before asking for segments, same as rimPath's own empty-horizon guard. */
+  function clearSegments(track, horizon, minElev) {
+    if (!track || !track.length || !horizon || !Object.keys(horizon).length) return [];
+    var segs = [], start = -1;
+    for (var i = 0; i < track.length; i++) {
+      var clear = !isBlocked(horizon, track[i].az, track[i].el, minElev);
+      if (clear && start < 0) start = i;
+      if (!clear && start >= 0) { segs.push({ from: track[start].t, to: track[i - 1].t }); start = -1; }
+    }
+    if (start >= 0) segs.push({ from: track[start].t, to: track[track.length - 1].t });
+    return segs;
+  }
+
   /* The shaded rim, as an SVG `d`: the outer edge, then the skyline traced BACK,
      as two closed subpaths for fill-rule evenodd. Tracing back matters — one
      continuous subpath leaves a radial spoke across the plot.
@@ -104,5 +128,6 @@
   }
 
   return { SECTORS: SECTORS, NAMES: NAMES, STEP: STEP,
-           floorAt: floorAt, isBlocked: isBlocked, rimPath: rimPath };
+           floorAt: floorAt, isBlocked: isBlocked, clearSegments: clearSegments,
+           rimPath: rimPath };
 });

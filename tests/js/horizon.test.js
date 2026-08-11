@@ -127,3 +127,68 @@ test('the rim reaches the outer edge and follows the floor', () => {
   const expectY = (75 - 62 * (90 - 25) / 90).toFixed(1);
   assert.ok(inner.startsWith('75.0 ' + expectY), inner.slice(0, 20));
 });
+
+// clearSegments — one entry per CONTIGUOUS run that clears the mask, not the
+// first-clear-to-last-clear span the bug this replaces used to report. The
+// mask is azimuth-dependent, not a circle, so a real pass can clear a low
+// sector, sweep behind a tall one mid-pass, and clear again before it sets —
+// reporting one span there would claim the middle dip is workable when it is
+// behind the trees.
+//
+// { N: 30 } with minElev 10 raises the floor only near due north: el 20 stays
+// clear at az 45/90 (floor falls back to 10) and goes blocked at az 0 (floor
+// 30). This is the same floorAt/isBlocked the page uses, evaluated for real —
+// not a stubbed isBlocked — so the fixtures below genuinely cross the N floor.
+function sample(t, az, el) {
+  return { t, lat: 0, lon: 0, el, az, doppler_hz: 0 };
+}
+const T = i => `2026-01-01T00:0${i}:00Z`;
+
+test('clearSegments on an empty track is []', () => {
+  assert.deepStrictEqual(H.clearSegments([], { N: 30 }, 10), []);
+});
+
+test('clearSegments with an empty horizon is [] even though nothing is blocked', () => {
+  const track = [sample(T(0), 0, 20), sample(T(1), 90, 20)];
+  assert.deepStrictEqual(H.clearSegments(track, {}, 10), []);
+});
+
+test('clearSegments on a track that clears throughout is one segment end to end', () => {
+  const track = [sample(T(0), 90, 20), sample(T(1), 45, 20), sample(T(2), 0, 20)];
+  // N floor is only 5 here, so even due north at el 20 is clear.
+  assert.deepStrictEqual(H.clearSegments(track, { N: 5 }, 10),
+    [{ from: T(0), to: T(2) }]);
+});
+
+test('clearSegments blocked at both ends is one segment in the middle', () => {
+  const track = [
+    sample(T(0), 0, 5),     // az 0, floor 30 -> blocked
+    sample(T(1), 45, 20),   // floor 10 -> clear
+    sample(T(2), 90, 20),   // floor 10 -> clear
+    sample(T(3), 0, 5),     // blocked again
+  ];
+  assert.deepStrictEqual(H.clearSegments(track, { N: 30 }, 10),
+    [{ from: T(1), to: T(2) }]);
+});
+
+test('clearSegments on an all-blocked track is []', () => {
+  const track = [sample(T(0), 0, 10), sample(T(1), 90, 10)];
+  // minElev itself is 50 here, so every bearing is blocked.
+  assert.deepStrictEqual(H.clearSegments(track, { N: 50 }, 50), []);
+});
+
+test('clearSegments splits a pass that clears, dips behind a sector, and clears again', () => {
+  // The case the whole fix exists for: az sweeps E -> N -> E, dipping behind
+  // the N: 30 floor mid-pass while el stays flat at 20. First-clear-to-
+  // last-clear would report T(0)-T(4) straight through the blocked sample;
+  // the honest answer is two separate runs either side of it.
+  const track = [
+    sample(T(0), 90, 20),
+    sample(T(1), 45, 20),
+    sample(T(2), 0, 20),    // floor 30 -> blocked
+    sample(T(3), 45, 20),
+    sample(T(4), 90, 20),
+  ];
+  assert.deepStrictEqual(H.clearSegments(track, { N: 30 }, 10),
+    [{ from: T(0), to: T(1) }, { from: T(3), to: T(4) }]);
+});

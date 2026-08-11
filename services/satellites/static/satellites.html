@@ -1470,19 +1470,27 @@ async function pickPass(norad, rise, set) {
 function horizonOf() { return (STATION && STATION.horizon) || {}; }
 function minElevOf() { return (STATION && STATION.min_elev != null) ? STATION.min_elev : 10; }
 
-// The workable window: the first and last samples that clear the operator's own
+// The workable window: the CONTIGUOUS runs that clear the operator's own
 // skyline, read off the track the client ALREADY holds. This is the honest
 // AOS/LOS the geometric 0-degree horizon cannot give — find_events works at the
 // mathematical horizon, so a listed rise time is when the bird cleared the
 // maths, not the treeline. Only the PLOTTED pass has a track, which is fine: it
 // is the pass being looked at, and it costs nothing.
+//
+// THE MASK IS NOT A CIRCLE: a pass can clear a low-floor sector, sweep behind
+// a tall one mid-pass, and clear again before it sets. Reporting the first and
+// last clearing samples as one span would claim the middle stretch is workable
+// when the bird is actually behind the trees — the exact failure this feature
+// exists to prevent. clearSegments (horizon.js) does the walk; this only
+// formats what it returns.
 function workableWindowHTML(track, hz, minEl) {
   if (!track || !track.length || !Object.keys(hz).length) return '';
-  const clear = track.filter(p => !isBlocked(hz, p.az, p.el, minEl));
-  if (!clear.length) return `<div class="sp-window">never clears your skyline</div>`;
-  const a = clear[0].t, b = clear[clear.length - 1].t;
-  if (a === track[0].t && b === track[track.length - 1].t) return '';   // nothing to add
-  return `<div class="sp-window">workable ${fmt(a)}–${fmt(b)}</div>`;
+  const segs = OasisHorizon.clearSegments(track, hz, minEl);
+  if (!segs.length) return `<div class="sp-window">never clears your skyline</div>`;
+  if (segs.length === 1 && segs[0].from === track[0].t && segs[0].to === track[track.length - 1].t) return '';   // nothing to add
+  const shown = segs.slice(0, 3).map(s => `${fmt(s.from)}–${fmt(s.to)}`).join(', ');
+  const extra = segs.length > 3 ? ` +${segs.length - 3} more` : '';
+  return `<div class="sp-window">workable ${shown}${extra}</div>`;
 }
 
 function skyPlotSVG(track, color) {
