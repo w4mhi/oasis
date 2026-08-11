@@ -74,6 +74,19 @@ test('junk values never produce a NaN floor', () => {
   assert.ok(Number.isFinite(H.floorAt({ N: 25 }, NaN, 10)));
 });
 
+test('a junk min_elev never produces a NaN floor either', () => {
+  // Same failure mode as the horizon values above, but for the fallback itself:
+  // a NaN floor compares false against every elevation, so a corrupt min_elev
+  // would silently mark nothing while the mask looked like it was working.
+  assert.ok(Number.isFinite(H.floorAt({}, 0, NaN)));
+  assert.ok(Number.isFinite(H.floorAt({}, 0, 'ten')));
+});
+
+test('a sector value outside 0-89 falls back to min_elev', () => {
+  assert.strictEqual(H.floorAt({ N: -5 }, 0, 10), 10);
+  assert.strictEqual(H.floorAt({ N: 95 }, 0, 10), 10);
+});
+
 test('isBlocked compares elevation against the floor at that bearing', () => {
   const h = { N: 25, S: 5 };
   assert.strictEqual(H.isBlocked(h, 0, 17, 10), true);    // 17 deg in the north

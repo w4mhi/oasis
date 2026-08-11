@@ -90,6 +90,10 @@ html, body { height: 100%; margin: 0; }
 .sat-popup .sp-close { float: right; background: none; border: none; color: var(--text-dim);
   font-size: 18px; line-height: 1; cursor: pointer; padding: 0 0 0 8px; }
 .sat-popup .sp-close:hover { color: var(--text); }
+.sat-popup .horizon-rim { fill: var(--text-dim); opacity: .22; }
+.sat-popup .pop-pass.blocked { opacity: .55; }
+.sat-popup .pop-pass .blocked-why { color: var(--text-dim); }
+.sat-popup .sp-window { color: var(--text-dim); }
 .badge { display: inline-block; font-size: var(--fs-small); font-weight: 700; letter-spacing: .05em;
   padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); }
 .badge.ok   { color: #3fb950; border-color: #3fb950; }
@@ -407,6 +411,7 @@ html, body { height: 100%; margin: 0; }
 <script src="/server/satellites/satellite.min.js"></script>
 <script src="/common/js/sat-look.js"></script>
 <script src="/common/js/sat-uplink.js"></script>
+<script src="/common/js/horizon.js"></script>
 <script>
 /* ─────────────────────────────────────────────────────────────────────────
    Roster-driven satellite map. Check a satellite → plot its NEXT pass ground
@@ -1420,18 +1425,27 @@ function popupFreqsHTML(sat) {
   if (!dls.length) return '<div class="pop-row"><span class="pop-val">No downlinks.</span></div>';
   return dls.map(d => {
     const ups = uplinkLines(d).map(l => `<div class="sp-up">${l}</div>`).join('');
-    return `<div class="sp-dl">${d.freq_mhz} <span class="pop-lbl">${dlLabel(d)}</span></div>${ups}`;
+    return `<div class="sp-dl">${d.freq_mhz} MHz <span class="pop-lbl">${dlLabel(d)}</span></div>${ups}`;
   }).join('');
 }
 
 function popupHTML(sat) {
   const plotted = PLOTTED[sat.norad];
   const chips = sat.labels.map(l => `<span class="chip">${l}</span>`).join('');
+  const hz = horizonOf(), minEl = minElevOf();
   const passes = (PASSES[sat.norad] || []).slice(0, 4).map(p => {
     const active = plotted && plotted.pass.rise === p.rise ? 'active' : '';
-    return `<div class="pop-pass ${active}" onclick="pickPass(${sat.norad}, '${p.rise}', '${p.set}')">
+    // Marked, never removed. A filter would delete the pass, and a slightly
+    // wrong mask would then silently remove workable passes with nothing on
+    // screen to say why. peak_az is guarded because a pass cached before that
+    // field existed has none.
+    const blocked = p.peak_az != null && isBlocked(hz, p.peak_az, p.max_el, minEl);
+    const why = blocked ? ' <span class="blocked-why">· below skyline</span>' : '';
+    const win = (active && plotted) ? workableWindowHTML(plotted.track, hz, minEl) : '';
+    return `<div class="pop-pass ${active} ${blocked ? 'blocked' : ''}"
+      onclick="pickPass(${sat.norad}, '${p.rise}', '${p.set}')">
       ${fmt(p.rise)}–${fmt(p.set)} · max ${p.max_el.toFixed(0)}°${p.peak_az != null
-        ? ` ${azCompass(p.peak_az)} ${p.peak_az.toFixed(0)}°` : ''} · rise ${p.rise_az.toFixed(0)}°</div>`;
+        ? ` ${azCompass(p.peak_az)} ${p.peak_az.toFixed(0)}°` : ''} · rise ${p.rise_az.toFixed(0)}°${why}${win}</div>`;
   }).join('') || '<div class="pop-row"><span class="pop-val">No passes in 24 h.</span></div>';
   const polar = (plotted && plotted.track.length) ? skyPlotSVG(plotted.track, plotted.color) : '';
   return `<div class="pop-call">${sat.name}</div>
@@ -1450,10 +1464,38 @@ async function pickPass(norad, rise, set) {
     if (_popupSat && sat && el && !el.hidden) el.querySelector('.pop-body').innerHTML = popupHTML(sat); }
 }
 
+// The mask and the floor it falls back to. STATION arrives from /api/satellites
+// (meta.station); both are absent on a box whose operator has never drawn a
+// horizon, which is the common case, not an error.
+function horizonOf() { return (STATION && STATION.horizon) || {}; }
+function minElevOf() { return (STATION && STATION.min_elev != null) ? STATION.min_elev : 10; }
+
+// The workable window: the first and last samples that clear the operator's own
+// skyline, read off the track the client ALREADY holds. This is the honest
+// AOS/LOS the geometric 0-degree horizon cannot give — find_events works at the
+// mathematical horizon, so a listed rise time is when the bird cleared the
+// maths, not the treeline. Only the PLOTTED pass has a track, which is fine: it
+// is the pass being looked at, and it costs nothing.
+function workableWindowHTML(track, hz, minEl) {
+  if (!track || !track.length || !Object.keys(hz).length) return '';
+  const clear = track.filter(p => !isBlocked(hz, p.az, p.el, minEl));
+  if (!clear.length) return `<div class="sp-window">never clears your skyline</div>`;
+  const a = clear[0].t, b = clear[clear.length - 1].t;
+  if (a === track[0].t && b === track[track.length - 1].t) return '';   // nothing to add
+  return `<div class="sp-window">workable ${fmt(a)}–${fmt(b)}</div>`;
+}
+
 function skyPlotSVG(track, color) {
   const CX = 75, CY = 75, R = 62;
   let out = `<svg class="pop-polar" viewBox="0 0 150 150">`;
   for (const el of [0, 30, 60]) out += `<circle cx="${CX}" cy="${CY}" r="${(R*(90-el)/90).toFixed(1)}" class="ring"/>`;
+  // The mask, as a filled annulus between the outer edge and the skyline: the
+  // track visibly dips behind the treeline instead of the operator reading a
+  // number and imagining it. evenodd so the sky INSIDE the skyline stays clear
+  // and only the blocked rim is shaded. The path itself is built in horizon.js —
+  // the editor draws the same rim and it must not be written twice.
+  const rim = OasisHorizon.rimPath(horizonOf(), minElevOf(), satgeo.polar, CX, CY, R);
+  if (rim) out += `<path class="horizon-rim" fill-rule="evenodd" d="${rim}"/>`;
   out += `<text x="${CX}" y="10" class="cmp">N</text><text x="${CX}" y="147" class="cmp">S</text>` +
          `<text x="6" y="${CY+3}" class="cmp">W</text><text x="144" y="${CY+3}" class="cmp">E</text>`;
   const pt = p => { const q = satgeo.polar(p.az, p.el, CX, CY, R); return q.x.toFixed(1)+' '+q.y.toFixed(1); };
