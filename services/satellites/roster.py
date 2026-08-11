@@ -300,9 +300,14 @@ def legacy_downlinks(sat):
 
     De-duplicated by (mode, freq): SatNOGS often lists several active
     transmitters at the same downlink freq+mode (e.g. ISS's FM voice), which
-    would otherwise render as duplicate buttons. The first one at a key also
-    supplies that entry's uplink — the duplicates are the same radio, so any of
-    them is correct and "first" is deterministic across rebuilds.
+    would otherwise render as duplicate buttons. The entry kept is the first
+    one seen at a key, but its uplink is never allowed to depend on that
+    order: a bird can list a downlink-only Transmitter ahead of a Transceiver
+    at the identical key, and SatNOGS's return order carries no meaning — so
+    if the kept entry has no uplink and a later duplicate at the same key
+    does, the duplicate's uplink is adopted onto it. Only the uplink crosses
+    over; the duplicate record itself is still collapsed away, never
+    resurrected as a second card.
     Phase 2 migrates consumers to `transmitters`/uplink and this helper goes away.
 
     Downlinks this station cannot use are dropped — see bands.usable_downlink.
@@ -312,7 +317,7 @@ def legacy_downlinks(sat):
     filtering any earlier would delete them as a side effect of tidying a card.
     The policy lives in bands.py rather than here because this function is a
     phase-1 shim scheduled for deletion, and the policy must outlive it."""
-    out, seen = [], set()
+    out, seen = [], {}
     for t in sat.get("transmitters", []):
         dl = t.get("downlink")
         if not (dl and dl.get("freq_mhz") is not None):
@@ -321,11 +326,15 @@ def legacy_downlinks(sat):
             continue
         mode = _display_mode(t)
         key = ((mode or "").strip().lower(), round(float(dl["freq_mhz"]), 6))
-        if key in seen:
+        up = _uplink_view(t)
+        kept = seen.get(key)
+        if kept is not None:
+            if not kept["uplink"] and up:
+                kept["uplink"] = up
             continue
-        seen.add(key)
-        out.append({"mode": mode, "freq_mhz": dl["freq_mhz"],
-                    "uplink": _uplink_view(t)})
+        entry = {"mode": mode, "freq_mhz": dl["freq_mhz"], "uplink": up}
+        seen[key] = entry
+        out.append(entry)
     return out
 
 

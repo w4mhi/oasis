@@ -566,6 +566,26 @@ class MinElevConfigTest(RoutesTest):
         self.assertEqual(st["horizon"], {})
         self.assertIsNone(st["lat"])
 
+    def test_null_lat_does_not_raise_and_reports_an_empty_horizon(self):
+        # "lat": null parses fine as JSON but float(None) raises TypeError —
+        # missing from the old except tuple, this 500'd the whole page.
+        self._write_station(lat=None, horizon={"N": 25, "NNE": 24})
+        st = self.routes._station()
+        self.assertIsNone(st["lat"])
+        self.assertIsNone(st["lon"])
+        self.assertEqual(st["horizon"], {})
+
+    def test_broken_lat_with_a_valid_horizon_reports_an_empty_horizon(self):
+        # A real horizon mask must never ride along with a null position —
+        # the page would believe itself unconfigured for the map marker and
+        # configured for the mask at the same time.
+        p = os.path.join(self._tmp, "configuration", "station.json")
+        json.dump({"lat": "not-a-number", "lon": -122.0298,
+                   "horizon": {"N": 25, "NNE": 24}}, open(p, "w"))
+        st = self.routes._station()
+        self.assertIsNone(st["lat"])
+        self.assertEqual(st["horizon"], {})
+
     def test_the_floor_reaches_compute_passes(self):
         self._write_station(min_elev=30)
         seen = []

@@ -88,6 +88,28 @@ class RosterTest(unittest.TestCase):
             {"mode": "FM", "freq_mhz": 437.8, "uplink": None},       # dup collapsed
             {"mode": "SSTV", "freq_mhz": 145.8, "uplink": None}])
 
+    def test_legacy_downlinks_dedup_adopts_a_later_uplink(self):
+        # SatNOGS's return order carries no meaning, so which duplicate is kept
+        # must not decide whether the uplink survives: a downlink-only
+        # Transmitter and a Transceiver can share (mode, freq), and the
+        # Transceiver's uplink must reach the kept entry regardless of order.
+        no_uplink = {"mode": "FM", "description": "Voice Repeater",
+                    "downlink": {"freq_mhz": 437.8}, "uplink": None}
+        with_uplink = {"mode": "FM", "description": "Voice Repeater",
+                       "downlink": {"freq_mhz": 437.8},
+                       "uplink": {"freq_mhz": 145.99, "freq_high_mhz": None}}
+        expected = [{"mode": "FM", "freq_mhz": 437.8,
+                    "uplink": {"freq_mhz": 145.99, "freq_high_mhz": None,
+                               "invert": False, "ctcss_hz": None, "simplex": False}}]
+        # uplink-bearing transmitter SECOND
+        self.assertEqual(
+            roster.legacy_downlinks({"transmitters": [no_uplink, with_uplink]}),
+            expected)
+        # uplink-bearing transmitter FIRST — identical result
+        self.assertEqual(
+            roster.legacy_downlinks({"transmitters": [with_uplink, no_uplink]}),
+            expected)
+
 
 class OperatorFieldsTest(unittest.TestCase):
     """The bell is per-BIRD and lives in the roster, so the kiosk can see a bell

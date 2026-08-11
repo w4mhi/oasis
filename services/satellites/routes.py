@@ -44,17 +44,22 @@ def _station():
 
     An empty dict, never a missing key: the page reads `station.horizon`
     unguarded and a box whose operator has never drawn one is the common case."""
-    horizon, min_elev = {}, _min_elev()
+    min_elev = _min_elev()
     try:
         with open(config_paths.station_json(SUITE_ROOT), encoding="utf-8") as fh:
             s = json.load(fh)
+        lat, lon = float(s["lat"]), float(s["lon"])
         h = s.get("horizon")
-        if isinstance(h, dict):
-            horizon = h
-        return {"lat": float(s["lat"]), "lon": float(s["lon"]),
-                "horizon": horizon, "min_elev": min_elev}
-    except (OSError, ValueError, KeyError):
-        return {"lat": None, "lon": None, "horizon": horizon, "min_elev": min_elev}
+        horizon = h if isinstance(h, dict) else {}
+        return {"lat": lat, "lon": lon, "horizon": horizon, "min_elev": min_elev}
+    except (OSError, ValueError, KeyError, TypeError):
+        # lat/lon parsed BEFORE horizon is read out above, so a station that
+        # fails here never gets as far as reporting a real mask alongside a
+        # null position — the page would believe itself unconfigured for the
+        # map marker and configured for the horizon at once. TypeError is here
+        # because a "lat": null in station.json makes float(None) raise it, the
+        # same reason _min_elev() below catches it.
+        return {"lat": None, "lon": None, "horizon": {}, "min_elev": min_elev}
 
 
 # Minimum culmination for a pass to be LISTED at all, in degrees.

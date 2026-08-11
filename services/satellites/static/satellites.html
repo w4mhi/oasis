@@ -90,7 +90,7 @@ html, body { height: 100%; margin: 0; }
 .sat-popup .sp-close { float: right; background: none; border: none; color: var(--text-dim);
   font-size: 18px; line-height: 1; cursor: pointer; padding: 0 0 0 8px; }
 .sat-popup .sp-close:hover { color: var(--text); }
-.sat-popup .horizon-rim { fill: var(--text-dim); opacity: .22; }
+.horizon-rim { fill: var(--text-dim); opacity: .22; }
 .sat-popup .pop-pass.blocked { opacity: .55; }
 .sat-popup .pop-pass .blocked-why { color: var(--text-dim); }
 .sat-popup .sp-window { color: var(--text-dim); }
@@ -1628,8 +1628,11 @@ async function saveHorizon() {
     });
     const j = await r.json();
     if (!r.ok || !j.ok) { msg.textContent = j.error || 'Could not save.'; return; }
-    // Adopt it locally so every open plot redraws without a reload.
-    STATION.horizon = j.horizon;
+    // Adopt it locally so every open plot redraws without a reload. STATION can
+    // still be null here (the initial GET /api/satellites failed but the topbar
+    // Horizon button stayed clickable) — a save that just succeeded on the
+    // server must never be reported as failed because of that.
+    if (STATION) STATION.horizon = j.horizon;
     closeHorizonEditor();
     if (_popupSat) satClick(_popupSat.norad, null);
   } catch (e) {
