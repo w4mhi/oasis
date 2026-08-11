@@ -185,7 +185,15 @@ def _greeting():
     Deliberately not "your assistant": OASIS has a real assistant feature (a
     local LLM on its own page), and this is a text-to-speech voice. "Neural
     voice" is what it is — Piper is a neural synthesiser — and it promises
-    nothing this does not do.
+    nothing this does not do. Not "neural AI voice" either: neural IS the AI
+    claim, and doubling it up is the marketing register this line avoids.
+
+    "THE neural voice", with the article. Bare "Jenny, neural voice of OASIS"
+    is grammatical — a bare-role appositive, as in "Jenny, Director of
+    Operations" — but that is a written construction, and read aloud it lands
+    clipped, like a caption rather than an introduction. This sentence exists
+    only to be heard. The no-name fallback below has always had the article;
+    now the two branches agree.
 
     "Station announcements" covers the pass alerts too, and does not go stale
     the first time something other than satellites needs to speak.
@@ -194,7 +202,7 @@ def _greeting():
     parts = model.split("-")
     who = parts[1].split("_")[0].capitalize() if len(parts) > 1 and parts[1] else ""
     if who:
-        return (f"Hello, I'm {who}, neural voice of OASIS. "
+        return (f"Hello, I'm {who}, the neural voice of OASIS. "
                 "I will read your station announcements.")
     return "Hello, I'm the neural voice of OASIS. I will read your station announcements."
 
