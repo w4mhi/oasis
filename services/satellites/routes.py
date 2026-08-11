@@ -33,12 +33,28 @@ _RECORDINGS_MAX_LIMIT = 2000
 
 
 def _station():
+    """Station position, the pass floor, and the operator's horizon mask.
+
+    `horizon` is served RAW and never evaluated here. The mask is applied
+    entirely client-side (common/js/horizon.js) because every pass already
+    carries `peak_az` — so this route has no reason to interpolate, and there is
+    no second implementation of the curve to drift out of agreement with the
+    first. `min_elev` rides along so the client can apply the missing-sector
+    fallback without a second request.
+
+    An empty dict, never a missing key: the page reads `station.horizon`
+    unguarded and a box whose operator has never drawn one is the common case."""
+    horizon, min_elev = {}, _min_elev()
     try:
         with open(config_paths.station_json(SUITE_ROOT), encoding="utf-8") as fh:
             s = json.load(fh)
-        return {"lat": float(s["lat"]), "lon": float(s["lon"])}
+        h = s.get("horizon")
+        if isinstance(h, dict):
+            horizon = h
+        return {"lat": float(s["lat"]), "lon": float(s["lon"]),
+                "horizon": horizon, "min_elev": min_elev}
     except (OSError, ValueError, KeyError):
-        return {"lat": None, "lon": None}
+        return {"lat": None, "lon": None, "horizon": horizon, "min_elev": min_elev}
 
 
 # Minimum culmination for a pass to be LISTED at all, in degrees.

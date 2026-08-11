@@ -544,6 +544,28 @@ class MinElevConfigTest(RoutesTest):
         open(p, "w").write("{not json")
         self.assertEqual(self.routes._min_elev(), 10.0)
 
+    def test_station_carries_the_horizon_mask(self):
+        self._write_station(min_elev=12, horizon={"N": 25, "NNE": 24})
+        st = self.routes._station()
+        self.assertEqual(st["horizon"], {"N": 25, "NNE": 24})
+        self.assertEqual(st["min_elev"], 12)
+
+    def test_station_without_a_horizon_reports_an_empty_one(self):
+        # An empty object, never a missing key: the client reads
+        # station.horizon and an undefined would take the sky plot down on a box
+        # whose operator has never drawn one.
+        self._write_station()
+        st = self.routes._station()
+        self.assertEqual(st["horizon"], {})
+        self.assertEqual(st["min_elev"], 10.0)
+
+    def test_unreadable_station_still_reports_an_empty_horizon(self):
+        p = os.path.join(self._tmp, "configuration", "station.json")
+        open(p, "w").write("{not json")
+        st = self.routes._station()
+        self.assertEqual(st["horizon"], {})
+        self.assertIsNone(st["lat"])
+
     def test_the_floor_reaches_compute_passes(self):
         self._write_station(min_elev=30)
         seen = []

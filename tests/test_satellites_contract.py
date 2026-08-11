@@ -70,9 +70,9 @@ class RosterTest(_Base):
                     "tle_age_days", "station"):
             self.assertIn(key, d, f"contract requires `{key}`")
 
-    def test_station_block_is_always_both_keys(self):
+    def test_station_block_is_always_all_four_keys(self):
         d = self.c.get("/api/satellites").get_json()
-        self.assertEqual(set(d["station"]), {"lat", "lon"})
+        self.assertEqual(set(d["station"]), {"lat", "lon", "horizon", "min_elev"})
 
     def test_limit_bounds_the_roster(self):
         d = self.c.get("/api/satellites?limit=1").get_json()
