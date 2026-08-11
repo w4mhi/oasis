@@ -2916,7 +2916,7 @@ tap advances it:
 |---|---|
 | **off** | nothing |
 | **chime** | strikes the hour — two strikes, 330 Hz + 660 Hz, deliberately unlike the satellite "VVV" |
-| **voice** | strikes, then speaks the time: *"The time is eighteen hundred Zulu. Local time is …"* |
+| **voice** | strikes, then speaks the time as two sentences a second apart: *"The time is eighteen hundred Zulu."* … *"Local time is …"* |
 
 Speech-without-strike is deliberately unreachable.
 

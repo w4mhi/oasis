@@ -38,19 +38,24 @@ test('quiet hours run 22:00 to 07:00 LOCAL', () => {
 test('chime mode strikes the hour and says nothing', () => {
   const r = C.oasisClockDue(H18, parts(18, 11), 'chime', 0, seen(H18));
   assert.strictEqual(r.chime, true);
-  assert.strictEqual(r.speak, '');
+  assert.deepStrictEqual(r.speak, []);
 });
 
-test('voice mode strikes AND speaks', () => {
+test('voice mode strikes AND speaks, as TWO separate utterances', () => {
+  // Two, not one: the caller puts a second of silence between them, which it
+  // cannot do to a single string. An empty array is truthy, so the caller tests
+  // .length — a regression to one joined string would still "work" and quietly
+  // lose the pause, which is why this asserts the shape and not just the words.
   const r = C.oasisClockDue(H18, parts(18, 11), 'voice', 0, seen(H18));
   assert.strictEqual(r.chime, true);
-  assert.strictEqual(r.speak, 'The time is eighteen hundred Zulu. Local time is eleven hundred.');
+  assert.deepStrictEqual(r.speak,
+    ['The time is eighteen hundred Zulu.', 'Local time is eleven hundred.']);
 });
 
 test('off does nothing at all', () => {
   const r = C.oasisClockDue(H18, parts(18, 11), 'off', 0, seen(H18));
   assert.strictEqual(r.chime, false);
-  assert.strictEqual(r.speak, '');
+  assert.deepStrictEqual(r.speak, []);
 });
 
 test('the hour fires once, not on every tick for an hour', () => {
@@ -76,7 +81,7 @@ test('quiet hours suppress the strike, by LOCAL hour not UTC', () => {
   // Reading quiet hours off the UTC hour would invert the whole feature.
   const r = C.oasisClockDue(H18, parts(13, 6), 'voice', 0, seen(H18));
   assert.strictEqual(r.chime, false);
-  assert.strictEqual(r.speak, '');
+  assert.deepStrictEqual(r.speak, []);
 });
 
 test('an override defeats quiet hours', () => {
@@ -113,36 +118,56 @@ test('an override expires at the NEXT 07:00 local', () => {
   assert.strictEqual(end2.getDate(), 11, 'this morning, not tomorrow morning');
 });
 
+test('each clock is its own sentence, and each stands alone', () => {
+  // Split so the pause has somewhere to go — and each half has to be a whole
+  // sentence, because a listener who misses the first one still has to be able
+  // to make sense of the second.
+  const [zulu, local] = C.oasisClockPhrases(parts(18, 11));
+  assert.strictEqual(zulu, 'The time is eighteen hundred Zulu.');
+  assert.strictEqual(local, 'Local time is eleven hundred.');
+});
+
 test('the spoken hour is words, never digits', () => {
   // "18:00" through Piper is a coin flip — "eighteen colon zero zero" is a real
-  // outcome. Nothing in the sentence may be a numeral.
-  const s = C.oasisClockPhrase(parts(18, 11));
-  assert.match(s, /^The time is eighteen hundred Zulu\. Local time is eleven hundred\.$/);
-  assert.doesNotMatch(s, /[0-9:]/);
+  // outcome. Nothing in either sentence may be a numeral.
+  C.oasisClockPhrases(parts(18, 11)).forEach(s => assert.doesNotMatch(s, /[0-9:]/));
 });
 
 test('the small hours read as military, and midnight is midnight', () => {
-  assert.match(C.oasisClockPhrase(parts(1, 1)), /oh one hundred Zulu/);
-  assert.match(C.oasisClockPhrase(parts(9, 9)), /oh nine hundred Zulu/);
-  assert.match(C.oasisClockPhrase(parts(0, 0)), /^The time is midnight Zulu\. Local time is midnight\.$/);
-  assert.match(C.oasisClockPhrase(parts(23, 23)), /twenty three hundred Zulu/);
+  const z = p => C.oasisClockPhrases(p)[0], l = p => C.oasisClockPhrases(p)[1];
+  assert.match(z(parts(1, 1)), /oh one hundred Zulu/);
+  assert.match(z(parts(9, 9)), /oh nine hundred Zulu/);
+  assert.strictEqual(z(parts(0, 0)), 'The time is midnight Zulu.');
+  assert.strictEqual(l(parts(0, 0)), 'Local time is midnight.');
+  assert.match(z(parts(23, 23)), /twenty three hundred Zulu/);
 });
 
 test('a half-hour timezone says the half hour rather than rounding into a lie', () => {
   // India is UTC+05:30: the top of the Zulu hour is 23:30 locally. Saying
   // "twenty three hundred" there would be wrong by half an hour, every hour.
-  const s = C.oasisClockPhrase(parts(18, 23, 30));
-  assert.match(s, /Local time is twenty three thirty\.$/);
-  assert.match(C.oasisClockPhrase(parts(18, 5, 45)), /Local time is oh five forty five\.$/);
-  assert.match(C.oasisClockPhrase(parts(18, 0, 30)), /Local time is zero zero thirty\.$/);
+  const l = p => C.oasisClockPhrases(p)[1];
+  assert.strictEqual(l(parts(18, 23, 30)), 'Local time is twenty three thirty.');
+  assert.strictEqual(l(parts(18, 5, 45)), 'Local time is oh five forty five.');
+  assert.strictEqual(l(parts(18, 0, 30)), 'Local time is zero zero thirty.');
 });
 
-test('every hour of the day produces a sayable phrase', () => {
+test('every hour of the day produces two sayable sentences', () => {
   for (let h = 0; h < 24; h++) {
-    const s = C.oasisClockPhrase(parts(h, h));
-    assert.doesNotMatch(s, /[0-9:]/, `hour ${h}`);
-    assert.doesNotMatch(s, /undefined|NaN/, `hour ${h}`);
+    const said = C.oasisClockPhrases(parts(h, h));
+    assert.strictEqual(said.length, 2, `hour ${h}`);
+    said.forEach(s => {
+      assert.doesNotMatch(s, /[0-9:]/, `hour ${h}`);
+      assert.doesNotMatch(s, /undefined|NaN/, `hour ${h}`);
+      assert.match(s, /\.$/, `hour ${h}: each half is a sentence`);
+    });
   }
+});
+
+test('the gap between the two is a real, non-zero pause', () => {
+  // A zero here would collapse the split back into one run-on announcement
+  // without anything else failing.
+  assert.ok(C.OASIS_CLOCK_GAP_MS >= 500, 'long enough to hear as deliberate');
+  assert.ok(C.OASIS_CLOCK_GAP_MS <= 2000, 'short enough to stay one announcement');
 });
 
 test('parts are read off one Date, UTC and local kept apart', () => {

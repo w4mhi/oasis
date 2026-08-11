@@ -14,7 +14,7 @@
 //   chime  — strike only. What makes quiet hours survivable rather than binary:
 //            during a contest you may want the hour marked without being
 //            narrated at.
-//   voice  — strike, then the spoken time.
+//   voice  — strike, then the spoken time: Zulu, a second's silence, local.
 // Speech WITHOUT the strike is deliberately not reachable: the strike buys the
 // attention the sentence needs, and without it the announcement arrives
 // mid-word from across the room.
@@ -74,7 +74,7 @@
   // local time is then 11:30 rather than 11:00, which oasisClockPhrase says out
   // loud rather than rounding into a lie.
   function oasisClockDue(nowMs, parts, mode, overrideUntil, state) {
-    var none = { chime: false, speak: '' };
+    var none = { chime: false, speak: [] };
     var key = Math.floor(nowMs / 3600000);
     state = state || {};
     // First tick of the session only records where we are. A page that comes up
@@ -91,7 +91,7 @@
     if (oasisClockQuiet(parts.locH) && !oasisClockOverrideActive(nowMs, overrideUntil)) {
       return none;
     }
-    return { chime: true, speak: mode === 'voice' ? oasisClockPhrase(parts) : '' };
+    return { chime: true, speak: mode === 'voice' ? oasisClockPhrases(parts) : [] };
   }
 
   // ── Words, not digits ────────────────────────────────────────────────────
@@ -123,11 +123,21 @@
     return head + ' ' + _words(m);
   }
 
-  function oasisClockPhrase(parts) {
+  // TWO sentences, not one, and the caller is expected to leave a gap between
+  // them. Both clocks in a single utterance is eight words of numbers with one
+  // breath in the middle, and the second half lands while the operator is still
+  // holding the first — the listener has to keep "eighteen hundred Zulu" in
+  // their head while "fourteen hundred" is already arriving. Split, each half is
+  // a whole thought, and the pause is where the first one is written down.
+  //
+  // It also makes the two independently cacheable: the Zulu half is the same
+  // string on every station at that hour, so it is warm far more often than the
+  // combined sentence ever was.
+  function oasisClockPhrases(parts) {
     var zulu = _hourWords(parts.utcH);
     var local = parts.locM ? _hourMinuteWords(parts.locH, parts.locM)
                            : _hourWords(parts.locH);
-    return 'The time is ' + zulu + ' Zulu. Local time is ' + local + '.';
+    return ['The time is ' + zulu + ' Zulu.', 'Local time is ' + local + '.'];
   }
 
   // Read the three fields this module needs off a Date, in one place, so a
@@ -177,14 +187,21 @@
   // before the voice starts instead of talking over it.
   var CHIME_2_MS = 1800;
 
+  // The silence BETWEEN the two sentences — after the first has finished, not
+  // after it started. A second is long enough to be heard as a deliberate pause
+  // rather than a stutter in the synthesis, and short enough that the pair still
+  // reads as one announcement instead of two unrelated ones.
+  var GAP_MS = 1000;
+
   root.OASIS_CLOCK_MODES = MODES;
   root.OASIS_CLOCK_CHIME_2_MS = CHIME_2_MS;
+  root.OASIS_CLOCK_GAP_MS = GAP_MS;
   root.oasisClockNextMode = oasisClockNextMode;
   root.oasisClockQuiet = oasisClockQuiet;
   root.oasisClockOverrideUntil = oasisClockOverrideUntil;
   root.oasisClockOverrideActive = oasisClockOverrideActive;
   root.oasisClockDue = oasisClockDue;
-  root.oasisClockPhrase = oasisClockPhrase;
+  root.oasisClockPhrases = oasisClockPhrases;
   root.oasisClockParts = oasisClockParts;
   root.oasisClockChime = oasisClockChime;
   if (typeof module !== 'undefined' && module.exports) module.exports = root;

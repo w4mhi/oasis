@@ -1940,7 +1940,25 @@ function runClockChime() {
   // hold the pass announcement behind a sentence about what time it is.
   if (_jennyBusy || ms < _satAlertUntil) return;
   oasisClockChime(2);
-  if (due.speak) setTimeout(() => jennySpeak(due.speak), OASIS_CLOCK_CHIME_2_MS);
+  if (!due.speak.length) return;
+  // Warm BOTH halves now, under the strike. The gap between them is supposed to
+  // be a second of deliberate silence; an uncached second sentence would make it
+  // a second plus however long Piper takes (3.6 s, measured on a Pi 5), and the
+  // pause would be synthesis latency on the first run of each hour and the real
+  // thing afterwards. Same reasoning as reciteStart, same fix.
+  due.speak.forEach(line => { try { oasisSpeakWarm(line); } catch (_) {} });
+  setTimeout(() => speakClockTime(due.speak), OASIS_CLOCK_CHIME_2_MS);
+}
+
+// Zulu, silence, local. The pause is measured from the END of the first
+// sentence — jennySpeak resolves when playback finishes — so it is a second of
+// silence rather than a second from the moment we asked for it, which on an
+// uncached line would be no silence at all.
+async function speakClockTime(lines) {
+  for (let i = 0; i < lines.length; i++) {
+    if (i) await new Promise(res => setTimeout(res, OASIS_CLOCK_GAP_MS));
+    await jennySpeak(lines[i]);
+  }
 }
 
 function runSatAlerts() {
