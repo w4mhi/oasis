@@ -321,6 +321,18 @@ html, body { height: 100%; margin: 0; }
 #sat-legend .leg-row:not(.mix) + .leg-row.mix { margin-top: 6px; padding-top: 6px;
   border-top: 1px solid var(--border); }
 #sat-legend .leg-note { color: var(--text-dim); margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border); line-height: 1.5; }
+
+/* Horizon editor — a STATION-level overlay, not part of any satellite's popup.
+   The popup's sky plot displays the mask; this is the only thing that edits it. */
+#horizon-editor { position: fixed; inset: 0; z-index: 400; display: none;
+  align-items: center; justify-content: center; background: rgba(0,0,0,.6); }
+#horizon-editor.open { display: flex; }
+#horizon-editor .he-box { background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px; max-width: 420px; }
+#horizon-editor .he-plot { width: 320px; height: 320px; touch-action: none; cursor: crosshair; }
+#horizon-editor .he-handle { fill: var(--accent); cursor: grab; }
+#horizon-editor .he-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+#horizon-editor .he-msg { color: var(--text-dim); margin-top: 6px; min-height: 1.2em; }
 </style>
 </head>
 <body>
@@ -336,6 +348,18 @@ html, body { height: 100%; margin: 0; }
   </div>
 </div>
 <div id="sat-popup" class="sat-popup" hidden><button class="sp-close" onclick="hideSatPopup()" aria-label="Close">×</button><div class="pop-body"></div></div>
+<div id="horizon-editor" role="dialog" aria-label="Edit horizon">
+  <div class="he-box">
+    <div class="pop-call">Horizon</div>
+    <div class="pop-lbl">Drag each handle out to where your skyline actually is. A sector left at the centre is clear.</div>
+    <svg class="he-plot" viewBox="0 0 150 150" id="he-plot"></svg>
+    <div class="he-msg" id="he-msg"></div>
+    <div class="he-row">
+      <button class="tbtn" onclick="closeHorizonEditor()">Cancel</button>
+      <button class="tbtn" onclick="saveHorizon()">Save</button>
+    </div>
+  </div>
+</div>
 <!-- Coverage wash: a green edge-glow over the map while a plotted satellite is
      above the horizon (you're inside its footprint). Opacity tracks elevation. -->
 <div id="coverage-wash"></div>
@@ -372,6 +396,7 @@ html, body { height: 100%; margin: 0; }
               aria-expanded="false">Filters<span id="filter-dd-badge"></span><span class="f-dd-caret">▾</span></button>
       <div class="f-dd-panel" id="filter-dd-panel" hidden></div>
     </div>
+    <button class="tbtn" onclick="openHorizonEditor()" title="Draw the skyline this station actually sees">Horizon</button>
     <span class="track-sep">|</span>
     <span style="flex:1"></span>
     <span id="coverage-badge"></span>
@@ -1515,6 +1540,101 @@ function skyPlotSVG(track, color) {
     return `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="3" class="poi-dot" fill="${color}"/>`; };
   out += dot(track[0]) + dot(peak) + dot(track[track.length-1]);
   return out + '</svg>';
+}
+
+// ── Horizon editor ───────────────────────────────────────────────────────────
+// The horizon belongs to the STATION, not to any satellite, which is why this is
+// a page-level overlay and not a control inside a satellite's popup. The popup's
+// sky plot DISPLAYS the mask; only this edits it.
+let _hzDraft = {};
+// Shared with wireHorizonEditor below: closing the overlay must disarm a drag
+// that never got a matching pointerup (e.g. the pointer left the browser
+// window entirely), or every mousemove over the rest of the page afterward
+// would keep rewriting sectors that are no longer even on screen.
+let _hzDragging = false;
+
+function openHorizonEditor() {
+  _hzDraft = Object.assign({}, (STATION && STATION.horizon) || {});
+  document.getElementById('he-msg').textContent = '';
+  document.getElementById('horizon-editor').classList.add('open');
+  drawHorizonEditor();
+}
+function closeHorizonEditor() {
+  document.getElementById('horizon-editor').classList.remove('open');
+  _hzDragging = false;
+}
+
+function drawHorizonEditor() {
+  const CX = 75, CY = 75, R = 62;
+  const minEl = minElevOf();
+  let out = '';
+  for (const el of [0, 30, 60]) {
+    out += `<circle cx="${CX}" cy="${CY}" r="${(R * (90 - el) / 90).toFixed(1)}" class="ring"/>`;
+  }
+  out += `<text x="${CX}" y="10" class="cmp">N</text><text x="${CX}" y="147" class="cmp">S</text>` +
+         `<text x="6" y="${CY + 3}" class="cmp">W</text><text x="144" y="${CY + 3}" class="cmp">E</text>`;
+  // The rim as it stands, so the shape being edited is the shape that will ship —
+  // the same rimPath the satellite popup draws, not a second copy of it.
+  const rim = OasisHorizon.rimPath(_hzDraft, minEl, satgeo.polar, CX, CY, R);
+  if (rim) out += `<path class="horizon-rim" fill-rule="evenodd" d="${rim}"/>`;
+  OasisHorizon.SECTORS.forEach((s, i) => {
+    const v = _hzDraft[s.name] != null ? _hzDraft[s.name] : minEl;
+    const p = satgeo.polar(s.az, v, CX, CY, R);
+    out += `<circle class="he-handle" data-i="${i}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4"/>`;
+  });
+  document.getElementById('he-plot').innerHTML = out;
+}
+
+// One pointer handler for the whole plot: pick the nearest sector to where the
+// pointer is and set its elevation from the radius. Dragging across sectors
+// shapes a treeline in one gesture, which is the whole reason this is not a form.
+(function wireHorizonEditor() {
+  const svg = () => document.getElementById('he-plot');
+  function apply(ev) {
+    const el = svg(), r = el.getBoundingClientRect();
+    // Back out of the 150-unit viewBox to the rendered box.
+    const x = (ev.clientX - r.left) / r.width * 150 - 75;
+    const y = (ev.clientY - r.top) / r.height * 150 - 75;
+    const dist = Math.hypot(x, y);
+    const az = ((Math.atan2(x, -y) * 180 / Math.PI) + 360) % 360;
+    // polar() maps elevation 90 to the centre and 0 to radius R=62.
+    let elev = 90 - Math.min(dist, 62) / 62 * 90;
+    elev = Math.max(0, Math.min(89, Math.round(elev)));
+    const i = Math.round(az / OasisHorizon.STEP) % OasisHorizon.SECTORS.length;
+    _hzDraft[OasisHorizon.SECTORS[i].name] = elev;
+    drawHorizonEditor();
+  }
+  document.addEventListener('pointerdown', e => {
+    if (!svg() || !svg().contains(e.target)) return;
+    _hzDragging = true; apply(e);
+  });
+  document.addEventListener('pointermove', e => { if (_hzDragging) apply(e); });
+  // No target check on pointerup/pointercancel: a drag that starts on the plot
+  // and is released anywhere else on the page (or cancelled, e.g. the pointer
+  // left the window) must still terminate cleanly, not just one that ends back
+  // over the SVG.
+  document.addEventListener('pointerup', () => { _hzDragging = false; });
+  document.addEventListener('pointercancel', () => { _hzDragging = false; });
+})();
+
+async function saveHorizon() {
+  const msg = document.getElementById('he-msg');
+  msg.textContent = 'Saving…';
+  try {
+    const r = await fetch('/api/satellites/horizon', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+      body: JSON.stringify({ horizon: _hzDraft })
+    });
+    const j = await r.json();
+    if (!r.ok || !j.ok) { msg.textContent = j.error || 'Could not save.'; return; }
+    // Adopt it locally so every open plot redraws without a reload.
+    STATION.horizon = j.horizon;
+    closeHorizonEditor();
+    if (_popupSat) satClick(_popupSat.norad, null);
+  } catch (e) {
+    msg.textContent = 'Could not save: ' + e;
+  }
 }
 
 /* ── Header chrome: CPU/temp, clock, cursor lat/lon ─────────────────────── */
