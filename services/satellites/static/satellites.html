@@ -72,10 +72,20 @@ html, body { height: 100%; margin: 0; }
 .home-mark { fill: none; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
 .home-mark .halo { stroke: #0d1117; stroke-width: 5.2; opacity: .85; }
 .home-mark .roof { stroke: #ffd257; stroke-width: 2.8; }
-/* Click-a-satellite popup (replaces the old MapLibre popup; same pop-* content). */
-.sat-popup { position: fixed; z-index: 300; max-width: 300px; background: var(--panel);
+/* Click-a-satellite popup (replaces the old MapLibre popup; same pop-* content).
+   420px, not the old 300: this is the station's DETAIL view now, and the sky plot
+   has to be big enough to read a horizon mask against. Two columns keep it from
+   growing into a tall strip that runs off a short screen. */
+.sat-popup { position: fixed; z-index: 300; max-width: 420px; background: var(--panel);
   border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px 9px;
   box-shadow: 0 6px 24px rgba(0,0,0,.6); font-size: var(--fs-small); }
+.sat-popup .sp-cols { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: start; }
+/* Frequencies can outrun the plot on a bird like the ISS; scroll the column, not
+   the page. */
+.sat-popup .sp-freqs { max-height: 200px; overflow-y: auto; }
+.sat-popup .sp-dl { white-space: nowrap; }
+.sat-popup .sp-up { color: var(--text-dim); padding-left: 10px; white-space: nowrap; }
+.sat-popup .pop-polar { width: 180px; height: 180px; }
 .sat-popup[hidden] { display: none; }
 .sat-popup .sp-close { float: right; background: none; border: none; color: var(--text-dim);
   font-size: 18px; line-height: 1; cursor: pointer; padding: 0 0 0 8px; }
@@ -396,6 +406,7 @@ html, body { height: 100%; margin: 0; }
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
 <script src="/common/js/sat-look.js"></script>
+<script src="/common/js/sat-uplink.js"></script>
 <script>
 /* ─────────────────────────────────────────────────────────────────────────
    Roster-driven satellite map. Check a satellite → plot its NEXT pass ground
@@ -1400,10 +1411,22 @@ function satClick(norad, e) {
   el.style.top  = Math.max(8, Math.min(y, innerHeight - ph - 8)) + 'px';
 }
 function hideSatPopup() { const el = document.getElementById('sat-popup'); if (el) el.hidden = true; _popupSat = null; }
+// The frequency block. This reads the SAME grouped entries as the roster
+// dropdown (sat.downlinks is already grouped server-side) — the old flat
+// "mode freq" join here predated grouping and printed 9 ISS rows where the card
+// showed 7, which is precisely the duplicate-crowding the grouping removed.
+function popupFreqsHTML(sat) {
+  const dls = (sat.downlinks || []).slice().sort((a, b) => a.freq_mhz - b.freq_mhz);
+  if (!dls.length) return '<div class="pop-row"><span class="pop-val">No downlinks.</span></div>';
+  return dls.map(d => {
+    const ups = uplinkLines(d).map(l => `<div class="sp-up">${l}</div>`).join('');
+    return `<div class="sp-dl">${d.freq_mhz} <span class="pop-lbl">${dlLabel(d)}</span></div>${ups}`;
+  }).join('');
+}
+
 function popupHTML(sat) {
   const plotted = PLOTTED[sat.norad];
   const chips = sat.labels.map(l => `<span class="chip">${l}</span>`).join('');
-  const dls = sat.downlinks.map(d => `${d.mode} ${d.freq_mhz} MHz`).join(' · ');
   const passes = (PASSES[sat.norad] || []).slice(0, 4).map(p => {
     const active = plotted && plotted.pass.rise === p.rise ? 'active' : '';
     return `<div class="pop-pass ${active}" onclick="pickPass(${sat.norad}, '${p.rise}', '${p.set}')">
@@ -1413,9 +1436,11 @@ function popupHTML(sat) {
   const polar = (plotted && plotted.track.length) ? skyPlotSVG(plotted.track, plotted.color) : '';
   return `<div class="pop-call">${sat.name}</div>
     <div class="pop-chips">${chips}</div>
-    <div class="pop-row"><span class="pop-lbl">Downlink</span><span class="pop-val">${dls || '—'}</span></div>
-    <div class="pop-sec"><span class="pop-lbl">Upcoming passes</span>${passes}</div>
-    ${polar ? `<div class="pop-sec">${polar}</div>` : ''}`;
+    <div class="sp-cols">
+      <div class="sp-freqs"><span class="pop-lbl">Frequencies</span>${popupFreqsHTML(sat)}</div>
+      <div>${polar}</div>
+    </div>
+    <div class="pop-sec"><span class="pop-lbl">Upcoming passes</span>${passes}</div>`;
 }
 // Re-plot a specific pass chosen from the popup.
 async function pickPass(norad, rise, set) {
