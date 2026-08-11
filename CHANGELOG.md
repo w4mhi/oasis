@@ -15,15 +15,43 @@ compute it. Tagged commits use the `v<version>` form — **no dot** after `v`
 (e.g. `v2.8.1`), matching `v2.8.0`. Not every commit needs a tag or a CHANGELOG
 entry, but notable releases still bump this file alongside `version.json`.
 
+## v3.25.2 — 2026-08-10
+
+Documentation review ahead of going public. The docs had drifted 238 commits
+behind the code.
+
+### Changed
+- **README, `docs/SETUP.md`, `docs/api.md` and the handbook reviewed against the
+  shipping code.** Undocumented features written up, stale claims corrected, and
+  dead paths, anchors, unit names and endpoints fixed throughout.
+- **Handbook:** new pages for Station Voice, Service Operations and Diagnostics;
+  screenshots re-shot from a station running this release.
+- **`CHANGELOG.md`** closes the gap between v2.8.1 and v3.25.0.
+
+### Added
+- [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md),
+  [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and GitHub issue and PR templates.
+- [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) — every bundled library,
+  font, daemon and dataset with its licence and any redistribution obligation,
+  including the Jenny voice attribution requirement. Items that could not be
+  verified are recorded as unverified rather than guessed.
+
+### Fixed
+- Two documentation errors that could mislead an operator: the handbook
+  understated the sudoers grant behind service controls, and the documented
+  `doctor.py` CI recipe parsed a key that no longer exists.
+
+### Removed
+- An unreferenced ADS-B icon sheet with no traceable licence, and an orphaned
+  handbook screenshot.
+
+---
+
 ## v3.25.0 — 2026-08-10
 
 **The first public release.** Everything below the 3.x heading has been in daily
 use on the maintainer's stations; this is the version at which the project was
-opened up. Alongside the code, this release adds the paperwork a public project
-needs: [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md),
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), issue and PR templates, and a full
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) inventorying every bundled
-library, font, daemon, and dataset with its licence.
+opened up.
 
 ### Added
 - **The satellite card says what your station can actually do.** Downlinks
@@ -55,11 +83,6 @@ library, font, daemon, and dataset with its licence.
 - The Winlink probe no longer leaks 2 MiB of `/dev/shm` per poll.
 - The maps health pill counts GrayWolf's tile store rather than the suite's own
   `maps/` tree, which is empty on every real station.
-
-### Removed
-- `maps/traffic/assets/every-aircraft-icon-in-adsbx-*.webp` — an unreferenced
-  third-party image with no traceable licence, committed as visual reference
-  while hand-drawing the ADS-B icons.
 
 ---
 
