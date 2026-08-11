@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OASIS - Diagnostics (Handbook)</title>
+  <link rel="stylesheet" href="handbook.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <a class="sb-brand" href="index.html">
+      <img src="img/oasis-logo.svg" alt="" />
+      <span><b>OASIS</b> handbook</span>
+    </a>
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="tuning-bench.html">RTL-SDR Tuning</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
+      <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">&#8962; HOME</a>
+    </div>
+    <div class="eyebrow">Operations</div>
+    <h1>Diagnostics</h1>
+    <p class="subtitle">The browser sweep &mdash; one button, six capabilities, and a ranked list of what to fix first</p>
+
+    <p>
+      The <strong>OASIS Diagnostic</strong> page &mdash; <strong>SYSOP &rarr; OASIS
+      Diagnostic</strong> on the dashboard nav, at
+      <code>server/system/diagnostic.html</code> &mdash; runs the station&rsquo;s whole
+      health sweep in one shot and lays the result out as capabilities first, individual
+      checks second. It is the page you open before you drive to a site, not a monitor you
+      leave running.
+    </p>
+    <figure class="figure">
+      <img src="img/diagnostics-page.png" alt="The OASIS Diagnostic page after a run — capability tiles, summary counters, and the grouped check list" />
+      <figcaption>The Diagnostic page after a live sweep &mdash; capability tiles across the top, then the checks grouped beneath</figcaption>
+    </figure>
+    <div class="callout tip">
+      <span class="ic">&#10003;</span>
+      <div><p>This is <strong>not</strong> <code>scripts/doctor.py</code>. Both drive the
+      same check registry, but <a href="health-check.html">doctor</a> is the headless CLI
+      &mdash; exit codes, <code>--json</code>, a remote <code>--host</code>, CI. This is the
+      browser view of the same sweep, with the capability rollup, the FIX NOW ranking and
+      the deep-links into Setup that a terminal cannot give you. One real difference in what
+      they run is noted below.</p></div>
+    </div>
+
+    <h2>Run diagnostics</h2>
+    <p>
+      There is one button, top right of the header row: <code>[ Run diagnostics ]</code>.
+      It calls <code>GET /api/diagnostics</code>, which runs every registered check and
+      returns <code>ran_at</code>, a summary, the capability rollups, the ranked
+      <code>fix_now</code>, and the five check groups.
+    </p>
+    <p>
+      <strong>The page never runs on its own and never polls.</strong> That is deliberate:
+      the sweep makes real probes &mdash; port connections, HTTP calls back into the server,
+      <code>systemctl</code> queries, disk stats &mdash; and a page that repeated all of
+      that on a timer would be a load generator pointed at a Pi. Nothing happens until you
+      click. The header carries the station callsign and grid beside the run time, so a
+      screenshot of the page identifies which station it came from.
+    </p>
+
+    <h2>The cached, greyed-out render</h2>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>This is the single most confusing thing on the page, so read it
+      once and never be caught by it.</strong> When you open Diagnostics, it immediately
+      renders the <em>last</em> sweep from <code>localStorage</code> &mdash; complete with
+      tiles, counters and check rows &mdash; but drawn <strong>dimmed and desaturated</strong>,
+      with a yellow banner across the top reading <em>&ldquo;Showing last run &lt;date and
+      time&gt; &mdash; click Run diagnostics to refresh.&rdquo;</em> Nothing on that screen
+      was measured today. A service you fixed an hour ago is still red; a service that died
+      ten minutes ago is still green.</p></div>
+    </div>
+    <p>
+      The behaviour is right &mdash; walking up to a station and instantly seeing its
+      last-known state beats staring at an empty page &mdash; but the greyscale is the
+      <em>only</em> visual difference between a stale render and a live one, and on a sunny
+      screen in the field it is easy to miss. <strong>If the yellow banner is showing, you
+      are looking at history.</strong> Click Run; the banner disappears, full colour comes
+      back, and the timestamp beside the callsign updates.
+    </p>
+    <p>
+      A run that fails leaves the page as it was and reports the reason where the timestamp
+      goes (<code>run failed: &hellip;</code>) rather than blanking a screen you may still
+      need to read.
+    </p>
+
+    <h2>Capability tiles</h2>
+    <p>
+      Above everything sit six tiles &mdash; the question &ldquo;can this station still
+      <em>do</em> the thing?&rdquo;, which is not the same as &ldquo;is every check
+      green?&rdquo;. Click a tile to expand the individual checks behind it.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Tile</th><th>Label</th><th>Member checks</th></tr></thead>
+      <tbody>
+        <tr><td><code>ACCESS</code></td><td>Core / Access</td><td>server, station_identity, webssh</td></tr>
+        <tr><td><code>APRS_RX</code></td><td>APRS Receive</td><td>rtl_sdr, digirig, dra_pi, graywolf, graywolf_api, aprs_feed</td></tr>
+        <tr><td><code>WINLINK</code></td><td>Winlink</td><td>pat</td></tr>
+        <tr><td><code>POSITION</code></td><td>Position / GPS</td><td>gps</td></tr>
+        <tr><td><code>POWER</code></td><td>Power / Health</td><td>power, temp, cpu, disk, cooling_hat</td></tr>
+        <tr><td><code>REFERENCE</code></td><td>Reference Data</td><td>fcc, repeaterbook, kiwix, forms, maps</td></tr>
+      </tbody>
+    </table></div></div>
+    <h3>The rollup rule, and why the counters look contradictory</h3>
+    <p>
+      Each check is registered as <strong>critical</strong> or not, and the rollup is
+      deterministic:
+    </p>
+    <ul>
+      <li><strong>fail</strong> if any <em>critical</em> member check failed.</li>
+      <li>otherwise <strong>warn</strong> if any member &mdash; critical or not &mdash;
+        failed or warned. A non-critical failure degrades the capability rather than
+        killing it.</li>
+      <li>otherwise <strong>ok</strong>.</li>
+    </ul>
+    <p>
+      And in the summary line a capability counts as <strong>DOWN only when its rollup is
+      <code>fail</code></strong>. A <code>warn</code> still counts as <strong>UP</strong>,
+      because the capability is degraded but functioning. That is why
+      <em>&ldquo;1 problem &middot; 0 warnings &middot; 20 OK &mdash; 6 capabilities UP
+      &middot; 0 DOWN&rdquo;</em> is a perfectly consistent reading and not a bug: a
+      non-critical check failed, the capability it belongs to degraded to
+      <code>warn</code>, and warn is up. RepeaterBook missing is a real problem worth
+      showing, and it does not take Reference Data off the air.
+    </p>
+
+    <h2>FIX NOW</h2>
+    <p>
+      Directly under the tiles, a red hero banner appears when anything failed. It names
+      exactly <strong>one</strong> check &mdash; the highest-impact failure &mdash; with its
+      badge, its consequence line, and a <code>&rarr; Setup</code> link where one exists.
+      The ranking is critical failures first, then by group in the order
+      <strong>CORE, HARDWARE, SERVICES, SYSTEM, DATA</strong>. If nothing failed, the banner
+      is not rendered at all.
+    </p>
+    <p>
+      It exists because a wall of red is paralysing and most of it is downstream. Fix the
+      one thing it names, run again, and see what is actually left.
+    </p>
+
+    <h2>The summary counters</h2>
+    <p>
+      One line under FIX NOW, in the form:
+    </p>
+    <pre><code>2 problems &middot; 1 warning &middot; 18 OK    &mdash;    5 capabilities UP &middot; 1 DOWN</code></pre>
+    <p>
+      The first three are check counts; the last two are capability rollups under the rule
+      above. Singular and plural are handled, so <em>1 problem</em> and <em>1
+      capability UP</em> read correctly.
+    </p>
+
+    <h2>The five groups</h2>
+    <p>
+      Below the summary, every check again &mdash; this time grouped by where it lives
+      rather than by what it enables. Within each group, <strong>failures float to the
+      top</strong>, then warnings, then the passes.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Group</th><th>Covers</th></tr></thead>
+      <tbody>
+        <tr><td><strong>CORE</strong></td><td>The server itself, station identity, Web SSH.</td></tr>
+        <tr><td><strong>HARDWARE</strong></td><td>RTL-SDR, DigiRig, DRA-Pi, GPS.</td></tr>
+        <tr><td><strong>SERVICES</strong></td><td>GrayWolf and its history API, Pat, the APRS feed.</td></tr>
+        <tr><td><strong>SYSTEM</strong></td><td>Power, temperature, CPU, disk, cooling fan.</td></tr>
+        <tr><td><strong>DATA</strong></td><td>FCC database, map tiles, Kiwix, RepeaterBook, ICS forms, Winlink forms.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h2>The checks</h2>
+    <p>
+      Twenty-two checks are registered. <strong>The browser page runs twenty-one of
+      them</strong>: <code>winlink_forms</code> is registered at <em>backlog</em> tier and
+      is skipped unless a caller explicitly asks for backlog checks &mdash; which
+      <code>doctor.py</code> does and this page does not. That is the one real difference
+      between what the two surfaces run, and it is worth knowing before you go hunting for a
+      row that is not there.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Check</th><th>Group</th><th>Capability</th><th>Critical</th></tr></thead>
+      <tbody>
+        <tr><td>OASIS Server</td><td>CORE</td><td>ACCESS</td><td>yes</td></tr>
+        <tr><td>Station Identity</td><td>CORE</td><td>ACCESS</td><td>yes</td></tr>
+        <tr><td>Web SSH (ttyd)</td><td>CORE</td><td>ACCESS</td><td>no</td></tr>
+        <tr><td>RTL-SDR + APRS Audio Feed</td><td>HARDWARE</td><td>APRS_RX</td><td>yes</td></tr>
+        <tr><td>DigiRig (USB-Serial PTT)</td><td>HARDWARE</td><td>APRS_RX</td><td>no</td></tr>
+        <tr><td>DRA-Pi (GrayWolf Audio HAT)</td><td>HARDWARE</td><td>APRS_RX</td><td>no</td></tr>
+        <tr><td>GPS</td><td>HARDWARE</td><td>POSITION</td><td>yes</td></tr>
+        <tr><td>GrayWolf APRS</td><td>SERVICES</td><td>APRS_RX</td><td>yes</td></tr>
+        <tr><td>GrayWolf APRS History API</td><td>SERVICES</td><td>APRS_RX</td><td>no</td></tr>
+        <tr><td>Winlink (Pat)</td><td>SERVICES</td><td>WINLINK</td><td>yes</td></tr>
+        <tr><td>APRS Feed</td><td>SERVICES</td><td>APRS_RX</td><td>yes</td></tr>
+        <tr><td>Power</td><td>SYSTEM</td><td>POWER</td><td>yes</td></tr>
+        <tr><td>CPU Temperature</td><td>SYSTEM</td><td>POWER</td><td>no</td></tr>
+        <tr><td>CPU Load</td><td>SYSTEM</td><td>POWER</td><td>no</td></tr>
+        <tr><td>Disk Space</td><td>SYSTEM</td><td>POWER</td><td>no</td></tr>
+        <tr><td>Cooling fan</td><td>SYSTEM</td><td>POWER</td><td>no</td></tr>
+        <tr><td>FCC Callsign Database</td><td>DATA</td><td>REFERENCE</td><td>no</td></tr>
+        <tr><td>Map Tiles (PMTiles)</td><td>DATA</td><td>REFERENCE</td><td>no</td></tr>
+        <tr><td>Kiwix (Offline Wikipedia)</td><td>DATA</td><td>REFERENCE</td><td>no</td></tr>
+        <tr><td>RepeaterBook</td><td>DATA</td><td>REFERENCE</td><td>no</td></tr>
+        <tr><td>ICS Forms</td><td>DATA</td><td>REFERENCE</td><td>no</td></tr>
+        <tr><td>Winlink Forms (Offline Pages)</td><td>DATA</td><td>REFERENCE</td><td>no &mdash; <em>backlog tier; not run by this page</em></td></tr>
+      </tbody>
+    </table></div></div>
+    <h3>Badges</h3>
+    <p>
+      Every row carries a short uppercase badge beside its name, coloured by status. The
+      vocabulary is per-check, not global &mdash; it says what <em>that</em> check found:
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Check</th><th>Badges you will see</th></tr></thead>
+      <tbody>
+        <tr><td>OASIS Server</td><td><code>RUNNING</code> &middot; <code>DEV SERVER</code> (up, but not under gunicorn) &middot; <code>DOWN</code></td></tr>
+        <tr><td>Station Identity</td><td><code>SET</code> &middot; <code>PARTIAL</code> (callsign, no locator) &middot; <code>UNSET</code></td></tr>
+        <tr><td>Disk Space</td><td><code>OK</code> &middot; <code>LOW</code> &middot; <code>CRITICAL</code> &middot; <code>N/A</code></td></tr>
+        <tr><td>Power</td><td><code>OK</code> &middot; <code>PAST</code> (a past undervolt event) &middot; <code>UNDERVOLT</code> &middot; <code>N/A</code></td></tr>
+        <tr><td>CPU Temperature</td><td><code>OK</code> &middot; <code>WARM</code> &middot; <code>HOT</code> &middot; <code>N/A</code></td></tr>
+        <tr><td>APRS Feed</td><td><code>LIVE</code> &middot; <code>IDLE</code> &middot; <code>DOWN</code></td></tr>
+        <tr><td>GrayWolf / Kiwix / Pat</td><td><code>UP</code> &middot; <code>STOPPED</code> &middot; <code>NOT INSTALLED</code></td></tr>
+        <tr><td>FCC Callsign Database</td><td><code>READY</code> &middot; <code>NOT BUILT</code></td></tr>
+        <tr><td>Map Tiles</td><td><code>READY</code> &middot; <code>RESTART</code> &middot; <code>N/A</code></td></tr>
+        <tr><td>any check</td><td><code>ERROR</code> &mdash; the check itself raised. One bad check is caught and reported rather than sinking the whole sweep.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h2>Reading a failed row</h2>
+    <p>
+      A failing row grows two things a passing row does not have:
+    </p>
+    <ul>
+      <li>A red <strong>&ldquo;breaks&rdquo; line</strong> in plain language, saying what
+        this failure costs you rather than restating the fault. <em>&ldquo;No identity
+        &mdash; beacons/positions are anonymous.&rdquo;</em> <em>&ldquo;The OASIS web
+        interface is completely unreachable &mdash; no station functions work.&rdquo;</em>
+        It is there so you can triage on consequence, not on which line happens to be
+        reddest.</li>
+      <li>A <strong><code>&rarr; Setup</code> deep-link</strong> where a fix exists in the
+        browser &mdash; typically into <code>/server/system/setup.html</code>, and for
+        identity straight to its <code>#station</code> section. Not every failure has one; a
+        stopped systemd unit is fixed elsewhere.</li>
+    </ul>
+    <p>
+      Both are shown <em>only</em> on <code>fail</code>. A warning tells you its detail and
+      leaves it at that.
+    </p>
+
+    <h2>Four states, not three</h2>
+    <p>
+      Checks report <code>ok</code>, <code>warn</code> or <code>fail</code>. The page
+      renders a fourth, <strong><code>unknown</code></strong> &mdash; anything that is none
+      of those three, drawn with a neutral border and an ellipsis glyph instead of a tick,
+      warning triangle or cross. You should not normally see it: it is the honest render for
+      a status the front end does not recognise, which is what a payload from a newer or
+      older server would produce. Seeing <code>unknown</code> rows means the page and the
+      server disagree about the vocabulary &mdash; hard-refresh, and if it persists, the
+      browser is holding a cached script from a different build.
+    </p>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>Everything looks grey and washed out</td>
+            <td>You are looking at the cached last run. Click <strong>Run diagnostics</strong>.</td></tr>
+        <tr><td>&ldquo;1 problem&rdquo; but all six capabilities are UP</td>
+            <td>Correct. A non-critical check failed, so its capability degraded to
+            <code>warn</code> &mdash; and warn counts as up. Expand the tile to see which member
+            it was.</td></tr>
+        <tr><td>The run button spins and then reports a failure</td>
+            <td>The sweep makes localhost HTTP calls back into the same Flask process, so it needs a
+            threaded worker. If the server is running single-threaded the request can stall &mdash;
+            start it the supported way (<code>scripts/start-server.sh</code> / <code>./start.sh</code>).</td></tr>
+        <tr><td>A row you expected is not there</td>
+            <td>Only <code>winlink_forms</code> is deliberately absent (backlog tier). Anything else
+            missing means the check raised before it could report, which shows as an
+            <code>ERROR</code> badge rather than vanishing.</td></tr>
+        <tr><td>This page and <code>doctor.py</code> disagree</td>
+            <td>They share the registry, so a difference is usually a stale browser &mdash;
+            hard-refresh. <a href="health-check.html">doctor</a> is the headless source of truth,
+            and it alone includes the backlog-tier check.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <nav class="page-nav">
+      <a href="usb-bundle.html"><span class="lbl">Previous</span><span class="t">USB Bundle</span></a>
+      <a href="health-check.html" class="next"><span class="lbl">Next</span><span class="t">Health Check</span></a>
+    </nav>
+    <div class="foot">OASIS &middot; off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook.js"></script>
+</body>
+</html>

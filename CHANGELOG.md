@@ -15,6 +15,163 @@ compute it. Tagged commits use the `v<version>` form — **no dot** after `v`
 (e.g. `v2.8.1`), matching `v2.8.0`. Not every commit needs a tag or a CHANGELOG
 entry, but notable releases still bump this file alongside `version.json`.
 
+## v3.25.0 — 2026-08-10
+
+**The first public release.** Everything below the 3.x heading has been in daily
+use on the maintainer's stations; this is the version at which the project was
+opened up. Alongside the code, this release adds the paperwork a public project
+needs: [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md),
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), issue and PR templates, and a full
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) inventorying every bundled
+library, font, daemon, and dataset with its licence.
+
+### Added
+- **The satellite card says what your station can actually do.** Downlinks
+  collapsed from a row of buttons into one dropdown that arms a
+  `frequency|mode` pair, showing only what this station can tune — and nothing
+  is armable until an SDR is assigned to it in the hardware console.
+- **A pass says *where* it peaks**, not just how high: peak azimuth alongside
+  peak elevation, and slant range to a bird overhead.
+- **Birds are named the way operators say them** — `AO-7`, not `OSCAR 7` — with
+  the orbit class riding on the designator line.
+- **The pass-elevation floor is the operator's**, set in
+  `configuration/station.json`, not hardcoded at 10°.
+- **The Zulu clock strikes the hour**, in three states from one control: off,
+  chime, or chime-then-spoken-time. Quiet hours 22:00–07:00 local.
+- **The kiosk avatar** — a face on the 1920×1200 layout that wakes and glows
+  when the station speaks, with the mouth gated on audio onset rather than on
+  the request.
+
+### Fixed
+- **One autostart per station.** Pi OS Trixie's labwc honours *both* the XDG
+  autostart entry and its own autostart line, so stations installed before this
+  fix run **two stacked Chromium kiosks** — invisible, double the load, and the
+  reason muting a pass alert on the visible window left the hidden one chiming.
+  **Re-run `scripts/enable-autostart-pi.py` after upgrading.**
+- A re-computed pass is the same pass, so it stops being announced twice.
+- The bell now stops the noise you can actually hear, not just the next one.
+- `/listen` resolves by frequency **and** mode, so CW on a frequency shared with
+  an FM downlink no longer hands back a WAV of silence.
+- The Winlink probe no longer leaks 2 MiB of `/dev/shm` per poll.
+- The maps health pill counts GrayWolf's tile store rather than the suite's own
+  `maps/` tree, which is empty on every real station.
+
+### Removed
+- `maps/traffic/assets/every-aircraft-icon-in-adsbx-*.webp` — an unreferenced
+  third-party image with no traceable licence, committed as visual reference
+  while hand-drawing the ADS-B icons.
+
+---
+
+## The 3.x series — 2026-08-02 → 2026-08-10
+
+238 commits between `v2.8.1` and `v3.25.0`, consolidated here by theme rather
+than reconstructed version by version. The individual bumps are in the git
+history; what follows is what actually changed for an operator.
+
+### The API contract (3.0.0 — breaking)
+
+The reason 3.0.0 was a major bump. Every route was migrated to a single
+response contract, with an AST conformance gate and a debt ratchet that may only
+shrink. The rule that drove it: **`ok` means the request succeeded, not that the
+news is good** — a health endpoint reporting a stopped service returns
+`{"ok": true, …}` with the stopped state in the body. Before this, callers
+could not distinguish "the query failed" from "the answer is no".
+
+`scripts/api-probe.py` was written as a functional harness for the migration and
+immediately found 17 real defects. Contract and reference now live in
+[docs/api-contract.md](docs/api-contract.md) and [docs/api.md](docs/api.md).
+
+### Satellites
+
+The largest single body of work in the series.
+
+- An offline pass predictor over a roster aggregated from **SatNOGS**
+  (downlink frequencies and modes) and **CelesTrak** (TLEs), computed on the Pi
+  with **Skyfield/SGP4** and baked into the offline bundle at build time.
+- **Live SDR audio** — arm a downlink, then Listen or Record through the pass
+  (FM/APRS · CW · SSB), including recording a pass from the DRAWS radio port.
+  Recordings retain under a 2 GB budget with a 1 GB free-space floor; the newest
+  is never pruned.
+- **Pass alerts** — Morse "V" at T-10/T-5, spoken with the station's voice,
+  sounded by the touch kiosk as well as the browser. Bells live in the shared
+  roster, so arming one on a laptop wakes the shack; muting stays per-screen.
+  Monitoring a bird now arms its bell.
+- Filters by capability, band, and orbit class; additive-RGB capability
+  colouring; coverage pills; a live sky and footprint view.
+
+### Speech
+
+A station-wide voice, built and then rebuilt when the first approach proved
+wrong.
+
+- The server synthesises to a **cached WAV via a Piper subprocess** and the
+  browser plays it through the chime's already-unlocked AudioContext.
+  Announcements serialise instead of mushing together.
+- The **Jenny (Dioco)** neural voice, with espeak-ng as the fallback ladder when
+  Piper isn't installed or the platform can't run it.
+- `/api/speech/status` and `/api/speech/say`.
+- The speech-dispatcher route was **abandoned** — it owned the sound card, which
+  is unacceptable on a box whose whole job is radio audio.
+
+### The touch kiosk
+
+- Satellite, traffic, and hazard cards; a shared service registry so the kiosk
+  and the dashboard can no longer disagree about what is running; a Wi-Fi pill;
+  per-clock colour cycling; SDR flow meters.
+- The avatar card and the hour bell (see 3.25.0 above).
+
+### Hardware and device assignment
+
+- The **Service Operations console** (the "mixer board") — a device×service
+  matrix that routes an SDR or sound card between APRS, ADS-B, satellites,
+  and Winlink, with a per-device lock and a one-click STOP ALL that
+  deliberately leaves Web SSH running so it cannot lock you out.
+- A **resource guardian** — enabled by default — that watches temperature, CPU, and memory and
+  arms a 30-second cancellable STOP ALL on a threshold trip.
+- Assigned devices start their services again after a reboot.
+- **DRAWS HAT support** — two-port radio audio and GPS/PPS, with a
+  self-compiled `draws.dtbo` so the HAT and `librtlsdr ≥ 2.0` can coexist on
+  Trixie. The governing rule: **override an OS device-tree overlay on evidence
+  that the hardware enumerated, never on a kernel version string.**
+- The Argon ONE fan feature, which masks `argononed` because upstream watches
+  GPIO4 — the same pin an L76X GPS HAT uses for 1PPS, which produced phantom
+  shutdowns.
+
+### APRS, maps, and traffic
+
+- **Operator warnings and hazards** — a 15-type EmComm catalog (EOC, shelter,
+  fire, flood, hazmat, road closed, water point, …), each with its correct APRS
+  symbol, placeable on the map, broadcast as **APRS objects** over IS, RF, or
+  both, and cleanly killed with a tombstone when the incident clears.
+- A GrayWolf-tiled dark basemap; rail, ferry, airport and boundary layers;
+  highway-exit labels. POI labels were **removed** — the glyph atlas ships only
+  codepoints 0–1023 and a missing glyph blanked whole tiles.
+- OASIS stopped shipping and downloading its own tiles. **GrayWolf is the map
+  source**, and the planet-extract downloader was removed.
+- Shared traffic-list logic with RF/IS/ADS-B source pills across both dashboards.
+
+### System, setup, and packaging
+
+- The dashboard header became a **card row** — clocks, GPS, CPU with per-core
+  bars, and top processes — replacing the old stat bar.
+- A **browser-based installer**: the Setup page installs and removes features,
+  not just checks health, backed by a root worker service.
+- A **Diagnostics page** with 22 registered checks rolled into capability
+  verdicts and a single "fix this first" pick.
+- Bundle profiles, `--verify` against `bundle-manifest.json`, and `--update` in
+  place — including onto a USB stick.
+
+### Known issues carried into the public release
+
+- Winlink RF remains **experimental**; the Telnet gateway works.
+- OpenWebRX is not in the offline bundle (it needs a third-party apt repo) and
+  has no UI for assigning a dongle.
+- No 32-bit ARM wheels, so Speech and `psutil` are unavailable on 32-bit Pi OS.
+- RTL-SDR APRS requires Pi OS Trixie for `librtlsdr ≥ 2.0`.
+
+---
+
 ## v.2.8.1 — 2026-08-02
 
 Small maintenance release on 2.8.0: a hardware-robustness fix, longer ADS-B

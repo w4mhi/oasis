@@ -25,6 +25,7 @@
       <a href="dashboard.html">Dashboard Tour</a>
       <a href="system-monitor.html">System Monitor</a>
       <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
       <a href="gps-card.html">GPS / GNSS Card</a>
       <a href="themes-units.html">Themes &amp; Units</a>
       <div class="nav-group">APRS</div>
@@ -58,7 +59,9 @@
       <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
       <a href="usb-bundle.html">USB Bundle</a>
       <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
       <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
       <a href="security.html">Security</a>
       <a href="uninstall.html">Uninstall</a>
     </nav>
@@ -81,8 +84,8 @@
     <h2>OASIS Dashboard / kiosk</h2>
     <p>
       <code>oasis-dashboard/dashboard.html</code> is a touch-friendly dashboard tuned for
-      dedicated panels, with large tap targets and a condensed status strip. It ships in two
-      resolutions &mdash; <strong>800&times;480</strong> (7&Prime; touchscreen) and
+      dedicated panels, with large tap targets and a condensed status strip. It targets two
+      panel sizes &mdash; <strong>800&times;480</strong> (7&Prime; touchscreen) and
       <strong>1920&times;1200</strong> (10&Prime; wide panel). Configure the kiosk automatically:
     </p>
     <pre><code>python3 scripts/enable-autostart-pi.py --resolution 800x480     # 7&Prime; touchscreen
@@ -93,23 +96,115 @@ python3 scripts/enable-autostart-pi.py --resolution 1920x1200   # 10&Prime; wide
       touch, and sizes the window to match. (The old <code>--7inch</code> flag still works as an
       alias for <code>--resolution 800x480</code>.)
     </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p><strong>It is not two layouts.</strong> The kiosk is <em>one fluid layout</em>
+      &mdash; the root font size is a single <code>clamp()</code> and everything else is in
+      <code>rem</code>, so the whole page scales with the viewport. There are no
+      resolution media queries. The page contains exactly <strong>one</strong>
+      <code>[data-res]</code> rule in its entire stylesheet, and it gates <strong>only the
+      Jenny avatar card</strong> &mdash; which appears on 1920&times;1200 and not on
+      800&times;480, because it costs 15% of the width on a small panel and almost nothing on a
+      large one. That single card is the sole visual difference between the two sizes.
+      <code>?res=</code> is therefore less a layout switch than a stamp; see the HOME note at
+      the end of this section.</p></div>
+    </div>
     <figure class="figure">
-      <img src="img/small-screen.png" alt="The OASIS Dashboard: UTC/local clocks, callsign, GPS, the services with their RTL-SDR assignments, system stats, a live traffic list, satellites, and a fire count" />
+      <img src="img/small-screen.png" alt="The OASIS Dashboard: UTC/local clocks, callsign, GPS, the services with their RTL-SDR assignments, system stats, a live traffic list, satellites, and hazard pills" />
       <figcaption>The OASIS Dashboard &mdash; clocks, GPS, live services with their RTL-SDR device assignments, system stats, and a filterable APRS / ADS-B traffic list, all on one panel</figcaption>
     </figure>
     <p>
-      The main screen packs the whole station onto one panel: dual clocks, call sign and
-      grid, GPS state, a <strong>SERVICES</strong> block that shows which RTL-SDR each radio
-      service holds (APRS, ADS-B, satellites), the system stats, a live traffic list with
-      <strong>RF / IS / APRS / ADS-B</strong> filter chips, an upcoming-<a href="satellites.html">satellite</a>
-      panel, and a fire-alert count. Tapping <strong>OPS</strong> opens a full-screen
-      launcher for every tool &mdash; map, FCC lookup, calculators, ICS forms, and
-      <a href="winlink.html">Winlink</a>.
+      The main screen packs the whole station onto one panel. Reading down it:
     </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Block</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Clocks</strong></td><td>Local and Zulu. <strong>Tap either face to cycle its colour</strong> through six choices; the two clocks are mutually exclusive, so they can never end up the same colour, and each choice is remembered. The same colours and the same storage keys as the desktop dashboard, so the two agree.</td></tr>
+        <tr><td><strong>Hour bell</strong></td><td>Bottom-right of the Zulu card. Tap to cycle <em>off</em> &rarr; <em>strikes the hour</em> &rarr; <em>strikes and speaks the hour</em>. Two strikes on the top of the UTC hour, deliberately unlike the satellite alert. Quiet hours are local 22:00&ndash;07:00, with a tap-to-override for tonight. A pass alert always wins &mdash; the hour is dropped, not queued. See <a href="station-voice.html">Station Voice</a>.</td></tr>
+        <tr><td><strong>Wi-Fi pill</strong></td><td>The SSID when connected (coloured by signal strength, never printed as a number), <code>OASIS</code> in blue when hosting the access point, dim when not connected, hidden entirely on a box with no Wi-Fi support. Tap it to scan, join or forget a network.</td></tr>
+        <tr><td><strong>Health pill</strong></td><td>Three counts &mdash; <code>N&nbsp;UP &middot; N&nbsp;WRN &middot; N&nbsp;DN</code> &mdash; over the <em>canonical</em> service set shared with the desktop dashboard (<code>common/js/service-registry.js</code>). Both screens count the same seventeen services, so they cannot disagree about station health. Not-installed services count as NI and are excluded from the pill. Tap for a read-only list, problems first.</td></tr>
+        <tr><td><strong>SERVICES</strong></td><td>Four dots &mdash; <strong>APRS</strong>, <strong>ADS-B</strong>, <strong>ORX</strong>, <strong>SAT</strong> &mdash; hollow when no dongle is assigned, amber when assigned, green when in use. The whole block is a <strong>tap target that opens the hardware console</strong> (the HW / SRV matrix), so a device can be rerouted from the panel without a laptop. See <a href="service-operations.html">Service Operations</a>.</td></tr>
+        <tr><td><strong>Traffic list</strong></td><td>Merged APRS and <a href="adsb.html">ADS-B</a>, with three source chips: <strong>RF</strong>, <strong>IS</strong> and <strong>ADS-B</strong>. There is deliberately <strong>no APRS chip</strong> &mdash; RF and IS <em>are</em> the APRS rows, so an APRS chip would duplicate them and could contradict them.</td></tr>
+        <tr><td><strong>Hazard pills</strong></td><td>Config-driven from <code>configuration/hazards.json</code> (fire, hurricane, tornado, flood, smoke, skywarn, emergency ship by default), matched on APRS symbol, one pill per hazard actually being heard. Tapping one filters to it. A wildfire reported 100% contained drops out. The old fire-alert <em>count</em> is gone.</td></tr>
+        <tr><td><strong>Emergency chip</strong></td><td>Separate from the hazards: public-safety stations heard in the last 48&nbsp;hours. Also a tappable filter, and mutually exclusive with the hazard pills.</td></tr>
+        <tr><td><strong>Feed flow meters</strong></td><td>Two footer meters, APRS and ADS-B, proving the dongles are actually <em>receiving</em> rather than merely running: blue when signal is moving, red when the feed is up but deaf, dim when not running. They yield space to the hazard pills when the footer gets crowded.</td></tr>
+      </tbody>
+    </table></div></div>
+    <h3>The satellite card</h3>
+    <p>
+      The <a href="satellites.html">satellite</a> panel is not just a list of next passes. Each
+      row carries:
+    </p>
+    <ul>
+      <li>The catalogue name with the amateur <strong>designator</strong> in brackets after it,
+        styled down &mdash; e.g. <code>DOSAAF-85 [RS-44]</code>. The orbit-class suffix is
+        stripped. (The <em>spoken</em> name is built separately, so Jenny does not read
+        &ldquo;bracket R S forty-four&rdquo;.)</li>
+      <li>For a bird in pass: <strong>live elevation, a rising / setting arrow, and slant range
+        in km</strong>, e.g. <code>el 37&deg; &#8599; &middot; 812 km</code>, patched in place
+        every two seconds. Always km &mdash; satellite readouts never follow the
+        <a href="themes-units.html">units toggle</a>.</li>
+      <li>A <strong>capability rail</strong> down the left edge in the same blended colour the
+        satellites map paints, plus capability chips on their own line.</li>
+      <li>A <code>&#8635; NNs</code> countdown in the header: seconds until the pass list is
+        refetched, green then yellow then red as it runs down. Deliberately <em>not</em>
+        tappable &mdash; a display nobody is sitting at must not be pausable into looking live
+        while being stale.</li>
+      <li>A header count, e.g. <code>12 moni &middot; 3 in 1h</code>.</li>
+    </ul>
+    <p>
+      Beside it is a <strong>per-device satellite mute</strong>. It silences pass chimes on
+      <em>this panel only</em> &mdash; the shack kiosk can be quiet overnight while a laptop
+      still chimes &mdash; and it cuts a chime that is already sounding, not just the next one.
+      The per-row bells are informational here; arming happens on the
+      <a href="satellites.html">Satellites page</a>.
+    </p>
+    <h3>Jenny</h3>
+    <p>
+      On the 1920&times;1200 layout, and only once a speech engine is actually installed, an
+      avatar card appears: <strong>Jenny</strong>, the face of the Piper neural voice. She sits
+      dormant and lights up only while speaking &mdash; a satellite pass announcement, or the
+      spoken hour. <strong>Tap to wake her</strong> and she introduces herself; tap again while
+      she is talking to stop her. The video clip itself carries no audio; everything spoken
+      comes from the speech service. See <a href="station-voice.html">Station Voice</a>.
+    </p>
+    <h3>The OPS launcher</h3>
+    <p>
+      Tapping <strong>OPS</strong> opens a full-screen launcher, now <strong>seven
+      sections</strong>. Everything opens in a new tab.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Section</th><th>Items</th></tr></thead>
+      <tbody>
+        <tr><td><strong>OASIS</strong></td><td>Handbook, Setup, <a href="diagnostics.html">Diagnostic</a>, <strong>SSH Terminal</strong>.</td></tr>
+        <tr><td><strong>Monitor</strong></td><td>Traffic Map, <a href="satellites.html">Satellites</a>.</td></tr>
+        <tr><td><strong>ICS Forms</strong></td><td><a href="ics-forms.html">ICS-205, ICS-213, ICS-214, ICS-309</a>.</td></tr>
+        <tr><td><strong>Winlink &amp; APRS</strong></td><td><a href="winlink.html">Winlink Mail</a>, Radio Settings, <strong>GrayWolf</strong> web UI, GrayWolf handbook.</td></tr>
+        <tr><td><strong>Tools</strong></td><td><a href="fcc-lookup.html">FCC Lookup</a>, Antenna Calculator, Power &amp; Battery, <strong>Band Plan</strong>, <strong>Solar / Propagation</strong>, <strong>Gray Line</strong>, Grid / Bearing, <strong>File Browser</strong>.</td></tr>
+        <tr><td><strong>Radio Ref</strong></td><td>Repeater Guide, Radio Cards, <a href="repeater-book.html">Repeater Book</a>, Radio Manuals, <a href="kiwix.html">Wikipedia</a>.</td></tr>
+        <tr><td><strong>Operation</strong></td><td><a href="net-logger.html">Net Logger</a>, NATO Phonetic, Q-Codes, Procedure Words, RST, ITU Prefixes.</td></tr>
+      </tbody>
+    </table></div></div>
     <figure class="figure">
       <img src="img/small-screen-ops.png" alt="OASIS Dashboard OPS launcher: large tap targets for the map, FCC lookup, satellites, SSH, calculators, ICS forms, and Winlink" />
       <figcaption>The OPS launcher &mdash; large tap targets for every tool, reachable in one touch from the main screen</figcaption>
     </figure>
+    <h3>The <code>oasis_layout</code> stamp</h3>
+    <p>
+      Opening the kiosk with <code>?res=&lt;WxH&gt;</code> writes that value to
+      <code>localStorage</code> as <code>oasis_layout</code>. Every page in the suite links
+      HOME to <code>/</code>, and <code>/</code> is a tiny redirect that reads that key: with a
+      stamp it sends you to the <em>kiosk</em>, without one to the desktop
+      <code>index.html</code>. So on a panel, <strong>every &#8962;&nbsp;HOME link in every
+      tool comes back to the kiosk</strong> rather than dumping you into a desktop dashboard
+      you cannot use with a finger.
+    </p>
+    <p>
+      Reaching the desktop dashboard directly clears the stamp &mdash; a deliberate escape
+      hatch, so the redirect can never trap a browser in a loop back to the kiosk. That is why
+      the launch scripts open <code>/index.html</code> explicitly rather than bare
+      <code>/</code>.
+    </p>
     <h2>CM4Stack panel</h2>
     <p>
       For an M5Stack CM4Stack (Pi CM4) with the built-in ST7789V2 SPI panel, GT911 touch, and
@@ -129,6 +224,19 @@ python3 features/cm4stack/install-cm4stack.py --dry-run    # preview config.txt 
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
       <tbody>
+        <tr><td><strong>Two kiosks are running and everything looks half-broken</strong></td>
+            <td>The highest-value failure on this page, and deliberately non-obvious. On Pi OS
+            Trixie the autostart installer wrote <em>both</em> an XDG autostart entry and a
+            labwc autostart line &mdash; and labwc honours both, so a station installed before
+            this was fixed runs <strong>two stacked Chromium kiosks</strong>. You only ever see
+            the top one. Symptoms: muting a satellite alert leaves the hidden window still
+            chiming; a filter you tapped does not stick; CPU, RAM and API load are all roughly
+            doubled for no visible reason. Check with
+            <code>pgrep -c chromium</code> (expect 1 kiosk process tree, not 2 sets),
+            <code>ls ~/.config/autostart/</code> and
+            <code>grep chromium ~/.config/labwc/autostart</code> &mdash; if both name a kiosk,
+            that is the bug. The fix is to re-run the autostart installer
+            (<code>scripts/enable-autostart-pi.py</code>), which now writes only one.</td></tr>
         <tr><td>The kiosk pins a CPU core / runs hot</td><td>Usually a Chromium crash-loop (watch for <code>crashpad_handler</code>). The kiosk already launches with <code>--use-gl=angle --disable-breakpad</code>, which keeps a stuck Pi kiosk down from ~100% of one core to ~25%. If a crash-loop returns, fall back to <code>--disable-gpu</code> (software rendering, stable). Don&rsquo;t use <code>--use-gl=egl</code> on newer Pi GPU drivers (vc4-kms-v3d) &mdash; it leaves MapLibre&rsquo;s WebGL context uninitialised and the live map renders blank.</td></tr>
         <tr><td>Blank or wrong-size screen</td><td>Display/rotation config. Check the kiosk service and the panel&rsquo;s resolution; the dashboard view is <code>/oasis-dashboard/dashboard.html?res=&lt;WxH&gt;</code>.</td></tr>
         <tr><td>Touch doesn&rsquo;t register</td><td>The touchscreen overlay/driver isn&rsquo;t loaded for that panel &mdash; enable it in <code>config.txt</code> and reboot.</td></tr>

@@ -25,6 +25,7 @@
       <a href="dashboard.html">Dashboard Tour</a>
       <a href="system-monitor.html">System Monitor</a>
       <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
       <a href="gps-card.html">GPS / GNSS Card</a>
       <a href="themes-units.html">Themes &amp; Units</a>
       <div class="nav-group">APRS</div>
@@ -58,7 +59,9 @@
       <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
       <a href="usb-bundle.html">USB Bundle</a>
       <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
       <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
       <a href="security.html">Security</a>
       <a href="uninstall.html">Uninstall</a>
     </nav>
@@ -88,25 +91,47 @@
 python3 scripts/doctor.py --core             # core checks only
 python3 scripts/doctor.py --json             # machine-readable output
 python3 scripts/doctor.py --host 192.168.1.10   # check a remote OASIS instance</code></pre>
-    <h2>Core checks (set the exit code)</h2>
+    <h2>Critical checks &mdash; these set the exit code</h2>
+    <p>
+      The exit code comes from the <strong>critical</strong> set: the comms-essential
+      checks, wherever they sit in the display groups. It is <em>not</em> the same thing
+      as the CORE group, and <code>--core</code> does not change it.
+    </p>
     <div class="box"><div class="box-body"><table>
-      <thead><tr><th>Check</th><th>What it verifies</th></tr></thead>
+      <thead><tr><th>Check</th><th>Capability</th><th>What it verifies</th></tr></thead>
       <tbody>
-        <tr><td>Server reachable</td><td><code>GET /health</code> returns 200 on port 8083</td></tr>
-        <tr><td>FCC index present</td><td><code>EN.idx</code> exists and reports a callsign count</td></tr>
-        <tr><td>Maps directory</td><td><code>maps/</code> contains at least one <code>.pmtiles</code></td></tr>
-        <tr><td>Disk space</td><td>Reports free space on the SD card / disk</td></tr>
+        <tr><td><code>server</code></td><td>ACCESS</td><td>The OASIS server answers on its port</td></tr>
+        <tr><td><code>station_identity</code></td><td>ACCESS</td><td>A callsign and grid are set &mdash; without them passes, bearings and forms are all wrong</td></tr>
+        <tr><td><code>graywolf</code></td><td>APRS_RX</td><td>The APRS engine is installed and running</td></tr>
+        <tr><td><code>aprs_feed</code></td><td>APRS_RX</td><td>Audio is actually reaching GrayWolf</td></tr>
+        <tr><td><code>rtl_sdr</code></td><td>APRS_RX</td><td>The SDR tooling is present and the DVB driver is blacklisted</td></tr>
+        <tr><td><code>pat</code></td><td>WINLINK</td><td>The Winlink client is installed and its service is up</td></tr>
+        <tr><td><code>gps</code></td><td>POSITION</td><td>A position fix is available</td></tr>
+        <tr><td><code>power</code></td><td>POWER</td><td>No under-voltage or throttling</td></tr>
       </tbody>
     </table></div></div>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>
+        Everything else &mdash; FCC index, maps, disk, Kiwix, Web SSH, cooling, RepeaterBook,
+        forms and the rest &mdash; still runs and still reports, but <strong>cannot fail the
+        exit code</strong>. A station with no maps and no Wikipedia is still a working
+        radio station; one with no callsign set is not.
+      </p></div>
+    </div>
     <p>
-      <strong>Exit codes:</strong> <code>0</code> = all core checks pass (optional services may
-      still warn) &middot; <code>1</code> = one or more core checks failed. Optional-service
-      checks (GrayWolf, Kiwix, Winlink, APRS API, Web SSH, RTL-SDR blacklist, GrayWolf tiles) are
-      warnings only and don&rsquo;t affect the exit code.
+      <strong>Exit codes:</strong> <code>0</code> = no critical check failed &middot;
+      <code>1</code> = one or more did.
     </p>
     <div class="callout tip">
       <span class="ic">&#10003;</span>
-      <div><p>Scriptable: <code>python3 scripts/doctor.py --json | &hellip;</code> parses <code>core_ok</code> for a CI gate.</p></div>
+      <div><p>Scriptable: <strong>use the exit code</strong> &mdash; <code>0</code> means no
+      <em>critical</em> check failed, <code>1</code> means one or more did. So
+      <code>python3 scripts/doctor.py || echo "station not ready"</code> is the whole CI gate.
+      <code>--json</code> emits <code>{ran_at, summary, capabilities, fix_now, groups}</code> if you
+      want the detail; <code>summary</code> holds the <code>ok</code>/<code>warn</code>/<code>fail</code>
+      counts. Note <code>--core</code> only narrows what is <em>displayed</em> &mdash; it never
+      changes the exit code.</p></div>
     </div>
 
     <h2>Troubleshooting</h2>
@@ -120,8 +145,8 @@ python3 scripts/doctor.py --host 192.168.1.10   # check a remote OASIS instance<
     </table></div></div>
 
     <nav class="page-nav">
-      <a href="usb-bundle.html"><span class="lbl">Previous</span><span class="t">USB Bundle</span></a>
-      <a href="security.html" class="next"><span class="lbl">Next</span><span class="t">Security</span></a>
+      <a href="diagnostics.html"><span class="lbl">Previous</span><span class="t">Diagnostics</span></a>
+      <a href="station-voice.html" class="next"><span class="lbl">Next</span><span class="t">Station Voice</span></a>
     </nav>
     <div class="foot">OASIS · off-grid amateur station information suite</div>
   </main>

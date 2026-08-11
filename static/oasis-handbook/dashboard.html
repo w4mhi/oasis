@@ -25,6 +25,7 @@
       <a href="dashboard.html">Dashboard Tour</a>
       <a href="system-monitor.html">System Monitor</a>
       <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
       <a href="gps-card.html">GPS / GNSS Card</a>
       <a href="themes-units.html">Themes &amp; Units</a>
       <div class="nav-group">APRS</div>
@@ -58,7 +59,9 @@
       <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
       <a href="usb-bundle.html">USB Bundle</a>
       <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
       <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
       <a href="security.html">Security</a>
       <a href="uninstall.html">Uninstall</a>
     </nav>
@@ -88,37 +91,123 @@
       <figcaption>The header: clock, Wi-Fi pill, GPS card, and the system-monitor status cards</figcaption>
     </figure>
     <p>
-      Across the top: a clock, the <strong>Wi-Fi</strong> pill (current SSID or
-      <code>AP: OASIS</code>), the <a href="gps-card.html">GPS/GNSS card</a>, and the
-      <a href="system-monitor.html">System Monitor</a> cards (CPU, RAM, disk, temperature,
-      IP, uptime), all colour-coded and updated every 30&nbsp;seconds.
+      The header is a <strong>row of cards</strong>, not the old SYSTEM stat bar. Left to
+      right:
     </p>
-    <h2>Service strip</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Card</th><th>Shows</th></tr></thead>
+      <tbody>
+        <tr><td><strong>LOCAL</strong> and <strong>UTC</strong> clocks</td><td>Two clock cards, ticking every second. The UTC card also carries the running OASIS version.</td></tr>
+        <tr><td><strong>GPS</strong></td><td>Fix badge (<code>3D FIX</code> / <code>2D FIX</code> / <code>NO FIX</code> / <code>NO GPS</code>), an interface badge (USB or UART), then Sats, HDOP, Alt, Lat, Lon and Clock. See the <a href="gps-card.html">GPS / GNSS card</a>.</td></tr>
+        <tr><td><strong>CPU</strong></td><td><code>CPU</code> and <code>Temp</code> in the header, <code>RAM</code> and <code>DISK</code> below, a <strong>per-core bar</strong> for every core (<code>C0</code>, <code>C1</code>&hellip;), and a <strong>fan glyph</strong> that appears only when a cooling service is installed &mdash; spinning when it is actually turning. The card border tracks the <em>worst</em> of CPU, temperature and RAM.</td></tr>
+        <tr><td><strong>PROCESSES</strong></td><td>The <strong>top three processes by CPU</strong>, with CPU and RAM columns, plus the 1-minute load average.</td></tr>
+        <tr><td><strong>SRV OPS</strong> rail</td><td>A vertical burger button pinned to the far right &mdash; the entry to the hardware console. See below.</td></tr>
+      </tbody>
+    </table></div></div>
     <p>
-      A row of cards, one per companion service &mdash; GrayWolf APRS, the APRS SDR feed,
-      <a href="adsb.html">ADS-B</a>, APRS Stats API, Winlink, Kiwix, Web SSH, and
-      OpenWebRX. Each shows
-      live status &mdash; green when up, red when down, grey when not installed &mdash; and, if
-      you enabled <a href="service-controls.html">service controls</a>, <strong>START /
-      STOP</strong> buttons so you never have to SSH in. Radio cards also name the RTL-SDR
-      they hold, since those services share the dongle.
+      Host, LAN IP, power/throttle state and the callsign/grid are <strong>pills</strong>, not
+      cards, tucked under the OASIS brand block alongside the units toggle, the
+      <a href="themes-units.html">theme</a> toggle and the <strong>Wi-Fi</strong> pill
+      (the SSID when connected, <code>OASIS</code> when hosting the access point, and hidden
+      entirely on a box with no Wi-Fi support). <strong>Uptime</strong> is a pill too, but it
+      rides on the <strong>OPS</strong> section header further down the page, not in the
+      header.
     </p>
-    <h2>APRS live table</h2>
     <p>
-      When APRS is running, the <strong>APRS LIVE</strong> table lists heard stations with
-      callsign, last-heard time, speed, altitude, and comment; clicking a callsign opens
-      the <a href="aprs.html">live map</a> focused on that station. See
+      These cards are fed by <code>/api/system</code> and refresh every
+      <strong>5&nbsp;seconds</strong> &mdash; the CPU card prints that interval
+      (<code>5s</code>) so you can see at a glance that it is live. Full detail in
+      <a href="system-monitor.html">System Monitor</a>.
+    </p>
+    <h2>SRV OPS &mdash; the hardware console</h2>
+    <p>
+      The <strong>SRV OPS</strong> rail at the top right opens the <strong>HW / SRV
+      Matrix</strong>: a device&times;service grid where you route an RTL-SDR or a radio port
+      to a service, lock a device so nothing can take it, or <strong>Stop all</strong>. The
+      rail itself is a health indicator &mdash; green with a tick when everything is nominal,
+      amber or red with a count when it is not. This is the control surface for every
+      hardware-bound radio service; see <a href="service-operations.html">Service
+      Operations</a>.
+    </p>
+    <h2>Service strips</h2>
+    <p>
+      Below the header sit <strong>two</strong> strips of service cards. The section header
+      counts them and carries a <strong>SHOW <em>n</em> NOT INSTALLED</strong> toggle.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Strip</th><th>Cards</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Radio / RF</strong></td><td>Web SSH, APRS GrayWolf, APRS SDR Feed, OpenWebRX, ADS-B Aircraft, Winlink RF, Wiki Kiwix.</td></tr>
+        <tr><td><strong>System / infrastructure</strong></td><td>Frontend Flask, Web Server (badged <code>gunicorn</code> or <code>werkzeug</code>), GPS (gpsd), APRS Stats API. Single-row cards &mdash; colour only, no buttons.</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      The old <strong>Winlink Classic Mail</strong> card is gone: classic telnet / the Pat web
+      UI is now reached from the <em>Use classic Winlink</em> button on the
+      <a href="winlink.html">Winlink page</a>. In its place is a <strong>Winlink RF</strong>
+      card, which additionally shows an unread-mail count.
+    </p>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>Not every card has START / STOP.</strong> The three
+      hardware-routed cards &mdash; <strong>ADS-B Aircraft</strong>, <strong>Winlink RF</strong>
+      and the <strong>APRS SDR Feed</strong> &mdash; deliberately have no per-card power
+      button, because they are started by routing a device to them in the SRV OPS matrix.
+      ADS-B and Winlink RF get an <strong>OPEN&nbsp;&#8599;</strong> button instead; the APRS
+      SDR feed gets neither and is purely matrix-driven. <strong>OpenWebRX is the
+      exception</strong> and keeps its card button, because it picks its own dongle in its own
+      admin UI and is not in the matrix at all. Everything else with a systemd unit still has
+      START / STOP, provided you enabled <a href="service-controls.html">service
+      controls</a>. See <a href="service-operations.html">Service Operations</a>.</p></div>
+    </div>
+    <p>
+      Cards for services that hold a dongle or a radio port also show a read-only
+      <code>device:</code> row naming what they were routed to.
+    </p>
+    <h2>TRAFFIC LIVE</h2>
+    <p>
+      The live table is <strong>TRAFFIC LIVE</strong> &mdash; it merges <a href="aprs.html">APRS</a>
+      and <a href="adsb.html">ADS-B</a> into one list, and reads <strong>TRAFFIC
+      OFFLINE</strong> when the APRS Stats API is not answering. Ten columns: Callsign, Type,
+      Last Heard, Age, Speed, Altitude, Grid, Dist, Via, Comment. Clicking a callsign opens
+      the <a href="aprs.html">live map</a> focused on that station; see
       <a href="aprs-stations.html">Stations &amp; History</a>.
     </p>
-    <h2>Utilities &middot; forms &middot; reference</h2>
     <p>
-      The lower navigation groups every static tool: the
-      <a href="calculators.html">calculators</a>, <a href="net-logger.html">net logger</a>,
-      <a href="ics-forms.html">ICS forms</a>, <a href="fcc-lookup.html">FCC lookup</a>,
-      <a href="maps.html">offline maps</a>, <a href="repeater-book.html">Repeater Book</a>,
-      the <a href="satellites.html">satellites</a> world map, and the whole
-      <a href="reference-library.html">reference library</a> &mdash; including this handbook.
+      Five columns carry their own <strong>per-column filter</strong> behind a small
+      &#9660; toggle: Callsign (prefix or <code>*</code> wildcard), Type, Age (defaults to
+      &le;&nbsp;24&nbsp;h), Grid, and Via. Above the table sit three sets of chips:
     </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Chips</th><th>What they do</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Source pills</strong> &mdash; <code>RF</code>, <code>IS</code>, <code>ADS-B</code></td><td>One per receive path: APRS heard off the air, APRS via APRS-IS, and aircraft via ADS-B. Additive, always rendered even at zero, remembered per browser.</td></tr>
+        <tr><td><strong>Hazard pills</strong></td><td>Config-driven from <code>configuration/hazards.json</code> &mdash; fire, hurricane, tornado, flood, smoke, skywarn and emergency ship by default, matched on APRS symbol. A pill appears only for a hazard actually being heard, and tapping it filters to that hazard alone. A wildfire reported 100% contained drops out.</td></tr>
+        <tr><td><strong>Emergency chip</strong></td><td>Separate from the hazard pills: public-safety stations heard in the last 48&nbsp;hours. Reads <code>&#10003; No emergency POI</code> when calm and <code>&#9888; N EMERGENCY POI</code> when not. Tapping it filters to those, and it is mutually exclusive with the hazard pills.</td></tr>
+      </tbody>
+    </table></div></div>
+    <h2>OPS &mdash; utilities &middot; forms &middot; reference</h2>
+    <p>
+      The lower <strong>OPS</strong> section groups every static tool into seven nav cards
+      across three columns:
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Card</th><th>Contains</th></tr></thead>
+      <tbody>
+        <tr><td><strong>SYSOP</strong></td><td>OASIS Setup (<a href="setup-menu.html">the setup menu</a>), OASIS <a href="diagnostics.html">Diagnostic</a>, <a href="net-logger.html">Net Logger</a>.</td></tr>
+        <tr><td><strong>Monitor</strong></td><td>Traffic Map (<a href="aprs.html">live APRS</a> + aircraft), <a href="satellites.html">Satellites World Map</a>.</td></tr>
+        <tr><td><strong>ICS Forms</strong></td><td><a href="ics-forms.html">ICS-205, ICS-213, ICS-214, ICS-309</a>.</td></tr>
+        <tr><td><strong>Lookup</strong></td><td><a href="fcc-lookup.html">FCC Lookup</a>, <a href="repeater-book.html">Repeater Book</a>, Band Plan, Radio Cards, ITU Country Prefixes.</td></tr>
+        <tr><td><strong>Library</strong></td><td>Radio Manuals, GrayWolf Handbook, <strong>OASIS Handbook</strong> &mdash; this book &mdash; Repeater Guide, <a href="kiwix.html">Wikipedia</a>, and Winlink Radio Settings. See <a href="reference-library.html">Reference Library</a>.</td></tr>
+        <tr><td><strong>Tools</strong></td><td>The <a href="calculators.html">calculators</a> (antenna, power &amp; battery, grid / bearing), Solar / Propagation, Gray Line, and the File Browser.</td></tr>
+        <tr><td><strong>Operating Reference</strong></td><td>NATO Phonetic Alphabet, Q-Codes, Procedure Words, RST Signal Reporting.</td></tr>
+      </tbody>
+    </table></div></div>
+    <div class="callout tip">
+      <span class="ic">&#10003;</span>
+      <div><p>The <strong>Library</strong> card is how you get back here. <em>OASIS Handbook</em>
+      under Library opens this book from any OASIS box, online or not.</p></div>
+    </div>
 
     <h2>Troubleshooting</h2>
     <div class="box"><div class="box-body"><table>
@@ -126,8 +215,9 @@
       <tbody>
         <tr><td>A service card is grey / <code>NOT INSTALLED</code></td><td>That companion isn&rsquo;t installed. Add it from <a href="setup-menu.html">the setup menu</a>; click <strong>SHOW N NOT INSTALLED</strong> to reveal hidden cards.</td></tr>
         <tr><td>A card is red / DOWN</td><td>The service crashed or was stopped. Use <strong>START</strong> (if <a href="service-controls.html">service controls</a> are on) or <code>sudo systemctl restart &lt;service&gt;</code>.</td></tr>
-        <tr><td>Stats or the clock look frozen</td><td>The page refreshes every 30&nbsp;s &mdash; check the <code>telemetry: live</code> badge. If it says stalled, hard-refresh; the browser lost the poll.</td></tr>
-        <tr><td>Everything greys out at once</td><td>The Flask app went down. <code>sudo systemctl restart start-oasis</code>.</td></tr>
+        <tr><td>A card has no START button at all</td><td>Expected for ADS-B, Winlink RF and the APRS SDR feed &mdash; route a device to them from the <strong>SRV OPS</strong> matrix instead. See <a href="service-operations.html">Service Operations</a>.</td></tr>
+        <tr><td>Stats or the clock look frozen</td><td>The system cards refresh every <strong>5&nbsp;s</strong> and the clocks every second. If nothing is moving the browser lost the poll &mdash; hard-refresh.</td></tr>
+        <tr><td>Everything greys out at once</td><td>The Flask app went down. <code>sudo systemctl restart oasis</code>.</td></tr>
       </tbody>
     </table></div></div>
 

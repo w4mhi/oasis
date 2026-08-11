@@ -25,6 +25,7 @@
       <a href="dashboard.html">Dashboard Tour</a>
       <a href="system-monitor.html">System Monitor</a>
       <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
       <a href="gps-card.html">GPS / GNSS Card</a>
       <a href="themes-units.html">Themes &amp; Units</a>
       <div class="nav-group">APRS</div>
@@ -58,7 +59,9 @@
       <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
       <a href="usb-bundle.html">USB Bundle</a>
       <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
       <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
       <a href="security.html">Security</a>
       <a href="uninstall.html">Uninstall</a>
     </nav>
@@ -75,17 +78,105 @@
     <p class="subtitle">Log check-ins during a net and export CSV</p>
     <p>
       The <strong>Net Check-in Log</strong> (<code>tools/net-log.html</code>) logs check-ins
-      during a net &mdash; callsign, name, location, and traffic &mdash; and exports the roster as
-      CSV. Like the calculators it is static HTML with per-browser <code>localStorage</code>,
-      so it works offline and needs no server.
+      during a net &mdash; callsign, name, location, and traffic &mdash; plots them on an
+      offline map, and hands the whole roster to an <a href="ics-forms.html">ICS-309</a> in
+      one click. The log itself lives in this browser&rsquo;s <code>localStorage</code>, so it
+      survives a reload and a closed lid.
     </p>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p>This tool works without <em>internet</em>, not without the <em>server</em>.
+      It is served by Flask and calls back into it for four things: <code>/api/lookup</code>
+      (FCC callsign lookup and autocomplete), <code>/api/browse</code> (enumerating your
+      PMTiles map files), and <code>/api/forms/save</code> + <code>/api/forms/list</code>
+      (Save to server / Restore). It also pulls MapLibre, PMTiles and the Maidenhead helper
+      from server-absolute paths. Open the file straight off disk and the map, the lookup and
+      the snapshots are all dead. What <em>does</em> keep working with the FCC feature absent:
+      typing entries by hand, logging, sorting, inline edit and delete, Print, Export CSV,
+      Import CSV and the ICS-309 handoff.</p></div>
+    </div>
     <figure class="figure">
       <img src="img/net-logger.png" alt="Net check-in logger — roster with callsign, name, location, and traffic" />
       <figcaption>Net check-in logger — roster with callsign, name, location, and traffic</figcaption>
     </figure>
+
+    <h2>The net header</h2>
+    <p>
+      Fill the <strong>Net Details</strong> block before the first check-in &mdash; it is what
+      the ICS-309 handoff uses to fill in the form&rsquo;s heading.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Field</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Net name</strong></td><td>e.g. <em>ARES/RACES Net</em>. Becomes the ICS-309 incident name, and seeds the filename when you save to the server.</td></tr>
+        <tr><td><strong>Frequency</strong></td><td>e.g. <code>146.520 MHz</code>.</td></tr>
+        <tr><td><strong>Net control</strong></td><td>Your callsign. Lands in the ICS-309 operator field and on every row as the receiving station.</td></tr>
+        <tr><td><strong>Date (UTC)</strong></td><td>Auto-filled as <code>YYYY-MM-DD UTC</code>.</td></tr>
+        <tr><td><strong>Map file</strong></td><td>A dropdown of the <code>.pmtiles</code> files found in <code>maps/</code>, via <code>/api/browse</code>. This is the basemap the Map tab draws. If it reads <em>(error loading files)</em> the server is not reachable; if it is empty, add a PMTiles file and restart the server.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h2>Logging a check-in</h2>
+    <p>
+      Type a callsign and the tool queries the offline <a href="fcc-lookup.html">FCC
+      database</a> on Enter, Tab or blur. On a hit it auto-fills <strong>Name</strong>,
+      <strong>City</strong>, <strong>ST</strong> and <strong>Grid</strong>, marks them as
+      filled, and jumps the cursor to Notes so you can keep listening. On a miss it drops a
+      ranked <strong>suggestion list</strong> (a wildcard prefix search, closest matches
+      first, capped at ten) &mdash; useful when a callsign came through the noise half-copied.
+      Picking a suggestion re-runs the lookup and moves on to Name.
+    </p>
+    <p>The check-in table has eleven columns:</p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Column</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>#</code></td><td>Sequence number. Deleting a row renumbers the rest by UTC order, so it stays 1&ndash;N.</td></tr>
+        <tr><td><strong>UTC</strong></td><td>Stamped <code>HH:MMZ</code> at log time. This is the stored value.</td></tr>
+        <tr><td><strong>Local</strong></td><td>Derived at render, 24&nbsp;hour. Never stored &mdash; so a log carried to another timezone still reads correctly in both columns.</td></tr>
+        <tr><td><strong>Callsign</strong></td><td>The lookup key.</td></tr>
+        <tr><td><strong>Name</strong>, <strong>City</strong>, <strong>ST</strong>, <strong>Grid</strong></td><td>Auto-filled from the FCC record where one exists; all four remain editable.</td></tr>
+        <tr><td><strong>Traffic</strong></td><td>A tick box; renders as <code>Y</code>.</td></tr>
+        <tr><td><strong>Notes</strong></td><td>Free text.</td></tr>
+        <tr><td>(actions)</td><td><strong>edit</strong> and <strong>del</strong> per row.</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      Most columns sort on their header. <strong>edit</strong> turns the row into inline
+      inputs &mdash; UTC, callsign, name, city, state, grid, traffic and notes, with Local
+      staying read-only &mdash; and changing the callsign during an edit re-queries the FCC
+      database. <strong>del</strong> confirms first.
+    </p>
+
+    <h2>Getting the log out</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Button</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><strong>&rarr; ICS-309</strong></td><td>The most valuable path off this page. It copies the whole log into the <a href="ics-forms.html">ICS-309</a> communications log and opens it in a new tab: net name becomes the incident, name plus frequency the net, the first and last check-in the from/to times, net control the operator, and every check-in becomes a message line reading <em>name &mdash; city, state &mdash; notes &mdash; (traffic)</em>. It hands over through <code>localStorage</code>, so nothing goes over the wire and nothing is lost if the new tab is slow to open.</td></tr>
+        <tr><td><strong>Print</strong></td><td>Opens the browser print dialog on a print stylesheet &mdash; the map and the buttons drop out, the roster does not. This is your paper copy when the power budget says the screen goes off.</td></tr>
+        <tr><td><strong>Export CSV</strong></td><td>Nine columns: <code>#, UTC, Callsign, Name, City, State, Grid, Traffic, Notes</code>. Note there is no Local column in the export &mdash; UTC is the record.</td></tr>
+        <tr><td><strong>Import CSV</strong></td><td>Reads a CSV back in. Match the exported column format.</td></tr>
+        <tr><td><strong>Save to server</strong></td><td>Writes a timestamped JSON snapshot server-side, named from the net name and the date. Never automatic &mdash; it is an explicit click.</td></tr>
+        <tr><td><strong>Restore</strong></td><td>Lists the saved snapshots and loads one back over the current log.</td></tr>
+        <tr><td><strong>Clear</strong></td><td>Empties the log.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h2>The map tab</h2>
+    <p>
+      Two tabs sit above the roster: <strong>Check-ins</strong> and <strong>Map</strong>. The
+      Map tab is a real <strong>MapLibre GL</strong> map reading your offline
+      <strong>PMTiles</strong> basemap &mdash; the same tile stack as <a href="maps.html">Offline
+      Maps</a> &mdash; with every check-in plotted as a labelled dot and a popup carrying the
+      callsign. Positions come from the FCC record&rsquo;s coordinates where one was found, and
+      fall back to the Maidenhead grid square. The view auto-fits to the plotted stations, and
+      the <strong>Fit</strong> button re-frames them at any time. A status line counts what was
+      plotted and names anything skipped for having no grid.
+    </p>
     <div class="callout tip">
       <span class="ic">&#10003;</span>
-      <div><p>Pair it with <a href="fcc-lookup.html">FCC lookup</a> to confirm a check-in&rsquo;s name and location, and export the roster for the after-action report or an <a href="ics-forms.html">ICS-309</a> communications log.</p></div>
+      <div><p>Pair it with <a href="fcc-lookup.html">FCC lookup</a> to confirm a check-in&rsquo;s
+      name and location, and hand the finished roster straight to an
+      <a href="ics-forms.html">ICS-309</a> for the after-action report.</p></div>
     </div>
 
     <h2>Troubleshooting</h2>
@@ -93,8 +184,11 @@
       <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
       <tbody>
         <tr><td>Check-ins vanished</td><td>The log lives in this browser&rsquo;s <code>localStorage</code>. Use <strong>Export CSV</strong> or <strong>Save to server</strong> to persist it beyond one device.</td></tr>
-        <tr><td>The map has no pins</td><td>Check-ins need a grid square to place a pin &mdash; add one per entry.</td></tr>
+        <tr><td>Callsign lookup shows <code>no API</code></td><td>The <a href="fcc-lookup.html">FCC database</a> feature is not installed on this box. Log by hand, or install it from <a href="setup-menu.html">the setup menu</a>.</td></tr>
+        <tr><td>Map tab is empty / <em>No .pmtiles files found</em></td><td>No basemap. Put a <code>.pmtiles</code> file in <code>maps/</code> and restart the server &mdash; see <a href="maps.html">Offline Maps</a>.</td></tr>
+        <tr><td>The map has no pins</td><td>Check-ins need coordinates: either an FCC hit or a grid square. Add a grid per entry.</td></tr>
         <tr><td>Can&rsquo;t import a CSV</td><td>Match the exported column format; a stray header or delimiter will reject the row.</td></tr>
+        <tr><td>Nothing works when opened from a USB stick</td><td>The tool is not standalone. Reach it through the OASIS server (<code>/tools/net-log.html</code>), not as a <code>file://</code> path.</td></tr>
       </tbody>
     </table></div></div>
 

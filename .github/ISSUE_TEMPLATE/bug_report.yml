@@ -1,0 +1,105 @@
+name: Bug report
+description: Something in OASIS doesn't work the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing. The two things that make a bug fixable here are the
+        **exact version** and the **actual output** — please don't skip those.
+
+        If this is a security issue, stop and read
+        [SECURITY.md](https://github.com/W4MHI/oasis/blob/main/SECURITY.md) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+      placeholder: |
+        I armed a downlink on NOAA-19 from the satellites page and pressed Listen.
+        I expected audio; the button went back to idle after about two seconds
+        and nothing played.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: OASIS version
+      description: >-
+        The version in the top-right of the dashboard, or run
+        `cat version.json`.
+      placeholder: "3.25.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Raspberry Pi 5
+        - Raspberry Pi 4
+        - Raspberry Pi 3
+        - Raspberry Pi Zero 2 W
+        - Other Linux
+        - macOS
+        - Windows
+        - Portable USB bundle
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS release
+      description: >-
+        For a Pi, `cat /etc/os-release | head -2` and `uname -m` — the Trixie /
+        Bookworm / Bullseye distinction matters for RTL-SDR and Speech, and
+        32-bit vs 64-bit matters for the wheels.
+      placeholder: "Raspberry Pi OS Trixie (Debian 13), aarch64"
+    validations:
+      required: true
+
+  - type: textarea
+    id: area
+    attributes:
+      label: Which part of OASIS
+      description: >-
+        e.g. dashboard, touch kiosk, satellites, APRS/GrayWolf, ADS-B, Winlink,
+        maps, FCC lookup, ICS forms, speech, setup/install, hardware console.
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Logs and command output
+      description: >-
+        Paste the real output. `journalctl -u oasis -n 50 --no-pager` for the
+        server; the relevant unit for a service; the browser console for a
+        front-end problem. `docs/SETUP.md` has a field-debug block per
+        subsystem with the exact command to run.
+      render: shell
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Radio hardware involved
+      description: >-
+        Only if relevant — SDR dongle model (RTL-SDR Blog V4? generic?), sound
+        card / HAT (DRA-Pi, DRAWS, DigiRig), radio, antenna, GPS. Include the
+        dongle serial if you run more than one.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before filing
+      options:
+        - label: I checked the relevant section of docs/SETUP.md
+          required: true
+        - label: I'm running the latest version on `main` (there are no backports)
+          required: false
+        - label: I ran `python3 scripts/doctor.py` and included anything it flagged
+          required: false

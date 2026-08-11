@@ -1,0 +1,68 @@
+name: Feature request
+description: Suggest something OASIS should do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before writing, please check the request against the project's one hard
+        rule: **OASIS must work with no internet, forever, on a Raspberry Pi 3
+        with 2 GB of RAM.** Anything that needs a live API, a CDN, a cloud
+        account, a database engine, or a JavaScript build step can't be merged
+        no matter how good the idea is. See
+        [CONTRIBUTING.md](https://github.com/W4MHI/oasis/blob/main/CONTRIBUTING.md).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The operating problem
+      description: >-
+        What are you trying to do at the radio that OASIS makes hard today?
+        Describe the situation, not the solution — it's often solvable a way you
+        hadn't considered.
+      placeholder: >-
+        Running a net, I have to keep a separate paper tally of who checked in
+        with traffic, because the net logger exports CSV but doesn't total it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you'd like it to do
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: offline
+    attributes:
+      label: Offline-first check
+      description: Confirm the idea survives the prime directive.
+      options:
+        - label: This works with no internet connection at runtime
+          required: true
+        - label: This needs no CDN, external API, or cloud account
+          required: true
+        - label: This needs no npm/build step and no database engine
+          required: true
+
+  - type: textarea
+    id: data
+    attributes:
+      label: Does it need data shipped with it?
+      description: >-
+        If the feature needs a dataset (band plans, prefixes, a satellite list,
+        map tiles), say where it comes from, roughly how big it is, and what
+        its licence permits. Data that can't be redistributed is a blocker —
+        see THIRD-PARTY-NOTICES.md.
+
+  - type: dropdown
+    id: help
+    attributes:
+      label: Would you be willing to work on it?
+      options:
+        - "I'd like to implement it"
+        - "I could help test it on my hardware"
+        - "I'm just suggesting the idea"
+    validations:
+      required: true

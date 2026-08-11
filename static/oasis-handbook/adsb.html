@@ -25,6 +25,7 @@
       <a href="dashboard.html">Dashboard Tour</a>
       <a href="system-monitor.html">System Monitor</a>
       <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
       <a href="gps-card.html">GPS / GNSS Card</a>
       <a href="themes-units.html">Themes &amp; Units</a>
       <div class="nav-group">APRS</div>
@@ -58,7 +59,9 @@
       <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
       <a href="usb-bundle.html">USB Bundle</a>
       <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
       <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
       <a href="security.html">Security</a>
       <a href="uninstall.html">Uninstall</a>
     </nav>
@@ -90,18 +93,26 @@
       own a dongle at a time, so ADS-B is <em>mutually exclusive</em> with the
       <a href="aprs-feed.html">APRS SDR feed</a>, <a href="satellites.html">satellite
       listen</a>, and <a href="openwebrx.html">OpenWebRX</a> on the same dongle. It ships
-      <strong>off by default</strong> and is started on demand from the dashboard card;
-      starting it stops the APRS SDR feed (and vice-versa). A second dongle lets you run
-      both at once.</p></div>
+      <strong>off by default</strong> and is started on demand by routing a dongle to it.
+      A second dongle lets you run both at once.</p></div>
     </div>
 
     <h2>Turning it on</h2>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>The ADS-B card has no START / STOP button.</strong> ADS-B is one of the
+      hardware-routed services: you start it by routing an RTL-SDR to it in the
+      <strong>SRV OPS</strong> hardware console, and stop it by taking the device away. The
+      card&rsquo;s only button is <strong>OPEN&nbsp;&#8599;</strong>, which opens the traffic
+      map, and it stays disabled until the service is up. See
+      <a href="service-operations.html">Service Operations</a>. You still need
+      <a href="service-controls.html">service controls</a> enabled &mdash; the console uses the
+      same sudoers grant.</p></div>
+    </div>
     <p>
-      ADS-B installs two systemd units, both <strong>disabled</strong> until you ask for
-      them from the dashboard&rsquo;s <strong>ADS-B</strong> card (which needs
-      <a href="service-controls.html">service controls</a> enabled). Pressing
-      <strong>START</strong> enables and starts both; <strong>STOP</strong> disables and
-      stops them, releasing the dongle.
+      ADS-B installs two systemd units, both <strong>disabled</strong> until a device is
+      routed to them. Starting also enables them and stopping also disables them, so the
+      station comes back after a power cut in the state you left it.
     </p>
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Unit</th><th>Role</th></tr></thead>
@@ -126,37 +137,125 @@ python3 services/adsb/install.py --serve   # run the recorder/API in the foregro
         hex or flight number with its current altitude. Altitude is <strong>colour-coded</strong>
         (low to high) and the same colour tints the aircraft icon on the map, so a glance
         shows who is on approach versus overflying at cruise.</li>
-      <li><strong>ADS-B Alerts</strong> &mdash; aircraft that tripped a
-        <strong>proximity</strong> (within <code>ADSB_ALERT_RADIUS_KM</code>, default
-        50&nbsp;km) or <strong>altitude</strong> rule, with bearing and distance from your
-        station. The alert list is a recent-events ring buffer.</li>
+      <li><strong>ADS-B Alerts</strong> &mdash; see below.</li>
     </ul>
     <p>
       Where a flight number resolves to an operator, OASIS tags it from an offline airline
-      table (<code>common/js/adsb-operators.js</code>, built by
-      <code>scripts/build-adsb-operators.py</code>) &mdash; no lookup call leaves the box.
+      table (<code>common/js/adsb-operators.js</code>) &mdash; no lookup call leaves the box.
+    </p>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>The shipped operator table is a 37-entry seed</strong> of major
+      carriers, not the full ~1500-entry table. Most flights you hear will therefore show
+      <em>no</em> operator tag at all &mdash; that is expected, not a bug. Regenerate it with
+      <code>scripts/build-adsb-operators.py</code>, which needs an OpenFlights
+      <code>airlines.dat</code> dropped in <code>scripts/data/</code> first; that file is not
+      in the repo, so this is an online, one-time job. The tag also needs a real airline
+      callsign (three letters then a digit) &mdash; a tail number like <code>N12345</code>
+      never resolves to an operator.</p></div>
+    </div>
+
+    <h2>Alerts</h2>
+    <p>
+      There are exactly <strong>two</strong> alert rules, and <strong>neither is about
+      altitude</strong>:
+    </p>
+    <ul>
+      <li><strong>Emergency squawk</strong> &mdash; 7500 (unlawful interference), 7600 (radio
+        failure), 7700 (general emergency). These alert at <em>any</em> distance.</li>
+      <li><strong>Proximity</strong> &mdash; the aircraft is inside a radius of your station.</li>
+    </ul>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>The map computes its own alerts, client-side.</strong> It bands them at
+      <strong>15&nbsp;km</strong> (green), <strong>5&nbsp;km</strong> (amber) and
+      <strong>2&nbsp;km</strong> (red), from your station position and the live aircraft list,
+      refreshed every 2&nbsp;s. Those thresholds are fixed in the map. The server-side
+      <code>ADSB_ALERT_RADIUS_KM</code> (default 50&nbsp;km) governs only what the daemon logs
+      to its database and returns from <code>/alerts</code> &mdash; and nothing in the UI reads
+      that endpoint. <strong>Changing the env var will not change a single thing you see.</strong>
+      </p></div>
+    </div>
+    <p>
+      Each alert row shows the callsign or ICAO hex, then <em>either</em> the squawk code and
+      its meaning (for an emergency squawk) <em>or</em> the distance from your station.
+      <strong>Bearing is never shown</strong> &mdash; the aircraft&rsquo;s own track appears in
+      the popup, but that is its heading, not a bearing from you. Emergency squawks sort to
+      the top, then nearest first; the card shows the closest ten and summarises the rest.
+      The panel auto-expands the first time an alert appears and re-arms when it empties.
+    </p>
+    <p>
+      From the operator&rsquo;s point of view this is a <em>live view of what is up there right
+      now</em>, not a log you scroll back through. (The daemon does keep a 200-entry in-memory
+      ring and a permanent <code>alert_events</code> table, but nothing on screen reads
+      either.) Repeat alerts for the same aircraft and rule are suppressed for five minutes.
+    </p>
+
+    <h2>Signal health</h2>
+    <p>
+      The dashboard&rsquo;s ADS-B card carries a <strong>flow meter</strong>. Its bar and its
+      UP&nbsp;/&nbsp;SILENT verdict are driven by <strong><code>samples_per_sec</code></strong>
+      &mdash; the dongle&rsquo;s sample throughput &mdash; and explicitly <strong>not</strong> by
+      the message rate. Real ADS-B traffic is sparse: a perfectly healthy receiver can go a
+      full minute seeing one message. Judging health on message rate would call a working
+      station dead every quiet hour. The <code>N&nbsp;msg/min</code> text beside the bar is a
+      label only; it never decides anything.
+    </p>
+    <p>
+      A <strong>blue</strong> meter means samples are flowing. <strong>Red / SILENT</strong>
+      means the unit is up but the front end is deaf &mdash; check the antenna and the RF
+      chain, not the software.
     </p>
 
     <h2>The history API</h2>
-    <p>
-      The <code>adsb-api</code> daemon on <strong>:8086</strong> is what the map talks to,
-      and you can query it directly &mdash; handy for debugging or scripting:
-    </p>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p>The <code>adsb-api</code> daemon binds <strong>127.0.0.1 only</strong>. Querying
+      <code>http://&lt;pi&gt;:8086/&hellip;</code> from another machine will always fail &mdash;
+      that is by design, not a firewall problem. The map reaches it through the Flask proxy at
+      <code>/api/adsb/*</code> on the normal <code>:8083</code>, same origin. To poke the
+      daemon directly, do it <em>on the Pi</em> (<code>curl -s localhost:8086/health</code>) or
+      go through the proxy from anywhere.</p></div>
+    </div>
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Endpoint</th><th>Returns</th></tr></thead>
       <tbody>
-        <tr><td><code>GET /health</code></td><td>Poller liveness &mdash; the age of the last <code>aircraft.json</code> read. Stale age means dump1090-fa stopped feeding.</td></tr>
+        <tr><td><code>GET /health</code></td><td>Poller liveness: <code>last_json_age_s</code> (a growing age means dump1090-fa stopped feeding), <code>aircraft_count</code> and <code>positioned</code>. Once <code>stats.json</code> has produced a usable window it also returns <strong><code>samples_per_sec</code></strong>, <strong><code>messages_per_min</code></strong>, <strong><code>flowing</code></strong>, plus <code>signal_dbfs</code> and <code>noise_dbfs</code>. This is what drives the signal meter.</td></tr>
         <tr><td><code>GET /aircraft</code></td><td>The current live snapshot (what the map plots).</td></tr>
         <tr><td><code>GET /history?since=&lt;ts&gt;&amp;icao=&lt;hex&gt;</code></td><td>Recorded observations from the SQLite history database.</td></tr>
-        <tr><td><code>GET /alerts</code></td><td>Recent proximity / altitude alert events.</td></tr>
+        <tr><td><code>GET /alerts</code></td><td>Recent squawk / proximity alert events from the in-memory ring. Nothing in the UI consumes this.</td></tr>
       </tbody>
     </table></div></div>
+    <p>
+      The Flask proxy at <code>/api/adsb/health</code> flattens this into a fixed envelope
+      that always carries the same keys (null where unknown), and drops the two dBFS figures
+      &mdash; those never reach the browser. <code>flowing</code> is tri-state: <code>null</code>
+      means <code>stats.json</code> has not been written yet, which is not the same as
+      &ldquo;no signal&rdquo;.
+    </p>
     <div class="callout info">
       <span class="ic">&#8505;</span>
       <div><p>The recorder is a <strong>separate daemon</strong> from the Flask app. If you
       change ADS-B recorder code, restart it with <code>sudo systemctl restart
       adsb-api</code> &mdash; restarting the OASIS web server alone will not pick it up.</p></div>
     </div>
+
+    <h2>Retention</h2>
+    <p>
+      The history database holds two tables that behave differently. The
+      <code>aircraft</code> table is a <strong>latest-position snapshot</strong>, one row per
+      ICAO, and is never pruned &mdash; it is what &ldquo;recently heard&rdquo; reads, which is
+      why that query is cheap. The <code>observations</code> table is the detailed track, and
+      it is the only thing pruned: rows older than <strong>120&nbsp;hours</strong> (five days)
+      are deleted, immediately at daemon start and then every <strong>600&nbsp;seconds</strong>.
+    </p>
+    <p>
+      A breadcrumb row is only written when a frame actually carries a <em>changed</em>
+      position &mdash; repeated identical positions and Mode-S-only frames are roughly 80% of
+      traffic and are dropped. Without that, an unbounded observations table reaches millions
+      of rows in a month. Set <code>ADSB_RETAIN_HOURS=0</code> to disable pruning entirely if
+      you are keeping a research log and have the disk for it.
+    </p>
 
     <h2>Configuration &amp; off-Pi testing</h2>
     <p>
@@ -168,12 +267,20 @@ python3 services/adsb/install.py --serve   # run the recorder/API in the foregro
       <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
       <tbody>
         <tr><td><code>ADSB_JSON_PATH</code></td><td><code>/run/dump1090-fa/aircraft.json</code></td><td>The live aircraft JSON to poll</td></tr>
+        <tr><td><code>ADSB_STATS_PATH</code></td><td><code>/run/dump1090-fa/stats.json</code></td><td>dump1090-fa&rsquo;s statistics file &mdash; the source of <code>samples_per_sec</code> and therefore of the signal meter</td></tr>
         <tr><td><code>ADSB_DB_PATH</code></td><td><code>/var/lib/adsb/adsb-history.db</code></td><td>SQLite history database</td></tr>
-        <tr><td><code>ADSB_API_PORT</code></td><td><code>8086</code></td><td>HTTP API port</td></tr>
-        <tr><td><code>ADSB_ALERT_RADIUS_KM</code></td><td><code>50</code></td><td>Proximity-alert radius around the station</td></tr>
+        <tr><td><code>ADSB_API_PORT</code></td><td><code>8086</code></td><td>HTTP API port (loopback only)</td></tr>
+        <tr><td><code>ADSB_ALERT_RADIUS_KM</code></td><td><code>50</code></td><td>Proximity radius for the <em>server-side</em> alert log only &mdash; it does not affect the map</td></tr>
         <tr><td><code>ADSB_POLL_SECS</code></td><td><code>1.0</code></td><td>Poll interval for <code>aircraft.json</code></td></tr>
+        <tr><td><code>ADSB_RETAIN_HOURS</code></td><td><code>120</code></td><td>How long detailed observations are kept. <code>0</code> disables pruning.</td></tr>
+        <tr><td><code>ADSB_PRUNE_EVERY_S</code></td><td><code>600</code></td><td>How often the prune loop runs</td></tr>
       </tbody>
     </table></div></div>
+    <p>
+      The station position is <em>not</em> an environment variable &mdash; it comes from
+      <code>configuration/station.json</code>. Without it no proximity alert can ever be
+      produced (squawk alerts still are).
+    </p>
 
     <h2>Troubleshooting</h2>
     <div class="box"><div class="box-body"><table>
@@ -181,8 +288,10 @@ python3 services/adsb/install.py --serve   # run the recorder/API in the foregro
       <tbody>
         <tr><td>Dashboard card is grey / <code>NOT INSTALLED</code></td>
             <td>ADS-B isn&rsquo;t installed. Run <code>python3 services/adsb/install.py</code> (or pick it in <a href="setup-menu.html">the setup menu</a>), then reload the dashboard.</td></tr>
-        <tr><td>START fails, or the APRS feed died when you started ADS-B</td>
-            <td>Expected on a single dongle &mdash; they share it. Stop the <a href="aprs-feed.html">APRS SDR feed</a> first, or fit a second RTL-SDR. Check <code>journalctl -u dump1090-fa -e</code> for <code>usb_claim_interface error -6</code> (dongle busy).</td></tr>
+        <tr><td>The card has no START button</td>
+            <td>By design &mdash; route a dongle to ADS-B in the <strong>SRV OPS</strong> console instead. See <a href="service-operations.html">Service Operations</a>.</td></tr>
+        <tr><td>It fails to come up, or the APRS feed died when you routed the dongle to ADS-B</td>
+            <td>Expected on a single dongle &mdash; they share it, and routing displaces whatever held it. Fit a second RTL-SDR to run both. Check <code>journalctl -u dump1090-fa -e</code> for <code>usb_claim_interface error -6</code> (dongle busy).</td></tr>
         <tr><td>Card is UP but <strong>0 aircraft</strong></td>
             <td>Decoder running, nothing heard. 1090&nbsp;MHz is line-of-sight &mdash; you need a clear-sky antenna. Confirm decodes at the source: <code>journalctl -u dump1090-fa -f</code>. A basic dongle whip indoors hears little.</td></tr>
         <tr><td>Map plots nothing but the list has aircraft</td>
@@ -190,7 +299,13 @@ python3 services/adsb/install.py --serve   # run the recorder/API in the foregro
         <tr><td><code>/health</code> shows a growing <em>age</em></td>
             <td><code>dump1090-fa</code> stopped writing <code>aircraft.json</code>. Restart it: <code>sudo systemctl restart dump1090-fa</code>. If <code>adsb-api</code> code changed, also <code>sudo systemctl restart adsb-api</code>.</td></tr>
         <tr><td>No alerts ever fire</td>
-            <td>Alerts are relative to your station. Set position on the <a href="gps-card.html">GPS card</a>, and widen the radius with <code>ADSB_ALERT_RADIUS_KM</code> if traffic is sparse.</td></tr>
+            <td>Proximity alerts are relative to your station &mdash; set position on the <a href="gps-card.html">GPS card</a>. Beyond that there is nothing to widen: the map alerts at a fixed 15&nbsp;km and <code>ADSB_ALERT_RADIUS_KM</code> does not touch it. If nothing comes within 15&nbsp;km, no proximity alert is correct.</td></tr>
+        <tr><td>The meter says SILENT but the unit is up</td>
+            <td>Samples are not flowing &mdash; an RF-chain problem, not software. Check the antenna, the connector and the dongle. 1090&nbsp;MHz is line-of-sight.</td></tr>
+        <tr><td>Almost no flight shows an operator name</td>
+            <td>Expected: only 37 carriers ship in the seed table. Regenerate it with <code>scripts/build-adsb-operators.py</code> and an OpenFlights <code>airlines.dat</code>.</td></tr>
+        <tr><td><code>curl &lt;pi-ip&gt;:8086/health</code> refuses the connection</td>
+            <td>The daemon is loopback-only. Run the curl on the Pi itself, or go through the Flask proxy at <code>/api/adsb/health</code> on <code>:8083</code>.</td></tr>
       </tbody>
     </table></div></div>
 

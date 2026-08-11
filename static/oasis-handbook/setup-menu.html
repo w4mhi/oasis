@@ -25,6 +25,7 @@
       <a href="dashboard.html">Dashboard Tour</a>
       <a href="system-monitor.html">System Monitor</a>
       <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
       <a href="gps-card.html">GPS / GNSS Card</a>
       <a href="themes-units.html">Themes &amp; Units</a>
       <div class="nav-group">APRS</div>
@@ -58,7 +59,9 @@
       <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
       <a href="usb-bundle.html">USB Bundle</a>
       <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
       <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
       <a href="security.html">Security</a>
       <a href="uninstall.html">Uninstall</a>
     </nav>
@@ -84,43 +87,92 @@
       scripts, so each stays the single source of truth. Tick what you want; it runs the
       matching scripts <strong>in order</strong>, pulls in prerequisites, and asks for
       your password just once. The <strong>pre-checked</strong> items give you a working
-      field station out of the box &mdash; dashboard, APRS, web terminal, service controls,
-      and Wi-Fi fallback. Re-run the menu anytime to add features.
+      field station out of the box &mdash; server, web terminal, service controls, Wi-Fi
+      fallback, and the offline reference data. Re-run the menu anytime to add features.
     </p>
     <div class="callout info">
       <span class="ic">&#8505;</span>
       <div><p><strong>Version-aware &amp; idempotent.</strong> Every installer installs when absent, <em>upgrades</em> when newer, and keeps what you have otherwise &mdash; never downgrades. It picks the newest source (apt vs the bundle) and the packages for your OS version, so an older USB bundle can&rsquo;t clobber a newer package.</p></div>
     </div>
-    <h2>Server</h2>
+    <p>
+      The checkboxes are grouped into five sections. The same list is served by the browser
+      setup page at <code>server/system/setup.html</code>, so a box already running OASIS can
+      add features without an SSH session.
+    </p>
+    <h2>Foundation</h2>
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Menu item</th><th>Default</th><th>What it gives you</th></tr></thead>
       <tbody>
-        <tr><td>Server (.venv + deps)</td><td><span class="badge primary">on</span></td><td>The Flask web server &mdash; dashboard, FCC lookup, map tiles. Foundation for everything.</td></tr>
-        <tr><td>Auto-start on boot</td><td><span class="badge primary">on</span></td><td>systemd unit so OASIS starts at boot.</td></tr>
-        <tr><td>GrayWolf APRS (+ history API)</td><td><span class="badge primary">on</span></td><td>APRS TNC/iGate/digipeater on :8080 + history API on :8085.</td></tr>
-        <tr><td>Winlink (Pat)</td><td>&mdash;</td><td>Pat client + web UI on :8082 (Telnet works now; RF experimental).</td></tr>
-        <tr><td>Kiwix (offline content)</td><td>&mdash;</td><td><code>kiwix-serve</code> on :8081 for ZIM content.</td></tr>
-        <tr><td>Web SSH (ttyd)</td><td><span class="badge primary">on</span></td><td>Browser terminal on :7681.</td></tr>
-        <tr><td>OpenWebRX (SDR monitor)</td><td>&mdash;</td><td>RX-only SDR web UI on :8073 &mdash; experimental.</td></tr>
-        <tr><td>Dashboard service controls</td><td><span class="badge primary">on</span></td><td>Scoped sudoers rule so the dashboard start/stop buttons work.</td></tr>
-        <tr><td>Wi-Fi AP fallback</td><td><span class="badge primary">on</span></td><td>Pi hosts the <code>OASIS</code> hotspot when no known network is in range.</td></tr>
+        <tr><td><code>server</code></td><td><span class="badge primary">on</span></td><td>The Flask web server &mdash; dashboard, FCC lookup, map tiles &mdash; and its systemd unit. Foundation for nearly everything else.</td></tr>
+        <tr><td><code>webssh</code></td><td><span class="badge primary">on</span></td><td>Browser terminal (ttyd) on :7681.</td></tr>
+        <tr><td><code>service-controls</code></td><td><span class="badge primary">on</span></td><td>Scoped sudoers rule so the dashboard start/stop buttons work &mdash; see <a href="service-controls.html">Service Controls</a>.</td></tr>
+        <tr><td><code>ap-fallback</code></td><td><span class="badge primary">on</span></td><td>Pi hosts the <code>OASIS</code> hotspot when no known network is in range.</td></tr>
       </tbody>
     </table></div></div>
-    <h2>Content / Data</h2>
+    <h2>Services</h2>
+    <p>All opt-in &mdash; none of these are pre-checked.</p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Menu item</th><th>What it gives you</th></tr></thead>
+      <tbody>
+        <tr><td><code>graywolf (+ graywolf-api)</code></td><td>APRS TNC / iGate / digipeater on :8080 plus the history API on :8085.</td></tr>
+        <tr><td><code>winlink (+ direwolf)</code></td><td>Pat client and web UI on :8082, with direwolf for the RF path &mdash; see <a href="winlink.html">Winlink</a>.</td></tr>
+        <tr><td><code>kiwix</code></td><td><code>kiwix-serve</code> on :8081 for ZIM content.</td></tr>
+        <tr><td><code>openwebrx</code></td><td>RX-only SDR web UI on :8073.</td></tr>
+        <tr><td><code>rtl-feed</code> (APRS SDR &rarr; GrayWolf)</td><td>The RTL-SDR APRS receive chain feeding GrayWolf &mdash; see <a href="aprs-feed.html">Feeding APRS</a>. The registry key is <code>rtl-sdr-feed</code>; it pulls in <code>rtl-sdr</code> and is installed disabled, so it never grabs a dongle you did not route to it.</td></tr>
+        <tr><td><code>adsb</code></td><td>dump1090-fa plus the OASIS ADS-B recorder API &mdash; see <a href="adsb.html">ADS-B Aircraft</a>.</td></tr>
+        <tr><td><code>satellites</code> (+ TLE cache + pass-alert voice)</td><td>Skyfield pass prediction, the roster build, the TLE cache and the pass-alert voice &mdash; see <a href="satellites.html">Satellites</a>.</td></tr>
+        <tr><td><code>speech</code></td><td>Spoken announcements via Piper &mdash; see <a href="station-voice.html">Station Voice</a>. One of the few installers that needs no root.</td></tr>
+      </tbody>
+    </table></div></div>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p><code>rtl-feed</code> deliberately sits <em>above</em> <code>adsb</code> in the
+      list. A single setup run installs in order, and the feed must get to probe for its
+      dongle before dump1090-fa claims one.</p></div>
+    </div>
+    <h2>Running Hardware</h2>
+    <p>Display and chassis options, all opt-in.</p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Menu item</th><th>What it gives you</th></tr></thead>
+      <tbody>
+        <tr><td><code>pi-headless</code></td><td>Runs the Pi with no desktop. Needs a reboot.</td></tr>
+        <tr><td><code>pi-local-monitor</code></td><td>Local display support. Needs a reboot.</td></tr>
+        <tr><td><code>pi-oasis-dashboard</code></td><td>The Chromium kiosk autostart &mdash; see <a href="panel-kiosk.html">Panel &amp; Kiosk</a>. A dropdown beside it picks the panel size: <strong>800&times;480</strong> (7&Prime; touchscreen) or <strong>1920&times;1200</strong> (10&Prime; wide panel). Needs a reboot.</td></tr>
+        <tr><td><code>cm4stack</code></td><td>CM4 carrier-board support. Needs a reboot.</td></tr>
+        <tr><td><code>rgb-cooling-hat</code></td><td>RGB cooling HAT fan control.</td></tr>
+        <tr><td><code>argon-fan</code> (Argon ONE, GPIO4-free)</td><td>Fan-only control for the Argon ONE case that leaves GPIO4 alone, so it cannot fight a GPS PPS line.</td></tr>
+      </tbody>
+    </table></div></div>
+    <h2>Radio Interfaces</h2>
+    <p>Dongles, HATs, GPS and real-time clocks &mdash; all opt-in.</p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Menu item</th><th>What it gives you</th></tr></thead>
+      <tbody>
+        <tr><td><code>rtl-sdr</code> (driver + tools)</td><td>librtlsdr and the <code>rtl_*</code> tools. Required by the APRS SDR feed, ADS-B and <a href="satellites.html">satellite listening</a>.</td></tr>
+        <tr><td><code>gps</code> (USB / autodetect)</td><td>gpsd against a USB GNSS puck &mdash; see <a href="gps-time.html">GPS Time &amp; RTC</a>.</td></tr>
+        <tr><td><code>gps-L76X</code> (UART / GPIO HAT)</td><td>The L76X GNSS HAT on the UART, with PPS. Registry key <code>gps-l76x</code>.</td></tr>
+        <tr><td><code>dra-pi + dra-rx-led</code></td><td>DRA-Pi radio interface plus its receive LED. Depends on <code>graywolf</code>.</td></tr>
+        <tr><td><code>draws-gps</code> (DRAWS HAT GPS/PPS)</td><td>The GPS and PPS side of a DRAWS HAT.</td></tr>
+        <tr><td><code>draws-audio</code> (DRAWS HAT radio audio, 2 ports)</td><td>The two radio audio ports of a DRAWS HAT &mdash; see <a href="audio-hardware.html">Audio Hardware</a>.</td></tr>
+        <tr><td><code>rtc-hat</code> Witty Pi 3 (DS3231)</td><td>DS3231 real-time clock. Registry key <code>rtc</code>.</td></tr>
+        <tr><td><code>rtc-raspad</code> BigTreeTech 7&Prime; (PCF8563)</td><td>PCF8563 real-time clock on the BigTreeTech panel.</td></tr>
+      </tbody>
+    </table></div></div>
+    <h2>Content</h2>
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Menu item</th><th>Default</th><th>What it gives you</th></tr></thead>
       <tbody>
-        <tr><td>FCC callsign database</td><td><span class="badge primary">on</span></td><td>Downloads + indexes the FCC amateur DB (~160 MB).</td></tr>
-        <tr><td>Wikipedia content (ZIM)</td><td>&mdash;</td><td>Downloads a Wikipedia ZIM for Kiwix (1 GB &rarr; ~100 GB).</td></tr>
-        <tr><td>Repeater Book listing</td><td><span class="badge primary">on</span></td><td>Shows the dashboard link &mdash; drop your own <code>repeaterbook.csv</code> in.</td></tr>
-        <tr><td>ICS Forms section</td><td><span class="badge primary">on</span></td><td>Toggles the ICS-205/213/214/309 dashboard section.</td></tr>
+        <tr><td><code>fcc</code></td><td><span class="badge primary">on</span></td><td>Downloads + indexes the FCC amateur DB (~160 MB).</td></tr>
+        <tr><td><code>wikipedia</code> (depends on kiwix)</td><td>&mdash;</td><td>Downloads a Wikipedia ZIM for Kiwix (1 GB &rarr; ~100 GB). Pulls in <code>kiwix</code>.</td></tr>
+        <tr><td><code>repeaterbook</code></td><td><span class="badge primary">on</span></td><td>Shows the dashboard link &mdash; drop your own <code>repeaterbook.csv</code> in.</td></tr>
+        <tr><td><code>forms</code></td><td><span class="badge primary">on</span></td><td>Toggles the ICS-205/213/214/309 dashboard section.</td></tr>
       </tbody>
     </table></div></div>
     <p>
-      Display (kiosk), Audio (RTL-SDR, DRA-Pi), and GPS / RTC groups are all opt-in and
-      documented under <a href="audio-hardware.html">Hardware &amp; Deployment</a>. The
-      only hard requirement underneath the menu is the server itself; everything else is
-      per-feature.
+      The only hard requirement underneath the menu is the server itself; everything else is
+      per-feature. Most installers need root &mdash; the exceptions are <code>server</code>,
+      <code>speech</code>, <code>fcc</code>, <code>wikipedia</code>, <code>repeaterbook</code>
+      and <code>forms</code>, which touch nothing privileged.
     </p>
 
     <h2>Troubleshooting</h2>

@@ -11,6 +11,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [Project structure](#project-structure)
 - [Guided setup (menu)](#guided-setup-menu)
 - [Server setup](#server-setup)
+- [Privileged installs from the browser (`oasis-installer`)](#privileged-installs-from-the-browser-oasis-installer)
 - [FCC Callsign Lookup](#fcc-callsign-lookup)
 - [Using OASIS in the field (no internet)](#using-oasis-in-the-field-no-internet)
 - [Offline Maps](#offline-maps)
@@ -19,6 +20,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [Winlink RF via DigiRig](#winlink-rf-via-digirig)
 - [DRA-Pi-Zero sound card](#dra-pi-zero-sound-card)
 - [DRA-Pi RX LED](#dra-pi-rx-led)
+- [DRAWS HAT (audio + GPS)](#draws-hat-audio--gps)
 - [Kiwix / Wikipedia](#kiwix--wikipedia)
 - [RTL-SDR](#rtl-sdr)
 - [OpenWebRX (SIGINT)](#openwebrx-sigint)
@@ -26,9 +28,11 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [Satellites](#satellites)
 - [Speech (Piper voice)](#speech-piper-voice)
 - [GPS time sync (gpsd + chrony)](#gps-time-sync-gpsd--chrony)
+- [GPS L76X HAT (Waveshare)](#gps-l76x-hat-waveshare)
 - [Hardware RTC (Witty Pi 3 · BigTreeTech 7″)](#hardware-rtc-witty-pi-3--bigtreetech-7)
 - [webssh / Browser Terminal](#webssh--browser-terminal)
 - [Service controls (dashboard power buttons)](#service-controls-dashboard-power-buttons)
+- [Service Operations console (hardware assignment)](#service-operations-console-hardware-assignment)
 - [ICS Forms](#ics-forms)
 - [Tools & calculators](#tools--calculators)
 - [Reference library](#reference-library)
@@ -41,6 +45,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [USB / Portable bundle](#usb--portable-bundle)
 - [Keeping data fresh](#keeping-data-fresh)
 - [Updating OASIS](#updating-oasis)
+- [Diagnostics page (browser)](#diagnostics-page-browser)
 - [Health check (doctor)](#health-check-doctor)
 - [Factory reset / uninstall](#factory-reset--uninstall)
 - [Known Limitations](#known-limitations)
@@ -60,14 +65,17 @@ Units OASIS writes itself live under `/etc/systemd/system/`:
 | GrayWolf API (dashboard feed) | `/etc/systemd/system/graywolf-api.service` |
 | Winlink (Pat) | `/etc/systemd/system/pat.service` |
 | Winlink Direwolf modem | `/etc/systemd/system/pat-direwolf.service` |
+| DRAWS HAT modem (both ports) | `/etc/systemd/system/direwolf-draws.service` |
 | Kiwix (Wikipedia server) | `/etc/systemd/system/kiwix.service` |
 | webssh / browser terminal | `/etc/systemd/system/webssh.service` |
 | RTL-SDR APRS feed | `/etc/systemd/system/aprs-sdr-feed.service` |
 | ADS-B recorder + history API | `/etc/systemd/system/adsb-api.service` |
 | RGB Cooling HAT | `/etc/systemd/system/rgb-cooling-hat.service` |
 | Argon ONE fan | `/etc/systemd/system/argon-fan.service` |
+| GeeekPi case (fan + OLED) | `/etc/systemd/system/geek-pi-case.service` |
 | DRA-Pi RX LED | `/etc/systemd/system/dra-rx-led.service` |
 | Wi-Fi AP fallback | `/etc/systemd/system/oasis-netwatch.service` |
+| Privileged installer worker (browser Setup page) | `/etc/systemd/system/oasis-installer.service` (+ `oasis-installer.path`) |
 
 Package-provided units (installed via `apt`/`.deb`, so they live under `/lib/systemd/system/`):
 
@@ -185,41 +193,66 @@ Now continue to [Guided setup](#guided-setup-menu).
 ```
 oasis/
 ├── index.html                  ← Dashboard (start here)
+├── setup-oasis.py              ← Guided setup menu
+├── start-oasis.py              ← Detached launcher + the one-time privilege grants
 ├── css/common.css              ← Shared design system
 │
-├── server/                     ← Flask web server (port 8083)
-│   ├── app.py
+├── server/                     ← Flask web server (port 8083) — four things, nothing else
+│   ├── app.py                  ← App, blueprint registration, blanket static mount
+│   ├── appconfig.py            ← Suite root + port
+│   ├── routes/                 ← API blueprints: system · health · hardware · setup ·
+│   │                              speech · wifi · files · diagnostics · service_control
+│   └── system/                 ← setup.html · diagnostic.html · browser.html
+│       (server/wheels/ appears after a bundle build — vendored Flask, gunicorn,
+│        MarkupSafe, psutil for every platform × Python 3.9–3.14; gitignored)
+│
+├── common/                     ← Shared Python + vendored front-end assets
 │   ├── lookup.py               ← FCC binary-search engine
 │   ├── maidenhead.py           ← ZIP → grid square
-│   ├── map-assets/             ← MapLibre GL JS/CSS, fonts
-│   ├── templates/              ← Flask HTML templates
-│   ├── wheels/                 ← Vendored wheels: Flask, gunicorn, MarkupSafe,
-│   │                              psutil — all platforms × Python 3.9–3.14
-│   ├── winlink/                ← Winlink tools
-│   ├── tools/                  ← Antenna calc, grid/bearing, net logger
-│   └── system/                 ← Dashboard verify, file browser
-│
-├── common/                     ← Shared code + vendored front-end assets
-│   ├── js/                     ← Shared JS modules (units, geo, format, adsb)
+│   ├── diagnostics.py          ← The check registry behind doctor.py and /api/diagnostics
+│   ├── hardware.py, guardian.py ← Device inventory · resource guardian
+│   ├── js/                     ← Shared JS modules (units, geo, format, adsb, sat-*,
+│   │                              hw-console, service-registry, clock-chime)
+│   ├── css/
 │   └── dependencies/           ← Vendored pdf-lib.min.js + glyph fonts
 │
-├── services/fcc_database/
-│   └── data/                   ← EN.dat/HD.dat/EN.idx/zipcodes.csv
-│                                  all generated by services/fcc_database/install.py (gitignored)
+├── services/                   ← One directory per service: installer + routes + page
+│   ├── fcc_database/data/      ← EN.dat/HD.dat/EN.idx/zipcodes.csv — generated by
+│   │                              services/fcc_database/install.py (gitignored)
+│   ├── aprs/                   ← APRS API, station store, warnings
+│   ├── satellites/             ← Roster, pass prediction, live SDR audio
+│   ├── winlink/                ← Winlink (Pat) install + mailbox routes
+│   └── adsb/ graywolf/ kiwix/ openwebrx/ rtl-feed/ webssh/
 │
-├── maps/                       ← map.html + us-states.geojson; *.pmtiles placed here
-│                                  (tiles are gitignored, not tracked)
-├── aprs/                       ← APRS map page
+├── features/                   ← One directory per HAT / board / hardware add-on
+│   ├── draws-audio/ draws-gps/       ← DRAWS HAT (codec + on-board GPS)
+│   ├── gps/ gps-L76X/                ← USB GPS · Waveshare L76X GPS HAT
+│   ├── rtc-hat/ rtc-raspad/          ← Witty Pi 3 · BigTreeTech 7″ RTCs
+│   ├── argon-fan/ rgb-cooling-hat/ geek-pi-case/ cm4stack/
+│   └── dra-audio-interface/ rtl-sdr/ speech/
+│
+├── maps/
+│   ├── traffic/map.html        ← The traffic / APRS map page (+ assets/ APRS sprites)
+│   ├── mapengine/              ← MapLibre GL JS/CSS, pmtiles.js, glyph fonts
+│   ├── tiles/                  ← *.pmtiles land here (gitignored, not tracked)
+│   └── routes.py, mapctl.py, convert-mbtiles.py, us-states.geojson
+│
+├── oasis-dashboard/            ← Kiosk dashboard (dashboard.html), 800×480 + 1920×1200
+├── overlays/                   ← Self-compiled device-tree overlays (draws, udrc, m5stack)
+├── configuration/              ← Runtime state: station.json · hardware.json ·
+│                                  satellites.json · installed-services.json · hazards.json
 ├── scripts/                    ← Setup, build, and install scripts (see README)
 │                                  (enable-graywolf-api.py = APRS history API, port 8085)
+├── tools/                      ← Antenna calc, grid/bearing, power, gray line, net log,
+│                                  band-plan/
+├── tests/                      ← unittest suites + the `node --test` JS harness
 │
 ├── static/
 │   ├── ics-205/                ← ICS 205 Radio Communications Plan
 │   ├── ics-213/                ← ICS 213 General Message
 │   ├── ics-214/                ← ICS 214 Activity Log
 │   ├── ics-309/                ← ICS 309 Communications Log
-│   ├── band-plan/              ← U.S. amateur band plan
-│   ├── cheatsheets/            ← Radio quick-reference cards
+│   ├── oasis-handbook/         ← The offline OASIS handbook (replaced cheatsheets/)
 │   ├── graywolf-handbook/      ← GrayWolf offline handbook
 │   ├── quick-ref/              ← Q-codes, phonetics, pro-words, RST, ITU
 │   ├── chirp/                  ← CHIRP CSVs (samples + saved exports)
@@ -228,10 +261,10 @@ oasis/
 │   ├── repeater-guide/         ← Repeater programming with CHIRP
 │   └── repeaterbook/           ← RepeaterBook offline browser (CSV gitignored)
 │
-└── docs/                       ← This file and other documentation
+└── docs/                       ← This file, api.md (full route reference), and more
 ```
 
-> **Which script do I run, and when?** See the [Scripts matrix in the README](../README.md#-scripts--what-to-run-when--why). In short: `setup-server.py` is the only required one; the rest are opt-in per feature. Large data (FCC database, full map regions, PDF manuals, Wikipedia) is downloaded or generated by those scripts — it is not stored in the repo.
+> **Which script do I run, and when?** See the [Setup scripts table in the README](../README.md#-setup-scripts). In short: `setup-server.py` is the only required one; the rest are opt-in per feature. Large data (FCC database, full map regions, PDF manuals, Wikipedia) is downloaded or generated by those scripts — it is not stored in the repo.
 
 > **Working on this code?** OASIS is built by W4MHI with Claude Code as the day-to-day dev partner — plan first, human review before anything merges, same offline-first constraints apply to AI-suggested code as to anyone's. See [How OASIS Is Built](../README.md#-how-oasis-is-built) in the README.
 
@@ -258,8 +291,14 @@ python3 setup-oasis.py --features graywolf,winlink  # non-interactive subset
 
 > ⚠️ **Common mistake:** pressing **Enter** on a feature row just toggles its checkbox — it does **not** start the install. When you've ticked everything you want, press **Tab** to move the cursor to the **OK** button, then **Enter** on OK to begin. Nothing runs until you do this.
 
-- **Sections:** *Server* (server, auto-start, GrayWolf, Winlink, Kiwix, Web SSH),
-  *Audio* (RTL-SDR, the APRS feed, DRA-Pi-Zero), *Content / Data* (FCC, Wikipedia).
+- **Sections:** six, in this order —
+  *Server* (server, auto-start, GrayWolf, Winlink, Winlink RF via DigiRig, Kiwix,
+  Web SSH, OpenWebRX, ADS-B, dashboard service controls, Wi-Fi AP fallback),
+  *Display* (Piper speech, the three kiosk modes, desktop icon, CM4Stack panel),
+  *Audio* (RTL-SDR tools, the RTL-SDR → GrayWolf APRS feed, DRA-Pi-Zero, DRA-Pi RX LED),
+  *GPS* (gpsd + chrony), *RTC* (Witty Pi 3, BigTreeTech 7″), and
+  *Content / Data* (FCC, Wikipedia, the satellite roster, the satellite pass-alert
+  voice, Repeater Book, ICS Forms).
   Software/services are pre-checked; large data downloads are opt-in.
 - **Privilege model:** runs as your normal user and caches `sudo` once at the start
   (so your password isn't asked again mid-install). Each delegated script keeps the
@@ -326,6 +365,54 @@ You never need to run any of these steps manually — the launcher handles them.
 
 </details>
 
+### Starting without systemd — `start-oasis.py`
+
+`scripts/start-server.sh` `exec`s into gunicorn, so it **owns the terminal** that ran
+it: close the SSH session and the server goes with it. `start-oasis.py`, at the repo
+root, does the same job but starts the server as a **detached background process**
+and then exits — you get your prompt back, and the server survives logout. It is the
+right launcher for any box without systemd (macOS, Windows, a container), and the
+friendliest one on a Pi you have not enabled auto-start on yet.
+
+```bash
+python3 start-oasis.py            # start (or restart) detached, then return
+```
+
+Re-running is a clean restart: anything already bound to port 8083 is stopped first.
+Server output goes to `oasis-server.log` in the repo root — nothing stays attached to
+the process's stdout once it exits, so that file is where the log lives.
+
+On **Linux** it also does three one-time chores before starting, each idempotent and
+each skipped once it has been done:
+
+1. `scripts/enable-service-controls.py` — the sudoers rule behind the dashboard's
+   START/STOP/restart/reboot buttons.
+2. `scripts/enable-oasis-installer.py` — the root worker the browser Setup page needs
+   (see the next section).
+3. **Web SSH (ttyd)** — installed if its unit is absent, then recorded in
+   `configuration/installed-services.json` so its dashboard card appears. It is the
+   remote-admin lifeline a headless operator needs before anything else.
+
+Steps 1 and 2 ask for your sudo password **in that terminal**, once. After that the
+dashboard never needs a password again. All three are skipped on non-Linux, where the
+underlying scripts refuse to run anyway.
+
+**Field-debug — did it actually come up?**
+
+```bash
+python3 start-oasis.py
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8083/health
+tail -20 oasis-server.log
+```
+
+**Healthy:** the script prints its own ✓ lines and exits on its own; `curl` prints
+`200`; `oasis-server.log` ends with a gunicorn `Listening at: http://0.0.0.0:8083`.
+
+**Broken:** the script exits reporting the port never came up, `curl` prints `000`
+(nothing listening), and the tail of `oasis-server.log` carries the real reason —
+almost always a missing venv (`python3 scripts/setup-server.py`) or a traceback from
+`server/app.py`. A `403`/`404` from `curl` means something *else* owns port 8083.
+
 **Auto-start on boot (systemd):**
 
 systemd is the Pi's service manager — the equivalent of Windows Services. Once enabled, OASIS starts automatically every time the Pi powers on, without you needing to SSH in and run the launcher. Use the included script to set this up:
@@ -359,18 +446,23 @@ The script creates `/etc/systemd/system/oasis.service` and runs `systemctl enabl
 
 <details><summary>Manual service file (if you prefer not to use the script)</summary>
 
-Create `/etc/systemd/system/oasis.service`, replacing `YOUR_USERNAME` with your actual login name (run `whoami` if unsure):
+Create `/etc/systemd/system/oasis.service`, replacing `YOUR_USERNAME` with your actual login name (run `whoami` if unsure). This is what `scripts/enable-autostart-pi.py` writes, verbatim — the unit invokes the launcher rather than gunicorn directly, so the venv bootstrap, the port-8083 free, and the gunicorn/Flask fallback all still happen:
 
 ```ini
 [Unit]
-Description=OASIS suite server
+Description=OASIS — Off-grid Amateur Station Integrated Suite
 After=network.target
+Wants=network.target
 
 [Service]
+Type=simple
 User=YOUR_USERNAME
 WorkingDirectory=/home/YOUR_USERNAME/oasis
-ExecStart=/home/YOUR_USERNAME/oasis/.venv/bin/gunicorn --workers 1 --bind 0.0.0.0:8083 server.app:app
+ExecStart=/bin/bash /home/YOUR_USERNAME/oasis/scripts/start-server.sh
 Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
@@ -382,7 +474,7 @@ sudo systemctl enable --now oasis
 
 </details>
 
-**Server routes:**
+**Server routes — a selection.** The app registers **104 routes**; the table below is the handful you are most likely to `curl` while setting a station up. **[`docs/api.md`](api.md) is the complete, authoritative reference** — go there for anything not listed here.
 
 | Route | Description |
 |---|---|
@@ -394,18 +486,97 @@ sudo systemctl enable --now oasis
 | `GET /maps/<file>.pmtiles` | PMTiles archive bytes (HTTP range reads; the browser renders) |
 | `GET /api/fs/browse?path=<dir>` | Browse allowlisted locations (USB / mounts) for `.pmtiles` |
 | `GET /api/fs/pmtiles?path=<file>` | Stream a `.pmtiles` from an allowlisted path (HTTP range) |
-| `GET /map-assets/<path>` | MapLibre GL + pmtiles.js JS/CSS, fonts |
+| `GET /api/diagnostics` | Full station health sweep — the JSON behind the Diagnostics page |
+| `GET /api/hardware/console` | Device × service matrix for the Service Operations console |
 | `GET /health` | JSON health check (FCC index presence · callsign count · name/grid index presence) |
 | `GET /api/system` | hostname / IP / CPU / temp / RAM / disk / load / uptime / GPS / chrony (drives stats bar and GPS card) |
 | `GET /api/audio` | ALSA sound cards: index, name, capture/playback, USB flag — Linux only |
 | `GET /api/service` (POST) | Start/stop a controllable service (graywolf, kiwix, webssh, etc.) |
 | `GET /server-ports.json` | Port map consumed by dashboard JS |
 
+> ℹ️ **Static files have no route of their own.** `server/app.py` mounts the whole
+> suite root as Flask's static folder (`Flask(__name__, static_folder=SUITE_ROOT,
+> static_url_path="")`), so every page and asset — `maps/traffic/map.html`,
+> `maps/mapengine/maplibre-gl.js`, `common/js/*`, everything under `static/` — is
+> served by that one blanket mount. Nothing needs registering when you add a page.
+
 `/api/system` drives a row of header cards, polled every 5 seconds: **local + UTC clocks**, a **CPU card** (usage / SoC temp / RAM / disk inline, plus a per-core usage bar for each core), a **PROCESSES card** (top 3 processes by CPU, 1-min load average), a **STATUS card** (uptime, Pi power/throttle state, the HW radio-assignment dots described below, and host/LAN IP), and a **GPS card** showing fix mode, satellites, HDOP, lat/lon, altitude, and chrony clock-lock status. Everything is colour-coded green/amber/red by threshold. A **Units** pill (Imperial/Metric) toggles all displayed measurements (temperature, altitude, speed) in one tap — preference is persisted per browser. `/api/audio` (ALSA sound card list) is served but not rendered on the main dashboard; it's deferred to the Setup/health-check page.
 
 The **STATUS** card's Host row is the hostname and LAN IP of the machine actually serving the page. The **HDOP** value on the GPS card is colour-coded across six steps from ideal (bright green, < 1) through excellent, good, moderate, fair, to poor (red, > 20). Service cards include **START/STOP** buttons for controllable services (GrayWolf, Winlink, Kiwix, Web SSH, OpenWebRX), so you never need to SSH in just to restart a service.
 
-Beyond simple start/stop, the **Service Operations** console (the mixer-board rail beside the service strip on the dashboard, or the APRS/ADS-B/ORX/SAT pill on the kiosk) opens a device→service matrix: reroute an SDR or sound-card between services with one tap, **lock** a device to protect its assignment, or **STOP ALL**. An opt-in **resource guardian** — a background thread on the server, running independent of any open browser tab — watches SoC temperature, CPU, and memory; crossing a threshold (80 °C / 95 % / 92 % by default, tunable down to a safe floor) arms a 30-second cancellable countdown, shown as a banner on any dashboard or kiosk currently open, before auto-running STOP ALL if nobody cancels. Both the manual STOP ALL and the guardian's always exclude **Web SSH**, so a tripped guardian can never lock the operator out of the box. See [API — Hardware allocation](api.md#hardware-allocation-apihardware).
+Beyond simple start/stop, the **Service Operations** console opens a device→service matrix: reroute an SDR or sound card between services with one tap, **lock** a device to protect its assignment, or **STOP ALL** — with a server-side resource guardian that can run STOP ALL for you when the box overheats. Full writeup: [Service Operations console (hardware assignment)](#service-operations-console-hardware-assignment).
+
+---
+
+## Privileged installs from the browser (`oasis-installer`)
+
+**Run this, or the browser Setup page cannot install anything.** The Flask server
+runs as your normal user with no TTY: it can never `apt install`, write to `/etc`,
+drop a systemd unit, or edit sudoers. So the Setup page does not try. It writes a
+**job file** into `configuration/installer-queue/`, and a **root worker** picks it up
+and does the privileged half. Without that worker installed, jobs queue and nothing
+ever happens — the page has no way to tell you why.
+
+```bash
+python3 scripts/enable-oasis-installer.py            # install + enable  (asks for sudo once)
+python3 scripts/enable-oasis-installer.py --check    # report status, change nothing
+python3 scripts/enable-oasis-installer.py --disable  # remove the units
+```
+
+It installs **two** units:
+
+| Unit | What it does |
+|---|---|
+| `/etc/systemd/system/oasis-installer.path` | Watches `configuration/installer-queue/*.job.json` and starts the service the moment a job appears |
+| `/etc/systemd/system/oasis-installer.service` | `Type=oneshot`; runs `scripts/oasis_installer_worker.py` **as root**, drains every pending job, exits |
+
+It also creates the queue directory owned by the operator (`0775`) so the non-root
+server can write into it, and sets `Environment=SUDO_USER=<operator>` on the service
+— without it, install scripts resolve "the operator" to `root` and write config
+(Winlink's `config.json`, with your password and locator) under `/root/` where the
+dashboard never looks.
+
+> ℹ️ **No password ever touches the web layer.** This script asks for sudo once,
+> interactively, to install the units. After that the worker *is* root, via systemd,
+> so the `sudo …` calls already inside each install script succeed unattended.
+
+> 💡 `python3 start-oasis.py` runs this for you on first launch (see
+> [Starting without systemd](#starting-without-systemd--start-oasispy)), as does the
+> guided menu. Run it by hand if you enabled auto-start straight from
+> `scripts/enable-autostart-pi.py` and never used either.
+
+### Field-debug — the Setup page's install button does nothing
+
+```bash
+python3 scripts/enable-oasis-installer.py --check
+systemctl is-active oasis-installer.path
+ls -la configuration/installer-queue/
+curl -s http://localhost:8083/api/setup/permissions
+```
+
+**Healthy:** `--check` reports both units present; `is-active` prints `active`; the
+queue directory exists, is owned by *you*, and holds no stale `*.job.json`; and
+`/api/setup/permissions` returns `"installerDaemonActive": true` alongside
+`"serviceControlsGranted": true`.
+
+**Broken:** `is-active` prints `inactive` or `Unit oasis-installer.path could not be
+found` — the worker was never installed, and every install you started from the
+browser is sitting unread in the queue. `"installerDaemonActive": false` in the API
+response says the same thing; the page's own remedy text is the command in
+`installerLocalCommand`. A queue directory owned by `root` (rather than you) is the
+other failure: the server hits `EACCES` queueing the job and never enqueues at all —
+re-running the install fixes the ownership in place.
+
+**Watch a job go through:**
+
+```bash
+journalctl -u oasis-installer.service -f
+```
+
+Healthy: a burst of install output the moment you click, then the oneshot exits `0`.
+Broken: nothing at all appears when you click (the `.path` unit isn't watching), or
+the unit enters `failed` — in which case the log carries the install script's own
+error, exactly as if you had run it in a terminal.
 
 ---
 
@@ -588,7 +759,7 @@ Pi (no internet)
   └─ server/app.py :8083
        ├─ GET /maps/<file>.pmtiles             → archive bytes (HTTP range)
        ├─ GET /api/fs/browse · /api/fs/pmtiles → load maps off USB at runtime
-       └─ maps/map.html  ← MapLibre + pmtiles.js render in browser
+       └─ maps/traffic/map.html  ← MapLibre + pmtiles.js render in browser
 ```
 
 ### Step 1 — Get a PMTiles file
@@ -672,16 +843,16 @@ scp maps/<region>.pmtiles <username>@<hostname>.local:/home/<username>/oasis/map
 
 > 💡 **Windows users:** use WinSCP or FileZilla (SFTP, port 22) to drag the `.pmtiles` file into `/home/<username>/oasis/maps/` on the Pi.
 
-Or skip copying entirely: keep `.pmtiles` files on a USB stick and use the **Load maps** button on the map page to browse and load them at runtime. The locations the browser may read from are controlled by the `OASIS_MAP_ROOTS` environment variable (default: `/media`, `/mnt`, `/run/media`, `/Volumes`, plus `maps/`).
+Or skip copying entirely: keep `.pmtiles` files on a USB stick and use the **Load maps** button on the map page to browse and load them at runtime. The locations the browser may read from are controlled by the `OASIS_MAP_ROOTS` environment variable (default: `/media`, `/mnt`, `/run/media`, `/Volumes`, `/var/lib/graywolf/tiles`, plus the suite's own `maps/`).
 
 The browser reads the archive directly — no build step, no external tools, no extra Python packages.
 
 ### Refreshing JS libraries
 
-MapLibre GL and pmtiles.js are bundled in `server/map-assets/`. To update:
+MapLibre GL and pmtiles.js are bundled in `maps/mapengine/`. To update:
 
 ```bash
-cd server/map-assets
+cd maps/mapengine
 curl -L -o maplibre-gl.js  https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js
 curl -L -o maplibre-gl.css https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css
 curl -L -o pmtiles.js      https://unpkg.com/pmtiles@3.2.1/dist/pmtiles.js
@@ -694,7 +865,7 @@ curl -L -o pmtiles.js      https://unpkg.com/pmtiles@3.2.1/dist/pmtiles.js
 | Map stuck on "Loading…" | Server not restarted after `app.py` update | Restart the server — new routes won't load until restarted |
 | Blank basemap, 404 for `/maps/<file>.pmtiles` | File not in `maps/` (or wrong name) | Confirm the `.pmtiles` is in `maps/`, or load it via **Load maps** |
 | No roads / blank map | Layer filter mismatch | Open browser console — check diagnostics panel for layer names |
-| Labels/fonts missing | Glyph PBF files absent | Check `server/map-assets/fonts/Open Sans Regular/` |
+| Labels/fonts missing | Glyph PBF files absent | Check `maps/mapengine/fonts/Open Sans Regular/` |
 | **Load maps** lists nothing | Mount not in the allowlist | Set `OASIS_MAP_ROOTS` to include your mount point, then restart |
 
 ---
@@ -1012,6 +1183,98 @@ sudo systemctl status dra-rx-led
 sudo systemctl restart dra-rx-led
 journalctl -u dra-rx-led -f
 ```
+
+---
+
+## DRAWS HAT (audio + GPS)
+
+The **NW Digital Radio DRAWS** HAT is the go-box alternative to a DRA-Pi or a DigiRig:
+one board carrying a TI **TLV320AIC3204** stereo codec wired to **two** mDin6 radio
+ports, plus an on-board GPS. OASIS ships it as two registered features that share one
+device-tree overlay:
+
+| Feature | Directory | What it does |
+|---|---|---|
+| **DRAWS audio** | `features/draws-audio/` | The overlay, the ALSA card, the mixer routing, and the 2-channel Direwolf TNC |
+| **DRAWS GPS** | `features/draws-gps/` | The on-board GPS on `/dev/ttySC0`, into gpsd + chrony |
+
+Tick **draws-audio** / **draws-gps** on the browser Setup page, or run them directly:
+
+```bash
+python3 features/draws-audio/install-draws-audio.py            # autodetect phase
+python3 features/draws-audio/install-draws-audio.py --check    # status only
+python3 features/draws-audio/install-draws-audio.py --dry-run  # preview the config.txt change
+python3 features/draws-audio/install-draws-audio.py --rx-level=-9.0dB   # note the '='
+python3 features/draws-audio/install-draws-audio.py --livetest W4MHI-6  # KEYS THE TX
+
+python3 features/draws-gps/install-draws-gps.py                # autodetect phase
+python3 features/draws-gps/install-draws-gps.py --check        # NMEA + fix + gpsd/chrony
+python3 features/draws-gps/install-draws-gps.py --force        # retarget gpsd from another GPS feature
+```
+
+Both follow the **two-phase, exit-10** convention: the first run on a board without the
+overlay writes the managed `config.txt` block and exits `10` (reboot required) — the
+sound card and `/dev/ttySC0` only appear after a reboot. Re-run afterwards and it goes
+straight to the mixer / verification and exits `0`. Whichever feature you install
+second finds the overlay already there and needs no second reboot.
+
+Exit codes: `0` = done · `10` = done, reboot required · `1` = error.
+
+**The two radio ports are channels of ONE Direwolf**, not two instances — DRAWS is a
+single stereo PCM, and a second Direwolf on it dies with *device busy*. The installer
+writes one config with two profiles and one unit, `direwolf-draws.service`:
+
+| Port | Direwolf channel | PTT (BCM) | Profile | Service |
+|---|---|---|---|---|
+| left mDin6 | `CHANNEL 0` | GPIO 12 | `oasis-draws-winlink` | Winlink |
+| right mDin6 | `CHANNEL 1` | GPIO 23 | `oasis-draws-aprs` | APRS |
+
+Those two names are what you will see as device labels in the
+[Service Operations console](#service-operations-console-hardware-assignment) and in
+the unit description, so a given port is identifiable everywhere. AGW is on `8000`,
+KISS on `8001`.
+
+> ⚠️ **DRAWS and the DRA-Pi cannot coexist.** Both want the same 40-pin header and the
+> same I²S bus. The Setup page keeps the checkboxes mutually exclusive, but nothing
+> stops a direct run of the installer — do that with an `audioinjector-wm8731-audio`
+> overlay already in `config.txt` and you lose *every* sound card. `--check` refuses
+> on a conflicting overlay.
+
+> ⚠️ **RTL-SDR needs Pi OS Trixie; DRAWS needs a working overlay.** A self-compiled
+> `draws.dtbo` (shipped in `overlays/`) brings the HAT up on Trixie, so DRAWS and
+> `librtlsdr ≥ 2.0` can coexist on one box. The rule OASIS applies is to override an
+> OS overlay **on evidence** — did the hardware actually enumerate — never on `uname`.
+
+### Field-debug — the DRAWS HAT
+
+```bash
+python3 features/draws-audio/install-draws-audio.py --check
+aplay -l | grep -i draws            # is the card there at all
+amixer -c draws contents | head -40 # is anything muted
+systemctl status direwolf-draws
+python3 features/draws-gps/install-draws-gps.py --check
+```
+
+**Healthy:** `aplay -l` lists card `draws`; `--check` reports the overlay present, the
+card live, and the mixer routing applied; `direwolf-draws` is `active (running)` and
+its log shows both channels; the GPS `--check` reports valid NMEA *and* a fix *and*
+that chrony is steering from it.
+
+**Broken, in the order worth checking:**
+
+- **No `draws` card, installer exited `10`** → you haven't rebooted. That is the whole
+  fault.
+- **Card present, but nothing is heard and nothing transmits** → the aic32x4 codec
+  **boots with capture AND line-out muted**. This masquerades perfectly as a wiring
+  fault. Check `amixer -c draws contents` *before* you touch a cable; re-run the
+  installer (or `--mixer-only`) to reapply and `alsactl store` the known-good routing.
+- **`direwolf-draws` in a crash loop with *device busy*** → a second Direwolf (a
+  leftover `pat-direwolf`) is holding the PCM. Only one instance may own the card.
+- **`/dev/ttySC0` exists but the clock never steers** → the device node proves nothing.
+  A dead antenna, a baud mismatch, and a gpsd still pointed at `features/gps` all look
+  identical at the node. `--check` separates them: talking vs. silent vs. bytes that
+  don't parse, then fix vs. no fix, then whether gpsd/chrony are actually the ones
+  reading it. Use `--force` to retarget gpsd from another GPS feature.
 
 ---
 
@@ -1564,14 +1827,19 @@ still chime without it.
   (VHF · UHF · L-band), and **orbit class** (LEO · MEO · GEO · HEO). Orbit class
   is derived from the TLE, so it works even on a bare roster before the SatNOGS
   metadata arrives; an active-filter count shows on the collapsed button.
-- **Monitored·1h / All·1h** — the birds you've armed (🔔) versus *every* bird
+- **Monitored·1h / All·1h** — the birds you're monitoring versus *every* bird
   passing in the next hour, each sorted by next-pass time.
+- **Monitoring a bird arms its bell.** Ticking a satellite to monitor it arms its
+  pass alert in the same act, and un-ticking it disarms it — one decision, not two.
+  The 🔔 on each monitored row is an **override**, not the gate: tap it to keep
+  watching a bird on the map while telling it not to wake the shack. A disarmed row
+  reads *"Alerts OFF for this bird — monitored, but it will not wake the shack."*
 - **Pass alerts** — a Morse-"V" chime at T-10 minutes and again (higher-pitched)
   at T-5; with the voice stack, a spoken announcement of which bird is coming and
   its peak elevation. There is deliberately no alert at AOS — by the time the
   bird is over the horizon it's too late to get the rig on frequency.
-  **The bell is stored in the shared roster, not in your browser**, so a bell
-  armed on a laptop reaches every screen, including the kiosk (see below).
+  **The bell is stored in the shared roster, not in your browser**, so monitoring a
+  bird on a laptop reaches every screen, including the kiosk (see below).
   **Muting is per-device** — silencing the shack kiosk overnight leaves a laptop
   chiming, and vice versa.
 - **Sky / footprint** — a live footprint drawn from 15 min before AOS through
@@ -1581,8 +1849,8 @@ still chime without it.
 
 The Chromium kiosk chimes and speaks pass alerts itself, so the shack gets a
 warning without a laptop being open. It alerts on **whatever bells are armed in
-the roster** — arm them from the Satellites page on any device — and shows a bell
-on each armed row. The **bell glyph beside the SATELLITES title mutes this
+the roster** — which is every bird you're monitoring, from the Satellites page on
+any device — and shows a bell on each armed row. The **bell glyph beside the SATELLITES title mutes this
 screen** (amber = alerts live, dim + crossed bell = muted); that mute is local to
 the Pi, so it doesn't quieten anything else.
 
@@ -1676,13 +1944,33 @@ name, then a higher 780 Hz "VVV" at T-5.
 
 ### Live SDR audio (RTL-SDR)
 
-Arm a downlink button on a monitored bird — armable from **5 min before AOS
-through LOS** — and use the header transport to **Listen** (stream the audio to
+Each monitored bird carries a **downlink dropdown** — one `— pick a downlink —`
+select listing that satellite's transmitters as `<modes> · <freq> MHz` (e.g.
+`FM/FSK/SSTV · 437.8 MHz`). Pick one to arm it — armable from **5 min before AOS
+through LOS** — then use the header transport to **Listen** (stream the audio to
 the browser) or **Record** (capture a WAV under `configuration/sat-recordings/`
-for offline APT/LRPT/SSTV decode). Demodulation follows the transmitter mode:
-**FM / APRS** (wide FM), **CW** (USB with a 700 Hz tone offset), and **SSB**
-(USB / LSB). VHF/UHF Doppler stays within the FM passband, so FM birds need no
-active retuning.
+for offline APT/LRPT/SSTV decode). Modes OASIS cannot demodulate (PSK, LRPT, DVB…)
+stay in the list, greyed, suffixed *— not supported*, so you can see what the bird
+carries even when you can't hear it.
+
+> ⚠️ **Nothing in the dropdown is selectable until an SDR is assigned to the
+> station.** With no device assigned to `satellites`, the list still opens and every
+> option is readable — but all of them are disabled, the control is dimmed with a
+> dashed border, and hovering it says *"no device assigned — set one in Setup →
+> Hardware"*. This is the answer to "why can't I arm anything"; assign a dongle in the
+> [Service Operations console](#service-operations-console-hardware-assignment) first.
+
+Demodulation follows the transmitter mode: **FM / APRS / FSK / SSTV / APT** (wide FM),
+**CW** (USB with a 700 Hz tone offset), and **SSB** (USB / LSB). VHF/UHF Doppler stays
+within the FM passband, so FM birds need no active retuning.
+
+**A frequency is not a channel.** `/listen` resolves the downlink by **frequency *and*
+mode**, so picking CW rather than FM on a shared frequency selects a genuinely
+different demodulator. This used to resolve on frequency alone: asking for CW could
+capture with the FM demod and hand back a **WAV of silence**, with nothing on screen
+to say why. (It looked correct only because the case that comes up most — the ISS on
+437.800 — has three modes that all demodulate to FM.) Today a mode that isn't on that
+frequency is refused outright with `MODE_NOT_ON_FREQ` rather than quietly substituted.
 
 Like ADS-B and OpenWebRX, listening **owns the RTL-SDR** — the APRS SDR feed (or
 any other SDR mode) must be stopped first. The transport is global (one dongle,
@@ -1732,7 +2020,27 @@ fall back to `10` rather than emptying the list. It is one number for a horizon
 that is not a circle — you may see 5° south over water and nothing under 20° to
 the north — so set it to your *worst* useful direction and judge individual
 passes from the `max NN°` on each card.
+- **Every downlink option is greyed out — I can't arm anything.** No SDR is assigned
+  to `satellites`. The list is deliberately readable-but-inert in that state, so this
+  looks like a broken page rather than a missing assignment. Confirm and fix:
+  ```bash
+  curl -s http://localhost:8083/api/satellites/listen/status | python3 -m json.tool
+  # "assigned": false                       → no device; nothing is armable
+  # "assigned": true, "device": "RTL-SDR (00000031)"  → you're good
+  curl -s http://localhost:8083/api/hardware/console | python3 -m json.tool | head -30
+  ```
+  Assign one from the [Service Operations console](#service-operations-console-hardware-assignment)
+  (or `POST /api/hardware/assign` with `{"service":"satellites","device_id":"…"}`).
+  Options that stay greyed *after* a device is assigned are modes OASIS cannot
+  demodulate — they carry the *— not supported* suffix and are not a fault.
 - **Live audio: hit Listen and hear nothing?** First, [who owns the RTL-SDR](#rtl-sdr) — listening needs sole use of the dongle, so stop the APRS feed / ADS-B first. Then confirm the bird is actually above the horizon (the header shows AOS/LOS). For a NOAA weather bird you should hear the steady **tick-tick** of the APT carrier while it's overhead.
+- **A recording comes back as silence.** If this is a **CW** or **SSB** downlink on a
+  frequency the bird also uses for FM, make sure you picked the mode you meant — the
+  dropdown's value carries both, and the two select different demodulators. A request
+  for a mode that isn't on that frequency now fails loudly (`400
+  MODE_NOT_ON_FREQ`) rather than returning a silent WAV, so an actual 200 with silence
+  points at RF (antenna, gain, the bird being below your horizon), not at mode
+  resolution.
 
 > Satellites is served by the main OASIS server on **:8083** — no separate port.
 > Pass prediction is Pi-cheap; the live-audio capture needs an RTL-SDR (Pi/Linux
@@ -1769,13 +2077,18 @@ once per distinct sentence; results are cached by content hash under
 never pruned).
 
 ```bash
-# menu: tick "Spoken announcements (Piper voice)"
+# menu: tick "Spoken announcements (Piper voice)" under Display
 python3 setup-oasis.py
 
 # or directly:
 python3 features/speech/install.py
 python3 features/speech/install.py --uninstall
 ```
+
+There is also a **speech** checkbox on the browser Setup page
+(`http://<pi-ip>:8083/server/system/setup.html`) — tick it and run the plan, same
+install, no terminal. It needs the privileged installer worker in place; see
+[Privileged installs from the browser](#privileged-installs-from-the-browser-oasis-installer).
 
 Needs **Python 3.11+** (onnxruntime publishes no older wheels) and is skipped
 cleanly — leaving the espeak-ng voice in place, nothing changed — on 32-bit ARM
@@ -1949,6 +2262,61 @@ chronyc tracking
 
 ---
 
+## GPS L76X HAT (Waveshare)
+
+The **Waveshare L76X GPS HAT** (Quectel L76 GNSS — GPS/BDS/QZSS) wires onto the 40-pin
+header rather than USB: TX/RX/5V/GND, and optionally a **1PPS** line on **BCM GPIO4**.
+It is the HAT alternative to the generic USB receiver in
+[GPS time sync](#gps-time-sync-gpsd--chrony), and it uses the same gpsd + chrony
+plumbing underneath.
+
+```bash
+python3 features/gps-L76X/install-gps-l76x.py                 # enable UART, verify NMEA, wire up gpsd/chrony
+python3 features/gps-L76X/install-gps-l76x.py --pps           # also add the 1PPS overlay (GPIO4)
+python3 features/gps-L76X/install-gps-l76x.py --device /dev/ttyAMA0
+python3 features/gps-L76X/install-gps-l76x.py --no-gpsd       # UART + NMEA verify only
+python3 features/gps-L76X/install-gps-l76x.py --force         # retarget gpsd from features/gps
+python3 features/gps-L76X/install-gps-l76x.py --check         # report status only
+python3 features/gps-L76X/install-gps-l76x.py --keep-console  # don't disable the serial login shell
+```
+
+It adds `enable_uart=1`, **removes the serial console** so it stops stealing bytes from
+the GPS, installs `python3-serial`, verifies NMEA output, and (unless `--no-gpsd`)
+points gpsd + chrony at the device. Exit codes: `0` = done · `10` = done, reboot
+required · `1` = error. The `apt` steps need internet once.
+
+> ⚠️ **Only one GPS may discipline the clock.** This feature and `features/gps` (generic
+> USB GPS) are mutually exclusive alternatives, not additive. Running one after the
+> other warns and refuses to retarget gpsd unless you pass `--force`.
+
+> ⚠️ **GPIO4 is contended.** The 1PPS wire lands on BCM GPIO4
+> (`dtoverlay=pps-gpio,gpiopin=4`) — the same pin Argon's `argononed` watches for the
+> case's soft power button. With both running, one pulse per second reads as a stream
+> of power-button presses and the Pi reboots then shuts down the moment the HAT is
+> seated. See [Argon ONE case (fan control)](#argon-one-case-fan-control), whose
+> installer masks `argononed` for exactly this reason.
+
+### Field-debug — the L76X
+
+```bash
+python3 features/gps-L76X/install-gps-l76x.py --check
+ls -l /dev/ttyS0 /dev/ttyAMA0 2>/dev/null
+gpspipe -r -n 5                     # raw NMEA, if gpsd is running
+chronyc sources | grep -i -E 'gps|pps'
+```
+
+**Healthy:** `--check` reports the UART enabled, the serial console gone, valid NMEA
+arriving, a GGA fix with a satellite count, and chrony carrying a `GPS`/`PPS` source.
+
+**Broken:** the device node exists but `--check` says the receiver is *silent* or
+*bytes that don't parse* — that is a baud mismatch or the serial login shell still
+holding the port (`--keep-console` was used, or the change hasn't been rebooted into).
+Valid NMEA but **no fix** is an antenna/sky problem, not a software one — a cold start
+outdoors takes 1–5 minutes. NMEA and a fix but chrony ignoring it means gpsd is still
+pointed at another GPS feature: `--force`.
+
+---
+
 ## Hardware RTC (Witty Pi 3 · BigTreeTech 7″)
 
 Without GPS lock or internet, a Pi has **no idea what time it is** after a reboot
@@ -2108,6 +2476,130 @@ password ever touches the web layer**.
 
 ---
 
+## Service Operations console (hardware assignment)
+
+START/STOP answers "is this service running". It does not answer the question a
+station with one dongle and three SDR features actually has: **which radio is
+plugged into which service right now, and what happens if I move it.** The **Service
+Operations** console does — the mixer-board rail beside the dashboard's service strip,
+or the `APRS · ADS-B · ORX · SAT` dot bar on the kiosk.
+
+It renders a **device × service matrix**: attached hardware down one axis, the four
+routable services (`aprs`, `adsb`, `winlink`, `satellites`) across the other. Tap a
+cell to put that service on that device. The move is exclusive and immediate — the
+incumbent is displaced, its unit stopped, the new one started. OpenWebRX is
+deliberately *not* a column: it is self-configured and controlled from its own card
+(see [OpenWebRX](#openwebrx-sigint) for the `curl` you need to assign it a dongle).
+
+Devices are discovered and auto-declared on every poll — RTL-SDRs (by EEPROM serial),
+DigiRig, DRA-Pi, and both DRAWS ports. Assignments persist to
+`configuration/hardware.json`:
+
+```json
+{ "version": 1,
+  "devices": [ { "id": "rtl-sdr-00000031", "kind": "rtl-sdr", "serial": "00000031" } ],
+  "assignments": { "aprs": "rtl-sdr-00000031" } }
+```
+
+**RTL-SDR is a shared kind** — several services may point at the same dongle, and the
+console shows you which one is actually running. `digirig`, `dra-pi` and `draws` are
+exclusive: a second claim is refused with `409`.
+
+### Lock
+
+The padlock on a device pins it to its current assignment. A locked device cannot be
+claimed as a target (`target-locked`), a service cannot be moved *off* it
+(`source-locked`), it is skipped by auto-assign, and even the matrix's stop toggle
+refuses it — a lock protects against *any* displacement. Locks live in
+`hardware.json` as `"locked": true` on the device; absent means unlocked. `POST
+/api/hardware/lock` sets and clears it.
+
+### STOP ALL — and the one service it never stops
+
+**STOP ALL** stops every controllable OASIS service in one tap: `adsb-api`,
+`aprs-sdr-feed`, `direwolf-draws`, `dump1090-fa`, `graywolf`, `graywolf-api`,
+`kiwix`, `openwebrx`, `pat`, `pat-direwolf`. It is a plain stop, not a disable —
+nothing is unenrolled from boot.
+
+**Web SSH is deliberately excluded**, as are the `oasis` server itself and `gpsd`:
+
+```python
+# server/routes/hardware.py
+_EMERGENCY_STOP = _CONTROLLABLE_SERVICES - {"webssh"}
+```
+
+Killing Web SSH would sever the operator's remote connection to the box at the worst
+possible moment. You must never lose the way in.
+
+### Resource guardian
+
+A background thread on the *server* — independent of any open browser tab — samples
+SoC temperature, CPU, and memory every 3 seconds. Crossing a threshold arms a
+**30-second cancellable countdown**, shown as a banner on every dashboard and kiosk
+currently open, then runs the same STOP ALL (same Web SSH exclusion) if nobody
+cancels. Cancelling drops it into a cooldown state that cannot immediately re-arm.
+
+| Metric | Default threshold | Floor you may tune it to |
+|---|---|---|
+| SoC temperature | `80.0` °C | `45.0` °C |
+| CPU | `95.0` % | `50.0` % |
+| Memory | `92.0` % | `60.0` % |
+
+> ⚠️ **The guardian is on by default**, not opt-in — a missing or unreadable config
+> file means *enabled with the conservative defaults above*. Config lives in
+> `configuration/guardian.json` (`{"enabled": bool, "thresholds": {...}}`), read by
+> `GET /api/hardware/guardian` and written by `POST /api/hardware/guardian/config`.
+> Thresholds are clamped to the floors — a limit below normal idle would arm
+> perpetually. Set `"enabled": false` to switch it off entirely.
+
+### The API
+
+Thirteen paths under `/api/hardware/` (fourteen registrations — `devices` has both a
+GET and a POST). Every POST requires the `X-OASIS-Request: 1` header; GETs do not.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/hardware/devices` | Device list + per-service `{device_id, ok, reason}`; auto-declares what it finds |
+| POST | `/api/hardware/devices` | Declare a device into `hardware.json` (naming only — never assigns) |
+| GET | `/api/hardware/detect` | Read-only enumeration of attached candidates (rtl_sdr, alsa, serial, usb) |
+| POST | `/api/hardware/assign` | Assign a device to a service (409 with `holder` if exclusively held) |
+| POST | `/api/hardware/release` | Unassign a service, stopping its unit(s) first |
+| POST | `/api/hardware/burn-serial` | Burn a unique EEPROM serial onto the sole unclaimed RTL-SDR |
+| GET | `/api/hardware/console` | The matrix payload: `services`, `devices`, `warnings` |
+| POST | `/api/hardware/route` | Console reroute — put a service on a device, start it, displace the incumbent |
+| POST | `/api/hardware/lock` | Lock / unlock a device |
+| POST | `/api/hardware/stop-all` | STOP ALL |
+| POST | `/api/hardware/service-stop` | Stop one service's unit(s) without changing its assignment |
+| GET | `/api/hardware/guardian` | `mode`, `seconds_left`, `reason`, `stats`, `enabled`, `thresholds` |
+| POST | `/api/hardware/guardian/cancel` | Operator override — cancel the countdown |
+| POST | `/api/hardware/guardian/config` | Enable/disable and tune thresholds (clamped to the floors) |
+
+See [API — Hardware allocation](api.md#hardware-allocation-apihardware) for payload detail.
+
+### Field-debug — "the console says my dongle isn't there"
+
+```bash
+curl -s http://localhost:8083/api/hardware/console | python3 -m json.tool | head -40
+curl -s http://localhost:8083/api/hardware/guardian
+cat configuration/hardware.json
+rtl_test -t 2>&1 | head
+```
+
+**Healthy:** `console` lists your devices with `"warnings": []`, and each assigned
+service shows `running: true` or a state you recognise. `guardian` returns
+`"mode": "idle"` with live `stats`. `hardware.json` names the same devices.
+
+**Broken:** a `warnings` entry of kind `device-missing` with severity `crit` —
+`"<service> is assigned to a device that isn't present (<device_id>)"`. That is a
+*stale assignment*, not a detection bug: the dongle in `hardware.json` is unplugged,
+or came back with a different EEPROM serial. Confirm with `rtl_test -t`; if it
+reports serial `00000001` on several dongles, use **burn-serial** to give each a
+unique one, then reassign. A `guardian` `"mode": "armed"` with a `seconds_left`
+countdown means the box is over a threshold and about to stop everything — cancel it
+from the banner, then deal with the temperature.
+
+---
+
 ## ICS Forms
 
 All four forms support: PDF export (fills official FEMA AcroForm templates), CSV import/export, print-optimized layout, and auto-save to localStorage. No server required — open the HTML file directly in any browser.
@@ -2162,7 +2654,7 @@ from the bundle. Nothing here needs the network.
 |---|---|---|
 | **U.S. band plan** | `tools/band-plan/index.html` | Per-band privilege/segment charts, HF → 23 cm, plus an all-bands view |
 | **Quick reference** | `static/quick-ref/index.html` | Q-codes, NATO phonetics, procedure words (incl. ICS plain-language table), RST, ITU prefixes |
-| **Radio cheat-sheets** | `static/cheatsheets/index.html` | Per-radio quick cards (Kenwood, Yaesu, Icom, BTECH, …) and APRS bot guides |
+| **OASIS handbook** | `static/oasis-handbook/index.html` | The full offline operator handbook — one page per subsystem, plus the radio quick cards and APRS bot guides that used to live in `static/cheatsheets/` |
 | **Radio cards** | `static/radio-cards/index.html` | Per-radio operation cards generated from `static/radio-cards/radio-cards.csv` |
 | **Repeater programming guide** | `static/repeater-guide/index.html` | Step-by-step CHIRP programming walkthroughs per radio |
 | **GrayWolf handbook** | `static/graywolf-handbook/index.html` | Full offline GrayWolf documentation (channels, PTT, iGate, digipeater, API) |
@@ -2259,7 +2751,7 @@ python3 features/rgb-cooling-hat/install-rgb-cooling-hat.py --disable  # remove 
 
 It enables I²C, installs the apt deps (`python3-pil`, `python3-smbus`,
 `i2c-tools`), confirms the HAT is on the bus (`0x0d` fan/RGB MCU + `0x3c` OLED),
-and installs the daemon (`rgb-cooling-hat/rgb-cooling-hat.py`) to `/opt` as a
+and installs the daemon (`features/rgb-cooling-hat/rgb-cooling-hat.py`) to `/opt` as a
 systemd service. The daemon itself needs **no internet** (it has an inlined SSD1306
 driver); on a fully offline box, install the three apt deps from your apt cache or
 bundled `.deb`s first.
@@ -2325,6 +2817,162 @@ events, and sizes the window to match. The page persists the resolution to
 `localStorage.oasis_layout` (so ⌂ HOME across the suite routes back to the
 dashboard); the layout is fully fluid, scaling with viewport height. (The old
 `--7inch` flag still works as an alias for `--resolution 800x480`.)
+
+Plain `--with-browser` (no `--resolution`) opens `index.html` instead — the full
+dashboard, not the panel layout.
+
+### ⚠️ The double-kiosk bug — re-run the installer after upgrading
+
+**If your kiosk was installed before this release, it is almost certainly running two
+Chromiums right now.**
+
+The installer used to write the XDG autostart entry unconditionally *and* add the
+labwc autostart line whenever labwc was present, on the stated assumption that labwc
+ignores `~/.config/autostart/*.desktop`. **Pi OS Trixie's labwc honours both.** Every
+Wayland kiosk therefore came up **twice** — two independent fullscreen Chromiums
+stacked on one screen, on the machine least able to afford it:
+
+- double CPU, GPU and RAM, and every API poll on the box happening twice;
+- and, worse, each browser keeps its own page state. **Mute the satellite alerts on
+  the window you can see and the one behind it chimes on**, unreachable, with the bell
+  on screen showing muted the whole time. Every per-page control looks broken in
+  exactly this way.
+
+The installer now writes **one** autostart mechanism, chosen from the running
+compositor, and actively **removes** the other. Removing rather than merely
+not-writing is what repairs an already-installed station — which is most of them.
+
+**There is no self-repair on `git pull`. Nothing re-runs the installer for you.**
+After upgrading, run it again — and it must include `--with-browser` or
+`--resolution`, because the cleanup lives in the kiosk install path; a bare re-run
+only rewrites `oasis.service`:
+
+```bash
+python3 scripts/enable-autostart-pi.py --resolution 1920x1200   # or 800x480, or --with-browser
+sudo reboot
+```
+
+**Check whether you are affected:**
+
+```bash
+pgrep -c chromium                        # count of Chromium processes
+ls ~/.config/autostart/                  # XDG autostart entries
+grep chromium ~/.config/labwc/autostart  # labwc autostart line
+grep oasis-browser-launch ~/.config/labwc/autostart
+```
+
+**Healthy** on a labwc (Wayland) box: `~/.config/labwc/autostart` contains exactly one
+`/usr/local/bin/oasis-browser-launch &` line, and `~/.config/autostart/` contains **no**
+`oasis-browser.desktop`. On an X11/LXDE box it is the mirror image — the `.desktop`
+exists, and no OASIS line is in the labwc autostart. Either way `pgrep -c chromium`
+settles to the process count of a *single* browser.
+
+**Broken:** `oasis-browser.desktop` **and** an `oasis-browser-launch` line in the labwc
+autostart both present. That is the double launch. `pgrep -c chromium` roughly doubles,
+and `pgrep -af chromium | grep -c kiosk` returns 2. Re-run the installer as above.
+
+> ℹ️ **wayfire is the exception.** The installer never writes `~/.config/wayfire.ini`.
+> If it detects wayfire it installs the XDG entry and prints the line to add by hand:
+> `oasis = /usr/local/bin/oasis-browser-launch` under `[autostart]`.
+
+### What is on the panel
+
+The kiosk is not a shrunken `index.html` — it is its own layout:
+
+- **Clocks** — LOCAL and UTC/Zulu, side by side; tap either to cycle its colour.
+- **Midcard** — callsign · grid pill (tap to edit), GPS fix pill, a services count
+  pill (`N UP · N WRN · N DN`, tap for the list), the Wi-Fi pill, and the
+  `APRS · ADS-B · ORX · SAT` dot bar that opens the
+  [Service Operations console](#service-operations-console-hardware-assignment).
+- **System bar** — CPU · RAM · LOAD · TEMP (with a spinning fan blade when a cooling
+  daemon is installed) · DISK · IP, from `/api/system` every 5 s. Tap TEMP for °C/°F.
+- **Traffic card** — live APRS/ADS-B stations heard, with `RF` / `IS` / `ADS-B` source
+  chips; tap a row for the detail sheet.
+- **Satellites card** — see below.
+- **Footer** — emergency chip, hazard pills from `/hazards.json`, and SDR flow meters
+  for APRS and ADS-B (blue flowing, red silent, dim off).
+- **OPS pill** — the launcher overlay for everything else in the suite.
+
+#### The Jenny avatar card (1920×1200 only)
+
+On the wide panel, a small animated avatar card sits to the left of the clocks and
+speaks the station's announcements. It has **two gates, both required**:
+
+1. **Resolution** — it is `display:none` on 800×480. On the 7″ panel it would take
+   ~15% of the width from three cards that need it more.
+2. **A voice is actually installed** — the card stays hidden until
+   `GET /api/speech/status` returns `available: true`. No engine, no Jenny, no dead
+   square. See [Speech (Piper voice)](#speech-piper-voice).
+
+Tap to hear a greeting; tap again while it is speaking to stop. The clip itself has no
+audio — the voice comes from `/api/speech/say`.
+
+#### The hour bell (Zulu chime)
+
+Bottom-right of the **UTC/Zulu** card is a bell with a **three-state** control; each
+tap advances it:
+
+| State | Behaviour |
+|---|---|
+| **off** | nothing |
+| **chime** | strikes the hour — two strikes, 330 Hz + 660 Hz, deliberately unlike the satellite "VVV" |
+| **voice** | strikes, then speaks the time: *"The time is eighteen hundred Zulu. Local time is …"* |
+
+Speech-without-strike is deliberately unreachable.
+
+- **It fires on the top of the UTC hour**, not the local hour — the bell belongs to the
+  Zulu card and Zulu is what it announces first. In a half-hour zone (UTC+05:30) the
+  spoken local time is "eleven thirty", said out loud rather than rounded into a lie.
+- **Quiet hours are 22:00–07:00 *local***, not UTC — reading them off UTC would, at
+  UTC−7, silence the shack from 05:00 to 14:00 local and chime all night. Arming the
+  bell *during* quiet hours sets a one-night override that expires at the next 07:00.
+- The state is **per device** (`localStorage`), like the satellite mute. Silencing the
+  shack kiosk leaves a laptop chiming.
+- An hour is **dropped, not queued**, if a satellite alert owns the speaker at the
+  time, and the first tick of a session never announces an hour already missed.
+
+#### The satellites card
+
+Shows only birds **in a pass now, or rising within the next hour**, in-pass first then
+by rise time, refreshed every 60 s with a visible `↻ NNs` countdown. In-pass rows are
+green and pulse, carry a **live look-angle** (`el NN° ↗ · range`) recomputed locally
+every 2 seconds, and show `LOS HH:MM`. Upcoming rows show the rise time, an `↑ Nm`
+countdown, the rise compass point and the peak elevation; inside 10 minutes they turn
+amber and add *· get ready*. An amber bell marks an armed bird — informational only:
+bells are armed on the Satellites page, not here. The header's own bell **mutes this
+screen**, per device.
+
+### Field-debug — the kiosk
+
+```bash
+pgrep -c chromium                                   # 1 browser's worth, not 2
+pgrep -af chromium | head -1                        # the flags it actually launched with
+cat /usr/local/bin/oasis-browser-launch             # the generated launcher
+systemctl is-active oasis                           # the page has to have a server
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8083/oasis-dashboard/dashboard.html
+```
+
+**Healthy:** one Chromium tree; its command line carries `--kiosk`,
+`--autoplay-policy=no-user-gesture-required`, `--enable-speech-dispatcher`,
+`--use-gl=angle` and `--disable-breakpad`; the launcher's `URL=` matches the panel you
+expect; `oasis` is `active`; the page returns `200`.
+
+**Broken, and what each one means:**
+
+- **`pgrep -c chromium` roughly doubles** → the double-kiosk bug above.
+- **A flag is missing from the running process** → the launcher is *generated*.
+  Adding a flag to `scripts/enable-autostart-pi.py` does not touch a Pi installed
+  earlier; nothing re-runs it on upgrade. Re-run the installer and reboot. A missing
+  `--autoplay-policy=no-user-gesture-required` is why an untouched kiosk never chimes;
+  a missing `--disable-breakpad` shows up as a Chromium crash-loop pinning the CPU;
+  `--use-gl=egl` instead of `angle` leaves MapLibre's WebGL context uninitialised.
+- **Blank screen, no browser at all** → check the autostart file for the compositor you
+  are actually running (`ls ~/.config/autostart/`, `grep chromium
+  ~/.config/labwc/autostart`); the installer picks by *running* compositor, so
+  installing over SSH before the desktop has ever started can pick the wrong one.
+- **Browser up, page blank/erroring** → the launcher polls the URL for up to 60 s
+  before launching; if `oasis` came up later than that, the browser is showing an
+  error page. `sudo systemctl restart oasis`, then restart the session.
 
 ---
 
@@ -2426,44 +3074,130 @@ If you're running manually, stop the current server (`Ctrl+C`), then run `script
 
 ---
 
+## Diagnostics page (browser)
+
+`server/system/diagnostic.html` is the browser face of the same check registry
+`doctor.py` runs — reachable from the dashboard's nav (**OASIS Diagnostic**) and from
+the kiosk's OPS overlay under *health*. It is **read-only**: it runs checks and tells
+you what is wrong, it never changes anything. That is what makes it different from
+`server/system/setup.html`, which installs and configures.
+
+It calls `GET /api/diagnostics` — a thin wrapper around the same `run_all()` the
+doctor uses — and renders three things:
+
+- **Capability tiles** across the top: `Core / Access`, `APRS Receive`, `Winlink`,
+  `Position / GPS`, `Power / Health`, `Reference Data`. Each rolls up its member
+  checks. A tile goes **red only when a *critical* member failed** — nothing usable;
+  a non-critical failure or a warning leaves it **amber**, because the capability is
+  degraded but still functioning. Tap a tile to expand its checks.
+- **One "fix now" pick** — the single highest-impact failure, chosen critical-first
+  then by group order (CORE → HARDWARE → SERVICES → SYSTEM → DATA). Deliberately one
+  item: a page of twelve red rows tells a tired operator nothing about where to start.
+- **Every check**, grouped and sorted worst-first within each group, each with a
+  badge, a detail line, what it `breaks`, and where to go and fix it.
+
+**The cached-stale render.** On load the page immediately draws the **last sweep it
+ran on this device**, dimmed, with a banner reading *"Showing last run &lt;timestamp&gt;"*
+— then you press **[ Run diagnostics ]** for a fresh one. The sweep makes localhost
+self-HTTP calls (`/api/system`, `/api/aprs/stations`, …) and is not instant on a Pi 3,
+so opening the page to blank boxes for several seconds would be worse than opening it
+to what was true an hour ago, clearly labelled. The cache is `localStorage` under
+`oasis-diag-last`, per browser — a stale render on the kiosk says nothing about the
+laptop.
+
+> ℹ️ **`/api/diagnostics` needs a threaded worker.** `run_all()` calls back into the
+> same Flask process that is serving the request, so the launchers start gunicorn with
+> `--threads 4`. A single-threaded worker deadlocks on this route.
+
+---
+
 ## Health check (doctor)
 
-`scripts/doctor.py` is a headless health check that mirrors every verification the browser setup page (`server/system/setup.html`) performs — useful for post-deploy confirmation over SSH when no browser is available, or as part of a CI / automated test.
+`scripts/doctor.py` is the headless form of the same station-health registry the two
+browser pages use — `server/system/setup.html` (which also installs) and
+`server/system/diagnostic.html` (read-only, above). Use it for post-deploy
+confirmation over SSH when no browser is available, or as a CI / automated gate.
 
 ```bash
-python3 scripts/doctor.py                          # run all checks
-python3 scripts/doctor.py --core                   # core checks only (server, FCC, maps, disk)
+python3 scripts/doctor.py                          # run every check
+python3 scripts/doctor.py --core                   # DISPLAY only the CORE group
 python3 scripts/doctor.py --json                   # machine-readable JSON output
 python3 scripts/doctor.py --host 192.168.1.10      # check a remote OASIS instance
 python3 scripts/doctor.py --host HOST --port PORT  # non-default host and port
 ```
 
-**Exit codes:** `0` = all core checks pass (optional services may still show warnings) · `1` = one or more core checks failed.
+Those four flags are all of them.
 
-**Core checks** (determine the exit code):
+### What it checks
 
-| Check | What it verifies |
+**22 checks in five groups**, each rolled up into one of six **capabilities**:
+
+| Group | Checks (**bold** = `critical`) |
 |---|---|
-| Server reachable | `GET /health` returns 200 on port 8083 |
-| FCC index present | `services/fcc_database/data/EN.idx` exists and reports a callsign count |
-| Maps directory | `maps/` exists and contains at least one `.pmtiles` file |
-| Disk space | Reports free space on the SD card / disk |
+| **CORE** | **server** · **station_identity** · webssh |
+| **HARDWARE** | **rtl_sdr** · **gps** · digirig · dra_pi |
+| **SERVICES** | **graywolf** · **pat** · **aprs_feed** · graywolf_api |
+| **SYSTEM** | **power** · disk · temp · cpu · cooling_hat |
+| **DATA** | fcc · maps · kiwix · repeaterbook · forms · winlink_forms |
 
-**Optional-service checks** (warnings only, do not affect exit code): GrayWolf (8080) · Kiwix (8081) · Winlink (8082) · APRS history API (8085) · Web SSH (7681) · RTL-SDR blacklist · GrayWolf offline-tiles directory.
+Those eight bold checks are the comms-essential set, and they are the *only* thing
+that moves the exit code.
 
-**Typical usage** — run immediately after setup to confirm the deployment is healthy before going to the field:
+| Capability | Rolls up |
+|---|---|
+| **Core / Access** (`ACCESS`) | `server` · `station_identity` · `webssh` |
+| **APRS Receive** (`APRS_RX`) | `rtl_sdr` · `digirig` · `dra_pi` · `graywolf` · `graywolf_api` · `aprs_feed` |
+| **Winlink** (`WINLINK`) | `pat` |
+| **Position / GPS** (`POSITION`) | `gps` |
+| **Power / Health** (`POWER`) | `power` · `temp` · `cpu` · `disk` · `cooling_hat` |
+| **Reference Data** (`REFERENCE`) | `fcc` · `repeaterbook` · `kiwix` · `forms` · `maps` (+ `winlink_forms`) |
+
+A capability is **fail** only if a *critical* member failed; any other failure or
+warning leaves it **warn**. The sweep also names one **fix now** item — the single
+highest-impact failure, critical first, then earliest group.
+
+> ℹ️ `winlink_forms` is a backlog-tier check: `doctor.py` always includes it, but
+> `GET /api/diagnostics` (and any other `run_all()` caller using the default) runs the
+> other 21. It is non-critical either way.
+
+### `--core` and the exit code are unrelated
+
+**`--core` is a display filter, nothing more.** It narrows what is *printed* to the
+CORE group — `server`, `webssh`, `station_identity`. It does not narrow what runs, and
+it does **not** change the exit code. In `--json --core` only `groups` is filtered:
+`summary`, `capabilities`, and `fix_now` still describe the full sweep, so you can
+legitimately see a `fix_now` naming a check that isn't in the emitted `groups`.
+
+**Exit codes:** `0` = no check marked `critical` failed · `1` = at least one did.
+Warnings never affect it. Non-critical failures never affect it. `--core` never
+affects it. Note this keys off the registry's `critical` flag, *not* off the CORE
+group — a failing `power` (SYSTEM) exits 1; a failing `fcc` (DATA) does not.
+
+The text run closes with either `All critical checks passed.` or
+`Critical check(s) FAILED: <ids>.`
+
+### Typical usage
 
 ```bash
 python3 scripts/doctor.py
-# All core checks pass  → exit 0
-# One core check failed → exit 1 (read the ✗ lines for the cause)
+# "All critical checks passed."        → exit 0
+# "Critical check(s) FAILED: gps, pat" → exit 1 (the ✗ lines carry the reason)
 ```
 
-For scripted / CI use:
+For scripted / CI use, **read the process exit code** — it already is the contract:
 
 ```bash
-python3 scripts/doctor.py --json | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d['core_ok'] else 1)"
+if python3 scripts/doctor.py --json > /tmp/doctor.json; then
+    echo "station healthy"
+else
+    python3 -c "import json;d=json.load(open('/tmp/doctor.json'));print(d['summary'])"
+    exit 1
+fi
 ```
+
+`summary` is `{"fail": N, "warn": N, "ok": N}` over the whole sweep; the full payload
+is `{ran_at, summary, capabilities, fix_now, groups}`. There is no `core_ok` key —
+don't reach for one.
 
 ### Keep logs across reboots (worth doing before you need them)
 
@@ -2503,7 +3237,7 @@ it off and accept that post-mortems stop at the reboot.
 **One gotcha:** a Pi with no RTC sets its clock late in boot, so the first entries
 of each boot are stamped with the *last known* time and can appear weeks in the
 past. Sort by boot (`-b -1`), not by timestamp. See
-[Hardware RTC](#hardware-rtc--witty-pi-3--bigtreetech-7) if the timestamps matter.
+[Hardware RTC](#hardware-rtc-witty-pi-3--bigtreetech-7) if the timestamps matter.
 
 ---
 
@@ -2558,3 +3292,46 @@ These are by design or accepted tradeoffs, documented here for transparency.
   Python bundled by `scripts/create-oasis-offline.py` (AMD64); Linux and macOS bootstrap
   from the vendored wheels using system `python3` on first run. Only the
   Windows embedded runtime is AMD64-specific.
+
+- **One RTL-SDR consumer at a time.** The APRS SDR feed, ADS-B, OpenWebRX, and
+  satellite listening each need the dongle exclusively, so only one runs at once.
+  The [Service Operations console](#service-operations-console-hardware-assignment)
+  makes the swap one tap, but it is still a swap — you cannot gate APRS and watch
+  aircraft on the same dongle.
+
+- **OpenWebRX has no UI for assigning a dongle.** Every other SDR consumer is a column
+  in the assignment matrix; OpenWebRX is not, because OASIS cannot tell it which
+  device to use. Until an RTL-SDR is assigned to `openwebrx` its START button stays
+  inert, and the assignment has to be made by hand with `curl` against
+  `/api/hardware/assign` — see [OpenWebRX (SIGINT)](#openwebrx-sigint).
+
+- **OpenWebRX is not in the offline bundle.** It installs from the third-party
+  OpenWebRX+ (`luarvique`) apt repo, so it needs **internet once** and cannot be
+  installed in the field. Install it at home, before deployment.
+
+- **ADS-B may need internet on first install.** `dump1090-fa` ships from FlightAware's
+  own apt repo, not base Debian. Install prefers a vendored `.deb` under
+  `services/adsb/packages/dump1090-fa/<suite>/`, but the build step that fetches it
+  into the offline bundle is still a pending follow-up — so today's offline image
+  installs ADS-B via the **online fallback**.
+
+- **Speech (Piper) is not available everywhere.** It needs **Python 3.11+**
+  (onnxruntime publishes no older wheels) and is skipped cleanly on **32-bit ARM**
+  (`armv7l`/`armv6l`, no onnxruntime wheel). On those boxes announcements fall back
+  to the espeak-ng voice — degraded, not broken.
+
+- **RTL-SDR APRS receive requires Raspberry Pi OS Trixie**, for `librtlsdr ≥ 2.0`.
+  On Bookworm the dongle path is unavailable; use a DigiRig, DRA-Pi, or DRAWS instead.
+
+- **Satellite recordings have no delete button.** Retention is automatic — a 2 GB
+  budget swept oldest-first, with the newest capture never pruned — but there is no UI
+  to remove a specific WAV. Clear space by hand: `rm configuration/sat-recordings/*.wav`.
+
+- **Winlink over RF is experimental.** The DigiRig/DRAWS RF paths work on the bench but
+  are not yet field-proven across radios. Telnet/internet Winlink is the reliable path;
+  treat RF as something to test before you depend on it.
+
+- **`/api/system` returns 503 on Windows.** The system-metrics endpoint is Linux/macOS
+  shaped; on the Windows portable bundle it reports
+  `SYSTEM_METRICS_UNAVAILABLE` and the station-chrome that depends on it is hidden.
+  Everything else in the bundle works.

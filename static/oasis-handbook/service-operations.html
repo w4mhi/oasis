@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OASIS - Service Operations (Handbook)</title>
+  <link rel="stylesheet" href="handbook.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <a class="sb-brand" href="index.html">
+      <img src="img/oasis-logo.svg" alt="" />
+      <span><b>OASIS</b> handbook</span>
+    </a>
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="tuning-bench.html">RTL-SDR Tuning</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
+      <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">&#8962; HOME</a>
+    </div>
+    <div class="eyebrow">The Dashboard</div>
+    <h1>Service Operations</h1>
+    <p class="subtitle">The mixer board &mdash; a device &times; service matrix that decides which radio is doing what</p>
+
+    <p>
+      One dongle, four things that want it. The <strong>Service Operations</strong> console
+      &mdash; the mixer board &mdash; is where you decide. It is a matrix: declared
+      <strong>devices</strong> down the left, routable <strong>services</strong> across the
+      top, and a toggle in every cell that can legally exist. Tap a cell and the dongle or
+      sound card moves there, stopping whatever held it. It is the single place device
+      assignment lives, and it replaces the per-card dropdowns that used to scatter that
+      decision across the dashboard.
+    </p>
+    <figure class="figure">
+      <img src="img/srv-ops-matrix.png" alt="The HW / SRV matrix — four devices down the side, the four routable services across the top, padlocks, and STOP ALL" />
+      <figcaption>The HW / SRV matrix &mdash; two RTL-SDR dongles and both DRAWS radio ports, routed across APRS, ADS-B, Winlink and satellites</figcaption>
+    </figure>
+    <p>
+      Open it from the <strong>SRV OPS</strong> burger at the far right of the dashboard
+      header, or from the <strong>APRS / ADS-B / ORX / SAT</strong> pill on the
+      <a href="panel-kiosk.html">kiosk</a>. Both surfaces render differently &mdash; a
+      right-docked popover against a full-screen touch overlay &mdash; but the decision
+      logic and the server contract are shared in <code>common/js/hw-console.js</code>, so
+      the two cannot drift apart.
+    </p>
+
+    <h2>What it shows</h2>
+    <p>
+      Everything comes from one endpoint, <code>GET /api/hardware/console</code>, which
+      returns the service catalogue, every declared device with its assignment and lock
+      state, and a list of health warnings. The matrix refreshes every <strong>5
+      seconds while open</strong>; when closed, the rail still heartbeats every 20 seconds
+      so its glyph stays honest.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Column</th><th>Service</th><th>What it routes</th></tr></thead>
+      <tbody>
+        <tr><td><strong>APRS</strong></td><td><code>aprs</code></td><td>An RTL-SDR (which adds the <code>aprs-sdr-feed</code> RX unit), or a DigiRig / DRA-Pi / DRAWS radio port for a soundcard TNC.</td></tr>
+        <tr><td><strong>ADS-B</strong></td><td><code>adsb</code></td><td>An RTL-SDR only &mdash; it starts <code>dump1090-fa</code>.</td></tr>
+        <tr><td><strong>Winlink</strong></td><td><code>winlink</code></td><td>A DigiRig, DRA-Pi, or the DRAWS <em>left</em> port; starts <code>pat-direwolf</code>, or hands over to the shared DRAWS TNC.</td></tr>
+        <tr><td><strong>SAT</strong></td><td><code>satellites</code></td><td>An RTL-SDR, or the DRAWS <em>right</em> port, for satellite downlink capture.</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      Rows are the devices OASIS has <strong>declared</strong>, which happens
+      automatically: every RTL-SDR with a unique serial, a lone DigiRig by its CP210x
+      by-id, the DRA-Pi HAT by its ALSA card, and the DRAWS HAT as <em>two</em> separate
+      devices &mdash; one per mDin6 connector &mdash; so APRS can hold one port while
+      Winlink holds the other. Unplug a dongle and it is undeclared again.
+    </p>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p>Two dongles sharing the factory serial <code>00000001</code> are
+      indistinguishable to software, so neither is declared and neither appears here. Burn a
+      unique serial onto one first &mdash; see <a href="tuning-bench.html">RTL-SDR
+      Tuning</a> &mdash; and the next poll declares both.</p></div>
+    </div>
+
+    <h2>Cell states</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>State</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>na</code></td><td>This device cannot serve this service. No toggle at all, just a dot. Eligibility is <em>per device</em>, not merely per kind.</td></tr>
+        <tr><td><code>on</code></td><td>Assigned here, and its unit is running.</td></tr>
+        <tr><td><code>ready</code></td><td>Assigned here, and there is nothing for the console to start. The assignment <em>is</em> the finished state.</td></tr>
+        <tr><td><code>stopped</code></td><td>Assigned here, but its unit is not running &mdash; an idle claim.</td></tr>
+        <tr><td><code>off</code></td><td>Not assigned here.</td></tr>
+      </tbody>
+    </table></div></div>
+    <h3>Why SAT reads <code>ready</code> and not <code>on</code></h3>
+    <p>
+      Because <code>stopped</code> was a lie. Satellite capture is an <strong>ad-hoc
+      <code>rtl_fm</code> subprocess</strong> launched from the satellites page &mdash; not
+      a systemd unit. The console has nothing to launch, so the cell sat amber forever,
+      reading as &ldquo;this failed to start&rdquo; when the truth was &ldquo;this is
+      assigned and waiting for a pass&rdquo;. The server now flags such services
+      <code>startable: false</code> and the console renders them green as <code>ready</code>.
+      Its title says the rest: <em>assigned, ready &mdash; start it on its own page</em>.
+    </p>
+    <p>
+      That flag was hard-won in a second way too. The satellites service is tracked against
+      a <em>synthetic</em> unit name that deliberately does not exist. systemd answers
+      &ldquo;not active&rdquo; about it without erroring, so satellites could never read as
+      running here &mdash; not even mid-recording &mdash; and tapping the cell tried to
+      start a unit that was not there. The console now asks the recorder itself.
+    </p>
+    <p>
+      <strong>OpenWebRX is in the same class but is not a column.</strong> It has no unit
+      OASIS can point at a dongle: its SDR is chosen entirely inside OpenWebRX&rsquo;s own
+      <em>Admin &rarr; SDR profiles</em> UI. An OASIS-level assignment for it is advisory
+      bookkeeping &mdash; it exists only so the shared-dongle conflict check knows which
+      dongle ORX <em>wants</em> &mdash; so offering a matrix cell would offer a control that
+      could not do anything. ORX therefore keeps its own service card with its own
+      START/STOP. STOP ALL <em>does</em> stop it.
+    </p>
+
+    <h2>Tapping a cell</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Cell state</th><th>Action</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>na</code></td><td><strong>none</strong></td><td>Ignored &mdash; there is no toggle to tap.</td></tr>
+        <tr><td>any, device locked</td><td><strong>locked</strong></td><td>Refused, with a message naming what it is locked to.</td></tr>
+        <tr><td><code>on</code></td><td><strong>stop</strong></td><td>Stops the service&rsquo;s unit(s). The device <em>stays assigned</em>, just idle.</td></tr>
+        <tr><td><code>ready</code></td><td><strong>release</strong></td><td>Nothing to stop, so the device is freed from the service outright.</td></tr>
+        <tr><td><code>off</code> / <code>stopped</code></td><td><strong>route</strong></td><td>Assign and start here, displacing whatever else was on that device.</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      A route is genuinely exclusive: it stops the service on its old device first, stops
+      and unassigns any <em>other</em> service currently on the target, re-templates the
+      moved service&rsquo;s device configuration, and only then starts it. That ordering
+      matters &mdash; starting before the config was written would bind the service to the
+      dongle it just left.
+    </p>
+
+    <h2>The padlock</h2>
+    <p>
+      Every device row carries a padlock. Locking pins a device to its current assignment
+      and protects it from <em>any</em> displacement &mdash; you can neither claim a locked
+      device for something else nor move a service off a locked device. A blocked route
+      returns 409 with <code>target-locked</code> or <code>source-locked</code>, and the
+      console turns that into the two-step signal: <em>unlock it to move it</em>. A locked
+      device is also skipped by any automatic default assignment.
+    </p>
+    <p>
+      Use it for the thing you must not lose. A lock on the dongle feeding your APRS iGate
+      means a distracted tap on the ADS-B column tells you no instead of silently taking the
+      station off the air.
+    </p>
+
+    <h2>STOP ALL</h2>
+    <p>
+      The header button stops <strong>every controllable service &mdash; except Web
+      SSH</strong>. That exclusion is deliberate and load-bearing: killing Web SSH would
+      sever your remote connection to the box at the worst possible moment, and you must
+      never lose the way in. The OASIS server itself and <code>gpsd</code> are outside the
+      controllable set to begin with, so they are never touched either.
+    </p>
+    <p>
+      It is a plain stop, not a disable &mdash; boot state is left exactly as it was.
+    </p>
+
+    <h2>The resource guardian</h2>
+    <p>
+      The one sanctioned autonomous action in OASIS. A <strong>server-side background
+      thread</strong> watches SoC temperature, CPU, and memory. Because it lives on the
+      server it protects an <em>unattended</em> box: it works with no browser open anywhere,
+      which is the entire point &mdash; a field station at 85&nbsp;&deg;C with nobody
+      watching is exactly the case a browser-side watchdog cannot cover.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Threshold</th><th>Default</th><th>Floor</th></tr></thead>
+      <tbody>
+        <tr><td>SoC temperature</td><td>80&nbsp;&deg;C &mdash; near the Pi&rsquo;s own throttle point</td><td>45&nbsp;&deg;C</td></tr>
+        <tr><td>CPU</td><td>95%</td><td>50%</td></tr>
+        <tr><td>Memory</td><td>92%</td><td>60%</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      Cross one and the guardian <strong>arms a 30-second countdown</strong>, then runs
+      STOP ALL &mdash; the same Web-SSH-preserving set &mdash; if nobody intervenes. Every
+      open dashboard and kiosk polls <code>/api/hardware/guardian</code> every
+      <strong>2 seconds</strong> and shows a banner counting down, with a
+      <strong>Cancel</strong> button. The server itself re-evaluates every 3 seconds.
+    </p>
+    <p>
+      The state machine has four states, and the fourth is the interesting one:
+    </p>
+    <ul>
+      <li><strong>idle</strong> &rarr; <strong>armed</strong> when a metric crosses.</li>
+      <li><strong>armed</strong> &rarr; <strong>idle</strong> on its own if the metric
+        recovers before the deadline. No action, no banner, no fuss.</li>
+      <li><strong>armed</strong> &rarr; <strong>tripped</strong> at the deadline: STOP ALL
+        fires and the console reports which metric did it.</li>
+      <li><strong>cooldown</strong> &mdash; where Cancel puts it. Not idle, deliberately: an
+        idle guardian would re-arm on the very next tick while the box is still over
+        threshold, and Cancel would be a button that does nothing. Cooldown sticks until the
+        metrics actually recover. You told it you have the helm; it believes you until the
+        situation genuinely changes.</li>
+    </ul>
+    <p>
+      A metric that cannot be read never trips the guardian, and the whole thing can be
+      disabled or its thresholds tuned &mdash; but never below the floors above, since a
+      threshold under normal idle load would arm perpetually.
+    </p>
+    <div class="callout tip">
+      <span class="ic">&#10003;</span>
+      <div><p>The rail glyph beside SRV OPS is the console&rsquo;s health at a glance:
+      <strong>&#10003;</strong> when all is nominal, <strong>!</strong> with a count for
+      warnings, <strong>&#9888;</strong> for anything critical. The one warning that exists
+      today is a service assigned to a device that is no longer present &mdash; which is
+      what an unplugged dongle looks like from the server.</p></div>
+    </div>
+
+    <h2>Assignments survive a reboot</h2>
+    <p>
+      An assignment is a statement of intent &mdash; <em>this dongle is for ADS-B</em>
+      &mdash; so a boot reconciler reads the persisted assignments once per boot and starts
+      what they imply. It waits about 20 seconds first (USB enumeration lags the web app at
+      boot) and staggers roughly 8 seconds between services, so several SDR consumers do not
+      all grab USB at once. It runs <strong>once per boot, not once per Flask start</strong>,
+      keyed on the kernel&rsquo;s boot id: restarting the server with <code>./start.sh</code>
+      must not resurrect a service you deliberately stopped.
+    </p>
+
+    <h2>Three things other pages get wrong</h2>
+    <p>
+      Device assignment moved here, and a few surfaces still point at where it used to live.
+      If you have hit any of these, this page is the answer.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>What you see</th><th>What is actually true</th></tr></thead>
+      <tbody>
+        <tr><td>The <strong>ADS-B</strong>, <strong>APRS SDR feed</strong> and <strong>Winlink RF</strong> cards have no START button</td>
+            <td>By design. Those three are hardware-backed and are started, stopped and routed
+            <em>from this matrix</em>, so a per-card power button would be a second control for
+            the same thing that could disagree with it. OpenWebRX is the deliberate exception
+            &mdash; it is not in the matrix, so it keeps its card button.</td></tr>
+        <tr><td>The <strong>Satellites</strong> page says <em>device: unassigned</em> and every downlink option is greyed out</td>
+            <td>The <code>satellites</code> service has no device. Route <strong>SAT</strong>
+            onto a dongle here and the options become selectable. The page&rsquo;s own hint points at
+            Setup &rarr; Hardware; the mixer board is the current home for that decision. The
+            roster stays readable with nothing assigned &mdash; you can browse what a bird offers
+            on a laptop with no dongle &mdash; but arming a frequency the station has no radio for
+            is a choice that cannot go anywhere.</td></tr>
+        <tr><td>&ldquo;Where did device assignment go?&rdquo;</td>
+            <td>Here. One matrix, one endpoint, one persisted file
+            (<code>configuration/hardware.json</code>). Anything that reads like a per-card
+            dropdown for choosing a dongle is describing the older model.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>A tap does nothing and a message says &ldquo;locked&rdquo;</td>
+            <td>The padlock on that device row is closed. Open it, then route.</td></tr>
+        <tr><td>A device row is missing entirely</td>
+            <td>It is not declared. Either it is unplugged, or it shares a serial with another
+            dongle (burn a unique one), or its HAT overlay did not load &mdash; see
+            <a href="audio-hardware.html">Audio Hardware</a>.</td></tr>
+        <tr><td>A cell is a dot, not a toggle</td>
+            <td><code>na</code>: that device cannot serve that service. ADS-B takes only an
+            RTL-SDR; Winlink on a DRAWS HAT is valid only on the left (channel 0) port, because
+            pat panics on any other AGW port; satellite RX therefore rides the right one.</td></tr>
+        <tr><td>Route succeeds but the service is not on air</td>
+            <td>The assignment persists even if the follow-up apply fails. Check the unit directly:
+            <code>journalctl -u &lt;unit&gt; -e</code>. A denied sudo rule is the usual cause &mdash;
+            run <code>python3 scripts/enable-service-controls.py</code>.</td></tr>
+        <tr><td>The guardian keeps stopping everything</td>
+            <td>Read the banner &mdash; it names the metric. Fix the cause (cooling, a runaway
+            process) rather than raising the threshold; it can be tuned, but not below its floor,
+            and it can be switched off entirely.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <nav class="page-nav">
+      <a href="service-controls.html"><span class="lbl">Previous</span><span class="t">Service Controls</span></a>
+      <a href="gps-card.html" class="next"><span class="lbl">Next</span><span class="t">GPS / GNSS Card</span></a>
+    </nav>
+    <div class="foot">OASIS &middot; off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook.js"></script>
+</body>
+</html>

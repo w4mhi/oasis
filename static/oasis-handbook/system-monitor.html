@@ -25,6 +25,7 @@
       <a href="dashboard.html">Dashboard Tour</a>
       <a href="system-monitor.html">System Monitor</a>
       <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
       <a href="gps-card.html">GPS / GNSS Card</a>
       <a href="themes-units.html">Themes &amp; Units</a>
       <div class="nav-group">APRS</div>
@@ -58,7 +59,9 @@
       <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
       <a href="usb-bundle.html">USB Bundle</a>
       <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
       <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
       <a href="security.html">Security</a>
       <a href="uninstall.html">Uninstall</a>
     </nav>
@@ -75,34 +78,46 @@
     <p class="subtitle">Live host health &mdash; CPU, RAM, disk, temperature, and Pi power-throttle status</p>
     <p>
       The System Monitor cards in the dashboard header report the health of the host,
-      refreshed every 30&nbsp;seconds and colour-coded so a problem is obvious at a glance.
-      The data comes from <code>psutil</code> on the server; nothing leaves the Pi.
+      refreshed every <strong>5&nbsp;seconds</strong> and colour-coded so a problem is obvious
+      at a glance. The data comes from <code>psutil</code> on the server via
+      <strong><code>/api/system</code></strong>; nothing leaves the Pi. The CPU card prints
+      the poll interval (<code>5s</code>) in its corner, so a frozen page is visible without
+      having to guess.
     </p>
     <figure class="figure">
       <img src="img/dashboard-top.png" alt="System-monitor cards in the dashboard header — CPU, RAM, disk, temperature, IP, and uptime" />
-      <figcaption>System-monitor cards in the dashboard header — CPU, RAM, disk, temperature, IP, and uptime</figcaption>
+      <figcaption>System-monitor cards in the dashboard header &mdash; the clock cards, the GPS card, the CPU card and the PROCESSES card</figcaption>
     </figure>
     <figure class="figure">
-      <img src="img/system-monitor.png" alt="The SYSTEM stat bar in detail — CPU, RAM, disk, load, temperature, audio, host, and power status" />
-      <figcaption>The SYSTEM stat bar in detail &mdash; CPU, RAM, disk, load, temperature, audio cards, host / IP, and power status</figcaption>
+      <img src="img/system-monitor.png" alt="Host health readouts — CPU, RAM, disk, load, temperature, host, and power status" />
+      <figcaption>Host health in detail &mdash; CPU and per-core load, RAM, disk, temperature, the top processes, and the host / power pills</figcaption>
     </figure>
     <div class="box"><div class="box-body"><table>
-      <thead><tr><th>Metric</th><th>What it shows</th></tr></thead>
+      <thead><tr><th>Readout</th><th>What it shows</th></tr></thead>
       <tbody>
-        <tr><td>CPU %</td><td>Processor load, with a colour ramp as it climbs</td></tr>
-        <tr><td>RAM</td><td>Used / total memory</td></tr>
-        <tr><td>Disk</td><td>Free space on the SD card / disk</td></tr>
-        <tr><td>Load</td><td>System load average</td></tr>
-        <tr><td>Temperature</td><td>SoC temperature &mdash; watch this in an enclosure or full sun</td></tr>
-        <tr><td>Throttle</td><td>Pi power-throttle / under-voltage status</td></tr>
-        <tr><td>Uptime</td><td>Time since last boot</td></tr>
-        <tr><td>IP</td><td>The address to reach the dashboard on (e.g. <code>10.42.0.1</code> in AP mode)</td></tr>
-        <tr><td>Audio / Network</td><td>Detected audio devices and Wi-Fi SSID / connected clients</td></tr>
+        <tr><td><code>CPU</code></td><td>Overall processor load as a percentage, amber from 70%, red from 90%.</td></tr>
+        <tr><td>Per-core bars</td><td>One labelled bar per core (<code>C0</code>, <code>C1</code>&hellip;) from the <code>cpu_cores</code> field, each with its own percentage and its own amber/red tint. A single pegged core looks completely different from a genuinely loaded box, and this is where you see the difference.</td></tr>
+        <tr><td><code>Temp</code></td><td>SoC temperature &mdash; watch this in an enclosure or full sun. Shown in your chosen <a href="themes-units.html">units</a>, but the amber/red thresholds are fixed at 65&nbsp;&deg;C and 80&nbsp;&deg;C.</td></tr>
+        <tr><td>Fan glyph</td><td>From the <code>cooling</code> field. It appears <em>only</em> when a cooling service is installed (Argon fan or RGB cooling HAT); it spins when the fan service is running and the SoC is above roughly 55&nbsp;&deg;C, sits still when idle, and tints with temperature. No fan installed means no glyph &mdash; not a broken fan.</td></tr>
+        <tr><td><code>RAM</code></td><td><strong>Percent used only</strong> &mdash; not &ldquo;used / total&rdquo;. Amber from 70%, red from 90%.</td></tr>
+        <tr><td><code>DISK</code></td><td><strong>Percent used</strong> &mdash; not free space. Amber from 80%, red from 92%.</td></tr>
+        <tr><td>Card border</td><td>The CPU card&rsquo;s border and dot track the <strong>worst</strong> of CPU, temperature and RAM &mdash; any one of the three can drive it. Disk is deliberately excluded: a 95%-full card is a housekeeping job, not a live fault.</td></tr>
+        <tr><td><strong>PROCESSES</strong> card</td><td>The <code>top_procs</code> field &mdash; the <strong>top three processes by CPU</strong>, each with its CPU and RAM share, plus the 1-minute load average. This is what turns &ldquo;the box is hot&rdquo; into &ldquo;this is what is doing it&rdquo;.</td></tr>
+        <tr><td><strong>POWER</strong> pill</td><td>Pi power-throttle / under-voltage status.</td></tr>
+        <tr><td><strong>HOST</strong> pill</td><td>Hostname and the address to reach the dashboard on (e.g. <code>10.42.0.1</code> in AP mode).</td></tr>
+        <tr><td><strong>UPTIME</strong> pill</td><td>Time since last boot. It rides on the <strong>OPS</strong> section header, not in the card row.</td></tr>
+        <tr><td><strong>Wi-Fi</strong> pill</td><td>The SSID when connected, <code>OASIS</code> when hosting the access point, dim when not connected, and hidden entirely on a box with no Wi-Fi support. Signal strength drives the <em>colour</em> only &mdash; it is never printed, and there is no connected-client count.</td></tr>
       </tbody>
     </table></div></div>
     <div class="callout info">
       <span class="ic">&#8505;</span>
       <div><p>Under-voltage (a lightning-bolt throttle flag) is the most common field gremlin &mdash; it points at the power supply or cable, not the Pi. A GPS or SDR dongle browning out the 5&nbsp;V rail shows up here first.</p></div>
+    </div>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>There is <strong>no audio readout</strong> on the dashboard. Audio device
+      detection is a setup-time and <a href="diagnostics.html">diagnostic</a> concern &mdash;
+      see <a href="audio-hardware.html">Audio Hardware</a>.</p></div>
     </div>
     <div class="callout tip">
       <span class="ic">&#10003;</span>
@@ -114,7 +129,8 @@
       <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
       <tbody>
         <tr><td><strong>TEMP</strong> is red / the Pi throttles</td><td>Thermal throttling. Improve cooling (the <a href="audio-hardware.html">RGB Cooling HAT</a> helps) and check <code>vcgencmd get_throttled</code> (non-zero = throttled now or since boot).</td></tr>
-        <tr><td>A value shows <code>n/a</code></td><td>Telemetry stalled. Hard-refresh; confirm <code>/api/server-info</code> answers on <code>:8083</code>.</td></tr>
+        <tr><td>A value shows <code>n/a</code></td><td>Telemetry stalled. Hard-refresh; confirm <code>/api/system</code> answers on <code>:8083</code>. A <code>503</code> with code <code>SYSTEM_METRICS_UNAVAILABLE</code> means <code>psutil</code> is not installed &mdash; reinstall the server feature from <a href="setup-menu.html">the setup menu</a>.</td></tr>
+        <tr><td>No fan glyph on the CPU card</td><td>No cooling service is installed. Expected on a bare Pi &mdash; add <code>argon-fan</code> or <code>rgb-cooling-hat</code> from <a href="setup-menu.html">the setup menu</a> if you have the hardware.</td></tr>
         <tr><td><strong>HDOP</strong> is red</td><td>Poor GPS geometry, not a fault &mdash; see the <a href="gps-card.html">GPS card</a>. It clears as more satellites lock.</td></tr>
         <tr><td><strong>DISK</strong> near full</td><td>Large data (maps, ZIMs, recordings) fills the card. Move them to external storage or prune; OASIS itself is tiny.</td></tr>
       </tbody>

@@ -25,6 +25,7 @@
       <a href="dashboard.html">Dashboard Tour</a>
       <a href="system-monitor.html">System Monitor</a>
       <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
       <a href="gps-card.html">GPS / GNSS Card</a>
       <a href="themes-units.html">Themes &amp; Units</a>
       <div class="nav-group">APRS</div>
@@ -58,7 +59,9 @@
       <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
       <a href="usb-bundle.html">USB Bundle</a>
       <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
       <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
       <a href="security.html">Security</a>
       <a href="uninstall.html">Uninstall</a>
     </nav>
@@ -116,8 +119,8 @@
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
       <tbody>
-        <tr><td><code>http://&lt;ip&gt;:8083</code> won&rsquo;t load</td><td>Wrong address or different network. Read the <strong>HOST</strong> line on any working client for the real LAN IP, or join the <code>OASIS</code> <a href="ap-fallback.html">AP hotspot</a>. Confirm the app is up: <code>sudo systemctl status start-oasis</code>.</td></tr>
-        <tr><td>&ldquo;Connection refused&rdquo;</td><td>Flask isn&rsquo;t running. <code>sudo systemctl restart start-oasis</code>, or re-run <code>setup-server.py</code>.</td></tr>
+        <tr><td><code>http://&lt;ip&gt;:8083</code> won&rsquo;t load</td><td>Wrong address or different network. Read the <strong>HOST</strong> line on any working client for the real LAN IP, or join the <code>OASIS</code> <a href="ap-fallback.html">AP hotspot</a>. Confirm the app is up: <code>sudo systemctl status oasis</code>.</td></tr>
+        <tr><td>&ldquo;Connection refused&rdquo;</td><td>Flask isn&rsquo;t running. <code>sudo systemctl restart oasis</code>, or re-run <code>scripts/setup-server.py</code>.</td></tr>
         <tr><td>Loads on a laptop but not a phone</td><td>The phone is on cellular or a different SSID. Put it on the same Wi-Fi or the OASIS AP &mdash; there is no internet path in.</td></tr>
         <tr><td>Blank page after an update</td><td>Stale cache / service worker. Hard-refresh (Ctrl/Cmd-Shift-R).</td></tr>
       </tbody>

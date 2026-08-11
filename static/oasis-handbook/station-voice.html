@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OASIS - Station Voice (Handbook)</title>
+  <link rel="stylesheet" href="handbook.css" />
+  <link rel="icon" href="img/oasis-logo.svg" />
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <a class="sb-brand" href="index.html">
+      <img src="img/oasis-logo.svg" alt="" />
+      <span><b>OASIS</b> handbook</span>
+    </a>
+    <nav>
+      <div class="nav-group">Getting Started</div>
+      <a href="index.html">Introduction</a>
+      <a href="quick-start.html">Quick Start</a>
+      <a href="setup-menu.html">The Setup Menu</a>
+      <a href="accessing-oasis.html">Accessing OASIS</a>
+      <div class="nav-group">The Dashboard</div>
+      <a href="dashboard.html">Dashboard Tour</a>
+      <a href="system-monitor.html">System Monitor</a>
+      <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
+      <a href="gps-card.html">GPS / GNSS Card</a>
+      <a href="themes-units.html">Themes &amp; Units</a>
+      <div class="nav-group">APRS</div>
+      <a href="aprs.html">APRS Live Map</a>
+      <a href="aprs-stations.html">Stations &amp; History</a>
+      <a href="aprs-feed.html">Feeding APRS</a>
+      <a href="tuning-bench.html">RTL-SDR Tuning</a>
+      <a href="graywolf-config.html">GrayWolf Config</a>
+      <a href="aprs-messaging.html">APRS Messaging</a>
+      <div class="nav-group">Tracking</div>
+      <a href="adsb.html">ADS-B Aircraft</a>
+      <a href="satellites.html">Satellites</a>
+      <div class="nav-group">Communications</div>
+      <a href="winlink.html">Winlink (Pat)</a>
+      <a href="webssh.html">Web SSH</a>
+      <a href="openwebrx.html">OpenWebRX</a>
+      <a href="kiwix.html">Kiwix Wikipedia</a>
+      <div class="nav-group">Field Tools</div>
+      <a href="fcc-lookup.html">FCC Lookup</a>
+      <a href="maps.html">Offline Maps</a>
+      <a href="repeater-book.html">Repeater Book</a>
+      <a href="calculators.html">Calculators</a>
+      <a href="net-logger.html">Net Logger</a>
+      <div class="nav-group">Forms &amp; Reference</div>
+      <a href="ics-forms.html">ICS Forms</a>
+      <a href="reference-library.html">Reference Library</a>
+      <div class="nav-group">Hardware &amp; Deployment</div>
+      <a href="gps-time.html">GPS Time &amp; RTC</a>
+      <a href="audio-hardware.html">Audio Hardware</a>
+      <a href="panel-kiosk.html">Panel &amp; Kiosk</a>
+      <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
+      <a href="usb-bundle.html">USB Bundle</a>
+      <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
+      <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
+      <a href="security.html">Security</a>
+      <a href="uninstall.html">Uninstall</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="home-bar">
+      <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()"
+              title="Toggle light / dark theme" aria-label="Toggle light / dark theme"><span id="theme-glyph">&#9728;</span></button>
+      <a class="home-link" href="/">&#8962; HOME</a>
+    </div>
+    <div class="eyebrow">Operations</div>
+    <h1>Station Voice</h1>
+    <p class="subtitle">A neural voice that reads your station announcements aloud &mdash; pass alerts, the hour bell, and the kiosk avatar</p>
+
+    <p>
+      OASIS can <strong>speak</strong>. A station-wide text-to-speech service turns a
+      sentence into audio: any subsystem asks <code>common/speech.py</code> (or
+      <code>GET /api/speech/say</code>) for a phrase and gets back a WAV. Satellite pass
+      alerts are the first consumer; the kiosk hour bell is the second. The feature is
+      <strong>optional and opt-in</strong> &mdash; a station that never installs it still
+      speaks, just with the espeak-ng fallback voice the browser already has. Nothing
+      about the rest of the suite changes when it is absent.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>Two things are easy to conflate here. <strong>Browser playback</strong> (the
+      kiosk, or any laptop on the LAN) and <strong>the Pi&rsquo;s own speaker</strong> are
+      separate paths. A healthy <code>/api/speech/say</code> with a silent Pi speaker is a
+      normal state to see while debugging, not a broken feature.</p></div>
+    </div>
+
+    <h2>Piper, and the Jenny voice</h2>
+    <p>
+      The engine is <strong>Piper</strong> (Open Home Foundation, GPL-3.0), a neural
+      synthesiser that embeds espeak-ng purely as a phonemiser &mdash; text to phonemes;
+      the audio itself comes from the neural model. The model OASIS uses is
+      <code>en_GB-jenny_dioco-medium</code>, roughly 60&nbsp;MB, from the Jenny TTS
+      dataset and packaged by the piper-voices project.
+    </p>
+    <p>
+      OASIS <strong>ships neither the engine nor the voice</strong>. Both are fetched from
+      upstream by your own <code>scripts/create-oasis-offline.py</code> run, exactly like
+      the Wikipedia ZIM and the FCC database &mdash; it keeps large binaries out of the
+      repo and leaves each licence between you and upstream rather than making OASIS a
+      redistributor.
+    </p>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>Attribution is a licence obligation, not a courtesy.</strong> The
+      Jenny dataset carries a <em>custom attribution licence</em> &mdash; it is
+      <strong>not</strong> CC-BY, so do not describe it as one: there is no licence URL to
+      reproduce and no statement-of-changes requirement. It asks that any software or
+      interface generating audio from the voice <strong>credit it, calling it
+      &ldquo;Jenny&rdquo; and, where at all practical, &ldquo;Jenny (Dioco)&rdquo;</strong>.
+      A voice interface that speaks on user action is precisely the case the licence names,
+      so an OASIS station running this voice is in scope. Commercial use is permitted and
+      ownership of the dataset is not claimed. Attribution is <em>not</em> required when
+      distributing generated audio clips &mdash; a recorded pass alert needs no notice, but
+      the station that produced it does.</p></div>
+    </div>
+    <p>
+      The installer writes the full notice to
+      <code>features/speech/voices/ATTRIBUTION.txt</code>, alongside the model, so the
+      credit travels with the file onto whatever SD card it is copied to. A line in a
+      README is no use once a 63&nbsp;MB <code>.onnx</code> has been handed to somebody
+      else. <strong>If you pass this station, or a USB image built from it, to another
+      operator, pass that file with it.</strong> The canonical text lives in
+      <code>features/speech/install.py</code>.
+    </p>
+
+    <h2>How a sentence becomes sound</h2>
+    <p>
+      The station synthesises; the browser plays. There is deliberately no second audio
+      path to get working.
+    </p>
+    <ol>
+      <li>A page calls <code>oasisSpeak(text)</code>, which fetches
+        <code>/api/speech/say?text=&hellip;</code>.</li>
+      <li>The server validates the text, then looks for a cached WAV keyed by
+        <code>sha256</code> of a params version, the voice id, and the text itself.</li>
+      <li>On a miss it shells out to <strong>a Piper subprocess</strong>
+        (<code>python -m piper</code>), with the text on <em>stdin</em> and never in
+        <code>argv</code>.</li>
+      <li>The WAV is written to a temp file and atomically renamed into the cache, so a
+        reader never sees half a file.</li>
+      <li>The browser decodes the bytes and plays them through the <strong>same
+        AudioContext that plays the pass chime</strong>.</li>
+    </ol>
+    <p>
+      <strong>Why a subprocess and not the Piper Python API.</strong> gunicorn runs several
+      workers, and an in-process voice keeps onnxruntime plus a ~60&nbsp;MB model resident
+      in <em>every</em> one of them. On a 2&nbsp;GB Pi&nbsp;3 that is the difference between
+      comfortable and swapping. The cost is the model load per cache miss &mdash; measured
+      at ~0.37&nbsp;s on a Pi&nbsp;5 &mdash; paid once per <em>distinct</em> sentence, not
+      once per request. A fault in native onnxruntime also kills a child process instead of
+      an API worker.
+    </p>
+    <p>
+      <strong>Why text goes on stdin.</strong> Satellite names come out of TLE files and
+      message subjects come off the air. Neither is text OASIS authored. With
+      <code>shell=False</code> and the text never placed in <code>argv</code>, there is no
+      quoting to get right.
+    </p>
+    <p>
+      <strong>Announcements serialise, they do not overlap.</strong> Three birds crossing
+      their T-10 threshold on the same tick would otherwise become three-part mush: the
+      Piper path has no queue of its own, and each call would start playing as soon as its
+      own decode resolved. So <code>oasisSpeak</code> chains every request behind a
+      module-level promise and resolves on the audio&rsquo;s <code>onended</code>, not on
+      <code>start()</code> &mdash; the next sentence begins only when the previous one has
+      actually finished sounding.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Endpoint</th><th>Returns</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/speech/status</code></td><td>Whether a voice is installed, its name, model path, sample rate, the local player found (if any), and the cache entry count / bytes / budget.</td></tr>
+        <tr><td><code>GET /api/speech/say?text=&hellip;</code></td><td>The WAV. Served with an explicit <strong>ETag</strong> &mdash; the content hash &mdash; so a repeated phrase costs one 304.</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      <code>/say</code> validates before it ever calls Piper, because the text is not
+      OASIS&rsquo;s own: empty text is <code>400 EMPTY_TEXT</code>, anything past
+      <strong>300 characters</strong> is <code>400 TEXT_TOO_LONG</code>, and control
+      characters are <code>400 INVALID_TEXT</code>. A station with no engine answers
+      <code>503 SPEECH_UNAVAILABLE</code> &mdash; the engine&rsquo;s own stderr is never
+      leaked to a browser. Note that &ldquo;Piper is not installed&rdquo; is the
+      <em>answer</em> from <code>/status</code>, not a failed request.
+    </p>
+    <p>
+      The cache lives at <code>features/speech/cache/</code> with a <strong>50&nbsp;MB
+      budget</strong>, evicted oldest-first; a cache hit touches the file&rsquo;s mtime so
+      hot phrases survive pruning, and the newest entry is never evicted.
+    </p>
+
+    <h2>The fallback ladder</h2>
+    <p>
+      Every speech call falls back to the browser&rsquo;s own <code>speechSynthesis</code>
+      on <em>any</em> failure &mdash; endpoint absent, 4xx, decode error, no engine
+      installed &mdash; so a station without Piper behaves exactly as it always did. Which
+      voice the fallback picks is not left to chance: taking whatever the engine lists
+      first is a lottery, because speech-dispatcher reports every espeak-ng variant crossed
+      with every language (14,805 entries on a stock Pi), and the winner was whatever
+      sorted first &mdash; a male formant preset that reads as a 1985 answering machine.
+      The ladder matches English voices by lower-cased substring, first hit wins:
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Match</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td><code>piper</code></td><td>A Piper voice exposed through the OS, if the box has one.</td></tr>
+        <tr><td><code>jenny</code></td><td>The same voice by name, however it was installed.</td></tr>
+        <tr><td><code>samantha</code></td><td>macOS&rsquo;s recorded voice, so a dev box sounds as it always did.</td></tr>
+        <tr><td><code>+steph2</code></td><td>espeak-ng&rsquo;s female variant &mdash; the floor every Pi has for free.</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      Failing all four it takes the first English voice on offer. Note that an
+      <em>empty</em> voice list is not proof there is no voice: Chromium on Linux
+      enumerates asynchronously and can report <code>[]</code> while <code>speak()</code>
+      works fine, so the fallback never bails on an empty list.
+    </p>
+
+    <h2>Installing it</h2>
+    <pre><code>python3 setup-oasis.py                            # tick "Spoken announcements (Piper voice)"
+
+python3 features/speech/install.py                # or install directly
+python3 features/speech/install.py --uninstall    # remove (idempotent)</code></pre>
+    <p>
+      The installer is <strong>not privileged</strong> &mdash; everything lands in the venv
+      and under <code>features/speech/</code>, nothing under <code>/etc</code> or
+      <code>/usr/local</code>, so it runs as your own user.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Gate</th><th>Behaviour</th></tr></thead>
+      <tbody>
+        <tr><td>Python &lt; 3.11</td><td>Declines and exits <code>0</code>. onnxruntime, Piper&rsquo;s own dependency, publishes no wheel for older Pythons.</td></tr>
+        <tr><td>32-bit ARM (<code>armv7l</code> / <code>armv6l</code>)</td><td>Declines and exits <code>0</code> &mdash; no onnxruntime wheel exists for either.</td></tr>
+        <tr><td>No server venv</td><td>Exits <code>1</code>: the feature depends on the server, so run <code>scripts/setup-server.py</code> first.</td></tr>
+        <tr><td>Voice model not in the bundle</td><td>Hard failure. An engine with no voice cannot speak, and &ldquo;installing successfully&rdquo; without one is exactly the false success this installer exists to rule out.</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      An unsupported platform is a <em>correct outcome</em>, not a failed install &mdash;
+      hence exit <code>0</code> &mdash; and the espeak-ng voice stays in place either way.
+      The ~60&nbsp;MB model has <strong>no online fallback</strong>: OASIS never downloads
+      it at install time, so it must already be in the offline bundle.
+    </p>
+    <div class="callout tip">
+      <span class="ic">&#10003;</span>
+      <div><p>The installer prints <strong>exactly one success mark</strong> for the engine,
+      and only after a real synthesis produces a <em>non-empty WAV</em>. Everything else
+      &mdash; the pip install, copying the model, playing a test utterance &mdash; is
+      reported as information. Playing the utterance locally is deliberately not part of
+      pass/fail: a headless box legitimately has nowhere to play it, and that must not fail
+      an otherwise-good install. Uninstalling never touches espeak-ng, which is a different
+      feature entirely.</p></div>
+    </div>
+
+    <h2>Spoken pass alerts</h2>
+    <p>
+      An armed bird (see <a href="satellites.html">Satellites</a>) chimes Morse
+      &ldquo;V&rdquo; &mdash; dit dit dit dah &mdash; three times at <strong>T-10</strong>
+      minutes on 620&nbsp;Hz, and again at <strong>T-5</strong> on 780&nbsp;Hz. Closer means
+      higher, which reads as more urgent. There is deliberately <em>no</em> alert at AOS:
+      by the time the bird is over the horizon it is too late to get the rig on frequency,
+      which is the entire point of the warning.
+    </p>
+    <p>
+      The <strong>T-10 chime is followed by a spoken heads-up</strong> naming the bird and
+      its maximum elevation &mdash; <em>&ldquo;NOAA 19, in ten minutes, maximum elevation
+      42 degrees&rdquo;</em> &mdash; scheduled to start after the 2.6&nbsp;s chime rather
+      than over it. Because that sentence names an elevation it is a different string for
+      nearly every pass, and therefore nearly always a cache miss. So the engine
+      <strong>prewarms at T-11</strong>: a minute ahead of the announcement, the browser
+      issues a <code>HEAD</code> request for the same phrase purely to leave the WAV in the
+      server-side cache. On a Pi&nbsp;5 that turns a 3.6&nbsp;s wait into ~1.5&nbsp;ms.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>The prewarm is a <code>HEAD</code>, and that is not negotiable: a
+      <code>fetch()</code> whose body is never read pins a 2&nbsp;MiB
+      <code>/dev/shm</code> data pipe per request for the life of the page. That leak once
+      cost a kiosk about 500&nbsp;MB an hour.</p></div>
+    </div>
+    <p>
+      The mute bell on the satellites card is <em>one</em> control and owes one outcome:
+      silence, now. Tapping it cuts the Morse V mid-element, stops the sentence being read,
+      and drops every bird still queued behind it &mdash; including work already in flight,
+      because an announcement carries the generation it was queued in and a stale
+      generation drops itself rather than playing.
+    </p>
+
+    <h2>The kiosk hour bell</h2>
+    <p>
+      The Zulu clock on the <a href="panel-kiosk.html">kiosk dashboard</a> carries a bell
+      button with <strong>three states behind one control</strong>, because the useful
+      combinations are exactly three:
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>State</th><th>What happens on the hour</th></tr></thead>
+      <tbody>
+        <tr><td><strong>off</strong></td><td>Nothing.</td></tr>
+        <tr><td><strong>chime</strong></td><td>Two slow, low strikes (330&nbsp;Hz with an octave under it, ~1.8&nbsp;s total, long decay).</td></tr>
+        <tr><td><strong>voice</strong></td><td>The strikes, then the spoken time: <em>&ldquo;The time is eighteen hundred Zulu. Local time is fourteen hundred.&rdquo;</em></td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      Speech <em>without</em> the strike is deliberately unreachable: the strike buys the
+      attention the sentence needs, and without it the announcement arrives mid-word from
+      across the room. The bell is also nothing like the satellite VVV &mdash; if the two
+      sounded close you would look up at the rig every hour, which is worse than no chime
+      at all. The setting is per-device, in <code>localStorage</code>, and independent of
+      the satellite mute: silencing the passes for an afternoon should not stop the station
+      keeping time.
+    </p>
+    <p>
+      <strong>It fires on the top of the UTC hour</strong>, because the bell belongs to the
+      Zulu card and Zulu is what it announces first. In a half-hour zone the local time is
+      then 11:30 rather than 11:00, and the phrase says so out loud instead of rounding
+      into a lie. The words are built already-spoken (&ldquo;eighteen hundred&rdquo;,
+      &ldquo;oh one hundred&rdquo;, &ldquo;midnight&rdquo;) rather than handing Piper
+      &ldquo;18:00&rdquo;, which is a coin flip &mdash; &ldquo;eighteen colon zero
+      zero&rdquo; is a real outcome.
+    </p>
+    <p>
+      <strong>Quiet hours are 22:00 to 07:00 local time</strong>, and local even though the
+      bell sits on the Zulu card: quiet hours are about when the operator is asleep, which
+      no other clock knows. Reading them off the UTC hour would, at UTC-7, silence the shack
+      from 05:00 to 14:00 local and chime all night. Arming the bell <em>during</em> quiet
+      hours is the contest case &mdash; it means &ldquo;tonight&rdquo;, not &ldquo;from now
+      on&rdquo; &mdash; so it sets an <strong>override that lapses at the next 07:00</strong>
+      on its own. A permanent &ldquo;quiet hours off&rdquo; switch would sit forgotten for
+      months and then surprise someone at 03:00.
+    </p>
+    <div class="callout tip">
+      <span class="ic">&#10003;</span>
+      <div><p><strong>The hour yields to a satellite pass, and drops rather than queues.</strong>
+      A pass alert is actionable and its window is closing; the hour is neither, and it will
+      come round again. Queueing it would hold the pass announcement behind a sentence about
+      what time it is. The pass claims the speaker for the whole alert &mdash; chime
+      <em>and</em> the voice that follows &mdash; so the top of the hour cannot land in the
+      2.6&nbsp;s gap between them.</p></div>
+    </div>
+
+    <h2>The Jenny avatar card</h2>
+    <figure class="figure">
+      <img src="img/kiosk-wide.png" alt="The 1920x1200 kiosk with the avatar card at the left of the clock row" />
+      <figcaption>The avatar card sits at the left of the clock row, and only on the 1920&times;1200 layout</figcaption>
+    </figure>
+    <p>
+      On the <strong>1920x1200 kiosk layout only</strong>, a square card sits at the left of
+      the clock row carrying a short looping video of the voice&rsquo;s face. It is hidden
+      on the 7-inch panel, where it would take about 15% of the width from three cards that
+      need it more.
+    </p>
+    <p>
+      <strong>It appears only when a real voice is installed.</strong> On load the kiosk asks
+      <code>/api/speech/status</code>; if <code>available</code> is false the card never
+      becomes visible. An empty square that never animates is worse than no square, and the
+      espeak fallback voice has no face to go with it.
+    </p>
+    <ul>
+      <li><strong>Tap to wake her</strong> &mdash; she introduces herself with the same
+        greeting the installer synthesised, so it is a cache hit rather than a fresh render.
+        The name in that greeting is <em>derived from the installed model</em>, not
+        hardcoded: a station running a different <code>.onnx</code> does not have its voice
+        introduce itself under the wrong name. The tap is not gated on the satellite mute
+        &mdash; that mutes unsolicited alerts, and this is you asking directly.</li>
+      <li><strong>Dormant is the resting state</strong>: dimmed, video paused on the
+        closed-mouth frame, nothing running. She lights up only while speaking, which is
+        also what keeps this clear of the always-animating trap that pins a Pi&rsquo;s
+        compositor at 60&nbsp;fps.</li>
+      <li><strong>The glow is her own colour</strong>, sampled from the clip itself
+        (a cyan-toward-green, hue ~172), not the dashboard accent, which is lime and reads
+        as a different character sitting next to her.</li>
+      <li><strong>The clip carries no audio.</strong> Speech still comes from
+        <code>/api/speech/say</code>, so the words can change without re-rendering the
+        video.</li>
+    </ul>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>The mouth starts on audio onset, not on request &mdash; and that is a
+      fix, not an accident.</strong> Between asking for a sentence and hearing it sits a
+      Piper synthesis, measured at 3.6&nbsp;s on a Pi&nbsp;5 for an uncached line. Waking her
+      at call time meant her mouth ran for those 3.6&nbsp;s with nothing coming out, which
+      reads as broken. The wake now fires one statement before the first sample. It is also
+      idempotent: a run of three birds is one continuous piece of speech, and restarting the
+      clip between them would jump her back to the closed-mouth frame mid-sentence.</p></div>
+    </div>
+
+    <figure class="figure">
+      <img src="img/jenny-avatar.png" alt="Close view of the kiosk avatar card, dormant" />
+      <figcaption>The avatar at rest. It lights in its own colour only while the station is actually speaking.</figcaption>
+    </figure>
+
+    <h2>Troubleshooting</h2>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+      <tbody>
+        <tr><td>No avatar card on the kiosk</td>
+            <td>Piper is not installed (or the layout is not 1920x1200). Check
+            <code>curl -s localhost:8083/api/speech/status</code> &mdash; <code>available:false</code>
+            means no voice. Run <code>python3 features/speech/install.py</code>.</td></tr>
+        <tr><td><code>available:false</code> but the wheel <em>is</em> installed</td>
+            <td>The finding that costs the most time. Piper will not load a model without its
+            <code>.onnx.json</code> sidecar, so a lone <code>.onnx</code> is invisible to it.
+            <code>ls -la features/speech/voices/</code> must show a <strong>matched pair</strong>.
+            Rebuild the offline bundle so both files ship together.</td></tr>
+        <tr><td>Total silence on the kiosk, fine on a laptop</td>
+            <td>The kiosk launcher is missing <code>--autoplay-policy=no-user-gesture-required</code>.
+            Browsers start an AudioContext suspended until a user gesture, and the kiosk boots
+            unattended and is never touched. Check with
+            <code>grep -o 'autoplay-policy=[^ ]*' /usr/local/bin/oasis-browser-launch</code>.</td></tr>
+        <tr><td>Nothing at all in a laptop browser</td>
+            <td>Expected on a page you have not clicked yet &mdash; the autoplay flag only covers the
+            kiosk. Click anywhere once (the mute bell and the hour bell both count as the unlocking
+            gesture), then wait for the next alert.</td></tr>
+        <tr><td><code>/say</code> returns 200 and real bytes, but the Pi&rsquo;s own speaker is silent</td>
+            <td>That is <code>XDG_RUNTIME_DIR</code>, not the sound card. <code>oasis.service</code> is a
+            <em>system</em> unit running as your user &mdash; right UID, no session environment &mdash; so
+            a player it spawns cannot find the UID-scoped PipeWire socket. Confirm
+            <code>ls /run/user/$(id -u)/pipewire-0</code>; <code>loginctl enable-linger $(whoami)</code>
+            is the usual fix for a headless box.</td></tr>
+        <tr><td>&ldquo;No player found&rdquo;</td>
+            <td><code>which pw-play paplay aplay</code> &mdash; the server probes those three, in that
+            order. None resolving is fine on a headless box: <code>/api/speech/say</code> still serves
+            every browser on the LAN.</td></tr>
+        <tr><td>Text rejected outright</td>
+            <td>Working as designed. <code>EMPTY_TEXT</code>, <code>TEXT_TOO_LONG</code> past 300
+            characters, <code>INVALID_TEXT</code> for control characters &mdash; satellite names and
+            message subjects are not text OASIS authored, so <code>/say</code> never trusts them
+            blindly.</td></tr>
+        <tr><td><code>piper exited N: &hellip;</code> in the log</td>
+            <td>The tail of Piper&rsquo;s own stderr is almost always the real root cause: a corrupt
+            sidecar, an ABI mismatch on the installed <code>onnxruntime</code> wheel, or a timeout on a
+            very slow Pi.</td></tr>
+        <tr><td>The voice sounds like a 1985 answering machine</td>
+            <td>You are hearing the fallback, not Piper. Something failed on the <code>/say</code> path
+            &mdash; start at <code>/api/speech/status</code>.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <nav class="page-nav">
+      <a href="health-check.html"><span class="lbl">Previous</span><span class="t">Health Check</span></a>
+      <a href="security.html" class="next"><span class="lbl">Next</span><span class="t">Security</span></a>
+    </nav>
+    <div class="foot">OASIS &middot; off-grid amateur station information suite</div>
+  </main>
+
+  <aside class="toc">
+    <div class="toc-title">On this page</div>
+    <ul></ul>
+  </aside>
+</div>
+
+<script src="handbook.js"></script>
+</body>
+</html>

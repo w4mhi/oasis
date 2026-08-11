@@ -25,6 +25,7 @@
       <a href="dashboard.html">Dashboard Tour</a>
       <a href="system-monitor.html">System Monitor</a>
       <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
       <a href="gps-card.html">GPS / GNSS Card</a>
       <a href="themes-units.html">Themes &amp; Units</a>
       <div class="nav-group">APRS</div>
@@ -58,7 +59,9 @@
       <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
       <a href="usb-bundle.html">USB Bundle</a>
       <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
       <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
       <a href="security.html">Security</a>
       <a href="uninstall.html">Uninstall</a>
     </nav>
@@ -79,6 +82,17 @@
       SSHing in. The optional service-controls step adds <strong>START / STOP</strong>
       buttons to the service cards so you never have to.
     </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p><strong>Not every card has a power button any more.</strong> The three
+      hardware-routed radio services &mdash; <strong>ADS-B</strong>, <strong>Winlink RF</strong>
+      and the <strong>APRS SDR feed</strong> &mdash; are started and stopped by routing a
+      device to them in the <strong>SRV OPS</strong> hardware console, not from their card.
+      They still need this sudoers rule; they just do not expose the button. OpenWebRX is the
+      explicit exception and keeps its card button, because it picks its own dongle in its own
+      admin UI and never appears in the matrix. See <a href="service-operations.html">Service
+      Operations</a>.</p></div>
+    </div>
     <figure class="figure">
       <img src="img/service-controls.png" alt="The dashboard service strip — each companion service with live status and START / STOP buttons" />
       <figcaption>The dashboard service strip — each companion service with live status and START / STOP buttons</figcaption>
@@ -91,13 +105,34 @@ python3 scripts/enable-service-controls.py --disable  # remove the permission</c
     <h2>How it&rsquo;s scoped</h2>
     <p>
       It installs a <strong>narrow, validated sudoers rule</strong>
-      (<code>/etc/sudoers.d/oasis-service-controls</code>) that allows <em>only</em>
-      <code>systemctl start|stop|restart|enable|disable</code> for the known OASIS units
-      (GrayWolf, Winlink, Kiwix, webssh, OpenWebRX, the APRS SDR feed) plus one fixed
-      read-only <code>tcpdump</code> for the APRS feed meter &mdash; and nothing else. The web
-      endpoints run <code>sudo -n &hellip;</code>, so the OS authorises each exact command and
-      <strong>no password ever touches the web layer</strong>.
+      (<code>/etc/sudoers.d/oasis-service-controls</code>) built from six named command
+      aliases. Every one is an exact command match &mdash; the web endpoints run
+      <code>sudo -n &hellip;</code>, so the OS authorises the precise invocation and
+      <strong>no password ever touches the web layer</strong>. Know what you are
+      granting before you enable it:
     </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Alias</th><th>What it permits</th></tr></thead>
+      <tbody>
+        <tr><td><code>OASIS_SVC</code></td><td><code>systemctl start|stop|restart|enable|disable</code> for the known OASIS units only (GrayWolf, Winlink, Kiwix, webssh, OpenWebRX, the APRS SDR feed, ADS-B)</td></tr>
+        <tr><td><code>OASIS_SNIFF</code></td><td>One fixed read-only <code>tcpdump -ni lo &hellip; udp port 7355</code> &mdash; the APRS feed flow meter. Reads a copy of loopback traffic; captures nothing off the network</td></tr>
+        <tr><td><code>OASIS_HW_APPLY</code></td><td>Applies a device&rarr;service assignment from the hardware console</td></tr>
+        <tr><td><code>OASIS_HW_EEPROM</code></td><td><strong>Writes the EEPROM serial of an RTL-SDR dongle</strong>, so two dongles can be told apart</td></tr>
+        <tr><td><code>OASIS_APRS_FREQ</code></td><td>Sets the APRS receive frequency</td></tr>
+        <tr><td><code>OASIS_REBOOT</code></td><td><strong>Reboots the Pi</strong></td></tr>
+      </tbody>
+    </table></div></div>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p>
+        Two of these reach past starting and stopping services: one <strong>writes to
+        dongle hardware</strong> and one <strong>reboots the machine</strong>. Combined with
+        the fact that OASIS has no authentication, anyone who can reach the dashboard
+        can reboot the station. That is the intended trade for a field box on its own
+        hotspot &mdash; but it is a reason not to enable service controls on a station
+        parked on a network you do not control. See <a href="security.html">Security</a>.
+      </p></div>
+    </div>
     <div class="callout info">
       <span class="ic">&#8505;</span>
       <div><p>The OASIS web server&rsquo;s own unit is deliberately excluded &mdash; stopping it would kill the dashboard with no way to bring it back from the browser. The rule is opt-in and fully reversible with <code>--disable</code>.</p></div>
@@ -107,19 +142,86 @@ python3 scripts/enable-service-controls.py --disable  # remove the permission</c
       <div><p>OpenWebRX&rsquo;s card needs this rule too: starting it there also flips the APRS stack, because the RTL-SDR can only feed one consumer at a time.</p></div>
     </div>
 
+    <h2>Which units</h2>
+    <p>
+      The server keeps its own allowlist &mdash; a unit that is not on it is refused with
+      <code>403 UNKNOWN_SERVICE</code>, whatever the sudoers rule permits. Thirteen units are
+      known:
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Unit</th><th>Service</th><th>Controllable</th></tr></thead>
+      <tbody>
+        <tr><td><code>graywolf</code></td><td>APRS TNC / iGate / digipeater</td><td>&#10003;</td></tr>
+        <tr><td><code>graywolf-api</code></td><td>The APRS history / stats API</td><td>&#10003;</td></tr>
+        <tr><td><code>pat</code></td><td>Winlink (Pat) classic / telnet</td><td>&#10003;</td></tr>
+        <tr><td><code>pat-direwolf</code></td><td>Winlink RF &mdash; Pat over a direwolf TNC</td><td>&#10003;</td></tr>
+        <tr><td><code>direwolf-draws</code></td><td>The shared DRAWS TNC. Present so the Winlink card can report status on a DRAWS box; it carries <em>both</em> radio ports, so stopping it takes APRS down with Winlink.</td><td>&#10003;</td></tr>
+        <tr><td><code>aprs-sdr-feed</code></td><td>The RTL-SDR APRS receive chain</td><td>&#10003;</td></tr>
+        <tr><td><code>dump1090-fa</code></td><td><a href="adsb.html">ADS-B</a> receiver &mdash; owns the dongle</td><td>&#10003;</td></tr>
+        <tr><td><code>adsb-api</code></td><td>The ADS-B recorder / history daemon</td><td>&#10003;</td></tr>
+        <tr><td><code>openwebrx</code></td><td><a href="openwebrx.html">OpenWebRX</a></td><td>&#10003;</td></tr>
+        <tr><td><code>kiwix</code></td><td><a href="kiwix.html">kiwix-serve</a></td><td>&#10003;</td></tr>
+        <tr><td><code>webssh</code></td><td><a href="webssh.html">Browser terminal</a></td><td>&#10003;</td></tr>
+        <tr><td><code>gpsd</code></td><td>GNSS daemon &mdash; <strong>status only</strong>. It is time infrastructure the whole box leans on, so the web layer may read it but never touch it.</td><td>&mdash;</td></tr>
+        <tr><td><code>oasis</code></td><td>The OASIS server itself &mdash; <strong>status only</strong>. Stopping it would kill the dashboard with no way to bring it back from the browser.</td><td>&mdash;</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      Two units also persist their <strong>boot state</strong>: starting
+      <code>aprs-sdr-feed</code> or <code>dump1090-fa</code> also enables it, and stopping
+      also disables it, so a station comes back after a power cut in the state you left it.
+      <code>adsb-api</code> follows <code>dump1090-fa</code> through the unit&rsquo;s own
+      drop-in. A <em>restart</em> never touches boot state. If the enable or disable failed
+      but the action itself succeeded, the response carries a warning rather than pretending
+      it worked.
+    </p>
+
+    <h2>Device conflicts</h2>
+    <p>
+      Conflict resolution is <strong>no longer automatic</strong>, and the server never
+      refuses a start on hardware grounds. Device assignment is advisory bookkeeping; a
+      service acquires its dongle or radio port exclusively only when it actually starts.
+      The dashboard resolves contention at click time, with a <strong>confirm prompt</strong>
+      &mdash; and only when there is a real conflict, i.e. another RTL-SDR service is
+      <em>running</em> <strong>and</strong> it is assigned the <em>same</em> device.
+    </p>
+    <ul>
+      <li><strong>OK</strong> stops the other service. You then click START again once it is
+        down &mdash; deliberately two steps, so nothing is torn down behind your back.</li>
+      <li><strong>Cancel</strong> leaves it running and tries anyway, which will fail on the
+        shared dongle. That is still offered, because on a multi-dongle box the bookkeeping
+        can be wrong and the operator is not.</li>
+      <li>Different dongles, or no device assigned at all, means <strong>no prompt</strong> and
+        the start goes straight through.</li>
+    </ul>
+    <p>
+      <strong>Winlink RF</strong> is the one coarser case: if GrayWolf is running at all, you
+      are prompted regardless of assignments, because GrayWolf can bind a radio port with no
+      OASIS visibility whatsoever.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>The <strong>SRV OPS</strong> hardware console is the other path, and it behaves
+      differently: routing a device there <em>displaces</em> whatever held it, with no prompt.
+      The only thing that can refuse a route is a device <strong>lock</strong>, which is
+      exactly what locks are for. See <a href="service-operations.html">Service
+      Operations</a>.</p></div>
+    </div>
+
     <h2>Troubleshooting</h2>
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
       <tbody>
-        <tr><td>No START / STOP buttons on the cards</td><td>Service controls aren&rsquo;t enabled. Turn them on in <a href="setup-menu.html">setup</a> &mdash; it installs a narrow sudoers rule so the web UI can (only) start/stop those units.</td></tr>
+        <tr><td>No START / STOP buttons on the cards</td><td>Either service controls aren&rsquo;t enabled &mdash; turn them on in <a href="setup-menu.html">setup</a> &mdash; or the card is one of the three hardware-routed ones (ADS-B, Winlink RF, APRS SDR feed), which never have a power button. Use the <strong>SRV OPS</strong> matrix for those.</td></tr>
         <tr><td>START does nothing / silently fails</td><td>The sudoers scope is missing or the unit errored. Check <code>journalctl -u &lt;service&gt; -e</code>.</td></tr>
-        <tr><td>A radio service refuses to start</td><td>The RTL-SDR is held by another consumer (APRS feed, ADS-B, OpenWebRX, satellite listen). Stop the other one first &mdash; the dongle is exclusive.</td></tr>
+        <tr><td>A radio service refuses to start</td><td>The RTL-SDR is held by another consumer (APRS feed, ADS-B, OpenWebRX, satellite listen). Stop the other one first &mdash; the dongle is exclusive. If you were not prompted, the two are assigned different devices on paper but sharing one in practice.</td></tr>
+        <tr><td>The response mentions <code>SYSTEMD_UNAVAILABLE</code></td><td>You are not on Linux. Service controls are a systemd feature; on a laptop the cards are read-only.</td></tr>
       </tbody>
     </table></div></div>
 
     <nav class="page-nav">
       <a href="system-monitor.html"><span class="lbl">Previous</span><span class="t">System Monitor</span></a>
-      <a href="gps-card.html" class="next"><span class="lbl">Next</span><span class="t">GPS / GNSS Card</span></a>
+      <a href="service-operations.html" class="next"><span class="lbl">Next</span><span class="t">Service Operations</span></a>
     </nav>
     <div class="foot">OASIS · off-grid amateur station information suite</div>
   </main>

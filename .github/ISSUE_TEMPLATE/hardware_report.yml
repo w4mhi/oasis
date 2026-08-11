@@ -1,0 +1,89 @@
+name: Hardware report
+description: Tell us what worked (or didn't) on your radio, SDR, HAT, or Pi
+labels: ["hardware"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This is the most useful thing you can contribute without writing code.**
+
+        OASIS is developed against one operator's bench. Every report of a radio,
+        dongle, HAT, or Pi model that someone else actually ran widens what the
+        project can honestly claim to support — including the ones that *didn't*
+        work, which are just as valuable.
+
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Did it work?
+      options:
+        - Worked
+        - Worked, but needed a workaround
+        - Partly worked
+        - Did not work
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: The hardware
+      description: Make and model, as specifically as you can.
+      placeholder: "RTL-SDR Blog V4 (R828D tuner) / NW Digital DRAWS HAT rev 2 / Yaesu FT-891"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of hardware
+      options:
+        - SDR dongle
+        - Sound-card / TNC interface (DRA-Pi, DRAWS, DigiRig, ...)
+        - Radio / transceiver
+        - GPS or RTC
+        - Display / touch panel
+        - Case, fan, or cooling
+        - Raspberry Pi model or other host
+        - Antenna / RF front end
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: host
+    attributes:
+      label: Host and OS
+      placeholder: "Raspberry Pi 4 (4 GB), Raspberry Pi OS Trixie 64-bit, OASIS 3.25.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: feature
+    attributes:
+      label: What you used it for
+      description: >-
+        Which OASIS feature — APRS receive, APRS transmit, ADS-B, satellite
+        listen/record, Winlink RF, OpenWebRX, GPS time sync, the panel kiosk.
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: What happened
+      description: >-
+        If it needed a workaround, please give the exact steps — a config.txt
+        line, an overlay, a mixer setting, a gain value, a udev rule. That
+        workaround is usually the whole value of the report.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Supporting output
+      description: >-
+        Optional but helpful — `rtl_test`, `dmesg | tail`, `amixer -c <card> contents`,
+        `gpsmon`, `dump1090` stats, or whatever proves the state.
+      render: shell

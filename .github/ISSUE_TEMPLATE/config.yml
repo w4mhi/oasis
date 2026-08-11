@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/W4MHI/oasis/security/advisories/new
+    about: >-
+      Please report vulnerabilities privately, not as a public issue. Read
+      SECURITY.md first — OASIS has no authentication by design, and
+      "no auth on the LAN" is not a vulnerability.
+  - name: Setup and troubleshooting docs
+    url: https://github.com/W4MHI/oasis/blob/main/docs/SETUP.md
+    about: >-
+      Most install problems are covered here. Each subsystem has a field-debug
+      block — the command to run, what healthy output looks like, and what
+      broken output looks like.

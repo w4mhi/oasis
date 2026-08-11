@@ -25,6 +25,7 @@
       <a href="dashboard.html">Dashboard Tour</a>
       <a href="system-monitor.html">System Monitor</a>
       <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
       <a href="gps-card.html">GPS / GNSS Card</a>
       <a href="themes-units.html">Themes &amp; Units</a>
       <div class="nav-group">APRS</div>
@@ -58,7 +59,9 @@
       <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
       <a href="usb-bundle.html">USB Bundle</a>
       <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
       <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
       <a href="security.html">Security</a>
       <a href="uninstall.html">Uninstall</a>
     </nav>
@@ -128,7 +131,7 @@ scripts/start-server.sh</code></pre>
       <tbody>
         <tr><td>USB bundle build fails</td><td><code>create-oasis-offline.py</code> needs internet <em>once</em> and free disk. Re-run it online; check space with <code>df -h</code>.</td></tr>
         <tr><td><code>python3: command not found</code> on the Pi</td><td>Install Python 3 (Raspberry Pi OS ships it; a minimal image may not). The setup scripts need <code>python3</code>.</td></tr>
-        <tr><td>Dashboard is down after the first reboot</td><td>The service didn&rsquo;t enable. <code>sudo systemctl enable --now start-oasis</code>, or re-run <code>setup-server.py</code>.</td></tr>
+        <tr><td>Dashboard is down after the first reboot</td><td>The service didn&rsquo;t enable. <code>sudo systemctl enable --now oasis</code>, or re-run <code>scripts/setup-server.py</code>.</td></tr>
       </tbody>
     </table></div></div>
 

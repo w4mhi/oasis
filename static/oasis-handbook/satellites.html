@@ -25,6 +25,7 @@
       <a href="dashboard.html">Dashboard Tour</a>
       <a href="system-monitor.html">System Monitor</a>
       <a href="service-controls.html">Service Controls</a>
+      <a href="service-operations.html">Service Operations</a>
       <a href="gps-card.html">GPS / GNSS Card</a>
       <a href="themes-units.html">Themes &amp; Units</a>
       <div class="nav-group">APRS</div>
@@ -58,7 +59,9 @@
       <a href="ap-fallback.html">Wi-Fi AP Fallback</a>
       <a href="usb-bundle.html">USB Bundle</a>
       <div class="nav-group">Operations</div>
+      <a href="diagnostics.html">Diagnostics</a>
       <a href="health-check.html">Health Check</a>
+      <a href="station-voice.html">Station Voice</a>
       <a href="security.html">Security</a>
       <a href="uninstall.html">Uninstall</a>
     </nav>
@@ -75,7 +78,7 @@
     <p class="subtitle">Offline pass prediction, sky tracks, and RTL-SDR listening for the birds overhead</p>
     <figure class="hero">
       <img src="img/satellites.png" alt="The satellites page: a world map with the station marker and the roster panel listing 152 satellites with next-pass time, max elevation, mode badges, and a workability meter" />
-      <figcaption>The satellites page &mdash; station-centred world map, category and band filters, and a roster of every workable bird with its next pass, max elevation, and downlink modes</figcaption>
+      <figcaption>The satellites page &mdash; station-centred world map, a filter dropdown, and a roster of every bird OASIS knows about with its pass window, peak elevation, and downlink modes</figcaption>
     </figure>
     <p>
       The <strong>Satellites</strong> page at <code>/server/satellites/</code> answers one
@@ -95,32 +98,181 @@
 
     <h2>The roster</h2>
     <p>
-      The right panel is the roster &mdash; every satellite OASIS knows about, sorted by next
-      pass. Each row shows the acquisition time, <strong>max elevation</strong> (higher is a
-      better pass), a countdown, and <strong>mode badges</strong> (VOICE, FM, DATA, APRS,
-      SSTV, LINEAR, SSB&hellip;). A small bar meter on each row is the <strong>workability</strong>
-      pill, propagated live in the browser with <code>satellite.js</code> so it moves without
-      a server round-trip.
+      The right panel is the roster &mdash; every satellite OASIS knows about. The
+      <strong>All</strong> and <strong>Moni</strong> views sort <strong>alphabetically</strong>
+      (natural numeric, so RS-9 sorts before RS-44); only the two <strong>1h</strong> views
+      sort by next pass, soonest first with an in-progress pass at the top. That split is
+      deliberate: an alphabetical list is what you scan when you are browsing, and a
+      pass-ordered list is what you act on.
     </p>
     <div class="box"><div class="box-body"><table>
-      <thead><tr><th>Control</th><th>What it does</th></tr></thead>
+      <thead><tr><th>View</th><th>What it shows</th></tr></thead>
       <tbody>
-        <tr><td><strong>ALL / MONITORED</strong></td><td>Show the whole roster, or just the birds you ticked to monitor.</td></tr>
-        <tr><td><strong>MON&middot;1H / ALL&middot;1H</strong></td><td>Narrow to passes inside the next hour.</td></tr>
-        <tr><td>Category chips (WEATHER, VOICE, FM, APRS, SSTV, LINEAR, SSB, DATA, CREWED)</td><td>Filter by what the bird carries.</td></tr>
-        <tr><td>Band chips (VHF, UHF, L-BAND)</td><td>Filter by downlink band &mdash; e.g. show only what your antenna and dongle can hear.</td></tr>
-        <tr><td>Search box</td><td>Find a satellite by name.</td></tr>
-        <tr><td>Row checkbox</td><td>Add the bird to your <strong>monitored</strong> set (drives the 1H filters and pass alerts).</td></tr>
+        <tr><td><strong>All</strong></td><td>The whole roster, alphabetically.</td></tr>
+        <tr><td><strong>Moni</strong></td><td>Only the birds you have ticked to monitor, alphabetically.</td></tr>
+        <tr><td><strong>Mon &middot; 1h</strong></td><td>Monitored birds with a pass inside the next hour, sorted by next pass.</td></tr>
+        <tr><td><strong>All &middot; 1h</strong></td><td>Every bird passing over in the next hour, sorted by next pass &mdash; tick one to start monitoring it.</td></tr>
+        <tr><td><strong>Clear</strong> (red)</td><td>Unticks every monitored bird <em>and</em> disarms every pass alert, after a confirm. It then drops you back to <strong>All</strong>, since a Monitored view would now be empty.</td></tr>
       </tbody>
     </table></div></div>
     <p>
+      <strong>Mon&nbsp;&middot;&nbsp;1h</strong> and <strong>All&nbsp;&middot;&nbsp;1h</strong>
+      are two distinct views, not one filter applied to the other two. Both re-sort by next
+      pass and re-render every <strong>2&nbsp;s</strong>, so a countdown you are watching
+      keeps moving and a pass that has just ended drops out on its own.
+    </p>
+
+    <h3>Row anatomy</h3>
+    <p>
+      Each roster card carries more than a name. Reading top-left to bottom-right:
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Element</th><th>Reads</th></tr></thead>
+      <tbody>
+        <tr><td>Name line</td><td>The <strong>catalogue name</strong> &mdash; what matches CelesTrak, GPredict and the TLE file. Any trailing orbit tag is stripped off it and moved down.</td></tr>
+        <tr><td>Second line, left</td><td>The amateur <strong>designator and orbit class</strong>, e.g. <code>RS-44 [LEO]</code>. Every row gets this line even when the bird has no OSCAR number (then it is just <code>[LEO]</code>), so the class always sits in the same place.</td></tr>
+        <tr><td>Second line, right</td><td>The pass as a <strong>range with peak azimuth</strong>: <code>16:00&ndash;16:17 &middot; max 17&deg; SW</code>. A range, not a single acquisition time &mdash; &ldquo;16:00 &middot; max 17&deg;&rdquo; read as though it reached 17&deg; <em>at</em> 16:00, which it does not. Local time, 24&nbsp;h, always.</td></tr>
+        <tr><td>Countdown</td><td>Sits on the <strong>name row</strong>, not between the lines: <code>in 45m</code> before AOS, <code>LOS 4m</code> once the window is open. Relative only &mdash; the absolute window is on the sub-line.</td></tr>
+        <tr><td>Mode badges</td><td>The roster&rsquo;s closed vocabulary, in a fixed order: WEATHER, VOICE, FM, APRS, SSTV, LINEAR, SSB, DATA, CREWED. A monitored bird missing from the TLE cache also gets a <code>no TLE</code> badge &mdash; it can never compute a pass and will never plot.</td></tr>
+        <tr><td>Live chip</td><td>Only while the bird is above the horizon: current <strong>elevation</strong>, a rising / setting arrow (&#8599; / &#8600;), and &mdash; for monitored birds only &mdash; the <strong>slant range in km</strong>. Slant range, not ground distance: those differ by a factor of two at low elevation, and it is the slant range a radio cares about.</td></tr>
+        <tr><td>Bar meter</td><td>Five segments, lit by elevation on non-linear thresholds (2 / 10 / 22 / 38 / 58&deg;), red at the horizon through blue overhead. Propagated live in the browser with <code>satellite.js</code>, so it moves without a server round-trip.</td></tr>
+        <tr><td>Row checkbox</td><td>Adds the bird to your <strong>monitored</strong> set &mdash; and arms its pass alert. See below.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h3>Filtering</h3>
+    <p>
+      Filtering is a single <strong>Filters</strong> dropdown carrying an active-count badge,
+      so a filter you left on is never invisible behind a collapsed menu. The panel is built
+      from what is actually in your roster &mdash; a value with no birds behind it is not
+      offered &mdash; and is split into three sections. Within a section the ticks are OR&rsquo;d;
+      the sections are AND&rsquo;d with each other and with the name search box.
+    </p>
+    <figure class="figure">
+      <img src="img/sat-filters.png" alt="The satellites roster with the Filters dropdown open, showing the Capability, Band and Orbit sections" />
+      <figcaption>The Filters dropdown &mdash; Capability, Band and Orbit, built from what is actually in your roster</figcaption>
+    </figure>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Section</th><th>Values</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Capability</strong></td><td>WEATHER, VOICE, FM, APRS, SSTV, LINEAR, SSB, DATA, CREWED &mdash; what the bird carries.</td></tr>
+        <tr><td><strong>Band</strong></td><td>VHF, UHF, L-band &mdash; the downlink band, i.e. what your antenna and dongle can actually hear.</td></tr>
+        <tr><td><strong>Orbit</strong></td><td>LEO, MEO, GEO, HEO.</td></tr>
+      </tbody>
+    </table></div></div>
+    <p>
+      The <strong>Orbit</strong> axis is derived from the two-line element alone &mdash; the
+      semi-major axis from the mean motion by Kepler, then LEO under 2000&nbsp;km mean
+      altitude, MEO under 30000&nbsp;km, GEO above that, and HEO for anything with an
+      eccentricity over 0.25 (Molniya-like). Because it is computed from the TLE rather than
+      read from a label, it works on a bare, never-synced roster too. Use it to cut a 150-row
+      list down to the LEO birds an omni can actually work.
+    </p>
+    <p>
       The roster itself is built offline by <code>services/satellites/build-roster.py</code>,
       which aggregates <strong>SatNOGS</strong> transmitter data and <strong>CelesTrak</strong>
-      orbital groups into <code>configuration/satellites.json</code> (names, categories,
+      orbital groups into <code>configuration/satellites.json</code> (names, capabilities,
       downlink frequencies, modes). Orbits come from a <strong>TLE cache</strong> refreshed
-      roughly every three days when the box has internet, via the offline manifest. The
-      <strong>TLE age</strong> pill in the header shows how stale the elements are &mdash;
-      predictions drift as TLEs age.
+      roughly every three days when the box has internet, via the offline manifest.
+    </p>
+    <div class="callout tip">
+      <span class="ic">&#8505;</span>
+      <div><p><strong>There is no separate refresh button &mdash; the TLE-age pill
+      <em>is</em> the control.</strong> It reads <code>TLE 1.4 d old</code> (green under five
+      days, amber over) or <code>no TLE data &mdash; click to sync</code> on a fresh box.
+      Clicking it rebuilds the roster from SatNOGS + CelesTrak, then recolours and re-plots
+      your selection in place. This is the one operator-triggered exception to
+      &ldquo;runtime never fetches&rdquo;: offline it flashes <em>no internet &mdash; try
+      later</em> on the pill and restores the previous state.</p></div>
+    </div>
+
+    <h3>Why is bird X not in my roster?</h3>
+    <p>
+      Because its passes never culminate high enough. A pass is only listed if it reaches a
+      <strong>minimum elevation</strong>, and that floor is an operator setting: put
+      <code>"min_elev"</code> in <code>configuration/station.json</code>. The default is
+      <strong>10&deg;</strong>, and an untouched install behaves exactly as it always did.
+    </p>
+    <p>
+      What makes a low pass unworkable is <em>your</em> horizon &mdash; treeline, roofline,
+      the hill to the north-east &mdash; not anything about the satellite, which is why this
+      cannot be right in the source. A station looking out over water can drop it to 5; one
+      in a valley should raise it. It is a single number for a horizon that is not a circle,
+      so pick the value that is honest for the direction you care about. Out-of-range or
+      unparseable values silently fall back to 10&deg; rather than emptying the list.
+      The floor is part of the pass-cache key, so changing it recomputes rather than serving
+      a stale window, and <code>/api/satellites/passes</code> reports it back so you can read
+      off what the config actually did.
+    </p>
+
+    <h2>Monitoring &amp; pass alerts</h2>
+    <p>
+      Ticking a bird does three things at once: it joins your <strong>monitored</strong> set,
+      it is drawn on the map in its capability colour, and <strong>its pass alert is
+      armed</strong>. Unticking it disarms the alert and clears it, so no orphan bell is left
+      behind to fire months later when the bird is re-selected.
+    </p>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p>The per-row <strong>bell</strong> is now an <em>override</em>, not the gate.
+      Deciding to watch a satellite is deciding you want to be told it is coming; making that
+      a second switch meant passes arrived in silence with nothing on screen to explain it.
+      Use the bell for the exception &mdash; monitor the weather birds for the map and the
+      coverage pills, then disarm the ones you do not want waking the shack tonight.</p></div>
+    </div>
+    <p>
+      An armed bird chimes a Morse <strong>&ldquo;V&rdquo;</strong> (&middot;&nbsp;&middot;&nbsp;&middot;&nbsp;&mdash;),
+      three times, at <strong>T&#8722;10&nbsp;min</strong> at 620&nbsp;Hz and again at
+      <strong>T&#8722;5&nbsp;min</strong> at 780&nbsp;Hz &mdash; closer reads as higher and
+      more urgent. There is no AOS chime; by then it is too late to react. The chime is
+      synthesised in the browser with Web Audio, so it needs no audio file and works fully
+      offline. Once the T&#8722;10 Vs finish, a <strong>spoken heads-up</strong> names the
+      bird and how good the pass is; the sentence is synthesised a minute early so the voice
+      follows the chime instead of trailing it. If no voice is installed the announcement
+      silently no-ops and the chime still carries the alert. See
+      <a href="station-voice.html">Station Voice</a>.
+    </p>
+    <p>
+      The header carries a <strong>global mute</strong> (the bell glyph beside the clock).
+      Mute is deliberately <em>per-device</em> and stays in this browser&rsquo;s
+      <code>localStorage</code>: the shack kiosk should be silenceable overnight while the
+      laptop still chimes. Muting also cuts whatever is sounding at that instant, rather than
+      only applying to the next alert. The bells themselves go the other way &mdash; a bell
+      is a property of the <em>bird</em>, so it lives in the shared server roster beside
+      <code>selected</code> and the kiosk honours it without you having to arm it twice.
+    </p>
+
+    <h3>Capability colours and coverage</h3>
+    <p>
+      A monitored bird&rsquo;s track, marker and row rail are drawn in a colour that
+      <em>spells its capability set</em>, by additive RGB blend of three channels:
+      <strong>Voice</strong> (FM / LINEAR / SSB) green, <strong>Imaging</strong> (WEATHER /
+      SSTV) blue, <strong>Data</strong> (APRS) orange. The mixes fall out of the arithmetic,
+      so a multi-capability bird such as the ISS lights up on its own. A bird that only
+      beacons telemetry takes the Data orange but <strong>never blends</strong> &mdash; bare
+      telemetry is on the large majority of the roster and blending it would warm every
+      colour on the map into meaninglessness.
+    </p>
+    <p>
+      The <strong>colour key</strong> is the burger button at the top-left of the map. Its
+      swatches are computed through the same blend the map uses, so it cannot drift from what
+      you are looking at; the open/closed choice persists.
+    </p>
+    <div class="callout tip">
+      <span class="ic">&#8505;</span>
+      <div><p>Additive blending lives on the red-green axis, so this deliberately trades
+      colourblind-safety for expressiveness on a single-operator station. Full capability
+      detail is always in the row badges and the map popup.</p></div>
+    </div>
+    <p>
+      While a monitored bird is above the horizon <em>and</em> inside a pass the server
+      actually predicted, the map takes a green <strong>coverage wash</strong> whose strength
+      scales with elevation, and a <strong>coverage pill</strong> appears in the header for
+      each such bird, in that bird&rsquo;s own track colour, reading name, elevation, trend
+      arrow and slant range &mdash; the same readout as the row chip, so the two agree on
+      sight. The pill is gated on the predicted pass window on purpose: a bird transiting
+      below your <code>min_elev</code> would otherwise light the pill with no card and nothing
+      to click.
     </p>
 
     <h2>Passes &amp; tracks</h2>
@@ -133,36 +285,111 @@
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Endpoint</th><th>Returns</th></tr></thead>
       <tbody>
-        <tr><td><code>GET /api/satellites</code></td><td>The roster with per-bird TLE lines and mode support tags.</td></tr>
-        <tr><td><code>GET /api/satellites/passes</code></td><td>Predicted passes for the station over the window.</td></tr>
-        <tr><td><code>GET /api/satellites/track</code></td><td>Ground-track points for the selected bird.</td></tr>
-        <tr><td><code>POST /api/satellites/select</code></td><td>Set the selected / monitored birds.</td></tr>
-        <tr><td><code>POST /api/satellites/refresh</code></td><td>Re-sync TLEs (when online) and rebuild look-angles.</td></tr>
+        <tr><td><code>GET /api/satellites</code></td><td>The roster, each bird decorated with its TLE lines and its downlinks grouped by (frequency, demodulator) with mode-support flags.</td></tr>
+        <tr><td><code>GET /api/satellites/passes</code></td><td>Predicted passes over a <code>window</code> of hours (default 48), plus the <code>min_elev</code> floor that produced them.</td></tr>
+        <tr><td><code>GET /api/satellites/track</code></td><td>Ground-track points for one bird (<code>sat</code>, <code>from</code>, <code>to</code>).</td></tr>
+        <tr><td><code>POST /api/satellites/select</code></td><td>Set the monitored birds &mdash; one toggle, or a whole <code>selections</code> set in a single write.</td></tr>
+        <tr><td><code>POST /api/satellites/bells</code></td><td>Arm / disarm pass alerts, as a <code>bells</code> set in a single write.</td></tr>
+        <tr><td><code>POST /api/satellites/refresh</code></td><td>Rebuild the roster from SatNOGS + CelesTrak. Online-only; being offline is <code>503</code> with code <code>OFFLINE</code>, not a 200.</td></tr>
+        <tr><td><code>GET /api/satellites/listen/status</code></td><td>Capture state (recording / streaming / seconds / frequency) <em>and</em> whether a capture is possible at all: missing tools, dongle present, device assigned, busy, holder.</td></tr>
+        <tr><td><code>POST /api/satellites/listen</code></td><td>Start recording the armed downlink to a WAV.</td></tr>
+        <tr><td><code>GET /api/satellites/listen/stream</code></td><td>Live pass audio as a <strong>chunked MP3</strong>, so a plain <code>&lt;audio src=&hellip;&gt;</code> works.</td></tr>
+        <tr><td><code>POST /api/satellites/listen/stop</code></td><td>Stop the capture and sweep the recordings directory. Idempotent &mdash; stopping an idle capture is a success.</td></tr>
+        <tr><td><code>GET /api/satellites/listen/recordings</code></td><td>List captured WAVs with size and recorded-at time.</td></tr>
+        <tr><td><code>GET /api/satellites/listen/recording/&lt;file&gt;</code></td><td>Download one recording.</td></tr>
       </tbody>
     </table></div></div>
 
     <h2>Listening (RTL-SDR)</h2>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p><strong>Nothing is armable until a device is assigned to
+      <code>satellites</code> in the hardware console.</strong> This is far and away the most
+      common &ldquo;why can&rsquo;t I do anything on this page&rdquo;: the downlink list stays
+      readable so you can see what a bird offers from a laptop with no dongle, but every
+      option is disabled and the row reads <code>device: unassigned</code>. Assign one first
+      &mdash; see <a href="service-operations.html">Service Operations</a>.</p></div>
+    </div>
     <p>
-      With a dongle, the <strong>REC / PLAY / STOP</strong> controls capture a selected
-      bird&rsquo;s downlink &mdash; live-stream the pass audio to the browser over SSE, or
-      record it to a WAV for offline decoding (e.g. a NOAA/Meteor weather pass for later APT
-      / LRPT work). Demodulation follows the transmitter mode automatically:
+      Capture is a two-step model. On a monitored row, a <strong>downlink dropdown</strong>
+      lists that bird&rsquo;s downlinks as <code>mode &middot; frequency</code>, sorted by
+      label then frequency &mdash; you scan for &ldquo;where&rsquo;s the FM?&rdquo; and the
+      frequency only breaks ties. Picking one <strong>arms</strong> it. What is armed is a
+      <code>frequency|mode</code> <em>pair</em>, not a bare frequency: after grouping, two
+      entries can still share a frequency and need different demodulators (FM and CW both sit
+      on 435.245 on some birds), and a frequency alone cannot say which one you meant.
     </p>
+    <p>
+      The transport then acts on whatever is armed. <strong>&#9210;&nbsp;Rec /
+      &#9654;&nbsp;Play / &#9209;&nbsp;Stop</strong> live in the page <strong>header</strong>,
+      not on the row &mdash; one dongle means one capture, so Rec and Play are mutually
+      exclusive and a global transport is the honest control. A downlink is armable from
+      about <strong>five minutes before AOS through LOS</strong>; arming a new one disarms the
+      old. Play streams the pass into a hidden <code>&lt;audio&gt;</code> element; closing it
+      ends the HTTP request, which tears the server-side pipeline down.
+    </p>
+    <p>Demodulation follows the transmitter mode automatically:</p>
     <ul>
-      <li><strong>FM / APRS</strong> &rarr; wide FM. VHF/UHF Doppler stays inside the FM
-        passband, so FM birds need no active retuning.</li>
-      <li><strong>CW</strong> &rarr; USB with a 700&nbsp;Hz tone offset; <strong>USB / LSB /
-        SSB</strong> &rarr; SSB. These are narrowband and more Doppler-sensitive.</li>
-      <li><strong>PSK / LRPT / DVB</strong> &mdash; capturable, but not live-demodulable in
-        the browser; record and decode offline.</li>
+      <li><strong>The FM family</strong> &mdash; FM/NFM voice, packet (AFSK, FSK, GMSK, MSK,
+        GFSK), APRS, analog SSTV and weather APT &rarr; wide FM at 48&nbsp;kHz. VHF/UHF
+        Doppler stays inside the FM passband, so these need no active retuning.</li>
+      <li><strong>CW</strong> &rarr; USB tuned 700&nbsp;Hz low, so the carrier lands as an
+        audible ~700&nbsp;Hz tone that glides in pitch with Doppler &mdash; expected for a
+        beacon. <strong>USB / SSB</strong> &rarr; narrow USB, <strong>LSB</strong> &rarr;
+        narrow LSB. Narrowband and far more Doppler-sensitive.</li>
+      <li><strong>PSK / LRPT / DVB</strong> &mdash; <strong>not capturable</strong>. These
+        stay visible in the dropdown but disabled and annotated <em>&mdash; not supported</em>,
+        because &ldquo;we cannot demodulate this yet&rdquo; is information about the bird and
+        hiding the row would leave you wondering where the beacon went. The server
+        re-validates and answers <code>400</code> with code <code>MODE_UNSUPPORTED</code>
+        &mdash; never trust the button.</li>
     </ul>
     <div class="callout warn">
       <span class="ic">&#9888;</span>
       <div><p><strong>Listen needs the dongle to itself.</strong> Exactly like the
       <a href="tuning-bench.html">tuning bench</a> and <a href="adsb.html">ADS-B</a>, stop
-      the <a href="aprs-feed.html">APRS SDR feed</a> first. Recordings are safety-capped at
-      <strong>20&nbsp;minutes</strong> and written to
+      the <a href="aprs-feed.html">APRS SDR feed</a> first &mdash; the row will name the
+      holder. Recordings are safety-capped at <strong>20&nbsp;minutes</strong> and written to
       <code>configuration/sat-recordings/</code> (per-machine, gitignored).</p></div>
+    </div>
+
+    <h3>Recording retention</h3>
+    <p>
+      Nothing used to delete these, and on a field station a full root filesystem does not
+      degrade one feature &mdash; it takes the station down. So the directory is swept before
+      every capture starts and again after it stops:
+    </p>
+    <ul>
+      <li>A <strong>2&nbsp;GB budget</strong> on the directory. Oldest goes first.</li>
+      <li>A <strong>1&nbsp;GB free-space floor</strong>: if the card still cannot take a
+        20-minute worst case after the sweep, the capture is refused outright
+        (<code>507</code>, <code>INSUFFICIENT_STORAGE</code>) rather than filling the card
+        mid-incident.</li>
+      <li>Pruning is <strong>size-primary</strong>. Age alone bounds nothing here &mdash;
+        this writer has no fixed rate, so auto-recording several weather birds is well over a
+        gigabyte a day that a 72-hour rule would never touch. The secondary age sweep is
+        <strong>off by default</strong>, because deleting under no space pressure at all is
+        pure data loss.</li>
+      <li>The <strong>newest recording is never pruned</strong>, so a mis-set budget cannot
+        eat the pass you just captured.</li>
+    </ul>
+    <p>
+      At 48&nbsp;kHz / 16-bit / mono a typical ten-minute LEO pass is about 58&nbsp;MB, so
+      2&nbsp;GB holds roughly 35 passes. The budget, the floor and the age sweep are all
+      overridable by environment variable (<code>SAT_RECORD_MAX_BYTES</code>,
+      <code>SAT_RECORD_MIN_FREE_BYTES</code>, <code>SAT_RECORD_MAX_AGE_S</code>).
+    </p>
+
+    <h2>Units on this page</h2>
+    <div class="callout info">
+      <span class="ic">&#8505;</span>
+      <div><p><strong>Satellite readouts are always metric.</strong> Slant range is in
+      <strong>km</strong> whatever the <a href="themes-units.html">Imperial / Metric</a>
+      toggle says, and altitudes here are km too. This is a deliberate contract, not an
+      oversight: satellite and amateur-radio work is metric worldwide &mdash; we speak of the
+      2&nbsp;m band, not the 6.6&nbsp;ft band &mdash; and converting would put OASIS at odds
+      with every other tool you have open. The units toggle is for terrestrial readouts,
+      where the preference is a real preference.</p></div>
     </div>
 
     <h2>Troubleshooting</h2>
@@ -171,16 +398,24 @@
       <tbody>
         <tr><td>Roster loads but every row says <code>Lat &ndash; Lon &ndash;</code> / no pass times</td>
             <td>No station position. Set your lat/lon (the <a href="gps-card.html">GPS card</a> or <code>configuration/station.json</code>); look-angles can&rsquo;t be computed without it.</td></tr>
-        <tr><td>TLE age pill is red / high</td>
-            <td>Elements are stale and predictions drift. Press <strong>refresh</strong> (or hit <code>POST /api/satellites/refresh</code>) while online; TLEs auto-sync ~every 3 days via the offline manifest.</td></tr>
+        <tr><td>TLE age pill is amber / high</td>
+            <td>Elements are stale and predictions drift. <strong>Click the pill</strong> while online &mdash; it is the refresh control (<code>POST /api/satellites/refresh</code>). TLEs also auto-sync ~every 3 days via the offline manifest.</td></tr>
         <tr><td>Roster is empty</td>
-            <td><code>configuration/satellites.json</code> is missing. Rebuild it: <code>python3 services/satellites/build-roster.py</code> (uses vendored SatNOGS/CelesTrak data offline).</td></tr>
+            <td><code>configuration/satellites.json</code> is missing. Click the TLE pill while online, or rebuild it directly: <code>python3 services/satellites/build-roster.py</code>.</td></tr>
+        <tr><td>A bird you expect is simply not listed</td>
+            <td>Its passes never culminate above your <code>min_elev</code> floor (default 10&deg;). Lower it in <code>configuration/station.json</code> if your horizon really is that clear.</td></tr>
+        <tr><td>A monitored bird shows a <code>no TLE</code> badge and never plots</td>
+            <td>It is in the roster but absent from the TLE cache, so no pass can be computed. Sync TLEs (click the pill) while online.</td></tr>
         <tr><td>Passes look right but times are hours off</td>
             <td>Clock skew. Satellite math is time-critical &mdash; set up <a href="gps-time.html">GPS time sync</a> so the Pi&rsquo;s clock is disciplined without internet NTP.</td></tr>
         <tr><td><code>skyfield</code> / <code>numpy</code> import error in the log</td>
             <td>The prediction wheels weren&rsquo;t installed. They ship in the bundle but must be in the manifest&rsquo;s pip groups &mdash; reinstall the satellites feature from <a href="setup-menu.html">the setup menu</a>.</td></tr>
-        <tr><td>REC does nothing / &ldquo;dongle busy&rdquo;</td>
-            <td>Another consumer holds the RTL-SDR. Stop <code>aprs-sdr-feed.service</code> and any ADS-B, then try again. Listening needs a Pi&nbsp;4&nbsp;/&nbsp;4&nbsp;GB or better.</td></tr>
+        <tr><td>The downlink dropdown opens but every option is greyed out</td>
+            <td>Either no device is assigned to <code>satellites</code> (row reads <code>device: unassigned</code> &mdash; fix it in the <a href="service-operations.html">hardware console</a>), or the bird&rsquo;s only modes are PSK / LRPT / DVB, which cannot be demodulated.</td></tr>
+        <tr><td>Rec does nothing / &ldquo;dongle busy&rdquo;</td>
+            <td>Another consumer holds the RTL-SDR; the row names the holder. Stop <code>aprs-sdr-feed.service</code> and any ADS-B, then try again. Listening needs a Pi&nbsp;4&nbsp;/&nbsp;4&nbsp;GB or better.</td></tr>
+        <tr><td>A pass came and went in silence</td>
+            <td>Check the header mute (it is per-device, so a muted kiosk says nothing about this laptop), then the row bell &mdash; monitoring arms it, but you may have disarmed that one bird deliberately.</td></tr>
       </tbody>
     </table></div></div>
 

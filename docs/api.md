@@ -478,8 +478,9 @@ Binary-search over the offline FCC amateur license index (no DB engine).
 
 | Method | Path | Params | Description |
 |---|---|---|---|
-| GET | `/server/map/<filename>` | — | Live map UI (`map.html`, warnings.json) — APRS + ADS-B. |
-| GET | `/map-assets/<filename>` | — | Shared map assets (APRS symbol sprite sheets, etc.). |
+| GET | `/maps/traffic/map.html` | `focus` | Live map UI — APRS + ADS-B. `?focus=CALLSIGN` opens on a station and loads its track. |
+| GET | `/maps/traffic/assets/<filename>` | — | Shared map assets (APRS symbol sprite sheets, etc.), served by the blanket static mount. |
+| GET | `/maps/mapengine/<filename>` | — | The map engine — MapLibre GL, PMTiles, the basemap style, and the glyph atlas. |
 | GET | `/maps/<filename>` | HTTP Range | Static map files incl. `.pmtiles` (range reads over PMTiles — no full load into RAM). |
 | GET | `/api/fs/browse` | `path` | Browse allowlisted roots for `.pmtiles` archives. |
 | GET | `/api/fs/pmtiles` | `path` | Stream a `.pmtiles` archive from an allowlisted absolute path with HTTP Range. |
