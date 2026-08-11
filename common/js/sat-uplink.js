@@ -13,9 +13,16 @@
  * to the SSTV service. Naming the mode is the whole point.
  *
  * Loaded as a classic <script>, and requireable by node --test.
+ *
+ * Same UMD shape as sat-look.js: an outer (root, factory) IIFE, a bare global
+ * alongside the namespaced export, a module.exports guard. It is not a byte-
+ * for-byte match — sat-look.js's factory takes `root` because it reads
+ * root.satellite (the vendored SGP4 propagator); this formatter is pure and
+ * needs no root access, so its factory takes nothing and the call below
+ * passes nothing.
  */
 (function (root, factory) {
-  var api = factory(root);
+  var api = factory();
   root.OasisSatUplink = api;
   // Bare global so the page's inline call sites read naturally.
   root.uplinkLines = api.uplinkLines;
@@ -36,12 +43,25 @@
      calls it. */
   function uplinkLines(entry) {
     var ups = (entry && entry.uplinks) || [];
-    var multi = ((entry && entry.modes) || []).length > 1;
+    var modes = (entry && entry.modes) || [];
+    var multi = modes.length > 1;
     return ups.map(function (u) {
       var parts = [];
-      // Name the mode ONLY when the entry holds more than one: a single-mode
-      // entry naming its own mode again is noise.
-      if (multi && u.mode) parts.push(u.mode);
+      // Name the mode ONLY when the entry holds more than one AND this
+      // uplink says which one it is. That second condition can fail —
+      // `u.mode` missing, or `multi` false because `modes` was itself
+      // missing or empty — and when it does we render unattributed rather
+      // than guess. This is a deliberate call, not a side effect of `&&`
+      // short-circuiting: roster.group_downlinks on the server always
+      // populates both `modes` and every uplink's own `mode`, so a
+      // multi-mode entry with an unlabelled uplink cannot come from live
+      // OASIS data — it only happens on a stale cached page. Inventing a
+      // placeholder label for that case would put words on screen that
+      // describe nothing, which is worse than a bare frequency, and a stale
+      // page's data is stale in every other respect too, so that staleness
+      // is the safety net.
+      var attributable = multi && !!u.mode;
+      if (attributable) parts.push(u.mode);
       if (u.simplex) parts.push('simplex');
       if (u.invert) parts.push('inverting');
       if (u.ctcss_hz != null) parts.push('CTCSS ' + u.ctcss_hz.toFixed(1));

@@ -50,6 +50,49 @@ test('uplink equal to downlink reads as simplex, not as two legs', () => {
   assert.deepStrictEqual(lines, ['↑↓ 145.825 simplex']);
 });
 
+test('an entry with exactly two modes names the mode, full line', () => {
+  const lines = U.uplinkLines({
+    freq_mhz: 145.8, modes: ['FM', 'SSTV'],
+    uplinks: [{ freq_mhz: 144.49, freq_high_mhz: null, invert: false,
+                ctcss_hz: null, simplex: false, mode: 'FM' }] });
+  assert.deepStrictEqual(lines, ['↑ 144.49 FM']);
+});
+
+test('a multi-mode uplink with mode: null renders unattributed, not a throw', () => {
+  // Unreachable from OASIS data — roster.group_downlinks always sets a
+  // mode — but a stale cached page could still hand us this shape, and the
+  // documented fallback is a bare line, not an invented label.
+  const lines = U.uplinkLines({
+    freq_mhz: 437.8, modes: ['FM', 'FSK', 'SSTV'],
+    uplinks: [{ freq_mhz: 145.99, freq_high_mhz: null, invert: false,
+                ctcss_hz: null, simplex: false, mode: null }] });
+  assert.deepStrictEqual(lines, ['↑ 145.99']);
+});
+
+test('a multi-mode uplink with mode: undefined renders unattributed, not a throw', () => {
+  const lines = U.uplinkLines({
+    freq_mhz: 437.8, modes: ['FM', 'FSK', 'SSTV'],
+    uplinks: [{ freq_mhz: 145.99, freq_high_mhz: null, invert: false,
+                ctcss_hz: null, simplex: false, mode: undefined }] });
+  assert.deepStrictEqual(lines, ['↑ 145.99']);
+});
+
+test('a missing modes key renders unattributed, not as a single mode', () => {
+  const lines = U.uplinkLines({
+    freq_mhz: 437.8,
+    uplinks: [{ freq_mhz: 145.99, freq_high_mhz: null, invert: false,
+                ctcss_hz: null, simplex: false, mode: 'FM' }] });
+  assert.deepStrictEqual(lines, ['↑ 145.99']);
+});
+
+test('an empty modes array renders unattributed, not as a single mode', () => {
+  const lines = U.uplinkLines({
+    freq_mhz: 437.8, modes: [],
+    uplinks: [{ freq_mhz: 145.99, freq_high_mhz: null, invert: false,
+                ctcss_hz: null, simplex: false, mode: 'FM' }] });
+  assert.deepStrictEqual(lines, ['↑ 145.99']);
+});
+
 test('several uplink-bearing members get one line each', () => {
   const lines = U.uplinkLines({
     freq_mhz: 145.8, modes: ['FM', 'SSTV'],
