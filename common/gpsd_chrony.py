@@ -2,7 +2,7 @@
 gpsd_chrony.py — shared gpsd + chrony ("GPS-disciplined time") setup logic.
 
 Wires a GPS/GNSS serial device into gpsd, then adds the chrony SHM refclock
-(+ PPS if /dev/pps0 exists) that actually STEERS the system clock from it —
+(+ PPS if a pulse is actually ARRIVING) that STEERS the system clock from it —
 NO internet needed, and needed for correct FT8/FT4/WSPR/SSTV decode windows,
 trustworthy spot timestamps in OpenWebRX, and a sane clock suite-wide.
 
@@ -16,8 +16,10 @@ Use check_exclusive() before configure_gpsd() to guard against one feature
 silently clobbering the device the other one wired up.
 """
 
+import glob
 import os
 import tempfile
+import time
 
 from common.oasis_lib import _ok, _info, _warn, _fail, _run, sudo_apt_cmd
 
@@ -98,6 +100,69 @@ def configure_gpsd(device):
         _fail(f"Could not write {GPSD_DEFAULT}.")
 
 
+# The NMEA time gpsd relays over SHM 0 lags real time by the serial + sentence
+# delay — commonly 100-500 ms, and CONSTANT for a given receiver and baud. That
+# is not an error we can correct blind (it is per-box), but it IS an error we
+# must DECLARE, because chrony rejects a source whose measured offset falls
+# outside the error bound it was given.
+#
+# Measured on a live 3D fix: offset +215 ms, jitter 19 ms, against `delay 0.2`
+# (a +/-100 ms bound). chrony marked GPS a FALSETICKER and excluded it, so a
+# station with a working GPS still had nothing to fall back on when the internet
+# went away — the exact failure this whole feature exists to prevent.
+#
+# 0.5 s declares +/-250 ms, which covers ordinary NMEA lag and lets the source be
+# USED. It deliberately trades precision for availability: bare NMEA is a
+# coarse-time source whose job is to make the DATE right offline. Precision is
+# what the PPS refclock below is for, and PPS is only added when a pulse is
+# really arriving.
+NMEA_DELAY_S = 0.5
+
+PPS_SYSFS_GLOB = "/sys/class/pps/*/assert"
+PPS_PROBE_WINDOW_S = 2.5
+
+
+def pps_pulses_arriving(window_s=PPS_PROBE_WINDOW_S, _glob=PPS_SYSFS_GLOB):
+    """True when a PPS source is delivering real pulses RIGHT NOW.
+
+    Probes the capability, not the artifact. `/dev/pps0` existing proves
+    nothing: gpsd attaches a serial line-discipline PPS to the GPS's DCD pin
+    whether or not anything is wired to it, so the node appears on boxes with no
+    PPS hardware at all. A real station was found with /dev/pps0 present and a
+    lifetime pulse count of ZERO.
+
+    `/sys/class/pps/<n>/assert` reads "<timestamp>#<sequence>". The sequence is
+    what counts — it increments once per pulse. Sampling it twice a couple of
+    seconds apart and requiring it to ADVANCE is the only claim that means "a
+    wire is carrying a signal".
+
+    Deliberately sysfs and not `ppstest`: pps-tools is not installed on a stock
+    Pi OS (and was missing on the box this was diagnosed against), and the assert
+    file is world-readable, so this needs neither a package nor root."""
+    def _seq():
+        out = {}
+        for path in glob.glob(_glob):
+            try:
+                with open(path) as fh:
+                    raw = fh.read().strip()
+            except OSError:
+                continue
+            # "0.000000000#0" -> 0. A source with no pulse ever reads #0.
+            _, _, seq = raw.partition("#")
+            try:
+                out[path] = int(seq)
+            except ValueError:
+                continue
+        return out
+
+    first = _seq()
+    if not first:
+        return False
+    time.sleep(window_s)
+    second = _seq()
+    return any(second.get(k, n) > n for k, n in first.items())
+
+
 def configure_chrony():
     if not os.path.exists(CHRONY_CONF):
         _warn(f"{CHRONY_CONF} not found — is chrony installed? Skipping refclock.")
@@ -108,7 +173,8 @@ def configure_chrony():
         _ok("chrony already has the OASIS GPS refclock — leaving it.")
         return
     lines = [CHRONY_MARK,
-             "refclock SHM 0 refid GPS precision 1e-1 offset 0.0 delay 0.2"]
+             "refclock SHM 0 refid GPS precision 1e-1 offset 0.0 "
+             f"delay {NMEA_DELAY_S}"]
     # PPS via gpsd's SHM segment 1, NOT the raw /dev/pps0 device. A raw
     # `refclock PPS /dev/pps0` is a *fatal* chronyd error when the node is
     # missing, and with pps_ldisc the node only appears after gpsd attaches it —
@@ -116,9 +182,13 @@ def configure_chrony():
     # restart). An SHM refclock never fatally fails: gpsd (which owns the PPS)
     # relays it on SHM 1, and until that's ready chrony simply gets no PPS
     # samples and runs on SHM 0. /dev/pps0 here is only a "this box has PPS" hint.
-    if os.path.exists("/dev/pps0"):
+    if pps_pulses_arriving():
         lines.append("refclock SHM 1 refid PPS precision 1e-7 lock GPS")
-        _info("PPS device found — adding a gpsd-SHM PPS refclock (boot-safe).")
+        _info("PPS pulses arriving — adding a gpsd-SHM PPS refclock (boot-safe).")
+    elif glob.glob(PPS_SYSFS_GLOB):
+        _info("A PPS device exists but no pulse arrived — NOT adding a PPS "
+              "refclock. gpsd creates the node whether or not anything is wired "
+              "to it; re-run this once the PPS line is connected.")
     if _sudo_write(CHRONY_CONF, "\n" + "\n".join(lines) + "\n", append=True):
         _ok("Added GPS refclock to chrony.conf (the step most setups miss).")
     else:

@@ -3,7 +3,9 @@ import builtins
 import io
 import os
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import common.gpsd_chrony as G
@@ -52,16 +54,50 @@ class ChronyRefclockTests(unittest.TestCase):
             return True
 
         orig_exists, orig_run, orig_write = os.path.exists, G._run, G._sudo_write
-        os.path.exists = lambda p: True          # CHRONY_CONF + /dev/pps0 both present
+        orig_pps = G.pps_pulses_arriving
+        os.path.exists = lambda p: True          # CHRONY_CONF present
         G._run = lambda *a, **k: Result(1)        # OASIS mark not yet in the conf
         G._sudo_write = fake_write
+        G.pps_pulses_arriving = lambda *a, **k: True   # a pulse IS arriving
         try:
             G.configure_chrony()
         finally:
             os.path.exists, G._run, G._sudo_write = orig_exists, orig_run, orig_write
+            G.pps_pulses_arriving = orig_pps
 
         self.assertIn("refclock SHM 1 refid PPS", captured["content"])
         self.assertNotIn("/dev/pps0", captured["content"])
+
+    def test_no_pps_refclock_when_the_node_exists_but_never_pulses(self):
+        # The bug this replaced: the PPS refclock was added on
+        # os.path.exists('/dev/pps0'). gpsd attaches a serial line-discipline
+        # PPS to the GPS's DCD pin whether or not a wire carries a pulse, so a
+        # station with NO PPS hardware got a PPS refclock that never delivered
+        # a sample. Found on pi4oasis: node present, lifetime pulse count zero.
+        class Result:
+            def __init__(self, returncode=0):
+                self.returncode = returncode
+
+        captured = {}
+
+        def fake_write(path, content, append=False):
+            captured["content"] = content
+            return True
+
+        orig_exists, orig_run, orig_write = os.path.exists, G._run, G._sudo_write
+        orig_pps = G.pps_pulses_arriving
+        os.path.exists = lambda p: True          # the NODE is there...
+        G._run = lambda *a, **k: Result(1)
+        G._sudo_write = fake_write
+        G.pps_pulses_arriving = lambda *a, **k: False   # ...but nothing pulses
+        try:
+            G.configure_chrony()
+        finally:
+            os.path.exists, G._run, G._sudo_write = orig_exists, orig_run, orig_write
+            G.pps_pulses_arriving = orig_pps
+
+        self.assertNotIn("PPS", captured["content"])
+        self.assertIn("refclock SHM 0 refid GPS", captured["content"])
 
 
 class MutualExclusionTests(unittest.TestCase):
@@ -111,3 +147,69 @@ class MutualExclusionTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class PpsIsProbedNotAssumed(unittest.TestCase):
+    """`/dev/pps0` existing proves nothing.
+
+    gpsd attaches a serial line-discipline PPS to the GPS's DCD pin whether or
+    not a wire carries a pulse, so the node appears on boxes with no PPS
+    hardware. A real station (pi4oasis) was found with the node present and a
+    LIFETIME PULSE COUNT OF ZERO — which is why this probes the sequence
+    counter rather than the artifact."""
+
+    def _sysfs(self, tmp, values):
+        """Build fake /sys/class/pps/<n>/assert files, returning a glob."""
+        for name, raw in values.items():
+            d = os.path.join(tmp, name)
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "assert"), "w") as fh:
+                fh.write(raw)
+        return os.path.join(tmp, "*", "assert")
+
+    def test_a_node_that_never_pulsed_is_not_pps(self):
+        # Exactly what /sys/class/pps/pps0/assert reads on a box with the node
+        # but no signal: timestamp zero, sequence zero, and it never moves.
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._sysfs(tmp, {"pps0": "0.000000000#0"})
+            self.assertFalse(G.pps_pulses_arriving(window_s=0.01, _glob=g))
+
+    def test_a_stalled_counter_is_not_pps(self):
+        # A source that pulsed once long ago and stopped must not count as live.
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._sysfs(tmp, {"pps0": "1786504234.000000000#42"})
+            self.assertFalse(G.pps_pulses_arriving(window_s=0.01, _glob=g))
+
+    def test_an_advancing_counter_is_pps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._sysfs(tmp, {"pps0": "1786504234.000000000#42"})
+            target = os.path.join(tmp, "pps0", "assert")
+
+            real_sleep = G.time.sleep
+
+            def bump(_):
+                with open(target, "w") as fh:
+                    fh.write("1786504236.000000000#44")
+                real_sleep(0)
+
+            with mock.patch.object(G.time, "sleep", bump):
+                self.assertTrue(G.pps_pulses_arriving(_glob=g))
+
+    def test_no_pps_sources_at_all_is_false_not_a_throw(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            g = os.path.join(tmp, "*", "assert")
+            self.assertFalse(G.pps_pulses_arriving(window_s=0.01, _glob=g))
+
+    def test_unreadable_or_garbled_assert_never_claims_pps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._sysfs(tmp, {"pps0": "not-a-pps-reading"})
+            self.assertFalse(G.pps_pulses_arriving(window_s=0.01, _glob=g))
+
+
+class NmeaDelayIsDeclaredWideEnough(unittest.TestCase):
+    def test_the_bound_covers_measured_nmea_lag(self):
+        # Measured on a live 3D fix: +215 ms offset, 19 ms jitter. With the old
+        # `delay 0.2` (a +/-100 ms bound) chrony marked GPS a falseticker and
+        # excluded it, leaving a station with a working GPS and no offline
+        # time source at all. The bound must contain the measured lag.
+        self.assertGreater(G.NMEA_DELAY_S / 2.0, 0.215)
