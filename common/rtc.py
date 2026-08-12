@@ -80,8 +80,36 @@ BOARDS = {
         "feature": "rtc-raspad",
         "script":  "features/rtc-raspad/enable-rtc.py",
     },
+    # The Pi 5 has an RTC in the SoC — no i2c chip, no overlay, nothing on
+    # i2cdetect. It owns a config.txt line ONLY when trickle charging is turned
+    # on, which is why `overlay` is None here and supplied at render time.
+    "pi5": {
+        "label":   "Raspberry Pi 5 · built-in RTC",
+        "chip":    "rpi-rtc",
+        "addr":    None,
+        "bus":     None,
+        "overlay": None,
+        "prereqs": [],
+        "feature": "rtc-pi5",
+        "script":  "features/rtc-pi5/enable-rtc.py",
+    },
 }
 DEFAULT_BOARD = "wittypi"
+
+# Trickle-charge voltage for the Pi 5's backup cell, in microvolts, matching the
+# kernel's own range (/sys/class/rtc/rtc0/charging_voltage_{min,max} read
+# 1300000 and 4400000). 3.0 V suits the ML2032/LIR2032 cells Raspberry Pi ship.
+#
+# THIS IS OFF UNLESS THE OPERATOR ASKS FOR IT, and that is a safety decision,
+# not a default-conservatism one. Charging a RECHARGEABLE ML2032/LIR2032 is
+# correct; applying the same voltage to a primary CR2032 can vent or rupture it.
+# Nothing on the board can tell them apart: a coin cell has two contacts, no ID
+# pin and no thermistor. The one measurement that hints at it — a LIR2032 reads
+# ~3.6 V where a CR2032 never does — cannot resolve the dangerous direction,
+# because a rechargeable ML2032 sits at ~3.0 V and reads exactly like a CR2032.
+# So the chemistry is asked, never inferred. The Pi's own default is off too.
+PI5_CHARGE_UV = 3000000
+PI5_BATTERY_V = "/sys/class/rtc/rtc0/battery_voltage"
 
 
 def block_markers(board_id):
@@ -156,7 +184,7 @@ def strip_block(text, begin, end):
     return "\n".join(out)
 
 
-def plan_lines(text, board_id):
+def plan_lines(text, board_id, overlay=None):
     """Sort this board's config.txt lines into three buckets, given *text*.
 
       owned      — goes INSIDE our block, and so is removed on uninstall. Only
@@ -174,21 +202,24 @@ def plan_lines(text, board_id):
     present."""
     board = BOARDS[board_id]
     begin, end = block_markers(board_id)
+    # `overlay=None` is a board that owns NO config.txt line (the Pi 5 with
+    # charging off). render_config already leaves no empty block behind.
+    ov = board["overlay"] if overlay is None else overlay
     outside = {_overlay_key(s) for s in _active_lines(strip_block(text, begin, end))}
-    owned = [board["overlay"]] if _overlay_key(board["overlay"]) not in outside else []
+    owned = [ov] if ov and _overlay_key(ov) not in outside else []
     prereq_add = [ln for ln in board["prereqs"] if _overlay_key(ln) not in outside]
-    present = [ln for ln in [*board["prereqs"], board["overlay"]]
-               if _overlay_key(ln) in outside]
+    present = [ln for ln in [*board["prereqs"], ov]
+               if ln and _overlay_key(ln) in outside]
     return owned, prereq_add, present
 
 
-def render_config(text, board_id):
+def render_config(text, board_id, overlay=None):
     """Return (new_text, owned, prereq_add, present) with this board's prereqs
     ensured outside the block and the block rewritten to exactly the lines it
     owns. Idempotent: re-rendering unchanged input returns identical text."""
     board = BOARDS[board_id]
     begin, end = block_markers(board_id)
-    owned, prereq_add, present = plan_lines(text, board_id)
+    owned, prereq_add, present = plan_lines(text, board_id, overlay)
     body = strip_block(text, begin, end).rstrip("\n")
 
     if prereq_add:
@@ -216,7 +247,7 @@ def check_platform():
         _fail("No /boot/firmware/config.txt or /boot/config.txt — is this Raspberry Pi OS?")
 
 
-def write_config(cfg, board_id):
+def write_config(cfg, board_id, overlay=None):
     """Rewrite this board's config.txt block. One whole-file write (via sudo tee,
     the same mechanism remove-oasis.py uses) rather than appends, so the block
     stays exactly in sync with what the board needs."""
@@ -226,7 +257,7 @@ def write_config(cfg, board_id):
     except OSError:
         _fail(f"Could not read {cfg}.")
         return
-    new_text, owned, prereq_add, present = render_config(text, board_id)
+    new_text, owned, prereq_add, present = render_config(text, board_id, overlay)
     for ln in present:
         _info(f"'{ln}' already in {cfg} — leaving it exactly where it is.")
     if new_text == text:
@@ -264,6 +295,28 @@ def fake_hwclock_state():
     enabled = (getattr(active, "stdout", "") or "").strip() in ("enabled", "enabled-runtime",
                                                                "static", "indirect")
     return ok, enabled
+
+
+def pi5_battery_millivolts():
+    """The Pi 5 backup cell's voltage in mV, or None when the box cannot report
+    one (not a Pi 5, or the attribute is missing).
+
+    PRESENCE is detectable; CHEMISTRY is not. 0 means no cell is fitted — which
+    is exactly pi5draws, whose RTC therefore holds nothing and boots at 1970."""
+    try:
+        with open(PI5_BATTERY_V, encoding="utf-8") as fh:
+            return int(fh.read().strip()) // 1000
+    except (OSError, ValueError):
+        return None
+
+
+def is_pi5_rtc():
+    """True when this box has the Pi 5's built-in RTC.
+
+    Probed from the attribute the driver exposes, not from the model string: a
+    model name is a label, and the thing we actually need to know is whether the
+    kernel is offering us a battery-backed RTC to configure."""
+    return os.path.exists(PI5_BATTERY_V)
 
 
 def rtc_is_working():
@@ -408,11 +461,19 @@ def report_fallback():
               "sudo systemctl enable --now fake-hwclock")
 
 
-def run(check_only=False, board_id=DEFAULT_BOARD):
+def run(check_only=False, board_id=DEFAULT_BOARD, charge_uv=None):
     board = BOARDS[board_id]
     print(f"\n  OASIS — enable-rtc  ({board['label']})")
     _hr()
     check_platform()
+    # The Pi 5's RTC is in the SoC: there is nothing to configure on a board
+    # that does not have one, and a config.txt line naming it would be noise at
+    # best. Probed from the driver's own attribute, not the model string.
+    if board_id == "pi5" and not is_pi5_rtc():
+        _fail("No built-in RTC found (/sys/class/rtc/rtc0/battery_voltage is "
+              "absent) — this feature is for the Raspberry Pi 5. For an add-on "
+              "RTC use the Witty Pi or BigTreeTech feature instead.")
+    overlay = f"dtparam=rtc_bbat_vchg={charge_uv}" if charge_uv else None
     cfg = config_path()
 
     if check_only:
@@ -452,13 +513,31 @@ def run(check_only=False, board_id=DEFAULT_BOARD):
     # seconds later by RTC/GPS/NTP, against a failure mode that is silent and
     # unbounded. `verify()` reports the interaction once the RTC is real.
     _step(1, "Ensuring hwclock is installed");            ensure_hwclock()
-    _step(2, "Writing the config.txt RTC block");         write_config(cfg, board_id)
+    _step(2, "Writing the config.txt RTC block");         write_config(cfg, board_id, overlay)
     _step(3, "Neutralising hwclock-set --systz");         patch_hwclock_set()
 
     _hr()
     report_fallback()
     print(f"\n  {board['label']} RTC configured — REBOOT to load it.")
     _info("After reboot, once the clock is correct (GPS/NTP):  sudo hwclock -w")
-    _info(f"Verify:  sudo hwclock -r   and   i2cdetect -y {board['bus']}   "
-          f"(the chip shows as UU at {board['addr']})")
+    if board["bus"] is not None:
+        _info(f"Verify:  sudo hwclock -r   and   i2cdetect -y {board['bus']}   "
+              f"(the chip shows as UU at {board['addr']})")
+    else:
+        mv = pi5_battery_millivolts()
+        _info("Verify:  sudo hwclock -r")
+        if mv == 0:
+            _warn("No backup cell detected (battery_voltage reads 0). The RTC "
+                  "will hold nothing across a power cut until one is fitted — "
+                  "which is the whole point of configuring it.")
+        elif mv is not None:
+            _ok(f"Backup cell detected: {mv} mV.")
+        if charge_uv:
+            _warn(f"Trickle charging ENABLED at {charge_uv/1e6:.1f} V. This is "
+                  "correct for a rechargeable ML2032/LIR2032 and MUST NOT be "
+                  "used with a primary CR2032.")
+        else:
+            _info("Trickle charging is OFF (the safe default). A CR2032 holds "
+                  "the RTC for years uncharged; pass --rechargeable only if the "
+                  "fitted cell is an ML2032/LIR2032.")
     print()

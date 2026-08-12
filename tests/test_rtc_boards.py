@@ -326,3 +326,86 @@ class CapabilityProbes(unittest.TestCase):
             installed, enabled = rtc.fake_hwclock_state()
         self.assertTrue(installed)
         self.assertFalse(enabled)
+
+
+class Pi5Board(unittest.TestCase):
+    """The Pi 5's RTC is in the SoC: no i2c chip, no overlay, nothing on
+    i2cdetect. It owns a config.txt line ONLY when trickle charging is on."""
+
+    def test_charging_off_owns_no_config_line(self):
+        owned, prereq_add, present = rtc.plan_lines("", "pi5")
+        self.assertEqual(owned, [])
+        self.assertEqual(prereq_add, [])
+
+    def test_charging_off_leaves_no_empty_block_behind(self):
+        text, owned, _, _ = rtc.render_config("", "pi5")
+        self.assertEqual(owned, [])
+        self.assertNotIn("OASIS RTC", text)
+
+    def test_charging_on_owns_exactly_the_vchg_dtparam(self):
+        line = f"dtparam=rtc_bbat_vchg={rtc.PI5_CHARGE_UV}"
+        owned, _, _ = rtc.plan_lines("", "pi5", line)
+        self.assertEqual(owned, [line])
+
+    def test_the_owned_line_sits_inside_the_block_so_uninstall_reaches_it(self):
+        line = f"dtparam=rtc_bbat_vchg={rtc.PI5_CHARGE_UV}"
+        text, _, _, _ = rtc.render_config("", "pi5", line)
+        begin, end = rtc.block_markers("pi5")
+        self.assertIn(begin, text)
+        self.assertIn(end, text)
+        self.assertLess(text.index(begin), text.index(line))
+        self.assertLess(text.index(line), text.index(end))
+
+    def test_rendering_is_idempotent_with_charging_on(self):
+        line = f"dtparam=rtc_bbat_vchg={rtc.PI5_CHARGE_UV}"
+        once, _, _, _ = rtc.render_config("", "pi5", line)
+        twice, _, _, _ = rtc.render_config(once, "pi5", line)
+        self.assertEqual(once, twice)
+
+    def test_the_default_charge_voltage_is_inside_the_kernels_range(self):
+        # /sys/class/rtc/rtc0/charging_voltage_{min,max} read 1300000 / 4400000.
+        self.assertGreaterEqual(rtc.PI5_CHARGE_UV, 1300000)
+        self.assertLessEqual(rtc.PI5_CHARGE_UV, 4400000)
+
+    def test_a_missing_cell_reads_zero_not_none(self):
+        # pi5draws: battery_voltage 0. Zero is "no cell", None is "cannot ask" —
+        # collapsing them would make a Pi 5 with no battery look like a Pi 4.
+        with mock.patch("builtins.open", mock.mock_open(read_data="0")):
+            self.assertEqual(rtc.pi5_battery_millivolts(), 0)
+
+    def test_not_a_pi5_reports_none_rather_than_zero(self):
+        with mock.patch("builtins.open", side_effect=OSError):
+            self.assertIsNone(rtc.pi5_battery_millivolts())
+
+
+class AllThreeSetupSurfacesAgree(unittest.TestCase):
+    """A feature must appear in the CLI registry AND the web checkbox list.
+
+    Miss the HTML and the feature is uninstallable from the browser with no
+    error at all — the failure has no symptom, which is why it needs a test."""
+
+    def test_every_rtc_feature_is_on_both_surfaces(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "setup-oasis.py"), encoding="utf-8") as fh:
+            cli = set(re.findall(r'Feature\("(rtc[\w-]*)"', fh.read()))
+        with open(os.path.join(root, "server", "system", "setup.html"), encoding="utf-8") as fh:
+            web = set(re.findall(r'data-feature="(rtc[\w-]*)"', fh.read()))
+        self.assertEqual(cli, web, f"CLI-only: {cli - web}   web-only: {web - cli}")
+
+    def test_every_rtc_feature_has_a_script_that_exists(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "setup-oasis.py"), encoding="utf-8") as fh:
+            pairs = re.findall(r'Feature\("(rtc[\w-]*)",\s*"[^"]*",\s*"([^"]+)"', fh.read())
+        self.assertTrue(pairs, "no RTC features found — the regex has rotted")
+        for key, script in pairs:
+            self.assertTrue(os.path.exists(os.path.join(root, script)),
+                            f"{key} points at a missing script: {script}")
+
+    def test_no_rtc_feature_is_filed_under_radio_interfaces(self):
+        # Where they used to be. A clock is not a radio interface.
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "server", "system", "setup.html"), encoding="utf-8") as fh:
+            html = fh.read()
+        radio = html[html.index("<h4>Radio Interfaces</h4>"):]
+        radio = radio[:radio.index("</div>")]
+        self.assertNotIn('data-feature="rtc', radio)

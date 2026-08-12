@@ -183,18 +183,32 @@ FEATURES = [
             "GPS", default=False, internet=True,
             recommend="GPS time set up. Give the antenna sky view, then check: cgps -s  and  chronyc tracking."),
 
-    # ── RTC: battery-backed hardware clocks (standalone) ───────────────────────
+    # ── RTC: battery-backed hardware clocks ────────────────────────────────────
+    # Category "Running Hardware": an RTC is hardware the box runs on, not a
+    # radio interface (where the web Setup page had them filed) and not a
+    # category of its own — there are three of them and they are all clocks.
     Feature("rtc", "Witty Pi 3 RTC (DS3231)", "features/rtc-hat/enable-rtc.py",
             "Configure the Witty Pi 3's DS3231 hardware clock (i2c-rtc overlay + remove fake-hwclock) so the Pi keeps time across reboots / power loss with no network. REQUIRES A REBOOT.",
-            "RTC", default=False, reboot=True, args=["--board", "wittypi"],
+            "Running Hardware", default=False, reboot=True, args=["--board", "wittypi"],
             recommend="Reboot to load the RTC, then once the clock is correct: sudo hwclock -w"),
     # Key matches the web Setup feature key (and features/rtc-raspad/) so both
     # front ends record the same thing in installed-services.json. Boxes still
     # carrying the old `rtc-7inch` key are mapped by SETUP_FEATURE_ALIASES.
     Feature("rtc-raspad", "BigTreeTech 7″ RTC (PCF8563)", "features/rtc-raspad/enable-rtc.py",
             "Configure the BigTreeTech 7″ touchscreen's onboard PCF8563 hardware clock (i2c-rtc overlay on the DSI ribbon's i2c_csi_dsi bus + remove fake-hwclock) so the Pi keeps time across reboots / power loss with no network. The RTC is on the DSI bus, not the GPIO header — that's why it never appears on `i2cdetect -y 1`. REQUIRES A REBOOT.",
-            "RTC", default=False, reboot=True,
+            "Running Hardware", default=False, reboot=True,
             recommend="Reboot to load the RTC, then once the clock is correct: sudo hwclock -w"),
+    # The Pi 5's RTC is in the SoC — no overlay, no i2c, nothing on i2cdetect.
+    # Trickle charging is OFF unless the operator declares a rechargeable cell:
+    # a CR2032 and a rechargeable ML2032 both read ~3.0 V and nothing on the
+    # board can tell them apart, so the chemistry is asked, never inferred.
+    Feature("rtc-pi5", "Raspberry Pi 5 built-in RTC", "features/rtc-pi5/enable-rtc.py",
+            "Configure the Raspberry Pi 5's built-in hardware clock so the Pi keeps time across "
+            "reboots / power loss with no network. Fit a cell on the J5 header. Trickle charging "
+            "stays OFF unless you pass --rechargeable (ML2032/LIR2032 only — NEVER a primary "
+            "CR2032). REQUIRES A REBOOT.",
+            "Running Hardware", default=False, reboot=True,
+            recommend="Reboot, then once the clock is correct: sudo hwclock -w"),
 
     # ── Content / Data: large optional downloads ──────────────────────────────
     Feature("fcc", "FCC callsign database", "services/fcc_database/install.py",
