@@ -1935,10 +1935,17 @@ function updateRx() {
       Math.abs(d.freq_mhz - _armed.freq) < 1e-6
       && (!_armed.mode || (d.mode || '') === _armed.mode));
     const rx = dl && dl.rx;
-    // A measurement in flight, or its result, owns the pill until it settles.
-    // Without this the 3 s status poll would wipe "Measuring…" a moment after it
-    // appeared, which is the same class of bug as the dropdown closing itself.
-    if (_rxBusy || _rxFlash) return;
+    // A measurement in flight, or its result, owns the pill until it settles —
+    // and it is RE-APPLIED here rather than merely protected from overwriting.
+    // Skipping the update is not enough: the 1 h views call renderRoster every
+    // 2 s, which replaces this element with a fresh empty one, so a guard that
+    // only says "don't repaint" leaves the pill blank for the rest of the 20 s.
+    // The state has to be able to survive its own DOM being rebuilt.
+    if (_rxOverride) {
+      if (armedHere) _rxApply(el);
+      else { el.textContent = ''; el.onclick = null; }   // disarmed mid-measure
+      return;
+    }
     el.classList.remove('green', 'amber', 'unknown', 'busy');
     el.onclick = null;
     if (!rx || rx.level === 'n/a') { el.textContent = ''; return; }
@@ -1976,28 +1983,38 @@ function updateRx() {
 // result you cannot look at again. The old second modal also carried "good to a
 // couple of ppm", which reads as a disclaimer and tells an operator nothing they
 // can act on — that caveat now lives in the tooltip.
-let _rxBusy = false;      // a measurement is running; the poll must not overwrite
-let _rxFlash = null;      // its result is on screen; likewise, briefly
+// What the pill is showing INSTEAD of the per-downlink verdict: a measurement in
+// flight, or its result for a few seconds afterwards. Held as state rather than
+// written straight to the DOM, because the roster rebuilds itself out from under
+// this and the message has to be re-applicable, not just protected.
+let _rxOverride = null;   // { cls, html, title, retry } or null
 
-function _rxPaint(cls, html, title) {
+function _rxApply(el) {
+  el.classList.remove('green', 'amber', 'unknown', 'busy');
+  el.classList.add(_rxOverride.cls);
+  el.innerHTML = _rxOverride.html;
+  el.title = _rxOverride.title || '';
+  el.onclick = _rxOverride.retry || null;
+}
+
+function _rxPaint(cls, html, title, retry) {
+  _rxOverride = { cls, html, title, retry };
   document.querySelectorAll('.dl-rx[data-norad]').forEach(el => {
-    const armedHere = !!_armed && String(_armed.norad) === String(el.dataset.norad);
-    if (!armedHere) return;
-    el.classList.remove('green', 'amber', 'unknown', 'busy');
-    el.classList.add(cls);
-    el.innerHTML = html;
-    el.title = title || '';
-    el.onclick = null;
+    if (_armed && String(_armed.norad) === String(el.dataset.norad)) _rxApply(el);
   });
 }
 
+function _rxClear() {
+  _rxOverride = null;
+  renderRoster();
+}
+
 async function runCalibration() {
-  if (_rxBusy) return;
+  if (_rxOverride && _rxOverride.cls === 'busy') return;   // already measuring
   if (!confirm('Measure the dongle’s frequency error?\n\n'
              + 'This holds the dongle for about 20 seconds and listens to NOAA '
              + 'weather radio on 162.550 MHz. You need to be in range of a '
              + 'weather transmitter.')) return;
-  _rxBusy = true; _rxFlash = null;
   _rxPaint('busy', '<span class="rx-dot"></span>MEASURING '
            + '<span class="rx-why">listening to 162.550 MHz — about 20 s</span>',
            'Two 8-second captures, on frequency and deliberately detuned, so the '
@@ -2012,22 +2029,20 @@ async function runCalibration() {
   } catch (e) {
     j = { ok: false, error: String(e) };
   }
-  _rxBusy = false;
   if (!j.ok) {
     // Failures stay in the pill too, so the flow has one place to look. The full
     // reason can be long ("no usable signal on 162.5500 MHz…") and the row has
     // to stay one line, so the short form shows and the rest is the tooltip.
-    _rxFlash = true;
+    // The failure stays put until it is acted on — no timeout. An error that
+    // clears itself after six seconds is one the operator can miss entirely.
     _rxPaint('amber', '<span class="rx-dot"></span>CHECK FAILED '
-             + '<span class="rx-why">tap to retry</span>', j.error || 'unknown error');
-    document.querySelectorAll('.dl-rx[data-norad]').forEach(el => {
-      el.onclick = () => { _rxFlash = null; runCalibration(); };
-    });
+             + '<span class="rx-why">tap to retry</span>',
+             j.error || 'unknown error',
+             () => { _rxOverride = null; runCalibration(); });
     return;
   }
   const c = j.calibration || {};
   const d = c.dongle || {};
-  _rxFlash = true;
   _rxPaint(d.level === 'green' ? 'green' : 'amber',
            `<span class="rx-dot"></span>${(d.text || '').toUpperCase()}`,
            `Measured against ${(c.reference_hz / 1e6).toFixed(3)} MHz `
@@ -2042,7 +2057,7 @@ async function runCalibration() {
   } catch (e) { /* keep the last-good roster; the flash still stands */ }
   // Hold the result long enough to read, then let the per-downlink verdict take
   // the pill back — that is the steady state, and it says more than a ppm number.
-  setTimeout(() => { _rxFlash = null; renderRoster(); }, 6000);
+  setTimeout(_rxClear, 6000);
 }
 
 // DOPPLER readout — where the ARMED downlink actually is right now.
