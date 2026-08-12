@@ -95,6 +95,9 @@ html, body { height: 100%; margin: 0; }
    downlink never should. */
 .sat-popup .sp-freq td:nth-child(2) { white-space: nowrap; }
 .sat-popup .sp-freq td:nth-child(3) { color: var(--text-dim); }
+/* Dimmer still than the frequencies beside it: "n/a" is the absence of a value,
+   and should not read with the same weight as one. */
+.sat-popup .sp-freq .sp-na { opacity: .5; }
 /* The rule is the separator, so it must not draw when there is no plot under it. */
 .sat-popup .sp-plot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
   text-align: center; }
@@ -1462,9 +1465,14 @@ function hideSatPopup() { const el = document.getElementById('sat-popup'); if (e
 // megahertz need no announcing.
 //
 // One row per grouped entry, so the row count matches the dropdown exactly.
-// FUP is blank when the bird is receive-only, which is 720 of 807 card-visible
-// transmitters — the column is mostly empty on purpose, and that emptiness is
-// the fastest way to see which birds can be worked two ways.
+//
+// "n/a" rather than an empty FUP cell, because the two are not the same claim.
+// Measured across the live catalogue, every one of the 807 card-visible
+// transmitters splits cleanly: 87 are Transceiver/Transponder and ALL carry an
+// uplink; the other 720 are `type: Transmitter` — SatNOGS's word for one-way —
+// and NONE do. So a missing uplink is not missing data, it is a beacon or an
+// image downlink that does not listen. "n/a" says that; a blank cell reads like
+// something failed to load.
 //
 // The unit lives in the header rather than on every row: seven repetitions of
 // "MHz" down a 420px popup is noise, and losing it entirely was a real
@@ -1475,7 +1483,8 @@ function popupFreqsHTML(sat) {
   const rows = dls.map(d => {
     // Several uplink-bearing members stack inside the one cell rather than
     // splitting the entry across rows — the entry is one tunable thing.
-    const up = uplinkCells(d).join('<br>');
+    const cells = uplinkCells(d);
+    const up = cells.length ? cells.join('<br>') : '<span class="sp-na">n/a</span>';
     return `<tr><td>${dlLabel(d)}</td><td>${d.freq_mhz}</td><td>${up}</td></tr>`;
   }).join('');
   return `<table class="sp-freq">
