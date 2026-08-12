@@ -104,11 +104,13 @@ class VerdictTest(unittest.TestCase):
     def test_uncalibrated_is_grey_not_green(self):
         """Never say 'you are good' about something never measured."""
         v = calibrate.rx_verdict(None, 435_575_000, "usb")
-        self.assertEqual(v["level"], "grey")
-        self.assertIn("calibrat", v["reason"])
+        self.assertEqual(v["level"], "unknown")
+        self.assertNotEqual(v["level"], "green")
 
-    def test_unsupported_mode_is_grey(self):
-        self.assertEqual(calibrate.rx_verdict(1.0, 435e6, None)["level"], "grey")
+    def test_unsupported_mode_is_not_a_warning(self):
+        """The dropdown already disables modes we cannot demodulate — badging
+        them too would complain about a choice never offered."""
+        self.assertEqual(calibrate.rx_verdict(1.0, 435e6, None)["level"], "n/a")
 
     def test_fm_at_2m_shrugs_off_a_sloppy_dongle(self):
         """20 ppm at 145.8 MHz is 2.9 kHz — invisible in a 48 kHz window, which
@@ -165,3 +167,32 @@ class VerdictTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DongleVerdictTest(unittest.TestCase):
+    """Separate from rx_verdict on purpose: "is my hardware sound" is a
+    different question from "can I work this bird", and only the second one
+    involves Doppler."""
+
+    def test_unmeasured_is_unknown(self):
+        self.assertEqual(calibrate.dongle_verdict(None)["level"], "unknown")
+
+    def test_a_good_dongle_reports_its_deviation(self):
+        v = calibrate.dongle_verdict(-2.98)
+        self.assertEqual(v["level"], "green")
+        self.assertIn("-2.98 ppm", v["text"])
+
+    def test_judged_at_70cm_narrowband_the_hardest_case(self):
+        """8 ppm is 3.5 kHz at 435 MHz — right at the SSB window. A dongle that
+        passes at the tightest case passes everywhere OASIS captures."""
+        self.assertEqual(calibrate.dongle_verdict(7.0)["level"], "green")
+        self.assertEqual(calibrate.dongle_verdict(20.0)["level"], "amber")
+
+    def test_the_amber_text_says_what_it_costs(self):
+        v = calibrate.dongle_verdict(20.0)
+        self.assertIn("kHz at 70 cm", v["text"])
+        self.assertIn("narrowband", v["text"])
+
+    def test_sign_does_not_change_the_verdict(self):
+        self.assertEqual(calibrate.dongle_verdict(20.0)["level"],
+                         calibrate.dongle_verdict(-20.0)["level"])

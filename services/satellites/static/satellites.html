@@ -278,8 +278,19 @@ html, body { height: 100%; margin: 0; }
 .dl-rx.green { color: var(--green); }
 .dl-rx.amber .rx-dot { background: var(--amber); }
 .dl-rx.amber { color: var(--amber); }
-.dl-rx.grey { color: var(--text-dim); cursor: pointer; text-decoration: underline dotted; }
-.dl-rx.grey:hover { color: var(--text); }
+/* NEVER measured is a warning, not a footnote: you can record a whole pass and
+   get nothing. It was dim grey and took real effort to notice, so it is amber
+   like any other warning — but with a HOLLOW dot, so "unknown" stays telling
+   apart from "measured and poor" at a glance. */
+.dl-rx.unknown { color: var(--amber); cursor: pointer; text-decoration: underline dotted; }
+.dl-rx.unknown .rx-dot { background: transparent; border: 2px solid var(--amber); }
+.dl-rx.unknown:hover { color: var(--text); }
+/* Measuring takes ~20 s of holding the dongle. Silence for that long reads as a
+   hung page, so the pill says what it is doing, in place. Opacity only — an
+   infinite box-shadow animation pins the Chromium renderer at 60fps on the
+   kiosk, which is a bug this project has already paid for once. */
+.dl-rx.busy { color: var(--accent); animation: recpulse 1.1s ease-in-out infinite; }
+.dl-rx.busy .rx-dot { background: var(--accent); }
 .dl-rx .rx-why { font-weight: 400; color: var(--text-dim); letter-spacing: 0; }
 #listen-status.live .rec-dot { background: var(--green); }
 /* Capture-mode pills follow the studio convention: REC red, LISTEN green. */
@@ -1923,12 +1934,16 @@ function updateRx() {
       Math.abs(d.freq_mhz - _armed.freq) < 1e-6
       && (!_armed.mode || (d.mode || '') === _armed.mode));
     const rx = dl && dl.rx;
-    el.classList.remove('green', 'amber', 'grey');
+    // A measurement in flight, or its result, owns the pill until it settles.
+    // Without this the 3 s status poll would wipe "Measuring…" a moment after it
+    // appeared, which is the same class of bug as the dropdown closing itself.
+    if (_rxBusy || _rxFlash) return;
+    el.classList.remove('green', 'amber', 'unknown', 'busy');
     el.onclick = null;
-    if (!rx) { el.textContent = ''; return; }
+    if (!rx || rx.level === 'n/a') { el.textContent = ''; return; }
     el.classList.add(rx.level);
     const kHz = v => (v == null ? '?' : (v / 1000).toFixed(1) + ' kHz');
-    if (rx.level === 'grey') {
+    if (rx.level === 'unknown') {
       el.innerHTML = '<span class="rx-dot"></span>RX ? '
         + '<span class="rx-why">dongle not checked — tap to measure</span>';
       el.title = 'Measure the dongle’s frequency error against a known '
@@ -1949,31 +1964,79 @@ function updateRx() {
 
 // Run the dongle frequency check. Holds the dongle for ~20 s, so it is refused
 // server-side while a capture runs rather than silently ending one.
+//
+// The RESULT lands in the pill, not in a modal. It is the answer to the question
+// the operator asked by tapping that exact spot, and a modal you dismiss is a
+// result you cannot look at again. The old second modal also carried "good to a
+// couple of ppm", which reads as a disclaimer and tells an operator nothing they
+// can act on — that caveat now lives in the tooltip.
+let _rxBusy = false;      // a measurement is running; the poll must not overwrite
+let _rxFlash = null;      // its result is on screen; likewise, briefly
+
+function _rxPaint(cls, html, title) {
+  document.querySelectorAll('.dl-rx[data-norad]').forEach(el => {
+    const armedHere = !!_armed && String(_armed.norad) === String(el.dataset.norad);
+    if (!armedHere) return;
+    el.classList.remove('green', 'amber', 'unknown', 'busy');
+    el.classList.add(cls);
+    el.innerHTML = html;
+    el.title = title || '';
+    el.onclick = null;
+  });
+}
+
 async function runCalibration() {
+  if (_rxBusy) return;
   if (!confirm('Measure the dongle’s frequency error?\n\n'
              + 'This holds the dongle for about 20 seconds and listens to NOAA '
              + 'weather radio on 162.550 MHz. You need to be in range of a '
              + 'weather transmitter.')) return;
+  _rxBusy = true; _rxFlash = null;
+  _rxPaint('busy', '<span class="rx-dot"></span>MEASURING '
+           + '<span class="rx-why">listening to 162.550 MHz — about 20 s</span>',
+           'Two 8-second captures, on frequency and deliberately detuned, so the '
+           + 'scale factor is solved rather than assumed.');
+  let j;
   try {
     const r = await fetch('/api/satellites/calibrate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
       body: '{}' });
-    const j = await r.json();
-    if (!j.ok) { alert('Frequency check failed:\n\n' + (j.error || 'unknown error')); return; }
-    const c = j.calibration || {};
-    alert(`Dongle frequency error: ${c.ppm} ppm (${c.offset_hz} Hz at `
-        + `${(c.reference_hz / 1e6).toFixed(3)} MHz).\n\n`
-        + 'This is a screening measurement, good to a couple of ppm.');
-    // Re-fetch the roster: the verdict lives on each downlink and is computed
-    // server-side from the stored ppm, so a new measurement only shows up once
-    // the roster is read again.
+    j = await r.json();
+  } catch (e) {
+    j = { ok: false, error: String(e) };
+  }
+  _rxBusy = false;
+  if (!j.ok) {
+    // Failures stay in the pill too, so the flow has one place to look. The full
+    // reason can be long ("no usable signal on 162.5500 MHz…") and the row has
+    // to stay one line, so the short form shows and the rest is the tooltip.
+    _rxFlash = true;
+    _rxPaint('amber', '<span class="rx-dot"></span>CHECK FAILED '
+             + '<span class="rx-why">tap to retry</span>', j.error || 'unknown error');
+    document.querySelectorAll('.dl-rx[data-norad]').forEach(el => {
+      el.onclick = () => { _rxFlash = null; runCalibration(); };
+    });
+    return;
+  }
+  const c = j.calibration || {};
+  const d = c.dongle || {};
+  _rxFlash = true;
+  _rxPaint(d.level === 'green' ? 'green' : 'amber',
+           `<span class="rx-dot"></span>${(d.text || '').toUpperCase()}`,
+           `Measured against ${(c.reference_hz / 1e6).toFixed(3)} MHz `
+           + `(${c.offset_hz} Hz off). Screening accuracy is about 2 ppm — `
+           + `enough to tell a good dongle from a bad one, not a calibration reference.`);
+  // Re-fetch the roster: the verdict lives on each downlink and is computed
+  // server-side from the stored ppm, so a new measurement only shows up once
+  // the roster is read again.
+  try {
     const meta = await (await fetch('/api/satellites')).json();
     ROSTER = meta.satellites; STATION = meta.station;
-    renderRoster();
-  } catch (e) {
-    alert('Frequency check failed: ' + e);
-  }
+  } catch (e) { /* keep the last-good roster; the flash still stands */ }
+  // Hold the result long enough to read, then let the per-downlink verdict take
+  // the pill back — that is the steady state, and it says more than a ppm number.
+  setTimeout(() => { _rxFlash = null; renderRoster(); }, 6000);
 }
 
 // DOPPLER readout — where the ARMED downlink actually is right now.

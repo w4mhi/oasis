@@ -143,9 +143,10 @@ TOLERANCE_HZ = {"fm": 12_000, "usb": 3_500, "lsb": 3_500}
 def rx_verdict(ppm, carrier_hz, demod, tracked=False):
     """Can this downlink be received? -> dict for the UI.
 
-    level: "green"  usable
-           "amber"  the signal will not stay in the window
-           "grey"   not calibrated — we genuinely do not know
+    level: "green"    usable
+           "amber"    the signal will not stay in the window
+           "unknown"  never measured — a warning, not a shrug
+           "n/a"      mode we cannot demodulate at all
 
     `tracked` drops Doppler from the budget, because a Doppler-corrected capture
     follows the bird instead of waiting for it to leave. Before that exists, a
@@ -153,10 +154,16 @@ def rx_verdict(ppm, carrier_hz, demod, tracked=False):
     the station rather than a complaint about the hardware."""
     tol = TOLERANCE_HZ.get(demod)
     if tol is None or not carrier_hz:
-        return {"level": "grey", "reason": "unsupported mode"}
+        # Not a warning about anything: the dropdown already disables modes we
+        # cannot demodulate, so a badge here would be a second complaint about a
+        # choice the operator was never offered.
+        return {"level": "n/a", "reason": "mode not demodulable"}
     if ppm is None:
-        return {"level": "grey",
-                "reason": "dongle not calibrated — run the frequency check"}
+        # NOT green and not silent. Never measured is a real risk — you can
+        # record an entire pass and get nothing — so it warns, and it is
+        # visually distinct from a measured-and-poor result (hollow dot).
+        return {"level": "unknown",
+                "reason": "dongle not checked — tap to measure"}
     off = abs(offset_at(ppm, carrier_hz))
     dop = 0.0 if tracked else max_doppler_hz(carrier_hz)
     budget = off + dop
@@ -175,6 +182,29 @@ def rx_verdict(ppm, carrier_hz, demod, tracked=False):
     else:
         out["reason"] = "dongle frequency error is too large for this mode"
     return out
+
+
+def dongle_verdict(ppm):
+    """Is the DONGLE itself good, independent of any particular downlink?
+
+    Separate from rx_verdict because it answers a different question. rx_verdict
+    asks "can I work this bird", which mixes in Doppler; this asks "is my
+    hardware sound", which is what an operator wants to know the moment a
+    measurement finishes.
+
+    Judged at the hardest case we care about — a narrowband mode at 70 cm, where
+    the tolerance is tightest and the error is largest. A dongle that passes
+    there passes everywhere OASIS captures."""
+    if ppm is None:
+        return {"level": "unknown", "text": "dongle not checked"}
+    worst = abs(offset_at(ppm, 435_000_000))
+    tol = TOLERANCE_HZ["usb"]
+    if worst <= tol:
+        return {"level": "green", "ppm": ppm,
+                "text": f"dongle ready — deviation {ppm:+.2f} ppm"}
+    return {"level": "amber", "ppm": ppm,
+            "text": f"dongle off by {ppm:+.2f} ppm "
+                    f"({worst / 1000:.1f} kHz at 70 cm) — narrowband modes will miss"}
 
 
 # ── Stored result ────────────────────────────────────────────────────────────
@@ -262,8 +292,8 @@ def measure(device_serial=None, reference_hz=DEFAULT_REFERENCE_HZ,
             f"signal on {reference_hz / 1e6:.4f} MHz. Pick a reference "
             "transmitter you can actually hear (a NOAA weather channel, or any "
             "frequency you trust).")
-    ppm = ppm_from_offset(offset, reference_hz)
-    return {"ppm": round(ppm, 2), "offset_hz": round(offset, 1),
+    ppm = round(ppm_from_offset(offset, reference_hz), 2)
+    return {"ppm": ppm, "dongle": dongle_verdict(ppm), "offset_hz": round(offset, 1),
             "reference_hz": int(reference_hz), "detune_hz": int(detune_hz),
             "scale_units_per_hz": round(scale, 4), "seconds": int(seconds),
             "method": "rtl_fm two-point mean instantaneous frequency",
