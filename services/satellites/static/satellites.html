@@ -84,11 +84,20 @@ html, body { height: 100%; margin: 0; }
   box-shadow: 0 6px 24px rgba(0,0,0,.6); font-size: var(--fs-small); }
 /* The ISS lists seven entries; scroll the block, not the page. */
 .sat-popup .sp-freqs { max-height: 200px; overflow-y: auto; }
+.sat-popup .sp-freq { width: 100%; border-collapse: collapse; }
+/* tabular-nums so the frequency columns line up on the decimal point — a
+   column of 137.6257 / 145.8 / 437.825 is unreadable in a proportional face. */
+.sat-popup .sp-freq td { padding: 1px 6px 1px 0; vertical-align: top;
+  font-variant-numeric: tabular-nums; }
+.sat-popup .sp-freq th { padding: 0 6px 2px 0; text-align: left; font-weight: 600;
+  color: var(--text-dim); border-bottom: 1px solid var(--border); }
+/* The uplink is the qualified one (mode, CTCSS, inverting) and can wrap; the
+   downlink never should. */
+.sat-popup .sp-freq td:nth-child(2) { white-space: nowrap; }
+.sat-popup .sp-freq td:nth-child(3) { color: var(--text-dim); }
 /* The rule is the separator, so it must not draw when there is no plot under it. */
 .sat-popup .sp-plot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
   text-align: center; }
-.sat-popup .sp-dl { white-space: nowrap; }
-.sat-popup .sp-up { color: var(--text-dim); padding-left: 10px; white-space: nowrap; }
 .sat-popup .pop-polar { width: 180px; height: 180px; }
 .sat-popup[hidden] { display: none; }
 .sat-popup .sp-close { float: right; background: none; border: none; color: var(--text-dim);
@@ -1449,13 +1458,29 @@ function hideSatPopup() { const el = document.getElementById('sat-popup'); if (e
 // dropdown (sat.downlinks is already grouped server-side) — the old flat
 // "mode freq" join here predated grouping and printed 9 ISS rows where the card
 // showed 7, which is precisely the duplicate-crowding the grouping removed.
+// Type / FDN / FUP. No "Frequencies" heading — three labelled columns of
+// megahertz need no announcing.
+//
+// One row per grouped entry, so the row count matches the dropdown exactly.
+// FUP is blank when the bird is receive-only, which is 720 of 807 card-visible
+// transmitters — the column is mostly empty on purpose, and that emptiness is
+// the fastest way to see which birds can be worked two ways.
+//
+// The unit lives in the header rather than on every row: seven repetitions of
+// "MHz" down a 420px popup is noise, and losing it entirely was a real
+// regression the first cut of this popup shipped.
 function popupFreqsHTML(sat) {
   const dls = (sat.downlinks || []).slice().sort((a, b) => a.freq_mhz - b.freq_mhz);
   if (!dls.length) return '<div class="pop-row"><span class="pop-val">No downlinks.</span></div>';
-  return dls.map(d => {
-    const ups = uplinkLines(d).map(l => `<div class="sp-up">${l}</div>`).join('');
-    return `<div class="sp-dl">${d.freq_mhz} MHz <span class="pop-lbl">${dlLabel(d)}</span></div>${ups}`;
+  const rows = dls.map(d => {
+    // Several uplink-bearing members stack inside the one cell rather than
+    // splitting the entry across rows — the entry is one tunable thing.
+    const up = uplinkCells(d).join('<br>');
+    return `<tr><td>${dlLabel(d)}</td><td>${d.freq_mhz}</td><td>${up}</td></tr>`;
   }).join('');
+  return `<table class="sp-freq">
+    <thead><tr><th>Type</th><th>FDN (MHz)</th><th>FUP (MHz)</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
 }
 
 function popupHTML(sat) {

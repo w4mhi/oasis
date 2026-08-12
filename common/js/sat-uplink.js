@@ -1,5 +1,5 @@
 /*
- * sat-uplink.js — the uplink display lines on the satellite detail popup.
+ * sat-uplink.js — the FUP cells of the satellite detail popup's frequency table.
  *
  * 87 of 807 card-visible transmitters carry an uplink, and every one of them is
  * a Transponder or Transceiver. An uplink is the signal that a bird can be
@@ -25,7 +25,7 @@
   var api = factory();
   root.OasisSatUplink = api;
   // Bare global so the page's inline call sites read naturally.
-  root.uplinkLines = api.uplinkLines;
+  root.uplinkCells = api.uplinkCells;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
@@ -38,10 +38,16 @@
       : String(u.freq_mhz);
   }
 
-  /* Uplink == downlink is a digipeater. Saying "simplex" is shorter than the
-     two identical legs it would otherwise look like, and it is what an operator
-     calls it. */
-  function uplinkLines(entry) {
+  /* The FUP cell of the popup's frequency table: the uplink frequency plus only
+     the qualifiers the table cannot show by itself.
+
+     No arrow, and no "simplex": the column header says FUP, and an uplink equal
+     to the downlink is visible as FDN and FUP carrying the same number. Both
+     were carried in the old free-text line, where nothing else supplied them.
+
+     What the table CANNOT show, and this therefore must, is the mode a shared
+     entry's uplink belongs to — see the attribution note below. */
+  function uplinkCells(entry) {
     var ups = (entry && entry.uplinks) || [];
     var modes = (entry && entry.modes) || [];
     var multi = modes.length > 1;
@@ -62,14 +68,12 @@
       // is the safety net.
       var attributable = multi && !!u.mode;
       if (attributable) parts.push(u.mode);
-      if (u.simplex) parts.push('simplex');
       if (u.invert) parts.push('inverting');
       if (u.ctcss_hz != null) parts.push('CTCSS ' + u.ctcss_hz.toFixed(1));
-      var arrow = u.simplex ? '↑↓' : '↑';
       var tail = parts.length ? ' ' + parts.join(' · ') : '';
-      return arrow + ' ' + freqText(u) + tail;
+      return freqText(u) + tail;
     });
   }
 
-  return { uplinkLines: uplinkLines, freqText: freqText };
+  return { uplinkCells: uplinkCells, freqText: freqText };
 });
