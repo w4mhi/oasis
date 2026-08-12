@@ -352,7 +352,7 @@ PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
     "openwebrx", "adsb", "satellites",
     "rtl-sdr", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
-    "rtc-raspad",
+    "rtc-raspad", "rtc-pi5",
     "draws-gps", "draws-audio",
     "pi-headless", "pi-local-monitor", "pi-oasis-dashboard", "cm4stack", "rgb-cooling-hat",
     "argon-fan",
@@ -608,6 +608,19 @@ def build_registry(repo_root, payload=None):
             dependencies=[],
             install_fn=lambda: _setup_run_script(repo_root, "features/rtc-raspad/enable-rtc.py"),
             removal_record_fn=lambda: _removal_record(repo_root, "features/rtc-raspad/enable-rtc.py"),
+            verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
+        # Third RTC, and the only one that is not a board you add: the Pi 5 has an
+        # RTC on the SoC. Same shape as the other two — its own config.txt block,
+        # its own teardown — and tickable alongside them, because a Pi 5 with a
+        # Witty Pi attached has both.
+        "rtc-pi5": SE.FeatureSpec(
+            key="rtc-pi5",
+            dependencies=[],
+            install_fn=lambda: _setup_run_script(repo_root, "features/rtc-pi5/enable-rtc.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "features/rtc-pi5/enable-rtc.py"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
