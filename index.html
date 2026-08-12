@@ -3128,8 +3128,14 @@ async function fetchStats() {
           // The fallback is stated either way. Saying nothing when it is absent
           // reads as "fine", and "no backup cell AND no fake-hwclock" is the
           // state that boots at 1970 — strictly worse than either alone.
-          rtcEl.title = (r.detail || r.text)
-            + (r.battery_mv != null ? ` · backup cell ${r.battery_mv} mV` : '')
+          // Battery voltage is shown only when it says something. On a Pi 5 it
+          // reads 0 with a perfectly good primary cell, because the measurement
+          // is tied to the trickle-charging configuration — reporting that as
+          // "0 mV" invites exactly the wrong conclusion.
+          const mv = (r.battery_mv != null && r.battery_mv > 0)
+            ? ` · backup cell ${r.battery_mv} mV` : '';
+          rtcEl.title = (r.detail || r.text) + mv
+            + (r.seeded_boot_clock ? ' · kernel set the boot clock from it' : '')
             + (r.fake_hwclock ? ' · fake-hwclock enabled'
                               : ' · fake-hwclock NOT enabled (no fallback)');
         }

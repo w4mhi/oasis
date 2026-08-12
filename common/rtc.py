@@ -308,12 +308,40 @@ def pi5_battery_millivolts():
     """The Pi 5 backup cell's voltage in mV, or None when the box cannot report
     one (not a Pi 5, or the attribute is missing).
 
-    PRESENCE is detectable; CHEMISTRY is not. 0 means no cell is fitted — which
-    is exactly pi5draws, whose RTC therefore holds nothing and boots at 1970."""
+    ZERO DOES NOT MEAN "NO CELL". Corrected 2026-08-12 against a Pi 5 with a
+    healthy coin cell that read 0 here: the reading is tied to the RTC's trickle
+    CHARGING configuration, and charging is off unless `rtc_bbat_vchg` is set in
+    config.txt — which it should be only for a rechargeable cell. With the
+    standard non-rechargeable primary cell, charging is correctly disabled,
+    nothing measures the voltage, and this reports 0 forever while the cell works
+    perfectly.
+
+    The earlier claim here — that 0 proved no cell was fitted — was wrong, and
+    wrong in the direction that matters: it called a working RTC broken. Use
+    rtc_is_working() (does it read a plausible date) and set_system_clock_at_boot()
+    (did the kernel actually take the time from it) instead. A non-zero value here
+    is informative; a zero is silence."""
     try:
         with open(PI5_BATTERY_V, encoding="utf-8") as fh:
             return int(fh.read().strip()) // 1000
     except (OSError, ValueError):
+        return None
+
+
+def set_system_clock_at_boot():
+    """Did the kernel set the system clock FROM this RTC at boot?
+
+    The strongest evidence available that an RTC actually held time across a
+    power cycle — stronger than any voltage reading, because it is the outcome
+    rather than a proxy for it. /sys/class/rtc/rtc0/hctosys is 1 when the kernel
+    used this device to seed the clock; dmesg shows the same thing as
+    "setting system clock to ...".
+
+    None when it cannot be read, which is not the same as False."""
+    try:
+        with open("/sys/class/rtc/rtc0/hctosys", encoding="utf-8") as fh:
+            return fh.read().strip() == "1"
+    except OSError:
         return None
 
 

@@ -344,12 +344,20 @@ def _rtc_state():
     on a frozen clock with every check green: nothing was watching the thing that
     sets the time BEFORE any network or satellite exists.
 
-    Deliberately reports the uncomfortable middle state. rtc_is_working() proves
-    an RTC is present and readable and cannot prove it HOLDS across a power cut,
-    which is the only property that matters — a Pi 5 with a flat cell reads
-    perfectly while powered and comes up at 1970 the moment you unplug it. When
-    the battery voltage is knowable and zero, say so, because "working" would be
-    a lie of exactly the kind this feature exists to stop telling."""
+    The evidence used is the OUTCOME, not a proxy for it. hctosys says the kernel
+    actually seeded the system clock from this RTC at boot, which is the only
+    thing that proves the device held time across a power cycle. A plausible
+    date on its own proves it is holding time NOW.
+
+    Battery voltage is deliberately NOT used to judge. It reads 0 on a Pi 5 with
+    a perfectly good primary cell, because the measurement is tied to the trickle
+    CHARGING configuration and charging is correctly off for a non-rechargeable
+    cell. Treating that 0 as "no cell fitted" called a working RTC broken — which
+    is worse than saying nothing, and is exactly the mistake this line was added
+    to stop making. A non-zero value is informative; a zero is silence.
+
+    The real "lost power" signal is an RTC that reads a pre-2020 date, which
+    rtc_is_working() already detects."""
     try:
         from common import rtc as _rtc
     except Exception:                                        # noqa: BLE001
@@ -358,20 +366,20 @@ def _rtc_state():
         name = _rtc.sysfs_rtc_name()
         ok, detail = _rtc.rtc_is_working()
         mv = _rtc.pi5_battery_millivolts()
+        seeded = _rtc.set_system_clock_at_boot()
         fh_installed, fh_enabled = _rtc.fake_hwclock_state()
     except Exception:                                        # noqa: BLE001
         return None
 
     state = {"name": name or None, "ok": bool(ok), "detail": detail,
-             "battery_mv": mv, "fake_hwclock": bool(fh_installed and fh_enabled)}
-    if ok and mv == 0:
-        # Present, readable, and holding nothing. The one case that looks green
-        # from every angle until the power goes off.
-        state.update(level="amber",
-                     text="RTC present but no backup cell — will not survive a power cut")
-    elif ok:
+             "battery_mv": mv, "seeded_boot_clock": seeded,
+             "fake_hwclock": bool(fh_installed and fh_enabled)}
+    if ok:
         volts = f" · {mv / 1000:.2f} V" if mv else ""
-        state.update(level="green", text=f"RTC {name or 'rtc0'}{volts}")
+        # "held across boot" is a claim about the past that we can actually
+        # support; anything about the future would be a guess.
+        held = " · held across boot" if seeded else ""
+        state.update(level="green", text=f"RTC {name or 'rtc0'}{volts}{held}")
     elif fh_installed and fh_enabled:
         state.update(level="amber",
                      text="no RTC — fake-hwclock is holding the clock")

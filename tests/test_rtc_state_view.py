@@ -29,11 +29,12 @@ from routes import system as SYS  # noqa: E402
 
 
 def _rtc_stub(name="rtc-pcf8563 10-0051", ok=True, detail="fine",
-              battery_mv=None, fh=(False, False)):
+              battery_mv=None, fh=(False, False), seeded=True):
     m = mock.MagicMock()
     m.sysfs_rtc_name.return_value = name
     m.rtc_is_working.return_value = (ok, detail)
     m.pi5_battery_millivolts.return_value = battery_mv
+    m.set_system_clock_at_boot.return_value = seeded
     m.fake_hwclock_state.return_value = fh
     return m
 
@@ -60,20 +61,36 @@ class RtcStateTest(unittest.TestCase):
         self.assertEqual(s["level"], "green")
         self.assertIn("rtc-pcf8563", s["text"])
 
-    def test_a_pi5_with_a_flat_cell_is_amber_not_green(self):
-        """THE case this exists for. rtc_is_working() proves an RTC is present
-        and readable; it cannot prove it HOLDS across a power cut. A Pi 5 with no
-        cell reads perfectly while powered and comes up at 1970 the moment you
-        unplug it — so "working" would be a lie of exactly the kind this line was
-        added to stop telling."""
-        s = _state(name="rtc-pcf85063", ok=True, battery_mv=0)
-        self.assertEqual(s["level"], "amber")
-        self.assertIn("no backup cell", s["text"])
+    def test_zero_battery_voltage_does_not_condemn_a_working_rtc(self):
+        """CORRECTED 2026-08-12 against a Pi 5 with a healthy coin cell reading
+        0 mV. The measurement is tied to the trickle CHARGING configuration, and
+        charging is correctly off for a non-rechargeable primary cell — so a
+        good cell reads 0 forever. The previous logic called that "no backup
+        cell" and turned a working RTC amber, which is worse than saying
+        nothing."""
+        s = _state(name="rpi-rtc", ok=True, battery_mv=0, seeded=True)
+        self.assertEqual(s["level"], "green")
+        self.assertNotIn("no backup cell", s["text"])
+
+    def test_holding_across_a_boot_is_stated_because_it_is_provable(self):
+        """hctosys is the OUTCOME — the kernel actually took the time from this
+        RTC — rather than a proxy for it. It is the strongest claim available,
+        and it is about the past, which is the only thing we can support."""
+        self.assertIn("held across boot", _state(seeded=True)["text"])
+        self.assertNotIn("held across boot", _state(seeded=False)["text"])
+
+    def test_an_rtc_that_lost_power_is_the_real_flat_cell_signal(self):
+        """A pre-2020 date, which rtc_is_working() already detects. THIS is what
+        a dead cell looks like — not a zero voltage reading."""
+        s = _state(name="rpi-rtc", ok=False,
+                   detail="RTC reads 0 — it has lost power (no battery, or flat)",
+                   fh=(False, False))
+        self.assertEqual(s["level"], "red")
 
     def test_a_healthy_cell_voltage_is_shown(self):
         s = _state(battery_mv=3020)
         self.assertEqual(s["level"], "green")
-        self.assertIn("3.02 V", s["text"])
+        self.assertIn("3.02 V", s["text"])   # a non-zero reading IS informative
 
     def test_no_rtc_but_fake_hwclock_is_amber_and_says_which(self):
         """Not a fault — it is the documented fallback — but not green either:
