@@ -118,8 +118,17 @@ def api_satellites():
     # Read the dongle calibration ONCE for the whole roster, not per downlink:
     # 150 satellites with several downlinks each would otherwise stat and parse
     # the same small file a thousand times per refresh.
+    # A calibration belongs to ONE dongle, so the assigned serial is part of
+    # reading it: swap the hardware and the stored figure describes a device that
+    # is no longer plugged in. Read once for the whole roster — 150 birds with
+    # several downlinks each would otherwise re-parse the same two small files a
+    # thousand times per refresh.
     import calibrate
-    _ppm = calibrate.stored_ppm(calibrate.calibration_path(SUITE_ROOT))
+    from common import hardware as _hw
+    _inv = _hw.load(SUITE_ROOT)
+    _dev = (_inv.devices.get(_inv.assignments.get("satellites")) or {}).get("serial")
+    _ppm, _why = calibrate.calibration_state(
+        calibrate.calibration_path(SUITE_ROOT), _dev)
     sats = []
     for s in data["satellites"]:
         entry = by_norad.get(s["norad"])
@@ -136,7 +145,8 @@ def api_satellites():
         s["downlinks"] = roster.group_downlinks(
             [dict(d, **listen.mode_support(d.get("mode")),
                   rx=calibrate.rx_verdict(_ppm, listen.mhz_to_hz(d["freq_mhz"]),
-                                          listen.mode_support(d.get("mode"))["demod"]))
+                                          listen.mode_support(d.get("mode"))["demod"],
+                                          unmeasured_reason=_why))
              for d in roster.legacy_downlinks(s)])
         sats.append(s)
     # Fallback ONLY when the roster is empty: the offline bundle ships the TLE cache
@@ -703,7 +713,10 @@ def _capture_ppm():
     Falls back to listen.DEFAULT_PPM when the station has never been calibrated —
     which is exactly the behaviour every capture had before this existed."""
     import calibrate
-    return calibrate.rtl_fm_ppm_arg(calibrate.calibration_path(SUITE_ROOT))
+    from common import hardware
+    inv = hardware.load(SUITE_ROOT)
+    dev = (inv.devices.get(inv.assignments.get("satellites")) or {}).get("serial")
+    return calibrate.rtl_fm_ppm_arg(calibrate.calibration_path(SUITE_ROOT), dev)
 
 
 def _prep_capture(norad, req_freq, req_mode=None):

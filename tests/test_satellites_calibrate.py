@@ -196,3 +196,67 @@ class DongleVerdictTest(unittest.TestCase):
     def test_sign_does_not_change_the_verdict(self):
         self.assertEqual(calibrate.dongle_verdict(20.0)["level"],
                          calibrate.dongle_verdict(-20.0)["level"])
+
+
+class DeviceIdentityTest(unittest.TestCase):
+    """A calibration belongs to ONE dongle. Applying an old dongle's correction
+    to a new one is the same failure shape as every other stale value: it looks
+    right and is wrong, with nothing on screen to say so."""
+
+    def setUp(self):
+        import tempfile
+        self.dir = tempfile.mkdtemp()
+        self.path = os.path.join(self.dir, "sdr-calibration.json")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def _write(self, **kw):
+        calibrate.save(self.path, dict({"ppm": -2.98}, **kw))
+
+    def test_same_dongle_is_used(self):
+        self._write(device="00000042")
+        ppm, why = calibrate.calibration_state(self.path, "00000042")
+        self.assertAlmostEqual(ppm, -2.98)
+        self.assertIsNone(why)
+
+    def test_a_swapped_dongle_invalidates_it(self):
+        self._write(device="00000042")
+        ppm, why = calibrate.calibration_state(self.path, "000000F2")
+        self.assertIsNone(ppm)
+        self.assertIn("different dongle", why)
+        self.assertIn("00000042", why)      # names the one it was measured on
+
+    def test_a_swapped_dongle_falls_back_to_no_correction(self):
+        """Not the OLD dongle's number. "0" is what every capture did before
+        this feature existed, so a swap is no worse off than it was."""
+        self._write(device="00000042")
+        self.assertEqual(calibrate.rtl_fm_ppm_arg(self.path, "000000F2"), "0")
+        self.assertEqual(calibrate.rtl_fm_ppm_arg(self.path, "00000042"), "-3")
+
+    def test_missing_serial_on_either_side_is_not_evidence_of_a_swap(self):
+        """A dongle with no serial burned in, or a calibration taken before we
+        recorded one. Refusing a good measurement over absent metadata would be
+        its own kind of wrong."""
+        self._write(device="00000042")
+        self.assertIsNotNone(calibrate.calibration_state(self.path, None)[0])
+        self._write()                                    # no device recorded
+        self.assertIsNotNone(calibrate.calibration_state(self.path, "00000042")[0])
+
+    def test_never_measured_says_so(self):
+        ppm, why = calibrate.calibration_state(self.path, "00000042")
+        self.assertIsNone(ppm)
+        self.assertIn("not checked", why)
+
+    def test_the_reason_reaches_the_verdict(self):
+        self._write(device="00000042")
+        ppm, why = calibrate.calibration_state(self.path, "000000F2")
+        v = calibrate.rx_verdict(ppm, 435_575_000, "usb", unmeasured_reason=why)
+        self.assertEqual(v["level"], "unknown")
+        self.assertIn("different dongle", v["reason"])
+
+    def test_a_corrupt_file_reads_as_unmeasured(self):
+        with open(self.path, "w", encoding="utf-8") as fh:
+            fh.write("{not json")
+        self.assertEqual(calibrate.calibration_state(self.path, "x")[0], None)

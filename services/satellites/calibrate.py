@@ -140,7 +140,7 @@ def max_doppler_hz(carrier_hz):
 TOLERANCE_HZ = {"fm": 12_000, "usb": 3_500, "lsb": 3_500}
 
 
-def rx_verdict(ppm, carrier_hz, demod, tracked=False):
+def rx_verdict(ppm, carrier_hz, demod, tracked=False, unmeasured_reason=None):
     """Can this downlink be received? -> dict for the UI.
 
     level: "green"    usable
@@ -163,7 +163,7 @@ def rx_verdict(ppm, carrier_hz, demod, tracked=False):
         # record an entire pass and get nothing — so it warns, and it is
         # visually distinct from a measured-and-poor result (hollow dot).
         return {"level": "unknown",
-                "reason": "dongle not checked — tap to measure"}
+                "reason": unmeasured_reason or "dongle not checked — tap to measure"}
     off = abs(offset_at(ppm, carrier_hz))
     dop = 0.0 if tracked else max_doppler_hz(carrier_hz)
     budget = off + dop
@@ -243,20 +243,49 @@ def save(path, data):
     return data
 
 
-def stored_ppm(path):
+def stored_ppm(path, device_serial=None):
     """The ppm to apply, or None. Only a value we actually measured counts —
     a missing or malformed file must not silently become 0.0, because 0.0 is a
     claim ('this dongle is perfect') and absence is an admission ('we do not
-    know'). The UI renders those two very differently."""
-    v = load(path).get("ppm")
-    return float(v) if isinstance(v, (int, float)) else None
+    know'). The UI renders those two very differently.
+
+    A calibration belongs to ONE dongle. Swap the hardware and the stored figure
+    describes a device that is no longer plugged in, so it is discarded rather
+    than applied — silently correcting a new dongle by an old one's error is the
+    same failure shape as every other stale value: right-looking and wrong."""
+    return calibration_state(path, device_serial)[0]
 
 
-def rtl_fm_ppm_arg(path):
+def calibration_state(path, device_serial=None):
+    """(ppm, reason) — the usable correction, and why there isn't one.
+
+    reason is None when ppm is usable, otherwise a short phrase the UI can show
+    verbatim. Separating them means the page can distinguish 'never measured'
+    from 'measured, but for a different dongle', which need different words even
+    though both mean "we do not know"."""
+    data = load(path)
+    v = data.get("ppm")
+    if not isinstance(v, (int, float)):
+        return (None, "dongle not checked — tap to measure")
+    was = data.get("device")
+    # Only a MISMATCH invalidates. An unknown serial on either side (a dongle
+    # with no serial burned in, or a calibration taken before we recorded it)
+    # is not evidence of a swap, and refusing to use a good measurement over
+    # missing metadata would be its own kind of wrong.
+    if was and device_serial and str(was) != str(device_serial):
+        return (None, f"measured on a different dongle ({was}) — tap to re-check")
+    return (float(v), None)
+
+
+def rtl_fm_ppm_arg(path, device_serial=None):
     """What to hand `rtl_fm -p` / `rtl_connector -P`. rtl_fm wants an integer,
     and rounding is harmless: 1 ppm is 436 Hz at 70 cm and the measurement is
-    only good to a couple of ppm anyway."""
-    ppm = stored_ppm(path)
+    only good to a couple of ppm anyway.
+
+    "0" when there is nothing usable — which is exactly the behaviour every
+    capture had before this existed, so an uncalibrated or swapped dongle is no
+    worse off than it was, just no longer silently mis-corrected."""
+    ppm = stored_ppm(path, device_serial)
     return "0" if ppm is None else str(int(round(ppm)))
 
 
