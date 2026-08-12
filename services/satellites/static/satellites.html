@@ -100,7 +100,9 @@ html, body { height: 100%; margin: 0; }
    wider than APRS since it carries more info, same font size. */
 #roster-card {
   position: absolute; top: 81px; right: .75rem; z-index: 5;
-  width: 340px; max-width: 46vw; max-height: calc(100vh - 95px);
+  /* 360, not the old 340: the rows carry a downlink picker and a DOPPLER
+     readout now, and a frequency that wraps is a frequency you misread. */
+  width: 360px; max-width: 46vw; max-height: calc(100vh - 95px);
   display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
   box-shadow: 0 6px 24px rgba(0,0,0,.45);
@@ -751,6 +753,15 @@ async function boot() {
   // 60-min window on their own and the countdowns tick live (few rows, cheap).
   // Other views just repaint pills — no time-dependent membership there.
   setInterval(() => { (_view === 'soon' || _view === 'soon-all') ? renderRoster() : updatePills(); }, 2000);
+  // Flush a rebuild that was held back while a downlink picker was open. focusout
+  // (not blur — blur does not bubble) fires as the popup closes; the timeout lets
+  // activeElement settle first, or openPicker would still see the select that is
+  // on its way out and defer forever. Only the 1 h views have a 2 s renderRoster
+  // to retry on their own, so the other views genuinely need this.
+  document.getElementById('roster').addEventListener('focusout', e => {
+    if (e.target.classList && e.target.classList.contains('dlsel') && _rosterDeferred)
+      setTimeout(renderRoster, 0);
+  });
 }
 
 // Render the TLE-age pill from a cache age in days (null = empty cache).
@@ -839,7 +850,22 @@ function inFootprintWindow(norad) {
   return now >= new Date(p.rise).getTime() - 15 * 60000 && now <= new Date(p.set).getTime();
 }
 
+let _rosterDeferred = false;
+
 function renderRoster() {
+  // A rebuild replaces the open <select> ELEMENT, not just its options, so it is
+  // the most violent of the things that used to close the dropdown. Hold the
+  // rebuild while a picker is open — but keep running the in-place updates,
+  // because in the 1 h views renderRoster IS the 2 s tick, and simply returning
+  // would freeze the elevation meters, the pass hints and the DOPPLER readout
+  // for as long as the operator kept the list open.
+  if (openPicker()) {
+    _rosterDeferred = true;
+    updatePills();        // textContent only — safe next to an open popup
+    updateListenUI();     // skips the open picker itself
+    return;
+  }
+  _rosterDeferred = false;
   // The 1h views (Mon · 1h / All · 1h) sort by next-pass time — soonest first,
   // in-progress passes at the top (their rise time is already in the past) — which
   // is what you act on. All other views sort alphabetically (natural numeric).
@@ -1780,8 +1806,27 @@ function _dongleStatus(norad) {
   const post = LISTEN.busy ? ` — in use by ${LISTEN.holder || 'another service'}` : '';
   return { dev: LISTEN.device || 'free', post, rec: false };
 }
+// The downlink picker the operator currently has OPEN, or null.
+//
+// A native <select> popup is destroyed the moment its <option>s are mutated or
+// its row is re-rendered — and this page did both on timers: pollListen rewrites
+// every picker's disabled flags and value every 3 s, and the 1 h views rebuild
+// the entire list every 2 s. The dropdown was being pulled shut from under the
+// operator before they could reach the frequency they wanted.
+//
+// The rule that fixes it is simply: never touch the picker that has focus. A
+// native select holds focus for exactly as long as its popup is open, so
+// activeElement already IS the state — there is no open/closed flag to keep in
+// sync, and therefore none that can wedge the list shut if a popup closes by a
+// route we did not anticipate (Escape, a scroll, a click on the page chrome).
+function openPicker() {
+  const a = document.activeElement;
+  return (a && a.classList && a.classList.contains('dlsel')) ? a : null;
+}
+
 // Set every rendered downlink button + status line from the latest LISTEN state.
 function updateListenUI() {
+  const open = openPicker();
   document.querySelectorAll('.dlsel[data-norad]').forEach(sel => {
     const norad = +sel.dataset.norad;
     // The list stays READABLE with no SDR assigned — you can open it and see what
@@ -1789,16 +1834,24 @@ function updateListenUI() {
     // Arming a frequency the station has no radio for is a choice that cannot go
     // anywhere, and the disabled options say so before the transport has to.
     const assigned = !!LISTEN.assigned;
-    [...sel.options].forEach(o => {
-      if (o.value === '') return;                    // the placeholder always disarms
-      o.disabled = !assigned || o.dataset.unsup === '1';
-    });
-    sel.classList.toggle('unassigned', !assigned);
     // The select mirrors the armed state rather than owning it: a capture can be
     // adopted from the server on load (see pollListen), and the roster re-renders
     // on every tick, so the DOM must be told what is armed, not asked.
     const armedHere = !!_armed && String(_armed.norad) === String(norad);
-    sel.value = armedHere ? `${_armed.freq}|${_armed.mode}` : '';
+    // Exactly two writes destroy an open popup — mutating an <option> and
+    // reassigning .value — so exactly those two are held back for the picker the
+    // operator has open (see openPicker). Everything below is class and title
+    // work, which is safe, and must NOT be skipped: a select keeps focus after
+    // the change event, so skipping the whole row would leave the frequency you
+    // just picked without its armed highlight until you clicked elsewhere.
+    if (sel !== open) {
+      [...sel.options].forEach(o => {
+        if (o.value === '') return;                  // the placeholder always disarms
+        o.disabled = !assigned || o.dataset.unsup === '1';
+      });
+      sel.value = armedHere ? `${_armed.freq}|${_armed.mode}` : '';
+    }
+    sel.classList.toggle('unassigned', !assigned);
     sel.classList.remove('armed', 'rec', 'live');
     if (armedHere && _capturingFreq(norad, _armed.freq)) {
       sel.classList.add(LISTEN.streaming ? 'live' : 'rec');
