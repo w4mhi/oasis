@@ -160,3 +160,18 @@ test('no codepoint above U+FFFF anywhere in the card', () => {
                  max_el: 17, peak_az: 300, rise_az: 42 }] }));
   for (const ch of html) assert.ok(ch.codePointAt(0) <= 0xFFFF, ch);
 });
+
+test('frequencies and passes share one grid container, plot stays outside it', () => {
+  // How many COLUMNS that grid has is a CSS decision per surface — the kiosk
+  // sheet is panel-wide and opts into two, the page's 420px popup keeps one.
+  // The markup must not presume either.
+  const html = D.satDetailHTML(ISS, Object.assign({}, OPTS,
+    { plotHTML: '<svg id="p"></svg>' }));
+  const cols = html.indexOf('sd-cols');
+  assert.ok(cols > -1, 'the grid container exists');
+  assert.ok(html.indexOf('sp-freqs') > cols, 'frequencies inside it');
+  assert.ok(html.indexOf('Upcoming passes') > cols, 'passes inside it');
+  assert.ok(html.indexOf('sp-plot') > html.indexOf('</div>', html.indexOf('Upcoming passes')),
+    'the plot follows the grid rather than sitting in a column');
+  assert.strictEqual((html.match(/sd-cols/g) || []).length, 1);
+});

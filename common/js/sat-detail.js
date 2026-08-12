@@ -137,11 +137,18 @@
     var chips = (sat.labels || []).map(function (l) {
       return '<span class="chip">' + esc(l) + '</span>';
     }).join('');
+    // Frequencies and passes go into a grid container, but HOW MANY COLUMNS is
+    // left to CSS — the kiosk sheet is the full width of the panel and has room
+    // for two, the page's popup is 420px and does not. Baking a column count
+    // into the markup would force one screen to wear the other's proportions.
+    // The plot stays outside the grid, full width beneath both.
     return '<div class="pop-call">' + esc(sat.name) + '</div>' +
       '<div class="pop-chips">' + chips + '</div>' +
-      '<div class="sp-freqs">' + freqTableHTML(sat) + '</div>' +
-      '<div class="pop-sec"><span class="pop-lbl">Upcoming passes</span>' +
-      passesHTML(sat, o) + '</div>' +
+      '<div class="sd-cols">' +
+        '<div class="sp-freqs">' + freqTableHTML(sat) + '</div>' +
+        '<div class="pop-sec"><span class="pop-lbl">Upcoming passes</span>' +
+        passesHTML(sat, o) + '</div>' +
+      '</div>' +
       (o.plotHTML ? '<div class="sp-plot">' + o.plotHTML + '</div>' : '');
   }
 

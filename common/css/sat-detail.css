@@ -12,10 +12,19 @@
  * --text-dim/--border, the kiosk --dim/--faint. Mapped once here into --sd-*
  * so nothing below has to know which page it is on.
  */
-.sp-freqs, .pop-pass, .sp-plot {
+.sd-cols, .sp-freqs, .pop-pass, .sp-plot {
   --sd-dim: var(--text-dim, var(--dim, #9aa0a6));
   --sd-line: var(--border, rgba(255, 255, 255, .18));
 }
+
+/* Frequencies and passes side by side where there is room. ONE column is the
+   default, and a wide surface OPTS IN — see .satsheet in the kiosk.
+   Deliberately not a media query: those key on the VIEWPORT, and the Satellites
+   page's popup is 420px inside a desktop window, so any width breakpoint would
+   hand it two columns and put an uplink line like "145.99 FM · CTCSS 67.0" into
+   a ~200px cell that scrolls sideways. The surface knows its own width; the
+   viewport does not know the surface. */
+.sd-cols { display: grid; gap: 10px; align-items: start; }
 
 /* Tabular figures so the columns line up on the decimal point — a column of
    137.6257 / 145.8 / 437.825 is unreadable in a proportional face. */
