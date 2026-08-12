@@ -31,6 +31,7 @@
 <script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
 <script src="/common/js/speech.js"></script>
+<script src="/common/js/quiet-hours.js"></script>
 <script src="/common/js/sat-alerts.js"></script>
 <script src="/common/js/clock-chime.js"></script>
 <script src="/common/js/sat-capability.js"></script>
@@ -416,6 +417,9 @@
             color:var(--warn); -webkit-tap-highlight-color:transparent; }
   .satmute svg{ width:1.3rem; height:1.3rem; display:block; }
   .satmute.muted{ color:var(--faint); }
+  /* Quiet hours: dim, not crossed out — the operator did not switch this
+     off, the clock did, and it returns by itself at 07:00. */
+  .satmute.quiet{ color:var(--faint); opacity:.6; }
   .pulse{ display:inline-block; width:.8rem; height:.8rem; border-radius:50%; background:var(--accent);
           box-shadow:0 0 .8rem 0 var(--accent); margin-right:.5rem; vertical-align:middle; }
 
@@ -1710,18 +1714,42 @@ let _satStation = null, _satLive = {};
 const BELL_ON  = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a2 2 0 0 0-2 2v.29C7.12 5.14 5 7.82 5 11v5l-2 2v1h18v-1l-2-2v-5c0-3.18-2.12-5.86-5-6.71V4a2 2 0 0 0-2-2Zm0 20a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2Z"/></svg>`;
 const BELL_OFF = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 18.69 7.84 6.14 5.27 3.49 4 4.76l2.8 2.8v.01c-.52.99-.8 2.16-.8 3.42v5l-2 2v1h13.73l2 2L21 19.72l-1-1.03zM12 22c1.11 0 2-.89 2-2h-4c0 1.11.89 2 2 2zm6-7.32V11c0-3.08-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68c-.15.03-.29.08-.42.13l7.92 7.87z"/></svg>`;
 let _satMuted = localStorage.getItem('oasis_sat_muted') === '1';
+// Quiet hours for pass alerts: 22:00–07:00 local, INDEPENDENT of the hour bell
+// above (own key, own override) but sharing its window and semantics via
+// common/js/quiet-hours.js. Silent means silent — no VVV, no Jenny.
+const SAT_OVR_KEY = 'oasis_sat_quiet_ovr';
+let _satOverrideUntil = Number(localStorage.getItem(SAT_OVR_KEY)) || 0;
+function satAlertState(now) {
+  return oasisSatQuietState(_satMuted, now || new Date(), _satOverrideUntil);
+}
+function satAlertsSilent() { return satAlertState().silent; }
 const _satAlertState = {};        // norad -> {key, t10, t5}; fire-once per pass
+// Three states, not two: MUTED (you switched it off) and QUIET (the clock did,
+// until 07:00) are different facts and must not look alike.
 function renderSatMute() {
   const el = document.getElementById('k-sat-mute');
   if (!el) return;
-  el.innerHTML = _satMuted ? BELL_OFF : BELL_ON;
+  const st = satAlertState();
+  el.innerHTML = st.silent ? BELL_OFF : BELL_ON;
   el.classList.toggle('muted', _satMuted);
+  el.classList.toggle('quiet', !_satMuted && st.quiet && !st.overridden);
   el.title = _satMuted ? 'Pass alerts MUTED on this device — tap to unmute'
-                       : 'Mute pass-alert chimes on this device';
+    : (st.quiet && !st.overridden)
+      ? 'Quiet hours (22:00–07:00) — pass alerts are silent. Tap to enable them until 07:00'
+      : st.overridden ? 'Pass alerts enabled for tonight (until 07:00) — tap to mute'
+                      : 'Mute pass-alert chimes on this device';
 }
 function toggleSatMute() {
+  const now = new Date();
+  const wasQuiet = satAlertState(now).quiet;
   _satMuted = !_satMuted;
   try { localStorage.setItem('oasis_sat_muted', _satMuted ? '1' : '0'); } catch (e) { /* private mode */ }
+  // Un-muting DURING quiet hours means "tonight", not "from tomorrow". It
+  // expires by itself at 07:00, so the shack goes back to quiet with nobody
+  // having to remember. Muting clears it — silence must not leave an override
+  // armed behind it.
+  _satOverrideUntil = (!_satMuted && wasQuiet) ? oasisSatOverrideUntil(now) : 0;
+  try { localStorage.setItem(SAT_OVR_KEY, String(_satOverrideUntil)); } catch (e) { /* private mode */ }
   renderSatMute();
   // Silence means silence, and it means NOW. The bell used to be pure policy —
   // it stopped the next alert and left the current one running to the end, which
@@ -2021,8 +2049,9 @@ async function speakClockTime(lines) {
 
 function runSatAlerts() {
   const due = oasisSatAlertsDue(_armedBirds(), Date.now(), _satAlertState);
-  if (_satMuted) return;   // state still advanced above, so unmuting mid-pass
-                           // does not replay warnings that already elapsed
+  // Muted OR inside quiet hours without an override. State is still advanced
+  // above, so coming back does not replay warnings that already elapsed.
+  if (satAlertsSilent()) return;
   // T-11: get the sentence synthesised a minute before it is wanted, so the
   // voice starts on the chime's heels instead of after 3.6 s of Piper. After the
   // mute check on purpose — a muted screen will never say it, and warming the
@@ -2043,7 +2072,7 @@ function runSatAlerts() {
     // pass out afterwards, and the tap looked like it had done nothing at all.
     // (The Satellites page has always re-checked, inside its speak() wrapper;
     // the kiosk lost that when it grew jennySpeak.)
-    if (_satMuted) return;
+    if (satAlertsSilent()) return;
     due.announce.forEach(b => jennySpeak(oasisSatSpeech(b)));
   }, OASIS_SAT_CHIME_3_MS);   // let the chime finish before the voice starts
 }
@@ -2421,6 +2450,10 @@ fetchSats();          setInterval(fetchSats, SAT_REFRESH_SEC * 1000);
 // caught within a couple of seconds of crossing, but the pass DATA only changes
 // every 60 s. Cheap — it walks the armed birds already in memory.
 renderSatMute();      setInterval(() => { runSatAlerts(); updateSatLive(); }, 2000);   jennyReady();
+// Quiet hours begin and end while the kiosk is running — it never reloads.
+// Without this the bell would keep claiming alerts are live all night, and
+// keep claiming they are silent all morning.
+setInterval(renderSatMute, 30000);
 // Its own 1 s interval rather than a call from tick(): tick() first runs while
 // this block's `let`/`const` are still in the temporal dead zone, so reaching
 // the hour bell from there throws before the page has finished loading. 1 s so

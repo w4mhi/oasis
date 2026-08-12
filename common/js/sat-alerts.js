@@ -195,6 +195,35 @@
   root.OASIS_SAT_T10_MS = T10_MS;
   root.OASIS_SAT_T5_MS = T5_MS;
   root.OASIS_SAT_CHIME_3_MS = CHIME_3_MS;
+
+  // ── Quiet hours for PASS ALERTS ────────────────────────────────────────────
+  // Same window as the hour bell and the same override semantics (both from
+  // common/js/quiet-hours.js), but SEPARATE state: silencing the passes for a
+  // night must not stop the station keeping time.
+  //
+  // Silent means silent — no VVV, no Jenny. A chime that still fires at 03:00
+  // "because it is only the short one" is the noise the operator was trying to
+  // stop, and Jenny speaking a bird's name into a sleeping house is worse.
+  //
+  // Lives HERE, in the shared engine, so the Satellites page and the kiosk
+  // cannot drift into alerting at different times — which is the same reason
+  // the alert scheduling itself is shared.
+  function _qh() {
+    return root.OasisQuietHours ||
+      (typeof require === 'function' ? require('./quiet-hours.js') : null);
+  }
+
+  /* (muted, now, overrideUntil) → { silent, quiet, overridden }.
+     `silent` is what the alert path acts on; `quiet`/`overridden` are what the
+     bell shows, because "dimmed until 07:00" and "you muted this" are different
+     states and must not look alike. */
+  function oasisSatQuietState(muted, now, overrideUntil) {
+    return _qh().state(muted, now.getHours(), now.getTime(), overrideUntil);
+  }
+
+  /* The next 07:00 local — an override is for tonight, not forever. */
+  function oasisSatOverrideUntil(now) { return _qh().overrideUntil(now); }
+
   root.oasisSatAlertsDue = oasisSatAlertsDue;
   root.oasisSatSpeech = oasisSatSpeech;
   root.oasisSatAudioUnlock = oasisSatAudioUnlock;
@@ -202,4 +231,6 @@
   root.oasisSatChimeStop = oasisSatChimeStop;
   root.oasisSatSilence = oasisSatSilence;
   root.oasisSatSpeak = oasisSatSpeak;
+  root.oasisSatQuietState = oasisSatQuietState;
+  root.oasisSatOverrideUntil = oasisSatOverrideUntil;
 })(typeof window !== 'undefined' ? window : this);

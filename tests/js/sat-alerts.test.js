@@ -301,3 +301,37 @@ test('prewarm is always an array, even on the quiet ticks', () => {
     assert.ok(Array.isArray(r.prewarm));
   });
 });
+
+// ── Quiet hours for pass alerts ──────────────────────────────────────────────
+// Same window as the hour bell, INDEPENDENT state. Silent means silent: no VVV,
+// no Jenny. Before this, an armed bird passing at 03:00 chimed and spoke.
+test('pass alerts go silent inside quiet hours', () => {
+  const night = new Date(2026, 7, 11, 2, 30, 0);
+  const st = A.oasisSatQuietState(false, night, 0);
+  assert.ok(st.quiet);
+  assert.ok(st.silent, 'no VVV and no Jenny at 02:30');
+});
+
+test('an override enables them for tonight only', () => {
+  const night = new Date(2026, 7, 11, 23, 30, 0);
+  const until = A.oasisSatOverrideUntil(night);
+  assert.ok(!A.oasisSatQuietState(false, night, until).silent, 'awake, so alerts sound');
+  // 07:05 the next morning: the override has lapsed and it is no longer quiet
+  // either, so alerts are live for the ordinary reason.
+  const morning = new Date(2026, 7, 12, 7, 5, 0);
+  const st = A.oasisSatQuietState(false, morning, until);
+  assert.ok(!st.quiet);
+  assert.ok(!st.overridden, 'the override expired at 07:00 on its own');
+  assert.ok(!st.silent);
+});
+
+test('the device mute still wins over an override', () => {
+  const night = new Date(2026, 7, 11, 23, 30, 0);
+  const until = A.oasisSatOverrideUntil(night);
+  assert.ok(A.oasisSatQuietState(true, night, until).silent);
+});
+
+test('daytime is unaffected — this changes nothing outside the window', () => {
+  const noon = new Date(2026, 7, 11, 12, 0, 0);
+  assert.ok(!A.oasisSatQuietState(false, noon, 0).silent);
+});

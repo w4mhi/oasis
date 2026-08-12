@@ -176,6 +176,9 @@ html, body { height: 100%; margin: 0; }
 /* Global pass-alert mute toggle (header) — amber when live, grey when muted. */
 .sat-mute { cursor: pointer; user-select: none; font-size: var(--fs-small); color: var(--amber); }
 .sat-mute.muted { color: var(--text-dim); }
+/* Quiet hours: dim, not crossed out — the operator did not switch this off,
+   the clock did, and it comes back by itself at 07:00. */
+.sat-mute.quiet { color: var(--text-dim); opacity: .6; }
 .sat-row .chips { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin-top: .35rem; }
 .chip { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim);
   border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
@@ -427,6 +430,7 @@ html, body { height: 100%; margin: 0; }
      memory win on the Pi, and the whole-globe view is what pass tracks need. -->
 <script src="/common/js/sat-bells.js"></script>
 <script src="/common/js/speech.js"></script>
+<script src="/common/js/quiet-hours.js"></script>
 <script src="/common/js/sat-alerts.js"></script>
 <script src="/common/js/sat-capability.js"></script>
 <script src="/server/satellites/sat-geometry.js"></script>
@@ -715,9 +719,7 @@ async function boot() {
   ROSTER = meta.satellites; STATION = meta.station;
   renderFilterBar();
   setTleBadge(meta.tle_age_days);
-  { const m = document.getElementById('sat-mute');
-    if (m) { m.innerHTML = _satMuted ? BELL_OFF : BELL_ON; m.classList.toggle('muted', _satMuted);
-      m.title = _satMuted ? 'Unmute pass-alert chimes' : 'Mute pass-alert chimes'; } }
+  renderSatMuteBell();
   // Unlock Web Audio on the operator's first interaction, so a bell armed in a
   // prior session can still chime from the timer (browsers gate audio on gesture).
   ['click', 'keydown', 'touchstart'].forEach(ev =>
@@ -999,6 +1001,17 @@ function saveBells() { try { localStorage.setItem('oasis_sat_bells', JSON.string
 // the shack kiosk should be silenceable overnight while this laptop still
 // chimes. Putting it in the roster would silence every screen at once.
 let _satMuted = localStorage.getItem('oasis_sat_muted') === '1';
+// Quiet hours for pass alerts: 22:00–07:00 local, INDEPENDENT of the hour bell's
+// (own key, own override) but sharing its window and semantics via
+// common/js/quiet-hours.js. Silent means silent — no VVV, no Jenny.
+const SAT_OVR_KEY = 'oasis_sat_quiet_ovr';
+let _satOverrideUntil = Number(localStorage.getItem(SAT_OVR_KEY)) || 0;
+// ONE place decides. Every alert path and both bell glyphs read this, so the
+// page cannot act on one answer and display another.
+function satAlertState(now) {
+  return oasisSatQuietState(_satMuted, now || new Date(), _satOverrideUntil);
+}
+function satAlertsSilent() { return satAlertState().silent; }
 // Push a `{norad: bool}` set in ONE request — same rule as postSelections. A set
 // fanned out into one request per bird raced itself on the server and landed 1-2
 // of 20.
@@ -1073,11 +1086,17 @@ function toggleBell(norad) {
   });
 }
 function toggleSatMute() {
+  const now = new Date();
+  const wasQuiet = satAlertState(now).quiet;
   _satMuted = !_satMuted;
   localStorage.setItem('oasis_sat_muted', _satMuted ? '1' : '0');
-  const el = document.getElementById('sat-mute');
-  if (el) { el.innerHTML = _satMuted ? BELL_OFF : BELL_ON; el.classList.toggle('muted', _satMuted);
-    el.title = (_satMuted ? 'Unmute' : 'Mute') + ' pass-alert chimes'; }
+  // Un-muting DURING quiet hours means "tonight", not "from tomorrow" — the tap
+  // is the operator saying they are awake and waiting for a pass. It expires by
+  // itself at 07:00, so nobody has to remember to put the shack back to quiet.
+  // Muting clears it: silence should not leave an override armed behind it.
+  _satOverrideUntil = (!_satMuted && wasQuiet) ? oasisSatOverrideUntil(now) : 0;
+  try { localStorage.setItem(SAT_OVR_KEY, String(_satOverrideUntil)); } catch (e) { /* private mode */ }
+  renderSatMuteBell();
   renderRoster();   // re-render so each monitored sat's per-card bell reflects the mute
   // Not just policy for the NEXT alert: cut whatever is sounding right now. The
   // whole VVV goes into the audio graph in one call, so muting mid-chime used to
@@ -1085,18 +1104,34 @@ function toggleSatMute() {
   if (_satMuted) oasisSatSilence();
   else _unlockAudio();
 }
+// Three states, not two: MUTED (you switched it off) and QUIET (the clock did,
+// until 07:00) are different facts and must not look alike — that is the whole
+// point of showing the state on the bell at all.
+function renderSatMuteBell() {
+  const el = document.getElementById('sat-mute');
+  if (!el) return;
+  const st = satAlertState();
+  el.innerHTML = st.silent ? BELL_OFF : BELL_ON;
+  el.classList.toggle('muted', _satMuted);
+  el.classList.toggle('quiet', !_satMuted && st.quiet && !st.overridden);
+  el.title = _satMuted ? 'Pass alerts MUTED on this device — tap to unmute'
+    : (st.quiet && !st.overridden)
+      ? 'Quiet hours (22:00–07:00) — pass alerts are silent. Tap to enable them until 07:00'
+      : st.overridden ? 'Pass alerts enabled for tonight (until 07:00) — tap to mute'
+                      : 'Mute pass-alert chimes on this device';
+}
 // The chime and the voice now live in common/js/sat-alerts.js, shared with the
 // kiosk dashboard so the shack hears the same thing whichever screen is awake.
 // Both wrappers honour the global (per-DEVICE) mute.
 function playMorseV(reps, freq) {
-  if (_satMuted) return;
+  if (satAlertsSilent()) return;
   oasisSatChime(reps, freq);
 }
 // Spoken heads-up at T-10 (after the Vs) — says which sat is coming + how good the
 // pass is. Silently no-ops if no voice is installed, so the VVV chime always
 // carries the alert regardless.
 function speak(text) {
-  if (_satMuted) return;
+  if (satAlertsSilent()) return;
   oasisSpeak(text);
 }
 // Bell control for a roster row (only rendered for a plotted sat).
@@ -1336,6 +1371,10 @@ function initSatMap() {
   });
   loadCountries().then(() => { renderBase(); redraw(); });
   setInterval(liveTick, 1000);
+  // Quiet hours start and end while the page is open. Re-render the bell on
+  // the minute so it stops claiming alerts are live at 22:00, and says they
+  // are again at 07:00, without waiting for a reload.
+  setInterval(renderSatMuteBell, 30000);
 }
 // Static base — dark country fills + graticule + the station house. Rendered once.
 function renderBase() {
