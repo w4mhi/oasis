@@ -12,7 +12,8 @@ ride on. Boards are presets in BOARDS; each feature dir is a thin CLI over one:
 What a board install does (idempotent · REQUIRES A REBOOT):
   1. writes the board's config.txt lines inside ONE OASIS BEGIN/END block
      (I²C bus enable and/or the DSI display overlay, plus the i2c-rtc overlay)
-  2. removes/disables fake-hwclock  (so it can't overwrite the real RTC)
+  2. LEAVES fake-hwclock alone (see run() — surrendering the fallback
+     before the RTC is proven is what stranded two stations)
   3. neutralises the `--systz` block in /lib/udev/hwclock-set (the classic
      i2c-rtc fix that otherwise resets the clock at boot)
   4. ensures the `hwclock` tool is installed — Debian 13 (Trixie) moved it out of
@@ -246,11 +247,47 @@ def write_config(cfg, board_id):
     _info(f"backup: {bak}")
 
 
-def disable_fake_hwclock():
-    _run(["sudo", "apt", "remove", "-y", "fake-hwclock"], check=False)
-    _run(["sudo", "systemctl", "disable", "fake-hwclock"], check=False)
-    _run(["sudo", "update-rc.d", "-f", "fake-hwclock", "remove"], check=False)
-    _ok("fake-hwclock removed/disabled (it can no longer overwrite the hardware RTC).")
+def fake_hwclock_state():
+    """(installed, active) for fake-hwclock — the fallback that saves the clock
+    at shutdown and restores it at boot on a machine with no working RTC.
+
+    Both halves matter, and looking at only one is how this went wrong: on
+    pi4oasis the package was `ii` (installed) while its unit was symlinked to
+    /dev/null, so `systemctl is-enabled` answered "not-found" and it looked
+    absent. It was present and inert — which is the same thing for timekeeping
+    and a different thing entirely for the repair (unmask, not apt install)."""
+    installed = _run(["dpkg-query", "-W", "-f=${Status}", "fake-hwclock"],
+                     check=False, capture_output=True, text=True)
+    ok = "install ok installed" in (getattr(installed, "stdout", "") or "")
+    active = _run(["systemctl", "is-enabled", "fake-hwclock"],
+                  check=False, capture_output=True, text=True)
+    enabled = (getattr(active, "stdout", "") or "").strip() in ("enabled", "enabled-runtime",
+                                                               "static", "indirect")
+    return ok, enabled
+
+
+def rtc_is_working():
+    """(ok, detail) — does a hardware RTC exist and read a plausible date?
+
+    HONEST LIMIT, stated because the whole bug came from overclaiming: this
+    proves the RTC is PRESENT and READABLE. It cannot prove the RTC HOLDS across
+    a power cut, which is the only property that actually matters and the one
+    that needs a battery. A Pi 5 with a flat cell reads perfectly while powered
+    and comes up at 1970 the moment you unplug it.
+
+    Reads sysfs rather than `hwclock -r`: no sudo, no util-linux-extra."""
+    if not os.path.exists("/dev/rtc0"):
+        return False, "/dev/rtc0 is not present"
+    try:
+        with open("/sys/class/rtc/rtc0/since_epoch", encoding="utf-8") as fh:
+            epoch = int(fh.read().strip())
+    except (OSError, ValueError):
+        return False, "/dev/rtc0 exists but its time could not be read"
+    # 2020-01-01. An RTC that lost power reads 1970 (or 2000 on some chips), and
+    # that is exactly the state we must not mistake for a working clock.
+    if epoch < 1577836800:
+        return False, f"RTC reads {epoch} — it has lost power (no battery, or flat)"
+    return True, f"RTC present and reads a plausible date (epoch {epoch})"
 
 
 def patch_hwclock_set():
@@ -350,6 +387,27 @@ def verify(board):
           "sudo apt install util-linux-extra")
 
 
+def report_fallback():
+    """Say plainly whether this box can still tell the time if the RTC fails."""
+    ok, detail = rtc_is_working()
+    installed, enabled = fake_hwclock_state()
+    if ok and installed and enabled:
+        _ok("RTC readable, and fake-hwclock is still in place as a fallback.")
+    elif ok:
+        _warn("RTC reads fine, but fake-hwclock is not active. That is only safe "
+              "once you have PROVEN the RTC holds across a power cut — pull the "
+              "power, wait a minute, boot with no network and check the date. "
+              "Until then:  sudo systemctl unmask fake-hwclock && "
+              "sudo systemctl enable --now fake-hwclock")
+    elif installed and enabled:
+        _warn(f"No usable RTC ({detail}) — fake-hwclock is carrying the clock.")
+    else:
+        _fail(f"NO TIME SOURCE OFFLINE: {detail}, and fake-hwclock is not active. "
+              "This box will boot with a stale date whenever it has no network. "
+              "Fix with:  sudo systemctl unmask fake-hwclock && "
+              "sudo systemctl enable --now fake-hwclock")
+
+
 def run(check_only=False, board_id=DEFAULT_BOARD):
     board = BOARDS[board_id]
     print(f"\n  OASIS — enable-rtc  ({board['label']})")
@@ -379,12 +437,26 @@ def run(check_only=False, board_id=DEFAULT_BOARD):
 
     _info(f"Configures the {board['label']} hardware clock for time across reboots.")
     print()
-    _step(1, "Writing the config.txt RTC block");         write_config(cfg, board_id)
-    _step(2, "Disabling fake-hwclock");                   disable_fake_hwclock()
+    # ORDER MATTERS, and the old order cost two stations their clocks.
+    #
+    # This step used to remove fake-hwclock SECOND — before the RTC could
+    # possibly work. The config.txt block written here does nothing until a
+    # reboot, and `hwclock` (the tool you would verify with) was not installed
+    # until the step AFTER the removal. So a box whose RTC turned out to be
+    # absent, unseeded or battery-less was left with no timekeeping at all:
+    # strictly worse than before this feature ran. pi4oasis ended up with no
+    # /dev/rtc0 and a neutralised fallback, booting three weeks stale.
+    #
+    # The fallback is no longer surrendered here AT ALL. It is cheap insurance
+    # whose worst case is a clock set to the last saved time and corrected
+    # seconds later by RTC/GPS/NTP, against a failure mode that is silent and
+    # unbounded. `verify()` reports the interaction once the RTC is real.
+    _step(1, "Ensuring hwclock is installed");            ensure_hwclock()
+    _step(2, "Writing the config.txt RTC block");         write_config(cfg, board_id)
     _step(3, "Neutralising hwclock-set --systz");         patch_hwclock_set()
-    _step(4, "Ensuring hwclock is installed");            ensure_hwclock()
 
     _hr()
+    report_fallback()
     print(f"\n  {board['label']} RTC configured — REBOOT to load it.")
     _info("After reboot, once the clock is correct (GPS/NTP):  sudo hwclock -w")
     _info(f"Verify:  sudo hwclock -r   and   i2cdetect -y {board['bus']}   "

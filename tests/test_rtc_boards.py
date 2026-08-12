@@ -10,8 +10,10 @@ may ever take it out (cf. the installer that once left a Pi with no sound cards)
 """
 
 import os
+import re
 import sys
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
@@ -236,3 +238,91 @@ class ThinCliTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NeverSurrenderTheFallback(unittest.TestCase):
+    """The bug that stranded two stations.
+
+    `run()` used to remove fake-hwclock as its SECOND step — before the RTC
+    could possibly work. The config.txt block does nothing until a reboot, and
+    `hwclock` was not installed until the step AFTER the removal, so a box whose
+    RTC turned out to be absent, unseeded or battery-less lost its clock
+    entirely. pi4oasis had no /dev/rtc0 and a masked fallback, booting three
+    weeks stale; pi5draws came up at 1970 and was advanced to a month-old
+    timestamp fossil.
+
+    Source-level, in the style of tests/test_station_json_writes.py: the
+    guarantee is that NO code path in the RTC feature disarms the fallback, and
+    only reading the source can promise that."""
+
+    def _rtc_sources(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        paths = [os.path.join(root, "common", "rtc.py")]
+        for d in ("rtc-hat", "rtc-raspad", "rtc-pi5"):
+            p = os.path.join(root, "features", d, "enable-rtc.py")
+            if os.path.exists(p):
+                paths.append(p)
+        return paths
+
+    def test_no_rtc_code_path_removes_or_disables_fake_hwclock(self):
+        bad = []
+        for path in self._rtc_sources():
+            with open(path, encoding="utf-8") as fh:
+                for n, line in enumerate(fh, 1):
+                    if line.lstrip().startswith("#"):
+                        continue          # comments explain the history on purpose
+                    low = line.lower()
+                    if "fake-hwclock" not in low and "fake_hwclock" not in low:
+                        continue
+                    # WORD boundaries, not substrings: the call is written
+                    # _run(["sudo", "apt", "remove", ...]) so "apt remove" never
+                    # appears contiguously. \bmask\b also correctly declines to
+                    # match "unmask", which is the re-arming advice and the
+                    # OPPOSITE of the defect.
+                    if re.search(r"\b(remove|purge|disable|mask)\b|update-rc\.d", low):
+                        bad.append(f"{os.path.relpath(path)}:{n}: {line.strip()}")
+        self.assertEqual(bad, [], "RTC setup must never disarm fake-hwclock:\n"
+                                  + "\n".join(bad))
+
+    def test_hwclock_is_ensured_before_config_is_written(self):
+        # You cannot verify an RTC with a tool you have not installed yet.
+        src = open(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "common", "rtc.py"), encoding="utf-8").read()
+        body = src[src.index("def run("):]
+        self.assertLess(body.index("ensure_hwclock()"), body.index("write_config("),
+                        "ensure_hwclock() must run before write_config()")
+
+
+class CapabilityProbes(unittest.TestCase):
+    def test_a_missing_rtc_is_not_working(self):
+        with mock.patch.object(rtc.os.path, "exists", lambda p: False):
+            ok, detail = rtc.rtc_is_working()
+        self.assertFalse(ok)
+        self.assertIn("not present", detail)
+
+    def test_an_rtc_that_lost_power_is_not_working(self):
+        # A flat or absent battery reads 1970 — and reading fine while POWERED
+        # is exactly the illusion that made this bug survive.
+        with mock.patch.object(rtc.os.path, "exists", lambda p: True), \
+             mock.patch("builtins.open", mock.mock_open(read_data="15")):
+            ok, detail = rtc.rtc_is_working()
+        self.assertFalse(ok)
+        self.assertIn("lost power", detail)
+
+    def test_a_sane_rtc_is_working(self):
+        with mock.patch.object(rtc.os.path, "exists", lambda p: True), \
+             mock.patch("builtins.open", mock.mock_open(read_data="1786504234")):
+            ok, _ = rtc.rtc_is_working()
+        self.assertTrue(ok)
+
+    def test_installed_but_masked_is_reported_as_not_active(self):
+        # The pi4oasis shape: dpkg says `ii`, the unit is symlinked to /dev/null
+        # so systemctl answers "not-found". Looking at either half alone lies.
+        class R:
+            def __init__(self, out): self.stdout = out; self.returncode = 0
+        def fake_run(cmd, **kw):
+            return R("install ok installed") if cmd[0] == "dpkg-query" else R("not-found\n")
+        with mock.patch.object(rtc, "_run", fake_run):
+            installed, enabled = rtc.fake_hwclock_state()
+        self.assertTrue(installed)
+        self.assertFalse(enabled)
