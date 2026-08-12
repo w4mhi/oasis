@@ -83,13 +83,23 @@ def baseband_offset_hz(doppler_hz, lfo_offset_hz=LFO_OFFSET_HZ):
     return doppler_hz - lfo_offset_hz
 
 
-def shift_rate(doppler_hz, lfo_offset_hz=LFO_OFFSET_HZ, input_rate_hz=INPUT_RATE_HZ):
+def shift_rate(doppler_hz, lfo_offset_hz=LFO_OFFSET_HZ, input_rate_hz=INPUT_RATE_HZ,
+               tone_offset_hz=0.0):
     """The normalised NCO rate to hand csdr's Shift.setRate().
 
     Negated because the shift must move the signal TO zero, not by its offset —
     the sign error this guards is silent: the audio still demodulates, it just
-    tracks the bird backwards and walks out of the passband twice as fast."""
-    return -baseband_offset_hz(doppler_hz, lfo_offset_hz) / float(input_rate_hz)
+    tracks the bird backwards and walks out of the passband twice as fast.
+
+    `tone_offset_hz` is where the carrier should END UP rather than at zero. FM
+    and SSB voice want 0 (a suppressed carrier at DC, with the sideband filter
+    passing 300-2700 Hz above it). CW wants ~700, because for CW the carrier IS
+    the signal: land it at DC and there is nothing to hear, and the sideband
+    filter rejects it besides. The rtl_fm path bought that offset by detuning the
+    dongle; here it is one more term in the shift, which leaves the hardware
+    honest and costs nothing."""
+    return (tone_offset_hz - baseband_offset_hz(doppler_hz, lfo_offset_hz)) \
+        / float(input_rate_hz)
 
 
 def shift_rate_in_range(rate, limit=MAX_SHIFT_RATE):
@@ -132,7 +142,8 @@ def curve_at(curve, t_s):
 
 
 def tick_shift_rate(curve, t_s, carrier_hz,
-                    lfo_offset_hz=LFO_OFFSET_HZ, input_rate_hz=INPUT_RATE_HZ):
+                    lfo_offset_hz=LFO_OFFSET_HZ, input_rate_hz=INPUT_RATE_HZ,
+                    tone_offset_hz=0.0):
     """One tracker tick, whole: curve + clock + armed carrier -> the rate to hand
     Shift.setRate(). None when there is no curve to read.
 
@@ -142,4 +153,5 @@ def tick_shift_rate(curve, t_s, carrier_hz,
     factor = curve_at(curve, t_s)
     if factor is None:
         return None
-    return shift_rate(shift_hz(factor, carrier_hz), lfo_offset_hz, input_rate_hz)
+    return shift_rate(shift_hz(factor, carrier_hz), lfo_offset_hz, input_rate_hz,
+                      tone_offset_hz)
