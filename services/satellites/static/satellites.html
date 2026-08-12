@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OASIS - Satellites</title>
 <link rel="stylesheet" href="/css/common.css">
+<link rel="stylesheet" href="/common/css/sat-detail.css">
 <style>
 html, body { height: 100%; margin: 0; }
 /* Full-screen map, APRS-style. */
@@ -84,32 +85,12 @@ html, body { height: 100%; margin: 0; }
   box-shadow: 0 6px 24px rgba(0,0,0,.6); font-size: var(--fs-small); }
 /* The ISS lists seven entries; scroll the block, not the page. */
 .sat-popup .sp-freqs { max-height: 200px; overflow-y: auto; }
-.sat-popup .sp-freq { width: 100%; border-collapse: collapse; }
-/* tabular-nums so the frequency columns line up on the decimal point — a
-   column of 137.6257 / 145.8 / 437.825 is unreadable in a proportional face. */
-.sat-popup .sp-freq td { padding: 1px 6px 1px 0; vertical-align: top;
-  font-variant-numeric: tabular-nums; }
-.sat-popup .sp-freq th { padding: 0 6px 2px 0; text-align: left; font-weight: 600;
-  color: var(--text-dim); border-bottom: 1px solid var(--border); }
-/* The uplink is the qualified one (mode, CTCSS, inverting) and can wrap; the
-   downlink never should. */
-.sat-popup .sp-freq td:nth-child(2) { white-space: nowrap; }
-.sat-popup .sp-freq td:nth-child(3) { color: var(--text-dim); }
-/* Dimmer still than the frequencies beside it: "n/a" is the absence of a value,
-   and should not read with the same weight as one. */
-.sat-popup .sp-freq .sp-na { opacity: .5; }
-/* The rule is the separator, so it must not draw when there is no plot under it. */
-.sat-popup .sp-plot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
-  text-align: center; }
 .sat-popup .pop-polar { width: 180px; height: 180px; }
 .sat-popup[hidden] { display: none; }
 .sat-popup .sp-close { float: right; background: none; border: none; color: var(--text-dim);
   font-size: 18px; line-height: 1; cursor: pointer; padding: 0 0 0 8px; }
 .sat-popup .sp-close:hover { color: var(--text); }
 .horizon-rim { fill: var(--text-dim); opacity: .22; }
-.sat-popup .pop-pass.blocked { opacity: .55; }
-.sat-popup .pop-pass .blocked-why { color: var(--text-dim); }
-.sat-popup .sp-window { color: var(--text-dim); }
 .badge { display: inline-block; font-size: var(--fs-small); font-weight: 700; letter-spacing: .05em;
   padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); }
 .badge.ok   { color: #3fb950; border-color: #3fb950; }
@@ -453,6 +434,7 @@ html, body { height: 100%; margin: 0; }
 <script src="/common/js/sat-look.js"></script>
 <script src="/common/js/sat-uplink.js"></script>
 <script src="/common/js/horizon.js"></script>
+<script src="/common/js/sat-detail.js"></script>
 <script>
 /* ─────────────────────────────────────────────────────────────────────────
    Roster-driven satellite map. Check a satellite → plot its NEXT pass ground
@@ -1466,62 +1448,24 @@ function hideSatPopup() { const el = document.getElementById('sat-popup'); if (e
 //
 // One row per grouped entry, so the row count matches the dropdown exactly.
 //
-// The FUP cell distinguishes THREE states, not two:
-//   a frequency  — this is where you transmit
-//   n/a          — `one_way`: SatNOGS types every member Transmitter, its own
-//                  word for a beacon or image downlink that does not listen
-//   unknown      — it says the bird listens but never said where
-// The third is the one worth having. Over the live catalogue it never occurs —
-// all 87 Transceiver/Transponder entries carry an uplink and all 720
-// Transmitter ones do not — so the card COULD infer "n/a" from an absent
-// uplink and be right every time today. It would also be printing "there is no
-// uplink" on the strength of a field merely being absent, which is the
-// not-present-looks-like-permission-denied mistake. `one_way` is the server
-// asserting it instead.
-//
-// The unit lives in the header rather than on every row: seven repetitions of
-// "MHz" down a 420px popup is noise, and losing it entirely was a real
-// regression the first cut of this popup shipped.
-function popupFreqsHTML(sat) {
-  const dls = (sat.downlinks || []).slice().sort((a, b) => a.freq_mhz - b.freq_mhz);
-  if (!dls.length) return '<div class="pop-row"><span class="pop-val">No downlinks.</span></div>';
-  const rows = dls.map(d => {
-    // Several uplink-bearing members stack inside the one cell rather than
-    // splitting the entry across rows — the entry is one tunable thing.
-    const cells = uplinkCells(d);
-    const up = cells.length ? cells.join('<br>')
-      : `<span class="sp-na">${d.one_way ? 'n/a' : 'unknown'}</span>`;
-    return `<tr><td>${dlLabel(d)}</td><td>${d.freq_mhz}</td><td>${up}</td></tr>`;
-  }).join('');
-  return `<table class="sp-freq">
-    <thead><tr><th>Type</th><th>FDN (MHz)</th><th>FUP (MHz)</th></tr></thead>
-    <tbody>${rows}</tbody></table>`;
-}
-
+// The card itself now lives in common/js/sat-detail.js, shared with the kiosk
+// sheet — one bird must not read differently on the wall and in your hand.
+// This supplies only what is page-specific: the horizon, the plotted pass, the
+// already-rendered sky plot (the polar projection is page-local, so the module
+// takes a fragment rather than reaching for satgeo), and the click target.
 function popupHTML(sat) {
   const plotted = PLOTTED[sat.norad];
-  const chips = sat.labels.map(l => `<span class="chip">${l}</span>`).join('');
-  const hz = horizonOf(), minEl = minElevOf();
-  const passes = (PASSES[sat.norad] || []).slice(0, 4).map(p => {
-    const active = plotted && plotted.pass.rise === p.rise ? 'active' : '';
-    // Marked, never removed. A filter would delete the pass, and a slightly
-    // wrong mask would then silently remove workable passes with nothing on
-    // screen to say why. peak_az is guarded because a pass cached before that
-    // field existed has none.
-    const blocked = p.peak_az != null && isBlocked(hz, p.peak_az, p.max_el, minEl);
-    const why = blocked ? ' <span class="blocked-why">· below skyline</span>' : '';
-    const win = (active && plotted) ? workableWindowHTML(plotted.track, hz, minEl) : '';
-    return `<div class="pop-pass ${active} ${blocked ? 'blocked' : ''}"
-      onclick="pickPass(${sat.norad}, '${p.rise}', '${p.set}')">
-      ${fmt(p.rise)}–${fmt(p.set)} · max ${p.max_el.toFixed(0)}°${p.peak_az != null
-        ? ` ${azCompass(p.peak_az)} ${p.peak_az.toFixed(0)}°` : ''} · rise ${p.rise_az.toFixed(0)}°${why}${win}</div>`;
-  }).join('') || '<div class="pop-row"><span class="pop-val">No passes in 24 h.</span></div>';
-  const polar = (plotted && plotted.track.length) ? skyPlotSVG(plotted.track, plotted.color) : '';
-  return `<div class="pop-call">${sat.name}</div>
-    <div class="pop-chips">${chips}</div>
-    <div class="sp-freqs">${popupFreqsHTML(sat)}</div>
-    <div class="pop-sec"><span class="pop-lbl">Upcoming passes</span>${passes}</div>
-    ${polar ? `<div class="sp-plot">${polar}</div>` : ''}`;
+  return satDetailHTML(sat, {
+    passes: PASSES[sat.norad] || [],
+    horizon: horizonOf(),
+    minElev: minElevOf(),
+    track: plotted ? plotted.track : null,
+    activeRise: plotted ? plotted.pass.rise : null,
+    fmtTime: fmt,
+    compass: azCompass,
+    onPassClick: 'pickPass',
+    plotHTML: (plotted && plotted.track.length) ? skyPlotSVG(plotted.track, plotted.color) : '',
+  });
 }
 // Re-plot a specific pass chosen from the popup.
 async function pickPass(norad, rise, set) {
@@ -1537,28 +1481,6 @@ async function pickPass(norad, rise, set) {
 function horizonOf() { return (STATION && STATION.horizon) || {}; }
 function minElevOf() { return (STATION && STATION.min_elev != null) ? STATION.min_elev : 10; }
 
-// The workable window: the CONTIGUOUS runs that clear the operator's own
-// skyline, read off the track the client ALREADY holds. This is the honest
-// AOS/LOS the geometric 0-degree horizon cannot give — find_events works at the
-// mathematical horizon, so a listed rise time is when the bird cleared the
-// maths, not the treeline. Only the PLOTTED pass has a track, which is fine: it
-// is the pass being looked at, and it costs nothing.
-//
-// THE MASK IS NOT A CIRCLE: a pass can clear a low-floor sector, sweep behind
-// a tall one mid-pass, and clear again before it sets. Reporting the first and
-// last clearing samples as one span would claim the middle stretch is workable
-// when the bird is actually behind the trees — the exact failure this feature
-// exists to prevent. clearSegments (horizon.js) does the walk; this only
-// formats what it returns.
-function workableWindowHTML(track, hz, minEl) {
-  if (!track || !track.length || !Object.keys(hz).length) return '';
-  const segs = OasisHorizon.clearSegments(track, hz, minEl);
-  if (!segs.length) return `<div class="sp-window">never clears your skyline</div>`;
-  if (segs.length === 1 && segs[0].from === track[0].t && segs[0].to === track[track.length - 1].t) return '';   // nothing to add
-  const shown = segs.slice(0, 3).map(s => `${fmt(s.from)}–${fmt(s.to)}`).join(', ');
-  const extra = segs.length > 3 ? ` +${segs.length - 3} more` : '';
-  return `<div class="sp-window">workable ${shown}${extra}</div>`;
-}
 
 function skyPlotSVG(track, color) {
   const CX = 75, CY = 75, R = 62;
@@ -1743,10 +1665,8 @@ function orbitTrack(norad) {
 let LISTEN = { recording: false };
 let _listenErrNorad = null;   // norad whose last start attempt errored (shown in its status line)
 
-// One button per downlink of a checked sat: "mode · freq", state set live below.
-// The modes on one frequency, alphabetically: "FM/FSK/SSTV". The server already
-// sorts `modes`; the join is the only presentation choice here.
-function dlLabel(d) { return (d.modes || [d.mode]).join('/'); }
+// dlLabel comes from common/js/sat-detail.js — the dropdown and the detail
+// card's Type column must never disagree about what a grouped entry is called.
 
 // Downlinks as ONE dropdown. Sorted by label, then by frequency — the label is
 // what an operator scans for ("where's the FM?"), and the frequency only breaks

@@ -40,7 +40,11 @@
      Satellites page. sat-look.js reads the `satellite` global, so order matters. -->
 <script src="/server/satellites/satellite.min.js"></script>
 <script src="/common/js/sat-look.js"></script>
+<script src="/common/js/sat-uplink.js"></script>
+<script src="/common/js/horizon.js"></script>
+<script src="/common/js/sat-detail.js"></script>
 <link rel="stylesheet" href="/common/css/wifi-pill.css">
+<link rel="stylesheet" href="/common/css/sat-detail.css">
 
 <style>
   /* ── palette + font: copied verbatim from kiosk.css (dashboard_old) ───── */
@@ -563,6 +567,24 @@
   .ops-btn .n{ font-size:1.2rem; font-weight:700; letter-spacing:.02em; line-height:1.15; }
   .ops-btn .s{ font-size:1rem; color:var(--dim); line-height:1.15; }
 
+  /* ── Satellite detail in the shared sheet ────────────────────────────────
+     The card's own parts come from common/css/sat-detail.css; these are only
+     the kiosk's SIZES for the surrounding chrome. Scoped to .satsheet because
+     #shBody is shared with the APRS station card and the services grid.
+     Capped and scrollable: seven ISS frequencies plus four passes would
+     otherwise push the sheet off the top of a 7" panel. */
+  .satsheet{ max-height:62vh; overflow-y:auto; padding-right:.4rem; }
+  .satsheet .pop-call{ font-weight:800; font-size:1.7rem; letter-spacing:.02em;
+                       color:var(--text); padding-right:2rem; margin-bottom:.45rem; }
+  .satsheet .pop-chips{ display:flex; flex-wrap:wrap; gap:.35rem; margin-bottom:.6rem; }
+  .satsheet .pop-chips .chip{ font-size:.92rem; font-weight:700; letter-spacing:.08em;
+                              color:var(--dim); border:1px solid var(--dim);
+                              border-radius:.45rem; padding:.08rem .5rem; }
+  .satsheet .pop-lbl{ display:block; color:var(--accent); font-weight:700;
+                      letter-spacing:.12em; font-size:1.1rem; margin:.9rem 0 .35rem; }
+  .satsheet .pop-val{ color:var(--dim); }
+  .satsheet .sp-freqs{ font-size:1.2rem; }
+  .satsheet .pop-pass{ font-size:1.2rem; padding:.18rem 0; }
   /* ── Services detail (SRV pill → slide sheet): state-tinted rows, problems first ── */
   .svc-sheet-hd{ color:var(--accent); font-weight:700; letter-spacing:.12em; font-size:1.2rem; margin-bottom:.7rem; }
   .svc-sheet-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(15rem, 1fr)); gap:.5rem;
@@ -1595,6 +1617,31 @@ function openSheet(s) {
   document.getElementById('sheet').classList.add('open');
 }
 function closeSheet() { document.getElementById('sheet').classList.remove('open'); }
+// A satellite row opens the SAME sheet the APRS rows and the SRV pill use, with
+// the detail card from common/js/sat-detail.js — the identical card the
+// Satellites page shows, so a bird cannot read one way on the wall and another
+// in your hand.
+//
+// No sky plot here yet: the polar projection lives in the Satellites page's own
+// static/sat-geometry.js, and the card takes a ready-made fragment rather than
+// reaching for it. Passing none is all "no plot" costs.
+//
+// 24h times and no click target: there is nothing on this screen to plot a pass
+// ONTO, so the rows are read-only rather than tappable-and-inert.
+function openSatSheet(norad) {
+  const s = _satSel.find(x => String(x.norad) === String(norad));
+  if (!s) return;
+  const st = _satStation || {};
+  document.getElementById('shBody').innerHTML = '<div class="satsheet">' + satDetailHTML(s, {
+    passes: _satPasses[norad] || _satPasses[String(norad)] || [],
+    horizon: st.horizon || {},
+    minElev: st.min_elev != null ? st.min_elev : 10,
+    fmtTime: t => { const d = new Date(t);
+      return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); },
+    compass: azCompass,
+  }) + '</div>';
+  document.getElementById('sheet').classList.add('open');
+}
 // SRV pill → services list in the same slide sheet. Problems first (DN·WRN·UP·…·NI),
 // read-only. NI = install-gated (HIDDEN_SVCS); '…' = not pinged yet this cycle.
 const _SVC_ORDER = { down:0, warn:1, up:2, unknown:3, ni:4 };
@@ -2077,6 +2124,10 @@ function renderSats() {
     // The rail carries the map's blended colour for the same bird.
     const caps = `<div class="caps">${oasisSatCapabilityChips(it.labels)}</div>`;
     const rail = ` style="--cap:${oasisSatCapabilityColor(it.labels)}"`;
+    // The whole row is the target — a 7" panel has no room for a separate
+    // affordance, and the APRS rows next to it already open the sheet on a
+    // plain row tap, so this matches what the screen has already taught.
+    const tap = ` onclick="openSatSheet(${it.norad})" role="button" tabindex="0"`;
     // Name, then the designator. The per-row bell used to follow it, and is
     // gone: it was informational only — arming happens on the Satellites page —
     // and this device silences ALL pass alerts at once from the card header, so
@@ -2090,12 +2141,12 @@ function renderSats() {
       // rebuilding the card — innerHTML every 2 s on a Pi 3 kiosk is exactly the
       // sort of churn that shows up later as "why is Chromium at 90%".
       _satLive[it.norad] = { l1:it.l1, l2:it.l2, maxEl:el };
-      return `<div class="sat now"${rail}><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${alt}</span><span class="aos">overhead</span><span class="cd">NOW</span></div>${caps}<div class="l2"><span class="live" data-norad="${it.norad}">${satLiveText(it.norad, it.l1, it.l2, el)}</span> · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
+      return `<div class="sat now"${rail}${tap}><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${alt}</span><span class="aos">overhead</span><span class="cd">NOW</span></div>${caps}<div class="l2"><span class="live" data-norad="${it.norad}">${satLiveText(it.norad, it.l1, it.l2, el)}</span> · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
     }
     const soon = it.mins <= 10;
     const nm = soon ? `<span class="nm"><span class="pulse"></span>${esc(it.name)}${alt}</span>` : `<span class="nm">${esc(it.name)}${alt}</span>`;
     const l2 = soon ? `rise ${esc(dir)} · ${el}° max · get ready` : `rise ${esc(dir)} · ${el}° max`;
-    return `<div class="sat${soon?' soon':''}"${rail}><div class="l1">${nm}<span class="aos">${hm(it.p._r)}</span><span class="cd">↑ ${it.mins}m</span></div>${caps}<div class="l2">${l2}</div></div>`;
+    return `<div class="sat${soon?' soon':''}"${rail}${tap}><div class="l1">${nm}<span class="aos">${hm(it.p._r)}</span><span class="cd">↑ ${it.mins}m</span></div>${caps}<div class="l2">${l2}</div></div>`;
   }).join('');
 }
 

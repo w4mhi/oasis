@@ -1,0 +1,45 @@
+/*
+ * sat-detail.css — what the shared satellite detail card INVENTED.
+ *
+ * Scope note: only the card's own parts live here — the frequency table, the
+ * n/a cell, the workable-window line, the blocked-pass mark. The surrounding
+ * popup chrome (.pop-call, .pop-chips, .pop-lbl, .pop-sec, .pop-pass sizing)
+ * stays with each page, because the Satellites page is a 420px mouse popup and
+ * the kiosk is a 7" touch sheet, and those want genuinely different type sizes.
+ * Sharing the structure without forcing a shared scale.
+ *
+ * The two pages name their palette differently — the Satellites page uses
+ * --text-dim/--border, the kiosk --dim/--faint. Mapped once here into --sd-*
+ * so nothing below has to know which page it is on.
+ */
+.sp-freqs, .pop-pass, .sp-plot {
+  --sd-dim: var(--text-dim, var(--dim, #9aa0a6));
+  --sd-line: var(--border, rgba(255, 255, 255, .18));
+}
+
+/* Tabular figures so the columns line up on the decimal point — a column of
+   137.6257 / 145.8 / 437.825 is unreadable in a proportional face. */
+.sp-freq { width: 100%; border-collapse: collapse; }
+.sp-freq td { padding: 1px 6px 1px 0; vertical-align: top;
+  font-variant-numeric: tabular-nums; }
+.sp-freq th { padding: 0 6px 2px 0; text-align: left; font-weight: 600;
+  color: var(--sd-dim); border-bottom: 1px solid var(--sd-line); }
+/* The uplink is the qualified one (mode, CTCSS, inverting) and may wrap; the
+   downlink never should. */
+.sp-freq td:nth-child(2) { white-space: nowrap; }
+.sp-freq td:nth-child(3) { color: var(--sd-dim); }
+/* Dimmer still than the frequencies beside it: "n/a" is the absence of a value,
+   and should not read with the same weight as one. */
+.sp-freq .sp-na { opacity: .5; }
+
+/* A pass that peaks behind the operator's skyline is MARKED, never removed —
+   dimmed and labelled, so the row says why rather than vanishing. */
+.pop-pass.blocked { opacity: .55; }
+.pop-pass .blocked-why { color: var(--sd-dim); }
+.pop-pass.tappable { cursor: pointer; }
+.sp-window { color: var(--sd-dim); }
+
+/* The rule is the separator, so it must not draw when there is no plot under
+   it — the wrapper is only emitted when a plot exists. */
+.sp-plot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--sd-line);
+  text-align: center; }
