@@ -164,6 +164,14 @@ FEATURES = [
             "rtl_test/rtl_fm + socat/tcpdump and the DVB-driver blacklist.",
             "Audio", default=False,
             recommend="RTL-SDR Blog V4 needs Pi OS Trixie (librtlsdr >= 2.0). Verify the dongle: rtl_test -t"),
+    Feature("sdr-dsp", "Satellite DSP stack (Doppler-tracked capture)",
+            "services/satellites/install-dsp.py",
+            "csdr/pycsdr + rtl-connector, so satellite recordings can be Doppler-corrected. "
+            "Optional: the Satellites page and plain rtl_fm recording work without it, just "
+            "uncorrected — which costs you narrowband CW/SSB, where a 70 cm pass sweeps "
+            "+/-10 kHz out of a 12 kHz window. Installs from a third-party apt repo (needs internet).",
+            "Audio", default=False, needs=["rtl-sdr"], internet=True,
+            recommend="Verify the server can use it: python3 services/satellites/install-dsp.py --check"),
     Feature("rtl-feed", "RTL-SDR → GrayWolf APRS feed", "services/rtl-feed/install.py",
             "Stream demodulated APRS audio into GrayWolf (sdr_udp). Needs the dongle plugged in.",
             "Audio", default=False, needs=["rtl-sdr"],

@@ -424,6 +424,41 @@
       ],
       "resolved": {}
     },
+    "sdr-dsp": {
+      "type": "apt",
+      "bundle_group": "sdr-dsp",
+      "description": "csdr/pycsdr + rtl-connector — the DSP stack for Doppler-TRACKED satellite capture. Installed online from the same luarvique repo as openwebrx (third-party); NOT vendored into the offline bundle. Optional: without it the Satellites page and rtl_fm recording work exactly as before, just uncorrected.",
+      "online_only": true,
+      "_note": "Installs the DSP pieces WITHOUT openwebrx itself, which is the whole point — openwebrx seizes the RTL-SDR exclusively (hence its off-by-default policy), while the library alone has no such behaviour. Writes its OWN keyring + sources.list.d entry rather than sharing openwebrx's, so removing either feature cannot break the other's apt source; apt notes the repo is configured twice when both are installed, which is cosmetic.",
+      "_note_venv": "THE TRAP: python3-csdr is a dpkg package landing in /usr/lib/python3/dist-packages, and the OASIS venv is built by a bare `python3 -m venv` (include-system-site-packages=false), so `import pycsdr` fails after a completely successful apt install. services/satellites/connector.py::enable_dist_packages() appends that path at runtime; install-dsp.py verifies the import THROUGH that shim and fails loudly, because the alternative symptom is capture silently falling back to uncorrected rtl_fm with nothing logged. Second failure mode the shim cannot fix: the C extension is built for the SYSTEM python (3.11 bookworm / 3.13 trixie) and will not load into a venv built on a different interpreter.",
+      "_note_bundling": "online_only because the bundler does no dependency resolution and these pull libfftw3/libsamplerate, which would need a hand-curated per-suite list like satellites-voice has.",
+      "third_party_repo": {
+        "key_url": "https://luarvique.github.io/ppa/openwebrx-plus.gpg",
+        "base_url": "https://luarvique.github.io/ppa",
+        "suite_paths": {
+          "bookworm": "bookworm",
+          "trixie": "trixie",
+          "bullseye": "debian"
+        }
+      },
+      "packages": {
+        "common": [
+          "csdr",
+          "libcsdr0",
+          "python3-csdr",
+          "rtl-connector"
+        ]
+      },
+      "suites": [
+        "bookworm",
+        "trixie"
+      ],
+      "arches": [
+        "arm64",
+        "armhf"
+      ],
+      "resolved": {}
+    },
     "satellites-voice": {
       "type": "apt",
       "bundle_group": "satellites-voice",

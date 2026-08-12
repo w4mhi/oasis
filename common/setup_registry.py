@@ -351,7 +351,7 @@ def _setup_dashboard_install_fn(repo_root, payload):
 PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
     "openwebrx", "adsb", "satellites",
-    "rtl-sdr", "rtl-sdr-feed", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
+    "rtl-sdr", "rtl-sdr-feed", "sdr-dsp", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
     "rtc-raspad",
     "draws-gps", "draws-audio",
     "pi-headless", "pi-local-monitor", "pi-oasis-dashboard", "cm4stack", "rgb-cooling-hat",
@@ -511,6 +511,24 @@ def build_registry(repo_root, payload=None):
             install_fn=lambda: _setup_run_script(repo_root, "features/rtl-sdr/install-rtl-sdr.py"),
             removal_record_fn=lambda: _removal_record(repo_root, "features/rtl-sdr/rtl_sdr.py"),
             verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
+        # csdr/pycsdr + rtl-connector — the DSP stack that makes satellite capture
+        # Doppler-TRACKED. Depends on rtl-sdr for the driver and the DVB blacklist;
+        # everything above it degrades rather than breaks, so nothing depends on
+        # THIS in turn (a station without it still records, just uncorrected).
+        # verify_fn runs the installer's own --check, because "the packages are
+        # installed" and "the server can import pycsdr" come apart here: the venv
+        # has no --system-site-packages, so a perfect apt install still leaves
+        # `import pycsdr` failing. See install-dsp.py::verify_import.
+        "sdr-dsp": SE.FeatureSpec(
+            key="sdr-dsp",
+            dependencies=["rtl-sdr"],
+            install_fn=lambda: _setup_run_script(repo_root, "services/satellites/install-dsp.py"),
+            removal_record_fn=lambda: _removal_record(repo_root, "services/satellites/install-dsp.py"),
+            verify_fn=lambda: _setup_run_script(repo_root, "services/satellites/install-dsp.py",
+                                                ["--check"]),
             enable_policy="none",
             privileged=True,
         ),
