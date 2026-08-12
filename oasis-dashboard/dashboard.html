@@ -574,15 +574,23 @@
      Capped and scrollable: seven ISS frequencies plus four passes would
      otherwise push the sheet off the top of a 7" panel. */
   .satsheet{ max-height:62vh; overflow-y:auto; padding-right:.4rem; }
+  /* COLOURS track the Satellites page's popup exactly — the same bird must not
+     be a different colour on the wall and in your hand. SIZES do not: a 7" touch
+     panel and a 420px mouse popup legitimately want different type.
+     The name is the only accent on the card. The section label is DIM, not
+     green — it was inverted here, which made the heading shout and the name
+     recede, the opposite of the page. */
   .satsheet .pop-call{ font-weight:800; font-size:1.7rem; letter-spacing:.02em;
-                       color:var(--text); padding-right:2rem; margin-bottom:.45rem; }
+                       color:var(--accent); padding-right:2rem; margin-bottom:.45rem; }
   .satsheet .pop-chips{ display:flex; flex-wrap:wrap; gap:.35rem; margin-bottom:.6rem; }
   .satsheet .pop-chips .chip{ font-size:.92rem; font-weight:700; letter-spacing:.08em;
-                              color:var(--dim); border:1px solid var(--dim);
+                              text-transform:uppercase; color:var(--dim);
+                              border:1px solid var(--border);
                               border-radius:.45rem; padding:.08rem .5rem; }
-  .satsheet .pop-lbl{ display:block; color:var(--accent); font-weight:700;
+  .satsheet .pop-lbl{ display:block; color:var(--dim); font-weight:700;
                       letter-spacing:.12em; font-size:1.1rem; margin:.9rem 0 .35rem; }
-  .satsheet .pop-val{ color:var(--dim); }
+  .satsheet .pop-row{ display:flex; gap:.4rem; font-size:1.15rem; }
+  .satsheet .pop-val{ color:var(--text); }
   /* The sheet is the full width of the panel, so the card opts into two
      columns: frequencies left, passes right. minmax(0,1fr) so a long uplink
      line shrinks its own column rather than widening the grid. Halving the
