@@ -109,6 +109,13 @@ body {
 .gps-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .35rem .56rem; }  /* row/col gaps trimmed 30% (.5/.8 → .35/.56) */
 .gps-cell { display: flex; flex-direction: column; line-height: 1.1; gap: .1rem; min-width: 0; }  /* label → value gap matches the Processes header→values .1rem */
 .gps-lbl { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .07em; color: var(--text-dim); }
+/* Micro, like the CPU card's RAM/DISK labels: this is context under the reading
+   above it, not a reading of its own. */
+.gps-rtc { margin-top: .3rem; font-size: var(--fs-micro); letter-spacing: .04em;
+  color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gps-rtc.green { color: var(--accent); }
+.gps-rtc.amber { color: var(--amber); }
+.gps-rtc.red   { color: var(--red); }
 .gps-val { font-size: var(--fs-base); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Explicit flex-basis (not auto): .topbar wraps, and a wrap container breaks lines
@@ -1243,6 +1250,11 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <div class="gps-cell"><span class="gps-lbl">Lon</span><span class="gps-val" id="gps-lon">n/a</span></div>
       <div class="gps-cell"><span class="gps-lbl">Clock</span><span class="gps-val" id="gps-clock">n/a</span></div>
     </div>
+    <!-- The clock's FOUNDATION, under its current sync source. The row above
+         says what is disciplining the clock now (GPS or NTP); an RTC is never
+         either of those, so without this a station that had just fitted one had
+         no way to see it working. -->
+    <div class="gps-rtc" id="gps-rtc" hidden></div>
   </div>
 
   <div class="card up" id="cpu-card">
@@ -3094,6 +3106,32 @@ async function fetchStats() {
           clockEl.style.color = 'var(--accent)';
         } else {
           clockEl.textContent = 'unsynced'; clockEl.style.color = 'var(--amber)';
+        }
+      }
+
+      // RTC — what sets the clock at BOOT, before chrony has any source at all.
+      // Hidden rather than "unknown" when the server cannot report it: on a
+      // non-Linux dev box there is nothing to say, and an empty row would read
+      // as a fault.
+      const rtcEl = document.getElementById('gps-rtc');
+      if (rtcEl) {
+        const r = d.rtc;
+        rtcEl.classList.remove('green', 'amber', 'red');
+        if (!r || !r.text) {
+          rtcEl.hidden = true;
+        } else {
+          rtcEl.hidden = false;
+          rtcEl.classList.add(r.level || 'amber');
+          rtcEl.textContent = r.text;
+          // The honest limit belongs where someone can find it: reading a date
+          // proves the RTC is present, never that it HOLDS across a power cut.
+          // The fallback is stated either way. Saying nothing when it is absent
+          // reads as "fine", and "no backup cell AND no fake-hwclock" is the
+          // state that boots at 1970 — strictly worse than either alone.
+          rtcEl.title = (r.detail || r.text)
+            + (r.battery_mv != null ? ` · backup cell ${r.battery_mv} mV` : '')
+            + (r.fake_hwclock ? ' · fake-hwclock enabled'
+                              : ' · fake-hwclock NOT enabled (no fallback)');
         }
       }
 

@@ -334,6 +334,54 @@ def _gps_info():
     return result
 
 
+def _rtc_state():
+    """The clock's FOUNDATION, as opposed to chrony's current reference.
+
+    The GPS card has always reported what is disciplining the clock right now —
+    a GPS refclock or an NTP server. An RTC is never either of those, so it could
+    never appear there, and a station that had just installed one had no way to
+    see it working. That is the same blind spot that let two boxes run for weeks
+    on a frozen clock with every check green: nothing was watching the thing that
+    sets the time BEFORE any network or satellite exists.
+
+    Deliberately reports the uncomfortable middle state. rtc_is_working() proves
+    an RTC is present and readable and cannot prove it HOLDS across a power cut,
+    which is the only property that matters — a Pi 5 with a flat cell reads
+    perfectly while powered and comes up at 1970 the moment you unplug it. When
+    the battery voltage is knowable and zero, say so, because "working" would be
+    a lie of exactly the kind this feature exists to stop telling."""
+    try:
+        from common import rtc as _rtc
+    except Exception:                                        # noqa: BLE001
+        return None
+    try:
+        name = _rtc.sysfs_rtc_name()
+        ok, detail = _rtc.rtc_is_working()
+        mv = _rtc.pi5_battery_millivolts()
+        fh_installed, fh_enabled = _rtc.fake_hwclock_state()
+    except Exception:                                        # noqa: BLE001
+        return None
+
+    state = {"name": name or None, "ok": bool(ok), "detail": detail,
+             "battery_mv": mv, "fake_hwclock": bool(fh_installed and fh_enabled)}
+    if ok and mv == 0:
+        # Present, readable, and holding nothing. The one case that looks green
+        # from every angle until the power goes off.
+        state.update(level="amber",
+                     text="RTC present but no backup cell — will not survive a power cut")
+    elif ok:
+        volts = f" · {mv / 1000:.2f} V" if mv else ""
+        state.update(level="green", text=f"RTC {name or 'rtc0'}{volts}")
+    elif fh_installed and fh_enabled:
+        state.update(level="amber",
+                     text="no RTC — fake-hwclock is holding the clock")
+    else:
+        # Nothing sets the clock at boot. On an offline station this is how you
+        # end up transmitting with a timestamp weeks out of date.
+        state.update(level="red", text="no RTC and no fake-hwclock — clock is unheld")
+    return state
+
+
 def _chrony_state():
     """Clock state from chrony — INDEPENDENT of GPS (chrony runs regardless and
     may sync from NTP or the RTC).
@@ -411,6 +459,7 @@ _THROTTLE = None  # cached _pi_throttled(); None on non-Pi
 _NET      = None  # cached _wifi_info();    None when unavailable
 _GPS      = None  # cached _gps_info();    None when gpsd unreachable
 _CHRONY   = None  # cached _chrony_state(); clock state, independent of GPS
+_RTC      = None  # cached _rtc_state();    the clock's foundation, not its sync
 _COOLING  = None  # cached _cooling_status(); which fan daemon is present, or None
 
 
@@ -467,7 +516,7 @@ def _sampler():
         import psutil
     except ImportError:
         psutil = None
-    global _CPU_PCT, _CPU_CORES, _TOP_PROCS, _THROTTLE, _NET, _GPS, _CHRONY, _COOLING
+    global _CPU_PCT, _CPU_CORES, _TOP_PROCS, _THROTTLE, _NET, _GPS, _CHRONY, _COOLING, _RTC
     if psutil:
         psutil.cpu_percent(interval=None)              # prime overall baseline
     i = 0
@@ -498,6 +547,7 @@ def _sampler():
             _NET      = _wifi_info()
             _GPS      = _gps_info()
             _CHRONY   = _chrony_state()
+            _RTC      = _rtc_state()
             _COOLING  = _cooling_status()
         i += 1
 
@@ -657,6 +707,7 @@ def api_system():
         "net":            _NET,
         "gps":            _GPS,
         "chrony":         _CHRONY,
+        "rtc":            _RTC,
         "cooling":        _COOLING,
     })
 
