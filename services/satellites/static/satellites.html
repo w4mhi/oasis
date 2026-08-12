@@ -74,15 +74,19 @@ html, body { height: 100%; margin: 0; }
 .home-mark .roof { stroke: #ffd257; stroke-width: 2.8; }
 /* Click-a-satellite popup (replaces the old MapLibre popup; same pop-* content).
    420px, not the old 300: this is the station's DETAIL view now, and the sky plot
-   has to be big enough to read a horizon mask against. Two columns keep it from
-   growing into a tall strip that runs off a short screen. */
+   has to be big enough to read a horizon mask against. The order is frequencies,
+   then passes, then the plot last behind a rule — the plot is the only part that
+   needs a pass PLOTTED to exist at all, so it belongs where its absence leaves no
+   hole. Full width also means an uplink line like "↑ 145.99 FM · CTCSS 67.0" no
+   longer has to scroll sideways in a narrow column. */
 .sat-popup { position: fixed; z-index: 300; max-width: 420px; background: var(--panel);
   border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px 9px;
   box-shadow: 0 6px 24px rgba(0,0,0,.6); font-size: var(--fs-small); }
-.sat-popup .sp-cols { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: start; }
-/* Frequencies can outrun the plot on a bird like the ISS; scroll the column, not
-   the page. */
+/* The ISS lists seven entries; scroll the block, not the page. */
 .sat-popup .sp-freqs { max-height: 200px; overflow-y: auto; }
+/* The rule is the separator, so it must not draw when there is no plot under it. */
+.sat-popup .sp-plot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+  text-align: center; }
 .sat-popup .sp-dl { white-space: nowrap; }
 .sat-popup .sp-up { color: var(--text-dim); padding-left: 10px; white-space: nowrap; }
 .sat-popup .pop-polar { width: 180px; height: 180px; }
@@ -1475,11 +1479,9 @@ function popupHTML(sat) {
   const polar = (plotted && plotted.track.length) ? skyPlotSVG(plotted.track, plotted.color) : '';
   return `<div class="pop-call">${sat.name}</div>
     <div class="pop-chips">${chips}</div>
-    <div class="sp-cols">
-      <div class="sp-freqs"><span class="pop-lbl">Frequencies</span>${popupFreqsHTML(sat)}</div>
-      <div>${polar}</div>
-    </div>
-    <div class="pop-sec"><span class="pop-lbl">Upcoming passes</span>${passes}</div>`;
+    <div class="sp-freqs"><span class="pop-lbl">Frequencies</span>${popupFreqsHTML(sat)}</div>
+    <div class="pop-sec"><span class="pop-lbl">Upcoming passes</span>${passes}</div>
+    ${polar ? `<div class="sp-plot">${polar}</div>` : ''}`;
 }
 // Re-plot a specific pass chosen from the popup.
 async function pickPass(norad, rise, set) {
