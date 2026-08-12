@@ -287,11 +287,18 @@ def fake_hwclock_state():
     /dev/null, so `systemctl is-enabled` answered "not-found" and it looked
     absent. It was present and inert — which is the same thing for timekeeping
     and a different thing entirely for the repair (unmask, not apt install)."""
-    installed = _run(["dpkg-query", "-W", "-f=${Status}", "fake-hwclock"],
-                     check=False, capture_output=True, text=True)
-    ok = "install ok installed" in (getattr(installed, "stdout", "") or "")
-    active = _run(["systemctl", "is-enabled", "fake-hwclock"],
-                  check=False, capture_output=True, text=True)
+    # Tolerate a missing binary: on a non-Debian dev box dpkg-query/systemctl
+    # simply are not there, and "cannot ask" must not look like an exception to
+    # every caller up the stack.
+    def _out(cmd):
+        try:
+            r = _run(cmd, check=False, capture_output=True, text=True)
+        except OSError:
+            return ""
+        return getattr(r, "stdout", "") or ""
+
+    ok = "install ok installed" in _out(["dpkg-query", "-W", "-f=${Status}", "fake-hwclock"])
+    active = type("R", (), {"stdout": _out(["systemctl", "is-enabled", "fake-hwclock"])})
     enabled = (getattr(active, "stdout", "") or "").strip() in ("enabled", "enabled-runtime",
                                                                "static", "indirect")
     return ok, enabled

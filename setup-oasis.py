@@ -725,6 +725,17 @@ def summarize(results):
             print(f"     • {name}")
             print(f"         {rec}")
 
+    # AFTER every feature has run, including the RTC ones — a box that ended up
+    # with a working RTC does not need fake-hwclock, and a box that did not must
+    # never be left with nothing. Two stations were found booting weeks stale
+    # because the RTC step surrendered the fallback before the RTC could work.
+    try:
+        from common.timekeeping import ensure_fake_hwclock
+        print()
+        ensure_fake_hwclock()
+    except Exception as exc:                                    # noqa: BLE001
+        _warn(f"Could not check the offline clock fallback: {exc}")
+
     print("\n  " + "─" * 60)
     if failed:
         _warn(f"{len(failed)} step(s) FAILED: {', '.join(f.name for f in failed)} "

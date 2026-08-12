@@ -106,6 +106,19 @@
         }
       }
     },
+    "timekeeping": {
+      "type": "apt",
+      "bundle_group": "timekeeping",
+      "bundle_base": "features/timekeeping/packages",
+      "description": "The floor under the clock on a station with no working RTC: fake-hwclock saves the system time at shutdown and on an hourly timer, and restores it at boot. util-linux-extra carries hwclock, which Debian 13 (Trixie) split out of util-linux, and without which the RTC cannot be seeded or read.",
+      "_note": "Bundled, not online-only, because this is what an OFFLINE box falls back to and 'install it when you next have internet' is exactly the situation it exists for. setup-oasis.py installs it AFTER the RTC step: a box that ended up with a working RTC does not need it, and a box that did not must never be left with nothing. Two stations were found booting weeks stale because the RTC step removed the fallback before the RTC could possibly work — pi4oasis had it installed with its unit masked to /dev/null, so `apt install` alone would have reported success and changed nothing.",
+      "packages": {
+        "common": [
+          "fake-hwclock",
+          "util-linux-extra"
+        ]
+      }
+    },
     "rtl-sdr-feed": {
       "type": "apt",
       "bundle_group": "rtl-sdr",

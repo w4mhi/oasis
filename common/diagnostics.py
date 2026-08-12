@@ -1046,6 +1046,46 @@ def check_gps(ctx):
     return _result("gps", "HARDWARE", "GPS", "ok", badge, " · ".join(parts))
 
 
+
+def check_offline_clock(ctx):
+    """SYSTEM/TIME, critical. Can this station tell the time with NO internet?
+
+    The check that did not exist while two live stations booted weeks stale —
+    one three days, one twenty-six — with every other check green. Each part was
+    individually fine; nothing owned the whole, so nothing noticed.
+
+    Three things can carry the clock offline and a station needs one: an RTC
+    that holds across a power cut, fake-hwclock, or chrony steering from a
+    refclock it actually trusts. Each is probed as a CAPABILITY — /dev/rtc0
+    exists on a Pi 5 with a flat cell, fake-hwclock reports installed while
+    masked to /dev/null, and a GPS with a 3D fix can be feeding chrony samples
+    chrony discards as a falseticker.
+
+    warn rather than fail when the internet is currently reachable: the clock is
+    right at this moment, and the finding is about the day it is not."""
+    try:
+        from common.timekeeping import offline_clock_report
+        ok, sources, summary = offline_clock_report()
+    except Exception as exc:                                    # noqa: BLE001
+        return _result("offline_clock", "SYSTEM", "Offline clock", "warn", "UNKNOWN",
+                       f"Could not determine the offline time sources: {exc}")
+
+    lines = "\n".join(f"     {'OK  ' if s_ok else 'no  '}{name}: {detail}"
+                       for name, s_ok, detail in sources)
+    if ok:
+        carried = [n for n, s_ok, _ in sources if s_ok]
+        return _result("offline_clock", "SYSTEM", "Offline clock", "ok",
+                       str(len(carried)) + " SRC",
+                       f"The clock survives without the internet — {summary}.\n{lines}")
+    return _result(
+        "offline_clock", "SYSTEM", "Offline clock", "fail", "NO SOURCE",
+        f"{summary}.\n{lines}",
+        breaks=("On the next cold boot with no network this station will come up with a "
+                "stale date. Pass predictions, log timestamps, Winlink and every recorded "
+                "observation are wrong, silently and confidently."),
+    )
+
+
 def check_cooling_hat(ctx):
     """SYSTEM group / POWER capability, not critical -- cooling is a nice-to-
     have, not something that blocks a capability. Signal: an OASIS fan daemon
@@ -1288,6 +1328,8 @@ REGISTRY.extend([
           capability="APRS_RX", critical=False, tier="v1", fn=check_dra_pi),
     Check(id="gps", group="HARDWARE", label="GPS",
           capability="POSITION", critical=True, tier="v1", fn=check_gps),
+    Check(id="offline_clock", group="SYSTEM", label="Offline clock",
+          capability="POWER", critical=True, tier="v1", fn=check_offline_clock),
     Check(id="cooling_hat", group="SYSTEM", label="Cooling fan",
           capability="POWER", critical=False, tier="v1", fn=check_cooling_hat),
     Check(id="aprs_feed", group="SERVICES", label="APRS Feed",
