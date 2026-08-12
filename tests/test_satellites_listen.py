@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
@@ -161,6 +162,92 @@ class ListenTest(unittest.TestCase):
 
     def test_stop_idempotent_when_idle(self):
         self.assertEqual(listen.stop(), {"recording": False})
+
+
+class _FakeProc:
+    """A capture that is still running, without spawning anything."""
+    pid = -1
+
+    def poll(self):
+        return None
+
+
+class CaptureExclusivityTest(unittest.TestCase):
+    """One dongle means one capture, and the module that owns the dongle has to
+    be the one that says so.
+
+    start() used to guard on is_recording(), which is False during a live stream.
+    A start() therefore sailed through and replaced _state["proc"] — after which
+    the stream's cleanup (`if _state["proc"] is proc`) no longer matched and it
+    silently declined to kill anything. The orphaned rtl_fm held the dongle for
+    the life of the server, unreachable by stop(). The route caught it first in
+    practice, but auto-record is on the roadmap and a scheduler calls start()
+    directly.
+    """
+
+    def setUp(self):
+        self._saved = dict(listen._state)
+
+    def tearDown(self):
+        listen._state.clear()
+        listen._state.update(self._saved)
+
+    def _running(self, mode):
+        listen._state.update(proc=_FakeProc(), norad=25544, path=None,
+                             started=0.0, freq_hz=145_800_000, mode=mode)
+
+    def _start_refused(self, **kw):
+        with self.assertRaises(RuntimeError) as cm:
+            listen.start(145_800_000, 25544,
+                         "/nonexistent/should-never-be-created.wav", **kw)
+        # Assert the MESSAGE: past the guard, start() would fail on makedirs with
+        # an OSError instead, and a bare assertRaises(RuntimeError) would then be
+        # testing the filesystem rather than the rule.
+        self.assertIn("capturing", str(cm.exception))
+
+    def test_cannot_record_while_streaming(self):
+        self._running("stream")
+        self._start_refused()
+
+    def test_cannot_record_while_recording(self):
+        self._running("record")
+        self._start_refused()
+
+    def test_cannot_record_on_the_radio_port_while_streaming(self):
+        """The radio path takes audio from the sound card, not the dongle — but
+        _state still holds exactly one process, so it is no more shareable."""
+        self._running("stream")
+        self._start_refused(radio_channel=1)
+
+    def test_cannot_stream_while_recording(self):
+        self._running("record")
+        # stream() builds its command BEFORE taking the lock, so on a box with
+        # no ffmpeg/sox it raises "no audio encoder" — also a RuntimeError, which
+        # would let this pass for entirely the wrong reason in minimal CI.
+        with mock.patch.object(listen, "stream_command",
+                               return_value=("true", "audio/mpeg")):
+            with self.assertRaises(RuntimeError) as cm:
+                listen.stream(145_800_000, 25544)
+        self.assertIn("busy", str(cm.exception))
+
+    def test_the_refusal_leaves_the_running_capture_untouched(self):
+        """The point of the fix: the in-flight capture must still be the one
+        _state refers to, or stop() can never reach it again."""
+        self._running("stream")
+        held = listen._state["proc"]
+        with self.assertRaises(RuntimeError):
+            listen.start(145_800_000, 25544, "/nonexistent/should-never-be-created.wav")
+        self.assertIs(listen._state["proc"], held)
+        self.assertEqual(listen._state["mode"], "stream")
+
+    def test_a_dead_process_does_not_block_a_new_capture(self):
+        """is_capturing() is liveness, not a flag: a capture whose process has
+        exited must not wedge the dongle shut."""
+        class _Dead(_FakeProc):
+            def poll(self):
+                return 0
+        listen._state.update(proc=_Dead(), mode="stream")
+        self.assertFalse(listen.is_capturing())
 
 
 if __name__ == "__main__":

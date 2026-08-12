@@ -429,18 +429,29 @@ def status():
 
 def start(freq_hz, norad, out_wav, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM,
           srate=None, device_serial=None, dmode="fm", radio_channel=None):
-    """Begin recording to out_wav. Raises RuntimeError if already recording. The
-    caller verifies deps/dongle/feed first (see preconditions). device_serial
-    pins rtl_fm to the dongle assigned to satellites; dmode selects the demod
-    (see record_command / demod_params).
+    """Begin recording to out_wav. Raises RuntimeError if ANY capture of ours is
+    already running — a recording OR a live stream. The caller verifies
+    deps/dongle/feed first (see preconditions). device_serial pins rtl_fm to the
+    dongle assigned to satellites; dmode selects the demod (see record_command /
+    demod_params).
+
+    The guard is is_capturing() and not is_recording() because `_state` holds
+    exactly ONE process. Checking only for a recording let a start() during a
+    live stream through, and it then overwrote _state["proc"] — after which the
+    stream's own cleanup (`if _state["proc"] is proc`) no longer matched, so it
+    never killed anything. The orphaned rtl_fm kept the dongle for the life of
+    the server, unreachable by stop() because nothing referenced it any more.
+    The route happened to catch this first (ALREADY_CAPTURING), but the module
+    that owns the dongle has to own the rule too: auto-record is on the roadmap,
+    and a scheduler calls start() directly.
 
     `radio_channel` switches the SOURCE: given a channel index, audio is taken
     from that channel of the radio card instead of an SDR (see
     radio_record_command). freq_hz is then only metadata — the operator has
     tuned the radio by hand, since the DRAWS has no CAT."""
     with _lock:
-        if is_recording():
-            raise RuntimeError("already recording")
+        if is_capturing():
+            raise RuntimeError("already capturing")
         os.makedirs(os.path.dirname(out_wav), exist_ok=True)
         cmd = (radio_record_command(out_wav, radio_channel, srate=srate or SAMPLE_RATE)
                if radio_channel is not None
