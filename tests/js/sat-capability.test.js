@@ -149,12 +149,25 @@ test('each chip takes its channel colour', () => {
   assert.strictEqual(byText.APRS, 'rgb(230 100 0)');
 });
 
-test('chip markup carries inline colour and no emoji', () => {
+test('chip markup carries NO colour, and no emoji', () => {
+  // WX / LIN / DATA in three different colours read as three states rather than
+  // three capabilities. The row's rail still carries the blended channel colour,
+  // where one colour means one thing; the chips are text and stay dim white.
   const html = C.oasisSatCapabilityChips(['FM', 'APRS']);
-  assert.match(html, /color:rgb\(0 200 90\)/);
-  assert.match(html, /color:rgb\(230 100 0\)/);
+  assert.ok(!html.includes('style='), 'no inline style at all');
+  assert.ok(!html.includes('rgb('), 'no colour repeated onto the chips');
+  assert.match(html, /<span class="cap" title="FM">FM<\/span>/);
   // The Pi has no emoji font — anything above the BMP renders as tofu.
   assert.ok(![...html].some(ch => ch.codePointAt(0) >= 0x1F000), 'no emoji in chip markup');
+});
+
+test('the colour is still available to the rail, the legend and the map', () => {
+  // Removing it from the CHIPS must not remove it from the model — the map's
+  // additive blend and the legend both still need it.
+  const byText = {};
+  C.oasisSatLabelChips(['FM', 'WEATHER', 'APRS']).forEach(c => { byText[c.text] = c.color; });
+  assert.strictEqual(byText.WX, 'rgb(0 90 230)');
+  assert.ok(C.oasisSatCapabilityColor(['FM']).startsWith('rgb('));
 });
 
 test('no chips for an unlabelled bird, and nothing throws', () => {

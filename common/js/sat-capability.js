@@ -116,14 +116,21 @@
     return rgbCss(mixed);
   }
 
-  // labels[] -> the row's chip markup. Colours are emitted INLINE from the
-  // definitions above rather than as a CSS class per label, so they have exactly
-  // one definition — a stylesheet copy is how the map and the kiosk would start
-  // disagreeing about which green means voice.
+  // labels[] -> the row's chip markup, UNCOLOURED.
+  //
+  // The chips used to carry each channel's colour inline. They no longer do:
+  // WX / LIN / DATA sitting in three different colours read as three states
+  // rather than three capabilities, and the row already carries the blended
+  // channel colour on its rail (--cap, from oasisSatCapabilityColor) where one
+  // colour means one thing. Chips are text, and text is dim white on both the
+  // kiosk and the Satellites page.
+  //
+  // The colour itself is NOT gone — oasisSatLabelChips still returns it, the
+  // rail and the legend still draw it, and the map's additive blend is
+  // unchanged. Only the chips stopped repeating it.
   function oasisSatCapabilityChips(labels) {
     return oasisSatLabelChips(labels).map(function (c) {
-      var style = c.color ? ' style="color:' + c.color + ';border-color:' + c.color + '"' : '';
-      return '<span class="cap" title="' + c.label + '"' + style + '>' + c.text + '</span>';
+      return '<span class="cap" title="' + c.label + '">' + c.text + '</span>';
     }).join('');
   }
 
