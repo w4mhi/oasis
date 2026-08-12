@@ -70,10 +70,10 @@ class RosterTest(unittest.TestCase):
              "uplink": {"freq_mhz": 435.0, "freq_high_mhz": None}}]}
         dls = roster.legacy_downlinks(sat)
         self.assertEqual(dls, [
-            {"mode": "FM", "freq_mhz": 145.8,
+            {"mode": "FM", "freq_mhz": 145.8, "type": None,
              "uplink": {"freq_mhz": 145.99, "freq_high_mhz": None,
                         "invert": False, "ctcss_hz": None, "simplex": False}},
-            {"mode": "APRS", "freq_mhz": 145.825, "uplink": None}])
+            {"mode": "APRS", "freq_mhz": 145.825, "uplink": None, "type": None}])
 
     def test_legacy_downlinks_dedup_and_aprs_naming(self):
         sat = {"transmitters": [
@@ -84,9 +84,9 @@ class RosterTest(unittest.TestCase):
             {"mode": "SSTV", "description": "SSTV", "downlink": {"freq_mhz": 145.8}}]}
         dls = roster.legacy_downlinks(sat)
         self.assertEqual(dls, [
-            {"mode": "APRS", "freq_mhz": 145.825, "uplink": None},   # AFSK + APRS-in-description → APRS
-            {"mode": "FM", "freq_mhz": 437.8, "uplink": None},       # dup collapsed
-            {"mode": "SSTV", "freq_mhz": 145.8, "uplink": None}])
+            {"mode": "APRS", "freq_mhz": 145.825, "uplink": None, "type": None},   # AFSK + APRS-in-description → APRS
+            {"mode": "FM", "freq_mhz": 437.8, "uplink": None, "type": None},       # dup collapsed
+            {"mode": "SSTV", "freq_mhz": 145.8, "uplink": None, "type": None}])
 
     def test_legacy_downlinks_dedup_adopts_a_later_uplink(self):
         # SatNOGS's return order carries no meaning, so which duplicate is kept
@@ -98,7 +98,7 @@ class RosterTest(unittest.TestCase):
         with_uplink = {"mode": "FM", "description": "Voice Repeater",
                        "downlink": {"freq_mhz": 437.8},
                        "uplink": {"freq_mhz": 145.99, "freq_high_mhz": None}}
-        expected = [{"mode": "FM", "freq_mhz": 437.8,
+        expected = [{"mode": "FM", "freq_mhz": 437.8, "type": None,
                     "uplink": {"freq_mhz": 145.99, "freq_high_mhz": None,
                                "invert": False, "ctcss_hz": None, "simplex": False}}]
         # uplink-bearing transmitter SECOND
@@ -311,6 +311,81 @@ class UplinkView(unittest.TestCase):
     def test_grouped_entries_drop_the_singular_uplink_key(self):
         for g in self._grouped(25544).values():
             self.assertNotIn("uplink", g)
+
+
+class OneWay(unittest.TestCase):
+    """`one_way` asserts what an absent uplink only implies.
+
+    SatNOGS types a transmitter Transmitter (one-way), Transceiver or
+    Transponder. Over the live catalogue the type and the presence of an uplink
+    agree perfectly, so the card COULD infer "receive-only" from an absent
+    uplink — but that is the not-present-looks-like-permission-denied mistake,
+    and this field is what separates "does not listen" from "we were not told"."""
+
+    def _group(self, transmitters):
+        import listen
+        entries = [dict(d, **listen.mode_support(d.get("mode")))
+                   for d in roster.legacy_downlinks({"transmitters": transmitters})]
+        return {round(g["freq_mhz"], 6): g for g in roster.group_downlinks(entries)}
+
+    def _real(self, norad):
+        import listen
+        entries = [dict(d, **listen.mode_support(d.get("mode")))
+                   for d in roster.legacy_downlinks({"transmitters": _real_txs()[norad]})]
+        return {round(g["freq_mhz"], 6): g for g in roster.group_downlinks(entries)}
+
+    def test_a_transmitter_only_entry_is_one_way(self):
+        # NOAA 19's APT downlink: a beacon that does not listen.
+        g = self._real(33591)[137.1]
+        self.assertTrue(g["one_way"])
+        self.assertEqual(g["uplinks"], [])
+
+    def test_a_mixed_group_is_not_one_way(self):
+        # The ISS's 437.800 holds an FM Transceiver beside SSTV and FSK
+        # Transmitters. You can transmit to it — just not to every service on it.
+        g = self._real(25544)[437.8]
+        self.assertFalse(g["one_way"])
+
+    def test_a_transponder_is_not_one_way(self):
+        self.assertFalse(self._real(7530)[145.925]["one_way"])
+
+    def test_a_transceiver_with_no_uplink_recorded_is_not_one_way(self):
+        # THE CASE THIS FIELD EXISTS FOR, and it is built by hand precisely
+        # because it does not occur in the live catalogue today. SatNOGS says
+        # this bird listens; it just has not told us where. Inferring from the
+        # absent uplink would print "no uplink exists", which is a confident
+        # wrong answer.
+        g = self._group([{"mode": "FM", "type": "Transceiver", "description": "",
+                          "downlink": {"freq_mhz": 145.9, "freq_high_mhz": None},
+                          "uplink": None}])
+        self.assertFalse(g[145.9]["one_way"])
+        self.assertEqual(g[145.9]["uplinks"], [])
+
+    def test_an_unknown_type_is_never_one_way(self):
+        # We cannot speak for a record that does not say.
+        for typ in (None, "", "Unknown"):
+            g = self._group([{"mode": "FM", "type": typ, "description": "",
+                              "downlink": {"freq_mhz": 145.9, "freq_high_mhz": None},
+                              "uplink": None}])
+            self.assertFalse(g[145.9]["one_way"], typ)
+
+    def test_adopting_a_duplicate_uplink_adopts_its_type_too(self):
+        # The dedup keeps one entry per (mode, freq) and adopts an uplink from a
+        # duplicate. If the TYPE did not travel with it, the entry would carry an
+        # uplink while still claiming to be one-way.
+        g = self._group([
+            {"mode": "FM", "type": "Transmitter", "description": "",
+             "downlink": {"freq_mhz": 145.9, "freq_high_mhz": None}, "uplink": None},
+            {"mode": "FM", "type": "Transceiver", "description": "",
+             "downlink": {"freq_mhz": 145.9, "freq_high_mhz": None},
+             "uplink": {"freq_mhz": 435.1, "freq_high_mhz": None}},
+        ])[145.9]
+        self.assertEqual(len(g["uplinks"]), 1)
+        self.assertFalse(g["one_way"])
+
+    def test_the_types_accumulator_does_not_leak_into_the_record(self):
+        for g in self._real(25544).values():
+            self.assertNotIn("_types", g)
 
 
 if __name__ == "__main__":

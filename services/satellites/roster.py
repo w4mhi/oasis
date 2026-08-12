@@ -329,10 +329,15 @@ def legacy_downlinks(sat):
         up = _uplink_view(t)
         kept = seen.get(key)
         if kept is not None:
+            # Adopt the TYPE with the uplink, never separately: a record left
+            # saying "Transmitter" while carrying an uplink contradicts itself,
+            # and `one_way` below would then call a two-way channel one-way.
             if not kept["uplink"] and up:
                 kept["uplink"] = up
+                kept["type"] = t.get("type")
             continue
-        entry = {"mode": mode, "freq_mhz": dl["freq_mhz"], "uplink": up}
+        entry = {"mode": mode, "freq_mhz": dl["freq_mhz"], "uplink": up,
+                 "type": t.get("type")}
         seen[key] = entry
         out.append(entry)
     return out
@@ -381,8 +386,10 @@ def group_downlinks(entries):
             groups[key]["modes"] = []
             groups[key]["blurbs"] = []
             groups[key]["uplinks"] = []
+            groups[key]["_types"] = []
             order.append(key)
         g = groups[key]
+        g["_types"].append(e.get("type"))
         mode = (e.get("mode") or "").strip()
         if mode and mode not in g["modes"]:
             g["modes"].append(mode)
@@ -406,5 +413,22 @@ def group_downlinks(entries):
         # sources of truth disagreeing whenever a later member owns the uplink.
         g["uplinks"].sort(key=lambda u: (u["freq_mhz"], u["mode"] or ""))
         g.pop("uplink", None)
+        # `one_way` ASSERTS what an absent uplink only implies. SatNOGS types a
+        # transmitter as Transmitter (one-way), Transceiver or Transponder; the
+        # first is its own word for "does not listen". Measured over the live
+        # catalogue the two agree perfectly — all 87 Transceiver/Transponder
+        # entries carry an uplink and all 720 Transmitter ones do not — but
+        # agreement in today's data is not a guarantee, and the card would
+        # otherwise print "no uplink exists" on the strength of a field simply
+        # being absent. That is the permission-denied-looks-like-not-present
+        # mistake, and this is the one field that separates them.
+        #
+        # ALL members must say Transmitter. A mixed group (the ISS's 437.800
+        # holds an FM Transceiver beside SSTV and FSK Transmitters) is not
+        # one-way: you can transmit to it, just not to every service on it.
+        # An absent/unknown type never yields True — it is the case we cannot
+        # speak for.
+        types = g.pop("_types")
+        g["one_way"] = bool(types) and all(t == "Transmitter" for t in types)
         out.append(g)
     return out
