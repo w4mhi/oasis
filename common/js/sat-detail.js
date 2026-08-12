@@ -99,8 +99,16 @@
   function passesHTML(sat, o) {
     var H = root.OasisHorizon;
     var hz = o.horizon || {}, minEl = o.minElev;
-    var rows = (o.passes || []).slice(0, o.limit || 4).map(function (p) {
+    var rows = (o.passes || []).slice(0, o.limit || 4).map(function (p, i) {
       var active = o.activeRise && p.rise === o.activeRise;
+      // The soonest pass is marked separately from the ACTIVE one, because the
+      // two mean different things and only coincide most of the time: `active`
+      // is the pass drawn on the map, `first` is simply the next one up. The
+      // Satellites page highlights `active` — it has a map to point at — and
+      // the kiosk, which has nothing to plot onto, highlights `first`. Marking
+      // both here lets each surface choose without the module guessing which
+      // kind of screen it is on.
+      var first = i === 0;
       // Marked, never removed. A filter would delete the pass, and a slightly
       // wrong mask would then silently remove workable passes with nothing on
       // screen to say why. peak_az is guarded because a pass cached before that
@@ -117,7 +125,7 @@
         ? ' onclick="' + esc(o.onPassClick) + '(' + sat.norad + ',&#39;' +
           esc(p.rise) + '&#39;,&#39;' + esc(p.set) + '&#39;)"'
         : '';
-      return '<div class="pop-pass' + (active ? ' active' : '') +
+      return '<div class="pop-pass' + (first ? ' first' : '') + (active ? ' active' : '') +
         (blocked ? ' blocked' : '') + (o.onPassClick ? ' tappable' : '') + '"' + click + '>' +
         esc(o.fmtTime(p.rise)) + '–' + esc(o.fmtTime(p.set)) +
         ' · max ' + p.max_el.toFixed(0) + '°' + peak +

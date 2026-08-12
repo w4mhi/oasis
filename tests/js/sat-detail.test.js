@@ -175,3 +175,25 @@ test('frequencies and passes share one grid container, plot stays outside it', (
     'the plot follows the grid rather than sitting in a column');
   assert.strictEqual((html.match(/sd-cols/g) || []).length, 1);
 });
+
+test('the soonest pass is marked separately from the active one', () => {
+  // `active` is the pass drawn on the map; `first` is simply the next one up.
+  // They coincide most of the time but not always, and each surface highlights
+  // whichever it can actually act on.
+  const p = (h, rise) => ({ rise: rise, set: `2026-08-11T${h}:10:00`,
+                            max_el: 20, peak_az: 180, rise_az: 10 });
+  const passes = [p('16', 'A'), p('17', 'B'), p('18', 'C')];
+
+  const none = D.passesHTML(ISS, Object.assign({}, OPTS, { passes }));
+  assert.strictEqual((none.match(/pop-pass first/g) || []).length, 1);
+  assert.ok(!none.includes('active'), 'no map, no active pass');
+
+  // Active on the SECOND pass: both marks exist, on different rows.
+  const html = D.passesHTML(ISS, Object.assign({}, OPTS,
+    { passes, activeRise: 'B' }));
+  const rows = html.split('<div class="pop-pass').slice(1);
+  assert.ok(rows[0].startsWith(' first'), 'row 0 is first, not active');
+  assert.ok(!rows[0].includes('active'));
+  assert.ok(rows[1].includes('active'), 'row 1 is active, not first');
+  assert.ok(!rows[1].startsWith(' first'));
+});

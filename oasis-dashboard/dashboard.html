@@ -593,7 +593,12 @@
      push the passes out of line with the table beside them. */
   .satsheet .sd-cols .pop-lbl{ margin-top:0; }
   .satsheet .sp-freqs{ font-size:1.2rem; }
-  .satsheet .pop-pass{ font-size:1.2rem; padding:.18rem 0; }
+  .satsheet .pop-pass{ font-size:1.2rem; padding:.18rem 0; color:var(--text); }
+  /* The soonest pass in amber, matching the Satellites page, which ambers the
+     pass it has DRAWN on the map. This screen has no map to draw on, so the
+     next one up is the one worth the operator's eye — and a card with no
+     highlight at all read as a flat list beside a page that highlights. */
+  .satsheet .pop-pass.first{ color:var(--amber); font-weight:700; }
   /* ── Services detail (SRV pill → slide sheet): state-tinted rows, problems first ── */
   .svc-sheet-hd{ color:var(--accent); font-weight:700; letter-spacing:.12em; font-size:1.2rem; margin-bottom:.7rem; }
   .svc-sheet-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(15rem, 1fr)); gap:.5rem;
