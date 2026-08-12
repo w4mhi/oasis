@@ -385,12 +385,7 @@
   .sat .nm{ font-weight:700; color:var(--text); min-width:6.6rem; }
   /* The amateur designator: the name an operator recognises, but the CATALOGUE
      name is the heading — so this is styled down, not up. Smaller and dim keeps
-     it from crowding the name on a 7" panel; em (not rem) so it tracks the name.
-     The nowrap lives on the WRAPPER, not on .alt, so the bell keeps the row's own
-     font context — its glyph is sized in rem and aligned in em, and nesting it
-     inside the .8em span shifted it off the baseline. At full size the bell was
-     being pushed onto a line of its own, which read as a second bird. */
-  .sat .nm .altwrap{ white-space:nowrap; }
+     it from crowding the name on a 7" panel; em (not rem) so it tracks the name. */
   .sat .nm .alt{ font-size:.8em; font-weight:400; color:var(--dim);
                  letter-spacing:.03em; margin-left:.35rem; }
   .sat .aos{ color:var(--dim); font-variant-numeric:tabular-nums; }
@@ -417,12 +412,6 @@
             color:var(--warn); -webkit-tap-highlight-color:transparent; }
   .satmute svg{ width:1.3rem; height:1.3rem; display:block; }
   .satmute.muted{ color:var(--faint); }
-  /* The per-row bell is INFORMATIONAL here — arming happens on the Satellites
-     page, this only shows which passes will actually wake the shack. Amber for
-     the same reason the page uses it on an armed bird (.sat-bell.on), and it
-     stays amber in every row state so "armed" never reads as a state colour. */
-  .sat .bell{ color:var(--warn); margin-left:.4rem; line-height:0; display:inline-block; vertical-align:-.15em; }
-  .sat .bell svg{ width:1rem; height:1rem; display:block; }
   .pulse{ display:inline-block; width:.8rem; height:.8rem; border-radius:50%; background:var(--accent);
           box-shadow:0 0 .8rem 0 var(--accent); margin-right:.5rem; vertical-align:middle; }
 
@@ -2070,9 +2059,9 @@ function renderSats() {
     // DISPLAY ONLY. _armedBirds builds the spoken name separately, and must keep
     // doing so, or Jenny reads out "bracket R S forty-four".
     // Kept as two fields, not one string: the designator is styled down (smaller
-    // and dim) so it cannot crowd the name, and the bell has to sit AFTER it.
+    // and dim) so it cannot crowd the name.
     items.push({ name:satShortName(s.name) || ('#'+norad), desig:s.designator || null,
-                 p, inPass, mins, bell:!!s.bell,
+                 p, inPass, mins,
                  labels:s.labels || [], dl:(s.downlinks && s.downlinks[0]),
                  norad, l1:s.l1, l2:s.l2 });
   });
@@ -2084,21 +2073,17 @@ function renderSats() {
   const hm = t => { const d = new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
   body.innerHTML = items.map(it => {
     const el = Math.round(it.p.max_el || 0), dir = azCompass(it.p.rise_az);
-    // Informational only — armed on the Satellites page. A crossed bell while
-    // muted, so the row tells the truth about whether it will actually sound.
-    const bell = it.bell
-      ? `<span class="bell" title="${_satMuted ? 'Pass alert armed, but this device is muted' : 'Pass alert armed'}">${_satMuted ? BELL_OFF : BELL_ON}</span>`
-      : '';
     // Line 2: what the bird can DO. Line 3 stays the rise/elevation detail.
     // The rail carries the map's blended colour for the same bird.
     const caps = `<div class="caps">${oasisSatCapabilityChips(it.labels)}</div>`;
     const rail = ` style="--cap:${oasisSatCapabilityColor(it.labels)}"`;
-    // Name, then the designator, then the bell — in that order, and the
-    // designator+bell tied together with nowrap so the bell can no longer be
-    // orphaned onto its own line when the designator makes the name long.
-    const alt = it.desig
-      ? `<span class="altwrap"><span class="alt">[${esc(it.desig)}]</span>${bell}</span>`
-      : bell;
+    // Name, then the designator. The per-row bell used to follow it, and is
+    // gone: it was informational only — arming happens on the Satellites page —
+    // and this device silences ALL pass alerts at once from the card header, so
+    // a per-bird glyph could never explain what the mute button would do to it.
+    // The roster's `bell` flag still decides which birds alert; only the row's
+    // display of it has been dropped.
+    const alt = it.desig ? `<span class="alt">[${esc(it.desig)}]</span>` : '';
     if (it.inPass) {
       const arc = `${esc(azCompass(it.p.rise_az))}→${esc(azCompass(it.p.set_az))}`;
       // The live half sits in its own span so the 2 s tick can patch it without
