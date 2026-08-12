@@ -364,6 +364,7 @@ def _rtc_state():
         return None
     try:
         name = _rtc.sysfs_rtc_name()
+        label = _rtc.friendly_name(name)
         ok, detail = _rtc.rtc_is_working()
         mv = _rtc.pi5_battery_millivolts()
         seeded = _rtc.set_system_clock_at_boot()
@@ -371,7 +372,8 @@ def _rtc_state():
     except Exception:                                        # noqa: BLE001
         return None
 
-    state = {"name": name or None, "ok": bool(ok), "detail": detail,
+    state = {"name": label or None, "sysfs_name": name or None,
+             "ok": bool(ok), "detail": detail,
              "battery_mv": mv, "seeded_boot_clock": seeded,
              "fake_hwclock": bool(fh_installed and fh_enabled)}
     if ok:
@@ -379,7 +381,7 @@ def _rtc_state():
         # "held across boot" is a claim about the past that we can actually
         # support; anything about the future would be a guess.
         held = " · held across boot" if seeded else ""
-        state.update(level="green", text=f"RTC {name or 'rtc0'}{volts}{held}")
+        state.update(level="green", text=f"RTC {label or 'rtc0'}{volts}{held}")
     elif fh_installed and fh_enabled:
         state.update(level="amber",
                      text="no RTC — fake-hwclock is holding the clock")

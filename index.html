@@ -3134,7 +3134,11 @@ async function fetchStats() {
           // "0 mV" invites exactly the wrong conclusion.
           const mv = (r.battery_mv != null && r.battery_mv > 0)
             ? ` · backup cell ${r.battery_mv} mV` : '';
-          rtcEl.title = (r.detail || r.text) + mv
+          // The raw sysfs string (driver + device-tree address) stays in the
+          // tooltip: noise on the card, and the first thing wanted when an
+          // overlay did not take.
+          rtcEl.title = (r.sysfs_name ? r.sysfs_name + ' — ' : '')
+            + (r.detail || r.text) + mv
             + (r.seeded_boot_clock ? ' · kernel set the boot clock from it' : '')
             + (r.fake_hwclock ? ' · fake-hwclock enabled'
                               : ' · fake-hwclock NOT enabled (no fallback)');

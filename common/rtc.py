@@ -328,6 +328,33 @@ def pi5_battery_millivolts():
         return None
 
 
+# sysfs reports an RTC as its driver plus its device-tree address, e.g.
+# "rpi-rtc soc@107c000000:rpi_rtc". The address is debugging detail; the CHIP is
+# the part worth showing, because it is the cheapest proof the right overlay took
+# on a box where three different RTC features could have been installed.
+_RTC_CHIPS = (
+    ("rpi_rtc", "Pi 5 built-in"), ("rpi-rtc", "Pi 5 built-in"),
+    ("ds3231", "DS3231"), ("pcf85063", "PCF85063"), ("pcf8563", "PCF8563"),
+)
+
+
+def friendly_name(sysfs_name):
+    """A short human name for an RTC, from its sysfs driver string.
+
+    Falls back to the first token — still shorter than the raw string and still
+    the driver — and to '' for nothing at all. Never invents a board name: a
+    DS3231 could be on any HAT, and naming the wrong one is worse than naming
+    the chip."""
+    raw = (sysfs_name or "").strip()
+    if not raw:
+        return ""
+    low = raw.lower()
+    for needle, label in _RTC_CHIPS:
+        if needle in low:
+            return label
+    return raw.split()[0]
+
+
 def set_system_clock_at_boot():
     """Did the kernel set the system clock FROM this RTC at boot?
 

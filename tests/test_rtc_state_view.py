@@ -31,6 +31,10 @@ from routes import system as SYS  # noqa: E402
 def _rtc_stub(name="rtc-pcf8563 10-0051", ok=True, detail="fine",
               battery_mv=None, fh=(False, False), seeded=True):
     m = mock.MagicMock()
+    # friendly_name is pure, so the stub delegates to the real one — otherwise
+    # every assertion about the card's text would be checking a MagicMock repr.
+    from common import rtc as _real
+    m.friendly_name.side_effect = _real.friendly_name
     m.sysfs_rtc_name.return_value = name
     m.rtc_is_working.return_value = (ok, detail)
     m.pi5_battery_millivolts.return_value = battery_mv
@@ -59,7 +63,7 @@ class RtcStateTest(unittest.TestCase):
     def test_a_working_rtc_is_green_and_names_itself(self):
         s = _state()
         self.assertEqual(s["level"], "green")
-        self.assertIn("rtc-pcf8563", s["text"])
+        self.assertIn("PCF8563", s["text"])          # the chip, not the address
 
     def test_zero_battery_voltage_does_not_condemn_a_working_rtc(self):
         """CORRECTED 2026-08-12 against a Pi 5 with a healthy coin cell reading
@@ -142,3 +146,39 @@ class PayloadTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FriendlyNameTest(unittest.TestCase):
+    """sysfs reports an RTC as driver + device-tree address
+    ("rpi-rtc soc@107c000000:rpi_rtc"). The address is debugging detail on a
+    dashboard; the chip is worth showing, because it is the cheapest proof the
+    right overlay took on a box where three RTC features could have installed."""
+
+    def setUp(self):
+        from common import rtc
+        self.f = rtc.friendly_name
+
+    def test_the_three_rtcs_oasis_installs(self):
+        self.assertEqual(self.f("rpi-rtc soc@107c000000:rpi_rtc"), "Pi 5 built-in")
+        self.assertEqual(self.f("rtc-ds3231 1-0068"), "DS3231")
+        self.assertEqual(self.f("rtc-pcf8563 10-0051"), "PCF8563")
+
+    def test_an_unknown_chip_keeps_its_driver_not_its_address(self):
+        self.assertEqual(self.f("some-rtc 3-0051"), "some-rtc")
+
+    def test_nothing_in_nothing_out(self):
+        self.assertEqual(self.f(""), "")
+        self.assertEqual(self.f(None), "")
+
+    def test_it_never_invents_a_board_name(self):
+        """A DS3231 could be on any HAT. Naming the wrong board is worse than
+        naming only the chip."""
+        for raw in ("rtc-ds3231 1-0068", "rtc-pcf8563 10-0051"):
+            self.assertNotIn("Witty", self.f(raw))
+            self.assertNotIn("RasPad", self.f(raw))
+
+    def test_the_raw_string_survives_for_the_tooltip(self):
+        s = _state(name="rpi-rtc soc@107c000000:rpi_rtc")
+        self.assertEqual(s["name"], "Pi 5 built-in")
+        self.assertEqual(s["sysfs_name"], "rpi-rtc soc@107c000000:rpi_rtc")
+        self.assertNotIn("soc@", s["text"])
