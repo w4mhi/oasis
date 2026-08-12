@@ -1825,7 +1825,15 @@ function _dongleStatus(norad) {
   if ((LISTEN.recording || LISTEN.streaming) && String(LISTEN.norad) === String(norad)) {
     const m = Math.floor(LISTEN.seconds / 60), s = String(LISTEN.seconds % 60).padStart(2, '0');
     const live = !!LISTEN.streaming;
-    return { txt: `● ${live ? 'LIVE' : 'REC'} ${m}:${s}`, rec: !live, live };
+    // WHICH PATH is running, while it runs. A tracked capture and an
+    // uncorrected one produce identically-shaped WAVs, so if the operator does
+    // not see it here they will not know until they try to decode the file.
+    const trk = LISTEN.backend === 'csdr'
+      ? ` · TRACKED${LISTEN.doppler_hz != null
+          ? ' ' + (LISTEN.doppler_hz >= 0 ? '+' : '-')
+            + Math.abs(LISTEN.doppler_hz / 1000).toFixed(2) + ' kHz' : ''}`
+      : '';
+    return { txt: `● ${live ? 'LIVE' : 'REC'} ${m}:${s}${trk}`, rec: !live, live };
   }
   if (LISTEN.recording || LISTEN.streaming) { const s = ROSTER.find(x => String(x.norad) === String(LISTEN.norad));
     return { txt: `busy — ${LISTEN.streaming ? 'listening' : 'recording'} ${s ? s.name : 'another'}`, rec: false }; }

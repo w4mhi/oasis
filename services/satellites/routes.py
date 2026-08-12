@@ -129,6 +129,10 @@ def api_satellites():
     _dev = (_inv.devices.get(_inv.assignments.get("satellites")) or {}).get("serial")
     _ppm, _why = calibrate.calibration_state(
         calibrate.calibration_path(SUITE_ROOT), _dev)
+    # Whether THIS station can Doppler-track. When it can, the verdict drops the
+    # Doppler term — which is how a 70 cm CW downlink goes from amber to green,
+    # and the only place the operator ever sees what the DSP stack bought them.
+    _tracked = listen.capture_backend() == "csdr"
     sats = []
     for s in data["satellites"]:
         entry = by_norad.get(s["norad"])
@@ -146,7 +150,7 @@ def api_satellites():
             [dict(d, **listen.mode_support(d.get("mode")),
                   rx=calibrate.rx_verdict(_ppm, listen.mhz_to_hz(d["freq_mhz"]),
                                           listen.mode_support(d.get("mode"))["demod"],
-                                          unmeasured_reason=_why))
+                                          tracked=_tracked, unmeasured_reason=_why))
              for d in roster.legacy_downlinks(s)])
         sats.append(s)
     # Fallback ONLY when the roster is empty: the offline bundle ships the TLE cache
@@ -708,6 +712,20 @@ def _resolve_downlink(downlinks, req_freq, req_mode=None):
     return dl
 
 
+def _write_sidecar(wav_path, data):
+    """A .json beside the WAV saying how it was captured.
+
+    Two silently-different capture qualities is exactly what wastes an afternoon
+    three months later: a tracked recording and an uncorrected one are the same
+    shape, the same rate and the same size, and nothing in the file says which is
+    which. Best-effort — never fail a capture over its own metadata."""
+    try:
+        with open(os.path.splitext(wav_path)[0] + ".json", "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+    except OSError:
+        pass
+
+
 def _capture_ppm():
     """The frequency correction to hand rtl_fm, from the stored measurement.
     Falls back to listen.DEFAULT_PPM when the station has never been calibrated —
@@ -717,6 +735,129 @@ def _capture_ppm():
     inv = hardware.load(SUITE_ROOT)
     dev = (inv.devices.get(inv.assignments.get("satellites")) or {}).get("serial")
     return calibrate.rtl_fm_ppm_arg(calibrate.calibration_path(SUITE_ROOT), dev)
+
+
+def _doppler_curve(norad, seconds):
+    """A Doppler curve for the next `seconds` of THIS satellite, or [].
+
+    Independent of pass boundaries on purpose: an operator who arms early or
+    stops late is still covered, and doppler.curve_at clamps beyond the ends
+    rather than failing mid-capture. Returns [] for anything missing, which is
+    the signal to fall back to the uncorrected path."""
+    try:
+        import datetime as _dt
+
+        import predict
+        st = _station()
+        if st["lat"] is None:
+            return []
+        sat = _sats_by_norad().get(int(norad))
+        if sat is None:
+            return []
+        now = _dt.datetime.now(_dt.timezone.utc)
+        return predict.compute_doppler_curve(sat, st["lat"], st["lon"], now,
+                                             now + _dt.timedelta(seconds=seconds))
+    except Exception:                                        # noqa: BLE001
+        # Any failure here costs correction, not the capture.
+        return []
+
+
+def _start_tracked(norad, freq_hz, dmode, device_serial, out_wav, mode):
+    """Try the Doppler-corrected path. Returns the capture, or None to fall back.
+
+    Falling back is normal — a station without the DSP stack is not broken — but
+    it is never silent: the backend rides in /listen/status and is stamped on the
+    recording's sidecar."""
+    import capture
+    import listen
+    curve = _doppler_curve(norad, listen.MAX_SECONDS)
+    if listen.capture_backend(has_tle=bool(curve)) != "csdr":
+        return None
+    _rmode, _rate, offset = listen.demod_params(dmode)
+    cap = capture.TrackedCapture(
+        freq_hz, _rmode, carrier_hz=freq_hz, curve=curve,
+        device_serial=device_serial, ppm=_capture_ppm(),
+        # demod_params returns the CW offset as a negative TUNING adjustment;
+        # here the carrier is placed at +700 Hz in the audio instead, so the sign
+        # flips and the dongle stays honestly on frequency.
+        tone_offset_hz=-(offset or 0),
+        max_seconds=listen.MAX_SECONDS)
+    try:
+        cap.start()
+    except Exception:                                        # noqa: BLE001
+        try:
+            cap.stop()
+        except Exception:                                    # noqa: BLE001
+            pass
+        return None
+    if mode == "record":
+        cap.add_sink(capture.WavSink(out_wav, cap.out_rate))
+    return cap
+
+
+def _attach_stream(norad, req_freq):
+    """(generator, mime) when a tracked capture of this bird is already running
+    and can simply be listened to, else None.
+
+    Only for the SAME satellite: attaching to a capture of a different bird would
+    hand the operator audio from a frequency they did not ask for, which is worse
+    than an honest refusal."""
+    import listen
+    if not (listen.is_capturing() and listen.backend() == "csdr"):
+        return None
+    cap = listen._state.get("tracked")
+    if cap is None or str(listen._state.get("norad")) != str(norad):
+        return None
+    if req_freq is not None:
+        try:
+            if abs(listen.mhz_to_hz(req_freq) - int(listen._state.get("freq_hz") or 0)) > 1:
+                return None
+        except (TypeError, ValueError):
+            return None
+    import capture
+    enc, mime = listen.stream_encoder(cap.out_rate)
+    sink = cap.add_sink(capture.StreamSink())
+
+    if not enc:
+        # No MP3 encoder: hand back raw PCM rather than nothing. A browser will
+        # not play it, but a curl or a decoder will, and the alternative is
+        # refusing a capture that is running perfectly well.
+        return (sink.generate(), "audio/L16")
+
+    import subprocess
+    proc = subprocess.Popen(enc, shell=True, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+    def _feed():
+        try:
+            for chunk in sink.generate():
+                proc.stdin.write(chunk)
+                proc.stdin.flush()
+        except Exception:                                    # noqa: BLE001
+            pass
+        finally:
+            try:
+                proc.stdin.close()
+            except Exception:                                # noqa: BLE001
+                pass
+
+    import threading
+    threading.Thread(target=_feed, daemon=True).start()
+
+    def _generate():
+        try:
+            while True:
+                data = proc.stdout.read(8192)
+                if not data:
+                    break
+                yield data
+        finally:
+            cap.remove_sink(sink)
+            try:
+                proc.kill()
+            except Exception:                                # noqa: BLE001
+                pass
+    return (_generate(), mime)
 
 
 def _prep_capture(norad, req_freq, req_mode=None):
@@ -797,17 +938,33 @@ def api_listen():
         return jsonify({"ok": False, "error": space_err,
                         "code": "INSUFFICIENT_STORAGE"}), 507
     try:
-        # The MEASURED dongle error, not the "assume it is perfect" default.
-        # At 435 MHz an uncalibrated dongle can sit kilohertz off, which is the
-        # whole difference between a recording and a file full of noise.
-        started = listen.start(freq_hz, norad, out, ppm=_capture_ppm(),
-                               device_serial=device_serial, dmode=dmode,
-                               radio_channel=radio_channel)
+        # Prefer the Doppler-corrected path when everything it needs is present.
+        # The radio port is never tracked: a radio has no CAT here, so the
+        # operator has already parked it by hand (see listen's radio notes).
+        cap = None
+        if radio_channel is None:
+            cap = _start_tracked(norad, freq_hz, dmode, device_serial, out, "record")
+        if cap is not None:
+            started = listen.start_tracked(cap, norad, out, freq_hz, "record")
+        else:
+            # The MEASURED dongle error, not the "assume it is perfect" default.
+            # At 435 MHz an uncalibrated dongle can sit kilohertz off, which is
+            # the whole difference between a recording and a file full of noise.
+            started = listen.start(freq_hz, norad, out, ppm=_capture_ppm(),
+                                   device_serial=device_serial, dmode=dmode,
+                                   radio_channel=radio_channel)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e),
                         "code": "CAPTURE_START_FAILED"}), 500
     # Same capture-state keys as /listen/status, so a caller that starts a
     # recording and one that polls for it read the same shape.
+    _write_sidecar(out, {
+        "backend": started.get("backend"),
+        "tracked": bool(started.get("tracked")),
+        "norad": norad, "freq_hz": freq_hz, "mode": dmode,
+        "started": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "centre_hz": started.get("centre_hz"),
+    })
     return jsonify({
         "ok":        True,
         "recording": started["recording"],
@@ -833,6 +990,18 @@ def api_listen_stream():
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "bad or missing norad",
                         "code": "INVALID_NORAD"}), 400
+    # ONE CAPTURE, MANY SINKS. On the tracked path the audio arrives in-process,
+    # so a listener can attach to a recording that is already running instead of
+    # being told the dongle is busy — you can record a pass and hear it at the
+    # same time, and several browsers can listen at once. The rtl_fm path cannot
+    # do this: it is a shell pipeline with one stdout, which is exactly why the
+    # two were mutually exclusive in the first place.
+    attached = _attach_stream(norad, request.args.get("freq_mhz"))
+    if attached is not None:
+        gen, mime = attached
+        resp = Response(stream_with_context(gen), mimetype=mime)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
     try:
         _entry, freq_hz, device_serial, dmode, _rch = _prep_capture(
             norad, request.args.get("freq_mhz"), request.args.get("mode"))
@@ -932,12 +1101,24 @@ def api_listen_recordings():
             if fn.endswith(".wav"):
                 p = os.path.join(d, fn)
                 try:
-                    files.append({"name": fn, "bytes": os.path.getsize(p),
-                                  # §6: was a raw epoch float.
-                                  "recorded_at": iso_utc(os.path.getmtime(p))})
+                    row = {"name": fn, "bytes": os.path.getsize(p),
+                           # §6: was a raw epoch float.
+                           "recorded_at": iso_utc(os.path.getmtime(p))}
                 except OSError:
                     # Pruned between listdir and stat — skip rather than 500.
                     continue
+                # How it was captured, from the sidecar. Absent for anything
+                # recorded before sidecars existed, which reads as "unknown"
+                # rather than "uncorrected" — we genuinely do not know.
+                try:
+                    with open(os.path.splitext(p)[0] + ".json", encoding="utf-8") as fh:
+                        meta = json.load(fh)
+                    if isinstance(meta, dict):
+                        row["backend"] = meta.get("backend")
+                        row["tracked"] = bool(meta.get("tracked"))
+                except (OSError, ValueError):
+                    pass
+                files.append(row)
     limit = clamp_limit(request.args.get("limit"), _RECORDINGS_DEFAULT_LIMIT,
                         _RECORDINGS_MAX_LIMIT)
     shown = files[:limit]

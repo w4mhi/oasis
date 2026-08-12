@@ -111,6 +111,13 @@ def prune_recordings(directory, max_bytes=None, max_age_seconds=None,
             os.remove(path)
         except OSError:
             return False
+        # The capture sidecar goes with its recording. Without this every pruned
+        # WAV leaves its .json behind forever — invisible, unbounded, and
+        # eventually a directory of metadata for files that no longer exist.
+        try:
+            os.remove(os.path.splitext(path)[0] + ".json")
+        except OSError:
+            pass
         deleted.append(name)
         freed += size
         return True
@@ -297,6 +304,46 @@ def missing_deps(which=shutil.which):
     return [b for b in ("rtl_fm", "sox", "timeout") if not which(b)]
 
 
+# ── Which capture path? ──────────────────────────────────────────────────────
+# Two paths, and the difference is what is installed rather than a preference:
+#
+#   rtl_fm  baseline. Debian's rtl-sdr and nothing else. Records any pass,
+#           uncorrected. A station with no DSP stack is not broken, it is this.
+#   csdr    tracked. Needs the ORX packages AND a propagator AND a TLE. The only
+#           path on which narrowband CW/SSB at 70 cm works at all.
+#
+# Probed by CAPABILITY, never by artifact: an installed package that cannot be
+# imported is exactly the failure this feature has (the venv sees no
+# dist-packages), and only the import knows the difference.
+
+def tracked_prereqs(which=shutil.which, has_tle=True):
+    """{name: bool} for everything the tracked path needs, individually.
+
+    Individually because "tracked capture is unavailable" is not an answer an
+    operator can do anything with, while "rtl_connector is not installed" is."""
+    import connector
+    ok_predict = True
+    try:
+        import predict                                  # noqa: F401
+    except Exception:                                   # noqa: BLE001
+        ok_predict = False
+    return {
+        "pycsdr": connector.pycsdr_available(),
+        "rtl_connector": not connector.missing_deps(which),
+        "predictor": ok_predict,
+        "tle": bool(has_tle),
+    }
+
+
+def capture_backend(which=shutil.which, has_tle=True):
+    """"csdr" when every prerequisite is met, else "rtl_fm".
+
+    Falling back is a normal outcome, not an error — but it must never be a
+    SILENT one, which is why the chosen backend rides in /listen/status and is
+    stamped on every recording's sidecar."""
+    return "csdr" if all(tracked_prereqs(which, has_tle).values()) else "rtl_fm"
+
+
 def dongle_present(run=None):
     """True if `rtl_test -t` reports at least one RTL-SDR device (Pi/Linux only)."""
     run = run or subprocess.run
@@ -399,8 +446,14 @@ def preconditions(which=shutil.which, run=None, is_active=None, inv=None):
 
 # ── Capture manager — one dongle, one recording at a time ────────────────────
 _lock = threading.Lock()
+# `proc` is a Popen on the rtl_fm path and a capture.TrackedCapture on the csdr
+# path — both answer poll(), which is all the exclusivity logic ever asks. That
+# is the entire compatibility surface between the two backends, and deliberately
+# so: a shared base class over a shell pipeline and an in-process DSP chain would
+# be false symmetry that leaked at the first difference.
 _state = {"proc": None, "norad": None, "path": None, "started": 0.0,
-          "freq_hz": 0, "mode": None}   # mode: "record" (→WAV) | "stream" (→browser)
+          "freq_hz": 0, "mode": None,   # mode: "record" (→WAV) | "stream" (→browser)
+          "backend": "rtl_fm", "tracked": None}
 
 
 def is_capturing():
@@ -419,6 +472,34 @@ def is_streaming():
     return is_capturing() and _state.get("mode") == "stream"
 
 
+def backend():
+    """Which path the CURRENT capture is using, or None when idle."""
+    return _state.get("backend") if is_capturing() else None
+
+
+def tracked_status():
+    """The tracked capture's live view, or {} on the rtl_fm path."""
+    t = _state.get("tracked")
+    if not (is_capturing() and t is not None):
+        return {}
+    return t.status(time.time() - _state["started"])
+
+
+def start_tracked(cap, norad, out_wav, freq_hz, mode="record"):
+    """Adopt an already-started capture.TrackedCapture into the manager.
+
+    The caller builds and starts it — this only takes ownership, because the
+    exclusivity check and the state update have to happen under the same lock as
+    every other capture, and the construction does not."""
+    with _lock:
+        if is_capturing():
+            cap.stop()
+            raise RuntimeError("already capturing")
+        _state.update(proc=cap, norad=norad, path=out_wav, started=time.time(),
+                      freq_hz=freq_hz, mode=mode, backend="csdr", tracked=cap)
+        return status()
+
+
 def status():
     cap = is_capturing()
     return {
@@ -429,6 +510,11 @@ def status():
         "file": os.path.basename(_state["path"]) if (cap and _state["path"]) else None,
         "seconds": round(time.time() - _state["started"]) if cap else 0,
         "freq_hz": _state["freq_hz"] if cap else 0,
+        # Never silent about which path ran: a tracked capture and an
+        # uncorrected one produce identically-shaped WAVs, and telling them
+        # apart afterwards is impossible without this.
+        "backend": _state.get("backend") if cap else None,
+        **tracked_status(),
     }
 
 
@@ -467,7 +553,8 @@ def start(freq_hz, norad, out_wav, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM,
             shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             preexec_fn=os.setsid)   # own process group so stop() kills the whole pipe
         _state.update(proc=proc, norad=norad, path=out_wav,
-                      started=time.time(), freq_hz=freq_hz, mode="record")
+                      started=time.time(), freq_hz=freq_hz, mode="record",
+                      backend="rtl_fm", tracked=None)
         return status()
 
 
@@ -476,15 +563,24 @@ def stop():
     with _lock:
         p = _state["proc"]
         if p is not None and p.poll() is None:
-            try:
-                os.killpg(os.getpgid(p.pid), signal.SIGTERM)
-            except Exception:
-                p.terminate()
-            try:
-                p.wait(timeout=3)
-            except Exception:
-                pass
-        _state.update(proc=None, mode=None)
+            if _state.get("tracked") is p:
+                # In-process: no process group to signal, and its own stop()
+                # already tears down chain, tracker, connector and sinks in the
+                # order that cannot hang.
+                try:
+                    p.stop()
+                except Exception:
+                    pass
+            else:
+                try:
+                    os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+                except Exception:
+                    p.terminate()
+                try:
+                    p.wait(timeout=3)
+                except Exception:
+                    pass
+        _state.update(proc=None, mode=None, tracked=None, backend="rtl_fm")
         return {"recording": False}
 
 
@@ -505,7 +601,8 @@ def stream(freq_hz, norad, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, srate=None,
             cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             preexec_fn=os.setsid)   # own process group so we can kill the whole pipe
         _state.update(proc=proc, norad=norad, path=None,
-                      started=time.time(), freq_hz=freq_hz, mode="stream")
+                      started=time.time(), freq_hz=freq_hz, mode="stream",
+                      backend="rtl_fm", tracked=None)
 
     def _generate():
         try:
