@@ -191,6 +191,65 @@ class TrackTest(unittest.TestCase):
 
 
 @unittest.skipUnless(_HAS_PREDICT, "skyfield/predict not installed")
+class DopplerCurveTest(unittest.TestCase):
+    """compute_doppler_curve — the precomputed curve a tracked capture reads."""
+
+    def setUp(self):
+        self.sat = predict.make_satellite("ISS (ZARYA)", ISS_L1, ISS_L2)
+        self.end = START + datetime.timedelta(minutes=10)
+
+    def test_offsets_are_seconds_from_the_start_not_timestamps(self):
+        """A capture measures its own age off a monotonic clock. Wall-clock times
+        would make the correction jump if the station's clock stepped mid-pass,
+        which on an offline box waiting for a GPS or RTC fix is not a stretch."""
+        curve = predict.compute_doppler_curve(self.sat, LAT, LON, START, self.end)
+        self.assertEqual(curve[0][0], 0)
+        self.assertEqual(curve[1][0], 1)
+        self.assertEqual(curve[-1][0], len(curve) - 1)
+
+    def test_one_second_sampling_over_the_requested_window(self):
+        curve = predict.compute_doppler_curve(self.sat, LAT, LON, START, self.end)
+        self.assertEqual(len(curve), 601)          # 10 min inclusive of both ends
+        self.assertTrue(all(isinstance(f, float) for _t, f in curve))
+
+    def test_step_s_is_honoured(self):
+        curve = predict.compute_doppler_curve(self.sat, LAT, LON, START, self.end,
+                                              step_s=10)
+        self.assertEqual(len(curve), 61)
+        self.assertEqual(curve[1][0], 10)
+
+    def test_the_curve_agrees_with_the_track_at_matching_instants(self):
+        """The readout on the page and the shift applied to the dongle are two
+        consumers of one propagation. If these two ever disagree, an operator
+        would be dialling their rig to a frequency the capture is not using."""
+        curve = dict(predict.compute_doppler_curve(self.sat, LAT, LON, START,
+                                                   self.end, step_s=10))
+        track = predict.compute_track(self.sat, LAT, LON, START, self.end, step_s=10)
+        self.assertGreater(len(track), 5)
+        for i, pt in enumerate(track):
+            self.assertAlmostEqual(curve[i * 10], pt["factor"], places=15)
+
+    def test_a_curve_is_usable_by_doppler_curve_at(self):
+        """The handoff itself: predict produces it, doppler.py consumes it, and
+        neither imports the other."""
+        sys.path.insert(0, os.path.join(os.path.dirname(_HERE),
+                                        "services", "satellites"))
+        import doppler
+        curve = predict.compute_doppler_curve(self.sat, LAT, LON, START, self.end)
+        mid = doppler.curve_at(curve, 0.5)
+        self.assertIsNotNone(mid)
+        self.assertAlmostEqual(mid, (curve[0][1] + curve[1][1]) / 2, places=9)
+        rate = doppler.tick_shift_rate(curve, 0.5, 437.8e6)
+        self.assertTrue(doppler.shift_rate_in_range(rate))
+
+    def test_a_degenerate_window_still_yields_a_usable_curve(self):
+        """start == end must not produce an empty curve — curve_at would then
+        return None and a capture would silently run uncorrected."""
+        curve = predict.compute_doppler_curve(self.sat, LAT, LON, START, START)
+        self.assertGreaterEqual(len(curve), 2)
+
+
+@unittest.skipUnless(_HAS_PREDICT, "skyfield/predict not installed")
 class RangeRateFactorTest(unittest.TestCase):
     """The pure helper, with hand-built vectors — no propagator involved."""
 

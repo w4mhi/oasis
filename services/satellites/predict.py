@@ -121,6 +121,37 @@ def range_rate_factor(position_km, velocity_km_s):
     return -range_rate / _C_KM_S
 
 
+def compute_doppler_curve(sat, lat, lon, start_dt, end_dt, step_s=1):
+    """[(t_offset_s, factor)] over [start_dt, end_dt] — the Doppler curve a
+    capture is tracked against, sampled fine enough to interpolate.
+
+    ONE vectorised propagation for the whole window, not one per sample. The
+    tracker re-aims the NCO ten times a second and must never touch a propagator
+    in that loop, so the entire curve is computed up front (~1200 samples for a
+    20-minute worst case, ~12 ms on a laptop) and doppler.curve_at interpolates
+    it from there.
+
+    Offsets are SECONDS FROM start_dt rather than timestamps: a capture measures
+    its own age off a monotonic clock, and handing it wall-clock times would make
+    the correction jump if the station's clock stepped mid-pass — which on an
+    offline box waiting for a GPS or RTC fix is not hypothetical.
+
+    Shares range_rate_factor with compute_track rather than repeating the dot
+    product, so the readout on the page and the shift applied to the dongle can
+    never disagree about which way the bird is going."""
+    ts = _ts()
+    observer = wgs84.latlon(lat, lon)
+    total = (end_dt - start_dt).total_seconds()
+    n = max(2, int(total // step_s) + 1)
+    offsets = [i * step_s for i in range(n)]
+    times = ts.from_datetimes([start_dt + datetime.timedelta(seconds=o) for o in offsets])
+    topo = (sat - observer).at(times)
+    r, v = topo.position.km, topo.velocity.km_per_s      # both (3, n)
+    return [(offsets[i], range_rate_factor((r[0][i], r[1][i], r[2][i]),
+                                           (v[0][i], v[1][i], v[2][i])))
+            for i in range(n)]
+
+
 def compute_track(sat, lat, lon, start_dt, end_dt, step_s=10, downlink_hz=None):
     """Sample the sub-satellite ground track + observer az/el over
     [start_dt, end_dt] at step_s seconds.
