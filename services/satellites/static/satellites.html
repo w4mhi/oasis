@@ -267,6 +267,20 @@ html, body { height: 100%; margin: 0; }
 /* Pre-AOS the number is the bird's arrival frequency, not a live one — say so
    rather than letting a static reading look like a stalled live one. */
 .dl-doppler.aos .dop-val { color: var(--text); }
+/* RX verdict for the ARMED downlink: can this station actually receive it?
+   Green go / amber no is deliberately coarse — the operator wants an answer
+   before a pass, not a table. The numbers behind it are in the tooltip. */
+.dl-rx { margin-top: .3rem; font-size: var(--fs-micro); font-weight: 700;
+  letter-spacing: .04em; display: inline-flex; align-items: center; gap: .35rem; }
+.dl-rx .rx-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: var(--text-dim); }
+.dl-rx.green .rx-dot { background: var(--green); }
+.dl-rx.green { color: var(--green); }
+.dl-rx.amber .rx-dot { background: var(--amber); }
+.dl-rx.amber { color: var(--amber); }
+.dl-rx.grey { color: var(--text-dim); cursor: pointer; text-decoration: underline dotted; }
+.dl-rx.grey:hover { color: var(--text); }
+.dl-rx .rx-why { font-weight: 400; color: var(--text-dim); letter-spacing: 0; }
 #listen-status.live .rec-dot { background: var(--green); }
 /* Capture-mode pills follow the studio convention: REC red, LISTEN green. */
 /* Transport cluster (⏺ Rec / ▶ Play / ⏹ Stop) — one dongle, so one global set.
@@ -923,6 +937,7 @@ function renderRoster() {
       <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}${noTle ? '<span class="chip chip-warn" title="This satellite is monitored but has no TLE in the cache, so no pass can be computed and it will never plot. Sync TLEs (tap the badge above) while online.">no TLE</span>' : ''}<span class="sat-elev" data-norad="${s.norad}"></span>${mon ? bellBtnHTML(s.norad) : ''}</div>
       ${!p ? `<div class="no-pass-hint">— ${noTle ? 'no TLE in cache' : 'no upcoming pass'} · no SDR controls —</div>`
            : (mon ? `<div class="dlpick">${dlPickerHTML(s)}</div>`
+                  + `<div class="dl-rx" data-norad="${s.norad}"></div>`
                   + `<div class="dl-doppler" data-norad="${s.norad}"></div>` : '')}
       <div class="sat-bottom">
         ${mon ? `<span class="dl-status" data-norad="${s.norad}"></span>` : '<span></span>'}
@@ -1884,8 +1899,81 @@ function updateListenUI() {
     }
     el.classList.toggle('rec', st.rec); el.classList.toggle('live', !!st.live);
   });
+  updateRx();
   updateDoppler();
   updateTransport();
+}
+
+// RX verdict for the ARMED downlink — can this station actually receive it?
+//
+// The verdict is computed SERVER-side and arrives on each downlink as `rx`,
+// because the answer needs the measured dongle error, the carrier and the mode
+// together. Mirroring that arithmetic here would be a second implementation to
+// drift, and this one would be the copy nobody updates.
+//
+// Per-downlink and not per-station on purpose: 20 ppm is invisible on FM at
+// 145 MHz and fatal on CW at 435 MHz, so a single global "your dongle is fine"
+// badge would be wrong half the time.
+function updateRx() {
+  document.querySelectorAll('.dl-rx[data-norad]').forEach(el => {
+    const norad = +el.dataset.norad;
+    const armedHere = !!_armed && String(_armed.norad) === String(norad);
+    const sat = armedHere ? ROSTER.find(s => String(s.norad) === String(norad)) : null;
+    const dl = sat && (sat.downlinks || []).find(d =>
+      Math.abs(d.freq_mhz - _armed.freq) < 1e-6
+      && (!_armed.mode || (d.mode || '') === _armed.mode));
+    const rx = dl && dl.rx;
+    el.classList.remove('green', 'amber', 'grey');
+    el.onclick = null;
+    if (!rx) { el.textContent = ''; return; }
+    el.classList.add(rx.level);
+    const kHz = v => (v == null ? '?' : (v / 1000).toFixed(1) + ' kHz');
+    if (rx.level === 'grey') {
+      el.innerHTML = '<span class="rx-dot"></span>RX ? '
+        + '<span class="rx-why">dongle not checked — tap to measure</span>';
+      el.title = 'Measure the dongle’s frequency error against a known '
+        + 'transmitter (NOAA weather radio). Takes about 20 s and holds the dongle.';
+      el.onclick = () => runCalibration();
+      return;
+    }
+    const label = rx.level === 'green' ? 'RX GOOD' : 'RX POOR';
+    el.innerHTML = `<span class="rx-dot"></span>${label} `
+      + `<span class="rx-why">${rx.reason}</span>`;
+    // The numbers stay in the tooltip: the row has to stay one line in a 360px
+    // card, and the operator wants the verdict first and the arithmetic second.
+    el.title = `dongle error ${kHz(rx.offset_hz)} + Doppler ${kHz(rx.doppler_hz)}`
+      + ` = ${kHz(rx.budget_hz)} against a ${kHz(rx.tolerance_hz)} window`
+      + (rx.tracked ? ' (Doppler-tracked capture)' : '');
+  });
+}
+
+// Run the dongle frequency check. Holds the dongle for ~20 s, so it is refused
+// server-side while a capture runs rather than silently ending one.
+async function runCalibration() {
+  if (!confirm('Measure the dongle’s frequency error?\n\n'
+             + 'This holds the dongle for about 20 seconds and listens to NOAA '
+             + 'weather radio on 162.550 MHz. You need to be in range of a '
+             + 'weather transmitter.')) return;
+  try {
+    const r = await fetch('/api/satellites/calibrate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+      body: '{}' });
+    const j = await r.json();
+    if (!j.ok) { alert('Frequency check failed:\n\n' + (j.error || 'unknown error')); return; }
+    const c = j.calibration || {};
+    alert(`Dongle frequency error: ${c.ppm} ppm (${c.offset_hz} Hz at `
+        + `${(c.reference_hz / 1e6).toFixed(3)} MHz).\n\n`
+        + 'This is a screening measurement, good to a couple of ppm.');
+    // Re-fetch the roster: the verdict lives on each downlink and is computed
+    // server-side from the stored ppm, so a new measurement only shows up once
+    // the roster is read again.
+    const meta = await (await fetch('/api/satellites')).json();
+    ROSTER = meta.satellites; STATION = meta.station;
+    renderRoster();
+  } catch (e) {
+    alert('Frequency check failed: ' + e);
+  }
 }
 
 // DOPPLER readout — where the ARMED downlink actually is right now.

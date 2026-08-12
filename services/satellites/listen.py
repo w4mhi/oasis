@@ -30,6 +30,11 @@ import time
 SAMPLE_RATE = 48000       # rtl_fm -s — matches the proven aprs-sdr-feed build
 MAX_SECONDS = 20 * 60     # safety cap: a forgotten recording can't run forever
 DEFAULT_GAIN = "40"
+# "assume the dongle is perfect". Harmless at 144 MHz APRS, where even 20 ppm is
+# 2.9 kHz inside a 48 kHz window; fatal at 435 MHz in a 12 kHz SSB window, where
+# the same dongle is 8.7 kHz off and the signal simply is not there. Callers pass
+# the MEASURED value (see calibrate.rtl_fm_ppm_arg); this is only the fallback
+# for a station that has never run the frequency check.
 DEFAULT_PPM = "0"
 
 # ── Disk budget for configuration/sat-recordings/ ────────────────────────────

@@ -115,6 +115,11 @@ def api_satellites():
     # Also tag each downlink with v1 support (FM family) + a blurb so the roster
     # buttons ghost unsupported modes without their own table.
     by_norad = tle.index_by_norad(tle.load_cache(config_paths.tle_cache_dir(SUITE_ROOT)))
+    # Read the dongle calibration ONCE for the whole roster, not per downlink:
+    # 150 satellites with several downlinks each would otherwise stat and parse
+    # the same small file a thousand times per refresh.
+    import calibrate
+    _ppm = calibrate.stored_ppm(calibrate.calibration_path(SUITE_ROOT))
     sats = []
     for s in data["satellites"]:
         entry = by_norad.get(s["norad"])
@@ -124,8 +129,14 @@ def api_satellites():
         # Decorate with mode support FIRST, then group: the grouping key is
         # (frequency, demod), and `demod` is what mode_support resolves. Grouping
         # earlier would have to guess which modes capture identically.
+        # rx: can this station actually receive that downlink? Computed here,
+        # server-side, because the answer depends on the measured dongle error,
+        # the carrier and the mode together — and mirroring that arithmetic into
+        # JS would be one more thing to drift.
         s["downlinks"] = roster.group_downlinks(
-            [dict(d, **listen.mode_support(d.get("mode")))
+            [dict(d, **listen.mode_support(d.get("mode")),
+                  rx=calibrate.rx_verdict(_ppm, listen.mhz_to_hz(d["freq_mhz"]),
+                                          listen.mode_support(d.get("mode"))["demod"]))
              for d in roster.legacy_downlinks(s)])
         sats.append(s)
     # Fallback ONLY when the roster is empty: the offline bundle ships the TLE cache
@@ -687,6 +698,14 @@ def _resolve_downlink(downlinks, req_freq, req_mode=None):
     return dl
 
 
+def _capture_ppm():
+    """The frequency correction to hand rtl_fm, from the stored measurement.
+    Falls back to listen.DEFAULT_PPM when the station has never been calibrated —
+    which is exactly the behaviour every capture had before this existed."""
+    import calibrate
+    return calibrate.rtl_fm_ppm_arg(calibrate.calibration_path(SUITE_ROOT))
+
+
 def _prep_capture(norad, req_freq, req_mode=None):
     """Shared validation for /listen (record) and /listen/stream: deps, dongle,
     exclusivity, and resolving the requested downlink + mode. Returns
@@ -765,7 +784,10 @@ def api_listen():
         return jsonify({"ok": False, "error": space_err,
                         "code": "INSUFFICIENT_STORAGE"}), 507
     try:
-        started = listen.start(freq_hz, norad, out,
+        # The MEASURED dongle error, not the "assume it is perfect" default.
+        # At 435 MHz an uncalibrated dongle can sit kilohertz off, which is the
+        # whole difference between a recording and a file full of noise.
+        started = listen.start(freq_hz, norad, out, ppm=_capture_ppm(),
                                device_serial=device_serial, dmode=dmode,
                                radio_channel=radio_channel)
     except Exception as e:
@@ -804,7 +826,8 @@ def api_listen_stream():
     except _CaptureError as e:
         return jsonify({"ok": False, "error": str(e), "code": e.slug}), e.code
     try:
-        gen, mime = listen.stream(freq_hz, norad, device_serial=device_serial, dmode=dmode)
+        gen, mime = listen.stream(freq_hz, norad, ppm=_capture_ppm(),
+                                  device_serial=device_serial, dmode=dmode)
     except RuntimeError as e:
         busy = "busy" in str(e)
         return jsonify({"ok": False, "error": str(e),
@@ -813,6 +836,64 @@ def api_listen_stream():
     resp = Response(stream_with_context(gen), mimetype=mime)
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+@bp.route("/api/satellites/calibrate", methods=["GET"])
+def api_calibrate_get():
+    """The stored dongle frequency check. GET is safe and idempotent — it never
+    touches the dongle."""
+    import calibrate
+    data = calibrate.load(calibrate.calibration_path(SUITE_ROOT))
+    return jsonify({"ok": True, "calibration": data or None,
+                    "reference_choices": calibrate.NWR_CHANNELS_HZ})
+
+
+@bp.route("/api/satellites/calibrate", methods=["POST"])
+@require_oasis_request
+def api_calibrate():
+    """Measure the dongle's frequency error against a known transmitter.
+
+    Holds the dongle for ~20 s, so it obeys the same exclusivity as a capture —
+    running this mid-pass would kill the recording, and finding that out
+    afterwards would be a poor trade for a number that keeps."""
+    import calibrate
+    import listen
+    from common import hardware
+    body = request.get_json(silent=True) or {}
+    try:
+        ref = int(body.get("reference_hz") or calibrate.DEFAULT_REFERENCE_HZ)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "reference_hz must be an integer Hz",
+                        "code": "INVALID_REFERENCE"}), 400
+
+    inv = hardware.load(SUITE_ROOT)
+    pre = listen.preconditions(inv=inv)
+    if pre["missing_deps"]:
+        return jsonify({"ok": False, "code": "SDR_TOOLS_MISSING",
+                        "error": "missing tools: " + ", ".join(pre["missing_deps"])}), 400
+    if not pre["dongle_present"]:
+        return jsonify({"ok": False, "error": "no RTL-SDR dongle detected",
+                        "code": "NO_DONGLE"}), 400
+    if pre["busy"]:
+        return jsonify({"ok": False, "code": "DONGLE_BUSY",
+                        "error": f"the dongle is in use by {pre['holder'] or 'another service'}"
+                                 " — stop it first"}), 409
+    if listen.is_capturing():
+        return jsonify({"ok": False, "code": "ALREADY_CAPTURING",
+                        "error": "a capture is running — calibrating would end it"}), 409
+
+    dev = inv.devices.get(inv.assignments.get("satellites")) or {}
+    try:
+        result = calibrate.measure(device_serial=dev.get("serial") or None,
+                                   reference_hz=ref)
+    except RuntimeError as e:
+        return jsonify({"ok": False, "error": str(e), "code": "CALIBRATION_FAILED"}), 400
+    except Exception as e:                                   # noqa: BLE001
+        return jsonify({"ok": False, "error": str(e), "code": "CALIBRATION_FAILED"}), 500
+    result["measured_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    result["device"] = dev.get("serial") or None
+    calibrate.save(calibrate.calibration_path(SUITE_ROOT), result)
+    return jsonify({"ok": True, "calibration": result})
 
 
 @bp.route("/api/satellites/listen/stop", methods=["POST"])
