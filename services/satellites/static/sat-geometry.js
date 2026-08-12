@@ -98,6 +98,39 @@
     return segs.filter(function (s) { return s.length >= 2; }).map(function (s) { return trace(s) + ' Z'; });
   }
 
+  // Doppler factor at wall-clock time tMs, linearly interpolated between a
+  // track's 10 s samples. The factor is dimensionless (−ṙ/c), so the CALLER
+  // multiplies by whatever carrier is armed — the server deliberately does not
+  // pick a frequency on the operator's behalf.
+  //
+  // Returns { factor, phase } with phase 'before' | 'live' | 'after', clamped to
+  // the track's ends. The clamp is not a fudge: before AOS the first sample is
+  // the frequency to dial the rig to when the bird appears, which is the number
+  // an operator actually wants while waiting. What to DO with each phase is the
+  // page's business, not this function's, hence the phase rather than a null.
+  //
+  // null when there is no usable track — a caller that fetched one before the
+  // server carried `factor` gets nothing rather than a plausible zero.
+  function dopplerAt(track, tMs) {
+    if (!track || track.length < 2) return null;
+    var first = track[0], last = track[track.length - 1];
+    if (typeof first.factor !== 'number' || typeof last.factor !== 'number') return null;
+    var t0 = Date.parse(first.t), tN = Date.parse(last.t);
+    if (!isFinite(t0) || !isFinite(tN)) return null;
+    if (tMs <= t0) return { factor: first.factor, phase: 'before' };
+    if (tMs >= tN) return { factor: last.factor, phase: 'after' };
+    for (var i = 1; i < track.length; i++) {
+      var tb = Date.parse(track[i].t);
+      if (!isFinite(tb) || tb < tMs) continue;
+      var ta = Date.parse(track[i - 1].t), span = tb - ta;
+      var fa = track[i - 1].factor, fb = track[i].factor;
+      if (typeof fa !== 'number' || typeof fb !== 'number') return null;
+      return { factor: span > 0 ? fa + (fb - fa) * ((tMs - ta) / span) : fb,
+               phase: 'live' };
+    }
+    return { factor: last.factor, phase: 'after' };
+  }
+
   return { project, splitAntimeridian, splitAtNow, polar,
-           footprintRadiusDeg, footprint, footprintPaths };
+           footprintRadiusDeg, footprint, footprintPaths, dopplerAt };
 });

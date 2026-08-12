@@ -103,10 +103,32 @@ def compute_passes(sat, lat, lon, start_dt, hours=48, min_elev=10.0, lookback_mi
 _C_KM_S = 299792.458
 
 
+def range_rate_factor(position_km, velocity_km_s):
+    """The dimensionless Doppler factor for a topocentric position/velocity
+    pair: -range_rate/c, positive while approaching and negative while receding.
+
+    The FACTOR is what travels, not a frequency. Multiply it by whatever carrier
+    is armed and you have the shift in Hz, so one sample serves 145.8 and 437.8
+    MHz alike and nothing downstream has to guess which downlink the operator
+    picked — the guess is exactly what made /track's doppler_hz wrong by ~3x.
+
+    Zero for a degenerate (zero-range) pair rather than dividing by it."""
+    r, v = position_km, velocity_km_s
+    rng = (r[0] ** 2 + r[1] ** 2 + r[2] ** 2) ** 0.5
+    if not rng:
+        return 0.0
+    range_rate = (r[0] * v[0] + r[1] * v[1] + r[2] * v[2]) / rng   # + = receding
+    return -range_rate / _C_KM_S
+
+
 def compute_track(sat, lat, lon, start_dt, end_dt, step_s=10, downlink_hz=None):
     """Sample the sub-satellite ground track + observer az/el over
-    [start_dt, end_dt] at step_s seconds. If downlink_hz is given, include the
-    Doppler shift (Hz) from the range-rate: +shift approaching, -shift receding."""
+    [start_dt, end_dt] at step_s seconds.
+
+    Every sample carries `factor`, the dimensionless Doppler factor (see
+    range_rate_factor) — unconditionally, because it does not depend on any
+    frequency. `doppler_hz` is that factor times downlink_hz when one is given,
+    and is retained only for callers that predate the factor."""
     ts = _ts()
     observer = wgs84.latlon(lat, lon)
     total = (end_dt - start_dt).total_seconds()
@@ -117,19 +139,14 @@ def compute_track(sat, lat, lon, start_dt, end_dt, step_s=10, downlink_hz=None):
         topo = (sat - observer).at(t)
         alt, az, _ = topo.altaz()
         sub = wgs84.subpoint(sat.at(t))
-        doppler = None
-        if downlink_hz:
-            r = topo.position.km
-            v = topo.velocity.km_per_s
-            rng = (r[0] ** 2 + r[1] ** 2 + r[2] ** 2) ** 0.5
-            range_rate = (r[0] * v[0] + r[1] * v[1] + r[2] * v[2]) / rng  # +=receding
-            doppler = -range_rate / _C_KM_S * downlink_hz
+        factor = range_rate_factor(topo.position.km, topo.velocity.km_per_s)
         pts.append({
             "t": (start_dt + datetime.timedelta(seconds=i * step_s)).isoformat(),
             "lat": sub.latitude.degrees,
             "lon": sub.longitude.degrees,
             "el": alt.degrees,
             "az": az.degrees,
-            "doppler_hz": doppler,
+            "factor": factor,
+            "doppler_hz": (factor * downlink_hz) if downlink_hz else None,
         })
     return pts

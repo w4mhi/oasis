@@ -479,6 +479,12 @@ def api_track():
     data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     entry = next((s for s in data["satellites"] if s["norad"] == norad_i), None)
     dls = roster.legacy_downlinks(entry) if entry else []
+    # DEPRECATED, and only still here so a page cached before `factor` existed
+    # keeps rendering. doppler_hz is computed for whichever downlink sorts first
+    # — NOT the one the operator armed — and Doppler scales with the carrier, so
+    # it is ~3x wrong whenever a bird has both a 2 m and a 70 cm downlink. Every
+    # sample now also carries the dimensionless `factor`; multiply that by the
+    # armed frequency and the arbitrary [0] never enters the answer.
     dl = int(dls[0]["freq_mhz"] * 1_000_000) if dls else None
     try:
         import predict   # optional dep — see the note at the top of this view

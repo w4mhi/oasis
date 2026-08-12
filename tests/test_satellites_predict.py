@@ -147,5 +147,71 @@ class TrackTest(unittest.TestCase):
         self.assertLess(min(dopps), 0)       # receding → negative shift
         self.assertGreater(dopps[0], dopps[-1])
 
+    def test_factor_is_served_without_any_downlink(self):
+        """The factor is dimensionless, so it does not depend on a frequency and
+        must not wait for one. A caller that never passes downlink_hz — which is
+        every caller that intends to multiply by the ARMED carrier — still gets a
+        usable Doppler out of the track."""
+        r, s = self._one_pass()
+        pts = predict.compute_track(self.sat, LAT, LON, r, s, step_s=10)
+        self.assertTrue(all(isinstance(p["factor"], float) for p in pts))
+        self.assertTrue(all(p["doppler_hz"] is None for p in pts))
+        self.assertGreater(max(p["factor"] for p in pts), 0)   # approaching
+        self.assertLess(min(p["factor"] for p in pts), 0)      # receding
+
+    def test_doppler_hz_is_exactly_the_factor_times_the_carrier(self):
+        """The deprecated doppler_hz must stay a pure derivation of the factor,
+        not a second implementation — otherwise the two drift and a page that
+        reads one disagrees with a page that reads the other."""
+        r, s = self._one_pass()
+        pts = predict.compute_track(self.sat, LAT, LON, r, s, step_s=10,
+                                    downlink_hz=437_800_000)
+        for p in pts:
+            self.assertAlmostEqual(p["doppler_hz"], p["factor"] * 437_800_000, places=6)
+
+    def test_the_same_factor_serves_both_bands(self):
+        """The bug this replaces: /track computed Doppler for downlinks[0], so a
+        bird with 145.8 and 437.8 MHz downlinks reported a shift ~3x wrong on
+        whichever one the operator actually armed."""
+        r, s = self._one_pass()
+        pts = predict.compute_track(self.sat, LAT, LON, r, s, step_s=10)
+        peak = max(pts, key=lambda p: abs(p["factor"]))["factor"]
+        self.assertAlmostEqual((peak * 437.8e6) / (peak * 145.8e6), 437.8 / 145.8,
+                               places=9)
+
+    def test_leo_doppler_is_physically_plausible(self):
+        """A sanity floor/ceiling: a LEO pass shifts 70 cm by roughly 10 kHz. A
+        factor off by a thousand (a km/s-vs-m/s slip, say) still flips sign
+        correctly and would sail past every other test here."""
+        r, s = self._one_pass()
+        pts = predict.compute_track(self.sat, LAT, LON, r, s, step_s=10)
+        peak = max(abs(p["factor"]) for p in pts) * 437.8e6
+        self.assertGreater(peak, 3_000)
+        self.assertLess(peak, 12_000)
+
+
+@unittest.skipUnless(_HAS_PREDICT, "skyfield/predict not installed")
+class RangeRateFactorTest(unittest.TestCase):
+    """The pure helper, with hand-built vectors — no propagator involved."""
+
+    def test_head_on_approach_is_positive(self):
+        # 1000 km out along +x, closing at 1 km/s.
+        f = predict.range_rate_factor((1000.0, 0.0, 0.0), (-1.0, 0.0, 0.0))
+        self.assertAlmostEqual(f, 1.0 / 299792.458, places=12)
+
+    def test_head_on_recession_is_negative(self):
+        f = predict.range_rate_factor((1000.0, 0.0, 0.0), (1.0, 0.0, 0.0))
+        self.assertAlmostEqual(f, -1.0 / 299792.458, places=12)
+
+    def test_purely_tangential_motion_has_no_shift(self):
+        """Closest approach: all the velocity is across the line of sight, so the
+        range rate — and only the range rate — is zero."""
+        f = predict.range_rate_factor((1000.0, 0.0, 0.0), (0.0, 7.5, 0.0))
+        self.assertEqual(f, 0.0)
+
+    def test_zero_range_does_not_divide_by_zero(self):
+        self.assertEqual(predict.range_rate_factor((0.0, 0.0, 0.0), (1.0, 2.0, 3.0)), 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

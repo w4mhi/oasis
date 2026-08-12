@@ -253,6 +253,18 @@ html, body { height: 100%; margin: 0; }
    without opening the list, since a select that merely refuses on click reads as
    broken. */
 .dlsel.unassigned { color: var(--text-dim); border-style: dashed; }
+/* DOPPLER readout — the frequency to dial the OPERATOR'S rig to, for the armed
+   downlink. It appears only on the armed row and only while there is a track to
+   read, so an empty line never holds space in a 150-row list. Receive-only by
+   nature: an RTL-SDR cannot work a transponder, so this is a number to read, not
+   a control. */
+.dl-doppler { margin-top: .3rem; font-family: var(--mono); font-size: var(--fs-micro);
+  color: var(--text-dim); letter-spacing: .02em; }
+.dl-doppler .dop-val { color: var(--accent); font-weight: 700; }
+.dl-doppler .dop-shift { color: var(--text); }
+/* Pre-AOS the number is the bird's arrival frequency, not a live one — say so
+   rather than letting a static reading look like a stalled live one. */
+.dl-doppler.aos .dop-val { color: var(--text); }
 #listen-status.live .rec-dot { background: var(--green); }
 /* Capture-mode pills follow the studio convention: REC red, LISTEN green. */
 /* Transport cluster (⏺ Rec / ▶ Play / ⏹ Stop) — one dongle, so one global set.
@@ -884,7 +896,8 @@ function renderRoster() {
         <span class="nmwrap"><span class="nm">${bareName}</span><span class="subline">${subName ? `<span class="desig">${subName}</span>` : ''}<span class="passwin" data-norad="${s.norad}">${passWindow(p)}</span></span></span><span class="pass-hint" data-norad="${s.norad}">${passHint(p, s.norad)}</span></label>
       <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}${noTle ? '<span class="chip chip-warn" title="This satellite is monitored but has no TLE in the cache, so no pass can be computed and it will never plot. Sync TLEs (tap the badge above) while online.">no TLE</span>' : ''}<span class="sat-elev" data-norad="${s.norad}"></span>${mon ? bellBtnHTML(s.norad) : ''}</div>
       ${!p ? `<div class="no-pass-hint">— ${noTle ? 'no TLE in cache' : 'no upcoming pass'} · no SDR controls —</div>`
-           : (mon ? `<div class="dlpick">${dlPickerHTML(s)}</div>` : '')}
+           : (mon ? `<div class="dlpick">${dlPickerHTML(s)}</div>`
+                  + `<div class="dl-doppler" data-norad="${s.norad}"></div>` : '')}
       <div class="sat-bottom">
         ${mon ? `<span class="dl-status" data-norad="${s.norad}"></span>` : '<span></span>'}
         <span class="sat-meter" data-norad="${s.norad}">${'<span class="seg"></span>'.repeat(5)}</span></div>
@@ -1218,6 +1231,10 @@ function updatePills() {
   });
   _runPassAlerts();
   updateCoverage();
+  // On the tick, not just the render: outside the 1 h views renderRoster does
+  // not run, and a frequency readout that only moved when the list happened to
+  // rebuild would be worse than none.
+  updateDoppler();
 }
 
 // Coverage wash: tint the local map green while a PLOTTED satellite is above the
@@ -1814,7 +1831,48 @@ function updateListenUI() {
     }
     el.classList.toggle('rec', st.rec); el.classList.toggle('live', !!st.live);
   });
+  updateDoppler();
   updateTransport();
+}
+
+// DOPPLER readout — where the ARMED downlink actually is right now.
+//
+// The carrier comes from _armed and the shift from the track's dimensionless
+// factor. It deliberately does NOT use /track's doppler_hz: that is computed for
+// downlinks[0], so on a bird carrying both 145.8 and 437.8 MHz it is wrong by
+// roughly the ratio of the two. Factor x armed carrier has no such guess in it.
+//
+// Shown on the armed row only. Everywhere else the element stays empty rather
+// than holding a dash — this sits in a list that can run to 150 rows, and a
+// column of placeholders is worse than no column.
+function updateDoppler() {
+  document.querySelectorAll('.dl-doppler[data-norad]').forEach(el => {
+    const norad = +el.dataset.norad;
+    const armedHere = !!_armed && String(_armed.norad) === String(norad)
+      && isFinite(_armed.freq);
+    const plot = armedHere ? PLOTTED[norad] : null;
+    const d = plot ? satgeo.dopplerAt(plot.track, Date.now()) : null;
+    // After LOS there is no longer a frequency to dial to, and an unarmed row
+    // has no carrier to apply the factor to. Both mean: show nothing.
+    if (!d || d.phase === 'after') { el.textContent = ''; el.classList.remove('aos'); return; }
+    const carrier = _armed.freq * 1e6;            // MHz -> Hz
+    const shift = d.factor * carrier;             // Hz; + while approaching
+    const aos = d.phase === 'before';
+    el.classList.toggle('aos', aos);
+    // 5 decimals = 10 Hz, which is finer than the interpolation between the
+    // track's 10 s samples can honestly claim, but it is the resolution a rig's
+    // VFO reads in and rounding coarser would hide the number moving.
+    el.innerHTML = 'DOPPLER <span class="dop-val">'
+      + ((carrier + shift) / 1e6).toFixed(5) + '</span> MHz '
+      + '<span class="dop-shift">' + (shift >= 0 ? '+' : '-')
+      + Math.abs(shift / 1000).toFixed(2) + ' kHz</span>'
+      + (aos ? ' at AOS' : '');
+    el.title = aos
+      ? 'Where the downlink will arrive when the bird rises — shifted up by the '
+        + 'approach, then falling through the pass. Dial your own rig here.'
+      : 'Where the downlink actually is right now, corrected for Doppler. '
+        + 'For your own rig — an RTL-SDR is receive-only.';
+  });
 }
 // Capture model — a frequency button ARMS a downlink (steady highlight); the
 // header transport (Rec/Play/Stop) then acts on the armed one. One dongle → one
