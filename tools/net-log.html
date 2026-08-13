@@ -501,13 +501,12 @@ function sendToICS309() {
   const nd = document.getElementById('nd').value.trim();
   const nf = document.getElementById('nf').value.trim();
 
-  // Build a UTC time string HHmmZ from an ISO timestamp (e.g. "2026-06-13T18:05:00.000Z")
-  function toHHmmZ(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (isNaN(d)) return '';
-    return String(d.getUTCHours()).padStart(2,'0') + String(d.getUTCMinutes()).padStart(2,'0') + 'Z';
-  }
+  // Check-ins are stored UTC and displayed as HHmmZ on this page, which is how
+  // nets are logged. ICS-309 is a local-time form, so every time crossing this
+  // boundary is CONVERTED, not relabelled — otherwise one communications log
+  // ends up holding 1805Z in a field whose own auto-fill writes 1305L, with a
+  // single letter distinguishing them. See common/js/form-time.js.
+  const toIcsTime = OasisFormTime.toLocalHHMM;
 
   // Map each check-in row to an ICS-309 log row.
   // Format: time=HHmmZ, msg="name — city, state [notes]", fcs=station call, tcs=net control call
@@ -518,7 +517,7 @@ function sendToICS309() {
     if (r.notes) parts.push(r.notes);
     if (r.traffic) parts.push('(traffic)');
     return {
-      time: toHHmmZ(r.utc),
+      time: toIcsTime(r.utc),
       msg:  parts.join(' — '),
       fcs:  r.call || '',
       fmn:  '',
@@ -533,8 +532,8 @@ function sendToICS309() {
     'f-net':       nn + (nf ? ' (' + nf + ')' : ''),
     'f-df':        nd,
     'f-dt':        nd,
-    'f-tf':        rows.length ? toHHmmZ(rows[0].utc) : '',
-    'f-tt':        rows.length ? toHHmmZ(rows[rows.length-1].utc) : '',
+    'f-tf':        rows.length ? toIcsTime(rows[0].utc) : '',
+    'f-tt':        rows.length ? toIcsTime(rows[rows.length-1].utc) : '',
     'f-op-name':   '',
     'f-op-call':   nc,
     'f-op-sig':    '',
@@ -716,6 +715,7 @@ document.querySelectorAll('.ltab').forEach(tab => {
 <script src="/maps/mapengine/pmtiles.js"></script>
 <script src="/common/js/maidenhead.js"></script>
 <script src="/common/js/form-backup.js"></script>
+<script src="/common/js/form-time.js"></script>
 <script src="/common/js/form-toolbar.js"></script>
 <script>
 /* Server backup of the net log — survives a cleared cache / swapped device.

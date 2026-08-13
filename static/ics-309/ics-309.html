@@ -207,7 +207,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if(el && !el.value) el.value=today;
   });
   const tfEl=document.getElementById('f-tf');
-  if(tfEl && !tfEl.value) tfEl.value=String(_now.getHours()).padStart(2,'0')+String(_now.getMinutes()).padStart(2,'0')+'L';
+  if(tfEl && !tfEl.value) tfEl.value=OasisFormTime.hhmmL(_now);
   if(!document.querySelector('#log-body tr')){for(let i=0;i<10;i++)addRow();}
 });
 
@@ -232,7 +232,7 @@ function fmtDate(id){
   return v;
 }
 function fmtTime(d){
-  return String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'L';
+  return OasisFormTime.hhmmL(d);
 }
 function autoDate(el,type){
   if(el.value)return;
@@ -699,6 +699,7 @@ function showToast(msg,type,duration=3500){
 }
 </script>
 <script src="/common/js/form-backup.js"></script>
+<script src="/common/js/form-time.js"></script>
 <script src="/common/js/form-toolbar.js"></script>
 <script>
 /* Server backup of this ICS log — survives a cleared cache / swapped device.

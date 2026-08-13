@@ -118,15 +118,15 @@ tr.row-overflow td input{color:var(--text-dim);}
       <div class="fld"><label>1. Incident Name</label><input type="text" id="f-inc" placeholder="Enter incident name" oninput="persist()"></div>
       <div class="fg g2">
         <div class="fld"><label>2. Date Prepared</label><input type="date" id="f-dp" oninput="persist()"></div>
-        <div class="fld"><label>2. Time Prepared</label><input type="text" id="f-tp" placeholder="0000" oninput="persist()"></div>
+        <div class="fld"><label>2. Time Prepared</label><input type="text" id="f-tp" placeholder="HHmmL" oninput="persist()"></div>
       </div>
     </div>
     <span class="sec-lbl">3. Operational Period</span>
     <div class="fg g4">
       <div class="fld"><label>Date From</label><input type="date" id="f-df" oninput="persist()"></div>
       <div class="fld"><label>Date To</label><input type="date" id="f-dt" oninput="persist()"></div>
-      <div class="fld"><label>Time From</label><input type="text" id="f-tf" placeholder="0000" oninput="persist()"></div>
-      <div class="fld"><label>Time To</label><input type="text" id="f-tt" placeholder="2359" oninput="persist()"></div>
+      <div class="fld"><label>Time From</label><input type="text" id="f-tf" placeholder="HHmmL" oninput="persist()"></div>
+      <div class="fld"><label>Time To</label><input type="text" id="f-tt" placeholder="HHmmL" oninput="persist()"></div>
     </div>
   </div>
 
@@ -176,7 +176,7 @@ tr.row-overflow td input{color:var(--text-dim);}
       <div class="fld"><label>Name</label><input type="text" id="f-pn" placeholder="First Last" oninput="persist()"></div>
       <div class="fld"><label>Signature</label><input type="text" id="f-ps" placeholder="— (digital sig not supported)" oninput="persist()"></div>
       <div class="fld"><label>IAP Page #</label><input type="text" id="f-pg" placeholder="—" oninput="persist()"></div>
-      <div class="fld"><label>Date / Time</label><input type="text" id="f-pd" placeholder="MM/DD/YYYY HHmm" oninput="persist()"></div>
+      <div class="fld"><label>Date / Time</label><input type="text" id="f-pd" placeholder="YYYYMMDD HHmmL" oninput="persist()"></div>
     </div>
   </div>
 
@@ -246,6 +246,7 @@ tr.row-overflow td input{color:var(--text-dim);}
 
 <!-- Load template and pdf-lib (must exist in same folder / dependencies/) -->
 <script src="/common/js/form-backup.js"></script>
+<script src="/common/js/form-time.js"></script>
 <script src="/common/js/form-toolbar.js"></script>
 <script src="./ics205-template.js"></script>
 <script src="/common/dependencies/pdf-lib.min.js"></script>
@@ -276,18 +277,11 @@ window.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById(id);
     if (el && !el.value) el.value = today;
   });
+  // Canonical ICS time/stamp — see common/js/form-time.js
   const tpEl = document.getElementById('f-tp');
-  if (tpEl) {
-    tpEl.value = String(_now.getHours()).padStart(2,'0') + String(_now.getMinutes()).padStart(2,'0');
-  }
+  if (tpEl) tpEl.value = OasisFormTime.hhmmL(_now);
   const pdEl = document.getElementById('f-pd');
-  if (pdEl) {
-    const mo = String(_now.getMonth()+1).padStart(2,'0');
-    const dy = String(_now.getDate()).padStart(2,'0');
-    const hh = String(_now.getHours()).padStart(2,'0');
-    const mm = String(_now.getMinutes()).padStart(2,'0');
-    pdEl.value = `${mo}/${dy}/${_now.getFullYear()} ${hh}${mm}`;
-  }
+  if (pdEl) pdEl.value = OasisFormTime.stamp(_now);
   if (!document.querySelector('#ch-body tr')) {
     for (let i = 0; i < 8; i++) addCh();
   }

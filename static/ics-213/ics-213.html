@@ -185,10 +185,10 @@ function fmtDatePicker(id){
   return m+'/'+d+'/'+y;
 }
 function fmtTimeNow(d){
-  return String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'L';
+  return OasisFormTime.hhmmL(d);
 }
 function fmtDateISO(d){
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return OasisFormTime.dateISO(d);
 }
 
 function persist(){
@@ -538,6 +538,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 });
 </script>
 <script src="/common/js/form-backup.js"></script>
+<script src="/common/js/form-time.js"></script>
 <script src="/common/js/form-toolbar.js"></script>
 <script>
 /* Server backup of this ICS form — survives a cleared cache / swapped device.
