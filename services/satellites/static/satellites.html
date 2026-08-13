@@ -890,14 +890,26 @@ function nextPassOf(norad) {
   const now = Date.now();
   return (PASSES[norad] || []).find(p => new Date(p.set).getTime() > now) || null;
 }
-// Footprint is drawn only from 15 min before AOS through LOS — the window where
-// it's actually useful (mirrors the countdown pill's lifetime), which also keeps
-// the world map uncluttered when the sat is on the far side of its orbit.
+// Two map windows, both closing at LOS, opening at different leads.
+//
+// FOOTPRINT — 15 min. It mirrors the countdown pill's lifetime and marks where
+// the bird can actually be worked. Drawing it earlier fills the map with
+// coverage circles for birds nowhere near usable.
+//
+// LABEL — 60 min, matching the roster's own "· 1h" views. A name is only
+// identity, and identity is wanted from the moment you start planning against a
+// pass, not from the moment the pass becomes workable. The set stays bounded
+// without any extra gate: syncPlotted() only ever plots birds already in
+// _satSelected, so labelling is scoped to birds the operator deliberately chose
+// to monitor.
+const FOOTPRINT_LEAD_MIN = 15, LABEL_LEAD_MIN = 60;
 function inFootprintWindow(norad) {
   const p = nextPassOf(norad);
-  if (!p) return false;
-  const now = Date.now();
-  return now >= new Date(p.rise).getTime() - 15 * 60000 && now <= new Date(p.set).getTime();
+  return !!p && satgeo.inPassWindow(p.rise, p.set, Date.now(), FOOTPRINT_LEAD_MIN);
+}
+function inLabelWindow(norad) {
+  const p = nextPassOf(norad);
+  return !!p && satgeo.inPassWindow(p.rise, p.set, Date.now(), LABEL_LEAD_MIN);
 }
 
 // The name as the ROSTER shows it — trailing "[LEO]"-style orbit tag stripped.
@@ -1609,11 +1621,11 @@ function redraw() {
         + `<path d="${SAT_ICON_PATH}"/></g>`;
       // Name label — the thing that makes the map answer "where is SO-50"
       // rather than only "what is this one". Always for the armed bird;
-      // otherwise gated on the pass window, the same gate the footprint uses. A
-      // dozen names for birds on the far side of the planet is exactly the
-      // clutter that made the map hard to read in the first place, and a bird
-      // you cannot work is not one you are hunting for.
-      if (armed || inFootprintWindow(norad)) {
+      // otherwise on the 1 h LABEL window, which opens well before the
+      // footprint's 15 min. Knowing which bird is which is useful while you are
+      // still deciding what to work; the footprint is a statement about
+      // workability and stays late on purpose.
+      if (armed || inLabelWindow(norad)) {
         const sat = ROSTER.find(r => String(r.norad) === String(norad));
         const nm = bareSatName(sat ? sat.name : norad);
         // The gap clears what the label sits beside, and the armed bird carries

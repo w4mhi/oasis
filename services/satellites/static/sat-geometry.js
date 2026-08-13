@@ -98,6 +98,23 @@
     return segs.filter(function (s) { return s.length >= 2; }).map(function (s) { return trace(s) + ' Z'; });
   }
 
+  // Is `nowMs` inside a pass window that opens `leadMin` before AOS and closes
+  // at LOS? Two of these exist on the map and they are deliberately different
+  // lengths, because they answer different questions. The footprint marks where
+  // the bird can actually be WORKED — a claim worth making late, or the map
+  // fills with coverage circles for birds nowhere near usable. The name label is
+  // only identity, and identity is wanted from the moment an operator starts
+  // planning against a pass, which is the roster's own 1 h horizon.
+  //
+  // Unparseable timestamps return false rather than comparing against NaN. Same
+  // answer, but a stated one: /passes returns partial results that fill in over
+  // later polls, so a half-formed entry is a thing that really arrives here.
+  function inPassWindow(rise, set, nowMs, leadMin) {
+    var a = Date.parse(rise), b = Date.parse(set);
+    if (!isFinite(a) || !isFinite(b)) return false;
+    return nowMs >= a - leadMin * 60000 && nowMs <= b;
+  }
+
   // Where a live marker's name label goes, in map user units. The label sits to
   // the RIGHT of the marker, except near the right edge where a long name would
   // run off the map — there it flips to the left and anchors at its end. y is
@@ -159,5 +176,6 @@
   }
 
   return { project, splitAntimeridian, splitAtNow, polar,
-           footprintRadiusDeg, footprint, footprintPaths, labelAnchor, dopplerAt };
+           footprintRadiusDeg, footprint, footprintPaths, inPassWindow,
+           labelAnchor, dopplerAt };
 });
