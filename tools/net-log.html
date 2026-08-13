@@ -114,13 +114,15 @@ tr.editing td{background:var(--panel-2);}
   </header>
 
   <div class="actions">
+    <button class="sbtn primary" onclick="sendToICS309()" title="Copy this log into ICS-309 and open it in a new tab">→ ICS-309</button>
+    <span class="sep">|</span>
+    <button class="sbtn" id="fb-save" title="Save this net log into server storage (static/net-log/saved/) so it survives a cleared browser cache or a swapped tablet">Save Log</button>
+    <button class="sbtn" id="fb-restore" title="Load a net log previously saved into server storage">Load Log</button>
+    <span class="sep">|</span>
     <button class="sbtn" onclick="window.print()" title="Print the log using your browser's print dialog">Print</button>
-    <button class="sbtn" onclick="exportCSV()" title="Export all check-ins as CSV into OASIS (static/net-log/saved/) so it stays on the device">Export CSV</button>
-    <button class="sbtn" onclick="exportCSVLocal()" title="Download the CSV to the machine this browser is running on instead of the device">Export CSV (local)</button>
-    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported net log CSV — from the device, or from this machine">Import CSV</button>
-    <button class="sbtn" onclick="sendToICS309()" title="Copy this log into ICS-309 and open it in a new tab">→ ICS-309</button>
-    <button class="sbtn" id="fb-save" title="Save this net log onto the device (survives a cleared browser cache or a swapped tablet)">Save to server</button>
-    <button class="sbtn" id="fb-restore" title="Restore a net log previously saved on this device">Restore</button>
+    <span class="sep">|</span>
+    <button class="sbtn" onclick="exportCSV()" title="Export all check-ins as CSV into server storage (static/net-log/saved/)">Export CSV</button>
+    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported net log CSV from server storage">Import CSV</button>
     <button class="sbtn danger" onclick="clearLog()" title="Clear all check-ins and reset the log">Clear</button>
   </div>
 
@@ -591,6 +593,7 @@ async function exportCSV(){
   }catch(err){ OasisFormBackup.toast('Export failed: '+err.message, true); }
 }
 
+// Pending the Save dialog's "To local storage" action — no toolbar slot any more.
 function exportCSVLocal(){ OasisFormBackup.saveLocal(csvFilename(), buildCSV()); }
 
 // Default source is the OASIS device's designated folder for the net log; the

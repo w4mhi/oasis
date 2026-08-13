@@ -375,6 +375,20 @@ tr:hover td { background: var(--panel-2); }
   align-items: center;
 }
 
+/* Cluster separator. The forms toolbar groups actions by intent — produce/send,
+   storage, output, interchange — and a thin rule between groups is what makes a
+   row of otherwise identical pills readable. */
+.actions .sep {
+  color: var(--border);
+  user-select: none;
+}
+
+/* Clear is the only irreversible action in the row, so it is pushed to the far
+   end rather than sitting next to a routine button. */
+.actions .sbtn.danger {
+  margin-left: auto;
+}
+
 /* ─── Status / library indicators ────────────────────────── */
 .lib-status {
   font-size: .68rem;

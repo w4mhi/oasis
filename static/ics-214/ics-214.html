@@ -54,12 +54,14 @@ td textarea{overflow:hidden;}
   <div class="actions">
     <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 214 PDF and download a timestamped copy">⬇ Save PDF</button>
     <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this log as a message (text + RMS form attachment) ready to queue">→ Send via Winlink</button>
+    <span class="sep">|</span>
+    <button class="sbtn" id="fb-save" title="Save this form into server storage (static/ics-214/saved/) so it survives a cleared browser cache or a swapped tablet">Save Form</button>
+    <button class="sbtn" id="fb-restore" title="Load a form previously saved into server storage">Load Form</button>
+    <span class="sep">|</span>
     <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
-    <button class="sbtn" onclick="exportCSV()" title="Export all form data as CSV into OASIS (static/ics-214/saved/) so it stays on the device">Export CSV</button>
-    <button class="sbtn" onclick="exportCSVLocal()" title="Download the CSV to the machine this browser is running on instead of the device">Export CSV (local)</button>
-    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 214 CSV — from the device, or from this machine">Import CSV</button>
-    <button class="sbtn" id="fb-save" title="Save this form onto the device (survives a cleared browser cache or a swapped tablet)">Save to server</button>
-    <button class="sbtn" id="fb-restore" title="Restore a form previously saved on this device">Restore</button>
+    <span class="sep">|</span>
+    <button class="sbtn" onclick="exportCSV()" title="Export all form data as CSV into server storage (static/ics-214/saved/)">Export CSV</button>
+    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 214 CSV from server storage">Import CSV</button>
     <button class="sbtn danger" onclick="clearAll()" title="Clear all form data and reset to a blank form">Clear</button>
   </div>
   <div class="save-ts" id="save-ts"></div>
@@ -305,6 +307,7 @@ async function exportCSV(){
   }catch(err){ OasisFormBackup.toast('Export failed: '+err.message,true); }
 }
 
+// Pending the Save dialog's "To local storage" action — no toolbar slot any more.
 function exportCSVLocal(){ OasisFormBackup.saveLocal(csvFilename(),buildCSV()); }
 
 // Default source is the OASIS device's designated folder for this form; the

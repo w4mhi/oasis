@@ -51,10 +51,6 @@ tr.row-overflow td input{color:var(--text-dim);}
   border:1px solid var(--red);border-radius:4px;background:rgba(255,107,107,.07);}
 .overflow-note.visible{display:block;}
 .save-ts{font-size:var(--fs-micro);color:var(--text-dim);opacity:.6;margin-top:.25rem;}
-.attach-pdf-lbl{display:inline-flex;align-items:center;gap:.35rem;font-size:var(--fs-small);color:var(--text-dim);cursor:pointer;white-space:nowrap;}
-.attach-pdf-lbl input{cursor:pointer;}
-.pdf-size-hint{font-size:var(--fs-small);color:var(--amber);white-space:nowrap;}
-.pdf-size-hint.over{color:var(--red);}
 #lib-status-msgs{display:contents;}
 
 /* Load-saved-plan picker */
@@ -117,19 +113,21 @@ tr.row-overflow td input{color:var(--text-dim);}
   <div class="actions">
     <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 205 PDF and download a timestamped copy">⬇ Save PDF</button>
     <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this plan as a message (text body + RMS form XML) ready to queue">→ Send via Winlink</button>
-    <label class="attach-pdf-lbl" title="Also attach the filled form page (page 1 only, FEMA instruction pages stripped to fit Winlink's size limit; fine over telnet, slower over RF). The XML alone also lets an OASIS recipient rebuild the form."><input type="checkbox" id="wl-attach-pdf" onchange="onAttachPdfToggle()"> Attach form PDF (page 1)</label>
-    <button class="sbtn" onclick="saveToServer()" title="Save this plan as JSON into OASIS (static/ics-205/saved/) so it survives on the device">Save form</button>
-    <button class="sbtn" onclick="openLoadDialog()" title="Load a previously saved ICS-205 plan from this device">Load form</button>    
+    <span class="sep">|</span>
+    <button class="sbtn" onclick="saveToServer()" title="Save this plan as JSON into server storage (static/ics-205/saved/) so it survives on the device">Save Form</button>
+    <button class="sbtn" onclick="openLoadDialog()" title="Load a previously saved ICS-205 plan from server storage">Load Form</button>
+    <span class="sep">|</span>
     <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (landscape letter)">Print</button>
-    <button class="sbtn" onclick="exportCSV()" title="Export all form data as CSV into OASIS (static/ics-205/saved/) so it stays on the device">Export CSV</button>
-    <button class="sbtn" onclick="exportCSVLocal()" title="Download the CSV to the machine this browser is running on instead of the device">Export CSV (local)</button>
-    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 205 CSV — from the device, or from this machine">Import CSV</button>
-    <button class="sbtn" onclick="loadChirpPrompt()" title="Load a CHIRP radio programming CSV file — channel names become a dropdown and frequencies/tones are auto-filled and locked">Load Frequency Plan</button>
+    <span class="sep">|</span>
+    <button class="sbtn" onclick="exportCSV()" title="Export all form data as CSV into server storage (static/ics-205/saved/)">Export CSV</button>
+    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 205 CSV from server storage">Import CSV</button>
+    <span class="sep">|</span>
+    <button class="sbtn" onclick="loadChirpPrompt()" title="Load a CHIRP radio programming CSV — channel names become a dropdown and frequencies/tones are auto-filled and locked">Load Frequency Plan</button>
     <button class="sbtn danger" onclick="clearAll()" title="Clear all form data, unload any frequency plan, and reset to a blank form">Clear</button>
   </div>
   <div class="save-ts" id="save-ts"></div>
 
-  <div class="lib-status" id="lib-status"><span id="lib-status-msgs"></span><span class="pdf-size-hint" id="pdf-size-hint"></span></div>
+  <div class="lib-status" id="lib-status"><span id="lib-status-msgs"></span></div>
 
   <!-- Blocks 1–3 -->
   <div class="sec">
@@ -274,7 +272,6 @@ tr.row-overflow td input{color:var(--text-dim);}
 const STORE = 'ics-205-v2';
 const PDF_ROWS_PER_PAGE = 8;  // FEMA template has 8 channel rows per page
 const PDF_MAX_ROWS = PDF_ROWS_PER_PAGE; // alias kept for overflow-note display
-const PDF_WINLINK_MAX = 115 * 1024;  // form-PDF byte cap for Winlink (~120 KB CMS limit, minus XML/envelope headroom)
 let chSeq = 0;
 let chirpPlan = null; // null = no plan loaded; array = CHIRP channels
 
@@ -654,10 +651,6 @@ function updateOverflowNote() {
   const count = document.querySelectorAll('#ch-body tr').length;
   const note = document.getElementById('overflow-note');
   note.classList.toggle('visible', count > PDF_MAX_ROWS);
-  // Channel set changed — re-enable the PDF-attach box so a now-smaller plan can
-  // be re-tried (onAttachPdfToggle re-checks the size and re-disables if needed).
-  const cb = document.getElementById('wl-attach-pdf');
-  if (cb) cb.disabled = false;
 }
 
 function getCh() {
@@ -891,6 +884,7 @@ async function exportCSV() {
   }
 }
 
+// Pending the Save dialog's "To local storage" action — no toolbar slot any more.
 function exportCSVLocal() {
   OasisFormBackup.saveLocal(csvFilename(), buildCSV());
 }
@@ -1165,36 +1159,6 @@ ${chXml}    <specialinstructions>${x(gv('f-special'))}</specialinstructions>
 // untick + disable the box and tell the operator to send without it — so an
 // oversized message can never leave (updateOverflowNote re-enables the box when
 // the channel set changes). The maxKB is shown so the message is concrete.
-async function onAttachPdfToggle(){
-  const cb=document.getElementById('wl-attach-pdf');
-  const hint=document.getElementById('pdf-size-hint');
-  if(!cb||!hint) return;
-  if(!cb.checked){ hint.textContent=''; hint.className='pdf-size-hint'; return; }
-  // RF advisory — attaching a PDF balloons the message. Over RF that's slow and can
-  // tie up the RMS for everyone, so make the operator acknowledge before we even
-  // size it. Declining unticks the box; the size-check/disable logic below is
-  // unchanged and still runs once they accept.
-  if(!confirm('⚠ It is HIGHLY RECOMMENDED not to send any attachment over RF — it takes a long time and you risk blocking the server. Be responsible!\n\nAttach the form PDF anyway?')){
-    cb.checked=false; hint.textContent=''; hint.className='pdf-size-hint'; return;
-  }
-  hint.textContent='sizing…'; hint.className='pdf-size-hint';
-  try{
-    const {bytes}=await buildIcs205PdfBytes({formOnly:true});
-    const kb=Math.round(bytes.length/1024), maxKb=Math.round(PDF_WINLINK_MAX/1024);
-    if(bytes.length>PDF_WINLINK_MAX){
-      cb.checked=false; cb.disabled=true;
-      hint.textContent=`⚠ PDF is ${kb} KB — you can't attach more than ${maxKb} KB over Winlink. Send the message without the attachment.`;
-      hint.className='pdf-size-hint over';
-    }else{
-      hint.textContent=`PDF ${kb} KB ✓`;
-      hint.className='pdf-size-hint';
-    }
-  }catch(err){
-    cb.checked=false;
-    hint.textContent='(couldn’t build PDF: '+err.message+')';
-    hint.className='pdf-size-hint over';
-  }
-}
 
 async function sendWinlink(){
   const chans=getCh().filter(c=>c.ch||c.name||c.func||c.rxfreq||c.txfreq);
@@ -1207,24 +1171,13 @@ async function sendWinlink(){
   // Winlink always carries the small RMS_Express_Form XML — it holds the full
   // structured plan, and the recipient's OASIS (or an RMS Express template)
   // rebuilds the form from it. The channel CSV is redundant, so it's dropped.
+  // XML only. The PDF-attachment option was removed: it confused operators, and
+  // attaching over RF is slow enough to tie up the RMS for everyone. An OASIS
+  // recipient rebuilds the whole form from this XML; anyone else can be sent a
+  // PDF by hand from Save PDF.
   const attachments=[
     {name:'RMS_Express_Form_ICS205 Radio Plan_Viewer.xml',type:'application/xml',content:ics205Xml()},
   ];
-  // Optional filled PDF — form page(s) only, FEMA instruction pages stripped. The
-  // checkbox self-disables if the PDF would exceed the Winlink limit (see
-  // onAttachPdfToggle), so if it's ticked here the PDF fits; the size check is a
-  // defensive backstop that silently sends XML-only if somehow over. localStorage
-  // is text-only, so the PDF bytes ride along base64-encoded; mail.html decodes.
-  if(document.getElementById('wl-attach-pdf')?.checked){
-    try{
-      const {bytes}=await buildIcs205PdfBytes({formOnly:true});
-      if(bytes.length <= PDF_WINLINK_MAX){
-        attachments.push({name:`ICS-205-${ics205Stamp()}.pdf`,type:'application/pdf',content:u8ToB64(bytes),encoding:'base64'});
-      }
-    }catch(err){
-      showToast('Could not attach PDF: '+err.message,'err',5000); return;
-    }
-  }
   const payload={
     to:'', subject:subj, body:ics205Body(),
     note:'ICS-205 plan — enter the recipient callsign, then Queue.',
@@ -1235,13 +1188,6 @@ async function sendWinlink(){
   window.location.href='/server/winlink/mail.html';   // OASIS Winlink client (root-absolute)
 }
 
-// Uint8Array → base64, chunked to avoid call-stack limits on large PDFs.
-function u8ToB64(bytes){
-  let bin='';
-  const CH=0x8000;
-  for(let i=0;i<bytes.length;i+=CH) bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));
-  return btoa(bin);
-}
 
 // ─── Save to OASIS (server) ──────────────────────────────────────────────────
 // Persist the current form as JSON into static/ics-205/saved/ so it survives on
