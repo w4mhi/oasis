@@ -656,6 +656,21 @@ def api_listen_status():
         "device":         pre["device"],
         "busy":           pre["busy"],
         "holder":         pre["holder"],
+        # Which path the running capture ACTUALLY took, plus the tracked view.
+        # These were missing, and nothing failed — which is the whole hazard of
+        # enumerating keys here: listen.status() grew `backend` and
+        # **tracked_status(), this list did not, and the two drifted in silence.
+        # The front end gates its TRACKED badge on `backend`, so the badge could
+        # never appear no matter what the capture was doing; the one field that
+        # tells a Doppler-tracked recording from an uncorrected one never left
+        # the server; and capture_backend's own docstring promises the fallback
+        # "must never be a SILENT one, which is why the chosen backend rides in
+        # /listen/status". It did not ride anywhere.
+        "backend":        st.get("backend"),
+        "tracked":        bool(st.get("tracked")),
+        "doppler_hz":     st.get("doppler_hz"),
+        "corrected_hz":   st.get("corrected_hz"),
+        "tracker_error":  st.get("tracker_error"),
     })
 
 

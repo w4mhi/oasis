@@ -40,7 +40,17 @@ _IDLE = {"recording": False, "streaming": False, "mode": None, "norad": None,
 
 _STATUS_KEYS = {"ok", "recording", "streaming", "mode", "norad", "file",
                 "seconds", "freq_hz", "missing_deps", "dongle_present",
-                "assigned", "device", "busy", "holder"}
+                "assigned", "device", "busy", "holder",
+                # Added 2026-08-12 after a live pass. listen.status() had
+                # carried `backend` and the tracked view for some time; the
+                # route's hand-written key list had not, so the page's TRACKED
+                # badge — which reads LISTEN.backend and LISTEN.doppler_hz —
+                # could never light no matter what the capture was doing.
+                # tests/test_listen_status_contract.py now derives that side of
+                # the contract from the page's own source rather than a list
+                # like this one, because a list like this one is what failed.
+                "backend", "tracked", "doppler_hz", "corrected_hz",
+                "tracker_error"}
 
 
 class _Base(unittest.TestCase):
