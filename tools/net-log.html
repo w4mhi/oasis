@@ -76,7 +76,11 @@ tr.editing td{background:var(--panel-2);}
   th{color:#555;}
   .c-call,.c-traf{color:#000;}
   #view-map{display:none!important;}
+  .print-page-break{display:block;page-break-before:always;height:0;}
+  .print-repeat-hdr th{font-size:7pt;color:#444;padding:2px 4px;border-bottom:1px solid #999;}
 }
+.print-page-break{display:none;}
+.print-repeat-hdr{display:none;}
 
 /* Tabs on log section */
 .tabs-row{display:flex;gap:3px;border-bottom:1px solid var(--border);margin-bottom:.7rem;}
@@ -743,6 +747,44 @@ OasisFormToolbar.render({
     clear:     { onClick: clearLog,
                  title: 'Clear all check-ins and reset the log' },
   },
+});
+
+// ─── Print pagination ────────────────────────────────────────────────────────
+// A printed net log used to run its header once and then spill unlabelled rows
+// across every following sheet — page 3 of a long net was a table of callsigns
+// with nothing saying which net, or which column was which. This repeats the
+// column header after each page break, the same way ICS-309 does.
+const ROWS_PER_PAGE = 34;   // portrait rows that clear the header block
+let _printNodes = null;
+
+window.addEventListener('beforeprint', () => {
+  const tbody = document.getElementById('tbody');
+  if (!tbody) return;
+  const allRows = [...tbody.querySelectorAll('tr')];
+  if (allRows.length <= ROWS_PER_PAGE) return;   // fits on one sheet
+
+  _printNodes = tbody.innerHTML;                 // restored by afterprint
+  const theadRow = tbody.closest('table').querySelector('thead tr');
+  const cols = theadRow.querySelectorAll('th').length;
+  const thHTML = [...theadRow.querySelectorAll('th')]
+    .map(th => `<th class="${th.className}">${th.innerHTML}</th>`).join('');
+
+  let html = '';
+  for (let i = 0; i < allRows.length; i += ROWS_PER_PAGE) {
+    if (i > 0) {
+      html += `<tr class="print-page-break"><td colspan="${cols}"></td></tr>`;
+      html += `<tr class="print-repeat-hdr">${thHTML}</tr>`;
+    }
+    allRows.slice(i, i + ROWS_PER_PAGE).forEach(tr => { html += tr.outerHTML; });
+  }
+  tbody.innerHTML = html;
+});
+
+window.addEventListener('afterprint', () => {
+  if (_printNodes === null) return;
+  const tbody = document.getElementById('tbody');
+  if (tbody) tbody.innerHTML = _printNodes;
+  _printNodes = null;
 });
 
 OasisFormBackup.attach({

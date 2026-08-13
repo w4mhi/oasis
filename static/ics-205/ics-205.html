@@ -758,14 +758,26 @@ async function buildIcs205PdfBytes({ formOnly = false } = {}) {
       return { bytes: await out.save(), totalPages };
     }
 
-    // Full document (Save PDF download): filled form + the FEMA instruction pages.
-    const pdfDoc = await buildPage(0);
-    for (let p = 1; p < totalPages; p++) {
-      const pageDoc = await buildPage(p);
-      const [copiedPage] = await pdfDoc.copyPages(pageDoc, [0]);
-      pdfDoc.addPage(copiedPage);
+    // Full document (Save PDF download): every filled form page, THEN the FEMA
+    // instruction pages once. Appending later pages to a complete first copy —
+    // which is what this used to do — left the instructions stranded between
+    // channel sheets: a 20-channel plan printed form p.1, two pages of FEMA
+    // boilerplate, then p.2 and p.3. Stapled, the plan read as if it ended at
+    // channel 8.
+    const pageDocs = [];
+    for (let p = 0; p < totalPages; p++) pageDocs.push(await buildPage(p));
+
+    const out = await PDFLib.PDFDocument.create();
+    for (const doc of pageDocs) {
+      const [formPage] = await out.copyPages(doc, [0]);   // page 0 = the form
+      out.addPage(formPage);
     }
-    return { bytes: await pdfDoc.save(), totalPages };
+    const first = pageDocs[0];
+    if (first.getPageCount() > 1) {
+      const tail = [...Array(first.getPageCount() - 1).keys()].map(i => i + 1);
+      (await out.copyPages(first, tail)).forEach(pg => out.addPage(pg));
+    }
+    return { bytes: await out.save(), totalPages };
 }
 
 // Timestamp stem for saved/attached ICS-205 files, e.g. 20260706-1432.
