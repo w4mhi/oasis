@@ -26,10 +26,6 @@ td select:hover{border-color:var(--border);}
 td select:focus{outline:none;background:var(--bg);border-color:var(--accent-dim);}
 td select option{background:var(--panel);}
 .fn-custom{margin-top:2px;}
-.tone-locked{opacity:.65;cursor:not-allowed;}
-.th-lock{display:none;font-size:var(--fs-micro);color:var(--amber);line-height:1;margin-bottom:2px;letter-spacing:.04em;}
-.th-lock.visible{display:block;}
-th#th-rxfreq.locked,th#th-rxtone.locked,th#th-txfreq.locked,th#th-txtone.locked{color:var(--amber)!important;}
 .plan-loaded{color:var(--amber)!important;}
 tr.row-overflow{background:rgba(255,107,107,.05);}
 tr.row-overflow td input{color:var(--text-dim);}
@@ -147,10 +143,10 @@ tr.row-overflow td input{color:var(--text-dim);}
             <th class="c-func">Function</th>
             <th class="c-name">Channel Name / Talkgroup</th>
             <th class="c-assign">Assignment</th>
-            <th class="c-freq" id="th-rxfreq"><div class="th-lock" id="th-rxfreq-lock"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg> locked</div>RX Freq (N/W)</th>
-            <th class="c-tone" id="th-rxtone"><div class="th-lock" id="th-rxtone-lock"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg> locked</div>RX Tone/NAC</th>
-            <th class="c-freq" id="th-txfreq"><div class="th-lock" id="th-txfreq-lock"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg> locked</div>TX Freq (N/W)</th>
-            <th class="c-tone" id="th-txtone"><div class="th-lock" id="th-txtone-lock"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg> locked</div>TX Tone/NAC</th>
+            <th class="c-freq" id="th-rxfreq">RX Freq (N/W)</th>
+            <th class="c-tone" id="th-rxtone">RX Tone/NAC</th>
+            <th class="c-freq" id="th-txfreq">TX Freq (N/W)</th>
+            <th class="c-tone" id="th-txtone">TX Tone/NAC</th>
             <th class="c-mode">Mode</th>
             <th class="c-rem">Remarks</th>
             <th class="cd"></th>
@@ -543,28 +539,15 @@ function applyChirpChannel(sel) {
   const txFreqRaw = chirpTxFreq(ch.frequency, ch.duplex, ch.offset);
   const txFreq = chirpFmtFreq(txFreqRaw, ch.chirpMode);
 
-  const lockField = (field, val) => {
-    const el = tr.querySelector(`[data-field="${field}"]`);
-    if (!el) return;
-    el.value = val;
-    el.disabled = true;
-    el.classList.add('tone-locked');
-  };
-  lockField('rxfreq', rxFreq);
-  lockField('txfreq', txFreq);
-
-  // Tones — lock
-  const lockTone = lockField;
-  lockTone('rxtone', ch.cToneFreq);
-  lockTone('txtone', ch.rToneFreq);
-
-  // Show column header lock badges (once, first time any channel is applied)
-  ['rxfreq','rxtone','txfreq','txtone'].forEach(f => {
-    const badge = document.getElementById('th-' + f + '-lock');
-    if (badge) badge.classList.add('visible');
-    const th = document.getElementById('th-' + f);
-    if (th) th.classList.add('locked');
-  });
+  // Frequencies and tones are prefilled from the plan, not locked to it. A
+  // CHIRP export is the starting point for an incident, not the final word —
+  // an operator retunes a repeater, works a split, or corrects a stale tone,
+  // and has to be able to type over any of these. They persist like any other
+  // field via the oninput handler the row was built with.
+  set('rxfreq', rxFreq);
+  set('txfreq', txFreq);
+  set('rxtone', ch.cToneFreq);
+  set('txtone', ch.rToneFreq);
 
   // Mode
   const modeMap = {FM:'A', NFM:'A', DV:'D', 'D-STAR':'D', DMR:'D', P25:'D', DSTAR:'D'};
@@ -995,13 +978,6 @@ function clearAll() {
   document.getElementById('ch-body').innerHTML = '';
   chSeq = 0;
   chirpPlan = null;
-  // Reset column header lock badges and colours
-  ['rxfreq','rxtone','txfreq','txtone'].forEach(f => {
-    const badge = document.getElementById('th-' + f + '-lock');
-    if (badge) badge.classList.remove('visible');
-    const th = document.getElementById('th-' + f);
-    if (th) th.classList.remove('locked');
-  });
   const nameTh = document.querySelector('th.c-name');
   if (nameTh) nameTh.classList.remove('plan-loaded');
   try { localStorage.removeItem(STORE); } catch(e) {}
