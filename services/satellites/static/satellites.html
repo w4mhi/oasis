@@ -63,7 +63,7 @@ html, body { height: 100%; margin: 0; }
 .grat { stroke: #243b53; stroke-width: .5; }
 /* Dark land fill + faint country borders (Natural Earth 110m, public domain). */
 .land { fill: #18222f; stroke: rgba(130,150,180,.28); stroke-width: .35; }
-.sat-marker, .sat-track, .sat-glyph, .sat-label, .sat-ring { cursor: pointer; }
+.sat-marker, .sat-track, .sat-glyph, .sat-label { cursor: pointer; }
 .sat-glyph { font-size: 10px; }
 /* Every bird is the SAME glyph tinted by its capability colour, so two voice
    sats are the same green — the shape can never say WHICH one. Separation from
@@ -76,16 +76,12 @@ html, body { height: 100%; margin: 0; }
    the gaps between them and turned the bird into a blob. Worse, the stroke sat
    INSIDE the scaled group, so it grew with the glyph — the armed satellite, the
    one deliberately made prominent, got the thickest outline of the lot. */
-/* The ARMED bird — the one Rec/Play acts on, the one the Doppler readout is
-   following. It is the only satellite on the map with an operational claim on
-   the operator, and it used to look exactly like the rest.
-   A ring and nothing else. There was a dark backing circle under it, on the
-   same reasoning as the glyph halo and wrong for the same reason: at r=11 it
-   showed about 1.2 units of dark on EACH side of a 1.6-unit coloured stroke, so
-   the thing framing the marker was larger than the thing it framed. The ring is
-   the only circle on the map at this scale and the icon's arcs now carry their
-   own mass, so neither needed backing. */
-.sat-ring { fill: none; stroke-width: 1.6; opacity: .9; }
+/* The ARMED bird carries NO added decoration — not a ring, not a backing, not
+   an outline. Three attempts at drawing something AROUND this marker all failed
+   the same way: whatever frames a ~30 px glyph is either too faint to read or
+   wide enough to become the thing you look at instead of the satellite.
+   What marks it out now is the marker itself — scaled up, and always labelled
+   while the others are labelled only inside their pass window. */
 /* Name labels. paint-order:stroke puts the dark stroke UNDER the fill, which is
    what makes a small name readable over coastline without a background box.
    font-size and stroke-width are deliberately NOT set here — redraw() emits them
@@ -1612,14 +1608,11 @@ function redraw() {
     // data-norad on the group (svg 'click' uses closest('[data-norad]')).
     if (pos) { const q = satgeo.project(pos.lat, pos.lon, W, H);
       const x = q.x.toFixed(1), y = q.y.toFixed(1);
-      // The armed bird gets a ring and a size bump. A STATIC ring — innerHTML
-      // here is replaced every second by liveTick, so a CSS animation would
-      // restart on every tick and never complete; an infinite one is also the
-      // exact renderer-pinning trap that cost us a kiosk once already. Contrast
-      // and size do the work instead of motion.
-      if (armed) {
-        tops += `<circle class="sat-ring" data-norad="${norad}" cx="${x}" cy="${y}" r="11" stroke="${s.color}"/>`;
-      }
+      // The armed bird is marked by SIZE and by always carrying its name — not
+      // by anything drawn around it. Nothing here animates, either: this
+      // overlay's innerHTML is replaced every second by liveTick, so a CSS
+      // animation would restart each tick and never complete, and an infinite
+      // one is the renderer-pinning trap that cost us a kiosk once already.
       tops += `<g class="sat-glyph" data-norad="${norad}" fill="${s.color}" `
         + `transform="translate(${x} ${y}) scale(${armed ? 0.115 : 0.09}) translate(-61.44 -61.44)">`
         + `<path d="${SAT_ICON_PATH}"/></g>`;
@@ -1632,11 +1625,11 @@ function redraw() {
       if (armed || inLabelWindow(norad)) {
         const sat = ROSTER.find(r => String(r.norad) === String(norad));
         const nm = bareSatName(sat ? sat.name : norad);
-        // The gap clears what the label sits beside, and the armed bird carries
-        // a ring at r=11 — the bare-glyph gap would put its name inside its own
-        // ring, on the one satellite whose name matters most.
+        // The gap clears the glyph, so it tracks the glyph's size: the armed
+        // one spans 14.1 user units against 11.1, and the bare gap would leave
+        // its name almost touching it.
         const a = satgeo.labelAnchor(q.x, q.y, nm.length, W, H,
-                                     { fontSize: fs, gap: armed ? 14 : 9 });
+                                     { fontSize: fs, gap: armed ? 11 : 9 });
         tops += `<text class="sat-label" data-norad="${norad}" x="${a.x.toFixed(1)}" `
           + `y="${a.y.toFixed(1)}" text-anchor="${a.anchor}" font-size="${fs.toFixed(2)}" `
           + `stroke-width="${(LABEL_HALO_PX / _mapScale).toFixed(2)}" `

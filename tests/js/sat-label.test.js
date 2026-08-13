@@ -74,12 +74,12 @@ test('a bigger font is clamped further from the map edge', () => {
 });
 
 test('the gap clears whatever the label sits beside', () => {
-  // The armed bird carries a ring at r=11, so it needs a wider gap than the
-  // bare glyph or its name lands inside its own ring.
+  // The armed bird is drawn larger — 14.1 user units across against 11.1 — so
+  // it needs a wider gap or its name sits almost touching the glyph.
   const bare = g.labelAnchor(300, 180, 6, W, H);
-  const ringed = g.labelAnchor(300, 180, 6, W, H, { gap: 14 });
-  assert.ok(ringed.x > bare.x, 'a wider gap pushes the label further out');
-  assert.ok(ringed.x - 300 >= 11, 'clears the armed ring radius');
+  const bigger = g.labelAnchor(300, 180, 6, W, H, { gap: 11 });
+  assert.ok(bigger.x > bare.x, 'a wider gap pushes the label further out');
+  assert.ok(bigger.x - 300 >= 14.1 / 2, 'clears the armed glyph half-extent');
 });
 
 test('a zero-length or missing name does not produce NaN', () => {
