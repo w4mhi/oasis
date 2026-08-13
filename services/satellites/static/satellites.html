@@ -265,7 +265,7 @@ html, body { height: 100%; margin: 0; }
    care about is reading, not transmitting, and the operator should be able to see
    what a bird offers on a laptop with no dongle at all. Whether that armed
    frequency can actually be captured is the transport's business, and it says so
-   itself (see updateTransport's armHint). */
+   itself (see the arm hints in sat-transport.js). */
 .dlsel { font-family: var(--mono); font-size: var(--fs-small); font-weight: 700;
   width: 100%; padding: 3px 6px; cursor: pointer;
   border: 1px solid var(--border); border-radius: 5px;
@@ -502,6 +502,7 @@ html, body { height: 100%; margin: 0; }
 <script src="/common/js/sat-capability.js"></script>
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/sat-roster.js"></script>
+<script src="/server/satellites/sat-transport.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
 <script src="/common/js/sat-look.js"></script>
 <script src="/common/js/sat-uplink.js"></script>
@@ -2326,41 +2327,74 @@ function startStream(norad, freqMhz, mode) {
   a.play().catch(() => {});   // the click IS the user gesture autoplay needs
   updateListenUI();
 }
-function stopStream() {
+// Drop the browser end of the audio and nothing else. On the tracked path this
+// IS the detach: ending the HTTP response runs _attach_stream's finally, which
+// removes the sink from the running capture. No POST — the recording underneath
+// must survive being listened to.
+function detachStream() {
   const a = document.getElementById('sat-audio');
   if (a) { a.pause(); a.removeAttribute('src'); a.load(); }
   _streamNorad = _streamFreq = null;
-  // Also force the server-side teardown: a browser disconnect often isn't noticed
-  // by gunicorn, so the rtl_fm pipeline (and the streaming flag) would otherwise
-  // linger and keep every downlink button greyed out.
+  pollListen();
+}
+function stopStream() {
+  detachStream();
+  // A STANDALONE stream owns the dongle, so letting go of it ends the capture.
+  // The POST is not redundant with the disconnect: gunicorn often doesn't notice
+  // a browser going away, so the rtl_fm pipeline (and the streaming flag) would
+  // otherwise linger and keep every downlink button greyed out. This is why the
+  // detach case above must NOT come through here.
   fetch('/api/satellites/listen/stop', { method: 'POST', headers: { 'X-OASIS-Request': '1' } }).catch(() => {});
   pollListen();
 }
-// Header transport buttons act on the armed frequency.
+// The button matrix, computed from server truth (LISTEN) + client truth (are WE
+// the ones listening). Both are needed: a listener attached to a recording leaves
+// _state["mode"] as "record", so LISTEN.streaming stays false and the server
+// cannot tell us we are listening — only this browser knows.
+function _transportState() {
+  return sattransport.transportState({
+    recording: !!LISTEN.recording,
+    streaming: !!LISTEN.streaming,
+    backend: LISTEN.backend,
+    listening: _streamNorad != null,
+    armed: !!_armed,
+    dongleFree: _dongleFree(),
+    inWindow: !!_armed && inCaptureWindow(_armed.norad),
+  });
+}
+// Header transport buttons act on the armed frequency. Every branch is chosen by
+// the pure matrix above, so the click and the enabled state can never disagree.
 function transport(action) {
+  const s = _transportState();
   if (action === 'stop') {
-    if (LISTEN.streaming || _streamNorad != null) stopStream(); else stopListen();
+    if (s.stop.disabled) return;
+    // The hard stop, and the only one: it ends the capture, and any listener
+    // attached to it goes with it. Drop our own audio first so the element is
+    // not left holding a response that is about to be torn down under it.
+    if (_streamNorad != null) detachStream();
+    stopListen();
     return;
   }
-  if (!_armed || _capturing()) return;
-  if (action === 'rec') startListen(_armed.norad, _armed.freq, _armed.mode);       // → WAV
-  else if (action === 'play') startStream(_armed.norad, _armed.freq, _armed.mode); // → browser
+  if (action === 'rec') {
+    if (s.rec.disabled) return;
+    startListen(_armed.norad, _armed.freq, _armed.mode);                          // → WAV
+    return;
+  }
+  if (action !== 'play' || s.play.disabled) return;
+  if (s.play.action === 'detach') detachStream();          // recording survives
+  else if (s.play.action === 'stop-stream') stopStream();  // the stream held the dongle
+  else startStream(_armed.norad, _armed.freq, _armed.mode); // → browser
 }
 function updateTransport() {
   const rec = document.getElementById('t-rec'), play = document.getElementById('t-play'),
         stop = document.getElementById('t-stop');
   if (!rec) return;
-  const capturing = _capturing();
-  const canStart = !!_armed && !capturing && _dongleFree() && inCaptureWindow(_armed.norad);
-  rec.classList.toggle('active', !!LISTEN.recording);
-  play.classList.toggle('active', !!LISTEN.streaming);
-  stop.classList.toggle('active', capturing);
-  rec.disabled = LISTEN.recording ? true : !canStart;
-  play.disabled = LISTEN.streaming ? true : !canStart;
-  stop.disabled = !capturing;
-  const armHint = _armed ? 'not in range yet (armable ~5 min before the pass)' : 'arm a frequency first';
-  rec.title = LISTEN.recording ? 'recording — press Stop' : (canStart ? 'record the armed pass to a WAV' : armHint);
-  play.title = LISTEN.streaming ? 'listening — press Stop' : (canStart ? 'listen live to the armed pass' : armHint);
+  const s = _transportState();
+  for (const [el, v] of [[rec, s.rec], [play, s.play], [stop, s.stop]]) {
+    el.classList.toggle('active', v.active);
+    el.disabled = v.disabled;
+    el.title = v.title;
+  }
 }
 // A frequency button ARMS its downlink (toggles); the transport does the rest.
 function onDownlinkSelect(norad, value) {
