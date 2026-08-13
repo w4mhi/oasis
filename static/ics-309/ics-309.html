@@ -587,25 +587,38 @@ function sendWinlink(){
 }
 
 // ─── PDF Save ────────────────────────────────────────────────────
-async function savePDF(){
-  if(typeof window.PDFLib==='undefined'){
-    showToast('pdf-lib not loaded. Run install.sh (Mac/Linux) or install.bat (Windows) first, then reload.','err',6000);
-    return;
-  }
-  if(typeof ICS309_PDF_B64==='undefined'){
-    showToast('PDF template not found. Run convert-template.sh first.','err',6000);
-    return;
-  }
-  try{
+// Build the filled FEMA ICS 309 PDF and return { bytes, totalPages }.
+//
+// The template is a single page holding 29 log rows. A longer log used to be
+// TRUNCATED here — the extra rows were dropped and a toast mentioned it — which
+// meant a busy net printed an incomplete legal record. It now paginates the way
+// ICS-205 does with channels: one fresh copy of the template per 29 rows, each
+// filled with its own slice and appended.
+async function buildIcs309PdfBytes(){
+  if(typeof window.PDFLib==='undefined')
+    throw new Error('pdf-lib not loaded. Run install.sh (Mac/Linux) or install.bat (Windows) first, then reload.');
+  if(typeof ICS309_PDF_B64==='undefined')
+    throw new Error('PDF template not found. Run convert-template.sh first.');
+
+  const rows=getRows();
+  const totalPages=Math.max(1, Math.ceil(rows.length/PDF_MAX_ROWS));
+
+  async function buildPage(pageIdx){
     const pdfBytes=Uint8Array.from(atob(ICS309_PDF_B64),c=>c.charCodeAt(0));
-    const pdfDoc=await PDFLib.PDFDocument.load(pdfBytes);
-    const form=pdfDoc.getForm();
+    const doc=await PDFLib.PDFDocument.load(pdfBytes);
+    const form=doc.getForm();
     function set(name,val){
       try{form.getTextField(name).setText(val||'');}
       catch(e){console.warn('ICS-309 PDF: field not found:',name);}
     }
-    // Header
-    set('1 INCIDENT NAME AND ACTIVATION NUMBER', gv('f-inc'));
+    // The header repeats on every sheet — a continuation page has to identify
+    // itself. This FEMA template carries no "page N of M" field (checked: 183
+    // fields, none page-ish), so when the log runs long the marker rides on the
+    // incident name, mirroring what ICS-205 does with its IAP Page field.
+    const incident = totalPages>1
+      ? `${gv('f-inc')} (p.${pageIdx+1}/${totalPages})`
+      : gv('f-inc');
+    set('1 INCIDENT NAME AND ACTIVATION NUMBER', incident);
     // Op Period — Text107-110 are the 4 header date/time fields
     set('Text107', fmtDate('f-df'));
     set('Text108', gv('f-tf'));
@@ -618,19 +631,37 @@ async function savePDF(){
     set('6 PREPARED BY Name Call Sign',
         [gv('f-prep-name'), gv('f-prep-pos')].filter(Boolean).join(' / '));
     set('Text7', gv('f-prep-dt'));
-    // Log rows
-    const rows=getRows();
-    const rowCount=Math.min(rows.length, PDF_MAX_ROWS);
-    for(let i=0;i<rowCount;i++){
-      const r=rows[i]; const n=i+1;
+
+    // This page's slice of the log.
+    rows.slice(pageIdx*PDF_MAX_ROWS, (pageIdx+1)*PDF_MAX_ROWS).forEach((r,i)=>{
+      const n=i+1;
       set(`Time 2400Row${n}`,   r.time);
       set(`MessageRow${n}`,     r.msg);
       set(`Call SignIDRow${n}`,  r.fcs);
       set(`Msg Row${n}`,         r.fmn);
       set(`Call SignIDRow${n}_2`,r.tcs);
       set(`Msg Row${n}_2`,       r.tmn);
-    }
-    // Download
+    });
+
+    // Flatten before copying. An AcroField holds ONE value per field NAME, so
+    // unflattened copies would every one of them show page 1's rows. This also
+    // brings ICS-309 in line with 205/213/214, which already flatten.
+    form.flatten();
+    return doc;
+  }
+
+  const pdfDoc=await buildPage(0);
+  for(let p=1;p<totalPages;p++){
+    const pageDoc=await buildPage(p);
+    const [copied]=await pdfDoc.copyPages(pageDoc,[0]);
+    pdfDoc.addPage(copied);
+  }
+  return { bytes: await pdfDoc.save(), totalPages };
+}
+
+async function savePDF(){
+  try{
+    const {bytes,totalPages}=await buildIcs309PdfBytes();
     const now=new Date();
     const ts=String(now.getFullYear())+
       String(now.getMonth()+1).padStart(2,'0')+
@@ -638,15 +669,14 @@ async function savePDF(){
       String(now.getHours()).padStart(2,'0')+
       String(now.getMinutes()).padStart(2,'0');
     const filename=`ICS-309-${ts}.pdf`;
-    const filledBytes=await pdfDoc.save();
-    const blob=new Blob([filledBytes],{type:'application/pdf'});
+    const blob=new Blob([bytes],{type:'application/pdf'});
     const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
     a.download=filename;
     a.click();
     URL.revokeObjectURL(a.href);
-    const skipped=rows.length>PDF_MAX_ROWS?` (${rows.length-PDF_MAX_ROWS} row(s) beyond PDF limit not included)`:'';
-    showToast(`✓ Saved: ${filename}${skipped}`,'ok',4000);
+    const pageNote=totalPages>1?` — ${totalPages} pages`:'';
+    showToast(`✓ Saved: ${filename}${pageNote}`,'ok',4000);
   }catch(err){
     console.error('savePDF error:',err);
     showToast('PDF save failed: '+err.message,'err',7000);

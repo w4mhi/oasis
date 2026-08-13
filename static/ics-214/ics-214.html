@@ -540,16 +540,39 @@ function checkLibStatus(){
   div.innerHTML=html;
 }
 
-async function savePDF(){
-  if(typeof window.PDFLib==='undefined'||typeof ICS214_PDF_B64==='undefined'){
-    showToast('PDF library or template not loaded'); return;
-  }
-  try{
+// Build the filled FEMA ICS 214 PDF and return { bytes, totalPages }.
+//
+// The template is three pages: page 1 carries the header, the 8 resource slots
+// and activities 1-24; page 2 repeats the header and carries activities 25-60;
+// page 3 is the FEMA instruction sheet. So ONE template block holds 60
+// activities and 8 resources.
+//
+// Longer logs used to be dropped silently — no toast, no note, the 61st entry
+// simply was not in the PDF. A log now spills into as many blocks as it needs,
+// each a fresh copy of the two form pages with its own slice of both tables.
+// Blocks are driven by whichever table overflows first, so 30 resources
+// paginate as readily as 300 activities.
+async function buildIcs214PdfBytes(){
+  if(typeof window.PDFLib==='undefined'||typeof ICS214_PDF_B64==='undefined')
+    throw new Error('PDF library or template not loaded');
+
+  const res=getRes(), act=getAct();
+  const totalBlocks=Math.max(1,
+    Math.ceil(act.length/PDF_MAX_ACT),
+    Math.ceil(res.length/PDF_MAX_RES));
+
+  async function buildBlock(blockIdx){
     const raw=Uint8Array.from(atob(ICS214_PDF_B64),c=>c.charCodeAt(0));
-    const pdfDoc=await window.PDFLib.PDFDocument.load(raw,{ignoreEncryption:true});
-    const form=pdfDoc.getForm();
+    const doc=await window.PDFLib.PDFDocument.load(raw,{ignoreEncryption:true});
+    const form=doc.getForm();
     function sf(name,val){try{form.getTextField(name).setText(val||'');}catch(e){}}
-    sf('ICS 214 1. Incident Name', gv('f-inc'));
+
+    // Header repeats on every block — a continuation sheet must identify itself.
+    // The template has no numeric page field (its "Page 2" fields are the
+    // prepared-by block, not a counter), so the marker rides on the incident
+    // name, as ICS-205 and ICS-309 do.
+    sf('ICS 214 1. Incident Name', totalBlocks>1
+      ? `${gv('f-inc')} (p.${blockIdx+1}/${totalBlocks})` : gv('f-inc'));
     sf('ICS 214 2. Operational Period Date From:', fmtDatePicker('f-df'));
     sf('ICS 214 2. Operational Period Date To:',   fmtDatePicker('f-dt'));
     sf('ICS 214 2. Operational Period TIme From:', gv('f-tf'));
@@ -557,16 +580,17 @@ async function savePDF(){
     sf('ICS  214 3. Name',      gv('f-name'));
     sf('ICS 214 4. ICS Position', gv('f-pos'));
     sf('ICS 214 5. Home Agency',  gv('f-agency'));
-    const res=getRes();
+
+    const resSlice=res.slice(blockIdx*PDF_MAX_RES,(blockIdx+1)*PDF_MAX_RES);
     for(let i=0;i<PDF_MAX_RES;i++){
-      const r=res[i]||{};
+      const r=resSlice[i]||{};
       sf(`ICS 214 6. Resources Assigned - Name ${i+1}`,        r.name||'');
       sf(`ICS 214 6. Resources Assigned - ICS Position ${i+1}`,r.pos||'');
       sf(`ICS 214 6. Resources Assigned - Home Agency ${i+1}`, r.agency||'');
     }
-    const act=getAct();
+    const actSlice=act.slice(blockIdx*PDF_MAX_ACT,(blockIdx+1)*PDF_MAX_ACT);
     for(let i=0;i<PDF_MAX_ACT;i++){
-      const a=act[i]||{};
+      const a=actSlice[i]||{};
       sf(`ICS 214 7. Activity Log - Date/Time ${i+1}`,          a.dt||'');
       sf(`ICS 214 7. Activity Log - Notable Activities ${i+1}`, a.act||'');
     }
@@ -578,14 +602,43 @@ async function savePDF(){
     sf('ICS 214 8. Position/Title Page 2',  gv('f-pp'));
     sf('ICS 214 8. Signature Page 2',       gv('f-ps'));
     sf('ICS 214 8. Date/Time Page 2',       gv('f-pd'));
+
+    // Flatten before copying — an AcroField holds one value per field NAME, so
+    // unflattened copies would all show block 1's rows.
     form.flatten();
-    const bytes=await pdfDoc.save();
+    return doc;
+  }
+
+  // One block is the common case and must come out byte-for-byte as before:
+  // two form pages then the FEMA instructions. For several blocks the form
+  // pages run consecutively and the instruction sheet is appended once at the
+  // end, rather than being stranded in the middle of the log.
+  const blocks=[];
+  for(let b=0;b<totalBlocks;b++) blocks.push(await buildBlock(b));
+
+  const out=await window.PDFLib.PDFDocument.create();
+  for(const doc of blocks){
+    const pages=await out.copyPages(doc,[0,1]);
+    pages.forEach(pg=>out.addPage(pg));
+  }
+  const first=blocks[0];
+  if(first.getPageCount()>2){
+    const tail=[...Array(first.getPageCount()-2).keys()].map(i=>i+2);
+    (await out.copyPages(first,tail)).forEach(pg=>out.addPage(pg));
+  }
+  return { bytes: await out.save(), totalPages: totalBlocks };
+}
+
+async function savePDF(){
+  try{
+    const {bytes,totalPages}=await buildIcs214PdfBytes();
     const blob=new Blob([bytes],{type:'application/pdf'});
     const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
     a.download='ics214-'+new Date().toISOString().slice(0,10)+'.pdf';
     a.click();
-    showToast('PDF saved');
+    URL.revokeObjectURL(a.href);
+    showToast(totalPages>1?`PDF saved — ${totalPages} sheets`:'PDF saved');
   }catch(err){
     console.error(err);
     showToast('PDF error: '+err.message,4000);
