@@ -63,8 +63,32 @@ html, body { height: 100%; margin: 0; }
 .grat { stroke: #243b53; stroke-width: .5; }
 /* Dark land fill + faint country borders (Natural Earth 110m, public domain). */
 .land { fill: #18222f; stroke: rgba(130,150,180,.28); stroke-width: .35; }
-.sat-marker, .sat-track, .sat-glyph { cursor: pointer; }
+.sat-marker, .sat-track, .sat-glyph, .sat-label, .sat-ring { cursor: pointer; }
 .sat-glyph { font-size: 10px; }
+/* Every bird is the SAME glyph tinted by its capability colour, so two voice
+   sats are the same green — the shape can never say WHICH one. That put the
+   whole burden of finding a bird on separating it from the background, and the
+   glyph had nothing doing that: it was drawn flat over the land fill and over
+   its own ground track, in the track's own colour. The halo is the station
+   house's trick (.home-mark .halo) applied to the satellite: the same path
+   stroked in the map background underneath the filled copy.
+   Stroke width is pre-multiplied for the group's scale — 12 × 0.09 lands at
+   ~1.1 user units, about 2 screen px. Deliberately lighter than the house's
+   equivalent (5.2 × 0.3 ≈ 1.6): the house is one simple outline, while this
+   icon has thin solar-panel arms that a heavy halo would fill in and turn back
+   into a blob. The armed glyph scales larger and so gets a proportionally
+   heavier outline, which is the right way round. */
+.sat-glyph .halo { fill: #0d1117; stroke: #0d1117; stroke-width: 12;
+  stroke-linejoin: round; stroke-linecap: round; opacity: .85; }
+/* The ARMED bird — the one Rec/Play acts on, the one the Doppler readout is
+   following. It is the only satellite on the map with an operational claim on
+   the operator, and it used to look exactly like the rest. */
+.sat-ring-halo { fill: none; stroke: #0d1117; stroke-width: 4; opacity: .85; pointer-events: none; }
+.sat-ring { fill: none; stroke-width: 1.6; opacity: .9; }
+/* Name labels. paint-order:stroke puts the dark stroke UNDER the fill, which is
+   what makes a 8px name readable over coastline without a background box. */
+.sat-label { font-family: var(--mono); font-size: 8px; font-weight: 700;
+  paint-order: stroke; stroke: #0d1117; stroke-width: 2.4; stroke-linejoin: round; }
 /* Station QTH — the ⌂ house outline from the HOME nav link, in gold. The old
    house emoji drew as tofu (the Pi has no emoji font), so the station never
    appeared on the map at all. Same marker as the traffic map's home-qth icon.
@@ -876,6 +900,23 @@ function inFootprintWindow(norad) {
   return now >= new Date(p.rise).getTime() - 15 * 60000 && now <= new Date(p.set).getTime();
 }
 
+// The name as the ROSTER shows it — trailing "[LEO]"-style orbit tag stripped.
+// Shared with the map label deliberately: the coverage pills already learned
+// this lesson ("same readout as the roster chip, so the two agree on sight"),
+// and a bird that reads one way in the list and another on the map is worse
+// than one with no label at all, because now you have two names to reconcile.
+function bareSatName(name) {
+  const m = String(name == null ? '' : name).match(/^(.*?)\s*\[[^\]]*\]\s*$/);
+  return m ? m[1] : String(name == null ? '' : name);
+}
+// Satellite names come from SatNOGS/CelesTrak, not from us, and go into an SVG
+// string via innerHTML. One "&" in a name would break the parse for the whole
+// overlay — every track and marker, not just that label.
+function xmlEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 let _rosterDeferred = false;
 
 function renderRoster() {
@@ -936,7 +977,7 @@ function renderRoster() {
     // a roster built before that field existed still carries it in the name;
     // s.orbit is the fallback. End-anchored, so a bracket mid-name is left alone.
     const tagged = s.name.match(/^(.*?)\s*(\[[^\]]*\])\s*$/);
-    const bareName = tagged ? tagged[1] : s.name;
+    const bareName = bareSatName(s.name);
     const orbitTag = tagged ? tagged[2] : (s.orbit ? `[${s.orbit}]` : '');
     const subName = [s.designator, orbitTag].filter(Boolean).join(' ');
     // Colour lives with the selection, so a monitored bird keeps its identity
@@ -1476,13 +1517,20 @@ const SAT_ICON_PATH = "M5.49,79.09l37.86,37.86C66.37,99.1,36.69,54.35,5.49,79.09
 
 // Overlay — footprint + whole-orbit ground track (past-solid / future-dashed) +
 // clickable live marker for every plotted sat. Redrawn on plot/unplot + each tick.
+//
+// TWO layers, not one. Footprints and tracks accumulate in `out`, markers and
+// labels in `tops`, and tops is appended last. Emitting each sat's marker inline
+// meant the NEXT sat's ground track painted straight over it — with a dozen
+// whole orbits on screen (the "All · 1h" view) a bird could sit buried under
+// somebody else's line with nothing to click.
 function redraw() {
   const g = document.getElementById('wg-over');
   if (!g) return;
   const W = 720, H = 360;
-  let out = '';
+  let out = '', tops = '';
   for (const norad in PLOTTED) {
     const s = PLOTTED[norad];
+    const armed = !!_armed && String(_armed.norad) === String(norad);
     const track = orbitTrack(norad);   // WHOLE orbit — the world view
     if (track.length < 2) continue;
     const pos = (s.l1 && s.l2) ? livePos(s.l1, s.l2) : null;
@@ -1503,11 +1551,35 @@ function redraw() {
     // scaled from its 122.88 box, centred on the sub-point. Clicks still resolve via
     // data-norad on the group (svg 'click' uses closest('[data-norad]')).
     if (pos) { const q = satgeo.project(pos.lat, pos.lon, W, H);
-      out += `<g class="sat-glyph" data-norad="${norad}" fill="${s.color}" `
-        + `transform="translate(${q.x.toFixed(1)} ${q.y.toFixed(1)}) scale(0.09) translate(-61.44 -61.44)">`
-        + `<path d="${SAT_ICON_PATH}"/></g>`; }
+      const x = q.x.toFixed(1), y = q.y.toFixed(1);
+      // The armed bird gets a ring and a size bump. A STATIC ring — innerHTML
+      // here is replaced every second by liveTick, so a CSS animation would
+      // restart on every tick and never complete; an infinite one is also the
+      // exact renderer-pinning trap that cost us a kiosk once already. Contrast
+      // and size do the work instead of motion.
+      if (armed) {
+        tops += `<circle class="sat-ring-halo" cx="${x}" cy="${y}" r="11"/>`
+              + `<circle class="sat-ring" data-norad="${norad}" cx="${x}" cy="${y}" r="11" stroke="${s.color}"/>`;
+      }
+      tops += `<g class="sat-glyph" data-norad="${norad}" fill="${s.color}" `
+        + `transform="translate(${x} ${y}) scale(${armed ? 0.115 : 0.09}) translate(-61.44 -61.44)">`
+        + `<path class="halo" d="${SAT_ICON_PATH}"/><path d="${SAT_ICON_PATH}"/></g>`;
+      // Name label — the thing that makes the map answer "where is SO-50"
+      // rather than only "what is this one". Always for the armed bird;
+      // otherwise gated on the pass window, the same gate the footprint uses. A
+      // dozen names for birds on the far side of the planet is exactly the
+      // clutter that made the map hard to read in the first place, and a bird
+      // you cannot work is not one you are hunting for.
+      if (armed || inFootprintWindow(norad)) {
+        const sat = ROSTER.find(r => String(r.norad) === String(norad));
+        const nm = bareSatName(sat ? sat.name : norad);
+        const a = satgeo.labelAnchor(q.x, q.y, nm.length, W, H);
+        tops += `<text class="sat-label" data-norad="${norad}" x="${a.x.toFixed(1)}" `
+          + `y="${a.y.toFixed(1)}" text-anchor="${a.anchor}" fill="${s.color}">${xmlEsc(nm)}</text>`;
+      }
+    }
   }
-  g.innerHTML = out;
+  g.innerHTML = out + tops;
 }
 
 // First track index at/after now (0 = all future/dashed, last = all past/solid).
@@ -2211,6 +2283,7 @@ function onDownlinkSelect(norad, value) {
   _armed = value === '' || !isFinite(freq) ? null : { norad, freq, mode: mode || null };
   updateListenUI();
   updateTransport();          // Rec/Play enable off the new armed state at once
+  redraw();                   // ring + label move to the newly armed bird at once
 }
 async function pollListen() {
   const err = LISTEN._err;   // preserve a just-set error across the refresh

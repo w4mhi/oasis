@@ -98,6 +98,23 @@
     return segs.filter(function (s) { return s.length >= 2; }).map(function (s) { return trace(s) + ' Z'; });
   }
 
+  // Where a live marker's name label goes, in map user units. The label sits to
+  // the RIGHT of the marker, except near the right edge where a long name would
+  // run off the map — there it flips to the left and anchors at its end. y is
+  // nudged down onto the marker's optical centre, and clamped so a label on a
+  // near-polar sub-point is not half-clipped by the top or bottom map edge.
+  //
+  // Takes a CHARACTER COUNT, not a measured width: SVG text cannot be measured
+  // without laying it out, and the label font is monospaced, so a per-character
+  // advance decides the side exactly.
+  var _LBL_GAP = 9, _LBL_ADV = 4.8;
+  function labelAnchor(x, y, chars, w, h) {
+    var flip = x + _LBL_GAP + Math.max(0, chars) * _LBL_ADV > w;
+    return { x: flip ? x - _LBL_GAP : x + _LBL_GAP,
+             y: Math.max(8, Math.min(y + 3, h - 4)),
+             anchor: flip ? 'end' : 'start' };
+  }
+
   // Doppler factor at wall-clock time tMs, linearly interpolated between a
   // track's 10 s samples. The factor is dimensionless (−ṙ/c), so the CALLER
   // multiplies by whatever carrier is armed — the server deliberately does not
@@ -132,5 +149,5 @@
   }
 
   return { project, splitAntimeridian, splitAtNow, polar,
-           footprintRadiusDeg, footprint, footprintPaths, dopplerAt };
+           footprintRadiusDeg, footprint, footprintPaths, labelAnchor, dopplerAt };
 });
