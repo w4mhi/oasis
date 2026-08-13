@@ -66,29 +66,29 @@ html, body { height: 100%; margin: 0; }
 .sat-marker, .sat-track, .sat-glyph, .sat-label, .sat-ring { cursor: pointer; }
 .sat-glyph { font-size: 10px; }
 /* Every bird is the SAME glyph tinted by its capability colour, so two voice
-   sats are the same green — the shape can never say WHICH one. That put the
-   whole burden of finding a bird on separating it from the background, and the
-   glyph had nothing doing that: it was drawn flat over the land fill and over
-   its own ground track, in the track's own colour. The halo is the station
-   house's trick (.home-mark .halo) applied to the satellite: the same path
-   stroked in the map background underneath the filled copy.
-   Stroke width is pre-multiplied for the group's scale — 12 × 0.09 lands at
-   ~1.1 user units, about 2 screen px. Deliberately lighter than the house's
-   equivalent (5.2 × 0.3 ≈ 1.6): the house is one simple outline, while this
-   icon has thin solar-panel arms that a heavy halo would fill in and turn back
-   into a blob. The armed glyph scales larger and so gets a proportionally
-   heavier outline, which is the right way round. */
-.sat-glyph .halo { fill: #0d1117; stroke: #0d1117; stroke-width: 12;
-  stroke-linejoin: round; stroke-linecap: round; opacity: .85; }
+   sats are the same green — the shape can never say WHICH one. Separation from
+   the dark land fill is therefore the glyph's own job, and it is done by the
+   icon's three beam arcs (see SAT_ICON_PATH), not by an outline.
+   There WAS a halo here, the station house's .home-mark trick — the same path
+   stroked in the map background beneath the filled copy. It was wrong in kind,
+   not merely in size: the house is one simple outline, while this icon's solar
+   panel arms are ~4 screen px wide, so any outline heavy enough to read filled
+   the gaps between them and turned the bird into a blob. Worse, the stroke sat
+   INSIDE the scaled group, so it grew with the glyph — the armed satellite, the
+   one deliberately made prominent, got the thickest outline of the lot. */
 /* The ARMED bird — the one Rec/Play acts on, the one the Doppler readout is
    following. It is the only satellite on the map with an operational claim on
    the operator, and it used to look exactly like the rest. */
 .sat-ring-halo { fill: none; stroke: #0d1117; stroke-width: 4; opacity: .85; pointer-events: none; }
 .sat-ring { fill: none; stroke-width: 1.6; opacity: .9; }
 /* Name labels. paint-order:stroke puts the dark stroke UNDER the fill, which is
-   what makes a 8px name readable over coastline without a background box. */
-.sat-label { font-family: var(--mono); font-size: 8px; font-weight: 700;
-  paint-order: stroke; stroke: #0d1117; stroke-width: 2.4; stroke-linejoin: round; }
+   what makes a small name readable over coastline without a background box.
+   font-size and stroke-width are deliberately NOT set here — redraw() emits them
+   per element, divided by the map scale so the label lands at a fixed PIXEL size
+   on any display. A rule here would beat the presentation attribute and pin the
+   size back to user units, which is the bug this replaces. */
+.sat-label { font-family: var(--mono); font-weight: 700;
+  paint-order: stroke; stroke: #0d1117; stroke-linejoin: round; }
 /* Station QTH — the ⌂ house outline from the HOME nav link, in gold. The old
    house emoji drew as tofu (the Pi has no emoji font), so the station never
    appeared on the map at all. Same marker as the traffic map's home-qth icon.
@@ -1480,6 +1480,8 @@ function initSatMap() {
     const m = e.target.closest('[data-norad]');
     if (m) satClick(+m.dataset.norad, e); else hideSatPopup();
   });
+  measureMapScale();
+  addEventListener('resize', () => { measureMapScale(); redraw(); });
   loadCountries().then(() => { renderBase(); redraw(); });
   setInterval(liveTick, 1000);
   // Quiet hours start and end while the page is open. Re-render the bell on
@@ -1487,6 +1489,26 @@ function initSatMap() {
   // are again at 07:00, without waiting for a reload.
   setInterval(renderSatMuteBell, 30000);
 }
+// CSS pixels per SVG user unit. Everything inside the viewBox scales with the
+// map, which is right for the ground tracks and the glyph and WRONG for text: an
+// 8-unit label rendered at 21 px on a 1080p panel and 28 px on a 4K one, sized
+// like body copy beside a 29 px icon. Tracks dodge this with
+// vector-effect="non-scaling-stroke"; there is no such thing for text, so the
+// size is divided by the scale instead.
+//
+// MEASURED, not derived from the window: preserveAspectRatio="xMidYMid meet"
+// letterboxes, so the smaller of the two axis fits wins and the other has slack.
+// Cached rather than read per frame — getBoundingClientRect forces layout, and
+// this redraws at 1 Hz on a Pi 3.
+const LABEL_PX = 11, LABEL_HALO_PX = 2.5;
+let _mapScale = 1;
+function measureMapScale() {
+  const svg = document.getElementById('world-svg');
+  if (!svg) return;
+  const r = svg.getBoundingClientRect();
+  if (r.width > 0 && r.height > 0) _mapScale = Math.min(r.width / 720, r.height / 360);
+}
+
 // Static base — dark country fills + graticule + the station house. Rendered once.
 function renderBase() {
   const g = document.getElementById('wg-base');
@@ -1512,8 +1534,28 @@ function drawCountries(W, H) {
   }).join('')).join('');
 }
 
-// Satellite marker glyph — single path in a 122.88 viewBox (PD, by IonutNeagu).
-const SAT_ICON_PATH = "M5.49,79.09l37.86,37.86C66.37,99.1,36.69,54.35,5.49,79.09L5.49,79.09z M42.39,62.21l18.29,18.29c1.18,1.18,3.12,1.18,4.3,0l24.2-24.2c6.21-6.21,6.21-16.38,0-22.59v0c-6.21-6.21-16.38-6.21-22.59,0l-24.2,24.2c-1.19,1.19-1.19,3.12,0,4.3L42.39,62.21z M24.5,104.83L20.33,109c-1.48,1.48-3.89,1.48-5.38,0c-1.48-1.49-1.48-3.89,0-5.38l4.17-4.17l-17-17l0.01-0.01c-0.13-0.13-0.25-0.26-0.36-0.4C0.15,80,0.49,77.01,2.54,75.38c13.15-10.43,26.24-10.1,36.28-4.46c1.85,1.04,3.59,2.26,5.2,3.64l1.99-1.99l-6.99-6.99c-1.52-1.52-2.28-3.52-2.28-5.51c0-1.99,0.76-3.99,2.28-5.51l5.92-5.92l-5.11-5.11l-3.76,3.76h0c-1.22,1.22-2.83,1.84-4.44,1.84c-1.59,0-3.19-0.61-4.42-1.84l-0.01-0.01l-0.01,0.01h0L3.53,23.62c-1.22-1.22-1.84-2.83-1.84-4.44c0-1.59,0.62-3.19,1.85-4.43l-0.01-0.01L16.44,1.84l0,0c0.16-0.16,0.33-0.31,0.51-0.44C18.09,0.47,19.48,0,20.87,0c1.59,0,3.19,0.61,4.42,1.84l0.01,0.01l0.01-0.01l0,0L48.97,25.5v0c1.22,1.22,1.84,2.83,1.84,4.44c0,1.6-0.61,3.21-1.84,4.44v0l-3.77,3.77l5.11,5.11l12.91-12.91c4.03-4.03,9.35-6.05,14.66-6.05c5.31,0,10.62,2.02,14.66,6.05v0c4.03,4.03,6.05,9.35,6.05,14.66c0,5.31-2.02,10.62-6.05,14.66L79.63,72.56l5.11,5.11l3.77-3.76c1.22-1.22,2.83-1.84,4.44-1.84c1.6,0,3.21,0.61,4.44,1.84l23.66,23.66l0,0c1.22,1.22,1.84,2.83,1.84,4.44c0,1.6-0.61,3.21-1.84,4.44l0,0l-12.91,12.91c-1.22,1.22-2.83,1.84-4.44,1.84c-1.6,0-3.21-0.61-4.44-1.84L75.6,95.69c-1.22-1.22-1.84-2.83-1.84-4.44c0-1.59,0.61-3.19,1.84-4.42l0.01-0.01l-0.01-0.01l3.76-3.77l-5.11-5.11l-5.92,5.92c-1.52,1.52-3.52,2.28-5.51,2.28c-1.99,0-3.99-0.76-5.51-2.28l-5.92-5.92l-2.15,2.15c2.47,3.26,4.37,6.93,5.57,10.75c3.27,10.41,1.4,21.91-8.23,29.61c-1.86,1.73-4.78,1.68-6.59-0.13L24.5,104.83L24.5,104.83z M0.13,106.96c-0.53-1.89,0.57-3.86,2.47-4.39c1.89-0.53,3.86,0.57,4.39,2.47c1,3.53,2.38,6.2,4.16,7.99c1.6,1.61,3.6,2.53,6.03,2.73c1.96,0.16,3.42,1.88,3.26,3.85c-0.16,1.96-1.88,3.42-3.85,3.26c-4.17-0.36-7.65-1.98-10.48-4.83C3.45,115.38,1.47,111.67,0.13,106.96L0.13,106.96z";
+// Satellite marker glyph — single path in a 122.88 viewBox (PD, by IonutNeagu),
+// plus two arcs of our own (below).
+const SAT_ICON_PATH = "M5.49,79.09l37.86,37.86C66.37,99.1,36.69,54.35,5.49,79.09L5.49,79.09z M42.39,62.21l18.29,18.29c1.18,1.18,3.12,1.18,4.3,0l24.2-24.2c6.21-6.21,6.21-16.38,0-22.59v0c-6.21-6.21-16.38-6.21-22.59,0l-24.2,24.2c-1.19,1.19-1.19,3.12,0,4.3L42.39,62.21z M24.5,104.83L20.33,109c-1.48,1.48-3.89,1.48-5.38,0c-1.48-1.49-1.48-3.89,0-5.38l4.17-4.17l-17-17l0.01-0.01c-0.13-0.13-0.25-0.26-0.36-0.4C0.15,80,0.49,77.01,2.54,75.38c13.15-10.43,26.24-10.1,36.28-4.46c1.85,1.04,3.59,2.26,5.2,3.64l1.99-1.99l-6.99-6.99c-1.52-1.52-2.28-3.52-2.28-5.51c0-1.99,0.76-3.99,2.28-5.51l5.92-5.92l-5.11-5.11l-3.76,3.76h0c-1.22,1.22-2.83,1.84-4.44,1.84c-1.59,0-3.19-0.61-4.42-1.84l-0.01-0.01l-0.01,0.01h0L3.53,23.62c-1.22-1.22-1.84-2.83-1.84-4.44c0-1.59,0.62-3.19,1.85-4.43l-0.01-0.01L16.44,1.84l0,0c0.16-0.16,0.33-0.31,0.51-0.44C18.09,0.47,19.48,0,20.87,0c1.59,0,3.19,0.61,4.42,1.84l0.01,0.01l0.01-0.01l0,0L48.97,25.5v0c1.22,1.22,1.84,2.83,1.84,4.44c0,1.6-0.61,3.21-1.84,4.44v0l-3.77,3.77l5.11,5.11l12.91-12.91c4.03-4.03,9.35-6.05,14.66-6.05c5.31,0,10.62,2.02,14.66,6.05v0c4.03,4.03,6.05,9.35,6.05,14.66c0,5.31-2.02,10.62-6.05,14.66L79.63,72.56l5.11,5.11l3.77-3.76c1.22-1.22,2.83-1.84,4.44-1.84c1.6,0,3.21,0.61,4.44,1.84l23.66,23.66l0,0c1.22,1.22,1.84,2.83,1.84,4.44c0,1.6-0.61,3.21-1.84,4.44l0,0l-12.91,12.91c-1.22,1.22-2.83,1.84-4.44,1.84c-1.6,0-3.21-0.61-4.44-1.84L75.6,95.69c-1.22-1.22-1.84-2.83-1.84-4.44c0-1.59,0.61-3.19,1.84-4.42l0.01-0.01l-0.01-0.01l3.76-3.77l-5.11-5.11l-5.92,5.92c-1.52,1.52-3.52,2.28-5.51,2.28c-1.99,0-3.99-0.76-5.51-2.28l-5.92-5.92l-2.15,2.15c2.47,3.26,4.37,6.93,5.57,10.75c3.27,10.41,1.4,21.91-8.23,29.61c-1.86,1.73-4.78,1.68-6.59-0.13L24.5,104.83L24.5,104.83z M0.13,106.96c-0.53-1.89,0.57-3.86,2.47-4.39c1.89-0.53,3.86,0.57,4.39,2.47c1,3.53,2.38,6.2,4.16,7.99c1.6,1.61,3.6,2.53,6.03,2.73c1.96,0.16,3.42,1.88,3.26,3.85c-0.16,1.96-1.88,3.42-3.85,3.26c-4.17-0.36-7.65-1.98-10.48-4.83C3.45,115.38,1.47,111.67,0.13,106.96L0.13,106.96z"
+// Two more beam arcs. The stock icon has ONE, which reads as decoration; three
+// concentric ones read as a downlink, and that is the whole job of this marker.
+// It also replaces the halo: the arcs give the glyph enough visual mass and
+// enough edge to separate from the land fill without tracing an outline around
+// detail that is only ~4 screen px wide to begin with.
+//
+// Geometry is not eyeballed. The dish subpath is a lens whose FLAT face is the
+// chord (5.49,79.09)-(43.35,116.95); the beam leaves it perpendicular, down-left.
+// Measuring the stock arc's boundary against that face's midpoint (24.42,98.02)
+// gives r 20-26 spanning 100°-168° — so these are the same sectors at r 12.5-17.5
+// and r 5-10, tapered slightly inward so it reads as a beam rather than three
+// identical stripes. The whole 100°-168° wedge lies on the empty side of the
+// chord, so no radius in it can collide with the dish.
+//
+// Filled ring sectors, not strokes, and appended to this same constant: they
+// then inherit the group's per-satellite fill with no extra element and no
+// change to redraw().
+  + "M20.48,115.07A17.5,17.5 0 0 1 7.52,102.55L12.35,101.26A12.5,12.5 0 0 0 21.61,110.20z"
+  + "M21.50,107.58A10.0,10.0 0 0 1 14.96,101.28L19.69,99.65A5.0,5.0 0 0 0 22.96,102.80z";
 
 // Overlay — footprint + whole-orbit ground track (past-solid / future-dashed) +
 // clickable live marker for every plotted sat. Redrawn on plot/unplot + each tick.
@@ -1527,6 +1569,7 @@ function redraw() {
   const g = document.getElementById('wg-over');
   if (!g) return;
   const W = 720, H = 360;
+  const fs = LABEL_PX / _mapScale;   // user units that render at LABEL_PX pixels
   let out = '', tops = '';
   for (const norad in PLOTTED) {
     const s = PLOTTED[norad];
@@ -1563,7 +1606,7 @@ function redraw() {
       }
       tops += `<g class="sat-glyph" data-norad="${norad}" fill="${s.color}" `
         + `transform="translate(${x} ${y}) scale(${armed ? 0.115 : 0.09}) translate(-61.44 -61.44)">`
-        + `<path class="halo" d="${SAT_ICON_PATH}"/><path d="${SAT_ICON_PATH}"/></g>`;
+        + `<path d="${SAT_ICON_PATH}"/></g>`;
       // Name label — the thing that makes the map answer "where is SO-50"
       // rather than only "what is this one". Always for the armed bird;
       // otherwise gated on the pass window, the same gate the footprint uses. A
@@ -1573,9 +1616,15 @@ function redraw() {
       if (armed || inFootprintWindow(norad)) {
         const sat = ROSTER.find(r => String(r.norad) === String(norad));
         const nm = bareSatName(sat ? sat.name : norad);
-        const a = satgeo.labelAnchor(q.x, q.y, nm.length, W, H);
+        // The gap clears what the label sits beside, and the armed bird carries
+        // a ring at r=11 — the bare-glyph gap would put its name inside its own
+        // ring, on the one satellite whose name matters most.
+        const a = satgeo.labelAnchor(q.x, q.y, nm.length, W, H,
+                                     { fontSize: fs, gap: armed ? 14 : 9 });
         tops += `<text class="sat-label" data-norad="${norad}" x="${a.x.toFixed(1)}" `
-          + `y="${a.y.toFixed(1)}" text-anchor="${a.anchor}" fill="${s.color}">${xmlEsc(nm)}</text>`;
+          + `y="${a.y.toFixed(1)}" text-anchor="${a.anchor}" font-size="${fs.toFixed(2)}" `
+          + `stroke-width="${(LABEL_HALO_PX / _mapScale).toFixed(2)}" `
+          + `fill="${s.color}">${xmlEsc(nm)}</text>`;
       }
     }
   }

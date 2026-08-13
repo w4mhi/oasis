@@ -58,6 +58,30 @@ test('away from the edges the label sits on the marker centre', () => {
   assert.ok(a.y > 180 && a.y < 186, 'nudged down onto the optical centre');
 });
 
+test('the flip threshold tracks the font size, not a baked-in advance', () => {
+  // The caller now scales the label so it renders at a fixed PIXEL size, which
+  // means the user-unit font size changes with the display. A 20-character name
+  // that fits on the right at the default size must NOT still claim to fit once
+  // the label is twice as wide — that is exactly how a name walks off the map.
+  assert.strictEqual(g.labelAnchor(560, 180, 20, W, H).anchor, 'start');
+  assert.strictEqual(g.labelAnchor(560, 180, 20, W, H, { fontSize: 16 }).anchor, 'end');
+});
+
+test('a bigger font is clamped further from the map edge', () => {
+  // The top clamp is the font size: a 16-unit label at y=0 clipped at the old
+  // fixed 8 would still lose its ascenders.
+  assert.ok(g.labelAnchor(300, 0, 6, W, H, { fontSize: 16 }).y >= 16);
+});
+
+test('the gap clears whatever the label sits beside', () => {
+  // The armed bird carries a ring at r=11, so it needs a wider gap than the
+  // bare glyph or its name lands inside its own ring.
+  const bare = g.labelAnchor(300, 180, 6, W, H);
+  const ringed = g.labelAnchor(300, 180, 6, W, H, { gap: 14 });
+  assert.ok(ringed.x > bare.x, 'a wider gap pushes the label further out');
+  assert.ok(ringed.x - 300 >= 11, 'clears the armed ring radius');
+});
+
 test('a zero-length or missing name does not produce NaN', () => {
   // An unplotted-then-replotted bird can momentarily have no ROSTER entry, and
   // NaN in a transform silently drops the whole overlay element.

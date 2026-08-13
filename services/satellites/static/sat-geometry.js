@@ -107,11 +107,21 @@
   // Takes a CHARACTER COUNT, not a measured width: SVG text cannot be measured
   // without laying it out, and the label font is monospaced, so a per-character
   // advance decides the side exactly.
-  var _LBL_GAP = 9, _LBL_ADV = 4.8;
-  function labelAnchor(x, y, chars, w, h) {
-    var flip = x + _LBL_GAP + Math.max(0, chars) * _LBL_ADV > w;
-    return { x: flip ? x - _LBL_GAP : x + _LBL_GAP,
-             y: Math.max(8, Math.min(y + 3, h - 4)),
+  //
+  // opts.fontSize is in the same user units and MUST be passed once the caller
+  // scales the label to a fixed pixel size — the advance, the baseline nudge and
+  // the top clamp all derive from it, and a stale default would fire the edge
+  // flip at the wrong x and push a long name off the map.
+  // opts.gap clears whatever the label has to sit beside: the bare glyph, or the
+  // wider ring the armed bird carries.
+  var _LBL_GAP = 9, _LBL_FS = 8, _LBL_ADV = 0.6;
+  function labelAnchor(x, y, chars, w, h, opts) {
+    var o = opts || {};
+    var fs = o.fontSize > 0 ? o.fontSize : _LBL_FS;
+    var gap = o.gap > 0 ? o.gap : _LBL_GAP;
+    var flip = x + gap + Math.max(0, chars) * fs * _LBL_ADV > w;
+    return { x: flip ? x - gap : x + gap,
+             y: Math.max(fs, Math.min(y + fs * 0.38, h - 4)),
              anchor: flip ? 'end' : 'start' };
   }
 
