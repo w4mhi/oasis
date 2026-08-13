@@ -51,19 +51,7 @@ td textarea{overflow:hidden;}
     <p>Activity Log</p>
   </header>
 
-  <div class="actions">
-    <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 214 PDF and download a timestamped copy">⬇ Save PDF</button>
-    <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this log as a message (text + RMS form attachment) ready to queue">→ Send via Winlink</button>
-    <span class="sep">|</span>
-    <button class="sbtn" id="fb-save" title="Save this form into server storage (static/ics-214/saved/) so it survives a cleared browser cache or a swapped tablet">Save Form</button>
-    <button class="sbtn" id="fb-restore" title="Load a form previously saved into server storage">Load Form</button>
-    <span class="sep">|</span>
-    <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
-    <span class="sep">|</span>
-    <button class="sbtn" onclick="exportCSV()" title="Export all form data as CSV into server storage (static/ics-214/saved/)">Export CSV</button>
-    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 214 CSV from server storage">Import CSV</button>
-    <button class="sbtn danger" onclick="clearAll()" title="Clear all form data and reset to a blank form">Clear</button>
-  </div>
+  <div class="actions"></div>
   <div class="save-ts" id="save-ts"></div>
   <div class="lib-status" id="lib-status"></div>
 
@@ -624,6 +612,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 });
 </script>
 <script src="/common/js/form-backup.js"></script>
+<script src="/common/js/form-toolbar.js"></script>
 <script>
 /* Server backup of this ICS form — survives a cleared cache / swapped device.
    STORE/persist are top-level bindings from the main script above. Restore writes
@@ -643,6 +632,31 @@ document.addEventListener('DOMContentLoaded',()=>{
     });
     return meaningful ? d : null;
   }
+  // ─── Action row ────────────────────────────────────────────────────────────
+  // Order, grouping, separators and shared labels live in
+  // common/js/form-toolbar.js. Must run before attach(), which binds
+  // #fb-save / #fb-restore by id.
+  OasisFormToolbar.render({
+    mount: '.actions',
+    noun: 'Form',
+    slots: {
+      savePdf:   { onClick: savePDF,
+                   title: 'Fill the official FEMA ICS 214 PDF and download a timestamped copy' },
+      handoff:   { label: '→ Send via Winlink', onClick: sendWinlink,
+                   title: 'Open Winlink Mail with this log as a message (text + RMS form attachment) ready to queue' },
+      saveStore: { title: 'Save this log into server storage (static/ics-214/saved/) so it survives a cleared browser cache or a swapped tablet' },
+      loadStore: { title: 'Load a log previously saved into server storage' },
+      print:     { onClick: function () { window.print(); },
+                   title: "Print the form using your browser's print dialog (portrait letter)" },
+      exportCsv: { onClick: exportCSV,
+                   title: 'Export all form data as CSV into server storage (static/ics-214/saved/)' },
+      importCsv: { onClick: importCSVPrompt,
+                   title: 'Import a previously exported ICS 214 CSV from server storage' },
+      clear:     { onClick: clearAll,
+                   title: 'Clear all form data and reset to a blank form' },
+    },
+  });
+
   OasisFormBackup.attach({
     kind: 'ics-214', noun: 'ICS 214',
     saveButton: document.getElementById('fb-save'),

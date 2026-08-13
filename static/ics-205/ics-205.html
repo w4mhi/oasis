@@ -110,21 +110,7 @@ tr.row-overflow td input{color:var(--text-dim);}
     <p>Incident Radio Communications Plan</p>
   </header>
 
-  <div class="actions">
-    <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 205 PDF and download a timestamped copy">⬇ Save PDF</button>
-    <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this plan as a message (text body + RMS form XML) ready to queue">→ Send via Winlink</button>
-    <span class="sep">|</span>
-    <button class="sbtn" onclick="saveToServer()" title="Save this plan as JSON into server storage (static/ics-205/saved/) so it survives on the device">Save Form</button>
-    <button class="sbtn" onclick="openLoadDialog()" title="Load a previously saved ICS-205 plan from server storage">Load Form</button>
-    <span class="sep">|</span>
-    <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (landscape letter)">Print</button>
-    <span class="sep">|</span>
-    <button class="sbtn" onclick="exportCSV()" title="Export all form data as CSV into server storage (static/ics-205/saved/)">Export CSV</button>
-    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 205 CSV from server storage">Import CSV</button>
-    <span class="sep">|</span>
-    <button class="sbtn" onclick="loadChirpPrompt()" title="Load a CHIRP radio programming CSV — channel names become a dropdown and frequencies/tones are auto-filled and locked">Load Frequency Plan</button>
-    <button class="sbtn danger" onclick="clearAll()" title="Clear all form data, unload any frequency plan, and reset to a blank form">Clear</button>
-  </div>
+  <div class="actions"></div>
   <div class="save-ts" id="save-ts"></div>
 
   <div class="lib-status" id="lib-status"><span id="lib-status-msgs"></span></div>
@@ -264,6 +250,7 @@ tr.row-overflow td input{color:var(--text-dim);}
 
 <!-- Load template and pdf-lib (must exist in same folder / dependencies/) -->
 <script src="/common/js/form-backup.js"></script>
+<script src="/common/js/form-toolbar.js"></script>
 <script src="./ics205-template.js"></script>
 <script src="/common/dependencies/pdf-lib.min.js"></script>
 
@@ -1327,6 +1314,35 @@ function x(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 function xv(s) { return x(s).replace(/"/g,'&quot;'); }
 function cc(v) { const s = String(v ?? ''); return /[,"\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; }
 function gv(id) { return document.getElementById(id)?.value || ''; }
+
+// ─── Action row ──────────────────────────────────────────────────────────────
+// Slot order, grouping, separators and the shared labels live in
+// common/js/form-toolbar.js — this page only declares what it has and what the
+// buttons do. ICS-205 is the canonical row plus the frequency-plan slot.
+OasisFormToolbar.render({
+  mount: '.actions',
+  noun: 'Form',
+  slots: {
+    savePdf:   { onClick: savePDF,
+                 title: 'Fill the official FEMA ICS 205 PDF and download a timestamped copy' },
+    handoff:   { label: '→ Send via Winlink', onClick: sendWinlink,
+                 title: 'Open Winlink Mail with this plan as a message (text body + RMS form XML) ready to queue' },
+    saveStore: { onClick: saveToServer,
+                 title: 'Save this plan as JSON into server storage (static/ics-205/saved/) so it survives on the device' },
+    loadStore: { onClick: openLoadDialog,
+                 title: 'Load a previously saved ICS-205 plan from server storage' },
+    print:     { onClick: () => window.print(),
+                 title: "Print the form using your browser's print dialog (landscape letter)" },
+    exportCsv: { onClick: exportCSV,
+                 title: 'Export all form data as CSV into server storage (static/ics-205/saved/)' },
+    importCsv: { onClick: importCSVPrompt,
+                 title: 'Import a previously exported ICS 205 CSV from server storage' },
+    extra:     { label: 'Load Frequency Plan', onClick: loadChirpPrompt,
+                 title: 'Load a CHIRP radio programming CSV — channel names become a dropdown and frequencies/tones are auto-filled and locked' },
+    clear:     { onClick: clearAll,
+                 title: 'Clear all form data, unload any frequency plan, and reset to a blank form' },
+  },
+});
 </script>
 </body>
 </html>

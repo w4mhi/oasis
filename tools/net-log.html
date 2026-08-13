@@ -113,18 +113,7 @@ tr.editing td{background:var(--panel-2);}
     <p>Log station check-ins during a net operation.</p>
   </header>
 
-  <div class="actions">
-    <button class="sbtn primary" onclick="sendToICS309()" title="Copy this log into ICS-309 and open it in a new tab">→ ICS-309</button>
-    <span class="sep">|</span>
-    <button class="sbtn" id="fb-save" title="Save this net log into server storage (static/net-log/saved/) so it survives a cleared browser cache or a swapped tablet">Save Log</button>
-    <button class="sbtn" id="fb-restore" title="Load a net log previously saved into server storage">Load Log</button>
-    <span class="sep">|</span>
-    <button class="sbtn" onclick="window.print()" title="Print the log using your browser's print dialog">Print</button>
-    <span class="sep">|</span>
-    <button class="sbtn" onclick="exportCSV()" title="Export all check-ins as CSV into server storage (static/net-log/saved/)">Export CSV</button>
-    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported net log CSV from server storage">Import CSV</button>
-    <button class="sbtn danger" onclick="clearLog()" title="Clear all check-ins and reset the log">Clear</button>
-  </div>
+  <div class="actions"></div>
 
   <div class="sec">
     <span class="sec-lbl">Net Details</span>
@@ -727,10 +716,35 @@ document.querySelectorAll('.ltab').forEach(tab => {
 <script src="/maps/mapengine/pmtiles.js"></script>
 <script src="/common/js/maidenhead.js"></script>
 <script src="/common/js/form-backup.js"></script>
+<script src="/common/js/form-toolbar.js"></script>
 <script>
 /* Server backup of the net log — survives a cleared cache / swapped device.
    rows/seq/addRow/persist/updateCount are top-level bindings from the main
    script block above (shared global scope), reachable here. */
+// ─── Action row ──────────────────────────────────────────────────────────────
+// Order, grouping, separators and shared labels live in
+// common/js/form-toolbar.js. No Save PDF here — the net log has no FEMA
+// template — so that group collapses to the ICS-309 handoff alone. Must run
+// before attach(), which binds #fb-save / #fb-restore by id.
+OasisFormToolbar.render({
+  mount: '.actions',
+  noun: 'Log',
+  slots: {
+    handoff:   { label: '→ ICS-309', onClick: sendToICS309,
+                 title: 'Copy this log into ICS-309 and open it in a new tab' },
+    saveStore: { title: 'Save this net log into server storage (static/net-log/saved/) so it survives a cleared browser cache or a swapped tablet' },
+    loadStore: { title: 'Load a net log previously saved into server storage' },
+    print:     { onClick: function () { window.print(); },
+                 title: "Print the log using your browser's print dialog" },
+    exportCsv: { onClick: exportCSV,
+                 title: 'Export all check-ins as CSV into server storage (static/net-log/saved/)' },
+    importCsv: { onClick: importCSVPrompt,
+                 title: 'Import a previously exported net log CSV from server storage' },
+    clear:     { onClick: clearLog,
+                 title: 'Clear all check-ins and reset the log' },
+  },
+});
+
 OasisFormBackup.attach({
   kind: 'net-log',
   noun: 'net log',

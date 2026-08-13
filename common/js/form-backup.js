@@ -167,18 +167,18 @@
     return b;
   }
 
-  // ── Restore / import picker (the kind's designated folder) ─────────────────
+  // ── Load / import picker (the kind's designated folder) ───────────────────
   // opts: { title, ext, emptyText, actions:[{label, onClick(close)}] }
   function openPicker(kind, onLoad, opts) {
     opts = opts || {};
-    var sh = _shell(opts.title || 'Restore from server');
+    var sh = _shell(opts.title || 'Load from server storage');
     (opts.actions || []).forEach(function (a) {
       _footBtn(sh.footEl, a.label, function () { a.onClick(sh.close); });
     });
     list(kind, opts.ext).then(function (files) {
       if (!files.length) {
         sh.listEl.innerHTML = '<div style="padding:14px;color:var(--text-dim,#8b949e);">' +
-          _esc(opts.emptyText || 'No saved snapshots yet. Use “Save to server” first.') +
+          _esc(opts.emptyText || 'Nothing saved yet — use Save first.') +
           '</div>';
         return;
       }
@@ -285,10 +285,10 @@
           catch (err) { toast('Load failed: ' + err.message, true); return; }
           if (!obj || typeof obj !== 'object') { toast('That file is not a valid ' + noun, true); return; }
           if (opts.hasData && opts.hasData() &&
-              !confirm('Restore "' + name + '"? This replaces the current ' + noun + '.')) return;
-          try { opts.applyData(obj); toast('✓ Restored ' + name); }
-          catch (err) { toast('Restore failed: ' + err.message, true); }
-        }, { title: 'Restore ' + noun + ' from server' });
+              !confirm('Load "' + name + '"? This replaces the current ' + noun + '.')) return;
+          try { opts.applyData(obj); toast('✓ Loaded ' + name); }
+          catch (err) { toast('Load failed: ' + err.message, true); }
+        }, { title: 'Load ' + noun + ' from server storage' });
       });
     }
   }
