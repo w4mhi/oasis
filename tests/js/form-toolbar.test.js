@@ -25,8 +25,8 @@ test('ICS forms render the canonical row', () => {
   assert.deepStrictEqual(labels({ noun: 'Form', slots: ICS_FORM }), [
     '⬇ Save PDF', '→ Send via Winlink', '|',
     'Save Form', 'Load Form', '|',
-    'Print', '|',
-    'Export CSV', 'Import CSV',
+    'Export CSV', 'Import CSV', '|',
+    'Print',
     'Clear',
   ]);
 });
@@ -78,14 +78,15 @@ test('emphasis: primary on produce/send, danger on clear, plain elsewhere', () =
   assert.strictEqual(cls.savePdf, 'sbtn primary');
   assert.strictEqual(cls.handoff, 'sbtn primary');
   assert.strictEqual(cls.clear, 'sbtn danger');
-  ['saveStore', 'loadStore', 'print', 'exportCsv', 'importCsv', 'extra']
+  assert.strictEqual(cls.print, 'sbtn info', 'Print carries the blue accent');
+  ['saveStore', 'loadStore', 'exportCsv', 'importCsv', 'extra']
     .forEach((s) => assert.strictEqual(cls[s], 'sbtn', s + ' should be plain'));
 });
 
 test('all three page shapes agree on the order of every shared slot', () => {
   const order = (slots) => T.plan({ noun: 'Form', slots })
     .filter((i) => i.kind === 'button').map((i) => i.slot);
-  const shared = ['saveStore', 'loadStore', 'print', 'exportCsv', 'importCsv', 'clear'];
+  const shared = ['saveStore', 'loadStore', 'exportCsv', 'importCsv', 'print', 'clear'];
   const keep = (a) => a.filter((s) => shared.includes(s));
   assert.deepStrictEqual(keep(order(ICS_FORM)), shared);
   assert.deepStrictEqual(keep(order(ICS_205)), shared);

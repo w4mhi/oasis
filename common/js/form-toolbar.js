@@ -48,8 +48,8 @@
   var GROUPS = [
     ['savePdf', 'handoff'],       // produce / hand off
     ['saveStore', 'loadStore'],   // server storage
-    ['print'],                    // output
     ['exportCsv', 'importCsv'],   // interchange
+    ['print'],                    // output
     ['extra'],                    // page-specific (Load Frequency Plan, …)
     ['clear'],                    // destructive
   ];
@@ -61,7 +61,7 @@
     handoff:   { cls: 'sbtn primary' },
     saveStore: { cls: 'sbtn', id: 'fb-save',    label: 'Save {noun}' },
     loadStore: { cls: 'sbtn', id: 'fb-restore', label: 'Load {noun}' },
-    print:     { cls: 'sbtn', label: 'Print' },
+    print:     { cls: 'sbtn info', label: 'Print' },
     exportCsv: { cls: 'sbtn', label: 'Export CSV' },
     importCsv: { cls: 'sbtn', label: 'Import CSV' },
     extra:     { cls: 'sbtn' },

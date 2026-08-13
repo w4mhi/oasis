@@ -340,7 +340,15 @@ tr:hover td { background: var(--panel-2); }
 .sbtn:hover { color: var(--text); border-color: var(--text-dim); }
 .sbtn.primary { color: var(--accent); border-color: var(--accent-dim); }
 .sbtn.primary:hover { background: var(--accent-dim); color: #fff; }
-.sbtn.danger:hover { color: var(--red); border-color: var(--red); }
+
+/* Accented variants follow the satellites roster idiom: coloured border and text
+   at rest, the colour filling on hover. `danger` previously had a :hover rule and
+   no rest state, so Clear rendered as an ordinary grey button until the cursor
+   was over it — the one irreversible action in the row, unmarked. */
+.sbtn.info { color: var(--blue); border-color: var(--blue); }
+.sbtn.info:hover { background: var(--blue); color: #fff; }
+.sbtn.danger { color: var(--red); border-color: var(--red); }
+.sbtn.danger:hover { background: var(--red); color: #fff; }
 
 .add-btn {
   background: transparent;
