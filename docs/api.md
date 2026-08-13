@@ -261,8 +261,8 @@ Drives the web installer: plan → run → poll job → stream log.
 | GET | `/api/list-ics205` | — | — | Saved ICS-205 plans in `static/ics-205/saved/`. |
 | POST | `/api/save-chirp` | **CSRF** | `{filename, content}` | Save a CHIRP CSV into `static/chirp/`. |
 | POST | `/api/save-ics205` | **CSRF** | `{filename, …}` | Save an ICS-205 plan JSON. Alias for `/api/forms/save` with `kind=ics-205`. |
-| GET | `/api/forms/list` | — | `kind` | Saved snapshots for one form kind, newest first. Files themselves are fetched as static assets from `/static/<kind>/saved/<name>`. |
-| POST | `/api/forms/save` | **CSRF** | `{kind, filename, content}` | Save a client form/net-log snapshot under `static/<kind>/saved/`, so a cleared browser cache or a swapped tablet doesn't lose it. `kind ∈ {ics-205, ics-213, ics-214, ics-309, net-log}` (whitelisted; traversal rejected). |
+| GET | `/api/forms/list` | — | `kind`, `ext?` | Saved files for one form kind, newest first. `ext=json` (default) lists form snapshots, `ext=csv` lists CSV exports — one designated folder backs both pickers, and the default keeps every pre-existing caller unchanged. An unknown extension is rejected `400 UNKNOWN_FORM_EXT` rather than silently listing everything. Files themselves are fetched as static assets from `/static/<kind>/saved/<name>`. |
+| POST | `/api/forms/save` | **CSRF** | `{kind, filename, content}` | Save a client form/net-log file under `static/<kind>/saved/`, so a cleared browser cache or a swapped tablet doesn't lose it. `kind ∈ {ics-205, ics-213, ics-214, ics-309, net-log}` (whitelisted; traversal rejected). `filename` must end `.json` (form snapshot) or `.csv` (interchange export) — the CSV export writes here rather than to the operator's own machine. |
 
 ### APRS frequency
 
