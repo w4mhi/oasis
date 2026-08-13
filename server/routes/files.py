@@ -32,6 +32,11 @@ _FILE_LIMIT = 500
 # station.json / warnings.json.
 FORM_KINDS = frozenset({"ics-205", "ics-213", "ics-214", "ics-309", "net-log"})
 
+# Extensions the form store will write and enumerate. .json is the snapshot
+# format (save/restore a whole form); .csv is the interchange export, which now
+# lands in the same designated folder instead of the operator's own machine.
+FORM_EXTS = (".json", ".csv")
+
 
 def _form_saved_dir(kind):
     """Absolute path to static/<kind>/saved/ for a whitelisted kind, else None."""
@@ -41,14 +46,16 @@ def _form_saved_dir(kind):
 
 
 def _save_form_json(kind, filename, content):
-    """Validate kind + filename and write the JSON snapshot under the kind's
-    saved/ dir. Returns (payload, http_status)."""
+    """Validate kind + filename and write the snapshot under the kind's saved/
+    dir. Returns (payload, http_status)."""
     saved_dir = _form_saved_dir(kind)
     if saved_dir is None:
         return {"ok": False, "error": "Unknown form kind", "code": "UNKNOWN_FORM_KIND"}, 400
     filename = (filename or "").strip()
-    # No path traversal, .json only — same rule as the original save-ics205.
-    if not filename or os.sep in filename or "/" in filename or not filename.endswith(".json"):
+    # No path traversal, and only the extensions we own — same rule as the
+    # original save-ics205, widened from .json-only to cover the CSV export.
+    if (not filename or os.sep in filename or "/" in filename
+            or not filename.endswith(FORM_EXTS)):
         return {"ok": False, "error": "Invalid filename", "code": "INVALID_FILENAME"}, 400
     os.makedirs(saved_dir, exist_ok=True)
     dest = os.path.realpath(os.path.join(saved_dir, filename))
@@ -62,17 +69,26 @@ def _save_form_json(kind, filename, content):
     return {"ok": True, "saved": os.path.join("static", kind, "saved", filename)}, 200
 
 
-def _list_form_json(kind):
-    """Newest-first listing of .json snapshots under the kind's saved/ dir.
-    Returns (payload, http_status). Files are fetched directly as static assets
-    (/static/<kind>/saved/<name>); this only enumerates them."""
+def _list_form_json(kind, ext=None):
+    """Newest-first listing of saved files under the kind's saved/ dir.
+
+    ext filters to a single extension ("json" or "csv") so one designated folder
+    can back two pickers — Restore lists snapshots, Import CSV lists exports.
+    It defaults to .json, which is what every existing caller means by "saved
+    snapshot"; an unknown ext is rejected rather than silently listing
+    everything. Returns (payload, http_status). Files are fetched directly as
+    static assets (/static/<kind>/saved/<name>); this only enumerates them."""
     saved_dir = _form_saved_dir(kind)
     if saved_dir is None:
         return {"ok": False, "error": "Unknown form kind", "code": "UNKNOWN_FORM_KIND"}, 400
+    wanted = ("." + str(ext or "json").strip().lstrip(".").lower(),)
+    if wanted[0] not in FORM_EXTS:
+        return {"ok": False, "error": "Unknown extension",
+                "code": "UNKNOWN_FORM_EXT"}, 400
     files = []
     if os.path.isdir(saved_dir):
         for name in os.listdir(saved_dir):
-            if not name.endswith(".json"):
+            if not name.endswith(wanted):
                 continue
             try:
                 st = os.stat(os.path.join(saved_dir, name))
@@ -181,9 +197,12 @@ def api_forms_save():
 
 @bp.route("/api/forms/list")
 def api_forms_list():
-    """List saved snapshots for ?kind=<kind>, newest first. The files themselves
-    are fetched directly as static assets (/static/<kind>/saved/<name>)."""
-    result, status = _list_form_json(request.args.get("kind"))
+    """List saved files for ?kind=<kind>, newest first. ?ext=json (default) lists
+    form snapshots; ?ext=csv lists CSV exports from the same designated folder.
+    The files themselves are fetched directly as static assets
+    (/static/<kind>/saved/<name>)."""
+    result, status = _list_form_json(request.args.get("kind"),
+                                     request.args.get("ext"))
     if not result["ok"]:
         return jsonify({"ok": False, "error": result["error"],
                         "code": result["code"]}), status

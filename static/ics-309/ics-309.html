@@ -63,8 +63,9 @@ td input:hover{border-color:var(--border);}
     <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 309 PDF and download a timestamped copy">⬇ Save PDF</button>
     <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this log as a message (text + RMS form attachment) ready to queue">→ Send via Winlink</button>
     <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
-    <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
-    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 309 CSV file to restore form data">Import CSV</button>
+    <button class="sbtn" onclick="exportCSV()" title="Export all form data as CSV into OASIS (static/ics-309/saved/) so it stays on the device">Export CSV</button>
+    <button class="sbtn" onclick="exportCSVLocal()" title="Download the CSV to the machine this browser is running on instead of the device">Export CSV (local)</button>
+    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 309 CSV — from the device, or from this machine">Import CSV</button>
     <button class="sbtn" id="fb-save" title="Save this log onto the device (survives a cleared browser cache or a swapped tablet)">Save to server</button>
     <button class="sbtn" id="fb-restore" title="Restore a log previously saved on this device">Restore</button>
     <button class="sbtn danger" onclick="clearAll()" title="Clear all form data and reset to a blank form">Clear</button>
@@ -189,7 +190,6 @@ td input:hover{border-color:var(--border);}
 </div>
 <div class="toast" id="toast"></div>
 <!-- Hidden CSV import input -->
-<input type="file" id="csv-import-input" accept=".csv" style="display:none" onchange="importCSV(event)">
 
 <!-- Load template and pdf-lib -->
 <script src="./ics309-template.js"></script>
@@ -328,9 +328,30 @@ function cc(v){const s=String(v??'');return/[,"\n]/.test(s)?'"'+s.replace(/"/g,'
 function gv(id){return document.getElementById(id)?.value||'';}
 
 // ─── CSV Import ───────────────────────────────────────────────────────────────
+// Default source is the OASIS device's designated folder for this log; the
+// footer widens that to the whole install tree, then to this machine.
 function importCSVPrompt(){
-  document.getElementById('csv-import-input').value='';
-  document.getElementById('csv-import-input').click();
+  OasisFormBackup.openPicker('ics-309', async name=>{
+    try{ importCSVText(await OasisFormBackup.loadText('ics-309',name),name); }
+    catch(err){ OasisFormBackup.toast('Import failed: '+err.message,true); }
+  },{
+    ext:'csv', title:'Import CSV from server',
+    emptyText:'No CSV exports on the device yet. Use Export CSV first, or browse for one below.',
+    actions:[
+      {label:'Browse device files…',onClick:()=>OasisFormBackup.openBrowser(async path=>{
+        try{ importCSVText(await OasisFormBackup.readTree(path),path); }
+        catch(err){ OasisFormBackup.toast('Import failed: '+err.message,true); }
+      },{title:'Import CSV',start:'static/ics-309/saved',accept:'.csv'})},
+      {label:'Browse local files…',onClick:()=>OasisFormBackup.pickLocal(importCSVText,'.csv')},
+    ],
+  });
+}
+
+// importCSV() below reads from an <input type="file"> change event. Synthesising
+// that shape keeps the parser untouched whichever of the three sources was used.
+function importCSVText(text,name){
+  const f=new File([text],String(name||'import.csv').split('/').pop(),{type:'text/csv'});
+  importCSV({target:{files:[f],value:''}});
 }
 
 function importCSV(event){
@@ -400,7 +421,7 @@ function setField(id,val){
   const el=document.getElementById(id);if(el) el.value=val;
 }
 
-function exportCSV(){
+function buildCSV(){
   const rows=[
     '# ICS 309 — Communications Log',
     '# Exported: '+new Date().toISOString(),
@@ -424,12 +445,24 @@ function exportCSV(){
     ['Position',gv('f-prep-pos')].map(cc).join(','),
     ['Date/Time',gv('f-prep-dt')].map(cc).join(','),
   ];
-  const blob=new Blob([rows.join('\r\n')],{type:'text/csv'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='ics309-'+new Date().toISOString().slice(0,10)+'.csv';
-  a.click();
+  return rows.join('\r\n');
 }
+
+function csvFilename(){
+  return OasisFormBackup.filenameFor('ics-309',gv('f-inc')||'log').replace(/\.json$/,'.csv');
+}
+
+// Export writes into the OASIS device's ICS-309 folder. The local download is
+// still available, just no longer the default.
+async function exportCSV(){
+  const name=csvFilename();
+  try{
+    const j=await OasisFormBackup.save('ics-309',name,buildCSV());
+    OasisFormBackup.toast('✓ Exported to '+(j.saved||name));
+  }catch(err){ OasisFormBackup.toast('Export failed: '+err.message,true); }
+}
+
+function exportCSVLocal(){ OasisFormBackup.saveLocal(csvFilename(),buildCSV()); }
 
 function toggleInst(){
   const b=document.getElementById('i-body');

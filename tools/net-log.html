@@ -115,9 +115,9 @@ tr.editing td{background:var(--panel-2);}
 
   <div class="actions">
     <button class="sbtn" onclick="window.print()" title="Print the log using your browser's print dialog">Print</button>
-    <button class="sbtn" onclick="exportCSV()" title="Export all check-ins to a CSV file">Export CSV</button>
-    <button class="sbtn" onclick="document.getElementById('importFile').click()" title="Import a previously exported net log CSV">Import CSV</button>
-    <input type="file" id="importFile" accept=".csv,text/csv,text/plain" style="display:none" onchange="importCSV(this)">
+    <button class="sbtn" onclick="exportCSV()" title="Export all check-ins as CSV into OASIS (static/net-log/saved/) so it stays on the device">Export CSV</button>
+    <button class="sbtn" onclick="exportCSVLocal()" title="Download the CSV to the machine this browser is running on instead of the device">Export CSV (local)</button>
+    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported net log CSV — from the device, or from this machine">Import CSV</button>
     <button class="sbtn" onclick="sendToICS309()" title="Copy this log into ICS-309 and open it in a new tab">→ ICS-309</button>
     <button class="sbtn" id="fb-save" title="Save this net log onto the device (survives a cleared browser cache or a swapped tablet)">Save to server</button>
     <button class="sbtn" id="fb-restore" title="Restore a net log previously saved on this device">Restore</button>
@@ -564,7 +564,7 @@ function sendToICS309() {
   window.open('/static/ics-309/ics-309.html', '_blank');
 }
 
-function exportCSV(){
+function buildCSV(){
   const meta = [
     '# Net: '+csv(document.getElementById('nn').value),
     '# Freq: '+csv(document.getElementById('nf').value),
@@ -574,9 +574,49 @@ function exportCSV(){
   ];
   const hdr = ['#','UTC','Callsign','Name','City','State','Grid','Traffic','Notes'].join(',');
   const body = rows.map(e=>[e.seq,e.utc,e.call,e.name,e.city,e.state,e.grid,e.traffic?'Y':'',e.notes].map(csv).join(','));
-  const blob = new Blob([[...meta,hdr,...body].join('\r\n')],{type:'text/csv'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download='net-log-'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+  return [...meta,hdr,...body].join('\r\n');
+}
+
+function csvFilename(){
+  return OasisFormBackup.filenameFor('net-log', (header && header.net) || 'net').replace(/\.json$/,'.csv');
+}
+
+// Export writes into the OASIS device's net-log folder. The local download is
+// still available, just no longer the default.
+async function exportCSV(){
+  const name = csvFilename();
+  try{
+    const j = await OasisFormBackup.save('net-log', name, buildCSV());
+    OasisFormBackup.toast('✓ Exported to '+(j.saved||name));
+  }catch(err){ OasisFormBackup.toast('Export failed: '+err.message, true); }
+}
+
+function exportCSVLocal(){ OasisFormBackup.saveLocal(csvFilename(), buildCSV()); }
+
+// Default source is the OASIS device's designated folder for the net log; the
+// footer widens that to the whole install tree, then to this machine.
+function importCSVPrompt(){
+  OasisFormBackup.openPicker('net-log', async name=>{
+    try{ importCSVText(await OasisFormBackup.loadText('net-log',name),name); }
+    catch(err){ OasisFormBackup.toast('Import failed: '+err.message,true); }
+  },{
+    ext:'csv', title:'Import CSV from server',
+    emptyText:'No CSV exports on the device yet. Use Export CSV first, or browse for one below.',
+    actions:[
+      {label:'Browse device files…',onClick:()=>OasisFormBackup.openBrowser(async path=>{
+        try{ importCSVText(await OasisFormBackup.readTree(path),path); }
+        catch(err){ OasisFormBackup.toast('Import failed: '+err.message,true); }
+      },{title:'Import CSV',start:'static/net-log/saved',accept:'.csv'})},
+      {label:'Browse local files…',onClick:()=>OasisFormBackup.pickLocal(importCSVText,'.csv')},
+    ],
+  });
+}
+
+// importCSV() below reads input.files[0] through FileReader. Synthesising that
+// shape keeps the parser untouched whichever of the three sources was used.
+function importCSVText(text,name){
+  const f=new File([text],String(name||'import.csv').split('/').pop(),{type:'text/csv'});
+  importCSV({files:[f],value:''});
 }
 
 function importCSV(input) {

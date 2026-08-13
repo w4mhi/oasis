@@ -55,8 +55,9 @@ td textarea{overflow:hidden;}
     <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 214 PDF and download a timestamped copy">⬇ Save PDF</button>
     <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this log as a message (text + RMS form attachment) ready to queue">→ Send via Winlink</button>
     <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
-    <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
-    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 214 CSV file to restore form data">Import CSV</button>
+    <button class="sbtn" onclick="exportCSV()" title="Export all form data as CSV into OASIS (static/ics-214/saved/) so it stays on the device">Export CSV</button>
+    <button class="sbtn" onclick="exportCSVLocal()" title="Download the CSV to the machine this browser is running on instead of the device">Export CSV (local)</button>
+    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 214 CSV — from the device, or from this machine">Import CSV</button>
     <button class="sbtn" id="fb-save" title="Save this form onto the device (survives a cleared browser cache or a swapped tablet)">Save to server</button>
     <button class="sbtn" id="fb-restore" title="Restore a form previously saved on this device">Restore</button>
     <button class="sbtn danger" onclick="clearAll()" title="Clear all form data and reset to a blank form">Clear</button>
@@ -258,7 +259,7 @@ function xv(s){return x(s).replace(/"/g,'&quot;');}
 function cc(v){const s=String(v??'');return/[,"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
 function gv(id){return document.getElementById(id)?.value||'';}
 
-function exportCSV(){
+function buildCSV(){
   const rows=[
     '# ICS 214 — Activity Log',
     '# Exported: '+new Date().toISOString(),
@@ -287,15 +288,48 @@ function exportCSV(){
     ['Signature',gv('f-ps')].map(cc).join(','),
     ['Date/Time',gv('f-pd')].map(cc).join(','),
   ];
-  const blob=new Blob([rows.join('\r\n')],{type:'text/csv'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='ics214-'+new Date().toISOString().slice(0,10)+'.csv';
-  a.click();
+  return rows.join('\r\n');
 }
 
+function csvFilename(){
+  return OasisFormBackup.filenameFor('ics-214',gv('f-inc')||'log').replace(/\.json$/,'.csv');
+}
+
+// Export writes into the OASIS device's ICS-214 folder. The local download is
+// still available, just no longer the default.
+async function exportCSV(){
+  const name=csvFilename();
+  try{
+    const j=await OasisFormBackup.save('ics-214',name,buildCSV());
+    OasisFormBackup.toast('✓ Exported to '+(j.saved||name));
+  }catch(err){ OasisFormBackup.toast('Export failed: '+err.message,true); }
+}
+
+function exportCSVLocal(){ OasisFormBackup.saveLocal(csvFilename(),buildCSV()); }
+
+// Default source is the OASIS device's designated folder for this form; the
+// footer widens that to the whole install tree, then to this machine.
 function importCSVPrompt(){
-  document.getElementById('csv-import-input').click();
+  OasisFormBackup.openPicker('ics-214', async name=>{
+    try{ importCSVText(await OasisFormBackup.loadText('ics-214',name),name); }
+    catch(err){ OasisFormBackup.toast('Import failed: '+err.message,true); }
+  },{
+    ext:'csv', title:'Import CSV from server',
+    emptyText:'No CSV exports on the device yet. Use Export CSV first, or browse for one below.',
+    actions:[
+      {label:'Browse device files…',onClick:()=>OasisFormBackup.openBrowser(async path=>{
+        try{ importCSVText(await OasisFormBackup.readTree(path),path); }
+        catch(err){ OasisFormBackup.toast('Import failed: '+err.message,true); }
+      },{title:'Import CSV',start:'static/ics-214/saved',accept:'.csv'})},
+      {label:'Browse local files…',onClick:()=>OasisFormBackup.pickLocal(importCSVText,'.csv')},
+    ],
+  });
+}
+
+// The parser below reads a File through FileReader. Wrapping server text in a
+// File leaves it untouched no matter which of the three sources was picked.
+function importCSVText(text,name){
+  importCSV(new File([text],String(name||'import.csv').split('/').pop(),{type:'text/csv'}));
 }
 
 function importCSV(file){
@@ -575,10 +609,6 @@ function toggleInst(){
 
 document.addEventListener('DOMContentLoaded',()=>{
   HF.forEach(id=>document.getElementById(id).addEventListener('input',persist));
-  document.getElementById('csv-import-input').addEventListener('change',e=>{
-    if(e.target.files[0]) importCSV(e.target.files[0]);
-    e.target.value='';
-  });
   const restored=load();
   if(!restored){
     const now=new Date();

@@ -121,8 +121,9 @@ tr.row-overflow td input{color:var(--text-dim);}
     <button class="sbtn" onclick="saveToServer()" title="Save this plan as JSON into OASIS (static/ics-205/saved/) so it survives on the device">Save form</button>
     <button class="sbtn" onclick="openLoadDialog()" title="Load a previously saved ICS-205 plan from this device">Load form</button>    
     <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (landscape letter)">Print</button>
-    <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
-    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 205 CSV file to restore form data">Import CSV</button>
+    <button class="sbtn" onclick="exportCSV()" title="Export all form data as CSV into OASIS (static/ics-205/saved/) so it stays on the device">Export CSV</button>
+    <button class="sbtn" onclick="exportCSVLocal()" title="Download the CSV to the machine this browser is running on instead of the device">Export CSV (local)</button>
+    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 205 CSV — from the device, or from this machine">Import CSV</button>
     <button class="sbtn" onclick="loadChirpPrompt()" title="Load a CHIRP radio programming CSV file — channel names become a dropdown and frequencies/tones are auto-filled and locked">Load Frequency Plan</button>
     <button class="sbtn danger" onclick="clearAll()" title="Clear all form data, unload any frequency plan, and reset to a blank form">Clear</button>
   </div>
@@ -257,17 +258,14 @@ tr.row-overflow td input{color:var(--text-dim);}
     </div>
     <div class="load-list" id="chirp-list"></div>
     <div class="load-foot">
-      <button class="sbtn" onclick="loadChirpFromFile()" title="Load a CHIRP CSV from this device instead of the server"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><path d="M1.5 3.5h4l1.5 2h7.5v8h-13z"/></svg> Browse device file…</button>
+      <button class="sbtn" onclick="loadChirpFromTree()" title="Browse the OASIS device for a CHIRP CSV anywhere under the install folder"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><path d="M1.5 3.5h4l1.5 2h7.5v8h-13z"/></svg> Browse device files…</button>
+      <button class="sbtn" onclick="loadChirpFromLocal()" title="Load a CHIRP CSV from the machine this browser is running on">Browse local files…</button>
     </div>
   </div>
 </div>
 
-<!-- Hidden CSV import input -->
-<input type="file" id="csv-import-input" accept=".csv" style="display:none" onchange="importCSV(event)">
-<!-- Hidden CHIRP import input -->
-<input type="file" id="chirp-import-input" accept=".csv" style="display:none" onchange="loadChirp(event)">
-
 <!-- Load template and pdf-lib (must exist in same folder / dependencies/) -->
+<script src="/common/js/form-backup.js"></script>
 <script src="./ics205-template.js"></script>
 <script src="/common/dependencies/pdf-lib.min.js"></script>
 
@@ -435,18 +433,20 @@ function loadChirpPrompt() {
   openChirpDialog();
 }
 
-// Kept for the "Browse device file…" fallback in the picker.
-function loadChirpFromFile() {
-  document.getElementById('chirp-import-input').value = '';
-  document.getElementById('chirp-import-input').click();
+// Browse the OASIS device itself — the whole install tree, opening at the
+// designated chirp folder. Server-side read; nothing is uploaded.
+function loadChirpFromTree() {
+  closeChirpDialog();
+  OasisFormBackup.openBrowser(async path => {
+    try { applyChirpText(await OasisFormBackup.readTree(path)); }
+    catch (err) { showToast('Load failed: ' + err.message, 'err', 6000); }
+  }, { title: 'Frequency plan', start: 'static/chirp', accept: '.csv' });
 }
 
-function loadChirp(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => { closeChirpDialog(); applyChirpText(e.target.result); };
-  reader.readAsText(file);
+// The explicit escape hatch: a file on whatever machine the browser is on.
+function loadChirpFromLocal() {
+  closeChirpDialog();
+  OasisFormBackup.pickLocal(text => applyChirpText(text), '.csv');
 }
 
 function applyChirpText(text) {
@@ -843,7 +843,7 @@ async function savePDF() {
 }
 
 // ─── CSV Export ──────────────────────────────────────────────────────────────
-function exportCSV() {
+function buildCSV() {
   const hdr = ['Zone/Grp','Ch #','Function','Channel Name/Talkgroup','Assignment',
     'RX Freq (N/W)','RX Tone/NAC','TX Freq (N/W)','TX Tone/NAC','Mode','Remarks'];
   const rows = [
@@ -872,27 +872,62 @@ function exportCSV() {
     ['IAP Page', gv('f-pg')].map(cc).join(','),
     ['Date/Time', gv('f-pd')].map(cc).join(','),
   ];
-  const blob = new Blob([rows.join('\r\n')], { type: 'text/csv' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'ics205-' + new Date().toISOString().slice(0,10) + '.csv';
-  a.click();
-  URL.revokeObjectURL(a.href);
+  return rows.join('\r\n');
+}
+
+function csvFilename() {
+  return OasisFormBackup.filenameFor('ics-205', gv('f-inc') || 'plan').replace(/\.json$/, '.csv');
+}
+
+// Export goes to the server's designated folder (static/ics-205/saved/). The
+// local download is still available, but only from the explicit button.
+async function exportCSV() {
+  const name = csvFilename();
+  try {
+    const j = await OasisFormBackup.save('ics-205', name, buildCSV());
+    showToast('✓ Exported to ' + (j.saved || name), 'ok', 4000);
+  } catch (err) {
+    showToast('Export failed: ' + err.message, 'err', 6000);
+  }
+}
+
+function exportCSVLocal() {
+  OasisFormBackup.saveLocal(csvFilename(), buildCSV());
 }
 
 // ─── CSV Import ──────────────────────────────────────────────────────────────
+// Default source is the server's designated folder; the picker's footer offers
+// the wider OASIS tree and, last, this machine.
 function importCSVPrompt() {
-  document.getElementById('csv-import-input').value = '';
-  document.getElementById('csv-import-input').click();
+  OasisFormBackup.openPicker('ics-205', async name => {
+    try { applyImportedCSV(await OasisFormBackup.loadText('ics-205', name)); }
+    catch (err) { showToast('Import failed: ' + err.message, 'err', 6000); }
+  }, {
+    ext: 'csv',
+    title: 'Import CSV from server',
+    emptyText: 'No CSV exports on the server yet. Use Export CSV first, or browse for one below.',
+    actions: [
+      { label: 'Browse device files…', onClick: () => importCSVFromTree() },
+      { label: 'Browse local files…',  onClick: () => importCSVFromLocal() },
+    ],
+  });
 }
 
-function importCSV(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
+function importCSVFromTree() {
+  OasisFormBackup.openBrowser(async path => {
+    try { applyImportedCSV(await OasisFormBackup.readTree(path)); }
+    catch (err) { showToast('Import failed: ' + err.message, 'err', 6000); }
+  }, { title: 'Import CSV', start: 'static/ics-205/saved', accept: '.csv' });
+}
+
+function importCSVFromLocal() {
+  OasisFormBackup.pickLocal(text => applyImportedCSV(text), '.csv');
+}
+
+function applyImportedCSV(text) {
+  {
     try {
-      const lines = e.target.result.split(/\r?\n/);
+      const lines = String(text).split(/\r?\n/);
       let mode = '';
       const channelRows = [];
       let hdrSkipped = false;
@@ -949,8 +984,7 @@ function importCSV(event) {
     } catch(err) {
       showToast('Import failed: ' + err.message, 'err', 5000);
     }
-  };
-  reader.readAsText(file);
+  }
 }
 
 function parseCSVLine(line) {
@@ -1299,7 +1333,7 @@ async function openChirpDialog(){
     return;
   }
   if(!files.length){
-    list.innerHTML='<div class="load-empty">No frequency plans on the server yet. Use “Browse device file…” below to load one from this device.</div>';
+    list.innerHTML='<div class="load-empty">No frequency plans in static/chirp/ yet. Use “Browse device files…” below to find one elsewhere on the device.</div>';
     return;
   }
   list.innerHTML='';
