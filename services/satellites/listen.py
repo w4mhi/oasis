@@ -280,12 +280,20 @@ def stream_encoder(srate, which=shutil.which):
 
 
 def stream_command(freq_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, srate=None,
-                   device_serial=None, which=shutil.which, dmode="fm"):
+                   device_serial=None, which=shutil.which, dmode="fm",
+                   max_seconds=None):
     """rtl_fm | <encoder> → browser audio on stdout. Same capture as
     record_command (per-mode demod via dmode — FM / CW / SSB), but the audio is
-    encoded (MP3) for a live <audio> element instead of a WAV, and no `timeout` so
-    it runs for the connection's lifetime. Returns (shell_cmd, mime), or
-    (None, None) when no encoder is available."""
+    encoded (MP3) for a live <audio> element instead of a WAV. Returns
+    (shell_cmd, mime), or (None, None) when no encoder is available.
+
+    This used to carry no `timeout` at all, on the reasoning that a stream "runs
+    for the connection's lifetime" — but the connection is a browser tab, and a
+    tab that is closed, suspended or simply left open past LOS keeps the dongle
+    to itself. Nothing at all is coming down after LOS, so the stream outlives
+    its only purpose and blocks every other service that wants the radio.
+    max_seconds is the pass's own length; None keeps the old unbounded shape for
+    callers that genuinely have no pass in hand."""
     rmode, rate, offset = demod_params(dmode)
     if rmode is None:            # unsupported mode slipped past the route → default FM
         rmode, rate, offset = "fm", SAMPLE_RATE, 0
@@ -295,7 +303,9 @@ def stream_command(freq_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, srate=None,
     if not enc:
         return (None, None)
     dev = f"-d {shlex.quote(str(device_serial))} " if device_serial else ""
-    rtl = f"rtl_fm {dev}-f {int(freq_hz) + offset} -M {rmode} -s {int(rate)} -g {gain} -p {ppm} -"
+    cap = f"timeout {int(max_seconds)} " if max_seconds else ""
+    rtl = (f"{cap}rtl_fm {dev}-f {int(freq_hz) + offset} -M {rmode} "
+           f"-s {int(rate)} -g {gain} -p {ppm} -")
     return (f"{rtl} | {enc}", mime)
 
 
@@ -519,7 +529,8 @@ def status():
 
 
 def start(freq_hz, norad, out_wav, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM,
-          srate=None, device_serial=None, dmode="fm", radio_channel=None):
+          srate=None, device_serial=None, dmode="fm", radio_channel=None,
+          max_seconds=MAX_SECONDS):
     """Begin recording to out_wav. Raises RuntimeError if ANY capture of ours is
     already running — a recording OR a live stream. The caller verifies
     deps/dongle/feed first (see preconditions). device_serial pins rtl_fm to the
@@ -544,9 +555,14 @@ def start(freq_hz, norad, out_wav, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM,
         if is_capturing():
             raise RuntimeError("already capturing")
         os.makedirs(os.path.dirname(out_wav), exist_ok=True)
-        cmd = (radio_record_command(out_wav, radio_channel, srate=srate or SAMPLE_RATE)
+        # max_seconds is the pass's own length (LOS + tail), not the blanket cap
+        # — the caller computes it. It reaches the pipeline as `timeout N`, so
+        # the fallback path stops at LOS with no mechanism of its own.
+        cmd = (radio_record_command(out_wav, radio_channel, srate=srate or SAMPLE_RATE,
+                                    max_seconds=max_seconds)
                if radio_channel is not None
                else record_command(freq_hz, out_wav, gain, ppm, srate,
+                                   max_seconds=max_seconds,
                                    device_serial=device_serial, dmode=dmode))
         proc = subprocess.Popen(
             cmd,
@@ -585,13 +601,14 @@ def stop():
 
 
 def stream(freq_hz, norad, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, srate=None,
-           device_serial=None, chunk=8192, dmode="fm"):
+           device_serial=None, chunk=8192, dmode="fm", max_seconds=None):
     """Start a live capture and return (generator, mime). The generator yields
     encoded audio bytes for a browser <audio> element; it holds the dongle for
     the connection and SIGTERMs the whole pipeline when the client disconnects.
     Mutually exclusive with recording. dmode selects the demod (FM / CW / SSB).
     Raises RuntimeError if busy / no encoder."""
-    cmd, mime = stream_command(freq_hz, gain, ppm, srate, device_serial=device_serial, dmode=dmode)
+    cmd, mime = stream_command(freq_hz, gain, ppm, srate, device_serial=device_serial,
+                               dmode=dmode, max_seconds=max_seconds)
     if not cmd:
         raise RuntimeError("no audio encoder — install ffmpeg (or libsox-fmt-mp3)")
     with _lock:

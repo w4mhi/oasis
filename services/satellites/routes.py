@@ -777,7 +777,70 @@ def _doppler_curve(norad, seconds):
         return []
 
 
-def _start_tracked(norad, freq_hz, dmode, device_serial, out_wav, mode):
+# How long a capture keeps running past predicted LOS. LOS is a horizon
+# crossing computed from a TLE that is hours to days old, so it is a good
+# estimate rather than an instant. A minute of tail is 720 KB at 12 kHz and
+# errs in the only direction that costs nothing.
+LOS_TAIL_S = 60
+
+
+def _seconds_to_los(norad, now=None):
+    """Seconds from now until the current-or-next pass's LOS, or None.
+
+    None means the pass could not be RESOLVED — no station fix, no TLE,
+    prediction blew up on a decayed element set. It does not mean "no limit":
+    the caller falls back to MAX_SECONDS, because a capture with no bound at all
+    is the exact failure this path exists to prevent.
+
+    Same predictor, station and min_elev the /passes route uses, so the moment
+    this stops recording is the same LOS the operator was shown."""
+    try:
+        import predict
+        st = _station()
+        if st["lat"] is None:
+            return None
+        sat = _sats_by_norad().get(int(norad))
+        if sat is None:
+            return None
+        now = now or datetime.datetime.now(datetime.timezone.utc)
+        # 6 h, not the roster's 48: this only ever needs the pass in progress or
+        # the one about to start, and a long horizon is wasted SGP4 on the box
+        # least able to spare it, at the moment it is being asked to key a radio.
+        passes = predict.compute_passes(sat, st["lat"], st["lon"], now,
+                                        hours=6, min_elev=_min_elev())
+        if not passes:
+            return None
+        los = datetime.datetime.fromisoformat(passes[0]["set"])
+        return max(0.0, (los - now).total_seconds())
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
+def _capture_seconds(norad):
+    """How long a capture of this pass should run, in seconds.
+
+    LOS is the natural end of a recording; MAX_SECONDS is a backstop. That is
+    the opposite of how it was — the cap was the ONLY bound, and it reached the
+    Tracker rather than the capture, so it ended Doppler correction without
+    ending the recording. A 21-minute OSCAR 7 pass against the 20-minute cap
+    duly wrote its last 90 seconds with the shift frozen at its 20-minute value.
+
+    Clamped both ways: never longer than MAX_SECONDS, and never below a floor,
+    since a start keyed a few seconds before a predicted LOS should still
+    produce a usable file rather than a header and nothing else."""
+    import listen
+    los = _seconds_to_los(norad)
+    if los is None:
+        return listen.MAX_SECONDS
+    return int(max(MIN_CAPTURE_S, min(los + LOS_TAIL_S, listen.MAX_SECONDS)))
+
+
+# A capture armed in the last seconds of a pass still has to be worth opening.
+MIN_CAPTURE_S = 30
+
+
+def _start_tracked(norad, freq_hz, dmode, device_serial, out_wav, mode,
+                   seconds=None):
     """Try the Doppler-corrected path. Returns the capture, or None to fall back.
 
     Falling back is normal — a station without the DSP stack is not broken — but
@@ -785,7 +848,11 @@ def _start_tracked(norad, freq_hz, dmode, device_serial, out_wav, mode):
     recording's sidecar."""
     import capture
     import listen
-    curve = _doppler_curve(norad, listen.MAX_SECONDS)
+    seconds = int(seconds or listen.MAX_SECONDS)
+    # The curve is computed over the SAME span the capture will run. It used to
+    # be a flat MAX_SECONDS, so a capture that outlived the cap ran off the end
+    # of its own correction data.
+    curve = _doppler_curve(norad, seconds)
     if listen.capture_backend(has_tle=bool(curve)) != "csdr":
         return None
     _rmode, _rate, offset = listen.demod_params(dmode)
@@ -796,7 +863,7 @@ def _start_tracked(norad, freq_hz, dmode, device_serial, out_wav, mode):
         # here the carrier is placed at +700 Hz in the audio instead, so the sign
         # flips and the dongle stays honestly on frequency.
         tone_offset_hz=-(offset or 0),
-        max_seconds=listen.MAX_SECONDS)
+        max_seconds=seconds)
     try:
         cap.start()
     except Exception:                                        # noqa: BLE001
@@ -957,8 +1024,13 @@ def api_listen():
         # The radio port is never tracked: a radio has no CAT here, so the
         # operator has already parked it by hand (see listen's radio notes).
         cap = None
+        # Stop at LOS. Both paths take the same number, so a station on the
+        # rtl_fm fallback gets the same behaviour — it lands in the pipeline's
+        # existing `timeout N` rather than needing a mechanism of its own.
+        seconds = _capture_seconds(norad)
         if radio_channel is None:
-            cap = _start_tracked(norad, freq_hz, dmode, device_serial, out, "record")
+            cap = _start_tracked(norad, freq_hz, dmode, device_serial, out,
+                                 "record", seconds=seconds)
         if cap is not None:
             started = listen.start_tracked(cap, norad, out, freq_hz, "record")
         else:
@@ -967,7 +1039,8 @@ def api_listen():
             # the whole difference between a recording and a file full of noise.
             started = listen.start(freq_hz, norad, out, ppm=_capture_ppm(),
                                    device_serial=device_serial, dmode=dmode,
-                                   radio_channel=radio_channel)
+                                   radio_channel=radio_channel,
+                                   max_seconds=seconds)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e),
                         "code": "CAPTURE_START_FAILED"}), 500
@@ -1023,8 +1096,11 @@ def api_listen_stream():
     except _CaptureError as e:
         return jsonify({"ok": False, "error": str(e), "code": e.slug}), e.code
     try:
+        # Bounded at LOS like a recording. A stream past LOS is a browser tab
+        # holding the dongle while nothing is coming down.
         gen, mime = listen.stream(freq_hz, norad, ppm=_capture_ppm(),
-                                  device_serial=device_serial, dmode=dmode)
+                                  device_serial=device_serial, dmode=dmode,
+                                  max_seconds=_capture_seconds(norad))
     except RuntimeError as e:
         busy = "busy" in str(e)
         return jsonify({"ok": False, "error": str(e),

@@ -123,6 +123,10 @@ class TrackedCapture:
         self._sink_lock = threading.Lock()
         self._pump = None
         self._stopped = threading.Event()
+        self._timer = None
+        self._teardown = threading.Lock()
+        self._torn_down = False
+        self.stopped_at_limit = False
         self.out_rate = None
         self.error = None
 
@@ -167,7 +171,29 @@ class TrackedCapture:
             self.tracker.start()
         self._pump = threading.Thread(target=self._run, daemon=True)
         self._pump.start()
+        # Auto-stop. max_seconds has always reached the Tracker, but the Tracker
+        # only ends the CORRECTION — it breaks out of its loop and leaves the
+        # shift frozen at its last value, while this pump loops on _stopped
+        # alone and keeps writing. A 21-minute pass against a 20-minute cap
+        # therefore recorded its final 90 seconds uncorrected, past the end of
+        # the curve, at the point in a pass where Doppler moves fastest.
+        #
+        # A timer rather than a deadline test inside _run: chain.read() BLOCKS,
+        # so a chain that goes quiet would never reach an in-loop check — and a
+        # capture holding the dongle with nothing arriving is precisely the
+        # runaway a limit exists to catch.
+        if self.max_seconds:
+            self._timer = threading.Timer(float(self.max_seconds), self._expire)
+            self._timer.daemon = True
+            self._timer.start()
         return self
+
+    def _expire(self):
+        """The limit came up. Same teardown as an operator pressing Stop, so the
+        WAV finalises through the identical path rather than a second one that
+        only ever runs unattended."""
+        self.stopped_at_limit = True
+        self.stop()
 
     def _run(self):
         try:
@@ -201,20 +227,36 @@ class TrackedCapture:
     def stop(self):
         """Tear down in the order that cannot hang: pump first (via the chain's
         reader, which is what a blocked read is waiting on), then the tracker,
-        then the connector, then the sinks."""
-        self._stopped.set()
-        if self.chain is not None:
-            self.chain.stop()
-        if self.tracker is not None:
-            self.tracker.stop()
-        if self._pump is not None:
-            self._pump.join(timeout=3)
-        if self.conn is not None:
-            self.conn.stop()
-        with self._sink_lock:
-            sinks, self._sinks = list(self._sinks), []
-        for s in sinks:
-            s.close()
+        then the connector, then the sinks.
+
+        Runs AT MOST ONCE. There are now two callers that can arrive together —
+        an operator pressing Stop within the same instant the auto-stop timer
+        fires — and running this twice would close already-closed sinks and
+        double-stop the connector. The lock is held for the whole teardown, not
+        just the flag check, so the second caller returns only once the WAV is
+        genuinely finalised rather than while it is still being written.
+
+        Never called from the pump thread: join() on the current thread raises.
+        The timer has its own thread, which is the other reason it is a timer."""
+        with self._teardown:
+            if self._torn_down:
+                return
+            self._torn_down = True
+            if self._timer is not None:
+                self._timer.cancel()
+            self._stopped.set()
+            if self.chain is not None:
+                self.chain.stop()
+            if self.tracker is not None:
+                self.tracker.stop()
+            if self._pump is not None:
+                self._pump.join(timeout=3)
+            if self.conn is not None:
+                self.conn.stop()
+            with self._sink_lock:
+                sinks, self._sinks = list(self._sinks), []
+            for s in sinks:
+                s.close()
 
     # ── introspection ────────────────────────────────────────────────────────
     def doppler_now(self, t_s):
