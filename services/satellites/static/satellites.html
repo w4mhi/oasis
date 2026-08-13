@@ -78,8 +78,13 @@ html, body { height: 100%; margin: 0; }
    one deliberately made prominent, got the thickest outline of the lot. */
 /* The ARMED bird — the one Rec/Play acts on, the one the Doppler readout is
    following. It is the only satellite on the map with an operational claim on
-   the operator, and it used to look exactly like the rest. */
-.sat-ring-halo { fill: none; stroke: #0d1117; stroke-width: 4; opacity: .85; pointer-events: none; }
+   the operator, and it used to look exactly like the rest.
+   A ring and nothing else. There was a dark backing circle under it, on the
+   same reasoning as the glyph halo and wrong for the same reason: at r=11 it
+   showed about 1.2 units of dark on EACH side of a 1.6-unit coloured stroke, so
+   the thing framing the marker was larger than the thing it framed. The ring is
+   the only circle on the map at this scale and the icon's arcs now carry their
+   own mass, so neither needed backing. */
 .sat-ring { fill: none; stroke-width: 1.6; opacity: .9; }
 /* Name labels. paint-order:stroke puts the dark stroke UNDER the fill, which is
    what makes a small name readable over coastline without a background box.
@@ -1613,8 +1618,7 @@ function redraw() {
       // exact renderer-pinning trap that cost us a kiosk once already. Contrast
       // and size do the work instead of motion.
       if (armed) {
-        tops += `<circle class="sat-ring-halo" cx="${x}" cy="${y}" r="11"/>`
-              + `<circle class="sat-ring" data-norad="${norad}" cx="${x}" cy="${y}" r="11" stroke="${s.color}"/>`;
+        tops += `<circle class="sat-ring" data-norad="${norad}" cx="${x}" cy="${y}" r="11" stroke="${s.color}"/>`;
       }
       tops += `<g class="sat-glyph" data-norad="${norad}" fill="${s.color}" `
         + `transform="translate(${x} ${y}) scale(${armed ? 0.115 : 0.09}) translate(-61.44 -61.44)">`
