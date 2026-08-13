@@ -76,7 +76,11 @@ tr.editing td{background:var(--panel-2);}
   th{color:#555;}
   .c-call,.c-traf{color:#000;}
   #view-map{display:none!important;}
+  .print-page-break{display:block;page-break-before:always;height:0;}
+  .print-repeat-hdr th{font-size:7pt;color:#444;padding:2px 4px;border-bottom:1px solid #999;}
 }
+.print-page-break{display:none;}
+.print-repeat-hdr{display:none;}
 
 /* Tabs on log section */
 .tabs-row{display:flex;gap:3px;border-bottom:1px solid var(--border);margin-bottom:.7rem;}
@@ -113,16 +117,7 @@ tr.editing td{background:var(--panel-2);}
     <p>Log station check-ins during a net operation.</p>
   </header>
 
-  <div class="actions">
-    <button class="sbtn" onclick="window.print()" title="Print the log using your browser's print dialog">Print</button>
-    <button class="sbtn" onclick="exportCSV()" title="Export all check-ins to a CSV file">Export CSV</button>
-    <button class="sbtn" onclick="document.getElementById('importFile').click()" title="Import a previously exported net log CSV">Import CSV</button>
-    <input type="file" id="importFile" accept=".csv,text/csv,text/plain" style="display:none" onchange="importCSV(this)">
-    <button class="sbtn" onclick="sendToICS309()" title="Copy this log into ICS-309 and open it in a new tab">→ ICS-309</button>
-    <button class="sbtn" id="fb-save" title="Save this net log onto the device (survives a cleared browser cache or a swapped tablet)">Save to server</button>
-    <button class="sbtn" id="fb-restore" title="Restore a net log previously saved on this device">Restore</button>
-    <button class="sbtn danger" onclick="clearLog()" title="Clear all check-ins and reset the log">Clear</button>
-  </div>
+  <div class="actions"></div>
 
   <div class="sec">
     <span class="sec-lbl">Net Details</span>
@@ -510,13 +505,12 @@ function sendToICS309() {
   const nd = document.getElementById('nd').value.trim();
   const nf = document.getElementById('nf').value.trim();
 
-  // Build a UTC time string HHmmZ from an ISO timestamp (e.g. "2026-06-13T18:05:00.000Z")
-  function toHHmmZ(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (isNaN(d)) return '';
-    return String(d.getUTCHours()).padStart(2,'0') + String(d.getUTCMinutes()).padStart(2,'0') + 'Z';
-  }
+  // Check-ins are stored UTC and displayed as HHmmZ on this page, which is how
+  // nets are logged. ICS-309 is a local-time form, so every time crossing this
+  // boundary is CONVERTED, not relabelled — otherwise one communications log
+  // ends up holding 1805Z in a field whose own auto-fill writes 1305L, with a
+  // single letter distinguishing them. See common/js/form-time.js.
+  const toIcsTime = OasisFormTime.toLocalHHMM;
 
   // Map each check-in row to an ICS-309 log row.
   // Format: time=HHmmZ, msg="name — city, state [notes]", fcs=station call, tcs=net control call
@@ -527,7 +521,7 @@ function sendToICS309() {
     if (r.notes) parts.push(r.notes);
     if (r.traffic) parts.push('(traffic)');
     return {
-      time: toHHmmZ(r.utc),
+      time: toIcsTime(r.utc),
       msg:  parts.join(' — '),
       fcs:  r.call || '',
       fmn:  '',
@@ -542,8 +536,8 @@ function sendToICS309() {
     'f-net':       nn + (nf ? ' (' + nf + ')' : ''),
     'f-df':        nd,
     'f-dt':        nd,
-    'f-tf':        rows.length ? toHHmmZ(rows[0].utc) : '',
-    'f-tt':        rows.length ? toHHmmZ(rows[rows.length-1].utc) : '',
+    'f-tf':        rows.length ? toIcsTime(rows[0].utc) : '',
+    'f-tt':        rows.length ? toIcsTime(rows[rows.length-1].utc) : '',
     'f-op-name':   '',
     'f-op-call':   nc,
     'f-op-sig':    '',
@@ -564,7 +558,7 @@ function sendToICS309() {
   window.open('/static/ics-309/ics-309.html', '_blank');
 }
 
-function exportCSV(){
+function buildCSV(){
   const meta = [
     '# Net: '+csv(document.getElementById('nn').value),
     '# Freq: '+csv(document.getElementById('nf').value),
@@ -574,9 +568,50 @@ function exportCSV(){
   ];
   const hdr = ['#','UTC','Callsign','Name','City','State','Grid','Traffic','Notes'].join(',');
   const body = rows.map(e=>[e.seq,e.utc,e.call,e.name,e.city,e.state,e.grid,e.traffic?'Y':'',e.notes].map(csv).join(','));
-  const blob = new Blob([[...meta,hdr,...body].join('\r\n')],{type:'text/csv'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download='net-log-'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+  return [...meta,hdr,...body].join('\r\n');
+}
+
+function csvFilename(){
+  return OasisFormBackup.filenameFor('net-log', (header && header.net) || 'net').replace(/\.json$/,'.csv');
+}
+
+// Export writes into the OASIS device's net-log folder. The local download is
+// still available, just no longer the default.
+async function exportCSV(){
+  const name = csvFilename();
+  try{
+    const j = await OasisFormBackup.save('net-log', name, buildCSV());
+    OasisFormBackup.toast('✓ Exported to '+(j.saved||name));
+  }catch(err){ OasisFormBackup.toast('Export failed: '+err.message, true); }
+}
+
+// Pending the Save dialog's "To local storage" action — no toolbar slot any more.
+function exportCSVLocal(){ OasisFormBackup.saveLocal(csvFilename(), buildCSV()); }
+
+// Default source is the OASIS device's designated folder for the net log; the
+// footer widens that to the whole install tree, then to this machine.
+function importCSVPrompt(){
+  OasisFormBackup.openPicker('net-log', async name=>{
+    try{ importCSVText(await OasisFormBackup.loadText('net-log',name),name); }
+    catch(err){ OasisFormBackup.toast('Import failed: '+err.message,true); }
+  },{
+    ext:'csv', title:'Import CSV from server',
+    emptyText:'No CSV exports on the device yet. Use Export CSV first, or browse for one below.',
+    actions:[
+      {label:'Browse device files…',onClick:()=>OasisFormBackup.openBrowser(async path=>{
+        try{ importCSVText(await OasisFormBackup.readTree(path),path); }
+        catch(err){ OasisFormBackup.toast('Import failed: '+err.message,true); }
+      },{title:'Import CSV',start:'static/net-log/saved',accept:'.csv'})},
+      {label:'Browse local files…',onClick:()=>OasisFormBackup.pickLocal(importCSVText,'.csv')},
+    ],
+  });
+}
+
+// importCSV() below reads input.files[0] through FileReader. Synthesising that
+// shape keeps the parser untouched whichever of the three sources was used.
+function importCSVText(text,name){
+  const f=new File([text],String(name||'import.csv').split('/').pop(),{type:'text/csv'});
+  importCSV({files:[f],value:''});
 }
 
 function importCSV(input) {
@@ -684,10 +719,74 @@ document.querySelectorAll('.ltab').forEach(tab => {
 <script src="/maps/mapengine/pmtiles.js"></script>
 <script src="/common/js/maidenhead.js"></script>
 <script src="/common/js/form-backup.js"></script>
+<script src="/common/js/form-time.js"></script>
+<script src="/common/js/form-toolbar.js"></script>
 <script>
 /* Server backup of the net log — survives a cleared cache / swapped device.
    rows/seq/addRow/persist/updateCount are top-level bindings from the main
    script block above (shared global scope), reachable here. */
+// ─── Action row ──────────────────────────────────────────────────────────────
+// Order, grouping, separators and shared labels live in
+// common/js/form-toolbar.js. No Save PDF here — the net log has no FEMA
+// template — so that group collapses to the ICS-309 handoff alone. Must run
+// before attach(), which binds #fb-save / #fb-restore by id.
+OasisFormToolbar.render({
+  mount: '.actions',
+  noun: 'Log',
+  slots: {
+    handoff:   { label: '→ ICS-309', onClick: sendToICS309,
+                 title: 'Copy this log into ICS-309 and open it in a new tab' },
+    saveStore: { title: 'Save this net log into server storage (static/net-log/saved/) so it survives a cleared browser cache or a swapped tablet' },
+    loadStore: { title: 'Load a net log previously saved into server storage' },
+    print:     { onClick: function () { window.print(); },
+                 title: "Print the log using your browser's print dialog" },
+    exportCsv: { onClick: exportCSV,
+                 title: 'Export all check-ins as CSV into server storage (static/net-log/saved/)' },
+    importCsv: { onClick: importCSVPrompt,
+                 title: 'Import a previously exported net log CSV from server storage' },
+    clear:     { onClick: clearLog,
+                 title: 'Clear all check-ins and reset the log' },
+  },
+});
+
+// ─── Print pagination ────────────────────────────────────────────────────────
+// A printed net log used to run its header once and then spill unlabelled rows
+// across every following sheet — page 3 of a long net was a table of callsigns
+// with nothing saying which net, or which column was which. This repeats the
+// column header after each page break, the same way ICS-309 does.
+const ROWS_PER_PAGE = 34;   // portrait rows that clear the header block
+let _printNodes = null;
+
+window.addEventListener('beforeprint', () => {
+  const tbody = document.getElementById('tbody');
+  if (!tbody) return;
+  const allRows = [...tbody.querySelectorAll('tr')];
+  if (allRows.length <= ROWS_PER_PAGE) return;   // fits on one sheet
+
+  _printNodes = tbody.innerHTML;                 // restored by afterprint
+  const theadRow = tbody.closest('table').querySelector('thead tr');
+  const cols = theadRow.querySelectorAll('th').length;
+  const thHTML = [...theadRow.querySelectorAll('th')]
+    .map(th => `<th class="${th.className}">${th.innerHTML}</th>`).join('');
+
+  let html = '';
+  for (let i = 0; i < allRows.length; i += ROWS_PER_PAGE) {
+    if (i > 0) {
+      html += `<tr class="print-page-break"><td colspan="${cols}"></td></tr>`;
+      html += `<tr class="print-repeat-hdr">${thHTML}</tr>`;
+    }
+    allRows.slice(i, i + ROWS_PER_PAGE).forEach(tr => { html += tr.outerHTML; });
+  }
+  tbody.innerHTML = html;
+});
+
+window.addEventListener('afterprint', () => {
+  if (_printNodes === null) return;
+  const tbody = document.getElementById('tbody');
+  if (tbody) tbody.innerHTML = _printNodes;
+  _printNodes = null;
+});
+
 OasisFormBackup.attach({
   kind: 'net-log',
   noun: 'net log',

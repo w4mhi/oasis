@@ -62,17 +62,44 @@
     if (!res.ok || !j.ok) throw new Error(j.error || ('HTTP ' + res.status));
     return j; // { ok, saved }
   }
-  async function list(kind) {
-    var res = await fetch('/api/forms/list?kind=' + encodeURIComponent(kind), { cache: 'no-store' });
+  // ext: 'json' (default, form snapshots) or 'csv' (exports). Both live in the
+  // same designated folder; the extension is what separates the two pickers.
+  async function list(kind, ext) {
+    var url = '/api/forms/list?kind=' + encodeURIComponent(kind) +
+      (ext ? '&ext=' + encodeURIComponent(ext) : '');
+    var res = await fetch(url, { cache: 'no-store' });
     var j = await res.json().catch(function () { return {}; });
     if (!res.ok || !j.ok) throw new Error(j.error || ('HTTP ' + res.status));
     return j.files || [];
   }
+  function _savedUrl(kind, name) {
+    return '/static/' + encodeURIComponent(kind) + '/saved/' + encodeURIComponent(name);
+  }
   async function load(kind, name) {
-    var res = await fetch('/static/' + encodeURIComponent(kind) + '/saved/' +
-      encodeURIComponent(name), { cache: 'no-store' });
+    var res = await fetch(_savedUrl(kind, name), { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return await res.json();
+  }
+  // Raw-text sibling of load(), for the CSV exports the JSON parser would choke on.
+  async function loadText(kind, name) {
+    var res = await fetch(_savedUrl(kind, name), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.text();
+  }
+  // Directory listing anywhere inside the OASIS tree. The endpoint is hard-scoped
+  // to SUITE_ROOT server-side, so there is no path to the operator's own machine.
+  async function browse(path) {
+    var res = await fetch('/api/browse?path=' + encodeURIComponent(path || ''),
+      { cache: 'no-store' });
+    var j = await res.json().catch(function () { return {}; });
+    if (!res.ok || !j.ok) throw new Error(j.error || ('HTTP ' + res.status));
+    return j;
+  }
+  // Fetch any file inside the OASIS tree as text (server-side read, not a upload).
+  async function readTree(path) {
+    var res = await fetch('/' + String(path || '').replace(/^\/+/, ''), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.text();
   }
 
   // ── Self-contained toast ───────────────────────────────────────────────────
@@ -87,54 +114,148 @@
     setTimeout(function () { el.remove(); }, isErr ? 6000 : 3500);
   }
 
-  // ── Restore picker (injected overlay) ──────────────────────────────────────
-  function openPicker(kind, onLoad, opts) {
-    opts = opts || {};
+  // ── Shared overlay shell ───────────────────────────────────────────────────
+  // Returns { close, listEl, footEl }. Every picker in this file is this shell
+  // plus a body renderer, so the pages need no CSS of their own.
+  var _ROW = 'display:flex;width:100%;text-align:left;gap:10px;align-items:baseline;' +
+    'background:none;border:0;border-bottom:1px solid var(--border-dim,rgba(255,255,255,.06));' +
+    'color:inherit;padding:9px 8px;cursor:pointer;font:inherit;';
+  var _DIM = 'color:var(--text-dim,#8b949e);white-space:nowrap;';
+
+  function _shell(title) {
     var ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);' +
       'display:flex;align-items:center;justify-content:center;';
     var box = document.createElement('div');
     box.style.cssText = 'background:var(--panel,#161b22);color:var(--text,#e6edf3);' +
-      'border:1px solid var(--border,#30363d);border-radius:8px;width:min(520px,92vw);' +
+      'border:1px solid var(--border,#30363d);border-radius:8px;width:min(560px,92vw);' +
       'max-height:80vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5);' +
       'font:14px system-ui,sans-serif;';
     box.innerHTML =
       '<div style="padding:12px 16px;border-bottom:1px solid var(--border,#30363d);' +
-      'display:flex;align-items:center;gap:8px;"><strong style="flex:1;">' +
-      _esc(opts.title || 'Restore from server') + '</strong>' +
+      'display:flex;align-items:center;gap:8px;"><strong data-fb-title style="flex:1;">' +
+      _esc(title) + '</strong>' +
       '<button data-fb-close style="background:none;border:1px solid var(--border,#30363d);' +
       'color:inherit;border-radius:5px;padding:2px 9px;cursor:pointer;">✕</button></div>' +
-      '<div data-fb-list style="overflow-y:auto;padding:8px;">Loading…</div>';
+      '<div data-fb-list style="overflow-y:auto;padding:8px;flex:1;">Loading…</div>' +
+      '<div data-fb-foot style="padding:10px 12px;border-top:1px solid var(--border,#30363d);' +
+      'display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"></div>';
     ov.appendChild(box);
     document.body.appendChild(ov);
     var close = function () { ov.remove(); };
     ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
     box.querySelector('[data-fb-close]').addEventListener('click', close);
-    var listEl = box.querySelector('[data-fb-list]');
-    list(kind).then(function (files) {
+    return {
+      close: close,
+      listEl: box.querySelector('[data-fb-list]'),
+      footEl: box.querySelector('[data-fb-foot]'),
+      titleEl: box.querySelector('[data-fb-title]')
+    };
+  }
+
+  // Adds a footer button. Pages use this to hang "Browse local files…" beside
+  // the server list without owning any markup.
+  function _footBtn(footEl, label, fn) {
+    var b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText = 'background:none;border:1px solid var(--border,#30363d);color:inherit;' +
+      'border-radius:5px;padding:5px 11px;cursor:pointer;font:inherit;';
+    b.onmouseenter = function () { b.style.background = 'var(--panel-2,rgba(255,255,255,.05))'; };
+    b.onmouseleave = function () { b.style.background = 'none'; };
+    b.addEventListener('click', fn);
+    footEl.appendChild(b);
+    return b;
+  }
+
+  // ── Load / import picker (the kind's designated folder) ───────────────────
+  // opts: { title, ext, emptyText, actions:[{label, onClick(close)}] }
+  function openPicker(kind, onLoad, opts) {
+    opts = opts || {};
+    var sh = _shell(opts.title || 'Load from server storage');
+    (opts.actions || []).forEach(function (a) {
+      _footBtn(sh.footEl, a.label, function () { a.onClick(sh.close); });
+    });
+    list(kind, opts.ext).then(function (files) {
       if (!files.length) {
-        listEl.innerHTML = '<div style="padding:14px;color:var(--text-dim,#8b949e);">' +
-          'No saved snapshots yet. Use “Save to server” first.</div>';
+        sh.listEl.innerHTML = '<div style="padding:14px;color:var(--text-dim,#8b949e);">' +
+          _esc(opts.emptyText || 'Nothing saved yet — use Save first.') +
+          '</div>';
         return;
       }
-      listEl.innerHTML = '';
+      sh.listEl.innerHTML = '';
       files.forEach(function (f) {
         var row = document.createElement('button');
-        row.style.cssText = 'display:flex;width:100%;text-align:left;gap:10px;align-items:baseline;' +
-          'background:none;border:0;border-bottom:1px solid var(--border-dim,rgba(255,255,255,.06));' +
-          'color:inherit;padding:9px 8px;cursor:pointer;font:inherit;';
+        row.style.cssText = _ROW;
         row.onmouseenter = function () { row.style.background = 'var(--panel-2,rgba(255,255,255,.05))'; };
         row.onmouseleave = function () { row.style.background = 'none'; };
         row.innerHTML = '<span style="flex:1;word-break:break-all;">' + _esc(f.name) + '</span>' +
-          '<span style="color:var(--text-dim,#8b949e);white-space:nowrap;">' +
+          '<span style="' + _DIM + '">' +
           _esc([_when(f.mtime), _kb(f.size)].filter(Boolean).join(' · ')) + '</span>';
-        row.onclick = function () { close(); onLoad(f.name); };
-        listEl.appendChild(row);
+        row.onclick = function () { sh.close(); onLoad(f.name); };
+        sh.listEl.appendChild(row);
       });
     }).catch(function (err) {
-      listEl.innerHTML = '<div style="padding:14px;color:var(--red,#f85149);">' +
-        'Could not list snapshots: ' + _esc(err.message) + '</div>';
+      sh.listEl.innerHTML = '<div style="padding:14px;color:var(--red,#f85149);">' +
+        'Could not list files: ' + _esc(err.message) + '</div>';
     });
+    return sh;
+  }
+
+  // ── Device (server) tree browser ───────────────────────────────────────────
+  // Navigates the OASIS tree via /api/browse and hands back the picked file's
+  // suite-relative path. opts: { title, start, accept (e.g. '.csv'), actions }
+  function openBrowser(onPick, opts) {
+    opts = opts || {};
+    var accept = (opts.accept || '').toLowerCase();
+    var sh = _shell(opts.title || 'Browse device files');
+    (opts.actions || []).forEach(function (a) {
+      _footBtn(sh.footEl, a.label, function () { a.onClick(sh.close); });
+    });
+
+    function render(path) {
+      sh.listEl.innerHTML = '<div style="padding:14px;color:var(--text-dim,#8b949e);">Loading…</div>';
+      sh.titleEl.textContent = (opts.title || 'Browse device files') + ' — /' + (path || '');
+      browse(path).then(function (j) {
+        var entries = (j.entries || []).filter(function (e) {
+          return e.type === 'dir' || !accept || e.name.toLowerCase().endsWith(accept);
+        });
+        sh.listEl.innerHTML = '';
+        if (path) {
+          var up = document.createElement('button');
+          up.style.cssText = _ROW;
+          up.innerHTML = '<span style="flex:1;">../</span>';
+          up.onclick = function () { render(path.split('/').slice(0, -1).join('/')); };
+          sh.listEl.appendChild(up);
+        }
+        if (!entries.length) {
+          sh.listEl.insertAdjacentHTML('beforeend',
+            '<div style="padding:14px;color:var(--text-dim,#8b949e);">Nothing here' +
+            (accept ? ' matching ' + _esc(accept) : '') + '.</div>');
+          return;
+        }
+        entries.forEach(function (e) {
+          var isDir = e.type === 'dir';
+          var row = document.createElement('button');
+          row.style.cssText = _ROW;
+          row.onmouseenter = function () { row.style.background = 'var(--panel-2,rgba(255,255,255,.05))'; };
+          row.onmouseleave = function () { row.style.background = 'none'; };
+          row.innerHTML = '<span style="flex:1;word-break:break-all;">' +
+            _esc(e.name) + (isDir ? '/' : '') + '</span><span style="' + _DIM + '">' +
+            _esc(isDir ? '' : [_when(e.modified), _kb(e.size)].filter(Boolean).join(' · ')) +
+            '</span>';
+          var child = (path ? path + '/' : '') + e.name;
+          row.onclick = isDir
+            ? function () { render(child); }
+            : function () { sh.close(); onPick(child); };
+          sh.listEl.appendChild(row);
+        });
+      }).catch(function (err) {
+        sh.listEl.innerHTML = '<div style="padding:14px;color:var(--red,#f85149);">' +
+          'Could not browse: ' + _esc(err.message) + '</div>';
+      });
+    }
+    render(opts.start || '');
+    return sh;
   }
 
   // ── One-call wiring for a page ─────────────────────────────────────────────
@@ -164,17 +285,49 @@
           catch (err) { toast('Load failed: ' + err.message, true); return; }
           if (!obj || typeof obj !== 'object') { toast('That file is not a valid ' + noun, true); return; }
           if (opts.hasData && opts.hasData() &&
-              !confirm('Restore "' + name + '"? This replaces the current ' + noun + '.')) return;
-          try { opts.applyData(obj); toast('✓ Restored ' + name); }
-          catch (err) { toast('Restore failed: ' + err.message, true); }
-        }, { title: 'Restore ' + noun + ' from server' });
+              !confirm('Load "' + name + '"? This replaces the current ' + noun + '.')) return;
+          try { opts.applyData(obj); toast('✓ Loaded ' + name); }
+          catch (err) { toast('Load failed: ' + err.message, true); }
+        }, { title: 'Load ' + noun + ' from server storage' });
       });
     }
   }
 
+  // ── Local-machine escape hatches ───────────────────────────────────────────
+  // The server is the default target everywhere; these two keep the old
+  // browser-side behaviour available behind an explicitly-labelled button.
+  function pickLocal(onText, accept) {
+    var inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = accept || '.csv';
+    inp.style.display = 'none';
+    inp.addEventListener('change', function () {
+      var f = inp.files && inp.files[0];
+      if (f) {
+        var r = new FileReader();
+        r.onload = function (e) { onText(e.target.result, f.name); };
+        r.readAsText(f);
+      }
+      inp.remove();
+    });
+    document.body.appendChild(inp);
+    inp.click();
+  }
+  function saveLocal(filename, text, mime) {
+    var blob = new Blob([text], { type: mime || 'text/csv' });
+    var url = URL.createObjectURL(blob);
+    var a = Object.assign(document.createElement('a'), { href: url, download: filename });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
   return {
     stamp: stamp, slug: slug, filenameFor: filenameFor,
-    save: save, list: list, load: load,
-    toast: toast, openPicker: openPicker, attach: attach
+    save: save, list: list, load: load, loadText: loadText,
+    browse: browse, readTree: readTree,
+    toast: toast, openPicker: openPicker, openBrowser: openBrowser, attach: attach,
+    pickLocal: pickLocal, saveLocal: saveLocal
   };
 });

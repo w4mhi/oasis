@@ -77,10 +77,17 @@
     <h1>ICS Forms</h1>
     <p class="subtitle">ICS 205 / 213 / 214 / 309 on official FEMA PDF templates</p>
     <p>
-      All four ICS forms fill the <strong>official FEMA AcroForm PDF templates</strong> and
-      support CSV import/export, a print-optimised layout, and auto-save to
-      <code>localStorage</code>. No server required &mdash; open the HTML file directly in any
-      browser. The <code>pdf-lib</code> dependency is vendored, so there&rsquo;s nothing to download.
+      All four ICS forms fill the <strong>official FEMA AcroForm PDF templates</strong>, share
+      one action row, and auto-save to <code>localStorage</code> as you type. The
+      <code>pdf-lib</code> dependency is vendored, so there&rsquo;s nothing to download.
+      </p>
+      <p>
+      These forms work without <em>internet</em>, but not without the <em>server</em>. Filling,
+      printing and Save PDF are pure browser work and survive anything. Save Form, Load Form and
+      the CSV export/import call back into Flask, because their files live on the device in
+      <code>static/&lt;form&gt;/saved/</code> rather than on whatever machine you happened to open
+      the page from. Open the HTML straight off disk and those four buttons are dead; everything
+      else still works.
     </p>
     <figure class="figure">
       <img src="img/ics-205.png" alt="ICS-205 — radio communications plan (8-row channel table)" />
@@ -89,12 +96,41 @@
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Form</th><th>Notes</th></tr></thead>
       <tbody>
-        <tr><td><strong>ICS 205</strong> &mdash; Radio Communications Plan</td><td>8-row channel table; a CHIRP CSV import locks the freq/tone/mode fields</td></tr>
+        <tr><td><strong>ICS 205</strong> &mdash; Radio Communications Plan</td><td>8-row channel table; a CHIRP CSV import prefills the freq/tone/mode fields, which stay editable</td></tr>
         <tr><td><strong>ICS 213</strong> &mdash; General Message</td><td>Two-part form: originator blocks 1&ndash;8, reply blocks 9&ndash;10</td></tr>
         <tr><td><strong>ICS 214</strong> &mdash; Activity Log</td><td>Dynamic resource + activity rows (PDF limit 8 resource / 60 activity)</td></tr>
         <tr><td><strong>ICS 309</strong> &mdash; Communications Log</td><td>Time auto-fills on row click (PDF limit 29 rows)</td></tr>
       </tbody>
     </table></div></div>
+    <h2>The action row</h2>
+    <p>
+      All four forms &mdash; and the <a href="net-logger.html">net logger</a> &mdash; render the same
+      row from one shared definition, so a button means the same thing wherever you meet it. A form
+      that lacks an action simply omits it: the net logger has no FEMA template, so it has no Save PDF.
+    </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Button</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><strong>&#8681; Save PDF</strong></td><td>Fills the FEMA template and downloads a timestamped copy.</td></tr>
+        <tr><td><strong>&rarr; Send via Winlink</strong></td><td>Opens Winlink Mail with the form as a message: text body plus the RMS form XML. An OASIS recipient rebuilds the whole form from that XML. No PDF is attached &mdash; attachments over RF are slow enough to tie up the RMS for everyone.</td></tr>
+        <tr><td><strong>Save Form</strong> / <strong>Load Form</strong></td><td>A JSON snapshot in server storage, <code>static/&lt;form&gt;/saved/</code>. Never automatic &mdash; an explicit click. The net logger calls these <strong>Save Log</strong> / <strong>Load Log</strong>.</td></tr>
+        <tr><td><strong>Print</strong> <span style="opacity:.7">(blue)</span></td><td>The browser print dialog on a print stylesheet.</td></tr>
+        <tr><td><strong>Export CSV</strong> / <strong>Import CSV</strong></td><td>CSV interchange, into and out of that same server folder. The import picker&rsquo;s footer also offers <em>Browse device files…</em> (anywhere in the OASIS tree) and <em>Browse local files…</em> (the machine the browser is on).</td></tr>
+        <tr><td><strong>Load Frequency Plan</strong></td><td>ICS-205 only &mdash; see below.</td></tr>
+        <tr><td><strong>Clear</strong> <span style="opacity:.7">(red, far right)</span></td><td>Wipes the form. It sits apart from the rest because it is the only button here you cannot undo.</td></tr>
+      </tbody>
+    </table></div></div>
+
+    <h2>Dates and times</h2>
+    <p>
+      Every form uses one format: <strong>24-hour local time, marked <code>HHmmL</code></strong>
+      &mdash; <code>1245L</code>, not 12:45 pm &mdash; and <code>YYYYMMDD HHmmL</code> where a field
+      wants both. The <code>L</code> is not decoration: the net logger records check-ins in
+      <strong>UTC</strong>, and when you send a log to ICS-309 those times are <em>converted</em> to
+      local rather than relabelled, so <code>1805Z</code> arrives as <code>1305L</code>. A form is
+      never half in one zone.
+    </p>
+
     <figure class="figure">
       <img src="img/ics-213.png" alt="ICS-213 — general message" />
       <figcaption>ICS-213 — general message</figcaption>
@@ -109,7 +145,7 @@
     </figure>
     <div class="callout tip">
       <span class="ic">&#10003;</span>
-      <div><p>Import a frequency plan straight from <a href="repeater-book.html">Repeater Book</a> or CHIRP into ICS-205 &mdash; the imported rows lock so the plan can&rsquo;t be edited by accident.</p></div>
+      <div><p>Import a frequency plan straight from <a href="repeater-book.html">Repeater Book</a> or CHIRP into ICS-205 &mdash; picking a channel name fills in its frequencies, tones and mode. Every one of those stays editable: a plan is the starting point for an incident, not the last word on it.</p></div>
     </div>
 
     <h2>Troubleshooting</h2>
@@ -117,7 +153,7 @@
       <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
       <tbody>
         <tr><td>The PDF won&rsquo;t generate</td><td>pdf-lib didn&rsquo;t load (offline cache miss). Hard-refresh the page; the FEMA template and pdf-lib are bundled locally.</td></tr>
-        <tr><td>A half-filled form was lost</td><td>Autosave is per-browser <code>localStorage</code>. Use <strong>Export CSV</strong> to move a form between machines.</td></tr>
+        <tr><td>A half-filled form was lost</td><td>Autosave is per-browser <code>localStorage</code>, so a cleared cache or a different tablet starts blank. Use <strong>Save Form</strong> to put a snapshot on the device, where it outlives the browser.</td></tr>
         <tr><td>Frequency plan / CHIRP import fails</td><td>Use the expected CSV columns; the ICS-205 importer is strict about the channel format.</td></tr>
       </tbody>
     </table></div></div>

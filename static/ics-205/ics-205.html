@@ -26,10 +26,6 @@ td select:hover{border-color:var(--border);}
 td select:focus{outline:none;background:var(--bg);border-color:var(--accent-dim);}
 td select option{background:var(--panel);}
 .fn-custom{margin-top:2px;}
-.tone-locked{opacity:.65;cursor:not-allowed;}
-.th-lock{display:none;font-size:var(--fs-micro);color:var(--amber);line-height:1;margin-bottom:2px;letter-spacing:.04em;}
-.th-lock.visible{display:block;}
-th#th-rxfreq.locked,th#th-rxtone.locked,th#th-txfreq.locked,th#th-txtone.locked{color:var(--amber)!important;}
 .plan-loaded{color:var(--amber)!important;}
 tr.row-overflow{background:rgba(255,107,107,.05);}
 tr.row-overflow td input{color:var(--text-dim);}
@@ -51,10 +47,6 @@ tr.row-overflow td input{color:var(--text-dim);}
   border:1px solid var(--red);border-radius:4px;background:rgba(255,107,107,.07);}
 .overflow-note.visible{display:block;}
 .save-ts{font-size:var(--fs-micro);color:var(--text-dim);opacity:.6;margin-top:.25rem;}
-.attach-pdf-lbl{display:inline-flex;align-items:center;gap:.35rem;font-size:var(--fs-small);color:var(--text-dim);cursor:pointer;white-space:nowrap;}
-.attach-pdf-lbl input{cursor:pointer;}
-.pdf-size-hint{font-size:var(--fs-small);color:var(--amber);white-space:nowrap;}
-.pdf-size-hint.over{color:var(--red);}
 #lib-status-msgs{display:contents;}
 
 /* Load-saved-plan picker */
@@ -114,21 +106,10 @@ tr.row-overflow td input{color:var(--text-dim);}
     <p>Incident Radio Communications Plan</p>
   </header>
 
-  <div class="actions">
-    <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 205 PDF and download a timestamped copy">⬇ Save PDF</button>
-    <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this plan as a message (text body + RMS form XML) ready to queue">→ Send via Winlink</button>
-    <label class="attach-pdf-lbl" title="Also attach the filled form page (page 1 only, FEMA instruction pages stripped to fit Winlink's size limit; fine over telnet, slower over RF). The XML alone also lets an OASIS recipient rebuild the form."><input type="checkbox" id="wl-attach-pdf" onchange="onAttachPdfToggle()"> Attach form PDF (page 1)</label>
-    <button class="sbtn" onclick="saveToServer()" title="Save this plan as JSON into OASIS (static/ics-205/saved/) so it survives on the device">Save form</button>
-    <button class="sbtn" onclick="openLoadDialog()" title="Load a previously saved ICS-205 plan from this device">Load form</button>    
-    <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (landscape letter)">Print</button>
-    <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
-    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 205 CSV file to restore form data">Import CSV</button>
-    <button class="sbtn" onclick="loadChirpPrompt()" title="Load a CHIRP radio programming CSV file — channel names become a dropdown and frequencies/tones are auto-filled and locked">Load Frequency Plan</button>
-    <button class="sbtn danger" onclick="clearAll()" title="Clear all form data, unload any frequency plan, and reset to a blank form">Clear</button>
-  </div>
+  <div class="actions"></div>
   <div class="save-ts" id="save-ts"></div>
 
-  <div class="lib-status" id="lib-status"><span id="lib-status-msgs"></span><span class="pdf-size-hint" id="pdf-size-hint"></span></div>
+  <div class="lib-status" id="lib-status"><span id="lib-status-msgs"></span></div>
 
   <!-- Blocks 1–3 -->
   <div class="sec">
@@ -137,15 +118,15 @@ tr.row-overflow td input{color:var(--text-dim);}
       <div class="fld"><label>1. Incident Name</label><input type="text" id="f-inc" placeholder="Enter incident name" oninput="persist()"></div>
       <div class="fg g2">
         <div class="fld"><label>2. Date Prepared</label><input type="date" id="f-dp" oninput="persist()"></div>
-        <div class="fld"><label>2. Time Prepared</label><input type="text" id="f-tp" placeholder="0000" oninput="persist()"></div>
+        <div class="fld"><label>2. Time Prepared</label><input type="text" id="f-tp" placeholder="HHmmL" oninput="persist()"></div>
       </div>
     </div>
     <span class="sec-lbl">3. Operational Period</span>
     <div class="fg g4">
       <div class="fld"><label>Date From</label><input type="date" id="f-df" oninput="persist()"></div>
       <div class="fld"><label>Date To</label><input type="date" id="f-dt" oninput="persist()"></div>
-      <div class="fld"><label>Time From</label><input type="text" id="f-tf" placeholder="0000" oninput="persist()"></div>
-      <div class="fld"><label>Time To</label><input type="text" id="f-tt" placeholder="2359" oninput="persist()"></div>
+      <div class="fld"><label>Time From</label><input type="text" id="f-tf" placeholder="HHmmL" oninput="persist()"></div>
+      <div class="fld"><label>Time To</label><input type="text" id="f-tt" placeholder="HHmmL" oninput="persist()"></div>
     </div>
   </div>
 
@@ -162,10 +143,10 @@ tr.row-overflow td input{color:var(--text-dim);}
             <th class="c-func">Function</th>
             <th class="c-name">Channel Name / Talkgroup</th>
             <th class="c-assign">Assignment</th>
-            <th class="c-freq" id="th-rxfreq"><div class="th-lock" id="th-rxfreq-lock"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg> locked</div>RX Freq (N/W)</th>
-            <th class="c-tone" id="th-rxtone"><div class="th-lock" id="th-rxtone-lock"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg> locked</div>RX Tone/NAC</th>
-            <th class="c-freq" id="th-txfreq"><div class="th-lock" id="th-txfreq-lock"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg> locked</div>TX Freq (N/W)</th>
-            <th class="c-tone" id="th-txtone"><div class="th-lock" id="th-txtone-lock"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><rect x="3.5" y="7" width="9" height="6.5" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg> locked</div>TX Tone/NAC</th>
+            <th class="c-freq" id="th-rxfreq">RX Freq (N/W)</th>
+            <th class="c-tone" id="th-rxtone">RX Tone/NAC</th>
+            <th class="c-freq" id="th-txfreq">TX Freq (N/W)</th>
+            <th class="c-tone" id="th-txtone">TX Tone/NAC</th>
             <th class="c-mode">Mode</th>
             <th class="c-rem">Remarks</th>
             <th class="cd"></th>
@@ -195,7 +176,7 @@ tr.row-overflow td input{color:var(--text-dim);}
       <div class="fld"><label>Name</label><input type="text" id="f-pn" placeholder="First Last" oninput="persist()"></div>
       <div class="fld"><label>Signature</label><input type="text" id="f-ps" placeholder="— (digital sig not supported)" oninput="persist()"></div>
       <div class="fld"><label>IAP Page #</label><input type="text" id="f-pg" placeholder="—" oninput="persist()"></div>
-      <div class="fld"><label>Date / Time</label><input type="text" id="f-pd" placeholder="MM/DD/YYYY HHmm" oninput="persist()"></div>
+      <div class="fld"><label>Date / Time</label><input type="text" id="f-pd" placeholder="YYYYMMDD HHmmL" oninput="persist()"></div>
     </div>
   </div>
 
@@ -257,17 +238,16 @@ tr.row-overflow td input{color:var(--text-dim);}
     </div>
     <div class="load-list" id="chirp-list"></div>
     <div class="load-foot">
-      <button class="sbtn" onclick="loadChirpFromFile()" title="Load a CHIRP CSV from this device instead of the server"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><path d="M1.5 3.5h4l1.5 2h7.5v8h-13z"/></svg> Browse device file…</button>
+      <button class="sbtn" onclick="loadChirpFromTree()" title="Browse the OASIS device for a CHIRP CSV anywhere under the install folder"><svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-.125em"><path d="M1.5 3.5h4l1.5 2h7.5v8h-13z"/></svg> Browse device files…</button>
+      <button class="sbtn" onclick="loadChirpFromLocal()" title="Load a CHIRP CSV from the machine this browser is running on">Browse local files…</button>
     </div>
   </div>
 </div>
 
-<!-- Hidden CSV import input -->
-<input type="file" id="csv-import-input" accept=".csv" style="display:none" onchange="importCSV(event)">
-<!-- Hidden CHIRP import input -->
-<input type="file" id="chirp-import-input" accept=".csv" style="display:none" onchange="loadChirp(event)">
-
 <!-- Load template and pdf-lib (must exist in same folder / dependencies/) -->
+<script src="/common/js/form-backup.js"></script>
+<script src="/common/js/form-time.js"></script>
+<script src="/common/js/form-toolbar.js"></script>
 <script src="./ics205-template.js"></script>
 <script src="/common/dependencies/pdf-lib.min.js"></script>
 
@@ -276,7 +256,6 @@ tr.row-overflow td input{color:var(--text-dim);}
 const STORE = 'ics-205-v2';
 const PDF_ROWS_PER_PAGE = 8;  // FEMA template has 8 channel rows per page
 const PDF_MAX_ROWS = PDF_ROWS_PER_PAGE; // alias kept for overflow-note display
-const PDF_WINLINK_MAX = 115 * 1024;  // form-PDF byte cap for Winlink (~120 KB CMS limit, minus XML/envelope headroom)
 let chSeq = 0;
 let chirpPlan = null; // null = no plan loaded; array = CHIRP channels
 
@@ -298,18 +277,11 @@ window.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById(id);
     if (el && !el.value) el.value = today;
   });
+  // Canonical ICS time/stamp — see common/js/form-time.js
   const tpEl = document.getElementById('f-tp');
-  if (tpEl) {
-    tpEl.value = String(_now.getHours()).padStart(2,'0') + String(_now.getMinutes()).padStart(2,'0');
-  }
+  if (tpEl) tpEl.value = OasisFormTime.hhmmL(_now);
   const pdEl = document.getElementById('f-pd');
-  if (pdEl) {
-    const mo = String(_now.getMonth()+1).padStart(2,'0');
-    const dy = String(_now.getDate()).padStart(2,'0');
-    const hh = String(_now.getHours()).padStart(2,'0');
-    const mm = String(_now.getMinutes()).padStart(2,'0');
-    pdEl.value = `${mo}/${dy}/${_now.getFullYear()} ${hh}${mm}`;
-  }
+  if (pdEl) pdEl.value = OasisFormTime.stamp(_now);
   if (!document.querySelector('#ch-body tr')) {
     for (let i = 0; i < 8; i++) addCh();
   }
@@ -435,18 +407,20 @@ function loadChirpPrompt() {
   openChirpDialog();
 }
 
-// Kept for the "Browse device file…" fallback in the picker.
-function loadChirpFromFile() {
-  document.getElementById('chirp-import-input').value = '';
-  document.getElementById('chirp-import-input').click();
+// Browse the OASIS device itself — the whole install tree, opening at the
+// designated chirp folder. Server-side read; nothing is uploaded.
+function loadChirpFromTree() {
+  closeChirpDialog();
+  OasisFormBackup.openBrowser(async path => {
+    try { applyChirpText(await OasisFormBackup.readTree(path)); }
+    catch (err) { showToast('Load failed: ' + err.message, 'err', 6000); }
+  }, { title: 'Frequency plan', start: 'static/chirp', accept: '.csv' });
 }
 
-function loadChirp(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => { closeChirpDialog(); applyChirpText(e.target.result); };
-  reader.readAsText(file);
+// The explicit escape hatch: a file on whatever machine the browser is on.
+function loadChirpFromLocal() {
+  closeChirpDialog();
+  OasisFormBackup.pickLocal(text => applyChirpText(text), '.csv');
 }
 
 function applyChirpText(text) {
@@ -559,28 +533,15 @@ function applyChirpChannel(sel) {
   const txFreqRaw = chirpTxFreq(ch.frequency, ch.duplex, ch.offset);
   const txFreq = chirpFmtFreq(txFreqRaw, ch.chirpMode);
 
-  const lockField = (field, val) => {
-    const el = tr.querySelector(`[data-field="${field}"]`);
-    if (!el) return;
-    el.value = val;
-    el.disabled = true;
-    el.classList.add('tone-locked');
-  };
-  lockField('rxfreq', rxFreq);
-  lockField('txfreq', txFreq);
-
-  // Tones — lock
-  const lockTone = lockField;
-  lockTone('rxtone', ch.cToneFreq);
-  lockTone('txtone', ch.rToneFreq);
-
-  // Show column header lock badges (once, first time any channel is applied)
-  ['rxfreq','rxtone','txfreq','txtone'].forEach(f => {
-    const badge = document.getElementById('th-' + f + '-lock');
-    if (badge) badge.classList.add('visible');
-    const th = document.getElementById('th-' + f);
-    if (th) th.classList.add('locked');
-  });
+  // Frequencies and tones are prefilled from the plan, not locked to it. A
+  // CHIRP export is the starting point for an incident, not the final word —
+  // an operator retunes a repeater, works a split, or corrects a stale tone,
+  // and has to be able to type over any of these. They persist like any other
+  // field via the oninput handler the row was built with.
+  set('rxfreq', rxFreq);
+  set('txfreq', txFreq);
+  set('rxtone', ch.cToneFreq);
+  set('txtone', ch.rToneFreq);
 
   // Mode
   const modeMap = {FM:'A', NFM:'A', DV:'D', 'D-STAR':'D', DMR:'D', P25:'D', DSTAR:'D'};
@@ -654,10 +615,6 @@ function updateOverflowNote() {
   const count = document.querySelectorAll('#ch-body tr').length;
   const note = document.getElementById('overflow-note');
   note.classList.toggle('visible', count > PDF_MAX_ROWS);
-  // Channel set changed — re-enable the PDF-attach box so a now-smaller plan can
-  // be re-tried (onAttachPdfToggle re-checks the size and re-disables if needed).
-  const cb = document.getElementById('wl-attach-pdf');
-  if (cb) cb.disabled = false;
 }
 
 function getCh() {
@@ -801,14 +758,26 @@ async function buildIcs205PdfBytes({ formOnly = false } = {}) {
       return { bytes: await out.save(), totalPages };
     }
 
-    // Full document (Save PDF download): filled form + the FEMA instruction pages.
-    const pdfDoc = await buildPage(0);
-    for (let p = 1; p < totalPages; p++) {
-      const pageDoc = await buildPage(p);
-      const [copiedPage] = await pdfDoc.copyPages(pageDoc, [0]);
-      pdfDoc.addPage(copiedPage);
+    // Full document (Save PDF download): every filled form page, THEN the FEMA
+    // instruction pages once. Appending later pages to a complete first copy —
+    // which is what this used to do — left the instructions stranded between
+    // channel sheets: a 20-channel plan printed form p.1, two pages of FEMA
+    // boilerplate, then p.2 and p.3. Stapled, the plan read as if it ended at
+    // channel 8.
+    const pageDocs = [];
+    for (let p = 0; p < totalPages; p++) pageDocs.push(await buildPage(p));
+
+    const out = await PDFLib.PDFDocument.create();
+    for (const doc of pageDocs) {
+      const [formPage] = await out.copyPages(doc, [0]);   // page 0 = the form
+      out.addPage(formPage);
     }
-    return { bytes: await pdfDoc.save(), totalPages };
+    const first = pageDocs[0];
+    if (first.getPageCount() > 1) {
+      const tail = [...Array(first.getPageCount() - 1).keys()].map(i => i + 1);
+      (await out.copyPages(first, tail)).forEach(pg => out.addPage(pg));
+    }
+    return { bytes: await out.save(), totalPages };
 }
 
 // Timestamp stem for saved/attached ICS-205 files, e.g. 20260706-1432.
@@ -843,7 +812,7 @@ async function savePDF() {
 }
 
 // ─── CSV Export ──────────────────────────────────────────────────────────────
-function exportCSV() {
+function buildCSV() {
   const hdr = ['Zone/Grp','Ch #','Function','Channel Name/Talkgroup','Assignment',
     'RX Freq (N/W)','RX Tone/NAC','TX Freq (N/W)','TX Tone/NAC','Mode','Remarks'];
   const rows = [
@@ -872,27 +841,63 @@ function exportCSV() {
     ['IAP Page', gv('f-pg')].map(cc).join(','),
     ['Date/Time', gv('f-pd')].map(cc).join(','),
   ];
-  const blob = new Blob([rows.join('\r\n')], { type: 'text/csv' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'ics205-' + new Date().toISOString().slice(0,10) + '.csv';
-  a.click();
-  URL.revokeObjectURL(a.href);
+  return rows.join('\r\n');
+}
+
+function csvFilename() {
+  return OasisFormBackup.filenameFor('ics-205', gv('f-inc') || 'plan').replace(/\.json$/, '.csv');
+}
+
+// Export goes to the server's designated folder (static/ics-205/saved/). The
+// local download is still available, but only from the explicit button.
+async function exportCSV() {
+  const name = csvFilename();
+  try {
+    const j = await OasisFormBackup.save('ics-205', name, buildCSV());
+    showToast('✓ Exported to ' + (j.saved || name), 'ok', 4000);
+  } catch (err) {
+    showToast('Export failed: ' + err.message, 'err', 6000);
+  }
+}
+
+// Pending the Save dialog's "To local storage" action — no toolbar slot any more.
+function exportCSVLocal() {
+  OasisFormBackup.saveLocal(csvFilename(), buildCSV());
 }
 
 // ─── CSV Import ──────────────────────────────────────────────────────────────
+// Default source is the server's designated folder; the picker's footer offers
+// the wider OASIS tree and, last, this machine.
 function importCSVPrompt() {
-  document.getElementById('csv-import-input').value = '';
-  document.getElementById('csv-import-input').click();
+  OasisFormBackup.openPicker('ics-205', async name => {
+    try { applyImportedCSV(await OasisFormBackup.loadText('ics-205', name)); }
+    catch (err) { showToast('Import failed: ' + err.message, 'err', 6000); }
+  }, {
+    ext: 'csv',
+    title: 'Import CSV from server',
+    emptyText: 'No CSV exports on the server yet. Use Export CSV first, or browse for one below.',
+    actions: [
+      { label: 'Browse device files…', onClick: () => importCSVFromTree() },
+      { label: 'Browse local files…',  onClick: () => importCSVFromLocal() },
+    ],
+  });
 }
 
-function importCSV(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
+function importCSVFromTree() {
+  OasisFormBackup.openBrowser(async path => {
+    try { applyImportedCSV(await OasisFormBackup.readTree(path)); }
+    catch (err) { showToast('Import failed: ' + err.message, 'err', 6000); }
+  }, { title: 'Import CSV', start: 'static/ics-205/saved', accept: '.csv' });
+}
+
+function importCSVFromLocal() {
+  OasisFormBackup.pickLocal(text => applyImportedCSV(text), '.csv');
+}
+
+function applyImportedCSV(text) {
+  {
     try {
-      const lines = e.target.result.split(/\r?\n/);
+      const lines = String(text).split(/\r?\n/);
       let mode = '';
       const channelRows = [];
       let hdrSkipped = false;
@@ -949,8 +954,7 @@ function importCSV(event) {
     } catch(err) {
       showToast('Import failed: ' + err.message, 'err', 5000);
     }
-  };
-  reader.readAsText(file);
+  }
 }
 
 function parseCSVLine(line) {
@@ -980,13 +984,6 @@ function clearAll() {
   document.getElementById('ch-body').innerHTML = '';
   chSeq = 0;
   chirpPlan = null;
-  // Reset column header lock badges and colours
-  ['rxfreq','rxtone','txfreq','txtone'].forEach(f => {
-    const badge = document.getElementById('th-' + f + '-lock');
-    if (badge) badge.classList.remove('visible');
-    const th = document.getElementById('th-' + f);
-    if (th) th.classList.remove('locked');
-  });
   const nameTh = document.querySelector('th.c-name');
   if (nameTh) nameTh.classList.remove('plan-loaded');
   try { localStorage.removeItem(STORE); } catch(e) {}
@@ -1131,36 +1128,6 @@ ${chXml}    <specialinstructions>${x(gv('f-special'))}</specialinstructions>
 // untick + disable the box and tell the operator to send without it — so an
 // oversized message can never leave (updateOverflowNote re-enables the box when
 // the channel set changes). The maxKB is shown so the message is concrete.
-async function onAttachPdfToggle(){
-  const cb=document.getElementById('wl-attach-pdf');
-  const hint=document.getElementById('pdf-size-hint');
-  if(!cb||!hint) return;
-  if(!cb.checked){ hint.textContent=''; hint.className='pdf-size-hint'; return; }
-  // RF advisory — attaching a PDF balloons the message. Over RF that's slow and can
-  // tie up the RMS for everyone, so make the operator acknowledge before we even
-  // size it. Declining unticks the box; the size-check/disable logic below is
-  // unchanged and still runs once they accept.
-  if(!confirm('⚠ It is HIGHLY RECOMMENDED not to send any attachment over RF — it takes a long time and you risk blocking the server. Be responsible!\n\nAttach the form PDF anyway?')){
-    cb.checked=false; hint.textContent=''; hint.className='pdf-size-hint'; return;
-  }
-  hint.textContent='sizing…'; hint.className='pdf-size-hint';
-  try{
-    const {bytes}=await buildIcs205PdfBytes({formOnly:true});
-    const kb=Math.round(bytes.length/1024), maxKb=Math.round(PDF_WINLINK_MAX/1024);
-    if(bytes.length>PDF_WINLINK_MAX){
-      cb.checked=false; cb.disabled=true;
-      hint.textContent=`⚠ PDF is ${kb} KB — you can't attach more than ${maxKb} KB over Winlink. Send the message without the attachment.`;
-      hint.className='pdf-size-hint over';
-    }else{
-      hint.textContent=`PDF ${kb} KB ✓`;
-      hint.className='pdf-size-hint';
-    }
-  }catch(err){
-    cb.checked=false;
-    hint.textContent='(couldn’t build PDF: '+err.message+')';
-    hint.className='pdf-size-hint over';
-  }
-}
 
 async function sendWinlink(){
   const chans=getCh().filter(c=>c.ch||c.name||c.func||c.rxfreq||c.txfreq);
@@ -1173,24 +1140,13 @@ async function sendWinlink(){
   // Winlink always carries the small RMS_Express_Form XML — it holds the full
   // structured plan, and the recipient's OASIS (or an RMS Express template)
   // rebuilds the form from it. The channel CSV is redundant, so it's dropped.
+  // XML only. The PDF-attachment option was removed: it confused operators, and
+  // attaching over RF is slow enough to tie up the RMS for everyone. An OASIS
+  // recipient rebuilds the whole form from this XML; anyone else can be sent a
+  // PDF by hand from Save PDF.
   const attachments=[
     {name:'RMS_Express_Form_ICS205 Radio Plan_Viewer.xml',type:'application/xml',content:ics205Xml()},
   ];
-  // Optional filled PDF — form page(s) only, FEMA instruction pages stripped. The
-  // checkbox self-disables if the PDF would exceed the Winlink limit (see
-  // onAttachPdfToggle), so if it's ticked here the PDF fits; the size check is a
-  // defensive backstop that silently sends XML-only if somehow over. localStorage
-  // is text-only, so the PDF bytes ride along base64-encoded; mail.html decodes.
-  if(document.getElementById('wl-attach-pdf')?.checked){
-    try{
-      const {bytes}=await buildIcs205PdfBytes({formOnly:true});
-      if(bytes.length <= PDF_WINLINK_MAX){
-        attachments.push({name:`ICS-205-${ics205Stamp()}.pdf`,type:'application/pdf',content:u8ToB64(bytes),encoding:'base64'});
-      }
-    }catch(err){
-      showToast('Could not attach PDF: '+err.message,'err',5000); return;
-    }
-  }
   const payload={
     to:'', subject:subj, body:ics205Body(),
     note:'ICS-205 plan — enter the recipient callsign, then Queue.',
@@ -1201,13 +1157,6 @@ async function sendWinlink(){
   window.location.href='/server/winlink/mail.html';   // OASIS Winlink client (root-absolute)
 }
 
-// Uint8Array → base64, chunked to avoid call-stack limits on large PDFs.
-function u8ToB64(bytes){
-  let bin='';
-  const CH=0x8000;
-  for(let i=0;i<bytes.length;i+=CH) bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));
-  return btoa(bin);
-}
 
 // ─── Save to OASIS (server) ──────────────────────────────────────────────────
 // Persist the current form as JSON into static/ics-205/saved/ so it survives on
@@ -1299,7 +1248,7 @@ async function openChirpDialog(){
     return;
   }
   if(!files.length){
-    list.innerHTML='<div class="load-empty">No frequency plans on the server yet. Use “Browse device file…” below to load one from this device.</div>';
+    list.innerHTML='<div class="load-empty">No frequency plans in static/chirp/ yet. Use “Browse device files…” below to find one elsewhere on the device.</div>';
     return;
   }
   list.innerHTML='';
@@ -1347,6 +1296,35 @@ function x(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 function xv(s) { return x(s).replace(/"/g,'&quot;'); }
 function cc(v) { const s = String(v ?? ''); return /[,"\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; }
 function gv(id) { return document.getElementById(id)?.value || ''; }
+
+// ─── Action row ──────────────────────────────────────────────────────────────
+// Slot order, grouping, separators and the shared labels live in
+// common/js/form-toolbar.js — this page only declares what it has and what the
+// buttons do. ICS-205 is the canonical row plus the frequency-plan slot.
+OasisFormToolbar.render({
+  mount: '.actions',
+  noun: 'Form',
+  slots: {
+    savePdf:   { onClick: savePDF,
+                 title: 'Fill the official FEMA ICS 205 PDF and download a timestamped copy' },
+    handoff:   { label: '→ Send via Winlink', onClick: sendWinlink,
+                 title: 'Open Winlink Mail with this plan as a message (text body + RMS form XML) ready to queue' },
+    saveStore: { onClick: saveToServer,
+                 title: 'Save this plan as JSON into server storage (static/ics-205/saved/) so it survives on the device' },
+    loadStore: { onClick: openLoadDialog,
+                 title: 'Load a previously saved ICS-205 plan from server storage' },
+    print:     { onClick: () => window.print(),
+                 title: "Print the form using your browser's print dialog (landscape letter)" },
+    exportCsv: { onClick: exportCSV,
+                 title: 'Export all form data as CSV into server storage (static/ics-205/saved/)' },
+    importCsv: { onClick: importCSVPrompt,
+                 title: 'Import a previously exported ICS 205 CSV from server storage' },
+    extra:     { label: 'Load Frequency Plan', onClick: loadChirpPrompt,
+                 title: 'Load a CHIRP radio programming CSV — channel names become a dropdown and frequencies/tones are auto-filled and locked' },
+    clear:     { onClick: clearAll,
+                 title: 'Clear all form data, unload any frequency plan, and reset to a blank form' },
+  },
+});
 </script>
 </body>
 </html>

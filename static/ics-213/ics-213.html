@@ -44,20 +44,10 @@
     <p>General Message</p>
   </header>
 
-  <div class="actions">
-    <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 213 PDF and download a timestamped copy">⬇ Save PDF</button>
-    <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this form as a message (text + RMS form attachment) ready to queue">→ Send via Winlink</button>
-    <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
-    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 213 CSV file to restore form data">Import CSV</button>
-    <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
-    <button class="sbtn" id="fb-save" title="Save this form onto the device (survives a cleared browser cache or a swapped tablet)">Save to server</button>
-    <button class="sbtn" id="fb-restore" title="Restore a form previously saved on this device">Restore</button>
-    <button class="sbtn danger" onclick="clearAll()" title="Clear all form data and reset to a blank form">Clear</button>
-  </div>
+  <div class="actions"></div>
   <div class="save-ts" id="save-ts"></div>
 
   <div class="lib-status" id="lib-status"></div>
-  <input type="file" id="csv-import-input" accept=".csv,text/csv" style="display:none">
 
   <!-- Blocks 1–6: Header -->
   <div class="sec">
@@ -195,10 +185,10 @@ function fmtDatePicker(id){
   return m+'/'+d+'/'+y;
 }
 function fmtTimeNow(d){
-  return String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'L';
+  return OasisFormTime.hhmmL(d);
 }
 function fmtDateISO(d){
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return OasisFormTime.dateISO(d);
 }
 
 function persist(){
@@ -237,7 +227,7 @@ function clearAll(){
 function cc(v){const s=String(v??'');return/[,"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
 function gv(id){return document.getElementById(id)?.value||'';}
 
-function exportCSV(){
+function buildCSV(){
   const rows=[
     '# ICS 213 — General Message',
     '# Exported: '+new Date().toISOString(),
@@ -266,12 +256,25 @@ function exportCSV(){
     ['Date/Time',gv('f-rep-dt')].map(cc).join(','),
     ['Form Date/Time',gv('f-form-dt')].map(cc).join(','),
   ];
-  const blob=new Blob([rows.join('\r\n')],{type:'text/csv'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='ics213-'+new Date().toISOString().slice(0,10)+'.csv';
-  a.click();
+  return rows.join('\r\n');
 }
+
+function csvFilename(){
+  return OasisFormBackup.filenameFor('ics-213',gv('f-inc')||'message').replace(/\.json$/,'.csv');
+}
+
+// Export writes into the OASIS device's ICS-213 folder. The local download is
+// still available, just no longer the default.
+async function exportCSV(){
+  const name=csvFilename();
+  try{
+    const j=await OasisFormBackup.save('ics-213',name,buildCSV());
+    OasisFormBackup.toast('✓ Exported to '+(j.saved||name));
+  }catch(err){ OasisFormBackup.toast('Export failed: '+err.message,true); }
+}
+
+// Pending the Save dialog's "To local storage" action — no toolbar slot any more.
+function exportCSVLocal(){ OasisFormBackup.saveLocal(csvFilename(),buildCSV()); }
 
 function toggleInst(){
   const b=document.getElementById('i-body');
@@ -427,8 +430,29 @@ async function savePDF(){
   }
 }
 
+// Default source is the OASIS device's designated folder for this form; the
+// footer widens that to the whole install tree, then to this machine.
 function importCSVPrompt(){
-  document.getElementById('csv-import-input').click();
+  OasisFormBackup.openPicker('ics-213', async name=>{
+    try{ importCSVText(await OasisFormBackup.loadText('ics-213',name),name); }
+    catch(err){ OasisFormBackup.toast('Import failed: '+err.message,true); }
+  },{
+    ext:'csv', title:'Import CSV from server',
+    emptyText:'No CSV exports on the device yet. Use Export CSV first, or browse for one below.',
+    actions:[
+      {label:'Browse device files…',onClick:()=>OasisFormBackup.openBrowser(async path=>{
+        try{ importCSVText(await OasisFormBackup.readTree(path),path); }
+        catch(err){ OasisFormBackup.toast('Import failed: '+err.message,true); }
+      },{title:'Import CSV',start:'static/ics-213/saved',accept:'.csv'})},
+      {label:'Browse local files…',onClick:()=>OasisFormBackup.pickLocal(importCSVText,'.csv')},
+    ],
+  });
+}
+
+// The parser below reads a File through FileReader. Wrapping server text in a
+// File leaves it untouched no matter which of the three sources was picked.
+function importCSVText(text,name){
+  importCSV(new File([text],String(name||'import.csv').split('/').pop(),{type:'text/csv'}));
 }
 
 function importCSV(file){
@@ -502,10 +526,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     const el=document.getElementById(id);
     if(el)el.addEventListener('input',persist);
   });
-  document.getElementById('csv-import-input').addEventListener('change',e=>{
-    if(e.target.files[0])importCSV(e.target.files[0]);
-    e.target.value='';
-  });
   const restored=load();
   if(!restored){
     const now=new Date();
@@ -518,6 +538,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 });
 </script>
 <script src="/common/js/form-backup.js"></script>
+<script src="/common/js/form-time.js"></script>
+<script src="/common/js/form-toolbar.js"></script>
 <script>
 /* Server backup of this ICS form — survives a cleared cache / swapped device.
    STORE/persist are top-level bindings from the main script above. Restore writes
@@ -537,6 +559,31 @@ document.addEventListener('DOMContentLoaded',()=>{
     });
     return meaningful ? d : null;
   }
+  // ─── Action row ────────────────────────────────────────────────────────────
+  // Order, grouping, separators and shared labels live in
+  // common/js/form-toolbar.js. Must run before attach(), which binds
+  // #fb-save / #fb-restore by id.
+  OasisFormToolbar.render({
+    mount: '.actions',
+    noun: 'Form',
+    slots: {
+      savePdf:   { onClick: savePDF,
+                   title: 'Fill the official FEMA ICS 213 PDF and download a timestamped copy' },
+      handoff:   { label: '→ Send via Winlink', onClick: sendWinlink,
+                   title: 'Open Winlink Mail with this form as a message (text + RMS form attachment) ready to queue' },
+      saveStore: { title: 'Save this form into server storage (static/ics-213/saved/) so it survives a cleared browser cache or a swapped tablet' },
+      loadStore: { title: 'Load a form previously saved into server storage' },
+      print:     { onClick: function () { window.print(); },
+                   title: "Print the form using your browser's print dialog (portrait letter)" },
+      exportCsv: { onClick: exportCSV,
+                   title: 'Export all form data as CSV into server storage (static/ics-213/saved/)' },
+      importCsv: { onClick: importCSVPrompt,
+                   title: 'Import a previously exported ICS 213 CSV from server storage' },
+      clear:     { onClick: clearAll,
+                   title: 'Clear all form data and reset to a blank form' },
+    },
+  });
+
   OasisFormBackup.attach({
     kind: 'ics-213', noun: 'ICS 213',
     saveButton: document.getElementById('fb-save'),

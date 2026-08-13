@@ -51,16 +51,7 @@ td textarea{overflow:hidden;}
     <p>Activity Log</p>
   </header>
 
-  <div class="actions">
-    <button class="sbtn primary" onclick="savePDF()" title="Fill the official FEMA ICS 214 PDF and download a timestamped copy">⬇ Save PDF</button>
-    <button class="sbtn primary" onclick="sendWinlink()" title="Open Winlink Mail with this log as a message (text + RMS form attachment) ready to queue">→ Send via Winlink</button>
-    <button class="sbtn" onclick="window.print()" title="Print the form using your browser's print dialog (portrait letter)">Print</button>
-    <button class="sbtn" onclick="exportCSV()" title="Export all form data to a CSV file for archiving or re-importing">Export CSV</button>
-    <button class="sbtn" onclick="importCSVPrompt()" title="Import a previously exported ICS 214 CSV file to restore form data">Import CSV</button>
-    <button class="sbtn" id="fb-save" title="Save this form onto the device (survives a cleared browser cache or a swapped tablet)">Save to server</button>
-    <button class="sbtn" id="fb-restore" title="Restore a form previously saved on this device">Restore</button>
-    <button class="sbtn danger" onclick="clearAll()" title="Clear all form data and reset to a blank form">Clear</button>
-  </div>
+  <div class="actions"></div>
   <div class="save-ts" id="save-ts"></div>
   <div class="lib-status" id="lib-status"></div>
 
@@ -165,10 +156,10 @@ function fmtDatePicker(id){
   return m+'/'+d+'/'+y;
 }
 function fmtDateISO(d){
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return OasisFormTime.dateISO(d);
 }
 function fmtTime(d){
-  return String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'L';
+  return OasisFormTime.hhmmL(d);
 }
 function ar(el){ el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
 
@@ -258,7 +249,7 @@ function xv(s){return x(s).replace(/"/g,'&quot;');}
 function cc(v){const s=String(v??'');return/[,"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
 function gv(id){return document.getElementById(id)?.value||'';}
 
-function exportCSV(){
+function buildCSV(){
   const rows=[
     '# ICS 214 — Activity Log',
     '# Exported: '+new Date().toISOString(),
@@ -287,15 +278,49 @@ function exportCSV(){
     ['Signature',gv('f-ps')].map(cc).join(','),
     ['Date/Time',gv('f-pd')].map(cc).join(','),
   ];
-  const blob=new Blob([rows.join('\r\n')],{type:'text/csv'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='ics214-'+new Date().toISOString().slice(0,10)+'.csv';
-  a.click();
+  return rows.join('\r\n');
 }
 
+function csvFilename(){
+  return OasisFormBackup.filenameFor('ics-214',gv('f-inc')||'log').replace(/\.json$/,'.csv');
+}
+
+// Export writes into the OASIS device's ICS-214 folder. The local download is
+// still available, just no longer the default.
+async function exportCSV(){
+  const name=csvFilename();
+  try{
+    const j=await OasisFormBackup.save('ics-214',name,buildCSV());
+    OasisFormBackup.toast('✓ Exported to '+(j.saved||name));
+  }catch(err){ OasisFormBackup.toast('Export failed: '+err.message,true); }
+}
+
+// Pending the Save dialog's "To local storage" action — no toolbar slot any more.
+function exportCSVLocal(){ OasisFormBackup.saveLocal(csvFilename(),buildCSV()); }
+
+// Default source is the OASIS device's designated folder for this form; the
+// footer widens that to the whole install tree, then to this machine.
 function importCSVPrompt(){
-  document.getElementById('csv-import-input').click();
+  OasisFormBackup.openPicker('ics-214', async name=>{
+    try{ importCSVText(await OasisFormBackup.loadText('ics-214',name),name); }
+    catch(err){ OasisFormBackup.toast('Import failed: '+err.message,true); }
+  },{
+    ext:'csv', title:'Import CSV from server',
+    emptyText:'No CSV exports on the device yet. Use Export CSV first, or browse for one below.',
+    actions:[
+      {label:'Browse device files…',onClick:()=>OasisFormBackup.openBrowser(async path=>{
+        try{ importCSVText(await OasisFormBackup.readTree(path),path); }
+        catch(err){ OasisFormBackup.toast('Import failed: '+err.message,true); }
+      },{title:'Import CSV',start:'static/ics-214/saved',accept:'.csv'})},
+      {label:'Browse local files…',onClick:()=>OasisFormBackup.pickLocal(importCSVText,'.csv')},
+    ],
+  });
+}
+
+// The parser below reads a File through FileReader. Wrapping server text in a
+// File leaves it untouched no matter which of the three sources was picked.
+function importCSVText(text,name){
+  importCSV(new File([text],String(name||'import.csv').split('/').pop(),{type:'text/csv'}));
 }
 
 function importCSV(file){
@@ -515,16 +540,39 @@ function checkLibStatus(){
   div.innerHTML=html;
 }
 
-async function savePDF(){
-  if(typeof window.PDFLib==='undefined'||typeof ICS214_PDF_B64==='undefined'){
-    showToast('PDF library or template not loaded'); return;
-  }
-  try{
+// Build the filled FEMA ICS 214 PDF and return { bytes, totalPages }.
+//
+// The template is three pages: page 1 carries the header, the 8 resource slots
+// and activities 1-24; page 2 repeats the header and carries activities 25-60;
+// page 3 is the FEMA instruction sheet. So ONE template block holds 60
+// activities and 8 resources.
+//
+// Longer logs used to be dropped silently — no toast, no note, the 61st entry
+// simply was not in the PDF. A log now spills into as many blocks as it needs,
+// each a fresh copy of the two form pages with its own slice of both tables.
+// Blocks are driven by whichever table overflows first, so 30 resources
+// paginate as readily as 300 activities.
+async function buildIcs214PdfBytes(){
+  if(typeof window.PDFLib==='undefined'||typeof ICS214_PDF_B64==='undefined')
+    throw new Error('PDF library or template not loaded');
+
+  const res=getRes(), act=getAct();
+  const totalBlocks=Math.max(1,
+    Math.ceil(act.length/PDF_MAX_ACT),
+    Math.ceil(res.length/PDF_MAX_RES));
+
+  async function buildBlock(blockIdx){
     const raw=Uint8Array.from(atob(ICS214_PDF_B64),c=>c.charCodeAt(0));
-    const pdfDoc=await window.PDFLib.PDFDocument.load(raw,{ignoreEncryption:true});
-    const form=pdfDoc.getForm();
+    const doc=await window.PDFLib.PDFDocument.load(raw,{ignoreEncryption:true});
+    const form=doc.getForm();
     function sf(name,val){try{form.getTextField(name).setText(val||'');}catch(e){}}
-    sf('ICS 214 1. Incident Name', gv('f-inc'));
+
+    // Header repeats on every block — a continuation sheet must identify itself.
+    // The template has no numeric page field (its "Page 2" fields are the
+    // prepared-by block, not a counter), so the marker rides on the incident
+    // name, as ICS-205 and ICS-309 do.
+    sf('ICS 214 1. Incident Name', totalBlocks>1
+      ? `${gv('f-inc')} (p.${blockIdx+1}/${totalBlocks})` : gv('f-inc'));
     sf('ICS 214 2. Operational Period Date From:', fmtDatePicker('f-df'));
     sf('ICS 214 2. Operational Period Date To:',   fmtDatePicker('f-dt'));
     sf('ICS 214 2. Operational Period TIme From:', gv('f-tf'));
@@ -532,16 +580,17 @@ async function savePDF(){
     sf('ICS  214 3. Name',      gv('f-name'));
     sf('ICS 214 4. ICS Position', gv('f-pos'));
     sf('ICS 214 5. Home Agency',  gv('f-agency'));
-    const res=getRes();
+
+    const resSlice=res.slice(blockIdx*PDF_MAX_RES,(blockIdx+1)*PDF_MAX_RES);
     for(let i=0;i<PDF_MAX_RES;i++){
-      const r=res[i]||{};
+      const r=resSlice[i]||{};
       sf(`ICS 214 6. Resources Assigned - Name ${i+1}`,        r.name||'');
       sf(`ICS 214 6. Resources Assigned - ICS Position ${i+1}`,r.pos||'');
       sf(`ICS 214 6. Resources Assigned - Home Agency ${i+1}`, r.agency||'');
     }
-    const act=getAct();
+    const actSlice=act.slice(blockIdx*PDF_MAX_ACT,(blockIdx+1)*PDF_MAX_ACT);
     for(let i=0;i<PDF_MAX_ACT;i++){
-      const a=act[i]||{};
+      const a=actSlice[i]||{};
       sf(`ICS 214 7. Activity Log - Date/Time ${i+1}`,          a.dt||'');
       sf(`ICS 214 7. Activity Log - Notable Activities ${i+1}`, a.act||'');
     }
@@ -553,14 +602,43 @@ async function savePDF(){
     sf('ICS 214 8. Position/Title Page 2',  gv('f-pp'));
     sf('ICS 214 8. Signature Page 2',       gv('f-ps'));
     sf('ICS 214 8. Date/Time Page 2',       gv('f-pd'));
+
+    // Flatten before copying — an AcroField holds one value per field NAME, so
+    // unflattened copies would all show block 1's rows.
     form.flatten();
-    const bytes=await pdfDoc.save();
+    return doc;
+  }
+
+  // One block is the common case and must come out byte-for-byte as before:
+  // two form pages then the FEMA instructions. For several blocks the form
+  // pages run consecutively and the instruction sheet is appended once at the
+  // end, rather than being stranded in the middle of the log.
+  const blocks=[];
+  for(let b=0;b<totalBlocks;b++) blocks.push(await buildBlock(b));
+
+  const out=await window.PDFLib.PDFDocument.create();
+  for(const doc of blocks){
+    const pages=await out.copyPages(doc,[0,1]);
+    pages.forEach(pg=>out.addPage(pg));
+  }
+  const first=blocks[0];
+  if(first.getPageCount()>2){
+    const tail=[...Array(first.getPageCount()-2).keys()].map(i=>i+2);
+    (await out.copyPages(first,tail)).forEach(pg=>out.addPage(pg));
+  }
+  return { bytes: await out.save(), totalPages: totalBlocks };
+}
+
+async function savePDF(){
+  try{
+    const {bytes,totalPages}=await buildIcs214PdfBytes();
     const blob=new Blob([bytes],{type:'application/pdf'});
     const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
     a.download='ics214-'+new Date().toISOString().slice(0,10)+'.pdf';
     a.click();
-    showToast('PDF saved');
+    URL.revokeObjectURL(a.href);
+    showToast(totalPages>1?`PDF saved — ${totalPages} sheets`:'PDF saved');
   }catch(err){
     console.error(err);
     showToast('PDF error: '+err.message,4000);
@@ -575,10 +653,6 @@ function toggleInst(){
 
 document.addEventListener('DOMContentLoaded',()=>{
   HF.forEach(id=>document.getElementById(id).addEventListener('input',persist));
-  document.getElementById('csv-import-input').addEventListener('change',e=>{
-    if(e.target.files[0]) importCSV(e.target.files[0]);
-    e.target.value='';
-  });
   const restored=load();
   if(!restored){
     const now=new Date();
@@ -591,6 +665,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 });
 </script>
 <script src="/common/js/form-backup.js"></script>
+<script src="/common/js/form-time.js"></script>
+<script src="/common/js/form-toolbar.js"></script>
 <script>
 /* Server backup of this ICS form — survives a cleared cache / swapped device.
    STORE/persist are top-level bindings from the main script above. Restore writes
@@ -610,6 +686,31 @@ document.addEventListener('DOMContentLoaded',()=>{
     });
     return meaningful ? d : null;
   }
+  // ─── Action row ────────────────────────────────────────────────────────────
+  // Order, grouping, separators and shared labels live in
+  // common/js/form-toolbar.js. Must run before attach(), which binds
+  // #fb-save / #fb-restore by id.
+  OasisFormToolbar.render({
+    mount: '.actions',
+    noun: 'Form',
+    slots: {
+      savePdf:   { onClick: savePDF,
+                   title: 'Fill the official FEMA ICS 214 PDF and download a timestamped copy' },
+      handoff:   { label: '→ Send via Winlink', onClick: sendWinlink,
+                   title: 'Open Winlink Mail with this log as a message (text + RMS form attachment) ready to queue' },
+      saveStore: { title: 'Save this log into server storage (static/ics-214/saved/) so it survives a cleared browser cache or a swapped tablet' },
+      loadStore: { title: 'Load a log previously saved into server storage' },
+      print:     { onClick: function () { window.print(); },
+                   title: "Print the form using your browser's print dialog (portrait letter)" },
+      exportCsv: { onClick: exportCSV,
+                   title: 'Export all form data as CSV into server storage (static/ics-214/saved/)' },
+      importCsv: { onClick: importCSVPrompt,
+                   title: 'Import a previously exported ICS 214 CSV from server storage' },
+      clear:     { onClick: clearAll,
+                   title: 'Clear all form data and reset to a blank form' },
+    },
+  });
+
   OasisFormBackup.attach({
     kind: 'ics-214', noun: 'ICS 214',
     saveButton: document.getElementById('fb-save'),

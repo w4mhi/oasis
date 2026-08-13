@@ -89,7 +89,7 @@
       It is served by Flask and calls back into it for four things: <code>/api/lookup</code>
       (FCC callsign lookup and autocomplete), <code>/api/browse</code> (enumerating your
       PMTiles map files), and <code>/api/forms/save</code> + <code>/api/forms/list</code>
-      (Save to server / Restore). It also pulls MapLibre, PMTiles and the Maidenhead helper
+      (Save Log / Load Log, and the CSV export/import). It also pulls MapLibre, PMTiles and the Maidenhead helper
       from server-absolute paths. Open the file straight off disk and the map, the lookup and
       the snapshots are all dead. What <em>does</em> keep working with the FCC feature absent:
       typing entries by hand, logging, sorting, inline edit and delete, Print, Export CSV,
@@ -151,12 +151,12 @@
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Button</th><th>What it does</th></tr></thead>
       <tbody>
-        <tr><td><strong>&rarr; ICS-309</strong></td><td>The most valuable path off this page. It copies the whole log into the <a href="ics-forms.html">ICS-309</a> communications log and opens it in a new tab: net name becomes the incident, name plus frequency the net, the first and last check-in the from/to times, net control the operator, and every check-in becomes a message line reading <em>name &mdash; city, state &mdash; notes &mdash; (traffic)</em>. It hands over through <code>localStorage</code>, so nothing goes over the wire and nothing is lost if the new tab is slow to open.</td></tr>
+        <tr><td><strong>&rarr; ICS-309</strong></td><td>The most valuable path off this page. It copies the whole log into the <a href="ics-forms.html">ICS-309</a> communications log and opens it in a new tab: net name becomes the incident, name plus frequency the net, the first and last check-in the from/to times, net control the operator, and every check-in becomes a message line reading <em>name &mdash; city, state &mdash; notes &mdash; (traffic)</em>. Times are <strong>converted</strong> on the way across: check-ins are stored UTC here, but ICS-309 is a local-time form, so <code>1805Z</code> arrives as <code>1305L</code> rather than being relabelled. It hands over through <code>localStorage</code>, so nothing goes over the wire and nothing is lost if the new tab is slow to open.</td></tr>
         <tr><td><strong>Print</strong></td><td>Opens the browser print dialog on a print stylesheet &mdash; the map and the buttons drop out, the roster does not. This is your paper copy when the power budget says the screen goes off.</td></tr>
-        <tr><td><strong>Export CSV</strong></td><td>Nine columns: <code>#, UTC, Callsign, Name, City, State, Grid, Traffic, Notes</code>. Note there is no Local column in the export &mdash; UTC is the record.</td></tr>
-        <tr><td><strong>Import CSV</strong></td><td>Reads a CSV back in. Match the exported column format.</td></tr>
-        <tr><td><strong>Save to server</strong></td><td>Writes a timestamped JSON snapshot server-side, named from the net name and the date. Never automatic &mdash; it is an explicit click.</td></tr>
-        <tr><td><strong>Restore</strong></td><td>Lists the saved snapshots and loads one back over the current log.</td></tr>
+        <tr><td><strong>Export CSV</strong></td><td>Writes nine columns &mdash; <code>#, UTC, Callsign, Name, City, State, Grid, Traffic, Notes</code> &mdash; into server storage, beside the JSON snapshots. There is no Local column: UTC is the record.</td></tr>
+        <tr><td><strong>Import CSV</strong></td><td>Lists the CSV exports in server storage and reads one back in. The footer also offers <em>Browse device files…</em> for anywhere else in the OASIS tree, and <em>Browse local files…</em> for the machine the browser is on. Match the exported column format.</td></tr>
+        <tr><td><strong>Save Log</strong></td><td>Writes a timestamped JSON snapshot into server storage (<code>static/net-log/saved/</code>), named from the net name and the date. Never automatic &mdash; it is an explicit click.</td></tr>
+        <tr><td><strong>Load Log</strong></td><td>Lists the snapshots in server storage and loads one back over the current log.</td></tr>
         <tr><td><strong>Clear</strong></td><td>Empties the log.</td></tr>
       </tbody>
     </table></div></div>
@@ -183,7 +183,7 @@
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
       <tbody>
-        <tr><td>Check-ins vanished</td><td>The log lives in this browser&rsquo;s <code>localStorage</code>. Use <strong>Export CSV</strong> or <strong>Save to server</strong> to persist it beyond one device.</td></tr>
+        <tr><td>Check-ins vanished</td><td>The log lives in this browser&rsquo;s <code>localStorage</code>. Use <strong>Save Log</strong> to persist it onto the device, where a cleared cache or a swapped tablet can&rsquo;t take it with them.</td></tr>
         <tr><td>Callsign lookup shows <code>no API</code></td><td>The <a href="fcc-lookup.html">FCC database</a> feature is not installed on this box. Log by hand, or install it from <a href="setup-menu.html">the setup menu</a>.</td></tr>
         <tr><td>Map tab is empty / <em>No .pmtiles files found</em></td><td>No basemap. Put a <code>.pmtiles</code> file in <code>maps/</code> and restart the server &mdash; see <a href="maps.html">Offline Maps</a>.</td></tr>
         <tr><td>The map has no pins</td><td>Check-ins need coordinates: either an FCC hit or a grid square. Add a grid per entry.</td></tr>
