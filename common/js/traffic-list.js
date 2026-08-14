@@ -191,7 +191,20 @@
         last_heard: _isoOrNull(a._ts),
         via: 'adsb',
         comment: bits.join(' · '),
-        _positioned: positioned
+        _positioned: positioned,
+        // PASSED THROUGH, not folded into `comment`, for a caller that renders a
+        // detail card rather than a one-line row: the kiosk's aircraft sheet
+        // spells out the category, the climb/descend arrow and the emergency
+        // banner from these four, and can say "⚠ EMERGENCY — GENERAL EMERGENCY"
+        // where a list row only has space for "⚠ 7700".
+        //
+        // They are the reason the kiosk carried its own copy of this function.
+        // Emitting them here is what let that copy go away, so keep them even if
+        // the callers you can see today do not read them.
+        category: a.category,
+        baro_rate: a.baro_rate,
+        squawk: a.squawk,
+        emergency: a.emergency
       };
     });
   }

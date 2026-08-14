@@ -1571,30 +1571,29 @@ async function fetchAPRS() {
   } catch (e) { setAprsLive('down'); _allAprsStations=[]; scheduleAprsRender(); }
 }
 
-// ADS-B fold (mirrors dashboard_old / map.html)
+// ADS-B fold — the SHARED one (common/js/traffic-list.js), the same call index
+// and the traffic map make. This was a hand-rolled copy of it, and the copy had
+// drifted in a way that could take the whole list down:
+//
+//   last_heard: new Date(a._ts*1000).toISOString()
+//
+// new Date(NaN).toISOString() throws RangeError, not "Invalid Date". Inside a
+// .map() one aircraft with an unparseable last_seen therefore aborted the entire
+// fold, which threw out of applyAprsFilter, which meant NO ROWS AT ALL — the
+// APRS stations went down with the aircraft, on a wall panel, silently. The
+// shared version fixed exactly that with _isoOrNull after it happened once; the
+// kiosk kept the original because nobody remembered it was a second copy.
+//
+// It also drifted quietly in the other direction: the shared comment carries the
+// ⚠ emergency-squawk and military markers, this one only ever wrote "sq NNNN".
+// The kiosk list has no comment column so nothing was visibly missing, which is
+// precisely why the drift survived — the two implementations disagreed for
+// months with no symptom to notice.
 let _adsbAircraft = [], _adsbRecent = [], _adsbNow = 0;
 function _lhEpoch(s) { if (!s) return 0; const norm = String(s).replace('Z','+00:00').replace(' ','T').replace(/(\.\d{3})\d+/,'$1'); const t = new Date(norm).getTime(); return isNaN(t)?0:t; }
-function _adsbForList() {
-  // Both ADS-B feeds now send an absolute `last_seen` (ISO) resolved server-side,
-  // so live and history rows share one schema and one timestamp path — no epoch
-  // `ts`, no reconciling dump1090's clock with the browser's.
-  const byHex = {};
-  const _tsOf = a => a.last_seen ? Date.parse(a.last_seen)/1000
-                   : (typeof a.ts === 'number' ? a.ts
-                   : _adsbNow - ((typeof a.seen==='number')?a.seen:0));
-  _adsbRecent.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts:_tsOf(a), _live:false }); });
-  _adsbAircraft.forEach(a => { byHex[a.hex] = Object.assign({}, a, { _ts:_tsOf(a), _live:true }); });
-  return Object.values(byHex);
-}
 function _adsbListRows() {
-  return _adsbForList().filter(a => (a.lat!=null && a.lon!=null) || !a._live).map(a => {
-    const positioned = a.lat!=null && a.lon!=null;
-    const altFt = (a.alt_baro==null||a.alt_baro==='ground') ? null : (isFinite(Number(a.alt_baro))?Number(a.alt_baro):null);
-    const _sym = (typeof acSymbol === 'function') ? acSymbol(a) : ['/', a.category === 'A7' ? 'X' : "'"];
-    return { _kind:'aircraft', callsign:(a.flight||a.hex||'').trim()||(a.hex||'?'), sym_table:_sym[0], sym_code:_sym[1],
-      lat:positioned?a.lat:null, lon:positioned?a.lon:null, speed_mph:(a.gs!=null)?Math.round(a.gs*1.15078):0, course:(a.track!=null)?a.track:null,
-      alt_m:(altFt!=null)?altFt/3.28084:null, last_heard:new Date(a._ts*1000).toISOString(), via:'adsb', comment:a.squawk?('sq '+a.squawk):'',
-      category:a.category, baro_rate:a.baro_rate, squawk:a.squawk, hex:a.hex, emergency:a.emergency };
+  return OasisTrafficList.aircraftRows({
+    live: _adsbAircraft, recent: _adsbRecent, now: _adsbNow
   });
 }
 async function refreshAdsb() {

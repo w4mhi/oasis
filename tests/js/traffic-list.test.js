@@ -107,6 +107,54 @@ test('aircraftRows: altitude guard and emergency squawks', () => {
   assert.strictEqual(mk({}).speed_mph, 0);
 });
 
+// A row whose timestamp cannot be parsed must degrade to "unknown age", NOT
+// throw. new Date(NaN).toISOString() raises RangeError, and this runs inside a
+// .map(), so one bad aircraft used to abort the whole fold — taking the APRS
+// stations down with it, because the caller never reached its render. The kiosk
+// carried a copy of this function without the guard until it was deleted in
+// favour of this one; the test is here so the guard cannot be "simplified" away.
+test('aircraftRows: an unparseable timestamp yields a null last_heard, never a throw', () => {
+  for (const bad of [{ last_seen: 'not a date' }, { ts: NaN }]) {
+    const row = T.aircraftRows({
+      now: 10, recent: [], live: [Object.assign({ hex: 'h', lat: 1, lon: 1 }, bad)]
+    })[0];
+    assert.ok(row, 'the row must still be produced: ' + JSON.stringify(bad));
+    assert.strictEqual(row.last_heard, null, JSON.stringify(bad));
+    // And it must stay harmless downstream, which is where the damage was.
+    assert.strictEqual(T.lastHeardEpoch(row.last_heard), 0);
+  }
+  // An EMPTY last_seen is a DIFFERENT case and must not be lumped in with the
+  // unparseable one: it is falsy, so it falls through to the `now` fallback and
+  // the row gets a real timestamp. Asserting null here would have been asserting
+  // a bug into place.
+  const empty = T.aircraftRows({ now: 10, recent: [], live: [{ hex: 'e', lat: 1, lon: 1, last_seen: '' }] })[0];
+  assert.strictEqual(T.lastHeardEpoch(empty.last_heard), 10 * 1000);
+  // The good case still resolves, so the guard is not swallowing everything.
+  const ok = T.aircraftRows({ now: 10, recent: [], live: [{ hex: 'g', lat: 1, lon: 1, seen: 0 }] })[0];
+  assert.strictEqual(T.lastHeardEpoch(ok.last_heard), 10 * 1000);
+});
+
+// The detail-card fields. The kiosk's aircraft sheet renders the category label,
+// the climb/descend arrow and the emergency banner off these four; they are the
+// only reason it used to fold ADS-B itself. Dropping one would blank part of that
+// sheet with no error anywhere — so pin them.
+test('aircraftRows: detail fields pass through for callers that render a card', () => {
+  const row = T.aircraftRows({ now: 10, recent: [], live: [{
+    hex: 'abc123', lat: 1, lon: 1, seen: 0,
+    category: 'A7', baro_rate: -640, squawk: '7700', emergency: 'general'
+  }] })[0];
+  assert.strictEqual(row.category, 'A7');
+  assert.strictEqual(row.baro_rate, -640);
+  assert.strictEqual(row.squawk, '7700');
+  assert.strictEqual(row.emergency, 'general');
+  assert.strictEqual(row.hex, 'abc123');
+  // Absent stays undefined rather than becoming a misleading 0 / '' — the sheet
+  // tests `baro_rate != null` to decide whether to show a vertical-rate arrow.
+  const bare = T.aircraftRows({ now: 10, recent: [], live: [{ hex: 'h', lat: 1, lon: 1, seen: 0 }] })[0];
+  assert.strictEqual(bare.baro_rate, undefined);
+  assert.strictEqual(bare.emergency, undefined);
+});
+
 test('altColorFor bands aircraft only, never APRS stations', () => {
   assert.strictEqual(T.altColorFor({ via: 'rf', alt_m: 100 }), null, 'ground elevation is not a flight level');
   assert.strictEqual(T.altColorFor({ _kind: 'aircraft', alt_m: null }), null);
@@ -234,13 +282,34 @@ test('sourceBreakdown counts the cycle window and tracks the newest packet', () 
   assert.strictEqual(empty.tone, '');
 });
 
-test('neither page reimplements the filter engine or the breakdown', () => {
+// THE KIOSK WAS MISSING FROM THIS LIST, which is the whole reason it kept a
+// private copy of the ADS-B fold long enough to drift from the shared one. A
+// guard that names its subjects one by one is only as good as the list, so when
+// a third screen showing the same traffic appeared, the guard silently stopped
+// covering the codebase while continuing to pass.
+const TRAFFIC_PAGES = ['index.html', 'maps/traffic/map.html', 'oasis-dashboard/dashboard.html'];
+
+test('no page reimplements the filter engine, the fold, or the breakdown', () => {
+  for (const rel of TRAFFIC_PAGES) {
+    const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    assert.ok(src.includes('OasisTrafficList.filters'),
+      rel + ' does not use the shared filter engine');
+    assert.ok(src.includes('OasisTrafficList.aircraftRows'),
+      rel + ' does not use the shared ADS-B fold');
+    assert.ok(!/function\s+_callMatches\s*\(/.test(src), rel + ' kept a local callsign matcher');
+    // The fold specifically: a local live+history merge keyed by hex is what the
+    // kiosk had. Matching the FUNCTION NAME is deliberately narrow — this is a
+    // reminder at review time, not a parser.
+    assert.ok(!/function\s+_adsbForList\s*\(/.test(src),
+      rel + ' kept a local ADS-B merge (_adsbForList) — call OasisTrafficList.aircraftRows');
+  }
+  // The breakdown is index + map only: the kiosk shows flow METERS (packet rates
+  // off the receivers), which is a different readout, not this one under another
+  // name. Asserting it everywhere would push the kiosk to adopt a number it has
+  // no place to put.
   for (const rel of ['index.html', 'maps/traffic/map.html']) {
     const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
-    assert.ok(src.includes('OasisTrafficList.filters') || src.includes('OasisTrafficList.filters'.replace('.', '.')),
-      rel + ' does not use the shared filter engine');
     assert.ok(src.includes('OasisTrafficList.sourceBreakdown'), rel + ' does not use the shared breakdown');
-    assert.ok(!/function\s+_callMatches\s*\(/.test(src), rel + ' kept a local callsign matcher');
   }
 });
 
