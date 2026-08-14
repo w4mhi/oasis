@@ -336,6 +336,11 @@
   .fchip.rf{ --src:var(--accent); }
   .fchip.is{ --src:var(--blue); }
   .fchip.adsb{ --src:var(--purple); }
+  /* The age window wears the same amber as the count it qualifies (.heard), so
+     "384" and the window that produced it read as one statement. It is the only
+     chip that is never OFF — there is always some window — so `active` here
+     means "not the 24h default" rather than "selected". */
+  .fchip.age{ --src:var(--warn); }
   .fchip.active{ color:var(--bg); background:var(--src); }
   .tbl{ display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
   .tscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.6rem; padding-right:10px; }
@@ -701,6 +706,14 @@
       <div class="hd">
         <span class="livebadge ok" id="k-aprs-live"><span class="lvd">●</span><span class="lvtxt">LIVE</span></span>
         <span class="heard" id="k-aprs-count">—</span>
+        <!-- AGE WINDOW, cycled by tapping rather than picked from a list: the
+             panel has no column headers to hang index.html's Age <select> on,
+             and one chip is the idiom every other control up here already uses.
+             Label is filled in by _renderAgeChip. -->
+        <span class="fchip age" id="f-age" role="button" tabindex="0"
+              onclick="cycleAgeFilter()"
+              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();cycleAgeFilter();}"
+              title="Age window">&#8804;24h</span>
         <!-- One chip per RECEIVE PATH, the same three index.html shows. Counts
              are filled in by _renderSrcChipCounts. There is no APRS chip: RF and
              IS are the APRS rows. -->
@@ -1135,6 +1148,48 @@ try {
 } catch (e) { /* unreadable storage — keep the show-everything default */ }
 const MAX_ROWS = 60;   // more vertical room on this layout → show more records
 let _renderAt = 0, _renderTimer = null;
+// ── AGE WINDOW ───────────────────────────────────────────────────────────────
+// Same buckets, same 24h default, and the same shared predicate as index.html's
+// Age column, because the two screens sit in the same room and must not disagree
+// about how many stations are live.
+//
+// This page had NO age window at all, and /api/aprs/stations is not a "currently
+// heard" endpoint — it returns the whole table. Measured on pi4oasis while
+// fixing this: 1626 stations reaching back 658 h (27 days), of which 803 were
+// inside 24 h. The kiosk was showing the first number under a heading that reads
+// LIVE, next to a workstation showing the second.
+//
+// DELIBERATELY NOT PERSISTED, unlike the source chips right below. A wall panel
+// that came back from a reboot still set to All would silently recreate exactly
+// this discrepancy, with nobody standing there to see the chip that explains it.
+// The source chips can afford persistence because their state is legible from
+// across the room (a filled chip); "All" vs "24h" is one word at 1rem.
+const _AGE_STEPS  = [1440, 15, 30, 60, 0];   // 24h first: index's default, so ours
+const _AGE_LABEL  = { 0: 'All', 15: '15m', 30: '30m', 60: '60m', 1440: '24h' };
+let _ageMin = _AGE_STEPS[0];
+function _renderAgeChip() {
+  const el = document.getElementById('f-age'); if (!el) return;
+  const lbl = _AGE_LABEL[_ageMin];
+  el.textContent = _ageMin ? '≤' + lbl : lbl;
+  // Lit whenever the window is NOT the default — the panel is showing something
+  // other than the usual view and should say so without being read closely.
+  el.classList.toggle('active', _ageMin !== _AGE_STEPS[0]);
+  el.title = _ageMin
+    ? 'Showing traffic heard in the last ' + lbl + ' — tap for the next window'
+    : 'Showing every station on record, however old — tap to return to 24h';
+}
+function cycleAgeFilter() {
+  _ageMin = _AGE_STEPS[(_AGE_STEPS.indexOf(_ageMin) + 1) % _AGE_STEPS.length];
+  _renderAgeChip();
+  // All widens the aircraft history fetch too (recentHoursForAge, shared with
+  // index and the map). Without this the list would show weeks of APRS beside
+  // 24 h of aircraft and call the mixture "All".
+  if (recentHoursForAge(String(_ageMin)) !== _adsbRecentHours) {
+    refreshAdsbRecent().then(applyAprsFilter);
+  } else {
+    applyAprsFilter();
+  }
+}
 // Receive-path classification comes from the SHARED module, the same one
 // index.html's source pills use. It was a byte-identical copy here, which is
 // how two screens end up disagreeing about what "RF" means after one of them is
@@ -1466,11 +1521,18 @@ function applyAprsFilter() {
   // Everything EXCEPT the source chips, so each chip can be labelled with the
   // rows it would contribute — including a path currently switched off. Same
   // ordering index uses for its source pills.
+  // AGE — the shared factory, so a row is inside the window here exactly when it
+  // is inside it on index. One predicate for APRS stations and aircraft alike.
+  const fAgeCut = OasisTrafficList.filters.age(_ageMin ? Date.now() - _ageMin * 60000 : 0);
   const preRows = _allAprsStations.concat(_adsbListRows()).filter(s => {
     if (_containedIncident(s)) return false;                    // cleared incident — never listed
+    // The two overrides own their own windows and supersede the age chip, which
+    // is index's precedence exactly: a hazard persists at any age, and emergency
+    // is Public-safety ≤48h. Letting the age chip cut these would hide an active
+    // incident behind a filter set for an unrelated reason.
     if (hazardActive) return _hazardKeyOf(s) === hazardFilter;  // hazard filter supersedes
     if (emergActive)  return _isEmergency(s);                   // else emergency filter
-    return true;
+    return fAgeCut(s);
   });
   const srcCounts = { rf: 0, is: 0, adsb: 0 };
   for (const s of preRows) { const k = _srcKeyOf(s); if (k in srcCounts) srcCounts[k]++; }
@@ -1543,11 +1605,17 @@ async function refreshAdsb() {
         _adsbAircraft = (j.ok && Array.isArray(j.aircraft)) ? j.aircraft : [];
         _adsbNow = Date.now()/1000; scheduleAprsRender(); } catch (_) {}
 }
+// How wide the last SUCCESSFUL history fetch was. Recorded on success only, so a
+// failed widen to All retries on the next cycle instead of sticking at a window
+// we never actually got (same reason index.html does it this way).
+let _adsbRecentHours = 24;
 async function refreshAdsbRecent() {
-  try { const r = await fetch('/api/adsb/recent?hours=24', { cache:'no-store', signal: AbortSignal.timeout(8000) });
+  const hours = recentHoursForAge(String(_ageMin));
+  try { const r = await fetch('/api/adsb/recent?hours=' + hours, { cache:'no-store', signal: AbortSignal.timeout(8000) });
         if (!r.ok) return;
         const j = await r.json();
-        _adsbRecent = (j.ok && Array.isArray(j.aircraft)) ? j.aircraft : [];
+        if (j.ok && Array.isArray(j.aircraft)) { _adsbRecent = j.aircraft; _adsbRecentHours = hours; }
+        else _adsbRecent = [];
         scheduleAprsRender(); } catch (_) {}
 }
 
@@ -2441,6 +2509,7 @@ async function forgetWifi() {
 }
 refreshWifi();        setInterval(refreshWifi, 30000);
 
+_renderAgeChip();     // paint the default window before the first rows land
 fetchAPRS();          setInterval(fetchAPRS, 10000);
 refreshAdsb();        setInterval(refreshAdsb, 5000);
 refreshAdsbRecent();  setInterval(refreshAdsbRecent, 60000);
