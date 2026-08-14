@@ -44,6 +44,12 @@
 <script src="/common/js/sat-uplink.js"></script>
 <script src="/common/js/horizon.js"></script>
 <script src="/common/js/sat-detail.js"></script>
+<!-- The transport. sat-transport/sat-denoise are pure and live with the
+     Satellites page; sat-listen is the shared recorder client. One dongle, so
+     these rules exist once and both surfaces read them. -->
+<script src="/server/satellites/sat-transport.js"></script>
+<script src="/server/satellites/sat-denoise.js"></script>
+<script src="/common/js/sat-listen.js"></script>
 <link rel="stylesheet" href="/common/css/wifi-pill.css">
 <link rel="stylesheet" href="/common/css/sat-detail.css">
 
@@ -455,6 +461,26 @@
   /* Footer priority: pills win over meters when crowded — drop ADS-B at ≥5 pills, APRS too at ≥10. */
   .feedmeters.hide-adsb #fm-adsb{ display:none; }
   .feedmeters.hide-aprs #fm-aprs{ display:none; }
+
+  /* ── Transport inside the satellite sheet ────────────────────────────────
+     Finger targets on a 7" panel: 44px tall, which is why these are not the
+     Satellites page's 2px-padded .tbtn pills. REC red, PLAY green, STOP blue,
+     the same studio convention the page uses so the two screens agree.
+     Animation is OPACITY ONLY - a box-shadow keyframe here would pin the kiosk
+     renderer at 60fps, which this project has already paid for once. */
+  .ksat-transport{ display:flex; align-items:center; gap:.5rem; margin-top:.6rem;
+    padding-top:.6rem; border-top:1px solid var(--border); flex-wrap:wrap; }
+  .ktbtn{ min-width:5.2rem; min-height:44px; padding:0 .9rem; border-radius:8px;
+    border:1px solid var(--border); background:var(--panel-2); color:var(--dim);
+    font-weight:700; letter-spacing:.06em; font-size:.95rem; cursor:pointer; }
+  .ktbtn:disabled{ opacity:.35; cursor:default; }
+  #k-rec.active{ color:var(--down); border-color:var(--down); animation:ktpulse 1.2s infinite; }
+  #k-play.active{ color:var(--up); border-color:var(--up); animation:ktpulse 1.2s infinite; }
+  #k-stop.active{ color:var(--accent); border-color:var(--accent); }
+  @keyframes ktpulse{ 50%{ opacity:.55; } }
+  .ktstat{ font-family:var(--mono); font-size:.9rem; color:var(--down); font-weight:700; }
+  .ktstat.live{ color:var(--up); }
+  .ktstat.dim{ color:var(--dim); font-weight:400; }
 
   /* ── detail sheet (row → full card) — copied verbatim from kiosk.css ──── */
   .sheet{ position:absolute; left:0; right:0; bottom:0; transform:translateY(110%); transition:transform .18s;
@@ -1642,7 +1668,21 @@ function openSheet(s) {
   document.getElementById('shBody').innerHTML = renderStationCard(s);
   document.getElementById('sheet').classList.add('open');
 }
-function closeSheet() { document.getElementById('sheet').classList.remove('open'); }
+function closeSheet() {
+  document.getElementById('sheet').classList.remove('open');
+  // Stop re-rendering a sheet nobody is looking at. The capture itself is
+  // untouched — closing the sheet is not a Stop, and a recording started here
+  // keeps running exactly as one started from the Satellites page does.
+  _sheetNorad = null;
+}
+// The recorder is polled slowly while the sheet is shut and briskly while it is
+// open. A kiosk panel redraws this card on every tick, and 3 s of that behind a
+// closed sheet is work nobody can see — the same reasoning that keeps the rest
+// of this page's polls lazy.
+setInterval(() => { if (typeof SL !== 'undefined') SL.poll(); },
+            20000);
+setInterval(() => { if (typeof SL !== 'undefined' && _sheetNorad != null) SL.poll(); },
+            3000);
 // A satellite row opens the SAME sheet the APRS rows and the SRV pill use, with
 // the detail card from common/js/sat-detail.js — the identical card the
 // Satellites page shows, so a bird cannot read one way on the wall and another
@@ -1652,9 +1692,57 @@ function closeSheet() { document.getElementById('sheet').classList.remove('open'
 // static/sat-geometry.js, and the card takes a ready-made fragment rather than
 // reaching for it. Passing none is all "no plot" costs.
 //
-// 24h times and no click target: there is nothing on this screen to plot a pass
-// ONTO, so the rows are read-only rather than tappable-and-inert.
-function openSatSheet(norad) {
+// 24h times and no click target on the PASS rows: there is nothing on this
+// screen to plot a pass ONTO. The FREQUENCY rows are tappable, though — that is
+// how a bird gets armed here, since the kiosk has no dropdown and no room for
+// one.
+//
+// The transport lives inside this sheet rather than in the header, because the
+// sheet is the only place that knows which bird you mean. The Satellites page
+// can afford a global cluster; a 7" panel cannot.
+let _satArmed = null;     // {norad, freq, mode} — what Rec/Play would act on
+let _sheetNorad = null;   // which bird the sheet is showing, or null when closed
+
+const SL = OasisSatListen.create({
+  onChange: () => { if (_sheetNorad != null) renderSatSheet(_sheetNorad); },
+  // The soonest pass that has not already set. [0] alone would hand a finished
+  // pass to inCaptureWindow and refuse to arm during the pass after it.
+  nextPass: (norad) => {
+    const ps = _satPasses[norad] || _satPasses[String(norad)] || [];
+    const now = Date.now();
+    return ps.find(p => new Date(p.set).getTime() > now) || null;
+  },
+  getArmed: () => _satArmed,
+  setArmed: (a) => { _satArmed = a; if (a) _sheetNorad = _sheetNorad ?? a.norad; },
+  findSat: (norad) => _satSel.find(x => String(x.norad) === String(norad)),
+});
+
+// Tapping a frequency row arms it. Locked while a capture runs: changing the
+// armed frequency mid-record would silently disagree with what the dongle is
+// actually doing.
+function armDownlink(norad, freq, mode) {
+  if (SL.capturing()) return;
+  _satArmed = { norad, freq, mode: mode || null };
+  renderSatSheet(norad);
+}
+function satTransport(action) { SL.transport(action); }
+
+function _transportHTML() {
+  const b = SL.buttons();
+  const st = SL.statusText();
+  const btn = (id, label, v) =>
+    `<button class="ktbtn${v.active ? ' active' : ''}" id="k-${id}"` +
+    `${v.disabled ? ' disabled' : ''} title="${OasisSatDetail.esc(v.title)}"` +
+    ` onclick="satTransport('${id}')">${label}</button>`;
+  return '<div class="ksat-transport">' +
+    btn('rec', 'REC', b.rec) + btn('play', 'PLAY', b.play) + btn('stop', 'STOP', b.stop) +
+    (st.on ? `<span class="ktstat${st.live ? ' live' : ''}">${OasisSatDetail.esc(st.text)}</span>`
+           : `<span class="ktstat dim">${_satArmed ? 'armed ' + _satArmed.freq + ' MHz'
+                                                   : 'tap a frequency to arm'}</span>`) +
+    '</div>';
+}
+
+function renderSatSheet(norad) {
   const s = _satSel.find(x => String(x.norad) === String(norad));
   if (!s) return;
   const st = _satStation || {};
@@ -1665,8 +1753,26 @@ function openSatSheet(norad) {
     fmtTime: t => { const d = new Date(t);
       return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); },
     compass: azCompass,
-  }) + '</div>';
+    onPick: 'armDownlink',
+    armed: _satArmed && String(_satArmed.norad) === String(norad) ? _satArmed : null,
+  }) + _transportHTML() + '</div>';
+}
+
+function openSatSheet(norad) {
+  const s = _satSel.find(x => String(x.norad) === String(norad));
+  if (!s) return;
+  _sheetNorad = norad;
+  // 59% of birds have exactly one recordable downlink, so for six in ten there
+  // is no choice to make and asking for one is ceremony. Arm it on open; the
+  // rest wait for a tap. Never auto-arm mid-capture, and never override a
+  // deliberate pick.
+  if (!SL.capturing() && (!_satArmed || String(_satArmed.norad) !== String(norad))) {
+    const sole = OasisSatDetail.soleRecordable(s);
+    _satArmed = sole ? { norad: s.norad, freq: sole.freq_mhz, mode: sole.mode || null } : null;
+  }
+  renderSatSheet(norad);
   document.getElementById('sheet').classList.add('open');
+  SL.poll();
 }
 // SRV pill → services list in the same slide sheet. Problems first (DN·WRN·UP·…·NI),
 // read-only. NI = install-gated (HIDDEN_SVCS); '…' = not pinged yet this cycle.
