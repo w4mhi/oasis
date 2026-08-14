@@ -116,6 +116,16 @@ html, body { height: 100%; margin: 0; }
   font-size: 18px; line-height: 1; cursor: pointer; padding: 0 0 0 8px; }
 .sat-popup .sp-close:hover { color: var(--text); }
 .horizon-rim { fill: var(--text-dim); opacity: .22; }
+/* Live-audio noise filter. Sits beside the transport because it belongs to
+   listening, not to recording — and the title says so, since a control next to
+   a Rec button that silently altered the WAV would be the worst kind of
+   surprise. Narrow on purpose: it must not push the clock off a 7" screen. */
+#denoise-group { display: inline-flex; align-items: center; gap: .35rem; }
+#denoise-group .dn-lbl { font-size: var(--fs-micro); letter-spacing: .06em;
+  color: var(--text-dim); text-transform: uppercase; }
+#denoise-group input[type=range] { width: 74px; height: 14px; cursor: pointer; accent-color: var(--accent); }
+#denoise-group .dn-val { font-family: var(--mono); font-size: var(--fs-micro);
+  color: var(--text-dim); min-width: 8ch; }
 .badge { display: inline-block; font-size: var(--fs-small); font-weight: 700; letter-spacing: .05em;
   padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); }
 .badge.ok   { color: #3fb950; border-color: #3fb950; }
@@ -442,6 +452,13 @@ html, body { height: 100%; margin: 0; }
       <button class="tbtn" id="t-play" onclick="transport('play')">▶ Play</button>
       <button class="tbtn" id="t-stop" onclick="transport('stop')">⏹ Stop</button>
     </span>
+    <span class="f-group" id="denoise-group"
+          title="Filters the LIVE audio only - the recording on disk is never touched">
+      <label class="dn-lbl" for="denoise">NR</label>
+      <input type="range" id="denoise" min="0" max="100" step="5" value="0"
+             oninput="setDenoise(this.value)">
+      <span class="dn-val" id="denoise-val">off</span>
+    </span>
     <span id="listen-status"><span class="rec-dot"></span><span id="listen-text"></span></span>
     <span style="flex:1"></span>
     <span id="sat-mute" class="sat-mute" title="Mute / unmute pass-alert chimes" onclick="toggleSatMute()"></span>
@@ -503,6 +520,7 @@ html, body { height: 100%; margin: 0; }
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/sat-roster.js"></script>
 <script src="/server/satellites/sat-transport.js"></script>
+<script src="/server/satellites/sat-denoise.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
 <script src="/common/js/sat-look.js"></script>
 <script src="/common/js/sat-uplink.js"></script>
@@ -821,6 +839,14 @@ async function boot() {
   renderFilterBar();
   setTleBadge(meta.tle_age_days);
   renderSatMuteBell();
+  // Restore the slider's position only — _applyDenoise is deliberately NOT
+  // called here, because building the filter graph before there is any audio
+  // would reroute the element through a still-suspended AudioContext. It runs
+  // on the first startStream, where the click has already unlocked audio.
+  const dn = document.getElementById('denoise');
+  if (dn) { dn.value = String(_denoise); }
+  const dnv = document.getElementById('denoise-val');
+  if (dnv) dnv.textContent = satdenoise.labelFor(_denoise);
   // Unlock Web Audio on the operator's first interaction, so a bell armed in a
   // prior session can still chime from the timer (browsers gate audio on gesture).
   ['click', 'keydown', 'touchstart'].forEach(ev =>
@@ -2315,6 +2341,65 @@ function _satAudio() {
   }
   return a;
 }
+// ── Live-audio noise filter ──────────────────────────────────────────────────
+// A high-pass sweeping up toward the Bell 202 mark tone, plus a low-pass that
+// stays clear of the space tone. Corners and the reasoning behind them are in
+// sat-denoise.js; they were measured off the PCSAT capture, not chosen.
+//
+// It runs on the <audio> element, so it can only ever affect what this browser
+// plays. The WAV on disk is untouched by construction — the same asymmetry
+// capture.py is built on, inherited for free by filtering this far downstream.
+let _denoise = (() => {
+  try { return parseFloat(localStorage.getItem('oasis_sat_denoise')) || 0; }
+  catch (e) { return 0; }
+})();
+let _dnNodes = null;      // {source, hp, lp} — built once, then re-aimed
+let _dnFailed = false;    // no AudioContext: the slider says so instead of lying
+
+// createMediaElementSource can be called ONCE per element and permanently
+// reroutes it through the graph — there is no putting it back. So the graph is
+// built lazily on first use, and once built the element ALWAYS plays through it
+// (bypass is expressed by neutral corners, not by tearing the graph down).
+function _dnGraph() {
+  if (_dnNodes || _dnFailed) return _dnNodes;
+  const a = document.getElementById('sat-audio');
+  const ctxFn = window.oasisAudioContext;
+  if (!a || typeof ctxFn !== 'function') { _dnFailed = true; return null; }
+  try {
+    const ctx = ctxFn();
+    if (!ctx) { _dnFailed = true; return null; }
+    const source = ctx.createMediaElementSource(a);
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass';
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+    source.connect(hp); hp.connect(lp); lp.connect(ctx.destination);
+    _dnNodes = { ctx, source, hp, lp };
+    return _dnNodes;
+  } catch (e) {
+    // A browser that refuses the graph must not cost us the audio itself.
+    _dnFailed = true;
+    return null;
+  }
+}
+function _applyDenoise() {
+  const f = satdenoise.filterFor(_denoise);
+  const val = document.getElementById('denoise-val');
+  if (val) val.textContent = _dnFailed ? 'n/a' : satdenoise.labelFor(_denoise);
+  if (f.bypass && !_dnNodes) return;      // never build the graph just to do nothing
+  const g = _dnGraph();
+  if (!g) { if (val) val.textContent = 'n/a'; return; }
+  // Bypass = corners outside anything the stream carries, so the biquads are in
+  // circuit but inaudible. Tearing the graph down is not an option (see above).
+  g.hp.frequency.value = f.bypass ? 10 : f.highpassHz;
+  g.lp.frequency.value = f.bypass ? 20000 : f.lowpassHz;
+  if (g.ctx.state === 'suspended') g.ctx.resume().catch(() => {});
+}
+function setDenoise(v) {
+  _denoise = satdenoise.filterFor(v).amount;
+  try { localStorage.setItem('oasis_sat_denoise', String(_denoise)); }
+  catch (e) { /* private mode */ }
+  _applyDenoise();
+}
+
 function startStream(norad, freqMhz, mode) {
   _listenErrNorad = null;
   _streamNorad = norad; _streamFreq = freqMhz;
@@ -2323,6 +2408,9 @@ function startStream(norad, freqMhz, mode) {
         + (freqMhz != null ? `&freq_mhz=${freqMhz}` : '')
         + (mode ? `&mode=${encodeURIComponent(mode)}` : '');   // same ambiguity as record
   a.play().catch(() => {});   // the click IS the user gesture autoplay needs
+  // After play(): this click is also the gesture that lets a suspended
+  // AudioContext resume, which the filter graph needs before it can pass audio.
+  _applyDenoise();
   updateListenUI();
 }
 // Drop the browser end of the audio and nothing else. On the tracked path this
