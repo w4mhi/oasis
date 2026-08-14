@@ -500,8 +500,6 @@ html, body { height: 100%; margin: 0; }
       <button class="fchip" data-view="monitored" onclick="setView('monitored')">Moni</button>
       <button class="fchip" data-view="soon" onclick="setView('soon')" title="Monitored birds with a pass in the next hour">Mon · 1h</button>
       <button class="fchip" data-view="soon-all" onclick="setView('soon-all')" title="Every bird passing over in the next hour — check one to start monitoring it">All · 1h</button>
-      <button class="fchip" id="audio-chip" onclick="toggleAudioFilter()"
-              title="Hide birds with no downlink this station can demodulate. A monitored bird is never hidden.">Audio</button>
       <button class="fchip clear-btn" onclick="clearAll()" title="Uncheck every monitored bird and clear all pass-alert bells">Clear</button>
     </div>
     <input class="f-search" id="sat-search" type="search" placeholder="Search name…" autocomplete="off"
@@ -518,7 +516,6 @@ html, body { height: 100%; margin: 0; }
 <script src="/common/js/sat-alerts.js"></script>
 <script src="/common/js/sat-capability.js"></script>
 <script src="/server/satellites/sat-geometry.js"></script>
-<script src="/server/satellites/sat-roster.js"></script>
 <script src="/server/satellites/sat-transport.js"></script>
 <script src="/server/satellites/sat-denoise.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
@@ -600,53 +597,17 @@ function setView(v) {
   applyViewButtons(); renderRoster();
 }
 function applyViewButtons() {
-  // [data-view] only: the Audio and Clear chips share this bar but are not
-  // views, and an unqualified selector would strip Audio's active state on
-  // every view change.
+  // [data-view] only: Clear shares this bar but is not a view. Kept qualified
+  // after the Audio chip was removed — any future non-view chip dropped in here
+  // would otherwise have its active state stripped on every view change.
   document.querySelectorAll('#view-modes .fchip[data-view]').forEach(b =>
     b.classList.toggle('active', b.dataset.view === _view));
-}
-// The Audio filter is an independent axis, not a fifth view: it ANDs with
-// whichever view is selected. Default ON — the ~30 birds it hides are ones this
-// station cannot demodulate at all, so showing them by default would mean every
-// operator's first act is to filter them out.
-//
-// It carries NO count, unlike the tag and band chips in the Filters dropdown.
-// Its row-mates (All, Moni, Mon · 1h) carry none either, and the roster tally
-// right below already reads "100 of 129 sats" — and unlike a number baked onto
-// the chip, that tally tracks every other filter too.
-let _audioOnly = (() => {
-  try { return localStorage.getItem('oasis_sat_audio_only') !== 'off'; }
-  catch (e) { return true; }
-})();
-function toggleAudioFilter() {
-  _audioOnly = !_audioOnly;
-  try { localStorage.setItem('oasis_sat_audio_only', _audioOnly ? 'on' : 'off'); }
-  catch (e) { /* private mode */ }
-  applyAudioChip(); renderRoster();
-}
-function applyAudioChip() {
-  const b = document.getElementById('audio-chip');
-  if (b) b.classList.toggle('active', _audioOnly);
-}
-function withinHour(s) {
-  const p = nextPassOf(s.norad);
-  if (!p) return false;
-  const now = Date.now();
-  const rise = new Date(p.rise).getTime(), set = new Date(p.set).getTime();
-  const inPass = rise <= now && now < set;
-  return inPass || (rise - now) / 60000 <= 60;
 }
 function passesFilters(s) {
   // Two independent axes: monitored-only ('monitored','soon') and passing-in-1h
   // ('soon','soon-all'). 'all' = neither; 'soon-all' = any bird passing over now.
   if ((_view === 'monitored' || _view === 'soon') && !isMonitored(s.norad)) return false;
   if ((_view === 'soon' || _view === 'soon-all') && !withinHour(s)) return false;
-  // Hide-unless-monitored: a deliberate choice is never overridden by a default.
-  // If the operator checked a bird, they know what it is and it stays visible —
-  // otherwise a monitored bird could vanish from the list while its pass alert
-  // still fires, which is the worst of both.
-  if (_audioOnly && !satroster.hasAudioDownlink(s) && !isMonitored(s.norad)) return false;
   const q = _filters.q.trim().toLowerCase();
   if (q && !s.name.toLowerCase().includes(q)) return false;
   if (_filters.tags.size && !(s.labels || []).some(l => _filters.tags.has(l))) return false;
@@ -712,7 +673,6 @@ function renderFilterBar() {
   document.getElementById('filter-dd-badge').textContent = n ? ' · ' + n : '';
   document.getElementById('filter-dd-btn').classList.toggle('on', n > 0);
   applyViewButtons();
-  applyAudioChip();
 }
 // Open/close the Filters dropdown; a document-level handler closes it on outside click.
 function toggleFilterMenu(e) {
@@ -1030,7 +990,6 @@ function renderRoster() {
               : _view === 'soon-all' ? 'Nothing passing over in the next hour (or passes still computing…).'
               : _view === 'monitored' ? 'Nothing monitored — check a satellite to track it.'
               : filtersActive() ? 'No satellites match the filters.'
-              : _audioOnly ? 'Nothing here this station can demodulate — tap Audio to show the rest.'
               : 'No satellites to show.';
     document.getElementById('roster').innerHTML =
       `<p style="color:var(--text-dim);padding:.5rem">${msg}</p>`;
