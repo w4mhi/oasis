@@ -48,6 +48,38 @@ SSB_RATE = 12_000
 # which leaves the hardware honest and costs nothing.
 CW_TONE_HZ = 700
 
+# FM channel filter half-width. FirDecimate(5) anti-aliases at output Nyquist,
+# so without this the discriminator is handed +/-24 kHz for a signal about
+# +/-6 kHz wide (Carson: 2 x (3 kHz deviation + 3 kHz audio)), and every hertz of
+# the difference is noise it converts into audio.
+#
+# 8000 rather than narrower, on two grounds. Carson for FM VOICE at 5 kHz
+# deviation is 2 x (5000 + 3000) = 16 kHz, i.e. exactly +/-8000 — and the chain
+# cannot tell voice from packet, demod_params returns "fm" for both, so one
+# constant serves the widest mode. And a synthetic sweep showed everything below
+# 8 kHz buying under 1 dB in total (+8.20 dB at 8k against +8.97 at 4k) while the
+# only instrument for the cost — a signal-to-distortion sweep — turned out to be
+# blind to it, because the chain's own -40 dB/octave audio rolloff attenuates the
+# distortion products before they can be counted.
+#
+# MEASURED ON REAL SIGNAL, not just synthetic: one 149 s raw-IQ capture of a
+# PCSAT pass (2026-08-14, 13 degree peak, captured on the descending tail)
+# replayed through this chain twice, Doppler-tracked identically, differing only
+# in this filter:
+#
+#   1200 Hz mark tone above its local floor   14.14 -> 18.82 dB   +4.68
+#   burst-to-dead-air gap                      4.46 ->  6.22 dB   +1.76
+#   tone power vs all other audio, bursts      1.39 ->  3.53 dB   +2.14
+#   out-of-band audio power                    5.35 ->  1.88 %
+#
+# So ~2-5 dB on real weak signal rather than the ~8 dB the synthetic bench
+# suggested — real noise is not the flat white noise the bench injects, and a
+# marginal pass spends much of its time below the FM threshold, where the click
+# noise lands in band and no IF filter can reach it. Still the largest single
+# improvement available to the recording path, and nothing measured says the
+# signal is being damaged: peak level is identical and tone power is unchanged.
+CHANNEL_HALF_HZ = 8000
+
 
 def _modules():
     """pycsdr's modules + types, imported through the dist-packages shim.
@@ -119,16 +151,12 @@ class SdrChain:
         # CW, where the carrier is the signal and landing it at DC means hearing
         # nothing (and being rejected by the sideband filter besides).
         self.tone_offset = float(tone_offset_hz)
-        # FM channel filter half-width, or None for none. DEFAULT NONE ON
-        # PURPOSE: FirDecimate(5) leaves +/-24 kHz going into the discriminator
-        # for a signal about +/-6 kHz wide (Carson: 2 x (3 kHz deviation + 3 kHz
-        # audio)), and narrowing it should buy pre-detection SNR — but "should"
-        # is not a number, and this changes the RECORDING path. The knob exists
-        # so tests/test_satellites_sdrchain.py can measure the gain on synthetic
-        # IQ; the default moves when that measurement says what to move it to.
-        #
-        # The SSB tail has always had exactly this filter. FM never got one.
-        self.channel_half_hz = None if not channel_half_hz else float(channel_half_hz)
+        # FM channel filter half-width. CHANNEL_HALF_HZ by default (see the
+        # constant for the measurement that chose it); pass 0 or False to defeat
+        # it, which is what the A/B tests do. The SSB tail has always had exactly
+        # this filter — FM simply never got one.
+        self.channel_half_hz = (CHANNEL_HALF_HZ if channel_half_hz is None
+                                else (float(channel_half_hz) or None))
         self.out_rate, self.decimations = p
         self._src = None
         self._shift = None

@@ -419,6 +419,9 @@ class ChannelFilterTest(unittest.TestCase):
     SECONDS = 4
 
     def _run(self, port, half_hz, mod_fn=None, dev_hz=None, noise_amp=None):
+        # half_hz=0 means NO FILTER. Passing None would select the shipped
+        # default (CHANNEL_HALF_HZ), which would quietly turn every "no filter"
+        # baseline here into a second filtered run and report a gain of zero.
         srv = _NoisyFmServer(doppler.INPUT_RATE_HZ, self.SECONDS + 2, port,
                              self.DEV_HZ if dev_hz is None else dev_hz,
                              mod_fn or _sine_mod(self.TONE_HZ),
@@ -461,7 +464,7 @@ class ChannelFilterTest(unittest.TestCase):
         return (10 * np.log10(tp / npow), 10 * np.log10(tp))
 
     def test_a_channel_filter_beats_no_channel_filter(self):
-        wide = self._run(46010, None)
+        wide = self._run(46010, 0)      # 0 defeats the filter; None now means the default
         narrow = self._run(46011, 8000)
         w_snr, w_tone = self._tone_to_noise_db(wide)
         n_snr, n_tone = self._tone_to_noise_db(narrow)
@@ -486,7 +489,7 @@ class ChannelFilterTest(unittest.TestCase):
         Run it on the box that will do the recording — the answer is allowed to
         differ between a Pi 3 and a Pi 5 only in how long it takes, not in what it
         says, and a disagreement there is itself worth knowing."""
-        base_snr, base_tone = self._tone_to_noise_db(self._run(46020, None))
+        base_snr, base_tone = self._tone_to_noise_db(self._run(46020, 0))
         print(f"\n  {'half-width':>12} {'tone/noise':>11} {'gain':>8} {'tone':>9}",
               file=sys.stderr)
         print(f"  {'none':>12} {base_snr:10.2f} dB {'—':>8} {base_tone:8.2f} dB",
@@ -532,7 +535,7 @@ class ChannelFilterTest(unittest.TestCase):
                  ("VOICE 3000", _sine_mod(3000.0), 5000.0, (3000.0,), 46040))
         for name, mod, dev, tones, base_port in cases:
             ref, ref_tone = self._tone_to_noise_db(
-                self._run(base_port, None, mod, dev, 0.0), tones)
+                self._run(base_port, 0, mod, dev, 0.0), tones)
             print(f"\n  {name}, deviation {dev:.0f} Hz — signal-to-distortion",
                   file=sys.stderr)
             print(f"  {'half-width':>12} {'sig/dist':>10} {'vs open':>9} {'tone':>10}",
