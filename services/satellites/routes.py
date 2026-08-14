@@ -902,15 +902,52 @@ def _attach_stream(norad, req_freq):
                 return None
         except (TypeError, ValueError):
             return None
+    return _stream_from_capture(cap, own=False)
+
+
+def _stream_from_capture(cap, own):
+    """(generator, mime) for a StreamSink on `cap`, MP3-encoded when we can.
+
+    `own` says who stops the capture when the listener goes away:
+      False  a recording owns it — detaching the sink is all we may do, and
+             stopping here would kill the operator's recording from a closed tab.
+      True   this stream started it and nothing else refers to it, so the
+             generator MUST stop it or a closed tab holds the dongle forever.
+    One function for both because they differ by exactly that, and a second copy
+    of the encoder plumbing is how the two ends of a pipe drift apart."""
     import capture
+    import listen
     enc, mime = listen.stream_encoder(cap.out_rate)
     sink = cap.add_sink(capture.StreamSink())
+
+    # IDEMPOTENT, and called from two places on purpose. A generator that is
+    # closed before its first next() never runs its finally — Python simply
+    # discards it — so a client that disconnects between building the response
+    # and reading a byte would leak the sink and, when own=True, hold the dongle
+    # for good with the UI showing nothing wrong. Werkzeug's call_on_close fires
+    # in that case; the generator's finally covers normal end-of-stream. Whoever
+    # gets there first wins, and the flag makes the second call harmless.
+    done = []
+
+    def _release():
+        if done:
+            return
+        done.append(True)
+        cap.remove_sink(sink)
+        if own:
+            listen.stop()
 
     if not enc:
         # No MP3 encoder: hand back raw PCM rather than nothing. A browser will
         # not play it, but a curl or a decoder will, and the alternative is
         # refusing a capture that is running perfectly well.
-        return (sink.generate(), "audio/L16")
+        def _raw():
+            try:
+                for chunk in sink.generate():
+                    yield chunk
+            finally:
+                _release()
+        return (_raw(), "audio/L16", _release)
 
     import subprocess
     proc = subprocess.Popen(enc, shell=True, stdin=subprocess.PIPE,
@@ -940,12 +977,12 @@ def _attach_stream(norad, req_freq):
                     break
                 yield data
         finally:
-            cap.remove_sink(sink)
+            _release()
             try:
                 proc.kill()
             except Exception:                                # noqa: BLE001
                 pass
-    return (_generate(), mime)
+    return (_generate(), mime, _release)
 
 
 def _prep_capture(norad, req_freq, req_mode=None):
@@ -1092,21 +1129,48 @@ def api_listen_stream():
     # two were mutually exclusive in the first place.
     attached = _attach_stream(norad, request.args.get("freq_mhz"))
     if attached is not None:
-        gen, mime = attached
+        gen, mime, release = attached
         resp = Response(stream_with_context(gen), mimetype=mime)
         resp.headers["Cache-Control"] = "no-store"
+        resp.call_on_close(release)
         return resp
     try:
         _entry, freq_hz, device_serial, dmode, _rch = _prep_capture(
             norad, request.args.get("freq_mhz"), request.args.get("mode"))
     except _CaptureError as e:
         return jsonify({"ok": False, "error": str(e), "code": e.slug}), e.code
+    # NOTHING TO ATTACH TO — so start a tracked capture of our own, with no
+    # WavSink, and listen to that. Listening used to drop straight to the rtl_fm
+    # pipeline here, which differs from the tracked chain in two ways an operator
+    # can hear: it ends in no Agc, so the audio arrives at whatever level the raw
+    # discriminator produced (very quiet on a weak bird, beside the same pass
+    # played back off a recording), and it never retunes, so the signal drifts
+    # across the passband for the whole pass. Both are fixed by using the chain
+    # that was already there.
+    #
+    # mode="stream" means _start_tracked attaches no WavSink: audio to the
+    # browser, nothing to disk. Falling back stays normal for a station without
+    # the DSP stack.
+    seconds = _capture_seconds(norad)
+    cap = _start_tracked(norad, freq_hz, dmode, device_serial, None, "stream",
+                         seconds=seconds)
+    if cap is not None:
+        try:
+            listen.start_tracked(cap, norad, None, freq_hz, "stream")
+        except RuntimeError as e:
+            cap.stop()
+            return jsonify({"ok": False, "error": str(e), "code": "DONGLE_BUSY"}), 409
+        gen, mime, release = _stream_from_capture(cap, own=True)
+        resp = Response(stream_with_context(gen), mimetype=mime)
+        resp.headers["Cache-Control"] = "no-store"
+        resp.call_on_close(release)
+        return resp
     try:
         # Bounded at LOS like a recording. A stream past LOS is a browser tab
         # holding the dongle while nothing is coming down.
         gen, mime = listen.stream(freq_hz, norad, ppm=_capture_ppm(),
                                   device_serial=device_serial, dmode=dmode,
-                                  max_seconds=_capture_seconds(norad))
+                                  max_seconds=seconds)
     except RuntimeError as e:
         busy = "busy" in str(e)
         return jsonify({"ok": False, "error": str(e),
