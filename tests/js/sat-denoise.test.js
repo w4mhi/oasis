@@ -20,6 +20,13 @@
 //
 // Measured net gain, signal power kept vs dead-air power kept:
 //   300-3400 Hz -> +1.0 dB    900-2600 Hz -> +3.5 dB    1000-2500 Hz -> +4.0 dB
+//
+// Those are BRICK-WALL figures. Re-measured through the real second-order
+// biquad (Q=1) on this capture and on LilacSat-2 APRS of 2026-08-14, full
+// deflection is worth +2.9 dB and +2.3 dB respectively -- the skirts pass noise
+// outside the corner and shave signal inside it. The corners are unchanged
+// because the biquad model puts the optimum in the same place; only the size of
+// the prize was overstated.
 const test = require('node:test');
 const assert = require('node:assert');
 const path = require('path');

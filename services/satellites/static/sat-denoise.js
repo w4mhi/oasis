@@ -20,9 +20,27 @@
 // packets is low-frequency rumble that the AGC lifts while nothing is being
 // received. Sweeping a high-pass up toward the mark tone is what removes it.
 //
-// Measured net gain -- signal power kept against dead-air power kept:
-//   300-3400 Hz  +1.0 dB      900-2600 Hz  +3.5 dB      1000-2500 Hz  +4.0 dB
-// So full deflection lands on 1000-2500, and the sweep runs to it from 300-4000.
+// Measured net gain -- signal power kept against dead-air power kept. Two
+// columns, because the first one flatters the filter and it is the second that
+// the operator actually hears:
+//
+//   corners        brick-wall   real biquad (Q=1, what runs here)
+//   300-3400 Hz      +1.0 dB      -
+//   825-2875 Hz      +2.9 dB      +2.4 dB
+//   1000-2500 Hz     +4.0 dB      +2.9 dB      <- full deflection
+//
+// Selecting a band in an FFT is not the same as running a second-order biquad
+// over it: the biquad's skirts let noise through either side of the corner and
+// shave signal just inside it. Expect ~2-3 dB, not ~4.
+//
+// Confirmed against a second capture (LilacSat-2 APRS, 2026-08-14) which agrees
+// within half a dB throughout, so these corners are not tuned to one pass.
+//
+// THE RANGE STOPS WHERE IT DOES BECAUSE THE CURVE IS FLAT THERE, not out of
+// caution. Modelled past full deflection on both captures: 1100-2400 buys
+// +0.05 dB, 1000-2300 buys +0.14, and 1200-2400 is WORSE (-0.09) as the
+// high-pass starts eating the 1200 Hz mark tone. There is nothing left to win by
+// widening the sweep, so it is not widened.
 //
 // WHY THIS IS THE LISTEN PATH AND NOTHING ELSE
 // --------------------------------------------
