@@ -106,7 +106,7 @@ class SdrChain:
     which the tracker calls from its own thread and which only touches an NCO."""
 
     def __init__(self, port, demod, carrier_hz, input_rate=None,
-                 lfo_offset_hz=None, tone_offset_hz=0.0):
+                 lfo_offset_hz=None, tone_offset_hz=0.0, channel_half_hz=None):
         p = plan(demod, input_rate)
         if p is None:
             raise RuntimeError(f"no chain for demod {demod!r}")
@@ -119,6 +119,16 @@ class SdrChain:
         # CW, where the carrier is the signal and landing it at DC means hearing
         # nothing (and being rejected by the sideband filter besides).
         self.tone_offset = float(tone_offset_hz)
+        # FM channel filter half-width, or None for none. DEFAULT NONE ON
+        # PURPOSE: FirDecimate(5) leaves +/-24 kHz going into the discriminator
+        # for a signal about +/-6 kHz wide (Carson: 2 x (3 kHz deviation + 3 kHz
+        # audio)), and narrowing it should buy pre-detection SNR — but "should"
+        # is not a number, and this changes the RECORDING path. The knob exists
+        # so tests/test_satellites_sdrchain.py can measure the gain on synthetic
+        # IQ; the default moves when that measurement says what to move it to.
+        #
+        # The SSB tail has always had exactly this filter. FM never got one.
+        self.channel_half_hz = None if not channel_half_hz else float(channel_half_hz)
         self.out_rate, self.decimations = p
         self._src = None
         self._shift = None
@@ -130,8 +140,17 @@ class SdrChain:
     def _tail(self, m, t):
         """The mode-specific stages after decimation."""
         if self.demod == "fm":
-            return [m.FmDemod(), m.Limit(), m.NfmDeemphasis(self.out_rate),
-                    m.Agc(t.Format.FLOAT)]
+            # The channel filter, when asked for, goes BEFORE the discriminator:
+            # noise admitted here is noise the demodulator converts into audio,
+            # and nothing downstream can take it back out. Complex and symmetric
+            # about DC because Shift has already centred the channel there — the
+            # same normalisation the sideband Bandpass below uses.
+            pre = []
+            if self.channel_half_hz:
+                h = self.channel_half_hz / self.out_rate
+                pre = [m.Bandpass(-h, h, 0.05)]
+            return pre + [m.FmDemod(), m.Limit(), m.NfmDeemphasis(self.out_rate),
+                          m.Agc(t.Format.FLOAT)]
         cut = sideband_cut(self.demod)
         # Bandpass cutoffs are NORMALISED to the sample rate at this point in the
         # chain, not absolute Hz — confirmed against 0.18.2 by pushing a tone of
