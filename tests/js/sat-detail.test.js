@@ -197,3 +197,66 @@ test('the soonest pass is marked separately from the active one', () => {
   assert.ok(rows[1].includes('active'), 'row 1 is active, not first');
   assert.ok(!rows[1].startsWith(' first'));
 });
+
+// ── arming ──────────────────────────────────────────────────────────────────
+// The freq table became the picker so the kiosk gets one without inventing a
+// second idiom. Read-only stays the default: every caller that passes no
+// options must get exactly the table it got before.
+const PICKABLE = {
+  norad: 40908, name: 'LILACSAT 2',
+  downlinks: [
+    { mode: 'FM', modes: ['FM'], freq_mhz: 437.2, supported: true },
+    { mode: 'CW', modes: ['CW'], freq_mhz: 144.39, supported: true },
+    { mode: 'BPSK', modes: ['BPSK'], freq_mhz: 435.5, supported: false },
+  ],
+};
+
+test('no options: the table is read-only, exactly as before', () => {
+  const html = D.freqTableHTML(PICKABLE);
+  assert.ok(!html.includes('onclick'), 'a read-only table must not wire clicks');
+  assert.ok(!html.includes('sp-pick'));
+});
+
+test('onPick makes supported rows tappable and leaves the rest inert', () => {
+  const html = D.freqTableHTML(PICKABLE, { onPick: 'armDownlink' });
+  const picks = (html.match(/sp-pick/g) || []).length;
+  assert.strictEqual(picks, 2, 'both supported downlinks should be tappable');
+  assert.ok(html.includes('sp-inert'), 'the BPSK row stays visible but inert');
+  // Unsupported must never be clickable — arming it would start a capture that
+  // can only ever produce noise.
+  const bpskRow = html.split('<tr').find(r => r.includes('BPSK'));
+  assert.ok(!bpskRow.includes('onclick'), 'BPSK row must not be armable');
+});
+
+test('the handler carries norad, frequency AND mode', () => {
+  // Mode matters: 26 birds in the roster carry fm/usb on separate downlinks, and
+  // a frequency alone would let the server pick the wrong demodulator.
+  const html = D.freqTableHTML(PICKABLE, { onPick: 'armDownlink' });
+  assert.match(html, /armDownlink\(40908,437\.2,&#39;FM&#39;\)/);
+  assert.match(html, /armDownlink\(40908,144\.39,&#39;CW&#39;\)/);
+});
+
+test('the armed row is marked, and only that row', () => {
+  const html = D.freqTableHTML(PICKABLE, { onPick: 'armDownlink',
+                                           armed: { freq: 144.39, mode: 'CW' } });
+  const armedRows = html.split('<tr').filter(r => r.includes('armed'));
+  assert.strictEqual(armedRows.length, 1);
+  assert.ok(armedRows[0].includes('144.39'));
+});
+
+test('an armed entry with no mode still marks its frequency', () => {
+  // pollListen adopts a running capture with mode null where two channels share
+  // a frequency; the row must still show as armed rather than silently not.
+  const html = D.freqTableHTML(PICKABLE, { onPick: 'armDownlink',
+                                           armed: { freq: 437.2, mode: null } });
+  assert.strictEqual(html.split('<tr').filter(r => r.includes('armed')).length, 1);
+});
+
+test('soleRecordable: the 59% case needs no picker at all', () => {
+  const one = { downlinks: [{ mode: 'FM', freq_mhz: 145.8, supported: true },
+                            { mode: 'BPSK', freq_mhz: 435.5, supported: false }] };
+  assert.strictEqual(D.soleRecordable(one).freq_mhz, 145.8);
+  assert.strictEqual(D.soleRecordable(PICKABLE), null, 'two recordable -> a real choice');
+  assert.strictEqual(D.soleRecordable({ downlinks: [] }), null);
+  assert.strictEqual(D.soleRecordable({}), null);
+});

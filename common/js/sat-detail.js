@@ -53,12 +53,35 @@
      The unit lives in the header rather than on every row — seven repetitions of
      "MHz" down one card is noise, and losing it entirely was a real regression
      an earlier cut of this card shipped. */
-  function freqTableHTML(sat) {
+  /* ARMING, when the caller asks for it (o.onPick). The table is read-only by
+     default and stays that way for any caller that passes no options.
+
+     Measured on the 101-bird roster before this was built, because the shape of
+     the data decides the shape of the control: 59% of birds have exactly ONE
+     recordable downlink and 1% have none, so for six birds in ten a picker is a
+     control whose only option is the one already chosen. The remaining 41% are
+     where it earns its place — and 26 of those carry downlinks needing
+     DIFFERENT demodulators (every one of them fm/usb, an FM channel beside a CW
+     or SSB beacon), which is exactly why the choice cannot be guessed. Arming
+     the wrong one there does not degrade the recording, it records the wrong
+     thing. Worst case is 7 rows (ISS), 87% are 3 or fewer.
+
+     Only SUPPORTED rows are tappable. An unsupported one stays visible and
+     inert: "we cannot demodulate this yet" is information about the bird, and
+     hiding the row would leave an operator wondering where a frequency went. */
+  function soleRecordable(sat) {
+    var sup = (sat.downlinks || []).filter(function (d) { return d.supported; });
+    return sup.length === 1 ? sup[0] : null;
+  }
+
+  function freqTableHTML(sat, o) {
+    o = o || {};
     var uplinkCells = (root.OasisSatUplink || {}).uplinkCells;
     var dls = (sat.downlinks || []).slice().sort(function (a, b) {
       return a.freq_mhz - b.freq_mhz;
     });
     if (!dls.length) return '<div class="pop-row"><span class="pop-val">No downlinks.</span></div>';
+    var armed = o.armed || null;
     var rows = dls.map(function (d) {
       // Several uplink-bearing members stack inside the one cell rather than
       // splitting the entry across rows — the entry is one tunable thing.
@@ -66,7 +89,20 @@
       var up = cells.length
         ? cells.map(esc).join('<br>')
         : '<span class="sp-na">' + (d.one_way ? 'n/a' : 'unknown') + '</span>';
-      return '<tr><td>' + esc(dlLabel(d)) + '</td><td>' + esc(d.freq_mhz) +
+      var cls = [], attr = '';
+      if (armed && Math.abs(armed.freq - d.freq_mhz) < 1e-6
+          && (!armed.mode || armed.mode === d.mode)) cls.push('armed');
+      if (o.onPick && d.supported) {
+        cls.push('sp-pick');
+        // A global name rather than a function: the card is built as a string
+        // and both surfaces wire actions with inline onclick.
+        attr = ' onclick="' + esc(o.onPick) + '(' + sat.norad + ',' +
+               d.freq_mhz + ',&#39;' + esc(d.mode || '') + '&#39;)"';
+      } else if (o.onPick && !d.supported) {
+        cls.push('sp-inert');
+      }
+      return '<tr' + (cls.length ? ' class="' + cls.join(' ') + '"' : '') + attr +
+             '><td>' + esc(dlLabel(d)) + '</td><td>' + esc(d.freq_mhz) +
              '</td><td>' + up + '</td></tr>';
     }).join('');
     return '<table class="sp-freq">' +
@@ -153,7 +189,7 @@
     return '<div class="pop-call">' + esc(sat.name) + '</div>' +
       '<div class="pop-chips">' + chips + '</div>' +
       '<div class="sd-cols">' +
-        '<div class="sp-freqs">' + freqTableHTML(sat) + '</div>' +
+        '<div class="sp-freqs">' + freqTableHTML(sat, o) + '</div>' +
         '<div class="pop-sec"><span class="pop-lbl">Upcoming passes</span>' +
         passesHTML(sat, o) + '</div>' +
       '</div>' +
@@ -162,5 +198,5 @@
 
   return { satDetailHTML: satDetailHTML, freqTableHTML: freqTableHTML,
            passesHTML: passesHTML, workableWindowHTML: workableWindowHTML,
-           dlLabel: dlLabel, esc: esc };
+           soleRecordable: soleRecordable, dlLabel: dlLabel, esc: esc };
 });

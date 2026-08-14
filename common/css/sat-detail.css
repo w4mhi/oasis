@@ -52,3 +52,19 @@
    it — the wrapper is only emitted when a plot exists. */
 .sp-plot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--sd-line);
   text-align: center; }
+
+/* ── Arming, when the card is a picker (freqTableHTML with onPick) ──────────
+   A whole ROW is the target, not the text in it: on the kiosk this is hit with
+   a finger on a 7" panel, and a 3-row table is the common case (87% of birds
+   have three downlinks or fewer). Padding rather than a min-height so the
+   desktop popup, which renders the same markup at 420px, does not grow. */
+.sp-freq tr.sp-pick { cursor: pointer; }
+.sp-freq tr.sp-pick td { padding-top: 5px; padding-bottom: 5px; }
+.sp-freq tr.sp-pick:hover td { background: var(--sd-hover, rgba(127, 127, 127, .12)); }
+/* Armed reads as the accent, the same idiom the page's .dlsel.armed uses — the
+   two surfaces must not disagree about what "this is the one" looks like. */
+.sp-freq tr.armed td { color: var(--accent); font-weight: 700; }
+.sp-freq tr.armed td:first-child::before { content: '\25B8\00A0'; }
+/* Not armable, and saying so quietly. It stays legible: "we cannot demodulate
+   this yet" is information about the bird, not a reason to hide the row. */
+.sp-freq tr.sp-inert td { opacity: .55; cursor: default; }
