@@ -483,8 +483,8 @@ html, body { height: 100%; margin: 0; }
       <button class="fchip" data-view="monitored" onclick="setView('monitored')">Moni</button>
       <button class="fchip" data-view="soon" onclick="setView('soon')" title="Monitored birds with a pass in the next hour">Mon · 1h</button>
       <button class="fchip" data-view="soon-all" onclick="setView('soon-all')" title="Every bird passing over in the next hour — check one to start monitoring it">All · 1h</button>
-      <button class="fchip" id="listenable-chip" onclick="toggleListenable()"
-              title="Hide birds with no downlink this station can demodulate. A monitored bird is never hidden.">Listenable<span class="n" id="listenable-n"></span></button>
+      <button class="fchip" id="audio-chip" onclick="toggleAudioFilter()"
+              title="Hide birds with no downlink this station can demodulate. A monitored bird is never hidden.">Audio</button>
       <button class="fchip clear-btn" onclick="clearAll()" title="Uncheck every monitored bird and clear all pass-alert bells">Clear</button>
     </div>
     <input class="f-search" id="sat-search" type="search" placeholder="Search name…" autocomplete="off"
@@ -582,34 +582,34 @@ function setView(v) {
   applyViewButtons(); renderRoster();
 }
 function applyViewButtons() {
-  // [data-view] only: the Listenable and Clear chips share this bar but are not
-  // views, and an unqualified selector would strip Listenable's active state on
+  // [data-view] only: the Audio and Clear chips share this bar but are not
+  // views, and an unqualified selector would strip Audio's active state on
   // every view change.
   document.querySelectorAll('#view-modes .fchip[data-view]').forEach(b =>
     b.classList.toggle('active', b.dataset.view === _view));
 }
-// The Listenable filter is an independent axis, not a fifth view: it ANDs with
+// The Audio filter is an independent axis, not a fifth view: it ANDs with
 // whichever view is selected. Default ON — the ~30 birds it hides are ones this
 // station cannot demodulate at all, so showing them by default would mean every
 // operator's first act is to filter them out.
-let _listenable = (() => {
-  try { return localStorage.getItem('oasis_sat_listenable') !== 'off'; }
+//
+// It carries NO count, unlike the tag and band chips in the Filters dropdown.
+// Its row-mates (All, Moni, Mon · 1h) carry none either, and the roster tally
+// right below already reads "100 of 129 sats" — and unlike a number baked onto
+// the chip, that tally tracks every other filter too.
+let _audioOnly = (() => {
+  try { return localStorage.getItem('oasis_sat_audio_only') !== 'off'; }
   catch (e) { return true; }
 })();
-function toggleListenable() {
-  _listenable = !_listenable;
-  try { localStorage.setItem('oasis_sat_listenable', _listenable ? 'on' : 'off'); }
+function toggleAudioFilter() {
+  _audioOnly = !_audioOnly;
+  try { localStorage.setItem('oasis_sat_audio_only', _audioOnly ? 'on' : 'off'); }
   catch (e) { /* private mode */ }
-  applyListenableChip(); renderRoster();
+  applyAudioChip(); renderRoster();
 }
-function applyListenableChip() {
-  const b = document.getElementById('listenable-chip');
-  if (b) b.classList.toggle('active', _listenable);
-  const n = document.getElementById('listenable-n');
-  // The count is what the filter WOULD show, so it reads the same whether the
-  // chip is on or off — it is the size of the set, not of the current view.
-  if (n) n.textContent = (typeof ROSTER !== 'undefined' && ROSTER.length)
-    ? satroster.listenableCount(ROSTER) : '';
+function applyAudioChip() {
+  const b = document.getElementById('audio-chip');
+  if (b) b.classList.toggle('active', _audioOnly);
 }
 function withinHour(s) {
   const p = nextPassOf(s.norad);
@@ -628,7 +628,7 @@ function passesFilters(s) {
   // If the operator checked a bird, they know what it is and it stays visible —
   // otherwise a monitored bird could vanish from the list while its pass alert
   // still fires, which is the worst of both.
-  if (_listenable && !satroster.isListenable(s) && !isMonitored(s.norad)) return false;
+  if (_audioOnly && !satroster.hasAudioDownlink(s) && !isMonitored(s.norad)) return false;
   const q = _filters.q.trim().toLowerCase();
   if (q && !s.name.toLowerCase().includes(q)) return false;
   if (_filters.tags.size && !(s.labels || []).some(l => _filters.tags.has(l))) return false;
@@ -694,9 +694,7 @@ function renderFilterBar() {
   document.getElementById('filter-dd-badge').textContent = n ? ' · ' + n : '';
   document.getElementById('filter-dd-btn').classList.toggle('on', n > 0);
   applyViewButtons();
-  // Here rather than in boot(): renderFilterBar already runs at boot AND after a
-  // TLE refresh replaces ROSTER, which is exactly when the chip's count changes.
-  applyListenableChip();
+  applyAudioChip();
 }
 // Open/close the Filters dropdown; a document-level handler closes it on outside click.
 function toggleFilterMenu(e) {
@@ -1006,7 +1004,7 @@ function renderRoster() {
               : _view === 'soon-all' ? 'Nothing passing over in the next hour (or passes still computing…).'
               : _view === 'monitored' ? 'Nothing monitored — check a satellite to track it.'
               : filtersActive() ? 'No satellites match the filters.'
-              : _listenable ? 'Nothing here this station can demodulate — tap Listenable to show the rest.'
+              : _audioOnly ? 'Nothing here this station can demodulate — tap Audio to show the rest.'
               : 'No satellites to show.';
     document.getElementById('roster').innerHTML =
       `<p style="color:var(--text-dim);padding:.5rem">${msg}</p>`;
