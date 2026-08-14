@@ -779,9 +779,15 @@ def _doppler_curve(norad, seconds):
 
 # How long a capture keeps running past predicted LOS. LOS is a horizon
 # crossing computed from a TLE that is hours to days old, so it is a good
-# estimate rather than an instant. A minute of tail is 720 KB at 12 kHz and
-# errs in the only direction that costs nothing.
-LOS_TAIL_S = 60
+# estimate rather than an instant, and the tail is the margin for that error.
+#
+# Was 60 s, on the reasoning that a minute of tail "errs in the only direction
+# that costs nothing". Lowered to 10 s at the operator's request: a bird below
+# the horizon contributes nothing but noise, and on a bench where most passes
+# are worked back to back the tail is dead air you scroll past. The trade is
+# explicit — if the real LOS runs later than the prediction by more than this,
+# the last seconds of a pass are lost, where before there was a minute of slack.
+LOS_TAIL_S = 10
 
 
 def _seconds_to_los(norad, now=None):
