@@ -330,9 +330,12 @@ class _NoisyFmServer(_IQServer):
     would be a differently-modulated carrier at full amplitude — the one thing an
     FM limiter is designed to ignore — and the test would measure nothing."""
 
-    def __init__(self, rate, seconds, port, dev_hz, tone_hz, noise_amp, offset_hz):
-        # Set before super().__init__, which renders immediately.
-        self.dev_hz, self.tone_hz = float(dev_hz), float(tone_hz)
+    def __init__(self, rate, seconds, port, dev_hz, mod_fn, noise_amp, offset_hz):
+        # Set before super().__init__, which renders immediately. `mod_fn` takes
+        # the time ARRAY and returns the modulating waveform in [-1, 1]; passing
+        # the array rather than a scalar keeps the render vectorised, which is
+        # the difference between a 2-second test and a 200-second one.
+        self.dev_hz, self.mod_fn = float(dev_hz), mod_fn
         self.noise_amp, self.offset_hz = float(noise_amp), float(offset_hz)
         super().__init__(lambda t: 0.0, rate, seconds, port)
 
@@ -340,13 +343,39 @@ class _NoisyFmServer(_IQServer):
         n = self.rate * self.seconds
         t = np.arange(n, dtype=np.float64) / self.rate
         # Integrated phase — never exp(2j*pi*f(t)*t); see the module docstring.
-        inst = self.offset_hz + self.dev_hz * np.sin(2 * math.pi * self.tone_hz * t)
+        inst = self.offset_hz + self.dev_hz * self.mod_fn(t)
         phase = 2 * math.pi * np.cumsum(inst) / self.rate
         sig = np.exp(1j * phase)
         rng = np.random.default_rng(20260813)      # fixed: an A/B needs the SAME noise
         noise = (rng.standard_normal(n) + 1j * rng.standard_normal(n)) / math.sqrt(2)
         iq = (sig + self.noise_amp * noise).astype(np.complex64)
         return iq.view(np.float32).astype("<f4").tobytes()
+
+
+def _sine_mod(tone_hz):
+    return lambda t: np.sin(2 * math.pi * tone_hz * t)
+
+
+def _two_tone_mod(low_hz, high_hz, dwell_s):
+    """Bell 202's two tones, alternating, with CONTINUOUS PHASE.
+
+    Carson's bandwidth is set by the highest modulating FREQUENCY, not by the
+    baud rate — so alternating slowly (dwell_s, not 1/1200 s) occupies the same
+    RF bandwidth as real 1200-baud AFSK while leaving clean spectral lines at
+    1200 and 2200 Hz to measure. Switching at the true baud rate would smear each
+    tone across roughly +/-1200 Hz, and a smeared tone cannot be told from the
+    distortion this is trying to detect.
+
+    Phase continuity matters at the switch for the same reason it matters in the
+    RF render: a step in phase is a click, broadband, and it would read exactly
+    like the sideband clipping being looked for."""
+    def mod(t):
+        rate = 1.0 / (t[1] - t[0])
+        half = int(round(dwell_s * rate))
+        idx = (np.arange(len(t)) // half) % 2
+        inst = np.where(idx == 0, low_hz, high_hz).astype(np.float64)
+        return np.sin(2 * math.pi * np.cumsum(inst) / rate)
+    return mod
 
 
 @unittest.skipUnless(_HAS_PYCSDR and _HAS_NUMPY, "pycsdr/numpy not installed")
@@ -389,9 +418,11 @@ class ChannelFilterTest(unittest.TestCase):
     NOISE_AMP = 1.4             # a marginal pass, not a strong one
     SECONDS = 4
 
-    def _run(self, port, half_hz):
+    def _run(self, port, half_hz, mod_fn=None, dev_hz=None, noise_amp=None):
         srv = _NoisyFmServer(doppler.INPUT_RATE_HZ, self.SECONDS + 2, port,
-                             self.DEV_HZ, self.TONE_HZ, self.NOISE_AMP,
+                             self.DEV_HZ if dev_hz is None else dev_hz,
+                             mod_fn or _sine_mod(self.TONE_HZ),
+                             self.NOISE_AMP if noise_amp is None else noise_amp,
                              -doppler.LFO_OFFSET_HZ)
         srv.start()
         time.sleep(0.1)
@@ -403,11 +434,15 @@ class ChannelFilterTest(unittest.TestCase):
             chain.stop(); srv.close()
         return audio
 
-    def _tone_to_noise_db(self, audio):
-        """Power at the modulating tone against everything else in the audio.
+    def _tone_to_noise_db(self, audio, tones=None):
+        """Power at the modulating tone(s) against everything else in the audio.
 
         Returns (ratio_db, tone_power_db) — the second so a filter that improves
-        the ratio by destroying the signal is visible rather than celebrated."""
+        the ratio by destroying the signal is visible rather than celebrated.
+
+        With noise present the "everything else" term is noise. With noise ZERO
+        it is distortion, and the same function becomes a signal-to-distortion
+        meter — which is how the clipping knee is found below."""
         v = np.array(_samples(audio), dtype=np.float64)
         v = v[len(v) // 4:]                       # drop AGC settling + transients
         self.assertGreater(len(v), 20000, "not enough audio to measure")
@@ -415,7 +450,9 @@ class ChannelFilterTest(unittest.TestCase):
         fr = v.reshape(-1, 4096) * np.hanning(4096)
         p = (np.abs(np.fft.rfft(fr, axis=1)) ** 2).mean(axis=0)
         f = np.fft.rfftfreq(4096, 1.0 / sdrchain.FM_RATE)
-        tone = (f > self.TONE_HZ - 60) & (f < self.TONE_HZ + 60)
+        tone = np.zeros_like(f, dtype=bool)
+        for hz in (tones or (self.TONE_HZ,)):
+            tone |= (f > hz - 60) & (f < hz + 60)
         # Everything audible that is not the tone or DC rumble. Harmonics of the
         # tone are deliberately left in the noise term: they are distortion, and
         # a filter that trades noise for distortion has not helped.
@@ -468,6 +505,49 @@ class ChannelFilterTest(unittest.TestCase):
                 best = (snr - base_snr, half)
         print(f"  best: {best[1]} Hz at {best[0]:+.2f} dB", file=sys.stderr)
         self.assertIsNotNone(best[1], "no half-width improved on no filter at all")
+
+    @unittest.skipUnless(os.environ.get("OASIS_DSP_SWEEP"),
+                         "set OASIS_DSP_SWEEP=1 — several captures, minutes not seconds")
+    def test_sweep_finds_the_clipping_knee(self):
+        """Where does the filter start eating the signal? NOISELESS on purpose.
+
+        The noise sweep above cannot answer this, and worse, it looks like it
+        can: its stimulus is a single 1200 Hz tone, whose Carson bandwidth is
+        2 x (3000 + 1200) = 8.4 kHz, so +/-4000 barely clips it and the sweep
+        reports 4000 as "best". Real APRS carries the 2200 Hz space tone as well
+        — 2 x (3000 + 2200) = 10.4 kHz, i.e. +/-5.2 kHz — so a filter that looked
+        clean there would be eating real sidebands. A measurement whose stimulus
+        is narrower than reality reports a limit that is not the real limit.
+
+        With the noise term at zero, everything in the audio that is not a tone
+        is distortion the chain manufactured. The knee is where that starts to
+        climb. Two stimuli, because one constant has to serve both and the chain
+        cannot tell them apart — demod_params returns "fm" for each:
+
+          APRS  1200/2200 Hz alternating, 3 kHz deviation -> Carson +/-5.2 kHz
+          VOICE 3000 Hz, 5 kHz deviation                  -> Carson +/-8.0 kHz
+        """
+        cases = (("APRS  1200/2200", _two_tone_mod(1200.0, 2200.0, 0.10),
+                  self.DEV_HZ, (1200.0, 2200.0), 46030),
+                 ("VOICE 3000", _sine_mod(3000.0), 5000.0, (3000.0,), 46040))
+        for name, mod, dev, tones, base_port in cases:
+            ref, ref_tone = self._tone_to_noise_db(
+                self._run(base_port, None, mod, dev, 0.0), tones)
+            print(f"\n  {name}, deviation {dev:.0f} Hz — signal-to-distortion",
+                  file=sys.stderr)
+            print(f"  {'half-width':>12} {'sig/dist':>10} {'vs open':>9} {'tone':>10}",
+                  file=sys.stderr)
+            print(f"  {'none':>12} {ref:9.2f} dB {'—':>9} {ref_tone:9.2f} dB",
+                  file=sys.stderr)
+            for i, half in enumerate((10000, 8000, 6000, 5000, 4000, 3000)):
+                snr, tp = self._tone_to_noise_db(
+                    self._run(base_port + 1 + i, half, mod, dev, 0.0), tones)
+                flag = "  <- knee" if snr - ref < -3.0 else ""
+                print(f"  {half:9d} Hz {snr:9.2f} dB {snr - ref:+8.2f} dB "
+                      f"{tp:9.2f} dB{flag}", file=sys.stderr)
+        # No assertion on WHERE the knee lands — that is the number being
+        # measured, and pinning it here would be pinning today's answer.
+        self.assertTrue(True)
 
 
 @unittest.skipUnless(_HAS_PYCSDR, "pycsdr/DSP stack not installed")
