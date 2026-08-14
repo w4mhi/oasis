@@ -12,6 +12,7 @@ The setup.html one is the nastiest: the page renders, the operator ticks nothing
 because there is nothing to tick, and no log line anywhere says why. Hence a test
 that reads the actual HTML rather than trusting that someone remembered.
 """
+import ast
 import importlib.util
 import json
 import os
@@ -95,6 +96,66 @@ class DependencyTest(unittest.TestCase):
         for key, spec in self.reg.items():
             self.assertNotIn(KEY, spec.dependencies,
                              f"{key} must degrade without the DSP stack, not require it")
+
+
+class SudoAptCmdCallers(unittest.TestCase):
+    """sudo_apt_cmd's FIRST argument is the program to run.
+
+    install-dsp.py called it as sudo_apt_cmd("update") and
+    sudo_apt_cmd("install", "-y", ...), which built `sudo update` (not a
+    command) and `sudo install -y csdr ...` — the latter reaching coreutils
+    /usr/bin/install, which rejects -y. The installer therefore could not ever
+    install a package, while step 1 still added the apt repository: a box left
+    with the source configured and nothing installed, which reads as "apt is
+    broken" rather than "the caller is wrong".
+
+    Every gate on the branch passed: the registry tests only check that the
+    feature is WIRED, and nothing executed the argv. So the guard is on the bug
+    CLASS across the whole repo, not on the one line that had it.
+    """
+
+    PROGRAMS = {"apt", "apt-get", "apt-cache", "dpkg", "dpkg-query", "aptitude"}
+
+    def _call_sites(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames
+                           if not d.startswith(".") and d not in
+                           {"__pycache__", "node_modules", "offline-packages", "oasis-offline"}]
+            for fn in filenames:
+                if not fn.endswith(".py"):
+                    continue
+                path = os.path.join(dirpath, fn)
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        tree = ast.parse(fh.read(), filename=path)
+                except (OSError, SyntaxError):
+                    continue
+                for node in ast.walk(tree):
+                    if (isinstance(node, ast.Call)
+                            and isinstance(node.func, ast.Name)
+                            and node.func.id == "sudo_apt_cmd"):
+                        yield os.path.relpath(path, root), node
+
+    def test_every_caller_names_the_program_first(self):
+        checked = 0
+        for rel, node in self._call_sites():
+            if not node.args:
+                self.fail(f"{rel}: sudo_apt_cmd() called with no program")
+            first = node.args[0]
+            # Only literal first args can be checked; a variable is opaque here
+            # and is left to its own caller.
+            if not isinstance(first, ast.Constant) or not isinstance(first.value, str):
+                continue
+            checked += 1
+            self.assertIn(
+                first.value, self.PROGRAMS,
+                f"{rel}:{node.lineno}: sudo_apt_cmd({first.value!r}, ...) — the first "
+                f"argument must be the PROGRAM (one of {sorted(self.PROGRAMS)}), not a "
+                f"subcommand. As written this shells out to `sudo {first.value}`.")
+        # A scan that silently matched nothing would pass forever.
+        self.assertGreater(checked, 5,
+                           f"only {checked} sudo_apt_cmd call sites found — did the scan break?")
 
 
 if __name__ == "__main__":

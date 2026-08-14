@@ -189,10 +189,15 @@ def run(check_only=False):
     add_repo(code)
 
     _step(2, "Installing the DSP packages")
-    if _run(sudo_apt_cmd("update"), check=False).returncode != 0:
+    # sudo_apt_cmd takes the PROGRAM as its first argument — it is not an
+    # apt-specific helper. Omitting it built `sudo update` and `sudo install -y
+    # …`, the latter reaching coreutils /usr/bin/install, so this installer
+    # could never install anything; step 1 still added the repo, which is why a
+    # box could end up with the apt source present and no packages.
+    if _run(sudo_apt_cmd("apt-get", "update"), check=False).returncode != 0:
         _warn("apt update reported an error — continuing to the install anyway.")
     # openwebrx is deliberately NOT in PACKAGES: it seizes the dongle.
-    if _run(sudo_apt_cmd("install", "-y", *PACKAGES), check=False).returncode != 0:
+    if _run(sudo_apt_cmd("apt-get", "install", "-y", *PACKAGES), check=False).returncode != 0:
         _fail("apt could not install the DSP packages. See the errors above.")
     for pkg, ver in installed().items():
         (_ok if ver else _warn)(f"{pkg} {ver or 'MISSING'}")
