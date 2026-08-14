@@ -603,6 +603,14 @@ function applyViewButtons() {
   document.querySelectorAll('#view-modes .fchip[data-view]').forEach(b =>
     b.classList.toggle('active', b.dataset.view === _view));
 }
+function withinHour(s) {
+  const p = nextPassOf(s.norad);
+  if (!p) return false;
+  const now = Date.now();
+  const rise = new Date(p.rise).getTime(), set = new Date(p.set).getTime();
+  const inPass = rise <= now && now < set;
+  return inPass || (rise - now) / 60000 <= 60;
+}
 function passesFilters(s) {
   // Two independent axes: monitored-only ('monitored','soon') and passing-in-1h
   // ('soon','soon-all'). 'all' = neither; 'soon-all' = any bird passing over now.
