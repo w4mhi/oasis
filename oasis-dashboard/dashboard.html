@@ -746,6 +746,12 @@
         <span class="fchip rf"   id="f-rf"   role="button" aria-pressed="false" onclick="toggleFilter('rf')"   title="APRS heard off the air">RF</span>
         <span class="fchip is"   id="f-is"   role="button" aria-pressed="false" onclick="toggleFilter('is')"   title="APRS heard via APRS-IS (internet)">IS</span>
         <span class="fchip adsb" id="f-adsb" role="button" aria-pressed="false" onclick="toggleFilter('adsb')" title="Aircraft heard via ADS-B">ADS-B</span>
+        <!-- Refresh clock, hard right (.satcd carries margin-left:auto). Same
+             class as the satellites card's, deliberately: the two headers sit
+             side by side on this panel, so a second implementation would be
+             visible drift. It answers the question a wall display always raises
+             and a static list cannot — is this alive, or did it freeze? -->
+        <span class="satcd" id="k-traffic-cd" title="Seconds until the traffic list may next redraw"></span>
       </div>
       <div class="tbl">
         <div class="tscroll" id="aprsScroll"></div>
@@ -1173,6 +1179,17 @@ try {
   if (Array.isArray(saved)) srcSelected = saved.filter(k => _SRC_KEYS.indexOf(k) !== -1);
 } catch (e) { /* unreadable storage — keep the show-everything default */ }
 const MAX_ROWS = 60;   // more vertical room on this layout → show more records
+// ONE NUMBER for the traffic cycle: how often the list may redraw, how long the
+// station fetch is allowed to take, and what the header clock counts down.
+//
+// The fetch timeout used to be 10 s against a 15 s redraw, and on a box whose
+// graywolf proxy is slow that gap is not academic — /api/aprs/stations there
+// regularly took longer than 10 s, so the fetch aborted, the catch emptied
+// _allAprsStations, and the panel showed RF 0 with the feed perfectly healthy.
+// A request that has not returned by the time we would redraw anyway is the
+// only one worth abandoning, which is what makes these the same number rather
+// than two numbers that happen to be close.
+const TRAFFIC_REFRESH_MS = 15000;
 let _renderAt = 0, _renderTimer = null;
 // ── AGE WINDOW ───────────────────────────────────────────────────────────────
 // Same buckets, same 24h default, and the same shared predicate as index.html's
@@ -1573,8 +1590,27 @@ function applyAprsFilter() {
 }
 function scheduleAprsRender() {
   const since = Date.now() - _renderAt;
-  if (since >= 15000) { _renderAt = Date.now(); applyAprsFilter(); }
-  else if (!_renderTimer) _renderTimer = setTimeout(() => { _renderTimer = null; _renderAt = Date.now(); applyAprsFilter(); }, 15000 - since);
+  if (since >= TRAFFIC_REFRESH_MS) { _renderAt = Date.now(); applyAprsFilter(); renderTrafficCountdown(); }
+  else if (!_renderTimer) _renderTimer = setTimeout(() => {
+    _renderTimer = null; _renderAt = Date.now(); applyAprsFilter(); renderTrafficCountdown();
+  }, TRAFFIC_REFRESH_MS - since);
+}
+// Seconds until the list may next redraw. DERIVED from _renderAt rather than
+// counted down in its own variable — the satellites clock keeps a parallel
+// counter and has to remember to reset it, and a clock that can disagree with
+// the thing it reports on is worse than no clock. This one cannot drift: it is
+// the throttle's own arithmetic, read out loud.
+//
+// Floors at 0 like the satellites one, and for the same reason: a clock parked
+// at 0s is itself the symptom. On this display 0 means "due, waiting on data" —
+// the render only happens when a poll actually lands.
+function renderTrafficCountdown() {
+  const el = document.getElementById('k-traffic-cd'); if (!el) return;
+  const left = Math.max(0, Math.ceil((TRAFFIC_REFRESH_MS - (Date.now() - _renderAt)) / 1000));
+  el.textContent = '↻ ' + left + 's';
+  // Same green -> amber -> red vocabulary as the satellites countdown, scaled to
+  // a 15 s cycle instead of 60: thirds, not the sat card's absolute 10/5.
+  el.className = 'satcd ' + (left > 10 ? 'green' : left > 5 ? 'yellow' : 'red');
 }
 function setAprsLive(state) {
   const el = document.getElementById('k-aprs-live'); if (!el) return;
@@ -1583,7 +1619,7 @@ function setAprsLive(state) {
 }
 async function fetchAPRS() {
   try {
-    const r = await fetch('/api/aprs/stations', { cache:'no-store', signal: AbortSignal.timeout(10000) });
+    const r = await fetch('/api/aprs/stations', { cache:'no-store', signal: AbortSignal.timeout(TRAFFIC_REFRESH_MS) });
     if (!r.ok) throw new Error('HTTP '+r.status);
     const d = await r.json();
     if (!d.ok) { setAprsLive('down'); _allAprsStations=[]; scheduleAprsRender(); return; }
@@ -2615,6 +2651,9 @@ async function forgetWifi() {
 refreshWifi();        setInterval(refreshWifi, 30000);
 
 _renderAgeChip();     // paint the default window before the first rows land
+// Ticked on its own 1 s interval, not inside the render: the render happens at
+// most every 15 s, which is exactly when a countdown must NOT be updated.
+renderTrafficCountdown();  setInterval(renderTrafficCountdown, 1000);
 fetchAPRS();          setInterval(fetchAPRS, 10000);
 refreshAdsb();        setInterval(refreshAdsb, 5000);
 refreshAdsbRecent();  setInterval(refreshAdsbRecent, 60000);
