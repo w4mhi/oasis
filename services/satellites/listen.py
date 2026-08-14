@@ -19,7 +19,6 @@ to maximise the chance it works first try, but it is exercised on the Pi, not in
 CI.
 """
 import os
-import re
 import shlex
 import shutil
 import signal
@@ -27,7 +26,9 @@ import subprocess
 import threading
 import time
 
-SAMPLE_RATE = 48000       # rtl_fm -s — matches the proven aprs-sdr-feed build
+import demod
+
+SAMPLE_RATE = demod.SAMPLE_RATE   # rtl_fm -s — matches the proven aprs-sdr-feed build
 MAX_SECONDS = 20 * 60     # safety cap: a forgotten recording can't run forever
 DEFAULT_GAIN = "40"
 # "assume the dongle is perfect". Harmless at 144 MHz APRS, where even 20 ppm is
@@ -168,38 +169,14 @@ def mhz_to_hz(freq_mhz):
     return int(round(float(freq_mhz) * 1_000_000))
 
 
-CW_OFFSET_HZ = 700   # CW is tuned this far LOW so the carrier beats as an audible tone (USB)
-
-
-# FM-demodulable modulations: analog FM voice, packet (AFSK/FSK/GMSK/MSK/GFSK),
-# analog SSTV, and APT — all captured by `rtl_fm -M fm`.
-_FM_TOK = {"FM", "NFM", "FMN", "AFSK", "FSK", "GFSK", "GMSK", "MSK", "SSTV", "APT", "APRS"}
-
-
-def _mode_tokens(mode):
-    # Modes are messy ("AFSK1k2", "GMSK USP", "FSK AX.100 Mode 5"); classify on
-    # split tokens, not exact strings.
-    return [t for t in re.split(r"[^A-Z0-9]+", (mode or "").upper()) if t]
-
-
-def demod_params(dmode):
-    """(rtl_fm mode, sample rate, tuning offset Hz) for a downlink mode, or
-    (None, None, None) when we can't demodulate it live (LRPT / DVB / PSK …).
-
-    CW → USB tuned 700 Hz low, so the carrier lands as an audible ~700 Hz tone
-    (glides in pitch with Doppler — expected for a beacon). USB/SSB → narrow USB;
-    LSB → narrow LSB; the FM family → wide FM (48 kHz)."""
-    toks = _mode_tokens(dmode)
-
-    def starts(prefixes):
-        # startswith, not equality: SatNOGS glues the baud on ("AFSK1k2", "GMSK4k8").
-        return any(t.startswith(p) for t in toks for p in prefixes)
-
-    if starts(("CW",)):               return ("usb", 12000, -CW_OFFSET_HZ)
-    if starts(("LSB",)):              return ("lsb", 12000, 0)
-    if starts(("USB", "SSB")):        return ("usb", 12000, 0)
-    if starts(tuple(_FM_TOK)):        return ("fm", SAMPLE_RATE, 0)
-    return (None, None, None)
+# The mode classifier lives in demod.py so the roster builder can reach it
+# without importing this module (and with it subprocess, signals and the dongle
+# lock). Re-exported here because routes.py, mode_support and the tests have
+# always called listen.demod_params — where it lives is not their business.
+CW_OFFSET_HZ = demod.CW_OFFSET_HZ
+_FM_TOK = demod._FM_TOK
+_mode_tokens = demod._mode_tokens
+demod_params = demod.demod_params
 
 
 def record_command(freq_hz, out_wav, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM,

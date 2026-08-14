@@ -9,6 +9,7 @@ import re
 # still holds. Re-declaring the list locally is what the carry-over bug is made
 # of: the two copies drift and a rebuild quietly drops the newer field.
 import bands
+import demod
 import roster
 
 SAT_API = "https://db.satnogs.org/api/satellites/?format=json"
@@ -243,6 +244,26 @@ def orbit_class(tle_line2):
     return "MEO"
 
 
+def _has_recordable_downlink(transmitters):
+    """True when at least one downlink is both REACHABLE and WORTH CARRYING.
+
+    Both filters, composed in this order, because either alone gets real birds
+    wrong. `legacy_downlinks` drops what the dongle cannot tune (out of RTL
+    range, out of band), then `demod.roster_worthy` drops what it could tune but
+    never demodulate. A mode-only test would keep a bird whose sole FM downlink
+    is on S-band; a band-only test would keep one whose only in-band downlink is
+    BPSK telemetry. Both would then render as an empty card.
+
+    Reusing the view's own downlink derivation rather than reading
+    `transmitters` directly is the point: the roster gate and the page's Audio
+    chip must answer the same question the same way, or a bird disappears from
+    the build for a reason the UI cannot explain."""
+    for d in roster.legacy_downlinks({"transmitters": transmitters}):
+        if demod.roster_worthy(d.get("mode")):
+            return True
+    return False
+
+
 def build_records(sats, txs, tle_index, prev_state=None):
     """Intersect SatNOGS identity + active transmitters + CelesTrak TLE index
     into records. A bird is included iff it is alive (in `sats`), has >=1 active
@@ -281,6 +302,19 @@ def build_records(sats, txs, tle_index, prev_state=None):
             # excluded by the RTL-range gate above; supporting it would be a
             # dedicated fixed-target + LNB-downconversion feature, not a pass
             # roster entry. So exclude GEO here.
+            continue
+        if not _has_recordable_downlink(transmitters):
+            # Nothing on this bird can become anything on this station — BPSK or
+            # QPSK telemetry, DVB. Keeping it costs a roster row, a card, and a
+            # Skyfield pass computation on every poll, forever, for a signal that
+            # can never be demodulated here.
+            #
+            # This is the ONE gate with no operator exemption: a monitored bird
+            # with nothing recordable goes like any other. That is deliberate —
+            # the roster is defined as what this station can record, and a second
+            # rule would make "why is this here" unanswerable. The removal is not
+            # silent; it lands in diff_rosters' `removed`, which build-roster.py
+            # reports and /api/satellites/refresh returns as `changes`.
             continue
         meta = sats[norad]
         name = f"{meta['name']} [{orbit}]" if orbit else meta["name"]

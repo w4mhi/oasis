@@ -280,6 +280,82 @@ class BuildTest(unittest.TestCase):
         norads = sorted(r["norad"] for r in satnogs.build_records(sats, txs, tle)[0])
         self.assertEqual(norads, [40001])   # GEO dropped, LEO kept
 
+    def test_bird_with_nothing_recordable_is_dropped(self):
+        # The roster is what this station can act on. A cubesat whose only
+        # downlink is BPSK telemetry can never become audio here, so it costs a
+        # roster row, a card, and -- the part that actually matters on a Pi 3 --
+        # a Skyfield pass computation, forever, for nothing.
+        sats = {800: {"name": "TLM-ONLY", "norad": 800, "sat_id": "T", "status": "alive"},
+                801: {"name": "HAM-FM", "norad": 801, "sat_id": "H", "status": "alive"}}
+        txs = {800: [{"mode": "BPSK", "type": "Transmitter", "description": "telemetry",
+                      "downlink": {"freq_mhz": 435.5, "freq_high_mhz": None}, "uplink": None}],
+               801: [{"mode": "FM", "type": "Transmitter", "description": "voice",
+                      "downlink": {"freq_mhz": 145.8, "freq_high_mhz": None}, "uplink": None}]}
+        tle = {800: ("T", "1", OrbitClassTest.LEO), 801: ("H", "1", OrbitClassTest.LEO)}
+        norads = sorted(r["norad"] for r in satnogs.build_records(sats, txs, tle)[0])
+        self.assertEqual(norads, [801])
+
+    def test_one_recordable_downlink_saves_the_bird(self):
+        # Mixed birds are the common case -- a telemetry beacon alongside the FM
+        # repeater. The gate is ANY, never ALL.
+        sats = {802: {"name": "MIXED", "norad": 802, "sat_id": "M", "status": "alive"}}
+        txs = {802: [{"mode": "BPSK", "type": "Transmitter", "description": "telemetry",
+                      "downlink": {"freq_mhz": 435.5, "freq_high_mhz": None}, "uplink": None},
+                     {"mode": "FM", "type": "Transceiver", "description": "voice",
+                      "downlink": {"freq_mhz": 145.9, "freq_high_mhz": None}, "uplink": None}]}
+        tle = {802: ("M", "1", OrbitClassTest.LEO)}
+        self.assertEqual([r["norad"] for r in satnogs.build_records(sats, txs, tle)[0]], [802])
+
+    def test_lrpt_keeps_its_seat(self):
+        # Undemodulable today, deliberately kept: weather imagery to record now
+        # and decode offline later. See demod.roster_worthy.
+        sats = {803: {"name": "METEOR-LIKE", "norad": 803, "sat_id": "W", "status": "alive"}}
+        txs = {803: [{"mode": "LRPT", "type": "Transmitter", "description": "weather imagery",
+                      "downlink": {"freq_mhz": 137.1, "freq_high_mhz": None}, "uplink": None}]}
+        tle = {803: ("W", "1", OrbitClassTest.LEO)}
+        self.assertEqual([r["norad"] for r in satnogs.build_records(sats, txs, tle)[0]], [803])
+
+    def test_a_recordable_mode_out_of_band_does_not_save_the_bird(self):
+        # THE case a mode-only gate gets wrong. S-band FM is a mode we can
+        # demodulate on a frequency this dongle cannot reach, so the view shows
+        # an empty card. The gate has to compose BOTH filters -- usable band via
+        # legacy_downlinks, then the mode -- or the build and the page disagree
+        # about the same bird.
+        sats = {804: {"name": "S-BAND-FM", "norad": 804, "sat_id": "S", "status": "alive"}}
+        txs = {804: [{"mode": "FM", "type": "Transmitter", "description": "voice",
+                      "downlink": {"freq_mhz": 2401.0, "freq_high_mhz": None}, "uplink": None},
+                     {"mode": "BPSK", "type": "Transmitter", "description": "telemetry",
+                      "downlink": {"freq_mhz": 435.5, "freq_high_mhz": None}, "uplink": None}]}
+        tle = {804: ("S", "1", OrbitClassTest.LEO)}
+        self.assertEqual(satnogs.build_records(sats, txs, tle)[0], [])
+
+    def test_monitoring_a_bird_does_not_save_it(self):
+        # Decided deliberately: one rule, no exceptions. The roster is what this
+        # station can record, and a monitored bird with nothing recordable on it
+        # goes like any other. The removal is not silent -- it lands in
+        # diff_rosters' `removed`, which build-roster.py reports.
+        sats = {805: {"name": "TLM-ONLY", "norad": 805, "sat_id": "T", "status": "alive"}}
+        txs = {805: [{"mode": "BPSK", "type": "Transmitter", "description": "telemetry",
+                      "downlink": {"freq_mhz": 435.5, "freq_high_mhz": None}, "uplink": None}]}
+        tle = {805: ("T", "1", OrbitClassTest.LEO)}
+        records, _ = satnogs.build_records(sats, txs, tle, {805: {"selected": True}})
+        self.assertEqual(records, [])
+
+    def test_facet_counts_follow_the_gate(self):
+        # facet drives the Filters dropdown's per-label counts. Computed from the
+        # surviving records, so a dropped bird must not leave its label behind as
+        # a chip that matches nothing.
+        sats = {806: {"name": "TLM-ONLY", "norad": 806, "sat_id": "T", "status": "alive"},
+                807: {"name": "HAM-FM", "norad": 807, "sat_id": "H", "status": "alive"}}
+        txs = {806: [{"mode": "BPSK", "type": "Transmitter", "description": "telemetry",
+                      "downlink": {"freq_mhz": 435.5, "freq_high_mhz": None}, "uplink": None}],
+               807: [{"mode": "FM", "type": "Transmitter", "description": "voice",
+                      "downlink": {"freq_mhz": 145.8, "freq_high_mhz": None}, "uplink": None}]}
+        tle = {806: ("T", "1", OrbitClassTest.LEO), 807: ("H", "1", OrbitClassTest.LEO)}
+        records, facet = satnogs.build_records(sats, txs, tle)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(sum(facet.values()), sum(len(r["labels"]) for r in records))
+
     def test_diff_added_removed_changed(self):
         old = [{"norad": 25544, "name": "ISS (ZARYA)", "status": "alive",
                 "labels": ["CREWED"], "transmitters": []},
