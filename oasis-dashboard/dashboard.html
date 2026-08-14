@@ -1106,26 +1106,35 @@ fetchStats(); setInterval(fetchStats, 5000);
 
 // ── SDR service dots (assignment from hardware, in-use from systemd) ──────────
 // dot: hollow white = no RTL assigned · amber = RTL assigned · green = in use.
+// `daemon` says whether readiness IS a running unit — see sdrDotClass in
+// common/js/service-registry.js. Satellites is the one that is not: it has no
+// unit at all (the entry below never matched anything), and its ready state is
+// "assigned, dongle free".
 const SDR_SVCS = [
-  { id:'aprs', hw:'aprs',       unit:'aprs-sdr-feed' },
-  { id:'adsb', hw:'adsb',       unit:'dump1090-fa' },
-  { id:'owrx', hw:'openwebrx',  unit:null },            // no OASIS unit → can't detect "in use"
-  { id:'sat',  hw:'satellites', unit:'satellites-listen' },
+  { id:'aprs', hw:'aprs',       unit:'aprs-sdr-feed',  daemon:true },
+  { id:'adsb', hw:'adsb',       unit:'dump1090-fa',    daemon:true },
+  { id:'owrx', hw:'openwebrx',  unit:null,             daemon:true },  // no OASIS unit → can't detect "in use"
+  { id:'sat',  hw:'satellites', unit:null,             daemon:false },
 ];
 async function isUnitActive(unit) {
   if (!unit) return false;
   try { const r = await fetch('/api/health/service?name='+unit, { cache:'no-store' });
         return r.ok && (await r.json()).active === 'active'; } catch (_) { return false; }
 }
-// SAT has no systemd unit — its recorder is an ad-hoc rtl_fm subprocess. "In use"
-// means WE hold the dongle (recording/streaming); `busy` alone can be another
-// service holding the shared dongle, so don't use it.
-async function satInUse() {
+// SAT has no systemd unit — its recorder is an ad-hoc subprocess. `active` is WE
+// hold the dongle; `blocked` is somebody ELSE does, which is the one case worth
+// an amber. A status we cannot fetch reports neither, so an unreachable API
+// leaves the dot amber rather than claiming a green it cannot support.
+async function satState() {
   try { const r = await fetch('/api/satellites/listen/status', { cache:'no-store' });
-        if (!r.ok) return false; const d = await r.json();
-        return !!(d.recording || d.streaming); } catch (_) { return false; }
+        if (!r.ok) return { active:false, blocked:true }; const d = await r.json();
+        return { active: !!(d.recording || d.streaming), blocked: !!d.busy };
+  } catch (_) { return { active:false, blocked:true }; }
 }
-async function svcInUse(svc) { return svc.id === 'sat' ? satInUse() : isUnitActive(svc.unit); }
+async function svcState(svc) {
+  return svc.id === 'sat' ? satState()
+                          : { active: await isUnitActive(svc.unit), blocked:false };
+}
 let _hwServices = {};   // last /api/hardware/devices `services` map (device assignments)
 async function fetchSdrStatus() {
   let hw = {};
@@ -1138,8 +1147,9 @@ async function fetchSdrStatus() {
     const info = services[svc.hw];
     const dev  = info && info.device_id ? byId[info.device_id] : null;
     const assigned = !!(dev && dev.kind === 'rtl-sdr');
-    const inUse = await svcInUse(svc);
-    dot.className = 'dot' + (inUse ? ' inuse' : assigned ? ' assigned' : '');
+    const st = assigned ? await svcState(svc) : { active:false, blocked:false };
+    const cls = sdrDotClass({ assigned, active: st.active, blocked: st.blocked, daemon: svc.daemon });
+    dot.className = 'dot' + (cls ? ' ' + cls : '');
   }));
 }
 fetchSdrStatus(); setInterval(fetchSdrStatus, 8000);

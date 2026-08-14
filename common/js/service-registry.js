@@ -94,7 +94,38 @@
   // runs once, server-side and cached, behind GET /api/health/maps. Nothing
   // client-side should walk a directory tree over HTTP again.
 
+  // ── The RTL/SDR assignment dot ─────────────────────────────────────────────
+  // hollow = nothing assigned · amber = assigned but not working · green = working.
+  // index.html and the kiosk each carried a byte-identical copy of this decision,
+  // which is how the bug below survived in both at once.
+  //
+  // GREEN MEANS "THIS SERVICE CAN DO ITS JOB", not "something is happening right
+  // now". For a daemon service that is its unit being active. Satellites has no
+  // daemon — the recorder is an ad-hoc subprocess started when you arm a pass —
+  // so its healthy steady state is "assigned and the dongle is free", and the old
+  // rule (green only while recording or streaming) painted a perfectly ready
+  // station amber whenever it was not mid-capture, which is nearly always.
+  //
+  // Amber keeps the meaning it should always have had for satellites: assigned,
+  // but ANOTHER service is holding the dongle, so arming a pass right now would
+  // fail. That is worth a warning colour. Idle is not.
+  //
+  //   assigned  something is assigned to this service at all
+  //   active    the unit is running, or WE hold the dongle (recording/streaming)
+  //   blocked   assigned, but someone else holds it
+  //   daemon    readiness IS a running unit. Explicit, not inferred from having a
+  //             unit name: openwebrx is a daemon we cannot detect (no OASIS unit),
+  //             and inferring would have flipped it to a green we cannot justify.
+  function sdrDotClass(s) {
+    s = s || {};
+    if (!s.assigned) return '';
+    if (s.active) return 'inuse';
+    if (s.blocked) return 'assigned';
+    return s.daemon ? 'assigned' : 'inuse';
+  }
+
   root.OASIS_SERVICES = OASIS_SERVICES;
   root.oasisResolveHidden = oasisResolveHidden;
   root.oasisAssertChecks = oasisAssertChecks;
+  root.sdrDotClass = sdrDotClass;
 })(typeof window !== 'undefined' ? window : this);

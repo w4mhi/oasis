@@ -4182,21 +4182,27 @@ async function forgetWifi() {
 // assigned · green = in use. (Ported from the kiosk svcbar.) Targets the
 // STATUS-card ids (status-dot-*) — NOT the SERVICES-grid dot-* ids, which are
 // separate elements owned by fetchHardware/renderAdsbDot etc.
+// `daemon`: readiness IS a running unit. Satellites is the exception — no unit,
+// ready when assigned and free. See sdrDotClass in common/js/service-registry.js,
+// which both this page and the kiosk now share instead of each keeping a copy.
 const SDR_SVCS = [
-  { id:'aprs', hw:'aprs',       unit:'aprs-sdr-feed' },
-  { id:'adsb', hw:'adsb',       unit:'dump1090-fa' },
-  { id:'owrx', hw:'openwebrx',  unit:null },
-  { id:'sat',  hw:'satellites', unit:'satellites-listen' },
+  { id:'aprs', hw:'aprs',       unit:'aprs-sdr-feed', daemon:true },
+  { id:'adsb', hw:'adsb',       unit:'dump1090-fa',   daemon:true },
+  { id:'owrx', hw:'openwebrx',  unit:null,            daemon:true },
+  { id:'sat',  hw:'satellites', unit:null,            daemon:false },
 ];
 async function _isUnitActive(unit) {
   if (!unit) return false;
   try { const r = await fetch('/api/health/service?name='+unit, { cache:'no-store' });
         return r.ok && (await r.json()).active === 'active'; } catch (_) { return false; }
 }
-async function _satInUse() {
+// active = WE hold the dongle; blocked = another service does. An unreachable
+// status reports blocked, so the dot stays amber rather than claiming a green.
+async function _satState() {
   try { const r = await fetch('/api/satellites/listen/status', { cache:'no-store' });
-        if (!r.ok) return false; const d = await r.json();
-        return !!(d.recording || d.streaming); } catch (_) { return false; }
+        if (!r.ok) return { active:false, blocked:true }; const d = await r.json();
+        return { active: !!(d.recording || d.streaming), blocked: !!d.busy };
+  } catch (_) { return { active:false, blocked:true }; }
 }
 async function fetchSdrStatus() {
   let hw = {};
@@ -4208,8 +4214,11 @@ async function fetchSdrStatus() {
     const info = services[svc.hw];
     const dev  = info && info.device_id ? byId[info.device_id] : null;
     const assigned = !!(dev && dev.kind === 'rtl-sdr');
-    const inUse = svc.id === 'sat' ? await _satInUse() : await _isUnitActive(svc.unit);
-    dot.className = 'adot' + (inUse ? ' inuse' : assigned ? ' assigned' : '');
+    const st = !assigned ? { active:false, blocked:false }
+             : svc.id === 'sat' ? await _satState()
+             : { active: await _isUnitActive(svc.unit), blocked:false };
+    const cls = sdrDotClass({ assigned, active: st.active, blocked: st.blocked, daemon: svc.daemon });
+    dot.className = 'adot' + (cls ? ' ' + cls : '');
   }));
 }
 

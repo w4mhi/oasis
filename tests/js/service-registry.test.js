@@ -56,3 +56,38 @@ test('assertChecks: reports registry ids a page failed to implement', () => {
 // .pmtiles walk moved server-side (GET /api/health/maps). The nested-layout and
 // depth-cap cases they guarded are covered there against the real filesystem,
 // which is a stronger test than the fake browse tree they used here.
+
+// ── The RTL/SDR assignment dot ───────────────────────────────────────────────
+// The bug: satellites showed AMBER whenever it was not mid-capture, i.e. almost
+// always, on a station that was assigned, free and ready. Amber reads as "look
+// at me" on a wall panel, so a healthy station asked for attention all day.
+//
+// Both pages had a byte-identical copy of the rule, so both were wrong together
+// and neither could be used to check the other.
+test('sdrDotClass: nothing assigned is hollow, whatever else is true', () => {
+  assert.strictEqual(R.sdrDotClass({ assigned: false }), '');
+  assert.strictEqual(R.sdrDotClass({ assigned: false, active: true, daemon: true }), '');
+  assert.strictEqual(R.sdrDotClass({}), '');
+  assert.strictEqual(R.sdrDotClass(), '', 'no argument must not throw');
+});
+
+test('sdrDotClass: a daemon service is green only while its unit runs', () => {
+  const d = extra => R.sdrDotClass(Object.assign({ assigned: true, daemon: true }, extra));
+  assert.strictEqual(d({ active: true }), 'inuse');
+  assert.strictEqual(d({ active: false }), 'assigned', 'assigned but down stays amber');
+  // openwebrx: a daemon we cannot detect (no OASIS unit). It must NOT drift to
+  // green — "we can't tell" is not "it's working".
+  assert.strictEqual(d({ active: false, blocked: false }), 'assigned');
+});
+
+test('sdrDotClass: satellites is green when assigned and free', () => {
+  const s = extra => R.sdrDotClass(Object.assign({ assigned: true, daemon: false }, extra));
+  // THE FIX: idle, dongle free, nothing recording — this is the ready state.
+  assert.strictEqual(s({ active: false, blocked: false }), 'inuse');
+  assert.strictEqual(s({ active: true }), 'inuse', 'recording is still green');
+  // The one case that deserves amber: assigned, but someone else holds it, so
+  // arming a pass right now would fail.
+  assert.strictEqual(s({ active: false, blocked: true }), 'assigned');
+  // Ours beats blocked — while WE record, busy is true and holder is us.
+  assert.strictEqual(s({ active: true, blocked: true }), 'inuse');
+});
