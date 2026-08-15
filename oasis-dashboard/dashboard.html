@@ -919,6 +919,20 @@ function openOv(id) { const el = document.getElementById('ov-'+id); if (el) el.c
 function closeOv(id) { const el = document.getElementById('ov-'+id); if (el) el.classList.remove('open'); }
 
 // ── Travel clock — Local + UTC, each its own date ────────────────────────────
+// The zone label is cached for a minute rather than rebuilt every tick. Each
+// `Intl.DateTimeFormat()` allocates an ICU formatter behind the JS object, and
+// this clock was building one 86,400 times a day to re-read a string that only
+// changes when the station physically moves — which a minute still catches,
+// inside a tick nobody is watching. Returns '' if Intl throws, so the caller
+// leaves the label alone rather than blanking it.
+let _tzLabel = '', _tzAt = 0;
+function tzLabel(ms) {
+  if (_tzLabel && ms - _tzAt < 60000) return _tzLabel;
+  _tzAt = ms;
+  try { _tzLabel = (Intl.DateTimeFormat().resolvedOptions().timeZone || 'local').split('/').pop().replace('_',' '); }
+  catch (_) { /* no Intl here — keep whatever the last good read gave us */ }
+  return _tzLabel;
+}
 function tick() {
   const n = new Date(), p = x => String(x).padStart(2,'0');
   const dw = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
@@ -929,8 +943,7 @@ function tick() {
   txt('loc-d', dw[n.getDay()]+' · '+p(n.getDate())+' '+mo[n.getMonth()]+' '+n.getFullYear());
   set('utc-t', p(n.getUTCHours())+':'+p(n.getUTCMinutes())+'<span class="s">:'+p(n.getUTCSeconds())+'</span>');
   txt('utc-d', dw[n.getUTCDay()]+' · '+p(n.getUTCDate())+' '+mo[n.getUTCMonth()]+' '+n.getUTCFullYear());
-  try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
-        txt('loc-tz', tz.split('/').pop().replace('_',' ')); } catch (_) {}
+  const tz = tzLabel(n.getTime()); if (tz) txt('loc-tz', tz);
 }
 tick(); setInterval(tick, 1000);
 
