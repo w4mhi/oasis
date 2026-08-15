@@ -209,17 +209,52 @@ def _newest_mtime(path):
     return max(times) if times else None
 
 
+def _run_script(repo_root, rel_path, timeout):
+    """Run a repo script in a subprocess; True on exit 0.
+
+    Timeouts and OS errors are failures, not crashes: a refresher must never
+    take the server down, and the caller records the reason.
+    """
+    script = os.path.join(repo_root, *rel_path)
+    try:
+        proc = subprocess.run([sys.executable, script], capture_output=True,
+                              text=True, timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return proc.returncode == 0
+
+
+# ── satellites: one script refreshes both sources ────────────────────────────
+def probe_tle(repo_root):
+    return _newest_mtime(config_paths.tle_cache_dir(repo_root))
+
+
+def probe_satnogs(repo_root):
+    return _newest_mtime(config_paths.satellites_json(repo_root))
+
+
+def fetch_roster(repo_root, cfg):
+    """Run build-roster.py, which refreshes the CelesTrak TLE cache AND the
+    SatNOGS roster in one pass — hence one fetch shared by two sources.
+
+    Online-only by design; the runtime only reads what it produces, so a failed
+    run leaves the previous roster intact and usable.
+    """
+    return _run_script(repo_root, ("services", "satellites",
+                                   "build-roster.py"), timeout=300)
+
+
 def _not_implemented(*_a, **_kw):
     raise NotImplementedError("adapter wired in a later task")
 
 
 REGISTRY = [
     Source(id="tle", label="Satellite TLEs (CelesTrak)", max_age_days=3.0,
-           tier="small", credential=None, probe=_not_implemented,
-           fetch=_not_implemented, attribution="TLE data from CelesTrak."),
+           tier="small", credential=None, probe=probe_tle,
+           fetch=fetch_roster, attribution="TLE data from CelesTrak."),
     Source(id="satnogs", label="Satellite transmitters (SatNOGS)",
            max_age_days=30.0, tier="small", credential=None,
-           probe=_not_implemented, fetch=_not_implemented,
+           probe=probe_satnogs, fetch=fetch_roster,
            attribution="Transmitter data from SatNOGS (CC BY-SA)."),
     Source(id="fcc", label="FCC callsign database", max_age_days=14.0,
            tier="large", credential=None, probe=_not_implemented,

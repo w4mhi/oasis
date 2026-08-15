@@ -275,5 +275,54 @@ class TestRunPass(_Tmp):
             self.assertIn(key, row)
 
 
+class TestRosterAdapter(_Tmp):
+    def test_probe_tle_returns_none_when_cache_empty(self):
+        self.assertIsNone(R.probe_tle(self.d))
+
+    def test_probe_tle_returns_newest_mtime(self):
+        cache = os.path.join(self.d, "configuration", "tle-cache")
+        os.makedirs(cache, exist_ok=True)
+        for name, stamp in (("amateur.txt", 5000), ("weather.txt", 3000)):
+            p = os.path.join(cache, name)
+            with open(p, "w") as fh:
+                fh.write("ISS\n1 x\n2 y\n")
+            os.utime(p, (stamp, stamp))
+        self.assertEqual(R.probe_tle(self.d), 5000)
+
+    def test_probe_satnogs_uses_satellites_json(self):
+        p = os.path.join(self.d, "configuration", "satellites.json")
+        with open(p, "w") as fh:
+            fh.write("{}")
+        os.utime(p, (7000, 7000))
+        self.assertEqual(R.probe_satnogs(self.d), 7000)
+
+    def test_probe_satnogs_none_when_absent(self):
+        self.assertIsNone(R.probe_satnogs(self.d))
+
+    def test_fetch_roster_returns_false_on_script_failure(self):
+        from unittest import mock
+        with mock.patch.object(R.subprocess, "run") as run:
+            run.return_value = mock.Mock(returncode=1, stderr="boom")
+            self.assertFalse(R.fetch_roster(self.d, {}))
+
+    def test_fetch_roster_returns_true_on_success(self):
+        from unittest import mock
+        with mock.patch.object(R.subprocess, "run") as run:
+            run.return_value = mock.Mock(returncode=0, stderr="")
+            self.assertTrue(R.fetch_roster(self.d, {}))
+
+    def test_fetch_roster_timeout_is_a_failure_not_a_crash(self):
+        from unittest import mock
+        with mock.patch.object(R.subprocess, "run",
+                               side_effect=R.subprocess.TimeoutExpired(
+                                   "build-roster.py", 300)):
+            self.assertFalse(R.fetch_roster(self.d, {}))
+
+    def test_registry_wires_both_satellite_sources_to_one_script(self):
+        # build-roster.py refreshes CelesTrak TLEs AND the SatNOGS roster in one
+        # pass, so both sources share a fetch.
+        self.assertIs(R._by_id("tle").fetch, R._by_id("satnogs").fetch)
+
+
 if __name__ == "__main__":
     unittest.main()
