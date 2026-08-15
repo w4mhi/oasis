@@ -1,0 +1,279 @@
+import json, os, sys, tempfile, unittest
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from common import refresh as R
+from common import freshness as F
+
+
+class _Tmp(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.d, "configuration"), exist_ok=True)
+
+    def _station(self, **kw):
+        p = os.path.join(self.d, "configuration", "station.json")
+        with open(p, "w") as fh:
+            json.dump(kw, fh)
+
+
+class TestState(_Tmp):
+    def test_missing_state_file_is_empty_dict(self):
+        self.assertEqual(R.load_state(self.d), {})
+
+    def test_round_trip(self):
+        R.save_state(self.d, {"tle": {"consecutive_failures": 2}})
+        self.assertEqual(R.load_state(self.d)["tle"]["consecutive_failures"], 2)
+
+    def test_corrupt_state_file_does_not_raise(self):
+        # A truncated write (power loss mid-save) must degrade to "no state",
+        # never take the server down at import time.
+        with open(os.path.join(self.d, "configuration",
+                               "refresh-state.json"), "w") as fh:
+            fh.write("{not json")
+        self.assertEqual(R.load_state(self.d), {})
+
+    def test_non_dict_state_file_degrades(self):
+        with open(os.path.join(self.d, "configuration",
+                               "refresh-state.json"), "w") as fh:
+            fh.write("[1, 2, 3]")
+        self.assertEqual(R.load_state(self.d), {})
+
+
+class TestLock(_Tmp):
+    def test_second_acquire_skips_rather_than_queues(self):
+        with R.pass_lock(self.d) as got_first:
+            self.assertTrue(got_first)
+            with R.pass_lock(self.d) as got_second:
+                self.assertFalse(got_second)
+
+    def test_lock_released_after_block(self):
+        with R.pass_lock(self.d):
+            pass
+        with R.pass_lock(self.d) as got:
+            self.assertTrue(got)
+
+    def test_lock_released_even_when_body_raises(self):
+        with self.assertRaises(RuntimeError):
+            with R.pass_lock(self.d):
+                raise RuntimeError("boom")
+        with R.pass_lock(self.d) as got:
+            self.assertTrue(got)
+
+    def test_stale_lock_is_reclaimed(self):
+        path = os.path.join(self.d, "configuration", ".refresh.lock")
+        with open(path, "w") as fh:
+            fh.write("99999")
+        os.utime(path, (0, 0))          # ancient -> a hard-killed pass
+        with R.pass_lock(self.d) as got:
+            self.assertTrue(got)
+
+
+class TestConfig(_Tmp):
+    def test_max_age_default_when_unset(self):
+        self._station(callsign="W4MHI")
+        cfg = R.station_config(self.d)
+        src = R._by_id("tle")
+        self.assertEqual(R.max_age_for(cfg, src), src.max_age_days)
+
+    def test_max_age_override(self):
+        self._station(max_age_days={"tle": 11})
+        cfg = R.station_config(self.d)
+        self.assertEqual(R.max_age_for(cfg, R._by_id("tle")), 11)
+
+    def test_garbage_override_falls_back_to_default(self):
+        self._station(max_age_days={"tle": "soon"})
+        cfg = R.station_config(self.d)
+        src = R._by_id("tle")
+        self.assertEqual(R.max_age_for(cfg, src), src.max_age_days)
+
+    def test_missing_station_json_is_empty_config(self):
+        self.assertEqual(R.station_config(self.d), {})
+
+    def test_credential_lookup(self):
+        self._station(repeaterbook_token="abc")
+        cfg = R.station_config(self.d)
+        self.assertEqual(
+            R.credential_for(cfg, R._by_id("repeaterbook")), "abc")
+
+    def test_blank_credential_reads_as_absent(self):
+        # An empty string in the template must not look like a configured token.
+        self._station(repeaterbook_token="   ")
+        cfg = R.station_config(self.d)
+        self.assertIsNone(R.credential_for(cfg, R._by_id("repeaterbook")))
+
+    def test_sources_without_credentials_return_none(self):
+        self.assertIsNone(R.credential_for({}, R._by_id("tle")))
+
+
+class TestRegistry(unittest.TestCase):
+    def test_v1_sources_present(self):
+        ids = {s.id for s in R.REGISTRY}
+        self.assertEqual(ids, {"tle", "satnogs", "fcc", "repeaterbook"})
+
+    def test_tiers(self):
+        by = {s.id: s for s in R.REGISTRY}
+        self.assertEqual(by["tle"].tier, "small")
+        self.assertEqual(by["satnogs"].tier, "small")
+        self.assertEqual(by["fcc"].tier, "large")
+        # The full US book is tens of MB over 50+ requests — large, not small.
+        self.assertEqual(by["repeaterbook"].tier, "large")
+
+    def test_only_repeaterbook_needs_a_credential(self):
+        by = {s.id: s for s in R.REGISTRY}
+        self.assertEqual(by["repeaterbook"].credential, "repeaterbook_token")
+        self.assertIsNone(by["tle"].credential)
+        self.assertIsNone(by["satnogs"].credential)
+        self.assertIsNone(by["fcc"].credential)
+
+    def test_repeaterbook_carries_required_attribution(self):
+        # Required by RepeaterBook's terms, not decoration.
+        by = {s.id: s for s in R.REGISTRY}
+        self.assertIn("RepeaterBook.com", by["repeaterbook"].attribution)
+
+    def test_every_source_has_an_attribution_field(self):
+        for s in R.REGISTRY:
+            self.assertIsInstance(s.attribution, str)
+
+
+class TestRunPass(_Tmp):
+    def _stub(self, sid, age, calls, ok=True, tier="small", credential=None):
+        return R.Source(id=sid, label=sid, max_age_days=3.0, tier=tier,
+                        credential=credential,
+                        probe=lambda root: None if age is None else 0.0,
+                        fetch=lambda root, cfg: (calls.append(sid), ok)[1],
+                        attribution="")
+
+    def test_offline_pass_is_ok_with_reasons(self):
+        calls = []
+        src = self._stub("x", age=None, calls=calls, ok=False)
+        out = R.run_pass(self.d, now=0.0, metered=False, registry=[src])
+        # ok reports that the pass RAN, not that data is current.
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["sources"][0]["state"], F.MISSING)
+        self.assertFalse(out["sources"][0]["fetched"])
+
+    def test_fresh_source_not_fetched(self):
+        calls = []
+        src = self._stub("x", age=0.0, calls=calls)
+        R.run_pass(self.d, now=0.0, metered=False, registry=[src])
+        self.assertEqual(calls, [])
+
+    def test_dry_run_never_fetches(self):
+        calls = []
+        src = self._stub("x", age=None, calls=calls)
+        R.run_pass(self.d, now=0.0, metered=False, registry=[src],
+                   dry_run=True)
+        self.assertEqual(calls, [])
+
+    def test_dry_run_writes_no_state(self):
+        src = self._stub("x", age=None, calls=[])
+        R.run_pass(self.d, now=0.0, metered=False, registry=[src],
+                   dry_run=True)
+        self.assertFalse(os.path.exists(
+            os.path.join(self.d, "configuration", "refresh-state.json")))
+
+    def test_only_filters_sources(self):
+        calls = []
+        a = self._stub("a", age=None, calls=calls)
+        b = self._stub("b", age=None, calls=calls)
+        out = R.run_pass(self.d, now=0.0, metered=False, registry=[a, b],
+                         only=["b"])
+        self.assertEqual(calls, ["b"])
+        self.assertEqual([r["id"] for r in out["sources"]], ["b"])
+
+    def test_deferred_large_source_is_not_fetched(self):
+        calls = []
+        src = self._stub("x", age=None, calls=calls, tier="large")
+        out = R.run_pass(self.d, now=0.0, metered=True, registry=[src])
+        self.assertEqual(out["sources"][0]["state"], F.DEFERRED)
+        self.assertEqual(calls, [])
+
+    def test_unconfigured_source_is_not_fetched(self):
+        calls = []
+        src = self._stub("x", age=None, calls=calls,
+                         credential="repeaterbook_token")
+        out = R.run_pass(self.d, now=0.0, metered=False, registry=[src])
+        self.assertEqual(out["sources"][0]["state"], F.UNCONFIGURED)
+        self.assertEqual(calls, [])
+
+    def test_failure_increments_backoff_counter(self):
+        calls = []
+        src = self._stub("x", age=None, calls=calls, ok=False)
+        R.run_pass(self.d, now=0.0, metered=False, registry=[src])
+        self.assertEqual(R.load_state(self.d)["x"]["consecutive_failures"], 1)
+
+    def test_raising_fetch_is_recorded_not_propagated(self):
+        def _boom(root, cfg):
+            raise OSError("network unreachable")
+        src = R.Source(id="x", label="x", max_age_days=3.0, tier="small",
+                       credential=None, probe=lambda root: None,
+                       fetch=_boom, attribution="")
+        out = R.run_pass(self.d, now=0.0, metered=False, registry=[src])
+        self.assertTrue(out["ok"])
+        self.assertIn("network unreachable", out["sources"][0]["error"])
+
+    def test_raising_probe_is_treated_as_missing(self):
+        def _boom(root):
+            raise OSError("permission denied")
+        src = R.Source(id="x", label="x", max_age_days=3.0, tier="small",
+                       credential=None, probe=_boom,
+                       fetch=lambda root, cfg: True, attribution="")
+        out = R.run_pass(self.d, now=0.0, metered=False, registry=[src],
+                         dry_run=True)
+        self.assertEqual(out["sources"][0]["state"], F.MISSING)
+
+    def test_success_resets_backoff_counter(self):
+        R.save_state(self.d, {"x": {"consecutive_failures": 5}})
+        calls = []
+        src = self._stub("x", age=None, calls=calls, ok=True)
+        R.run_pass(self.d, now=0.0, metered=False, registry=[src])
+        self.assertEqual(R.load_state(self.d)["x"]["consecutive_failures"], 0)
+
+    # Back-off timestamps below are deliberately non-zero: 0.0 means "never
+    # attempted", and in production last_attempt is always a real epoch.
+    def test_backoff_suppresses_retry(self):
+        R.save_state(self.d, {"x": {"consecutive_failures": 3,
+                                    "last_attempt": 100.0}})
+        calls = []
+        src = self._stub("x", age=None, calls=calls)
+        # 3 failures -> 7200s back-off; 100s later is still inside it.
+        R.run_pass(self.d, now=200.0, metered=False, registry=[src])
+        self.assertEqual(calls, [])
+
+    def test_failure_counter_without_timestamp_still_retries(self):
+        # Nothing to back off FROM. Without this the counter would suppress the
+        # very retry that clears it.
+        R.save_state(self.d, {"x": {"consecutive_failures": 4}})
+        calls = []
+        src = self._stub("x", age=None, calls=calls)
+        R.run_pass(self.d, now=200.0, metered=False, registry=[src])
+        self.assertEqual(calls, ["x"])
+
+    def test_retry_resumes_after_backoff_expires(self):
+        R.save_state(self.d, {"x": {"consecutive_failures": 1,
+                                    "last_attempt": 100.0}})
+        calls = []
+        src = self._stub("x", age=None, calls=calls)
+        R.run_pass(self.d, now=100.0 + 1801, metered=False, registry=[src])
+        self.assertEqual(calls, ["x"])
+
+    def test_force_ignores_backoff_and_freshness(self):
+        R.save_state(self.d, {"x": {"consecutive_failures": 9,
+                                    "last_attempt": 100.0}})
+        calls = []
+        src = self._stub("x", age=0.0, calls=calls)
+        R.run_pass(self.d, now=101.0, metered=False, registry=[src],
+                   force=True)
+        self.assertEqual(calls, ["x"])
+
+    def test_row_carries_fields_the_ui_needs(self):
+        src = self._stub("x", age=0.0, calls=[])
+        row = R.run_pass(self.d, now=0.0, metered=False, registry=[src],
+                         dry_run=True)["sources"][0]
+        for key in ("id", "label", "state", "tier", "age_days",
+                    "max_age_days", "attribution", "fetched", "error",
+                    "last_success", "backoff_active"):
+            self.assertIn(key, row)
+
+
+if __name__ == "__main__":
+    unittest.main()
