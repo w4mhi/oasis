@@ -23,6 +23,7 @@ import time
 from collections import namedtuple
 
 from common import config_paths, freshness as F
+from common import repeaterbook as RB
 from common.atomic_json import read_json, write_json
 
 Source = namedtuple("Source", ["id", "label", "max_age_days", "tier",
@@ -313,6 +314,54 @@ def fetch_fcc(repo_root, cfg):
                        timeout=3600)
 
 
+# ── RepeaterBook: the full US book, a few states per pass ────────────────────
+# Small batch so the first full build spreads across passes instead of bursting
+# 51 requests at a rate limit whose thresholds are deliberately unpublished.
+RB_STATES_PER_PASS = 4
+
+
+def probe_repeaterbook(repo_root):
+    """Age of the OLDEST state file, so one stale state keeps the whole source
+    stale until the book catches up.
+
+    Returns None while the book is incomplete, which reads as MISSING rather
+    than merely stale — a half-downloaded country is not a usable directory.
+    """
+    idx = RB.read_index(repo_root)
+    if len(idx) < len(RB.STATES):
+        return None
+    stamps = [float(v.get("fetched_at") or 0) for v in idx.values()]
+    return min(stamps) if stamps else None
+
+
+def fetch_repeaterbook(repo_root, cfg):
+    """Fetch the next few due states. True if any landed.
+
+    One bad state must not fail the rest, but a rejected token or a 429 stops
+    the whole run: neither will fix itself by trying the next state, and
+    hammering a rate limiter is exactly what their terms forbid.
+    """
+    token = (cfg.get("repeaterbook_token") or "").strip()
+    if not token:
+        return False
+    todo = RB.next_states(repo_root, time.time(),
+                          max_age_for(cfg, _by_id("repeaterbook")),
+                          RB_STATES_PER_PASS)
+    if not todo:
+        return True
+    wrote = 0
+    for state in todo:
+        try:
+            records = RB.fetch_state(token, state)
+            RB.write_state_file(repo_root, state, records)
+            wrote += 1
+        except (RB.RateLimited, RB.AuthRejected):
+            break
+        except Exception:
+            continue
+    return wrote > 0
+
+
 def _not_implemented(*_a, **_kw):
     raise NotImplementedError("adapter wired in a later task")
 
@@ -330,6 +379,6 @@ REGISTRY = [
            attribution="Data from the FCC ULS."),
     Source(id="repeaterbook", label="RepeaterBook directory",
            max_age_days=180.0, tier="large", credential="repeaterbook_token",
-           probe=_not_implemented, fetch=_not_implemented,
+           probe=probe_repeaterbook, fetch=fetch_repeaterbook,
            attribution="Data courtesy of RepeaterBook.com"),
 ]
