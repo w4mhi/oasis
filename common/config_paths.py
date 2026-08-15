@@ -50,3 +50,9 @@ def speech_voices_dir(repo_root):
 
 def speech_cache_dir(repo_root):
     return os.path.join(speech_dir(repo_root), "cache")
+
+def refresh_state_json(repo_root):
+    return os.path.join(config_dir(repo_root), "refresh-state.json")
+
+def repeaterbook_dir(repo_root):
+    return os.path.join(repo_root, "static", "repeaterbook", "data")

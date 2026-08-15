@@ -37,3 +37,11 @@ zim/
 configuration/installed-services.json
 EN.dat
 HD.dat
+
+# ── operator data: never travels in a bundle ──
+# station.json holds the callsign, grid, and API tokens. The bundler ships
+# configuration/station.json.example as station.json instead (phase_station_
+# template), so a bundle teaches where config lives without carrying anyone's.
+configuration/station.json
+configuration/refresh-state.json
+static/repeaterbook/*.csv

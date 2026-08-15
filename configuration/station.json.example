@@ -1,0 +1,36 @@
+{
+  "_comment": "OASIS station configuration TEMPLATE. Copy to station.json and fill in your own values. station.json is gitignored and is never copied into an offline bundle; this template is what bundles ship instead, so no operator's callsign, grid, or tokens ever travel with a build. Keys prefixed with _ are documentation and are ignored by the loader.",
+
+  "_callsign": "Your amateur radio callsign. Seeds the ICS forms, APRS object names, and the station identity pill.",
+  "callsign": "",
+
+  "_grid": "Your Maidenhead grid square, 4 or 6 characters (e.g. CN87XN). Seeds satellite pass prediction and grid/bearing.",
+  "grid": "",
+
+  "_lat_lon": "Decimal degrees. More precise than the grid square; used for pass prediction and map centring. Leave at 0 to derive from the grid.",
+  "lat": 0,
+  "lon": 0,
+
+  "_updated": "ISO 8601 UTC timestamp of the last edit. Maintained by the server; no need to set it by hand.",
+  "updated": "",
+
+  "_aprs_freq": "Local APRS frequency. 144.390M in North America, 144.800M in most of Europe.",
+  "aprs_freq": "144.390M",
+
+  "_min_elev": "Minimum pass elevation in degrees. Passes peaking below this are hidden. Raise it if terrain or buildings block your low horizon.",
+  "min_elev": 10,
+
+  "_repeaterbook_token": "RepeaterBook distributed-app token (rbuapp_...), generated per user at https://www.repeaterbook.com/api/token_request.php. Enables automatic refresh of the repeater directory. Leave empty to disable: the RepeaterBook row then reports as unconfigured rather than failing. NEVER share this file once filled in.",
+  "repeaterbook_token": "",
+
+  "_ublox_token": "u-blox / Thingstream AssistNow token. NOT auto-refreshed: the AssistNow Online/Offline service reached end-of-support on 31 May 2026, and it only ever applied to u-blox receivers (the Waveshare L76X HAT is a Quectel L76, which cannot use it). Kept only for the manual features/gps/install-gps.py --assist-now path. For a fast cold fix, pair GPS with a hardware RTC instead. The OASIS_UBLOX_TOKEN environment variable also still works.",
+  "ublox_token": "",
+
+  "_max_age_days": "Optional per-source staleness thresholds for the auto-update loop, in days. Omit the block entirely to use the defaults shown here.",
+  "max_age_days": {
+    "tle": 3,
+    "satnogs": 30,
+    "fcc": 14,
+    "repeaterbook": 180
+  }
+}

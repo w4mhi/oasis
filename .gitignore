@@ -157,3 +157,11 @@ features/speech/packages/
 # than left to discipline. Regenerate the asset after editing:
 #   python3 -c "import base64,sys;sys.stdout.write(base64.b64encode(open('configuration/ee.md','rb').read()).decode())" > oasis-dashboard/jenny.spk
 configuration/ee.md
+
+# Auto-update runtime state: per-source last attempt/success/error counters.
+# Rebuilt on demand; never meaningful on another box.
+configuration/refresh-state.json
+
+# RepeaterBook per-state JSON, fetched with the OPERATOR'S OWN API token.
+# Not redistributable — never commit, never hand to another operator.
+static/repeaterbook/data/
