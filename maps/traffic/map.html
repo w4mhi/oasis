@@ -2253,6 +2253,7 @@ function applyFilter() {
   const filtered = allStations.filter(pred);
   plotStations(filtered);                 // map plots APRS stations only
   _renderDrawer(pred, filtered);          // drawer mirrors the map + aircraft
+  updateRecentPanel(pred);                // and so does the recent-heard card
   if (coverageOn) _refreshCoverage(filtered);
   // Keep the path overlay consistent with the visible set: auto-path redraws
   // (now filter-aware), and a manually-shown path clears if its station is now
@@ -2352,12 +2353,9 @@ async function fetchStations() {
       if (!best || s.last_heard > best.last_heard) return s;
       return best;
     }, null);
-    const _nowMs = Date.now();
-    const newList = allStations.filter(s => {
-      if (!s.last_heard || s.lat == null || s.lon == null) return false;
-      return (_nowMs - new Date(s.last_heard).getTime()) / 1000 <= RECENT_MAX_AGE_SEC;
-    });
-    updateRecentPanel(newList);
+    // The recent-heard card is painted by applyFilter() below, so it goes through
+    // the same predicate the map plots with (see updateRecentPanel). Its cycle
+    // window is anchored to _aprsFetchedAtMs, set above.
     updateObjectsPanel();
     refreshTypeColFilter();      // rebuild the drawer Type dropdown options
     refreshGridColFilter();      // rebuild the drawer Grid dropdown options
@@ -2479,6 +2477,7 @@ let _adsbRecentHours = 24;   // window last fetched; Feature 3 refetches when it
 // objects-panel's aircraft/heli checkboxes — called on every poll AND
 // whenever those checkboxes change (no need to re-fetch for a filter toggle).
 function applyAdsbFilter() {
+  updateAdsbPanel();          // the card reads the same gates — repaint it here
   const src = map.getSource('adsb');
   if (!src) return;
   const feats = (showADSB ? _adsbAircraft : [])
@@ -2625,9 +2624,8 @@ async function refreshAdsb() {
     _adsbAircraft = (j.ok && Array.isArray(j.aircraft)) ? j.aircraft : [];
     _adsbNow = Date.now() / 1000;
     _adsbFetchedAtMs = Date.now();
-    applyAdsbFilter();
+    applyAdsbFilter();      // markers + the aircraft card (it repaints them both)
     _adsbTrailUpdate();     // grow live trails + start fades for aircraft gone silent
-    updateAdsbPanel();
     updateAdsbAlertsPanel(); // distance-banded nearby-aircraft alert card
     updateObjectsPanel();   // aircraft/heli counts in "APRS info" track this poll too
     _renderDrawer();        // aircraft rows in the station-list drawer track this poll
@@ -2745,10 +2743,18 @@ function updateAdsbAlertsPanel() {
 function updateAdsbPanel() {
   const count = document.getElementById('adsb-count');
   const body  = document.getElementById('adsb-body');
-  const withPos = _adsbAircraft.filter(a => a.lat != null && a.lon != null);
+  // Same three gates applyAdsbFilter puts on the markers — pill, position, object
+  // category — so the card cannot list an aircraft the map is hiding. This was
+  // the ADS-B half of the recent-heard card's bug: the pill emptied the map and
+  // left the card full.
+  const withPos = (showADSB ? _adsbAircraft : [])
+    .filter(a => a.lat != null && a.lon != null)
+    .filter(a => objCatState[adsbCategoryKey(a)] !== false);
   count.textContent = 'ADS-B ' + withPos.length + ' aircraft';
   if (!withPos.length) {
-    body.innerHTML = '<div style="padding:6px 10px;color:var(--text-dim)">None this cycle</div>';
+    const heard = _adsbAircraft.filter(a => a.lat != null && a.lon != null).length;
+    const msg = heard ? heard + ' hidden by the filters' : 'None this cycle';
+    body.innerHTML = '<div style="padding:6px 10px;color:var(--text-dim)">' + msg + '</div>';
     return;
   }
   const sorted = [...withPos].sort((a, b) =>
@@ -3452,7 +3458,7 @@ function fmtAge(sec) {
 // the operator's manual collapse (don't re-open every cycle), and never auto-
 // collapse when a later cycle hears nothing.
 let _recentAutoExpanded = false, _adsbAutoExpanded = false;
-function updateRecentPanel(newStations) {
+function updateRecentPanel(pred) {
   const count = document.getElementById('recent-count');
   const body  = document.getElementById('recent-body');
   // "plotted", not "heard": this panel counts only stations that carry a
@@ -3460,9 +3466,23 @@ function updateRecentPanel(newStations) {
   // The drawer's source breakdown counts every station heard on each transport
   // — including status/message/telemetry with no fix — over a slightly wider
   // window, so the two numbers legitimately differ and used to look wrong.
+  //
+  // "plotted" is now literal: the SAME predicate the map plots with runs here,
+  // so switching IS (or RF, or any drawer filter) off removes those stations
+  // from the card as well. It used to filter only the map, leaving the card —
+  // the very thing the RF/IS chips sit on — still listing what had just been
+  // hidden. Anchored to the fetch instant so a repaint can't shrink the window.
+  const opts = { now: _aprsFetchedAtMs, windowSec: RECENT_MAX_AGE_SEC,
+                 pred: pred || _columnFilterPredicate() };
+  const newStations = OasisTrafficList.plottedRecent(allStations, opts);
   count.textContent = 'APRS ' + newStations.length + ' plotted';
   if (!newStations.length) {
-    body.innerHTML = '<div style="padding:6px 10px;color:var(--text-dim)">None this cycle</div>';
+    // Distinguish "nothing arrived" from "your own filter hid it" — otherwise a
+    // narrowed view reads as a dead receiver.
+    const heard = OasisTrafficList.plottedRecent(allStations,
+      { now: opts.now, windowSec: opts.windowSec }).length;
+    const msg = heard ? heard + ' hidden by the filters' : 'None this cycle';
+    body.innerHTML = '<div style="padding:6px 10px;color:var(--text-dim)">' + msg + '</div>';
     return;
   }
   // Sort newest first

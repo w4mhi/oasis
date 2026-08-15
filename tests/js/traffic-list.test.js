@@ -457,3 +457,48 @@ test('lastHeardEpoch: a space-separated value never takes the fast path', () => 
   const v = T.lastHeardEpoch('2026-08-08 03:09:56Z');
   assert.ok(v > 0 && !isNaN(v));
 });
+
+// ── plottedRecent: the map's "APRS N plotted" card ───────────────────────────
+// The card sits under the RF/IS chips and used to build its own list straight
+// from the station array — position + age only. The chips gated the MAP but not
+// the card, so an IS station stayed listed (blue "IS" tag and all) after IS was
+// switched off. The predicate is now an input, so card and map cannot disagree.
+test('plottedRecent: position + cycle window, and it obeys the map predicate', () => {
+  const now = Date.parse('2026-08-15T12:00:00Z');
+  const at = ms => new Date(now - ms).toISOString();
+  const rows = [
+    { callsign: 'RF-NOW',  via: 'rf', lat: 1, lon: 2, last_heard: at(5000) },
+    { callsign: 'IS-NOW',  via: 'is', lat: 1, lon: 2, last_heard: at(5000) },
+    { callsign: 'NO-FIX',  via: 'rf', lat: null, lon: null, last_heard: at(5000) },
+    { callsign: 'RF-OLD',  via: 'rf', lat: 1, lon: 2, last_heard: at(90000) },
+    { callsign: 'NO-TIME', via: 'rf', lat: 1, lon: 2 }
+  ];
+  const opts = { now, windowSec: 30 };
+  // No predicate: position + heard-this-cycle only.
+  assert.deepStrictEqual(
+    T.plottedRecent(rows, opts).map(r => r.callsign), ['RF-NOW', 'IS-NOW']);
+  // IS switched off on the map -> the card must drop IS-NOW too.
+  const rfOnly = T.filters.sources(['rf']);
+  assert.deepStrictEqual(
+    T.plottedRecent(rows, Object.assign({ pred: rfOnly }, opts)).map(r => r.callsign),
+    ['RF-NOW']);
+  // A predicate that rejects everything empties the card rather than throwing.
+  assert.deepStrictEqual(T.plottedRecent(rows, Object.assign({ pred: () => false }, opts)), []);
+  // Junk in must not throw — this runs on every repaint.
+  assert.deepStrictEqual(T.plottedRecent(null, opts), []);
+  assert.deepStrictEqual(T.plottedRecent([null, undefined], opts), []);
+});
+
+// `now` is the FETCH instant, not render-time wall clock: the card repaints on
+// every filter toggle, and a moving clock over a fixed snapshot would empty it
+// a few seconds after the poll for no reason at all.
+test('plottedRecent: the window is anchored to the snapshot, not to render time', () => {
+  const fetchedAt = Date.parse('2026-08-15T12:00:00Z');
+  const rows = [{ callsign: 'RF', via: 'rf', lat: 1, lon: 2,
+                  last_heard: new Date(fetchedAt - 8000).toISOString() }];
+  assert.strictEqual(T.plottedRecent(rows, { now: fetchedAt, windowSec: 15 }).length, 1);
+  // Same data, "rendered" a minute later — still one row, because `now` is fixed.
+  assert.strictEqual(T.plottedRecent(rows, { now: fetchedAt, windowSec: 15 }).length, 1);
+  // But a caller that anchors to a later clock legitimately drops it.
+  assert.strictEqual(T.plottedRecent(rows, { now: fetchedAt + 60000, windowSec: 15 }).length, 0);
+});

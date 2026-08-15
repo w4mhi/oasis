@@ -306,6 +306,32 @@
     return function (s) { return selected.indexOf(sourceKey(s)) !== -1; };
   }
 
+  // ── "Plotted this cycle" ───────────────────────────────────────────────────
+  // The map's recent-heard card: stations that carry a POSITION and were heard
+  // within `windowSec` of the snapshot instant — and that survive the page's map
+  // filter `pred`. The predicate is an argument because the card lives directly
+  // under the RF/IS chips: when a source is switched off the map stops plotting
+  // it, so a card that still listed it was contradicting the map it belongs to.
+  //
+  // `now` must be the FETCH instant, not render-time wall clock — the card
+  // repaints on every filter toggle, and a moving clock over a fixed station
+  // snapshot would drain it seconds after the poll with no new data involved.
+  function plottedRecent(stations, opts) {
+    opts = opts || {};
+    var now = opts.now || Date.now();
+    var windowSec = opts.windowSec || 20;
+    var pred = opts.pred;
+    var out = [];
+    (stations || []).forEach(function (s) {
+      if (!s || s.lat == null || s.lon == null) return;
+      var t = lastHeardEpoch(s.last_heard);
+      if (!t || (now - t) / 1000 > windowSec) return;
+      if (pred && !pred(s)) return;
+      out.push(s);
+    });
+    return out;
+  }
+
   // Compose: every predicate must pass. Nulls are ignored so a page can build
   // its list conditionally without filtering them out first.
   function fAll() {
@@ -381,6 +407,7 @@
     isUnlocated: isUnlocated,
     EMERGENCY_SQUAWKS: EMERGENCY_SQUAWKS,
     sourceBreakdown: sourceBreakdown,
+    plottedRecent: plottedRecent,
     filters: { age: fAge, callsign: fCallsign, grid: fGrid, sources: fSources, all: fAll }
   };
 });
