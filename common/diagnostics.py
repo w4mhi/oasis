@@ -55,7 +55,7 @@ REGISTRY: list = []
 # Constants
 # ---------------------------------------------------------------------------
 
-GROUP_ORDER = ["CORE", "HARDWARE", "SERVICES", "SYSTEM", "DATA"]
+GROUP_ORDER = ["CORE", "HARDWARE", "SERVICES", "SYSTEM", "DATA", "UPDATES"]
 
 # Capability -> member checks (v1). Used to render capability tiles and to
 # know which capability a check id "belongs" to when building the rollup.
@@ -84,6 +84,11 @@ CAPABILITIES = {
     "REFERENCE": {
         "label": "Reference Data",
         "members": ["fcc", "repeaterbook", "kiwix", "forms", "maps"],
+    },
+    "UPDATES": {
+        "label": "Data Updates",
+        "members": ["update_tle", "update_satnogs", "update_fcc",
+                    "update_repeaterbook"],
     },
 }
 
@@ -1294,10 +1299,114 @@ def check_forms(ctx):
 
 
 # ---------------------------------------------------------------------------
+# UPDATES section
+# ---------------------------------------------------------------------------
+# Its own group rather than rows buried in DATA, because the operator question
+# is not "is this check green" but WHAT IS OUT OF DATE, WHEN DID IT LAST UPDATE,
+# and WHAT MUST I DO ABOUT IT. The action sentence is the point: a section that
+# only says "stale" leaves the operator guessing whether to plug in a cable,
+# find a token, or simply wait.
+
+_UPDATE_STATUS = {
+    "fresh": "ok",
+    "stale": "warn",
+    "deferred": "warn",
+    "missing": "fail",
+    "unconfigured": "ok",   # switched off is not broken
+}
+
+_UPDATE_BADGE = {
+    "fresh": "CURRENT",
+    "stale": "STALE",
+    "deferred": "WAITING",
+    "missing": "MISSING",
+    "unconfigured": "OFF",
+}
+
+_TOKEN_KEY = {"repeaterbook": "repeaterbook_token"}
+
+
+def _update_status(state):
+    return _UPDATE_STATUS.get(state, "warn")
+
+
+def _update_action(state, source_id):
+    """The plain-language thing the operator must do. Never empty."""
+    if state == "fresh":
+        return "Nothing to do."
+    if state in ("stale", "missing"):
+        return ("Needs an internet connection. It will download by itself the "
+                "next time the station is online.")
+    if state == "deferred":
+        return ("Large download held back because this connection looks "
+                "metered. Press Update now to download anyway.")
+    if state == "unconfigured":
+        key = _TOKEN_KEY.get(source_id, "token")
+        return (f'Switched off: no API token. Add "{key}" to '
+                f"configuration/station.json to enable automatic updates.")
+    return "Needs an internet connection."
+
+
+def _update_detail(row):
+    """What was updated, and when — an actual date, not just an age."""
+    last = row.get("last_success")
+    age = row.get("age_days")
+    if not last and age is None:
+        return "Never downloaded."
+    if last:
+        when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(last))
+        if age is None:
+            return f"Last updated {when}."
+        return f"Last updated {when} ({age:.1f} days ago)."
+    return f"On disk, {age:.1f} days old (not yet updated by this station)."
+
+
+def _update_check(source_id):
+    """One Check per auto-update source, built from a dry-run pass."""
+    def _fn(ctx, sid=source_id):
+        from common import refresh as _R
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        try:
+            result = _R.run_pass(repo, now=time.time(),
+                                 metered=_R.is_metered(), only=[sid],
+                                 dry_run=True)
+            row = result["sources"][0]
+        except Exception as exc:
+            return _result(f"update_{sid}", "UPDATES", sid, "warn", "ERROR",
+                           f"Could not read update state: {exc}")
+        state = row["state"]
+        status = _update_status(state)
+        return _result(
+            f"update_{sid}", "UPDATES", row["label"], status,
+            _UPDATE_BADGE.get(state, "?"),
+            f"{_update_detail(row)} {_update_action(state, sid)}",
+            breaks=("This dataset has never been downloaded"
+                    if status == "fail" else None),
+            fix=("/system/diagnostics.html#updates"
+                 if status in ("warn", "fail") else None))
+    return _fn
+
+
+# ---------------------------------------------------------------------------
 # Registry: real checks
 # ---------------------------------------------------------------------------
 
 REGISTRY.extend([
+    Check(id="update_tle", group="UPDATES",
+          label="Satellite TLEs (CelesTrak)",
+          capability="UPDATES", critical=False, tier="v1",
+          fn=_update_check("tle")),
+    Check(id="update_satnogs", group="UPDATES",
+          label="Satellite transmitters (SatNOGS)",
+          capability="UPDATES", critical=False, tier="v1",
+          fn=_update_check("satnogs")),
+    Check(id="update_fcc", group="UPDATES", label="FCC callsign database",
+          capability="UPDATES", critical=False, tier="v1",
+          fn=_update_check("fcc")),
+    Check(id="update_repeaterbook", group="UPDATES",
+          label="RepeaterBook directory",
+          capability="UPDATES", critical=False, tier="v1",
+          fn=_update_check("repeaterbook")),
     Check(id="server", group="CORE", label="OASIS Server",
           capability="ACCESS", critical=True, tier="v1", fn=check_server),
     Check(id="disk", group="SYSTEM", label="Disk Space",

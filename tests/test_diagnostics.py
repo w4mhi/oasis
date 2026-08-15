@@ -1051,3 +1051,95 @@ class TestDataAgeEnrichment(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestUpdatesSection(unittest.TestCase):
+    """The Data Updates section: what/when updated, what is missing, and the
+    action the operator must take."""
+
+    def test_updates_is_its_own_group(self):
+        self.assertIn("UPDATES", D.GROUP_ORDER)
+
+    def test_updates_capability_lists_every_source(self):
+        from common import refresh as R
+        members = set(D.CAPABILITIES["UPDATES"]["members"])
+        for src in R.REGISTRY:
+            self.assertIn(f"update_{src.id}", members, src.id)
+
+    def test_one_check_per_source_in_updates_group(self):
+        from common import refresh as R
+        by_id = {c.id: c for c in D.REGISTRY}
+        for src in R.REGISTRY:
+            chk = by_id.get(f"update_{src.id}")
+            self.assertIsNotNone(chk, src.id)
+            self.assertEqual(chk.group, "UPDATES")
+            self.assertEqual(chk.capability, "UPDATES")
+
+    def test_status_values_are_legal(self):
+        # Only ok / warn / fail exist — there is no skip.
+        for state in ("fresh", "stale", "deferred", "missing",
+                      "unconfigured"):
+            self.assertIn(D._update_status(state), ("ok", "warn", "fail"))
+
+    def test_fresh_is_ok(self):
+        self.assertEqual(D._update_status("fresh"), "ok")
+
+    def test_stale_and_deferred_are_warnings(self):
+        self.assertEqual(D._update_status("stale"), "warn")
+        self.assertEqual(D._update_status("deferred"), "warn")
+
+    def test_missing_is_a_failure(self):
+        self.assertEqual(D._update_status("missing"), "fail")
+
+    def test_unconfigured_is_ok_not_a_failure(self):
+        # A source with no token is switched OFF. A red row would train the
+        # operator to ignore the whole page.
+        self.assertEqual(D._update_status("unconfigured"), "ok")
+
+    def test_every_state_yields_an_action_sentence(self):
+        for state in ("fresh", "stale", "deferred", "missing",
+                      "unconfigured"):
+            action = D._update_action(state, "fcc")
+            self.assertTrue(action, state)
+
+    def test_stale_action_names_the_internet(self):
+        self.assertIn("internet", D._update_action("stale", "tle").lower())
+
+    def test_missing_action_names_the_internet(self):
+        self.assertIn("internet", D._update_action("missing", "fcc").lower())
+
+    def test_deferred_action_tells_you_to_tap(self):
+        self.assertIn("update now",
+                      D._update_action("deferred", "fcc").lower())
+
+    def test_unconfigured_action_names_the_token_and_the_file(self):
+        action = D._update_action("unconfigured", "repeaterbook").lower()
+        self.assertIn("repeaterbook_token", action)
+        self.assertIn("station.json", action)
+
+    def test_fresh_action_requires_nothing(self):
+        self.assertIn("nothing", D._update_action("fresh", "tle").lower())
+
+    def test_detail_reports_when_it_was_updated(self):
+        detail = D._update_detail({"state": "fresh", "age_days": 1.0,
+                                   "last_success": 1755000000.0})
+        self.assertIn("2025", detail)      # an actual date, not just an age
+        self.assertIn("1.0 days ago", detail)
+
+    def test_detail_says_never_when_absent(self):
+        detail = D._update_detail({"state": "missing", "age_days": None,
+                                   "last_success": None})
+        self.assertIn("never", detail.lower())
+
+    def test_detail_handles_data_present_but_never_self_updated(self):
+        # Seeded from a bundle: on disk, but this station has not refreshed it.
+        detail = D._update_detail({"state": "fresh", "age_days": 4.0,
+                                   "last_success": None})
+        self.assertIn("4.0 days old", detail)
+
+    def test_check_runs_and_returns_a_legal_result(self):
+        chk = {c.id: c for c in D.REGISTRY}["update_tle"]
+        res = chk.fn(_CTX)
+        self.assertEqual(res["group"], "UPDATES")
+        self.assertIn(res["status"], ("ok", "warn", "fail"))
+        self.assertTrue(res["detail"])
