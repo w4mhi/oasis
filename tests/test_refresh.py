@@ -324,5 +324,89 @@ class TestRosterAdapter(_Tmp):
         self.assertIs(R._by_id("tle").fetch, R._by_id("satnogs").fetch)
 
 
+class TestMetered(unittest.TestCase):
+    def _nm(self, out, rc=0):
+        from unittest import mock
+        return mock.patch.object(
+            R.subprocess, "run",
+            return_value=mock.Mock(returncode=rc, stdout=out, stderr=""))
+
+    def test_definitely_unmetered_is_false(self):
+        with self._nm("GENERAL.METERED:no (4)\n"):
+            self.assertFalse(R.is_metered())
+
+    def test_guess_no_is_unmetered(self):
+        with self._nm("GENERAL.METERED:no (guessed) (2)\n"):
+            self.assertFalse(R.is_metered())
+
+    def test_definitely_metered_is_true(self):
+        with self._nm("GENERAL.METERED:yes (1)\n"):
+            self.assertTrue(R.is_metered())
+
+    def test_guess_yes_is_metered(self):
+        with self._nm("GENERAL.METERED:yes (guessed) (3)\n"):
+            self.assertTrue(R.is_metered())
+
+    def test_unknown_fails_closed(self):
+        # Unknown is the COMMON answer on a phone hotspot, not an edge case.
+        with self._nm("GENERAL.METERED:unknown (0)\n"):
+            self.assertTrue(R.is_metered())
+
+    def test_empty_output_fails_closed(self):
+        with self._nm("\n"):
+            self.assertTrue(R.is_metered())
+
+    def test_nmcli_absent_fails_closed(self):
+        # No nmcli at all on macOS/Windows portable mode.
+        from unittest import mock
+        with mock.patch.object(R.subprocess, "run",
+                               side_effect=FileNotFoundError):
+            self.assertTrue(R.is_metered())
+
+    def test_nmcli_error_fails_closed(self):
+        with self._nm("", rc=1):
+            self.assertTrue(R.is_metered())
+
+    def test_nmcli_timeout_fails_closed(self):
+        from unittest import mock
+        with mock.patch.object(
+                R.subprocess, "run",
+                side_effect=R.subprocess.TimeoutExpired("nmcli", 5)):
+            self.assertTrue(R.is_metered())
+
+
+class TestFccAdapter(_Tmp):
+    def test_refuses_when_disk_too_small(self):
+        from unittest import mock
+        with mock.patch.object(R, "free_bytes", return_value=1024):
+            with mock.patch.object(R.subprocess, "run") as run:
+                self.assertFalse(R.fetch_fcc(self.d, {}))
+                run.assert_not_called()
+
+    def test_runs_installer_when_disk_ok(self):
+        from unittest import mock
+        with mock.patch.object(R, "free_bytes",
+                               return_value=R.FCC_REQUIRED_BYTES * 2):
+            with mock.patch.object(R.subprocess, "run") as run:
+                run.return_value = mock.Mock(returncode=0, stderr="")
+                self.assertTrue(R.fetch_fcc(self.d, {}))
+
+    def test_free_bytes_walks_up_to_an_existing_parent(self):
+        deep = os.path.join(self.d, "does", "not", "exist", "yet")
+        self.assertGreater(R.free_bytes(deep), 0)
+
+    def test_probe_fcc_none_when_absent(self):
+        self.assertIsNone(R.probe_fcc(self.d))
+
+    def test_probe_fcc_reads_en_dat(self):
+        d = os.path.join(self.d, "services", "fcc_database", "data")
+        os.makedirs(d, exist_ok=True)
+        p = os.path.join(d, "EN.dat")
+        with open(p, "w") as fh:
+            fh.write("x")
+        os.utime(p, (4242, 4242))
+        self.assertEqual(R.probe_fcc(self.d), 4242)
+
+
 if __name__ == "__main__":
     unittest.main()

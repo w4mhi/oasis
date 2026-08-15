@@ -244,6 +244,75 @@ def fetch_roster(repo_root, cfg):
                                    "build-roster.py"), timeout=300)
 
 
+# ── metered link detection ───────────────────────────────────────────────────
+def is_metered():
+    """True if large downloads must be deferred to an operator tap.
+
+    FAILS CLOSED, deliberately. nmcli reports yes / no / guess-yes / guess-no /
+    unknown, and unknown is the common answer for exactly the phone hotspots
+    that matter most — plus nmcli does not exist at all in portable mode on
+    macOS or Windows. Only a definite "no" unlocks a large download, so an
+    undetected hotspot can never cost 160 MB of someone's data plan.
+
+    NOT YET MEASURED on real hardware: if a Pi on an Android and an iPhone
+    hotspot both report "unknown", this check is decorative and the honest
+    description of the feature is "large downloads are always one-tap".
+    """
+    try:
+        proc = subprocess.run(
+            ["nmcli", "-t", "-f", "GENERAL.METERED", "general"],
+            capture_output=True, text=True, timeout=5)
+    except Exception:
+        return True
+    if proc.returncode != 0:
+        return True
+    text = (proc.stdout or "").strip().lower()
+    if not text:
+        return True
+    value = text.split(":", 1)[-1].strip()
+    # "no (4)" and "no (guessed) (2)" are the only unmetered answers.
+    return not value.startswith("no")
+
+
+# ── FCC callsign database ────────────────────────────────────────────────────
+# The ULS dump is ~160 MB, plus room to extract and index it. Refuse rather than
+# half-fill an SD card and take the whole station down.
+FCC_REQUIRED_BYTES = 600 * 1024 * 1024
+
+
+def free_bytes(path):
+    """Free bytes on the filesystem that would hold `path`.
+
+    Walks up to the nearest existing parent, since the target directory may not
+    exist yet on a fresh install.
+    """
+    while not os.path.exists(path):
+        parent = os.path.dirname(path)
+        if parent == path:
+            return 0
+        path = parent
+    return shutil.disk_usage(path).free
+
+
+def probe_fcc(repo_root):
+    return _newest_mtime(os.path.join(repo_root, "services", "fcc_database",
+                                      "data", "EN.dat"))
+
+
+def fetch_fcc(repo_root, cfg):
+    """Re-run the FCC installer, which re-downloads and re-indexes.
+
+    The installer writes the new files itself, so a failed run leaves the
+    existing database in place and queryable — losing callsign lookup in the
+    field because a hotspot dropped mid-download is the worst outcome available.
+    """
+    data_dir = os.path.join(repo_root, "services", "fcc_database", "data")
+    if free_bytes(data_dir) < FCC_REQUIRED_BYTES:
+        return False
+    return _run_script(repo_root, ("services", "fcc_database", "install.py"),
+                       timeout=3600)
+
+
 def _not_implemented(*_a, **_kw):
     raise NotImplementedError("adapter wired in a later task")
 
@@ -257,8 +326,8 @@ REGISTRY = [
            probe=probe_satnogs, fetch=fetch_roster,
            attribution="Transmitter data from SatNOGS (CC BY-SA)."),
     Source(id="fcc", label="FCC callsign database", max_age_days=14.0,
-           tier="large", credential=None, probe=_not_implemented,
-           fetch=_not_implemented, attribution="Data from the FCC ULS."),
+           tier="large", credential=None, probe=probe_fcc, fetch=fetch_fcc,
+           attribution="Data from the FCC ULS."),
     Source(id="repeaterbook", label="RepeaterBook directory",
            max_age_days=180.0, tier="large", credential="repeaterbook_token",
            probe=_not_implemented, fetch=_not_implemented,
