@@ -1112,10 +1112,12 @@ class TestUpdatesSection(unittest.TestCase):
         self.assertIn("update now",
                       D._update_action("deferred", "fcc").lower())
 
-    def test_unconfigured_action_names_the_token_and_the_file(self):
-        action = D._update_action("unconfigured", "repeaterbook").lower()
-        self.assertIn("repeaterbook_token", action)
-        self.assertIn("station.json", action)
+    def test_manual_source_says_export_it_yourself(self):
+        # OASIS never downloads RepeaterBook, so "needs an internet
+        # connection" would be a lie that leaves the operator waiting.
+        action = D._update_action("stale", "repeaterbook", manual=True).lower()
+        self.assertIn("chirp", action)
+        self.assertNotIn("will download by itself", action)
 
     def test_fresh_action_requires_nothing(self):
         self.assertIn("nothing", D._update_action("fresh", "tle").lower())
@@ -1143,3 +1145,17 @@ class TestUpdatesSection(unittest.TestCase):
         self.assertEqual(res["group"], "UPDATES")
         self.assertIn(res["status"], ("ok", "warn", "fail"))
         self.assertTrue(res["detail"])
+
+    def test_manual_detail_does_not_imply_a_future_download(self):
+        # "not yet updated by this station" would be a lie for a source OASIS
+        # never fetches.
+        d = D._update_detail({"state": "fresh", "age_days": 56.4,
+                              "last_success": None, "manual": True})
+        self.assertIn("56.4 days old", d)
+        self.assertNotIn("not yet", d)
+
+    def test_manual_missing_says_not_present(self):
+        d = D._update_detail({"state": "missing", "age_days": None,
+                              "last_success": None, "manual": True})
+        self.assertIn("not present", d.lower())
+        self.assertNotIn("download", d.lower())

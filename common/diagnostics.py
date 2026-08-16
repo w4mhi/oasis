@@ -1323,17 +1323,27 @@ _UPDATE_BADGE = {
     "unconfigured": "OFF",
 }
 
-_TOKEN_KEY = {"repeaterbook": "repeaterbook_token"}
+# No shipped source needs a credential today. Kept generic so a future
+# credentialed source names its own key here.
+_TOKEN_KEY = {}
 
 
 def _update_status(state):
     return _UPDATE_STATUS.get(state, "warn")
 
 
-def _update_action(state, source_id):
-    """The plain-language thing the operator must do. Never empty."""
+def _update_action(state, source_id, manual=False):
+    """The plain-language thing the operator must do. Never empty.
+
+    *manual* marks a source OASIS reports on but never fetches, so the action
+    is "go export it yourself" rather than "wait for the internet".
+    """
     if state == "fresh":
         return "Nothing to do."
+    if manual:
+        return ("OASIS does not download this. Export a CSV from "
+                "repeaterbook.com or CHIRP and put it in "
+                "static/repeaterbook/.")
     if state in ("stale", "missing"):
         return ("Needs an internet connection. It will download by itself the "
                 "next time the station is online.")
@@ -1351,13 +1361,18 @@ def _update_detail(row):
     """What was updated, and when — an actual date, not just an age."""
     last = row.get("last_success")
     age = row.get("age_days")
+    manual = row.get("manual", False)
     if not last and age is None:
-        return "Never downloaded."
+        return "Not present." if manual else "Never downloaded."
     if last:
         when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(last))
         if age is None:
             return f"Last updated {when}."
         return f"Last updated {when} ({age:.1f} days ago)."
+    if manual:
+        # "not yet updated by this station" would imply it eventually will be.
+        # OASIS never fetches a manual source, so say only what is true.
+        return f"Your copy is {age:.1f} days old."
     return f"On disk, {age:.1f} days old (not yet updated by this station)."
 
 
@@ -1379,7 +1394,8 @@ def _update_check(source_id):
         return _result(
             f"update_{sid}", "UPDATES", row["label"], status,
             _UPDATE_BADGE.get(state, "?"),
-            f"{_update_detail(row)} {_update_action(state, sid)}",
+            f"{_update_detail(row)} "
+            f"{_update_action(state, sid, manual=row.get('manual', False))}",
             breaks=("This dataset has never been downloaded"
                     if status == "fail" else None),
             fix=("/system/diagnostics.html#updates"

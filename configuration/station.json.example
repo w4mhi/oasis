@@ -20,9 +20,6 @@
   "_min_elev": "Minimum pass elevation in degrees. Passes peaking below this are hidden. Raise it if terrain or buildings block your low horizon.",
   "min_elev": 10,
 
-  "_repeaterbook_token": "RepeaterBook distributed-app token (rbuapp_...), generated per user at https://www.repeaterbook.com/api/token_request.php. Enables automatic refresh of the repeater directory. Leave empty to disable: the RepeaterBook row then reports as unconfigured rather than failing. NEVER share this file once filled in.",
-  "repeaterbook_token": "",
-
   "_ublox_token": "u-blox / Thingstream AssistNow token. NOT auto-refreshed: the AssistNow Online/Offline service reached end-of-support on 31 May 2026, and it only ever applied to u-blox receivers (the Waveshare L76X HAT is a Quectel L76, which cannot use it). Kept only for the manual features/gps/install-gps.py --assist-now path. For a fast cold fix, pair GPS with a hardware RTC instead. The OASIS_UBLOX_TOKEN environment variable also still works.",
   "ublox_token": "",
 

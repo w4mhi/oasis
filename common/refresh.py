@@ -23,7 +23,6 @@ import time
 from collections import namedtuple
 
 from common import config_paths, freshness as F
-from common import repeaterbook as RB
 from common.atomic_json import read_json, write_json
 
 Source = namedtuple("Source", ["id", "label", "max_age_days", "tier",
@@ -131,7 +130,12 @@ def run_pass(repo_root, *, now, metered, registry=None, only=None, force=False,
         if only and src.id not in only:
             continue
         row = _evaluate(repo_root, cfg, state, src, now, metered)
-        due = force or (F.is_due(row["state"]) and not row["backoff_active"])
+        # A source with no fetch is REPORT-ONLY: we surface its age so the
+        # operator can act, but there is nothing for us to call. Not even
+        # --force may attempt it; None is not callable.
+        due = (src.fetch is not None
+               and (force
+                    or (F.is_due(row["state"]) and not row["backoff_active"])))
         if due and not dry_run:
             row.update(_attempt(repo_root, cfg, state, src, now))
         rows.append(row)
@@ -167,6 +171,9 @@ def _evaluate(repo_root, cfg, state, src, now, metered):
         "id": src.id, "label": src.label, "state": st, "tier": src.tier,
         "age_days": age, "max_age_days": max_age_for(cfg, src),
         "attribution": src.attribution, "fetched": False,
+        # Lets the UI say "export a new CSV" instead of "needs an internet
+        # connection" for a source OASIS will never fetch itself.
+        "manual": src.fetch is None,
         "error": prev.get("last_error"),
         "last_success": prev.get("last_success"),
         "backoff_active": backoff_active,
@@ -314,52 +321,28 @@ def fetch_fcc(repo_root, cfg):
                        timeout=3600)
 
 
-# ── RepeaterBook: the full US book, a few states per pass ────────────────────
-# Small batch so the first full build spreads across passes instead of bursting
-# 51 requests at a rate limit whose thresholds are deliberately unpublished.
-RB_STATES_PER_PASS = 4
-
-
+# ── RepeaterBook: report-only ────────────────────────────────────────────────
+# NOT fetched. RepeaterBook's API is a centralised-token model (their partner
+# CHIRP holds one token and acts for every user), and OASIS is the wrong place
+# to hold such a credential: our refresh loop is autonomous rather than
+# user-pressed, and an offline fleet CANNOT BE PATCHED — a retry storm in a
+# deployed station is fixable only by carrying a USB stick to it. Accountability
+# for traffic we cannot stop is not a trade worth making for an emergency tool.
+#
+# So the operator exports a CSV themselves (repeaterbook.com or CHIRP) and drops
+# it in static/repeaterbook/. This source exists purely to report ITS AGE, which
+# is the part with real value: knowing the directory is eight months old before
+# leaving for an activation, rather than discovering it in the field.
+#
+# The preserved API implementation lives on branch feat/repeaterbook.
 def probe_repeaterbook(repo_root):
-    """Age of the OLDEST state file, so one stale state keeps the whole source
-    stale until the book catches up.
-
-    Returns None while the book is incomplete, which reads as MISSING rather
-    than merely stale — a half-downloaded country is not a usable directory.
-    """
-    idx = RB.read_index(repo_root)
-    if len(idx) < len(RB.STATES):
+    """Newest hand-exported CSV in static/repeaterbook/, or None."""
+    folder = os.path.join(repo_root, "static", "repeaterbook")
+    if not os.path.isdir(folder):
         return None
-    stamps = [float(v.get("fetched_at") or 0) for v in idx.values()]
-    return min(stamps) if stamps else None
-
-
-def fetch_repeaterbook(repo_root, cfg):
-    """Fetch the next few due states. True if any landed.
-
-    One bad state must not fail the rest, but a rejected token or a 429 stops
-    the whole run: neither will fix itself by trying the next state, and
-    hammering a rate limiter is exactly what their terms forbid.
-    """
-    token = (cfg.get("repeaterbook_token") or "").strip()
-    if not token:
-        return False
-    todo = RB.next_states(repo_root, time.time(),
-                          max_age_for(cfg, _by_id("repeaterbook")),
-                          RB_STATES_PER_PASS)
-    if not todo:
-        return True
-    wrote = 0
-    for state in todo:
-        try:
-            records = RB.fetch_state(token, state)
-            RB.write_state_file(repo_root, state, records)
-            wrote += 1
-        except (RB.RateLimited, RB.AuthRejected):
-            break
-        except Exception:
-            continue
-    return wrote > 0
+    stamps = [os.path.getmtime(os.path.join(folder, n))
+              for n in os.listdir(folder) if n.lower().endswith(".csv")]
+    return max(stamps) if stamps else None
 
 
 def _not_implemented(*_a, **_kw):
@@ -377,8 +360,10 @@ REGISTRY = [
     Source(id="fcc", label="FCC callsign database", max_age_days=14.0,
            tier="large", credential=None, probe=probe_fcc, fetch=fetch_fcc,
            attribution="Data from the FCC ULS."),
+    # fetch=None marks this REPORT-ONLY: run_pass never attempts it. See the
+    # comment above probe_repeaterbook for why we do not hold an API token.
     Source(id="repeaterbook", label="RepeaterBook directory",
-           max_age_days=180.0, tier="large", credential="repeaterbook_token",
-           probe=probe_repeaterbook, fetch=fetch_repeaterbook,
+           max_age_days=180.0, tier="small", credential=None,
+           probe=probe_repeaterbook, fetch=None,
            attribution="Data courtesy of RepeaterBook.com"),
 ]

@@ -88,17 +88,23 @@ class TestConfig(_Tmp):
     def test_missing_station_json_is_empty_config(self):
         self.assertEqual(R.station_config(self.d), {})
 
+    # No shipped source carries a credential today, but credential_for is live
+    # machinery for any future one — exercised here with a synthetic source.
+    def _credentialed(self):
+        return R.Source(id="c", label="c", max_age_days=1.0, tier="small",
+                        credential="some_token", probe=lambda root: None,
+                        fetch=lambda root, cfg: True, attribution="")
+
     def test_credential_lookup(self):
-        self._station(repeaterbook_token="abc")
+        self._station(some_token="abc")
         cfg = R.station_config(self.d)
-        self.assertEqual(
-            R.credential_for(cfg, R._by_id("repeaterbook")), "abc")
+        self.assertEqual(R.credential_for(cfg, self._credentialed()), "abc")
 
     def test_blank_credential_reads_as_absent(self):
-        # An empty string in the template must not look like a configured token.
-        self._station(repeaterbook_token="   ")
+        # An empty string in a config template must not look configured.
+        self._station(some_token="   ")
         cfg = R.station_config(self.d)
-        self.assertIsNone(R.credential_for(cfg, R._by_id("repeaterbook")))
+        self.assertIsNone(R.credential_for(cfg, self._credentialed()))
 
     def test_sources_without_credentials_return_none(self):
         self.assertIsNone(R.credential_for({}, R._by_id("tle")))
@@ -114,15 +120,23 @@ class TestRegistry(unittest.TestCase):
         self.assertEqual(by["tle"].tier, "small")
         self.assertEqual(by["satnogs"].tier, "small")
         self.assertEqual(by["fcc"].tier, "large")
-        # The full US book is tens of MB over 50+ requests — large, not small.
-        self.assertEqual(by["repeaterbook"].tier, "large")
+        self.assertEqual(by["repeaterbook"].tier, "small")
 
-    def test_only_repeaterbook_needs_a_credential(self):
-        by = {s.id: s for s in R.REGISTRY}
-        self.assertEqual(by["repeaterbook"].credential, "repeaterbook_token")
-        self.assertIsNone(by["tle"].credential)
-        self.assertIsNone(by["satnogs"].credential)
-        self.assertIsNone(by["fcc"].credential)
+    def test_no_source_needs_a_credential(self):
+        # OASIS holds no third-party API credential. RepeaterBook is
+        # report-only precisely so it does not need one.
+        for s in R.REGISTRY:
+            self.assertIsNone(s.credential, s.id)
+
+    def test_repeaterbook_is_report_only(self):
+        # fetch=None: OASIS reports the CSV's age but never downloads it.
+        self.assertIsNone(R._by_id("repeaterbook").fetch)
+        self.assertIsNotNone(R._by_id("repeaterbook").probe)
+
+    def test_every_other_source_is_fetchable(self):
+        for s in R.REGISTRY:
+            if s.id != "repeaterbook":
+                self.assertIsNotNone(s.fetch, s.id)
 
     def test_repeaterbook_carries_required_attribution(self):
         # Required by RepeaterBook's terms, not decoration.
@@ -190,7 +204,7 @@ class TestRunPass(_Tmp):
     def test_unconfigured_source_is_not_fetched(self):
         calls = []
         src = self._stub("x", age=None, calls=calls,
-                         credential="repeaterbook_token")
+                         credential="some_token")
         out = R.run_pass(self.d, now=0.0, metered=False, registry=[src])
         self.assertEqual(out["sources"][0]["state"], F.UNCONFIGURED)
         self.assertEqual(calls, [])
@@ -406,6 +420,51 @@ class TestFccAdapter(_Tmp):
             fh.write("x")
         os.utime(p, (4242, 4242))
         self.assertEqual(R.probe_fcc(self.d), 4242)
+
+
+class TestReportOnlySource(_Tmp):
+    def _report_only(self, age):
+        return R.Source(id="ro", label="ro", max_age_days=3.0, tier="small",
+                        credential=None,
+                        probe=lambda root: None if age is None else 0.0,
+                        fetch=None, attribution="")
+
+    def test_never_attempted_even_when_stale(self):
+        out = R.run_pass(self.d, now=0.0, metered=False,
+                         registry=[self._report_only(None)])
+        self.assertTrue(out["ok"])
+        self.assertFalse(out["sources"][0]["fetched"])
+
+    def test_force_does_not_crash_on_a_none_fetch(self):
+        # None is not callable; --force must not reach it.
+        out = R.run_pass(self.d, now=0.0, metered=False, force=True,
+                         registry=[self._report_only(None)])
+        self.assertFalse(out["sources"][0]["fetched"])
+
+    def test_row_is_flagged_manual_for_the_ui(self):
+        out = R.run_pass(self.d, now=0.0, metered=False, dry_run=True,
+                         registry=[self._report_only(None)])
+        self.assertTrue(out["sources"][0]["manual"])
+
+    def test_fetchable_sources_are_not_flagged_manual(self):
+        src = R.Source(id="x", label="x", max_age_days=3.0, tier="small",
+                       credential=None, probe=lambda root: 0.0,
+                       fetch=lambda root, cfg: True, attribution="")
+        out = R.run_pass(self.d, now=0.0, metered=False, dry_run=True,
+                         registry=[src])
+        self.assertFalse(out["sources"][0]["manual"])
+
+    def test_probe_reads_the_csv_mtime(self):
+        folder = os.path.join(self.d, "static", "repeaterbook")
+        os.makedirs(folder, exist_ok=True)
+        p = os.path.join(folder, "repeaterbook.csv")
+        with open(p, "w") as fh:
+            fh.write("Location,Name\n")
+        os.utime(p, (8888, 8888))
+        self.assertEqual(R.probe_repeaterbook(self.d), 8888)
+
+    def test_probe_none_when_no_csv(self):
+        self.assertIsNone(R.probe_repeaterbook(self.d))
 
 
 if __name__ == "__main__":

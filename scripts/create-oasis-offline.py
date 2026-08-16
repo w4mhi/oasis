@@ -1333,57 +1333,6 @@ def phase_station_template(bundle_root):
     _ok("no station.json to copy — shipped the documented template instead")
 
 
-# ── Phase: RepeaterBook directory ─────────────────────────────────────────────
-def phase_repeaterbook(bundle_root):
-    """Seed the US repeater book into the bundle.
-
-    Fetch if absent, skip if present, never overwrite — the same rule phase_fcc
-    follows, so repeat builds stay fast and a partial run resumes where it left
-    off.
-
-    LICENSING: this fetches with the BUILDER's own token, which is fine for a
-    personal bundle. Handing such a bundle to another operator would be
-    redistribution and is not permitted.
-    """
-    _section("Phase — RepeaterBook directory")
-    import time          # not imported at module scope; only this phase paces
-    from common import repeaterbook as RB
-    from common.atomic_json import read_json
-
-    station = read_json(os.path.join(REPO_ROOT, "configuration",
-                                     "station.json"), default={})
-    token = (station.get("repeaterbook_token") or "").strip()
-    if not token:
-        _warn("no repeaterbook_token in configuration/station.json — skipping. "
-              "The station will fetch the book itself once a token is set.")
-        return
-
-    done = RB.read_index(bundle_root)
-    todo = [s for s in RB.STATES if s not in done]
-    if not todo:
-        _cp(f"all {len(RB.STATES)} states already present — skipping")
-        return
-
-    _info(f"fetching {len(todo)} of {len(RB.STATES)} states "
-          f"(paced; a 429 stops the run and it resumes on re-run)")
-    for state in todo:
-        try:
-            records = RB.fetch_state(token, state)
-            RB.write_state_file(bundle_root, state, records)
-            _ok(f"{state}: {len(records)} repeaters")
-        except RB.RateLimited:
-            _warn("rate limited — stopping. Re-run to continue where this "
-                  "left off.")
-            return
-        except RB.AuthRejected as exc:
-            _warn(f"token rejected ({exc}). Register OASIS as a RepeaterBook "
-                  "distributed app and set a valid rbuapp_ token.")
-            return
-        except Exception as exc:
-            _warn(f"{state}: {exc}")
-        time.sleep(2)      # pace against an unpublished rate limit
-
-
 # ── Phase 4: FCC callsign database ────────────────────────────────────────────
 def phase_fcc(fcc_dir):
     """
@@ -2119,10 +2068,9 @@ def cmd_build(skip_windows, rebuild=False, all_platforms=False, profile="full"):
     fcc_dir = os.path.join(out_dir, "services", "fcc_database", "data")
     phase_fcc(fcc_dir)
 
-    # Generic station.json + the repeater directory. Both profiles: a Windows
-    # tools bundle still needs somewhere to put a callsign.
+    # Generic station.json fallback. Both profiles: a Windows tools bundle
+    # still needs somewhere to put a callsign.
     phase_station_template(out_dir)
-    phase_repeaterbook(out_dir)
 
     # Pi-only assets: APRS/Winlink/RTL-SDR/display daemons, Wikipedia, maps.
     # None of these belong in the tools bundle.

@@ -3349,7 +3349,7 @@ go to a summit, and come home without anyone thinking about it.
 | Satellite TLEs (CelesTrak) | 3 days | KB | automatic |
 | SatNOGS transmitters | 30 days | KB | automatic |
 | FCC callsign database | 14 days | ~160 MB | automatic on an unmetered link, otherwise one tap |
-| RepeaterBook (all US states) | 180 days | tens of MB | needs a token; a few states per pass |
+| RepeaterBook directory | 180 days | MB | **not downloaded** - you export the CSV; OASIS reports its age |
 
 **How it decides.** A background pass runs every 30 minutes. There is no
 "am I online" probe — the fetch attempt *is* the probe, and a DNS failure costs
@@ -3368,28 +3368,23 @@ every dataset with what was updated and when, what is missing, and the action
 required. A pill in the dashboard header and a chip on the touch kiosk go amber
 when anything is stale.
 
-**RepeaterBook: the whole country, on purpose**
+**RepeaterBook: reported, not downloaded**
 
-OASIS fetches **every US state**, not just your own — you may deploy from WA to
-TX and have no connectivity when you arrive. States are stored as one JSON file
-each so a Pi 3 never loads the whole book into memory, and so one failed state
-retries alone.
+OASIS does **not** fetch the repeater directory. Export a CSV for your region
+from repeaterbook.com or from CHIRP, and drop it in `static/repeaterbook/`.
 
-You need your own token. Register OASIS as a RepeaterBook *distributed app* at
-<https://www.repeaterbook.com/api/token_request.php>, generate a per-user
-`rbuapp_` token, and put it in `configuration/station.json`:
+That is a deliberate choice, not a missing feature. RepeaterBook's API uses a
+centralised token model - their partner CHIRP holds one credential and queries
+on behalf of every user - and OASIS is the wrong place for such a credential.
+Our refresh loop is autonomous rather than user-pressed, and an offline fleet
+cannot be patched: if a bug caused a retry storm on deployed stations, the only
+remediation would be carrying a USB stick to each one. Being accountable for
+traffic we cannot stop is not a trade worth making for an emergency tool.
 
-```json
-{ "repeaterbook_token": "rbuapp_your-token-here" }
-```
-
-The first full build completes over several passes rather than all at once.
-That is deliberate: RepeaterBook's rate limits are unpublished, and bursting 51
-requests earns a 429.
-
-> ⚠️ The data is fetched with **your** token, which is you exercising your own
-> access — not redistribution. Never commit `static/repeaterbook/data/`, and
-> never hand a bundle containing it to another operator.
+What OASIS does instead is tell you **how old your copy is**, so you can refresh
+it before a deployment rather than discovering it is stale in the field. The
+Data Updates section reads "Your copy is 56 days old" and, past the threshold,
+tells you to export a new one.
 
 **Field debug**
 

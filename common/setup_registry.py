@@ -512,8 +512,10 @@ FEATURE_HELP = {
         "of GB depending on the edition. Needs kiwix installed first.",
     "repeaterbook":
         "The repeater directory, so you can find a local machine with no "
-        "internet. Export your own copy or set an API token; the data is not "
-        "redistributable, so it does not ship with OASIS.",
+        "internet. Export a CSV for your region from repeaterbook.com or CHIRP "
+        "and drop it in static/repeaterbook/ — the data is not redistributable, "
+        "so it cannot ship with OASIS. Diagnostics reports how old your copy "
+        "is, so you can refresh it before a deployment.",
     "forms":
         "ICS 205, 213, 214, and 309 on the official FEMA PDF templates, with "
         "CSV import and export and server-side save. Install for any station "
