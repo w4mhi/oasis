@@ -345,26 +345,42 @@ class TestMetered(unittest.TestCase):
             R.subprocess, "run",
             return_value=mock.Mock(returncode=rc, stdout=out, stderr=""))
 
+    # Fixtures below are the LITERAL output of `nmcli -t -f METERED general`,
+    # captured from a Pi on 2026-08-16. The previous fixtures invented a
+    # colon-prefixed format that nmcli never emits for this subcommand, which
+    # is how a malformed command passed its own tests.
     def test_definitely_unmetered_is_false(self):
-        with self._nm("GENERAL.METERED:no (4)\n"):
+        with self._nm("no\n"):
             self.assertFalse(R.is_metered())
 
     def test_guess_no_is_unmetered(self):
-        with self._nm("GENERAL.METERED:no (guessed) (2)\n"):
+        # The real answer on ordinary home Wi-Fi.
+        with self._nm("no (guessed)\n"):
             self.assertFalse(R.is_metered())
 
     def test_definitely_metered_is_true(self):
-        with self._nm("GENERAL.METERED:yes (1)\n"):
+        with self._nm("yes\n"):
             self.assertTrue(R.is_metered())
 
     def test_guess_yes_is_metered(self):
-        with self._nm("GENERAL.METERED:yes (guessed) (3)\n"):
+        with self._nm("yes (guessed)\n"):
             self.assertTrue(R.is_metered())
 
     def test_unknown_fails_closed(self):
-        # Unknown is the COMMON answer on a phone hotspot, not an edge case.
-        with self._nm("GENERAL.METERED:unknown (0)\n"):
+        with self._nm("unknown\n"):
             self.assertTrue(R.is_metered())
+
+    def test_the_command_asks_for_the_right_field(self):
+        # `-f GENERAL.METERED general` is an invalid-field error; that field
+        # name belongs to `nmcli device show`. The error made is_metered() fail
+        # closed forever, so the gate never actually measured anything.
+        from unittest import mock
+        with mock.patch.object(R.subprocess, "run") as run:
+            run.return_value = mock.Mock(returncode=0, stdout="no\n", stderr="")
+            R.is_metered()
+            argv = run.call_args[0][0]
+        self.assertIn("METERED", argv)
+        self.assertNotIn("GENERAL.METERED", argv)
 
     def test_empty_output_fails_closed(self):
         with self._nm("\n"):

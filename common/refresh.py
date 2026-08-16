@@ -267,8 +267,14 @@ def is_metered():
     description of the feature is "large downloads are always one-tap".
     """
     try:
+        # `-f METERED general`, NOT `-f GENERAL.METERED general`.
+        # GENERAL.METERED is the field name for `nmcli device show`; passing it
+        # to `nmcli general` is an invalid-field ERROR, which this function then
+        # failed closed on — so the gate sat at "always metered" on every box
+        # and large sources could never auto-refresh anywhere. Verified on a Pi:
+        # the correct form answers "no (guessed)" on ordinary home Wi-Fi.
         proc = subprocess.run(
-            ["nmcli", "-t", "-f", "GENERAL.METERED", "general"],
+            ["nmcli", "-t", "-f", "METERED", "general"],
             capture_output=True, text=True, timeout=5)
     except Exception:
         return True

@@ -273,9 +273,9 @@
      repaint state. READ-ONLY here — the panel has no keyboard, so it reports
      staleness but never takes a token or starts a large download. State
      classes come from the shared common/js/freshness.js. */
-  /* Not interactive on the panel: .upill sets cursor:pointer, which would
-     invite a tap that does nothing. */
-  .upill#fxchip{ cursor:default; }
+  /* Transient state while a tap-triggered pass is running. Dim, so it reads
+     as "working" rather than as a health colour. */
+  .upill.fx-busy{ color:var(--dim); border-color:var(--dim); }
   .upill.fx-ok{ color:var(--up); border-color:var(--up); }
   .upill.fx-warn{ color:var(--warn); border-color:var(--warn); }
   .upill.fx-bad{ color:var(--down); border-color:var(--down); }
@@ -734,7 +734,8 @@
       <div class="srow"><span class="k">DISK</span><span class="v" id="k-disk">—</span></div>
       <div class="srow ip"><span class="k">IP</span><span class="v" id="k-ip">—</span></div>
     </div>
-    <span class="upill" id="fxchip" title="Data freshness" hidden>DATA</span>
+    <span class="upill" id="fxchip" onclick="fxKioskRefresh()" role="button"
+          tabindex="0" title="Data freshness — tap to check now" hidden>DATA</span>
     <span class="upill" id="k-units" onclick="toggleUnits()" title="Toggle imperial / metric">IMPERIAL</span>
     <span class="upill ops-pill" onclick="openOv('ops')" title="Open OPS">OPS</span>
   </div>
@@ -2866,10 +2867,17 @@ loadInstalled().then(() => {
 </script>
 
 <script>
-/* Data-freshness chip (read-only). Renders through the shared module so the
-   kiosk and the dashboard cannot disagree about staleness. */
+/* Data freshness. Renders through the shared module so the kiosk and the
+   dashboard cannot disagree about staleness, and TAPS TO CHECK NOW.
+
+   The tap runs an ordinary pass, NOT a forced one: `deferred` means a large
+   download is being held back because the link looks metered, and a stray
+   thumb on a go-box panel must not start a 160 MB FCC download. Forcing stays
+   on the desktop, where the operator can read the consequence first. */
 (function () {
   'use strict';
+  var BUSY = false;
+
   function render(data) {
     var chip = document.getElementById('fxchip');
     if (!chip || !window.OasisFreshness) { return; }
@@ -2878,12 +2886,40 @@ loadInstalled().then(() => {
     chip.setAttribute('class', 'upill ' + s.cls);
     chip.hidden = false;   /* always shown, like IMPERIAL and OPS */
   }
+
   function poll() {
+    if (BUSY) { return; }          /* never race the running refresh */
     fetch('/api/refresh/status')
       .then(function (r) { return r.json(); })
       .then(render)
       .catch(function () {});
   }
+
+  window.fxKioskRefresh = function () {
+    var chip = document.getElementById('fxchip');
+    if (!chip || BUSY) { return; }
+    BUSY = true;
+    chip.textContent = 'CHECKING';
+    chip.setAttribute('class', 'upill fx-busy');
+    fetch('/api/refresh/run', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-OASIS-Request': '1'      /* mutating route; see common/web_guard.py */
+      },
+      body: '{}'
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        BUSY = false;
+        /* busy:true means another pass already held the lock — its result is
+           not ours to show, so fall back to a plain status read. */
+        if (d && d.busy) { poll(); return; }
+        render(d);
+      })
+      .catch(function () { BUSY = false; poll(); });
+  };
+
   poll();
   setInterval(poll, 300000);
 })();
