@@ -99,31 +99,68 @@ class GpsIsTrustedOnlyWhenChronyUsesIt(unittest.TestCase):
 
 
 class RtcMustHoldNotMerelyExist(unittest.TestCase):
-    def test_a_pi5_with_no_cell_does_not_count_as_a_source(self):
-        # pi5draws: /dev/rtc0 present, reads a fine date WHILE POWERED, and
-        # holds nothing — battery_voltage 0. Counting it is the illusion that
-        # kept this invisible.
-        with mock.patch.object(timekeeping.rtc, "rtc_is_working",
-                               lambda: (True, "RTC present and reads a plausible date")), \
-             mock.patch.object(timekeeping.rtc, "is_pi5_rtc", lambda: True), \
-             mock.patch.object(timekeeping.rtc, "pi5_battery_millivolts", lambda: 0):
-            ok, detail = timekeeping.rtc_holds()
-        self.assertFalse(ok)
-        self.assertIn("NO BACKUP CELL", detail)
+    """Outcome over proxy.
 
-    def test_a_pi5_with_a_cell_counts(self):
-        with mock.patch.object(timekeeping.rtc, "rtc_is_working",
-                               lambda: (True, "ok")), \
-             mock.patch.object(timekeeping.rtc, "is_pi5_rtc", lambda: True), \
-             mock.patch.object(timekeeping.rtc, "pi5_battery_millivolts", lambda: 3020):
-            ok, _ = timekeeping.rtc_holds()
+    An earlier version of these tests asserted the opposite, citing pi5draws as
+    the canonical "present but holds nothing, battery_voltage 0" box. pi5draws
+    disproved it on 2026-08-16: its kernel log reads
+
+        rpi-rtc: setting system clock to 2026-08-16T15:22:33 UTC
+
+    fourteen seconds BEFORE chrony reached its first NTP server. A correct date
+    at that moment cannot have come from anywhere but the RTC, so the cell is
+    fine and the voltage reading was a false negative — exactly as
+    server/routes/system.py:_rtc_state() had already documented.
+    """
+
+    def _rtc(self, working=(True, "present and plausible"), seeded=False, mv=0):
+        return (mock.patch.object(timekeeping.rtc, "rtc_is_working",
+                                  lambda: working),
+                mock.patch.object(timekeeping.rtc, "set_system_clock_at_boot",
+                                  lambda: seeded),
+                mock.patch.object(timekeeping.rtc, "is_pi5_rtc", lambda: True),
+                mock.patch.object(timekeeping.rtc, "pi5_battery_millivolts",
+                                  lambda: mv))
+
+    def test_seeding_the_clock_at_boot_proves_it_holds(self):
+        a, b, c, d = self._rtc(seeded=True, mv=0)
+        with a, b, c, d:
+            ok, detail = timekeeping.rtc_holds()
         self.assertTrue(ok)
+        self.assertIn("power cycle", detail)
+
+    def test_zero_battery_voltage_alone_never_condemns_a_working_rtc(self):
+        # THE regression. 0 mV is normal on a Pi 5 with a non-rechargeable
+        # cell, because the reading is tied to trickle charging, which is
+        # correctly off for such a cell.
+        a, b, c, d = self._rtc(seeded=True, mv=0)
+        with a, b, c, d:
+            ok, detail = timekeeping.rtc_holds()
+        self.assertTrue(ok)
+        self.assertNotIn("NO BACKUP CELL", detail)
+
+    def test_present_but_never_seeded_counts_yet_says_so(self):
+        a, b, c, d = self._rtc(seeded=False, mv=0)
+        with a, b, c, d:
+            ok, detail = timekeeping.rtc_holds()
+        self.assertTrue(ok)
+        self.assertIn("not yet observed", detail)
 
     def test_an_absent_rtc_does_not_count(self):
-        with mock.patch.object(timekeeping.rtc, "rtc_is_working",
-                               lambda: (False, "/dev/rtc0 is not present")):
+        a, b, c, d = self._rtc(working=(False, "/dev/rtc0 is not present"))
+        with a, b, c, d:
             ok, _ = timekeeping.rtc_holds()
         self.assertFalse(ok)
+
+    def test_an_rtc_that_lost_power_does_not_count(self):
+        # rtc_is_working() already catches the pre-2020 date that a flat cell
+        # produces — that is the real "lost power" signal, not a voltage.
+        a, b, c, d = self._rtc(
+            working=(False, "RTC reads 0 — it has lost power"), seeded=False)
+        with a, b, c, d:
+            ok, detail = timekeeping.rtc_holds()
+        self.assertFalse(ok)
+        self.assertIn("lost power", detail)
 
 
 class FakeHwclockNeedsBothHalves(unittest.TestCase):

@@ -34,18 +34,37 @@ FAKE_HWCLOCK_UNIT = "fake-hwclock"
 
 
 def rtc_holds():
-    """(ok, detail) — is there a hardware RTC that reads a plausible date?
+    """(ok, detail) — is there a hardware RTC that carries the clock offline?
 
-    Delegates to rtc.rtc_is_working(), and inherits its honest limit: present
-    and readable is NOT the same as holds-across-a-power-cut. On a Pi 5 the
-    backup cell's voltage is readable, so a missing cell is reported outright."""
+    EVIDENCE ORDER: outcome first, proxy never.
+
+    The strongest proof an RTC held across a power cut is that the kernel used
+    it to SEED the system clock at boot (hctosys=1, "setting system clock to
+    ..." in dmesg). That happens before any network or GPS exists, so a correct
+    date there cannot have come from anywhere else.
+
+    battery_voltage is NOT used to judge, and this is the second time that rule
+    has had to be learned. It reads 0 on a Pi 5 with a perfectly good
+    non-rechargeable cell, because the measurement is tied to the trickle
+    CHARGING configuration and charging is correctly disabled for such a cell.
+    server/routes/system.py:_rtc_state() already documented this; this function
+    did not, and asserted "NO BACKUP CELL is fitted" on pi5draws — a box whose
+    kernel log shows the RTC seeding a correct clock 14 seconds before chrony
+    reached its first NTP server. A non-zero reading is informative; a zero is
+    silence, and silence is not evidence of absence.
+
+    Falls back to rtc.rtc_is_working() and inherits its honest limit: present
+    and readable is not the same as holds-across-a-power-cut."""
     ok, detail = rtc.rtc_is_working()
-    if ok and rtc.is_pi5_rtc():
-        mv = rtc.pi5_battery_millivolts()
-        if mv == 0:
-            return False, ("RTC present but NO BACKUP CELL is fitted "
-                           "(battery_voltage 0) — it holds nothing when powered off")
-    return ok, detail
+    if not ok:
+        return False, detail
+    if rtc.set_system_clock_at_boot():
+        return True, ("RTC carried the clock across the last power cycle — the "
+                      "kernel seeded the system time from it at boot, before "
+                      "any network or GPS")
+    # Present and plausible, but never observed seeding the clock. Real, and
+    # weaker; say so rather than either claiming or denying that it holds.
+    return True, detail + " (not yet observed seeding the clock at boot)"
 
 
 def fake_hwclock_ready():
