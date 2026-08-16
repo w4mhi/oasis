@@ -437,16 +437,18 @@ FEATURE_HELP = {
     # setup_engine orders teardown by it. Only the Setup page label changed.
     "pi-headless":
         "If the Raspberry Pi is headless, this SHOULD be installed, otherwise "
-        "the web pages are not served. Pick exactly one of the three "
-        "autostart options.",
+        "the web pages are not served after a reboot. On by default because a "
+        "station that does not come back on its own is rarely what anyone "
+        "wants. The local-monitor and touch-kiosk options below already "
+        "include this and add a browser on top.",
     "pi-local-monitor":
-        "Starts OASIS on boot and opens the standard dashboard full-screen on "
-        "an attached monitor. For a Pi with an ordinary screen and keyboard. "
-        "Pick exactly one of the three autostart options.",
+        "Adds a full-screen browser on an attached monitor, showing the "
+        "standard dashboard. For a Pi with an ordinary screen and keyboard. "
+        "Choose this or the touch kiosk, not both.",
     "pi-oasis-dashboard":
-        "Starts OASIS on boot and opens the touch-first kiosk dashboard, "
+        "Adds a full-screen browser showing the touch-first kiosk dashboard, "
         "sized for a go-box panel. Set the resolution below to match your "
-        "screen. Pick exactly one of the three autostart options.",
+        "screen. Choose this or the local monitor, not both.",
     "cm4stack":
         "Drives the small on-device panel display on a CM4Stack case. Only "
         "install if you have that hardware.",
