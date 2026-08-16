@@ -38,10 +38,16 @@ configuration/installed-services.json
 EN.dat
 HD.dat
 
-# ── operator data: never travels in a bundle ──
-# station.json holds the callsign, grid, and API tokens. The bundler ships
-# configuration/station.json.example as station.json instead (phase_station_
-# template), so a bundle teaches where config lives without carrying anyone's.
-configuration/station.json
+# ── runtime state: rebuilt on demand, meaningless on another box ──
+# NOTE: configuration/station.json is deliberately NOT listed. A bundle is how
+# this station reaches its own Pi, so it must carry the callsign, grid, and API
+# tokens — otherwise every rebuild means re-entering them. Bundles are not
+# distributed; if that ever changes, exclude it then.
+#
+# refresh-state.json is per-station counters (last attempt/success/failures).
+# Carrying them would make data look fresher on the Pi than it is.
 configuration/refresh-state.json
+
+# The hand-exported CHIRP CSV. Superseded by phase_repeaterbook, which fetches
+# the book into the bundle; a stale local export must not tag along.
 static/repeaterbook/*.csv

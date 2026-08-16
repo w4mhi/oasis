@@ -1305,15 +1305,17 @@ def phase_wikipedia(zim_dir):
 
 # ── Phase: generic station.json ───────────────────────────────────────────────
 def phase_station_template(bundle_root):
-    """Ship configuration/station.json.example AS station.json.
+    """FALLBACK ONLY: give the bundle a station.json if it has none.
 
-    The live file is excluded by bundle-ignore, so both halves are required:
-    excluding alone would leave a bundle with no station.json at all, and
-    copying the template alone would let the live file overwrite it.
+    Phase 0 (build_copy) already carries the builder's real configuration/
+    station.json into the bundle, and that is deliberate — a bundle is how this
+    station reaches its own Pi, so it must bring the callsign, grid, and API
+    tokens with it. Re-entering them on every rebuild would be pure friction,
+    and an empty station.json copied over a configured Pi would wipe its config.
 
-    Before this, EVERY bundle carried the builder's callsign and grid. Harmless
-    until API tokens moved into that file, at which point a shared bundle would
-    have leaked credentials.
+    This phase therefore only fills a genuine gap: a clone that has never been
+    configured, where no station.json exists to copy. Then the documented
+    template lands instead of nothing at all.
     """
     _section("Phase — station.json template")
     src = os.path.join(REPO_ROOT, "configuration", "station.json.example")
@@ -1325,10 +1327,10 @@ def phase_station_template(bundle_root):
               "station.json; the operator must create one by hand.")
         return
     if os.path.exists(dst):
-        _cp("station.json already present in bundle — leaving it alone")
+        _cp("station.json already carried from the repo — leaving it alone")
         return
     shutil.copy2(src, dst)
-    _ok("shipped generic station.json (no operator callsign, grid, or tokens)")
+    _ok("no station.json to copy — shipped the documented template instead")
 
 
 # ── Phase: RepeaterBook directory ─────────────────────────────────────────────
