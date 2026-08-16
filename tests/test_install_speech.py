@@ -40,7 +40,14 @@ class VerificationTest(unittest.TestCase):
     verification verdict, not the download."""
 
     def _run_with(self, synth, play_ok=True, player="/usr/bin/pw-play"):
-        with mock.patch.object(install_speech, "_install_packages", return_value=0), \
+        # run() gates on a real .venv/bin/python in REPO_ROOT before it reaches
+        # anything these tests care about. Left unstubbed, the verdict under test
+        # depends on whether a venv happens to sit beside the checkout: green in
+        # the maintainer's tree and in CI, red in a fresh clone or git worktree,
+        # for a reason that has nothing to do with speech. sys.executable always
+        # exists, so this says "the venv is there" without touching the disk.
+        with mock.patch.object(install_speech.S, "_venv_bin", return_value=sys.executable), \
+             mock.patch.object(install_speech, "_install_packages", return_value=0), \
              mock.patch.object(install_speech, "_place_voice", return_value=0), \
              mock.patch.object(install_speech.SPEECH, "synthesize", **synth), \
              mock.patch.object(install_speech.SPEECH, "voice_info",
@@ -87,6 +94,21 @@ class VerificationTest(unittest.TestCase):
             self.assertEqual(self._run_with({"return_value": wav}, player=None), 0)
         finally:
             os.unlink(wav)
+
+
+class VenvGateTest(unittest.TestCase):
+    """The gate VerificationTest stubs away, tested on purpose instead of by
+    accident. It used to be exercised only as a side effect of the maintainer's
+    checkout having a venv, which meant it was never really asserted at all."""
+
+    def test_a_missing_venv_fails_the_install(self):
+        with mock.patch.object(install_speech.S, "_venv_bin",
+                               return_value="/nonexistent/bin/python"), \
+             mock.patch.object(install_speech, "_install_packages") as pkgs:
+            self.assertEqual(install_speech.run(), 1)
+            # Speech installs INTO the server venv; without one there is nothing
+            # to install into, so pip must never be reached.
+            pkgs.assert_not_called()
 
 
 if __name__ == "__main__":
