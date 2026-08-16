@@ -273,8 +273,16 @@
      :hover rule on purpose: `.upill.u-metric` and `.upill:hover` have equal
      specificity, so source order is what decides, and the mode must not be
      repainted by a stray hover. */
-  .upill.u-imperial{ color:var(--accent); border-color:var(--accent); }
-  .upill.u-metric{ color:var(--blue); border-color:var(--blue); }
+  /* The label is CONSTANT — "KM/FT", five characters, whatever the mode. It used
+     to swing IMPERIAL (8) <-> METRIC (6), which reflowed this whole row on every
+     toggle and cost the sysbar a line at 800x480. Only the colour moves now:
+     the ACTIVE half lights, the other stays faint, so the mode is readable
+     without relying on knowing the colour convention. */
+  .upill .up-km, .upill .up-sep, .upill .up-ft{ color:var(--faint); }
+  .upill.u-imperial{ border-color:var(--accent); }
+  .upill.u-imperial .up-ft{ color:var(--accent); }
+  .upill.u-metric{ border-color:var(--blue); }
+  .upill.u-metric .up-km{ color:var(--blue); }
   /* Data freshness, treated exactly like OPS and the units pill: colour on
      BOTH text and border, and declared after :hover so a stray pointer cannot
      repaint state. READ-ONLY here — the panel has no keyboard, so it reports
@@ -307,6 +315,18 @@
   .sysbar .cpu-fan.spin{ animation:cpu-fan-spin 1.3s linear infinite; }
   @keyframes cpu-fan-spin{ to{ transform:rotate(360deg); } }
   @media (prefers-reduced-motion:reduce){ .sysbar .cpu-fan.spin{ animation:none; } }
+  /* ── 7-inch panel (800x480) ────────────────────────────────────────────────
+     The root font is clamp(13px,1.9vh,24px), so at 480px tall it is pinned to
+     its 13px floor while the PILL PADDING stays a fixed 1.1rem either side.
+     Three pills plus their gaps then took ~240px of an 800px row, squeezing the
+     stats bar below its single-line width so it wrapped and stole a line of
+     vertical space on the screen that has the least of it. Trimming the padding
+     and the gaps gives that width back; nothing here changes at 1920x1200. */
+  @media (max-width:1100px){
+    .sysrow{ gap:.5rem; }
+    .upill{ padding:.3rem .7rem; letter-spacing:.02em; }
+    .sysbar{ padding:.45rem .8rem; gap:.25rem .4rem; }
+  }
 
   /* ── SDR service bar — dot + label per RTL consumer, side to side ─────── */
   .svcbar{ display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
@@ -743,7 +763,7 @@
     </div>
     <span class="upill" id="fxchip" onclick="fxKioskRefresh()" role="button"
           tabindex="0" title="Data freshness — tap to check now" hidden>DATA</span>
-    <span class="upill" id="k-units" onclick="toggleUnits()" title="Toggle imperial / metric">IMPERIAL</span>
+    <span class="upill" id="k-units" onclick="toggleUnits()" title="Toggle imperial / metric"><span class="up-km">KM</span><span class="up-sep">/</span><span class="up-ft">FT</span></span>
     <span class="upill ops-pill" onclick="openOv('ops')" title="Open OPS">OPS</span>
   </div>
 
@@ -1044,10 +1064,13 @@ loadCallsignGrid(); seedCallsignGrid();
 function renderUnits() {
   const el = document.getElementById('k-units'); if (!el) return;
   const imp = isImperial();
-  el.textContent = imp ? 'IMPERIAL' : 'METRIC';
-  // Colour says which system without reading the word — see .upill.u-*.
+  // The LABEL is never rewritten — only which half is lit (see .upill .up-*).
+  // Writing textContent here would also destroy the two spans the CSS targets.
   el.classList.toggle('u-imperial', imp);
   el.classList.toggle('u-metric', !imp);
+  // Colour alone is not an accessible state indicator, and the panel is a touch
+  // screen with no hover to reveal the title.
+  el.setAttribute('aria-label', imp ? 'Units: feet (imperial)' : 'Units: kilometres (metric)');
 }
 function toggleUnits() { OasisUnits.toggleUnits(); renderUnits(); renderTemp(); applyAprsFilter(); }
 renderUnits();
