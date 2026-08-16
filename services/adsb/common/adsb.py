@@ -479,27 +479,76 @@ DUMP1090_ENV_FILE = "/etc/default/dump1090-fa"
 
 def dump1090_device_args(device):
     """Pure: the dump1090-fa CLI device selector for an assigned device dict (or
-    None). Returns [] when unassigned or the device has no serial."""
+    None). Returns [] when unassigned or the device has no serial.
+
+    The flag is `--device-index`, not `--device`: start-dump1090-fa emits
+    `--device-index $RECEIVER_SERIAL`, and dump1090's rtlsdr backend resolves
+    that token as an index OR a serial. Only CONFIG_STYLE=5 env-files take a
+    hand-built option string; the current package is style 6, which is driven by
+    RECEIVER_SERIAL — see dump1090_env_text()."""
     if not device:
         return []
     serial = device.get("serial")
-    return ["--device", serial] if serial else []
+    return ["--device-index", serial] if serial else []
+
+
+_RECEIVER_SERIAL_RE  = re.compile(r'\s*RECEIVER_SERIAL\s*=.*$')
+_RECEIVER_OPTIONS_RE = re.compile(r'\s*RECEIVER_OPTIONS\s*=\s*"?(.*?)"?\s*$')
+_DEVICE_TOKEN_RE     = re.compile(r'--device(-index)?\s+\S+')
+
+
+def dump1090_env_text(existing, serial):
+    """Pure: DUMP1090_ENV_FILE text with the dongle pinned to `serial` (or
+    unpinned when `serial` is falsy). Returns the full new file contents.
+
+    **The knob is RECEIVER_SERIAL, not RECEIVER_OPTIONS.** start-dump1090-fa
+    consumes the `*_OPTIONS` variables only under CONFIG_STYLE=5; the current
+    FlightAware package ships CONFIG_STYLE=6, where the script builds the command
+    line itself and emits `--device-index $RECEIVER_SERIAL`. A device token
+    written into RECEIVER_OPTIONS is silently discarded — which is exactly how a
+    box reported an assigned dongle in the hardware console while dump1090-fa had
+    actually opened index 0 (verified on pi5draws 2026-08-16: the env-file read
+    `--device 000000F2`, the process argv carried no device selector at all).
+
+    Stripping the stale device token out of RECEIVER_OPTIONS is NOT cosmetic.
+    When CONFIG_STYLE is absent the script *infers* style 5 from a non-empty
+    RECEIVER_OPTIONS, and style 5 builds the entire command line from the
+    `*_OPTIONS` variables — all empty on our boxes — silently dropping the gain,
+    every net port and the JSON output that the rest of ADS-B reads.
+    """
+    serial = (serial or "").strip()
+    out, seen_serial = [], False
+    for ln in existing.splitlines():
+        if _RECEIVER_SERIAL_RE.fullmatch(ln):
+            seen_serial = True
+            out.append(f"RECEIVER_SERIAL={serial}")
+            continue
+        m = _RECEIVER_OPTIONS_RE.fullmatch(ln)
+        if m:
+            # Drop only the device token (ours, or a hand-added one); anything
+            # else an operator put here is theirs and is preserved.
+            opts = _DEVICE_TOKEN_RE.sub('', m.group(1)).strip()
+            out.append(f'RECEIVER_OPTIONS="{opts}"')
+            continue
+        out.append(ln)
+    if not seen_serial:
+        out.append(f"RECEIVER_SERIAL={serial}")
+    return "\n".join(out) + "\n"
 
 
 def apply(repo_root, device):
     """Bind (or unbind, when device is None) dump1090-fa to the assigned dongle
-    by writing a `--device <serial>` into its env-file's RECEIVER_OPTIONS.
+    by writing RECEIVER_SERIAL into its env-file. Linux/root only (no-op
+    elsewhere); the text transform lives in dump1090_env_text() so it is covered
+    off-Pi.
 
-    Linux/root only (no-op elsewhere). BENCH-VERIFY: confirm on the target Pi
-    that (a) the FlightAware dump1090-fa package sources DUMP1090_ENV_FILE with a
-    RECEIVER_OPTIONS variable, and (b) dump1090-fa accepts `--device <serial>`
-    (vs `--device-index`). This writer is the one Slice-2a element that cannot be
-    validated off-Pi — the pure arg builder above is what the tests cover.
-    """
+    After this runs, dump1090-fa must be restarted for the pin to take effect,
+    and the check that matters is the process argv (`--device-index <serial>` in
+    /proc/<pid>/cmdline) — never the env-file, which can hold a value the start
+    script ignores."""
     if sys.platform != "linux":
         return
-    args = dump1090_device_args(device)
-    device_token = " ".join(args)  # "--device 1090" or ""
+    serial = (device or {}).get("serial") or ""
     try:
         with open(DUMP1090_ENV_FILE) as f:
             existing = f.read()
@@ -513,20 +562,7 @@ def apply(repo_root, device):
         _warn(f"{DUMP1090_ENV_FILE} not present — dump1090-fa not installed yet; "
               "skipping device binding (re-assign after install).")
         return
-    out = []
-    found = False
-    for ln in existing.splitlines():
-        m = re.match(r'\s*RECEIVER_OPTIONS\s*=\s*"?(.*?)"?\s*$', ln)
-        if m:
-            found = True
-            opts = re.sub(r'--device(-index)?\s+\S+', '', m.group(1)).strip()
-            opts = (opts + " " + device_token).strip()
-            out.append(f'RECEIVER_OPTIONS="{opts}"')
-        else:
-            out.append(ln)
-    if not found:
-        out.append(f'RECEIVER_OPTIONS="{device_token}"')
-    new_text = "\n".join(out) + "\n"
+    new_text = dump1090_env_text(existing, serial)
     # Reuse the exact sudo-tee Popen pattern from _write_api_unit above:
     proc = subprocess.Popen(
         ["sudo", "tee", DUMP1090_ENV_FILE],
