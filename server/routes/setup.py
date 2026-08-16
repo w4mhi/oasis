@@ -712,6 +712,27 @@ def _setup_run_job(job_id, plan_obj, payload, uninstall_ordered=None):
         _setup_cancel_requests.discard(job_id)
 
 
+@bp.route("/api/setup/features")
+def api_setup_features():
+    """Per-feature help for the Setup page tooltips.
+
+    Prose comes from SETUP_REGISTRY.FEATURE_HELP; dependencies, reboot, and
+    privilege are read from the FeatureSpec itself so those facts cannot drift
+    from what the installer actually does. A test asserts every registry key
+    has help text, so this can never return a feature it cannot explain.
+    """
+    reg = _setup_registry()
+    features = {}
+    for key, spec in reg.items():
+        features[key] = {
+            "help": SETUP_REGISTRY.FEATURE_HELP.get(key, ""),
+            "dependencies": list(spec.dependencies or []),
+            "requiresReboot": bool(spec.requires_reboot),
+            "privileged": bool(spec.privileged),
+        }
+    return jsonify({"ok": True, "features": features})
+
+
 @bp.route("/api/setup/permissions")
 def api_setup_permissions():
     granted = _service_controls_granted()

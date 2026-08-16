@@ -359,6 +359,165 @@ PRIVILEGED_FEATURES = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Operator help text — what each feature IS, and WHEN to install it
+# ---------------------------------------------------------------------------
+# Surfaced as tooltips on the Setup page via GET /api/setup/features.
+#
+# Deliberately prose only. Dependencies, reboot requirement, and privilege are
+# read from the FeatureSpec itself and appended by the UI, so those facts can
+# never drift from what the installer actually does. Never restate them here.
+#
+# tests/test_setup_registry_help.py asserts these keys match build_registry()
+# exactly, so a new feature cannot ship without help text.
+FEATURE_HELP = {
+    # ── Foundation ──
+    "server":
+        "The Flask web server everything else runs on: the dashboard, maps, "
+        "forms, lookups, and the API. Install this first; nothing works "
+        "without it.",
+    "webssh":
+        "A login shell in the browser (ttyd), so you can reach a terminal from "
+        "a phone or tablet with no SSH client. Install it if the Pi is "
+        "headless and you may need to fix something in the field. It is also "
+        "the one service the resource guardian never stops, so it cannot lock "
+        "you out.",
+    "service-controls":
+        "Lets the dashboard start and stop the other services instead of "
+        "requiring the command line. Install unless you deliberately want the "
+        "web UI to be read-only.",
+    "ap-fallback":
+        "Makes the Pi host its own OASIS Wi-Fi hotspot when no known network "
+        "is in range, so phones and laptops can still reach the station. "
+        "Install for any station that leaves the house.",
+
+    # ── Services ──
+    "graywolf":
+        "The APRS engine: TNC, iGate, and digipeater, feeding the live "
+        "station map and tactical messaging. Install if you have a radio (or "
+        "an SDR) and a sound-card interface such as a DigiRig, DRA-Pi, or "
+        "DRAWS.",
+    "winlink":
+        "Pat, for store-and-forward email over radio. The internet (telnet) "
+        "path works today. The RF path needs a radio attached through an "
+        "interface such as a DigiRig, DRA-Pi, or DRAWS, and is still "
+        "experimental.",
+    "kiwix":
+        "The offline content server that serves Wikipedia and other ZIM "
+        "archives. If you want offline Wikipedia, install this before the "
+        "wikipedia content feature, which needs it.",
+    "openwebrx":
+        "A browser SDR receiver. Install if you want to watch the spectrum "
+        "and decode signals interactively rather than just run a fixed "
+        "service. Optional and heavy, and it competes for the same dongle as "
+        "ADS-B and the APRS SDR feed, so only one of those runs at a time.",
+    "rtl-sdr-feed":
+        "Demodulates 2 m APRS from an RTL-SDR dongle and feeds it into "
+        "GrayWolf, so you can receive APRS with no radio at all. Needs "
+        "Raspberry Pi OS Trixie for librtlsdr 2.0 or newer; on older Pi OS it "
+        "will not work.",
+    "adsb":
+        "Decodes aircraft on 1090 MHz with dump1090-fa and plots them on the "
+        "traffic map. Install if you want aircraft alongside APRS. It takes "
+        "over the dongle, so starting it stops the APRS SDR feed and "
+        "OpenWebRX.",
+    "satellites":
+        "Offline satellite pass prediction with a world map, roster, "
+        "downlink frequencies, and pass alerts. Install if you work the "
+        "birds or want overhead passes without an internet lookup.",
+    "speech":
+        "Gives the station a voice for pass alerts, the hour bell, and other "
+        "announcements, using the Piper neural voice. Needs 64-bit Pi OS and "
+        "Python 3.11 or newer. Without it announcements still speak, using "
+        "the plainer espeak-ng fallback.",
+
+    # ── Running Hardware ──
+    "pi-headless":
+        "Starts OASIS automatically on boot with no screen attached. Install "
+        "for any Pi you reach only over the network: without one of the three "
+        "autostart options, the server does not come back after a reboot. "
+        "Pick exactly one of pi-headless, pi-local-monitor, or "
+        "pi-oasis-dashboard.",
+    "pi-local-monitor":
+        "Starts OASIS on boot and opens the standard dashboard full-screen on "
+        "an attached monitor. For a Pi with an ordinary screen and keyboard. "
+        "Pick exactly one of the three autostart options.",
+    "pi-oasis-dashboard":
+        "Starts OASIS on boot and opens the touch-first kiosk dashboard, "
+        "sized for a go-box panel. Set the resolution below to match your "
+        "screen. Pick exactly one of the three autostart options.",
+    "cm4stack":
+        "Drives the small on-device panel display on a CM4Stack case. Only "
+        "install if you have that hardware.",
+    "rgb-cooling-hat":
+        "Runs the fan and OLED on an RGB Cooling HAT. Only install if that "
+        "HAT is fitted.",
+    "argon-fan":
+        "Fan control for an Argon ONE case, without the vendor daemon. "
+        "Install this rather than argononed if you also use a GPS HAT: the "
+        "vendor daemon watches GPIO4, which an L76X uses for its 1PPS signal, "
+        "and the clash causes phantom shutdowns.",
+    "rtc-pi5":
+        "Enables the battery-backed clock built into the Raspberry Pi 5. Pi 5 "
+        "only, and you need the coin cell fitted.",
+    "rtc":
+        "Battery-backed clock on a Witty Pi 3 (DS3231) HAT, so the station "
+        "keeps correct time across a reboot or total power loss. Strongly "
+        "worth installing on any off-grid station with no GPS.",
+    "rtc-raspad":
+        "Battery-backed clock built into the BigTreeTech 7-inch panel "
+        "(PCF8563). Same purpose as the Witty Pi option; install whichever "
+        "hardware you actually have.",
+
+    # ── Radio Interfaces ──
+    "rtl-sdr":
+        "Driver and command-line tools for RTL-SDR USB dongles. Install this "
+        "before ADS-B, the APRS SDR feed, OpenWebRX, or satellite capture.",
+    "sdr-dsp":
+        "The DSP chain that lets satellite passes be tuned and recorded with "
+        "Doppler correction applied in software. Install if you want to "
+        "listen to or record satellites rather than only predict passes.",
+    "gps":
+        "A USB GPS receiver, autodetected, disciplining the system clock via "
+        "gpsd and chrony. Install for accurate time with no internet, which "
+        "digital modes need.",
+    "gps-l76x":
+        "A Waveshare L76X GPS HAT on the 40-pin header. Install only if you "
+        "have this particular HAT, and not if you are using a USB GPS or "
+        "DRAWS for time. Its 1PPS pin clashes with the Argon ONE vendor fan "
+        "daemon.",
+    "dra-pi-rx-led":
+        "The DRA-Pi-Zero radio sound-card interface, plus a driver for its "
+        "green receive LED on GPIO 16. The red transmit LED needs no driver, "
+        "since GrayWolf already keys it through PTT. Install if that board is "
+        "how your radio connects for APRS.",
+    "draws-gps":
+        "GPS and 1PPS timing from an NW Digital DRAWS HAT. Install if the "
+        "DRAWS is your time source rather than a USB GPS or the L76X HAT.",
+    "draws-audio":
+        "Both radio audio ports on a DRAWS HAT, which then appear as "
+        "assignable devices in the hardware console. Install if you drive two "
+        "radios from one HAT.",
+
+    # ── Content ──
+    "fcc":
+        "The full FCC amateur callsign database for instant offline lookup by "
+        "call, name, or grid. About 160 MB to download. Install for any US "
+        "station that needs to identify a caller with no internet.",
+    "wikipedia":
+        "Downloads a Wikipedia snapshot for offline reading. Very large, tens "
+        "of GB depending on the edition. Needs kiwix installed first.",
+    "repeaterbook":
+        "The repeater directory, so you can find a local machine with no "
+        "internet. Export your own copy or set an API token; the data is not "
+        "redistributable, so it does not ship with OASIS.",
+    "forms":
+        "ICS 205, 213, 214, and 309 on the official FEMA PDF templates, with "
+        "CSV import and export and server-side save. Install for any station "
+        "that may work an actual incident.",
+}
+
+
 def build_registry(repo_root, payload=None):
     """Build the Setup Orchestrator's feature -> FeatureSpec registry.
 

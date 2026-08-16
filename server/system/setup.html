@@ -393,6 +393,31 @@ function setupEnableWinlinkPasswordEdit() {
   st.textContent = 'Winlink password: editing (will update on next run)';
 }
 
+// ── Feature tooltips ────────────────────────────────────────────────────────
+// Help prose lives in common/setup_registry.py (FEATURE_HELP); dependencies,
+// reboot, and privilege are read from the FeatureSpec server-side. Nothing
+// about a feature is described in this file, so the tooltip cannot drift from
+// what the installer actually does.
+async function setupLoadFeatureHelp() {
+  let d;
+  try { d = await jget('/api/setup/features'); }
+  catch (e) { return; }                     // tooltips are a nicety, never fatal
+  if (!d || !d.ok || !d.features) { return; }
+  document.querySelectorAll('input[type="checkbox"][data-feature]').forEach(cb => {
+    const info = d.features[cb.dataset.feature];
+    if (!info || !info.help) { return; }
+    const bits = [info.help];
+    if (info.dependencies && info.dependencies.length) {
+      bits.push('Needs: ' + info.dependencies.join(', ') + '.');
+    }
+    if (info.requiresReboot) { bits.push('Takes effect after a reboot.'); }
+    const text = bits.join(' ');
+    cb.title = text;
+    const label = cb.closest('label');
+    if (label) { label.title = text; }
+  });
+}
+
 async function setupLoadExistingConfig() {
   const stationState = document.getElementById('setupStationState');
   const winState = document.getElementById('setupWinlinkState');
@@ -1197,6 +1222,7 @@ function initSetupOrchestrator() {
   document.getElementById('setupWinlinkPasswordChange').addEventListener('click', setupEnableWinlinkPasswordEdit);
 
   setupAutoSelectInstalledFeatures();
+  setupLoadFeatureHelp();
   setupLoadExistingConfig();
   setupGetPermissions();
   setupDetectHardware();
