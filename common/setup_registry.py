@@ -432,12 +432,13 @@ FEATURE_HELP = {
         "the plainer espeak-ng fallback.",
 
     # ── Running Hardware ──
+    # Key stays "pi-headless" — it is the removal record in
+    # installed-services.json on every box that already installed it, and
+    # setup_engine orders teardown by it. Only the Setup page label changed.
     "pi-headless":
-        "Starts OASIS automatically on boot with no screen attached. Install "
-        "for any Pi you reach only over the network: without one of the three "
-        "autostart options, the server does not come back after a reboot. "
-        "Pick exactly one of pi-headless, pi-local-monitor, or "
-        "pi-oasis-dashboard.",
+        "If the Raspberry Pi is headless, this SHOULD be installed, otherwise "
+        "the web pages are not served. Pick exactly one of the three "
+        "autostart options.",
     "pi-local-monitor":
         "Starts OASIS on boot and opens the standard dashboard full-screen on "
         "an attached monitor. For a Pi with an ordinary screen and keyboard. "
