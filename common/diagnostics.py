@@ -1315,11 +1315,13 @@ _UPDATE_STATUS = {
     "unconfigured": "ok",   # switched off is not broken
 }
 
+# Must stay identical to LABEL in common/js/freshness.js — see the reasoning
+# there, and tests/test_freshness_labels.py, which fails if they drift.
 _UPDATE_BADGE = {
-    "fresh": "CURRENT",
-    "stale": "STALE",
-    "deferred": "WAITING",
-    "missing": "MISSING",
+    "fresh": "DATA OK",
+    "stale": "OLD DATA",
+    "deferred": "ON HOLD",
+    "missing": "NO DATA",
     "unconfigured": "OFF",
 }
 

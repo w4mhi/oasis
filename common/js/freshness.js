@@ -29,17 +29,28 @@
     unconfigured: 'fx-off'
   };
 
-  // ONE WORD, and the SAME words the Diagnostics badges use
-  // (_UPDATE_BADGE in common/diagnostics.py). Two vocabularies for one fact is
-  // how a product starts saying "DATA STALE" on the kiosk and "STALE" on the
-  // Diagnostics page for the identical condition. Single words also sit level
-  // with their neighbours IMPERIAL and OPS on the kiosk pill row.
+  // Written for a human deciding whether to act, and IDENTICAL to the
+  // Diagnostics badges (_UPDATE_BADGE in common/diagnostics.py) — two
+  // vocabularies for one fact is how a product ends up saying "DATA STALE" on
+  // the kiosk and "STALE" on Diagnostics for the same condition.
+  //
+  // Deliberately NOT "STALLED": stalled means the updater has stopped, which
+  // sends the operator hunting a fault that does not exist. The data is old;
+  // the mechanism is fine.
+  //
+  // Deliberately NOT "TAP TO UPDATE" for deferred: a kiosk tap runs an
+  // ORDINARY pass, which by design will not fetch a held-back large source, so
+  // that label would promise something the button does not do.
+  //
+  // Kept to 7-8 characters each — not for space, for STABILITY. The kiosk pill
+  // sits between the stats bar and IMPERIAL; a label swinging from 3 to 13
+  // characters reflows that row every time state changes.
   // tests/test_freshness_labels.py asserts these stay in step with Python.
   var LABEL = {
-    fresh: 'CURRENT',
-    stale: 'STALE',
-    deferred: 'WAITING',
-    missing: 'MISSING',
+    fresh: 'DATA OK',
+    stale: 'OLD DATA',
+    deferred: 'ON HOLD',
+    missing: 'NO DATA',
     unconfigured: 'OFF'
   };
 

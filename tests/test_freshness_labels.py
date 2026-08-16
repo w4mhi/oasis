@@ -52,12 +52,32 @@ class VocabularyMatchesTest(unittest.TestCase):
                 f"comparing the two screens cannot tell they mean the same "
                 f"thing")
 
-    def test_labels_are_single_words(self):
-        # They sit beside IMPERIAL and OPS on the kiosk pill row; a two-word
-        # label makes that row uneven and can wrap mid-state.
-        for state, word in self.js.items():
-            self.assertNotIn(" ", word,
-                             f"{state} label {word!r} must be one word")
+    def test_labels_are_similar_width(self):
+        """Not a style rule — a layout one.
+
+        The kiosk pill sits between the stats bar and IMPERIAL. A label that
+        swings from 3 to 13 characters reflows that whole row every time the
+        state changes. (An earlier version of this test demanded SINGLE words,
+        which bought nothing: CURRENT and DATA OK are both 7 characters. Width
+        is what matters, not word count.)
+        """
+        widths = [len(w) for s, w in self.js.items() if s != "unconfigured"]
+        self.assertLessEqual(
+            max(widths) - min(widths), 3,
+            f"label widths {sorted(widths)} vary too much; the kiosk row will "
+            f"reflow on every state change")
+
+    def test_stale_does_not_claim_the_updater_stopped(self):
+        # "STALLED" reads as "the mechanism jammed" and sends the operator
+        # hunting a fault that does not exist. The data is old; the loop is fine.
+        self.assertNotIn("STALL", self.js["stale"].upper())
+        self.assertNotIn("STALL", self.py["stale"].upper())
+
+    def test_deferred_does_not_promise_a_tap_will_fetch_it(self):
+        # A kiosk tap runs an ordinary pass, which deliberately does NOT fetch
+        # a held-back large source. A "tap to update" label would lie.
+        for word in (self.js["deferred"], self.py["deferred"]):
+            self.assertNotIn("TAP", word.upper())
 
     def test_labels_are_upper_case(self):
         for state, word in self.js.items():
