@@ -51,6 +51,7 @@
 <script src="/server/satellites/sat-transport.js"></script>
 <script src="/server/satellites/sat-denoise.js"></script>
 <script src="/common/js/sat-listen.js"></script>
+<link rel="stylesheet" href="/common/css/fonts.css">
 <link rel="stylesheet" href="/common/css/wifi-pill.css">
 <link rel="stylesheet" href="/common/css/sat-detail.css">
 
@@ -64,7 +65,13 @@
     --amber:#f4b64a; --blue:#5cb8ff; --purple:#b478ff;
     --chartreuse:#80ff00; --orange:#ff8000;   /* clock-cycle colours (match index) */
     --r:.9rem;
-    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    /* IDENTICAL to css/common.css. The two used to diverge — this stack had no
+       Roboto Mono, and the kiosk does not link common.css, so the bundled face
+       was unreachable here and the pills fell through to the OS default while
+       the served pages rendered in Roboto Mono. Both stacks start at
+       ui-monospace, so on a Mac they looked the same and the split only ever
+       appeared on the Pi. Keep these two lines in step. */
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
     /* Wi-Fi pill palette → shared /common/css/wifi-pill.css */
     --wfp-blue:var(--blue); --wfp-green:var(--up); --wfp-amber:var(--warn);
     --wfp-red:var(--down); --wfp-neutral:var(--dim); --wfp-fs:1.05rem;
