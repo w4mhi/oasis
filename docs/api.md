@@ -540,3 +540,32 @@ Run their own web servers; OASIS links out and/or health-checks them.
 `services/*/routes.py`, `services/aprs/common/aprs.py` (graywolf-api), and
 `services/adsb/common/adsb.py` (adsb-api). If you add or change a route, update
 this file.*
+
+### `GET /api/refresh/status`
+
+Freshness of every managed dataset. Never fetches; safe to poll.
+
+`ok` reports that the request succeeded, **not** that the data is current — an
+offline station returns `ok: true` with stale rows. Freshness is the payload.
+
+Each entry in `sources` carries `id`, `label`, `state`, `tier`, `age_days`,
+`max_age_days`, `attribution`, `fetched`, `error`, `last_success`, and
+`backoff_active`. `state` is one of:
+
+| state | meaning |
+|---|---|
+| `fresh` | younger than its threshold |
+| `stale` | past its threshold; refreshes itself when the net returns |
+| `deferred` | large download held back on a metered/unknown link; needs a tap |
+| `unconfigured` | credentialed source with no token — switched off, not broken |
+| `missing` | never fetched |
+
+### `POST /api/refresh/run`
+
+Runs one pass now. Requires the `X-OASIS-Request: 1` header like every mutating
+route. Body is optional: `{"source": "fcc"}` limits the pass to one source, and
+`{"force": true}` ignores freshness and back-off.
+
+Returns the same shape as `/api/refresh/status` plus `busy`. `busy: true` means
+a pass was already running and this call did nothing — the request still
+succeeded.

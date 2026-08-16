@@ -2188,7 +2188,7 @@ The script installs `gpsd` and `chrony`, points `gpsd` at the receiver (with
 `GPSD_OPTIONS=-n` so it polls without a client connected), and adds the chrony
 **SHM refclock** that actually disciplines the clock from GPS. **Run this at home while the Pi has internet** — the `apt install` step needs it once; everything after runs offline.
 
-**Fast cold fix (u-blox only) — ⚠️ service discontinued July 2026.** The *AssistNow Offline* service that supplied satellite almanac data has entered end-of-maintenance/end-of-support status as of July 2026. The `--assist-now` flag in `features/gps/install-gps.py` remains in the code but the Thingstream backend may no longer accept new tokens. For most deployments the standard GPS cold-start time (1–5 minutes for a first fix outdoors with a clear sky) is acceptable — pair GPS with a hardware RTC (next section) and the Pi will keep reasonable time between fixes.
+**Fast cold fix (u-blox only) — ⚠️ service discontinued 31 May 2026.** The *AssistNow Offline* service that supplied satellite almanac data entered end-of-maintenance/end-of-support on **31 May 2026** (u-blox product change notice); its successor is *AssistNow Live Orbits / Predictive Orbits*. The `--assist-now` flag in `features/gps/install-gps.py` remains in the code but the Thingstream backend may no longer accept new tokens, and Thingstream signup warns that the platform is for commercial use rather than individual consumers. Note also that AssistNow is **u-blox only** — the Waveshare L76X HAT is a Quectel L76 and cannot use it at all. For these reasons the automatic-update loop deliberately does **not** manage AssistNow. For most deployments the standard GPS cold-start time (1–5 minutes for a first fix outdoors with a clear sky) is acceptable — pair GPS with a hardware RTC (next section) and the Pi will keep reasonable time between fixes.
 
 > 💡 **Pair GPS with a hardware RTC** (next section) so the clock survives a full
 > power-loss with no GPS lock yet — chrony then rides the RTC until GPS reacquires.
@@ -3335,3 +3335,73 @@ These are by design or accepted tradeoffs, documented here for transparency.
   shaped; on the Windows portable bundle it reports
   `SYSTEM_METRICS_UNAVAILABLE` and the station-chrome that depends on it is hidden.
   Everything else in the bundle works.
+
+### Automatic data updates
+
+OASIS keeps its perishable datasets current whenever the internet happens to be
+reachable, and fails quietly when it is not — so a station can live on a bench,
+go to a summit, and come home without anyone thinking about it.
+
+**What refreshes**
+
+| Dataset | Stale after | Size | How |
+|---|---|---|---|
+| Satellite TLEs (CelesTrak) | 3 days | KB | automatic |
+| SatNOGS transmitters | 30 days | KB | automatic |
+| FCC callsign database | 14 days | ~160 MB | automatic on an unmetered link, otherwise one tap |
+| RepeaterBook (all US states) | 180 days | tens of MB | needs a token; a few states per pass |
+
+**How it decides.** A background pass runs every 30 minutes. There is no
+"am I online" probe — the fetch attempt *is* the probe, and a DNS failure costs
+milliseconds, so an offline pass is a handful of instant failures and the
+datasets stay exactly as they were. Large datasets only download automatically
+when NetworkManager reports the link as definitely **unmetered**; unknown counts
+as metered, because unknown is what most phone hotspots report. On Windows and
+macOS there is no `nmcli` at all, so large downloads are always one tap.
+
+The refresher is the lowest-priority thing on the box: if the resource guardian
+is near a threshold, large downloads are skipped and retried next pass. The
+updater must never be the thing that trips a STOP ALL.
+
+**Where to see it.** The **Data Updates** section on the Diagnostics page shows
+every dataset with what was updated and when, what is missing, and the action
+required. A pill in the dashboard header and a chip on the touch kiosk go amber
+when anything is stale.
+
+**RepeaterBook: the whole country, on purpose**
+
+OASIS fetches **every US state**, not just your own — you may deploy from WA to
+TX and have no connectivity when you arrive. States are stored as one JSON file
+each so a Pi 3 never loads the whole book into memory, and so one failed state
+retries alone.
+
+You need your own token. Register OASIS as a RepeaterBook *distributed app* at
+<https://www.repeaterbook.com/api/token_request.php>, generate a per-user
+`rbuapp_` token, and put it in `configuration/station.json`:
+
+```json
+{ "repeaterbook_token": "rbuapp_your-token-here" }
+```
+
+The first full build completes over several passes rather than all at once.
+That is deliberate: RepeaterBook's rate limits are unpublished, and bursting 51
+requests earns a 429.
+
+> ⚠️ The data is fetched with **your** token, which is you exercising your own
+> access — not redistribution. Never commit `static/repeaterbook/data/`, and
+> never hand a bundle containing it to another operator.
+
+**Field debug**
+
+```bash
+python3 scripts/refresh-data.py --list          # what is stale; no network
+python3 scripts/refresh-data.py --dry-run       # same, plus the metered verdict
+python3 scripts/refresh-data.py --source tle    # refresh one source now
+python3 scripts/refresh-data.py --force         # ignore freshness and back-off
+python3 scripts/refresh-data.py --json          # machine-readable
+```
+
+*Healthy:* every row reads `OK` with an age below its threshold.
+*Broken:* a row reads `NONE` (never fetched) or shows an error.
+`OFF` means no token is set — that is a switched-off source, not a fault.
+`TAP` means a large download is waiting because the link looks metered.
