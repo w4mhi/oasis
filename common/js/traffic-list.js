@@ -128,9 +128,37 @@
       byHex[a.hex] = Object.assign({}, a, { _ts: _tsOf(a), _live: false });
     });
     (live || []).forEach(function (a) {
-      byHex[a.hex] = Object.assign({}, a, { _ts: _tsOf(a), _live: true });
+      byHex[a.hex] = Object.assign({}, _carryForward(a, byHex[a.hex]),
+                                   { _ts: _tsOf(a), _live: true });
     });
     return Object.values(byHex);
+  }
+
+  // Fields an aircraft reports independently of each other. dump1090 publishes
+  // each one only while its own freshness timer holds, so a plane fading out is
+  // still LISTED live while alt, then speed/track, then the position drop away
+  // one by one. Taking the live record wholesale therefore blanked a row that
+  // history still had good values for — the same "lost aircraft, emptied record"
+  // the recorder's snapshot had.
+  var _CARRY = ['flight', 'alt_baro', 'gs', 'track', 'squawk',
+                'category', 'baro_rate', 'emergency'];
+
+  // Live values win wherever the live frame actually carries one; history fills
+  // only the gaps. The server always emits every key (null when unknown), so
+  // "carries one" has to mean non-null — not merely present.
+  function _carryForward(live, prev) {
+    if (!prev) return live;
+    var out = Object.assign({}, live);
+    _CARRY.forEach(function (k) {
+      if (out[k] == null || out[k] === '') out[k] = prev[k];
+    });
+    // Position is ONE datum: inherit lat/lon as a PAIR, never mix a live lat
+    // with a stale lon. Carrying it forward is also what keeps a still-heard
+    // aircraft in the list at all — the filter below drops a LIVE row with no
+    // position, so without this a plane whose position expires while it is
+    // still transmitting vanishes outright instead of ageing like the rest.
+    if (out.lat == null || out.lon == null) { out.lat = prev.lat; out.lon = prev.lon; }
+    return out;
   }
 
   // A row with an unusable timestamp must render as "unknown age", NOT throw.

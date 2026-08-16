@@ -51,6 +51,37 @@ def _migrate(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_aircraft_last_heard "
                  "ON aircraft(last_heard)")
 
+def repair_blank_snapshots(conn):
+    """Restore snapshots that an earlier record() blanked; return the row count.
+
+    Until the COALESCE guards in record() landed, a sparse frame wrote NULL over
+    a snapshot's position — so an aircraft that faded out was left as a callsign
+    with no data, and stayed that way for the whole recent() window. The truth is
+    still on disk: observations holds every position we actually decoded, so the
+    aircraft's last breadcrumb IS its last known position. Restore from it.
+
+    Guarded on `lat IS NULL` so this is a one-shot repair, not a recurring scan:
+    once healed, a row stops matching. A Mode-S-only aircraft is also position-
+    less, but has no observations at all, so the join skips it. last_heard is
+    deliberately NOT rolled back — we did hear the aircraft then; it was only
+    the position that was older."""
+    rows = conn.execute(
+        "SELECT o.icao, o.lat, o.lon, o.alt, o.speed, o.track, o.squawk "
+        "FROM aircraft a JOIN observations o ON o.id = ("
+        "  SELECT id FROM observations WHERE icao = a.icao "
+        "  ORDER BY ts DESC LIMIT 1) "
+        "WHERE a.lat IS NULL").fetchall()
+    if not rows:
+        return 0
+    conn.executemany(
+        "UPDATE aircraft SET lat=?, lon=?, "
+        "alt=COALESCE(alt, ?), speed=COALESCE(speed, ?), "
+        "track=COALESCE(track, ?), squawk=COALESCE(squawk, ?) WHERE icao=?",
+        [(lat, lon, alt, speed, track, squawk, icao)
+         for icao, lat, lon, alt, speed, track, squawk in rows])
+    return len(rows)
+
+
 def open_writer(db_path):
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     conn = sqlite3.connect(db_path, isolation_level=None)
@@ -58,10 +89,18 @@ def open_writer(db_path):
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.executescript(_SCHEMA)
     _migrate(conn)
+    repair_blank_snapshots(conn)
     return conn
 
 def _clean(v):
-    return v.strip() if isinstance(v, str) else v
+    """Trim a decoder string; an empty/whitespace one is UNKNOWN, so return None.
+
+    Returning '' instead would defeat the COALESCE guards in record(): dump1090
+    emits a space-padded `flight` for an aircraft whose callsign hasn't decoded
+    yet, and '' is not NULL, so it would overwrite a callsign we already had."""
+    if isinstance(v, str):
+        return v.strip() or None
+    return v
 
 def record(conn, ac, ts):
     icao = ac.get("hex")
@@ -69,7 +108,8 @@ def record(conn, ac, ts):
         return
     callsign = _clean(ac.get("flight"))
     lat, lon = ac.get("lat"), ac.get("lon")
-    alt, gs, track, squawk = ac.get("alt_baro"), ac.get("gs"), ac.get("track"), ac.get("squawk")
+    alt, gs, track = ac.get("alt_baro"), ac.get("gs"), ac.get("track")
+    squawk = _clean(ac.get("squawk"))
 
     # Track breadcrumb — recorded BEFORE the snapshot update (which still holds
     # the previous position), and ONLY when this frame carries a real position
@@ -90,14 +130,35 @@ def record(conn, ac, ts):
     # makes it monotonic: an out-of-order (older) frame never overwrites a newer
     # position, and last_heard advances every frame so recent()/last_heard stay
     # live even while the plane sits at one position.
+    #
+    # EVERY field COALESCEs, because a missing field means "not heard just now",
+    # never "no longer true". dump1090 publishes each field only while its own
+    # timer says it is fresh, so an aircraft fading out of range stays LISTED
+    # while alt, then speed/track, then the position drop away one by one — and
+    # the plain `lat=excluded.lat, …` this replaces wrote every one of those
+    # NULLs straight over good data. The last frames of a departing aircraft are
+    # exactly the sparse ones, so the record the operator was left with was the
+    # emptiest one, and it PERSISTED: recent() serves this row, so all three
+    # lists showed a callsign with no altitude, speed, track or position.
+    #
+    # Position is ONE datum, not two columns: lat/lon move together, so a frame
+    # missing either keeps the previous PAIR. Coalescing them independently
+    # could pair a new lat with a stale lon and place the aircraft somewhere it
+    # has never been.
     conn.execute(
         "INSERT INTO aircraft(icao, callsign, first_heard, last_heard, "
         "                     lat, lon, alt, speed, track, squawk) "
         "VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(icao) DO UPDATE SET "
         "callsign=COALESCE(excluded.callsign, aircraft.callsign), "
-        "last_heard=excluded.last_heard, lat=excluded.lat, lon=excluded.lon, "
-        "alt=excluded.alt, speed=excluded.speed, track=excluded.track, "
-        "squawk=excluded.squawk "
+        "last_heard=excluded.last_heard, "
+        "lat=CASE WHEN excluded.lat IS NOT NULL AND excluded.lon IS NOT NULL "
+        "         THEN excluded.lat ELSE aircraft.lat END, "
+        "lon=CASE WHEN excluded.lat IS NOT NULL AND excluded.lon IS NOT NULL "
+        "         THEN excluded.lon ELSE aircraft.lon END, "
+        "alt=COALESCE(excluded.alt, aircraft.alt), "
+        "speed=COALESCE(excluded.speed, aircraft.speed), "
+        "track=COALESCE(excluded.track, aircraft.track), "
+        "squawk=COALESCE(excluded.squawk, aircraft.squawk) "
         "WHERE excluded.last_heard >= aircraft.last_heard",
         (icao, callsign, ts, ts, lat, lon, alt, gs, track, squawk))
 

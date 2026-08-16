@@ -86,6 +86,94 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(rows[0]["alt_baro"], 2000)
         self.assertEqual(rows[0]["ts"], t)
 
+    def test_record_never_blanks_a_snapshot_with_a_sparse_frame(self):
+        # THE BUG: dump1090 keeps listing an aircraft as it fades, publishing
+        # fewer fields each poll. Those absent fields used to be written as NULL
+        # over good data, so the record the operator was left with when the
+        # aircraft was lost was the EMPTIEST one — a callsign and nothing else.
+        w = history.open_writer(self.db)
+        t = time.time()
+        history.record(w, {"hex": "fad111", "flight": "ASA477 ", "lat": 34.1,
+                           "lon": -84.5, "alt_baro": 35000, "gs": 450.0,
+                           "track": 270.0, "squawk": "1200"}, t)
+        # Fading: altitude/speed/track expire first, position still decoding.
+        history.record(w, {"hex": "fad111", "flight": "ASA477 ",
+                           "lat": 34.2, "lon": -84.6}, t + 1)
+        # Gone: nothing left but the Mode-S address.
+        history.record(w, {"hex": "fad111"}, t + 2)
+        w.close()
+        r, _ = history.open_reader(self.db)
+        row = history.recent(r, since_ts=t - 3600)[0]
+        self.assertEqual(row["flight"], "ASA477")
+        self.assertEqual(row["alt_baro"], 35000)
+        self.assertEqual(row["gs"], 450.0)
+        self.assertEqual(row["track"], 270.0)
+        self.assertEqual(row["squawk"], "1200")
+        # The last position we actually decoded, not the first and not None.
+        self.assertEqual(row["lat"], 34.2)
+        self.assertEqual(row["lon"], -84.6)
+        # last_heard still advances: we DID hear it, we just heard less of it.
+        self.assertEqual(row["ts"], t + 2)
+
+    def test_record_carries_position_as_a_pair(self):
+        # lat/lon are one datum. A frame carrying only one of them must keep the
+        # previous PAIR — pairing a new lat with a stale lon would place the
+        # aircraft somewhere it has never been.
+        w = history.open_writer(self.db)
+        t = time.time()
+        history.record(w, {"hex": "par111", "lat": 10.0, "lon": 20.0}, t)
+        history.record(w, {"hex": "par111", "lat": 11.0}, t + 1)   # lon missing
+        w.close()
+        r, _ = history.open_reader(self.db)
+        row = history.recent(r, since_ts=t - 3600)[0]
+        self.assertEqual((row["lat"], row["lon"]), (10.0, 20.0))
+
+    def test_record_ignores_a_padded_empty_callsign(self):
+        # dump1090 emits a space-padded `flight` before the callsign decodes.
+        # Stripped that is '', which is not NULL — so it used to slip past the
+        # COALESCE and erase a callsign we already had.
+        w = history.open_writer(self.db)
+        t = time.time()
+        history.record(w, {"hex": "cal111", "flight": "DAL123 ", "lat": 1.0,
+                           "lon": 1.0, "squawk": "4321"}, t)
+        history.record(w, {"hex": "cal111", "flight": "        ",
+                           "squawk": "  ", "lat": 1.0, "lon": 1.0}, t + 1)
+        w.close()
+        r, _ = history.open_reader(self.db)
+        row = history.recent(r, since_ts=t - 3600)[0]
+        self.assertEqual(row["flight"], "DAL123")
+        self.assertEqual(row["squawk"], "4321")
+
+    def test_repair_restores_snapshots_blanked_before_the_fix(self):
+        # A DB written by the buggy record(): the breadcrumb survived, the
+        # snapshot was emptied. open_writer must heal it from the last
+        # observation so the deployed history isn't stuck showing blank rows.
+        w = history.open_writer(self.db)
+        t = time.time()
+        history.record(w, {"hex": "dmg111", "flight": "UAL9 ", "lat": 40.0,
+                           "lon": -75.0, "alt_baro": 30000, "gs": 400.0,
+                           "track": 90.0, "squawk": "2000"}, t)
+        w.execute("UPDATE aircraft SET lat=NULL, lon=NULL, alt=NULL, "
+                  "speed=NULL, track=NULL, squawk=NULL WHERE icao='dmg111'")
+        # A Mode-S-only aircraft is blank too, but legitimately: no breadcrumbs,
+        # nothing to restore, and it must not trip the repair up.
+        history.record(w, {"hex": "mds222", "flight": "MODES "}, t)
+        w.close()
+
+        w2 = history.open_writer(self.db)          # repair runs on open
+        r, _ = history.open_reader(self.db)
+        by_hex = {a["hex"]: a for a in history.recent(r, since_ts=t - 3600)}
+        self.assertEqual(by_hex["dmg111"]["lat"], 40.0)
+        self.assertEqual(by_hex["dmg111"]["lon"], -75.0)
+        self.assertEqual(by_hex["dmg111"]["alt_baro"], 30000)
+        self.assertEqual(by_hex["dmg111"]["gs"], 400.0)
+        self.assertEqual(by_hex["dmg111"]["squawk"], "2000")
+        self.assertEqual(by_hex["dmg111"]["ts"], t, "last_heard must not roll back")
+        self.assertIsNone(by_hex["mds222"]["lat"])
+        # One-shot: a healed DB has nothing left to repair on the next open.
+        self.assertEqual(history.repair_blank_snapshots(w2), 0)
+        w2.close()
+
     def _obs_count(self, conn):
         return conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
 

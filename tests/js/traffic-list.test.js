@@ -89,6 +89,69 @@ test('aircraftRows: live wins over history, unpositioned live dropped', () => {
   assert.strictEqual(dropped.length, 0);
 });
 
+// The display half of the same "lost aircraft, emptied record" bug the recorder
+// had: dump1090 publishes each field only while its own timer says it is fresh,
+// so a plane fading out is still listed live with alt, then speed/track, then
+// the position dropping away one by one. Taking the live record wholesale wrote
+// those holes over values history still knew.
+test('aircraftRows: a fading live frame does not blank what history knows', () => {
+  const row = T.aircraftRows({
+    now: 1000,
+    recent: [{ hex: 'aaa', flight: 'ASA477', ts: 900, lat: 34.1, lon: -84.5,
+               alt_baro: 35000, gs: 450, track: 270, squawk: '1200',
+               category: 'A3', baro_rate: -640 }],
+    // Still heard — but the server emits every key, null when unknown.
+    live: [{ hex: 'aaa', flight: 'ASA477', seen: 0, lat: 34.2, lon: -84.6,
+             alt_baro: null, gs: null, track: null, squawk: null,
+             category: null, baro_rate: null }]
+  })[0];
+  assert.strictEqual(row.speed_mph, 518, 'speed carried forward from history');
+  assert.strictEqual(row.course, 270, 'track carried forward');
+  assert.strictEqual(row.category, 'A3');
+  assert.strictEqual(row.baro_rate, -640);
+  assert.strictEqual(row.comment, 'sq 1200', 'squawk carried forward');
+  assert.ok(row.alt_m > 10667 && row.alt_m < 10669, 'altitude carried forward');
+  // The LIVE position still wins — carry-forward fills gaps, it does not
+  // outrank a value the aircraft actually just sent.
+  assert.strictEqual(row.lat, 34.2);
+  assert.strictEqual(row.lon, -84.6);
+  assert.strictEqual(T.lastHeardEpoch(row.last_heard), 1000 * 1000,
+    'still heard now: the age comes from the live frame');
+});
+
+test('aircraftRows: a still-heard aircraft keeps its last known position', () => {
+  // Position expires while the aircraft is still transmitting. The filter drops
+  // a LIVE row with no position, so without carry-forward the plane vanished
+  // from the list outright instead of ageing like every other row.
+  const rows = T.aircraftRows({
+    now: 1000,
+    recent: [{ hex: 'aaa', ts: 900, lat: 34.1, lon: -84.5, alt_baro: 35000 }],
+    live: [{ hex: 'aaa', seen: 0, lat: null, lon: null }]
+  });
+  assert.strictEqual(rows.length, 1, 'the aircraft must not vanish');
+  assert.strictEqual(rows[0].lat, 34.1);
+  assert.strictEqual(rows[0].lon, -84.5);
+  assert.strictEqual(rows[0]._positioned, true);
+
+  // lat/lon are ONE datum: a half-position keeps the previous PAIR rather than
+  // mixing a live lat with a stale lon, which would place it somewhere it has
+  // never been.
+  const half = T.aircraftRows({
+    now: 1000,
+    recent: [{ hex: 'bbb', ts: 900, lat: 10, lon: 20 }],
+    live: [{ hex: 'bbb', seen: 0, lat: 11, lon: null }]
+  })[0];
+  assert.deepStrictEqual([half.lat, half.lon], [10, 20]);
+
+  // A Mode-S-only aircraft has no position ANYWHERE, so it is still dropped —
+  // carry-forward must not resurrect the clutter the filter exists to remove.
+  const modeS = T.aircraftRows({
+    now: 1000, recent: [{ hex: 'ccc', ts: 900, lat: null, lon: null }],
+    live: [{ hex: 'ccc', seen: 0 }]
+  });
+  assert.strictEqual(modeS.length, 0, 'no position anywhere: still dropped');
+});
+
 test('aircraftRows: altitude guard and emergency squawks', () => {
   const mk = extra => T.aircraftRows({ now: 10, recent: [], live: [Object.assign({ hex: 'h', seen: 0, lat: 1, lon: 1 }, extra)] })[0];
   // alt_baro null/'ground' must stay null, NOT become 0 (Number(null) === 0 would
