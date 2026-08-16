@@ -44,10 +44,14 @@ HD.dat
 # tokens — otherwise every rebuild means re-entering them. Bundles are not
 # distributed; if that ever changes, exclude it then.
 #
+# NOTE: static/repeaterbook/*.csv is deliberately NOT listed either, for the
+# same reason. It was excluded on 2026-08-15 because phase_repeaterbook was
+# going to fetch the book into the bundle instead — but that phase was removed
+# when RepeaterBook became report-only, and the exclusion outlived its cause.
+# The result was silent: bundles built with no repeater data at all, and no
+# error anywhere to say so. Gitignored is not the same as unwanted in a bundle.
+# Pinned by tests/test_bundle_ignore.py.
+#
 # refresh-state.json is per-station counters (last attempt/success/failures).
 # Carrying them would make data look fresher on the Pi than it is.
 configuration/refresh-state.json
-
-# The hand-exported CHIRP CSV. Superseded by phase_repeaterbook, which fetches
-# the book into the bundle; a stale local export must not tag along.
-static/repeaterbook/*.csv
