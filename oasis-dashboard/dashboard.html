@@ -31,6 +31,7 @@
 <script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
 <script src="/common/js/speech.js"></script>
+<script src="/common/js/freshness.js"></script>
 <script src="/common/js/quiet-hours.js"></script>
 <script src="/common/js/sat-alerts.js"></script>
 <script src="/common/js/clock-chime.js"></script>
@@ -188,6 +189,15 @@
   /* Wi-Fi pill row (shares row 2 with the service counts). The pill itself is
      styled by the shared /common/css/wifi-pill.css so it matches index.html. */
   .pillrow{ display:flex; align-items:center; gap:.5rem; flex-wrap:nowrap; }
+  /* Data-freshness chip. READ-ONLY: the panel has no keyboard, so it can report
+     staleness but never accept a token or start a large download. Classes come
+     from the shared common/js/freshness.js. */
+  .fxchip{ padding:.1rem .5rem; border:1px solid var(--border); border-radius:999px;
+           font-family:var(--mono); font-size:.8rem; letter-spacing:.04em; }
+  .fxchip.fx-ok{ color:var(--up); border-color:var(--up); }
+  .fxchip.fx-warn{ color:var(--warn); border-color:var(--warn); }
+  .fxchip.fx-bad{ color:var(--down); border-color:var(--down); }
+  .fxchip.fx-off{ color:var(--dim); }
   /* ── Wi-Fi sheet (ported from index.html; adapted to kiosk vars) ───────── */
   .wifi-modal-backdrop{ position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,.6);
                         display:flex; align-items:center; justify-content:center; padding:1rem; }
@@ -698,6 +708,7 @@
         <span class="svcpill" id="svcpill" onclick="openSvcSheet()" role="button" tabindex="0" title="Services — tap for detail">—</span>
         <span class="wifipill" id="wifipill" onclick="openWifiModal()" role="button" tabindex="0"
               style="display:none" title="Wi-Fi — tap to scan / join / raise the OASIS AP">Wi-Fi</span>
+        <span class="fxchip" id="fxchip" title="Data freshness" hidden>DATA</span>
       </div>
       <!-- RTL/SDR assignment pill: dot (hollow=unassigned, amber=rtl assigned, green=in use) -->
       <div class="svcbar" id="svcbar" onclick="openSrvOps()" role="button" tabindex="0"
@@ -2835,5 +2846,29 @@ loadInstalled().then(() => {
   window.openSrvOps = function(){ openOv('srvops'); refresh(); };
   message(IDLE, 'idle');
   setInterval(function(){ var ov = document.getElementById('ov-srvops'); if (ov && ov.classList.contains('open')) refresh(); }, 5000);
+})();
+</script>
+
+<script>
+/* Data-freshness chip (read-only). Renders through the shared module so the
+   kiosk and the dashboard cannot disagree about staleness. */
+(function () {
+  'use strict';
+  function render(data) {
+    var chip = document.getElementById('fxchip');
+    if (!chip || !window.OasisFreshness) { return; }
+    var s = window.OasisFreshness.summarize(data && data.sources);
+    chip.textContent = s.label;
+    chip.setAttribute('class', 'fxchip ' + s.cls);
+    chip.hidden = (s.worst === 'fresh');   /* silent when all current */
+  }
+  function poll() {
+    fetch('/api/refresh/status')
+      .then(function (r) { return r.json(); })
+      .then(render)
+      .catch(function () {});
+  }
+  poll();
+  setInterval(poll, 300000);
 })();
 </script>

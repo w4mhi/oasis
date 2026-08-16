@@ -758,6 +758,30 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 .pwr-pill.warn .pwr-val { color: var(--amber); }
 .pwr-pill.crit { border-color: var(--red-dim, #7a1010); }
 .pwr-pill.crit .pwr-val { color: var(--red); }
+
+/* Data-freshness pill — shares the host-row look. Classes come from
+   common/js/freshness.js so this page, the kiosk, and Diagnostics cannot
+   drift apart the way the health pills once did. */
+.fx-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  flex: 0 0 auto;
+  padding: .18rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: var(--fs-label);
+  font-family: var(--mono);
+  letter-spacing: .03em;
+  cursor: pointer;
+  color: var(--text);
+}
+.fx-pill svg { flex: 0 0 auto; }
+.fx-pill.fx-ok   { color: var(--accent); }
+.fx-pill.fx-warn { color: var(--amber); border-color: var(--amber-dim); }
+.fx-pill.fx-bad  { color: var(--red);   border-color: var(--red-dim, #7a1010); }
+.fx-pill.fx-off  { color: var(--text-dim); }
 .host-pill {
   display: inline-flex;
   align-items: center;
@@ -1177,6 +1201,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <script src="/common/js/service-registry.js"></script>
 <script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
+<script src="/common/js/freshness.js"></script>
 </head>
 <body>
 
@@ -1215,6 +1240,15 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
         <span class="pwr-lbl">POWER</span>
         <span class="pwr-val" id="pwr-val">&mdash;</span>
       </span>
+      <button class="fx-pill" id="fx-pill" onclick="location.href='/system/diagnostics.html#updates'"
+              title="Data freshness" aria-label="Data freshness" hidden>
+        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 1.5a6.5 6.5 0 1 0 6.5 6.5h-1.6A4.9 4.9 0 1 1 8 3.1V1.5z"
+                fill="currentColor"/>
+          <path d="M8 4.4v3.9l3 1.8.7-1.2-2.4-1.4V4.4z" fill="currentColor"/>
+        </svg>
+        <span id="fx-pill-txt">DATA</span>
+      </button>
       <button class="units-pill" id="theme-toggle" onclick="toggleTheme()"
               title="Toggle light / dark theme" aria-label="Toggle light / dark theme">
         <span id="theme-glyph">&#9728;</span>
@@ -4411,6 +4445,33 @@ loadConfig().then(() => {
   setInterval(function(){ if(pop.classList.contains('hsx-open')) refresh(); }, 5000);   // live while open
   setInterval(refresh, 20000);                                                          // rail heartbeat when closed
   setInterval(pollGuardian, 2000);                                                      // guardian countdown (cheap, cached)
+})();
+</script>
+<script>
+/* Data-freshness pill. Reads the one status endpoint and renders through the
+   shared module — this page must never compute staleness for itself. */
+(function () {
+  'use strict';
+  function render(data) {
+    var pill = document.getElementById('fx-pill');
+    var txt = document.getElementById('fx-pill-txt');
+    if (!pill || !txt || !window.OasisFreshness) { return; }
+    var s = window.OasisFreshness.summarize(data && data.sources);
+    txt.textContent = s.label;
+    pill.setAttribute('class', 'fx-pill ' + s.cls);
+    pill.hidden = false;
+    pill.title = 'Data freshness - ' + s.counts.stale + ' stale, '
+               + s.counts.missing + ' missing, '
+               + s.counts.deferred + ' awaiting update. Click for detail.';
+  }
+  function poll() {
+    fetch('/api/refresh/status')
+      .then(function (r) { return r.json(); })
+      .then(render)
+      .catch(function () { /* offline is normal - stay quiet */ });
+  }
+  poll();
+  setInterval(poll, 300000);   /* 5 min; the refresh pass itself runs every 30 */
 })();
 </script>
 </body>
