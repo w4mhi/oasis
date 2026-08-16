@@ -242,7 +242,7 @@ def run():
 
     # Verification is real, and it is the only thing allowed to print success.
     try:
-        wav = SPEECH.synthesize(REPO_ROOT, _greeting())
+        wav = SPEECH.synthesize(REPO_ROOT, _greeting(), kind="INTRO")
     except Exception as e:
         _warn(f"Piper installed but could not synthesise: {e}")
         return 1

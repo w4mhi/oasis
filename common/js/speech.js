@@ -22,6 +22,16 @@
 
   var SAY_URL = '/api/speech/say?text=';
 
+  // An optional readable label for the SERVER's cache filename. The hour bell
+  // and the greeting pass one; a pass alert deliberately does not, and neither
+  // does the recital — its text is base64 on disk for spoiler protection, and a
+  // readable cache name would undo that. The server whitelists this before it
+  // reaches a filename, so a bad value costs the label, never the announcement.
+  function sayUrl(text, kind) {
+    return SAY_URL + encodeURIComponent(text) +
+           (kind ? '&kind=' + encodeURIComponent(kind) : '');
+  }
+
   var _ctx = null;
   // What is sounding right now, so the mute bell can cut it off mid-sentence —
   // {src, settle}. A mute that only stops the NEXT announcement is not a mute:
@@ -133,9 +143,9 @@
   // HEAD, not GET, and not negotiable: a fetch() whose body is never read pins a
   // 2 MiB /dev/shm data pipe per request for the life of the page. That leak
   // cost ~500 MB/h on a kiosk once already.
-  function oasisSpeakWarm(text) {
+  function oasisSpeakWarm(text, kind) {
     if (!text || !root.fetch) return Promise.resolve(false);
-    return root.fetch(SAY_URL + encodeURIComponent(text), { method: 'HEAD' })
+    return root.fetch(sayUrl(text, kind), { method: 'HEAD' })
       .then(function (res) { return !!(res && res.ok); }, function () { return false; });
   }
 
@@ -158,14 +168,14 @@
   // Say it with the station's own voice, falling back to the browser's.
   // Resolves true if SOMETHING spoke. This is the UNSERIALISED worker —
   // oasisSpeak (below) is the public entry point and queues calls to this.
-  function oasisSpeakOne(text, gen, onstart) {
+  function oasisSpeakOne(text, gen, onstart, kind) {
     // Only `fetch` is checked here. Web Audio is checked INSIDE, where a
     // missing context throws into the same catch as every other failure — if
     // this bailed early on no-AudioContext, the fetch path would be skipped
     // wholesale in any environment without Web Audio, including the test
     // harness, and the fallback tests would pass without ever exercising it.
     if (!root.fetch) return Promise.resolve(gen === _gen && oasisSpeakFallback(text, onstart));
-    return root.fetch(SAY_URL + encodeURIComponent(text))
+    return root.fetch(sayUrl(text, kind))
       .then(function (res) {
         if (!res.ok) throw new Error('speech ' + res.status);
         return res.arrayBuffer();
@@ -234,6 +244,7 @@
   function oasisSpeak(text, opts) {
     if (!text) return Promise.resolve(false);
     var onstart = opts && opts.onstart;
+    var kind = opts && opts.kind;
     // Captured HERE, at enqueue time, not inside oasisSpeakOne. Read when the
     // queue finally reaches it, the generation would already have caught up with
     // the stop and the announcement would speak anyway — which is precisely the
@@ -241,7 +252,7 @@
     var gen = _gen;
     var result = _queue.then(function () {
       if (gen !== _gen) return false;
-      return oasisSpeakOne(text, gen, onstart);
+      return oasisSpeakOne(text, gen, onstart, kind);
     });
     // Reset the chain on EITHER outcome. If a step were ever left to reject
     // through, every announcement queued behind it would wait on a promise

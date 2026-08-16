@@ -385,3 +385,68 @@ class PruneTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CacheNameTest(unittest.TestCase):
+    """Readable cache filenames — and the one kind that must stay unreadable.
+
+    A cache full of 64-hex names tells a human nothing, so the two announcements
+    that recur forever carry a label. The unevenness is the design, not an
+    oversight: see the note above KIND_RE in common/speech.py.
+    """
+
+    def test_a_labelled_kind_leads_the_filename(self):
+        name = speech.cache_name("The time is eighteen hundred Zulu.", "jenny",
+                                 "TIME_UTC_1800")
+        self.assertTrue(name.startswith("TIME_UTC_1800_"), name)
+
+    def test_no_kind_is_a_bare_hash(self):
+        name = speech.cache_name("ISS, in ten minutes", "jenny")
+        self.assertRegex(name, r"^[0-9a-f]{64}$")
+
+    def test_the_kind_is_inside_the_hash_not_merely_a_prefix(self):
+        # So the name stays a single deterministic stat: no globbing, and no
+        # cache miss when a caller starts or stops passing a kind.
+        self.assertNotEqual(speech.cache_key("hello", "jenny", "INTRO"),
+                            speech.cache_key("hello", "jenny"))
+
+    def test_same_text_and_kind_is_the_same_file(self):
+        self.assertEqual(speech.cache_name("hello", "jenny", "INTRO"),
+                         speech.cache_name("hello", "jenny", "INTRO"))
+
+    def test_a_different_voice_still_invalidates(self):
+        self.assertNotEqual(speech.cache_name("hello", "jenny", "INTRO"),
+                            speech.cache_name("hello", "amy", "INTRO"))
+
+    def test_a_recital_line_never_reaches_the_filename(self):
+        # THE POINT. jenny.spk is base64 purely as spoiler protection — against
+        # code search, an idle grep, the file open in an editor. The easter egg
+        # passes NO kind, so its cached WAV is a bare hash and its words never
+        # touch the disk in readable form. A future "slug every kind" tidy-up
+        # would silently undo the encoding; this test is what stops it.
+        secret = "the quiet part nobody should read off a filename"
+        name = speech.cache_name(secret, "jenny")
+        # The strong form: a bare hash is hex, so no text can be in it at all.
+        self.assertRegex(name, r"^[0-9a-f]{64}$")
+        # And the readable form, skipping words short enough to be hex digits
+        # by coincidence ("a", "be", "dead").
+        for word in (w for w in secret.split() if len(w) > 3):
+            self.assertNotIn(word, name)
+
+    def test_a_traversing_kind_cannot_escape_the_cache_directory(self):
+        # `kind` arrives from an unauthenticated LAN endpoint and becomes part of
+        # a FILENAME. Whitelisted, not sanitised — no dot and no separator can
+        # survive, so there is nothing to escape with.
+        # NB "lower" is NOT hostile — it normalises to LOWER. See the test below.
+        for hostile in ("../../etc/passwd", "..", "a/b", "a.b", "a\\b", "",
+                        "x" * 64, "-lead", "1LEAD", "HAS SPACE", None):
+            self.assertIsNone(speech.clean_kind(hostile), hostile)
+            self.assertNotIn("/", speech.cache_name("t", "v", hostile))
+
+    def test_a_lowercase_kind_is_accepted_and_normalised(self):
+        self.assertEqual(speech.clean_kind("intro"), "INTRO")
+
+    def test_a_malformed_kind_costs_the_label_not_the_announcement(self):
+        # Falling back to a bare hash is the whole point: a bad label must never
+        # be a reason the station stays silent.
+        self.assertRegex(speech.cache_name("hello", "jenny", "a/b"), r"^[0-9a-f]{64}$")

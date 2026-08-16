@@ -2195,7 +2195,7 @@ function jennyReady() {
         // The click that ENDS a long press must not also count as a tap.
         if (_heldFired) { _heldFired = false; return; }
         if (reciteStop()) return;        // a tap is how you stop her
-        if (!_jennyBusy) jennySpeak(_jennyHello);
+        if (!_jennyBusy) jennySpeak(_jennyHello, 'INTRO');
       });
     })
     .catch(() => {});
@@ -2297,7 +2297,7 @@ function jennyRest() {
 // Counted, not boolean: several birds crossing T-10 on one tick queue several
 // utterances (oasisSpeak serialises them), and the picture should run once
 // across the whole run rather than flicker between them.
-function jennySpeak(text) {
+function jennySpeak(text, kind) {
   _jennyBusy++;
   const done = () => { if (!--_jennyBusy) jennyRest(); };
   // Woken by onstart, NOT here. The gap between asking for a sentence and
@@ -2310,7 +2310,7 @@ function jennySpeak(text) {
   // is only .ready when Piper IS installed, so that path never animates.
   // RETURNS the promise: a caller reciting several lines in sequence has to know
   // when one has finished before timing the pause after it.
-  return Promise.resolve(oasisSpeak(text, { onstart: jennyWake })).then(done, done);
+  return Promise.resolve(oasisSpeak(text, { onstart: jennyWake, kind: kind })).then(done, done);
 }
 
 // ── The hour bell ────────────────────────────────────────────────────────────
@@ -2399,7 +2399,7 @@ function runClockChime() {
   // a second plus however long Piper takes (3.6 s, measured on a Pi 5), and the
   // pause would be synthesis latency on the first run of each hour and the real
   // thing afterwards. Same reasoning as reciteStart, same fix.
-  due.speak.forEach(line => { try { oasisSpeakWarm(line); } catch (_) {} });
+  due.speak.forEach(it => { try { oasisSpeakWarm(it.text, it.kind); } catch (_) {} });
   setTimeout(() => speakClockTime(due.speak), OASIS_CLOCK_CHIME_2_MS);
 }
 
@@ -2407,10 +2407,10 @@ function runClockChime() {
 // sentence — jennySpeak resolves when playback finishes — so it is a second of
 // silence rather than a second from the moment we asked for it, which on an
 // uncached line would be no silence at all.
-async function speakClockTime(lines) {
-  for (let i = 0; i < lines.length; i++) {
+async function speakClockTime(items) {
+  for (let i = 0; i < items.length; i++) {
     if (i) await new Promise(res => setTimeout(res, OASIS_CLOCK_GAP_MS));
-    await jennySpeak(lines[i]);
+    await jennySpeak(items[i].text, items[i].kind);
   }
 }
 

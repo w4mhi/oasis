@@ -55,11 +55,19 @@ def api_speech_say():
     defeat conditional requests entirely. The cache key already IS the
     content hash, and it's the WAV's basename without the extension, so
     reusing it costs nothing extra and is stable regardless of the touch.
+
+    `kind` is an optional readable label for the cached filename — the hour bell
+    and the greeting use it, a pass alert deliberately does not. It arrives from
+    an unauthenticated LAN endpoint and becomes part of a FILENAME, so it is
+    whitelisted in SPEECH.clean_kind rather than sanitised here; anything that
+    fails the whitelist is dropped and the file keeps a bare hash. A bad label is
+    never worth failing an announcement over.
     """
     from app import SUITE_ROOT
 
     try:
-        path = SPEECH.synthesize(SUITE_ROOT, request.args.get("text", ""))
+        path = SPEECH.synthesize(SUITE_ROOT, request.args.get("text", ""),
+                                 kind=request.args.get("kind"))
     except SPEECH.SpeechRejected as e:
         return jsonify({"ok": False, "error": str(e), "code": e.code}), 400
     except SPEECH.SpeechUnavailable:

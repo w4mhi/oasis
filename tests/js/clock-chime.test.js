@@ -48,8 +48,30 @@ test('voice mode strikes AND speaks, as TWO separate utterances', () => {
   // lose the pause, which is why this asserts the shape and not just the words.
   const r = C.oasisClockDue(H18, parts(18, 11), 'voice', 0, seen(H18));
   assert.strictEqual(r.chime, true);
-  assert.deepStrictEqual(r.speak,
-    ['The time is eighteen hundred Zulu.', 'Local time is eleven hundred.']);
+  // Each utterance carries the readable label its cached WAV gets on the server,
+  // travelling WITH its text — two parallel lists is how a label ends up on the
+  // wrong phrase.
+  assert.deepStrictEqual(r.speak, [
+    { text: 'The time is eighteen hundred Zulu.', kind: 'TIME_UTC_1800' },
+    { text: 'Local time is eleven hundred.',      kind: 'TIME_LOC_1100' },
+  ]);
+});
+
+test('the local label carries MINUTES, because the bell fires on the UTC hour', () => {
+  // In a half-hour zone the top of the UTC hour is 04:30 locally, and a label
+  // saying 0400 would be a lie.
+  const said = C.oasisClockSpeech({ utcH: 18, locH: 4, locM: 30 });
+  assert.strictEqual(said[0].kind, 'TIME_UTC_1800');
+  assert.strictEqual(said[1].kind, 'TIME_LOC_0430');
+});
+
+test('clock labels are filename-safe: no colon, no separator', () => {
+  // ':' is legal on Linux and nowhere else that matters — illegal on FAT/exFAT,
+  // and it needs quoting in every shell command touching the cache.
+  for (let h = 0; h < 24; h++) {
+    C.oasisClockSpeech({ utcH: h, locH: h, locM: h % 2 ? 30 : 0 })
+      .forEach(it => assert.match(it.kind, /^[A-Z][A-Z0-9_]{0,31}$/));
+  }
 });
 
 test('off does nothing at all', () => {

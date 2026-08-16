@@ -79,7 +79,7 @@
     if (oasisClockQuiet(parts.locH) && !oasisClockOverrideActive(nowMs, overrideUntil)) {
       return none;
     }
-    return { chime: true, speak: mode === 'voice' ? oasisClockPhrases(parts) : [] };
+    return { chime: true, speak: mode === 'voice' ? oasisClockSpeech(parts) : [] };
   }
 
   // ── Words, not digits ────────────────────────────────────────────────────
@@ -126,6 +126,24 @@
     var local = parts.locM ? _hourMinuteWords(parts.locH, parts.locM)
                            : _hourWords(parts.locH);
     return ['The time is ' + zulu + ' Zulu.', 'Local time is ' + local + '.'];
+  }
+
+  var _pad = function (n) { return (n < 10 ? '0' : '') + n; };
+
+  // The same two phrases, each carrying the readable label its cached WAV gets
+  // on the server. There are only 24 Zulu ones, so that corner of the cache
+  // fills once and never churns. The local label carries MINUTES because the
+  // bell fires on the top of the UTC hour: in a half-hour zone that is 04:30
+  // locally, and a name saying 0400 would be a lie.
+  //
+  // The kind travels WITH the text rather than as a parallel array — two lists
+  // the caller has to keep in step is how a label ends up on the wrong phrase.
+  function oasisClockSpeech(parts) {
+    var said = oasisClockPhrases(parts);
+    return [
+      { text: said[0], kind: 'TIME_UTC_' + _pad(parts.utcH) + '00' },
+      { text: said[1], kind: 'TIME_LOC_' + _pad(parts.locH) + _pad(parts.locM || 0) },
+    ];
   }
 
   // Read the three fields this module needs off a Date, in one place, so a
@@ -190,6 +208,7 @@
   root.oasisClockOverrideActive = oasisClockOverrideActive;
   root.oasisClockDue = oasisClockDue;
   root.oasisClockPhrases = oasisClockPhrases;
+  root.oasisClockSpeech = oasisClockSpeech;
   root.oasisClockParts = oasisClockParts;
   root.oasisClockChime = oasisClockChime;
   if (typeof module !== 'undefined' && module.exports) module.exports = root;

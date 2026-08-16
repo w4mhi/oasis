@@ -28,7 +28,36 @@ MAX_TEXT_CHARS = 300
 CACHE_BUDGET_BYTES = 50 * 1024 * 1024      # ~100 KB per phrase → thousands of them
 SYNTH_TIMEOUT_S = 120                      # generous: a Pi 3 is ~5-8x a Pi 5
 SYNTH_WAIT_S = 30                          # how long a caller waits for the lock
-PARAMS_VERSION = "1"                       # bump to invalidate every cached WAV
+PARAMS_VERSION = "2"                       # bump to invalidate every cached WAV
+
+# ── Readable cache names ─────────────────────────────────────────────────────
+# A cache full of 64-hex filenames tells a human nothing. The two announcement
+# kinds that recur forever — the hour bell and the greeting — carry a readable
+# label; everything else stays a bare hash, and that unevenness is DELIBERATE:
+#
+#   * a pass alert's text is transient and names a bird already in the roster,
+#     so a label would add noise without adding knowledge;
+#   * the easter egg's text must NOT appear on disk. jenny.spk is base64-encoded
+#     purely as spoiler protection — against code search, an idle grep, the file
+#     open in an editor — and a readable name in the speech cache would undo that
+#     encoding completely. A bare hash does not even reveal that an egg exists.
+#
+# So: do NOT "tidy" this into slugging every kind. See tests/test_speech_cache.py.
+#
+# `kind` reaches this from an unauthenticated LAN endpoint and becomes part of a
+# FILENAME, so it is whitelisted rather than sanitised: uppercase, digits and
+# underscore only. No dot and no separator means no traversal and no `..`, by
+# construction rather than by escaping.
+KIND_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,31}$")
+
+
+def clean_kind(kind):
+    """A safe filename prefix, or None. Never raises: a malformed kind costs the
+    name its label, and must not cost the operator the announcement."""
+    if not kind:
+        return None
+    kind = str(kind).strip().upper()
+    return kind if KIND_RE.match(kind) else None
 
 # gunicorn runs this app with --workers 1 --threads 4 (start-oasis.py,
 # scripts/start-server.sh), so concurrency here is threads within ONE process
@@ -122,14 +151,27 @@ def voice_info(repo_root):
     return info
 
 
-def cache_key(text, voice_id):
+def cache_key(text, voice_id, kind=None):
+    """The content hash. `kind` is INSIDE it, not merely a prefix, so the name
+    stays a single deterministic stat — no globbing, and no cache miss when a
+    caller starts or stops passing one. The same words in two contexts are
+    genuinely two announcements, so two entries is correct rather than wasteful."""
     h = hashlib.sha256()
     h.update(PARAMS_VERSION.encode())
     h.update(b"\0")
     h.update(str(voice_id).encode())
     h.update(b"\0")
+    h.update((clean_kind(kind) or "").encode())
+    h.update(b"\0")
     h.update(text.encode("utf-8"))
     return h.hexdigest()
+
+
+def cache_name(text, voice_id, kind=None):
+    """The WAV's basename without extension: `KIND_<hash>` or just `<hash>`."""
+    prefix = clean_kind(kind)
+    key = cache_key(text, voice_id, kind)
+    return f"{prefix}_{key}" if prefix else key
 
 
 def _python(repo_root):
@@ -149,15 +191,18 @@ def _cached(out):
     return None
 
 
-def synthesize(repo_root, text, *, wait_s=SYNTH_WAIT_S):
-    """text -> absolute path to a WAV. Raises SpeechRejected / SpeechUnavailable."""
+def synthesize(repo_root, text, *, kind=None, wait_s=SYNTH_WAIT_S):
+    """text -> absolute path to a WAV. Raises SpeechRejected / SpeechUnavailable.
+
+    `kind` is an optional readable filename label (see KIND_RE). It changes the
+    cache key, so passing one for the first time re-synthesises that phrase once."""
     text = validate(text)
     model = voice_model_path(repo_root)
     if not model:
         raise SpeechUnavailable("no voice model installed")
 
     cache = CP.speech_cache_dir(repo_root)
-    out = os.path.join(cache, cache_key(text, os.path.basename(model)) + ".wav")
+    out = os.path.join(cache, cache_name(text, os.path.basename(model), kind) + ".wav")
     hit = _cached(out)
     if hit:
         return hit
