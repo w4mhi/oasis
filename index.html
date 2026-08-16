@@ -2971,6 +2971,9 @@ function setStat(id, text, pct, amber, red) {
 // convert for display only. Persisted; default imperial. Colour thresholds for
 // temperature stay in °C, so only the displayed text changes.
 let _lastTempC   = null;
+// Whether the fan blade is currently animating. Held across polls because the
+// spin decision has hysteresis — see the fan block in the /api/system handler.
+let _fanSpin     = false;
 let _lastGpsAltM = null;
 
 function loadHomeCoords() {
@@ -3220,9 +3223,18 @@ async function fetchStats() {
     _lastTempC = d.cpu_temp_c;   // remember for unit-toggle re-render
     renderTemp();                // obeys imperial/metric toggle + shows °F/°C suffix
     // Fan blade: colour tracks the temp (same 65/80 tones); spins only when a
-    // cooling daemon is running AND the CPU is at/above the ~55°C turn-on (i.e.
-    // the fan is actually moving air) — otherwise it shows static/dimmed. Hidden
-    // entirely when no cooling daemon (argon-fan / rgb-cooling-hat) is installed.
+    // cooling daemon is running AND the CPU is hot enough that the fan is
+    // actually moving air — otherwise it shows static/dimmed. Hidden entirely
+    // when no cooling daemon (argon-fan / rgb-cooling-hat) is installed.
+    //
+    // The spin threshold has HYSTERESIS — start at 60°C, stop below 55°C — and
+    // that is the whole point, not a refinement. A single `t >= 55` turn-on left
+    // the kiosk on .31 animating 24/7, because that box idles at ~56°C: the CPU
+    // sat one degree the wrong side of the line forever. An infinite CSS
+    // animation holds the compositor at 60 fps for the LIFE of the page (vc4
+    // crtc/hvs measured pegged at exactly 60 interrupts/s), so a glyph nobody is
+    // watching cost a permanent slice of a Pi. Between 55 and 60 the last state
+    // stands. Kept in step with the same block in oasis-dashboard/dashboard.html.
     const fan = document.getElementById('cpu-fan');
     if (fan) {
       const cool = d.cooling, t = d.cpu_temp_c;
@@ -3233,12 +3245,13 @@ async function fetchStats() {
         fan.setAttribute('class', 'cpu-fan');    // no .show → hidden
       } else {
         const tone = t == null ? '' : t >= 80 ? ' hot' : t >= 65 ? ' warn' : ' ok';
-        const spinning = cool.running && t != null && t >= 55;
+        _fanSpin = t == null ? false : t >= 60 ? true : t < 55 ? false : _fanSpin;
+        const spinning = cool.running && _fanSpin;
         fan.setAttribute('class', 'cpu-fan show' + tone + (spinning ? ' spin' : ' static'));
         fan.setAttribute('title', !cool.running
           ? `Cooling fan (${cool.kind}) installed — service stopped`
           : spinning ? `Cooling fan (${cool.kind}) running`
-          : `Cooling fan (${cool.kind}) idle — CPU below ~55°C`);
+          : `Cooling fan (${cool.kind}) idle — CPU below the ~60°C turn-on`);
       }
     }
     // RAM: high = bad, so colour like the others but neutral under threshold.

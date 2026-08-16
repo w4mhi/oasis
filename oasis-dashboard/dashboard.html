@@ -1044,6 +1044,9 @@ renderUnits();
 // ── System stats (copied from dashboard_old) ─────────────────────────────────
 function setKStat(id, text, cls) { const el = document.getElementById(id); if (!el) return; el.textContent = text; el.className = 'v' + (cls ? ' ' + cls : ''); }
 let _lastTempC = null;
+// Whether the fan blade is currently animating. Held across polls because the
+// spin decision has hysteresis — see the fan block in fetchStats().
+let _fanSpin = false;
 function renderTemp() {
   const cls = _lastTempC != null ? (_lastTempC >= 80 ? 'hot' : _lastTempC >= 65 ? 'warm' : 'ok') : '';
   setKStat('k-temp', fmtTemp(_lastTempC), cls);
@@ -1103,9 +1106,18 @@ async function fetchStats() {
     if (d.cpu_pct != null) setKStat('k-cpu', `${Math.round(d.cpu_pct)}%`, d.cpu_pct>=90?'hot':d.cpu_pct>=70?'warm':'ok');
     _lastTempC = d.cpu_temp_c; renderTemp();
     // Cooling-fan blade next to TEMP — colour tracks temp (65/80 tones); spins only
-    // when a cooling daemon is running AND the CPU is at/above the ~55°C turn-on.
-    // Hidden when no cooling daemon (argon-fan / rgb-cooling-hat) is installed.
+    // when a cooling daemon is running AND the CPU is hot enough that the fan is
+    // actually moving air. Hidden when no cooling daemon (argon-fan /
+    // rgb-cooling-hat) is installed.
     // NB: #cpu-fan is an SVG element — .className is read-only, so setAttribute.
+    //
+    // The spin threshold has HYSTERESIS — start at 60°C, stop below 55°C — and
+    // that is the whole point, not a refinement. A single `t >= 55` turn-on left
+    // .31 animating 24/7, because that box idles at ~56°C: the CPU sat one
+    // degree the wrong side of the line forever. An infinite CSS animation holds
+    // the compositor at 60 fps for the LIFE of the page (vc4 crtc/hvs measured
+    // pegged at exactly 60 interrupts/s), so a glyph nobody is watching cost a
+    // permanent slice of a Pi. Between 55 and 60 the last state stands.
     const fan = document.getElementById('cpu-fan');
     if (fan) {
       const cool = d.cooling, t = d.cpu_temp_c;
@@ -1113,12 +1125,13 @@ async function fetchStats() {
         fan.setAttribute('class', 'cpu-fan');    // no .show → hidden
       } else {
         const tone = t == null ? '' : t >= 80 ? ' hot' : t >= 65 ? ' warn' : ' ok';
-        const spinning = cool.running && t != null && t >= 55;
+        _fanSpin = t == null ? false : t >= 60 ? true : t < 55 ? false : _fanSpin;
+        const spinning = cool.running && _fanSpin;
         fan.setAttribute('class', 'cpu-fan show' + tone + (spinning ? ' spin' : ' static'));
         fan.setAttribute('title', !cool.running
           ? `Cooling fan (${cool.kind}) installed — service stopped`
           : spinning ? `Cooling fan (${cool.kind}) running`
-          : `Cooling fan (${cool.kind}) idle — CPU below ~55°C`);
+          : `Cooling fan (${cool.kind}) idle — CPU below the ~60°C turn-on`);
       }
     }
     if (d.ram?.pct != null) setKStat('k-ram', `${Math.round(d.ram.pct)}%`, d.ram.pct>=90?'hot':d.ram.pct>=70?'warm':'ok');
