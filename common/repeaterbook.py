@@ -43,8 +43,20 @@ from common import config_paths
 from common.atomic_json import read_json, write_json
 
 # RepeaterBook rejects generic User-Agents (curl, browser defaults) and requires
-# an application identifier plus a valid contact email.
-USER_AGENT = ("OASIS/3.59.0 (+https://github.com/W4MHI/oasis; "
+# an application identifier plus a valid contact email. They approve an EXACT
+# value or pattern and DENY access when the sent header does not match it.
+#
+# CLIENT_VERSION IS THE API-CLIENT VERSION, NOT THE OASIS RELEASE VERSION.
+# Never wire it to version.json: OASIS bumps that on every commit, so an
+# approved string would go stale within a day and API calls would start failing
+# with 401/403 for a reason nothing in the logs would explain. Bump this only
+# when the way THIS module talks to the API changes, and re-register the new
+# string with RepeaterBook first if their approval is an exact match.
+#
+# Registered value (submitted 2026-08-15):
+#   OASIS/1.0 (https://github.com/W4MHI/oasis; w4mhi@yahoo.com)
+CLIENT_VERSION = "1.0"
+USER_AGENT = (f"OASIS/{CLIENT_VERSION} (https://github.com/W4MHI/oasis; "
               "w4mhi@yahoo.com)")
 
 API_BASE = "https://www.repeaterbook.com/api/export.php"

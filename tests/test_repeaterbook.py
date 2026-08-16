@@ -49,6 +49,28 @@ class TestStates(unittest.TestCase):
         self.assertIn("OASIS", RB.USER_AGENT)
         self.assertIn("@", RB.USER_AGENT)
 
+    def test_user_agent_matches_the_registered_string_exactly(self):
+        # RepeaterBook approves an exact value and DENIES access when the sent
+        # header does not match. Changing this string without re-registering
+        # breaks API access with a 401 that nothing else would explain.
+        self.assertEqual(
+            RB.USER_AGENT,
+            "OASIS/1.0 (https://github.com/W4MHI/oasis; w4mhi@yahoo.com)")
+
+    def test_user_agent_is_not_tied_to_the_release_version(self):
+        # OASIS bumps version.json on EVERY commit. If the User-Agent tracked
+        # it, the approved string would go stale within a day.
+        import json, os
+        ver = json.load(open(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "version.json")))["version"]
+        self.assertNotIn(ver, RB.USER_AGENT)
+
+    def test_user_agent_is_not_a_generic_default(self):
+        low = RB.USER_AGENT.lower()
+        for banned in ("curl", "python-requests", "mozilla", "urllib"):
+            self.assertNotIn(banned, low)
+
 
 class TestFetchState(unittest.TestCase):
     def test_returns_records_from_results_key(self):
