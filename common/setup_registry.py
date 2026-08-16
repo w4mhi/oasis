@@ -826,7 +826,11 @@ def build_registry(repo_root, payload=None):
         ),
         "pi-local-monitor": SE.FeatureSpec(
             key="pi-local-monitor",
-            dependencies=["server"],
+            # pi-headless is the base: it installs and enables oasis.service.
+            # Declaring it here means selecting a browser mode pulls the server
+            # autostart in automatically, and orders it first — the operator's
+            # model is "server on boot, then optionally a screen".
+            dependencies=["server", "pi-headless"],
             install_fn=lambda: _setup_run_script(repo_root, "scripts/enable-autostart-pi.py", ["--with-browser"]),
             removal_record_fn=lambda: _removal_record(repo_root, "scripts/enable-autostart-pi.py"),
             verify_fn=lambda: {"ok": True},
@@ -836,7 +840,9 @@ def build_registry(repo_root, payload=None):
         ),
         "pi-oasis-dashboard": SE.FeatureSpec(
             key="pi-oasis-dashboard",
-            dependencies=["server"],
+            # See pi-local-monitor: the server autostart is the base for any
+            # browser mode.
+            dependencies=["server", "pi-headless"],
             install_fn=lambda: _setup_dashboard_install_fn(repo_root, payload),
             removal_record_fn=lambda: _removal_record(repo_root, "oasis-dashboard/uninstall.py"),
             verify_fn=lambda: {"ok": True},

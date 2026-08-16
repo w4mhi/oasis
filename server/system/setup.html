@@ -398,6 +398,23 @@ function setupEnableWinlinkPasswordEdit() {
 // reboot, and privilege are read from the FeatureSpec server-side. Nothing
 // about a feature is described in this file, so the tooltip cannot drift from
 // what the installer actually does.
+// Local monitor and touch kiosk are mutually exclusive: both write the SAME
+// Chromium launcher, so installing both means one silently overwrites the
+// other and you get whichever ran last with nothing on screen to say so.
+// Ticking one clears the other. Neither is also valid (headless station).
+function setupWireAutostartExclusive() {
+  const ids = ['pi-local-monitor', 'pi-oasis-dashboard'];
+  const boxes = ids
+    .map(id => document.querySelector(`input[data-feature="${id}"]`))
+    .filter(Boolean);
+  boxes.forEach(box => {
+    box.addEventListener('change', () => {
+      if (!box.checked) { return; }
+      boxes.forEach(other => { if (other !== box) { other.checked = false; } });
+    });
+  });
+}
+
 async function setupLoadFeatureHelp() {
   let d;
   try { d = await jget('/api/setup/features'); }
@@ -1222,6 +1239,7 @@ function initSetupOrchestrator() {
   document.getElementById('setupWinlinkPasswordChange').addEventListener('click', setupEnableWinlinkPasswordEdit);
 
   setupAutoSelectInstalledFeatures();
+  setupWireAutostartExclusive();
   setupLoadFeatureHelp();
   setupLoadExistingConfig();
   setupGetPermissions();
