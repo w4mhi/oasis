@@ -621,11 +621,24 @@ def _setup_run_job(job_id, plan_obj, payload, uninstall_ordered=None):
     finally:
         SETUP_REGISTRY.set_log_sink(None)
 
-    if not _blocked:
-        try:
-            _setup_record_installed_features(summary)
-        except Exception:
-            pass
+    # NOT gated on _blocked. What actually reached the disk does not become
+    # untrue because some OTHER feature in the same plan was blocked, and
+    # installed-services.json is the single source of truth for removal — an
+    # unrecorded feature cannot be uninstalled from the UI at all. The helper
+    # already filters per feature by success status, so a blocked or failed
+    # feature is excluded on its own merits.
+    #
+    # This was a real bug: ticking a feature that installed fine alongside any
+    # blocked feature recorded nothing, and clicking again later "fixed" it
+    # once the blocker cleared. Pinned by tests/test_setup_record_installed.py.
+    try:
+        _setup_record_installed_features(summary)
+    except Exception as exc:
+        # Never fatal — but never silent either. A swallowed failure here is
+        # indistinguishable from "nothing to record", which is how the original
+        # bug stayed invisible.
+        _setup_emit_log_line(
+            job_id, f"WARNING: could not record installed features: {exc}")
 
     # Uninstalls run after installs (reverse-dependency order already resolved),
     # each riding the same root-worker rail and subtracting from the manifest on
