@@ -759,21 +759,29 @@ a.nav-link-svc.enabled:hover { color: var(--accent); }
 .pwr-pill.crit { border-color: var(--red-dim, #7a1010); }
 .pwr-pill.crit .pwr-val { color: var(--red); }
 
-/* Data-freshness pill — shares the host-row look. Classes come from
-   common/js/freshness.js so this page, the kiosk, and Diagnostics cannot
-   drift apart the way the health pills once did. */
+/* Data-freshness pill — lives in the LOCAL clock card's header row, pinned to
+   its right corner by margin-left:auto. It used to sit in the host row, where
+   it collided with the POWER pill (which is flex:1 1 auto and grows).
+   State classes come from common/js/freshness.js so this page, the kiosk, and
+   Diagnostics cannot drift apart the way the health pills once did — which is
+   also why the base class must stay exactly "fx-pill": the renderer rewrites
+   the whole class attribute, so any positioning class added here would be
+   wiped on the first poll. Keep layout ON .fx-pill itself. */
 .fx-pill {
   display: inline-flex;
   align-items: center;
-  gap: .4rem;
+  gap: .3rem;
   flex: 0 0 auto;
-  padding: .18rem .7rem;
+  margin-left: auto;          /* pin to the right corner of the clock header */
+  align-self: center;         /* .clk-zn is baseline-aligned; a pill is not */
+  padding: .1rem .45rem;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--panel-2);
-  font-size: var(--fs-label);
+  font-size: var(--fs-micro);
   font-family: var(--mono);
   letter-spacing: .03em;
+  white-space: nowrap;
   cursor: pointer;
   color: var(--text);
 }
@@ -1240,15 +1248,6 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
         <span class="pwr-lbl">POWER</span>
         <span class="pwr-val" id="pwr-val">&mdash;</span>
       </span>
-      <button class="fx-pill" id="fx-pill" onclick="location.href='/system/diagnostics.html#updates'"
-              title="Data freshness" aria-label="Data freshness" hidden>
-        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M8 1.5a6.5 6.5 0 1 0 6.5 6.5h-1.6A4.9 4.9 0 1 1 8 3.1V1.5z"
-                fill="currentColor"/>
-          <path d="M8 4.4v3.9l3 1.8.7-1.2-2.4-1.4V4.4z" fill="currentColor"/>
-        </svg>
-        <span id="fx-pill-txt">DATA</span>
-      </button>
       <button class="units-pill" id="theme-toggle" onclick="toggleTheme()"
               title="Toggle light / dark theme" aria-label="Toggle light / dark theme">
         <span id="theme-glyph">&#9728;</span>
@@ -1257,7 +1256,13 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
   </div>
 
   <div class="card clk-card loc">
-    <div class="clk-zn"><span class="clk-z">LOCAL</span><span class="clk-tz" id="clk-loc-tz">local</span></div>
+    <div class="clk-zn"><span class="clk-z">LOCAL</span><span class="clk-tz" id="clk-loc-tz">local</span><button
+        class="fx-pill" id="fx-pill" onclick="location.href='/system/diagnostics.html#updates'"
+        title="Data freshness" aria-label="Data freshness" hidden><svg width="10" height="10"
+        viewBox="0 0 16 16" aria-hidden="true"><path
+        d="M8 1.5a6.5 6.5 0 1 0 6.5 6.5h-1.6A4.9 4.9 0 1 1 8 3.1V1.5z" fill="currentColor"/><path
+        d="M8 4.4v3.9l3 1.8.7-1.2-2.4-1.4V4.4z" fill="currentColor"/></svg><span
+        id="fx-pill-txt">DATA</span></button></div>
     <div class="clk-time" id="clk-loc-t">--:--<span class="s">:--</span></div>
     <div class="clk-d" id="clk-loc-d">&mdash;</div>
   </div>
