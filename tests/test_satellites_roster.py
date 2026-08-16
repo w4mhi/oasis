@@ -121,51 +121,6 @@ class OperatorFieldsTest(unittest.TestCase):
         json.dump({"updated": "x", "labels": {}, "satellites": sats}, open(p, "w"))
         return p
 
-    def test_set_bell_persists(self):
-        with tempfile.TemporaryDirectory() as d:
-            p = self._seed(d, [{"norad": 25544, "selected": True, "transmitters": []}])
-            roster.set_bell(p, 25544, True)
-            self.assertTrue(json.load(open(p))["satellites"][0]["bell"])
-
-    def test_bells_and_selection_are_independent(self):
-        """Disarming a bell must not un-monitor the bird, and vice versa — they
-        are separate standing choices that happen to live in the same record."""
-        with tempfile.TemporaryDirectory() as d:
-            p = self._seed(d, [{"norad": 25544, "selected": True, "bell": True,
-                                "transmitters": []}])
-            roster.set_bells_many(p, {25544: False})
-            iss = json.load(open(p))["satellites"][0]
-            self.assertTrue(iss["selected"])
-            self.assertFalse(iss["bell"])
-
-    def test_bulk_bells_are_one_write(self):
-        """The lesson /select paid for: a set must land as ONE load-modify-save,
-        never one request per bird."""
-        with tempfile.TemporaryDirectory() as d:
-            p = self._seed(d, [{"norad": n, "transmitters": []} for n in (25544, 33591, 43017)])
-            writes = []
-            real_save = roster.save
-            try:
-                roster.save = lambda path, data: (writes.append(1), real_save(path, data))[1]
-                roster.set_bells_many(p, {25544: True, 33591: True, 43017: False})
-            finally:
-                roster.save = real_save
-            self.assertEqual(len(writes), 1)
-            armed = {s["norad"]: s["bell"] for s in json.load(open(p))["satellites"]}
-            self.assertEqual(armed, {25544: True, 33591: True, 43017: False})
-
-    def test_unknown_norads_cannot_add_rows(self):
-        with tempfile.TemporaryDirectory() as d:
-            p = self._seed(d, [{"norad": 25544, "transmitters": []}])
-            roster.set_bells_many(p, {999999: True})
-            self.assertEqual([s["norad"] for s in json.load(open(p))["satellites"]], [25544])
-
-    def test_unparseable_key_skips_without_failing_the_batch(self):
-        with tempfile.TemporaryDirectory() as d:
-            p = self._seed(d, [{"norad": 25544, "transmitters": []}])
-            roster.set_bells_many(p, {"nope": True, "25544": True})
-            self.assertTrue(json.load(open(p))["satellites"][0]["bell"])
-
     def test_a_non_operator_field_is_refused(self):
         """Guards the typo that would write a junk key the aggregator then drops
         on the next rebuild — a bug that only surfaces weeks later."""
@@ -199,61 +154,6 @@ class OperatorFieldsTest(unittest.TestCase):
     # before that rule, where every monitored bird sits at bell=false and would
     # otherwise stay silent forever — the exact silent failure the change was
     # made to remove.
-
-    def test_bell_default_arms_every_monitored_bird_once(self):
-        with tempfile.TemporaryDirectory() as d:
-            p = self._seed(d, [{"norad": 25544, "selected": True, "transmitters": []},
-                               {"norad": 33591, "selected": True, "transmitters": []},
-                               {"norad": 43017, "selected": False, "transmitters": []}])
-            roster.apply_bell_default_once(p)
-            got = {s["norad"]: s.get("bell") for s in json.load(open(p))["satellites"]}
-            self.assertEqual(got[25544], True)
-            self.assertEqual(got[33591], True)
-            # An unmonitored bird is not armed: the rule is that MONITORING arms
-            # the bell, not that every bird in the roster rings.
-            self.assertNotEqual(got[43017], True)
-
-    def test_a_disarm_after_the_backfill_is_never_undone(self):
-        """The one that matters. Run twice, this would re-arm every bird the
-        operator had deliberately disarmed — and they would only find out at
-        03:00, from the other side of the house."""
-        with tempfile.TemporaryDirectory() as d:
-            p = self._seed(d, [{"norad": 25544, "selected": True, "transmitters": []}])
-            roster.apply_bell_default_once(p)
-            roster.set_bells_many(p, {25544: False})      # "not this one, thanks"
-            roster.apply_bell_default_once(p)
-            self.assertFalse(json.load(open(p))["satellites"][0]["bell"])
-
-    def test_the_backfill_is_recorded_even_with_nothing_to_migrate(self):
-        """A fresh box has an empty roster (build-roster.py fills it later). If
-        the flag were only stamped when something was armed, this would stay
-        un-migrated and then fire against a roster the operator had since
-        curated — arming birds they had turned off."""
-        with tempfile.TemporaryDirectory() as d:
-            p = self._seed(d, [])
-            roster.apply_bell_default_once(p)
-            self.assertTrue(json.load(open(p))[roster.BELL_DEFAULT_KEY])
-
-    def test_an_explicit_bell_write_settles_the_migration(self):
-        """The ordering hazard. The backfill runs on the roster READ, so a disarm
-        that lands before the first read would be silently undone — and the
-        operator would have no way to tell that their choice never took."""
-        with tempfile.TemporaryDirectory() as d:
-            p = self._seed(d, [{"norad": 25544, "selected": True, "transmitters": []}])
-            roster.set_bells_many(p, {25544: False})     # lands before any read
-            roster.apply_bell_default_once(p)
-            self.assertFalse(json.load(open(p))["satellites"][0]["bell"])
-
-    def test_selecting_does_not_settle_the_migration(self):
-        """Only a BELL write counts. A station still running an older client
-        posts selections without bells, and stamping on those would strand every
-        bird it monitors at bell=false — the silent pass this all exists to fix."""
-        with tempfile.TemporaryDirectory() as d:
-            p = self._seed(d, [{"norad": 25544, "transmitters": []}])
-            roster.set_selected_many(p, {25544: True})
-            self.assertNotIn(roster.BELL_DEFAULT_KEY, json.load(open(p)))
-            roster.apply_bell_default_once(p)
-            self.assertTrue(json.load(open(p))["satellites"][0]["bell"])
 
     def test_the_backfill_flag_survives_a_roster_rebuild(self):
         """A SOURCE tripwire, not a behaviour test: build-roster.py's output dict

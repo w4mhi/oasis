@@ -37,13 +37,12 @@ import bands
 # overnight while a laptop still chimes.
 OPERATOR_FIELDS = ("selected", "bell")
 
-# Stamped once the "monitoring a bird arms its bell" default has been settled for
-# a roster — either by migrating one written under the old rules
-# (apply_bell_default_once) or by the operator making any explicit bell choice,
-# which means `false` has stopped meaning "never armed". Top-level rather than
-# per-record because it is a property of the FILE, not of any bird — and it must
-# be carried across a rebuild by build-roster.py, which writes a fixed top-level
-# key set (the same trap OPERATOR_FIELDS exists for, one level up).
+# LEGACY. Written by the retired one-shot bell backfill, and still carried across
+# a rebuild so an existing roster is not rewritten behind the operator's back.
+# Nothing reads it to make a decision any more: the bell is per-DEVICE now
+# (common/js/sat-bells.js), so "which birds wake a screen" is answered by the
+# screen. `bell` likewise stays in OPERATOR_FIELDS as a read-only value for each
+# browser's one-time adoption.
 BELL_DEFAULT_KEY = "bell_follows_selection"
 
 # Serializes the read-modify-write in set_selected/set_selected_many. Atomic
@@ -140,27 +139,6 @@ def set_selected_many(path, selections):
     return _set_flag_many(path, selections, "selected")
 
 
-def set_bell(path, norad, bell):
-    """Arm/disarm one satellite's pass alert. Serialized against other writers."""
-    return set_bells_many(path, {norad: bell})
-
-
-def set_bells_many(path, bells):
-    """Apply a whole `{norad: bool}` pass-alert set in ONE load-modify-save.
-
-    The bell lives here rather than in the browser because it is a property of
-    the BIRD, not of the screen you happened to arm it from: the kiosk has to
-    know which passes should wake the shack, and it never sees another device's
-    localStorage.
-
-    Any explicit bell write also settles the migration flag. Without that, the
-    one-shot backfill could still be pending when a disarm lands — the backfill
-    runs on the roster READ, so a client that posted before its first GET would
-    have its choice quietly overwritten. Once the operator has expressed a bell
-    decision, `false` is a decision, and the backfill has no business running."""
-    return _set_flag_many(path, bells, "bell", stamp=BELL_DEFAULT_KEY)
-
-
 def _set_flag_many(path, values, field, stamp=None):
     """Apply a whole `{norad: bool}` set for one operator field in ONE
     load-modify-save.
@@ -195,44 +173,6 @@ def _set_flag_many(path, values, field, stamp=None):
                 data[stamp] = True     # same write, not a second one
             data["updated"] = _now()
             save(path, data)
-        return data
-
-
-def apply_bell_default_once(path):
-    """Arm the pass alert on every bird the operator already monitors. Once.
-
-    Selecting a bird used to leave it silent until its row bell was ALSO armed,
-    which is a silent failure of the worst kind: the pass comes, nothing sounds,
-    and nothing anywhere says why. Selection now arms the bell, and the row bell
-    became the exception — "this one, not tonight".
-
-    That only helps birds selected from here on. A roster written under the old
-    rules holds `bell: false` on every monitored bird, where false was the
-    DEFAULT and therefore meant "never armed", not "deliberately silenced" — the
-    two states were indistinguishable, which is exactly why this backfill is safe
-    to run and why it must never run twice. After this, false means the operator
-    chose it.
-
-    Recorded in the ROSTER, not in a browser: the kiosk never opens the
-    Satellites page, and it is the screen that most needs the alerts. A
-    per-browser flag would also re-arm, on the next device to load, a bird just
-    disarmed on this one — the permanent-union bug sat-bells.js was written to
-    avoid.
-
-    Stamped even when nothing is selected (a fresh box, or one whose roster
-    build-roster.py has not filled yet): there is nothing to migrate then, and
-    recording that keeps this from re-running against a roster the operator has
-    since curated."""
-    with _write_lock:
-        data = load(path)
-        if data.get(BELL_DEFAULT_KEY):
-            return data
-        for s in data.get("satellites") or []:
-            if s.get("selected"):
-                s["bell"] = True
-        data[BELL_DEFAULT_KEY] = True
-        data["updated"] = _now()
-        save(path, data)
         return data
 
 

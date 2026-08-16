@@ -33,6 +33,7 @@
 <script src="/common/js/speech.js"></script>
 <script src="/common/js/freshness.js"></script>
 <script src="/common/js/quiet-hours.js"></script>
+<script src="/common/js/sat-bells.js"></script>
 <script src="/common/js/sat-alerts.js"></script>
 <script src="/common/js/clock-chime.js"></script>
 <script src="/common/js/sat-capability.js"></script>
@@ -361,7 +362,33 @@
   .hd .satcd.green{ color:var(--accent); }
   .hd .satcd.yellow{ color:var(--warn); }
   .hd .satcd.red{ color:var(--down); }
-  #k-sat-meta{ margin-left:.55rem; }
+  #k-sat-meta{ margin-left:.55rem; cursor:pointer; }
+  /* Pass-alert bell. Matches .sat-bell on the Satellites page — one vocabulary,
+     amber for armed — but with a ~44px touch target built from PADDING, so the
+     glyph stays small on a 7-inch row while still being hittable by a thumb.
+     The row behind it opens the detail sheet, and a mis-tap there either arms a
+     bird you meant to inspect or opens a sheet you meant to silence. */
+  .sat-bell{ background:none; border:none; cursor:pointer; color:var(--faint);
+             padding:.35rem .5rem; margin:-.35rem -.2rem; line-height:1;
+             font-size:.85rem; vertical-align:middle; }
+  .sat-bell.on{ color:var(--warn); }
+  .sat-bell.compact{ padding:0 2px; margin:0; }
+  /* The arm list in the sheet. */
+  .armlist{ display:flex; flex-direction:column; gap:.15rem; }
+  /* padding-right clears the sheet's own close X, which is absolutely
+     positioned top-right and otherwise lands on top of ARM NONE. */
+  .armlist .hd{ display:flex; align-items:center; gap:.6rem; margin-bottom:.5rem;
+                padding-right:2.2rem; flex-wrap:wrap; }
+  .armlist .hd .lab{ color:var(--accent); letter-spacing:.14em; font-weight:700; }
+  .armlist .arow{ display:flex; align-items:center; gap:.6rem;
+                  padding:.3rem .2rem; border-bottom:1px solid var(--border); }
+  .armlist .arow .n{ flex:1 1 auto; min-width:0; overflow:hidden;
+                     text-overflow:ellipsis; white-space:nowrap; }
+  .armlist .arow .d{ color:var(--dim); font-size:.85em; }
+  .armbtn{ background:var(--panel-2); border:1px solid var(--border); color:var(--text);
+           border-radius:.6rem; padding:.3rem .8rem; cursor:pointer;
+           font-family:var(--mono); font-size:.85rem; }
+  .armbtn:hover{ border-color:var(--accent); color:var(--accent); }
 
   .traffic{ flex:1 1 auto; min-width:0; }
   .traffic .hd{ flex-wrap:wrap; row-gap:.4rem; border-bottom:1px solid var(--border); padding-bottom:.5rem; }
@@ -804,7 +831,7 @@
       <!-- Same treatment as the traffic card's LIVE badge (green accent, 1rem,
            700, .1em tracking). Reusing that class rather than copying its values
            is deliberate: the two headers sit side by side, so any drift shows. -->
-      <div class="hd"><span class="livebadge ok">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span><span class="meta" id="k-sat-meta">—</span></div>
+      <div class="hd"><span class="livebadge ok">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span><span class="meta" id="k-sat-meta" onclick="openArmSheet()" role="button" tabindex="0" title="Monitored birds — tap to choose which ones wake this screen">—</span></div>
       <div class="satscroll" id="satBody"><div class="satempty">…</div></div>
     </div>
 
@@ -1854,6 +1881,7 @@ function openSheet(s) {
 }
 function closeSheet() {
   document.getElementById('sheet').classList.remove('open');
+  _armSheetOpen = false;
   // Stop re-rendering a sheet nobody is looking at. The capture itself is
   // untouched — closing the sheet is not a Stop, and a recording started here
   // keeps running exactly as one started from the Satellites page does.
@@ -1940,6 +1968,10 @@ function renderSatSheet(norad) {
     onPick: 'armDownlink',
     armed: _satArmed && String(_satArmed.norad) === String(norad) ? _satArmed : null,
   }) + _transportHTML() + '</div>';
+  // The bell belongs beside the bird's name, where the operator is already
+  // looking at THIS bird — not hidden behind a list.
+  const call = document.querySelector('#shBody .pop-call');
+  if (call) call.insertAdjacentHTML('beforeend', ' ' + OasisBells.bellHTML(norad));
 }
 
 function openSatSheet(norad) {
@@ -1958,6 +1990,49 @@ function openSatSheet(norad) {
   document.getElementById('sheet').classList.add('open');
   SL.poll();
 }
+// ── Arm list ─────────────────────────────────────────────────────────────────
+// Every MONITORED bird with its bell, reachable from the card's counter. The
+// pass list only shows the next hour, so without this most of the roster would
+// be unarmable from the shack — and with a per-device bell that means a screen
+// that can never be made to chime at all.
+let _armSheetOpen = false;
+function armSheetHTML() {
+  const birds = (_satSel || []).slice().sort((a, b) =>
+    (satShortName(a.name) || '').localeCompare(satShortName(b.name) || ''));
+  const n = OasisBells.count();
+  const rows = birds.map(b => {
+    const norad = b.norad || b.id;
+    return `<div class="arow">${OasisBells.bellHTML(norad)}` +
+           `<span class="n">${esc(satShortName(b.name) || ('#' + norad))}</span>` +
+           `<span class="d">${b.designator ? esc(b.designator) : ''}</span></div>`;
+  }).join('');
+  return `<div class="armlist"><div class="hd"><span class="lab">WAKE THIS SCREEN</span>` +
+    `<span class="d">${n} of ${birds.length} armed</span><span style="flex:1"></span>` +
+    `<button class="armbtn" onclick="armAll(true)">ARM ALL</button>` +
+    `<button class="armbtn" onclick="armAll(false)">ARM NONE</button></div>` +
+    (rows || '<div class="d">No birds are monitored. Pick some on the Satellites page.</div>') +
+    `</div>`;
+}
+function openArmSheet() {
+  _armSheetOpen = true;
+  _sheetNorad = null;
+  document.getElementById('shBody').innerHTML = armSheetHTML();
+  document.getElementById('sheet').classList.add('open');
+}
+function armAll(on) {
+  OasisBells.setMany((_satSel || []).map(b => b.norad || b.id), on);
+  // Arming is also the gesture that unlocks audio, so the chimes just armed can
+  // actually play without waiting for another tap.
+  if (on) oasisSatAudioUnlock();
+}
+// One repaint path for every way a bell can change — the row glyphs, the open
+// sheet, and the alert set that _armedBirds derives.
+OasisBells.onChange(() => {
+  if (_armSheetOpen) document.getElementById('shBody').innerHTML = armSheetHTML();
+  else if (_sheetNorad != null) renderSatSheet(_sheetNorad);
+  renderSats();
+});
+
 // SRV pill → services list in the same slide sheet. Problems first (DN·WRN·UP·…·NI),
 // read-only. NI = install-gated (HIDDEN_SVCS); '…' = not pinged yet this cycle.
 const _SVC_ORDER = { down:0, warn:1, up:2, unknown:3, ni:4 };
@@ -2055,8 +2130,10 @@ function toggleSatMute() {
 function _armedBirds() {
   const now = Date.now(), out = [];
   _satSel.forEach(s => {
-    if (!s.bell) return;
     const norad = s.norad || s.id;
+    // Per DEVICE: what wakes THIS screen. The roster says which birds the station
+    // watches; this browser says which of them are worth waking it.
+    if (!OasisBells.armed(norad)) return;
     const passes = _satPasses[norad] || _satPasses[String(norad)] || [];
     const p = passes.map(x => ({ ...x, _r:new Date(x.rise).getTime() }))
                     .filter(x => x._r > now).sort((a,b) => a._r - b._r)[0];
@@ -2393,6 +2470,14 @@ async function fetchSats() {
   renderSatCountdown();
   try { const m = await (await fetch('/api/satellites', { cache:'no-store' })).json();
         _satSel = (m.satellites||[]).filter(s => s.selected);
+        // One-time adoption of the roster's legacy `bell` values, so a station
+        // that armed birds before the bell became per-device does not go quiet.
+        // Pure and unit-tested in sat-bells.js — adopting twice would re-arm a
+        // bird the operator has since disarmed, with nothing to say why.
+        OasisBells.adoptOnce(_satSel.filter(s => s.bell).map(s => s.norad));
+        // A bell left on a bird no longer monitored is inert but not harmless:
+        // it would fire months later if the bird were re-selected.
+        OasisBells.prune(_satSel.map(s => s.norad || s.id));
         if (m.station && m.station.lat != null) _satStation = m.station; } catch (_) { _satSel = []; }
   try { _satPasses = (await (await fetch('/api/satellites/passes?window=24', { cache:'no-store' })).json()).passes || {}; } catch (_) {}
   renderSats();
@@ -2469,23 +2554,24 @@ function renderSats() {
     // affordance, and the APRS rows next to it already open the sheet on a
     // plain row tap, so this matches what the screen has already taught.
     const tap = ` onclick="openSatSheet(${it.norad})" role="button" tabindex="0"`;
-    // Name, then the designator. The per-row bell used to follow it, and is
-    // gone: it was informational only — arming happens on the Satellites page —
-    // and this device silences ALL pass alerts at once from the card header, so
-    // a per-bird glyph could never explain what the mute button would do to it.
-    // The roster's `bell` flag still decides which birds alert; only the row's
-    // display of it has been dropped.
+    // Name, designator, then the bell. It was dropped once for being purely
+    // informational — arming used to happen only on the Satellites page — which
+    // made a glyph you could not act on. Now it ARMS: the bell is per-device, so
+    // this screen decides what wakes it, and the three-state glyph distinguishes
+    // armed, armed-but-muted and off, which is what the header mute made
+    // ambiguous before.
     const alt = it.desig ? `<span class="alt">[${esc(it.desig)}]</span>` : '';
+    const bell = OasisBells.bellHTML(it.norad);
     if (it.inPass) {
       const arc = `${esc(azCompass(it.p.rise_az))}→${esc(azCompass(it.p.set_az))}`;
       // The live half sits in its own span so the 2 s tick can patch it without
       // rebuilding the card — innerHTML every 2 s on a Pi 3 kiosk is exactly the
       // sort of churn that shows up later as "why is Chromium at 90%".
       _satLive[it.norad] = { l1:it.l1, l2:it.l2, maxEl:el };
-      return `<div class="sat now"${rail}${tap}><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${alt}</span><span class="aos">overhead</span><span class="cd">NOW</span></div>${caps}<div class="l2"><span class="live" data-norad="${it.norad}">${satLiveText(it.norad, it.l1, it.l2, el)}</span> · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
+      return `<div class="sat now"${rail}${tap}><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${alt}</span>${bell}<span class="aos">overhead</span><span class="cd">NOW</span></div>${caps}<div class="l2"><span class="live" data-norad="${it.norad}">${satLiveText(it.norad, it.l1, it.l2, el)}</span> · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
     }
     const soon = it.mins <= 10;
-    const nm = soon ? `<span class="nm"><span class="pulse"></span>${esc(it.name)}${alt}</span>` : `<span class="nm">${esc(it.name)}${alt}</span>`;
+    const nm = (soon ? `<span class="nm"><span class="pulse"></span>${esc(it.name)}${alt}</span>` : `<span class="nm">${esc(it.name)}${alt}</span>`) + bell;
     const l2 = soon ? `rise ${esc(dir)} · ${el}° max · get ready` : `rise ${esc(dir)} · ${el}° max`;
     return `<div class="sat${soon?' soon':''}"${rail}${tap}><div class="l1">${nm}<span class="aos">${hm(it.p._r)}</span><span class="cd">↑ ${it.mins}m</span></div>${caps}<div class="l2">${l2}</div></div>`;
   }).join('');

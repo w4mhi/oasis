@@ -103,12 +103,12 @@ def satellites_static(filename="satellites.html"):
 @bp.route("/api/satellites")
 def api_satellites():
     import listen
-    # One-shot, here rather than at boot because the service has no init hook and
-    # this is the read EVERY screen makes — including the kiosk, which never opens
-    # the Satellites page and is the one that most needs its alerts armed. It is a
-    # no-op on all but the first call (a flag in the roster), and it takes the same
-    # write lock as /select, so a burst on load cannot race it.
-    data = roster.apply_bell_default_once(config_paths.satellites_json(SUITE_ROOT))
+    # The roster's `bell` field is LEGACY and read-only now: the bell is per-device
+    # (localStorage, see common/js/sat-bells.js), because which birds should wake a
+    # screen is a property of the screen. Each browser adopts these values once and
+    # then owns its own. Nothing writes them any more, and this read no longer
+    # mutates the roster as a side effect of a GET.
+    data = roster.load(config_paths.satellites_json(SUITE_ROOT))
     # Attach each roster entry's TLE lines (matched by NORAD id) so the client
     # can propagate live look-angles itself (satellite.js) for the workability
     # pill — no per-satellite server round-trip. None when not in the cache.
@@ -580,55 +580,6 @@ def api_select():
                     "applied": len(selections)})
 
 
-@bp.route("/api/satellites/bells", methods=["POST"])
-@require_oasis_request
-def api_bells():
-    """Arm/disarm pass alerts per satellite — the roster is the single source of
-    truth, so a bell armed on a laptop reaches the shack kiosk.
-
-    Two accepted shapes, mirroring /api/satellites/select:
-
-        {"norad": 25544, "bell": true}                  one toggle
-        {"bells": {"25544": true, "43017": false}}      a whole set, one write
-
-    Use the bulk shape for anything touching more than one bird — the same rule
-    that /select learned the hard way, where a set fanned out into one request
-    per satellite raced itself and landed 1-2 of 20.
-
-    The bell is per-BIRD and therefore shared. MUTING is not here: it is
-    per-DEVICE and stays in the browser, so silencing the kiosk overnight does
-    not silence a laptop (and vice versa).
-    """
-    body = request.get_json(force=True) or {}
-    if "bells" in body:
-        bells = body.get("bells") or {}
-        if not isinstance(bells, dict):
-            return jsonify({"ok": False, "error": "bells must be an object of "
-                                                  "{norad: bool}",
-                            "code": "INVALID_BELLS"}), 400
-    else:
-        try:
-            bells = {int(body["norad"]): bool(body["bell"])}
-        except (KeyError, TypeError, ValueError):
-            return jsonify({"ok": False, "error": "expected {norad, bell} or "
-                                                  "{bells:{norad: bool}}",
-                            "code": "INVALID_BELLS"}), 400
-    try:
-        data = roster.set_bells_many(config_paths.satellites_json(SUITE_ROOT), bells)
-    except OSError as exc:
-        # Same failure as /select: satellites.json left root-owned by the
-        # privileged installer worker, so the non-root server can't rewrite it.
-        return jsonify({"ok": False, "error": f"could not save bells: {exc} — is "
-                        "configuration/satellites.json writable by the server user?",
-                        "code": "ROSTER_NOT_WRITABLE"}), 500
-    # Echo the armed set, not the roster — /select's lesson: returning the whole
-    # ~150-bird roster for one checkbox cost a Pi its bandwidth for nothing.
-    armed = sorted(s["norad"] for s in data.get("satellites", []) if s.get("bell"))
-    return jsonify({"ok": True, "bells": armed, "count": len(armed),
-                    "applied": len(bells)})
-
-
-# ── Phase 2: RTL-SDR listen (record a pass to a WAV) ─────────────────────────
 @bp.route("/api/satellites/listen/status")
 def api_listen_status():
     import listen

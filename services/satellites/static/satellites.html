@@ -535,8 +535,10 @@ const WINDOW_H = 24;                       // default prediction window
 // Chime glyphs as inline SVG (Material bell / bell-off) — the bell / bell-with-slash emoji render
 // blank on Pi Chromium. 1em + currentColor so the .sat-bell / .sat-mute font-size,
 // colour, opacity and grayscale filter still apply.
-const BELL_ON  = `<svg viewBox="0 0 24 24" width="1.35em" height="1.35em" fill="currentColor" aria-hidden="true" style="vertical-align:-.15em"><path d="M12 2a2 2 0 0 0-2 2v.29C7.12 5.14 5 7.82 5 11v5l-2 2v1h18v-1l-2-2v-5c0-3.18-2.12-5.86-5-6.71V4a2 2 0 0 0-2-2Zm0 20a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2Z"/></svg>`;
-const BELL_OFF = `<svg viewBox="0 0 24 24" width="1.35em" height="1.35em" fill="currentColor" aria-hidden="true" style="vertical-align:-.15em"><path d="M20 18.69 7.84 6.14 5.27 3.49 4 4.76l2.8 2.8v.01c-.52.99-.8 2.16-.8 3.42v5l-2 2v1h13.73l2 2L21 19.72l-1-1.03zM12 22c1.11 0 2-.89 2-2h-4c0 1.11.89 2 2 2zm6-7.32V11c0-3.08-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68c-.15.03-.29.08-.42.13l7.92 7.87z"/></svg>`;
+// One definition, in common/js/sat-bells.js — this page and the kiosk both draw
+// the same bell, and a local copy is how they would drift apart.
+const BELL_ON  = OasisBells.BELL_ON;
+const BELL_OFF = OasisBells.BELL_OFF;
 let ROSTER = [], STATION = null, PASSES = {};
 
 // ── Roster filters ─────────────────────────────────────────────────────────
@@ -1031,7 +1033,7 @@ function renderRoster() {
       <label><input type="checkbox" ${mon ? 'checked' : ''}
           onchange="onToggle(${s.norad}, this.checked)">
         <span class="nmwrap"><span class="nm">${bareName}</span><span class="subline">${subName ? `<span class="desig">${subName}</span>` : ''}<span class="passwin" data-norad="${s.norad}">${passWindow(p)}</span></span></span><span class="pass-hint" data-norad="${s.norad}">${passHint(p, s.norad)}</span></label>
-      <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}${noTle ? '<span class="chip chip-warn" title="This satellite is monitored but has no TLE in the cache, so no pass can be computed and it will never plot. Sync TLEs (tap the badge above) while online.">no TLE</span>' : ''}<span class="sat-elev" data-norad="${s.norad}"></span>${mon ? bellBtnHTML(s.norad) : ''}</div>
+      <div class="chips">${s.labels.map(l => `<span class="chip">${l}</span>`).join('')}${noTle ? '<span class="chip chip-warn" title="This satellite is monitored but has no TLE in the cache, so no pass can be computed and it will never plot. Sync TLEs (tap the badge above) while online.">no TLE</span>' : ''}<span class="sat-elev" data-norad="${s.norad}"></span>${mon ? OasisBells.bellHTML(s.norad, { compact: true }) : ''}</div>
       ${!p ? `<div class="no-pass-hint">— ${noTle ? 'no TLE in cache' : 'no upcoming pass'} · no SDR controls —</div>`
            : (mon ? `<div class="dlpick">${dlPickerHTML(s)}</div>`
                   + `<div class="dl-rx" data-norad="${s.norad}"></div>`
@@ -1146,8 +1148,11 @@ function azCompass(deg) {
 // Monitoring a bird arms this (see onToggle), so the bell is no longer a gate the
 // operator has to find — it is the EXCEPTION, for the bird you want on the map
 // without being woken by it.
-let _satBells = (() => { try { return JSON.parse(localStorage.getItem('oasis_sat_bells') || '{}'); } catch (e) { return {}; } })();
-function saveBells() { try { localStorage.setItem('oasis_sat_bells', JSON.stringify(_satBells)); } catch (e) { /* private mode */ } }
+// The armed set lives in common/js/sat-bells.js — per DEVICE, shared with the
+// kiosk only in the sense that both screens use the same MODULE, never the same
+// state. What the station watches is global (`selected`, in the roster); what
+// wakes THIS screen is local.
+OasisBells.onChange(() => renderRoster());
 // MUTE stays local on purpose. It is a property of the DEVICE, not the bird:
 // the shack kiosk should be silenceable overnight while this laptop still
 // chimes. Putting it in the roster would silence every screen at once.
@@ -1163,79 +1168,28 @@ function satAlertState(now) {
   return oasisSatQuietState(_satMuted, now || new Date(), _satOverrideUntil);
 }
 function satAlertsSilent() { return satAlertState().silent; }
-// Push a `{norad: bool}` set in ONE request — same rule as postSelections. A set
-// fanned out into one request per bird raced itself on the server and landed 1-2
-// of 20.
-function postBells(map) {
-  const bells = {};
-  for (const norad in map) bells[+norad] = !!map[norad];
-  if (!Object.keys(bells).length) return Promise.resolve(null);
-  return fetch('/api/satellites/bells', { method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
-    body: JSON.stringify({ bells }) }).then(r => r.json()).catch(() => null);
-}
-// Adopt the server's armed set as the truth for this browser.
-function adoptBells(armed) {
-  _satBells = {};
-  (armed || []).forEach(n => { _satBells[n] = true; });
-  saveBells();
-}
-// Reconcile this browser's bells with the shared roster on load.
+// Adopt the roster's legacy `bell` values into this browser, exactly ONCE.
 //
-// Deliberately NOT a permanent union, unlike reconcileSelection: a union can
-// never carry a DISARM across devices — turn a noisy bird off on the laptop and
-// the next device to load would re-arm it from its own stale copy and push it
-// back up, so the bell could never be switched off for good. Instead the local
-// bells are migrated up exactly ONCE (so nothing armed before this change is
-// lost), after which the server simply wins.
-const BELLS_MIGRATED = 'oasis_sat_bells_migrated';
-function _markBellsMigrated() {
-  try { localStorage.setItem(BELLS_MIGRATED, '1'); } catch (e) { /* private mode */ }
-}
-async function reconcileBells() {
-  let migrated = false;
-  try { migrated = localStorage.getItem(BELLS_MIGRATED) === '1'; } catch (e) { /* private mode */ }
-  // The decision itself is common/js/sat-bells.js — pure and unit-tested,
-  // because every way it can go wrong loses the operator's alerts silently.
-  const plan = oasisBellPlan(
-    Object.keys(_satBells).filter(n => _satBells[n]).map(Number),
-    (ROSTER || []).filter(s => s.bell).map(s => s.norad),
-    migrated);
-  if (plan.action === 'migrate') {
-    const res = await postBells(Object.fromEntries(plan.push.map(n => [n, true])));
-    if (res && res.ok && Array.isArray(res.bells)) {
-      _markBellsMigrated();          // only now — see the note in sat-bells.js
-      adoptBells(res.bells);
-    }
-    // Push failed (server down, roster not writable): leave the local mirror
-    // alone and retry next load. Better to keep chiming from a stale local bell
-    // than to silently disarm the operator.
-    return;
-  }
-  if (plan.markMigrated) _markBellsMigrated();
-  adoptBells(plan.adopt);
+// The bell used to be a roster field. It moved to the device because that is what
+// the question actually means — the shack panel and this laptop should be able to
+// disagree about which birds are worth waking them. This carries across whatever
+// was armed before the change so nobody loses alerts; after it, the roster field
+// is dead and nothing writes it.
+//
+// The decision is pure and unit-tested in sat-bells.js: adopting twice would
+// re-arm a bird the operator has since disarmed, with nothing on screen to say
+// why, and never adopting loses everything armed before the change.
+function reconcileBells() {
+  OasisBells.adoptOnce((ROSTER || []).filter(s => s.bell).map(s => s.norad));
 }
 const _alertState = {};   // norad -> { key: pass.rise, t10, t5 }
 // The AudioContext itself lives in common/js/sat-alerts.js (one per page); this
 // is just the local name the page's gesture handlers already use.
 const _unlockAudio = () => oasisSatAudioUnlock();
-function bellArmed(norad) { return !!_satBells[norad]; }
-function toggleBell(norad) {
-  const on = !_satBells[norad];
-  if (on) _satBells[norad] = true; else delete _satBells[norad];
-  saveBells();
-  _unlockAudio();   // this click unlocks the AudioContext so later chimes can play
-  renderRoster();   // paint immediately — the write is confirmed below
-  // Write through to the shared roster so the kiosk learns about it. Optimistic:
-  // the glyph already moved, so on failure we put it back rather than leave the
-  // operator believing an alert is armed when the Pi never heard about it.
-  postBells({ [norad]: on }).then(res => {
-    if (res && res.ok) return;
-    if (on) delete _satBells[norad]; else _satBells[norad] = true;
-    saveBells();
-    renderRoster();
-  });
-}
+function bellArmed(norad) { return OasisBells.armed(norad); }
+// Arming is OasisBells.tap (wired by the glyph's own onclick) — no local copy,
+// no write-through to the server, and no optimistic rollback, because there is
+// no longer a remote write that can fail.
 function toggleSatMute() {
   const now = new Date();
   const wasQuiet = satAlertState(now).quiet;
@@ -1285,23 +1239,9 @@ function speak(text) {
   if (satAlertsSilent()) return;
   oasisSpeak(text);
 }
-// Bell control for a roster row (only rendered for a plotted sat).
-function bellBtnHTML(norad) {
-  const on = bellArmed(norad);
-  // The glyph reflects whether a chime will actually sound: an armed sat shows the
-  // ringing bell, but while the global mute is on even armed sats show the crossed
-  // bell — kept bright via .on so it still reads as monitored (a disarmed sat shows
-  // a dim/grey crossed bell).
-  const glyph = (on && !_satMuted) ? BELL_ON : BELL_OFF;
-  const title = on
-    ? (_satMuted
-        ? 'Pass alerts armed, but chimes are muted globally (header mute). Click to disarm.'
-        : 'Pass alerts armed — VVV chime at T-10 + T-5 min. Click to disarm.')
-    // Monitoring arms the bell, so OFF is now something the operator chose: say
-    // so, rather than describing it as a switch they still have to find.
-    : 'Alerts OFF for this bird — monitored, but it will not wake the shack. Click to re-arm.';
-  return `<button class="sat-bell${on ? ' on' : ''}" onclick="toggleBell(${norad})" title="${title}">${glyph}</button>`;
-}
+// The bell control itself is OasisBells.bellHTML — see the call site in
+// renderRoster. Its three states (armed / armed-but-muted / off) and its glyph
+// are defined once, in the module, for this page and the kiosk alike.
 // Ridden by updatePills every 2 s. The threshold logic is the shared, tested
 // oasisSatAlertsDue (common/js/sat-alerts.js) — identical to the kiosk's, so the
 // two screens can never drift into alerting at different times.
@@ -1437,7 +1377,7 @@ function updateCoverage() {
 async function onToggle(norad, checked) {
   if (checked) {
     if (!(norad in _satSelected)) { _satSelected[norad] = capabilityColor(norad); saveSelection(); }
-    if (!_satBells[norad]) { _satBells[norad] = true; saveBells(); }
+    OasisBells.setArmed(norad, true);   // monitoring a bird arms it on THIS screen
     await plotSat(norad, nextPassOf(norad));
   } else {
     if (norad in _satSelected) { delete _satSelected[norad]; saveSelection(); }
@@ -1445,14 +1385,13 @@ async function onToggle(norad, checked) {
     // (both alert paths walk the monitored set), so it would sit there unseen
     // and then fire months later when the bird was re-selected — a ghost with no
     // visible cause.
-    if (_satBells[norad]) { delete _satBells[norad]; saveBells(); }
+    OasisBells.setArmed(norad, false);
     unplotSat(norad);
   }
-  // Two writes, not one: `selected` and `bell` are separate operator fields and
-  // the kiosk reads both. Fired together so the roster never sits in a state
-  // where a bird is monitored but unarmed — which is the state this removes.
+  // Only the SELECTION is shared. The bell is this screen's business and stays
+  // in this browser, so the kiosk can watch the same birds and be woken by a
+  // different subset of them.
   postSelect(norad, checked);          // persist to the shared server roster (kiosk reads it)
-  postBells({ [norad]: checked });
   renderRoster();
 }
 
@@ -1462,14 +1401,13 @@ async function onToggle(norad, checked) {
 // (tracks/footprints/markers), the bells and any scheduled chimes. Confirms first,
 // since it discards the operator's whole selection.
 function clearAll() {
-  const sel = Object.keys(_satSelected), bells = Object.keys(_satBells);
+  const sel = Object.keys(_satSelected), bells = OasisBells.armedNorads();
   if (!sel.length && !bells.length) return;                 // nothing to clear
   if (!confirm(`Clear all — uncheck ${sel.length} monitored bird(s) and disarm ${bells.length} alert(s)?`)) return;
   postSelections(Object.fromEntries(sel.map(n => [n, false])));   // one write, kiosk too
-  postBells(Object.fromEntries(bells.map(n => [n, false])));      // one write, kiosk too
   _satSelected = {}; saveSelection();
   Object.keys(PLOTTED).forEach(n => delete PLOTTED[n]);     // drop tracks/footprints/markers
-  _satBells = {}; saveBells();
+  OasisBells.setMany(bells, false);   // this screen only — other devices keep theirs
   for (const k in _alertState) delete _alertState[k];       // cancel any scheduled chimes
   redraw();
   setView('all');   // show the full list again — a Monitored/1h view would now look empty
