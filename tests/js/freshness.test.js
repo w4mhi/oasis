@@ -39,7 +39,7 @@ test('summarize counts every state', () => {
 
 test('empty and missing input are safe', () => {
   assert.strictEqual(FR.summarize([]).worst, 'fresh');
-  assert.strictEqual(FR.summarize([]).label, 'DATA OK');
+  assert.strictEqual(FR.summarize([]).label, 'CURRENT');
   assert.strictEqual(FR.summarize(undefined).worst, 'fresh');
 });
 

@@ -29,12 +29,18 @@
     unconfigured: 'fx-off'
   };
 
+  // ONE WORD, and the SAME words the Diagnostics badges use
+  // (_UPDATE_BADGE in common/diagnostics.py). Two vocabularies for one fact is
+  // how a product starts saying "DATA STALE" on the kiosk and "STALE" on the
+  // Diagnostics page for the identical condition. Single words also sit level
+  // with their neighbours IMPERIAL and OPS on the kiosk pill row.
+  // tests/test_freshness_labels.py asserts these stay in step with Python.
   var LABEL = {
-    fresh: 'DATA OK',
-    stale: 'DATA STALE',
-    deferred: 'UPDATE READY',
-    missing: 'DATA MISSING',
-    unconfigured: 'DATA OK'
+    fresh: 'CURRENT',
+    stale: 'STALE',
+    deferred: 'WAITING',
+    missing: 'MISSING',
+    unconfigured: 'OFF'
   };
 
   // The plain-language thing the operator must actually do. A UI that only says
