@@ -93,8 +93,9 @@ def api_nwr_listen():
 
 
 def _announce(rec):
-    """Speak a matched alert on this box's own speaker. Wired in Task 12."""
-    return None
+    """Speak a matched alert on this box's own speaker."""
+    from services.nwr.common import announce
+    announce.speak(_root(), rec)
 
 
 @bp.route("/api/nwr/listen/stop", methods=["POST"])
