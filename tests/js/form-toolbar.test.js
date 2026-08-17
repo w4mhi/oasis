@@ -84,15 +84,14 @@ test('emphasis: primary on produce/send, danger on clear, plain elsewhere', () =
     .forEach((s) => assert.strictEqual(cls[s], 'sbtn', s + ' should be plain'));
 });
 
-test('Export ADIF sits between the CSV buttons, in the interchange group', () => {
+test('Export ADIF follows Import CSV in a group of its own', () => {
   const l = labels({ noun: 'Log', slots: NET_LOG });
   const i = l.indexOf('Export ADIF');
   assert.notStrictEqual(i, -1, 'net log declares the slot');
-  assert.strictEqual(l[i - 1], 'Export CSV');
-  assert.strictEqual(l[i + 1], 'Import CSV');
-  // Its own group would have earned it a separator; it must not have one.
-  assert.notStrictEqual(l[i - 1], '|');
-  assert.notStrictEqual(l[i + 1], '|');
+  // A rule separates it from the CSV pair: those two are the log's round trip
+  // with itself, ADIF is a one-way handoff to a program nothing here reads back.
+  assert.deepStrictEqual(l.slice(i - 3, i + 1),
+                         ['Export CSV', 'Import CSV', '|', 'Export ADIF']);
   assert.strictEqual(T.plan({ noun: 'Log', slots: NET_LOG })
     .find((x) => x.slot === 'exportAdif').cls, 'sbtn');
 });

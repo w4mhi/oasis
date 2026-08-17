@@ -21,8 +21,8 @@
  *       loadStore: { title: '…' },
  *       print:     { onClick: doPrint,   title: '…' },
  *       exportCsv:  { onClick: exportCSV,  title: '…' },
- *       exportAdif: { onClick: exportADIF, title: '…' },   // net log only
  *       importCsv:  { onClick: importCSVPrompt, title: '…' },
+ *       exportAdif: { onClick: exportADIF, title: '…' },   // net log only
  *       extra:     { label: 'Load Frequency Plan', onClick: loadChirpPrompt, title: '…' },
  *       clear:     { onClick: clearAll,  title: '…' },
  *     },
@@ -49,7 +49,8 @@
   var GROUPS = [
     ['savePdf', 'handoff'],       // produce / hand off
     ['saveStore', 'loadStore'],   // server storage
-    ['exportCsv', 'exportAdif', 'importCsv'],   // interchange
+    ['exportCsv', 'importCsv'],   // interchange — the log's own round trip
+    ['exportAdif'],               // one-way handoff to a logbook
     ['print'],                    // output
     ['extra'],                    // page-specific (Load Frequency Plan, …)
     ['clear'],                    // destructive
@@ -64,11 +65,12 @@
     loadStore: { cls: 'sbtn', id: 'fb-restore', label: 'Load {noun}' },
     print:     { cls: 'sbtn info', label: 'Print' },
     exportCsv:  { cls: 'sbtn', label: 'Export CSV' },
-    // Net-log only so far: an ICS form has no QSOs to write. It sits with the
-    // other interchange buttons rather than in `extra`, which renders after
-    // Print and would put the two exports at opposite ends of the row.
-    exportAdif: { cls: 'sbtn', label: 'Export ADIF' },
     importCsv:  { cls: 'sbtn', label: 'Import CSV' },
+    // Net-log only so far: an ICS form has no QSOs to write. Its own group,
+    // after the CSV pair: Export/Import CSV are the log's round trip with
+    // itself, while ADIF is a one-way handoff to a different program that
+    // nothing here reads back. The rule between them says so.
+    exportAdif: { cls: 'sbtn', label: 'Export ADIF' },
     extra:     { cls: 'sbtn' },
     clear:     { cls: 'sbtn danger', label: 'Clear' },
   };
