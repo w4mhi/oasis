@@ -362,7 +362,18 @@
   .hd .satcd.green{ color:var(--accent); }
   .hd .satcd.yellow{ color:var(--warn); }
   .hd .satcd.red{ color:var(--down); }
-  #k-sat-meta{ margin-left:.55rem; cursor:pointer; }
+  #k-sat-meta{ margin-left:.55rem; }
+  /* The card's TITLE opens the arm list. It is the biggest, steadiest target in
+     the header — the counter next to it is live text whose width changes with
+     the numbers, which is a poor thing to ask a thumb to find on a 7-inch panel.
+     The hit area grows by PADDING (vertically, and rightward into the .8rem flex
+     gap), cancelled by matching negative margins so nothing moves; the left edge
+     takes no padding at all, so the label stays flush with the card below it.
+     The dotted underline is the affordance: the traffic card's twin header wears
+     the same .livebadge and is NOT tappable, so colour alone cannot say which. */
+  #k-sat-title{ cursor:pointer; text-decoration:underline dotted; text-underline-offset:.25em;
+                text-decoration-color:var(--border); padding:.4rem .4rem .4rem 0;
+                margin:-.4rem -.4rem -.4rem 0; }
   /* Pass-alert bell. Matches .sat-bell on the Satellites page — one vocabulary,
      amber for armed — but with a ~44px touch target built from PADDING, so the
      glyph stays small on a 7-inch row while still being hittable by a thumb.
@@ -831,7 +842,7 @@
       <!-- Same treatment as the traffic card's LIVE badge (green accent, 1rem,
            700, .1em tracking). Reusing that class rather than copying its values
            is deliberate: the two headers sit side by side, so any drift shows. -->
-      <div class="hd"><span class="livebadge ok">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span><span class="meta" id="k-sat-meta" onclick="openArmSheet()" role="button" tabindex="0" title="Monitored birds — tap to choose which ones wake this screen">—</span></div>
+      <div class="hd"><span class="livebadge ok" id="k-sat-title" onclick="openArmSheet()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openArmSheet();}" role="button" tabindex="0" title="Tap to choose which birds wake this screen">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span><span class="meta" id="k-sat-meta" title="Monitored birds, and how many have a pass in the next hour">—</span></div>
       <div class="satscroll" id="satBody"><div class="satempty">…</div></div>
     </div>
 
@@ -1991,7 +2002,7 @@ function openSatSheet(norad) {
   SL.poll();
 }
 // ── Arm list ─────────────────────────────────────────────────────────────────
-// Every MONITORED bird with its bell, reachable from the card's counter. The
+// Every MONITORED bird with its bell, reachable from the card's TITLE. The
 // pass list only shows the next hour, so without this most of the roster would
 // be unarmable from the shack — and with a per-device bell that means a screen
 // that can never be made to chime at all.
