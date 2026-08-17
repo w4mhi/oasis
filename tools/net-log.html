@@ -352,7 +352,7 @@ async function suggestCallsigns(typed){
     el.innerHTML=ranked.map(r=>
       `<div class="sug-item" onmousedown="pickSuggestion('${r.callsign}')">`+
       `<span class="sug-call">${x(r.callsign)}</span>`+
-      `<span class="sug-name">${x(r.name||'')}</span>`+
+      `<span class="sug-name">${x(fccCase(r.name))}</span>`+
       `</div>`
     ).join('');
     el.classList.add('open');
@@ -370,9 +370,28 @@ function clearFill(){
   ['fn','fci','fs','fg'].forEach(id=>{ const el=document.getElementById(id); el.value=''; el.classList.remove('filled'); });
 }
 
+// The FCC's ULS records are not case-normalised: some carry SHOUTED names and
+// cities, some carry properly-cased ones, so the same column ends up reading two
+// ways within one net. Uppercase what the lookup writes, so the log is uniform.
+//
+// UPPERCASE RATHER THAN TITLE CASE, deliberately. Title-casing a name or a place
+// is not a cosmetic operation — it invents errors that were not in the source:
+// MCDONALD -> Mcdonald, O'BRIEN -> O'brien, SMITH III -> Smith Iii, and the
+// cities MCALLEN, MCKINNEY, DESOTO and O'FALLON all come out misspelled. It
+// would also hit the records that were already RIGHT, flattening a stored
+// "McDonald" into "Mcdonald". Uppercase loses information but never asserts
+// anything false, which is the correct trade in a log.
+//
+// Applied ONLY to what the FCC fills in. Anything the operator types is left
+// exactly as typed — software that mangles a carefully entered name is worse
+// than software that looks uneven. Grid and state are untouched: state is
+// already a two-letter code, and a Maidenhead locator is conventionally
+// EM64ab, not EM64AB.
+function fccCase(s){ return (s || '').toUpperCase(); }
+
 function autoFill(r){
   const set=(id,v)=>{ const el=document.getElementById(id); el.value=v||''; if(v) el.classList.add('filled'); };
-  set('fn',r.name); set('fci',r.city); set('fs',r.state); set('fg',r.grid);
+  set('fn',fccCase(r.name)); set('fci',fccCase(r.city)); set('fs',r.state); set('fg',r.grid);
   // Store raw lat/lon from ZIP centroid for accurate map plotting
   document.getElementById('fc').dataset.lat = r.lat ?? '';
   document.getElementById('fc').dataset.lon = r.lon ?? '';
@@ -507,8 +526,10 @@ async function saveRow(seq){
       const res = await fetch('/api/lookup?callsign=' + encodeURIComponent(newCall));
       const d = await res.json();
       if (d.ok && d.found) {
-        e.name  = d.result.name  || e.name;
-        e.city  = d.result.city  || e.city;
+        // Same boundary as autoFill(): the lookup's values get cased, whatever
+        // the operator had already put in the row does not.
+        e.name  = d.result.name ? fccCase(d.result.name) : e.name;
+        e.city  = d.result.city ? fccCase(d.result.city) : e.city;
         e.state = d.result.state || e.state;
         e.grid  = d.result.grid  || e.grid;
         e.lat   = d.result.lat   != null ? d.result.lat : e.lat;
