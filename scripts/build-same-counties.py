@@ -63,6 +63,27 @@ def _rows(text):
         yield dict(zip(header, [c.strip() for c in line.split("\t")]))
 
 
+# (Census suffix to strip, word to SPEAK) — checked in order, first match
+# wins. Order matters: "City and Borough" must be checked before "Borough"
+# alone, because "Borough" is itself a suffix of "City and Borough" — Juneau,
+# Sitka, Wrangell and Yakutat would otherwise lose "City and" and be left
+# with the truncated, garbage name "Juneau City and". The stripped suffix and
+# the spoken word differ for Puerto Rico: the Census spells it "Municipio",
+# but English-language NWS broadcasts and press call these "Municipality" —
+# that's a deliberate translation, not a typo.
+REGION_SUFFIXES = (
+    (" City and Borough", "City and Borough"),
+    (" Census Area", "Census Area"),
+    (" Planning Region", "Planning Region"),   # CT's post-2022 replacement for counties
+    (" Parish", "Parish"),                     # Louisiana has no counties
+    (" Borough", "Borough"),                   # Alaska
+    (" Municipality", "Municipality"),         # Alaska (Anchorage, Skagway)
+    (" Municipio", "Municipality"),            # Puerto Rico — see comment above
+    (" County", "County"),
+    (" city", "City"),                         # VA/MD/MO/NV independent cities
+)
+
+
 def build(text):
     out = {}
     for r in _rows(text):
@@ -75,12 +96,18 @@ def build(text):
         if not geoid or len(geoid) != 5:
             continue
         name = r.get("NAME", "")
-        for suffix in (" County", " Parish", " Borough", " Census Area",
-                       " Municipality", " city", " City and Borough"):
+        region_type = ""    # "" = no suffix to strip (DC, Carson City NV):
+                             # the Gazetteer name is already complete, so this
+                             # must be recorded as KNOWN-bare, not left absent
+                             # (absent means "unknown region type" downstream
+                             # in announce.py, which is a different thing).
+        for suffix, spoken in REGION_SUFFIXES:
             if name.endswith(suffix):
                 name = name[: -len(suffix)]
+                region_type = spoken
                 break
-        out[geoid] = {"n": name, "s": r.get("USPS", ""), "lat": lat, "lon": lon}
+        out[geoid] = {"n": name, "s": r.get("USPS", ""), "lat": lat, "lon": lon,
+                      "t": region_type}
     return out
 
 
@@ -99,6 +126,24 @@ def merge_legacy(current, legacy):
     return merged, supplement_keys
 
 
+def _decode(raw):
+    """Decode Gazetteer bytes as UTF-8, falling back to latin-1.
+
+    The 2023 vintage (and every recent one we've checked) is UTF-8 — that's
+    what "DoÃ±a Ana" turning up in the committed table was: genuine UTF-8
+    bytes for "Doña Ana" wrongly forced through a latin-1 decode, which never
+    raises (latin-1 maps every byte 0-255 to a codepoint) so nothing ever
+    caught it. But Census vintages have not always been consistent — the 2012
+    legacy file this script also reads really is latin-1 and fails a strict
+    UTF-8 decode — so the fallback stays, guarded by an actual decode error
+    instead of being the unconditional first choice.
+    """
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("latin-1")
+
+
 def _fetch(path, url, label):
     """Return the Gazetteer text from a local path if given, else download url."""
     if path:
@@ -111,8 +156,8 @@ def _fetch(path, url, label):
     if raw[:2] == b"PK":
         with zipfile.ZipFile(io.BytesIO(raw)) as z:
             name = [n for n in z.namelist() if n.endswith(".txt")][0]
-            return z.read(name).decode("latin-1")
-    return raw.decode("latin-1")
+            return _decode(z.read(name))
+    return _decode(raw)
 
 
 def main():

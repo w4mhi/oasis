@@ -62,12 +62,18 @@ def locate(fips6, table=None):
 
 
 def describe(fips6, table=None):
-    """{fips5, name, state, lat, lon} for a PSSCCC code, or None."""
+    """{fips5, name, state, lat, lon, region_type} for a PSSCCC code, or None.
+
+    region_type is what to SAY after the bare name — "Parish", "Borough",
+    "" (the name is already complete, e.g. "District of Columbia"), or None
+    when the table entry predates this field (an old-shape table), which
+    callers must treat the same as "unknown, not in this table at all".
+    """
     e = _entry(fips6, table)
     if not e:
         return None
     return {"fips5": _fips5(fips6), "name": e["n"], "state": e["s"],
-            "lat": e["lat"], "lon": e["lon"]}
+            "lat": e["lat"], "lon": e["lon"], "region_type": e.get("t")}
 
 
 def all_counties(table=None):

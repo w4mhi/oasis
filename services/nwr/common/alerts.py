@@ -87,7 +87,8 @@ def _area(fips6, table):
     d = counties.describe(fips6, table=table)
     if d:
         return {"fips": fips6, "name": d["name"], "state": d["state"],
-                "lat": d["lat"], "lon": d["lon"], "why": None}
+                "lat": d["lat"], "lon": d["lon"], "why": None,
+                "region_type": d["region_type"]}
     key = fips6[1:] if len(fips6) == 6 else fips6
     if key.endswith("000"):
         why = "statewide"
@@ -95,9 +96,13 @@ def _area(fips6, table):
         why = "marine"
     else:
         why = "no-coordinates"
+    # The dsame3 fallback table (and a bare FIPS digit string) carry no
+    # region-type information at all, unlike a Gazetteer hit — None, not a
+    # guessed "County", so announce.py is the one place that decides the
+    # fallback word instead of it being baked in here.
     return {"fips": fips6, "name": same.county_name(fips6) or key,
             "state": same.state_name(fips6) or "", "lat": None, "lon": None,
-            "why": why}
+            "why": why, "region_type": None}
 
 
 def build(parsed, repo_root, watch_fips, now):

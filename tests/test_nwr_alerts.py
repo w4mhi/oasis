@@ -238,6 +238,17 @@ class AreaWhyTest(unittest.TestCase):
         area = alerts._area("053033", self.table)
         self.assertIsNone(area["why"])
 
+    def test_a_known_county_carries_its_region_type(self):
+        area = alerts._area("053033", self.table)
+        self.assertEqual(area["region_type"], "County")
+
+    def test_a_county_absent_from_the_gazetteer_has_no_region_type(self):
+        # The dsame3-fallback/bare-FIPS path carries no region-type
+        # information at all — None, not a guessed "County" — so
+        # announce.py is the single place that decides the fallback word.
+        area = alerts._area("999999", self.table)
+        self.assertIsNone(area["region_type"])
+
     def test_statewide_code_is_statewide(self):
         area = alerts._area("053000", self.table)
         self.assertEqual(area["why"], "statewide")

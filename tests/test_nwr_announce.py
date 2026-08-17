@@ -42,8 +42,50 @@ class PhraseTest(unittest.TestCase):
         self.assertNotIn("Until", p)
 
     def test_no_emoji_and_no_odd_codepoints(self):
+        # Plain ASCII is the documented contract (see phrase()'s docstring),
+        # not merely "no emoji" — 0x1F000 is blind to mojibake like "Ã"
+        # (U+00C3), which is exactly what a double-encoded county name from
+        # the old build-same-counties.py latin-1 bug would have produced.
         p = announce.phrase(_rec())
-        self.assertTrue(all(ord(c) < 0x1F000 for c in p))
+        self.assertTrue(all(ord(c) < 128 for c in p))
+
+    def test_a_louisiana_parish_is_spoken_as_parish_not_county(self):
+        # Louisiana has no counties. Speaking one as "Acadia County" is
+        # simply wrong, not just non-idiomatic.
+        areas = [{"name": "Acadia", "state": "LA", "lat": 30.2, "lon": -92.4,
+                  "why": None, "region_type": "Parish"}]
+        p = announce.phrase(_rec(areas=areas))
+        self.assertIn("Acadia Parish", p)
+        self.assertNotIn("Acadia County", p)
+
+    def test_an_alaska_borough_is_spoken_as_borough_not_county(self):
+        areas = [{"name": "Kenai Peninsula", "state": "AK", "lat": 60.0,
+                  "lon": -151.0, "why": None, "region_type": "Borough"}]
+        p = announce.phrase(_rec(areas=areas))
+        self.assertIn("Kenai Peninsula Borough", p)
+        self.assertNotIn("Kenai Peninsula County", p)
+
+    def test_a_name_with_an_explicitly_bare_region_type_is_spoken_as_is(self):
+        # District of Columbia / Carson City: the Gazetteer name is already
+        # complete. region_type "" means "known: nothing to append", which
+        # must be distinct from region_type absent ("unknown, default").
+        areas = [{"name": "District of Columbia", "state": "DC", "lat": 38.9,
+                  "lon": -77.0, "why": None, "region_type": ""}]
+        p = announce.phrase(_rec(areas=areas))
+        self.assertIn("District of Columbia", p)
+        self.assertNotIn("District of Columbia County", p)
+
+    def test_an_area_with_no_region_type_defaults_to_county(self):
+        # No region_type key at all means the name came from the dsame3
+        # fallback table or a bare FIPS digit string (a code the Gazetteer
+        # doesn't carry), which carries no region-type information. "County"
+        # is a deliberate default: correct for the vast majority of the
+        # lower 48, wrong only for the rare LA/AK/PR gap in that fallback —
+        # a documented tradeoff, not an accident.
+        areas = [{"name": "Somewhere", "state": "TX", "lat": None, "lon": None,
+                  "why": "no-coordinates"}]
+        p = announce.phrase(_rec(areas=areas))
+        self.assertIn("Somewhere County", p)
 
 
 if __name__ == "__main__":
