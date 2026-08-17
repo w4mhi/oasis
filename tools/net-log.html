@@ -23,6 +23,7 @@
 .w-city{width:155px;min-width:120px;}
 .w-st{width:46px;}
 .w-grid{width:80px;}
+.w-rst{width:52px;}
 .w-notes{flex:1;min-width:150px;}
 .form-row{display:flex;flex-wrap:wrap;gap:.45rem;align-items:flex-end;}
 .form-row-2{display:flex;flex-wrap:wrap;gap:.45rem;align-items:flex-end;margin-top:.45rem;}
@@ -127,7 +128,6 @@ tr.editing td{background:var(--panel-2);}
       <div><label for="nc">Net control</label><input type="text" id="nc" placeholder="N0CALL" autocorrect="off" autocapitalize="characters"></div>
       <div><label for="nd">Date (UTC)</label><input type="text" id="nd"></div>
       <div><label for="nm">Mode</label><input type="text" id="nm" placeholder="FM" autocorrect="off" autocapitalize="characters" title="Mode written into the ADIF export. Filled in from the frequency until you type here, then left alone."></div>
-      <div><label for="nr">RST</label><input type="text" id="nr" placeholder="59" title="Signal report written into the ADIF export for every check-in. Clear it to leave RST out of the file entirely."></div>
       <div><label for="mapFileSel">Map file</label><select id="mapFileSel" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);font-family:var(--mono);font-size:var(--fs-base);padding:4px 8px;border-radius:5px;cursor:pointer;"><option value="">(loading…)</option></select></div>    </div>
   </div>
 
@@ -148,6 +148,8 @@ tr.editing td{background:var(--panel-2);}
       <div class="field w-city"><label for="fci">City</label><input type="text" id="fci" placeholder="—"></div>
       <div class="field w-st"><label for="fs">ST</label><input type="text" id="fs" placeholder="—"></div>
       <div class="field w-grid"><label for="fg">Grid</label><input type="text" id="fg" placeholder="—"></div>
+      <div class="field w-rst"><label for="frs">RST S</label><input type="text" id="frs" placeholder="59" title="Signal report you gave this station. Prefilled with 59 — tab past it, or clear it to leave RST_SENT out of the ADIF export for this check-in."></div>
+      <div class="field w-rst"><label for="frr">RST R</label><input type="text" id="frr" placeholder="59" title="Signal report this station gave you. Prefilled with 59 — tab past it, or clear it to leave RST_RCVD out of the ADIF export for this check-in."></div>
       <div class="field">
         <label>&nbsp;</label>
         <div class="traffic-row">
@@ -181,13 +183,14 @@ tr.editing td{background:var(--panel-2);}
               <th class="sortable" onclick="sortBy('city')">City</th>
               <th class="sortable" onclick="sortBy('state')">ST</th>
               <th>Grid</th>
+              <th title="Signal report — sent / received">RST</th>
               <th class="sortable" onclick="sortBy('traffic')">Traffic</th>
               <th>Notes</th>
               <th></th>
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr><td colspan="11" id="empty-msg">No check-ins yet.</td></tr>
+            <tr><td colspan="12" id="empty-msg">No check-ins yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -238,7 +241,7 @@ function rebuildTable() {
   const tb = document.getElementById('tbody');
   tb.innerHTML = '';
   if (!rows.length) {
-    tb.innerHTML = '<tr><td colspan="11" id="empty-msg">No check-ins yet.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="12" id="empty-msg">No check-ins yet.</td></tr>';
     return;
   }
   rows.forEach(e => addRow(e));
@@ -248,11 +251,11 @@ function rebuildTable() {
 // persist, load, the CSV meta block, the CSV importer and both form-backup
 // callbacks — and adding Mode/RST for the ADIF export meant a field could
 // silently miss one and quietly fail to survive a page reload.
-const HEADER_IDS = ['nn','nf','nc','nd','nm','nr'];
+const HEADER_IDS = ['nn','nf','nc','nd','nm'];
 const hv = id => document.getElementById(id).value;
 
 document.getElementById('nd').value = new Date().toISOString().slice(0,10) + ' UTC';
-document.getElementById('nr').value = '59';
+resetRST();
 
 // Mode is derived from the frequency and stays derived until the operator types
 // in the box, at which point the flag clears and we never overwrite them again.
@@ -372,6 +375,16 @@ async function doLookup(){
   }
 }
 
+// 59 is what a net check-in gets unless the operator says otherwise. It is
+// prefilled rather than assumed, so clearing it for a station that was genuinely
+// weak — or for a net where nobody took reports — leaves RST out of that
+// record's ADIF entirely instead of writing a number nobody measured.
+const RST_DEFAULT = '59';
+function resetRST(){
+  document.getElementById('frs').value = RST_DEFAULT;
+  document.getElementById('frr').value = RST_DEFAULT;
+}
+
 function utcNow(){ return new Date().toISOString().slice(11,16)+'Z'; }
 
 function utcToLocal(utcStr){
@@ -393,6 +406,8 @@ function logCheckin(){
     city:document.getElementById('fci').value.trim(),
     state:document.getElementById('fs').value.trim(),
     grid:document.getElementById('fg').value.trim(),
+    rstS:document.getElementById('frs').value.trim(),
+    rstR:document.getElementById('frr').value.trim(),
     lat: fc.dataset.lat ? parseFloat(fc.dataset.lat) : null,
     lon: fc.dataset.lon ? parseFloat(fc.dataset.lon) : null,
     traffic:document.getElementById('ft').checked,
@@ -402,15 +417,25 @@ function logCheckin(){
   rebuildTable();
   if (window.updateNetMap) window.updateNetMap(rows);
   ['fc','fn','fci','fs','fg','fo'].forEach(id=>{ const el=document.getElementById(id); el.value=''; el.classList.remove('filled'); });
+  // Back to the default rather than sticky. A report you typed for one weak
+  // station must not silently ride along onto the next twenty check-ins.
+  resetRST();
   fc.dataset.lat = ''; fc.dataset.lon = '';
   document.getElementById('ft').checked=false;
   setStatus('',''); lastCall=''; fc.focus();
 }
 
+// Sent and received in one column: two more columns on an already wide table
+// buys nothing when the values are three characters each. Edit splits them.
+function rstText(e){
+  if (!e.rstS && !e.rstR) return '';
+  return (e.rstS || '—') + '/' + (e.rstR || '—');
+}
+
 function renderRow(e){
   const tr = document.getElementById('row-'+e.seq);
   tr.className='';
-  tr.innerHTML=`<td>${e.seq}</td><td>${x(e.utc)}</td><td>${utcToLocal(e.utc)}</td><td class="c-call">${x(e.call)}</td><td>${x(e.name)}</td><td>${x(e.city)}</td><td>${x(e.state)}</td><td>${x(e.grid)}</td><td>${e.traffic?'<span class="c-traf">Y</span>':''}</td><td class="notes-cell">${x(e.notes)}</td><td style="white-space:nowrap"><button class="sec-btn edit-btn" onclick="editRow(${e.seq})">edit</button> <button class="sec-btn edit-btn" style="color:var(--red)" onclick="deleteRow(${e.seq})">del</button></td>`;
+  tr.innerHTML=`<td>${e.seq}</td><td>${x(e.utc)}</td><td>${utcToLocal(e.utc)}</td><td class="c-call">${x(e.call)}</td><td>${x(e.name)}</td><td>${x(e.city)}</td><td>${x(e.state)}</td><td>${x(e.grid)}</td><td>${x(rstText(e))}</td><td>${e.traffic?'<span class="c-traf">Y</span>':''}</td><td class="notes-cell">${x(e.notes)}</td><td style="white-space:nowrap"><button class="sec-btn edit-btn" onclick="editRow(${e.seq})">edit</button> <button class="sec-btn edit-btn" style="color:var(--red)" onclick="deleteRow(${e.seq})">del</button></td>`;
 }
 
 function deleteRow(seq){
@@ -445,6 +470,7 @@ function editRow(seq){
     `<td><input class="edit-in" id="eci-${seq}" value="${xv(e.city)}" style="width:105px"></td>`+
     `<td><input class="edit-in" id="es-${seq}" value="${xv(e.state)}" style="width:32px"></td>`+
     `<td><input class="edit-in" id="eg-${seq}" value="${xv(e.grid)}" style="width:52px"></td>`+
+    `<td style="white-space:nowrap"><input class="edit-in" id="ers-${seq}" value="${xv(e.rstS)}" style="width:30px" title="Sent"> / <input class="edit-in" id="err-${seq}" value="${xv(e.rstR)}" style="width:30px" title="Received"></td>`+
     `<td style="text-align:center"><input type="checkbox" id="et-${seq}" ${e.traffic?'checked':''} style="accent-color:var(--accent);width:14px;height:14px;cursor:pointer"></td>`+
     `<td class="notes-cell"><input class="edit-in" id="eo-${seq}" value="${xv(e.notes)}"></td>`+
     `<td style="white-space:nowrap;vertical-align:middle">`+
@@ -464,6 +490,8 @@ async function saveRow(seq){
   e.city  = document.getElementById('eci-'+seq).value.trim();
   e.state = document.getElementById('es-'+seq).value.trim();
   e.grid  = document.getElementById('eg-'+seq).value.trim();
+  e.rstS  = document.getElementById('ers-'+seq).value.trim();
+  e.rstR  = document.getElementById('err-'+seq).value.trim();
   e.traffic = document.getElementById('et-'+seq).checked;
   e.notes = document.getElementById('eo-'+seq).value.trim();
   // Re-fetch FCC data if the callsign was changed
@@ -498,7 +526,7 @@ function updateCount(){
 function clearLog(){
   if(rows.length && !confirm('Clear all '+rows.length+' check-in'+(rows.length!==1?'s':'')+' ?')) return;
   rows.length=0; seq=0;
-  document.getElementById('tbody').innerHTML='<tr><td colspan="11" id="empty-msg">No check-ins yet.</td></tr>';
+  document.getElementById('tbody').innerHTML='<tr><td colspan="12" id="empty-msg">No check-ins yet.</td></tr>';
   document.getElementById('count').textContent=''; persist();
   if (window.updateNetMap) window.updateNetMap(rows);
 }
@@ -616,11 +644,14 @@ function buildCSV(){
     '# NCS: '+csv(hv('nc')),
     '# Date: '+csv(hv('nd')),
     '# Mode: '+csv(hv('nm')),
-    '# RST: '+csv(hv('nr')),
     '# Exported: '+new Date().toISOString()
   ];
-  const hdr = ['#','UTC','Callsign','Name','City','State','Grid','Traffic','Notes'].join(',');
-  const body = rows.map(e=>[e.seq,e.utc,e.call,e.name,e.city,e.state,e.grid,e.traffic?'Y':'',e.notes].map(csv).join(','));
+  // RST Sent/Rcvd are APPENDED, not slotted in beside Grid where they belong
+  // logically. The importer reads by column index, so inserting them mid-row
+  // would make every CSV exported before this release parse Notes as a signal
+  // report. Appending leaves those files reading exactly as they did.
+  const hdr = ['#','UTC','Callsign','Name','City','State','Grid','Traffic','Notes','RST Sent','RST Rcvd'].join(',');
+  const body = rows.map(e=>[e.seq,e.utc,e.call,e.name,e.city,e.state,e.grid,e.traffic?'Y':'',e.notes,e.rstS,e.rstR].map(csv).join(','));
   return [...meta,hdr,...body].join('\r\n');
 }
 
@@ -659,7 +690,6 @@ function buildADIF(){
     ncs:  hv('nc'),
     date: hv('nd'),
     mode: hv('nm'),
-    rst:  hv('nr'),
     version: oasisVersion,
     rows: rows,
   });
@@ -743,7 +773,6 @@ function importCSV(input) {
         if (trimmed.startsWith('# NCS: '))  { header.nc = trimmed.slice(7).trim(); return; }
         if (trimmed.startsWith('# Date: ')) { header.nd = trimmed.slice(8).trim(); return; }
         if (trimmed.startsWith('# Mode: ')) { header.nm = trimmed.slice(8).trim(); return; }
-        if (trimmed.startsWith('# RST: '))  { header.nr = trimmed.slice(7).trim(); return; }
         if (trimmed.startsWith('#')) return; // other comment lines
 
         const fields = parseLine(trimmed);
@@ -764,6 +793,9 @@ function importCSV(input) {
           grid:    (fields[6]||'').trim(),
           traffic: (fields[7]||'').trim().toUpperCase() === 'Y',
           notes:   (fields[8]||'').trim(),
+          // Absent in a pre-3.65 CSV, which is why they sit at the end.
+          rstS:    (fields[9]||'').trim(),
+          rstR:    (fields[10]||'').trim(),
           lat:     null,
           lon:     null,
         });
@@ -773,7 +805,7 @@ function importCSV(input) {
 
       // Apply to form
       rows.length = 0; seq = 0;
-      document.getElementById('tbody').innerHTML = '<tr><td colspan="11" id="empty-msg">No check-ins yet.</td></tr>';
+      document.getElementById('tbody').innerHTML = '<tr><td colspan="12" id="empty-msg">No check-ins yet.</td></tr>';
 
       HEADER_IDS.forEach(id => {
         if (header[id]) document.getElementById(id).value = header[id];
@@ -897,7 +929,7 @@ OasisFormBackup.attach({
   applyData: function (data) {
     rows.length = 0; seq = 0;
     document.getElementById('tbody').innerHTML =
-      '<tr><td colspan="11" id="empty-msg">No check-ins yet.</td></tr>';
+      '<tr><td colspan="12" id="empty-msg">No check-ins yet.</td></tr>';
     if (data.header) {
       HEADER_IDS.forEach(function (id) {
         document.getElementById(id).value = data.header[id] || ''; });

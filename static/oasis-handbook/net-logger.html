@@ -114,7 +114,6 @@
         <tr><td><strong>Net control</strong></td><td>Your callsign. Lands in the ICS-309 operator field and on every row as the receiving station, and becomes <code>OPERATOR</code> / <code>STATION_CALLSIGN</code> in the ADIF export.</td></tr>
         <tr><td><strong>Date (UTC)</strong></td><td>Auto-filled as <code>YYYY-MM-DD UTC</code>. Supplies <code>QSO_DATE</code> for every ADIF record; if it is edited into something unparseable the export falls back to today.</td></tr>
         <tr><td><strong>Mode</strong></td><td>For the ADIF export only. Filled in from the frequency &mdash; <code>SSB</code> below 30&nbsp;MHz, <code>FM</code> at or above &mdash; and it keeps tracking the frequency until you type in the box, after which it is left alone. Correct it for an HF FM, 10&nbsp;m FM or digital net.</td></tr>
-        <tr><td><strong>RST</strong></td><td>Starts at <code>59</code> and is written to both <code>RST_SENT</code> and <code>RST_RCVD</code> on every record. A net check-in has no recorded signal report, so if you would rather not put a number you did not take into your log, clear the box &mdash; both fields are then left out of the file entirely.</td></tr>
         <tr><td><strong>Map file</strong></td><td>A dropdown of the <code>.pmtiles</code> files found in <code>maps/</code>, via <code>/api/browse</code>. This is the basemap the Map tab draws. If it reads <em>(error loading files)</em> the server is not reachable; if it is empty, add a PMTiles file and restart the server.</td></tr>
       </tbody>
     </table></div></div>
@@ -129,7 +128,7 @@
       first, capped at ten) &mdash; useful when a callsign came through the noise half-copied.
       Picking a suggestion re-runs the lookup and moves on to Name.
     </p>
-    <p>The check-in table has eleven columns:</p>
+    <p>The check-in table has twelve columns:</p>
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Column</th><th>Notes</th></tr></thead>
       <tbody>
@@ -138,6 +137,7 @@
         <tr><td><strong>Local</strong></td><td>Derived at render, 24&nbsp;hour. Never stored &mdash; so a log carried to another timezone still reads correctly in both columns.</td></tr>
         <tr><td><strong>Callsign</strong></td><td>The lookup key.</td></tr>
         <tr><td><strong>Name</strong>, <strong>City</strong>, <strong>ST</strong>, <strong>Grid</strong></td><td>Auto-filled from the FCC record where one exists; all four remain editable.</td></tr>
+        <tr><td><strong>RST</strong></td><td>The signal report for this contact, shown <em>sent&nbsp;/&nbsp;received</em> &mdash; two separate boxes on the check-in form and two separate inputs when you edit the row, because what you gave a station and what they gave you are different facts. Both are prefilled <code>59</code>, so a routine net is all tab-past; they reset to <code>59</code> after each check-in rather than staying sticky, so a <code>33</code> you typed for one weak station cannot silently ride along onto the next twenty. Clear a box and that field is left out of the ADIF record entirely.</td></tr>
         <tr><td><strong>Traffic</strong></td><td>A tick box; renders as <code>Y</code>.</td></tr>
         <tr><td><strong>Notes</strong></td><td>Free text.</td></tr>
         <tr><td>(actions)</td><td><strong>edit</strong> and <strong>del</strong> per row.</td></tr>
@@ -145,8 +145,8 @@
     </table></div></div>
     <p>
       Most columns sort on their header. <strong>edit</strong> turns the row into inline
-      inputs &mdash; UTC, callsign, name, city, state, grid, traffic and notes, with Local
-      staying read-only &mdash; and changing the callsign during an edit re-queries the FCC
+      inputs &mdash; UTC, callsign, name, city, state, grid, RST sent, RST received, traffic
+      and notes, with Local staying read-only &mdash; and changing the callsign during an edit re-queries the FCC
       database. <strong>del</strong> confirms first.
     </p>
 
@@ -156,8 +156,8 @@
       <tbody>
         <tr><td><strong>&rarr; ICS-309</strong></td><td>The most valuable path off this page. It copies the whole log into the <a href="ics-forms.html">ICS-309</a> communications log and opens it in a new tab: net name becomes the incident, name plus frequency the net, the first and last check-in the from/to times, net control the operator, and every check-in becomes a message line reading <em>name &mdash; city, state &mdash; notes &mdash; (traffic)</em>. Times are <strong>converted</strong> on the way across: check-ins are stored UTC here, but ICS-309 is a local-time form, so <code>1805Z</code> arrives as <code>1305L</code> rather than being relabelled. It hands over through <code>localStorage</code>, so nothing goes over the wire and nothing is lost if the new tab is slow to open.</td></tr>
         <tr><td><strong>Print</strong></td><td>Opens the browser print dialog on a print stylesheet &mdash; the map and the buttons drop out, the roster does not. This is your paper copy when the power budget says the screen goes off.</td></tr>
-        <tr><td><strong>Export CSV</strong></td><td>Writes nine columns &mdash; <code>#, UTC, Callsign, Name, City, State, Grid, Traffic, Notes</code> &mdash; into server storage, beside the JSON snapshots. There is no Local column: UTC is the record.</td></tr>
-        <tr><td><strong>Export ADIF</strong></td><td>Downloads the check-ins as an <code>.adi</code> file for import into a logging program &mdash; the one export that goes to <em>your</em> machine rather than into server storage, because nothing on the OASIS box reads a logbook back. Each check-in becomes one QSO record carrying <code>CALL</code>, <code>QSO_DATE</code>, <code>TIME_ON</code>, <code>MODE</code>, <code>FREQ</code>, <code>BAND</code>, <code>NAME</code>, <code>QTH</code>, <code>STATE</code>, <code>GRIDSQUARE</code> and a <code>COMMENT</code> built from the notes, with <em>(traffic)</em> appended when the row is flagged. Rows logged without a callsign are not QSOs and are left out &mdash; the toast tells you how many were skipped. Empty fields are omitted rather than written blank, so an import cannot overwrite good data in an existing logbook entry with nothing.</td></tr>
+        <tr><td><strong>Export CSV</strong></td><td>Writes eleven columns &mdash; <code>#, UTC, Callsign, Name, City, State, Grid, Traffic, Notes, RST Sent, RST Rcvd</code> &mdash; into server storage, beside the JSON snapshots. There is no Local column: UTC is the record. The two RST columns are <em>appended</em> rather than sitting beside Grid where they belong logically, because the importer reads by column position: putting them mid-row would make every CSV exported before v3.65.0 parse its Notes as a signal report.</td></tr>
+        <tr><td><strong>Export ADIF</strong></td><td>Downloads the check-ins as an <code>.adi</code> file for import into a logging program &mdash; the one export that goes to <em>your</em> machine rather than into server storage, because nothing on the OASIS box reads a logbook back. Each check-in becomes one QSO record carrying <code>CALL</code>, <code>QSO_DATE</code>, <code>TIME_ON</code>, <code>MODE</code>, <code>FREQ</code>, <code>BAND</code>, <code>NAME</code>, <code>QTH</code>, <code>STATE</code>, <code>GRIDSQUARE</code>, that row&rsquo;s own <code>RST_SENT</code> / <code>RST_RCVD</code> and a <code>COMMENT</code> built from the notes, with <em>(traffic)</em> appended when the row is flagged. Rows logged without a callsign are not QSOs and are left out &mdash; the toast tells you how many were skipped. Empty fields are omitted rather than written blank, so an import cannot overwrite good data in an existing logbook entry with nothing.</td></tr>
         <tr><td><strong>Import CSV</strong></td><td>Lists the CSV exports in server storage and reads one back in. The footer also offers <em>Browse device files…</em> for anywhere else in the OASIS tree, and <em>Browse local files…</em> for the machine the browser is on. Match the exported column format.</td></tr>
         <tr><td><strong>Save Log</strong></td><td>Writes a timestamped JSON snapshot into server storage (<code>static/net-log/saved/</code>), named from the net name and the date. Never automatic &mdash; it is an explicit click.</td></tr>
         <tr><td><strong>Load Log</strong></td><td>Lists the snapshots in server storage and loads one back over the current log.</td></tr>

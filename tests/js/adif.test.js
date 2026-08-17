@@ -15,7 +15,8 @@ const NOW = new Date(Date.UTC(2026, 7, 17, 19, 4, 5));
 
 const ROW = {
   seq: 1, utc: '1432Z', call: 'w4mhi', name: 'Mihai', city: 'Huntsville',
-  state: 'AL', grid: 'EM64', traffic: false, notes: 'first check-in',
+  state: 'AL', grid: 'EM64', rstS: '59', rstR: '59',
+  traffic: false, notes: 'first check-in',
 };
 
 // ── field() ──────────────────────────────────────────────────────────────────
@@ -111,8 +112,7 @@ test('parseTime rejects impossible and malformed clocks', () => {
 // ── record() ─────────────────────────────────────────────────────────────────
 
 const CTX = {
-  date: '20260817', mode: 'FM', freq: '146.52', band: '2m',
-  rst: '59', operator: 'W4MHI',
+  date: '20260817', mode: 'FM', freq: '146.52', band: '2m', operator: 'W4MHI',
 };
 
 test('a check-in becomes one QSO record, callsign upper-cased', () => {
@@ -141,10 +141,32 @@ test('the traffic flag is marked in COMMENT, the same way ICS-309 marks it', () 
   assert.ok(bare.includes('<COMMENT:7>traffic'), bare);
 });
 
-test('blank RST omits both report fields instead of inventing one', () => {
-  const r = A.record(ROW, Object.assign({}, CTX, { rst: '' }));
+test('signal reports come off the row, so they can differ per station', () => {
+  const weak = A.record(Object.assign({}, ROW, { rstS: '33', rstR: '41' }), CTX);
+  assert.ok(weak.includes('<RST_SENT:2>33'), weak);
+  assert.ok(weak.includes('<RST_RCVD:2>41'), weak);
+  // …and the next check-in in the same net is unaffected.
+  const strong = A.record(ROW, CTX);
+  assert.ok(strong.includes('<RST_SENT:2>59'), strong);
+  assert.ok(strong.includes('<RST_RCVD:2>59'), strong);
+});
+
+test('a cleared report omits that field instead of inventing one', () => {
+  const none = A.record(Object.assign({}, ROW, { rstS: '', rstR: '' }), CTX);
+  assert.ok(!none.includes('RST_SENT'), none);
+  assert.ok(!none.includes('RST_RCVD'), none);
+  // One side only is legitimate — you logged what you gave, not what you got.
+  const half = A.record(Object.assign({}, ROW, { rstR: '' }), CTX);
+  assert.ok(half.includes('<RST_SENT:2>59'), half);
+  assert.ok(!half.includes('RST_RCVD'), half);
+});
+
+test('a row from before RST existed exports without either field', () => {
+  const legacy = { call: 'N0CALL', utc: '1500Z', name: 'Pat' };
+  const r = A.record(legacy, CTX);
   assert.ok(!r.includes('RST_SENT'), r);
   assert.ok(!r.includes('RST_RCVD'), r);
+  assert.ok(r.includes('<CALL:6>N0CALL'), r);
 });
 
 test('a sparse check-in emits only the fields it has', () => {
@@ -159,7 +181,7 @@ test('a sparse check-in emits only the fields it has', () => {
 
 const HEADER = {
   net: 'ARES/RACES Net', freq: '146.520 MHz', ncs: 'w4mhi',
-  date: '2026-08-17 UTC', rst: '59', version: '3.63.7', now: NOW,
+  date: '2026-08-17 UTC', version: '3.65.0', now: NOW,
 };
 
 test('build writes a conformant header terminated by <EOH>', () => {
@@ -168,7 +190,7 @@ test('build writes a conformant header terminated by <EOH>', () => {
   assert.ok(lines[0].startsWith('ADIF export from OASIS'), lines[0]);
   assert.ok(out.includes('<ADIF_VER:5>3.1.4'));
   assert.ok(out.includes('<PROGRAMID:5>OASIS'));
-  assert.ok(out.includes('<PROGRAMVERSION:6>3.63.7'));
+  assert.ok(out.includes('<PROGRAMVERSION:6>3.65.0'));
   assert.ok(out.includes('<CREATED_TIMESTAMP:15>20260817 190405'));
   assert.strictEqual(lines.filter((l) => l === '<EOH>').length, 1);
   // Header first, records after.

@@ -167,8 +167,11 @@
       field('MODE', ctx.mode),
       field('FREQ', ctx.freq),
       field('BAND', ctx.band),
-      field('RST_SENT', ctx.rst),
-      field('RST_RCVD', ctx.rst),
+      // Signal reports are per-QSO, not per-net: what you gave a station and
+      // what they gave you are two different facts about that one contact, and
+      // both differ from the next check-in's. They live on the row.
+      field('RST_SENT', row.rstS),
+      field('RST_RCVD', row.rstR),
       field('NAME', row.name),
       field('QTH', row.city),
       field('STATE', row.state),
@@ -184,12 +187,13 @@
   /**
    * The whole document.
    *
-   *   build({ net, freq, ncs, date, mode, rst, rows, version, now })
+   *   build({ net, freq, ncs, date, mode, rows, version, now })
    *
    * `freq` and `date` are the raw header strings — parsing them is this
    * module's job, not the page's. `mode` overrides the frequency-derived
-   * default; blank `rst` omits both signal-report fields rather than inventing
-   * one. `now` is injectable so a test can pin CREATED_TIMESTAMP.
+   * default. Signal reports are not here: they belong to the individual QSO
+   * and are read off each row. `now` is injectable so a test can pin
+   * CREATED_TIMESTAMP.
    */
   function build(opts) {
     opts = opts || {};
@@ -201,7 +205,6 @@
       mode: _str(opts.mode).trim().toUpperCase() || modeFor(mhz),
       freq: mhz === null ? '' : String(mhz),
       band: bandFor(mhz),
-      rst: _str(opts.rst).trim(),
       operator: _str(opts.ncs).trim().toUpperCase(),
     };
 
