@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OASIS - Weather Radio</title>
+<link rel="stylesheet" href="/css/common.css">
+<style>
+body { margin: 0; }
+#bar { position: sticky; top: 0; z-index: 10; background: var(--panel);
+       border-bottom: 1px solid var(--border);
+       display: flex; align-items: center; gap: .7rem; padding: 0 .9rem; height: 44px; }
+#bar h1 { font-size: var(--fs-base); letter-spacing: .08em; color: var(--accent);
+          text-transform: uppercase; margin: 0; white-space: nowrap; }
+.wrap { padding: .9rem; display: grid; gap: .9rem;
+        grid-template-columns: minmax(280px, 380px) 1fr; align-items: start; }
+@media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--border);
+        border-radius: 8px; padding: .8rem; }
+.card h2 { margin: 0 0 .6rem; font-size: var(--fs-small); letter-spacing: .06em;
+           text-transform: uppercase; color: var(--text-dim); }
+.row { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; }
+.row label { min-width: 5.5rem; color: var(--text-dim); font-size: var(--fs-small); }
+select, button { font: inherit; }
+button { padding: .35rem .8rem; border-radius: 6px; border: 1px solid var(--border);
+         background: var(--panel-2); color: var(--text); cursor: pointer; }
+button[disabled] { opacity: .45; cursor: not-allowed; }
+button.primary { border-color: var(--accent); color: var(--accent); }
+#state { font-size: var(--fs-small); color: var(--text-dim); }
+#state.live { color: var(--accent); }
+table { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
+th { text-align: left; color: var(--text-dim); font-weight: 600;
+     border-bottom: 1px solid var(--border); padding: .35rem .4rem; }
+td { padding: .35rem .4rem; border-bottom: 1px solid var(--border);
+     vertical-align: top; }
+tr.matched td { background: rgba(255, 176, 0, .07); }
+tr.info td { color: var(--text-dim); }
+code.raw { font-size: var(--fs-micro); color: var(--text-dim); word-break: break-all; }
+.bars { display: grid; gap: .25rem; }
+.bar { display: grid; grid-template-columns: 3rem 1fr 4rem; gap: .4rem;
+       align-items: center; font-size: var(--fs-micro); }
+.bar i { display: block; height: 8px; border-radius: 4px; background: var(--accent); }
+.warn { color: var(--red); }
+</style>
+</head>
+<body>
+<div id="bar">
+  <h1>Weather Radio</h1>
+  <span id="state">checking...</span>
+  <span style="flex:1"></span>
+  <a href="/index.html">Dashboard</a>
+</div>
+
+<div class="wrap">
+  <div>
+    <div class="card">
+      <h2>Receiver</h2>
+      <div class="row">
+        <label for="chan">Channel</label>
+        <select id="chan"></select>
+      </div>
+      <div class="row">
+        <button id="listen" class="primary">Listen</button>
+        <button id="stop" disabled>Stop</button>
+        <button id="scan">Scan</button>
+      </div>
+      <div class="row"><span id="pre"></span></div>
+      <audio id="audio" controls style="width:100%;display:none"></audio>
+    </div>
+
+    <div class="card" id="scancard" style="display:none">
+      <h2>Channel scan</h2>
+      <div class="bars" id="scanbars"></div>
+      <div class="row" style="margin-top:.6rem">
+        <button id="usebest" disabled>Use strongest</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Decoded alerts</h2>
+    <table>
+      <thead><tr><th>Received</th><th>Event</th><th>Areas</th>
+                 <th>Expires</th><th>Station</th></tr></thead>
+      <tbody id="log"><tr><td colspan="5">Nothing decoded yet.</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// Every response body is consumed here, on every path. An unread body pins a
+// 2 MiB /dev/shm data pipe per request, which cost ~500 MB/h on a live station.
+async function api(url, opts) {
+  const r = await fetch(url, Object.assign({ cache: 'no-store' }, opts || {}));
+  const text = await r.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch (_) { data = null; }
+  return { ok: r.ok, status: r.status, data: data };
+}
+
+function post(url, body) {
+  return api(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+    body: JSON.stringify(body || {})
+  });
+}
+
+const $ = function (id) { return document.getElementById(id); };
+let CHANNELS = [];
+let listening = false;
+
+function fmtTime(epoch) {
+  if (!epoch) { return '-'; }
+  const d = new Date(epoch * 1000);
+  return d.toISOString().replace('T', ' ').slice(0, 16) + 'Z';
+}
+
+function areaText(a) {
+  const name = a.state ? (a.name + ', ' + a.state) : a.name;
+  if (a.lat !== null && a.lat !== undefined) { return name; }
+  if (a.why === 'statewide') { return name + ' (statewide - no pin)'; }
+  return name + ' (no coordinates - not plotted)';
+}
+
+function renderStatus(d) {
+  const cap = d.capture, pre = d.preconditions;
+  listening = cap.listening;
+  $('listen').disabled = listening || pre.busy || pre.missing_deps.length > 0;
+  $('stop').disabled = !listening;
+  $('scan').disabled = listening || pre.busy || !pre.can_scan;
+
+  const st = $('state');
+  if (listening) {
+    st.textContent = 'LISTENING - ' + (cap.channel || '') + ' - ' +
+                     cap.elapsed_s + 's - ' + cap.alerts_seen + ' decoded';
+    st.className = 'live';
+  } else {
+    st.textContent = 'idle';
+    st.className = '';
+  }
+
+  const notes = [];
+  if (pre.missing_deps.length) { notes.push('not installed: ' + pre.missing_deps.join(', ')); }
+  if (!pre.assigned) { notes.push('no dongle assigned (Setup - Hardware)'); }
+  else if (pre.busy) { notes.push('dongle held by ' + pre.holder); }
+  else if (!pre.dongle_present) { notes.push('no RTL-SDR detected'); }
+  if (!pre.can_stream) { notes.push('no audio encoder - decode only'); }
+  if (!pre.can_scan) { notes.push('rtl_power missing - scan unavailable'); }
+  const pre_el = $('pre');
+  pre_el.textContent = notes.join(' | ');
+  pre_el.className = notes.length ? 'warn' : '';
+
+  if (!CHANNELS.length) {
+    CHANNELS = d.channels;
+    const sel = $('chan');
+    CHANNELS.forEach(function (c) {
+      const o = document.createElement('option');
+      o.value = String(c.hz);
+      o.textContent = c.label + '  ' + (c.hz / 1e6).toFixed(3) + ' MHz';
+      sel.appendChild(o);
+    });
+    sel.value = String(d.config.channel_hz);
+  }
+}
+
+function renderAlerts(d) {
+  const body = $('log');
+  body.textContent = '';
+  if (!d.alerts.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 5;
+    td.textContent = 'Nothing decoded yet.';
+    tr.appendChild(td);
+    body.appendChild(tr);
+    return;
+  }
+  const active = new Set(d.active);
+  d.alerts.forEach(function (a) {
+    const tr = document.createElement('tr');
+    tr.className = a.type === null ? 'info' : (a.matched ? 'matched' : '');
+    const cells = [
+      fmtTime(a.received),
+      a.event_name + ' (' + a.event + ')' + (a.clock_suspect ? ' [clock suspect]' : ''),
+      a.areas.map(areaText).join('; '),
+      (active.has(a.id) ? fmtTime(a.expires) : 'expired'),
+      a.station
+    ];
+    cells.forEach(function (text) {
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+
+    const raw = document.createElement('tr');
+    const rtd = document.createElement('td');
+    rtd.colSpan = 5;
+    const code = document.createElement('code');
+    code.className = 'raw';
+    code.textContent = a.raw;
+    rtd.appendChild(code);
+    raw.appendChild(rtd);
+    body.appendChild(raw);
+  });
+}
+
+async function poll() {
+  const s = await api('/api/nwr/status');
+  if (s.data && s.data.ok) { renderStatus(s.data); }
+  const a = await api('/api/nwr/alerts?limit=50');
+  if (a.data && a.data.ok) { renderAlerts(a.data); }
+}
+
+$('listen').addEventListener('click', async function () {
+  $('listen').disabled = true;
+  const hz = parseInt($('chan').value, 10);
+  const r = await post('/api/nwr/listen', { channel_hz: hz });
+  if (!r.data || !r.data.ok) {
+    $('pre').textContent = (r.data && r.data.error) || 'could not start';
+    $('pre').className = 'warn';
+  } else {
+    const el = $('audio');
+    el.src = '/api/nwr/listen/stream?t=' + Date.now();
+    el.style.display = 'block';
+  }
+  poll();
+});
+
+$('stop').addEventListener('click', async function () {
+  const el = $('audio');
+  el.pause();
+  el.removeAttribute('src');
+  el.load();                 // tear the stream down; a live <audio> holds the dongle
+  el.style.display = 'none';
+  await post('/api/nwr/listen/stop');
+  poll();
+});
+
+$('scan').addEventListener('click', async function () {
+  $('scan').disabled = true;
+  $('scancard').style.display = 'block';
+  $('scanbars').textContent = 'sweeping 162.390-162.560 MHz...';
+  const r = await post('/api/nwr/scan');
+  $('scanbars').textContent = '';
+  if (!r.data || !r.data.ok) {
+    $('scanbars').textContent = (r.data && r.data.error) || 'scan failed';
+    poll();
+    return;
+  }
+  const powers = r.data.powers;
+  const vals = Object.keys(powers).map(function (k) { return powers[k]; });
+  const lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  CHANNELS.forEach(function (c) {
+    const dbm = powers[String(c.hz)];
+    if (dbm === undefined) { return; }
+    const row = document.createElement('div');
+    row.className = 'bar';
+    const label = document.createElement('span');
+    label.textContent = c.label;
+    const track = document.createElement('span');
+    const fill = document.createElement('i');
+    const pct = hi > lo ? Math.round(((dbm - lo) / (hi - lo)) * 100) : 100;
+    fill.style.width = Math.max(2, pct) + '%';
+    track.appendChild(fill);
+    const num = document.createElement('span');
+    num.textContent = dbm.toFixed(1) + ' dB';
+    row.appendChild(label); row.appendChild(track); row.appendChild(num);
+    $('scanbars').appendChild(row);
+  });
+  if (r.data.best_hz) {
+    $('usebest').disabled = false;
+    $('usebest').dataset.hz = String(r.data.best_hz);
+  }
+  poll();
+});
+
+$('usebest').addEventListener('click', async function () {
+  const hz = parseInt($('usebest').dataset.hz, 10);
+  await post('/api/nwr/config', { channel_hz: hz });
+  $('chan').value = String(hz);
+  poll();
+});
+
+poll();
+setInterval(poll, 5000);
+</script>
+</body>
+</html>
