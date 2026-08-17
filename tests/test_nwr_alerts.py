@@ -134,13 +134,13 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(kept, [])
 
     def test_prune_never_evicts_a_clock_suspect_record(self):
-        # A stale-booted Pi: bogus low `received`, expiry that would look
-        # long dead if trusted. active() keeps it regardless; prune() must
-        # not let the retention cap quietly disagree.
+        # A stale-booted Pi, still inside its quarantine window: an `expires`
+        # that would look long dead if trusted. active() keeps it regardless;
+        # prune() must not let the retention cap quietly disagree.
         suspect = dict(alerts.build(same.parse_header(TOR), self.data_root, [], NOW))
         suspect["id"] = "suspect"
         suspect["clock_suspect"] = True
-        suspect["received"] = 0
+        suspect["received"] = NOW           # well inside STALE_CLOCK_QUARANTINE_S
         suspect["expires"] = NOW - 1
         recs = [suspect]
         for i in range(alerts.MAX_RECORDS + 50):
@@ -169,17 +169,61 @@ class StoreTest(unittest.TestCase):
         kept_ids = {r["id"] for r in alerts.prune(recs, later)}
         self.assertTrue(active_ids.issubset(kept_ids))
 
+    def test_suspect_record_younger_than_quarantine_stays_active_and_survives_prune(self):
+        # A recently-decoded suspect record — the clock is still wrong, but
+        # not wrong for long enough to trust `received` yet.
+        rec = dict(alerts.build(same.parse_header(TOR), self.data_root, [], NOW))
+        rec["clock_suspect"] = True
+        rec["expires"] = NOW - 1          # would look long dead if trusted
+        rec["received"] = NOW - (alerts.STALE_CLOCK_QUARANTINE_S - 3600)
+        self.assertEqual(len(alerts.active([rec], NOW)), 1)
+        kept = alerts.prune([rec], NOW)
+        self.assertEqual(len(kept), 1)
+
+    def test_suspect_record_far_older_than_quarantine_is_no_longer_active_and_is_pruned(self):
+        # `now` is far enough past `received` that the record is old under
+        # any reading of the clock — the quarantine may honestly end.
+        rec = dict(alerts.build(same.parse_header(TOR), self.data_root, [], NOW))
+        rec["clock_suspect"] = True
+        rec["expires"] = NOW - 1
+        rec["received"] = NOW - (alerts.STALE_CLOCK_QUARANTINE_S + 3600)
+        self.assertEqual(alerts.active([rec], NOW), [])
+        kept = alerts.prune([rec], NOW)
+        self.assertEqual(kept, [])
+
+    def test_prune_never_evicts_what_active_keeps_across_the_quarantine_boundary(self):
+        # Mixed set: young suspect (still active), old suspect (quarantined
+        # out), and ordinary records. The invariant must hold throughout.
+        recs = []
+        for i in range(30):
+            r = dict(alerts.build(same.parse_header(TOR), self.data_root, [], NOW))
+            r["id"] = f"id{i}"
+            if i % 3 == 0:
+                r["clock_suspect"] = True
+                r["received"] = NOW - (alerts.STALE_CLOCK_QUARANTINE_S - 3600)
+                r["expires"] = NOW - 1
+            elif i % 3 == 1:
+                r["clock_suspect"] = True
+                r["received"] = NOW - (alerts.STALE_CLOCK_QUARANTINE_S + 3600)
+                r["expires"] = NOW - 1
+            else:
+                r["received"] = NOW + i
+            recs.append(r)
+        active_ids = {r["id"] for r in alerts.active(recs, NOW)}
+        kept_ids = {r["id"] for r in alerts.prune(recs, NOW)}
+        self.assertTrue(active_ids.issubset(kept_ids))
+
     def test_prune_keeps_all_active_records_even_past_the_cap(self):
-        # Degenerate case: more active (clock-suspect) records than
-        # MAX_RECORDS. We keep all of them — a live-warning pile is exactly
-        # what this store exists to survive, and the cap only governs the
-        # inactive remainder.
+        # Degenerate case: more active (clock-suspect, still inside their
+        # quarantine window) records than MAX_RECORDS. We keep all of them —
+        # a live-warning pile is exactly what this store exists to survive,
+        # and the cap only governs the inactive remainder.
         recs = []
         for i in range(alerts.MAX_RECORDS + 15):
             r = dict(alerts.build(same.parse_header(TOR), self.data_root, [], NOW))
             r["id"] = f"suspect{i}"
             r["clock_suspect"] = True
-            r["received"] = 0
+            r["received"] = NOW           # well inside STALE_CLOCK_QUARANTINE_S
             r["expires"] = NOW - 1
             recs.append(r)
         kept = alerts.prune(recs, NOW + 10_000)

@@ -21,6 +21,20 @@ from services.nwr.common import counties, event_map, same
 MAX_RECORDS = 500            # hard cap; this is a JSON file on a 2 GB Pi
 KEEP_EXPIRED_S = 7 * 24 * 3600   # expired alerts stay readable for a week
 
+# How long a clock_suspect record keeps its immunity in active()/prune().
+# `received` is stamped from the same untrusted clock as `expires`, so it
+# cannot be compared against absolute truth either — but both OASIS Pis have
+# actually booted WEEKS stale (see same.CLOCK_TOLERANCE_S), so the gap between
+# a bad `received` and a since-corrected `now` can plausibly be a few weeks
+# all by itself. 90 days sits comfortably above the worst staleness we've
+# actually seen, so once `now` is this far past a suspect record's own
+# `received`, the record is old under ANY reading of the clock, suspect or
+# not, and quarantine may safely end. Set it too short and a warning received
+# during a multi-week-stale boot gets swept the moment someone fixes the
+# clock — exactly the silent retirement active() exists to prevent. Set it
+# too long and a stale-clock episode's alerts pile up on the map forever.
+STALE_CLOCK_QUARANTINE_S = 90 * 24 * 3600
+
 _lock = threading.Lock()
 
 
@@ -128,9 +142,17 @@ def _save(repo_root, recs):
 
 def _is_active(r, now):
     """One record's share of active()'s rule, factored out so prune() can
-    ask the identical question when deciding what it may never evict."""
+    ask the identical question when deciding what it may never evict.
+
+    A clock_suspect record ignores its own (untrusted) `expires` — except for
+    one honest exception. `received` is stamped from that same untrusted
+    clock, so it cannot be compared against absolute truth on its own either;
+    but once `now` sits STALE_CLOCK_QUARANTINE_S past it, the record is old
+    by any reading, wrong clock or right, and quarantine ends. Short of that
+    margin the record stays active exactly as before.
+    """
     if r.get("clock_suspect"):
-        return True
+        return now - r.get("received", now) < STALE_CLOCK_QUARANTINE_S
     exp = r.get("expires")
     return exp is None or exp > now
 
@@ -141,6 +163,10 @@ def active(records, now):
     A record whose clock is suspect is NEVER retired by its own derived expiry.
     Both OASIS Pis have booted weeks stale with every health check green; a
     bogus timestamp must not be allowed to quietly clear a live tornado warning.
+
+    That immunity is not eternal: past STALE_CLOCK_QUARANTINE_S (see
+    _is_active), even a suspect record ages out. A stale-clock episode gets
+    quarantined, not enshrined.
     """
     return [r for r in (records or []) if _is_active(r, now)]
 
@@ -149,15 +175,22 @@ def prune(records, now):
     """Newest first, capped at MAX_RECORDS — except prune() must never evict
     a record active() would still show on the map.
 
-    active() refuses to let a suspect `expires` retire a live warning. If
-    prune() then dropped that same record for the retention cap or the
-    long-expired sweep — sorted by `received`, which is exactly the field a
-    wrong clock corrupts — active() would go on claiming the record belongs
-    on the map while it silently vanished from disk. record() calls prune()
-    on every write, so this could happen to the very record just stored.
+    active() refuses to let a suspect `expires` retire a live warning, up
+    until STALE_CLOCK_QUARANTINE_S has passed (see _is_active) — the one
+    honest sweep of a clock_suspect record, since past that margin the
+    record reads as old no matter which clock you believe. If prune() then
+    dropped a still-active record for the retention cap or the long-expired
+    sweep — sorted by `received`, which is exactly the field a wrong clock
+    corrupts — active() would go on claiming the record belongs on the map
+    while it silently vanished from disk. record() calls prune() on every
+    write, so this could happen to the very record just stored.
 
     So: every record active(records, now) returns is retained unconditionally.
-    The MAX_RECORDS budget and the long-expired sweep apply only to the rest.
+    The MAX_RECORDS budget and the long-expired sweep apply only to the rest —
+    and any clock_suspect record that lands in "the rest" is, by that same
+    _is_active question, already past its quarantine: it is swept
+    unconditionally, the same as a long-expired ordinary record, rather than
+    surviving on the retention budget with an `expires` nobody trusts.
 
     Degenerate case: if the active set alone exceeds MAX_RECORDS (e.g. a pile
     of clock-suspect records from a stale boot), we keep all of them. That is
@@ -173,6 +206,13 @@ def prune(records, now):
     rest.sort(key=lambda r: r.get("received", 0), reverse=True)
     survivors = []
     for r in rest:
+        # A clock_suspect record only ever lands here once _is_active has
+        # already decided its quarantine is over (now - received crossed
+        # STALE_CLOCK_QUARANTINE_S) — its own `expires` is still untrusted,
+        # so it gets the same unconditional sweep as a long-expired ordinary
+        # record, not a second chance to linger under the retention budget.
+        if r.get("clock_suspect"):
+            continue
         exp = r.get("expires")
         if exp is not None and exp + KEEP_EXPIRED_S <= now:
             continue
