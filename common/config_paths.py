@@ -30,6 +30,12 @@ def hazards_json(repo_root):
 def satellites_json(repo_root):
     return os.path.join(config_dir(repo_root), "satellites.json")
 
+def nwr_json(repo_root):
+    return os.path.join(config_dir(repo_root), "nwr.json")
+
+def nwr_alerts_json(repo_root):
+    return os.path.join(config_dir(repo_root), "nwr-alerts.json")
+
 def tle_cache_dir(repo_root):
     return os.path.join(config_dir(repo_root), "tle-cache")
 
