@@ -23,18 +23,13 @@ import bands
 # next roster rebuild and then vanishes, which reads as "the kiosk forgot".
 #
 #   selected — monitored: plotted on the map, listed on the kiosk, alerted on.
-#   bell     — armed for pass alerts (VVV chime at T-10/T-5, spoken heads-up).
+#   bell     — LEGACY, read-only. See the note below OPERATOR_FIELDS.
 #
-# Selecting a bird ARMS its bell (the client does it in one go; a roster from
-# before that rule is migrated once by apply_bell_default_once below). The two
-# are still separate fields because the bell is the exception the operator keeps:
-# monitor the weather birds for the map, disarm the ones that would wake the
-# shack at 03:00. They are independent at THIS layer on purpose — the coupling is
-# a default, not an invariant, and set_bells_many must be able to break it.
-#
-# Both are per-BIRD and therefore shared across devices. Muting is deliberately
-# NOT here: it is per-DEVICE (localStorage), so the shack kiosk can be silent
-# overnight while a laptop still chimes.
+# `selected` is per-BIRD and therefore shared across devices: curating the roster
+# on a laptop is meant to update the shack. Both of the per-SCREEN facts are
+# deliberately NOT here — the bell (which birds wake THIS screen) and the mute
+# (whether it may sound at all) live in each browser's localStorage, so the shack
+# kiosk can be silent overnight while a laptop still chimes.
 OPERATOR_FIELDS = ("selected", "bell")
 
 # LEGACY. Written by the retired one-shot bell backfill, and still carried across

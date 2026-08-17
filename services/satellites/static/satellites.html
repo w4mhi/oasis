@@ -748,8 +748,8 @@ function toggleLegend() {
 // Persisted selection (norad -> colour). PLOTTED is the live subset (only sats
 // with an upcoming pass can be drawn); this is the operator's full choice, so it
 // survives refresh + server restart. Redrawn on boot and every pass refresh (see syncPlotted),
-// which also re-shows each sat's bell — bells persist in the shared roster but
-// only render on a plotted sat, so they vanished with the lost selection.
+// which also re-shows each sat's bell — bells live in THIS browser but only
+// render on a plotted sat, so they vanished with the lost selection.
 let _satSelected = (() => { try { return JSON.parse(localStorage.getItem('oasis_sat_selected') || '{}'); } catch (e) { return {}; } })();
 function saveSelection() { try { localStorage.setItem('oasis_sat_selected', JSON.stringify(_satSelected)); } catch (e) { /* private mode */ } }
 // Is this bird MONITORED? That is _satSelected (the operator's choice, mirrored to
@@ -828,7 +828,7 @@ async function boot() {
   pollListen(); setInterval(pollListen, 3000);
   await refreshPasses();
   reconcileSelection();                             // sync local picks ↔ shared server roster (kiosk sees them)
-  await reconcileBells();                           // one-time migration up, then the roster wins
+  await reconcileBells();                           // adopt the roster's legacy bells once; after that this browser wins
   recolorSelection();                               // colour every selected bird by its service class
   await syncPlotted(); renderRoster();               // draw the saved selection + its bells
   setInterval(refreshPasses, 10 * 60 * 1000);      // keep the 24 h pass window fresh over long sessions

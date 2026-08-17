@@ -112,7 +112,7 @@
         <tr><td><strong>Moni</strong></td><td>Only the birds you have ticked to monitor, alphabetically.</td></tr>
         <tr><td><strong>Mon &middot; 1h</strong></td><td>Monitored birds with a pass inside the next hour, sorted by next pass.</td></tr>
         <tr><td><strong>All &middot; 1h</strong></td><td>Every bird passing over in the next hour, sorted by next pass &mdash; tick one to start monitoring it.</td></tr>
-        <tr><td><strong>Clear</strong> (red)</td><td>Unticks every monitored bird <em>and</em> disarms every pass alert, after a confirm. It then drops you back to <strong>All</strong>, since a Monitored view would now be empty.</td></tr>
+        <tr><td><strong>Clear</strong> (red)</td><td>Unticks every monitored bird <em>and</em> disarms every pass alert on this screen, after a confirm. It then drops you back to <strong>All</strong>, since a Monitored view would now be empty. Other devices keep their own bells.</td></tr>
       </tbody>
     </table></div></div>
     <p>
@@ -136,7 +136,7 @@
         <tr><td>Mode badges</td><td>The roster&rsquo;s closed vocabulary, in a fixed order: WEATHER, VOICE, FM, APRS, SSTV, LINEAR, SSB, DATA, CREWED. A monitored bird missing from the TLE cache also gets a <code>no TLE</code> badge &mdash; it can never compute a pass and will never plot.</td></tr>
         <tr><td>Live chip</td><td>Only while the bird is above the horizon: current <strong>elevation</strong>, a rising / setting arrow (&#8599; / &#8600;), and &mdash; for monitored birds only &mdash; the <strong>slant range in km</strong>. Slant range, not ground distance: those differ by a factor of two at low elevation, and it is the slant range a radio cares about.</td></tr>
         <tr><td>Bar meter</td><td>Five segments, lit by elevation on non-linear thresholds (2 / 10 / 22 / 38 / 58&deg;), red at the horizon through blue overhead. Propagated live in the browser with <code>satellite.js</code>, so it moves without a server round-trip.</td></tr>
-        <tr><td>Row checkbox</td><td>Adds the bird to your <strong>monitored</strong> set &mdash; and arms its pass alert. See below.</td></tr>
+        <tr><td>Row checkbox</td><td>Adds the bird to your <strong>monitored</strong> set &mdash; and arms its pass alert on this screen. See below.</td></tr>
       </tbody>
     </table></div></div>
 
@@ -207,18 +207,26 @@
 
     <h2>Monitoring &amp; pass alerts</h2>
     <p>
-      Ticking a bird does three things at once: it joins your <strong>monitored</strong> set,
-      it is drawn on the map in its capability colour, and <strong>its pass alert is
-      armed</strong>. Unticking it disarms the alert and clears it, so no orphan bell is left
-      behind to fire months later when the bird is re-selected.
+      Two different questions, answered in two different places. What the station
+      <strong>watches</strong> is global: ticking a bird joins your <strong>monitored</strong>
+      set, which lives in the server roster, so curating birds on a laptop updates the shack.
+      What wakes <strong>this screen</strong> is local: the per-row <strong>bell</strong> lives
+      in this browser, so the bed-drawer panel can wake for the ISS and nothing else while the
+      bench laptop watches all thirteen.
+    </p>
+    <p>
+      Ticking a bird arms its bell <em>on the screen you ticked it from</em>, so the common case
+      still takes one tap. Unticking disarms it there, and an orphan bell is pruned rather than
+      left to fire months later when the bird is re-selected. Use the bell for the exception
+      &mdash; monitor the weather birds for the map and the coverage pills, then disarm the ones
+      you do not want waking that particular screen tonight.
     </p>
     <div class="callout info">
       <span class="ic">&#8505;</span>
-      <div><p>The per-row <strong>bell</strong> is now an <em>override</em>, not the gate.
-      Deciding to watch a satellite is deciding you want to be told it is coming; making that
-      a second switch meant passes arrived in silence with nothing on screen to explain it.
-      Use the bell for the exception &mdash; monitor the weather birds for the map and the
-      coverage pills, then disarm the ones you do not want waking the shack tonight.</p></div>
+      <div><p>Because bells are per-device, a <strong>brand-new browser or a reflashed kiosk
+      starts with nothing armed</strong> &mdash; there is no server default to inherit. The
+      glyph on every bird is what shows it. Bells armed before this became per-device are
+      adopted once, automatically, the first time each browser loads the page.</p></div>
     </div>
     <p>
       An armed bird chimes a Morse <strong>&ldquo;V&rdquo;</strong> (&middot;&nbsp;&middot;&nbsp;&middot;&nbsp;&mdash;),
@@ -237,9 +245,10 @@
       Mute is deliberately <em>per-device</em> and stays in this browser&rsquo;s
       <code>localStorage</code>: the shack kiosk should be silenceable overnight while the
       laptop still chimes. Muting also cuts whatever is sounding at that instant, rather than
-      only applying to the next alert. The bells themselves go the other way &mdash; a bell
-      is a property of the <em>bird</em>, so it lives in the shared server roster beside
-      <code>selected</code> and the kiosk honours it without you having to arm it twice.
+      only applying to the next alert. The bells sit beside it, also per-device: mute answers
+      &ldquo;may this screen sound at all&rdquo;, a bell answers &ldquo;is this bird worth
+      sounding for&rdquo;. Armed-but-muted is a real state, and the glyph says so &mdash;
+      bright, but crossed &mdash; rather than pretending the bird is disarmed.
     </p>
 
     <h3>Capability colours and coverage</h3>
@@ -289,7 +298,6 @@
         <tr><td><code>GET /api/satellites/passes</code></td><td>Predicted passes over a <code>window</code> of hours (default 48), plus the <code>min_elev</code> floor that produced them.</td></tr>
         <tr><td><code>GET /api/satellites/track</code></td><td>Ground-track points for one bird (<code>sat</code>, <code>from</code>, <code>to</code>).</td></tr>
         <tr><td><code>POST /api/satellites/select</code></td><td>Set the monitored birds &mdash; one toggle, or a whole <code>selections</code> set in a single write.</td></tr>
-        <tr><td><code>POST /api/satellites/bells</code></td><td>Arm / disarm pass alerts, as a <code>bells</code> set in a single write.</td></tr>
         <tr><td><code>POST /api/satellites/refresh</code></td><td>Rebuild the roster from SatNOGS + CelesTrak. Online-only; being offline is <code>503</code> with code <code>OFFLINE</code>, not a 200.</td></tr>
         <tr><td><code>GET /api/satellites/listen/status</code></td><td>Capture state (recording / streaming / seconds / frequency) <em>and</em> whether a capture is possible at all: missing tools, dongle present, device assigned, busy, holder.</td></tr>
         <tr><td><code>POST /api/satellites/listen</code></td><td>Start recording the armed downlink to a WAV.</td></tr>
@@ -415,7 +423,7 @@
         <tr><td>Rec does nothing / &ldquo;dongle busy&rdquo;</td>
             <td>Another consumer holds the RTL-SDR; the row names the holder. Stop <code>aprs-sdr-feed.service</code> and any ADS-B, then try again. Listening needs a Pi&nbsp;4&nbsp;/&nbsp;4&nbsp;GB or better.</td></tr>
         <tr><td>A pass came and went in silence</td>
-            <td>Check the header mute (it is per-device, so a muted kiosk says nothing about this laptop), then the row bell &mdash; monitoring arms it, but you may have disarmed that one bird deliberately.</td></tr>
+            <td>Both controls are per-device, so check them on the screen that stayed silent: first the header mute (a muted kiosk says nothing about this laptop), then that bird&rsquo;s row bell. A screen that has never had a bird armed on it &mdash; a new browser, a reflashed kiosk &mdash; will never chime.</td></tr>
       </tbody>
     </table></div></div>
 
