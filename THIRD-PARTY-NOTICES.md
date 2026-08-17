@@ -213,6 +213,12 @@ provides.
 | `maps/traffic/assets/APRS-Symbols.pdf` | The printable APRS symbol chart offered from the hazard catalog | Believed to be the hessu/aprs-symbols chart — provenance not recorded | UNVERIFIED | vendored |
 | HAMQSL solar data | Propagation numbers over Winlink/SailDocs | http://hamqsl.com | UNVERIFIED | fetched by the operator |
 | u-blox AssistNow Offline | Faster GPS cold fixes, strictly opt-in | https://www.u-blox.com | UNVERIFIED — service terms; needs the operator's own token | fetched by the operator |
+| dsame3 `defs.py` | SAME/EAS event-code, originator and FIPS county name tables | https://github.com/jamieden/dsame3 | ISC | vendored |
+
+dsame3 is James Kitchens' 2023 fork of Joseph W. Metcalf's `cuppa-joe/dsame`.
+Only `defs.py` is vendored, at `services/nwr/vendor/dsame3/`, with `license.txt`
+verbatim beside it. ISC requires the copyright and permission notice to travel
+with every copy, including a partial one.
 
 ### Attribution that must stay visible
 
