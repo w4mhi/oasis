@@ -4,8 +4,10 @@ import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
+sys.path.insert(0, os.path.join(_ROOT, "server"))
 sys.path.insert(0, _ROOT)
 from common import hardware as HW  # noqa: E402
+from routes import hardware as hardware_routes  # noqa: E402
 
 
 class NwrServiceTest(unittest.TestCase):
@@ -50,6 +52,39 @@ class WrapperChainTest(unittest.TestCase):
         self.assertFalse(chained("nwr-listen"))
         self.assertTrue(chained("dump1090-fa"))
         self.assertFalse(chained("pat-direwolf"))
+
+
+class ConsoleRegistrationTest(unittest.TestCase):
+    """Guard against the exact gap task 6 shipped: a service wired into the
+    conflict engine (SERVICE_UNITS/DEVICE_KIND_FOR_SERVICE) but never added to
+    the assignment console's own service list, so the operator can never give
+    it a dongle and it fails with no error anywhere.
+
+    The real rule is NOT "every key in DEVICE_KIND_FOR_SERVICE" — openwebrx
+    holds an rtl-sdr kind there too, but server/routes/hardware.py deliberately
+    leaves it out of _CONSOLE_SERVICES: it has no apply hook (its RTL-SDR is
+    picked entirely inside OpenWebRX's own Admin -> SDR profiles UI), so it is
+    controlled from its own service card, not the matrix (see the
+    _CONSOLE_SERVICES comment there). That is the one documented exception;
+    everything else that can hold an rtl-sdr must be console-visible or an
+    operator has no way to assign it a dongle."""
+
+    _ADVISORY_ONLY = {"openwebrx"}
+
+    def test_every_rtl_sdr_capable_service_is_console_visible(self):
+        rtl_services = {svc for svc, kinds in HW.DEVICE_KIND_FOR_SERVICE.items()
+                        if "rtl-sdr" in kinds} - self._ADVISORY_ONLY
+        missing = rtl_services - set(hardware_routes._CONSOLE_SERVICES)
+        self.assertFalse(missing,
+            f"{missing} can hold an rtl-sdr but is absent from _CONSOLE_SERVICES "
+            "in server/routes/hardware.py — the operator can never assign it a "
+            "dongle and the service fails to start with no visible cause")
+
+    def test_every_console_service_has_a_display_label(self):
+        missing = set(hardware_routes._CONSOLE_SERVICES) - set(hardware_routes._SERVICE_DISPLAY)
+        self.assertFalse(missing,
+            f"{missing} is in _CONSOLE_SERVICES but has no entry in "
+            "_SERVICE_DISPLAY, so the console would render its raw id")
 
 
 if __name__ == "__main__":

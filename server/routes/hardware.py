@@ -301,9 +301,13 @@ def api_hardware_burn_serial():
 # route + start/stop appear here: radio-live/RX is a future claimant, and
 # OpenWebRX is self-configured (no engine unit, picks its own dongle) so it's
 # controlled from its own service card, not the matrix.
-_CONSOLE_SERVICES = ["aprs", "adsb", "winlink", "satellites"]
+# nwr sits after satellites: both are ad-hoc rtl_fm SYNTHETIC-unit listeners
+# the operator starts by hand (not always-on like aprs/adsb/winlink), so they
+# read as a pair at the bottom of the matrix rather than interleaved with the
+# always-on rows above them.
+_CONSOLE_SERVICES = ["aprs", "adsb", "winlink", "satellites", "nwr"]
 _SERVICE_DISPLAY = {"aprs": "APRS", "adsb": "ADS-B", "openwebrx": "ORX",
-                    "winlink": "Winlink", "satellites": "SAT"}
+                    "winlink": "Winlink", "satellites": "SAT", "nwr": "NWR"}
 
 
 def _console_is_active():
