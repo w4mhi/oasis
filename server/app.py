@@ -221,6 +221,7 @@ from routes.horizon import bp as _horizon_bp
 from routes.speech import bp as _speech_bp
 from routes.refresh import bp as _refresh_bp
 from services.satellites.routes import bp as _sat_bp
+from services.nwr.routes import bp as _nwr_bp
 
 app.register_blueprint(_adsb_bp)
 app.register_blueprint(_aprs_bp)
@@ -241,6 +242,7 @@ app.register_blueprint(_horizon_bp)
 app.register_blueprint(_sat_bp)
 app.register_blueprint(_speech_bp)
 app.register_blueprint(_refresh_bp)
+app.register_blueprint(_nwr_bp)
 
 
 # Self-heal the installed-services ledger on boot: a teardown interrupted after
