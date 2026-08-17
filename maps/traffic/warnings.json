@@ -13,5 +13,6 @@
   { "id": "shelter",        "label": "Shelter", "symbol_table": "\\", "symbol": "z", "abbr": "SHELTR" },
   { "id": "storm",          "label": "Storm", "symbol_table": "\\", "symbol": "T", "abbr": "STORM" },
   { "id": "tornado",        "label": "Tornado", "symbol_table": "\\", "symbol": "t", "abbr": "TORNADO" },
-  { "id": "water",          "label": "Water Point", "symbol_table": "/",  "symbol": "w", "abbr": "WATER" }
+  { "id": "water",          "label": "Water Point", "symbol_table": "/",  "symbol": "w", "abbr": "WATER" },
+  { "id": "weather",        "label": "Weather Alert", "symbol_table": "\\", "symbol": "W", "abbr": "WXALRT" }
 ]

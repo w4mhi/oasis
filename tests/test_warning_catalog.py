@@ -10,7 +10,7 @@ class CatalogTest(unittest.TestCase):
         m = wc.load_symbol_map(_ROOT)
         self.assertEqual(m["flood"], ("\\", "w"))
         self.assertEqual(m["eoc"], ("/", "o"))
-        self.assertEqual(len(m), 15)
+        self.assertEqual(len(m), 16)
 
     def test_missing_root_returns_empty(self):
         self.assertEqual(wc.load_symbol_map("/no/such/root"), {})
@@ -19,7 +19,7 @@ class CatalogTest(unittest.TestCase):
         m = wc.load_abbr_map(_ROOT)
         self.assertEqual(m["first_aid"], "AID")
         self.assertEqual(m["flood"], "FLOOD")
-        self.assertEqual(len(m), 15)
+        self.assertEqual(len(m), 16)
 
     def test_abbr_map_missing_root_returns_empty(self):
         self.assertEqual(wc.load_abbr_map("/no/such/root"), {})
