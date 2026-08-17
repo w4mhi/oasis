@@ -38,6 +38,10 @@
     { id: 'gpsd',    name: 'GPS (gpsd)',      gate: { features: ['gps', 'gps-l76x'], unit: 'gpsd', enabledOnly: true } },
     { id: 'webssh',  name: 'SSH Terminal',    gate: { features: ['webssh'], unit: 'webssh' } },
     { id: 'adsb',    name: 'ADS-B Aircraft',  gate: { features: ['adsb'], unit: 'dump1090-fa' } },
+    // Feature-gated ONLY — no `unit`. nwr-listen is a SYNTHETIC unit (the
+    // capture is an ad-hoc Flask subprocess), so a systemd probe would answer
+    // false forever and hide the service on every box that has it installed.
+    { id: 'nwr',     name: 'Weather Radio',   gate: { features: ['nwr'] } },
     { id: 'fcc',     name: 'FCC Database',    gate: { features: ['fcc'] } },
     { id: 'maps',    name: 'Offline Maps',    gate: null },
     { id: 'rb',      name: 'Repeater Book',   gate: { features: ['repeaterbook'] } },

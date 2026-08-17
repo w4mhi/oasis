@@ -2265,6 +2265,37 @@ const SERVICES = [
     }
   },
   {
+    id: 'nwr', name: 'Weather Radio',
+    check: async () => {
+      // GREEN means "this service can do its job", not "it is capturing right
+      // now". NWR is manual-only, so idle is its healthy steady state — the
+      // same reasoning service-registry.js records for satellites.
+      const r = await fetch('/api/nwr/status', { cache: 'no-store' });
+      const d = await r.json();                       // body always consumed
+      if (!d.ok) { return { up: false, sub: 'unavailable' }; }
+      const p = d.preconditions, c = d.capture;
+      if (p.missing_deps.length) {
+        return { up: false, badge: 'DEPS', sub: p.missing_deps.join(', ') };
+      }
+      if (!p.assigned) {
+        return { up: true, warn: true, badge: 'NO SDR',
+                 sub: 'assign a dongle in Setup' };
+      }
+      if (!p.dongle_present) {
+        return { up: false, badge: 'NO SDR', sub: 'no RTL-SDR detected' };
+      }
+      if (c.listening) {
+        return { up: true, badge: c.channel || 'LISTENING',
+                 sub: c.alerts_seen + ' decoded', navSub: 'listening' };
+      }
+      if (p.busy) {
+        return { up: true, warn: true, badge: 'BUSY',
+                 sub: 'dongle held by ' + p.holder };
+      }
+      return { up: true, badge: 'READY', sub: 'idle', navSub: 'ready' };
+    }
+  },
+  {
     id: 'manuals', name: 'Radio Manuals',
     check: async () => {
       const r = await fetch('/api/browse?path=static/radio-manuals', { cache: 'no-store' });

@@ -27,13 +27,13 @@ test('resolveHidden: a matched feature keeps a service visible without probing',
   assert.ok(!hidden.has('aprs'), 'graywolf feature → APRS visible');
 });
 
-test('resolveHidden: Pi snapshot hides only kiwix/owrx/wiki; a running-but-unlisted webssh stays counted', async () => {
+test('resolveHidden: Pi snapshot hides only kiwix/nwr/owrx/wiki; a running-but-unlisted webssh stays counted', async () => {
   // webssh, kiwix, openwebrx, wikipedia are NOT in features on this box
   const features = ['adsb', 'fcc', 'graywolf', 'gps-l76x', 'repeaterbook', 'rtl-sdr-feed', 'winlink'];
   const live = { webssh: true, gpsd: true, 'dump1090-fa': true, openwebrx: false, kiwix: false, 'aprs-sdr-feed': true };
   const probe = async (g) => !!live[g.unit];
   const hidden = await R.oasisResolveHidden(features, probe);
-  assert.deepStrictEqual([...hidden].sort(), ['kiwix', 'owrx', 'wiki']);
+  assert.deepStrictEqual([...hidden].sort(), ['kiwix', 'nwr', 'owrx', 'wiki']);
   assert.ok(!hidden.has('webssh'), 'webssh enabled outside the manifest is still counted');
 });
 
