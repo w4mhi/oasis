@@ -15,6 +15,9 @@ extend-exclude = [
     "mock-up",
     "specs",
     ".claude",
+    # Vendored third-party source. Upstream's lint findings are not ours to fix,
+    # and the files must stay byte-identical to their provenance headers.
+    "services/nwr/vendor",
 ]
 
 [lint]
