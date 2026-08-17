@@ -110,6 +110,21 @@ def api_nwr_stream():
 
     The subscriber MUST be removed in a finally: — a tab that closed and left
     its queue behind is a slow leak and a dongle held past its usefulness.
+    `subscribe()` and the encoder `Popen` both live INSIDE that finally's
+    try:, on purpose: a dongle exhausting file descriptors or losing /bin/sh
+    — both more plausible on a Pi 3 than a workstation — must not leave the
+    queue registered with no one left to drain it.
+
+    Contract note (do not re-litigate this): the success path here is an
+    audio stream, not JSON, so unlike a status probe it has no `ok: True`
+    shape to carry an answer in. "Nothing is listening" and "no audio
+    encoder" are therefore request FAILURES — `ok: False` with 409/503 — not
+    answers dressed as `ok: True`. A client asked for audio and got none.
+    `/api/nwr/status` is the probe for "is anything listening"; ITS success
+    path is a status object with room to report that as an answer, which is
+    where the contract's ok-means-the-request-succeeded rule applies to that
+    question. The two routes answer different questions and are not
+    inconsistent with each other.
     """
     import subprocess
 
@@ -123,13 +138,13 @@ def api_nwr_stream():
                         "error": "no audio encoder (install ffmpeg or sox)",
                         "code": "NWR_NO_ENCODER"}), 503
 
-    q = listener.subscribe()
-
     def _generate():
-        proc = subprocess.Popen(enc, shell=True, stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.DEVNULL)
+        q = listener.subscribe()
+        proc = None
         try:
+            proc = subprocess.Popen(enc, shell=True, stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL)
             while True:
                 chunk = q.get(timeout=30)
                 if not chunk:
@@ -139,14 +154,14 @@ def api_nwr_stream():
                 out = proc.stdout.read1(8192)
                 if out:
                     yield out
-        except Exception:                  # noqa: BLE001 — client went away
-            pass
+        except Exception:                  # noqa: BLE001 — client went away,
+            pass                            # or the encoder never spawned
         finally:
             listener.unsubscribe(q)
-            try:
-                proc.kill()
-            except Exception:              # noqa: BLE001
-                pass
+            # Same terminate-then-wait as listener._terminate: a killed
+            # process nobody wait()s on is still a zombie. None-safe, so a
+            # Popen that never spawned costs nothing here.
+            listener._terminate(proc)
 
     return Response(_generate(), mimetype=mime)
 
