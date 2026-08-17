@@ -165,10 +165,32 @@ python3 scripts/enable-autostart-pi.py --resolution 1920x1200   # 10&Prime; wide
     <p>
       Only the next hour is on the pass list, so most of the roster has no row to tap. Tapping the
       card&rsquo;s <strong>SATELLITES</strong> title (dotted-underlined, unlike the traffic
-      card&rsquo;s) opens an <strong>arm list</strong>: every monitored bird with its bell, plus
-      <strong>ARM ALL</strong> / <strong>ARM NONE</strong>. Without it a panel could end up with
-      no way to be made to chime at all.
+      card&rsquo;s) opens the <strong>roster sheet</strong>: <em>every</em> bird the station knows,
+      in alphabetical order, one row each, with <strong>ARM ALL</strong> / <strong>ARM NONE</strong>
+      in the header. Two controls sit on each row, and they answer different questions.
     </p>
+    <div class="box"><div class="box-body"><table>
+      <thead><tr><th>Control</th><th>Scope</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><strong>MONITOR</strong> pill (right)</td><td>The whole station</td>
+            <td>Blue when monitored, dim grey when not. Tapping writes straight to the shared
+            server roster, so the <a href="satellites.html">Satellites</a> page and every other
+            screen pick the change up on their next poll &mdash; this is how you start watching
+            a new bird without walking to a laptop.</td></tr>
+        <tr><td><strong>Bell</strong> (left)</td><td>This panel only</td>
+            <td>Whether that bird wakes <em>this</em> screen. It is greyed out and inert until the
+            bird is monitored, because an alert only ever fires for a monitored bird &mdash; a bell
+            armed on an unmonitored one would be swept away within the minute.</td></tr>
+      </tbody>
+    </table></div></div>
+    <div class="callout warn">
+      <span class="ic">&#9888;</span>
+      <div><p>Un-monitoring from the panel can be <strong>undone by a laptop</strong>. The
+      Satellites page keeps its own copy of your picks and pushes any it thinks the server is
+      missing when it loads, so a bird you dropped here comes back if that page is reloaded before
+      it has seen the change. Drop it from whichever screen you use most, or reload the Satellites
+      page afterwards to confirm it stuck.</p></div>
+    </div>
     <h3>Jenny</h3>
     <p>
       On the 1920&times;1200 layout, and only once a speech engine is actually installed, an

@@ -384,6 +384,7 @@
              font-size:.85rem; vertical-align:middle; }
   .sat-bell.on{ color:var(--warn); }
   .sat-bell.compact{ padding:0 2px; margin:0; }
+  .sat-bell[disabled]{ opacity:.35; cursor:default; }
   /* The arm list in the sheet. */
   .armlist{ display:flex; flex-direction:column; gap:.15rem; }
   /* padding-right clears the sheet's own close X, which is absolutely
@@ -391,11 +392,33 @@
   .armlist .hd{ display:flex; align-items:center; gap:.6rem; margin-bottom:.5rem;
                 padding-right:2.2rem; flex-wrap:wrap; }
   .armlist .hd .lab{ color:var(--accent); letter-spacing:.14em; font-weight:700; }
-  .armlist .arow{ display:flex; align-items:center; gap:.6rem;
+  /* The whole roster is ~100 birds, so the rows MUST scroll inside the sheet.
+     .sheet is absolutely positioned against the bottom edge with no height of its
+     own: an unbounded list grows straight off the top of the screen, and those
+     rows cannot be reached at all — there is nothing to scroll. The header stays
+     outside this box so ARM ALL / ARM NONE never scroll away. */
+  .armlist .rows{ max-height:46vh; overflow-y:auto; overscroll-behavior:contain; }
+  /* Real columns, not a flex run: bell | name | designator | monitor. A grid
+     keeps the two controls in the same place on every row, so a thumb going down
+     the list is aiming at a fixed target rather than one that shifts with the
+     length of each bird's name. */
+  .armlist .arow{ display:grid; grid-template-columns:2.6rem 1fr auto auto;
+                  align-items:center; gap:.6rem;
                   padding:.3rem .2rem; border-bottom:1px solid var(--border); }
-  .armlist .arow .n{ flex:1 1 auto; min-width:0; overflow:hidden;
+  .armlist .arow .n{ min-width:0; overflow:hidden;
                      text-overflow:ellipsis; white-space:nowrap; }
+  .armlist .arow.off .n{ color:var(--dim); }
   .armlist .arow .d{ color:var(--dim); font-size:.85em; }
+  /* Monitoring pill. Dim grey = not monitored, blue = monitored, and the word
+     never changes — the colour IS the state, so there is no reading required to
+     tell one row from another at arm's length across the shack. */
+  .monbtn{ background:var(--panel-2); border:1px solid var(--border); color:var(--dim);
+           border-radius:.6rem; padding:.3rem .7rem; cursor:pointer;
+           font-family:var(--mono); font-size:.75rem; letter-spacing:.08em;
+           white-space:nowrap; }
+  .monbtn.on{ color:var(--blue); background:color-mix(in srgb,var(--blue) 12%,var(--panel-2));
+              border-color:color-mix(in srgb,var(--blue) 55%,var(--border)); }
+  .monbtn[disabled]{ opacity:.45; cursor:default; }
   .armbtn{ background:var(--panel-2); border:1px solid var(--border); color:var(--text);
            border-radius:.6rem; padding:.3rem .8rem; cursor:pointer;
            font-family:var(--mono); font-size:.85rem; }
@@ -2002,26 +2025,41 @@ function openSatSheet(norad) {
   SL.poll();
 }
 // ── Arm list ─────────────────────────────────────────────────────────────────
-// Every MONITORED bird with its bell, reachable from the card's TITLE. The
-// pass list only shows the next hour, so without this most of the roster would
-// be unarmable from the shack — and with a per-device bell that means a screen
-// that can never be made to chime at all.
+// The WHOLE roster, alphabetical, reachable from the card's TITLE — one row per
+// bird with two controls: what the STATION watches (monitor, shared, written
+// through to the server roster) and what wakes THIS SCREEN (the bell, local).
+//
+// It lists every bird, not just the monitored ones, because the shack otherwise
+// has no way to START monitoring: the pass list shows the next hour, and picking
+// a new bird meant walking to a laptop and opening the Satellites page. Sorted by
+// the name shown, not by NORAD — a roster of ~100 is something you scan by eye.
 let _armSheetOpen = false;
 function armSheetHTML() {
-  const birds = (_satSel || []).slice().sort((a, b) =>
+  const birds = (_satAll || []).slice().sort((a, b) =>
     (satShortName(a.name) || '').localeCompare(satShortName(b.name) || ''));
-  const n = OasisBells.count();
+  const armed = OasisBells.count(), mon = birds.filter(b => b.selected).length;
   const rows = birds.map(b => {
     const norad = b.norad || b.id;
-    return `<div class="arow">${OasisBells.bellHTML(norad)}` +
+    // The bell is inert on an unmonitored bird — every alert path walks the
+    // monitored set, and fetchSats prunes its bell within the minute. Showing it
+    // live would be a control that silently undoes itself, so it is disabled
+    // until the bird is monitored and says why.
+    const bell = b.selected
+      ? OasisBells.bellHTML(norad)
+      : `<button class="sat-bell" disabled title="Monitor this bird first — an alert only ever fires for a monitored bird.">${OasisBells.BELL_OFF}</button>`;
+    return `<div class="arow${b.selected ? '' : ' off'}">${bell}` +
            `<span class="n">${esc(satShortName(b.name) || ('#' + norad))}</span>` +
-           `<span class="d">${b.designator ? esc(b.designator) : ''}</span></div>`;
+           `<span class="d">${b.designator ? esc(b.designator) : ''}</span>` +
+           `<button class="monbtn${b.selected ? ' on' : ''}" aria-pressed="${b.selected ? 'true' : 'false'}"` +
+           ` onclick="toggleMonitor(${norad})"` +
+           ` title="${b.selected ? 'Monitored by the station — tap to stop. Every screen sees this.' : 'Not monitored — tap to start. Every screen sees this.'}">MONITOR</button></div>`;
   }).join('');
-  return `<div class="armlist"><div class="hd"><span class="lab">WAKE THIS SCREEN</span>` +
-    `<span class="d">${n} of ${birds.length} armed</span><span style="flex:1"></span>` +
+  return `<div class="armlist"><div class="hd"><span class="lab">SATELLITES</span>` +
+    `<span class="d">${mon} monitored &middot; ${armed} waking this screen</span><span style="flex:1"></span>` +
     `<button class="armbtn" onclick="armAll(true)">ARM ALL</button>` +
     `<button class="armbtn" onclick="armAll(false)">ARM NONE</button></div>` +
-    (rows || '<div class="d">No birds are monitored. Pick some on the Satellites page.</div>') +
+    (rows ? `<div class="rows">${rows}</div>`
+          : '<div class="d">The roster is empty. Sync TLEs from the Satellites page.</div>') +
     `</div>`;
 }
 function openArmSheet() {
@@ -2029,6 +2067,50 @@ function openArmSheet() {
   _sheetNorad = null;
   document.getElementById('shBody').innerHTML = armSheetHTML();
   document.getElementById('sheet').classList.add('open');
+}
+// Repaint keeps the scroll position. The sheet is rebuilt by innerHTML, which
+// resets it to the top — and with ~100 rows that throws the operator back to the
+// A's every time they arm a bird two thirds of the way down the list.
+function repaintArmSheet() {
+  if (!_armSheetOpen) return;
+  const body = document.getElementById('shBody');
+  const prev = body.querySelector('.armlist .rows');
+  const top = prev ? prev.scrollTop : 0;
+  body.innerHTML = armSheetHTML();
+  const next = body.querySelector('.armlist .rows');
+  if (next) next.scrollTop = top;
+}
+// Monitoring is STATION-wide, so this writes through to the roster and every
+// other screen picks it up on its next poll — that is the whole point of putting
+// the control here rather than keeping a kiosk-local list.
+//
+// Optimistic: the row flips now and the request follows. A kiosk on a marginal
+// link would otherwise feel dead on tap, and the next fetchSats reconciles
+// against the server within SAT_REFRESH_SEC anyway. A failed write is put BACK,
+// because a pill left blue over a bird the server never accepted is the one
+// outcome worse than the tap not registering.
+async function toggleMonitor(norad) {
+  const bird = (_satAll || []).find(s => String(s.norad || s.id) === String(norad));
+  if (!bird) return;
+  const next = !bird.selected;
+  bird.selected = next;
+  // Unmonitoring disarms here rather than waiting for fetchSats to prune, so the
+  // row cannot sit showing an armed bell that is already dead.
+  if (!next) OasisBells.setArmed(norad, false);
+  _satSel = (_satAll || []).filter(s => s.selected);
+  repaintArmSheet(); renderSats();
+  try {
+    const r = await fetch('/api/satellites/select', { method:'POST',
+      headers: { 'Content-Type':'application/json', 'X-OASIS-Request':'1' },
+      body: JSON.stringify({ selections: { [norad]: next } }) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    if (j && j.ok === false) throw new Error(j.error || 'refused');
+  } catch (e) {
+    bird.selected = !next;
+    _satSel = (_satAll || []).filter(s => s.selected);
+    repaintArmSheet(); renderSats();
+  }
 }
 function armAll(on) {
   OasisBells.setMany((_satSel || []).map(b => b.norad || b.id), on);
@@ -2039,7 +2121,7 @@ function armAll(on) {
 // One repaint path for every way a bell can change — the row glyphs, the open
 // sheet, and the alert set that _armedBirds derives.
 OasisBells.onChange(() => {
-  if (_armSheetOpen) document.getElementById('shBody').innerHTML = armSheetHTML();
+  if (_armSheetOpen) repaintArmSheet();
   else if (_sheetNorad != null) renderSatSheet(_sheetNorad);
   renderSats();
 });
@@ -2068,7 +2150,11 @@ function azCompass(deg) { if (deg == null) return ''; return ['N','NE','E','SE',
 // Kiosk-only: the Satellites page keeps the full name.
 // Anchored at the END so a bracket inside a real name is left alone.
 function satShortName(name) { return String(name || '').replace(/\s*\[[^\]]*\]\s*$/, ''); }
-let _satSel = [], _satPasses = {};
+// _satAll is the whole roster, _satSel the monitored subset of it (the same
+// objects, not copies — flipping .selected on one is visible through both). The
+// full list is what the arm sheet needs in order to offer a bird that is NOT yet
+// monitored; everything else on this screen works from _satSel as before.
+let _satAll = [], _satSel = [], _satPasses = {};
 // Station fix + the TLEs of the birds currently overhead. /api/satellites already
 // returns both (routes.py attaches l1/l2 per entry precisely so a client can
 // propagate its own look angles) — the kiosk just used to throw them away.
@@ -2480,7 +2566,8 @@ async function fetchSats() {
   _satCd = SAT_REFRESH_SEC;
   renderSatCountdown();
   try { const m = await (await fetch('/api/satellites', { cache:'no-store' })).json();
-        _satSel = (m.satellites||[]).filter(s => s.selected);
+        _satAll = m.satellites || [];
+        _satSel = _satAll.filter(s => s.selected);
         // One-time adoption of the roster's legacy `bell` values, so a station
         // that armed birds before the bell became per-device does not go quiet.
         // Pure and unit-tested in sat-bells.js — adopting twice would re-arm a
@@ -2489,9 +2576,12 @@ async function fetchSats() {
         // A bell left on a bird no longer monitored is inert but not harmless:
         // it would fire months later if the bird were re-selected.
         OasisBells.prune(_satSel.map(s => s.norad || s.id));
-        if (m.station && m.station.lat != null) _satStation = m.station; } catch (_) { _satSel = []; }
+        if (m.station && m.station.lat != null) _satStation = m.station; } catch (_) { _satAll = []; _satSel = []; }
   try { _satPasses = (await (await fetch('/api/satellites/passes?window=24', { cache:'no-store' })).json()).passes || {}; } catch (_) {}
   renderSats();
+  // An open arm sheet follows the poll, so a bird monitored from the laptop
+  // appears here without the operator having to close and reopen it.
+  repaintArmSheet();
 }
 // Where an overhead bird actually is, in the same words the Satellites page uses:
 // a measured rising/setting arrow, the live elevation, and the slant range.
