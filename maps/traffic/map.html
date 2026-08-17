@@ -567,6 +567,14 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
   font-size:16px;cursor:pointer;background:rgba(13,17,23,.78);
   border:2.5px solid #ff2b2b;box-shadow:0 0 6px 2px rgba(255,40,40,.6);
 }
+/* NWR marker — received off the air, never placed, never broadcast. A dashed
+   amber ring (vs. the operator warning's solid red) is the whole distinction;
+   no glow, no animation (Pi kiosk CPU). */
+.nwr-marker{
+  width:26px;height:26px;border-radius:50%;text-align:center;line-height:22px;
+  font-size:16px;cursor:pointer;background:rgba(13,17,23,.78);
+  border:2.5px dashed var(--amber);color:var(--amber);
+}
 .warn-note{margin-top:4px;color:var(--amber);}
 .warn-input{width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:var(--fs-small);padding:3px 5px;border-radius:4px;margin-top:5px;}
 .warn-remove{display:block;margin-top:6px;color:var(--red);background:none;border:none;font-family:var(--mono);cursor:pointer;text-align:left;padding-left:0;}
@@ -2324,6 +2332,7 @@ async function fetchStations() {
   setStatus('', 'Fetching…');
   updateCpu(); // refresh the Pi CPU readout alongside each station poll
   loadWarnings(); // sync operator warnings placed on other devices
+  loadNwrAlerts(); // sync received NWS alerts — same cadence, separate layer
   try {
     const res = await fetch(API_URL(), { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -4361,6 +4370,88 @@ async function warnRemove(id) {
   try { await fetch('/api/aprs/warnings/' + id, { method: 'DELETE', headers: { 'X-OASIS-Request': '1' } }); } catch (_) {}
   _warnEditing = false;
   await loadWarnings();
+}
+
+// ── NWR alerts (received, never placed, never broadcast) ─────────────────────
+// Distinct from operator warnings on purpose: these came off the air from the
+// National Weather Service. They use the same catalog ICONS (so a tornado looks
+// like a tornado) but a separate layer, a dashed outline, and NO broadcast
+// control. Retransmitting an official warning as an APRS object under the
+// operator's callsign is not a feature.
+//
+// Only ACTIVE alerts are drawn. Expired ones stay in the decode log on
+// /server/nwr/ — an operator wants to see what came through overnight — but a
+// dead warning must not sit on the map.
+let nwrAlerts    = [];
+let nwrDomMarkers = [];   // DOM markers, parallel to nwrMarkers() below
+
+async function loadNwrAlerts() {
+  try {
+    const r = await fetch('/api/nwr/alerts?limit=200', { cache: 'no-store' });
+    const d = await r.json();          // body always consumed
+    if (!d.ok) { return; }
+    const active = new Set(d.active);
+    nwrAlerts = d.alerts.filter(function (a) {
+      return active.has(a.id) && a.type !== null && a.matched;
+    });
+  } catch (_) {
+    nwrAlerts = [];                     // the feature may not be installed
+  }
+  renderNwrAlerts();
+}
+
+function nwrMarkers() {
+  // One marker per area that HAS a position. A statewide or marine code is a
+  // real alert with no pin; it is visible in the decode log, not invented here.
+  const out = [];
+  nwrAlerts.forEach(function (a) {
+    a.areas.forEach(function (area) {
+      if (area.lat === null || area.lat === undefined) { return; }
+      out.push({
+        id: a.id + ':' + area.fips,
+        type: a.type,
+        lat: area.lat,
+        lon: area.lon,
+        label: a.event_name,
+        sub: area.name + (area.state ? ', ' + area.state : ''),
+        expires: a.expires,
+        station: a.station,
+        received: true
+      });
+    });
+  });
+  return out;
+}
+
+function clearNwrMarkers() { nwrDomMarkers.forEach(m => m.remove()); nwrDomMarkers = []; }
+
+// Read-only popup: event, area, expiry, receiving station. No note field, no
+// broadcast picker, no remove button — there is nothing here for the operator
+// to edit or transmit, on purpose.
+function nwrPopupHtml(a, cat) {
+  return '<div class="pop-call">' + incidentIconSvg(cat.id) + ' ' + _escHtml(a.label) + '</div>' +
+    (a.sub ? '<div class="pop-comment">' + _escHtml(a.sub) + '</div>' : '') +
+    '<div class="pop-row"><span class="pop-lbl">Expires</span><span class="pop-val">' +
+      _escHtml(fmtTime(a.expires ? a.expires * 1000 : null)) + '</span></div>' +
+    (a.station ? '<div class="pop-row"><span class="pop-lbl">Station</span><span class="pop-val">' +
+      _escHtml(a.station) + '</span></div>' : '') +
+    '<div class="warn-status">Received — NOAA Weather Radio, read only</div>';
+}
+
+function renderNwrAlerts() {
+  clearNwrMarkers();
+  nwrMarkers().forEach(a => {
+    const cat = WARN_BY_ID[a.type] || { id: a.type, label: a.type };
+    const el = document.createElement('div');
+    el.className = 'nwr-marker';
+    el.innerHTML = incidentIconSvg(cat.id, { size: '100%' });
+    el.title = a.label + (a.sub ? ' — ' + a.sub : '');
+    const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '260px' });
+    popup.setHTML(nwrPopupHtml(a, cat));
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([a.lon, a.lat]).setPopup(popup).addTo(map);
+    nwrDomMarkers.push(marker);
+  });
 }
 
 // ── Click-to-measure (distance + bearing) ────────────────────────────────────
