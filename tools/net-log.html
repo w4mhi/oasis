@@ -506,7 +506,19 @@ function clearLog(){
 function headerValues(){
   const header = {};
   HEADER_IDS.forEach(id => { header[id] = hv(id); });
+  // Whether Mode is still tracking the frequency travels WITH the value. Store
+  // only the value and a derived "FM" comes back looking like a deliberate
+  // choice, freezing the field: change the net from 146.520 to 3.965 after a
+  // reload and the mode would stay FM.
+  header.nmAuto = nmEl.dataset.auto === '1';
   return header;
+}
+
+// Restore that flag. An older snapshot has no nmAuto, so fall back to the only
+// signal it carries: a stored mode was typed, a missing one was never set.
+function applyHeaderMode(header){
+  nmEl.dataset.auto = (header.nmAuto !== undefined ? header.nmAuto : !header.nm) ? '1' : '';
+  syncMode();
 }
 
 function persist(){
@@ -522,8 +534,7 @@ function loadPersisted(){
       HEADER_IDS.forEach(id => {
         if (data.header[id]) document.getElementById(id).value = data.header[id];
       });
-      // A restored Mode is the operator's choice, not a fresh derivation.
-      if (data.header.nm) nmEl.dataset.auto = '';
+      applyHeaderMode(data.header);
     }
     if (data.rows && data.rows.length) {
       seq = data.seq || 0;
@@ -767,8 +778,9 @@ function importCSV(input) {
       HEADER_IDS.forEach(id => {
         if (header[id]) document.getElementById(id).value = header[id];
       });
-      // An imported Mode came from an operator; only derive when none was given.
-      if (header.nm) nmEl.dataset.auto = ''; else syncMode();
+      // A CSV carries no auto flag — an imported Mode was written by an
+      // operator, so honour it; without one, derive.
+      applyHeaderMode(header);
 
       imported.forEach(e => { rows.push(e); addRow(e); seq = Math.max(seq, e.seq); });
       updateCount();
@@ -889,7 +901,7 @@ OasisFormBackup.attach({
     if (data.header) {
       HEADER_IDS.forEach(function (id) {
         document.getElementById(id).value = data.header[id] || ''; });
-      if (data.header.nm) nmEl.dataset.auto = ''; else syncMode();
+      applyHeaderMode(data.header);
     }
     if (Array.isArray(data.rows)) data.rows.forEach(function (e) { rows.push(e); addRow(e); });
     seq = data.seq || (rows.length ? Math.max.apply(null, rows.map(function (r) { return r.seq; })) + 1 : 0);
