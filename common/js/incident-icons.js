@@ -49,6 +49,10 @@
     shelter:        '<path d="M8 2L1.5 13.5h13z"/><path d="M8 6.5l3.5 7h-7z"/>',
     storm:          '<path d="M3 9.5a2.9 2.9 0 01.4-5.8 4 4 0 017.5.8 2.6 2.6 0 01-.4 5.1"/><path d="M8.5 8l-2 3.5h2.5L7 15"/>',
     water:          '<path d="M8 2.5s4 4.6 4 7.2a4 4 0 11-8 0C4 7.1 8 2.5 8 2.5z"/>',
+    // Fallback for received NWS/SAME alerts that do not map to a more specific
+    // category (earthquake, avalanche, volcano, landslide, and anything we do
+    // not recognise) — an alert bell, distinct from storm/wind/ice/hazmat.
+    weather:        '<path d="M8 2.2v1.6"/><path d="M4 11.3c0-1.3.6-1.9 1.1-2.7c.4-.6.6-1.3.6-2.1c0-1.5 1-2.7 2.3-2.7c1.3 0 2.3 1.2 2.3 2.7c0 .8.2 1.5.6 2.1c.5.8 1.1 1.4 1.1 2.7"/><path d="M4 11.3h8"/><path d="M6.6 12.9a1.4 1.4 0 002.8 0"/>',
   };
 
   var FALLBACK = '<path d="M8 2l6 11H2z"/><path d="M8 6v4M8 11.8v.2"/>';
