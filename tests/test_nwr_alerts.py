@@ -9,7 +9,7 @@ import unittest
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
-from services.nwr.common import alerts, same  # noqa: E402
+from services.nwr.common import alerts, counties, same  # noqa: E402
 
 TOR = "ZCZC-WXR-TOR-053033-053053+0100-2291200-KSEW/NWS-"
 RWT = "ZCZC-WXR-RWT-053033+0030-2291200-KSEW/NWS-"
@@ -132,6 +132,83 @@ class StoreTest(unittest.TestCase):
         old = alerts.build(same.parse_header(TOR), self.data_root, [], NOW)
         kept = alerts.prune([old], NOW + alerts.KEEP_EXPIRED_S + 10_000)
         self.assertEqual(kept, [])
+
+    def test_prune_never_evicts_a_clock_suspect_record(self):
+        # A stale-booted Pi: bogus low `received`, expiry that would look
+        # long dead if trusted. active() keeps it regardless; prune() must
+        # not let the retention cap quietly disagree.
+        suspect = dict(alerts.build(same.parse_header(TOR), self.data_root, [], NOW))
+        suspect["id"] = "suspect"
+        suspect["clock_suspect"] = True
+        suspect["received"] = 0
+        suspect["expires"] = NOW - 1
+        recs = [suspect]
+        for i in range(alerts.MAX_RECORDS + 50):
+            r = dict(alerts.build(same.parse_header(TOR), self.data_root, [], NOW))
+            r["id"] = f"id{i}"
+            r["received"] = NOW + i
+            recs.append(r)
+        kept_ids = [r["id"] for r in alerts.prune(recs, NOW + 10_000)]
+        self.assertIn("suspect", kept_ids)
+
+    def test_prune_keeps_every_record_active_would_keep(self):
+        # General property: prune() must never drop what active() promises
+        # to still show on the map.
+        recs = []
+        for i in range(alerts.MAX_RECORDS + 30):
+            r = dict(alerts.build(same.parse_header(TOR), self.data_root, [], NOW))
+            r["id"] = f"id{i}"
+            r["received"] = NOW + i
+            if i % 7 == 0:
+                r["clock_suspect"] = True
+                r["received"] = 0
+                r["expires"] = NOW - 1
+            recs.append(r)
+        later = NOW + 10_000
+        active_ids = {r["id"] for r in alerts.active(recs, later)}
+        kept_ids = {r["id"] for r in alerts.prune(recs, later)}
+        self.assertTrue(active_ids.issubset(kept_ids))
+
+    def test_prune_keeps_all_active_records_even_past_the_cap(self):
+        # Degenerate case: more active (clock-suspect) records than
+        # MAX_RECORDS. We keep all of them — a live-warning pile is exactly
+        # what this store exists to survive, and the cap only governs the
+        # inactive remainder.
+        recs = []
+        for i in range(alerts.MAX_RECORDS + 15):
+            r = dict(alerts.build(same.parse_header(TOR), self.data_root, [], NOW))
+            r["id"] = f"suspect{i}"
+            r["clock_suspect"] = True
+            r["received"] = 0
+            r["expires"] = NOW - 1
+            recs.append(r)
+        kept = alerts.prune(recs, NOW + 10_000)
+        self.assertEqual(len(kept), alerts.MAX_RECORDS + 15)
+
+
+class AreaWhyTest(unittest.TestCase):
+    def setUp(self):
+        self.table = counties.load(_ROOT)
+
+    def test_a_known_county_has_no_why(self):
+        area = alerts._area("053033", self.table)
+        self.assertIsNone(area["why"])
+
+    def test_statewide_code_is_statewide(self):
+        area = alerts._area("053000", self.table)
+        self.assertEqual(area["why"], "statewide")
+
+    def test_marine_pseudo_state_is_marine_not_no_coordinates(self):
+        # 057 = "Pacific Coast from Washington to California" — a real,
+        # legitimate alert area that structurally has no county.
+        area = alerts._area("057530", self.table)
+        self.assertEqual(area["why"], "marine")
+
+    def test_a_county_absent_from_the_gazetteer_is_no_coordinates(self):
+        # A syntactically plausible county FIPS for a real land state that
+        # our vendored Gazetteer vintage simply doesn't carry.
+        area = alerts._area("999999", self.table)
+        self.assertEqual(area["why"], "no-coordinates")
 
 
 if __name__ == "__main__":

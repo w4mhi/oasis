@@ -119,6 +119,31 @@ def state_name(fips6):
     return defs.US_SAME_AREA.get(_sscc(fips6)[:2])
 
 
+# SAME reuses the two-digit state-FIPS slot for the Great Lakes, their
+# connecting rivers and coastal-waters zones (see US_SAME_AREA: "Pacific
+# Coast...", "Alaskan Coast", "...Waters", "Gulf of Mexico", "Lake ...",
+# "... River ..."). Every one of those entries names a body of water; every
+# real state or territory entry names a place. That is the distinguishing
+# fact this checks, not a guess about which codes "look" marine.
+_MARINE_STATE_CODES = frozenset(
+    code for code, name in defs.US_SAME_AREA.items()
+    if code not in ("LOCATION", "XX")
+    and any(w in name for w in ("Coast", "Waters", "Gulf of", "Lake", "River"))
+)
+
+
+def is_marine_state(fips6):
+    """True when a PSSCCC code's state digits name a marine/coastal-waters
+    zone (Great Lakes, connecting rivers, coastal waters) rather than a real
+    state or territory.
+
+    These codes structurally have no county — a decode log that reports them
+    the same way as a genuine Gazetteer gap would tell the operator to doubt
+    a perfectly legitimate alert.
+    """
+    return _sscc(fips6)[:2] in _MARINE_STATE_CODES
+
+
 def _candidate_epoch(year, jjj, hh, mm):
     """UTC epoch for day-of-year `jjj` at hh:mm in `year`, or None if invalid
     (day 366 of a non-leap year)."""

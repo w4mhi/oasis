@@ -64,14 +64,23 @@ def _area(fips6, table):
     """One area entry: always named if we can, plotted only when we honestly can.
 
     `why` records the reason a real alert has no pin, so the decode log can SAY
-    it instead of the marker just not appearing.
+    it instead of the marker just not appearing. Three distinct causes, same as
+    counties.locate()'s docstring: a state-wide code, a marine/coastal-waters
+    pseudo-state (SAME reuses the state-FIPS slot for the Great Lakes and
+    coastal-waters zones — a legitimate alert that structurally has no county),
+    or a county genuinely absent from the Gazetteer vintage we shipped.
     """
     d = counties.describe(fips6, table=table)
     if d:
         return {"fips": fips6, "name": d["name"], "state": d["state"],
                 "lat": d["lat"], "lon": d["lon"], "why": None}
     key = fips6[1:] if len(fips6) == 6 else fips6
-    why = "statewide" if key.endswith("000") else "no-coordinates"
+    if key.endswith("000"):
+        why = "statewide"
+    elif same.is_marine_state(fips6):
+        why = "marine"
+    else:
+        why = "no-coordinates"
     return {"fips": fips6, "name": same.county_name(fips6) or key,
             "state": same.state_name(fips6) or "", "lat": None, "lon": None,
             "why": why}
@@ -117,6 +126,15 @@ def _save(repo_root, recs):
                            {"alerts": recs})
 
 
+def _is_active(r, now):
+    """One record's share of active()'s rule, factored out so prune() can
+    ask the identical question when deciding what it may never evict."""
+    if r.get("clock_suspect"):
+        return True
+    exp = r.get("expires")
+    return exp is None or exp > now
+
+
 def active(records, now):
     """Unexpired alerts — what belongs on the map right now.
 
@@ -124,28 +142,45 @@ def active(records, now):
     Both OASIS Pis have booted weeks stale with every health check green; a
     bogus timestamp must not be allowed to quietly clear a live tornado warning.
     """
-    out = []
-    for r in records or []:
-        if r.get("clock_suspect"):
-            out.append(r)
-            continue
-        exp = r.get("expires")
-        if exp is None or exp > now:
-            out.append(r)
-    return out
+    return [r for r in (records or []) if _is_active(r, now)]
 
 
 def prune(records, now):
-    """Newest first, long-expired dropped, capped at MAX_RECORDS."""
-    recs = sorted(records or [], key=lambda r: r.get("received", 0), reverse=True)
-    kept = []
-    for r in recs:
+    """Newest first, capped at MAX_RECORDS — except prune() must never evict
+    a record active() would still show on the map.
+
+    active() refuses to let a suspect `expires` retire a live warning. If
+    prune() then dropped that same record for the retention cap or the
+    long-expired sweep — sorted by `received`, which is exactly the field a
+    wrong clock corrupts — active() would go on claiming the record belongs
+    on the map while it silently vanished from disk. record() calls prune()
+    on every write, so this could happen to the very record just stored.
+
+    So: every record active(records, now) returns is retained unconditionally.
+    The MAX_RECORDS budget and the long-expired sweep apply only to the rest.
+
+    Degenerate case: if the active set alone exceeds MAX_RECORDS (e.g. a pile
+    of clock-suspect records from a stale boot), we keep all of them. That is
+    a deliberate choice, not an oversight — this store exists precisely to
+    survive a stale/suspect clock, and trimming a live warning to respect a
+    byte-count cap on a 2 GB Pi is the wrong trade every time. A JSON file a
+    few hundred alerts over budget is a rounding error; a dropped tornado
+    warning is not.
+    """
+    recs = records or []
+    kept_active = [r for r in recs if _is_active(r, now)]
+    rest = [r for r in recs if not _is_active(r, now)]
+    rest.sort(key=lambda r: r.get("received", 0), reverse=True)
+    survivors = []
+    for r in rest:
         exp = r.get("expires")
-        if (not r.get("clock_suspect")) and exp is not None \
-                and exp + KEEP_EXPIRED_S <= now:
+        if exp is not None and exp + KEEP_EXPIRED_S <= now:
             continue
-        kept.append(r)
-    return kept[:MAX_RECORDS]
+        survivors.append(r)
+    budget = max(MAX_RECORDS - len(kept_active), 0)
+    kept = kept_active + survivors[:budget]
+    kept.sort(key=lambda r: r.get("received", 0), reverse=True)
+    return kept
 
 
 def record(repo_root, parsed, watch_fips, now, data_root=None):
