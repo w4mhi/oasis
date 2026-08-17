@@ -222,7 +222,15 @@ def start(channel_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, device_serial=None,
     """Start a listening session. {"ok": bool, "error": str|None}.
 
     `popen` is injectable so the lifecycle can be tested without a radio.
+
+    rtl_fm and multimon-ng are spawned as a pair. If rtl_fm comes up but
+    multimon-ng then fails to spawn, the already-running rtl_fm is killed
+    and reaped before this returns — an orphaned rtl_fm would hold the
+    dongle forever, invisible to stop()/status() because it was never
+    recorded in _state.
     """
+    rtl = mm = None
+    error = None
     with _lock:
         if is_listening():
             return {"ok": False, "error": "already listening",
@@ -238,15 +246,23 @@ def start(channel_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, device_serial=None,
                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                        text=True, bufsize=1)
         except OSError as e:
-            _state["last_error"] = str(e)
-            return {"ok": False, "error": str(e), "code": "NWR_START_FAILED"}
+            error = str(e)
+            _state["last_error"] = error
+        else:
+            _state.update({"rtl": rtl, "mm": mm, "channel_hz": int(channel_hz),
+                           "started": time.time(), "last_error": None,
+                           "alerts_seen": 0})
 
-        _state.update({"rtl": rtl, "mm": mm, "channel_hz": int(channel_hz),
-                       "started": time.time(), "last_error": None,
-                       "alerts_seen": 0})
+    if error is not None:
+        # Outside the lock: killing and reaping a process can block for
+        # seconds, and nothing above needs _lock held while it happens.
+        _terminate(rtl)
+        _terminate(mm)
+        return {"ok": False, "error": error, "code": "NWR_START_FAILED"}
 
     def _count(parsed):
-        _state["alerts_seen"] += 1
+        with _lock:
+            _state["alerts_seen"] += 1
         if on_header:
             on_header(parsed)
 
@@ -255,6 +271,50 @@ def start(channel_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, device_serial=None,
     threading.Thread(target=_decoder, args=(mm, _count), daemon=True,
                      name="nwr-decode").start()
     return {"ok": True, "error": None}
+
+
+def _terminate(proc, timeout=5):
+    """Best-effort stop-and-reap of one process. SIGTERM first, SIGKILL if
+    that doesn't land in time, and a wait() after either path — a killed
+    process that is never wait()ed on is still a zombie. Safe to call with
+    None (nothing was spawned) or an already-dead process."""
+    if proc is None:
+        return
+    try:
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(timeout=timeout)
+        return
+    except Exception:      # noqa: BLE001
+        pass
+    try:
+        proc.kill()
+        proc.wait(timeout=timeout)
+    except Exception:      # noqa: BLE001
+        pass
+
+
+def _deliver_sentinel(q):
+    """Put the b"" poison pill on a subscriber queue, evicting one buffered
+    chunk first if the queue is already full.
+
+    A full queue is exactly the stalled-reader case this sentinel exists to
+    unblock: the consumer is behind, so dropping one more already-buffered
+    chunk to make room for the sentinel costs nothing it wasn't already
+    going to lose, and it is strictly better than the consumer hanging on
+    its own read timeout instead of ending promptly."""
+    try:
+        q.put_nowait(b"")
+        return
+    except queue.Full:
+        pass
+    try:
+        q.get_nowait()
+    except queue.Empty:
+        pass
+    try:
+        q.put_nowait(b"")
+    except queue.Full:
+        pass    # a producer refilled it between get and put; give up quietly
 
 
 def _reader(rtl, mm):
@@ -284,19 +344,7 @@ def stop():
                        "started": 0.0})
         subs, _state["subs"] = _state["subs"], []
     for proc in (rtl, mm):
-        if proc is None:
-            continue
-        try:
-            proc.send_signal(signal.SIGTERM)
-            proc.wait(timeout=5)
-        except Exception:      # noqa: BLE001
-            try:
-                proc.kill()
-            except Exception:  # noqa: BLE001
-                pass
+        _terminate(proc)
     for q in subs:
-        try:
-            q.put_nowait(b"")   # unblock any generator waiting on this queue
-        except Exception:       # noqa: BLE001
-            pass
+        _deliver_sentinel(q)   # unblock any generator waiting on this queue
     return {"ok": True}

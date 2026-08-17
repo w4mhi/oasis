@@ -1,8 +1,10 @@
 import io
 import os
 import queue
+import signal
 import sys
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
@@ -10,6 +12,27 @@ sys.path.insert(0, _ROOT)
 from services.nwr.common import listener  # noqa: E402
 
 TOR = "ZCZC-WXR-TOR-053033+0100-2291200-KSEW/NWS-"
+
+
+class _FakeProc:
+    """Stand-in for a subprocess.Popen handle."""
+    def __init__(self):
+        self.signals = []
+        self.killed = False
+        self.waits = 0
+
+    def send_signal(self, sig):
+        self.signals.append(sig)
+
+    def kill(self):
+        self.killed = True
+
+    def wait(self, timeout=None):
+        self.waits += 1
+        return 0
+
+    def poll(self):
+        return None
 
 
 class _Sink:
@@ -133,6 +156,62 @@ class PreconditionsTest(unittest.TestCase):
         self.assertIn("rtl_fm", p["missing_deps"])
         self.assertIn("multimon-ng", p["missing_deps"])
         self.assertFalse(p["dongle_present"])
+
+
+class _StateResetMixin:
+    """start()/stop() touch module-level _state; leave it as found."""
+    def setUp(self):
+        super().setUp()
+        self._saved = dict(listener._state)
+        listener._state.update({"rtl": None, "mm": None, "channel_hz": None,
+                                 "started": 0.0, "subs": [], "last_error": None,
+                                 "alerts_seen": 0})
+
+    def tearDown(self):
+        listener._state.clear()
+        listener._state.update(self._saved)
+        super().tearDown()
+
+
+class StartPartialFailureTest(_StateResetMixin, unittest.TestCase):
+    def test_a_dead_multimon_spawn_terminates_the_already_running_rtl_fm(self):
+        # rtl_fm spawns fine; multimon-ng then fails to spawn (missing binary
+        # raced past preconditions, or an OS-level fork failure). The already
+        # running rtl_fm must not be orphaned holding the dongle.
+        rtl_proc = _FakeProc()
+
+        def fake_popen(argv, **kwargs):
+            if argv[0] == "rtl_fm":
+                return rtl_proc
+            raise OSError("multimon-ng: no such file or directory")
+
+        # REQUIRED_BINARIES may genuinely be missing on the dev machine (no
+        # multimon-ng on a Mac) — that's not what this test is about, so
+        # force preconditions past the missing-deps gate.
+        with mock.patch.object(listener.sdr_rx, "missing_deps",
+                                lambda *a, **k: []):
+            result = listener.start(162550000, popen=fake_popen)
+
+        self.assertEqual(result,
+                          {"ok": False,
+                           "error": "multimon-ng: no such file or directory",
+                           "code": "NWR_START_FAILED"})
+        self.assertIn(signal.SIGTERM, rtl_proc.signals)
+        self.assertGreaterEqual(rtl_proc.waits, 1)
+        # and the orphan must not linger in _state either
+        self.assertIsNone(listener._state["rtl"])
+        self.assertIsNone(listener._state["mm"])
+
+
+class StopSentinelTest(_StateResetMixin, unittest.TestCase):
+    def test_a_full_subscriber_queue_still_receives_the_sentinel(self):
+        q = queue.Queue(maxsize=1)
+        q.put_nowait(b"stale-audio")   # already full: the stalled-reader case
+        listener._state["subs"] = [q]
+
+        listener.stop()
+
+        self.assertEqual(q.get_nowait(), b"")
 
 
 if __name__ == "__main__":
