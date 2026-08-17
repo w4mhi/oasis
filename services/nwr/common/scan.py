@@ -60,31 +60,78 @@ def channel_powers(csv_text):
 
 
 def best_channel(powers):
-    """(hz, dbm) of the strongest channel, or (None, None) when nothing was read."""
+    """(hz, dbm) of the strongest channel, or (None, None) when nothing was read.
+
+    Ties go to the lowest-frequency channel: `max()` keeps the first key it
+    saw at the winning value, and `powers` is built by `channel_powers` in
+    `listener.CHANNELS` order (WX1 low to WX7 high), so an exact dBm tie
+    resolves to whichever of the tied channels comes first in that order.
+    """
     if not powers:
         return (None, None)
     hz = max(powers, key=lambda k: powers[k])
     return (hz, powers[hz])
 
 
+def _stderr_summary(stderr):
+    """A short, actionable line for `error`, not a stderr dump.
+
+    rtl_power's failure text is often multi-line and noisy; only the last
+    non-blank line usually names the actual cause. `usb_claim_interface` is
+    called out by name because a busy dongle -- another service already
+    holding it -- is the recurring failure mode on this hardware, and the
+    generic last line ("usb_claim_interface error -6") means nothing to an
+    operator who isn't reading libusb source.
+    """
+    text = (stderr or "").strip()
+    if "usb_claim_interface" in text:
+        return "another service is already using the RTL-SDR dongle"
+    if not text:
+        return "rtl_power exited with an error and produced no output"
+    return text.splitlines()[-1].strip()[:200]
+
+
 def run(gain=listener.DEFAULT_GAIN, ppm=listener.DEFAULT_PPM, device_serial=None,
         seconds=DEFAULT_SECONDS, runner=None):
-    """Execute a sweep. {"ok", "powers", "best_hz", "best_dbm", "error"}.
+    """Execute a sweep. {"ok", "error", "code", "powers", "best_hz", "best_dbm"}.
+
+    Every return carries all six keys, `None`/`{}` where there is no answer,
+    so a caller can read `best_hz` without checking `ok` first.
 
     `runner` is injectable for tests; it is NOT named `run`, which would shadow
     this function's own name inside its body.
     """
     runner = runner or subprocess.run
+    failed = {"powers": {}, "best_hz": None, "best_dbm": None}
     try:
         r = runner(scan_command(gain, ppm, device_serial, seconds),
                    capture_output=True, text=True, timeout=seconds + 30)
     except FileNotFoundError:
         return {"ok": False, "error": "rtl_power is not installed",
-                "code": "NWR_NO_RTL_POWER", "powers": {}}
+                "code": "NWR_NO_RTL_POWER", **failed}
     except (OSError, subprocess.TimeoutExpired) as e:
-        return {"ok": False, "error": str(e), "code": "NWR_SCAN_FAILED",
-                "powers": {}}
+        return {"ok": False, "error": str(e), "code": "NWR_SCAN_FAILED", **failed}
+
+    if r.returncode != 0:
+        # A nonzero exit means the band was never actually swept -- most
+        # often another service already holds the dongle. Reporting {} here
+        # would read as "swept and silent," which is a false answer, not an
+        # absent one; the docstring's contract is to report failure as an
+        # ANSWER, and a false answer fails that harder than a crash would.
+        return {"ok": False, "error": _stderr_summary(r.stderr),
+                "code": "NWR_SCAN_FAILED", **failed}
+
     powers = channel_powers(r.stdout or "")
+    if not powers:
+        # Exit 0 with nothing parseable is not "swept and genuinely silent":
+        # a real sweep emits dozens of CSV bins per second of -e, so a
+        # silent band still produces rows (all low dBm), just not an empty
+        # stdout. Empty stdout on a clean exit means the sweep never
+        # happened -- treat it the same as a failed sweep rather than
+        # reporting "no transmitter" from a measurement that never ran.
+        return {"ok": False, "error": _stderr_summary(r.stderr),
+                "code": "NWR_SCAN_FAILED", **failed}
+
     hz, dbm = best_channel(powers)
-    return {"ok": True, "error": None, "powers": powers,
+    return {"ok": True, "error": None, "code": None, "powers": powers,
             "best_hz": hz, "best_dbm": dbm}
