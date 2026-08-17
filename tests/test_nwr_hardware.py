@@ -101,13 +101,13 @@ class ConsoleIsActiveDegradedPathTest(unittest.TestCase):
     raise loudly instead of vanishing into `is_active` silently falling back
     unwrapped.
 
-    services/nwr/common/listener.py does not exist yet (Task 7 creates it),
-    so a real broken-module scenario can't be produced for nwr today. A fake
-    module is injected straight into sys.modules instead — this drives the
-    exact same `from services.nwr.common import listener` / call path the
-    real module will run through, so the test stays correct and meaningful
-    once Task 7 lands for real (a genuinely broken listener.py would hit this
-    same code path and this same assertion)."""
+    services/nwr/common/listener.py did not exist when this test was first
+    written, so the broken-module and chained-module scenarios below inject a
+    fake straight into sys.modules — this drives the exact same
+    `from services.nwr.common import listener` / call path the real module
+    now runs through, so those tests stay correct and meaningful now that
+    Task 7 has landed (a genuinely broken listener.py hits this same code
+    path and this same assertion)."""
 
     def _install_fake_listener(self, is_active_wrapper):
         import services.nwr.common as pkg
@@ -117,26 +117,36 @@ class ConsoleIsActiveDegradedPathTest(unittest.TestCase):
                                   {"services.nwr.common.listener": fake})
         patcher.start()
         self.addCleanup(patcher.stop)
-        # `from X import listener` caches the resolved submodule as an
-        # ATTRIBUTE of the parent package (see CPython's _handle_fromlist),
-        # independent of sys.modules — patch.dict alone won't undo that, and
-        # a leaked fake would silently answer any later test that expects
-        # listener to be genuinely absent.
-        self.addCleanup(lambda: pkg.__dict__.pop("listener", None))
+        # `from X import listener` resolves via getattr(pkg, "listener")
+        # FIRST (see CPython's _handle_fromlist) and only consults
+        # sys.modules when the package has no such attribute yet. Now that
+        # services/nwr/common/listener.py is real (Task 7), any test module
+        # that did `from services.nwr.common import listener` at collection
+        # time — test_nwr_listener.py does — has already cached the REAL
+        # module as that attribute for the rest of this process, making the
+        # sys.modules patch above invisible to `_console_is_active()`.
+        # Patch the attribute directly too, with create=True so this also
+        # covers the case where no attribute exists yet; mock.patch.object
+        # restores whatever was there (real module, fake, or nothing) on
+        # cleanup, so this can't leak into whichever test runs next.
+        attr_patcher = mock.patch.object(pkg, "listener", fake, create=True)
+        attr_patcher.start()
+        self.addCleanup(attr_patcher.stop)
 
-    def test_absent_listener_still_returns_a_usable_callable_for_both_tokens(self):
-        """Today's real state (Task 7 not landed): the callable must come
-        back usable and answer BOTH synthetic tokens — satellites-listen via
-        the recorder (bare `import listen`), nwr-listen via the base systemd
-        check it degrades to — not raise, and not silently drop either
-        token."""
+    def test_both_real_listeners_answer_their_own_token_and_never_hit_base(self):
+        """Task 7 landed: services/nwr/common/listener.py is a real module now,
+        so `_console_is_active()` no longer degrades nwr-listen to the base
+        systemd check — it answers from listener.is_listening(), exactly like
+        satellites-listen answers from listen.is_capturing(). Replaces the
+        pre-Task-7 placeholder, which asserted the degraded fallback this test
+        now proves does NOT happen once a real module is present."""
         import app as _oasis_app  # noqa: F401  (registers the satellites
                                    # blueprint, putting services/satellites on
                                    # sys.path so the bare `import listen`
                                    # inside _console_is_active() resolves to
                                    # the same module object the recorder uses)
         import listen
-        self.assertNotIn("services.nwr.common.listener", sys.modules)
+        from services.nwr.common import listener as nwr_listener
 
         with mock.patch.object(listen, "is_capturing", return_value=True):
             is_active = hardware_routes._console_is_active()
@@ -145,10 +155,14 @@ class ConsoleIsActiveDegradedPathTest(unittest.TestCase):
         with mock.patch.object(listen, "is_capturing", return_value=False):
             self.assertFalse(hardware_routes._console_is_active()("satellites-listen"))
 
-        with mock.patch.object(HW, "_default_is_active", return_value=True) as base:
+        with mock.patch.object(nwr_listener, "is_listening", return_value=True), \
+             mock.patch.object(HW, "_default_is_active", return_value=False) as base:
             is_active = hardware_routes._console_is_active()
-            self.assertTrue(is_active("nwr-listen"))
-        base.assert_called_with("nwr-listen")
+            self.assertTrue(is_active("nwr-listen"),
+                            "a live nwr capture must read as running")
+        base.assert_not_called()
+        with mock.patch.object(nwr_listener, "is_listening", return_value=False):
+            self.assertFalse(hardware_routes._console_is_active()("nwr-listen"))
 
     def test_a_broken_installed_module_raises_instead_of_degrading_silently(self):
         def _broken(base):
