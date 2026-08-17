@@ -398,17 +398,26 @@
      rows cannot be reached at all — there is nothing to scroll. The header stays
      outside this box so ARM ALL / ARM NONE never scroll away. */
   .armlist .rows{ max-height:46vh; overflow-y:auto; overscroll-behavior:contain; }
-  /* Real columns, not a flex run: bell | name | designator | monitor. A grid
-     keeps the two controls in the same place on every row, so a thumb going down
-     the list is aiming at a fixed target rather than one that shifts with the
-     length of each bird's name. */
-  .armlist .arow{ display:grid; grid-template-columns:2.6rem 1fr auto auto;
+  /* Real columns, not a flex run: index | name | bell | monitor. A grid keeps the
+     two controls in the same place on every row, so a thumb going down the list is
+     aiming at a fixed target rather than one that shifts with the length of each
+     bird's name. The two control columns are the SAME width and their contents are
+     centred in them, so bells line up under bells and pills under pills.
+     padding-right leaves the gutter the scrollbar sits in, so a pill is never
+     under the operator's own scroll thumb. */
+  .armlist .arow{ display:grid; grid-template-columns:2.4rem 1fr 5.5rem 5.5rem;
                   align-items:center; gap:.6rem;
-                  padding:.3rem .2rem; border-bottom:1px solid var(--border); }
+                  padding:.3rem .2rem; padding-right:1.4rem;
+                  border-bottom:1px solid var(--border); }
+  /* Row number. Dim, but the same size as the name — it is an index for reading a
+     position back ("number 41"), not a second class of information. */
+  .armlist .arow .ix{ color:var(--faint); text-align:right;
+                      font-variant-numeric:tabular-nums; }
   .armlist .arow .n{ min-width:0; overflow:hidden;
                      text-overflow:ellipsis; white-space:nowrap; }
   .armlist .arow.off .n{ color:var(--dim); }
-  .armlist .arow .d{ color:var(--dim); font-size:.85em; }
+  .armlist .arow .sat-bell,
+  .armlist .arow .monbtn{ justify-self:center; }
   /* Monitoring pill. Dim grey = not monitored, blue = monitored, and the word
      never changes — the colour IS the state, so there is no reading required to
      tell one row from another at arm's length across the shack. */
@@ -2034,11 +2043,21 @@ function openSatSheet(norad) {
 // a new bird meant walking to a laptop and opening the Satellites page. Sorted by
 // the name shown, not by NORAD — a roster of ~100 is something you scan by eye.
 let _armSheetOpen = false;
+// The label a row is READ by: the name with the amateur designator that operators
+// actually say out loud — "ASRTU-1 [AO-123]". Not the raw roster name, whose own
+// bracket carries the orbit class ([LEO]) and is the same on nearly every bird,
+// so it would push the part that distinguishes them off the end of the column.
+// One string, one font, one size: a designator set in smaller dim type reads as a
+// footnote when it is often the more familiar half of the name.
+function satFullLabel(b) {
+  const base = satShortName(b.name) || ('#' + (b.norad || b.id));
+  return b.designator ? base + ' [' + b.designator + ']' : base;
+}
 function armSheetHTML() {
   const birds = (_satAll || []).slice().sort((a, b) =>
-    (satShortName(a.name) || '').localeCompare(satShortName(b.name) || ''));
+    satFullLabel(a).localeCompare(satFullLabel(b)));
   const armed = OasisBells.count(), mon = birds.filter(b => b.selected).length;
-  const rows = birds.map(b => {
+  const rows = birds.map((b, i) => {
     const norad = b.norad || b.id;
     // The bell is inert on an unmonitored bird — every alert path walks the
     // monitored set, and fetchSats prunes its bell within the minute. Showing it
@@ -2047,9 +2066,9 @@ function armSheetHTML() {
     const bell = b.selected
       ? OasisBells.bellHTML(norad)
       : `<button class="sat-bell" disabled title="Monitor this bird first — an alert only ever fires for a monitored bird.">${OasisBells.BELL_OFF}</button>`;
-    return `<div class="arow${b.selected ? '' : ' off'}">${bell}` +
-           `<span class="n">${esc(satShortName(b.name) || ('#' + norad))}</span>` +
-           `<span class="d">${b.designator ? esc(b.designator) : ''}</span>` +
+    return `<div class="arow${b.selected ? '' : ' off'}">` +
+           `<span class="ix">${i + 1}</span>` +
+           `<span class="n">${esc(satFullLabel(b))}</span>${bell}` +
            `<button class="monbtn${b.selected ? ' on' : ''}" aria-pressed="${b.selected ? 'true' : 'false'}"` +
            ` onclick="toggleMonitor(${norad})"` +
            ` title="${b.selected ? 'Monitored by the station — tap to stop. Every screen sees this.' : 'Not monitored — tap to start. Every screen sees this.'}">MONITOR</button></div>`;
