@@ -166,7 +166,8 @@ def check_free_space(directory, min_free_bytes=None, usage=None):
 
 def mhz_to_hz(freq_mhz):
     """Roster downlinks are in MHz; rtl_fm -f wants Hz."""
-    return int(round(float(freq_mhz) * 1_000_000))
+    from common import sdr_rx
+    return sdr_rx.mhz_to_hz(freq_mhz)
 
 
 # The mode classifier lives in demod.py so the roster builder can reach it
@@ -243,17 +244,9 @@ def radio_preconditions(cards_path="/proc/asound/cards", which=shutil.which):
 
 
 def stream_encoder(srate, which=shutil.which):
-    """(encoder_shell, mime) that turns rtl_fm's raw s16le mono into a
-    browser-playable stream on stdout. Chromium plays MP3; prefer ffmpeg
-    (reliable libmp3lame) and fall back to sox (needs libsox-fmt-mp3). Returns
-    (None, None) when neither can encode — the /stream route reports that."""
-    if which("ffmpeg"):
-        return (f"ffmpeg -hide_banner -loglevel error -f s16le -ar {int(srate)} "
-                f"-ac 1 -i - -f mp3 -c:a libmp3lame -b:a 96k -", "audio/mpeg")
-    if which("sox"):
-        return (f"sox -t raw -r {int(srate)} -e signed-integer -b 16 -c 1 - "
-                f"-t mp3 -C 96 -", "audio/mpeg")
-    return (None, None)
+    """(encoder_shell, mime) for browser audio. See common/sdr_rx.py."""
+    from common import sdr_rx
+    return sdr_rx.stream_encoder(srate, which=which)
 
 
 def stream_command(freq_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, srate=None,
@@ -288,7 +281,8 @@ def stream_command(freq_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, srate=None,
 
 def missing_deps(which=shutil.which):
     """Binaries needed for recording that aren't on PATH (rtl_fm, sox, timeout)."""
-    return [b for b in ("rtl_fm", "sox", "timeout") if not which(b)]
+    from common import sdr_rx
+    return sdr_rx.missing_deps(("rtl_fm", "sox", "timeout"), which=which)
 
 
 # ── Which capture path? ──────────────────────────────────────────────────────
@@ -333,13 +327,8 @@ def capture_backend(which=shutil.which, has_tle=True):
 
 def dongle_present(run=None):
     """True if `rtl_test -t` reports at least one RTL-SDR device (Pi/Linux only)."""
-    run = run or subprocess.run
-    try:
-        from common.hardware_detect import parse_rtl_test_devices
-        r = run(["rtl_test", "-t"], capture_output=True, text=True, timeout=6)
-        return bool(parse_rtl_test_devices((r.stdout or "") + "\n" + (r.stderr or "")))
-    except Exception:
-        return False
+    from common import sdr_rx
+    return sdr_rx.dongle_present(run)
 
 
 # ── Downlink type support (FM family + CW/SSB) ───────────────────────────────
@@ -387,23 +376,10 @@ def is_active_wrapper(base_is_active=None):
 
 
 def dongle_busy(inv, is_active):
-    """(busy, holder) for the dongle assigned to satellites. Busy when ANOTHER
-    co-assigned service holds it (its unit is-active). Our own recording is not
-    "busy" (that's the red REC state, tracked via is_recording). If satellites
-    is unassigned or there's no inventory, fall back to the global SDR-consumer
-    check so a bare dev/Pi without hardware.json still arbitrates sensibly."""
-    from common import hardware
-    from common.hardware_detect import sdr_services_active
-    dev = inv.assignments.get("satellites") if inv else None
-    if dev is None:
-        holders = sdr_services_active(is_active)
-        return (bool(holders), holders[0] if holders else None)
-    for svc in hardware.assignees(inv, dev):
-        if svc == "satellites":
-            continue
-        if any(is_active(u) for u in hardware.service_units(inv, svc)):
-            return True, svc
-    return False, None
+    """(busy, holder) for the dongle assigned to satellites.
+    See common/sdr_rx.dongle_busy — this pins the service name."""
+    from common import sdr_rx
+    return sdr_rx.dongle_busy(inv, is_active, "satellites")
 
 
 def preconditions(which=shutil.which, run=None, is_active=None, inv=None):
