@@ -86,11 +86,14 @@ DEVICE_KIND_FOR_SERVICE = {
 # mode-invariant. (GrayWolf itself is web-admin-configured — OASIS binds only the
 # feed's dongle, not GrayWolf's radio interface.)
 #
-# openwebrx is intentionally absent from SERVICE_UNITS/DEVICE_KIND_FOR_SERVICE:
-# scripts/apply_hardware.py has no apply hook for it (its RTL-SDR is picked
-# entirely inside OpenWebRX's own Admin -> SDR profiles UI), so an OASIS-level
-# assignment would never do anything — it would only block START on a
-# no-op gate. Same reasoning as GrayWolf above.
+# openwebrx DOES carry entries above (empty unit list, rtl-sdr kind) so the
+# shared-dongle check knows what it wants — but scripts/apply_hardware.py has
+# no apply hook for it: its RTL-SDR is picked entirely inside OpenWebRX's own
+# Admin -> SDR profiles UI, so an OASIS-level assignment would never DO
+# anything beyond that bookkeeping. Same reasoning as GrayWolf above. That is
+# also why it's the one service left out of the assignment console's matrix
+# (_CONSOLE_SERVICES in server/routes/hardware.py) — nothing there could
+# actually be routed, so it stays on its own service card instead.
 APRS_FEED_UNIT = "aprs-sdr-feed"
 
 # Tokens that appear in SERVICE_UNITS but are NOT real systemd units — they must

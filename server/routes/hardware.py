@@ -320,7 +320,18 @@ def _console_is_active():
     tapping it tried to `systemctl start` a unit that isn't there.
 
     common/hardware.py says callers that care must wrap is_active; this is that
-    wrapper. Degrades to the raw check when satellites isn't installed.
+    wrapper. Degrades to the raw check when satellites/nwr isn't installed —
+    but ONLY the import is allowed to degrade. Each try below guards the
+    import statement alone; the is_active_wrapper(...) call itself sits
+    outside the try, unprotected, on purpose. A prior version wrapped the
+    call too, so a bug INSIDE an installed listener (wrong signature, any
+    raise) was swallowed right alongside "not installed" — is_active fell
+    back unwrapped with no signal, and the exact failure this bridge exists
+    to catch (systemd says stopped, the dongle is actually held) went quiet
+    instead of loud. Catching ImportError rather than bare Exception is the
+    honest scope: an absent module raises ImportError (ModuleNotFoundError is
+    a subclass); nothing else legitimately means "not installed" here, and
+    anything else is a real bug in a present module that must propagate.
 
     The BARE `import listen` is deliberate and load-bearing.
     services/satellites/routes.py puts its own directory on sys.path and imports
@@ -340,14 +351,17 @@ def _console_is_active():
     is_active = HW._default_is_active
     try:
         import listen                      # bare — see above
-        is_active = listen.is_active_wrapper(is_active)
-    except Exception:                      # noqa: BLE001 — satellites not installed
+    except ImportError:                    # satellites not installed
         pass
+    else:
+        is_active = listen.is_active_wrapper(is_active)   # unguarded: let a
+        # broken-but-present module raise loudly instead of vanishing here.
     try:
         from services.nwr.common import listener
-        is_active = listener.is_active_wrapper(is_active)
-    except Exception:                      # noqa: BLE001 — nwr not installed
+    except ImportError:                    # nwr not installed
         pass
+    else:
+        is_active = listener.is_active_wrapper(is_active)  # unguarded, same as above
     return is_active
 
 
@@ -360,7 +374,14 @@ def _stop_synthetic(unit):
     one-line change instead of another silent no-op.
 
     Best-effort throughout: a missing feature or a failed stop must not 500 the
-    console."""
+    console. Deliberately broader than _console_is_active()'s import-only guard
+    above, and NOT to be narrowed to match it: is-active is a passive read whose
+    job is to tell the truth about a broken module, but STOP is an action the
+    console just took irreversibly (or tried to) — reporting that failure back
+    as a 500 would not undo it, so swallowing here is the honest choice, not a
+    cover-up. The two guards protect against different risks (silent-forever-
+    wrong-status vs. a best-effort action failing loudly for no benefit); they
+    are allowed to disagree in width."""
     def _stop_satellites():
         import listen                      # bare — see _console_is_active()
         listen.stop()
@@ -375,7 +396,10 @@ def _stop_synthetic(unit):
         return
     try:
         fn()
-    except Exception:                      # noqa: BLE001
+    except Exception:                      # noqa: BLE001 — deliberately wide: missing
+                                            # module, wrong signature, or the stop itself
+                                            # failing all land here, and all must degrade
+                                            # the same way (see docstring above)
         pass
 
 

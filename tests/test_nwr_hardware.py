@@ -1,6 +1,8 @@
 import os
 import sys
+import types
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
@@ -85,6 +87,85 @@ class ConsoleRegistrationTest(unittest.TestCase):
         self.assertFalse(missing,
             f"{missing} is in _CONSOLE_SERVICES but has no entry in "
             "_SERVICE_DISPLAY, so the console would render its raw id")
+
+
+class ConsoleIsActiveDegradedPathTest(unittest.TestCase):
+    """Exercises the REAL _console_is_active(), not just the pure
+    wrapper-chaining shape in WrapperChainTest above. Regression net for a
+    review finding: the satellites/nwr try/except used to wrap the
+    is_active_wrapper(...) CALL as well as the import, so a present-but-
+    broken module was swallowed exactly like an absent one — the service
+    would sit on "assigned, stopped" forever even while it held the dongle,
+    with no way to notice. The fix narrows each try to the import alone
+    (ImportError == "not installed"); a broken-but-present module must now
+    raise loudly instead of vanishing into `is_active` silently falling back
+    unwrapped.
+
+    services/nwr/common/listener.py does not exist yet (Task 7 creates it),
+    so a real broken-module scenario can't be produced for nwr today. A fake
+    module is injected straight into sys.modules instead — this drives the
+    exact same `from services.nwr.common import listener` / call path the
+    real module will run through, so the test stays correct and meaningful
+    once Task 7 lands for real (a genuinely broken listener.py would hit this
+    same code path and this same assertion)."""
+
+    def _install_fake_listener(self, is_active_wrapper):
+        import services.nwr.common as pkg
+        fake = types.ModuleType("services.nwr.common.listener")
+        fake.is_active_wrapper = is_active_wrapper
+        patcher = mock.patch.dict(sys.modules,
+                                  {"services.nwr.common.listener": fake})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # `from X import listener` caches the resolved submodule as an
+        # ATTRIBUTE of the parent package (see CPython's _handle_fromlist),
+        # independent of sys.modules — patch.dict alone won't undo that, and
+        # a leaked fake would silently answer any later test that expects
+        # listener to be genuinely absent.
+        self.addCleanup(lambda: pkg.__dict__.pop("listener", None))
+
+    def test_absent_listener_still_returns_a_usable_callable_for_both_tokens(self):
+        """Today's real state (Task 7 not landed): the callable must come
+        back usable and answer BOTH synthetic tokens — satellites-listen via
+        the recorder (bare `import listen`), nwr-listen via the base systemd
+        check it degrades to — not raise, and not silently drop either
+        token."""
+        import app as _oasis_app  # noqa: F401  (registers the satellites
+                                   # blueprint, putting services/satellites on
+                                   # sys.path so the bare `import listen`
+                                   # inside _console_is_active() resolves to
+                                   # the same module object the recorder uses)
+        import listen
+        self.assertNotIn("services.nwr.common.listener", sys.modules)
+
+        with mock.patch.object(listen, "is_capturing", return_value=True):
+            is_active = hardware_routes._console_is_active()
+            self.assertTrue(is_active("satellites-listen"),
+                            "a live capture must read as running")
+        with mock.patch.object(listen, "is_capturing", return_value=False):
+            self.assertFalse(hardware_routes._console_is_active()("satellites-listen"))
+
+        with mock.patch.object(HW, "_default_is_active", return_value=True) as base:
+            is_active = hardware_routes._console_is_active()
+            self.assertTrue(is_active("nwr-listen"))
+        base.assert_called_with("nwr-listen")
+
+    def test_a_broken_installed_module_raises_instead_of_degrading_silently(self):
+        def _broken(base):
+            raise RuntimeError("boom -- is_active_wrapper itself is broken")
+        self._install_fake_listener(_broken)
+        with self.assertRaises(RuntimeError):
+            hardware_routes._console_is_active()
+
+    def test_a_working_module_is_chained_in_like_satellites(self):
+        def _wrapper(base):
+            def _w(unit):
+                return True if unit == "nwr-listen" else base(unit)
+            return _w
+        self._install_fake_listener(_wrapper)
+        is_active = hardware_routes._console_is_active()
+        self.assertTrue(is_active("nwr-listen"))
+        self.assertFalse(is_active("dump1090-fa"))
 
 
 if __name__ == "__main__":
