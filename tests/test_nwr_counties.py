@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import sys
 import unittest
@@ -6,6 +7,15 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
 from services.nwr.common import counties  # noqa: E402
+
+# scripts/ isn't a package and the filename has hyphens, so it can't be a
+# plain import — same pattern as tests/test_set_aprs_freq.py.
+_spec = importlib.util.spec_from_file_location(
+    "build_same_counties",
+    os.path.join(_ROOT, "scripts", "build-same-counties.py"),
+)
+build_same_counties = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(build_same_counties)
 
 FIXTURE = {
     "53033": {"n": "King", "s": "WA", "lat": 47.4919, "lon": -121.8346},
@@ -40,6 +50,38 @@ class CountiesTest(unittest.TestCase):
         table = counties.load(_ROOT)
         self.assertGreater(len(table), 3000)
         self.assertEqual(table["53033"]["n"], "King")
+
+
+class MergeLegacyTest(unittest.TestCase):
+    """Guards the one property the legacy supplement exists for: current
+    vintage always wins. A regression here silently reintroduces "Connecticut
+    alerts decode but never plot" with this suite still green."""
+
+    def test_key_in_both_keeps_current_vintage_value(self):
+        current = {"09001": {"n": "Fairfield", "s": "CT", "lat": 41.0, "lon": -73.0}}
+        legacy = {"09001": {"n": "Fairfield (stale)", "s": "CT", "lat": 0.0, "lon": 0.0}}
+        merged, supplement = build_same_counties.merge_legacy(current, legacy)
+        self.assertEqual(merged["09001"], current["09001"])
+        self.assertEqual(supplement, [])
+
+    def test_legacy_only_key_is_added(self):
+        current = {"53033": {"n": "King", "s": "WA", "lat": 47.49, "lon": -121.83}}
+        legacy = {"09001": {"n": "Fairfield", "s": "CT", "lat": 41.0, "lon": -73.0}}
+        merged, supplement = build_same_counties.merge_legacy(current, legacy)
+        self.assertEqual(merged["09001"], legacy["09001"])
+        self.assertEqual(supplement, ["09001"])
+
+    def test_current_only_key_is_untouched(self):
+        current = {"53033": {"n": "King", "s": "WA", "lat": 47.49, "lon": -121.83}}
+        legacy = {"09001": {"n": "Fairfield", "s": "CT", "lat": 41.0, "lon": -73.0}}
+        merged, _ = build_same_counties.merge_legacy(current, legacy)
+        self.assertEqual(merged["53033"], current["53033"])
+
+    def test_supplement_keys_report_exactly_the_legacy_only_keys(self):
+        current = {"53033": {}, "09001": {}}
+        legacy = {"09001": {}, "09003": {}, "46113": {}}
+        _, supplement = build_same_counties.merge_legacy(current, legacy)
+        self.assertEqual(supplement, ["09003", "46113"])
 
 
 if __name__ == "__main__":

@@ -84,6 +84,21 @@ def build(text):
     return out
 
 
+def merge_legacy(current, legacy):
+    """Fill gaps in `current` from `legacy` without ever overwriting a current
+    entry. Pure (no I/O), so the "current vintage always wins" safety property
+    can be unit-tested directly instead of only re-verified by a manual run.
+
+    Returns (merged_table, supplement_keys) — merged_table is a new dict,
+    supplement_keys is the sorted list of keys that came from legacy only.
+    """
+    merged = dict(current)
+    supplement_keys = sorted(k for k in legacy if k not in current)
+    for k in supplement_keys:
+        merged[k] = legacy[k]
+    return merged, supplement_keys
+
+
 def _fetch(path, url, label):
     """Return the Gazetteer text from a local path if given, else download url."""
     if path:
@@ -115,9 +130,19 @@ def main():
 
     legacy_text = _fetch(args.legacy_file, LEGACY_GAZETTEER_URL, "legacy")
     legacy_table = build(legacy_text)
-    supplement_keys = sorted(k for k in legacy_table if k not in table)
-    for k in supplement_keys:
-        table[k] = legacy_table[k]
+    # The 2012 file is a full Gazetteer snapshot too (3,221 counties when this
+    # was written), not just the handful of retired codes we're after — so the
+    # same floor as the current vintage applies. Without it, a bad download
+    # (an HTTP error page that doesn't raise, a column-header change) parses
+    # to zero or near-zero rows, `supplement_keys` comes back empty, and the
+    # table gets silently rewritten without the legacy codes — the exact
+    # "Connecticut decodes but never plots" bug this supplement exists to fix,
+    # now reintroduced by a green run instead of caught by one.
+    if len(legacy_table) < 3000:
+        print(f"ERROR: only {len(legacy_table)} legacy counties parsed — expected ~3,200", file=sys.stderr)
+        return 1
+
+    table, supplement_keys = merge_legacy(table, legacy_table)
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as fh:
