@@ -397,17 +397,19 @@
      own: an unbounded list grows straight off the top of the screen, and those
      rows cannot be reached at all — there is nothing to scroll. The header stays
      outside this box so ARM ALL / ARM NONE never scroll away. */
-  .armlist .rows{ max-height:46vh; overflow-y:auto; overscroll-behavior:contain; }
+  .armlist .rows{ max-height:46vh; overflow-y:auto; overscroll-behavior:contain;
+                  margin-right:-.6rem; padding-right:10px; }
   /* Real columns, not a flex run: index | name | bell | monitor. A grid keeps the
      two controls in the same place on every row, so a thumb going down the list is
      aiming at a fixed target rather than one that shifts with the length of each
      bird's name. The two control columns are the SAME width and their contents are
-     centred in them, so bells line up under bells and pills under pills.
-     padding-right leaves the gutter the scrollbar sits in, so a pill is never
-     under the operator's own scroll thumb. */
+     centred in them, so bells line up under bells and pills under pills. The gutter
+     that keeps a pill out from under the scroll thumb is the .rows box's own
+     padding-right, exactly as the satellites card does it — not a per-row padding,
+     which would indent the rows away from the header above them. */
   .armlist .arow{ display:grid; grid-template-columns:2.4rem 1fr 5.5rem 5.5rem;
                   align-items:center; gap:.6rem;
-                  padding:.3rem .2rem; padding-right:1.4rem;
+                  padding:.3rem .2rem;
                   border-bottom:1px solid var(--border); }
   /* Row number. Dim, but the same size as the name — it is an index for reading a
      position back ("number 41"), not a second class of information. */
@@ -460,11 +462,15 @@
   .fchip.active{ color:var(--bg); background:var(--src); }
   .tbl{ display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
   .tscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.6rem; padding-right:10px; }
-  .tscroll::-webkit-scrollbar, .satscroll::-webkit-scrollbar{ width:14px; }
-  .tscroll::-webkit-scrollbar-track, .satscroll::-webkit-scrollbar-track{ background:var(--panel); border-radius:4px; }
-  .tscroll::-webkit-scrollbar-thumb, .satscroll::-webkit-scrollbar-thumb{
+  /* One scrollbar for every list on this screen — the traffic table, the
+     satellites card, and the roster sheet. Adding a surface means adding it to
+     these four selectors, not copying the rules: a second definition is how the
+     sheet ends up with a scrollbar that is nearly the card's. */
+  .tscroll::-webkit-scrollbar, .satscroll::-webkit-scrollbar, .armlist .rows::-webkit-scrollbar{ width:14px; }
+  .tscroll::-webkit-scrollbar-track, .satscroll::-webkit-scrollbar-track, .armlist .rows::-webkit-scrollbar-track{ background:var(--panel); border-radius:4px; }
+  .tscroll::-webkit-scrollbar-thumb, .satscroll::-webkit-scrollbar-thumb, .armlist .rows::-webkit-scrollbar-thumb{
     background:color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius:4px; }
-  .tscroll::-webkit-scrollbar-thumb:hover, .satscroll::-webkit-scrollbar-thumb:hover{ background:var(--accent); }
+  .tscroll::-webkit-scrollbar-thumb:hover, .satscroll::-webkit-scrollbar-thumb:hover, .armlist .rows::-webkit-scrollbar-thumb:hover{ background:var(--accent); }
   .trow{ display:grid; grid-template-columns:1.3fr 2.6rem 1fr 1.3fr 1.1fr; gap:.7rem; align-items:center;
          padding:.34rem .2rem; border-bottom:1px solid var(--border); font-size:1.2rem; cursor:pointer; }
   .trow:hover{ background:var(--panel-2); border-radius:.5rem; }
