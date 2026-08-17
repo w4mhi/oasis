@@ -194,6 +194,10 @@
   .svcpill .cnt-down{ color:var(--down); }
   .svcpill .cnt-ni{ color:var(--dim); }
   .svcpill .cnt-sep{ color:var(--faint); font-weight:400; }
+  /* Active NWR watch-list alert takes over the pill — colour, not motion (an
+     infinite box-shadow animation once pinned this exact kiosk's renderer). */
+  .svcpill.alert{ background:var(--down); border-color:var(--down); color:var(--bg); }
+  .svcpill.alert .cnt-alertlbl{ opacity:.7; letter-spacing:.12em; margin-right:.15rem; }
   /* Wi-Fi pill row (shares row 2 with the service counts). The pill itself is
      styled by the shared /common/css/wifi-pill.css so it matches index.html. */
   .pillrow{ display:flex; align-items:center; gap:.5rem; flex-wrap:nowrap; }
@@ -1498,7 +1502,22 @@ const SVC_PORTS = {
   aprs: () => PORTS.aprs_api, webssh: () => PORTS.webssh, owrx: () => PORTS.openwebrx,
 };
 const _svcStates = {};
+// Active, matched, plottable NWR alert (see pollNwrAlert() below) — null when
+// there is none, or NWR isn't installed, or it hasn't been checked yet.
+let _nwrAlertEvent = null;
 function updateSvcCounts() {   // N UP · N WRN · N DN over the shared registry (label + NI dropped for the Wi-Fi pill)
+  const el = document.getElementById('svcpill'); if (!el) return;
+  // An active watch-list alert outranks the health tally: the pill is the one
+  // thing a passer-by reads, and a live warning matters more than a service
+  // count. Service health resumes the instant the alert clears.
+  if (_nwrAlertEvent) {
+    el.classList.add('alert');
+    el.title = 'Active weather alert: ' + _nwrAlertEvent + ' — tap for detail';
+    el.innerHTML = `<span class="cnt-alertlbl">WX</span><span class="cnt-alert">${esc(_nwrAlertEvent)}</span>`;
+    return;
+  }
+  el.classList.remove('alert');
+  el.title = 'Services — tap for detail';
   // Count the canonical OASIS_SERVICES set (minus not-installed) so the kiosk tally
   // matches index.html exactly. NI stays visible inside the services slide-sheet.
   let up = 0, warn = 0, down = 0;
@@ -1507,7 +1526,6 @@ function updateSvcCounts() {   // N UP · N WRN · N DN over the shared registry
     const st = _svcStates[s.id];
     if (st === 'up') up++; else if (st === 'warn') warn++; else if (st === 'down') down++;
   });
-  const el = document.getElementById('svcpill'); if (!el) return;
   el.innerHTML =
     `<span class="cnt-up">${up} UP</span><span class="cnt-sep">·</span>` +
     `<span class="cnt-warn">${warn} WRN</span><span class="cnt-sep">·</span>` +
@@ -1612,6 +1630,14 @@ async function nwrActiveBadge() {
     })[0];
     return hit ? hit.event : null;
   } catch (_) { return null; }
+}
+// Own cheap cadence (see the setInterval near the bottom of this script) — it
+// must NOT ride checkService/updateSvcCounts, which fire many times a minute
+// as pingNext round-robins the registry. Caches into _nwrAlertEvent, which
+// updateSvcCounts() reads on every one of those calls at no extra cost.
+async function pollNwrAlert() {
+  _nwrAlertEvent = await nwrActiveBadge();
+  updateSvcCounts();
 }
 // Gate out features the operator didn't install so they don't count as DOWN. The
 // canonical set + gate rules live in common/js/service-registry.js (shared with
@@ -3023,6 +3049,12 @@ loadInstalled().then(() => {
   pingAll();
   const activeN = SERVICES.filter(s => !HIDDEN_SVCS.has(s.id)).length || 1;
   setInterval(pingNext, Math.round(16000 / activeN));
+  // NWR alerts, on their own gentle cadence — gated on the feature being
+  // installed at all, so a box without NWR doesn't poll a 404 forever.
+  if (!HIDDEN_SVCS.has('nwr')) {
+    pollNwrAlert();
+    setInterval(pollNwrAlert, 30000);
+  }
 });
 </script>
 
