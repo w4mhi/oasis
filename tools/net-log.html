@@ -254,6 +254,23 @@ function rebuildTable() {
 const HEADER_IDS = ['nn','nf','nc','nd','nm'];
 const hv = id => document.getElementById(id).value;
 
+// 59 is what a net check-in gets unless the operator says otherwise. It is
+// prefilled rather than assumed, so clearing it for a station that was genuinely
+// weak — or for a net where nobody took reports — leaves RST out of that
+// record's ADIF entirely instead of writing a number nobody measured.
+//
+// This lives ABOVE the setup code below, not down with the check-in helpers.
+// resetRST() is a hoisted function declaration and can be called from anywhere,
+// but RST_DEFAULT is a const in the temporal dead zone until this line runs —
+// so calling resetRST() before it threw ReferenceError at the top level and
+// abandoned the whole script block, taking the callsign Enter/Tab handlers,
+// loadPersisted() and syncMode() with it. node --check parses that happily.
+const RST_DEFAULT = '59';
+function resetRST(){
+  document.getElementById('frs').value = RST_DEFAULT;
+  document.getElementById('frr').value = RST_DEFAULT;
+}
+
 document.getElementById('nd').value = new Date().toISOString().slice(0,10) + ' UTC';
 resetRST();
 
@@ -373,16 +390,6 @@ async function doLookup(){
   } catch(e){
     setStatus('no API','s-err');
   }
-}
-
-// 59 is what a net check-in gets unless the operator says otherwise. It is
-// prefilled rather than assumed, so clearing it for a station that was genuinely
-// weak — or for a net where nobody took reports — leaves RST out of that
-// record's ADIF entirely instead of writing a number nobody measured.
-const RST_DEFAULT = '59';
-function resetRST(){
-  document.getElementById('frs').value = RST_DEFAULT;
-  document.getElementById('frr').value = RST_DEFAULT;
 }
 
 function utcNow(){ return new Date().toISOString().slice(11,16)+'Z'; }
