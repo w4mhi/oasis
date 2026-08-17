@@ -20,8 +20,9 @@
  *       saveStore: { title: '…' },                    // wired later by OasisFormBackup.attach()
  *       loadStore: { title: '…' },
  *       print:     { onClick: doPrint,   title: '…' },
- *       exportCsv: { onClick: exportCSV, title: '…' },
- *       importCsv: { onClick: importCSVPrompt, title: '…' },
+ *       exportCsv:  { onClick: exportCSV,  title: '…' },
+ *       exportAdif: { onClick: exportADIF, title: '…' },   // net log only
+ *       importCsv:  { onClick: importCSVPrompt, title: '…' },
  *       extra:     { label: 'Load Frequency Plan', onClick: loadChirpPrompt, title: '…' },
  *       clear:     { onClick: clearAll,  title: '…' },
  *     },
@@ -48,7 +49,7 @@
   var GROUPS = [
     ['savePdf', 'handoff'],       // produce / hand off
     ['saveStore', 'loadStore'],   // server storage
-    ['exportCsv', 'importCsv'],   // interchange
+    ['exportCsv', 'exportAdif', 'importCsv'],   // interchange
     ['print'],                    // output
     ['extra'],                    // page-specific (Load Frequency Plan, …)
     ['clear'],                    // destructive
@@ -62,8 +63,12 @@
     saveStore: { cls: 'sbtn', id: 'fb-save',    label: 'Save {noun}' },
     loadStore: { cls: 'sbtn', id: 'fb-restore', label: 'Load {noun}' },
     print:     { cls: 'sbtn info', label: 'Print' },
-    exportCsv: { cls: 'sbtn', label: 'Export CSV' },
-    importCsv: { cls: 'sbtn', label: 'Import CSV' },
+    exportCsv:  { cls: 'sbtn', label: 'Export CSV' },
+    // Net-log only so far: an ICS form has no QSOs to write. It sits with the
+    // other interchange buttons rather than in `extra`, which renders after
+    // Print and would put the two exports at opposite ends of the row.
+    exportAdif: { cls: 'sbtn', label: 'Export ADIF' },
+    importCsv:  { cls: 'sbtn', label: 'Import CSV' },
     extra:     { cls: 'sbtn' },
     clear:     { cls: 'sbtn danger', label: 'Clear' },
   };

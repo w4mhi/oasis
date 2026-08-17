@@ -125,7 +125,10 @@ tr.editing td{background:var(--panel-2);}
       <div><label for="nn">Net name</label><input type="text" id="nn" placeholder="e.g. ARES/RACES Net"></div>
       <div><label for="nf">Frequency</label><input type="text" id="nf" placeholder="146.520 MHz"></div>
       <div><label for="nc">Net control</label><input type="text" id="nc" placeholder="N0CALL" autocorrect="off" autocapitalize="characters"></div>
-      <div><label for="nd">Date (UTC)</label><input type="text" id="nd"></div>      <div><label for="mapFileSel">Map file</label><select id="mapFileSel" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);font-family:var(--mono);font-size:var(--fs-base);padding:4px 8px;border-radius:5px;cursor:pointer;"><option value="">(loading…)</option></select></div>    </div>
+      <div><label for="nd">Date (UTC)</label><input type="text" id="nd"></div>
+      <div><label for="nm">Mode</label><input type="text" id="nm" placeholder="FM" autocorrect="off" autocapitalize="characters" title="Mode written into the ADIF export. Filled in from the frequency until you type here, then left alone."></div>
+      <div><label for="nr">RST</label><input type="text" id="nr" placeholder="59" title="Signal report written into the ADIF export for every check-in. Clear it to leave RST out of the file entirely."></div>
+      <div><label for="mapFileSel">Map file</label><select id="mapFileSel" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);font-family:var(--mono);font-size:var(--fs-base);padding:4px 8px;border-radius:5px;cursor:pointer;"><option value="">(loading…)</option></select></div>    </div>
   </div>
 
   <div class="checkin">
@@ -202,6 +205,10 @@ tr.editing td{background:var(--panel-2);}
   </div>
 
 </div>
+<!-- Loaded here, not with the libraries at the foot of the page: the block
+     below derives the Mode field from the frequency during page setup, so
+     OasisADIF has to exist before it runs. -->
+<script src="/common/js/adif.js"></script>
 <script>
 const API = '/api/lookup';
 const rows = [];
@@ -237,11 +244,42 @@ function rebuildTable() {
   rows.forEach(e => addRow(e));
 }
 
-document.getElementById('nd').value = new Date().toISOString().slice(0,10) + ' UTC';
+// Every header field, in one place. Six sites used to spell this list out —
+// persist, load, the CSV meta block, the CSV importer and both form-backup
+// callbacks — and adding Mode/RST for the ADIF export meant a field could
+// silently miss one and quietly fail to survive a page reload.
+const HEADER_IDS = ['nn','nf','nc','nd','nm','nr'];
+const hv = id => document.getElementById(id).value;
 
-['nn','nf','nc','nd'].forEach(id => document.getElementById(id).addEventListener('input', persist));
+document.getElementById('nd').value = new Date().toISOString().slice(0,10) + ' UTC';
+document.getElementById('nr').value = '59';
+
+// Mode is derived from the frequency and stays derived until the operator types
+// in the box, at which point the flag clears and we never overwrite them again.
+// A net on an HF FM or digital frequency is exactly the case the derivation
+// gets wrong, so the field has to win.
+const nmEl = document.getElementById('nm');
+nmEl.dataset.auto = '1';
+nmEl.addEventListener('input', function(){ this.dataset.auto = ''; });
+
+function syncMode(){
+  if (nmEl.dataset.auto !== '1') return;
+  nmEl.value = OasisADIF.modeFor(OasisADIF.parseFreqMHz(hv('nf')));
+}
+document.getElementById('nf').addEventListener('input', syncMode);
+
+HEADER_IDS.forEach(id => document.getElementById(id).addEventListener('input', persist));
+
+// PROGRAMVERSION for the ADIF header, from the same local /version.json the
+// dashboard reads. Best-effort: if it never arrives the field is simply left
+// out of the file rather than written blank.
+let oasisVersion = '';
+fetch('/version.json', {cache:'no-store'})
+  .then(r => r.json()).then(j => { oasisVersion = j.version || ''; })
+  .catch(() => {});
 
 loadPersisted();
+syncMode();
 
 const fc = document.getElementById('fc');
 fc.addEventListener('input', function(){ this.value = this.value.toUpperCase(); clearFill(); setStatus('',''); lastCall=''; this.dataset.lat=''; this.dataset.lon=''; hideSuggestions(); });
@@ -465,14 +503,14 @@ function clearLog(){
   if (window.updateNetMap) window.updateNetMap(rows);
 }
 
+function headerValues(){
+  const header = {};
+  HEADER_IDS.forEach(id => { header[id] = hv(id); });
+  return header;
+}
+
 function persist(){
-  const header = {
-    nn: document.getElementById('nn').value,
-    nf: document.getElementById('nf').value,
-    nc: document.getElementById('nc').value,
-    nd: document.getElementById('nd').value,
-  };
-  try { localStorage.setItem('net-log', JSON.stringify({rows, seq, header})); } catch(e){}
+  try { localStorage.setItem('net-log', JSON.stringify({rows, seq, header: headerValues()})); } catch(e){}
 }
 
 function loadPersisted(){
@@ -481,9 +519,11 @@ function loadPersisted(){
     if (!raw) return;
     const data = JSON.parse(raw);
     if (data.header) {
-      ['nn','nf','nc','nd'].forEach(id => {
+      HEADER_IDS.forEach(id => {
         if (data.header[id]) document.getElementById(id).value = data.header[id];
       });
+      // A restored Mode is the operator's choice, not a fresh derivation.
+      if (data.header.nm) nmEl.dataset.auto = '';
     }
     if (data.rows && data.rows.length) {
       seq = data.seq || 0;
@@ -560,10 +600,12 @@ function sendToICS309() {
 
 function buildCSV(){
   const meta = [
-    '# Net: '+csv(document.getElementById('nn').value),
-    '# Freq: '+csv(document.getElementById('nf').value),
-    '# NCS: '+csv(document.getElementById('nc').value),
-    '# Date: '+csv(document.getElementById('nd').value),
+    '# Net: '+csv(hv('nn')),
+    '# Freq: '+csv(hv('nf')),
+    '# NCS: '+csv(hv('nc')),
+    '# Date: '+csv(hv('nd')),
+    '# Mode: '+csv(hv('nm')),
+    '# RST: '+csv(hv('nr')),
     '# Exported: '+new Date().toISOString()
   ];
   const hdr = ['#','UTC','Callsign','Name','City','State','Grid','Traffic','Notes'].join(',');
@@ -571,8 +613,13 @@ function buildCSV(){
   return [...meta,hdr,...body].join('\r\n');
 }
 
+// `header` here used to be a bare undeclared identifier — the only `header`
+// bindings on this page are function-locals inside persist() and importCSV() —
+// so this threw ReferenceError, and because exportCSV() is async the throw
+// became a silent rejected promise with no toast. Read the net-name field, the
+// same thing OasisFormBackup.attach() uses for its label.
 function csvFilename(){
-  return OasisFormBackup.filenameFor('net-log', (header && header.net) || 'net').replace(/\.json$/,'.csv');
+  return OasisFormBackup.filenameFor('net-log', hv('nn') || 'net').replace(/\.json$/,'.csv');
 }
 
 // Export writes into the OASIS device's net-log folder. The local download is
@@ -587,6 +634,38 @@ async function exportCSV(){
 
 // Pending the Save dialog's "To local storage" action — no toolbar slot any more.
 function exportCSVLocal(){ OasisFormBackup.saveLocal(csvFilename(), buildCSV()); }
+
+// ── ADIF export ───────────────────────────────────────────────────────────────
+// Unlike the CSV, this one downloads to the operator's own machine rather than
+// into the OASIS device's net-log folder: an .adi file has exactly one
+// destination, the logging program on the computer the operator is sitting at,
+// and nothing on the OASIS box reads it back. Formatting lives in
+// common/js/adif.js so it can be tested without a browser.
+function buildADIF(){
+  return OasisADIF.build({
+    net:  hv('nn'),
+    freq: hv('nf'),
+    ncs:  hv('nc'),
+    date: hv('nd'),
+    mode: hv('nm'),
+    rst:  hv('nr'),
+    version: oasisVersion,
+    rows: rows,
+  });
+}
+
+function exportADIF(){
+  const n = OasisADIF.countExportable(rows);
+  if (!n) { showToast('No check-ins with a callsign to export.', 'err'); return; }
+  const name = OasisFormBackup.filenameFor('net-log', hv('nn') || 'net').replace(/\.json$/, '.adi');
+  OasisFormBackup.saveLocal(name, buildADIF(), 'text/plain');
+  // Say how many records were written, not how many rows exist — a check-in
+  // logged without a callsign is not a QSO and is silently absent from the file.
+  const skipped = rows.length - n;
+  showToast('✓ ' + n + ' QSO' + (n !== 1 ? 's' : '') + ' exported to ' + name +
+            (skipped ? ' (' + skipped + ' row' + (skipped !== 1 ? 's' : '') + ' had no callsign)' : ''),
+            'ok', 5000);
+}
 
 // Default source is the OASIS device's designated folder for the net log; the
 // footer widens that to the whole install tree, then to this machine.
@@ -652,6 +731,8 @@ function importCSV(input) {
         if (trimmed.startsWith('# Freq: ')) { header.nf = trimmed.slice(8).trim(); return; }
         if (trimmed.startsWith('# NCS: '))  { header.nc = trimmed.slice(7).trim(); return; }
         if (trimmed.startsWith('# Date: ')) { header.nd = trimmed.slice(8).trim(); return; }
+        if (trimmed.startsWith('# Mode: ')) { header.nm = trimmed.slice(8).trim(); return; }
+        if (trimmed.startsWith('# RST: '))  { header.nr = trimmed.slice(7).trim(); return; }
         if (trimmed.startsWith('#')) return; // other comment lines
 
         const fields = parseLine(trimmed);
@@ -683,10 +764,11 @@ function importCSV(input) {
       rows.length = 0; seq = 0;
       document.getElementById('tbody').innerHTML = '<tr><td colspan="11" id="empty-msg">No check-ins yet.</td></tr>';
 
-      if (header.nn) document.getElementById('nn').value = header.nn;
-      if (header.nf) document.getElementById('nf').value = header.nf;
-      if (header.nc) document.getElementById('nc').value = header.nc;
-      if (header.nd) document.getElementById('nd').value = header.nd;
+      HEADER_IDS.forEach(id => {
+        if (header[id]) document.getElementById(id).value = header[id];
+      });
+      // An imported Mode came from an operator; only derive when none was given.
+      if (header.nm) nmEl.dataset.auto = ''; else syncMode();
 
       imported.forEach(e => { rows.push(e); addRow(e); seq = Math.max(seq, e.seq); });
       updateCount();
@@ -742,6 +824,8 @@ OasisFormToolbar.render({
                  title: "Print the log using your browser's print dialog" },
     exportCsv: { onClick: exportCSV,
                  title: 'Export all check-ins as CSV into server storage (static/net-log/saved/)' },
+    exportAdif: { onClick: exportADIF,
+                 title: 'Download the check-ins as an ADIF (.adi) file for import into a logging program' },
     importCsv: { onClick: importCSVPrompt,
                  title: 'Import a previously exported net log CSV from server storage' },
     clear:     { onClick: clearLog,
@@ -796,16 +880,17 @@ OasisFormBackup.attach({
   hasData: function () { return rows.length > 0; },
   getData: function () {
     if (!rows.length) return null;
-    return { rows: rows, seq: seq, header: {
-      nn: document.getElementById('nn').value, nf: document.getElementById('nf').value,
-      nc: document.getElementById('nc').value, nd: document.getElementById('nd').value } };
+    return { rows: rows, seq: seq, header: headerValues() };
   },
   applyData: function (data) {
     rows.length = 0; seq = 0;
     document.getElementById('tbody').innerHTML =
       '<tr><td colspan="11" id="empty-msg">No check-ins yet.</td></tr>';
-    if (data.header) ['nn', 'nf', 'nc', 'nd'].forEach(function (id) {
-      document.getElementById(id).value = data.header[id] || ''; });
+    if (data.header) {
+      HEADER_IDS.forEach(function (id) {
+        document.getElementById(id).value = data.header[id] || ''; });
+      if (data.header.nm) nmEl.dataset.auto = ''; else syncMode();
+    }
     if (Array.isArray(data.rows)) data.rows.forEach(function (e) { rows.push(e); addRow(e); });
     seq = data.seq || (rows.length ? Math.max.apply(null, rows.map(function (r) { return r.seq; })) + 1 : 0);
     updateCount();

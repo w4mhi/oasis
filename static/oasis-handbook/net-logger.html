@@ -75,7 +75,7 @@
     </div>
     <div class="eyebrow">Field Tools</div>
     <h1>Net Check-in Logger</h1>
-    <p class="subtitle">Log check-ins during a net and export CSV</p>
+    <p class="subtitle">Log check-ins during a net and export CSV, ADIF or an ICS-309</p>
     <p>
       The <strong>Net Check-in Log</strong> (<code>tools/net-log.html</code>) logs check-ins
       during a net &mdash; callsign, name, location, and traffic &mdash; plots them on an
@@ -93,7 +93,8 @@
       from server-absolute paths. Open the file straight off disk and the map, the lookup and
       the snapshots are all dead. What <em>does</em> keep working with the FCC feature absent:
       typing entries by hand, logging, sorting, inline edit and delete, Print, Export CSV,
-      Import CSV and the ICS-309 handoff.</p></div>
+      Import CSV, Export ADIF and the ICS-309 handoff. Export ADIF in particular is a
+      straight browser download and never touches the server.</p></div>
     </div>
     <figure class="figure">
       <img src="img/net-logger.png" alt="Net check-in logger — roster with callsign, name, location, and traffic" />
@@ -109,9 +110,11 @@
       <thead><tr><th>Field</th><th>Notes</th></tr></thead>
       <tbody>
         <tr><td><strong>Net name</strong></td><td>e.g. <em>ARES/RACES Net</em>. Becomes the ICS-309 incident name, and seeds the filename when you save to the server.</td></tr>
-        <tr><td><strong>Frequency</strong></td><td>e.g. <code>146.520 MHz</code>.</td></tr>
-        <tr><td><strong>Net control</strong></td><td>Your callsign. Lands in the ICS-309 operator field and on every row as the receiving station.</td></tr>
-        <tr><td><strong>Date (UTC)</strong></td><td>Auto-filled as <code>YYYY-MM-DD UTC</code>.</td></tr>
+        <tr><td><strong>Frequency</strong></td><td>e.g. <code>146.520 MHz</code>. Free text &mdash; the ADIF export reads the first number out of it as MHz and works out the band.</td></tr>
+        <tr><td><strong>Net control</strong></td><td>Your callsign. Lands in the ICS-309 operator field and on every row as the receiving station, and becomes <code>OPERATOR</code> / <code>STATION_CALLSIGN</code> in the ADIF export.</td></tr>
+        <tr><td><strong>Date (UTC)</strong></td><td>Auto-filled as <code>YYYY-MM-DD UTC</code>. Supplies <code>QSO_DATE</code> for every ADIF record; if it is edited into something unparseable the export falls back to today.</td></tr>
+        <tr><td><strong>Mode</strong></td><td>For the ADIF export only. Filled in from the frequency &mdash; <code>SSB</code> below 30&nbsp;MHz, <code>FM</code> at or above &mdash; and it keeps tracking the frequency until you type in the box, after which it is left alone. Correct it for an HF FM, 10&nbsp;m FM or digital net.</td></tr>
+        <tr><td><strong>RST</strong></td><td>Starts at <code>59</code> and is written to both <code>RST_SENT</code> and <code>RST_RCVD</code> on every record. A net check-in has no recorded signal report, so if you would rather not put a number you did not take into your log, clear the box &mdash; both fields are then left out of the file entirely.</td></tr>
         <tr><td><strong>Map file</strong></td><td>A dropdown of the <code>.pmtiles</code> files found in <code>maps/</code>, via <code>/api/browse</code>. This is the basemap the Map tab draws. If it reads <em>(error loading files)</em> the server is not reachable; if it is empty, add a PMTiles file and restart the server.</td></tr>
       </tbody>
     </table></div></div>
@@ -154,6 +157,7 @@
         <tr><td><strong>&rarr; ICS-309</strong></td><td>The most valuable path off this page. It copies the whole log into the <a href="ics-forms.html">ICS-309</a> communications log and opens it in a new tab: net name becomes the incident, name plus frequency the net, the first and last check-in the from/to times, net control the operator, and every check-in becomes a message line reading <em>name &mdash; city, state &mdash; notes &mdash; (traffic)</em>. Times are <strong>converted</strong> on the way across: check-ins are stored UTC here, but ICS-309 is a local-time form, so <code>1805Z</code> arrives as <code>1305L</code> rather than being relabelled. It hands over through <code>localStorage</code>, so nothing goes over the wire and nothing is lost if the new tab is slow to open.</td></tr>
         <tr><td><strong>Print</strong></td><td>Opens the browser print dialog on a print stylesheet &mdash; the map and the buttons drop out, the roster does not. This is your paper copy when the power budget says the screen goes off.</td></tr>
         <tr><td><strong>Export CSV</strong></td><td>Writes nine columns &mdash; <code>#, UTC, Callsign, Name, City, State, Grid, Traffic, Notes</code> &mdash; into server storage, beside the JSON snapshots. There is no Local column: UTC is the record.</td></tr>
+        <tr><td><strong>Export ADIF</strong></td><td>Downloads the check-ins as an <code>.adi</code> file for import into a logging program &mdash; the one export that goes to <em>your</em> machine rather than into server storage, because nothing on the OASIS box reads a logbook back. Each check-in becomes one QSO record carrying <code>CALL</code>, <code>QSO_DATE</code>, <code>TIME_ON</code>, <code>MODE</code>, <code>FREQ</code>, <code>BAND</code>, <code>NAME</code>, <code>QTH</code>, <code>STATE</code>, <code>GRIDSQUARE</code> and a <code>COMMENT</code> built from the notes, with <em>(traffic)</em> appended when the row is flagged. Rows logged without a callsign are not QSOs and are left out &mdash; the toast tells you how many were skipped. Empty fields are omitted rather than written blank, so an import cannot overwrite good data in an existing logbook entry with nothing.</td></tr>
         <tr><td><strong>Import CSV</strong></td><td>Lists the CSV exports in server storage and reads one back in. The footer also offers <em>Browse device files…</em> for anywhere else in the OASIS tree, and <em>Browse local files…</em> for the machine the browser is on. Match the exported column format.</td></tr>
         <tr><td><strong>Save Log</strong></td><td>Writes a timestamped JSON snapshot into server storage (<code>static/net-log/saved/</code>), named from the net name and the date. Never automatic &mdash; it is an explicit click.</td></tr>
         <tr><td><strong>Load Log</strong></td><td>Lists the snapshots in server storage and loads one back over the current log.</td></tr>
@@ -188,6 +192,8 @@
         <tr><td>Map tab is empty / <em>No .pmtiles files found</em></td><td>No basemap. Put a <code>.pmtiles</code> file in <code>maps/</code> and restart the server &mdash; see <a href="maps.html">Offline Maps</a>.</td></tr>
         <tr><td>The map has no pins</td><td>Check-ins need coordinates: either an FCC hit or a grid square. Add a grid per entry.</td></tr>
         <tr><td>Can&rsquo;t import a CSV</td><td>Match the exported column format; a stray header or delimiter will reject the row.</td></tr>
+        <tr><td>The ADIF import landed fewer QSOs than you logged</td><td>Records without a callsign are dropped &mdash; the export toast says how many. Fill in the callsign on those rows and export again.</td></tr>
+        <tr><td>Every ADIF QSO has the wrong band, or none</td><td>The band comes from the first number in <strong>Frequency</strong>, read as MHz. <code>simplex</code> or a blank box means no <code>FREQ</code>, no <code>BAND</code> and no derived <code>Mode</code>; a repeater output written in kHz will land outside every band.</td></tr>
         <tr><td>Nothing works when opened from a USB stick</td><td>The tool is not standalone. Reach it through the OASIS server (<code>/tools/net-log.html</code>), not as a <code>file://</code> path.</td></tr>
       </tbody>
     </table></div></div>

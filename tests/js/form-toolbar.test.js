@@ -16,7 +16,8 @@ const ICS_FORM = {
 const ICS_205 = Object.assign({}, ICS_FORM, { extra: { label: 'Load Frequency Plan' } });
 const NET_LOG = {
   handoff: { label: '→ ICS-309' },
-  saveStore: {}, loadStore: {}, print: {}, exportCsv: {}, importCsv: {}, clear: {},
+  saveStore: {}, loadStore: {}, print: {},
+  exportCsv: {}, exportAdif: {}, importCsv: {}, clear: {},
 };
 
 const labels = (p) => T.plan(p).map((i) => (i.kind === 'sep' ? '|' : i.label));
@@ -81,6 +82,24 @@ test('emphasis: primary on produce/send, danger on clear, plain elsewhere', () =
   assert.strictEqual(cls.print, 'sbtn info', 'Print carries the blue accent');
   ['saveStore', 'loadStore', 'exportCsv', 'importCsv', 'extra']
     .forEach((s) => assert.strictEqual(cls[s], 'sbtn', s + ' should be plain'));
+});
+
+test('Export ADIF sits between the CSV buttons, in the interchange group', () => {
+  const l = labels({ noun: 'Log', slots: NET_LOG });
+  const i = l.indexOf('Export ADIF');
+  assert.notStrictEqual(i, -1, 'net log declares the slot');
+  assert.strictEqual(l[i - 1], 'Export CSV');
+  assert.strictEqual(l[i + 1], 'Import CSV');
+  // Its own group would have earned it a separator; it must not have one.
+  assert.notStrictEqual(l[i - 1], '|');
+  assert.notStrictEqual(l[i + 1], '|');
+  assert.strictEqual(T.plan({ noun: 'Log', slots: NET_LOG })
+    .find((x) => x.slot === 'exportAdif').cls, 'sbtn');
+});
+
+test('the ICS forms do not grow an ADIF button — they have no QSOs', () => {
+  assert.ok(!labels({ noun: 'Form', slots: ICS_FORM }).includes('Export ADIF'));
+  assert.ok(!labels({ noun: 'Form', slots: ICS_205 }).includes('Export ADIF'));
 });
 
 test('all three page shapes agree on the order of every shared slot', () => {
