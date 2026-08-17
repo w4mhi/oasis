@@ -57,6 +57,12 @@ SERVICE_UNITS = {
     # wrapper). Keeps device_states() generic — no special-casing. Also advisory
     # (no apply hook); the recorder binds the dongle itself at start time.
     "satellites": ["satellites-listen"],
+    # nwr (NOAA Weather Radio) is manual-only: the operator starts a listening
+    # session, and services/nwr/common/listener.py runs rtl_fm | multimon-ng as
+    # an ad-hoc Flask subprocess. "nwr-listen" is a SYNTHETIC unit, exactly like
+    # satellites-listen — callers that care whether we hold the dongle wrap
+    # is_active so it answers this token from listener.is_listening().
+    "nwr": ["nwr-listen"],
 }
 
 # Which device kind(s) each logical service may be assigned.
@@ -69,6 +75,10 @@ DEVICE_KIND_FOR_SERVICE = {
     # by hand (no CAT on this HAT) and OASIS records the audio. Restricted to
     # channel 1 by _device_ok_for_service — channel 0 is Winlink's.
     "satellites": {"rtl-sdr", "draws"},
+    # An RTL-SDR only. There is no radio-port path: NWR is a fixed-frequency
+    # broadcast receiver, and a DRAWS port carries whatever the operator's radio
+    # is tuned to, which is not a thing OASIS can assert.
+    "nwr": {"rtl-sdr"},
 }
 
 # aprs runs an extra RX feed unit (rtl_fm -> UDP -> GrayWolf) ONLY when assigned
@@ -91,7 +101,7 @@ APRS_FEED_UNIT = "aprs-sdr-feed"
 # `start`/`stop` do nothing. That silence is exactly how the assignment console
 # came to show satellites as permanently "stopped" even mid-recording, so
 # anything generic must route these to whatever owns them instead.
-SYNTHETIC_UNITS = frozenset({"satellites-listen"})
+SYNTHETIC_UNITS = frozenset({"satellites-listen", "nwr-listen"})
 
 
 def startable_units(inv, service):

@@ -324,25 +324,54 @@ def _console_is_active():
     state lives. Importing it as `services.satellites.listen` here would create a
     SECOND module object with its own `_state` — `is_capturing()` would always
     say False and `stop()` would act on an empty state. Same file, same code,
-    different globals: the fix would look right and do nothing."""
+    different globals: the fix would look right and do nothing.
+
+    TWO synthetic units now, so the wrappers CHAIN: each answers only its own
+    token and delegates everything else inward. Returning one wrapper made the
+    other service invisible to the engine, which is the bug this shape prevents.
+
+    services/nwr/ is imported as a proper package module — it has no bare
+    sibling imports, so the duplicate-module trap that forces `import listen`
+    below cannot arise there."""
+    is_active = HW._default_is_active
     try:
-        import listen                      # noqa: PLC0415 — see above
-    except Exception:
-        return HW._default_is_active
-    return listen.is_active_wrapper()
+        import listen                      # bare — see above
+        is_active = listen.is_active_wrapper(is_active)
+    except Exception:                      # noqa: BLE001 — satellites not installed
+        pass
+    try:
+        from services.nwr.common import listener
+        is_active = listener.is_active_wrapper(is_active)
+    except Exception:                      # noqa: BLE001 — nwr not installed
+        pass
+    return is_active
 
 
 def _stop_synthetic(unit):
-    """Stop the thing behind a SYNTHETIC unit. `systemctl stop satellites-listen`
-    exits fine and does nothing, so a console STOP on a running capture used to
-    report success while rtl_fm kept the dongle. Best-effort: a missing feature
-    or a failed stop must not 500 the console."""
-    if unit != "satellites-listen":
-        return
-    try:
+    """Stop the thing behind a SYNTHETIC unit.
+
+    `systemctl stop <synthetic>` exits fine and does nothing, so a console STOP
+    on a running capture used to report success while rtl_fm kept the dongle.
+    A dispatch rather than an if-chain, so adding the third ad-hoc capture is a
+    one-line change instead of another silent no-op.
+
+    Best-effort throughout: a missing feature or a failed stop must not 500 the
+    console."""
+    def _stop_satellites():
         import listen                      # bare — see _console_is_active()
         listen.stop()
-    except Exception:
+
+    def _stop_nwr():
+        from services.nwr.common import listener
+        listener.stop()
+
+    stoppers = {"satellites-listen": _stop_satellites, "nwr-listen": _stop_nwr}
+    fn = stoppers.get(unit)
+    if fn is None:
+        return
+    try:
+        fn()
+    except Exception:                      # noqa: BLE001
         pass
 
 
