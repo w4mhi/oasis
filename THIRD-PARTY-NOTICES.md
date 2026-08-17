@@ -201,6 +201,7 @@ provides.
 | **RepeaterBook** CSV exports | Local repeater directory | https://www.repeaterbook.com | **Not redistributable** | **not redistributed** — gitignored; every operator exports their own |
 | **SatNOGS** transmitter database | Satellite downlink frequencies and modes | https://db.satnogs.org | **CC BY-SA** — share-alike | the derived roster is baked into the bundle |
 | **CelesTrak** TLEs | Orbital elements for pass prediction | https://celestrak.org | UNVERIFIED — check CelesTrak's terms of use | baked into the bundle; goes stale within days |
+| US Census Gazetteer (counties) | County FIPS -> internal point, for placing SAME alerts on the map | https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html | Public domain (US Government work) | vendored (derived: `services/nwr/data/same-counties.json`) |
 | **APRS symbol icons** | Station symbols on every map and panel | https://github.com/hessu/aprs-symbols (Heikki Hannikainen, OH7LZB · aprs.fi) | **CC BY 2.0** — attribution required | **vendored** |
 | **OpenFlights** airline data | ICAO → telephony callsign for ADS-B | https://github.com/jpatokal/openflights | **ODbL** — share-alike | generated table is vendored |
 | **FEMA ICS forms** 205 / 213 / 214 / 309 | The official AcroForm PDF templates | FEMA — *ICS Forms Booklet* (FEMA 502-2) | UNVERIFIED — US Government works are generally uncopyrightable under 17 U.S.C. §105, but no source URL is recorded | vendored (twice: the PDF, and the same bytes base64-encoded into the template JS) |
