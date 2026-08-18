@@ -1,4 +1,5 @@
-"""Install NOAA Weather Radio support: multimon-ng, and nothing else.
+"""Install NOAA Weather Radio support: multimon-ng, the always-on watch unit,
+and nothing else.
 
 Nothing to install on the Python side — the SAME parser and its tables live in
 the repo (services/nwr/common/same.py and vendor/dsame3/defs.py), so there is no
@@ -10,24 +11,70 @@ reports unavailable and listening is unaffected — a missing nicety must not ga
 the feature.
 """
 import os
+import subprocess
 import sys
 
 _SUITE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "..", "..", "..")
 sys.path.insert(0, os.path.normpath(_SUITE_ROOT))
 
-from common.oasis_lib import _hr, _step, _ok, _info, _warn, _run, sudo_apt_cmd  # noqa: E402
+from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run, sudo_apt_cmd  # noqa: E402
 from common import manifest as M  # noqa: E402
+# SERVICE is canonical in services/nwr/common/daemon.py — imported, not redefined.
+from services.nwr.common.daemon import SERVICE  # noqa: E402
 
 PACKAGES = ["multimon-ng"]
 
+UNIT_PATH = f"/etc/systemd/system/{SERVICE}.service"
+
+
+def unit_text(venv_py, entry):
+    """The systemd unit for the always-on watch.
+
+    Restart=on-failure and not `always`: a daemon that cannot claim its dongle
+    should stop and say so in the console, not spin forever hiding the reason.
+
+    No PartOf=. adsb-api is bound to its decoder unit; the watch has no separate
+    decoder to follow -- rtl_fm and multimon-ng are its own children.
+    """
+    return f"""[Unit]
+Description=OASIS NOAA Weather Radio watch (SAME/EAS)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={venv_py} {entry} --serve
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+def write_unit(venv_py, entry):
+    """Write the unit via `sudo tee`, following adsb's _write_api_unit pattern
+    (services/adsb/common/adsb.py:359-388): a missing or non-interactive sudo
+    makes `tee` exit non-zero, and _fail() stops the installer right there
+    instead of continuing on to enable a unit that was never written."""
+    proc = subprocess.Popen(
+        ["sudo", "tee", UNIT_PATH],
+        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+    )
+    proc.communicate(unit_text(venv_py, entry).encode())
+    if proc.returncode != 0:
+        _fail(f"Could not write {UNIT_PATH}")
+    _ok(f"Service file: {UNIT_PATH}")
+    _run(["sudo", "systemctl", "daemon-reload"])
+    _run(["sudo", "systemctl", "enable", f"{SERVICE}.service"])
+    _ok(f"{SERVICE} enabled at boot")
+
 
 def removal_record(repo_root=None):
-    """Teardown record. No units and no files of our own: the capture is an
-    ad-hoc Flask subprocess and the config lives in configuration/nwr.json,
-    which the generic config teardown handles. The apt package stays per the
-    leave-apt policy."""
-    return {"services": [], "files": []}
+    """Teardown: the watch unit. v1 returned nothing because the capture was an
+    ad-hoc Flask subprocess; leaving it empty now would strand a running daemon
+    holding a dongle after the feature is uninstalled."""
+    return {"services": [SERVICE], "files": [UNIT_PATH]}
 
 
 def _suite():
@@ -52,7 +99,12 @@ def run(repo_root=None, online=None):
         return {"ok": False, "error": "multimon-ng not installed"}
     _ok("multimon-ng installed")
 
-    _step(2, "Checking the receive chain")
+    _step(2, "Installing the watch service")
+    venv_py = os.path.join(repo_root, ".venv", "bin", "python3")
+    entry = os.path.join(repo_root, "services", "nwr", "install.py")
+    write_unit(venv_py, entry)
+
+    _step(3, "Checking the receive chain")
     import shutil
     for binary, why in (("rtl_fm", "required - install the rtl-sdr feature"),
                         ("rtl_power", "optional - channel scan only"),
