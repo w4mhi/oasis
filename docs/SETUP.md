@@ -2371,7 +2371,25 @@ ls -la features/speech/voices/                        # .onnx AND .onnx.json, bo
    bundle on a connected machine (`scripts/create-oasis-offline.py`) so both
    files ship together, or re-run `features/speech/install.py`.
 
-2. **`/api/speech/say` returns `200` and real bytes, but the Pi's own speaker
+2. **Everything plays, but quietly — and alsamixer says the card is at
+   `0 dB`, wide open.** `0 dB` on `vc4-hdmi` is the *maximum*, not the middle.
+   That control is an **attenuator**: `PCM Playback Volume` runs `0..255` for
+   `-51..0 dB`, so a card pinned at the top reads `0 dB` and looks like no gain
+   at all. The attenuation you are hearing is one stage further down, in a
+   **PipeWire sink alsamixer does not show**:
+   ```bash
+   amixer -c 0 contents | grep -A2 'PCM Playback Volume'   # 255 = 0 dB = unity, the top
+   wpctl get-volume @DEFAULT_AUDIO_SINK@                   # THIS is the one that was low
+   wpctl set-volume @DEFAULT_AUDIO_SINK@ 1.0               # unity; >1.0 is digital gain
+   ```
+   Healthy: `Volume: 1.00`. Broken: anything below — `0.40` is `-7.96 dB`, which
+   is plainly quiet and invisible in every ALSA tool. WirePlumber persists the
+   change to `~/.local/state/wireplumber/default-routes`, so it survives a
+   reboot with nothing of ours running at startup; `features/speech/install.py`
+   also raises an attenuated sink to unity (never lowers it) so a fresh box
+   starts at full scale.
+
+3. **`/api/speech/say` returns `200` and real bytes, but the Pi's own speaker
    stays silent — and the same page in a browser is fine.** That last part is
    the tell: the audio itself is good, so this is **`XDG_RUNTIME_DIR`, not the
    sound card**. `oasis.service` is a *system* unit running as the operator's
@@ -2389,7 +2407,7 @@ ls -la features/speech/voices/                        # .onnx AND .onnx.json, bo
    `loginctl enable-linger $(whoami)` keeps it running from boot without a
    login and is the usual fix for a headless/kiosk box.
 
-3. **No player found at all.** `common/speech_play.py` probes `pw-play`,
+4. **No player found at all.** `common/speech_play.py` probes `pw-play`,
    `paplay`, `aplay`, in that order:
    ```bash
    which pw-play paplay aplay
@@ -2399,7 +2417,7 @@ ls -la features/speech/voices/                        # .onnx AND .onnx.json, bo
    still serves browsers on the LAN either way; only the Pi's own speaker is
    affected.
 
-4. **Text gets rejected outright.** `/say` validates before ever calling Piper:
+5. **Text gets rejected outright.** `/say` validates before ever calling Piper:
    ```bash
    curl -s 'localhost:8083/api/speech/say?text='
    ```

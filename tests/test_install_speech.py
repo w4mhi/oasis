@@ -212,3 +212,92 @@ class AttributionTest(unittest.TestCase):
     def test_an_unwritable_dir_does_not_fail_the_install(self):
         with mock.patch("builtins.open", side_effect=OSError("read-only")):
             install_speech._write_attribution("/nowhere")   # must not raise
+
+
+class SinkGainTest(unittest.TestCase):
+    """The output level the ALSA mixer cannot show.
+
+    On a PipeWire box the control alsamixer displays for vc4-hdmi is an
+    ATTENUATOR whose maximum is 0 dB, so a card pinned at the top reads "0 dB"
+    and looks like no gain at all -- while the actual attenuation sits in a
+    PipeWire sink alsamixer never renders. A station was found at ALSA unity
+    and PipeWire 0.40, i.e. -7.96 dB, with nothing in the mixer being looked at
+    to explain it.
+    """
+
+    def _mod(self):
+        import importlib.util
+        path = os.path.join(REPO_ROOT, "features", "speech", "install.py")
+        spec = importlib.util.spec_from_file_location("_speech_install", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_it_reads_the_volume_out_of_wpctl(self):
+        m = self._mod()
+        self.assertEqual(m._sink_volume(run=lambda a: "Volume: 0.40"), 0.40)
+        # Muted is a different problem; the number still has to come out.
+        self.assertEqual(m._sink_volume(run=lambda a: "Volume: 0.65 [MUTED]"), 0.65)
+
+    def test_no_wpctl_is_a_question_not_an_answer(self):
+        # None is not zero. A headless or ALSA-only station has no sink to read
+        # and must not be advised about one.
+        m = self._mod()
+        self.assertIsNone(m._sink_volume(run=lambda a: None))
+        self.assertEqual(m._gain_plan(None)[0], "unknown")
+
+    def test_attenuation_is_raised_to_unity(self):
+        m = self._mod()
+        action, msg = m._gain_plan(0.40)
+        self.assertEqual(action, "raise")
+        self.assertIn("0.40", msg)
+        self.assertIn("-8.0 dB", msg)          # 20*log10(0.4)
+        self.assertIn("PipeWire", msg, "the message must name the mixer that owns it")
+
+    def test_unity_and_above_are_left_alone(self):
+        # RAISES, never lowers -- the same rule every installer here follows
+        # about versions. A shack deliberately run quiet must not be ambushed,
+        # and >1.0 is digital gain the operator asked for.
+        m = self._mod()
+        self.assertEqual(m._gain_plan(1.0)[0], "ok")
+        self.assertEqual(m._gain_plan(1.5)[0], "ok")
+
+    def test_a_silent_sink_does_not_produce_an_infinite_decibel(self):
+        m = self._mod()
+        action, msg = m._gain_plan(0.0)
+        self.assertEqual(action, "raise")
+        self.assertIn("silent", msg)
+        self.assertNotIn("inf", msg)
+
+    def test_apply_only_writes_when_there_is_attenuation(self):
+        m = self._mod()
+        calls = []
+
+        def run(argv):
+            calls.append(argv)
+            return "Volume: 1.00" if argv[1] == "get-volume" else ""
+
+        self.assertEqual(m._apply_sink_gain(run=run), "ok")
+        self.assertEqual([c for c in calls if c[1] == "set-volume"], [],
+                         "a sink already at unity must not be written to")
+
+    def test_apply_raises_and_says_so(self):
+        m = self._mod()
+        calls = []
+
+        def run(argv):
+            calls.append(argv)
+            return "Volume: 0.40" if argv[1] == "get-volume" else ""
+
+        self.assertEqual(m._apply_sink_gain(run=run), "raised")
+        self.assertIn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "1.0"], calls)
+
+    def test_a_refused_set_reports_the_command_instead_of_failing_the_install(self):
+        # Speech that synthesised correctly must not fail because a volume
+        # could not be set -- same posture as the playback check.
+        m = self._mod()
+
+        def run(argv):
+            return "Volume: 0.40" if argv[1] == "get-volume" else None
+
+        self.assertEqual(m._apply_sink_gain(run=run), "failed")

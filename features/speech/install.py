@@ -52,6 +52,72 @@ from common import speech as SPEECH, speech_play as PLAY  # noqa: E402
 FEATURE = "speech"              # manifest pypi group (piper-tts)
 VOICE_FEATURE = "speech-voice"  # manifest url group (the .onnx + sidecar)
 
+# ── output level ────────────────────────────────────────────────────────────
+# "Check the mixer" was this installer's advice when a test utterance came out
+# quiet, and it is advice that sends the operator to the wrong mixer. On a Pi
+# running PipeWire the ALSA control alsamixer shows is an ATTENUATOR whose
+# maximum IS 0 dB — 'PCM Playback Volume' on vc4-hdmi runs 0..255 for
+# -51..0 dB — so a card pinned at the top reads "0 dB" and looks like no gain
+# at all, while the real attenuation sits one stage down in a PipeWire sink
+# that alsamixer never shows.
+#
+# Measured on a station 2026-08-18: ALSA at unity, PipeWire sink at 0.40
+# (-7.96 dB), speech and the hour bell audibly quiet, and nothing in the mixer
+# the operator was looking at could explain it.
+UNITY = 1.0
+_SINK = "@DEFAULT_AUDIO_SINK@"
+
+
+def _sink_volume(run=None):
+    """The default sink's linear volume, or None when the question cannot be
+    answered here (no wpctl, no user session, not a PipeWire box).
+
+    None is not zero. A headless or ALSA-only station has no sink to read and
+    needs no advice about one — the same posture the playback check already
+    takes."""
+    run = run or _run_capture
+    out = run(["wpctl", "get-volume", _SINK])
+    if out is None:
+        return None
+    # "Volume: 0.40" — and "Volume: 0.40 [MUTED]" when muted, which is a
+    # different problem this does not try to solve.
+    for tok in out.replace("[MUTED]", "").split():
+        try:
+            return float(tok)
+        except ValueError:
+            continue
+    return None
+
+
+def _run_capture(argv):
+    import subprocess
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+    except Exception:                     # noqa: BLE001 — absent binary, no session
+        return None
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def _gain_plan(vol):
+    """(action, message) for a sink at linear volume `vol`.
+
+    RAISES to unity, never lowers — the same rule every other installer here
+    follows about versions. A station deliberately run quiet at 0.3 would be
+    ambushed by an installer that "corrected" it downward on a reinstall; one
+    that only ever removes attenuation can be re-run safely.
+
+    Unity and above are both left alone: >1.0 is digital gain the operator
+    asked for, and this has no business second-guessing it."""
+    if vol is None:
+        return "unknown", ""
+    if vol >= UNITY:
+        return "ok", f"Output sink at {vol:.2f} — no attenuation in the way."
+    import math
+    db = 20 * math.log10(vol) if vol > 0 else float("-inf")
+    tail = f"{db:.1f} dB" if vol > 0 else "silent"
+    return "raise", (f"Output sink was at {vol:.2f} ({tail}) — raised to unity. "
+                     f"The ALSA mixer cannot show this; it lives in PipeWire.")
+
 
 def _wheels_dir():
     return os.path.join(
@@ -255,6 +321,7 @@ def run():
     # Playback is INFORMATION, not pass/fail: a headless box with no sound
     # output legitimately has nowhere to play this, and that must not fail an
     # otherwise good install.
+    _apply_sink_gain()
     if PLAY.player():
         _info(f"Playing a test utterance through {PLAY.player()} …")
         if PLAY.play(wav):
@@ -266,6 +333,30 @@ def run():
         _info("No local audio player found — browser playback still works.")
 
     return 0
+
+
+def _apply_sink_gain(run=None):
+    """Take PipeWire's attenuation off the default sink, if there is any.
+
+    Runs as the operator's own user, which is the only user with a PipeWire
+    session — this installer is deliberately unprivileged (see the module
+    docstring), and that is exactly what makes it the right place for a
+    per-session audio setting. WirePlumber persists the result to
+    ~/.local/state/wireplumber/default-routes, so it survives the next boot
+    without anything of ours running at startup."""
+    run = run or _run_capture
+    action, msg = _gain_plan(_sink_volume(run=run))
+    if action == "unknown":
+        return "unknown"
+    if action == "ok":
+        _info(msg)
+        return "ok"
+    if run(["wpctl", "set-volume", _SINK, str(UNITY)]) is None:
+        _warn("Output sink is attenuated and could not be raised. Run: "
+              f"wpctl set-volume {_SINK} 1.0")
+        return "failed"
+    _ok(msg)
+    return "raised"
 
 
 def cmd_uninstall():
