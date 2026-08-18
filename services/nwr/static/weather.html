@@ -64,6 +64,7 @@ code.raw { font-size: var(--fs-micro); color: var(--text-dim); word-break: break
         <button id="stop" disabled>Stop</button>
         <button id="scan">Scan</button>
       </div>
+      <div class="row"><span id="err"></span></div>
       <div class="row"><span id="pre"></span></div>
       <audio id="audio" controls style="width:100%;display:none"></audio>
     </div>
@@ -162,6 +163,25 @@ function renderStatus(d) {
   pre_el.textContent = notes.join(' | ');
   pre_el.className = notes.length ? 'warn' : '';
 
+  // capture.last_error is a different kind of message from the preconditions
+  // above: preconditions describe the current environment (missing deps, no
+  // dongle assigned), while last_error is the server's own record of why the
+  // LAST ATTEMPT failed. They used to share #pre, and a poll where every
+  // precondition read green -- assigned, not busy, dongle present -- wiped a
+  // correctly diagnosed start failure off the screen within milliseconds,
+  // because the conflict engine does not model a bare rtl_433 holding the
+  // dongle, so `notes` came back empty and clobbered it. Giving the error its
+  // own element means neither message can erase the other.
+  //
+  // No client-side staleness flag is needed: start() clears last_error to
+  // None in the same _state update that flips listening true (see
+  // services/nwr/common/listener.py), so cap.last_error already IS current
+  // truth whenever this status arrives -- inventing a second "is this stale"
+  // signal here would just duplicate state the server already tracks.
+  const err_el = $('err');
+  err_el.textContent = cap.last_error || '';
+  err_el.className = cap.last_error ? 'warn' : '';
+
   if (!CHANNELS.length) {
     CHANNELS = d.channels;
     const sel = $('chan');
@@ -238,8 +258,13 @@ $('listen').addEventListener('click', async function () {
   const hz = parseInt($('chan').value, 10);
   const r = await post('/api/nwr/listen', { channel_hz: hz });
   if (!r.data || !r.data.ok) {
-    $('pre').textContent = (r.data && r.data.error) || 'could not start';
-    $('pre').className = 'warn';
+    // Instant paint before poll() lands: /api/nwr/status can sit behind a
+    // slow rtl_test call (Finding 6), and the operator should not stare at a
+    // blank line while it resolves. poll() below overwrites this with
+    // capture.last_error -- the server's own record of the failure -- which
+    // is what actually persists across the polls that follow.
+    $('err').textContent = (r.data && r.data.error) || 'could not start';
+    $('err').className = 'warn';
   } else {
     const el = $('audio');
     el.src = '/api/nwr/listen/stream?t=' + Date.now();
