@@ -218,6 +218,16 @@ function chanLabel(hz) {
   return hit ? hit.label : ((Number(hz) / 1e6).toFixed(3) + ' MHz');
 }
 
+// "WX7 162.550 MHz". chanLabel() alone gives "WX7", which is the right thing in
+// a sentence about a channel the operator picked -- they just picked it, they
+// know which one. When the WATCH picked it, the frequency is the useful half:
+// it is what an operator would dial into a handheld to hear the same station.
+function chanFull(hz) {
+  const label = chanLabel(hz);
+  const mhz = (Number(hz) / 1e6).toFixed(3) + ' MHz';
+  return label === mhz ? mhz : (label + ' ' + mhz);
+}
+
 // The <select> value as a /api/nwr/config patch. 'auto' clears the pin and the
 // daemon's next channel choice sweeps the band again (choose_channel); any
 // other value pins that channel and skips the sweep entirely.
@@ -249,6 +259,46 @@ function retuneNote(d) {
     return 'still trying to tune ' + target + ' - the watch will keep retrying';
   }
   return 'changing to ' + target;
+}
+
+// The line under the dropdown. One element, because these are four answers to
+// the same question -- which channel, and why that one -- and showing two of
+// them at once would make the operator work out which is current.
+//
+// Priority order, and the reason for it:
+//   1. a retune in progress. Operator-initiated and the shortest-lived, so it
+//      must not be buried under a standing description of the old channel.
+//   2. an unreachable watch. The status line already says so; repeating it
+//      here would say nothing new, and a stale channel would read as live.
+//   3. scanning. The sweep is ~6 s of silence with the dongle held
+//      exclusively, and without this the page looked idle through all of it.
+//   4. a pin. There is no choice to report: choose_channel() skips the sweep
+//      entirely, so this says so rather than leaving the line blank and the
+//      operator wondering why the scan never runs. It also carries the
+//      consequence -- a pinned watch never measures the band, so the weak
+//      signal that would otherwise turn the card amber cannot be detected.
+//   5. what the sweep chose, with the margin it chose on. The margin is the
+//      evidence: "WX7" alone is a claim, "3.0 dB above the rest of the band"
+//      is why.
+function channelNote(d) {
+  const w = (d && d.watch) || {};
+  const cfg = (d && d.config) || {};
+  const retune = retuneNote(d);
+  if (retune) { return retune; }
+  if (!w.reachable) { return ''; }
+  if (w.phase === 'scanning') { return 'Scanning...'; }
+  // A pin that has landed says nothing, deliberately -- the dropdown above
+  // already shows it, the operator set it themselves, and a standing line
+  // repeating a settled choice is the "a retune that has landed is not news"
+  // rule this element was built on. The consequence worth knowing (a pinned
+  // watch never sweeps, so the weak state cannot fire) belongs in the handbook,
+  // not in a line the operator reads every time they open the page.
+  if (cfg.pinned_channel) { return ''; }
+  const scan = w.scan || {};
+  if (!scan.best_hz) { return ''; }
+  const m = scan.margin_db === null || scan.margin_db === undefined
+    ? '' : ' - ' + Number(scan.margin_db).toFixed(1) + ' dB above the rest of the band';
+  return 'swept the band and chose ' + chanFull(scan.best_hz) + m;
 }
 
 // The status line: is the watch running, on what channel, and since when.
@@ -377,7 +427,7 @@ function renderStatus(d, nowMs) {
   // Server state, so it is re-derived from every poll rather than latched by
   // the click: a retune that finishes, or one the operator started from another
   // browser, both land here on their own.
-  $('pin').textContent = retuneNote(d);
+  $('pin').textContent = channelNote(d);
 
   // watch.last_error is a different kind of message from the notes above:
   // those describe the current environment (no encoder, no rtl_power), while

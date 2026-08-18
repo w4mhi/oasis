@@ -111,7 +111,8 @@ function fakeDoc() {
 
 // Every page-level helper, built once against one fake document so they share
 // the CHANNELS the poll fills in -- exactly as they do in the browser.
-const HELPERS = ['fmtTime', 'chanLabel', 'pinPatch', 'retuneNote', 'watchLine',
+const HELPERS = ['fmtTime', 'chanLabel', 'chanFull', 'pinPatch', 'retuneNote',
+                 'channelNote', 'watchLine',
                  'armStream', 'detachStream', 'handlePlay', 'handlePause',
                  'setMsg', 'renderStatus', 'renderUnavailable'];
 
@@ -158,6 +159,63 @@ function statusOf(over) {
 const NOW_MS = 1755000000000;      // fixed clock; the status line prints a start time
 
 // ── api() / poll() ───────────────────────────────────────────────────────────
+
+// ── The line under the channel dropdown ──────────────────────────────────────
+// Added because the sweep is ~6 s during which the page looked idle: the
+// operator could not tell "choosing a channel" from "nothing is happening".
+test('under the dropdown: a sweep in progress says so', () => {
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  p.renderStatus(statusOf({ watch: { phase: 'scanning', listening: false } }), NOW_MS);
+  assert.strictEqual(doc.getElementById('pin').textContent, 'Scanning...');
+});
+
+test('under the dropdown: the chosen channel carries the margin it was chosen on', () => {
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  p.renderStatus(statusOf({
+    watch: { scan: { best_hz: 162550000, margin_db: 3.04 } },
+  }), NOW_MS);
+  const note = doc.getElementById('pin').textContent;
+  assert.match(note, /chose WX7 162\.550 MHz/);
+  assert.match(note, /3\.0 dB above the rest of the band/,
+    'the margin is the evidence the choice was made on, not decoration');
+});
+
+test('under the dropdown: a margin the daemon did not measure is omitted, not shown as 0', () => {
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  p.renderStatus(statusOf({
+    watch: { scan: { best_hz: 162550000, margin_db: null } },
+  }), NOW_MS);
+  const note = doc.getElementById('pin').textContent;
+  assert.match(note, /chose WX7/);
+  assert.doesNotMatch(note, /dB/, '"0.0 dB" would read as a dead band');
+});
+
+test('under the dropdown: a retune in progress outranks the standing channel line', () => {
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  p.renderStatus(statusOf({
+    watch: { phase: 'retuning', retune_pending: true,
+             scan: { best_hz: 162550000, margin_db: 3.0 } },
+  }), NOW_MS);
+  const note = doc.getElementById('pin').textContent;
+  assert.match(note, /changing to/);
+  assert.doesNotMatch(note, /chose/,
+    'the shortest-lived message must not sit under a standing one');
+});
+
+test('under the dropdown: an unreachable watch says nothing rather than a stale channel', () => {
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  p.renderStatus(statusOf({
+    watch: { reachable: false, listening: false,
+             scan: { best_hz: 162550000, margin_db: 3.0 } },
+  }), NOW_MS);
+  assert.strictEqual(doc.getElementById('pin').textContent, '',
+    'the status line already says the watch is down; a channel here would read as live');
+});
 
 test('api() reports a rejected fetch as a failed request, not a throw', async () => {
   const fn = new Function('fetch', apiSrc + '\nreturn api;');
