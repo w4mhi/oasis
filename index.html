@@ -1902,8 +1902,8 @@ async function seedCallsignGrid() {
   if (localStorage.getItem('oasis_callsign')) return;
   try {
     const r = await fetch('/station.json', { cache: 'no-store' });
-    if (!r.ok) return;
-    const d = await r.json();
+    const d = await r.json().catch(() => null);   // read on every path
+    if (!r.ok || !d) return;
     if (d.callsign) localStorage.setItem('oasis_callsign', String(d.callsign).toUpperCase());
     if (d.grid)     localStorage.setItem('oasis_grid',     String(d.grid).toUpperCase());
     loadCallsignGrid();
@@ -1959,8 +1959,8 @@ async function loadVersion() {
   if (!el) return;
   try {
     const r = await fetch('/version.json', { cache: 'no-store' });
-    if (!r.ok) return;
-    const d = await r.json();
+    const d = await r.json().catch(() => null);   // read on every path
+    if (!r.ok || !d) return;
     if (d.version) el.textContent = 'v' + d.version;
   } catch (_) {}
 }
@@ -2095,8 +2095,8 @@ const SERVICES = [
     id: 'flask', name: 'Flask',
     check: async () => {
       const r = await fetch('/api/server-info', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: `HTTP ${r.status}` };
-      const d = await r.json();
+      const d = await r.json().catch(() => null);   // read on every path
+      if (!r.ok || !d) return { up: false, sub: `HTTP ${r.status}` };
       return { up: true, badge: 'UP', sub: `v${d.flask_version}` };
     }
   },
@@ -2104,8 +2104,8 @@ const SERVICES = [
     id: 'wsgi', name: 'Web Server',
     check: async () => {
       const r = await fetch('/api/server-info', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: `HTTP ${r.status}` };
-      const d = await r.json();
+      const d = await r.json().catch(() => null);   // read on every path
+      if (!r.ok || !d) return { up: false, sub: `HTTP ${r.status}` };
       const g = d.wsgi === 'gunicorn';
       return { up: true, warn: !g,
         badge: g ? 'gunicorn' : 'werkzeug',
@@ -2125,11 +2125,14 @@ const SERVICES = [
       // Same-origin via the Flask proxy: doubles as Pat's up/down probe and
       // seeds WinlinkRead so unread state is available to the mail pages.
       const r = await fetch('/api/winlink/mailbox/in', { cache: 'no-store' });
+      // Read on every path. Unlike the kiosk -- which probes this with a HEAD
+      // because it only wants up/down -- this card wants the listing itself, so
+      // the body is taken first and the 503 is judged after.
+      const msgs = await r.json().catch(() => null);
       if (!r.ok) { _setWlrfUnread(0); return { up: false, sub: `:${PORTS.winlink}` }; }   // 503 = Pat down
       let unread = 0;
       try {
-        const msgs = await r.json();
-        if (window.WinlinkRead) { WinlinkRead.seed(msgs); unread = WinlinkRead.unreadCount(msgs); }
+        if (window.WinlinkRead && msgs) { WinlinkRead.seed(msgs); unread = WinlinkRead.unreadCount(msgs); }
       } catch (_) {}
       // Surface unread on the Winlink RF card (the old "Winlink Mail" nav link
       // that used to carry this is gone; the RF card is the single Winlink entry).
@@ -2153,8 +2156,8 @@ const SERVICES = [
       // unit is deliberately stopped and disabled when the DRAWS TNC owns the
       // card — the card read STOPPED no matter how healthy the radio was.
       const r = await fetch('/api/health/service?name=winlink-modem', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'status error' };
-      const d = await r.json();
+      const d = await r.json().catch(() => null);   // read on every path
+      if (!r.ok || !d) return { up: false, sub: 'status error' };
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (!d.installed) return { up: false, badge: 'n/a', sub: 'run services/winlink/install.py' };
       if (d.active === 'active') return { up: true, badge: 'ON AIR', sub: 'AGWPE :8000 · APRS off' };
@@ -2177,8 +2180,8 @@ const SERVICES = [
       // identically whether the unit is absent, stopped, or crashed — it can't
       // tell them apart. The unit being 'active' means kiwix-serve is up on :8081.
       const r = await fetch('/api/health/service?name=kiwix', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'status error' };
-      const d = await r.json();
+      const d = await r.json().catch(() => null);   // read on every path
+      if (!r.ok || !d) return { up: false, sub: 'status error' };
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (d.active === 'active') {
         // Card shows the port (server reachability); the OPS "Wikipedia" link
@@ -2186,8 +2189,8 @@ const SERVICES = [
         let navSub;
         try {
           const zr = await fetch('/api/health/zim', { cache: 'no-store' });
-          if (zr.ok) {
-            const zd = await zr.json();
+          const zd = await zr.json().catch(() => null);   // read on every path
+          if (zr.ok && zd) {
             const n = zd.count || 0;
             navSub = n === 0 ? 'no ZIM'
                    : n === 1 ? `1 ZIM · ${zd.total_gb} GB`
@@ -2204,8 +2207,8 @@ const SERVICES = [
     id: 'aprs', name: 'APRS Stats API',
     check: async () => {
       const r = await fetch('/api/aprs/health', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: `:${PORTS.aprs_api}` };
-      const d = await r.json();
+      const d = await r.json().catch(() => null);   // read on every path
+      if (!r.ok || !d) return { up: false, sub: `:${PORTS.aprs_api}` };
       // `ok` now means the PROBE ran; `running` is whether graywolf-api is up.
       // The endpoint answers 200 even when it is down, so branching on the HTTP
       // status alone would report a stopped service as UP.
@@ -2219,8 +2222,8 @@ const SERVICES = [
     check: async () => {
       // No web port — status comes from systemd (socat RTL-SDR → GrayWolf feed).
       const r = await fetch('/api/health/service?name=aprs-sdr-feed', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'status error' };
-      const d = await r.json();
+      const d = await r.json().catch(() => null);   // read on every path
+      if (!r.ok || !d) return { up: false, sub: 'status error' };
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (d.active === 'active') {
         // Active means socat is alive — but a yanked dongle leaves it active and
@@ -2240,8 +2243,8 @@ const SERVICES = [
     id: 'gpsd', name: 'GPS (gpsd)',
     check: async () => {
       const r = await fetch('/api/health/service?name=gpsd', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'status error' };
-      const d = await r.json();
+      const d = await r.json().catch(() => null);   // read on every path
+      if (!r.ok || !d) return { up: false, sub: 'status error' };
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (d.active === 'active') return { up: true, badge: 'UP', sub: ':2947' };
       return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
@@ -2252,8 +2255,8 @@ const SERVICES = [
     id: 'fcc', name: 'FCC Database',
     check: async () => {
       const r = await fetch('/health', { cache: 'no-store' });
-      if (!r.ok) { setFccLookup(false); return { up: false, sub: 'server error' }; }
-      const d = await r.json();
+      const d = await r.json().catch(() => null);   // read on every path
+      if (!r.ok || !d) { setFccLookup(false); return { up: false, sub: 'server error' }; }
       setFccLookup(d.index_present);   // disable FCC Lookup button if no index
       return { up: true, warn: !d.index_present,
         badge: d.index_present ? 'UP' : 'WARN',
@@ -2271,8 +2274,9 @@ const SERVICES = [
       let n;
       try {
         const r = await fetch('/api/health/maps', { cache: 'no-store' });
-        if (!r.ok) throw new Error('maps');
-        n = (await r.json()).count || 0;
+        const d = await r.json().catch(() => null);   // read on every path
+        if (!r.ok || !d) throw new Error('maps');
+        n = d.count || 0;
       } catch (_) { return { up: false, sub: 'maps error' }; }
       return { up: true, warn: n === 0,
         badge: n > 0 ? 'UP' : 'WARN',
@@ -2304,8 +2308,8 @@ const SERVICES = [
       // instead (same as adsb/feed): 'up' ONLY when the unit is actually active,
       // so the shared-dongle dropdown unlocks while OpenWebRX is stopped.
       const r = await fetch('/api/health/service?name=openwebrx', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'status error' };
-      const d = await r.json();
+      const d = await r.json().catch(() => null);   // read on every path
+      if (!r.ok || !d) return { up: false, sub: 'status error' };
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       if (d.active === 'active') return { up: true, badge: 'UP', sub: `:${PORTS.openwebrx}` };
       return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
@@ -2319,8 +2323,8 @@ const SERVICES = [
       // Starting it stops the other SDR users (GrayWolf/OpenWebRX/feed), so it
       // sits STOPPED until the operator enters ADS-B mode from the dashboard.
       const r = await fetch('/api/health/service?name=dump1090-fa', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'status error' };
-      const d = await r.json();
+      const d = await r.json().catch(() => null);   // read on every path
+      if (!r.ok || !d) return { up: false, sub: 'status error' };
       if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
       // Ground truth (systemd is-active) wins over the hardware-assignment
       // state: a unit that's actually running is UP even if the dashboard's
@@ -2388,8 +2392,8 @@ const SERVICES = [
     id: 'manuals', name: 'Radio Manuals',
     check: async () => {
       const r = await fetch('/api/browse?path=static/radio-manuals', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'browse error' };
-      const d = await r.json();
+      const d = await r.json().catch(() => null);   // read on every path
+      if (!r.ok || !d) return { up: false, sub: 'browse error' };
       const n = (d.entries || []).filter(e => e.type === 'dir').length;
       return { up: true, warn: n === 0,
         badge: n > 0 ? 'UP' : 'WARN',
@@ -2401,8 +2405,8 @@ const SERVICES = [
     check: async () => {
       // ZIM content lives outside the suite root — server scans the standard dirs.
       const r = await fetch('/api/health/zim', { cache: 'no-store' });
-      if (!r.ok) return { up: false, sub: 'check error' };
-      const d = await r.json();
+      const d = await r.json().catch(() => null);   // read on every path
+      if (!r.ok || !d) return { up: false, sub: 'check error' };
       const n = d.count || 0;
       return { up: true, warn: n === 0,
         badge: n > 0 ? 'UP' : 'WARN',
@@ -2554,8 +2558,9 @@ function renderDeviceLabels(data) {
 async function fetchHardware() {
   try {
     const r = await fetch('/api/hardware/devices', { cache: 'no-store' });
-    if (!r.ok) return;
-    _hwLast = await r.json();
+    const d = await r.json().catch(() => null);   // read on every path
+    if (!r.ok || !d) return;
+    _hwLast = d;
     renderDeviceLabels(_hwLast);
   } catch (e) { /* transient — keep last render, retry next tick */ }
 }
@@ -2770,8 +2775,8 @@ async function unitInstalled(id) {
   if (!unit) return false;
   try {
     const r = await fetch('/api/health/service?name=' + unit, { cache: 'no-store' });
-    if (!r.ok) return false;
-    const d = await r.json();
+    const d = await r.json().catch(() => null);   // read on every path
+    if (!r.ok || !d) return false;
     // gpsd is transitively pulled in (Winlink's `pat` Depends: gpsd) and its
     // socket auto-enables, so a running gpsd is NOT proof the operator set up GPS.
     // features/gps/install-gps.py explicitly `systemctl enable gpsd`, so require
@@ -2798,8 +2803,8 @@ async function unitInstalled(id) {
 async function hostHasSystemd() {
   try {
     const r = await fetch('/api/health/service?name=oasis', { cache: 'no-store' });
-    if (!r.ok) return false;
-    const d = await r.json();
+    const d = await r.json().catch(() => null);   // read on every path
+    if (!r.ok || !d) return false;
     return d.supported !== false;
   } catch (_) { return false; }
 }
@@ -3006,11 +3011,14 @@ async function resolveHardwareConflict(svcId) {
     );
     if (!stopIt) return true;   // "Continue anyway"
     try {
-      await fetch('/api/service', {
+      // Nothing here reads the answer, but it still has to be drunk -- an unread
+      // body pins a /dev/shm pipe (see loadConfig at the top of this file).
+      const r = await fetch('/api/service', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
         body: JSON.stringify({ unit: SVC_UNITS['gw'], action: 'stop' }),
       });
+      await r.text();
     } catch (e) { /* best-effort — pingAll below reflects whatever happened */ }
     pingAll();
     return false;   // abort this start; operator retries once GrayWolf is down
@@ -3035,11 +3043,12 @@ async function resolveHardwareConflict(svcId) {
     if (!stopIt) return true;   // "Continue anyway"
 
     try {
-      await fetch('/api/service', {
+      const r = await fetch('/api/service', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
         body: JSON.stringify({ unit: SVC_UNITS[otherId], action: 'stop' }),
       });
+      await r.text();                    // read on every path, then discard
     } catch (e) { /* best-effort — pingAll below reflects whatever actually happened */ }
     pingAll();
     return false;   // abort this start; operator retries once the other is down
@@ -3134,7 +3143,7 @@ let _lastGpsAltM = null;
 
 function loadHomeCoords() {
   fetch('/station.json')
-    .then(r => r.ok ? r.json() : null)
+    .then(r => r.json().catch(() => null))   // read on every path
     .then(d => {
       if (!d || !d.lat || !d.lon) return;
       OasisGeo.setHomeCoords(d.lat, d.lon);
@@ -3206,8 +3215,8 @@ async function fetchStats() {
     // Same-origin Flask endpoint (matches the dashboard) — no dependency on
     // the separate :8085 APRS API being up.
     const r = await fetch('/api/system', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
-    if (!r.ok) return;
-    const d = await r.json();
+    const d = await r.json().catch(() => null);   // read on every path
+    if (!r.ok || !d) return;
 
     // Host identity — makes it unmistakable which machine these stats are from
     // (e.g. a Mac browser hitting localhost vs the Pi over the LAN).
@@ -3537,8 +3546,8 @@ async function fetchAudio() {
   if (!el) return;   // stats-bar removed with the topbar restructure; Audio is deferred
   try {
     const r = await fetch('/api/audio', { cache: 'no-store' });
-    if (!r.ok) return;
-    const d = await r.json();
+    const d = await r.json().catch(() => null);   // read on every path
+    if (!r.ok || !d) return;
     if (!d.supported) { el.textContent = 'n/a'; el.className = 'stat-val'; el.title = 'ALSA / Linux only'; return; }
     const n = d.cards.length;
     el.textContent = `${n} card${n !== 1 ? 's' : ''}`;
@@ -4022,10 +4031,10 @@ async function pollAdsbRecent(force) {
   try {
     const rr = await fetch('/api/adsb/recent?hours=' + hours,
                            { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+    const rj = await rr.json().catch(() => null);   // read on every path
     // Mark the window loaded only on success, so a failed ALL fetch retries on
     // the next cycle (matches map.html's refreshAdsbRecent) instead of sticking.
-    if (rr.ok) {
-      const rj = await rr.json();
+    if (rr.ok && rj) {
       if (rj.ok && Array.isArray(rj.aircraft)) { _adsbRecent = rj.aircraft; _adsbRecentHours = hours; }
     }
   } catch (_) { /* keep the last good history until the next cycle */ }
@@ -4092,8 +4101,8 @@ async function fetchAPRS() {
   // paths below can still render an aircraft-only table instead of a bare error.
   try {
     const ar = await fetch('/api/adsb/aircraft', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
-    if (ar.ok) {
-      const aj = await ar.json();
+    const aj = await ar.json().catch(() => null);   // read on every path
+    if (ar.ok && aj) {
       // Contract envelope: {ok, aircraft, total, truncated, limit, time}.
       // Aircraft carry an absolute `last_seen`, so _adsbNow is only the local
       // fallback for un-migrated /api/adsb/recent rows.
@@ -4116,8 +4125,8 @@ async function fetchAPRS() {
     // slow graywolf proxy: the fetch aborted and the catch below reported the
     // feed offline while it was merely busy.
     const r = await fetch('/api/aprs/stations', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
+    const d = await r.json().catch(() => null);   // read on every path
+    if (!r.ok || !d) throw new Error('HTTP ' + r.status);
     if (!d.ok) {
       if (haveAircraft) { renderAircraftOnly(); return; }   // APRS down, but aircraft are live
       const msg = d.error || 'API error';
