@@ -2,7 +2,9 @@ import io
 import os
 import queue
 import signal
+import subprocess
 import sys
+import time
 import unittest
 from unittest import mock
 
@@ -15,11 +17,26 @@ TOR = "ZCZC-WXR-TOR-053033+0100-2291200-KSEW/NWS-"
 
 
 class _FakeProc:
-    """Stand-in for a subprocess.Popen handle."""
-    def __init__(self):
+    """Stand-in for a subprocess.Popen handle.
+
+    exit_code=None means "still running" (poll() -> None), matching a live
+    rtl_fm; a real exit code models the ~200 ms usb_claim_interface death a
+    dongle-busy start hits (Finding 3). `stderr` is a bytes source for the
+    real drain thread that reads it -- BytesIO, not a fake, since that thread
+    calls the real .read().
+    """
+    def __init__(self, exit_code=None, stderr=b""):
         self.signals = []
         self.killed = False
         self.waits = 0
+        self._exit_code = exit_code
+        self.stderr = io.BytesIO(stderr)
+        # Empty by default: a fully "still running" fake would otherwise send
+        # the real _reader/_decoder threads into an AttributeError on
+        # .stdout/.stdin that only ever shows up as noise in the test log,
+        # never as a test failure.
+        self.stdout = io.BytesIO()
+        self.stdin = io.BytesIO()
 
     def send_signal(self, sig):
         self.signals.append(sig)
@@ -32,7 +49,7 @@ class _FakeProc:
         return 0
 
     def poll(self):
-        return None
+        return self._exit_code
 
 
 class _Sink:
@@ -165,7 +182,7 @@ class _StateResetMixin:
         self._saved = dict(listener._state)
         listener._state.update({"rtl": None, "mm": None, "channel_hz": None,
                                  "started": 0.0, "subs": [], "last_error": None,
-                                 "alerts_seen": 0})
+                                 "alerts_seen": 0, "scanning": False})
 
     def tearDown(self):
         listener._state.clear()
@@ -212,6 +229,142 @@ class StopSentinelTest(_StateResetMixin, unittest.TestCase):
         listener.stop()
 
         self.assertEqual(q.get_nowait(), b"")
+
+
+class RealSubprocessRegressionTest(_StateResetMixin, unittest.TestCase):
+    """Finding 1: every pump/decode test above uses a fake sink or a plain
+    Python list of strings, both of which happily accept whatever pump()
+    or decode_lines() hands them. `text=True, bufsize=1` on multimon-ng's
+    REAL Popen call turned its real stdin into a TextIOWrapper -- so pump()
+    writing rtl_fm's raw bytes into it raised TypeError, which is not in
+    pump()'s caught exception tuple, silently killing the nwr-pump thread on
+    the first chunk. None of the fake-based tests above could ever have
+    caught that, because none of them go through a real OS pipe.
+
+    This spawns REAL subprocess.Popen objects in exactly the kwarg shape
+    start() uses (argv swapped for `cat`, which echoes stdin to stdout
+    unmodified byte for byte) and drives an actual SAME header through the
+    actual pump -> mm.stdin -> mm.stdout -> decode_lines -> on_header path.
+    """
+
+    @staticmethod
+    def _cat_popen(argv, **kwargs):
+        # `cat` stands in for both rtl_fm and multimon-ng. Forwarding the
+        # REAL kwargs start() passes (rather than hand-picking them) is the
+        # whole point: this is what breaks if text=True/bufsize=1 come back,
+        # or if some future change swaps stdin=PIPE for something else.
+        kwargs.setdefault("stdin", subprocess.PIPE)
+        return subprocess.Popen(["cat"], **kwargs)
+
+    def test_a_real_same_header_survives_a_real_pipe_end_to_end(self):
+        seen = []
+        with mock.patch.object(listener.sdr_rx, "missing_deps", lambda *a, **k: []):
+            result = listener.start(162550000, popen=self._cat_popen,
+                                    on_header=seen.append, startup_check_s=0)
+        self.assertTrue(result["ok"], result)
+        rtl, mm = listener._state["rtl"], listener._state["mm"]
+        try:
+            rtl.stdin.write(("EAS: " + TOR + "\n").encode("ascii"))
+            rtl.stdin.flush()
+            rtl.stdin.close()          # EOF -> cat exits -> pump() ends cleanly
+            deadline = time.time() + 5
+            while not seen and time.time() < deadline:
+                time.sleep(0.05)
+        finally:
+            listener.stop()
+            # Belt and suspenders on top of stop(): _decoder's finally can
+            # null _state["mm"] the instant mm's stdout hits EOF, which can
+            # race ahead of this thread reaching stop() -- and stop() only
+            # reaps whatever is still IN _state. Reaping our own local
+            # references directly means the cat processes are never left for
+            # the GC to warn about, regardless of which side of that race
+            # this thread lands on.
+            for proc in (rtl, mm):
+                try:
+                    proc.wait(timeout=2)
+                except Exception:      # noqa: BLE001
+                    pass
+                for stream in (proc.stdout, proc.stderr):
+                    try:
+                        stream.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+        self.assertEqual(len(seen), 1, "no SAME header reached on_header -- "
+                         "the decode pipeline never delivered a byte")
+        self.assertEqual(seen[0]["event"], "TOR")
+        self.assertEqual(seen[0]["station"], "KSEW/NWS")
+
+
+class StartLivenessTest(_StateResetMixin, unittest.TestCase):
+    """Finding 3: a dongle-busy start used to report {"ok": True} because
+    that only meant Popen() executed, not that rtl_fm actually claimed the
+    tuner. stderr=DEVNULL threw away the one line (usb_claim_interface) that
+    would have explained it."""
+
+    def test_a_dongle_claimed_by_another_service_is_reported_not_silent(self):
+        rtl_proc = _FakeProc(exit_code=1, stderr=b"usb_claim_interface error -6\n")
+        mm_proc = _FakeProc()
+
+        def fake_popen(argv, **kwargs):
+            return rtl_proc if argv[0] == "rtl_fm" else mm_proc
+
+        with mock.patch.object(listener.sdr_rx, "missing_deps", lambda *a, **k: []):
+            result = listener.start(162550000, popen=fake_popen, startup_check_s=0)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "NWR_START_FAILED")
+        self.assertIn("another service is already using the RTL-SDR dongle",
+                      result["error"])
+        self.assertEqual(listener.status()["last_error"], result["error"])
+        self.assertIsNone(listener._state["rtl"])
+        self.assertIsNone(listener._state["mm"])
+        # multimon-ng must not be left running with a dead rtl_fm behind it
+        self.assertIn(signal.SIGTERM, mm_proc.signals)
+
+    def test_a_dongle_that_stays_up_is_reported_ok(self):
+        rtl_proc = _FakeProc(exit_code=None)   # still running past the check
+        mm_proc = _FakeProc(exit_code=None)
+
+        def fake_popen(argv, **kwargs):
+            return rtl_proc if argv[0] == "rtl_fm" else mm_proc
+
+        with mock.patch.object(listener.sdr_rx, "missing_deps", lambda *a, **k: []):
+            result = listener.start(162550000, popen=fake_popen, startup_check_s=0)
+
+        self.assertTrue(result["ok"], result)
+        self.assertIsNone(listener._state["last_error"])
+        listener.stop()
+
+
+class ScanClaimTest(_StateResetMixin, unittest.TestCase):
+    """Finding 4: a scan blocks the Flask worker for up to `seconds + 30`
+    while rtl_power owns the dongle, but nothing said so -- is_listening()
+    was False and the nwr-listen synthetic token answered False right
+    through the sweep."""
+
+    def test_the_synthetic_token_answers_true_while_a_scan_is_claimed(self):
+        w = listener.is_active_wrapper(lambda u: False)
+        self.assertFalse(w("nwr-listen"))
+        listener._state["scanning"] = True
+        try:
+            self.assertTrue(w("nwr-listen"))
+        finally:
+            listener._state["scanning"] = False
+        self.assertFalse(w("nwr-listen"))
+
+    def test_start_is_rejected_while_a_scan_holds_the_claim(self):
+        listener._state["scanning"] = True
+        try:
+            with mock.patch.object(listener.sdr_rx, "missing_deps", lambda *a, **k: []):
+                result = listener.start(162550000,
+                                        popen=lambda *a, **k: _FakeProc())
+        finally:
+            listener._state["scanning"] = False
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "NWR_BUSY")
+        self.assertIn("scan", result["error"])
+        self.assertIsNone(listener._state["rtl"], "start() must not have "
+                          "spawned anything while the claim was held")
 
 
 if __name__ == "__main__":

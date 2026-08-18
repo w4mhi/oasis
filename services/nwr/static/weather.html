@@ -93,11 +93,19 @@ code.raw { font-size: var(--fs-micro); color: var(--text-dim); word-break: break
 // Every response body is consumed here, on every path. An unread body pins a
 // 2 MiB /dev/shm data pipe per request, which cost ~500 MB/h on a live station.
 async function api(url, opts) {
-  const r = await fetch(url, Object.assign({ cache: 'no-store' }, opts || {}));
-  const text = await r.text();
-  let data = null;
-  try { data = JSON.parse(text); } catch (_) { data = null; }
-  return { ok: r.ok, status: r.status, data: data };
+  try {
+    const r = await fetch(url, Object.assign({ cache: 'no-store' }, opts || {}));
+    const text = await r.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch (_) { data = null; }
+    return { ok: r.ok, status: r.status, data: data };
+  } catch (_) {
+    // A dropped connection or offline tab throws INSIDE fetch() itself,
+    // before there is a Response to read -- report it the same way as any
+    // other failed request instead of an uncaught rejection that would kill
+    // whichever poll() pass was in flight.
+    return { ok: false, status: 0, data: null };
+  }
 }
 
 function post(url, body) {
@@ -111,6 +119,7 @@ function post(url, body) {
 const $ = function (id) { return document.getElementById(id); };
 let CHANNELS = [];
 let listening = false;
+let polling = false;   // re-entrancy guard for poll() — see Finding 7
 
 function fmtTime(epoch) {
   if (!epoch) { return '-'; }
@@ -209,10 +218,19 @@ function renderAlerts(d) {
 }
 
 async function poll() {
-  const s = await api('/api/nwr/status');
-  if (s.data && s.data.ok) { renderStatus(s.data); }
-  const a = await api('/api/nwr/alerts?limit=50');
-  if (a.data && a.data.ok) { renderAlerts(a.data); }
+  // /api/nwr/status can sit behind a slow rtl_test call (Finding 6), which is
+  // long enough that the 5 s setInterval tick can fire again before the
+  // previous pass finished -- without this guard the two overlap forever.
+  if (polling) { return; }
+  polling = true;
+  try {
+    const s = await api('/api/nwr/status');
+    if (s.data && s.data.ok) { renderStatus(s.data); }
+    const a = await api('/api/nwr/alerts?limit=50');
+    if (a.data && a.data.ok) { renderAlerts(a.data); }
+  } finally {
+    polling = false;
+  }
 }
 
 $('listen').addEventListener('click', async function () {

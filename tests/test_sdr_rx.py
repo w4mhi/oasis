@@ -67,6 +67,87 @@ class SdrRxTest(unittest.TestCase):
         self.assertTrue(busy)
         self.assertEqual(holder, "dump1090-fa")
 
+    def test_stderr_summary_names_a_busy_dongle(self):
+        self.assertEqual(
+            sdr_rx.stderr_summary("usb_claim_interface error -6\n"),
+            "another service is already using the RTL-SDR dongle")
+
+    def test_stderr_summary_falls_back_to_the_last_line(self):
+        self.assertEqual(
+            sdr_rx.stderr_summary("first\nsecond\nno device found\n"),
+            "no device found")
+
+    def test_stderr_summary_of_nothing_says_so(self):
+        self.assertIn("no output", sdr_rx.stderr_summary(""))
+        self.assertIn("no output", sdr_rx.stderr_summary(None))
+
+
+class _FakeRtlTestResult:
+    def __init__(self, stdout="", stderr=""):
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+_ONE_DEVICE = ("Found 1 device(s):\n"
+              "  0:  Realtek, RTL2838UHIDIR, SN: 00000001\n")
+_NO_DEVICE = "No supported devices found.\n"
+
+
+class DonglePresentCacheTest(unittest.TestCase):
+    """Finding 6: /api/nwr/status polls every 5 s and both dashboards' health
+    checks call this too -- each dongle_present() call shells out to
+    `rtl_test -t` with a 6 s timeout, which can outlast index.html's own 4 s
+    health-check budget and paint the chip TIMEOUT/DOWN even though the
+    dongle is fine. Caching removes the repeated shell-outs; these tests
+    exercise the cache through its `now` injection point so they don't
+    depend on real wall-clock time."""
+
+    def setUp(self):
+        sdr_rx._reset_presence_cache()
+
+    def tearDown(self):
+        sdr_rx._reset_presence_cache()
+
+    def test_a_second_call_inside_the_window_does_not_reshell_out(self):
+        calls = []
+
+        def run(*a, **k):
+            calls.append(1)
+            return _FakeRtlTestResult(stdout=_ONE_DEVICE)
+
+        first = sdr_rx.dongle_present(run=run, now=1000.0)
+        second = sdr_rx.dongle_present(run=run, now=1010.0)   # +10s, inside 30s
+        self.assertTrue(first)
+        self.assertTrue(second)
+        self.assertEqual(len(calls), 1,
+                         "a cached answer must not re-invoke rtl_test")
+
+    def test_the_cache_expires_after_the_window(self):
+        calls = []
+
+        def run(*a, **k):
+            calls.append(1)
+            return _FakeRtlTestResult(stdout=_ONE_DEVICE)
+
+        sdr_rx.dongle_present(run=run, now=1000.0)
+        sdr_rx.dongle_present(run=run, now=1031.0)   # +31s, past 30s
+        self.assertEqual(len(calls), 2,
+                         "a stale answer must not survive past the cache window")
+
+    def test_an_unplug_is_seen_again_within_one_window(self):
+        # A cache that never re-probed would mask a real unplug forever --
+        # the whole point of a TTL is that "still cached" and "still true"
+        # cannot silently become the same thing.
+        answers = iter([_ONE_DEVICE, _NO_DEVICE])
+
+        def run(*a, **k):
+            return _FakeRtlTestResult(stdout=next(answers))
+
+        first = sdr_rx.dongle_present(run=run, now=2000.0)
+        second = sdr_rx.dongle_present(run=run, now=2031.0)
+        self.assertTrue(first)
+        self.assertFalse(second)
+
 
 if __name__ == "__main__":
     unittest.main()

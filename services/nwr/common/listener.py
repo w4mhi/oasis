@@ -52,11 +52,17 @@ CHUNK = 4096                 # ~11 reads/second at 44 KB/s — negligible on a P
 SUB_QUEUE_MAX = 64           # ~6 s of audio; past that a slow client just loses it
 REQUIRED_BINARIES = ("rtl_fm", "multimon-ng")
 
+# How long to wait after spawning before trusting rtl_fm actually claimed the
+# dongle. A busy dongle makes rtl_fm die on usb_claim_interface in ~100-200 ms;
+# 300 ms is comfortably past that without making every successful Listen click
+# feel laggy.
+STARTUP_CHECK_S = 0.3
+
 SYNTHETIC_UNIT = "nwr-listen"
 
 _lock = threading.Lock()
 _state = {"rtl": None, "mm": None, "channel_hz": None, "started": 0.0,
-          "subs": [], "last_error": None, "alerts_seen": 0}
+          "subs": [], "last_error": None, "alerts_seen": 0, "scanning": False}
 
 
 # ── Command construction (pure) ──────────────────────────────────────────────
@@ -132,15 +138,46 @@ def decode_lines(lines, on_header):
 # ── State ────────────────────────────────────────────────────────────────────
 
 def is_listening():
-    """True while we hold the dongle."""
+    """True while we hold the dongle for an actual capture session."""
     p = _state["rtl"]
     return p is not None and p.poll() is None
+
+
+def is_claimed():
+    """True whenever NWR holds the dongle for ANY reason -- a listen session
+    or an in-progress channel scan.
+
+    is_listening() alone undercounts: scan.run() blocks its Flask worker for
+    up to `seconds + 30` while rtl_power owns the dongle exclusively, but
+    that hold used to be invisible to every arbitration surface (is_listening(),
+    the nwr-listen synthetic token, the hardware console) because none of them
+    knew a scan was even running. This is the value all of those must see.
+    """
+    return is_listening() or bool(_state["scanning"])
+
+
+def scan_begin():
+    """Mark a channel scan as holding the dongle. Pairs with scan_end();
+    see is_claimed()."""
+    with _lock:
+        _state["scanning"] = True
+
+
+def scan_end():
+    """Release the scan claim. MUST run even when the sweep raised — callers
+    use try/finally, the same discipline stop() uses for the capture claim."""
+    with _lock:
+        _state["scanning"] = False
 
 
 def is_active_wrapper(base_is_active=None):
     """Wrap systemctl is-active so the SYNTHETIC "nwr-listen" unit is answered
     from our own capture state — the bridge that lets the conflict engine see
     NWR as a dongle claimant even though it is not a systemd unit.
+
+    Answers from is_claimed(), not is_listening(): a scan holds the dongle
+    exactly as exclusively as a listen session does, and every consumer of
+    this token (console, kiosk pill) needs to see that too.
 
     Chains: pass the next wrapper (or the default) as `base_is_active`.
     """
@@ -150,7 +187,7 @@ def is_active_wrapper(base_is_active=None):
 
     def _wrapped(unit):
         if unit == SYNTHETIC_UNIT:
-            return is_listening()
+            return is_claimed()
         return base_is_active(unit)
     return _wrapped
 
@@ -218,33 +255,56 @@ def unsubscribe(q):
 # ── Session lifecycle ────────────────────────────────────────────────────────
 
 def start(channel_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, device_serial=None,
-          on_header=None, popen=subprocess.Popen):
+          on_header=None, popen=subprocess.Popen, startup_check_s=STARTUP_CHECK_S):
     """Start a listening session. {"ok": bool, "error": str|None}.
 
     `popen` is injectable so the lifecycle can be tested without a radio.
+    `startup_check_s` is injectable so tests don't pay STARTUP_CHECK_S in
+    real wall-clock time.
 
     rtl_fm and multimon-ng are spawned as a pair. If rtl_fm comes up but
     multimon-ng then fails to spawn, the already-running rtl_fm is killed
     and reaped before this returns — an orphaned rtl_fm would hold the
     dongle forever, invisible to stop()/status() because it was never
     recorded in _state.
+
+    A spawn that succeeds is not a claim that succeeded: a dongle already
+    held by another service makes rtl_fm print usb_claim_interface and exit
+    in ~100-200 ms. Popen() returning is silent about that, so this also
+    waits `startup_check_s` and checks rtl_fm is still alive before
+    declaring victory (Finding 3).
     """
     rtl = mm = None
     error = None
     with _lock:
-        if is_listening():
-            return {"ok": False, "error": "already listening",
+        if is_claimed():
+            if is_listening():
+                return {"ok": False, "error": "already listening",
+                        "code": "NWR_BUSY"}
+            return {"ok": False, "error": "a channel scan is in progress",
                     "code": "NWR_BUSY"}
         missing = sdr_rx.missing_deps(REQUIRED_BINARIES)
         if missing:
             return {"ok": False, "error": f"not installed: {', '.join(missing)}",
                     "code": "NWR_MISSING_DEPS"}
         try:
+            # stderr=PIPE, not DEVNULL: a busy-dongle failure is otherwise
+            # thrown away, leaving the operator staring at a start that
+            # silently reverted with no reason given anywhere.
             rtl = popen(rtl_command(channel_hz, gain, ppm, device_serial),
-                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # NEITHER text=True NOR bufsize=1: pump() writes rtl_fm's raw
+            # bytes into mm.stdin, and text=True turns that into a
+            # TextIOWrapper that raises TypeError on the first chunk (an
+            # exception pump() does not catch, which silently kills the
+            # decode thread and leaves the page reading "LISTENING" forever
+            # with no audio and no error — Finding 1). bufsize=0 would trade
+            # that for a raw FileIO.write() that can short-write and
+            # truncate audio into the demodulator; the default buffered
+            # writer (bufsize omitted) loops on partial pipe writes on its
+            # own, which is what's wanted here.
             mm = popen(multimon_command(), stdin=subprocess.PIPE,
-                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                       text=True, bufsize=1)
+                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         except OSError as e:
             error = str(e)
             _state["last_error"] = error
@@ -260,6 +320,25 @@ def start(channel_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, device_serial=None,
         _terminate(mm)
         return {"ok": False, "error": error, "code": "NWR_START_FAILED"}
 
+    rtl_stderr = {"text": ""}
+    threading.Thread(target=_drain_stderr, args=(rtl, rtl_stderr), daemon=True,
+                     name="nwr-rtl-stderr").start()
+
+    # Outside the lock, same reasoning as the error-path terminate above:
+    # this is a deliberate wait, and nothing else needs _lock held for it.
+    time.sleep(startup_check_s)
+    if rtl.poll() is not None:
+        with _lock:
+            if _state["rtl"] is rtl:
+                _state.update({"rtl": None, "mm": None, "channel_hz": None,
+                               "started": 0.0})
+        _terminate(rtl)
+        _terminate(mm)
+        summary = sdr_rx.stderr_summary(rtl_stderr["text"])
+        with _lock:
+            _state["last_error"] = summary
+        return {"ok": False, "error": summary, "code": "NWR_START_FAILED"}
+
     def _count(parsed):
         with _lock:
             _state["alerts_seen"] += 1
@@ -271,6 +350,24 @@ def start(channel_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, device_serial=None,
     threading.Thread(target=_decoder, args=(mm, _count), daemon=True,
                      name="nwr-decode").start()
     return {"ok": True, "error": None}
+
+
+def _drain_stderr(proc, buf, keep=4096):
+    """Continuously drain a process's stderr into `buf["text"]` (bounded to
+    the last `keep` chars).
+
+    Nobody reading a process's stderr pipe eventually fills the OS pipe
+    buffer (64 KB on Linux) and blocks every future write to it — rtl_fm
+    would then look "running" forever (poll() is None) while producing no
+    audio, which is worse than the dongle-busy failure this exists to
+    surface. Runs as a daemon thread; ends on its own once `proc`'s stderr
+    closes (the process exited).
+    """
+    try:
+        for chunk in iter(lambda: proc.stderr.read(1024) or b"", b""):
+            buf["text"] = (buf["text"] + chunk.decode("ascii", "replace"))[-keep:]
+    except (OSError, ValueError):
+        pass
 
 
 def _terminate(proc, timeout=5):
@@ -329,7 +426,13 @@ def _reader(rtl, mm):
 
 def _decoder(mm, on_header):
     try:
-        decode_lines(mm.stdout, on_header)
+        # mm.stdout is a raw byte stream (see start() — no text=True), so
+        # decode each line here, at the point of ingestion. same.parse_header()
+        # and decode_lines() stay pure str functions unchanged, and every
+        # existing test that feeds them str lists still exercises the same
+        # grammar code this decodes into.
+        lines = (raw.decode("ascii", "replace") for raw in mm.stdout)
+        decode_lines(lines, on_header)
     finally:
         with _lock:
             if _state["mm"] is mm:

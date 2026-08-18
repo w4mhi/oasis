@@ -6,7 +6,7 @@ import unittest
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
-from services.nwr.common import scan  # noqa: E402
+from services.nwr.common import listener, scan  # noqa: E402
 
 # rtl_power CSV: date, time, low, high, step, samples, then one dBm per bin.
 # 162.390 -> 162.560 in 5 kHz steps = 34 bins. WX7 (162.550) is the strongest.
@@ -159,6 +159,48 @@ class RunTest(unittest.TestCase):
         self.assertEqual(result["powers"], {})
         self.assertIsNone(result["best_hz"])
         self.assertIsNone(result["best_dbm"])
+
+
+class ScanArbitrationTest(unittest.TestCase):
+    """Finding 4: run() blocks its Flask worker for up to `seconds + 30` while
+    rtl_power owns the dongle, but nothing reported NWR as a claimant during
+    that window -- a concurrent /api/nwr/listen would pass every gate and
+    spawn an rtl_fm that instantly lost the tuner it never actually held."""
+
+    def setUp(self):
+        self._saved = dict(listener._state)
+
+    def tearDown(self):
+        listener._state.clear()
+        listener._state.update(self._saved)
+
+    def test_the_dongle_reads_claimed_for_the_duration_of_the_sweep(self):
+        seen = {}
+
+        def runner(*a, **k):
+            seen["during"] = listener.is_claimed()
+            return _FakeResult(returncode=0, stdout=CSV, stderr="")
+
+        self.assertFalse(listener.is_claimed())
+        scan.run(runner=runner)
+        self.assertTrue(seen.get("during"), "the sweep must be visible to "
+                        "is_claimed() while it is actually running")
+        self.assertFalse(listener.is_claimed(), "the claim must be released "
+                         "once the sweep ends")
+
+    def test_the_claim_clears_even_when_the_runner_raises(self):
+        def runner(*a, **k):
+            raise subprocess.TimeoutExpired(cmd="rtl_power", timeout=40)
+
+        scan.run(runner=runner)
+        self.assertFalse(listener.is_claimed())
+
+    def test_the_claim_clears_even_when_rtl_power_is_missing(self):
+        def runner(*a, **k):
+            raise FileNotFoundError("no rtl_power")
+
+        scan.run(runner=runner)
+        self.assertFalse(listener.is_claimed())
 
 
 if __name__ == "__main__":

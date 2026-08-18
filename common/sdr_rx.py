@@ -17,6 +17,8 @@ capture path is untouched by construction, not by care.
 """
 import shutil
 import subprocess
+import threading
+import time
 
 
 def mhz_to_hz(freq_mhz):
@@ -48,15 +50,75 @@ def stream_encoder(srate, which=shutil.which):
     return (None, None)
 
 
-def dongle_present(run=None):
-    """True if `rtl_test -t` reports at least one RTL-SDR device (Pi/Linux only)."""
-    run = run or subprocess.run
+# `rtl_test -t` takes up to 6 s; NWR's weather page polls /api/nwr/status
+# every 5 s and both dashboards' health checks call this too (satellites has
+# the identical pattern), so an unthrottled probe could outlast index.html's
+# own 4 s health-check budget and paint the chip TIMEOUT/DOWN with a dongle
+# that is actually fine. 30 s is short enough that an unplugged dongle is
+# never masked for more than one health-check cycle or two, and long enough
+# that a Pi 3 isn't shelling out to rtl_test 3+ times a minute per open
+# dashboard tab.
+_PRESENCE_TTL_S = 30
+_presence_lock = threading.Lock()
+_presence_state = {"t": None, "present": False}
+
+
+def _reset_presence_cache():
+    """Test hook: forget the cached answer so the next dongle_present() call
+    re-probes unconditionally."""
+    with _presence_lock:
+        _presence_state["t"] = None
+
+
+def dongle_present(run=None, now=None):
+    """True if `rtl_test -t` reports at least one RTL-SDR device (Pi/Linux only).
+
+    Cached process-locally for _PRESENCE_TTL_S (see above) — NOT shared across
+    processes. gunicorn runs this app as a single worker (--workers 1, see
+    scripts/start-server.sh), so in practice there is only ever one cache to
+    be surprised by; a future multi-worker deployment would just see each
+    worker re-probe independently, not a correctness bug.
+
+    `now` is a parameter (default time.time()) so the cache is testable
+    without sleeping for real; `run` is unrelated to caching — it is the
+    existing subprocess.run injection point for tests.
+    """
+    now = time.time() if now is None else now
+    with _presence_lock:
+        cached_t = _presence_state["t"]
+        if cached_t is not None and (now - cached_t) < _PRESENCE_TTL_S:
+            return _presence_state["present"]
+    run_fn = run or subprocess.run
     try:
         from common.hardware_detect import parse_rtl_test_devices
-        r = run(["rtl_test", "-t"], capture_output=True, text=True, timeout=6)
-        return bool(parse_rtl_test_devices((r.stdout or "") + "\n" + (r.stderr or "")))
+        r = run_fn(["rtl_test", "-t"], capture_output=True, text=True, timeout=6)
+        present = bool(parse_rtl_test_devices((r.stdout or "") + "\n" + (r.stderr or "")))
     except Exception:                                   # noqa: BLE001
-        return False
+        present = False
+    with _presence_lock:
+        _presence_state["t"] = now
+        _presence_state["present"] = present
+    return present
+
+
+def stderr_summary(stderr):
+    """A short, actionable line for an `error` field, not a stderr dump.
+
+    Shared by NWR's scan.py (rtl_power) and listener.py (rtl_fm) — both wrap
+    the same rtl-sdr tools, both fail the same way, and both used to carry
+    their own copy of this. A busy dongle's failure text is often multi-line
+    and noisy; only the last non-blank line usually names the actual cause.
+    `usb_claim_interface` is called out by name because a busy dongle --
+    another service already holding it -- is the recurring failure mode on
+    this hardware, and the generic last line ("usb_claim_interface error -6")
+    means nothing to an operator who isn't reading libusb source.
+    """
+    text = (stderr or "").strip()
+    if "usb_claim_interface" in text:
+        return "another service is already using the RTL-SDR dongle"
+    if not text:
+        return "the process exited with an error and produced no output"
+    return text.splitlines()[-1].strip()[:200]
 
 
 def dongle_busy(inv, is_active, service):
