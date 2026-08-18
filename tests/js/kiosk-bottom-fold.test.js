@@ -55,6 +55,38 @@ function header(cardClass) {
   return page.slice(hd, page.indexOf('</div>\n', hd));
 }
 
+// The stylesheet, so an @media mentioned in a JS comment cannot be mistaken for
+// a rule.
+function stylesheet() {
+  const a = page.indexOf('<style>');
+  const b = page.indexOf('</style>', a);
+  assert.ok(a !== -1 && b > a, 'no stylesheet');
+  return page.slice(a, b);
+}
+
+test('the small-panel block is the last thing in the stylesheet', () => {
+  // This is not tidiness. Nearly every rule in that block is a BARE-CLASS
+  // override of something defined above it, so it wins on source order alone.
+  // It shipped ~250 lines above `.sats{ width:calc(28rem + 100px) }` and lost:
+  // the open sat card kept its 1920 width, 464px of a 769px row — 60% — with
+  // every other part of the fold behaving exactly as designed.
+  const css = stylesheet();
+  const query = css.indexOf('@media (max-width:1100px){');
+  assert.notStrictEqual(query, -1, 'the small-panel query is not in the stylesheet');
+  for (const base of ['.sats{ flex:none;', '.row.bot{ flex:1 1 auto;', '.foldpill{ display:none;']) {
+    const at = css.indexOf(base);
+    assert.notStrictEqual(at, -1, 'base rule vanished: ' + base);
+    assert.ok(at < query,
+      base + ' is declared AFTER the small-panel query — at equal specificity it ' +
+      'wins, and the small panel silently keeps the desktop value');
+  }
+  // Nothing but whitespace may follow it, or the next rule added has the same
+  // problem in reverse.
+  const after = css.slice(css.indexOf('}', css.lastIndexOf('}')) + 1);
+  assert.strictEqual(after.trim(), '',
+    'a rule was added after the small-panel block — move it inside, or above');
+});
+
 test('the fold applies only below 1100px', () => {
   const small = smallScreenBlock();
   for (const rule of ['.row.bot{ flex-direction:column; }', '.sats{ width:auto; }']) {

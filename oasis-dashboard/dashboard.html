@@ -347,63 +347,6 @@
      stats bar below its single-line width so it wrapped and stole a line of
      vertical space on the screen that has the least of it. Trimming the padding
      and the gaps gives that width back; nothing here changes at 1920x1200. */
-  @media (max-width:1100px){
-    .sysrow{ gap:.5rem; }
-    .upill{ padding:.3rem .7rem; letter-spacing:.02em; }
-    .sysbar{ padding:.45rem .8rem; gap:.25rem .4rem; }
-
-    /* ── TRAFFIC / SAT accordion ───────────────────────────────────────────
-       At 800x480 the root font is pinned to its 13px floor while .sats carries
-       a FIXED +100px, measured against 1920x1200. Side by side that leaves the
-       traffic list ~305px — its callsign column ellipsises at ~51px and its
-       header wraps to three lines before a single row draws. So on this panel
-       the two cards stack and exactly one is open; the other keeps reporting
-       from a one-line strip.
-       Card order never changes: traffic is always above satellites, whichever
-       is open. A pane that jumps to the top when you tap it is a pane you have
-       to re-find every time.
-       No transition anywhere in here. An animated fold on this screen is a
-       Chromium renderer at 60fps for its duration, on a Pi that is already
-       painting a map. */
-    .row.bot{ flex-direction:column; }
-    /* The sat header gains a pill; traffic's already wraps. Without this the
-       pill is the item that gets clipped off the right edge, and the control
-       that swaps panes is the one thing on this row that must never be the
-       casualty. */
-    .sats .hd{ flex-wrap:wrap; row-gap:.4rem; }
-    .sats{ width:auto; }                    /* the +100px was a 1920 measurement */
-    /* Load-bearing. A flex item defaults to min-height:auto, which in a COLUMN
-       means the open card cannot shrink below its own content: the list would
-       push the row past the 480px viewport and body{overflow:hidden} would clip
-       it — no scrollbar, no symptom, just rows that are not there. Sideways this
-       never came up, because the row bounded the cards' height for free. */
-    .row.bot .card{ min-height:0; }
-
-    /* The folded card leaves the screen entirely — no strip, no border, no row
-       gap. Its headline is carried by the pill in the surviving header, and its
-       DOM keeps rendering behind display:none so that pill cannot go stale. */
-    .row.bot[data-open="traffic"] .sats,
-    .row.bot[data-open="sat"] .traffic{ display:none; }
-
-    /* the open card takes the whole row, and its pill appears in its header */
-    .row.bot[data-open="traffic"] .traffic,
-    .row.bot[data-open="sat"] .sats{ flex:1 1 auto; }
-    .row.bot[data-open="traffic"] .traffic .foldpill,
-    .row.bot[data-open="sat"] .sats .foldpill{ display:inline-flex; }
-
-    /* Two birds abreast — but auto-fit, not a fixed 1fr 1fr. With a fixed pair
-       of tracks a LONE bird sits in the left half of a 769px card with nothing
-       beside it, which is the shape that reads as "this list is not using the
-       width". auto-fit collapses the empty track and the single card stretches.
-       20rem is the floor a .sat block needs before its l1 line (name · AOS ·
-       countdown) starts colliding.
-       align-content:start keeps a short list at the top instead of floating it
-       in the middle of the pane. */
-    .row.bot[data-open="sat"] .satscroll{
-      display:grid; grid-template-columns:repeat(auto-fit, minmax(20rem, 1fr));
-      gap:0 .5rem; align-content:start; }
-  }
-
   /* ── SDR service bar — dot + label per RTL consumer, side to side ─────── */
   .svcbar{ display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
     gap:.3rem .9rem; padding:.4rem 1rem; border-radius:.8rem;
@@ -905,6 +848,73 @@
         background:rgba(53,208,160,.08); border-radius:.6rem; padding:.45rem 1.3rem; cursor:pointer; }
   .refresh-btn{ color:var(--blue); border-color:var(--blue); background:rgba(92,184,255,.08); }
   .refresh-btn:active{ background:rgba(92,184,255,.18); }
+  /* ── SMALL PANELS (7-inch, 800x480) ───────────────────────────────────────
+     THIS BLOCK MUST STAY LAST IN THE STYLESHEET. Nearly everything in it is a
+     bare-class override of a rule defined above (.sats, .row.bot, .hd), so it
+     wins on SOURCE ORDER, not specificity. It used to sit ~250 lines ABOVE
+     `.sats{ width:calc(28rem + 100px) }` — same specificity, later declaration
+     wins — so the open sat card kept the width it was given for a 1920 panel:
+     464px of a 769px row, 60%, while behaving exactly as intended in every
+     other respect. Nothing failed. A card was simply the wrong size, which is
+     the kind of bug you only find by looking at the glass.
+     Anything added BELOW this block that a small panel must override has the
+     same problem in reverse. Small-screen rules go HERE. */
+  @media (max-width:1100px){
+    .sysrow{ gap:.5rem; }
+    .upill{ padding:.3rem .7rem; letter-spacing:.02em; }
+    .sysbar{ padding:.45rem .8rem; gap:.25rem .4rem; }
+
+    /* ── TRAFFIC / SAT accordion ───────────────────────────────────────────
+       At 800x480 the root font is pinned to its 13px floor while .sats carries
+       a FIXED +100px, measured against 1920x1200. Side by side that leaves the
+       traffic list ~305px — its callsign column ellipsises at ~51px and its
+       header wraps to three lines before a single row draws. So on this panel
+       only one of the two is on screen; the folded one keeps reporting from a
+       pill in the surviving header.
+       Card order never changes: traffic is always above satellites, whichever
+       is open. A pane that jumps to the top when you tap it is a pane you have
+       to re-find every time.
+       No transition anywhere in here. An animated fold on this screen is a
+       Chromium renderer at 60fps for its duration, on a Pi that is already
+       painting a map. */
+    .row.bot{ flex-direction:column; }
+    /* The sat header gains a pill; traffic's already wraps. Without this the
+       pill is the item that gets clipped off the right edge, and the control
+       that swaps panes is the one thing on this row that must never be the
+       casualty. */
+    .sats .hd{ flex-wrap:wrap; row-gap:.4rem; }
+    .sats{ width:auto; }                    /* the +100px was a 1920 measurement */
+    /* Load-bearing. A flex item defaults to min-height:auto, which in a COLUMN
+       means the open card cannot shrink below its own content: the list would
+       push the row past the 480px viewport and body{overflow:hidden} would clip
+       it — no scrollbar, no symptom, just rows that are not there. Sideways this
+       never came up, because the row bounded the cards' height for free. */
+    .row.bot .card{ min-height:0; }
+
+    /* The folded card leaves the screen entirely — no strip, no border, no row
+       gap. Its headline is carried by the pill in the surviving header, and its
+       DOM keeps rendering behind display:none so that pill cannot go stale. */
+    .row.bot[data-open="traffic"] .sats,
+    .row.bot[data-open="sat"] .traffic{ display:none; }
+
+    /* the open card takes the whole row, and its pill appears in its header */
+    .row.bot[data-open="traffic"] .traffic,
+    .row.bot[data-open="sat"] .sats{ flex:1 1 auto; }
+    .row.bot[data-open="traffic"] .traffic .foldpill,
+    .row.bot[data-open="sat"] .sats .foldpill{ display:inline-flex; }
+
+    /* Two birds abreast — but auto-fit, not a fixed 1fr 1fr. With a fixed pair
+       of tracks a LONE bird sits in the left half of a 769px card with nothing
+       beside it, which is the shape that reads as "this list is not using the
+       width". auto-fit collapses the empty track and the single card stretches.
+       20rem is the floor a .sat block needs before its l1 line (name · AOS ·
+       countdown) starts colliding.
+       align-content:start keeps a short list at the top instead of floating it
+       in the middle of the pane. */
+    .row.bot[data-open="sat"] .satscroll{
+      display:grid; grid-template-columns:repeat(auto-fit, minmax(20rem, 1fr));
+      gap:0 .5rem; align-content:start; }
+  }
 </style>
 
 <div class="kiosk">
