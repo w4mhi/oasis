@@ -847,6 +847,7 @@
         <span class="s"><span class="dot" id="dot-adsb"></span>ADS-B</span>
         <span class="s"><span class="dot" id="dot-owrx"></span>ORX</span>
         <span class="s"><span class="dot" id="dot-sat"></span>SAT</span>
+        <span class="s"><span class="dot" id="dot-wx"></span>WX</span>
       </div>
     </div>
   </div>
@@ -1296,6 +1297,12 @@ const SDR_SVCS = [
   { id:'adsb', hw:'adsb',       unit:'dump1090-fa',    daemon:true },
   { id:'owrx', hw:'openwebrx',  unit:null,             daemon:true },  // no OASIS unit → can't detect "in use"
   { id:'sat',  hw:'satellites', unit:null,             daemon:false },
+  // Weather Radio. Labelled WX, not NWR, to match the alert badge and the
+  // listen pill already on this screen. daemon:true is literal here — the watch
+  // is a real unit that holds its dongle continuously, so "in use" IS "active".
+  // Its `enabled` is `disabled` by design (the assignment is the trigger and
+  // boot_start_plan starts it), and nothing below reads `enabled`.
+  { id:'wx',   hw:'nwr',        unit:'oasis-nwr',      daemon:true },
 ];
 async function isUnitActive(unit) {
   if (!unit) return false;
