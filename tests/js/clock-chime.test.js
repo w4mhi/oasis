@@ -211,6 +211,13 @@ test('parts are read off one Date, UTC and local kept apart', () => {
   const page = fs.readFileSync(
     path.join(__dirname, '..', '..', 'oasis-dashboard', 'dashboard.html'), 'utf8');
 
+  // A rule body, anchored on a WHOLE selector at the start of its line.
+  const rule = (sel) => {
+    const at = page.indexOf('\n  ' + sel + '{');
+    assert.notStrictEqual(at, -1, 'no rule for ' + sel);
+    return page.slice(at, page.indexOf('}', at) + 1);
+  };
+
   test('the hour bell sits immediately left of the reload glyph', () => {
     const group = page.slice(page.indexOf('<div class="clk-tools">'));
     const end = group.indexOf('</div>');
@@ -233,37 +240,28 @@ test('parts are read off one Date, UTC and local kept apart', () => {
     assert.ok(!/\.clk-refresh\{ position:absolute/.test(page), '.clk-refresh still positions itself');
   });
 
-  test('both corner glyphs are drawn, at one shared size', () => {
-    // The reload was a typed glyph at font-size:2.4rem. An em is not a mark —
-    // how much of it the font inks is the font's business — so it could not be
-    // compared with an SVG box, let alone matched to one. Both are boxes now.
-    assert.match(page, /--clk-glyph:[\d.]+rem;/, 'the shared glyph size is gone');
-    assert.match(page,
-      /\.clk-bell svg, \.clk-refresh svg\{ height:var\(--clk-glyph\); width:auto;/,
-      'both glyphs must take the shared height');
-    assert.ok(!/\.clk-refresh\{[^}]*font-size/.test(page),
-      'the reload is sized by font-size again — that is an em, not a glyph');
-    assert.match(page, /id="clk-refresh"[^>]*><svg viewBox="0 0 24 24"/,
-      'the reload must be inline SVG');
+  test('the reload stays a big typed glyph, on purpose', () => {
+    // It was redrawn as a 1.3rem inline SVG to match the bell exactly. On the
+    // 800x480 panel that is 17px of ink, and it was untouchable -- a finger
+    // finds INK, not a bounding box it cannot see. The hit box was there; it
+    // did not help. So the two corner controls are deliberately NOT the same
+    // size, and the bell grew toward the reload instead.
+    assert.match(page, /id="clk-refresh"[^>]*>&#8635;<\/button>/,
+      'the reload must stay a typed glyph — the drawn one was too small to hit');
+    assert.match(rule('.clk-refresh'), /font-size:2\.4rem/,
+      'it is big because it has to be findable at arm\'s length');
+    assert.ok(!/--clk-glyph/.test(page),
+      'a shared size implies the two should match, and they should not');
   });
 
-  test('sizing by height is what retires the wide bell\'s magic number', () => {
+  test('the bell is sized by height, which is what fixes its wide state', () => {
     // The bell+voice glyph has a 32-wide viewBox against everything else's 24.
     // width:auto lets the aspect ratio do that arithmetic, so its INK weighs the
-    // same as its neighbours instead of matching a number somebody measured once.
+    // same in both states instead of matching a number somebody measured once.
+    assert.match(rule('.clk-bell svg'), /height:1\.6rem; width:auto/,
+      'the bell must be sized by height');
     assert.ok(!/\.clk-bell\.wide svg\{/.test(page),
       'the hardcoded 1.75rem width is back; height + width:auto covers it');
-  });
-
-  test('the reload is as easy to hit as the bell beside it', () => {
-    // It had .1rem of padding against the bell's finger-sized box. On a panel
-    // that is tapped rather than clicked, that gap mattered more than the size
-    // difference did — and shrinking the glyph to match would have made it worse.
-    const reload = page.slice(page.indexOf('.clk-refresh{'));
-    const body = reload.slice(0, reload.indexOf('}'));
-    assert.match(body, /min-width:2\.75rem; min-height:2\.75rem/,
-      'the reload must carry the same ~2.75rem target as the bell');
-    assert.match(body, /padding:\.5rem \.6rem/, 'same padding as the bell, too');
   });
 
   test('a thumb in the gap between them does not repaint the clock', () => {
