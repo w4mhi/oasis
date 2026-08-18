@@ -580,7 +580,7 @@
     "nwr": {
       "type": "apt",
       "bundle_group": "nwr",
-      "description": "NOAA Weather Radio SAME/EAS decode. multimon-ng demodulates the SAME header out of a 162 MHz NBFM stream; the parser and its tables are vendored in-repo, so there is nothing to install on the Python side.",
+      "description": "NOAA Weather Radio SAME/EAS decode, run by the always-on oasis-nwr watch daemon (127.0.0.1:8089). multimon-ng demodulates the SAME header out of a 162 MHz NBFM stream fed by rtl_fm, and rtl_power (the rtl-sdr group) sweeps the band to pick the channel; the parser and its tables are vendored in-repo, so there is nothing to install on the Python side. Listening in on the watch also wants an MP3 encoder (ffmpeg, or sox with libsox-fmt-mp3) - without one the decode still runs and only the audio stream is unavailable.",
       "packages": {
         "common": ["multimon-ng"]
       },

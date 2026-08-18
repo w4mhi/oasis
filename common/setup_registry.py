@@ -422,10 +422,12 @@ FEATURE_HELP = {
         "over the dongle, so starting it stops the APRS SDR feed and "
         "OpenWebRX.",
     "nwr":
-        "NOAA Weather Radio with SAME/EAS decode. Listen to a 162 MHz weather "
-        "channel on an RTL-SDR and decode official National Weather Service "
-        "alerts - event code and counties - with no internet. Manual: you start "
-        "a listening session, so it shares the dongle rather than holding it.",
+        "NOAA Weather Radio with SAME/EAS decode. Assigning an RTL-SDR to nwr "
+        "starts an always-on watch (the oasis-nwr service): it picks the "
+        "strongest of the seven 162 MHz channels and decodes official National "
+        "Weather Service alerts - event code and counties - with no internet. "
+        "The watch HOLDS that dongle until you release it, so nothing else can "
+        "use it meanwhile; releasing the dongle stops the watch.",
     "satellites":
         "Offline satellite pass prediction with a world map, roster, "
         "downlink frequencies, and pass alerts. Install if you work the "

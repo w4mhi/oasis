@@ -26,6 +26,7 @@ This document covers everything needed to deploy, configure, and maintain OASIS.
 - [OpenWebRX (SIGINT)](#openwebrx-sigint)
 - [ADS-B Aircraft](#ads-b-aircraft)
 - [Satellites](#satellites)
+- [NOAA Weather Radio (SAME/EAS)](#noaa-weather-radio-sameeas)
 - [Speech (Piper voice)](#speech-piper-voice)
 - [GPS time sync (gpsd + chrony)](#gps-time-sync-gpsd--chrony)
 - [GPS L76X HAT (Waveshare)](#gps-l76x-hat-waveshare)
@@ -70,6 +71,7 @@ Units OASIS writes itself live under `/etc/systemd/system/`:
 | webssh / browser terminal | `/etc/systemd/system/webssh.service` |
 | RTL-SDR APRS feed | `/etc/systemd/system/aprs-sdr-feed.service` |
 | ADS-B recorder + history API | `/etc/systemd/system/adsb-api.service` |
+| NOAA Weather Radio watch (SAME/EAS) | `/etc/systemd/system/oasis-nwr.service` |
 | RGB Cooling HAT | `/etc/systemd/system/rgb-cooling-hat.service` |
 | Argon ONE fan | `/etc/systemd/system/argon-fan.service` |
 | GeeekPi case (fan + OLED) | `/etc/systemd/system/geek-pi-case.service` |
@@ -2045,6 +2047,194 @@ passes from the `max NN°` on each card.
 > Satellites is served by the main OASIS server on **:8083** — no separate port.
 > Pass prediction is Pi-cheap; the live-audio capture needs an RTL-SDR (Pi/Linux
 > only) and momentary sole use of the dongle.
+
+---
+
+## NOAA Weather Radio (SAME/EAS)
+
+An always-on watch on the seven NOAA Weather Radio channels (162.400 –
+162.550 MHz). An RTL-SDR feeds `rtl_fm` into `multimon-ng`, which demodulates
+the **SAME** (Specific Area Message Encoding) header that prefixes every
+National Weather Service alert. OASIS parses the header offline — event code,
+issuing office, county FIPS list, issue and expiry times — plots the affected
+counties on the traffic map, and can speak the alert aloud. No internet, no
+NWS API, no subscription: the alert arrives by radio the way it was designed to.
+
+### It is a watch, not a session
+
+**Assigning a dongle to `nwr` in the [Service Operations console](#service-operations-console-hardware-assignment)
+is the whole start action, and it holds that dongle until you take it away.**
+Releasing the device stops the watch. This is the opposite of the first version,
+where the operator pressed *Listen* and the capture lived inside Flask; an alert
+you miss because nobody pressed a button is worth very little, and a capture that
+dies with a web-server restart or does not come back after a reboot is not a
+watch.
+
+So the Weather Radio page has **no Listen, Stop or Scan button**. It pins a
+channel, listens in on the audio the daemon is already producing, and shows the
+decode log.
+
+### Units
+
+- **`oasis-nwr`** — the watch. Sweeps the band with `rtl_power`, keeps the
+  strongest channel, runs `rtl_fm | multimon-ng -a EAS` continuously, records
+  every alert, and serves status, audio and a retune notification on
+  `127.0.0.1:8089`. Written by the installer but **not enabled** by it — the
+  hardware assignment is what starts and enables it, so the station comes back
+  after a power cut in the state you left it.
+
+The OASIS web server only reads: it has no encoder, no capture, and never writes
+the alert store. `configuration/nwr-alerts.json` has exactly one writer, because
+two read-modify-write processes lose records under precisely the conditions that
+matter — several counties, several messages, close together.
+
+### Install
+
+```bash
+python3 services/nwr/install.py
+```
+
+Or tick **`nwr`** in the setup wizard (`python3 setup-oasis.py`) or on the
+browser Setup page. It needs the `rtl-sdr` feature (for `rtl_fm` and
+`rtl_power`) and `multimon-ng`, which comes from apt — so the install itself
+wants internet once, unless `multimon-ng` is in your offline bundle. The SAME
+parser and its county tables are vendored in-repo; there is nothing to install
+on the Python side.
+
+```bash
+python3 services/nwr/install.py --serve   # run the watch in the foreground (dev)
+```
+
+### Configuration
+
+`configuration/nwr.json`, written from the Weather Radio page:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `pinned_channel` | `null` | `null` lets the watch pick the strongest channel; set it to hold one. |
+| `channel_hz` | `162550000` | The channel in force (WX7 is the most commonly assigned). |
+| `gain` | `"auto"` | Tuner gain. `auto` means *omit `-g`* — see the debug block below. |
+| `ppm` | `0` | Crystal correction. |
+| `watch_fips` | `[]` | County FIPS codes you care about. **Empty means everything.** |
+| `bell` | `false` | Speak matched alerts aloud. Opt-in. |
+
+The bell is off by default and honours the station-wide quiet hours in
+`common/quiet-hours.json` (22:00 – 07:00 local by default), with an override
+that expires by itself at the next window end — a stormy night is a night, not a
+change of policy. There is deliberately **no severity filter**: turning the bell
+on means you hear the Required Weekly Test too, and that weekly announcement is
+the only regular proof that demodulation, parsing, county matching and speech
+all still work.
+
+### Debug — the watch says it is running but I hear nothing
+
+`oasis-nwr` is `active (running)` long before it is *decoding*, and the two
+failure signatures below both hit this station for real. Each one reports
+healthy everywhere except in the audio.
+
+**Start with the one-command read** (from the Pi, or any device on the LAN):
+
+```bash
+curl -s http://<pi-ip>:8083/api/nwr/status | python3 -m json.tool
+```
+- **Healthy:** `"reachable": true`, `"phase": "listening"`, a `channel` such as
+  `"WX7"`, and `last_decode` advancing over the hours. `"alerts_seen": 0` on a
+  quiet week is normal — the Required Weekly Test is often the only traffic.
+- **Broken:** `"reachable": false` with a `detail` = the daemon is not running
+  (`systemctl status oasis-nwr`). `"phase": "retrying"` with `retry_in_s`
+  counting down and a `last_error` = it cannot get the dongle; read the error.
+  `"phase": "retuning"` or `"retune_pending": true` is **not** a fault — it is
+  the deliberate gap while a channel you just pinned takes effect.
+
+> `ok: true` on this endpoint means the request succeeded, not that the watch is
+> well. "The watch is not running" is an answer, and it arrives with `ok: true`
+> and `watch.reachable: false`. Branch on `reachable` and `phase`, never on `ok`.
+
+**Signature 1 — another service already holds the dongle.**
+
+```bash
+journalctl -u oasis-nwr -e | grep -i "usb_claim_interface\|Failed to open"
+```
+- **Healthy:** nothing, and the log shows `Tuner gain set to automatic.` followed
+  by silence (a working capture logs nothing per-sample).
+- **Broken:** `usb_claim_interface error -6` — the RTL-SDR is open in another
+  process. **This appears within 100–200 ms of spawn**, so a check that only asks
+  "did the process start" sees a healthy start and a dead radio. Find the holder
+  and take the device away from it, or fit a second dongle:
+  ```bash
+  systemctl is-active dump1090-fa aprs-sdr-feed openwebrx oasis-nwr   # the other SDR claimants
+  curl -s http://localhost:8083/api/hardware/console | python3 -m json.tool | head -40
+  ```
+  `dump1090-fa`, `aprs-sdr-feed`, `openwebrx` and a satellite capture all claim a
+  dongle exclusively. Route the device in the
+  [Service Operations console](#service-operations-console-hardware-assignment) —
+  routing displaces the previous holder cleanly, which killing `rtl_fm` by hand
+  does not.
+
+**Signature 2 — the audio is weak or dead while everything reports healthy.**
+
+```bash
+journalctl -u oasis-nwr -e | grep -i "tuner gain"
+```
+- **Healthy:** `Tuner gain set to automatic.`
+- **Broken:** `Tuner gain set to 0.00 dB.` — the tuner is running at **zero
+  gain**, not automatic. `rtl_fm` parses `-g` with `atof()`, and `atof("auto")`
+  is `0.0`: passing the string `auto` silently asks for 0 dB. Omitting `-g`
+  entirely is the only way to ask for real AGC, and `rtl_power` takes `-g` the
+  same broken way, so a scan run this way can also pick the wrong "strongest"
+  channel. Measured on this station at 162.550 MHz: mean **−33.3 dB → −23.4 dB**
+  and peak **−19.4 dB → −5.2 dB** once the flag was dropped. In OASIS this is
+  handled centrally by `common/sdr_rx.gain_flag()` — if you are hand-rolling an
+  `rtl_fm` command line to test, do not "fix" it by adding `-g auto`.
+
+**Is there anything on the air at all?** `rtl_power` is the instrument. Measuring
+RMS on demodulated audio is not: an empty channel demodulates to full-scale
+noise and reads as a strong signal, which is how a dead band has been mistaken
+for a live one.
+
+```bash
+sudo systemctl stop oasis-nwr     # the sweep needs the dongle exclusively
+rtl_power -f 162.39M:162.56M:5k -i 1 -e 6 -
+sudo systemctl start oasis-nwr
+```
+- **Healthy:** one of the seven channels stands well clear of its neighbours.
+- **Broken:** all 34 bins within a few dB of each other = nothing is being heard.
+  That is antenna, coax or siting, not software. 162 MHz is line-of-sight to the
+  transmitter; a dongle whip indoors may hear nothing where a rooftop antenna
+  hears the same station cleanly. The status endpoint reports this as
+  `"scan_weak": true`, and the watch listens on the best channel it found anyway
+  rather than refusing to start.
+
+**Nothing decodes, but the audio sounds right.** Listen to it yourself — the
+stream is the daemon's own audio, relayed byte-for-byte:
+
+```bash
+curl -s http://<pi-ip>:8083/api/nwr/listen/stream --output /tmp/nwr.mp3   # Ctrl+C after ~20 s
+```
+- **Healthy:** a clear synthesised voice reading the forecast.
+- **Broken:** HTTP `409 NWR_NOT_LISTENING` = the watch is not capturing. `503
+  NWR_STREAM_UNAVAILABLE` = the daemon has no MP3 encoder (install `ffmpeg`, or
+  `sox` with `libsox-fmt-mp3`) or all three stream slots are in use. `503
+  NWR_WATCH_UNAVAILABLE` = the daemon is not reachable at all. Audible but
+  garbled voice is an RF problem; audible and clear with no decodes for a week is
+  most likely a genuinely quiet week — wait for the Required Weekly Test.
+
+**The alert list is empty but the map should show something.**
+
+```bash
+curl -s http://<pi-ip>:8083/api/nwr/alerts | python3 -m json.tool | head -30
+```
+- **Healthy:** `count` greater than 0, with `active` listing the ids that have
+  not expired.
+- **Broken:** records exist but none is `matched` = your `watch_fips` list does
+  not include the counties being alerted. An **empty** `watch_fips` matches
+  everything; a wrong one matches nothing, and looks identical to a dead
+  receiver. A record with `"clock_suspect": true` was timestamped against a clock
+  OASIS does not trust — check [GPS time sync](#gps-time-sync-gpsd--chrony).
+
+> The `oasis-nwr` daemon binds **127.0.0.1 only**, like `adsb-api`. Curling
+> `http://<pi>:8089/status` from another machine will always fail; that is by
+> design. Go through the Flask proxy on `:8083`, or run the curl on the Pi.
 
 ---
 

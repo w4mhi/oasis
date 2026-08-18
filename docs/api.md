@@ -1,9 +1,9 @@
 # OASIS API Reference
 
 Complete reference for every HTTP API in the OASIS system: the Flask
-application server, its two standalone backend daemons (**graywolf-api** and
-**adsb-api**), and the external services OASIS talks to or fronts (GrayWolf,
-Pat/Winlink, Kiwix, OpenWebRX, WebSSH, gpsd).
+application server, its three standalone backend daemons (**graywolf-api**,
+**adsb-api** and **oasis-nwr**), and the external services OASIS talks to or
+fronts (GrayWolf, Pat/Winlink, Kiwix, OpenWebRX, WebSSH, gpsd).
 
 > Offline-first: every endpoint here is served on the local device / LAN. There
 > are **no** outbound API calls at runtime. The one operator-triggered exception
@@ -22,15 +22,15 @@ Pat/Winlink, Kiwix, OpenWebRX, WebSSH, gpsd).
                     ┌──────────────────────────────────┐
                     │   OASIS Flask app   :8083 (OASIS_PORT) │
                     │   server/app.py + blueprints        │
-                    └───────┬───────────────┬────────────┘
-        same-origin proxy   │               │  same-origin proxy
-                            ▼               ▼
-              graywolf-api :8085      adsb-api :8086
-              (APRS station DB)       (dump1090 poller + history)
-                    │                        │
-                    ▼                        ▼
-        /var/lib/graywolf/          /var/lib/adsb/
-        graywolf-history.db         adsb-history.db
+                    └──────┬──────────┬──────────┬───────┘
+     same-origin proxy     │          │          │   byte relay
+                           ▼          ▼          ▼
+              graywolf-api :8085  adsb-api :8086  oasis-nwr :8089
+              (APRS station DB)   (dump1090 poller) (NWR watch + SAME)
+                    │                  │              │
+                    ▼                  ▼              ▼
+        /var/lib/graywolf/      /var/lib/adsb/   configuration/
+        graywolf-history.db     adsb-history.db  nwr-alerts.json
 ```
 
 - **Flask front door** (`:8083`, override with `OASIS_PORT`) is the only port a
@@ -40,6 +40,9 @@ Pat/Winlink, Kiwix, OpenWebRX, WebSSH, gpsd).
   station list / tracks. Fronted by `/api/aprs/*`.
 - **adsb-api** (`:8086`) polls `dump1090-fa`'s `aircraft.json`, records history,
   evaluates alerts. Fronted by `/api/adsb/*`.
+- **oasis-nwr** (`:8089`) is the always-on NOAA Weather Radio watch: it owns the
+  RTL-SDR capture, decodes SAME continuously, and is the only writer of the
+  alert store. Fronted by `/api/nwr/*` — a reader and a byte relay, nothing more.
 - **External apps** run their own web UIs on their own ports (GrayWolf `:8080`,
   Pat/Winlink `:8082`, Kiwix `:8081`, OpenWebRX `:8073`, WebSSH `:7681`). OASIS
   proxies Pat (`/api/winlink/*`) and links out to the rest.
@@ -87,6 +90,7 @@ silently drift again:
 `DELETE /api/winlink/mailbox/<box>/<mid>` ·
 `POST /api/aprs/warnings` · `PATCH`/`DELETE /api/aprs/warnings/<wid>` ·
 `POST /api/satellites/select` · `/refresh` · `/listen` · `/listen/stop` ·
+`POST /api/nwr/config` ·
 `POST /api/forms/save` · `POST /api/save-ics205` · `POST /api/save-chirp`.
 
 > The last three groups were **unguarded until 2.39.4**. Two of them were
@@ -104,6 +108,7 @@ silently drift again:
 | **8083** | OASIS Flask app (`OASIS_PORT`) | OASIS | — (the front door) |
 | **8085** | graywolf-api | OASIS daemon | `/api/aprs/*` |
 | **8086** | adsb-api | OASIS daemon | `/api/adsb/*` |
+| **8089** | oasis-nwr (weather watch) | OASIS daemon | `/api/nwr/*` |
 | 8080 | GrayWolf | External app | link-out + its DB feeds `:8085` |
 | 8082 | Pat (Winlink) | External app | `/api/winlink/*` |
 | 8081 | Kiwix | External app | link-out (`/api/health/zim` reports presence) |
@@ -391,7 +396,156 @@ No altitude alert.
 
 ---
 
-## 7. Satellites APIs (`/api/satellites/*`)
+## 7. NOAA Weather Radio APIs (`/api/nwr/*`)
+
+NOAA Weather Radio (the seven channels between 162.400 and 162.550 MHz) with
+**SAME/EAS** decode, offline. The capture is **not in Flask**: `oasis-nwr`
+(`services/nwr/common/daemon.py`) is its own systemd unit serving
+`127.0.0.1:8089`, in the same shape as `adsb-api`. It sweeps the band with
+`rtl_power`, keeps the strongest channel, runs `rtl_fm | multimon-ng -a EAS`
+continuously, and is the **single writer** of the alert store.
+
+**Assigning an RTL-SDR to the `nwr` service is the whole start action**;
+releasing the dongle stops the watch. There is no start/stop route here and no
+button on the weather page — the hardware console (`/api/hardware/*`) owns that,
+and the unit is `oasis-nwr`.
+
+What Flask keeps is a **reader** (local preconditions, the config file, the
+alert store read-only) and a **byte relay** for the daemon's audio. It starts,
+stops and tunes nothing.
+
+| Method | Path | Auth | Params/Body | Description |
+|---|---|---|---|---|
+| GET | `/api/nwr/status` | — | — | Local preconditions + config + the watch's own account of itself. See below. |
+| GET | `/api/nwr/alerts` | — | `limit` (default 50, max 500) | `{alerts:[…], active:[id…], count}` from the store. `active` is the subset that has not expired — what belongs on the map right now. |
+| GET | `/api/nwr/config` | — | — | `{config}` — the stored settings with defaults filled in. |
+| POST | `/api/nwr/config` | **CSRF** | `{channel_hz?, gain?, ppm?, watch_fips?, bell?, bell_override_until?, pinned_channel?}` | Validate + persist, then ask the daemon to re-read it if the pin moved. `400 NWR_BAD_CONFIG` on invalid input. See **Retune** below. |
+| GET | `/api/nwr/counties` | — | — | The SAME county/FIPS table for the watch-list picker. |
+| GET | `/api/nwr/listen/stream` | — | — | Live watch audio, relayed byte-for-byte from the daemon. See **Audio** below. |
+| GET | `/server/nwr/` , `/server/nwr/<file>` | — | — | The Weather Radio page (`weather.html`) and its assets. |
+
+### `GET /api/nwr/status`
+
+On the contract, and it is the probe the whole feature branches on: **`ok` means
+the request succeeded, not that the watch is healthy.** A daemon that is down,
+crashed, or not installed answers `ok:true` with `watch.reachable:false` and a
+`detail` saying why; every other field sits at its empty value so the key set
+never changes.
+
+```jsonc
+{
+  "ok": true,
+  "preconditions": {                 // Flask's own, from the local box
+    "missing_deps": [],              // rtl_fm / multimon-ng not on PATH
+    "dongle_present": true,
+    "assigned": true, "device": "RTL-SDR #1",
+    "busy": false, "holder": null,   // another service holds the dongle
+    "can_stream": true,              // an MP3 encoder (ffmpeg/sox) exists
+    "can_scan": true                 // rtl_power exists
+  },
+  "watch": {                         // asked of :8089, never assumed
+    "reachable": true, "detail": null,
+    "phase": "listening",            // starting|scanning|listening|retuning|retrying|stopped
+    "listening": true,
+    "channel": "WX7", "channel_hz": 162550000,
+    "alerts_seen": 3,
+    "last_decode": 1755400000, "last_error": null,
+    "scan": { … }, "scan_weak": false,
+    "retune_pending": false,
+    "retry_in_s": 0, "streams": 0, "elapsed_s": 1421
+  },
+  "config": { … }, "channels": [{"label": "WX1", "hz": 162400000}, …]
+}
+```
+
+Two fields are easy to misread:
+
+- **`scan_weak`** — the band swept below the reporting floor. It is a report,
+  never a refusal: the watch listens on the best channel it found anyway and
+  backs off to a slower rescan.
+- **`retune_pending` / `phase: "retuning"`** — the capture is deliberately down
+  while the daemon re-derives its channel from a configuration the operator just
+  changed. It is a gap on purpose, not a dead decoder, and the page must not
+  paint it as a fault.
+
+### Retune — `POST /api/nwr/config`
+
+The pin has to take effect while the operator watches. A healthy capture is only
+interrupted by a due rescan, and a healthy scan leaves no rescan due, so a
+`pinned_channel` write asks the daemon (`POST /retune` on 8089) to re-read its
+configuration. **Flask sends no frequency and holds no radio** — the daemon
+re-reads the file Flask just wrote and decides for itself.
+
+```jsonc
+{"ok": true, "config": { … },
+ "retune": {"requested": true,     // did this write touch pinned_channel
+            "reachable": true,     // null when we had no reason to ask
+            "accepted": true,      // false = same channel, nothing interrupted
+            "detail": null}}
+```
+
+`reachable` is **null, not false**, when the write had no reason to ask: "we did
+not ask" and "nobody answered" are different worlds. A config write with the
+daemon down still succeeds — the file is on disk either way, and losing the
+operator's choice would be the worse outcome.
+
+### Audio — `GET /api/nwr/listen/stream`
+
+A **byte relay**, not a Flask-owned encoder: the MP3 encoder and the subscriber
+fan-out both live in the daemon, which is what makes v1's audio deadlock
+impossible here by construction. `GET`, so a plain `<audio src=…>` works.
+
+The success path is audio, not JSON — so unlike a probe it has no `ok:true`
+envelope to carry an answer in, and a refusal is a genuine request failure:
+
+| Status | `code` | Meaning |
+|---|---|---|
+| 409 | `NWR_NOT_LISTENING` | The watch is not capturing (no dongle, or stopped). |
+| 503 | `NWR_STREAM_UNAVAILABLE` | The daemon refused: no encoder installed, or all three stream slots are taken. |
+| 503 | `NWR_WATCH_UNAVAILABLE` | `oasis-nwr` is not running / not reachable. |
+
+Use `/api/nwr/status` to ask *whether* the watch is running — that is a probe,
+and its success path has room to report it as an answer.
+
+### The `oasis-nwr` daemon (`127.0.0.1:8089`)
+
+Loopback only, like `adsb-api`. Reachable from a browser solely through the
+Flask routes above.
+
+| Method | Path | Response |
+|---|---|---|
+| GET | `/status` | The `watch` block above, plus `port`. |
+| GET | `/stream` | Live MP3 (`audio/mpeg`), close-delimited. `409` not listening · `503` no encoder / too many streams (max **3**). |
+| POST | `/retune` | Re-read configuration and re-derive the channel. `{retuning, detail}`. Carries **no** frequency — it is a notification, not a command. `503 NWR_NO_ROOT`, `500 NWR_RETUNE_FAILED`. |
+
+### Retired in v2 — the capture-control routes
+
+Flask no longer starts, stops or sweeps anything, so `/api/nwr/listen`,
+`/api/nwr/listen/stop` and `/api/nwr/scan` **are gone**. A stale page still holds
+those URLs; both answers are conformant `ok:false` envelopes with a stable code,
+and neither starts anything:
+
+| Request | Status | `code` |
+|---|---|---|
+| `POST /api/nwr/listen`, `/listen/stop`, `/scan` | **405** | `METHOD_NOT_ALLOWED` |
+| `GET` on the same paths | **404** | `NOT_FOUND` |
+
+The 405 is not a bug. This app serves its static tree from `/` as a **GET-only**
+rule, so a POST to any path with no route of its own matches that rule and
+Werkzeug answers *method not allowed* before Flask ever reports a missing URL.
+
+### Data & retention
+
+`configuration/nwr.json` holds the operator's settings; `configuration/nwr-alerts.json`
+is the alert store, written **only** by the daemon (`alerts.record()` is
+read-modify-write, and two writers across processes lose updates under exactly
+the conditions that matter — several counties, several messages, close
+together). The store keeps at most **500** records and sweeps records expired
+longer than **7 days**, but an alert that is still active is never evicted.
+
+---
+
+## 8. Satellites APIs (`/api/satellites/*`)
 
 Pass prediction + tracks (Skyfield/sgp4), roster, and RTL-SDR pass recording.
 Hardware-free routes are always available; listen routes need a dongle.
@@ -421,7 +575,7 @@ before each capture and after each stop — a pass costs ~5.8 MB/min at
 
 ---
 
-## 8. Speech APIs (`/api/speech/*`)
+## 9. Speech APIs (`/api/speech/*`)
 
 Station-wide text-to-speech, synthesised server-side with Piper and cached by
 content hash under `features/speech/cache/`. Satellite pass alerts are the
@@ -439,7 +593,7 @@ would pull in the CSRF guard for no benefit.
 
 ---
 
-## 9. Winlink APIs (`/api/winlink/*`)
+## 10. Winlink APIs (`/api/winlink/*`)
 
 Same-origin proxies to **Pat** (`:8082`). Two transports: RF (Direwolf, unit
 `pat-direwolf`) and telnet (the Winlink Mail card).
@@ -460,7 +614,7 @@ Same-origin proxies to **Pat** (`:8082`). Two transports: RF (Direwolf, unit
 
 ---
 
-## 10. FCC callsign database (`/api/lookup*`)
+## 11. FCC callsign database (`/api/lookup*`)
 
 Binary-search over the offline FCC amateur license index (no DB engine).
 
@@ -475,7 +629,7 @@ Binary-search over the offline FCC amateur license index (no DB engine).
 
 ---
 
-## 11. Map & tiles (`/server/map/*`, `/maps/*`)
+## 12. Map & tiles (`/server/map/*`, `/maps/*`)
 
 | Method | Path | Params | Description |
 |---|---|---|---|
@@ -490,20 +644,21 @@ Map tile roots include `/var/lib/graywolf/tiles` and the suite `maps/` dir.
 
 ---
 
-## 12. UI page-serving routes
+## 13. UI page-serving routes
 
 Static HTML served per service (not JSON APIs, listed for completeness):
 
 | Path | Serves |
 |---|---|
 | `/server/satellites/` , `/server/satellites/<file>` | Satellites page + assets. |
+| `/server/nwr/` , `/server/nwr/<file>` | Weather Radio page + assets. |
 | `/server/winlink/<file>` | Winlink UI. |
 | `/lookup` | FCC lookup page. |
 | `/server/map/<file>` | Map UI. |
 
 ---
 
-## 13. External services (not OASIS APIs)
+## 14. External services (not OASIS APIs)
 
 Run their own web servers; OASIS links out and/or health-checks them.
 
@@ -518,7 +673,7 @@ Run their own web servers; OASIS links out and/or health-checks them.
 
 ---
 
-## 14. Data stores
+## 15. Data stores
 
 | Store | Path | Owner | Used by |
 |---|---|---|---|
@@ -531,15 +686,17 @@ Run their own web servers; OASIS links out and/or health-checks them.
 | Installed features | `configuration/installed-services.json` | setup-oasis / `/api/setup/*` | `/api/installed-services` |
 | Map warnings | warnings JSON (suite) | `/api/aprs/warnings` | map "Insert Alerts" |
 | TLE cache | `configuration/tle-cache/` | `build-roster.py` / `/api/satellites/refresh` | satellites |
+| NWR settings | `configuration/nwr.json` | `/api/nwr/config` | `/api/nwr/*`, `oasis-nwr` |
+| NWR alert store | `configuration/nwr-alerts.json` | `oasis-nwr` (sole writer) | `/api/nwr/alerts`, the map |
 | Speech voice model | `features/speech/voices/` | `features/speech/install.py` | `/api/speech/*` |
 | Speech synth cache | `features/speech/cache/` | `common/speech.py` | `/api/speech/say` |
 
 ---
 
 *Generated from the route definitions in `server/routes/*.py`,
-`services/*/routes.py`, `services/aprs/common/aprs.py` (graywolf-api), and
-`services/adsb/common/adsb.py` (adsb-api). If you add or change a route, update
-this file.*
+`services/*/routes.py`, `services/aprs/common/aprs.py` (graywolf-api),
+`services/adsb/common/adsb.py` (adsb-api), and `services/nwr/common/daemon.py`
+(oasis-nwr). If you add or change a route, update this file.*
 
 ### `GET /api/refresh/status`
 
