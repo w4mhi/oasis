@@ -61,14 +61,27 @@ DONGLE_UNAVAILABLE = (
 )
 
 _state = {
-    "phase": "starting",     # starting | scanning | listening | retrying | stopped
+    # retuning is the deliberate gap an accepted /retune costs: the capture is
+    # down on purpose, exactly like the one a scheduled rescan costs, and a
+    # page that cannot tell those from a dead decoder reports a fault.
+    "phase": "starting",     # starting | scanning | listening | retuning | retrying | stopped
     "channel_hz": None,
+    "pinned_hz": None,       # the pin in force at the last channel decision
     "scan": None,            # last scan result, or None when pinned
     "scan_weak": False,
     "consecutive_weak": 0,
     "next_rescan": 0,
     "retry_failures": 0,     # consecutive listener.start() failures
     "next_retry": 0,         # epoch of the next start attempt, 0 when running
+    # A retune request is a SEQUENCE, not a flag. The supervisor reads the
+    # counter at the top of a pass and only acks that value once a capture has
+    # actually started from a configuration read after it, so a request that
+    # lands while a stale config is already in flight is not lost -- it is
+    # serviced on the following pass. A boolean cleared on consumption would
+    # drop exactly that request, which is the one an operator clicking twice
+    # produces.
+    "retune_seq": 0,         # bumped by every accepted request_retune()
+    "retune_ack": 0,         # the seq a running capture's config already covers
     "streams": 0,            # live /stream connections; see MAX_STREAMS
     "started": 0.0,
     "alerts_seen": 0,
@@ -76,6 +89,11 @@ _state = {
     "last_error": None,
 }
 _lock = threading.Lock()
+
+# The station root, for the HTTP handler. supervise() is handed one; _Handler
+# is constructed per connection by ThreadingHTTPServer and cannot be, so serve()
+# records it here. Read-only after that.
+REPO_ROOT = None
 
 
 # ── Channel choice ───────────────────────────────────────────────────────────
@@ -182,6 +200,74 @@ def retry_channel(cfg, last_choice):
     return fallback_channel(cfg)
 
 
+def channel_label(hz):
+    """"WX3" for 162450000, or None. One lookup, read by status() and by the
+    retune detail text."""
+    for name, ch in listener.CHANNELS:
+        if ch == hz:
+            return name
+    return None
+
+
+# ── Retune on request ────────────────────────────────────────────────────────
+
+def retune_plan(cfg, channel_hz, pinned_hz):
+    """(should_retune, human-readable detail) for a "the pin changed" request.
+
+    Pure, so the decision can be read without a radio in the room. Three cases:
+
+      * a pin that differs from what is tuned -- retune, because a healthy
+        capture is otherwise never interrupted (supervise() stops only for a
+        due rescan, and a healthy scan leaves next_rescan at 0), so the pin
+        would take effect at some unknowable later time or never;
+      * a pin that IS what is tuned -- nothing to do. Interrupting the watch to
+        land on the frequency it is already on is a gap bought for nothing, and
+        an operator re-selecting the current channel is a normal click;
+      * no pin, which is the operator choosing Auto: retune only if a pin is
+        what put us here. If the scan chose this channel, clearing a pin that
+        was never in force changes nothing, and re-deriving the same answer
+        costs the six seconds rtl_power holds the tuner for.
+    """
+    pinned = (cfg or {}).get("pinned_channel")
+    if pinned:
+        pinned = int(pinned)
+        name = channel_label(pinned) or pinned
+        if pinned == channel_hz:
+            return False, f"the watch is already on {name}"
+        return True, f"the watch will retune to {name}"
+    if pinned_hz is not None:
+        return True, "the watch will scan for the strongest channel"
+    return False, "the watch is already choosing its own channel"
+
+
+def request_retune(repo_root):
+    """Ask the supervisor to re-derive its channel. Touches no radio.
+
+    This is the whole of the "Flask asks, the daemon acts" boundary. Flask
+    writes nwr.json and then says "read it again"; the file stays the single
+    source of truth for what the operator chose, and this process stays the
+    only thing that starts, stops or tunes a capture. Nothing here is passed a
+    frequency, so nothing here can be asked to tune to one.
+
+    It cannot wedge the watch either: all it does is bump a counter. The
+    supervisor's response is one listener.stop() -- which blocks until both
+    subprocesses are reaped -- after which the ordinary not-listening path
+    runs, with the ordinary retry back-off behind it if the new capture will
+    not start.
+    """
+    cfg = settings.load(repo_root)
+    with _lock:
+        channel_hz = _state["channel_hz"]
+        retune, detail = retune_plan(cfg, channel_hz, _state["pinned_hz"])
+        if retune:
+            _state["retune_seq"] += 1
+        pending = _state["retune_seq"] != _state["retune_ack"]
+    if retune:
+        log.info("nwr: retune requested (%s)", detail)
+    return {"ok": True, "retuning": retune, "pending": pending,
+            "detail": detail, "channel_hz": channel_hz}
+
+
 # ── Decode handling ──────────────────────────────────────────────────────────
 
 def _make_handler(repo_root):
@@ -245,6 +331,11 @@ def supervise(repo_root, stop_event=None, tick=SUPERVISE_TICK_S, now=time.time):
     reads weak -- an antenna that gets reconnected should be picked up without
     the operator remembering to intervene.
 
+    Interrupts a healthy capture for exactly two reasons: a due rescan, and an
+    accepted retune request (request_retune). Both are the same act -- stop and
+    let the next pass choose again -- and both are a deliberate gap in the
+    watch, reported as such rather than left to look like a dead decoder.
+
     A capture that fails to START backs off separately (retry_delay): the
     normal reason is another service holding the dongle, which lasts for days,
     and retrying that every tick respawns three processes at a time for nothing.
@@ -266,11 +357,27 @@ def supervise(repo_root, stop_event=None, tick=SUPERVISE_TICK_S, now=time.time):
     while not stop_event.is_set():
         try:
             delay = tick
+            # Read BEFORE settings.load() below, and acked only after a capture
+            # has started: a request that lands while this pass is already
+            # holding a configuration read before it keeps a higher seq and is
+            # serviced on the next pass instead of being silently absorbed.
+            with _lock:
+                seq = _state["retune_seq"]
+                retune_due = seq != _state["retune_ack"]
             if listener.is_listening():
                 with _lock:
-                    _state["phase"] = "listening"
+                    _state["phase"] = "retuning" if retune_due else "listening"
                     due = _state["next_rescan"]
-                if due and now() >= due:
+                if retune_due:
+                    # The same interruption a due rescan makes, for the same
+                    # reason and with the same consequence: stop(), which
+                    # blocks until both subprocesses are reaped, and let the
+                    # ordinary not-listening path below start the new capture.
+                    # No third mechanism -- a start that then fails backs off
+                    # on the retry curve like any other.
+                    log.info("nwr: retuning on request")
+                    listener.stop()
+                elif due and now() >= due:
                     log.info("nwr: scheduled rescan")
                     listener.stop()
                 stop_event.wait(delay)
@@ -318,6 +425,8 @@ def supervise(repo_root, stop_event=None, tick=SUPERVISE_TICK_S, now=time.time):
                         now() + rescan_delay(_state["consecutive_weak"])
                         if weak else 0)
 
+            pin = cfg.get("pinned_channel")
+            pin = int(pin) if pin else None     # outside the lock: it can raise
             res = listener.start(hz, gain=cfg.get("gain"), ppm=cfg.get("ppm"),
                                  device_serial=serial,
                                  on_header=_make_handler(repo_root))
@@ -327,12 +436,22 @@ def supervise(repo_root, stop_event=None, tick=SUPERVISE_TICK_S, now=time.time):
             delay = tick if ok else retry_delay(failures, tick)
             with _lock:
                 _state["channel_hz"] = hz if ok else None
+                # What retune_plan() compares "Auto" against: whether a pin is
+                # what put us on this channel, or the sweep did.
+                _state["pinned_hz"] = pin if ok else None
                 _state["last_error"] = last_error
                 _state["phase"] = "listening" if ok else "retrying"
                 _state["retry_failures"] = failures
                 _state["next_retry"] = 0 if ok else now() + delay
                 if ok:
                     _state["started"] = now()
+                    # Only on success, and only up to the seq this pass read:
+                    # the retune is not done until the capture it asked for is
+                    # running, so a start that fails leaves the request pending
+                    # and the retry curve keeps aiming at the pinned channel
+                    # (retry_channel). A later request has a higher seq and
+                    # survives this.
+                    _state["retune_ack"] = seq
             if not ok:
                 log.warning("nwr: capture did not start: %s (next attempt in %ds)",
                             last_error, delay)
@@ -362,10 +481,7 @@ def status(now=time.time):
     """
     with _lock:
         s = dict(_state)
-    label = None
-    for name, hz in listener.CHANNELS:
-        if hz == s.get("channel_hz"):
-            label = name
+    label = channel_label(s.get("channel_hz"))
     live = listener.status()
     # Seconds until the next start attempt, so a retrying card can say
     # "retrying in 4m" instead of sitting on "retrying" and looking stuck.
@@ -376,6 +492,12 @@ def status(now=time.time):
         "subscribers": live.get("subscribers"),
         "elapsed_s": live.get("elapsed_s"),
         "retry_in_s": max(0, int(due - now())) if due else 0,
+        # True from the moment a retune is accepted until the capture it asked
+        # for is running. `phase` alone marks the gap for one tick; this marks
+        # it for its whole length, so a card polling every few seconds cannot
+        # land in the middle of a deliberate retune and read it as a decoder
+        # that stopped working.
+        "retune_pending": s["retune_seq"] != s["retune_ack"],
         "port": API_PORT,
     })
     return s
@@ -403,6 +525,58 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/stream"):
             return self._stream()
         self._json(404, {"error": "not found"})
+
+    def _drain_body(self, cap=1 << 16):
+        """Consume the request body before answering.
+
+        HTTP/1.1 keep-alive frames the NEXT request immediately after this
+        one's body, so bytes left in the socket are read as a request line and
+        every later request on the connection is misparsed. Nothing posted here
+        carries a body worth reading, so a body past `cap` is not read at all
+        and the connection is closed instead -- which is the correct framing
+        for a request we are declining to finish reading.
+        """
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            length = 0
+        if length <= 0:
+            return
+        if length > cap:
+            self.close_connection = True
+            return
+        try:
+            self.rfile.read(length)
+        except (OSError, ValueError):
+            self.close_connection = True
+
+    def do_POST(self):
+        """Notifications, never commands.
+
+        /retune asks the supervisor to re-read its configuration and re-derive
+        its channel. It carries no frequency and cannot: the caller is Flask,
+        Flask holds no radio, and the daemon stays the only thing that starts,
+        stops or tunes a capture. See request_retune().
+        """
+        self._drain_body()
+        if self.path.startswith("/retune"):
+            if not REPO_ROOT:
+                return self._json(503, {"ok": False, "code": "NWR_NO_ROOT",
+                                        "error": "the watch has no station root"})
+            try:
+                payload = request_retune(REPO_ROOT)
+            except Exception as exc:            # noqa: BLE001
+                # settings.load() reaches list() over operator-supplied data;
+                # a hand-edited nwr.json raises here exactly as it does in the
+                # supervisor. Answer with the reason rather than a traceback
+                # and a dropped connection -- the config write that preceded
+                # this one still stands.
+                log.exception("nwr: retune request failed")
+                return self._json(500, {
+                    "ok": False, "code": "NWR_RETUNE_FAILED",
+                    "error": str(exc) or exc.__class__.__name__})
+            return self._json(200, payload)
+        self._json(404, {"ok": False, "error": "not found", "code": "NOT_FOUND"})
 
     def _stream(self):
         """Live audio as MP3.
@@ -500,8 +674,10 @@ class _Handler(BaseHTTPRequestHandler):
 
 def serve(repo_root):
     """Entry point for `install.py --serve` / the systemd unit."""
+    global REPO_ROOT
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
+    REPO_ROOT = repo_root       # before the first request can arrive
     threading.Thread(target=supervise, args=(repo_root,), daemon=True,
                      name="nwr-supervisor").start()
     log.info("nwr: serving on 127.0.0.1:%d", API_PORT)

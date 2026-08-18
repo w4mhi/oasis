@@ -345,6 +345,124 @@ class NwrConfigRouteTest(unittest.TestCase):
         reread = self.c.get("/api/nwr/config")
         self.assertEqual(json.loads(reread.data)["config"]["channel_hz"], 162400000)
 
+    def test_a_write_with_no_pin_in_it_never_wakes_the_watch(self):
+        # A bell toggle is not a channel change; the daemon must not be asked
+        # to consider interrupting a healthy capture for one.
+        with mock.patch("urllib.request.urlopen",
+                        side_effect=AssertionError("the watch must not be called")):
+            r = self.c.post("/api/nwr/config", json={"bell": True})
+        body = json.loads(r.data)
+        self.assertTrue(body["ok"])
+        self.assertFalse(body["retune"]["requested"])
+        self.assertIsNone(body["retune"]["reachable"],
+                          "not asking and getting no answer are different worlds")
+        self.assertFalse(body["retune"]["accepted"])
+
+    def test_pinning_a_channel_asks_the_watch_to_retune(self):
+        calls = []
+
+        def spy(req, timeout=None):
+            calls.append((req.get_method(), req.full_url))
+            return _FakeUpstream(json.dumps(
+                {"ok": True, "retuning": True, "pending": True,
+                 "detail": "the watch will retune to WX1",
+                 "channel_hz": 162450000}).encode())
+
+        with mock.patch("urllib.request.urlopen", side_effect=spy):
+            r = self.c.post("/api/nwr/config", json={"pinned_channel": 162400000})
+        self.assertEqual(r.status_code, 200)
+        body = json.loads(r.data)
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["config"]["pinned_channel"], 162400000)
+        self.assertEqual(calls, [("POST", nwr_routes.WATCH_BASE + "/retune")])
+        self.assertTrue(body["retune"]["requested"])
+        self.assertTrue(body["retune"]["reachable"])
+        self.assertTrue(body["retune"]["accepted"])
+        self.assertIn("WX1", body["retune"]["detail"])
+
+    def test_re_selecting_the_tuned_channel_is_reported_as_no_change(self):
+        # The daemon decides this, not Flask: it is the only side that knows
+        # what is actually tuned.
+        reply = {"ok": True, "retuning": False, "pending": False,
+                 "detail": "the watch is already on WX3", "channel_hz": 162450000}
+        with mock.patch("urllib.request.urlopen",
+                        return_value=_FakeUpstream(json.dumps(reply).encode())):
+            r = self.c.post("/api/nwr/config", json={"pinned_channel": 162450000})
+        body = json.loads(r.data)
+        self.assertTrue(body["ok"])
+        self.assertFalse(body["retune"]["accepted"])
+        self.assertIn("already", body["retune"]["detail"])
+
+    def test_a_watch_that_is_down_still_saves_the_setting(self):
+        # Contract §2: the config write succeeded, so ok is true. Losing the
+        # operator's choice because a daemon is not running would be the worse
+        # of the two outcomes by a distance.
+        with mock.patch("urllib.request.urlopen",
+                        side_effect=urllib.error.URLError("Connection refused")):
+            r = self.c.post("/api/nwr/config", json={"pinned_channel": 162400000})
+        self.assertEqual(r.status_code, 200)
+        body = json.loads(r.data)
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["config"]["pinned_channel"], 162400000)
+        self.assertTrue(body["retune"]["requested"])
+        self.assertFalse(body["retune"]["reachable"])
+        self.assertFalse(body["retune"]["accepted"])
+        self.assertIn("Connection refused", body["retune"]["detail"])
+        reread = json.loads(self.c.get("/api/nwr/config").data)
+        self.assertEqual(reread["config"]["pinned_channel"], 162400000,
+                         "the setting was rolled back because the watch was down")
+
+    def test_a_watch_that_refuses_is_reachable_and_says_why(self):
+        # A daemon that answered 500 is running; telling the operator it is
+        # unreachable would send them looking in the wrong place.
+        with mock.patch("urllib.request.urlopen",
+                        side_effect=_http_error(500, {"error": "nwr.json is unreadable"})):
+            r = self.c.post("/api/nwr/config", json={"pinned_channel": 162400000})
+        body = json.loads(r.data)
+        self.assertTrue(body["ok"])
+        self.assertTrue(body["retune"]["reachable"])
+        self.assertFalse(body["retune"]["accepted"])
+        self.assertIn("nwr.json is unreadable", body["retune"]["detail"])
+
+    def test_clearing_the_pin_asks_too(self):
+        reply = {"ok": True, "retuning": True, "pending": True,
+                 "detail": "the watch will scan for the strongest channel",
+                 "channel_hz": 162400000}
+        with mock.patch("urllib.request.urlopen",
+                        return_value=_FakeUpstream(json.dumps(reply).encode())):
+            r = self.c.post("/api/nwr/config", json={"pinned_channel": None})
+        body = json.loads(r.data)
+        self.assertIsNone(body["config"]["pinned_channel"])
+        self.assertTrue(body["retune"]["requested"])
+        self.assertTrue(body["retune"]["accepted"])
+
+    def test_the_retune_shape_never_changes(self):
+        # Contract §5: a field in the schema is in every response for the
+        # endpoint, whatever happened to the watch.
+        reply = {"ok": True, "retuning": True, "pending": True,
+                 "detail": "the watch will retune to WX1", "channel_hz": None}
+        with mock.patch("urllib.request.urlopen",
+                        return_value=_FakeUpstream(json.dumps(reply).encode())):
+            asked = json.loads(self.c.post("/api/nwr/config",
+                                           json={"pinned_channel": 162400000}).data)
+        with mock.patch("urllib.request.urlopen",
+                        side_effect=OSError("no route to host")):
+            down = json.loads(self.c.post("/api/nwr/config",
+                                          json={"pinned_channel": 162475000}).data)
+        quiet = json.loads(self.c.post("/api/nwr/config", json={"ppm": 2}).data)
+        self.assertEqual(sorted(asked["retune"]), sorted(down["retune"]))
+        self.assertEqual(sorted(asked["retune"]), sorted(quiet["retune"]))
+        self.assertIsNone(quiet["retune"]["detail"])
+
+    def test_a_rejected_write_never_reaches_the_watch(self):
+        with mock.patch("urllib.request.urlopen",
+                        side_effect=AssertionError("nothing was written to ask about")):
+            r = self.c.post("/api/nwr/config", json={"pinned_channel": 145825000})
+        self.assertEqual(r.status_code, 400)
+        body = json.loads(r.data)
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["code"], "NWR_BAD_CONFIG")
+
     def test_bell_override_until_beyond_boundary_rejected_with_400(self):
         # A far-future epoch is exactly the anti-pattern Finding 2 names: a
         # permanent "quiet hours off" switch set by a buggy client or a

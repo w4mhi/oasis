@@ -93,6 +93,37 @@ def _watch_json(path, timeout=5):
         return None, f"watch unavailable ({getattr(e, 'reason', e)})"
 
 
+def _watch_post(path, timeout=3):
+    """(payload, error, reachable) from a POST to the watch daemon.
+
+    Exactly one of payload/error is non-None. `reachable` is the answer to a
+    different question than `error`: a daemon that answered 500 IS reachable
+    and refused, which reads nothing like a daemon that is not running, and
+    collapsing the two would tell the operator to go looking in the wrong
+    place.
+
+    Body discipline is _watch_json()'s -- urlopen()'s response is closed by the
+    context manager, and an HTTPError body is drained and closed by
+    _watch_error_text(). `data=b""` is what makes this a POST, and it sends
+    Content-Length: 0 with it.
+
+    The timeout is shorter than a status read's: this one is on the operator's
+    click, and the daemon answers it off a lock it holds for microseconds.
+    """
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(WATCH_BASE + path, data=b"", method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read()), None, True
+    except urllib.error.HTTPError as e:
+        detail = _watch_error_text(e)
+        return None, (f"the watch refused the request (HTTP {e.code})"
+                      + (f": {detail}" if detail else "")), True
+    except Exception as e:                      # noqa: BLE001
+        return None, f"the watch is not reachable ({getattr(e, 'reason', e)})", False
+
+
 @bp.route("/server/nwr/")
 @bp.route("/server/nwr/<path:filename>")
 def nwr_static(filename="weather.html"):
@@ -126,6 +157,9 @@ def api_nwr_status():
             "last_error": w.get("last_error"),
             "scan": w.get("scan"),
             "scan_weak": bool(w.get("scan_weak")),
+            # A retune the operator asked for is a deliberate gap, not a
+            # decode failure; it stays true until the new capture is running.
+            "retune_pending": bool(w.get("retune_pending")),
             "retry_in_s": w.get("retry_in_s") or 0,
             "streams": w.get("streams") or 0,
             "elapsed_s": w.get("elapsed_s") or 0,
@@ -228,12 +262,47 @@ def api_nwr_config_get():
 @bp.route("/api/nwr/config", methods=["POST"])
 @require_oasis_request
 def api_nwr_config_set():
+    """Write the operator's settings, then tell the watch if its channel moved.
+
+    A pin the daemon only reads when it next happens to choose a channel is a
+    dropdown that does nothing: while a capture is healthy the supervisor
+    interrupts it for a due rescan and nothing else, and a healthy scan leaves
+    no rescan due. So a write that touches `pinned_channel` asks the daemon to
+    re-read its configuration.
+
+    Flask ASKS. It sends no frequency and holds no radio: the daemon re-reads
+    the file this route just wrote, decides for itself whether the request is
+    worth a gap in the watch, and does all the starting and stopping. Selecting
+    the channel already tuned comes back `accepted: false` and interrupts
+    nothing.
+
+    Contract §2: a watch that is down is an ANSWER on a config write that
+    succeeded, not a failure. The file is on disk either way, and losing the
+    operator's choice because a daemon is not running would be the worse of the
+    two outcomes by a distance. §5: `reachable` is null -- not false -- when
+    this write had no reason to ask, because "we did not ask" and "nobody
+    answered" are different worlds.
+    """
+    patch = request.get_json(silent=True) or {}
     try:
-        cfg = settings.save(_root(), request.get_json(silent=True) or {})
+        cfg = settings.save(_root(), patch)
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e),
                         "code": "NWR_BAD_CONFIG"}), 400
-    return jsonify({"ok": True, "config": cfg})
+    requested = "pinned_channel" in patch
+    payload, err, reachable = None, None, None
+    if requested:
+        payload, err, reachable = _watch_post("/retune")
+    return jsonify({
+        "ok": True,
+        "config": cfg,
+        "retune": {
+            "requested": requested,
+            "reachable": reachable,
+            "accepted": bool((payload or {}).get("retuning")),
+            "detail": err or (payload or {}).get("detail"),
+        },
+    })
 
 
 @bp.route("/api/nwr/counties")

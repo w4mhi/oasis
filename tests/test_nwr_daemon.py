@@ -1,3 +1,4 @@
+import io
 import logging
 import os
 import shlex
@@ -419,6 +420,378 @@ class NoDongleAssignedTest(unittest.TestCase):
              mock.patch.object(daemon.listener, "start", side_effect=fake_start):
             daemon.supervise(_ROOT, stop_event=stop, now=lambda: stop.now)
         self.assertTrue(attempts, "the watch never started once a dongle arrived")
+
+
+class _FakeRadio:
+    """listener.start/stop/is_listening backed by a flag instead of a dongle.
+
+    stop() is synchronous here for the same reason it is in the real listener:
+    it does not return until the capture is gone, so the supervisor's next pass
+    cannot race a still-dying one.
+    """
+
+    def __init__(self, results=None, on_start=None):
+        self.listening = False
+        self.starts = []
+        self.stops = 0
+        self.results = list(results or [])
+        self.on_start = on_start
+
+    def start(self, hz, **kw):
+        if self.on_start:
+            self.on_start(len(self.starts))
+        self.starts.append(hz)
+        res = self.results.pop(0) if self.results else {"ok": True, "error": None}
+        self.listening = bool(res.get("ok"))
+        return dict(res)
+
+    def stop(self):
+        self.stops += 1
+        self.listening = False
+        return {"ok": True}
+
+    def is_listening(self):
+        return self.listening
+
+
+class _StopWithHook(_FakeStop):
+    """_FakeStop that runs `fn` once, after the Nth pass has finished waiting.
+
+    A retune request has to arrive at a KNOWN point in the cycle -- after a
+    capture is fully recorded in _state, not while listener.start() is still
+    inside it -- or the test proves something other than what it claims.
+    """
+
+    def __init__(self, window, after_waits, fn):
+        super().__init__(window)
+        self.after_waits = after_waits
+        self.fn = fn
+
+    def wait(self, delay):
+        done = super().wait(delay)
+        if len(self.waits) == self.after_waits:
+            self.fn()
+        return done
+
+
+class RetunePlanTest(unittest.TestCase):
+    """The decision, without a radio in the room."""
+
+    def test_a_pin_that_differs_from_what_is_tuned_retunes(self):
+        go, detail = daemon.retune_plan({"pinned_channel": 162400000},
+                                        162450000, None)
+        self.assertTrue(go)
+        self.assertIn("WX1", detail)
+
+    def test_re_selecting_the_channel_already_tuned_is_a_no_op(self):
+        # An operator re-picking the current channel is a normal click, and a
+        # gap in the watch bought to land on the frequency we are already on
+        # is a gap bought for nothing.
+        go, detail = daemon.retune_plan({"pinned_channel": 162450000},
+                                        162450000, 162450000)
+        self.assertFalse(go)
+        self.assertIn("already", detail)
+
+    def test_clearing_a_pin_that_was_in_force_rescans(self):
+        go, _detail = daemon.retune_plan({"pinned_channel": None},
+                                         162400000, 162400000)
+        self.assertTrue(go)
+
+    def test_clearing_a_pin_that_never_applied_changes_nothing(self):
+        # The sweep chose this channel, so "Auto" is already what is happening
+        # and re-deriving the same answer costs six seconds of rtl_power.
+        go, _detail = daemon.retune_plan({}, 162450000, None)
+        self.assertFalse(go)
+
+    def test_a_pin_with_nothing_tuned_still_asks(self):
+        go, _detail = daemon.retune_plan({"pinned_channel": 162400000},
+                                         None, None)
+        self.assertTrue(go)
+
+
+class RequestRetuneTest(unittest.TestCase):
+    def setUp(self):
+        before = dict(daemon._state)
+        self.addCleanup(lambda: daemon._state.update(before))
+        with daemon._lock:
+            daemon._state.update({"retune_seq": 0, "retune_ack": 0,
+                                  "channel_hz": 162450000, "pinned_hz": None})
+
+    def _ask(self, cfg):
+        with mock.patch.object(daemon.settings, "load", return_value=cfg):
+            return daemon.request_retune(_ROOT)
+
+    def test_a_changed_pin_is_accepted_and_left_pending(self):
+        out = self._ask({"pinned_channel": 162400000})
+        self.assertTrue(out["ok"])
+        self.assertTrue(out["retuning"])
+        self.assertTrue(out["pending"])
+        self.assertEqual(daemon._state["retune_seq"], 1)
+        self.assertTrue(daemon.status()["retune_pending"])
+
+    def test_an_unchanged_pin_moves_nothing(self):
+        out = self._ask({"pinned_channel": 162450000})
+        self.assertTrue(out["ok"], "the request succeeded; the news is 'nothing to do'")
+        self.assertFalse(out["retuning"])
+        self.assertEqual(daemon._state["retune_seq"], 0)
+        self.assertFalse(daemon.status()["retune_pending"])
+
+    def test_two_clicks_do_not_lose_the_second(self):
+        # The reason the request is a sequence and not a flag.
+        self._ask({"pinned_channel": 162400000})
+        self._ask({"pinned_channel": 162475000})
+        self.assertEqual(daemon._state["retune_seq"], 2)
+
+    def test_it_touches_no_radio(self):
+        with mock.patch.object(daemon.listener, "start",
+                               side_effect=AssertionError("must not start a capture")), \
+             mock.patch.object(daemon.listener, "stop",
+                               side_effect=AssertionError("must not stop a capture")):
+            self._ask({"pinned_channel": 162400000})
+
+
+class RetuneSuperviseTest(unittest.TestCase):
+    """The supervisor's half: an accepted request has to become a real gap and
+    then a real capture on the new channel, and must never be able to leave the
+    watch sitting idle."""
+
+    SWEPT_HZ = 162450000        # WX3, what the fake sweep picks
+    PINNED_HZ = 162400000       # WX1, what the operator pins
+
+    def setUp(self):
+        before = dict(daemon._state)
+        self.addCleanup(lambda: daemon._state.update(before))
+        with daemon._lock:
+            daemon._state.update({"retune_seq": 0, "retune_ack": 0,
+                                  "channel_hz": None, "pinned_hz": None,
+                                  "next_rescan": 0, "consecutive_weak": 0})
+        logging.disable(logging.WARNING)
+        self.addCleanup(logging.disable, logging.NOTSET)
+
+    def _run(self, cfg, hook, window=60, after_waits=1, results=None,
+             on_start=None):
+        """Drive the real supervise() against a fake radio and a fake sweep.
+
+        choose_channel() is NOT stubbed: whether a pinned channel skips the
+        band sweep is part of what a retune has to get right.
+        """
+        radio = _FakeRadio(results, on_start=on_start)
+        sweeps = []
+        phases = []
+
+        def fake_scan(**kw):
+            sweeps.append(1)
+            return {"ok": True, "powers": {self.SWEPT_HZ: -20.0},
+                    "best_hz": self.SWEPT_HZ, "best_dbm": -20.0, "error": None}
+
+        stop = _StopWithHook(window, after_waits, lambda: hook(radio))
+        real_wait = stop.wait
+
+        def wait_and_record(delay):
+            phases.append(daemon._state["phase"])
+            return real_wait(delay)
+
+        stop.wait = wait_and_record
+
+        with mock.patch.object(daemon.settings, "load", side_effect=lambda root: dict(cfg)), \
+             mock.patch.object(daemon, "_device_serial", return_value="0001"), \
+             mock.patch.object(daemon.scan, "run", side_effect=fake_scan), \
+             mock.patch.object(daemon.listener, "is_listening",
+                               side_effect=radio.is_listening), \
+             mock.patch.object(daemon.listener, "start", side_effect=radio.start), \
+             mock.patch.object(daemon.listener, "stop", side_effect=radio.stop):
+            daemon.supervise(_ROOT, stop_event=stop, now=lambda: stop.now)
+        return radio, sweeps, phases
+
+    def test_a_pin_set_while_listening_actually_retunes(self):
+        cfg = dict(daemon.settings.DEFAULTS)
+
+        def pin(_radio):
+            cfg["pinned_channel"] = self.PINNED_HZ
+            with mock.patch.object(daemon.settings, "load", return_value=dict(cfg)):
+                daemon.request_retune(_ROOT)
+
+        radio, sweeps, phases = self._run(cfg, pin, window=40)
+        self.assertEqual(radio.starts, [self.SWEPT_HZ, self.PINNED_HZ],
+                         "the watch never moved off the channel the sweep chose")
+        self.assertEqual(radio.stops, 1, "exactly one gap, and only for the retune")
+        self.assertEqual(len(sweeps), 1, "a pinned channel must not sweep the band")
+        self.assertEqual(daemon._state["channel_hz"], self.PINNED_HZ)
+        self.assertFalse(daemon.status()["retune_pending"],
+                         "the request stays pending until the new capture runs")
+        self.assertIn("retuning", phases,
+                      "the gap must be visible as a retune, not as a dead decoder")
+
+    def test_re_selecting_the_tuned_channel_interrupts_nothing(self):
+        cfg = dict(daemon.settings.DEFAULTS)
+
+        def pin_the_same(_radio):
+            cfg["pinned_channel"] = self.SWEPT_HZ
+            with mock.patch.object(daemon.settings, "load", return_value=dict(cfg)):
+                out = daemon.request_retune(_ROOT)
+            self.assertFalse(out["retuning"])
+
+        radio, _sweeps, phases = self._run(cfg, pin_the_same, window=40)
+        self.assertEqual(radio.starts, [self.SWEPT_HZ])
+        self.assertEqual(radio.stops, 0, "a healthy capture was interrupted for nothing")
+        self.assertNotIn("retuning", phases)
+
+    def test_choosing_auto_gives_the_channel_back_to_the_scan(self):
+        cfg = dict(daemon.settings.DEFAULTS, pinned_channel=self.PINNED_HZ)
+
+        def unpin(_radio):
+            cfg["pinned_channel"] = None
+            with mock.patch.object(daemon.settings, "load", return_value=dict(cfg)):
+                daemon.request_retune(_ROOT)
+
+        radio, sweeps, _phases = self._run(cfg, unpin, window=40)
+        self.assertEqual(radio.starts, [self.PINNED_HZ, self.SWEPT_HZ])
+        self.assertEqual(len(sweeps), 1, "clearing the pin is what earns the sweep")
+
+    def test_a_retune_whose_capture_fails_still_converges_on_a_running_watch(self):
+        # The failure mode that matters: an interruption we asked for must
+        # never be able to leave the watch idle. Two failed starts back off on
+        # the ordinary retry curve and the third succeeds.
+        cfg = dict(daemon.settings.DEFAULTS)
+        results = [{"ok": True, "error": None},
+                   {"ok": False, "error": "rtl_fm exited immediately"},
+                   {"ok": False, "error": "rtl_fm exited immediately"},
+                   {"ok": True, "error": None}]
+
+        def pin(_radio):
+            cfg["pinned_channel"] = self.PINNED_HZ
+            with mock.patch.object(daemon.settings, "load", return_value=dict(cfg)):
+                daemon.request_retune(_ROOT)
+
+        radio, _sweeps, _phases = self._run(cfg, pin, window=60, results=results)
+        self.assertTrue(radio.listening, "the watch was left with no capture")
+        self.assertEqual(radio.starts[1:], [self.PINNED_HZ] * 3,
+                         "every retry must keep aiming at the pinned channel")
+        self.assertEqual(radio.stops, 1, "a failed start must not cost another gap")
+        self.assertEqual(daemon._state["phase"], "listening")
+        self.assertFalse(daemon.status()["retune_pending"])
+
+    def test_a_request_that_lands_mid_start_is_not_swallowed(self):
+        # The race the sequence counter exists for: the pass has already read
+        # its configuration and is inside listener.start(), so the pin it is
+        # about to record is the OLD one. A flag cleared on consumption would
+        # ack a request the running capture does not satisfy, and the pin would
+        # sit stored and inert -- the exact defect this whole path fixes.
+        cfg = dict(daemon.settings.DEFAULTS)
+
+        def pin_mid_start(n):
+            if n:
+                return
+            cfg["pinned_channel"] = self.PINNED_HZ
+            with mock.patch.object(daemon.settings, "load", return_value=dict(cfg)):
+                daemon.request_retune(_ROOT)
+
+        radio, _sweeps, _phases = self._run(cfg, lambda _r: None, window=40,
+                                            on_start=pin_mid_start)
+        self.assertEqual(radio.starts, [self.SWEPT_HZ, self.PINNED_HZ],
+                         "a request that raced the start was lost")
+        self.assertEqual(radio.stops, 1)
+        self.assertFalse(daemon.status()["retune_pending"])
+
+    def test_a_request_that_lands_while_nothing_is_running_costs_no_gap(self):
+        # Mid-retry: there is no capture to interrupt, and the next pass reads
+        # the file anyway.
+        cfg = dict(daemon.settings.DEFAULTS)
+        results = [{"ok": False, "error": "rtl_fm exited immediately"}] * 3
+
+        def pin(_radio):
+            cfg["pinned_channel"] = self.PINNED_HZ
+            with mock.patch.object(daemon.settings, "load", return_value=dict(cfg)):
+                daemon.request_retune(_ROOT)
+
+        radio, _sweeps, _phases = self._run(cfg, pin, window=40, results=results)
+        self.assertEqual(radio.stops, 0)
+        self.assertEqual(set(radio.starts[1:]), {self.PINNED_HZ})
+
+
+class _PostHandler(daemon._Handler):
+    """_Handler with the socket machinery stubbed out, for do_POST only.
+
+    Same shape as _RecordingHandler below: BaseHTTPRequestHandler.__init__
+    parses a request off a real socket and then serves it, which is not what is
+    under test here.
+    """
+
+    def __init__(self, path, body=b""):
+        self.path = path
+        self.rfile = io.BytesIO(body)
+        self.headers = {"Content-Length": str(len(body))}
+        self.close_connection = False
+        self.code = None
+        self.json_out = None
+
+    def _json(self, code, payload):
+        self.code = code
+        self.json_out = payload
+
+
+class RetuneHandlerTest(unittest.TestCase):
+    """The daemon's side of the boundary: a caller may ask, never command."""
+
+    def setUp(self):
+        before = dict(daemon._state)
+        self.addCleanup(lambda: daemon._state.update(before))
+        with daemon._lock:
+            daemon._state.update({"retune_seq": 0, "retune_ack": 0,
+                                  "channel_hz": 162450000, "pinned_hz": None})
+        self._root_patch = mock.patch.object(daemon, "REPO_ROOT", _ROOT)
+        self._root_patch.start()
+        self.addCleanup(self._root_patch.stop)
+
+    def _post(self, path, body=b"", cfg=None):
+        cfg = cfg if cfg is not None else {"pinned_channel": 162400000}
+        h = _PostHandler(path, body)
+        with mock.patch.object(daemon.settings, "load", return_value=cfg), \
+             mock.patch.object(daemon.listener, "start",
+                               side_effect=AssertionError("the handler must not start a capture")), \
+             mock.patch.object(daemon.listener, "stop",
+                               side_effect=AssertionError("the handler must not stop a capture")):
+            h.do_POST()
+        return h
+
+    def test_a_retune_is_accepted_and_answered(self):
+        h = self._post("/retune")
+        self.assertEqual(h.code, 200)
+        self.assertTrue(h.json_out["ok"])
+        self.assertTrue(h.json_out["retuning"])
+        self.assertEqual(daemon._state["retune_seq"], 1)
+
+    def test_the_request_body_is_read_before_the_answer_is_written(self):
+        # HTTP/1.1 keep-alive frames the next request right after this body;
+        # bytes left in the socket are parsed as a request line.
+        h = self._post("/retune", body=b'{"ignored": true}')
+        self.assertEqual(h.rfile.read(), b"", "the request body was left in the socket")
+        self.assertEqual(h.code, 200)
+
+    def test_an_unknown_post_path_is_a_conformant_404(self):
+        h = self._post("/listen")
+        self.assertEqual(h.code, 404)
+        self.assertFalse(h.json_out["ok"])
+        self.assertEqual(daemon._state["retune_seq"], 0)
+
+    def test_a_configuration_it_cannot_read_answers_instead_of_hanging_up(self):
+        h = _PostHandler("/retune")
+        with mock.patch.object(daemon.settings, "load",
+                               side_effect=TypeError("'int' object is not iterable")), \
+             self.assertLogs(daemon.log.name, level="ERROR"):
+            h.do_POST()
+        self.assertEqual(h.code, 500)
+        self.assertFalse(h.json_out["ok"])
+        self.assertEqual(h.json_out["code"], "NWR_RETUNE_FAILED")
+
+    def test_without_a_station_root_it_says_so(self):
+        self._root_patch.stop()
+        h = _PostHandler("/retune")
+        with mock.patch.object(daemon, "REPO_ROOT", None):
+            h.do_POST()
+        self._root_patch.start()
+        self.assertEqual(h.code, 503)
+        self.assertFalse(h.json_out["ok"])
 
 
 class OnHeaderContainmentTest(unittest.TestCase):
