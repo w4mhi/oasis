@@ -23,7 +23,20 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  /* The window is NOT defined here — it lives in common/quiet-hours.json so the
+     Python half (common/quiet_hours.py) reads the same numbers. These values are
+     a FALLBACK for a page that never called load(), and for Node tests. If you
+     find yourself editing them, edit the JSON instead. */
   var QUIET_FROM = 22, QUIET_TO = 7;
+
+  /* Adopt the shared definition. Pages call this once at startup; everything
+     else stays synchronous and pure. Failure is silent and harmless — the
+     fallback above is the same pair the file ships with. */
+  function load(json) {
+    if (!json) { return; }
+    var f = parseInt(json.from, 10), t = parseInt(json.to, 10);
+    if (!isNaN(f) && !isNaN(t)) { QUIET_FROM = f; QUIET_TO = t; }
+  }
 
   /* Spans midnight, so this is an OR and not a range test. */
   function quietAt(localHour) {
@@ -63,7 +76,13 @@
     };
   }
 
-  return { QUIET_FROM: QUIET_FROM, QUIET_TO: QUIET_TO, quietAt: quietAt,
-           overrideUntil: overrideUntil, overrideActive: overrideActive,
-           state: state };
+  var api = { quietAt: quietAt, overrideUntil: overrideUntil,
+              overrideActive: overrideActive, state: state, load: load };
+  // Live getters, not a one-time copy: load() reassigns the vars above after
+  // this factory has already run once, and a snapshot here would freeze at the
+  // fallback forever — the exact "second copy that disagrees" this file exists
+  // to prevent, just moved one level down.
+  Object.defineProperty(api, 'QUIET_FROM', { get: function () { return QUIET_FROM; } });
+  Object.defineProperty(api, 'QUIET_TO', { get: function () { return QUIET_TO; } });
+  return api;
 });

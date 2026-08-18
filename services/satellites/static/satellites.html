@@ -804,7 +804,17 @@ function recolorSelection() {
   saveSelection();
 }
 
+// The quiet window itself lives in common/quiet-hours.json (common/quiet_hours.py
+// reads the same file); this adopts it once at startup for oasisSatQuietState.
+// Failure is silent and harmless — quiet-hours.js's own fallback constants are
+// the same pair the file ships with.
+async function loadQuietHours() {
+  try { OasisQuietHours.load(await (await fetch('/common/quiet-hours.json', { cache:'no-store' })).json()); }
+  catch (_) {}
+}
+
 async function boot() {
+  await loadQuietHours();
   const meta = await (await fetch('/api/satellites')).json();
   ROSTER = meta.satellites; STATION = meta.station;
   renderFilterBar();

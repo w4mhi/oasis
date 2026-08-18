@@ -1717,6 +1717,15 @@ async function loadHazards() {
   try { const d = await (await fetch('/hazards.json', { cache:'no-store' })).json(); _HAZARDS = Array.isArray(d.hazards) ? d.hazards : []; } catch (_) { _HAZARDS = []; }
   applyAprsFilter();
 }
+
+// The quiet window itself lives in common/quiet-hours.json (common/quiet_hours.py
+// reads the same file); this adopts it once at startup for the hour bell and
+// pass alerts on this screen. Failure is silent and harmless — quiet-hours.js's
+// own fallback constants are the same pair the file ships with.
+async function loadQuietHours() {
+  try { OasisQuietHours.load(await (await fetch('/common/quiet-hours.json', { cache:'no-store' })).json()); }
+  catch (_) {}
+}
 function _hazardKeyOf(s) {
   if (!s || !_HAZARDS.length) return null;
   const tbl = s.sym_table || '/', code = s.sym_code || '';
@@ -3030,6 +3039,11 @@ refreshAdsb();        setInterval(refreshAdsb, 5000);
 refreshAdsbRecent();  setInterval(refreshAdsbRecent, 60000);
 fetchSats();          setInterval(fetchSats, SAT_REFRESH_SEC * 1000);
                       setInterval(satCountdownTick, 1000);
+// Adopt the shared quiet window before anything that might consult it. The
+// fetch is async, so the very first bell paint below still runs on the
+// fallback constants either way — harmless, since the fallback is the same
+// pair the JSON ships with.
+loadQuietHours();
 // Pass alerts tick far faster than the roster refresh: the T-10 edge has to be
 // caught within a couple of seconds of crossing, but the pass DATA only changes
 // every 60 s. Cheap — it walks the armed birds already in memory.

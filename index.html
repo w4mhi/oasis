@@ -1210,6 +1210,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
 <script src="/common/js/freshness.js"></script>
+<script src="/common/js/quiet-hours.js"></script>
 </head>
 <body>
 
@@ -3614,6 +3615,17 @@ async function loadHazards() {
   } catch (e) { _HAZARDS = []; }
   applyAprsFilter();   // repaint pills now that the config is in
 }
+
+// The quiet window itself lives in common/quiet-hours.json (common/quiet_hours.py
+// reads the same file); this adopts it once at startup so this screen and the
+// hour bell / pass alerts never disagree about when night is. Failure is silent
+// and harmless — quiet-hours.js's own fallback constants are the same pair the
+// file ships with.
+async function loadQuietHours() {
+  try {
+    OasisQuietHours.load(await (await fetch('/common/quiet-hours.json', { cache: 'no-store' })).json());
+  } catch (e) { /* fallback constants in quiet-hours.js already match the JSON */ }
+}
 function _hazardKeyOf(s) {
   if (!s || !_HAZARDS.length) return null;
   const tbl = s.sym_table || '/', code = s.sym_code || '';
@@ -4320,6 +4332,7 @@ loadConfig().then(() => {
   fetchAudio();
   fetchSdrStatus();
   loadHazards();   // hazard-pill config (before/after the first APRS fetch — pills repaint on load)
+  loadQuietHours();
   fetchAPRS();
   loadHomeCoords();
   pollWifi();

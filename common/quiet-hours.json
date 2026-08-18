@@ -1,0 +1,5 @@
+{
+  "_comment": "The ONE definition of the shack's quiet window, read by common/js/quiet-hours.js AND common/quiet_hours.py. Local hours, 24h. A second copy of these numbers is how the hour bell ends up silent at 06:00 while pass alerts are chiming.",
+  "from": 22,
+  "to": 7
+}

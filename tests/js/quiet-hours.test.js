@@ -78,3 +78,18 @@ test('state() reports quiet and overridden separately from silent', () => {
   assert.ok(s.overridden, 'but the operator is awake');
   assert.ok(!s.silent, 'so alerts sound');
 });
+
+// The shared definition must actually be adopted, and must agree with the
+// JSON the Python half reads.
+const fs = require('fs');
+const path = require('path');
+const shared = JSON.parse(fs.readFileSync(
+  path.join(__dirname, '..', '..', 'common', 'quiet-hours.json'), 'utf8'));
+
+assert.strictEqual(typeof shared.from, 'number');
+assert.strictEqual(typeof shared.to, 'number');
+
+OasisQuietHours.load({ from: 23, to: 5 });
+assert.strictEqual(OasisQuietHours.quietAt(23), true, 'load() must take effect');
+assert.strictEqual(OasisQuietHours.quietAt(22), false);
+OasisQuietHours.load(shared);   // restore for any later assertions
