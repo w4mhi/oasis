@@ -41,7 +41,7 @@ import os
 import shutil
 import sys
 
-from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
+from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run, sudo_apt_cmd
 
 I2C_PARAM   = "dtparam=i2c_arm=on"
 HWCLOCK_SET = "/lib/udev/hwclock-set"
@@ -453,7 +453,7 @@ def ensure_hwclock():
         _ok("hwclock present.")
         return
     _info("hwclock not found — installing util-linux-extra (Trixie split it out) …")
-    _run(["sudo", "apt", "install", "-y", "util-linux-extra"], check=False)
+    _run(sudo_apt_cmd("apt", "install", "-y", "util-linux-extra"), check=False)
     if _hwclock_path():
         _ok("Installed util-linux-extra — hwclock is now available.")
     else:

@@ -50,7 +50,7 @@ from common import config_paths
 from common.oasis_lib import (
     _hr, _step, _ok, _info, _warn, _fail, _run, has_internet,
     pat_find_local, pat_latest_release, pat_download_deb,
-    deb_field, dpkg_installed_version, version_decision,
+    deb_field, dpkg_installed_version, version_decision, sudo_apt_cmd,
 )
 
 # Attempt to read from the manifest; the 'winlink' feature is not yet defined,
@@ -254,7 +254,7 @@ def install_deb(deb_path):
     _info(f"Running: sudo apt install -y {deb_path}")
     _info("You may be prompted for your sudo password.")
     print()
-    if _run(["sudo", "apt", "install", "-y", deb_path], check=False).returncode != 0:
+    if _run(sudo_apt_cmd("apt", "install", "-y", deb_path), check=False).returncode != 0:
         _fail("apt install failed. Check the output above for details.")
     _ok("Pat installed")
 
@@ -466,7 +466,7 @@ def install_direwolf(repo_root=None):
     if debs:
         _info(f"Installing {len(debs)} bundled direwolf package(s) ...")
         # `apt install ./*.deb` resolves deps from the bundled set + what's on the image.
-        if (_run(["sudo", "apt", "install", "--no-install-recommends", "-y", *debs],
+        if (_run(sudo_apt_cmd("apt", "install", "--no-install-recommends", "-y", *debs),
                  check=False).returncode == 0 and dpkg_installed_version("direwolf")):
             _ok("Direwolf installed (offline bundle)")
             return True
@@ -482,7 +482,7 @@ def install_direwolf(repo_root=None):
     _info("Running: sudo apt install -y direwolf")
     _info("You may be prompted for your sudo password.")
     print()
-    if _run(["sudo", "apt", "install", "-y", "direwolf"], check=False).returncode != 0:
+    if _run(sudo_apt_cmd("apt", "install", "-y", "direwolf"), check=False).returncode != 0:
         _warn("Direwolf install failed. Telnet Winlink still works; the RF modem "
               "is unavailable until it's installed.")
         return False

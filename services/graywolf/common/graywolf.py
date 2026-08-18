@@ -19,7 +19,7 @@ sys.path.insert(0, _REPO_ROOT)
 from common.oasis_lib import (
     _hr, _step, _ok, _info, _warn, _fail, _run,
     graywolf_find_local, graywolf_latest_release, graywolf_download_deb,
-    deb_field, dpkg_installed_version, version_decision,
+    deb_field, dpkg_installed_version, version_decision, sudo_apt_cmd,
 )
 from common import manifest as M
 from common import config_paths
@@ -110,7 +110,7 @@ def install_deb(deb_path):
     _info(f"Running: sudo apt install -y {deb_path}")
     _info("You may be prompted for your sudo password.")
     print()
-    result = _run(["sudo", "apt", "install", "-y", deb_path], check=False)
+    result = _run(sudo_apt_cmd("apt", "install", "-y", deb_path), check=False)
     if result.returncode != 0:
         _fail("apt install failed. Check the output above for details.")
     _ok("GrayWolf installed")

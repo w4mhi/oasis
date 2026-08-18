@@ -28,7 +28,7 @@ documented for what it knows.
 import re
 
 from common import rtc
-from common.oasis_lib import _ok, _info, _warn, _run
+from common.oasis_lib import _ok, _info, _warn, _run, sudo_apt_cmd
 
 FAKE_HWCLOCK_UNIT = "fake-hwclock"
 
@@ -152,7 +152,7 @@ def ensure_fake_hwclock(dry_run=False):
         return True
 
     if not installed:
-        _run(["sudo", "apt", "install", "-y", FAKE_HWCLOCK_UNIT], check=False)
+        _run(sudo_apt_cmd("apt", "install", "-y", FAKE_HWCLOCK_UNIT), check=False)
     # Unmask FIRST: a masked unit cannot be enabled, and masking is exactly the
     # state the old RTC step left behind.
     _run(["sudo", "systemctl", "unmask", FAKE_HWCLOCK_UNIT], check=False)

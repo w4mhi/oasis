@@ -47,6 +47,7 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from common.oasis_lib import (
     _hr, _step, _ok, _info, _warn, _fail, _run, dpkg_installed_version,
+    sudo_apt_cmd,
 )
 
 # ── Shared constants — MUST match server/app.py's Wi-Fi endpoints ──────────────
@@ -338,7 +339,7 @@ def install_avahi():
         _ok("avahi-daemon already installed.")
     else:
         _info("Installing avahi-daemon (apt)…")
-        if _run(["sudo", "apt-get", "install", "-y", "avahi-daemon"],
+        if _run(sudo_apt_cmd("apt-get", "install", "-y", "avahi-daemon"),
                 check=False).returncode != 0:
             _warn(f"Could not install avahi-daemon — '{host}.local' may not resolve. "
                   "Operators can still use http://10.42.0.1:8083 on the AP.")

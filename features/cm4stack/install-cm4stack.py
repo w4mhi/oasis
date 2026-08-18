@@ -42,7 +42,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail
+from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, sudo_apt_cmd
 from common import overlays
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -275,7 +275,7 @@ def step_prereqs():
     else:
         _info("dtc (device-tree-compiler) not found — installing via apt...")
         r = subprocess.run(
-            ["sudo", "apt-get", "install", "-y", "device-tree-compiler"],
+            sudo_apt_cmd("apt-get", "install", "-y", "device-tree-compiler"),
             capture_output=False,
         )
         if r.returncode != 0:
@@ -403,7 +403,7 @@ def step_python_deps():
             continue
         _info(f"{pkg}: installing via apt...")
         result = subprocess.run(
-            ["sudo", "apt-get", "install", "-y", pkg],
+            sudo_apt_cmd("apt-get", "install", "-y", pkg),
             capture_output=False,
         )
         if result.returncode == 0:
