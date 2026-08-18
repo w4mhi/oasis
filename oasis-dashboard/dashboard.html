@@ -1507,17 +1507,6 @@ const _svcStates = {};
 let _nwrAlertEvent = null;
 function updateSvcCounts() {   // N UP · N WRN · N DN over the shared registry (label + NI dropped for the Wi-Fi pill)
   const el = document.getElementById('svcpill'); if (!el) return;
-  // An active watch-list alert outranks the health tally: the pill is the one
-  // thing a passer-by reads, and a live warning matters more than a service
-  // count. Service health resumes the instant the alert clears.
-  if (_nwrAlertEvent) {
-    el.classList.add('alert');
-    el.title = 'Active weather alert: ' + _nwrAlertEvent + ' — tap for detail';
-    el.innerHTML = `<span class="cnt-alertlbl">WX</span><span class="cnt-alert">${esc(_nwrAlertEvent)}</span>`;
-    return;
-  }
-  el.classList.remove('alert');
-  el.title = 'Services — tap for detail';
   // Count the canonical OASIS_SERVICES set (minus not-installed) so the kiosk tally
   // matches index.html exactly. NI stays visible inside the services slide-sheet.
   let up = 0, warn = 0, down = 0;
@@ -1526,10 +1515,28 @@ function updateSvcCounts() {   // N UP · N WRN · N DN over the shared registry
     const st = _svcStates[s.id];
     if (st === 'up') up++; else if (st === 'warn') warn++; else if (st === 'down') down++;
   });
-  el.innerHTML =
+  const counts =
     `<span class="cnt-up">${up} UP</span><span class="cnt-sep">·</span>` +
     `<span class="cnt-warn">${warn} WRN</span><span class="cnt-sep">·</span>` +
     `<span class="cnt-down">${down} DN</span>`;
+  // An active watch-list alert is shown BESIDE the health tally, never
+  // instead of it. It used to replace the tally outright, which reads fine
+  // for an alert that clears in minutes — but alerts.active() keeps a
+  // clock_suspect record alive for up to 90 days (both OASIS Pis have
+  // booted weeks stale with every check green, which is exactly what sets
+  // clock_suspect), and a passer-by must always be able to read service
+  // health, not just whichever alert got stuck.
+  if (_nwrAlertEvent) {
+    el.classList.add('alert');
+    el.title = 'Active weather alert: ' + _nwrAlertEvent + ' — services below — tap for detail';
+    el.innerHTML =
+      `<span class="cnt-alertlbl">WX</span><span class="cnt-alert">${esc(_nwrAlertEvent)}</span>` +
+      `<span class="cnt-sep">·</span>` + counts;
+    return;
+  }
+  el.classList.remove('alert');
+  el.title = 'Services — tap for detail';
+  el.innerHTML = counts;
 }
 const SERVICES = [
   { id:'flask', name:'Flask', check: async () => { const r = await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); return {up:true,badge:'UP',sub:`v${d.flask_version}`}; } },

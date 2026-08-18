@@ -2615,6 +2615,13 @@ const GATEABLE = {
   owrx:  ['openwebrx'], winlink: ['winlink'],   wlrf: ['winlink'],   gpsd: ['gps', 'gps-l76x'],
   kiwix: ['kiwix'],     webssh:  ['webssh'],    fcc:  ['fcc'],       adsb: ['adsb'],
   wiki:  ['wikipedia'], rb:      ['repeaterbook'], forms: ['forms'],
+  // Missing entirely used to mean "always counted" here — so a box without
+  // NWR installed had index.html reporting one extra DOWN service that the
+  // kiosk (which gates through the shared common/js/service-registry.js
+  // instead of this table) correctly hid, and left the Weather Radio nav
+  // link ungated too (see _gateEls() below, which derives nlink-nwr from
+  // this same key).
+  nwr:   ['nwr'],
 };
 let _hiddenEls = [];   // {card, nav-<li>, nav-section} elements currently gated off
 

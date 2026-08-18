@@ -87,7 +87,13 @@ EVENT_TYPE = {
     "LSW": FALLBACK_TYPE,   # Landslide Warning
 }
 
-# Logged, never plotted, never announced as a hazard.
+# Logged, never plotted. That is ALL this module decides — whether an alert
+# is SPOKEN is routes.py's call, not this one's: its announce path speaks
+# every MATCHED alert regardless of type, so an informational code (chiefly
+# the Required Weekly Test) is spoken every week ON PURPOSE. That is the only
+# guaranteed end-to-end proof the announce pipeline still works, so do not
+# "fix" routes.py to check `type` here — the accepted behaviour is correct;
+# this comment used to describe the wrong one.
 INFORMATIONAL = frozenset({
     "RWT",   # Required Weekly Test
     "RMT",   # Required Monthly Test
@@ -107,7 +113,9 @@ INFORMATIONAL = frozenset({
 def warning_type(eee):
     """Catalog type id for a SAME event code, or None when informational.
 
-    None means "log it, do not plot it, do not speak it as a hazard".
+    None means "log it, do not plot it" — nothing here about speech. Whether
+    an alert is announced out loud is routes.py's decision, and it speaks
+    every matched alert regardless of type (see INFORMATIONAL above).
     """
     code = (eee or "").strip().upper()
     if code in INFORMATIONAL:

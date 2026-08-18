@@ -978,6 +978,7 @@ body.list-resizing #map .maplibregl-canvas{pointer-events:none;}
 <script src="/common/js/adsb.js"></script>
 <script src="/common/js/adsb-operators.js"></script>
 <script src="/common/js/traffic-list.js"></script>
+<script src="/common/js/nwr-alerts.js"></script>
 <script>
 'use strict';
 
@@ -4391,9 +4392,12 @@ async function loadNwrAlerts() {
     const d = await r.json();          // body always consumed
     if (!d.ok) { return; }
     const active = new Set(d.active);
-    nwrAlerts = d.alerts.filter(function (a) {
-      return active.has(a.id) && a.type !== null && a.matched;
-    });
+    const nowS = Date.now() / 1000;
+    // nwrMapVisible (common/js/nwr-alerts.js) folds in a much shorter
+    // recency check for clock_suspect records than the server's own
+    // `active` set does — see that file for why a 90-day store-side
+    // quarantine must not become a 90-day map pin.
+    nwrAlerts = d.alerts.filter(function (a) { return nwrMapVisible(a, active, nowS); });
   } catch (_) {
     nwrAlerts = [];                     // the feature may not be installed
   }
