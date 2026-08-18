@@ -440,14 +440,14 @@
   /* The card's TITLE opens the arm list. It is the biggest, steadiest target in
      the header — the counter next to it is live text whose width changes with
      the numbers, which is a poor thing to ask a thumb to find on a 7-inch panel.
-     The hit area grows by PADDING (vertically, and rightward into the .8rem flex
-     gap), cancelled by matching negative margins so nothing moves; the left edge
-     takes no padding at all, so the label stays flush with the card below it.
+     The hit area grows by PADDING on every side, cancelled by matching negative
+     margins so the label does not move. It takes padding on the left now too:
+     the mute bell leads the header, so this is no longer the card's left edge
+     and there is a flex gap on that side to grow into.
      The dotted underline is the affordance: the traffic card's twin header wears
      the same .livebadge and is NOT tappable, so colour alone cannot say which. */
   #k-sat-title{ cursor:pointer; text-decoration:underline dotted; text-underline-offset:.25em;
-                text-decoration-color:var(--border); padding:.4rem .4rem .4rem 0;
-                margin:-.4rem -.4rem -.4rem 0; }
+                text-decoration-color:var(--border); padding:.4rem; margin:-.4rem; }
   /* Pass-alert bell. Matches .sat-bell on the Satellites page — one vocabulary,
      amber for armed — but with a ~44px touch target built from PADDING, so the
      glyph stays small on a 7-inch row while still being hittable by a thumb.
@@ -512,8 +512,18 @@
   .traffic{ flex:1 1 auto; min-width:0; }
   .traffic .hd{ flex-wrap:wrap; row-gap:.4rem; border-bottom:1px solid var(--border); padding-bottom:.5rem; }
   .livebadge{ display:inline-flex; align-items:center; gap:.35rem; font-size:1rem; font-weight:700; letter-spacing:.1em; }
-  .livebadge .lvd{ font-size:.85rem; line-height:1; }
-  .livebadge.ok{ color:var(--accent); } .livebadge.ok .lvd{ text-shadow:0 0 .5rem var(--accent); }
+  /* DRAWN, not typed. It was a ● at .85rem, and it has to match the mute bell
+     that now opens the satellites header beside it — but a glyph's disc is some
+     unknown fraction of its em (~0.7 in this font, more or less in the next
+     one), so "make it 1.3rem" through font-size is a guess that lands
+     differently on whatever the Pi actually has installed. A border-radius box
+     is exactly the size you asked for. Same reasoning as the fold caret.
+     1.3rem is not arbitrary: it is .satmute svg's width, so the two card
+     headers open with glyphs of equal weight.
+     The glow becomes a box-shadow — STATIC. Never animate it: an infinite
+     box-shadow animation pins this kiosk's renderer at 60fps. */
+  .livebadge .lvd{ width:1.3rem; height:1.3rem; border-radius:50%; background:currentColor; }
+  .livebadge.ok{ color:var(--accent); } .livebadge.ok .lvd{ box-shadow:0 0 .5rem var(--accent); }
   .livebadge.warn{ color:var(--warn); }
   .livebadge.down{ color:var(--down); }
   .heard{ color:var(--warn); font-weight:700; font-variant-numeric:tabular-nums; font-size:1.05rem; }
@@ -614,7 +624,15 @@
      live-is-grey read as disabled, which is what it looked like. The muted state
      is still unmistakable because the GLYPH changes to a crossed bell, not just
      the colour. */
-  .satmute{ background:none; border:0; padding:.5rem .6rem; margin:-.5rem .1rem -.5rem .5rem;
+  /* It leads the header, left of the SATELLITES label, so this card opens with
+     a glyph exactly as the traffic card opens with its LIVE dot — same size,
+     same x, one habit for both.
+     The margins cancel its own padding on BOTH sides: the finger-sized hit area
+     stays, but the icon sits flush with the card's content edge (where the label
+     used to start) and the .8rem header gap is the only thing between it and the
+     label. Padding grows the target, negative margin puts the pixels back — the
+     same trick #k-sat-title uses just below. */
+  .satmute{ background:none; border:0; padding:.5rem .6rem; margin:-.5rem -.6rem -.5rem -.6rem;
             min-width:2.75rem; min-height:2.75rem; line-height:0; cursor:pointer;
             color:var(--warn); -webkit-tap-highlight-color:transparent; }
   .satmute svg{ width:1.3rem; height:1.3rem; display:block; }
@@ -1043,7 +1061,7 @@
 
     <div class="card traffic">
       <div class="hd">
-        <span class="livebadge ok" id="k-aprs-live"><span class="lvd">●</span><span class="lvtxt">LIVE</span></span>
+        <span class="livebadge ok" id="k-aprs-live"><span class="lvd"></span><span class="lvtxt">LIVE</span></span>
         <span class="heard" id="k-aprs-count">—</span>
         <!-- AGE WINDOW, cycled by tapping rather than picked from a list: the
              panel has no column headers to hang index.html's Age <select> on,
@@ -1093,7 +1111,7 @@
       <!-- Same treatment as the traffic card's LIVE badge (green accent, 1rem,
            700, .1em tracking). Reusing that class rather than copying its values
            is deliberate: the two headers sit side by side, so any drift shows. -->
-      <div class="hd"><span class="livebadge ok" id="k-sat-title" onclick="openArmSheet()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openArmSheet();}" role="button" tabindex="0" title="Tap to choose which birds wake this screen">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="hd-right"><span class="meta" id="k-sat-meta" title="Monitored birds, and how many have a pass in the next hour">—</span><span class="foldpill" id="fold-traffic" role="button" tabindex="0" onclick="foldOpen('traffic')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();foldOpen('traffic');}" title="Show the traffic list"><span class="fp-name">TRAFFIC</span><span class="fs-head" id="fold-traffic-head">—</span><span class="fp-car"></span></span><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span></span></div>
+      <div class="hd"><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="livebadge ok" id="k-sat-title" onclick="openArmSheet()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openArmSheet();}" role="button" tabindex="0" title="Tap to choose which birds wake this screen">SATELLITES</span><span class="hd-right"><span class="meta" id="k-sat-meta" title="Monitored birds, and how many have a pass in the next hour">—</span><span class="foldpill" id="fold-traffic" role="button" tabindex="0" onclick="foldOpen('traffic')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();foldOpen('traffic');}" title="Show the traffic list"><span class="fp-name">TRAFFIC</span><span class="fs-head" id="fold-traffic-head">—</span><span class="fp-car"></span></span><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span></span></div>
       <div class="satscroll" id="satBody"><div class="satempty">…</div></div>
     </div>
 
