@@ -199,3 +199,45 @@ test('parts are read off one Date, UTC and local kept apart', () => {
   assert.strictEqual(p.locH, d.getHours());
   assert.strictEqual(p.locM, d.getMinutes());
 });
+
+// ── where the bell lives on the kiosk ───────────────────────────────────────
+// Markup, not behaviour, but the failure mode is the same kind: silent. The
+// bell moved from the UTC card's bottom-right corner up beside the reload
+// glyph, and both buttons sit inside one positioned group instead of being two
+// absolutes that each had to know where the other ended.
+{
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const page = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'oasis-dashboard', 'dashboard.html'), 'utf8');
+
+  test('the hour bell sits immediately left of the reload glyph', () => {
+    const group = page.slice(page.indexOf('<div class="clk-tools">'));
+    const end = group.indexOf('</div>');
+    assert.ok(end !== -1, 'no .clk-tools group on the UTC card');
+    const inner = group.slice(0, end);
+    const bell = inner.indexOf('class="clk-bell');
+    const reload = inner.indexOf('class="clk-refresh"');
+    assert.ok(bell !== -1 && reload !== -1, 'both controls must be in the group');
+    assert.ok(bell < reload,
+      'the reload keeps the corner it has always been in; the bell takes the ' +
+      'space to its left');
+  });
+
+  test('neither control is absolutely positioned any more', () => {
+    // Two absolutes in one corner means the second one is placed by arithmetic
+    // over the first one's width — and the bell's box is a ~2.75rem finger
+    // target around a 1.3rem glyph, so that arithmetic is not what it looks.
+    assert.match(page, /\.clk-tools\{ position:absolute;/, 'the group must carry the position');
+    assert.ok(!/\.clk-bell\{ position:absolute/.test(page), '.clk-bell still positions itself');
+    assert.ok(!/\.clk-refresh\{ position:absolute/.test(page), '.clk-refresh still positions itself');
+  });
+
+  test('a thumb in the gap between them does not repaint the clock', () => {
+    // The whole face is a colour-cycle target. The two buttons were already
+    // excluded; the GROUP has to be too, or a tap landing in its gap misses
+    // both buttons and recolours the clock instead of doing nothing.
+    assert.match(page, /closest\('\.clk-tools, \.clk-refresh, \.clk-bell'\)/,
+      'the colour-cycle guard must cover the group as well as its buttons');
+  });
+}

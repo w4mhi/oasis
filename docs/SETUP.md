@@ -3155,8 +3155,8 @@ audio — the voice comes from `/api/speech/say`.
 
 #### The hour bell (Zulu chime)
 
-Bottom-right of the **UTC/Zulu** card is a bell with a **three-state** control; each
-tap advances it:
+Top-right of the **UTC/Zulu** card, immediately left of the reload glyph, is a bell
+with a **three-state** control; each tap advances it:
 
 | State | Behaviour |
 |---|---|

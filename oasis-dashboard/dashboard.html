@@ -147,20 +147,32 @@
   .face .time{ color:var(--clk); }
   .face .time .s{ font-size:1.6rem; opacity:.62; }
   .face .date{ font-size:1.2rem; color:var(--dim); letter-spacing:.04em; margin-top:.25rem; }
-  /* Reload glyph in the UTC clock's top-right corner — blue, spins on tap. */
-  /* Hour bell — bottom-right of the Zulu card, opposite the reload button.
-     Sized for a FINGER like the satellite mute: the icon is 1.3rem, the hit area
-     ~2.75rem, because this gets used in the dark on the way to bed. Amber while
-     it will actually sound, dim when it will not — and "will not" includes an
-     armed bell sitting inside quiet hours, so the glyph never claims the shack
-     is about to be woken when it isn't. */
-  .clk-bell{ position:absolute; bottom:.4rem; right:.6rem; z-index:2; background:transparent;
+  /* ── the UTC card's corner controls: hour bell, then reload ─────────────
+     ONE positioned group, both buttons static inside it — not two absolutes
+     each computing where the other ends. The bell used to sit bottom-right,
+     diagonally opposite the reload; putting them together means the card has a
+     single place where its controls live, and the eye stops hunting corners.
+     Order is bell, then reload: reload stays in the corner it has always been
+     in, and the new arrival takes the space to its left.
+     align-items:center aligns the two ICONS, which is what the eye reads —
+     their boxes are nothing alike, since the bell carries a finger-sized hit
+     area (~2.75rem) around a 1.3rem glyph while the reload is a 2.4rem glyph
+     with almost no padding. */
+  .clk-tools{ position:absolute; top:.5rem; right:.8rem; z-index:2;
+    display:flex; align-items:center; gap:.1rem; }
+  /* Hour bell. Sized for a FINGER like the satellite mute: the icon is 1.3rem,
+     the hit area ~2.75rem, because this gets used in the dark on the way to bed.
+     Amber while it will actually sound, dim when it will not — and "will not"
+     includes an armed bell sitting inside quiet hours, so the glyph never claims
+     the shack is about to be woken when it isn't. */
+  .clk-bell{ background:transparent;
     border:0; padding:.5rem .6rem; min-width:2.75rem; min-height:2.75rem; line-height:0;
     color:var(--warn); cursor:pointer; -webkit-tap-highlight-color:transparent; }
   .clk-bell svg{ width:1.3rem; height:1.3rem; display:block; }
   .clk-bell.wide svg{ width:1.75rem; }      /* the bell+voice glyph is 32 wide, not 24 */
   .clk-bell.off, .clk-bell.quiet{ color:var(--faint); }
-  .clk-refresh{ position:absolute; top:.5rem; right:.8rem; z-index:2; background:transparent; border:0;
+  /* Reload glyph — blue, spins on tap. */
+  .clk-refresh{ background:transparent; border:0;
     color:var(--blue); font-size:2.4rem; line-height:1; padding:.1rem .3rem; opacity:.7; cursor:pointer;
     transition:opacity .15s ease, transform .1s ease; }
   .clk-refresh:hover{ opacity:1; }
@@ -958,11 +970,16 @@
       <div class="date" id="loc-d">—</div>
     </div>
     <div class="face utc">
-      <button class="clk-refresh" id="clk-refresh" onclick="kioskRefresh()" title="Reload dashboard" aria-label="Reload dashboard">&#8635;</button>
+      <!-- Corner controls, hour bell then reload. Both were absolute and in
+           opposite corners; they are one group now, so the card has a single
+           place its controls live. -->
+      <div class="clk-tools">
+        <button class="clk-bell off" id="k-clk-bell" onclick="cycleClockBell(event)"></button>
+        <button class="clk-refresh" id="clk-refresh" onclick="kioskRefresh()" title="Reload dashboard" aria-label="Reload dashboard">&#8635;</button>
+      </div>
       <div class="zn"><span class="z">UTC</span><span class="tz">Zulu</span></div>
       <div class="time" id="utc-t">--:--<span class="s">:--</span></div>
       <div class="date" id="utc-d">—</div>
-      <button class="clk-bell off" id="k-clk-bell" onclick="cycleClockBell(event)"></button>
     </div>
     <div class="midcard">
       <div class="callrow">
@@ -1298,7 +1315,10 @@ tick(); setInterval(tick, 1000);
       // is a colour-cycle target, so without this every tap on the hour bell
       // would also repaint the clock — the control would appear to do two
       // unrelated things at once.
-      if (ev.target.closest('.clk-refresh, .clk-bell')) return;
+      // .clk-tools is in the list as well as its two buttons: the group has a
+      // gap between them, and a thumb landing in it would otherwise miss both
+      // buttons and repaint the clock instead of doing nothing.
+      if (ev.target.closest('.clk-tools, .clk-refresh, .clk-bell')) return;
       apply(clk, nextFree(clk.color, other.color));
     });
   });
