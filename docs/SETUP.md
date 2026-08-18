@@ -2074,6 +2074,13 @@ So the Weather Radio page has **no Listen, Stop or Scan button**. It pins a
 channel, listens in on the audio the daemon is already producing, and shows the
 decode log.
 
+The kiosk dashboard carries the same listen-in as a **WX** pill in the system
+row: blue while the watch has audio to relay, amber while a matched alert is
+active, dim grey and unpressable whenever there is nothing to hear — no dongle
+assigned, the watch not running, dependencies missing, or a sweep in progress.
+Tapping it plays the station through the panel; tapping it again stops and
+releases the stream. It starts and stops nothing on the daemon.
+
 ### Units
 
 - **`oasis-nwr`** — the watch. Sweeps the band with `rtl_power`, keeps the

@@ -274,6 +274,24 @@
      :hover rule for the same reason IMPERIAL has none (see below): it must not
      repaint under a stray pointer, and the panel this runs on is touch anyway. */
   .upill.ops-pill{ color:var(--accent); border-color:var(--accent); }
+  /* Weather Radio listen pill. Colour on BOTH text and border like OPS and the
+     units pill, declared after :hover so a stray pointer cannot repaint state.
+     Classes come from nwrListenPill() in common/js/nwr-card.js — nothing here
+     decides anything. min-width keeps the pill a finger-sized target and stops
+     the row reflowing when the state changes; the label is a constant "WX". */
+  .upill.wx-pill{ min-width:4.2rem; }
+  .upill.wx-live{ color:var(--blue); border-color:var(--blue); }
+  .upill.wx-alert{ color:var(--warn); border-color:var(--warn); }
+  /* Nothing to hear: dim, and not offering a press. */
+  .upill.wx-off{ color:var(--faint); border-color:var(--border); cursor:default; }
+  .upill.wx-off:hover{ color:var(--faint); border-color:var(--border); }
+  /* Playing. On a wall-mounted panel an invisible stream is one nobody
+     remembers to stop, so the pill INVERTS — the same colour, filled, which is
+     unmistakable from across a room and keeps the blue/amber semantics. A fill
+     and not a pulse: an infinite animation on this page once pinned the Pi's
+     renderer at 60 fps, and a state this static has no business animating. */
+  .upill.wx-play.wx-live{ background:var(--blue); color:#0b1015; }
+  .upill.wx-play.wx-alert{ background:var(--warn); color:#0b1015; }
   /* Units pill carries its mode as colour — green imperial / blue metric, on
      both the text and the border, matching index.html. Declared AFTER the
      :hover rule on purpose: `.upill.u-metric` and `.upill:hover` have equal
@@ -842,6 +860,16 @@
       <div class="srow"><span class="k">DISK</span><span class="v" id="k-disk">—</span></div>
       <div class="srow ip"><span class="k">IP</span><span class="v" id="k-ip">—</span></div>
     </div>
+    <!-- Weather Radio: tap to hear the station the watch is on. Starts grey and
+         disabled — the first /api/nwr/status poll is what earns it a colour.
+         The <audio> is hidden and has no controls: the pill IS the control, and
+         preload="none" means an armed element costs the daemon nothing until
+         the operator presses it. -->
+    <span class="upill wx-pill wx-off" id="k-wx" onclick="wxToggle()" role="button"
+          tabindex="0" aria-disabled="true" aria-pressed="false"
+          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();wxToggle();}"
+          title="Weather Radio">WX</span>
+    <audio id="k-wx-audio" preload="none" hidden></audio>
     <span class="upill" id="fxchip" onclick="fxKioskRefresh()" role="button"
           tabindex="0" title="Data freshness — tap to check now" hidden>DATA</span>
     <span class="upill" id="k-units" onclick="toggleUnits()" title="Toggle imperial / metric"><span class="up-km">KM</span><span class="up-sep">/</span><span class="up-ft">FT</span></span>
@@ -1637,6 +1665,78 @@ async function pollNwrAlert() {
   _nwrAlertEvent = await nwrPollAlertEvent();
   updateSvcCounts();
 }
+
+// ── WX listen pill: tap to hear the weather station ─────────────────────────
+// The pill's colour and whether it can be pressed are nwrListenPill()'s in
+// common/js/nwr-card.js, fed by the same nwrCardState() the card and the health
+// tally read. Everything below is the <audio> and the DOM.
+const WX_STREAM_URL = '/api/nwr/listen/stream';
+let _wxPlaying = false;
+let _wxCs = null;                       // last painted state, null before the first poll
+function _wxEl() { return document.getElementById('k-wx-audio'); }
+
+// Stop the stream WITHOUT repainting — renderWxPill() calls this mid-paint and
+// then finishes the paint itself, which is what keeps the two out of a loop.
+//
+// Pausing an <audio> does not close its TCP connection: the daemon keeps the
+// subscriber and its ffmpeg alive, and it allows MAX_STREAMS = 3, so a few taps
+// exhaust the budget and nobody can listen anywhere. removeAttribute alone does
+// not drop it either — the media load algorithm runs when src is SET or
+// CHANGED, not when it is removed — so the load() below is the line that
+// actually ends the stream. Same teardown as services/nwr/static/weather.html.
+function wxHalt() {
+  const el = _wxEl();
+  if (el) { el.pause(); el.removeAttribute('src'); el.load(); }
+  _wxPlaying = false;
+}
+
+function wxStop() { wxHalt(); renderWxPill(_wxCs); }
+
+function wxToggle() {
+  if (nwrListenPill(_wxCs, _wxPlaying).disabled) { return; }
+  if (_wxPlaying) { wxStop(); return; }
+  const el = _wxEl();
+  if (!el) { return; }
+  // A FRESH cache-busting URL every time: the element is armed and played in
+  // the same gesture, so nothing must resume a stream the daemon has dropped.
+  el.setAttribute('src', WX_STREAM_URL + '?t=' + Date.now());
+  const p = el.play();
+  if (p && typeof p.catch === 'function') { p.catch(() => wxStop()); }
+  _wxPlaying = true;
+  renderWxPill(_wxCs);
+}
+
+// Driven by nwrRenderCard() through nwrOnCardPaint(), so it runs on BOTH the
+// check path and the failure path with the same cs — a check that fails or
+// loses the 4 s race cannot leave a stale blue pill beside a DOWN badge.
+function renderWxPill(cs) {
+  _wxCs = cs || null;
+  // The watch stopped while audio was playing: the stream is already dead, so
+  // let go of it here rather than let the pill go on claiming to play.
+  if (_wxPlaying && nwrListenPill(_wxCs, true).disabled) { wxHalt(); }
+  const el = document.getElementById('k-wx');
+  if (!el) { return; }
+  const p = nwrListenPill(_wxCs, _wxPlaying);
+  el.className = 'upill wx-pill ' + p.cls;
+  el.title = p.title;
+  el.setAttribute('aria-disabled', p.disabled ? 'true' : 'false');
+  el.setAttribute('aria-pressed', _wxPlaying ? 'true' : 'false');
+}
+nwrOnCardPaint(renderWxPill);
+
+// The relay refuses with JSON the element cannot render — 409 while the watch
+// is down, 503 with no encoder or with all three slots taken — and every one of
+// them surfaces here as a bare media error. 'ended' is the stream dying under
+// us. Either way: let go, and stop saying we are playing.
+['error', 'ended'].forEach(ev => {
+  const el = _wxEl(); if (el) { el.addEventListener(ev, () => wxStop()); }
+});
+// The stream must not outlive the page. 'pagehide', never 'unload': unload
+// disqualifies the page from the bfcache, and a bfcached kiosk would pin one of
+// the daemon's three streams (and an ffmpeg) indefinitely — it has no reaper. A
+// page that is merely HIDDEN or idle is NOT this case and gets no teardown:
+// audio should keep playing on a kiosk whose screen has blanked.
+window.addEventListener('pagehide', wxHalt);
 // Gate out features the operator didn't install so they don't count as DOWN. The
 // canonical set + gate rules live in common/js/service-registry.js (shared with
 // index.html so the two dashboards can't drift). A null manifest (unconfigured

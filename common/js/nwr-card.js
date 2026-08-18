@@ -87,17 +87,25 @@
   //           own cadence — folding it into the status payload would mean
   //           inventing a field the API does not have.
   //
-  // Returns {state, badge, sub, meter, alert}:
+  // Returns {state, badge, sub, meter, alert, audio}:
   //   state   'up' | 'warn' | 'down' — the HEALTH, which is what the service
   //           tally counts. An active alert does NOT make this 'down': a
   //           tornado warning is the watch working, not the watch failing.
   //   alert   paint the card red regardless of `state` (CSS .svc-card.alert).
   //   meter   null, or {pct, cls, label} for the shared feed-meter markup.
+  //   audio   is there anything to HEAR right now — the daemon is capturing
+  //           AND it has an encoder to hand the bytes to. Decided here, in the
+  //           branch that already knows, rather than re-derived by every caller
+  //           from `badge`: the alert overlay below REPLACES badge with the
+  //           event code, so a badge-reading caller loses the health the moment
+  //           a warning lands. GET /api/nwr/listen/stream refuses with 409/503
+  //           whenever this is false (services/nwr/routes.py).
   function nwrCardState(status, alert) {
     var d = status || {};
     var p = d.preconditions || {};
     var w = d.watch || {};
-    var cs = { state: 'down', badge: 'DOWN', sub: '', meter: null, alert: false };
+    var cs = { state: 'down', badge: 'DOWN', sub: '', meter: null, alert: false,
+               audio: false };
 
     if (d.ok !== true) {
       cs.sub = 'status unavailable';
@@ -146,9 +154,15 @@
       var m = _margin(w);
       cs.sub = _channelText(w) + (m === null ? '' : ' · ' + _marginText(m));
       cs.meter = _signalMeter(w, 'silent');
+      // A weak channel still starts, so there IS audio — bad audio, which is
+      // the operator's to judge by ear. `!== false` and not truthiness: a
+      // precondition key that stops being sent must not silently mute the
+      // station, which is the exact failure this module was written for.
+      cs.audio = !!w.listening && p.can_stream !== false;
     } else if (w.listening) {
       cs.state = 'up';
       cs.badge = 'LISTENING';
+      cs.audio = p.can_stream !== false;
       var heard = w.last_decode && w.last_decode.station;
       cs.sub = _channelText(w) + (heard ? ' · ' + heard : '');
       cs.meter = _signalMeter(w, 'flowing');
@@ -181,6 +195,46 @@
       cs.badge = alert;
     }
     return cs;
+  }
+
+  // What the kiosk's WX listen pill should paint, from the same nwrCardState()
+  // the card and the health tally read. Pure: the kiosk owns the <audio> and
+  // the DOM, this owns the decision.
+  //
+  //   cs       a nwrCardState() return, or null before the first poll lands.
+  //   playing  is the kiosk's <audio> element streaming right now.
+  //
+  // Returns {cls, title, disabled}. `cls` carries the playing state too, so the
+  // pill is fully described by one string and cannot be painted half-updated.
+  //
+  // Two judgment calls, both deliberate:
+  //
+  // 1. AMBER BEATS BLUE. An alerting watch paints amber even while the operator
+  //    is listening to it. A warning is the more urgent fact, and the pill has
+  //    one colour to spend; "there is a warning" outranks "audio is flowing",
+  //    which the inverted fill says anyway.
+  //
+  // 2. GREY-DISABLED MEANS "NOTHING TO HEAR", NOT ONLY "NO DONGLE". The
+  //    operator's rule was no-dongle-is-grey, and it holds exactly as stated —
+  //    but WATCH DOWN, DEPS, SCANNING and an unreachable status have no stream
+  //    either, and /api/nwr/listen/stream answers all of them with 409 or 503.
+  //    A blue button that silently does nothing is worse than an honest grey
+  //    one, so every state with no audio is grey, each with its own title.
+  //    Grey also outranks amber, for the same honesty: a stale alert over a
+  //    dead watch must not offer audio that cannot play. Nothing is lost by
+  //    that — the event code still rides the kiosk's #svcpill WX badge, and the
+  //    title below still names it.
+  function nwrListenPill(cs, playing) {
+    var c = cs || { badge: 'DOWN', sub: 'status unavailable', audio: false };
+    var name = 'Weather Radio ' + (c.badge || 'DOWN');
+    if (!c.audio) {
+      return { cls: 'wx-off', disabled: true,
+               title: name + ' - nothing to hear' + (c.sub ? ': ' + c.sub : '') };
+    }
+    var cls = c.alert ? 'wx-alert' : 'wx-live';
+    return { cls: playing ? cls + ' wx-play' : cls, disabled: false,
+             title: name + (playing ? ' - playing, tap to stop'
+                                    : ' - tap to listen') };
   }
 
   // The shape checkService() on both pages expects. Split from nwrCardState so
@@ -228,6 +282,8 @@
   // paint is final and a superseded continuation is dropped. Passing no
   // generation paints unconditionally (there is no race to lose).
   var _paintGen = 0;
+  var _onPaint = null;
+  function nwrOnCardPaint(fn) { _onPaint = fn; }
   function nwrPaintGeneration() {
     _paintGen += 1;
     return _paintGen;
@@ -240,8 +296,17 @@
   // classList, never className: checkService() rewrites the card's state class
   // on every poll, and an `alert` class assigned wholesale would be wiped by
   // it (or would wipe it). Both survive because each only touches its own.
+  //
+  // A page with a Weather Radio surface that is NOT the card registers it with
+  // nwrOnCardPaint() and gets driven from here. That indirection is not taste:
+  // tests/js/nwr-card.test.js compares the two dashboards' whole `nwr` registry
+  // entries byte for byte, so the kiosk cannot add a call of its own inside
+  // one. Hanging off nwrRenderCard also means the extra surface is fed by BOTH
+  // paths — check() and fail() — and is dropped by the same generation guard,
+  // so a lost race cannot leave it painted live beside a DOWN badge.
   function nwrRenderCard(cs, gen) {
     if (gen !== undefined && gen !== _paintGen) { return; }
+    if (_onPaint) { _onPaint(cs); }
     if (typeof document === 'undefined') { return; }
     var card = document.getElementById('card-nwr');
     if (!card) { return; }
@@ -258,6 +323,8 @@
   }
 
   root.nwrCardState = nwrCardState;
+  root.nwrListenPill = nwrListenPill;
+  root.nwrOnCardPaint = nwrOnCardPaint;
   root.nwrHealth = nwrHealth;
   root.nwrActiveEvent = nwrActiveEvent;
   root.nwrPollAlertEvent = nwrPollAlertEvent;
