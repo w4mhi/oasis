@@ -77,6 +77,13 @@
        looked outsized next to the .8rem dots elsewhere on the screen. Dots
        match dots. */
     --station-dot:.8rem;
+    /* The UTC card's two corner controls, hour bell and reload. Both are inline
+       SVG so this is a BOX both of them actually occupy — the reload used to be
+       a typed glyph at font-size:2.4rem, which is an em, not a mark: how much of
+       it the font chooses to ink is the font's business, so the two could not be
+       compared, let alone matched. Drawn beats typed whenever a size has to
+       agree with something. Third time in this file. */
+    --clk-glyph:1.3rem;
     /* IDENTICAL to css/common.css. The two used to diverge — this stack had no
        Roboto Mono, and the kiosk does not link common.css, so the bundled face
        was unreachable here and the pills fell through to the OS default while
@@ -178,12 +185,20 @@
   .clk-bell{ background:transparent;
     border:0; padding:.5rem .6rem; min-width:2.75rem; min-height:2.75rem; line-height:0;
     color:var(--warn); cursor:pointer; -webkit-tap-highlight-color:transparent; }
-  .clk-bell svg{ width:1.3rem; height:1.3rem; display:block; }
-  .clk-bell.wide svg{ width:1.75rem; }      /* the bell+voice glyph is 32 wide, not 24 */
+  /* Sized by HEIGHT, width:auto. That is what retires .clk-bell.wide's hardcoded
+     1.75rem: the bell+voice glyph has a 32-wide viewBox against everything
+     else's 24, and letting the aspect ratio do the arithmetic keeps its INK the
+     same weight as its neighbours instead of a number somebody measured once. */
+  .clk-bell svg, .clk-refresh svg{ height:var(--clk-glyph); width:auto; display:block; }
   .clk-bell.off, .clk-bell.quiet{ color:var(--faint); }
-  /* Reload glyph — blue, spins on tap. */
-  .clk-refresh{ background:transparent; border:0;
-    color:var(--blue); font-size:2.4rem; line-height:1; padding:.1rem .3rem; opacity:.7; cursor:pointer;
+  /* Reload — blue, spins on tap. Its box now mirrors the bell's exactly: same
+     padding, same ~2.75rem finger target, same glyph height. It used to be a
+     2.4rem text glyph with .1rem of padding, which made it both a different size
+     and a much smaller target than the control beside it — on a panel that is
+     tapped, not clicked, the target mattered more than the size did. */
+  .clk-refresh{ background:transparent; border:0; line-height:0;
+    color:var(--blue); padding:.5rem .6rem; min-width:2.75rem; min-height:2.75rem;
+    opacity:.7; cursor:pointer;
     transition:opacity .15s ease, transform .1s ease; }
   .clk-refresh:hover{ opacity:1; }
   .clk-refresh:active{ transform:scale(.9); }
@@ -1034,7 +1049,7 @@
            place its controls live. -->
       <div class="clk-tools">
         <button class="clk-bell off" id="k-clk-bell" onclick="cycleClockBell(event)"></button>
-        <button class="clk-refresh" id="clk-refresh" onclick="kioskRefresh()" title="Reload dashboard" aria-label="Reload dashboard">&#8635;</button>
+        <button class="clk-refresh" id="clk-refresh" onclick="kioskRefresh()" title="Reload dashboard" aria-label="Reload dashboard"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4c-4.42 0-7.99 3.58-8 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35Z"/></svg></button>
       </div>
       <div class="zn"><span class="z">UTC</span><span class="tz">Zulu</span></div>
       <div class="time" id="utc-t">--:--<span class="s">:--</span></div>

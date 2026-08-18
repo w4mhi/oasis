@@ -233,6 +233,39 @@ test('parts are read off one Date, UTC and local kept apart', () => {
     assert.ok(!/\.clk-refresh\{ position:absolute/.test(page), '.clk-refresh still positions itself');
   });
 
+  test('both corner glyphs are drawn, at one shared size', () => {
+    // The reload was a typed glyph at font-size:2.4rem. An em is not a mark —
+    // how much of it the font inks is the font's business — so it could not be
+    // compared with an SVG box, let alone matched to one. Both are boxes now.
+    assert.match(page, /--clk-glyph:[\d.]+rem;/, 'the shared glyph size is gone');
+    assert.match(page,
+      /\.clk-bell svg, \.clk-refresh svg\{ height:var\(--clk-glyph\); width:auto;/,
+      'both glyphs must take the shared height');
+    assert.ok(!/\.clk-refresh\{[^}]*font-size/.test(page),
+      'the reload is sized by font-size again — that is an em, not a glyph');
+    assert.match(page, /id="clk-refresh"[^>]*><svg viewBox="0 0 24 24"/,
+      'the reload must be inline SVG');
+  });
+
+  test('sizing by height is what retires the wide bell\'s magic number', () => {
+    // The bell+voice glyph has a 32-wide viewBox against everything else's 24.
+    // width:auto lets the aspect ratio do that arithmetic, so its INK weighs the
+    // same as its neighbours instead of matching a number somebody measured once.
+    assert.ok(!/\.clk-bell\.wide svg\{/.test(page),
+      'the hardcoded 1.75rem width is back; height + width:auto covers it');
+  });
+
+  test('the reload is as easy to hit as the bell beside it', () => {
+    // It had .1rem of padding against the bell's finger-sized box. On a panel
+    // that is tapped rather than clicked, that gap mattered more than the size
+    // difference did — and shrinking the glyph to match would have made it worse.
+    const reload = page.slice(page.indexOf('.clk-refresh{'));
+    const body = reload.slice(0, reload.indexOf('}'));
+    assert.match(body, /min-width:2\.75rem; min-height:2\.75rem/,
+      'the reload must carry the same ~2.75rem target as the bell');
+    assert.match(body, /padding:\.5rem \.6rem/, 'same padding as the bell, too');
+  });
+
   test('a thumb in the gap between them does not repaint the clock', () => {
     // The whole face is a colour-cycle target. The two buttons were already
     // excluded; the GROUP has to be too, or a tap landing in its gap misses
