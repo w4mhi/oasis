@@ -126,3 +126,30 @@ test('cstate: eligible still yields on/stopped for an assigned device', () => {
   assert.equal(R.oasisCstate({ ...dev, running: true }, svc), 'on');
   assert.equal(R.oasisCstate({ ...dev, running: false }, svc), 'stopped');
 });
+
+// ── a route that assigns but does not start ─────────────────────────────────
+// The endpoint answers 200 for a reroute that persisted, and a `failed` list
+// when the START did not take -- a `sudo -n systemctl` denied by a stale
+// grant fails silently, which is how a station ended up with an amber cell,
+// a button that did nothing, and no message anywhere. Both consoles render
+// the same matrix from the same module, so both have to read it.
+{
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.join(__dirname, '..', '..');
+
+  for (const page of ['index.html', 'oasis-dashboard/dashboard.html']) {
+    test(`${page}: a 2xx route is not reported as a running service`, () => {
+      const src = fs.readFileSync(path.join(root, page), 'utf8');
+      const at = src.indexOf('oasisHwConsole.route(');
+      assert.notStrictEqual(at, -1, 'no route() call in ' + page);
+      const handler = src.slice(at, at + 1400);
+      assert.match(handler, /b\.failed/,
+        page + ' claims success on any 2xx — the start can fail silently ' +
+        'after the reroute succeeds, and that is exactly the case this reports');
+      assert.match(handler, /b\.detail/,
+        page + ' drops the server\'s explanation, which is the part that says ' +
+        'whether to re-run the grant or read a journal');
+    });
+  }
+}

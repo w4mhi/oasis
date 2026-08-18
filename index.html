@@ -4531,7 +4531,15 @@ loadConfig().then(() => {
           message(loc?svc.name+' is locked — unlock it to move it.':'⚠ '+(b.error||'route failed'),'warnc');
         }); return;
       }
-      message('▶ '+svc.name+' → '+dev.label,'okc'); refresh();
+      // A 2xx says the ROUTE took, not that the service is running: the start
+      // is a `sudo -n systemctl` that fails silently when the grant is stale.
+      // The server now looks and reports, so say what it found rather than
+      // claiming a success the operator can see is not there.
+      res.json().then(function(b){
+        if(b&&b.failed&&b.failed.length){ message('⚠ '+(b.detail||(b.failed.join(', ')+' did not start')),'warnc'); }
+        else { message('▶ '+svc.name+' → '+dev.label,'okc'); }
+        refresh();
+      }).catch(function(){ message('▶ '+svc.name+' → '+dev.label,'okc'); refresh(); });
     });
   }
   function toggleLock(dev){

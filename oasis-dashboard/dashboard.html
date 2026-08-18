@@ -3624,7 +3624,16 @@ loadInstalled().then(() => {
           message(loc ? svc.name + ' is locked — unlock to move it.' : '⚠ ' + (b.error || 'route failed'), 'warn');
         }); return;
       }
-      message('▶ ' + svc.name + ' → ' + dev.label, 'ok'); refresh();
+      // A 2xx says the ROUTE took, not that the service is running — the start
+      // is a `sudo -n systemctl` that fails silently when the grant is stale.
+      res.json().then(function(b){
+        if (b && b.failed && b.failed.length) {
+          message('⚠ ' + (b.detail || (b.failed.join(', ') + ' did not start')), 'warn');
+        } else {
+          message('▶ ' + svc.name + ' → ' + dev.label, 'ok');
+        }
+        refresh();
+      }).catch(function(){ message('▶ ' + svc.name + ' → ' + dev.label, 'ok'); refresh(); });
     });
   }
   function toggleLock(dev){

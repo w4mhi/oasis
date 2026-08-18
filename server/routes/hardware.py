@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 
@@ -19,6 +20,7 @@ from common import config_paths
 from common import guardian as GUARD
 from common import hardware as HW
 from common import hardware_detect as HD_detect
+from common import sudo_grant
 from common.api_shape import clamp_limit
 from routes.service_control import _CONTROLLABLE_SERVICES, _systemctl_seq
 
@@ -437,7 +439,13 @@ def _console_state():
                         "eligible": HW.eligible_services(inv, did),
                         "serial": d.get("serial", ""), "locked": HW.is_locked(inv, did),
                         "assigned": assigned, "running": running is not None})
-    return {"services": services, "devices": devices, "warnings": HW.warnings(inv)}
+    warns = HW.warnings(inv)
+    grant = _grant_warning()
+    if grant:
+        # First, not appended: a console whose buttons do not work outranks
+        # anything else it could be saying.
+        warns = [grant] + warns
+    return {"services": services, "devices": devices, "warnings": warns}
 
 
 @bp.route("/api/hardware/console")
@@ -483,9 +491,20 @@ def api_hardware_route():
     HW.reroute(SUITE_ROOT, inv, service, device_id,
                start_fn=to_start.append, stop_fn=_stop_unit)
     _apply_hardware_async()                       # sync: re-template device config
-    for unit in to_start:
-        _systemctl_seq(unit, ["start"])
-    return jsonify({"ok": True})
+    failed = _start_and_confirm(to_start)
+    # The reroute ITSELF succeeded — the assignment is persisted and applied —
+    # so both of these are 200s. What can still fail is the START, and it fails
+    # silently (see _systemctl_seq), so it is reported rather than assumed: a
+    # console that said "routed" and left a dead service behind is the whole
+    # reason this endpoint now looks.
+    # Two inline returns rather than one built-up dict — the shape has to be
+    # readable at the return site (contract §1, tests/test_api_contract.py).
+    if failed:
+        return jsonify({"ok": True,
+                        "started": [u for u in to_start if u not in failed],
+                        "failed": failed,
+                        "detail": _start_failure_detail(failed)})
+    return jsonify({"ok": True, "started": to_start})
 
 
 @bp.route("/api/hardware/lock", methods=["POST"])
@@ -684,6 +703,100 @@ def _mark_boot_applied(boot_id):
         os.replace(tmp, _BOOT_STAMP)      # atomic, like every other config write
     except Exception:
         pass                              # best-effort; worst case we re-run next start
+
+
+# ── is the service-controls grant CURRENT? ───────────────────────────────────
+# Everything on this console that starts or stops a unit runs
+# `sudo -n systemctl ...` behind _systemctl_seq, which swallows failures. A
+# station whose /etc/sudoers.d/oasis-service-controls was written BEFORE a unit
+# joined enable-service-controls.py's UNITS therefore has a console whose
+# buttons silently do nothing for that unit — and only for that unit, so every
+# older service keeps working and the box looks healthy.
+#
+# That is not a hypothetical: it is what happened to oasis-nwr on a station
+# upgraded in place. The watch never started at boot (the boot reconciler hits
+# the same denial), the matrix cell sat amber, tapping it did nothing, and the
+# first visible symptom was the Weather Radio page reporting a refused
+# connection to a daemon that had never been asked to run.
+#
+# The probe unit is UNITS[-1] — the NEWEST entry — because a stale file still
+# answers yes for everything that predates it. That reasoning lives in
+# enable-service-controls.py; this imports the list rather than restating it,
+# so adding a unit there is enough.
+_GRANT_TTL_S = 60.0                     # `sudo -l` is a subprocess; the console
+_grant_cache = {"at": 0.0, "ok": None}  # polls every 5s and a Pi 3 pays for it
+
+
+def _controls_grant_ok():
+    """True/False for "the console can actually start the newest unit", or None
+    when the question does not apply (not Linux) or could not be answered.
+
+    None is not False. A dev box has no sudoers grant and needs no warning about
+    one; only a definite "the grant is stale" earns the operator's attention."""
+    if sys.platform != "linux":
+        return None
+    now = time.time()
+    if _grant_cache["ok"] is not None and (now - _grant_cache["at"]) < _GRANT_TTL_S:
+        return _grant_cache["ok"]
+    try:
+        import importlib.util
+        path = os.path.join(SUITE_ROOT, "scripts", "enable-service-controls.py")
+        spec = importlib.util.spec_from_file_location("_oasis_enable_svc", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        probe = mod.PROBE_UNIT
+        ok = sudo_grant.systemctl_nopasswd_granted(probe, actions=("start",))
+    except Exception:                   # noqa: BLE001 — a probe that cannot run
+        return None                     # answers "unknown", never "broken"
+    _grant_cache["at"] = now
+    _grant_cache["ok"] = ok
+    return ok
+
+
+def _grant_warning():
+    """The stale-grant warning as a console warning, or None.
+
+    Shaped exactly like common/hardware.py's warnings so both surfaces render it
+    through the path they already have — no new field, no new UI. severity crit:
+    a service that cannot be started is not a degradation, it is a service the
+    operator cannot have."""
+    if _controls_grant_ok() is not False:
+        return None
+    return {"kind": "controls-grant", "device": None, "service": None,
+            "severity": "crit",
+            "message": "service controls are not granted for every unit — "
+                       "start/stop will silently do nothing for the newest one. "
+                       "Re-run: python3 scripts/enable-service-controls.py"}
+
+
+def _start_and_confirm(units):
+    """Start each unit and return the ones that did not come up.
+
+    _systemctl_seq swallows failures by design — it is used on conflict services
+    where a failure is tolerable — so the only honest way to know whether a
+    start took is to ask systemd afterwards. Type=simple units are active by the
+    time `systemctl start` returns, so no settle delay is needed here."""
+    failed = []
+    for unit in units:
+        _systemctl_seq(unit, ["start"])
+        if not _unit_is_active(unit):
+            failed.append(unit)
+    return failed
+
+
+def _start_failure_detail(failed):
+    """Why the start did not take, in the operator's terms.
+
+    Two very different causes wear the same symptom: a missing sudoers grant
+    (nothing OASIS can fix at runtime, one command to repair) and a unit that
+    ran and died (a real fault, journal-shaped). Saying which one saves the
+    operator from looking in the wrong place — the failure this whole change
+    exists to stop."""
+    names = ", ".join(failed)
+    if _controls_grant_ok() is False:
+        return (f"{names} did not start: service controls are not granted for it. "
+                "Run: python3 scripts/enable-service-controls.py")
+    return f"{names} did not start — check: journalctl -u {failed[0]} -e"
 
 
 def _unit_is_active(unit):

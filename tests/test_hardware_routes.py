@@ -536,3 +536,102 @@ class GuardianRoutesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SilentStartFailureTest(unittest.TestCase):
+    """A reroute that assigns the dongle and then fails to start the service.
+
+    This is not a hypothetical shape. On a station upgraded in place, the
+    sudoers grant predates the newest unit, every `sudo -n systemctl start` for
+    it is denied, and _systemctl_seq swallows the denial -- so the console said
+    "routed", the cell stayed amber, and the operator was left tapping a button
+    that could never work. The endpoint has to LOOK.
+    """
+
+    def setUp(self):
+        oasis_app.app.config["TESTING"] = True
+        self.c = oasis_app.app.test_client()
+        self.inv = HW.Inventory(
+            devices={"r": {"id": "r", "kind": "rtl-sdr", "serial": "1", "label": "SDR"}},
+            assignments={})
+
+    def _route(self, active, grant=True):
+        """POST a reroute with systemd answering `active` for is-active."""
+        with mock.patch.object(HW, "load", return_value=self.inv), \
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(hardware_routes, "_systemctl_seq"), \
+             mock.patch.object(hardware_routes, "_apply_hardware_async"), \
+             mock.patch.object(hardware_routes, "_unit_is_active", return_value=active), \
+             mock.patch.object(hardware_routes, "_controls_grant_ok", return_value=grant):
+            r = self.c.post("/api/hardware/route",
+                            json={"service": "nwr", "device_id": "r"},
+                            headers={"X-OASIS-Request": "1"})
+        return r, json.loads(r.data)
+
+    def test_a_start_that_took_reports_what_it_started(self):
+        r, body = self._route(active=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["started"], ["oasis-nwr"])
+        self.assertNotIn("failed", body)
+
+    def test_a_start_that_did_not_take_says_so(self):
+        # Still a 200: the ROUTE succeeded and is persisted. What failed is the
+        # start, and the operator has to be told rather than shown a tick.
+        r, body = self._route(active=False)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(body["failed"], ["oasis-nwr"])
+        self.assertEqual(body["started"], [])
+        self.assertIn("did not start", body["detail"])
+
+    def test_a_denied_grant_names_the_command_that_repairs_it(self):
+        # The two causes wear one symptom. A missing grant is one command to
+        # fix; a unit that ran and died is a journal to read. Saying which is
+        # the difference between a two-minute fix and an afternoon.
+        _, body = self._route(active=False, grant=False)
+        self.assertIn("enable-service-controls.py", body["detail"])
+        self.assertNotIn("journalctl", body["detail"])
+
+    def test_a_crashed_unit_points_at_its_journal_instead(self):
+        _, body = self._route(active=False, grant=True)
+        self.assertIn("journalctl -u oasis-nwr", body["detail"])
+        self.assertNotIn("enable-service-controls.py", body["detail"])
+
+
+class GrantWarningTest(unittest.TestCase):
+    """The console has to SAY that its buttons cannot work."""
+
+    def setUp(self):
+        oasis_app.app.config["TESTING"] = True
+        self.c = oasis_app.app.test_client()
+
+    def _console(self, grant):
+        inv = HW.Inventory(devices={}, assignments={})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(hardware_routes.HD_detect, "rtl_sdr_usb_count", return_value=0), \
+             mock.patch.object(hardware_routes, "_controls_grant_ok", return_value=grant):
+            return json.loads(self.c.get("/api/hardware/console").data)
+
+    def test_a_stale_grant_is_a_crit_warning_on_the_console(self):
+        body = self._console(False)
+        w = [x for x in body["warnings"] if x["kind"] == "controls-grant"]
+        self.assertEqual(len(w), 1, "no warning for a grant that cannot start units")
+        self.assertEqual(w[0]["severity"], "crit")
+        self.assertIn("enable-service-controls.py", w[0]["message"])
+
+    def test_it_leads_the_list(self):
+        # A console whose buttons do not work outranks anything else it could be
+        # saying, and the rail shows the first thing it is handed.
+        body = self._console(False)
+        self.assertEqual(body["warnings"][0]["kind"], "controls-grant")
+
+    def test_a_current_grant_says_nothing(self):
+        body = self._console(True)
+        self.assertEqual([x for x in body["warnings"] if x["kind"] == "controls-grant"], [])
+
+    def test_an_unanswerable_probe_says_nothing_either(self):
+        # None is not False. A dev box has no grant and needs no warning about
+        # one; only a definite "stale" earns the operator's attention.
+        body = self._console(None)
+        self.assertEqual([x for x in body["warnings"] if x["kind"] == "controls-grant"], [])
