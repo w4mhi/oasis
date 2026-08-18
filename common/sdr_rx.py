@@ -65,18 +65,65 @@ def gain_flag(gain):
     return ["-g", text]
 
 
-def stream_encoder(srate, which=shutil.which):
+def stream_encoder(srate, which=shutil.which, gain_db=0):
     """(encoder_shell, mime) turning rtl_fm's raw s16le mono into a
     browser-playable stream on stdout. Chromium plays MP3; prefer ffmpeg
     (reliable libmp3lame) and fall back to sox (needs libsox-fmt-mp3). Returns
     (None, None) when neither can encode — callers report that as a state, not
-    a failure."""
+    a failure.
+
+    `gain_db` inserts a gain stage into the encode. IT DEFAULTS TO OFF, and the
+    default must produce the command this function produced before the gain
+    existed, byte for byte — satellites streams through here too (listen.py's
+    stream_encoder/stream_command and routes.py's _stream_from_capture), and
+    satellite audio is SSB, CW and FM at levels nothing below was measured on.
+    Only NWR opts in.
+
+    WHY NWR ASKS FOR 8 dB. FM-demodulated broadcast voice arrives well below
+    full scale and this chain had no gain stage at all, so the weather relay was
+    the quietest thing the station makes. Measured on pi5draws with
+    `ffmpeg -af volumedetect`:
+
+        NWR relay stream          mean -22.6 dB   peak -10.5 dB
+        OASIS piper speech        mean -13.7 dB   peak  -0.0 dB
+
+    9 dB below the station's own voice, with 10 dB of headroom left unused, so
+    at any volume the operator picks the weather is about half as loud as the
+    pass announcements. Candidates, run against 11 s of that same live capture:
+
+        volume=8dB                        mean -14.6   peak -2.5
+        volume=8dB,alimiter=limit=0.9     mean -13.6   peak -1.6   <- chosen
+        volume=12dB,alimiter=limit=0.9    mean -10.2   peak  0.0
+        dynaudnorm=f=250:g=15             mean -13.9   peak -0.7
+
+    THE TARGET IS PARITY WITH OASIS SPEECH, NOT "LOUDER" — so a future change
+    has a criterion instead of a preference. 8 dB behind a limiter lands within
+    0.1 dB of the speech mean; 12 dB overshoots and touches the ceiling. The
+    limiter is not decoration: `volume=8dB` alone peaks at -2.5 dB on THIS
+    capture, and a stronger signal on another day would clip. dynaudnorm was
+    rejected deliberately — it adapts to varying input but pumps on speech and
+    costs more per sample, and a fixed gain behind a limiter is predictable and
+    cheap enough for a Pi 3 on mono 22 kHz.
+
+    What would legitimately change the number: re-measuring both sides the same
+    way and finding the relay no longer matches speech — a different piper voice
+    or a changed rtl_fm gain policy (see gain_flag) moves one end of the
+    comparison. Turning the filter into a bare `volume=` or dropping it because
+    it "looks redundant" does not.
+
+    The sox fallback uses sox's own limiter form of `vol` (gain, then a limiter
+    gain of 0.05) rather than a naked `gain`/`vol`, for the same reason ffmpeg
+    gets alimiter: sox clips hard on peaks otherwise.
+    """
+    gain = float(gain_db or 0)
     if which("ffmpeg"):
+        af = f' -af "volume={gain:g}dB,alimiter=limit=0.9"' if gain else ""
         return (f"ffmpeg -hide_banner -loglevel error -f s16le -ar {int(srate)} "
-                f"-ac 1 -i - -f mp3 -c:a libmp3lame -b:a 96k -", "audio/mpeg")
+                f"-ac 1 -i -{af} -f mp3 -c:a libmp3lame -b:a 96k -", "audio/mpeg")
     if which("sox"):
+        vol = f" vol {gain:g} dB 0.05" if gain else ""
         return (f"sox -t raw -r {int(srate)} -e signed-integer -b 16 -c 1 - "
-                f"-t mp3 -C 96 -", "audio/mpeg")
+                f"-t mp3 -C 96 -{vol}", "audio/mpeg")
     return (None, None)
 
 

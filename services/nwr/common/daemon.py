@@ -594,7 +594,8 @@ class _Handler(BaseHTTPRequestHandler):
 
         if not listener.is_listening():
             return self._json(409, {"error": "the watch is not running"})
-        enc, mime = sdr_rx.stream_encoder(listener.SAMPLE_RATE)
+        enc, mime = sdr_rx.stream_encoder(listener.SAMPLE_RATE,
+                                          gain_db=listener.STREAM_GAIN_DB)
         if not enc:
             return self._json(503, {"error": "no audio encoder"})
         with _lock:

@@ -1166,6 +1166,36 @@ class DaemonStreamTest(unittest.TestCase):
                          "a refused stream must not consume a slot")
 
 
+class StreamGainTest(unittest.TestCase):
+    """The relay measured 9 dB below OASIS speech on pi5draws because this
+    encode chain had no gain stage. The numbers are in
+    common/sdr_rx.stream_encoder(); what belongs here is that the daemon's
+    stream is the thing that asks for it."""
+
+    def test_the_stream_asks_for_the_measured_gain(self):
+        seen = {}
+
+        def fake_encoder(srate, **kw):
+            seen["srate"] = srate
+            seen.update(kw)
+            return (None, None)          # 503, so no encoder is ever spawned
+
+        with mock.patch.object(daemon.listener, "is_listening", return_value=True), \
+             mock.patch("common.sdr_rx.stream_encoder", side_effect=fake_encoder):
+            handler = _RecordingHandler(_FakeWfile(1 << 20))
+            handler._stream()
+        self.assertEqual(handler.code, 503)
+        self.assertEqual(seen.get("gain_db"), daemon.listener.STREAM_GAIN_DB)
+        self.assertEqual(seen.get("srate"), daemon.listener.SAMPLE_RATE)
+
+    def test_the_command_it_gets_back_carries_the_filter(self):
+        from common import sdr_rx
+        cmd, _ = sdr_rx.stream_encoder(daemon.listener.SAMPLE_RATE,
+                                       which=lambda b: "/usr/bin/" + b,
+                                       gain_db=daemon.listener.STREAM_GAIN_DB)
+        self.assertIn('-af "volume=8dB,alimiter=limit=0.9"', cmd)
+
+
 class StatusTest(unittest.TestCase):
     def test_reports_the_keys_the_card_and_flask_read(self):
         s = daemon.status()

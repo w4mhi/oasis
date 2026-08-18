@@ -1,9 +1,11 @@
+import ast
 import os
 import sys
 import unittest
 from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, os.path.dirname(_HERE))
 from common import sdr_rx  # noqa: E402
 
@@ -44,6 +46,44 @@ class SdrRxTest(unittest.TestCase):
     def test_stream_encoder_none_when_neither(self):
         self.assertEqual(sdr_rx.stream_encoder(22050, which=lambda b: None),
                          (None, None))
+
+    def test_stream_encoder_without_a_gain_is_byte_for_byte_the_old_command(self):
+        # THIS IS WHAT PROTECTS SATELLITES. listen.stream_encoder and
+        # routes._stream_from_capture both come through here with no gain_db,
+        # and SSB/CW/FM levels were never part of the NWR measurement. Assert
+        # the exact string rather than trusting that an "off by default" flag
+        # is really off.
+        cmd, mime = sdr_rx.stream_encoder(22050, which=lambda b: "/usr/bin/" + b)
+        self.assertEqual(cmd,
+                         "ffmpeg -hide_banner -loglevel error -f s16le -ar 22050 "
+                         "-ac 1 -i - -f mp3 -c:a libmp3lame -b:a 96k -")
+        self.assertEqual(mime, "audio/mpeg")
+        sox_which = lambda b: "/usr/bin/sox" if b == "sox" else None  # noqa: E731
+        cmd, _ = sdr_rx.stream_encoder(22050, which=sox_which)
+        self.assertEqual(cmd, "sox -t raw -r 22050 -e signed-integer -b 16 -c 1 - "
+                              "-t mp3 -C 96 -")
+
+    def test_stream_encoder_gain_adds_volume_behind_a_limiter(self):
+        cmd, _ = sdr_rx.stream_encoder(22050, which=lambda b: "/usr/bin/" + b,
+                                       gain_db=8)
+        self.assertEqual(cmd,
+                         "ffmpeg -hide_banner -loglevel error -f s16le -ar 22050 "
+                         '-ac 1 -i - -af "volume=8dB,alimiter=limit=0.9" '
+                         "-f mp3 -c:a libmp3lame -b:a 96k -")
+
+    def test_stream_encoder_gain_on_the_sox_path_limits_too(self):
+        # sox's `vol` takes a limiter gain as its third argument; a bare
+        # `vol 8 dB` clips on peaks exactly as `volume=8dB` alone does.
+        which = lambda b: "/usr/bin/sox" if b == "sox" else None  # noqa: E731
+        cmd, _ = sdr_rx.stream_encoder(22050, which=which, gain_db=8)
+        self.assertEqual(cmd, "sox -t raw -r 22050 -e signed-integer -b 16 -c 1 - "
+                              "-t mp3 -C 96 - vol 8 dB 0.05")
+
+    def test_stream_encoder_a_zero_gain_is_no_filter_at_all(self):
+        for zero in (0, 0.0, None):
+            cmd, _ = sdr_rx.stream_encoder(22050, which=lambda b: "/usr/bin/" + b,
+                                           gain_db=zero)
+            self.assertNotIn("-af", cmd)
 
     def test_dongle_busy_ignores_our_own_service(self):
         # nwr is assigned rtl-1 and is the ONLY assignee -> never busy.
@@ -228,6 +268,55 @@ class DonglePresentCacheTest(unittest.TestCase):
             self.assertTrue(sdr_rx.dongle_present(now=6001.0, cache=True),
                             "the fake runner's answer survived its own call")
         self.assertEqual(len(calls), 1)
+
+
+class StreamEncoderCallerTest(unittest.TestCase):
+    """Only NWR may ask for the gain.
+
+    The measurement behind gain_db is of ONE signal — an FM broadcast voice
+    channel. Satellite audio comes through the same encoder as SSB, CW and FM
+    at levels that measurement says nothing about, so a gain that leaks into a
+    satellite stream is a defect even if it sounds fine to whoever added it.
+    """
+    def _calls_with_a_gain(self):
+        found = []
+        for sub in ("common", "server", "services", "maps", "scripts", "tools"):
+            base = os.path.join(_ROOT, sub)
+            if not os.path.isdir(base):
+                continue
+            for dirpath, dirnames, filenames in os.walk(base):
+                dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+                for fn in filenames:
+                    if not fn.endswith(".py"):
+                        continue
+                    path = os.path.join(dirpath, fn)
+                    with open(path, encoding="utf-8") as fh:
+                        try:
+                            tree = ast.parse(fh.read())
+                        except SyntaxError:
+                            continue
+                    for node in ast.walk(tree):
+                        if not isinstance(node, ast.Call):
+                            continue
+                        name = (getattr(node.func, "attr", None)
+                                or getattr(node.func, "id", None))
+                        if name != "stream_encoder":
+                            continue
+                        if any(kw.arg == "gain_db" for kw in node.keywords):
+                            found.append(os.path.relpath(path, _ROOT))
+        return found
+
+    def test_no_caller_outside_nwr_passes_a_gain(self):
+        outside = [p for p in self._calls_with_a_gain()
+                   if not p.startswith(os.path.join("services", "nwr"))]
+        self.assertEqual(outside, [],
+                         "satellite audio was never measured for this gain")
+
+    def test_nwr_does_pass_one(self):
+        # The other half of the pair: if the call site is ever refactored away,
+        # the test above would pass on a station that is quiet again.
+        self.assertTrue(self._calls_with_a_gain(),
+                        "nothing asks for the gain any more")
 
 
 if __name__ == "__main__":

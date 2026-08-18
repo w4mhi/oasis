@@ -55,6 +55,11 @@ CHANNELS = (
 )
 
 SAMPLE_RATE = 22050          # what multimon-ng's EAS demodulator expects
+# Gain for the AUDIO branch only — the decode branch never sees it, multimon-ng
+# reads rtl_fm's raw output. 8 dB behind a limiter puts the relay at the same
+# loudness as OASIS speech; the measurement and the reasoning are in
+# common/sdr_rx.stream_encoder().
+STREAM_GAIN_DB = 8
 DEFAULT_GAIN = "auto"
 DEFAULT_PPM = 0
 CHUNK = 4096                 # ~11 reads/second at 44 KB/s — negligible on a Pi 3
@@ -242,6 +247,9 @@ def preconditions(inv=None, which=shutil.which, run=None, is_active=None):
     busy, holder = sdr_rx.dongle_busy(inv, eff_is_active, "nwr")
     dev_id = inv.assignments.get("nwr") if inv else None
     dev = inv.devices.get(dev_id) if (inv and dev_id) else None
+    # No gain_db here on purpose: this asks WHETHER an encoder exists, and the
+    # answer is the same with or without the filter. The command that actually
+    # runs is built by the daemon (_stream), which passes STREAM_GAIN_DB.
     enc, _mime = sdr_rx.stream_encoder(SAMPLE_RATE, which=which)
     return {
         "missing_deps":   missing,

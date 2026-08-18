@@ -193,6 +193,24 @@ class PreconditionsTest(unittest.TestCase):
         self.assertIn("multimon-ng", p["missing_deps"])
         self.assertFalse(p["dongle_present"])
 
+    def test_can_stream_is_a_capability_probe_not_the_command(self):
+        # It answers WHETHER an encoder exists, so it asks for no gain: the
+        # command that actually runs is built by the daemon's _stream(), which
+        # passes STREAM_GAIN_DB. Two places building the same command with
+        # different filters is how the two drift apart.
+        seen = {}
+
+        def fake_encoder(srate, **kw):
+            seen.update(kw)
+            return ("ffmpeg ...", "audio/mpeg")
+
+        with mock.patch("common.sdr_rx.stream_encoder", side_effect=fake_encoder):
+            p = listener.preconditions(which=lambda b: "/usr/bin/" + b,
+                                       run=lambda *a, **k: None,
+                                       is_active=lambda u: False)
+        self.assertTrue(p["can_stream"])
+        self.assertNotIn("gain_db", seen)
+
 
 class _StateResetMixin:
     """start()/stop() touch module-level _state; leave it as found."""

@@ -2203,6 +2203,23 @@ journalctl -u oasis-nwr -e | grep -i "tuner gain"
   handled centrally by `common/sdr_rx.gain_flag()` — if you are hand-rolling an
   `rtl_fm` command line to test, do not "fix" it by adding `-g auto`.
 
+**Quiet in the browser is a different fault from weak on the air.** The relay's
+playback level is set once, in the encoder: `common/sdr_rx.stream_encoder()` adds
+`volume=8dB,alimiter=limit=0.9` for NWR and for nothing else. The target is
+**parity with OASIS speech**, so measure both the same way rather than turning it
+up by ear:
+
+```bash
+ffmpeg -i http://localhost:8083/api/nwr/listen/stream -t 11 -af volumedetect -f null - 2>&1 | grep -E "mean_volume|max_volume"
+ffmpeg -i <a cached piper WAV> -af volumedetect -f null - 2>&1 | grep -E "mean_volume|max_volume"
+```
+- **Healthy:** the two mean volumes are within about a dB of each other
+  (measured on pi5draws: relay −13.6, speech −13.7).
+- **Broken:** the relay is around −22 mean with 10 dB of unused headroom — the
+  filter is not in the command being run. Satellite streams share this encoder
+  and deliberately carry **no** gain, so check the NWR call site
+  (`services/nwr/common/daemon.py`), not the encoder alone.
+
 **Is there anything on the air at all?** `rtl_power` is the instrument. Measuring
 RMS on demodulated audio is not: an empty channel demodulates to full-scale
 noise and reads as a strong signal, which is how a dead band has been mistaken
