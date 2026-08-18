@@ -3185,12 +3185,19 @@ function renderSats() {
       // rebuilding the card — innerHTML every 2 s on a Pi 3 kiosk is exactly the
       // sort of churn that shows up later as "why is Chromium at 90%".
       _satLive[it.norad] = { l1:it.l1, l2:it.l2, maxEl:el };
-      return `<div class="sat now"${rail}${tap}><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${alt}</span>${bell}<span class="aos">overhead</span><span class="cd">NOW</span></div>${caps}<div class="l2"><span class="live" data-norad="${it.norad}">${satLiveText(it.norad, it.l1, it.l2, el)}</span> · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
+      return `<div class="sat now"${rail}${tap}><div class="l1"><span class="nm"><span class="pulse"></span>${esc(it.name)}${alt}</span>${bell}<span class="aos">up</span><span class="cd">NOW</span></div>${caps}<div class="l2"><span class="live" data-norad="${it.norad}">${satLiveText(it.norad, it.l1, it.l2, el)}</span> · ${arc} · LOS ${hm(it.p._s)}</div></div>`;
     }
     const soon = it.mins <= 10;
     const nm = (soon ? `<span class="nm"><span class="pulse"></span>${esc(it.name)}${alt}</span>` : `<span class="nm">${esc(it.name)}${alt}</span>`) + bell;
-    const l2 = soon ? `rise ${esc(dir)} · ${el}° max · get ready` : `rise ${esc(dir)} · ${el}° max`;
-    return `<div class="sat${soon?' soon':''}"${rail}${tap}><div class="l1">${nm}<span class="aos">${hm(it.p._r)}</span><span class="cd">↑ ${it.mins}m</span></div>${caps}<div class="l2">${l2}</div></div>`;
+    // The countdown ENDS the detail line, after "get ready", where an in-pass
+    // row already puts its LOS. Both are the same question — how long have I
+    // got — so they belong in the same place, and the row's flattened layout on
+    // a small panel pushes that line hard right. It used to sit up in l1 with
+    // margin-left:auto, which put it at the top-right of a card whose bottom
+    // line was the one carrying the other time.
+    const ready = soon ? ' · get ready' : '';
+    const l2 = `rise ${esc(dir)} · ${el}° max${ready} · <span class="cd">↑ ${it.mins}m</span>`;
+    return `<div class="sat${soon?' soon':''}"${rail}${tap}><div class="l1">${nm}<span class="aos">${hm(it.p._r)}</span></div>${caps}<div class="l2">${l2}</div></div>`;
   }).join('');
 }
 

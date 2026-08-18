@@ -3181,10 +3181,12 @@ Speech-without-strike is deliberately unreachable.
 
 Shows only birds **in a pass now, or rising within the next hour**, in-pass first then
 by rise time, refreshed every 60 s with a visible `↻ NNs` countdown. In-pass rows are
-green and pulse, carry a **live look-angle** (`el NN° ↗ · range`) recomputed locally
-every 2 seconds, and show `LOS HH:MM`. Upcoming rows show the rise time, an `↑ Nm`
-countdown, the rise compass point and the peak elevation; inside 10 minutes they turn
-amber and add *· get ready*. An amber bell marks an armed bird — informational only:
+green and pulse, say `up` instead of a rise time, carry a **live look-angle**
+(`el NN° ↗ · range`) recomputed locally every 2 seconds, and end with `LOS HH:MM`.
+Upcoming rows show the rise time and, on the detail line, the rise compass point, the
+peak elevation and an `↑ Nm` countdown — the countdown last, in the same place the
+in-pass row puts its LOS, because both answer *how long have I got*. Inside 10 minutes
+they turn amber and add *· get ready* before the countdown. An amber bell marks an armed bird — informational only:
 bells are armed on the Satellites page, not here. The header's own bell **mutes this
 screen**, per device.
 

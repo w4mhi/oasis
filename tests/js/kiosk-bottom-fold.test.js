@@ -204,6 +204,28 @@ test('folding does not stop the data: both pills are written by the render pass'
     'the headline must come from the sorted list, not a second computation');
 });
 
+test('a pass record puts its countdown where the in-pass row puts LOS', () => {
+  // Both answer "how long have I got", so both end the detail line — which the
+  // flattened layout pushes hard right. The countdown used to sit up in l1 with
+  // margin-left:auto, i.e. at the TOP-right of a card whose BOTTOM line carried
+  // the other time.
+  assert.match(page, /const l2 = `rise \$\{esc\(dir\)\} · \$\{el\}° max\$\{ready\} · <span class="cd">↑ \$\{it\.mins\}m<\/span>`/,
+    'the countdown must end the detail line, after any "get ready"');
+  assert.ok(!/<div class="l1">\$\{nm\}<span class="aos">\$\{hm\(it\.p\._r\)\}<\/span><span class="cd">/.test(page),
+    'the countdown is back in l1 — that is the top-right of the card again');
+  assert.match(page, /· LOS \$\{hm\(it\.p\._s\)\}<\/div>/,
+    'the in-pass row must still end on LOS, or the two rows disagree about ' +
+    'where the time lives');
+});
+
+test('an in-pass row says "up", not "overhead"', () => {
+  // Short enough to sit in the .aos slot a rise TIME occupies on every other
+  // row, which is what keeps the flattened one-line record from reflowing when
+  // a bird comes over the horizon.
+  assert.match(page, /<span class="aos">up<\/span>/, 'the in-pass row lost its "up"');
+  assert.ok(!/<span class="aos">overhead<\/span>/.test(page), '"overhead" is back');
+});
+
 test('the pill says WHICH filter produced the count', () => {
   const count = page.indexOf("getElementById('k-aprs-count')");
   const block = page.slice(count, page.indexOf('renderAprsRows(list.slice(', count));
