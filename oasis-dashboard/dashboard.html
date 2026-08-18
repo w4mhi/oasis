@@ -513,9 +513,10 @@
      not rem: the root font-size is clamp(13px, 1.9vh, 24px), so a rem here would
      grow the card by ~4rem-worth on a big panel and by nothing on the 7" one,
      while the text it has to fit is what it is. Traffic is flex:1 1 auto and
-     yields the width automatically. Measured headroom is 100px — this spends
-     half, leaving the rest for the next thing. */
-  .sats{ flex:none; width:calc(28rem + 70px); min-width:0; }
+     yields the width automatically. Measured headroom is 100px — this now
+     spends all of it, so the next widening needs a fresh measurement rather
+     than another guess. */
+  .sats{ flex:none; width:calc(28rem + 100px); min-width:0; }
   .satscroll{ flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-.6rem; padding-right:10px; }
   .sat{ position:relative; overflow:hidden;
         padding:.6rem .9rem .7rem 1.15rem; border:1px solid var(--border); border-radius:.8rem; margin-bottom:.5rem; }
