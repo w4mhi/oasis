@@ -38,27 +38,70 @@ import argparse
 import getpass
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
 
-# Must match server/app.py _CONTROLLABLE_SERVICES (everything OASIS-managed
-# except the web server itself).
+# Must match server/routes/service_control.py's _CONTROLLABLE_SERVICES
+# (everything OASIS-managed except the web server itself). Pinned by a drift
+# test — a unit granted here but missing there is refused by /api/service and
+# skipped by the guardian's STOP ALL, and the reverse is a silent no-op button.
+#
+# APPEND-ONLY: new units go on the END. PROBE_UNIT below depends on it.
 #
 # oasis-nwr is here because the conflict engine now starts it: assigning a
 # dongle to nwr puts the unit in HW.boot_start_plan(), and both the boot
 # reconciler and the assignment console reach it through `sudo -n systemctl`.
 # _systemctl_seq swallows failures, so without this grant the console cell
-# would sit on "assigned, stopped" and the boot start would do nothing, with
-# no error anywhere. An existing box needs this script re-run once.
+# would sit on "assigned, stopped" and the boot start would do nothing.
 UNITS   = ["graywolf", "graywolf-api", "pat", "pat-direwolf", "kiwix", "webssh",
            "aprs-sdr-feed", "openwebrx", "dump1090-fa", "adsb-api", "oasis-nwr"]
 # enable/disable included so boot-state-tracking units (e.g. OpenWebRX: enable on
 # start, disable on stop) work; the dashboard still only exposes start/stop/restart.
 ACTIONS = ["start", "stop", "restart", "enable", "disable"]
 SUDOERS_PATH = "/etc/sudoers.d/oasis-service-controls"
+
+# The unit any "is the installed grant CURRENT?" probe must ask about.
+#
+# The grant is one rule covering every unit, so ANY single unit proves a grant
+# exists — but not that it was written from THIS list. A box upgraded in place
+# keeps the sudoers file it was granted with, and every unit that predates the
+# upgrade still answers yes, so a probe on an old unit reports healthy while the
+# newly-added one is not granted at all. Asking about the newest entry is what
+# makes a stale file distinguishable from a current one.
+PROBE_UNIT = UNITS[-1]
+
+
+def grant_is_current(run=None, which=None):
+    """True when sudo will run PROBE_UNIT's commands for this user without a
+    password — i.e. the installed grant was written from the CURRENT unit list.
+
+    Capability, not artifact. os.path.exists(SUDOERS_PATH) answers neither
+    question honestly: /etc/sudoers.d is 0750 root:root on Debian and Pi OS, so
+    a non-root caller cannot tell "absent" from "not allowed to look" (measured
+    on pi5draws — see server/routes/setup.py::_service_controls_granted, which
+    asks sudo the same way); and even when it CAN see the file, presence says
+    nothing about which units are inside it.
+
+    `sudo -n -l <cmd>` is a policy lookup, not an execution: exit 0 means
+    permitted, non-zero means not, and -n guarantees it never prompts or hangs.
+    A box whose operator has blanket NOPASSWD sudo answers yes, which is the
+    correct answer — the commands will run and there is nothing left to grant.
+    """
+    if sys.platform != "linux":
+        return False
+    run = run or subprocess.run
+    which = which or shutil.which
+    systemctl = which("systemctl") or "/usr/bin/systemctl"
+    try:
+        r = run(["sudo", "-n", "-l", systemctl, "restart", f"{PROBE_UNIT}.service"],
+                capture_output=True, text=True, timeout=5)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def removal_record(repo_root=None):

@@ -387,10 +387,15 @@ def _installer_daemon_enabled():
     return sys.platform == "linux" and os.path.exists(INSTALLER_PATH_UNIT_FILE)
 
 
-# Any unit from scripts/enable-service-controls.py's UNITS list; the grant is
-# written as one rule, so one unit answers for all of them. Pinned by a drift
-# test against that list.
-_PERM_PROBE_UNIT = "graywolf.service"
+# The NEWEST unit in scripts/enable-service-controls.py's UNITS list, not just
+# any of them. The grant is written as one rule, so one unit answers for all of
+# them WITHIN a single generation of the file — but a box upgraded in place
+# keeps the rule it was first granted with, and every unit that predates the
+# upgrade still answers yes. Probing an old unit (this was "graywolf.service")
+# therefore reported "granted" on a station whose rule had never heard of
+# oasis-nwr, while the console's NWR cell sat on "assigned, stopped". Pinned by
+# a drift test against the tail of that list.
+_PERM_PROBE_UNIT = "oasis-nwr.service"
 
 
 def _service_controls_granted():

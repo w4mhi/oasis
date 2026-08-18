@@ -711,16 +711,125 @@ class ServiceControlsGrantedTest(unittest.TestCase):
             self.assertFalse(setup_module._service_controls_granted())
             run.assert_not_called()
 
-    def test_probe_unit_is_one_the_grant_actually_covers(self):
-        # Drift guard: if UNITS is reordered or graywolf is dropped, the probe
-        # would ask about a command the rule never granted and report a false
-        # "missing" — the same class of bug, one layer over.
-        import importlib.util
-        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                            "scripts", "enable-service-controls.py")
-        spec = importlib.util.spec_from_file_location("enable_service_controls", path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+    def test_probe_unit_is_the_NEWEST_unit_the_grant_covers(self):
+        """Drift guard, tightened from "is a member of UNITS" to "is the LAST
+        member".
+
+        Membership alone was not enough, and the difference is a shipped bug.
+        The grant is one rule covering every unit, so any member proves a rule
+        exists — but not that it was written from the current list. A box
+        upgraded in place keeps the file it was first granted with, so probing
+        an older unit (this pinned "graywolf.service") answers yes on a station
+        whose rule never granted oasis-nwr, and the Permissions banner stays
+        green while the unit it is missing cannot be started at all. UNITS is
+        append-only, so its tail is the newest entry and the only one that can
+        tell a stale grant from a current one."""
+        mod = _load_enable_service_controls()
         unit = setup_module._PERM_PROBE_UNIT
         self.assertTrue(unit.endswith(".service"))
-        self.assertIn(unit[: -len(".service")], mod.UNITS)
+        self.assertEqual(unit[: -len(".service")], mod.UNITS[-1],
+                         "the Permissions banner must probe the newest granted "
+                         "unit — an older one cannot detect a stale grant")
+        self.assertEqual(mod.PROBE_UNIT, mod.UNITS[-1])
+
+
+def _load_enable_service_controls():
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "scripts", "enable-service-controls.py")
+    spec = importlib.util.spec_from_file_location("enable_service_controls", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class GrantIsCurrentTest(unittest.TestCase):
+    """start-oasis.py used to skip the grant whenever the sudoers FILE existed,
+    so a station upgraded in place never re-ran it and simply never got the
+    units added since. Nothing surfaced that: the boot start logged
+    'started oasis-nwr -> NOT active', the console logged nothing at all, and
+    the Permissions banner was green.
+
+    grant_is_current() replaces the artifact check with a capability probe.
+    The property these tests hold: a grant file that predates a unit must be
+    detected as stale WITHOUT the operator being told to run anything."""
+
+    def _sudo_policy(self, mod, granted_content):
+        """A fake subprocess.run that answers `sudo -n -l <cmd>` from a given
+        sudoers body, the way sudo does: exit 0 iff the exact command string
+        appears among the granted commands."""
+        def fake_run(argv, **kwargs):
+            self.assertEqual(argv[:3], ["sudo", "-n", "-l"])   # never executes
+            cmd = " ".join(argv[3:])
+            rc = 0 if cmd in granted_content else 1
+            return subprocess.CompletedProcess(args=argv, returncode=rc)
+        return fake_run
+
+    def _content(self, mod, units):
+        """The sudoers body the grant writer produces for `units` — generated
+        by the real build_content(), so this cannot drift from the format the
+        probe is matching against."""
+        real_units = mod.UNITS
+        try:
+            mod.UNITS = units
+            return mod.build_content("pi", "/usr/bin/systemctl", "/usr/bin/tcpdump",
+                                     "/sbin/reboot")
+        finally:
+            mod.UNITS = real_units
+
+    def _probe(self, mod, content):
+        with mock.patch.object(mod.sys, "platform", "linux"):
+            return mod.grant_is_current(run=self._sudo_policy(mod, content),
+                                        which=lambda b: "/usr/bin/" + b)
+
+    def test_a_grant_written_from_the_current_list_is_current(self):
+        mod = _load_enable_service_controls()
+        self.assertTrue(self._probe(mod, self._content(mod, mod.UNITS)))
+
+    def test_a_grant_that_predates_the_newest_unit_is_stale(self):
+        # The exact upgraded-in-place station: its sudoers file was generated
+        # before oasis-nwr existed. Every older unit still answers yes.
+        mod = _load_enable_service_controls()
+        old = self._content(mod, mod.UNITS[:-1])
+        self.assertNotIn(f"{mod.PROBE_UNIT}.service", old)
+        self.assertIn("graywolf.service", old)         # the old probe's answer
+        self.assertFalse(self._probe(mod, old),
+                         "a grant predating the newest unit must read as stale, "
+                         "or the box silently never gets it")
+
+    def test_no_grant_at_all_is_stale(self):
+        mod = _load_enable_service_controls()
+        self.assertFalse(self._probe(mod, ""))
+
+    def test_it_is_a_policy_lookup_and_never_prompts(self):
+        mod = _load_enable_service_controls()
+        seen = {}
+
+        def fake_run(argv, **kwargs):
+            seen["argv"] = argv
+            seen["timeout"] = kwargs.get("timeout")
+            return subprocess.CompletedProcess(args=argv, returncode=0)
+
+        with mock.patch.object(mod.sys, "platform", "linux"):
+            mod.grant_is_current(run=fake_run, which=lambda b: "/usr/bin/" + b)
+        # -n is what stops a probe hanging the startup path on a password
+        # prompt; -l is what stops it from RESTARTING the unit it asks about.
+        self.assertEqual(seen["argv"][:3], ["sudo", "-n", "-l"])
+        self.assertIn("restart", seen["argv"])
+        self.assertTrue(seen["timeout"])
+
+    def test_off_linux_is_false_without_running_anything(self):
+        mod = _load_enable_service_controls()
+        with mock.patch.object(mod.sys, "platform", "darwin"):
+            run = mock.Mock()
+            self.assertFalse(mod.grant_is_current(run=run))
+            run.assert_not_called()
+
+    def test_a_broken_probe_reads_as_stale(self):
+        # Re-granting is idempotent; assuming granted is the silent-healthy
+        # state this whole function exists to end.
+        mod = _load_enable_service_controls()
+        with mock.patch.object(mod.sys, "platform", "linux"):
+            self.assertFalse(mod.grant_is_current(
+                run=mock.Mock(side_effect=OSError("no sudo")),
+                which=lambda b: "/usr/bin/" + b))

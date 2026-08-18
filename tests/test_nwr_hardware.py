@@ -11,6 +11,7 @@ sys.path.insert(0, _ROOT)
 from common import hardware as HW  # noqa: E402
 from common import hardware_detect, sdr_rx  # noqa: E402
 from routes import hardware as hardware_routes  # noqa: E402
+from routes import service_control  # noqa: E402
 
 
 class NwrServiceTest(unittest.TestCase):
@@ -83,24 +84,64 @@ class NwrConsumesTheDongleTest(unittest.TestCase):
         self.assertTrue(busy)
         self.assertEqual(holder, "oasis-nwr")
 
-    def test_the_console_and_the_boot_reconciler_may_actually_start_it(self):
-        # Both go through `sudo -n systemctl <verb> oasis-nwr.service`, and
-        # _systemctl_seq swallows the refusal — an ungranted unit fails
-        # silently, which is the failure mode this whole task exists to end.
-        import importlib.util
-        path = os.path.join(_ROOT, "scripts", "enable-service-controls.py")
-        spec = importlib.util.spec_from_file_location("enable_service_controls", path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        self.assertIn("oasis-nwr", mod.UNITS)
-        for verb in ("start", "stop"):
-            self.assertIn(verb, mod.ACTIONS)
-
     def test_burning_a_serial_refuses_while_the_watch_runs(self):
         ok, reason = hardware_detect.can_burn_serial(
             ["00000001"], lambda u: u == "oasis-nwr")
         self.assertFalse(ok)
         self.assertIn("oasis-nwr", reason)
+
+
+class WatchIsStoppableTest(unittest.TestCase):
+    """A unit the engine can START must also be one every stop path can STOP,
+    and the sudoers grant must cover both. These three lists are maintained by
+    hand in three files, and a unit missing from any one of them fails
+    silently: _systemctl_seq swallows sudo's refusal, and /api/service answers
+    "unknown or protected" for a unit that is simply absent from an allowlist."""
+
+    def _grant_writer(self):
+        import importlib.util
+        path = os.path.join(_ROOT, "scripts", "enable-service-controls.py")
+        spec = importlib.util.spec_from_file_location("enable_service_controls", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_the_console_and_the_boot_reconciler_may_actually_start_it(self):
+        # Both go through `sudo -n systemctl <verb> oasis-nwr.service`, and
+        # _systemctl_seq swallows the refusal — an ungranted unit fails
+        # silently, which is the failure mode this whole task exists to end.
+        mod = self._grant_writer()
+        self.assertIn("oasis-nwr", mod.UNITS)
+        for verb in ("start", "stop"):
+            self.assertIn(verb, mod.ACTIONS)
+
+    def test_every_granted_unit_is_one_the_dashboard_may_control(self):
+        # The invariant the comment above UNITS states. Subset, not equality:
+        # direwolf-draws is controllable but deliberately ungranted (it is
+        # shared infrastructure — see NEVER_STOP_UNITS), which is a separate,
+        # pre-existing asymmetry in the other direction.
+        mod = self._grant_writer()
+        missing = set(mod.UNITS) - service_control._CONTROLLABLE_SERVICES
+        self.assertFalse(missing,
+            f"{missing} is granted by scripts/enable-service-controls.py but "
+            "absent from _CONTROLLABLE_SERVICES, so /api/service refuses it as "
+            "'unknown or protected' and the guardian's STOP ALL skips it")
+
+    def test_the_emergency_stop_takes_the_watch_down(self):
+        # The guardian's thermal STOP ALL and the matrix's STOP ALL button both
+        # iterate _EMERGENCY_STOP. nwr is the one always-on SDR consumer that
+        # holds its dongle indefinitely, so an unattended overheating box that
+        # stops everything else and leaves rtl_fm running has not stopped.
+        self.assertIn("oasis-nwr", service_control._OASIS_SERVICES)
+        self.assertIn("oasis-nwr", service_control._CONTROLLABLE_SERVICES)
+        self.assertIn("oasis-nwr", hardware_routes._EMERGENCY_STOP)
+
+    def test_the_watch_does_not_track_its_boot_state_on_start(self):
+        # Deliberate: nwr_install.run() stops short of `systemctl enable`, and
+        # the ASSIGNMENT is the boot mechanism (HW.boot_start_plan + the boot
+        # reconciler). enable-on-start would add a second boot path that a
+        # `release` could no longer switch off.
+        self.assertNotIn("oasis-nwr", service_control._PERSIST_BOOT_STATE)
 
 
 class ConsoleRegistrationTest(unittest.TestCase):
@@ -203,11 +244,25 @@ class ConsoleIsActiveTest(unittest.TestCase):
 
 class StopSyntheticTest(unittest.TestCase):
     def test_the_nwr_token_has_no_stopper_left(self):
-        # A console STOP on nwr now goes to `systemctl stop oasis-nwr` via the
-        # ordinary path; nothing may route it back into Flask.
-        self.assertIsNone(hardware_routes._stop_synthetic("nwr-listen"))
+        """A console STOP on nwr goes to `systemctl stop oasis-nwr` by the
+        ordinary path; nothing may route it back into Flask.
+
+        Asserted by watching listener.stop(), NOT by the return value.
+        _stop_synthetic() has no `return <value>` on any path — dispatch hit,
+        dispatch miss and swallowed exception all return None — so
+        assertIsNone() is true no matter what the table contains, and would
+        keep passing if a _stop_nwr closure came back tomorrow."""
+        fake = types.ModuleType("services.nwr.common.listener")
+        fake.stop = mock.Mock()
+        with mock.patch.dict(sys.modules,
+                             {"services.nwr.common.listener": fake}):
+            hardware_routes._stop_synthetic("nwr-listen")
+        fake.stop.assert_not_called()
 
     def test_an_unknown_unit_is_a_safe_no_op(self):
+        # Vacuous by the measure above, and kept anyway: here NOT RAISING is
+        # the whole property — a console STOP on an unrecognised unit must not
+        # 500 the page.
         self.assertIsNone(hardware_routes._stop_synthetic("no-such-unit"))
 
 

@@ -16,9 +16,12 @@ Before starting the server, on Linux it also makes sure the Setup
 Orchestrator's two one-time privilege grants are in place:
 scripts/enable-service-controls.py (dashboard start/stop/restart/reboot
 buttons) and scripts/enable-oasis-installer.py (the root worker daemon that
-performs privileged installs — Winlink, GrayWolf, WebSSH, ...). Each only
-runs once (idempotent, checked via the same on-disk markers the dashboard's
-/api/setup/permissions endpoint already uses) and asks for your sudo
+performs privileged installs — Winlink, GrayWolf, WebSSH, ...). Both are
+idempotent: the service-controls grant re-runs whenever the installed
+sudoers rule no longer covers every unit we grant today (asked of sudo, not
+inferred from the file's existence — an upgraded box keeps the rule it was
+first granted with), the installer worker whenever its unit is absent. Each
+otherwise runs once, and asks for your sudo
 password right here in this terminal if it hasn't been granted yet — after
 that, the dashboard never needs a password again. Skipped entirely on
 non-Linux dev machines, where both scripts refuse to run anyway.
@@ -241,7 +244,9 @@ def restart_systemd_oasis():
     _info("Logs: journalctl -u oasis -f")
 
 
-SUDOERS_PATH = "/etc/sudoers.d/oasis-service-controls"
+# No SUDOERS_PATH constant here on purpose — the service-controls grant is
+# checked by asking sudo what it permits, not by looking for the file. See
+# _service_controls_current() below.
 INSTALLER_PATH_UNIT = "/etc/systemd/system/oasis-installer.path"
 
 
@@ -263,17 +268,52 @@ def _run_enable_script(rel_path, already_granted):
               f"re-run it yourself later: python3 {rel_path}")
 
 
+def _service_controls_current():
+    """Whether the INSTALLED sudoers grant covers the units we grant today.
+
+    Not os.path.exists(SUDOERS_PATH). That is an artifact check, and the file
+    is the artifact of *some* past grant, not of the current one — a box
+    upgraded in place keeps the rule it was first granted with, so a unit added
+    since (oasis-nwr) is simply never granted, and every start skips the fix
+    because the file is there. Nothing surfaces it either: the dashboard's own
+    Permissions banner probes a unit the old rule already covers, so it stays
+    green while the console's NWR cell sits on 'assigned, stopped'.
+
+    So ask the grant writer, which owns the unit list, whether sudo will
+    actually run its newest unit's commands (see grant_is_current there — a
+    `sudo -n -l` policy lookup, no execution, never prompts). Probe capability,
+    not artifact: this codebase has shipped that bug four times now.
+
+    A failure to load the script answers False, which re-runs a grant that is
+    idempotent and safe. The other default — assume granted — is precisely the
+    silent-healthy state this exists to end."""
+    try:
+        import importlib.util
+        path = os.path.join(REPO_ROOT, "scripts", "enable-service-controls.py")
+        spec = importlib.util.spec_from_file_location("_oasis_enable_svc", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.grant_is_current()
+    except Exception:            # noqa: BLE001 — best-effort, like everything
+        return False             # else in this startup path
+
+
 def ensure_permissions():
     """One-time root-level grants the Setup Orchestrator needs: a narrow
     sudoers rule for the dashboard's service-control buttons, and the
     systemd worker that performs privileged installs on the dashboard's
     behalf. Both are Linux/systemd-only, opt-in, reversible, and safe to
     re-run — skipped on non-Linux dev machines, where they refuse to run
-    anyway."""
+    anyway.
+
+    The service-controls grant is re-run whenever its CONTENT is out of date,
+    not merely when its file is missing; the installer unit is a single
+    artifact with nothing inside it to drift, so existence still answers for
+    it."""
     if sys.platform != "linux":
         return
     _run_enable_script("scripts/enable-service-controls.py",
-                        already_granted=os.path.exists(SUDOERS_PATH))
+                        already_granted=_service_controls_current())
     _run_enable_script("scripts/enable-oasis-installer.py",
                         already_granted=os.path.exists(INSTALLER_PATH_UNIT))
 

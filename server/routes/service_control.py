@@ -18,6 +18,12 @@ _OASIS_SERVICES = {
     "graywolf", "graywolf-api", "pat", "pat-direwolf", "kiwix", "webssh",
     "aprs-sdr-feed", "openwebrx", "gpsd", "oasis",
     "dump1090-fa", "adsb-api",
+    # The NOAA Weather Radio watch. It is the one always-on SDR consumer that
+    # holds its dongle indefinitely, so leaving it out was not cosmetic: it is
+    # _EMERGENCY_STOP's source set (server/routes/hardware.py), and the
+    # guardian's thermal STOP ALL would have left the watch — and its rtl_fm —
+    # running on an overheating unattended box.
+    "oasis-nwr",
     # The shared DRAWS TNC. Present so the Winlink card can report its status on
     # a DRAWS box (where pat-direwolf is deliberately never run); it carries BOTH
     # radio ports, so stopping it takes APRS down with Winlink.
@@ -49,6 +55,14 @@ _SERVICE_ACTIONS = {"start", "stop", "restart"}
 # whole ADS-B stack back on boot. kiwix is deliberately NOT here — it's not a
 # hardware-shared service, so its boot state is left untouched (transient
 # start/stop) like every other unit.
+#
+# oasis-nwr is deliberately NOT here either, and it looks like it belongs: it is
+# an RTL-SDR consumer the operator hands the dongle to. Its boot state is
+# already decided elsewhere. nwr_install.run() writes the unit and stops short
+# of `systemctl enable` on purpose, because the ASSIGNMENT is what brings the
+# watch back — HW.boot_start_plan() reads the persisted assignments and the boot
+# reconciler starts them. Enabling on start would give it a second, independent
+# boot path that a `release` could no longer switch off.
 _PERSIST_BOOT_STATE = {"aprs-sdr-feed", "dump1090-fa"}
 
 
