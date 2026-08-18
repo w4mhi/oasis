@@ -320,8 +320,8 @@ def start(channel_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, device_serial=None,
     if error is not None:
         # Outside the lock: killing and reaping a process can block for
         # seconds, and nothing above needs _lock held while it happens.
-        _terminate(rtl)
-        _terminate(mm)
+        terminate(rtl)
+        terminate(mm)
         return {"ok": False, "error": error, "code": "NWR_START_FAILED"}
 
     rtl_stderr = {"text": ""}
@@ -336,8 +336,8 @@ def start(channel_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, device_serial=None,
             if _state["rtl"] is rtl:
                 _state.update({"rtl": None, "mm": None, "channel_hz": None,
                                "started": 0.0})
-        _terminate(rtl)
-        _terminate(mm)
+        terminate(rtl)
+        terminate(mm)
         summary = sdr_rx.stderr_summary(rtl_stderr["text"])
         with _lock:
             _state["last_error"] = summary
@@ -374,11 +374,16 @@ def _drain_stderr(proc, buf, keep=4096):
         pass
 
 
-def _terminate(proc, timeout=5):
+def terminate(proc, timeout=5):
     """Best-effort stop-and-reap of one process. SIGTERM first, SIGKILL if
     that doesn't land in time, and a wait() after either path — a killed
     process that is never wait()ed on is still a zombie. Safe to call with
-    None (nothing was spawned) or an already-dead process."""
+    None (nothing was spawned) or an already-dead process.
+
+    Public (not `_terminate`): called across modules by routes.py's stream
+    handler and daemon.py's — a prior review flagged calling a private
+    helper from outside its own module.
+    """
     if proc is None:
         return
     try:
@@ -451,7 +456,7 @@ def stop():
                        "started": 0.0})
         subs, _state["subs"] = _state["subs"], []
     for proc in (rtl, mm):
-        _terminate(proc)
+        terminate(proc)
     for q in subs:
         _deliver_sentinel(q)   # unblock any generator waiting on this queue
     return {"ok": True}

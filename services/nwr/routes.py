@@ -191,7 +191,7 @@ def api_nwr_stream():
                     pass                        # 30s of silence -- session likely ended
                 finally:
                     # EOF lets the encoder flush its tail and exit on its
-                    # own instead of waiting on _terminate()'s SIGTERM.
+                    # own instead of waiting on terminate()'s SIGTERM.
                     try:
                         proc.stdin.close()
                     except Exception:            # noqa: BLE001
@@ -225,12 +225,12 @@ def api_nwr_stream():
                 # once a writer exists, since only then is `q` guaranteed
                 # to be a real Queue rather than an injected test double.
                 listener._deliver_sentinel(q)
-            # Same terminate-then-wait as listener._terminate: a killed
+            # Same terminate-then-wait as listener.terminate: a killed
             # process nobody wait()s on is still a zombie. None-safe, so a
             # Popen that never spawned costs nothing here. Killing the
             # encoder also breaks a writer blocked mid-write() on a dead
             # process's stdin (EPIPE), so the join below is bounded too.
-            listener._terminate(proc)
+            listener.terminate(proc)
             if writer is not None:
                 writer.join(timeout=5)
 

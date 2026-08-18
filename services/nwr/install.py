@@ -11,9 +11,16 @@ from services.nwr.common import nwr_install  # noqa: E402
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Install NOAA Weather Radio support (multimon-ng) for SAME alert decoding.",
+        description="Install NOAA Weather Radio (SAME/EAS) support, or run its watch daemon.",
     )
-    parser.parse_args()
+    parser.add_argument("--serve", action="store_true",
+                        help="Run the always-on watch daemon (used by systemd).")
+    args = parser.parse_args()
+
+    if args.serve:
+        from services.nwr.common import daemon  # noqa: E402
+        daemon.serve(_REPO_ROOT)
+        return 0
 
     result = nwr_install.run(repo_root=_REPO_ROOT, online=None)
     return 0 if result.get("ok") else 1
