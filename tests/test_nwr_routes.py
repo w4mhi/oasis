@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import shlex
@@ -20,7 +21,7 @@ for _p in (_ROOT, _SERVER, _HERE):
 import app as app_module  # noqa: E402
 from oasis_testclient import bare_client, csrf_client  # noqa: E402
 from services.nwr import routes as nwr_routes  # noqa: E402
-from services.nwr.common import settings  # noqa: E402
+from services.nwr.common import bell, settings  # noqa: E402
 
 
 class SettingsTest(unittest.TestCase):
@@ -74,6 +75,33 @@ class SettingsTest(unittest.TestCase):
     def test_unknown_keys_are_ignored_not_persisted(self):
         settings.save(self.root, {"channel_hz": 162400000, "evil": "yes"})
         self.assertNotIn("evil", settings.load(self.root))
+
+    def test_bell_override_until_zero_is_valid_and_means_no_override(self):
+        settings.save(self.root, {"bell_override_until": 0})
+        self.assertEqual(settings.load(self.root)["bell_override_until"], 0)
+
+    def test_bell_override_until_rejects_negative(self):
+        with self.assertRaises(ValueError):
+            settings.save(self.root, {"bell_override_until": -1})
+
+    def test_bell_override_until_accepts_exactly_the_boundary(self):
+        # The boundary IS the value a well-behaved client sends -- it asks
+        # bell.override_until() for "when does this override expire" and
+        # posts exactly that back.
+        now = datetime.datetime(2026, 8, 17, 23, 30)
+        boundary = bell.override_until(now, self.root)
+        settings.save(self.root, {"bell_override_until": boundary}, now=now)
+        self.assertEqual(settings.load(self.root)["bell_override_until"], boundary)
+
+    def test_bell_override_until_rejects_beyond_the_next_quiet_hours_boundary(self):
+        # This is the guarantee Finding 2 is about: an override cannot
+        # outlive the next end-of-quiet-hours, so a buggy or direct POST
+        # can never leave "quiet hours off" sitting forgotten for months.
+        now = datetime.datetime(2026, 8, 17, 23, 30)
+        boundary = bell.override_until(now, self.root)
+        with self.assertRaises(ValueError):
+            settings.save(self.root, {"bell_override_until": boundary + 3600},
+                          now=now)
 
 
 class NwrRouteCsrfTest(unittest.TestCase):
@@ -143,6 +171,16 @@ class NwrConfigRouteTest(unittest.TestCase):
         self.assertEqual(body["config"]["channel_hz"], 162400000)
         reread = self.c.get("/api/nwr/config")
         self.assertEqual(json.loads(reread.data)["config"]["channel_hz"], 162400000)
+
+    def test_bell_override_until_beyond_boundary_rejected_with_400(self):
+        # A far-future epoch is exactly the anti-pattern Finding 2 names: a
+        # permanent "quiet hours off" switch set by a buggy client or a
+        # direct API call, sitting forgotten until it surprises someone.
+        r = self.c.post("/api/nwr/config", json={"bell_override_until": 9999999999})
+        self.assertEqual(r.status_code, 400)
+        body = json.loads(r.data)
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["code"], "NWR_BAD_CONFIG")
 
 
 class NwrListenRouteTest(unittest.TestCase):

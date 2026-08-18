@@ -3,10 +3,11 @@
 A feature-scoped file rather than more keys in station.json, so uninstalling NWR
 removes its configuration cleanly. Same reasoning as satellites.json.
 """
+import datetime
 import re
 
 from common import atomic_json, config_paths
-from services.nwr.common import listener
+from services.nwr.common import bell, listener
 
 DEFAULTS = {
     "channel_hz": 162550000,      # WX7, the most commonly assigned channel
@@ -51,11 +52,16 @@ def load(repo_root):
     return out
 
 
-def save(repo_root, patch):
+def save(repo_root, patch, now=None):
     """Merge `patch` over the stored settings after validating it.
 
     Raises ValueError on bad input — the route turns that into a 400 rather than
     persisting something the listener would choke on later.
+
+    `now` is None or an explicit datetime, taken as an argument (rather than
+    read from the clock inline) so the bell_override_until boundary check
+    below is testable without touching the real clock — the same shape
+    bell.should_speak() and bell.override_until() already use.
     """
     if not isinstance(patch, dict):
         raise ValueError("expected an object")
@@ -90,9 +96,25 @@ def save(repo_root, patch):
 
     if "bell_override_until" in patch:
         try:
-            current["bell_override_until"] = int(patch["bell_override_until"])
+            until = int(patch["bell_override_until"])
         except (TypeError, ValueError):
             raise ValueError("bell_override_until must be an integer")
+        if until < 0:
+            raise ValueError("bell_override_until cannot be negative")
+        # 0 means "no override" and is always valid. Any other value is
+        # capped at the next end-of-quiet-hours: rejecting outright, rather
+        # than silently clamping, because a client that sends a value past
+        # the boundary has a bug worth surfacing as a 400, not a "quiet
+        # hours off" state the operator never asked for and would have no
+        # way to notice from the response. bell.override_until() computes
+        # the same boundary should_speak() honours, so this can only ever
+        # be as permissive as the gate it is protecting.
+        if until:
+            boundary = bell.override_until(now or datetime.datetime.now(), repo_root)
+            if until > boundary:
+                raise ValueError(
+                    "bell_override_until cannot outlive the next quiet-hours boundary")
+        current["bell_override_until"] = until
 
     if "pinned_channel" in patch:
         val = patch["pinned_channel"]

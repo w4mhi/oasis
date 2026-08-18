@@ -87,6 +87,14 @@ def api_nwr_listen():
             return
         ok, why = bell.should_speak(cfg, rec, root)
         if ok:
+            # `why` is only non-empty here for the override case (see
+            # bell.should_speak) -- a human turned the bell back on for the
+            # night, and that is the one state most worth a trail: an
+            # override that fires is exactly the thing nobody should be
+            # surprised by later.
+            if why:
+                log.info("nwr: bell override in effect for %s (%s)",
+                         rec.get("event"), why)
             _announce(rec)
         else:
             log.info("nwr: bell silent for %s (%s)", rec.get("event"), why)

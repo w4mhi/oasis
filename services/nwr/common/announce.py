@@ -1,19 +1,25 @@
 """Speak a matched alert on this box's own speaker.
 
 Server-side, not browser-side: the sat-alert path plays through an open page's
-AudioContext, which means nothing is said when no tab is open. A weather warning
-that only reaches a screen somebody is already looking at is not worth building.
+AudioContext, which means nothing is said when no tab is open. A weather
+warning that only reaches a screen somebody is already looking at is not worth
+building. Best-effort throughout — see speak()'s own docstring — because a
+missing voice must never cost an alert its place in the log or on the plot.
 
-There is no quiet-hours gate. common/js/quiet-hours.js is client-side only, so
-there is no server-side mechanism to respect, and a tornado warning arguably
-should not have one. The `speak` flag in configuration/nwr.json is the off
-switch.
+The quiet-hours gate lives ahead of this module, in services.nwr.common.bell:
+by the time speak() runs, bell.should_speak() has already decided the bell may
+sound, in local time (common/quiet_hours.py), against the `bell` flag in
+configuration/nwr.json. (`speak` was the v1 name; settings.load() migrates it
+to `bell` on read and nothing here consults it any more.) This module has
+nothing left to gate on.
 
-KNOWN CONSEQUENCE, carried deliberately into v1: with no per-code severity gate,
-the Required Weekly Test is spoken every week when the operator's county is in
-it. During bring-up that is an asset — it is the only guaranteed end-to-end
-proof the whole path works. Afterwards it is an annoyance, and a per-code gate
-is the obvious v2.
+There is NO per-event severity filter, here or in bell.py, and none is coming:
+the bell is the only gate. Turning it on means wanting to hear the Required
+Weekly Test too — the one regular proof that demodulation, parsing, matching
+and speech all still work end to end. A station silently broken for a month is
+worse than one that says something unwanted on a Wednesday morning. A test
+guards this decision (tests/test_nwr_bell.py); do not narrow it with a
+per-code filter.
 """
 import logging
 
