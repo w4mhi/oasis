@@ -300,7 +300,13 @@ def scan():
 # unambiguous: nothing that consumes an SDR is currently running, and there is
 # exactly one detected candidate (or a caller-supplied explicit target — left
 # for the route/CLI layer to resolve, not this pure guard).
-SDR_CONSUMING_UNITS = ["dump1090-fa", "aprs-sdr-feed", "openwebrx"]
+# oasis-nwr belongs here even though the watch is idle between captures: this
+# list is also the global fallback in sdr_rx.dongle_busy(), and leaving it out
+# is what let preconditions.busy read false on a station where rtl_fm could not
+# claim the tuner because the watch already had it. Over-reporting a unit that
+# is up but not currently tuned is the safe direction for both readers — a
+# refused EEPROM burn and a "busy" badge both cost the operator one glance.
+SDR_CONSUMING_UNITS = ["dump1090-fa", "aprs-sdr-feed", "openwebrx", "oasis-nwr"]
 
 
 def sdr_services_active(is_active):

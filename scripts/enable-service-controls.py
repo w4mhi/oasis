@@ -46,8 +46,15 @@ from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
 
 # Must match server/app.py _CONTROLLABLE_SERVICES (everything OASIS-managed
 # except the web server itself).
+#
+# oasis-nwr is here because the conflict engine now starts it: assigning a
+# dongle to nwr puts the unit in HW.boot_start_plan(), and both the boot
+# reconciler and the assignment console reach it through `sudo -n systemctl`.
+# _systemctl_seq swallows failures, so without this grant the console cell
+# would sit on "assigned, stopped" and the boot start would do nothing, with
+# no error anywhere. An existing box needs this script re-run once.
 UNITS   = ["graywolf", "graywolf-api", "pat", "pat-direwolf", "kiwix", "webssh",
-           "aprs-sdr-feed", "openwebrx", "dump1090-fa", "adsb-api"]
+           "aprs-sdr-feed", "openwebrx", "dump1090-fa", "adsb-api", "oasis-nwr"]
 # enable/disable included so boot-state-tracking units (e.g. OpenWebRX: enable on
 # start, disable on stop) work; the dashboard still only exposes start/stop/restart.
 ACTIONS = ["start", "stop", "restart", "enable", "disable"]

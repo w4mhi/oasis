@@ -301,10 +301,10 @@ def api_hardware_burn_serial():
 # route + start/stop appear here: radio-live/RX is a future claimant, and
 # OpenWebRX is self-configured (no engine unit, picks its own dongle) so it's
 # controlled from its own service card, not the matrix.
-# nwr sits after satellites: both are ad-hoc rtl_fm SYNTHETIC-unit listeners
-# the operator starts by hand (not always-on like aprs/adsb/winlink), so they
-# read as a pair at the bottom of the matrix rather than interleaved with the
-# always-on rows above them.
+# nwr sits after satellites for continuity — the row has been in that position
+# since it shipped, and the order here is what the operator's eye has learned.
+# It is no longer the ad-hoc listener satellites still is: the watch is the
+# always-on oasis-nwr daemon, and the console can start and stop it.
 _CONSOLE_SERVICES = ["aprs", "adsb", "winlink", "satellites", "nwr"]
 _SERVICE_DISPLAY = {"aprs": "APRS", "adsb": "ADS-B", "openwebrx": "ORX",
                     "winlink": "Winlink", "satellites": "SAT", "nwr": "NWR"}
@@ -320,8 +320,8 @@ def _console_is_active():
     tapping it tried to `systemctl start` a unit that isn't there.
 
     common/hardware.py says callers that care must wrap is_active; this is that
-    wrapper. Degrades to the raw check when satellites/nwr isn't installed —
-    but ONLY the import is allowed to degrade. Each try below guards the
+    wrapper. Degrades to the raw check when satellites isn't installed —
+    but ONLY the import is allowed to degrade. The try below guards the
     import statement alone; the is_active_wrapper(...) call itself sits
     outside the try, unprotected, on purpose. A prior version wrapped the
     call too, so a bug INSIDE an installed listener (wrong signature, any
@@ -341,13 +341,13 @@ def _console_is_active():
     say False and `stop()` would act on an empty state. Same file, same code,
     different globals: the fix would look right and do nothing.
 
-    TWO synthetic units now, so the wrappers CHAIN: each answers only its own
-    token and delegates everything else inward. Returning one wrapper made the
-    other service invisible to the engine, which is the bug this shape prevents.
-
-    services/nwr/ is imported as a proper package module — it has no bare
-    sibling imports, so the duplicate-module trap that forces `import listen`
-    below cannot arise there."""
+    nwr used to be wrapped here too, and no longer is: its capture moved out of
+    Flask into the oasis-nwr daemon, so `systemctl is-active oasis-nwr` is the
+    honest answer and a wrapper could only report on a Flask process that no
+    longer holds anything. The CHAINING SHAPE stays anyway — one wrapper per
+    synthetic unit, each answering only its own token and delegating everything
+    else inward — because returning a single wrapper is what made the second
+    service invisible to the engine the last time there were two."""
     is_active = HW._default_is_active
     try:
         import listen                      # bare — see above
@@ -356,12 +356,6 @@ def _console_is_active():
     else:
         is_active = listen.is_active_wrapper(is_active)   # unguarded: let a
         # broken-but-present module raise loudly instead of vanishing here.
-    try:
-        from services.nwr.common import listener
-    except ImportError:                    # nwr not installed
-        pass
-    else:
-        is_active = listener.is_active_wrapper(is_active)  # unguarded, same as above
     return is_active
 
 
@@ -370,7 +364,7 @@ def _stop_synthetic(unit):
 
     `systemctl stop <synthetic>` exits fine and does nothing, so a console STOP
     on a running capture used to report success while rtl_fm kept the dongle.
-    A dispatch rather than an if-chain, so adding the third ad-hoc capture is a
+    A dispatch rather than an if-chain, so adding the next ad-hoc capture is a
     one-line change instead of another silent no-op.
 
     Best-effort throughout: a missing feature or a failed stop must not 500 the
@@ -386,11 +380,11 @@ def _stop_synthetic(unit):
         import listen                      # bare — see _console_is_active()
         listen.stop()
 
-    def _stop_nwr():
-        from services.nwr.common import listener
-        listener.stop()
-
-    stoppers = {"satellites-listen": _stop_satellites, "nwr-listen": _stop_nwr}
+    # No nwr entry: the watch is a real unit now, so a console STOP reaches it
+    # through `systemctl stop oasis-nwr` like any other service. An entry here
+    # would stop a Flask capture that no longer exists and leave the daemon
+    # holding the dongle while the console reported success.
+    stoppers = {"satellites-listen": _stop_satellites}
     fn = stoppers.get(unit)
     if fn is None:
         return

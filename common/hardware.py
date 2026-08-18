@@ -57,12 +57,14 @@ SERVICE_UNITS = {
     # wrapper). Keeps device_states() generic — no special-casing. Also advisory
     # (no apply hook); the recorder binds the dongle itself at start time.
     "satellites": ["satellites-listen"],
-    # nwr (NOAA Weather Radio) is manual-only: the operator starts a listening
-    # session, and services/nwr/common/listener.py runs rtl_fm | multimon-ng as
-    # an ad-hoc Flask subprocess. "nwr-listen" is a SYNTHETIC unit, exactly like
-    # satellites-listen — callers that care whether we hold the dongle wrap
-    # is_active so it answers this token from listener.is_listening().
-    "nwr": ["nwr-listen"],
+    # nwr (NOAA Weather Radio) is an ordinary always-on service: the oasis-nwr
+    # daemon (services/nwr/common/daemon.py) runs rtl_fm | multimon-ng and
+    # watches for SAME headers whether or not anyone has the page open. It used
+    # to capture inside Flask and so carried a SYNTHETIC "nwr-listen" token; a
+    # real unit means `systemctl is-active oasis-nwr` is the honest answer and
+    # every arbitration surface can see the claim without a wrapper. Assigning
+    # a dongle is the whole action — boot_start_plan() starts the unit.
+    "nwr": ["oasis-nwr"],
 }
 
 # Which device kind(s) each logical service may be assigned.
@@ -104,7 +106,13 @@ APRS_FEED_UNIT = "aprs-sdr-feed"
 # `start`/`stop` do nothing. That silence is exactly how the assignment console
 # came to show satellites as permanently "stopped" even mid-recording, so
 # anything generic must route these to whatever owns them instead.
-SYNTHETIC_UNITS = frozenset({"satellites-listen", "nwr-listen"})
+#
+# ONE token left. "nwr-listen" lived here while NWR captured inside Flask; the
+# capture is a daemon now, so the token is gone and nwr goes through the
+# ordinary systemd path. A synthetic unit is only ever tolerable while the
+# process holding the dongle IS this process — the moment it moves out, only a
+# real unit name can be answered by anything that isn't Flask.
+SYNTHETIC_UNITS = frozenset({"satellites-listen"})
 
 
 def startable_units(inv, service):

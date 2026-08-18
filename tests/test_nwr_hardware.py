@@ -9,51 +9,98 @@ _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, os.path.join(_ROOT, "server"))
 sys.path.insert(0, _ROOT)
 from common import hardware as HW  # noqa: E402
+from common import hardware_detect, sdr_rx  # noqa: E402
 from routes import hardware as hardware_routes  # noqa: E402
 
 
 class NwrServiceTest(unittest.TestCase):
     def test_nwr_is_a_known_service(self):
         self.assertIn("nwr", HW.SERVICE_UNITS)
-        self.assertEqual(HW.SERVICE_UNITS["nwr"], ["nwr-listen"])
+        self.assertEqual(HW.SERVICE_UNITS["nwr"], ["oasis-nwr"])
 
     def test_nwr_takes_an_rtl_sdr_and_nothing_else(self):
         self.assertEqual(HW.DEVICE_KIND_FOR_SERVICE["nwr"], {"rtl-sdr"})
 
-    def test_nwr_listen_is_synthetic(self):
-        # It must never be handed to systemctl: `systemctl stop nwr-listen`
-        # exits fine and does nothing, which is exactly how a running capture
-        # would report as stopped while rtl_fm kept the dongle.
-        self.assertIn("nwr-listen", HW.SYNTHETIC_UNITS)
+    def test_nwr_has_no_synthetic_token_any_more(self):
+        # The capture moved out of Flask into the oasis-nwr daemon, so there is
+        # a real unit for systemctl to answer about. Leaving "nwr-listen" in
+        # SYNTHETIC_UNITS would filter the real unit's service out of
+        # startable_units()/boot_start_plan() only if the token were still the
+        # unit name — but keeping a dead token here is exactly the kind of
+        # leftover that makes the next reader wire a wrapper for nothing.
+        self.assertNotIn("nwr-listen", HW.SYNTHETIC_UNITS)
         self.assertIn("satellites-listen", HW.SYNTHETIC_UNITS)
 
-    def test_startable_units_excludes_the_synthetic_token(self):
+    def test_startable_units_is_the_real_daemon(self):
         inv = HW._empty_inventory()
         inv.assignments["nwr"] = "rtl-1"
-        self.assertEqual(HW.startable_units(inv, "nwr"), [])
+        self.assertEqual(HW.startable_units(inv, "nwr"), ["oasis-nwr"])
+
+    def test_assigning_a_dongle_puts_the_watch_in_the_boot_plan(self):
+        # Assignment IS the trigger: boot_start_plan() already starts real
+        # units from persisted assignments, so nwr needs no separate mechanism.
+        inv = HW._empty_inventory()
+        inv.devices["rtl-1"] = {"id": "rtl-1", "kind": "rtl-sdr"}
+        inv.assignments["nwr"] = "rtl-1"
+        self.assertIn("oasis-nwr", HW.boot_start_plan(inv))
+
+    def test_an_unassigned_nwr_starts_nothing_at_boot(self):
+        self.assertEqual(HW.boot_start_plan(HW._empty_inventory()), [])
 
 
-class WrapperChainTest(unittest.TestCase):
-    """The two synthetic tokens must BOTH be answerable by one is_active."""
+class NwrConsumesTheDongleTest(unittest.TestCase):
+    """The .46 regression: a running watch was invisible to every arbitration
+    surface that did not go through the console's wrapper chain.
 
-    def test_chained_wrappers_answer_their_own_token_and_delegate(self):
-        base = lambda u: u == "dump1090-fa"                      # noqa: E731
+    `preconditions.busy` read false while rtl_fm genuinely could not claim the
+    tuner, because nothing outside services/nwr knew the claim existed —
+    "nwr-listen" was a token only the Flask process could answer, and by then
+    the capture had moved to the oasis-nwr daemon in another process entirely.
+    A real unit name is answerable by anyone with systemctl."""
 
-        def sat_wrapper(inner):
-            def _w(unit):
-                return True if unit == "satellites-listen" else inner(unit)
-            return _w
+    class _Inv:
+        def __init__(self, assignments):
+            self.assignments = assignments
+            self.devices = {}
 
-        def nwr_wrapper(inner):
-            def _w(unit):
-                return False if unit == "nwr-listen" else inner(unit)
-            return _w
+    def test_a_live_watch_makes_a_co_assigned_dongle_busy(self):
+        inv = self._Inv({"nwr": "rtl-1", "satellites": "rtl-1"})
+        busy, holder = sdr_rx.dongle_busy(
+            inv, lambda u: u == "oasis-nwr", "satellites")
+        self.assertTrue(busy)
+        self.assertEqual(holder, "nwr")
 
-        chained = nwr_wrapper(sat_wrapper(base))
-        self.assertTrue(chained("satellites-listen"))
-        self.assertFalse(chained("nwr-listen"))
-        self.assertTrue(chained("dump1090-fa"))
-        self.assertFalse(chained("pat-direwolf"))
+    def test_the_watch_is_an_sdr_consuming_unit(self):
+        # The unassigned/no-inventory fallback in dongle_busy() and
+        # can_burn_serial() both read this list; without oasis-nwr in it a
+        # running watch reads as "nothing is using the dongle".
+        self.assertIn("oasis-nwr", hardware_detect.SDR_CONSUMING_UNITS)
+
+    def test_the_global_fallback_sees_the_watch(self):
+        inv = self._Inv({})
+        busy, holder = sdr_rx.dongle_busy(
+            inv, lambda u: u == "oasis-nwr", "satellites")
+        self.assertTrue(busy)
+        self.assertEqual(holder, "oasis-nwr")
+
+    def test_the_console_and_the_boot_reconciler_may_actually_start_it(self):
+        # Both go through `sudo -n systemctl <verb> oasis-nwr.service`, and
+        # _systemctl_seq swallows the refusal — an ungranted unit fails
+        # silently, which is the failure mode this whole task exists to end.
+        import importlib.util
+        path = os.path.join(_ROOT, "scripts", "enable-service-controls.py")
+        spec = importlib.util.spec_from_file_location("enable_service_controls", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        self.assertIn("oasis-nwr", mod.UNITS)
+        for verb in ("start", "stop"):
+            self.assertIn(verb, mod.ACTIONS)
+
+    def test_burning_a_serial_refuses_while_the_watch_runs(self):
+        ok, reason = hardware_detect.can_burn_serial(
+            ["00000001"], lambda u: u == "oasis-nwr")
+        self.assertFalse(ok)
+        self.assertIn("oasis-nwr", reason)
 
 
 class ConsoleRegistrationTest(unittest.TestCase):
@@ -89,97 +136,79 @@ class ConsoleRegistrationTest(unittest.TestCase):
             "_SERVICE_DISPLAY, so the console would render its raw id")
 
 
-class ConsoleIsActiveDegradedPathTest(unittest.TestCase):
-    """Exercises the REAL _console_is_active(), not just the pure
-    wrapper-chaining shape in WrapperChainTest above. Regression net for a
-    review finding: the satellites/nwr try/except used to wrap the
-    is_active_wrapper(...) CALL as well as the import, so a present-but-
-    broken module was swallowed exactly like an absent one — the service
-    would sit on "assigned, stopped" forever even while it held the dongle,
-    with no way to notice. The fix narrows each try to the import alone
-    (ImportError == "not installed"); a broken-but-present module must now
-    raise loudly instead of vanishing into `is_active` silently falling back
-    unwrapped.
+class ConsoleIsActiveTest(unittest.TestCase):
+    """Exercises the REAL _console_is_active(), not a stand-in.
 
-    services/nwr/common/listener.py did not exist when this test was first
-    written, so the broken-module and chained-module scenarios below inject a
-    fake straight into sys.modules — this drives the exact same
-    `from services.nwr.common import listener` / call path the real module
-    now runs through, so those tests stay correct and meaningful now that
-    Task 7 has landed (a genuinely broken listener.py hits this same code
-    path and this same assertion)."""
+    Two things are pinned here. First, nwr is now an ORDINARY unit: the
+    wrapper chain must not intercept it, because `systemctl is-active
+    oasis-nwr` is the honest answer and the wrapper could only ever answer
+    about the Flask process, which no longer captures anything.
 
-    def _install_fake_listener(self, is_active_wrapper):
-        import services.nwr.common as pkg
-        fake = types.ModuleType("services.nwr.common.listener")
+    Second, the surviving satellites wrapper keeps its narrow guard: the
+    try/except covers the IMPORT alone (ImportError == "not installed") and
+    the is_active_wrapper(...) CALL sits outside it on purpose. A prior
+    version wrapped the call too, so a bug INSIDE a present module was
+    swallowed exactly like an absent one — the service sat on "assigned,
+    stopped" forever while holding the dongle, with nothing to notice."""
+
+    def _install_fake_listen(self, is_active_wrapper):
+        """Stand in for services/satellites/listen.py, which _console_is_active()
+        imports BARE (see its docstring — importing it as a package module
+        would create a second module object with its own capture state)."""
+        fake = types.ModuleType("listen")
         fake.is_active_wrapper = is_active_wrapper
-        patcher = mock.patch.dict(sys.modules,
-                                  {"services.nwr.common.listener": fake})
+        patcher = mock.patch.dict(sys.modules, {"listen": fake})
         patcher.start()
         self.addCleanup(patcher.stop)
-        # `from X import listener` resolves via getattr(pkg, "listener")
-        # FIRST (see CPython's _handle_fromlist) and only consults
-        # sys.modules when the package has no such attribute yet. Now that
-        # services/nwr/common/listener.py is real (Task 7), any test module
-        # that did `from services.nwr.common import listener` at collection
-        # time — test_nwr_listener.py does — has already cached the REAL
-        # module as that attribute for the rest of this process, making the
-        # sys.modules patch above invisible to `_console_is_active()`.
-        # Patch the attribute directly too, with create=True so this also
-        # covers the case where no attribute exists yet; mock.patch.object
-        # restores whatever was there (real module, fake, or nothing) on
-        # cleanup, so this can't leak into whichever test runs next.
-        attr_patcher = mock.patch.object(pkg, "listener", fake, create=True)
-        attr_patcher.start()
-        self.addCleanup(attr_patcher.stop)
 
-    def test_both_real_listeners_answer_their_own_token_and_never_hit_base(self):
-        """Task 7 landed: services/nwr/common/listener.py is a real module now,
-        so `_console_is_active()` no longer degrades nwr-listen to the base
-        systemd check — it answers from listener.is_listening(), exactly like
-        satellites-listen answers from listen.is_capturing(). Replaces the
-        pre-Task-7 placeholder, which asserted the degraded fallback this test
-        now proves does NOT happen once a real module is present."""
+    def test_nwr_is_answered_by_systemd_not_by_a_wrapper(self):
+        with mock.patch.object(HW, "_default_is_active",
+                               side_effect=lambda u: u == "oasis-nwr") as base:
+            is_active = hardware_routes._console_is_active()
+            self.assertTrue(is_active("oasis-nwr"))
+            self.assertFalse(is_active("pat-direwolf"))
+        base.assert_any_call("oasis-nwr")
+
+    def test_the_satellites_capture_still_answers_its_own_token(self):
         import app as _oasis_app  # noqa: F401  (registers the satellites
                                    # blueprint, putting services/satellites on
                                    # sys.path so the bare `import listen`
                                    # inside _console_is_active() resolves to
                                    # the same module object the recorder uses)
         import listen
-        from services.nwr.common import listener as nwr_listener
 
         with mock.patch.object(listen, "is_capturing", return_value=True):
-            is_active = hardware_routes._console_is_active()
-            self.assertTrue(is_active("satellites-listen"),
+            self.assertTrue(hardware_routes._console_is_active()("satellites-listen"),
                             "a live capture must read as running")
         with mock.patch.object(listen, "is_capturing", return_value=False):
             self.assertFalse(hardware_routes._console_is_active()("satellites-listen"))
 
-        with mock.patch.object(nwr_listener, "is_listening", return_value=True), \
-             mock.patch.object(HW, "_default_is_active", return_value=False) as base:
-            is_active = hardware_routes._console_is_active()
-            self.assertTrue(is_active("nwr-listen"),
-                            "a live nwr capture must read as running")
-        base.assert_not_called()
-        with mock.patch.object(nwr_listener, "is_listening", return_value=False):
-            self.assertFalse(hardware_routes._console_is_active()("nwr-listen"))
-
     def test_a_broken_installed_module_raises_instead_of_degrading_silently(self):
         def _broken(base):
             raise RuntimeError("boom -- is_active_wrapper itself is broken")
-        self._install_fake_listener(_broken)
+        self._install_fake_listen(_broken)
         with self.assertRaises(RuntimeError):
             hardware_routes._console_is_active()
 
-    def test_a_working_module_is_chained_in_like_satellites(self):
+    def test_a_working_module_is_chained_in(self):
         def _wrapper(base):
             def _w(unit):
-                return True if unit == "nwr-listen" else base(unit)
+                return True if unit == "satellites-listen" else base(unit)
             return _w
-        self._install_fake_listener(_wrapper)
+        self._install_fake_listen(_wrapper)
         is_active = hardware_routes._console_is_active()
-        self.assertTrue(is_active("nwr-listen"))
+        self.assertTrue(is_active("satellites-listen"))
         self.assertFalse(is_active("dump1090-fa"))
+
+
+class StopSyntheticTest(unittest.TestCase):
+    def test_the_nwr_token_has_no_stopper_left(self):
+        # A console STOP on nwr now goes to `systemctl stop oasis-nwr` via the
+        # ordinary path; nothing may route it back into Flask.
+        self.assertIsNone(hardware_routes._stop_synthetic("nwr-listen"))
+
+    def test_an_unknown_unit_is_a_safe_no_op(self):
+        self.assertIsNone(hardware_routes._stop_synthetic("no-such-unit"))
 
 
 if __name__ == "__main__":
