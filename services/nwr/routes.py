@@ -47,29 +47,14 @@ def _inventory():
         return None
 
 
-def _watch_json(path, timeout=5):
-    """(payload, error) from the watch daemon. Exactly one is non-None.
-
-    The daemon ships as its own unit and is NOT restarted in lockstep with
-    Flask, so every read is treated as potentially unavailable -- the same
-    reasoning services/adsb/routes.py records for adsb-api.
-    """
-    import urllib.error
-    import urllib.request
-    try:
-        with urllib.request.urlopen(WATCH_BASE + path, timeout=timeout) as r:
-            return json.loads(r.read()), None
-    except urllib.error.HTTPError as e:
-        return None, f"watch returned HTTP {e.code}"
-    except Exception as e:                      # noqa: BLE001
-        return None, f"watch unavailable ({getattr(e, 'reason', e)})"
-
-
 def _watch_error_text(err):
     """The daemon's own human-readable reason for a refusal, or None.
 
-    Its body is a real socket: read it and close it on every path, or a refused
-    stream leaves the connection open.
+    An HTTPError IS a response: its body is a live socket, and this repo's rule
+    is that every response body is consumed or discarded on every path -- an
+    unread one pins its connection (on the Pi, a 2 MiB /dev/shm pipe) until the
+    garbage collector happens to get to it. So read it, and close it in a
+    finally: that survives a read which itself raises.
     """
     try:
         body = err.read()
@@ -84,6 +69,28 @@ def _watch_error_text(err):
         return (json.loads(body) or {}).get("error")
     except Exception:                           # noqa: BLE001
         return None
+
+
+def _watch_json(path, timeout=5):
+    """(payload, error) from the watch daemon. Exactly one is non-None.
+
+    The daemon ships as its own unit and is NOT restarted in lockstep with
+    Flask, so every read is treated as potentially unavailable -- the same
+    reasoning services/adsb/routes.py records for adsb-api.
+    """
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(WATCH_BASE + path, timeout=timeout) as r:
+            return json.loads(r.read()), None
+    except urllib.error.HTTPError as e:
+        # _watch_error_text drains and closes the body; dropping the HTTPError
+        # here instead would be the one unread response in this file.
+        detail = _watch_error_text(e)
+        return None, (f"watch returned HTTP {e.code}"
+                      + (f" ({detail})" if detail else ""))
+    except Exception as e:                      # noqa: BLE001
+        return None, f"watch unavailable ({getattr(e, 'reason', e)})"
 
 
 @bp.route("/server/nwr/")
@@ -170,14 +177,33 @@ def api_nwr_stream():
     def _relay():
         try:
             while True:
-                chunk = upstream.read(8192)
+                try:
+                    chunk = upstream.read(8192)
+                except OSError:
+                    # This socket gives up after 10 s of silence; the daemon's
+                    # writer tolerates 30 (daemon.py's _feed). An audio gap in
+                    # between must end the relay as a clean end-of-stream --
+                    # letting the TimeoutError out of a WSGI iterator truncates
+                    # the audio AND leaves a traceback for the operator to
+                    # interpret, which says nothing they can act on.
+                    break
                 if not chunk:
                     break
                 yield chunk
         finally:
             upstream.close()                    # a client that hangs up must not
                                                 # leave a subscriber on the daemon
-    return Response(_relay(), mimetype=mime)
+
+    resp = Response(_relay(), mimetype=mime)
+    # The finally: above only runs if the generator is ever STARTED, and a
+    # response can be built without its body being iterated -- Werkzeug swaps in
+    # an empty iterable for a HEAD. That path leaves the daemon writing into a
+    # socket nobody reads: an ffmpeg, a subscriber queue and one of its three
+    # stream slots, held until refcounting happens to finalise the connection.
+    # call_on_close runs after iteration, or instead of it, and
+    # HTTPResponse.close() is idempotent, so the two compose.
+    resp.call_on_close(upstream.close)
+    return resp
 
 
 @bp.route("/api/nwr/alerts")

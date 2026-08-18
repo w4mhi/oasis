@@ -116,8 +116,10 @@ class _FakeUpstream:
         self.status = status
         self.headers = headers or {"Content-Type": "application/json"}
         self.closed = False
+        self.reads = 0
 
     def read(self, n=-1):
+        self.reads += 1
         return self._body.read(n)
 
     def close(self):
@@ -129,6 +131,18 @@ class _FakeUpstream:
     def __exit__(self, *exc):
         self.close()
         return False
+
+
+class _StallingUpstream(_FakeUpstream):
+    """A stream that goes quiet after its first chunk: the daemon's writer
+    tolerates 30 s of silence on a subscriber queue, this socket gives up at
+    10, and a real gap between the two lands here."""
+
+    def read(self, n=-1):
+        if self.reads:
+            self.reads += 1
+            raise TimeoutError("timed out")
+        return super().read(n)
 
 
 def _http_error(code, payload):
@@ -397,6 +411,33 @@ class NwrStreamRelayTest(unittest.TestCase):
         self.assertEqual(data, b"\xff\xfb" + b"x" * 20000)
         self.assertTrue(up.closed, "the upstream connection was left open")
 
+    def test_a_response_that_is_never_iterated_closes_the_upstream(self):
+        # The relay's own finally: only runs once the generator has STARTED,
+        # and Werkzeug substitutes an empty body for a HEAD -- so this path
+        # builds the response and never touches it. Without call_on_close()
+        # the daemon keeps writing into a socket nobody reads: an ffmpeg, a
+        # subscriber queue and one of its three stream slots, held until
+        # refcounting happens to finalise the connection.
+        up = _FakeUpstream(b"z" * 50000)
+        with mock.patch("urllib.request.urlopen", return_value=up):
+            r = self.c.head("/api/nwr/listen/stream")
+            r.close()
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(up.reads, 0, "the body was iterated; this is not the HEAD path")
+        self.assertTrue(up.closed,
+                        "a response that was never iterated left the daemon streaming")
+
+    def test_a_stream_that_goes_silent_ends_instead_of_raising(self):
+        # A TimeoutError out of a WSGI iterator truncates the audio AND leaves
+        # a traceback in the journal; a clean end-of-stream says the same thing
+        # without asking the operator to interpret one.
+        up = _StallingUpstream(b"m" * 4096)
+        with mock.patch("urllib.request.urlopen", return_value=up):
+            r = self.c.get("/api/nwr/listen/stream")
+            data = r.get_data()
+        self.assertEqual(data, b"m" * 4096)
+        self.assertTrue(up.closed, "the upstream connection was left open")
+
     def test_a_client_that_hangs_up_closes_the_upstream(self):
         # An abandoned relay would leave a subscriber — and its ffmpeg — alive
         # on the daemon for as long as this process runs.
@@ -409,32 +450,36 @@ class NwrStreamRelayTest(unittest.TestCase):
         self.assertTrue(up.closed, "the upstream connection was left open")
 
 
-class NwrFlaskWritesNothingTest(unittest.TestCase):
-    """The daemon is the ONLY writer of the alert store (see its module
-    docstring: alerts.record() takes a module lock, which means nothing across
-    processes, and two read-modify-write callers lose updates under exactly the
-    conditions that matter — several counties, several messages, close
-    together). A grep over the source is the cheapest guard against a write
-    creeping back into a route, and it fails the day it is written rather than
-    the day two alerts arrive together."""
+class NwrFlaskWriteTripwireTest(unittest.TestCase):
+    """A TRIPWIRE over routes.py's source text, not proof of anything.
+
+    The daemon is the only writer of the alert store (see its module docstring:
+    alerts.record() takes a module lock, which means nothing across processes,
+    and two read-modify-write callers lose updates under exactly the conditions
+    that matter — several counties, several messages, close together). Proving
+    Flask cannot reach a write would mean proving a negative about every call
+    graph; what these do instead is fail the day someone types the call, which
+    is far earlier than the day two alerts arrive together. An indirection
+    would walk straight past them, and that is the accepted limit."""
 
     def setUp(self):
         with open(nwr_routes.__file__, encoding="utf-8") as fh:
             self.src = fh.read()
 
-    def test_no_route_records_an_alert(self):
+    def test_the_source_never_names_alerts_record(self):
         self.assertNotIn("alerts.record", self.src,
                          "Flask must never write the alert store — the daemon is "
                          "its single writer")
 
-    def test_flask_neither_speaks_nor_decides_to(self):
+    def test_the_source_neither_speaks_nor_decides_to(self):
         for gone in ("announce.speak", "bell.should_speak"):
             self.assertNotIn(gone, self.src,
                              f"{gone} belongs to the daemon: an alert must be "
                              "spoken whether or not a browser is open")
 
-    def test_flask_holds_no_encoder_and_no_subscriber_queue(self):
-        # This is what makes the v1 deadlock structurally impossible here.
+    def test_the_source_names_no_encoder_and_no_subscriber_queue(self):
+        # What actually makes the v1 deadlock impossible here is that neither
+        # exists in this process; this only notices one being reintroduced.
         for gone in ("subprocess", "stream_encoder", "listener.subscribe",
                      "listener.start", "listener.stop"):
             self.assertNotIn(gone, self.src,
