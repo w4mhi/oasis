@@ -69,12 +69,26 @@ test('tapping the cell still runs a refresh pass', () => {
 test('the cell paints from the shared summary, short form', () => {
   // .short, not .label: "DATA · DATA OK" stutters. Both come out of the same
   // summarize() call, so the kiosk cannot disagree with the desktop about a state.
-  assert.match(page, /cell\.textContent = s\.short;/,
-    'the cell must print the short vocabulary from common/js/freshness.js');
+  assert.match(page, /cell\.textContent = s\.short \|\| s\.label \|\| '\\u2014';/,
+    'the cell must print the short vocabulary, and must FALL BACK — textContent ' +
+    'is nullable, so `= s.short` alone stores null for a stale freshness.js and ' +
+    'erases the value instead of failing loudly');
   assert.match(page, /cell\.setAttribute\('class', 'v ' \+ s\.cls\)/,
     'the state colour must come from the shared cls, and must not drop the v class');
   assert.match(page, /cell\.setAttribute\('class', 'v fx-busy'\)/,
     'the tap-in-progress state must also keep the v class');
+});
+
+test('a stale freshness.js says so once, instead of just going quiet', () => {
+  // The whole failure mode was silence: the value vanished, nothing threw, and
+  // every other cell in the bar kept working. One warning is what turns that
+  // into a diagnosis.
+  assert.match(page, /if \(!s\.short && !_shortWarned\)/,
+    'no staleness check on the freshness module');
+  assert.match(page, /console\.warn\('\[oasis\] common\/js\/freshness\.js is older/,
+    'the warning must name the file to copy');
+  assert.match(page, /var _shortWarned = false;/,
+    'once per page — this runs on a poll, and a warning per poll is noise');
 });
 
 test('every state the summary can return has a colour in this bar', () => {

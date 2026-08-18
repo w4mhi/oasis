@@ -3699,12 +3699,32 @@ loadInstalled().then(() => {
 (function () {
   'use strict';
   var BUSY = false;
+  var _shortWarned = false;
 
   function render(data) {
     var cell = document.getElementById('k-data');
     if (!cell || !window.OasisFreshness) { return; }
     var s = window.OasisFreshness.summarize(data && data.sources);
-    cell.textContent = s.short;
+    /* short, then label, then the placeholder — NOT `= s.short` alone.
+       textContent is a nullable IDL attribute: assigning undefined to it stores
+       NULL, which renders as the empty string. So a freshness.js older than
+       3.93.0 (the version that added SHORT) does not throw, does not warn and
+       does not print "undefined" — it silently ERASES the value, and the cell
+       reads "DATA" with nothing after it while everything around it works.
+       That is not hypothetical: it is what a station looks like when
+       dashboard.html has been copied to it and common/js/freshness.js has not,
+       or when Chromium is still holding the old one in cache on a kiosk that
+       never navigates. `label` is present in every version that ever shipped,
+       so the fallback degrades to the long form rather than to nothing. */
+    if (!s.short && !_shortWarned) {
+      _shortWarned = true;
+      /* Say it once, in the one place a field diagnosis starts. A silent
+         degrade is the thing that cost an afternoon here. */
+      console.warn('[oasis] common/js/freshness.js is older than this page ' +
+                   '(no SHORT vocabulary) — the DATA cell is falling back to ' +
+                   'its long label. Copy the file and hard-refresh.');
+    }
+    cell.textContent = s.short || s.label || '\u2014';
     /* setAttribute, not .className: the value keeps its own `v` class, and the
        state class is swapped wholesale so an old state cannot linger under a
        new one. */
