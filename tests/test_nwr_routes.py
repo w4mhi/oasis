@@ -35,15 +35,28 @@ class SettingsTest(unittest.TestCase):
         s = settings.load(self.root)
         self.assertEqual(s["channel_hz"], settings.DEFAULTS["channel_hz"])
         self.assertEqual(s["watch_fips"], [])
-        self.assertTrue(s["speak"])
+        self.assertFalse(s["bell"])
 
     def test_save_and_reload(self):
         settings.save(self.root, {"channel_hz": 162400000,
-                                  "watch_fips": ["53033"], "speak": False})
+                                  "watch_fips": ["53033"], "bell": True})
         s = settings.load(self.root)
         self.assertEqual(s["channel_hz"], 162400000)
         self.assertEqual(s["watch_fips"], ["53033"])
-        self.assertFalse(s["speak"])
+        self.assertTrue(s["bell"])
+
+    def test_speak_true_migrates_to_bell_true_on_load(self):
+        # v1 operators who had speech on must not silently lose it now that
+        # `speak` has dropped out of DEFAULTS.
+        from common import atomic_json, config_paths
+        atomic_json.write_json(config_paths.nwr_json(self.root), {"speak": True})
+        self.assertTrue(settings.load(self.root)["bell"])
+
+    def test_migration_does_not_override_an_explicit_bell(self):
+        from common import atomic_json, config_paths
+        atomic_json.write_json(config_paths.nwr_json(self.root),
+                               {"speak": True, "bell": False})
+        self.assertFalse(settings.load(self.root)["bell"])
 
     def test_rejects_a_frequency_that_is_not_an_nwr_channel(self):
         with self.assertRaises(ValueError):

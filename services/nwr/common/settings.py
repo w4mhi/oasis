@@ -13,7 +13,9 @@ DEFAULTS = {
     "gain": "auto",
     "ppm": 0,
     "watch_fips": [],             # empty means "act on everything" — see below
-    "speak": True,
+    "bell": False,                # opt-in: a watch that talks unprompted gets turned off
+    "bell_override_until": 0,     # epoch; expires on its own at the next 07:00
+    "pinned_channel": None,       # None = auto-scan picks the strongest
 }
 
 _FIPS_RE = re.compile(r"^\d{5,6}$")
@@ -37,6 +39,14 @@ def load(repo_root):
         for k in DEFAULTS:
             if k in data:
                 out[k] = data[k]
+        # v1 -> v2 migration: a stored `speak: true` becomes `bell: true`, so an
+        # operator who had v1 speech on does not silently lose it now that
+        # `speak` has dropped out of DEFAULTS. Idempotent by construction: it
+        # only fires while the file has no explicit `bell` of its own, and the
+        # first save() rewrites the whole file from this dict — which then DOES
+        # carry an explicit `bell` — so the migration never re-fires after that.
+        if "bell" not in data and data.get("speak"):
+            out["bell"] = True
     out["watch_fips"] = list(out.get("watch_fips") or [])
     return out
 
@@ -75,8 +85,25 @@ def save(repo_root, patch):
         except (TypeError, ValueError):
             raise ValueError("ppm must be an integer")
 
-    if "speak" in patch:
-        current["speak"] = bool(patch["speak"])
+    if "bell" in patch:
+        current["bell"] = bool(patch["bell"])
+
+    if "bell_override_until" in patch:
+        try:
+            current["bell_override_until"] = int(patch["bell_override_until"])
+        except (TypeError, ValueError):
+            raise ValueError("bell_override_until must be an integer")
+
+    if "pinned_channel" in patch:
+        val = patch["pinned_channel"]
+        if val is not None:
+            try:
+                val = int(val)
+            except (TypeError, ValueError):
+                raise ValueError("pinned_channel must be an integer or null")
+            if val not in _VALID_HZ:
+                raise ValueError("pinned_channel is not one of the seven NWR channels")
+        current["pinned_channel"] = val
 
     atomic_json.write_json(config_paths.nwr_json(repo_root), current)
     return current

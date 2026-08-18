@@ -7,6 +7,7 @@ request succeeded, not that the news is good. "Nothing is listening" and
 /listen/stream returns audio, which contract §10 puts out of scope on the
 success path; its error paths stay fully conformant.
 """
+import logging
 import os
 import time
 
@@ -15,7 +16,9 @@ from flask import Blueprint, Response, jsonify, request, send_from_directory
 from common import hardware as HW
 from common.api_shape import clamp_limit
 from common.web_guard import require_oasis_request
-from services.nwr.common import alerts, counties, listener, scan, settings
+from services.nwr.common import alerts, bell, counties, listener, scan, settings
+
+log = logging.getLogger(__name__)
 
 bp = Blueprint("nwr", __name__)
 
@@ -80,8 +83,13 @@ def api_nwr_listen():
 
     def _on_header(parsed):
         added, rec = alerts.record(root, parsed, cfg["watch_fips"], time.time())
-        if added and cfg.get("speak") and rec.get("matched"):
+        if not added:
+            return
+        ok, why = bell.should_speak(cfg, rec, root)
+        if ok:
             _announce(rec)
+        else:
+            log.info("nwr: bell silent for %s (%s)", rec.get("event"), why)
 
     result = listener.start(hz, gain=cfg["gain"], ppm=cfg["ppm"],
                             device_serial=_device_serial(inv),
