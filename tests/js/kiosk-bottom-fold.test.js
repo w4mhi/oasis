@@ -120,6 +120,39 @@ test('there is ONE header on a folded panel, not a header plus a strip', () => {
   assert.ok(!/foldstrip/.test(page), 'the old collapsed strip is still here');
 });
 
+test('the refresh countdown is the last thing in BOTH headers', () => {
+  // Same question on both cards ("is this list still alive?"), so the same place
+  // on both — hard right, side by side on a desktop panel or stacked on a 7-inch
+  // one. The pill sits immediately to its left.
+  for (const [card, cd] of [['traffic', 'k-traffic-cd'], ['sats', 'k-sat-cd']]) {
+    const hd = header(card);
+    const group = hd.slice(hd.indexOf('<span class="hd-right"'));
+    assert.ok(group, card + ' header has no right-hand group');
+    const pill = group.indexOf('class="foldpill"');
+    const clock = group.indexOf('id="' + cd + '"');
+    assert.ok(pill !== -1 && clock !== -1, card + ' header lost the pill or the countdown');
+    assert.ok(pill < clock, card + ': the countdown must come AFTER the pill');
+    // Nothing may follow the countdown inside the group.
+    assert.match(group.slice(clock), /^[^<]*><\/span><\/span>\s*$/,
+      card + ': something was added after the countdown — it is no longer hard right');
+  }
+});
+
+test('one anchor pushes the right-hand group, not a chain of them', () => {
+  // The old shape was margin-left:auto on .meta AND on .satcd, plus an #id
+  // override to stop the two splitting the free space. That holds for exactly
+  // two items; the pill was a third. One auto on the container instead.
+  assert.match(page, /\.hd-right\{[^}]*margin-left:auto/,
+    'the group must carry the push');
+  assert.ok(!/\.hd \.satcd\{ margin-left:auto/.test(page),
+    'the countdown still carries its own auto margin — with the group that ' +
+    'splits the free space and the pill drifts away from it');
+  assert.ok(!/#k-sat-meta\{/.test(page),
+    'the #id override existed only to referee the auto-margin chain');
+  assert.match(page, /\.hd-right > \*\{ margin-left:0; \}/,
+    'a member with its own auto margin would re-open the same bug inside the group');
+});
+
 test('each pill lives in the OTHER list\'s header', () => {
   // The SAT pill has to be in the traffic header and vice versa: a pill inside
   // the card it describes goes off screen exactly when it is needed.

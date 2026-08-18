@@ -376,7 +376,7 @@
      (U+25B6 and friends) are exactly the ones a font may hand to an emoji
      presentation and turn into tofu on the panel. A border triangle cannot. */
   .foldpill{ display:none; align-items:baseline; gap:.5rem; cursor:pointer;
-             margin-left:.6rem; padding:.25rem .7rem; border-radius:.5rem;
+             padding:.25rem .7rem; border-radius:.5rem;
              border:1px solid var(--border); background:var(--panel-2);
              font-size:1rem; letter-spacing:.04em; white-space:nowrap;
              user-select:none; -webkit-tap-highlight-color:transparent; }
@@ -399,22 +399,32 @@
          padding:1rem 1.2rem; min-width:0; display:flex; flex-direction:column; }
   .hd{ display:flex; align-items:center; gap:.8rem; margin-bottom:.6rem; }
   .hd .lbl{ font-size:1.05rem; letter-spacing:.16em; color:var(--dim); font-weight:700; }
-  .hd .meta{ margin-left:auto; font-size:1.1rem; color:var(--faint); font-variant-numeric:tabular-nums; }
+  .hd .meta{ font-size:1.1rem; color:var(--faint); font-variant-numeric:tabular-nums; }
+  /* ── the header's right-hand group ────────────────────────────────────────
+     ONE margin-left:auto, on a container, rather than one per item. The old
+     shape was a chain of them — .meta had auto, .satcd had auto, and an #id
+     override existed purely to stop the two splitting the free space and
+     drifting apart. That chain holds for exactly two items; the fold pill was
+     a third, and re-ordering it meant working out which link now owned the
+     push.
+     Inside the group, ORDER IS ORDER. The refresh countdown is last in both
+     headers — hard right, same place on both cards, at every screen size — and
+     the pill sits immediately to its left. The two cards sit side by side on a
+     desktop panel and stack on a 7-inch one, so anything that differs between
+     their headers reads as drift rather than as design. */
+  .hd-right{ display:inline-flex; align-items:center; gap:.8rem; margin-left:auto; min-width:0; }
+  .hd-right > *{ margin-left:0; }        /* the group pushes; its members do not */
   /* Refresh countdown, same vocabulary as the traffic map's #countdown: glyph +
      seconds, green fading to red as the data ages. It answers the question a
      wall display always raises — "is this thing still alive, or frozen?" — which
      a static list cannot.
-     It takes the margin-left:auto so it and the meta float right TOGETHER; the
-     #id override below beats .hd .meta's own auto, which would otherwise split
-     the free space and push the two apart.
      Unlike the map's, this one is NOT clickable. Pausing auto-refresh on a
      display nobody is sitting at means a screen that looks live and is not. */
-  .hd .satcd{ margin-left:auto; font-size:1.1rem; white-space:nowrap;
+  .hd .satcd{ font-size:1.1rem; white-space:nowrap;
               font-variant-numeric:tabular-nums; color:var(--faint); transition:color .4s; }
   .hd .satcd.green{ color:var(--accent); }
   .hd .satcd.yellow{ color:var(--warn); }
   .hd .satcd.red{ color:var(--down); }
-  #k-sat-meta{ margin-left:.55rem; }
   /* The card's TITLE opens the arm list. It is the biggest, steadiest target in
      the header — the counter next to it is live text whose width changes with
      the numbers, which is a poor thing to ask a thumb to find on a 7-inch panel.
@@ -1019,20 +1029,25 @@
              side by side on this panel, so a second implementation would be
              visible drift. It answers the question a wall display always raises
              and a static list cannot — is this alive, or did it freeze? -->
-        <span class="satcd" id="k-traffic-cd" title="Seconds until the traffic list may next redraw"></span>
-        <!-- The folded satellites card, as a pill. Hidden outright above 1100px
+        <!-- Right-hand group: the fold pill, then the countdown hard right. The
+             countdown is last in BOTH card headers — it answers the same
+             question on both ("is this list still alive?"), so it lives in the
+             same place on both, whether they are side by side or stacked.
+             The pill is the folded satellites card. Hidden outright above 1100px
              (see .foldpill) — on a panel with room for both cards there is
-             nothing folded to report. This is the ONLY toggle between the two
+             nothing folded to report. It is the ONLY toggle between the two
              lists: exactly one is open, so tapping the other one's pill is what
              closes this one. Nothing here doubles as a collapse target — this
              header's other controls are filter chips, and a fold gesture laid
              over them would fire on every filter tap. -->
-        <span class="foldpill" id="fold-sat" role="button" tabindex="0"
-              onclick="foldOpen('sat')"
-              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();foldOpen('sat');}"
-              title="Show the satellite passes"
-          ><span class="fp-name">SAT</span><span class="fs-head" id="fold-sat-head">—</span
-          ><span class="fp-car"></span></span>
+        <span class="hd-right"
+          ><span class="foldpill" id="fold-sat" role="button" tabindex="0"
+                 onclick="foldOpen('sat')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();foldOpen('sat');}"
+                 title="Show the satellite passes"
+            ><span class="fp-name">SAT</span><span class="fs-head" id="fold-sat-head">—</span
+            ><span class="fp-car"></span></span
+          ><span class="satcd" id="k-traffic-cd" title="Seconds until the traffic list may next redraw"></span></span>
       </div>
       <div class="tbl">
         <div class="tscroll" id="aprsScroll"></div>
@@ -1043,7 +1058,7 @@
       <!-- Same treatment as the traffic card's LIVE badge (green accent, 1rem,
            700, .1em tracking). Reusing that class rather than copying its values
            is deliberate: the two headers sit side by side, so any drift shows. -->
-      <div class="hd"><span class="livebadge ok" id="k-sat-title" onclick="openArmSheet()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openArmSheet();}" role="button" tabindex="0" title="Tap to choose which birds wake this screen">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span><span class="meta" id="k-sat-meta" title="Monitored birds, and how many have a pass in the next hour">—</span><span class="foldpill" id="fold-traffic" role="button" tabindex="0" onclick="foldOpen('traffic')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();foldOpen('traffic');}" title="Show the traffic list"><span class="fp-name">TRAFFIC</span><span class="fs-head" id="fold-traffic-head">—</span><span class="fp-car"></span></span></div>
+      <div class="hd"><span class="livebadge ok" id="k-sat-title" onclick="openArmSheet()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openArmSheet();}" role="button" tabindex="0" title="Tap to choose which birds wake this screen">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="hd-right"><span class="meta" id="k-sat-meta" title="Monitored birds, and how many have a pass in the next hour">—</span><span class="foldpill" id="fold-traffic" role="button" tabindex="0" onclick="foldOpen('traffic')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();foldOpen('traffic');}" title="Show the traffic list"><span class="fp-name">TRAFFIC</span><span class="fs-head" id="fold-traffic-head">—</span><span class="fp-car"></span></span><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span></span></div>
       <div class="satscroll" id="satBody"><div class="satempty">…</div></div>
     </div>
 
