@@ -281,6 +281,17 @@ test('the WX pill is an icon in a finger-sized square', () => {
   // something a finger can aim at. 2.75rem, like every other target here.
   assert.match(page, /id="k-wx"[\s\S]{0,400}<svg viewBox="0 0 24 24"/,
     'the pill must carry a drawn glyph');
+  // A storm cloud, not a speaker: the pill's ACTION is listen, but what it is a
+  // control FOR is the weather watch, and the four states it wears are already
+  // saying whether there is anything to hear. Name the service, not the verb.
+  const wxSvg = page.slice(page.indexOf('id="k-wx"'));
+  const glyph = wxSvg.slice(wxSvg.indexOf('<svg'), wxSvg.indexOf('</svg>') + 6);
+  assert.ok(glyph.includes('A4.7 4.7 0 0 1 17.4 14'),
+    'the cloud arc is gone or its radius changed — an arc whose chord is longer ' +
+    'than its diameter gets silently rescaled, and the curve drawn is not the ' +
+    'curve written');
+  assert.match(glyph, /<g transform="translate\(7\.6 12\.8\) scale\(\.42\)">/,
+    'the bolt must stay under the cloud and inside the viewBox');
   assert.match(page,
     /\.upill\.wx-pill, \.upill\.ops-pill\{ padding:\.3rem; min-width:2\.75rem; min-height:2\.75rem; \}/,
     'square, and no smaller than the panel\'s other finger targets');
