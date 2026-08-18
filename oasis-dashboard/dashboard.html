@@ -1177,8 +1177,9 @@ function editCallsignGrid() {
 }
 async function seedCallsignGrid() {
   if (localStorage.getItem('oasis_callsign')) return;
-  try { const r = await fetch('/station.json', { cache: 'no-store' }); if (!r.ok) return;
-        const d = await r.json();
+  try { const r = await fetch('/station.json', { cache: 'no-store' });
+        const d = await r.json().catch(() => null);   // read on every path
+        if (!r.ok || !d) return;
         if (d.callsign) localStorage.setItem('oasis_callsign', String(d.callsign).toUpperCase());
         if (d.grid)     localStorage.setItem('oasis_grid',     String(d.grid).toUpperCase());
         loadCallsignGrid(); } catch (_) {}
@@ -1258,8 +1259,8 @@ function _gpsCount(used, seen) {
 async function fetchStats() {
   try {
     const r = await fetch('/api/system', { cache:'no-store', signal: AbortSignal.timeout(4000) });
-    if (!r.ok) return;
-    const d = await r.json();
+    const d = await r.json().catch(() => null);   // read on every path
+    if (!r.ok || !d) return;
     const ipEl = document.getElementById('k-ip'); if (ipEl && d.ip) ipEl.textContent = d.ip;
     renderGps(d.gps);
     if (d.cpu_pct != null) setKStat('k-cpu', `${Math.round(d.cpu_pct)}%`, d.cpu_pct>=90?'hot':d.cpu_pct>=70?'warm':'ok');
@@ -1338,7 +1339,8 @@ async function isUnitActive(unit) {
 // leaves the dot amber rather than claiming a green it cannot support.
 async function satState() {
   try { const r = await fetch('/api/satellites/listen/status', { cache:'no-store' });
-        if (!r.ok) return { active:false, blocked:true }; const d = await r.json();
+        const d = await r.json().catch(() => null);   // read on every path
+        if (!r.ok || !d) return { active:false, blocked:true };
         return { active: !!(d.recording || d.streaming), blocked: !!d.busy };
   } catch (_) { return { active:false, blocked:true }; }
 }
@@ -1371,7 +1373,7 @@ fetchSdrStatus(); setInterval(fetchSdrStatus, 8000);
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 let _homeLL = null;   // also kept locally so the card can band DIST by raw km
 function loadHomeCoords() {
-  fetch('/station.json').then(r => r.ok ? r.json() : null).then(d => {
+  fetch('/station.json').then(r => r.json().catch(() => null)).then(d => {   // read on every path
     if (!d || !d.lat || !d.lon) return;
     _homeLL = { lat: Number(d.lat), lon: Number(d.lon) };
     OasisGeo.setHomeCoords(d.lat, d.lon);
@@ -1600,9 +1602,13 @@ function updateSvcCounts() {   // N UP · N WRN · N DN over the shared registry
   el.title = 'Services — tap for detail';
   el.innerHTML = counts;
 }
+// Every check below reads the response body on EVERY path, ok or not -- see
+// isUnitActive above for what an unread one costs on a kiosk. The exceptions are
+// the HEAD probes and the opaque no-cors reach probes, which have no readable
+// body to drain and are the cure rather than the disease.
 const SERVICES = [
-  { id:'flask', name:'Flask', check: async () => { const r = await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); return {up:true,badge:'UP',sub:`v${d.flask_version}`}; } },
-  { id:'wsgi', name:'Web Server', check: async () => { const r=await fetch('/api/server-info',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`HTTP ${r.status}`}; const d=await r.json(); const g=d.wsgi==='gunicorn'; return {up:true,warn:!g,badge:g?'gunicorn':'werkzeug',sub:`v${d.wsgi_version}`}; } },
+  { id:'flask', name:'Flask', check: async () => { const r = await fetch('/api/server-info',{cache:'no-store'}); const d=await r.json().catch(()=>null); if(!r.ok||!d) return {up:false,sub:`HTTP ${r.status}`}; return {up:true,badge:'UP',sub:`v${d.flask_version}`}; } },
+  { id:'wsgi', name:'Web Server', check: async () => { const r=await fetch('/api/server-info',{cache:'no-store'}); const d=await r.json().catch(()=>null); if(!r.ok||!d) return {up:false,sub:`HTTP ${r.status}`}; const g=d.wsgi==='gunicorn'; return {up:true,warn:!g,badge:g?'gunicorn':'werkzeug',sub:`v${d.wsgi_version}`}; } },
   { id:'gw', name:'GrayWolf', check: async () => { await fetch(`http://${HOST}:${PORTS.graywolf}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.graywolf}`}; } },
   // HEAD, not GET, and no badge/sub: checkService keeps only up/warn/down, so
   // everything else this check could return is discarded. Reading the mailbox
@@ -1621,8 +1627,8 @@ const SERVICES = [
   // assigned; in telnet mode (no radio) it carries internet reachability instead.
   { id:'wlrf', name:'Winlink RF', check: async () => {
       const r=await fetch('/api/health/service?name=pat-direwolf',{cache:'no-store'});
-      if(!r.ok) return {up:false,sub:'status error'};
-      const d=await r.json();
+      const d=await r.json().catch(()=>null);   // read on every path
+      if(!r.ok||!d) return {up:false,sub:'status error'};
       if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'};
       if(!d.installed) return {up:false,badge:'not installed',sub:'run services/winlink/install.py'};
       if(d.active==='active') return {up:true,badge:'ON AIR',sub:'AGWPE :8000'};
@@ -1633,25 +1639,25 @@ const SERVICES = [
         : {up:true,badge:'INTERNET',sub:'operational'};
     } },
   { id:'kiwix', name:'Kiwix', check: async () => { await fetch(`http://${HOST}:${PORTS.kiwix}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.kiwix}`}; } },
-  { id:'aprs', name:'APRS Stats API', check: async () => { const r=await fetch('/api/aprs/health',{cache:'no-store'}); if(!r.ok) return {up:false,sub:`:${PORTS.aprs_api}`}; const d=await r.json();
+  { id:'aprs', name:'APRS Stats API', check: async () => { const r=await fetch('/api/aprs/health',{cache:'no-store'}); const d=await r.json().catch(()=>null); if(!r.ok||!d) return {up:false,sub:`:${PORTS.aprs_api}`};
       // 200 even when graywolf-api is down — `running` carries that, not the status.
       if(!d.running) return {up:false,sub:`:${PORTS.aprs_api}`};
       return {up:true,warn:!d.db_exists,badge:'UP',sub:d.db_exists?'DB found':'no DB'}; } },
-  { id:'feed', name:'APRS SDR Feed', check: async () => { const r=await fetch('/api/health/service?name=aprs-sdr-feed',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:'→ GrayWolf'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
-  { id:'gpsd', name:'GPS (gpsd)', check: async () => { const r=await fetch('/api/health/service?name=gpsd',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:':2947'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
-  { id:'fcc', name:'FCC Database', check: async () => { const r=await fetch('/health',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'server error'}; const d=await r.json(); return {up:true,warn:!d.index_present,badge:d.index_present?'UP':'WARN',sub:d.index_present?`${(d.callsign_count||0).toLocaleString()} calls`:'not indexed'}; } },
+  { id:'feed', name:'APRS SDR Feed', check: async () => { const r=await fetch('/api/health/service?name=aprs-sdr-feed',{cache:'no-store'}); const d=await r.json().catch(()=>null); if(!r.ok||!d) return {up:false,sub:'status error'}; if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:'→ GrayWolf'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
+  { id:'gpsd', name:'GPS (gpsd)', check: async () => { const r=await fetch('/api/health/service?name=gpsd',{cache:'no-store'}); const d=await r.json().catch(()=>null); if(!r.ok||!d) return {up:false,sub:'status error'}; if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:':2947'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
+  { id:'fcc', name:'FCC Database', check: async () => { const r=await fetch('/health',{cache:'no-store'}); const d=await r.json().catch(()=>null); if(!r.ok||!d) return {up:false,sub:'server error'}; return {up:true,warn:!d.index_present,badge:d.index_present?'UP':'WARN',sub:d.index_present?`${(d.callsign_count||0).toLocaleString()} calls`:'not indexed'}; } },
   // One request, server-side and cached. This used to be a recursive walk over
   // /api/browse — one HTTP request per directory, on every round-robin pass,
   // from every open dashboard, which made /api/browse the busiest endpoint on
   // the station. The server re-counts only when the maps tree changes.
-  { id:'maps', name:'Offline Maps', check: async () => { const r=await fetch('/api/health/maps',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'maps error'}; const d=await r.json(); const n=d.count||0; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} map${n===1?'':'s'}`:'no maps'}; } },
+  { id:'maps', name:'Offline Maps', check: async () => { const r=await fetch('/api/health/maps',{cache:'no-store'}); const d=await r.json().catch(()=>null); if(!r.ok||!d) return {up:false,sub:'maps error'}; const n=d.count||0; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} map${n===1?'':'s'}`:'no maps'}; } },
   { id:'rb', name:'Repeater Book', check: async () => { const r=await fetch('static/repeaterbook/repeaterbook.csv',{method:'HEAD',cache:'no-store'}); return {up:r.ok,badge:r.ok?'UP':'DOWN',sub:r.ok?'CSV loaded':'CSV missing'}; } },
   { id:'webssh', name:'SSH Terminal', check: async () => { await fetch(`http://${HOST}:${PORTS.webssh}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.webssh}`}; } },
   { id:'owrx', name:'OpenWebRX', check: async () => { await fetch(`http://${HOST}:${PORTS.openwebrx}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.openwebrx}`}; } },
   // ADS-B: no web port — systemd dump1090-fa owns the RTL-SDR (same as index.html's
   // health entry, so both dashboards count it). Surfaced live elsewhere (svcbar dot,
   // flow meter); this entry just adds it to the health tally.
-  { id:'adsb', name:'ADS-B Aircraft', check: async () => { const r=await fetch('/api/health/service?name=dump1090-fa',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'status error'}; const d=await r.json(); if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:'dump1090'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
+  { id:'adsb', name:'ADS-B Aircraft', check: async () => { const r=await fetch('/api/health/service?name=dump1090-fa',{cache:'no-store'}); const d=await r.json().catch(()=>null); if(!r.ok||!d) return {up:false,sub:'status error'}; if(d.supported===false) return {up:false,badge:'n/a',sub:'Linux only'}; if(d.active==='active') return {up:true,badge:'UP',sub:'dump1090'}; return {up:false,badge:d.installed?'STOPPED':'not installed',sub:d.installed?'inactive':'not installed'}; } },
   // Weather Radio. The decision lives in common/js/nwr-card.js so this block
   // stays byte-identical to the other dashboard's — the copy-in-both-files
   // version read a `capture` key that the API had stopped returning, and both
@@ -1682,8 +1688,8 @@ const SERVICES = [
     // unreachable state: no meter, no alert.
     fail: () => nwrRenderCard(nwrCardState(null), nwrPaintGeneration())
   },
-  { id:'manuals', name:'Radio Manuals', check: async () => { const r=await fetch('/api/browse?path=static/radio-manuals',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'browse error'}; const d=await r.json(); const n=(d.entries||[]).filter(e=>e.type==='dir').length; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} radio${n===1?'':'s'}`:'no manuals'}; } },
-  { id:'wiki', name:'Wikipedia', check: async () => { const r=await fetch('/api/health/zim',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'check error'}; const d=await r.json(); const n=d.count||0; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} ZIM${n===1?'':'s'}`:'no ZIM'}; } },
+  { id:'manuals', name:'Radio Manuals', check: async () => { const r=await fetch('/api/browse?path=static/radio-manuals',{cache:'no-store'}); const d=await r.json().catch(()=>null); if(!r.ok||!d) return {up:false,sub:'browse error'}; const n=(d.entries||[]).filter(e=>e.type==='dir').length; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} radio${n===1?'':'s'}`:'no manuals'}; } },
+  { id:'wiki', name:'Wikipedia', check: async () => { const r=await fetch('/api/health/zim',{cache:'no-store'}); const d=await r.json().catch(()=>null); if(!r.ok||!d) return {up:false,sub:'check error'}; const n=d.count||0; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} ZIM${n===1?'':'s'}`:'no ZIM'}; } },
 ];
 // Own cheap cadence (see the setInterval near the bottom of this script) — it
 // must NOT ride checkService/updateSvcCounts, which fire many times a minute
@@ -1997,8 +2003,8 @@ function setAprsLive(state) {
 async function fetchAPRS() {
   try {
     const r = await fetch('/api/aprs/stations', { cache:'no-store', signal: AbortSignal.timeout(TRAFFIC_REFRESH_MS) });
-    if (!r.ok) throw new Error('HTTP '+r.status);
-    const d = await r.json();
+    const d = await r.json().catch(() => null);   // read on every path
+    if (!r.ok || !d) throw new Error('HTTP '+r.status);
     if (!d.ok) { setAprsLive('down'); _allAprsStations=[]; scheduleAprsRender(); return; }
     _allAprsStations = d.stations;
     const times = d.stations.map(s => s.last_heard||s.timestamp||s.time).filter(Boolean).map(t => _lhEpoch(t)).filter(Boolean);
@@ -2037,8 +2043,8 @@ function _adsbListRows() {
 }
 async function refreshAdsb() {
   try { const r = await fetch('/api/adsb/aircraft', { cache:'no-store', signal: AbortSignal.timeout(5000) });
-        if (!r.ok) { _adsbAircraft=[]; scheduleAprsRender(); return; }
-        const j = await r.json();
+        const j = await r.json().catch(() => null);   // read on every path
+        if (!r.ok || !j) { _adsbAircraft=[]; scheduleAprsRender(); return; }
         // Contract envelope; aircraft carry an absolute `last_seen`.
         _adsbAircraft = (j.ok && Array.isArray(j.aircraft)) ? j.aircraft : [];
         _adsbNow = Date.now()/1000; scheduleAprsRender(); } catch (_) {}
@@ -2050,8 +2056,8 @@ let _adsbRecentHours = 24;
 async function refreshAdsbRecent() {
   const hours = recentHoursForAge(String(_ageMin));
   try { const r = await fetch('/api/adsb/recent?hours=' + hours, { cache:'no-store', signal: AbortSignal.timeout(8000) });
-        if (!r.ok) return;
-        const j = await r.json();
+        const j = await r.json().catch(() => null);   // read on every path
+        if (!r.ok || !j) return;
         if (j.ok && Array.isArray(j.aircraft)) { _adsbRecent = j.aircraft; _adsbRecentHours = hours; }
         else _adsbRecent = [];
         scheduleAprsRender(); } catch (_) {}
@@ -2348,9 +2354,9 @@ async function toggleMonitor(norad) {
     const r = await fetch('/api/satellites/select', { method:'POST',
       headers: { 'Content-Type':'application/json', 'X-OASIS-Request':'1' },
       body: JSON.stringify({ selections: { [norad]: next } }) });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const j = await r.json();
-    if (j && j.ok === false) throw new Error(j.error || 'refused');
+    const j = await r.json().catch(() => null);   // read on every path
+    if (!r.ok || !j) throw new Error('HTTP ' + r.status);
+    if (j.ok === false) throw new Error(j.error || 'refused');
   } catch (e) {
     bird.selected = !next;
     _satSel = (_satAll || []).filter(s => s.selected);
@@ -2513,7 +2519,7 @@ function jennyReady() {
   // No engine installed, no card. An empty square that never animates is worse
   // than no square, and the espeak fallback voice has no face to go with it.
   fetch('/api/speech/status', { cache:'no-store' })
-    .then(r => r.ok ? r.json() : null)
+    .then(r => r.json().catch(() => null))   // read on every path
     .then(d => {
       if (!d || !d.available) return;
       const c = document.getElementById('avatarCard');
@@ -2591,8 +2597,9 @@ async function reciteStart() {
   let script;
   try {
     const r = await fetch(RECITE_PATH, { cache: 'no-store' });
+    const raw = await r.text();                    // read on every path
     if (!r.ok) return;
-    script = reciteScript(reciteDecode(await r.text()));
+    script = reciteScript(reciteDecode(raw));
   } catch (_) { return; }   // missing, or not decodable: she simply stays quiet
   if (!script.length) return;
   _reciteOn = true;
