@@ -253,8 +253,19 @@ def api_nwr_alerts():
     return jsonify({
         "ok": True,
         "alerts": recs[:limit],
+        # The full active set, not just the active ones inside `limit`: this is
+        # what belongs on the map right now, and the decode log it indexes is
+        # newest-first.
         "active": [r["id"] for r in alerts.active(recs, now)],
-        "count": len(recs),
+        # §4's triplet, the same one /api/nwr/counties answers with. It replaces
+        # a bare `count`, which said how many records the store holds while
+        # sitting next to a list that had already been cut to `limit` -- the one
+        # reading a client would most reasonably take it for. Nothing consumed
+        # it (every .html, .js and .py in the repo checked), so the shape moves
+        # rather than grows.
+        "total": len(recs),
+        "truncated": len(recs) > limit,
+        "limit": limit,
     })
 
 

@@ -417,7 +417,7 @@ stops and tunes nothing.
 | Method | Path | Auth | Params/Body | Description |
 |---|---|---|---|---|
 | GET | `/api/nwr/status` | — | — | Local preconditions + config + the watch's own account of itself. See below. |
-| GET | `/api/nwr/alerts` | — | `limit` (default 50, max 500) | `{alerts:[…], active:[id…], count}` from the store. `active` is the subset that has not expired — what belongs on the map right now. |
+| GET | `/api/nwr/alerts` | — | `limit` (default 50, max 500) | `{alerts:[…], active:[id…], total, truncated, limit}` from the store, newest first. `active` is the subset that has not expired — what belongs on the map right now, and it is **not** cut by `limit`. |
 | GET | `/api/nwr/config` | — | — | `{config}` — the stored settings with defaults filled in. |
 | POST | `/api/nwr/config` | **CSRF** | `{channel_hz?, gain?, ppm?, watch_fips?, bell?, bell_override_until?, pinned_channel?}` | Validate + persist, then ask the daemon to re-read it if the pin moved. `400 NWR_BAD_CONFIG` on invalid input. See **Retune** below. |
 | GET | `/api/nwr/counties` | — | `q`, `fips`, `limit` (default 25, max 200) | The SAME county/FIPS table for the watch-list picker, **filtered and bounded**. See below. |

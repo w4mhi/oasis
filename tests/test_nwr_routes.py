@@ -518,6 +518,54 @@ class NwrConfigRouteTest(unittest.TestCase):
         self.assertEqual(settings.load(self.root)["watch_fips"], ["53033"])
 
 
+class NwrAlertsRouteTest(unittest.TestCase):
+    """The decode log. §4 wants total/truncated/limit on a list response, and
+    this route answered `count` instead -- len(recs), sitting next to an
+    `alerts` list already cut to `limit`, which is the number a client would
+    read it as. /api/nwr/counties has answered the triplet all along."""
+
+    def setUp(self):
+        app_module.app.config["TESTING"] = True
+        self.c = csrf_client(app_module.app)
+
+    def _recs(self, n):
+        return [{"id": f"a{i}", "expires": 0} for i in range(n)]
+
+    def _get(self, query="", n=3):
+        with mock.patch.object(nwr_routes.alerts, "load", return_value=self._recs(n)), \
+             mock.patch.object(nwr_routes.alerts, "active", return_value=[]):
+            return json.loads(self.c.get("/api/nwr/alerts" + query).data)
+
+    def test_the_list_triplet_replaces_count(self):
+        body = self._get("?limit=2", n=3)
+        self.assertTrue(body["ok"])
+        self.assertEqual(len(body["alerts"]), 2)
+        self.assertEqual(body["total"], 3)          # what exists, before the limit
+        self.assertTrue(body["truncated"])
+        self.assertEqual(body["limit"], 2)
+        self.assertNotIn("count", body)
+
+    def test_an_unbounded_store_is_not_truncated(self):
+        body = self._get("?limit=50", n=3)
+        self.assertEqual(body["total"], 3)
+        self.assertFalse(body["truncated"])
+
+    def test_an_empty_store_is_an_answer(self):
+        body = self._get(n=0)
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["alerts"], [])
+        self.assertEqual(body["total"], 0)
+        self.assertFalse(body["truncated"])
+
+    def test_a_nonsense_limit_degrades_to_the_default(self):
+        body = self._get("?limit=banana")
+        self.assertEqual(body["limit"], nwr_routes._ALERTS_DEFAULT_LIMIT)
+
+    def test_an_over_sized_limit_is_capped(self):
+        body = self._get("?limit=100000")
+        self.assertEqual(body["limit"], nwr_routes._ALERTS_MAX_LIMIT)
+
+
 class NwrCountiesRouteTest(unittest.TestCase):
     """The watch-list picker's source. Unfiltered and unpaginated this was 3234
     entries and 174,986 bytes on EVERY request -- the only nwr route with no
