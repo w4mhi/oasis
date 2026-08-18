@@ -237,20 +237,15 @@ test('the pill says WHICH filter produced the count', () => {
     'the pill must use the chips\' own labels, not a second set of names');
 });
 
-test('the traffic pill carries the per-path breakdown the chips would have shown', () => {
-  // The RF / IS / ADS-B chips fold away with the list, and the total alone
-  // cannot say whether 384 stations is a busy band or a busy internet feed.
+test('the traffic pill reports the count, not the composition', () => {
+  // The breakdown was tried here and is too much text for a pill: its job is to
+  // say the list is alive and roughly how busy. Which path is carrying it is one
+  // tap away, on the list itself, where the chips are.
   const count = page.indexOf("getElementById('k-aprs-count')");
   const block = page.slice(count, page.indexOf('renderAprsRows(list.slice(', count));
-  assert.match(block, /_SRC_KEYS\.forEach\(k => bits\.push\(_SRC_LABEL\[k\] \+ ' ' \+ \(srcCounts\[k\] \|\| 0\)\)\)/,
-    'the pill must report each path, using the chips\' own labels and counts');
-  // Order is load-bearing: the ellipsis eats the TAIL, so the total and the
-  // active filter have to be built before the breakdown.
-  const total = block.indexOf("total + ' heard'");
-  const narrow = block.indexOf('srcSelected.length');
-  const breakdown = block.indexOf('_SRC_KEYS.forEach');
-  assert.ok(total < narrow && narrow < breakdown,
-    'the breakdown must be last — it is what a narrow pill can afford to lose');
+  assert.match(block, /bits = \[total \+ ' heard'\]/, 'the count is the headline');
+  assert.ok(!/_SRC_KEYS\.forEach\(k => bits\.push/.test(block),
+    'the per-path breakdown is back — that is a detail, and details live in the list');
 });
 
 test('nothing caps the pill\'s width but the row it sits in', () => {

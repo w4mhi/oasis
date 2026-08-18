@@ -16,33 +16,36 @@ const path = require('node:path');
 const page = fs.readFileSync(
   path.join(__dirname, '..', '..', 'oasis-dashboard', 'dashboard.html'), 'utf8');
 
+// A rule body, matched on a WHOLE selector at the start of its line — otherwise
+// `.pulse` finds `.sat.soon .pulse` first and reports on the override instead of
+// the rule that sets the size.
 function rule(selector) {
-  const at = page.indexOf(selector + '{');
+  // Anchored on a WHOLE selector — at the start of its line, or after another
+  // rule on the same line. A bare indexOf('.pulse{') finds `.sat.soon .pulse{`
+  // first and reports on the override instead of the rule that sets the size.
+  let at = page.indexOf('\n  ' + selector + '{');
+  if (at === -1) at = page.indexOf('} ' + selector + '{');
   assert.notStrictEqual(at, -1, 'no rule for ' + selector);
-  return page.slice(at, page.indexOf('}', at) + 1);
+  return page.slice(at, page.indexOf('}', page.indexOf(selector + '{', at)) + 1);
 }
 
-test('both leading glyphs are sized off ONE variable', () => {
-  // Neither rule may carry its own number. "The dot matches the bell" has to
-  // survive the bell changing, and two literals cannot express that.
-  assert.match(page, /--card-hd-glyph:[\d.]+rem;/,
-    'the shared glyph size is gone');
-  assert.match(rule('.satmute svg'),
-    /width:var\(--card-hd-glyph\); height:var\(--card-hd-glyph\)/,
-    'the mute bell must take the shared size');
-  assert.ok(!/\.satmute svg\{[^}]*[\d.]rem/.test(page),
-    'the mute bell still carries a literal size');
-});
-
-test('the LIVE dot is 90% of the bell, expressed as a calc off it', () => {
-  // A filled disc reads heavier than a line-drawn bell in the same box, so
-  // matching the boxes made the dot look the larger of the two. The 10% is a
-  // calc, not a second literal — the pair has to keep moving together.
-  const dot = rule('.livebadge .lvd');
-  assert.match(dot, /width:calc\(var\(--card-hd-glyph\) \* \.9\)/,
-    'the dot must be derived from the bell size, not typed');
-  assert.match(dot, /height:calc\(var\(--card-hd-glyph\) \* \.9\)/,
-    'a dot that is not round is a dot that had its width and height set apart');
+test('the two station dots are one size, from one variable', () => {
+  // DOTS MATCH DOTS. The LIVE indicator and the pulse that leads a satellite
+  // record whose pass is close are the same shape doing the same job, so they
+  // are the same size — and neither rule may hold its own number, or the next
+  // change to one silently un-matches the other.
+  //
+  // Sizing the LIVE dot against the mute bell beside it was tried first and was
+  // wrong: a filled disc carries more ink than a line-drawn bell, so equal
+  // boxes read as unequal weights and the dot looked outsized next to every
+  // other dot on the screen.
+  assert.match(page, /--station-dot:[\d.]+rem;/, 'the shared dot size is gone');
+  for (const sel of ['.livebadge .lvd', '.pulse']) {
+    const r = rule(sel);
+    assert.match(r, /width:var\(--station-dot\)/, sel + ' must take the shared size');
+    assert.match(r, /height:var\(--station-dot\)/,
+      sel + ': a dot that is not round had its width and height set apart');
+  }
 });
 
 test('the dot is drawn, not typed', () => {

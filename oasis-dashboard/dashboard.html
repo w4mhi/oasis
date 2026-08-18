@@ -67,14 +67,16 @@
     --amber:#f4b64a; --blue:#5cb8ff; --purple:#b478ff;
     --chartreuse:#80ff00; --orange:#ff8000;   /* clock-cycle colours (match index) */
     --r:.9rem;
-    /* The glyph each bottom-card header opens with: the satellites mute bell,
-       and the traffic card's LIVE dot beside it. ONE value, so "the same size"
-       stays true without either rule knowing the other's number.
-       The dot takes 90% of it, not all: a filled disc reads heavier than a line
-       drawing of equal box, so matching the boxes made the dot look the larger
-       of the two. The 10% is written as a calc off this variable rather than as
-       its own literal, so the pair still moves together. */
-    --card-hd-glyph:1.3rem;
+    /* The station dot. Two of them: the traffic header's LIVE indicator and the
+       one that leads a satellite record whose pass is close. They are the same
+       shape doing the same job — "this thing is live" — so they are the same
+       size, from one value, rather than two rules each holding a number.
+       Sizing the LIVE dot against the mute bell beside it was tried first and
+       was wrong: a filled disc carries more ink than a line-drawn bell, so
+       equal boxes read as unequal weights, and the dot that matched the bell
+       looked outsized next to the .8rem dots elsewhere on the screen. Dots
+       match dots. */
+    --station-dot:.8rem;
     /* IDENTICAL to css/common.css. The two used to diverge — this stack had no
        Roboto Mono, and the kiosk does not link common.css, so the bundled face
        was unreachable here and the pills fell through to the OS default while
@@ -555,12 +557,11 @@
      sizing it through font-size is a guess that lands differently on whatever
      the Pi actually has installed. A border-radius box is exact. Same reasoning
      as the fold caret.
-     90% of the shared --card-hd-glyph, not 100%: a filled disc carries more
-     weight than a line-drawn bell in the same box, so matching the boxes made
-     the dot read as the bigger of the two.
+     --station-dot, the same size as the .pulse dot on a satellite record: two
+     dots on one screen saying the same kind of thing.
      The glow becomes a box-shadow — STATIC. Never animate it: an infinite
      box-shadow animation pins this kiosk's renderer at 60fps. */
-  .livebadge .lvd{ width:calc(var(--card-hd-glyph) * .9); height:calc(var(--card-hd-glyph) * .9);
+  .livebadge .lvd{ width:var(--station-dot); height:var(--station-dot);
                    border-radius:50%; background:currentColor; }
   .livebadge.ok{ color:var(--accent); } .livebadge.ok .lvd{ box-shadow:0 0 .5rem var(--accent); }
   .livebadge.warn{ color:var(--warn); }
@@ -674,12 +675,13 @@
   .satmute{ background:none; border:0; padding:.5rem .6rem; margin:-.5rem -.6rem -.5rem -.6rem;
             min-width:2.75rem; min-height:2.75rem; line-height:0; cursor:pointer;
             color:var(--warn); -webkit-tap-highlight-color:transparent; }
-  .satmute svg{ width:var(--card-hd-glyph); height:var(--card-hd-glyph); display:block; }
+  .satmute svg{ width:1.3rem; height:1.3rem; display:block; }
   .satmute.muted{ color:var(--faint); }
   /* Quiet hours: dim, not crossed out — the operator did not switch this
      off, the clock did, and it returns by itself at 07:00. */
   .satmute.quiet{ color:var(--faint); opacity:.6; }
-  .pulse{ display:inline-block; width:.8rem; height:.8rem; border-radius:50%; background:var(--accent);
+  .pulse{ display:inline-block; width:var(--station-dot); height:var(--station-dot);
+          border-radius:50%; background:var(--accent);
           box-shadow:0 0 .8rem 0 var(--accent); margin-right:.5rem; vertical-align:middle; }
 
   /* ── FOOTER: hazard pills + emergency chip (priority) · SDR flow meters ── */
@@ -2214,14 +2216,11 @@ function applyAprsFilter() {
   const bits = [total + ' heard'];
   if (_ageMin !== _AGE_STEPS[0]) bits.push(_ageMin ? '\u2264' + _AGE_LABEL[_ageMin] : _AGE_LABEL[0]);
   if (srcSelected.length) bits.push(srcSelected.map(k => _SRC_LABEL[k] || k).join('+') + ' only');
-  // Then the per-path breakdown, the same numbers the RF / IS / ADS-B chips
-  // carry — because those chips are what folds away, and the count alone cannot
-  // say whether 384 stations means a busy band or a busy internet feed. Counted
-  // BEFORE the source filter, exactly as the chips are, so an unselected path
-  // still reports what it is holding rather than dropping to nothing.
-  // Least important, so last: the parts that must survive a narrow pill are the
-  // total and the filter, and those are already ahead of it.
-  _SRC_KEYS.forEach(k => bits.push(_SRC_LABEL[k] + ' ' + (srcCounts[k] || 0)));
+  // No per-path breakdown here. It was tried and it is too much: the pill's job
+  // is to say the list is alive and roughly how busy, and anyone who wants to
+  // know WHICH path is carrying it is one tap from the list itself, where the
+  // chips live. What stays is the count and, when there is one, the narrowing
+  // that produced it — not a detail but a caveat on the number beside it.
   foldHead('traffic', bits.join(' \u00b7 '), '');
   renderAprsRows(list.slice(0, MAX_ROWS));
 }
