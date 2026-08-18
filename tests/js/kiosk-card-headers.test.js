@@ -91,3 +91,32 @@ test('the bell sits flush with the card edge, hit area intact', () => {
   assert.match(bell, /min-width:2\.75rem; min-height:2\.75rem/,
     'this is tapped in the dark — do not shrink it');
 });
+
+test('the pass counter is a chip beside the title, not a stray readout on the right', () => {
+  // Traffic reads: glyph, label, then the numbers that qualify it -- 384, <=24h
+  // -- each one header-gap apart. Satellites now reads the same way, with its
+  // "N moni - M in 1h" in the same pill shape at the same distance. It used to
+  // sit far right inside .hd-right, which put the same KIND of information in a
+  // different PLACE on the two cards that are read side by side.
+  const hd = page.slice(page.indexOf('<div class="card sats">'));
+  const header = hd.slice(hd.indexOf('<div class="hd"'), hd.indexOf('</div>\n'));
+  const title = header.indexOf('id="k-sat-title"');
+  const meta = header.indexOf('id="k-sat-meta"');
+  const group = header.indexOf('class="hd-right"');
+  assert.ok(title !== -1 && meta !== -1 && group !== -1, 'the satellites header lost a part');
+  assert.ok(title < meta, 'the counter must follow the SATELLITES label');
+  assert.ok(meta < group, 'the counter belongs on the LEFT, not in the right-hand group');
+  assert.match(header, /class="fchip satmeta" id="k-sat-meta"/,
+    'it must wear the traffic header\'s chip, not a shape of its own');
+});
+
+test('the counter chip frames like the age window but does not pretend to be one', () => {
+  const chip = rule('.fchip.satmeta');
+  assert.match(chip, /--src:var\(--warn\)/, 'amber frame, copied from the age window');
+  assert.match(chip, /color:var\(--dim\)/,
+    'dim contents: on .fchip the coloured text IS the affordance, and this one ' +
+    'is a readout that does nothing');
+  assert.match(chip, /cursor:default/,
+    '.fchip sets cursor:pointer — a readout must not promise a control');
+  assert.ok(!/\.hd \.meta\{/.test(page), 'the old .meta rule is dead and should be gone');
+});

@@ -429,7 +429,16 @@
          padding:1rem 1.2rem; min-width:0; display:flex; flex-direction:column; }
   .hd{ display:flex; align-items:center; gap:.8rem; margin-bottom:.6rem; }
   .hd .lbl{ font-size:1.05rem; letter-spacing:.16em; color:var(--dim); font-weight:700; }
-  .hd .meta{ font-size:1.1rem; color:var(--faint); font-variant-numeric:tabular-nums; }
+  /* The pass counter wears the traffic header's chip, so the two cards state
+     their secondary numbers in the same shape: glyph, label, then the numbers
+     that qualify it, at the header's own .8rem gap. Amber frame, copied from the
+     age window it sits opposite.
+     DIM text, not the amber .fchip normally paints: on that chip the coloured
+     text is the affordance — it says "tap me, this narrows the list" — and this
+     one is a readout that does nothing. Same frame, quieter contents, and no
+     pointer cursor to promise a control that is not there. */
+  .fchip.satmeta{ --src:var(--warn); color:var(--dim); cursor:default;
+                  font-weight:400; font-variant-numeric:tabular-nums; }
   /* ── the header's right-hand group ────────────────────────────────────────
      ONE margin-left:auto, on a container, rather than one per item. The old
      shape was a chain of them — .meta had auto, .satcd had auto, and an #id
@@ -1131,7 +1140,7 @@
       <!-- Same treatment as the traffic card's LIVE badge (green accent, 1rem,
            700, .1em tracking). Reusing that class rather than copying its values
            is deliberate: the two headers sit side by side, so any drift shows. -->
-      <div class="hd"><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="livebadge ok" id="k-sat-title" onclick="openArmSheet()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openArmSheet();}" role="button" tabindex="0" title="Tap to choose which birds wake this screen">SATELLITES</span><span class="hd-right"><span class="meta" id="k-sat-meta" title="Monitored birds, and how many have a pass in the next hour">—</span><span class="foldpill" id="fold-traffic" role="button" tabindex="0" onclick="foldOpen('traffic')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();foldOpen('traffic');}" title="Show the traffic list"><span class="fp-name">TRAFFIC</span><span class="fs-head" id="fold-traffic-head">—</span><span class="fp-car"></span></span><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span></span></div>
+      <div class="hd"><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="livebadge ok" id="k-sat-title" onclick="openArmSheet()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openArmSheet();}" role="button" tabindex="0" title="Tap to choose which birds wake this screen">SATELLITES</span><span class="fchip satmeta" id="k-sat-meta" title="Monitored birds, and how many have a pass in the next hour">—</span><span class="hd-right"><span class="foldpill" id="fold-traffic" role="button" tabindex="0" onclick="foldOpen('traffic')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();foldOpen('traffic');}" title="Show the traffic list"><span class="fp-name">TRAFFIC</span><span class="fs-head" id="fold-traffic-head">—</span><span class="fp-car"></span></span><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span></span></div>
       <div class="satscroll" id="satBody"><div class="satempty">…</div></div>
     </div>
 
