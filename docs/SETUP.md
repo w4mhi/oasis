@@ -2182,8 +2182,11 @@ journalctl -u oasis-nwr -e | grep -i "tuner gain"
   is `0.0`: passing the string `auto` silently asks for 0 dB. Omitting `-g`
   entirely is the only way to ask for real AGC, and `rtl_power` takes `-g` the
   same broken way, so a scan run this way can also pick the wrong "strongest"
-  channel. Measured on this station at 162.550 MHz: mean **−33.3 dB → −23.4 dB**
-  and peak **−19.4 dB → −5.2 dB** once the flag was dropped. In OASIS this is
+  channel. Measured on this station at 162.550 MHz: RMS **0.0244 → 0.0772** and
+  peak **0.123 → 0.498** once the flag was dropped — a quarter of the level,
+  peaking at 12% of full scale and quantisation-noise-dominated. (Those are the
+  raw linear amplitudes recorded in `gain_flag()`; in dB, −32.3 → −22.3 mean
+  and −18.2 → −6.1 peak.) In OASIS this is
   handled centrally by `common/sdr_rx.gain_flag()` — if you are hand-rolling an
   `rtl_fm` command line to test, do not "fix" it by adding `-g auto`.
 
