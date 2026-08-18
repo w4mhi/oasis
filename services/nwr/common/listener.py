@@ -196,6 +196,22 @@ def is_active_wrapper(base_is_active=None):
     return _wrapped
 
 
+def device_serial(inv):
+    """The serial of the dongle assigned to nwr, or None.
+
+    One definition, read by both callers: routes.py has an inventory in hand
+    already, and daemon.py loads one per supervisor pass. It lived verbatim in
+    both, which is one copy too many for a lookup that decides whether rtl_fm
+    gets `-d` -- and rtl_fm without `-d` takes device index 0, which on a
+    multi-dongle Pi is usually somebody else's radio.
+    """
+    if not inv:
+        return None
+    dev_id = inv.assignments.get("nwr")
+    dev = inv.devices.get(dev_id) if dev_id else None
+    return (dev or {}).get("serial")
+
+
 def preconditions(inv=None, which=shutil.which, run=None, is_active=None):
     """Everything the page needs to decide whether listening is possible now.
     Pure of side effects; every check independently injectable."""
@@ -399,9 +415,14 @@ def terminate(proc, timeout=5):
         pass
 
 
-def _deliver_sentinel(q):
+def deliver_sentinel(q):
     """Put the b"" poison pill on a subscriber queue, evicting one buffered
     chunk first if the queue is already full.
+
+    Public, like terminate() and for the same reason: both stream handlers
+    (routes.py's and daemon.py's) call it from their teardown, and a private
+    name called from two other modules is not private -- it is an unenforced
+    convention that a reader has to re-derive.
 
     A full queue is exactly the stalled-reader case this sentinel exists to
     unblock: the consumer is behind, so dropping one more already-buffered
@@ -458,5 +479,5 @@ def stop():
     for proc in (rtl, mm):
         terminate(proc)
     for q in subs:
-        _deliver_sentinel(q)   # unblock any generator waiting on this queue
+        deliver_sentinel(q)   # unblock any generator waiting on this queue
     return {"ok": True}

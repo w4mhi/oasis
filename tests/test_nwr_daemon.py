@@ -106,13 +106,26 @@ class RetryBackoffTest(unittest.TestCase):
         self.assertFalse(daemon.sweep_is_pointless("not installed: rtl_fm"))
         self.assertFalse(daemon.sweep_is_pointless(None))
 
-    def test_the_skipped_sweep_falls_back_to_the_operators_channel(self):
+    def test_with_no_sweep_behind_it_the_configured_channel_applies(self):
         self.assertEqual(daemon.fallback_channel({"pinned_channel": 162400000}),
                          162400000)
         self.assertEqual(daemon.fallback_channel({"channel_hz": 162475000}),
                          162475000)
         self.assertEqual(daemon.fallback_channel({}),
                          daemon.settings.DEFAULTS["channel_hz"])
+        self.assertEqual(daemon.retry_channel({"channel_hz": 162475000}, None),
+                         162475000)
+
+    def test_a_skipped_sweep_reuses_the_channel_the_sweep_chose(self):
+        self.assertEqual(
+            daemon.retry_channel({"channel_hz": 162550000}, 162450000), 162450000)
+
+    def test_a_pin_still_wins_over_the_last_sweep(self):
+        # A pin can be set WHILE the watch is retrying; this branch is the
+        # only place that would ever see it.
+        self.assertEqual(
+            daemon.retry_channel({"pinned_channel": 162400000}, 162450000),
+            162400000)
 
 
 class _FakeStop:
@@ -120,10 +133,12 @@ class _FakeStop:
     spending the wall clock, and which sets itself once `window` seconds of
     simulated time have gone by.
 
-    The clock ONLY moves in wait(), which is what makes "how much of the
-    window went through stop_event.wait()" an assertable property: a
-    time.sleep() in the loop would be invisible here and the window would
-    never end.
+    The clock ONLY moves in wait(). A supervisor that backed off with
+    time.sleep() instead would therefore never reach the end of the window --
+    it would spin forever and WEDGE the suite rather than fail it, taking the
+    other 2400-odd tests with it. So is_set(), which every pass calls, counts
+    passes and fails the test itself once they can no longer be explained by
+    the window. That turns the wedge into a red test with a diagnosis.
     """
 
     EPOCH = 1_700_000_000.0
@@ -132,14 +147,29 @@ class _FakeStop:
         self.now = self.EPOCH
         self.window = window
         self.waits = []
+        self.passes = 0
+        # An honest pass waits at least one tick, so a `window`-second window
+        # cannot take more than window/tick passes -- 720 for an hour at the
+        # 5 s tick, and far fewer once the back-off curve applies. Scaled to
+        # the window rather than a flat number so a longer one stays valid.
+        self.max_passes = int(window) + 1000
 
     def is_set(self):
+        self.passes += 1
+        if self.passes > self.max_passes:
+            raise AssertionError(
+                "supervise() made {} passes without the simulated clock "
+                "advancing: the loop is not waiting on stop_event".format(
+                    self.passes))
         return (self.now - self.EPOCH) >= self.window
 
     def wait(self, delay):
+        # Deliberately not is_set(): only the while-condition counts passes,
+        # so the guard can never raise from inside supervise()'s own
+        # try/except, which would swallow it.
         self.waits.append(delay)
         self.now += max(float(delay), 0.001)
-        return self.is_set()
+        return (self.now - self.EPOCH) >= self.window
 
 
 class SuperviseRetryCadenceTest(unittest.TestCase):
@@ -153,6 +183,11 @@ class SuperviseRetryCadenceTest(unittest.TestCase):
     """
 
     HELD = "another service is already using the RTL-SDR dongle"
+    # WX3, and NOT settings.DEFAULTS["channel_hz"] (WX7). A fixture that
+    # sweeps to the default cannot tell "reused the sweep's answer" apart from
+    # "fell back to the configured channel" -- which is exactly how the retry
+    # path came to throw the scan's answer away unnoticed.
+    SWEPT_HZ = 162450000
 
     def setUp(self):
         # supervise() writes module state; leave it as we found it.
@@ -174,8 +209,8 @@ class SuperviseRetryCadenceTest(unittest.TestCase):
 
         def fake_choose(repo_root, cfg, serial, **kw):
             sweeps.append(1)
-            return 162550000, {"ok": True, "best_hz": 162550000,
-                               "best_dbm": -20.0, "weak": False}
+            return self.SWEPT_HZ, {"ok": True, "best_hz": self.SWEPT_HZ,
+                                   "best_dbm": -20.0, "weak": False}
 
         with mock.patch.object(daemon.settings, "load",
                                return_value=dict(daemon.settings.DEFAULTS)), \
@@ -219,6 +254,19 @@ class SuperviseRetryCadenceTest(unittest.TestCase):
             3600, {"ok": False, "error": "rtl_fm exited immediately"})
         self.assertEqual(len(sweeps), len(attempts))
 
+    def test_a_skipped_sweep_keeps_the_channel_the_sweep_chose(self):
+        # The sweep picks WX3 and the dongle is then lost -- to a manual
+        # Listen, or an ADS-B restart. Retrying on the CONFIGURED channel
+        # instead would land the watch on WX7 when the dongle comes back, and
+        # a healthy last scan leaves next_rescan at 0, so nothing would ever
+        # re-derive it: LISTENING, nothing decoded, no transmitter there.
+        _stop, attempts, _sweeps = self._run(
+            600, {"ok": False, "error": self.HELD})
+        self.assertGreater(len(attempts), 1)
+        self.assertEqual(set(attempts), {self.SWEPT_HZ},
+                         "every retry must aim at the channel the sweep chose")
+        self.assertNotEqual(self.SWEPT_HZ, daemon.settings.DEFAULTS["channel_hz"])
+
     def test_status_says_when_the_next_attempt_is_due(self):
         self._run(600, {"ok": False, "error": self.HELD})
         with daemon._lock:
@@ -239,6 +287,53 @@ class SuperviseRetryCadenceTest(unittest.TestCase):
         self._run(30, {"ok": True, "error": None})
         with daemon._lock:
             self.assertEqual(daemon._state["next_rescan"], 0)
+
+    def test_a_broken_settings_file_does_not_end_the_watch(self):
+        # A hand-edited "watch_fips": 12345 makes settings.load() do
+        # list(12345) -> TypeError. That used to kill this thread outright:
+        # the HTTP server kept answering /status, phase froze at its last
+        # value, and the only evidence was one threading.excepthook traceback.
+        stop = _FakeStop(600)
+        loads = []
+        attempts = []
+
+        def flaky_load(repo_root):
+            loads.append(1)
+            if len(loads) <= 3:
+                raise TypeError("'int' object is not iterable")
+            return dict(daemon.settings.DEFAULTS)
+
+        def fake_choose(repo_root, cfg, serial, **kw):
+            return self.SWEPT_HZ, {"ok": True, "best_hz": self.SWEPT_HZ,
+                                   "best_dbm": -20.0, "weak": False}
+
+        def fake_start(hz, **kw):
+            attempts.append(hz)
+            return {"ok": False, "error": self.HELD}
+
+        with mock.patch.object(daemon.settings, "load", side_effect=flaky_load), \
+             mock.patch.object(daemon, "_device_serial", return_value=None), \
+             mock.patch.object(daemon.listener, "is_listening", return_value=False), \
+             mock.patch.object(daemon, "choose_channel", side_effect=fake_choose), \
+             mock.patch.object(daemon.listener, "start", side_effect=fake_start), \
+             self.assertLogs(daemon.log.name, level="ERROR") as caught:
+            daemon.supervise(_ROOT, stop_event=stop, now=lambda: stop.now)
+
+        self.assertEqual(len(caught.records), 3, "each failure must be logged")
+        self.assertTrue(attempts,
+                        "the watch never recovered once the file was readable")
+
+    def test_a_loop_failure_says_so_instead_of_freezing(self):
+        stop = _FakeStop(4)
+        with mock.patch.object(daemon.settings, "load",
+                               side_effect=ValueError("not a channel: '162.550'")), \
+             mock.patch.object(daemon.listener, "is_listening", return_value=False), \
+             self.assertLogs(daemon.log.name, level="ERROR"):
+            daemon.supervise(_ROOT, stop_event=stop, now=lambda: stop.now)
+        with daemon._lock:
+            self.assertEqual(daemon._state["phase"], "retrying")
+            self.assertIn("162.550", daemon._state["last_error"])
+            self.assertGreater(daemon._state["next_retry"], 0)
 
 
 class OnHeaderContainmentTest(unittest.TestCase):
@@ -546,6 +641,17 @@ class StatusTest(unittest.TestCase):
         with daemon._lock:
             daemon._state["next_retry"] = time.time() + 240
         self.assertGreater(daemon.status()["retry_in_s"], 200)
+
+    def test_the_countdown_reads_the_same_clock_that_wrote_it(self):
+        # supervise() writes next_retry with its injected `now`; a status()
+        # hardwired to time.time() would disagree with it under any clock but
+        # the wall one.
+        before = dict(daemon._state)
+        self.addCleanup(lambda: daemon._state.update(before))
+        with daemon._lock:
+            daemon._state["next_retry"] = 5000.0
+        self.assertEqual(daemon.status(now=lambda: 4700.0)["retry_in_s"], 300)
+        self.assertEqual(daemon.status(now=lambda: 9000.0)["retry_in_s"], 0)
 
 
 if __name__ == "__main__":

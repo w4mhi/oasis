@@ -54,7 +54,6 @@ MAX_STREAMS = 3
 DONGLE_UNAVAILABLE = (
     "another service is already using",
     "no supported devices found",
-    "no dongle assigned",
 )
 
 _state = {
@@ -131,6 +130,13 @@ def retry_delay(consecutive_failures, tick=SUPERVISE_TICK_S):
     (rtl_power sweep, rtl_fm, multimon-ng) respawned every tick forever:
     measured on a live box at 9 attempts in 43 s, which is roughly 17,000
     journal lines a day and real CPU on a Pi 3.
+
+    Zero failures returns one tick, NOT zero -- the opposite of its neighbour
+    above, deliberately. The two answer different questions: rescan_delay(0)
+    means "no rescan is scheduled at all", which is a real state, while this
+    one is always "how long before the next pass", and a zero there would be
+    the very hot-spin this function exists to stop. supervise() only ever
+    calls it with a positive count.
     """
     if consecutive_failures <= 0:
         return tick
@@ -145,11 +151,31 @@ def sweep_is_pointless(error):
 
 
 def fallback_channel(cfg):
-    """The channel to retry on when the sweep is skipped: the operator's pin,
-    then the configured channel, then the default."""
+    """The channel to use when no sweep has ever run: the operator's pin, then
+    the configured channel, then the default."""
     cfg = cfg or {}
     return int(cfg.get("pinned_channel") or cfg.get("channel_hz")
                or settings.DEFAULTS["channel_hz"])
+
+
+def retry_channel(cfg, last_choice):
+    """The channel to retry on when the sweep is skipped.
+
+    A pin still wins: it is an explicit override and it can be set while we
+    are retrying, so honouring it is the only way a pin ever takes effect on
+    this branch. Otherwise reuse whatever the last sweep chose. Forgetting it
+    and dropping back to the configured default is how a station ends up
+    reading LISTENING with nothing decoded: the sweep picks WX3, the dongle is
+    lost to a manual Listen or an ADS-B restart, and the retries aim at WX7 --
+    where there is no transmitter, and where a healthy last scan left
+    next_rescan at 0, so nothing ever re-derives it.
+    """
+    pinned = (cfg or {}).get("pinned_channel")
+    if pinned:
+        return int(pinned)
+    if last_choice:
+        return int(last_choice)
+    return fallback_channel(cfg)
 
 
 # ── Decode handling ──────────────────────────────────────────────────────────
@@ -196,13 +222,12 @@ def _make_handler(repo_root):
 
 
 def _device_serial(repo_root):
-    """The serial of the dongle assigned to nwr, or None."""
+    """listener.device_serial() against a freshly loaded inventory, or None if
+    the inventory will not load. Re-read every pass on purpose: a dongle can be
+    assigned to nwr while this loop is already running."""
     try:
         from common import hardware as HW
-        inv = HW.load(repo_root)
-        dev_id = inv.assignments.get("nwr")
-        dev = inv.devices.get(dev_id) if dev_id else None
-        return (dev or {}).get("serial")
+        return listener.device_serial(HW.load(repo_root))
     except Exception:                          # noqa: BLE001
         return None
 
@@ -223,65 +248,95 @@ def supervise(repo_root, stop_event=None, tick=SUPERVISE_TICK_S, now=time.time):
     Every wait is stop_event.wait(), never time.sleep -- a five-minute back-off
     must not become a five-minute shutdown. `now` is injectable so a test can
     assert on retry cadence without spending the wall clock.
+
+    NOTHING here may raise out of the loop. This thread IS the watch: if it
+    dies the HTTP server keeps answering /status with whatever phase it froze
+    at, and the only evidence is one threading.excepthook traceback in the
+    journal. A watch that has silently stopped watching is worse than one that
+    retries too often.
     """
     stop_event = stop_event or threading.Event()
     failures = 0
     last_error = None
+    chosen_hz = None            # what the most recent sweep picked
     while not stop_event.is_set():
-        if listener.is_listening():
-            with _lock:
-                _state["phase"] = "listening"
-                due = _state["next_rescan"]
-            if due and now() >= due:
-                log.info("nwr: scheduled rescan")
-                listener.stop()
-            stop_event.wait(tick)
-            continue
+        try:
+            delay = tick
+            if listener.is_listening():
+                with _lock:
+                    _state["phase"] = "listening"
+                    due = _state["next_rescan"]
+                if due and now() >= due:
+                    log.info("nwr: scheduled rescan")
+                    listener.stop()
+                stop_event.wait(delay)
+                continue        # this pass's one and only wait
 
-        cfg = settings.load(repo_root)
-        serial = _device_serial(repo_root)
+            cfg = settings.load(repo_root)
+            serial = _device_serial(repo_root)
 
-        if failures and sweep_is_pointless(last_error):
-            # Retrying into a dongle we could not claim: no sweep, and the
-            # weak-scan bookkeeping is left exactly as it was. This branch
-            # says nothing new about the band.
-            hz = fallback_channel(cfg)
-        else:
-            with _lock:
-                _state["phase"] = "scanning"
-            hz, result = choose_channel(repo_root, cfg, serial)
-            with _lock:
-                _state["scan"] = result
-                weak = bool(result and result.get("weak"))
-                _state["scan_weak"] = weak
-                _state["consecutive_weak"] = (_state["consecutive_weak"] + 1) if weak else 0
-                _state["next_rescan"] = (
-                    now() + rescan_delay(_state["consecutive_weak"])
-                    if weak else 0)
+            if failures and sweep_is_pointless(last_error):
+                # Retrying into a dongle we could not claim: no sweep, and the
+                # weak-scan bookkeeping is left exactly as it was. This branch
+                # says nothing new about the band -- including which channel
+                # is best, which is why it reuses the last sweep's answer.
+                hz = retry_channel(cfg, chosen_hz)
+            else:
+                with _lock:
+                    _state["phase"] = "scanning"
+                hz, result = choose_channel(repo_root, cfg, serial)
+                chosen_hz = hz
+                with _lock:
+                    _state["scan"] = result
+                    weak = bool(result and result.get("weak"))
+                    _state["scan_weak"] = weak
+                    _state["consecutive_weak"] = (_state["consecutive_weak"] + 1) if weak else 0
+                    _state["next_rescan"] = (
+                        now() + rescan_delay(_state["consecutive_weak"])
+                        if weak else 0)
 
-        res = listener.start(hz, gain=cfg.get("gain"), ppm=cfg.get("ppm"),
-                             device_serial=serial,
-                             on_header=_make_handler(repo_root))
-        ok = bool(res.get("ok"))
-        last_error = res.get("error")
-        failures = 0 if ok else failures + 1
-        delay = tick if ok else retry_delay(failures, tick)
-        with _lock:
-            _state["channel_hz"] = hz if ok else None
-            _state["last_error"] = last_error
-            _state["phase"] = "listening" if ok else "retrying"
-            _state["retry_failures"] = failures
-            _state["next_retry"] = 0 if ok else now() + delay
-            if ok:
-                _state["started"] = now()
-        if not ok:
-            log.warning("nwr: capture did not start: %s (next attempt in %ds)",
-                        last_error, delay)
+            res = listener.start(hz, gain=cfg.get("gain"), ppm=cfg.get("ppm"),
+                                 device_serial=serial,
+                                 on_header=_make_handler(repo_root))
+            ok = bool(res.get("ok"))
+            last_error = res.get("error")
+            failures = 0 if ok else failures + 1
+            delay = tick if ok else retry_delay(failures, tick)
+            with _lock:
+                _state["channel_hz"] = hz if ok else None
+                _state["last_error"] = last_error
+                _state["phase"] = "listening" if ok else "retrying"
+                _state["retry_failures"] = failures
+                _state["next_retry"] = 0 if ok else now() + delay
+                if ok:
+                    _state["started"] = now()
+            if not ok:
+                log.warning("nwr: capture did not start: %s (next attempt in %ds)",
+                            last_error, delay)
+        except Exception as exc:                # noqa: BLE001
+            # Operator-supplied configuration reaches int() and list() in here:
+            # a hand-edited "watch_fips": 12345, or a "channel_hz": "162.550",
+            # used to end the watch for good. Back off on the same curve as a
+            # failed start and keep going -- the next pass re-reads the file,
+            # so a corrected one recovers on its own.
+            failures += 1
+            delay = retry_delay(failures, tick)
+            log.exception("nwr: the watch loop failed; next attempt in %ds", delay)
+            with _lock:
+                _state["phase"] = "retrying"
+                _state["last_error"] = str(exc) or exc.__class__.__name__
+                _state["retry_failures"] = failures
+                _state["next_retry"] = now() + delay
         stop_event.wait(delay)
 
 
-def status():
-    """What the card and Flask read. Never raises."""
+def status(now=time.time):
+    """What the card and Flask read. Never raises.
+
+    `now` matches supervise()'s injection point: next_retry is written with
+    that clock, so the seconds-remaining derived from it has to be read with
+    the same one or the two disagree under any injected clock.
+    """
     with _lock:
         s = dict(_state)
     label = None
@@ -297,7 +352,7 @@ def status():
         "listening": live.get("listening"),
         "subscribers": live.get("subscribers"),
         "elapsed_s": live.get("elapsed_s"),
-        "retry_in_s": max(0, int(due - time.time())) if due else 0,
+        "retry_in_s": max(0, int(due - now())) if due else 0,
         "port": API_PORT,
     })
     return s
@@ -349,10 +404,15 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(503, {"error": "too many audio streams"})
             _state["streams"] += 1
 
-        q = listener.subscribe()
+        q = None
         proc = None
         writer = None
         try:
+            # subscribe() lives INSIDE the try, like routes.py's: a queue
+            # registered by a call that then raised would never be dropped,
+            # and the slot counted above would never be given back -- three of
+            # those and /stream answers 503 for the rest of the process's life.
+            q = listener.subscribe()
             proc = subprocess.Popen(enc, shell=True, stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.DEVNULL)
@@ -397,7 +457,8 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception:                       # noqa: BLE001 — client hung up
             pass
         finally:
-            listener.unsubscribe(q)
+            if q is not None:
+                listener.unsubscribe(q)
             if writer is not None:
                 # Wake a writer parked in q.get(timeout=30). unsubscribe()
                 # already means no more audio reaches this queue, so hand it
@@ -405,7 +466,7 @@ class _Handler(BaseHTTPRequestHandler):
                 # the join below time out while the thread waits out its own
                 # 30 s. Killing the encoder does NOT wake it -- it is blocked
                 # on the queue, not on the pipe.
-                listener._deliver_sentinel(q)
+                listener.deliver_sentinel(q)
             if proc is not None:
                 listener.terminate(proc)
             if writer is not None:

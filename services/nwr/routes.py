@@ -39,15 +39,6 @@ def _inventory():
         return None
 
 
-def _device_serial(inv):
-    """The serial of the dongle assigned to nwr, or None."""
-    if not inv:
-        return None
-    dev_id = inv.assignments.get("nwr")
-    dev = inv.devices.get(dev_id) if dev_id else None
-    return (dev or {}).get("serial")
-
-
 @bp.route("/server/nwr/")
 @bp.route("/server/nwr/<path:filename>")
 def nwr_static(filename="weather.html"):
@@ -100,7 +91,7 @@ def api_nwr_listen():
             log.info("nwr: bell silent for %s (%s)", rec.get("event"), why)
 
     result = listener.start(hz, gain=cfg["gain"], ppm=cfg["ppm"],
-                            device_serial=_device_serial(inv),
+                            device_serial=listener.device_serial(inv),
                             on_header=_on_header)
     if not result["ok"]:
         return jsonify({"ok": False, "error": result["error"],
@@ -224,7 +215,7 @@ def api_nwr_stream():
                 # making it wait out its own 30s timeout. Only reachable
                 # once a writer exists, since only then is `q` guaranteed
                 # to be a real Queue rather than an injected test double.
-                listener._deliver_sentinel(q)
+                listener.deliver_sentinel(q)
             # Same terminate-then-wait as listener.terminate: a killed
             # process nobody wait()s on is still a zombie. None-safe, so a
             # Popen that never spawned costs nothing here. Killing the
@@ -282,7 +273,7 @@ def api_nwr_scan():
                         "code": "NWR_DONGLE_BUSY"}), 409
     cfg = settings.load(_root())
     result = scan.run(gain=cfg["gain"], ppm=cfg["ppm"],
-                      device_serial=_device_serial(inv))
+                      device_serial=listener.device_serial(inv))
     if not result["ok"]:
         return jsonify({"ok": False, "error": result["error"],
                         "code": result.get("code", "NWR_SCAN_FAILED")}), 503
