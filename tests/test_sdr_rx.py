@@ -93,6 +93,29 @@ _ONE_DEVICE = ("Found 1 device(s):\n"
 _NO_DEVICE = "No supported devices found.\n"
 
 
+class GainFlagTest(unittest.TestCase):
+    """Finding: rtl_fm parses -g with atof(), which has no "auto" keyword --
+    atof("auto") is 0.0, so `-g auto` silently ran the dongle at 0 dB tuner
+    gain instead of rtl_fm's real automatic gain (which is what you get by
+    omitting -g entirely). Shared by listener.rtl_command() and
+    scan.scan_command(), which both hit this the same way."""
+
+    def test_auto_omits_the_flag(self):
+        self.assertEqual(sdr_rx.gain_flag("auto"), [])
+
+    def test_blank_omits_the_flag(self):
+        self.assertEqual(sdr_rx.gain_flag(""), [])
+
+    def test_none_omits_the_flag(self):
+        self.assertEqual(sdr_rx.gain_flag(None), [])
+
+    def test_numeric_gain_emits_the_flag(self):
+        self.assertEqual(sdr_rx.gain_flag("40"), ["-g", "40"])
+
+    def test_numeric_gain_survives_non_string_input(self):
+        self.assertEqual(sdr_rx.gain_flag(40), ["-g", "40"])
+
+
 class DonglePresentCacheTest(unittest.TestCase):
     """Finding 6: /api/nwr/status polls every 5 s and both dashboards' health
     checks call this too -- each dongle_present() call shells out to

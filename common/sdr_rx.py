@@ -35,6 +35,36 @@ def missing_deps(binaries, which=shutil.which):
     return [b for b in binaries if not which(b)]
 
 
+def gain_flag(gain):
+    """argv fragment for a configured gain value: [] for automatic gain,
+    ["-g", <value>] for a numeric one.
+
+    rtl_fm parses -g with atof(), and atof() has no concept of the word
+    "auto" -- it just reads a leading float and stops, so atof("auto") is
+    0.0. `-g auto` was therefore running the dongle at 0 dB tuner gain, not
+    at automatic gain, and rtl_fm's own stderr proves the two are different
+    things: with `-g auto` it prints "Tuner gain set to 0.00 dB.", and with
+    -g omitted entirely it prints "Tuner gain set to automatic." Measured on
+    the Pi at 162.550 MHz: RMS 0.0244 / peak 0.123 with `-g auto` vs
+    RMS 0.0772 / peak 0.498 with -g omitted -- a quarter of the level,
+    peaking at 12% of full scale, quantisation-noise-dominated. rtl_power
+    (scan.py) takes -g the same way and hit the identical bug, so this lives
+    here rather than in listener.py: both listener.rtl_command() and
+    scan.scan_command() need it, and services/nwr/ may not use bare sibling
+    imports, so a helper in services/nwr/common/scan.py or listener.py could
+    not be shared between them without one importing the other's module for
+    an unrelated reason. common/sdr_rx.py already holds the RTL primitives
+    both call into (missing_deps, stderr_summary, ...), so this is one more.
+
+    Whoever is tempted to "fix" this by restoring `-g auto`: don't. There is
+    no such rtl_fm keyword. Omitting -g is the only way to ask for real AGC.
+    """
+    text = "" if gain is None else str(gain).strip()
+    if not text or text.lower() == "auto":
+        return []
+    return ["-g", text]
+
+
 def stream_encoder(srate, which=shutil.which):
     """(encoder_shell, mime) turning rtl_fm's raw s16le mono into a
     browser-playable stream on stdout. Chromium plays MP3; prefer ffmpeg

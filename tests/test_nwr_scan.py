@@ -41,6 +41,24 @@ class ScanCommandTest(unittest.TestCase):
         argv = scan.scan_command("auto", 0, seconds=10, step_hz=2500)
         self.assertIn("162390000:162560000:2500", " ".join(argv))
 
+    def test_auto_gain_omits_dash_g(self):
+        # Same rtl_power/rtl_fm atof("-g") trap as listener.rtl_command(): a
+        # sweep run with "-g auto" was taken at 0 dB tuner gain, not AGC.
+        argv = scan.scan_command("auto", 0, seconds=10)
+        self.assertNotIn("-g", argv)
+
+    def test_blank_gain_omits_dash_g(self):
+        argv = scan.scan_command("", 0, seconds=10)
+        self.assertNotIn("-g", argv)
+
+    def test_none_gain_omits_dash_g(self):
+        argv = scan.scan_command(None, 0, seconds=10)
+        self.assertNotIn("-g", argv)
+
+    def test_numeric_gain_emits_dash_g(self):
+        argv = scan.scan_command("40", 0, seconds=10)
+        self.assertEqual(argv[argv.index("-g") + 1], "40")
+
 
 class ChannelPowersTest(unittest.TestCase):
     def test_every_channel_gets_a_reading(self):

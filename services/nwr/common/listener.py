@@ -78,8 +78,12 @@ def rtl_command(channel_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, device_serial=No
     argv = ["rtl_fm"]
     if device_serial:
         argv += ["-d", str(device_serial)]
-    argv += ["-f", str(int(channel_hz)), "-M", "fm", "-s", str(SAMPLE_RATE),
-             "-g", str(gain), "-p", str(ppm), "-"]
+    argv += ["-f", str(int(channel_hz)), "-M", "fm", "-s", str(SAMPLE_RATE)]
+    # sdr_rx.gain_flag: DEFAULT_GAIN="auto" must NOT become literal "-g auto"
+    # -- see that function's docstring for why (rtl_fm's own two stderr
+    # messages are the proof).
+    argv += sdr_rx.gain_flag(gain)
+    argv += ["-p", str(ppm), "-"]
     return argv
 
 

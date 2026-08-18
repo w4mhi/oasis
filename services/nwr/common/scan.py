@@ -37,9 +37,13 @@ def scan_command(gain=listener.DEFAULT_GAIN, ppm=listener.DEFAULT_PPM,
     argv = ["rtl_power"]
     if device_serial:
         argv += ["-d", str(device_serial)]
-    argv += ["-f", f"{BAND_LOW}:{BAND_HIGH}:{int(step_hz)}",
-             "-g", str(gain), "-p", str(ppm),
-             "-i", "1", "-e", str(int(seconds)), "-"]
+    argv += ["-f", f"{BAND_LOW}:{BAND_HIGH}:{int(step_hz)}"]
+    # sdr_rx.gain_flag: rtl_power takes -g the same broken way rtl_fm does --
+    # "-g auto" is 0 dB, not AGC. See that function's docstring. This bug
+    # meant every channel reading the scan ever took was at 0 dB gain, which
+    # could pick the wrong "strongest" channel.
+    argv += sdr_rx.gain_flag(gain)
+    argv += ["-p", str(ppm), "-i", "1", "-e", str(int(seconds)), "-"]
     return argv
 
 

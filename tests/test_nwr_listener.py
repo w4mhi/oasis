@@ -98,6 +98,25 @@ class CommandTest(unittest.TestCase):
         self.assertEqual(listener.multimon_command(),
                          ["multimon-ng", "-t", "raw", "-a", "EAS", "-"])
 
+    def test_auto_gain_omits_dash_g(self):
+        # rtl_fm has no "auto" keyword for -g; atof("auto") is 0.0, which ran
+        # the dongle at 0 dB tuner gain instead of real AGC. Omitting -g is
+        # what actually asks rtl_fm for automatic gain.
+        argv = listener.rtl_command(162550000, "auto", 0)
+        self.assertNotIn("-g", argv)
+
+    def test_blank_gain_omits_dash_g(self):
+        argv = listener.rtl_command(162550000, "", 0)
+        self.assertNotIn("-g", argv)
+
+    def test_none_gain_omits_dash_g(self):
+        argv = listener.rtl_command(162550000, None, 0)
+        self.assertNotIn("-g", argv)
+
+    def test_numeric_gain_emits_dash_g(self):
+        argv = listener.rtl_command(162550000, "40", 0)
+        self.assertEqual(argv[argv.index("-g") + 1], "40")
+
 
 class PumpTest(unittest.TestCase):
     def test_every_chunk_reaches_the_decoder(self):
