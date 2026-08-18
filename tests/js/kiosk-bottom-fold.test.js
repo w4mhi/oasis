@@ -222,15 +222,34 @@ test('an overhead bird still colours the pill', () => {
   assert.match(page, /\.foldpill \.fs-head\.soon\{ color:var\(--warn\); \}/);
 });
 
-test('a lone bird fills the width instead of sitting in half of it', () => {
-  const small = smallScreenBlock();
-  // auto-fit, not `1fr 1fr`. A fixed pair of tracks leaves ONE pass in the left
-  // half of a 769px card with nothing beside it — which is what "the list is not
-  // using the width" looks like. auto-fit collapses the empty track.
-  assert.match(small, /grid-template-columns:repeat\(auto-fit, minmax\(20rem, 1fr\)\)/,
-    'the sat grid must auto-fit, or a single bird occupies half the pane');
-  assert.ok(!/grid-template-columns:1fr 1fr/.test(small),
-    'a fixed two-track grid cannot collapse its empty column');
+test('every pass record spans the pane — one column, never two', () => {
+  const small = decomment(smallScreenBlock());
+  // Two columns fits one more bird and makes every record half as wide as the
+  // pane. A pass record is horizontal — name, time, countdown, capability, rise
+  // — and at 370px it stacks back into three lines, which is the shape the fold
+  // exists to escape.
+  assert.match(small, /\.row\.bot\[data-open="sat"\] \.satscroll\{ display:block; \}/,
+    'the sat list must be a single full-width column');
+  assert.ok(!/grid-template-columns/.test(small),
+    'no multi-column grid for the pass list on a small panel');
+});
+
+test('a pass record folds onto one line instead of stacking three', () => {
+  const small = decomment(smallScreenBlock());
+  // The width goes into flattening the record, which is what pays for dropping
+  // the second column: ~46px per record instead of ~77px.
+  assert.match(small, /\.row\.bot\[data-open="sat"\] \.sat\{ display:flex; flex-wrap:wrap;/,
+    'the record must lay its three lines out in a row');
+  assert.match(small, /\.sat \.l1\{ flex:0 0 auto;/,
+    'l1 must stay a tight group, or .cd\'s own auto margin flings the countdown ' +
+    'to the far end of the row, away from the AOS time it qualifies');
+  assert.match(small, /\.sat \.l2\{ flex:0 1 auto; margin-top:0; margin-left:auto; \}/,
+    'the rise detail takes the free space and sits hard right');
+  assert.ok(/flex-wrap:wrap/.test(small),
+    'an in-pass record carries elevation, range and LOS — it must wrap, not clip');
+  // The markup is untouched, so the desktop panel keeps its three-line cards.
+  assert.ok(!/\.sat\{ display:flex/.test(page.slice(0, page.indexOf('@media (max-width:1100px){'))),
+    'the flattening must not escape the small-panel block');
 });
 
 test('the fold costs no frames and no fonts', () => {

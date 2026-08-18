@@ -913,17 +913,35 @@
     .row.bot[data-open="traffic"] .traffic .foldpill,
     .row.bot[data-open="sat"] .sats .foldpill{ display:inline-flex; }
 
-    /* Two birds abreast — but auto-fit, not a fixed 1fr 1fr. With a fixed pair
-       of tracks a LONE bird sits in the left half of a 769px card with nothing
-       beside it, which is the shape that reads as "this list is not using the
-       width". auto-fit collapses the empty track and the single card stretches.
-       20rem is the floor a .sat block needs before its l1 line (name · AOS ·
-       countdown) starts colliding.
-       align-content:start keeps a short list at the top instead of floating it
-       in the middle of the pane. */
-    .row.bot[data-open="sat"] .satscroll{
-      display:grid; grid-template-columns:repeat(auto-fit, minmax(20rem, 1fr));
-      gap:0 .5rem; align-content:start; }
+    /* ONE record per row, spanning the full width, and FLAT.
+       Two columns was tried and is wrong here. It fits one more bird — six
+       against five — by making every record half as wide as the pane it sits
+       in, and a pass record is a horizontal thing: a name, a time, a countdown,
+       what the bird can do, where it rises. Cut that to 370px and it stacks
+       into three lines again, which is the shape this whole exercise is trying
+       to get out of.
+       So the width goes into FOLDING the record instead of dividing it. The
+       three stacked lines — l1 (name · AOS · countdown), caps (capability
+       chips), l2 (the rise detail) — sit on ONE line, with l2 pushed hard right
+       the way the countdown is in the header above it. A record is ~46px
+       instead of ~77px, which is what buys back the row that dropping the
+       second column cost.
+       CSS only: the markup renderSats() emits is untouched, so the 1920 panel —
+       where a 772px sat card already has room to breathe — keeps its three-line
+       cards. Nothing here reaches above 1100px. */
+    .row.bot[data-open="sat"] .satscroll{ display:block; }
+    .row.bot[data-open="sat"] .sat{ display:flex; flex-wrap:wrap;
+                                    align-items:baseline; gap:.15rem .9rem; }
+    /* Tight group, deliberately: with no free space inside it the .cd's own
+       margin-left:auto collapses to nothing and the countdown stays beside the
+       AOS time it qualifies, instead of being flung to the far end of a 745px
+       row away from the number it belongs to. */
+    .row.bot[data-open="sat"] .sat .l1{ flex:0 0 auto; gap:.6rem; }
+    .row.bot[data-open="sat"] .sat .caps{ flex:0 0 auto; margin-top:0; }
+    /* The rise detail takes the free space and ends up hard right. If a record
+       is too long for one line — an in-pass bird carries a live elevation, a
+       range and an LOS time — it wraps to two rather than clipping. */
+    .row.bot[data-open="sat"] .sat .l2{ flex:0 1 auto; margin-top:0; margin-left:auto; }
   }
 </style>
 
