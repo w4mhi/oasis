@@ -396,6 +396,8 @@
      (U+25B6 and friends) are exactly the ones a font may hand to an emoji
      presentation and turn into tofu on the panel. A border triangle cannot. */
   .foldpill{ display:none; align-items:baseline; gap:.5rem; cursor:pointer;
+             min-width:0;                 /* shrinkable, so the headline ellipsises
+                                             instead of shoving the countdown out */
              padding:.25rem .7rem; border-radius:.5rem;
              border:1px solid var(--border); background:var(--panel-2);
              font-size:1rem; letter-spacing:.04em; white-space:nowrap;
@@ -417,7 +419,15 @@
      now stays green rather than escalating past amber: overhead is the good
      state too, and amber is the one that means "do something soon". Weight, not
      hue, is what separates it from the resting case. */
-  .foldpill .fs-head{ min-width:0; max-width:15rem; overflow:hidden;
+  /* No max-width. It was capped at 15rem, which was a guess at "not too wide"
+     made before either header had settled — and the satellites header, whose
+     left side is now a bell, a label and one chip, has roughly twice that free
+     before the pill reaches the countdown. A cap that small truncated a
+     headline the row had room for.
+     Shrinking is the flex box's job instead: min-width:0 lets the pill fall
+     below its content when the row genuinely runs out, and the ellipsis takes
+     the tail — which is why the breakdown is built last and the total first. */
+  .foldpill .fs-head{ min-width:0; overflow:hidden;
                       text-overflow:ellipsis; white-space:nowrap; color:var(--accent); }
   .foldpill .fs-head.soon{ color:var(--warn); }
   .foldpill .fs-head.now{ color:var(--accent); font-weight:700; }
@@ -2204,6 +2214,14 @@ function applyAprsFilter() {
   const bits = [total + ' heard'];
   if (_ageMin !== _AGE_STEPS[0]) bits.push(_ageMin ? '\u2264' + _AGE_LABEL[_ageMin] : _AGE_LABEL[0]);
   if (srcSelected.length) bits.push(srcSelected.map(k => _SRC_LABEL[k] || k).join('+') + ' only');
+  // Then the per-path breakdown, the same numbers the RF / IS / ADS-B chips
+  // carry — because those chips are what folds away, and the count alone cannot
+  // say whether 384 stations means a busy band or a busy internet feed. Counted
+  // BEFORE the source filter, exactly as the chips are, so an unselected path
+  // still reports what it is holding rather than dropping to nothing.
+  // Least important, so last: the parts that must survive a narrow pill are the
+  // total and the filter, and those are already ahead of it.
+  _SRC_KEYS.forEach(k => bits.push(_SRC_LABEL[k] + ' ' + (srcCounts[k] || 0)));
   foldHead('traffic', bits.join(' \u00b7 '), '');
   renderAprsRows(list.slice(0, MAX_ROWS));
 }

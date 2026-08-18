@@ -215,6 +215,32 @@ test('the pill says WHICH filter produced the count', () => {
     'the pill must use the chips\' own labels, not a second set of names');
 });
 
+test('the traffic pill carries the per-path breakdown the chips would have shown', () => {
+  // The RF / IS / ADS-B chips fold away with the list, and the total alone
+  // cannot say whether 384 stations is a busy band or a busy internet feed.
+  const count = page.indexOf("getElementById('k-aprs-count')");
+  const block = page.slice(count, page.indexOf('renderAprsRows(list.slice(', count));
+  assert.match(block, /_SRC_KEYS\.forEach\(k => bits\.push\(_SRC_LABEL\[k\] \+ ' ' \+ \(srcCounts\[k\] \|\| 0\)\)\)/,
+    'the pill must report each path, using the chips\' own labels and counts');
+  // Order is load-bearing: the ellipsis eats the TAIL, so the total and the
+  // active filter have to be built before the breakdown.
+  const total = block.indexOf("total + ' heard'");
+  const narrow = block.indexOf('srcSelected.length');
+  const breakdown = block.indexOf('_SRC_KEYS.forEach');
+  assert.ok(total < narrow && narrow < breakdown,
+    'the breakdown must be last — it is what a narrow pill can afford to lose');
+});
+
+test('nothing caps the pill\'s width but the row it sits in', () => {
+  // A 15rem cap truncated headlines the satellites header had room for. Let the
+  // flex box decide: shrink only when the row actually runs out.
+  assert.ok(!/\.foldpill \.fs-head\{[^}]*max-width/.test(page),
+    'the headline is capped again — the row is what should decide its width');
+  assert.match(page, /\.foldpill\{[^}]*min-width:0;/,
+    'without min-width:0 the pill cannot shrink, and a long headline shoves the ' +
+    'countdown off the right edge instead of ellipsising');
+});
+
 test('an overhead bird still colours the pill', () => {
   assert.match(page, /it0\.inPass \? 'now' : \(it0\.mins <= 10 \? 'soon' : ''\)/,
     'folding the sat card must not hide that a pass is happening');
