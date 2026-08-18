@@ -49,11 +49,15 @@ MAX_STREAMS = 3
 
 # Failures a band sweep cannot get past either: rtl_power claims the tuner
 # exactly as exclusively as rtl_fm does, so retrying through choose_channel()
-# would spend six seconds re-proving what listener.start() just said. Matched
-# against the operator-facing text sdr_rx.stderr_summary() produces.
+# would spend six seconds re-proving what listener.start() just said. The
+# first two are matched against the operator-facing text sdr_rx.stderr_summary()
+# produces; "no dongle assigned" is supervise()'s own literal last_error when
+# _device_serial() returns None -- there is no sweep to run without a dongle
+# either.
 DONGLE_UNAVAILABLE = (
     "another service is already using",
     "no supported devices found",
+    "no dongle assigned",
 )
 
 _state = {
@@ -274,6 +278,25 @@ def supervise(repo_root, stop_event=None, tick=SUPERVISE_TICK_S, now=time.time):
 
             cfg = settings.load(repo_root)
             serial = _device_serial(repo_root)
+
+            if serial is None:
+                # listener.rtl_command() falls back to device index 0 when
+                # device_serial is falsy -- on a multi-dongle Pi that is very
+                # often another service's radio. Neither a sweep (rtl_power)
+                # nor a listen (rtl_fm) may run until an operator assigns us
+                # one; is_claimed() guards a busy dongle, not an absent
+                # assignment, so this has to be checked here.
+                last_error = "no dongle assigned"
+                failures += 1
+                delay = retry_delay(failures, tick)
+                with _lock:
+                    _state["phase"] = "retrying"
+                    _state["channel_hz"] = None
+                    _state["last_error"] = last_error
+                    _state["retry_failures"] = failures
+                    _state["next_retry"] = now() + delay
+                stop_event.wait(delay)
+                continue        # this pass's one and only wait
 
             if failures and sweep_is_pointless(last_error):
                 # Retrying into a dongle we could not claim: no sweep, and the

@@ -54,9 +54,16 @@ WantedBy=multi-user.target
 
 def write_unit(venv_py, entry):
     """Write the unit via `sudo tee`, following adsb's _write_api_unit pattern
-    (services/adsb/common/adsb.py:359-388): a missing or non-interactive sudo
-    makes `tee` exit non-zero, and _fail() stops the installer right there
-    instead of continuing on to enable a unit that was never written."""
+    (services/adsb/common/adsb.py:359-388) exactly: `sudo tee` + `daemon-reload`,
+    and stop there. A missing or non-interactive sudo makes `tee` exit non-zero,
+    and _fail() stops the installer right there.
+
+    Deliberately does NOT `systemctl enable`. common/hardware.py's
+    boot_start_plan() decides what starts at boot from the persisted device
+    assignments, and skips services with no dongle assigned -- enabling the
+    unit here would bypass that and start the watch on every boot whether or
+    not an operator ever gave it a dongle. Nothing starts this unit at boot
+    until a later task puts nwr into the conflict engine as a real unit."""
     proc = subprocess.Popen(
         ["sudo", "tee", UNIT_PATH],
         stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
@@ -66,8 +73,6 @@ def write_unit(venv_py, entry):
         _fail(f"Could not write {UNIT_PATH}")
     _ok(f"Service file: {UNIT_PATH}")
     _run(["sudo", "systemctl", "daemon-reload"])
-    _run(["sudo", "systemctl", "enable", f"{SERVICE}.service"])
-    _ok(f"{SERVICE} enabled at boot")
 
 
 def removal_record(repo_root=None):

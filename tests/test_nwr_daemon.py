@@ -183,6 +183,11 @@ class SuperviseRetryCadenceTest(unittest.TestCase):
     """
 
     HELD = "another service is already using the RTL-SDR dongle"
+    # A dongle IS assigned to nwr here -- _device_serial() returns "0001",
+    # not None -- and it is simply held by someone else. That is a distinct
+    # condition from "nothing assigned to nwr", which NoDongleAssignedTest
+    # below covers and which must never reach choose_channel()/listener.start()
+    # at all.
     # WX3, and NOT settings.DEFAULTS["channel_hz"] (WX7). A fixture that
     # sweeps to the default cannot tell "reused the sweep's answer" apart from
     # "fell back to the configured channel" -- which is exactly how the retry
@@ -214,7 +219,7 @@ class SuperviseRetryCadenceTest(unittest.TestCase):
 
         with mock.patch.object(daemon.settings, "load",
                                return_value=dict(daemon.settings.DEFAULTS)), \
-             mock.patch.object(daemon, "_device_serial", return_value=None), \
+             mock.patch.object(daemon, "_device_serial", return_value="0001"), \
              mock.patch.object(daemon.listener, "is_listening",
                                return_value=is_listening), \
              mock.patch.object(daemon, "choose_channel", side_effect=fake_choose), \
@@ -312,7 +317,7 @@ class SuperviseRetryCadenceTest(unittest.TestCase):
             return {"ok": False, "error": self.HELD}
 
         with mock.patch.object(daemon.settings, "load", side_effect=flaky_load), \
-             mock.patch.object(daemon, "_device_serial", return_value=None), \
+             mock.patch.object(daemon, "_device_serial", return_value="0001"), \
              mock.patch.object(daemon.listener, "is_listening", return_value=False), \
              mock.patch.object(daemon, "choose_channel", side_effect=fake_choose), \
              mock.patch.object(daemon.listener, "start", side_effect=fake_start), \
@@ -334,6 +339,86 @@ class SuperviseRetryCadenceTest(unittest.TestCase):
             self.assertEqual(daemon._state["phase"], "retrying")
             self.assertIn("162.550", daemon._state["last_error"])
             self.assertGreater(daemon._state["next_retry"], 0)
+
+
+class NoDongleAssignedTest(unittest.TestCase):
+    """listener.rtl_command() falls back to device index 0 when device_serial
+    is falsy -- on a multi-dongle Pi that is very often another service's
+    radio. Nothing assigned to nwr must never reach a sweep (rtl_power) or a
+    listen (rtl_fm); is_claimed() only guards a dongle that is BUSY, not one
+    that was never handed to us."""
+
+    def setUp(self):
+        before = dict(daemon._state)
+        self.addCleanup(lambda: daemon._state.update(before))
+        logging.disable(logging.WARNING)
+        self.addCleanup(logging.disable, logging.NOTSET)
+
+    def test_no_sweep_and_no_listen_are_attempted(self):
+        stop = _FakeStop(600)
+        with mock.patch.object(daemon.settings, "load",
+                               return_value=dict(daemon.settings.DEFAULTS)), \
+             mock.patch.object(daemon, "_device_serial", return_value=None), \
+             mock.patch.object(daemon.listener, "is_listening", return_value=False), \
+             mock.patch.object(daemon, "choose_channel") as choose, \
+             mock.patch.object(daemon.listener, "start") as start:
+            daemon.supervise(_ROOT, stop_event=stop, now=lambda: stop.now)
+        choose.assert_not_called()
+        start.assert_not_called()
+
+    def test_status_reports_the_reason(self):
+        stop = _FakeStop(60)
+        with mock.patch.object(daemon.settings, "load",
+                               return_value=dict(daemon.settings.DEFAULTS)), \
+             mock.patch.object(daemon, "_device_serial", return_value=None), \
+             mock.patch.object(daemon.listener, "is_listening", return_value=False):
+            daemon.supervise(_ROOT, stop_event=stop, now=lambda: stop.now)
+        with daemon._lock:
+            self.assertEqual(daemon._state["phase"], "retrying")
+            self.assertEqual(daemon._state["last_error"], "no dongle assigned")
+            self.assertIsNone(daemon._state["channel_hz"])
+            self.assertGreater(daemon._state["retry_failures"], 0)
+            self.assertGreater(daemon._state["next_retry"], 0)
+
+    def test_it_backs_off_on_the_same_curve_as_a_failed_start(self):
+        stop = _FakeStop(3600)
+        with mock.patch.object(daemon.settings, "load",
+                               return_value=dict(daemon.settings.DEFAULTS)), \
+             mock.patch.object(daemon, "_device_serial", return_value=None), \
+             mock.patch.object(daemon.listener, "is_listening", return_value=False):
+            daemon.supervise(_ROOT, stop_event=stop, now=lambda: stop.now)
+        self.assertEqual(max(stop.waits), daemon.RETRY_MAX_S)
+
+    def test_sweep_is_pointless_matches_the_literal_reason(self):
+        # "no dongle assigned" is supervise()'s own last_error text, back in
+        # DONGLE_UNAVAILABLE so a retry that follows one does not re-sweep.
+        self.assertTrue(daemon.sweep_is_pointless("no dongle assigned"))
+
+    def test_assignment_recovers_without_a_restart(self):
+        # A dongle handed to nwr mid-retry must be picked up on the very next
+        # pass -- _device_serial() is read fresh every time, per its own
+        # docstring.
+        stop = _FakeStop(30)
+        serials = iter([None, None, "0001"])
+        attempts = []
+
+        def fake_choose(repo_root, cfg, serial, **kw):
+            return 162400000, {"ok": True, "best_hz": 162400000,
+                               "best_dbm": -20.0, "weak": False}
+
+        def fake_start(hz, **kw):
+            attempts.append(hz)
+            return {"ok": True, "error": None}
+
+        with mock.patch.object(daemon.settings, "load",
+                               return_value=dict(daemon.settings.DEFAULTS)), \
+             mock.patch.object(daemon, "_device_serial",
+                               side_effect=lambda repo_root: next(serials, "0001")), \
+             mock.patch.object(daemon.listener, "is_listening", return_value=False), \
+             mock.patch.object(daemon, "choose_channel", side_effect=fake_choose), \
+             mock.patch.object(daemon.listener, "start", side_effect=fake_start):
+            daemon.supervise(_ROOT, stop_event=stop, now=lambda: stop.now)
+        self.assertTrue(attempts, "the watch never started once a dongle arrived")
 
 
 class OnHeaderContainmentTest(unittest.TestCase):
