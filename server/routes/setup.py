@@ -28,6 +28,7 @@ from common import hardware
 from common import hardware_detect as HD_detect
 from common import setup_engine as SE
 from common import setup_registry as SETUP_REGISTRY
+from common import sudo_grant
 from common.oasis_lib import has_internet
 from routes.health import _health_paths
 from routes.wifi import NETCTL_PATH, _netctl
@@ -412,21 +413,23 @@ def _service_controls_granted():
     banner was correct only because ITS artifact lives in /etc/systemd/system,
     which is world-traversable.
 
-    So ask sudo the question the operator actually has — may the dashboard run
-    these commands — rather than a proxy for it. `sudo -n -l <cmd>` is a policy
-    lookup: exit 0 means permitted, non-zero means not, and -n guarantees it
-    never prompts or hangs. A box whose operator already has blanket NOPASSWD
-    sudo answers yes, which is the correct answer: the buttons work and there is
-    nothing left to grant."""
+    So ask sudo the question the operator actually has — will the dashboard's
+    `sudo -n systemctl …` run — rather than a proxy for it. Note WHICH question
+    that is: not "is the operator authorised", which is what the second version
+    of this probe asked, and which `sudo -n -l <cmd>` answers yes to for any
+    command on the box the moment the operator is in the `sudo` group. Measured
+    on pi5draws: `sudo -n -l /bin/systemctl restart oasis-nwr.service` exited 0
+    while `sudo -n /bin/systemctl restart oasis-nwr.service` answered "a
+    password is required", so this banner reported a permission the station did
+    not have and the NWR watch could not be started from the web at all.
+
+    The honest test is whether a NOPASSWD entry covers the command — see
+    common/sudo_grant.py. A box whose operator already has blanket
+    `NOPASSWD: ALL` still answers yes, which is still the correct answer: the
+    buttons work and there is nothing left to grant."""
     if sys.platform != "linux":
         return False
-    systemctl = shutil.which("systemctl") or "/usr/bin/systemctl"
-    try:
-        r = subprocess.run(["sudo", "-n", "-l", systemctl, "restart", _PERM_PROBE_UNIT],
-                           capture_output=True, text=True, timeout=5)
-        return r.returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
+    return sudo_grant.systemctl_nopasswd_granted(_PERM_PROBE_UNIT)
 
 
 # Features never removable from the web (see the design carve-outs). The worker

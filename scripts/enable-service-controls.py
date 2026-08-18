@@ -38,11 +38,11 @@ import argparse
 import getpass
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from common import sudo_grant
 from common.oasis_lib import _hr, _step, _ok, _info, _warn, _fail, _run
 
 # Must match server/routes/service_control.py's _CONTROLLABLE_SERVICES
@@ -75,38 +75,51 @@ SUDOERS_PATH = "/etc/sudoers.d/oasis-service-controls"
 PROBE_UNIT = UNITS[-1]
 
 
-def grant_is_current(run=None, which=None):
-    """True when sudo will run PROBE_UNIT's commands for this user without a
-    password — i.e. the installed grant was written from the CURRENT unit list.
+def grant_is_current(run=None):
+    """True when sudo will run PROBE_UNIT's commands for this user WITHOUT A
+    PASSWORD — i.e. the installed grant was written from the CURRENT unit list.
 
     THE SUDOERS HALF ONLY. This script has a second effect (the systemd-journal
     membership behind /api/winlink/log), and this answers nothing about it —
     anyone gating a re-run of the whole script wants grants_are_current().
 
-    Capability, not artifact. os.path.exists(SUDOERS_PATH) answers neither
-    question honestly: /etc/sudoers.d is 0750 root:root on Debian and Pi OS, so
-    a non-root caller cannot tell "absent" from "not allowed to look" (measured
-    on pi5draws — see server/routes/setup.py::_service_controls_granted, which
-    asks sudo the same way); and even when it CAN see the file, presence says
-    nothing about which units are inside it.
+    Two probes have already been wrong here, both for the same reason — they
+    asked something adjacent to the capability instead of the capability:
 
-    `sudo -n -l <cmd>` is a policy lookup, not an execution: exit 0 means
-    permitted, non-zero means not, and -n guarantees it never prompts or hangs.
-    A box whose operator has blanket NOPASSWD sudo answers yes, which is the
-    correct answer for the buttons — the commands will run and there is nothing
-    left to grant in the sudoers file.
+    1. os.path.exists(SUDOERS_PATH) — an ARTIFACT check. /etc/sudoers.d is 0750
+       root:root on Debian and Pi OS, so a non-root caller cannot tell "absent"
+       from "not allowed to look"; and even when it CAN see the file, presence
+       says nothing about which units are inside it.
+
+    2. `sudo -n -l <cmd>` — an AUTHORISATION check, and authorisation is not
+       what any caller here needs. It reports whether the user MAY run the
+       command, by any means, including after typing a password. Our operator
+       is in the `sudo` group, so it matches the blanket `(ALL : ALL) ALL`
+       entry and exits 0 for literally any command on the box. Measured on
+       pi5draws with the grant predating oasis-nwr:
+
+           sudo -n -l /bin/systemctl restart oasis-nwr.service  -> rc=0
+           sudo -n    /bin/systemctl restart oasis-nwr.service  -> "sudo: a
+                                                                   password is
+                                                                   required"
+
+       So this said "current", start-oasis never re-ran the grant, and after a
+       reboot the NWR watch did not come back — silently, on a green dashboard.
+
+    What is asked instead: `sudo -n -l` with NO command, whose output carries
+    the tags, parsed for a NOPASSWD entry covering the probe command (see
+    common/sudo_grant.py — including why the rule's own `/usr/bin/systemctl`
+    path must not be hardcoded and why a very long single-line rule has to be
+    un-wrapped first). A box whose operator has blanket `NOPASSWD: ALL` still
+    answers yes, which remains correct for the buttons: the commands run and
+    there is nothing left to grant in the sudoers file.
+
+    Not `sudo -n <cmd>` itself, obviously — that would restart the unit.
     """
     if sys.platform != "linux":
         return False
-    run = run or subprocess.run
-    which = which or shutil.which
-    systemctl = which("systemctl") or "/usr/bin/systemctl"
-    try:
-        r = run(["sudo", "-n", "-l", systemctl, "restart", f"{PROBE_UNIT}.service"],
-                capture_output=True, text=True, timeout=5)
-        return r.returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
+    return sudo_grant.systemctl_nopasswd_granted(
+        f"{PROBE_UNIT}.service", actions=tuple(ACTIONS), run=run)
 
 
 def removal_record(repo_root=None):
@@ -238,7 +251,7 @@ def journal_grant_is_current(user=None):
     return _in_group(target_user(user), JOURNAL_GROUP)
 
 
-def grants_are_current(run=None, which=None, user=None):
+def grants_are_current(run=None, user=None):
     """True when BOTH of this script's effects are already in place.
 
     The gate for "may a caller skip running this script". run() does two
@@ -254,7 +267,7 @@ def grants_are_current(run=None, which=None, user=None):
     start and Winlink's session console reads "(journald log unavailable...)"
     permanently, with nothing in the UI saying why.
     """
-    return grant_is_current(run=run, which=which) and journal_grant_is_current(user)
+    return grant_is_current(run=run) and journal_grant_is_current(user)
 
 
 def grant_journal_access(user):

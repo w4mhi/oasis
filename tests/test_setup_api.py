@@ -14,6 +14,7 @@ if _SERVER not in sys.path:
 import app as app_module
 from routes import setup as setup_module
 from common import setup_engine as SE
+from common import sudo_grant
 
 
 def _ok_feature(key, deps=None):
@@ -651,37 +652,144 @@ class RunUninstallsTest(unittest.TestCase):
         self.assertEqual(installed_services.installed_features(root), {"kiwix"})
 
 
-class ServiceControlsGrantedTest(unittest.TestCase):
-    """/api/setup/permissions — asking sudo, not the filesystem.
+def _sudo_wrap(text, cols=80):
+    """`text` broken the way sudo breaks a long entry: trailing backslash,
+    4-space continuation indent."""
+    lines, cur, indent = [], "", "    "
+    for word in text.split():
+        if not cur:
+            cur = indent + word
+        elif len(cur) + 1 + len(word) > cols - 2:
+            lines.append(cur + " \\")
+            cur = indent + word
+        else:
+            cur += " " + word
+    lines.append(cur)
+    return lines
 
-    The bug: `granted` was os.path.exists("/etc/sudoers.d/oasis-service-controls").
+
+def _sudo_listing(entries, user="pi", host="pi5draws"):
+    """A realistic `sudo -n -l` listing built from *entries* (the text after
+    each `(runas)`), headers and wrapping included."""
+    out = [f"Matching Defaults entries for {user} on {host}:",
+           "    env_reset, mail_badpass, secure_path=/usr/local/sbin\\:/usr/bin",
+           "",
+           f"User {user} may run the following commands on {host}:"]
+    for entry in entries:
+        out.extend(_sudo_wrap(entry))
+    return "\n".join(out) + "\n"
+
+
+def _granted_entry(mod, units):
+    """The `(root) NOPASSWD: …` entry sudo prints for the rule
+    build_content() writes for *units* — aliases expanded as sudo expands them.
+
+    Derived from the real generator, so these tests cannot drift from the
+    format the grant writer actually produces."""
+    real_units = mod.UNITS
+    try:
+        mod.UNITS = units
+        content = mod.build_content("pi", "/usr/bin/systemctl", "/usr/bin/tcpdump",
+                                    "/sbin/reboot")
+    finally:
+        mod.UNITS = real_units
+    aliases, used = {}, ""
+    for line in content.splitlines():
+        if line.startswith("Cmnd_Alias "):
+            name, _, cmds = line[len("Cmnd_Alias "):].partition(" = ")
+            aliases[name.strip()] = cmds.strip()
+        elif "NOPASSWD: " in line:
+            used = line.split("NOPASSWD: ", 1)[1]
+    return "(root) NOPASSWD: " + ", ".join(aliases[a.strip()] for a in used.split(","))
+
+
+# What the live station printed on 2026-08-17: blanket sudo-group authorisation,
+# and a NOPASSWD rule written before oasis-nwr existed.
+_BLANKET_AUTHORISED = "(ALL : ALL) ALL"
+_BLANKET_NOPASSWD = "(ALL : ALL) NOPASSWD: ALL"
+
+
+def _sudo_answers(listing, returncode=0, side_effect=None, seen=None):
+    """A fake subprocess.run for `sudo -n -l`: it LISTS policy, never runs it."""
+    def fake_run(argv, **kwargs):
+        if seen is not None:
+            seen["argv"] = argv
+            seen["timeout"] = kwargs.get("timeout")
+        if side_effect:
+            raise side_effect
+        return subprocess.CompletedProcess(args=argv, returncode=returncode,
+                                           stdout=listing, stderr="")
+    return fake_run
+
+
+class ServiceControlsGrantedTest(unittest.TestCase):
+    """/api/setup/permissions — asking sudo the RIGHT question.
+
+    Bug 1: `granted` was os.path.exists("/etc/sudoers.d/oasis-service-controls").
     /etc/sudoers.d is 0750 root:root and OASIS runs as the operator, so that call
     returns False when it merely lacks permission to LOOK — it cannot tell
     "absent" from "not allowed". Measured on pi5draws: the rule was installed and
     in effect (sudo -l listed every unit) while the setup page told the operator
     to go re-run the grant. The installer half of the same banner was right only
     because its artifact sits in world-traversable /etc/systemd/system.
+
+    Bug 2, the same trap wearing the opposite disguise: `sudo -n -l <cmd>`
+    reports AUTHORISATION, not passwordless execution. The operator is in the
+    `sudo` group, so it exits 0 for any command on the box — measured on
+    pi5draws, `sudo -n -l /bin/systemctl restart oasis-nwr.service` said yes
+    while `sudo -n /bin/systemctl restart oasis-nwr.service` answered "a
+    password is required". The banner then reports a permission the station
+    does not have, for a unit the web can no longer start at all.
     """
 
-    def _run(self, returncode=0, side_effect=None):
-        kw = {"side_effect": side_effect} if side_effect else {
-            "return_value": subprocess.CompletedProcess(args=[], returncode=returncode,
-                                                        stdout="", stderr="")}
+    def _run(self, listing="", returncode=0, side_effect=None, seen=None):
         with mock.patch.object(setup_module.sys, "platform", "linux"), \
-             mock.patch.object(setup_module.subprocess, "run", **kw):
+             mock.patch.object(sudo_grant.os, "geteuid", return_value=1000), \
+             mock.patch.object(sudo_grant.subprocess, "run",
+                               side_effect=_sudo_answers(listing, returncode,
+                                                         side_effect, seen)):
             return setup_module._service_controls_granted()
 
-    def test_permitted_command_means_granted(self):
-        self.assertTrue(self._run(returncode=0))
+    def _mod(self):
+        return _load_enable_service_controls()
 
-    def test_refused_command_means_not_granted(self):
-        self.assertFalse(self._run(returncode=1))
+    def test_a_nopasswd_rule_naming_the_probe_unit_is_granted(self):
+        listing = _sudo_listing([_BLANKET_AUTHORISED,
+                                 _granted_entry(self._mod(), self._mod().UNITS)])
+        self.assertTrue(self._run(listing))
+
+    def test_blanket_authorisation_without_nopasswd_is_not_granted(self):
+        """The live station, 2026-08-17. `(ALL : ALL) ALL` authorises every
+        command and grants passwordless execution of none of them, and the
+        NOPASSWD rule here predates oasis-nwr."""
+        mod = self._mod()
+        stale = _granted_entry(mod, mod.UNITS[:-1])
+        self.assertNotIn(setup_module._PERM_PROBE_UNIT, stale)
+        self.assertFalse(self._run(_sudo_listing([_BLANKET_AUTHORISED, stale])),
+                         "sudo authorising the command is not sudo running it "
+                         "without a password — the banner must not go green")
+
+    def test_blanket_nopasswd_is_granted(self):
+        # Stock Pi OS (/etc/sudoers.d/010_<user>-nopasswd): the buttons work and
+        # there is nothing left for a sudoers rule to grant.
+        self.assertTrue(self._run(_sudo_listing([_BLANKET_NOPASSWD])))
+
+    def test_a_unit_that_is_a_substring_of_a_granted_one_is_not_granted(self):
+        entry = ("(root) NOPASSWD: /usr/bin/systemctl restart "
+                 + setup_module._PERM_PROBE_UNIT.replace(".service", "-extra.service"))
+        self.assertFalse(self._run(_sudo_listing([entry])))
 
     def test_an_unreadable_sudoers_file_no_longer_reports_missing(self):
-        # The regression itself: sudo permits the command while the sudoers path
-        # is unreadable/absent to this process. The old probe said False here.
+        # Bug 1's regression: sudo grants the command while the sudoers path is
+        # unreadable/absent to this process. The artifact probe said False here.
+        listing = _sudo_listing([_granted_entry(self._mod(), self._mod().UNITS)])
         with mock.patch.object(setup_module.os.path, "exists", return_value=False):
-            self.assertTrue(self._run(returncode=0))
+            self.assertTrue(self._run(listing))
+
+    def test_sudo_refusing_to_list_is_not_granted(self):
+        # `sudo -n -l` exits non-zero when it has nothing to say or would have
+        # to prompt. Nothing is proven, so nothing is claimed.
+        self.assertFalse(self._run(_sudo_listing([_BLANKET_NOPASSWD]), returncode=1))
 
     def test_missing_sudo_is_false_not_a_crash(self):
         self.assertFalse(self._run(side_effect=FileNotFoundError("no sudo")))
@@ -691,23 +799,16 @@ class ServiceControlsGrantedTest(unittest.TestCase):
             side_effect=subprocess.TimeoutExpired(cmd="sudo", timeout=5)))
 
     def test_never_prompts(self):
-        # -n is what keeps a probe from blocking the setup page forever.
+        # -n is what keeps a probe from blocking the setup page forever, and -l
+        # is what keeps it from restarting the unit it asks about.
         seen = {}
-
-        def fake_run(argv, **kwargs):
-            seen["argv"] = argv
-            seen["timeout"] = kwargs.get("timeout")
-            return subprocess.CompletedProcess(args=argv, returncode=0, stdout="", stderr="")
-
-        with mock.patch.object(setup_module.sys, "platform", "linux"), \
-             mock.patch.object(setup_module.subprocess, "run", side_effect=fake_run):
-            setup_module._service_controls_granted()
-        self.assertEqual(seen["argv"][:3], ["sudo", "-n", "-l"])
+        self._run(_sudo_listing([_BLANKET_NOPASSWD]), seen=seen)
+        self.assertEqual(seen["argv"], ["sudo", "-n", "-l"])
         self.assertTrue(seen["timeout"])
 
     def test_off_linux_is_false_without_running_anything(self):
         with mock.patch.object(setup_module.sys, "platform", "darwin"), \
-             mock.patch.object(setup_module.subprocess, "run") as run:
+             mock.patch.object(sudo_grant.subprocess, "run") as run:
             self.assertFalse(setup_module._service_controls_granted())
             run.assert_not_called()
 
@@ -752,71 +853,72 @@ class GrantIsCurrentTest(unittest.TestCase):
 
     grant_is_current() replaces the artifact check with a capability probe.
     The property these tests hold: a grant file that predates a unit must be
-    detected as stale WITHOUT the operator being told to run anything."""
+    detected as stale WITHOUT the operator being told to run anything — and
+    the blanket `(ALL : ALL) ALL` every sudo-group operator carries must not
+    be mistaken for that grant."""
 
-    def _sudo_policy(self, mod, granted_content):
-        """A fake subprocess.run that answers `sudo -n -l <cmd>` from a given
-        sudoers body, the way sudo does: exit 0 iff the exact command string
-        appears among the granted commands."""
-        def fake_run(argv, **kwargs):
-            self.assertEqual(argv[:3], ["sudo", "-n", "-l"])   # never executes
-            cmd = " ".join(argv[3:])
-            rc = 0 if cmd in granted_content else 1
-            return subprocess.CompletedProcess(args=argv, returncode=rc)
-        return fake_run
+    def _probe(self, mod, listing, returncode=0, side_effect=None, seen=None):
+        with mock.patch.object(mod.sys, "platform", "linux"), \
+             mock.patch.object(sudo_grant.os, "geteuid", return_value=1000):
+            return mod.grant_is_current(
+                run=_sudo_answers(listing, returncode, side_effect, seen))
 
-    def _content(self, mod, units):
-        """The sudoers body the grant writer produces for `units` — generated
-        by the real build_content(), so this cannot drift from the format the
-        probe is matching against."""
-        real_units = mod.UNITS
-        try:
-            mod.UNITS = units
-            return mod.build_content("pi", "/usr/bin/systemctl", "/usr/bin/tcpdump",
-                                     "/sbin/reboot")
-        finally:
-            mod.UNITS = real_units
-
-    def _probe(self, mod, content):
-        with mock.patch.object(mod.sys, "platform", "linux"):
-            return mod.grant_is_current(run=self._sudo_policy(mod, content),
-                                        which=lambda b: "/usr/bin/" + b)
+    def _listing(self, mod, units, blanket=_BLANKET_AUTHORISED):
+        return _sudo_listing([blanket, _granted_entry(mod, units)])
 
     def test_a_grant_written_from_the_current_list_is_current(self):
         mod = _load_enable_service_controls()
-        self.assertTrue(self._probe(mod, self._content(mod, mod.UNITS)))
+        self.assertTrue(self._probe(mod, self._listing(mod, mod.UNITS)))
 
     def test_a_grant_that_predates_the_newest_unit_is_stale(self):
         # The exact upgraded-in-place station: its sudoers file was generated
-        # before oasis-nwr existed. Every older unit still answers yes.
+        # before oasis-nwr existed. Every older unit still answers yes, and so
+        # does the sudo-group blanket entry above it — for every unit there is.
         mod = _load_enable_service_controls()
-        old = self._content(mod, mod.UNITS[:-1])
+        old = self._listing(mod, mod.UNITS[:-1])
         self.assertNotIn(f"{mod.PROBE_UNIT}.service", old)
         self.assertIn("graywolf.service", old)         # the old probe's answer
+        self.assertIn(_BLANKET_AUTHORISED, old)        # and the newer one's
         self.assertFalse(self._probe(mod, old),
                          "a grant predating the newest unit must read as stale, "
                          "or the box silently never gets it")
 
     def test_no_grant_at_all_is_stale(self):
         mod = _load_enable_service_controls()
-        self.assertFalse(self._probe(mod, ""))
+        self.assertFalse(self._probe(mod, _sudo_listing([_BLANKET_AUTHORISED])))
+
+    def test_blanket_nopasswd_leaves_nothing_to_grant(self):
+        # Stock Pi OS. The commands run without a password, which is all the
+        # sudoers half is about — the journal half is grants_are_current()'s.
+        mod = _load_enable_service_controls()
+        self.assertTrue(self._probe(mod, _sudo_listing([_BLANKET_NOPASSWD])))
+
+    def test_a_longer_unit_name_does_not_answer_for_the_probe_unit(self):
+        mod = _load_enable_service_controls()
+        entry = (f"(root) NOPASSWD: /usr/bin/systemctl restart {mod.PROBE_UNIT}"
+                 f"-standby.service")
+        self.assertFalse(self._probe(mod, _sudo_listing([entry])))
+
+    def test_the_systemctl_path_in_the_rule_is_not_assumed(self):
+        # The rule names /usr/bin/systemctl; boxes differ. Compare basenames.
+        mod = _load_enable_service_controls()
+        entry = f"(root) NOPASSWD: /bin/systemctl restart {mod.PROBE_UNIT}.service"
+        self.assertTrue(self._probe(mod, _sudo_listing([entry])))
 
     def test_it_is_a_policy_lookup_and_never_prompts(self):
         mod = _load_enable_service_controls()
         seen = {}
-
-        def fake_run(argv, **kwargs):
-            seen["argv"] = argv
-            seen["timeout"] = kwargs.get("timeout")
-            return subprocess.CompletedProcess(args=argv, returncode=0)
-
-        with mock.patch.object(mod.sys, "platform", "linux"):
-            mod.grant_is_current(run=fake_run, which=lambda b: "/usr/bin/" + b)
+        self._probe(mod, _sudo_listing([_BLANKET_NOPASSWD]), seen=seen)
         # -n is what stops a probe hanging the startup path on a password
-        # prompt; -l is what stops it from RESTARTING the unit it asks about.
-        self.assertEqual(seen["argv"][:3], ["sudo", "-n", "-l"])
-        self.assertIn("restart", seen["argv"])
+        # prompt; -l is what stops it from RESTARTING the unit it asks about;
+        # and no command argument is what makes the TAGS visible.
+        self.assertEqual(seen["argv"], ["sudo", "-n", "-l"])
         self.assertTrue(seen["timeout"])
+
+    def test_sudo_refusing_to_list_reads_as_stale(self):
+        mod = _load_enable_service_controls()
+        self.assertFalse(self._probe(mod, _sudo_listing([_BLANKET_NOPASSWD]),
+                                     returncode=1))
 
     def test_off_linux_is_false_without_running_anything(self):
         mod = _load_enable_service_controls()
@@ -829,7 +931,53 @@ class GrantIsCurrentTest(unittest.TestCase):
         # Re-granting is idempotent; assuming granted is the silent-healthy
         # state this whole function exists to end.
         mod = _load_enable_service_controls()
-        with mock.patch.object(mod.sys, "platform", "linux"):
-            self.assertFalse(mod.grant_is_current(
-                run=mock.Mock(side_effect=OSError("no sudo")),
-                which=lambda b: "/usr/bin/" + b))
+        self.assertFalse(self._probe(mod, "", side_effect=OSError("no sudo")))
+
+
+class SudoListingParserTest(unittest.TestCase):
+    """common/sudo_grant.py — reading `sudo -n -l` output for what it says.
+
+    The one thing every earlier probe got wrong: an entry can authorise a
+    command and still require a password. Only the NOPASSWD tag says otherwise,
+    and the tag is only visible in the tagged listing."""
+
+    def test_tags_are_sticky_within_an_entry_and_reset_on_PASSWD(self):
+        entry = "(root) NOPASSWD: /bin/a, /bin/b, PASSWD: /bin/c"
+        got = sudo_grant.nopasswd_commands(_sudo_listing([entry]))
+        self.assertEqual(got, [["/bin/a"], ["/bin/b"]])
+
+    def test_other_tags_do_not_clear_nopasswd(self):
+        entry = "(root) NOPASSWD: SETENV: /bin/a"
+        self.assertEqual(sudo_grant.nopasswd_commands(_sudo_listing([entry])),
+                         [["/bin/a"]])
+
+    def test_an_untagged_entry_grants_nothing_passwordless(self):
+        self.assertEqual(
+            sudo_grant.nopasswd_commands(_sudo_listing([_BLANKET_AUTHORISED])), [])
+
+    def test_a_wrapped_entry_is_rejoined_before_parsing(self):
+        """Our real rule is one entry of 5 actions x 11 units plus five more
+        commands; sudo wraps it. Parsing the fragments as separate entries
+        drops every one of them — they do not start with a runas spec."""
+        mod = _load_enable_service_controls()
+        listing = _sudo_listing([_granted_entry(mod, mod.UNITS)])
+        self.assertIn("\\\n", listing)                 # it really did wrap
+        cmds = sudo_grant.nopasswd_commands(listing)
+        self.assertIn(["/usr/bin/systemctl", "start", f"{mod.PROBE_UNIT}.service"],
+                      cmds)
+        self.assertIn(["/usr/bin/systemctl", "disable", "graywolf.service"], cmds)
+
+    def test_headers_and_defaults_are_not_entries(self):
+        self.assertEqual(sudo_grant.nopasswd_commands(_sudo_listing([])), [])
+
+    def test_empty_and_missing_listings_parse_to_nothing(self):
+        self.assertEqual(sudo_grant.nopasswd_commands(""), [])
+        self.assertEqual(sudo_grant.nopasswd_commands(None), [])
+
+    def test_root_needs_no_sudoers_rule(self):
+        # `sudo -l` as root prints an untagged `(ALL : ALL) ALL`, which would
+        # otherwise re-grant on every start of a root-run server.
+        with mock.patch.object(sudo_grant.os, "geteuid", return_value=0), \
+             mock.patch.object(sudo_grant.subprocess, "run") as run:
+            self.assertTrue(sudo_grant.systemctl_nopasswd_granted("oasis-nwr.service"))
+            run.assert_not_called()

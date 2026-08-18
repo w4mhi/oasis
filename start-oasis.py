@@ -280,9 +280,12 @@ def _service_controls_current():
     green while the console's NWR cell sits on 'assigned, stopped'.
 
     So ask the grant writer, which owns the unit list, whether sudo will
-    actually run its newest unit's commands (see grant_is_current there — a
-    `sudo -n -l` policy lookup, no execution, never prompts). Probe capability,
-    not artifact: this codebase has shipped that bug four times now.
+    actually run its newest unit's commands WITHOUT A PASSWORD (see
+    grant_is_current there — a NOPASSWD lookup in `sudo -n -l`, no execution,
+    never prompts). Probe capability, not artifact, and probe the capability
+    that is actually used: "authorised to run it" is a different question, and
+    answering that one instead is how the sudoers file lost oasis-nwr without
+    anyone noticing. This codebase has shipped that bug five times now.
 
     grants_are_current(), NOT grant_is_current(): the script also adds the user
     to systemd-journal for the Winlink session console, and the sudoers probe
