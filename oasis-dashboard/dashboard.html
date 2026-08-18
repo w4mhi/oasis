@@ -692,15 +692,29 @@
   #ov-srvops .ov-head .e .hw-ic{ width:1.3em; height:1.3em; flex:0 0 auto; }
   #ov-srvops .ov-x{ margin-left:0; }
   .so-hint{ font-size:1.2rem; color:var(--dim); padding:0 .2rem 1rem; }
-  .so-mx{ display:grid; grid-template-columns:13rem repeat(5,1fr);
+  /* HW column is 16rem, not 13rem: it has to hold a label like
+     "RTL-SDR (00001000)" AND the 52px lock button, and the five service columns
+     only carry a 56px toggle each, so the width comes out of their slack. At the
+     small kiosk's 13px root that leaves ~133px of text, which is one line for
+     the labels this station actually produces. */
+  .so-mx{ display:grid; grid-template-columns:16rem repeat(5,1fr);
     border:1px solid var(--border); border-radius:.8rem; overflow:hidden; }
   .so-mh{ font-size:1.35rem; text-transform:uppercase; letter-spacing:.04em; color:var(--dim);
     text-align:center; padding:.6rem .2rem; border-bottom:1px solid var(--border); white-space:nowrap; }
   .so-mh.hw{ text-align:left; padding-left:1rem; }
   .so-hwc{ display:flex; align-items:center; gap:.5rem; min-height:64px; padding:0 .4rem 0 1rem;
     border-bottom:1px solid var(--border); }
-  .so-hwc .nm{ font-weight:700; font-size:1.65rem; line-height:1.1; }
-  .so-hwc .sr{ font-size:1.05rem; color:var(--faint); }
+  /* min-width:0 or the text block refuses to shrink below its content and pushes
+     the lock button out of the cell instead of wrapping. */
+  .so-hwc > div{ min-width:0; }
+  /* Was 1.65rem/1.05rem. The root font is clamp(13px,1.9vh,24px), so 1.65rem is
+     ~21px on an 800x480 panel and ~38px on a 1920x1200 one -- wide enough to
+     wrap a serial mid-token in either. These sizes keep the label on one line at
+     both ends of that clamp; the touch targets (64px row, 52px lock) are
+     unchanged, so nothing got harder to hit. */
+  .so-hwc .nm{ font-weight:700; font-size:1.2rem; line-height:1.15;
+    overflow-wrap:anywhere; }
+  .so-hwc .sr{ font-size:.9rem; color:var(--faint); overflow-wrap:anywhere; }
   .so-lk{ margin-left:auto; width:52px; height:52px; border:none; background:transparent;
     color:var(--amber); cursor:pointer; display:flex; align-items:center; justify-content:center;
     border-radius:.5rem; line-height:0; }
