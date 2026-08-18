@@ -473,7 +473,10 @@ async function lookupCall(which) {
 
   try {
     const r = await fetch(`/api/lookup?callsign=${encodeURIComponent(call)}`, { cache: 'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    // Drain before giving up: an unread fetch() body pins a 2 MiB /dev/shm data
+    // pipe until Chromium collects the Response. Throwing after the drain keeps
+    // the error the operator sees exactly what it was.
+    if (!r.ok) { await r.text().catch(() => {}); throw new Error('HTTP ' + r.status); }
     const d = await r.json();
 
     if (!d.ok) throw new Error(d.error || 'Lookup failed');

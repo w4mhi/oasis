@@ -180,7 +180,10 @@ async function init() {
 
   try {
     const r = await fetch(`data/${encodeURIComponent(name)}.json`);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    // Drain before giving up: an unread fetch() body pins a 2 MiB /dev/shm data
+    // pipe until Chromium collects the Response. Throwing after the drain keeps
+    // the message showError prints unchanged.
+    if (!r.ok) { await r.text().catch(() => {}); throw new Error(`HTTP ${r.status}`); }
     band = await r.json();
   } catch (e) {
     showError(`Could not load ${name}.json — ${e.message}`);

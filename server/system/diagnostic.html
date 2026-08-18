@@ -172,8 +172,11 @@ async function loadStation() {
   const el = document.getElementById('diagStation');
   try {
     const r = await fetch('/station.json', { cache: 'no-store' });
-    if (!r.ok) return;
-    const st = await r.json();
+    // Read on EVERY path: an unread fetch() body pins a 2 MiB /dev/shm data pipe
+    // until Chromium collects the Response. The diagnostics run below already
+    // takes the body whatever the status says.
+    const st = await r.json().catch(() => null);
+    if (!r.ok || !st) return;
     const cs = (st && st.callsign) ? String(st.callsign).toUpperCase() : '';
     const gr = (st && st.grid) ? String(st.grid).toUpperCase() : '';
     const joined = [cs, gr].filter(Boolean).join(' · ');

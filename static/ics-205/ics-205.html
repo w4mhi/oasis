@@ -1222,7 +1222,12 @@ async function loadSaved(name){
   let plan;
   try{
     const res=await fetch('/static/ics-205/saved/'+encodeURIComponent(name),{cache:'no-store'});
-    if(!res.ok) throw new Error('HTTP '+res.status);
+    // Drain before giving up. An unread fetch() body pins a 2 MiB /dev/shm data
+    // pipe until Chromium collects the Response, and an ICS-205 stays open for
+    // a whole operational period. The save and list calls above already read on
+    // every path; these two loads did not. Draining and then throwing keeps the
+    // error the caller sees exactly what it was.
+    if(!res.ok){ await res.text().catch(()=>{}); throw new Error('HTTP '+res.status); }
     plan=await res.json();
   }catch(err){ showToast('Load failed: '+err.message,'err',6000); return; }
   if(!plan || typeof plan!=='object'){ showToast('That file is not a valid ICS-205 plan','err',5000); return; }
@@ -1266,7 +1271,7 @@ async function loadChirpFromServer(name){
   let text;
   try{
     const res=await fetch('/static/chirp/'+encodeURIComponent(name),{cache:'no-store'});
-    if(!res.ok) throw new Error('HTTP '+res.status);
+    if(!res.ok){ await res.text().catch(()=>{}); throw new Error('HTTP '+res.status); }   // read on every path
     text=await res.text();
   }catch(err){ showToast('Load failed: '+err.message,'err',6000); return; }
   closeChirpDialog();

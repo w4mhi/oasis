@@ -772,9 +772,13 @@ function postSelections(map) {
   const selections = {};
   for (const norad in map) selections[+norad] = !!map[norad];
   if (!Object.keys(selections).length) return Promise.resolve();
+  // The answer is not wanted, but it still has to be drunk: an unread fetch()
+  // body pins a 2 MiB /dev/shm data pipe until Chromium collects the Response,
+  // and this page stays open across whole passes. Every other fetch here already
+  // parses the body straight off the Response, whatever the status says.
   return fetch('/api/satellites/select', { method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
-    body: JSON.stringify({ selections }) }).catch(() => {});
+    body: JSON.stringify({ selections }) }).then(r => r.text()).catch(() => {});
 }
 function postSelect(norad, selected) { return postSelections({ [norad]: selected }); }
 // Reconcile this browser's selection with the shared server roster on load, so

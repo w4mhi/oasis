@@ -451,8 +451,12 @@ async function api(path, opts) {
     // Surface Pat's own error text (it responds with plain-text like
     // "Validation error: …" or "Missing date value"), not just the status —
     // otherwise a 400 is undiagnosable.
+    // res.text(), not res.clone().text(): nothing downstream of this throw ever
+    // reads `res`, and cloning tees the body so the branch nobody reads sits
+    // buffered until Chromium collects the Response -- the same /dev/shm cost
+    // that an unread body carries, for no gain.
     let detail = "";
-    try { detail = (await res.clone().text()).trim(); } catch (_) {}
+    try { detail = (await res.text()).trim(); } catch (_) {}
     throw new Error(detail ? `Pat error ${res.status}: ${detail}` : `Pat error ${res.status}`);
   }
   return res;
@@ -1329,8 +1333,11 @@ async function runConnect(url, label) {
 // which unblocks runConnect's await — its finally then refreshes everything.
 async function abortConnect() {
   logLine("Aborting session…");
-  try { await fetch(`${API}/disconnect`, { method: "POST", cache: "no-store",
-                                            headers: { "X-OASIS-Request": "1" } }); }
+  // The answer is not wanted, but an unread body pins a /dev/shm pipe until
+  // Chromium collects the Response, so take it and drop it.
+  try { const r = await fetch(`${API}/disconnect`, { method: "POST", cache: "no-store",
+                                                    headers: { "X-OASIS-Request": "1" } });
+        await r.text(); }
   catch (_) { /* the connect returning is what matters */ }
 }
 

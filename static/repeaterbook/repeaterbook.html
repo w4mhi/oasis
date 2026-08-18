@@ -376,7 +376,10 @@ async function loadCSV() {
   const stateArea = document.getElementById('state-area');
   try {
     const resp = await fetch('repeaterbook.csv', { cache: 'no-store' });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    // Drain before giving up: an unread fetch() body pins a 2 MiB /dev/shm data
+    // pipe until Chromium collects the Response. Throwing after the drain keeps
+    // the error message the operator sees unchanged.
+    if (!resp.ok) { await resp.text().catch(() => {}); throw new Error(`HTTP ${resp.status}`); }
     const text = await resp.text();
     const { headers, rows } = parseCSV(text);
     ALL = buildRepeaters(headers, rows);

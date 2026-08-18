@@ -238,7 +238,11 @@ async function init() {
   for (const fn of BAND_FILES) {
     try {
       const r = await fetch(`data/${fn}.json`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      // Drain before giving up: an unread fetch() body pins a 2 MiB /dev/shm
+      // data pipe until Chromium collects the Response, and this loop runs over
+      // every band file. Throwing after the drain keeps the printed row's
+      // message unchanged.
+      if (!r.ok) { await r.text().catch(() => {}); throw new Error(`HTTP ${r.status}`); }
       const band = await r.json();
       allBands.push(band);
       container.appendChild(buildBandRow(band));
