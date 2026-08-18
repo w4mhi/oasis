@@ -21,13 +21,13 @@ body { margin: 0; }
            text-transform: uppercase; color: var(--text-dim); }
 .row { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; }
 .row label { min-width: 5.5rem; color: var(--text-dim); font-size: var(--fs-small); }
-select, button { font: inherit; }
-button { padding: .35rem .8rem; border-radius: 6px; border: 1px solid var(--border);
-         background: var(--panel-2); color: var(--text); cursor: pointer; }
-button[disabled] { opacity: .45; cursor: not-allowed; }
-button.primary { border-color: var(--accent); color: var(--accent); }
+select { font: inherit; }
+select[disabled] { opacity: .45; cursor: not-allowed; }
+.note { font-size: var(--fs-small); color: var(--text-dim); margin: 0 0 .6rem; }
 #state { font-size: var(--fs-small); color: var(--text-dim); }
 #state.live { color: var(--accent); }
+#state.warn { color: var(--amber); }
+#state.down { color: var(--red); }
 table { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
 th { text-align: left; color: var(--text-dim); font-weight: 600;
      border-bottom: 1px solid var(--border); padding: .35rem .4rem; }
@@ -36,11 +36,7 @@ td { padding: .35rem .4rem; border-bottom: 1px solid var(--border);
 tr.matched td { background: rgba(255, 176, 0, .07); }
 tr.info td { color: var(--text-dim); }
 code.raw { font-size: var(--fs-micro); color: var(--text-dim); word-break: break-all; }
-.bars { display: grid; gap: .25rem; }
-.bar { display: grid; grid-template-columns: 3rem 1fr 4rem; gap: .4rem;
-       align-items: center; font-size: var(--fs-micro); }
-.bar i { display: block; height: 8px; border-radius: 4px; background: var(--accent); }
-.warn { color: var(--red); }
+.warn { color: var(--red); font-size: var(--fs-small); }
 </style>
 </head>
 <body>
@@ -54,27 +50,18 @@ code.raw { font-size: var(--fs-micro); color: var(--text-dim); word-break: break
 <div class="wrap">
   <div>
     <div class="card">
-      <h2>Receiver</h2>
+      <h2>The watch</h2>
+      <p class="note">The watch runs on its own, from boot, in the oasis-nwr
+        service. Start it, stop it or give it a dongle in Setup. This page
+        reads it and listens in.</p>
       <div class="row">
         <label for="chan">Channel</label>
         <select id="chan"></select>
       </div>
-      <div class="row">
-        <button id="listen" class="primary">Listen</button>
-        <button id="stop" disabled>Stop</button>
-        <button id="scan">Scan</button>
-      </div>
+      <div class="row"><span id="msg"></span></div>
       <div class="row"><span id="err"></span></div>
       <div class="row"><span id="pre"></span></div>
-      <audio id="audio" controls style="width:100%;display:none"></audio>
-    </div>
-
-    <div class="card" id="scancard" style="display:none">
-      <h2>Channel scan</h2>
-      <div class="bars" id="scanbars"></div>
-      <div class="row" style="margin-top:.6rem">
-        <button id="usebest" disabled>Use strongest</button>
-      </div>
+      <audio id="audio" controls preload="none" style="width:100%;display:none"></audio>
     </div>
   </div>
 
@@ -88,8 +75,19 @@ code.raw { font-size: var(--fs-micro); color: var(--text-dim); word-break: break
   </div>
 </div>
 
+<script src="/common/js/nwr-card.js"></script>
 <script>
 'use strict';
+
+// THIS PAGE STARTS NOTHING. The watch is the oasis-nwr daemon -- its own
+// systemd unit on 127.0.0.1:8089 -- and service ops owns starting and stopping
+// it. v1's Listen, Stop and Scan buttons are gone, and their routes with them:
+// a capture spawned from here would spawn a second rtl_fm against the dongle
+// the daemon already holds and die at usb_claim_interface, and
+// preconditions.busy cannot warn about it, because sdr_rx.dongle_busy()
+// excludes the caller's OWN service and oasis-nwr IS nwr's unit -- so busy
+// reads false for this page against its own watch. What is left here is a
+// reader: pin a channel, listen in on the daemon's audio, read the decode log.
 
 // Every response body is consumed here, on every path. An unread body pins a
 // 2 MiB /dev/shm data pipe per request, which cost ~500 MB/h on a live station.
@@ -118,8 +116,8 @@ function post(url, body) {
 }
 
 const $ = function (id) { return document.getElementById(id); };
+const STREAM_URL = '/api/nwr/listen/stream';
 let CHANNELS = [];
-let listening = false;
 let polling = false;   // re-entrancy guard for poll() — see Finding 7
 
 function fmtTime(epoch) {
@@ -135,63 +133,176 @@ function areaText(a) {
   return name + ' (no coordinates - not plotted)';
 }
 
-function renderStatus(d) {
-  const cap = d.capture, pre = d.preconditions;
-  listening = cap.listening;
-  $('listen').disabled = listening || pre.busy || pre.missing_deps.length > 0;
-  $('stop').disabled = !listening;
-  $('scan').disabled = listening || pre.busy || !pre.can_scan;
+function chanLabel(hz) {
+  const hit = CHANNELS.filter(function (c) { return Number(c.hz) === Number(hz); })[0];
+  return hit ? hit.label : ((Number(hz) / 1e6).toFixed(3) + ' MHz');
+}
 
-  const st = $('state');
-  if (listening) {
-    st.textContent = 'LISTENING - ' + (cap.channel || '') + ' - ' +
-                     cap.elapsed_s + 's - ' + cap.alerts_seen + ' decoded';
-    st.className = 'live';
-  } else {
-    st.textContent = 'idle';
-    st.className = '';
+// The <select> value as a /api/nwr/config patch. 'auto' clears the pin and the
+// daemon's next channel choice sweeps the band again (choose_channel); any
+// other value pins that channel and skips the sweep entirely.
+function pinPatch(value) {
+  const hz = parseInt(value, 10);
+  return { pinned_channel: (value === 'auto' || isNaN(hz)) ? null : hz };
+}
+
+// The daemon reads pinned_channel only when it next CHOOSES a channel, and a
+// healthy capture is never interrupted to re-read it (daemon.py supervise():
+// while listening it stops only for a due rescan). So a pin set mid-capture is
+// stored but not yet in effect, and saying nothing would read as the page
+// having ignored the click.
+function pinNote(d) {
+  const w = (d && d.watch) || {};
+  const cfg = (d && d.config) || {};
+  if (!cfg.pinned_channel || !w.listening) { return ''; }
+  if (Number(cfg.pinned_channel) === Number(w.channel_hz)) { return ''; }
+  return 'pinned ' + chanLabel(cfg.pinned_channel) +
+         ' - takes effect when the watch next changes channel';
+}
+
+// The status line: is the watch running, on what channel, and since when.
+//
+// The state vocabulary is nwrCardState()'s, from common/js/nwr-card.js -- the
+// same module both dashboards' Weather Radio cards use. Reimplementing the
+// state ladder here is exactly the drift that module was created to end, so
+// this only adds what a card has no room for: the time the capture started.
+function watchLine(d, nowMs) {
+  const w = (d && d.watch) || {};
+  const cs = nwrCardState(d, null);
+  const parts = [cs.badge];
+  if (cs.sub) { parts.push(cs.sub); }
+  if (w.listening && w.elapsed_s) {
+    parts.push('since ' + fmtTime(Math.round(nowMs / 1000) - w.elapsed_s));
   }
+  return { text: parts.join(' - '),
+           cls: cs.state === 'up' ? 'live' : (cs.state === 'warn' ? 'warn' : 'down') };
+}
 
-  const notes = [];
-  if (pre.missing_deps.length) { notes.push('not installed: ' + pre.missing_deps.join(', ')); }
-  if (!pre.assigned) { notes.push('no dongle assigned (Setup - Hardware)'); }
-  else if (pre.busy) { notes.push('dongle held by ' + pre.holder); }
-  else if (!pre.dongle_present) { notes.push('no RTL-SDR detected'); }
-  if (!pre.can_stream) { notes.push('no audio encoder - decode only'); }
-  if (!pre.can_scan) { notes.push('rtl_power missing - scan unavailable'); }
-  const pre_el = $('pre');
-  pre_el.textContent = notes.join(' | ');
-  pre_el.className = notes.length ? 'warn' : '';
+// Attaching a src opens NO connection: the element carries preload="none", so
+// the browser waits for the operator to press play. An armed element can
+// therefore sit here indefinitely without costing the daemon a subscriber, an
+// ffmpeg, or one of its three stream slots.
+function armStream(el, nowMs) {
+  el.setAttribute('src', STREAM_URL + '?t=' + nowMs);
+}
 
-  // capture.last_error is a different kind of message from the preconditions
-  // above: preconditions describe the current environment (missing deps, no
-  // dongle assigned), while last_error is the server's own record of why the
-  // LAST ATTEMPT failed. They used to share #pre, and a poll where every
-  // precondition read green -- assigned, not busy, dongle present -- wiped a
-  // correctly diagnosed start failure off the screen within milliseconds,
-  // because the conflict engine does not model a bare rtl_433 holding the
-  // dongle, so `notes` came back empty and clobbered it. Giving the error its
-  // own element means neither message can erase the other.
-  //
-  // No client-side staleness flag is needed: start() clears last_error to
-  // None in the same _state update that flips listening true (see
-  // services/nwr/common/listener.py), so cap.last_error already IS current
-  // truth whenever this status arrives -- inventing a second "is this stale"
-  // signal here would just duplicate state the server already tracks.
-  const err_el = $('err');
-  err_el.textContent = cap.last_error || '';
-  err_el.className = cap.last_error ? 'warn' : '';
+// Pausing an <audio> does NOT close its TCP connection: the daemon keeps the
+// subscriber and its ffmpeg encoder alive on the other end, and it allows
+// MAX_STREAMS = 3 at a time -- so three pauses exhaust the budget and every
+// later play answers 503. Orphaned encoders of exactly that shape were found
+// running on a live station. Tearing the element down is what actually drops
+// the connection, and removeAttribute alone does not do it: the media load
+// algorithm runs when src is SET or CHANGED, not when it is removed, so the
+// explicit load() below is the line that ends the stream.
+function detachStream(el) {
+  el.removeAttribute('src');
+  el.load();
+}
 
-  if (!CHANNELS.length) {
+// Play with nothing attached: arm and start. Only reachable if a failed load
+// left the element bare, since handlePause re-arms -- but a play button that
+// visibly does nothing is worse than the four lines that prevent it.
+function handlePlay(el, nowMs) {
+  if (el.getAttribute('src')) { return false; }
+  armStream(el, nowMs);
+  const p = el.play();
+  if (p && typeof p.catch === 'function') { p.catch(function () {}); }
+  return true;
+}
+
+// Pause tears the stream down, then re-arms with a FRESH cache-busting URL so
+// the next play opens a new stream rather than resuming a dead one.
+function handlePause(el, nowMs) {
+  // A 'pause' event that fires while el.paused is false is not the operator:
+  // it is the media load algorithm's own pause, queued when armStream()
+  // attached a src and already superseded by the play() that followed it.
+  // Tearing down there would undo the attach that is still in flight.
+  if (el.paused === false) { return false; }
+  detachStream(el);
+  armStream(el, nowMs);
+  return true;
+}
+
+function setMsg(text) {
+  // #msg is the page's OWN slot -- a refused channel pin, a stream that would
+  // not open -- and poll() never writes to it. #err below belongs to the
+  // daemon. Two messages, two elements, so neither can erase the other.
+  const el = $('msg');
+  el.textContent = text || '';
+  el.className = text ? 'warn' : '';
+}
+
+function renderStatus(d, nowMs) {
+  const w = d.watch || {}, pre = d.preconditions || {}, cfg = d.config || {};
+
+  // First, because CHANNELS is what chanLabel() -- and so pinNote() below --
+  // turns a frequency into a channel name with.
+  const sel = $('chan');
+  if (!CHANNELS.length && (d.channels || []).length) {
     CHANNELS = d.channels;
-    const sel = $('chan');
+    const auto = document.createElement('option');
+    auto.value = 'auto';
+    auto.textContent = 'Auto - the watch picks the strongest';
+    sel.appendChild(auto);
     CHANNELS.forEach(function (c) {
       const o = document.createElement('option');
       o.value = String(c.hz);
       o.textContent = c.label + '  ' + (c.hz / 1e6).toFixed(3) + ' MHz';
       sel.appendChild(o);
     });
-    sel.value = String(d.config.channel_hz);
+  }
+  // The pin is server state, so every poll re-reads it -- except while the
+  // operator has the dropdown open, where rewriting the value would close it
+  // under their hand.
+  if (sel !== document.activeElement) {
+    sel.value = cfg.pinned_channel ? String(cfg.pinned_channel) : 'auto';
+  }
+
+  const line = watchLine(d, nowMs);
+  const st = $('state');
+  st.textContent = line.text;
+  st.className = line.cls;
+
+  // Only what the status line does not already say. Missing deps, an
+  // unassigned or absent dongle and a busy one are all nwrCardState() states
+  // and appear above; repeating them here would just say everything twice.
+  const notes = [];
+  if (!pre.can_stream) { notes.push('no audio encoder - decode only, no listening in'); }
+  if (!pre.can_scan) { notes.push('rtl_power missing - the watch cannot sweep the band'); }
+  const pin = pinNote(d);
+  if (pin) { notes.push(pin); }
+  const pre_el = $('pre');
+  pre_el.textContent = notes.join(' | ');
+  pre_el.className = notes.length ? 'warn' : '';
+
+  // watch.last_error is a different kind of message from the notes above:
+  // those describe the current environment (no encoder, no rtl_power), while
+  // last_error is the daemon's own record of why the LAST attempt failed. They
+  // used to share #pre, and a poll where every precondition read green wiped a
+  // correctly diagnosed start failure off the screen within milliseconds,
+  // because the conflict engine does not model a bare rtl_433 holding the
+  // dongle, so `notes` came back empty and clobbered it. Giving the error its
+  // own element means neither message can erase the other.
+  //
+  // No client-side staleness flag is needed: supervise() overwrites last_error
+  // with the result of every start attempt in the same locked update that sets
+  // the phase (services/nwr/common/daemon.py), so a successful start clears it
+  // to null and watch.last_error already IS current truth whenever this status
+  // arrives -- inventing a second "is this stale" signal here would just
+  // duplicate state the daemon already tracks.
+  const err_el = $('err');
+  err_el.textContent = w.last_error || '';
+  err_el.className = w.last_error ? 'warn' : '';
+
+  const au = $('audio');
+  if (w.listening) {
+    au.style.display = 'block';
+    if (!au.getAttribute('src')) { armStream(au, nowMs); }
+  } else {
+    au.style.display = 'none';
+    // A watch that has stopped leaves nothing to hear, and an element left
+    // attached behind display:none is the orphaned-encoder shape again.
+    if (au.getAttribute('src')) { detachStream(au); }
   }
 }
 
@@ -245,7 +356,7 @@ async function poll() {
   polling = true;
   try {
     const s = await api('/api/nwr/status');
-    if (s.data && s.data.ok) { renderStatus(s.data); }
+    if (s.data && s.data.ok) { renderStatus(s.data, Date.now()); }
     const a = await api('/api/nwr/alerts?limit=50');
     if (a.data && a.data.ok) { renderAlerts(a.data); }
   } finally {
@@ -253,79 +364,29 @@ async function poll() {
   }
 }
 
-$('listen').addEventListener('click', async function () {
-  $('listen').disabled = true;
-  const hz = parseInt($('chan').value, 10);
-  const r = await post('/api/nwr/listen', { channel_hz: hz });
-  if (!r.data || !r.data.ok) {
-    // Instant paint before poll() lands: /api/nwr/status can sit behind a
-    // slow rtl_test call (Finding 6), and the operator should not stare at a
-    // blank line while it resolves. poll() below overwrites this with
-    // capture.last_error -- the server's own record of the failure -- which
-    // is what actually persists across the polls that follow.
-    $('err').textContent = (r.data && r.data.error) || 'could not start';
-    $('err').className = 'warn';
-  } else {
-    const el = $('audio');
-    el.src = '/api/nwr/listen/stream?t=' + Date.now();
-    el.style.display = 'block';
-  }
+$('chan').addEventListener('change', async function () {
+  const sel = $('chan');
+  sel.disabled = true;
+  const r = await post('/api/nwr/config', pinPatch(sel.value));
+  sel.disabled = false;
+  // Instant paint, and it stays: poll() writes the daemon's own last_error to
+  // #err and never touches #msg, so a refused pin cannot be wiped by the
+  // status that lands a moment later.
+  setMsg((!r.data || !r.data.ok)
+    ? ((r.data && r.data.error) || 'could not set the channel')
+    : '');
   poll();
 });
 
-$('stop').addEventListener('click', async function () {
-  const el = $('audio');
-  el.pause();
-  el.removeAttribute('src');
-  el.load();                 // tear the stream down; a live <audio> holds the dongle
-  el.style.display = 'none';
-  await post('/api/nwr/listen/stop');
-  poll();
-});
-
-$('scan').addEventListener('click', async function () {
-  $('scan').disabled = true;
-  $('scancard').style.display = 'block';
-  $('scanbars').textContent = 'sweeping 162.390-162.560 MHz...';
-  const r = await post('/api/nwr/scan');
-  $('scanbars').textContent = '';
-  if (!r.data || !r.data.ok) {
-    $('scanbars').textContent = (r.data && r.data.error) || 'scan failed';
-    poll();
-    return;
-  }
-  const powers = r.data.powers;
-  const vals = Object.keys(powers).map(function (k) { return powers[k]; });
-  const lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
-  CHANNELS.forEach(function (c) {
-    const dbm = powers[String(c.hz)];
-    if (dbm === undefined) { return; }
-    const row = document.createElement('div');
-    row.className = 'bar';
-    const label = document.createElement('span');
-    label.textContent = c.label;
-    const track = document.createElement('span');
-    const fill = document.createElement('i');
-    const pct = hi > lo ? Math.round(((dbm - lo) / (hi - lo)) * 100) : 100;
-    fill.style.width = Math.max(2, pct) + '%';
-    track.appendChild(fill);
-    const num = document.createElement('span');
-    num.textContent = dbm.toFixed(1) + ' dB';
-    row.appendChild(label); row.appendChild(track); row.appendChild(num);
-    $('scanbars').appendChild(row);
-  });
-  if (r.data.best_hz) {
-    $('usebest').disabled = false;
-    $('usebest').dataset.hz = String(r.data.best_hz);
-  }
-  poll();
-});
-
-$('usebest').addEventListener('click', async function () {
-  const hz = parseInt($('usebest').dataset.hz, 10);
-  await post('/api/nwr/config', { channel_hz: hz });
-  $('chan').value = String(hz);
-  poll();
+$('audio').addEventListener('play', function () { handlePlay($('audio'), Date.now()); });
+$('audio').addEventListener('pause', function () { handlePause($('audio'), Date.now()); });
+$('audio').addEventListener('error', function () {
+  // The relay refuses with JSON the element cannot render -- 409 while the
+  // watch is down, 503 with no encoder or with all three stream slots taken --
+  // and all of them surface here as a bare media error.
+  setMsg('the audio stream would not open - see the status line above');
+  detachStream($('audio'));
+  armStream($('audio'), Date.now());
 });
 
 poll();
