@@ -516,9 +516,18 @@ async function setupAutoSelectInstalledFeatures() {
 
   // Complement the manifest with live systemd probes.
   try {
+    // unit name -> feature key.
     const serviceMap = {
       graywolf: 'graywolf', pat: 'winlink', kiwix: 'kiwix',
       openwebrx: 'openwebrx', 'adsb-api': 'adsb', webssh: 'webssh',
+      // The NOAA Weather Radio watch. Only its ACTIVE state can ever match:
+      // nwr_install stops short of `systemctl enable` on purpose (the dongle
+      // assignment is what brings the watch back, via boot_start_plan), so
+      // oasis-nwr is `disabled` even on a box that runs it. That is the right
+      // answer here — a running watch is now detected instead of offering a
+      // fresh install over the top of one — and the ledger still covers the
+      // installed-but-stopped case, exactly as it does for every other feature.
+      'oasis-nwr': 'nwr',
     };
     // Units apt ships in /usr/lib/systemd/system, which the leave-apt removal
     // policy keeps on the box forever. For these, `enabled` is NOT evidence of

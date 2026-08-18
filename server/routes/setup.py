@@ -160,6 +160,19 @@ def _setup_preflight_blockers(selected, payload, online):
         # draws-gps apt-installs gpsd + chrony, exactly like 'gps'. draws-audio
         # is config-only (amixer + a udev rule) and works fully offline.
         "gps", "draws-gps", "cm4stack", "wikipedia",
+        # nwr is deliberately NOT here, though it apt-installs multimon-ng and
+        # so looks like it belongs. Everything it needs ships in the bundle:
+        # multimon-ng is declared by the manifest's `rtl-sdr-diag` feature
+        # (bundle_group "rtl-sdr") and vendored per suite per arch by
+        # create-oasis-offline.py's phase_rtl_sdr, alongside rtl-sdr/rtl_fm
+        # itself. nwr's FeatureSpec declares dependencies=["server", "rtl-sdr"],
+        # so the rtl-sdr install runs first and its step 6 already put
+        # multimon-ng on the box — nwr's own apt call is then a no-op success.
+        # Listing it would block, on an offline box, a feature that installs
+        # there fine. The one soft spot is that multimon-ng's X11/audio deps are
+        # not fully vendored, so on a minimal image the offline .deb can fail and
+        # fall back to apt; that is a best-effort degrade with its own warning,
+        # not a reason to refuse the install outright.
     }
     if not online:
         for key in sorted(sel & internet_required):

@@ -202,21 +202,34 @@ def capture_rms(rtl_fm, freq, gain, ppm, seconds, device_index=None):
 
 
 # Other SDR services that can hold a dongle open. When an operator plugs in a
-# new dongle for APRS *after* installing ADS-B (or OpenWebRX / satellites), the
-# audio test must not fight those services for the device they've been assigned:
-# rtl_fm with no -d grabs index 0, which is dump1090's dongle — hence the
-# `usb_claim_interface error -6` install failure. We probe the free dongle(s)
-# first and only fall back to an assigned one if every free dongle failed.
-_OTHER_SDR_SERVICES = ("adsb", "satellites", "openwebrx")
+# new dongle for APRS *after* installing ADS-B (or OpenWebRX / satellites / the
+# NOAA Weather Radio watch), the audio test must not fight those services for
+# the device they've been assigned: rtl_fm with no -d grabs index 0, which is
+# dump1090's dongle — hence the `usb_claim_interface error -6` install failure.
+# We probe the free dongle(s) first and only fall back to an assigned one if
+# every free dongle failed.
+#
+# DERIVED, never hand-listed. This was a literal tuple, and it went stale the
+# moment nwr shipped: the watch holds its dongle CONTINUOUSLY, so the one
+# service that most needed sinking was the one being probed first. Reading
+# hardware.DEVICE_KIND_FOR_SERVICE means the next RTL-SDR service is covered on
+# the day it is declared, with nothing here to remember to edit.
+def _other_sdr_services():
+    """Every logical service that can be assigned an RTL-SDR, except APRS —
+    which is the service doing the probing."""
+    return tuple(sorted(
+        svc for svc, kinds in hardware.DEVICE_KIND_FOR_SERVICE.items()
+        if svc != "aprs" and "rtl-sdr" in kinds
+    ))
 
 
 def test_candidates(devices, inv):
     """Pure: order rtl_test devices for probing — dongles already assigned to
-    another SDR service (adsb/satellites/openwebrx) sink to the end, free ones
-    first. `devices` is parse_rtl_test_devices() output; `inv` is a
+    another SDR service (adsb/satellites/openwebrx/nwr) sink to the end, free
+    ones first. `devices` is parse_rtl_test_devices() output; `inv` is a
     hardware.Inventory. Returns (ordered_devices, claimed_serials)."""
     claimed = set()
-    for svc in _OTHER_SDR_SERVICES:
+    for svc in _other_sdr_services():
         dev_id = inv.assignments.get(svc)
         dev = inv.devices.get(dev_id) if dev_id else None
         serial = dev.get("serial") if dev else None

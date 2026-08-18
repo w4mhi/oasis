@@ -233,9 +233,6 @@ body {
 .st-row .svcbar{flex:1}
 .st-host{color:var(--text);font-weight:600}
 .st-host .sub{color:var(--text-dim);font-weight:400}
-.adot{width:.72rem;height:.72rem;border-radius:50%;box-sizing:border-box;background:transparent;border:2px solid var(--text)}
-.adot.assigned{background:var(--amber);border-color:var(--amber)}
-.adot.inuse{background:var(--accent);border-color:var(--accent)}
 
 /* ── Kiosk refresh button (header pill) ──────────────────────── */
 .kiosk-refresh {
@@ -4389,49 +4386,12 @@ async function forgetWifi() {
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
-// Radio-assignment dots on the STATUS card. hollow = unassigned · amber = SDR
-// assigned · green = in use. (Ported from the kiosk svcbar.) Targets the
-// STATUS-card ids (status-dot-*) — NOT the SERVICES-grid dot-* ids, which are
-// separate elements owned by fetchHardware/renderAdsbDot etc.
-// `daemon`: readiness IS a running unit. Satellites is the exception — no unit,
-// ready when assigned and free. See sdrDotClass in common/js/service-registry.js,
-// which both this page and the kiosk now share instead of each keeping a copy.
-const SDR_SVCS = [
-  { id:'aprs', hw:'aprs',       unit:'aprs-sdr-feed', daemon:true },
-  { id:'adsb', hw:'adsb',       unit:'dump1090-fa',   daemon:true },
-  { id:'owrx', hw:'openwebrx',  unit:null,            daemon:true },
-  { id:'sat',  hw:'satellites', unit:null,            daemon:false },
-];
-async function _isUnitActive(unit) {
-  if (!unit) return false;
-  try { const r = await fetch('/api/health/service?name='+unit, { cache:'no-store' });
-        return r.ok && (await r.json()).active === 'active'; } catch (_) { return false; }
-}
-// active = WE hold the dongle; blocked = another service does. An unreachable
-// status reports blocked, so the dot stays amber rather than claiming a green.
-async function _satState() {
-  try { const r = await fetch('/api/satellites/listen/status', { cache:'no-store' });
-        if (!r.ok) return { active:false, blocked:true }; const d = await r.json();
-        return { active: !!(d.recording || d.streaming), blocked: !!d.busy };
-  } catch (_) { return { active:false, blocked:true }; }
-}
-async function fetchSdrStatus() {
-  let hw = {};
-  try { const r = await fetch('/api/hardware/devices', { cache:'no-store' }); if (r.ok) hw = await r.json(); } catch (_) {}
-  const byId = {}; (hw.devices || []).forEach(x => byId[x.id] = x);
-  const services = hw.services || {};
-  await Promise.all(SDR_SVCS.map(async svc => {
-    const dot = document.getElementById('status-dot-'+svc.id); if (!dot) return;
-    const info = services[svc.hw];
-    const dev  = info && info.device_id ? byId[info.device_id] : null;
-    const assigned = !!(dev && dev.kind === 'rtl-sdr');
-    const st = !assigned ? { active:false, blocked:false }
-             : svc.id === 'sat' ? await _satState()
-             : { active: await _isUnitActive(svc.unit), blocked:false };
-    const cls = sdrDotClass({ assigned, active: st.active, blocked: st.blocked, daemon: svc.daemon });
-    dot.className = 'adot' + (cls ? ' ' + cls : '');
-  }));
-}
+// The STATUS-card radio-assignment dots (SDR_SVCS / fetchSdrStatus, ported from
+// the kiosk svcbar) lived here and were removed: the STATUS card they painted
+// is gone, so every `status-dot-*` lookup returned early while the loop still
+// fetched /api/hardware/devices every 8 s forever on a Pi 3. The live version is
+// the kiosk's, in oasis-dashboard/dashboard.html, which paints real `dot-*`
+// elements — that one is the copy to keep in step with new SDR services.
 
 loadConfig().then(() => {
   applyUnits();
@@ -4444,18 +4404,11 @@ loadConfig().then(() => {
   });
   fetchStats();
   fetchAudio();
-  fetchSdrStatus();
   loadHazards();   // hazard-pill config (before/after the first APRS fetch — pills repaint on load)
   loadQuietHours();
   fetchAPRS();
   loadHomeCoords();
   pollWifi();
-  const _svcbar = document.getElementById('status-svcbar');
-  if (_svcbar) {
-    const _openOps = () => { const r = document.getElementById('hsx-rail'); if (r) r.click(); };
-    _svcbar.addEventListener('click', _openOps);
-    _svcbar.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _openOps(); } });
-  }
   // Service badges: round-robin one at a time — a full sweep of the active
   // (visible) services every 16s, matching the OASIS Dashboard kiosk, instead of
   // a 17-request burst (see pingNext). Dividing by the active count (not all
@@ -4476,7 +4429,6 @@ loadConfig().then(() => {
   setTimeout(() => setInterval(fetchStats, STATS_POLL_MS),  4_000);
   setTimeout(() => setInterval(fetchAudio, 30_000),  8_000);
   setTimeout(() => setInterval(pollWifi,   30_000), 12_000);
-  setTimeout(() => setInterval(fetchSdrStatus, 8_000), 6_000);
   setInterval(fetchAPRS,    15_000);
   setInterval(pollFeedFlow, FEED_FLOW_MS);
   setInterval(pollAdsbFlow, ADSB_FLOW_MS);

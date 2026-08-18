@@ -59,6 +59,35 @@ class TestCandidatesTest(unittest.TestCase):
         self.assertEqual(ordered, [BLOGV4, REALTEK])
         self.assertEqual(claimed, {"00001000"})
 
+    def test_nwr_assigned_dongle_sinks_to_end(self):
+        # The NOAA Weather Radio watch is the one SDR consumer that holds its
+        # dongle CONTINUOUSLY (oasis-nwr runs whether or not anyone is looking),
+        # so probing it first is the worst case of the very bug this ordering
+        # exists to prevent. It must sink exactly like ADS-B's.
+        inv = _inv(
+            devices={"d0": {"id": "d0", "kind": "rtl-sdr", "serial": "00001000"}},
+            assignments={"nwr": "d0"},
+        )
+        ordered, claimed = mod.test_candidates([REALTEK, BLOGV4], inv)
+        self.assertEqual(ordered, [BLOGV4, REALTEK])
+        self.assertEqual(claimed, {"00001000"})
+
+    def test_every_rtl_sdr_service_but_aprs_can_claim(self):
+        # Not a restatement of the list: the expectation comes from
+        # hardware.DEVICE_KIND_FOR_SERVICE, so a new RTL-SDR service fails here
+        # until feed.py can sink its dongle too.
+        for svc in hardware.DEVICE_KIND_FOR_SERVICE:
+            if svc == "aprs" or "rtl-sdr" not in hardware.DEVICE_KIND_FOR_SERVICE[svc]:
+                continue
+            with self.subTest(service=svc):
+                inv = _inv(
+                    devices={"d0": {"id": "d0", "kind": "rtl-sdr", "serial": "00001000"}},
+                    assignments={svc: "d0"},
+                )
+                ordered, claimed = mod.test_candidates([REALTEK, BLOGV4], inv)
+                self.assertEqual(ordered, [BLOGV4, REALTEK])
+                self.assertEqual(claimed, {"00001000"})
+
     def test_all_dongles_claimed_still_returns_them(self):
         inv = _inv(
             devices={
