@@ -518,6 +518,7 @@ html, body { height: 100%; margin: 0; }
 <script src="/server/satellites/sat-geometry.js"></script>
 <script src="/server/satellites/sat-transport.js"></script>
 <script src="/server/satellites/sat-denoise.js"></script>
+<script src="/server/satellites/sat-search.js"></script>
 <script src="/common/js/sat-listen.js"></script>
 <script src="/server/satellites/satellite.min.js"></script>
 <script src="/common/js/sat-look.js"></script>
@@ -620,7 +621,10 @@ function passesFilters(s) {
   if ((_view === 'monitored' || _view === 'soon') && !isMonitored(s.norad)) return false;
   if ((_view === 'soon' || _view === 'soon-all') && !withinHour(s)) return false;
   const q = _filters.q.trim().toLowerCase();
-  if (q && !s.name.toLowerCase().includes(q)) return false;
+  // Match the whole ROW (name, designator, orbit) plus the catalogue number —
+  // see sat-search.js. Reading s.name alone left the designator on screen and
+  // unmatchable, so AO-7 found nothing.
+  if (q && !satsearch.matches(s, q)) return false;
   if (_filters.tags.size && !(s.labels || []).some(l => _filters.tags.has(l))) return false;
   if (_filters.bands.size) {
     const b = satBands(s);
@@ -965,10 +969,9 @@ function inLabelWindow(norad) {
 // this lesson ("same readout as the roster chip, so the two agree on sight"),
 // and a bird that reads one way in the list and another on the map is worse
 // than one with no label at all, because now you have two names to reconcile.
-function bareSatName(name) {
-  const m = String(name == null ? '' : name).match(/^(.*?)\s*\[[^\]]*\]\s*$/);
-  return m ? m[1] : String(name == null ? '' : name);
-}
+// One implementation, in sat-search.js — the search and the row must agree on
+// what a bird is called, or you get birds you can see but cannot find.
+function bareSatName(name) { return satsearch.bareName(name); }
 // Satellite names come from SatNOGS/CelesTrak, not from us, and go into an SVG
 // string via innerHTML. One "&" in a name would break the parse for the whole
 // overlay — every track and marker, not just that label.
