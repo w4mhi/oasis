@@ -67,6 +67,14 @@
     --amber:#f4b64a; --blue:#5cb8ff; --purple:#b478ff;
     --chartreuse:#80ff00; --orange:#ff8000;   /* clock-cycle colours (match index) */
     --r:.9rem;
+    /* The glyph each bottom-card header opens with: the satellites mute bell,
+       and the traffic card's LIVE dot beside it. ONE value, so "the same size"
+       stays true without either rule knowing the other's number.
+       The dot takes 90% of it, not all: a filled disc reads heavier than a line
+       drawing of equal box, so matching the boxes made the dot look the larger
+       of the two. The 10% is written as a calc off this variable rather than as
+       its own literal, so the pair still moves together. */
+    --card-hd-glyph:1.3rem;
     /* IDENTICAL to css/common.css. The two used to diverge — this stack had no
        Roboto Mono, and the kiosk does not link common.css, so the bundled face
        was unreachable here and the pills fell through to the OS default while
@@ -399,10 +407,20 @@
   /* The headline is the whole point of folding rather than hiding: it keeps
      reporting while its list is off screen. It ellipsizes rather than wraps — a
      header that grows to two lines gives back the row this pill just saved. */
+  /* Green by default, because the default IS the good state: a list that is
+     alive and has something in it. Dim was wrong — it reads as "stale" or
+     "switched off" next to a header full of live colour, and the folded list is
+     neither. The ladder from there is the one the sat cards already use:
+       (default) accent  — nothing to act on
+       .soon     warn    — a pass inside ten minutes, get ready
+       .now      accent + bold — a bird is overhead RIGHT NOW
+     now stays green rather than escalating past amber: overhead is the good
+     state too, and amber is the one that means "do something soon". Weight, not
+     hue, is what separates it from the resting case. */
   .foldpill .fs-head{ min-width:0; max-width:15rem; overflow:hidden;
-                      text-overflow:ellipsis; white-space:nowrap; color:var(--dim); }
+                      text-overflow:ellipsis; white-space:nowrap; color:var(--accent); }
   .foldpill .fs-head.soon{ color:var(--warn); }
-  .foldpill .fs-head.now{ color:var(--accent); }
+  .foldpill .fs-head.now{ color:var(--accent); font-weight:700; }
   .foldpill .fp-car{ flex:0 0 auto; align-self:center; width:0; height:0;
                      border-top:.34rem solid transparent;
                      border-bottom:.34rem solid transparent;
@@ -512,17 +530,19 @@
   .traffic{ flex:1 1 auto; min-width:0; }
   .traffic .hd{ flex-wrap:wrap; row-gap:.4rem; border-bottom:1px solid var(--border); padding-bottom:.5rem; }
   .livebadge{ display:inline-flex; align-items:center; gap:.35rem; font-size:1rem; font-weight:700; letter-spacing:.1em; }
-  /* DRAWN, not typed. It was a ● at .85rem, and it has to match the mute bell
-     that now opens the satellites header beside it — but a glyph's disc is some
-     unknown fraction of its em (~0.7 in this font, more or less in the next
-     one), so "make it 1.3rem" through font-size is a guess that lands
-     differently on whatever the Pi actually has installed. A border-radius box
-     is exactly the size you asked for. Same reasoning as the fold caret.
-     1.3rem is not arbitrary: it is .satmute svg's width, so the two card
-     headers open with glyphs of equal weight.
+  /* DRAWN, not typed. It was a ● at .85rem, and it has to sit beside the mute
+     bell that opens the satellites header — but a glyph's disc is some unknown
+     fraction of its em (~0.7 in this font, more or less in the next one), so
+     sizing it through font-size is a guess that lands differently on whatever
+     the Pi actually has installed. A border-radius box is exact. Same reasoning
+     as the fold caret.
+     90% of the shared --card-hd-glyph, not 100%: a filled disc carries more
+     weight than a line-drawn bell in the same box, so matching the boxes made
+     the dot read as the bigger of the two.
      The glow becomes a box-shadow — STATIC. Never animate it: an infinite
      box-shadow animation pins this kiosk's renderer at 60fps. */
-  .livebadge .lvd{ width:1.3rem; height:1.3rem; border-radius:50%; background:currentColor; }
+  .livebadge .lvd{ width:calc(var(--card-hd-glyph) * .9); height:calc(var(--card-hd-glyph) * .9);
+                   border-radius:50%; background:currentColor; }
   .livebadge.ok{ color:var(--accent); } .livebadge.ok .lvd{ box-shadow:0 0 .5rem var(--accent); }
   .livebadge.warn{ color:var(--warn); }
   .livebadge.down{ color:var(--down); }
@@ -635,7 +655,7 @@
   .satmute{ background:none; border:0; padding:.5rem .6rem; margin:-.5rem -.6rem -.5rem -.6rem;
             min-width:2.75rem; min-height:2.75rem; line-height:0; cursor:pointer;
             color:var(--warn); -webkit-tap-highlight-color:transparent; }
-  .satmute svg{ width:1.3rem; height:1.3rem; display:block; }
+  .satmute svg{ width:var(--card-hd-glyph); height:var(--card-hd-glyph); display:block; }
   .satmute.muted{ color:var(--faint); }
   /* Quiet hours: dim, not crossed out — the operator did not switch this
      off, the clock did, and it returns by itself at 07:00. */

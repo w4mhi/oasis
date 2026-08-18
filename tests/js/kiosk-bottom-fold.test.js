@@ -218,8 +218,15 @@ test('the pill says WHICH filter produced the count', () => {
 test('an overhead bird still colours the pill', () => {
   assert.match(page, /it0\.inPass \? 'now' : \(it0\.mins <= 10 \? 'soon' : ''\)/,
     'folding the sat card must not hide that a pass is happening');
-  assert.match(page, /\.foldpill \.fs-head\.now\{ color:var\(--accent\); \}/);
-  assert.match(page, /\.foldpill \.fs-head\.soon\{ color:var\(--warn\); \}/);
+  // The resting state is GREEN — a folded list that is alive and has rows in it
+  // is good news, and dim beside a header full of live colour reads as stale.
+  // So `now` cannot separate itself by hue; it does it by weight.
+  assert.match(page, /\.foldpill \.fs-head\{[^}]*color:var\(--accent\); \}/,
+    'the resting headline must be green, not dim');
+  assert.match(page, /\.foldpill \.fs-head\.soon\{ color:var\(--warn\); \}/,
+    'a pass inside ten minutes is the one that wants amber');
+  assert.match(page, /\.foldpill \.fs-head\.now\{ color:var\(--accent\); font-weight:700; \}/,
+    'overhead is good news too — it separates by weight, not by hue');
 });
 
 test('every pass record spans the pane — one column, never two', () => {

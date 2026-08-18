@@ -1,8 +1,8 @@
 'use strict';
 // The two bottom-card headers open the same way: a glyph, then a label.
 //
-//   TRAFFIC:  ● LIVE  384  ≤24h  RF …
-//   SAT:      🔔 SATELLITES  …
+//   TRAFFIC:  (dot)  LIVE  384  <=24h  RF ...
+//   SAT:      (bell) SATELLITES  ...
 //
 // They are read together — side by side on a desktop panel, one after the other
 // as you fold between them on a 7-inch one — so a difference between them reads
@@ -22,14 +22,27 @@ function rule(selector) {
   return page.slice(at, page.indexOf('}', at) + 1);
 }
 
-test('the LIVE dot is the same size as the mute bell it sits opposite', () => {
+test('both leading glyphs are sized off ONE variable', () => {
+  // Neither rule may carry its own number. "The dot matches the bell" has to
+  // survive the bell changing, and two literals cannot express that.
+  assert.match(page, /--card-hd-glyph:[\d.]+rem;/,
+    'the shared glyph size is gone');
+  assert.match(rule('.satmute svg'),
+    /width:var\(--card-hd-glyph\); height:var\(--card-hd-glyph\)/,
+    'the mute bell must take the shared size');
+  assert.ok(!/\.satmute svg\{[^}]*[\d.]rem/.test(page),
+    'the mute bell still carries a literal size');
+});
+
+test('the LIVE dot is 90% of the bell, expressed as a calc off it', () => {
+  // A filled disc reads heavier than a line-drawn bell in the same box, so
+  // matching the boxes made the dot look the larger of the two. The 10% is a
+  // calc, not a second literal — the pair has to keep moving together.
   const dot = rule('.livebadge .lvd');
-  const bell = rule('.satmute svg');
-  const size = /width:([\d.]+rem)/.exec(bell);
-  assert.ok(size, 'the mute bell has no width to match');
-  assert.ok(dot.includes('width:' + size[1]) && dot.includes('height:' + size[1]),
-    'the LIVE dot must be ' + size[1] + ', the mute bell\'s size — the two card ' +
-    'headers open with glyphs of equal weight or they read as two designs');
+  assert.match(dot, /width:calc\(var\(--card-hd-glyph\) \* \.9\)/,
+    'the dot must be derived from the bell size, not typed');
+  assert.match(dot, /height:calc\(var\(--card-hd-glyph\) \* \.9\)/,
+    'a dot that is not round is a dot that had its width and height set apart');
 });
 
 test('the dot is drawn, not typed', () => {
