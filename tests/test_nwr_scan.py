@@ -109,6 +109,28 @@ class ChannelMarginTest(unittest.TestCase):
         self.assertAlmostEqual(margin, 3.75, places=2)
         self.assertFalse(scan.margin_is_weak(margin))
 
+    # The SAME station, the same antenna, swept again minutes later. The margin
+    # moved 1.56 dB. This is the sweep that pins the threshold: a number set
+    # just under the best observed margin would call this station's own second
+    # sweep weak and send the operator to check an antenna that is fine.
+    MEASURED_AGAIN = {162400000: -4.98, 162425000: -5.67, 162450000: -5.82,
+                      162475000: -5.71, 162500000: -5.58, 162525000: -4.96,
+                      162550000: -3.44}
+
+    def test_the_same_station_on_a_worse_sweep_is_still_not_weak(self):
+        margin = scan.channel_margin(self.MEASURED_AGAIN, 162550000)
+        self.assertAlmostEqual(margin, 2.19, places=2)
+        self.assertFalse(scan.margin_is_weak(margin))
+
+    def test_the_threshold_clears_the_worst_measured_margin(self):
+        # Not a restatement of the test above: that one would still pass with a
+        # threshold of 2.0, which this station cleared by 0.19 dB -- less than
+        # its own sweep-to-sweep variance. This pins the headroom itself.
+        worst = scan.channel_margin(self.MEASURED_AGAIN, 162550000)
+        self.assertGreaterEqual(worst - scan.WEAK_MARGIN_DB, 1.0,
+                                "the threshold leaves less headroom than one "
+                                "sweep of measured variance")
+
     def test_a_flat_band_is_weak(self):
         # No antenna: all seven channels read the same noise. This is the case
         # the old absolute floor could not see at all.

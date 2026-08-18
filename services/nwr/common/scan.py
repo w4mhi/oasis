@@ -102,7 +102,7 @@ def best_channel(powers):
 # How far the winner has to stand above the rest of the band before the sweep
 # counts as a real signal. See channel_margin() for where the number comes from
 # and what would change it.
-WEAK_MARGIN_DB = 2.0
+WEAK_MARGIN_DB = 1.0
 
 
 def channel_margin(powers, best_hz):
@@ -118,9 +118,20 @@ def channel_margin(powers, best_hz):
         WX1 -5.71   WX2 -5.56   WX3 -5.64   WX4 -5.75
         WX5 -5.72   WX6 -5.68   WX7 -1.95   <- the transmitter
 
-    Best -1.95, median of the other six -5.695, margin +3.75 dB. The six empty
+    Best -1.95, median of the other six -5.70, margin +3.75 dB. The six empty
     channels span 0.19 dB end to end, so the band's own noise is far tighter
     than the margin a transmitter opens up.
+
+    A SECOND sweep minutes later, same antenna, same dongle, same transmitter:
+
+        WX1 -4.98   WX2 -5.67   WX3 -5.82   WX4 -5.71
+        WX5 -5.58   WX6 -4.96   WX7 -3.44   <- the same transmitter
+
+    Best -3.44, median -5.62, margin +2.19 dB. THE SAME STATION MOVED 1.56 dB
+    BETWEEN TWO SWEEPS. That is the number this threshold has to survive: it is
+    not the transmitter changing, it is what one 6-second rtl_power sweep of a
+    live band is worth. A threshold set just under the best observed margin
+    would have painted this station amber on its own second sweep.
 
     That measurement is why the old absolute floor (WEAK_DBM = -50 dBm) was
     dead code: at -5.7 dBm even an EMPTY channel sat 44 dB above it, so `weak`
@@ -129,18 +140,22 @@ def channel_margin(powers, best_hz):
     same noise and the margin collapses toward 0 dB -- which an absolute floor
     cannot see at all, and this can.
 
-    WEAK_MARGIN_DB = 2.0 sits an order of magnitude above that 0.19 dB spread,
-    so noise alone cannot cross it, and about half way to the +3.75 dB a good
-    antenna produced, so a station further from its transmitter than this one
-    still reads healthy.
+    WEAK_MARGIN_DB = 1.0 is set from those two sweeps, not from one. It sits
+    five times the 0.19 dB spread the empty channels showed, so noise alone
+    cannot cross it, and well under the WORST live margin measured (2.19 dB)
+    rather than under the best (3.75 dB) -- because sweep-to-sweep variance on
+    this one station was 1.56 dB, and a fringe station has less headroom than
+    this one, not more. A false amber is a station being told its antenna is
+    dead when it is not; that is the more damaging error here, because the
+    operator's response to it is to go and check hardware that is fine.
 
-    Be clear about what this is: ONE bench observation, one station, one dongle,
-    one strong local transmitter. It is not a characterised curve. A station
-    that reads healthy on the air but amber on the card -- a distant or fringe
-    transmitter, a different tuner, a different gain setting -- is evidence to
-    lower the number; a station whose card stays green with the antenna
-    unplugged is evidence to raise it. Record the seven readings the way this
-    docstring does before moving it.
+    Be clear about what this is: TWO bench observations, one station, one
+    dongle, one strong local transmitter, and NO measurement at all of the case
+    this exists to detect -- nobody has yet swept this band with the antenna
+    disconnected. The dead case is reasoned (all seven channels read the same
+    noise, so the margin collapses toward 0), not measured. Take that
+    measurement before trusting the amber state, and record the seven readings
+    the way this docstring does before moving the number.
 
     Returns None, not a number, when the question is unanswerable: no sweep,
     fewer than two channels read, or a `best_hz` that is not in `powers`. A

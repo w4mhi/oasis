@@ -147,13 +147,16 @@ python3 services/nwr/install.py --serve   # run the watch in the foreground (dev
         slower rescan rather than churning the radio &mdash; but it listens on the best
         channel it found regardless. A weak band is a report, never a refusal to
         start.</li>
-      <li><strong>Margin, not level</strong> &mdash; that 2&nbsp;dB is a gap between
+      <li><strong>Margin, not level</strong> &mdash; that 1&nbsp;dB is a gap between
         channels, not a signal strength, because the strength on its own says nothing.
         Measured on this station against a live transmitter, the six empty channels
         read &minus;5.7&nbsp;dBm and the transmitter read &minus;1.95&nbsp;dBm: a
-        margin of 3.75&nbsp;dB. Pull the antenna off and all seven read the same
-        noise, the margin falls to nothing, and the card goes amber. The card&rsquo;s
-        meter and sub-line show that margin.</li>
+        margin of 3.75&nbsp;dB. A second sweep minutes later, same antenna and same
+        transmitter, gave 2.19&nbsp;dB &mdash; the margin on one station moves by
+        more than a decibel between sweeps, which is why the threshold sits well
+        below the best reading rather than just under it. Pull the antenna off and
+        all seven channels read the same noise, the margin falls to nothing, and the
+        card goes amber. The card&rsquo;s meter and sub-line show that margin.</li>
       <li><strong>Retry</strong> &mdash; if it cannot get the dongle it waits and tries
         again, with the reason visible on the page. It does not spin.</li>
     </ul>

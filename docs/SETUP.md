@@ -2218,9 +2218,14 @@ WX5 -5.72   WX6 -5.68   WX7 -1.95   <- the transmitter
 ```
 
 - **Healthy:** one channel stands clear of the median of the other six by more
-  than **2 dB**. Above, WX7 is 3.75 dB up on a median of -5.695 — and note how
+  than **1 dB**. Above, WX7 is 3.75 dB up on a median of -5.70 — and note how
   tight the six empty ones are, 0.19 dB end to end. That gap is the measurement;
   the -1.95 dBm on its own is not, because an empty channel here reads -5.7.
+
+  A second sweep of the same antenna minutes later read WX7 at -3.44 against a
+  median of -5.62 — a margin of **2.19 dB**. Nothing changed but the sweep. Expect
+  well over a decibel of movement between sweeps, and read a single margin as a
+  sample rather than a property of the station.
 - **Broken:** all 34 bins within a fraction of a dB of each other = nothing is
   being heard, and the margin collapses toward 0 dB. That is antenna, coax or
   siting, not software. 162 MHz is line-of-sight to the transmitter; a dongle
@@ -2229,11 +2234,14 @@ WX5 -5.72   WX6 -5.68   WX7 -1.95   <- the transmitter
   measured gap in `watch.scan.margin_db`, and the watch listens on the best
   channel it found anyway rather than refusing to start.
 
-> The 2 dB threshold (`scan.WEAK_MARGIN_DB`) is one bench observation from one
-> station, not a characterised curve. A station that hears its transmitter
-> perfectly well but sits amber on the card is a reason to lower it; a card that
-> stays green with the antenna unplugged is a reason to raise it. Record all
-> seven readings before you move it.
+> The 1 dB threshold (`scan.WEAK_MARGIN_DB`) comes from two sweeps of one
+> station, not a characterised curve — and the case it exists to catch, a sweep
+> with the antenna disconnected, has **never been measured**. That the margin
+> collapses to ~0 dB with no antenna is reasoned, not observed. Take that
+> measurement before trusting the amber state. A station that hears its
+> transmitter perfectly well but sits amber is a reason to lower the number; a
+> card that stays green with the antenna unplugged is a reason to raise it.
+> Record all seven readings before you move it.
 
 **Nothing decodes, but the audio sounds right.** Listen to it yourself — the
 stream is the daemon's own audio, relayed byte-for-byte:
