@@ -132,6 +132,33 @@ def nopasswd_commands(listing):
     return out
 
 
+def nopasswd_covers(listing, tokens):
+    """True when *listing* has a NOPASSWD entry covering the command *tokens*.
+
+    The general form of nopasswd_covers_systemctl() below, for the commands
+    that are not systemctl: the tcpdump feed probe, the zero-arg apply-hardware
+    and reboot, the validating eeprom wrapper.
+
+    Matched the same way, and for the same reasons: the program by BASENAME
+    (the rule names /usr/bin/tcpdump, the box may have /usr/sbin/tcpdump), the
+    arguments by WHOLE TOKEN and in order (a grant is for one exact argv, not
+    for anything containing it). A `*` in the granted entry — the sudoers
+    wildcard our two self-validating wrappers are granted with — matches
+    whatever token stands in its place. Blanket `NOPASSWD: ALL` covers
+    everything, because it does.
+    """
+    for granted in nopasswd_commands(listing):
+        if granted == ["ALL"]:
+            return True
+        if len(granted) != len(tokens):
+            continue
+        if os.path.basename(granted[0]) != os.path.basename(tokens[0]):
+            continue
+        if all(g == "*" or g == t for g, t in zip(granted[1:], tokens[1:])):
+            return True
+    return False
+
+
 def nopasswd_covers_systemctl(listing, unit, actions=("restart",)):
     """True when *listing* has a NOPASSWD entry for `systemctl <action> <unit>`.
 
@@ -145,15 +172,8 @@ def nopasswd_covers_systemctl(listing, unit, actions=("restart",)):
     Matching is by basename and by whole token, so /bin vs /usr/bin does not
     matter and `oasis-nwr.service` is never answered by `oasis-nwr-x.service`.
     """
-    for tokens in nopasswd_commands(listing):
-        if tokens == ["ALL"]:
-            return True
-        if (len(tokens) == 3
-                and os.path.basename(tokens[0]) == "systemctl"
-                and tokens[1] in actions
-                and tokens[2] == unit):
-            return True
-    return False
+    return any(nopasswd_covers(listing, ["systemctl", action, unit])
+               for action in actions)
 
 
 def systemctl_nopasswd_granted(unit, actions=("restart",), run=None):

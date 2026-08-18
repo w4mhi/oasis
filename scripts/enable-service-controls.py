@@ -304,30 +304,54 @@ def disable():
 
 
 def status():
+    """Report what sudo will actually run for this user, without running any of it.
+
+    It reads the listing rather than grepping it, and that is the whole point:
+    sudo EXPANDS a Cmnd_Alias when it prints a policy, so `OASIS_SVC`,
+    `OASIS_SNIFF` and the rest are names that appear in the file we WRITE and
+    never in the output we read. Grepping the listing for them reported "not
+    granted" on a station whose grant was perfect — the operator's own
+    --check calling the station broken.
+
+    So each capability is asked as the command it is, through the same parser
+    grant_is_current() uses (common/sudo_grant.py): tags read, wrapping undone,
+    matched by basename and whole token. The blanket `NOPASSWD: ALL` of a stock
+    Pi OS box answers yes to all of them, which is true — those commands do run
+    without a password there.
+    """
     present = os.path.exists(SUDOERS_PATH)
     _info(f"sudoers file: {'present' if present else 'absent'}  ({SUDOERS_PATH})")
-    r = _run(["sudo", "-n", "-l"], check=False, capture_output=True, text=True)
-    out = getattr(r, "stdout", "") or ""
-    if r.returncode == 0 and "OASIS_SVC" in out:
+    listing = sudo_grant.sudo_list()
+
+    def granted(*tokens):
+        """Will sudo run this exact command with no password? Unproven is no."""
+        return listing is not None and sudo_grant.nopasswd_covers(listing, list(tokens))
+
+    # The NEWEST unit, for the same reason grant_is_current() probes it: one
+    # rule covers every unit, so an older name still answers yes on a box whose
+    # grant file predates the units added since.
+    if listing is not None and sudo_grant.nopasswd_covers_systemctl(
+            listing, f"{PROBE_UNIT}.service", actions=tuple(ACTIONS)):
         _ok("sudo grants the OASIS service commands without a password.")
     else:
-        _warn("sudo does not grant the OASIS service commands NOPASSWD for this user yet.")
-    if r.returncode == 0 and ("OASIS_SNIFF" in out or "tcpdump" in out):
+        _warn("sudo does not grant the OASIS service commands NOPASSWD for this user yet. "
+              "Re-run without --check to grant them.")
+    if granted("tcpdump", *SNIFF_ARGS):
         _ok("sudo grants the feed flow probe (tcpdump on lo) without a password.")
     else:
         _warn("sudo does not grant the feed flow probe yet — the APRS SDR Feed meter "
               "will show 'flow: enable controls'. Re-run without --check to grant it.")
-    if r.returncode == 0 and "OASIS_HW_APPLY" in out:
+    if granted(VENV_PYTHON, APPLY_HARDWARE_SCRIPT):
         _ok("sudo grants apply-hardware (device re-templating) without a password.")
     else:
         _warn("sudo does not grant apply-hardware yet — dashboard reassignment "
               "will persist but won't take effect until you run it manually.")
-    if r.returncode == 0 and "OASIS_HW_EEPROM" in out:
+    if granted(VENV_PYTHON, BURN_SERIAL_SCRIPT, "*"):
         _ok("sudo grants the eeprom serial-naming wrapper without a password.")
     else:
         _warn("sudo does not grant the eeprom wrapper yet — 'name this dongle' "
               "will be unavailable from the dashboard.")
-    if r.returncode == 0 and "OASIS_REBOOT" in out:
+    if granted("reboot"):
         _ok("sudo grants reboot (zero-arg) without a password.")
     else:
         _warn("sudo does not grant reboot yet — the setup wizard's Reboot "

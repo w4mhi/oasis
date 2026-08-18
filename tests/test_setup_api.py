@@ -934,6 +934,60 @@ class GrantIsCurrentTest(unittest.TestCase):
         self.assertFalse(self._probe(mod, "", side_effect=OSError("no sudo")))
 
 
+class CheckReportsWhatSudoWillRunTest(unittest.TestCase):
+    """`--check` on a correctly granted station must say so.
+
+    It used to grep the `sudo -l` listing for `OASIS_SVC`, `OASIS_SNIFF` and
+    the other Cmnd_Alias names. sudo EXPANDS an alias when it prints a policy,
+    so those names exist only in the file we write: the grep never matched, and
+    every station -- granted or not -- was told it had no permissions."""
+
+    def _status(self, mod, listing):
+        ok, warn = [], []
+        with mock.patch.object(mod.sudo_grant, "sudo_list", return_value=listing), \
+             mock.patch.object(mod, "_ok", ok.append), \
+             mock.patch.object(mod, "_warn", warn.append), \
+             mock.patch.object(mod, "_info"), \
+             mock.patch.object(mod, "_in_group", return_value=True):
+            mod.status()
+        return ok, warn
+
+    def test_the_alias_names_are_not_in_the_listing_at_all(self):
+        mod = _load_enable_service_controls()
+        listing = _sudo_listing([_granted_entry(mod, mod.UNITS)])
+        for alias in ("OASIS_SVC", "OASIS_SNIFF", "OASIS_HW_APPLY",
+                      "OASIS_HW_EEPROM", "OASIS_REBOOT"):
+            self.assertNotIn(alias, listing)
+
+    def test_a_fully_granted_station_reports_no_warnings(self):
+        mod = _load_enable_service_controls()
+        listing = _sudo_listing([_BLANKET_AUTHORISED,
+                                 _granted_entry(mod, mod.UNITS)])
+        ok, warn = self._status(mod, listing)
+        self.assertEqual(warn, [])
+        self.assertEqual(len(ok), 6)      # five sudo grants + the journal group
+
+    def test_an_ungranted_station_warns_about_every_capability(self):
+        # The sudo-group blanket AUTHORISES everything and grants nothing
+        # passwordless -- the exact listing that used to be indistinguishable.
+        mod = _load_enable_service_controls()
+        ok, warn = self._status(mod, _sudo_listing([_BLANKET_AUTHORISED]))
+        self.assertEqual(len(warn), 5)
+        self.assertEqual(len(ok), 1)      # only the journal membership
+
+    def test_a_grant_predating_the_newest_unit_warns(self):
+        mod = _load_enable_service_controls()
+        listing = _sudo_listing([_granted_entry(mod, mod.UNITS[:-1])])
+        ok, warn = self._status(mod, listing)
+        self.assertTrue(any("service commands" in w for w in warn))
+        self.assertTrue(any("feed flow probe" in o for o in ok))   # the rest is fine
+
+    def test_sudo_refusing_to_list_warns_rather_than_assuming(self):
+        mod = _load_enable_service_controls()
+        ok, warn = self._status(mod, None)
+        self.assertEqual(len(warn), 5)
+
+
 class SudoListingParserTest(unittest.TestCase):
     """common/sudo_grant.py — reading `sudo -n -l` output for what it says.
 
