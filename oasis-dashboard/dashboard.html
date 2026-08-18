@@ -316,7 +316,19 @@
      Classes come from nwrListenPill() in common/js/nwr-card.js — nothing here
      decides anything. min-width keeps the pill a finger-sized target and stops
      the row reflowing when the state changes; the label is a constant "WX". */
-  .upill.wx-pill{ min-width:4.2rem; }
+  /* ── icon pills: WX and OPS ──────────────────────────────────────────────
+     Square, because the glyph IS the label — the horizontal padding that made
+     room for letters would now just be air either side of an icon.
+     2.75rem, matching every other finger target on this panel (the mute bell,
+     the hour bell, the reload). NOT smaller: the reload taught us that shrinking
+     a control on a touch screen shrinks the thing a finger aims at, and that a
+     hit box bigger than its ink does not rescue it — 1.6rem of ink is the floor,
+     and 2.75rem is the box that has always gone around it here.
+     The saving is the letters and their padding, not the target: WX 54.6px ->
+     35.75px, OPS 44.5px -> 35.75px, and the units pill's 61px outright. ~95px
+     back to the stats bar, which was 7px short of fitting on one line. */
+  .upill.wx-pill, .upill.ops-pill{ padding:.3rem; min-width:2.75rem; min-height:2.75rem; }
+  .upill.wx-pill svg, .upill.ops-pill svg{ height:1.6rem; width:auto; display:block; }
   .upill.wx-live{ color:var(--blue); border-color:var(--blue); }
   .upill.wx-alert{ color:var(--warn); border-color:var(--warn); }
   /* Nothing to hear: dim, and not offering a press. */
@@ -329,21 +341,15 @@
      renderer at 60 fps, and a state this static has no business animating. */
   .upill.wx-play.wx-live{ background:var(--blue); color:#0b1015; }
   .upill.wx-play.wx-alert{ background:var(--warn); color:#0b1015; }
-  /* Units pill carries its mode as colour — green imperial / blue metric, on
-     both the text and the border, matching index.html. Declared AFTER the
-     :hover rule on purpose: `.upill.u-metric` and `.upill:hover` have equal
-     specificity, so source order is what decides, and the mode must not be
-     repainted by a stray hover. */
-  /* The label is CONSTANT — "KM/FT", five characters, whatever the mode. It used
-     to swing IMPERIAL (8) <-> METRIC (6), which reflowed this whole row on every
-     toggle and cost the sysbar a line at 800x480. Only the colour moves now:
-     the ACTIVE half lights, the other stays faint, so the mode is readable
-     without relying on knowing the colour convention. */
-  .upill .up-km, .upill .up-sep, .upill .up-ft{ color:var(--faint); }
-  .upill.u-imperial{ border-color:var(--accent); }
-  .upill.u-imperial .up-ft{ color:var(--accent); }
-  .upill.u-metric{ border-color:var(--blue); }
-  .upill.u-metric .up-km{ color:var(--blue); }
+  /* There is no units pill. There were TWO controls calling toggleUnits() —
+     that pill and the sysbar's TEMP cell, which has had `cursor:pointer` and a
+     click listener on the same function all along — so one of them was 61px of
+     a 779px row spent saying what the other already said. The cell survives:
+     it is the thing whose reading actually changes.
+     The mode stays visible without a pill, in the only place that matters — the
+     numbers. TEMP reads °C or °F, distances read km or mi. A badge announcing
+     which system you are in, next to values that state it, is a caption on a
+     photograph of itself. */
   /* ── system bar — one pill, stats packed as CPU: 5% | RAM: 36% | … ─────── */
   .sysbar{ flex:1 1 auto; display:flex; flex-wrap:wrap; align-items:baseline;
     justify-content:flex-start; gap:.3rem .5rem;
@@ -1086,7 +1092,7 @@
       <div class="srow"><span class="k">CPU</span><span class="v" id="k-cpu">—</span></div>
       <div class="srow"><span class="k">RAM</span><span class="v" id="k-ram">—</span></div>
       <div class="srow"><span class="k">LOAD</span><span class="v" id="k-load">—</span></div>
-      <div class="srow"><span class="k">TEMP</span><span class="v" id="k-temp" style="cursor:pointer" title="Tap to toggle °C / °F">—</span><svg class="cpu-fan" id="cpu-fan" viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(0 8 8)"/><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(120 8 8)"/><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(240 8 8)"/></g><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg></div>
+      <div class="srow"><span class="k">TEMP</span><span class="v" id="k-temp" style="cursor:pointer" role="button" tabindex="0">—</span><svg class="cpu-fan" id="cpu-fan" viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(0 8 8)"/><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(120 8 8)"/><path d="M8 8C4.6 7 4.8 2.4 8 2C10.4 3.4 10 6.4 8 8Z" transform="rotate(240 8 8)"/></g><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg></div>
       <div class="srow"><span class="k">DISK</span><span class="v" id="k-disk">—</span></div>
       <div class="srow ip"><span class="k">IP</span><span class="v" id="k-ip">—</span></div>
       <!-- Data freshness. Was a pill up in the units row; it lives here because it
@@ -1106,10 +1112,9 @@
     <span class="upill wx-pill wx-off" id="k-wx" onclick="wxToggle()" role="button"
           tabindex="0" aria-disabled="true" aria-pressed="false"
           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();wxToggle();}"
-          title="Weather Radio">WX</span>
+          title="Weather Radio"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.5 5.5a9 9 0 0 1 0 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
     <audio id="k-wx-audio" preload="none" hidden></audio>
-    <span class="upill" id="k-units" onclick="toggleUnits()" title="Toggle imperial / metric"><span class="up-km">KM</span><span class="up-sep">/</span><span class="up-ft">FT</span></span>
-    <span class="upill ops-pill" onclick="openOv('ops')" title="Open OPS">OPS</span>
+    <span class="upill ops-pill" onclick="openOv('ops')" title="Open OPS" role="button" tabindex="0" aria-label="OPS — launcher" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOv('ops');}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg></span>
   </div>
 
   <!-- ── BOTTOM: APRS/ADS-B traffic | satellites ────────────────────────── -->
@@ -1429,15 +1434,17 @@ loadCallsignGrid(); seedCallsignGrid();
 
 // ── Units toggle (copied from dashboard_old, trimmed to the units pill) ──────
 function renderUnits() {
-  const el = document.getElementById('k-units'); if (!el) return;
+  // The TEMP cell is the units control now — it always was one, it just shared
+  // the job with a pill. Nothing here paints a MODE: the reading beside it does
+  // that, in °C or °F, and every distance on the screen agrees with it.
+  // What this does write is the title and the label, because a touch panel has
+  // no hover and colour is not an accessible state.
+  const el = document.getElementById('k-temp'); if (!el) return;
   const imp = isImperial();
-  // The LABEL is never rewritten — only which half is lit (see .upill .up-*).
-  // Writing textContent here would also destroy the two spans the CSS targets.
-  el.classList.toggle('u-imperial', imp);
-  el.classList.toggle('u-metric', !imp);
-  // Colour alone is not an accessible state indicator, and the panel is a touch
-  // screen with no hover to reveal the title.
-  el.setAttribute('aria-label', imp ? 'Units: feet (imperial)' : 'Units: kilometres (metric)');
+  el.title = imp ? 'Imperial: °F · ft · mi — tap for metric'
+                 : 'Metric: °C · km · km/h — tap for imperial';
+  el.setAttribute('aria-label', imp ? 'Units: imperial — tap for metric'
+                                    : 'Units: metric — tap for imperial');
 }
 function toggleUnits() { OasisUnits.toggleUnits(); renderUnits(); renderTemp(); applyAprsFilter(); }
 renderUnits();
@@ -1452,7 +1459,17 @@ function renderTemp() {
   const cls = _lastTempC != null ? (_lastTempC >= 80 ? 'hot' : _lastTempC >= 65 ? 'warm' : 'ok') : '';
   setKStat('k-temp', fmtTemp(_lastTempC), cls);
 }
-(function () { const el = document.getElementById('k-temp'); if (el) el.addEventListener('click', toggleUnits); })();
+// The TEMP cell is the units control. It carries role="button" now that the
+// pill it shared the job with is gone, so it answers a key as well as a tap —
+// a role that only listens for clicks is a lie to anything that is not a finger.
+(function () {
+  const el = document.getElementById('k-temp');
+  if (!el) return;
+  el.addEventListener('click', toggleUnits);
+  el.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggleUnits(); }
+  });
+})();
 
 // ── GPS fix → pill (HDOP intentionally omitted) ──────────────────────────────
 // Fixes read "GPS 3D 2/3" / "GPS 2D 3/4" (mode + satellites used/seen), green for

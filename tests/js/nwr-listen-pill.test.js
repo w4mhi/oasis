@@ -256,20 +256,43 @@ test('the kiosk wires the pill to the shared paint, not to its own poll', () => 
     'the pill is painted from inside the nwr check — that path skips fail()');
 });
 
-test('the pill sits between the stats bar and the units toggle, and is a real button', () => {
-  // DATA used to be the pill on its right; it moved into the system bar, so the
-  // units toggle is now what the WX pill must stay left of. The ordering is the
-  // point either way: WX is a control the operator reaches for, and it belongs
-  // with the other controls rather than drifting to the end of the row.
+test('the pill sits between the stats bar and OPS, and is a real button', () => {
+  // Its right-hand neighbour has changed twice: DATA moved into the system bar,
+  // then the units pill was deleted outright (the TEMP cell had been calling the
+  // same toggleUnits() all along). OPS is what is left. The ordering is the point
+  // either way: WX is a control the operator reaches for, and it belongs with the
+  // other controls rather than drifting to the end of the row.
   const wx = page.indexOf('id="k-wx"');
-  const fx = page.indexOf('id="k-units"');
+  const ops = page.indexOf('class="upill ops-pill"');
   assert.notStrictEqual(wx, -1, 'no WX pill');
-  assert.notStrictEqual(fx, -1, 'no units pill');
-  assert.ok(wx < fx, 'the WX pill must come before the units toggle');
+  assert.notStrictEqual(ops, -1, 'no OPS pill');
+  assert.ok(wx < ops, 'the WX pill must come before OPS');
+  assert.ok(!/id="k-units"/.test(page),
+    'the units pill is back — it duplicated the TEMP cell, which toggles units too');
   assert.match(page, /id="k-wx"[\s\S]{0,400}role="button"/);
   assert.match(page, /id="k-wx"[\s\S]{0,400}tabindex="0"/);
   assert.match(page, /class="upill wx-pill wx-off" id="k-wx"/,
     'the pill must start grey — the first poll is what earns it a colour');
+});
+
+test('the WX pill is an icon in a finger-sized square', () => {
+  // Its label was a constant "WX" and every state it has is carried by colour,
+  // so the letters were never doing the work — but the BOX still has to be
+  // something a finger can aim at. 2.75rem, like every other target here.
+  assert.match(page, /id="k-wx"[\s\S]{0,400}<svg viewBox="0 0 24 24"/,
+    'the pill must carry a drawn glyph');
+  assert.match(page,
+    /\.upill\.wx-pill, \.upill\.ops-pill\{ padding:\.3rem; min-width:2\.75rem; min-height:2\.75rem; \}/,
+    'square, and no smaller than the panel\'s other finger targets');
+  // Scoped to the pill: "WX" is still the svcbar's dot label and the alert
+  // badge's prefix, and both are right to keep it.
+  const at = page.indexOf('id="k-wx"');
+  assert.ok(!/>WX<\/span>/.test(page.slice(at, page.indexOf('</span>', at) + 7)),
+    'the WX letters are back on the pill');
+  // renderWxPill() rebuilds className from scratch, so the icon rules must hang
+  // off classes it writes — anything else is wiped on the first repaint.
+  assert.match(page, /el\.className = 'upill wx-pill ' \+ p\.cls;/,
+    'if this stops writing wx-pill, the icon sizing goes with it');
 });
 
 test('the audio element costs the daemon nothing until it is pressed', () => {
