@@ -1,13 +1,21 @@
 """NOAA Weather Radio route blueprint.
 
+Flask owns no capture. The watch is services/nwr/common/daemon.py -- its own
+systemd unit, serving 127.0.0.1:8089 -- because a capture that dies with a
+web-server restart, or does not come back after a reboot, is not a watch. What
+is left here is a reader and a byte relay: preconditions and config are local
+files Flask owns, everything about the capture is asked of the daemon, and the
+alert store is READ-ONLY here (the daemon is its single writer; see its module
+docstring for why two writers would drop alerts).
+
 Every route is on the API contract (docs/api-contract.md): `ok` means the
-request succeeded, not that the news is good. "Nothing is listening" and
-"multimon-ng is not installed" are ANSWERS, not failures.
+request succeeded, not that the news is good. "The watch is not running" and
+"multimon-ng is not installed" are ANSWERS on /status, not failures.
 
 /listen/stream returns audio, which contract §10 puts out of scope on the
-success path; its error paths stay fully conformant.
+success path; its refusal paths stay fully conformant.
 """
-import logging
+import json
 import os
 import time
 
@@ -16,15 +24,15 @@ from flask import Blueprint, Response, jsonify, request, send_from_directory
 from common import hardware as HW
 from common.api_shape import clamp_limit
 from common.web_guard import require_oasis_request
-from services.nwr.common import alerts, bell, counties, listener, scan, settings
-
-log = logging.getLogger(__name__)
+from services.nwr.common import alerts, counties, daemon, listener, settings
 
 bp = Blueprint("nwr", __name__)
 
 _STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 _ALERTS_DEFAULT_LIMIT = 50
 _ALERTS_MAX_LIMIT = 500
+
+WATCH_BASE = f"http://127.0.0.1:{daemon.API_PORT}"
 
 
 def _root():
@@ -39,6 +47,45 @@ def _inventory():
         return None
 
 
+def _watch_json(path, timeout=5):
+    """(payload, error) from the watch daemon. Exactly one is non-None.
+
+    The daemon ships as its own unit and is NOT restarted in lockstep with
+    Flask, so every read is treated as potentially unavailable -- the same
+    reasoning services/adsb/routes.py records for adsb-api.
+    """
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(WATCH_BASE + path, timeout=timeout) as r:
+            return json.loads(r.read()), None
+    except urllib.error.HTTPError as e:
+        return None, f"watch returned HTTP {e.code}"
+    except Exception as e:                      # noqa: BLE001
+        return None, f"watch unavailable ({getattr(e, 'reason', e)})"
+
+
+def _watch_error_text(err):
+    """The daemon's own human-readable reason for a refusal, or None.
+
+    Its body is a real socket: read it and close it on every path, or a refused
+    stream leaves the connection open.
+    """
+    try:
+        body = err.read()
+    except Exception:                           # noqa: BLE001
+        body = b""
+    finally:
+        try:
+            err.close()
+        except Exception:                       # noqa: BLE001
+            pass
+    try:
+        return (json.loads(body) or {}).get("error")
+    except Exception:                           # noqa: BLE001
+        return None
+
+
 @bp.route("/server/nwr/")
 @bp.route("/server/nwr/<path:filename>")
 def nwr_static(filename="weather.html"):
@@ -47,185 +94,90 @@ def nwr_static(filename="weather.html"):
 
 @bp.route("/api/nwr/status")
 def api_nwr_status():
+    """Local preconditions and config, plus the watch's own account of itself.
+
+    A watch that is down is an ANSWER (contract §2), not a failure: `reachable:
+    false` with a `detail` saying why, and every other field at its empty value
+    so the shape never changes (§5). A station whose daemon has crashed must
+    still render a dashboard that says so, rather than a 500.
+    """
     inv = _inventory()
+    w, err = _watch_json("/status")
+    w = w or {}
     return jsonify({
         "ok": True,
         "preconditions": listener.preconditions(inv=inv),
-        "capture": listener.status(),
+        "watch": {
+            "reachable": err is None,
+            "detail": err,
+            "phase": w.get("phase"),
+            "listening": bool(w.get("listening")),
+            "channel": w.get("channel"),
+            "channel_hz": w.get("channel_hz"),
+            "alerts_seen": w.get("alerts_seen") or 0,
+            "last_decode": w.get("last_decode"),
+            "last_error": w.get("last_error"),
+            "scan": w.get("scan"),
+            "scan_weak": bool(w.get("scan_weak")),
+            "retry_in_s": w.get("retry_in_s") or 0,
+            "streams": w.get("streams") or 0,
+            "elapsed_s": w.get("elapsed_s") or 0,
+        },
         "config": settings.load(_root()),
         "channels": [{"label": n, "hz": h} for n, h in listener.CHANNELS],
     })
 
 
-@bp.route("/api/nwr/listen", methods=["POST"])
-@require_oasis_request
-def api_nwr_listen():
-    root = _root()
-    cfg = settings.load(root)
-    body = request.get_json(silent=True) or {}
-    hz = body.get("channel_hz", cfg["channel_hz"])
-    inv = _inventory()
-
-    pre = listener.preconditions(inv=inv)
-    if pre["busy"]:
-        return jsonify({"ok": False,
-                        "error": f"the dongle is held by {pre['holder']}",
-                        "code": "NWR_DONGLE_BUSY"}), 409
-
-    def _on_header(parsed):
-        added, rec = alerts.record(root, parsed, cfg["watch_fips"], time.time())
-        if not added:
-            return
-        ok, why = bell.should_speak(cfg, rec, root)
-        if ok:
-            # `why` is only non-empty here for the override case (see
-            # bell.should_speak) -- a human turned the bell back on for the
-            # night, and that is the one state most worth a trail: an
-            # override that fires is exactly the thing nobody should be
-            # surprised by later.
-            if why:
-                log.info("nwr: bell override in effect for %s (%s)",
-                         rec.get("event"), why)
-            _announce(rec)
-        else:
-            log.info("nwr: bell silent for %s (%s)", rec.get("event"), why)
-
-    result = listener.start(hz, gain=cfg["gain"], ppm=cfg["ppm"],
-                            device_serial=listener.device_serial(inv),
-                            on_header=_on_header)
-    if not result["ok"]:
-        return jsonify({"ok": False, "error": result["error"],
-                        "code": result.get("code", "NWR_START_FAILED")}), 409
-    return jsonify({"ok": True, "capture": listener.status()})
-
-
-def _announce(rec):
-    """Speak a matched alert on this box's own speaker."""
-    from services.nwr.common import announce
-    announce.speak(_root(), rec)
-
-
-@bp.route("/api/nwr/listen/stop", methods=["POST"])
-@require_oasis_request
-def api_nwr_listen_stop():
-    listener.stop()
-    return jsonify({"ok": True, "capture": listener.status()})
-
-
 @bp.route("/api/nwr/listen/stream")
 def api_nwr_stream():
-    """Live audio as MP3 while a session runs.
+    """Relay the watch daemon's audio.
 
-    The subscriber MUST be removed in a finally: — a tab that closed and left
-    its queue behind is a slow leak and a dongle held past its usefulness.
-    `subscribe()` and the encoder `Popen` both live INSIDE that finally's
-    try:, on purpose: a dongle exhausting file descriptors or losing /bin/sh
-    — both more plausible on a Pi 3 than a workstation — must not leave the
-    queue registered with no one left to drain it.
+    Flask holds no encoder and no subscriber queue -- both live in the daemon,
+    which is what keeps the v1 deadlock impossible here by construction. This is
+    a byte relay and nothing more.
 
-    Contract note (do not re-litigate this): the success path here is an
-    audio stream, not JSON, so unlike a status probe it has no `ok: True`
-    shape to carry an answer in. "Nothing is listening" and "no audio
-    encoder" are therefore request FAILURES — `ok: False` with 409/503 — not
-    answers dressed as `ok: True`. A client asked for audio and got none.
-    `/api/nwr/status` is the probe for "is anything listening"; ITS success
-    path is a status object with room to report that as an answer, which is
-    where the contract's ok-means-the-request-succeeded rule applies to that
-    question. The two routes answer different questions and are not
-    inconsistent with each other.
+    Contract note (do not re-litigate this): the success path here is an audio
+    stream, not JSON, so unlike a status probe it has no `ok: True` shape to
+    carry an answer in. A refusal is therefore a request FAILURE -- `ok: False`
+    with 409/503 -- not an answer dressed as `ok: True`. /api/nwr/status is the
+    probe for "is the watch running", and ITS success path has room to report
+    that as an answer.
     """
-    import queue
-    import subprocess
-    import threading
-
-    if not listener.is_listening():
-        return jsonify({"ok": False, "error": "nothing is listening",
-                        "code": "NWR_NOT_LISTENING"}), 409
-    from common import sdr_rx
-    enc, mime = sdr_rx.stream_encoder(listener.SAMPLE_RATE)
-    if not enc:
+    import urllib.error
+    import urllib.request
+    try:
+        upstream = urllib.request.urlopen(WATCH_BASE + "/stream", timeout=10)
+    except urllib.error.HTTPError as e:
+        # urlopen RAISES on every non-2xx, so the daemon's own refusals -- "the
+        # watch is not running" (409), "no audio encoder" and "too many audio
+        # streams" (503) -- all arrive here, never as a response object with a
+        # status to test. Forward its reason so the page shows the real one.
+        detail = _watch_error_text(e)
+        if e.code == 409:
+            return jsonify({"ok": False,
+                            "error": detail or "the watch is not running",
+                            "code": "NWR_NOT_LISTENING"}), 409
         return jsonify({"ok": False,
-                        "error": "no audio encoder (install ffmpeg or sox)",
-                        "code": "NWR_NO_ENCODER"}), 503
+                        "error": detail or f"the watch refused the stream (HTTP {e.code})",
+                        "code": "NWR_STREAM_UNAVAILABLE"}), 503
+    except Exception as e:                      # noqa: BLE001
+        return jsonify({"ok": False,
+                        "error": f"the weather watch is not reachable ({getattr(e, 'reason', e)})",
+                        "code": "NWR_WATCH_UNAVAILABLE"}), 503
 
-    def _generate():
-        # Writing to the encoder's stdin and reading its stdout used to
-        # happen on this one generator thread: write one queued chunk,
-        # then block on read1() for output. libmp3lame needs far more than
-        # one 4096-byte chunk of PCM before it emits its first MP3 frame,
-        # so that read1() never returned and the generator never looped
-        # back to feed more input -- both sides waited forever (proven on
-        # the Pi: read1() still blocked after 8s having written one
-        # chunk). The fix decouples the two: a dedicated thread pumps the
-        # subscriber queue into stdin, so this generator's blocking read
-        # of stdout is safe -- something else keeps the encoder fed.
-        q = listener.subscribe()
-        proc = None
-        writer = None
+    mime = upstream.headers.get("Content-Type", "audio/mpeg")
+
+    def _relay():
         try:
-            proc = subprocess.Popen(enc, shell=True, stdin=subprocess.PIPE,
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.DEVNULL)
-
-            def _pump_stdin():
-                try:
-                    while True:
-                        chunk = q.get(timeout=30)
-                        if not chunk:
-                            break               # our own sentinel, or stop()'s
-                        try:
-                            proc.stdin.write(chunk)
-                            proc.stdin.flush()
-                        except (BrokenPipeError, OSError, ValueError):
-                            break               # encoder died; nothing left to feed
-                except queue.Empty:
-                    pass                        # 30s of silence -- session likely ended
-                finally:
-                    # EOF lets the encoder flush its tail and exit on its
-                    # own instead of waiting on terminate()'s SIGTERM.
-                    try:
-                        proc.stdin.close()
-                    except Exception:            # noqa: BLE001
-                        pass
-
-            writer = threading.Thread(target=_pump_stdin, daemon=True,
-                                      name="nwr-stream-writer")
-            writer.start()
-
-            # A slow or stalled client blocks HERE, at yield, not in the
-            # writer. The writer keeps draining the queue into the
-            # encoder, but once nothing is reading the encoder's stdout,
-            # its OS pipe buffer fills, the encoder stops reading its own
-            # stdin, and the writer's write() blocks too -- backpressure
-            # through two bounded OS pipes (plus the bounded subscriber
-            # queue), not unbounded growth.
             while True:
-                out = proc.stdout.read1(8192)
-                if not out:
+                chunk = upstream.read(8192)
+                if not chunk:
                     break
-                yield out
-        except Exception:                  # noqa: BLE001 — client went away,
-            pass                            # or the encoder never spawned
+                yield chunk
         finally:
-            listener.unsubscribe(q)
-            if writer is not None:
-                # Wake a writer parked in q.get(): unsubscribe() already
-                # means no more real audio will reach this queue, so hand
-                # it the same poison pill listener.stop() uses rather than
-                # making it wait out its own 30s timeout. Only reachable
-                # once a writer exists, since only then is `q` guaranteed
-                # to be a real Queue rather than an injected test double.
-                listener.deliver_sentinel(q)
-            # Same terminate-then-wait as listener.terminate: a killed
-            # process nobody wait()s on is still a zombie. None-safe, so a
-            # Popen that never spawned costs nothing here. Killing the
-            # encoder also breaks a writer blocked mid-write() on a dead
-            # process's stdin (EPIPE), so the join below is bounded too.
-            listener.terminate(proc)
-            if writer is not None:
-                writer.join(timeout=5)
-
-    return Response(_generate(), mimetype=mime)
+            upstream.close()                    # a client that hangs up must not
+                                                # leave a subscriber on the daemon
+    return Response(_relay(), mimetype=mime)
 
 
 @bp.route("/api/nwr/alerts")
@@ -256,30 +208,6 @@ def api_nwr_config_set():
         return jsonify({"ok": False, "error": str(e),
                         "code": "NWR_BAD_CONFIG"}), 400
     return jsonify({"ok": True, "config": cfg})
-
-
-@bp.route("/api/nwr/scan", methods=["POST"])
-@require_oasis_request
-def api_nwr_scan():
-    inv = _inventory()
-    pre = listener.preconditions(inv=inv)
-    if listener.is_listening():
-        return jsonify({"ok": False,
-                        "error": "stop listening before scanning",
-                        "code": "NWR_BUSY"}), 409
-    if pre["busy"]:
-        return jsonify({"ok": False,
-                        "error": f"the dongle is held by {pre['holder']}",
-                        "code": "NWR_DONGLE_BUSY"}), 409
-    cfg = settings.load(_root())
-    result = scan.run(gain=cfg["gain"], ppm=cfg["ppm"],
-                      device_serial=listener.device_serial(inv))
-    if not result["ok"]:
-        return jsonify({"ok": False, "error": result["error"],
-                        "code": result.get("code", "NWR_SCAN_FAILED")}), 503
-    return jsonify({"ok": True, "powers": result["powers"],
-                    "best_hz": result["best_hz"],
-                    "best_dbm": result["best_dbm"]})
 
 
 @bp.route("/api/nwr/counties")

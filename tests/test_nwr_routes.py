@@ -1,14 +1,12 @@
 import datetime
+import io
 import json
 import os
-import shlex
 import shutil
-import subprocess
 import sys
 import tempfile
-import threading
-import time
 import unittest
+import urllib.error
 from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -104,22 +102,126 @@ class SettingsTest(unittest.TestCase):
                           now=now)
 
 
+
+
+class _FakeUpstream:
+    """The watch daemon's HTTP response, the way urllib hands it back.
+
+    Doubles as the /status context manager and as the /stream body, because the
+    route uses the same urlopen() for both.
+    """
+
+    def __init__(self, body=b"", status=200, headers=None):
+        self._body = io.BytesIO(body)
+        self.status = status
+        self.headers = headers or {"Content-Type": "application/json"}
+        self.closed = False
+
+    def read(self, n=-1):
+        return self._body.read(n)
+
+    def close(self):
+        self.closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
+
+def _http_error(code, payload):
+    """What urlopen() actually raises for a daemon refusal -- an HTTPError, not
+    a response object carrying a status. Every non-2xx arrives this way."""
+    body = io.BytesIO(json.dumps(payload).encode())
+    return urllib.error.HTTPError(WATCH_STREAM, code, "refused", {}, body)
+
+
+WATCH_STREAM = nwr_routes.WATCH_BASE + "/stream"
+
+# What the daemon's status() reports on a healthy box, trimmed to the keys the
+# route reads. Field names come from services/nwr/common/daemon.py, not from a
+# guess -- tests/test_nwr_daemon.py's StatusTest pins the same set.
+WATCH_UP = {
+    "phase": "listening", "channel_hz": 162450000, "channel": "WX3",
+    "scan": {"ok": True, "best_hz": 162450000, "best_dbm": -18.0, "weak": False},
+    "scan_weak": False, "consecutive_weak": 0, "retry_failures": 0,
+    "next_retry": 0, "streams": 0, "started": 1_700_000_000.0,
+    "alerts_seen": 4, "last_decode": {"station": "KEC55", "event": "TOR",
+                                      "at": 1_700_000_500},
+    "last_error": None, "listening": True, "subscribers": 1, "elapsed_s": 92,
+    "retry_in_s": 0, "port": 8089,
+}
+
+PRE_READY = {"missing_deps": [], "dongle_present": True, "assigned": True,
+             "device": "RTL-SDR #1", "busy": False, "holder": None,
+             "can_stream": True, "can_scan": True}
+
+
 class NwrRouteCsrfTest(unittest.TestCase):
     """Every mutating NWR route MUST reject a request without the CSRF
     header — a plain client, not the header-carrying one, is the only way
-    to prove that (csrf_client would mask a missing guard)."""
+    to prove that (csrf_client would mask a missing guard).
+
+    Only one mutating route is left: capture control moved to the daemon, so
+    /listen, /listen/stop and /scan are gone rather than guarded.
+    """
 
     def setUp(self):
         app_module.app.config["TESTING"] = True
         self.c = bare_client(app_module.app)
 
     def test_post_routes_reject_without_oasis_header(self):
-        for path in ("/api/nwr/listen", "/api/nwr/listen/stop",
-                    "/api/nwr/config", "/api/nwr/scan"):
+        for path in ("/api/nwr/config",):
             with self.subTest(path=path):
                 r = self.c.post(path, json={})
                 self.assertEqual(r.status_code, 403)
                 self.assertFalse(json.loads(r.data)["ok"])
+
+
+class NwrRetiredRoutesTest(unittest.TestCase):
+    """Flask no longer starts, stops or sweeps anything.
+
+    A stale page still holds these URLs, and 404 is the one answer that cannot
+    be mistaken for success: silently starting a second capture would fight the
+    daemon for the same dongle, and a Flask-side rtl_power sweep would take the
+    tuner out from under a running watch for six seconds.
+    """
+
+    def setUp(self):
+        app_module.app.config["TESTING"] = True
+        self.c = csrf_client(app_module.app)
+
+    def test_the_capture_control_routes_are_gone(self):
+        # 405, not 404: this app serves its static tree from "/", so a POST to
+        # ANY path with no route of its own matches that GET-only rule and
+        # Werkzeug answers MethodNotAllowed before Flask ever reports a missing
+        # URL. What matters to a stale page is identical either way -- a 4xx
+        # with a conformant envelope and a stable code, and nothing started.
+        for path in ("/api/nwr/listen", "/api/nwr/listen/stop", "/api/nwr/scan"):
+            with self.subTest(path=path):
+                r = self.c.post(path, json={})
+                self.assertEqual(r.status_code, 405)
+                body = json.loads(r.data)
+                self.assertFalse(body["ok"])
+                self.assertEqual(body["code"], "METHOD_NOT_ALLOWED")
+
+    def test_a_stale_page_asking_for_them_gets_a_conformant_404(self):
+        for path in ("/api/nwr/listen", "/api/nwr/scan"):
+            with self.subTest(path=path):
+                r = self.c.get(path)
+                self.assertEqual(r.status_code, 404)
+                body = json.loads(r.data)
+                self.assertFalse(body["ok"])
+                self.assertEqual(body["code"], "NOT_FOUND")
+
+    def test_the_blueprint_declares_no_capture_endpoint(self):
+        # A 404 could also mean "renamed"; this says the endpoints do not exist
+        # anywhere on the map.
+        rules = {str(r) for r in app_module.app.url_map.iter_rules()}
+        for gone in ("/api/nwr/listen", "/api/nwr/listen/stop", "/api/nwr/scan"):
+            self.assertNotIn(gone, rules)
 
 
 class NwrStatusRouteTest(unittest.TestCase):
@@ -127,20 +229,77 @@ class NwrStatusRouteTest(unittest.TestCase):
         app_module.app.config["TESTING"] = True
         self.c = csrf_client(app_module.app)
 
-    def test_status_shape_when_nothing_installed_or_listening(self):
+    def test_a_watch_that_is_down_is_an_answer_not_a_failure(self):
+        # Contract §2: the probe succeeded; the watch being down is the news.
+        # A station whose daemon has crashed must still render a dashboard.
         pre = {"missing_deps": ["multimon-ng"], "dongle_present": False,
-              "assigned": False, "device": None, "busy": False,
-              "holder": None, "can_stream": False, "can_scan": False}
+               "assigned": False, "device": None, "busy": False,
+               "holder": None, "can_stream": False, "can_scan": False}
         with mock.patch.object(nwr_routes.listener, "preconditions", return_value=pre), \
-             mock.patch.object(nwr_routes.listener, "is_listening", return_value=False):
+             mock.patch("urllib.request.urlopen",
+                        side_effect=urllib.error.URLError("Connection refused")):
             r = self.c.get("/api/nwr/status")
         self.assertEqual(r.status_code, 200)
         body = json.loads(r.data)
         self.assertTrue(body["ok"])
-        for key in ("preconditions", "capture", "config", "channels"):
+        for key in ("preconditions", "watch", "config", "channels"):
             self.assertIn(key, body)
-        self.assertFalse(body["capture"]["listening"])
+        self.assertFalse(body["watch"]["reachable"])
+        self.assertIn("Connection refused", body["watch"]["detail"])
+        self.assertFalse(body["watch"]["listening"])
         self.assertEqual(body["preconditions"]["missing_deps"], ["multimon-ng"])
+
+    def test_the_shape_does_not_change_when_the_watch_is_down(self):
+        # Contract §5: a key in the schema is in every response. A field that
+        # is sometimes absent and sometimes null reads as two different worlds.
+        with mock.patch.object(nwr_routes.listener, "preconditions", return_value=PRE_READY):
+            with mock.patch("urllib.request.urlopen",
+                            return_value=_FakeUpstream(json.dumps(WATCH_UP).encode())):
+                up = json.loads(self.c.get("/api/nwr/status").data)
+            with mock.patch("urllib.request.urlopen",
+                            side_effect=OSError("no route to host")):
+                down = json.loads(self.c.get("/api/nwr/status").data)
+        self.assertEqual(sorted(up["watch"]), sorted(down["watch"]))
+        self.assertIsNone(down["watch"]["phase"])
+        self.assertEqual(down["watch"]["alerts_seen"], 0)
+
+    def test_the_watch_state_comes_from_the_daemon(self):
+        with mock.patch.object(nwr_routes.listener, "preconditions", return_value=PRE_READY), \
+             mock.patch("urllib.request.urlopen",
+                        return_value=_FakeUpstream(json.dumps(WATCH_UP).encode())):
+            body = json.loads(self.c.get("/api/nwr/status").data)
+        w = body["watch"]
+        self.assertTrue(w["reachable"])
+        self.assertIsNone(w["detail"])
+        self.assertTrue(w["listening"])
+        self.assertEqual(w["phase"], "listening")
+        self.assertEqual(w["channel"], "WX3")
+        self.assertEqual(w["alerts_seen"], 4)
+        self.assertEqual(w["last_decode"]["event"], "TOR")
+
+    def test_a_retrying_watch_reports_why_and_when(self):
+        # The two fields that keep a red card from looking wedged.
+        state = dict(WATCH_UP, phase="retrying", listening=False,
+                     channel=None, channel_hz=None, retry_in_s=240,
+                     last_error="another service is already using the RTL-SDR dongle")
+        with mock.patch.object(nwr_routes.listener, "preconditions", return_value=PRE_READY), \
+             mock.patch("urllib.request.urlopen",
+                        return_value=_FakeUpstream(json.dumps(state).encode())):
+            body = json.loads(self.c.get("/api/nwr/status").data)
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["watch"]["phase"], "retrying")
+        self.assertEqual(body["watch"]["retry_in_s"], 240)
+        self.assertIn("already using", body["watch"]["last_error"])
+
+    def test_a_daemon_serving_nonsense_does_not_take_the_page_down(self):
+        with mock.patch.object(nwr_routes.listener, "preconditions", return_value=PRE_READY), \
+             mock.patch("urllib.request.urlopen",
+                        return_value=_FakeUpstream(b"<html>not json</html>")):
+            r = self.c.get("/api/nwr/status")
+        self.assertEqual(r.status_code, 200)
+        body = json.loads(r.data)
+        self.assertTrue(body["ok"])
+        self.assertFalse(body["watch"]["reachable"])
 
 
 class NwrConfigRouteTest(unittest.TestCase):
@@ -183,247 +342,103 @@ class NwrConfigRouteTest(unittest.TestCase):
         self.assertEqual(body["code"], "NWR_BAD_CONFIG")
 
 
-class NwrListenRouteTest(unittest.TestCase):
+class NwrStreamRelayTest(unittest.TestCase):
+    """The relay. Flask spawns nothing and subscribes to nothing here — the
+    encoder and the subscriber queue both live in the daemon, which is what
+    makes the v1 audio deadlock impossible in this process by construction.
+    tests/test_nwr_daemon.py's DaemonStreamTest is where that regression is
+    now guarded, against a real withhold-until-threshold subprocess."""
+
     def setUp(self):
         app_module.app.config["TESTING"] = True
         self.c = csrf_client(app_module.app)
 
-    def test_listen_returns_409_when_dongle_busy(self):
-        cfg = dict(settings.DEFAULTS)
-        with mock.patch.object(nwr_routes.settings, "load", return_value=cfg), \
-             mock.patch.object(nwr_routes, "_inventory", return_value=None), \
-             mock.patch.object(nwr_routes.listener, "preconditions",
-                               return_value={"busy": True, "holder": "aprs"}):
-            r = self.c.post("/api/nwr/listen", json={})
-        self.assertEqual(r.status_code, 409)
+    def test_a_watch_that_is_not_reachable_is_a_conformant_503(self):
+        with mock.patch("urllib.request.urlopen",
+                        side_effect=urllib.error.URLError("Connection refused")):
+            r = self.c.get("/api/nwr/listen/stream")
+        self.assertEqual(r.status_code, 503)
         body = json.loads(r.data)
         self.assertFalse(body["ok"])
-        self.assertEqual(body["code"], "NWR_DONGLE_BUSY")
+        self.assertEqual(body["code"], "NWR_WATCH_UNAVAILABLE")
+        self.assertIn("Connection refused", body["error"])
 
-
-class NwrStreamRouteTest(unittest.TestCase):
-    """The AUDIO branch's cleanup path — Finding 1's territory. The decode
-    branch (services/nwr/common/listener.py) is never touched here; these
-    tests only exercise the per-subscriber fan-out this route owns."""
-
-    def setUp(self):
-        app_module.app.config["TESTING"] = True
-        self.c = csrf_client(app_module.app)
-
-    def test_stream_refuses_when_nothing_is_listening(self):
-        with mock.patch.object(nwr_routes.listener, "is_listening", return_value=False):
+    def test_a_watch_that_is_not_running_answers_409_with_its_own_reason(self):
+        # urlopen RAISES on a 409 rather than returning one, so a route that
+        # only tested `upstream.status` would report "not reachable" for a
+        # daemon that is up and simply has no capture.
+        with mock.patch("urllib.request.urlopen",
+                        side_effect=_http_error(409, {"error": "the watch is not running"})):
             r = self.c.get("/api/nwr/listen/stream")
         self.assertEqual(r.status_code, 409)
         body = json.loads(r.data)
         self.assertFalse(body["ok"])
         self.assertEqual(body["code"], "NWR_NOT_LISTENING")
+        self.assertEqual(body["error"], "the watch is not running")
 
-    def test_stream_unsubscribes_when_the_encoder_cannot_be_spawned(self):
-        # A dongle exhausting file descriptors / no /bin/sh — more plausible
-        # on a Pi 3 than a workstation — must not leave the subscriber queue
-        # registered forever (Finding 1).
-        fake_q = object()
-        subscribed = []
-        unsubscribed = []
-
-        def fake_subscribe():
-            subscribed.append(fake_q)
-            return fake_q
-
-        def fake_popen(*a, **k):
-            raise OSError("fork failed: resource temporarily unavailable")
-
-        with mock.patch.object(nwr_routes.listener, "is_listening", return_value=True), \
-             mock.patch("common.sdr_rx.stream_encoder",
-                        return_value=("ffmpeg -f s16le -i - -f mp3 -", "audio/mpeg")), \
-             mock.patch.object(nwr_routes.listener, "subscribe", side_effect=fake_subscribe), \
-             mock.patch.object(nwr_routes.listener, "unsubscribe",
-                               side_effect=unsubscribed.append), \
-             mock.patch("subprocess.Popen", side_effect=fake_popen):
+    def test_a_refused_stream_forwards_the_daemons_reason(self):
+        with mock.patch("urllib.request.urlopen",
+                        side_effect=_http_error(503, {"error": "too many audio streams"})):
             r = self.c.get("/api/nwr/listen/stream")
-            r.get_data()   # force the generator to run to completion
+        self.assertEqual(r.status_code, 503)
+        body = json.loads(r.data)
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["code"], "NWR_STREAM_UNAVAILABLE")
+        self.assertEqual(body["error"], "too many audio streams")
 
-        self.assertEqual(subscribed, [fake_q])
-        self.assertEqual(unsubscribed, [fake_q])
+    def test_audio_is_relayed_byte_for_byte_with_the_daemons_mime(self):
+        up = _FakeUpstream(b"\xff\xfb" + b"x" * 20000,
+                           headers={"Content-Type": "audio/mpeg"})
+        with mock.patch("urllib.request.urlopen", return_value=up):
+            r = self.c.get("/api/nwr/listen/stream")
+            data = r.get_data()
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.mimetype, "audio/mpeg")
+        self.assertEqual(data, b"\xff\xfb" + b"x" * 20000)
+        self.assertTrue(up.closed, "the upstream connection was left open")
+
+    def test_a_client_that_hangs_up_closes_the_upstream(self):
+        # An abandoned relay would leave a subscriber — and its ffmpeg — alive
+        # on the daemon for as long as this process runs.
+        up = _FakeUpstream(b"y" * 100000)
+        with mock.patch("urllib.request.urlopen", return_value=up):
+            r = self.c.get("/api/nwr/listen/stream")
+            gen = r.response
+            next(iter(gen))
+            r.close()
+        self.assertTrue(up.closed, "the upstream connection was left open")
 
 
-class NwrStreamDeadlockTest(unittest.TestCase):
-    """The AUDIO branch's actual field failure: a real encoder that needs
-    far more than one write's worth of input before it produces output.
-
-    The bug: the old `_generate()` wrote ONE queued chunk to the encoder's
-    stdin, then blocked on a `read1()` of its stdout, on the SAME thread.
-    libmp3lame needs several times CHUNK (4096) bytes of PCM before its
-    first MP3 frame comes out, so the generator never looped back to feed
-    it more -- both sides waited forever. A mock encoder that echoes bytes
-    straight back is blind to this exact shape of bug (it always "works"),
-    so these tests spawn a REAL subprocess with the same
-    withhold-until-threshold behavior real libmp3lame has, then drive the
-    real route generator against it.
-    """
-
-    # Comfortably larger than services.nwr.common.listener.CHUNK (4096),
-    # so writing exactly one queued chunk -- the old code's ceiling --
-    # can never cross it. Only a writer that keeps draining the queue
-    # across several chunks, on its own thread, gets there.
-    _THRESHOLD = 20000
-
-    @classmethod
-    def setUpClass(cls):
-        # A stand-in for libmp3lame's buffering, not ffmpeg itself: this
-        # box has no ffmpeg (and CI can't be relied on to either), but the
-        # one property that matters here -- silence on stdout until a
-        # large amount of stdin has been consumed -- is exactly what a
-        # plain Python read loop below reproduces, with no vendored
-        # binary and no platform dependency.
-        script = (
-            "import sys\n"
-            f"THRESHOLD = {cls._THRESHOLD}\n"
-            "buf = bytearray()\n"
-            "started = False\n"
-            "while True:\n"
-            "    chunk = sys.stdin.buffer.read(4096)\n"
-            "    if not chunk:\n"
-            "        break\n"
-            "    if not started:\n"
-            "        buf.extend(chunk)\n"
-            "        if len(buf) < THRESHOLD:\n"
-            "            continue\n"
-            "        started = True\n"
-            "        sys.stdout.buffer.write(bytes(buf))\n"
-            "        sys.stdout.buffer.flush()\n"
-            "    else:\n"
-            "        sys.stdout.buffer.write(chunk)\n"
-            "        sys.stdout.buffer.flush()\n"
-        )
-        fd, cls._script_path = tempfile.mkstemp(suffix=".py")
-        with os.fdopen(fd, "w") as f:
-            f.write(script)
-
-    @classmethod
-    def tearDownClass(cls):
-        os.remove(cls._script_path)
+class NwrFlaskWritesNothingTest(unittest.TestCase):
+    """The daemon is the ONLY writer of the alert store (see its module
+    docstring: alerts.record() takes a module lock, which means nothing across
+    processes, and two read-modify-write callers lose updates under exactly the
+    conditions that matter — several counties, several messages, close
+    together). A grep over the source is the cheapest guard against a write
+    creeping back into a route, and it fails the day it is written rather than
+    the day two alerts arrive together."""
 
     def setUp(self):
-        app_module.app.config["TESTING"] = True
-        self._encoder_cmd = "{} {}".format(shlex.quote(sys.executable),
-                                           shlex.quote(self._script_path))
-        # Belt-and-braces: a test that fails before reaching gen.close()
-        # must not leave a real queue sitting in listener's global
-        # subscriber list for a later test to trip over.
-        self.addCleanup(lambda: nwr_routes.listener._state.__setitem__("subs", []))
+        with open(nwr_routes.__file__, encoding="utf-8") as fh:
+            self.src = fh.read()
 
-    def _start_generator(self):
-        """Wire the real route generator to the real stand-in subprocess,
-        spying on subscribe()/unsubscribe()/Popen so the test can see the
-        real queue, the real encoder process, and every unsubscribe call
-        without reaching into listener internals directly."""
-        procs = []
-        real_popen = subprocess.Popen
+    def test_no_route_records_an_alert(self):
+        self.assertNotIn("alerts.record", self.src,
+                         "Flask must never write the alert store — the daemon is "
+                         "its single writer")
 
-        def spy_popen(*a, **k):
-            p = real_popen(*a, **k)
-            procs.append(p)
-            return p
+    def test_flask_neither_speaks_nor_decides_to(self):
+        for gone in ("announce.speak", "bell.should_speak"):
+            self.assertNotIn(gone, self.src,
+                             f"{gone} belongs to the daemon: an alert must be "
+                             "spoken whether or not a browser is open")
 
-        captured = {}
-        real_subscribe = nwr_routes.listener.subscribe
-
-        def spy_subscribe():
-            q = real_subscribe()
-            captured["q"] = q
-            return q
-
-        unsub_calls = []
-        real_unsubscribe = nwr_routes.listener.unsubscribe
-
-        def spy_unsubscribe(q):
-            unsub_calls.append(q)
-            return real_unsubscribe(q)
-
-        patches = [
-            mock.patch.object(nwr_routes.listener, "is_listening", return_value=True),
-            mock.patch("common.sdr_rx.stream_encoder",
-                       return_value=(self._encoder_cmd, "audio/mpeg")),
-            mock.patch.object(nwr_routes.listener, "subscribe", side_effect=spy_subscribe),
-            mock.patch.object(nwr_routes.listener, "unsubscribe", side_effect=spy_unsubscribe),
-            mock.patch("subprocess.Popen", side_effect=spy_popen),
-        ]
-        for p in patches:
-            p.start()
-        self.addCleanup(lambda: [p.stop() for p in patches])
-
-        resp = nwr_routes.api_nwr_stream()
-        gen = resp.response
-        return gen, procs, captured, unsub_calls
-
-    def _pull_first_chunk(self, gen, captured, result):
-        """Start the generator on its own thread (its first blocking read
-        can only be unblocked from a different thread than the one that's
-        parked in it) and feed it once it has subscribed."""
-        def _run():
-            try:
-                result["out"] = next(gen)
-            except StopIteration:
-                result["out"] = None
-            except Exception as e:              # noqa: BLE001
-                result["error"] = e
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
-
-        deadline = time.time() + 2
-        while "q" not in captured and time.time() < deadline:
-            time.sleep(0.01)
-        self.assertIn("q", captured, "generator never subscribed")
-
-        # Mimic pump()'s real delivery shape -- many CHUNK-sized pieces,
-        # not one big write -- comfortably past _THRESHOLD in total.
-        q = captured["q"]
-        for _ in range(10):
-            q.put(b"a" * 4096)
-
-        t.join(timeout=8)
-        self.assertFalse(t.is_alive(),
-                         "stream generator deadlocked waiting on the encoder -- "
-                         "write-then-read on one thread never looped back to "
-                         "feed it enough input to produce output")
-        return t
-
-    def test_stream_produces_real_encoder_output_without_deadlocking(self):
-        gen, procs, captured, _unsub_calls = self._start_generator()
-        result = {}
-        self._pull_first_chunk(gen, captured, result)
-
-        self.assertNotIn("error", result, result.get("error"))
-        self.assertTrue(result.get("out"), "no bytes came back from the encoder")
-        self.assertTrue(procs, "encoder was never spawned")
-
-        gen.close()
-
-    def test_stream_close_unsubscribes_and_reaps_after_early_disconnect(self):
-        gen, procs, captured, unsub_calls = self._start_generator()
-        result = {}
-        self._pull_first_chunk(gen, captured, result)
-        self.assertTrue(result.get("out"))
-        q = captured["q"]
-
-        # The generator is suspended at `yield out` here, exactly where a
-        # closed client connection resumes it with GeneratorExit. Safe to
-        # call from this thread: the thread that ran next() has already
-        # finished, so nothing is concurrently executing the generator.
-        gen.close()
-
-        self.assertEqual(unsub_calls, [q])
-
-        for _ in range(50):
-            if procs[0].poll() is not None:
-                break
-            time.sleep(0.1)
-        self.assertIsNotNone(procs[0].poll(), "encoder was not reaped after early close()")
-
-        alive_writers = [th for th in threading.enumerate()
-                         if th.name == "nwr-stream-writer"]
-        self.assertEqual(alive_writers, [], "writer thread outlived the request")
+    def test_flask_holds_no_encoder_and_no_subscriber_queue(self):
+        # This is what makes the v1 deadlock structurally impossible here.
+        for gone in ("subprocess", "stream_encoder", "listener.subscribe",
+                     "listener.start", "listener.stop"):
+            self.assertNotIn(gone, self.src,
+                             f"{gone} is capture, and capture lives in the daemon")
 
 
 if __name__ == "__main__":
