@@ -81,13 +81,12 @@ def stream_encoder(srate, which=shutil.which):
 
 
 # `rtl_test -t` takes up to 6 s; NWR's weather page polls /api/nwr/status
-# every 5 s and both dashboards' health checks call this too (satellites has
-# the identical pattern), so an unthrottled probe could outlast index.html's
-# own 4 s health-check budget and paint the chip TIMEOUT/DOWN with a dongle
-# that is actually fine. 30 s is short enough that an unplugged dongle is
-# never masked for more than one health-check cycle or two, and long enough
-# that a Pi 3 isn't shelling out to rtl_test 3+ times a minute per open
-# dashboard tab.
+# every 5 s and both dashboards' health checks call it too, so an unthrottled
+# probe could outlast index.html's own 4 s health-check budget and paint the
+# chip TIMEOUT/DOWN with a dongle that is actually fine. 30 s is short enough
+# that an unplugged dongle is never masked for more than one health-check cycle
+# or two, and long enough that a Pi 3 isn't shelling out to rtl_test 3+ times a
+# minute per open dashboard tab.
 _PRESENCE_TTL_S = 30
 _presence_lock = threading.Lock()
 _presence_state = {"t": None, "present": False}
@@ -100,34 +99,58 @@ def _reset_presence_cache():
         _presence_state["t"] = None
 
 
-def dongle_present(run=None, now=None):
+def dongle_present(run=None, now=None, cache=False):
     """True if `rtl_test -t` reports at least one RTL-SDR device (Pi/Linux only).
 
-    Cached process-locally for _PRESENCE_TTL_S (see above) — NOT shared across
-    processes. gunicorn runs this app as a single worker (--workers 1, see
-    scripts/start-server.sh), so in practice there is only ever one cache to
-    be surprised by; a future multi-worker deployment would just see each
-    worker re-probe independently, not a correctness bug.
+    UNCACHED BY DEFAULT, deliberately. This function was extracted verbatim
+    from satellites' listen.py, which probed on every call, and the cache
+    arrived with the extraction. Satellites hard-refuses Listen with NO_DONGLE
+    when this is False (services/satellites/routes.py), so a cached False meant
+    plugging a dongle in and pressing Listen bought up to 30 s of "no RTL-SDR
+    dongle detected" on a station where it used to work immediately — and one
+    transient rtl_test timeout blocked the page for the rest of the window
+    instead of for one call. Caching is a POLLING optimisation; a caller acting
+    on the answer wants the truth.
 
-    `now` is a parameter (default time.time()) so the cache is testable
-    without sleeping for real; `run` is unrelated to caching — it is the
-    existing subprocess.run injection point for tests.
+    `cache=True` is for the pollers: /api/nwr/status is fetched every 5 s by the
+    weather page and again by both dashboards' health checks, and those want a
+    cheap recent answer, not a fresh 6 s shell-out apiece.
+
+    The cache is process-local, never shared across processes. gunicorn runs
+    this app as a single worker (--workers 1, see scripts/start-server.sh), so
+    in practice there is only ever one cache to be surprised by.
+
+    Two things are NEVER cached:
+
+      * the exception path. A timeout or an OSError is one bad probe, not a
+        measurement of the hardware, and remembering it for 30 s turns a blip
+        into an outage;
+      * any call with `run` injected. A fake answer that outlives its test
+        poisons a process-global for whatever runs next — listen.preconditions
+        (run=fake) would decide the real dongle question for the following test
+        in the same process.
+
+    `now` (default time.time()) is a parameter so the cache window is testable
+    without sleeping for real.
     """
+    cacheable = bool(cache) and run is None
     now = time.time() if now is None else now
-    with _presence_lock:
-        cached_t = _presence_state["t"]
-        if cached_t is not None and (now - cached_t) < _PRESENCE_TTL_S:
-            return _presence_state["present"]
+    if cacheable:
+        with _presence_lock:
+            cached_t = _presence_state["t"]
+            if cached_t is not None and (now - cached_t) < _PRESENCE_TTL_S:
+                return _presence_state["present"]
     run_fn = run or subprocess.run
     try:
         from common.hardware_detect import parse_rtl_test_devices
         r = run_fn(["rtl_test", "-t"], capture_output=True, text=True, timeout=6)
         present = bool(parse_rtl_test_devices((r.stdout or "") + "\n" + (r.stderr or "")))
     except Exception:                                   # noqa: BLE001
-        present = False
-    with _presence_lock:
-        _presence_state["t"] = now
-        _presence_state["present"] = present
+        return False
+    if cacheable:
+        with _presence_lock:
+            _presence_state["t"] = now
+            _presence_state["present"] = present
     return present
 
 

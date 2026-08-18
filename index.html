@@ -1990,15 +1990,22 @@ const SVC_CARD_EXTERNAL_URL = {
   winlink: () => `${location.protocol}//${location.hostname}:${PORTS.winlink}/`,
 };
 
-// Cards whose OPEN stays live while the service is only amber. Weather Radio's
-// steady amber IS "no dongle assigned yet", and its page is where the county
-// watch list and the decoded-alert log live — both worth reading, and neither
-// dependent on a tuner. Gating OPEN on green would make the page unreachable
-// from the dashboard on exactly the box that has not been set up yet, now that
-// its nav link is gone.
-const SVC_OPEN_WHEN_WARN = new Set(['nwr']);
+// Cards whose OPEN stays live whatever the health check said. NWR-SPECIFIC,
+// not a new general rule: for every other card OPEN leads to the service
+// itself, and a link to a dead service is worse than a greyed-out button.
+// Weather Radio's OPEN leads to /server/nwr/, a page SERVED BY FLASK that
+// exists to explain the watch — the missing binary, the last error, the
+// preconditions, the decode log — and it is the only route to it, because the
+// nav link was deliberately removed.
+//
+// So the rule that gated OPEN on health had it backwards here: the card's red
+// states (DEPS, WATCH DOWN, no dongle detected) are precisely the ones an
+// operator needs that page for, and greying the button out in them made
+// "a page that says which binary is missing instead of nothing at all"
+// unreachable in the missing-binary state. Amber alone was not enough.
+const SVC_OPEN_ALWAYS = new Set(['nwr']);
 function _svcOpenable(id, state) {
-  return state === 'up' || (state === 'warn' && SVC_OPEN_WHEN_WARN.has(id));
+  return SVC_OPEN_ALWAYS.has(id) || state === 'up';
 }
 
 // Called by each card's OPEN button (disabled via updateOpenBtn() unless the
@@ -2348,10 +2355,16 @@ const SERVICES = [
   {
     id: 'nwr', name: 'Weather Radio',
     check: async () => {
+      // The generation is taken BEFORE the fetch. Losing the 4 s race does not
+      // abort this fetch, so this continuation still runs when the slow answer
+      // lands; by then fail() has taken a newer generation and this paint is
+      // dropped instead of landing on top of the failure paint. See
+      // nwrPaintGeneration() in common/js/nwr-card.js.
+      const gen = nwrPaintGeneration();
       const r = await fetch('/api/nwr/status', { cache: 'no-store' });
       const d = await r.json();                       // body always consumed
       const cs = nwrCardState(d, _nwrAlertEvent);
-      nwrRenderCard(cs);
+      nwrRenderCard(cs, gen);
       return nwrHealth(cs);
     },
     // The failure path paints the card too. checkService's catch knows about
@@ -2360,7 +2373,7 @@ const SERVICES = [
     // rtl_test probe, used to badge the card DOWN while the meter beside it
     // kept the last good -32.0 dBm. nwrCardState(null) is the module's own
     // unreachable state: no meter, no alert.
-    fail: () => nwrRenderCard(nwrCardState(null))
+    fail: () => nwrRenderCard(nwrCardState(null), nwrPaintGeneration())
   },
   {
     id: 'manuals', name: 'Radio Manuals',
@@ -2943,16 +2956,25 @@ function updatePower(svcId, state) {
   btn.title = block || ((running ? 'Stop ' : 'Start ') + SVC_UNITS[svcId] + ' service');
 }
 
-// Card id -> [signal card id, signal's systemd unit] whose activity means
-// The three RTL-SDR consumers. A dongle can be ASSIGNED to all three at once
+// The RTL-SDR consumers. A dongle can be ASSIGNED to all of them at once
 // (shared, harmless — nothing runs), but starting one CLAIMS it exclusively.
 // specs/2026-07-15-hardware-conflict-resolution-v2-design.md §4: if another of
-// the three is already running on THIS card's assigned dongle, offer to stop it
+// them is already running on THIS card's assigned dongle, offer to stop it
 // first. Resolved entirely client-side from polled state (_svcStates + _hwLast)
 // — no server gate. GrayWolf itself never opens a dongle; only aprs-sdr-feed
 // ('feed') does, so GrayWolf isn't in this set.
-const RTL_SDR_CARDS = ['feed', 'adsb', 'owrx'];
-const RTL_SDR_LABEL = { feed: 'The APRS SDR feed', adsb: 'ADS-B', owrx: 'OpenWebRX' };
+//
+// MUST match common/hardware_detect.py's SDR_CONSUMING_UNITS. 'nwr' was the
+// omission that proved it: the weather watch is the only ALWAYS-ON consumer —
+// it holds its dongle indefinitely rather than for the length of a click — so
+// starting ADS-B or the APRS feed on a shared dongle gave no prompt at all,
+// dump1090 died on usb_claim_interface, and the card went DOWN with nothing
+// saying why. nwr has no power button of its own (HW-backed; started from the
+// matrix), but it must still be listed HERE as the service that can be holding
+// the dongle somebody else's START wants.
+const RTL_SDR_CARDS = ['feed', 'adsb', 'owrx', 'nwr'];
+const RTL_SDR_LABEL = { feed: 'The APRS SDR feed', adsb: 'ADS-B', owrx: 'OpenWebRX',
+                        nwr: 'The weather watch' };
 
 // Returns true if togglePower should proceed with the start now. Shows a
 // confirmation when another RTL-SDR service is running on the same dongle;

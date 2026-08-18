@@ -1,4 +1,4 @@
-"""The NWR capture pipeline — manual only, Flask-managed, one session at a time.
+"""The NWR capture pipeline — one capture at a time, driven by the watch daemon.
 
     rtl_fm -f <channel> -M fm -s 22050 -
       |
@@ -18,6 +18,15 @@ is worthless without:
 A subscriber whose queue is full LOSES AUDIO and is never waited on. Dropping
 sound for a tab that stopped reading is correct; blocking the decoder for it is
 not.
+
+WHO DRIVES THIS: services/nwr/common/daemon.py, the always-on oasis-nwr
+process, and nothing else. start()/stop() are its supervisor's, not a browser
+click's — the capture runs from boot to shutdown and a browser is only ever a
+subscriber to audio that is already flowing. Flask (services/nwr/routes.py)
+proxies the daemon over loopback; the one thing it calls in here directly is
+preconditions(), which touches no process at all. So "start" and "stop" below
+are the supervisor's verbs: one rtl_fm + multimon-ng pair, started at boot and
+restarted for a retune, a rescan or a retry -- never one operator visit.
 
 NO BARE SIBLING IMPORTS in this package. services/satellites/ must be imported
 bare because its modules do `import demod` at top level, which makes
@@ -54,8 +63,10 @@ REQUIRED_BINARIES = ("rtl_fm", "multimon-ng")
 
 # How long to wait after spawning before trusting rtl_fm actually claimed the
 # dongle. A busy dongle makes rtl_fm die on usb_claim_interface in ~100-200 ms;
-# 300 ms is comfortably past that without making every successful Listen click
-# feel laggy.
+# 300 ms is comfortably past that without adding a noticeable pause to every
+# successful start — and the supervisor starts a capture on its own tick, after
+# a retry, and after every retune, so this is paid far more often than a
+# once-per-visit cost would be.
 STARTUP_CHECK_S = 0.3
 
 SYNTHETIC_UNIT = "nwr-listen"
@@ -142,20 +153,20 @@ def decode_lines(lines, on_header):
 # ── State ────────────────────────────────────────────────────────────────────
 
 def is_listening():
-    """True while we hold the dongle for an actual capture session."""
+    """True while an rtl_fm capture is running and holding the dongle."""
     p = _state["rtl"]
     return p is not None and p.poll() is None
 
 
 def is_claimed():
-    """True whenever NWR holds the dongle for ANY reason -- a listen session
-    or an in-progress channel scan.
+    """True whenever this process holds the dongle for ANY reason -- a running
+    capture or an in-progress channel scan.
 
-    is_listening() alone undercounts: scan.run() blocks its Flask worker for
-    up to `seconds + 30` while rtl_power owns the dongle exclusively, but
-    that hold used to be invisible to every arbitration surface (is_listening(),
-    the nwr-listen synthetic token, the hardware console) because none of them
-    knew a scan was even running. This is the value all of those must see.
+    is_listening() alone undercounts: scan.run() takes the tuner exclusively
+    for up to `seconds + 30`, and between the sweep starting and the capture
+    starting there is no rtl_fm to see. Anything arbitrating over the dongle
+    has to treat that gap as held, or it reads NWR as idle at the exact moment
+    it is least able to share.
     """
     return is_listening() or bool(_state["scanning"])
 
@@ -175,13 +186,19 @@ def scan_end():
 
 
 def is_active_wrapper(base_is_active=None):
-    """Wrap systemctl is-active so the SYNTHETIC "nwr-listen" unit is answered
-    from our own capture state — the bridge that lets the conflict engine see
-    NWR as a dongle claimant even though it is not a systemd unit.
+    """Wrap systemctl is-active so the "nwr-listen" token is answered from this
+    process's own capture state instead of from systemd.
+
+    The token is a leftover of the Flask-managed design and no longer appears
+    in common/hardware.py's SYNTHETIC_UNITS — the watch is the ordinary
+    oasis-nwr unit now, and the console and the kiosk read that. What is left
+    of this is preconditions()'s default is_active: inside the daemon, "is nwr
+    holding the dongle" is answered accurately by our own state and only
+    approximately by systemd (the unit is active for the whole retry backoff,
+    when no tuner is held at all).
 
     Answers from is_claimed(), not is_listening(): a scan holds the dongle
-    exactly as exclusively as a listen session does, and every consumer of
-    this token (console, kiosk pill) needs to see that too.
+    exactly as exclusively as a capture does.
 
     Chains: pass the next wrapper (or the default) as `base_is_active`.
     """
@@ -199,10 +216,10 @@ def is_active_wrapper(base_is_active=None):
 def device_serial(inv):
     """The serial of the dongle assigned to nwr, or None.
 
-    One definition, read by both callers: routes.py has an inventory in hand
-    already, and daemon.py loads one per supervisor pass. It lived verbatim in
-    both, which is one copy too many for a lookup that decides whether rtl_fm
-    gets `-d` -- and rtl_fm without `-d` takes device index 0, which on a
+    Takes the inventory rather than loading one, because its caller
+    (daemon._device_serial, once per supervisor pass) already has a fresh one.
+    A lookup that decides whether rtl_fm gets `-d` is worth exactly one
+    definition -- rtl_fm without `-d` takes device index 0, which on a
     multi-dongle Pi is usually somebody else's radio.
     """
     if not inv:
@@ -213,8 +230,13 @@ def device_serial(inv):
 
 
 def preconditions(inv=None, which=shutil.which, run=None, is_active=None):
-    """Everything the page needs to decide whether listening is possible now.
-    Pure of side effects; every check independently injectable."""
+    """Everything the weather page and the dashboards' health checks need to
+    say WHY the watch is or is not able to run: missing binaries, no dongle
+    assigned, the dongle held by another service.
+
+    Read by Flask on /api/nwr/status, not by anything that starts a capture --
+    the daemon's supervisor tries and reports what rtl_fm actually said. Pure
+    of side effects; every check independently injectable."""
     missing = sdr_rx.missing_deps(REQUIRED_BINARIES, which=which)
     eff_is_active = is_active if is_active is not None else is_active_wrapper()
     busy, holder = sdr_rx.dongle_busy(inv, eff_is_active, "nwr")
@@ -223,7 +245,12 @@ def preconditions(inv=None, which=shutil.which, run=None, is_active=None):
     enc, _mime = sdr_rx.stream_encoder(SAMPLE_RATE, which=which)
     return {
         "missing_deps":   missing,
-        "dongle_present": (not missing) and sdr_rx.dongle_present(run),
+        # cache=True: this is a POLLED read. /api/nwr/status is fetched every
+        # 5 s by the weather page and again by both dashboards' health checks,
+        # and rtl_test takes up to 6 s. Nothing here refuses an action on the
+        # answer -- the watch's own start reports a busy or absent dongle from
+        # rtl_fm's stderr, which is the truth at the moment it matters.
+        "dongle_present": (not missing) and sdr_rx.dongle_present(run, cache=True),
         "assigned":       bool(dev_id),
         "device":         (dev.get("label") if dev else None),
         "busy":           busy,
@@ -234,7 +261,8 @@ def preconditions(inv=None, which=shutil.which, run=None, is_active=None):
 
 
 def status():
-    """Live capture state for the page and the health check."""
+    """Live capture state, as this process sees it. The daemon folds it into
+    its own /status payload (daemon.py), which is what the page reads."""
     label = None
     for name, hz in CHANNELS:
         if hz == _state["channel_hz"]:
@@ -254,7 +282,7 @@ def status():
 # ── Subscribers ──────────────────────────────────────────────────────────────
 
 def subscribe():
-    """A bounded queue receiving raw s16le audio while a session runs."""
+    """A bounded queue receiving raw s16le audio while a capture runs."""
     q = queue.Queue(maxsize=SUB_QUEUE_MAX)
     with _lock:
         _state["subs"].append(q)
@@ -262,9 +290,11 @@ def subscribe():
 
 
 def unsubscribe(q):
-    """Drop a subscriber. MUST be called in a finally: on the streaming route —
-    a tab that closed and left its queue behind is a slow memory leak and a
-    dongle held past its usefulness."""
+    """Drop a subscriber. MUST be called in a finally: by the daemon's /stream
+    handler — a tab that closed and left its queue behind is a slow memory
+    leak, and pump() goes on filling it for as long as the watch runs, which is
+    forever. It does NOT release the dongle: the capture is always-on and has
+    no idea anyone was listening."""
     with _lock:
         try:
             _state["subs"].remove(q)
@@ -272,11 +302,14 @@ def unsubscribe(q):
             pass
 
 
-# ── Session lifecycle ────────────────────────────────────────────────────────
+# ── Capture lifecycle ────────────────────────────────────────────────────────
 
 def start(channel_hz, gain=DEFAULT_GAIN, ppm=DEFAULT_PPM, device_serial=None,
           on_header=None, popen=subprocess.Popen, startup_check_s=STARTUP_CHECK_S):
-    """Start a listening session. {"ok": bool, "error": str|None}.
+    """Start a capture on `channel_hz`. {"ok": bool, "error": str|None}.
+
+    Called by the daemon's supervisor (daemon.py), which retries a failure on
+    its own backoff — so a False here is a report, not a dead end.
 
     `popen` is injectable so the lifecycle can be tested without a radio.
     `startup_check_s` is injectable so tests don't pay STARTUP_CHECK_S in
@@ -396,9 +429,9 @@ def terminate(proc, timeout=5):
     process that is never wait()ed on is still a zombie. Safe to call with
     None (nothing was spawned) or an already-dead process.
 
-    Public (not `_terminate`): called across modules by routes.py's stream
-    handler and daemon.py's — a prior review flagged calling a private
-    helper from outside its own module.
+    Public (not `_terminate`): called from daemon.py's stream teardown as well
+    as from this module — a prior review flagged calling a private helper from
+    outside its own module.
     """
     if proc is None:
         return
@@ -419,10 +452,10 @@ def deliver_sentinel(q):
     """Put the b"" poison pill on a subscriber queue, evicting one buffered
     chunk first if the queue is already full.
 
-    Public, like terminate() and for the same reason: both stream handlers
-    (routes.py's and daemon.py's) call it from their teardown, and a private
-    name called from two other modules is not private -- it is an unenforced
-    convention that a reader has to re-derive.
+    Public, like terminate() and for the same reason: daemon.py's stream
+    handler calls it from its teardown, and a private name called from another
+    module is not private -- it is an unenforced convention that a reader has
+    to re-derive.
 
     A full queue is exactly the stalled-reader case this sentinel exists to
     unblock: the consumer is behind, so dropping one more already-buffered
@@ -470,7 +503,10 @@ def _decoder(mm, on_header):
 
 
 def stop():
-    """Stop the session and release the dongle. Idempotent."""
+    """Stop the capture and release the dongle. Idempotent.
+
+    The daemon calls this for a retune, a due rescan and its own shutdown; the
+    watch is not "off" afterwards, it is between captures."""
     with _lock:
         rtl, mm = _state["rtl"], _state["mm"]
         _state.update({"rtl": None, "mm": None, "channel_hz": None,

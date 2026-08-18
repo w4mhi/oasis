@@ -62,8 +62,8 @@ def write_unit(venv_py, entry):
     boot_start_plan() decides what starts at boot from the persisted device
     assignments, and skips services with no dongle assigned -- enabling the
     unit here would bypass that and start the watch on every boot whether or
-    not an operator ever gave it a dongle. Nothing starts this unit at boot
-    until a later task puts nwr into the conflict engine as a real unit."""
+    not an operator ever gave it a dongle. Assigning a dongle to nwr is what
+    puts the unit in that plan, and the plan is what starts it."""
     proc = subprocess.Popen(
         ["sudo", "tee", UNIT_PATH],
         stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,

@@ -5,14 +5,16 @@ substitute — an empty channel demodulates to full-scale noise and reads as a
 strong signal, which is how a dead band has been mistaken for a live one before.
 
 Needs the dongle exclusively for the duration, so it goes through the same
-arbitration as listening. rtl_power ships with the rtl-sdr tools; when it is
-absent, scanning is reported unavailable and listening is unaffected.
+arbitration as capturing. rtl_power ships with the rtl-sdr tools; when it is
+absent, scanning is reported unavailable and the watch runs on its configured
+channel.
 
-run() blocks its Flask worker thread for the duration of the sweep (bounded
-by `seconds + 30`, the timeout ceiling — see run()). listener.scan_begin()/
-scan_end() bracket that block so every arbitration surface (is_listening(),
-the nwr-listen synthetic token, the hardware console) can see the claim for
-as long as it's held, not just once listening actually starts.
+run() blocks its caller — the watch daemon's supervisor thread — for the
+duration of the sweep (bounded by `seconds + 30`, the timeout ceiling; see
+run()). The watch is DEAF for that whole time: rtl_power holds the tuner, so
+there is no rtl_fm and no decoder. listener.scan_begin()/scan_end() bracket
+the block so anything arbitrating over the dongle sees the claim for as long
+as it is held, not just once a capture starts.
 """
 import subprocess
 
@@ -23,11 +25,17 @@ BAND_LOW = 162390000
 BAND_HIGH = 162560000
 STEP_HZ = 5000
 # 6 s of `-e` still gives multiple 1 s (-i 1) integration passes over all 34
-# bins in the 170 kHz band -- plenty to tell a live channel from noise -- while
-# cutting the normal-case Flask-worker block from ~10-12 s to ~6-8 s and the
-# worst-case timeout ceiling from 40 s to 36 s. Both matter more on a Pi 3
-# with one gunicorn worker (4 threads total, see scripts/start-server.sh)
-# than they would on a workstation.
+# bins in the 170 kHz band -- plenty to tell a live channel from noise.
+#
+# THE CONSTRAINT IS DEAD AIR, not a blocked web worker (it was one, while the
+# capture lived in Flask). Every second of sweep is a second the watch is not
+# decoding SAME, and a sweep runs at startup, after every retune to Auto, and
+# on each scheduled rescan. An alert that arrives inside the gap is simply not
+# heard -- there is no buffer and no second receiver. Raising this buys sweep
+# confidence with deafness; lowering it below a few integration passes buys
+# nothing, because a sweep that cannot tell a channel from noise sends the
+# watch to the wrong frequency for the whole rescan interval (15 min, doubling
+# to 6 h -- daemon.rescan_delay).
 DEFAULT_SECONDS = 6
 
 
@@ -102,8 +110,8 @@ def run(gain=listener.DEFAULT_GAIN, ppm=listener.DEFAULT_PPM, device_serial=None
 
     listener.scan_begin()/scan_end() bracket the ENTIRE sweep, not just the
     subprocess call, and always via try/finally — a claim that outlives an
-    exception (a timeout, a missing binary) would wedge every arbitration
-    surface into reporting NWR busy forever.
+    exception (a timeout, a missing binary) would leave every arbitration
+    surface reporting NWR busy for the life of the daemon.
     """
     runner = runner or subprocess.run
     failed = {"powers": {}, "best_hz": None, "best_dbm": None}

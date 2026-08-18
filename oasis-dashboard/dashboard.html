@@ -1601,10 +1601,16 @@ const SERVICES = [
   {
     id: 'nwr', name: 'Weather Radio',
     check: async () => {
+      // The generation is taken BEFORE the fetch. Losing the 4 s race does not
+      // abort this fetch, so this continuation still runs when the slow answer
+      // lands; by then fail() has taken a newer generation and this paint is
+      // dropped instead of landing on top of the failure paint. See
+      // nwrPaintGeneration() in common/js/nwr-card.js.
+      const gen = nwrPaintGeneration();
       const r = await fetch('/api/nwr/status', { cache: 'no-store' });
       const d = await r.json();                       // body always consumed
       const cs = nwrCardState(d, _nwrAlertEvent);
-      nwrRenderCard(cs);
+      nwrRenderCard(cs, gen);
       return nwrHealth(cs);
     },
     // The failure path paints the card too. checkService's catch knows about
@@ -1613,7 +1619,7 @@ const SERVICES = [
     // rtl_test probe, used to badge the card DOWN while the meter beside it
     // kept the last good -32.0 dBm. nwrCardState(null) is the module's own
     // unreachable state: no meter, no alert.
-    fail: () => nwrRenderCard(nwrCardState(null))
+    fail: () => nwrRenderCard(nwrCardState(null), nwrPaintGeneration())
   },
   { id:'manuals', name:'Radio Manuals', check: async () => { const r=await fetch('/api/browse?path=static/radio-manuals',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'browse error'}; const d=await r.json(); const n=(d.entries||[]).filter(e=>e.type==='dir').length; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} radio${n===1?'':'s'}`:'no manuals'}; } },
   { id:'wiki', name:'Wikipedia', check: async () => { const r=await fetch('/api/health/zim',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'check error'}; const d=await r.json(); const n=d.count||0; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} ZIM${n===1?'':'s'}`:'no ZIM'}; } },

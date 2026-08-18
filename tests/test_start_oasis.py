@@ -58,5 +58,52 @@ class EnsureVenvSurfacesFailureTest(unittest.TestCase):
         self.assertIn("psutil", stderr.getvalue())
 
 
+class ServiceControlsGateTest(unittest.TestCase):
+    """The gate decides whether start-oasis re-runs enable-service-controls.py,
+    and that script does TWO things: it writes the sudoers rule AND it adds the
+    user to systemd-journal for the Winlink session console (/api/winlink/log).
+
+    A gate that answers only for the sudoers half skips the journal grant on
+    every start, forever. Stock Raspberry Pi OS makes that the DEFAULT case,
+    not an edge one: /etc/sudoers.d/010_<user>-nopasswd is NOPASSWD: ALL, so
+    the sudoers probe says "granted" on a box that has never run the script."""
+
+    def _gate(self, sudo_rc, journal_members):
+        """_service_controls_current() with sudo's policy answer and the
+        journal group's membership faked. Patches are on the shared stdlib
+        modules, not on the module object, because the gate re-loads
+        enable-service-controls.py from source on every call."""
+        import grp
+
+        def fake_run(argv, **kwargs):
+            return types.SimpleNamespace(returncode=sudo_rc, stdout="", stderr="")
+
+        group = types.SimpleNamespace(gr_mem=list(journal_members))
+        with mock.patch("sys.platform", "linux"), \
+             mock.patch("subprocess.run", side_effect=fake_run), \
+             mock.patch("shutil.which", side_effect=lambda b: "/usr/bin/" + b), \
+             mock.patch("getpass.getuser", return_value="pi"), \
+             mock.patch.dict(os.environ, {}, clear=False), \
+             mock.patch.object(grp, "getgrnam", return_value=group):
+            os.environ.pop("SUDO_USER", None)
+            return start_oasis._service_controls_current()
+
+    def test_blanket_nopasswd_sudo_is_not_a_journal_grant(self):
+        # The regression: `sudo -n -l` exits 0 for everything on stock Pi OS,
+        # so the sudoers probe alone reports "nothing to do" while the Winlink
+        # log console stays permanently empty.
+        self.assertFalse(
+            self._gate(sudo_rc=0, journal_members=[]),
+            "a box with blanket NOPASSWD sudo and no systemd-journal "
+            "membership still needs the grant run — Winlink's session log "
+            "depends on the SECOND thing that script does")
+
+    def test_both_grants_in_place_skips_the_re_run(self):
+        self.assertTrue(self._gate(sudo_rc=0, journal_members=["pi"]))
+
+    def test_a_stale_sudoers_rule_still_reads_stale(self):
+        self.assertFalse(self._gate(sudo_rc=1, journal_members=["pi"]))
+
+
 if __name__ == "__main__":
     unittest.main()

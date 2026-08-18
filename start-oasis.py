@@ -269,7 +269,7 @@ def _run_enable_script(rel_path, already_granted):
 
 
 def _service_controls_current():
-    """Whether the INSTALLED sudoers grant covers the units we grant today.
+    """Whether BOTH of enable-service-controls.py's grants are already in place.
 
     Not os.path.exists(SUDOERS_PATH). That is an artifact check, and the file
     is the artifact of *some* past grant, not of the current one — a box
@@ -284,6 +284,13 @@ def _service_controls_current():
     `sudo -n -l` policy lookup, no execution, never prompts). Probe capability,
     not artifact: this codebase has shipped that bug four times now.
 
+    grants_are_current(), NOT grant_is_current(): the script also adds the user
+    to systemd-journal for the Winlink session console, and the sudoers probe
+    says nothing about that. Stock Pi OS ships a NOPASSWD: ALL rule, so the
+    sudoers half answers "granted" on a box that has never run the script at
+    all — gating on it alone skipped the journal grant forever and left
+    /api/winlink/log empty with nothing explaining why.
+
     A failure to load the script answers False, which re-runs a grant that is
     idempotent and safe. The other default — assume granted — is precisely the
     silent-healthy state this exists to end."""
@@ -293,7 +300,7 @@ def _service_controls_current():
         spec = importlib.util.spec_from_file_location("_oasis_enable_svc", path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return mod.grant_is_current()
+        return mod.grants_are_current()
     except Exception:            # noqa: BLE001 — best-effort, like everything
         return False             # else in this startup path
 

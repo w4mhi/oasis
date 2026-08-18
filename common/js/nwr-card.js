@@ -199,6 +199,25 @@
     } catch (e) { return null; }
   }
 
+  // A paint generation. Both dashboards run every health check inside a
+  // Promise.race with a 4 s timeout, and losing that race rejects the RACE --
+  // it does not abort the fetch. The check's continuation still runs when the
+  // slow answer finally lands, and it still paints. So on a Pi 3, where losing
+  // that race is routine: fail() paints the unreachable card, then the late
+  // answer repaints a live-looking -32.0 dBm meter and the alert wash
+  // underneath a badge that still reads TIMEOUT. That is the exact pairing the
+  // failure paint was added to prevent, reached through the other ordering.
+  //
+  // Each caller takes a generation before it starts and hands it back when it
+  // paints; taking one invalidates every generation before it, so the failure
+  // paint is final and a superseded continuation is dropped. Passing no
+  // generation paints unconditionally (there is no race to lose).
+  var _paintGen = 0;
+  function nwrPaintGeneration() {
+    _paintGen += 1;
+    return _paintGen;
+  }
+
   // Paint the parts of the card that checkService() knows nothing about: the
   // alert wash and the signal meter. A no-op on the kiosk, which has no service
   // cards at all — its Weather Radio surface is the #svcpill WX badge.
@@ -206,7 +225,8 @@
   // classList, never className: checkService() rewrites the card's state class
   // on every poll, and an `alert` class assigned wholesale would be wiped by
   // it (or would wipe it). Both survive because each only touches its own.
-  function nwrRenderCard(cs) {
+  function nwrRenderCard(cs, gen) {
+    if (gen !== undefined && gen !== _paintGen) { return; }
     if (typeof document === 'undefined') { return; }
     var card = document.getElementById('card-nwr');
     if (!card) { return; }
@@ -226,5 +246,6 @@
   root.nwrHealth = nwrHealth;
   root.nwrActiveEvent = nwrActiveEvent;
   root.nwrPollAlertEvent = nwrPollAlertEvent;
+  root.nwrPaintGeneration = nwrPaintGeneration;
   root.nwrRenderCard = nwrRenderCard;
 })(typeof window !== 'undefined' ? window : this);

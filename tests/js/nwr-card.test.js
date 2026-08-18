@@ -268,6 +268,46 @@ test('the unreachable state repaints the card rather than leaving the last numbe
     'the stale alert wash is still on the card');
 });
 
+test('a paint from a lost race cannot land on top of the failure paint', () => {
+  // The ordering, on a Pi 3 where losing the 4 s race is routine:
+  //   1. the check starts and takes a generation, then blocks on a slow
+  //      /api/nwr/status (a cold rtl_test presence probe behind it);
+  //   2. checkService's Promise.race times out -> svc.fail() paints the
+  //      unreachable card. The race rejecting does NOT abort the fetch.
+  //   3. the answer finally lands and the abandoned continuation paints.
+  // Step 3 used to repaint a live-looking meter and the alert wash under a
+  // badge still reading TIMEOUT.
+  const doc = fakeCard();
+  const sb = cardSandbox(doc);
+
+  const gen = sb.nwrPaintGeneration();               // the check starts
+  const late = sb.nwrCardState(status({ watch: { scan: scan(-32) } }), 'TOR');
+
+  sb.nwrRenderCard(sb.nwrCardState(null), sb.nwrPaintGeneration());   // fail()
+  assert.strictEqual(doc._els['nwr-meter'].hidden, true);
+
+  sb.nwrRenderCard(late, gen);                       // the slow answer lands
+  assert.strictEqual(doc._els['nwr-meter'].hidden, true,
+    'a live meter reappeared beside a TIMEOUT badge');
+  assert.strictEqual(doc._els['card-nwr'].classList.has('alert'), false,
+    'the alert wash reappeared after the card was painted unreachable');
+});
+
+test('the newest paint always wins, and an ungenerated paint is unconditional', () => {
+  const doc = fakeCard();
+  const sb = cardSandbox(doc);
+  const good = sb.nwrCardState(status({ watch: { scan: scan(-32) } }));
+
+  // The ordinary case: nothing has superseded this check, so it paints.
+  const gen = sb.nwrPaintGeneration();
+  sb.nwrRenderCard(good, gen);
+  assert.strictEqual(doc._els['nwr-meter-label'].textContent, '-32.0 dBm');
+
+  // No generation at all still paints — a caller with no race to lose.
+  sb.nwrRenderCard(sb.nwrCardState(null));
+  assert.strictEqual(doc._els['nwr-meter'].hidden, true);
+});
+
 // The nwr entry of a page's SERVICES array, verbatim.
 //
 // Anchored on the entry's opening brace, not on the id line: anything inserted
@@ -301,7 +341,7 @@ test('a failed check clears the card the last good one painted', () => {
   ['index.html', path.join('oasis-dashboard', 'dashboard.html')].forEach((page) => {
     const html = fs.readFileSync(path.join(root, page), 'utf8');
     assert.match(nwrCheckBlock(page),
-      /fail: \(\) => nwrRenderCard\(nwrCardState\(null\)\)/,
+      /fail: \(\) => nwrRenderCard\(nwrCardState\(null\), nwrPaintGeneration\(\)\)/,
       page + ': the nwr entry declares no failure paint');
     assert.match(html, /if \(svc\.fail\) \{ svc\.fail\(\); \}/,
       page + ': checkService never calls a service failure paint');

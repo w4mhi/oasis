@@ -4390,14 +4390,24 @@ async function loadNwrAlerts() {
   try {
     const r = await fetch('/api/nwr/alerts?limit=200', { cache: 'no-store' });
     const d = await r.json();          // body always consumed
-    if (!d.ok) { return; }
-    const active = new Set(d.active);
-    const nowS = Date.now() / 1000;
-    // nwrMapVisible (common/js/nwr-alerts.js) folds in a much shorter
-    // recency check for clock_suspect records than the server's own
-    // `active` set does — see that file for why a 90-day store-side
-    // quarantine must not become a 90-day map pin.
-    nwrAlerts = d.alerts.filter(function (a) { return nwrMapVisible(a, active, nowS); });
+    if (!d.ok) {
+      // NOT a bare return. server/app.py turns any exception on an /api/*
+      // route into {ok:false}, so this is a reachable answer, not a
+      // hypothetical one — and returning here left the LAST good alert set
+      // pinned to the map with nothing to say it was stale. An expired
+      // tornado warning that never changes is the wrong direction to fail on
+      // an emergency-comms map; the empty-list and thrown-fetch paths below
+      // both clear, and so does this one.
+      nwrAlerts = [];
+    } else {
+      const active = new Set(d.active);
+      const nowS = Date.now() / 1000;
+      // nwrMapVisible (common/js/nwr-alerts.js) folds in a much shorter
+      // recency check for clock_suspect records than the server's own
+      // `active` set does — see that file for why a 90-day store-side
+      // quarantine must not become a 90-day map pin.
+      nwrAlerts = d.alerts.filter(function (a) { return nwrMapVisible(a, active, nowS); });
+    }
   } catch (_) {
     nwrAlerts = [];                     // the feature may not be installed
   }

@@ -79,6 +79,10 @@ def grant_is_current(run=None, which=None):
     """True when sudo will run PROBE_UNIT's commands for this user without a
     password — i.e. the installed grant was written from the CURRENT unit list.
 
+    THE SUDOERS HALF ONLY. This script has a second effect (the systemd-journal
+    membership behind /api/winlink/log), and this answers nothing about it —
+    anyone gating a re-run of the whole script wants grants_are_current().
+
     Capability, not artifact. os.path.exists(SUDOERS_PATH) answers neither
     question honestly: /etc/sudoers.d is 0750 root:root on Debian and Pi OS, so
     a non-root caller cannot tell "absent" from "not allowed to look" (measured
@@ -89,7 +93,8 @@ def grant_is_current(run=None, which=None):
     `sudo -n -l <cmd>` is a policy lookup, not an execution: exit 0 means
     permitted, non-zero means not, and -n guarantees it never prompts or hangs.
     A box whose operator has blanket NOPASSWD sudo answers yes, which is the
-    correct answer — the commands will run and there is nothing left to grant.
+    correct answer for the buttons — the commands will run and there is nothing
+    left to grant in the sudoers file.
     """
     if sys.platform != "linux":
         return False
@@ -211,6 +216,45 @@ def _in_group(user, group):
         return user in grp.getgrnam(group).gr_mem
     except KeyError:
         return False
+
+
+def journal_grant_is_current(user=None):
+    """True when there is nothing left for grant_journal_access() to do.
+
+    A system with no `systemd-journal` group at all answers True: the grant
+    step warns and skips there, so re-running the script would never change
+    anything and gating on it would re-run it on every start forever.
+
+    usermod writes /etc/group immediately, so this reads True from the next
+    start onwards even though the SERVER process only picks the membership up
+    when it is restarted — which is exactly what grant_journal_access() tells
+    the operator to do.
+    """
+    import grp
+    try:
+        grp.getgrnam(JOURNAL_GROUP)
+    except KeyError:
+        return True
+    return _in_group(target_user(user), JOURNAL_GROUP)
+
+
+def grants_are_current(run=None, which=None, user=None):
+    """True when BOTH of this script's effects are already in place.
+
+    The gate for "may a caller skip running this script". run() does two
+    things — install() writes the sudoers rule, grant_journal_access() adds the
+    user to systemd-journal — and a gate that asks about only one of them skips
+    the other forever.
+
+    That is not hypothetical. Stock Raspberry Pi OS ships
+    /etc/sudoers.d/010_<user>-nopasswd with NOPASSWD: ALL, so grant_is_current()
+    answers True on a box that has NEVER run this script: correct for the
+    sudoers half (the buttons do work), and wrong for the journal half, which
+    has not happened at all. start-oasis.py then skips the script on every
+    start and Winlink's session console reads "(journald log unavailable...)"
+    permanently, with nothing in the UI saying why.
+    """
+    return grant_is_current(run=run, which=which) and journal_grant_is_current(user)
 
 
 def grant_journal_access(user):

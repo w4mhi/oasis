@@ -48,3 +48,68 @@ test('the map recency window is far shorter than the store 90-day quarantine', (
   assert.ok(N.NWR_CLOCK_SUSPECT_MAP_RECENCY_S < 90 * 24 * 3600);
   assert.ok(N.NWR_CLOCK_SUSPECT_MAP_RECENCY_S > 0);
 });
+
+// ── The map's loader, sliced out of maps/traffic/map.html and run ────────────
+// The filtering rule above is shared and tested; the LOADER around it is
+// page-local, and it is where a stale marker survives. Every path through it
+// must end at renderNwrAlerts(), which is the only caller of
+// clearNwrMarkers().
+const fs = require('node:fs');
+const path = require('node:path');
+const mapHtml = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'maps', 'traffic', 'map.html'), 'utf8');
+
+function loader(responses) {
+  const calls = { renders: 0 };
+  const queue = responses.slice();
+  const start = mapHtml.indexOf('let nwrAlerts    = [];');
+  assert.notStrictEqual(start, -1, 'map.html: the NWR alert state is gone');
+  const end = mapHtml.indexOf('\nfunction nwrMarkers', start);
+  assert.notStrictEqual(end, -1, 'map.html: loadNwrAlerts not found');
+  const src = mapHtml.slice(start, end);
+  const fakeFetch = async () => {
+    const next = queue.shift();
+    if (next instanceof Error) { throw next; }
+    return { ok: true, json: async () => next };
+  };
+  const factory = new Function('fetch', 'nwrMapVisible', 'renderNwrAlerts',
+    src + '\nreturn { load: loadNwrAlerts, alerts: () => nwrAlerts };');
+  const api = factory(fakeFetch, N.nwrMapVisible, () => { calls.renders++; });
+  return { api, calls };
+}
+
+const ONE_ALERT = {
+  ok: true, active: ['a1'],
+  alerts: [{ id: 'a1', type: 'tornado', matched: true, clock_suspect: false,
+             received: Date.now() / 1000, areas: [] }],
+};
+
+test('a server error clears the markers instead of freezing them', async () => {
+  // server/app.py turns any exception on an /api/* route into {ok:false} —
+  // e.g. alerts.active() meeting a record with no id. The old loader returned
+  // on that before renderNwrAlerts(), so an expired tornado warning stayed
+  // pinned to the map indefinitely and the only signal was that it never
+  // changed.
+  const { api, calls } = loader([ONE_ALERT, { ok: false, error: 'boom' }]);
+  await api.load();
+  assert.strictEqual(api.alerts().length, 1, 'the good load must plot the alert');
+  assert.strictEqual(calls.renders, 1);
+
+  await api.load();
+  assert.deepStrictEqual(api.alerts(), [],
+    'the stale alert survived a server error');
+  assert.strictEqual(calls.renders, 2,
+    'renderNwrAlerts is the only caller of clearNwrMarkers — the error path ' +
+    'must reach it');
+});
+
+test('the other two failure paths still clear (unchanged)', async () => {
+  const empty = { ok: true, active: [], alerts: [] };
+  const { api, calls } = loader([ONE_ALERT, empty, new Error('offline')]);
+  await api.load();
+  await api.load();
+  assert.deepStrictEqual(api.alerts(), []);
+  await api.load();                    // fetch throws: feature not installed
+  assert.deepStrictEqual(api.alerts(), []);
+  assert.strictEqual(calls.renders, 3);
+});
