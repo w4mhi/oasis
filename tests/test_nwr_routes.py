@@ -1,8 +1,12 @@
 import json
 import os
+import shlex
 import shutil
+import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -190,6 +194,185 @@ class NwrStreamRouteTest(unittest.TestCase):
 
         self.assertEqual(subscribed, [fake_q])
         self.assertEqual(unsubscribed, [fake_q])
+
+
+class NwrStreamDeadlockTest(unittest.TestCase):
+    """The AUDIO branch's actual field failure: a real encoder that needs
+    far more than one write's worth of input before it produces output.
+
+    The bug: the old `_generate()` wrote ONE queued chunk to the encoder's
+    stdin, then blocked on a `read1()` of its stdout, on the SAME thread.
+    libmp3lame needs several times CHUNK (4096) bytes of PCM before its
+    first MP3 frame comes out, so the generator never looped back to feed
+    it more -- both sides waited forever. A mock encoder that echoes bytes
+    straight back is blind to this exact shape of bug (it always "works"),
+    so these tests spawn a REAL subprocess with the same
+    withhold-until-threshold behavior real libmp3lame has, then drive the
+    real route generator against it.
+    """
+
+    # Comfortably larger than services.nwr.common.listener.CHUNK (4096),
+    # so writing exactly one queued chunk -- the old code's ceiling --
+    # can never cross it. Only a writer that keeps draining the queue
+    # across several chunks, on its own thread, gets there.
+    _THRESHOLD = 20000
+
+    @classmethod
+    def setUpClass(cls):
+        # A stand-in for libmp3lame's buffering, not ffmpeg itself: this
+        # box has no ffmpeg (and CI can't be relied on to either), but the
+        # one property that matters here -- silence on stdout until a
+        # large amount of stdin has been consumed -- is exactly what a
+        # plain Python read loop below reproduces, with no vendored
+        # binary and no platform dependency.
+        script = (
+            "import sys\n"
+            f"THRESHOLD = {cls._THRESHOLD}\n"
+            "buf = bytearray()\n"
+            "started = False\n"
+            "while True:\n"
+            "    chunk = sys.stdin.buffer.read(4096)\n"
+            "    if not chunk:\n"
+            "        break\n"
+            "    if not started:\n"
+            "        buf.extend(chunk)\n"
+            "        if len(buf) < THRESHOLD:\n"
+            "            continue\n"
+            "        started = True\n"
+            "        sys.stdout.buffer.write(bytes(buf))\n"
+            "        sys.stdout.buffer.flush()\n"
+            "    else:\n"
+            "        sys.stdout.buffer.write(chunk)\n"
+            "        sys.stdout.buffer.flush()\n"
+        )
+        fd, cls._script_path = tempfile.mkstemp(suffix=".py")
+        with os.fdopen(fd, "w") as f:
+            f.write(script)
+
+    @classmethod
+    def tearDownClass(cls):
+        os.remove(cls._script_path)
+
+    def setUp(self):
+        app_module.app.config["TESTING"] = True
+        self._encoder_cmd = "{} {}".format(shlex.quote(sys.executable),
+                                           shlex.quote(self._script_path))
+        # Belt-and-braces: a test that fails before reaching gen.close()
+        # must not leave a real queue sitting in listener's global
+        # subscriber list for a later test to trip over.
+        self.addCleanup(lambda: nwr_routes.listener._state.__setitem__("subs", []))
+
+    def _start_generator(self):
+        """Wire the real route generator to the real stand-in subprocess,
+        spying on subscribe()/unsubscribe()/Popen so the test can see the
+        real queue, the real encoder process, and every unsubscribe call
+        without reaching into listener internals directly."""
+        procs = []
+        real_popen = subprocess.Popen
+
+        def spy_popen(*a, **k):
+            p = real_popen(*a, **k)
+            procs.append(p)
+            return p
+
+        captured = {}
+        real_subscribe = nwr_routes.listener.subscribe
+
+        def spy_subscribe():
+            q = real_subscribe()
+            captured["q"] = q
+            return q
+
+        unsub_calls = []
+        real_unsubscribe = nwr_routes.listener.unsubscribe
+
+        def spy_unsubscribe(q):
+            unsub_calls.append(q)
+            return real_unsubscribe(q)
+
+        patches = [
+            mock.patch.object(nwr_routes.listener, "is_listening", return_value=True),
+            mock.patch("common.sdr_rx.stream_encoder",
+                       return_value=(self._encoder_cmd, "audio/mpeg")),
+            mock.patch.object(nwr_routes.listener, "subscribe", side_effect=spy_subscribe),
+            mock.patch.object(nwr_routes.listener, "unsubscribe", side_effect=spy_unsubscribe),
+            mock.patch("subprocess.Popen", side_effect=spy_popen),
+        ]
+        for p in patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in patches])
+
+        resp = nwr_routes.api_nwr_stream()
+        gen = resp.response
+        return gen, procs, captured, unsub_calls
+
+    def _pull_first_chunk(self, gen, captured, result):
+        """Start the generator on its own thread (its first blocking read
+        can only be unblocked from a different thread than the one that's
+        parked in it) and feed it once it has subscribed."""
+        def _run():
+            try:
+                result["out"] = next(gen)
+            except StopIteration:
+                result["out"] = None
+            except Exception as e:              # noqa: BLE001
+                result["error"] = e
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+
+        deadline = time.time() + 2
+        while "q" not in captured and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertIn("q", captured, "generator never subscribed")
+
+        # Mimic pump()'s real delivery shape -- many CHUNK-sized pieces,
+        # not one big write -- comfortably past _THRESHOLD in total.
+        q = captured["q"]
+        for _ in range(10):
+            q.put(b"a" * 4096)
+
+        t.join(timeout=8)
+        self.assertFalse(t.is_alive(),
+                         "stream generator deadlocked waiting on the encoder -- "
+                         "write-then-read on one thread never looped back to "
+                         "feed it enough input to produce output")
+        return t
+
+    def test_stream_produces_real_encoder_output_without_deadlocking(self):
+        gen, procs, captured, _unsub_calls = self._start_generator()
+        result = {}
+        self._pull_first_chunk(gen, captured, result)
+
+        self.assertNotIn("error", result, result.get("error"))
+        self.assertTrue(result.get("out"), "no bytes came back from the encoder")
+        self.assertTrue(procs, "encoder was never spawned")
+
+        gen.close()
+
+    def test_stream_close_unsubscribes_and_reaps_after_early_disconnect(self):
+        gen, procs, captured, unsub_calls = self._start_generator()
+        result = {}
+        self._pull_first_chunk(gen, captured, result)
+        self.assertTrue(result.get("out"))
+        q = captured["q"]
+
+        # The generator is suspended at `yield out` here, exactly where a
+        # closed client connection resumes it with GeneratorExit. Safe to
+        # call from this thread: the thread that ran next() has already
+        # finished, so nothing is concurrently executing the generator.
+        gen.close()
+
+        self.assertEqual(unsub_calls, [q])
+
+        for _ in range(50):
+            if procs[0].poll() is not None:
+                break
+            time.sleep(0.1)
+        self.assertIsNotNone(procs[0].poll(), "encoder was not reaped after early close()")
+
+        alive_writers = [th for th in threading.enumerate()
+                         if th.name == "nwr-stream-writer"]
+        self.assertEqual(alive_writers, [], "writer thread outlived the request")
 
 
 if __name__ == "__main__":

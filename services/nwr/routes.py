@@ -127,7 +127,9 @@ def api_nwr_stream():
     question. The two routes answer different questions and are not
     inconsistent with each other.
     """
+    import queue
     import subprocess
+    import threading
 
     if not listener.is_listening():
         return jsonify({"ok": False, "error": "nothing is listening",
@@ -140,29 +142,81 @@ def api_nwr_stream():
                         "code": "NWR_NO_ENCODER"}), 503
 
     def _generate():
+        # Writing to the encoder's stdin and reading its stdout used to
+        # happen on this one generator thread: write one queued chunk,
+        # then block on read1() for output. libmp3lame needs far more than
+        # one 4096-byte chunk of PCM before it emits its first MP3 frame,
+        # so that read1() never returned and the generator never looped
+        # back to feed more input -- both sides waited forever (proven on
+        # the Pi: read1() still blocked after 8s having written one
+        # chunk). The fix decouples the two: a dedicated thread pumps the
+        # subscriber queue into stdin, so this generator's blocking read
+        # of stdout is safe -- something else keeps the encoder fed.
         q = listener.subscribe()
         proc = None
+        writer = None
         try:
             proc = subprocess.Popen(enc, shell=True, stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.DEVNULL)
+
+            def _pump_stdin():
+                try:
+                    while True:
+                        chunk = q.get(timeout=30)
+                        if not chunk:
+                            break               # our own sentinel, or stop()'s
+                        try:
+                            proc.stdin.write(chunk)
+                            proc.stdin.flush()
+                        except (BrokenPipeError, OSError, ValueError):
+                            break               # encoder died; nothing left to feed
+                except queue.Empty:
+                    pass                        # 30s of silence -- session likely ended
+                finally:
+                    # EOF lets the encoder flush its tail and exit on its
+                    # own instead of waiting on _terminate()'s SIGTERM.
+                    try:
+                        proc.stdin.close()
+                    except Exception:            # noqa: BLE001
+                        pass
+
+            writer = threading.Thread(target=_pump_stdin, daemon=True,
+                                      name="nwr-stream-writer")
+            writer.start()
+
+            # A slow or stalled client blocks HERE, at yield, not in the
+            # writer. The writer keeps draining the queue into the
+            # encoder, but once nothing is reading the encoder's stdout,
+            # its OS pipe buffer fills, the encoder stops reading its own
+            # stdin, and the writer's write() blocks too -- backpressure
+            # through two bounded OS pipes (plus the bounded subscriber
+            # queue), not unbounded growth.
             while True:
-                chunk = q.get(timeout=30)
-                if not chunk:
-                    break
-                proc.stdin.write(chunk)
-                proc.stdin.flush()
                 out = proc.stdout.read1(8192)
-                if out:
-                    yield out
+                if not out:
+                    break
+                yield out
         except Exception:                  # noqa: BLE001 — client went away,
             pass                            # or the encoder never spawned
         finally:
             listener.unsubscribe(q)
+            if writer is not None:
+                # Wake a writer parked in q.get(): unsubscribe() already
+                # means no more real audio will reach this queue, so hand
+                # it the same poison pill listener.stop() uses rather than
+                # making it wait out its own 30s timeout. Only reachable
+                # once a writer exists, since only then is `q` guaranteed
+                # to be a real Queue rather than an injected test double.
+                listener._deliver_sentinel(q)
             # Same terminate-then-wait as listener._terminate: a killed
             # process nobody wait()s on is still a zombie. None-safe, so a
-            # Popen that never spawned costs nothing here.
+            # Popen that never spawned costs nothing here. Killing the
+            # encoder also breaks a writer blocked mid-write() on a dead
+            # process's stdin (EPIPE), so the join below is bounded too.
             listener._terminate(proc)
+            if writer is not None:
+                writer.join(timeout=5)
 
     return Response(_generate(), mimetype=mime)
 
