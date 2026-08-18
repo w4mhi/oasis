@@ -92,3 +92,48 @@ test('classes are distinct enough to tell states apart', () => {
   assert.strictEqual(FR.rowText(src('a', 'stale', 9)).cls, 'fx-warn');
   assert.strictEqual(FR.rowText(src('a', 'deferred', 9)).cls, 'fx-warn');
 });
+
+// ── the short vocabulary (the kiosk's system-bar cell) ──────────────────────
+// It prints after a "DATA" key, so it says the state and nothing else. These
+// assertions are what stop it drifting into a SECOND vocabulary for the same
+// facts — the failure this module was written to prevent, one size down.
+
+test('every state has a short form, and it is the distinguishing part of the long one', () => {
+  const pairs = {
+    fresh: ['DATA OK', 'OK'],
+    stale: ['OLD DATA', 'OLD'],
+    deferred: ['ON HOLD', 'ON HOLD'],
+    missing: ['NO DATA', 'MISSING'],
+    unconfigured: ['OFF', 'OFF'],
+  };
+  for (const [state, [long, short]] of Object.entries(pairs)) {
+    const s = FR.summarize([src('a', state, 9)]);
+    // summarize() reports the WORST state; a lone source of that state is it,
+    // except fresh-vs-unconfigured which both resolve to fresh by design.
+    if (state === 'unconfigured') { continue; }
+    assert.strictEqual(s.label, long, state + ' long label');
+    assert.strictEqual(s.short, short, state + ' short label');
+  }
+});
+
+test('the short form never repeats the key it sits under', () => {
+  // "DATA · DATA OK" and "DATA · NO DATA" both stutter. The long labels are
+  // built to stand alone; these are built to follow a label.
+  for (const state of ['fresh', 'stale', 'deferred', 'missing']) {
+    const s = FR.summarize([src('a', state, 9)]);
+    assert.ok(!/DATA/.test(s.short),
+      state + ' short label repeats DATA: ' + s.short);
+    assert.strictEqual(s.short, s.short.toUpperCase(), state + ' must be upper case');
+    assert.ok(s.short.length <= 7,
+      state + ' short label is too wide for a stats-bar cell: ' + s.short);
+  }
+});
+
+test('stale is named for what is wrong, not for how alarmed to be', () => {
+  // WARNING says "be concerned" and leaves the operator guessing at what. OLD
+  // says the thing they need to act on. Same rule as the long label's refusal
+  // of STALLED.
+  const s = FR.summarize([src('a', 'stale', 9)]);
+  assert.ok(!/WARN/.test(s.short), 'stale must not be called WARNING');
+  assert.ok(!/STALL/.test(s.short));
+});

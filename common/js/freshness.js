@@ -54,6 +54,25 @@
     unconfigured: 'OFF'
   };
 
+  // The SAME five states, said in the space a stats-bar cell has. The kiosk's
+  // system bar prints them after a "DATA" key -- "DATA · OK" -- so repeating the
+  // word inside the value ("DATA OK", "NO DATA") would stutter, and the full
+  // labels are built to stand alone. Derived here rather than in the page so the
+  // two vocabularies cannot drift into disagreeing about the same fact, which is
+  // the whole reason this module exists.
+  //
+  // Every entry is the DISTINGUISHING part of its LABEL above, never a new word:
+  // read them side by side and each pair says one thing. In particular stale is
+  // OLD, not WARNING -- "warning" names how alarmed to be, not what is wrong, and
+  // the operator standing at the panel needs the second one.
+  var SHORT = {
+    fresh: 'OK',
+    stale: 'OLD',
+    deferred: 'ON HOLD',
+    missing: 'MISSING',
+    unconfigured: 'OFF'
+  };
+
   // The plain-language thing the operator must actually do. A UI that only says
   // "stale" leaves them guessing whether to plug in a cable, find a token, or
   // simply wait.
@@ -91,6 +110,7 @@
       worst: worst,
       counts: counts,
       label: LABEL[worst],
+      short: SHORT[worst],
       cls: CLS[worst]
     };
   }

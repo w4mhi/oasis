@@ -256,11 +256,16 @@ test('the kiosk wires the pill to the shared paint, not to its own poll', () => 
     'the pill is painted from inside the nwr check — that path skips fail()');
 });
 
-test('the pill sits left of DATA in the sysrow, and is a real button', () => {
+test('the pill sits between the stats bar and the units toggle, and is a real button', () => {
+  // DATA used to be the pill on its right; it moved into the system bar, so the
+  // units toggle is now what the WX pill must stay left of. The ordering is the
+  // point either way: WX is a control the operator reaches for, and it belongs
+  // with the other controls rather than drifting to the end of the row.
   const wx = page.indexOf('id="k-wx"');
-  const fx = page.indexOf('id="fxchip"');
+  const fx = page.indexOf('id="k-units"');
   assert.notStrictEqual(wx, -1, 'no WX pill');
-  assert.ok(wx < fx, 'the WX pill must come before DATA');
+  assert.notStrictEqual(fx, -1, 'no units pill');
+  assert.ok(wx < fx, 'the WX pill must come before the units toggle');
   assert.match(page, /id="k-wx"[\s\S]{0,400}role="button"/);
   assert.match(page, /id="k-wx"[\s\S]{0,400}tabindex="0"/);
   assert.match(page, /class="upill wx-pill wx-off" id="k-wx"/,
