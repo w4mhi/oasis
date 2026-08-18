@@ -248,11 +248,7 @@ def api_hardware_release():
     if service not in HW.SERVICE_UNITS:
         return jsonify({"ok": False, "error": "unknown service"}), 400
     inv = HW.load(SUITE_ROOT)
-
-    def _stop(unit):
-        _systemctl_seq(unit, ["stop"])
-
-    HW.release(SUITE_ROOT, inv, service, stop_fn=_stop)
+    HW.release(SUITE_ROOT, inv, service, stop_fn=_stop_unit)
     _apply_hardware_async()
     return jsonify({"ok": True})
 
@@ -397,6 +393,27 @@ def _stop_synthetic(unit):
         pass
 
 
+def _stop_unit(unit):
+    """Stop ONE unit the engine named, by whatever means that unit needs.
+
+    The engine decides WHICH units a stop touches (stoppable_units); how to
+    stop each one is the caller's knowledge, and this is where it lives. Every
+    stop path in this module goes through here — release, reroute-displace and
+    the matrix toggle-off — because a path that calls _systemctl_seq directly is
+    a path that hands a SYNTHETIC unit to systemd, where `systemctl stop
+    satellites-listen` exits 0 and leaves rtl_fm holding the dongle while the
+    console reports success. That was true of two of the three until now.
+
+    Filtering synthetic units out of the stop list instead would be worse: the
+    displaced capture would keep the tuner AND nobody would have tried to stop
+    it.
+    """
+    if unit in HW.SYNTHETIC_UNITS:
+        _stop_synthetic(unit)              # not a systemd unit — ask its owner
+        return
+    _systemctl_seq(unit, ["stop"])
+
+
 def _console_state():
     """Live matrix state: the service catalog (id/label/eligible kinds/whether
     the console can start it), each device's single presented assignment +
@@ -465,14 +482,12 @@ def api_hardware_route():
         return jsonify({"ok": False, "error": reason, "reason": reason}), 409
 
     to_start = []
-
-    def _stop(unit):
-        _systemctl_seq(unit, ["stop"])
-
     # reroute stops old/displaced units + reassigns (persisted); defer starts
     # until AFTER apply writes the new device config for the moved service.
+    # _stop_unit, not a bare _systemctl_seq: displacing satellites has to reach
+    # the ad-hoc capture that is actually holding the dongle.
     HW.reroute(SUITE_ROOT, inv, service, device_id,
-               start_fn=to_start.append, stop_fn=_stop)
+               start_fn=to_start.append, stop_fn=_stop_unit)
     _apply_hardware_async()                       # sync: re-template device config
     for unit in to_start:
         _systemctl_seq(unit, ["start"])
@@ -522,13 +537,10 @@ def api_hardware_service_stop():
         return jsonify({"ok": False, "error": "source-locked", "reason": "source-locked"}), 409
     # Both rules apply. stoppable_units() drops shared infrastructure that must
     # never be stopped for one service (direwolf-draws carries BOTH radio
-    # ports), and a SYNTHETIC unit surviving that filter is not a systemd unit
-    # at all, so it goes to its owner rather than to systemctl.
+    # ports), and _stop_unit sends a SYNTHETIC unit surviving that filter to its
+    # owner rather than to systemctl.
     for unit in HW.stoppable_units(inv, service):
-        if unit in HW.SYNTHETIC_UNITS:
-            _stop_synthetic(unit)          # not a systemd unit — ask its owner
-            continue
-        _systemctl_seq(unit, ["stop"])
+        _stop_unit(unit)
     return jsonify({"ok": True})
 
 

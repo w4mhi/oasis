@@ -341,6 +341,26 @@ class HardwareRoutesTest(unittest.TestCase):
         self.assertEqual(body["device"]["label"], "sdr-2")
 
 
+    def test_release_of_satellites_stops_the_capture_not_systemctl(self):
+        # Same defect on the release path: releasing the dongle from satellites
+        # ran `systemctl stop satellites-listen` (exit 0, nothing stopped) and
+        # cleared the assignment, so the engine believed the dongle was free
+        # while rtl_fm still held the tuner.
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "serial": "1"}},
+                           assignments={"satellites": "a"})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(hardware_routes, "_apply_hardware_async"), \
+             mock.patch.object(hardware_routes, "_stop_synthetic") as synthetic, \
+             mock.patch.object(hardware_routes, "_systemctl_seq") as systemctl:
+            r = self.c.post("/api/hardware/release", json={"service": "satellites"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        synthetic.assert_called_once_with("satellites-listen")
+        self.assertNotIn("satellites-listen",
+                         [c.args[0] for c in systemctl.call_args_list])
+
+
 class AssignmentConsoleRoutesTest(unittest.TestCase):
     """The HW/SRV matrix console endpoints (design 2026-07-28)."""
 
@@ -376,6 +396,45 @@ class AssignmentConsoleRoutesTest(unittest.TestCase):
                             headers={"X-OASIS-Request": "1"})
         self.assertEqual(r.status_code, 200)
         self.assertTrue(mocked.called)
+
+    def test_route_displacing_satellites_stops_the_capture_not_systemctl(self):
+        """A displaced SYNTHETIC unit goes to its owner, never to systemctl.
+
+        satellites' capture is an ad-hoc rtl_fm subprocess, so
+        `systemctl stop satellites-listen` exits 0 and stops nothing: the
+        console reported a clean reroute while the displaced recorder still
+        held the dongle ADS-B was being handed."""
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "serial": "1"}},
+                           assignments={"satellites": "a"})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(hardware_routes, "_apply_hardware_async"), \
+             mock.patch.object(hardware_routes, "_stop_synthetic") as synthetic, \
+             mock.patch.object(hardware_routes, "_systemctl_seq") as systemctl:
+            r = self.c.post("/api/hardware/route",
+                            json={"service": "adsb", "device_id": "a"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        synthetic.assert_called_once_with("satellites-listen")
+        handed = [c.args[0] for c in systemctl.call_args_list]
+        self.assertNotIn("satellites-listen", handed)
+
+    def test_route_onto_satellites_starts_no_synthetic_unit(self):
+        # The other half of the same bug: nothing to start from outside, so the
+        # console must not try. `systemctl start satellites-listen` is the same
+        # silent no-op in the other direction.
+        inv = HW.Inventory(devices={"a": {"id": "a", "kind": "rtl-sdr", "serial": "1"}},
+                           assignments={})
+        with mock.patch.object(HW, "load", return_value=inv), \
+             mock.patch.object(HW, "save"), \
+             mock.patch.object(hardware_routes, "_apply_hardware_async"), \
+             mock.patch.object(hardware_routes, "_systemctl_seq") as systemctl:
+            r = self.c.post("/api/hardware/route",
+                            json={"service": "satellites", "device_id": "a"},
+                            headers={"X-OASIS-Request": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn("satellites-listen",
+                         [c.args[0] for c in systemctl.call_args_list])
 
     def test_route_locked_returns_409_with_reason(self):
         inv = HW.Inventory(

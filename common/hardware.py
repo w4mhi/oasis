@@ -521,7 +521,17 @@ def reroute(repo_root, inv, service, device_id, start_fn=None, stop_fn=None):
     inv.assignments[service] = device_id
     save(repo_root, inv)
     if start_fn is not None:
-        for unit in service_units(inv, service):
+        # startable_units(), NOT service_units(): start_fn is a GENERIC starter
+        # (the console hands each name to `systemctl start`), and a synthetic
+        # unit has nothing systemd can start — `systemctl start
+        # satellites-listen` exits 0 and does nothing, so the console reported a
+        # started service that was never started. For such a service the
+        # assignment IS the finished state; the recorder binds the dongle itself
+        # when the satellites page starts it. Stopping is the asymmetric half
+        # and stays on stoppable_units(): a synthetic unit that is RUNNING still
+        # has to be stopped, so the caller dispatches it to its owner rather
+        # than to systemd (see server/routes/hardware.py's _stop_unit).
+        for unit in startable_units(inv, service):
             start_fn(unit)
     return inv
 

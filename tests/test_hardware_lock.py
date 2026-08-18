@@ -96,6 +96,22 @@ class RerouteTest(unittest.TestCase):
         self.assertIn("dump1090-fa", started)                        # started on new
         self.assertEqual(hardware.assignees(inv, "sdr-1"), [])       # old dongle freed
 
+    def test_reroute_onto_satellites_starts_no_synthetic_unit(self):
+        # satellites' only unit is SYNTHETIC (SYNTHETIC_UNITS): the recorder is
+        # an ad-hoc rtl_fm subprocess the satellites page launches, and no
+        # `satellites-listen` unit exists for systemd to start. This loop used
+        # service_units(), so a console reroute onto satellites handed the token
+        # to `systemctl start` and got a silent success. startable_units() is
+        # the list a generic starter may act on, and it exists for this.
+        _write(self.dir, '{"version":1,'
+               '"devices":[{"id":"sdr-1","kind":"rtl-sdr","serial":"1"}],'
+               '"assignments":{}}')
+        inv = hardware.load(self.dir)
+        started = []
+        hardware.reroute(self.dir, inv, "satellites", "sdr-1", start_fn=started.append)
+        self.assertEqual(inv.assignments["satellites"], "sdr-1")     # assignment IS the state
+        self.assertEqual(started, [], "a synthetic unit was handed to the starter")
+
     def test_can_reroute_refused_when_target_device_locked(self):
         _write(self.dir, '{"version":1,"devices":['
                '{"id":"sdr-1","kind":"rtl-sdr","serial":"1","locked":true}],'
