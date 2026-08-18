@@ -326,6 +326,17 @@ body {
 .svc-card-gated.up           { border-color: var(--blue); background: rgba(88, 166, 255, 0.06); }
 .svc-card-gated .svc-dot.up   { background: var(--blue); }
 .svc-card-gated .svc-badge.up { color: var(--blue); }
+/* An active watch-list weather alert on the Weather Radio card. It is layered
+   OVER the health state, not instead of it: a tornado warning is the watch
+   working, so the service still counts as up while the card reads red. Last in
+   this block on purpose — these have the same specificity as the state rules
+   above, so only source order puts the alert on top. Set as its own class
+   (never via className) so the state class the poller rewrites and this one
+   cannot wipe each other. Static: an infinite animation on a card once pinned
+   this kiosk's renderer at 60fps on a Pi. */
+.svc-card.alert       { border-color: var(--red); background: rgba(180, 30, 30, 0.14); }
+.svc-card.alert .svc-badge,
+.svc-card.alert .svc-badge.up { color: var(--red); font-weight: 700; }
 .svc-card-top {
   display: flex;
   align-items: center;
@@ -1207,6 +1218,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <script src="/common/js/adsb-operators.js"></script>
 <script src="/common/js/traffic-list.js"></script>
 <script src="/common/js/service-registry.js"></script>
+<script src="/common/js/nwr-card.js"></script>
 <script src="/common/js/hw-console.js"></script>
 <script src="/common/js/wifi-pill.js"></script>
 <script src="/common/js/freshness.js"></script>
@@ -1516,6 +1528,34 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="svc-badge" id="badge-adsb">—</span>
     </div>
   </div>
+  <!-- Weather Radio: same structure as the ADS-B card above (dot · name ·
+       sub+meter / OPEN · device · badge). It replaced a nav link, which made
+       NWR the one service on the station you reached from the OPS menu instead
+       of from its own card. The meter is the shared feed-meter, here carrying
+       the swept signal level. -->
+  <div class="svc-card svc-card-gated" id="card-nwr" data-href="server/nwr/" data-target="_blank">
+    <div class="svc-card-top">
+      <div class="svc-dot" id="dot-nwr"></div>
+      <div class="svc-card-info">
+        <div class="svc-name">Weather Radio</div>
+        <div class="feed-row">
+          <span class="svc-sub" id="sub-nwr">—</span>
+          <div class="feed-meter" id="nwr-meter" hidden>
+            <div class="feed-meter-track"><div class="feed-meter-fill" id="nwr-meter-fill"></div></div>
+            <span class="feed-meter-label" id="nwr-meter-label"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="svc-card-bottom">
+      <button class="svc-open" id="open-nwr" onclick="svcOpenClick('nwr')" disabled>OPEN ↗</button>
+      <div class="hw-assign-row" id="hwrow-nwr" hidden>
+        <span class="hw-assign-lbl">device:</span>
+        <span class="hw-assign-dev" id="hwdev-nwr">—</span>
+      </div>
+      <span class="svc-badge" id="badge-nwr">—</span>
+    </div>
+  </div>
   <div class="svc-card svc-card-gated" id="card-wlrf" data-href="server/winlink/mail.html" data-target="_blank">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-wlrf"></div>
@@ -1630,7 +1670,6 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <ul class="nav-links">
         <li><a id="nlink-aprs" href="maps/traffic/map.html" target="_blank" rel="noopener">Traffic Map <span class="nav-meta">live APRS · AIRCRAFT</span></a></li>
         <li><a id="nlink-sat" href="server/satellites/" target="_blank" rel="noopener">Satellites World Map<span class="nav-meta">passes · tracking</span></a></li>
-        <li><a id="nlink-nwr" href="server/nwr/" target="_blank" rel="noopener">Weather Radio<span class="nav-meta">NOAA · SAME/EAS</span></a></li>
       </ul>
     </div>
 
@@ -1916,6 +1955,18 @@ loadVersion();
 
 // ── Service state tracking (for counts badge) ─────────────────────────────────
 const _svcStates = {};
+// Active, matched, plottable NWR alert (see pollNwrAlert() below) — null when
+// there is none, or NWR isn't installed, or it hasn't been checked yet. Read by
+// the Weather Radio check, which is the card's only paint: the event code
+// reaches the card on the next round-robin pass, within ~16s.
+let _nwrAlertEvent = null;
+// Its own gentle cadence, NOT a call from checkService/pingNext — those fire
+// many times a minute as the round-robin walks the registry, and this is a
+// separate endpoint. Shared with the kiosk (common/js/nwr-card.js) so both
+// dashboards agree on what counts as an active alert.
+async function pollNwrAlert() {
+  _nwrAlertEvent = await nwrPollAlertEvent();
+}
 
 // Cards whose OPEN button launches an external service URL (own port), built
 // at click-time so a live PORTS/hostname change is always respected. Cards
@@ -1928,10 +1979,21 @@ const SVC_CARD_EXTERNAL_URL = {
   winlink: () => `${location.protocol}//${location.hostname}:${PORTS.winlink}/`,
 };
 
+// Cards whose OPEN stays live while the service is only amber. Weather Radio's
+// steady amber IS "no dongle assigned yet", and its page is where the county
+// watch list and the decoded-alert log live — both worth reading, and neither
+// dependent on a tuner. Gating OPEN on green would make the page unreachable
+// from the dashboard on exactly the box that has not been set up yet, now that
+// its nav link is gone.
+const SVC_OPEN_WHEN_WARN = new Set(['nwr']);
+function _svcOpenable(id, state) {
+  return state === 'up' || (state === 'warn' && SVC_OPEN_WHEN_WARN.has(id));
+}
+
 // Called by each card's OPEN button (disabled via updateOpenBtn() unless the
 // service is up, so this guard is a backstop, not the primary gate).
 function svcOpenClick(id) {
-  if (_svcStates[id] !== 'up') return;
+  if (!_svcOpenable(id, _svcStates[id])) return;
   const external = SVC_CARD_EXTERNAL_URL[id];
   if (external) { window.open(external(), '_blank'); return; }
   const card = document.getElementById('card-' + id);
@@ -1946,7 +2008,7 @@ function svcOpenClick(id) {
 function updateOpenBtn(svcId, state) {
   const btn = document.getElementById('open-' + svcId);
   if (!btn) return;
-  btn.disabled = state !== 'up';
+  btn.disabled = !_svcOpenable(svcId, state);
 }
 
 
@@ -2265,35 +2327,21 @@ const SERVICES = [
         sub: d.installed ? 'inactive (aircraft)' : 'run services/adsb/install.py' };
     }
   },
+  // Weather Radio. The decision lives in common/js/nwr-card.js so this block
+  // stays byte-identical to the other dashboard's — the copy-in-both-files
+  // version read a `capture` key that the API had stopped returning, and both
+  // dashboards went red together. nwrRenderCard() paints the alert wash and the
+  // signal meter, which checkService() knows nothing about; it no-ops on the
+  // kiosk, which has no service cards. No faster poll than the round-robin:
+  // /api/nwr/status can sit behind a slow rtl_test presence probe.
   {
     id: 'nwr', name: 'Weather Radio',
     check: async () => {
-      // GREEN means "this service can do its job", not "it is capturing right
-      // now". NWR is manual-only, so idle is its healthy steady state — the
-      // same reasoning service-registry.js records for satellites.
       const r = await fetch('/api/nwr/status', { cache: 'no-store' });
       const d = await r.json();                       // body always consumed
-      if (!d.ok) { return { up: false, sub: 'unavailable' }; }
-      const p = d.preconditions, c = d.capture;
-      if (p.missing_deps.length) {
-        return { up: false, badge: 'DEPS', sub: p.missing_deps.join(', ') };
-      }
-      if (!p.assigned) {
-        return { up: true, warn: true, badge: 'NO SDR',
-                 sub: 'assign a dongle in Setup' };
-      }
-      if (!p.dongle_present) {
-        return { up: false, badge: 'NO SDR', sub: 'no RTL-SDR detected' };
-      }
-      if (c.listening) {
-        return { up: true, badge: c.channel || 'LISTENING',
-                 sub: c.alerts_seen + ' decoded', navSub: 'listening' };
-      }
-      if (p.busy) {
-        return { up: true, warn: true, badge: 'BUSY',
-                 sub: 'dongle held by ' + p.holder };
-      }
-      return { up: true, badge: 'READY', sub: 'idle', navSub: 'ready' };
+      const cs = nwrCardState(d, _nwrAlertEvent);
+      nwrRenderCard(cs);
+      return nwrHealth(cs);
     }
   },
   {
@@ -2416,7 +2464,12 @@ let _hwLast = null;   // last GET /api/hardware/devices payload — read by the
 // check know which RTL-SDR it wants. You still pick the real SDR in OpenWebRX's
 // own Admin → SDR profiles UI. The APRS SDR feed ('feed'), ADS-B ('adsb') and
 // OpenWebRX ('owrx') all share one dongle advisorily — see resolveHardwareConflict.
-const HW_SERVICE_FOR_CARD = { adsb: 'adsb', wlrf: 'winlink', feed: 'aprs', owrx: 'openwebrx' };
+// Weather Radio ('nwr') is HW-backed like the rest: assigning it a dongle is
+// the whole action, because boot_start_plan starts oasis-nwr from the persisted
+// assignment. That also means no per-card power button (powerBtn skips HW-backed
+// cards) — start/stop is the HW/SRV matrix, same as ADS-B.
+const HW_SERVICE_FOR_CARD = { adsb: 'adsb', wlrf: 'winlink', feed: 'aprs', owrx: 'openwebrx',
+                              nwr: 'nwr' };
 
 // Device assignment now lives on the Setup page's Hardware card (detect ·
 // declare · assign). The dashboard shows each service's assigned device
@@ -2619,9 +2672,9 @@ const GATEABLE = {
   // Missing entirely used to mean "always counted" here — so a box without
   // NWR installed had index.html reporting one extra DOWN service that the
   // kiosk (which gates through the shared common/js/service-registry.js
-  // instead of this table) correctly hid, and left the Weather Radio nav
-  // link ungated too (see _gateEls() below, which derives nlink-nwr from
-  // this same key).
+  // instead of this table) correctly hid. It now gates the card, which is the
+  // only Weather Radio surface left: the nav link it used to gate as well is
+  // gone, replaced by the card's OPEN button like every other service.
   nwr:   ['nwr'],
 };
 let _hiddenEls = [];   // {card, nav-<li>, nav-section} elements currently gated off
@@ -2778,7 +2831,11 @@ function toggleShowHidden() {
 // (FCC / Maps / Repeater Book) do not.
 const SVC_UNITS = { gw: 'graywolf', aprs: 'graywolf-api', feed: 'aprs-sdr-feed',
                     winlink: 'pat', wlrf: 'pat-direwolf', kiwix: 'kiwix',
-                    webssh: 'webssh', owrx: 'openwebrx', adsb: 'dump1090-fa' };
+                    webssh: 'webssh', owrx: 'openwebrx', adsb: 'dump1090-fa',
+                    // The watch is an ordinary unit now, so unitInstalled() can
+                    // probe it — matching the kiosk, which probes the same unit
+                    // through the registry gate.
+                    nwr: 'oasis-nwr' };
 
 // Lazily create the power control on a controllable card, appended into the
 // card's top row (top-right, alongside the name) so it stays clear of the
@@ -4327,7 +4384,13 @@ async function fetchSdrStatus() {
 
 loadConfig().then(() => {
   applyUnits();
-  loadInstalled().then(async () => { await fetchHardware(); pingAll(); pollFeedFlow(); pollAdsbFlow(); });
+  loadInstalled().then(async () => {
+    await fetchHardware(); pingAll(); pollFeedFlow(); pollAdsbFlow();
+    // NWR alerts, on their own gentle cadence — gated on the feature being
+    // installed at all, so a box without NWR doesn't poll a 404 forever.
+    // Same cadence and same gate as the kiosk.
+    if (!HIDDEN_SVCS.has('nwr')) { pollNwrAlert(); setInterval(pollNwrAlert, 30_000); }
+  });
   fetchStats();
   fetchAudio();
   fetchSdrStatus();

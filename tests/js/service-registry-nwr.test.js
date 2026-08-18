@@ -16,8 +16,12 @@ assert.ok(ids.indexOf('nwr') !== -1, 'nwr must be in the registry');
 const nwr = sandbox.OASIS_SERVICES.filter(function (s) { return s.id === 'nwr'; })[0];
 assert.strictEqual(nwr.name, 'Weather Radio');
 assert.deepStrictEqual(nwr.gate.features, ['nwr']);
-assert.strictEqual(nwr.gate.unit, undefined,
-  'nwr-listen is synthetic: a unit probe would hide the service forever');
+// The capture left Flask for the oasis-nwr daemon, so the gate's live-reality
+// fallback has a real unit to probe. It was `undefined` while `nwr-listen` was
+// a synthetic token no systemd could answer for.
+assert.strictEqual(nwr.gate.unit, 'oasis-nwr',
+  'the watch is an ordinary unit now: a box that enabled it outside ' +
+  'setup-oasis.py must keep its Weather Radio card');
 
 // Both dashboards must implement a check for every registry id.
 ['index.html', path.join('oasis-dashboard', 'dashboard.html')].forEach(function (page) {
