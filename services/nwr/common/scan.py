@@ -16,6 +16,7 @@ there is no rtl_fm and no decoder. listener.scan_begin()/scan_end() bracket
 the block so anything arbitrating over the dongle sees the claim for as long
 as it is held, not just once a capture starts.
 """
+import statistics
 import subprocess
 
 from common import sdr_rx
@@ -96,6 +97,91 @@ def best_channel(powers):
         return (None, None)
     hz = max(powers, key=lambda k: powers[k])
     return (hz, powers[hz])
+
+
+# How far the winner has to stand above the rest of the band before the sweep
+# counts as a real signal. See channel_margin() for where the number comes from
+# and what would change it.
+WEAK_MARGIN_DB = 2.0
+
+
+def channel_margin(powers, best_hz):
+    """dB the winning channel stands above the median of the other six, or None
+    when the sweep cannot answer.
+
+    THE ABSOLUTE LEVEL IS NOT THE SIGNAL. rtl_power's dBm are relative to
+    whatever the dongle's front end was doing, and on this band the empty
+    channels do not sit anywhere near a textbook noise floor. Measured on
+    pi5draws, dongle 00000031, against a live NWS transmitter, through this
+    very code path:
+
+        WX1 -5.71   WX2 -5.56   WX3 -5.64   WX4 -5.75
+        WX5 -5.72   WX6 -5.68   WX7 -1.95   <- the transmitter
+
+    Best -1.95, median of the other six -5.695, margin +3.75 dB. The six empty
+    channels span 0.19 dB end to end, so the band's own noise is far tighter
+    than the margin a transmitter opens up.
+
+    That measurement is why the old absolute floor (WEAK_DBM = -50 dBm) was
+    dead code: at -5.7 dBm even an EMPTY channel sat 44 dB above it, so `weak`
+    could never be true, the amber card state was unreachable and the weak-band
+    rescan back-off never armed. With no antenna all seven channels read the
+    same noise and the margin collapses toward 0 dB -- which an absolute floor
+    cannot see at all, and this can.
+
+    WEAK_MARGIN_DB = 2.0 sits an order of magnitude above that 0.19 dB spread,
+    so noise alone cannot cross it, and about half way to the +3.75 dB a good
+    antenna produced, so a station further from its transmitter than this one
+    still reads healthy.
+
+    Be clear about what this is: ONE bench observation, one station, one dongle,
+    one strong local transmitter. It is not a characterised curve. A station
+    that reads healthy on the air but amber on the card -- a distant or fringe
+    transmitter, a different tuner, a different gain setting -- is evidence to
+    lower the number; a station whose card stays green with the antenna
+    unplugged is evidence to raise it. Record the seven readings the way this
+    docstring does before moving it.
+
+    Returns None, not a number, when the question is unanswerable: no sweep,
+    fewer than two channels read, or a `best_hz` that is not in `powers`. A
+    caller cannot tell "no margin" from "did not measure" out of a float, and
+    the two mean opposite things.
+    """
+    if not powers or best_hz is None:
+        return None
+    try:
+        best = float(powers[best_hz])
+    except (KeyError, TypeError, ValueError):
+        return None
+    others = []
+    for hz, dbm in powers.items():
+        if hz == best_hz:
+            continue
+        try:
+            others.append(float(dbm))
+        except (TypeError, ValueError):
+            continue
+    if not others:
+        return None
+    return round(best - statistics.median(others), 2)
+
+
+def margin_is_weak(margin_db, threshold=WEAK_MARGIN_DB):
+    """Whether a margin reads as an empty band. Split from channel_margin() so
+    the measurement and the policy can be read, and tested, apart.
+
+    An unmeasurable margin is NOT weak. Weak is a claim about the band, and
+    this is the branch where nothing was measured -- claiming it would paint
+    the card amber and arm the rescan back-off on the strength of no evidence,
+    which is exactly what the old absolute floor did in reverse. It matches
+    choose_channel()'s failed-sweep branch, which reports weak False too.
+    """
+    if margin_db is None:
+        return False
+    try:
+        return float(margin_db) < threshold
+    except (TypeError, ValueError):
+        return False
 
 
 def run(gain=listener.DEFAULT_GAIN, ppm=listener.DEFAULT_PPM, device_serial=None,

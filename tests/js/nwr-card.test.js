@@ -38,8 +38,18 @@ function status(over) {
   };
 }
 
-const scan = (dbm) => ({ ok: true, error: null, code: null, powers: {},
-                         best_hz: 162550000, best_dbm: dbm, weak: dbm < -50 });
+// A completed sweep, described by its MARGIN — how far the winner stood above
+// the rest of the band. The absolute dBm is deliberately the real measured one
+// in every case: on the live station a dead band read -5.7 and a live one read
+// -1.95, so the level says nothing and only the margin separates them.
+const scan = (marginDb) => ({ ok: true, error: null, code: null, powers: {},
+                              best_hz: 162550000, best_dbm: -1.95,
+                              margin_db: marginDb, weak: marginDb < 2 });
+
+// The figures measured on pi5draws against a live NWS transmitter, and the
+// same band with nothing standing out. See scan.channel_margin().
+const HEALTHY_MARGIN = 3.75;
+const DEAD_MARGIN = 0.19;
 
 test('an active watch-list alert paints red and badges the event code', () => {
   const cs = nwrCardState(status(), 'TOR');
@@ -87,7 +97,7 @@ test('a retune outranks the weak scan the last sweep left behind', () => {
   // antenna for a gap the operator asked for.
   const cs = nwrCardState(status({
     watch: { phase: 'retuning', listening: false, retune_pending: true,
-             scan: scan(-58), scan_weak: true },
+             scan: scan(DEAD_MARGIN), scan_weak: true },
   }));
   assert.strictEqual(cs.badge, 'RETUNING');
 });
@@ -103,26 +113,53 @@ test('a retune whose capture will not start stops calling itself a retune', () =
   assert.strictEqual(cs.state, 'warn');
 });
 
-test('a weak scan is amber, badged WEAK, with the measured dBm in the sub-line', () => {
-  const cs = nwrCardState(status({ watch: { scan: scan(-57.3), scan_weak: true } }));
+test('a weak scan is amber, badged WEAK, with the measured margin in the sub-line', () => {
+  const cs = nwrCardState(status({ watch: { scan: scan(DEAD_MARGIN), scan_weak: true } }));
   assert.strictEqual(cs.state, 'warn');
   assert.strictEqual(cs.badge, 'WEAK');
-  assert.match(cs.sub, /-57\.3 dBm/);
+  // The margin, not the level. The level on this exact sweep is -1.95 dBm,
+  // which looks identical to a healthy one and would tell the operator nothing.
+  assert.match(cs.sub, /0\.2 dB margin/);
+  assert.doesNotMatch(cs.sub, /dBm/);
   assert.strictEqual(nwrHealth(cs).warn, true);
   assert.strictEqual(cs.meter.cls, 'silent');
+  assert.ok(cs.meter.pct < 20, 'a band with nothing standing out barely fills the bar');
+  assert.ok(cs.meter.label.length <= 24,
+    'the meter label has to fit a 120px card beside the sub-line');
+});
+
+test('the meter separates the measured healthy sweep from the dead one', () => {
+  // Both sweeps report the SAME best_dbm (-1.95, the figure measured on
+  // pi5draws). If the meter still read the level, these two would paint
+  // identically -- which is the bug the absolute threshold had.
+  const live = nwrCardState(status({ watch: { scan: scan(HEALTHY_MARGIN) } }));
+  const dead = nwrCardState(status({ watch: { scan: scan(DEAD_MARGIN), scan_weak: true } }));
+  assert.ok(live.meter.pct - dead.meter.pct > 40,
+    'a working antenna and a dead band must not paint the same bar');
+});
+
+test('a sweep that measured no margin shows no number rather than a made-up one', () => {
+  // margin_db is null when the sweep could not answer -- fewer than two
+  // channels read, or a failed sweep. Null is not zero, and printing "0.0 dB
+  // margin" from it would report a measurement that never happened.
+  const s = Object.assign(scan(0), { margin_db: null });
+  const cs = nwrCardState(status({ watch: { scan: s, scan_weak: true } }));
+  assert.strictEqual(cs.badge, 'WEAK');
+  assert.strictEqual(cs.sub, 'WX7 162.550');
+  assert.strictEqual(cs.meter, null);
 });
 
 test('weak outranks listening — a weak channel still starts', () => {
   // The daemon starts on a weak best rather than leaving nothing running, so
   // `listening` is true here too. If listening won, the one signal that says
   // "check the antenna" would never reach the card.
-  const cs = nwrCardState(status({ watch: { listening: true, scan: scan(-58), scan_weak: true } }));
+  const cs = nwrCardState(status({ watch: { listening: true, scan: scan(DEAD_MARGIN), scan_weak: true } }));
   assert.strictEqual(cs.badge, 'WEAK');
 });
 
 test('a running watch with no alerts is green, with the channel and last station', () => {
   const cs = nwrCardState(status({
-    watch: { scan: scan(-32), last_decode: { station: 'KEC55', event: 'RWT', at: 1 } },
+    watch: { scan: scan(HEALTHY_MARGIN), last_decode: { station: 'KEC55', event: 'RWT', at: 1 } },
   }));
   assert.strictEqual(cs.state, 'up');
   assert.strictEqual(cs.alert, false);
@@ -253,14 +290,14 @@ function cardSandbox(doc) {
 test('the unreachable state repaints the card rather than leaving the last numbers', () => {
   const doc = fakeCard();
   const sb = cardSandbox(doc);
-  const good = sb.nwrCardState(status({ watch: { scan: scan(-32) } }), 'TOR');
+  const good = sb.nwrCardState(status({ watch: { scan: scan(HEALTHY_MARGIN) } }), 'TOR');
   sb.nwrRenderCard(good);
   assert.strictEqual(doc._els['nwr-meter'].hidden, false);
-  assert.strictEqual(doc._els['nwr-meter-label'].textContent, '-32.0 dBm');
+  assert.strictEqual(doc._els['nwr-meter-label'].textContent, '3.8 dB margin');
   assert.strictEqual(doc._els['card-nwr'].classList.has('alert'), true);
 
   // What the failure path paints. A card badged DOWN beside a live-looking
-  // -32.0 dBm and a red alert wash is exactly the parade of stale state
+  // 3.8 dB margin and a red alert wash is exactly the parade of stale state
   // nwrCardState refuses everywhere else.
   sb.nwrRenderCard(sb.nwrCardState(null));
   assert.strictEqual(doc._els['nwr-meter'].hidden, true, 'the stale meter is still showing');
@@ -281,7 +318,7 @@ test('a paint from a lost race cannot land on top of the failure paint', () => {
   const sb = cardSandbox(doc);
 
   const gen = sb.nwrPaintGeneration();               // the check starts
-  const late = sb.nwrCardState(status({ watch: { scan: scan(-32) } }), 'TOR');
+  const late = sb.nwrCardState(status({ watch: { scan: scan(HEALTHY_MARGIN) } }), 'TOR');
 
   sb.nwrRenderCard(sb.nwrCardState(null), sb.nwrPaintGeneration());   // fail()
   assert.strictEqual(doc._els['nwr-meter'].hidden, true);
@@ -296,12 +333,12 @@ test('a paint from a lost race cannot land on top of the failure paint', () => {
 test('the newest paint always wins, and an ungenerated paint is unconditional', () => {
   const doc = fakeCard();
   const sb = cardSandbox(doc);
-  const good = sb.nwrCardState(status({ watch: { scan: scan(-32) } }));
+  const good = sb.nwrCardState(status({ watch: { scan: scan(HEALTHY_MARGIN) } }));
 
   // The ordinary case: nothing has superseded this check, so it paints.
   const gen = sb.nwrPaintGeneration();
   sb.nwrRenderCard(good, gen);
-  assert.strictEqual(doc._els['nwr-meter-label'].textContent, '-32.0 dBm');
+  assert.strictEqual(doc._els['nwr-meter-label'].textContent, '3.8 dB margin');
 
   // No generation at all still paints — a caller with no race to lose.
   sb.nwrRenderCard(sb.nwrCardState(null));

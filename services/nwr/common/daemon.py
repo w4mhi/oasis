@@ -30,11 +30,6 @@ log = logging.getLogger(__name__)
 API_PORT = 8089          # NOT 8087 (oasis-ai) or 8088 (rtl_433) - see specs/PORT-MAP.md
 SERVICE = "oasis-nwr"
 
-# Below this the band reads as empty. Chosen from bench measurement on a live
-# transmitter: a real NWR signal sits far above it, and an antenna that fell off
-# sits far below. It is a reporting threshold, never a refusal to start.
-WEAK_DBM = -50.0
-
 RESCAN_START_S = 15 * 60
 RESCAN_MAX_S = 6 * 3600
 SUPERVISE_TICK_S = 5
@@ -108,6 +103,11 @@ def choose_channel(repo_root, cfg, device_serial, scan_fn=None):
     A weak best still starts. Refusing would leave nothing running, and silence
     meaning "no transmitter" is indistinguishable from silence meaning "broken";
     the weak flag is what makes the card amber instead of green.
+
+    Weak is decided on the MARGIN between the winner and the rest of the band,
+    never on an absolute level -- see scan.channel_margin() for the measurement
+    that says why. `margin_db` rides along in the result so the card can show
+    the number the decision was made on; it is None whenever no sweep ran.
     """
     pinned = (cfg or {}).get("pinned_channel")
     if pinned:
@@ -122,11 +122,14 @@ def choose_channel(repo_root, cfg, device_serial, scan_fn=None):
     if not result.get("ok") or not result.get("best_hz"):
         # No sweep is not the same as no signal. Fall back to whatever channel
         # is configured so the watch still runs, and say the scan failed.
+        result["margin_db"] = None
         result["weak"] = False
         return int((cfg or {}).get("channel_hz")
                    or settings.DEFAULTS["channel_hz"]), result
 
-    result["weak"] = float(result.get("best_dbm", WEAK_DBM)) < WEAK_DBM
+    margin = scan.channel_margin(result.get("powers"), result.get("best_hz"))
+    result["margin_db"] = margin
+    result["weak"] = scan.margin_is_weak(margin)
     return int(result["best_hz"]), result
 
 

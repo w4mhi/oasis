@@ -142,9 +142,18 @@ python3 services/nwr/install.py --serve   # run the watch in the foreground (dev
         continuously, writing each alert to the store as it arrives.</li>
       <li><strong>Rescan</strong> &mdash; periodically, and only while a capture is
         healthy, it re-checks that the channel it chose is still the best one. If the
-        whole band reads weak it says so (<em>weak scan</em>) and backs off to a slower
-        rescan rather than churning the radio &mdash; but it listens on the best channel
-        it found regardless. A weak band is a report, never a refusal to start.</li>
+        winner does not stand at least <strong>2&nbsp;dB</strong> above the median of
+        the other six channels it says so (<em>weak scan</em>) and backs off to a
+        slower rescan rather than churning the radio &mdash; but it listens on the best
+        channel it found regardless. A weak band is a report, never a refusal to
+        start.</li>
+      <li><strong>Margin, not level</strong> &mdash; that 2&nbsp;dB is a gap between
+        channels, not a signal strength, because the strength on its own says nothing.
+        Measured on this station against a live transmitter, the six empty channels
+        read &minus;5.7&nbsp;dBm and the transmitter read &minus;1.95&nbsp;dBm: a
+        margin of 3.75&nbsp;dB. Pull the antenna off and all seven read the same
+        noise, the margin falls to nothing, and the card goes amber. The card&rsquo;s
+        meter and sub-line show that margin.</li>
       <li><strong>Retry</strong> &mdash; if it cannot get the dongle it waits and tries
         again, with the reason visible on the page. It does not spin.</li>
     </ul>
@@ -303,7 +312,7 @@ python3 services/nwr/install.py --serve   # run the watch in the foreground (dev
         <tr><td>Audio is weak or dead, everything reports healthy</td>
             <td>Check the log for <strong><code>Tuner gain set to 0.00 dB.</code></strong> That means zero gain, not automatic &mdash; <code>rtl_fm</code> reads <code>-g</code> with <code>atof()</code>, and <code>atof("auto")</code> is <code>0.0</code>. Healthy reads <em>Tuner gain set to automatic.</em> Do not &ldquo;fix&rdquo; a hand-rolled command by adding <code>-g auto</code>; omitting the flag is the only way to ask for AGC.</td></tr>
         <tr><td><code>scan_weak: true</code>, nothing ever decodes</td>
-            <td>The band reads empty. 162&nbsp;MHz is line-of-sight to the transmitter: this is antenna, coax or siting, not software. A dongle whip indoors may hear nothing where a rooftop antenna hears the same station cleanly.</td></tr>
+            <td>No channel stands clear of the rest of the band &mdash; the card shows the measured margin, and it will be near zero. 162&nbsp;MHz is line-of-sight to the transmitter: this is antenna, coax or siting, not software. A dongle whip indoors may hear nothing where a rooftop antenna hears the same station cleanly.</td></tr>
         <tr><td>Audio is clear but no alert in days</td>
             <td>Most likely a quiet week. The <em>Required Weekly Test</em> is the proof the chain works &mdash; wait for it before suspecting the decoder.</td></tr>
         <tr><td>Alerts are logged but the bell never speaks</td>

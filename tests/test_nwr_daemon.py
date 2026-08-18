@@ -15,6 +15,13 @@ _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
 from services.nwr.common import daemon  # noqa: E402
 
+# The sweep pi5draws took with dongle 00000031 against a live NWS transmitter,
+# through scan.run(). WX7 is the transmitter; the other six are the band's own
+# noise, and they sit at -5.7 dBm, not at anything like a textbook floor.
+MEASURED_SWEEP = {162400000: -5.71, 162425000: -5.56, 162450000: -5.64,
+                  162475000: -5.75, 162500000: -5.72, 162525000: -5.68,
+                  162550000: -1.95}
+
 
 class PortTest(unittest.TestCase):
     def test_port_is_8089_not_8087(self):
@@ -41,15 +48,50 @@ class ChooseChannelTest(unittest.TestCase):
         self.assertEqual(hz, 162550000)
         self.assertEqual(result["best_dbm"], -12.0)
 
+    def test_the_measured_live_sweep_is_not_weak(self):
+        # The sweep pi5draws actually took against a live NWS transmitter. Its
+        # EMPTY channels read -5.7 dBm, so the absolute floor this replaced
+        # (-50 dBm) could never fire and the amber state was unreachable. See
+        # scan.channel_margin().
+        def fake_scan(**kw):
+            return {"ok": True, "powers": MEASURED_SWEEP,
+                    "best_hz": 162550000, "best_dbm": -1.95, "error": None}
+        hz, result = daemon.choose_channel(_ROOT, {}, "0001", scan_fn=fake_scan)
+        self.assertEqual(hz, 162550000)
+        self.assertFalse(result["weak"])
+        self.assertAlmostEqual(result["margin_db"], 3.75, places=2)
+
     def test_a_weak_best_still_starts(self):
         # Refusing to start would leave nothing running, and silence that means
         # "no transmitter" would look identical to silence that means "broken".
+        # A flat band -- no antenna -- is what weak now means.
+        flat = {hz: -5.7 for hz in MEASURED_SWEEP}
+
         def fake_scan(**kw):
-            return {"ok": True, "powers": {162550000: -60.0},
-                    "best_hz": 162550000, "best_dbm": -60.0, "error": None}
+            return {"ok": True, "powers": flat,
+                    "best_hz": 162400000, "best_dbm": -5.7, "error": None}
         hz, result = daemon.choose_channel(_ROOT, {}, "0001", scan_fn=fake_scan)
-        self.assertEqual(hz, 162550000)
+        self.assertEqual(hz, 162400000)
         self.assertTrue(result["weak"])
+        self.assertEqual(result["margin_db"], 0.0)
+
+    def test_a_sweep_that_cannot_be_read_is_reported_not_guessed(self):
+        # One channel read, a best that is not in `powers`, no powers at all:
+        # each is "did not measure", which is not "no signal". None of them may
+        # raise into supervise(), and none may claim the band is weak.
+        for powers, best in (({162550000: -1.95}, 162550000),
+                             ({}, 162550000),
+                             (None, 162550000),
+                             (MEASURED_SWEEP, 162475001)):
+            with self.subTest(powers=powers, best=best):
+                def fake_scan(**kw):
+                    return {"ok": True, "powers": powers, "best_hz": best,
+                            "best_dbm": -1.95, "error": None}
+                hz, result = daemon.choose_channel(_ROOT, {}, "0001",
+                                                   scan_fn=fake_scan)
+                self.assertEqual(hz, best)
+                self.assertFalse(result["weak"])
+                self.assertIsNone(result["margin_db"])
 
     def test_a_failed_scan_falls_back_to_the_configured_channel(self):
         def fake_scan(**kw):
@@ -293,6 +335,45 @@ class SuperviseRetryCadenceTest(unittest.TestCase):
         self._run(30, {"ok": True, "error": None})
         with daemon._lock:
             self.assertEqual(daemon._state["next_rescan"], 0)
+
+    def test_a_weak_sweep_starts_the_watch_and_arms_the_rescan(self):
+        # The whole point of measuring the margin: a flat band -- an antenna
+        # that fell off -- must still put a capture on the air AND arm the
+        # back-off that will pick the antenna up again when it is refitted.
+        # With the old absolute floor neither half of this could ever happen,
+        # because `weak` was unreachable.
+        flat = {hz: -5.7 for hz in MEASURED_SWEEP}
+        stop = _FakeStop(30)
+        attempts = []
+
+        def fake_scan(**kw):
+            return {"ok": True, "powers": flat, "best_hz": 162400000,
+                    "best_dbm": -5.7, "error": None}
+
+        def fake_start(hz, **kw):
+            attempts.append(hz)
+            return {"ok": True, "error": None}
+
+        with mock.patch.object(daemon.settings, "load",
+                               return_value=dict(daemon.settings.DEFAULTS)), \
+             mock.patch.object(daemon, "_device_serial", return_value="0001"), \
+             mock.patch.object(daemon.listener, "is_listening",
+                               return_value=False), \
+             mock.patch.object(daemon.scan, "run", side_effect=fake_scan), \
+             mock.patch.object(daemon.listener, "start", side_effect=fake_start):
+            daemon.supervise(_ROOT, stop_event=stop, now=lambda: stop.now)
+
+        self.assertEqual(set(attempts), {162400000},
+                         "a weak band must still put a capture on the air")
+        with daemon._lock:
+            self.assertTrue(daemon._state["scan_weak"])
+            self.assertEqual(daemon._state["phase"], "listening")
+            weak_count = daemon._state["consecutive_weak"]
+            self.assertGreater(weak_count, 0)
+            self.assertGreaterEqual(daemon.rescan_delay(weak_count),
+                                    daemon.RESCAN_START_S)
+            self.assertGreater(daemon._state["next_rescan"], _FakeStop.EPOCH,
+                               "a weak scan must leave a rescan due")
 
     def test_a_broken_settings_file_does_not_end_the_watch(self):
         # A hand-edited "watch_fips": 12345 makes settings.load() do

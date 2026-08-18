@@ -94,6 +94,72 @@ class ChannelPowersTest(unittest.TestCase):
         self.assertEqual(hz, 162400000)
 
 
+class ChannelMarginTest(unittest.TestCase):
+    """The margin is what tells a live band from a dead one. An absolute floor
+    cannot: the sweep measured below reads -5.7 dBm on its EMPTY channels."""
+
+    # Measured on pi5draws, dongle 00000031, against a live NWS transmitter,
+    # through scan.run(). WX7 is the transmitter.
+    MEASURED = {162400000: -5.71, 162425000: -5.56, 162450000: -5.64,
+                162475000: -5.75, 162500000: -5.72, 162525000: -5.68,
+                162550000: -1.95}
+
+    def test_the_measured_sweep_is_not_weak(self):
+        margin = scan.channel_margin(self.MEASURED, 162550000)
+        self.assertAlmostEqual(margin, 3.75, places=2)
+        self.assertFalse(scan.margin_is_weak(margin))
+
+    def test_a_flat_band_is_weak(self):
+        # No antenna: all seven channels read the same noise. This is the case
+        # the old absolute floor could not see at all.
+        flat = {hz: -5.7 for hz in self.MEASURED}
+        margin = scan.channel_margin(flat, 162400000)
+        self.assertEqual(margin, 0.0)
+        self.assertTrue(scan.margin_is_weak(margin))
+
+    def test_the_noise_spread_alone_cannot_read_healthy(self):
+        # The six empty channels of the measured sweep span 0.19 dB end to end.
+        # A sweep whose "winner" is only that far up is noise, not a station.
+        noise = dict(self.MEASURED)
+        noise[162550000] = -5.56
+        margin = scan.channel_margin(noise, 162425000)
+        self.assertLess(margin, 0.2)
+        self.assertTrue(scan.margin_is_weak(margin))
+
+    def test_a_second_station_on_the_band_does_not_move_the_verdict(self):
+        # A median, not a mean, and not the runner-up: some regions carry two
+        # NWR transmitters within range. The winner still stands clear of the
+        # BAND, which is the question being asked.
+        powers = dict(self.MEASURED)
+        powers[162525000] = -2.40      # a second station on the band
+        margin = scan.channel_margin(powers, 162550000)
+        self.assertAlmostEqual(margin, 3.72, places=2)
+        self.assertFalse(scan.margin_is_weak(margin))
+
+    def test_an_unreadable_sweep_returns_none_rather_than_raising(self):
+        for powers, best in ((None, 162550000), ({}, 162550000),
+                             (self.MEASURED, None), (None, None),
+                             ({162550000: -1.95}, 162550000),
+                             ({162550000: -1.95}, 162400000),
+                             ({162550000: "n/a", 162400000: "n/a"}, 162550000),
+                             ({162550000: -1.95, 162400000: None}, 162550000)):
+            with self.subTest(powers=powers, best=best):
+                self.assertIsNone(scan.channel_margin(powers, best))
+
+    def test_an_unmeasurable_margin_is_not_weak(self):
+        # Weak is a claim about the band. This is the branch where nothing was
+        # measured, and claiming it would arm the rescan back-off on no
+        # evidence -- the mirror of the bug the old floor had.
+        self.assertFalse(scan.margin_is_weak(None))
+        self.assertFalse(scan.margin_is_weak("n/a"))
+
+    def test_the_threshold_sits_between_the_two_measured_cases(self):
+        self.assertGreater(scan.WEAK_MARGIN_DB, 0.19,
+                           "noise alone must not read healthy")
+        self.assertLess(scan.WEAK_MARGIN_DB, 3.75,
+                        "the measured working antenna must not read weak")
+
+
 class _FakeResult:
     """Stand-in for subprocess.CompletedProcess, injected via `runner`."""
 

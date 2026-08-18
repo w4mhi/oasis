@@ -24,13 +24,19 @@
   // "choosing a channel" is several times that width.
   var SWEEP_TEXT = 'sweeping 162.4-162.55';
 
-  // dBm window for the signal meter. rtl_power's numbers are relative, so this
-  // is a readable scale, not a calibration: the floor is "nothing there" and the
-  // top is "as strong as a local transmitter gets". WEAK_DBM (-50, the daemon's
-  // own weak threshold) lands at 40% — comfortably inside the bar, so weak and
-  // healthy look different at a glance.
-  var METER_FLOOR_DBM = -70;
-  var METER_TOP_DBM = -20;
+  // The meter reads the MARGIN, not the level. rtl_power's dBm are relative,
+  // and on a live station the empty channels measured -5.7 dBm while the
+  // transmitter measured -1.95 — so a -70..-20 dBm window painted every real
+  // sweep, healthy or dead, hard against 100%. What separates the two is how
+  // far the winner stands above the rest of the band: +3.75 dB with a working
+  // antenna, ~0 dB with none (scan.channel_margin()).
+  //
+  // 0 is "no channel stands out at all". The top is 6 dB, which keeps that
+  // measured +3.75 well inside the bar rather than pinned at the end, and puts
+  // the daemon's 2 dB weak threshold at a third of the way along — so weak and
+  // healthy are different at a glance, which is the whole job of this bar.
+  var METER_FLOOR_DB = 0;
+  var METER_TOP_DB = 6;
 
   function _mhz(hz) { return (hz / 1e6).toFixed(3); }
 
@@ -43,14 +49,20 @@
     return parts.length ? parts.join(' ') : 'no channel';
   }
 
-  // The best dBm the LAST completed sweep measured, or null when no sweep has
-  // run (a pinned channel skips the sweep entirely — see choose_channel()).
-  function _bestDbm(w) {
+  // How far the winning channel stood above the rest of the band on the LAST
+  // completed sweep, in dB, or null when there is no answer — no sweep has run
+  // (a pinned channel skips it entirely, see choose_channel()), the sweep
+  // failed, or fewer than two channels were read. Null is not zero: zero means
+  // nothing stood out, null means nothing was measured.
+  function _margin(w) {
     var s = w.scan;
     if (!s) { return null; }
-    var v = Number(s.best_dbm);
-    return (s.best_dbm === null || s.best_dbm === undefined || isNaN(v)) ? null : v;
+    var v = Number(s.margin_db);
+    return (s.margin_db === null || s.margin_db === undefined || isNaN(v)) ? null : v;
   }
+
+  // Short enough for .feed-meter-label — see SWEEP_TEXT.
+  function _marginText(v) { return v.toFixed(1) + ' dB margin'; }
 
   // The meter is a SIGNAL meter, not a sweep-progress bar: the daemon reports
   // no progress through a sweep, and a bar that animates against no measurement
@@ -58,11 +70,11 @@
   // running the bar is therefore empty with a "sweeping" label, and it fills
   // when a real measurement lands.
   function _signalMeter(w, cls) {
-    var v = _bestDbm(w);
+    var v = _margin(w);
     if (v === null) { return null; }
-    var pct = ((v - METER_FLOOR_DBM) / (METER_TOP_DBM - METER_FLOOR_DBM)) * 100;
+    var pct = ((v - METER_FLOOR_DB) / (METER_TOP_DB - METER_FLOOR_DB)) * 100;
     return { pct: Math.round(Math.max(0, Math.min(100, pct))),
-             cls: cls, label: v.toFixed(1) + ' dBm' };
+             cls: cls, label: _marginText(v) };
   }
 
   // What the card should paint, from GET /api/nwr/status.
@@ -128,8 +140,11 @@
       // out that the antenna is the problem rather than the band.
       cs.state = 'warn';
       cs.badge = 'WEAK';
-      var dbm = _bestDbm(w);
-      cs.sub = _channelText(w) + (dbm === null ? '' : ' · ' + dbm.toFixed(1) + ' dBm');
+      // The margin, not the level: an absolute dBm here read -5.7 on a dead
+      // band and -1.95 on a live one, which tells the operator nothing. "0.1 dB
+      // margin" says the thing that is actually wrong — no channel stands out.
+      var m = _margin(w);
+      cs.sub = _channelText(w) + (m === null ? '' : ' · ' + _marginText(m));
       cs.meter = _signalMeter(w, 'silent');
     } else if (w.listening) {
       cs.state = 'up';

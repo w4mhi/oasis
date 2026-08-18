@@ -2206,13 +2206,34 @@ sudo systemctl stop oasis-nwr     # the sweep needs the dongle exclusively
 rtl_power -f 162.39M:162.56M:5k -i 1 -e 6 -
 sudo systemctl start oasis-nwr
 ```
-- **Healthy:** one of the seven channels stands well clear of its neighbours.
-- **Broken:** all 34 bins within a few dB of each other = nothing is being heard.
-  That is antenna, coax or siting, not software. 162 MHz is line-of-sight to the
-  transmitter; a dongle whip indoors may hear nothing where a rooftop antenna
-  hears the same station cleanly. The status endpoint reports this as
-  `"scan_weak": true`, and the watch listens on the best channel it found anyway
-  rather than refusing to start.
+**Read the MARGIN, not the level.** `rtl_power`'s dBm are relative to whatever
+the front end was doing, and on this band the *empty* channels do not sit
+anywhere near a textbook noise floor. This is the sweep this station recorded on
+`pi5draws` (dongle `00000031`) with a live NWS transmitter in range, taken
+through the watch's own code:
+
+```
+WX1 -5.71   WX2 -5.56   WX3 -5.64   WX4 -5.75
+WX5 -5.72   WX6 -5.68   WX7 -1.95   <- the transmitter
+```
+
+- **Healthy:** one channel stands clear of the median of the other six by more
+  than **2 dB**. Above, WX7 is 3.75 dB up on a median of -5.695 — and note how
+  tight the six empty ones are, 0.19 dB end to end. That gap is the measurement;
+  the -1.95 dBm on its own is not, because an empty channel here reads -5.7.
+- **Broken:** all 34 bins within a fraction of a dB of each other = nothing is
+  being heard, and the margin collapses toward 0 dB. That is antenna, coax or
+  siting, not software. 162 MHz is line-of-sight to the transmitter; a dongle
+  whip indoors may hear nothing where a rooftop antenna hears the same station
+  cleanly. The status endpoint reports this as `"scan_weak": true` with the
+  measured gap in `watch.scan.margin_db`, and the watch listens on the best
+  channel it found anyway rather than refusing to start.
+
+> The 2 dB threshold (`scan.WEAK_MARGIN_DB`) is one bench observation from one
+> station, not a characterised curve. A station that hears its transmitter
+> perfectly well but sits amber on the card is a reason to lower it; a card that
+> stays green with the antenna unplugged is a reason to raise it. Record all
+> seven readings before you move it.
 
 **Nothing decodes, but the audio sounds right.** Listen to it yourself — the
 stream is the daemon's own audio, relayed byte-for-byte:
