@@ -492,7 +492,12 @@
      a static list cannot.
      Unlike the map's, this one is NOT clickable. Pausing auto-refresh on a
      display nobody is sitting at means a screen that looks live and is not. */
-  .hd .satcd{ font-size:1.1rem; white-space:nowrap;
+  /* min-width is insurance, not the fix — cdPad() is. If a font ever lacks
+     U+2007 and the pad collapses, the box still cannot shrink, so the pill to
+     its left stays put and only this cell's own text shifts. 5ch is the widest
+     form ("60s" plus the glyph and its space) measured in digit advances. */
+  .hd .satcd{ font-size:1.1rem; white-space:nowrap; display:inline-block;
+              min-width:5ch; text-align:left;
               font-variant-numeric:tabular-nums; color:var(--faint); transition:color .4s; }
   .hd .satcd.green{ color:var(--accent); }
   .hd .satcd.yellow{ color:var(--warn); }
@@ -2272,10 +2277,27 @@ function scheduleAprsRender() {
 // Floors at 0 like the satellites one, and for the same reason: a clock parked
 // at 0s is itself the symptom. On this display 0 means "due, waiting on data" —
 // the render only happens when a poll actually lands.
+// Both countdowns, padded to a constant two columns. 10 -> 9 dropped a
+// character, and since these sit at the END of .hd-right — a group pinned right
+// by one auto margin — everything to their LEFT jumped a character sideways
+// once a second near the bottom of every cycle. On a wall display that is a
+// twitch you cannot stop noticing.
+//
+// U+2007 FIGURE SPACE, not a plain space: CSS white-space processing collapses
+// runs of U+0020 (nowrap does NOT preserve them), so a normal pad would vanish
+// on exactly the frames it is needed. U+2007 is not collapsible and is defined
+// as digit-width, which with tabular-nums makes the two forms pixel-identical.
+// Nothing moves at all — not the glyph, not the 's', only the digit column.
+//
+// Two columns covers both ceilings: traffic counts from 15, satellites from 60.
+// A three-digit cycle would need this widened, which is why it reads the number
+// rather than assuming.
+function cdPad(n) { return String(n).padStart(2, '\u2007'); }
+
 function renderTrafficCountdown() {
   const el = document.getElementById('k-traffic-cd'); if (!el) return;
   const left = Math.max(0, Math.ceil((TRAFFIC_REFRESH_MS - (Date.now() - _renderAt)) / 1000));
-  el.textContent = '↻ ' + left + 's';
+  el.textContent = '↻ ' + cdPad(left) + 's';
   // Same green -> amber -> red vocabulary as the satellites countdown, scaled to
   // a 15 s cycle instead of 60: thirds, not the sat card's absolute 10/5.
   el.className = 'satcd ' + (left > 10 ? 'green' : left > 5 ? 'yellow' : 'red');
@@ -3088,7 +3110,7 @@ let _satCd = SAT_REFRESH_SEC;
 function renderSatCountdown() {
   const el = document.getElementById('k-sat-cd');
   if (!el) return;
-  el.textContent = '↻ ' + _satCd + 's';
+  el.textContent = '↻ ' + cdPad(_satCd) + 's';
   el.className = 'satcd ' + (_satCd >= 10 ? 'green' : _satCd >= 5 ? 'yellow' : 'red');
 }
 // Floors at 0 rather than going negative: if a refetch hangs, a countdown parked

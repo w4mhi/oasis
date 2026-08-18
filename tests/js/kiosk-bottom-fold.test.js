@@ -218,6 +218,24 @@ test('a pass record puts its countdown where the in-pass row puts LOS', () => {
     'where the time lives');
 });
 
+test('the countdowns never change width', () => {
+  // 10 -> 9 dropped a character once a second, and both countdowns sit at the
+  // END of .hd-right — a group pinned right by a single auto margin — so the
+  // pill beside them jumped sideways on every tick near the bottom of a cycle.
+  assert.match(page, /function cdPad\(n\) \{ return String\(n\)\.padStart\(2, '\\u2007'\); \}/,
+    'the shared pad is gone');
+  for (const call of ["'↻ ' + cdPad(left) + 's'", "'↻ ' + cdPad(_satCd) + 's'"]) {
+    assert.ok(page.includes(call), 'a countdown is not padded: ' + call);
+  }
+  // U+2007, not U+0020. CSS collapses runs of plain spaces — nowrap does not
+  // preserve them — so a normal pad would disappear on exactly the frames that
+  // need it.
+  assert.ok(!/padStart\(2, ' '\)/.test(page),
+    'a plain space pad collapses in CSS white-space processing');
+  assert.match(page, /\.hd \.satcd\{[^}]*min-width:5ch/,
+    'the box should also refuse to shrink, in case a font lacks U+2007');
+});
+
 test('an in-pass row says "up", not "overhead"', () => {
   // Short enough to sit in the .aos slot a rise TIME occupies on every other
   // row, which is what keeps the flattened one-line record from reflowing when
