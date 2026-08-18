@@ -103,7 +103,7 @@ function fakeDoc() {
     value: '', style: {}, children: [],
     appendChild(e) { this.children.push(e); },
   });
-  ['state', 'pre', 'err', 'msg', 'chan', 'log'].forEach((id) => { els[id] = mk(id); });
+  ['state', 'pre', 'err', 'msg', 'pin', 'chan', 'log'].forEach((id) => { els[id] = mk(id); });
   els.audio = fakeAudio();
   return { getElementById: (id) => els[id] || null, createElement: () => mk(),
            activeElement: null };
@@ -111,9 +111,9 @@ function fakeDoc() {
 
 // Every page-level helper, built once against one fake document so they share
 // the CHANNELS the poll fills in -- exactly as they do in the browser.
-const HELPERS = ['fmtTime', 'chanLabel', 'pinPatch', 'pinNote', 'watchLine',
+const HELPERS = ['fmtTime', 'chanLabel', 'pinPatch', 'retuneNote', 'watchLine',
                  'armStream', 'detachStream', 'handlePlay', 'handlePause',
-                 'setMsg', 'renderStatus'];
+                 'setMsg', 'renderStatus', 'renderUnavailable'];
 
 function buildPage(doc) {
   const preamble =
@@ -139,8 +139,8 @@ function statusOf(over) {
     watch: Object.assign({
       reachable: true, detail: null, phase: 'listening', listening: true,
       channel: 'WX7', channel_hz: 162550000, alerts_seen: 0, last_decode: null,
-      last_error: null, scan: null, scan_weak: false, retry_in_s: 0,
-      streams: 0, elapsed_s: 120,
+      last_error: null, scan: null, scan_weak: false, retune_pending: false,
+      retry_in_s: 0, streams: 0, elapsed_s: 120,
     }, o.watch),
     config: Object.assign({ channel_hz: 162550000, pinned_channel: null }, o.config),
     channels: [{ hz: 162400000, label: 'WX1' }, { hz: 162550000, label: 'WX7' }],
@@ -172,9 +172,9 @@ test('poll() will not run two passes at once', async () => {
     return { ok: true, status: 200, data: null };
   };
 
-  const fn = new Function('api', 'renderStatus', 'renderAlerts',
+  const fn = new Function('api', 'renderStatus', 'renderAlerts', 'renderUnavailable',
     'let polling = false;\n' + pollSrc + '\nreturn poll;');
-  const poll = fn(api, () => {}, () => {});
+  const poll = fn(api, () => {}, () => {}, () => {});
 
   const first = poll();
   const second = poll();          // must be a no-op: a pass is already in flight
@@ -183,6 +183,33 @@ test('poll() will not run two passes at once', async () => {
 
   assert.strictEqual(calls, 2, 'exactly one full pass (status + alerts) should run');
   assert.strictEqual(maxConcurrent, 1, 'two poll() passes must never overlap');
+});
+
+test('a status the server cannot answer takes the line down instead of leaving it stale', async () => {
+  // /api/nwr/status answers ok:true even when the watch is dead -- a down
+  // daemon is watch.reachable false, an ANSWER. So !ok means FLASK could not be
+  // asked, and the page used to skip the render entirely there: #state kept
+  // reading LISTENING - WX7 162.550 - since ... for as long as the server
+  // stayed down.
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  p.renderStatus(statusOf({ config: { pinned_channel: 162550000 } }), NOW_MS);
+  assert.match(doc.getElementById('state').textContent, /^LISTENING/);
+
+  const fn = new Function('api', 'renderStatus', 'renderAlerts', 'renderUnavailable',
+    'let polling = false;\n' + pollSrc + '\nreturn poll;');
+  await fn(async () => ({ ok: false, status: 500, data: null }),
+           p.renderStatus, () => {}, p.renderUnavailable)();
+
+  const st = doc.getElementById('state');
+  assert.doesNotMatch(st.textContent, /LISTENING/,
+    'the page is still claiming a channel it can no longer check');
+  assert.match(st.textContent, /status unavailable/);
+  assert.strictEqual(st.className, 'down');
+  // A bare renderStatus({ok:false}) would have done the line AND reset the
+  // dropdown to Auto, reporting a pin the operator never cleared.
+  assert.strictEqual(doc.getElementById('chan').value, '162550000',
+    'an unanswerable status must not rewrite the pin');
 });
 
 // ── The channel pin ──────────────────────────────────────────────────────────
@@ -268,19 +295,114 @@ test('an Auto entry is offered alongside the seven channels', () => {
   assert.strictEqual(opts[0].value, 'auto');
 });
 
-test('a pin the running capture has not adopted yet is said out loud', () => {
+// ── The retune a pin now causes ──────────────────────────────────────────────
+// The page used to disclose a pin as "stored, takes effect when the watch next
+// changes channel". POST /api/nwr/config now asks the daemon to retune, so that
+// wait no longer exists; what is left to say is the gap while it happens.
+
+test('a retune in progress is named, and names the channel it is heading for', () => {
   const doc = fakeDoc();
   const p = buildPage(doc);
-  // The daemon re-reads pinned_channel only when it next chooses a channel, so
-  // a pin set mid-capture is stored and not yet in effect.
-  p.renderStatus(statusOf({ config: { pinned_channel: 162400000 },
-                            watch: { listening: true, channel_hz: 162550000 } }), NOW_MS);
-  assert.match(doc.getElementById('pre').textContent, /pinned WX1/);
+  p.renderStatus(statusOf({
+    config: { pinned_channel: 162400000 },
+    watch: { listening: false, phase: 'retuning', retune_pending: true,
+             channel_hz: 162550000 },
+  }), NOW_MS);
+  assert.match(doc.getElementById('pin').textContent, /changing to WX1/);
+});
 
+test('the retune line is not an alarm and does not join the red block', () => {
+  // #pre is the environment: no audio encoder, no rtl_power -- things needing a
+  // person with a keyboard. An operator-initiated channel change in that same
+  // red reads far louder than it is.
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  p.renderStatus(statusOf({
+    config: { pinned_channel: 162400000 },
+    watch: { listening: false, phase: 'retuning', retune_pending: true },
+  }), NOW_MS);
+  assert.doesNotMatch(doc.getElementById('pre').textContent, /changing to/,
+    'the retune note must not land in the red environment block');
+  assert.strictEqual(doc.getElementById('pin').className, '',
+    'the retune note must never be painted .warn');
+});
+
+test('a pin the capture has adopted says nothing at all', () => {
+  const doc = fakeDoc();
+  const p = buildPage(doc);
   p.renderStatus(statusOf({ config: { pinned_channel: 162550000 },
                             watch: { listening: true, channel_hz: 162550000 } }), NOW_MS);
-  assert.doesNotMatch(doc.getElementById('pre').textContent, /pinned/,
-    'a pin the capture is already on is not news');
+  assert.strictEqual(doc.getElementById('pin').textContent, '',
+    'a retune that has landed is not news');
+});
+
+test('a retune whose capture will not start stops promising a channel change', () => {
+  // retune_pending stays true until the new capture is RUNNING, so it is still
+  // true through every failed attempt. Reading it alone would leave the page
+  // saying "changing to WX1" forever at a watch that cannot start.
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  p.renderStatus(statusOf({
+    config: { pinned_channel: 162400000 },
+    watch: { listening: false, phase: 'retrying', retune_pending: true,
+             retry_in_s: 60, last_error: 'device or resource busy' },
+  }), NOW_MS);
+  assert.match(doc.getElementById('pin').textContent, /still trying to tune WX1/);
+  assert.doesNotMatch(doc.getElementById('pin').textContent, /^changing to/);
+});
+
+test('a retune the watch never heard about is not announced', () => {
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  p.renderStatus(statusOf({
+    config: { pinned_channel: 162400000 },
+    watch: { reachable: false, listening: false, retune_pending: true },
+  }), NOW_MS);
+  assert.strictEqual(doc.getElementById('pin').textContent, '',
+    'an unreachable watch is retuning nothing');
+});
+
+test('the obsolete "takes effect later" disclosure is gone', () => {
+  // The daemon retunes on request now (services/nwr/routes.py asks it on every
+  // write that names pinned_channel). Telling the operator to wait for a
+  // channel change that a healthy capture may never make was already wrong.
+  assert.doesNotMatch(src, /takes effect when/,
+    'the page still promises the pin will apply at some later time');
+});
+
+test('a saved pin the watch could not be told about is said out loud', async () => {
+  // routes.py: the write SUCCEEDS with the daemon down -- losing the operator's
+  // choice would be worse -- so ok stays true and retune.reachable is false.
+  // Nothing else on the page would tell them the channel they just chose is not
+  // going to start being received.
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  const postStub = async () => ({ ok: true, status: 200, data: { ok: true,
+    config: { pinned_channel: 162400000 },
+    retune: { requested: true, reachable: false, accepted: false,
+              detail: 'the watch is not reachable (Connection refused)' } } });
+  const handler = new AsyncFunction('$', 'post', 'poll', 'pinPatch', 'setMsg',
+    extractHandlerBody("$('chan').addEventListener('change', async function () {"));
+
+  doc.getElementById('chan').value = '162400000';
+  await handler((id) => doc.getElementById(id), postStub, () => {}, p.pinPatch, p.setMsg);
+  assert.match(doc.getElementById('msg').textContent, /saved/);
+  assert.match(doc.getElementById('msg').textContent, /Connection refused/);
+});
+
+test('a write with no reason to retune says nothing', async () => {
+  // reachable is NULL, not false, when the patch never named pinned_channel --
+  // "we did not ask" and "nobody answered" are different worlds, and only the
+  // second is worth a message.
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  const postStub = async () => ({ ok: true, status: 200, data: { ok: true,
+    retune: { requested: false, reachable: null, accepted: false, detail: null } } });
+  const handler = new AsyncFunction('$', 'post', 'poll', 'pinPatch', 'setMsg',
+    extractHandlerBody("$('chan').addEventListener('change', async function () {"));
+
+  await handler((id) => doc.getElementById(id), postStub, () => {}, p.pinPatch, p.setMsg);
+  assert.strictEqual(doc.getElementById('msg').textContent, '');
 });
 
 // ── The audio element ────────────────────────────────────────────────────────
@@ -365,6 +487,60 @@ test('a watch that is not listening leaves no stream attached', () => {
   assert.strictEqual(el.getAttribute('src'), null,
     'an element left attached behind display:none is the orphaned-encoder shape');
   assert.strictEqual(el.style.display, 'none');
+});
+
+test('leaving the page tears the stream down', () => {
+  // The page ships a same-origin Dashboard link, which is the back/forward-cache
+  // case: Chromium keeps the frame and its media element alive. The daemon has
+  // no reaper -- its handler holds the slot until a write to the socket raises,
+  // which needs the browser to actually close -- so a bfcached page pins one of
+  // MAX_STREAMS = 3 and its ffmpeg indefinitely.
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  const el = doc.getElementById('audio');
+  p.armStream(el, NOW_MS);
+  el.play();
+  const before = el.loads;
+
+  const fn = new Function('$', 'detachStream',
+    extractHandlerBody("window.addEventListener('pagehide', function () {"));
+  fn((id) => doc.getElementById(id), p.detachStream);
+
+  assert.strictEqual(el.getAttribute('src'), null, 'the stream is still attached');
+  assert.ok(el.loads > before, 'load() is the call that actually ends the stream');
+});
+
+test('the teardown is on pagehide, and nothing tears down a merely hidden page', () => {
+  // unload disqualifies the page from the very bfcache this is guarding, and is
+  // deprecated. And a backgrounded kiosk tab must keep playing: the gap is
+  // leave/navigate, not visibility.
+  assert.doesNotMatch(src, /addEventListener\('unload'/,
+    'unload disqualifies the page from bfcache');
+  assert.doesNotMatch(src, /visibilitychange/,
+    'a hidden tab must keep playing -- do not tear down on visibility');
+});
+
+test('a stream that recovers clears the warning it left standing', () => {
+  // The error handler's message used to stand until the next channel change, so
+  // a successful retry left "the audio stream would not open" on screen beside
+  // audio that was playing.
+  const doc = fakeDoc();
+  const p = buildPage(doc);
+  const STREAM_ERR = (/const STREAM_ERR = '([^']+)';/.exec(src) || [])[1];
+  assert.ok(STREAM_ERR, 'weather.html does not define STREAM_ERR');
+
+  const fn = new Function('$', 'setMsg', 'STREAM_ERR',
+    extractHandlerBody("$('audio').addEventListener(ev, function () {"));
+  p.setMsg(STREAM_ERR);
+  fn((id) => doc.getElementById(id), p.setMsg, STREAM_ERR);
+  assert.strictEqual(doc.getElementById('msg').textContent, '');
+
+  // ...but only its own message: #msg is also where a refused pin lands, and a
+  // stream starting says nothing about that.
+  const REFUSED = 'pinned_channel is not one of the seven NWR channels';
+  p.setMsg(REFUSED);
+  fn((id) => doc.getElementById(id), p.setMsg, STREAM_ERR);
+  assert.strictEqual(doc.getElementById('msg').textContent, REFUSED);
 });
 
 // ── The status line ──────────────────────────────────────────────────────────
@@ -466,12 +642,20 @@ test('the page reads the daemon and starts nothing', () => {
   assert.doesNotMatch(src, /id="(listen|stop|scan|usebest)"/,
     'a claim control is back on the page');
 
-  const targets = [];
-  const re = /post\(\s*'([^']+)'/g;
-  let m;
-  while ((m = re.exec(src))) { targets.push(m[1]); }
-  assert.deepStrictEqual([...new Set(targets)], ['/api/nwr/config'],
-    'the only thing this page may POST is its configuration');
+  // Every API path the page NAMES, however it names it. The previous guard read
+  // only `post('...')` literals, which a double quote, a template literal, a
+  // variable -- or the realistic one, api('/api/nwr/whatever', {method:'POST'})
+  // through the general helper the page already uses for its GETs -- would all
+  // walk straight past. Whole-set equality over the source covers fetches,
+  // forms and links in one assertion, and a route arriving by any of them has
+  // to be added here deliberately.
+  const routes = new Set(src.match(/\/api\/nwr\/[a-z/]+/g) || []);
+  assert.deepStrictEqual([...routes].sort(), [
+    '/api/nwr/alerts',        // read: the decode log
+    '/api/nwr/config',        // write: the channel pin, and nothing else
+    '/api/nwr/listen/stream', // read: the daemon's audio, relayed
+    '/api/nwr/status',        // read: preconditions, config and the watch
+  ], 'weather.html names an API route it has no business touching');
 });
 
 test('the page reads `watch`, never the retired `capture` key', () => {

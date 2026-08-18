@@ -333,7 +333,13 @@ body {
    above, so only source order puts the alert on top. Set as its own class
    (never via className) so the state class the poller rewrites and this one
    cannot wipe each other. Static: an infinite animation on a card once pinned
-   this kiosk's renderer at 60fps on a Pi. */
+   this kiosk's renderer at 60fps on a Pi.
+   The status DOT is deliberately left alone here, so it keeps tracking health
+   while the card reads alert: the badge is replaced by the event code and
+   reddened by the rule below, which leaves the dot as the only thing on the
+   card still saying whether the watch itself is well. A red dot would delete
+   that, and blue-on-red is not a paint bug -- blue IS "up" on every gated
+   card (.svc-card-gated .svc-dot.up above). */
 .svc-card.alert       { border-color: var(--red); background: rgba(180, 30, 30, 0.14); }
 .svc-card.alert .svc-badge,
 .svc-card.alert .svc-badge.up { color: var(--red); font-weight: 700; }
@@ -449,9 +455,14 @@ body {
 }
 .feed-meter.silent .feed-meter-fill { background: var(--red); }
 .feed-meter.flowing .feed-meter-fill { background: var(--blue); }   /* match the blue SDR cards */
+/* min-width:0 + ellipsis because the neighbours cannot give: .feed-row .svc-sub
+   is nowrap and flex-shrink:0, and .svc-card is min-width:120px. A label longer
+   than the rates these meters were built for (the Weather Radio sweep text)
+   would otherwise push the card wider than its column. */
 .feed-meter-label {
   font-size: var(--fs-micro); color: var(--text-dim);
   white-space: nowrap; font-variant-numeric: tabular-nums;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
 }
 
 /* ── Per-card device label (read-only; assign on Setup → Hardware) ───────── */
@@ -2342,7 +2353,14 @@ const SERVICES = [
       const cs = nwrCardState(d, _nwrAlertEvent);
       nwrRenderCard(cs);
       return nwrHealth(cs);
-    }
+    },
+    // The failure path paints the card too. checkService's catch knows about
+    // the dot, the badge and the sub-line, but nothing about the meter or the
+    // alert wash -- so a check that rejects, or loses the 4 s race with a cold
+    // rtl_test probe, used to badge the card DOWN while the meter beside it
+    // kept the last good -32.0 dBm. nwrCardState(null) is the module's own
+    // unreachable state: no meter, no alert.
+    fail: () => nwrRenderCard(nwrCardState(null))
   },
   {
     id: 'manuals', name: 'Radio Manuals',
@@ -2405,6 +2423,10 @@ async function checkService(svc) {
     if (pb) pb.style.display = result.hidePower ? 'none' : '';
   } catch (e) {
     _svcStates[svc.id] = 'down';
+    // A service may own paint this function knows nothing about. Everything
+    // below repaints only the dot, badge and sub-line, so without this the
+    // extra paint from the LAST successful check survives a failed one.
+    if (svc.fail) { svc.fail(); }
     if (dot)   dot.className  = 'svc-dot down';
     if (card)  { card.classList.remove('up', 'warn'); card.classList.add('down'); }
     if (badge) { badge.className = 'svc-badge down'; badge.textContent = e.message === 'timeout' ? 'TIMEOUT' : 'DOWN'; }

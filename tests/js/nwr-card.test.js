@@ -31,7 +31,7 @@ function status(over) {
       reachable: true, detail: null, phase: 'listening', listening: true,
       channel: 'WX7', channel_hz: 162550000, alerts_seen: 0,
       last_decode: null, last_error: null, scan: null, scan_weak: false,
-      retry_in_s: 0, streams: 0, elapsed_s: 120,
+      retune_pending: false, retry_in_s: 0, streams: 0, elapsed_s: 120,
     }, o.watch),
     config: { channel_hz: 162550000 },
     channels: [],
@@ -61,7 +61,46 @@ test('scanning shows the meter and badges SCANNING', () => {
   // Empty, not animated and not invented: the daemon reports no progress
   // through a sweep, so the bar fills only when a measurement lands.
   assert.strictEqual(cs.meter.pct, 0);
-  assert.match(cs.meter.label, /sweeping 162\.400-162\.550 MHz/);
+  assert.match(cs.meter.label, /sweeping 162\.4-162\.55/);
+  // Short on purpose: .feed-meter-label shares a row with the sub-line inside a
+  // card that is 120px at its narrowest, and neither element can shrink.
+  assert.ok(cs.meter.label.length <= 24,
+    'the sweep label has to fit a 120px card beside "choosing a channel"');
+});
+
+test('a retune is a deliberate gap, not a decode failure', () => {
+  // The seconds an accepted pin costs: the daemon stops the capture and starts
+  // one on the new channel. Reading that as the watch breaking would report the
+  // operator's own click back to them as damage.
+  const cs = nwrCardState(status({
+    watch: { phase: 'retuning', listening: false, retune_pending: true },
+  }));
+  assert.strictEqual(cs.state, 'up');
+  assert.strictEqual(cs.badge, 'RETUNING');
+  assert.ok(nwrHealth(cs).up, 'a retune must not count as a down service');
+  assert.strictEqual(cs.meter, null, 'nothing is being measured mid-retune');
+});
+
+test('a retune outranks the weak scan the last sweep left behind', () => {
+  // scan_weak is the PREVIOUS sweep's verdict and is not cleared when a retune
+  // starts, so if it won here a pinned change would badge WEAK and blame the
+  // antenna for a gap the operator asked for.
+  const cs = nwrCardState(status({
+    watch: { phase: 'retuning', listening: false, retune_pending: true,
+             scan: scan(-58), scan_weak: true },
+  }));
+  assert.strictEqual(cs.badge, 'RETUNING');
+});
+
+test('a retune whose capture will not start stops calling itself a retune', () => {
+  // retune_pending stays true until the new capture is RUNNING, so it is still
+  // true here. phase is what tells the two apart, and the card follows phase.
+  const cs = nwrCardState(status({
+    watch: { phase: 'retrying', listening: false, retune_pending: true,
+             retry_in_s: 60 },
+  }));
+  assert.strictEqual(cs.badge, 'RETRYING');
+  assert.strictEqual(cs.state, 'warn');
 });
 
 test('a weak scan is amber, badged WEAK, with the measured dBm in the sub-line', () => {
@@ -187,15 +226,87 @@ test('nwrRenderCard is a no-op where there is no card (the kiosk)', () => {
   assert.doesNotThrow(() => nwrRenderCard(nwrCardState(status())));
 });
 
+// A document stub with only what nwrRenderCard touches, so the card's own
+// painting can be pinned without a browser.
+function fakeCard() {
+  const els = {};
+  ['card-nwr', 'nwr-meter', 'nwr-meter-fill', 'nwr-meter-label'].forEach((id) => {
+    els[id] = { id, hidden: false, className: '', textContent: '', style: {},
+                _classes: new Set() };
+    els[id].classList = {
+      toggle: (c, on) => { if (on) { els[id]._classes.add(c); }
+                           else { els[id]._classes.delete(c); } },
+      has: (c) => els[id]._classes.has(c),
+    };
+  });
+  return { getElementById: (id) => els[id] || null, _els: els };
+}
+
+function cardSandbox(doc) {
+  // `document` as a parameter, so the module's `typeof document === 'undefined'`
+  // guard sees one -- the same source, in a page instead of on the kiosk.
+  const sb = {};
+  new Function('window', 'document', src).call(sb, sb, doc);
+  return sb;
+}
+
+test('the unreachable state repaints the card rather than leaving the last numbers', () => {
+  const doc = fakeCard();
+  const sb = cardSandbox(doc);
+  const good = sb.nwrCardState(status({ watch: { scan: scan(-32) } }), 'TOR');
+  sb.nwrRenderCard(good);
+  assert.strictEqual(doc._els['nwr-meter'].hidden, false);
+  assert.strictEqual(doc._els['nwr-meter-label'].textContent, '-32.0 dBm');
+  assert.strictEqual(doc._els['card-nwr'].classList.has('alert'), true);
+
+  // What the failure path paints. A card badged DOWN beside a live-looking
+  // -32.0 dBm and a red alert wash is exactly the parade of stale state
+  // nwrCardState refuses everywhere else.
+  sb.nwrRenderCard(sb.nwrCardState(null));
+  assert.strictEqual(doc._els['nwr-meter'].hidden, true, 'the stale meter is still showing');
+  assert.strictEqual(doc._els['card-nwr'].classList.has('alert'), false,
+    'the stale alert wash is still on the card');
+});
+
 // The nwr entry of a page's SERVICES array, verbatim.
+//
+// Anchored on the entry's opening brace, not on the id line: anything inserted
+// BEFORE `id:` -- a second check, a different fetch -- would otherwise sit
+// outside the slice and drift between the pages unnoticed. The id marker
+// carries no indentation either, so a reflowed entry reports a drift instead of
+// "this page has no nwr check at all".
 function nwrCheckBlock(page) {
   const html = fs.readFileSync(path.join(root, page), 'utf8');
-  const start = html.indexOf("    id: 'nwr', name: 'Weather Radio',");
-  assert.notStrictEqual(start, -1, page + ' has no nwr health check');
+  const marker = html.indexOf("id: 'nwr', name: 'Weather Radio',");
+  assert.notStrictEqual(marker, -1, page + ' has no nwr health check');
+  const start = html.lastIndexOf('\n  {', marker);
+  assert.notStrictEqual(start, -1, page + ": the nwr check's entry does not open");
   const end = html.indexOf('\n  },', start);
   assert.notStrictEqual(end, -1, page + ": the nwr check's entry does not close");
   return html.slice(start, end);
 }
+
+test('the drift guard covers the whole entry, opening brace included', () => {
+  // The guard's own blind spot: a property inserted ahead of the id line used to
+  // fall outside the compared slice.
+  const block = nwrCheckBlock('index.html');
+  assert.ok(block.startsWith('\n  {'), 'the slice must begin at the entry brace');
+  assert.match(block, /id: 'nwr'/);
+});
+
+test('a failed check clears the card the last good one painted', () => {
+  // checkService repaints the dot, the badge and the sub-line on its failure
+  // path and knows nothing about the meter or the alert wash. The entry
+  // declares what to do about that, and checkService calls it.
+  ['index.html', path.join('oasis-dashboard', 'dashboard.html')].forEach((page) => {
+    const html = fs.readFileSync(path.join(root, page), 'utf8');
+    assert.match(nwrCheckBlock(page),
+      /fail: \(\) => nwrRenderCard\(nwrCardState\(null\)\)/,
+      page + ': the nwr entry declares no failure paint');
+    assert.match(html, /if \(svc\.fail\) \{ svc\.fail\(\); \}/,
+      page + ': checkService never calls a service failure paint');
+  });
+});
 
 test('both dashboards run the SAME Weather Radio check, byte for byte', () => {
   // service-registry.js exists because these two pages once drifted into

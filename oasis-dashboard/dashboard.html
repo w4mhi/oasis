@@ -1606,7 +1606,14 @@ const SERVICES = [
       const cs = nwrCardState(d, _nwrAlertEvent);
       nwrRenderCard(cs);
       return nwrHealth(cs);
-    }
+    },
+    // The failure path paints the card too. checkService's catch knows about
+    // the dot, the badge and the sub-line, but nothing about the meter or the
+    // alert wash -- so a check that rejects, or loses the 4 s race with a cold
+    // rtl_test probe, used to badge the card DOWN while the meter beside it
+    // kept the last good -32.0 dBm. nwrCardState(null) is the module's own
+    // unreachable state: no meter, no alert.
+    fail: () => nwrRenderCard(nwrCardState(null))
   },
   { id:'manuals', name:'Radio Manuals', check: async () => { const r=await fetch('/api/browse?path=static/radio-manuals',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'browse error'}; const d=await r.json(); const n=(d.entries||[]).filter(e=>e.type==='dir').length; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} radio${n===1?'':'s'}`:'no manuals'}; } },
   { id:'wiki', name:'Wikipedia', check: async () => { const r=await fetch('/api/health/zim',{cache:'no-store'}); if(!r.ok) return {up:false,sub:'check error'}; const d=await r.json(); const n=d.count||0; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} ZIM${n===1?'':'s'}`:'no ZIM'}; } },
@@ -1658,7 +1665,13 @@ async function checkService(svc) {
   try {
     const result = await Promise.race([ svc.check(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),4000)) ]);
     _svcStates[svc.id] = result.up ? (result.warn ? 'warn':'up') : 'down';
-  } catch (_) { _svcStates[svc.id] = 'down'; }
+  } catch (_) {
+    _svcStates[svc.id] = 'down';
+    // A service may own paint this function knows nothing about (index.html's
+    // Weather Radio meter and alert wash). A no-op here -- the kiosk has no
+    // service cards -- but the two pages' failure paths must not drift either.
+    if (svc.fail) { svc.fail(); }
+  }
   updateSvcCounts();
 }
 function pingAll() { SERVICES.forEach(svc => { if (!HIDDEN_SVCS.has(svc.id)) checkService(svc); }); }

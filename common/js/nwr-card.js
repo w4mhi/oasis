@@ -18,7 +18,11 @@
   'use strict';
 
   // The band the daemon sweeps (services/nwr/common/scan.py BAND_LOW/HIGH).
-  var SWEEP_TEXT = 'sweeping 162.400-162.550 MHz';
+  // Written short on purpose: this lands in .feed-meter-label, which shares one
+  // row with the sub-line inside a card that is 120 px at its narrowest, and
+  // neither element can shrink. The full "162.400-162.550 MHz" beside
+  // "choosing a channel" is several times that width.
+  var SWEEP_TEXT = 'sweeping 162.4-162.55';
 
   // dBm window for the signal meter. rtl_power's numbers are relative, so this
   // is a readable scale, not a calibration: the floor is "nothing there" and the
@@ -105,6 +109,19 @@
       cs.badge = 'SCANNING';
       cs.sub = 'choosing a channel';
       cs.meter = { pct: 0, cls: '', label: SWEEP_TEXT };
+    } else if (w.phase === 'retuning') {
+      // The gap an accepted POST /api/nwr/config costs: the daemon stops the
+      // capture and starts one on the newly chosen channel (daemon.py
+      // supervise()). Green, and ahead of scan_weak and listening, for the same
+      // reason a rescan is: this is the watch doing what the operator asked,
+      // and a card that read it as a decode failure would report the click as
+      // damage. The state is one supervisor tick long -- retune_pending marks
+      // its whole length, and phase is what says which part we are in, so a
+      // retune whose capture will not start reads RETRYING here rather than
+      // sitting on this word forever.
+      cs.state = 'up';
+      cs.badge = 'RETUNING';
+      cs.sub = 'changing channel';
     } else if (w.scan_weak) {
       // Ahead of `listening` on purpose: a weak channel still starts (the
       // daemon refuses nothing), so this is the ONLY place the operator finds

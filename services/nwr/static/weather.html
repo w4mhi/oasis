@@ -37,6 +37,10 @@ tr.matched td { background: rgba(255, 176, 0, .07); }
 tr.info td { color: var(--text-dim); }
 code.raw { font-size: var(--fs-micro); color: var(--text-dim); word-break: break-all; }
 .warn { color: var(--red); font-size: var(--fs-small); }
+/* The retune line is ordinary progress, not an alarm: an operator-initiated
+   channel change sitting in the same red as "no audio encoder" reads far
+   louder than it is. Dim, and never given the .warn class. */
+#pin { font-size: var(--fs-small); color: var(--text-dim); }
 </style>
 </head>
 <body>
@@ -58,6 +62,7 @@ code.raw { font-size: var(--fs-micro); color: var(--text-dim); word-break: break
         <label for="chan">Channel</label>
         <select id="chan"></select>
       </div>
+      <div class="row"><span id="pin"></span></div>
       <div class="row"><span id="msg"></span></div>
       <div class="row"><span id="err"></span></div>
       <div class="row"><span id="pre"></span></div>
@@ -117,6 +122,9 @@ function post(url, body) {
 
 const $ = function (id) { return document.getElementById(id); };
 const STREAM_URL = '/api/nwr/listen/stream';
+// Named because two handlers share it: one writes it, the other clears it and
+// must be able to tell it apart from the other message #msg carries.
+const STREAM_ERR = 'the audio stream would not open - see the status line above';
 let CHANNELS = [];
 let polling = false;   // re-entrancy guard for poll() — see Finding 7
 
@@ -146,18 +154,29 @@ function pinPatch(value) {
   return { pinned_channel: (value === 'auto' || isNaN(hz)) ? null : hz };
 }
 
-// The daemon reads pinned_channel only when it next CHOOSES a channel, and a
-// healthy capture is never interrupted to re-read it (daemon.py supervise():
-// while listening it stops only for a due rescan). So a pin set mid-capture is
-// stored but not yet in effect, and saying nothing would read as the page
-// having ignored the click.
-function pinNote(d) {
+// A pin now takes effect at once: POST /api/nwr/config asks the daemon to
+// re-read its configuration (routes.py api_nwr_config_set -> daemon
+// request_retune), and the supervisor interrupts a healthy capture for it. So
+// there is no "stored but not in effect" state left to disclose. What IS worth
+// saying is the gap in between -- the seconds where the old capture has stopped
+// and the new one has not started -- because that is the page looking dead
+// right after a click.
+//
+// watch.retune_pending is what marks that gap, from the accepted request until
+// the capture it asked for is RUNNING. It therefore stays true while a start
+// keeps failing, so the words come from `phase`, which reads `retrying` there:
+// a pin that cannot be tuned must say it is stuck, not "changing channel"
+// forever.
+function retuneNote(d) {
   const w = (d && d.watch) || {};
   const cfg = (d && d.config) || {};
-  if (!cfg.pinned_channel || !w.listening) { return ''; }
-  if (Number(cfg.pinned_channel) === Number(w.channel_hz)) { return ''; }
-  return 'pinned ' + chanLabel(cfg.pinned_channel) +
-         ' - takes effect when the watch next changes channel';
+  if (!w.reachable || !w.retune_pending) { return ''; }
+  const target = cfg.pinned_channel ? chanLabel(cfg.pinned_channel)
+                                    : 'the strongest channel';
+  if (w.phase === 'retrying') {
+    return 'still trying to tune ' + target + ' - the watch will keep retrying';
+  }
+  return 'changing to ' + target;
 }
 
 // The status line: is the watch running, on what channel, and since when.
@@ -235,7 +254,7 @@ function setMsg(text) {
 function renderStatus(d, nowMs) {
   const w = d.watch || {}, pre = d.preconditions || {}, cfg = d.config || {};
 
-  // First, because CHANNELS is what chanLabel() -- and so pinNote() below --
+  // First, because CHANNELS is what chanLabel() -- and so retuneNote() below --
   // turns a frequency into a channel name with.
   const sel = $('chan');
   if (!CHANNELS.length && (d.channels || []).length) {
@@ -266,14 +285,21 @@ function renderStatus(d, nowMs) {
   // Only what the status line does not already say. Missing deps, an
   // unassigned or absent dongle and a busy one are all nwrCardState() states
   // and appear above; repeating them here would just say everything twice.
+  //
+  // The environment, and only the environment: these describe how the station
+  // is built and are red because they need a person with a keyboard. A retune
+  // in progress is neither -- it has its own element below, in its own colour.
   const notes = [];
   if (!pre.can_stream) { notes.push('no audio encoder - decode only, no listening in'); }
   if (!pre.can_scan) { notes.push('rtl_power missing - the watch cannot sweep the band'); }
-  const pin = pinNote(d);
-  if (pin) { notes.push(pin); }
   const pre_el = $('pre');
   pre_el.textContent = notes.join(' | ');
   pre_el.className = notes.length ? 'warn' : '';
+
+  // Server state, so it is re-derived from every poll rather than latched by
+  // the click: a retune that finishes, or one the operator started from another
+  // browser, both land here on their own.
+  $('pin').textContent = retuneNote(d);
 
   // watch.last_error is a different kind of message from the notes above:
   // those describe the current environment (no encoder, no rtl_power), while
@@ -304,6 +330,28 @@ function renderStatus(d, nowMs) {
     // attached behind display:none is the orphaned-encoder shape again.
     if (au.getAttribute('src')) { detachStream(au); }
   }
+}
+
+// The status line when there is no status: Flask itself unreachable or 500ing.
+//
+// Not renderStatus({ok:false}): that would also rewrite the dropdown to Auto
+// and report a pin the operator never cleared. Nothing here is known to have
+// changed except our ability to ask, so the only thing that moves is the line
+// that makes the claim.
+//
+// The audio element is deliberately left alone. /api/nwr/status and the stream
+// are separate requests, a 500 on the first says nothing about the second, and
+// tearing the stream down would cut audio off in the operator's ear on a
+// transient failure. A stream that really has died raises 'error' on the
+// element, which has its own handler.
+//
+// The vocabulary is nwrCardState()'s -- with `null`, which is exactly its
+// "status unavailable" state and until now unreachable from this page.
+function renderUnavailable() {
+  const cs = nwrCardState(null, null);
+  const st = $('state');
+  st.textContent = cs.badge + ' - ' + cs.sub;
+  st.className = 'down';
 }
 
 function renderAlerts(d) {
@@ -356,7 +404,14 @@ async function poll() {
   polling = true;
   try {
     const s = await api('/api/nwr/status');
+    // /api/nwr/status answers `ok: true` even when the watch is dead -- a
+    // daemon that is down is an ANSWER there, carried in watch.reachable. So
+    // !ok means the SERVER could not be asked, and skipping the render there
+    // left the line reading LISTENING - WX7 - since ... for as long as Flask
+    // stayed down: the page's one claim about the world, still being made
+    // after the page lost the ability to check it.
     if (s.data && s.data.ok) { renderStatus(s.data, Date.now()); }
+    else { renderUnavailable(); }
     const a = await api('/api/nwr/alerts?limit=50');
     if (a.data && a.data.ok) { renderAlerts(a.data); }
   } finally {
@@ -367,14 +422,33 @@ async function poll() {
 $('chan').addEventListener('change', async function () {
   const sel = $('chan');
   sel.disabled = true;
-  const r = await post('/api/nwr/config', pinPatch(sel.value));
-  sel.disabled = false;
+  let r;
+  try {
+    r = await post('/api/nwr/config', pinPatch(sel.value));
+  } finally {
+    // api() swallows everything today, so this cannot currently throw -- but a
+    // dropdown left permanently disabled is an unrecoverable page, and that is
+    // too high a price for trusting a helper three functions away to keep
+    // never throwing.
+    sel.disabled = false;
+  }
   // Instant paint, and it stays: poll() writes the daemon's own last_error to
   // #err and never touches #msg, so a refused pin cannot be wiped by the
   // status that lands a moment later.
+  //
+  // `ok: false` is now only a REFUSED write -- a channel that is not one of the
+  // seven. The write succeeding while the watch is down is `ok: true` with
+  // retune.reachable false (routes.py: the file is saved either way, and losing
+  // the operator's choice because a daemon is not running would be worse). That
+  // is worth saying, because the channel they just chose is not going to start
+  // being received. retune.reachable is null when there was no reason to ask,
+  // so this tests for false, not for falsy.
+  const rt = (r.data && r.data.retune) || {};
   setMsg((!r.data || !r.data.ok)
     ? ((r.data && r.data.error) || 'could not set the channel')
-    : '');
+    : (rt.reachable === false
+        ? 'saved - ' + (rt.detail || 'the watch is not running, so nothing retuned')
+        : ''));
   poll();
 });
 
@@ -384,9 +458,34 @@ $('audio').addEventListener('error', function () {
   // The relay refuses with JSON the element cannot render -- 409 while the
   // watch is down, 503 with no encoder or with all three stream slots taken --
   // and all of them surface here as a bare media error.
-  setMsg('the audio stream would not open - see the status line above');
+  setMsg(STREAM_ERR);
   detachStream($('audio'));
   armStream($('audio'), Date.now());
+});
+// A stream that opened on the retry disproves the warning above, and nothing
+// else was clearing it: it stood until the next channel change. Only OUR
+// message is cleared -- #msg is also where a refused pin lands, and audio
+// starting says nothing about that.
+['playing', 'canplay'].forEach(function (ev) {
+  $('audio').addEventListener(ev, function () {
+    if ($('msg').textContent === STREAM_ERR) { setMsg(''); }
+  });
+});
+
+// The stream must not outlive the page. Closing the tab does sever the socket,
+// but the Dashboard link at the top of this page is a SAME-ORIGIN navigation --
+// the case Chromium keeps the frame and its media element alive for, in the
+// back/forward cache. The daemon has no reaper: its handler holds the slot
+// until a write to the socket raises, which needs the browser to actually
+// close. A bfcached page therefore pins one of its three streams, and an
+// ffmpeg with it, indefinitely.
+//
+// 'pagehide', never 'unload': unload disqualifies the page from the bfcache it
+// is meant to survive, and is deprecated. A page that is merely HIDDEN is not
+// this case and gets no teardown -- audio should keep playing in a backgrounded
+// kiosk tab.
+window.addEventListener('pagehide', function () {
+  detachStream($('audio'));
 });
 
 poll();
